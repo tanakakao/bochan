@@ -1,0 +1,22 @@
+# プロジェクトのメタデータ
+[project]
+name = "botorch_ext"
+version = "0.1.0"
+authors = [
+  { name="Your Name", email="you@example.com" },
+]
+description = "botorchの拡張のためのパッケージです。"
+readme = "README.md"
+requires-python = ">=3.11"
+# このパッケージが動作するために必要なライブラリ
+dependencies = [
+  "numpy>=1.20.0",
+  "requests",
+]
+
+# (キーポイント) 開発時にのみ必要なライブラリ
+[project.optional-dependencies]
+dev = [
+  "pytest", # テスト用
+  "black",  # コードフォーマッター
+]

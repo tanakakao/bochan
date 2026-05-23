@@ -1,0 +1,138 @@
+from __future__ import annotations
+
+from typing import Any, Optional, Sequence
+
+import torch
+from torch import Tensor
+
+from botorch.models.map_saas import add_saas_prior
+from gpytorch.kernels import Kernel, MaternKernel, ScaleKernel
+from gpytorch.means import Mean
+
+from bochan.models.components.beta import BetaMeanLink
+from bochan.models.regression.non_gaussian.beta import BetaGPModel, BetaLogLikelihood, BetaMixedGPModel
+
+
+def build_map_saas_beta_covar_module(
+    train_X: Tensor,
+    *,
+    ard_num_dims: Optional[int] = None,
+    tau: float | None = None,
+    log_scale: bool = True,
+    nu: float = 2.5,
+) -> ScaleKernel:
+    """Beta latent GP 用の MAP-SAAS Matern kernel を作る。"""
+    if ard_num_dims is None:
+        ard_num_dims = train_X.shape[-1]
+    base_kernel = MaternKernel(nu=float(nu), ard_num_dims=int(ard_num_dims), batch_shape=torch.Size([])).to(train_X)
+    add_saas_prior(base_kernel=base_kernel, tau=tau, log_scale=bool(log_scale))
+    return ScaleKernel(base_kernel=base_kernel, batch_shape=torch.Size([])).to(train_X)
+
+
+class SaasBetaGPModel(BetaGPModel):
+    """MAP-SAAS kernel を使う Beta GP 回帰モデル。"""
+
+    def __init__(
+        self,
+        train_X: Tensor,
+        train_Y: Tensor,
+        *,
+        likelihood: Optional[BetaLogLikelihood] = None,
+        input_transform: Any | None = None,
+        mean_module: Optional[Mean] = None,
+        covar_module: Optional[Kernel] = None,
+        num_inducing_points: int = 128,
+        inducing_points: Optional[Tensor] = None,
+        learn_inducing_locations: bool = True,
+        tau: float | None = None,
+        saas_log_scale: bool = True,
+        saas_nu: float = 2.5,
+        link: BetaMeanLink = "sigmoid",
+        init_concentration: float = 20.0,
+        learn_concentration: bool = True,
+        eps: float = 1e-6,
+        min_concentration: float = 1e-6,
+        clip_targets: bool = True,
+    ) -> None:
+        self.tau = tau
+        self.saas_log_scale = bool(saas_log_scale)
+        self.saas_nu = float(saas_nu)
+        if covar_module is None:
+            covar_module = build_map_saas_beta_covar_module(train_X=train_X, tau=tau, log_scale=saas_log_scale, nu=saas_nu)
+        super().__init__(
+            train_X=train_X,
+            train_Y=train_Y,
+            likelihood=likelihood,
+            input_transform=input_transform,
+            mean_module=mean_module,
+            covar_module=covar_module,
+            num_inducing_points=num_inducing_points,
+            inducing_points=inducing_points,
+            learn_inducing_locations=learn_inducing_locations,
+            link=link,
+            init_concentration=init_concentration,
+            learn_concentration=learn_concentration,
+            eps=eps,
+            min_concentration=min_concentration,
+            clip_targets=clip_targets,
+        )
+
+
+class SaasBetaMixedGPModel(BetaMixedGPModel):
+    """MAP-SAAS kernel を使う mixed Beta GP 回帰モデル。"""
+
+    def __init__(
+        self,
+        train_X: Tensor,
+        train_Y: Tensor,
+        *,
+        cat_dims: Sequence[int],
+        likelihood: Optional[BetaLogLikelihood] = None,
+        input_transform: Any | None = None,
+        mean_module: Optional[Mean] = None,
+        covar_module: Optional[Kernel] = None,
+        num_inducing_points: int = 128,
+        inducing_points: Optional[Tensor] = None,
+        learn_inducing_locations: bool = True,
+        tau: float | None = None,
+        saas_log_scale: bool = True,
+        saas_nu: float = 2.5,
+        link: BetaMeanLink = "sigmoid",
+        init_concentration: float = 20.0,
+        learn_concentration: bool = True,
+        eps: float = 1e-6,
+        min_concentration: float = 1e-6,
+        clip_targets: bool = True,
+    ) -> None:
+        self.tau = tau
+        self.saas_log_scale = bool(saas_log_scale)
+        self.saas_nu = float(saas_nu)
+        if covar_module is None:
+            covar_module = build_map_saas_beta_covar_module(
+                train_X=train_X,
+                ard_num_dims=train_X.shape[-1],
+                tau=tau,
+                log_scale=saas_log_scale,
+                nu=saas_nu,
+            )
+        super().__init__(
+            train_X=train_X,
+            train_Y=train_Y,
+            cat_dims=cat_dims,
+            likelihood=likelihood,
+            input_transform=input_transform,
+            mean_module=mean_module,
+            covar_module=covar_module,
+            num_inducing_points=num_inducing_points,
+            inducing_points=inducing_points,
+            learn_inducing_locations=learn_inducing_locations,
+            link=link,
+            init_concentration=init_concentration,
+            learn_concentration=learn_concentration,
+            eps=eps,
+            min_concentration=min_concentration,
+            clip_targets=clip_targets,
+        )
+
+
+__all__ = ["build_map_saas_beta_covar_module", "SaasBetaGPModel", "SaasBetaMixedGPModel"]

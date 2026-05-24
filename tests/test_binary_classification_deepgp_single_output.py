@@ -25,6 +25,8 @@ from tests.test_binary_classification_base_single_output import (
     maybe_suppress_botorch_initial_warnings,
     optimize_mixed_with_case,
     optimize_with_case,
+    optimizer_cases,
+    print_linear_constraint_diagnostics,
 )
 
 
@@ -67,8 +69,14 @@ def _assert_deepgp_model_training(
             assert torch.isin(model.train_inputs_raw[0][:, cat_id], cat_values).all()
 
 
-def create_binary_deepgp_model_bundle(*, cat: bool = False) -> dict[str, Any]:
-    train_x, train_y, bounds = make_binary_toy_data(n=16, d=5, cat=cat)
+def create_binary_deepgp_model_bundle(
+    *,
+    cat: bool = False,
+    n: int = 16,
+    d: int = 5,
+    num_epochs: int = 8,
+) -> dict[str, Any]:
+    train_x, train_y, bounds = make_binary_toy_data(n=n, d=d, cat=cat)
     cat_dims = [train_x.shape[-1] - 1] if cat else []
     kwargs: dict[str, Any] = {
         "train_X": train_x,
@@ -85,7 +93,7 @@ def create_binary_deepgp_model_bundle(*, cat: bool = False) -> dict[str, Any]:
         kwargs["list_hidden_dims"] = [4]
         model = BinaryClassificationDeepGPModel(**kwargs)
 
-    fit_binary_classifier_mll(model.make_mll(), num_epochs=8, lr=0.01)
+    fit_binary_classifier_mll(model.make_mll(), num_epochs=num_epochs, lr=0.01)
     _assert_deepgp_model_training(model, train_x, train_y, cat_dims=cat_dims)
     return {"model": model, "train_x": train_x, "train_y": train_y, "bounds": bounds, "cat_dims": cat_dims}
 
@@ -106,7 +114,6 @@ def _representative_acquisition_cases(model: Any, train_x: torch.Tensor):
 
 
 def _representative_constraint_cases(bounds: torch.Tensor) -> list[dict[str, Any]]:
-    """Deep model の重さを抑えつつ、rounding / k-sparse / linear constraints を確認する。"""
     names = {"step_only", "step_k_sparse_constraints"}
     return [case for case in make_constraint_cases(bounds) if case["case_id"] in names]
 
@@ -116,6 +123,33 @@ def _get_acquisition_case(model: Any, train_x: torch.Tensor, case_id: str):
         if current_case_id == case_id:
             return acq_cls, kwargs
     raise AssertionError(f"acquisition case not found: {case_id}")
+
+
+def _optimizer_constraint_scenarios(
+    model: Any,
+    train_x: torch.Tensor,
+    bounds: torch.Tensor,
+    *,
+    mixed: bool = False,
+    full_matrix: bool = False,
+):
+    if full_matrix:
+        scenarios = []
+        for acq_cls, kwargs, acq_id in _representative_acquisition_cases(model, train_x):
+            for optimize_func, optimize_method, optimizer_id in optimizer_cases():
+                for constraint_case in make_constraint_cases(bounds):
+                    case_id = f"{acq_id}__{optimizer_id}__{constraint_case['case_id']}"
+                    if mixed:
+                        case_id = f"mixed__{case_id}"
+                    scenarios.append((acq_cls, kwargs, acq_id, optimize_func, optimize_method, constraint_case, case_id))
+        return scenarios
+
+    acq_cls, kwargs = _get_acquisition_case(model, train_x, "binary_ucb")
+    prefix = "deepgp_mixed" if mixed else "deepgp"
+    return [
+        (acq_cls, kwargs, "binary_ucb", "torch", "adam", constraint_case, f"{prefix}__binary_ucb__torch_adam__{constraint_case['case_id']}")
+        for constraint_case in _representative_constraint_cases(bounds)
+    ]
 
 
 def test_binary_deepgp_model_basic_behavior(binary_deepgp_model_bundle: dict[str, Any]) -> None:
@@ -219,22 +253,19 @@ def test_binary_deepgp_mixed_optimize_acqf_mixed_representative_smoke(
 
 @pytest.mark.slow
 def test_binary_deepgp_optimizer_constraint_case_smoke(binary_deepgp_model_bundle: dict[str, Any]) -> None:
-    """DeepGP でも base 側と同じ constraint_case helper を使えることを確認する。"""
     model = binary_deepgp_model_bundle["model"]
     train_x = binary_deepgp_model_bundle["train_x"]
     bounds = binary_deepgp_model_bundle["bounds"]
-    acq_cls, kwargs = _get_acquisition_case(model, train_x, "binary_ucb")
     q = 2
 
-    for constraint_case in _representative_constraint_cases(bounds):
-        case_id = f"deepgp__binary_ucb__torch_adam__{constraint_case['case_id']}"
+    for acq_cls, kwargs, _, optimize_func, optimize_method, constraint_case, case_id in _optimizer_constraint_scenarios(model, train_x, bounds):
         with maybe_suppress_botorch_initial_warnings():
             cands, acq_value = optimize_with_case(
                 acqf=acq_cls(model=model, **kwargs),
                 bounds=bounds,
                 q=q,
-                optimize_func="torch",
-                optimize_method="adam",
+                optimize_func=optimize_func,
+                optimize_method=optimize_method,
                 constraint_case=constraint_case,
                 num_restarts=2,
                 raw_samples=16,
@@ -255,26 +286,23 @@ def test_binary_deepgp_optimizer_constraint_case_smoke(binary_deepgp_model_bundl
 def test_binary_deepgp_mixed_optimizer_constraint_case_smoke(
     binary_deepgp_mixed_model_bundle: dict[str, Any],
 ) -> None:
-    """mixed DeepGP でも constraint_case と fixed_features_list を併用できることを確認する。"""
     model = binary_deepgp_mixed_model_bundle["model"]
     train_x = binary_deepgp_mixed_model_bundle["train_x"]
     bounds = binary_deepgp_mixed_model_bundle["bounds"]
     cat_id = binary_deepgp_mixed_model_bundle["cat_dims"][0]
     fixed_features_list = [{cat_id: 5.0}, {cat_id: 10.0}, {cat_id: 15.0}]
     cat_values = torch.tensor([5.0, 10.0, 15.0], dtype=DTYPE, device=DEVICE)
-    acq_cls, kwargs = _get_acquisition_case(model, train_x, "binary_ucb")
     q = 2
 
-    for constraint_case in _representative_constraint_cases(bounds):
-        case_id = f"deepgp_mixed__binary_ucb__torch_adam__{constraint_case['case_id']}"
+    for acq_cls, kwargs, _, optimize_func, optimize_method, constraint_case, case_id in _optimizer_constraint_scenarios(model, train_x, bounds, mixed=True):
         with maybe_suppress_botorch_initial_warnings():
             cands, acq_value = optimize_mixed_with_case(
                 acqf=acq_cls(model=model, **kwargs),
                 bounds=bounds,
                 q=q,
                 fixed_features_list=fixed_features_list,
-                optimize_func="torch",
-                optimize_method="adam",
+                optimize_func=optimize_func,
+                optimize_method=optimize_method,
                 constraint_case=constraint_case,
                 num_restarts=2,
                 raw_samples=16,
@@ -292,10 +320,348 @@ def test_binary_deepgp_mixed_optimizer_constraint_case_smoke(
         assert torch.isin(cands[:, cat_id], cat_values).all(), case_id
 
 
-def run_jupyter_all_checks() -> dict[str, Any]:
-    """Jupyter 向け: single / mixed の主要 forward check をまとめて実行する。"""
-    single_bundle = create_binary_deepgp_model_bundle(cat=False)
-    mixed_bundle = create_binary_deepgp_model_bundle(cat=True)
-    test_binary_deepgp_acquisition_forward_shapes(single_bundle)
-    test_binary_deepgp_mixed_acquisition_forward_shapes(mixed_bundle)
-    return {"single": single_bundle, "mixed": mixed_bundle}
+# ============================================================
+# Jupyter helpers: base test と同じ構成
+# ============================================================
+
+def run_jupyter_forward_check(
+    *,
+    cat: bool = False,
+    n: int = 16,
+    d: int = 5,
+    num_epochs: int = 8,
+    batch_size: int = 4,
+    q: int = 2,
+    verbose_forward_detail: bool = False,
+) -> dict[str, Any]:
+    bundle = create_binary_deepgp_model_bundle(cat=cat, n=n, d=d, num_epochs=num_epochs)
+    model = bundle["model"]
+    train_x = bundle["train_x"]
+    bounds = bundle["bounds"]
+    cat_dims = bundle["cat_dims"]
+
+    X = make_random_mixed_batch(bounds, cat_dims, batch_size=batch_size, q=q) if cat else make_random_batch(bounds, batch_size=batch_size, q=q)
+
+    print("=" * 80)
+    print(f"Jupyter DeepGP forward check cat={cat}")
+    if verbose_forward_detail:
+        print(f"train_x.shape={train_x.shape}")
+        print(f"bounds.shape={bounds.shape}")
+        print(f"X.shape={X.shape}")
+    print("=" * 80)
+
+    for acq_cls, kwargs, case_id in acquisition_cases(model, train_x):
+        try:
+            values = acq_cls(model=model, **kwargs)(X)
+            assert values.shape == torch.Size([batch_size]), case_id
+            assert torch.isfinite(values).all(), case_id
+            if verbose_forward_detail:
+                print(f"[OK] {case_id} shape={tuple(values.shape)} min={values.min().item():.6g} max={values.max().item():.6g}")
+        except Exception as exc:
+            print(f"[NG] {case_id} {type(exc).__name__}")
+            print(str(exc))
+            raise
+
+    print("forward check passed.")
+    return bundle
+
+
+def run_jupyter_optimize_acqf_all_acquisitions_check(
+    *,
+    n: int = 16,
+    d: int = 5,
+    num_epochs: int = 8,
+    q: int = 2,
+    num_restarts: int = 2,
+    raw_samples: int = 16,
+    maxiter: int = 10,
+    continue_on_error: bool = False,
+    suppress_botorch_warnings: bool = True,
+) -> dict[str, Any]:
+    bundle = create_binary_deepgp_model_bundle(cat=False, n=n, d=d, num_epochs=num_epochs)
+    model = bundle["model"]
+    train_x = bundle["train_x"]
+    bounds = bundle["bounds"]
+    failed_cases: list[tuple[str, Exception]] = []
+
+    print("=" * 100)
+    print("Jupyter DeepGP optimize_acqf check: all acquisitions")
+    print(f"n={n}, d={d}, q={q}, num_epochs={num_epochs}")
+    print(f"num_acquisitions={len(acquisition_cases(model, train_x))}")
+    print("=" * 100)
+
+    for acq_cls, kwargs, case_id in acquisition_cases(model, train_x):
+        display_id = f"optimize_acqf__{case_id}"
+        try:
+            with maybe_suppress_botorch_initial_warnings(suppress=suppress_botorch_warnings):
+                cands, acq_value = optimize_acqf(
+                    acq_function=acq_cls(model=model, **kwargs),
+                    bounds=bounds,
+                    q=q,
+                    sequential=True,
+                    num_restarts=num_restarts,
+                    raw_samples=raw_samples,
+                    options={"maxiter": maxiter},
+                )
+            assert cands.shape == torch.Size([q, train_x.shape[-1]]), case_id
+            assert torch.isfinite(cands).all(), case_id
+            assert torch.isfinite(acq_value).all(), case_id
+            assert_candidates_in_bounds(cands, bounds)
+            print(f"[OK] {display_id}")
+        except Exception as exc:
+            print(f"[NG] {display_id} {type(exc).__name__}")
+            print(str(exc))
+            failed_cases.append((display_id, exc))
+            if not continue_on_error:
+                raise
+
+    print("=" * 100)
+    print(f"failed_cases={len(failed_cases)}" if failed_cases else "all optimize_acqf acquisition checks passed.")
+    print("=" * 100)
+    return bundle
+
+
+def run_jupyter_optimize_acqf_mixed_all_acquisitions_check(
+    *,
+    n: int = 16,
+    d: int = 5,
+    num_epochs: int = 8,
+    q: int = 2,
+    num_restarts: int = 2,
+    raw_samples: int = 16,
+    maxiter: int = 10,
+    continue_on_error: bool = False,
+    suppress_botorch_warnings: bool = True,
+) -> dict[str, Any]:
+    bundle = create_binary_deepgp_model_bundle(cat=True, n=n, d=d, num_epochs=num_epochs)
+    model = bundle["model"]
+    train_x = bundle["train_x"]
+    bounds = bundle["bounds"]
+    cat_id = bundle["cat_dims"][0]
+    fixed_features_list = [{cat_id: 5.0}, {cat_id: 10.0}, {cat_id: 15.0}]
+    cat_values = torch.tensor([5.0, 10.0, 15.0], dtype=train_x.dtype, device=train_x.device)
+    failed_cases: list[tuple[str, Exception]] = []
+
+    print("=" * 100)
+    print("Jupyter DeepGP optimize_acqf_mixed check: all acquisitions")
+    print(f"n={n}, d={d}, q={q}, num_epochs={num_epochs}, cat_dims={bundle['cat_dims']}")
+    print(f"num_acquisitions={len(acquisition_cases(model, train_x))}")
+    print("=" * 100)
+
+    for acq_cls, kwargs, case_id in acquisition_cases(model, train_x):
+        display_id = f"optimize_acqf_mixed__{case_id}"
+        try:
+            with maybe_suppress_botorch_initial_warnings(suppress=suppress_botorch_warnings):
+                cands, acq_value = optimize_acqf_mixed(
+                    acq_function=acq_cls(model=model, **kwargs),
+                    bounds=bounds,
+                    q=q,
+                    fixed_features_list=fixed_features_list,
+                    num_restarts=num_restarts,
+                    raw_samples=raw_samples,
+                    options={"maxiter": maxiter},
+                )
+            assert cands.shape == torch.Size([q, train_x.shape[-1]]), case_id
+            assert torch.isfinite(cands).all(), case_id
+            assert torch.isfinite(acq_value).all(), case_id
+            assert_candidates_in_bounds(cands, bounds)
+            assert torch.isin(cands[:, cat_id], cat_values).all(), case_id
+            print(f"[OK] {display_id}")
+        except Exception as exc:
+            print(f"[NG] {display_id} {type(exc).__name__}")
+            print(str(exc))
+            failed_cases.append((display_id, exc))
+            if not continue_on_error:
+                raise
+
+    print("=" * 100)
+    print(f"failed_cases={len(failed_cases)}" if failed_cases else "all optimize_acqf_mixed acquisition checks passed.")
+    print("=" * 100)
+    return bundle
+
+
+def run_jupyter_optimizer_constraint_compatibility_check(
+    *,
+    n: int = 16,
+    d: int = 5,
+    num_epochs: int = 8,
+    q: int = 2,
+    full_matrix: bool = False,
+    continue_on_error: bool = False,
+    verbose_ok_detail: bool = False,
+    verbose_candidates: bool = False,
+    verbose_constraints: bool = False,
+    suppress_botorch_warnings: bool = True,
+) -> dict[str, Any]:
+    if d < 5:
+        raise ValueError("constraint compatibility check では d >= 5 が必要です。")
+    bundle = create_binary_deepgp_model_bundle(cat=False, n=n, d=d, num_epochs=num_epochs)
+    model = bundle["model"]
+    train_x = bundle["train_x"]
+    bounds = bundle["bounds"]
+    scenarios = _optimizer_constraint_scenarios(model, train_x, bounds, full_matrix=full_matrix)
+    failed_cases: list[tuple[str, Exception]] = []
+
+    print("=" * 100)
+    print("Jupyter DeepGP optimizer / constraint compatibility check")
+    print(f"n={n}, d={d}, q={q}, num_epochs={num_epochs}, full_matrix={full_matrix}")
+    print(f"num_cases={len(scenarios)}")
+    print("=" * 100)
+
+    for acq_cls, kwargs, _, optimize_func, optimize_method, constraint_case, case_id in scenarios:
+        try:
+            with maybe_suppress_botorch_initial_warnings(suppress=suppress_botorch_warnings):
+                cands, acq_value = optimize_with_case(
+                    acqf=acq_cls(model=model, **kwargs),
+                    bounds=bounds,
+                    q=q,
+                    optimize_func=optimize_func,
+                    optimize_method=optimize_method,
+                    constraint_case=constraint_case,
+                    num_restarts=2,
+                    raw_samples=16,
+                    maxiter=10,
+                )
+            assert_optimizer_compatibility_result(cands=cands, acq_value=acq_value, bounds=bounds, q=q, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
+            print(f"[OK] {case_id} cands.shape={tuple(cands.shape)} acq_value={acq_value}" if verbose_ok_detail else f"[OK] {case_id}")
+            if verbose_candidates:
+                print(f"     cands={cands}")
+            if constraint_case["case_id"] != "none":
+                print_linear_constraint_diagnostics(
+                    cands=cands,
+                    equality_constraints=constraint_case["equality_constraints"],
+                    inequality_constraints=constraint_case["inequality_constraints"],
+                    inequality_sense=constraint_case.get("inequality_sense", "le"),
+                    show_all=verbose_constraints,
+                )
+        except Exception as exc:
+            print(f"[NG] {case_id} {type(exc).__name__}")
+            print(str(exc))
+            failed_cases.append((case_id, exc))
+            if not continue_on_error:
+                raise
+
+    print("=" * 100)
+    print(f"failed_cases={len(failed_cases)}" if failed_cases else "all optimizer / constraint compatibility checks passed.")
+    print("=" * 100)
+    return bundle
+
+
+def run_jupyter_mixed_optimizer_constraint_compatibility_check(
+    *,
+    n: int = 16,
+    d: int = 5,
+    num_epochs: int = 8,
+    q: int = 2,
+    full_matrix: bool = False,
+    continue_on_error: bool = False,
+    verbose_ok_detail: bool = False,
+    verbose_candidates: bool = False,
+    verbose_constraints: bool = False,
+    suppress_botorch_warnings: bool = True,
+) -> dict[str, Any]:
+    if d < 5:
+        raise ValueError("constraint compatibility check では d >= 5 が必要です。")
+    bundle = create_binary_deepgp_model_bundle(cat=True, n=n, d=d, num_epochs=num_epochs)
+    model = bundle["model"]
+    train_x = bundle["train_x"]
+    bounds = bundle["bounds"]
+    cat_id = bundle["cat_dims"][0]
+    fixed_features_list = [{cat_id: 5.0}, {cat_id: 10.0}, {cat_id: 15.0}]
+    cat_values = torch.tensor([5.0, 10.0, 15.0], dtype=train_x.dtype, device=train_x.device)
+    scenarios = _optimizer_constraint_scenarios(model, train_x, bounds, mixed=True, full_matrix=full_matrix)
+    failed_cases: list[tuple[str, Exception]] = []
+
+    print("=" * 100)
+    print("Jupyter DeepGP mixed optimizer / constraint compatibility check")
+    print(f"n={n}, d={d}, q={q}, num_epochs={num_epochs}, full_matrix={full_matrix}, cat_dims={bundle['cat_dims']}")
+    print(f"num_cases={len(scenarios)}")
+    print("=" * 100)
+
+    for acq_cls, kwargs, _, optimize_func, optimize_method, constraint_case, case_id in scenarios:
+        try:
+            with maybe_suppress_botorch_initial_warnings(suppress=suppress_botorch_warnings):
+                cands, acq_value = optimize_mixed_with_case(
+                    acqf=acq_cls(model=model, **kwargs),
+                    bounds=bounds,
+                    q=q,
+                    fixed_features_list=fixed_features_list,
+                    optimize_func=optimize_func,
+                    optimize_method=optimize_method,
+                    constraint_case=constraint_case,
+                    num_restarts=2,
+                    raw_samples=16,
+                    maxiter=10,
+                )
+            assert_optimizer_compatibility_result(cands=cands, acq_value=acq_value, bounds=bounds, q=q, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
+            assert torch.isin(cands[:, cat_id], cat_values).all(), case_id
+            print(f"[OK] {case_id} cands.shape={tuple(cands.shape)} acq_value={acq_value}" if verbose_ok_detail else f"[OK] {case_id}")
+            if verbose_candidates:
+                print(f"     cands={cands}")
+            if constraint_case["case_id"] != "none":
+                print_linear_constraint_diagnostics(
+                    cands=cands,
+                    equality_constraints=constraint_case["equality_constraints"],
+                    inequality_constraints=constraint_case["inequality_constraints"],
+                    inequality_sense=constraint_case.get("inequality_sense", "le"),
+                    show_all=verbose_constraints,
+                )
+        except Exception as exc:
+            print(f"[NG] {case_id} {type(exc).__name__}")
+            print(str(exc))
+            failed_cases.append((case_id, exc))
+            if not continue_on_error:
+                raise
+
+    print("=" * 100)
+    print(f"failed_cases={len(failed_cases)}" if failed_cases else "all mixed optimizer / constraint compatibility checks passed.")
+    print("=" * 100)
+    return bundle
+
+
+def run_jupyter_all_checks(
+    *,
+    num_epochs: int = 8,
+    run_optimize: bool = True,
+    full_matrix: bool = False,
+    continue_on_error: bool = False,
+    verbose_forward_detail: bool = False,
+    verbose_ok_detail: bool = False,
+    verbose_candidates: bool = False,
+    verbose_constraints: bool = False,
+    suppress_botorch_warnings: bool = True,
+) -> None:
+    run_jupyter_forward_check(cat=False, num_epochs=num_epochs, verbose_forward_detail=verbose_forward_detail)
+    run_jupyter_forward_check(cat=True, num_epochs=num_epochs, verbose_forward_detail=verbose_forward_detail)
+
+    if run_optimize:
+        run_jupyter_optimize_acqf_all_acquisitions_check(
+            num_epochs=num_epochs,
+            continue_on_error=continue_on_error,
+            suppress_botorch_warnings=suppress_botorch_warnings,
+        )
+        run_jupyter_optimize_acqf_mixed_all_acquisitions_check(
+            num_epochs=num_epochs,
+            continue_on_error=continue_on_error,
+            suppress_botorch_warnings=suppress_botorch_warnings,
+        )
+        run_jupyter_optimizer_constraint_compatibility_check(
+            num_epochs=num_epochs,
+            full_matrix=full_matrix,
+            continue_on_error=continue_on_error,
+            verbose_ok_detail=verbose_ok_detail,
+            verbose_candidates=verbose_candidates,
+            verbose_constraints=verbose_constraints,
+            suppress_botorch_warnings=suppress_botorch_warnings,
+        )
+        run_jupyter_mixed_optimizer_constraint_compatibility_check(
+            num_epochs=num_epochs,
+            full_matrix=full_matrix,
+            continue_on_error=continue_on_error,
+            verbose_ok_detail=verbose_ok_detail,
+            verbose_candidates=verbose_candidates,
+            verbose_constraints=verbose_constraints,
+            suppress_botorch_warnings=suppress_botorch_warnings,
+        )
+
+    print("all DeepGP Jupyter checks passed.")

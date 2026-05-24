@@ -107,7 +107,17 @@ def _aggregate_multioutput_axis(
 
 
 class RegressionScalarObjective(MCAcquisitionObjective):
-    """regression 用 objective。posterior samples を scalar または multi-output objective に変換します。
+    """regression 用 objective。posterior samples または点ごとの score を scalar value に変換します。
+
+    Notes:
+        regression active learning の獲得関数では、posterior samples ではなく
+        ``score.shape = batch_shape x q`` のような点ごとの score を objective に渡す場合がある。
+        このとき最後の次元は output_dim ではなく q-batch 次元なので、
+        ``samples[..., output_index]`` で q 次元を落としてはいけない。
+
+        一方、通常の MC acquisition では
+        ``samples.shape = sample_shape x batch_shape x q x m`` の最後の次元 m が
+        output_dim なので、従来どおり output_index で scalarize する。
     
     Args:
         output_index: single-output へ scalarize するときに使う出力列 index。
@@ -118,8 +128,8 @@ class RegressionScalarObjective(MCAcquisitionObjective):
         risk_type: InputPerturbation 集約の risk 種類。`None`、`var`、`cvar`。
         alpha: risk 集約または qNEHVI の近似設定に使うパラメータ。
         maximize: score が大きいほど良い向きに揃っているかどうか。
-        aggregate_mean_when_no_risk: この acquisition / objective の動作を制御するパラメータ。
-        allow_unexpanded: この acquisition / objective の動作を制御するパラメータ。
+        aggregate_mean_when_no_risk: risk_type=None のときも摂動方向を平均集約するか。
+        allow_unexpanded: shape から摂動展開を判定できない場合にそのまま返すか。
     
     Returns:
         Tensor: 入力 samples または score を変換・集約した objective value。
@@ -157,11 +167,47 @@ class RegressionScalarObjective(MCAcquisitionObjective):
             alpha=self.alpha,
         )
 
-    def _scalarize(self, samples: Tensor) -> Tensor:
+    def _looks_like_pointwise_score(self, samples: Tensor, X: Optional[Tensor]) -> bool:
+        """Return True when samples already has pointwise score shape (..., q_like).
+
+        For active-learning acquisitions, score is often passed as ``batch_shape x q``.
+        BoTorch's ``MCAcquisitionObjective.__call__`` then verifies that the final
+        dimension agrees with ``X.shape[-2]``. Treating this final dimension as an
+        output dimension would incorrectly collapse q=1 to ``batch_shape`` and
+        produce the error ``Got batch_size and 1``.
+        """
+        if X is None or samples.ndim == 0:
+            return False
+
+        # Candidate case: X is batch_shape x q x d and score is batch_shape x q
+        # or batch_shape x (q * n_w). This is the failing path for qRegressionBALD
+        # during optimize_acqf initial-condition evaluation.
+        if X.ndim >= 3 and samples.ndim == X.ndim - 1:
+            q = X.shape[-2]
+            q_like = samples.shape[-1]
+            if q_like == q:
+                return True
+            if self.n_w is not None and q_like == q * int(self.n_w):
+                return True
+
+        # Baseline / unbatched case: X is n x d and score is n or n*n_w.
+        if X.ndim == 2 and samples.ndim == 1:
+            n = X.shape[-2]
+            n_like = samples.shape[-1]
+            if n_like == n:
+                return True
+            if self.n_w is not None and n_like == n * int(self.n_w):
+                return True
+
+        return False
+
+    def _scalarize(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
         if samples.ndim == 0:
             raise RuntimeError("samples must have at least one dimension.")
 
-        if samples.ndim == 1:
+        if self._looks_like_pointwise_score(samples, X):
+            y = samples
+        elif samples.ndim == 1:
             if self.output_index != 0:
                 raise IndexError(
                     f"samples is 1D, but output_index={self.output_index}."
@@ -184,7 +230,7 @@ class RegressionScalarObjective(MCAcquisitionObjective):
         if not torch.is_tensor(samples):
             raise TypeError(f"samples must be a Tensor. Got {type(samples)}.")
 
-        values = self._scalarize(samples)
+        values = self._scalarize(samples, X=X)
 
         if self.n_w is None or self.n_w <= 1:
             return values

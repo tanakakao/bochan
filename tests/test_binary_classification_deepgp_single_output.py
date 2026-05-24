@@ -17,10 +17,14 @@ from tests.test_binary_classification_base_single_output import (
     DEVICE,
     acquisition_cases,
     assert_candidates_in_bounds,
+    assert_optimizer_compatibility_result,
     make_binary_toy_data,
+    make_constraint_cases,
     make_random_batch,
     make_random_mixed_batch,
     maybe_suppress_botorch_initial_warnings,
+    optimize_mixed_with_case,
+    optimize_with_case,
 )
 
 
@@ -99,6 +103,19 @@ def binary_deepgp_mixed_model_bundle() -> dict[str, Any]:
 def _representative_acquisition_cases(model: Any, train_x: torch.Tensor):
     names = {"predictive_entropy", "latent_straddle", "pof", "binary_ei", "binary_pi", "binary_ucb"}
     return [case for case in acquisition_cases(model=model, train_x=train_x) if case[2] in names]
+
+
+def _representative_constraint_cases(bounds: torch.Tensor) -> list[dict[str, Any]]:
+    """Deep model の重さを抑えつつ、rounding / k-sparse / linear constraints を確認する。"""
+    names = {"step_only", "step_k_sparse_constraints"}
+    return [case for case in make_constraint_cases(bounds) if case["case_id"] in names]
+
+
+def _get_acquisition_case(model: Any, train_x: torch.Tensor, case_id: str):
+    for acq_cls, kwargs, current_case_id in acquisition_cases(model=model, train_x=train_x):
+        if current_case_id == case_id:
+            return acq_cls, kwargs
+    raise AssertionError(f"acquisition case not found: {case_id}")
 
 
 def test_binary_deepgp_model_basic_behavior(binary_deepgp_model_bundle: dict[str, Any]) -> None:
@@ -197,6 +214,81 @@ def test_binary_deepgp_mixed_optimize_acqf_mixed_representative_smoke(
         assert torch.isfinite(cands).all(), case_id
         assert torch.isfinite(acq_value).all(), case_id
         assert_candidates_in_bounds(cands=cands, bounds=bounds)
+        assert torch.isin(cands[:, cat_id], cat_values).all(), case_id
+
+
+@pytest.mark.slow
+def test_binary_deepgp_optimizer_constraint_case_smoke(binary_deepgp_model_bundle: dict[str, Any]) -> None:
+    """DeepGP でも base 側と同じ constraint_case helper を使えることを確認する。"""
+    model = binary_deepgp_model_bundle["model"]
+    train_x = binary_deepgp_model_bundle["train_x"]
+    bounds = binary_deepgp_model_bundle["bounds"]
+    acq_cls, kwargs = _get_acquisition_case(model, train_x, "binary_ucb")
+    q = 2
+
+    for constraint_case in _representative_constraint_cases(bounds):
+        case_id = f"deepgp__binary_ucb__torch_adam__{constraint_case['case_id']}"
+        with maybe_suppress_botorch_initial_warnings():
+            cands, acq_value = optimize_with_case(
+                acqf=acq_cls(model=model, **kwargs),
+                bounds=bounds,
+                q=q,
+                optimize_func="torch",
+                optimize_method="adam",
+                constraint_case=constraint_case,
+                num_restarts=2,
+                raw_samples=16,
+                maxiter=10,
+            )
+        assert_optimizer_compatibility_result(
+            cands=cands,
+            acq_value=acq_value,
+            bounds=bounds,
+            q=q,
+            d=train_x.shape[-1],
+            constraint_case=constraint_case,
+            case_id=case_id,
+        )
+
+
+@pytest.mark.slow
+def test_binary_deepgp_mixed_optimizer_constraint_case_smoke(
+    binary_deepgp_mixed_model_bundle: dict[str, Any],
+) -> None:
+    """mixed DeepGP でも constraint_case と fixed_features_list を併用できることを確認する。"""
+    model = binary_deepgp_mixed_model_bundle["model"]
+    train_x = binary_deepgp_mixed_model_bundle["train_x"]
+    bounds = binary_deepgp_mixed_model_bundle["bounds"]
+    cat_id = binary_deepgp_mixed_model_bundle["cat_dims"][0]
+    fixed_features_list = [{cat_id: 5.0}, {cat_id: 10.0}, {cat_id: 15.0}]
+    cat_values = torch.tensor([5.0, 10.0, 15.0], dtype=DTYPE, device=DEVICE)
+    acq_cls, kwargs = _get_acquisition_case(model, train_x, "binary_ucb")
+    q = 2
+
+    for constraint_case in _representative_constraint_cases(bounds):
+        case_id = f"deepgp_mixed__binary_ucb__torch_adam__{constraint_case['case_id']}"
+        with maybe_suppress_botorch_initial_warnings():
+            cands, acq_value = optimize_mixed_with_case(
+                acqf=acq_cls(model=model, **kwargs),
+                bounds=bounds,
+                q=q,
+                fixed_features_list=fixed_features_list,
+                optimize_func="torch",
+                optimize_method="adam",
+                constraint_case=constraint_case,
+                num_restarts=2,
+                raw_samples=16,
+                maxiter=10,
+            )
+        assert_optimizer_compatibility_result(
+            cands=cands,
+            acq_value=acq_value,
+            bounds=bounds,
+            q=q,
+            d=train_x.shape[-1],
+            constraint_case=constraint_case,
+            case_id=case_id,
+        )
         assert torch.isin(cands[:, cat_id], cat_values).all(), case_id
 
 

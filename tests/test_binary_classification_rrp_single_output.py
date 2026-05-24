@@ -7,7 +7,7 @@ import torch
 from botorch.models.transforms.input import Normalize
 from botorch.optim.optimize import optimize_acqf, optimize_acqf_mixed
 
-from bochan.fit import fit_binary_classifier_mll
+from bochan.fit import fit_rrp_binary_classifier_mll
 from bochan.models.classification.binary.robust import (
     OutlierRelevancePursuitBinaryClassificationGPModel,
     OutlierRelevancePursuitBinaryClassificationMixedGPModel,
@@ -33,6 +33,24 @@ from tests.test_binary_classification_base_single_output import (
 def _build_input_transform(train_x: torch.Tensor, bounds: torch.Tensor, cat_dims: list[int]) -> Normalize:
     cont_indices = [i for i in range(train_x.shape[-1]) if i not in cat_dims]
     return Normalize(d=train_x.shape[-1], bounds=bounds, indices=cont_indices)
+
+
+def _fit_rrp_binary_model(model: Any, *, num_epochs: int) -> None:
+    """RRP binary classification 専用 fit helper を軽量設定で実行する。"""
+    sparsity_upper = min(2, int(model.fit_train_input.shape[-2]))
+    sparsity_levels = [0] if sparsity_upper == 0 else [0, sparsity_upper]
+
+    fit_rrp_binary_classifier_mll(
+        model.make_mll(),
+        method="forward",
+        sparsity_levels=sparsity_levels,
+        reset_parameters=True,
+        reset_dense_parameters=False,
+        optimizer_kwargs={
+            "num_epochs": num_epochs,
+            "lr": 0.01,
+        },
+    )
 
 
 def _assert_rrp_model_training(
@@ -110,7 +128,7 @@ def create_binary_rrp_model_bundle(
             input_transform=input_transform,
         )
 
-    fit_binary_classifier_mll(model.make_mll(), num_epochs=num_epochs, lr=0.01)
+    _fit_rrp_binary_model(model, num_epochs=num_epochs)
     _assert_rrp_model_training(model, train_x, train_y, cat_dims=cat_dims)
     return {"model": model, "train_x": train_x, "train_y": train_y, "bounds": bounds, "cat_dims": cat_dims}
 

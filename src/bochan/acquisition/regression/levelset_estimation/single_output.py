@@ -198,7 +198,50 @@ class RegressionLevelSetScoreObjective(torch.nn.Module):
             return tail[..., -1]
         if self.risk_type == "cvar":
             return tail.mean(dim=-1)
-        raise ValueError(f"Unknown risk_type: {self.risk_type!r}.")
+        raise ValueError(f"Unknown risk_type: {self.risk_type}")
+
+
+def _objective_X_for_score(score: Tensor, X: Optional[Tensor]) -> Optional[Tensor]:
+    """Return an X argument compatible with score's q-batch semantics.
+
+    Pointwise level-set acquisitions pass ``score.shape = batch_shape x q`` and can
+    use the original candidate ``X.shape = batch_shape x q x d`` for objective
+    shape verification.
+
+    Joint level-set acquisitions first reduce over q / q*n_w and then pass
+    ``score.shape = batch_shape``. In that case the original X would make
+    BoTorch's ``MCAcquisitionObjective.__call__`` compare ``score.shape[-1]``
+    with ``X.shape[-2]`` and fail, e.g. ``Got 128 and 1`` during initial-condition
+    generation. For already joint-reduced scores, use a lightweight shape witness
+    whose q-like dimension is the batch length so that score transforms such as
+    sign / weight can still be applied without triggering the q=1 check.
+    """
+    if X is None or X.ndim < 3 or score.ndim == 0:
+        return X
+
+    if tuple(score.shape) == tuple(X.shape[:-2]):
+        return score.unsqueeze(-1)
+
+    return X
+
+
+def _apply_regression_levelset_objective_to_score(
+    owner,
+    score: Tensor,
+    X: Optional[Tensor] = None,
+    name: str = "RegressionLevelSetAcquisition",
+) -> Tensor:
+    objective = getattr(owner, "objective", None)
+    if objective is None:
+        return score
+    X_for_objective = _objective_X_for_score(score, X)
+    try:
+        out = objective(score, X=X_for_objective)
+    except TypeError:
+        out = objective(score)
+    if not torch.is_tensor(out):
+        raise RuntimeError(f"{name}: objective must return a Tensor. Got {type(out)}.")
+    return out
 
 
 # ============================================================

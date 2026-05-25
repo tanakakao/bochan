@@ -1,56 +1,52 @@
 from .hetero_multi_output import (
     qHeteroMultiOutputRegressionPredictiveEntropy,
-    qHeteroMultiOutputRegressionBALDProxy,
+    qHeteroMultiOutputRegressionBALD,
     qHeteroMultiOutputRegressionPosteriorVariance,
-    qHeteroMultiOutputRegressionMarginUncertainty,
     qHeteroMultiOutputRegressionIntegratedPosteriorVarianceProxy,
 )
 
 from .hetero_single_output import (
     qHeteroRegressionPredictiveEntropy,
-    qHeteroRegressionBALDProxy,
+    qHeteroRegressionBALD,
     qHeteroRegressionPosteriorVariance,
-    qHeteroRegressionMarginUncertainty,
+    qHeteroRegressionNegIntegratedPosteriorVariance,
     qHeteroRegressionIntegratedPosteriorVarianceProxy,
 )
 
 from .multi_output import (
     qMultiOutputRegressionPredictiveEntropy,
-    qMultiOutputRegressionBALDProxy,
+    qMultiOutputRegressionBALD,
     qMultiOutputRegressionPosteriorVariance,
-    qMultiOutputRegressionMarginUncertainty,
-    qMultiOutputRegressionIntegratedPosteriorVarianceProxy,
     qMultiOutputRegressionNegIntegratedPosteriorVariance,
+    qMultiOutputRegressionIntegratedPosteriorVarianceProxy,
 )
 
 from .single_output import (
     qRegressionPredictiveEntropy,
-    qRegressionBALDProxy,
+    qRegressionBALD,
     qRegressionPosteriorVariance,
-    qRegressionMarginUncertainty,
+    qRegressionNegIntegratedPosteriorVariance,
     qRegressionIntegratedPosteriorVarianceProxy,
 )
 
 __all__ = [
     "qHeteroMultiOutputRegressionPredictiveEntropy",
-    "qHeteroMultiOutputRegressionBALDProxy",
+    "qHeteroMultiOutputRegressionBALD",
     "qHeteroMultiOutputRegressionPosteriorVariance",
-    "qHeteroMultiOutputRegressionMarginUncertainty",
     "qHeteroMultiOutputRegressionIntegratedPosteriorVarianceProxy",
     "qHeteroRegressionPredictiveEntropy",
-    "qHeteroRegressionBALDProxy",
+    "qHeteroRegressionBALD",
     "qHeteroRegressionPosteriorVariance",
-    "qHeteroRegressionMarginUncertainty",
+    "qHeteroRegressionNegIntegratedPosteriorVariance",
     "qHeteroRegressionIntegratedPosteriorVarianceProxy",
     "qMultiOutputRegressionPredictiveEntropy",
-    "qMultiOutputRegressionBALDProxy",
+    "qMultiOutputRegressionBALD",
     "qMultiOutputRegressionPosteriorVariance",
-    "qMultiOutputRegressionMarginUncertainty",
-    "qMultiOutputRegressionIntegratedPosteriorVarianceProxy",
     "qMultiOutputRegressionNegIntegratedPosteriorVariance",
+    "qMultiOutputRegressionIntegratedPosteriorVarianceProxy",
     "qRegressionPredictiveEntropy",
-    "qRegressionBALDProxy",
+    "qRegressionBALD",
     "qRegressionPosteriorVariance",
-    "qRegressionMarginUncertainty",
+    "qRegressionNegIntegratedPosteriorVariance",
     "qRegressionIntegratedPosteriorVarianceProxy",
 ]

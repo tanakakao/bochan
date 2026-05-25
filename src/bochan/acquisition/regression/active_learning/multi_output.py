@@ -1,19 +1,54 @@
-
 from __future__ import annotations
 
-import math
-from typing import Any, Literal, Optional, Sequence
+"""Multi-output regression active-learning acquisition functions.
+
+Design policy:
+    - Public names follow the classification / ordinal multi-output naming style.
+    - This module is for active learning / uncertainty reduction only.
+      Straddle / margin / boundary / contour acquisitions belong to
+      multi-output regression level-set estimation.
+    - Pointwise proxy acquisitions use a common pipeline:
+
+        posterior score per output
+        -> output reduction
+        -> same-batch / pending / observed penalty
+        -> optional score objective / input-perturbation aggregation
+        -> q reduction
+
+    - If BoTorch already provides the true acquisition, this module wraps it
+      instead of reimplementing it.  In particular,
+      qMultiOutputRegressionNegIntegratedPosteriorVariance delegates to
+      botorch.acquisition.active_learning.qNegIntegratedPosteriorVariance.
+
+Notes:
+    qMultiOutputRegressionIntegratedPosteriorVarianceProxy is intentionally a
+    proxy for models that do not support fantasize(), such as many custom
+    DeepGP wrappers.
+"""
+
+from typing import Any, Callable, Literal, Optional, Sequence
 
 import torch
 from torch import Tensor
 
 from botorch.acquisition.acquisition import AcquisitionFunction
-from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.transforms import t_batch_mode_transform
 
+try:
+    from botorch.acquisition.active_learning import (
+        qNegIntegratedPosteriorVariance as _BoTorchQNegIntegratedPosteriorVariance,
+    )
+except Exception:  # pragma: no cover - depends on BoTorch version
+    _BoTorchQNegIntegratedPosteriorVariance = None
 
-QReduceType = Literal["mean", "sum", "max", "min"]
-OutputAggregation = Literal[
+try:
+    from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
+except Exception:  # pragma: no cover - depends on BoTorch version
+    MCMultiOutputObjective = None  # type: ignore
+
+
+ReductionType = Literal["mean", "sum", "max", "min"]
+OutputReductionType = Literal[
     "mean",
     "sum",
     "max",
@@ -23,6 +58,9 @@ OutputAggregation = Literal[
 ]
 
 
+# ============================================================
+# Generic helpers
+# ============================================================
 
 
 def _reduce(t: Tensor, dim: int, mode: str) -> Tensor:
@@ -34,32 +72,91 @@ def _reduce(t: Tensor, dim: int, mode: str) -> Tensor:
         return t.max(dim=dim).values
     if mode == "min":
         return t.min(dim=dim).values
-    raise ValueError(f"Unknown reduction mode: {mode}")
+    raise ValueError(f"Unknown reduction mode: {mode!r}.")
+
+
+def _ensure_q_batch(X: Tensor) -> Tensor:
+    if not torch.is_tensor(X):
+        raise TypeError(f"X must be a Tensor. Got {type(X)}.")
+    if X.ndim == 1:
+        return X.view(1, 1, -1)
+    if X.ndim == 2:
+        return X.unsqueeze(0)
+    return X
+
+
+def _safe_prod(shape: torch.Size | tuple[int, ...]) -> int:
+    out = 1
+    for s in shape:
+        out *= int(s)
+    return out
+
+
+def _objective_call(objective: Callable, score: Tensor, X: Optional[Tensor]):
+    try:
+        return objective(score, X=X)
+    except TypeError:
+        return objective(score)
+
+
+def _is_mc_multi_output_objective(objective: Any) -> bool:
+    return MCMultiOutputObjective is not None and isinstance(objective, MCMultiOutputObjective)
+
+
+def _looks_like_score_objective(objective: Any) -> bool:
+    if objective is None:
+        return False
+    if _is_mc_multi_output_objective(objective):
+        return False
+    return (
+        hasattr(objective, "n_w")
+        or hasattr(objective, "risk_type")
+        or hasattr(objective, "alpha")
+        or objective.__class__.__name__.endswith("ScoreObjective")
+    )
+
+
+# ============================================================
+# Base class
+# ============================================================
 
 
 class _MultiOutputRegressionActiveLearningBase(AcquisitionFunction):
-    """multi-output regression active-learning acquisition base.
+    """Base class aligned with classification / ordinal active-learning APIs.
 
-    The family is aligned with classification / ordinal active learning:
-
-    - PredictiveEntropy
-    - BALD / mutual-information proxy
-    - PosteriorVariance
-    - MarginUncertainty
-    - IntegratedPosteriorVarianceProxy
-
-    This class intentionally does not depend on a shared cross-task utility module,
-    so regression / classification / ordinal acquisitions can be maintained independently.
+    Args:
+        model:
+            BoTorch-compatible multi-output regression model.
+        reduction:
+            q-batch reduction.  This matches the classification / ordinal API.
+        output_reduction:
+            Reduction over output dimension ``m``.
+        output_weights:
+            Optional output weights for weighted reductions.
+        pending_penalty_weight:
+            Weight for avoiding X_pending.
+        observed_penalty_weight:
+            Weight for avoiding X_observed.
+        same_batch_penalty_weight:
+            Weight for q-batch diversity penalty.
+        objective:
+            Optional score objective.  Classification / ordinal style score
+            objectives receive pointwise scalar scores after output reduction.
+            BoTorch MC multi-output objectives receive deterministic
+            pseudo-samples before final reduction only when explicitly needed.
+        n_w:
+            Number of input perturbation samples.  If omitted but objective has
+            ``n_w``, that value is used.
     """
 
     def __init__(
         self,
         model,
         *,
-        output_aggregation: OutputAggregation = "weighted_mean",
-        output_weights: Optional[Tensor] = None,
+        reduction: ReductionType = "mean",
+        output_reduction: OutputReductionType = "weighted_mean",
+        output_weights: Optional[Tensor | Sequence[float]] = None,
         normalize_output_weights: bool = True,
-        q_reduction: QReduceType = "mean",
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
         same_batch_penalty_weight: float = 0.0,
@@ -70,26 +167,38 @@ class _MultiOutputRegressionActiveLearningBase(AcquisitionFunction):
         observed_penalty_beta: float = 10.0,
         hard_duplicate_penalty: float = 0.0,
         hard_duplicate_tol: float = 1e-8,
-        eps: float = 1e-12,
-        objective: Optional[Any] = None,
+        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
         n_w: Optional[int] = None,
+        eps: float = 1e-12,
     ) -> None:
         super().__init__(model=model)
-        self.output_aggregation = output_aggregation
+
+        if reduction not in ("mean", "sum", "max", "min"):
+            raise ValueError("reduction must be one of 'mean', 'sum', 'max', 'min'.")
+        if output_reduction not in (
+            "mean",
+            "sum",
+            "max",
+            "min",
+            "weighted_sum",
+            "weighted_mean",
+        ):
+            raise ValueError(
+                "output_reduction must be one of "
+                "'mean', 'sum', 'max', 'min', 'weighted_sum', 'weighted_mean'."
+            )
+
+        self.reduction = reduction
+        self.output_reduction = output_reduction
         self.normalize_output_weights = bool(normalize_output_weights)
+
         if output_weights is not None:
-            if output_weights.ndim != 1:
+            w = torch.as_tensor(output_weights)
+            if w.ndim != 1:
                 raise ValueError("output_weights must have shape [m].")
-            self.register_buffer("output_weights", output_weights.detach().clone())
+            self.register_buffer("output_weights", w.detach().clone())
         else:
             self.output_weights = None
-
-        self.q_reduction = q_reduction
-        self.eps = float(eps)
-        self.objective = objective
-        if n_w is None and objective is not None:
-            n_w = getattr(objective, "n_w", None)
-        self.n_w = int(n_w) if n_w is not None else None
 
         self.same_batch_penalty_weight = float(same_batch_penalty_weight)
         self.same_batch_penalty_beta = float(same_batch_penalty_beta)
@@ -99,501 +208,40 @@ class _MultiOutputRegressionActiveLearningBase(AcquisitionFunction):
         self.observed_penalty_beta = float(observed_penalty_beta)
         self.hard_duplicate_penalty = float(hard_duplicate_penalty)
         self.hard_duplicate_tol = float(hard_duplicate_tol)
+        self.objective = objective
+        self.eps = float(eps)
+
+        if n_w is None and objective is not None:
+            n_w = getattr(objective, "n_w", None)
+        self.n_w = None if n_w is None else int(n_w)
+        if self.n_w is not None and self.n_w <= 0:
+            raise ValueError("n_w must be positive or None.")
+
         self.X_pending: Optional[Tensor] = None
         self.X_observed: Optional[Tensor] = None
         self.set_X_pending(X_pending)
         self.set_X_observed(X_observed)
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
-        """pending points を raw input space の値として保持する。"""
-        self.X_pending = self._coerce_reference_to_tensor(X_pending)
-
-    def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
-        """observed points を raw input space の値として保持する。"""
-        self.X_observed = self._coerce_reference_to_tensor(X_observed)
-
-    def _ensure_q_batch_for_distance(self, X: Tensor) -> Tensor:
-        """距離計算用に X を `batch_shape x q x d` へ正規化する。"""
-        if X.ndim == 2:
-            return X.unsqueeze(-2)
-        return X
-
+    # ------------------------------------------------------------
+    # Reference handling
+    # ------------------------------------------------------------
     def _coerce_reference_to_tensor(
         self,
         ref,
         *,
         like: Optional[Tensor] = None,
     ) -> Optional[Tensor]:
-        """X_pending / X_observed を Tensor または None に正規化する。"""
         if ref is None:
             return None
 
         if torch.is_tensor(ref):
             out = ref
-
         elif isinstance(ref, (list, tuple)):
             tensors = []
             for item in ref:
                 if item is None:
                     continue
                 t = self._coerce_reference_to_tensor(item, like=like)
-                if t is not None and t.numel() > 0:
-                    tensors.append(t)
-
-            if len(tensors) == 0:
-                return None
-            if len(tensors) == 1:
-                out = tensors[0]
-            else:
-                try:
-                    out = torch.cat(tensors, dim=-2)
-                except RuntimeError:
-                    out = torch.cat(
-                        [t.reshape(-1, t.shape[-1]) for t in tensors],
-                        dim=-2,
-                    )
-        else:
-            raise TypeError(
-                "Reference points must be None, Tensor, list, or tuple. "
-                f"Got {type(ref)}."
-            )
-
-        if like is not None:
-            out = out.to(device=like.device, dtype=like.dtype)
-
-        return out
-
-    def _apply_input_transform_for_distance(self, X: Tensor) -> Tensor:
-        """
-        距離計算用に candidate / reference を同じ feature space へ写す。
-
-        `X_pending` / `X_observed` は raw input space で保持する。一方、
-        candidate 側の score は model の `input_transform` や submodel の
-        `input_transform` により transformed / InputPerturbation 展開後の
-        q_like と整合している場合がある。
-
-        そのため、距離ペナルティは raw X ではなく、この関数を通した
-        transformed space で計算する。
-        """
-        X = self._ensure_q_batch_for_distance(X)
-
-        it = getattr(self.model, "input_transform", None)
-        if it is not None:
-            Xt = it(X)
-            if isinstance(Xt, tuple):
-                Xt = Xt[0]
-            return self._ensure_q_batch_for_distance(Xt)
-
-        models = getattr(self.model, "models", None)
-        if models is not None and len(models) > 0:
-            it = getattr(models[0], "input_transform", None)
-            if it is not None:
-                Xt = it(X)
-                if isinstance(Xt, tuple):
-                    Xt = Xt[0]
-                return self._ensure_q_batch_for_distance(Xt)
-
-        return X
-
-    def _reference_to_distance_space(
-        self,
-        ref,
-        *,
-        like: Tensor,
-    ) -> Optional[Tensor]:
-        """raw-space reference を candidate と同じ距離計算空間へ写す。"""
-        ref = self._coerce_reference_to_tensor(ref, like=like)
-        if ref is None or ref.numel() == 0:
-            return None
-
-        ref_t = self._apply_input_transform_for_distance(ref)
-        ref_t = self._ensure_q_batch_for_distance(ref_t)
-        return ref_t.to(device=like.device, dtype=like.dtype)
-
-    def _ensure_q_batch(self, X: Tensor) -> Tensor:
-        if X.ndim == 2:
-            X = X.unsqueeze(-2)
-        return X
-
-    def _aggregate_outputs(self, t: Tensor) -> Tensor:
-        """Aggregate output dimension m of a tensor shaped [..., q, m]."""
-        if t.ndim < 3:
-            return t
-
-        weights = self.output_weights
-        if weights is not None:
-            if t.shape[-1] != weights.shape[0]:
-                raise ValueError(
-                    f"Mismatch between output dim {t.shape[-1]} and "
-                    f"output_weights {weights.shape[0]}."
-                )
-            w = weights.to(device=t.device, dtype=t.dtype)
-            if self.normalize_output_weights:
-                w = w / w.sum().clamp_min(self.eps)
-        else:
-            w = None
-
-        if self.output_aggregation == "weighted_sum":
-            if w is None:
-                raise ValueError("output_aggregation='weighted_sum' requires output_weights.")
-            return (t * w).sum(dim=-1)
-        if self.output_aggregation == "weighted_mean":
-            if w is None:
-                return t.mean(dim=-1)
-            return (t * w).sum(dim=-1)
-        if self.output_aggregation == "mean":
-            return t.mean(dim=-1)
-        if self.output_aggregation == "sum":
-            return t.sum(dim=-1)
-        if self.output_aggregation == "max":
-            return t.max(dim=-1).values
-        if self.output_aggregation == "min":
-            return t.min(dim=-1).values
-        raise ValueError(f"Unknown output_aggregation={self.output_aggregation!r}.")
-
-    def _reduce_q(self, t: Tensor) -> Tensor:
-        return _reduce(t, dim=-1, mode=self.q_reduction)
-
-    def _apply_risk_objective(self, score_per_point: Tensor, q: int, *, name: str) -> Tensor:
-        """Optionally reduce InputPerturbation-expanded q*n_w to q."""
-        if self.n_w is None:
-            if self.objective is not None:
-                try:
-                    out = self.objective(score_per_point, X=None)
-                except TypeError:
-                    out = self.objective(score_per_point)
-                if torch.is_tensor(out):
-                    return out
-                raise TypeError(f"{name}: objective must return a Tensor, got {type(out)}.")
-            return score_per_point
-
-        qnw = q * self.n_w
-        if score_per_point.shape[-1] != qnw:
-            return score_per_point
-
-        if self.objective is None:
-            return score_per_point.reshape(*score_per_point.shape[:-1], q, self.n_w).mean(dim=-1)
-
-        # Use score as deterministic pseudo-samples for risk objectives.
-        pseudo_samples = score_per_point.unsqueeze(0).unsqueeze(-1)
-        out = self.objective(pseudo_samples)
-        if out.ndim >= 1 and out.shape[0] == 1:
-            out = out.squeeze(0)
-        if out.shape[-1] != q:
-            raise RuntimeError(
-                f"{name}: expected objective output last dim q={q}, got {tuple(out.shape)}."
-            )
-        return out
-
-    def _aggregate_point_scores(self, score_per_point: Tensor, X: Tensor, *, name: str) -> Tensor:
-        q = X.shape[-2]
-        score = self._apply_risk_objective(score_per_point, q=q, name=name)
-        return self._reduce_q(score)
-
-    def _posterior_mean_var(self, X: Tensor, *, observation_noise: bool = False) -> tuple[Tensor, Tensor]:
-        post = self.model.posterior(X, observation_noise=observation_noise)
-        mean = post.mean
-        var = post.variance.clamp_min(self.eps)
-        if mean.ndim == X.ndim and mean.shape[-1] == 1:
-            mean = mean.squeeze(-1)
-        if var.ndim == X.ndim and var.shape[-1] == 1:
-            var = var.squeeze(-1)
-        mean = self._aggregate_outputs(mean)
-        var = self._aggregate_outputs(var)
-        return mean, var
-
-    def _same_batch_penalty(self, X: Tensor) -> Tensor:
-        if self.same_batch_penalty_weight <= 0 or X.shape[-2] <= 1:
-            return X.new_zeros(X.shape[:-2])
-        d2 = (X.unsqueeze(-2) - X.unsqueeze(-3)).pow(2).sum(dim=-1)
-        q = X.shape[-2]
-        eye = torch.eye(q, dtype=torch.bool, device=X.device)
-        while eye.ndim < d2.ndim:
-            eye = eye.unsqueeze(0)
-        valid = ~eye
-        soft = torch.exp(-self.same_batch_penalty_beta * d2)
-        soft = torch.where(valid, soft, torch.zeros_like(soft)).sum(dim=(-2, -1))
-        if self.hard_duplicate_penalty > 0:
-            dup = (d2 <= self.hard_duplicate_tol).to(X.dtype)
-            dup = torch.where(valid, dup, torch.zeros_like(dup)).sum(dim=(-2, -1))
-            hard = self.hard_duplicate_penalty * dup
-        else:
-            hard = torch.zeros_like(soft)
-        return self.same_batch_penalty_weight * soft + hard
-
-    def _ref_penalty(self, X: Tensor, ref: Optional[Tensor], weight: float, beta: float) -> Tensor:
-        """
-        距離計算空間を candidate / reference で揃えた reference penalty。
-
-        Args:
-            X:
-                すでに `_apply_input_transform_for_distance(...)` を通した
-                candidate。shape は `batch_shape x q_like x d`。
-            ref:
-                raw input space の reference points。
-            weight:
-                penalty weight。
-            beta:
-                exponential penalty の距離減衰係数。
-        """
-        if weight <= 0:
-            return X.new_zeros(X.shape[:-2])
-
-        ref_t = self._reference_to_distance_space(ref, like=X)
-        if ref_t is None or ref_t.numel() == 0:
-            return X.new_zeros(X.shape[:-2])
-
-        ref2d = ref_t.reshape(-1, ref_t.shape[-1])
-        if ref2d.shape[-1] != X.shape[-1]:
-            raise RuntimeError(
-                "Reference feature dimension mismatch after transform: "
-                f"X.shape={tuple(X.shape)}, ref_transformed.shape={tuple(ref_t.shape)}."
-            )
-
-        d2 = (
-            X.unsqueeze(-2)
-            - ref2d.view(*([1] * (X.ndim - 2)), ref2d.shape[0], ref2d.shape[1])
-        ).pow(2).sum(dim=-1)
-        per_point = torch.exp(-beta * d2).sum(dim=-1)
-        return weight * self._reduce_q(per_point)
-
-    def _total_penalty(self, X: Tensor) -> Tensor:
-        """
-        same-batch / pending / observed penalty を transformed space で計算する。
-        """
-        Xt = self._apply_input_transform_for_distance(X)
-        return (
-            self._same_batch_penalty(Xt)
-            + self._ref_penalty(Xt, self.X_pending, self.pending_penalty_weight, self.pending_penalty_beta)
-            + self._ref_penalty(Xt, self.X_observed, self.observed_penalty_weight, self.observed_penalty_beta)
-        )
-
-class qMultiOutputRegressionPredictiveEntropy(_MultiOutputRegressionActiveLearningBase):
-    """multi-output regression 用 predictive entropy acquisition。予測分布の曖昧さが大きい点を選びます。
-    
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
-    Notes:
-        予測が曖昧な点を探索したい場合の基本的な active learning acquisition です。
-    """
-
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        X = self._ensure_q_batch(X)
-        _, var = self._posterior_mean_var(X, observation_noise=True)
-        entropy = 0.5 * torch.log(2.0 * math.pi * math.e * var.clamp_min(self.eps))
-        score = self._aggregate_point_scores(entropy, X, name="qMultiOutputRegressionPredictiveEntropy")
-        return score - self._total_penalty(X)
-
-
-class qMultiOutputRegressionBALDProxy(_MultiOutputRegressionActiveLearningBase):
-    """multi-output regression 用 BALD / mutual-information acquisition。モデル不確実性を減らす情報量の大きい点を選びます。
-    
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
-    Notes:
-        BALD は predictive entropy から条件付き entropy を引いた情報利得として解釈できます。
-    """
-
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        X = self._ensure_q_batch(X)
-        _, latent_var = self._posterior_mean_var(X, observation_noise=False)
-        _, total_var = self._posterior_mean_var(X, observation_noise=True)
-        noise_var = (total_var - latent_var).clamp_min(self.eps)
-        mi = 0.5 * torch.log(total_var.clamp_min(self.eps) / noise_var)
-        score = self._aggregate_point_scores(mi, X, name="qMultiOutputRegressionBALDProxy")
-        return score - self._total_penalty(X)
-
-
-class qMultiOutputRegressionPosteriorVariance(_MultiOutputRegressionActiveLearningBase):
-    """multi-output regression 用 variance-based acquisition。posterior / probability / utility の分散が大きい点を選びます。
-    
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    """
-
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        X = self._ensure_q_batch(X)
-        _, var = self._posterior_mean_var(X, observation_noise=False)
-        score = self._aggregate_point_scores(var, X, name="qMultiOutputRegressionPosteriorVariance")
-        return score - self._total_penalty(X)
-
-
-class qMultiOutputRegressionMarginUncertainty(_MultiOutputRegressionActiveLearningBase):
-    """multi-output regression 用 margin uncertainty acquisition。決定境界または class 境界に近い点を選びます。
-    
-    Args:
-        model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
-        target: straddle / margin 系で近づけたい目標値。
-        beta: 不確実性または sample deviation をどれだけ重視するかを決める係数。
-        **kwargs: 親クラスまたは BoTorch acquisition に渡す追加 keyword arguments。
-    
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    """
-
-    def __init__(
-        self,
-        model,
-        target: float | Tensor = 0.0,
-        beta: float = 1.96,
-        **kwargs,
-    ) -> None:
-        super().__init__(model=model, **kwargs)
-        if torch.is_tensor(target):
-            self.register_buffer("target", target.detach().clone())
-        else:
-            self.target = torch.tensor(float(target))
-        self.beta = float(beta)
-
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        X = self._ensure_q_batch(X)
-        post = self.model.posterior(X, observation_noise=False)
-        mean = post.mean
-        std = post.variance.clamp_min(self.eps).sqrt()
-        if mean.ndim == X.ndim and mean.shape[-1] == 1:
-            mean = mean.squeeze(-1)
-            std = std.squeeze(-1)
-            score_per_output = self.beta * std - (mean - self.target.to(mean)).abs()
-        else:
-            target = self.target.to(mean)
-            if target.ndim == 0:
-                score_per_output = self.beta * std - (mean - target).abs()
-            else:
-                if target.ndim != 1 or target.shape[0] != mean.shape[-1]:
-                    raise ValueError(
-                        f"target must be scalar or shape [m], got {tuple(target.shape)}."
-                    )
-                score_per_output = self.beta * std - (mean - target.view(*([1] * (mean.ndim - 1)), -1)).abs()
-        point_score = self._aggregate_outputs(score_per_output)
-        score = self._aggregate_point_scores(point_score, X, name="qMultiOutputRegressionMarginUncertainty")
-        return score - self._total_penalty(X)
-
-
-class qMultiOutputRegressionIntegratedPosteriorVarianceProxy(_MultiOutputRegressionActiveLearningBase):
-    """multi-output regression 用 variance-based acquisition。posterior / probability / utility の分散が大きい点を選びます。
-    
-    Args:
-        model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
-        X_ref: 参照点集合。IPV / NIPV proxy などで全体の不確実性を評価するために使います。
-        kernel_lengthscale: 参照点被覆 proxy で使う RBF kernel の lengthscale。
-        normalize_weights: 参照点重みや出力重みを正規化するかどうか。
-        **kwargs: 親クラスまたは BoTorch acquisition に渡す追加 keyword arguments。
-    
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    """
-
-    def __init__(
-        self,
-        model,
-        X_ref: Tensor,
-        kernel_lengthscale: float = 0.2,
-        normalize_weights: bool = True,
-        **kwargs,
-    ) -> None:
-        super().__init__(model=model, **kwargs)
-        self.register_buffer("X_ref", X_ref)
-        self.kernel_lengthscale = float(kernel_lengthscale)
-        self.normalize_weights = bool(normalize_weights)
-
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        X = self._ensure_q_batch(X)
-        X_ref = self.X_ref.to(device=X.device, dtype=X.dtype)
-        _, ref_var = self._posterior_mean_var(X_ref, observation_noise=False)
-        ref_score = ref_var
-        if ref_score.ndim >= 2:
-            ref_score = self._aggregate_outputs(ref_score)
-        if ref_score.ndim > 1:
-            ref_score = ref_score.reshape(-1)
-        X_ref_flat = X_ref.reshape(-1, X_ref.shape[-1])
-        d2 = (X.unsqueeze(-2) - X_ref_flat.view(*([1] * (X.ndim - 2)), X_ref_flat.shape[0], X_ref_flat.shape[1])).pow(2).sum(dim=-1)
-        weights = torch.exp(-0.5 * d2 / (self.kernel_lengthscale ** 2 + self.eps))
-        if self.normalize_weights:
-            weights = weights / weights.sum(dim=-1, keepdim=True).clamp_min(self.eps)
-        covered = (weights * ref_score.view(*([1] * (weights.ndim - 1)), -1)).sum(dim=-1)
-        score = self._aggregate_point_scores(covered, X, name="qMultiOutputRegressionIntegratedPosteriorVarianceProxy")
-        return score - self._total_penalty(X)
-
-
-class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
-    """multi-output regression 用 variance-based acquisition。posterior / probability / utility の分散が大きい点を選びます。
-    
-    Args:
-        model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
-        mc_points: 不確実性を積分するための Monte Carlo / 参照点集合。
-        sampler: posterior samples を生成する BoTorch sampler。省略時は SobolQMCNormalSampler を使います。
-        X_pending: 評価中で、まだ結果が返っていない候補点。重複候補の抑制に使います。
-        output_reduction: multi-output の出力方向の集約方法。
-        output_weights: multi-output score を集約するときの出力方向の重み。
-        integrate_reduction: この acquisition / objective の動作を制御するパラメータ。
-        eps: 数値安定化用の微小値。
-    
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    """
-
-    def __init__(
-        self,
-        model,
-        mc_points: Tensor,
-        sampler=None,
-        X_pending: Tensor | None = None,
-        output_reduction: str = "sum",
-        output_weights: Tensor | None = None,
-        integrate_reduction: str = "mean",
-        eps: float = 1e-12,
-    ) -> None:
-        super().__init__(model=model)
-        self.register_buffer("mc_points", mc_points)
-        self.sampler = sampler or SobolQMCNormalSampler(sample_shape=torch.Size([1]))
-        self.output_reduction = output_reduction
-        self.output_weights = output_weights
-        self.integrate_reduction = integrate_reduction
-        self.eps = float(eps)
-        self.set_X_pending(X_pending)
-
-    def _coerce_pending_to_tensor(
-        self,
-        X_pending,
-        *,
-        ref: Tensor | None = None,
-    ) -> Tensor | None:
-        """X_pending を Tensor または None に正規化する。"""
-        if X_pending is None:
-            return None
-        if torch.is_tensor(X_pending):
-            out = X_pending
-        elif isinstance(X_pending, (list, tuple)):
-            tensors = []
-            for item in X_pending:
-                if item is None:
-                    continue
-                t = self._coerce_pending_to_tensor(item, ref=ref)
                 if t is not None and t.numel() > 0:
                     tensors.append(t)
             if len(tensors) == 0:
@@ -607,101 +255,668 @@ class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
                     out = torch.cat([t.reshape(-1, t.shape[-1]) for t in tensors], dim=-2)
         else:
             raise TypeError(
-                "X_pending must be None, Tensor, list, or tuple. "
-                f"Got {type(X_pending)}."
+                "Reference points must be None, Tensor, list, or tuple. "
+                f"Got {type(ref)}."
             )
-        if ref is not None:
-            out = out.to(device=ref.device, dtype=ref.dtype)
-        return out
 
-    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
-        """pending points を raw input space の値として保持する。"""
-        self.X_pending = self._coerce_pending_to_tensor(X_pending)
+        if like is not None:
+            out = out.to(device=like.device, dtype=like.dtype)
 
-    def _ensure_q_batch(self, X: Tensor) -> Tensor:
-        return X.unsqueeze(-2) if X.ndim == 2 else X
+        # Reference points are constants during acquisition optimization.
+        return out.detach()
 
-    def _expand_pending(self, X: Tensor) -> Tensor:
-        """
-        posterior 入力用に raw-space pending points を X に連結する。
+    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+        self.X_pending = self._coerce_reference_to_tensor(X_pending)
 
-        これは距離ペナルティではなく posterior 評価用の concatenation なので、
-        `X_pending` は raw input space のまま扱う。
-        """
-        Xp = self._coerce_pending_to_tensor(getattr(self, "X_pending", None), ref=X)
-        if Xp is None or Xp.numel() == 0:
-            return X
+    def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+        self.X_observed = self._coerce_reference_to_tensor(X_observed)
 
-        batch_shape = X.shape[:-2]
-        if Xp.ndim == 2:
-            m, d = Xp.shape
-            Xp = Xp.view(*([1] * len(batch_shape)), m, d).expand(*batch_shape, m, d)
-        elif Xp.ndim >= 3:
-            m, d = Xp.shape[-2], Xp.shape[-1]
-            Xp = Xp.reshape(*([1] * len(batch_shape)), m, d).expand(*batch_shape, m, d)
-        else:
-            raise ValueError(f"Unexpected X_pending shape: {tuple(Xp.shape)}")
-        return torch.cat([Xp, X], dim=-2)
+    # ------------------------------------------------------------
+    # Transform / shape helpers
+    # ------------------------------------------------------------
+    def _prepare_eval(self) -> None:
+        self.model.eval()
+        likelihood = getattr(self.model, "likelihood", None)
+        if likelihood is not None and hasattr(likelihood, "eval"):
+            likelihood.eval()
 
-    def _normalize_variance_shape(self, var: Tensor) -> Tensor:
-        n_mc = self.mc_points.shape[-2]
-        if var.shape[-1] == n_mc:
-            return var.unsqueeze(-1)
-        if var.ndim >= 2 and var.shape[-2] == n_mc:
-            return var
+    def _apply_input_transform_for_distance(self, X: Tensor) -> Tensor:
+        """Apply model input transform for distance / penalty calculations."""
+        X = _ensure_q_batch(X)
+
+        it = getattr(self.model, "input_transform", None)
+        if it is not None:
+            Xt = it(X)
+            if isinstance(Xt, tuple):
+                Xt = Xt[0]
+            return _ensure_q_batch(Xt)
+
+        models = getattr(self.model, "models", None)
+        if models is not None and len(models) > 0:
+            it = getattr(models[0], "input_transform", None)
+            if it is not None:
+                Xt = it(X)
+                if isinstance(Xt, tuple):
+                    Xt = Xt[0]
+                return _ensure_q_batch(Xt)
+
+        return X
+
+    def _reference_to_distance_space(
+        self,
+        ref,
+        *,
+        like: Tensor,
+    ) -> Optional[Tensor]:
+        ref = self._coerce_reference_to_tensor(ref, like=like)
+        if ref is None or ref.numel() == 0:
+            return None
+        ref_t = self._apply_input_transform_for_distance(ref)
+        return _ensure_q_batch(ref_t).to(device=like.device, dtype=like.dtype)
+
+    def _align_pointwise_score_to_X(
+        self,
+        score: Tensor,
+        Xt: Tensor,
+        *,
+        name: str,
+        reduce_extra: ReductionType = "mean",
+    ) -> Tensor:
+        Xt = _ensure_q_batch(Xt)
+        target = torch.Size(Xt.shape[:-1])
+        out = score
+
+        if out.shape == target:
+            return out
+
+        # Drop singleton output dim, not q=1.
+        if out.ndim >= 1 and out.shape[-1] == 1:
+            out_s = out.squeeze(-1)
+            if out_s.shape == target:
+                return out_s
+            out = out_s
+
+        if out.shape == target:
+            return out
+
+        while out.ndim > len(target):
+            out = _reduce(out, dim=0, mode=reduce_extra)
+            if out.shape == target:
+                return out
+
+        if out.shape == target:
+            return out
+
+        if out.numel() == _safe_prod(target):
+            return out.reshape(target)
+
         raise RuntimeError(
-            f"Unsupported posterior.variance shape {tuple(var.shape)} for "
-            f"mc_points shape {tuple(self.mc_points.shape)}."
+            f"{name}: score shape mismatch. "
+            f"score.shape={tuple(score.shape)}, expected={tuple(target)}, Xt.shape={tuple(Xt.shape)}."
         )
 
-    def _reduce_outputs(self, var: Tensor) -> Tensor:
-        if self.output_reduction == "sum":
-            return var.sum(dim=-1)
-        if self.output_reduction == "mean":
-            return var.mean(dim=-1)
-        if self.output_reduction == "max":
-            return var.max(dim=-1).values
-        if self.output_reduction == "weighted_sum":
-            if self.output_weights is None:
-                raise ValueError("output_weights must be provided for weighted_sum.")
-            w = self.output_weights.to(device=var.device, dtype=var.dtype)
-            return (var * w.view(*([1] * (var.ndim - 1)), -1)).sum(dim=-1)
-        raise ValueError(f"Unknown output_reduction: {self.output_reduction}")
+    def _output_weights_like(self, value: Tensor) -> Optional[Tensor]:
+        weights = self.output_weights
+        if weights is None:
+            return None
+        if value.shape[-1] != weights.numel():
+            raise ValueError(
+                f"Mismatch between output dim {value.shape[-1]} and "
+                f"output_weights {weights.numel()}."
+            )
+        w = weights.to(device=value.device, dtype=value.dtype)
+        if self.normalize_output_weights:
+            w = w / w.sum().clamp_min(self.eps)
+        return w
 
-    def _integrate_mc_points(self, score_per_mc: Tensor) -> Tensor:
-        if self.integrate_reduction == "mean":
-            return score_per_mc.mean(dim=-1)
-        if self.integrate_reduction == "sum":
-            return score_per_mc.sum(dim=-1)
-        raise ValueError(f"Unknown integrate_reduction: {self.integrate_reduction}")
+    def _reduce_outputs_if_needed(self, value: Tensor, Xt: Tensor, *, name: str) -> Tensor:
+        """Reduce output dimension ``m`` to a pointwise scalar score."""
+        Xt = _ensure_q_batch(Xt)
+        target_prefix = torch.Size(Xt.shape[:-1])
+        out = value
+
+        if out.shape == target_prefix:
+            return out
+
+        # Reduce leading MCMC / ensemble dims until only output dim can remain.
+        while out.ndim > len(target_prefix) + 1:
+            out = out.mean(dim=0)
+            if out.shape == target_prefix:
+                return out
+
+        if out.ndim == len(target_prefix) + 1 and out.shape[:-1] == target_prefix:
+            if out.shape[-1] == 1:
+                return out.squeeze(-1)
+
+            if self.output_reduction == "weighted_sum":
+                w = self._output_weights_like(out)
+                if w is None:
+                    raise ValueError("output_reduction='weighted_sum' requires output_weights.")
+                return (out * w).sum(dim=-1)
+
+            if self.output_reduction == "weighted_mean":
+                w = self._output_weights_like(out)
+                if w is None:
+                    return out.mean(dim=-1)
+                return (out * w).sum(dim=-1)
+
+            return _reduce(out, dim=-1, mode=self.output_reduction)
+
+        if out.shape == target_prefix:
+            return out
+
+        # Last-resort reshape if shape is equivalent.
+        if out.numel() % max(_safe_prod(target_prefix), 1) == 0:
+            m = out.numel() // max(_safe_prod(target_prefix), 1)
+            out = out.reshape(*target_prefix, m)
+            if m == 1:
+                return out.squeeze(-1)
+
+            if self.output_reduction == "weighted_sum":
+                w = self._output_weights_like(out)
+                if w is None:
+                    raise ValueError("output_reduction='weighted_sum' requires output_weights.")
+                return (out * w).sum(dim=-1)
+
+            if self.output_reduction == "weighted_mean":
+                w = self._output_weights_like(out)
+                if w is None:
+                    return out.mean(dim=-1)
+                return (out * w).sum(dim=-1)
+
+            return _reduce(out, dim=-1, mode=self.output_reduction)
+
+        raise RuntimeError(
+            f"{name}: could not reduce output dimension. "
+            f"value.shape={tuple(value.shape)}, Xt.shape={tuple(Xt.shape)}."
+        )
+
+    # ------------------------------------------------------------
+    # Posterior scores
+    # ------------------------------------------------------------
+    def _posterior_mean_variance(
+        self,
+        X: Tensor,
+        *,
+        observation_noise: bool | Tensor = False,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        Xq = _ensure_q_batch(X)
+        self._prepare_eval()
+
+        post = self.model.posterior(Xq, observation_noise=observation_noise)
+        Xt = self._apply_input_transform_for_distance(Xq)
+
+        mean = self._reduce_outputs_if_needed(post.mean, Xt, name="posterior.mean")
+        var = self._reduce_outputs_if_needed(post.variance, Xt, name="posterior.variance")
+        var = var.clamp_min(self.eps)
+
+        mean = self._align_pointwise_score_to_X(mean, Xt, name="posterior.mean")
+        var = self._align_pointwise_score_to_X(var, Xt, name="posterior.variance")
+
+        return mean, var, Xt
+
+    def _posterior_variance_score(self, X: Tensor) -> tuple[Tensor, Tensor]:
+        _, var, Xt = self._posterior_mean_variance(X, observation_noise=False)
+        return var, Xt
+
+    # ------------------------------------------------------------
+    # Penalties
+    # ------------------------------------------------------------
+    def _same_batch_penalty_per_point(self, Xt: Tensor) -> Tensor:
+        Xt = _ensure_q_batch(Xt)
+        q = int(Xt.shape[-2])
+        if self.same_batch_penalty_weight <= 0.0 or q <= 1:
+            return Xt.new_zeros(Xt.shape[:-1])
+
+        d2 = (Xt.unsqueeze(-2) - Xt.unsqueeze(-3)).pow(2).sum(dim=-1)
+        eye = torch.eye(q, dtype=torch.bool, device=Xt.device)
+        while eye.ndim < d2.ndim:
+            eye = eye.unsqueeze(0)
+        valid = ~eye
+
+        soft = torch.exp(-self.same_batch_penalty_beta * d2)
+        soft = torch.where(valid, soft, torch.zeros_like(soft))
+        per_point = soft.sum(dim=-1)
+
+        if self.hard_duplicate_penalty > 0.0:
+            dup = (d2 <= self.hard_duplicate_tol).to(dtype=Xt.dtype)
+            dup = torch.where(valid, dup, torch.zeros_like(dup))
+            per_point = per_point + self.hard_duplicate_penalty * dup.sum(dim=-1)
+
+        return self.same_batch_penalty_weight * per_point
+
+    def _reference_penalty_per_point(
+        self,
+        Xt: Tensor,
+        ref,
+        *,
+        weight: float,
+        beta: float,
+    ) -> Tensor:
+        Xt = _ensure_q_batch(Xt)
+        if weight <= 0.0:
+            return Xt.new_zeros(Xt.shape[:-1])
+
+        ref_t = self._reference_to_distance_space(ref, like=Xt)
+        if ref_t is None or ref_t.numel() == 0:
+            return Xt.new_zeros(Xt.shape[:-1])
+
+        ref2d = ref_t.reshape(-1, ref_t.shape[-1])
+        if ref2d.shape[-1] != Xt.shape[-1]:
+            raise RuntimeError(
+                "Reference feature dimension mismatch after transform: "
+                f"Xt.shape={tuple(Xt.shape)}, ref_transformed.shape={tuple(ref_t.shape)}."
+            )
+
+        dist = torch.cdist(Xt.reshape(-1, Xt.shape[-1]), ref2d)
+        min_dist = dist.min(dim=-1).values.reshape(*Xt.shape[:-1])
+        return weight * torch.exp(-beta * min_dist)
+
+    def _total_penalty_per_point(self, Xt: Tensor) -> Tensor:
+        return (
+            self._same_batch_penalty_per_point(Xt)
+            + self._reference_penalty_per_point(
+                Xt,
+                self.X_pending,
+                weight=self.pending_penalty_weight,
+                beta=self.pending_penalty_beta,
+            )
+            + self._reference_penalty_per_point(
+                Xt,
+                self.X_observed,
+                weight=self.observed_penalty_weight,
+                beta=self.observed_penalty_beta,
+            )
+        )
+
+    # ------------------------------------------------------------
+    # Objective / q reduction
+    # ------------------------------------------------------------
+    def _apply_objective_to_score(
+        self,
+        score: Tensor,
+        *,
+        raw_X: Tensor,
+        expanded_X: Tensor,
+        name: str,
+    ) -> Tensor:
+        objective = self.objective
+        if objective is None:
+            return score
+
+        # Classification / ordinal style score objective.
+        if _looks_like_score_objective(objective):
+            out = _objective_call(objective, score, raw_X)
+            if not torch.is_tensor(out):
+                raise TypeError(f"{name}: objective must return Tensor. Got {type(out)}.")
+            return out
+
+        # BoTorch MC multi-output objective.  Since active-learning pointwise
+        # score is already output-reduced, treat it as deterministic scalar samples.
+        if _is_mc_multi_output_objective(objective):
+            pseudo = score
+            if pseudo.ndim == expanded_X.ndim - 1:
+                pseudo = pseudo.unsqueeze(-1)
+            pseudo = pseudo.unsqueeze(0)
+            out = _objective_call(objective, pseudo, raw_X)
+            if not torch.is_tensor(out):
+                raise TypeError(f"{name}: objective must return Tensor. Got {type(out)}.")
+            if out.ndim >= 1 and out.shape[0] == 1:
+                out = out.squeeze(0)
+            if out.ndim == raw_X.ndim and out.shape[-1] == 1:
+                out = out.squeeze(-1)
+            return out
+
+        # Generic callable: try score-objective style first.
+        try:
+            out = _objective_call(objective, score, raw_X)
+            if torch.is_tensor(out):
+                return out
+        except Exception:
+            pass
+
+        pseudo = score
+        if pseudo.ndim == expanded_X.ndim - 1:
+            pseudo = pseudo.unsqueeze(-1)
+        pseudo = pseudo.unsqueeze(0)
+        out = _objective_call(objective, pseudo, raw_X)
+        if not torch.is_tensor(out):
+            raise TypeError(f"{name}: objective must return Tensor. Got {type(out)}.")
+        if out.ndim >= 1 and out.shape[0] == 1:
+            out = out.squeeze(0)
+        if out.ndim == raw_X.ndim and out.shape[-1] == 1:
+            out = out.squeeze(-1)
+        return out
+
+    def _aggregate_n_w_if_needed(
+        self,
+        score: Tensor,
+        *,
+        q: int,
+        context: str,
+    ) -> Tensor:
+        if self.n_w is None:
+            return score
+
+        expected = q * int(self.n_w)
+        if score.shape[-1] == q:
+            return score
+        if score.shape[-1] != expected:
+            raise RuntimeError(
+                f"{context}: expected last dimension q={q} or q*n_w={expected}, "
+                f"got score.shape={tuple(score.shape)}."
+            )
+
+        return score.reshape(*score.shape[:-1], q, int(self.n_w)).mean(dim=-1)
+
+    def _reduce_q(self, score: Tensor) -> Tensor:
+        return _reduce(score, dim=-1, mode=self.reduction)
+
+    def _finalize_pointwise_score(
+        self,
+        score: Tensor,
+        X: Tensor,
+        Xt: Tensor,
+        *,
+        name: str,
+    ) -> Tensor:
+        raw_X = _ensure_q_batch(X)
+        original_batch_shape = torch.Size(raw_X.shape[:-2])
+        q = int(raw_X.shape[-2])
+
+        score = self._align_pointwise_score_to_X(score, Xt, name=f"{name} score before penalty")
+        score = score - self._total_penalty_per_point(Xt)
+
+        score = self._align_pointwise_score_to_X(score, Xt, name=f"{name} score before objective")
+        score = self._apply_objective_to_score(
+            score,
+            raw_X=raw_X,
+            expanded_X=Xt,
+            name=name,
+        )
+
+        score = self._aggregate_n_w_if_needed(score, q=q, context=name)
+        out = self._reduce_q(score)
+
+        if out.shape == original_batch_shape:
+            return out
+
+        while out.ndim > len(original_batch_shape):
+            out = out.mean(dim=0)
+            if out.shape == original_batch_shape:
+                return out
+
+        if out.shape == original_batch_shape:
+            return out
+
+        if out.numel() == _safe_prod(original_batch_shape):
+            return out.reshape(original_batch_shape)
+
+        raise RuntimeError(
+            f"{name}: output shape mismatch. "
+            f"Expected {tuple(original_batch_shape)}, got {tuple(out.shape)}."
+        )
+
+
+# ============================================================
+# Pointwise active-learning acquisitions
+# ============================================================
+
+
+class qMultiOutputRegressionPosteriorVariance(_MultiOutputRegressionActiveLearningBase):
+    """Multi-output regression posterior-variance acquisition."""
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
-        X = self._ensure_q_batch(X)
-        Xt = self._expand_pending(X)
-        self.model.eval()
-        fantasy_model = self.model.fantasize(X=Xt, sampler=self.sampler)
-        posterior = fantasy_model.posterior(self.mc_points)
-        var = self._normalize_variance_shape(posterior.variance.clamp_min(self.eps))
-        integrated_var = self._integrate_mc_points(self._reduce_outputs(var))
-        fantasy_ndim = len(self.sampler.sample_shape)
-        if fantasy_ndim > 0:
-            integrated_var = integrated_var.mean(dim=tuple(range(fantasy_ndim)))
-        out = -integrated_var
-        expected = X.shape[:-2]
-        if out.shape != expected:
-            raise RuntimeError(f"Output shape mismatch: expected {tuple(expected)}, got {tuple(out.shape)}")
-        return out
+        var, Xt = self._posterior_variance_score(X)
+        return self._finalize_pointwise_score(
+            var,
+            X,
+            Xt,
+            name="qMultiOutputRegressionPosteriorVariance",
+        )
 
 
+class qMultiOutputRegressionPredictiveEntropy(_MultiOutputRegressionActiveLearningBase):
+    """Multi-output regression predictive entropy acquisition.
 
-# DeepGP-oriented previous names
+    Entropy is computed per output under Gaussian marginal approximation and
+    then reduced over outputs by ``output_reduction``.
+    """
+
+    @t_batch_mode_transform()
+    def forward(self, X: Tensor) -> Tensor:
+        _, var, Xt = self._posterior_mean_variance(X, observation_noise=True)
+        entropy = 0.5 * torch.log(
+            torch.as_tensor(
+                2.0 * torch.pi * torch.e,
+                device=var.device,
+                dtype=var.dtype,
+            )
+            * var.clamp_min(self.eps)
+        )
+        return self._finalize_pointwise_score(
+            entropy,
+            X,
+            Xt,
+            name="qMultiOutputRegressionPredictiveEntropy",
+        )
+
+
+class qMultiOutputRegressionBALD(_MultiOutputRegressionActiveLearningBase):
+    """Multi-output regression BALD / mutual-information acquisition.
+
+    For Gaussian regression with observation noise this computes
+
+        0.5 * log(total_variance / noise_variance)
+
+    using ``posterior(observation_noise=True)`` and
+    ``posterior(observation_noise=False)``.  If the model does not support
+    noisy posteriors, it falls back to posterior variance by default.
+    """
+
+    def __init__(
+        self,
+        model,
+        *,
+        fallback_to_variance: bool = True,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(model=model, **kwargs)
+        self.fallback_to_variance = bool(fallback_to_variance)
+
+    @t_batch_mode_transform()
+    def forward(self, X: Tensor) -> Tensor:
+        try:
+            _, latent_var, Xt = self._posterior_mean_variance(X, observation_noise=False)
+            _, total_var, _ = self._posterior_mean_variance(X, observation_noise=True)
+            total_var = self._align_pointwise_score_to_X(
+                total_var,
+                Xt,
+                name="qMultiOutputRegressionBALD total variance",
+            )
+            noise_var = (total_var - latent_var).clamp_min(self.eps)
+            score = 0.5 * torch.log(total_var.clamp_min(self.eps) / noise_var)
+        except Exception:
+            if not self.fallback_to_variance:
+                raise
+            score, Xt = self._posterior_variance_score(X)
+
+        return self._finalize_pointwise_score(
+            score,
+            X,
+            Xt,
+            name="qMultiOutputRegressionBALD",
+        )
+
+
+# ============================================================
+# Integrated posterior variance
+# ============================================================
+
+
+class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
+    """True BoTorch qNegIntegratedPosteriorVariance wrapper.
+
+    This delegates to BoTorch's implementation and therefore requires a model
+    that supports the operations expected by BoTorch, especially fantasize().
+    For multi-output models, pass a scalarizing objective or posterior_transform
+    if your BoTorch version requires one.
+
+    Use qMultiOutputRegressionIntegratedPosteriorVarianceProxy for DeepGP /
+    custom models that do not support fantasize().
+    """
+
+    def __init__(
+        self,
+        model,
+        mc_points: Tensor,
+        *,
+        sampler: Optional[Any] = None,
+        objective: Optional[Any] = None,
+        posterior_transform: Optional[Any] = None,
+        X_pending: Optional[Tensor] = None,
+        **kwargs: Any,
+    ) -> None:
+        if _BoTorchQNegIntegratedPosteriorVariance is None:
+            raise ImportError(
+                "botorch.acquisition.active_learning.qNegIntegratedPosteriorVariance "
+                "is not available in this BoTorch version."
+            )
+
+        super().__init__(model=model)
+
+        init_kwargs: dict[str, Any] = {
+            "model": model,
+            "mc_points": mc_points,
+        }
+        if sampler is not None:
+            init_kwargs["sampler"] = sampler
+        if objective is not None:
+            init_kwargs["objective"] = objective
+        if posterior_transform is not None:
+            init_kwargs["posterior_transform"] = posterior_transform
+        if X_pending is not None:
+            init_kwargs["X_pending"] = X_pending
+        init_kwargs.update(kwargs)
+
+        # BoTorch signatures differ slightly across versions.  Try the most
+        # complete call first, then progressively remove optional keywords.
+        try:
+            self.acqf = _BoTorchQNegIntegratedPosteriorVariance(**init_kwargs)
+        except TypeError:
+            last_error = None
+            for key in ("X_pending", "posterior_transform", "objective", "sampler"):
+                init_kwargs.pop(key, None)
+                try:
+                    self.acqf = _BoTorchQNegIntegratedPosteriorVariance(**init_kwargs)
+                    break
+                except TypeError as exc:
+                    last_error = exc
+                    continue
+            else:
+                raise last_error  # type: ignore[misc]
+
+    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+        if hasattr(self.acqf, "set_X_pending"):
+            self.acqf.set_X_pending(X_pending)
+        else:
+            self.acqf.X_pending = X_pending
+
+    @t_batch_mode_transform()
+    def forward(self, X: Tensor) -> Tensor:
+        return self.acqf(X)
+
+
+class qMultiOutputRegressionIntegratedPosteriorVarianceProxy(_MultiOutputRegressionActiveLearningBase):
+    """Lightweight integrated-posterior-variance proxy for multi-output regression.
+
+    This is not BoTorch qNegIntegratedPosteriorVariance.  It does not fantasize.
+    It scores candidates by how much they cover high-variance reference regions.
+    """
+
+    def __init__(
+        self,
+        model,
+        X_ref: Tensor,
+        *,
+        kernel_lengthscale: float = 0.2,
+        normalize_weights: bool = True,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(model=model, **kwargs)
+        if X_ref.ndim != 2:
+            raise ValueError(f"X_ref must have shape [n_ref, d]. Got {tuple(X_ref.shape)}.")
+        self.register_buffer("X_ref", X_ref.detach().clone())
+        self.kernel_lengthscale = float(kernel_lengthscale)
+        self.normalize_weights = bool(normalize_weights)
+
+    def _reference_variance(self) -> Tensor:
+        _, ref_var, Xt_ref = self._posterior_mean_variance(self.X_ref, observation_noise=False)
+        n_ref = int(self.X_ref.shape[-2])
+        ref_var = self._aggregate_n_w_if_needed(
+            ref_var,
+            q=n_ref,
+            context="qMultiOutputRegressionIntegratedPosteriorVarianceProxy reference variance",
+        )
+        if ref_var.shape[-1] != n_ref:
+            raise RuntimeError(
+                "Reference variance must have last dimension n_ref. "
+                f"ref_var.shape={tuple(ref_var.shape)}, n_ref={n_ref}."
+            )
+        return ref_var
+
+    @t_batch_mode_transform()
+    def forward(self, X: Tensor) -> Tensor:
+        raw_X = _ensure_q_batch(X)
+        Xt = self._apply_input_transform_for_distance(raw_X)
+
+        ref_var = self._reference_variance()
+        X_ref_t = self._reference_to_distance_space(self.X_ref, like=Xt)
+        if X_ref_t is None:
+            raise RuntimeError("X_ref unexpectedly became None after transform.")
+        X_ref_2d = X_ref_t.reshape(-1, X_ref_t.shape[-1])
+
+        if ref_var.ndim > 1:
+            while ref_var.ndim > 1:
+                ref_var = ref_var.mean(dim=0)
+
+        if ref_var.shape[-1] != X_ref_2d.shape[-2]:
+            # InputPerturbation may expand X_ref in distance space.  Collapse
+            # repeated reference points back to nominal reference count if possible.
+            n_ref = int(self.X_ref.shape[-2])
+            if X_ref_2d.shape[-2] % n_ref == 0:
+                n_w_ref = X_ref_2d.shape[-2] // n_ref
+                X_ref_2d = X_ref_2d.reshape(n_ref, n_w_ref, X_ref_2d.shape[-1]).mean(dim=1)
+            if ref_var.shape[-1] != X_ref_2d.shape[-2]:
+                raise RuntimeError(
+                    "Reference variance / reference point mismatch. "
+                    f"ref_var.shape={tuple(ref_var.shape)}, X_ref_2d.shape={tuple(X_ref_2d.shape)}."
+                )
+
+        d2 = torch.cdist(Xt.reshape(-1, Xt.shape[-1]), X_ref_2d).pow(2)
+        d2 = d2.reshape(*Xt.shape[:-1], X_ref_2d.shape[-2])
+
+        ls2 = max(self.kernel_lengthscale ** 2, self.eps)
+        weights = torch.exp(-0.5 * d2 / ls2)
+        if self.normalize_weights:
+            weights = weights / weights.sum(dim=-1, keepdim=True).clamp_min(self.eps)
+
+        view_shape = (1,) * (weights.ndim - 1) + (ref_var.shape[-1],)
+        score = (weights * ref_var.view(*view_shape)).sum(dim=-1)
+
+        return self._finalize_pointwise_score(
+            score,
+            raw_X,
+            Xt,
+            name="qMultiOutputRegressionIntegratedPosteriorVarianceProxy",
+        )
+
 
 __all__ = [
     "qMultiOutputRegressionPredictiveEntropy",
-    "qMultiOutputRegressionBALDProxy",
+    "qMultiOutputRegressionBALD",
     "qMultiOutputRegressionPosteriorVariance",
-    "qMultiOutputRegressionMarginUncertainty",
-    "qMultiOutputRegressionIntegratedPosteriorVarianceProxy",
     "qMultiOutputRegressionNegIntegratedPosteriorVariance",
+    "qMultiOutputRegressionIntegratedPosteriorVarianceProxy",
 ]

@@ -14,7 +14,7 @@ from torch import Tensor
 
 from bochan.acquisition.regression.levelset_estimation.single_output import _RegressionLevelSetBase
 
-from ._stats import non_gaussian_response_stats, safe_normal_cdf
+from .._stats import non_gaussian_response_stats, safe_normal_cdf
 
 
 class _NonGaussianLevelSetBase(_RegressionLevelSetBase):

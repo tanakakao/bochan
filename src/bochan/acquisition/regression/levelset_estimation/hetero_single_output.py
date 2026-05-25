@@ -1,24 +1,5 @@
 from __future__ import annotations
 
-"""Multi-output regression level-set estimation acquisition functions.
-
-Design policy:
-    - Public names follow the classification / ordinal multi-output naming style.
-    - Straddle / margin / boundary / contour acquisitions live here, not in
-      active learning.
-    - Pointwise acquisitions use a common pipeline:
-
-        posterior mean / variance per output
-        -> level-set score per output
-        -> output reduction
-        -> same-batch / pending / observed penalty
-        -> optional score objective / input-perturbation aggregation
-        -> q reduction
-
-    - Old ``...Acquisition`` public names are intentionally not kept.
-      This file is for the development-stage aligned API.
-"""
-
 from typing import Any, Callable, Literal, Optional, Sequence
 
 import torch
@@ -30,26 +11,8 @@ from botorch.utils.transforms import t_batch_mode_transform
 
 
 ReductionType = Literal["mean", "sum", "max", "min"]
-OutputReductionType = Literal[
-    "mean",
-    "sum",
-    "max",
-    "min",
-    "weighted_sum",
-    "weighted_mean",
-]
-BoundaryMode = Literal[
-    "distance_to_threshold",
-    "common_satisfaction",
-    "all_above",
-    "all_below",
-]
-ProbabilityMode = Literal["above", "below", "interval"]
-
-
-# ============================================================
-# Generic helpers
-# ============================================================
+OutputReductionType = Literal["mean", "sum", "max", "min"]
+VarianceSource = Literal["latent", "total", "noise"]
 
 
 def _reduce(t: Tensor, dim: int, mode: str) -> Tensor:
@@ -102,36 +65,12 @@ def _safe_logdet(covar: Tensor, jitter: float = 1e-6) -> Tensor:
     return torch.linalg.slogdet(covar + jitter * eye).logabsdet
 
 
-# ============================================================
-# Score objective
-# ============================================================
+BoundaryMode = Literal["distance_to_threshold", "above", "below"]
+ProbabilityMode = Literal["above", "below", "interval"]
 
 
-class MultiOutputRegressionLevelSetScoreObjective(torch.nn.Module):
-    """Objective applied to pointwise multi-output regression level-set scores.
-
-    This mirrors the classification / ordinal score-objective pattern.  It is
-    mainly used to aggregate InputPerturbation-expanded scores from ``q * n_w``
-    back to ``q`` after output reduction.
-
-    Args:
-        n_w:
-            Number of perturbation samples per candidate.
-        risk_type:
-            None, "var", or "cvar".
-        alpha:
-            Tail fraction for VaR / CVaR.
-        maximize:
-            If True, lower-score tail is treated as worst-case.  This matches
-            maximization acquisitions.
-        weight:
-            Multiplicative weight.
-        sign:
-            Sign flip.  Keep 1.0 for maximization.
-        aggregated_risk_mode:
-            If ``"ignore"``, already aggregated batch scores are returned as-is.
-            If ``"error"``, receiving an already aggregated score raises.
-    """
+class HeteroRegressionLevelSetScoreObjective(torch.nn.Module):
+    """Objective applied to pointwise hetero regression level-set scores."""
 
     def __init__(
         self,
@@ -175,17 +114,15 @@ class MultiOutputRegressionLevelSetScoreObjective(torch.nn.Module):
             raise TypeError(f"score must be a Tensor. Got {type(score)}.")
 
         score = score * self.sign * self.weight
-
         if score.ndim == 0:
             return score
-
         if self.n_w is None or self.n_w <= 1:
             return score
 
         if self._is_aggregated_score(score, X):
             if self.aggregated_risk_mode == "error":
                 raise RuntimeError(
-                    "MultiOutputRegressionLevelSetScoreObjective received an aggregated score. "
+                    "HeteroRegressionLevelSetScoreObjective received an aggregated score. "
                     "InputPerturbation aggregation requires pointwise score."
                 )
             return score
@@ -215,27 +152,19 @@ class MultiOutputRegressionLevelSetScoreObjective(torch.nn.Module):
         raise ValueError(f"Unknown risk_type: {self.risk_type!r}.")
 
 
-# ============================================================
-# Base class
-# ============================================================
-
-
-class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
-    """Base class aligned with classification / ordinal multi-output level-set APIs."""
+class _HeteroRegressionLevelSetBase(AcquisitionFunction):
+    """Noise-aware regression level-set base aligned with classification / ordinal."""
 
     def __init__(
         self,
         model: Model,
         *,
-        thresholds: Optional[Sequence[float] | Tensor] = None,
-        threshold: Optional[float | Tensor] = None,
-        # Backward-compatible local alias only inside this new API.
-        # Public docs should prefer thresholds / threshold.
-        h: Optional[Sequence[float] | Tensor] = None,
+        threshold: float | Tensor = 0.0,
+        h: Optional[float | Tensor] = None,
         reduction: ReductionType = "mean",
-        output_reduction: OutputReductionType = "weighted_mean",
-        output_weights: Optional[Tensor | Sequence[float]] = None,
-        normalize_output_weights: bool = True,
+        output_reduction: OutputReductionType = "mean",
+        variance_source: VarianceSource = "latent",
+        noise_penalty: float = 0.0,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
         same_batch_penalty_weight: float = 0.0,
@@ -251,39 +180,20 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         eps: float = 1e-12,
     ) -> None:
         super().__init__(model=model)
-
         if h is not None:
-            thresholds = h
-        if thresholds is None:
-            thresholds = threshold if threshold is not None else 0.0
-
+            threshold = h
         if reduction not in ("mean", "sum", "max", "min"):
             raise ValueError("reduction must be one of 'mean', 'sum', 'max', 'min'.")
-        if output_reduction not in (
-            "mean",
-            "sum",
-            "max",
-            "min",
-            "weighted_sum",
-            "weighted_mean",
-        ):
-            raise ValueError(
-                "output_reduction must be one of "
-                "'mean', 'sum', 'max', 'min', 'weighted_sum', 'weighted_mean'."
-            )
+        if output_reduction not in ("mean", "sum", "max", "min"):
+            raise ValueError("output_reduction must be one of 'mean', 'sum', 'max', 'min'.")
+        if variance_source not in ("latent", "total", "noise"):
+            raise ValueError("variance_source must be 'latent', 'total', or 'noise'.")
 
-        self.register_buffer("thresholds", torch.as_tensor(thresholds).reshape(-1))
+        self.register_buffer("threshold", torch.as_tensor(threshold))
         self.reduction = reduction
         self.output_reduction = output_reduction
-        self.normalize_output_weights = bool(normalize_output_weights)
-
-        if output_weights is not None:
-            w = torch.as_tensor(output_weights)
-            if w.ndim != 1:
-                raise ValueError("output_weights must have shape [m].")
-            self.register_buffer("output_weights", w.detach().clone())
-        else:
-            self.output_weights = None
+        self.variance_source = variance_source
+        self.noise_penalty = float(noise_penalty)
 
         self.same_batch_penalty_weight = float(same_batch_penalty_weight)
         self.same_batch_penalty_beta = float(same_batch_penalty_beta)
@@ -293,6 +203,7 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         self.observed_penalty_beta = float(observed_penalty_beta)
         self.hard_duplicate_penalty = float(hard_duplicate_penalty)
         self.hard_duplicate_tol = float(hard_duplicate_tol)
+
         self.objective = objective
         self.eps = float(eps)
 
@@ -307,18 +218,9 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         self.set_X_pending(X_pending)
         self.set_X_observed(X_observed)
 
-    # ------------------------------------------------------------
-    # Reference handling
-    # ------------------------------------------------------------
-    def _coerce_reference_to_tensor(
-        self,
-        ref,
-        *,
-        like: Optional[Tensor] = None,
-    ) -> Optional[Tensor]:
+    def _coerce_reference_to_tensor(self, ref, *, like: Optional[Tensor] = None) -> Optional[Tensor]:
         if ref is None:
             return None
-
         if torch.is_tensor(ref):
             out = ref
         elif isinstance(ref, (list, tuple)):
@@ -343,10 +245,8 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
                 "Reference points must be None, Tensor, list, or tuple. "
                 f"Got {type(ref)}."
             )
-
         if like is not None:
             out = out.to(device=like.device, dtype=like.dtype)
-
         return out.detach()
 
     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
@@ -355,9 +255,6 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
         self.X_observed = self._coerce_reference_to_tensor(X_observed)
 
-    # ------------------------------------------------------------
-    # Shape / transform helpers
-    # ------------------------------------------------------------
     def _prepare_eval(self) -> None:
         self.model.eval()
         likelihood = getattr(self.model, "likelihood", None)
@@ -366,7 +263,6 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
 
     def _apply_input_transform_for_distance(self, X: Tensor) -> Tensor:
         X = _ensure_q_batch(X)
-
         it = getattr(self.model, "input_transform", None)
         if it is not None:
             Xt = it(X)
@@ -382,7 +278,6 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
                 if isinstance(Xt, tuple):
                     Xt = Xt[0]
                 return _ensure_q_batch(Xt)
-
         return X
 
     def _reference_to_distance_space(self, ref, *, like: Tensor) -> Optional[Tensor]:
@@ -391,97 +286,6 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
             return None
         ref_t = self._apply_input_transform_for_distance(ref)
         return _ensure_q_batch(ref_t).to(device=like.device, dtype=like.dtype)
-
-    def _thresholds_like(self, value: Tensor) -> Tensor:
-        """Return thresholds broadcastable to ``value[..., m]``."""
-        if value.ndim < 1:
-            raise RuntimeError("value must have an output dimension.")
-        m = int(value.shape[-1])
-        thresholds = self.thresholds.to(device=value.device, dtype=value.dtype)
-
-        if thresholds.numel() == 1:
-            thresholds = thresholds.expand(m)
-        elif thresholds.numel() != m:
-            raise ValueError(
-                f"Number of thresholds ({thresholds.numel()}) does not match "
-                f"number of outputs ({m})."
-            )
-
-        return thresholds.view(*((1,) * (value.ndim - 1)), m)
-
-    def _align_output_tensor_to_X(
-        self,
-        value: Tensor,
-        Xt: Tensor,
-        *,
-        name: str,
-    ) -> Tensor:
-        """Align posterior mean / variance to ``Xt.shape[:-1] + (m,)``."""
-        Xt = _ensure_q_batch(Xt)
-        target_prefix = torch.Size(Xt.shape[:-1])
-        out = value
-
-        # Already scalar per point: add output dimension m=1.
-        if out.shape == target_prefix:
-            return out.unsqueeze(-1)
-
-        # Reduce leading MCMC / ensemble dims until at most output dim remains.
-        while out.ndim > len(target_prefix) + 1:
-            out = out.mean(dim=0)
-            if out.shape == target_prefix:
-                return out.unsqueeze(-1)
-
-        if out.ndim == len(target_prefix) + 1 and out.shape[:-1] == target_prefix:
-            return out
-
-        if out.ndim == len(target_prefix) and out.shape == target_prefix:
-            return out.unsqueeze(-1)
-
-        # Last-resort reshape if possible.
-        if out.numel() % max(_safe_prod(target_prefix), 1) == 0:
-            m = out.numel() // max(_safe_prod(target_prefix), 1)
-            return out.reshape(*target_prefix, m)
-
-        raise RuntimeError(
-            f"{name}: could not align tensor to output shape. "
-            f"value.shape={tuple(value.shape)}, Xt.shape={tuple(Xt.shape)}."
-        )
-
-    def _output_weights_like(self, value: Tensor) -> Optional[Tensor]:
-        weights = self.output_weights
-        if weights is None:
-            return None
-        if value.shape[-1] != weights.numel():
-            raise ValueError(
-                f"Mismatch between output dim {value.shape[-1]} and "
-                f"output_weights {weights.numel()}."
-            )
-        w = weights.to(device=value.device, dtype=value.dtype)
-        if self.normalize_output_weights:
-            w = w / w.sum().clamp_min(self.eps)
-        return w
-
-    def _reduce_outputs(self, value: Tensor) -> Tensor:
-        """Reduce output dimension ``m`` to pointwise scalar score."""
-        if value.ndim < 1:
-            return value
-
-        if value.shape[-1] == 1:
-            return value.squeeze(-1)
-
-        if self.output_reduction == "weighted_sum":
-            w = self._output_weights_like(value)
-            if w is None:
-                raise ValueError("output_reduction='weighted_sum' requires output_weights.")
-            return (value * w).sum(dim=-1)
-
-        if self.output_reduction == "weighted_mean":
-            w = self._output_weights_like(value)
-            if w is None:
-                return value.mean(dim=-1)
-            return (value * w).sum(dim=-1)
-
-        return _reduce(value, dim=-1, mode=self.output_reduction)
 
     def _align_pointwise_score_to_X(
         self,
@@ -523,35 +327,91 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
             f"score.shape={tuple(score.shape)}, expected={tuple(target)}, Xt.shape={tuple(Xt.shape)}."
         )
 
-    # ------------------------------------------------------------
-    # Posterior helpers
-    # ------------------------------------------------------------
-    def _posterior_mean_variance_outputs(self, X: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    def _reduce_outputs_if_needed(self, value: Tensor, Xt: Tensor, *, name: str) -> Tensor:
+        Xt = _ensure_q_batch(Xt)
+        target_prefix = torch.Size(Xt.shape[:-1])
+        out = value
+
+        if out.shape == target_prefix:
+            return out
+
+        while out.ndim > len(target_prefix) + 1:
+            out = out.mean(dim=0)
+            if out.shape == target_prefix:
+                return out
+
+        if out.ndim == len(target_prefix) + 1 and out.shape[:-1] == target_prefix:
+            if out.shape[-1] == 1:
+                return out.squeeze(-1)
+            return _reduce(out, dim=-1, mode=self.output_reduction)
+
+        if out.shape == target_prefix:
+            return out
+
+        if out.numel() % max(_safe_prod(target_prefix), 1) == 0:
+            m = out.numel() // max(_safe_prod(target_prefix), 1)
+            out = out.reshape(*target_prefix, m)
+            if m == 1:
+                return out.squeeze(-1)
+            return _reduce(out, dim=-1, mode=self.output_reduction)
+
+        raise RuntimeError(
+            f"{name}: could not reduce output dimension. "
+            f"value.shape={tuple(value.shape)}, Xt.shape={tuple(Xt.shape)}."
+        )
+
+    def _posterior_mean_variances(self, X: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         Xq = _ensure_q_batch(X)
         self._prepare_eval()
 
-        posterior = self.model.posterior(Xq, observation_noise=False)
+        try:
+            post_latent = self.model.posterior(Xq, observation_noise=False)
+            post_total = self.model.posterior(Xq, observation_noise=True)
+        except Exception:
+            post_latent = self.model.posterior(Xq)
+            post_total = post_latent
+
         Xt = self._apply_input_transform_for_distance(Xq)
 
-        mean = self._align_output_tensor_to_X(posterior.mean, Xt, name="posterior.mean")
-        var = self._align_output_tensor_to_X(posterior.variance, Xt, name="posterior.variance")
-        var = var.clamp_min(self.eps)
-        return mean, var, Xt
+        mean = self._reduce_outputs_if_needed(post_latent.mean, Xt, name="posterior.mean")
+        latent_var = self._reduce_outputs_if_needed(post_latent.variance, Xt, name="latent variance")
+        total_var = self._reduce_outputs_if_needed(post_total.variance, Xt, name="total variance")
+
+        mean = self._align_pointwise_score_to_X(mean, Xt, name="posterior.mean")
+        latent_var = self._align_pointwise_score_to_X(latent_var, Xt, name="latent variance")
+        total_var = self._align_pointwise_score_to_X(total_var, Xt, name="total variance")
+
+        latent_var = latent_var.clamp_min(self.eps)
+        total_var = total_var.clamp_min(self.eps)
+        noise_var = (total_var - latent_var).clamp_min(self.eps)
+
+        noise_fn = getattr(self.model, "predict_noise_var", None)
+        if callable(noise_fn):
+            try:
+                noise_raw = noise_fn(Xq)
+                noise_var = self._reduce_outputs_if_needed(noise_raw, Xt, name="predict_noise_var")
+                noise_var = self._align_pointwise_score_to_X(noise_var, Xt, name="predict_noise_var")
+                noise_var = noise_var.clamp_min(self.eps)
+                total_var = (latent_var + noise_var).clamp_min(self.eps)
+            except Exception:
+                pass
+
+        return mean, latent_var, total_var, noise_var, Xt
+
+    def _select_variance(self, latent_var: Tensor, total_var: Tensor, noise_var: Tensor) -> Tensor:
+        if self.variance_source == "latent":
+            return latent_var
+        if self.variance_source == "total":
+            return total_var
+        if self.variance_source == "noise":
+            return noise_var
+        raise ValueError(f"Unknown variance_source: {self.variance_source!r}.")
 
     def _posterior_covariance(self, X: Tensor) -> tuple[Tensor, Tensor, Tensor]:
-        """Return output-reduced mean and covariance over q-like points.
-
-        For true multi-output joint covariance, posterior covariance may have
-        shape ``q*m x q*m``.  To keep the API robust across custom wrappers, this
-        function falls back to diagonal covariance from output-reduced variance
-        when the covariance shape cannot be aligned to ``q_like x q_like``.
-        """
-        mean_outputs, var_outputs, Xt = self._posterior_mean_variance_outputs(X)
-        mean = self._reduce_outputs(mean_outputs)
-        var = self._reduce_outputs(var_outputs)
+        """Return mean / covariance / transformed X for joint acquisitions."""
+        mean, latent_var, _, _, Xt = self._posterior_mean_variances(X)
 
         posterior = self.model.posterior(_ensure_q_batch(X), observation_noise=False)
-
         covar = None
         mvn = getattr(posterior, "mvn", None)
         if mvn is not None and hasattr(mvn, "covariance_matrix"):
@@ -563,7 +423,7 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         target_covar_shape = torch.Size(Xt.shape[:-2]) + torch.Size([q_like, q_like])
 
         if covar is None:
-            return mean, torch.diag_embed(var), Xt
+            return mean, torch.diag_embed(latent_var), Xt
 
         while covar.ndim > len(target_covar_shape):
             covar = covar.mean(dim=0)
@@ -574,14 +434,11 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
             if covar.numel() == _safe_prod(target_covar_shape):
                 covar = covar.reshape(target_covar_shape)
             else:
-                covar = torch.diag_embed(var)
+                covar = torch.diag_embed(latent_var)
 
         covar = 0.5 * (covar + covar.transpose(-1, -2))
         return mean, covar, Xt
 
-    # ------------------------------------------------------------
-    # Penalty helpers
-    # ------------------------------------------------------------
     def _same_batch_penalty_per_point(self, Xt: Tensor) -> Tensor:
         Xt = _ensure_q_batch(Xt)
         q = int(Xt.shape[-2])
@@ -592,8 +449,8 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         eye = torch.eye(q, dtype=torch.bool, device=Xt.device)
         while eye.ndim < d2.ndim:
             eye = eye.unsqueeze(0)
-
         valid = ~eye
+
         soft = torch.exp(-self.same_batch_penalty_beta * d2)
         soft = torch.where(valid, soft, torch.zeros_like(soft))
         per_point = soft.sum(dim=-1)
@@ -605,14 +462,7 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
 
         return self.same_batch_penalty_weight * per_point
 
-    def _reference_penalty_per_point(
-        self,
-        Xt: Tensor,
-        ref,
-        *,
-        weight: float,
-        beta: float,
-    ) -> Tensor:
+    def _reference_penalty_per_point(self, Xt: Tensor, ref, *, weight: float, beta: float) -> Tensor:
         Xt = _ensure_q_batch(Xt)
         if weight <= 0.0:
             return Xt.new_zeros(Xt.shape[:-1])
@@ -636,26 +486,16 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         return (
             self._same_batch_penalty_per_point(Xt)
             + self._reference_penalty_per_point(
-                Xt,
-                self.X_pending,
-                weight=self.pending_penalty_weight,
-                beta=self.pending_penalty_beta,
+                Xt, self.X_pending, weight=self.pending_penalty_weight, beta=self.pending_penalty_beta
             )
             + self._reference_penalty_per_point(
-                Xt,
-                self.X_observed,
-                weight=self.observed_penalty_weight,
-                beta=self.observed_penalty_beta,
+                Xt, self.X_observed, weight=self.observed_penalty_weight, beta=self.observed_penalty_beta
             )
         )
 
-    # ------------------------------------------------------------
-    # Objective / reduction
-    # ------------------------------------------------------------
     def _apply_objective_to_score(self, score: Tensor, X: Tensor, name: str) -> Tensor:
         if self.objective is None:
             return score
-
         out = _objective_call(self.objective, score, X)
         if not torch.is_tensor(out):
             raise RuntimeError(f"{name}: objective must return Tensor. Got {type(out)}.")
@@ -679,14 +519,7 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
     def _reduce_q(self, score: Tensor) -> Tensor:
         return _reduce(score, dim=-1, mode=self.reduction)
 
-    def _finalize_pointwise_score(
-        self,
-        score: Tensor,
-        X: Tensor,
-        Xt: Tensor,
-        *,
-        name: str,
-    ) -> Tensor:
+    def _finalize_pointwise_score(self, score: Tensor, X: Tensor, Xt: Tensor, *, name: str) -> Tensor:
         raw_X = _ensure_q_batch(X)
         original_batch_shape = torch.Size(raw_X.shape[:-2])
         q = int(raw_X.shape[-2])
@@ -705,6 +538,8 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
 
         while out.ndim > len(original_batch_shape):
             out = out.mean(dim=0)
+            if out.shape == original_batch_shape:
+                return out
 
         if out.shape == original_batch_shape:
             return out
@@ -735,7 +570,6 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         penalty = self._total_penalty_per_point(Xt)
         penalty = self._reduce_q(penalty)
         score = score - penalty
-
         score = self._apply_objective_to_score(score, raw_X, name=name)
 
         if score.shape == original_batch_shape:
@@ -756,18 +590,10 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         )
 
 
-# ============================================================
-# Acquisition implementations
-# ============================================================
+class qHeteroRegressionStraddle(_HeteroRegressionLevelSetBase):
+    """Noise-aware regression straddle acquisition.
 
-
-class qMultiOutputRegressionStraddle(_MultiOutputRegressionLevelSetBase):
-    """Multi-output regression straddle acquisition.
-
-    Per output:
-        score_j(x) = beta * std_j(x) - |mean_j(x) - threshold_j|
-
-    Then the output dimension is reduced by ``output_reduction``.
+    score = beta * selected_std - |mean - threshold| - noise_penalty * noise_std
     """
 
     def __init__(
@@ -779,52 +605,35 @@ class qMultiOutputRegressionStraddle(_MultiOutputRegressionLevelSetBase):
         **kwargs: Any,
     ) -> None:
         super().__init__(model=model, **kwargs)
-        if boundary_mode not in (
-            "distance_to_threshold",
-            "common_satisfaction",
-            "all_above",
-            "all_below",
-        ):
-            raise ValueError(
-                "boundary_mode must be 'distance_to_threshold', "
-                "'common_satisfaction', 'all_above', or 'all_below'."
-            )
+        if boundary_mode not in ("distance_to_threshold", "above", "below"):
+            raise ValueError("boundary_mode must be 'distance_to_threshold', 'above', or 'below'.")
         self.register_buffer("beta", torch.as_tensor(beta))
         self.boundary_mode = boundary_mode
 
-    def _boundary_distance(self, mean: Tensor, thresholds: Tensor) -> Tensor:
+    def _boundary_distance(self, mean: Tensor, threshold: Tensor) -> Tensor:
         if self.boundary_mode == "distance_to_threshold":
-            return (mean - thresholds).abs()
-        if self.boundary_mode in ("common_satisfaction", "all_above"):
-            return torch.relu(thresholds - mean)
-        if self.boundary_mode == "all_below":
-            return torch.relu(mean - thresholds)
+            return (mean - threshold).abs()
+        if self.boundary_mode == "above":
+            return torch.relu(threshold - mean)
+        if self.boundary_mode == "below":
+            return torch.relu(mean - threshold)
         raise ValueError(f"Unknown boundary_mode: {self.boundary_mode!r}.")
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
-        mean, var, Xt = self._posterior_mean_variance_outputs(X)
-        std = var.sqrt()
-        thresholds = self._thresholds_like(mean)
+        mean, latent_var, total_var, noise_var, Xt = self._posterior_mean_variances(X)
+        var = self._select_variance(latent_var, total_var, noise_var)
+        threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
         beta = self.beta.to(device=mean.device, dtype=mean.dtype)
 
-        score_per_output = beta * std - self._boundary_distance(mean, thresholds)
-        score = self._reduce_outputs(score_per_output)
+        score = beta * var.sqrt() - self._boundary_distance(mean, threshold)
+        score = score - self.noise_penalty * noise_var.sqrt()
 
-        return self._finalize_pointwise_score(
-            score,
-            X,
-            Xt,
-            name="qMultiOutputRegressionStraddle",
-        )
+        return self._finalize_pointwise_score(score, X, Xt, name="qHeteroRegressionStraddle")
 
 
-class qMultiOutputRegressionJointStraddle(_MultiOutputRegressionLevelSetBase):
-    """Joint multi-output regression straddle acquisition.
-
-    This scores the q-batch jointly by combining average boundary proximity
-    across outputs with joint covariance uncertainty.
-    """
+class qHeteroRegressionJointStraddle(_HeteroRegressionLevelSetBase):
+    """Joint noise-aware regression straddle acquisition."""
 
     def __init__(
         self,
@@ -832,36 +641,15 @@ class qMultiOutputRegressionJointStraddle(_MultiOutputRegressionLevelSetBase):
         *,
         beta: float | Tensor = 1.0,
         uncertainty_measure: Literal["logdet", "logdet1p", "trace"] = "logdet1p",
-        boundary_mode: BoundaryMode = "distance_to_threshold",
         covariance_jitter: float = 1e-6,
         **kwargs: Any,
     ) -> None:
         super().__init__(model=model, **kwargs)
         if uncertainty_measure not in ("logdet", "logdet1p", "trace"):
             raise ValueError("uncertainty_measure must be 'logdet', 'logdet1p', or 'trace'.")
-        if boundary_mode not in (
-            "distance_to_threshold",
-            "common_satisfaction",
-            "all_above",
-            "all_below",
-        ):
-            raise ValueError(
-                "boundary_mode must be 'distance_to_threshold', "
-                "'common_satisfaction', 'all_above', or 'all_below'."
-            )
         self.register_buffer("beta", torch.as_tensor(beta))
         self.uncertainty_measure = uncertainty_measure
-        self.boundary_mode = boundary_mode
         self.covariance_jitter = float(covariance_jitter)
-
-    def _boundary_distance(self, mean_outputs: Tensor, thresholds: Tensor) -> Tensor:
-        if self.boundary_mode == "distance_to_threshold":
-            return (mean_outputs - thresholds).abs()
-        if self.boundary_mode in ("common_satisfaction", "all_above"):
-            return torch.relu(thresholds - mean_outputs)
-        if self.boundary_mode == "all_below":
-            return torch.relu(mean_outputs - thresholds)
-        raise ValueError(f"Unknown boundary_mode: {self.boundary_mode!r}.")
 
     def _uncertainty_score(self, covar: Tensor) -> Tensor:
         if self.uncertainty_measure == "trace":
@@ -877,202 +665,141 @@ class qMultiOutputRegressionJointStraddle(_MultiOutputRegressionLevelSetBase):
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
-        mean_outputs, _, Xt = self._posterior_mean_variance_outputs(X)
-        thresholds = self._thresholds_like(mean_outputs)
+        mean, covar, Xt = self._posterior_covariance(X)
+        _, _, _, noise_var, _ = self._posterior_mean_variances(X)
 
-        _, covar, Xt = self._posterior_covariance(X)
-        beta = self.beta.to(device=mean_outputs.device, dtype=mean_outputs.dtype)
+        threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
+        beta = self.beta.to(device=mean.device, dtype=mean.dtype)
 
-        boundary = self._boundary_distance(mean_outputs, thresholds)
-        boundary_score = -self._reduce_outputs(boundary).mean(dim=-1)
+        proximity = -(mean - threshold).abs().mean(dim=-1)
         uncertainty = self._uncertainty_score(covar)
-        score = boundary_score + beta * uncertainty
+        noise_pen = self.noise_penalty * noise_var.sqrt().mean(dim=-1)
+        score = proximity + beta * uncertainty - noise_pen
 
-        return self._finalize_joint_score(
-            score,
-            X,
-            Xt,
-            name="qMultiOutputRegressionJointStraddle",
-        )
+        return self._finalize_joint_score(score, X, Xt, name="qHeteroRegressionJointStraddle")
 
 
-class qMultiOutputRegressionICU(_MultiOutputRegressionLevelSetBase):
-    """Multi-output integrated contour uncertainty style acquisition.
-
-    For each output this uses a smooth threshold-density style score and then
-    reduces over outputs.
-    """
+class qHeteroRegressionICU(_HeteroRegressionLevelSetBase):
+    """Noise-aware integrated contour uncertainty style acquisition."""
 
     def __init__(
         self,
         model: Model,
         *,
         bandwidth: Optional[float | Tensor] = None,
-        joint_boundary: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(model=model, **kwargs)
         self.bandwidth = None if bandwidth is None else torch.as_tensor(bandwidth)
-        self.joint_boundary = bool(joint_boundary)
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
-        mean, var, Xt = self._posterior_mean_variance_outputs(X)
+        mean, latent_var, total_var, noise_var, Xt = self._posterior_mean_variances(X)
+        var = self._select_variance(latent_var, total_var, noise_var)
         std = var.sqrt().clamp_min(self.eps)
-        thresholds = self._thresholds_like(mean)
+        threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
 
         if self.bandwidth is None:
             bw = std
         else:
             bw = self.bandwidth.to(device=mean.device, dtype=mean.dtype).clamp_min(self.eps)
 
-        z = (mean - thresholds) / bw
-        score_per_output = torch.exp(-0.5 * z.pow(2)) * std
+        z = (mean - threshold) / bw
+        score = torch.exp(-0.5 * z.pow(2)) * std
+        score = score - self.noise_penalty * noise_var.sqrt()
 
-        if self.joint_boundary:
-            # All outputs near their thresholds simultaneously.
-            score = score_per_output.prod(dim=-1)
-        else:
-            score = self._reduce_outputs(score_per_output)
-
-        return self._finalize_pointwise_score(
-            score,
-            X,
-            Xt,
-            name="qMultiOutputRegressionICU",
-        )
+        return self._finalize_pointwise_score(score, X, Xt, name="qHeteroRegressionICU")
 
 
-class qMultiOutputRegressionBoundaryVariance(_MultiOutputRegressionLevelSetBase):
-    """Boundary-weighted posterior variance acquisition for multi-output regression."""
+class qHeteroRegressionBoundaryVariance(_HeteroRegressionLevelSetBase):
+    """Noise-aware boundary-weighted posterior variance acquisition."""
 
     def __init__(
         self,
         model: Model,
         *,
         tau: float | Tensor = 1.0,
-        joint_boundary: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(model=model, **kwargs)
         self.register_buffer("tau", torch.as_tensor(tau))
-        self.joint_boundary = bool(joint_boundary)
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
-        mean, var, Xt = self._posterior_mean_variance_outputs(X)
-        thresholds = self._thresholds_like(mean)
+        mean, latent_var, total_var, noise_var, Xt = self._posterior_mean_variances(X)
+        var = self._select_variance(latent_var, total_var, noise_var)
+        threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
         tau = self.tau.to(device=mean.device, dtype=mean.dtype).clamp_min(self.eps)
 
-        boundary_weight = torch.exp(-0.5 * ((mean - thresholds) / tau).pow(2))
-        score_per_output = var * boundary_weight
+        boundary_weight = torch.exp(-0.5 * ((mean - threshold) / tau).pow(2))
+        score = var * boundary_weight
+        score = score - self.noise_penalty * noise_var
 
-        if self.joint_boundary:
-            # Joint boundary uncertainty: all outputs near boundary and uncertain.
-            score = score_per_output.prod(dim=-1)
-        else:
-            score = self._reduce_outputs(score_per_output)
-
-        return self._finalize_pointwise_score(
-            score,
-            X,
-            Xt,
-            name="qMultiOutputRegressionBoundaryVariance",
-        )
+        return self._finalize_pointwise_score(score, X, Xt, name="qHeteroRegressionBoundaryVariance")
 
 
-class qMultiOutputRegressionProbabilityOfExceedance(_MultiOutputRegressionLevelSetBase):
-    """Probability-of-exceedance / feasibility style acquisition.
-
-    Modes:
-        - ``above``:    P(f_j(x) >= threshold_j)
-        - ``below``:    P(f_j(x) <= threshold_j)
-        - ``interval``: P(lower_j <= f_j(x) <= upper_j)
-
-    If ``joint=True``, output probabilities are multiplied before q reduction.
-    Otherwise they are reduced by ``output_reduction``.
-    """
+class qHeteroRegressionProbabilityOfExceedance(_HeteroRegressionLevelSetBase):
+    """Noise-aware probability-of-exceedance / feasibility acquisition."""
 
     def __init__(
         self,
         model: Model,
         *,
         mode: ProbabilityMode = "above",
-        lower: Optional[Sequence[float] | Tensor] = None,
-        upper: Optional[Sequence[float] | Tensor] = None,
+        lower: Optional[float | Tensor] = None,
+        upper: Optional[float | Tensor] = None,
         temperature: Optional[float | Tensor] = None,
-        joint: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(model=model, **kwargs)
         if mode not in ("above", "below", "interval"):
             raise ValueError("mode must be 'above', 'below', or 'interval'.")
         self.mode = mode
-        self.lower = None if lower is None else torch.as_tensor(lower).reshape(-1)
-        self.upper = None if upper is None else torch.as_tensor(upper).reshape(-1)
+        self.lower = None if lower is None else torch.as_tensor(lower)
+        self.upper = None if upper is None else torch.as_tensor(upper)
         self.temperature = None if temperature is None else torch.as_tensor(temperature)
-        self.joint = bool(joint)
-
-    def _bounds_like(self, value: Tensor, which: str) -> Tensor:
-        bound = self.lower if which == "lower" else self.upper
-        if bound is None:
-            raise ValueError(f"{which} must be provided when mode='interval'.")
-        m = int(value.shape[-1])
-        bound = bound.to(device=value.device, dtype=value.dtype)
-        if bound.numel() == 1:
-            bound = bound.expand(m)
-        elif bound.numel() != m:
-            raise ValueError(
-                f"{which} length ({bound.numel()}) does not match output dim ({m})."
-            )
-        return bound.view(*((1,) * (value.ndim - 1)), m)
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
-        mean, var, Xt = self._posterior_mean_variance_outputs(X)
+        mean, latent_var, total_var, noise_var, Xt = self._posterior_mean_variances(X)
+        var = self._select_variance(latent_var, total_var, noise_var)
         std = var.sqrt().clamp_min(self.eps)
-        thresholds = self._thresholds_like(mean)
+        threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
 
         if self.temperature is not None:
             temp = self.temperature.to(device=mean.device, dtype=mean.dtype).clamp_min(self.eps)
             if self.mode == "above":
-                score_per_output = torch.sigmoid((mean - thresholds) / temp)
+                score = torch.sigmoid((mean - threshold) / temp)
             elif self.mode == "below":
-                score_per_output = torch.sigmoid((thresholds - mean) / temp)
+                score = torch.sigmoid((threshold - mean) / temp)
             else:
-                lo = self._bounds_like(mean, "lower")
-                hi = self._bounds_like(mean, "upper")
-                score_per_output = torch.sigmoid((mean - lo) / temp) * torch.sigmoid((hi - mean) / temp)
+                if self.lower is None or self.upper is None:
+                    raise ValueError("lower and upper must be provided when mode='interval'.")
+                lo = self.lower.to(device=mean.device, dtype=mean.dtype)
+                hi = self.upper.to(device=mean.device, dtype=mean.dtype)
+                score = torch.sigmoid((mean - lo) / temp) * torch.sigmoid((hi - mean) / temp)
         else:
             if self.mode == "above":
-                score_per_output = _safe_normal_cdf((mean - thresholds) / std)
+                score = _safe_normal_cdf((mean - threshold) / std)
             elif self.mode == "below":
-                score_per_output = _safe_normal_cdf((thresholds - mean) / std)
+                score = _safe_normal_cdf((threshold - mean) / std)
             else:
-                lo = self._bounds_like(mean, "lower")
-                hi = self._bounds_like(mean, "upper")
-                score_per_output = _safe_normal_cdf((hi - mean) / std) - _safe_normal_cdf((lo - mean) / std)
+                if self.lower is None or self.upper is None:
+                    raise ValueError("lower and upper must be provided when mode='interval'.")
+                lo = self.lower.to(device=mean.device, dtype=mean.dtype)
+                hi = self.upper.to(device=mean.device, dtype=mean.dtype)
+                score = _safe_normal_cdf((hi - mean) / std) - _safe_normal_cdf((lo - mean) / std)
 
-        score_per_output = score_per_output.clamp_min(0.0)
+        score = score.clamp_min(0.0) - self.noise_penalty * noise_var
 
-        if self.joint:
-            score = score_per_output.prod(dim=-1)
-        else:
-            score = self._reduce_outputs(score_per_output)
-
-        return self._finalize_pointwise_score(
-            score,
-            X,
-            Xt,
-            name="qMultiOutputRegressionProbabilityOfExceedance",
-        )
+        return self._finalize_pointwise_score(score, X, Xt, name="qHeteroRegressionProbabilityOfExceedance")
 
 
 __all__ = [
-    "MultiOutputRegressionLevelSetScoreObjective",
-    "qMultiOutputRegressionStraddle",
-    "qMultiOutputRegressionJointStraddle",
-    "qMultiOutputRegressionICU",
-    "qMultiOutputRegressionBoundaryVariance",
-    "qMultiOutputRegressionProbabilityOfExceedance",
+    "HeteroRegressionLevelSetScoreObjective",
+    "qHeteroRegressionStraddle",
+    "qHeteroRegressionJointStraddle",
+    "qHeteroRegressionICU",
+    "qHeteroRegressionBoundaryVariance",
+    "qHeteroRegressionProbabilityOfExceedance",
 ]

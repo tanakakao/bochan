@@ -1,36 +1,11 @@
-"""Compatibility exports for non-Gaussian regression GP models.
+"""Non-Gaussian regression models.
 
-This package keeps the historical import path
-``bochan.models.regression.non_gaussian`` available while the concrete model
-implementations live under distribution-specific packages such as
-``bochan.models.regression.poisson.non_gaussian``.
+Directory layout:
+
+    regression/non_gaussian/<model>/{base, deep, high_dim, robust}
 """
 
-from .poisson import PoissonGPModel, PoissonMixedGPModel, PoissonLogLikelihood, PoissonPosterior
-from .beta import BetaGPModel, BetaMixedGPModel, BetaLogLikelihood, BetaPosterior
-from .gamma import GammaGPModel, GammaMixedGPModel, GammaLogLikelihood, GammaPosterior
-from .negative_binomial import (
-    NegativeBinomialGPModel,
-    NegativeBinomialMixedGPModel,
-    NegativeBinomialLogLikelihood,
-    NegativeBinomialPosterior,
-)
-
-__all__ = [
-    "PoissonGPModel",
-    "PoissonMixedGPModel",
-    "PoissonLogLikelihood",
-    "PoissonPosterior",
-    "BetaGPModel",
-    "BetaMixedGPModel",
-    "BetaLogLikelihood",
-    "BetaPosterior",
-    "GammaGPModel",
-    "GammaMixedGPModel",
-    "GammaLogLikelihood",
-    "GammaPosterior",
-    "NegativeBinomialGPModel",
-    "NegativeBinomialMixedGPModel",
-    "NegativeBinomialLogLikelihood",
-    "NegativeBinomialPosterior",
-]
+from .poisson import *
+from .beta import *
+from .gamma import *
+from .negative_binomial import *

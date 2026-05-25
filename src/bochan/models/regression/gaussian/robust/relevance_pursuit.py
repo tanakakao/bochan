@@ -59,6 +59,8 @@ class SafeRobustRelevancePursuitSingleTaskGP(
         - ``train_inputs_raw[0]`` には raw train_X を保持する。
         - ``to_standard_model()`` で通常の ``SingleTaskGP`` に戻せる。
         - qNIPV / fantasize / deepcopy で落ちにくいよう non-leaf Tensor を安全化する。
+        - ``_set_transformed_inputs`` は上書きしない。BoTorch 標準の
+          input_transform 更新を止めると、学習時・予測時の入力空間がずれることがある。
     """
 
     def __init__(
@@ -92,10 +94,6 @@ class SafeRobustRelevancePursuitSingleTaskGP(
         self.train_inputs_raw = (self._original_X,)
         self.train_targets_raw = self._original_Y
         self.train_Yvar_raw = self._original_Yvar
-
-    def _set_transformed_inputs(self) -> None:
-        """BoTorch eval 時の自動 transformed input 更新を無効化する。"""
-        return None
 
     def to_standard_model(self) -> Model:
         """通常の ``SingleTaskGP`` として再構築したモデルを返す。"""
@@ -150,6 +148,8 @@ class SafeRobustRelevancePursuitMixedSingleTaskGP(
         - そのため RRP mixin の ``dim`` は特徴量次元 ``d`` にする。
         - 旧実装の ``dim=n`` は train-point outlier RRP の意味に近いため、
           classification / ordinal 側とは分けて考える。
+        - ``_set_transformed_inputs`` は上書きしない。カテゴリ列を除外した
+          input_transform などの BoTorch 標準更新をそのまま使う。
     """
 
     def __init__(
@@ -194,10 +194,6 @@ class SafeRobustRelevancePursuitMixedSingleTaskGP(
         self.train_targets_raw = self._original_Y
         self.train_Yvar_raw = self._original_Yvar
 
-    def _set_transformed_inputs(self) -> None:
-        """BoTorch eval 時の自動 transformed input 更新を無効化する。"""
-        return None
-
     def to_standard_model(self) -> Model:
         """通常の ``MixedSingleTaskGP`` として再構築したモデルを返す。"""
         is_training = self.training
@@ -225,4 +221,3 @@ class SafeRobustRelevancePursuitMixedSingleTaskGP(
         )
         model.train(is_training)
         return model
-

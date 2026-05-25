@@ -612,7 +612,8 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         if self.objective is None:
             return score
 
-        out = _objective_call(self.objective, score, X)
+        X_for_objective = _objective_X_for_score(score, X)
+        out = _objective_call(self.objective, score, X_for_objective)
         if not torch.is_tensor(out):
             raise RuntimeError(f"{name}: objective must return Tensor. Got {type(out)}.")
         return out

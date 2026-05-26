@@ -248,24 +248,52 @@ class _RegressionActiveLearningBase(AcquisitionFunction):
         if likelihood is not None and hasattr(likelihood, "eval"):
             likelihood.eval()
 
+    @staticmethod
+    def _unwrap_transformed_inputs(Xt: Tensor | tuple[Tensor, ...]) -> Tensor:
+        if isinstance(Xt, tuple):
+            return Xt[0]
+        return Xt
+
     def _apply_input_transform_for_distance(self, X: Tensor) -> Tensor:
-        """Apply model input transform for distance / penalty calculations."""
+        """Apply model input transform for distance / penalty calculations.
+
+        Prefer ``model.transform_inputs`` over directly calling
+        ``model.input_transform``.  Wrapper models such as SaasMixedSingleTaskGP,
+        PCA, and REMBO have an internal representation that differs from raw
+        candidate space.  Calling ``input_transform`` directly on raw ``X`` can
+        therefore apply an encoded-space transform to raw-space data.
+        """
         X = _ensure_q_batch(X)
 
-        it = getattr(self.model, "input_transform", None)
-        if it is not None:
-            Xt = it(X)
-            if isinstance(Xt, tuple):
-                Xt = Xt[0]
-            return _ensure_q_batch(Xt)
+        transform_inputs = getattr(self.model, "transform_inputs", None)
+        if callable(transform_inputs):
+            try:
+                Xt = self._unwrap_transformed_inputs(transform_inputs(X))
+                return _ensure_q_batch(Xt)
+            except Exception:
+                # Fall back to raw input_transform below for plain models or
+                # wrappers whose transform_inputs intentionally rejects X.
+                pass
 
         models = getattr(self.model, "models", None)
         if models is not None and len(models) > 0:
+            transform_inputs = getattr(models[0], "transform_inputs", None)
+            if callable(transform_inputs):
+                try:
+                    Xt = self._unwrap_transformed_inputs(transform_inputs(X))
+                    return _ensure_q_batch(Xt)
+                except Exception:
+                    pass
+
+        it = getattr(self.model, "input_transform", None)
+        if it is not None:
+            Xt = self._unwrap_transformed_inputs(it(X))
+            return _ensure_q_batch(Xt)
+
+        if models is not None and len(models) > 0:
             it = getattr(models[0], "input_transform", None)
             if it is not None:
-                Xt = it(X)
-                if isinstance(Xt, tuple):
-                    Xt = Xt[0]
+                Xt = self._unwrap_transformed_inputs(it(X))
                 return _ensure_q_batch(Xt)
 
         return X

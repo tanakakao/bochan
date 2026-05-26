@@ -16,6 +16,7 @@ from torch import Tensor
 
 from botorch.models.model import Model
 from botorch.models.transforms.input import InputTransform
+from gpytorch.mlls import ExactMarginalLogLikelihood
 
 from bochan.models.components.projected_utils import (
     _apply_input_transform_for_eval,
@@ -83,6 +84,16 @@ class _BaseProjectedModel(Model):
     def batch_shape(self) -> torch.Size:
         """base_model の batch_shape。なければ空 batch。"""
         return getattr(self.base_model, "batch_shape", torch.Size())
+
+    def make_mll(self):
+        """内部 ``base_model`` 用の ExactMarginalLogLikelihood を返す。
+
+        Projected wrapper 自体は ``gpytorch.models.GP`` ではないため、
+        ``ExactMarginalLogLikelihood(self.likelihood, self)`` には渡せない。
+        学習時は projected-space の内部 GP である ``base_model`` に対して
+        MLL を構築する。
+        """
+        return ExactMarginalLogLikelihood(self.base_model.likelihood, self.base_model)
 
     # ------------------------------------------------------------------
     # train inputs / targets

@@ -96,6 +96,8 @@ class SaasMixedSingleTaskGP(OneHotEncodingMixin, AdditiveMapSaasSingleTaskGP):
         - ExactGP 内部の ``train_inputs`` / ``train_targets`` は親クラスが設定した
           encoded-space / flattened target を保持する。raw-space は
           ``train_inputs_raw`` / ``train_X_raw`` で参照する。
+        - ``_set_transformed_inputs`` は上書きしない。内部 ``train_inputs`` は
+          encoded-space にあるため、BoTorch 標準の input_transform 同期を使う。
     """
 
     def __init__(
@@ -142,10 +144,6 @@ class SaasMixedSingleTaskGP(OneHotEncodingMixin, AdditiveMapSaasSingleTaskGP):
     def encoded_train_input_raw(self) -> Tensor:
         """one-hot encode 後、input_transform 前の training X。"""
         return self.encoded_train_inputs_raw[0]
-
-    def _set_transformed_inputs(self) -> None:
-        """BoTorch の eval-time 自動 train_inputs 更新を無効化する。"""
-        return None
 
     def transform_inputs(self, X: Tensor, input_transform=None) -> Tensor:  # noqa: N802
         """raw/encoded X を内部 encoded feature space に変換する。"""

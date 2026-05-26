@@ -7,7 +7,7 @@ Regression 用 Robust Relevance Pursuit モデル。
     bochan/models/regression/robust/relevance_pursuit.py
 
 命名規則:
-    - regression では BoTorch の feature relevance pursuit を使う。
+    - regression では BoTorch の train-point outlier relevance pursuit を使う。
     - deepcopy / fantasize 安全化を入れたものは Safe* とする。
 """
 
@@ -144,10 +144,11 @@ class SafeRobustRelevancePursuitMixedSingleTaskGP(
         cache_model_trace: model trace を cache するか。
 
     Notes:
-        - regression の RRP は feature relevance pursuit として扱う。
-        - そのため RRP mixin の ``dim`` は特徴量次元 ``d`` にする。
-        - 旧実装の ``dim=n`` は train-point outlier RRP の意味に近いため、
-          classification / ordinal 側とは分けて考える。
+        - BoTorch の RobustRelevancePursuit は sparse outlier noise を使う。
+        - そのため RRP mixin の ``dim`` は特徴量次元 ``d`` ではなく、
+          訓練点数 ``n`` にする必要がある。
+        - ``fit_gpytorch_mll(..., numbers_of_outliers=[...])`` の各値は、
+          特徴量数ではなく外れ値扱いする訓練点数の候補を表す。
         - ``_set_transformed_inputs`` は上書きしない。カテゴリ列を除外した
           input_transform などの BoTorch 標準更新をそのまま使う。
     """
@@ -184,7 +185,7 @@ class SafeRobustRelevancePursuitMixedSingleTaskGP(
         RobustRelevancePursuitMixin.__init__(
             self,
             base_likelihood=self.likelihood,
-            dim=train_X.shape[-1],
+            dim=train_X.shape[-2],
             prior_mean_of_support=prior_mean_of_support,
             convex_parameterization=convex_parameterization,
             cache_model_trace=cache_model_trace,

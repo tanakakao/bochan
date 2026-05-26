@@ -535,10 +535,6 @@ class HeteroscedasticNoiseModelMixin:
     noise_model は raw X を受け取り、内部で Normalize のみを適用する想定。
     """
 
-    def _set_transformed_inputs(self) -> None:
-        """BoTorch eval 時の自動 transformed train_inputs 更新を無効化する。"""
-        return None
-
     def predict_noise_logvar(
         self,
         X: Tensor,
@@ -569,6 +565,8 @@ class HeteroscedasticLatentPosteriorMixin(HeteroscedasticNoiseModelMixin):
     GPyTorchPosterior 系の latent posterior に heteroscedastic noise を足す mixin。
 
     observation_noise=True のときだけ対角 noise を covariance に加える。
+    ``_set_transformed_inputs`` は上書きせず、BoTorch 標準の
+    input_transform 同期を維持する。
     """
 
     def posterior(

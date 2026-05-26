@@ -494,25 +494,18 @@ class OneHotEncodingMixin:
     def _expand_transform_to_encoded_space(self, transform: Any) -> Any:
         if transform is None:
             return None
-        transforms = getattr(transform, "transforms", None)
-        if transforms is not None:
-            try:
-                items = list(transforms.items())
-            except Exception:
-                items = []
-            for key, child in items:
+
+        child_items = self._get_transform_child_items(transform)
+        if child_items:
+            for key, child in child_items:
                 new_child = self._expand_transform_to_encoded_space(child)
-                try:
-                    transforms[key] = new_child
-                except Exception:
-                    try:
-                        setattr(transforms, key, new_child)
-                    except Exception:
-                        pass
+                self._set_child_transform(transform, key, new_child)
             return transform
 
         if isinstance(transform, Normalize):
             return self._expand_normalize_to_encoded_space(transform)
+
+        self._expand_perturbation_tensors_to_encoded_space(transform)
 
         bounds = getattr(transform, "bounds", None)
         if isinstance(bounds, Tensor):
@@ -526,6 +519,101 @@ class OneHotEncodingMixin:
             if encoded_value is not None:
                 self._set_attr_if_present(transform, attr, encoded_value)
         return transform
+
+    @staticmethod
+    def _get_transform_child_items(transform: Any) -> list[tuple[Any, Any]]:
+        """ChainedInputTransform / ModuleDict 風 transform の子 transform を取得する。"""
+        try:
+            items = list(transform.items())
+        except Exception:
+            items = []
+        if items:
+            return items
+
+        transforms = getattr(transform, "transforms", None)
+        if transforms is not None:
+            try:
+                items = list(transforms.items())
+            except Exception:
+                items = []
+        return items
+
+    @staticmethod
+    def _set_child_transform(transform: Any, key: Any, child: Any) -> None:
+        """ChainedInputTransform / ModuleDict 風 transform の子 transform を差し替える。"""
+        try:
+            transform[key] = child
+            return
+        except Exception:
+            pass
+
+        transforms = getattr(transform, "transforms", None)
+        if transforms is not None:
+            try:
+                transforms[key] = child
+                return
+            except Exception:
+                pass
+            try:
+                setattr(transforms, str(key), child)
+                return
+            except Exception:
+                pass
+
+        try:
+            setattr(transform, str(key), child)
+        except Exception:
+            pass
+
+    def _expand_perturbation_tensors_to_encoded_space(self, transform: Any) -> None:
+        """InputPerturbation などの raw-space perturbation tensor を encoded-space に拡張する。
+
+        additive perturbation ではカテゴリ one-hot block に 0 を入れ、
+        multiplicative perturbation ではカテゴリ one-hot block に 1 を入れる。
+        これにより raw-space の ``[..., raw_dim]`` perturbation を
+        encoded-space の ``[..., encoded_dim]`` 入力へ安全に適用できる。
+        """
+        fill_value = 1.0 if bool(getattr(transform, "multiplicative", False)) else 0.0
+        for attr in (
+            "perturbation_set",
+            "_perturbation_set",
+            "perturbations",
+            "_perturbations",
+        ):
+            value = getattr(transform, attr, None)
+            if not isinstance(value, Tensor):
+                continue
+            encoded_value = self._expand_raw_feature_tensor_to_encoded_space(
+                value,
+                fill_value=fill_value,
+            )
+            if encoded_value is not None:
+                self._set_attr_if_present(transform, attr, encoded_value)
+
+    def _expand_raw_feature_tensor_to_encoded_space(
+        self,
+        value: Tensor,
+        *,
+        fill_value: float = 0.0,
+    ) -> Optional[Tensor]:
+        """raw-space feature tensor ``[..., raw_dim]`` を ``[..., encoded_dim]`` へ拡張する。"""
+        if value.shape[-1] == self.encoded_dim:
+            return value
+        if value.shape[-1] != self.raw_dim:
+            return None
+
+        pieces: list[Tensor] = []
+        for d in range(self.raw_dim):
+            if d not in self._cat_specs:
+                pieces.append(value[..., d : d + 1])
+                continue
+            spec = self._cat_specs[d]
+            cat_piece = value.new_full(
+                (*value.shape[:-1], len(spec.categories)),
+                fill_value,
+            )
+            pieces.append(cat_piece)
+        return torch.cat(pieces, dim=-1)
 
     @staticmethod
     def _set_attr_if_present(obj: Any, name: str, value: Any) -> None:

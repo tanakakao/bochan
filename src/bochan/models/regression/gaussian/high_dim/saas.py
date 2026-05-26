@@ -93,6 +93,9 @@ class SaasMixedSingleTaskGP(OneHotEncodingMixin, AdditiveMapSaasSingleTaskGP):
         - encoded-space X も許容するため、最適化後の encoded 候補確認にも使える。
         - ``get_optimize_acqf_mixed_fixed_features_list`` で encoded-space の
           ``fixed_features_list`` を取得できる。
+        - ExactGP 内部の ``train_inputs`` / ``train_targets`` は親クラスが設定した
+          encoded-space / flattened target を保持する。raw-space は
+          ``train_inputs_raw`` / ``train_X_raw`` で参照する。
     """
 
     def __init__(
@@ -127,9 +130,12 @@ class SaasMixedSingleTaskGP(OneHotEncodingMixin, AdditiveMapSaasSingleTaskGP):
         )
 
         # public 側は raw-space を明示する。
+        # Do not overwrite self.train_inputs / self.train_targets here.
+        # They are ExactGP internal state and must remain consistent with
+        # AdditiveMapSaasSingleTaskGP's encoded training inputs and flattened
+        # targets. Overwriting train_targets with [N, 1] causes GPyTorch
+        # prediction_strategy shape mismatches.
         self.train_inputs_raw = (train_X.detach().clone(),)
-        self.train_inputs = (train_X.detach().clone(),)
-        self.train_targets = train_Y
         self.input_transform = expanded_input_transform
 
     @property

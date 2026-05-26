@@ -99,24 +99,6 @@ class RegressionLevelSetScoreObjective(torch.nn.Module):
     This mirrors the classification / ordinal score-objective pattern.  It is
     mainly used to aggregate InputPerturbation-expanded scores from ``q * n_w``
     back to ``q``.
-
-    Args:
-        n_w:
-            Number of perturbation samples per candidate.
-        risk_type:
-            None, "var", or "cvar".
-        alpha:
-            Tail fraction for VaR / CVaR.
-        maximize:
-            If True, lower-score tail is treated as worst-case.  This matches
-            maximization acquisitions.
-        weight:
-            Multiplicative weight.
-        sign:
-            Sign flip.  Keep 1.0 for maximization.
-        aggregated_risk_mode:
-            If ``"ignore"``, already aggregated batch scores are returned as-is.
-            If ``"error"``, receiving an already aggregated score raises.
     """
 
     def __init__(
@@ -202,20 +184,7 @@ class RegressionLevelSetScoreObjective(torch.nn.Module):
 
 
 def _objective_X_for_score(score: Tensor, X: Optional[Tensor]) -> Optional[Tensor]:
-    """Return an X argument compatible with score's q-batch semantics.
-
-    Pointwise level-set acquisitions pass ``score.shape = batch_shape x q`` and can
-    use the original candidate ``X.shape = batch_shape x q x d`` for objective
-    shape verification.
-
-    Joint level-set acquisitions first reduce over q / q*n_w and then pass
-    ``score.shape = batch_shape``. In that case the original X would make
-    BoTorch's ``MCAcquisitionObjective.__call__`` compare ``score.shape[-1]``
-    with ``X.shape[-2]`` and fail, e.g. ``Got 128 and 1`` during initial-condition
-    generation. For already joint-reduced scores, use a lightweight shape witness
-    whose q-like dimension is the batch length so that score transforms such as
-    sign / weight can still be applied without triggering the q=1 check.
-    """
+    """Return an X argument compatible with score's q-batch semantics."""
     if X is None or X.ndim < 3 or score.ndim == 0:
         return X
 
@@ -257,8 +226,6 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         model: Model,
         *,
         threshold: float | Tensor = 0.0,
-        # Backward-compatible local alias only inside this new API.
-        # Public docs should prefer threshold.
         h: Optional[float | Tensor] = None,
         reduction: ReductionType = "mean",
         output_reduction: OutputReductionType = "mean",
@@ -311,9 +278,6 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         self.set_X_pending(X_pending)
         self.set_X_observed(X_observed)
 
-    # ------------------------------------------------------------
-    # Reference handling
-    # ------------------------------------------------------------
     def _coerce_reference_to_tensor(
         self,
         ref,
@@ -359,32 +323,55 @@ class _RegressionLevelSetBase(AcquisitionFunction):
     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
         self.X_observed = self._coerce_reference_to_tensor(X_observed)
 
-    # ------------------------------------------------------------
-    # Shape / transform helpers
-    # ------------------------------------------------------------
     def _prepare_eval(self) -> None:
         self.model.eval()
         likelihood = getattr(self.model, "likelihood", None)
         if likelihood is not None and hasattr(likelihood, "eval"):
             likelihood.eval()
 
+    @staticmethod
+    def _unwrap_transformed_inputs(Xt: Tensor | tuple[Tensor, ...]) -> Tensor:
+        if isinstance(Xt, tuple):
+            return Xt[0]
+        return Xt
+
     def _apply_input_transform_for_distance(self, X: Tensor) -> Tensor:
+        """Apply the model's own raw -> internal transform for distance penalties.
+
+        Wrapper models such as SaasMixedSingleTaskGP use raw-space candidates but
+        encoded-space input transforms.  Directly applying ``model.input_transform``
+        to raw X can therefore mismatch raw_dim and encoded_dim.  Prefer the
+        public ``transform_inputs`` path used by the model posterior.
+        """
         X = _ensure_q_batch(X)
 
-        it = getattr(self.model, "input_transform", None)
-        if it is not None:
-            Xt = it(X)
-            if isinstance(Xt, tuple):
-                Xt = Xt[0]
-            return _ensure_q_batch(Xt)
+        transform_inputs = getattr(self.model, "transform_inputs", None)
+        if callable(transform_inputs):
+            try:
+                Xt = self._unwrap_transformed_inputs(transform_inputs(X))
+                return _ensure_q_batch(Xt)
+            except Exception:
+                pass
 
         models = getattr(self.model, "models", None)
         if models is not None and len(models) > 0:
+            transform_inputs = getattr(models[0], "transform_inputs", None)
+            if callable(transform_inputs):
+                try:
+                    Xt = self._unwrap_transformed_inputs(transform_inputs(X))
+                    return _ensure_q_batch(Xt)
+                except Exception:
+                    pass
+
+        it = getattr(self.model, "input_transform", None)
+        if it is not None:
+            Xt = self._unwrap_transformed_inputs(it(X))
+            return _ensure_q_batch(Xt)
+
+        if models is not None and len(models) > 0:
             it = getattr(models[0], "input_transform", None)
             if it is not None:
-                Xt = it(X)
-                if isinstance(Xt, tuple):
-                    Xt = Xt[0]
+                Xt = self._unwrap_transformed_inputs(it(X))
                 return _ensure_q_batch(Xt)
 
         return X
@@ -411,7 +398,6 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         if out.shape == target:
             return out
 
-        # Drop output singleton, not q=1.
         if out.ndim >= 1 and out.shape[-1] == 1:
             out_s = out.squeeze(-1)
             if out_s.shape == target:
@@ -445,7 +431,6 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         if out.shape == target_prefix:
             return out
 
-        # Reduce leading MCMC / ensemble dims.
         while out.ndim > len(target_prefix) + 1:
             out = out.mean(dim=0)
             if out.shape == target_prefix:
@@ -471,9 +456,6 @@ class _RegressionLevelSetBase(AcquisitionFunction):
             f"value.shape={tuple(value.shape)}, Xt.shape={tuple(Xt.shape)}."
         )
 
-    # ------------------------------------------------------------
-    # Posterior helpers
-    # ------------------------------------------------------------
     def _posterior_mean_variance(self, X: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         Xq = _ensure_q_batch(X)
         self._prepare_eval()
@@ -490,7 +472,6 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         return mean, var, Xt
 
     def _posterior_covariance(self, X: Tensor) -> tuple[Tensor, Tensor, Tensor]:
-        """Return mean / covariance / transformed X for joint acquisitions."""
         Xq = _ensure_q_batch(X)
         self._prepare_eval()
 
@@ -508,7 +489,6 @@ class _RegressionLevelSetBase(AcquisitionFunction):
             covar = posterior.distribution.covariance_matrix
 
         if covar is None:
-            # Fall back to diagonal covariance from variance.
             var = self._reduce_outputs_if_needed(posterior.variance, Xt, name="posterior.variance")
             var = self._align_pointwise_score_to_X(var, Xt, name="posterior.variance")
             covar = torch.diag_embed(var)
@@ -517,7 +497,6 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         q_like = int(Xt.shape[-2])
         target_covar_shape = torch.Size(Xt.shape[:-2]) + torch.Size([q_like, q_like])
 
-        # Single-output GP covariance is usually batch_shape x q x q.
         while covar.ndim > len(target_covar_shape):
             covar = covar.mean(dim=0)
             if covar.shape == target_covar_shape:
@@ -527,7 +506,6 @@ class _RegressionLevelSetBase(AcquisitionFunction):
             if covar.numel() == _safe_prod(target_covar_shape):
                 covar = covar.reshape(target_covar_shape)
             else:
-                # For multi-output or unusual posterior shapes, use diagonal fallback.
                 var = self._reduce_outputs_if_needed(posterior.variance, Xt, name="posterior.variance")
                 var = self._align_pointwise_score_to_X(var, Xt, name="posterior.variance")
                 covar = torch.diag_embed(var)
@@ -535,9 +513,6 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         covar = 0.5 * (covar + covar.transpose(-1, -2))
         return mean, covar, Xt
 
-    # ------------------------------------------------------------
-    # Penalty helpers
-    # ------------------------------------------------------------
     def _same_batch_penalty_per_point(self, Xt: Tensor) -> Tensor:
         Xt = _ensure_q_batch(Xt)
         q = int(Xt.shape[-2])
@@ -561,14 +536,7 @@ class _RegressionLevelSetBase(AcquisitionFunction):
 
         return self.same_batch_penalty_weight * per_point
 
-    def _reference_penalty_per_point(
-        self,
-        Xt: Tensor,
-        ref,
-        *,
-        weight: float,
-        beta: float,
-    ) -> Tensor:
+    def _reference_penalty_per_point(self, Xt: Tensor, ref, *, weight: float, beta: float) -> Tensor:
         Xt = _ensure_q_batch(Xt)
         if weight <= 0.0:
             return Xt.new_zeros(Xt.shape[:-1])
@@ -605,9 +573,6 @@ class _RegressionLevelSetBase(AcquisitionFunction):
             )
         )
 
-    # ------------------------------------------------------------
-    # Objective / reduction
-    # ------------------------------------------------------------
     def _apply_objective_to_score(self, score: Tensor, X: Tensor, name: str) -> Tensor:
         if self.objective is None:
             return score
@@ -636,14 +601,7 @@ class _RegressionLevelSetBase(AcquisitionFunction):
     def _reduce_q(self, score: Tensor) -> Tensor:
         return _reduce(score, dim=-1, mode=self.reduction)
 
-    def _finalize_pointwise_score(
-        self,
-        score: Tensor,
-        X: Tensor,
-        Xt: Tensor,
-        *,
-        name: str,
-    ) -> Tensor:
+    def _finalize_pointwise_score(self, score: Tensor, X: Tensor, Xt: Tensor, *, name: str) -> Tensor:
         raw_X = _ensure_q_batch(X)
         original_batch_shape = torch.Size(raw_X.shape[:-2])
         q = int(raw_X.shape[-2])
@@ -672,8 +630,7 @@ class _RegressionLevelSetBase(AcquisitionFunction):
             return out.reshape(original_batch_shape)
 
         raise RuntimeError(
-            f"{name}: output shape mismatch. "
-            f"Expected {tuple(original_batch_shape)}, got {tuple(out.shape)}."
+            f"{name}: output shape mismatch. Expected {tuple(original_batch_shape)}, got {tuple(out.shape)}."
         )
 
     def _finalize_joint_score(self, score: Tensor, X: Tensor, Xt: Tensor, *, name: str) -> Tensor:
@@ -691,7 +648,6 @@ class _RegressionLevelSetBase(AcquisitionFunction):
                     f"score.shape={tuple(score.shape)}, expected={tuple(Xt.shape[:-2])}."
                 )
 
-        # Joint score is already q-aggregated. Apply aggregate penalty.
         penalty = self._total_penalty_per_point(Xt)
         penalty = self._reduce_q(penalty)
         score = score - penalty
@@ -711,29 +667,14 @@ class _RegressionLevelSetBase(AcquisitionFunction):
             return score.reshape(original_batch_shape)
 
         raise RuntimeError(
-            f"{name}: output shape mismatch. "
-            f"Expected {tuple(original_batch_shape)}, got {tuple(score.shape)}."
+            f"{name}: output shape mismatch. Expected {tuple(original_batch_shape)}, got {tuple(score.shape)}."
         )
 
 
-# ============================================================
-# Acquisition implementations
-# ============================================================
-
-
 class qRegressionStraddle(_RegressionLevelSetBase):
-    """Regression straddle acquisition.
+    """Regression straddle acquisition."""
 
-    score(x) = beta * std(x) - |mean(x) - threshold|
-    """
-
-    def __init__(
-        self,
-        model: Model,
-        *,
-        beta: float | Tensor = 1.96,
-        **kwargs: Any,
-    ) -> None:
+    def __init__(self, model: Model, *, beta: float | Tensor = 1.96, **kwargs: Any) -> None:
         super().__init__(model=model, **kwargs)
         self.register_buffer("beta", torch.as_tensor(beta))
 
@@ -744,21 +685,11 @@ class qRegressionStraddle(_RegressionLevelSetBase):
         threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
         beta = self.beta.to(device=mean.device, dtype=mean.dtype)
         score = beta * std - (mean - threshold).abs()
-
-        return self._finalize_pointwise_score(
-            score,
-            X,
-            Xt,
-            name="qRegressionStraddle",
-        )
+        return self._finalize_pointwise_score(score, X, Xt, name="qRegressionStraddle")
 
 
 class qRegressionJointStraddle(_RegressionLevelSetBase):
-    """Joint regression straddle acquisition.
-
-    This scores the q-batch jointly by combining average boundary proximity with
-    joint covariance uncertainty.
-    """
+    """Joint regression straddle acquisition."""
 
     def __init__(
         self,
@@ -793,34 +724,16 @@ class qRegressionJointStraddle(_RegressionLevelSetBase):
         mean, covar, Xt = self._posterior_covariance(X)
         threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
         beta = self.beta.to(device=mean.device, dtype=mean.dtype)
-
         proximity = -(mean - threshold).abs().mean(dim=-1)
         uncertainty = self._uncertainty_score(covar)
         score = proximity + beta * uncertainty
-
-        return self._finalize_joint_score(
-            score,
-            X,
-            Xt,
-            name="qRegressionJointStraddle",
-        )
+        return self._finalize_joint_score(score, X, Xt, name="qRegressionJointStraddle")
 
 
 class qRegressionICU(_RegressionLevelSetBase):
-    """Integrated contour uncertainty style acquisition.
+    """Integrated contour uncertainty style acquisition."""
 
-    For a Gaussian marginal, this uses the density at the threshold multiplied
-    by predictive standard deviation.  It is a smooth proxy for boundary-focused
-    uncertainty.
-    """
-
-    def __init__(
-        self,
-        model: Model,
-        *,
-        bandwidth: Optional[float | Tensor] = None,
-        **kwargs: Any,
-    ) -> None:
+    def __init__(self, model: Model, *, bandwidth: Optional[float | Tensor] = None, **kwargs: Any) -> None:
         super().__init__(model=model, **kwargs)
         self.bandwidth = None if bandwidth is None else torch.as_tensor(bandwidth)
 
@@ -829,33 +742,19 @@ class qRegressionICU(_RegressionLevelSetBase):
         mean, var, Xt = self._posterior_mean_variance(X)
         std = var.sqrt().clamp_min(self.eps)
         threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
-
         if self.bandwidth is None:
             bw = std
         else:
             bw = self.bandwidth.to(device=mean.device, dtype=mean.dtype).clamp_min(self.eps)
-
         z = (mean - threshold) / bw
         score = torch.exp(-0.5 * z.pow(2)) * std
-
-        return self._finalize_pointwise_score(
-            score,
-            X,
-            Xt,
-            name="qRegressionICU",
-        )
+        return self._finalize_pointwise_score(score, X, Xt, name="qRegressionICU")
 
 
 class qRegressionBoundaryVariance(_RegressionLevelSetBase):
     """Boundary-weighted posterior variance acquisition."""
 
-    def __init__(
-        self,
-        model: Model,
-        *,
-        tau: float | Tensor = 1.0,
-        **kwargs: Any,
-    ) -> None:
+    def __init__(self, model: Model, *, tau: float | Tensor = 1.0, **kwargs: Any) -> None:
         super().__init__(model=model, **kwargs)
         self.register_buffer("tau", torch.as_tensor(tau))
 
@@ -864,26 +763,13 @@ class qRegressionBoundaryVariance(_RegressionLevelSetBase):
         mean, var, Xt = self._posterior_mean_variance(X)
         threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
         tau = self.tau.to(device=mean.device, dtype=mean.dtype).clamp_min(self.eps)
-
         boundary_weight = torch.exp(-0.5 * ((mean - threshold) / tau).pow(2))
         score = var * boundary_weight
-
-        return self._finalize_pointwise_score(
-            score,
-            X,
-            Xt,
-            name="qRegressionBoundaryVariance",
-        )
+        return self._finalize_pointwise_score(score, X, Xt, name="qRegressionBoundaryVariance")
 
 
 class qRegressionProbabilityOfExceedance(_RegressionLevelSetBase):
-    """Probability-of-exceedance / probability-of-feasibility style acquisition.
-
-    Modes:
-        - ``above``:    P(f(x) >= threshold)
-        - ``below``:    P(f(x) <= threshold)
-        - ``interval``: P(lower <= f(x) <= upper)
-    """
+    """Probability-of-exceedance / probability-of-feasibility style acquisition."""
 
     def __init__(
         self,
@@ -909,7 +795,6 @@ class qRegressionProbabilityOfExceedance(_RegressionLevelSetBase):
         std = var.sqrt().clamp_min(self.eps)
 
         if self.temperature is not None:
-            # Soft deterministic approximation based on posterior mean.
             temp = self.temperature.to(device=mean.device, dtype=mean.dtype).clamp_min(self.eps)
             threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
             if self.mode == "above":

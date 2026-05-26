@@ -9,7 +9,7 @@ from botorch.models.relevance_pursuit import (
     forward_relevance_pursuit,
 )
 
-from .common import (
+from ..common import (
     get_fit_train_X,
     get_fit_train_Y,
     get_likelihood_from_mll_or_model,
@@ -133,14 +133,9 @@ def fit_rrp_ordinal_mll_optimizer(
             "mll.model.train_inputs should match mll.model.train_targets."
         )
 
-    # RRP ordinal では sparse module / cutpoints / likelihood parameter が
-    # likelihood 側にある場合があるため、model.parameters() だけでは不足する。
-    # mll, likelihood, model の trainable parameters を重複排除して optimizer に渡す。
     params = _unique_trainable_parameters(model, likelihood, mll)
     if len(params) == 0:
-        raise RuntimeError(
-            "No trainable parameters were found for RRP ordinal fitting."
-        )
+        raise RuntimeError("No trainable parameters were found for RRP ordinal fitting.")
 
     optimizer = optimizer_cls(params, lr=lr)
 
@@ -150,7 +145,6 @@ def fit_rrp_ordinal_mll_optimizer(
     for epoch in range(num_epochs):
         optimizer.zero_grad()
 
-        # Wrapper models should receive raw X.
         latent_dist = model(train_X)
 
         loss = -mll(latent_dist, train_Y)
@@ -188,38 +182,6 @@ def fit_rrp_ordinal_mll(
 ):
     """
     Fit an RRP ordinal MLL via forward/backward relevance pursuit.
-
-    Args:
-        mll:
-            VariationalELBO / PredictiveLogLikelihood-like approximate MLL.
-        fit_model:
-            Optional wrapper/model to call in the training loop.
-            Use this for PCA / random-projection ordinal wrappers.
-        method:
-            "forward" or "backward".
-        sparsity_levels:
-            Candidate support sizes.
-        initial_support:
-            Initial active support.
-        reset_parameters:
-            Whether to reset sparse parameters between support changes.
-        reset_dense_parameters:
-            Whether to reset dense hyperparameters between support changes.
-        record_model_trace:
-            Whether to store model snapshots for each support.
-            Defaults to `return_all`.
-        return_all:
-            If True, returns (mll, sparse_module, model_trace).
-            If False, returns mll.
-        optimizer:
-            Relevance-pursuit-compatible optimizer callable.
-        optimizer_kwargs:
-            Keyword arguments passed to optimizer.
-        closure, closure_kwargs:
-            Passed through to the relevance pursuit routine.
-
-    Returns:
-        mll, or (mll, sparse_module, model_trace) if return_all=True.
     """
     if method not in {"forward", "backward"}:
         raise ValueError("method must be 'forward' or 'backward'.")
@@ -234,7 +196,6 @@ def fit_rrp_ordinal_mll(
     else:
         optimizer_kwargs = dict(optimizer_kwargs)
 
-    # Preserve explicit optimizer_kwargs, but inject fit_model when needed.
     if fit_model is not None and "fit_model" not in optimizer_kwargs:
         optimizer_kwargs["fit_model"] = fit_model
 

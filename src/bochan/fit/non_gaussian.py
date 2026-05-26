@@ -31,9 +31,7 @@ class FitResult:
 
 
 def _unwrap_mll(mll: MarginalLogLikelihood) -> MarginalLogLikelihood:
-    """
-    DeepApproximateMLL の場合は内側の base_mll を返す。
-    """
+    """DeepApproximateMLL の場合は内側の base_mll を返す。"""
     return getattr(mll, "base_mll", mll)
 
 
@@ -234,8 +232,8 @@ def fit_non_gaussian_gp(
     Args:
         model:
             `make_mll()` を持つモデル。
-            例: `PoissonGPModel`, `GammaGPModel`, `PoissonDeepGPModel`,
-            `GammaDeepGPModel` など。
+            例: `PoissonGPModel`, `GammaGPModel`, `BetaGPModel`,
+            `NegativeBinomialGPModel` など。
         mll:
             明示的に使う MLL。省略時は `model.make_mll()` を呼ぶ。
         lr:
@@ -334,11 +332,16 @@ def fit_gpytorch_mll_like_botorch(
     )
 
 
-# Poisson / Gamma で名前を分けたい場合の alias。
-fit_poisson_gp = fit_non_gaussian_gp
+# Distribution-specific aliases.
+fit_beta_gp = fit_non_gaussian_gp
 fit_gamma_gp = fit_non_gaussian_gp
-fit_poisson_mll = fit_non_gaussian_mll
+fit_poisson_gp = fit_non_gaussian_gp
+fit_negative_binomial_gp = fit_non_gaussian_gp
+
+fit_beta_mll = fit_non_gaussian_mll
 fit_gamma_mll = fit_non_gaussian_mll
+fit_poisson_mll = fit_non_gaussian_mll
+fit_negative_binomial_mll = fit_non_gaussian_mll
 
 
 __all__ = [
@@ -346,8 +349,12 @@ __all__ = [
     "fit_non_gaussian_gp",
     "fit_non_gaussian_mll",
     "fit_gpytorch_mll_like_botorch",
-    "fit_poisson_gp",
+    "fit_beta_gp",
     "fit_gamma_gp",
-    "fit_poisson_mll",
+    "fit_poisson_gp",
+    "fit_negative_binomial_gp",
+    "fit_beta_mll",
     "fit_gamma_mll",
+    "fit_poisson_mll",
+    "fit_negative_binomial_mll",
 ]

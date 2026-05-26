@@ -19,27 +19,27 @@ class ClassificationFitResult:
 
 
 def _get_train_inputs_from_model(model: Any) -> tuple[Tensor, ...]:
-    if hasattr(model, 'fit_train_inputs'):
+    if hasattr(model, "fit_train_inputs"):
         x = model.fit_train_inputs
-    elif hasattr(model, 'transformed_train_inputs'):
+    elif hasattr(model, "transformed_train_inputs"):
         x = model.transformed_train_inputs
-    elif hasattr(model, 'train_inputs'):
+    elif hasattr(model, "train_inputs"):
         x = model.train_inputs
     else:
-        raise AttributeError('Could not find train_inputs / transformed_train_inputs.')
+        raise AttributeError("Could not find train_inputs / transformed_train_inputs.")
     if isinstance(x, Tensor):
         return (x,)
     return tuple(x)
 
 
 def _get_train_targets_from_model(model: Any) -> Tensor:
-    if hasattr(model, 'fit_train_targets'):
+    if hasattr(model, "fit_train_targets"):
         return model.fit_train_targets
-    if hasattr(model, 'train_targets'):
+    if hasattr(model, "train_targets"):
         return model.train_targets
-    if hasattr(model, 'train_Y'):
+    if hasattr(model, "train_Y"):
         return model.train_Y
-    raise AttributeError('Could not find train_targets.')
+    raise AttributeError("Could not find train_targets.")
 
 
 def fit_classification_mll(
@@ -55,8 +55,9 @@ def fit_classification_mll(
     verbose: bool = False,
 ) -> list[float]:
     """VariationalELBO / DeepApproximateMLL 用の分類 GP fit helper。"""
-    model = getattr(mll, 'base_mll', mll).model
-    likelihood = getattr(mll, 'base_mll', mll).likelihood
+    base_mll = getattr(mll, "base_mll", mll)
+    model = base_mll.model
+    likelihood = base_mll.likelihood
 
     if train_inputs is None:
         train_inputs = _get_train_inputs_from_model(model)
@@ -100,7 +101,7 @@ def fit_classification_mll(
         mean_loss = total / max(n_batch, 1)
         losses.append(mean_loss)
         if verbose:
-            print(f'[{epoch + 1:04d}/{int(num_epochs):04d}] loss={mean_loss:.6f}')
+            print(f"[{epoch + 1:04d}/{int(num_epochs):04d}] loss={mean_loss:.6f}")
 
     mll.eval()
     model.eval()
@@ -108,11 +109,16 @@ def fit_classification_mll(
     return losses
 
 
-def fit_classification_gp(model: Any, *, mll: Optional[MarginalLogLikelihood] = None, **kwargs: Any) -> ClassificationFitResult:
+def fit_classification_gp(
+    model: Any,
+    *,
+    mll: Optional[MarginalLogLikelihood] = None,
+    **kwargs: Any,
+) -> ClassificationFitResult:
     """`model.make_mll()` を使って分類 GP を fit する。"""
     if mll is None:
-        if not hasattr(model, 'make_mll'):
-            raise AttributeError(f'{model.__class__.__name__} does not have make_mll().')
+        if not hasattr(model, "make_mll"):
+            raise AttributeError(f"{model.__class__.__name__} does not have make_mll().")
         mll = model.make_mll()
     losses = fit_classification_mll(mll, **kwargs)
     return ClassificationFitResult(model=model, mll=mll, losses=losses)
@@ -123,9 +129,9 @@ fit_multiclass_mll = fit_classification_mll
 
 
 __all__ = [
-    'ClassificationFitResult',
-    'fit_classification_gp',
-    'fit_classification_mll',
-    'fit_multiclass_gp',
-    'fit_multiclass_mll',
+    "ClassificationFitResult",
+    "fit_classification_gp",
+    "fit_classification_mll",
+    "fit_multiclass_gp",
+    "fit_multiclass_mll",
 ]

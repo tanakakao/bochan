@@ -9,7 +9,7 @@ from botorch.models.relevance_pursuit import (
     forward_relevance_pursuit,
 )
 
-from .common import (
+from ..common import (
     get_train_inputs_tensor,
     get_train_targets_tensor,
     maybe_clip_grad_norm,
@@ -97,36 +97,6 @@ def fit_rrp_binary_classifier_mll(
 ):
     """
     Fit an RRP classification MLL via forward/backward relevance pursuit.
-
-    Args:
-        mll:
-            VariationalELBO / PredictiveLogLikelihood-like approximate MLL.
-            `mll.likelihood` must inherit RelevancePursuitMixin.
-        method:
-            "forward" or "backward".
-        sparsity_levels:
-            Candidate support sizes.
-        initial_support:
-            Initial active support.
-        reset_parameters:
-            Whether to reset sparse parameters between support changes.
-        reset_dense_parameters:
-            Whether to reset dense hyperparameters between support changes.
-        record_model_trace:
-            Whether to store model snapshots for each support.
-            Defaults to `return_all`.
-        return_all:
-            If True, returns (mll, sparse_module, model_trace).
-            If False, returns mll.
-        optimizer:
-            Relevance-pursuit-compatible optimizer callable.
-        optimizer_kwargs:
-            Keyword arguments passed to optimizer.
-        closure, closure_kwargs:
-            Passed through to the relevance pursuit routine.
-
-    Returns:
-        mll, or (mll, sparse_module, model_trace) if return_all=True.
     """
     sparse_module = mll.likelihood
     if not isinstance(sparse_module, RelevancePursuitMixin):

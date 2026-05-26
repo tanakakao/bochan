@@ -4,7 +4,7 @@ from typing import Optional
 
 import torch
 
-from .common import (
+from ..common import (
     build_tensor_dataloader,
     get_train_inputs_tensor,
     get_train_targets_tensor,

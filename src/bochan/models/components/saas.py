@@ -20,6 +20,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from itertools import product
 from typing import Any, Callable, Dict, List, Mapping, MutableMapping, Optional, Sequence
+import weakref
 
 import torch
 from torch import Tensor
@@ -213,6 +214,55 @@ def prepare_mixed_conditioning_data(
         Y_flat = Y_flat.to(dtype=target_dtype)
     noise_flat = None if noise is None else noise.reshape(-1).to(dtype=X.dtype)
     return X_raw_flat, Y_flat, noise_flat
+
+
+class RawOrEncodedInputTransform(torch.nn.Module):
+    """raw-space / encoded-space の両方を受け取れる mixed SAAS 用 transform wrapper。
+
+    mixed SAAS モデルでは、内部 GP は one-hot encoded-space を見る。一方、
+    一部の acquisition は距離計算用に ``model.input_transform(X)`` を直接呼ぶ。
+    その X は raw-space のままなので、encoded-space 用に展開済みの
+    InputPerturbation / Normalize と次元が衝突する。
+
+    この wrapper は raw-space 入力を one-hot encode してから内部 transform を呼ぶ。
+    encoded-space 入力はそのまま内部 transform に渡す。
+    """
+
+    def __init__(self, owner: Any, transform: Any) -> None:
+        super().__init__()
+        object.__setattr__(self, "_owner_ref", weakref.ref(owner))
+        self.base_transform = transform
+
+    def _owner(self):
+        owner_ref = object.__getattribute__(self, "_owner_ref")
+        return owner_ref()
+
+    def _canonicalize_X(self, X: Tensor) -> Tensor:
+        owner = self._owner()
+        if owner is None or not torch.is_tensor(X):
+            return X
+        if X.shape[-1] == owner.raw_dim:
+            return owner._to_encoded_feature_space(X)
+        if X.shape[-1] == owner.encoded_dim:
+            return X
+        return X
+
+    def forward(self, X: Tensor) -> Tensor:
+        if isinstance(X, tuple):
+            X = X[0]
+        X_encoded = self._canonicalize_X(X)
+        out = self.base_transform(X_encoded) if callable(self.base_transform) else X_encoded
+        if isinstance(out, tuple):
+            out = out[0]
+        return out
+
+    def preprocess_transform(self, X: Tensor) -> Tensor:
+        return self.forward(X)
+
+    def untransform(self, X: Tensor) -> Tensor:
+        if hasattr(self.base_transform, "untransform"):
+            return self.base_transform.untransform(X)
+        return X
 
 
 class OneHotEncodingMixin:
@@ -482,14 +532,20 @@ class OneHotEncodingMixin:
         )
 
     def _maybe_expand_input_transform(self, input_transform: Any | None) -> Any | None:
-        """raw-space 用 input_transform を encoded-space 用に拡張する。"""
+        """raw-space 用 input_transform を encoded-space 用に拡張する。
+
+        戻り値は raw-space / encoded-space の両方を受け取れる wrapper にする。
+        これにより、acquisition 側が ``model.input_transform(X)`` を raw-space X に
+        直接適用しても、raw -> OHE -> encoded transform の順序で処理できる。
+        """
         if input_transform is None or not self._cat_specs:
             return input_transform
         try:
             input_transform = deepcopy(input_transform)
         except Exception:
             pass
-        return self._expand_transform_to_encoded_space(input_transform)
+        expanded = self._expand_transform_to_encoded_space(input_transform)
+        return RawOrEncodedInputTransform(owner=self, transform=expanded)
 
     def _expand_transform_to_encoded_space(self, transform: Any) -> Any:
         if transform is None:
@@ -728,6 +784,7 @@ class OneHotEncodingMixin:
 
 __all__ = [
     "CategoricalSpec",
+    "RawOrEncodedInputTransform",
     "OneHotEncodingMixin",
     "to_device_dtype_transform",
     "infer_ard_num_dims",

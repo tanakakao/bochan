@@ -1,14 +1,56 @@
-from .binary import fit_binary_classifier_mll
-from .deepgp import fit_deepgp_mll
-from .deepkernel import fit_deepkernel_mll
+from .classification import (
+    ClassificationFitResult,
+    fit_binary_classifier_mll,
+    fit_classification_gp,
+    fit_classification_mll,
+    fit_multiclass_gp,
+    fit_multiclass_mll,
+)
+from .deep import fit_deep_full_batch_mll, fit_deepgp_mll, fit_deepkernel_mll
+from .non_gaussian import (
+    FitResult,
+    fit_beta_gp,
+    fit_beta_mll,
+    fit_gamma_gp,
+    fit_gamma_mll,
+    fit_gpytorch_mll_like_botorch,
+    fit_negative_binomial_gp,
+    fit_negative_binomial_mll,
+    fit_non_gaussian_gp,
+    fit_non_gaussian_mll,
+    fit_poisson_gp,
+    fit_poisson_mll,
+)
 from .ordinal import fit_ordinal_gp, fit_ordinal_mll, make_ordinal_mll
-from .rrp_binary import fit_rrp_binary_classifier_mll, fit_rrp_binary_classifier_mll_optimizer
-from .rrp_ordinal import fit_rrp_ordinal_mll, fit_rrp_ordinal_mll_optimizer
+from .robust import (
+    fit_rrp_binary_classifier_mll,
+    fit_rrp_binary_classifier_mll_optimizer,
+    fit_rrp_ordinal_mll,
+    fit_rrp_ordinal_mll_optimizer,
+)
 
 __all__ = [
+    "ClassificationFitResult",
+    "FitResult",
     "fit_binary_classifier_mll",
+    "fit_classification_gp",
+    "fit_classification_mll",
+    "fit_multiclass_gp",
+    "fit_multiclass_mll",
+    "fit_deep_full_batch_mll",
     "fit_deepgp_mll",
     "fit_deepkernel_mll",
+    "fit_non_gaussian_gp",
+    "fit_non_gaussian_mll",
+    "fit_gpytorch_mll_like_botorch",
+    "fit_beta_gp",
+    "fit_beta_mll",
+    "fit_gamma_gp",
+    "fit_gamma_mll",
+    "fit_poisson_gp",
+    "fit_poisson_mll",
+    "fit_negative_binomial_gp",
+    "fit_negative_binomial_mll",
     "make_ordinal_mll",
     "fit_ordinal_mll",
     "fit_ordinal_gp",

@@ -398,6 +398,7 @@ More focused documentation is available in package-level README files:
 
 | File | Contents |
 |---|---|
+| `docs/theory/README.md` | Theoretical background for GP models, Bayesian optimization, acquisition functions, active learning, level-set estimation, classification / ordinal BO, multi-objective constraints, input perturbation, risk, and tensor shape conventions. |
 | `src/bochan/models/README.md` | Model family overview, wrapper API conventions, and model implementation checklist. |
 | `src/bochan/acquisition/README.md` | Acquisition family overview, objectives, active learning, level-set estimation, and non-Gaussian acquisitions. |
 
@@ -417,5 +418,3 @@ Current priorities:
 - reuse BoTorch standard functionality whenever possible;
 - make placeholder modules explicit when a family or variant is not implemented
   yet.
-
-Breaking changes may occur while the API is being consolidated.

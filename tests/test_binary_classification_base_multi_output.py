@@ -5,7 +5,8 @@ from __future__ import annotations
 The multi-output model is built as a list of independent single-output binary
 classifiers and wrapped by ``MultiOutputBinaryClassificationModel``.  This file
 mirrors the single-output base test while exercising multi-output active
-learning, level-set estimation, and Bayesian optimization acquisitions.
+learning, level-set estimation, Bayesian optimization acquisitions, and
+Jupyter-oriented optimization / constraint compatibility runners.
 """
 
 from typing import Any, Optional
@@ -79,7 +80,9 @@ def make_multi_output_binary_toy_data(
     scores: list[torch.Tensor] = [
         0.9 * cont_x[..., 0] - 0.7 * cont_x[..., 1] + 0.4 * cont_x[..., 2 % d],
         -0.5 * cont_x[..., 0] + 0.8 * cont_x[..., 1] + 0.6 * cont_x[..., 3 % d],
-        torch.sin(3.0 * cont_x[..., 0]) + 0.5 * cont_x[..., 2 % d] - 0.3 * cont_x[..., 4 % d],
+        torch.sin(3.0 * cont_x[..., 0])
+        + 0.5 * cont_x[..., 2 % d]
+        - 0.3 * cont_x[..., 4 % d],
     ]
 
     if cat:
@@ -99,7 +102,10 @@ def make_multi_output_binary_toy_data(
             )
             scores.append((cont_x * weights).sum(dim=-1))
 
-    labels = [(score > score.median()).to(dtype=train_x.dtype).unsqueeze(-1) for score in scores[:m]]
+    labels = [
+        (score > score.median()).to(dtype=train_x.dtype).unsqueeze(-1)
+        for score in scores[:m]
+    ]
     return train_x, torch.cat(labels, dim=-1), bounds
 
 
@@ -250,7 +256,11 @@ def create_multi_output_binary_model_bundle(
 
     models: list[Any] = []
     for j in range(train_y.shape[-1]):
-        sub_input_transform = _build_input_transform(train_x, bounds, cat_dims) if input_transform is None else input_transform
+        sub_input_transform = (
+            _build_input_transform(train_x, bounds, cat_dims)
+            if input_transform is None
+            else input_transform
+        )
         kwargs: dict[str, Any] = {
             "train_X": train_x,
             "train_Y": train_y[:, [j]],
@@ -501,12 +511,7 @@ def _optimizer_constraint_scenarios(
     mixed: bool = False,
     full_matrix: bool = False,
 ):
-    """optimizer × constraint × acquisition の compatibility scenario を作る。
-
-    通常モードでは AL / LSE / BO から1件ずつ代表を選び、base / torch / evo 系
-    optimizer と代表 constraint case を組み合わせる。
-    ``full_matrix=True`` のときは代表 acquisition 6件すべてを使う。
-    """
+    """optimizer × constraint × acquisition の compatibility scenario を作る。"""
     scenarios = []
     acquisition_cases_for_constraints = (
         _representative_multi_output_acquisition_cases(model, train_x)
@@ -729,6 +734,17 @@ def test_multi_output_binary_mixed_optimizer_constraint_case_smoke(
 # ============================================================
 
 
+def _print_failure_summary(failed_cases: list[tuple[str, Exception]]) -> None:
+    print("=" * 100)
+    if failed_cases:
+        print(f"failed_cases={len(failed_cases)}")
+        for case_id, exc in failed_cases:
+            print(f"  - {case_id}: {type(exc).__name__}: {exc}")
+    else:
+        print("all checks passed.")
+    print("=" * 100)
+
+
 def run_jupyter_forward_check(
     *,
     cat: bool = False,
@@ -772,3 +788,348 @@ def run_jupyter_all_forward_checks(*, num_epochs: int = 4, verbose_forward_detai
     run_jupyter_forward_check(cat=False, num_epochs=num_epochs, verbose_forward_detail=verbose_forward_detail)
     run_jupyter_forward_check(cat=True, num_epochs=num_epochs, verbose_forward_detail=verbose_forward_detail)
     print("all multi-output binary forward checks passed.")
+
+
+def run_jupyter_optimize_acqf_all_acquisitions_check(
+    *,
+    n: int = 20,
+    d: int = 5,
+    m: int = N_OUTPUTS,
+    num_epochs: int = 4,
+    q: int = 2,
+    num_restarts: int = 2,
+    raw_samples: int = 16,
+    maxiter: int = 10,
+    continue_on_error: bool = False,
+    suppress_botorch_warnings: bool = True,
+    verbose_ok_detail: bool = False,
+) -> dict[str, Any]:
+    bundle = create_multi_output_binary_model_bundle(cat=False, n=n, d=d, m=m, num_epochs=num_epochs)
+    model = bundle["model"]
+    train_x = bundle["train_x"]
+    bounds = bundle["bounds"]
+    cases = multi_output_acquisition_cases(model, train_x)
+    failed_cases: list[tuple[str, Exception]] = []
+
+    print("=" * 100)
+    print("Jupyter multi-output optimize_acqf check: all acquisitions")
+    print(f"n={n}, d={d}, m={m}, q={q}, num_epochs={num_epochs}, num_acquisitions={len(cases)}")
+    print("=" * 100)
+
+    for acq_cls, kwargs, case_id in cases:
+        display_id = f"optimize_acqf__{case_id}"
+        try:
+            with maybe_suppress_botorch_initial_warnings(suppress=suppress_botorch_warnings):
+                cands, acq_value = optimize_acqf(
+                    acq_function=acq_cls(model=model, **kwargs),
+                    bounds=bounds,
+                    q=q,
+                    sequential=True,
+                    num_restarts=num_restarts,
+                    raw_samples=raw_samples,
+                    options={"maxiter": maxiter},
+                )
+            assert cands.shape == torch.Size([q, train_x.shape[-1]]), display_id
+            assert torch.isfinite(cands).all(), display_id
+            assert torch.isfinite(acq_value).all(), display_id
+            assert_candidates_in_bounds(cands=cands, bounds=bounds)
+            print(f"[OK] {display_id} cands.shape={tuple(cands.shape)} acq_value={acq_value}" if verbose_ok_detail else f"[OK] {display_id}")
+        except Exception as exc:
+            print(f"[NG] {display_id} {type(exc).__name__}")
+            print(str(exc))
+            failed_cases.append((display_id, exc))
+            if not continue_on_error:
+                raise
+
+    _print_failure_summary(failed_cases)
+    return bundle
+
+
+def run_jupyter_optimize_acqf_mixed_all_acquisitions_check(
+    *,
+    n: int = 20,
+    d: int = 5,
+    m: int = N_OUTPUTS,
+    num_epochs: int = 4,
+    q: int = 2,
+    num_restarts: int = 2,
+    raw_samples: int = 16,
+    maxiter: int = 10,
+    continue_on_error: bool = False,
+    suppress_botorch_warnings: bool = True,
+    verbose_ok_detail: bool = False,
+) -> dict[str, Any]:
+    bundle = create_multi_output_binary_model_bundle(cat=True, n=n, d=d, m=m, num_epochs=num_epochs)
+    model = bundle["model"]
+    train_x = bundle["train_x"]
+    bounds = bundle["bounds"]
+    cat_id = bundle["cat_dims"][0]
+    fixed_features_list = [{cat_id: 5.0}, {cat_id: 10.0}, {cat_id: 15.0}]
+    cat_values = torch.tensor([5.0, 10.0, 15.0], dtype=DTYPE, device=DEVICE)
+    cases = multi_output_acquisition_cases(model, train_x)
+    failed_cases: list[tuple[str, Exception]] = []
+
+    print("=" * 100)
+    print("Jupyter mixed multi-output optimize_acqf_mixed check: all acquisitions")
+    print(f"n={n}, d={d}, m={m}, q={q}, num_epochs={num_epochs}, cat_id={cat_id}, num_acquisitions={len(cases)}")
+    print("=" * 100)
+
+    for acq_cls, kwargs, case_id in cases:
+        display_id = f"optimize_acqf_mixed__{case_id}"
+        try:
+            with maybe_suppress_botorch_initial_warnings(suppress=suppress_botorch_warnings):
+                cands, acq_value = optimize_acqf_mixed(
+                    acq_function=acq_cls(model=model, **kwargs),
+                    bounds=bounds,
+                    q=q,
+                    fixed_features_list=fixed_features_list,
+                    num_restarts=num_restarts,
+                    raw_samples=raw_samples,
+                    options={"maxiter": maxiter},
+                )
+            assert cands.shape == torch.Size([q, train_x.shape[-1]]), display_id
+            assert torch.isfinite(cands).all(), display_id
+            assert torch.isfinite(acq_value).all(), display_id
+            assert_candidates_in_bounds(cands=cands, bounds=bounds)
+            assert torch.isin(cands[:, cat_id], cat_values).all(), display_id
+            print(f"[OK] {display_id} cands.shape={tuple(cands.shape)} acq_value={acq_value}" if verbose_ok_detail else f"[OK] {display_id}")
+        except Exception as exc:
+            print(f"[NG] {display_id} {type(exc).__name__}")
+            print(str(exc))
+            failed_cases.append((display_id, exc))
+            if not continue_on_error:
+                raise
+
+    _print_failure_summary(failed_cases)
+    return bundle
+
+
+def run_jupyter_optimizer_constraint_compatibility_check(
+    *,
+    n: int = 20,
+    d: int = 5,
+    m: int = N_OUTPUTS,
+    num_epochs: int = 4,
+    q: int = 2,
+    full_matrix: bool = False,
+    continue_on_error: bool = False,
+    verbose_ok_detail: bool = False,
+    verbose_candidates: bool = False,
+    verbose_constraints: bool = False,
+    suppress_botorch_warnings: bool = True,
+) -> dict[str, Any]:
+    if d < 5:
+        raise ValueError("constraint compatibility check では d >= 5 が必要です。")
+
+    bundle = create_multi_output_binary_model_bundle(cat=False, n=n, d=d, m=m, num_epochs=num_epochs)
+    model = bundle["model"]
+    train_x = bundle["train_x"]
+    bounds = bundle["bounds"]
+    scenarios = _optimizer_constraint_scenarios(model=model, train_x=train_x, bounds=bounds, full_matrix=full_matrix)
+    failed_cases: list[tuple[str, Exception]] = []
+
+    print("=" * 100)
+    print("Jupyter multi-output optimizer / constraint compatibility check")
+    print(f"n={n}, d={d}, m={m}, q={q}, num_epochs={num_epochs}, full_matrix={full_matrix}, num_cases={len(scenarios)}")
+    print("=" * 100)
+
+    for acq_cls, kwargs, _, optimize_func, optimize_method, constraint_case, case_id in scenarios:
+        try:
+            with maybe_suppress_botorch_initial_warnings(suppress=suppress_botorch_warnings):
+                cands, acq_value = optimize_with_case(
+                    acqf=acq_cls(model=model, **kwargs),
+                    bounds=bounds,
+                    q=q,
+                    optimize_func=optimize_func,
+                    optimize_method=optimize_method,
+                    constraint_case=constraint_case,
+                    num_restarts=2,
+                    raw_samples=16,
+                    maxiter=10,
+                )
+            assert_optimizer_compatibility_result(cands=cands, acq_value=acq_value, bounds=bounds, q=q, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
+            print(f"[OK] {case_id} cands.shape={tuple(cands.shape)} acq_value={acq_value}" if verbose_ok_detail else f"[OK] {case_id}")
+            if verbose_candidates:
+                print(f"     cands={cands}")
+                if train_x.shape[-1] >= 5:
+                    print(f"     sum_0_1_2={cands[:, :3].sum(dim=1)}")
+                    print(f"     sum_3_4={cands[:, 3:5].sum(dim=1)}")
+            if constraint_case["case_id"] != "none":
+                print_linear_constraint_diagnostics(
+                    cands=cands,
+                    equality_constraints=constraint_case["equality_constraints"],
+                    inequality_constraints=constraint_case["inequality_constraints"],
+                    inequality_sense=constraint_case.get("inequality_sense", "le"),
+                    show_all=verbose_constraints,
+                )
+        except Exception as exc:
+            print(f"[NG] {case_id} {type(exc).__name__}")
+            print(str(exc))
+            failed_cases.append((case_id, exc))
+            if not continue_on_error:
+                raise
+
+    _print_failure_summary(failed_cases)
+    return bundle
+
+
+def run_jupyter_mixed_optimizer_constraint_compatibility_check(
+    *,
+    n: int = 20,
+    d: int = 5,
+    m: int = N_OUTPUTS,
+    num_epochs: int = 4,
+    q: int = 2,
+    full_matrix: bool = False,
+    continue_on_error: bool = False,
+    verbose_ok_detail: bool = False,
+    verbose_candidates: bool = False,
+    verbose_constraints: bool = False,
+    suppress_botorch_warnings: bool = True,
+) -> dict[str, Any]:
+    if d < 5:
+        raise ValueError("constraint compatibility check では d >= 5 が必要です。")
+
+    bundle = create_multi_output_binary_model_bundle(cat=True, n=n, d=d, m=m, num_epochs=num_epochs)
+    model = bundle["model"]
+    train_x = bundle["train_x"]
+    bounds = bundle["bounds"]
+    cat_id = bundle["cat_dims"][0]
+    fixed_features_list = [{cat_id: 5.0}, {cat_id: 10.0}, {cat_id: 15.0}]
+    cat_values = torch.tensor([5.0, 10.0, 15.0], dtype=DTYPE, device=DEVICE)
+    scenarios = _optimizer_constraint_scenarios(model=model, train_x=train_x, bounds=bounds, mixed=True, full_matrix=full_matrix)
+    failed_cases: list[tuple[str, Exception]] = []
+
+    print("=" * 100)
+    print("Jupyter mixed multi-output optimizer / constraint compatibility check")
+    print(f"n={n}, d={d}, m={m}, q={q}, num_epochs={num_epochs}, cat_id={cat_id}, full_matrix={full_matrix}, num_cases={len(scenarios)}")
+    print("=" * 100)
+
+    for acq_cls, kwargs, _, optimize_func, optimize_method, constraint_case, case_id in scenarios:
+        try:
+            with maybe_suppress_botorch_initial_warnings(suppress=suppress_botorch_warnings):
+                cands, acq_value = optimize_mixed_with_case(
+                    acqf=acq_cls(model=model, **kwargs),
+                    bounds=bounds,
+                    q=q,
+                    fixed_features_list=fixed_features_list,
+                    optimize_func=optimize_func,
+                    optimize_method=optimize_method,
+                    constraint_case=constraint_case,
+                    num_restarts=2,
+                    raw_samples=16,
+                    maxiter=10,
+                )
+            assert_optimizer_compatibility_result(cands=cands, acq_value=acq_value, bounds=bounds, q=q, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
+            assert torch.isin(cands[:, cat_id], cat_values).all(), case_id
+            print(f"[OK] {case_id} cands.shape={tuple(cands.shape)} acq_value={acq_value}" if verbose_ok_detail else f"[OK] {case_id}")
+            if verbose_candidates:
+                print(f"     cands={cands}")
+                if train_x.shape[-1] >= 5:
+                    print(f"     sum_0_1_2={cands[:, :3].sum(dim=1)}")
+                    print(f"     sum_3_4={cands[:, 3:5].sum(dim=1)}")
+                print(f"     cat_values={cands[:, cat_id]}")
+            if constraint_case["case_id"] != "none":
+                print_linear_constraint_diagnostics(
+                    cands=cands,
+                    equality_constraints=constraint_case["equality_constraints"],
+                    inequality_constraints=constraint_case["inequality_constraints"],
+                    inequality_sense=constraint_case.get("inequality_sense", "le"),
+                    show_all=verbose_constraints,
+                )
+        except Exception as exc:
+            print(f"[NG] {case_id} {type(exc).__name__}")
+            print(str(exc))
+            failed_cases.append((case_id, exc))
+            if not continue_on_error:
+                raise
+
+    _print_failure_summary(failed_cases)
+    return bundle
+
+
+def run_jupyter_all_checks(
+    *,
+    num_epochs: int = 4,
+    n: int = 20,
+    d: int = 5,
+    m: int = N_OUTPUTS,
+    q: int = 2,
+    run_optimize: bool = True,
+    full_matrix: bool = False,
+    continue_on_error: bool = False,
+    verbose_forward_detail: bool = False,
+    verbose_ok_detail: bool = False,
+    verbose_candidates: bool = False,
+    verbose_constraints: bool = False,
+    suppress_botorch_warnings: bool = True,
+) -> None:
+    """multi-output binary classification の Jupyter 一括確認 helper。"""
+    run_jupyter_forward_check(
+        cat=False,
+        n=n,
+        d=d,
+        m=m,
+        num_epochs=num_epochs,
+        q=q,
+        verbose_forward_detail=verbose_forward_detail,
+    )
+    run_jupyter_forward_check(
+        cat=True,
+        n=n,
+        d=d,
+        m=m,
+        num_epochs=num_epochs,
+        q=q,
+        verbose_forward_detail=verbose_forward_detail,
+    )
+
+    if run_optimize:
+        run_jupyter_optimize_acqf_all_acquisitions_check(
+            n=n,
+            d=d,
+            m=m,
+            num_epochs=num_epochs,
+            q=q,
+            continue_on_error=continue_on_error,
+            suppress_botorch_warnings=suppress_botorch_warnings,
+            verbose_ok_detail=verbose_ok_detail,
+        )
+        run_jupyter_optimize_acqf_mixed_all_acquisitions_check(
+            n=n,
+            d=d,
+            m=m,
+            num_epochs=num_epochs,
+            q=q,
+            continue_on_error=continue_on_error,
+            suppress_botorch_warnings=suppress_botorch_warnings,
+            verbose_ok_detail=verbose_ok_detail,
+        )
+        run_jupyter_optimizer_constraint_compatibility_check(
+            n=n,
+            d=d,
+            m=m,
+            num_epochs=num_epochs,
+            q=q,
+            full_matrix=full_matrix,
+            continue_on_error=continue_on_error,
+            verbose_ok_detail=verbose_ok_detail,
+            verbose_candidates=verbose_candidates,
+            verbose_constraints=verbose_constraints,
+            suppress_botorch_warnings=suppress_botorch_warnings,
+        )
+        run_jupyter_mixed_optimizer_constraint_compatibility_check(
+            n=n,
+            d=d,
+            m=m,
+            num_epochs=num_epochs,
+            q=q,
+            full_matrix=full_matrix,
+            continue_on_error=continue_on_error,
+            verbose_ok_detail=verbose_ok_detail,
+            verbose_candidates=verbose_candidates,
+            verbose_constraints=verbose_constraints,
+            suppress_botorch_warnings=suppress_botorch_warnings,
+        )
+
+    print("all multi-output binary Jupyter checks passed.")

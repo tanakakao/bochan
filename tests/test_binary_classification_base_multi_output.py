@@ -287,12 +287,7 @@ def _bo_reference_objects(
         y_baseline = model.probability_posterior(train_x).mean.reshape(-1, model.num_outputs)
         y_baseline = y_baseline.clamp(1e-6, 1.0 - 1e-6)
 
-    ref_point = torch.full(
-        (model.num_outputs,),
-        -0.05,
-        dtype=train_x.dtype,
-        device=train_x.device,
-    )
+    ref_point = torch.full((model.num_outputs,), -0.05, dtype=train_x.dtype, device=train_x.device)
     partitioning = FastNondominatedPartitioning(ref_point=ref_point, Y=y_baseline)
     sampler = SobolQMCNormalSampler(sample_shape=torch.Size([16]))
     weights = torch.ones(model.num_outputs, dtype=train_x.dtype, device=train_x.device)
@@ -359,26 +354,10 @@ def multi_output_levelset_acquisition_cases(
         "pending_penalty_beta": 5.0,
     }
     return [
-        (
-            qMultiOutputBinaryClassEntropyAcquisition,
-            {**common_kwargs, "apply_sigmoid_if_needed": False},
-            "lse_class_entropy",
-        ),
-        (
-            qMultiOutputBinaryICUAcquisition,
-            {**common_kwargs, "apply_sigmoid_if_needed": False},
-            "lse_icu",
-        ),
-        (
-            qMultiOutputBinaryBoundaryVarianceAcquisition,
-            {**common_kwargs, "thresholds": 0.0, "tau": 1.0},
-            "lse_boundary_variance",
-        ),
-        (
-            qMultiOutputBinaryLatentStraddleAcquisition,
-            {**common_kwargs, "thresholds": 0.0, "beta": 1.0},
-            "lse_latent_straddle",
-        ),
+        (qMultiOutputBinaryClassEntropyAcquisition, {**common_kwargs, "apply_sigmoid_if_needed": False}, "lse_class_entropy"),
+        (qMultiOutputBinaryICUAcquisition, {**common_kwargs, "apply_sigmoid_if_needed": False}, "lse_icu"),
+        (qMultiOutputBinaryBoundaryVarianceAcquisition, {**common_kwargs, "thresholds": 0.0, "tau": 1.0}, "lse_boundary_variance"),
+        (qMultiOutputBinaryLatentStraddleAcquisition, {**common_kwargs, "thresholds": 0.0, "beta": 1.0}, "lse_latent_straddle"),
         (
             qMultiOutputBinaryLatentStraddleAcquisition,
             {
@@ -488,8 +467,22 @@ def _representative_multi_output_acquisition_cases(
     return [case for case in multi_output_acquisition_cases(model, train_x) if case[2] in names]
 
 
+def _constraint_multi_output_acquisition_cases(
+    model: MultiOutputBinaryClassificationModel,
+    train_x: torch.Tensor,
+) -> list[tuple[type, dict[str, Any], str]]:
+    """制約・optimizer compatibility 用に AL / LSE / BO から代表を選ぶ。"""
+    names = {
+        "al_probability_variance",
+        "lse_icu",
+        "bo_probability_of_feasibility",
+    }
+    return [case for case in multi_output_acquisition_cases(model, train_x) if case[2] in names]
+
+
 def _representative_constraint_cases(bounds: torch.Tensor) -> list[dict[str, Any]]:
-    names = {"step_only", "step_k_sparse_constraints"}
+    """制約なし / step のみ / 線形制約 / step+k-sparse+線形制約を返す。"""
+    names = {"none", "step_only", "constraints_only", "step_k_sparse_constraints"}
     return [case for case in make_constraint_cases(bounds) if case["case_id"] in names]
 
 
@@ -508,31 +501,28 @@ def _optimizer_constraint_scenarios(
     mixed: bool = False,
     full_matrix: bool = False,
 ):
-    if full_matrix:
-        scenarios = []
-        for acq_cls, kwargs, acq_id in _representative_multi_output_acquisition_cases(model, train_x):
-            for optimize_func, optimize_method, optimizer_id in optimizer_cases():
-                for constraint_case in make_constraint_cases(bounds):
-                    case_id = f"{acq_id}__{optimizer_id}__{constraint_case['case_id']}"
-                    if mixed:
-                        case_id = f"mixed__{case_id}"
-                    scenarios.append((acq_cls, kwargs, acq_id, optimize_func, optimize_method, constraint_case, case_id))
-        return scenarios
+    """optimizer × constraint × acquisition の compatibility scenario を作る。
 
-    acq_cls, kwargs = _get_acquisition_case(model, train_x, "bo_probability_of_feasibility")
-    prefix = "multi_mixed" if mixed else "multi"
-    return [
-        (
-            acq_cls,
-            kwargs,
-            "bo_probability_of_feasibility",
-            "torch",
-            "adam",
-            constraint_case,
-            f"{prefix}__pof__torch_adam__{constraint_case['case_id']}",
-        )
-        for constraint_case in _representative_constraint_cases(bounds)
-    ]
+    通常モードでは AL / LSE / BO から1件ずつ代表を選び、base / torch / evo 系
+    optimizer と代表 constraint case を組み合わせる。
+    ``full_matrix=True`` のときは代表 acquisition 6件すべてを使う。
+    """
+    scenarios = []
+    acquisition_cases_for_constraints = (
+        _representative_multi_output_acquisition_cases(model, train_x)
+        if full_matrix
+        else _constraint_multi_output_acquisition_cases(model, train_x)
+    )
+    constraint_cases = make_constraint_cases(bounds) if full_matrix else _representative_constraint_cases(bounds)
+
+    for acq_cls, kwargs, acq_id in acquisition_cases_for_constraints:
+        for optimize_func, optimize_method, optimizer_id in optimizer_cases():
+            for constraint_case in constraint_cases:
+                case_id = f"{acq_id}__{optimizer_id}__{constraint_case['case_id']}"
+                if mixed:
+                    case_id = f"mixed__{case_id}"
+                scenarios.append((acq_cls, kwargs, acq_id, optimize_func, optimize_method, constraint_case, case_id))
+    return scenarios
 
 
 def test_multi_output_binary_model_basic_behavior(multi_output_binary_model_bundle: dict[str, Any]) -> None:
@@ -591,6 +581,24 @@ def test_multi_output_binary_family_case_coverage(multi_output_binary_model_bund
     assert "bo_qehvi" in case_ids
     assert "bo_qnehvi" in case_ids
     assert "bo_nparego" in case_ids
+
+
+def test_multi_output_binary_constraint_scenario_coverage(multi_output_binary_model_bundle: dict[str, Any]) -> None:
+    """制約テストが AL / LSE / BO と evo optimizer を含むことを確認する。"""
+    model = multi_output_binary_model_bundle["model"]
+    train_x = multi_output_binary_model_bundle["train_x"]
+    bounds = multi_output_binary_model_bundle["bounds"]
+    scenarios = _optimizer_constraint_scenarios(model, train_x, bounds)
+    case_ids = {scenario[-1] for scenario in scenarios}
+
+    assert any(case_id.startswith("al_") for case_id in case_ids)
+    assert any(case_id.startswith("lse_") for case_id in case_ids)
+    assert any(case_id.startswith("bo_") for case_id in case_ids)
+    assert any("evo_cmaes" in case_id for case_id in case_ids)
+    assert any("evo_pso" in case_id for case_id in case_ids)
+    assert any("evo_ga" in case_id for case_id in case_ids)
+    assert any("constraints_only" in case_id for case_id in case_ids)
+    assert any("step_k_sparse_constraints" in case_id for case_id in case_ids)
 
 
 @pytest.mark.slow

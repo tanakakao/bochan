@@ -16,8 +16,9 @@ import torch
 from torch import Tensor
 
 from botorch.models.transforms.input import InputTransform
+from gpytorch.mlls.variational_elbo import VariationalELBO
 
-from bochan.models.classification.base import BinaryClassificationGPModel, BinaryClassificationMixedGPModel
+from bochan.models.classification.binary.base import BinaryClassificationGPModel, BinaryClassificationMixedGPModel
 from bochan.models.components.decomposition import (
     PCAConfig,
     REMBOConfig,
@@ -54,6 +55,38 @@ def _get_variational_inducing_points(model) -> Optional[Tensor]:
         return inner.variational_strategy.inducing_points.detach().clone()
     except Exception:
         return None
+
+
+def _make_projected_binary_mll(base_model: Any, *args: Any, **kwargs: Any) -> Any:
+    """base_model が make_mll を持たない場合も VariationalELBO を構築する。"""
+    if hasattr(base_model, "make_mll"):
+        return base_model.make_mll(*args, **kwargs)
+
+    if args:
+        raise TypeError(
+            "Positional arguments are not supported when constructing a fallback "
+            "VariationalELBO for projected binary classification models."
+        )
+
+    beta = float(kwargs.pop("beta", 1.0))
+    if kwargs:
+        unknown = ", ".join(sorted(kwargs))
+        raise TypeError(f"Unexpected make_mll keyword argument(s): {unknown}")
+
+    inner_model = getattr(base_model, "model", base_model)
+    likelihood = getattr(base_model, "likelihood", None)
+    if likelihood is None:
+        raise AttributeError("base_model does not expose likelihood.")
+    if not hasattr(inner_model, "train_inputs") or inner_model.train_inputs is None:
+        raise AttributeError("inner model does not expose train_inputs.")
+
+    train_X = inner_model.train_inputs[0]
+    return VariationalELBO(
+        likelihood=likelihood,
+        model=inner_model,
+        num_data=train_X.shape[-2],
+        beta=beta,
+    )
 
 
 class _BaseProjectedClassificationGP(_BaseProjectedModel):
@@ -168,9 +201,7 @@ class _BaseProjectedClassificationGP(_BaseProjectedModel):
         fit_classifier_mll には、この MLL を渡す。MLL の model は base_model 側の
         inner latent GP になり、wrapper 側では raw-space X を保持する。
         """
-        if not hasattr(self.base_model, "make_mll"):
-            raise AttributeError("base_model does not define make_mll().")
-        return self.base_model.make_mll(*args, **kwargs)
+        return _make_projected_binary_mll(self.base_model, *args, **kwargs)
 
     @property
     def model(self):
@@ -501,9 +532,7 @@ class _BaseProjectedMixedClassificationGP(_BaseProjectedMixedModel):
 
     def make_mll(self, *args: Any, **kwargs: Any) -> Any:
         """projected mixed-space の base_model 用 MLL を返す。"""
-        if not hasattr(self.base_model, "make_mll"):
-            raise AttributeError("base_model does not define make_mll().")
-        return self.base_model.make_mll(*args, **kwargs)
+        return _make_projected_binary_mll(self.base_model, *args, **kwargs)
 
     @property
     def model(self):

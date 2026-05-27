@@ -2,9 +2,9 @@ from __future__ import annotations
 
 """classification 用 MAP-SAAS GP モデル。
 
-連続入力版は既存の ``ClassificationGPModel`` に SAAS prior 付き Matern kernel を
-渡す。mixed 入力版はカテゴリ列を one-hot encode し、内部 classification GP には
-encoded-space の入力を渡す。
+連続入力版は既存の ``BinaryClassificationGPModel`` に SAAS prior 付き Matern
+kernel を渡す。mixed 入力版はカテゴリ列を one-hot encode し、内部 classification
+GP には encoded-space の入力を渡す。
 """
 
 from copy import deepcopy
@@ -13,13 +13,14 @@ from typing import Any, Optional, Sequence
 import torch
 from torch import Tensor
 
-from botorch.posteriors import GPyTorchPosterior
 from botorch.acquisition.objective import PosteriorTransform
+from botorch.posteriors import GPyTorchPosterior
 from gpytorch.kernels import Kernel
 from gpytorch.likelihoods import BernoulliLikelihood
 from gpytorch.means import Mean
+from gpytorch.mlls.variational_elbo import VariationalELBO
 
-from bochan.models.classification.base import BinaryClassificationGPModel
+from bochan.models.classification.binary.base import BinaryClassificationGPModel
 from bochan.posteriors.bernoulli import SimpleBernoulliPosterior
 from bochan.models.components.saas import (
     OneHotEncodingMixin,
@@ -33,24 +34,10 @@ from bochan.models.components.saas import (
 class SaasBinaryClassificationGPModel(BinaryClassificationGPModel):
     """MAP-SAAS style の 2 値分類 GP。
 
-    Args:
-        train_X: 学習入力。
-        train_Y: 2 値ラベル。``[n]`` または ``[n, 1]``。
-        train_Yvar: optional noise。通常は None。
-        likelihood: Bernoulli likelihood。None の場合は base model 側に任せる。
-        input_transform: 入力変換。
-        mean_module: mean module。
-        covar_module: covar module。None の場合、SAAS prior 付き Matern kernel を使う。
-        num_inducing_points: SVGP の inducing point 数。
-        inducing_points: 明示的な inducing points。
-        learn_inducing_locations: inducing point を学習するか。
-        tau: SAAS global shrinkage。None の場合は推定対象。
-        saas_log_scale: lengthscale/tau を log-scale 最適化するか。
-        saas_nu: Matern kernel の smoothness。
-
     Notes:
         - 実体は variational classification GP。
         - SAAS は fully Bayesian NUTS ではなく MAP prior として使う。
+        - ``make_mll()`` は inner latent SVGP 用の ``VariationalELBO`` を返す。
     """
 
     def __init__(
@@ -97,6 +84,28 @@ class SaasBinaryClassificationGPModel(BinaryClassificationGPModel):
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
         )
+        self.train_inputs_raw = (train_X.detach().clone(),)
+        self.train_X_raw = train_X.detach().clone()
+        self.train_Yvar_raw = None if train_Yvar is None else train_Yvar.detach().clone()
+
+    def make_mll(self, beta: float = 1.0) -> VariationalELBO:
+        """inner latent SVGP 用の ``VariationalELBO`` を返す。"""
+        inner_train_X = self.model.train_inputs[0]
+        inner_train_Y = self.model.train_targets
+
+        if inner_train_X.shape[-2] != inner_train_Y.shape[0]:
+            raise RuntimeError(
+                "inner train_inputs and train_targets have inconsistent data sizes. "
+                f"inner_train_X.shape={tuple(inner_train_X.shape)}, "
+                f"inner_train_Y.shape={tuple(inner_train_Y.shape)}."
+            )
+
+        return VariationalELBO(
+            likelihood=self.likelihood,
+            model=self.model,
+            num_data=inner_train_X.shape[-2],
+            beta=float(beta),
+        )
 
     def probability_posterior(
         self,
@@ -118,22 +127,6 @@ class SaasBinaryClassificationGPModel(BinaryClassificationGPModel):
 
 class SaasBinaryClassificationMixedGPModel(OneHotEncodingMixin, SaasBinaryClassificationGPModel):
     """mixed 入力向け MAP-SAAS 2 値分類 GP。
-
-    Args:
-        train_X: raw-space の学習入力。カテゴリ列は整数エンコードを想定。
-        train_Y: 2 値ラベル。
-        cat_dims: raw-space におけるカテゴリ列 index。
-        train_Yvar: optional noise。
-        likelihood: Bernoulli likelihood。
-        input_transform: raw-space または encoded-space 用 input transform。
-        mean_module: mean module。
-        covar_module: covar module。None の場合、encoded-space に SAAS prior を貼る。
-        num_inducing_points: inducing point 数。
-        inducing_points: raw-space または encoded-space の inducing points。
-        learn_inducing_locations: inducing point を学習するか。
-        tau: SAAS global shrinkage。
-        saas_log_scale: log-scale SAAS flag。
-        saas_nu: Matern kernel の smoothness。
 
     Notes:
         - public API は raw-space X を受け取る。
@@ -187,11 +180,11 @@ class SaasBinaryClassificationMixedGPModel(OneHotEncodingMixin, SaasBinaryClassi
 
         self.train_inputs_raw = (train_X.detach().clone(),)
         self.train_X_raw = train_X.detach().clone()
-        
+        self.train_Yvar_raw = None if train_Yvar is None else train_Yvar.detach().clone()
         self.encoded_train_inputs_raw = (encoded_train_X.detach().clone(),)
         self.encoded_train_inputs = (encoded_train_X.detach().clone(),)
-        
-        # public 側は raw-space を保持
+
+        # public 側は raw-space を保持する。
         self.train_inputs = (train_X.detach().clone(),)
         self.train_targets = flatten_targets(train_Y, dtype=train_X.dtype)
         self.encoded_inducing_points_raw = encoded_inducing_points
@@ -201,11 +194,7 @@ class SaasBinaryClassificationMixedGPModel(OneHotEncodingMixin, SaasBinaryClassi
         return self.encoded_train_inputs_raw[0]
 
     def make_mll(self, *args: Any, **kwargs: Any):
-        """inner encoded-space model 用の MLL を返す。
-
-        public train_inputs は raw-space を保持するが、fit 対象は inner encoded-space
-        latent GP なので、親クラスの make_mll を使う。
-        """
+        """inner encoded-space model 用の MLL を返す。"""
         return super().make_mll(*args, **kwargs)
 
     def _set_transformed_inputs(self) -> None:
@@ -221,17 +210,7 @@ class SaasBinaryClassificationMixedGPModel(OneHotEncodingMixin, SaasBinaryClassi
         X: Tensor,
         input_transform: Any | None = None,
     ) -> Tensor:
-        """
-        raw/encoded X を内部 GP 用の encoded feature space に変換する。
-
-        Mixed + InputPerturbation では、raw-space 用 transform を one-hot 後の
-        encoded-space に適用すると次元不一致になりやすい。そのため raw 入力では
-
-            raw X -> input_transform -> one-hot encode -> inner GP
-
-        を優先する。encoded 入力が既に渡された場合は、raw-space transform を
-        無理に再適用しない。
-        """
+        """raw/encoded X を内部 GP 用の encoded feature space に変換する。"""
         if isinstance(X, tuple):
             X = X[0]
 
@@ -287,13 +266,7 @@ class SaasBinaryClassificationMixedGPModel(OneHotEncodingMixin, SaasBinaryClassi
         posterior_transform: Optional[PosteriorTransform] = None,
         **kwargs: Any,
     ):
-        """
-        raw-space X に対する probability posterior を返す。
-
-        raw X -> input_transform -> encoded feature space の順で変換した後、
-        inner latent GP と Bernoulli likelihood を評価し、
-        SimpleBernoulliPosterior(mean=p, variance=p(1-p)) を返す。
-        """
+        """raw-space X に対する probability posterior を返す。"""
         if output_indices is not None:
             raise NotImplementedError(
                 f"{self.__class__.__name__}.posterior does not support output_indices."
@@ -307,7 +280,6 @@ class SaasBinaryClassificationMixedGPModel(OneHotEncodingMixin, SaasBinaryClassi
         self.likelihood.eval()
 
         X_eval = self.transform_inputs(X)
-
         latent_dist = self.model(X_eval)
         pred_dist = self.likelihood(latent_dist)
 
@@ -349,18 +321,13 @@ class SaasBinaryClassificationMixedGPModel(OneHotEncodingMixin, SaasBinaryClassi
         apply_input_transform: bool = True,
         **kwargs: Any,
     ) -> Any:
-        """
-        raw-space X に対する latent f の posterior を返す。
-
-        likelihood を通す前の latent GP posterior。
-        """
+        """raw-space X に対する latent f の posterior を返す。"""
         _ = kwargs
         if isinstance(X, tuple):
             X = X[0]
 
         self.eval()
         X_eval = self.transform_inputs(X) if apply_input_transform else X
-
         post = GPyTorchPosterior(self.model(X_eval))
 
         if posterior_transform is not None:
@@ -389,6 +356,7 @@ class SaasBinaryClassificationMixedGPModel(OneHotEncodingMixin, SaasBinaryClassi
         **kwargs: Any,
     ) -> "SaasBinaryClassificationMixedGPModel":
         """raw/encoded X の追加観測で wrapper を再構築する。"""
+        _ = kwargs
         X_new_raw, Y_new, Yvar_new = prepare_mixed_conditioning_data(
             X,
             Y,
@@ -400,14 +368,20 @@ class SaasBinaryClassificationMixedGPModel(OneHotEncodingMixin, SaasBinaryClassi
         )
         train_X_old = self.train_inputs_raw[0]
         train_Y_old = flatten_targets(self.train_targets, dtype=train_X_old.dtype)
-        X_full = torch.cat([
-            train_X_old,
-            X_new_raw.to(dtype=train_X_old.dtype, device=train_X_old.device),
-        ], dim=0)
-        Y_full = torch.cat([
-            train_Y_old,
-            Y_new.to(dtype=train_Y_old.dtype, device=train_Y_old.device),
-        ], dim=0)
+        X_full = torch.cat(
+            [
+                train_X_old,
+                X_new_raw.to(dtype=train_X_old.dtype, device=train_X_old.device),
+            ],
+            dim=0,
+        )
+        Y_full = torch.cat(
+            [
+                train_Y_old,
+                Y_new.to(dtype=train_Y_old.dtype, device=train_Y_old.device),
+            ],
+            dim=0,
+        )
         Yvar_full = concat_optional_noise(
             old_Y=train_Y_old,
             old_Yvar=self.train_Yvar_raw,

@@ -23,7 +23,7 @@ from botorch.posteriors import Posterior
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from gpytorch.mlls import VariationalELBO
 
-from bochan.models.classification.base.models import _LatentBinarySVGP, _LatentMixedBinarySVGP
+from bochan.models.classification.binary.base.models import _LatentBinarySVGP, _LatentMixedBinarySVGP
 from bochan.posteriors.bernoulli import SimpleBernoulliPosterior
 from bochan.models.components.robust import (
     SparseOutlierBernoulliLikelihood,
@@ -129,6 +129,7 @@ class _OutlierRRPBinaryClassificationBase(ApproximateGPyTorchModel):
         **kwargs: Any,
     ) -> GPyTorchPosterior:
         """latent f の posterior を返す。"""
+        _ = kwargs
         if output_indices is not None:
             raise NotImplementedError(
                 f"{self.__class__.__name__}.latent_posterior does not support output_indices."
@@ -149,6 +150,7 @@ class _OutlierRRPBinaryClassificationBase(ApproximateGPyTorchModel):
         **kwargs: Any,
     ) -> Posterior:
         """p(y=1|x) の posterior を返す。"""
+        _ = observation_noise, kwargs
         if output_indices is not None:
             raise NotImplementedError(
                 f"{self.__class__.__name__}.posterior does not support output_indices."
@@ -166,6 +168,23 @@ class _OutlierRRPBinaryClassificationBase(ApproximateGPyTorchModel):
         if probs.ndim == X_tf.ndim - 1:
             probs = probs.unsqueeze(-1)
         return SimpleBernoulliPosterior(probs=probs)
+
+    def probability_posterior(
+        self,
+        X: Tensor,
+        output_indices=None,
+        observation_noise: bool = False,
+        posterior_transform=None,
+        **kwargs: Any,
+    ) -> Posterior:
+        """classification acquisition 用に probability posterior を明示名で返す。"""
+        return self.posterior(
+            X,
+            output_indices=output_indices,
+            observation_noise=observation_noise,
+            posterior_transform=posterior_transform,
+            **kwargs,
+        )
 
     def predict_proba(self, X: Tensor) -> Tensor:
         return self.posterior(X).mean
@@ -260,7 +279,8 @@ class OutlierRelevancePursuitBinaryClassificationGPModel(_OutlierRRPBinaryClassi
         Y: Tensor,
         noise: Optional[Tensor] = None,
         **kwargs: Any,
-    ) -> "OutlierRelevancePursuitClassificationGPModel":
+    ) -> "OutlierRelevancePursuitBinaryClassificationGPModel":
+        _ = kwargs
         X_new, Y_new, Yvar_new = prepare_wrapper_conditioning_data(
             X,
             Y,
@@ -371,6 +391,7 @@ class OutlierRelevancePursuitBinaryClassificationMixedGPModel(_OutlierRRPBinaryC
             fit_Y=Y_fit,
             expanded_base_indices=base_indices,
         )
+
         self.learn_inducing_locations = bool(learn_inducing_locations)
 
     def condition_on_observations(
@@ -380,6 +401,7 @@ class OutlierRelevancePursuitBinaryClassificationMixedGPModel(_OutlierRRPBinaryC
         noise: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> "OutlierRelevancePursuitBinaryClassificationMixedGPModel":
+        _ = kwargs
         X_new, Y_new, Yvar_new = prepare_wrapper_conditioning_data(
             X,
             Y,
@@ -388,6 +410,7 @@ class OutlierRelevancePursuitBinaryClassificationMixedGPModel(_OutlierRRPBinaryC
         )
         X_old = self.train_inputs_raw[0]
         Y_old = self.train_targets
+
         X_full = torch.cat([X_old, X_new.to(X_old)], dim=0)
         Y_full = torch.cat([Y_old, Y_new.to(dtype=Y_old.dtype, device=Y_old.device)], dim=0)
         Yvar_full = concat_optional_noise(
@@ -402,8 +425,8 @@ class OutlierRelevancePursuitBinaryClassificationMixedGPModel(_OutlierRRPBinaryC
         new_model = self.__class__(
             train_X=X_full,
             train_Y=Y_full,
-            cat_dims=list(self.cat_dims),
             train_Yvar=Yvar_full,
+            cat_dims=list(self.cat_dims),
             likelihood=copy.deepcopy(self.likelihood),
             input_transform=copy.deepcopy(self.input_transform),
             inducing_points=self.inducing_points_raw.detach().clone(),
@@ -416,4 +439,3 @@ class OutlierRelevancePursuitBinaryClassificationMixedGPModel(_OutlierRRPBinaryC
         new_model.eval()
         new_model.likelihood.eval()
         return new_model
-

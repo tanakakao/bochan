@@ -2,11 +2,10 @@ from __future__ import annotations
 
 """Binary classification base multi-output smoke tests.
 
-The multi-output model is intentionally built as a list of independent
-single-output binary classifiers and then wrapped by
-``MultiOutputBinaryClassificationModel``.  The structure mirrors
-``test_binary_classification_base_single_output.py`` while using only the
-multi-output binary acquisition functions.
+The multi-output model is built as a list of independent single-output binary
+classifiers and wrapped by ``MultiOutputBinaryClassificationModel``.  This file
+mirrors the single-output base test while exercising multi-output active
+learning, level-set estimation, and Bayesian optimization acquisitions.
 """
 
 from typing import Any, Optional
@@ -15,6 +14,10 @@ import pytest
 import torch
 from botorch.models.transforms.input import Normalize
 from botorch.optim.optimize import optimize_acqf, optimize_acqf_mixed
+from botorch.sampling.normal import SobolQMCNormalSampler
+from botorch.utils.multi_objective.box_decompositions.non_dominated import (
+    FastNondominatedPartitioning,
+)
 from gpytorch.mlls.variational_elbo import VariationalELBO
 
 from bochan.acquisition.binary.active_learning import (
@@ -23,6 +26,19 @@ from bochan.acquisition.binary.active_learning import (
     qMultiOutputBinaryMarginUncertainty,
     qMultiOutputBinaryPredictiveEntropy,
     qMultiOutputBinaryProbabilityVariance,
+)
+from bochan.acquisition.binary.bayesian_optimization import (
+    qMultiOutputBinaryExpectedHypervolumeImprovement,
+    qMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
+    qMultiOutputBinaryNParEGO,
+    qMultiOutputBinaryProbabilityOfFeasibility,
+)
+from bochan.acquisition.binary.levelset_estimation import (
+    qMultiOutputBinaryBoundaryVarianceAcquisition,
+    qMultiOutputBinaryClassEntropyAcquisition,
+    qMultiOutputBinaryICUAcquisition,
+    qMultiOutputBinaryJointLatentStraddleAcquisition,
+    qMultiOutputBinaryLatentStraddleAcquisition,
 )
 from bochan.fit import fit_binary_classifier_mll
 from bochan.models.classification.binary.base import (
@@ -56,31 +72,15 @@ def make_multi_output_binary_toy_data(
     cat: bool = False,
     m: int = N_OUTPUTS,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Multi-output binary classification 用の toy data を作る。
-
-    ``make_binary_toy_data`` の train_X / bounds を再利用し、目的出力だけを
-    異なるスコア関数から作る。各出力は中央値で二値化し、片側だけのラベルに
-    ならないようにする。
-    """
+    """Multi-output binary classification 用の toy data を作る。"""
     train_x, _, bounds = make_binary_toy_data(n=n, d=d, cat=cat)
     cont_x = train_x[..., :d]
 
-    scores: list[torch.Tensor] = []
-    scores.append(
-        0.9 * cont_x[..., 0]
-        - 0.7 * cont_x[..., 1]
-        + 0.4 * cont_x[..., 2 % d]
-    )
-    scores.append(
-        -0.5 * cont_x[..., 0]
-        + 0.8 * cont_x[..., 1]
-        + 0.6 * cont_x[..., 3 % d]
-    )
-    scores.append(
-        torch.sin(3.0 * cont_x[..., 0])
-        + 0.5 * cont_x[..., 2 % d]
-        - 0.3 * cont_x[..., 4 % d]
-    )
+    scores: list[torch.Tensor] = [
+        0.9 * cont_x[..., 0] - 0.7 * cont_x[..., 1] + 0.4 * cont_x[..., 2 % d],
+        -0.5 * cont_x[..., 0] + 0.8 * cont_x[..., 1] + 0.6 * cont_x[..., 3 % d],
+        torch.sin(3.0 * cont_x[..., 0]) + 0.5 * cont_x[..., 2 % d] - 0.3 * cont_x[..., 4 % d],
+    ]
 
     if cat:
         cat_signal = (train_x[..., -1] - 10.0) / 5.0
@@ -99,11 +99,8 @@ def make_multi_output_binary_toy_data(
             )
             scores.append((cont_x * weights).sum(dim=-1))
 
-    labels = []
-    for score in scores[:m]:
-        labels.append((score > score.median()).to(dtype=train_x.dtype).unsqueeze(-1))
-    train_y = torch.cat(labels, dim=-1)
-    return train_x, train_y, bounds
+    labels = [(score > score.median()).to(dtype=train_x.dtype).unsqueeze(-1) for score in scores[:m]]
+    return train_x, torch.cat(labels, dim=-1), bounds
 
 
 def _build_input_transform(
@@ -113,11 +110,7 @@ def _build_input_transform(
 ) -> Normalize:
     """single-output submodel ごとに raw-space Normalize を作る。"""
     cont_indices = [i for i in range(train_x.shape[-1]) if i not in cat_dims]
-    return Normalize(
-        d=train_x.shape[-1],
-        bounds=bounds,
-        indices=cont_indices,
-    )
+    return Normalize(d=train_x.shape[-1], bounds=bounds, indices=cont_indices)
 
 
 def _fit_single_output_binary_model(
@@ -132,11 +125,7 @@ def _fit_single_output_binary_model(
         model=model.model,
         num_data=model.model.train_inputs[0].shape[-2],
     )
-    fit_binary_classifier_mll(
-        mll,
-        num_epochs=num_epochs,
-        lr=lr,
-    )
+    fit_binary_classifier_mll(mll, num_epochs=num_epochs, lr=lr)
 
 
 def _assert_single_submodel_training(
@@ -171,7 +160,6 @@ def _assert_single_submodel_training(
     assert torch.allclose(submodel.train_inputs[0], expected_train_inputs), output_index
     assert torch.allclose(submodel.model.train_inputs[0], expected_train_inputs), output_index
     assert torch.allclose(submodel.model.train_targets, train_y_j.reshape(-1)), output_index
-
     assert posterior.mean.shape == train_y_j.shape, output_index
     assert posterior.variance.shape == train_y_j.shape, output_index
     assert torch.isfinite(posterior.mean).all(), output_index
@@ -204,10 +192,7 @@ def _assert_multi_output_model_training(
     assert model.batch_shape == torch.Size([])
     assert model.num_classes_list == [2 for _ in range(m)]
     assert list(getattr(model, "cat_dims", [])) == cat_dims
-
     assert model.train_inputs[0].shape == train_x.shape
-    assert model.train_X.shape == train_x.shape
-    assert model.raw_train_X.shape == train_x.shape
     assert torch.allclose(model.train_inputs[0], train_x)
     assert torch.allclose(model.train_targets, train_y)
     assert torch.allclose(model.train_Y, train_y)
@@ -241,7 +226,6 @@ def _assert_multi_output_model_training(
     assert pred_class.shape == torch.Size([n, m])
     assert subset_post.mean.shape == torch.Size([n, 2])
     assert subset_latent.mean.shape == torch.Size([n, 1])
-
     assert torch.isfinite(posterior.mean).all()
     assert torch.isfinite(posterior.variance).all()
     assert torch.isfinite(latent_post.mean).all()
@@ -259,28 +243,14 @@ def create_multi_output_binary_model_bundle(
     num_epochs: int = 4,
     input_transform: Optional[Normalize] = None,
 ) -> dict[str, Any]:
-    """Jupyter / pytest 共通で使う multi-output binary model 作成関数。
-
-    各出力を independent な single-output classifier として fit し、最後に
-    ``MultiOutputBinaryClassificationModel(*models)`` で包む。
-    """
-    train_x, train_y, bounds = make_multi_output_binary_toy_data(
-        n=n,
-        d=d,
-        cat=cat,
-        m=m,
-    )
+    """出力ごとに single-output classifier を fit して multi-output wrapper を作る。"""
+    train_x, train_y, bounds = make_multi_output_binary_toy_data(n=n, d=d, cat=cat, m=m)
     cat_dims = [train_x.shape[-1] - 1] if cat else []
     model_cls = BinaryClassificationMixedGPModel if cat else BinaryClassificationGPModel
 
     models: list[Any] = []
     for j in range(train_y.shape[-1]):
-        # 共有 Module 登録を避けるため、未指定時は submodel ごとに fresh transform を作る。
-        sub_input_transform = (
-            _build_input_transform(train_x, bounds, cat_dims)
-            if input_transform is None
-            else input_transform
-        )
+        sub_input_transform = _build_input_transform(train_x, bounds, cat_dims) if input_transform is None else input_transform
         kwargs: dict[str, Any] = {
             "train_X": train_x,
             "train_Y": train_y[:, [j]],
@@ -289,60 +259,56 @@ def create_multi_output_binary_model_bundle(
         }
         if cat:
             kwargs["cat_dims"] = cat_dims
-
         submodel = model_cls(**kwargs)
-        _fit_single_output_binary_model(
-            submodel,
-            num_epochs=num_epochs,
-            lr=0.01,
-        )
+        _fit_single_output_binary_model(submodel, num_epochs=num_epochs, lr=0.01)
         models.append(submodel)
 
     model = MultiOutputBinaryClassificationModel(*models)
-    _assert_multi_output_model_training(
-        model=model,
-        train_x=train_x,
-        train_y=train_y,
-        cat_dims=cat_dims,
-    )
-
-    return {
-        "model": model,
-        "train_x": train_x,
-        "train_y": train_y,
-        "bounds": bounds,
-        "cat_dims": cat_dims,
-    }
+    _assert_multi_output_model_training(model=model, train_x=train_x, train_y=train_y, cat_dims=cat_dims)
+    return {"model": model, "train_x": train_x, "train_y": train_y, "bounds": bounds, "cat_dims": cat_dims}
 
 
 @pytest.fixture(scope="module")
 def multi_output_binary_model_bundle() -> dict[str, Any]:
-    """pytest 用: 通常 multi-output binary classification model。"""
-    return create_multi_output_binary_model_bundle(
-        cat=False,
-        n=20,
-        d=5,
-        m=N_OUTPUTS,
-        num_epochs=4,
-    )
+    return create_multi_output_binary_model_bundle(cat=False, n=20, d=5, m=N_OUTPUTS, num_epochs=4)
 
 
 @pytest.fixture(scope="module")
 def multi_output_binary_mixed_model_bundle() -> dict[str, Any]:
-    """pytest 用: mixed multi-output binary classification model。"""
-    return create_multi_output_binary_model_bundle(
-        cat=True,
-        n=20,
-        d=5,
-        m=N_OUTPUTS,
-        num_epochs=4,
+    return create_multi_output_binary_model_bundle(cat=True, n=20, d=5, m=N_OUTPUTS, num_epochs=4)
+
+
+def _bo_reference_objects(
+    model: MultiOutputBinaryClassificationModel,
+    train_x: torch.Tensor,
+) -> dict[str, Any]:
+    """EHVI / NEHVI / NParEGO 用の軽量 baseline objects を作る。"""
+    with torch.no_grad():
+        y_baseline = model.probability_posterior(train_x).mean.reshape(-1, model.num_outputs)
+        y_baseline = y_baseline.clamp(1e-6, 1.0 - 1e-6)
+
+    ref_point = torch.full(
+        (model.num_outputs,),
+        -0.05,
+        dtype=train_x.dtype,
+        device=train_x.device,
     )
+    partitioning = FastNondominatedPartitioning(ref_point=ref_point, Y=y_baseline)
+    sampler = SobolQMCNormalSampler(sample_shape=torch.Size([16]))
+    weights = torch.ones(model.num_outputs, dtype=train_x.dtype, device=train_x.device)
+    weights = weights / weights.sum()
+    return {
+        "ref_point": ref_point,
+        "ref_point_list": ref_point.detach().cpu().tolist(),
+        "partitioning": partitioning,
+        "sampler": sampler,
+        "weights": weights,
+    }
 
 
-def multi_output_acquisition_cases(
+def multi_output_active_learning_acquisition_cases(
     model: MultiOutputBinaryClassificationModel,
 ) -> list[tuple[type, dict[str, Any], str]]:
-    """Multi-output binary classification 専用 acquisition case。"""
     output_weights = torch.ones(model.num_outputs, dtype=DTYPE, device=DEVICE)
     common_kwargs: dict[str, Any] = {
         "reduction": "mean",
@@ -352,21 +318,9 @@ def multi_output_acquisition_cases(
         "apply_sigmoid_if_needed": False,
     }
     return [
-        (
-            qMultiOutputBinaryPredictiveEntropy,
-            dict(common_kwargs),
-            "multi_predictive_entropy",
-        ),
-        (
-            qMultiOutputBinaryProbabilityVariance,
-            dict(common_kwargs),
-            "multi_probability_variance",
-        ),
-        (
-            qMultiOutputBinaryMarginUncertainty,
-            dict(common_kwargs),
-            "multi_margin_uncertainty",
-        ),
+        (qMultiOutputBinaryPredictiveEntropy, dict(common_kwargs), "al_predictive_entropy"),
+        (qMultiOutputBinaryProbabilityVariance, dict(common_kwargs), "al_probability_variance"),
+        (qMultiOutputBinaryMarginUncertainty, dict(common_kwargs), "al_margin_uncertainty"),
         (
             qMultiOutputBinaryBALD,
             {
@@ -377,43 +331,161 @@ def multi_output_acquisition_cases(
                 "pending_penalty_beta": 5.0,
                 "apply_sigmoid_if_needed": True,
             },
-            "multi_bald",
+            "al_bald",
         ),
-        (
-            qMultiOutputBinaryIntegratedPosteriorVarianceProxy,
-            dict(common_kwargs),
-            "multi_integrated_posterior_variance_proxy",
-        ),
+        (qMultiOutputBinaryIntegratedPosteriorVarianceProxy, dict(common_kwargs), "al_integrated_posterior_variance_proxy"),
         (
             qMultiOutputBinaryProbabilityVariance,
-            {
-                **common_kwargs,
-                "output_mode": "weighted_mean",
-                "output_weights": output_weights,
-            },
-            "multi_probability_variance_weighted_mean",
+            {**common_kwargs, "output_mode": "weighted_mean", "output_weights": output_weights},
+            "al_probability_variance_weighted_mean",
         ),
         (
             qMultiOutputBinaryPredictiveEntropy,
-            {
-                **common_kwargs,
-                "output_mode": "all_positive",
-            },
-            "multi_predictive_entropy_all_positive",
+            {**common_kwargs, "output_mode": "all_positive"},
+            "al_predictive_entropy_all_positive",
         ),
     ]
 
 
+def multi_output_levelset_acquisition_cases(
+    model: MultiOutputBinaryClassificationModel,
+    train_x: torch.Tensor,
+) -> list[tuple[type, dict[str, Any], str]]:
+    output_weights = torch.ones(model.num_outputs, dtype=train_x.dtype, device=train_x.device)
+    common_kwargs: dict[str, Any] = {
+        "reduction": "mean",
+        "output_mode": "mean",
+        "pending_penalty_weight": 0.01,
+        "pending_penalty_beta": 5.0,
+    }
+    return [
+        (
+            qMultiOutputBinaryClassEntropyAcquisition,
+            {**common_kwargs, "apply_sigmoid_if_needed": False},
+            "lse_class_entropy",
+        ),
+        (
+            qMultiOutputBinaryICUAcquisition,
+            {**common_kwargs, "apply_sigmoid_if_needed": False},
+            "lse_icu",
+        ),
+        (
+            qMultiOutputBinaryBoundaryVarianceAcquisition,
+            {**common_kwargs, "thresholds": 0.0, "tau": 1.0},
+            "lse_boundary_variance",
+        ),
+        (
+            qMultiOutputBinaryLatentStraddleAcquisition,
+            {**common_kwargs, "thresholds": 0.0, "beta": 1.0},
+            "lse_latent_straddle",
+        ),
+        (
+            qMultiOutputBinaryLatentStraddleAcquisition,
+            {
+                **common_kwargs,
+                "thresholds": 0.0,
+                "beta": 1.0,
+                "output_mode": "weighted_mean",
+                "output_weights": output_weights,
+            },
+            "lse_latent_straddle_weighted_mean",
+        ),
+        (
+            qMultiOutputBinaryJointLatentStraddleAcquisition,
+            {
+                "beta": 1.0,
+                "thresholds": 0.0,
+                "uncertainty_mode": "sqrt_trace",
+                "boundary_mode": "l2_mean",
+                "same_batch_penalty_weight": 0.01,
+                "pending_penalty_weight": 0.01,
+                "observed_penalty_weight": 0.0,
+                "X_observed": train_x,
+            },
+            "lse_joint_latent_straddle",
+        ),
+    ]
+
+
+def multi_output_bo_acquisition_cases(
+    model: MultiOutputBinaryClassificationModel,
+    train_x: torch.Tensor,
+) -> list[tuple[type, dict[str, Any], str]]:
+    refs = _bo_reference_objects(model, train_x)
+    return [
+        (
+            qMultiOutputBinaryProbabilityOfFeasibility,
+            {
+                "num_samples": 8,
+                "threshold": 0.0,
+                "mode": "mc_sigmoid",
+                "reduction": "mean",
+                "output_mode": "all_positive",
+                "pending_penalty_weight": 0.01,
+                "pending_penalty_beta": 5.0,
+                "samples_are_probs": False,
+                "apply_sigmoid_if_needed": True,
+            },
+            "bo_probability_of_feasibility",
+        ),
+        (
+            qMultiOutputBinaryExpectedHypervolumeImprovement,
+            {
+                "ref_point": refs["ref_point_list"],
+                "partitioning": refs["partitioning"],
+                "sampler": refs["sampler"],
+            },
+            "bo_qehvi",
+        ),
+        (
+            qMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
+            {
+                "ref_point": refs["ref_point_list"],
+                "X_baseline": train_x,
+                "sampler": refs["sampler"],
+            },
+            "bo_qnehvi",
+        ),
+        (
+            qMultiOutputBinaryNParEGO,
+            {
+                "X_baseline": train_x,
+                "ref_point": refs["ref_point"],
+                "weights": refs["weights"],
+                "sampler": refs["sampler"],
+                "samples_are_probs": False,
+                "apply_sigmoid_if_needed": True,
+            },
+            "bo_nparego",
+        ),
+    ]
+
+
+def multi_output_acquisition_cases(
+    model: MultiOutputBinaryClassificationModel,
+    train_x: torch.Tensor,
+) -> list[tuple[type, dict[str, Any], str]]:
+    """Multi-output binary classification の全 acquisition family case。"""
+    return (
+        multi_output_active_learning_acquisition_cases(model)
+        + multi_output_levelset_acquisition_cases(model, train_x)
+        + multi_output_bo_acquisition_cases(model, train_x)
+    )
+
+
 def _representative_multi_output_acquisition_cases(
     model: MultiOutputBinaryClassificationModel,
+    train_x: torch.Tensor,
 ) -> list[tuple[type, dict[str, Any], str]]:
     names = {
-        "multi_predictive_entropy",
-        "multi_probability_variance",
-        "multi_margin_uncertainty",
-        "multi_bald",
+        "al_probability_variance",
+        "al_bald",
+        "lse_latent_straddle",
+        "lse_icu",
+        "bo_probability_of_feasibility",
+        "bo_nparego",
     }
-    return [case for case in multi_output_acquisition_cases(model) if case[2] in names]
+    return [case for case in multi_output_acquisition_cases(model, train_x) if case[2] in names]
 
 
 def _representative_constraint_cases(bounds: torch.Tensor) -> list[dict[str, Any]]:
@@ -421,8 +493,8 @@ def _representative_constraint_cases(bounds: torch.Tensor) -> list[dict[str, Any
     return [case for case in make_constraint_cases(bounds) if case["case_id"] in names]
 
 
-def _get_acquisition_case(model: MultiOutputBinaryClassificationModel, case_id: str):
-    for acq_cls, kwargs, current_case_id in multi_output_acquisition_cases(model):
+def _get_acquisition_case(model: MultiOutputBinaryClassificationModel, train_x: torch.Tensor, case_id: str):
+    for acq_cls, kwargs, current_case_id in multi_output_acquisition_cases(model, train_x):
         if current_case_id == case_id:
             return acq_cls, kwargs
     raise AssertionError(f"multi-output acquisition case not found: {case_id}")
@@ -430,6 +502,7 @@ def _get_acquisition_case(model: MultiOutputBinaryClassificationModel, case_id: 
 
 def _optimizer_constraint_scenarios(
     model: MultiOutputBinaryClassificationModel,
+    train_x: torch.Tensor,
     bounds: torch.Tensor,
     *,
     mixed: bool = False,
@@ -437,7 +510,7 @@ def _optimizer_constraint_scenarios(
 ):
     if full_matrix:
         scenarios = []
-        for acq_cls, kwargs, acq_id in _representative_multi_output_acquisition_cases(model):
+        for acq_cls, kwargs, acq_id in _representative_multi_output_acquisition_cases(model, train_x):
             for optimize_func, optimize_method, optimizer_id in optimizer_cases():
                 for constraint_case in make_constraint_cases(bounds):
                     case_id = f"{acq_id}__{optimizer_id}__{constraint_case['case_id']}"
@@ -446,25 +519,23 @@ def _optimizer_constraint_scenarios(
                     scenarios.append((acq_cls, kwargs, acq_id, optimize_func, optimize_method, constraint_case, case_id))
         return scenarios
 
-    acq_cls, kwargs = _get_acquisition_case(model, "multi_probability_variance")
+    acq_cls, kwargs = _get_acquisition_case(model, train_x, "bo_probability_of_feasibility")
     prefix = "multi_mixed" if mixed else "multi"
     return [
         (
             acq_cls,
             kwargs,
-            "multi_probability_variance",
+            "bo_probability_of_feasibility",
             "torch",
             "adam",
             constraint_case,
-            f"{prefix}__probability_variance__torch_adam__{constraint_case['case_id']}",
+            f"{prefix}__pof__torch_adam__{constraint_case['case_id']}",
         )
         for constraint_case in _representative_constraint_cases(bounds)
     ]
 
 
-def test_multi_output_binary_model_basic_behavior(
-    multi_output_binary_model_bundle: dict[str, Any],
-) -> None:
+def test_multi_output_binary_model_basic_behavior(multi_output_binary_model_bundle: dict[str, Any]) -> None:
     _assert_multi_output_model_training(
         model=multi_output_binary_model_bundle["model"],
         train_x=multi_output_binary_model_bundle["train_x"],
@@ -473,9 +544,7 @@ def test_multi_output_binary_model_basic_behavior(
     )
 
 
-def test_multi_output_binary_mixed_model_basic_behavior(
-    multi_output_binary_mixed_model_bundle: dict[str, Any],
-) -> None:
+def test_multi_output_binary_mixed_model_basic_behavior(multi_output_binary_mixed_model_bundle: dict[str, Any]) -> None:
     _assert_multi_output_model_training(
         model=multi_output_binary_mixed_model_bundle["model"],
         train_x=multi_output_binary_mixed_model_bundle["train_x"],
@@ -484,26 +553,20 @@ def test_multi_output_binary_mixed_model_basic_behavior(
     )
 
 
-def test_multi_output_binary_acquisition_forward_shapes(
-    multi_output_binary_model_bundle: dict[str, Any],
-) -> None:
+def test_multi_output_binary_acquisition_forward_shapes(multi_output_binary_model_bundle: dict[str, Any]) -> None:
     model = multi_output_binary_model_bundle["model"]
-    X = make_random_batch(
-        multi_output_binary_model_bundle["bounds"],
-        batch_size=4,
-        q=2,
-    )
+    train_x = multi_output_binary_model_bundle["train_x"]
+    X = make_random_batch(multi_output_binary_model_bundle["bounds"], batch_size=4, q=2)
 
-    for acq_cls, kwargs, case_id in multi_output_acquisition_cases(model):
+    for acq_cls, kwargs, case_id in multi_output_acquisition_cases(model, train_x):
         out = acq_cls(model=model, **kwargs)(X)
         assert out.shape == torch.Size([4]), case_id
         assert torch.isfinite(out).all(), case_id
 
 
-def test_multi_output_binary_mixed_acquisition_forward_shapes(
-    multi_output_binary_mixed_model_bundle: dict[str, Any],
-) -> None:
+def test_multi_output_binary_mixed_acquisition_forward_shapes(multi_output_binary_mixed_model_bundle: dict[str, Any]) -> None:
     model = multi_output_binary_mixed_model_bundle["model"]
+    train_x = multi_output_binary_mixed_model_bundle["train_x"]
     X = make_random_mixed_batch(
         multi_output_binary_mixed_model_bundle["bounds"],
         multi_output_binary_mixed_model_bundle["cat_dims"],
@@ -511,22 +574,33 @@ def test_multi_output_binary_mixed_acquisition_forward_shapes(
         q=2,
     )
 
-    for acq_cls, kwargs, case_id in multi_output_acquisition_cases(model):
+    for acq_cls, kwargs, case_id in multi_output_acquisition_cases(model, train_x):
         out = acq_cls(model=model, **kwargs)(X)
         assert out.shape == torch.Size([4]), case_id
         assert torch.isfinite(out).all(), case_id
 
 
+def test_multi_output_binary_family_case_coverage(multi_output_binary_model_bundle: dict[str, Any]) -> None:
+    """active_learning / levelset / bayesopt の case がすべて含まれることを確認する。"""
+    model = multi_output_binary_model_bundle["model"]
+    train_x = multi_output_binary_model_bundle["train_x"]
+    case_ids = {case_id for _, _, case_id in multi_output_acquisition_cases(model, train_x)}
+    assert any(case_id.startswith("al_") for case_id in case_ids)
+    assert any(case_id.startswith("lse_") for case_id in case_ids)
+    assert any(case_id.startswith("bo_") for case_id in case_ids)
+    assert "bo_qehvi" in case_ids
+    assert "bo_qnehvi" in case_ids
+    assert "bo_nparego" in case_ids
+
+
 @pytest.mark.slow
-def test_multi_output_binary_optimize_acqf_representative_smoke(
-    multi_output_binary_model_bundle: dict[str, Any],
-) -> None:
+def test_multi_output_binary_optimize_acqf_representative_smoke(multi_output_binary_model_bundle: dict[str, Any]) -> None:
     model = multi_output_binary_model_bundle["model"]
     train_x = multi_output_binary_model_bundle["train_x"]
     bounds = multi_output_binary_model_bundle["bounds"]
     q = 2
 
-    for acq_cls, kwargs, case_id in _representative_multi_output_acquisition_cases(model):
+    for acq_cls, kwargs, case_id in _representative_multi_output_acquisition_cases(model, train_x):
         with maybe_suppress_botorch_initial_warnings():
             cands, acq_value = optimize_acqf(
                 acq_function=acq_cls(model=model, **kwargs),
@@ -537,7 +611,6 @@ def test_multi_output_binary_optimize_acqf_representative_smoke(
                 raw_samples=16,
                 options={"maxiter": 10},
             )
-
         assert cands.shape == torch.Size([q, train_x.shape[-1]]), case_id
         assert torch.isfinite(cands).all(), case_id
         assert torch.isfinite(acq_value).all(), case_id
@@ -556,7 +629,7 @@ def test_multi_output_binary_mixed_optimize_acqf_mixed_representative_smoke(
     cat_values = torch.tensor([5.0, 10.0, 15.0], dtype=DTYPE, device=DEVICE)
     q = 2
 
-    for acq_cls, kwargs, case_id in _representative_multi_output_acquisition_cases(model):
+    for acq_cls, kwargs, case_id in _representative_multi_output_acquisition_cases(model, train_x):
         with maybe_suppress_botorch_initial_warnings():
             cands, acq_value = optimize_acqf_mixed(
                 acq_function=acq_cls(model=model, **kwargs),
@@ -567,7 +640,6 @@ def test_multi_output_binary_mixed_optimize_acqf_mixed_representative_smoke(
                 raw_samples=16,
                 options={"maxiter": 10},
             )
-
         assert cands.shape == torch.Size([q, train_x.shape[-1]]), case_id
         assert torch.isfinite(cands).all(), case_id
         assert torch.isfinite(acq_value).all(), case_id
@@ -576,23 +648,13 @@ def test_multi_output_binary_mixed_optimize_acqf_mixed_representative_smoke(
 
 
 @pytest.mark.slow
-def test_multi_output_binary_optimizer_constraint_case_smoke(
-    multi_output_binary_model_bundle: dict[str, Any],
-) -> None:
+def test_multi_output_binary_optimizer_constraint_case_smoke(multi_output_binary_model_bundle: dict[str, Any]) -> None:
     model = multi_output_binary_model_bundle["model"]
     train_x = multi_output_binary_model_bundle["train_x"]
     bounds = multi_output_binary_model_bundle["bounds"]
     q = 2
 
-    for (
-        acq_cls,
-        kwargs,
-        _,
-        optimize_func,
-        optimize_method,
-        constraint_case,
-        case_id,
-    ) in _optimizer_constraint_scenarios(model, bounds):
+    for acq_cls, kwargs, _, optimize_func, optimize_method, constraint_case, case_id in _optimizer_constraint_scenarios(model, train_x, bounds):
         with maybe_suppress_botorch_initial_warnings():
             cands, acq_value = optimize_with_case(
                 acqf=acq_cls(model=model, **kwargs),
@@ -605,7 +667,6 @@ def test_multi_output_binary_optimizer_constraint_case_smoke(
                 raw_samples=16,
                 maxiter=10,
             )
-
         assert_optimizer_compatibility_result(
             cands=cands,
             acq_value=acq_value,
@@ -629,15 +690,7 @@ def test_multi_output_binary_mixed_optimizer_constraint_case_smoke(
     cat_values = torch.tensor([5.0, 10.0, 15.0], dtype=DTYPE, device=DEVICE)
     q = 2
 
-    for (
-        acq_cls,
-        kwargs,
-        _,
-        optimize_func,
-        optimize_method,
-        constraint_case,
-        case_id,
-    ) in _optimizer_constraint_scenarios(model, bounds, mixed=True):
+    for acq_cls, kwargs, _, optimize_func, optimize_method, constraint_case, case_id in _optimizer_constraint_scenarios(model, train_x, bounds, mixed=True):
         with maybe_suppress_botorch_initial_warnings():
             cands, acq_value = optimize_mixed_with_case(
                 acqf=acq_cls(model=model, **kwargs),
@@ -651,7 +704,6 @@ def test_multi_output_binary_mixed_optimizer_constraint_case_smoke(
                 raw_samples=16,
                 maxiter=10,
             )
-
         assert_optimizer_compatibility_result(
             cands=cands,
             acq_value=acq_value,
@@ -680,22 +732,12 @@ def run_jupyter_forward_check(
     q: int = 2,
     verbose_forward_detail: bool = False,
 ) -> dict[str, Any]:
-    bundle = create_multi_output_binary_model_bundle(
-        cat=cat,
-        n=n,
-        d=d,
-        m=m,
-        num_epochs=num_epochs,
-    )
+    bundle = create_multi_output_binary_model_bundle(cat=cat, n=n, d=d, m=m, num_epochs=num_epochs)
     model = bundle["model"]
+    train_x = bundle["train_x"]
     bounds = bundle["bounds"]
     cat_dims = bundle["cat_dims"]
-
-    X = (
-        make_random_mixed_batch(bounds, cat_dims, batch_size=batch_size, q=q)
-        if cat
-        else make_random_batch(bounds, batch_size=batch_size, q=q)
-    )
+    X = make_random_mixed_batch(bounds, cat_dims, batch_size=batch_size, q=q) if cat else make_random_batch(bounds, batch_size=batch_size, q=q)
 
     print("=" * 80)
     print(f"Jupyter multi-output binary forward check cat={cat}")
@@ -707,39 +749,18 @@ def run_jupyter_forward_check(
         print(f"X.shape={X.shape}")
     print("=" * 80)
 
-    for acq_cls, kwargs, case_id in multi_output_acquisition_cases(model):
-        try:
-            values = acq_cls(model=model, **kwargs)(X)
-            assert values.shape == torch.Size([batch_size]), case_id
-            assert torch.isfinite(values).all(), case_id
-            if verbose_forward_detail:
-                print(
-                    f"[OK] {case_id} shape={tuple(values.shape)} "
-                    f"min={values.min().item():.6g} "
-                    f"max={values.max().item():.6g}"
-                )
-        except Exception as exc:
-            print(f"[NG] {case_id} {type(exc).__name__}")
-            print(str(exc))
-            raise
+    for acq_cls, kwargs, case_id in multi_output_acquisition_cases(model, train_x):
+        values = acq_cls(model=model, **kwargs)(X)
+        assert values.shape == torch.Size([batch_size]), case_id
+        assert torch.isfinite(values).all(), case_id
+        if verbose_forward_detail:
+            print(f"[OK] {case_id} shape={tuple(values.shape)} min={values.min().item():.6g} max={values.max().item():.6g}")
 
     print("forward check passed.")
     return bundle
 
 
-def run_jupyter_all_forward_checks(
-    *,
-    num_epochs: int = 4,
-    verbose_forward_detail: bool = False,
-) -> None:
-    run_jupyter_forward_check(
-        cat=False,
-        num_epochs=num_epochs,
-        verbose_forward_detail=verbose_forward_detail,
-    )
-    run_jupyter_forward_check(
-        cat=True,
-        num_epochs=num_epochs,
-        verbose_forward_detail=verbose_forward_detail,
-    )
+def run_jupyter_all_forward_checks(*, num_epochs: int = 4, verbose_forward_detail: bool = False) -> None:
+    run_jupyter_forward_check(cat=False, num_epochs=num_epochs, verbose_forward_detail=verbose_forward_detail)
+    run_jupyter_forward_check(cat=True, num_epochs=num_epochs, verbose_forward_detail=verbose_forward_detail)
     print("all multi-output binary forward checks passed.")

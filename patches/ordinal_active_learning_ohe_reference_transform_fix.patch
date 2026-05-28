@@ -1,0 +1,108 @@
+diff --git a/src/bochan/acquisition/ordinal/active_learning/single_output.py b/src/bochan/acquisition/ordinal/active_learning/single_output.py
+index f0f8480..ohe-fix 100644
+--- a/src/bochan/acquisition/ordinal/active_learning/single_output.py
++++ b/src/bochan/acquisition/ordinal/active_learning/single_output.py
+@@
+-def _apply_input_transform_for_reference(model: Model, X: Tensor) -> Tensor:
+-    """
+-    candidate / pending / observed を同じ距離計算空間へ写す。
+-
+-    Notes:
+-        - input_transform が候補を q * n_w に展開する場合、
+-          penalty も同じ q_like 空間で計算される。
+-        - ModelList 系では先頭 model の input_transform を参照する。
+-    """
+-    X = _ensure_q_batch(X)
+-
+-    it = getattr(model, "input_transform", None)
+-    if it is not None:
+-        Xt = it(X)
+-        if isinstance(Xt, tuple):
+-            Xt = Xt[0]
+-        return _ensure_q_batch(Xt)
+-
+-    models = getattr(model, "models", None)
+-    if models is not None and len(models) > 0:
+-        it = getattr(models[0], "input_transform", None)
+-        if it is not None:
+-            Xt = it(X)
+-            if isinstance(Xt, tuple):
+-                Xt = Xt[0]
+-            return _ensure_q_batch(Xt)
+-
+-    return X
++def _call_transform_inputs_for_reference(model: Model, X: Tensor) -> Optional[Tensor]:
++    """model.transform_inputs を使って参照点を候補点と同じ特徴空間へ写す。
++
++    Mixed ordinal model では、raw-space のカテゴリ列を one-hot encode した後の
++    encoded-space で内部 GP が動く。一方、input_transform を直接呼ぶと、
++    raw dim と encoded dim が食い違う場合がある。
++
++    そのため、モデルが transform_inputs を持つ場合はこれを優先する。
++    SaasOrdinalMixedGPModel では transform_inputs が
++
++        raw X -> input_transform / InputPerturbation -> one-hot encode
++
++    または
++
++        raw X -> one-hot encode -> encoded-space input_transform
++
++    の整合を内部で吸収する。
++    """
++    transform_inputs = getattr(model, "transform_inputs", None)
++    if not callable(transform_inputs):
++        return None
++
++    try:
++        Xt = transform_inputs(X)
++    except Exception:
++        return None
++
++    if isinstance(Xt, tuple):
++        Xt = Xt[0]
++    if not torch.is_tensor(Xt):
++        return None
++    return _ensure_q_batch(Xt)
++
++
++def _apply_input_transform_for_reference(model: Model, X: Tensor) -> Tensor:
++    """
++    candidate / pending / observed を同じ距離計算空間へ写す。
++
++    Notes:
++        - mixed / OHE 対応モデルでは model.transform_inputs を優先する。
++        - input_transform が候補を q * n_w に展開する場合、
++          penalty も同じ q_like 空間で計算される。
++        - ModelList 系では先頭 model の transform_inputs / input_transform を参照する。
++    """
++    X = _ensure_q_batch(X)
++
++    # Mixed / OHE 対応 wrapper では、input_transform を直接呼ばず、
++    # モデル側の transform_inputs に任せる。
++    Xt = _call_transform_inputs_for_reference(model, X)
++    if Xt is not None:
++        return Xt
++
++    models = getattr(model, "models", None)
++    if models is not None and len(models) > 0:
++        Xt = _call_transform_inputs_for_reference(models[0], X)
++        if Xt is not None:
++            return Xt
++
++    # fallback: 従来どおり input_transform を直接適用する。
++    it = getattr(model, "input_transform", None)
++    if it is not None:
++        Xt = it(X)
++        if isinstance(Xt, tuple):
++            Xt = Xt[0]
++        return _ensure_q_batch(Xt)
++
++    if models is not None and len(models) > 0:
++        it = getattr(models[0], "input_transform", None)
++        if it is not None:
++            Xt = it(X)
++            if isinstance(Xt, tuple):
++                Xt = Xt[0]
++            return _ensure_q_batch(Xt)
++
++    return X

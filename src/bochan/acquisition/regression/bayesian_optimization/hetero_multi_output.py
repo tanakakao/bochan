@@ -15,7 +15,6 @@ from botorch.acquisition.multi_objective.monte_carlo import (
 from botorch.acquisition.multi_objective.objective import (
     IdentityMCMultiOutputObjective,
     MCMultiOutputObjective,
-    WeightedMCMultiOutputObjective,
 )
 from botorch.models.model import Model
 from botorch.sampling.normal import SobolQMCNormalSampler
@@ -162,6 +161,47 @@ def _normalize_samples(samples: Tensor, X: Tensor, m: int) -> Tensor:
     # fallback: infer sample shape from first dim
     S = s.shape[0]
     return s.reshape(S, *expected_prefix, m)
+
+
+def _chebyshev_scalarize_objectives(
+    Y: Tensor,
+    *,
+    weights: Tensor,
+    ref_point: Tensor,
+    rho: float = 0.05,
+) -> Tensor:
+    """Augmented Chebyshev scalarization for maximization objectives.
+
+    Args:
+        Y: Objective values with shape ``... x m``.
+        weights: Non-negative scalarization weights with shape ``m``.
+        ref_point: Reference point with shape ``m``. Objectives are assumed to
+            be maximized and improvement is measured as ``Y - ref_point``.
+        rho: Small augmentation coefficient. Larger values encourage balanced
+            improvement while still keeping the Chebyshev term dominant.
+
+    Returns:
+        Scalarized values with shape ``...``.
+    """
+    if Y.shape[-1] != weights.numel():
+        raise RuntimeError(
+            "Y output dimension and weights length must match. "
+            f"Got Y.shape={tuple(Y.shape)}, weights.shape={tuple(weights.shape)}."
+        )
+    if ref_point.numel() != weights.numel():
+        raise RuntimeError(
+            "ref_point length and weights length must match. "
+            f"Got ref_point.shape={tuple(ref_point.shape)}, weights.shape={tuple(weights.shape)}."
+        )
+
+    weights = weights.to(device=Y.device, dtype=Y.dtype).clamp_min(1e-12)
+    weights = weights / weights.sum().clamp_min(1e-12)
+    ref_point = ref_point.to(device=Y.device, dtype=Y.dtype)
+
+    view_shape = *([1] * (Y.ndim - 1)), -1
+    improvement = Y - ref_point.view(view_shape)
+    weighted = weights.view(view_shape) * improvement
+    return weighted.min(dim=-1).values + float(rho) * weighted.sum(dim=-1)
 
 
 def compute_hetero_multi_output_regression_train_y(
@@ -508,28 +548,34 @@ class qHeteroMultiOutputRegressionNParEGO(MCAcquisitionFunction):
         noise_penalty: float = 0.0,
         default_sigma: float = 0.0,
         noise_is_log_var: bool = True,
+        rho: float = 0.05,
     ) -> None:
         sampler = sampler or SobolQMCNormalSampler(sample_shape=torch.Size([128]))
         X_baseline = X_baseline.detach()
         tkwargs = {"dtype": X_baseline.dtype, "device": X_baseline.device}
+        ref_point = ref_point.to(**tkwargs)
         m = int(ref_point.numel())
 
         if weights is None:
             w = torch.rand(m, **tkwargs)
-            weights = w / w.sum()
+            weights = w / w.sum().clamp_min(1e-12)
         else:
             weights = weights.to(**tkwargs)
             weights = weights / weights.sum().clamp_min(1e-12)
 
-        base_objective = WeightedMCMultiOutputObjective(weights=weights)
-        super().__init__(model=model, sampler=sampler, objective=base_objective)
-        self.base_objective = base_objective
+        super().__init__(
+            model=model,
+            sampler=sampler,
+            objective=IdentityMCMultiOutputObjective(),
+        )
         self.X_baseline = X_baseline
-        self.ref_point = ref_point.to(**tkwargs)
         self.beta = float(beta)
         self.noise_penalty = float(noise_penalty)
         self.default_sigma = float(default_sigma)
         self.noise_is_log_var = bool(noise_is_log_var)
+        self.rho = float(rho)
+        self.register_buffer("weights", weights)
+        self.register_buffer("ref_point", ref_point)
 
         with torch.no_grad():
             y = compute_hetero_multi_output_regression_train_y(
@@ -539,7 +585,12 @@ class qHeteroMultiOutputRegressionNParEGO(MCAcquisitionFunction):
                 default_sigma=default_sigma,
                 noise_is_log_var=noise_is_log_var,
             )
-            obj_train = self.base_objective(y.unsqueeze(0).unsqueeze(0), X=X_baseline.unsqueeze(0)).squeeze()
+            obj_train = _chebyshev_scalarize_objectives(
+                y,
+                weights=self.weights,
+                ref_point=self.ref_point,
+                rho=self.rho,
+            )
             self.register_buffer("best_value", obj_train.max())
 
     @t_batch_mode_transform()
@@ -556,7 +607,12 @@ class qHeteroMultiOutputRegressionNParEGO(MCAcquisitionFunction):
             noise_is_log_var=self.noise_is_log_var,
             posterior=post,
         )
-        scalarized = self.base_objective(hetero, X=X)
+        scalarized = _chebyshev_scalarize_objectives(
+            hetero,
+            weights=self.weights,
+            ref_point=self.ref_point,
+            rho=self.rho,
+        )
         best_q = scalarized.max(dim=-1).values
         return (best_q - self.best_value.to(best_q)).clamp_min(0.0).mean(dim=0)
 

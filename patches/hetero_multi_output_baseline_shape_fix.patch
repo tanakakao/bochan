@@ -1,0 +1,31 @@
+diff --git a/src/bochan/acquisition/regression/bayesian_optimization/hetero_multi_output.py b/src/bochan/acquisition/regression/bayesian_optimization/hetero_multi_output.py
+index 2d91539..baseline-shape-fix 100644
+--- a/src/bochan/acquisition/regression/bayesian_optimization/hetero_multi_output.py
++++ b/src/bochan/acquisition/regression/bayesian_optimization/hetero_multi_output.py
+@@
+-def _ensure_q_batch(X: Tensor) -> Tensor:
+-    return X.unsqueeze(-2) if X.ndim == 2 else X
++def _ensure_q_batch(X: Tensor) -> Tensor:
++    """Normalize input shape without breaking qNEHVI baseline semantics.
++
++    In BoTorch MC / multi-objective objectives, a 2D input has shape
++    ``n x d`` and the q-like dimension is ``n``.  This is especially important
++    during qNEHVI initialization, where ``X_baseline`` is passed to the
++    objective with shape ``n x d`` and BoTorch verifies that
++    ``objective(samples, X=X_baseline).shape[-2] == X_baseline.shape[-2]``.
++
++    The old implementation converted ``n x d`` to ``n x 1 x d``.  As a result,
++    hetero-adjusted baseline samples were reshaped to ``sample_shape x n x 1 x m``
++    and the wrapped multi-output objective failed with:
++
++        The q-batch shape of the objective values does not agree with
++        the q-batch shape of X. Got 1 and n.
++
++    Keep 2D tensors unchanged and only canonicalize a single raw point ``d`` to
++    ``1 x d``.
++    """
++    if not torch.is_tensor(X):
++        raise TypeError(f"X must be a Tensor. Got {type(X)}.")
++    if X.ndim == 1:
++        return X.unsqueeze(0)
++    return X

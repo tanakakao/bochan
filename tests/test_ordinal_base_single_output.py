@@ -3,13 +3,14 @@ from __future__ import annotations
 """Ordinal base single-output smoke tests.
 
 This file mirrors the design of ``test_binary_classification_base_single_output``
-for ordinal models.  It covers
+for ordinal models. It covers
 
 - standard and mixed ordinal GP models,
 - active learning acquisitions,
 - level-set estimation acquisitions,
-- Bayesian optimization acquisitions, and
-- optimizer / constraint compatibility, including evo optimizers.
+- Bayesian optimization acquisitions,
+- optimizer / constraint compatibility, including evo optimizers, and
+- Jupyter-oriented all-check runners.
 """
 
 from typing import Any
@@ -34,9 +35,7 @@ from bochan.acquisition.ordinal.bayesian_optimization import (
     qOrdinalProbabilityOfImprovement,
     qOrdinalUpperConfidenceBound,
 )
-from bochan.acquisition.ordinal.bayesian_optimization.single_output import (
-    qOrdinalExpectedUtility,
-)
+from bochan.acquisition.ordinal.bayesian_optimization.single_output import qOrdinalExpectedUtility
 from bochan.acquisition.ordinal.levelset_estimation import (
     qOrdinalBoundaryVarianceAcquisition,
     qOrdinalClassEntropyAcquisition,
@@ -88,7 +87,10 @@ def make_ordinal_toy_data(
     if cat:
         score = score + 0.2 * ((train_x[..., -1] - 10.0) / 5.0)
 
-    q1, q2 = torch.quantile(score, torch.tensor([1.0 / 3.0, 2.0 / 3.0], dtype=score.dtype, device=score.device))
+    q1, q2 = torch.quantile(
+        score,
+        torch.tensor([1.0 / 3.0, 2.0 / 3.0], dtype=score.dtype, device=score.device),
+    )
     labels = torch.zeros_like(score, dtype=torch.long)
     labels = labels + (score > q1).long() + (score > q2).long()
 
@@ -152,7 +154,10 @@ def _assert_ordinal_model_training(
         posterior = model.posterior(train_x)
         probs = model.class_probs(train_x)
         pred_class = model.predict_class(train_x)
-        expected_u = model.expected_utility(train_x, UTILITY_VALUES.to(device=train_x.device, dtype=train_x.dtype))
+        expected_u = model.expected_utility(
+            train_x,
+            UTILITY_VALUES.to(device=train_x.device, dtype=train_x.dtype),
+        )
 
     assert posterior.mean.shape[-2] == train_x.shape[-2]
     assert torch.isfinite(posterior.mean).all()
@@ -353,11 +358,24 @@ def _representative_constraint_cases(bounds: torch.Tensor) -> list[dict[str, Any
     return [case for case in make_constraint_cases(bounds) if case["case_id"] in names]
 
 
-def _ordinal_optimizer_constraint_scenarios(model: Any, train_x: torch.Tensor, bounds: torch.Tensor, *, mixed: bool = False):
+def _ordinal_optimizer_constraint_scenarios(
+    model: Any,
+    train_x: torch.Tensor,
+    bounds: torch.Tensor,
+    *,
+    mixed: bool = False,
+    full_matrix: bool = False,
+):
+    acquisition_cases = (
+        _representative_ordinal_acquisition_cases(model, train_x)
+        if full_matrix
+        else _constraint_ordinal_acquisition_cases(model, train_x)
+    )
+    constraint_cases = make_constraint_cases(bounds) if full_matrix else _representative_constraint_cases(bounds)
     scenarios = []
-    for acq_cls, kwargs, acq_id in _constraint_ordinal_acquisition_cases(model, train_x):
+    for acq_cls, kwargs, acq_id in acquisition_cases:
         for optimize_func, optimize_method, optimizer_id in optimizer_cases():
-            for constraint_case in _representative_constraint_cases(bounds):
+            for constraint_case in constraint_cases:
                 case_id = f"{acq_id}__{optimizer_id}__{constraint_case['case_id']}"
                 if mixed:
                     case_id = f"mixed__{case_id}"
@@ -539,6 +557,29 @@ def test_ordinal_mixed_optimizer_constraint_case_smoke(ordinal_mixed_model_bundl
         assert torch.isin(cands[:, cat_id], cat_values).all(), case_id
 
 
+# ============================================================
+# Jupyter helpers
+# ============================================================
+
+
+def _print_failure_summary(failed_cases: list[tuple[str, Exception]]) -> None:
+    print("=" * 100)
+    if failed_cases:
+        print(f"failed_cases={len(failed_cases)}")
+        for case_id, exc in failed_cases:
+            print(f"  - {case_id}: {type(exc).__name__}: {exc}")
+    else:
+        print("all checks passed.")
+    print("=" * 100)
+
+
+def _fixed_features_for_bundle(bundle: dict[str, Any]) -> tuple[list[dict[int, float]], torch.Tensor]:
+    cat_id = bundle["cat_dims"][0]
+    fixed_features_list = [{cat_id: 5.0}, {cat_id: 10.0}, {cat_id: 15.0}]
+    cat_values = torch.tensor([5.0, 10.0, 15.0], dtype=DTYPE, device=DEVICE)
+    return fixed_features_list, cat_values
+
+
 def run_jupyter_forward_check(
     *,
     cat: bool = False,
@@ -582,3 +623,249 @@ def run_jupyter_all_forward_checks(*, num_epochs: int = 8, verbose_forward_detai
     run_jupyter_forward_check(cat=False, num_epochs=num_epochs, verbose_forward_detail=verbose_forward_detail)
     run_jupyter_forward_check(cat=True, num_epochs=num_epochs, verbose_forward_detail=verbose_forward_detail)
     print("all ordinal base forward checks passed.")
+
+
+def run_jupyter_optimize_all_acquisitions_check(
+    *,
+    cat: bool = False,
+    n: int = 24,
+    d: int = 5,
+    num_epochs: int = 8,
+    q: int = 2,
+    num_restarts: int = 2,
+    raw_samples: int = 16,
+    maxiter: int = 10,
+    continue_on_error: bool = False,
+    suppress_botorch_warnings: bool = True,
+    verbose_ok_detail: bool = False,
+) -> dict[str, Any]:
+    bundle = create_ordinal_model_bundle(cat=cat, n=n, d=d, num_epochs=num_epochs)
+    model = bundle["model"]
+    train_x = bundle["train_x"]
+    bounds = bundle["bounds"]
+    cases = ordinal_acquisition_cases(model, train_x)
+    failed_cases: list[tuple[str, Exception]] = []
+    prefix = "mixed_" if cat else ""
+
+    print("=" * 100)
+    print(f"Jupyter ordinal base {prefix}optimize check: all acquisitions")
+    print(f"n={n}, d={d}, q={q}, num_epochs={num_epochs}, num_acquisitions={len(cases)}")
+    print("=" * 100)
+
+    fixed_features_list: list[dict[int, float]] | None = None
+    cat_values: torch.Tensor | None = None
+    cat_id: int | None = None
+    if cat:
+        cat_id = bundle["cat_dims"][0]
+        fixed_features_list, cat_values = _fixed_features_for_bundle(bundle)
+
+    for acq_cls, kwargs, case_id in cases:
+        display_id = f"{prefix}optimize_all__{case_id}"
+        try:
+            with maybe_suppress_botorch_initial_warnings(suppress=suppress_botorch_warnings):
+                if cat:
+                    cands, acq_value = optimize_acqf_mixed(
+                        acq_function=acq_cls(model=model, **kwargs),
+                        bounds=bounds,
+                        q=q,
+                        fixed_features_list=fixed_features_list,
+                        num_restarts=num_restarts,
+                        raw_samples=raw_samples,
+                        options={"maxiter": maxiter},
+                    )
+                else:
+                    cands, acq_value = optimize_acqf(
+                        acq_function=acq_cls(model=model, **kwargs),
+                        bounds=bounds,
+                        q=q,
+                        sequential=True,
+                        num_restarts=num_restarts,
+                        raw_samples=raw_samples,
+                        options={"maxiter": maxiter},
+                    )
+            assert cands.shape == torch.Size([q, train_x.shape[-1]]), display_id
+            assert torch.isfinite(cands).all(), display_id
+            assert torch.isfinite(acq_value).all(), display_id
+            assert_candidates_in_bounds(cands=cands, bounds=bounds)
+            if cat:
+                assert cat_id is not None and cat_values is not None
+                assert torch.isin(cands[:, cat_id], cat_values).all(), display_id
+            print(f"[OK] {display_id} cands.shape={tuple(cands.shape)} acq_value={acq_value}" if verbose_ok_detail else f"[OK] {display_id}")
+        except Exception as exc:
+            print(f"[NG] {display_id} {type(exc).__name__}")
+            print(str(exc))
+            failed_cases.append((display_id, exc))
+            if not continue_on_error:
+                raise
+
+    _print_failure_summary(failed_cases)
+    return bundle
+
+
+def run_jupyter_optimizer_constraint_compatibility_check(
+    *,
+    cat: bool = False,
+    n: int = 24,
+    d: int = 5,
+    num_epochs: int = 8,
+    q: int = 2,
+    full_matrix: bool = False,
+    continue_on_error: bool = False,
+    verbose_ok_detail: bool = False,
+    verbose_candidates: bool = False,
+    verbose_constraints: bool = False,
+    suppress_botorch_warnings: bool = True,
+) -> dict[str, Any]:
+    if d < 5:
+        raise ValueError("constraint compatibility check では d >= 5 が必要です。")
+
+    bundle = create_ordinal_model_bundle(cat=cat, n=n, d=d, num_epochs=num_epochs)
+    model = bundle["model"]
+    train_x = bundle["train_x"]
+    bounds = bundle["bounds"]
+    scenarios = _ordinal_optimizer_constraint_scenarios(model, train_x, bounds, mixed=cat, full_matrix=full_matrix)
+    failed_cases: list[tuple[str, Exception]] = []
+    prefix = "mixed_" if cat else ""
+
+    fixed_features_list: list[dict[int, float]] | None = None
+    cat_values: torch.Tensor | None = None
+    cat_id: int | None = None
+    if cat:
+        cat_id = bundle["cat_dims"][0]
+        fixed_features_list, cat_values = _fixed_features_for_bundle(bundle)
+
+    print("=" * 100)
+    print(f"Jupyter ordinal base {prefix}optimizer / constraint compatibility check")
+    print(f"n={n}, d={d}, q={q}, num_epochs={num_epochs}, full_matrix={full_matrix}, num_cases={len(scenarios)}")
+    print("=" * 100)
+
+    for acq_cls, kwargs, _, optimize_func, optimize_method, constraint_case, case_id in scenarios:
+        try:
+            with maybe_suppress_botorch_initial_warnings(suppress=suppress_botorch_warnings):
+                if cat:
+                    cands, acq_value = optimize_mixed_with_case(
+                        acqf=acq_cls(model=model, **kwargs),
+                        bounds=bounds,
+                        q=q,
+                        fixed_features_list=fixed_features_list,
+                        optimize_func=optimize_func,
+                        optimize_method=optimize_method,
+                        constraint_case=constraint_case,
+                        num_restarts=2,
+                        raw_samples=16,
+                        maxiter=10,
+                    )
+                else:
+                    cands, acq_value = optimize_with_case(
+                        acqf=acq_cls(model=model, **kwargs),
+                        bounds=bounds,
+                        q=q,
+                        optimize_func=optimize_func,
+                        optimize_method=optimize_method,
+                        constraint_case=constraint_case,
+                        num_restarts=2,
+                        raw_samples=16,
+                        maxiter=10,
+                    )
+            assert_optimizer_compatibility_result(
+                cands=cands,
+                acq_value=acq_value,
+                bounds=bounds,
+                q=q,
+                d=train_x.shape[-1],
+                constraint_case=constraint_case,
+                case_id=case_id,
+            )
+            if cat:
+                assert cat_id is not None and cat_values is not None
+                assert torch.isin(cands[:, cat_id], cat_values).all(), case_id
+            print(f"[OK] {case_id} cands.shape={tuple(cands.shape)} acq_value={acq_value}" if verbose_ok_detail else f"[OK] {case_id}")
+            if verbose_candidates:
+                print(f"     cands={cands}")
+            if constraint_case["case_id"] != "none":
+                print_linear_constraint_diagnostics(
+                    cands=cands,
+                    equality_constraints=constraint_case["equality_constraints"],
+                    inequality_constraints=constraint_case["inequality_constraints"],
+                    inequality_sense=constraint_case.get("inequality_sense", "le"),
+                    show_all=verbose_constraints,
+                )
+        except Exception as exc:
+            print(f"[NG] {case_id} {type(exc).__name__}")
+            print(str(exc))
+            failed_cases.append((case_id, exc))
+            if not continue_on_error:
+                raise
+
+    _print_failure_summary(failed_cases)
+    return bundle
+
+
+def run_jupyter_all_checks(
+    *,
+    num_epochs: int = 8,
+    n: int = 24,
+    d: int = 5,
+    q: int = 2,
+    run_optimize: bool = True,
+    full_matrix: bool = False,
+    continue_on_error: bool = False,
+    verbose_forward_detail: bool = False,
+    verbose_ok_detail: bool = False,
+    verbose_candidates: bool = False,
+    verbose_constraints: bool = False,
+    suppress_botorch_warnings: bool = True,
+) -> None:
+    """ordinal base single-output の Jupyter 一括確認 helper。"""
+    run_jupyter_forward_check(cat=False, n=n, d=d, num_epochs=num_epochs, q=q, verbose_forward_detail=verbose_forward_detail)
+    run_jupyter_forward_check(cat=True, n=n, d=d, num_epochs=num_epochs, q=q, verbose_forward_detail=verbose_forward_detail)
+
+    if run_optimize:
+        run_jupyter_optimize_all_acquisitions_check(
+            cat=False,
+            n=n,
+            d=d,
+            num_epochs=num_epochs,
+            q=q,
+            continue_on_error=continue_on_error,
+            suppress_botorch_warnings=suppress_botorch_warnings,
+            verbose_ok_detail=verbose_ok_detail,
+        )
+        run_jupyter_optimize_all_acquisitions_check(
+            cat=True,
+            n=n,
+            d=d,
+            num_epochs=num_epochs,
+            q=q,
+            continue_on_error=continue_on_error,
+            suppress_botorch_warnings=suppress_botorch_warnings,
+            verbose_ok_detail=verbose_ok_detail,
+        )
+        run_jupyter_optimizer_constraint_compatibility_check(
+            cat=False,
+            n=n,
+            d=d,
+            num_epochs=num_epochs,
+            q=q,
+            full_matrix=full_matrix,
+            continue_on_error=continue_on_error,
+            verbose_ok_detail=verbose_ok_detail,
+            verbose_candidates=verbose_candidates,
+            verbose_constraints=verbose_constraints,
+            suppress_botorch_warnings=suppress_botorch_warnings,
+        )
+        run_jupyter_optimizer_constraint_compatibility_check(
+            cat=True,
+            n=n,
+            d=d,
+            num_epochs=num_epochs,
+            q=q,
+            full_matrix=full_matrix,
+            continue_on_error=continue_on_error,
+            verbose_ok_detail=verbose_ok_detail,
+            verbose_candidates=verbose_candidates,
+            verbose_constraints=verbose_constraints,
+            suppress_botorch_warnings=suppress_botorch_warnings,
+        )
+
+    print("all ordinal base Jupyter checks passed.")

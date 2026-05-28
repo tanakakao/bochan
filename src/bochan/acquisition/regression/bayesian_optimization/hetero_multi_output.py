@@ -26,7 +26,21 @@ from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_tr
 
 
 def _ensure_q_batch(X: Tensor) -> Tensor:
-    return X.unsqueeze(-2) if X.ndim == 2 else X
+    """Normalize inputs while preserving BoTorch baseline semantics.
+
+    For MC multi-objective objectives, a 2D tensor ``n x d`` uses ``n`` as the
+    q-like dimension. This matters for qNEHVI baseline evaluation where
+    ``X_baseline`` is passed to ``objective(samples, X=X_baseline)`` and BoTorch
+    verifies that the objective output q dimension equals ``X_baseline.shape[-2]``.
+
+    Therefore, do not convert ``n x d`` to ``n x 1 x d`` here. Only canonicalize
+    a single raw point ``d`` to ``1 x d``.
+    """
+    if not torch.is_tensor(X):
+        raise TypeError(f"X must be a Tensor. Got {type(X)}.")
+    if X.ndim == 1:
+        return X.unsqueeze(0)
+    return X
 
 
 def _get_noise_posterior(model: Model, X: Tensor):
@@ -161,7 +175,7 @@ def compute_hetero_multi_output_regression_train_y(
 ) -> Tensor:
     """学習点上の hetero-adjusted mean を返す。shape = (n, m)."""
     with torch.no_grad():
-        X = _ensure_q_batch(train_X).squeeze(-2)
+        X = _ensure_q_batch(train_X)
         post = model.posterior(X)
         mean = _normalize_output_shape(post.mean, X, "train posterior mean")
         sigma = get_hetero_noise_std(

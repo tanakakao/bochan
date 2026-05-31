@@ -28,11 +28,13 @@ from .regression import (
 from .hybrid import (
     Direction,
     HybridObjectiveSpec,
+    HybridWeightedSumObjective,
     OutputKey,
     make_hybrid_linear_objective,
     make_hybrid_multi_output_objective,
     make_hybrid_objective_specs,
     make_hybrid_scalar_objective,
+    make_hybrid_weighted_sum_objective,
     resolve_hybrid_output_indices,
 )
 
@@ -57,10 +59,12 @@ __all__ = [
     "make_regression_scalar_callable",
     "Direction",
     "HybridObjectiveSpec",
+    "HybridWeightedSumObjective",
     "OutputKey",
     "make_hybrid_linear_objective",
     "make_hybrid_multi_output_objective",
     "make_hybrid_objective_specs",
     "make_hybrid_scalar_objective",
+    "make_hybrid_weighted_sum_objective",
     "resolve_hybrid_output_indices",
 ]

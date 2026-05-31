@@ -9,6 +9,8 @@ from torch import Tensor
 
 from .constraints import (
     FeasibilityConstraintSpec,
+    OrdinalRankConstraintSpec,
+    constraint_value_from_ordinal_probs,
     constraint_value_from_output,
     normalize_output_index,
     soft_feasibility_from_constraint_values,
@@ -17,6 +19,7 @@ from .constraints import (
 QReduction = Literal["mean", "min", "prod", "max", "none"]
 ConstraintReduction = Literal["prod", "min", "mean"]
 PosteriorMode = Literal["objective", "mean", "probability", "expected_utility"]
+ConstraintSpec = FeasibilityConstraintSpec | OrdinalRankConstraintSpec
 
 
 class FeasibilityWeightedAcquisition(AcquisitionFunction):
@@ -35,7 +38,7 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
         self,
         acqf: AcquisitionFunction,
         model,
-        constraints: Sequence[FeasibilityConstraintSpec],
+        constraints: Sequence[ConstraintSpec],
         *,
         eta: float = 1e-3,
         posterior_mode: PosteriorMode = "objective",
@@ -84,8 +87,28 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
         # HybridMultiOutputModel 以外でも使えるように fallback する。
         return self.model.posterior(X, output_mode=self.posterior_mode)
 
+    def _ordinal_rank_constraint_value(
+        self,
+        X: Tensor,
+        spec: OrdinalRankConstraintSpec,
+    ) -> Tensor:
+        """OrdinalRankConstraintSpec を class probability から評価する。"""
+
+        if not callable(getattr(self.model, "class_probs_list", None)):
+            raise AttributeError(
+                "OrdinalRankConstraintSpec requires model.class_probs_list(X, output_indices=...)."
+            )
+
+        probs_list = self.model.class_probs_list(X, output_indices=[spec.output])
+        if len(probs_list) != 1:
+            raise RuntimeError(
+                "Expected exactly one ordinal probability tensor for "
+                f"output={spec.output!r}, got {len(probs_list)}."
+            )
+        return constraint_value_from_ordinal_probs(probs_list[0], spec)
+
     def constraint_values(self, X: Tensor) -> Tensor:
-        """posterior mean 上で制約値を評価する。
+        """posterior mean / class probability 上で制約値を評価する。
 
         Returns:
             Tensor:
@@ -93,19 +116,30 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
                 各 constraint は ``<= 0`` が feasible。
         """
 
-        posterior = self._posterior(X)
-        mean = posterior.mean
         output_names = getattr(self.model, "output_names", None)
-
         values = []
+
+        continuous_specs = [
+            spec for spec in self.constraints if isinstance(spec, FeasibilityConstraintSpec)
+        ]
+        posterior_mean = None
+        if len(continuous_specs) > 0:
+            posterior_mean = self._posterior(X).mean
+
         for spec in self.constraints:
+            if isinstance(spec, OrdinalRankConstraintSpec):
+                values.append(self._ordinal_rank_constraint_value(X, spec).unsqueeze(-1))
+                continue
+
             idx = normalize_output_index(spec.output, output_names=output_names)
-            if idx >= mean.shape[-1]:
+            if posterior_mean is None:
+                posterior_mean = self._posterior(X).mean
+            if idx >= posterior_mean.shape[-1]:
                 raise IndexError(
                     f"Constraint output index {idx} is out of range for "
-                    f"posterior.mean.shape={tuple(mean.shape)}."
+                    f"posterior.mean.shape={tuple(posterior_mean.shape)}."
                 )
-            y = mean[..., idx]
+            y = posterior_mean[..., idx]
             values.append(constraint_value_from_output(y, spec).unsqueeze(-1))
 
         return torch.cat(values, dim=-1)
@@ -170,6 +204,7 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
 
 __all__ = [
     "ConstraintReduction",
+    "ConstraintSpec",
     "FeasibilityWeightedAcquisition",
     "PosteriorMode",
     "QReduction",

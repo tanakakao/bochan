@@ -8,6 +8,7 @@ from torch import Tensor
 
 
 ConstraintSense = Literal["ge", "le", "eq"]
+OrdinalRankSense = Literal["ge", "le", "eq"]
 OutputKey = Union[int, str]
 
 
@@ -48,6 +49,49 @@ class FeasibilityConstraintSpec:
             raise ValueError("scale must be positive.")
         if self.sense == "eq" and float(self.margin) < 0.0:
             raise ValueError("margin must be non-negative for equality constraints.")
+
+
+@dataclass(frozen=True)
+class OrdinalRankConstraintSpec:
+    """Ordinal rank probability を使う feasible constraint 定義。
+
+    例:
+        ``OrdinalRankConstraintSpec("quality_rank", rank=2, sense="ge", probability_threshold=0.8)``
+        は ``P(y >= 2) >= 0.8`` を feasible とする。
+
+    Args:
+        output:
+            ordinal 出力の index または name。
+            `FeasibilityWeightedAcquisition` では `HybridMultiOutputModel.output_names` と
+            `class_probs_list` を使って該当 ordinal 出力の class probability を取得する。
+        rank:
+            しきい値にするランク。通常は 0 始まりのクラス index。
+        sense:
+            - ``"ge"``: ``P(y >= rank) >= probability_threshold``。
+            - ``"le"``: ``P(y <= rank) >= probability_threshold``。
+            - ``"eq"``: ``P(y == rank) >= probability_threshold``。
+        probability_threshold:
+            feasibility に必要な累積 / 点確率の下限。
+        scale:
+            constraint value のスケール調整。
+    """
+
+    output: OutputKey
+    rank: int
+    sense: OrdinalRankSense = "ge"
+    probability_threshold: float = 0.8
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        if self.sense not in {"ge", "le", "eq"}:
+            raise ValueError("sense must be one of 'ge', 'le', or 'eq'.")
+        if int(self.rank) < 0:
+            raise ValueError("rank must be non-negative.")
+        p = float(self.probability_threshold)
+        if not (0.0 <= p <= 1.0):
+            raise ValueError("probability_threshold must be in [0, 1].")
+        if float(self.scale) <= 0.0:
+            raise ValueError("scale must be positive.")
 
 
 def normalize_output_index(
@@ -95,24 +139,77 @@ def constraint_value_from_output(y: Tensor, spec: FeasibilityConstraintSpec) -> 
     return value / scale
 
 
+def ordinal_rank_probability(probs: Tensor, spec: OrdinalRankConstraintSpec) -> Tensor:
+    """ordinal class probabilities から rank 条件の確率を計算する。
+
+    Args:
+        probs:
+            shape ``[..., K]`` の class probability。
+        spec:
+            ordinal rank constraint spec。
+
+    Returns:
+        Tensor:
+            shape ``probs.shape[:-1]``。
+    """
+
+    if probs.ndim < 1:
+        raise ValueError("probs must have at least one class dimension.")
+    if spec.rank >= probs.shape[-1]:
+        raise IndexError(
+            f"rank={spec.rank} is out of range for probs.shape={tuple(probs.shape)}."
+        )
+
+    if spec.sense == "ge":
+        return probs[..., spec.rank :].sum(dim=-1)
+    if spec.sense == "le":
+        return probs[..., : spec.rank + 1].sum(dim=-1)
+    if spec.sense == "eq":
+        return probs[..., spec.rank]
+
+    raise ValueError(f"Unknown sense={spec.sense!r}.")
+
+
+def constraint_value_from_ordinal_probs(
+    probs: Tensor,
+    spec: OrdinalRankConstraintSpec,
+) -> Tensor:
+    """ordinal probabilities から BoTorch 形式の constraint value を計算する。
+
+    feasible 条件は ``ordinal_rank_probability(probs, spec) >= probability_threshold``。
+    戻り値は feasible なときに ``<= 0`` になる。
+    """
+
+    p_rank = ordinal_rank_probability(probs, spec)
+    value = float(spec.probability_threshold) - p_rank
+    return value / float(spec.scale)
+
+
 def make_sample_constraint(
-    spec: FeasibilityConstraintSpec,
+    spec: FeasibilityConstraintSpec | OrdinalRankConstraintSpec,
     *,
     output_names: Optional[Sequence[str]] = None,
 ) -> Callable[[Tensor], Tensor]:
     """BoTorch MC acquisition の ``constraints`` に渡せる callable を作る。
 
-    Args:
-        spec:
-            制約定義。
-        output_names:
-            ``spec.output`` が文字列の場合に参照する出力名リスト。
-
-    Returns:
-        Callable:
-            ``samples -> constraint_value``。
-            feasible な sample では ``constraint_value <= 0`` になる。
+    Notes:
+        ``FeasibilityConstraintSpec`` は samples の最後の出力次元から1列を取り出す。
+        ``OrdinalRankConstraintSpec`` は、samples の最後の次元に ordinal class probability
+        が並んでいる場合に使う。つまり samples 自体が ``[..., K]``、または
+        ``output`` で選んだ要素が ``[..., K]`` になる posterior を想定する。
+        通常の `HybridMultiOutputModel.objective_posterior` は expected utility だけを
+        返すため、BoTorch 標準 ``constraints=`` では `FeasibilityConstraintSpec` を使う。
+        rank probability 制約は `FeasibilityWeightedAcquisition` と組み合わせるのが基本。
     """
+
+    if isinstance(spec, OrdinalRankConstraintSpec):
+        # samples が [..., K] の ordinal probability そのものとして渡るケースを扱う。
+        # output が指定されている場合でも、通常の [..., m] 形式から K クラス確率を
+        # 復元することはできないため、ここでは最後の次元を class dimension とみなす。
+        def ordinal_constraint(samples: Tensor) -> Tensor:
+            return constraint_value_from_ordinal_probs(samples, spec)
+
+        return ordinal_constraint
 
     idx = normalize_output_index(spec.output, output_names=output_names)
 
@@ -129,7 +226,7 @@ def make_sample_constraint(
 
 
 def make_sample_constraints(
-    specs: Sequence[FeasibilityConstraintSpec],
+    specs: Sequence[FeasibilityConstraintSpec | OrdinalRankConstraintSpec],
     *,
     output_names: Optional[Sequence[str]] = None,
 ) -> list[Callable[[Tensor], Tensor]]:
@@ -140,7 +237,7 @@ def make_sample_constraints(
 
 def evaluate_sample_constraints(
     samples: Tensor,
-    specs: Sequence[FeasibilityConstraintSpec],
+    specs: Sequence[FeasibilityConstraintSpec | OrdinalRankConstraintSpec],
     *,
     output_names: Optional[Sequence[str]] = None,
 ) -> Tensor:
@@ -205,11 +302,15 @@ def soft_feasibility_from_constraint_values(
 __all__ = [
     "ConstraintSense",
     "FeasibilityConstraintSpec",
+    "OrdinalRankConstraintSpec",
+    "OrdinalRankSense",
     "OutputKey",
+    "constraint_value_from_ordinal_probs",
     "constraint_value_from_output",
     "evaluate_sample_constraints",
     "make_sample_constraint",
     "make_sample_constraints",
     "normalize_output_index",
+    "ordinal_rank_probability",
     "soft_feasibility_from_constraint_values",
 ]

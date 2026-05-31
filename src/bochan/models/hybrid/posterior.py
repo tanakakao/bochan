@@ -4,6 +4,8 @@ from typing import Optional
 
 import torch
 from botorch.posteriors.posterior import Posterior
+from botorch.sampling.get_sampler import GetSampler
+from botorch.sampling.normal import SobolQMCNormalSampler
 from torch import Tensor
 
 
@@ -144,6 +146,21 @@ class HybridPosterior(Posterior):
     def sample(self, sample_shape: Optional[torch.Size] = None) -> Tensor:
         with torch.no_grad():
             return self.rsample(sample_shape=sample_shape)
+
+
+@GetSampler.register(HybridPosterior)
+def _get_sampler_hybrid_posterior(
+    posterior: HybridPosterior,
+    sample_shape: torch.Size,
+    seed: int | None = None,
+) -> SobolQMCNormalSampler:
+    """BoTorch の自動 sampler 解決に HybridPosterior を登録する。
+
+    qNEI などは `prune_baseline=True` の初期処理で `get_sampler(posterior, ...)`
+    を呼ぶため、独自 posterior は dispatcher への登録が必要になる。
+    """
+
+    return SobolQMCNormalSampler(sample_shape=sample_shape, seed=seed)
 
 
 __all__ = ["HybridPosterior"]

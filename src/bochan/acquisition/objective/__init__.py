@@ -25,6 +25,17 @@ from .regression import (
     make_regression_scalar_callable,
 )
 
+from .hybrid import (
+    Direction,
+    HybridObjectiveSpec,
+    OutputKey,
+    make_hybrid_linear_objective,
+    make_hybrid_multi_output_objective,
+    make_hybrid_objective_specs,
+    make_hybrid_scalar_objective,
+    resolve_hybrid_output_indices,
+)
+
 __all__ = [
     "ClassificationScoreObjective",
     "MultiOutputClassificationScoreObjective",
@@ -44,4 +55,12 @@ __all__ = [
     "RegressionLinearMCObjective",
     "MultiOutputRegressionInputPerturbationObjective",
     "make_regression_scalar_callable",
+    "Direction",
+    "HybridObjectiveSpec",
+    "OutputKey",
+    "make_hybrid_linear_objective",
+    "make_hybrid_multi_output_objective",
+    "make_hybrid_objective_specs",
+    "make_hybrid_scalar_objective",
+    "resolve_hybrid_output_indices",
 ]

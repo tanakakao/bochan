@@ -176,6 +176,29 @@ class HybridMultiOutputModel(Model):
         raise AttributeError(f"{model.__class__.__name__} has none of {tuple(names)}.")
 
     @staticmethod
+    def _call_class_probs(fn, X: Tensor, **kwargs: Any):
+        """class_probs 系 accessor を安全に呼ぶ。
+
+        ordinal / multiclass wrapper の `class_probs` は、BoTorch posterior と違って
+        `observation_noise` や `posterior_transform` を受け取らない実装がある。
+        そのため、まず kwargs 付きで試し、失敗した場合は X のみで再試行する。
+        """
+
+        try:
+            return fn(X=X, **kwargs)
+        except TypeError as e1:
+            try:
+                return fn(X, **kwargs)
+            except TypeError:
+                try:
+                    return fn(X=X)
+                except TypeError:
+                    try:
+                        return fn(X)
+                    except TypeError:
+                        raise e1
+
+    @staticmethod
     def _posterior_mean_variance(post: Posterior, name: str) -> tuple[Tensor, Tensor]:
         mean = getattr(post, "mean", None)
         if mean is None:
@@ -344,10 +367,7 @@ class HybridMultiOutputModel(Model):
     def _ordinal_class_probs(self, spec: OutputSpec, X: Tensor, **kwargs: Any) -> Tensor:
         fn = getattr(spec.model, "class_probs", None)
         if callable(fn):
-            try:
-                probs = fn(X=X, **kwargs)
-            except TypeError:
-                probs = fn(X, **kwargs)
+            probs = self._call_class_probs(fn, X, **kwargs)
             if torch.is_tensor(probs):
                 if probs.ndim >= X.ndim + 1:
                     probs = probs.squeeze(-2) if probs.shape[-2] == 1 else probs[..., spec.output_index, :]
@@ -382,10 +402,7 @@ class HybridMultiOutputModel(Model):
     def _multiclass_probs(self, spec: OutputSpec, X: Tensor, **kwargs: Any) -> Tensor:
         fn = getattr(spec.model, "class_probs", None)
         if callable(fn):
-            try:
-                probs = fn(X=X, **kwargs)
-            except TypeError:
-                probs = fn(X, **kwargs)
+            probs = self._call_class_probs(fn, X, **kwargs)
             if torch.is_tensor(probs):
                 if probs.ndim >= X.ndim + 1:
                     probs = probs.squeeze(-2) if probs.shape[-2] == 1 else probs[..., spec.output_index, :]

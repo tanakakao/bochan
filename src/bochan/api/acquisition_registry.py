@@ -7,7 +7,7 @@ This module contains two kinds of entries:
    ``bochan.acquisition.binary.active_learning.qBinaryBALD``.
 
 The registry stores import paths instead of importing all acquisition modules at
-module import time.  This keeps ``bochan.api`` lightweight and avoids importing
+module import time. This keeps ``bochan.api`` lightweight and avoids importing
 heavy optional dependencies until the acquisition is actually used.
 """
 
@@ -25,6 +25,7 @@ _ACQF_ALIASES: dict[str, AcqPath] = {
     "qei": ("botorch.acquisition.monte_carlo", "qExpectedImprovement"),
     "qexpectedimprovement": ("botorch.acquisition.monte_carlo", "qExpectedImprovement"),
     "ei": ("botorch.acquisition.monte_carlo", "qExpectedImprovement"),
+    "expectedimprovement": ("botorch.acquisition.monte_carlo", "qExpectedImprovement"),
     "qlogei": ("botorch.acquisition.logei", "qLogExpectedImprovement"),
     "qlogexpectedimprovement": ("botorch.acquisition.logei", "qLogExpectedImprovement"),
     "logei": ("botorch.acquisition.logei", "qLogExpectedImprovement"),
@@ -34,16 +35,20 @@ _ACQF_ALIASES: dict[str, AcqPath] = {
     "qucb": ("botorch.acquisition.monte_carlo", "qUpperConfidenceBound"),
     "qupperconfidencebound": ("botorch.acquisition.monte_carlo", "qUpperConfidenceBound"),
     "ucb": ("botorch.acquisition.monte_carlo", "qUpperConfidenceBound"),
+    "upperconfidencebound": ("botorch.acquisition.monte_carlo", "qUpperConfidenceBound"),
     "qpi": ("botorch.acquisition.monte_carlo", "qProbabilityOfImprovement"),
     "qprobabilityofimprovement": ("botorch.acquisition.monte_carlo", "qProbabilityOfImprovement"),
     "pi": ("botorch.acquisition.monte_carlo", "qProbabilityOfImprovement"),
+    "probabilityofimprovement": ("botorch.acquisition.monte_carlo", "qProbabilityOfImprovement"),
 
-    # BoTorch knowledge-gradient / lookahead
+    # BoTorch knowledge-gradient / lookahead. These are also guarded by contextual aliases.
     "qkg": ("botorch.acquisition.knowledge_gradient", "qKnowledgeGradient"),
     "qknowledgegradient": ("botorch.acquisition.knowledge_gradient", "qKnowledgeGradient"),
     "kg": ("botorch.acquisition.knowledge_gradient", "qKnowledgeGradient"),
+    "knowledgegradient": ("botorch.acquisition.knowledge_gradient", "qKnowledgeGradient"),
     "qmultisteplookahead": ("botorch.acquisition.multi_step_lookahead", "qMultiStepLookahead"),
     "multisteplookahead": ("botorch.acquisition.multi_step_lookahead", "qMultiStepLookahead"),
+    "lookahead": ("botorch.acquisition.multi_step_lookahead", "qMultiStepLookahead"),
 
     # BoTorch multi-objective hypervolume acquisitions
     "qehi": ("botorch.acquisition.multi_objective.monte_carlo", "qExpectedHypervolumeImprovement"),
@@ -55,6 +60,7 @@ _ACQF_ALIASES: dict[str, AcqPath] = {
     "qnehvi": ("botorch.acquisition.multi_objective.monte_carlo", "qNoisyExpectedHypervolumeImprovement"),
     "qnoisyexpectedhypervolumeimprovement": ("botorch.acquisition.multi_objective.monte_carlo", "qNoisyExpectedHypervolumeImprovement"),
     "nehvi": ("botorch.acquisition.multi_objective.monte_carlo", "qNoisyExpectedHypervolumeImprovement"),
+    "noisyexpectedhypervolumeimprovement": ("botorch.acquisition.multi_objective.monte_carlo", "qNoisyExpectedHypervolumeImprovement"),
 
     # Scalarized multi-objective convenience alias.
     # The acquisition class is qExpectedImprovement; scalarization objective is configured separately.
@@ -75,7 +81,7 @@ def _normalize_task_type(task_type: str | None) -> str | None:
         return "binary"
     if normalized in {"ordinalregression"}:
         return "ordinal"
-    if normalized in {"multiobjective", "multioutputregression"}:
+    if normalized in {"multiobjective", "multioutputregression", "hybrid"}:
         return "regression"
     if normalized in {"nongaussian", "nongp"}:
         return "nongaussian"
@@ -362,19 +368,38 @@ _CONTEXTUAL_SHORT_NAMES = {
     "probabilityofexceedance",
     "poe",
     "ei",
+    "qei",
     "expectedimprovement",
+    "qexpectedimprovement",
     "pi",
+    "qpi",
     "probabilityofimprovement",
+    "qprobabilityofimprovement",
     "ucb",
+    "qucb",
     "upperconfidencebound",
+    "qupperconfidencebound",
     "pof",
     "probabilityoffeasibility",
     "ehi",
+    "qehi",
     "ehvi",
+    "qehvi",
     "expectedhypervolumeimprovement",
+    "qexpectedhypervolumeimprovement",
     "nehvi",
+    "qnehvi",
     "noisyexpectedhypervolumeimprovement",
+    "qnoisyexpectedhypervolumeimprovement",
     "nparego",
+    "qnparego",
+    "kg",
+    "qkg",
+    "knowledgegradient",
+    "qknowledgegradient",
+    "multisteplookahead",
+    "qmultisteplookahead",
+    "lookahead",
 }
 
 
@@ -416,10 +441,16 @@ def _family_prefix(task_type: str, *, multi_output: bool, hetero: bool) -> str:
 
 
 def _fallback_builtin_path(normalized_name: str) -> AcqPath | None:
-    """Fallback to BoTorch aliases for standard regression cases."""
     if normalized_name in _ACQF_ALIASES:
         return _ACQF_ALIASES[normalized_name]
     return None
+
+
+def _raise_regression_only(name: str, task: str) -> None:
+    raise ValueError(
+        f"Acquisition alias {name!r} is available only for regression / hybrid models. "
+        f"Current task_type={task!r}. Use a task-specific canonical acquisition name if available."
+    )
 
 
 def _resolve_contextual_bo_path(
@@ -429,46 +460,56 @@ def _resolve_contextual_bo_path(
     prefix: str,
     multi_output: bool,
 ) -> AcqPath | None:
-    if normalized_name in {"ei", "expectedimprovement"}:
+    if normalized_name in {"kg", "qkg", "knowledgegradient", "qknowledgegradient"}:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        return _fallback_builtin_path("qkg")
+
+    if normalized_name in {"multisteplookahead", "qmultisteplookahead", "lookahead"}:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        return _fallback_builtin_path("qmultisteplookahead")
+
+    if normalized_name in {"ei", "qei", "expectedimprovement", "qexpectedimprovement"}:
         if task in {"binary", "ordinal"} or prefix.startswith("qHeteroRegression"):
             return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}ExpectedImprovement"))
-        return _fallback_builtin_path("ei")
+        return _fallback_builtin_path("qei")
 
-    if normalized_name in {"pi", "probabilityofimprovement"}:
+    if normalized_name in {"pi", "qpi", "probabilityofimprovement", "qprobabilityofimprovement"}:
         if task in {"binary", "ordinal"} or prefix.startswith("qHeteroRegression"):
             return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}ProbabilityOfImprovement"))
-        return _fallback_builtin_path("pi")
+        return _fallback_builtin_path("qpi")
 
-    if normalized_name in {"ucb", "upperconfidencebound"}:
+    if normalized_name in {"ucb", "qucb", "upperconfidencebound", "qupperconfidencebound"}:
         if task in {"binary", "ordinal"} or prefix.startswith("qHeteroRegression"):
             return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}UpperConfidenceBound"))
-        return _fallback_builtin_path("ucb")
+        return _fallback_builtin_path("qucb")
 
     if normalized_name in {"pof", "probabilityoffeasibility"}:
         if task in {"binary", "ordinal"}:
             return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}ProbabilityOfFeasibility"))
         return None
 
-    if normalized_name in {"ehi", "ehvi", "expectedhypervolumeimprovement"}:
+    if normalized_name in {"ehi", "qehi", "ehvi", "qehvi", "expectedhypervolumeimprovement", "qexpectedhypervolumeimprovement"}:
         if task in {"binary", "ordinal"} or prefix.startswith("qHeteroMultiOutputRegression"):
             if not multi_output:
                 return None
             return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}ExpectedHypervolumeImprovement"))
-        return _fallback_builtin_path("ehvi")
+        return _fallback_builtin_path("qehvi")
 
-    if normalized_name in {"nehvi", "noisyexpectedhypervolumeimprovement"}:
+    if normalized_name in {"nehvi", "qnehvi", "noisyexpectedhypervolumeimprovement", "qnoisyexpectedhypervolumeimprovement"}:
         if task in {"binary", "ordinal"} or prefix.startswith("qHeteroMultiOutputRegression"):
             if not multi_output:
                 return None
             return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}NoisyExpectedHypervolumeImprovement"))
-        return _fallback_builtin_path("nehvi")
+        return _fallback_builtin_path("qnehvi")
 
-    if normalized_name == "nparego":
+    if normalized_name in {"nparego", "qnparego"}:
         if task in {"binary", "ordinal"} or prefix.startswith("qHeteroMultiOutputRegression"):
             if not multi_output:
                 return None
             return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}NParEGO"))
-        return _fallback_builtin_path("nparego")
+        return _fallback_builtin_path("qnparego")
 
     return None
 

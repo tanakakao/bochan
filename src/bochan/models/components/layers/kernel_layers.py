@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch import Tensor
+from typing import Optional, Sequence
 
 from gpytorch.models import ExactGP
 from gpytorch.distributions import MultivariateNormal, MultitaskMultivariateNormal
@@ -20,6 +21,7 @@ from ..layers.feature_extractor import LargeFeatureExtractor, SkipLargeFeatureEx
 def _make_feature_extractor(
     input_dim: int,
     ext_type: str = "DEFAULT",
+    hidden_dims: Optional[Sequence[int]] = None,
 ) -> nn.Module:
     """
     特徴抽出器を返す。
@@ -27,12 +29,20 @@ def _make_feature_extractor(
     Args:
         input_dim (int): 入力次元
         ext_type (str): "DEFAULT" または "skip"
+        hidden_dims (Optional[Sequence[int]]): 隠れ層の次元数。
+            None の場合は従来通り [input_dim * 8, input_dim * 4, input_dim * 2] を使う。
     """
+    hidden_dims = (
+        [input_dim * 8, input_dim * 4, input_dim * 2]
+        if hidden_dims is None
+        else [int(h) for h in hidden_dims]
+    )
+
     if ext_type.lower() == "skip":
         return SkipLargeFeatureExtractor(
             input_dim=input_dim,
             output_dim=input_dim,
-            hidden_dims=[input_dim * 8, input_dim * 4, input_dim * 2],
+            hidden_dims=hidden_dims,
             activation="leaky_relu",
             dropout=0.0,
             use_bn=False,
@@ -42,7 +52,7 @@ def _make_feature_extractor(
     return LargeFeatureExtractor(
         input_dim=input_dim,
         output_dim=input_dim,
-        hidden_dims=[input_dim * 8, input_dim * 4, input_dim * 2],
+        hidden_dims=hidden_dims,
         activation="leaky_relu",
         dropout=0.0,
         use_bn=False,
@@ -64,6 +74,7 @@ class DeepKernel(ExactGP):
         train_y: Tensor,
         likelihood,
         ext_type: str = "DEFAULT",
+        hidden_dims: Optional[Sequence[int]] = None,
     ) -> None:
         super().__init__(train_x, train_y, likelihood)
 
@@ -101,6 +112,7 @@ class DeepKernel(ExactGP):
         self.feature_extractor = _make_feature_extractor(
             input_dim=input_dim,
             ext_type=ext_type,
+            hidden_dims=hidden_dims,
         )
 
         # NN の出力特徴を [-1, 1] に押し込む
@@ -124,6 +136,7 @@ class DeepKernel(ExactGP):
             return MultivariateNormal(mean_x, covar_x)
         return MultitaskMultivariateNormal(mean_x, covar_x)
 
+
 class DeepKernelMixed(BatchedMultiOutputGPyTorchModel, ExactGP):
     """
     混合入力（連続 + カテゴリ）向け Deep Kernel Learning 回帰モデル。
@@ -145,6 +158,7 @@ class DeepKernelMixed(BatchedMultiOutputGPyTorchModel, ExactGP):
         cat_dims,
         likelihood,
         ext_type: str = "DEFAULT",
+        hidden_dims: Optional[Sequence[int]] = None,
     ) -> None:
         super().__init__(train_x, train_y, likelihood)
 
@@ -173,6 +187,7 @@ class DeepKernelMixed(BatchedMultiOutputGPyTorchModel, ExactGP):
             self.feature_extractor = _make_feature_extractor(
                 input_dim=cont_dim,
                 ext_type=ext_type,
+                hidden_dims=hidden_dims,
             )
             self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
         else:

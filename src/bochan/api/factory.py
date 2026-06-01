@@ -36,15 +36,18 @@ def resolve_model_cls(
     config: ModelConfig,
     model_registry: Mapping[Any, Any] | None = None,
 ) -> type | Callable[..., Any]:
-    """ModelConfig からモデルクラスを解決する。"""
+    """ModelConfig からモデルクラスを解決する。
+
+    `model_registry` を省略した場合は、bochan API 標準の
+    `DEFAULT_MODEL_REGISTRY` を使います。
+    """
     if config.model_cls is not None:
         return config.model_cls
 
     if model_registry is None:
-        raise ValueError(
-            "model_cls is None. Provide config.model_cls, config.model_factory, "
-            "or pass model_registry."
-        )
+        from .model_registry import DEFAULT_MODEL_REGISTRY
+
+        model_registry = DEFAULT_MODEL_REGISTRY
 
     cat_dims = _as_cat_dims(config.cat_dims)
     input_type = config.input_type or infer_input_type(cat_dims)

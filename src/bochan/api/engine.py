@@ -122,7 +122,14 @@ class BayesianOptimizer:
     def _resolve_acquisition_config(self, acq_config: AcquisitionConfig) -> AcquisitionConfig:
         if acq_config.acqf_cls is not None or acq_config.acqf_factory is not None:
             return acq_config
-        acqf_cls = resolve_acqf_cls(acq_config.name, self.acquisition_registry)
+        self._check_fitted()
+        acqf_cls = resolve_acqf_cls(
+            acq_config.name,
+            self.acquisition_registry,
+            task_type=self.bundle.task_type,
+            model_type=self.bundle.model_type,
+            multi_output=bool(self.bundle.metadata.get("multi_output", False)),
+        )
         return replace(acq_config, acqf_cls=acqf_cls)
 
     def acquisition(

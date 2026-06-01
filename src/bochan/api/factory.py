@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Any, Callable
 
 from .configs import (
@@ -14,6 +15,7 @@ from .configs import (
     ModelBundle,
     ModelConfig,
     MultiObjectiveConfig,
+    MultiOutputConfig,
     OptimizeConfig,
 )
 
@@ -33,15 +35,7 @@ def resolve_model_cls(
     config: ModelConfig,
     model_registry: Mapping[Any, Any] | None = None,
 ) -> type | Callable[..., Any]:
-    """ModelConfig からモデルクラスを解決する。
-
-    `config.model_cls` が指定されていればそれを優先します。
-    指定されていない場合は `model_registry` を使います。
-
-    対応する registry 形式:
-        1. flat: `{("normal", "regression", "base"): SingleTaskGP}`
-        2. nested: `{"normal": {"regression": {"base": SingleTaskGP}}}`
-    """
+    """ModelConfig からモデルクラスを解決する。"""
     if config.model_cls is not None:
         return config.model_cls
 
@@ -92,14 +86,78 @@ def _build_model_kwargs(train_X: Any, train_Y: Any, config: ModelConfig, cat_dim
     return kwargs
 
 
-def build_model(
+def _infer_num_outputs(train_Y: Any) -> int:
+    if train_Y is None:
+        raise ValueError("train_Y is required to infer the number of outputs.")
+    if not hasattr(train_Y, "shape"):
+        raise TypeError("train_Y must have a shape attribute for multi-output construction.")
+    if len(train_Y.shape) == 1:
+        return 1
+    return int(train_Y.shape[-1])
+
+
+def _slice_output_y(train_Y: Any, output_index: int, dim: int = -1) -> Any:
+    if len(train_Y.shape) == 1:
+        if output_index != 0:
+            raise IndexError("1D train_Y has only one output.")
+        return train_Y.reshape(-1, 1) if hasattr(train_Y, "reshape") else train_Y
+
+    ndim = len(train_Y.shape)
+    dim = dim if dim >= 0 else ndim + dim
+    index = [slice(None)] * ndim
+    index[dim] = slice(output_index, output_index + 1)
+    return train_Y[tuple(index)]
+
+
+def _resolve_output_configs(parent_config: ModelConfig, n_outputs: int) -> list[ModelConfig]:
+    mo_config = parent_config.multi_output_config
+    if mo_config is None:
+        raise RuntimeError("multi_output_config is required.")
+
+    if mo_config.output_configs is not None:
+        if len(mo_config.output_configs) != n_outputs:
+            raise ValueError(
+                f"Expected {n_outputs} output_configs, got {len(mo_config.output_configs)}."
+            )
+        return list(mo_config.output_configs)
+
+    output_task_types = list(mo_config.output_task_types or [])
+    if output_task_types and len(output_task_types) != n_outputs:
+        raise ValueError(
+            f"Expected {n_outputs} output_task_types, got {len(output_task_types)}."
+        )
+
+    out = []
+    for i in range(n_outputs):
+        task_type = output_task_types[i] if output_task_types else parent_config.task_type
+        out.append(replace(parent_config, task_type=task_type, multi_output_config=None))
+    return out
+
+
+def _resolve_output_fit_configs(
+    parent_fit_config: FitConfig | None,
+    mo_config: MultiOutputConfig,
+    n_outputs: int,
+) -> list[FitConfig | None]:
+    output_fit_configs = mo_config.output_fit_configs
+    if output_fit_configs is None:
+        return [parent_fit_config for _ in range(n_outputs)]
+    if isinstance(output_fit_configs, FitConfig):
+        return [output_fit_configs for _ in range(n_outputs)]
+    if len(output_fit_configs) != n_outputs:
+        raise ValueError(
+            f"Expected {n_outputs} output_fit_configs, got {len(output_fit_configs)}."
+        )
+    return list(output_fit_configs)
+
+
+def _build_single_model(
     train_X: Any,
     train_Y: Any,
     config: ModelConfig,
     *,
     model_registry: Mapping[Any, Any] | None = None,
 ) -> ModelBundle:
-    """ModelConfig に基づいてモデルを生成する。"""
     cat_dims = _as_cat_dims(config.cat_dims)
     input_type = config.input_type or infer_input_type(cat_dims)
     kwargs = _build_model_kwargs(train_X, train_Y, config, cat_dims)
@@ -114,13 +172,11 @@ def build_model(
 
     bundle_train_X = train_X
     bundle_train_Y = train_Y
-
     if bundle_train_X is None:
         bundle_train_X = getattr(model, "train_X", None)
         if bundle_train_X is None and hasattr(model, "train_inputs"):
             train_inputs = getattr(model, "train_inputs")
             bundle_train_X = train_inputs[0] if isinstance(train_inputs, tuple) else train_inputs
-
     if bundle_train_Y is None:
         bundle_train_Y = getattr(model, "train_Y", None)
         if bundle_train_Y is None:
@@ -135,40 +191,152 @@ def build_model(
         task_type=str(config.task_type),
         model_type=str(config.model_type),
         cat_dims=cat_dims,
+        metadata={"model_cls": model_cls_name, "model_factory": config.model_factory is not None},
+    )
+
+
+def _build_wrapper_from_submodels(
+    submodels: Sequence[Any],
+    output_configs: Sequence[ModelConfig],
+    mo_config: MultiOutputConfig,
+) -> Any:
+    if mo_config.wrapper_factory is not None:
+        return mo_config.wrapper_factory(submodels=submodels, output_configs=output_configs, config=mo_config)
+    if mo_config.wrapper_cls is not None:
+        return mo_config.wrapper_cls(*submodels, **mo_config.wrapper_kwargs)
+
+    task_types = [str(cfg.task_type) for cfg in output_configs]
+    unique_task_types = set(task_types)
+    use_hybrid = mo_config.use_hybrid
+    if use_hybrid is None:
+        use_hybrid = len(unique_task_types) > 1 or "hybrid" in unique_task_types or "multiclass" in unique_task_types
+
+    if use_hybrid:
+        from bochan.models.hybrid import HybridMultiOutputModel, OutputSpec
+
+        names = list(mo_config.output_names or [f"y{i}" for i in range(len(submodels))])
+        if len(names) != len(submodels):
+            raise ValueError(f"Expected {len(submodels)} output_names, got {len(names)}.")
+        output_spec_kwargs = list(mo_config.output_spec_kwargs or [{} for _ in range(len(submodels))])
+        if len(output_spec_kwargs) != len(submodels):
+            raise ValueError(
+                f"Expected {len(submodels)} output_spec_kwargs, got {len(output_spec_kwargs)}."
+            )
+        specs = [
+            OutputSpec(name=names[i], task_type=task_types[i], model=submodels[i], **output_spec_kwargs[i])
+            for i in range(len(submodels))
+        ]
+        return HybridMultiOutputModel(specs=specs, **mo_config.wrapper_kwargs)
+
+    task_type = next(iter(unique_task_types))
+    if task_type in {"regression", "multi_objective"}:
+        from botorch.models.model_list_gp_regression import ModelListGP
+
+        return ModelListGP(*submodels)
+    if task_type == "binary":
+        from bochan.models.classification.binary.base import MultiOutputBinaryClassificationModel
+
+        return MultiOutputBinaryClassificationModel(*submodels, **mo_config.wrapper_kwargs)
+    if task_type == "ordinal":
+        from bochan.models.ordinal.base.multioutput import MultiOutputOrdinalModel
+
+        return MultiOutputOrdinalModel(*submodels, **mo_config.wrapper_kwargs)
+
+    raise ValueError(
+        "No dedicated homogeneous multi-output wrapper is available for "
+        f"task_type={task_type!r}. Set use_hybrid=True or provide wrapper_cls."
+    )
+
+
+def build_multi_output_model(
+    train_X: Any,
+    train_Y: Any,
+    config: ModelConfig,
+    *,
+    model_registry: Mapping[Any, Any] | None = None,
+) -> ModelBundle:
+    """出力ごとの submodel を作り、multi-output / hybrid wrapper に束ねる。"""
+    mo_config = config.multi_output_config
+    if mo_config is None:
+        raise RuntimeError("multi_output_config is required.")
+
+    n_outputs = _infer_num_outputs(train_Y)
+    output_configs = _resolve_output_configs(config, n_outputs)
+    sub_bundles: list[ModelBundle] = []
+    for i, output_config in enumerate(output_configs):
+        output_train_Y = _slice_output_y(train_Y, i, dim=mo_config.train_y_slice_dim)
+        sub_bundles.append(
+            _build_single_model(
+                train_X=train_X,
+                train_Y=output_train_Y,
+                config=output_config,
+                model_registry=model_registry,
+            )
+        )
+
+    model = _build_wrapper_from_submodels([b.model for b in sub_bundles], output_configs, mo_config)
+    bundle_train_X = getattr(model, "train_X", None)
+    if bundle_train_X is None and hasattr(model, "train_inputs"):
+        train_inputs = getattr(model, "train_inputs")
+        bundle_train_X = train_inputs[0] if isinstance(train_inputs, tuple) else train_inputs
+    if bundle_train_X is None:
+        bundle_train_X = train_X
+    bundle_train_Y = getattr(model, "train_Y", None)
+    if bundle_train_Y is None:
+        bundle_train_Y = getattr(model, "train_targets", None)
+    if bundle_train_Y is None:
+        bundle_train_Y = train_Y
+
+    return ModelBundle(
+        model=model,
+        train_X=bundle_train_X,
+        train_Y=bundle_train_Y,
+        model_config=config,
+        input_type=config.input_type or infer_input_type(_as_cat_dims(config.cat_dims)),
+        task_type=str(config.task_type),
+        model_type=str(config.model_type),
+        cat_dims=_as_cat_dims(config.cat_dims),
         metadata={
-            "model_cls": model_cls_name,
-            "model_factory": config.model_factory is not None,
+            "model_cls": model.__class__.__name__,
+            "multi_output": True,
+            "sub_bundles": sub_bundles,
+            "output_configs": output_configs,
         },
     )
+
+
+def build_model(
+    train_X: Any,
+    train_Y: Any,
+    config: ModelConfig,
+    *,
+    model_registry: Mapping[Any, Any] | None = None,
+) -> ModelBundle:
+    """ModelConfig に基づいてモデルを生成する。"""
+    if config.multi_output_config is not None:
+        return build_multi_output_model(train_X, train_Y, config, model_registry=model_registry)
+    return _build_single_model(train_X, train_Y, config, model_registry=model_registry)
 
 
 def _make_mll(model: Any, config: FitConfig) -> Any | None:
     if config.use_model_make_mll and hasattr(model, "make_mll"):
         return model.make_mll(**config.mll_kwargs)
-
     if config.mll_factory is not None:
         return config.mll_factory(model, **config.mll_kwargs)
-
     if config.mll_cls is not None:
         if hasattr(model, "likelihood"):
             return config.mll_cls(model.likelihood, model, **config.mll_kwargs)
         return config.mll_cls(model, **config.mll_kwargs)
-
     return None
 
 
-def fit_model(bundle: ModelBundle, config: FitConfig | None = None) -> ModelBundle:
-    """ModelBundle 内のモデルを学習する。
-
-    FitConfig が None または skip_fit=True の場合は何もしません。
-    """
+def _fit_single_bundle(bundle: ModelBundle, config: FitConfig | None = None) -> ModelBundle:
     if config is None or config.skip_fit:
         bundle.fit_config = config
         return bundle
 
     model = bundle.model
     mll = _make_mll(model, config)
-
     fit_func = config.fit_func
     if fit_func is None:
         if mll is not None:
@@ -185,39 +353,48 @@ def fit_model(bundle: ModelBundle, config: FitConfig | None = None) -> ModelBund
 
     fit_target = mll if mll is not None else model
     fit_result = fit_func(fit_target, **config.fit_kwargs)
-
     bundle.fit_config = config
     bundle.mll = mll
     bundle.fit_result = fit_result
     bundle.metadata.update(
-        {
-            "mll": None if mll is None else mll.__class__.__name__,
-            "fit_func": getattr(fit_func, "__name__", str(fit_func)),
-        }
+        {"mll": None if mll is None else mll.__class__.__name__, "fit_func": getattr(fit_func, "__name__", str(fit_func))}
     )
     return bundle
 
 
+def fit_model(bundle: ModelBundle, config: FitConfig | None = None) -> ModelBundle:
+    """ModelBundle 内のモデルを学習する。
+
+    multi-output bundle の場合は、まず submodel ごとに fit します。
+    wrapper 自体への fit は `MultiOutputConfig.fit_wrapper=True` の場合のみ行います。
+    """
+    mo_config = bundle.model_config.multi_output_config
+    if mo_config is not None:
+        sub_bundles = bundle.metadata.get("sub_bundles", [])
+        output_fit_configs = _resolve_output_fit_configs(config, mo_config, len(sub_bundles))
+        if mo_config.fit_submodels:
+            for sub_bundle, sub_fit_config in zip(sub_bundles, output_fit_configs):
+                _fit_single_bundle(sub_bundle, sub_fit_config)
+        bundle.fit_config = config
+        bundle.metadata["sub_fit_configs"] = output_fit_configs
+        if mo_config.fit_wrapper:
+            return _fit_single_bundle(bundle, config)
+        return bundle
+
+    return _fit_single_bundle(bundle, config)
+
+
 def _has_var_keyword(signature: inspect.Signature) -> bool:
-    return any(
-        p.kind == inspect.Parameter.VAR_KEYWORD
-        for p in signature.parameters.values()
-    )
+    return any(p.kind == inspect.Parameter.VAR_KEYWORD for p in signature.parameters.values())
 
 
 def _filter_kwargs_for_callable(func: Callable[..., Any], kwargs: dict[str, Any]) -> dict[str, Any]:
-    """callable の signature に存在しない kwargs を落とす。
-
-    クラスの場合はコンストラクタ signature を参照します。
-    """
     try:
         signature = inspect.signature(func)
     except (TypeError, ValueError):
         return kwargs
-
     if _has_var_keyword(signature):
         return kwargs
-
     allowed = set(signature.parameters)
     return {k: v for k, v in kwargs.items() if k in allowed}
 
@@ -241,54 +418,28 @@ def _make_chebyshev_objective(weights: Any, Y: Any, alpha: float) -> Any:
     from botorch.acquisition.objective import GenericMCObjective
     from botorch.utils.multi_objective.scalarization import get_chebyshev_scalarization
 
-    scalarization = get_chebyshev_scalarization(
-        weights=weights,
-        Y=Y,
-        alpha=alpha,
-    )
+    scalarization = get_chebyshev_scalarization(weights=weights, Y=Y, alpha=alpha)
     return GenericMCObjective(lambda samples, X=None: scalarization(samples))
 
 
-def prepare_multi_objective_context(
-    bundle: ModelBundle,
-    data_context: DataContext,
-    acq_config: AcquisitionConfig | None = None,
-) -> DataContext:
-    """多目的 BO 用の DataContext を補完する。
-
-    - `Y_baseline` が未指定なら `bundle.train_Y` を使う。
-    - `ref_point` / `constraints` / `objective_thresholds` を MultiObjectiveConfig から転記する。
-    - qEHVI らしい獲得関数では partitioning の自動生成を試みる。
-    - scalarization_weights がある場合は NParEGO 風 objective の自動生成を試みる。
-    """
+def prepare_multi_objective_context(bundle: ModelBundle, data_context: DataContext, acq_config: AcquisitionConfig | None = None) -> DataContext:
     mo_config = data_context.multi_objective
     if mo_config is None:
         return data_context
-
     if data_context.Y_baseline is None:
         data_context.Y_baseline = mo_config.Y_baseline
     if data_context.Y_baseline is None:
         data_context.Y_baseline = bundle.train_Y
-
     if data_context.ref_point is None:
         data_context.ref_point = mo_config.ref_point
-
     if data_context.partitioning is None:
         data_context.partitioning = mo_config.partitioning
-
     if data_context.objective_thresholds is None:
         data_context.objective_thresholds = mo_config.objective_thresholds
-
     if data_context.constraints is None:
         data_context.constraints = mo_config.constraints
-
-    if (
-        acq_config is not None
-        and acq_config.objective is None
-        and mo_config.objective is not None
-    ):
+    if acq_config is not None and acq_config.objective is None and mo_config.objective is not None:
         acq_config.objective = mo_config.objective
-
     if (
         acq_config is not None
         and acq_config.objective is None
@@ -301,7 +452,6 @@ def prepare_multi_objective_context(
             Y=data_context.Y_baseline,
             alpha=mo_config.scalarization_alpha,
         )
-
     if (
         acq_config is not None
         and mo_config.auto_partitioning
@@ -310,68 +460,38 @@ def prepare_multi_objective_context(
         and data_context.Y_baseline is not None
         and _looks_like_ehvi(acq_config)
     ):
-        data_context.partitioning = _make_fast_nondominated_partitioning(
-            ref_point=data_context.ref_point,
-            Y=data_context.Y_baseline,
-        )
-
+        data_context.partitioning = _make_fast_nondominated_partitioning(ref_point=data_context.ref_point, Y=data_context.Y_baseline)
     return data_context
 
 
-def build_acquisition(
-    bundle: ModelBundle,
-    config: AcquisitionConfig,
-    data_context: DataContext | None = None,
-) -> Any:
-    """AcquisitionConfig に基づいて獲得関数を生成する。"""
+def build_acquisition(bundle: ModelBundle, config: AcquisitionConfig, data_context: DataContext | None = None) -> Any:
     data_context = data_context or DataContext()
     data_context = prepare_multi_objective_context(bundle, data_context, config)
-
     if config.acqf_factory is not None:
-        return config.acqf_factory(
-            bundle=bundle,
-            config=config,
-            data_context=data_context,
-        )
-
+        return config.acqf_factory(bundle=bundle, config=config, data_context=data_context)
     if config.acqf_cls is None:
-        raise ValueError(
-            "acqf_cls is None. Provide AcquisitionConfig.acqf_cls or acqf_factory."
-        )
-
+        raise ValueError("acqf_cls is None. Provide AcquisitionConfig.acqf_cls or acqf_factory.")
     kwargs = {"model": bundle.model}
     kwargs.update(config.acqf_kwargs)
-
     if config.objective is not None:
         kwargs["objective"] = config.objective
-
     if config.sampler is not None:
         kwargs["sampler"] = config.sampler
-
     for field_name in config.context_fields:
         value = getattr(data_context, field_name, None)
         if value is not None:
             kwargs[field_name] = value
-
     for key, value in data_context.extra.items():
         if value is not None:
             kwargs[key] = value
-
     if config.filter_kwargs_by_signature:
         kwargs = _filter_kwargs_for_callable(config.acqf_cls, kwargs)
-
     return config.acqf_cls(**kwargs)
 
 
-def optimize_candidates(
-    acqf: Any,
-    bounds: Any,
-    config: OptimizeConfig,
-) -> tuple[Any, Any]:
-    """獲得関数を最適化して候補点を返す。"""
+def optimize_candidates(acqf: Any, bounds: Any, config: OptimizeConfig) -> tuple[Any, Any]:
     if bounds is None:
         raise ValueError("bounds must be provided.")
-
     common_kwargs = {
         "acq_function": acqf,
         "bounds": bounds,
@@ -380,29 +500,21 @@ def optimize_candidates(
         "raw_samples": config.raw_samples,
         "return_best_only": config.return_best_only,
     }
-
     if config.post_processing_func is not None:
         common_kwargs["post_processing_func"] = config.post_processing_func
-
     if config.fixed_features is not None:
         common_kwargs["fixed_features"] = config.fixed_features
-
     if config.inequality_constraints is not None:
         common_kwargs["inequality_constraints"] = config.inequality_constraints
-
     if config.equality_constraints is not None:
         common_kwargs["equality_constraints"] = config.equality_constraints
-
     common_kwargs.update(config.optimizer_kwargs)
-
     optimizer = config.optimizer
-
     if callable(optimizer) and not isinstance(optimizer, str):
         kwargs = dict(common_kwargs)
         kwargs["sequential"] = config.sequential
         kwargs = _filter_kwargs_for_callable(optimizer, kwargs)
         return optimizer(**kwargs)
-
     if optimizer == "optimize_acqf":
         from botorch.optim import optimize_acqf
 
@@ -410,19 +522,14 @@ def optimize_candidates(
         kwargs["sequential"] = config.sequential
         kwargs = _filter_kwargs_for_callable(optimize_acqf, kwargs)
         return optimize_acqf(**kwargs)
-
     if optimizer == "optimize_acqf_mixed":
         from botorch.optim import optimize_acqf_mixed
 
         kwargs = dict(common_kwargs)
         if config.fixed_features_list is None:
-            raise ValueError(
-                "OptimizeConfig.fixed_features_list is required when "
-                "optimizer='optimize_acqf_mixed'."
-            )
+            raise ValueError("OptimizeConfig.fixed_features_list is required when optimizer='optimize_acqf_mixed'.")
         kwargs["fixed_features_list"] = config.fixed_features_list
         kwargs["sequential"] = config.sequential
         kwargs = _filter_kwargs_for_callable(optimize_acqf_mixed, kwargs)
         return optimize_acqf_mixed(**kwargs)
-
     raise ValueError(f"Unknown optimizer: {optimizer}")

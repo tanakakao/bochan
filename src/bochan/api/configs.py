@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections.abc import Mapping
 from typing import Any, Callable, Literal, Sequence
 
 
@@ -32,32 +33,23 @@ class ModelConfig:
     1. 直接指定モード:
         `model_cls=SingleTaskGP` のようにモデルクラスを直接渡します。
         この場合、`task_type` / `model_type` は履歴・ログ用のメタ情報です。
-        そのため、単に SingleTaskGP を使うだけなら `model_type="base"` を
-        明示する必要はありません。
 
     2. registry 解決モード:
         `model_cls=None` とし、`task_type` / `model_type` / `cat_dims` から
         外部の registry を使ってモデルクラスを解決します。
-        この場合は `model_type="base"` のような指定が意味を持ちます。
 
     3. factory 指定モード:
         `model_factory` を指定し、任意の関数でモデルを生成します。
-        `HybridMultiOutputModel` のように `train_X` / `train_Y` を直接受け取らず、
-        `specs` などから wrapper を作るモデルに向いています。
 
     4. multi-output 指定モード:
         `multi_output_config` を指定すると、出力列ごとに single-output submodel を
         作成し、`fit_model()` 時に submodel ごとに学習します。
-        regression のみなら `ModelListGP`、binary のみなら
-        `MultiOutputBinaryClassificationModel`、ordinal のみなら
-        `MultiOutputOrdinalModel`、混合タスクなら `HybridMultiOutputModel` に束ねます。
 
     Args:
         model_cls: 直接生成したいモデルクラス。None の場合は registry から解決する。
         model_factory: 任意のモデル生成関数。指定時は `model_cls` / registry より優先される。
         task_type: regression / multi_objective / binary / multiclass / ordinal / hybrid などのタスク種別。
         model_type: base / deepgp / deepkernel / saas / pca / rembo / rrp / hetero など。
-            `model_cls` を直接指定する場合は主にメタ情報として扱う。
         input_type: normal / mixed。None の場合は cat_dims の有無から自動推定する。
         cat_dims: カテゴリ変数の列番号。空なら通常モデルとして扱う。
         input_transform: BoTorch 互換の input_transform。
@@ -67,7 +59,6 @@ class ModelConfig:
         train_x_name: モデルコンストラクタで使う train_X 引数名。
         train_y_name: モデルコンストラクタで使う train_Y 引数名。
         pass_train_data: train_X / train_Y をモデルコンストラクタへ渡すか。
-            Hybrid wrapper など、訓練データを直接受け取らないモデルでは False にする。
         pass_cat_dims: cat_dims をモデルに渡すか。None なら cat_dims が非空の場合だけ渡す。
         pass_input_transform: input_transform を渡すか。
         pass_outcome_transform: outcome_transform を渡すか。
@@ -98,17 +89,7 @@ class ModelConfig:
 
 @dataclass
 class FitConfig:
-    """モデル学習に必要な設定。
-
-    Args:
-        fit_func: 学習関数。通常は `fit_gpytorch_mll` や独自の `fit_classifier_mll`。
-        mll_factory: `model -> mll` を作る関数。
-        mll_cls: MLL クラス。指定時は基本的に `mll_cls(model.likelihood, model, **mll_kwargs)` で作る。
-        mll_kwargs: MLL 生成時の追加 kwargs。
-        fit_kwargs: fit_func に渡す追加 kwargs。
-        use_model_make_mll: model.make_mll() があれば優先して使う。
-        skip_fit: True の場合、モデル生成だけ行い学習はしない。
-    """
+    """モデル学習に必要な設定。"""
 
     fit_func: Callable[..., Any] | None = None
     mll_factory: Callable[..., Any] | None = None
@@ -122,29 +103,64 @@ class FitConfig:
 
 
 @dataclass
+class OutputConfig:
+    """multi-output / hybrid の各出力を文字列中心で指定するための設定。
+
+    Args:
+        task_type: 出力のタスク種別。例: regression / binary / ordinal / multiclass。
+        model_type: registry からモデルを引くための model_type。例: base / deepkernel / saas。
+        name: 出力名。hybrid の OutputSpec.name に使う。None なら y0, y1, ...。
+        input_type: normal / mixed。None の場合は親 ModelConfig または cat_dims から推定する。
+        cat_dims: 出力ごとの cat_dims。None の場合は親 ModelConfig.cat_dims を使う。
+        model_kwargs: 出力ごとのモデル生成 kwargs。
+        fit_config: 出力ごとの fit 設定。None の場合は親または MultiOutputConfig.output_fit_configs を使う。
+        output_spec_kwargs: hybrid OutputSpec に渡す kwargs。
+    """
+
+    task_type: str
+    model_type: str = "base"
+    name: str | None = None
+    input_type: InputType | None = None
+    cat_dims: Sequence[int] | None = None
+    model_kwargs: dict[str, Any] = field(default_factory=dict)
+    fit_config: FitConfig | None = None
+    output_spec_kwargs: dict[str, Any] = field(default_factory=dict)
+
+
+OutputConfigLike = ModelConfig | OutputConfig | Mapping[str, Any] | str
+
+
+@dataclass
 class MultiOutputConfig:
     """出力ごとに submodel を作り、multi-output / hybrid wrapper に束ねる設定。
 
-    Args:
-        output_configs: 出力ごとの ModelConfig。None の場合は親 ModelConfig を各出力へ複製する。
-        output_fit_configs: 出力ごとの FitConfig。単一の FitConfig を渡すと全出力で共有する。
-            None の場合は `BayesianOptimizer.fit()` に渡された親 FitConfig を各出力で使う。
-        output_task_types: 出力ごとの task_type。混合タスクでは必須に近い。
-            例: `["regression", "binary", "ordinal"]`。
-        output_names: hybrid OutputSpec 用の出力名。None の場合は `y0`, `y1`, ... を使う。
-        wrapper_cls: 明示的に使いたい wrapper class。
-        wrapper_factory: 明示的に使いたい wrapper 生成関数。
-        wrapper_kwargs: wrapper 生成時に渡す追加 kwargs。
-        use_hybrid: True なら同種タスクでも HybridMultiOutputModel を使う。
-            False なら混合タスクを許さず、専用 multi-output wrapper を使う。
-            None なら混合タスクのみ hybrid に自動分岐する。
-        fit_submodels: fit_model() 時に submodel ごとに fit するか。
-        fit_wrapper: wrapper 自体にも親 FitConfig で fit をかけるか。通常は False。
-        output_spec_kwargs: hybrid OutputSpec に出力ごとに渡す追加 kwargs。
-        train_y_slice_dim: train_Y から出力列を切り出す次元。通常は -1。
+    `output_configs` は文字列・辞書・OutputConfig・ModelConfig のいずれでも指定できます。
+
+    Examples:
+        文字列だけで指定する場合:
+
+        ```python
+        MultiOutputConfig(output_configs=["regression", "binary", "ordinal"])
+        ```
+
+        辞書で model_type や hybrid 用 kwargs まで指定する場合:
+
+        ```python
+        MultiOutputConfig(
+            output_configs=[
+                {"name": "strength", "task_type": "regression", "model_type": "base"},
+                {
+                    "name": "defect",
+                    "task_type": "binary",
+                    "model_type": "base",
+                    "output_spec_kwargs": {"sign": -1.0, "positive_class": 1},
+                },
+            ]
+        )
+        ```
     """
 
-    output_configs: Sequence[ModelConfig] | None = None
+    output_configs: Sequence[OutputConfigLike] | None = None
     output_fit_configs: Sequence[FitConfig | None] | FitConfig | None = None
     output_task_types: Sequence[str] | None = None
     output_names: Sequence[str] | None = None
@@ -163,22 +179,7 @@ class MultiOutputConfig:
 
 @dataclass
 class MultiObjectiveConfig:
-    """多目的獲得関数用の設定。
-
-    EHVI / NEHVI / NParEGO などで共通して必要になりやすい情報をまとめます。
-
-    Args:
-        ref_point: Hypervolume 系獲得関数の参照点。基本的には目的空間で悪い側の点を指定する。
-        Y_baseline: Pareto 分割や scalarization の基準に使う目的値。None なら train_Y を使う。
-        partitioning: qEHVI などに渡す box decomposition。None かつ auto_partitioning=True なら自動生成を試みる。
-        objective_thresholds: qNEHVI などで使う objective thresholds。
-        constraints: BoTorch の constraints callable 群。
-        objective: MCMultiOutputObjective など。AcquisitionConfig.objective が優先される。
-        scalarization_weights: NParEGO 風の Chebyshev scalarization に使う重み。
-        scalarization_alpha: Chebyshev scalarization の alpha。
-        auto_partitioning: qEHVI 用 partitioning を自動生成するか。
-        auto_scalarization: objective が未指定で scalarization_weights がある場合、自動で GenericMCObjective を作るか。
-    """
+    """多目的獲得関数用の設定。"""
 
     ref_point: Any | None = None
     Y_baseline: Any | None = None
@@ -198,18 +199,7 @@ class MultiObjectiveConfig:
 
 @dataclass
 class AcquisitionConfig:
-    """獲得関数生成に必要な設定。
-
-    Args:
-        name: 獲得関数名。ログ・履歴用。
-        acqf_cls: 獲得関数クラス。None の場合は `acqf_factory` を使う。
-        acqf_factory: 獲得関数生成関数。`(bundle, config, data_context) -> acqf` を推奨。
-        objective: MCObjective / MCMultiOutputObjective など。None の場合は渡さない。
-        sampler: MC sampler。None の場合は渡さない。
-        acqf_kwargs: 獲得関数に追加で渡す kwargs。
-        context_fields: DataContext から獲得関数へ自動転送するフィールド。
-        filter_kwargs_by_signature: True の場合、獲得関数の signature にない kwargs を落とす。
-    """
+    """獲得関数生成に必要な設定。"""
 
     name: str
     acqf_cls: type | Callable[..., Any] | None = None

@@ -694,6 +694,16 @@ def _build_post_processing_func(config: OptimizeConfig, bounds: Any) -> Callable
     )
 
 
+def _optimizer_name(optimizer: str) -> str:
+    return optimizer.replace("-", "_").lower()
+
+
+def _with_sequential(common_kwargs: dict[str, Any], config: OptimizeConfig) -> dict[str, Any]:
+    kwargs = dict(common_kwargs)
+    kwargs["sequential"] = config.sequential
+    return kwargs
+
+
 def optimize_candidates(acqf: Any, bounds: Any, config: OptimizeConfig) -> tuple[Any, Any]:
     if bounds is None:
         raise ValueError("bounds must be provided.")
@@ -721,28 +731,59 @@ def optimize_candidates(acqf: Any, bounds: Any, config: OptimizeConfig) -> tuple
 
     optimizer = config.optimizer
     if callable(optimizer) and not isinstance(optimizer, str):
-        kwargs = dict(common_kwargs)
-        kwargs["sequential"] = config.sequential
+        kwargs = _with_sequential(common_kwargs, config)
         kwargs = _filter_kwargs_for_callable(optimizer, kwargs)
         return optimizer(**kwargs)
 
-    if optimizer == "optimize_acqf":
+    optimizer_name = _optimizer_name(str(optimizer))
+
+    if optimizer_name == "optimize_acqf":
         from botorch.optim import optimize_acqf
 
-        kwargs = dict(common_kwargs)
-        kwargs["sequential"] = config.sequential
+        kwargs = _with_sequential(common_kwargs, config)
         kwargs = _filter_kwargs_for_callable(optimize_acqf, kwargs)
         return optimize_acqf(**kwargs)
 
-    if optimizer == "optimize_acqf_mixed":
+    if optimizer_name == "optimize_acqf_mixed":
         from botorch.optim import optimize_acqf_mixed
 
-        kwargs = dict(common_kwargs)
+        kwargs = _with_sequential(common_kwargs, config)
         if config.fixed_features_list is None:
             raise ValueError("OptimizeConfig.fixed_features_list is required when optimizer='optimize_acqf_mixed'.")
         kwargs["fixed_features_list"] = config.fixed_features_list
-        kwargs["sequential"] = config.sequential
         kwargs = _filter_kwargs_for_callable(optimize_acqf_mixed, kwargs)
         return optimize_acqf_mixed(**kwargs)
+
+    if optimizer_name in {"evo", "optimize_acqf_evo"}:
+        from bochan.optim import optimize_acqf_evo
+
+        kwargs = _with_sequential(common_kwargs, config)
+        kwargs = _filter_kwargs_for_callable(optimize_acqf_evo, kwargs)
+        return optimize_acqf_evo(**kwargs)
+
+    if optimizer_name in {"torch", "optimize_acqf_torch"}:
+        from bochan.optim import optimize_acqf_torch
+
+        kwargs = _with_sequential(common_kwargs, config)
+        kwargs = _filter_kwargs_for_callable(optimize_acqf_torch, kwargs)
+        return optimize_acqf_torch(**kwargs)
+
+    if optimizer_name in {"evo_mixed", "optimize_acqf_evo_mixed"}:
+        from bochan.optim import optimize_acqf_evo_mixed
+
+        kwargs = _with_sequential(common_kwargs, config)
+        if config.fixed_features_list is not None:
+            kwargs["fixed_features_list"] = config.fixed_features_list
+        kwargs = _filter_kwargs_for_callable(optimize_acqf_evo_mixed, kwargs)
+        return optimize_acqf_evo_mixed(**kwargs)
+
+    if optimizer_name in {"torch_mixed", "optimize_acqf_torch_mixed"}:
+        from bochan.optim import optimize_acqf_torch_mixed
+
+        kwargs = _with_sequential(common_kwargs, config)
+        if config.fixed_features_list is not None:
+            kwargs["fixed_features_list"] = config.fixed_features_list
+        kwargs = _filter_kwargs_for_callable(optimize_acqf_torch_mixed, kwargs)
+        return optimize_acqf_torch_mixed(**kwargs)
 
     raise ValueError(f"Unknown optimizer: {optimizer}")

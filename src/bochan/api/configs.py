@@ -22,6 +22,10 @@ TaskType = Literal[
 InputType = Literal["normal", "mixed"]
 ModelType = str
 OptimizerName = Literal["optimize_acqf", "optimize_acqf_mixed"]
+FinalPriority = Literal["grid", "constraints"]
+SparseScore = Literal["abs", "value"]
+SupportSelection = Literal["topk", "sample"]
+InequalitySense = Literal["le", "ge"]
 
 
 @dataclass
@@ -217,6 +221,53 @@ class DataContext:
 
 
 @dataclass
+class CandidateRepairConfig:
+    """候補点の丸め・k-sparse・制約補修を自動生成する設定。
+
+    `bochan.constraints.postprocess.make_grid_k_sparse_post_processing_func` を
+    `OptimizeConfig` 内で組み立てるための薄い設定です。
+
+    Args:
+        bounds: repair 用 bounds。None の場合は `optimize_candidates(..., bounds=...)` を使う。
+        numeric_indices: grid rounding 対象の数値列。None なら全列。
+        steps: grid step。None なら丸めなし。
+        comp_idx: k-sparse 対象列。None / [] なら k-sparse は実質無効。
+        k: comp_idx 内で許容する active component 数。
+        equality_constraints: repair 用の等式制約。None なら OptimizeConfig.equality_constraints を使う。
+        inequality_constraints: repair 用の不等式制約。None なら OptimizeConfig.inequality_constraints を使う。
+        inequality_sense: k-sparse repair 側の不等式向き。
+        fixed_features: repair 用 fixed_features。None なら OptimizeConfig.fixed_features を使う。
+        final_sum_constraint: active support 上の最終和制約。
+        diversify: q-batch 内の重複を軽くずらして再補修するか。
+        final_priority: 最後に grid / constraints のどちらを優先するか。
+    """
+
+    bounds: Any | None = None
+    numeric_indices: Sequence[int] | None = None
+    steps: Any | None = None
+    comp_idx: Sequence[int] | None = None
+    k: int = 0
+
+    equality_constraints: Any | None = None
+    inequality_constraints: Any | None = None
+    inequality_sense: InequalitySense = "le"
+    fixed_features: dict[int, float] | None = None
+    final_sum_constraint: tuple[Sequence[int], float] | None = None
+
+    diversify: bool = False
+    diversify_kwargs: dict[str, Any] | None = None
+    score: SparseScore = "abs"
+    support_selection: SupportSelection = "topk"
+    sample_tau: float = 0.2
+    sample_eps: float = 0.05
+    generator: Any | None = None
+    max_iters: int = 12
+    num_alternations: int = 2
+    final_priority: FinalPriority = "grid"
+    support_eps: float = 0.0
+
+
+@dataclass
 class OptimizeConfig:
     """候補点最適化に必要な設定。"""
 
@@ -229,6 +280,7 @@ class OptimizeConfig:
     optimizer_kwargs: dict[str, Any] = field(default_factory=dict)
 
     post_processing_func: Callable[..., Any] | None = None
+    repair_config: CandidateRepairConfig | None = None
     fixed_features: dict[int, float] | None = None
     fixed_features_list: list[dict[int, float]] | None = None
 

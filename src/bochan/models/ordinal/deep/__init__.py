@@ -1,5 +1,5 @@
 from .deepgp import OrdinalDeepGPModel, OrdinalMixedDeepGPModel
-from .deepkernel import DeepKernelOrdinalGPModel, DeepKernelOrdinalMixedGPModel
+from .deepkernel_configurable import DeepKernelOrdinalGPModel, DeepKernelOrdinalMixedGPModel
 from .deepkerneldeepgp import DeepKernelOrdinalDeepGPModel, DeepKernelOrdinalMixedDeepGPModel
 
 __all__ = [

@@ -30,14 +30,24 @@ from bochan.models.components.beta import (
 from bochan.models.regression.non_gaussian.beta import _BaseBetaGPModel, build_mixed_beta_kernel
 
 
-def make_beta_feature_extractor(input_dim: int, output_dim: Optional[int] = None, ext_type: str = "DEFAULT") -> nn.Module:
+def make_beta_feature_extractor(
+    input_dim: int,
+    output_dim: Optional[int] = None,
+    ext_type: str = "DEFAULT",
+    hidden_dims: Optional[Sequence[int]] = None,
+) -> nn.Module:
     """Beta DeepKernel 用 feature extractor を作る。"""
     output_dim = input_dim if output_dim is None else int(output_dim)
+    hidden_dims = (
+        [input_dim * 8, input_dim * 4, input_dim * 2]
+        if hidden_dims is None
+        else [int(h) for h in hidden_dims]
+    )
     if str(ext_type).lower() == "skip":
         return SkipLargeFeatureExtractor(
             input_dim=input_dim,
             output_dim=output_dim,
-            hidden_dims=[input_dim * 8, input_dim * 4, input_dim * 2],
+            hidden_dims=hidden_dims,
             activation="leaky_relu",
             dropout=0.0,
             use_bn=False,
@@ -46,7 +56,7 @@ def make_beta_feature_extractor(input_dim: int, output_dim: Optional[int] = None
     return LargeFeatureExtractor(
         input_dim=input_dim,
         output_dim=output_dim,
-        hidden_dims=[input_dim * 8, input_dim * 4, input_dim * 2],
+        hidden_dims=hidden_dims,
         activation="leaky_relu",
         dropout=0.0,
         use_bn=False,
@@ -62,6 +72,7 @@ class _DeepKernelBetaSVGP(ApproximateGP):
         train_Y: Tensor,
         *,
         ext_type: str = "DEFAULT",
+        hidden_dims: Optional[Sequence[int]] = None,
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
@@ -69,12 +80,28 @@ class _DeepKernelBetaSVGP(ApproximateGP):
         num_inducing_points: int = 128,
         learn_inducing_locations: bool = True,
     ) -> None:
-        inducing_points = select_inducing_points(train_X, num_inducing_points=num_inducing_points, inducing_points=inducing_points)
-        variational_distribution = CholeskyVariationalDistribution(num_inducing_points=inducing_points.shape[-2])
-        variational_strategy = VariationalStrategy(self, inducing_points, variational_distribution, learn_inducing_locations=learn_inducing_locations)
+        inducing_points = select_inducing_points(
+            train_X,
+            num_inducing_points=num_inducing_points,
+            inducing_points=inducing_points,
+        )
+        variational_distribution = CholeskyVariationalDistribution(
+            num_inducing_points=inducing_points.shape[-2]
+        )
+        variational_strategy = VariationalStrategy(
+            self,
+            inducing_points,
+            variational_distribution,
+            learn_inducing_locations=learn_inducing_locations,
+        )
         super().__init__(variational_strategy)
         input_dim = train_X.shape[-1]
-        self.feature_extractor = feature_extractor or make_beta_feature_extractor(input_dim=input_dim, output_dim=input_dim, ext_type=ext_type)
+        self.feature_extractor = feature_extractor or make_beta_feature_extractor(
+            input_dim=input_dim,
+            output_dim=input_dim,
+            ext_type=ext_type,
+            hidden_dims=hidden_dims,
+        )
         self.deepkernel = self.feature_extractor
         self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
         with torch.no_grad():
@@ -100,6 +127,7 @@ class _DeepKernelMixedBetaSVGP(ApproximateGP):
         *,
         cat_dims: Sequence[int],
         ext_type: str = "DEFAULT",
+        hidden_dims: Optional[Sequence[int]] = None,
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
@@ -110,12 +138,28 @@ class _DeepKernelMixedBetaSVGP(ApproximateGP):
         d = train_X.shape[-1]
         self.cat_dims = normalize_dims(cat_dims, d)
         self.cont_dims = get_cont_dims(d, self.cat_dims)
-        inducing_points = select_inducing_points(train_X, num_inducing_points=num_inducing_points, inducing_points=inducing_points)
-        variational_distribution = CholeskyVariationalDistribution(num_inducing_points=inducing_points.shape[-2])
-        variational_strategy = VariationalStrategy(self, inducing_points, variational_distribution, learn_inducing_locations=learn_inducing_locations)
+        inducing_points = select_inducing_points(
+            train_X,
+            num_inducing_points=num_inducing_points,
+            inducing_points=inducing_points,
+        )
+        variational_distribution = CholeskyVariationalDistribution(
+            num_inducing_points=inducing_points.shape[-2]
+        )
+        variational_strategy = VariationalStrategy(
+            self,
+            inducing_points,
+            variational_distribution,
+            learn_inducing_locations=learn_inducing_locations,
+        )
         super().__init__(variational_strategy)
         if len(self.cont_dims) > 0:
-            self.feature_extractor = feature_extractor or make_beta_feature_extractor(len(self.cont_dims), len(self.cont_dims), ext_type)
+            self.feature_extractor = feature_extractor or make_beta_feature_extractor(
+                input_dim=len(self.cont_dims),
+                output_dim=len(self.cont_dims),
+                ext_type=ext_type,
+                hidden_dims=hidden_dims,
+            )
             self.deepkernel = self.feature_extractor
             self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
         else:
@@ -123,7 +167,11 @@ class _DeepKernelMixedBetaSVGP(ApproximateGP):
             self.deepkernel = self.feature_extractor
             self.scale_to_bounds = nn.Identity()
         self.mean_module = mean_module or ConstantMean()
-        self.covar_module = covar_module or build_mixed_beta_kernel(d=d, cat_dims=self.cat_dims, batch_shape=torch.Size())
+        self.covar_module = covar_module or build_mixed_beta_kernel(
+            d=d,
+            cat_dims=self.cat_dims,
+            batch_shape=torch.Size(),
+        )
         self.train_inputs = (train_X,)
         self.train_targets = train_Y
 
@@ -151,6 +199,7 @@ class DeepKernelBetaGPModel(_BaseBetaGPModel):
         likelihood: Optional[BetaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         ext_type: str = "DEFAULT",
+        hidden_dims: Optional[Sequence[int]] = None,
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
@@ -167,12 +216,23 @@ class DeepKernelBetaGPModel(_BaseBetaGPModel):
         train_X = torch.as_tensor(train_X)
         train_Y = prepare_beta_targets(train_Y, train_X, eps=eps, clip=clip_targets)
         input_transform = to_device_dtype_transform(clone_input_transform(input_transform), train_X)
-        train_X_tf = apply_input_transform_for_training(train_X, input_transform, name="DeepKernelBetaGPModel.input_transform")
-        likelihood = likelihood or BetaLogLikelihood(link=link, init_concentration=init_concentration, learn_concentration=learn_concentration, eps=eps, min_concentration=min_concentration)
+        train_X_tf = apply_input_transform_for_training(
+            train_X,
+            input_transform,
+            name="DeepKernelBetaGPModel.input_transform",
+        )
+        likelihood = likelihood or BetaLogLikelihood(
+            link=link,
+            init_concentration=init_concentration,
+            learn_concentration=learn_concentration,
+            eps=eps,
+            min_concentration=min_concentration,
+        )
         latent_model = _DeepKernelBetaSVGP(
             train_X=train_X_tf,
             train_Y=train_Y,
             ext_type=ext_type,
+            hidden_dims=hidden_dims,
             feature_extractor=feature_extractor,
             mean_module=mean_module,
             covar_module=covar_module,
@@ -180,8 +240,20 @@ class DeepKernelBetaGPModel(_BaseBetaGPModel):
             num_inducing_points=num_inducing_points,
             learn_inducing_locations=learn_inducing_locations,
         )
-        super().__init__(latent_model=latent_model, likelihood=likelihood, train_X=train_X, train_Y=train_Y, input_transform=input_transform, cat_dims=None, num_inducing_points=num_inducing_points, learn_inducing_locations=learn_inducing_locations, link=link, eps=eps)
+        super().__init__(
+            latent_model=latent_model,
+            likelihood=likelihood,
+            train_X=train_X,
+            train_Y=train_Y,
+            input_transform=input_transform,
+            cat_dims=None,
+            num_inducing_points=num_inducing_points,
+            learn_inducing_locations=learn_inducing_locations,
+            link=link,
+            eps=eps,
+        )
         self.ext_type = ext_type
+        self.hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
 
 
 class DeepKernelBetaMixedGPModel(_BaseBetaGPModel):
@@ -196,6 +268,7 @@ class DeepKernelBetaMixedGPModel(_BaseBetaGPModel):
         likelihood: Optional[BetaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         ext_type: str = "DEFAULT",
+        hidden_dims: Optional[Sequence[int]] = None,
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
@@ -213,13 +286,25 @@ class DeepKernelBetaMixedGPModel(_BaseBetaGPModel):
         cat_dims = normalize_dims(cat_dims, train_X.shape[-1])
         train_Y = prepare_beta_targets(train_Y, train_X, eps=eps, clip=clip_targets)
         input_transform = to_device_dtype_transform(clone_input_transform(input_transform), train_X)
-        train_X_tf = apply_input_transform_for_training(train_X, input_transform, cat_dims=cat_dims, name="DeepKernelBetaMixedGPModel.input_transform")
-        likelihood = likelihood or BetaLogLikelihood(link=link, init_concentration=init_concentration, learn_concentration=learn_concentration, eps=eps, min_concentration=min_concentration)
+        train_X_tf = apply_input_transform_for_training(
+            train_X,
+            input_transform,
+            cat_dims=cat_dims,
+            name="DeepKernelBetaMixedGPModel.input_transform",
+        )
+        likelihood = likelihood or BetaLogLikelihood(
+            link=link,
+            init_concentration=init_concentration,
+            learn_concentration=learn_concentration,
+            eps=eps,
+            min_concentration=min_concentration,
+        )
         latent_model = _DeepKernelMixedBetaSVGP(
             train_X=train_X_tf,
             train_Y=train_Y,
             cat_dims=cat_dims,
             ext_type=ext_type,
+            hidden_dims=hidden_dims,
             feature_extractor=feature_extractor,
             mean_module=mean_module,
             covar_module=covar_module,
@@ -227,8 +312,20 @@ class DeepKernelBetaMixedGPModel(_BaseBetaGPModel):
             num_inducing_points=num_inducing_points,
             learn_inducing_locations=learn_inducing_locations,
         )
-        super().__init__(latent_model=latent_model, likelihood=likelihood, train_X=train_X, train_Y=train_Y, input_transform=input_transform, cat_dims=cat_dims, num_inducing_points=num_inducing_points, learn_inducing_locations=learn_inducing_locations, link=link, eps=eps)
+        super().__init__(
+            latent_model=latent_model,
+            likelihood=likelihood,
+            train_X=train_X,
+            train_Y=train_Y,
+            input_transform=input_transform,
+            cat_dims=cat_dims,
+            num_inducing_points=num_inducing_points,
+            learn_inducing_locations=learn_inducing_locations,
+            link=link,
+            eps=eps,
+        )
         self.ext_type = ext_type
+        self.hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
 
 
 __all__ = ["DeepKernelBetaGPModel", "DeepKernelBetaMixedGPModel", "make_beta_feature_extractor"]

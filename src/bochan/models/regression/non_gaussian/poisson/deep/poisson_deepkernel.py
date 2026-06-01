@@ -34,14 +34,20 @@ def make_poisson_feature_extractor(
     input_dim: int,
     output_dim: Optional[int] = None,
     ext_type: str = "DEFAULT",
+    hidden_dims: Optional[Sequence[int]] = None,
 ) -> nn.Module:
     """Poisson DeepKernel 用 feature extractor を作る。"""
     output_dim = input_dim if output_dim is None else int(output_dim)
+    hidden_dims = (
+        [input_dim * 8, input_dim * 4, input_dim * 2]
+        if hidden_dims is None
+        else [int(h) for h in hidden_dims]
+    )
     if str(ext_type).lower() == "skip":
         return SkipLargeFeatureExtractor(
             input_dim=input_dim,
             output_dim=output_dim,
-            hidden_dims=[input_dim * 8, input_dim * 4, input_dim * 2],
+            hidden_dims=hidden_dims,
             activation="leaky_relu",
             dropout=0.0,
             use_bn=False,
@@ -50,7 +56,7 @@ def make_poisson_feature_extractor(
     return LargeFeatureExtractor(
         input_dim=input_dim,
         output_dim=output_dim,
-        hidden_dims=[input_dim * 8, input_dim * 4, input_dim * 2],
+        hidden_dims=hidden_dims,
         activation="leaky_relu",
         dropout=0.0,
         use_bn=False,
@@ -66,6 +72,7 @@ class _DeepKernelPoissonSVGP(ApproximateGP):
         train_Y: Tensor,
         *,
         ext_type: str = "DEFAULT",
+        hidden_dims: Optional[Sequence[int]] = None,
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
@@ -88,6 +95,7 @@ class _DeepKernelPoissonSVGP(ApproximateGP):
             input_dim=input_dim,
             output_dim=input_dim,
             ext_type=ext_type,
+            hidden_dims=hidden_dims,
         )
         self.deepkernel = self.feature_extractor
         self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
@@ -116,6 +124,7 @@ class _DeepKernelMixedPoissonSVGP(ApproximateGP):
         *,
         cat_dims: Sequence[int],
         ext_type: str = "DEFAULT",
+        hidden_dims: Optional[Sequence[int]] = None,
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
@@ -141,6 +150,7 @@ class _DeepKernelMixedPoissonSVGP(ApproximateGP):
                 input_dim=len(self.cont_dims),
                 output_dim=len(self.cont_dims),
                 ext_type=ext_type,
+                hidden_dims=hidden_dims,
             )
             self.deepkernel = self.feature_extractor
             self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
@@ -178,6 +188,7 @@ class DeepKernelPoissonGPModel(_BasePoissonGPModel):
         likelihood: Optional[PoissonLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         ext_type: str = "DEFAULT",
+        hidden_dims: Optional[Sequence[int]] = None,
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
@@ -197,6 +208,7 @@ class DeepKernelPoissonGPModel(_BasePoissonGPModel):
             train_X=train_X_tf,
             train_Y=train_Y,
             ext_type=ext_type,
+            hidden_dims=hidden_dims,
             feature_extractor=feature_extractor,
             mean_module=mean_module,
             covar_module=covar_module,
@@ -218,6 +230,7 @@ class DeepKernelPoissonGPModel(_BasePoissonGPModel):
             min_rate=min_rate,
         )
         self.ext_type = ext_type
+        self.hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
 
 
 class DeepKernelPoissonMixedGPModel(_BasePoissonGPModel):
@@ -232,6 +245,7 @@ class DeepKernelPoissonMixedGPModel(_BasePoissonGPModel):
         likelihood: Optional[PoissonLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         ext_type: str = "DEFAULT",
+        hidden_dims: Optional[Sequence[int]] = None,
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
@@ -258,6 +272,7 @@ class DeepKernelPoissonMixedGPModel(_BasePoissonGPModel):
             train_Y=train_Y,
             cat_dims=cat_dims,
             ext_type=ext_type,
+            hidden_dims=hidden_dims,
             feature_extractor=feature_extractor,
             mean_module=mean_module,
             covar_module=covar_module,
@@ -279,6 +294,7 @@ class DeepKernelPoissonMixedGPModel(_BasePoissonGPModel):
             min_rate=min_rate,
         )
         self.ext_type = ext_type
+        self.hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
 
 
 __all__ = [

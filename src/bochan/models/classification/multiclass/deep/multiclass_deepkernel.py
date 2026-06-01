@@ -34,18 +34,27 @@ from bochan.models.classification.multiclass import (
 class _DefaultFeatureExtractor(nn.Module):
     """DeepKernel 用の簡易 MLP feature extractor。"""
 
-    def __init__(self, input_dim: int, output_dim: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        input_dim: int,
+        output_dim: Optional[int] = None,
+        hidden_dims: Optional[Sequence[int]] = None,
+    ) -> None:
         super().__init__()
         output_dim = input_dim if output_dim is None else int(output_dim)
-        h1 = max(8, input_dim * 8)
-        h2 = max(8, input_dim * 4)
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, h1),
-            nn.LeakyReLU(),
-            nn.Linear(h1, h2),
-            nn.LeakyReLU(),
-            nn.Linear(h2, output_dim),
+        hidden_dims = (
+            [max(8, input_dim * 8), max(8, input_dim * 4)]
+            if hidden_dims is None
+            else [int(h) for h in hidden_dims]
         )
+
+        layers: list[nn.Module] = []
+        in_dim = input_dim
+        for h in hidden_dims:
+            layers.extend([nn.Linear(in_dim, h), nn.LeakyReLU()])
+            in_dim = h
+        layers.append(nn.Linear(in_dim, output_dim))
+        self.net = nn.Sequential(*layers)
 
     def forward(self, X: Tensor) -> Tensor:
         return self.net(X)
@@ -55,6 +64,7 @@ def make_multiclass_feature_extractor(
     input_dim: int,
     output_dim: Optional[int] = None,
     ext_type: str = "DEFAULT",
+    hidden_dims: Optional[Sequence[int]] = None,
 ) -> nn.Module:
     """多クラス DeepKernel 用 feature extractor を作る。"""
     # ユーザー環境に components.layers がある場合は、それを優先する。
@@ -65,11 +75,16 @@ def make_multiclass_feature_extractor(
         )
 
         output_dim = input_dim if output_dim is None else int(output_dim)
+        hidden_dims = (
+            [input_dim * 8, input_dim * 4, input_dim * 2]
+            if hidden_dims is None
+            else [int(h) for h in hidden_dims]
+        )
         if str(ext_type).lower() == "skip":
             return SkipLargeFeatureExtractor(
                 input_dim=input_dim,
                 output_dim=output_dim,
-                hidden_dims=[input_dim * 8, input_dim * 4, input_dim * 2],
+                hidden_dims=hidden_dims,
                 activation="leaky_relu",
                 dropout=0.0,
                 use_bn=False,
@@ -78,13 +93,17 @@ def make_multiclass_feature_extractor(
         return LargeFeatureExtractor(
             input_dim=input_dim,
             output_dim=output_dim,
-            hidden_dims=[input_dim * 8, input_dim * 4, input_dim * 2],
+            hidden_dims=hidden_dims,
             activation="leaky_relu",
             dropout=0.0,
             use_bn=False,
         )
     except Exception:
-        return _DefaultFeatureExtractor(input_dim=input_dim, output_dim=output_dim)
+        return _DefaultFeatureExtractor(
+            input_dim=input_dim,
+            output_dim=output_dim,
+            hidden_dims=hidden_dims,
+        )
 
 
 class _DeepKernelMulticlassSVGP(ApproximateGP):
@@ -97,6 +116,7 @@ class _DeepKernelMulticlassSVGP(ApproximateGP):
         *,
         num_classes: int,
         ext_type: str = "DEFAULT",
+        hidden_dims: Optional[Sequence[int]] = None,
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
@@ -129,6 +149,7 @@ class _DeepKernelMulticlassSVGP(ApproximateGP):
             input_dim=input_dim,
             output_dim=input_dim,
             ext_type=ext_type,
+            hidden_dims=hidden_dims,
         )
         self.deepkernel = self.feature_extractor
         self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
@@ -161,6 +182,7 @@ class _DeepKernelMixedMulticlassSVGP(ApproximateGP):
         cat_dims: Sequence[int],
         num_classes: int,
         ext_type: str = "DEFAULT",
+        hidden_dims: Optional[Sequence[int]] = None,
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
@@ -197,6 +219,7 @@ class _DeepKernelMixedMulticlassSVGP(ApproximateGP):
                 input_dim=len(self.cont_dims),
                 output_dim=len(self.cont_dims),
                 ext_type=ext_type,
+                hidden_dims=hidden_dims,
             )
             self.deepkernel = self.feature_extractor
             self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
@@ -239,6 +262,7 @@ class DeepKernelMulticlassClassificationGPModel(_BaseMulticlassClassificationMod
         likelihood: Optional[SoftmaxLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         ext_type: str = "DEFAULT",
+        hidden_dims: Optional[Sequence[int]] = None,
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
@@ -261,6 +285,7 @@ class DeepKernelMulticlassClassificationGPModel(_BaseMulticlassClassificationMod
             train_Y=train_Y,
             num_classes=num_classes,
             ext_type=ext_type,
+            hidden_dims=hidden_dims,
             feature_extractor=feature_extractor,
             mean_module=mean_module,
             covar_module=covar_module,
@@ -286,6 +311,7 @@ class DeepKernelMulticlassClassificationGPModel(_BaseMulticlassClassificationMod
             temperature=temperature,
         )
         self.ext_type = str(ext_type)
+        self.hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
 
 
 class DeepKernelMulticlassClassificationMixedGPModel(_BaseMulticlassClassificationModel):
@@ -301,6 +327,7 @@ class DeepKernelMulticlassClassificationMixedGPModel(_BaseMulticlassClassificati
         likelihood: Optional[SoftmaxLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         ext_type: str = "DEFAULT",
+        hidden_dims: Optional[Sequence[int]] = None,
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
@@ -327,6 +354,7 @@ class DeepKernelMulticlassClassificationMixedGPModel(_BaseMulticlassClassificati
             cat_dims=cat_dims,
             num_classes=num_classes,
             ext_type=ext_type,
+            hidden_dims=hidden_dims,
             feature_extractor=feature_extractor,
             mean_module=mean_module,
             covar_module=covar_module,
@@ -352,6 +380,7 @@ class DeepKernelMulticlassClassificationMixedGPModel(_BaseMulticlassClassificati
             temperature=temperature,
         )
         self.ext_type = str(ext_type)
+        self.hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
 
 
 __all__ = [

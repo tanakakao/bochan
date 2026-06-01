@@ -27,7 +27,7 @@ OptimizerName = Literal["optimize_acqf", "optimize_acqf_mixed"]
 class ModelConfig:
     """モデル生成に必要な設定。
 
-    `ModelConfig` には3つの使い方があります。
+    `ModelConfig` には4つの使い方があります。
 
     1. 直接指定モード:
         `model_cls=SingleTaskGP` のようにモデルクラスを直接渡します。
@@ -45,6 +45,13 @@ class ModelConfig:
         `HybridMultiOutputModel` のように `train_X` / `train_Y` を直接受け取らず、
         `specs` などから wrapper を作るモデルに向いています。
 
+    4. multi-output 指定モード:
+        `multi_output_config` を指定すると、出力列ごとに single-output submodel を
+        作成し、`fit_model()` 時に submodel ごとに学習します。
+        regression のみなら `ModelListGP`、binary のみなら
+        `MultiOutputBinaryClassificationModel`、ordinal のみなら
+        `MultiOutputOrdinalModel`、混合タスクなら `HybridMultiOutputModel` に束ねます。
+
     Args:
         model_cls: 直接生成したいモデルクラス。None の場合は registry から解決する。
         model_factory: 任意のモデル生成関数。指定時は `model_cls` / registry より優先される。
@@ -56,6 +63,7 @@ class ModelConfig:
         input_transform: BoTorch 互換の input_transform。
         outcome_transform: BoTorch 互換の outcome_transform。
         model_kwargs: モデルクラスまたは model_factory へ追加で渡す kwargs。
+        multi_output_config: multi-output / hybrid 自動構築用の設定。
         train_x_name: モデルコンストラクタで使う train_X 引数名。
         train_y_name: モデルコンストラクタで使う train_Y 引数名。
         pass_train_data: train_X / train_Y をモデルコンストラクタへ渡すか。
@@ -77,6 +85,7 @@ class ModelConfig:
     outcome_transform: Any = None
 
     model_kwargs: dict[str, Any] = field(default_factory=dict)
+    multi_output_config: MultiOutputConfig | None = None
 
     train_x_name: str = "train_X"
     train_y_name: str = "train_Y"
@@ -110,6 +119,46 @@ class FitConfig:
 
     use_model_make_mll: bool = True
     skip_fit: bool = False
+
+
+@dataclass
+class MultiOutputConfig:
+    """出力ごとに submodel を作り、multi-output / hybrid wrapper に束ねる設定。
+
+    Args:
+        output_configs: 出力ごとの ModelConfig。None の場合は親 ModelConfig を各出力へ複製する。
+        output_fit_configs: 出力ごとの FitConfig。単一の FitConfig を渡すと全出力で共有する。
+            None の場合は `BayesianOptimizer.fit()` に渡された親 FitConfig を各出力で使う。
+        output_task_types: 出力ごとの task_type。混合タスクでは必須に近い。
+            例: `["regression", "binary", "ordinal"]`。
+        output_names: hybrid OutputSpec 用の出力名。None の場合は `y0`, `y1`, ... を使う。
+        wrapper_cls: 明示的に使いたい wrapper class。
+        wrapper_factory: 明示的に使いたい wrapper 生成関数。
+        wrapper_kwargs: wrapper 生成時に渡す追加 kwargs。
+        use_hybrid: True なら同種タスクでも HybridMultiOutputModel を使う。
+            False なら混合タスクを許さず、専用 multi-output wrapper を使う。
+            None なら混合タスクのみ hybrid に自動分岐する。
+        fit_submodels: fit_model() 時に submodel ごとに fit するか。
+        fit_wrapper: wrapper 自体にも親 FitConfig で fit をかけるか。通常は False。
+        output_spec_kwargs: hybrid OutputSpec に出力ごとに渡す追加 kwargs。
+        train_y_slice_dim: train_Y から出力列を切り出す次元。通常は -1。
+    """
+
+    output_configs: Sequence[ModelConfig] | None = None
+    output_fit_configs: Sequence[FitConfig | None] | FitConfig | None = None
+    output_task_types: Sequence[str] | None = None
+    output_names: Sequence[str] | None = None
+
+    wrapper_cls: type | Callable[..., Any] | None = None
+    wrapper_factory: Callable[..., Any] | None = None
+    wrapper_kwargs: dict[str, Any] = field(default_factory=dict)
+
+    use_hybrid: bool | None = None
+    fit_submodels: bool = True
+    fit_wrapper: bool = False
+
+    output_spec_kwargs: Sequence[dict[str, Any]] | None = None
+    train_y_slice_dim: int = -1
 
 
 @dataclass

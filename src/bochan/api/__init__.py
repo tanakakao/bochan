@@ -8,6 +8,7 @@ from .configs import (
     ModelBundle,
     ModelConfig,
     MultiObjectiveConfig,
+    MultiOutputConfig,
     OptimizeConfig,
     PredictionResult,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "ModelBundle",
     "ModelConfig",
     "MultiObjectiveConfig",
+    "MultiOutputConfig",
     "OptimizeConfig",
     "PredictionResult",
     "build_acquisition",

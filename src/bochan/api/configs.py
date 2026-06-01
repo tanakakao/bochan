@@ -21,7 +21,18 @@ TaskType = Literal[
 ]
 InputType = Literal["normal", "mixed"]
 ModelType = str
-OptimizerName = Literal["optimize_acqf", "optimize_acqf_mixed"]
+OptimizerName = Literal[
+    "optimize_acqf",
+    "optimize_acqf_mixed",
+    "evo",
+    "optimize_acqf_evo",
+    "evo_mixed",
+    "optimize_acqf_evo_mixed",
+    "torch",
+    "optimize_acqf_torch",
+    "torch_mixed",
+    "optimize_acqf_torch_mixed",
+]
 FinalPriority = Literal["grid", "constraints"]
 SparseScore = Literal["abs", "value"]
 SupportSelection = Literal["topk", "sample"]
@@ -222,25 +233,7 @@ class DataContext:
 
 @dataclass
 class CandidateRepairConfig:
-    """候補点の丸め・k-sparse・制約補修を自動生成する設定。
-
-    `bochan.constraints.postprocess.make_grid_k_sparse_post_processing_func` を
-    `OptimizeConfig` 内で組み立てるための薄い設定です。
-
-    Args:
-        bounds: repair 用 bounds。None の場合は `optimize_candidates(..., bounds=...)` を使う。
-        numeric_indices: grid rounding 対象の数値列。None なら全列。
-        steps: grid step。None なら丸めなし。
-        comp_idx: k-sparse 対象列。None / [] なら k-sparse は実質無効。
-        k: comp_idx 内で許容する active component 数。
-        equality_constraints: repair 用の等式制約。None なら OptimizeConfig.equality_constraints を使う。
-        inequality_constraints: repair 用の不等式制約。None なら OptimizeConfig.inequality_constraints を使う。
-        inequality_sense: k-sparse repair 側の不等式向き。
-        fixed_features: repair 用 fixed_features。None なら OptimizeConfig.fixed_features を使う。
-        final_sum_constraint: active support 上の最終和制約。
-        diversify: q-batch 内の重複を軽くずらして再補修するか。
-        final_priority: 最後に grid / constraints のどちらを優先するか。
-    """
+    """候補点の丸め・k-sparse・制約補修を自動生成する設定。"""
 
     bounds: Any | None = None
     numeric_indices: Sequence[int] | None = None

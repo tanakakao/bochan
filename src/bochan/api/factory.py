@@ -704,6 +704,33 @@ def _with_sequential(common_kwargs: dict[str, Any], config: OptimizeConfig) -> d
     return kwargs
 
 
+def _merge_fixed_features(base: Mapping[int, float] | None, extra: Mapping[int, float] | None) -> dict[int, float]:
+    """Merge fixed-feature dictionaries with ``extra`` taking priority."""
+    merged = {int(k): float(v) for k, v in (base or {}).items()}
+    for key, value in (extra or {}).items():
+        merged[int(key)] = float(value)
+    return merged
+
+
+def _merge_fixed_features_list(
+    fixed_features: Mapping[int, float] | None,
+    fixed_features_list: Sequence[Mapping[int, float]] | None,
+) -> list[dict[int, float]] | None:
+    """Apply global fixed features to every mixed fixed-feature assignment.
+
+    ``fixed_features`` is interpreted as variables that must always be fixed.
+    ``fixed_features_list`` is interpreted as categorical / discrete assignments.
+    If the same dimension appears in both, the per-assignment value from
+    ``fixed_features_list`` takes priority.
+    """
+    base = _merge_fixed_features(fixed_features, None)
+    if fixed_features_list is None:
+        return [base] if base else None
+    if len(fixed_features_list) == 0:
+        raise ValueError("fixed_features_list must not be empty when supplied.")
+    return [_merge_fixed_features(base, item) for item in fixed_features_list]
+
+
 def optimize_candidates(acqf: Any, bounds: Any, config: OptimizeConfig) -> tuple[Any, Any]:
     if bounds is None:
         raise ValueError("bounds must be provided.")
@@ -748,9 +775,14 @@ def optimize_candidates(acqf: Any, bounds: Any, config: OptimizeConfig) -> tuple
         from botorch.optim import optimize_acqf_mixed
 
         kwargs = _with_sequential(common_kwargs, config)
-        if config.fixed_features_list is None:
-            raise ValueError("OptimizeConfig.fixed_features_list is required when optimizer='optimize_acqf_mixed'.")
-        kwargs["fixed_features_list"] = config.fixed_features_list
+        merged_fixed_features_list = _merge_fixed_features_list(config.fixed_features, config.fixed_features_list)
+        if merged_fixed_features_list is None:
+            raise ValueError(
+                "OptimizeConfig.fixed_features_list or OptimizeConfig.fixed_features "
+                "is required when optimizer='optimize_acqf_mixed'."
+            )
+        kwargs.pop("fixed_features", None)
+        kwargs["fixed_features_list"] = merged_fixed_features_list
         kwargs = _filter_kwargs_for_callable(optimize_acqf_mixed, kwargs)
         return optimize_acqf_mixed(**kwargs)
 

@@ -11,6 +11,7 @@ from .configs import (
     AcquisitionConfig,
     DataContext,
     FitConfig,
+    InputTransformConfig,
     InputType,
     ModelBundle,
     ModelConfig,
@@ -63,6 +64,54 @@ def resolve_model_cls(
         ) from exc
 
 
+def _make_default_bounds(train_X: Any) -> Any:
+    if train_X is None:
+        raise ValueError("train_X is required to build input_transform bounds automatically.")
+    if hasattr(train_X, "min") and hasattr(train_X, "max"):
+        try:
+            import torch
+
+            if isinstance(train_X, torch.Tensor):
+                return torch.cat(
+                    [
+                        train_X.min(dim=0, keepdim=True).values,
+                        train_X.max(dim=0, keepdim=True).values,
+                    ],
+                    dim=0,
+                )
+        except Exception:
+            pass
+    raise TypeError("Automatic bounds generation currently supports torch.Tensor train_X.")
+
+
+def _build_input_transform_from_config(
+    train_X: Any,
+    config: ModelConfig,
+    cat_dims: list[int],
+) -> Any:
+    if config.input_transform is not None:
+        return config.input_transform
+    tf_config = config.input_transform_config
+    if tf_config is None:
+        return None
+
+    from bochan.models.transforms.input import build_input_transform
+
+    bounds = tf_config.bounds if tf_config.bounds is not None else _make_default_bounds(train_X)
+    categorical_idx = tf_config.categorical_idx
+    if categorical_idx is None:
+        categorical_idx = cat_dims or None
+
+    return build_input_transform(
+        train_X=train_X,
+        bounds=bounds,
+        perturbation=tf_config.perturbation,
+        categorical_idx=None if categorical_idx is None else list(categorical_idx),
+        n_w=tf_config.n_w,
+        std=tf_config.std,
+    )
+
+
 def _build_model_kwargs(train_X: Any, train_Y: Any, config: ModelConfig, cat_dims: list[int]) -> dict[str, Any]:
     kwargs: dict[str, Any] = {}
     if config.pass_train_data:
@@ -75,8 +124,10 @@ def _build_model_kwargs(train_X: Any, train_Y: Any, config: ModelConfig, cat_dim
     if pass_cat_dims:
         kwargs["cat_dims"] = cat_dims
 
-    if config.pass_input_transform and config.input_transform is not None:
-        kwargs["input_transform"] = config.input_transform
+    input_transform = _build_input_transform_from_config(train_X, config, cat_dims)
+    if config.pass_input_transform and input_transform is not None:
+        kwargs["input_transform"] = input_transform
+
     if config.pass_outcome_transform and config.outcome_transform is not None:
         kwargs["outcome_transform"] = config.outcome_transform
 
@@ -132,6 +183,9 @@ def _normalize_output_config_like(raw: Any, parent_config: ModelConfig, index: i
         model_type=oc.model_type,
         input_type=oc.input_type if oc.input_type is not None else parent_config.input_type,
         cat_dims=oc.cat_dims if oc.cat_dims is not None else parent_config.cat_dims,
+        input_transform_config=oc.input_transform_config
+        if oc.input_transform_config is not None
+        else parent_config.input_transform_config,
         model_kwargs=merged_model_kwargs,
         multi_output_config=None,
     )

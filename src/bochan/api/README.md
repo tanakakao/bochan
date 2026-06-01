@@ -86,6 +86,109 @@ opt_config = OptimizeConfig(
 candidates, acq_value = bo.candidate(acq_config, opt_config)
 ```
 
+## 多目的最適化の例
+
+`train_Y` が `n x m` の多目的出力の場合も、同じ `BayesianOptimizer` を使います。
+
+### qEHVI
+
+```python
+from botorch.acquisition.multi_objective.monte_carlo import qExpectedHypervolumeImprovement
+
+from bochan.api import (
+    AcquisitionConfig,
+    DataContext,
+    MultiObjectiveConfig,
+    OptimizeConfig,
+)
+
+mo_config = MultiObjectiveConfig(
+    ref_point=ref_point,
+    Y_baseline=train_Y,
+    auto_partitioning=True,
+)
+
+data_context = DataContext(
+    bounds=bounds,
+    X_baseline=train_X,
+    multi_objective=mo_config,
+)
+
+acq_config = AcquisitionConfig(
+    name="qEHVI",
+    acqf_cls=qExpectedHypervolumeImprovement,
+)
+
+opt_config = OptimizeConfig(
+    q=3,
+    num_restarts=10,
+    raw_samples=256,
+)
+
+candidates, acq_value = bo.candidate(
+    acq_config=acq_config,
+    opt_config=opt_config,
+    data_context=data_context,
+)
+```
+
+`ref_point` と `Y_baseline` が指定されていれば、`partitioning` は自動生成されます。
+明示的に指定したい場合は `MultiObjectiveConfig(partitioning=...)` を使ってください。
+
+### qNEHVI
+
+```python
+from botorch.acquisition.multi_objective.monte_carlo import qNoisyExpectedHypervolumeImprovement
+
+mo_config = MultiObjectiveConfig(
+    ref_point=ref_point,
+    Y_baseline=train_Y,
+)
+
+data_context = DataContext(
+    bounds=bounds,
+    X_baseline=train_X,
+    multi_objective=mo_config,
+)
+
+acq_config = AcquisitionConfig(
+    name="qNEHVI",
+    acqf_cls=qNoisyExpectedHypervolumeImprovement,
+)
+
+candidates, acq_value = bo.candidate(acq_config, opt_config, data_context=data_context)
+```
+
+qNEHVI では `X_baseline` と `ref_point` が獲得関数に渡されます。
+
+### NParEGO 風の scalarization
+
+```python
+from botorch.acquisition.monte_carlo import qExpectedImprovement
+
+mo_config = MultiObjectiveConfig(
+    Y_baseline=train_Y,
+    scalarization_weights=weights,
+    auto_scalarization=True,
+)
+
+data_context = DataContext(
+    bounds=bounds,
+    X_baseline=train_X,
+    best_f=best_f_scalarized,
+    multi_objective=mo_config,
+)
+
+acq_config = AcquisitionConfig(
+    name="qNParEGO",
+    acqf_cls=qExpectedImprovement,
+)
+
+candidates, acq_value = bo.candidate(acq_config, opt_config, data_context=data_context)
+```
+
+`scalarization_weights` を指定すると、Chebyshev scalarization に基づく `GenericMCObjective` を自動生成します。
+
 ## registry を使う例
 
 ネストした registry にも対応しています。
@@ -94,6 +197,9 @@ candidates, acq_value = bo.candidate(acq_config, opt_config)
 model_registry = {
     "normal": {
         "regression": {
+            "base": SingleTaskGP,
+        },
+        "multi_objective": {
             "base": SingleTaskGP,
         },
     },
@@ -105,7 +211,7 @@ model_registry = {
 }
 
 model_config = ModelConfig(
-    task_type="regression",
+    task_type="multi_objective",
     model_type="base",
     cat_dims=[],
 )

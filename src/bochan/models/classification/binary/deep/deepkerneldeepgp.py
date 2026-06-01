@@ -12,15 +12,38 @@ from bochan.models.components.layers import (
     DeepKernelDeepGPHiddenLayer,
     DeepKernelDeepMixedGPHiddenLayer,
 )
+from bochan.models.components.layers.feature_extractor import LargeFeatureExtractor, SkipLargeFeatureExtractor
+
+
+def _make_deepkernel_feature_extractor(input_dim: int, ext_type: str, hidden_dims: Optional[Sequence[int]] = None):
+    hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
+    if str(ext_type).lower() == "skip":
+        return SkipLargeFeatureExtractor(
+            input_dim=input_dim,
+            output_dim=input_dim,
+            hidden_dims=hidden_dims,
+            activation="leaky_relu",
+            dropout=0.0,
+            use_bn=False,
+            use_global_skip=True,
+        )
+    return LargeFeatureExtractor(
+        input_dim=input_dim,
+        output_dim=input_dim,
+        hidden_dims=hidden_dims,
+        activation="leaky_relu",
+        dropout=0.0,
+        use_bn=False,
+    )
 
 
 class DeepKernelBinaryClassificationDeepGPModel(BinaryClassificationDeepGPModel):
     """
     連続入力向け Deep Kernel + DeepGP の 2値分類モデル。
 
-    方針:
-        - 基本構造は DeepGPBinaryClassificationModel
-        - 最終層を DeepKernelDeepGPHiddenLayer に差し替える
+    Args:
+        kernel_hidden_dims: 最終 DeepKernel feature extractor の隠れ層次元。
+            None の場合は feature extractor 側の既定値を使う。
     """
 
     def __init__(
@@ -32,6 +55,7 @@ class DeepKernelBinaryClassificationDeepGPModel(BinaryClassificationDeepGPModel)
         ext_type: str = "DEFAULT",
         list_hidden_dims: Optional[Sequence[int]] = None,
         model_type: str = "DEFAULT",
+        kernel_hidden_dims: Optional[Sequence[int]] = None,
     ):
         hidden_dims = list(list_hidden_dims) if list_hidden_dims is not None else [16]
 
@@ -51,6 +75,12 @@ class DeepKernelBinaryClassificationDeepGPModel(BinaryClassificationDeepGPModel)
             ext_type=ext_type,
             mean_type="constant",
         )
+        self.last_layer.feature_extractor = _make_deepkernel_feature_extractor(
+            input_dim=hidden_dims[-1],
+            ext_type=ext_type,
+            hidden_dims=kernel_hidden_dims,
+        )
+        self.kernel_hidden_dims = None if kernel_hidden_dims is None else [int(h) for h in kernel_hidden_dims]
 
 
 class DeepKernelBinaryClassificationMixedDeepGPModel(
@@ -59,10 +89,9 @@ class DeepKernelBinaryClassificationMixedDeepGPModel(
     """
     混合入力（連続 + カテゴリ）向け Deep Kernel + DeepGP の 2値分類モデル。
 
-    方針:
-        - 基本構造は DeepGPBinaryMixedClassificationModel
-        - mixed-aware な入力層を DeepKernelDeepMixedGPHiddenLayer に差し替える
-        - 最終層は親クラスの binary latent scalar layer をそのまま使う
+    Args:
+        kernel_hidden_dims: 入力 DeepKernel feature extractor の隠れ層次元。
+            None の場合は feature extractor 側の既定値を使う。
     """
 
     def __init__(
@@ -75,6 +104,7 @@ class DeepKernelBinaryClassificationMixedDeepGPModel(
         ext_type: str = "DEFAULT",
         hidden_dim: int = 16,
         model_type: str = "DEFAULT",
+        kernel_hidden_dims: Optional[Sequence[int]] = None,
     ):
         super().__init__(
             train_X=train_X,
@@ -108,3 +138,9 @@ class DeepKernelBinaryClassificationMixedDeepGPModel(
             ext_type=ext_type,
             input_data=train_X_for_input_layer,
         )
+        self.input_layer.feature_extractor = _make_deepkernel_feature_extractor(
+            input_dim=len(ord_dims),
+            ext_type=ext_type,
+            hidden_dims=kernel_hidden_dims,
+        )
+        self.kernel_hidden_dims = None if kernel_hidden_dims is None else [int(h) for h in kernel_hidden_dims]

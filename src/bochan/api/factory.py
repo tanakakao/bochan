@@ -13,6 +13,7 @@ from .configs import (
     InputType,
     ModelBundle,
     ModelConfig,
+    MultiObjectiveConfig,
     OptimizeConfig,
 )
 
@@ -194,6 +195,102 @@ def _filter_kwargs_for_callable(func: Callable[..., Any], kwargs: dict[str, Any]
     return {k: v for k, v in kwargs.items() if k in allowed}
 
 
+def _looks_like_ehvi(config: AcquisitionConfig) -> bool:
+    name = config.name.lower()
+    cls_name = ""
+    if config.acqf_cls is not None:
+        cls_name = getattr(config.acqf_cls, "__name__", "").lower()
+    text = f"{name} {cls_name}"
+    return "ehvi" in text and "nehvi" not in text
+
+
+def _make_fast_nondominated_partitioning(ref_point: Any, Y: Any) -> Any:
+    from botorch.utils.multi_objective.box_decompositions import FastNondominatedPartitioning
+
+    return FastNondominatedPartitioning(ref_point=ref_point, Y=Y)
+
+
+def _make_chebyshev_objective(weights: Any, Y: Any, alpha: float) -> Any:
+    from botorch.acquisition.objective import GenericMCObjective
+    from botorch.utils.multi_objective.scalarization import get_chebyshev_scalarization
+
+    scalarization = get_chebyshev_scalarization(
+        weights=weights,
+        Y=Y,
+        alpha=alpha,
+    )
+    return GenericMCObjective(lambda samples, X=None: scalarization(samples))
+
+
+def prepare_multi_objective_context(
+    bundle: ModelBundle,
+    data_context: DataContext,
+    acq_config: AcquisitionConfig | None = None,
+) -> DataContext:
+    """多目的 BO 用の DataContext を補完する。
+
+    - `Y_baseline` が未指定なら `bundle.train_Y` を使う。
+    - `ref_point` / `constraints` / `objective_thresholds` を MultiObjectiveConfig から転記する。
+    - qEHVI らしい獲得関数では partitioning の自動生成を試みる。
+    - scalarization_weights がある場合は NParEGO 風 objective の自動生成を試みる。
+    """
+    mo_config = data_context.multi_objective
+    if mo_config is None:
+        return data_context
+
+    if data_context.Y_baseline is None:
+        data_context.Y_baseline = mo_config.Y_baseline
+    if data_context.Y_baseline is None:
+        data_context.Y_baseline = bundle.train_Y
+
+    if data_context.ref_point is None:
+        data_context.ref_point = mo_config.ref_point
+
+    if data_context.partitioning is None:
+        data_context.partitioning = mo_config.partitioning
+
+    if data_context.objective_thresholds is None:
+        data_context.objective_thresholds = mo_config.objective_thresholds
+
+    if data_context.constraints is None:
+        data_context.constraints = mo_config.constraints
+
+    if (
+        acq_config is not None
+        and acq_config.objective is None
+        and mo_config.objective is not None
+    ):
+        acq_config.objective = mo_config.objective
+
+    if (
+        acq_config is not None
+        and acq_config.objective is None
+        and mo_config.auto_scalarization
+        and mo_config.scalarization_weights is not None
+        and data_context.Y_baseline is not None
+    ):
+        acq_config.objective = _make_chebyshev_objective(
+            weights=mo_config.scalarization_weights,
+            Y=data_context.Y_baseline,
+            alpha=mo_config.scalarization_alpha,
+        )
+
+    if (
+        acq_config is not None
+        and mo_config.auto_partitioning
+        and data_context.partitioning is None
+        and data_context.ref_point is not None
+        and data_context.Y_baseline is not None
+        and _looks_like_ehvi(acq_config)
+    ):
+        data_context.partitioning = _make_fast_nondominated_partitioning(
+            ref_point=data_context.ref_point,
+            Y=data_context.Y_baseline,
+        )
+
+    return data_context
+
+
 def build_acquisition(
     bundle: ModelBundle,
     config: AcquisitionConfig,
@@ -201,6 +298,7 @@ def build_acquisition(
 ) -> Any:
     """AcquisitionConfig に基づいて獲得関数を生成する。"""
     data_context = data_context or DataContext()
+    data_context = prepare_multi_objective_context(bundle, data_context, config)
 
     if config.acqf_factory is not None:
         return config.acqf_factory(

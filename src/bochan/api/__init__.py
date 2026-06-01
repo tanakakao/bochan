@@ -26,15 +26,19 @@ from .factory import (
     prepare_multi_objective_context,
     resolve_model_cls,
 )
+from .model_registry import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
 
 __all__ = [
     "AcquisitionConfig",
     "BayesianOptimizer",
     "CandidateRepairConfig",
     "CandidateResult",
+    "DEFAULT_MODEL_REGISTRY",
     "DataContext",
     "FitConfig",
     "InputTransformConfig",
+    "LazyModelRegistry",
+    "MODEL_REGISTRY",
     "ModelBundle",
     "ModelConfig",
     "MultiObjectiveConfig",

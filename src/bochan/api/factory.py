@@ -9,13 +9,12 @@ from typing import Any, Callable
 
 from .configs import (
     AcquisitionConfig,
+    CandidateRepairConfig,
     DataContext,
     FitConfig,
-    InputTransformConfig,
     InputType,
     ModelBundle,
     ModelConfig,
-    MultiObjectiveConfig,
     MultiOutputConfig,
     OptimizeConfig,
     OutputConfig,
@@ -49,7 +48,6 @@ def resolve_model_cls(
 
     cat_dims = _as_cat_dims(config.cat_dims)
     input_type = config.input_type or infer_input_type(cat_dims)
-
     flat_key = (input_type, config.task_type, config.model_type)
     if flat_key in model_registry:
         return model_registry[flat_key]
@@ -66,21 +64,20 @@ def resolve_model_cls(
 
 def _make_default_bounds(train_X: Any) -> Any:
     if train_X is None:
-        raise ValueError("train_X is required to build input_transform bounds automatically.")
-    if hasattr(train_X, "min") and hasattr(train_X, "max"):
-        try:
-            import torch
+        raise ValueError("train_X is required to build bounds automatically.")
+    try:
+        import torch
 
-            if isinstance(train_X, torch.Tensor):
-                return torch.cat(
-                    [
-                        train_X.min(dim=0, keepdim=True).values,
-                        train_X.max(dim=0, keepdim=True).values,
-                    ],
-                    dim=0,
-                )
-        except Exception:
-            pass
+        if isinstance(train_X, torch.Tensor):
+            return torch.cat(
+                [
+                    train_X.min(dim=0, keepdim=True).values,
+                    train_X.max(dim=0, keepdim=True).values,
+                ],
+                dim=0,
+            )
+    except Exception:
+        pass
     raise TypeError("Automatic bounds generation currently supports torch.Tensor train_X.")
 
 
@@ -150,6 +147,7 @@ def _slice_output_y(train_Y: Any, output_index: int, dim: int = -1) -> Any:
         if output_index != 0:
             raise IndexError("1D train_Y has only one output.")
         return train_Y.reshape(-1, 1) if hasattr(train_Y, "reshape") else train_Y
+
     ndim = len(train_Y.shape)
     dim = dim if dim >= 0 else ndim + dim
     index = [slice(None)] * ndim
@@ -157,7 +155,11 @@ def _slice_output_y(train_Y: Any, output_index: int, dim: int = -1) -> Any:
     return train_Y[tuple(index)]
 
 
-def _normalize_output_config_like(raw: Any, parent_config: ModelConfig, index: int) -> tuple[ModelConfig, str | None, dict[str, Any], FitConfig | None]:
+def _normalize_output_config_like(
+    raw: Any,
+    parent_config: ModelConfig,
+    index: int,
+) -> tuple[ModelConfig, str | None, dict[str, Any], FitConfig | None]:
     """文字列・辞書・OutputConfig・ModelConfig を ModelConfig へ正規化する。"""
     if isinstance(raw, ModelConfig):
         return raw, None, {}, None
@@ -224,7 +226,12 @@ def _resolve_output_configs(parent_config: ModelConfig, n_outputs: int) -> tuple
     return configs, names, spec_kwargs, embedded_fit_configs
 
 
-def _resolve_output_fit_configs(parent_fit_config: FitConfig | None, mo_config: MultiOutputConfig, n_outputs: int, embedded: Sequence[FitConfig | None] | None = None) -> list[FitConfig | None]:
+def _resolve_output_fit_configs(
+    parent_fit_config: FitConfig | None,
+    mo_config: MultiOutputConfig,
+    n_outputs: int,
+    embedded: Sequence[FitConfig | None] | None = None,
+) -> list[FitConfig | None]:
     embedded = list(embedded or [None for _ in range(n_outputs)])
     output_fit_configs = mo_config.output_fit_configs
     if output_fit_configs is None:
@@ -236,7 +243,13 @@ def _resolve_output_fit_configs(parent_fit_config: FitConfig | None, mo_config: 
     return [embedded[i] or output_fit_configs[i] for i in range(n_outputs)]
 
 
-def _build_single_model(train_X: Any, train_Y: Any, config: ModelConfig, *, model_registry: Mapping[Any, Any] | None = None) -> ModelBundle:
+def _build_single_model(
+    train_X: Any,
+    train_Y: Any,
+    config: ModelConfig,
+    *,
+    model_registry: Mapping[Any, Any] | None = None,
+) -> ModelBundle:
     cat_dims = _as_cat_dims(config.cat_dims)
     input_type = config.input_type or infer_input_type(cat_dims)
     kwargs = _build_model_kwargs(train_X, train_Y, config, cat_dims)
@@ -274,7 +287,13 @@ def _build_single_model(train_X: Any, train_Y: Any, config: ModelConfig, *, mode
     )
 
 
-def _build_wrapper_from_submodels(submodels: Sequence[Any], output_configs: Sequence[ModelConfig], mo_config: MultiOutputConfig, output_names: Sequence[str | None] | None = None, output_spec_kwargs: Sequence[dict[str, Any]] | None = None) -> Any:
+def _build_wrapper_from_submodels(
+    submodels: Sequence[Any],
+    output_configs: Sequence[ModelConfig],
+    mo_config: MultiOutputConfig,
+    output_names: Sequence[str | None] | None = None,
+    output_spec_kwargs: Sequence[dict[str, Any]] | None = None,
+) -> Any:
     if mo_config.wrapper_factory is not None:
         return mo_config.wrapper_factory(submodels=submodels, output_configs=output_configs, config=mo_config)
     if mo_config.wrapper_cls is not None:
@@ -310,14 +329,20 @@ def _build_wrapper_from_submodels(submodels: Sequence[Any], output_configs: Sequ
     task_type = next(iter(unique_task_types))
     if task_type in {"regression", "multi_objective"}:
         from botorch.models.model_list_gp_regression import ModelListGP
+
         return ModelListGP(*submodels)
     if task_type == "binary":
         from bochan.models.classification.binary.base import MultiOutputBinaryClassificationModel
+
         return MultiOutputBinaryClassificationModel(*submodels, **mo_config.wrapper_kwargs)
     if task_type == "ordinal":
         from bochan.models.ordinal.base.multioutput import MultiOutputOrdinalModel
+
         return MultiOutputOrdinalModel(*submodels, **mo_config.wrapper_kwargs)
-    raise ValueError(f"No dedicated homogeneous multi-output wrapper is available for task_type={task_type!r}. Set use_hybrid=True or provide wrapper_cls.")
+    raise ValueError(
+        f"No dedicated homogeneous multi-output wrapper is available for task_type={task_type!r}. "
+        "Set use_hybrid=True or provide wrapper_cls."
+    )
 
 
 def build_multi_output_model(train_X: Any, train_Y: Any, config: ModelConfig, *, model_registry: Mapping[Any, Any] | None = None) -> ModelBundle:
@@ -351,7 +376,13 @@ def build_multi_output_model(train_X: Any, train_Y: Any, config: ModelConfig, *,
         task_type=str(config.task_type),
         model_type=str(config.model_type),
         cat_dims=_as_cat_dims(config.cat_dims),
-        metadata={"model_cls": model.__class__.__name__, "multi_output": True, "sub_bundles": sub_bundles, "output_configs": output_configs, "embedded_fit_configs": embedded_fit_configs},
+        metadata={
+            "model_cls": model.__class__.__name__,
+            "multi_output": True,
+            "sub_bundles": sub_bundles,
+            "output_configs": output_configs,
+            "embedded_fit_configs": embedded_fit_configs,
+        },
     )
 
 
@@ -387,16 +418,19 @@ def _make_default_mll(bundle: ModelBundle, config: FitConfig) -> Any | None:
 
     if task_type == "ordinal":
         from bochan.fit import make_ordinal_mll
+
         return make_ordinal_mll(model, **config.mll_kwargs)
 
     if task_type in {"binary", "multiclass"}:
         from gpytorch.mlls import VariationalELBO
+
         likelihood = getattr(model, "likelihood", None)
         mll_model = getattr(model, "model", model)
         return VariationalELBO(likelihood=likelihood, model=mll_model, num_data=_get_num_data(model), **config.mll_kwargs)
 
     if hasattr(model, "likelihood"):
         from gpytorch.mlls import ExactMarginalLogLikelihood
+
         return ExactMarginalLogLikelihood(model.likelihood, model, **config.mll_kwargs)
 
     return None
@@ -440,31 +474,39 @@ def _resolve_fit_func(bundle: ModelBundle, config: FitConfig, mll: Any | None) -
     if task_type == "binary":
         if model_type == "rrp":
             from bochan.fit import fit_rrp_binary_classifier_mll
+
             return fit_rrp_binary_classifier_mll, False
         from bochan.fit import fit_binary_classifier_mll
+
         return fit_binary_classifier_mll, False
 
     if task_type == "ordinal":
         if model_type == "rrp":
             from bochan.fit import fit_rrp_ordinal_mll
+
             return fit_rrp_ordinal_mll, False
         from bochan.fit import fit_ordinal_mll
+
         return fit_ordinal_mll, False
 
     if task_type == "multiclass":
         from bochan.fit import fit_multiclass_mll
+
         return fit_multiclass_mll, False
 
     if "deepgp" in model_type:
         from bochan.fit import fit_deepgp_mll
+
         return fit_deepgp_mll, False
 
     if "deepkernel" in model_type:
         from bochan.fit import fit_deepkernel_mll
+
         return fit_deepkernel_mll, False
 
     if mll is not None:
         from botorch.fit import fit_gpytorch_mll
+
         return fit_gpytorch_mll, True
 
     model = bundle.model
@@ -539,12 +581,14 @@ def _looks_like_ehvi(config: AcquisitionConfig) -> bool:
 
 def _make_fast_nondominated_partitioning(ref_point: Any, Y: Any) -> Any:
     from botorch.utils.multi_objective.box_decompositions import FastNondominatedPartitioning
+
     return FastNondominatedPartitioning(ref_point=ref_point, Y=Y)
 
 
 def _make_chebyshev_objective(weights: Any, Y: Any, alpha: float) -> Any:
     from botorch.acquisition.objective import GenericMCObjective
     from botorch.utils.multi_objective.scalarization import get_chebyshev_scalarization
+
     scalarization = get_chebyshev_scalarization(weights=weights, Y=Y, alpha=alpha)
     return GenericMCObjective(lambda samples, X=None: scalarization(samples))
 
@@ -599,12 +643,74 @@ def build_acquisition(bundle: ModelBundle, config: AcquisitionConfig, data_conte
     return config.acqf_cls(**kwargs)
 
 
+def _build_post_processing_func(config: OptimizeConfig, bounds: Any) -> Callable[..., Any] | None:
+    """Resolve explicit or config-driven candidate repair post-processing."""
+    if config.post_processing_func is not None:
+        return config.post_processing_func
+    repair = config.repair_config
+    if repair is None:
+        return None
+
+    from bochan.constraints.postprocess import make_grid_k_sparse_post_processing_func
+
+    repair_bounds = repair.bounds if repair.bounds is not None else bounds
+    if repair_bounds is None:
+        raise ValueError("bounds is required when OptimizeConfig.repair_config is specified.")
+
+    equality_constraints = repair.equality_constraints
+    if equality_constraints is None:
+        equality_constraints = config.equality_constraints
+
+    inequality_constraints = repair.inequality_constraints
+    if inequality_constraints is None:
+        inequality_constraints = config.inequality_constraints
+
+    fixed_features = repair.fixed_features
+    if fixed_features is None:
+        fixed_features = config.fixed_features
+
+    return make_grid_k_sparse_post_processing_func(
+        bounds=repair_bounds,
+        numeric_indices=repair.numeric_indices,
+        steps=repair.steps,
+        comp_idx=repair.comp_idx,
+        k=repair.k,
+        equality_constraints=equality_constraints,
+        inequality_constraints=inequality_constraints,
+        inequality_sense=repair.inequality_sense,
+        fixed_features=fixed_features,
+        final_sum_constraint=repair.final_sum_constraint,
+        diversify=repair.diversify,
+        diversify_kwargs=repair.diversify_kwargs,
+        score=repair.score,
+        support_selection=repair.support_selection,
+        sample_tau=repair.sample_tau,
+        sample_eps=repair.sample_eps,
+        generator=repair.generator,
+        max_iters=repair.max_iters,
+        num_alternations=repair.num_alternations,
+        final_priority=repair.final_priority,
+        support_eps=repair.support_eps,
+    )
+
+
 def optimize_candidates(acqf: Any, bounds: Any, config: OptimizeConfig) -> tuple[Any, Any]:
     if bounds is None:
         raise ValueError("bounds must be provided.")
-    common_kwargs = {"acq_function": acqf, "bounds": bounds, "q": config.q, "num_restarts": config.num_restarts, "raw_samples": config.raw_samples, "return_best_only": config.return_best_only}
-    if config.post_processing_func is not None:
-        common_kwargs["post_processing_func"] = config.post_processing_func
+
+    common_kwargs = {
+        "acq_function": acqf,
+        "bounds": bounds,
+        "q": config.q,
+        "num_restarts": config.num_restarts,
+        "raw_samples": config.raw_samples,
+        "return_best_only": config.return_best_only,
+    }
+
+    post_processing_func = _build_post_processing_func(config, bounds)
+    if post_processing_func is not None:
+        common_kwargs["post_processing_func"] = post_processing_func
+
     if config.fixed_features is not None:
         common_kwargs["fixed_features"] = config.fixed_features
     if config.inequality_constraints is not None:
@@ -612,20 +718,25 @@ def optimize_candidates(acqf: Any, bounds: Any, config: OptimizeConfig) -> tuple
     if config.equality_constraints is not None:
         common_kwargs["equality_constraints"] = config.equality_constraints
     common_kwargs.update(config.optimizer_kwargs)
+
     optimizer = config.optimizer
     if callable(optimizer) and not isinstance(optimizer, str):
         kwargs = dict(common_kwargs)
         kwargs["sequential"] = config.sequential
         kwargs = _filter_kwargs_for_callable(optimizer, kwargs)
         return optimizer(**kwargs)
+
     if optimizer == "optimize_acqf":
         from botorch.optim import optimize_acqf
+
         kwargs = dict(common_kwargs)
         kwargs["sequential"] = config.sequential
         kwargs = _filter_kwargs_for_callable(optimize_acqf, kwargs)
         return optimize_acqf(**kwargs)
+
     if optimizer == "optimize_acqf_mixed":
         from botorch.optim import optimize_acqf_mixed
+
         kwargs = dict(common_kwargs)
         if config.fixed_features_list is None:
             raise ValueError("OptimizeConfig.fixed_features_list is required when optimizer='optimize_acqf_mixed'.")
@@ -633,4 +744,5 @@ def optimize_candidates(acqf: Any, bounds: Any, config: OptimizeConfig) -> tuple
         kwargs["sequential"] = config.sequential
         kwargs = _filter_kwargs_for_callable(optimize_acqf_mixed, kwargs)
         return optimize_acqf_mixed(**kwargs)
+
     raise ValueError(f"Unknown optimizer: {optimizer}")

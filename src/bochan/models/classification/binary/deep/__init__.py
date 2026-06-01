@@ -1,5 +1,5 @@
 from .deepgp import BinaryClassificationDeepGPModel, BinaryClassificationMixedDeepGPModel
-from .deepkernel import DeepKernelBinaryClassificationGPModel, DeepKernelBinaryClassificationMixedGPModel
+from .deepkernel_configurable import DeepKernelBinaryClassificationGPModel, DeepKernelBinaryClassificationMixedGPModel
 from .deepkerneldeepgp import DeepKernelBinaryClassificationDeepGPModel, DeepKernelBinaryClassificationMixedDeepGPModel
 
 __all__ = [

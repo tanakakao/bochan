@@ -21,9 +21,7 @@ AcqPath = tuple[str, str]
 
 
 _ACQF_ALIASES: dict[str, AcqPath] = {
-    # ------------------------------------------------------------------
     # BoTorch single-objective Monte Carlo acquisitions
-    # ------------------------------------------------------------------
     "qei": ("botorch.acquisition.monte_carlo", "qExpectedImprovement"),
     "qexpectedimprovement": ("botorch.acquisition.monte_carlo", "qExpectedImprovement"),
     "ei": ("botorch.acquisition.monte_carlo", "qExpectedImprovement"),
@@ -40,21 +38,20 @@ _ACQF_ALIASES: dict[str, AcqPath] = {
     "qprobabilityofimprovement": ("botorch.acquisition.monte_carlo", "qProbabilityOfImprovement"),
     "pi": ("botorch.acquisition.monte_carlo", "qProbabilityOfImprovement"),
 
-    # ------------------------------------------------------------------
     # BoTorch knowledge-gradient / lookahead
-    # ------------------------------------------------------------------
     "qkg": ("botorch.acquisition.knowledge_gradient", "qKnowledgeGradient"),
     "qknowledgegradient": ("botorch.acquisition.knowledge_gradient", "qKnowledgeGradient"),
     "kg": ("botorch.acquisition.knowledge_gradient", "qKnowledgeGradient"),
     "qmultisteplookahead": ("botorch.acquisition.multi_step_lookahead", "qMultiStepLookahead"),
     "multisteplookahead": ("botorch.acquisition.multi_step_lookahead", "qMultiStepLookahead"),
 
-    # ------------------------------------------------------------------
     # BoTorch multi-objective hypervolume acquisitions
-    # ------------------------------------------------------------------
+    "qehi": ("botorch.acquisition.multi_objective.monte_carlo", "qExpectedHypervolumeImprovement"),
+    "ehi": ("botorch.acquisition.multi_objective.monte_carlo", "qExpectedHypervolumeImprovement"),
     "qehvi": ("botorch.acquisition.multi_objective.monte_carlo", "qExpectedHypervolumeImprovement"),
     "qexpectedhypervolumeimprovement": ("botorch.acquisition.multi_objective.monte_carlo", "qExpectedHypervolumeImprovement"),
     "ehvi": ("botorch.acquisition.multi_objective.monte_carlo", "qExpectedHypervolumeImprovement"),
+    "expectedhypervolumeimprovement": ("botorch.acquisition.multi_objective.monte_carlo", "qExpectedHypervolumeImprovement"),
     "qnehvi": ("botorch.acquisition.multi_objective.monte_carlo", "qNoisyExpectedHypervolumeImprovement"),
     "qnoisyexpectedhypervolumeimprovement": ("botorch.acquisition.multi_objective.monte_carlo", "qNoisyExpectedHypervolumeImprovement"),
     "nehvi": ("botorch.acquisition.multi_objective.monte_carlo", "qNoisyExpectedHypervolumeImprovement"),
@@ -80,6 +77,8 @@ def _normalize_task_type(task_type: str | None) -> str | None:
         return "ordinal"
     if normalized in {"multiobjective", "multioutputregression"}:
         return "regression"
+    if normalized in {"nongaussian", "nongp"}:
+        return "nongaussian"
     return normalized
 
 
@@ -88,7 +87,6 @@ def _is_hetero(model_type: str | None) -> bool:
 
 
 def _register(module_name: str, names: Sequence[str]) -> None:
-    """Register canonical bochan acquisition names."""
     for name in names:
         _ACQF_ALIASES[_normalize_acqf_name(name)] = (module_name, name)
 
@@ -97,9 +95,7 @@ def _register_alias(alias: str, module_name: str, attr_name: str) -> None:
     _ACQF_ALIASES[_normalize_acqf_name(alias)] = (module_name, attr_name)
 
 
-# ------------------------------------------------------------------
 # bochan: regression active learning
-# ------------------------------------------------------------------
 _register(
     "bochan.acquisition.regression.active_learning",
     [
@@ -125,9 +121,7 @@ _register(
     ],
 )
 
-# ------------------------------------------------------------------
 # bochan: regression level-set estimation
-# ------------------------------------------------------------------
 _register(
     "bochan.acquisition.regression.levelset_estimation",
     [
@@ -154,9 +148,7 @@ _register(
     ],
 )
 
-# ------------------------------------------------------------------
 # bochan: heteroscedastic regression BO
-# ------------------------------------------------------------------
 _register(
     "bochan.acquisition.regression.bayesian_optimization",
     [
@@ -170,9 +162,7 @@ _register(
     ],
 )
 
-# ------------------------------------------------------------------
 # bochan: binary active learning
-# ------------------------------------------------------------------
 _register(
     "bochan.acquisition.binary.active_learning",
     [
@@ -201,9 +191,7 @@ _register(
     ],
 )
 
-# ------------------------------------------------------------------
 # bochan: binary level-set estimation
-# ------------------------------------------------------------------
 _register(
     "bochan.acquisition.binary.levelset_estimation",
     [
@@ -229,9 +217,7 @@ _register(
     ],
 )
 
-# ------------------------------------------------------------------
 # bochan: binary BO
-# ------------------------------------------------------------------
 _register(
     "bochan.acquisition.binary.bayesian_optimization",
     [
@@ -252,9 +238,7 @@ _register(
     ],
 )
 
-# ------------------------------------------------------------------
 # bochan: ordinal active learning
-# ------------------------------------------------------------------
 _register(
     "bochan.acquisition.ordinal.active_learning",
     [
@@ -282,9 +266,7 @@ _register(
     ],
 )
 
-# ------------------------------------------------------------------
 # bochan: ordinal level-set estimation
-# ------------------------------------------------------------------
 _register(
     "bochan.acquisition.ordinal.levelset_estimation",
     [
@@ -309,9 +291,7 @@ _register(
     ],
 )
 
-# ------------------------------------------------------------------
 # bochan: ordinal BO
-# ------------------------------------------------------------------
 _register(
     "bochan.acquisition.ordinal.bayesian_optimization",
     [
@@ -335,9 +315,7 @@ _register(
     ],
 )
 
-# ------------------------------------------------------------------
 # bochan: non-Gaussian active learning / level-set estimation
-# ------------------------------------------------------------------
 _register(
     "bochan.acquisition.non_gaussian.active_learning",
     [
@@ -383,6 +361,20 @@ _CONTEXTUAL_SHORT_NAMES = {
     "classentropy",
     "probabilityofexceedance",
     "poe",
+    "ei",
+    "expectedimprovement",
+    "pi",
+    "probabilityofimprovement",
+    "ucb",
+    "upperconfidencebound",
+    "pof",
+    "probabilityoffeasibility",
+    "ehi",
+    "ehvi",
+    "expectedhypervolumeimprovement",
+    "nehvi",
+    "noisyexpectedhypervolumeimprovement",
+    "nparego",
 }
 
 
@@ -414,13 +406,71 @@ def _family_prefix(task_type: str, *, multi_output: bool, hetero: bool) -> str:
             return "qMultiOutputOrdinal"
         return "qOrdinal"
 
-    if task_type in {"nongaussian", "non_gaussian"}:
+    if task_type == "nongaussian":
         return "qNonGaussian"
 
     raise ValueError(
         f"Short acquisition alias is not supported for task_type={task_type!r}. "
         "Use a canonical name such as 'qBinaryBALD'."
     )
+
+
+def _fallback_builtin_path(normalized_name: str) -> AcqPath | None:
+    """Fallback to BoTorch aliases for standard regression cases."""
+    if normalized_name in _ACQF_ALIASES:
+        return _ACQF_ALIASES[normalized_name]
+    return None
+
+
+def _resolve_contextual_bo_path(
+    normalized_name: str,
+    *,
+    task: str,
+    prefix: str,
+    multi_output: bool,
+) -> AcqPath | None:
+    if normalized_name in {"ei", "expectedimprovement"}:
+        if task in {"binary", "ordinal"} or prefix.startswith("qHeteroRegression"):
+            return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}ExpectedImprovement"))
+        return _fallback_builtin_path("ei")
+
+    if normalized_name in {"pi", "probabilityofimprovement"}:
+        if task in {"binary", "ordinal"} or prefix.startswith("qHeteroRegression"):
+            return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}ProbabilityOfImprovement"))
+        return _fallback_builtin_path("pi")
+
+    if normalized_name in {"ucb", "upperconfidencebound"}:
+        if task in {"binary", "ordinal"} or prefix.startswith("qHeteroRegression"):
+            return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}UpperConfidenceBound"))
+        return _fallback_builtin_path("ucb")
+
+    if normalized_name in {"pof", "probabilityoffeasibility"}:
+        if task in {"binary", "ordinal"}:
+            return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}ProbabilityOfFeasibility"))
+        return None
+
+    if normalized_name in {"ehi", "ehvi", "expectedhypervolumeimprovement"}:
+        if task in {"binary", "ordinal"} or prefix.startswith("qHeteroMultiOutputRegression"):
+            if not multi_output:
+                return None
+            return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}ExpectedHypervolumeImprovement"))
+        return _fallback_builtin_path("ehvi")
+
+    if normalized_name in {"nehvi", "noisyexpectedhypervolumeimprovement"}:
+        if task in {"binary", "ordinal"} or prefix.startswith("qHeteroMultiOutputRegression"):
+            if not multi_output:
+                return None
+            return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}NoisyExpectedHypervolumeImprovement"))
+        return _fallback_builtin_path("nehvi")
+
+    if normalized_name == "nparego":
+        if task in {"binary", "ordinal"} or prefix.startswith("qHeteroMultiOutputRegression"):
+            if not multi_output:
+                return None
+            return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}NParEGO"))
+        return _fallback_builtin_path("nparego")
+
+    return None
 
 
 def _resolve_contextual_acqf_path(
@@ -442,6 +492,15 @@ def _resolve_contextual_acqf_path(
 
     hetero = _is_hetero(model_type)
     prefix = _family_prefix(task, multi_output=multi_output, hetero=hetero)
+
+    bo_path = _resolve_contextual_bo_path(
+        normalized_name,
+        task=task,
+        prefix=prefix,
+        multi_output=multi_output,
+    )
+    if bo_path is not None:
+        return bo_path
 
     if normalized_name == "bald":
         suffix = "BALD" if task != "nongaussian" else "BALDProxy"
@@ -474,7 +533,7 @@ def _resolve_contextual_acqf_path(
         suffix = "ClassEntropyAcquisition"
     elif normalized_name in {"probabilityofexceedance", "poe"}:
         suffix = "ProbabilityOfExceedance"
-    else:  # pragma: no cover - guarded by _CONTEXTUAL_SHORT_NAMES
+    else:
         return None
 
     canonical_name = f"{prefix}{suffix}"

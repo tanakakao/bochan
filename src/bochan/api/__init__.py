@@ -1,6 +1,6 @@
 """High-level API for bochan."""
 
-from .acquisition_registry import resolve_acqf_cls
+from .acquisition_registry import available_acqf_names, resolve_acqf_cls
 from .configs import (
     AcquisitionConfig,
     CandidateResult,
@@ -40,6 +40,7 @@ __all__ = [
     "OptimizeConfig",
     "OutputConfig",
     "PredictionResult",
+    "available_acqf_names",
     "build_acquisition",
     "build_model",
     "fit_model",

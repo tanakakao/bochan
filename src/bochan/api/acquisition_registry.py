@@ -17,7 +17,10 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Callable
 
 
-_ACQF_ALIASES: dict[str, tuple[str, str]] = {
+AcqPath = tuple[str, str]
+
+
+_ACQF_ALIASES: dict[str, AcqPath] = {
     # ------------------------------------------------------------------
     # BoTorch single-objective Monte Carlo acquisitions
     # ------------------------------------------------------------------
@@ -65,6 +68,23 @@ _ACQF_ALIASES: dict[str, tuple[str, str]] = {
 
 def _normalize_acqf_name(name: str) -> str:
     return str(name).replace("_", "").replace("-", "").replace(" ", "").lower()
+
+
+def _normalize_task_type(task_type: str | None) -> str | None:
+    if task_type is None:
+        return None
+    normalized = str(task_type).replace("_", "").replace("-", "").replace(" ", "").lower()
+    if normalized in {"classification", "binaryclassification", "binaryclass"}:
+        return "binary"
+    if normalized in {"ordinalregression"}:
+        return "ordinal"
+    if normalized in {"multiobjective", "multioutputregression"}:
+        return "regression"
+    return normalized
+
+
+def _is_hetero(model_type: str | None) -> bool:
+    return model_type is not None and "hetero" in str(model_type).replace("_", "").replace("-", "").lower()
 
 
 def _register(module_name: str, names: Sequence[str]) -> None:
@@ -348,6 +368,125 @@ _register_alias("qOrdinalVariance", "bochan.acquisition.ordinal.active_learning"
 _register_alias("qNonGaussianVariance", "bochan.acquisition.non_gaussian.active_learning", "qNonGaussianResponseMeanVariance")
 
 
+_CONTEXTUAL_SHORT_NAMES = {
+    "bald",
+    "predictiveentropy",
+    "entropy",
+    "variance",
+    "posteriorvariance",
+    "margin",
+    "marginuncertainty",
+    "straddle",
+    "jointstraddle",
+    "icu",
+    "boundaryvariance",
+    "classentropy",
+    "probabilityofexceedance",
+    "poe",
+}
+
+
+def _family_prefix(task_type: str, *, multi_output: bool, hetero: bool) -> str:
+    if task_type == "regression":
+        if hetero and multi_output:
+            return "qHeteroMultiOutputRegression"
+        if hetero:
+            return "qHeteroRegression"
+        if multi_output:
+            return "qMultiOutputRegression"
+        return "qRegression"
+
+    if task_type == "binary":
+        if hetero and multi_output:
+            return "qHeteroMultiOutputBinary"
+        if hetero:
+            return "qHeteroBinary"
+        if multi_output:
+            return "qMultiOutputBinary"
+        return "qBinary"
+
+    if task_type == "ordinal":
+        if hetero and multi_output:
+            return "qHeteroMultiOutputOrdinal"
+        if hetero:
+            return "qHeteroOrdinal"
+        if multi_output:
+            return "qMultiOutputOrdinal"
+        return "qOrdinal"
+
+    if task_type in {"nongaussian", "non_gaussian"}:
+        return "qNonGaussian"
+
+    raise ValueError(
+        f"Short acquisition alias is not supported for task_type={task_type!r}. "
+        "Use a canonical name such as 'qBinaryBALD'."
+    )
+
+
+def _resolve_contextual_acqf_path(
+    normalized_name: str,
+    *,
+    task_type: str | None = None,
+    model_type: str | None = None,
+    multi_output: bool = False,
+) -> AcqPath | None:
+    if normalized_name not in _CONTEXTUAL_SHORT_NAMES:
+        return None
+
+    task = _normalize_task_type(task_type)
+    if task is None:
+        raise ValueError(
+            f"Acquisition name {normalized_name!r} is task-dependent. "
+            "Use a canonical name such as 'qBinaryBALD' or call through BayesianOptimizer after fit()."
+        )
+
+    hetero = _is_hetero(model_type)
+    prefix = _family_prefix(task, multi_output=multi_output, hetero=hetero)
+
+    if normalized_name == "bald":
+        suffix = "BALD" if task != "nongaussian" else "BALDProxy"
+    elif normalized_name in {"predictiveentropy", "entropy"}:
+        suffix = "PredictiveEntropy" if task != "nongaussian" else "PredictiveEntropyProxy"
+    elif normalized_name in {"variance", "posteriorvariance"}:
+        if task == "binary":
+            suffix = "ProbabilityVariance"
+        elif task == "ordinal":
+            suffix = "UtilityVariance"
+        elif task == "nongaussian":
+            suffix = "ResponseMeanVariance"
+        else:
+            suffix = "PosteriorVariance"
+    elif normalized_name in {"margin", "marginuncertainty"}:
+        if task not in {"binary", "ordinal"}:
+            raise ValueError("Margin uncertainty is currently task-dependent for binary / ordinal models only.")
+        suffix = "MarginUncertainty"
+    elif normalized_name == "straddle":
+        suffix = "LatentStraddleAcquisition" if task in {"binary", "ordinal"} else "Straddle"
+    elif normalized_name == "jointstraddle":
+        suffix = "JointLatentStraddleAcquisition" if task in {"binary", "ordinal"} else "JointStraddle"
+    elif normalized_name == "icu":
+        suffix = "ICUAcquisition" if task in {"binary", "ordinal"} else "ICU"
+    elif normalized_name == "boundaryvariance":
+        suffix = "BoundaryVarianceAcquisition" if task in {"binary", "ordinal"} else "BoundaryVariance"
+    elif normalized_name == "classentropy":
+        if task not in {"binary", "ordinal"}:
+            raise ValueError("Class entropy is only available for binary / ordinal acquisitions.")
+        suffix = "ClassEntropyAcquisition"
+    elif normalized_name in {"probabilityofexceedance", "poe"}:
+        suffix = "ProbabilityOfExceedance"
+    else:  # pragma: no cover - guarded by _CONTEXTUAL_SHORT_NAMES
+        return None
+
+    canonical_name = f"{prefix}{suffix}"
+    canonical_key = _normalize_acqf_name(canonical_name)
+    if canonical_key not in _ACQF_ALIASES:
+        raise ValueError(
+            f"Short acquisition alias {normalized_name!r} resolved to {canonical_name!r}, "
+            "but that acquisition is not registered. Use a canonical acquisition name."
+        )
+    return _ACQF_ALIASES[canonical_key]
+
+
 def _import_from_path(module_name: str, attr_name: str) -> Any:
     import importlib
 
@@ -358,13 +497,20 @@ def _import_from_path(module_name: str, attr_name: str) -> Any:
 def resolve_acqf_cls(
     name: str,
     acquisition_registry: Mapping[str, Any] | None = None,
+    *,
+    task_type: str | None = None,
+    model_type: str | None = None,
+    multi_output: bool = False,
 ) -> type | Callable[..., Any]:
     """Resolve an acquisition class from a string name.
 
     Args:
-        name: Acquisition name, e.g. ``"qEI"`` or ``"qBinaryBALD"``.
+        name: Acquisition name, e.g. ``"qEI"``, ``"qBinaryBALD"``, or ``"BALD"``.
         acquisition_registry: Optional user registry. Values can be classes/functions or
             ``(module_name, attr_name)`` tuples.
+        task_type: Optional task type used for short context-dependent names.
+        model_type: Optional model type. Used to choose heteroscedastic aliases when possible.
+        multi_output: Whether the current model bundle is a multi-output wrapper.
     """
     normalized = _normalize_acqf_name(name)
 
@@ -381,6 +527,15 @@ def resolve_acqf_cls(
                 return _import_from_path(value[0], value[1])
             return value
 
+    contextual_path = _resolve_contextual_acqf_path(
+        normalized,
+        task_type=task_type,
+        model_type=model_type,
+        multi_output=multi_output,
+    )
+    if contextual_path is not None:
+        return _import_from_path(*contextual_path)
+
     if normalized not in _ACQF_ALIASES:
         available = sorted(_ACQF_ALIASES)
         raise ValueError(
@@ -395,7 +550,7 @@ def resolve_acqf_cls(
 
 def available_acqf_names() -> list[str]:
     """Return normalized acquisition names registered in the built-in API registry."""
-    return sorted(_ACQF_ALIASES)
+    return sorted(_ACQF_ALIASES | {name: ("", "") for name in _CONTEXTUAL_SHORT_NAMES})
 
 
 __all__ = ["available_acqf_names", "resolve_acqf_cls"]

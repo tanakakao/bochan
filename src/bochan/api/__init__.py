@@ -3,6 +3,7 @@
 from .acquisition_registry import available_acqf_names, resolve_acqf_cls
 from .configs import (
     AcquisitionConfig,
+    CandidateRepairConfig,
     CandidateResult,
     DataContext,
     FitConfig,
@@ -29,6 +30,7 @@ from .factory import (
 __all__ = [
     "AcquisitionConfig",
     "BayesianOptimizer",
+    "CandidateRepairConfig",
     "CandidateResult",
     "DataContext",
     "FitConfig",

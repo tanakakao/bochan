@@ -26,13 +26,24 @@ OptimizerName = Literal["optimize_acqf", "optimize_acqf_mixed"]
 class ModelConfig:
     """モデル生成に必要な設定。
 
-    `model_cls` を直接渡す方法と、`task_type` / `model_type` / `cat_dims` から
-    外部の registry で解決する方法の両方に対応します。
+    `ModelConfig` には2つの使い方があります。
+
+    1. 直接指定モード:
+        `model_cls=SingleTaskGP` のようにモデルクラスを直接渡します。
+        この場合、`task_type` / `model_type` は履歴・ログ用のメタ情報です。
+        そのため、単に SingleTaskGP を使うだけなら `model_type="base"` を
+        明示する必要はありません。
+
+    2. registry 解決モード:
+        `model_cls=None` とし、`task_type` / `model_type` / `cat_dims` から
+        外部の registry を使ってモデルクラスを解決します。
+        この場合は `model_type="base"` のような指定が意味を持ちます。
 
     Args:
         model_cls: 直接生成したいモデルクラス。None の場合は registry から解決する。
         task_type: regression / multi_objective / binary / multiclass / ordinal などのタスク種別。
         model_type: base / deepgp / deepkernel / saas / pca / rembo / rrp / hetero など。
+            `model_cls` を直接指定する場合は主にメタ情報として扱う。
         input_type: normal / mixed。None の場合は cat_dims の有無から自動推定する。
         cat_dims: カテゴリ変数の列番号。空なら通常モデルとして扱う。
         input_transform: BoTorch 互換の input_transform。

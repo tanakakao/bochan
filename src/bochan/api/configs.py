@@ -16,6 +16,7 @@ TaskType = Literal[
     "binary",
     "multiclass",
     "ordinal",
+    "hybrid",
 ]
 InputType = Literal["normal", "mixed"]
 ModelType = str
@@ -26,7 +27,7 @@ OptimizerName = Literal["optimize_acqf", "optimize_acqf_mixed"]
 class ModelConfig:
     """モデル生成に必要な設定。
 
-    `ModelConfig` には2つの使い方があります。
+    `ModelConfig` には3つの使い方があります。
 
     1. 直接指定モード:
         `model_cls=SingleTaskGP` のようにモデルクラスを直接渡します。
@@ -39,24 +40,34 @@ class ModelConfig:
         外部の registry を使ってモデルクラスを解決します。
         この場合は `model_type="base"` のような指定が意味を持ちます。
 
+    3. factory 指定モード:
+        `model_factory` を指定し、任意の関数でモデルを生成します。
+        `HybridMultiOutputModel` のように `train_X` / `train_Y` を直接受け取らず、
+        `specs` などから wrapper を作るモデルに向いています。
+
     Args:
         model_cls: 直接生成したいモデルクラス。None の場合は registry から解決する。
-        task_type: regression / multi_objective / binary / multiclass / ordinal などのタスク種別。
+        model_factory: 任意のモデル生成関数。指定時は `model_cls` / registry より優先される。
+        task_type: regression / multi_objective / binary / multiclass / ordinal / hybrid などのタスク種別。
         model_type: base / deepgp / deepkernel / saas / pca / rembo / rrp / hetero など。
             `model_cls` を直接指定する場合は主にメタ情報として扱う。
         input_type: normal / mixed。None の場合は cat_dims の有無から自動推定する。
         cat_dims: カテゴリ変数の列番号。空なら通常モデルとして扱う。
         input_transform: BoTorch 互換の input_transform。
         outcome_transform: BoTorch 互換の outcome_transform。
-        model_kwargs: モデルクラスへ追加で渡す kwargs。
+        model_kwargs: モデルクラスまたは model_factory へ追加で渡す kwargs。
         train_x_name: モデルコンストラクタで使う train_X 引数名。
         train_y_name: モデルコンストラクタで使う train_Y 引数名。
+        pass_train_data: train_X / train_Y をモデルコンストラクタへ渡すか。
+            Hybrid wrapper など、訓練データを直接受け取らないモデルでは False にする。
         pass_cat_dims: cat_dims をモデルに渡すか。None なら cat_dims が非空の場合だけ渡す。
         pass_input_transform: input_transform を渡すか。
         pass_outcome_transform: outcome_transform を渡すか。
     """
 
     model_cls: type | Callable[..., Any] | None = None
+    model_factory: Callable[..., Any] | None = None
+
     task_type: TaskType | str = "regression"
     model_type: ModelType = "base"
     input_type: InputType | None = None
@@ -70,6 +81,7 @@ class ModelConfig:
     train_x_name: str = "train_X"
     train_y_name: str = "train_Y"
 
+    pass_train_data: bool = True
     pass_cat_dims: bool | None = None
     pass_input_transform: bool = True
     pass_outcome_transform: bool = True

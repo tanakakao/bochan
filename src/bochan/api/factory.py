@@ -47,7 +47,8 @@ def resolve_model_cls(
 
     if model_registry is None:
         raise ValueError(
-            "model_cls is None. Provide config.model_cls or pass model_registry."
+            "model_cls is None. Provide config.model_cls, config.model_factory, "
+            "or pass model_registry."
         )
 
     cat_dims = _as_cat_dims(config.cat_dims)
@@ -67,22 +68,12 @@ def resolve_model_cls(
         ) from exc
 
 
-def build_model(
-    train_X: Any,
-    train_Y: Any,
-    config: ModelConfig,
-    *,
-    model_registry: Mapping[Any, Any] | None = None,
-) -> ModelBundle:
-    """ModelConfig に基づいてモデルを生成する。"""
-    cat_dims = _as_cat_dims(config.cat_dims)
-    input_type = config.input_type or infer_input_type(cat_dims)
-    model_cls = resolve_model_cls(config, model_registry=model_registry)
+def _build_model_kwargs(train_X: Any, train_Y: Any, config: ModelConfig, cat_dims: list[int]) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {}
 
-    kwargs = {
-        config.train_x_name: train_X,
-        config.train_y_name: train_Y,
-    }
+    if config.pass_train_data:
+        kwargs[config.train_x_name] = train_X
+        kwargs[config.train_y_name] = train_Y
 
     pass_cat_dims = config.pass_cat_dims
     if pass_cat_dims is None:
@@ -98,19 +89,55 @@ def build_model(
         kwargs["outcome_transform"] = config.outcome_transform
 
     kwargs.update(config.model_kwargs)
-    model = model_cls(**kwargs)
+    return kwargs
+
+
+def build_model(
+    train_X: Any,
+    train_Y: Any,
+    config: ModelConfig,
+    *,
+    model_registry: Mapping[Any, Any] | None = None,
+) -> ModelBundle:
+    """ModelConfig に基づいてモデルを生成する。"""
+    cat_dims = _as_cat_dims(config.cat_dims)
+    input_type = config.input_type or infer_input_type(cat_dims)
+    kwargs = _build_model_kwargs(train_X, train_Y, config, cat_dims)
+
+    if config.model_factory is not None:
+        model = config.model_factory(**kwargs)
+        model_cls_name = getattr(config.model_factory, "__name__", str(config.model_factory))
+    else:
+        model_cls = resolve_model_cls(config, model_registry=model_registry)
+        model = model_cls(**kwargs)
+        model_cls_name = getattr(model_cls, "__name__", str(model_cls))
+
+    bundle_train_X = train_X
+    bundle_train_Y = train_Y
+
+    if bundle_train_X is None:
+        bundle_train_X = getattr(model, "train_X", None)
+        if bundle_train_X is None and hasattr(model, "train_inputs"):
+            train_inputs = getattr(model, "train_inputs")
+            bundle_train_X = train_inputs[0] if isinstance(train_inputs, tuple) else train_inputs
+
+    if bundle_train_Y is None:
+        bundle_train_Y = getattr(model, "train_Y", None)
+        if bundle_train_Y is None:
+            bundle_train_Y = getattr(model, "train_targets", None)
 
     return ModelBundle(
         model=model,
-        train_X=train_X,
-        train_Y=train_Y,
+        train_X=bundle_train_X,
+        train_Y=bundle_train_Y,
         model_config=config,
         input_type=input_type,
         task_type=str(config.task_type),
         model_type=str(config.model_type),
         cat_dims=cat_dims,
         metadata={
-            "model_cls": getattr(model_cls, "__name__", str(model_cls)),
+            "model_cls": model_cls_name,
+            "model_factory": config.model_factory is not None,
         },
     )
 

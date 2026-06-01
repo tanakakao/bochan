@@ -75,6 +75,12 @@ class HybridPosterior(Posterior):
         return self._mean.dtype
 
     @property
+    def batch_shape(self) -> torch.Size:
+        # BoTorch の sampler / cached Cholesky 経路は posterior.batch_shape を参照する。
+        # HybridPosterior では最後の 2 次元を q, m とみなし、それ以前を t-batch とする。
+        return self._mean.shape[:-2]
+
+    @property
     def event_shape(self) -> torch.Size:
         # 既存の multi-output posterior 実装に合わせて full tensor shape を返す。
         return self._mean.shape

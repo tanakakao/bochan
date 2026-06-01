@@ -25,6 +25,28 @@ OptimizerName = Literal["optimize_acqf", "optimize_acqf_mixed"]
 
 
 @dataclass
+class InputTransformConfig:
+    """input_transform を文字列API側から簡易構築するための設定。
+
+    `bochan.models.transforms.input.build_input_transform` を内部で呼びます。
+
+    Args:
+        perturbation: 入力摂動を使うか。
+        n_w: 摂動サンプル数。
+        std: 摂動の標準偏差。Normalize 後の空間での標準偏差。
+        bounds: 明示的な bounds。None の場合は train_X の min/max から自動生成する。
+        categorical_idx: Normalize / perturbation から除外するカテゴリ列。
+            None の場合は ModelConfig.cat_dims を使う。
+    """
+
+    perturbation: bool = False
+    n_w: int = 16
+    std: float = 0.1
+    bounds: Any | None = None
+    categorical_idx: Sequence[int] | None = None
+
+
+@dataclass
 class ModelConfig:
     """モデル生成に必要な設定。
 
@@ -41,6 +63,7 @@ class ModelConfig:
 
     cat_dims: Sequence[int] | None = None
     input_transform: Any = None
+    input_transform_config: InputTransformConfig | None = None
     outcome_transform: Any = None
 
     model_kwargs: dict[str, Any] = field(default_factory=dict)
@@ -96,6 +119,7 @@ class OutputConfig:
     name: str | None = None
     input_type: InputType | None = None
     cat_dims: Sequence[int] | None = None
+    input_transform_config: InputTransformConfig | None = None
     model_kwargs: dict[str, Any] = field(default_factory=dict)
     fit_config: FitConfig | None = None
     output_spec_kwargs: dict[str, Any] = field(default_factory=dict)

@@ -7,6 +7,7 @@ from .configs import (
     FitConfig,
     ModelBundle,
     ModelConfig,
+    MultiObjectiveConfig,
     OptimizeConfig,
     PredictionResult,
 )
@@ -17,6 +18,7 @@ from .factory import (
     fit_model,
     infer_input_type,
     optimize_candidates,
+    prepare_multi_objective_context,
     resolve_model_cls,
 )
 
@@ -28,6 +30,7 @@ __all__ = [
     "FitConfig",
     "ModelBundle",
     "ModelConfig",
+    "MultiObjectiveConfig",
     "OptimizeConfig",
     "PredictionResult",
     "build_acquisition",
@@ -35,5 +38,6 @@ __all__ = [
     "fit_model",
     "infer_input_type",
     "optimize_candidates",
+    "prepare_multi_objective_context",
     "resolve_model_cls",
 ]

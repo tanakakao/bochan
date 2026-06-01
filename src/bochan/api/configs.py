@@ -7,10 +7,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Literal, Mapping, Sequence
+from typing import Any, Callable, Literal, Sequence
 
 
-TaskType = Literal["regression", "binary", "multiclass", "ordinal"]
+TaskType = Literal[
+    "regression",
+    "multi_objective",
+    "binary",
+    "multiclass",
+    "ordinal",
+]
 InputType = Literal["normal", "mixed"]
 ModelType = str
 OptimizerName = Literal["optimize_acqf", "optimize_acqf_mixed"]
@@ -25,7 +31,7 @@ class ModelConfig:
 
     Args:
         model_cls: 直接生成したいモデルクラス。None の場合は registry から解決する。
-        task_type: regression / binary / multiclass / ordinal などのタスク種別。
+        task_type: regression / multi_objective / binary / multiclass / ordinal などのタスク種別。
         model_type: base / deepgp / deepkernel / saas / pca / rembo / rrp / hetero など。
         input_type: normal / mixed。None の場合は cat_dims の有無から自動推定する。
         cat_dims: カテゴリ変数の列番号。空なら通常モデルとして扱う。
@@ -84,6 +90,41 @@ class FitConfig:
 
 
 @dataclass
+class MultiObjectiveConfig:
+    """多目的獲得関数用の設定。
+
+    EHVI / NEHVI / NParEGO などで共通して必要になりやすい情報をまとめます。
+
+    Args:
+        ref_point: Hypervolume 系獲得関数の参照点。基本的には目的空間で悪い側の点を指定する。
+        Y_baseline: Pareto 分割や scalarization の基準に使う目的値。None なら train_Y を使う。
+        partitioning: qEHVI などに渡す box decomposition。None かつ auto_partitioning=True なら自動生成を試みる。
+        objective_thresholds: qNEHVI などで使う objective thresholds。
+        constraints: BoTorch の constraints callable 群。
+        objective: MCMultiOutputObjective など。AcquisitionConfig.objective が優先される。
+        scalarization_weights: NParEGO 風の Chebyshev scalarization に使う重み。
+        scalarization_alpha: Chebyshev scalarization の alpha。
+        auto_partitioning: qEHVI 用 partitioning を自動生成するか。
+        auto_scalarization: objective が未指定で scalarization_weights がある場合、自動で GenericMCObjective を作るか。
+    """
+
+    ref_point: Any | None = None
+    Y_baseline: Any | None = None
+    partitioning: Any | None = None
+    objective_thresholds: Any | None = None
+    constraints: Any | None = None
+    objective: Any | None = None
+
+    scalarization_weights: Any | None = None
+    scalarization_alpha: float = 0.05
+
+    auto_partitioning: bool = True
+    auto_scalarization: bool = True
+
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class AcquisitionConfig:
     """獲得関数生成に必要な設定。
 
@@ -91,7 +132,7 @@ class AcquisitionConfig:
         name: 獲得関数名。ログ・履歴用。
         acqf_cls: 獲得関数クラス。None の場合は `acqf_factory` を使う。
         acqf_factory: 獲得関数生成関数。`(bundle, config, data_context) -> acqf` を推奨。
-        objective: MCObjective など。None の場合は渡さない。
+        objective: MCObjective / MCMultiOutputObjective など。None の場合は渡さない。
         sampler: MC sampler。None の場合は渡さない。
         acqf_kwargs: 獲得関数に追加で渡す kwargs。
         context_fields: DataContext から獲得関数へ自動転送するフィールド。
@@ -109,8 +150,11 @@ class AcquisitionConfig:
     context_fields: tuple[str, ...] = (
         "X_baseline",
         "X_pending",
+        "Y_baseline",
         "best_f",
         "ref_point",
+        "partitioning",
+        "objective_thresholds",
         "mc_points",
         "constraints",
     )
@@ -124,10 +168,16 @@ class DataContext:
     bounds: Any | None = None
     X_baseline: Any | None = None
     X_pending: Any | None = None
+    Y_baseline: Any | None = None
+
     best_f: Any | None = None
     ref_point: Any | None = None
+    partitioning: Any | None = None
+    objective_thresholds: Any | None = None
     mc_points: Any | None = None
     constraints: Any | None = None
+
+    multi_objective: MultiObjectiveConfig | None = None
 
     extra: dict[str, Any] = field(default_factory=dict)
 

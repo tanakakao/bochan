@@ -1,13 +1,26 @@
-"""Acquisition function name resolver for the high-level API."""
+"""Acquisition function name resolver for the high-level API.
+
+This module contains two kinds of entries:
+
+1. BoTorch built-in aliases, e.g. ``qEI`` -> ``qExpectedImprovement``.
+2. bochan custom acquisition aliases, e.g. ``qBinaryBALD`` ->
+   ``bochan.acquisition.binary.active_learning.qBinaryBALD``.
+
+The registry stores import paths instead of importing all acquisition modules at
+module import time.  This keeps ``bochan.api`` lightweight and avoids importing
+heavy optional dependencies until the acquisition is actually used.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Callable
 
 
 _ACQF_ALIASES: dict[str, tuple[str, str]] = {
-    # Single-objective Monte Carlo acquisitions
+    # ------------------------------------------------------------------
+    # BoTorch single-objective Monte Carlo acquisitions
+    # ------------------------------------------------------------------
     "qei": ("botorch.acquisition.monte_carlo", "qExpectedImprovement"),
     "qexpectedimprovement": ("botorch.acquisition.monte_carlo", "qExpectedImprovement"),
     "ei": ("botorch.acquisition.monte_carlo", "qExpectedImprovement"),
@@ -24,14 +37,18 @@ _ACQF_ALIASES: dict[str, tuple[str, str]] = {
     "qprobabilityofimprovement": ("botorch.acquisition.monte_carlo", "qProbabilityOfImprovement"),
     "pi": ("botorch.acquisition.monte_carlo", "qProbabilityOfImprovement"),
 
-    # Knowledge-gradient / lookahead
+    # ------------------------------------------------------------------
+    # BoTorch knowledge-gradient / lookahead
+    # ------------------------------------------------------------------
     "qkg": ("botorch.acquisition.knowledge_gradient", "qKnowledgeGradient"),
     "qknowledgegradient": ("botorch.acquisition.knowledge_gradient", "qKnowledgeGradient"),
     "kg": ("botorch.acquisition.knowledge_gradient", "qKnowledgeGradient"),
     "qmultisteplookahead": ("botorch.acquisition.multi_step_lookahead", "qMultiStepLookahead"),
     "multisteplookahead": ("botorch.acquisition.multi_step_lookahead", "qMultiStepLookahead"),
 
-    # Multi-objective hypervolume acquisitions
+    # ------------------------------------------------------------------
+    # BoTorch multi-objective hypervolume acquisitions
+    # ------------------------------------------------------------------
     "qehvi": ("botorch.acquisition.multi_objective.monte_carlo", "qExpectedHypervolumeImprovement"),
     "qexpectedhypervolumeimprovement": ("botorch.acquisition.multi_objective.monte_carlo", "qExpectedHypervolumeImprovement"),
     "ehvi": ("botorch.acquisition.multi_objective.monte_carlo", "qExpectedHypervolumeImprovement"),
@@ -40,7 +57,7 @@ _ACQF_ALIASES: dict[str, tuple[str, str]] = {
     "nehvi": ("botorch.acquisition.multi_objective.monte_carlo", "qNoisyExpectedHypervolumeImprovement"),
 
     # Scalarized multi-objective convenience alias.
-    # The acquisition class is qExpectedImprovement; scalarization objective is still configured separately.
+    # The acquisition class is qExpectedImprovement; scalarization objective is configured separately.
     "qnparego": ("botorch.acquisition.monte_carlo", "qExpectedImprovement"),
     "nparego": ("botorch.acquisition.monte_carlo", "qExpectedImprovement"),
 }
@@ -48,6 +65,287 @@ _ACQF_ALIASES: dict[str, tuple[str, str]] = {
 
 def _normalize_acqf_name(name: str) -> str:
     return str(name).replace("_", "").replace("-", "").replace(" ", "").lower()
+
+
+def _register(module_name: str, names: Sequence[str]) -> None:
+    """Register canonical bochan acquisition names."""
+    for name in names:
+        _ACQF_ALIASES[_normalize_acqf_name(name)] = (module_name, name)
+
+
+def _register_alias(alias: str, module_name: str, attr_name: str) -> None:
+    _ACQF_ALIASES[_normalize_acqf_name(alias)] = (module_name, attr_name)
+
+
+# ------------------------------------------------------------------
+# bochan: regression active learning
+# ------------------------------------------------------------------
+_register(
+    "bochan.acquisition.regression.active_learning",
+    [
+        "qRegressionPredictiveEntropy",
+        "qRegressionBALD",
+        "qRegressionPosteriorVariance",
+        "qRegressionNegIntegratedPosteriorVariance",
+        "qRegressionIntegratedPosteriorVarianceProxy",
+        "qMultiOutputRegressionPredictiveEntropy",
+        "qMultiOutputRegressionBALD",
+        "qMultiOutputRegressionPosteriorVariance",
+        "qMultiOutputRegressionNegIntegratedPosteriorVariance",
+        "qMultiOutputRegressionIntegratedPosteriorVarianceProxy",
+        "qHeteroRegressionPredictiveEntropy",
+        "qHeteroRegressionBALD",
+        "qHeteroRegressionPosteriorVariance",
+        "qHeteroRegressionNegIntegratedPosteriorVariance",
+        "qHeteroRegressionIntegratedPosteriorVarianceProxy",
+        "qHeteroMultiOutputRegressionPredictiveEntropy",
+        "qHeteroMultiOutputRegressionBALD",
+        "qHeteroMultiOutputRegressionPosteriorVariance",
+        "qHeteroMultiOutputRegressionIntegratedPosteriorVarianceProxy",
+    ],
+)
+
+# ------------------------------------------------------------------
+# bochan: regression level-set estimation
+# ------------------------------------------------------------------
+_register(
+    "bochan.acquisition.regression.levelset_estimation",
+    [
+        "qRegressionStraddle",
+        "qRegressionJointStraddle",
+        "qRegressionICU",
+        "qRegressionBoundaryVariance",
+        "qRegressionProbabilityOfExceedance",
+        "qMultiOutputRegressionStraddle",
+        "qMultiOutputRegressionJointStraddle",
+        "qMultiOutputRegressionICU",
+        "qMultiOutputRegressionBoundaryVariance",
+        "qMultiOutputRegressionProbabilityOfExceedance",
+        "qHeteroRegressionStraddle",
+        "qHeteroRegressionJointStraddle",
+        "qHeteroRegressionICU",
+        "qHeteroRegressionBoundaryVariance",
+        "qHeteroRegressionProbabilityOfExceedance",
+        "qHeteroMultiOutputRegressionStraddle",
+        "qHeteroMultiOutputRegressionJointStraddle",
+        "qHeteroMultiOutputRegressionICU",
+        "qHeteroMultiOutputRegressionBoundaryVariance",
+        "qHeteroMultiOutputRegressionProbabilityOfExceedance",
+    ],
+)
+
+# ------------------------------------------------------------------
+# bochan: heteroscedastic regression BO
+# ------------------------------------------------------------------
+_register(
+    "bochan.acquisition.regression.bayesian_optimization",
+    [
+        "qHeteroRegressionUpperConfidenceBound",
+        "qHeteroRegressionExpectedImprovement",
+        "qHeteroRegressionProbabilityOfImprovement",
+        "qHeteroMultiOutputRegressionDecoupledExpectedHypervolumeImprovement",
+        "qHeteroMultiOutputRegressionExpectedHypervolumeImprovement",
+        "qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement",
+        "qHeteroMultiOutputRegressionNParEGO",
+    ],
+)
+
+# ------------------------------------------------------------------
+# bochan: binary active learning
+# ------------------------------------------------------------------
+_register(
+    "bochan.acquisition.binary.active_learning",
+    [
+        "qBinaryPredictiveEntropy",
+        "qBinaryBALD",
+        "qBinaryJointBALD",
+        "qBinaryGreedyJointBALD",
+        "qBinaryProbabilityVariance",
+        "qBinaryMarginUncertainty",
+        "qBinaryFantasyNegIntegratedPosteriorVariance",
+        "qMultiOutputBinaryPredictiveEntropy",
+        "qMultiOutputBinaryProbabilityVariance",
+        "qMultiOutputBinaryMarginUncertainty",
+        "qMultiOutputBinaryBALD",
+        "qMultiOutputBinaryIntegratedPosteriorVarianceProxy",
+        "qHeteroBinaryPredictiveEntropy",
+        "qHeteroBinaryBALD",
+        "qHeteroBinaryProbabilityVariance",
+        "qHeteroBinaryMarginUncertainty",
+        "qHeteroBinaryIntegratedPosteriorVariance",
+        "qHeteroMultiOutputBinaryPredictiveEntropy",
+        "qHeteroMultiOutputBinaryProbabilityVariance",
+        "qHeteroMultiOutputBinaryMarginUncertainty",
+        "qHeteroMultiOutputBinaryBALD",
+        "qHeteroMultiOutputBinaryIntegratedPosteriorVarianceProxy",
+    ],
+)
+
+# ------------------------------------------------------------------
+# bochan: binary level-set estimation
+# ------------------------------------------------------------------
+_register(
+    "bochan.acquisition.binary.levelset_estimation",
+    [
+        "qBinaryLatentStraddleAcquisition",
+        "qBinaryJointLatentStraddleAcquisition",
+        "qBinaryICUAcquisition",
+        "qBinaryBoundaryVarianceAcquisition",
+        "qBinaryClassEntropyAcquisition",
+        "qMultiOutputBinaryLatentStraddleAcquisition",
+        "qMultiOutputBinaryJointLatentStraddleAcquisition",
+        "qMultiOutputBinaryClassEntropyAcquisition",
+        "qMultiOutputBinaryICUAcquisition",
+        "qMultiOutputBinaryBoundaryVarianceAcquisition",
+        "qHeteroBinaryLatentStraddleAcquisition",
+        "qHeteroBinaryICUAcquisition",
+        "qHeteroBinaryBoundaryVarianceAcquisition",
+        "qHeteroBinaryClassEntropyAcquisition",
+        "qHeteroMultiOutputBinaryClassEntropyAcquisition",
+        "qHeteroMultiOutputBinaryICUAcquisition",
+        "qHeteroMultiOutputBinaryBoundaryVarianceAcquisition",
+        "qHeteroMultiOutputBinaryLatentStraddleAcquisition",
+        "qHeteroMultiOutputBinaryJointLatentStraddleAcquisition",
+    ],
+)
+
+# ------------------------------------------------------------------
+# bochan: binary BO
+# ------------------------------------------------------------------
+_register(
+    "bochan.acquisition.binary.bayesian_optimization",
+    [
+        "qBinaryProbabilityOfFeasibility",
+        "qBinaryExpectedImprovement",
+        "qBinaryProbabilityOfImprovement",
+        "qBinaryUpperConfidenceBound",
+        "qMultiOutputBinaryProbabilityOfFeasibility",
+        "qMultiOutputBinaryExpectedHypervolumeImprovement",
+        "qMultiOutputBinaryNoisyExpectedHypervolumeImprovement",
+        "qMultiOutputBinaryNParEGO",
+        "qHeteroBinaryUpperConfidenceBound",
+        "qHeteroBinaryExpectedImprovement",
+        "qHeteroBinaryProbabilityOfImprovement",
+        "qHeteroMultiOutputBinaryExpectedHypervolumeImprovement",
+        "qHeteroMultiOutputBinaryNoisyExpectedHypervolumeImprovement",
+        "qHeteroMultiOutputBinaryNParEGO",
+    ],
+)
+
+# ------------------------------------------------------------------
+# bochan: ordinal active learning
+# ------------------------------------------------------------------
+_register(
+    "bochan.acquisition.ordinal.active_learning",
+    [
+        "qOrdinalPredictiveEntropy",
+        "qOrdinalBALD",
+        "qOrdinalUtilityVariance",
+        "qOrdinalMarginUncertainty",
+        "qOrdinalFantasyNegIntegratedPosteriorVariance",
+        "qMultiOutputOrdinalPredictiveEntropy",
+        "qMultiOutputOrdinalBALD",
+        "qMultiOutputOrdinalUtilityVariance",
+        "qMultiOutputOrdinalMarginUncertainty",
+        "qMultiOutputOrdinalFantasyNegIntegratedPosteriorVariance",
+        "qMultiOutputOrdinalIntegratedPosteriorVarianceProxy",
+        "qHeteroOrdinalPredictiveEntropy",
+        "qHeteroOrdinalUtilityVariance",
+        "qHeteroOrdinalMarginUncertainty",
+        "qHeteroOrdinalBALD",
+        "qHeteroOrdinalIntegratedPosteriorVariance",
+        "qHeteroMultiOutputOrdinalIntegratedPosteriorVarianceProxy",
+        "qHeteroMultiOutputOrdinalPredictiveEntropy",
+        "qHeteroMultiOutputOrdinalUtilityVariance",
+        "qHeteroMultiOutputOrdinalMarginUncertainty",
+        "qHeteroMultiOutputOrdinalBALD",
+    ],
+)
+
+# ------------------------------------------------------------------
+# bochan: ordinal level-set estimation
+# ------------------------------------------------------------------
+_register(
+    "bochan.acquisition.ordinal.levelset_estimation",
+    [
+        "qOrdinalLatentStraddleAcquisition",
+        "qOrdinalJointLatentStraddleAcquisition",
+        "qOrdinalICUAcquisition",
+        "qOrdinalBoundaryVarianceAcquisition",
+        "qOrdinalClassEntropyAcquisition",
+        "qMultiOutputOrdinalLatentStraddleAcquisition",
+        "qMultiOutputOrdinalJointLatentStraddleAcquisition",
+        "qMultiOutputOrdinalICUAcquisition",
+        "qMultiOutputOrdinalBoundaryVarianceAcquisition",
+        "qMultiOutputOrdinalClassEntropyAcquisition",
+        "qHeteroOrdinalLatentStraddleAcquisition",
+        "qHeteroOrdinalICUAcquisition",
+        "qHeteroOrdinalBoundaryVarianceAcquisition",
+        "qHeteroOrdinalClassEntropyAcquisition",
+        "qHeteroMultiOutputOrdinalProbabilityOfExceedance",
+        "qHeteroMultiOutputOrdinalLevelSetUncertainty",
+        "qHeteroMultiOutputOrdinalStraddle",
+        "qHeteroMultiOutputOrdinalBoundaryVariance",
+    ],
+)
+
+# ------------------------------------------------------------------
+# bochan: ordinal BO
+# ------------------------------------------------------------------
+_register(
+    "bochan.acquisition.ordinal.bayesian_optimization",
+    [
+        "qOrdinalExpectedImprovement",
+        "qOrdinalProbabilityOfImprovement",
+        "qOrdinalUpperConfidenceBound",
+        "qOrdinalProbabilityOfFeasibility",
+        "qMultiOutputOrdinalExpectedHypervolumeImprovement",
+        "qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement",
+        "qMultiOutputOrdinalNParEGO",
+        "qHeteroOrdinalExpectedUtility",
+        "qHeteroOrdinalExpectedImprovement",
+        "qHeteroOrdinalProbabilityOfImprovement",
+        "qHeteroOrdinalExpectedUtilityUpperConfidenceBound",
+        "qHeteroMultiOutputOrdinalExpectedUtility",
+        "qHeteroMultiOutputOrdinalProbabilityOfImprovement",
+        "qHeteroMultiOutputOrdinalExpectedImprovement",
+        "qHeteroMultiOutputOrdinalExpectedHypervolumeImprovement",
+        "qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement",
+        "qHeteroMultiOutputOrdinalNParEGO",
+    ],
+)
+
+# ------------------------------------------------------------------
+# bochan: non-Gaussian active learning / level-set estimation
+# ------------------------------------------------------------------
+_register(
+    "bochan.acquisition.non_gaussian.active_learning",
+    [
+        "qNonGaussianResponseMeanVariance",
+        "qNonGaussianPosteriorVariance",
+        "qNonGaussianExpectedObservationVariance",
+        "qNonGaussianTotalObservationVariance",
+        "qNonGaussianExpectedObservationEntropy",
+        "qNonGaussianPredictiveEntropyProxy",
+        "qNonGaussianBALDProxy",
+    ],
+)
+
+_register(
+    "bochan.acquisition.non_gaussian.levelset_estimation",
+    [
+        "qNonGaussianStraddle",
+        "qNonGaussianBoundaryVariance",
+        "qNonGaussianICU",
+        "qNonGaussianProbabilityOfExceedance",
+    ],
+)
+
+# Common short aliases for local classes that do not collide with BoTorch qEI/qUCB/qPI aliases.
+_register_alias("qRegressionVariance", "bochan.acquisition.regression.active_learning", "qRegressionPosteriorVariance")
+_register_alias("qBinaryVariance", "bochan.acquisition.binary.active_learning", "qBinaryProbabilityVariance")
+_register_alias("qOrdinalVariance", "bochan.acquisition.ordinal.active_learning", "qOrdinalUtilityVariance")
+_register_alias("qNonGaussianVariance", "bochan.acquisition.non_gaussian.active_learning", "qNonGaussianResponseMeanVariance")
 
 
 def _import_from_path(module_name: str, attr_name: str) -> Any:
@@ -64,7 +362,7 @@ def resolve_acqf_cls(
     """Resolve an acquisition class from a string name.
 
     Args:
-        name: Acquisition name, e.g. ``"qEI"`` or ``"qExpectedImprovement"``.
+        name: Acquisition name, e.g. ``"qEI"`` or ``"qBinaryBALD"``.
         acquisition_registry: Optional user registry. Values can be classes/functions or
             ``(module_name, attr_name)`` tuples.
     """
@@ -95,4 +393,9 @@ def resolve_acqf_cls(
     return _import_from_path(module_name, attr_name)
 
 
-__all__ = ["resolve_acqf_cls"]
+def available_acqf_names() -> list[str]:
+    """Return normalized acquisition names registered in the built-in API registry."""
+    return sorted(_ACQF_ALIASES)
+
+
+__all__ = ["available_acqf_names", "resolve_acqf_cls"]

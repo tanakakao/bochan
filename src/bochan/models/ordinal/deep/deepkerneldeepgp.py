@@ -10,7 +10,6 @@ from .deepgp import (
     OrdinalMixedDeepGPModel,
     OrdinalDeepGPModel,
     _normalize_cat_dims,
-    # fit_true_deep_ordinal_gp,
 )
 from bochan.models.components.layers import (
     DeepKernelDeepGPHiddenLayer,
@@ -18,14 +17,37 @@ from bochan.models.components.layers import (
     SkipDeepKernelDeepGPHiddenLayer,
     SkipDeepKernelDeepMixedGPHiddenLayer,
 )
+from bochan.models.components.layers.feature_extractor import LargeFeatureExtractor, SkipLargeFeatureExtractor
+
+
+def _make_deepkernel_feature_extractor(input_dim: int, ext_type: str, hidden_dims: Optional[Sequence[int]] = None):
+    hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
+    if str(ext_type).lower() == "skip":
+        return SkipLargeFeatureExtractor(
+            input_dim=input_dim,
+            output_dim=input_dim,
+            hidden_dims=hidden_dims,
+            activation="leaky_relu",
+            dropout=0.0,
+            use_bn=False,
+            use_global_skip=True,
+        )
+    return LargeFeatureExtractor(
+        input_dim=input_dim,
+        output_dim=input_dim,
+        hidden_dims=hidden_dims,
+        activation="leaky_relu",
+        dropout=0.0,
+        use_bn=False,
+    )
+
 
 class DeepKernelOrdinalDeepGPModel(OrdinalDeepGPModel):
     """Continuous-input Deep Kernel + DeepGP ordinal model.
 
-    Design:
-        - Inherits the regression-style ordinal DeepGP wrapper.
-        - Replaces only the final latent layer with a deep-kernel hidden layer.
-        - Uses the shared layers module instead of redefining layer classes here.
+    Args:
+        kernel_hidden_dims: 最終 DeepKernel feature extractor の隠れ層次元。
+            None の場合は feature extractor 側の既定値を使う。
     """
 
     def __init__(
@@ -50,6 +72,7 @@ class DeepKernelOrdinalDeepGPModel(OrdinalDeepGPModel):
         conditioning_lr: Optional[float] = None,
         conditioning_batch_size: Optional[int] = None,
         ext_type: str = "DEFAULT",
+        kernel_hidden_dims: Optional[Sequence[int]] = None,
         input_transform: Optional[InputTransform] = None,
         likelihood=None,
     ) -> None:
@@ -76,6 +99,7 @@ class DeepKernelOrdinalDeepGPModel(OrdinalDeepGPModel):
             likelihood=likelihood,
         )
         self.ext_type = str(ext_type)
+        self.kernel_hidden_dims = None if kernel_hidden_dims is None else [int(h) for h in kernel_hidden_dims]
 
         hidden_dims = list(self.list_hidden_dims)
         use_skip = self.ext_type.lower() == "skip"
@@ -92,6 +116,11 @@ class DeepKernelOrdinalDeepGPModel(OrdinalDeepGPModel):
                 input_data=None,
                 learn_inducing_locations=self.learn_inducing_locations,
             )
+            self.last_layer.feature_extractor = _make_deepkernel_feature_extractor(
+                input_dim=last_input_dim + self.original_input_dim,
+                ext_type=self.ext_type,
+                hidden_dims=kernel_hidden_dims,
+            )
         else:
             self.last_layer = DeepKernelDeepGPHiddenLayer(
                 input_dims=last_input_dim,
@@ -102,22 +131,28 @@ class DeepKernelOrdinalDeepGPModel(OrdinalDeepGPModel):
                 input_data=None,
                 learn_inducing_locations=self.learn_inducing_locations,
             )
+            self.last_layer.feature_extractor = _make_deepkernel_feature_extractor(
+                input_dim=last_input_dim,
+                ext_type=self.ext_type,
+                hidden_dims=kernel_hidden_dims,
+            )
         self.to(train_X)
 
     def _get_rebuild_kwargs(self) -> dict:
         kwargs = super()._get_rebuild_kwargs()
-        kwargs.update({"ext_type": self.ext_type})
+        kwargs.update({
+            "ext_type": self.ext_type,
+            "kernel_hidden_dims": copy.deepcopy(self.kernel_hidden_dims),
+        })
         return kwargs
 
 
 class DeepKernelOrdinalMixedDeepGPModel(OrdinalMixedDeepGPModel):
     """Mixed-input Deep Kernel + DeepGP ordinal model.
 
-    Design:
-        - Inherits the regression-style mixed ordinal DeepGP wrapper.
-        - Replaces the mixed input layer with a deep-kernel mixed hidden layer.
-        - Optionally replaces the final layer with a skip deep-kernel layer when
-          ``ext_type='skip'`` so the design matches the shared layers module.
+    Args:
+        kernel_hidden_dims: DeepKernel feature extractor の隠れ層次元。
+            None の場合は feature extractor 側の既定値を使う。
     """
 
     def __init__(
@@ -144,6 +179,7 @@ class DeepKernelOrdinalMixedDeepGPModel(OrdinalMixedDeepGPModel):
         conditioning_lr: Optional[float] = None,
         conditioning_batch_size: Optional[int] = None,
         ext_type: str = "DEFAULT",
+        kernel_hidden_dims: Optional[Sequence[int]] = None,
         input_transform: Optional[InputTransform] = None,
         likelihood=None,
     ) -> None:
@@ -172,6 +208,7 @@ class DeepKernelOrdinalMixedDeepGPModel(OrdinalMixedDeepGPModel):
             likelihood=likelihood,
         )
         self.ext_type = str(ext_type)
+        self.kernel_hidden_dims = None if kernel_hidden_dims is None else [int(h) for h in kernel_hidden_dims]
 
         d = train_X.shape[-1]
         self.cat_dims = _normalize_cat_dims(self.cat_dims, d)
@@ -194,6 +231,11 @@ class DeepKernelOrdinalMixedDeepGPModel(OrdinalMixedDeepGPModel):
             input_data=train_X_for_input_layer,
             learn_inducing_locations=self.learn_inducing_locations,
         )
+        self.input_layer.feature_extractor = _make_deepkernel_feature_extractor(
+            input_dim=len(self.ord_dims),
+            ext_type=self.ext_type,
+            hidden_dims=kernel_hidden_dims,
+        )
 
         if self.ext_type.lower() == "skip":
             self.last_layer = SkipDeepKernelDeepMixedGPHiddenLayer(
@@ -208,17 +250,24 @@ class DeepKernelOrdinalMixedDeepGPModel(OrdinalMixedDeepGPModel):
                 input_data=None,
                 learn_inducing_locations=self.learn_inducing_locations,
             )
+            self.last_layer.feature_extractor = _make_deepkernel_feature_extractor(
+                input_dim=hidden_dims[-1] + d,
+                ext_type=self.ext_type,
+                hidden_dims=kernel_hidden_dims,
+            )
 
         self.to(train_X)
 
     def _get_rebuild_kwargs(self) -> dict:
         kwargs = super()._get_rebuild_kwargs()
-        kwargs.update({"ext_type": self.ext_type})
+        kwargs.update({
+            "ext_type": self.ext_type,
+            "kernel_hidden_dims": copy.deepcopy(self.kernel_hidden_dims),
+        })
         return kwargs
 
 
 __all__ = [
     "DeepKernelOrdinalDeepGPModel",
     "DeepKernelOrdinalMixedDeepGPModel",
-    # "fit_true_deep_ordinal_gp",
 ]

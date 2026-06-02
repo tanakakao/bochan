@@ -145,7 +145,14 @@ OutputConfigLike = ModelConfig | OutputConfig | Mapping[str, Any] | str
 
 @dataclass
 class MultiOutputConfig:
-    """出力ごとに submodel を作り、multi-output / hybrid wrapper に束ねる設定。"""
+    """出力ごとに submodel を作り、multi-output / hybrid wrapper に束ねる設定。
+
+    `output_configs` を省略した場合、`train_Y` の出力数だけ親 `ModelConfig.task_type`
+    と `ModelConfig.model_type` を複製します。例えば親が `task_type="binary"` なら、
+    すべての出力が binary submodel として構築されます。
+
+    出力ごとに task / model / kwargs を変えたい場合だけ、`output_configs` を指定します。
+    """
 
     output_configs: Sequence[OutputConfigLike] | None = None
     output_fit_configs: Sequence[FitConfig | None] | FitConfig | None = None

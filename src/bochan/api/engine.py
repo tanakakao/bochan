@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
@@ -147,6 +148,7 @@ class BayesianOptimizer:
         self._check_fitted()
         context = self._resolve_data_context(data_context)
         acq_config = self._resolve_acquisition_config(acq_config)
+        acq_config = _filter_context_fields_for_acqf(acq_config)
         return build_acquisition(bundle=self.bundle, config=acq_config, data_context=context)
 
     def candidate(
@@ -171,6 +173,7 @@ class BayesianOptimizer:
             context.bounds = opt_bounds
 
         acq_config = self._resolve_acquisition_config(acq_config)
+        acq_config = _filter_context_fields_for_acqf(acq_config)
         acqf = build_acquisition(bundle=self.bundle, config=acq_config, data_context=context)
         candidates, acq_value = optimize_candidates(acqf=acqf, bounds=opt_bounds, config=opt_config)
 
@@ -275,6 +278,30 @@ class BayesianOptimizer:
     def _check_fitted(self) -> None:
         if self.bundle is None or self.model is None:
             raise RuntimeError("Model is not fitted. Call fit() first.")
+
+
+def _filter_context_fields_for_acqf(config: AcquisitionConfig) -> AcquisitionConfig:
+    """Keep only context fields explicitly accepted by the acquisition class.
+
+    Some acquisition classes accept ``**kwargs`` and forward them to BoTorch /
+    GPyTorch base classes. Passing automatic context fields such as
+    ``X_baseline`` to those classes can fail with errors like
+    ``MCAcquisitionFunction.__init__() got an unexpected keyword argument``.
+
+    Explicit ``acqf_kwargs`` are preserved. This helper filters only the
+    automatically injected fields from ``DataContext``.
+    """
+    if config.acqf_cls is None or not config.filter_kwargs_by_signature:
+        return config
+    try:
+        signature = inspect.signature(config.acqf_cls)
+    except (TypeError, ValueError):
+        return config
+    explicit_params = set(signature.parameters)
+    filtered_fields = tuple(field for field in config.context_fields if field in explicit_params)
+    if filtered_fields == config.context_fields:
+        return config
+    return replace(config, context_fields=filtered_fields)
 
 
 def _infer_bounds_from_train_X(train_X: Any) -> Any:

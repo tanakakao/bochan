@@ -74,6 +74,11 @@ class BayesianOptimizer:
         self.train_X = train_X
         self.train_Y = train_Y
 
+        if self.bounds is None:
+            self.bounds = _infer_bounds_from_train_X(train_X)
+        if self.data_context is not None and self.data_context.bounds is None:
+            self.data_context.bounds = self.bounds
+
         self.bundle = build_model(
             train_X=train_X,
             train_Y=train_Y,
@@ -160,6 +165,10 @@ class BayesianOptimizer:
         opt_bounds = bounds if bounds is not None else context.bounds
         if opt_bounds is None:
             opt_bounds = self.bounds
+        if opt_bounds is None and self.train_X is not None:
+            opt_bounds = _infer_bounds_from_train_X(self.train_X)
+            self.bounds = opt_bounds
+            context.bounds = opt_bounds
 
         acq_config = self._resolve_acquisition_config(acq_config)
         acqf = build_acquisition(bundle=self.bundle, config=acq_config, data_context=context)
@@ -250,6 +259,10 @@ class BayesianOptimizer:
 
     def _resolve_data_context(self, data_context: DataContext | None = None) -> DataContext:
         if data_context is not None:
+            if data_context.bounds is None:
+                data_context.bounds = self.bounds
+            if data_context.X_baseline is None:
+                data_context.X_baseline = self.train_X
             return data_context
         if self.data_context is not None:
             if self.data_context.bounds is None:
@@ -262,6 +275,54 @@ class BayesianOptimizer:
     def _check_fitted(self) -> None:
         if self.bundle is None or self.model is None:
             raise RuntimeError("Model is not fitted. Call fit() first.")
+
+
+def _infer_bounds_from_train_X(train_X: Any) -> Any:
+    """Infer BoTorch-style bounds from training inputs.
+
+    For a 2D tensor with shape ``n x d``, this returns ``2 x d``.
+    For batched inputs with shape ``batch_shape x n x d``, this returns
+    ``batch_shape x 2 x d``.
+    """
+    if train_X is None:
+        return None
+
+    try:
+        import torch
+
+        if isinstance(train_X, torch.Tensor):
+            if train_X.ndim < 2:
+                raise ValueError("train_X must have shape n x d or batch_shape x n x d to infer bounds.")
+            return torch.stack(
+                [
+                    train_X.min(dim=-2).values,
+                    train_X.max(dim=-2).values,
+                ],
+                dim=-2,
+            )
+    except ImportError:
+        pass
+
+    try:
+        import numpy as np
+
+        if isinstance(train_X, np.ndarray):
+            if train_X.ndim < 2:
+                raise ValueError("train_X must have shape n x d or batch_shape x n x d to infer bounds.")
+            return np.stack(
+                [
+                    np.min(train_X, axis=-2),
+                    np.max(train_X, axis=-2),
+                ],
+                axis=-2,
+            )
+    except ImportError:
+        pass
+
+    raise TypeError(
+        "bounds is None and automatic bounds inference failed. "
+        "Pass bounds to BayesianOptimizer(...), candidate(...), or DataContext(bounds=...)."
+    )
 
 
 def _concat_rows(x: Any, y: Any) -> Any:

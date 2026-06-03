@@ -309,13 +309,23 @@ class MultiObjectiveConfig:
 
 @dataclass
 class AcquisitionConfig:
-    """獲得関数生成に必要な設定。"""
+    """獲得関数生成に必要な設定。
+
+    Args:
+        objective: 生成済み objective。指定された場合はそのまま獲得関数に渡します。
+        objective_factory: objective を生成する callable。API 側でタスク分岐せず、
+            ``model`` / ``bundle`` / ``data_context`` と ``objective_kwargs`` から objective を構築します。
+            例: ``make_hybrid_scalar_objective`` / ``make_hybrid_multi_output_objective``。
+        objective_kwargs: ``objective_factory`` に渡す追加引数。
+    """
 
     name: str
     acqf_cls: type | Callable[..., Any] | None = None
     acqf_factory: Callable[..., Any] | None = None
 
     objective: Any = None
+    objective_factory: Callable[..., Any] | None = None
+    objective_kwargs: dict[str, Any] = field(default_factory=dict)
     sampler: Any = None
     acqf_kwargs: dict[str, Any] = field(default_factory=dict)
 

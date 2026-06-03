@@ -39,6 +39,8 @@ FinalPriority = Literal["grid", "constraints"]
 SparseScore = Literal["abs", "value"]
 SupportSelection = Literal["topk", "sample"]
 InequalitySense = Literal["le", "ge"]
+ObjectiveMode = Literal["auto", "none", "scalar", "multi_output"]
+Direction = Literal["maximize", "minimize"]
 REGRESSION_OUTCOME_TASK_TYPES: set[str] = {"regression", "multi_objective"}
 
 
@@ -288,6 +290,35 @@ class MultiOutputConfig:
 
 
 @dataclass
+class ObjectiveConfig:
+    """API 側で objective を自動構築するための設定。
+
+    ユーザーは objective のクラスを直接選ばず、出力・方向・risk 集約などを指定します。
+    API は model / task_type / hybrid 出力情報から、適切な objective 実装を選びます。
+    """
+
+    mode: ObjectiveMode = "auto"
+    output: Any | None = None
+    outputs: Sequence[Any] | None = None
+    specs: Sequence[Any] | None = None
+    directions: Sequence[Direction | bool | float | int] | None = None
+    weights: Sequence[float] | None = None
+    eq_targets: Sequence[float | None] | None = None
+    direction: Direction | bool | float | int = "maximize"
+    weight: float = 1.0
+    eq_target: float | None = None
+    n_w: int | None = None
+    risk_type: str | None = None
+    alpha: float = 0.5
+    maximize: bool = True
+    aggregate_mean_when_no_risk: bool = True
+    allow_unexpanded: bool = True
+    utility_values: Sequence[float] | Any | None = None
+    ordinal_likelihood: Any | None = None
+    objective_kwargs: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
 class MultiObjectiveConfig:
     """多目的獲得関数用の設定。"""
 
@@ -313,9 +344,10 @@ class AcquisitionConfig:
 
     Args:
         objective: 生成済み objective。指定された場合はそのまま獲得関数に渡します。
-        objective_factory: objective を生成する callable。API 側でタスク分岐せず、
-            ``model`` / ``bundle`` / ``data_context`` と ``objective_kwargs`` から objective を構築します。
-            例: ``make_hybrid_scalar_objective`` / ``make_hybrid_multi_output_objective``。
+        objective_config: objective を API 側で自動生成するための設定。
+            直接 objective が渡されていない場合に使います。
+        objective_factory: 高度な上書き用の objective factory。
+            通常は ``objective_config`` を推奨します。
         objective_kwargs: ``objective_factory`` に渡す追加引数。
     """
 
@@ -324,6 +356,7 @@ class AcquisitionConfig:
     acqf_factory: Callable[..., Any] | None = None
 
     objective: Any = None
+    objective_config: ObjectiveConfig | None = None
     objective_factory: Callable[..., Any] | None = None
     objective_kwargs: dict[str, Any] = field(default_factory=dict)
     sampler: Any = None

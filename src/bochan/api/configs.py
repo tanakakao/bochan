@@ -39,6 +39,8 @@ FinalPriority = Literal["grid", "constraints"]
 SparseScore = Literal["abs", "value"]
 SupportSelection = Literal["topk", "sample"]
 InequalitySense = Literal["le", "ge"]
+RegressionOutcomeTaskType = Literal["regression", "multi_objective"]
+REGRESSION_OUTCOME_TASK_TYPES: set[str] = {"regression", "multi_objective"}
 
 
 class AutoStandardizeOutcomeTransform(nn.Module):
@@ -84,6 +86,31 @@ class AutoStandardizeOutcomeTransform(nn.Module):
         if self.standardize is not None:
             new.standardize = self.standardize.subset_output(idcs)
         return new
+
+
+def is_regression_outcome_task(task_type: str) -> bool:
+    """Return whether ``task_type`` supports BoTorch outcome transforms."""
+
+    return str(task_type) in REGRESSION_OUTCOME_TASK_TYPES
+
+
+def build_outcome_transform_for_task(task_type: str, outcome_transform: bool | Any | None) -> Any | None:
+    """Build an outcome transform only for regression-like tasks.
+
+    ``True`` means ``Standardize`` should be used.  Classification, multiclass,
+    ordinal, and hybrid wrapper tasks always return ``None``; hybrid submodels
+    are handled after each output is resolved to its own task type.
+    """
+
+    if not is_regression_outcome_task(str(task_type)):
+        return None
+    if isinstance(outcome_transform, bool):
+        return AutoStandardizeOutcomeTransform() if outcome_transform else None
+    if outcome_transform is None:
+        return None
+    if isinstance(outcome_transform, AutoStandardizeOutcomeTransform):
+        return AutoStandardizeOutcomeTransform()
+    return outcome_transform
 
 
 @dataclass
@@ -135,8 +162,9 @@ class ModelConfig:
         outcome_transform: regression 系モデルに Standardize を適用するか。
             True の場合は ``AutoStandardizeOutcomeTransform`` を使って train_Y の出力次元から
             ``Standardize(m=...)`` を自動構築します。False の場合は outcome_transform を渡しません。
-            BoTorch 互換の transform オブジェクトを直接渡すこともできますが、binary / multiclass /
-            ordinal / hybrid では常に無効化されます。
+            BoTorch 互換の transform オブジェクトを直接渡すこともできます。
+            binary / multiclass / ordinal では自動的に無効化されます。
+            hybrid では親設定として保持し、出力ごとの task_type に応じて適用されます。
     """
 
     model_cls: type | Callable[..., Any] | None = None
@@ -163,16 +191,9 @@ class ModelConfig:
     pass_outcome_transform: bool = True
 
     def __post_init__(self) -> None:
-        regression_like = str(self.task_type) in {"regression", "multi_objective"}
-        if not regression_like:
-            self.outcome_transform = None
+        if str(self.task_type) not in REGRESSION_OUTCOME_TASK_TYPES | {"hybrid"}:
+            self.outcome_transform = False
             self.pass_outcome_transform = False
-            return
-
-        if isinstance(self.outcome_transform, bool):
-            self.outcome_transform = AutoStandardizeOutcomeTransform() if self.outcome_transform else None
-        elif isinstance(self.outcome_transform, AutoStandardizeOutcomeTransform):
-            self.outcome_transform = AutoStandardizeOutcomeTransform()
 
 
 @dataclass
@@ -209,7 +230,13 @@ class FitConfig:
 
 @dataclass
 class OutputConfig:
-    """multi-output / hybrid の各出力を文字列中心で指定するための設定。"""
+    """multi-output / hybrid の各出力を文字列中心で指定するための設定。
+
+    Args:
+        outcome_transform: 出力ごとの outcome_transform 設定。
+            None の場合は親 ``ModelConfig.outcome_transform`` を継承します。
+            regression / multi_objective 出力だけで有効で、それ以外では自動的に無効化されます。
+    """
 
     task_type: str
     model_type: str = "base"
@@ -217,6 +244,7 @@ class OutputConfig:
     input_type: InputType | None = None
     cat_dims: Sequence[int] | None = None
     input_transform_config: InputTransformConfig | None = None
+    outcome_transform: bool | Any | None = None
     model_kwargs: dict[str, Any] = field(default_factory=dict)
     fit_config: FitConfig | None = None
     output_spec_kwargs: dict[str, Any] = field(default_factory=dict)

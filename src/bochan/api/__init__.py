@@ -3,6 +3,7 @@
 from .acquisition_registry import available_acqf_names, resolve_acqf_cls
 from .configs import (
     AcquisitionConfig,
+    AutoStandardizeOutcomeTransform,
     CandidateRepairConfig,
     CandidateResult,
     DataContext,
@@ -30,6 +31,7 @@ from .model_registry import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelReg
 
 __all__ = [
     "AcquisitionConfig",
+    "AutoStandardizeOutcomeTransform",
     "BayesianOptimizer",
     "CandidateRepairConfig",
     "CandidateResult",

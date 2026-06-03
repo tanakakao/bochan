@@ -16,6 +16,11 @@ dependencies = [
 
 # (キーポイント) 開発時にのみ必要なライブラリ
 [project.optional-dependencies]
+api = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+  "pydantic>=2",
+]
 dev = [
   "pytest", # テスト用
   "black",  # コードフォーマッター

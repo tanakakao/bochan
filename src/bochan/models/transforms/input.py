@@ -41,6 +41,19 @@ def _continuous_indices(
     return [i for i in range(dim) if i not in cat_set]
 
 
+def _infer_bounds_from_train_X(train_X: Tensor) -> Tensor:
+    """train_X から BoTorch 形式の bounds を推定する。"""
+    if train_X.ndim < 2:
+        raise ValueError("train_X must have shape n x d or batch_shape x n x d to infer bounds.")
+    return torch.stack(
+        [
+            train_X.min(dim=-2).values,
+            train_X.max(dim=-2).values,
+        ],
+        dim=-2,
+    )
+
+
 def setup_input_perturbation(
     dim: int,
     bounds: Tensor,
@@ -96,20 +109,20 @@ def setup_input_perturbation(
     )
 
 
-def _extract_transform_metadata(bounds: Tensor | dict, normalize: bool) -> tuple[Tensor, bool]:
+def _extract_transform_metadata(bounds: Tensor | dict | None, normalize: bool) -> tuple[Tensor | None, bool]:
     """API 側から渡された lightweight metadata を取り出す。
 
     既存の factory との互換を保つため、InputTransformConfig 側では normalize フラグを
     bounds に metadata として同梱できるようにしている。
     """
     if isinstance(bounds, dict) and bounds.get("__bochan_input_transform_config__", False):
-        return bounds["bounds"], bool(bounds.get("normalize", normalize))
+        return bounds.get("bounds"), bool(bounds.get("normalize", normalize))
     return bounds, normalize
 
 
 def build_input_transform(
     train_X: Tensor,
-    bounds: Tensor | dict,
+    bounds: Tensor | dict | None,
     perturbation: bool,
     categorical_idx: Optional[List[int]] = None,
     n_w: int = N_W,
@@ -124,7 +137,7 @@ def build_input_transform(
             学習入力。
         bounds:
             raw-space の bounds。API の `InputTransformConfig` 経由では metadata dict が
-            渡される場合もある。
+            渡される場合もある。None の場合は train_X から自動推定する。
         perturbation:
             InputPerturbation を使うか。
         categorical_idx:
@@ -144,8 +157,9 @@ def build_input_transform(
     """
     bounds, normalize = _extract_transform_metadata(bounds, normalize)
     if bounds is None:
-        raise ValueError("bounds must be provided to build_input_transform.")
+        bounds = _infer_bounds_from_train_X(train_X)
 
+    bounds = bounds.to(dtype=train_X.dtype, device=train_X.device)
     dim = train_X.shape[-1]
     categorical_idx = _normalize_cat_dims(categorical_idx, dim)
     continuous_idx = _continuous_indices(dim, categorical_idx)

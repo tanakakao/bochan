@@ -6,9 +6,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from collections.abc import Mapping
+from dataclasses import dataclass, field
 from typing import Any, Callable, Literal, Sequence
+
+from torch import nn
 
 
 TaskType = Literal[
@@ -37,6 +39,51 @@ FinalPriority = Literal["grid", "constraints"]
 SparseScore = Literal["abs", "value"]
 SupportSelection = Literal["topk", "sample"]
 InequalitySense = Literal["le", "ge"]
+
+
+class AutoStandardizeOutcomeTransform(nn.Module):
+    """train_Y の出力次元から ``Standardize`` を遅延生成する transform。
+
+    ``ModelConfig.outcome_transform=True`` のときに使う内部用 helper です。
+    ``train_Y`` を受け取るまで出力次元 ``m`` が確定しないため、モデル生成時の
+    初回 ``forward`` で ``botorch.models.transforms.outcome.Standardize`` を構築します。
+    """
+
+    _is_linear = True
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.standardize: Any | None = None
+
+    def _ensure_transform(self, Y: Any | None = None) -> Any:
+        if self.standardize is None:
+            if Y is None or not hasattr(Y, "shape"):
+                raise RuntimeError(
+                    "AutoStandardizeOutcomeTransform must be initialized by calling it with train_Y first."
+                )
+            from botorch.models.transforms.outcome import Standardize
+
+            m = int(Y.shape[-1]) if len(Y.shape) >= 2 else 1
+            self.standardize = Standardize(m=m)
+            if hasattr(Y, "device") and hasattr(Y, "dtype"):
+                self.standardize = self.standardize.to(device=Y.device, dtype=Y.dtype)
+            self.standardize.train(self.training)
+        return self.standardize
+
+    def forward(self, Y: Any, Yvar: Any | None = None, X: Any | None = None) -> tuple[Any, Any | None]:
+        return self._ensure_transform(Y)(Y, Yvar, X=X)
+
+    def untransform(self, Y: Any, Yvar: Any | None = None, X: Any | None = None) -> tuple[Any, Any | None]:
+        return self._ensure_transform().untransform(Y, Yvar, X=X)
+
+    def untransform_posterior(self, posterior: Any, X: Any | None = None) -> Any:
+        return self._ensure_transform().untransform_posterior(posterior, X=X)
+
+    def subset_output(self, idcs: Any) -> "AutoStandardizeOutcomeTransform":
+        new = type(self)()
+        if self.standardize is not None:
+            new.standardize = self.standardize.subset_output(idcs)
+        return new
 
 
 @dataclass
@@ -83,6 +130,13 @@ class ModelConfig:
 
     基本的には `task_type` と `model_type` を文字列で指定し、モデル固有の引数は
     `model_kwargs` に渡します。`model_cls` や `model_factory` は高度な利用・テスト用です。
+
+    Args:
+        outcome_transform: regression 系モデルに Standardize を適用するか。
+            True の場合は ``AutoStandardizeOutcomeTransform`` を使って train_Y の出力次元から
+            ``Standardize(m=...)`` を自動構築します。False の場合は outcome_transform を渡しません。
+            BoTorch 互換の transform オブジェクトを直接渡すこともできますが、binary / multiclass /
+            ordinal / hybrid では常に無効化されます。
     """
 
     model_cls: type | Callable[..., Any] | None = None
@@ -95,7 +149,7 @@ class ModelConfig:
     cat_dims: Sequence[int] | None = None
     input_transform: Any = None
     input_transform_config: InputTransformConfig | None = None
-    outcome_transform: Any = None
+    outcome_transform: bool | Any = True
 
     model_kwargs: dict[str, Any] = field(default_factory=dict)
     multi_output_config: MultiOutputConfig | None = None
@@ -107,6 +161,18 @@ class ModelConfig:
     pass_cat_dims: bool | None = None
     pass_input_transform: bool = True
     pass_outcome_transform: bool = True
+
+    def __post_init__(self) -> None:
+        regression_like = str(self.task_type) in {"regression", "multi_objective"}
+        if not regression_like:
+            self.outcome_transform = None
+            self.pass_outcome_transform = False
+            return
+
+        if isinstance(self.outcome_transform, bool):
+            self.outcome_transform = AutoStandardizeOutcomeTransform() if self.outcome_transform else None
+        elif isinstance(self.outcome_transform, AutoStandardizeOutcomeTransform):
+            self.outcome_transform = AutoStandardizeOutcomeTransform()
 
 
 @dataclass

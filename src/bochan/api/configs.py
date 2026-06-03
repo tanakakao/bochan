@@ -46,19 +46,35 @@ class InputTransformConfig:
     `bochan.models.transforms.input.build_input_transform` を内部で呼びます。
 
     Args:
+        normalize: Normalize を使うか。既存挙動との互換のため、既定値は True。
         perturbation: 入力摂動を使うか。
         n_w: 摂動サンプル数。
-        std: 摂動の標準偏差。Normalize 後の空間での標準偏差。
+        std: 摂動の標準偏差。normalize=True の場合は Normalize 後の空間での標準偏差。
+            normalize=False の場合は raw 空間での標準偏差。
         bounds: 明示的な bounds。None の場合は train_X の min/max から自動生成する。
         categorical_idx: Normalize / perturbation から除外するカテゴリ列。
             None の場合は ModelConfig.cat_dims を使う。
+
+    Notes:
+        factory 側との互換性を保つため、内部的には bounds に lightweight な
+        metadata dict を格納します。`build_input_transform(...)` がこの metadata を解釈し、
+        normalize / perturbation を独立に切り替えます。
     """
 
+    normalize: bool = True
     perturbation: bool = False
     n_w: int = 16
     std: float = 0.1
     bounds: Any | None = None
     categorical_idx: Sequence[int] | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.bounds, dict) or not self.bounds.get("__bochan_input_transform_config__", False):
+            self.bounds = {
+                "__bochan_input_transform_config__": True,
+                "normalize": bool(self.normalize),
+                "bounds": self.bounds,
+            }
 
 
 @dataclass

@@ -8,7 +8,7 @@
 
 ## 1. 全体設計
 
-内部処理は、基本的に次の4段階に分かれます。
+内部処理は、基本的に次の4段階です。
 
 ```python
 bundle = build_model(train_X, train_Y, model_config)
@@ -21,7 +21,7 @@ candidates, acq_value = optimize_candidates(acqf, bounds, opt_config)
 `BayesianOptimizer` は、この流れを薄く包むクラスです。
 
 ```python
-from bochan.api import BayesianOptimizer, ModelConfig, FitConfig
+from bochan.api import BayesianOptimizer, FitConfig, ModelConfig
 
 bo = BayesianOptimizer(
     model_config=ModelConfig(task_type="regression", model_type="base"),
@@ -55,16 +55,19 @@ from bochan.api import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY
 
 | 設定クラス | 役割 |
 |---|---|
-| `ModelConfig` | モデルの種類、カテゴリ変数、input transform、モデル固有引数を指定する |
-| `FitConfig` | 学習回数、learning rate、maxiter などを指定する |
+| `ModelConfig` | モデルの種類、カテゴリ変数、input transform、outcome transform、モデル固有引数を指定する |
+| `FitConfig` | 学習回数、learning rate、maxiter、MLL / fit 関数の上書きなどを指定する |
 | `InputTransformConfig` | Normalize / input perturbation を簡易指定する |
 | `MultiOutputConfig` | multi-output / hybrid の出力ごとのモデル構成を指定する |
 | `OutputConfig` | multi-output / hybrid の各出力を詳細指定する |
-| `AcquisitionConfig` | 獲得関数を文字列またはクラスで指定する |
+| `AcquisitionConfig` | 獲得関数、objective、sampler、獲得関数固有引数を指定する |
+| `ObjectiveConfig` | regression / binary / ordinal / hybrid に応じた objective を API 側で自動生成する |
 | `DataContext` | `X_baseline`, `best_f`, `ref_point`, `partitioning` など獲得関数側の文脈を渡す |
 | `MultiObjectiveConfig` | EHVI / NEHVI / NParEGO などの多目的設定を渡す |
 | `OptimizeConfig` | 候補点最適化の q, restart 数, optimizer 種類, 制約を指定する |
 | `CandidateRepairConfig` | grid rounding, k-sparse, 制約補修用の post-processing を自動生成する |
+
+`ObjectiveConfig` は現在の API で重要な設定です。ユーザー側で `RegressionScalarObjective` や `BinaryClassificationScoreObjective` を直接選ばなくても、API 側が `task_type` と model 情報から適切な objective を生成します。
 
 ---
 
@@ -132,11 +135,11 @@ model_config = ModelConfig(
 
 ```python
 "regression"
+"multi_objective"
 "binary"
 "multiclass"
 "ordinal"
 "hybrid"
-"multi_objective"
 ```
 
 標準的な `model_type` は次です。
@@ -186,7 +189,64 @@ model_config = ModelConfig(
 )
 ```
 
-### 4.4 mixed model
+### 4.4 outcome transform
+
+`outcome_transform` は regression 系モデルに Standardize を適用するかどうかを指定します。
+
+現在の実装では、`outcome_transform=True` の場合、`AutoStandardizeOutcomeTransform` を使って `train_Y` の出力次元から `Standardize(m=...)` を遅延生成します。
+
+```python
+# regression: Standardize あり。デフォルト。
+model_config = ModelConfig(
+    task_type="regression",
+    model_type="base",
+    outcome_transform=True,
+)
+
+# regression: Standardize なし。
+model_config = ModelConfig(
+    task_type="regression",
+    model_type="base",
+    outcome_transform=False,
+)
+```
+
+`binary` / `multiclass` / `ordinal` では outcome transform は自動的に無効化されます。
+
+`hybrid` の場合、wrapper 自体には outcome transform を渡しません。親の `outcome_transform` は submodel の `ModelConfig` に継承され、submodel が `regression` / `multi_objective` に解決されたときだけ適用されます。
+
+```python
+model_config = ModelConfig(
+    task_type="hybrid",
+    outcome_transform=True,
+    multi_output_config=MultiOutputConfig(
+        output_configs=[
+            OutputConfig(task_type="regression", name="strength"),  # Standardize あり
+            OutputConfig(task_type="binary", name="defect"),        # outcome_transform 無効
+            OutputConfig(task_type="ordinal", name="rank"),         # outcome_transform 無効
+        ],
+        use_hybrid=True,
+    ),
+)
+```
+
+hybrid の regression 出力も標準化したくない場合は、親で `outcome_transform=False` を指定します。
+
+```python
+model_config = ModelConfig(
+    task_type="hybrid",
+    outcome_transform=False,
+    multi_output_config=MultiOutputConfig(
+        output_configs=[
+            OutputConfig(task_type="regression", name="strength"),
+            OutputConfig(task_type="binary", name="defect"),
+        ],
+        use_hybrid=True,
+    ),
+)
+```
+
+### 4.5 mixed model
 
 `cat_dims` がある場合は、`mixed` 側のモデルとして解決されます。
 
@@ -211,7 +271,7 @@ model_config = ModelConfig(
 )
 ```
 
-### 4.5 deepkernel
+### 4.6 deepkernel
 
 ```python
 model_config = ModelConfig(
@@ -238,7 +298,7 @@ model_config = ModelConfig(
 )
 ```
 
-### 4.6 deepgp
+### 4.7 deepgp
 
 ```python
 model_config = ModelConfig(
@@ -251,7 +311,7 @@ model_config = ModelConfig(
 )
 ```
 
-### 4.7 SAAS
+### 4.8 SAAS
 
 ```python
 model_config = ModelConfig(
@@ -263,7 +323,7 @@ model_config = ModelConfig(
 )
 ```
 
-### 4.8 PCA / REMBO
+### 4.9 PCA / REMBO
 
 ```python
 model_config = ModelConfig(
@@ -287,7 +347,7 @@ model_config = ModelConfig(
 )
 ```
 
-### 4.9 RRP / hetero
+### 4.10 RRP / hetero
 
 ```python
 model_config = ModelConfig(
@@ -303,7 +363,7 @@ model_config = ModelConfig(
 )
 ```
 
-### 4.10 model class を直接渡す高度な使い方
+### 4.11 model class を直接渡す高度な使い方
 
 通常は文字列指定を推奨しますが、デバッグ時は直接渡せます。
 
@@ -460,9 +520,11 @@ model_config = ModelConfig(
 )
 ```
 
-### 6.5 入力摂動と objective
+### 6.5 input perturbation と objective
 
 入力摂動では `q` が内部で `q * n_w` に展開されるため、獲得関数側で `q * n_w -> q` に戻す objective が必要になる場合があります。
+
+従来は objective class を直接指定していました。
 
 ```python
 from bochan.acquisition.objective import RegressionScalarObjective
@@ -481,20 +543,84 @@ acq_config = AcquisitionConfig(
 )
 ```
 
-CVaR を使う場合は次です。
+現在の API では、通常は `ObjectiveConfig` を使います。
 
 ```python
-objective = RegressionScalarObjective(
-    n_w=8,
-    risk_type="cvar",
-    alpha=0.8,
-    maximize=True,
+from bochan.api import AcquisitionConfig, ObjectiveConfig
+
+acq_config = AcquisitionConfig(
+    name="EI",
+    objective_config=ObjectiveConfig(
+        mode="scalar",
+        output=0,
+        direction="maximize",
+        n_w=8,
+        risk_type=None,
+        alpha=0.8,
+    ),
+    acqf_kwargs={"best_f": train_Y.max()},
 )
 ```
 
 ---
 
-## 7. acquisition registry
+## 7. multi-output / hybrid model
+
+`MultiOutputConfig` を使うと、出力ごとに submodel を作り、それらを wrapper に束ねます。
+
+### 7.1 homogeneous multi-output regression
+
+```python
+model_config = ModelConfig(
+    task_type="regression",
+    model_type="base",
+    multi_output_config=MultiOutputConfig(),
+)
+```
+
+`train_Y.shape[-1]` から出力数を推定し、各出力に同じ `ModelConfig` を複製します。
+
+### 7.2 output ごとに task を変える hybrid
+
+```python
+model_config = ModelConfig(
+    task_type="hybrid",
+    model_type="base",
+    multi_output_config=MultiOutputConfig(
+        output_configs=[
+            OutputConfig(task_type="regression", model_type="base", name="strength"),
+            OutputConfig(task_type="binary", model_type="base", name="defect"),
+            OutputConfig(task_type="ordinal", model_type="base", name="rank"),
+        ],
+        use_hybrid=True,
+    ),
+)
+```
+
+`OutputConfig.name` は hybrid objective で `output="strength"` のように参照できます。
+
+### 7.3 output ごとの fit 設定
+
+```python
+model_config = ModelConfig(
+    task_type="hybrid",
+    multi_output_config=MultiOutputConfig(
+        output_configs=[
+            OutputConfig(task_type="regression", name="strength"),
+            OutputConfig(task_type="binary", name="defect"),
+        ],
+        output_fit_configs=[
+            FitConfig(maxiter=128),
+            FitConfig(num_epochs=300, lr=0.01),
+        ],
+        use_hybrid=True,
+    ),
+)
+```
+
+---
+
+## 8. acquisition registry
 
 `AcquisitionConfig.name` は文字列で指定できます。
 
@@ -514,7 +640,7 @@ acq_config = AcquisitionConfig(
 )
 ```
 
-### 7.1 BoTorch 系 alias
+### 8.1 BoTorch 系 alias
 
 | name | 解決先 |
 |---|---|
@@ -529,7 +655,7 @@ acq_config = AcquisitionConfig(
 | `NEHVI`, `qNEHVI` | `qNoisyExpectedHypervolumeImprovement` |
 | `NParEGO`, `qNParEGO` | `qExpectedImprovement` + scalarization objective |
 
-### 7.2 task context に応じる短縮 alias
+### 8.2 task context に応じる短縮 alias
 
 `BayesianOptimizer` 経由では、`bundle.task_type` を見て短縮名を自動解決します。
 
@@ -572,7 +698,7 @@ AcquisitionConfig(name="BALD")
 "MultiStepLookahead"
 ```
 
-### 7.3 binary / ordinal の例
+### 8.3 binary / ordinal の例
 
 ```python
 model_config = ModelConfig(task_type="binary", model_type="base")
@@ -586,9 +712,9 @@ AcquisitionConfig(name="BALD")  # -> qOrdinalBALD
 AcquisitionConfig(name="EI")    # -> qOrdinalExpectedImprovement
 ```
 
-### 7.4 hybrid の例
+### 8.4 hybrid の例
 
-`task_type="hybrid"` の場合、獲得関数側では regression として解決されます。
+`task_type="hybrid"` の場合、獲得関数側では regression 系として解決されます。
 
 ```python
 AcquisitionConfig(name="EI")   # -> BoTorch qExpectedImprovement
@@ -598,19 +724,524 @@ AcquisitionConfig(name="KG")   # -> BoTorch qKnowledgeGradient
 
 `KG` / `MultiStepLookahead` は regression / hybrid 用です。binary / ordinal で短縮指定した場合は、誤解決を避けるためエラーになります。
 
-### 7.5 登録済み獲得関数名を確認する
+---
+
+## 9. `ObjectiveConfig`
+
+`ObjectiveConfig` は、API 側で objective を自動構築するための設定です。
+
+通常の API 利用では、ユーザーは `RegressionScalarObjective` や `BinaryClassificationScoreObjective` などを直接選びません。`ObjectiveConfig` に `mode`, `output`, `outputs`, `direction`, `n_w`, `risk_type` などを指定すると、`factory.py` の `build_objective(...)` が `bundle.task_type` に応じて適切な実 objective を生成します。
+
+### 9.1 objective の優先順位
+
+`build_objective(...)` の優先順位は次です。
 
 ```python
-from bochan.api import available_acqf_names
+if acq_config.objective is not None:
+    # 生成済み objective をそのまま使う
+    objective = acq_config.objective
+elif acq_config.objective_factory is not None:
+    # 上級者向け factory で生成する
+    objective = acq_config.objective_factory(...)
+elif acq_config.objective_config is not None:
+    # ObjectiveConfig から API が自動生成する
+    objective = build_objective_from_config(...)
+else:
+    objective = None
+```
 
-names = available_acqf_names()
+`acqf_factory` を指定した場合は、`build_acquisition(...)` がその factory に処理を委譲します。そのため、標準の objective 挿入も factory 側で必要に応じて処理してください。
+
+### 9.2 `ObjectiveConfig` の主要引数
+
+| 引数 | 意味 |
+|---|---|
+| `mode` | `"auto"`, `"none"`, `"scalar"`, `"multi_output"` |
+| `output` | scalar objective で使う出力 index または出力名 |
+| `outputs` | multi-output objective で使う出力 index / 出力名の列 |
+| `specs` | hybrid objective 用の `HybridObjectiveSpec` の列。指定時は `outputs` などより優先 |
+| `direction` | scalar objective の方向。`"maximize"` / `"minimize"` |
+| `directions` | multi-output objective の各出力方向 |
+| `weight` | scalar objective の重み |
+| `weights` | multi-output objective の各出力重み |
+| `eq_target` | scalar objective で目標値に近いほど良い score にする場合の目標値 |
+| `eq_targets` | multi-output objective の各出力目標値 |
+| `n_w` | input perturbation で1点あたりに展開される摂動数 |
+| `risk_type` | `None`, `"var"`, `"cvar"` |
+| `alpha` | VaR / CVaR の risk 集約パラメータ |
+| `maximize` | risk 集約時に大きい値を良い方向として扱うか |
+| `utility_values` | ordinal class の utility 値 |
+| `ordinal_likelihood` | ordinal likelihood の明示指定 |
+
+`mode="auto"` の場合、`outputs` または `specs` が指定されていれば `multi_output`、それ以外は `scalar` として扱われます。
+
+### 9.3 task type ごとの自動生成
+
+| `bundle.task_type` | `mode` | 生成される objective |
+|---|---|---|
+| `regression` / `multi_objective` | `scalar` | `RegressionScalarObjective` |
+| `regression` / `multi_objective` | `multi_output` | `make_hybrid_multi_output_objective(...)` |
+| `binary` | `scalar` | `BinaryClassificationScoreObjective` |
+| `binary` | `multi_output` | `MultiOutputBinaryClassificationInputPerturbationObjective` |
+| `ordinal` | `scalar` | `OrdinalInputPerturbationExpectedUtilityObjective` |
+| `ordinal` | `multi_output` | `MultiOutputOrdinalInputPerturbationObjective` |
+| `hybrid` | `scalar` | `make_hybrid_scalar_objective(...)` |
+| `hybrid` | `multi_output` | `make_hybrid_multi_output_objective(...)` |
+
+`multiclass` の objective 自動生成は現時点では未実装です。必要な場合は `AcquisitionConfig.objective` または `objective_factory` で明示的に渡してください。
+
+---
+
+## 10. regression objective の使い方
+
+### 10.1 single-output regression
+
+single-output regression で、摂動なし・目的値をそのまま最大化する場合は objective なしで構いません。
+
+```python
+acq_config = AcquisitionConfig(
+    name="EI",
+    acqf_kwargs={"best_f": train_Y.max()},
+)
+```
+
+input perturbation や risk 集約を使う場合は、`ObjectiveConfig` を指定します。
+
+```python
+acq_config = AcquisitionConfig(
+    name="EI",
+    objective_config=ObjectiveConfig(
+        mode="scalar",
+        output=0,
+        direction="maximize",
+        n_w=8,
+        risk_type=None,
+        alpha=0.8,
+    ),
+    acqf_kwargs={"best_f": train_Y.max()},
+)
+```
+
+CVaR を使う場合です。
+
+```python
+acq_config = AcquisitionConfig(
+    name="EI",
+    objective_config=ObjectiveConfig(
+        mode="scalar",
+        output=0,
+        direction="maximize",
+        n_w=8,
+        risk_type="cvar",
+        alpha=0.8,
+    ),
+    acqf_kwargs={"best_f": train_Y.max()},
+)
+```
+
+### 10.2 最小化
+
+BoTorch の多くの獲得関数は最大化前提なので、最小化したい場合は `direction="minimize"` を指定します。
+
+```python
+acq_config = AcquisitionConfig(
+    name="EI",
+    objective_config=ObjectiveConfig(
+        mode="scalar",
+        output=0,
+        direction="minimize",
+    ),
+    acqf_kwargs={"best_f": (-train_Y[:, 0]).max()},
+)
+```
+
+`best_f` も objective の向きに合わせる必要があります。
+
+### 10.3 目標値に近いほど良い目的
+
+`eq_target` を指定すると、`-abs(y - eq_target)` 型の score に変換します。
+
+```python
+acq_config = AcquisitionConfig(
+    name="EI",
+    objective_config=ObjectiveConfig(
+        mode="scalar",
+        output=0,
+        eq_target=10.0,
+        n_w=8,
+        risk_type=None,
+    ),
+    acqf_kwargs={"best_f": best_score},
+)
+```
+
+### 10.4 regression multi-output から特定の変数だけ使う
+
+`train_Y.shape = (n, m)` の regression で、特定の目的変数だけを scalar acquisition に使う場合は `output` を指定します。
+
+```python
+# y1 だけを EI / UCB などの scalar acquisition に使う
+best_f_y1 = train_Y[:, 1].max()
+
+acq_config = AcquisitionConfig(
+    name="EI",
+    objective_config=ObjectiveConfig(
+        mode="scalar",
+        output=1,
+        direction="maximize",
+        n_w=8,
+        risk_type=None,
+    ),
+    acqf_kwargs={"best_f": best_f_y1},
+)
+```
+
+通常の non-hybrid multi-output regression では、`output` は整数 index で指定してください。文字列名は `model.output_names` を持つ hybrid model などで使えます。
+
+### 10.5 regression multi-output から一部の出力だけ多目的に使う
+
+`y0` と `y2` だけを EHVI / NEHVI などに使い、`y1` を無視したい場合です。
+
+```python
+Y_baseline = train_Y[:, [0, 2]]
+ref_point = torch.tensor([0.0, 0.0], dtype=train_Y.dtype, device=train_Y.device)
+
+acq_config = AcquisitionConfig(
+    name="NEHVI",
+    objective_config=ObjectiveConfig(
+        mode="multi_output",
+        outputs=[0, 2],
+        directions=["maximize", "minimize"],
+        weights=[1.0, 1.0],
+        n_w=8,
+        risk_type=None,
+    ),
+)
+
+data_context = DataContext(
+    X_baseline=train_X,
+    Y_baseline=Y_baseline,
+    ref_point=ref_point,
+)
+```
+
+`outputs` を指定した場合、`Y_baseline`, `ref_point`, `objective_thresholds` も選択後の出力次元に合わせるのが安全です。
+
+---
+
+## 11. binary / ordinal objective
+
+### 11.1 binary classification
+
+binary classification では、獲得関数内部で確率や score が計算済みの場合、objective は主に input perturbation によって展開された `q * n_w` を `q` に戻すために使います。
+
+```python
+acq_config = AcquisitionConfig(
+    name="EI",
+    objective_config=ObjectiveConfig(
+        mode="scalar",
+        n_w=8,
+        risk_type=None,
+    ),
+)
+```
+
+API 側では `BinaryClassificationScoreObjective` が選択されます。
+
+multi-output binary classification では次のようにします。
+
+```python
+acq_config = AcquisitionConfig(
+    name="NEHVI",
+    objective_config=ObjectiveConfig(
+        mode="multi_output",
+        n_w=8,
+        risk_type="cvar",
+        alpha=0.8,
+    ),
+)
+```
+
+API 側では `MultiOutputBinaryClassificationInputPerturbationObjective` が選択されます。
+
+### 11.2 ordinal
+
+ordinal では latent `f` を class probability に変換し、`utility_values` で expected utility に変換する必要があります。BO 系では objective を指定するのが基本です。
+
+```python
+acq_config = AcquisitionConfig(
+    name="EI",
+    objective_config=ObjectiveConfig(
+        mode="scalar",
+        utility_values=[0.0, 1.0, 2.0],
+        n_w=8,
+        risk_type="cvar",
+        alpha=0.8,
+    ),
+)
+```
+
+API 側では `OrdinalInputPerturbationExpectedUtilityObjective` が選択され、`ordinal_likelihood` は model から推定されます。
+
+`utility_values` を省略した場合、API は `num_classes` や cutpoints / thresholds から `0..K-1` を推定しようとします。推定できない場合は `utility_values` を明示してください。
+
+multi-output ordinal では次のようにします。
+
+```python
+acq_config = AcquisitionConfig(
+    name="NEHVI",
+    objective_config=ObjectiveConfig(
+        mode="multi_output",
+        utility_values=[0.0, 1.0, 2.0],
+        n_w=8,
+        risk_type=None,
+    ),
+)
+```
+
+API 側では `MultiOutputOrdinalInputPerturbationObjective` が選択されます。
+
+---
+
+## 12. hybrid objective
+
+hybrid では出力名または index を使って objective を指定します。内部では既存の `HybridObjectiveSpec`, `make_hybrid_scalar_objective`, `make_hybrid_multi_output_objective` が使われます。
+
+### 12.1 single-output hybrid
+
+```python
+acq_config = AcquisitionConfig(
+    name="EI",
+    objective_config=ObjectiveConfig(
+        mode="scalar",
+        output="strength",
+        direction="maximize",
+        n_w=8,
+        risk_type=None,
+    ),
+    acqf_kwargs={"best_f": best_strength},
+)
+```
+
+`output` は `OutputConfig(name="...")` で指定した名前、または整数 index を使えます。
+
+### 12.2 multi-output hybrid
+
+```python
+acq_config = AcquisitionConfig(
+    name="NEHVI",
+    objective_config=ObjectiveConfig(
+        mode="multi_output",
+        outputs=["strength", "defect_prob"],
+        directions=["maximize", "minimize"],
+        weights=[1.0, 0.5],
+        n_w=8,
+        risk_type="cvar",
+        alpha=0.8,
+    ),
+)
+```
+
+`outputs`, `directions`, `weights`, `eq_targets` は同じ長さにしてください。
+
+### 12.3 `HybridObjectiveSpec` を直接使う
+
+より明示したい場合は `HybridObjectiveSpec` を渡せます。
+
+```python
+from bochan.acquisition.objective import HybridObjectiveSpec
+
+specs = [
+    HybridObjectiveSpec(output="strength", direction="maximize", weight=1.0),
+    HybridObjectiveSpec(output="defect_prob", direction="minimize", weight=0.5),
+]
+
+acq_config = AcquisitionConfig(
+    name="NEHVI",
+    objective_config=ObjectiveConfig(
+        mode="multi_output",
+        specs=specs,
+        n_w=8,
+        risk_type="cvar",
+        alpha=0.8,
+    ),
+)
 ```
 
 ---
 
-## 8. 単目的実行例
+## 13. `DataContext` / `MultiObjectiveConfig`
 
-### 8.1 regression + UCB
+`DataContext` は、獲得関数生成時に必要な文脈情報を渡すための設定です。
+
+```python
+data_context = DataContext(
+    bounds=bounds,
+    X_baseline=train_X,
+    Y_baseline=train_Y,
+    best_f=train_Y.max(),
+    ref_point=ref_point,
+)
+```
+
+主なフィールドは次です。
+
+| フィールド | 用途 |
+|---|---|
+| `bounds` | 最適化範囲。`optimize_candidates` では別途 `bounds` を渡すことが多い |
+| `X_baseline` | NEI / NEHVI / NIPV などの baseline |
+| `X_pending` | 既に評価予定の候補点 |
+| `Y_baseline` | EHVI / NEHVI / scalarization の基準出力 |
+| `best_f` | EI / PI などの既知ベスト値 |
+| `ref_point` | EHVI / NEHVI の参照点 |
+| `partitioning` | EHVI 用 partitioning |
+| `objective_thresholds` | 多目的の threshold |
+| `mc_points` | integrated posterior variance 系の積分点 |
+| `constraints` | BoTorch acquisition に渡す制約 |
+| `extra` | その他の acquisition 固有引数 |
+
+`MultiObjectiveConfig` を使うと、EHVI / NEHVI / NParEGO 用の文脈をまとめられます。
+
+```python
+data_context = DataContext(
+    X_baseline=train_X,
+    multi_objective=MultiObjectiveConfig(
+        ref_point=ref_point,
+        Y_baseline=train_Y,
+        auto_partitioning=True,
+    ),
+)
+```
+
+`MultiObjectiveConfig.auto_scalarization` は、`AcquisitionConfig.objective`, `objective_factory`, `objective_config` がいずれも指定されていない場合だけ自動的に scalarization objective を作ります。明示した objective 設定を上書きしません。
+
+---
+
+## 14. `OptimizeConfig`
+
+候補点最適化は `OptimizeConfig` で制御します。
+
+```python
+opt_config = OptimizeConfig(
+    q=3,
+    num_restarts=20,
+    raw_samples=512,
+    sequential=True,
+)
+
+candidates, acq_value = bo.candidate(acq_config, opt_config)
+```
+
+主な引数は次です。
+
+| 引数 | 意味 |
+|---|---|
+| `q` | 一度に提案する候補点数 |
+| `num_restarts` | 多点初期化の restart 数 |
+| `raw_samples` | 初期候補生成用の raw sample 数 |
+| `sequential` | q-batch を逐次的に最適化するか |
+| `optimizer` | `optimize_acqf`, `optimize_acqf_mixed`, `evo`, `torch` など |
+| `optimizer_kwargs` | optimizer に渡す追加引数 |
+| `post_processing_func` | 候補点の後処理関数 |
+| `repair_config` | grid rounding / k-sparse / 制約補修を自動生成する設定 |
+| `fixed_features` | 固定する特徴量 |
+| `fixed_features_list` | mixed optimizer 用の固定特徴量候補リスト |
+| `inequality_constraints` | 線形不等式制約 |
+| `equality_constraints` | 線形等式制約 |
+
+### 14.1 optimizer の種類
+
+```python
+OptimizeConfig(optimizer="optimize_acqf")
+OptimizeConfig(optimizer="optimize_acqf_mixed")
+OptimizeConfig(optimizer="evo")
+OptimizeConfig(optimizer="torch")
+OptimizeConfig(optimizer="evo_mixed")
+OptimizeConfig(optimizer="torch_mixed")
+```
+
+callable を直接渡すこともできます。
+
+```python
+opt_config = OptimizeConfig(
+    optimizer=custom_optimizer,
+    optimizer_kwargs={"maxiter": 200},
+)
+```
+
+### 14.2 mixed optimization
+
+`optimize_acqf_mixed` を使う場合は、`fixed_features_list` または `fixed_features` が必要です。
+
+```python
+opt_config = OptimizeConfig(
+    optimizer="optimize_acqf_mixed",
+    q=1,
+    fixed_features_list=[
+        {2: 0.0},
+        {2: 1.0},
+    ],
+)
+```
+
+`fixed_features` と `fixed_features_list` を両方指定した場合、`fixed_features` は全候補に共通の固定値としてマージされ、各 `fixed_features_list` の値が優先されます。
+
+---
+
+## 15. `CandidateRepairConfig`
+
+`repair_config` を指定すると、grid rounding, k-sparse, 線形制約補修などを post-processing として組み込めます。
+
+```python
+opt_config = OptimizeConfig(
+    q=3,
+    repair_config=CandidateRepairConfig(
+        numeric_indices=[0, 1, 2],
+        steps=[0.1, 0.1, 1.0],
+        k=2,
+    ),
+)
+```
+
+### 15.1 丸めのみ
+
+`comp_idx=None` または `comp_idx=[]` の場合は、k-sparse 補修を使わず、数値列の丸めだけに使えます。
+
+```python
+opt_config = OptimizeConfig(
+    repair_config=CandidateRepairConfig(
+        numeric_indices=[0, 1],
+        steps=[0.1, 0.01],
+        comp_idx=None,
+        k=0,
+    ),
+)
+```
+
+### 15.2 k-sparse + 制約補修
+
+```python
+opt_config = OptimizeConfig(
+    repair_config=CandidateRepairConfig(
+        bounds=bounds,
+        numeric_indices=[0, 1, 2, 3],
+        steps=[0.1, 0.1, 0.1, 0.1],
+        comp_idx=[0, 1, 2, 3],
+        k=2,
+        inequality_constraints=ineq_constraints,
+        inequality_sense="le",
+        final_priority="constraints",
+    ),
+)
+```
+
+`steps=None` の場合は grid rounding を行いません。
+
+---
+
+## 16. 単目的実行例
+
+### 16.1 regression + UCB
 
 ```python
 model_config = ModelConfig(
@@ -618,13 +1249,12 @@ model_config = ModelConfig(
     model_type="base",
 )
 
-fit_config = FitConfig(maxiter=128)
-
 bo = BayesianOptimizer(
     model_config=model_config,
-    fit_config=fit_config,
+    fit_config=FitConfig(maxiter=128),
     bounds=bounds,
 )
+
 bo.fit(train_X, train_Y)
 
 acq_config = AcquisitionConfig(
@@ -633,30 +1263,46 @@ acq_config = AcquisitionConfig(
 )
 
 opt_config = OptimizeConfig(q=3, num_restarts=10, raw_samples=256)
-
 candidates, acq_value = bo.candidate(acq_config, opt_config)
 ```
 
-### 8.2 regression + KG
+### 16.2 regression + input perturbation + CVaR EI
 
 ```python
+model_config = ModelConfig(
+    task_type="regression",
+    model_type="base",
+    input_transform_config=InputTransformConfig(
+        perturbation=True,
+        n_w=8,
+        std=0.1,
+    ),
+)
+
+bo = BayesianOptimizer(
+    model_config=model_config,
+    fit_config=FitConfig(maxiter=128),
+    bounds=bounds,
+)
+
+bo.fit(train_X, train_Y)
+
 acq_config = AcquisitionConfig(
-    name="KG",
-    acqf_kwargs={
-        "num_fantasies": 64,
-    },
+    name="EI",
+    objective_config=ObjectiveConfig(
+        mode="scalar",
+        output=0,
+        n_w=8,
+        risk_type="cvar",
+        alpha=0.8,
+    ),
+    acqf_kwargs={"best_f": train_Y.max()},
 )
 
-opt_config = OptimizeConfig(
-    q=1,
-    num_restarts=10,
-    raw_samples=256,
-)
-
-candidates, acq_value = bo.candidate(acq_config, opt_config)
+candidates, acq_value = bo.candidate(acq_config, OptimizeConfig(q=3))
 ```
 
-### 8.3 binary + BALD
+### 16.3 binary + BALD
 
 ```python
 model_config = ModelConfig(
@@ -665,35 +1311,19 @@ model_config = ModelConfig(
     model_kwargs={"num_inducing_points": 64},
 )
 
-fit_config = FitConfig(num_epochs=300, lr=0.01)
-
 bo = BayesianOptimizer(
     model_config=model_config,
-    fit_config=fit_config,
+    fit_config=FitConfig(num_epochs=300, lr=0.01),
     bounds=bounds,
 )
+
 bo.fit(train_X, train_Y)
 
 acq_config = AcquisitionConfig(name="BALD")
-opt_config = OptimizeConfig(q=3, num_restarts=10, raw_samples=256)
-
-candidates, acq_value = bo.candidate(acq_config, opt_config)
+candidates, acq_value = bo.candidate(acq_config, OptimizeConfig(q=3))
 ```
 
-### 8.4 binary + EI
-
-```python
-acq_config = AcquisitionConfig(
-    name="EI",
-    acqf_kwargs={"best_f": best_f},
-)
-
-candidates, acq_value = bo.candidate(acq_config, opt_config)
-```
-
-binary model では `qBinaryExpectedImprovement` に解決されます。
-
-### 8.5 ordinal + MarginUncertainty
+### 16.4 ordinal + expected utility EI
 
 ```python
 model_config = ModelConfig(
@@ -702,599 +1332,9 @@ model_config = ModelConfig(
     model_kwargs={"num_classes": 3},
 )
 
-fit_config = FitConfig(num_epochs=500, lr=0.03)
-
 bo = BayesianOptimizer(
     model_config=model_config,
-    fit_config=fit_config,
-    bounds=bounds,
-)
-bo.fit(train_X, train_Y)
-
-acq_config = AcquisitionConfig(name="Margin")
-opt_config = OptimizeConfig(q=3, num_restarts=10, raw_samples=256)
-
-candidates, acq_value = bo.candidate(acq_config, opt_config)
-```
-
----
-
-## 9. multi-output / multi-objective
-
-`MultiOutputConfig()` は複数出力モデルを作る合図です。多目的最適化の合図ではありません。
-
-```text
-MultiOutputConfig()
-    = Y が複数列あるので、複数出力モデルを作る
-
-MultiObjectiveConfig()
-    = その複数出力を目的関数群として最適化する
-
-AcquisitionConfig(name="EHI")
-    = 多目的獲得関数を使う
-```
-
-### 9.1 homogeneous multi-output regression
-
-`train_Y` が `n x m` の場合、`MultiOutputConfig()` を指定すると、`train_Y.shape[-1]` の数だけ親の `task_type` / `model_type` を複製します。
-
-```python
-model_config = ModelConfig(
-    task_type="regression",
-    model_type="base",
-    multi_output_config=MultiOutputConfig(),
-)
-```
-
-これは `train_Y.shape[-1] == 3` の場合、概念的には以下と同じです。
-
-```python
-model_config = ModelConfig(
-    task_type="regression",
-    model_type="base",
-    multi_output_config=MultiOutputConfig(
-        output_configs=["regression", "regression", "regression"],
-    ),
-)
-```
-
-### 9.2 multi-output binary
-
-```python
-model_config = ModelConfig(
-    task_type="binary",
-    model_type="base",
-    multi_output_config=MultiOutputConfig(),
-)
-```
-
-これは `train_Y.shape[-1] == 3` の場合、概念的には以下と同じです。
-
-```python
-model_config = ModelConfig(
-    task_type="binary",
-    model_type="base",
-    multi_output_config=MultiOutputConfig(
-        output_configs=["binary", "binary", "binary"],
-    ),
-)
-```
-
-### 9.3 出力ごとに詳細指定
-
-```python
-model_config = ModelConfig(
-    task_type="binary",
-    multi_output_config=MultiOutputConfig(
-        output_configs=[
-            {
-                "name": "defect_a",
-                "task_type": "binary",
-                "model_type": "base",
-                "model_kwargs": {"num_inducing_points": 64},
-            },
-            {
-                "name": "defect_b",
-                "task_type": "binary",
-                "model_type": "deepkernel",
-                "model_kwargs": {"feature_extractor": feature_extractor},
-            },
-        ],
-    ),
-)
-```
-
-### 9.4 hybrid model
-
-regression / binary / ordinal など異なる task type を同時に扱う場合は hybrid を使います。
-
-```python
-model_config = ModelConfig(
-    task_type="hybrid",
-    multi_output_config=MultiOutputConfig(
-        output_configs=[
-            {"name": "strength", "task_type": "regression", "model_type": "base"},
-            {"name": "defect", "task_type": "binary", "model_type": "base"},
-            {"name": "rank", "task_type": "ordinal", "model_type": "base"},
-        ],
-        use_hybrid=True,
-    ),
-)
-```
-
-### 9.5 hybrid の出力ごとに詳細指定
-
-```python
-model_config = ModelConfig(
-    task_type="hybrid",
-    multi_output_config=MultiOutputConfig(
-        output_configs=[
-            {
-                "name": "strength",
-                "task_type": "regression",
-                "model_type": "base",
-                "output_spec_kwargs": {"sign": 1.0},
-            },
-            {
-                "name": "defect",
-                "task_type": "binary",
-                "model_type": "base",
-                "model_kwargs": {"num_inducing_points": 64},
-                "output_spec_kwargs": {
-                    "sign": -1.0,
-                    "positive_class": 1,
-                },
-            },
-            {
-                "name": "rank",
-                "task_type": "ordinal",
-                "model_type": "base",
-                "model_kwargs": {"num_classes": 3},
-                "output_spec_kwargs": {
-                    "sign": 1.0,
-                    "utility_values": [0.0, 1.0, 2.0],
-                },
-            },
-        ],
-        use_hybrid=True,
-    ),
-)
-```
-
-### 9.6 出力ごとに fit 設定を変える
-
-```python
-model_config = ModelConfig(
-    task_type="hybrid",
-    multi_output_config=MultiOutputConfig(
-        output_configs=[
-            {
-                "name": "strength",
-                "task_type": "regression",
-                "fit_config": FitConfig(maxiter=128),
-            },
-            {
-                "name": "defect",
-                "task_type": "binary",
-                "fit_config": FitConfig(num_epochs=300, lr=0.01),
-            },
-            {
-                "name": "rank",
-                "task_type": "ordinal",
-                "model_kwargs": {"num_classes": 3},
-                "fit_config": FitConfig(num_epochs=800, lr=0.03),
-            },
-        ],
-        use_hybrid=True,
-    ),
-)
-```
-
-### 9.7 qEHVI
-
-```python
-model_config = ModelConfig(
-    task_type="regression",
-    model_type="base",
-    multi_output_config=MultiOutputConfig(),
-)
-
-bo = BayesianOptimizer(
-    model_config=model_config,
-    fit_config=FitConfig(maxiter=128),
-    bounds=bounds,
-)
-bo.fit(train_X, train_Y)
-
-mo_config = MultiObjectiveConfig(
-    ref_point=ref_point,
-    Y_baseline=train_Y,
-    auto_partitioning=True,
-)
-
-data_context = DataContext(
-    bounds=bounds,
-    X_baseline=train_X,
-    multi_objective=mo_config,
-)
-
-acq_config = AcquisitionConfig(name="EHI")
-opt_config = OptimizeConfig(q=3, num_restarts=10, raw_samples=256)
-
-candidates, acq_value = bo.candidate(
-    acq_config=acq_config,
-    opt_config=opt_config,
-    data_context=data_context,
-)
-```
-
-### 9.8 qNEHVI
-
-```python
-mo_config = MultiObjectiveConfig(
-    ref_point=ref_point,
-    Y_baseline=train_Y,
-)
-
-data_context = DataContext(
-    bounds=bounds,
-    X_baseline=train_X,
-    multi_objective=mo_config,
-)
-
-acq_config = AcquisitionConfig(name="NEHVI")
-
-candidates, acq_value = bo.candidate(
-    acq_config=acq_config,
-    opt_config=opt_config,
-    data_context=data_context,
-)
-```
-
-### 9.9 NParEGO
-
-```python
-mo_config = MultiObjectiveConfig(
-    Y_baseline=train_Y,
-    scalarization_weights=weights,
-    auto_scalarization=True,
-)
-
-data_context = DataContext(
-    bounds=bounds,
-    X_baseline=train_X,
-    best_f=best_f_scalarized,
-    multi_objective=mo_config,
-)
-
-acq_config = AcquisitionConfig(name="NParEGO")
-
-candidates, acq_value = bo.candidate(
-    acq_config=acq_config,
-    opt_config=opt_config,
-    data_context=data_context,
-)
-```
-
----
-
-## 10. optimizer / constraints / repair
-
-### 10.1 optimizer 選択
-
-```python
-OptimizeConfig(optimizer="optimize_acqf")
-OptimizeConfig(optimizer="optimize_acqf_mixed")
-OptimizeConfig(optimizer="evo")
-OptimizeConfig(optimizer="optimize_acqf_evo")
-OptimizeConfig(optimizer="torch")
-OptimizeConfig(optimizer="optimize_acqf_torch")
-OptimizeConfig(optimizer="evo_mixed")
-OptimizeConfig(optimizer="optimize_acqf_evo_mixed")
-OptimizeConfig(optimizer="torch_mixed")
-OptimizeConfig(optimizer="optimize_acqf_torch_mixed")
-```
-
-### 10.2 BoTorch 標準
-
-```python
-opt_config = OptimizeConfig(
-    optimizer="optimize_acqf",
-    q=3,
-    num_restarts=10,
-    raw_samples=256,
-)
-```
-
-### 10.3 BoTorch mixed
-
-```python
-opt_config = OptimizeConfig(
-    optimizer="optimize_acqf_mixed",
-    q=3,
-    num_restarts=10,
-    raw_samples=256,
-    fixed_features_list=[
-        {2: 0},
-        {2: 1},
-    ],
-)
-```
-
-### 10.4 torch optimizer
-
-```python
-opt_config = OptimizeConfig(
-    optimizer="torch",
-    q=3,
-    num_restarts=10,
-    raw_samples=512,
-    optimizer_kwargs={
-        "method": "adam",  # "adam", "adamw", "sgd", "rmsprop", "lbfgs"
-        "options": {
-            "lr": 0.03,
-            "num_steps": 200,
-            "penalty_factor": 1e3,
-        },
-    },
-)
-```
-
-### 10.5 evo optimizer
-
-```python
-opt_config = OptimizeConfig(
-    optimizer="evo",
-    q=3,
-    num_restarts=10,
-    raw_samples=256,
-    optimizer_kwargs={
-        "method": "ga",  # "ga", "pso", "sa", "cmaes"
-        "options": {
-            "pop_size": 128,
-            "num_generations": 100,
-            "penalty_factor": 1e3,
-        },
-    },
-)
-```
-
-### 10.6 evo mixed
-
-```python
-opt_config = OptimizeConfig(
-    optimizer="evo_mixed",
-    q=3,
-    num_restarts=10,
-    raw_samples=256,
-    fixed_features_list=fixed_features_list,
-    optimizer_kwargs={
-        "method": "ga",
-        "categorical_features": {
-            2: [0, 1, 2],
-            5: [0, 1],
-        },
-        "enumerate_categorical_features": True,
-        "options": {
-            "pop_size": 128,
-            "num_generations": 100,
-        },
-    },
-)
-```
-
-### 10.7 torch mixed
-
-```python
-opt_config = OptimizeConfig(
-    optimizer="torch_mixed",
-    q=3,
-    num_restarts=10,
-    raw_samples=512,
-    fixed_features_list=fixed_features_list,
-    optimizer_kwargs={
-        "method": "adam",
-        "categorical_features": {
-            2: [0, 1, 2],
-            5: [0, 1],
-        },
-        "options": {
-            "lr": 0.03,
-            "num_steps": 200,
-        },
-    },
-)
-```
-
-### 10.8 fixed_features と fixed_features_list
-
-`fixed_features` は常に固定したい変数、`fixed_features_list` はカテゴリ・離散値の列挙パターンです。
-
-```python
-opt_config = OptimizeConfig(
-    optimizer="optimize_acqf_mixed",
-    fixed_features={0: 0.5},
-    fixed_features_list=[
-        {2: 0},
-        {2: 1},
-    ],
-)
-```
-
-内部では以下のようにマージされます。
-
-```python
-[
-    {0: 0.5, 2: 0},
-    {0: 0.5, 2: 1},
-]
-```
-
-同じ次元が重複した場合は `fixed_features_list` 側を優先します。
-
-### 10.9 BoTorch 線形制約
-
-```python
-opt_config = OptimizeConfig(
-    q=3,
-    equality_constraints=equality_constraints,
-    inequality_constraints=inequality_constraints,
-)
-```
-
-### 10.10 grid rounding + k-sparse + constraints repair
-
-`CandidateRepairConfig` を使うと、`make_grid_k_sparse_post_processing_func(...)` を API 側で自動生成できます。
-
-```python
-opt_config = OptimizeConfig(
-    q=3,
-    equality_constraints=equality_constraints,
-    inequality_constraints=inequality_constraints,
-    repair_config=CandidateRepairConfig(
-        numeric_indices=numeric_indices,
-        steps=steps,
-        comp_idx=comp_idx,
-        k=k,
-        final_priority="grid",
-    ),
-)
-```
-
-これは内部的に以下と同等です。
-
-```python
-repair = make_grid_k_sparse_post_processing_func(
-    bounds=bounds,
-    numeric_indices=numeric_indices,
-    steps=steps,
-    comp_idx=comp_idx,
-    k=k,
-    equality_constraints=equality_constraints,
-    inequality_constraints=inequality_constraints,
-)
-```
-
-### 10.11 丸めだけ
-
-```python
-opt_config = OptimizeConfig(
-    q=3,
-    repair_config=CandidateRepairConfig(
-        numeric_indices=numeric_indices,
-        steps=steps,
-        comp_idx=[],
-        k=0,
-    ),
-)
-```
-
-### 10.12 k-sparse だけ
-
-```python
-opt_config = OptimizeConfig(
-    q=3,
-    repair_config=CandidateRepairConfig(
-        comp_idx=comp_idx,
-        k=3,
-        steps=None,
-    ),
-)
-```
-
----
-
-## 11. `DataContext`
-
-`DataContext` は獲得関数生成時に必要な補助情報を渡すための入れ物です。
-
-```python
-data_context = DataContext(
-    bounds=bounds,
-    X_baseline=train_X,
-    X_pending=X_pending,
-    Y_baseline=train_Y,
-    best_f=train_Y.max(),
-    ref_point=ref_point,
-    partitioning=partitioning,
-    constraints=constraints,
-)
-```
-
-`BayesianOptimizer` に `bounds` と `train_X` があれば、最低限の `DataContext` は内部で補完されます。
-
----
-
-## 12. ask / tell
-
-```python
-candidates, acq_value = bo.ask(acq_config, opt_config)
-
-new_Y = evaluate(candidates)
-
-bo.tell(candidates, new_Y, refit=True)
-```
-
-fit 設定を変えて再学習したい場合は次です。
-
-```python
-bo.tell(
-    candidates,
-    new_Y,
-    refit=True,
-    fit_config=FitConfig(maxiter=128),
-)
-```
-
----
-
-## 13. 複数獲得関数の比較
-
-同じ学習済みモデルに対して複数の獲得関数を比較できます。
-
-```python
-results = bo.compare_acquisitions(
-    acq_configs=[
-        AcquisitionConfig(name="EI", acqf_kwargs={"best_f": train_Y.max()}),
-        AcquisitionConfig(name="UCB", acqf_kwargs={"beta": 0.2}),
-        AcquisitionConfig(name="Straddle", acqf_kwargs={"threshold": 0.0}),
-    ],
-    opt_config=opt_config,
-)
-
-for name, result in results.items():
-    print(name, result.candidates, result.acq_value)
-```
-
----
-
-## 14. 推奨する Python API 全体テンプレート
-
-```python
-from bochan.api import (
-    AcquisitionConfig,
-    BayesianOptimizer,
-    CandidateRepairConfig,
-    DataContext,
-    FitConfig,
-    InputTransformConfig,
-    ModelConfig,
-    OptimizeConfig,
-)
-
-model_config = ModelConfig(
-    task_type="regression",
-    model_type="base",
-    input_transform_config=InputTransformConfig(
-        perturbation=False,
-    ),
-)
-
-fit_config = FitConfig(maxiter=128)
-
-bo = BayesianOptimizer(
-    model_config=model_config,
-    fit_config=fit_config,
+    fit_config=FitConfig(num_epochs=300, lr=0.01),
     bounds=bounds,
 )
 
@@ -1302,464 +1342,168 @@ bo.fit(train_X, train_Y)
 
 acq_config = AcquisitionConfig(
     name="EI",
-    acqf_kwargs={"best_f": train_Y.max()},
+    objective_config=ObjectiveConfig(
+        mode="scalar",
+        utility_values=[0.0, 1.0, 2.0],
+        n_w=None,
+    ),
+    acqf_kwargs={"best_f": best_utility},
 )
 
-opt_config = OptimizeConfig(
-    optimizer="optimize_acqf",
-    q=3,
-    num_restarts=10,
-    raw_samples=256,
-    repair_config=CandidateRepairConfig(
-        numeric_indices=numeric_indices,
-        steps=steps,
-        comp_idx=comp_idx,
-        k=k,
+candidates, acq_value = bo.candidate(acq_config, OptimizeConfig(q=3))
+```
+
+---
+
+## 17. 多目的実行例
+
+### 17.1 regression multi-output + NEHVI
+
+```python
+model_config = ModelConfig(
+    task_type="regression",
+    model_type="base",
+    multi_output_config=MultiOutputConfig(),
+)
+
+bo = BayesianOptimizer(
+    model_config=model_config,
+    fit_config=FitConfig(maxiter=128),
+    bounds=bounds,
+)
+
+bo.fit(train_X, train_Y)
+
+Y_baseline = train_Y[:, [0, 2]]
+ref_point = torch.tensor([0.0, 0.0], dtype=train_Y.dtype, device=train_Y.device)
+
+acq_config = AcquisitionConfig(
+    name="NEHVI",
+    objective_config=ObjectiveConfig(
+        mode="multi_output",
+        outputs=[0, 2],
+        directions=["maximize", "minimize"],
+        weights=[1.0, 1.0],
     ),
+)
+
+data_context = DataContext(
+    X_baseline=train_X,
+    Y_baseline=Y_baseline,
+    ref_point=ref_point,
 )
 
 candidates, acq_value = bo.candidate(
     acq_config=acq_config,
-    opt_config=opt_config,
+    opt_config=OptimizeConfig(q=3),
+    data_context=data_context,
 )
 ```
 
----
-
-## 15. FastAPI で使う
-
-FastAPI 統合は optional dependency です。通常の `bochan.api` import では FastAPI を要求しません。
-
-### 15.1 インストール
-
-```bash
-pip install -e '.[api]'
-```
-
-または、パッケージとしてインストールする場合は次です。
-
-```bash
-pip install 'botorch_ext[api]'
-```
-
-### 15.2 通常版の起動
-
-```bash
-uvicorn bochan.api.fastapi:app --reload
-```
-
-### 15.3 保存・復元対応版の起動
-
-```bash
-uvicorn bochan.api.fastapi_persistent:app --reload
-```
-
-保存先は環境変数 `BOCHAN_API_MODEL_DIR` で指定できます。
-
-```bash
-export BOCHAN_API_MODEL_DIR=./saved_bo_models
-```
-
-未指定の場合は `bochan_sessions/` に保存されます。
-
-### 15.4 OpenAPI UI
-
-```text
-http://127.0.0.1:8000/docs
-```
-
----
-
-## 16. FastAPI エンドポイント
-
-すべて `/bochan` prefix 配下です。
-
-### 16.1 通常版 / persistent 版 共通
-
-| Method | Path | 用途 |
-|---|---|---|
-| `GET` | `/bochan/health` | ヘルスチェック |
-| `GET` | `/bochan/acquisitions` | 登録済み acquisition 名の一覧 |
-| `GET` | `/bochan/sessions` | セッション ID 一覧 |
-| `POST` | `/bochan/sessions` | 学習済み `BayesianOptimizer` セッションを作成 |
-| `DELETE` | `/bochan/sessions/{session_id}` | セッション削除 |
-| `POST` | `/bochan/sessions/{session_id}/predict` | セッションで予測 |
-| `POST` | `/bochan/sessions/{session_id}/candidate` | セッションで候補点生成 |
-| `POST` | `/bochan/sessions/{session_id}/ask` | `/candidate` の alias |
-| `POST` | `/bochan/sessions/{session_id}/tell` | 観測追加と任意の再学習 |
-| `POST` | `/bochan/suggest` | stateless に fit → candidate まで実行 |
-
-### 16.2 persistent 版のみ
-
-| Method | Path | 用途 |
-|---|---|---|
-| `GET` | `/bochan/models` | 保存済みモデルファイル一覧 |
-| `POST` | `/bochan/sessions/{session_id}/save` | メモリ上のセッションをファイル保存 |
-| `POST` | `/bochan/sessions/load` | 保存済みセッションをロードして新しい `session_id` を発行 |
-
----
-
-## 17. FastAPI: stateful session 例
-
-### 17.1 セッション作成
-
-```bash
-curl -X POST http://127.0.0.1:8000/bochan/sessions \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "train_X": [[0.0], [0.5], [1.0]],
-    "train_Y": [[0.0], [0.25], [1.0]],
-    "bounds": [[0.0], [1.0]],
-    "model_config": {
-      "task_type": "regression",
-      "model_type": "base"
-    },
-    "fit_config": {
-      "maxiter": 64
-    }
-  }'
-```
-
-レスポンス例:
-
-```json
-{
-  "session_id": "...",
-  "task_type": "regression",
-  "model_type": "base",
-  "input_type": "normal",
-  "metadata": {
-    "model_cls": "SingleTaskGP"
-  }
-}
-```
-
-### 17.2 候補点生成
-
-```bash
-curl -X POST http://127.0.0.1:8000/bochan/sessions/<session_id>/candidate \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "acquisition_config": {
-      "name": "EI",
-      "acqf_kwargs": {"best_f": 1.0}
-    },
-    "optimize_config": {
-      "q": 1,
-      "num_restarts": 5,
-      "raw_samples": 64
-    }
-  }'
-```
-
-### 17.3 予測
-
-```bash
-curl -X POST http://127.0.0.1:8000/bochan/sessions/<session_id>/predict \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "X": [[0.25], [0.75]],
-    "return_type": "mean_variance"
-  }'
-```
-
-### 17.4 ask / tell
-
-```bash
-curl -X POST http://127.0.0.1:8000/bochan/sessions/<session_id>/ask \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "acquisition_config": {"name": "UCB", "acqf_kwargs": {"beta": 0.2}},
-    "optimize_config": {"q": 1, "num_restarts": 5, "raw_samples": 64}
-  }'
-```
-
-```bash
-curl -X POST http://127.0.0.1:8000/bochan/sessions/<session_id>/tell \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "new_X": [[0.3]],
-    "new_Y": [[0.09]],
-    "refit": true,
-    "fit_config": {"maxiter": 64}
-  }'
-```
-
----
-
-## 18. FastAPI: stateless suggest 例
-
-`/bochan/suggest` は、1リクエスト内で `fit -> acquisition -> optimize` まで実行します。セッションを残したくない単発 API に向いています。
-
-```bash
-curl -X POST http://127.0.0.1:8000/bochan/suggest \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "train_X": [[0.0], [0.5], [1.0]],
-    "train_Y": [[0.0], [0.25], [1.0]],
-    "bounds": [[0.0], [1.0]],
-    "model_config": {
-      "task_type": "regression",
-      "model_type": "base"
-    },
-    "fit_config": {"maxiter": 64},
-    "acquisition_config": {
-      "name": "EI",
-      "acqf_kwargs": {"best_f": 1.0}
-    },
-    "optimize_config": {
-      "q": 1,
-      "num_restarts": 5,
-      "raw_samples": 64
-    }
-  }'
-```
-
----
-
-## 19. FastAPI: multi-output / hybrid / 多目的
-
-### 19.1 multi-output
-
-```json
-{
-  "train_X": [[0.0], [0.5], [1.0]],
-  "train_Y": [[0.0, 1.0], [0.25, 0.5], [1.0, 0.0]],
-  "bounds": [[0.0], [1.0]],
-  "model_config": {
-    "task_type": "regression",
-    "model_type": "base",
-    "multi_output_config": {}
-  },
-  "fit_config": {
-    "maxiter": 64
-  }
-}
-```
-
-### 19.2 hybrid
-
-```json
-{
-  "model_config": {
-    "task_type": "hybrid",
-    "multi_output_config": {
-      "use_hybrid": true,
-      "output_configs": [
-        {"name": "strength", "task_type": "regression", "model_type": "base"},
-        {"name": "defect", "task_type": "binary", "model_type": "base"},
-        {"name": "rank", "task_type": "ordinal", "model_type": "base"}
-      ]
-    }
-  }
-}
-```
-
-### 19.3 多目的 EHVI
-
-```json
-{
-  "train_X": [[0.0], [0.5], [1.0]],
-  "train_Y": [[0.0, 1.0], [0.25, 0.5], [1.0, 0.0]],
-  "bounds": [[0.0], [1.0]],
-  "model_config": {
-    "task_type": "regression",
-    "model_type": "base",
-    "multi_output_config": {}
-  },
-  "fit_config": {"maxiter": 64},
-  "acquisition_config": {"name": "EHI"},
-  "data_context": {
-    "multi_objective": {
-      "ref_point": [-0.1, -0.1],
-      "Y_baseline": [[0.0, 1.0], [0.25, 0.5], [1.0, 0.0]],
-      "auto_partitioning": true
-    }
-  },
-  "optimize_config": {
-    "q": 1,
-    "num_restarts": 5,
-    "raw_samples": 64
-  }
-}
-```
-
----
-
-## 20. FastAPI: 制約・fixed features・repair
-
-JSON では線形制約を次の形式で渡せます。
-
-```json
-{
-  "indices": [0, 1],
-  "coefficients": [1.0, 1.0],
-  "rhs": 1.0
-}
-```
-
-`fixed_features` と `fixed_features_list` は JSON object として渡します。key は JSON 上は文字列でも、API 内で `int` に変換されます。
-
-```json
-{
-  "optimize_config": {
-    "optimizer": "optimize_acqf_mixed",
-    "q": 1,
-    "fixed_features": {"0": 0.5},
-    "fixed_features_list": [
-      {"2": 0},
-      {"2": 1}
-    ],
-    "inequality_constraints": [
-      {"indices": [0, 1], "coefficients": [1.0, 1.0], "rhs": 1.0}
-    ],
-    "repair_config": {
-      "numeric_indices": [0, 1],
-      "steps": [0.1, 0.1],
-      "comp_idx": [0, 1],
-      "k": 1,
-      "final_priority": "grid"
-    }
-  }
-}
-```
-
----
-
-## 21. FastAPI: optimizer 選択
-
-```json
-{
-  "optimize_config": {
-    "optimizer": "torch",
-    "q": 3,
-    "num_restarts": 10,
-    "raw_samples": 512,
-    "optimizer_kwargs": {
-      "method": "adam",
-      "options": {
-        "lr": 0.03,
-        "num_steps": 200,
-        "penalty_factor": 1000.0
-      }
-    }
-  }
-}
-```
-
----
-
-## 22. FastAPI: 保存・復元
-
-保存・復元は `bochan.api.fastapi_persistent:app` で使います。
-
-### 22.1 保存済みファイル一覧
-
-```bash
-curl http://127.0.0.1:8000/bochan/models
-```
-
-### 22.2 セッション保存
-
-```bash
-curl -X POST http://127.0.0.1:8000/bochan/sessions/<session_id>/save \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "filename": "demo_model.pt",
-    "overwrite": true
-  }'
-```
-
-### 22.3 セッション復元
-
-`torch.load` は pickle を使うため、復元時は明示的に `trust_pickle=true` が必要です。自分で保存したファイルなど、信頼できるファイルだけ読み込んでください。
-
-```bash
-curl -X POST http://127.0.0.1:8000/bochan/sessions/load \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "filename": "demo_model.pt",
-    "map_location": "cpu",
-    "trust_pickle": true
-  }'
-```
-
-ロードすると新しい `session_id` が発行されます。その `session_id` は `/predict`, `/candidate`, `/ask`, `/tell` にそのまま使えます。
-
----
-
-## 23. よくある注意点
-
-### 23.1 `model_type="base"` と `model_cls` は両方必要か
-
-通常は両方は不要です。
+### 17.2 hybrid + NEHVI
 
 ```python
-ModelConfig(
-    task_type="regression",
+model_config = ModelConfig(
+    task_type="hybrid",
     model_type="base",
+    multi_output_config=MultiOutputConfig(
+        output_configs=[
+            OutputConfig(task_type="regression", name="strength"),
+            OutputConfig(task_type="binary", name="defect_prob"),
+        ],
+        use_hybrid=True,
+    ),
+)
+
+bo = BayesianOptimizer(
+    model_config=model_config,
+    fit_config=FitConfig(maxiter=128),
+    bounds=bounds,
+)
+
+bo.fit(train_X, train_Y)
+
+acq_config = AcquisitionConfig(
+    name="NEHVI",
+    objective_config=ObjectiveConfig(
+        mode="multi_output",
+        outputs=["strength", "defect_prob"],
+        directions=["maximize", "minimize"],
+        weights=[1.0, 0.5],
+        n_w=8,
+        risk_type=None,
+    ),
 )
 ```
-
-この場合は標準 registry から `SingleTaskGP` などを解決します。
-
-`model_cls` は registry を使わず直接指定したい場合だけ使います。
-
-```python
-ModelConfig(
-    task_type="regression",
-    model_cls=SingleTaskGP,
-)
-```
-
-### 23.2 `FitConfig` に `fit_func` は必要か
-
-通常は不要です。
-
-```python
-FitConfig(maxiter=128)
-```
-
-または、
-
-```python
-FitConfig(num_epochs=300, lr=0.01)
-```
-
-だけで十分です。
-
-### 23.3 `input_transform` と `input_transform_config` の優先順位
-
-`input_transform` を直接渡した場合は、それが優先されます。`input_transform_config` は無視されます。
-
-```python
-ModelConfig(
-    input_transform=manual_transform,
-    input_transform_config=InputTransformConfig(perturbation=True),
-)
-```
-
-### 23.4 `EHI` / `EHVI` / `NEHVI` は単目的でも使えるか
-
-基本的には multi-output / multi-objective 用です。単目的では `EI`, `NEI`, `UCB`, `PI`, `KG` などを使います。
-
-### 23.5 binary / ordinal で `KG` は使えるか
-
-短縮 alias としての `KG` は regression / hybrid 専用です。binary / ordinal で `KG` を指定すると、誤って regression 用 BoTorch KG に落ちないようにエラーになります。
-
-### 23.6 FastAPI の stateful session は本番向けか
-
-メモリ上に `BayesianOptimizer` を保持するため、ローカルアプリやプロトタイプ向けです。本番運用では、プロセス再起動でセッションが消える点、ワーカーを複数立てるとメモリストアが共有されない点に注意してください。
-
-### 23.7 保存済みモデルをロードするときの注意
-
-保存・復元対応版では `torch.save` / `torch.load` を使います。pickle を含むため、信頼できないファイルはロードしないでください。
 
 ---
 
-## 24. 実装上の注意
+## 18. 注意点
 
-- `bochan.api.fastapi` / `bochan.api.fastapi_persistent` は optional module です。FastAPI を使わない通常の Python API には影響しません。
-- GPU を使う場合は `tensor_options.device` に `"cuda"` などを指定できます。
-- JSON では Python の callable や objective object は直接渡せません。API 経由では、文字列指定・数値・配列・dict で表現できる範囲を基本にしてください。
-- 保存・復元対応版では `BOCHAN_API_MODEL_DIR` で保存先を変更できます。
+### 18.1 `best_f` は objective 後の値に合わせる
+
+`direction="minimize"`, `output=1`, `eq_target=...` などを使う場合、`best_f` は変換後の objective value に合わせてください。
+
+```python
+# y1 を最大化する場合
+best_f = train_Y[:, 1].max()
+
+# y1 を最小化する場合
+best_f = (-train_Y[:, 1]).max()
+```
+
+### 18.2 `ref_point` / `Y_baseline` は選択出力に合わせる
+
+`outputs=[0, 2]` のように一部出力だけを使う場合、`ref_point` と `Y_baseline` も同じ出力次元に合わせます。
+
+```python
+Y_baseline = train_Y[:, [0, 2]]
+ref_point = torch.tensor([r0, r2], dtype=train_Y.dtype, device=train_Y.device)
+```
+
+### 18.3 input perturbation の `n_w` を揃える
+
+`InputTransformConfig(n_w=8)` を使う場合、`ObjectiveConfig(n_w=8)` も同じ値にしてください。
+
+```python
+model_config = ModelConfig(
+    task_type="regression",
+    input_transform_config=InputTransformConfig(perturbation=True, n_w=8),
+)
+
+acq_config = AcquisitionConfig(
+    name="EI",
+    objective_config=ObjectiveConfig(n_w=8),
+)
+```
+
+### 18.4 `ObjectiveConfig` が不要な場合もある
+
+single-output regression で、摂動なし、目的値をそのまま最大化するだけなら objective は不要です。
+
+active learning 系の獲得関数でも、獲得関数本体がすでに `batch_shape x q` の score を返す場合は objective が不要なことがあります。
+
+### 18.5 上級者向け override
+
+必要であれば、従来通り objective を直接渡せます。
+
+```python
+from bochan.acquisition.objective import RegressionScalarObjective
+
+acq_config = AcquisitionConfig(
+    name="EI",
+    objective=RegressionScalarObjective(n_w=8, risk_type=None),
+)
+```
+
+factory で上書きすることもできます。
+
+```python
+acq_config = AcquisitionConfig(
+    name="EI",
+    objective_factory=custom_objective_factory,
+    objective_kwargs={"foo": 1},
+)
+```
+
+この場合、API は `custom_objective_factory(model=..., bundle=..., data_context=..., **objective_kwargs)` を呼び、シグネチャに存在する引数だけを渡します。

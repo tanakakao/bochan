@@ -39,6 +39,7 @@ FinalPriority = Literal["grid", "constraints"]
 SparseScore = Literal["abs", "value"]
 SupportSelection = Literal["topk", "sample"]
 InequalitySense = Literal["le", "ge"]
+REGRESSION_OUTCOME_TASK_TYPES: set[str] = {"regression", "multi_objective"}
 
 
 class AutoStandardizeOutcomeTransform(nn.Module):
@@ -84,6 +85,31 @@ class AutoStandardizeOutcomeTransform(nn.Module):
         if self.standardize is not None:
             new.standardize = self.standardize.subset_output(idcs)
         return new
+
+
+def is_regression_outcome_task(task_type: str) -> bool:
+    """Return whether ``task_type`` supports BoTorch outcome transforms."""
+
+    return str(task_type) in REGRESSION_OUTCOME_TASK_TYPES
+
+
+def build_outcome_transform_for_task(task_type: str, outcome_transform: bool | Any | None) -> Any | None:
+    """Build an outcome transform only for regression-like tasks.
+
+    ``True`` means ``Standardize`` should be used.  Classification, multiclass,
+    ordinal, and hybrid wrapper tasks always return ``None``; hybrid submodels
+    are handled after each output is resolved to its own task type.
+    """
+
+    if not is_regression_outcome_task(str(task_type)):
+        return None
+    if isinstance(outcome_transform, bool):
+        return AutoStandardizeOutcomeTransform() if outcome_transform else None
+    if outcome_transform is None:
+        return None
+    if isinstance(outcome_transform, AutoStandardizeOutcomeTransform):
+        return AutoStandardizeOutcomeTransform()
+    return outcome_transform
 
 
 @dataclass
@@ -135,8 +161,10 @@ class ModelConfig:
         outcome_transform: regression 系モデルに Standardize を適用するか。
             True の場合は ``AutoStandardizeOutcomeTransform`` を使って train_Y の出力次元から
             ``Standardize(m=...)`` を自動構築します。False の場合は outcome_transform を渡しません。
-            BoTorch 互換の transform オブジェクトを直接渡すこともできますが、binary / multiclass /
-            ordinal / hybrid では常に無効化されます。
+            BoTorch 互換の transform オブジェクトを直接渡すこともできます。
+            binary / multiclass / ordinal では自動的に無効化されます。
+            hybrid では親設定として保持し、submodel が regression / multi_objective に解決されたときだけ
+            適用されます。
     """
 
     model_cls: type | Callable[..., Any] | None = None
@@ -163,16 +191,22 @@ class ModelConfig:
     pass_outcome_transform: bool = True
 
     def __post_init__(self) -> None:
-        regression_like = str(self.task_type) in {"regression", "multi_objective"}
-        if not regression_like:
+        task_type = str(self.task_type)
+
+        if task_type == "hybrid":
+            # hybrid wrapper 自体には outcome_transform を適用しない。
+            # 値は submodel 解決時に dataclasses.replace(...) で継承され、
+            # 各 submodel の task_type に応じて再評価される。
+            self.pass_outcome_transform = False
+            return
+
+        if not is_regression_outcome_task(task_type):
             self.outcome_transform = None
             self.pass_outcome_transform = False
             return
 
-        if isinstance(self.outcome_transform, bool):
-            self.outcome_transform = AutoStandardizeOutcomeTransform() if self.outcome_transform else None
-        elif isinstance(self.outcome_transform, AutoStandardizeOutcomeTransform):
-            self.outcome_transform = AutoStandardizeOutcomeTransform()
+        self.outcome_transform = build_outcome_transform_for_task(task_type, self.outcome_transform)
+        self.pass_outcome_transform = self.outcome_transform is not None
 
 
 @dataclass

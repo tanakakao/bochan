@@ -39,7 +39,6 @@ FinalPriority = Literal["grid", "constraints"]
 SparseScore = Literal["abs", "value"]
 SupportSelection = Literal["topk", "sample"]
 InequalitySense = Literal["le", "ge"]
-RegressionOutcomeTaskType = Literal["regression", "multi_objective"]
 REGRESSION_OUTCOME_TASK_TYPES: set[str] = {"regression", "multi_objective"}
 
 
@@ -164,7 +163,8 @@ class ModelConfig:
             ``Standardize(m=...)`` を自動構築します。False の場合は outcome_transform を渡しません。
             BoTorch 互換の transform オブジェクトを直接渡すこともできます。
             binary / multiclass / ordinal では自動的に無効化されます。
-            hybrid では親設定として保持し、出力ごとの task_type に応じて適用されます。
+            hybrid では親設定として保持し、submodel が regression / multi_objective に解決されたときだけ
+            適用されます。
     """
 
     model_cls: type | Callable[..., Any] | None = None
@@ -191,9 +191,22 @@ class ModelConfig:
     pass_outcome_transform: bool = True
 
     def __post_init__(self) -> None:
-        if str(self.task_type) not in REGRESSION_OUTCOME_TASK_TYPES | {"hybrid"}:
-            self.outcome_transform = False
+        task_type = str(self.task_type)
+
+        if task_type == "hybrid":
+            # hybrid wrapper 自体には outcome_transform を適用しない。
+            # 値は submodel 解決時に dataclasses.replace(...) で継承され、
+            # 各 submodel の task_type に応じて再評価される。
             self.pass_outcome_transform = False
+            return
+
+        if not is_regression_outcome_task(task_type):
+            self.outcome_transform = None
+            self.pass_outcome_transform = False
+            return
+
+        self.outcome_transform = build_outcome_transform_for_task(task_type, self.outcome_transform)
+        self.pass_outcome_transform = self.outcome_transform is not None
 
 
 @dataclass
@@ -230,13 +243,7 @@ class FitConfig:
 
 @dataclass
 class OutputConfig:
-    """multi-output / hybrid の各出力を文字列中心で指定するための設定。
-
-    Args:
-        outcome_transform: 出力ごとの outcome_transform 設定。
-            None の場合は親 ``ModelConfig.outcome_transform`` を継承します。
-            regression / multi_objective 出力だけで有効で、それ以外では自動的に無効化されます。
-    """
+    """multi-output / hybrid の各出力を文字列中心で指定するための設定。"""
 
     task_type: str
     model_type: str = "base"
@@ -244,7 +251,6 @@ class OutputConfig:
     input_type: InputType | None = None
     cat_dims: Sequence[int] | None = None
     input_transform_config: InputTransformConfig | None = None
-    outcome_transform: bool | Any | None = None
     model_kwargs: dict[str, Any] = field(default_factory=dict)
     fit_config: FitConfig | None = None
     output_spec_kwargs: dict[str, Any] = field(default_factory=dict)

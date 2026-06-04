@@ -176,10 +176,15 @@ class BayesianOptimizer:
             self.bounds = opt_bounds
             context.bounds = opt_bounds
 
+        cat_dims = self.bundle.cat_dims if self.bundle is not None else []
+        opt_config = _resolve_optimizer_from_cat_dims(
+            opt_config=opt_config,
+            cat_dims=cat_dims,
+        )
         opt_config = _resolve_mixed_fixed_features_from_train_X(
             opt_config=opt_config,
             train_X=self.train_X,
-            cat_dims=self.bundle.cat_dims if self.bundle is not None else [],
+            cat_dims=cat_dims,
         )
 
         acq_config = self._resolve_acquisition_config(acq_config)
@@ -391,6 +396,38 @@ def _resolve_objective_config_n_w_from_input_transform(
 
 def _optimizer_name(optimizer: str) -> str:
     return optimizer.replace("-", "_").lower()
+
+
+def _resolve_optimizer_from_cat_dims(
+    *,
+    opt_config: OptimizeConfig,
+    cat_dims: Sequence[int] | None,
+) -> OptimizeConfig:
+    """カテゴリ列がある場合に canonical optimizer 名を mixed 実装へ解決する。
+
+    利用者は通常 ``optimize_acqf`` / ``evo`` / ``torch`` の3系統を指定すればよく、
+    ``cat_dims`` がある場合は内部で対応する mixed optimizer を使います。
+    明示的に mixed 名が指定されている場合は互換性のためそのまま保持します。
+    """
+    if not cat_dims:
+        return opt_config
+
+    optimizer = opt_config.optimizer
+    if callable(optimizer) and not isinstance(optimizer, str):
+        return opt_config
+
+    name = _optimizer_name(str(optimizer))
+    mixed_by_name = {
+        "optimize_acqf": "optimize_acqf_mixed",
+        "evo": "evo_mixed",
+        "optimize_acqf_evo": "optimize_acqf_evo_mixed",
+        "torch": "torch_mixed",
+        "optimize_acqf_torch": "optimize_acqf_torch_mixed",
+    }
+    mixed_name = mixed_by_name.get(name)
+    if mixed_name is None:
+        return opt_config
+    return replace(opt_config, optimizer=mixed_name)
 
 
 def _uses_mixed_fixed_features(optimizer: Any) -> bool:

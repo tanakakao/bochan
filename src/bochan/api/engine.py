@@ -186,6 +186,7 @@ class BayesianOptimizer:
             train_X=self.train_X,
             cat_dims=cat_dims,
         )
+        opt_config = _resolve_mixed_optimizer_callable(opt_config)
 
         acq_config = self._resolve_acquisition_config(acq_config)
         acq_config = _resolve_objective_config_n_w_from_input_transform(
@@ -430,9 +431,87 @@ def _resolve_optimizer_from_cat_dims(
     return replace(opt_config, optimizer=mixed_name)
 
 
+def _optimize_acqf_evo_mixed_filtered(
+    acq_function: Any,
+    bounds: Any,
+    *,
+    q: int = 1,
+    method: str = "ga",
+    categorical_features: dict[int, Sequence[float]] | None = None,
+    fixed_features: dict[int, float] | None = None,
+    fixed_features_list: list[dict[int, float]] | None = None,
+    candidate_transform: Any = None,
+    enumerate_categorical_features: bool = True,
+    use_categorical_rounding_transform: bool | None = None,
+    inequality_constraints: Any = None,
+    equality_constraints: Any = None,
+    inequality_sense: str = "le",
+    post_processing_func: Any = None,
+    batch_initial_conditions: Any = None,
+    return_best_only: bool = True,
+    sequential: bool = False,
+    options: dict[str, Any] | None = None,
+    X_pending: Any = None,
+    apply_post_processing_during_eval: bool = True,
+    repair_final_candidate: bool = True,
+) -> tuple[Any, Any]:
+    """Signature-filtered wrapper for evo mixed optimization.
+
+    ``OptimizeConfig`` always has BoTorch-style ``num_restarts`` / ``raw_samples``
+    fields.  The evo backend does not accept those arguments, so this explicit
+    signature lets the factory drop them before dispatching.
+    """
+    from bochan.optim import optimize_acqf_evo_mixed
+
+    return optimize_acqf_evo_mixed(
+        acq_function=acq_function,
+        bounds=bounds,
+        q=q,
+        method=method,
+        categorical_features=categorical_features,
+        fixed_features=fixed_features,
+        fixed_features_list=fixed_features_list,
+        candidate_transform=candidate_transform,
+        enumerate_categorical_features=enumerate_categorical_features,
+        use_categorical_rounding_transform=use_categorical_rounding_transform,
+        inequality_constraints=inequality_constraints,
+        equality_constraints=equality_constraints,
+        inequality_sense=inequality_sense,
+        post_processing_func=post_processing_func,
+        batch_initial_conditions=batch_initial_conditions,
+        return_best_only=return_best_only,
+        sequential=sequential,
+        options=options,
+        X_pending=X_pending,
+        apply_post_processing_during_eval=apply_post_processing_during_eval,
+        repair_final_candidate=repair_final_candidate,
+    )
+
+
+def _resolve_mixed_optimizer_callable(opt_config: OptimizeConfig) -> OptimizeConfig:
+    """mixed evo では明示 signature の callable に解決して余計な kwargs を落とす。"""
+    optimizer = opt_config.optimizer
+    if callable(optimizer) and not isinstance(optimizer, str):
+        return opt_config
+
+    name = _optimizer_name(str(optimizer))
+    if name not in {"evo_mixed", "optimize_acqf_evo_mixed"}:
+        return opt_config
+
+    optimizer_kwargs = dict(opt_config.optimizer_kwargs)
+    if opt_config.fixed_features_list is not None:
+        optimizer_kwargs.setdefault("fixed_features_list", opt_config.fixed_features_list)
+
+    return replace(
+        opt_config,
+        optimizer=_optimize_acqf_evo_mixed_filtered,
+        optimizer_kwargs=optimizer_kwargs,
+    )
+
+
 def _uses_mixed_fixed_features(optimizer: Any) -> bool:
     if callable(optimizer) and not isinstance(optimizer, str):
-        return False
+        return optimizer is _optimize_acqf_evo_mixed_filtered
     return _optimizer_name(str(optimizer)) in {
         "optimize_acqf_mixed",
         "evo_mixed",

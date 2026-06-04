@@ -148,6 +148,10 @@ class BayesianOptimizer:
         self._check_fitted()
         context = self._resolve_data_context(data_context)
         acq_config = self._resolve_acquisition_config(acq_config)
+        acq_config = _resolve_objective_config_n_w_from_input_transform(
+            acq_config=acq_config,
+            bundle=self.bundle,
+        )
         acq_config = _filter_context_fields_for_acqf(acq_config)
         return build_acquisition(bundle=self.bundle, config=acq_config, data_context=context)
 
@@ -172,7 +176,22 @@ class BayesianOptimizer:
             self.bounds = opt_bounds
             context.bounds = opt_bounds
 
+        cat_dims = self.bundle.cat_dims if self.bundle is not None else []
+        opt_config = _resolve_optimizer_from_cat_dims(
+            opt_config=opt_config,
+            cat_dims=cat_dims,
+        )
+        opt_config = _resolve_mixed_fixed_features_from_train_X(
+            opt_config=opt_config,
+            train_X=self.train_X,
+            cat_dims=cat_dims,
+        )
+
         acq_config = self._resolve_acquisition_config(acq_config)
+        acq_config = _resolve_objective_config_n_w_from_input_transform(
+            acq_config=acq_config,
+            bundle=self.bundle,
+        )
         acq_config = _filter_context_fields_for_acqf(acq_config)
         acqf = build_acquisition(bundle=self.bundle, config=acq_config, data_context=context)
         candidates, acq_value = optimize_candidates(acqf=acqf, bounds=opt_bounds, config=opt_config)
@@ -302,6 +321,221 @@ def _filter_context_fields_for_acqf(config: AcquisitionConfig) -> AcquisitionCon
     if filtered_fields == config.context_fields:
         return config
     return replace(config, context_fields=filtered_fields)
+
+
+def _input_transform_n_w_from_model_config(model_config: ModelConfig | None) -> int | None:
+    """ModelConfig.input_transform_config から perturbation 用 n_w を取り出す。"""
+    if model_config is None:
+        return None
+    transform_config = getattr(model_config, "input_transform_config", None)
+    if transform_config is None:
+        return None
+    if not bool(getattr(transform_config, "perturbation", False)):
+        return None
+    n_w = getattr(transform_config, "n_w", None)
+    return None if n_w is None else int(n_w)
+
+
+def _safe_output_index(output: Any | None) -> int | None:
+    if output is None or isinstance(output, str):
+        return None
+    try:
+        return int(output)
+    except (TypeError, ValueError):
+        return None
+
+
+def _input_transform_n_w_from_bundle(bundle: ModelBundle | None, output: Any | None = None) -> int | None:
+    """ObjectiveConfig.n_w の未指定時に bundle の input_transform 設定から n_w を推定する。"""
+    if bundle is None:
+        return None
+
+    n_w = _input_transform_n_w_from_model_config(bundle.model_config)
+    if n_w is not None:
+        return n_w
+
+    sub_bundles = list(bundle.metadata.get("sub_bundles", []) or [])
+    if not sub_bundles:
+        return None
+
+    output_index = _safe_output_index(output)
+    if output_index is not None and 0 <= output_index < len(sub_bundles):
+        return _input_transform_n_w_from_model_config(sub_bundles[output_index].model_config)
+
+    inferred_values = [
+        value
+        for value in (_input_transform_n_w_from_model_config(sub_bundle.model_config) for sub_bundle in sub_bundles)
+        if value is not None
+    ]
+    if inferred_values and len(set(inferred_values)) == 1:
+        return inferred_values[0]
+    return None
+
+
+def _resolve_objective_config_n_w_from_input_transform(
+    *,
+    acq_config: AcquisitionConfig,
+    bundle: ModelBundle | None,
+) -> AcquisitionConfig:
+    """ObjectiveConfig.n_w 未指定なら InputTransformConfig.n_w で補完する。"""
+    objective_config = acq_config.objective_config
+    if objective_config is None or objective_config.n_w is not None:
+        return acq_config
+    if "n_w" in objective_config.objective_kwargs:
+        return acq_config
+
+    inferred_n_w = _input_transform_n_w_from_bundle(bundle, output=objective_config.output)
+    if inferred_n_w is None:
+        return acq_config
+
+    return replace(
+        acq_config,
+        objective_config=replace(objective_config, n_w=inferred_n_w),
+    )
+
+
+def _optimizer_name(optimizer: str) -> str:
+    return optimizer.replace("-", "_").lower()
+
+
+def _resolve_optimizer_from_cat_dims(
+    *,
+    opt_config: OptimizeConfig,
+    cat_dims: Sequence[int] | None,
+) -> OptimizeConfig:
+    """カテゴリ列がある場合に canonical optimizer 名を mixed 実装へ解決する。
+
+    利用者は通常 ``optimize_acqf`` / ``evo`` / ``torch`` の3系統を指定すればよく、
+    ``cat_dims`` がある場合は内部で対応する mixed optimizer を使います。
+    明示的に mixed 名が指定されている場合は互換性のためそのまま保持します。
+    """
+    if not cat_dims:
+        return opt_config
+
+    optimizer = opt_config.optimizer
+    if callable(optimizer) and not isinstance(optimizer, str):
+        return opt_config
+
+    name = _optimizer_name(str(optimizer))
+    mixed_by_name = {
+        "optimize_acqf": "optimize_acqf_mixed",
+        "evo": "evo_mixed",
+        "optimize_acqf_evo": "optimize_acqf_evo_mixed",
+        "torch": "torch_mixed",
+        "optimize_acqf_torch": "optimize_acqf_torch_mixed",
+    }
+    mixed_name = mixed_by_name.get(name)
+    if mixed_name is None:
+        return opt_config
+    return replace(opt_config, optimizer=mixed_name)
+
+
+def _uses_mixed_fixed_features(optimizer: Any) -> bool:
+    if callable(optimizer) and not isinstance(optimizer, str):
+        return False
+    return _optimizer_name(str(optimizer)) in {
+        "optimize_acqf_mixed",
+        "evo_mixed",
+        "optimize_acqf_evo_mixed",
+        "torch_mixed",
+        "optimize_acqf_torch_mixed",
+    }
+
+
+def _fixed_features_list_from_category_rows(
+    rows: Any,
+    cat_dims: Sequence[int],
+) -> list[dict[int, float]]:
+    fixed_features_list: list[dict[int, float]] = []
+    for row in rows:
+        fixed_features_list.append(
+            {
+                int(dim): float(value)
+                for dim, value in zip(cat_dims, row)
+            }
+        )
+    return fixed_features_list
+
+
+def _infer_fixed_features_list_from_train_X(
+    train_X: Any,
+    cat_dims: Sequence[int] | None,
+) -> list[dict[int, float]] | None:
+    """train_X のカテゴリ列から mixed optimizer 用 fixed_features_list を推定する。
+
+    観測済みのカテゴリ組み合わせだけを列挙します。これにより、複数カテゴリ列が
+    ある場合でも、未観測かつ無効な組み合わせをデフォルトで探索しにくくします。
+    """
+    cat_dims = list(cat_dims or [])
+    if not cat_dims or train_X is None:
+        return None
+
+    try:
+        import torch
+
+        if isinstance(train_X, torch.Tensor):
+            if train_X.ndim < 2:
+                raise ValueError("train_X must have shape n x d or batch_shape x n x d.")
+            X_cat = train_X[..., cat_dims]
+            if X_cat.ndim > 2:
+                X_cat = X_cat.reshape(-1, len(cat_dims))
+            unique_rows = torch.unique(X_cat, dim=0)
+            if unique_rows.numel() == 0:
+                return None
+            return _fixed_features_list_from_category_rows(unique_rows.detach().cpu().tolist(), cat_dims)
+    except ImportError:
+        pass
+
+    try:
+        import numpy as np
+
+        if isinstance(train_X, np.ndarray):
+            if train_X.ndim < 2:
+                raise ValueError("train_X must have shape n x d or batch_shape x n x d.")
+            X_cat = train_X[..., cat_dims]
+            if X_cat.ndim > 2:
+                X_cat = X_cat.reshape(-1, len(cat_dims))
+            unique_rows = np.unique(X_cat, axis=0)
+            if unique_rows.size == 0:
+                return None
+            return _fixed_features_list_from_category_rows(unique_rows.tolist(), cat_dims)
+    except ImportError:
+        pass
+
+    try:
+        import pandas as pd
+
+        if isinstance(train_X, pd.DataFrame):
+            X_cat = train_X.iloc[:, cat_dims]
+            unique_rows = X_cat.drop_duplicates().to_numpy()
+            if unique_rows.size == 0:
+                return None
+            return _fixed_features_list_from_category_rows(unique_rows.tolist(), cat_dims)
+    except ImportError:
+        pass
+
+    raise TypeError(
+        "Could not infer fixed_features_list from train_X. "
+        "Pass OptimizeConfig.fixed_features_list explicitly."
+    )
+
+
+def _resolve_mixed_fixed_features_from_train_X(
+    *,
+    opt_config: OptimizeConfig,
+    train_X: Any,
+    cat_dims: Sequence[int] | None,
+) -> OptimizeConfig:
+    """mixed optimizer で fixed_features_list 未指定なら train_X から補完する。"""
+    if not _uses_mixed_fixed_features(opt_config.optimizer):
+        return opt_config
+    if opt_config.fixed_features_list is not None:
+        return opt_config
+
+    inferred = _infer_fixed_features_list_from_train_X(train_X, cat_dims)
+    if not inferred:
+        return opt_config
+    return replace(opt_config, fixed_features_list=inferred)
 
 
 def _infer_bounds_from_train_X(train_X: Any) -> Any:

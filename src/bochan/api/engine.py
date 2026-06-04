@@ -172,6 +172,12 @@ class BayesianOptimizer:
             self.bounds = opt_bounds
             context.bounds = opt_bounds
 
+        opt_config = _resolve_mixed_fixed_features_from_train_X(
+            opt_config=opt_config,
+            train_X=self.train_X,
+            cat_dims=self.bundle.cat_dims if self.bundle is not None else [],
+        )
+
         acq_config = self._resolve_acquisition_config(acq_config)
         acq_config = _filter_context_fields_for_acqf(acq_config)
         acqf = build_acquisition(bundle=self.bundle, config=acq_config, data_context=context)
@@ -302,6 +308,118 @@ def _filter_context_fields_for_acqf(config: AcquisitionConfig) -> AcquisitionCon
     if filtered_fields == config.context_fields:
         return config
     return replace(config, context_fields=filtered_fields)
+
+
+def _optimizer_name(optimizer: str) -> str:
+    return optimizer.replace("-", "_").lower()
+
+
+def _uses_mixed_fixed_features(optimizer: Any) -> bool:
+    if callable(optimizer) and not isinstance(optimizer, str):
+        return False
+    return _optimizer_name(str(optimizer)) in {
+        "optimize_acqf_mixed",
+        "evo_mixed",
+        "optimize_acqf_evo_mixed",
+        "torch_mixed",
+        "optimize_acqf_torch_mixed",
+    }
+
+
+def _fixed_features_list_from_category_rows(
+    rows: Any,
+    cat_dims: Sequence[int],
+) -> list[dict[int, float]]:
+    fixed_features_list: list[dict[int, float]] = []
+    for row in rows:
+        fixed_features_list.append(
+            {
+                int(dim): float(value)
+                for dim, value in zip(cat_dims, row)
+            }
+        )
+    return fixed_features_list
+
+
+def _infer_fixed_features_list_from_train_X(
+    train_X: Any,
+    cat_dims: Sequence[int] | None,
+) -> list[dict[int, float]] | None:
+    """train_X のカテゴリ列から mixed optimizer 用 fixed_features_list を推定する。
+
+    観測済みのカテゴリ組み合わせだけを列挙します。これにより、複数カテゴリ列が
+    ある場合でも、未観測かつ無効な組み合わせをデフォルトで探索しにくくします。
+    """
+    cat_dims = list(cat_dims or [])
+    if not cat_dims or train_X is None:
+        return None
+
+    try:
+        import torch
+
+        if isinstance(train_X, torch.Tensor):
+            if train_X.ndim < 2:
+                raise ValueError("train_X must have shape n x d or batch_shape x n x d.")
+            X_cat = train_X[..., cat_dims]
+            if X_cat.ndim > 2:
+                X_cat = X_cat.reshape(-1, len(cat_dims))
+            unique_rows = torch.unique(X_cat, dim=0)
+            if unique_rows.numel() == 0:
+                return None
+            return _fixed_features_list_from_category_rows(unique_rows.detach().cpu().tolist(), cat_dims)
+    except ImportError:
+        pass
+
+    try:
+        import numpy as np
+
+        if isinstance(train_X, np.ndarray):
+            if train_X.ndim < 2:
+                raise ValueError("train_X must have shape n x d or batch_shape x n x d.")
+            X_cat = train_X[..., cat_dims]
+            if X_cat.ndim > 2:
+                X_cat = X_cat.reshape(-1, len(cat_dims))
+            unique_rows = np.unique(X_cat, axis=0)
+            if unique_rows.size == 0:
+                return None
+            return _fixed_features_list_from_category_rows(unique_rows.tolist(), cat_dims)
+    except ImportError:
+        pass
+
+    try:
+        import pandas as pd
+
+        if isinstance(train_X, pd.DataFrame):
+            X_cat = train_X.iloc[:, cat_dims]
+            unique_rows = X_cat.drop_duplicates().to_numpy()
+            if unique_rows.size == 0:
+                return None
+            return _fixed_features_list_from_category_rows(unique_rows.tolist(), cat_dims)
+    except ImportError:
+        pass
+
+    raise TypeError(
+        "Could not infer fixed_features_list from train_X. "
+        "Pass OptimizeConfig.fixed_features_list explicitly."
+    )
+
+
+def _resolve_mixed_fixed_features_from_train_X(
+    *,
+    opt_config: OptimizeConfig,
+    train_X: Any,
+    cat_dims: Sequence[int] | None,
+) -> OptimizeConfig:
+    """mixed optimizer で fixed_features_list 未指定なら train_X から補完する。"""
+    if not _uses_mixed_fixed_features(opt_config.optimizer):
+        return opt_config
+    if opt_config.fixed_features_list is not None:
+        return opt_config
+
+    inferred = _infer_fixed_features_list_from_train_X(train_X, cat_dims)
+    if not inferred:
+        return opt_config
+    return replace(opt_config, fixed_features_list=inferred)
 
 
 def _infer_bounds_from_train_X(train_X: Any) -> Any:

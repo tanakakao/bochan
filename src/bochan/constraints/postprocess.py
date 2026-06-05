@@ -61,7 +61,10 @@ def make_grid_k_sparse_post_processing_func(
         bounds: BoTorch-style bounds with shape ``(2, d)``.
         steps: Grid step sizes with shape ``(d,)`` or ``(len(numeric_indices),)``.
             If ``None``, grid rounding is disabled while k-sparse / linear
-            repairs remain active.
+            repairs remain active.  Grid rounding in this combined repair uses
+            zero as the default grid origin, so ``steps=0.1`` produces values on
+            ``..., -0.2, -0.1, 0.0, 0.1, 0.2, ...`` rather than
+            ``bounds[0] + n * steps``.
         comp_idx: Dimensions subject to k-sparse support.
         k: Maximum number of active components inside ``comp_idx``.  The current
             k-sparse repair keeps exactly up to ``k`` selected support entries.
@@ -74,7 +77,6 @@ def make_grid_k_sparse_post_processing_func(
         final_sum_constraint: Optional ``(indices, rhs)`` sum-on-active-support
             constraint.
         diversify: Whether to perturb duplicate q-batch points and re-repair.
-        diversify_kwargs: Extra args for ``diversify_within_q``.
         final_priority: ``"grid"`` ends with grid rounding; ``"constraints"``
             ends with k-sparse / linear repair.
 
@@ -82,7 +84,7 @@ def make_grid_k_sparse_post_processing_func(
         BoTorch-compatible ``post_processing_func``.
     """
     comp_idx = [] if comp_idx is None else list(comp_idx)
-    
+
     k_post = make_k_sparse_post_processing_func(
         bounds=bounds,
         comp_idx=comp_idx,
@@ -102,10 +104,11 @@ def make_grid_k_sparse_post_processing_func(
         max_iters=max_iters,
     )
 
+    grid_base = torch.zeros_like(bounds[0]) if steps is not None else None
     grid_post = make_grid_rounding_post_processing_func(
         steps=steps,
         bounds=bounds,
-        base=bounds[0],
+        base=grid_base,
         numeric_indices=numeric_indices,
         sparse_indices=comp_idx,
         support_eps=support_eps,
@@ -164,11 +167,12 @@ def validate_post_processed_candidates(
     }
 
     if steps is not None:
+        grid_base = torch.zeros_like(lower) if base is None else base
         gres = grid_residual(
             X,
             steps=steps,
             bounds=bounds,
-            base=base,
+            base=grid_base,
             numeric_indices=numeric_indices,
         )
         max_grid_error = gres.abs().max().item() if gres.numel() > 0 else 0.0
@@ -178,30 +182,25 @@ def validate_post_processed_candidates(
         })
 
     if comp_idx is not None and k is not None:
-        idx = torch.as_tensor(list(comp_idx), device=device, dtype=torch.long)
-        comp = X[..., idx]
-        active_count = (comp.abs() > tol).sum(dim=-1)
-        max_active = int(active_count.max().item()) if active_count.numel() > 0 else 0
-        min_active = int(active_count.min().item()) if active_count.numel() > 0 else 0
+        comp = torch.as_tensor(comp_idx, dtype=torch.long, device=device).reshape(-1)
+        if comp.numel() > 0:
+            active = X[..., comp].abs() > tol
+            active_count = active.sum(dim=-1)
+            max_active = active_count.max().item()
+        else:
+            max_active = 0
         result.update({
-            "min_active_count": min_active,
-            "max_active_count": max_active,
-            "is_k_sparse_ok": max_active <= int(k),
+            "max_active_components": int(max_active),
+            "is_k_sparse_ok": int(max_active) <= int(k),
         })
 
-    if equality_constraints or inequality_constraints:
-        viol = linear_constraint_violations(
+    if equality_constraints is not None or inequality_constraints is not None:
+        violations = linear_constraint_violations(
             X,
             equality_constraints=equality_constraints,
             inequality_constraints=inequality_constraints,
             inequality_sense=inequality_sense,
         )
-        max_eq = viol["eq"].max().item() if viol["eq"].numel() > 0 else 0.0
-        max_ineq = viol["ineq"].max().item() if viol["ineq"].numel() > 0 else 0.0
-        result.update({
-            "max_equality_violation": float(max_eq),
-            "max_inequality_violation": float(max_ineq),
-            "is_linear_constraints_ok": max(max_eq, max_ineq) <= tol,
-        })
+        result.update(violations)
 
     return result

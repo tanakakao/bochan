@@ -15,6 +15,8 @@ from torch import Tensor
 from .constraints import LinearConstraint, make_linear_constraint_repair_func, normalize_bounds
 
 FinalPriority = Literal["grid", "constraints"]
+StepLike = Union[float, int, Sequence[float], Tensor]
+TensorLike = Union[Sequence[float], Tensor]
 
 
 def identity_post_processing_func(X: Tensor) -> Tensor:
@@ -36,29 +38,54 @@ def _as_1d_long_tensor(
     return torch.as_tensor(x, dtype=torch.long, device=device).reshape(-1)
 
 
+def _as_1d_float_tensor(
+    x: StepLike | TensorLike,
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> Tensor:
+    """Convert scalar / sequence / tensor input to a 1D tensor.
+
+    Config objects often provide grid steps as Python lists.  Internally the
+    rounding utilities operate on tensors, so all tensor-like values are
+    normalized through this helper.
+    """
+    return torch.as_tensor(x, device=device, dtype=dtype).reshape(-1)
+
+
 def resolve_step_full(
-    steps: Tensor,
+    steps: StepLike,
     *,
     d: int,
     numeric_indices: Optional[Tensor],
     device: torch.device,
     dtype: torch.dtype,
 ) -> Tensor:
-    """Resolve step sizes to a full ``(d,)`` tensor."""
-    steps_t = steps.to(device=device, dtype=dtype).reshape(-1)
+    """Resolve step sizes to a full ``(d,)`` tensor.
+
+    ``steps`` may be a scalar, tensor, or Python sequence.  A scalar is expanded
+    to all selected numeric dimensions.
+    """
+    steps_t = _as_1d_float_tensor(steps, device=device, dtype=dtype)
     if numeric_indices is None:
-        if steps_t.numel() != d:
-            raise ValueError(f"steps must have length {d} when numeric_indices is None.")
-        step_full = steps_t.clone()
+        if steps_t.numel() == 1:
+            step_full = steps_t.expand(d).clone()
+        elif steps_t.numel() == d:
+            step_full = steps_t.clone()
+        else:
+            raise ValueError(f"steps must be scalar or have length {d} when numeric_indices is None.")
     else:
-        if steps_t.numel() == d:
+        if steps_t.numel() == 1:
+            step_full = torch.ones(d, device=device, dtype=dtype)
+            step_full[numeric_indices] = steps_t.expand(numeric_indices.numel())
+        elif steps_t.numel() == d:
             step_full = steps_t.clone()
         elif steps_t.numel() == numeric_indices.numel():
             step_full = torch.ones(d, device=device, dtype=dtype)
             step_full[numeric_indices] = steps_t
         else:
             raise ValueError(
-                "steps must have length d or len(numeric_indices). "
+                "steps must be scalar, length d, or len(numeric_indices). "
                 f"Got steps={steps_t.numel()}, d={d}, len(numeric_indices)={numeric_indices.numel()}."
             )
     if torch.any(step_full <= 0):
@@ -69,9 +96,9 @@ def resolve_step_full(
 def round_numeric(
     X: Tensor,
     *,
-    steps: Optional[Tensor] = None,
+    steps: Optional[StepLike] = None,
     bounds: Tensor,
-    base: Optional[Tensor] = None,
+    base: Optional[TensorLike] = None,
     numeric_indices: Optional[Union[Sequence[int], Tensor]] = None,
     clamp: bool = True,
 ) -> Tensor:
@@ -80,6 +107,7 @@ def round_numeric(
     Args:
         X: Candidate tensor with shape ``(..., d)``.
         steps: Grid step sizes with shape ``(d,)`` or ``(len(numeric_indices),)``.
+            A scalar value is broadcast to all selected numeric dimensions.
             If ``None``, no rounding or clamping is performed and ``X`` is
             returned unchanged.
         bounds: BoTorch-style bounds with shape ``(2, d)``.
@@ -99,7 +127,7 @@ def round_numeric(
     d = int(X.shape[-1])
     device, dtype = X.device, X.dtype
     lower, upper = normalize_bounds(bounds, d=d, device=device, dtype=dtype)
-    base_t = lower if base is None else base.to(device=device, dtype=dtype).reshape(-1)
+    base_t = lower if base is None else _as_1d_float_tensor(base, device=device, dtype=dtype)
     if base_t.numel() != d:
         raise ValueError(f"base must have length {d}.")
 
@@ -131,9 +159,9 @@ def round_numeric(
 def round_numeric_preserve_sparse_support(
     X: Tensor,
     *,
-    steps: Optional[Tensor] = None,
+    steps: Optional[StepLike] = None,
     bounds: Tensor,
-    base: Optional[Tensor] = None,
+    base: Optional[TensorLike] = None,
     numeric_indices: Optional[Union[Sequence[int], Tensor]] = None,
     sparse_indices: Optional[Union[Sequence[int], Tensor]] = None,
     support_eps: float = 0.0,
@@ -172,9 +200,9 @@ def round_numeric_preserve_sparse_support(
 
 def make_grid_rounding_post_processing_func(
     *,
-    steps: Optional[Tensor] = None,
+    steps: Optional[StepLike] = None,
     bounds: Tensor,
-    base: Optional[Tensor] = None,
+    base: Optional[TensorLike] = None,
     numeric_indices: Optional[Union[Sequence[int], Tensor]] = None,
     sparse_indices: Optional[Union[Sequence[int], Tensor]] = None,
     support_eps: float = 0.0,
@@ -213,9 +241,9 @@ def make_grid_rounding_post_processing_func(
 
 def make_grid_rounding_with_linear_repair_func(
     *,
-    steps: Optional[Tensor] = None,
+    steps: Optional[StepLike] = None,
     bounds: Tensor,
-    base: Optional[Tensor] = None,
+    base: Optional[TensorLike] = None,
     numeric_indices: Optional[Union[Sequence[int], Tensor]] = None,
     sparse_indices: Optional[Union[Sequence[int], Tensor]] = None,
     equality_constraints: Optional[Sequence[LinearConstraint]] = None,
@@ -273,9 +301,9 @@ def make_grid_rounding_with_linear_repair_func(
 def grid_residual(
     X: Tensor,
     *,
-    steps: Optional[Tensor] = None,
+    steps: Optional[StepLike] = None,
     bounds: Tensor,
-    base: Optional[Tensor] = None,
+    base: Optional[TensorLike] = None,
     numeric_indices: Optional[Union[Sequence[int], Tensor]] = None,
 ) -> Tensor:
     """Return distance from the nearest grid point in step units.
@@ -289,7 +317,7 @@ def grid_residual(
     d = int(X.shape[-1])
     device, dtype = X.device, X.dtype
     lower, _ = normalize_bounds(bounds, d=d, device=device, dtype=dtype)
-    base_t = lower if base is None else base.to(device=device, dtype=dtype).reshape(-1)
+    base_t = lower if base is None else _as_1d_float_tensor(base, device=device, dtype=dtype)
     numeric_idx = _as_1d_long_tensor(numeric_indices, device=device)
     if numeric_idx is None:
         numeric_idx = torch.arange(d, device=device, dtype=torch.long)

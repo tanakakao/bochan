@@ -61,10 +61,8 @@ def make_grid_k_sparse_post_processing_func(
         bounds: BoTorch-style bounds with shape ``(2, d)``.
         steps: Grid step sizes with shape ``(d,)`` or ``(len(numeric_indices),)``.
             If ``None``, grid rounding is disabled while k-sparse / linear
-            repairs remain active.  Grid rounding in this combined repair uses
-            zero as the default grid origin, so ``steps=0.1`` produces values on
-            ``..., -0.2, -0.1, 0.0, 0.1, 0.2, ...`` rather than
-            ``bounds[0] + n * steps``.
+            repairs remain active. Grid rounding uses ``bounds[0]`` as the grid
+            origin, so candidates are snapped to ``bounds[0] + n * steps``.
         comp_idx: Dimensions subject to k-sparse support.
         k: Maximum number of active components inside ``comp_idx``.  The current
             k-sparse repair keeps exactly up to ``k`` selected support entries.
@@ -104,11 +102,10 @@ def make_grid_k_sparse_post_processing_func(
         max_iters=max_iters,
     )
 
-    grid_base = torch.zeros_like(bounds[0]) if steps is not None else None
     grid_post = make_grid_rounding_post_processing_func(
         steps=steps,
         bounds=bounds,
-        base=grid_base,
+        base=bounds[0],
         numeric_indices=numeric_indices,
         sparse_indices=comp_idx,
         support_eps=support_eps,
@@ -167,7 +164,7 @@ def validate_post_processed_candidates(
     }
 
     if steps is not None:
-        grid_base = torch.zeros_like(lower) if base is None else base
+        grid_base = lower if base is None else base
         gres = grid_residual(
             X,
             steps=steps,

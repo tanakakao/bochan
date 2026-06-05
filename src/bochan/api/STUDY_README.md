@@ -39,7 +39,181 @@ train_X, train_Y = study.completed_data()
 
 ---
 
-## 2. 実験・Web アプリ・シミュレーションで使う
+## 2. config の最小設定例
+
+`BochanStudy` は既存の `ModelConfig`, `FitConfig`, `AcquisitionConfig`, `OptimizeConfig`, `DataContext` をそのまま受け取ります。
+
+### 2.1 単目的 regression + EI
+
+```python
+import torch
+
+from bochan.api import (
+    AcquisitionConfig,
+    BochanStudy,
+    DataContext,
+    FitConfig,
+    ModelConfig,
+    ObjectiveConfig,
+    OptimizeConfig,
+)
+
+bounds = torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double)
+
+model_config = ModelConfig(
+    task_type="regression",
+    model_type="base",
+    outcome_transform=True,
+)
+
+fit_config = FitConfig(
+    maxiter=128,
+)
+
+acq_config = AcquisitionConfig(
+    name="EI",
+    objective_config=ObjectiveConfig(
+        direction="maximize",
+    ),
+)
+
+opt_config = OptimizeConfig(
+    q=1,
+    num_restarts=10,
+    raw_samples=256,
+)
+
+data_context = DataContext(
+    bounds=bounds,
+)
+
+study = BochanStudy(
+    model_config=model_config,
+    fit_config=fit_config,
+    acq_config=acq_config,
+    opt_config=opt_config,
+    data_context=data_context,
+    bounds=bounds,
+    n_initial_random=5,
+)
+```
+
+`EI` の `best_f` などは `DataContext` や `acqf_kwargs` で明示的に渡せます。
+
+```python
+acq_config = AcquisitionConfig(
+    name="EI",
+    acqf_kwargs={"best_f": train_Y.max()},
+)
+```
+
+### 2.2 batch 候補 + qUCB
+
+```python
+acq_config = AcquisitionConfig(
+    name="UCB",
+    acqf_kwargs={"beta": 2.0},
+)
+
+opt_config = OptimizeConfig(
+    q=3,
+    num_restarts=20,
+    raw_samples=512,
+    sequential=False,
+)
+
+study = BochanStudy(
+    model_config=model_config,
+    fit_config=fit_config,
+    acq_config=acq_config,
+    opt_config=opt_config,
+    bounds=bounds,
+    n_initial_random=10,
+)
+```
+
+### 2.3 mixed model
+
+カテゴリ列がある場合は、`ModelConfig.cat_dims` に列 index を渡します。
+
+```python
+model_config = ModelConfig(
+    task_type="regression",
+    model_type="base",
+    cat_dims=[2],
+)
+
+opt_config = OptimizeConfig(
+    q=3,
+    num_restarts=10,
+    raw_samples=256,
+)
+```
+
+`cat_dims` がある場合、`BayesianOptimizer` 側で mixed optimizer へ解決されます。
+
+### 2.4 多目的 EHVI / NEHVI の雛形
+
+```python
+from bochan.api import MultiObjectiveConfig
+
+model_config = ModelConfig(
+    task_type="multi_objective",
+    model_type="base",
+    outcome_transform=True,
+)
+
+data_context = DataContext(
+    bounds=bounds,
+    multi_objective=MultiObjectiveConfig(
+        ref_point=torch.tensor([0.0, 0.0], dtype=torch.double),
+    ),
+)
+
+acq_config = AcquisitionConfig(
+    name="NEHVI",
+)
+
+opt_config = OptimizeConfig(
+    q=3,
+    num_restarts=10,
+    raw_samples=256,
+)
+
+study = BochanStudy(
+    model_config=model_config,
+    fit_config=fit_config,
+    acq_config=acq_config,
+    opt_config=opt_config,
+    data_context=data_context,
+    bounds=bounds,
+    n_initial_random=10,
+)
+```
+
+`ref_point`, `Y_baseline`, `partitioning`, `constraints` などは `MultiObjectiveConfig` または `DataContext` から渡します。
+
+### 2.5 保存・再開時の config 再注入
+
+`save()` は trial 履歴を中心に JSON 保存します。`ModelConfig` などには callable や実行時オブジェクトが含まれる場合があるため、再開時は config を再注入します。
+
+```python
+study.save("study.json")
+
+study = BochanStudy.load(
+    "study.json",
+    model_config=model_config,
+    fit_config=fit_config,
+    acq_config=acq_config,
+    opt_config=opt_config,
+    data_context=data_context,
+    bounds=bounds,
+)
+```
+
+---
+
+## 3. 実験・Web アプリ・シミュレーションで使う
 
 ```python
 batch = study.ask(q=3, return_batch=True)
@@ -70,7 +244,7 @@ next_batch = study.ask(q=3, return_batch=True)
 
 ---
 
-## 3. Trial の状態管理
+## 4. Trial の状態管理
 
 `BochanStudy` は trial ごとに状態を持ちます。
 
@@ -95,7 +269,7 @@ study.mark_failed(batch.trial_ids[:1], reason="simulation crashed")
 
 ---
 
-## 4. 既存 API との関係
+## 5. 既存 API との関係
 
 `BochanStudy` は既存の4段階 API を置き換えません。
 
@@ -112,7 +286,7 @@ candidates, acq_value = optimize_candidates(acqf, bounds, opt_config)
 
 ---
 
-## 5. 主なメソッド
+## 6. 主なメソッド
 
 | メソッド | 役割 |
 |---|---|

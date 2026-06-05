@@ -213,7 +213,165 @@ study = BochanStudy.load(
 
 ---
 
-## 3. 実験・Web アプリ・シミュレーションで使う
+## 3. Early stopping
+
+`EarlyStoppingConfig` を使うと、`optimize()` の batch ごとに停止判定できます。
+
+### 3.1 目標値を超えたら停止
+
+```python
+from bochan.api import EarlyStoppingConfig
+
+study = BochanStudy(
+    model_config=model_config,
+    fit_config=fit_config,
+    acq_config=acq_config,
+    opt_config=opt_config,
+    bounds=bounds,
+    n_initial_random=5,
+    early_stopping_config=EarlyStoppingConfig(
+        output_index=0,
+        direction="maximize",
+        target=0.90,
+        target_mode="ge",
+        target_patience=2,
+        min_completed_trials=5,
+    ),
+)
+
+study.optimize(objective_func, n_trials=100, q=3)
+
+if study.stop_decision and study.stop_decision.should_stop:
+    print(study.stop_decision.reason)
+    print(study.stop_decision.details)
+```
+
+`target_patience=2` の場合、目標到達が 2 batch 続いたら停止します。
+
+### 3.2 目標値を下回ったら停止
+
+```python
+early_stopping_config = EarlyStoppingConfig(
+    output_index=0,
+    direction="minimize",
+    target=0.05,
+    target_mode="le",
+    target_patience=1,
+)
+```
+
+### 3.3 目標値との差が一定以下なら停止
+
+```python
+early_stopping_config = EarlyStoppingConfig(
+    output_index=0,
+    direction="minimize",
+    target=1.50,
+    target_mode="abs_diff_le",
+    target_tolerance=0.02,
+    target_patience=3,
+)
+```
+
+この場合、`abs(y - 1.50) <= 0.02` の batch が 3 回続いたら停止します。
+
+### 3.4 改善が見えない場合に停止
+
+```python
+early_stopping_config = EarlyStoppingConfig(
+    output_index=0,
+    direction="maximize",
+    no_improvement_patience=5,
+    min_delta=0.01,
+    min_completed_trials=10,
+)
+```
+
+`no_improvement_patience=5` の場合、best 値が `min_delta` 以上改善しない batch が 5 回続いたら停止します。
+
+---
+
+## 4. Generation schedule
+
+`GenerationSchedule` を使うと、進行状況に応じて `q`, `acq_config`, `opt_config`, `data_context` を切り替えられます。
+
+### 4.1 最初は q 多めで探索、後半は q 少なめで活用
+
+```python
+from bochan.api import GenerationSchedule, GenerationStep
+
+schedule = GenerationSchedule(
+    steps=[
+        GenerationStep(
+            name="explore",
+            num_trials=20,
+            q=5,
+            acq_config=AcquisitionConfig(
+                name="UCB",
+                acqf_kwargs={"beta": 4.0},
+            ),
+            opt_config=OptimizeConfig(
+                q=5,
+                num_restarts=20,
+                raw_samples=512,
+            ),
+        ),
+        GenerationStep(
+            name="exploit",
+            q=1,
+            acq_config=AcquisitionConfig(
+                name="EI",
+            ),
+            opt_config=OptimizeConfig(
+                q=1,
+                num_restarts=10,
+                raw_samples=256,
+            ),
+        ),
+    ]
+)
+
+study = BochanStudy(
+    model_config=model_config,
+    fit_config=fit_config,
+    bounds=bounds,
+    n_initial_random=5,
+    generation_schedule=schedule,
+)
+
+study.optimize(objective_func, n_trials=50)
+```
+
+この例では、完了 trial 数が 20 未満の間は `explore` step を使い、その後は `exploit` step を使います。
+
+### 4.2 completed trial 数で明示的に切り替える
+
+```python
+schedule = GenerationSchedule(
+    steps=[
+        GenerationStep(name="initial", until_completed=10, q=5),
+        GenerationStep(name="middle", until_completed=30, q=3),
+        GenerationStep(name="final", q=1),
+    ]
+)
+```
+
+`ask()` でも schedule は使えます。
+
+```python
+batch = study.ask(return_batch=True)
+print(batch.trial_ids)
+```
+
+どの step で生成されたかは trial metadata に保存されます。
+
+```python
+history = study.trials_dataframe()
+```
+
+---
+
+## 5. 実験・Web アプリ・シミュレーションで使う
 
 ```python
 batch = study.ask(q=3, return_batch=True)
@@ -244,7 +402,7 @@ next_batch = study.ask(q=3, return_batch=True)
 
 ---
 
-## 4. Trial の状態管理
+## 6. Trial の状態管理
 
 `BochanStudy` は trial ごとに状態を持ちます。
 
@@ -269,7 +427,7 @@ study.mark_failed(batch.trial_ids[:1], reason="simulation crashed")
 
 ---
 
-## 5. 既存 API との関係
+## 7. 既存 API との関係
 
 `BochanStudy` は既存の4段階 API を置き換えません。
 
@@ -286,7 +444,7 @@ candidates, acq_value = optimize_candidates(acqf, bounds, opt_config)
 
 ---
 
-## 6. 主なメソッド
+## 8. 主なメソッド
 
 | メソッド | 役割 |
 |---|---|
@@ -294,6 +452,8 @@ candidates, acq_value = optimize_candidates(acqf, bounds, opt_config)
 | `ask(q)` | 次の候補点を生成 |
 | `tell(batch, values)` | 候補点の評価結果を登録 |
 | `optimize(objective_func, n_trials, q)` | Python 関数を使って自動ループ |
+| `check_early_stop()` | early stopping 条件を手動で判定 |
+| `current_generation_step()` | 現在の schedule step を確認 |
 | `completed_data()` | `COMPLETED` trial から `train_X`, `train_Y` を作る |
 | `pending_data()` | `CANDIDATE` / `RUNNING` から `X_pending` を作る |
 | `save(path)` | trial 履歴を JSON 保存 |

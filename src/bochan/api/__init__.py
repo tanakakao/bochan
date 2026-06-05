@@ -29,7 +29,14 @@ from .factory import (
     resolve_model_cls,
 )
 from .model_registry import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
-from .study import BochanStudy, CandidateBatch, StudySnapshot, Trial, TrialState
+from .study import CandidateBatch, StudySnapshot, Trial, TrialState
+from .study_controls import (
+    BochanStudy,
+    EarlyStoppingConfig,
+    GenerationSchedule,
+    GenerationStep,
+    StopDecision,
+)
 
 __all__ = [
     "AcquisitionConfig",
@@ -41,7 +48,10 @@ __all__ = [
     "CandidateResult",
     "DEFAULT_MODEL_REGISTRY",
     "DataContext",
+    "EarlyStoppingConfig",
     "FitConfig",
+    "GenerationSchedule",
+    "GenerationStep",
     "InputTransformConfig",
     "LazyModelRegistry",
     "MODEL_REGISTRY",
@@ -53,6 +63,7 @@ __all__ = [
     "OptimizeConfig",
     "OutputConfig",
     "PredictionResult",
+    "StopDecision",
     "StudySnapshot",
     "Trial",
     "TrialState",

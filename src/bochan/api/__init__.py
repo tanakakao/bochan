@@ -29,11 +29,14 @@ from .factory import (
     resolve_model_cls,
 )
 from .model_registry import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
+from .study import BochanStudy, CandidateBatch, StudySnapshot, Trial, TrialState
 
 __all__ = [
     "AcquisitionConfig",
     "AutoStandardizeOutcomeTransform",
     "BayesianOptimizer",
+    "BochanStudy",
+    "CandidateBatch",
     "CandidateRepairConfig",
     "CandidateResult",
     "DEFAULT_MODEL_REGISTRY",
@@ -50,6 +53,9 @@ __all__ = [
     "OptimizeConfig",
     "OutputConfig",
     "PredictionResult",
+    "StudySnapshot",
+    "Trial",
+    "TrialState",
     "available_acqf_names",
     "build_acquisition",
     "build_model",

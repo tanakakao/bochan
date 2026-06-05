@@ -77,8 +77,8 @@ class BayesianOptimizer:
 
         if self.bounds is None:
             self.bounds = _infer_bounds_from_train_X(train_X)
-        if self.data_context is not None and self.data_context.bounds is None:
-            self.data_context.bounds = self.bounds
+        if self.data_context is not None:
+            self._resolve_data_context(self.data_context)
 
         self.bundle = build_model(
             train_X=train_X,
@@ -281,19 +281,32 @@ class BayesianOptimizer:
         return self
 
     def _resolve_data_context(self, data_context: DataContext | None = None) -> DataContext:
+        """DataContext を解決し、未指定の安全な既定値を学習データから補完する。
+
+        明示指定された値は上書きしません。補完するのは、獲得関数に渡しても
+        意味が安定している文脈情報だけです。
+        """
         if data_context is not None:
-            if data_context.bounds is None:
-                data_context.bounds = self.bounds
-            if data_context.X_baseline is None:
-                data_context.X_baseline = self.train_X
-            return data_context
-        if self.data_context is not None:
-            if self.data_context.bounds is None:
-                self.data_context.bounds = self.bounds
-            if self.data_context.X_baseline is None:
-                self.data_context.X_baseline = self.train_X
-            return self.data_context
-        return DataContext(bounds=self.bounds, X_baseline=self.train_X)
+            context = data_context
+        elif self.data_context is not None:
+            context = self.data_context
+        else:
+            context = DataContext()
+
+        if context.bounds is None:
+            context.bounds = self.bounds
+        if context.bounds is None and self.train_X is not None:
+            context.bounds = _infer_bounds_from_train_X(self.train_X)
+            self.bounds = context.bounds
+
+        if context.X_baseline is None:
+            context.X_baseline = self.train_X
+        if context.Y_baseline is None:
+            context.Y_baseline = self.train_Y
+        if context.mc_points is None:
+            context.mc_points = self.train_X
+
+        return context
 
     def _check_fitted(self) -> None:
         if self.bundle is None or self.model is None:

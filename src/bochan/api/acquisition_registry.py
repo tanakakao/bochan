@@ -352,12 +352,23 @@ _register_alias("qOrdinalVariance", "bochan.acquisition.ordinal.active_learning"
 _register_alias("qNonGaussianVariance", "bochan.acquisition.non_gaussian.active_learning", "qNonGaussianResponseMeanVariance")
 
 
+_NIPV_SHORT_NAMES = {
+    "nipv",
+    "qnipv",
+    "negintegratedposteriorvariance",
+    "qnegintegratedposteriorvariance",
+    "negativeintegratedposteriorvariance",
+    "qnegativeintegratedposteriorvariance",
+}
+
+
 _CONTEXTUAL_SHORT_NAMES = {
     "bald",
     "predictiveentropy",
     "entropy",
     "variance",
     "posteriorvariance",
+    *_NIPV_SHORT_NAMES,
     "margin",
     "marginuncertainty",
     "straddle",
@@ -453,6 +464,51 @@ def _raise_regression_only(name: str, task: str) -> None:
     )
 
 
+def _resolve_contextual_nipv_path(
+    *,
+    task: str,
+    prefix: str,
+) -> AcqPath:
+    """Resolve NIPV to the best available task-specific NIPV-style acquisition.
+
+    Some model families have true / fantasy NIPV implementations, while others
+    expose a lightweight IPV-style proxy. The public short name ``NIPV`` maps to
+    the recommended available implementation for the current model family.
+    """
+    canonical_by_prefix = {
+        # regression
+        "qRegression": "qRegressionNegIntegratedPosteriorVariance",
+        "qMultiOutputRegression": "qMultiOutputRegressionNegIntegratedPosteriorVariance",
+        "qHeteroRegression": "qHeteroRegressionNegIntegratedPosteriorVariance",
+        "qHeteroMultiOutputRegression": "qHeteroMultiOutputRegressionIntegratedPosteriorVarianceProxy",
+        # binary classification
+        "qBinary": "qBinaryFantasyNegIntegratedPosteriorVariance",
+        "qMultiOutputBinary": "qMultiOutputBinaryIntegratedPosteriorVarianceProxy",
+        "qHeteroBinary": "qHeteroBinaryIntegratedPosteriorVariance",
+        "qHeteroMultiOutputBinary": "qHeteroMultiOutputBinaryIntegratedPosteriorVarianceProxy",
+        # ordinal regression
+        "qOrdinal": "qOrdinalFantasyNegIntegratedPosteriorVariance",
+        "qMultiOutputOrdinal": "qMultiOutputOrdinalFantasyNegIntegratedPosteriorVariance",
+        "qHeteroOrdinal": "qHeteroOrdinalIntegratedPosteriorVariance",
+        "qHeteroMultiOutputOrdinal": "qHeteroMultiOutputOrdinalIntegratedPosteriorVarianceProxy",
+    }
+
+    canonical_name = canonical_by_prefix.get(prefix)
+    if canonical_name is None:
+        raise ValueError(
+            f"NIPV is not registered for task_type={task!r} and prefix={prefix!r}. "
+            "Use a canonical acquisition name if a task-specific NIPV implementation exists."
+        )
+
+    canonical_key = _normalize_acqf_name(canonical_name)
+    if canonical_key not in _ACQF_ALIASES:
+        raise ValueError(
+            f"NIPV resolved to {canonical_name!r}, but that acquisition is not registered. "
+            "Use a canonical acquisition name."
+        )
+    return _ACQF_ALIASES[canonical_key]
+
+
 def _resolve_contextual_bo_path(
     normalized_name: str,
     *,
@@ -460,6 +516,9 @@ def _resolve_contextual_bo_path(
     prefix: str,
     multi_output: bool,
 ) -> AcqPath | None:
+    if normalized_name in _NIPV_SHORT_NAMES:
+        return _resolve_contextual_nipv_path(task=task, prefix=prefix)
+
     if normalized_name in {"kg", "qkg", "knowledgegradient", "qknowledgegradient"}:
         if task != "regression":
             _raise_regression_only(normalized_name, task)

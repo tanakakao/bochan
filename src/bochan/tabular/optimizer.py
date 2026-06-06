@@ -1,10 +1,15 @@
-'''Pandas / numpy friendly wrapper around :class:`bochan.api.BayesianOptimizer`.'''
+'''Pandas / numpy friendly wrapper around :class:`bochan.api.BayesianOptimizer`.
+
+The public API accepts tabular options as direct keyword arguments.  Internally
+these values are normalized to ``TabularDataConfig`` so the lower-level
+conversion helpers can remain small and testable.
+'''
 
 from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from bochan.api import (
     AcquisitionConfig,
@@ -26,21 +31,102 @@ from .converter import (
 )
 
 
+def _make_tabular_data_config(
+    data_config: TabularDataConfig | None = None,
+    *,
+    input_cols: Sequence[ColumnKey] | None = None,
+    target_cols: Sequence[ColumnKey] | ColumnKey | None = None,
+    categorical_cols: Sequence[ColumnKey] | None = None,
+    bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None,
+    dtype: Any | None = None,
+    device: Any | None = None,
+    dropna: bool | None = None,
+    encode_categories: bool | None = None,
+    category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
+    return_original_categories: bool | None = None,
+) -> TabularDataConfig:
+    '''Merge direct keyword arguments with an optional config object.'''
+
+    base = data_config or TabularDataConfig()
+    return replace(
+        base,
+        input_cols=base.input_cols if input_cols is None else input_cols,
+        target_cols=base.target_cols if target_cols is None else target_cols,
+        categorical_cols=base.categorical_cols if categorical_cols is None else categorical_cols,
+        bounds=base.bounds if bounds is None else bounds,
+        dtype=base.dtype if dtype is None else dtype,
+        device=base.device if device is None else device,
+        dropna=base.dropna if dropna is None else bool(dropna),
+        encode_categories=base.encode_categories if encode_categories is None else bool(encode_categories),
+        category_maps=base.category_maps if category_maps is None else category_maps,
+        return_original_categories=(
+            base.return_original_categories
+            if return_original_categories is None
+            else bool(return_original_categories)
+        ),
+    )
+
+
 class TabularBayesianOptimizer:
-    '''BayesianOptimizer wrapper for DataFrame / numpy / CSV workflows.'''
+    '''BayesianOptimizer wrapper for DataFrame / numpy / CSV workflows.
+
+    Args:
+        model_config: Core bochan model configuration.
+        fit_config: Optional fitting configuration.
+        input_cols: Feature columns to use from a DataFrame.  If omitted,
+            all non-target columns are used.
+        target_cols: Target column or columns.  Required when fitting from a
+            DataFrame unless supplied later in ``fit(...)``.
+        categorical_cols: Categorical feature columns.  These are converted to
+            ``ModelConfig.cat_dims`` when ``model_config.cat_dims`` is omitted.
+        bounds: Optional column-name mapping or ``2 x d`` bounds array.
+        dtype: Torch dtype or dtype name.  Defaults to ``torch.double``.
+        device: Optional torch device.
+        dropna: Whether to drop rows with missing input / target values.
+        encode_categories: Whether to encode string categorical columns.
+        category_maps: Optional explicit category encoders.
+        return_original_categories: Decode encoded categories in returned
+            candidate DataFrames when possible.
+        data_config: Optional low-level config object kept for backward
+            compatibility.  Direct keyword arguments take precedence.
+        data: Optional DataFrame / array to store for later ``fit()``.
+        **bo_kwargs: Forwarded to ``BayesianOptimizer``.
+    '''
 
     def __init__(
         self,
         model_config: ModelConfig,
         fit_config: FitConfig | None = None,
         *,
+        input_cols: Sequence[ColumnKey] | None = None,
+        target_cols: Sequence[ColumnKey] | ColumnKey | None = None,
+        categorical_cols: Sequence[ColumnKey] | None = None,
+        bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None,
+        dtype: Any | None = None,
+        device: Any | None = None,
+        dropna: bool | None = None,
+        encode_categories: bool | None = None,
+        category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
+        return_original_categories: bool | None = None,
         data_config: TabularDataConfig | None = None,
         data: Any | None = None,
         **bo_kwargs: Any,
     ) -> None:
         self.model_config = model_config
         self.fit_config = fit_config
-        self.data_config = data_config or TabularDataConfig()
+        self.data_config = _make_tabular_data_config(
+            data_config,
+            input_cols=input_cols,
+            target_cols=target_cols,
+            categorical_cols=categorical_cols,
+            bounds=bounds,
+            dtype=dtype,
+            device=device,
+            dropna=dropna,
+            encode_categories=encode_categories,
+            category_maps=category_maps,
+            return_original_categories=return_original_categories,
+        )
         self.data = data
 
         self.bo_kwargs = dict(bo_kwargs)
@@ -59,6 +145,16 @@ class TabularBayesianOptimizer:
         *,
         model_config: ModelConfig,
         fit_config: FitConfig | None = None,
+        input_cols: Sequence[ColumnKey] | None = None,
+        target_cols: Sequence[ColumnKey] | ColumnKey | None = None,
+        categorical_cols: Sequence[ColumnKey] | None = None,
+        bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None,
+        dtype: Any | None = None,
+        device: Any | None = None,
+        dropna: bool | None = None,
+        encode_categories: bool | None = None,
+        category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
+        return_original_categories: bool | None = None,
         data_config: TabularDataConfig | None = None,
         read_csv_kwargs: dict[str, Any] | None = None,
         **bo_kwargs: Any,
@@ -74,6 +170,16 @@ class TabularBayesianOptimizer:
         return cls(
             model_config=model_config,
             fit_config=fit_config,
+            input_cols=input_cols,
+            target_cols=target_cols,
+            categorical_cols=categorical_cols,
+            bounds=bounds,
+            dtype=dtype,
+            device=device,
+            dropna=dropna,
+            encode_categories=encode_categories,
+            category_maps=category_maps,
+            return_original_categories=return_original_categories,
             data_config=data_config,
             data=data,
             **bo_kwargs,
@@ -84,21 +190,23 @@ class TabularBayesianOptimizer:
         data: Any,
         y: Any | None = None,
         *,
+        data_config: TabularDataConfig | None = None,
         feature_names: Sequence[ColumnKey] | None = None,
         target_names: Sequence[ColumnKey] | None = None,
     ) -> TabularDataset:
+        config = data_config or self.data_config
         try:
             import pandas as pd
         except ImportError:
             pd = None
 
         if pd is not None and isinstance(data, pd.DataFrame):
-            return dataframe_to_tensors(data, self.data_config)
+            return dataframe_to_tensors(data, config)
 
         return numpy_to_tensors(
             data,
             y,
-            self.data_config,
+            config,
             feature_names=feature_names,
             target_names=target_names,
         )
@@ -115,6 +223,17 @@ class TabularBayesianOptimizer:
         data: Any | None = None,
         y: Any | None = None,
         *,
+        input_cols: Sequence[ColumnKey] | None = None,
+        target_cols: Sequence[ColumnKey] | ColumnKey | None = None,
+        categorical_cols: Sequence[ColumnKey] | None = None,
+        bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None,
+        dtype: Any | None = None,
+        device: Any | None = None,
+        dropna: bool | None = None,
+        encode_categories: bool | None = None,
+        category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
+        return_original_categories: bool | None = None,
+        data_config: TabularDataConfig | None = None,
         feature_names: Sequence[ColumnKey] | None = None,
         target_names: Sequence[ColumnKey] | None = None,
         model_config: ModelConfig | None = None,
@@ -132,9 +251,25 @@ class TabularBayesianOptimizer:
         if fit_config is not None:
             self.fit_config = fit_config
 
+        resolved_data_config = _make_tabular_data_config(
+            data_config or self.data_config,
+            input_cols=input_cols,
+            target_cols=target_cols,
+            categorical_cols=categorical_cols,
+            bounds=bounds,
+            dtype=dtype,
+            device=device,
+            dropna=dropna,
+            encode_categories=encode_categories,
+            category_maps=category_maps,
+            return_original_categories=return_original_categories,
+        )
+        self.data_config = resolved_data_config
+
         dataset = self._to_dataset(
             data,
             y,
+            data_config=resolved_data_config,
             feature_names=feature_names,
             target_names=target_names,
         )
@@ -162,7 +297,7 @@ class TabularBayesianOptimizer:
         opt_config: OptimizeConfig,
         *,
         data_context: DataContext | None = None,
-        bounds: Any | None = None,
+        bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None,
         return_dataframe: bool = True,
         return_result: bool = False,
     ) -> Any:

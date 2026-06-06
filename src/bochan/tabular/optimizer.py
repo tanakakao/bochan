@@ -49,12 +49,14 @@ def _make_tabular_data_config(
     input_cols: Sequence[ColumnKey] | None = None,
     target_cols: Sequence[ColumnKey] | ColumnKey | None = None,
     categorical_cols: Sequence[ColumnKey] | None = None,
+    target_categorical_cols: Sequence[ColumnKey] | None = None,
     bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None,
     dtype: Any | None = None,
     device: Any | None = None,
     dropna: bool | None = None,
     encode_categories: bool | None = None,
     category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
+    target_category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
     return_original_categories: bool | None = None,
 ) -> TabularDataConfig:
     '''Merge direct tabular keyword arguments with an optional config object.'''
@@ -65,12 +67,18 @@ def _make_tabular_data_config(
         input_cols=base.input_cols if input_cols is None else input_cols,
         target_cols=base.target_cols if target_cols is None else target_cols,
         categorical_cols=base.categorical_cols if categorical_cols is None else categorical_cols,
+        target_categorical_cols=(
+            base.target_categorical_cols if target_categorical_cols is None else target_categorical_cols
+        ),
         bounds=base.bounds if bounds is None else bounds,
         dtype=base.dtype if dtype is None else dtype,
         device=base.device if device is None else device,
         dropna=base.dropna if dropna is None else bool(dropna),
         encode_categories=base.encode_categories if encode_categories is None else bool(encode_categories),
         category_maps=base.category_maps if category_maps is None else category_maps,
+        target_category_maps=(
+            base.target_category_maps if target_category_maps is None else target_category_maps
+        ),
         return_original_categories=(
             base.return_original_categories
             if return_original_categories is None
@@ -87,7 +95,6 @@ class TabularBayesianOptimizer:
         model_config: ModelConfig | None = None,
         fit_config: FitConfig | None = None,
         *,
-        # ModelConfig direct arguments.
         model_cls: type | Any | None = UNSET,
         model_factory: Any = UNSET,
         task_type: str | Any = UNSET,
@@ -105,7 +112,6 @@ class TabularBayesianOptimizer:
         pass_outcome_transform: bool | Any = UNSET,
         train_x_name: str | Any = UNSET,
         train_y_name: str | Any = UNSET,
-        # FitConfig direct arguments.
         fit_method: str | Any = UNSET,
         num_epochs: int | None | Any = UNSET,
         lr: float | None | Any = UNSET,
@@ -122,16 +128,17 @@ class TabularBayesianOptimizer:
         mll_factory: Any = UNSET,
         mll_cls: Any = UNSET,
         use_model_make_mll: bool | Any = UNSET,
-        # Tabular direct arguments.
         input_cols: Sequence[ColumnKey] | None = None,
         target_cols: Sequence[ColumnKey] | ColumnKey | None = None,
         categorical_cols: Sequence[ColumnKey] | None = None,
+        target_categorical_cols: Sequence[ColumnKey] | None = None,
         bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None,
         dtype: Any | None = None,
         device: Any | None = None,
         dropna: bool | None = None,
         encode_categories: bool | None = None,
         category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
+        target_category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
         return_original_categories: bool | None = None,
         data_config: TabularDataConfig | None = None,
         data: Any | None = None,
@@ -181,23 +188,23 @@ class TabularBayesianOptimizer:
             input_cols=input_cols,
             target_cols=target_cols,
             categorical_cols=categorical_cols,
+            target_categorical_cols=target_categorical_cols,
             bounds=bounds,
             dtype=dtype,
             device=device,
             dropna=dropna,
             encode_categories=encode_categories,
             category_maps=category_maps,
+            target_category_maps=target_category_maps,
             return_original_categories=return_original_categories,
         )
         self.data = data
-
         self.bo_kwargs = dict(bo_kwargs)
         self.bo = BayesianOptimizer(
             model_config=self.model_config,
             fit_config=self.fit_config,
             **bo_kwargs,
         )
-
         self.dataset: TabularDataset | None = None
 
     @classmethod
@@ -208,17 +215,12 @@ class TabularBayesianOptimizer:
         read_csv_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> "TabularBayesianOptimizer":
-        '''Create an optimizer with data loaded from a CSV file.
-
-        All constructor arguments, including model / fit / tabular options, can
-        be passed directly through ``kwargs``.
-        '''
+        '''Create an optimizer with data loaded from a CSV file.'''
 
         try:
             import pandas as pd
         except ImportError as exc:
             raise ImportError("pandas is required for TabularBayesianOptimizer.from_csv().") from exc
-
         data = pd.read_csv(path, **(read_csv_kwargs or {}))
         return cls(data=data, **kwargs)
 
@@ -236,10 +238,8 @@ class TabularBayesianOptimizer:
             import pandas as pd
         except ImportError:
             pd = None
-
         if pd is not None and isinstance(data, pd.DataFrame):
             return dataframe_to_tensors(data, config)
-
         return numpy_to_tensors(
             data,
             y,
@@ -260,21 +260,21 @@ class TabularBayesianOptimizer:
         data: Any | None = None,
         y: Any | None = None,
         *,
-        # Tabular direct overrides.
         input_cols: Sequence[ColumnKey] | None = None,
         target_cols: Sequence[ColumnKey] | ColumnKey | None = None,
         categorical_cols: Sequence[ColumnKey] | None = None,
+        target_categorical_cols: Sequence[ColumnKey] | None = None,
         bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None,
         dtype: Any | None = None,
         device: Any | None = None,
         dropna: bool | None = None,
         encode_categories: bool | None = None,
         category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
+        target_category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
         return_original_categories: bool | None = None,
         data_config: TabularDataConfig | None = None,
         feature_names: Sequence[ColumnKey] | None = None,
         target_names: Sequence[ColumnKey] | None = None,
-        # Optional direct model / fit overrides.
         model_config: ModelConfig | None = None,
         fit_config: FitConfig | None = None,
         task_type: str | Any = UNSET,
@@ -315,22 +315,22 @@ class TabularBayesianOptimizer:
             maxiter=maxiter,
             skip_fit=skip_fit,
         )
-
         resolved_data_config = _make_tabular_data_config(
             data_config or self.data_config,
             input_cols=input_cols,
             target_cols=target_cols,
             categorical_cols=categorical_cols,
+            target_categorical_cols=target_categorical_cols,
             bounds=bounds,
             dtype=dtype,
             device=device,
             dropna=dropna,
             encode_categories=encode_categories,
             category_maps=category_maps,
+            target_category_maps=target_category_maps,
             return_original_categories=return_original_categories,
         )
         self.data_config = resolved_data_config
-
         dataset = self._to_dataset(
             data,
             y,
@@ -340,20 +340,16 @@ class TabularBayesianOptimizer:
         )
         if dataset.Y is None:
             raise ValueError("Target values are required for fit(). Set target_cols or pass y.")
-
         self.dataset = dataset
         resolved_model_config = self._model_config_with_tabular_cat_dims(dataset)
-
         self.bo.fit(
             dataset.X,
             dataset.Y,
             model_config=resolved_model_config,
             fit_config=self.fit_config,
         )
-
         if dataset.bounds is not None:
             self.bo.set_bounds(dataset.bounds)
-
         return self
 
     def candidate(
@@ -361,7 +357,6 @@ class TabularBayesianOptimizer:
         acq_config: AcquisitionConfig | None = None,
         opt_config: OptimizeConfig | None = None,
         *,
-        # AcquisitionConfig direct arguments.
         acq_name: str | Any = UNSET,
         name: str | Any = UNSET,
         acqf_cls: type | Any = UNSET,
@@ -374,7 +369,6 @@ class TabularBayesianOptimizer:
         acqf_kwargs: dict[str, Any] | Any = UNSET,
         context_fields: tuple[str, ...] | Any = UNSET,
         filter_kwargs_by_signature: bool | Any = UNSET,
-        # ObjectiveConfig direct arguments.
         objective_mode: str | Any = UNSET,
         objective_output: Any = UNSET,
         objective_outputs: Sequence[Any] | Any = UNSET,
@@ -387,7 +381,6 @@ class TabularBayesianOptimizer:
         objective_risk_type: str | None | Any = UNSET,
         objective_alpha: float | Any = UNSET,
         objective_utility_values: Sequence[float] | Any = UNSET,
-        # OptimizeConfig direct arguments.
         q: int | Any = UNSET,
         num_restarts: int | Any = UNSET,
         raw_samples: int | Any = UNSET,
@@ -400,7 +393,6 @@ class TabularBayesianOptimizer:
         inequality_constraints: Any = UNSET,
         equality_constraints: Any = UNSET,
         return_best_only: bool | Any = UNSET,
-        # CandidateRepairConfig direct arguments.
         repair_config: CandidateRepairConfig | None | Any = UNSET,
         repair_bounds: Any | Mapping[ColumnKey, Sequence[float]] | Any = UNSET,
         numeric_indices: Sequence[ColumnKey] | Any = UNSET,
@@ -423,7 +415,6 @@ class TabularBayesianOptimizer:
         num_alternations: int | Any = UNSET,
         final_priority: str | Any = UNSET,
         support_eps: float | Any = UNSET,
-        # Runtime options.
         data_context: DataContext | None = None,
         bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None,
         return_dataframe: bool = True,
@@ -433,7 +424,6 @@ class TabularBayesianOptimizer:
 
         if self.dataset is None:
             raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
-
         acq_config = make_acquisition_config(
             acq_config,
             acq_name=acq_name,
@@ -498,7 +488,6 @@ class TabularBayesianOptimizer:
             final_priority=final_priority,
             support_eps=support_eps,
         )
-
         dtype = resolve_dtype(self.data_config.dtype)
         opt_config = resolve_optimize_config_columns(
             opt_config,
@@ -506,11 +495,9 @@ class TabularBayesianOptimizer:
             dtype=dtype,
             device=self.data_config.device,
         )
-
         call_bounds = bounds
         if call_bounds is None:
             call_bounds = self.dataset.bounds
-
         result = self.bo.candidate(
             acq_config,
             opt_config,
@@ -518,14 +505,11 @@ class TabularBayesianOptimizer:
             bounds=call_bounds,
             return_result=return_result,
         )
-
         if return_result:
             return result
-
         candidates, acq_value = result
         if not return_dataframe:
             return candidates, acq_value
-
         candidates_df = self.candidates_to_dataframe(candidates)
         return candidates_df, acq_value
 
@@ -539,12 +523,10 @@ class TabularBayesianOptimizer:
 
         if self.dataset is None:
             raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
-
         try:
             import pandas as pd
         except ImportError:
             pd = None
-
         X = data
         if pd is not None and isinstance(data, pd.DataFrame):
             tmp_config = replace(
@@ -553,7 +535,6 @@ class TabularBayesianOptimizer:
                 input_cols=self.dataset.feature_names,
             )
             X = dataframe_to_tensors(data, tmp_config).X
-
         prediction = self.bo.predict(X, **kwargs)
         if return_dataframe_input:
             return prediction, data

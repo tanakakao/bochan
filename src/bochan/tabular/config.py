@@ -15,6 +15,7 @@ class TabularDataConfig:
     input_cols: Sequence[ColumnKey] | None = None
     target_cols: Sequence[ColumnKey] | ColumnKey | None = None
     categorical_cols: Sequence[ColumnKey] = field(default_factory=list)
+    target_categorical_cols: Sequence[ColumnKey] | None = None
 
     bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None
     dtype: Any | None = None
@@ -23,4 +24,5 @@ class TabularDataConfig:
     dropna: bool = True
     encode_categories: bool = True
     category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None
+    target_category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None
     return_original_categories: bool = True

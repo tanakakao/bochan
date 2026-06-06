@@ -23,6 +23,8 @@ class TabularDataset:
     bounds: Any | None = None
     category_maps: dict[ColumnKey, dict[Any, int]] | None = None
     inverse_category_maps: dict[ColumnKey, dict[int, Any]] | None = None
+    target_category_maps: dict[ColumnKey, dict[Any, int]] | None = None
+    inverse_target_category_maps: dict[ColumnKey, dict[int, Any]] | None = None
     source_index: Any | None = None
 
 
@@ -152,6 +154,60 @@ def bounds_to_tensor(
     return _to_tensor(bounds, dtype=dtype, device=device)
 
 
+def _encode_dataframe_category_columns(
+    df,
+    *,
+    columns: Sequence[ColumnKey],
+    supplied_maps: Mapping[ColumnKey, Mapping[Any, int]] | None,
+    encode_categories: bool,
+    pd: Any,
+    require_existing: Sequence[ColumnKey],
+) -> tuple[dict[ColumnKey, dict[Any, int]], dict[ColumnKey, dict[int, Any]]]:
+    '''Label-encode string/object category columns in-place and return maps.'''
+
+    category_maps: dict[ColumnKey, dict[Any, int]] = {}
+    inverse_maps: dict[ColumnKey, dict[int, Any]] = {}
+    supplied = dict(supplied_maps or {})
+
+    if not encode_categories:
+        return category_maps, inverse_maps
+
+    for col in _as_list(columns):
+        if col not in require_existing:
+            raise KeyError(f"Categorical column {col!r} is not in columns {list(require_existing)!r}.")
+
+        values = df.loc[:, col]
+        explicit_map = supplied.get(col) or supplied.get(str(col))
+        if explicit_map is not None:
+            mapping = dict(explicit_map)
+        elif pd.api.types.is_numeric_dtype(values):
+            # Numeric categorical variables are assumed to be already encoded.
+            continue
+        else:
+            uniques = list(pd.unique(values))
+            mapping = {value: i for i, value in enumerate(uniques)}
+
+        df.loc[:, col] = values.map(mapping)
+        if df.loc[:, col].isna().any():
+            missing = sorted(set(values[df.loc[:, col].isna()].tolist()))
+            raise ValueError(f"Unmapped categorical values in {col!r}: {missing!r}.")
+
+        category_maps[col] = mapping
+        inverse_maps[col] = {int(v): k for k, v in mapping.items()}
+
+    return category_maps, inverse_maps
+
+
+def _infer_string_target_categorical_cols(Y_df, target_cols: Sequence[ColumnKey], pd: Any) -> list[ColumnKey]:
+    '''Infer target columns that need label encoding because they are non-numeric.'''
+
+    inferred: list[ColumnKey] = []
+    for col in target_cols:
+        if not pd.api.types.is_numeric_dtype(Y_df.loc[:, col]):
+            inferred.append(col)
+    return inferred
+
+
 def dataframe_to_tensors(data: Any, config: TabularDataConfig) -> TabularDataset:
     '''Convert a pandas DataFrame to tensors and tabular metadata.'''
 
@@ -176,32 +232,29 @@ def dataframe_to_tensors(data: Any, config: TabularDataConfig) -> TabularDataset
     X_df = work.loc[:, input_cols].copy()
     Y_df = work.loc[:, target_cols].copy() if target_cols else None
 
-    category_maps: dict[ColumnKey, dict[Any, int]] = {}
-    inverse_maps: dict[ColumnKey, dict[int, Any]] = {}
+    category_maps, inverse_maps = _encode_dataframe_category_columns(
+        X_df,
+        columns=config.categorical_cols,
+        supplied_maps=config.category_maps,
+        encode_categories=config.encode_categories,
+        pd=pd,
+        require_existing=input_cols,
+    )
 
-    supplied_maps = dict(config.category_maps or {})
-    for col in _as_list(config.categorical_cols):
-        if col not in input_cols:
-            raise KeyError(f"Categorical column {col!r} is not in input_cols.")
-        if not config.encode_categories:
-            continue
-
-        values = X_df.loc[:, col]
-        explicit_map = supplied_maps.get(col) or supplied_maps.get(str(col))
-        if explicit_map is not None:
-            mapping = dict(explicit_map)
-        elif pd.api.types.is_numeric_dtype(values):
-            continue
-        else:
-            uniques = list(pd.unique(values))
-            mapping = {value: i for i, value in enumerate(uniques)}
-
-        X_df.loc[:, col] = values.map(mapping)
-        if X_df.loc[:, col].isna().any():
-            missing = sorted(set(values[X_df.loc[:, col].isna()].tolist()))
-            raise ValueError(f"Unmapped categorical values in {col!r}: {missing!r}.")
-        category_maps[col] = mapping
-        inverse_maps[col] = {int(v): k for k, v in mapping.items()}
+    target_category_maps: dict[ColumnKey, dict[Any, int]] = {}
+    inverse_target_category_maps: dict[ColumnKey, dict[int, Any]] = {}
+    if Y_df is not None:
+        target_categorical_cols = _as_list(config.target_categorical_cols)
+        if config.target_categorical_cols is None:
+            target_categorical_cols = _infer_string_target_categorical_cols(Y_df, target_cols, pd)
+        target_category_maps, inverse_target_category_maps = _encode_dataframe_category_columns(
+            Y_df,
+            columns=target_categorical_cols,
+            supplied_maps=config.target_category_maps,
+            encode_categories=config.encode_categories,
+            pd=pd,
+            require_existing=target_cols,
+        )
 
     dtype = resolve_dtype(config.dtype)
     X = _to_tensor(X_df.to_numpy(dtype=float), dtype=dtype, device=config.device)
@@ -224,6 +277,8 @@ def dataframe_to_tensors(data: Any, config: TabularDataConfig) -> TabularDataset
         bounds=bounds,
         category_maps=category_maps,
         inverse_category_maps=inverse_maps,
+        target_category_maps=target_category_maps,
+        inverse_target_category_maps=inverse_target_category_maps,
         source_index=work.index,
     )
 
@@ -278,6 +333,8 @@ def numpy_to_tensors(
         bounds=bounds,
         category_maps={},
         inverse_category_maps={},
+        target_category_maps={},
+        inverse_target_category_maps={},
     )
 
 

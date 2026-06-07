@@ -172,6 +172,12 @@ _register("bochan.acquisition.multiclass.levelset_estimation", [
 ])
 _register("bochan.acquisition.multiclass.bayesian_optimization", [
     "qMulticlassProbabilityOfFeasibility", "qMulticlassExpectedImprovement", "qMulticlassProbabilityOfImprovement", "qMulticlassUpperConfidenceBound",
+    "qMultiOutputMulticlassProbabilityOfFeasibility", "qMultiOutputMulticlassExpectedImprovement",
+    "qMultiOutputMulticlassProbabilityOfImprovement", "qMultiOutputMulticlassUpperConfidenceBound",
+    "qHeteroMulticlassProbabilityOfFeasibility", "qHeteroMulticlassExpectedImprovement",
+    "qHeteroMulticlassProbabilityOfImprovement", "qHeteroMulticlassUpperConfidenceBound",
+    "qHeteroMultiOutputMulticlassProbabilityOfFeasibility", "qHeteroMultiOutputMulticlassExpectedImprovement",
+    "qHeteroMultiOutputMulticlassProbabilityOfImprovement", "qHeteroMultiOutputMulticlassUpperConfidenceBound",
 ])
 _register("bochan.acquisition.non_gaussian.active_learning", [
     "qNonGaussianResponseMeanVariance", "qNonGaussianPosteriorVariance", "qNonGaussianExpectedObservationVariance",

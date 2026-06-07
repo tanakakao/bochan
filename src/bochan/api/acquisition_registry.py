@@ -147,7 +147,8 @@ _register("bochan.acquisition.ordinal.bayesian_optimization", [
 _register("bochan.acquisition.multiclass.active_learning", [
     "qMulticlassPredictiveEntropy", "qMulticlassBALD", "qMulticlassJointBALD", "qMulticlassGreedyJointBALD",
     "qMulticlassProbabilityVariance", "qMulticlassMarginUncertainty", "qMulticlassIntegratedPosteriorVarianceProxy",
-    "qMultiOutputMulticlassPredictiveEntropy", "qMultiOutputMulticlassBALD", "qMultiOutputMulticlassProbabilityVariance",
+    "qMultiOutputMulticlassPredictiveEntropy", "qMultiOutputMulticlassBALD", "qMultiOutputMulticlassJointBALD",
+    "qMultiOutputMulticlassGreedyJointBALD", "qMultiOutputMulticlassProbabilityVariance",
     "qMultiOutputMulticlassMarginUncertainty", "qMultiOutputMulticlassIntegratedPosteriorVarianceProxy",
     "qHeteroMulticlassPredictiveEntropy", "qHeteroMulticlassBALD", "qHeteroMulticlassProbabilityVariance",
     "qHeteroMulticlassMarginUncertainty", "qHeteroMulticlassIntegratedPosteriorVarianceProxy",
@@ -198,7 +199,7 @@ _register_alias("qNonGaussianVariance", "bochan.acquisition.non_gaussian.active_
 
 _NIPV_SHORT_NAMES = {"nipv", "qnipv", "negintegratedposteriorvariance", "qnegintegratedposteriorvariance", "negativeintegratedposteriorvariance", "qnegativeintegratedposteriorvariance"}
 _CONTEXTUAL_SHORT_NAMES = {
-    "bald", "predictiveentropy", "entropy", "variance", "posteriorvariance", *_NIPV_SHORT_NAMES,
+    "bald", "jointbald", "greedyjointbald", "predictiveentropy", "entropy", "variance", "posteriorvariance", *_NIPV_SHORT_NAMES,
     "margin", "marginuncertainty", "straddle", "jointstraddle", "icu", "boundaryvariance",
     "classentropy", "probabilityofexceedance", "poe", "levelsetuncertainty", "levelset",
     "ei", "qei", "expectedimprovement", "qexpectedimprovement", "pi", "qpi", "probabilityofimprovement",
@@ -351,6 +352,10 @@ def _resolve_contextual_acqf_path(normalized_name: str, *, task_type: str | None
         return bo_path
     if normalized_name == "bald":
         suffix = "BALD" if task != "nongaussian" else "BALDProxy"
+    elif normalized_name == "jointbald":
+        suffix = "JointBALD"
+    elif normalized_name == "greedyjointbald":
+        suffix = "GreedyJointBALD"
     elif normalized_name in {"predictiveentropy", "entropy"}:
         suffix = "PredictiveEntropy" if task != "nongaussian" else "PredictiveEntropyProxy"
     elif normalized_name in {"variance", "posteriorvariance"}:

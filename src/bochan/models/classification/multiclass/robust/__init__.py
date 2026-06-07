@@ -1,12 +1,12 @@
-from .multiclass_relevance_pursuit import (
-    SparseOutlierSoftmaxLikelihood,
-    OutlierRelevancePursuitMulticlassClassificationGPModel,
-    OutlierRelevancePursuitMulticlassClassificationMixedGPModel,
-)
-from .multiclass_heteroscedastic import (
-    HeteroscedasticMulticlassPosterior,
+from .heteroscedastic import (
     HeteroscedasticMulticlassClassificationGPModel,
     HeteroscedasticMulticlassClassificationMixedGPModel,
+    HeteroscedasticMulticlassPosterior,
+)
+from .relevance_pursuit import (
+    OutlierRelevancePursuitMulticlassClassificationGPModel,
+    OutlierRelevancePursuitMulticlassClassificationMixedGPModel,
+    SparseOutlierSoftmaxLikelihood,
 )
 
 __all__ = [

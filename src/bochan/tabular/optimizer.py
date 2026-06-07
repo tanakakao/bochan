@@ -1,0 +1,643 @@
+'''Pandas / numpy friendly wrapper around :class:`bochan.api.BayesianOptimizer`.
+
+The public API accepts model / fit / acquisition / optimization / repair
+options as direct keyword arguments. Internally those values are normalized to
+existing bochan config dataclasses, so the tensor-based core API remains
+unchanged.
+'''
+
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+from bochan.api import (
+    AcquisitionConfig,
+    BayesianOptimizer,
+    CandidateRepairConfig,
+    DataContext,
+    FitConfig,
+    InputTransformConfig,
+    ModelConfig,
+    MultiOutputConfig,
+    ObjectiveConfig,
+    OptimizeConfig,
+)
+
+from .builders import (
+    UNSET,
+    make_acquisition_config,
+    make_fit_config,
+    make_model_config,
+    make_optimize_config,
+)
+from .config import ColumnKey, TabularDataConfig
+from .converter import (
+    TabularDataset,
+    dataframe_to_tensors,
+    numpy_to_tensors,
+    resolve_dtype,
+    resolve_optimize_config_columns,
+    tensor_to_dataframe,
+)
+
+
+def _make_tabular_data_config(
+    data_config: TabularDataConfig | None = None,
+    *,
+    input_cols: Sequence[ColumnKey] | None = None,
+    target_cols: Sequence[ColumnKey] | ColumnKey | None = None,
+    categorical_cols: Sequence[ColumnKey] | None = None,
+    target_categorical_cols: Sequence[ColumnKey] | None = None,
+    bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None,
+    dtype: Any | None = None,
+    device: Any | None = None,
+    dropna: bool | None = None,
+    missing_strategy: str | None = None,
+    continuous_impute_strategy: str | None = None,
+    categorical_impute_strategy: str | None = None,
+    impute_targets: bool | None = None,
+    impute_random_state: int | None = None,
+    impute_max_iter: int | None = None,
+    multiple_impute_sample_posterior: bool | None = None,
+    encode_categories: bool | None = None,
+    category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
+    target_category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
+    return_original_categories: bool | None = None,
+) -> TabularDataConfig:
+    '''Merge direct tabular keyword arguments with an optional config object.'''
+
+    base = data_config or TabularDataConfig()
+    return replace(
+        base,
+        input_cols=base.input_cols if input_cols is None else input_cols,
+        target_cols=base.target_cols if target_cols is None else target_cols,
+        categorical_cols=base.categorical_cols if categorical_cols is None else categorical_cols,
+        target_categorical_cols=(
+            base.target_categorical_cols if target_categorical_cols is None else target_categorical_cols
+        ),
+        bounds=base.bounds if bounds is None else bounds,
+        dtype=base.dtype if dtype is None else dtype,
+        device=base.device if device is None else device,
+        dropna=base.dropna if dropna is None else bool(dropna),
+        missing_strategy=base.missing_strategy if missing_strategy is None else missing_strategy,
+        continuous_impute_strategy=(
+            base.continuous_impute_strategy
+            if continuous_impute_strategy is None
+            else continuous_impute_strategy
+        ),
+        categorical_impute_strategy=(
+            base.categorical_impute_strategy
+            if categorical_impute_strategy is None
+            else categorical_impute_strategy
+        ),
+        impute_targets=base.impute_targets if impute_targets is None else bool(impute_targets),
+        impute_random_state=(
+            base.impute_random_state if impute_random_state is None else impute_random_state
+        ),
+        impute_max_iter=base.impute_max_iter if impute_max_iter is None else int(impute_max_iter),
+        multiple_impute_sample_posterior=(
+            base.multiple_impute_sample_posterior
+            if multiple_impute_sample_posterior is None
+            else bool(multiple_impute_sample_posterior)
+        ),
+        encode_categories=base.encode_categories if encode_categories is None else bool(encode_categories),
+        category_maps=base.category_maps if category_maps is None else category_maps,
+        target_category_maps=(
+            base.target_category_maps if target_category_maps is None else target_category_maps
+        ),
+        return_original_categories=(
+            base.return_original_categories
+            if return_original_categories is None
+            else bool(return_original_categories)
+        ),
+    )
+
+
+class TabularBayesianOptimizer:
+    '''BayesianOptimizer wrapper for DataFrame / numpy / CSV workflows.'''
+
+    def __init__(
+        self,
+        model_config: ModelConfig | None = None,
+        fit_config: FitConfig | None = None,
+        *,
+        model_cls: type | Any | None = UNSET,
+        model_factory: Any = UNSET,
+        task_type: str | Any = UNSET,
+        model_type: str | Any = UNSET,
+        input_type: str | None | Any = UNSET,
+        cat_dims: Sequence[int] | None | Any = UNSET,
+        input_transform: Any = UNSET,
+        input_transform_config: InputTransformConfig | None | Any = UNSET,
+        outcome_transform: bool | Any = UNSET,
+        model_kwargs: dict[str, Any] | Any = UNSET,
+        multi_output_config: MultiOutputConfig | None | Any = UNSET,
+        pass_train_data: bool | Any = UNSET,
+        pass_cat_dims: bool | None | Any = UNSET,
+        pass_input_transform: bool | Any = UNSET,
+        pass_outcome_transform: bool | Any = UNSET,
+        train_x_name: str | Any = UNSET,
+        train_y_name: str | Any = UNSET,
+        fit_method: str | Any = UNSET,
+        num_epochs: int | None | Any = UNSET,
+        lr: float | None | Any = UNSET,
+        batch_size: int | None | Any = UNSET,
+        shuffle: bool | Any = UNSET,
+        verbose: bool | Any = UNSET,
+        clip_grad_norm: float | None | Any = UNSET,
+        maxiter: int | None | Any = UNSET,
+        fit_optimizer_kwargs: dict[str, Any] | Any = UNSET,
+        fit_kwargs: dict[str, Any] | Any = UNSET,
+        mll_kwargs: dict[str, Any] | Any = UNSET,
+        skip_fit: bool | Any = UNSET,
+        fit_func: Any = UNSET,
+        mll_factory: Any = UNSET,
+        mll_cls: Any = UNSET,
+        use_model_make_mll: bool | Any = UNSET,
+        input_cols: Sequence[ColumnKey] | None = None,
+        target_cols: Sequence[ColumnKey] | ColumnKey | None = None,
+        categorical_cols: Sequence[ColumnKey] | None = None,
+        target_categorical_cols: Sequence[ColumnKey] | None = None,
+        bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None,
+        dtype: Any | None = None,
+        device: Any | None = None,
+        dropna: bool | None = None,
+        missing_strategy: str | None = None,
+        continuous_impute_strategy: str | None = None,
+        categorical_impute_strategy: str | None = None,
+        impute_targets: bool | None = None,
+        impute_random_state: int | None = None,
+        impute_max_iter: int | None = None,
+        multiple_impute_sample_posterior: bool | None = None,
+        encode_categories: bool | None = None,
+        category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
+        target_category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
+        return_original_categories: bool | None = None,
+        data_config: TabularDataConfig | None = None,
+        data: Any | None = None,
+        **bo_kwargs: Any,
+    ) -> None:
+        self.model_config = make_model_config(
+            model_config,
+            model_cls=model_cls,
+            model_factory=model_factory,
+            task_type=task_type,
+            model_type=model_type,
+            input_type=input_type,
+            cat_dims=cat_dims,
+            input_transform=input_transform,
+            input_transform_config=input_transform_config,
+            outcome_transform=outcome_transform,
+            model_kwargs=model_kwargs,
+            multi_output_config=multi_output_config,
+            pass_train_data=pass_train_data,
+            pass_cat_dims=pass_cat_dims,
+            pass_input_transform=pass_input_transform,
+            pass_outcome_transform=pass_outcome_transform,
+            train_x_name=train_x_name,
+            train_y_name=train_y_name,
+        )
+        self.fit_config = make_fit_config(
+            fit_config,
+            fit_method=fit_method,
+            num_epochs=num_epochs,
+            lr=lr,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            verbose=verbose,
+            clip_grad_norm=clip_grad_norm,
+            maxiter=maxiter,
+            fit_optimizer_kwargs=fit_optimizer_kwargs,
+            fit_kwargs=fit_kwargs,
+            mll_kwargs=mll_kwargs,
+            skip_fit=skip_fit,
+            fit_func=fit_func,
+            mll_factory=mll_factory,
+            mll_cls=mll_cls,
+            use_model_make_mll=use_model_make_mll,
+        )
+        self.data_config = _make_tabular_data_config(
+            data_config,
+            input_cols=input_cols,
+            target_cols=target_cols,
+            categorical_cols=categorical_cols,
+            target_categorical_cols=target_categorical_cols,
+            bounds=bounds,
+            dtype=dtype,
+            device=device,
+            dropna=dropna,
+            missing_strategy=missing_strategy,
+            continuous_impute_strategy=continuous_impute_strategy,
+            categorical_impute_strategy=categorical_impute_strategy,
+            impute_targets=impute_targets,
+            impute_random_state=impute_random_state,
+            impute_max_iter=impute_max_iter,
+            multiple_impute_sample_posterior=multiple_impute_sample_posterior,
+            encode_categories=encode_categories,
+            category_maps=category_maps,
+            target_category_maps=target_category_maps,
+            return_original_categories=return_original_categories,
+        )
+        self.data = data
+        self.bo_kwargs = dict(bo_kwargs)
+        self.bo = BayesianOptimizer(
+            model_config=self.model_config,
+            fit_config=self.fit_config,
+            **bo_kwargs,
+        )
+        self.dataset: TabularDataset | None = None
+
+    @classmethod
+    def from_csv(
+        cls,
+        path: str | Path,
+        *,
+        read_csv_kwargs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> "TabularBayesianOptimizer":
+        '''Create an optimizer with data loaded from a CSV file.'''
+
+        try:
+            import pandas as pd
+        except ImportError as exc:
+            raise ImportError("pandas is required for TabularBayesianOptimizer.from_csv().") from exc
+        data = pd.read_csv(path, **(read_csv_kwargs or {}))
+        return cls(data=data, **kwargs)
+
+    def _to_dataset(
+        self,
+        data: Any,
+        y: Any | None = None,
+        *,
+        data_config: TabularDataConfig | None = None,
+        feature_names: Sequence[ColumnKey] | None = None,
+        target_names: Sequence[ColumnKey] | None = None,
+    ) -> TabularDataset:
+        config = data_config or self.data_config
+        try:
+            import pandas as pd
+        except ImportError:
+            pd = None
+        if pd is not None and isinstance(data, pd.DataFrame):
+            return dataframe_to_tensors(data, config)
+        return numpy_to_tensors(
+            data,
+            y,
+            config,
+            feature_names=feature_names,
+            target_names=target_names,
+        )
+
+    def _model_config_with_tabular_cat_dims(self, dataset: TabularDataset) -> ModelConfig:
+        if self.model_config.cat_dims is not None:
+            return self.model_config
+        if not dataset.cat_dims:
+            return self.model_config
+        return replace(self.model_config, cat_dims=dataset.cat_dims)
+
+    def fit(
+        self,
+        data: Any | None = None,
+        y: Any | None = None,
+        *,
+        input_cols: Sequence[ColumnKey] | None = None,
+        target_cols: Sequence[ColumnKey] | ColumnKey | None = None,
+        categorical_cols: Sequence[ColumnKey] | None = None,
+        target_categorical_cols: Sequence[ColumnKey] | None = None,
+        bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None,
+        dtype: Any | None = None,
+        device: Any | None = None,
+        dropna: bool | None = None,
+        missing_strategy: str | None = None,
+        continuous_impute_strategy: str | None = None,
+        categorical_impute_strategy: str | None = None,
+        impute_targets: bool | None = None,
+        impute_random_state: int | None = None,
+        impute_max_iter: int | None = None,
+        multiple_impute_sample_posterior: bool | None = None,
+        encode_categories: bool | None = None,
+        category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
+        target_category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
+        return_original_categories: bool | None = None,
+        data_config: TabularDataConfig | None = None,
+        feature_names: Sequence[ColumnKey] | None = None,
+        target_names: Sequence[ColumnKey] | None = None,
+        model_config: ModelConfig | None = None,
+        fit_config: FitConfig | None = None,
+        task_type: str | Any = UNSET,
+        model_type: str | Any = UNSET,
+        cat_dims: Sequence[int] | None | Any = UNSET,
+        model_kwargs: dict[str, Any] | Any = UNSET,
+        input_transform_config: InputTransformConfig | None | Any = UNSET,
+        outcome_transform: bool | Any = UNSET,
+        fit_method: str | Any = UNSET,
+        num_epochs: int | None | Any = UNSET,
+        lr: float | None | Any = UNSET,
+        batch_size: int | None | Any = UNSET,
+        maxiter: int | None | Any = UNSET,
+        skip_fit: bool | Any = UNSET,
+    ) -> "TabularBayesianOptimizer":
+        '''Fit from a pandas DataFrame or numpy-like arrays.'''
+
+        if data is None:
+            data = self.data
+        if data is None:
+            raise ValueError("No data was supplied. Pass data to fit(...) or use from_csv(...).")
+
+        self.model_config = make_model_config(
+            model_config or self.model_config,
+            task_type=task_type,
+            model_type=model_type,
+            cat_dims=cat_dims,
+            model_kwargs=model_kwargs,
+            input_transform_config=input_transform_config,
+            outcome_transform=outcome_transform,
+        )
+        self.fit_config = make_fit_config(
+            fit_config or self.fit_config,
+            fit_method=fit_method,
+            num_epochs=num_epochs,
+            lr=lr,
+            batch_size=batch_size,
+            maxiter=maxiter,
+            skip_fit=skip_fit,
+        )
+        resolved_data_config = _make_tabular_data_config(
+            data_config or self.data_config,
+            input_cols=input_cols,
+            target_cols=target_cols,
+            categorical_cols=categorical_cols,
+            target_categorical_cols=target_categorical_cols,
+            bounds=bounds,
+            dtype=dtype,
+            device=device,
+            dropna=dropna,
+            missing_strategy=missing_strategy,
+            continuous_impute_strategy=continuous_impute_strategy,
+            categorical_impute_strategy=categorical_impute_strategy,
+            impute_targets=impute_targets,
+            impute_random_state=impute_random_state,
+            impute_max_iter=impute_max_iter,
+            multiple_impute_sample_posterior=multiple_impute_sample_posterior,
+            encode_categories=encode_categories,
+            category_maps=category_maps,
+            target_category_maps=target_category_maps,
+            return_original_categories=return_original_categories,
+        )
+        self.data_config = resolved_data_config
+        dataset = self._to_dataset(
+            data,
+            y,
+            data_config=resolved_data_config,
+            feature_names=feature_names,
+            target_names=target_names,
+        )
+        if dataset.Y is None:
+            raise ValueError("Target values are required for fit(). Set target_cols or pass y.")
+        self.dataset = dataset
+        resolved_model_config = self._model_config_with_tabular_cat_dims(dataset)
+        self.bo.fit(
+            dataset.X,
+            dataset.Y,
+            model_config=resolved_model_config,
+            fit_config=self.fit_config,
+        )
+        if dataset.bounds is not None:
+            self.bo.set_bounds(dataset.bounds)
+        return self
+
+    def candidate(
+        self,
+        acq_config: AcquisitionConfig | None = None,
+        opt_config: OptimizeConfig | None = None,
+        *,
+        acq_name: str | Any = UNSET,
+        name: str | Any = UNSET,
+        acqf_cls: type | Any = UNSET,
+        acqf_factory: Any = UNSET,
+        objective: Any = UNSET,
+        objective_config: ObjectiveConfig | None | Any = UNSET,
+        objective_factory: Any = UNSET,
+        objective_kwargs: dict[str, Any] | Any = UNSET,
+        sampler: Any = UNSET,
+        acqf_kwargs: dict[str, Any] | Any = UNSET,
+        context_fields: tuple[str, ...] | Any = UNSET,
+        filter_kwargs_by_signature: bool | Any = UNSET,
+        objective_mode: str | Any = UNSET,
+        objective_output: Any = UNSET,
+        objective_outputs: Sequence[Any] | Any = UNSET,
+        objective_specs: Sequence[Any] | Any = UNSET,
+        objective_directions: Sequence[Any] | Any = UNSET,
+        objective_weights: Sequence[float] | Any = UNSET,
+        objective_direction: Any = UNSET,
+        objective_weight: float | Any = UNSET,
+        objective_n_w: int | None | Any = UNSET,
+        objective_risk_type: str | None | Any = UNSET,
+        objective_alpha: float | Any = UNSET,
+        objective_utility_values: Sequence[float] | Any = UNSET,
+        q: int | Any = UNSET,
+        num_restarts: int | Any = UNSET,
+        raw_samples: int | Any = UNSET,
+        sequential: bool | Any = UNSET,
+        optimizer: Any = UNSET,
+        optimizer_kwargs: dict[str, Any] | Any = UNSET,
+        post_processing_func: Any = UNSET,
+        fixed_features: dict[Any, float] | Any = UNSET,
+        fixed_features_list: list[dict[Any, float]] | Any = UNSET,
+        inequality_constraints: Any = UNSET,
+        equality_constraints: Any = UNSET,
+        return_best_only: bool | Any = UNSET,
+        repair_config: CandidateRepairConfig | None | Any = UNSET,
+        repair_bounds: Any | Mapping[ColumnKey, Sequence[float]] | Any = UNSET,
+        numeric_indices: Sequence[ColumnKey] | Any = UNSET,
+        steps: Any = UNSET,
+        comp_idx: Sequence[ColumnKey] | Any = UNSET,
+        k: int | Any = UNSET,
+        repair_equality_constraints: Any = UNSET,
+        repair_inequality_constraints: Any = UNSET,
+        repair_inequality_sense: str | Any = UNSET,
+        repair_fixed_features: dict[Any, float] | Any = UNSET,
+        final_sum_constraint: Any = UNSET,
+        diversify: bool | Any = UNSET,
+        diversify_kwargs: dict[str, Any] | Any = UNSET,
+        score: str | Any = UNSET,
+        support_selection: str | Any = UNSET,
+        sample_tau: float | Any = UNSET,
+        sample_eps: float | Any = UNSET,
+        generator: Any = UNSET,
+        max_iters: int | Any = UNSET,
+        num_alternations: int | Any = UNSET,
+        final_priority: str | Any = UNSET,
+        support_eps: float | Any = UNSET,
+        data_context: DataContext | None = None,
+        bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None,
+        return_dataframe: bool = True,
+        return_result: bool = False,
+    ) -> Any:
+        '''Generate candidates and optionally return them as a DataFrame.'''
+
+        if self.dataset is None:
+            raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
+        acq_config = make_acquisition_config(
+            acq_config,
+            acq_name=acq_name,
+            name=name,
+            acqf_cls=acqf_cls,
+            acqf_factory=acqf_factory,
+            objective=objective,
+            objective_config=objective_config,
+            objective_factory=objective_factory,
+            objective_kwargs=objective_kwargs,
+            sampler=sampler,
+            acqf_kwargs=acqf_kwargs,
+            context_fields=context_fields,
+            filter_kwargs_by_signature=filter_kwargs_by_signature,
+            objective_mode=objective_mode,
+            objective_output=objective_output,
+            objective_outputs=objective_outputs,
+            objective_specs=objective_specs,
+            objective_directions=objective_directions,
+            objective_weights=objective_weights,
+            objective_direction=objective_direction,
+            objective_weight=objective_weight,
+            objective_n_w=objective_n_w,
+            objective_risk_type=objective_risk_type,
+            objective_alpha=objective_alpha,
+            objective_utility_values=objective_utility_values,
+        )
+        opt_config = make_optimize_config(
+            opt_config,
+            q=q,
+            num_restarts=num_restarts,
+            raw_samples=raw_samples,
+            sequential=sequential,
+            optimizer=optimizer,
+            optimizer_kwargs=optimizer_kwargs,
+            post_processing_func=post_processing_func,
+            fixed_features=fixed_features,
+            fixed_features_list=fixed_features_list,
+            inequality_constraints=inequality_constraints,
+            equality_constraints=equality_constraints,
+            return_best_only=return_best_only,
+            repair_config=None if repair_config is UNSET else repair_config,
+            repair_bounds=repair_bounds,
+            numeric_indices=numeric_indices,
+            steps=steps,
+            comp_idx=comp_idx,
+            k=k,
+            repair_equality_constraints=repair_equality_constraints,
+            repair_inequality_constraints=repair_inequality_constraints,
+            repair_inequality_sense=repair_inequality_sense,
+            repair_fixed_features=repair_fixed_features,
+            final_sum_constraint=final_sum_constraint,
+            diversify=diversify,
+            diversify_kwargs=diversify_kwargs,
+            score=score,
+            support_selection=support_selection,
+            sample_tau=sample_tau,
+            sample_eps=sample_eps,
+            generator=generator,
+            max_iters=max_iters,
+            num_alternations=num_alternations,
+            final_priority=final_priority,
+            support_eps=support_eps,
+        )
+        dtype = resolve_dtype(self.data_config.dtype)
+        opt_config = resolve_optimize_config_columns(
+            opt_config,
+            self.dataset.feature_names,
+            dtype=dtype,
+            device=self.data_config.device,
+        )
+        call_bounds = bounds
+        if call_bounds is None:
+            call_bounds = self.dataset.bounds
+        result = self.bo.candidate(
+            acq_config,
+            opt_config,
+            data_context=data_context,
+            bounds=call_bounds,
+            return_result=return_result,
+        )
+        if return_result:
+            return result
+        candidates, acq_value = result
+        if not return_dataframe:
+            return candidates, acq_value
+        candidates_df = self.candidates_to_dataframe(candidates)
+        return candidates_df, acq_value
+
+    def ask(self, *args: Any, **kwargs: Any) -> Any:
+        '''Alias for candidate().'''
+
+        return self.candidate(*args, **kwargs)
+
+    def predict(self, data: Any, *, return_dataframe_input: bool = False, **kwargs: Any) -> Any:
+        '''Predict from tabular input or raw tensor input.'''
+
+        if self.dataset is None:
+            raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
+        try:
+            import pandas as pd
+        except ImportError:
+            pd = None
+        X = data
+        if pd is not None and isinstance(data, pd.DataFrame):
+            tmp_config = replace(
+                self.data_config,
+                target_cols=None,
+                input_cols=self.dataset.feature_names,
+            )
+            X = dataframe_to_tensors(data, tmp_config).X
+        prediction = self.bo.predict(X, **kwargs)
+        if return_dataframe_input:
+            return prediction, data
+        return prediction
+
+    def update_data(self, new_data: Any, new_y: Any | None = None) -> "TabularBayesianOptimizer":
+        '''Append new observations to the underlying tensor optimizer state.'''
+
+        if self.dataset is None:
+            raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
+        new_dataset = self._to_dataset(new_data, new_y, feature_names=self.dataset.feature_names)
+        if new_dataset.Y is None:
+            raise ValueError("Target values are required for update_data().")
+        self.bo.update_data(new_dataset.X, new_dataset.Y)
+        return self
+
+    def tell(
+        self,
+        new_data: Any,
+        new_y: Any | None = None,
+        *,
+        refit: bool = True,
+        fit_config: FitConfig | None = None,
+    ) -> "TabularBayesianOptimizer":
+        '''Append observations and optionally refit the model.'''
+
+        self.update_data(new_data, new_y)
+        if refit:
+            self.bo.refit(fit_config=fit_config or self.fit_config)
+        return self
+
+    def candidates_to_dataframe(self, candidates: Any):
+        '''Convert candidate tensor output to a pandas DataFrame.'''
+
+        if self.dataset is None:
+            raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
+        return tensor_to_dataframe(
+            candidates,
+            self.dataset.feature_names,
+            inverse_category_maps=self.dataset.inverse_category_maps,
+            decode_categories=self.data_config.return_original_categories,
+        )
+
+    @property
+    def train_X(self) -> Any | None:
+        return None if self.dataset is None else self.dataset.X
+
+    @property
+    def train_Y(self) -> Any | None:
+        return None if self.dataset is None else self.dataset.Y

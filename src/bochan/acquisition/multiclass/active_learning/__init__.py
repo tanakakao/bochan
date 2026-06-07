@@ -1,6 +1,8 @@
 from .hetero_multi_output import (
     qHeteroMultiOutputMulticlassBALD,
+    qHeteroMultiOutputMulticlassGreedyJointBALD,
     qHeteroMultiOutputMulticlassIntegratedPosteriorVarianceProxy,
+    qHeteroMultiOutputMulticlassJointBALD,
     qHeteroMultiOutputMulticlassMarginUncertainty,
     qHeteroMultiOutputMulticlassPredictiveEntropy,
     qHeteroMultiOutputMulticlassProbabilityVariance,
@@ -61,5 +63,7 @@ __all__ = [
     "qHeteroMultiOutputMulticlassProbabilityVariance",
     "qHeteroMultiOutputMulticlassMarginUncertainty",
     "qHeteroMultiOutputMulticlassBALD",
+    "qHeteroMultiOutputMulticlassJointBALD",
+    "qHeteroMultiOutputMulticlassGreedyJointBALD",
     "qHeteroMultiOutputMulticlassIntegratedPosteriorVarianceProxy",
 ]

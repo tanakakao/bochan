@@ -9,9 +9,12 @@ from .hetero_multi_output import (
 )
 from .hetero_single_output import (
     NoiseCombineType,
+    NoiseQAggregateType,
     NoiseWeightMode,
     qHeteroMulticlassBALD,
+    qHeteroMulticlassGreedyJointBALD,
     qHeteroMulticlassIntegratedPosteriorVarianceProxy,
+    qHeteroMulticlassJointBALD,
     qHeteroMulticlassMarginUncertainty,
     qHeteroMulticlassPredictiveEntropy,
     qHeteroMulticlassProbabilityVariance,
@@ -38,6 +41,7 @@ from .single_output import (
 
 __all__ = [
     "NoiseCombineType",
+    "NoiseQAggregateType",
     "NoiseWeightMode",
     "OutputReductionType",
     "qMulticlassPredictiveEntropy",
@@ -58,6 +62,8 @@ __all__ = [
     "qHeteroMulticlassProbabilityVariance",
     "qHeteroMulticlassMarginUncertainty",
     "qHeteroMulticlassBALD",
+    "qHeteroMulticlassJointBALD",
+    "qHeteroMulticlassGreedyJointBALD",
     "qHeteroMulticlassIntegratedPosteriorVarianceProxy",
     "qHeteroMultiOutputMulticlassPredictiveEntropy",
     "qHeteroMultiOutputMulticlassProbabilityVariance",

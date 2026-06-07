@@ -27,7 +27,10 @@ from .active_learning import (
     qMulticlassProbabilityVariance,
 )
 from .bayesian_optimization import (
+    qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement,
     qHeteroMultiOutputMulticlassExpectedImprovement,
+    qHeteroMultiOutputMulticlassNParEGO,
+    qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
     qHeteroMultiOutputMulticlassProbabilityOfFeasibility,
     qHeteroMultiOutputMulticlassProbabilityOfImprovement,
     qHeteroMultiOutputMulticlassUpperConfidenceBound,
@@ -35,7 +38,10 @@ from .bayesian_optimization import (
     qHeteroMulticlassProbabilityOfFeasibility,
     qHeteroMulticlassProbabilityOfImprovement,
     qHeteroMulticlassUpperConfidenceBound,
+    qMultiOutputMulticlassExpectedHypervolumeImprovement,
     qMultiOutputMulticlassExpectedImprovement,
+    qMultiOutputMulticlassNParEGO,
+    qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
     qMultiOutputMulticlassProbabilityOfFeasibility,
     qMultiOutputMulticlassProbabilityOfImprovement,
     qMultiOutputMulticlassUpperConfidenceBound,

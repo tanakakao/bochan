@@ -1,41 +1,166 @@
-# プロジェクトのメタデータ
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "botorch_ext"
+name = "bochan"
 version = "0.1.0"
-authors = [
-  { name="Your Name", email="you@example.com" },
-]
-description = "botorchの拡張のためのパッケージです。"
+description = "A BoTorch-based Bayesian optimization toolkit with model, acquisition, serving, and tabular APIs."
 readme = "README.md"
 requires-python = ">=3.11"
-# このパッケージが動作するために必要なライブラリ
+authors = [
+  { name = "tanaka akihiro", email = "tanakakao3373@gmail.com" },
+]
+keywords = [
+  "bayesian-optimization",
+  "active-learning",
+  "botorch",
+  "gaussian-process",
+  "materials-informatics",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+]
 dependencies = [
-  "numpy>=1.20.0",
-  "pandas>=2.0.0",
-  "requests",
+  "torch>=2.2",
+  "botorch>=0.12",
+  "gpytorch>=1.13",
+  "linear-operator>=0.5.3",
+  "numpy>=1.26",
+  "scipy>=1.11",
+  "typing-extensions>=4.8",
 ]
 
-# (キーポイント) 開発時にのみ必要なライブラリ
 [project.optional-dependencies]
 api = [
   "fastapi>=0.110",
+  "pydantic>=2.0",
   "uvicorn[standard]>=0.27",
-  "pydantic>=2",
 ]
+
 tabular = [
-  "pandas>=2.0.0",
+  "pandas>=2.0",
+  "scikit-learn>=1.3",
 ]
-impute = [
-  "scikit-learn>=1.3.0",
+
+visualization = [
+  "pandas>=2.0",
+  "plotly>=5.18",
 ]
-all = [
-  "fastapi>=0.110",
-  "uvicorn[standard]>=0.27",
-  "pydantic>=2",
-  "pandas>=2.0.0",
-  "scikit-learn>=1.3.0",
+
+evo = [
+  "cma>=3.3",
 ]
+
+notebook = [
+  "ipykernel>=6.0",
+  "jupyterlab>=4.0",
+  "matplotlib>=3.7",
+  "pandas>=2.0",
+  "plotly>=5.18",
+  "scikit-learn>=1.3",
+]
+
+docs = [
+  "mkdocs>=1.5",
+  "mkdocs-material>=9.5",
+  "pymdown-extensions>=10.0",
+]
+
+test = [
+  "httpx>=0.27",
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+]
+
 dev = [
-  "pytest", # テスト用
-  "black",  # コードフォーマッター
+  "black>=24.0",
+  "build>=1.2",
+  "httpx>=0.27",
+  "ipykernel>=6.0",
+  "mypy>=1.8",
+  "pre-commit>=3.6",
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "ruff>=0.6",
+  "twine>=5.0",
 ]
+
+all = [
+  "cma>=3.3",
+  "fastapi>=0.110",
+  "ipykernel>=6.0",
+  "jupyterlab>=4.0",
+  "matplotlib>=3.7",
+  "pandas>=2.0",
+  "plotly>=5.18",
+  "pydantic>=2.0",
+  "scikit-learn>=1.3",
+  "uvicorn[standard]>=0.27",
+]
+
+[project.urls]
+Repository = "https://github.com/tanakakao/bochan"
+Issues = "https://github.com/tanakakao/bochan/issues"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["bochan*"]
+namespaces = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = [
+  "-ra",
+  "--strict-config",
+  "--strict-markers",
+]
+filterwarnings = [
+  "ignore::DeprecationWarning:botorch.*",
+  "ignore::DeprecationWarning:gpytorch.*",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "B",
+  "UP",
+  "SIM",
+]
+ignore = [
+  "E501",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["bochan"]
+
+[tool.black]
+line-length = 120
+target-version = ["py311", "py312"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_configs = true
+no_implicit_optional = true
+check_untyped_defs = false

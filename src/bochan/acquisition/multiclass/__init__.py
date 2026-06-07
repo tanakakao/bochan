@@ -1,6 +1,8 @@
 from .active_learning import (
     qHeteroMultiOutputMulticlassBALD,
+    qHeteroMultiOutputMulticlassGreedyJointBALD,
     qHeteroMultiOutputMulticlassIntegratedPosteriorVarianceProxy,
+    qHeteroMultiOutputMulticlassJointBALD,
     qHeteroMultiOutputMulticlassMarginUncertainty,
     qHeteroMultiOutputMulticlassPredictiveEntropy,
     qHeteroMultiOutputMulticlassProbabilityVariance,

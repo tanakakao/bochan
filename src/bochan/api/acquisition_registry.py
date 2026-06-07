@@ -174,12 +174,14 @@ _register("bochan.acquisition.multiclass.levelset_estimation", [
 ])
 _register("bochan.acquisition.multiclass.bayesian_optimization", [
     "qMulticlassProbabilityOfFeasibility", "qMulticlassExpectedImprovement", "qMulticlassProbabilityOfImprovement", "qMulticlassUpperConfidenceBound",
-    "qMultiOutputMulticlassProbabilityOfFeasibility", "qMultiOutputMulticlassExpectedImprovement",
-    "qMultiOutputMulticlassProbabilityOfImprovement", "qMultiOutputMulticlassUpperConfidenceBound",
+    "qMultiOutputMulticlassProbabilityOfFeasibility", "qMultiOutputMulticlassExpectedHypervolumeImprovement",
+    "qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement", "qMultiOutputMulticlassNParEGO",
+    "qMultiOutputMulticlassExpectedImprovement", "qMultiOutputMulticlassProbabilityOfImprovement", "qMultiOutputMulticlassUpperConfidenceBound",
     "qHeteroMulticlassProbabilityOfFeasibility", "qHeteroMulticlassExpectedImprovement",
     "qHeteroMulticlassProbabilityOfImprovement", "qHeteroMulticlassUpperConfidenceBound",
-    "qHeteroMultiOutputMulticlassProbabilityOfFeasibility", "qHeteroMultiOutputMulticlassExpectedImprovement",
-    "qHeteroMultiOutputMulticlassProbabilityOfImprovement", "qHeteroMultiOutputMulticlassUpperConfidenceBound",
+    "qHeteroMultiOutputMulticlassProbabilityOfFeasibility", "qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement",
+    "qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement", "qHeteroMultiOutputMulticlassNParEGO",
+    "qHeteroMultiOutputMulticlassExpectedImprovement", "qHeteroMultiOutputMulticlassProbabilityOfImprovement", "qHeteroMultiOutputMulticlassUpperConfidenceBound",
 ])
 _register("bochan.acquisition.non_gaussian.active_learning", [
     "qNonGaussianResponseMeanVariance", "qNonGaussianPosteriorVariance", "qNonGaussianExpectedObservationVariance",
@@ -314,28 +316,22 @@ def _resolve_contextual_bo_path(normalized_name: str, *, task: str, prefix: str,
             return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}ProbabilityOfFeasibility"))
         return None
     if normalized_name in {"ehi", "qehi", "ehvi", "qehvi", "expectedhypervolumeimprovement", "qexpectedhypervolumeimprovement"}:
-        if task in {"binary", "ordinal"} or prefix.startswith("qHeteroMultiOutputRegression"):
+        if task in {"binary", "ordinal", "multiclass"} or prefix.startswith("qHeteroMultiOutputRegression"):
             if not multi_output:
                 return None
             return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}ExpectedHypervolumeImprovement"))
-        if task == "multiclass":
-            return None
         return _fallback_builtin_path("qehvi")
     if normalized_name in {"nehvi", "qnehvi", "noisyexpectedhypervolumeimprovement", "qnoisyexpectedhypervolumeimprovement"}:
-        if task in {"binary", "ordinal"} or prefix.startswith("qHeteroMultiOutputRegression"):
+        if task in {"binary", "ordinal", "multiclass"} or prefix.startswith("qHeteroMultiOutputRegression"):
             if not multi_output:
                 return None
             return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}NoisyExpectedHypervolumeImprovement"))
-        if task == "multiclass":
-            return None
         return _fallback_builtin_path("qnehvi")
     if normalized_name in {"nparego", "qnparego"}:
-        if task in {"binary", "ordinal"} or prefix.startswith("qHeteroMultiOutputRegression"):
+        if task in {"binary", "ordinal", "multiclass"} or prefix.startswith("qHeteroMultiOutputRegression"):
             if not multi_output:
                 return None
             return _ACQF_ALIASES.get(_normalize_acqf_name(f"{prefix}NParEGO"))
-        if task == "multiclass":
-            return None
         return _fallback_builtin_path("qnparego")
     return None
 

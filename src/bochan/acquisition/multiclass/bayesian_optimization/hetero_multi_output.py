@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import Optional
+
 import torch
-from botorch.utils.transforms import t_batch_mode_transform
+from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
+from botorch.sampling.normal import SobolQMCNormalSampler
+from botorch.utils.multi_objective.box_decompositions.non_dominated import FastNondominatedPartitioning
 from torch import Tensor
 
 from bochan.acquisition.multiclass.active_learning.hetero_multi_output import _HeteroMultiOutputMulticlassMixin
+from bochan.acquisition.multiclass.base import ClassReductionType
 
 from .multi_output import (
+    MulticlassTargetProbabilityObjective,
     qMultiOutputMulticlassExpectedHypervolumeImprovement,
     qMultiOutputMulticlassExpectedImprovement,
     qMultiOutputMulticlassNParEGO,
@@ -17,155 +24,365 @@ from .multi_output import (
 )
 
 
+class _HeteroMulticlassTargetProbabilityObjective(MCMultiOutputObjective):
+    """Target-class objective with heteroscedastic noise weighting.
+
+    This mirrors the binary hetero multi-output design: BoTorch EHVI / NEHVI
+    still perform the acquisition computation, while the objective maps raw
+    posterior samples to target-class probabilities and applies a noise-aware
+    weighting in objective space.
+    """
+
+    def __init__(
+        self,
+        *,
+        base_objective: MCMultiOutputObjective,
+        model,
+        noise_mode: str = "inverse_linear",
+        noise_combine: str = "multiply",
+        noise_penalty_lambda: float = 1.0,
+        noise_min_weight: float = 0.0,
+        noise_weight_scale: float = 1.0,
+        noise_model_outputs_log_var: bool = True,
+        eps: float = 1e-8,
+    ) -> None:
+        super().__init__()
+        self.base_objective = base_objective
+        self.model = model
+        self.noise_mode = noise_mode
+        self.noise_combine = noise_combine
+        self.noise_penalty_lambda = float(noise_penalty_lambda)
+        self.noise_min_weight = float(noise_min_weight)
+        self.noise_weight_scale = float(noise_weight_scale)
+        self.noise_model_outputs_log_var = bool(noise_model_outputs_log_var)
+        self.eps = float(eps)
+
+    @staticmethod
+    def _ensure_q_batch(X: Tensor) -> Tensor:
+        if X.ndim == 1:
+            return X.view(1, 1, -1)
+        if X.ndim == 2:
+            return X.unsqueeze(0)
+        return X
+
+    def _submodels(self) -> list:
+        submodels = getattr(self.model, "models", None)
+        if submodels is not None:
+            return list(submodels)
+        submodels = getattr(self.model, "submodels", None)
+        if submodels is not None:
+            return list(submodels)
+        return []
+
+    def _single_noise(self, model, X: Tensor) -> Tensor:
+        fn = getattr(model, "predict_noise_var", None)
+        if callable(fn):
+            return torch.as_tensor(fn(X), device=X.device, dtype=X.dtype)
+        for name in ("posterior_noise", "noise_posterior"):
+            fn = getattr(model, name, None)
+            if callable(fn):
+                return torch.as_tensor(fn(X).mean, device=X.device, dtype=X.dtype)
+        noise_model = getattr(model, "noise_model", None)
+        if noise_model is None:
+            inner = getattr(model, "model", None)
+            noise_model = getattr(inner, "noise_model", None) if inner is not None else None
+        if noise_model is not None:
+            return torch.as_tensor(noise_model.posterior(X).mean, device=X.device, dtype=X.dtype)
+        return torch.zeros(X.shape[:-1], device=X.device, dtype=X.dtype)
+
+    def _to_point_noise(self, noise: Tensor, X: Tensor) -> Tensor:
+        point_shape = X.shape[:-1]
+        while noise.ndim > len(point_shape):
+            if noise.shape[-1] == 1:
+                noise = noise.squeeze(-1)
+            else:
+                noise = noise.mean(dim=-1)
+        if noise.shape == point_shape:
+            return noise
+        if noise.numel() == int(torch.tensor(point_shape).prod().item()):
+            return noise.reshape(point_shape)
+        return noise.mean().expand(point_shape)
+
+    def _noise_values(self, X: Tensor, n_outputs: int) -> Tensor:
+        Xq = self._ensure_q_batch(X)
+        if self.noise_mode == "none":
+            return torch.zeros(*Xq.shape[:-1], n_outputs, device=Xq.device, dtype=Xq.dtype)
+
+        fn = getattr(self.model, "predict_noise_var", None)
+        if callable(fn):
+            noise = torch.as_tensor(fn(Xq), device=Xq.device, dtype=Xq.dtype)
+            if noise.shape == (*Xq.shape[:-1], n_outputs):
+                out = noise
+            else:
+                out = noise.reshape(*Xq.shape[:-1], n_outputs) if noise.numel() == int(torch.tensor((*Xq.shape[:-1], n_outputs)).prod().item()) else noise.mean().expand(*Xq.shape[:-1], n_outputs)
+        else:
+            pieces = []
+            submodels = self._submodels()
+            if len(submodels) == 0:
+                submodels = [self.model]
+            for sm in submodels:
+                pieces.append(self._to_point_noise(self._single_noise(sm, Xq), Xq).unsqueeze(-1))
+            out = torch.cat(pieces, dim=-1)
+            if out.shape[-1] != n_outputs:
+                out = out.mean(dim=-1, keepdim=True).expand(*Xq.shape[:-1], n_outputs)
+
+        if self.noise_model_outputs_log_var:
+            return torch.exp(out.clamp(min=-30.0, max=30.0)).clamp_min(self.eps)
+        return out.clamp_min(self.eps)
+
+    def _noise_weight(self, noise: Tensor) -> Tensor:
+        if self.noise_mode == "none":
+            weight = torch.ones_like(noise)
+        elif self.noise_mode == "inverse_linear":
+            weight = 1.0 / (1.0 + self.noise_penalty_lambda * noise.clamp_min(0.0))
+        elif self.noise_mode == "inverse_sqrt":
+            weight = 1.0 / torch.sqrt(1.0 + self.noise_penalty_lambda * noise.clamp_min(0.0))
+        elif self.noise_mode == "exp":
+            weight = torch.exp(-self.noise_penalty_lambda * noise.clamp_min(0.0))
+        else:
+            raise ValueError(f"Unknown noise_mode: {self.noise_mode!r}.")
+        return (self.noise_weight_scale * weight).clamp_min(self.noise_min_weight)
+
+    def _combine(self, values: Tensor, weight: Tensor) -> Tensor:
+        # values: sample_shape x batch_shape x q x m
+        while weight.ndim < values.ndim:
+            weight = weight.unsqueeze(0)
+        weight = weight.to(device=values.device, dtype=values.dtype)
+        if self.noise_combine == "multiply":
+            return values * weight
+        if self.noise_combine in {"subtract", "add"}:
+            return values - (1.0 - weight)
+        raise ValueError(f"Unknown noise_combine: {self.noise_combine!r}.")
+
+    def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
+        values = self.base_objective(samples, X=X)
+        if X is None:
+            return values
+        if values.ndim < 1:
+            return values
+        n_outputs = int(values.shape[-1])
+        noise = self._noise_values(X, n_outputs=n_outputs)
+        weight = self._noise_weight(noise)
+        return self._combine(values, weight)
+
+
 class qHeteroMultiOutputMulticlassProbabilityOfFeasibility(
     _HeteroMultiOutputMulticlassMixin,
     qMultiOutputMulticlassProbabilityOfFeasibility,
 ):
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        self._set_eval_mode()
-        raw_X = self._ensure_q_batch(X)
-        self._current_batch_shape = raw_X.shape[:-2]
-        Xt = self._ensure_q_batch(self._apply_input_transform(raw_X))
-        p = self._target_prob_mean_per_output(raw_X)
-        score_per_output = p if self.threshold is None else torch.sigmoid((p - self.threshold) / max(self.tau, self.eps))
-        score_per_output = self._apply_noise_to_score_per_output(score_per_output, Xt)
-        value = self._pointwise_score_to_value(score_per_output, raw_X, Xt)
-        return self._finalize(value, raw_X, name=self.__class__.__name__)
+    pass
 
 
-class qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement(
-    _HeteroMultiOutputMulticlassMixin,
-    qMultiOutputMulticlassExpectedHypervolumeImprovement,
-):
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        self._set_eval_mode()
-        raw_X = self._ensure_q_batch(X)
-        Xt = self._ensure_q_batch(self._apply_input_transform(raw_X))
-        samples = self._candidate_samples(raw_X)
-        ref = self._ref(device=samples.device, dtype=samples.dtype)
-        base_hv = self._baseline_hv(ref=ref, device=samples.device, dtype=samples.dtype)
-        hv = self._hypervolume(samples, ref)
-        value = (hv - base_hv).clamp_min(0.0).mean(dim=0)
-        # Hypervolume is already output-aggregated. Penalize by average output noise.
-        noise = self._get_noise_values(Xt, n_outputs=samples.shape[-1])
-        weight = self._aggregate_noise_over_q(self._noise_to_weight(noise)).mean(dim=-1).to(value)
-        value = self._combine_score_and_weight(value, weight)
-        value = value - self._pending_q_penalty(Xt)
-        return self._finalize(value, raw_X, name=self.__class__.__name__)
+class qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement(qMultiOutputMulticlassExpectedHypervolumeImprovement):
+    """BoTorch qEHVI with hetero-adjusted multiclass target objective."""
+
+    def __init__(
+        self,
+        model,
+        ref_point: Tensor | Sequence[float],
+        partitioning: FastNondominatedPartitioning,
+        *,
+        target_class: int | Sequence[int] | None = None,
+        output_target_classes: Sequence[int] | None = None,
+        class_reduction: ClassReductionType = "mean",
+        sampler: Optional[SobolQMCNormalSampler] = None,
+        objective: Optional[MCMultiOutputObjective] = None,
+        constraints: Optional[list] = None,
+        X_pending: Optional[Tensor] = None,
+        eta: float | Tensor = 1e-3,
+        fat: bool = False,
+        noise_mode: str = "inverse_linear",
+        noise_combine: str = "multiply",
+        noise_penalty_lambda: float = 1.0,
+        noise_min_weight: float = 0.0,
+        noise_weight_scale: float = 1.0,
+        noise_model_outputs_log_var: bool = True,
+        eps: float = 1e-8,
+    ) -> None:
+        base_objective = objective or MulticlassTargetProbabilityObjective(
+            target_class=target_class,
+            output_target_classes=output_target_classes,
+            num_outputs=int(torch.as_tensor(ref_point).numel()),
+            class_reduction=class_reduction,
+            eps=eps,
+        )
+        hetero_objective = _HeteroMulticlassTargetProbabilityObjective(
+            base_objective=base_objective,
+            model=model,
+            noise_mode=noise_mode,
+            noise_combine=noise_combine,
+            noise_penalty_lambda=noise_penalty_lambda,
+            noise_min_weight=noise_min_weight,
+            noise_weight_scale=noise_weight_scale,
+            noise_model_outputs_log_var=noise_model_outputs_log_var,
+            eps=eps,
+        )
+        super().__init__(
+            model=model,
+            ref_point=ref_point,
+            partitioning=partitioning,
+            sampler=sampler,
+            objective=hetero_objective,
+            constraints=constraints,
+            X_pending=X_pending,
+            eta=eta,
+            fat=fat,
+            eps=eps,
+        )
+        self.base_objective = base_objective
+        self.hetero_objective = hetero_objective
 
 
-class qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(
-    _HeteroMultiOutputMulticlassMixin,
-    qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
-):
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        self._set_eval_mode()
-        raw_X = self._ensure_q_batch(X)
-        Xt = self._ensure_q_batch(self._apply_input_transform(raw_X))
-        samples = self._candidate_samples(raw_X)
-        ref = self._ref(device=samples.device, dtype=samples.dtype)
-        Yb = self._baseline_values(device=samples.device, dtype=samples.dtype)
-        if Yb is None:
-            base_hv = samples.new_zeros(())
-            hv = self._hypervolume(samples, ref)
-        else:
-            batch_shape = samples.shape[1:-2]
-            Yb_exp = Yb.view(*([1] * len(batch_shape)), *Yb.shape).expand(*batch_shape, *Yb.shape)
-            Yb_exp = Yb_exp.unsqueeze(0).expand(samples.shape[0], *Yb_exp.shape)
-            combined = torch.cat([Yb_exp, samples], dim=-2)
-            base_hv = self._hypervolume(Yb_exp, ref)
-            hv = self._hypervolume(combined, ref)
-        value = (hv - base_hv).clamp_min(0.0).mean(dim=0)
-        noise = self._get_noise_values(Xt, n_outputs=samples.shape[-1])
-        weight = self._aggregate_noise_over_q(self._noise_to_weight(noise)).mean(dim=-1).to(value)
-        value = self._combine_score_and_weight(value, weight)
-        value = value - self._pending_q_penalty(Xt)
-        return self._finalize(value, raw_X, name=self.__class__.__name__)
+class qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement):
+    """BoTorch qNEHVI with hetero-adjusted multiclass target objective."""
+
+    def __init__(
+        self,
+        model,
+        ref_point: Tensor | Sequence[float],
+        X_baseline: Tensor,
+        *,
+        target_class: int | Sequence[int] | None = None,
+        output_target_classes: Sequence[int] | None = None,
+        class_reduction: ClassReductionType = "mean",
+        sampler: Optional[SobolQMCNormalSampler] = None,
+        objective: Optional[MCMultiOutputObjective] = None,
+        constraints: Optional[list] = None,
+        X_pending: Optional[Tensor] = None,
+        eta: float | Tensor = 1e-3,
+        fat: bool = False,
+        prune_baseline: bool = False,
+        alpha: float = 0.0,
+        cache_pending: bool = True,
+        max_iep: int = 0,
+        incremental_nehvi: bool = True,
+        cache_root: bool = True,
+        marginalize_dim: Optional[int] = None,
+        noise_mode: str = "inverse_linear",
+        noise_combine: str = "multiply",
+        noise_penalty_lambda: float = 1.0,
+        noise_min_weight: float = 0.0,
+        noise_weight_scale: float = 1.0,
+        noise_model_outputs_log_var: bool = True,
+        eps: float = 1e-8,
+    ) -> None:
+        base_objective = objective or MulticlassTargetProbabilityObjective(
+            target_class=target_class,
+            output_target_classes=output_target_classes,
+            num_outputs=int(torch.as_tensor(ref_point).numel()),
+            class_reduction=class_reduction,
+            eps=eps,
+        )
+        hetero_objective = _HeteroMulticlassTargetProbabilityObjective(
+            base_objective=base_objective,
+            model=model,
+            noise_mode=noise_mode,
+            noise_combine=noise_combine,
+            noise_penalty_lambda=noise_penalty_lambda,
+            noise_min_weight=noise_min_weight,
+            noise_weight_scale=noise_weight_scale,
+            noise_model_outputs_log_var=noise_model_outputs_log_var,
+            eps=eps,
+        )
+        super().__init__(
+            model=model,
+            ref_point=ref_point,
+            X_baseline=X_baseline,
+            sampler=sampler,
+            objective=hetero_objective,
+            constraints=constraints,
+            X_pending=X_pending,
+            eta=eta,
+            fat=fat,
+            prune_baseline=prune_baseline,
+            alpha=alpha,
+            cache_pending=cache_pending,
+            max_iep=max_iep,
+            incremental_nehvi=incremental_nehvi,
+            cache_root=cache_root,
+            marginalize_dim=marginalize_dim,
+            eps=eps,
+        )
+        self.base_objective = base_objective
+        self.hetero_objective = hetero_objective
 
 
-class qHeteroMultiOutputMulticlassNParEGO(
-    _HeteroMultiOutputMulticlassMixin,
-    qMultiOutputMulticlassNParEGO,
-):
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        self._set_eval_mode()
-        raw_X = self._ensure_q_batch(X)
-        Xt = self._ensure_q_batch(self._apply_input_transform(raw_X))
-        samples = self._target_prob_samples_per_output(raw_X, num_samples=self.num_samples)
-        weights = self._weights(m=samples.shape[-1], device=samples.device, dtype=samples.dtype)
-        scalar = self._scalarize(samples, weights)
-        best_q = scalar.max(dim=-1).values
-        best_f = self._baseline_best_f(weights=weights, device=samples.device, dtype=samples.dtype)
-        value = (best_q - best_f).clamp_min(0.0).mean(dim=0)
-        noise = self._get_noise_values(Xt, n_outputs=samples.shape[-1])
-        weighted_noise = self._noise_to_weight(noise) * weights.view(*([1] * (noise.ndim - 1)), -1)
-        weight = self._aggregate_noise_over_q(weighted_noise.sum(dim=-1, keepdim=True)).squeeze(-1).to(value)
-        value = self._combine_score_and_weight(value, weight)
-        value = value - self._pending_q_penalty(Xt)
-        return self._finalize(value, raw_X, name=self.__class__.__name__)
+class qHeteroMultiOutputMulticlassNParEGO(qMultiOutputMulticlassNParEGO):
+    """qNParEGO using a hetero-adjusted multiclass target objective."""
+
+    def __init__(
+        self,
+        model,
+        X_baseline: Tensor,
+        ref_point: Tensor | Sequence[float],
+        *,
+        target_class: int | Sequence[int] | None = None,
+        output_target_classes: Sequence[int] | None = None,
+        class_reduction: ClassReductionType = "mean",
+        weights: Optional[Tensor] = None,
+        sampler: Optional[SobolQMCNormalSampler] = None,
+        objective: Optional[MCMultiOutputObjective] = None,
+        rho: float = 0.05,
+        noise_mode: str = "inverse_linear",
+        noise_combine: str = "multiply",
+        noise_penalty_lambda: float = 1.0,
+        noise_min_weight: float = 0.0,
+        noise_weight_scale: float = 1.0,
+        noise_model_outputs_log_var: bool = True,
+        eps: float = 1e-8,
+    ) -> None:
+        ref_tensor = torch.as_tensor(ref_point, device=X_baseline.device, dtype=X_baseline.dtype).reshape(-1)
+        base_objective = objective or MulticlassTargetProbabilityObjective(
+            target_class=target_class,
+            output_target_classes=output_target_classes,
+            num_outputs=int(ref_tensor.numel()),
+            class_reduction=class_reduction,
+            eps=eps,
+        )
+        hetero_objective = _HeteroMulticlassTargetProbabilityObjective(
+            base_objective=base_objective,
+            model=model,
+            noise_mode=noise_mode,
+            noise_combine=noise_combine,
+            noise_penalty_lambda=noise_penalty_lambda,
+            noise_min_weight=noise_min_weight,
+            noise_weight_scale=noise_weight_scale,
+            noise_model_outputs_log_var=noise_model_outputs_log_var,
+            eps=eps,
+        )
+        super().__init__(
+            model=model,
+            X_baseline=X_baseline,
+            ref_point=ref_tensor,
+            weights=weights,
+            sampler=sampler,
+            objective=hetero_objective,
+            rho=rho,
+            eps=eps,
+        )
+        self.base_objective = base_objective
+        self.hetero_objective = hetero_objective
 
 
 class qHeteroMultiOutputMulticlassExpectedImprovement(
     _HeteroMultiOutputMulticlassMixin,
     qMultiOutputMulticlassExpectedImprovement,
 ):
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        self._set_eval_mode()
-        raw_X = self._ensure_q_batch(X)
-        Xt = self._ensure_q_batch(self._apply_input_transform(raw_X))
-        samples = self._target_prob_samples_per_output(raw_X, num_samples=self.num_samples)
-        best_q_per_output = samples.max(dim=-2).values
-        best_f = self._align_output_param(self.best_f, ref=best_q_per_output, name="best_f")
-        value_per_output = (best_q_per_output - best_f).clamp_min(0.0).mean(dim=0)
-        value_per_output = self._apply_noise_to_q_aggregated_output_score(value_per_output, Xt)
-        value = self._aggregate_outputs(value_per_output)
-        value = value - self._pending_q_penalty(Xt)
-        return self._finalize(value, raw_X, name=self.__class__.__name__)
+    pass
 
 
 class qHeteroMultiOutputMulticlassProbabilityOfImprovement(
     _HeteroMultiOutputMulticlassMixin,
     qMultiOutputMulticlassProbabilityOfImprovement,
 ):
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        self._set_eval_mode()
-        raw_X = self._ensure_q_batch(X)
-        Xt = self._ensure_q_batch(self._apply_input_transform(raw_X))
-        samples = self._target_prob_samples_per_output(raw_X, num_samples=self.num_samples)
-        best_q_per_output = samples.max(dim=-2).values
-        best_f = self._align_output_param(self.best_f, ref=best_q_per_output, name="best_f")
-        tau = self.tau.to(best_q_per_output).clamp_min(self.eps)
-        value_per_output = torch.sigmoid((best_q_per_output - best_f) / tau).mean(dim=0)
-        value_per_output = self._apply_noise_to_q_aggregated_output_score(value_per_output, Xt)
-        value = self._aggregate_outputs(value_per_output)
-        value = value - self._pending_q_penalty(Xt)
-        return self._finalize(value, raw_X, name=self.__class__.__name__)
+    pass
 
 
 class qHeteroMultiOutputMulticlassUpperConfidenceBound(
     _HeteroMultiOutputMulticlassMixin,
     qMultiOutputMulticlassUpperConfidenceBound,
 ):
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        self._set_eval_mode()
-        raw_X = self._ensure_q_batch(X)
-        self._current_batch_shape = raw_X.shape[:-2]
-        Xt = self._ensure_q_batch(self._apply_input_transform(raw_X))
-        samples = self._target_prob_samples_per_output(raw_X, num_samples=self.num_samples)
-        mean = samples.mean(dim=0)
-        std = samples.std(dim=0, unbiased=False).clamp_min(self.eps)
-        beta = self._align_output_param(self.beta, ref=mean, name="beta")
-        score_per_output = mean + beta.sqrt() * std
-        score_per_output = self._apply_noise_to_score_per_output(score_per_output, Xt)
-        value = self._pointwise_score_to_value(score_per_output, raw_X, Xt)
-        return self._finalize(value, raw_X, name=self.__class__.__name__)
+    pass
 
 
 __all__ = [

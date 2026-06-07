@@ -120,6 +120,29 @@ def _maybe_tensor_keys(data: dict[str, Any], keys: Sequence[str]) -> None:
             data[key] = to_tensor(data[key])
 
 
+def _normalize_acqf_kwargs(value: Any) -> dict[str, Any]:
+    """Normalize common tensor-like acquisition kwargs accepted through JSON."""
+
+    data = dict(value or {})
+    _maybe_tensor_keys(
+        data,
+        (
+            "X_baseline",
+            "X_pending",
+            "Y_baseline",
+            "best_f",
+            "ref_point",
+            "objective_thresholds",
+            "mc_points",
+        ),
+    )
+    if data.get("inequality_constraints") is not None:
+        data["inequality_constraints"] = _normalize_linear_constraints(data["inequality_constraints"])
+    if data.get("equality_constraints") is not None:
+        data["equality_constraints"] = _normalize_linear_constraints(data["equality_constraints"])
+    return data
+
+
 def to_input_transform_config(value: Any) -> Any:
     from bochan.api import InputTransformConfig
 
@@ -279,6 +302,7 @@ def to_acquisition_config(value: Any) -> Any:
     data = _dump(value)
     if data.get("objective_config") is not None:
         data["objective_config"] = to_objective_config(data["objective_config"])
+    data["acqf_kwargs"] = _normalize_acqf_kwargs(data.get("acqf_kwargs"))
     return AcquisitionConfig(**data)
 
 

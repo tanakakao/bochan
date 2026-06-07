@@ -15,10 +15,11 @@ from .configs import (
     OptimizeConfigSchema,
     OutputConfigSchema,
 )
-from .requests import CandidateRequest, FitModelRequest, PredictRequest
+from .requests import CandidateRequest, CompareCandidatesRequest, FitModelRequest, PredictRequest, RefitModelRequest, TellRequest
 from .responses import (
     AcquisitionNamesResponse,
     CandidateResponse,
+    CompareCandidatesResponse,
     HealthResponse,
     ModelDeleteResponse,
     ModelFitResponse,
@@ -32,6 +33,8 @@ __all__ = [
     "CandidateRepairConfigSchema",
     "CandidateRequest",
     "CandidateResponse",
+    "CompareCandidatesRequest",
+    "CompareCandidatesResponse",
     "DataContextSchema",
     "FitConfigSchema",
     "FitModelRequest",
@@ -48,4 +51,6 @@ __all__ = [
     "OutputConfigSchema",
     "PredictRequest",
     "PredictResponse",
+    "RefitModelRequest",
+    "TellRequest",
 ]

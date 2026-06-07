@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
+from dataclasses import asdict, is_dataclass
 from typing import Any
 
 
@@ -24,12 +25,15 @@ def to_tensor(value: Any, *, dtype: Any | None = None) -> Any:
     import torch
 
     if torch.is_tensor(value):
-        return value
+        return value.to(dtype=dtype) if dtype is not None else value
     return torch.as_tensor(value, dtype=dtype or torch.double)
 
 
 def to_serializable(value: Any) -> Any:
-    """Convert torch tensors and nested containers to JSON-serializable values."""
+    """Convert torch/numpy/dataclass objects and containers to JSON-serializable values."""
+
+    if value is None:
+        return None
 
     try:
         import torch
@@ -42,13 +46,78 @@ def to_serializable(value: Any) -> Any:
     except Exception:
         pass
 
+    try:
+        import numpy as np
+
+        if isinstance(value, np.ndarray):
+            return value.tolist()
+        if isinstance(value, np.generic):
+            return value.item()
+    except Exception:
+        pass
+
+    if is_dataclass(value):
+        return to_serializable(asdict(value))
     if isinstance(value, Mapping):
         return {str(k): to_serializable(v) for k, v in value.items()}
     if isinstance(value, tuple):
         return [to_serializable(v) for v in value]
     if isinstance(value, list):
         return [to_serializable(v) for v in value]
-    return value
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _normalize_fixed_features(value: Any) -> dict[int, float] | None:
+    """Normalize JSON object keys to BoTorch fixed feature indices."""
+
+    if value is None:
+        return None
+    return {int(key): float(val) for key, val in dict(value).items()}
+
+
+def _normalize_fixed_features_list(value: Any) -> list[dict[int, float]] | None:
+    if value is None:
+        return None
+    return [_normalize_fixed_features(item) or {} for item in value]
+
+
+def _normalize_linear_constraints(value: Any) -> Any:
+    """Convert JSON constraints to BoTorch-compatible linear constraints.
+
+    Accepted formats:
+        - {"indices": [0, 1], "coefficients": [1.0, 1.0], "rhs": 1.0}
+        - [[0, 1], [1.0, 1.0], 1.0]
+    """
+
+    if value is None:
+        return None
+
+    import torch
+
+    constraints = []
+    for item in value:
+        if isinstance(item, Mapping):
+            indices = item["indices"]
+            coefficients = item["coefficients"]
+            rhs = item["rhs"]
+        else:
+            indices, coefficients, rhs = item
+        constraints.append(
+            (
+                to_tensor(indices, dtype=torch.long),
+                to_tensor(coefficients),
+                float(rhs),
+            )
+        )
+    return constraints
+
+
+def _maybe_tensor_keys(data: dict[str, Any], keys: Sequence[str]) -> None:
+    for key in keys:
+        if data.get(key) is not None:
+            data[key] = to_tensor(data[key])
 
 
 def to_input_transform_config(value: Any) -> Any:
@@ -56,7 +125,10 @@ def to_input_transform_config(value: Any) -> Any:
 
     if value is None or isinstance(value, InputTransformConfig):
         return value
-    return InputTransformConfig(**_dump(value))
+    data = _dump(value)
+    if data.get("bounds") is not None:
+        data["bounds"] = to_tensor(data["bounds"])
+    return InputTransformConfig(**data)
 
 
 def to_fit_config(value: Any) -> Any:
@@ -128,9 +200,15 @@ def to_multi_objective_config(value: Any) -> Any:
     if value is None or isinstance(value, MultiObjectiveConfig):
         return value
     data = _dump(value)
-    for key in ("ref_point", "Y_baseline", "objective_thresholds"):
-        if data.get(key) is not None:
-            data[key] = to_tensor(data[key])
+    _maybe_tensor_keys(
+        data,
+        (
+            "ref_point",
+            "Y_baseline",
+            "objective_thresholds",
+            "scalarization_weights",
+        ),
+    )
     return MultiObjectiveConfig(**data)
 
 
@@ -140,17 +218,19 @@ def to_data_context(value: Any) -> Any:
     if value is None or isinstance(value, DataContext):
         return value
     data = _dump(value)
-    for key in (
-        "bounds",
-        "X_baseline",
-        "X_pending",
-        "Y_baseline",
-        "ref_point",
-        "objective_thresholds",
-        "mc_points",
-    ):
-        if data.get(key) is not None:
-            data[key] = to_tensor(data[key])
+    _maybe_tensor_keys(
+        data,
+        (
+            "bounds",
+            "X_baseline",
+            "X_pending",
+            "Y_baseline",
+            "best_f",
+            "ref_point",
+            "objective_thresholds",
+            "mc_points",
+        ),
+    )
     if data.get("multi_objective") is not None:
         data["multi_objective"] = to_multi_objective_config(data["multi_objective"])
     return DataContext(**data)
@@ -162,8 +242,13 @@ def to_candidate_repair_config(value: Any) -> Any:
     if value is None or isinstance(value, CandidateRepairConfig):
         return value
     data = _dump(value)
-    if data.get("bounds") is not None:
-        data["bounds"] = to_tensor(data["bounds"])
+    _maybe_tensor_keys(data, ("bounds", "steps"))
+    if data.get("equality_constraints") is not None:
+        data["equality_constraints"] = _normalize_linear_constraints(data["equality_constraints"])
+    if data.get("inequality_constraints") is not None:
+        data["inequality_constraints"] = _normalize_linear_constraints(data["inequality_constraints"])
+    if data.get("fixed_features") is not None:
+        data["fixed_features"] = _normalize_fixed_features(data["fixed_features"])
     return CandidateRepairConfig(**data)
 
 
@@ -175,6 +260,14 @@ def to_optimize_config(value: Any) -> Any:
     data = _dump(value)
     if data.get("repair_config") is not None:
         data["repair_config"] = to_candidate_repair_config(data["repair_config"])
+    if data.get("fixed_features") is not None:
+        data["fixed_features"] = _normalize_fixed_features(data["fixed_features"])
+    if data.get("fixed_features_list") is not None:
+        data["fixed_features_list"] = _normalize_fixed_features_list(data["fixed_features_list"])
+    if data.get("equality_constraints") is not None:
+        data["equality_constraints"] = _normalize_linear_constraints(data["equality_constraints"])
+    if data.get("inequality_constraints") is not None:
+        data["inequality_constraints"] = _normalize_linear_constraints(data["inequality_constraints"])
     return OptimizeConfig(**data)
 
 

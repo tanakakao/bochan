@@ -153,6 +153,7 @@ _register("bochan.acquisition.multiclass.active_learning", [
     "qHeteroMulticlassPredictiveEntropy", "qHeteroMulticlassBALD", "qHeteroMulticlassProbabilityVariance",
     "qHeteroMulticlassMarginUncertainty", "qHeteroMulticlassIntegratedPosteriorVarianceProxy",
     "qHeteroMultiOutputMulticlassPredictiveEntropy", "qHeteroMultiOutputMulticlassBALD",
+    "qHeteroMultiOutputMulticlassJointBALD", "qHeteroMultiOutputMulticlassGreedyJointBALD",
     "qHeteroMultiOutputMulticlassProbabilityVariance", "qHeteroMultiOutputMulticlassMarginUncertainty",
     "qHeteroMultiOutputMulticlassIntegratedPosteriorVarianceProxy",
 ])

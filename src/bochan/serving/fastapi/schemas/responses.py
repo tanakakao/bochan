@@ -41,5 +41,10 @@ class CandidateResponse(BaseModel):
     acq_value: Any
 
 
+class CompareCandidatesResponse(BaseModel):
+    model_id: str
+    results: dict[str, CandidateResponse]
+
+
 class AcquisitionNamesResponse(BaseModel):
     names: list[str]

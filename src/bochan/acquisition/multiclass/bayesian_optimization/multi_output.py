@@ -1,8 +1,21 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Optional
 
 import torch
+from botorch.acquisition.monte_carlo import MCAcquisitionFunction
+from botorch.acquisition.multi_objective.monte_carlo import (
+    qExpectedHypervolumeImprovement,
+    qNoisyExpectedHypervolumeImprovement,
+)
+from botorch.acquisition.multi_objective.objective import (
+    IdentityMCMultiOutputObjective,
+    MCMultiOutputObjective,
+)
+from botorch.models.model import Model
+from botorch.sampling.normal import SobolQMCNormalSampler
+from botorch.utils.multi_objective.box_decompositions.non_dominated import FastNondominatedPartitioning
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 
@@ -15,13 +28,172 @@ from bochan.acquisition.multiclass.active_learning.multi_output import (
 from bochan.acquisition.multiclass.base import ClassReductionType
 
 
-class _MultiOutputMulticlassTargetClassBOBase(_DirectMultiOutputMulticlassAcqBase):
-    """Binary-style base for multi-output multiclass target-class BO.
+class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
+    """Convert multiclass probability samples to target-class objective values.
 
-    This base operates on multiclass probabilities with shape
-    ``batch_shape x q_like x m x C``. The target objective is target-class
-    probability per output.
+    The objective accepts either of the following shapes:
+
+    - ``sample_shape x batch_shape x q x m``: already target probability / objective values.
+    - ``sample_shape x batch_shape x q x m x C``: multiclass probabilities.
+
+    In the latter case, it selects ``target_class`` for all outputs or
+    ``output_target_classes[i]`` for output ``i``.
     """
+
+    def __init__(
+        self,
+        *,
+        target_class: int | Sequence[int] | None = None,
+        output_target_classes: Sequence[int] | None = None,
+        num_outputs: int | None = None,
+        class_reduction: ClassReductionType = "mean",
+        eps: float = 1e-8,
+    ) -> None:
+        super().__init__()
+        if target_class is None and output_target_classes is None:
+            # Identity behavior for HybridMultiOutputModel or user-provided objective-scale models.
+            self.target_class = None
+            self.output_target_classes = None
+        else:
+            self.target_class = target_class
+            self.output_target_classes = None if output_target_classes is None else [int(i) for i in output_target_classes]
+        self.num_outputs = None if num_outputs is None else int(num_outputs)
+        self.class_reduction = class_reduction
+        self.eps = float(eps)
+
+    def _reduce_classes(self, selected: Tensor) -> Tensor:
+        if self.class_reduction == "mean":
+            return selected.mean(dim=-1)
+        if self.class_reduction == "sum":
+            return selected.sum(dim=-1)
+        if self.class_reduction == "max":
+            return selected.max(dim=-1).values
+        if self.class_reduction == "min":
+            return selected.min(dim=-1).values
+        if self.class_reduction == "prod":
+            return selected.prod(dim=-1)
+        raise ValueError(f"Unknown class_reduction: {self.class_reduction!r}.")
+
+    def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
+        # Already scalar / objective multi-output samples: sample_shape x batch_shape x q x m.
+        if self.num_outputs is not None and samples.shape[-1] == self.num_outputs:
+            if samples.ndim < 5 or samples.shape[-2] != self.num_outputs:
+                return samples
+
+        # If no target is specified, keep identity behavior.
+        if self.target_class is None and self.output_target_classes is None:
+            return samples
+
+        if samples.ndim < 2:
+            raise RuntimeError(f"Multiclass samples must include class dimension. Got {tuple(samples.shape)}.")
+
+        # Expected multiclass shape: ... x m x C.
+        if self.output_target_classes is not None:
+            n_outputs = int(samples.shape[-2])
+            if len(self.output_target_classes) != n_outputs:
+                raise ValueError(
+                    "output_target_classes length must match number of outputs. "
+                    f"Got {len(self.output_target_classes)} and {n_outputs}."
+                )
+            idx = torch.as_tensor(self.output_target_classes, device=samples.device, dtype=torch.long)
+            gather_idx = idx.view(*([1] * (samples.ndim - 2)), n_outputs, 1).expand(*samples.shape[:-1], 1)
+            return torch.gather(samples, dim=-1, index=gather_idx).squeeze(-1)
+
+        if isinstance(self.target_class, int):
+            return samples[..., int(self.target_class)]
+
+        indices = [int(i) for i in self.target_class]
+        selected = samples[..., indices]
+        return self._reduce_classes(selected)
+
+
+class _IdentityMCMultiOutputObjective(MCMultiOutputObjective):
+    """Identity objective for qNParEGO when no explicit objective is supplied."""
+
+    def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
+        return samples
+
+
+def ensure_q_batch(X: Tensor) -> Tensor:
+    if X.ndim == 1:
+        return X.view(1, 1, -1)
+    if X.ndim == 2:
+        return X.unsqueeze(0)
+    return X
+
+
+def _prod(shape: torch.Size | tuple[int, ...]) -> int:
+    out = 1
+    for s in shape:
+        out *= int(s)
+    return out
+
+
+def _squeeze_only_output_singleton(value: Tensor, X: Tensor) -> Tensor:
+    q = int(X.shape[-2])
+    batch_ndim = len(X.shape[:-2])
+    min_ndim_with_q = batch_ndim + 1
+    if value.ndim >= min_ndim_with_q + 1 and value.shape[-1] == 1 and value.shape[-2] == q:
+        return value.squeeze(-1)
+    return value
+
+
+def _reduce_sample_and_q_to_tbatch(value: Tensor, X: Tensor) -> Tensor:
+    batch_shape = X.shape[:-2]
+    q = int(X.shape[-2])
+    batch_prod = _prod(batch_shape)
+    value = _squeeze_only_output_singleton(value, X)
+
+    if value.ndim >= 1 and value.shape[-1] == q:
+        value = value.max(dim=-1).values
+    elif q == 1 and batch_prod == 1 and value.ndim >= 1:
+        pass
+    else:
+        raise RuntimeError(
+            "Expected scalarized value to have q dimension as the last dimension. "
+            f"value.shape={tuple(value.shape)}, q={q}, batch_shape={tuple(batch_shape)}, X.shape={tuple(X.shape)}."
+        )
+
+    while value.ndim > len(batch_shape):
+        value = value.mean(dim=0)
+
+    if value.shape == batch_shape:
+        return value
+    if value.numel() == batch_prod:
+        return value.reshape(batch_shape)
+    if len(batch_shape) == 0 and value.numel() == 1:
+        return value.reshape(batch_shape)
+    if q == 1 and batch_prod == 1 and value.ndim == 1:
+        return value.mean().reshape(batch_shape)
+    if batch_prod == 1 and value.numel() == 1:
+        return value.reshape(batch_shape)
+
+    raise RuntimeError(
+        "qMultiOutputMulticlassNParEGO produced invalid output shape after scalarization. "
+        f"value.shape={tuple(value.shape)}, expected batch_shape={tuple(batch_shape)}, X.shape={tuple(X.shape)}."
+    )
+
+
+def _make_target_objective(
+    *,
+    ref_point: Tensor | Sequence[float] | None = None,
+    target_class: int | Sequence[int] | None = None,
+    output_target_classes: Sequence[int] | None = None,
+    class_reduction: ClassReductionType = "mean",
+    eps: float = 1e-8,
+) -> MulticlassTargetProbabilityObjective:
+    num_outputs = None if ref_point is None else int(torch.as_tensor(ref_point).numel())
+    return MulticlassTargetProbabilityObjective(
+        target_class=target_class,
+        output_target_classes=output_target_classes,
+        num_outputs=num_outputs,
+        class_reduction=class_reduction,
+        eps=eps,
+    )
+
+
+class _MultiOutputMulticlassTargetClassBOBase(_DirectMultiOutputMulticlassAcqBase):
+    """Direct target-class probability BO base for PoF and legacy scalar variants."""
 
     def __init__(
         self,
@@ -43,7 +215,7 @@ class _MultiOutputMulticlassTargetClassBOBase(_DirectMultiOutputMulticlassAcqBas
         if target_class is None and output_target_classes is None:
             raise ValueError(
                 "target_class or output_target_classes must be specified for "
-                "multi-output multiclass Bayesian optimization acquisitions."
+                "multi-output multiclass target-probability acquisitions."
             )
         super().__init__(
             model=model,
@@ -62,37 +234,21 @@ class _MultiOutputMulticlassTargetClassBOBase(_DirectMultiOutputMulticlassAcqBas
         self.class_reduction = class_reduction
 
     def _reduce_classes(self, selected: Tensor) -> Tensor:
-        if self.class_reduction == "mean":
-            return selected.mean(dim=-1)
-        if self.class_reduction == "sum":
-            return selected.sum(dim=-1)
-        if self.class_reduction == "max":
-            return selected.max(dim=-1).values
-        if self.class_reduction == "min":
-            return selected.min(dim=-1).values
-        if self.class_reduction == "prod":
-            return selected.prod(dim=-1)
-        raise ValueError(f"Unknown class_reduction: {self.class_reduction!r}.")
+        return MulticlassTargetProbabilityObjective(
+            target_class=self.target_class,
+            output_target_classes=self.output_target_classes,
+            class_reduction=self.class_reduction,
+            eps=self.eps,
+        )._reduce_classes(selected)
 
     def _target_prob_per_output(self, probs: Tensor) -> Tensor:
-        """Select target probabilities from ``... x m x C`` probabilities."""
-
-        n_outputs = int(probs.shape[-2])
-        if self.output_target_classes is not None:
-            if len(self.output_target_classes) != n_outputs:
-                raise ValueError(
-                    "output_target_classes length must match number of outputs. "
-                    f"Got {len(self.output_target_classes)} and {n_outputs}."
-                )
-            idx = torch.as_tensor(self.output_target_classes, device=probs.device, dtype=torch.long)
-            gather_idx = idx.view(*([1] * (probs.ndim - 2)), n_outputs, 1).expand(*probs.shape[:-1], 1)
-            return torch.gather(probs, dim=-1, index=gather_idx).squeeze(-1)
-
-        if isinstance(self.target_class, int):
-            return probs[..., int(self.target_class)]
-        indices = [int(i) for i in self.target_class]
-        selected = probs[..., indices]
-        return self._reduce_classes(selected)
+        return MulticlassTargetProbabilityObjective(
+            target_class=self.target_class,
+            output_target_classes=self.output_target_classes,
+            num_outputs=probs.shape[-2],
+            class_reduction=self.class_reduction,
+            eps=self.eps,
+        )(probs)
 
     def _target_prob_samples_per_output(self, X: Tensor, *, num_samples: int) -> Tensor:
         samples = self._sample_probs(X, num_samples=num_samples)
@@ -120,99 +276,6 @@ class _MultiOutputMulticlassTargetClassBOBase(_DirectMultiOutputMulticlassAcqBas
         if self.pending_penalty_weight <= 0:
             return Xt.new_zeros(Xt.shape[:-2])
         return self._pending_penalty_per_point(Xt).sum(dim=-1)
-
-
-class _MultiOutputMulticlassHypervolumeBase(_MultiOutputMulticlassTargetClassBOBase):
-    """Base for multiclass multi-objective BO over target-class probabilities."""
-
-    def __init__(
-        self,
-        model,
-        *,
-        ref_point: Tensor | Sequence[float],
-        target_class: int | Sequence[int] | None = None,
-        output_target_classes: Sequence[int] | None = None,
-        num_samples: int = 128,
-        X_baseline: Tensor | None = None,
-        baseline_Y: Tensor | None = None,
-        objective_signs: Tensor | Sequence[float] | None = None,
-        max_hv_q: int = 8,
-        **kwargs,
-    ) -> None:
-        super().__init__(
-            model=model,
-            target_class=target_class,
-            output_target_classes=output_target_classes,
-            reduction="sum",
-            **kwargs,
-        )
-        self.num_samples = int(num_samples)
-        self.max_hv_q = int(max_hv_q)
-        self.register_buffer("ref_point", torch.as_tensor(ref_point, dtype=torch.double))
-        self.register_buffer("objective_signs", None if objective_signs is None else torch.as_tensor(objective_signs, dtype=torch.double))
-        self.X_baseline = None if X_baseline is None else torch.as_tensor(X_baseline).detach()
-        self.baseline_Y = None if baseline_Y is None else torch.as_tensor(baseline_Y).detach()
-
-    def _signed(self, Y: Tensor) -> Tensor:
-        if self.objective_signs is None:
-            return Y
-        signs = self.objective_signs.to(device=Y.device, dtype=Y.dtype).reshape(-1)
-        return Y * signs.view(*([1] * (Y.ndim - 1)), -1)
-
-    def _ref(self, *, device: torch.device, dtype: torch.dtype) -> Tensor:
-        ref = self.ref_point.to(device=device, dtype=dtype).reshape(-1)
-        if self.objective_signs is not None:
-            ref = ref * self.objective_signs.to(device=device, dtype=dtype).reshape(-1)
-        return ref
-
-    def _hypervolume(self, Y: Tensor, ref: Tensor) -> Tensor:
-        """Differentiable inclusion-exclusion hypervolume for small q.
-
-        Args:
-            Y: ``... x q x m`` objective values, all maximized.
-            ref: ``m`` reference point.
-        """
-
-        if Y.shape[-2] == 0:
-            return Y.new_zeros(Y.shape[:-2])
-        q = int(Y.shape[-2])
-        if q > self.max_hv_q:
-            improv = (Y - ref.view(*([1] * (Y.ndim - 1)), -1)).clamp_min(0.0).sum(dim=-1)
-            topk = improv.topk(k=self.max_hv_q, dim=-1).indices
-            gather_idx = topk.unsqueeze(-1).expand(*topk.shape, Y.shape[-1])
-            Y = torch.gather(Y, dim=-2, index=gather_idx)
-            q = self.max_hv_q
-
-        hv = Y.new_zeros(Y.shape[:-2])
-        for mask in range(1, 1 << q):
-            idx = [i for i in range(q) if mask & (1 << i)]
-            corner = Y[..., idx, :].min(dim=-2).values
-            volume = (corner - ref.view(*([1] * (corner.ndim - 1)), -1)).clamp_min(0.0).prod(dim=-1)
-            hv = hv + volume if (len(idx) % 2 == 1) else hv - volume
-        return hv.clamp_min(0.0)
-
-    def _baseline_values(self, *, device: torch.device, dtype: torch.dtype) -> Tensor | None:
-        if self.baseline_Y is not None:
-            Y = self.baseline_Y.to(device=device, dtype=dtype)
-            if Y.ndim == 1:
-                Y = Y.unsqueeze(0)
-            return self._signed(Y)
-        if self.X_baseline is None:
-            return None
-        Xb = self.X_baseline.to(device=device, dtype=dtype)
-        if Xb.ndim == 2:
-            Xb = Xb.unsqueeze(0)
-        Yb = self._target_prob_mean_per_output(Xb)
-        return self._signed(Yb.reshape(-1, Yb.shape[-1]))
-
-    def _baseline_hv(self, *, ref: Tensor, device: torch.device, dtype: torch.dtype) -> Tensor:
-        Yb = self._baseline_values(device=device, dtype=dtype)
-        if Yb is None:
-            return torch.zeros((), device=device, dtype=dtype)
-        return self._hypervolume(Yb.unsqueeze(0), ref).squeeze(0)
-
-    def _candidate_samples(self, raw_X: Tensor) -> Tensor:
-        return self._signed(self._target_prob_samples_per_output(raw_X, num_samples=self.num_samples))
 
 
 class qMultiOutputMulticlassProbabilityOfFeasibility(_MultiOutputMulticlassTargetClassBOBase):
@@ -249,135 +312,187 @@ class qMultiOutputMulticlassProbabilityOfFeasibility(_MultiOutputMulticlassTarge
         return self._finalize(value, raw_X, name=self.__class__.__name__)
 
 
-class qMultiOutputMulticlassExpectedHypervolumeImprovement(_MultiOutputMulticlassHypervolumeBase):
-    """Monte Carlo EHVI over target-class probabilities."""
-
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        self._set_eval_mode()
-        raw_X = self._ensure_q_batch(X)
-        Xt = self._ensure_q_batch(self._apply_input_transform(raw_X))
-        samples = self._candidate_samples(raw_X)
-        ref = self._ref(device=samples.device, dtype=samples.dtype)
-        base_hv = self._baseline_hv(ref=ref, device=samples.device, dtype=samples.dtype)
-        hv = self._hypervolume(samples, ref)
-        value = (hv - base_hv).clamp_min(0.0).mean(dim=0)
-        value = value - self._pending_q_penalty(Xt)
-        return self._finalize(value, raw_X, name=self.__class__.__name__)
-
-
-class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(_MultiOutputMulticlassHypervolumeBase):
-    """Monte Carlo NEHVI-style improvement using ``X_baseline`` or ``baseline_Y``."""
-
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        self._set_eval_mode()
-        raw_X = self._ensure_q_batch(X)
-        Xt = self._ensure_q_batch(self._apply_input_transform(raw_X))
-        samples = self._candidate_samples(raw_X)
-        ref = self._ref(device=samples.device, dtype=samples.dtype)
-        Yb = self._baseline_values(device=samples.device, dtype=samples.dtype)
-        if Yb is None:
-            base_hv = samples.new_zeros(())
-            hv = self._hypervolume(samples, ref)
-        else:
-            batch_shape = samples.shape[1:-2]
-            Yb_exp = Yb.view(*([1] * len(batch_shape)), *Yb.shape).expand(*batch_shape, *Yb.shape)
-            Yb_exp = Yb_exp.unsqueeze(0).expand(samples.shape[0], *Yb_exp.shape)
-            combined = torch.cat([Yb_exp, samples], dim=-2)
-            base_hv = self._hypervolume(Yb_exp, ref)
-            hv = self._hypervolume(combined, ref)
-        value = (hv - base_hv).clamp_min(0.0).mean(dim=0)
-        value = value - self._pending_q_penalty(Xt)
-        return self._finalize(value, raw_X, name=self.__class__.__name__)
-
-
-class qMultiOutputMulticlassNParEGO(_MultiOutputMulticlassTargetClassBOBase):
-    """NParEGO-style random scalarization for multiclass target probabilities."""
+class qMultiOutputMulticlassExpectedHypervolumeImprovement(qExpectedHypervolumeImprovement):
+    """BoTorch qEHVI for multiclass target-class probability objectives."""
 
     def __init__(
         self,
-        model,
+        model: Model,
+        ref_point: Tensor | Sequence[float],
+        partitioning: FastNondominatedPartitioning,
         *,
         target_class: int | Sequence[int] | None = None,
         output_target_classes: Sequence[int] | None = None,
-        weights: Tensor | Sequence[float] | None = None,
-        best_f: float | Tensor | None = None,
-        X_baseline: Tensor | None = None,
-        baseline_Y: Tensor | None = None,
-        num_samples: int = 128,
-        scalarization: str = "chebyshev",
-        rho: float = 0.05,
-        **kwargs,
+        class_reduction: ClassReductionType = "mean",
+        sampler: Optional[SobolQMCNormalSampler] = None,
+        objective: Optional[MCMultiOutputObjective] = None,
+        constraints: Optional[list] = None,
+        X_pending: Optional[Tensor] = None,
+        eta: float | Tensor = 1e-3,
+        fat: bool = False,
+        eps: float = 1e-8,
     ) -> None:
-        super().__init__(
-            model=model,
+        objective = objective or _make_target_objective(
+            ref_point=ref_point,
             target_class=target_class,
             output_target_classes=output_target_classes,
-            reduction="sum",
-            **kwargs,
+            class_reduction=class_reduction,
+            eps=eps,
         )
-        self.num_samples = int(num_samples)
-        self.scalarization = scalarization
+        super().__init__(
+            model=model,
+            ref_point=ref_point,
+            partitioning=partitioning,
+            sampler=sampler,
+            objective=objective,
+            constraints=constraints or [],
+            X_pending=X_pending,
+            eta=eta,
+            fat=fat,
+        )
+
+
+class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qNoisyExpectedHypervolumeImprovement):
+    """BoTorch qNEHVI for multiclass target-class probability objectives."""
+
+    def __init__(
+        self,
+        model: Model,
+        ref_point: Tensor | Sequence[float],
+        X_baseline: Tensor,
+        *,
+        target_class: int | Sequence[int] | None = None,
+        output_target_classes: Sequence[int] | None = None,
+        class_reduction: ClassReductionType = "mean",
+        sampler: Optional[SobolQMCNormalSampler] = None,
+        objective: Optional[MCMultiOutputObjective] = None,
+        constraints: Optional[list] = None,
+        X_pending: Optional[Tensor] = None,
+        eta: float | Tensor = 1e-3,
+        fat: bool = False,
+        prune_baseline: bool = False,
+        alpha: float = 0.0,
+        cache_pending: bool = True,
+        max_iep: int = 0,
+        incremental_nehvi: bool = True,
+        cache_root: bool = True,
+        marginalize_dim: Optional[int] = None,
+        eps: float = 1e-8,
+    ) -> None:
+        objective = objective or _make_target_objective(
+            ref_point=ref_point,
+            target_class=target_class,
+            output_target_classes=output_target_classes,
+            class_reduction=class_reduction,
+            eps=eps,
+        )
+        super().__init__(
+            model=model,
+            ref_point=ref_point,
+            X_baseline=X_baseline,
+            sampler=sampler,
+            objective=objective,
+            constraints=constraints,
+            X_pending=X_pending,
+            eta=eta,
+            fat=fat,
+            prune_baseline=prune_baseline,
+            alpha=alpha,
+            cache_pending=cache_pending,
+            max_iep=max_iep,
+            incremental_nehvi=incremental_nehvi,
+            cache_root=cache_root,
+            marginalize_dim=marginalize_dim,
+        )
+
+
+class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):
+    """Multi-output multiclass qNParEGO-style acquisition.
+
+    This mirrors the binary implementation: posterior samples are transformed by
+    an MCMultiOutputObjective, scalarized with augmented Chebyshev, and evaluated
+    as qEI on the scalarized objective.
+    """
+
+    def __init__(
+        self,
+        model: Model,
+        X_baseline: Tensor,
+        ref_point: Tensor | Sequence[float],
+        *,
+        target_class: int | Sequence[int] | None = None,
+        output_target_classes: Sequence[int] | None = None,
+        class_reduction: ClassReductionType = "mean",
+        weights: Optional[Tensor] = None,
+        sampler: Optional[SobolQMCNormalSampler] = None,
+        objective: Optional[MCMultiOutputObjective] = None,
+        rho: float = 0.05,
+        eps: float = 1e-8,
+    ) -> None:
+        sampler = sampler or SobolQMCNormalSampler(sample_shape=torch.Size([128]))
+        ref_tensor = torch.as_tensor(ref_point, device=X_baseline.device, dtype=X_baseline.dtype).reshape(-1)
+        base_objective = objective or _make_target_objective(
+            ref_point=ref_tensor,
+            target_class=target_class,
+            output_target_classes=output_target_classes,
+            class_reduction=class_reduction,
+            eps=eps,
+        )
+        if objective is None and target_class is None and output_target_classes is None:
+            base_objective = _IdentityMCMultiOutputObjective()
+        super().__init__(model=model, sampler=sampler, objective=base_objective)
+        self.base_objective = base_objective
+        self.eps = float(eps)
+        self.num_outputs = int(ref_tensor.numel())
         self.rho = float(rho)
-        self.register_buffer("weights", None if weights is None else torch.as_tensor(weights, dtype=torch.double))
-        self.register_buffer("best_f", None if best_f is None else torch.as_tensor(best_f, dtype=torch.double))
-        self.X_baseline = None if X_baseline is None else torch.as_tensor(X_baseline).detach()
-        self.baseline_Y = None if baseline_Y is None else torch.as_tensor(baseline_Y).detach()
 
-    def _weights(self, *, m: int, device: torch.device, dtype: torch.dtype) -> Tensor:
-        if self.weights is None:
-            return torch.ones(m, device=device, dtype=dtype) / float(m)
-        w = self.weights.to(device=device, dtype=dtype).reshape(-1)
-        if w.numel() != m:
-            raise ValueError(f"weights must have length {m}. Got {w.numel()}.")
-        return w / w.abs().sum().clamp_min(self.eps)
+        if weights is None:
+            w = torch.rand(self.num_outputs, device=X_baseline.device, dtype=X_baseline.dtype)
+            weights = w / w.sum().clamp_min(self.eps)
+        else:
+            weights = weights.to(device=X_baseline.device, dtype=X_baseline.dtype)
+            weights = weights / weights.sum().clamp_min(self.eps)
+        self.register_buffer("weights", weights)
+        self.register_buffer("ref_point", ref_tensor)
 
-    def _scalarize(self, Y: Tensor, weights: Tensor) -> Tensor:
-        if self.scalarization == "linear":
-            return (Y * weights.view(*([1] * (Y.ndim - 1)), -1)).sum(dim=-1)
-        if self.scalarization == "chebyshev":
-            weighted = Y * weights.view(*([1] * (Y.ndim - 1)), -1)
-            return weighted.min(dim=-1).values + self.rho * weighted.sum(dim=-1)
-        raise ValueError(f"Unknown scalarization: {self.scalarization!r}.")
+        with torch.no_grad():
+            Xb = ensure_q_batch(X_baseline)
+            post = model.posterior(Xb)
+            values = self.base_objective(post.mean.unsqueeze(0), X=Xb)
+            baseline_score = self._scalarize(values)
+            if baseline_score.ndim >= 2 and baseline_score.shape[-1] == 1:
+                baseline_score = baseline_score.squeeze(-1)
+            self.register_buffer("best_value", baseline_score.max())
 
-    def _baseline_best_f(self, *, weights: Tensor, device: torch.device, dtype: torch.dtype) -> Tensor:
-        if self.best_f is not None:
-            return self.best_f.to(device=device, dtype=dtype)
-        if self.baseline_Y is not None:
-            Yb = self.baseline_Y.to(device=device, dtype=dtype)
-            if Yb.ndim == 1:
-                Yb = Yb.unsqueeze(0)
-            return self._scalarize(Yb, weights).max()
-        if self.X_baseline is not None:
-            Xb = self.X_baseline.to(device=device, dtype=dtype)
-            if Xb.ndim == 2:
-                Xb = Xb.unsqueeze(0)
-            Yb = self._target_prob_mean_per_output(Xb)
-            return self._scalarize(Yb.reshape(-1, Yb.shape[-1]), weights).max()
-        return torch.zeros((), device=device, dtype=dtype)
+    def _scalarize(self, values: Tensor) -> Tensor:
+        if values.ndim >= 2 and values.shape[-1] == 1 and self.num_outputs != 1:
+            values = values.squeeze(-1)
+        if values.ndim >= 1 and values.shape[-1] != self.num_outputs:
+            return values
+        if values.ndim < 1 or values.shape[-1] != self.num_outputs:
+            raise RuntimeError(
+                "Cannot scalarize values. Expected last dim to be num_outputs "
+                f"{self.num_outputs}, got values.shape={tuple(values.shape)}."
+            )
+        w = self.weights.to(device=values.device, dtype=values.dtype)
+        ref = self.ref_point.to(device=values.device, dtype=values.dtype)
+        shifted = values - ref
+        weighted = shifted * w
+        return weighted.min(dim=-1).values + self.rho * weighted.sum(dim=-1)
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
-        self._set_eval_mode()
-        raw_X = self._ensure_q_batch(X)
-        Xt = self._ensure_q_batch(self._apply_input_transform(raw_X))
-        samples = self._target_prob_samples_per_output(raw_X, num_samples=self.num_samples)
-        weights = self._weights(m=samples.shape[-1], device=samples.device, dtype=samples.dtype)
-        scalar = self._scalarize(samples, weights)
-        best_q = scalar.max(dim=-1).values
-        best_f = self._baseline_best_f(weights=weights, device=samples.device, dtype=samples.dtype)
-        value = (best_q - best_f).clamp_min(0.0).mean(dim=0)
-        value = value - self._pending_q_penalty(Xt)
-        return self._finalize(value, raw_X, name=self.__class__.__name__)
+        Xq = ensure_q_batch(X)
+        post = self.model.posterior(Xq)
+        samples = self.get_posterior_samples(post)
+        values = self.base_objective(samples, X=Xq)
+        scalarized = self._scalarize(values)
+        improvement = (scalarized - self.best_value.to(scalarized)).clamp_min(0.0)
+        return _reduce_sample_and_q_to_tbatch(improvement, Xq)
 
 
 class qMultiOutputMulticlassExpectedImprovement(_MultiOutputMulticlassTargetClassBOBase):
-    """Legacy scalar EI for target-class probability.
-
-    Kept for experimentation, but multi-output multiclass BO should generally use
-    qMultiOutputMulticlassExpectedHypervolumeImprovement or NParEGO.
-    """
+    """Legacy scalar EI for target-class probability."""
 
     def __init__(self, model, *, target_class: int | Sequence[int] | None = None, output_target_classes: Sequence[int] | None = None, best_f: float | Tensor, num_samples: int = 128, **kwargs) -> None:
         super().__init__(model=model, target_class=target_class, output_target_classes=output_target_classes, **kwargs)
@@ -446,6 +561,7 @@ class qMultiOutputMulticlassUpperConfidenceBound(_MultiOutputMulticlassTargetCla
 
 
 __all__ = [
+    "MulticlassTargetProbabilityObjective",
     "OutputReductionType",
     "OutputModeType",
     "qMultiOutputMulticlassProbabilityOfFeasibility",

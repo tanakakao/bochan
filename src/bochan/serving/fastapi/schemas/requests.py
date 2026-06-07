@@ -20,14 +20,38 @@ class FitModelRequest(BaseModel):
     data_context: DataContextSchema | None = None
 
 
+class RefitModelRequest(BaseModel):
+    """Request body for refitting an existing in-memory optimizer."""
+
+    fit_config: FitConfigSchema | None = None
+
+
+class TellRequest(BaseModel):
+    """Append observations to an existing optimizer and optionally refit."""
+
+    new_X: Any
+    new_Y: Any
+    refit: bool = True
+    fit_config: FitConfigSchema | None = None
+
+
 class PredictRequest(BaseModel):
     X: Any
-    return_type: Literal["mean", "variance", "mean_variance"] = "mean_variance"
+    return_type: Literal["posterior", "mean", "variance", "mean_variance"] = "mean_variance"
     posterior_kwargs: dict[str, Any] = Field(default_factory=dict)
 
 
 class CandidateRequest(BaseModel):
     acq_config: AcquisitionConfigSchema
+    opt_config: OptimizeConfigSchema = Field(default_factory=OptimizeConfigSchema)
+    data_context: DataContextSchema | None = None
+    bounds: Any | None = None
+
+
+class CompareCandidatesRequest(BaseModel):
+    """Generate candidates for multiple acquisition functions on the same fitted model."""
+
+    acq_configs: list[AcquisitionConfigSchema]
     opt_config: OptimizeConfigSchema = Field(default_factory=OptimizeConfigSchema)
     data_context: DataContextSchema | None = None
     bounds: Any | None = None

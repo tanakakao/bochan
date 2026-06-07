@@ -54,6 +54,13 @@ def _make_tabular_data_config(
     dtype: Any | None = None,
     device: Any | None = None,
     dropna: bool | None = None,
+    missing_strategy: str | None = None,
+    continuous_impute_strategy: str | None = None,
+    categorical_impute_strategy: str | None = None,
+    impute_targets: bool | None = None,
+    impute_random_state: int | None = None,
+    impute_max_iter: int | None = None,
+    multiple_impute_sample_posterior: bool | None = None,
     encode_categories: bool | None = None,
     category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
     target_category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
@@ -74,6 +81,27 @@ def _make_tabular_data_config(
         dtype=base.dtype if dtype is None else dtype,
         device=base.device if device is None else device,
         dropna=base.dropna if dropna is None else bool(dropna),
+        missing_strategy=base.missing_strategy if missing_strategy is None else missing_strategy,
+        continuous_impute_strategy=(
+            base.continuous_impute_strategy
+            if continuous_impute_strategy is None
+            else continuous_impute_strategy
+        ),
+        categorical_impute_strategy=(
+            base.categorical_impute_strategy
+            if categorical_impute_strategy is None
+            else categorical_impute_strategy
+        ),
+        impute_targets=base.impute_targets if impute_targets is None else bool(impute_targets),
+        impute_random_state=(
+            base.impute_random_state if impute_random_state is None else impute_random_state
+        ),
+        impute_max_iter=base.impute_max_iter if impute_max_iter is None else int(impute_max_iter),
+        multiple_impute_sample_posterior=(
+            base.multiple_impute_sample_posterior
+            if multiple_impute_sample_posterior is None
+            else bool(multiple_impute_sample_posterior)
+        ),
         encode_categories=base.encode_categories if encode_categories is None else bool(encode_categories),
         category_maps=base.category_maps if category_maps is None else category_maps,
         target_category_maps=(
@@ -136,6 +164,13 @@ class TabularBayesianOptimizer:
         dtype: Any | None = None,
         device: Any | None = None,
         dropna: bool | None = None,
+        missing_strategy: str | None = None,
+        continuous_impute_strategy: str | None = None,
+        categorical_impute_strategy: str | None = None,
+        impute_targets: bool | None = None,
+        impute_random_state: int | None = None,
+        impute_max_iter: int | None = None,
+        multiple_impute_sample_posterior: bool | None = None,
         encode_categories: bool | None = None,
         category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
         target_category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
@@ -193,6 +228,13 @@ class TabularBayesianOptimizer:
             dtype=dtype,
             device=device,
             dropna=dropna,
+            missing_strategy=missing_strategy,
+            continuous_impute_strategy=continuous_impute_strategy,
+            categorical_impute_strategy=categorical_impute_strategy,
+            impute_targets=impute_targets,
+            impute_random_state=impute_random_state,
+            impute_max_iter=impute_max_iter,
+            multiple_impute_sample_posterior=multiple_impute_sample_posterior,
             encode_categories=encode_categories,
             category_maps=category_maps,
             target_category_maps=target_category_maps,
@@ -268,6 +310,13 @@ class TabularBayesianOptimizer:
         dtype: Any | None = None,
         device: Any | None = None,
         dropna: bool | None = None,
+        missing_strategy: str | None = None,
+        continuous_impute_strategy: str | None = None,
+        categorical_impute_strategy: str | None = None,
+        impute_targets: bool | None = None,
+        impute_random_state: int | None = None,
+        impute_max_iter: int | None = None,
+        multiple_impute_sample_posterior: bool | None = None,
         encode_categories: bool | None = None,
         category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
         target_category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
@@ -325,6 +374,13 @@ class TabularBayesianOptimizer:
             dtype=dtype,
             device=device,
             dropna=dropna,
+            missing_strategy=missing_strategy,
+            continuous_impute_strategy=continuous_impute_strategy,
+            categorical_impute_strategy=categorical_impute_strategy,
+            impute_targets=impute_targets,
+            impute_random_state=impute_random_state,
+            impute_max_iter=impute_max_iter,
+            multiple_impute_sample_posterior=multiple_impute_sample_posterior,
             encode_categories=encode_categories,
             category_maps=category_maps,
             target_category_maps=target_category_maps,

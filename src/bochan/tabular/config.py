@@ -22,6 +22,14 @@ class TabularDataConfig:
     device: Any | None = None
 
     dropna: bool = True
+    missing_strategy: str | None = None
+    continuous_impute_strategy: str = "mean"
+    categorical_impute_strategy: str = "mode"
+    impute_targets: bool = False
+    impute_random_state: int | None = None
+    impute_max_iter: int = 10
+    multiple_impute_sample_posterior: bool = False
+
     encode_categories: bool = True
     category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None
     target_category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None

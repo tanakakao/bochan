@@ -45,6 +45,11 @@ class _MulticlassAcquisitionBase(AcquisitionFunction):
         self.objective = objective
         self.set_X_pending(None)
 
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
+        """Set pending points for distance-based duplicate avoidance."""
+
+        self.X_pending = X_pending
+
     def _prepare_eval(self) -> None:
         self.model.eval()
         likelihood = getattr(self.model, "likelihood", None)

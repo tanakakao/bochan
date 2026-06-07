@@ -25,6 +25,8 @@ class TabularDataset:
     inverse_category_maps: dict[ColumnKey, dict[int, Any]] | None = None
     target_category_maps: dict[ColumnKey, dict[Any, int]] | None = None
     inverse_target_category_maps: dict[ColumnKey, dict[int, Any]] | None = None
+    impute_values: dict[ColumnKey, Any] | None = None
+    target_impute_values: dict[ColumnKey, Any] | None = None
     source_index: Any | None = None
 
 
@@ -154,6 +156,152 @@ def bounds_to_tensor(
     return _to_tensor(bounds, dtype=dtype, device=device)
 
 
+def _mode_value(series, pd: Any) -> Any:
+    mode = series.dropna().mode()
+    if len(mode) == 0:
+        return "__missing__" if not pd.api.types.is_numeric_dtype(series) else 0.0
+    return mode.iloc[0]
+
+
+def _resolve_missing_strategy(config: TabularDataConfig) -> str:
+    if config.missing_strategy is not None:
+        return str(config.missing_strategy).lower()
+    return "drop" if config.dropna else "none"
+
+
+def _continuous_columns(df, columns: Sequence[ColumnKey], categorical_cols: Sequence[ColumnKey], pd: Any) -> list[ColumnKey]:
+    categorical = set(_as_list(categorical_cols))
+    return [col for col in columns if col not in categorical and pd.api.types.is_numeric_dtype(df.loc[:, col])]
+
+
+def _categorical_or_object_columns(df, columns: Sequence[ColumnKey], categorical_cols: Sequence[ColumnKey], pd: Any) -> list[ColumnKey]:
+    explicit = set(_as_list(categorical_cols))
+    return [col for col in columns if col in explicit or not pd.api.types.is_numeric_dtype(df.loc[:, col])]
+
+
+def _impute_continuous_mean(df, columns: Sequence[ColumnKey]) -> dict[ColumnKey, Any]:
+    impute_values: dict[ColumnKey, Any] = {}
+    for col in columns:
+        value = df.loc[:, col].mean()
+        if value != value:  # NaN
+            value = 0.0
+        df.loc[:, col] = df.loc[:, col].fillna(value)
+        impute_values[col] = float(value)
+    return impute_values
+
+
+def _impute_continuous_iterative(
+    df,
+    columns: Sequence[ColumnKey],
+    *,
+    random_state: int | None,
+    max_iter: int,
+    sample_posterior: bool,
+) -> dict[ColumnKey, Any]:
+    '''Impute numeric columns using sklearn IterativeImputer.'''
+
+    if not columns:
+        return {}
+    try:
+        from sklearn.experimental import enable_iterative_imputer  # noqa: F401
+        from sklearn.impute import IterativeImputer
+    except ImportError as exc:
+        raise ImportError(
+            "continuous_impute_strategy='iterative' requires scikit-learn. "
+            "Install scikit-learn or use continuous_impute_strategy='mean'."
+        ) from exc
+
+    # IterativeImputer cannot use non-numeric columns, so only numeric columns are passed.
+    imputer = IterativeImputer(
+        random_state=random_state,
+        max_iter=max_iter,
+        sample_posterior=sample_posterior,
+    )
+    imputed = imputer.fit_transform(df.loc[:, list(columns)])
+    df.loc[:, list(columns)] = imputed
+    # Store column means after imputation for traceability / simple future fallback.
+    return {col: float(df.loc[:, col].mean()) for col in columns}
+
+
+def _impute_categorical_mode(df, columns: Sequence[ColumnKey], pd: Any) -> dict[ColumnKey, Any]:
+    impute_values: dict[ColumnKey, Any] = {}
+    for col in columns:
+        value = _mode_value(df.loc[:, col], pd)
+        df.loc[:, col] = df.loc[:, col].fillna(value)
+        impute_values[col] = value
+    return impute_values
+
+
+def _apply_missing_value_strategy(
+    *,
+    work,
+    input_cols: Sequence[ColumnKey],
+    target_cols: Sequence[ColumnKey],
+    config: TabularDataConfig,
+    pd: Any,
+) -> tuple[Any, dict[ColumnKey, Any], dict[ColumnKey, Any]]:
+    '''Handle missing values before categorical encoding and tensor conversion.'''
+
+    strategy = _resolve_missing_strategy(config)
+    if strategy in {"drop", "dropna"}:
+        return work.dropna(axis=0, how="any"), {}, {}
+    if strategy in {"none", "ignore", "keep"}:
+        return work, {}, {}
+    if strategy not in {"impute", "fill"}:
+        raise ValueError("missing_strategy must be one of 'drop', 'none', or 'impute'.")
+
+    work = work.copy()
+    input_categorical_cols = _categorical_or_object_columns(work, input_cols, config.categorical_cols, pd)
+    input_continuous_cols = _continuous_columns(work, input_cols, input_categorical_cols, pd)
+
+    impute_values: dict[ColumnKey, Any] = {}
+    target_impute_values: dict[ColumnKey, Any] = {}
+
+    if config.continuous_impute_strategy.lower() in {"mean", "avg", "average"}:
+        impute_values.update(_impute_continuous_mean(work, input_continuous_cols))
+    elif config.continuous_impute_strategy.lower() in {"iterative", "multiple", "multiple_imputation"}:
+        impute_values.update(
+            _impute_continuous_iterative(
+                work,
+                input_continuous_cols,
+                random_state=config.impute_random_state,
+                max_iter=config.impute_max_iter,
+                sample_posterior=config.multiple_impute_sample_posterior,
+            )
+        )
+    else:
+        raise ValueError("continuous_impute_strategy must be 'mean' or 'iterative'.")
+
+    impute_values.update(_impute_categorical_mode(work, input_categorical_cols, pd))
+
+    if target_cols:
+        if config.impute_targets:
+            target_categorical_cols = _categorical_or_object_columns(
+                work,
+                target_cols,
+                config.target_categorical_cols or [],
+                pd,
+            )
+            target_continuous_cols = _continuous_columns(work, target_cols, target_categorical_cols, pd)
+            if config.continuous_impute_strategy.lower() in {"mean", "avg", "average"}:
+                target_impute_values.update(_impute_continuous_mean(work, target_continuous_cols))
+            else:
+                target_impute_values.update(
+                    _impute_continuous_iterative(
+                        work,
+                        target_continuous_cols,
+                        random_state=config.impute_random_state,
+                        max_iter=config.impute_max_iter,
+                        sample_posterior=config.multiple_impute_sample_posterior,
+                    )
+                )
+            target_impute_values.update(_impute_categorical_mode(work, target_categorical_cols, pd))
+        else:
+            work = work.dropna(axis=0, subset=list(target_cols), how="any")
+
+    return work, impute_values, target_impute_values
+
+
 def _encode_dataframe_category_columns(
     df,
     *,
@@ -181,10 +329,9 @@ def _encode_dataframe_category_columns(
         if explicit_map is not None:
             mapping = dict(explicit_map)
         elif pd.api.types.is_numeric_dtype(values):
-            # Numeric categorical variables are assumed to be already encoded.
             continue
         else:
-            uniques = list(pd.unique(values))
+            uniques = list(pd.unique(values.dropna()))
             mapping = {value: i for i, value in enumerate(uniques)}
 
         df.loc[:, col] = values.map(mapping)
@@ -226,8 +373,13 @@ def dataframe_to_tensors(data: Any, config: TabularDataConfig) -> TabularDataset
 
     selected_cols = list(dict.fromkeys(input_cols + target_cols))
     work = data.loc[:, selected_cols].copy()
-    if config.dropna:
-        work = work.dropna(axis=0, how="any")
+    work, impute_values, target_impute_values = _apply_missing_value_strategy(
+        work=work,
+        input_cols=input_cols,
+        target_cols=target_cols,
+        config=config,
+        pd=pd,
+    )
 
     X_df = work.loc[:, input_cols].copy()
     Y_df = work.loc[:, target_cols].copy() if target_cols else None
@@ -279,6 +431,8 @@ def dataframe_to_tensors(data: Any, config: TabularDataConfig) -> TabularDataset
         inverse_category_maps=inverse_maps,
         target_category_maps=target_category_maps,
         inverse_target_category_maps=inverse_target_category_maps,
+        impute_values=impute_values,
+        target_impute_values=target_impute_values,
         source_index=work.index,
     )
 
@@ -335,6 +489,8 @@ def numpy_to_tensors(
         inverse_category_maps={},
         target_category_maps={},
         inverse_target_category_maps={},
+        impute_values={},
+        target_impute_values={},
     )
 
 

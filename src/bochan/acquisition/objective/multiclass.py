@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import math
-from typing import Callable, Literal, Optional, Sequence
+from typing import Literal, Optional, Sequence
 
 import torch
-from torch import Tensor
+from torch import Tensor, nn
 
 from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 from botorch.acquisition.objective import MCAcquisitionObjective
 
 from .binary import (
-    BinaryClassificationScoreObjective,
     BinaryClassificationScoreObjectiveMixin,
     MultiOutputBinaryClassificationInputPerturbationObjective,
     MultiOutputBinaryClassificationScoreObjective,
@@ -35,13 +34,10 @@ def _validate_n_w_risk(
 ) -> None:
     if n_w is not None and int(n_w) <= 0:
         raise ValueError("n_w must be a positive integer or None.")
-
     if risk_type not in (None, "var", "cvar"):
         raise ValueError(f"Unknown risk_type: {risk_type!r}.")
-
     if risk_type is not None and n_w is None:
         raise ValueError("risk_type is specified, but n_w is None.")
-
     if risk_type is not None and not (0.0 < float(alpha) <= 1.0):
         raise ValueError("alpha must be in (0, 1].")
 
@@ -67,10 +63,8 @@ def _aggregate_scalar_axis(
 
     if risk_type == "var":
         return tail.select(dim=risk_dim, index=k - 1)
-
     if risk_type == "cvar":
         return tail.mean(dim=risk_dim)
-
     raise ValueError(f"Unknown risk_type: {risk_type!r}.")
 
 
@@ -89,6 +83,14 @@ def _canonicalize_utility_values(
     return utilities
 
 
+def _ensure_q_batch(X: Tensor) -> Tensor:
+    if X.ndim == 1:
+        return X.view(1, 1, -1)
+    if X.ndim == 2:
+        return X.unsqueeze(0)
+    return X
+
+
 def _as_class_index_list(target_class: int | Sequence[int] | Tensor) -> list[int]:
     if torch.is_tensor(target_class):
         target_class = target_class.detach().cpu().tolist()
@@ -105,10 +107,8 @@ def _select_class_probs(
 ) -> Tensor:
     indices = _as_class_index_list(target_class)
     selected = probs[..., indices]
-
     if selected.shape[-1] == 1:
         return selected.squeeze(-1)
-
     if class_reduction == "mean":
         return selected.mean(dim=-1)
     if class_reduction == "sum":
@@ -119,7 +119,6 @@ def _select_class_probs(
         return selected.min(dim=-1).values
     if class_reduction == "prod":
         return selected.prod(dim=-1)
-
     raise ValueError(f"Unknown class_reduction: {class_reduction!r}.")
 
 
@@ -129,13 +128,7 @@ def _move_class_dim_to_last(
     num_classes: Optional[int] = None,
     name: str = "values",
 ) -> Tensor:
-    """Move a class dimension to the last axis when it is not already there.
-
-    Multiclass latent GP posteriors can be represented as class-batched tensors,
-    e.g. ``sample_shape x batch_shape x C x q x 1``. Objective code expects
-    ``... x C``. This helper keeps already canonical tensors unchanged and moves
-    the first matching class dimension otherwise.
-    """
+    """Move a class-batch dimension to the final class axis when possible."""
 
     if num_classes is None:
         return values
@@ -180,13 +173,11 @@ def normalize_multiclass_probs(
     """Normalize multiclass probability tensors along the class dimension."""
 
     probs = _move_class_dim_to_last(probs, num_classes=num_classes, name="probs")
-
     if probs.ndim < 1 or probs.shape[-1] <= 1:
         raise RuntimeError(
             "multiclass probability tensor must have class dim C >= 2. "
             f"Got shape={tuple(probs.shape)}."
         )
-
     probs = probs.clamp_min(float(eps))
     return probs / probs.sum(dim=-1, keepdim=True).clamp_min(float(eps))
 
@@ -198,19 +189,7 @@ def multiclass_expected_utility_from_probs(
     num_classes: Optional[int] = None,
     eps: float = 1e-12,
 ) -> Tensor:
-    """Compute expected utility from class probabilities.
-
-    Args:
-        probs: Probability tensor with final class dimension, or a class-batched
-            tensor that can be canonicalized using ``num_classes``.
-        utility_values: Either ``[C]`` shared utilities or ``[m, C]`` utilities
-            for multi-output multiclass tensors with shape ``... x m x C``.
-        num_classes: Optional class count used to identify a class-batch axis.
-        eps: Numerical stability constant.
-
-    Returns:
-        Expected utility tensor with class dimension removed.
-    """
+    """Compute expected utility from class probabilities."""
 
     probs = normalize_multiclass_probs(probs, num_classes=num_classes, eps=eps)
     utilities = _canonicalize_utility_values(
@@ -227,13 +206,11 @@ def multiclass_expected_utility_from_probs(
             )
         return (probs * utilities).sum(dim=-1)
 
-    # utilities: [m, C], probs: ... x m x C
     if probs.ndim < 2 or probs.shape[-2:] != utilities.shape:
         raise RuntimeError(
             "2D utility_values requires probs shape (..., m, C). "
             f"Got probs.shape={tuple(probs.shape)}, utility_values.shape={tuple(utilities.shape)}."
         )
-
     return (probs * utilities).sum(dim=-1)
 
 
@@ -310,7 +287,6 @@ def _to_probs(
 
     if use_logits:
         return multiclass_probs_from_logits(samples, num_classes=num_classes, eps=eps)
-
     return normalize_multiclass_probs(samples, num_classes=num_classes, eps=eps)
 
 
@@ -327,7 +303,6 @@ def _aggregate_input_perturbation_scalar(
 ) -> Tensor:
     if n_w is None or int(n_w) <= 1:
         return values
-
     if risk_type is None and not aggregate_mean_when_no_risk:
         return values
 
@@ -366,10 +341,21 @@ def _aggregate_input_perturbation_scalar(
 
     if X is not None and X.ndim >= 3:
         q = int(X.shape[-2])
-        q_like = values.shape[-1]
-        if q_like == q:
+        batch_shape = tuple(X.shape[:-2])
+        if tuple(values.shape) == batch_shape:
             return values
-        if q_like == q * n_w_int:
+        if values.ndim >= 1 and tuple(values.shape[:-1]) == batch_shape and values.shape[-1] == q:
+            return values
+        if values.ndim >= 2 and tuple(values.shape[:-2]) == batch_shape and values.shape[-2:] == (q, n_w_int):
+            return _aggregate_scalar_axis(
+                values,
+                n_w=n_w_int,
+                risk_type=risk_type,
+                alpha=alpha,
+                risk_dim=-1,
+                maximize=maximize,
+            )
+        if values.ndim >= 1 and tuple(values.shape[:-1]) == batch_shape and values.shape[-1] == q * n_w_int:
             values_w = values.reshape(*values.shape[:-1], q, n_w_int)
             return _aggregate_scalar_axis(
                 values_w,
@@ -394,7 +380,6 @@ def _aggregate_input_perturbation_scalar(
             "values.shape[-1] must be divisible by n_w for InputPerturbation aggregation. "
             f"Got values.shape={tuple(values.shape)}, n_w={n_w_int}."
         )
-
     q = q_expanded // n_w_int
     values_w = values.reshape(*values.shape[:-1], q, n_w_int)
     return _aggregate_scalar_axis(
@@ -423,10 +408,8 @@ def _aggregate_input_perturbation_multioutput(
             "multi-output multiclass values must have shape (..., q_like, m). "
             f"Got shape={tuple(values.shape)}."
         )
-
     if n_w is None or int(n_w) <= 1:
         return values
-
     if risk_type is None and not aggregate_mean_when_no_risk:
         return values
 
@@ -466,10 +449,19 @@ def _aggregate_input_perturbation_multioutput(
 
     if X is not None and X.ndim >= 3:
         q = int(X.shape[-2])
-        q_like = values.shape[-2]
-        if q_like == q:
+        batch_shape = tuple(X.shape[:-2])
+        if values.ndim >= 2 and tuple(values.shape[:-2]) == batch_shape and values.shape[-2] == q:
             return values
-        if q_like == q * n_w_int:
+        if values.ndim >= 3 and tuple(values.shape[:-3]) == batch_shape and values.shape[-3] == q and values.shape[-2] == n_w_int:
+            return _aggregate_scalar_axis(
+                values,
+                n_w=n_w_int,
+                risk_type=risk_type,
+                alpha=alpha,
+                risk_dim=-2,
+                maximize=maximize,
+            )
+        if values.ndim >= 2 and tuple(values.shape[:-2]) == batch_shape and values.shape[-2] == q * n_w_int:
             values_w = values.reshape(*values.shape[:-2], q, n_w_int, m)
             return _aggregate_scalar_axis(
                 values_w,
@@ -494,7 +486,6 @@ def _aggregate_input_perturbation_multioutput(
             "values.shape[-2] must be divisible by n_w for InputPerturbation aggregation. "
             f"Got values.shape={tuple(values.shape)}, n_w={n_w_int}."
         )
-
     q = q_expanded // n_w_int
     values_w = values.reshape(*values.shape[:-2], q, n_w_int, m)
     return _aggregate_scalar_axis(
@@ -508,17 +499,12 @@ def _aggregate_input_perturbation_multioutput(
 
 
 # ============================================================
-# 1. Single-output multiclass objectives
+# 1. Single-output multiclass probability / utility objectives
 # ============================================================
 
 
 class MulticlassExpectedUtilityMCObjective(MCAcquisitionObjective):
-    """Convert multiclass posterior samples to expected-utility samples.
-
-    This objective accepts class probabilities or logits. It returns a scalar
-    value per candidate point by applying ``utility_values`` to the class
-    probabilities.
-    """
+    """Convert multiclass posterior samples to expected-utility samples."""
 
     def __init__(
         self,
@@ -704,20 +690,7 @@ class MulticlassInputPerturbationTargetProbabilityObjective(MulticlassTargetProb
 
 
 class MultiOutputMulticlassInputPerturbationObjective(MCMultiOutputObjective):
-    """Multi-output multiclass objective for qEHVI / qNEHVI style acquisitions.
-
-    Expected sample shapes:
-        - ``sample_shape x batch_shape x q_like x C`` for single output
-        - ``sample_shape x batch_shape x q_like x m x C`` for multi-output
-
-    Returns:
-        - ``sample_shape x batch_shape x q`` or
-        - ``sample_shape x batch_shape x q x m``
-
-    The class dimension is reduced by either expected utility or target-class
-    probability, and the optional InputPerturbation axis is aggregated after
-    that reduction.
-    """
+    """Multi-output multiclass objective for qEHVI / qNEHVI style acquisitions."""
 
     def __init__(
         self,
@@ -769,7 +742,6 @@ class MultiOutputMulticlassInputPerturbationObjective(MCMultiOutputObjective):
                     f"Got shape={tuple(utility_tensor.shape)}."
                 )
         self.register_buffer("utility_values", utility_tensor)
-
         _validate_n_w_risk(n_w=self.n_w, risk_type=self.risk_type, alpha=self.alpha)
 
     def _samples_to_values(self, samples: Tensor) -> Tensor:
@@ -780,7 +752,6 @@ class MultiOutputMulticlassInputPerturbationObjective(MCMultiOutputObjective):
             num_classes=self.num_classes,
             eps=self.eps,
         )
-
         if self.objective_mode == "expected_utility":
             values = multiclass_expected_utility_from_probs(
                 probs,
@@ -796,15 +767,12 @@ class MultiOutputMulticlassInputPerturbationObjective(MCMultiOutputObjective):
                 num_classes=self.num_classes,
                 eps=self.eps,
             )
-
         return values if self.maximize else -values
 
     def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
         if not torch.is_tensor(samples):
             raise TypeError(f"samples must be a Tensor. Got {type(samples)}.")
-
         values = self._samples_to_values(samples)
-
         if values.ndim >= 2 and values.shape[-1] > 1:
             return _aggregate_input_perturbation_multioutput(
                 values,
@@ -816,7 +784,6 @@ class MultiOutputMulticlassInputPerturbationObjective(MCMultiOutputObjective):
                 aggregate_mean_when_no_risk=self.aggregate_mean_when_no_risk,
                 allow_unexpanded=self.allow_unexpanded,
             )
-
         return _aggregate_input_perturbation_scalar(
             values,
             X=X,
@@ -830,12 +797,105 @@ class MultiOutputMulticlassInputPerturbationObjective(MCMultiOutputObjective):
 
 
 # ============================================================
-# 3. Score objective aliases for active-learning score paths
+# 3. Score objectives for active-learning score paths
 # ============================================================
 
 
-class MulticlassScoreObjective(BinaryClassificationScoreObjective):
-    """Multiclass score objective for already scalarized active-learning scores."""
+class MulticlassScoreObjective(nn.Module):
+    """Multiclass score objective for already scalarized active-learning scores.
+
+    Unlike BoTorch ``MCAcquisitionObjective``, this class intentionally inherits
+    from ``nn.Module``. Active-learning acquisitions may pass already joint /
+    t-batch aggregated scores such as ``batch_shape`` from JointBALD. BoTorch's
+    objective wrapper enforces a q dimension and would reject those valid score
+    tensors.
+    """
+
+    def __init__(
+        self,
+        n_w: Optional[int] = None,
+        risk_type: RiskType = None,
+        alpha: float = 0.8,
+        maximize: bool = True,
+        allow_unexpanded: bool = True,
+    ) -> None:
+        super().__init__()
+        self.n_w = None if n_w is None else int(n_w)
+        self.risk_type = risk_type
+        self.alpha = float(alpha)
+        self.maximize = bool(maximize)
+        self.allow_unexpanded = bool(allow_unexpanded)
+        _validate_n_w_risk(n_w=self.n_w, risk_type=self.risk_type, alpha=self.alpha)
+
+    def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
+        if not torch.is_tensor(samples):
+            raise TypeError(f"samples must be a Tensor. Got {type(samples)}.")
+
+        score = samples
+        if score.ndim >= 1 and score.shape[-1] == 1:
+            score = score.squeeze(-1)
+
+        if X is not None:
+            Xq = _ensure_q_batch(X)
+            batch_shape = tuple(Xq.shape[:-2])
+            q = int(Xq.shape[-2])
+
+            # Joint acquisitions such as JointBALD return one value per t-batch,
+            # i.e. shape == batch_shape, not shape == batch_shape x q.
+            if tuple(score.shape) == batch_shape:
+                return score
+
+            # Already pointwise over q.
+            if score.ndim >= 1 and tuple(score.shape[:-1]) == batch_shape and score.shape[-1] == q:
+                return score
+
+            if self.n_w is not None and self.n_w > 1:
+                n_w = int(self.n_w)
+                if score.ndim >= 2 and tuple(score.shape[:-2]) == batch_shape and score.shape[-2:] == (q, n_w):
+                    return _aggregate_scalar_axis(
+                        score,
+                        n_w=n_w,
+                        risk_type=self.risk_type,
+                        alpha=self.alpha,
+                        risk_dim=-1,
+                        maximize=self.maximize,
+                    )
+                if score.ndim >= 1 and tuple(score.shape[:-1]) == batch_shape and score.shape[-1] == q * n_w:
+                    score_w = score.reshape(*score.shape[:-1], q, n_w)
+                    return _aggregate_scalar_axis(
+                        score_w,
+                        n_w=n_w,
+                        risk_type=self.risk_type,
+                        alpha=self.alpha,
+                        risk_dim=-1,
+                        maximize=self.maximize,
+                    )
+
+            if self.allow_unexpanded:
+                return score
+
+            raise RuntimeError(
+                "MulticlassScoreObjective expected an aggregated score, a q-wise score, "
+                "or an InputPerturbation-expanded q*n_w score. "
+                f"Got samples.shape={tuple(samples.shape)}, score.shape={tuple(score.shape)}, "
+                f"X.shape={tuple(Xq.shape)}, n_w={self.n_w}."
+            )
+
+        if self.n_w is not None and self.n_w > 1 and score.ndim >= 1:
+            n_w = int(self.n_w)
+            if score.shape[-1] % n_w == 0:
+                q = score.shape[-1] // n_w
+                score_w = score.reshape(*score.shape[:-1], q, n_w)
+                return _aggregate_scalar_axis(
+                    score_w,
+                    n_w=n_w,
+                    risk_type=self.risk_type,
+                    alpha=self.alpha,
+                    risk_dim=-1,
+                    maximize=self.maximize,
+                )
+
+        return score
 
 
 class MultiOutputMulticlassScoreObjective(MultiOutputBinaryClassificationScoreObjective):
@@ -850,7 +910,6 @@ class MulticlassScoreObjectiveMixin(BinaryClassificationScoreObjectiveMixin):
     """Mixin for applying multiclass score objectives."""
 
 
-# Backward-compatible naming for score-only input perturbation objective.
 MultiOutputMulticlassScoreInputPerturbationObjective = MultiOutputBinaryClassificationInputPerturbationObjective
 
 

@@ -77,6 +77,66 @@ def _finalize_multiclass_acq_output_to_batch(value: Tensor, X: Tensor, *, name: 
     )
 
 
+def _model_num_classes(model: Model) -> int | None:
+    for attr in ("num_classes", "num_outputs"):
+        value = getattr(model, attr, None)
+        if value is not None:
+            try:
+                value_int = int(value)
+            except (TypeError, ValueError):
+                continue
+            if value_int > 1:
+                return value_int
+    return None
+
+
+def _move_class_dim_to_last(values: Tensor, *, num_classes: int | None, name: str) -> Tensor:
+    """Move a class-batch dimension to the final output dimension.
+
+    Multiclass latent GPs are represented as class-wise batched GPs, so the raw
+    latent posterior often has shape like ``batch x C x q x 1`` instead of
+    ``batch x q x C``. Acquisition code expects class probabilities in the final
+    dimension. This helper canonicalizes both mean and MC sample tensors.
+    """
+
+    if num_classes is None:
+        return values
+    c = int(num_classes)
+    if values.ndim < 1:
+        raise RuntimeError(f"{name}: expected tensor with class dimension. Got scalar tensor.")
+
+    out = values
+    while out.ndim >= 2 and out.shape[-1] == 1 and out.shape[-2] != c:
+        out = out.squeeze(-1)
+
+    if out.shape[-1] == c:
+        return out
+
+    for dim in range(out.ndim - 2, -1, -1):
+        if out.shape[dim] == c:
+            return out.movedim(dim, -1)
+
+    return values
+
+
+def _align_class_probs_to_X(
+    probs: Tensor,
+    X: Tensor,
+    *,
+    num_classes: int | None,
+    sample_ndim: int = 0,
+    name: str,
+) -> Tensor:
+    """Canonicalize class-probability shape to sample_shape x batch_shape x q x C."""
+
+    Xq = ensure_q_batch(X)
+    out = _move_class_dim_to_last(probs, num_classes=num_classes, name=name)
+    target_ndim = int(sample_ndim) + Xq.ndim
+    while out.ndim > target_ndim and out.shape[-2] == 1:
+        out = out.squeeze(-2)
+    return out
+
+
 def _normalize_class_probs(probs: Tensor, *, eps: float, name: str) -> Tensor:
     if probs.ndim < 1 or probs.shape[-1] <= 1:
         raise RuntimeError(f"{name}: multiclass probability tensor must have class dim C >= 2. Got {tuple(probs.shape)}.")
@@ -181,16 +241,21 @@ def compute_multiclass_target_probability_values(
         model = model.models[0]
     model.eval()
     Xq = ensure_q_batch(X)
+    num_classes = _model_num_classes(model)
     with torch.no_grad():
         if apply_softmax_if_needed and hasattr(model, "latent_posterior"):
             logits = model.latent_posterior(Xq).mean
+            logits = _align_class_probs_to_X(logits, Xq, num_classes=num_classes, name="latent posterior mean")
             probs = torch.softmax(logits, dim=-1)
         elif hasattr(model, "class_probs") and callable(getattr(model, "class_probs")):
             probs = model.class_probs(Xq)
+            probs = _align_class_probs_to_X(probs, Xq, num_classes=num_classes, name="class_probs")
         elif hasattr(model, "probability_posterior") and callable(getattr(model, "probability_posterior")):
             probs = model.probability_posterior(Xq).mean
+            probs = _align_class_probs_to_X(probs, Xq, num_classes=num_classes, name="probability_posterior.mean")
         else:
             mean = model.posterior(Xq).mean
+            mean = _align_class_probs_to_X(mean, Xq, num_classes=num_classes, name="posterior.mean")
             if apply_softmax_if_needed and (mean.min() < -eps or mean.max() > 1.0 + eps):
                 probs = torch.softmax(mean, dim=-1)
             else:
@@ -273,6 +338,7 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
         self.observed_penalty_beta = float(observed_penalty_beta)
         self.eps = float(eps)
         self.score_objective = objective
+        self.num_classes = _model_num_classes(model)
         self.X_observed = _resolve_observed_X(model, X_observed)
         self.set_X_pending(None)
 
@@ -293,22 +359,36 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
             return ensure_q_batch(Xt[0] if isinstance(Xt, tuple) else Xt)
         return X
 
+    def _align_class_tensor(self, values: Tensor, X: Tensor, *, sample_ndim: int = 0, name: str) -> Tensor:
+        return _align_class_probs_to_X(
+            values,
+            X,
+            num_classes=self.num_classes,
+            sample_ndim=sample_ndim,
+            name=name,
+        )
+
     def _posterior_samples_as_probs(self, X: Tensor) -> Tensor:
         Xq = ensure_q_batch(X)
+        sample_ndim = _sample_ndim_from_sampler(self.sampler)
         if self.apply_softmax_if_needed and hasattr(self.model, "latent_posterior"):
             post = self.model.latent_posterior(Xq)
             logits = self.get_posterior_samples(post)
+            logits = self._align_class_tensor(logits, Xq, sample_ndim=sample_ndim, name="latent posterior samples")
             probs = torch.softmax(logits, dim=-1)
         elif hasattr(self.model, "probability_posterior") and callable(getattr(self.model, "probability_posterior")):
             post = self.model.probability_posterior(Xq)
             probs = self.get_posterior_samples(post)
+            probs = self._align_class_tensor(probs, Xq, sample_ndim=sample_ndim, name="probability posterior samples")
         elif hasattr(self.model, "class_probs") and callable(getattr(self.model, "class_probs")):
             mean_probs = self.model.class_probs(Xq)
+            mean_probs = self._align_class_tensor(mean_probs, Xq, name="class_probs")
             sample_shape = getattr(self.sampler, "sample_shape", torch.Size([1]))
             probs = mean_probs.expand(*sample_shape, *mean_probs.shape)
         else:
             post = self.model.posterior(Xq)
             samples = self.get_posterior_samples(post)
+            samples = self._align_class_tensor(samples, Xq, sample_ndim=sample_ndim, name="posterior samples")
             if self.apply_softmax_if_needed and (samples.min() < -self.eps or samples.max() > 1.0 + self.eps):
                 probs = torch.softmax(samples, dim=-1)
             else:
@@ -318,13 +398,18 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
     def _posterior_mean_probs(self, X: Tensor) -> Tensor:
         Xq = ensure_q_batch(X)
         if self.apply_softmax_if_needed and hasattr(self.model, "latent_posterior"):
-            probs = torch.softmax(self.model.latent_posterior(Xq).mean, dim=-1)
+            logits = self.model.latent_posterior(Xq).mean
+            logits = self._align_class_tensor(logits, Xq, name="latent posterior mean")
+            probs = torch.softmax(logits, dim=-1)
         elif hasattr(self.model, "class_probs") and callable(getattr(self.model, "class_probs")):
             probs = self.model.class_probs(Xq)
+            probs = self._align_class_tensor(probs, Xq, name="class_probs")
         elif hasattr(self.model, "probability_posterior") and callable(getattr(self.model, "probability_posterior")):
             probs = self.model.probability_posterior(Xq).mean
+            probs = self._align_class_tensor(probs, Xq, name="probability_posterior.mean")
         else:
             mean = self.model.posterior(Xq).mean
+            mean = self._align_class_tensor(mean, Xq, name="posterior.mean")
             if self.apply_softmax_if_needed and (mean.min() < -self.eps or mean.max() > 1.0 + self.eps):
                 probs = torch.softmax(mean, dim=-1)
             else:

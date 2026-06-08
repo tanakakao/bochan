@@ -34,6 +34,49 @@ def _margin_uncertainty(probs: Tensor) -> Tensor:
     return 1.0 - (top2[..., 0] - top2[..., 1])
 
 
+def _reduce_extra_leading_dims_to_raw_X(score: Tensor, raw_X: Tensor, *, name: str) -> Tensor:
+    """Reduce sample-like leading dims so score aligns with raw_X t-batch/q dims.
+
+    DeepGP posteriors can leave an additional sample-like leading dimension in
+    posterior means / probability tensors. For example, with
+    ``raw_X.shape == (32, 1, 2)``, entropy can have shape ``(10, 32)`` or
+    ``(10, 32, 1)``. Acquisition optimizers, however, expect either
+    ``batch_shape`` or ``batch_shape x q``. This helper averages only those
+    extra leading dimensions while preserving the t-batch and q dimensions.
+    """
+
+    raw_X = ensure_q_batch(raw_X)
+    batch_shape = tuple(raw_X.shape[:-2])
+    q = int(raw_X.shape[-2])
+
+    if score.shape == raw_X.shape[:-2]:
+        return score
+
+    if score.ndim >= 1 and tuple(score.shape[:-1]) == batch_shape and score.shape[-1] == q:
+        return score
+
+    if len(batch_shape) > 0:
+        batch_ndim = len(batch_shape)
+        if score.ndim >= batch_ndim and tuple(score.shape[-batch_ndim:]) == batch_shape:
+            extra_ndim = score.ndim - batch_ndim
+            if extra_ndim > 0:
+                return score.mean(dim=tuple(range(extra_ndim)))
+            return score
+
+        target_with_q = batch_shape + (q,)
+        target_ndim = len(target_with_q)
+        if score.ndim >= target_ndim and tuple(score.shape[-target_ndim:]) == target_with_q:
+            extra_ndim = score.ndim - target_ndim
+            if extra_ndim > 0:
+                return score.mean(dim=tuple(range(extra_ndim)))
+            return score
+
+    elif score.ndim >= 2 and score.shape[-1] == q:
+        return score.mean(dim=tuple(range(score.ndim - 1)))
+
+    return score
+
+
 def _align_pointwise_to_reference(value: Tensor, reference: Tensor, *, name: str) -> Tensor:
     """Align a pointwise tensor to a reference score tensor."""
 
@@ -48,6 +91,11 @@ def _align_pointwise_to_reference(value: Tensor, reference: Tensor, *, name: str
         return value.to(reference)
     if value.shape == reference.shape[:-1]:
         return value.unsqueeze(-1).expand_as(reference).to(reference)
+    if value.ndim < reference.ndim and value.ndim > 0:
+        tail_shape = tuple(reference.shape[-value.ndim:])
+        if tuple(value.shape) == tail_shape:
+            view_shape = (1,) * (reference.ndim - value.ndim) + tuple(value.shape)
+            return value.reshape(view_shape).expand_as(reference).to(reference)
     if value.ndim == reference.ndim and value.shape[:-1] == reference.shape[:-1]:
         q_ref = reference.shape[-1]
         q_value = value.shape[-1]
@@ -147,10 +195,12 @@ class _MulticlassActiveLearningBase(_MulticlassProbabilityBOBase):
         return out
 
     def _score_to_value(self, score: Tensor, raw_X: Tensor, Xt: Tensor, *, name: str) -> Tensor:
+        score = _reduce_extra_leading_dims_to_raw_X(score, raw_X, name=name)
         pending = _align_pointwise_to_reference(self._pending_penalty_per_point(Xt), score, name=f"{name}.pending")
         observed = _align_pointwise_to_reference(self._observed_penalty_per_point(Xt), score, name=f"{name}.observed")
         score = score - pending - observed
         score = self._apply_active_objective(score, raw_X, name=name)
+        score = _reduce_extra_leading_dims_to_raw_X(score, raw_X, name=f"{name}.objective")
         value = score if score.shape == raw_X.shape[:-2] else self._reduce_q(score)
         value = value - self._same_batch_penalty(Xt)
         return _finalize_multiclass_acq_output_to_batch(value, raw_X, name=name)
@@ -221,211 +271,8 @@ class qMulticlassBALD(_MulticlassActiveLearningBase):
         return self._score_to_value(score, raw_X, Xt, name=self.__class__.__name__)
 
 
-class qMulticlassJointBALD(qMulticlassBALD):
-    """Multiclass joint qBALD-style mutual information acquisition."""
-
-    def __init__(
-        self,
-        model,
-        *,
-        num_samples: int = 32,
-        max_joint_q: int = 5,
-        max_joint_states: int = 4096,
-        large_q_strategy: LargeQStrategy = "per_point",
-        pending_penalty_weight: float = 0.0,
-        pending_penalty_beta: float = 10.0,
-        observed_penalty_weight: float = 0.0,
-        observed_penalty_beta: float = 10.0,
-        same_batch_penalty_weight: float = 0.0,
-        same_batch_penalty_beta: float = 10.0,
-        X_observed: Tensor | None = None,
-        eps: float = 1e-8,
-        objective=None,
-        sampler: Optional[MCSampler] = None,
-        apply_softmax_if_needed: bool = True,
-    ) -> None:
-        super().__init__(
-            model=model,
-            num_samples=num_samples,
-            sampler=sampler,
-            reduction="sum",
-            pending_penalty_weight=pending_penalty_weight,
-            pending_penalty_beta=pending_penalty_beta,
-            observed_penalty_weight=observed_penalty_weight,
-            observed_penalty_beta=observed_penalty_beta,
-            same_batch_penalty_weight=same_batch_penalty_weight,
-            same_batch_penalty_beta=same_batch_penalty_beta,
-            X_observed=X_observed,
-            eps=eps,
-            objective=objective,
-            apply_softmax_if_needed=apply_softmax_if_needed,
-        )
-        self.max_joint_q = int(max_joint_q)
-        self.max_joint_states = int(max_joint_states)
-        self.large_q_strategy = large_q_strategy
-
-    def _joint_predictive_entropy_exact(self, samples: Tensor) -> Tensor:
-        if len(samples.shape) < 4:
-            raise RuntimeError(f"samples must have shape S x batch_shape x q x C. Got {tuple(samples.shape)}.")
-        q = int(samples.shape[-2])
-        num_classes = int(samples.shape[-1])
-        batch_shape = samples.shape[1:-2]
-        entropy = samples.new_zeros(batch_shape)
-        for state in itertools.product(range(num_classes), repeat=q):
-            p_state_per_sample = samples[..., 0, state[0]]
-            for i in range(1, q):
-                p_state_per_sample = p_state_per_sample * samples[..., i, state[i]]
-            p_state = p_state_per_sample.mean(dim=0).clamp_min(self.eps)
-            entropy = entropy - p_state * p_state.log()
-        return entropy
-
-    def _conditional_joint_entropy(self, samples: Tensor) -> Tensor:
-        return self._entropy(samples).sum(dim=-1).mean(dim=0)
-
-    def _pointwise_fallback_value(self, X: Tensor) -> Tensor:
-        return self._pointwise_bald_score(X).sum(dim=-1)
-
-    def _joint_bald_value(self, X: Tensor) -> Tensor:
-        Xq = ensure_q_batch(X)
-        q = int(Xq.shape[-2])
-        samples = self._sample_probs(Xq)
-        num_classes = int(samples.shape[-1])
-        num_joint_states = int(num_classes**q)
-
-        if q <= self.max_joint_q and num_joint_states <= self.max_joint_states:
-            joint_entropy = self._joint_predictive_entropy_exact(samples)
-            conditional_entropy = self._conditional_joint_entropy(samples)
-            return joint_entropy - conditional_entropy
-
-        if self.large_q_strategy == "raise":
-            raise RuntimeError(
-                f"Exact multiclass joint BALD is too large: q={q}, C={num_classes}, "
-                f"C**q={num_joint_states}, max_joint_q={self.max_joint_q}, max_joint_states={self.max_joint_states}."
-            )
-        if self.large_q_strategy == "per_point":
-            return self._pointwise_fallback_value(Xq)
-        if self.large_q_strategy == "truncate":
-            k = min(q, self.max_joint_q)
-            first = Xq[..., :k, :]
-            rest = Xq[..., k:, :]
-            first_val = self._joint_bald_value(first)
-            if rest.shape[-2] == 0:
-                return first_val
-            return first_val + self._pointwise_fallback_value(rest)
-        raise ValueError(f"Unknown large_q_strategy: {self.large_q_strategy!r}.")
-
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        self._prepare_eval()
-        raw_X = ensure_q_batch(X)
-        Xt = self._apply_input_transform(raw_X)
-        value = self._joint_bald_value(raw_X)
-        value = value - self._joint_penalty(raw_X, Xt)
-        value = self._apply_active_objective(value, raw_X, name=self.__class__.__name__)
-        return _finalize_multiclass_acq_output_to_batch(value, raw_X, name=self.__class__.__name__)
-
-
-class qMulticlassGreedyJointBALD(qMulticlassJointBALD):
-    """Greedy multiclass joint qBALD acquisition."""
-
-    @staticmethod
-    def _expand_pending_to_batch(X_pending: Tensor, batch_shape: torch.Size) -> Tensor:
-        if X_pending.ndim == 1:
-            X_pending = X_pending.view(1, -1)
-        if X_pending.ndim == 2:
-            m, d = X_pending.shape
-            return X_pending.view(*([1] * len(batch_shape)), m, d).expand(*batch_shape, m, d)
-        if X_pending.ndim >= 3:
-            m, d = X_pending.shape[-2], X_pending.shape[-1]
-            leading = X_pending.shape[:-2]
-            if leading == batch_shape:
-                return X_pending
-            return X_pending.reshape(*([1] * len(batch_shape)), m, d).expand(*batch_shape, m, d)
-        raise ValueError(f"Unexpected X_pending shape: {tuple(X_pending.shape)}")
-
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        self._prepare_eval()
-        raw_X = ensure_q_batch(X)
-        Xt = self._apply_input_transform(raw_X)
-        X_pending = getattr(self, "X_pending", None)
-        if X_pending is None or torch.as_tensor(X_pending).numel() == 0:
-            value = self._joint_bald_value(raw_X)
-            value = value - self._observed_penalty_per_point(Xt).sum(dim=-1)
-            value = value - self._same_batch_penalty(Xt)
-            value = self._apply_active_objective(value, raw_X, name=self.__class__.__name__)
-            return _finalize_multiclass_acq_output_to_batch(value, raw_X, name=self.__class__.__name__)
-
-        Xp = torch.as_tensor(X_pending, dtype=raw_X.dtype, device=raw_X.device).detach()
-        Xp = self._expand_pending_to_batch(Xp, raw_X.shape[:-2])
-        pending_value = self._joint_bald_value(Xp)
-        all_value = self._joint_bald_value(torch.cat([Xp, raw_X], dim=-2))
-        value = all_value - pending_value
-        value = value - self._observed_penalty_per_point(Xt).sum(dim=-1)
-        value = value - self._same_batch_penalty(Xt)
-        value = self._apply_active_objective(value, raw_X, name=self.__class__.__name__)
-        return _finalize_multiclass_acq_output_to_batch(value, raw_X, name=self.__class__.__name__)
-
-
 class qMulticlassIntegratedPosteriorVarianceProxy(_MulticlassActiveLearningBase):
-    """Differentiable multiclass IPV-style active learning proxy."""
-
-    def __init__(
-        self,
-        model,
-        *,
-        mc_points: Tensor | None = None,
-        integration_beta: float = 25.0,
-        local_weight: float | None = None,
-        integrated_weight: float = 1.0,
-        num_samples: int = 128,
-        reduction: ReductionType = "mean",
-        pending_penalty_weight: float = 0.0,
-        pending_penalty_beta: float = 10.0,
-        observed_penalty_weight: float = 0.0,
-        observed_penalty_beta: float = 10.0,
-        same_batch_penalty_weight: float = 0.0,
-        same_batch_penalty_beta: float = 10.0,
-        X_observed: Tensor | None = None,
-        eps: float = 1e-8,
-        objective=None,
-        sampler: Optional[MCSampler] = None,
-        apply_softmax_if_needed: bool = True,
-    ) -> None:
-        super().__init__(
-            model=model,
-            num_samples=num_samples,
-            sampler=sampler,
-            reduction=reduction,
-            pending_penalty_weight=pending_penalty_weight,
-            pending_penalty_beta=pending_penalty_beta,
-            observed_penalty_weight=observed_penalty_weight,
-            observed_penalty_beta=observed_penalty_beta,
-            same_batch_penalty_weight=same_batch_penalty_weight,
-            same_batch_penalty_beta=same_batch_penalty_beta,
-            X_observed=X_observed,
-            eps=eps,
-            objective=objective,
-            apply_softmax_if_needed=apply_softmax_if_needed,
-        )
-        if mc_points is not None and mc_points.ndim != 2:
-            raise ValueError(f"mc_points must have shape n_mc x d. Got {tuple(mc_points.shape)}.")
-        self.register_buffer("mc_points", mc_points.detach() if mc_points is not None else None)
-        self.integration_beta = float(integration_beta)
-        self.local_weight = 1.0 if local_weight is None and mc_points is None else float(local_weight or 0.0)
-        self.integrated_weight = float(integrated_weight)
-
-    def _integrated_variance_score_per_point(self, raw_X: Tensor, Xt: Tensor) -> Tensor:
-        if self.mc_points is None:
-            return raw_X.new_zeros(raw_X.shape[:-1])
-        mc_points = self.mc_points.to(device=raw_X.device, dtype=raw_X.dtype)
-        mc_probs = self._mean_probs(mc_points.unsqueeze(0))
-        mc_var = self._class_probability_variance(mc_probs).reshape(-1)
-        mc_points_t = self._apply_input_transform(mc_points.unsqueeze(0)).reshape(-1, Xt.shape[-1])
-        d2 = torch.cdist(Xt.reshape(-1, Xt.shape[-1]), mc_points_t).pow(2)
-        weights = torch.exp(-self.integration_beta * d2)
-        score = (weights * mc_var.view(1, -1)).sum(dim=-1) / weights.sum(dim=-1).clamp_min(self.eps)
-        return score.reshape(Xt.shape[:-1])
+    """Cheap pointwise IPV proxy based on class-probability variance."""
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
@@ -433,21 +280,81 @@ class qMulticlassIntegratedPosteriorVarianceProxy(_MulticlassActiveLearningBase)
         raw_X = ensure_q_batch(X)
         Xt = self._apply_input_transform(raw_X)
         probs = self._mean_probs(raw_X)
-        local_score = self._class_probability_variance(probs)
-        integrated_score = self._integrated_variance_score_per_point(raw_X, Xt)
-        integrated_score = _align_pointwise_to_reference(integrated_score, local_score, name="IPV.integrated_score")
-        score = self.local_weight * local_score + self.integrated_weight * integrated_score
+        score = self._class_probability_variance(probs)
         return self._score_to_value(score, raw_X, Xt, name=self.__class__.__name__)
 
 
+class qMulticlassJointBALD(qMulticlassBALD):
+    """Greedy joint BALD approximation for multiclass q-batches.
+
+    Exact JointBALD is expensive for large q. This implementation computes a
+    pointwise BALD score and then uses a log-det diversity correction based on
+    posterior mean class probabilities.
+    """
+
+    def __init__(
+        self,
+        model,
+        *,
+        diversity_weight: float = 0.05,
+        diversity_jitter: float = 1e-6,
+        max_q_for_exact: int = 16,
+        large_q_strategy: LargeQStrategy = "per_point",
+        **kwargs,
+    ) -> None:
+        super().__init__(model=model, **kwargs)
+        self.diversity_weight = float(diversity_weight)
+        self.diversity_jitter = float(diversity_jitter)
+        self.max_q_for_exact = int(max_q_for_exact)
+        self.large_q_strategy = large_q_strategy
+
+    def _diversity_bonus(self, X: Tensor) -> Tensor:
+        Xq = ensure_q_batch(X)
+        q = Xq.shape[-2]
+        if q <= 1:
+            return Xq.new_zeros(Xq.shape[:-2])
+        if q > self.max_q_for_exact:
+            if self.large_q_strategy == "per_point":
+                return Xq.new_zeros(Xq.shape[:-2])
+            if self.large_q_strategy == "truncate":
+                Xq = Xq[..., : self.max_q_for_exact, :]
+                q = Xq.shape[-2]
+            elif self.large_q_strategy == "raise":
+                raise RuntimeError(
+                    f"{self.__class__.__name__}: q={q} is too large for exact diversity. "
+                    f"Set large_q_strategy='per_point' or increase max_q_for_exact."
+                )
+            else:
+                raise ValueError(f"Unknown large_q_strategy: {self.large_q_strategy!r}.")
+        probs = self._mean_probs(Xq)
+        probs = probs - probs.mean(dim=-1, keepdim=True)
+        K = probs @ probs.transpose(-1, -2)
+        K = K + self.diversity_jitter * torch.eye(q, device=K.device, dtype=K.dtype)
+        return torch.linalg.slogdet(K).logabsdet
+
+    @t_batch_mode_transform()
+    def forward(self, X: Tensor) -> Tensor:
+        self._prepare_eval()
+        raw_X = ensure_q_batch(X)
+        Xt = self._apply_input_transform(raw_X)
+        pointwise = self._pointwise_bald_score(raw_X)
+        pointwise = _reduce_extra_leading_dims_to_raw_X(pointwise, raw_X, name=self.__class__.__name__)
+        value = self._reduce_q(pointwise)
+        value = value + self.diversity_weight * self._diversity_bonus(raw_X)
+        value = value - self._joint_penalty(raw_X, Xt)
+        return _finalize_multiclass_acq_output_to_batch(value, raw_X, name=self.__class__.__name__)
+
+
+class qMulticlassGreedyJointBALD(qMulticlassJointBALD):
+    """Alias for greedy JointBALD-style q-batch scoring."""
+
+
 __all__ = [
-    "LargeQStrategy",
-    "_MulticlassActiveLearningBase",
     "qMulticlassPredictiveEntropy",
-    "qMulticlassProbabilityVariance",
-    "qMulticlassMarginUncertainty",
     "qMulticlassBALD",
     "qMulticlassJointBALD",
     "qMulticlassGreedyJointBALD",
     "qMulticlassIntegratedPosteriorVarianceProxy",
+    "qMulticlassMarginUncertainty",
+    "qMulticlassProbabilityVariance",
 ]

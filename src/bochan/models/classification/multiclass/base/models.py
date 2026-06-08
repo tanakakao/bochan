@@ -154,6 +154,25 @@ class _BaseMulticlassClassificationModel(ApproximateGPyTorchModel):
     def transform_inputs(self, X: Tensor) -> Tensor:
         return apply_input_transform_for_eval(X, self.input_transform, cat_dims=self.cat_dims)
 
+    def _expand_X_for_class_batch(self, X: Tensor) -> Tensor:
+        """Insert a singleton class-batch axis for class-wise latent SVGPs.
+
+        The latent multiclass SVGP uses inducing points with batch shape
+        ``[num_classes]``. During acquisition optimization, BoTorch evaluates
+        candidates with an arbitrary t-batch shape such as
+        ``raw_samples x q x d``. GPyTorch cannot broadcast ``[num_classes]``
+        against ``[raw_samples]`` directly, so we insert a singleton axis before
+        the q/event dimension: ``raw_samples x 1 x q x d``. This broadcasts to
+        ``raw_samples x num_classes x q x d`` internally while keeping the class
+        dimension identifiable for ``MulticlassProbsPosterior``.
+        """
+
+        inducing_points = self.model.variational_strategy.inducing_points
+        inducing_batch_shape = inducing_points.shape[:-2]
+        if inducing_batch_shape == torch.Size([self.num_classes]):
+            return X.unsqueeze(-3)
+        return X
+
     def latent_posterior(
         self,
         X: Tensor,
@@ -167,6 +186,7 @@ class _BaseMulticlassClassificationModel(ApproximateGPyTorchModel):
             X = X[0]
         self.eval()
         X_tf = self.transform_inputs(X)
+        X_tf = self._expand_X_for_class_batch(X_tf)
         latent_dist = self.model(X_tf)
         posterior = GPyTorchPosterior(latent_dist)
         if posterior_transform is not None:

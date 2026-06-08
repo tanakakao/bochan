@@ -26,6 +26,8 @@ from .multi_output import (
     qMultiOutputMulticlassUpperConfidenceBound,
 )
 from .single_output import (
+    compute_multiclass_target_probability_best_f,
+    compute_multiclass_target_probability_values,
     qMulticlassExpectedImprovement,
     qMulticlassProbabilityOfFeasibility,
     qMulticlassProbabilityOfImprovement,
@@ -36,6 +38,8 @@ __all__ = [
     "NoiseCombineType",
     "NoiseWeightMode",
     "OutputReductionType",
+    "compute_multiclass_target_probability_best_f",
+    "compute_multiclass_target_probability_values",
     "qMulticlassProbabilityOfFeasibility",
     "qMulticlassExpectedImprovement",
     "qMulticlassProbabilityOfImprovement",

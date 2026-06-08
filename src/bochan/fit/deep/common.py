@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional
 
 import torch
+from torch import Tensor
 
 from ..common import (
     get_likelihood_from_mll_or_model,
@@ -13,6 +14,33 @@ from ..common import (
     set_model_and_likelihood_train_mode,
     view_single_output_target,
 )
+
+
+def _get_deep_full_batch_train_X(model) -> Tensor:
+    """Return the training input used by the internal deep model.
+
+    Deep wrappers often keep raw ``train_inputs`` for user-facing APIs while
+    also keeping ``transformed_train_inputs`` for the internal model. This is
+    important for wrappers that apply ``input_transform`` manually in posterior
+    paths but whose ``forward`` expects already-transformed inputs during MLL
+    fitting.
+
+    The fallback preserves the previous behavior for regression, binary,
+    ordinal, multiclass, and deep-kernel models that do not expose transformed
+    training inputs.
+    """
+
+    transformed_train_inputs = getattr(model, "transformed_train_inputs", None)
+    if transformed_train_inputs is not None:
+        if isinstance(transformed_train_inputs, tuple) and len(transformed_train_inputs) > 0:
+            train_X = transformed_train_inputs[0]
+        else:
+            train_X = transformed_train_inputs
+
+        if torch.is_tensor(train_X):
+            return train_X
+
+    return get_train_inputs_tensor(model)
 
 
 def fit_deep_full_batch_mll(
@@ -64,7 +92,7 @@ def fit_deep_full_batch_mll(
 
     optimizer = optimizer_cls(model.parameters(), lr=lr)
 
-    train_X = get_train_inputs_tensor(model)
+    train_X = _get_deep_full_batch_train_X(model)
     train_Y = get_train_targets_tensor(model)
     target = view_single_output_target(train_Y)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from typing import Optional
+from typing import Literal, Optional
 
 import torch
 from botorch.models.model import Model
@@ -21,6 +21,9 @@ from .single_output import (
     compute_multiclass_target_probability_values,
     ensure_q_batch,
 )
+
+NoiseWeightMode = Literal["none", "inverse_linear", "inverse_sqrt", "exp", "custom"]
+NoiseCombineType = Literal["multiply", "subtract", "add"]
 
 
 def _get_noise_posterior(model: Model, X: Tensor):
@@ -386,6 +389,8 @@ class qHeteroMulticlassUpperConfidenceBound(_HeteroMulticlassBOBase):
 
 
 __all__ = [
+    "NoiseWeightMode",
+    "NoiseCombineType",
     "_get_noise_posterior",
     "_get_noise_std",
     "hetero_adjust_multiclass_target_probability_samples",

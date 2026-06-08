@@ -5,6 +5,7 @@ from typing import Literal, Optional
 
 import torch
 from botorch.acquisition.monte_carlo import MCAcquisitionFunction
+from botorch.acquisition.objective import IdentityMCObjective
 from botorch.models import ModelListGP
 from botorch.models.gpytorch import ModelListGPyTorchModel
 from botorch.models.model import Model
@@ -254,7 +255,12 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
             model = model.models[0]
         if sampler is None:
             sampler = SobolQMCNormalSampler(sample_shape=torch.Size([128]))
-        super().__init__(model=model, sampler=sampler, objective=None, **kwargs)
+        super().__init__(
+            model=model,
+            sampler=sampler,
+            objective=IdentityMCObjective(),
+            **kwargs,
+        )
         self.target_class = target_class
         self.class_reduction = class_reduction
         self.apply_softmax_if_needed = bool(apply_softmax_if_needed)

@@ -4,10 +4,12 @@ from typing import Any, Literal, Optional
 import torch
 from torch import Tensor
 
+
 class MeanVariancePosterior:
     def __init__(self, mean: torch.Tensor, variance: torch.Tensor) -> None:
         self.mean = mean
         self.variance = variance
+
 
 def aggregate_perturbed_posterior_chunked(
     model,
@@ -41,6 +43,7 @@ def aggregate_perturbed_posterior_chunked(
         variance=torch.cat(variances, dim=-2),
     )
 
+
 @dataclass
 class AggregatedPerturbedPosterior:
     """
@@ -68,6 +71,34 @@ class AggregatedPerturbedPosterior:
     variance: Optional[Tensor]
     mean_per_w: Tensor
     variance_per_w: Optional[Tensor]
+
+
+def _canonicalize_perturbed_moment_shape(
+    moment: Optional[Tensor],
+    *,
+    q: int,
+    n_w: int,
+) -> Optional[Tensor]:
+    """Canonicalize posterior moment shape before InputPerturbation aggregation.
+
+    Most BoTorch posteriors expose moments as ``[..., q_like, m]``. Some
+    multiclass probability posteriors evaluate a 2D ``[q, d]`` input as
+    ``[q_like, 1, C]`` because the first dimension is treated as a t-batch and
+    a singleton q dimension is kept. For InputPerturbation aggregation this is
+    equivalent to ``[q_like, C]`` and should be interpreted as the q-like axis.
+    """
+
+    if moment is None or moment.ndim < 3:
+        return moment
+
+    expected_q = int(q) * int(n_w)
+    q_like = moment.shape[-3]
+    has_singleton_q = moment.shape[-2] == 1
+
+    if has_singleton_q and q_like in (int(q), expected_q):
+        return moment.squeeze(-2)
+
+    return moment
 
 
 def aggregate_perturbed_posterior(
@@ -167,6 +198,7 @@ def aggregate_perturbed_posterior(
     )
 
     mean = posterior.mean
+    mean = _canonicalize_perturbed_moment_shape(mean, q=q, n_w=n_w)
 
     # BoTorch posterior は通常 [..., q, m]。
     # ただし custom posterior で [..., q] の場合に備えて最後に output 次元を足す。
@@ -198,6 +230,7 @@ def aggregate_perturbed_posterior(
         variance = None
         if variance_mode != "none" and hasattr(posterior, "variance"):
             variance = posterior.variance
+            variance = _canonicalize_perturbed_moment_shape(variance, q=q, n_w=n_w)
             if squeezed_output and variance.ndim >= 1 and variance.shape[-1] == q:
                 variance = variance.unsqueeze(-1)
 
@@ -245,6 +278,7 @@ def aggregate_perturbed_posterior(
 
     if variance_mode != "none" and hasattr(posterior, "variance"):
         variance = posterior.variance
+        variance = _canonicalize_perturbed_moment_shape(variance, q=q, n_w=n_w)
 
         if squeezed_output and variance.ndim >= 1 and variance.shape[-1] == expected_q:
             variance = variance.unsqueeze(-1)

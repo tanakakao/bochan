@@ -9,6 +9,7 @@ from torch import Tensor
 
 from .single_output import (
     _align_pointwise_to_reference,
+    _reduce_extra_leading_dims_to_raw_X,
     qMulticlassBALD,
     qMulticlassGreedyJointBALD,
     qMulticlassIntegratedPosteriorVarianceProxy,
@@ -157,6 +158,39 @@ class _HeteroMulticlassMixin:
         q_weight = self._aggregate_noise_weight_over_q(weight)
         q_weight = _align_pointwise_to_reference(q_weight, value, name=f"{self.__class__.__name__}.noise_weight")
         return self._combine_score_and_weight(value, q_weight)
+
+    @staticmethod
+    def _expand_pending_to_batch(X_pending: Tensor, batch_shape: torch.Size | tuple[int, ...]) -> Tensor:
+        """X_pending を raw_X の t-batch shape に展開する。"""
+        if X_pending.ndim == 1:
+            X_pending = X_pending.view(1, -1)
+        if X_pending.ndim == 2:
+            m, d = X_pending.shape
+            return X_pending.view(*([1] * len(batch_shape)), m, d).expand(*batch_shape, m, d)
+        if X_pending.ndim >= 3:
+            m, d = X_pending.shape[-2], X_pending.shape[-1]
+            leading = tuple(X_pending.shape[:-2])
+            if leading == tuple(batch_shape):
+                return X_pending
+            return X_pending.reshape(*([1] * len(batch_shape)), m, d).expand(*batch_shape, m, d)
+        raise ValueError(f"Unexpected X_pending shape: {tuple(X_pending.shape)}")
+
+    def _joint_bald_value(self, raw_X: Tensor) -> Tensor:
+        """
+        qMulticlassJointBALD と同じ joint value を返す。
+
+        hetero wrapper ではこの値に noise weight をかけたいので、penalty を引く前の
+        pointwise BALD + diversity bonus を共通 helper として持つ。
+        """
+        raw_X = self._ensure_q_batch(raw_X)
+        pointwise = self._pointwise_bald_score(raw_X)
+        pointwise = _reduce_extra_leading_dims_to_raw_X(pointwise, raw_X, name=f"{self.__class__.__name__}.joint_pointwise")
+        value = self._reduce_q(pointwise)
+        diversity_bonus = getattr(self, "_diversity_bonus", None)
+        diversity_weight = float(getattr(self, "diversity_weight", 0.0))
+        if callable(diversity_bonus) and diversity_weight != 0.0:
+            value = value + diversity_weight * diversity_bonus(raw_X)
+        return value
 
 
 class qHeteroMulticlassPredictiveEntropy(_HeteroMulticlassMixin, qMulticlassPredictiveEntropy):

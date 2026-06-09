@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 from collections.abc import Callable, Sequence
 from typing import Literal, Optional
 
@@ -47,6 +48,12 @@ def _align_pointwise_to_reference(value: Tensor, reference: Tensor, *, name: str
     if value.shape == reference.shape[:-1]:
         return value.unsqueeze(-1).expand_as(reference).to(reference)
 
+    if value.ndim < reference.ndim and value.ndim > 0:
+        tail_shape = tuple(reference.shape[-value.ndim:])
+        if tuple(value.shape) == tail_shape:
+            view_shape = (1,) * (reference.ndim - value.ndim) + tuple(value.shape)
+            return value.reshape(view_shape).expand_as(reference).to(reference)
+
     if value.ndim == reference.ndim and value.shape[:-1] == reference.shape[:-1]:
         q_ref = reference.shape[-1]
         q_value = value.shape[-1]
@@ -65,6 +72,49 @@ def _align_pointwise_to_reference(value: Tensor, reference: Tensor, *, name: str
         f"{name}: cannot align pointwise value. "
         f"value.shape={tuple(value.shape)}, reference.shape={tuple(reference.shape)}."
     )
+
+
+def _reduce_extra_leading_dims_to_raw_X(score: Tensor, raw_X: Tensor, *, name: str) -> Tensor:
+    """Reduce sample-like leading dims so score aligns with raw_X.
+
+    Multiclass DeepGP probability / target-probability paths can leave an
+    additional leading sample-like dimension in pointwise level-set scores. For
+    example, with ``raw_X.shape == (32, 1, 2)``, a score may have shape
+    ``(10, 32)`` or ``(10, 32, 1)``. BoTorch acquisition optimization expects
+    either ``batch_shape`` or ``batch_shape x q``. This helper averages only
+    those extra leading dimensions while preserving the t-batch and q axes.
+    """
+
+    raw_X = ensure_q_batch(raw_X)
+    batch_shape = tuple(raw_X.shape[:-2])
+    q = int(raw_X.shape[-2])
+
+    if tuple(score.shape) == batch_shape:
+        return score
+
+    if score.ndim >= 1 and tuple(score.shape[:-1]) == batch_shape and score.shape[-1] == q:
+        return score
+
+    if len(batch_shape) > 0:
+        batch_ndim = len(batch_shape)
+        if score.ndim >= batch_ndim and tuple(score.shape[-batch_ndim:]) == batch_shape:
+            extra_ndim = score.ndim - batch_ndim
+            if extra_ndim > 0:
+                return score.mean(dim=tuple(range(extra_ndim)))
+            return score
+
+        target_with_q = batch_shape + (q,)
+        target_ndim = len(target_with_q)
+        if score.ndim >= target_ndim and tuple(score.shape[-target_ndim:]) == target_with_q:
+            extra_ndim = score.ndim - target_ndim
+            if extra_ndim > 0:
+                return score.mean(dim=tuple(range(extra_ndim)))
+            return score
+
+    elif score.ndim >= 2 and score.shape[-1] == q:
+        return score.mean(dim=tuple(range(score.ndim - 1)))
+
+    return score
 
 
 def _class_entropy(probs: Tensor, *, eps: float) -> Tensor:
@@ -140,10 +190,12 @@ class _MulticlassTargetProbabilityLevelSetBase(_MulticlassProbabilityBOBase):
         return out
 
     def _score_to_value(self, score: Tensor, raw_X: Tensor, Xt: Tensor, *, name: str) -> Tensor:
+        score = _reduce_extra_leading_dims_to_raw_X(score, raw_X, name=name)
         pending = _align_pointwise_to_reference(self._pending_penalty_per_point(Xt), score, name=f"{name}.pending_penalty")
         observed = _align_pointwise_to_reference(self._observed_penalty_per_point(Xt), score, name=f"{name}.observed_penalty")
         score = score - pending - observed
         score = self._apply_levelset_objective(score, raw_X, name=name)
+        score = _reduce_extra_leading_dims_to_raw_X(score, raw_X, name=f"{name}.objective")
         if score.shape == raw_X.shape[:-2]:
             value = score
         else:
@@ -156,6 +208,8 @@ class _MulticlassTargetProbabilityLevelSetBase(_MulticlassProbabilityBOBase):
             return (p * (1.0 - p)).clamp_min(self.eps).sqrt()
         samples = self._target_prob_samples(X)
         posterior_std = _std_over_sample_dims(samples, self.sampler, eps=self.eps)
+        posterior_std = _reduce_extra_leading_dims_to_raw_X(posterior_std, X, name="target_uncertainty.posterior_std")
+        p = _reduce_extra_leading_dims_to_raw_X(p, X, name="target_uncertainty.p")
         if mode == "posterior":
             return posterior_std
         if mode == "combined":

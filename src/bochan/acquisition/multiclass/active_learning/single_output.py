@@ -20,6 +20,13 @@ from bochan.acquisition.multiclass.bayesian_optimization.single_output import (
 LargeQStrategy = Literal["per_point", "truncate", "raise"]
 
 
+def _shape_prod(shape: torch.Size | tuple[int, ...]) -> int:
+    out = 1
+    for s in shape:
+        out *= int(s)
+    return out
+
+
 def _class_entropy(probs: Tensor, *, eps: float) -> Tensor:
     probs = probs.clamp_min(eps)
     return -(probs * probs.log()).sum(dim=-1)
@@ -75,6 +82,71 @@ def _reduce_extra_leading_dims_to_raw_X(score: Tensor, raw_X: Tensor, *, name: s
         return score.mean(dim=tuple(range(score.ndim - 1)))
 
     return score
+
+
+def _align_probs_to_raw_q(probs: Tensor, raw_X: Tensor, *, name: str) -> Tensor:
+    """Align class probabilities to ``batch_shape x q x C``.
+
+    JointBALD's diversity term builds a ``q x q`` Gram matrix. With
+    InputPerturbation, model probabilities may be returned on the expanded
+    ``q * n_w`` grid, e.g. ``batch_shape x (q*n_w) x C``. DeepGP models can also
+    leave extra sample-like leading dimensions. This helper averages those extra
+    dimensions and aggregates expanded q back to the raw q before the Gram matrix
+    is formed.
+    """
+
+    raw_X = ensure_q_batch(raw_X)
+    batch_shape = tuple(raw_X.shape[:-2])
+    q = int(raw_X.shape[-2])
+
+    if probs.ndim < 2:
+        raise RuntimeError(f"{name}: probs must have shape (..., q_like, C). Got {tuple(probs.shape)}.")
+
+    out = probs
+    c = int(out.shape[-1])
+
+    # Some posteriors omit an explicit singleton t-batch when batch_shape is [1].
+    if len(batch_shape) > 0 and _shape_prod(batch_shape) == 1:
+        if out.ndim == 2:
+            out = out.reshape(*batch_shape, out.shape[-2], c)
+        elif out.ndim >= 3 and out.shape[-2] % q == 0:
+            tail_with_batch = batch_shape + (out.shape[-2], c)
+            tail_ndim = len(tail_with_batch)
+            if out.ndim < tail_ndim or tuple(out.shape[-tail_ndim:]) != tail_with_batch:
+                out = out.unsqueeze(-3)
+
+    q_like = int(out.shape[-2])
+    if q_like != q and q_like % q == 0:
+        n_w = q_like // q
+        out = out.reshape(*out.shape[:-2], q, n_w, c).mean(dim=-2)
+        q_like = q
+
+    target = batch_shape + (q, c)
+    if tuple(out.shape) == target:
+        return out
+
+    if len(target) > 0 and out.ndim >= len(target) and tuple(out.shape[-len(target):]) == target:
+        extra_ndim = out.ndim - len(target)
+        if extra_ndim > 0:
+            return out.mean(dim=tuple(range(extra_ndim)))
+        return out
+
+    # No explicit batch dimensions, but q and C are aligned. Average any extra
+    # leading dimensions and add a singleton batch if required.
+    if out.ndim >= 2 and tuple(out.shape[-2:]) == (q, c):
+        extra_ndim = out.ndim - 2
+        if extra_ndim > 0:
+            out = out.mean(dim=tuple(range(extra_ndim)))
+        if len(batch_shape) > 0 and _shape_prod(batch_shape) == 1:
+            return out.reshape(*batch_shape, q, c)
+        if len(batch_shape) == 0:
+            return out
+
+    raise RuntimeError(
+        f"{name}: cannot align probabilities to raw q. "
+        f"probs.shape={tuple(probs.shape)}, aligned.shape={tuple(out.shape)}, "
+        f"raw_X.shape={tuple(raw_X.shape)}."
+    )
 
 
 def _align_pointwise_to_reference(value: Tensor, reference: Tensor, *, name: str) -> Tensor:
@@ -310,26 +382,29 @@ class qMulticlassJointBALD(qMulticlassBALD):
 
     def _diversity_bonus(self, X: Tensor) -> Tensor:
         Xq = ensure_q_batch(X)
-        q = Xq.shape[-2]
-        if q <= 1:
+        raw_q = int(Xq.shape[-2])
+        if raw_q <= 1:
             return Xq.new_zeros(Xq.shape[:-2])
-        if q > self.max_q_for_exact:
+        if raw_q > self.max_q_for_exact:
             if self.large_q_strategy == "per_point":
                 return Xq.new_zeros(Xq.shape[:-2])
             if self.large_q_strategy == "truncate":
                 Xq = Xq[..., : self.max_q_for_exact, :]
-                q = Xq.shape[-2]
+                raw_q = int(Xq.shape[-2])
             elif self.large_q_strategy == "raise":
                 raise RuntimeError(
-                    f"{self.__class__.__name__}: q={q} is too large for exact diversity. "
+                    f"{self.__class__.__name__}: q={raw_q} is too large for exact diversity. "
                     f"Set large_q_strategy='per_point' or increase max_q_for_exact."
                 )
             else:
                 raise ValueError(f"Unknown large_q_strategy: {self.large_q_strategy!r}.")
         probs = self._mean_probs(Xq)
+        probs = _align_probs_to_raw_q(probs, Xq, name=f"{self.__class__.__name__}.diversity_probs")
+        q = int(probs.shape[-2])
         probs = probs - probs.mean(dim=-1, keepdim=True)
         K = probs @ probs.transpose(-1, -2)
-        K = K + self.diversity_jitter * torch.eye(q, device=K.device, dtype=K.dtype)
+        eye = torch.eye(q, device=K.device, dtype=K.dtype)
+        K = K + self.diversity_jitter * eye
         return torch.linalg.slogdet(K).logabsdet
 
     @t_batch_mode_transform()

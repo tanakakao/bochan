@@ -6,9 +6,10 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+from botorch.models.kernels.categorical import CategoricalKernel
 from botorch.models.transforms.input import InputTransform
 from gpytorch.distributions import MultivariateNormal
-from gpytorch.kernels import Kernel, MaternKernel, ScaleKernel
+from gpytorch.kernels import Kernel, MaternKernel, ProductKernel, ScaleKernel
 from gpytorch.likelihoods import SoftmaxLikelihood
 from gpytorch.means import ConstantMean, Mean
 from gpytorch.models import ApproximateGP
@@ -27,7 +28,6 @@ from bochan.models.components.multiclass import (
 )
 from bochan.models.classification.multiclass import (
     _BaseMulticlassClassificationModel,
-    build_mixed_multiclass_kernel,
 )
 
 
@@ -104,6 +104,62 @@ def make_multiclass_feature_extractor(
             output_dim=output_dim,
             hidden_dims=hidden_dims,
         )
+
+
+def _make_deepkernel_cont_kernel(cont_dims: Sequence[int], batch_shape: torch.Size) -> ScaleKernel:
+    """DeepKernel mixed model 用の prior-free continuous kernel。
+
+    通常の mixed multiclass kernel は BoTorch の dim-scaled prior 付き
+    kernel を使うが、DeepKernel の特徴空間では raw/unconstrained
+    lengthscale に LogNormalPrior が評価されて失敗する場合がある。
+    DKL では feature extractor 側でも表現力を持つため、ここでは
+    conservative に prior なしの Matern kernel を使う。
+    """
+
+    return ScaleKernel(
+        MaternKernel(
+            nu=2.5,
+            ard_num_dims=len(cont_dims),
+            active_dims=tuple(cont_dims),
+            batch_shape=batch_shape,
+        ),
+        batch_shape=batch_shape,
+    )
+
+
+def _make_deepkernel_cat_kernel(cat_dims: Sequence[int], batch_shape: torch.Size) -> ScaleKernel:
+    return ScaleKernel(
+        CategoricalKernel(
+            active_dims=tuple(cat_dims),
+            ard_num_dims=len(cat_dims),
+            batch_shape=batch_shape,
+        ),
+        batch_shape=batch_shape,
+    )
+
+
+def build_deepkernel_mixed_multiclass_kernel(
+    d: int,
+    cat_dims: Sequence[int],
+    *,
+    num_classes: int,
+) -> Kernel:
+    """DeepKernel mixed multiclass 用の prior-free mixed kernel。"""
+
+    cat_dims = normalize_dims(cat_dims, d)
+    cont_dims = get_cont_dims(d, cat_dims)
+    batch_shape = torch.Size([int(num_classes)])
+
+    if len(cat_dims) == 0:
+        return _make_deepkernel_cont_kernel(cont_dims, batch_shape=batch_shape)
+    if len(cont_dims) == 0:
+        return _make_deepkernel_cat_kernel(cat_dims, batch_shape=batch_shape)
+
+    cont_1 = _make_deepkernel_cont_kernel(cont_dims, batch_shape=batch_shape)
+    cont_2 = _make_deepkernel_cont_kernel(cont_dims, batch_shape=batch_shape)
+    cat_1 = _make_deepkernel_cat_kernel(cat_dims, batch_shape=batch_shape)
+    cat_2 = _make_deepkernel_cat_kernel(cat_dims, batch_shape=batch_shape)
+    return cont_1 + cat_1 + ProductKernel(cont_2, cat_2)
 
 
 class _DeepKernelMulticlassSVGP(ApproximateGP):
@@ -238,7 +294,7 @@ class _DeepKernelMixedMulticlassSVGP(ApproximateGP):
             device=train_X.device,
             dtype=train_X.dtype,
         )
-        covar_module = covar_module or build_mixed_multiclass_kernel(
+        covar_module = covar_module or build_deepkernel_mixed_multiclass_kernel(
             d=d,
             cat_dims=self.cat_dims,
             num_classes=self.num_classes,
@@ -397,4 +453,5 @@ __all__ = [
     "DeepKernelMulticlassClassificationGPModel",
     "DeepKernelMulticlassClassificationMixedGPModel",
     "make_multiclass_feature_extractor",
+    "build_deepkernel_mixed_multiclass_kernel",
 ]

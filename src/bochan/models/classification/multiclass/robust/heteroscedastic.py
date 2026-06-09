@@ -134,6 +134,7 @@ def _squeeze_extra_singletons(y: Tensor, *, n: int) -> Tensor:
     ``[n, 1]`` は単出力 target として残し、3D 以上に現れる singleton のみ削除する。
     例: ``[1, n, C] -> [n, C]``, ``[n, 1, C] -> [n, C]``, ``[n, C, 1] -> [n, C]``。
     """
+    _ = n
     while y.ndim > 2:
         squeezed = False
         for dim, size in enumerate(y.shape):
@@ -309,6 +310,7 @@ class HeteroscedasticMulticlassClassificationGPModel(_HeteroscedasticMulticlassM
             num_classes = int(torch.as_tensor(y_tmp).max().item()) + 1
         train_Y = prepare_class_targets(train_Y, train_X, num_classes=num_classes)
         noise_tf = extract_normalize_only_transform(input_transform)
+
         if train_Yvar is None:
             aux_model = MulticlassClassificationGPModel(
                 train_X=train_X,
@@ -334,9 +336,8 @@ class HeteroscedasticMulticlassClassificationGPModel(_HeteroscedasticMulticlassM
             )
         else:
             noise_targets = torch.as_tensor(train_Yvar, device=train_X.device, dtype=train_X.dtype).clamp_min(float(min_noise))
-        self.noise_model = _fit_noise_model_single(train_X, noise_targets, noise_tf, num_classes=num_classes)
-        self.noise_input_transform = noise_tf
-        self.min_noise = float(min_noise)
+        noise_model = _fit_noise_model_single(train_X, noise_targets, noise_tf, num_classes=num_classes)
+
         super().__init__(
             train_X=train_X,
             train_Y=train_Y,
@@ -345,6 +346,9 @@ class HeteroscedasticMulticlassClassificationGPModel(_HeteroscedasticMulticlassM
             num_inducing_points=num_inducing_points,
             temperature=temperature,
         )
+        self.noise_model = noise_model
+        self.noise_input_transform = noise_tf
+        self.min_noise = float(min_noise)
 
 
 class HeteroscedasticMulticlassClassificationMixedGPModel(_HeteroscedasticMulticlassMixin, MulticlassClassificationMixedGPModel):
@@ -373,6 +377,7 @@ class HeteroscedasticMulticlassClassificationMixedGPModel(_HeteroscedasticMultic
             num_classes = int(torch.as_tensor(y_tmp).max().item()) + 1
         train_Y = prepare_class_targets(train_Y, train_X, num_classes=num_classes)
         noise_tf = extract_normalize_only_transform(input_transform)
+
         if train_Yvar is None:
             aux_model = MulticlassClassificationMixedGPModel(
                 train_X=train_X,
@@ -399,9 +404,8 @@ class HeteroscedasticMulticlassClassificationMixedGPModel(_HeteroscedasticMultic
             )
         else:
             noise_targets = torch.as_tensor(train_Yvar, device=train_X.device, dtype=train_X.dtype).clamp_min(float(min_noise))
-        self.noise_model = _fit_noise_model_mixed(train_X, noise_targets, cat_dims, noise_tf, num_classes=num_classes)
-        self.noise_input_transform = noise_tf
-        self.min_noise = float(min_noise)
+        noise_model = _fit_noise_model_mixed(train_X, noise_targets, cat_dims, noise_tf, num_classes=num_classes)
+
         super().__init__(
             train_X=train_X,
             train_Y=train_Y,
@@ -411,6 +415,9 @@ class HeteroscedasticMulticlassClassificationMixedGPModel(_HeteroscedasticMultic
             num_inducing_points=num_inducing_points,
             temperature=temperature,
         )
+        self.noise_model = noise_model
+        self.noise_input_transform = noise_tf
+        self.min_noise = float(min_noise)
 
 
 __all__ = [

@@ -50,6 +50,39 @@ def _clone_fitted_rembo(rembo: REMBOTransformer) -> REMBOTransformer:
     return new
 
 
+def _resolve_projected_dim(
+    *,
+    n_components: Optional[int],
+    latent_dim: int,
+    input_dim: int,
+    name: str,
+) -> int:
+    """
+    PCA / REMBO の射影次元を決める。
+
+    `n_components` が明示されていない場合は、デフォルト `latent_dim=8` が
+    入力次元を超えても使えるように `input_dim` へ丸める。
+    `n_components` が明示されている場合は、指定ミスを検出するために例外にする。
+    """
+    input_dim = int(input_dim)
+    if input_dim <= 0:
+        raise ValueError(f"{name}: input dimension must be positive.")
+
+    if n_components is None:
+        resolved = min(int(latent_dim), input_dim)
+    else:
+        resolved = int(n_components)
+
+    if resolved <= 0:
+        raise ValueError(f"{name}: n_components / latent_dim must be positive. Got {resolved}.")
+    if resolved > input_dim:
+        raise ValueError(
+            f"{name}: n_components must be <= input dimension. "
+            f"Got n_components={resolved}, input_dim={input_dim}."
+        )
+    return resolved
+
+
 class _BaseProjectedMulticlassModel(Model):
     """PCA / REMBO 多クラス分類 wrapper の共通基底。"""
 
@@ -149,7 +182,12 @@ class PCAMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         num_classes = infer_num_classes(train_Y, num_classes)
         train_Y = prepare_class_targets(train_Y, train_X, num_classes=num_classes)
         self.input_dim_original = train_X.shape[-1]
-        self.latent_dim = int(n_components if n_components is not None else latent_dim)
+        self.latent_dim = _resolve_projected_dim(
+            n_components=n_components,
+            latent_dim=latent_dim,
+            input_dim=self.input_dim_original,
+            name=self.__class__.__name__,
+        )
         self.input_transform = clone_input_transform(input_transform)
         pre_X = apply_input_transform_for_training(train_X, self.input_transform, name='PCAMulticlassClassificationGPModel.input_transform')
 
@@ -204,7 +242,12 @@ class REMBOMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         num_classes = infer_num_classes(train_Y, num_classes)
         train_Y = prepare_class_targets(train_Y, train_X, num_classes=num_classes)
         self.input_dim_original = train_X.shape[-1]
-        self.latent_dim = int(n_components if n_components is not None else latent_dim)
+        self.latent_dim = _resolve_projected_dim(
+            n_components=n_components,
+            latent_dim=latent_dim,
+            input_dim=self.input_dim_original,
+            name=self.__class__.__name__,
+        )
         self.input_transform = clone_input_transform(input_transform)
         pre_X = apply_input_transform_for_training(train_X, self.input_transform, name='REMBOMulticlassClassificationGPModel.input_transform')
 
@@ -283,7 +326,12 @@ class PCAMulticlassClassificationMixedGPModel(_MixedProjectedMulticlassModel):
         self.input_dim_original = train_X.shape[-1]
         self.cat_dims = normalize_dims(cat_dims, self.input_dim_original)
         self.cont_dims = get_cont_dims(self.input_dim_original, self.cat_dims)
-        self.latent_dim = int(n_components if n_components is not None else latent_dim)
+        self.latent_dim = _resolve_projected_dim(
+            n_components=n_components,
+            latent_dim=latent_dim,
+            input_dim=len(self.cont_dims),
+            name=self.__class__.__name__,
+        )
         self.input_transform = clone_input_transform(input_transform)
         pre_X = apply_input_transform_for_training(
             train_X,
@@ -347,7 +395,12 @@ class REMBOMulticlassClassificationMixedGPModel(PCAMulticlassClassificationMixed
         self.input_dim_original = train_X.shape[-1]
         self.cat_dims = normalize_dims(cat_dims, self.input_dim_original)
         self.cont_dims = get_cont_dims(self.input_dim_original, self.cat_dims)
-        self.latent_dim = int(n_components if n_components is not None else latent_dim)
+        self.latent_dim = _resolve_projected_dim(
+            n_components=n_components,
+            latent_dim=latent_dim,
+            input_dim=len(self.cont_dims),
+            name=self.__class__.__name__,
+        )
         self.input_transform = clone_input_transform(input_transform)
         pre_X = apply_input_transform_for_training(
             train_X,

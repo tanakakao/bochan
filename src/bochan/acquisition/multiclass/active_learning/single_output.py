@@ -344,7 +344,46 @@ class qMulticlassBALD(_MulticlassActiveLearningBase):
 
 
 class qMulticlassIntegratedPosteriorVarianceProxy(_MulticlassActiveLearningBase):
-    """Cheap pointwise IPV proxy based on class-probability variance."""
+    """Pointwise IPV proxy using optional MC integration points."""
+
+    def __init__(
+        self,
+        model,
+        *,
+        mc_points: Tensor | None = None,
+        integration_beta: float = 25.0,
+        local_weight: float | None = None,
+        integrated_weight: float = 1.0,
+        **kwargs,
+    ) -> None:
+        super().__init__(model=model, **kwargs)
+        self.mc_points = mc_points
+        self.integration_beta = float(integration_beta)
+        self.local_weight = 1.0 if local_weight is None and mc_points is None else float(local_weight or 0.0)
+        self.integrated_weight = float(integrated_weight)
+
+    def _integrated_variance_score_per_point(self, raw_X: Tensor, Xt: Tensor | None = None) -> Tensor:
+        raw_X = ensure_q_batch(raw_X)
+        Xt = self._apply_input_transform(raw_X) if Xt is None else ensure_q_batch(Xt)
+        if self.mc_points is None:
+            return raw_X.new_zeros(raw_X.shape[:-1])
+
+        mc_raw = torch.as_tensor(self.mc_points, device=raw_X.device, dtype=raw_X.dtype)
+        if mc_raw.ndim == 2:
+            mc_raw = mc_raw.unsqueeze(0)
+        else:
+            mc_raw = ensure_q_batch(mc_raw)
+
+        mc_probs = self._mean_probs(mc_raw)
+        mc_var = self._class_probability_variance(mc_probs)
+        mc_var = _reduce_extra_leading_dims_to_raw_X(mc_var, mc_raw, name=f"{self.__class__.__name__}.mc_var")
+        mc_var_flat = mc_var.reshape(-1)
+
+        mc_t = self._apply_input_transform(mc_raw).reshape(-1, Xt.shape[-1])
+        d2 = torch.cdist(Xt.reshape(-1, Xt.shape[-1]), mc_t).pow(2)
+        weights = torch.exp(-self.integration_beta * d2)
+        score = (weights * mc_var_flat.view(1, -1)).sum(dim=-1) / weights.sum(dim=-1).clamp_min(self.eps)
+        return score.reshape(*Xt.shape[:-1])
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
@@ -352,7 +391,14 @@ class qMulticlassIntegratedPosteriorVarianceProxy(_MulticlassActiveLearningBase)
         raw_X = ensure_q_batch(X)
         Xt = self._apply_input_transform(raw_X)
         probs = self._mean_probs(raw_X)
-        score = self._class_probability_variance(probs)
+        local_score = self._class_probability_variance(probs)
+        integrated_score = self._integrated_variance_score_per_point(raw_X, Xt)
+        integrated_score = _align_pointwise_to_reference(
+            integrated_score,
+            local_score,
+            name=f"{self.__class__.__name__}.integrated_score",
+        )
+        score = self.local_weight * local_score + self.integrated_weight * integrated_score
         return self._score_to_value(score, raw_X, Xt, name=self.__class__.__name__)
 
 

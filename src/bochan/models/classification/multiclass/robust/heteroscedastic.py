@@ -119,8 +119,61 @@ def _fit_variational_multiclass_mll(
 
 
 def _one_hot_targets(y: Tensor, num_classes: int, ref: Tensor) -> Tensor:
+    """target を one-hot [n, C] に変換する。"""
     y = y.long()
+    if y.ndim > 1 and y.shape[-1] == 1:
+        y = y.squeeze(-1)
+    y = y.reshape(-1)
     return torch.nn.functional.one_hot(y, num_classes=int(num_classes)).to(device=ref.device, dtype=ref.dtype)
+
+
+def _prepare_noise_targets_for_gp(noise_targets: Tensor, train_X: Tensor, *, num_classes: Optional[int] = None) -> Tensor:
+    """
+    ノイズ target を SingleTaskGP / MixedSingleTaskGP 用の ``[n, m]`` に整形する。
+
+    multiclass では class-wise noise target が ``[n, C]`` であるべきだが、
+    posterior の batch shape により ``[1, n, C]`` や ``[n, C, 1]`` が混ざることがある。
+    ここで補助 GP に渡す直前の形に正規化する。
+    """
+    n = int(train_X.shape[-2])
+    y = torch.as_tensor(noise_targets, device=train_X.device, dtype=train_X.dtype)
+
+    # 余分な singleton dimension を削除する。ただし [n, 1] は単出力として維持する。
+    while y.ndim > 2 and y.shape[0] == 1:
+        y = y.squeeze(0)
+    while y.ndim > 2 and y.shape[-1] == 1:
+        y = y.squeeze(-1)
+
+    if y.ndim == 1:
+        if y.shape[0] != n:
+            raise ValueError(
+                "noise_targets length must match train_X n. "
+                f"Got noise_targets.shape={tuple(y.shape)}, train_X.shape={tuple(train_X.shape)}."
+            )
+        y = y.unsqueeze(-1)
+    elif y.ndim == 2:
+        if y.shape[0] == n:
+            pass
+        elif y.shape[-1] == n:
+            y = y.transpose(-1, -2)
+        else:
+            raise ValueError(
+                "noise_targets must have shape [n], [n, m], or [m, n]. "
+                f"Got noise_targets.shape={tuple(y.shape)}, train_X.shape={tuple(train_X.shape)}."
+            )
+    else:
+        raise ValueError(
+            "noise_targets could not be converted to [n, m]. "
+            f"Got noise_targets.shape={tuple(y.shape)}, train_X.shape={tuple(train_X.shape)}."
+        )
+
+    if num_classes is not None and y.shape[-1] not in {1, int(num_classes)}:
+        raise ValueError(
+            "class-wise noise target output dimension mismatch. "
+            f"Expected 1 or num_classes={int(num_classes)}, got {y.shape[-1]}."
+        )
+
+    return y.contiguous().clamp_min(1e-12)
 
 
 def _estimate_multiclass_noise_targets(
@@ -134,12 +187,20 @@ def _estimate_multiclass_noise_targets(
     """one-hot target と class probability の残差二乗から class-wise noise target を作る。"""
     with torch.no_grad():
         probs = model.class_probs(train_X)
+        probs = _prepare_noise_targets_for_gp(probs, train_X, num_classes=num_classes)
         y = prepare_class_targets(train_Y, train_X, num_classes=num_classes)
         y_oh = _one_hot_targets(y, num_classes=num_classes, ref=probs)
         return (y_oh - probs).pow(2).clamp_min(float(min_noise))
 
 
-def _fit_noise_model_single(train_X: Tensor, noise_targets: Tensor, input_transform: Optional[InputTransform]) -> SingleTaskGP:
+def _fit_noise_model_single(
+    train_X: Tensor,
+    noise_targets: Tensor,
+    input_transform: Optional[InputTransform],
+    *,
+    num_classes: Optional[int] = None,
+) -> SingleTaskGP:
+    noise_targets = _prepare_noise_targets_for_gp(noise_targets, train_X, num_classes=num_classes)
     model = SingleTaskGP(train_X=train_X, train_Y=noise_targets.log(), input_transform=input_transform)
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_mll(mll)
@@ -153,7 +214,10 @@ def _fit_noise_model_mixed(
     noise_targets: Tensor,
     cat_dims: Sequence[int],
     input_transform: Optional[InputTransform],
+    *,
+    num_classes: Optional[int] = None,
 ) -> MixedSingleTaskGP:
+    noise_targets = _prepare_noise_targets_for_gp(noise_targets, train_X, num_classes=num_classes)
     model = MixedSingleTaskGP(
         train_X=train_X,
         train_Y=noise_targets.log(),
@@ -252,7 +316,7 @@ class HeteroscedasticMulticlassClassificationGPModel(_HeteroscedasticMulticlassM
             )
         else:
             noise_targets = torch.as_tensor(train_Yvar, device=train_X.device, dtype=train_X.dtype).clamp_min(float(min_noise))
-        self.noise_model = _fit_noise_model_single(train_X, noise_targets, noise_tf)
+        self.noise_model = _fit_noise_model_single(train_X, noise_targets, noise_tf, num_classes=num_classes)
         self.noise_input_transform = noise_tf
         self.min_noise = float(min_noise)
         super().__init__(
@@ -317,7 +381,7 @@ class HeteroscedasticMulticlassClassificationMixedGPModel(_HeteroscedasticMultic
             )
         else:
             noise_targets = torch.as_tensor(train_Yvar, device=train_X.device, dtype=train_X.dtype).clamp_min(float(min_noise))
-        self.noise_model = _fit_noise_model_mixed(train_X, noise_targets, cat_dims, noise_tf)
+        self.noise_model = _fit_noise_model_mixed(train_X, noise_targets, cat_dims, noise_tf, num_classes=num_classes)
         self.noise_input_transform = noise_tf
         self.min_noise = float(min_noise)
         super().__init__(

@@ -127,22 +127,36 @@ def _one_hot_targets(y: Tensor, num_classes: int, ref: Tensor) -> Tensor:
     return torch.nn.functional.one_hot(y, num_classes=int(num_classes)).to(device=ref.device, dtype=ref.dtype)
 
 
+def _squeeze_extra_singletons(y: Tensor, *, n: int) -> Tensor:
+    """
+    補助 GP の target に不要な singleton batch 次元を削除する。
+
+    ``[n, 1]`` は単出力 target として残し、3D 以上に現れる singleton のみ削除する。
+    例: ``[1, n, C] -> [n, C]``, ``[n, 1, C] -> [n, C]``, ``[n, C, 1] -> [n, C]``。
+    """
+    while y.ndim > 2:
+        squeezed = False
+        for dim, size in enumerate(y.shape):
+            if size == 1:
+                y = y.squeeze(dim)
+                squeezed = True
+                break
+        if not squeezed:
+            break
+    return y
+
+
 def _prepare_noise_targets_for_gp(noise_targets: Tensor, train_X: Tensor, *, num_classes: Optional[int] = None) -> Tensor:
     """
     ノイズ target を SingleTaskGP / MixedSingleTaskGP 用の ``[n, m]`` に整形する。
 
     multiclass では class-wise noise target が ``[n, C]`` であるべきだが、
-    posterior の batch shape により ``[1, n, C]`` や ``[n, C, 1]`` が混ざることがある。
-    ここで補助 GP に渡す直前の形に正規化する。
+    posterior の batch shape により ``[1, n, C]``, ``[n, 1, C]``, ``[n, C, 1]``
+    が混ざることがある。ここで補助 GP に渡す直前の形に正規化する。
     """
     n = int(train_X.shape[-2])
     y = torch.as_tensor(noise_targets, device=train_X.device, dtype=train_X.dtype)
-
-    # 余分な singleton dimension を削除する。ただし [n, 1] は単出力として維持する。
-    while y.ndim > 2 and y.shape[0] == 1:
-        y = y.squeeze(0)
-    while y.ndim > 2 and y.shape[-1] == 1:
-        y = y.squeeze(-1)
+    y = _squeeze_extra_singletons(y, n=n)
 
     if y.ndim == 1:
         if y.shape[0] != n:
@@ -162,10 +176,14 @@ def _prepare_noise_targets_for_gp(noise_targets: Tensor, train_X: Tensor, *, num
                 f"Got noise_targets.shape={tuple(y.shape)}, train_X.shape={tuple(train_X.shape)}."
             )
     else:
-        raise ValueError(
-            "noise_targets could not be converted to [n, m]. "
-            f"Got noise_targets.shape={tuple(y.shape)}, train_X.shape={tuple(train_X.shape)}."
-        )
+        # 最後の保険: 要素数が n で割り切れるなら [n, m] に落とす。
+        if y.numel() % n == 0:
+            y = y.reshape(n, y.numel() // n)
+        else:
+            raise ValueError(
+                "noise_targets could not be converted to [n, m]. "
+                f"Got noise_targets.shape={tuple(y.shape)}, train_X.shape={tuple(train_X.shape)}."
+            )
 
     if num_classes is not None and y.shape[-1] not in {1, int(num_classes)}:
         raise ValueError(

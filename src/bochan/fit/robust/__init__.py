@@ -2,6 +2,12 @@ from .rrp_binary import (
     fit_rrp_binary_classifier_mll,
     fit_rrp_binary_classifier_mll_optimizer,
 )
+from .rrp_multiclass import (
+    fit_rrp_multiclass_classifier_mll,
+    fit_rrp_multiclass_classifier_mll_optimizer,
+    fit_rrp_multiclass_mll,
+    fit_rrp_multiclass_mll_optimizer,
+)
 from .rrp_ordinal import (
     fit_rrp_ordinal_mll,
     fit_rrp_ordinal_mll_optimizer,
@@ -10,6 +16,10 @@ from .rrp_ordinal import (
 __all__ = [
     "fit_rrp_binary_classifier_mll",
     "fit_rrp_binary_classifier_mll_optimizer",
+    "fit_rrp_multiclass_mll",
+    "fit_rrp_multiclass_mll_optimizer",
+    "fit_rrp_multiclass_classifier_mll",
+    "fit_rrp_multiclass_classifier_mll_optimizer",
     "fit_rrp_ordinal_mll",
     "fit_rrp_ordinal_mll_optimizer",
 ]

@@ -9,6 +9,7 @@ from torch import Tensor
 
 from .single_output import (
     _align_pointwise_to_reference,
+    _finalize_multiclass_acq_output_to_batch,
     _reduce_extra_leading_dims_to_raw_X,
     qMulticlassBALD,
     qMulticlassGreedyJointBALD,
@@ -49,6 +50,10 @@ class _HeteroMulticlassMixin:
         self.noise_q_aggregate = noise_q_aggregate
         self.noise_weight_fn = noise_weight_fn
         super().__init__(*args, **kwargs)
+
+    def _finalize(self, value: Tensor, raw_X: Tensor, *, name: str) -> Tensor:
+        """BoTorch optimizer が期待する t-batch shape に acquisition 出力を揃える。"""
+        return _finalize_multiclass_acq_output_to_batch(value, raw_X, name=name)
 
     def _call_predict_noise_var(self, X: Tensor) -> Tensor | None:
         fn = getattr(self.model, "predict_noise_var", None)

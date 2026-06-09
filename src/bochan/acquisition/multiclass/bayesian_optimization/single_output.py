@@ -137,6 +137,49 @@ def _align_class_probs_to_X(
     return out
 
 
+def _reduce_extra_leading_dims_to_raw_X(value: Tensor, raw_X: Tensor, *, name: str) -> Tensor:
+    """Reduce sample-like leading dims so a score/value matches raw_X.
+
+    Multiclass DeepGP posteriors can leave an additional leading sample-like
+    dimension after the sampler dimensions have already been reduced. For
+    example, with ``raw_X.shape == (32, 1, 2)``, an EI value may have shape
+    ``(10, 32)``. BoTorch optimization expects either ``batch_shape`` or
+    ``batch_shape x q``. This helper averages only those extra leading
+    dimensions while preserving the t-batch and q axes.
+    """
+
+    raw_X = ensure_q_batch(raw_X)
+    batch_shape = tuple(raw_X.shape[:-2])
+    q = int(raw_X.shape[-2])
+
+    if tuple(value.shape) == batch_shape:
+        return value
+
+    if value.ndim >= 1 and tuple(value.shape[:-1]) == batch_shape and value.shape[-1] == q:
+        return value
+
+    if len(batch_shape) > 0:
+        batch_ndim = len(batch_shape)
+        if value.ndim >= batch_ndim and tuple(value.shape[-batch_ndim:]) == batch_shape:
+            extra_ndim = value.ndim - batch_ndim
+            if extra_ndim > 0:
+                return value.mean(dim=tuple(range(extra_ndim)))
+            return value
+
+        target_with_q = batch_shape + (q,)
+        target_ndim = len(target_with_q)
+        if value.ndim >= target_ndim and tuple(value.shape[-target_ndim:]) == target_with_q:
+            extra_ndim = value.ndim - target_ndim
+            if extra_ndim > 0:
+                return value.mean(dim=tuple(range(extra_ndim)))
+            return value
+
+    elif value.ndim >= 2 and value.shape[-1] == q:
+        return value.mean(dim=tuple(range(value.ndim - 1)))
+
+    return value
+
+
 def _normalize_class_probs(probs: Tensor, *, eps: float, name: str) -> Tensor:
     if probs.ndim < 1 or probs.shape[-1] <= 1:
         raise RuntimeError(f"{name}: multiclass probability tensor must have class dim C >= 2. Got {tuple(probs.shape)}.")
@@ -389,7 +432,7 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
             post = self.model.posterior(Xq)
             samples = self.get_posterior_samples(post)
             samples = self._align_class_tensor(samples, Xq, sample_ndim=sample_ndim, name="posterior samples")
-            if self.apply_softmax_if_needed and (samples.min() < -self.eps or samples.max() > 1.0 + self.eps):
+            if self.apply_softmax_if_needed and (samples.min() < self.eps or samples.max() > 1.0 + self.eps):
                 probs = torch.softmax(samples, dim=-1)
             else:
                 probs = samples
@@ -493,9 +536,11 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
         return penalty.reshape(*batch_shape)
 
     def _pointwise_score_to_value(self, score: Tensor, raw_X: Tensor, Xt: Tensor) -> Tensor:
+        score = _reduce_extra_leading_dims_to_raw_X(score, raw_X, name=f"{self.__class__.__name__}.score")
         score = score - self._pending_penalty_per_point(Xt)
         score = score - self._observed_penalty_per_point(Xt)
         value = self._reduce_q(score)
+        value = _reduce_extra_leading_dims_to_raw_X(value, raw_X, name=f"{self.__class__.__name__}.value")
         value = value - self._same_batch_penalty(Xt)
         return _finalize_multiclass_acq_output_to_batch(value, raw_X, name=self.__class__.__name__)
 
@@ -550,9 +595,11 @@ class qMulticlassProbabilityOfFeasibility(_MulticlassProbabilityBOBase):
         Xt = self._apply_input_transform(raw_X)
         p = self._target_prob_mean(raw_X)
         score = p if self.threshold is None else torch.sigmoid((p - self.threshold) / max(self.tau, self.eps))
+        score = _reduce_extra_leading_dims_to_raw_X(score, raw_X, name=f"{self.__class__.__name__}.score")
         score = score - self._pending_penalty_per_point(Xt)
         score = score - self._observed_penalty_per_point(Xt)
         value = self._reduce_q_feas(score)
+        value = _reduce_extra_leading_dims_to_raw_X(value, raw_X, name=f"{self.__class__.__name__}.value")
         value = value - self._same_batch_penalty(Xt)
         return _finalize_multiclass_acq_output_to_batch(value, raw_X, name=self.__class__.__name__)
 
@@ -574,6 +621,7 @@ class qMulticlassExpectedImprovement(_MulticlassProbabilityBOBase):
         best_f = self.best_f.to(best_q)
         value = (best_q - best_f).clamp_min(0.0)
         value = _mean_over_sample_dims(value, self.sampler)
+        value = _reduce_extra_leading_dims_to_raw_X(value, raw_X, name=f"{self.__class__.__name__}.value")
         value = value - self._q_penalty(Xt)
         return _finalize_multiclass_acq_output_to_batch(value, raw_X, name=self.__class__.__name__)
 
@@ -605,6 +653,7 @@ class qMulticlassProbabilityOfImprovement(_MulticlassProbabilityBOBase):
         tau = self.tau.to(best_q).clamp_min(self.eps)
         value = torch.sigmoid((best_q - best_f) / tau)
         value = _mean_over_sample_dims(value, self.sampler)
+        value = _reduce_extra_leading_dims_to_raw_X(value, raw_X, name=f"{self.__class__.__name__}.value")
         value = value - self._q_penalty(Xt)
         return _finalize_multiclass_acq_output_to_batch(value, raw_X, name=self.__class__.__name__)
 
@@ -625,6 +674,8 @@ class qMulticlassUpperConfidenceBound(_MulticlassProbabilityBOBase):
         target_samples = self._target_prob_samples(raw_X)
         mean = _mean_over_sample_dims(target_samples, self.sampler)
         std = _std_over_sample_dims(target_samples, self.sampler, eps=self.eps)
+        mean = _reduce_extra_leading_dims_to_raw_X(mean, raw_X, name=f"{self.__class__.__name__}.mean")
+        std = _reduce_extra_leading_dims_to_raw_X(std, raw_X, name=f"{self.__class__.__name__}.std")
         beta = self.beta.to(mean)
         score = mean + beta.sqrt() * std
         return self._pointwise_score_to_value(score, raw_X, Xt)

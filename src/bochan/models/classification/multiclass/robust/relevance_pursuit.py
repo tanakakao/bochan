@@ -35,8 +35,9 @@ class SparseOutlierSoftmaxLikelihood(SoftmaxLikelihood, RelevancePursuitMixin):
         `outlier_indices` で指定した学習点だけに `delta_i[k]` を足します。
         予測時には学習点に対応しないので offset は使われません。
 
-        RRP では sparse parameter が shape ``[num_support, num_classes]`` になるため、
-        support の追加・削除判定には class 方向の L2 norm を使います。
+        BoTorch の RelevancePursuitMixin は 1D sparse parameter を前提にしている。
+        multiclass では sparse parameter が shape ``[num_support, num_classes]`` に
+        なるため、support 操作をこの likelihood 内で 2D 用に override している。
     """
 
     def __init__(
@@ -81,8 +82,21 @@ class SparseOutlierSoftmaxLikelihood(SoftmaxLikelihood, RelevancePursuitMixin):
     def set_sparse_parameter(self, value: Parameter) -> None:
         """sparse parameter を更新する。"""
         value = value.to(self.raw_delta)
-        if value.ndim == 1 and self.num_classes > 1 and value.numel() == self.num_classes:
-            value = value.unsqueeze(0)
+        if value.ndim == 1:
+            if value.numel() == 0:
+                value = value.reshape(0, self.num_classes)
+            elif self.num_classes > 1 and value.numel() == self.num_classes:
+                value = value.unsqueeze(0)
+            else:
+                raise ValueError(
+                    "SparseOutlierSoftmaxLikelihood requires a 2D sparse parameter "
+                    f"with shape [support, num_classes]. Got shape={tuple(value.shape)}."
+                )
+        if value.ndim != 2 or value.shape[-1] != self.num_classes:
+            raise ValueError(
+                "SparseOutlierSoftmaxLikelihood sparse parameter shape mismatch. "
+                f"Expected [..., {self.num_classes}], got {tuple(value.shape)}."
+            )
         self.raw_delta = Parameter(value)
 
     def set_expanded_base_indices(self, expanded_base_indices: Optional[Tensor]) -> None:
@@ -91,9 +105,112 @@ class SparseOutlierSoftmaxLikelihood(SoftmaxLikelihood, RelevancePursuitMixin):
             expanded_base_indices = torch.empty(0, dtype=torch.long, device=self.raw_delta.device)
         self.expanded_base_indices = expanded_base_indices.to(dtype=torch.long, device=self.raw_delta.device)
 
+    def to_sparse(self):
+        """2D sparse parameter を sparse 表現 ``[len(support), C]`` に変換する。"""
+        if not self.is_sparse:
+            self.set_sparse_parameter(Parameter(self.sparse_parameter[self.support]))
+            self._is_sparse = True
+        return self
+
+    def to_dense(self):
+        """2D sparse parameter を dense 表現 ``[dim, C]`` に変換する。"""
+        if self.is_sparse:
+            dense_parameter = torch.zeros(
+                self.dim,
+                self.num_classes,
+                dtype=self.sparse_parameter.dtype,
+                device=self.sparse_parameter.device,
+            )
+            if len(self.support) > 0:
+                idx = torch.tensor(self.support, dtype=torch.long, device=dense_parameter.device)
+                dense_parameter[idx] = self.sparse_parameter
+            self.set_sparse_parameter(Parameter(dense_parameter))
+            self._is_sparse = False
+        return self
+
+    def expand_support(self, indices: list[int]):
+        """support を拡張し、追加点に class-wise zero offset を追加する。"""
+        indices = [int(i) for i in indices]
+        for i in indices:
+            if i in self.support:
+                raise ValueError(f"Feature {i} already in the support.")
+
+        self.support.extend(indices)
+        if self.is_sparse and len(indices) > 0:
+            zeros = torch.zeros(
+                len(indices),
+                self.num_classes,
+                dtype=self.sparse_parameter.dtype,
+                device=self.sparse_parameter.device,
+            )
+            self.set_sparse_parameter(Parameter(torch.cat((self.sparse_parameter, zeros), dim=0)))
+        return self
+
+    def contract_support(self, indices: list[int]):
+        """support を縮小し、2D offset の対応行を削除または 0 化する。"""
+        indices = [int(i) for i in indices]
+        sparse_indices = list(range(len(self.support)))
+        original_support = list(self.support)
+        for i in indices:
+            if i not in self.support:
+                raise ValueError(f"Feature {i} is not in support.")
+            sparse_indices.remove(original_support.index(i))
+            self.support.remove(i)
+
+        if self.is_sparse:
+            self.set_sparse_parameter(Parameter(self.sparse_parameter[sparse_indices]))
+        else:
+            requires_grad = self.sparse_parameter.requires_grad
+            self.sparse_parameter.requires_grad_(False)
+            if len(indices) > 0:
+                self.sparse_parameter[indices, :] = 0.0
+            self.sparse_parameter.requires_grad_(requires_grad)
+        return self
+
+    def remove_support(self):
+        """support を空にする。sparse 表現では ``[0, C]`` の parameter を保持する。"""
+        self._support = []
+        requires_grad = self.sparse_parameter.requires_grad
+        if self.is_sparse:
+            empty = torch.empty(
+                0,
+                self.num_classes,
+                dtype=self.sparse_parameter.dtype,
+                device=self.sparse_parameter.device,
+            )
+            self.set_sparse_parameter(Parameter(empty))
+        else:
+            self.sparse_parameter.requires_grad_(False)
+            self.sparse_parameter[:] = 0.0
+        self.sparse_parameter.requires_grad_(requires_grad)
+        return self
+
+    def support_contraction(self, mll, n: int = 1, modifier=None) -> bool:
+        """2D sparse parameter 用に contraction の index 変換だけ安全化する。"""
+        if len(self.support) == 0 or n <= 0:
+            return False
+
+        is_sparse = self.is_sparse
+        self.to_sparse()
+        x = self.sparse_parameter
+
+        modifier = modifier if modifier is not None else self._contraction_modifier
+        if modifier is not None:
+            x = modifier(x)
+
+        sparse_indices = [int(i) for i in x.argsort(descending=False)[:n].tolist()]
+        indices = [self.support[i] for i in sparse_indices]
+        self.contract_support(indices)
+        if not is_sparse:
+            self.to_dense()
+        return True
+
     @property
     def dense_delta(self) -> Tensor:
         """shape [n, C] の dense offset を返す。"""
+        if not self.is_sparse:
+            return self.raw_delta
+
         dense = torch.zeros(
             self.dim,
             self.num_classes,

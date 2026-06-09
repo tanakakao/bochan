@@ -151,6 +151,7 @@ class _DeepKernelMulticlassSVGP(ApproximateGP):
             ext_type=ext_type,
             hidden_dims=hidden_dims,
         )
+        self.feature_extractor = self.feature_extractor.to(device=train_X.device, dtype=train_X.dtype)
         self.deepkernel = self.feature_extractor
         self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
 
@@ -158,11 +159,15 @@ class _DeepKernelMulticlassSVGP(ApproximateGP):
             z = self.scale_to_bounds(self.deepkernel(train_X[:1]))
         latent_dim = z.shape[-1]
 
-        self.mean_module = mean_module or ConstantMean(batch_shape=batch_shape)
-        self.covar_module = covar_module or ScaleKernel(
+        self.mean_module = (mean_module or ConstantMean(batch_shape=batch_shape)).to(
+            device=train_X.device,
+            dtype=train_X.dtype,
+        )
+        covar_module = covar_module or ScaleKernel(
             MaternKernel(nu=2.5, ard_num_dims=latent_dim, batch_shape=batch_shape),
             batch_shape=batch_shape,
-        ).to(train_X)
+        )
+        self.covar_module = covar_module.to(device=train_X.device, dtype=train_X.dtype)
         self.train_inputs = (train_X,)
         self.train_targets = train_Y
 
@@ -221,6 +226,7 @@ class _DeepKernelMixedMulticlassSVGP(ApproximateGP):
                 ext_type=ext_type,
                 hidden_dims=hidden_dims,
             )
+            self.feature_extractor = self.feature_extractor.to(device=train_X.device, dtype=train_X.dtype)
             self.deepkernel = self.feature_extractor
             self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
         else:
@@ -228,12 +234,16 @@ class _DeepKernelMixedMulticlassSVGP(ApproximateGP):
             self.deepkernel = self.feature_extractor
             self.scale_to_bounds = nn.Identity()
 
-        self.mean_module = mean_module or ConstantMean(batch_shape=batch_shape)
-        self.covar_module = covar_module or build_mixed_multiclass_kernel(
+        self.mean_module = (mean_module or ConstantMean(batch_shape=batch_shape)).to(
+            device=train_X.device,
+            dtype=train_X.dtype,
+        )
+        covar_module = covar_module or build_mixed_multiclass_kernel(
             d=d,
             cat_dims=self.cat_dims,
             num_classes=self.num_classes,
         )
+        self.covar_module = covar_module.to(device=train_X.device, dtype=train_X.dtype)
         self.train_inputs = (train_X,)
         self.train_targets = train_Y
 

@@ -19,14 +19,14 @@ from .multi_output import (
     OutputReductionType,
     compute_observed_multiclass_target_probability_values,
     compute_observed_multiclass_utility,
+    qMultiOutputMulticlassExpectedHypervolumeImprovement,
     qMultiOutputMulticlassExpectedImprovement,
     qMultiOutputMulticlassNParEGO,
+    qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
     qMultiOutputMulticlassProbabilityOfFeasibility,
     qMultiOutputMulticlassProbabilityOfImprovement,
     qMultiOutputMulticlassUpperConfidenceBound,
 )
-from .multi_output_ehvi import qMultiOutputMulticlassExpectedHypervolumeImprovement
-from .multi_output_nehvi import qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement
 from .single_output import (
     compute_multiclass_target_probability_best_f,
     compute_multiclass_target_probability_values,

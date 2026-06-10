@@ -138,12 +138,9 @@ class _StackedMulticlassPosterior:
 class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
     """Complete direct-tensor base for multi-output multiclass active learning.
 
-    The base obtains multiclass probability tensors with shape
-    ``batch_shape x q_like x m x C`` and computes pointwise scores before output
-    aggregation. It mirrors the complete single-output implementation by
-    supporting latent logits, probability posteriors, class_probs, input
-    transforms, pending / observed / same-batch penalties, and optional score
-    objectives.
+    Internally, class probabilities are normalized to
+    ``batch_shape x q_like x m x C``. A plain single-output multiclass model
+    returning ``batch_shape x q_like x C`` is treated as ``m = 1``.
     """
 
     def __init__(
@@ -181,6 +178,7 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
         self.apply_softmax_if_needed = bool(apply_softmax_if_needed)
         self.eps = float(eps)
         self.objective = objective
+        self._current_batch_shape = torch.Size()
         self.set_X_pending(None)
 
     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
@@ -234,9 +232,9 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
         prob_post = getattr(submodel, "probability_posterior", None)
         if callable(prob_post):
             return _MaybeProbabilityPosterior(prob_post(X), eps=self.eps, apply_softmax_if_needed=False)
-        latent_post = getattr(submodel, "latent_posterior", None)
-        if callable(latent_post):
-            return _SoftmaxPosterior(latent_post(X))
+        # submodel.posterior(X) should be preferred over latent_posterior(X) for
+        # multiclass models because it already moves the class-batch dimension to
+        # the final probability dimension.
         return _MaybeProbabilityPosterior(
             submodel.posterior(X),
             eps=self.eps,
@@ -245,6 +243,7 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
 
     def _get_multiclass_probability_posterior(self, X: Tensor):
         X = self._ensure_q_batch(X)
+
         fn = getattr(self.model, "class_probs_list", None)
         if callable(fn):
             probs_list = fn(X)
@@ -260,37 +259,72 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
                 eps=self.eps,
             )
 
+        # A plain single-output multiclass model usually has class_probs(X) and
+        # posterior(X). Use class_probs/posterior first. Avoid latent_posterior
+        # here because its class dimension may be a GPyTorch batch dimension.
+        class_probs = getattr(self.model, "class_probs", None)
+        if callable(class_probs):
+            return _TensorProbabilityPosterior(class_probs(X), eps=self.eps)
+
         prob_post = getattr(self.model, "probability_posterior", None)
         if callable(prob_post):
             return _MaybeProbabilityPosterior(prob_post(X), eps=self.eps, apply_softmax_if_needed=False)
-        latent_post = getattr(self.model, "latent_posterior", None)
-        if callable(latent_post):
-            return _SoftmaxPosterior(latent_post(X))
+
         return _MaybeProbabilityPosterior(
             self.model.posterior(X),
             eps=self.eps,
             apply_softmax_if_needed=self.apply_softmax_if_needed,
         )
 
+    def _ensure_multi_output_probs(self, probs: Tensor, X: Tensor, *, name: str) -> Tensor:
+        """Return probabilities with shape ``... x batch_shape x q_like x m x C``.
+
+        The function preserves any leading sample-like dimensions and inserts
+        ``m = 1`` when a single multiclass model returns ``... x batch x q x C``.
+        If q has been expanded by an input transform, ``q_like`` may be a
+        multiple of the raw q and is reduced later by score alignment.
+        """
+        X = self._ensure_q_batch(X)
+        batch_shape = tuple(X.shape[:-2])
+        q = int(X.shape[-2])
+        if probs.ndim < 2:
+            raise RuntimeError(f"{name}: expected class probabilities with class dim. Got {tuple(probs.shape)}.")
+
+        # Already multi-output: ... x batch_shape x q_like x m x C
+        multi_tail_len = len(batch_shape) + 3
+        if probs.ndim >= multi_tail_len:
+            tail = tuple(probs.shape[-multi_tail_len:])
+            if tail[: len(batch_shape)] == batch_shape and tail[len(batch_shape)] % q == 0:
+                return probs
+
+        # Single multiclass output: ... x batch_shape x q_like x C
+        single_tail_len = len(batch_shape) + 2
+        if probs.ndim >= single_tail_len:
+            tail = tuple(probs.shape[-single_tail_len:])
+            if tail[: len(batch_shape)] == batch_shape and tail[len(batch_shape)] % q == 0:
+                return probs.unsqueeze(-2)
+
+        # Fallback for no explicit t-batch: q_like x C or q_like x m x C.
+        if len(batch_shape) == 0:
+            if probs.ndim >= 3 and probs.shape[-3] % q == 0:
+                return probs
+            if probs.ndim >= 2 and probs.shape[-2] % q == 0:
+                return probs.unsqueeze(-2)
+
+        raise RuntimeError(
+            f"{name}: could not normalize probabilities to [..., q_like, m, C]. "
+            f"probs.shape={tuple(probs.shape)}, X.shape={tuple(X.shape)}."
+        )
+
     def _mean_probs(self, X: Tensor) -> Tensor:
         X = self._ensure_q_batch(X)
         probs = self._get_multiclass_probability_posterior(X).mean
-        if probs.ndim == X.ndim:
-            raise RuntimeError(
-                "Multi-output multiclass active learning requires class probabilities with shape "
-                "batch_shape x q x m x C. The model posterior returned scalar output probabilities."
-            )
-        return probs
+        return self._ensure_multi_output_probs(probs, X, name=f"{self.__class__.__name__}.mean_probs")
 
     def _sample_probs(self, X: Tensor, *, num_samples: int) -> Tensor:
         X = self._ensure_q_batch(X)
         samples = self._get_multiclass_probability_posterior(X).rsample(torch.Size([int(num_samples)]))
-        if samples.ndim == X.ndim + 1:
-            raise RuntimeError(
-                "Multi-output multiclass BALD requires probability samples with shape "
-                "S x batch_shape x q x m x C. Got scalar output samples."
-            )
-        return samples
+        return self._ensure_multi_output_probs(samples, X, name=f"{self.__class__.__name__}.sample_probs")
 
     def _entropy(self, probs: Tensor) -> Tensor:
         probs = probs.clamp_min(self.eps)
@@ -302,6 +336,68 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
     def _margin_uncertainty(self, probs: Tensor) -> Tensor:
         top2 = probs.topk(k=2, dim=-1).values
         return 1.0 - (top2[..., 0] - top2[..., 1])
+
+    def _align_score_per_output_to_raw_X(self, score: Tensor, raw_X: Tensor, *, name: str) -> Tensor:
+        """Align pointwise per-output score to ``batch_shape x q x m``.
+
+        Extra leading dimensions (e.g. prediction sample dimensions left by a
+        posterior implementation) are averaged. If input perturbation expands
+        q to q*n_w, the expanded axis is averaged back to raw q.
+        """
+        raw_X = self._ensure_q_batch(raw_X)
+        batch_shape = tuple(raw_X.shape[:-2])
+        q = int(raw_X.shape[-2])
+
+        # Expected multi-output score: ... x batch_shape x q_like x m
+        multi_tail_len = len(batch_shape) + 2
+        if score.ndim >= multi_tail_len:
+            tail = tuple(score.shape[-multi_tail_len:])
+            if tail[: len(batch_shape)] == batch_shape and tail[len(batch_shape)] % q == 0:
+                extra_ndim = score.ndim - multi_tail_len
+                if extra_ndim > 0:
+                    score = score.mean(dim=tuple(range(extra_ndim)))
+                q_like = int(score.shape[-2])
+                m = int(score.shape[-1])
+                if q_like != q:
+                    score = score.reshape(*batch_shape, q, q_like // q, m).mean(dim=-2)
+                return score
+
+        # Single-output score without explicit m: ... x batch_shape x q_like
+        single_tail_len = len(batch_shape) + 1
+        if score.ndim >= single_tail_len:
+            tail = tuple(score.shape[-single_tail_len:])
+            if tail[: len(batch_shape)] == batch_shape and tail[len(batch_shape)] % q == 0:
+                extra_ndim = score.ndim - single_tail_len
+                if extra_ndim > 0:
+                    score = score.mean(dim=tuple(range(extra_ndim)))
+                q_like = int(score.shape[-1])
+                if q_like != q:
+                    score = score.reshape(*batch_shape, q, q_like // q).mean(dim=-1)
+                return score.unsqueeze(-1)
+
+        raise RuntimeError(
+            f"{name}: could not align score to batch_shape x q x m. "
+            f"score.shape={tuple(score.shape)}, raw_X.shape={tuple(raw_X.shape)}."
+        )
+
+    def _align_joint_score_per_output_to_raw_X(self, score: Tensor, raw_X: Tensor, *, name: str) -> Tensor:
+        """Align joint per-output score to ``batch_shape x m``."""
+        raw_X = self._ensure_q_batch(raw_X)
+        batch_shape = tuple(raw_X.shape[:-2])
+        tail_len = len(batch_shape) + 1
+        if score.ndim >= tail_len:
+            tail = tuple(score.shape[-tail_len:])
+            if tail[: len(batch_shape)] == batch_shape:
+                extra_ndim = score.ndim - tail_len
+                if extra_ndim > 0:
+                    score = score.mean(dim=tuple(range(extra_ndim)))
+                return score
+        if score.shape == batch_shape:
+            return score.unsqueeze(-1)
+        raise RuntimeError(
+            f"{name}: could not align joint score to batch_shape x m. "
+            f"score.shape={tuple(score.shape)}, raw_X.shape={tuple(raw_X.shape)}."
+        )
 
     def _aggregate_outputs(self, score_per_output: Tensor) -> Tensor:
         if self.output_mode == "mean":
@@ -401,11 +497,20 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
             return value.mean() if value.ndim > 0 else value
         if value.ndim == 0:
             return value.expand(*target_shape)
+        while value.ndim > len(target_shape):
+            value = value.mean(dim=0)
+            if value.shape == target_shape:
+                return value
         if value.numel() == _prod(target_shape):
             return value.reshape(target_shape)
         raise RuntimeError(f"{name}: could not align output to t-batch shape. value={tuple(value.shape)}, target={target_shape}.")
 
     def _pointwise_score_to_value(self, score_per_output: Tensor, raw_X: Tensor, Xt: Tensor) -> Tensor:
+        score_per_output = self._align_score_per_output_to_raw_X(
+            score_per_output,
+            raw_X,
+            name=f"{self.__class__.__name__}.score_per_output",
+        )
         score = self._aggregate_outputs(score_per_output)
         pending = _align_pointwise_to_reference(self._pending_penalty_per_point(Xt), score, name=f"{self.__class__.__name__}.pending")
         observed = _align_pointwise_to_reference(self._observed_penalty_per_point(Xt), score, name=f"{self.__class__.__name__}.observed")
@@ -464,6 +569,7 @@ class qMultiOutputMulticlassBALD(_DirectMultiOutputMulticlassAcqBase):
         self.num_samples = int(num_samples)
 
     def _pointwise_bald_per_output(self, X: Tensor) -> Tensor:
+        X = self._ensure_q_batch(X)
         samples = self._sample_probs(X, num_samples=self.num_samples)
         mean_probs = samples.mean(dim=0)
         predictive_entropy = self._entropy(mean_probs)
@@ -518,12 +624,16 @@ class qMultiOutputMulticlassJointBALD(qMultiOutputMulticlassBALD):
         num_states = int(num_classes**q)
         if q <= self.max_joint_q and num_states <= self.max_joint_states:
             joint_entropy = self._joint_entropy_exact_per_output(samples)
-            conditional_entropy = self._entropy(samples).sum(dim=-2).mean(dim=0)
+            conditional_entropy = self._entropy(samples).sum(dim=-3).mean(dim=0)
             return joint_entropy - conditional_entropy
         if self.large_q_strategy == "raise":
             raise RuntimeError(f"Exact multiclass joint BALD is too large: q={q}, C={num_classes}, C**q={num_states}.")
         if self.large_q_strategy == "per_point":
-            return self._pointwise_bald_per_output(X).sum(dim=-2)
+            return self._align_score_per_output_to_raw_X(
+                self._pointwise_bald_per_output(X),
+                X,
+                name=f"{self.__class__.__name__}.large_q_pointwise",
+            ).sum(dim=-2)
         if self.large_q_strategy == "truncate":
             k = min(q, self.max_joint_q)
             first = X[..., :k, :]
@@ -531,15 +641,26 @@ class qMultiOutputMulticlassJointBALD(qMultiOutputMulticlassBALD):
             first_val = self._joint_bald_per_output(first)
             if rest.shape[-2] == 0:
                 return first_val
-            return first_val + self._pointwise_bald_per_output(rest).sum(dim=-2)
+            rest_val = self._align_score_per_output_to_raw_X(
+                self._pointwise_bald_per_output(rest),
+                rest,
+                name=f"{self.__class__.__name__}.truncate_rest",
+            ).sum(dim=-2)
+            return first_val + rest_val
         raise ValueError(f"Unknown large_q_strategy: {self.large_q_strategy!r}.")
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
         self._set_eval_mode()
         raw_X = self._ensure_q_batch(X)
+        self._current_batch_shape = raw_X.shape[:-2]
         Xt = self._apply_input_transform(raw_X)
         value_per_output = self._joint_bald_per_output(raw_X)
+        value_per_output = self._align_joint_score_per_output_to_raw_X(
+            value_per_output,
+            raw_X,
+            name=f"{self.__class__.__name__}.joint_score",
+        )
         value = self._aggregate_outputs(value_per_output)
         value = value - self._joint_penalty(raw_X, Xt)
         value = self._apply_objective(value, raw_X=raw_X, expanded_X=Xt)
@@ -566,6 +687,7 @@ class qMultiOutputMulticlassGreedyJointBALD(qMultiOutputMulticlassJointBALD):
     def forward(self, X: Tensor) -> Tensor:
         self._set_eval_mode()
         raw_X = self._ensure_q_batch(X)
+        self._current_batch_shape = raw_X.shape[:-2]
         Xt = self._apply_input_transform(raw_X)
         X_pending = getattr(self, "X_pending", None)
         if X_pending is None or X_pending.numel() == 0:
@@ -576,6 +698,11 @@ class qMultiOutputMulticlassGreedyJointBALD(qMultiOutputMulticlassJointBALD):
             pending_value = self._joint_bald_per_output(Xp)
             all_value = self._joint_bald_per_output(torch.cat([Xp, raw_X], dim=-2))
             value_per_output = all_value - pending_value
+        value_per_output = self._align_joint_score_per_output_to_raw_X(
+            value_per_output,
+            raw_X,
+            name=f"{self.__class__.__name__}.joint_score",
+        )
         value = self._aggregate_outputs(value_per_output)
         value = value - self._observed_penalty_per_point(Xt).sum(dim=-1)
         value = value - self._same_batch_penalty(Xt)
@@ -616,9 +743,6 @@ class qMultiOutputMulticlassIntegratedPosteriorVarianceProxy(_DirectMultiOutputM
         prob_post = getattr(model, "probability_posterior", None)
         if callable(prob_post):
             return _MaybeProbabilityPosterior(prob_post(X), eps=self.eps, apply_softmax_if_needed=False).mean
-        latent_post = getattr(model, "latent_posterior", None)
-        if callable(latent_post):
-            return _SoftmaxPosterior(latent_post(X)).mean
         return _MaybeProbabilityPosterior(model.posterior(X), eps=self.eps, apply_softmax_if_needed=self.apply_softmax_if_needed).mean
 
     def _integrated_variance_per_output(self, raw_X: Tensor, Xt: Tensor | None = None) -> Tensor:
@@ -628,7 +752,12 @@ class qMultiOutputMulticlassIntegratedPosteriorVarianceProxy(_DirectMultiOutputM
         if common_mc is not None:
             mc_raw = common_mc.unsqueeze(0) if common_mc.ndim == 2 else self._ensure_q_batch(common_mc)
             mc_probs = self._mean_probs(mc_raw)
-            mc_var = self._class_probability_variance(mc_probs).reshape(-1, mc_probs.shape[-2])
+            mc_var = self._class_probability_variance(mc_probs)
+            mc_var = self._align_score_per_output_to_raw_X(
+                mc_var,
+                mc_raw,
+                name=f"{self.__class__.__name__}.mc_var",
+            ).reshape(-1, mc_probs.shape[-2])
             mc_t = self._apply_input_transform(mc_raw).reshape(-1, Xt.shape[-1])
             d2 = torch.cdist(Xt.reshape(-1, Xt.shape[-1]), mc_t).pow(2)
             weights = torch.exp(-self.integration_beta * d2)
@@ -637,6 +766,8 @@ class qMultiOutputMulticlassIntegratedPosteriorVarianceProxy(_DirectMultiOutputM
 
         if isinstance(self.mc_points, Sequence):
             submodels = self._submodels()
+            if len(submodels) == 0:
+                raise ValueError("Per-output mc_points require a multi-output wrapper or ModelList with submodels.")
             if len(self.mc_points) != len(submodels):
                 raise ValueError("mc_points sequence length must match number of outputs.")
             scores = []
@@ -666,6 +797,7 @@ class qMultiOutputMulticlassIntegratedPosteriorVarianceProxy(_DirectMultiOutputM
         probs = self._mean_probs(raw_X)
         local_score = self._class_probability_variance(probs)
         integrated_score = self._integrated_variance_per_output(raw_X, Xt)
+        integrated_score = _align_pointwise_to_reference(integrated_score, local_score, name=f"{self.__class__.__name__}.integrated")
         score_per_output = self.local_weight * local_score + self.integrated_weight * integrated_score
         value = self._pointwise_score_to_value(score_per_output, raw_X, Xt)
         return self._finalize(value, raw_X, name=self.__class__.__name__)

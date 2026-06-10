@@ -28,15 +28,9 @@ from bochan.acquisition.multiclass.base import ClassReductionType
 class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
     """Convert multiclass probability samples to multi-output objective values.
 
-    Accepted shapes:
-        - ``sample_shape x batch_shape x q x m``: already objective-scale values.
-        - ``sample_shape x batch_shape x q x m x C``: multiclass probabilities.
-
-    Conversion for probability samples:
-        - ``output_target_classes``: select target probability per output.
-        - ``target_class``: select or reduce common target-class probabilities.
-        - neither specified: expected class utility ``sum_c p_c * utility_c``.
-          The default utility is ``utility_c = c``.
+    Accepted probability shapes are ``... x q x m x C`` and, for compatibility
+    with some posterior wrappers, ``... x q x C x m``. The latter is detected by
+    checking whether the candidate class axis sums to one.
     """
 
     def __init__(
@@ -58,11 +52,6 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
         self.utility_values = utility_values
         self.objective_signs = objective_signs
         self.eps = float(eps)
-
-        # BoTorch の MCAcquisitionObjective は output.shape[-2] と X.shape[-2] を厳密比較する。
-        # multiclass probability posterior は [..., q, m, C] -> [..., q, m] に変換するため、
-        # qNEHVI の baseline 初期化などで raw X_baseline と内部 q 表現が一致しないことがある。
-        # objective 値の形自体は有効なので、この shape assertion は無効化する。
         self._verify_output_shape = False
 
     def _reduce_classes(self, selected: Tensor) -> Tensor:
@@ -77,6 +66,36 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
         if self.class_reduction == "prod":
             return selected.prod(dim=-1)
         raise ValueError(f"Unknown class_reduction: {self.class_reduction!r}.")
+
+    @staticmethod
+    def _looks_like_probabilities_along_dim(samples: Tensor, dim: int) -> bool:
+        if samples.ndim < abs(dim):
+            return False
+        summed = samples.sum(dim=dim)
+        ones = torch.ones_like(summed)
+        return bool(torch.allclose(summed, ones, atol=1e-3, rtol=1e-3))
+
+    def _canonicalize_probability_samples(self, samples: Tensor) -> Tensor | None:
+        """Return samples as ``... x q x m x C`` when they look like probabilities.
+
+        Returns ``None`` if the tensor should be treated as already objective-scale.
+        """
+        if self.num_outputs is None or samples.ndim < 4:
+            return None
+
+        m = int(self.num_outputs)
+
+        # Standard probability layout: ... x q x m x C.
+        if samples.shape[-2] == m and samples.shape[-1] != m:
+            if self._looks_like_probabilities_along_dim(samples, dim=-1):
+                return samples
+
+        # Swapped layout seen with some multiclass wrappers: ... x q x C x m.
+        if samples.shape[-1] == m and samples.shape[-2] != m:
+            if self._looks_like_probabilities_along_dim(samples, dim=-2):
+                return samples.movedim(-1, -2)
+
+        return None
 
     def _utility_tensor(self, samples: Tensor) -> Tensor:
         n_outputs = int(samples.shape[-2])
@@ -113,41 +132,34 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
         return self._apply_objective_signs(values)
 
     def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
-        # Already objective-scale: [..., q, m]
-        if self.num_outputs is not None and samples.shape[-1] == self.num_outputs:
-            if samples.ndim < 5 or samples.shape[-2] != self.num_outputs:
-                return self._apply_objective_signs(samples)
-
-        if samples.ndim < 2:
-            raise RuntimeError(f"Multiclass samples must include class dimension. Got {tuple(samples.shape)}.")
-
-        # Expected multiclass probability: [..., q, m, C].
-        # If this does not look like that for the configured m, treat it as objective-scale.
-        if self.num_outputs is not None and samples.ndim >= 3 and samples.shape[-2] != self.num_outputs:
+        probs = self._canonicalize_probability_samples(samples)
+        if probs is None:
+            # Already objective-scale: ... x q x m. This also covers user-provided
+            # objectives or posterior means that are not probability tensors.
             return self._apply_objective_signs(samples)
 
         if self.output_target_classes is not None:
-            n_outputs = int(samples.shape[-2])
+            n_outputs = int(probs.shape[-2])
             if len(self.output_target_classes) != n_outputs:
                 raise ValueError(
                     "output_target_classes length must match number of outputs. "
                     f"Got {len(self.output_target_classes)} and {n_outputs}."
                 )
-            idx = torch.as_tensor(self.output_target_classes, device=samples.device, dtype=torch.long)
-            gather_idx = idx.view(*([1] * (samples.ndim - 2)), n_outputs, 1).expand(*samples.shape[:-1], 1)
-            return self._apply_objective_signs(torch.gather(samples, dim=-1, index=gather_idx).squeeze(-1))
+            idx = torch.as_tensor(self.output_target_classes, device=probs.device, dtype=torch.long)
+            gather_idx = idx.view(*([1] * (probs.ndim - 2)), n_outputs, 1).expand(*probs.shape[:-1], 1)
+            return self._apply_objective_signs(torch.gather(probs, dim=-1, index=gather_idx).squeeze(-1))
 
         if isinstance(self.target_class, int):
-            return self._apply_objective_signs(samples[..., int(self.target_class)])
+            return self._apply_objective_signs(probs[..., int(self.target_class)])
 
         if self.target_class is not None:
             indices = [int(i) for i in self.target_class]
             if len(indices) == 0:
                 raise ValueError("target_class sequence must not be empty.")
-            selected = samples[..., indices]
+            selected = probs[..., indices]
             return self._apply_objective_signs(self._reduce_classes(selected))
 
-        return self._expected_utility(samples)
+        return self._expected_utility(probs)
 
 
 class _IdentityMCMultiOutputObjective(MCMultiOutputObjective):
@@ -194,7 +206,6 @@ def _finalize_acq_output(value: Tensor, X: Tensor) -> Tensor:
     if value.ndim == 0:
         return value.expand(*target_shape) if len(target_shape) > 0 else value
 
-    # Common in sequential optimize_acqf: value is [batch, 1] but expected [batch].
     while value.ndim > len(target_shape) and value.shape[-1] == 1:
         value = value.squeeze(-1)
         if value.shape == target_shape:
@@ -212,11 +223,13 @@ def _finalize_acq_output(value: Tensor, X: Tensor) -> Tensor:
     return value
 
 
-def _is_objective_q_shape_error(err: RuntimeError) -> bool:
+def _is_qehvi_runtime_shape_error(err: RuntimeError) -> bool:
     msg = str(err)
     return (
         "The q-batch shape of the objective values does not agree with the q-batch shape of X" in msg
         or "one-to-many input transform" in msg
+        or "The size of tensor a" in msg
+        or "must match the size of tensor b" in msg
     )
 
 
@@ -613,7 +626,7 @@ class qMultiOutputMulticlassExpectedHypervolumeImprovement(qExpectedHypervolumeI
         try:
             value = self._compute_qehvi(samples=samples, X=X_eval)
         except RuntimeError as err:
-            if not _is_objective_q_shape_error(err):
+            if not _is_qehvi_runtime_shape_error(err):
                 raise
             value = self._compute_qehvi(samples=samples, X=None)
         return _finalize_acq_output(value, X_raw)
@@ -686,11 +699,8 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qNoisyExpectedHy
         try:
             value = super().forward(X)
         except RuntimeError as err:
-            if not _is_objective_q_shape_error(err):
+            if not _is_qehvi_runtime_shape_error(err):
                 raise
-            # Retry without passing X through objective shape checks. The objective
-            # itself has _verify_output_shape=False, but this keeps older BoTorch
-            # paths robust if they still pass X to a wrapped objective.
             X_eval = X_raw
             X_pending = getattr(self, "X_pending", None)
             if X_pending is not None and torch.as_tensor(X_pending).numel() > 0:

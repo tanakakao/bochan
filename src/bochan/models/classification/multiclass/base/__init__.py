@@ -9,6 +9,10 @@ from .multioutput import (
     MultiOutputMulticlassModel,
     MultiOutputMulticlassProbsPosterior,
 )
+from .posterior_compat import apply_multiclass_posterior_compat
+
+# BoTorch qEHVI / qNEHVI compatibility for multiclass probability posteriors.
+apply_multiclass_posterior_compat()
 
 __all__ = [
     "MulticlassClassificationGPModel",
@@ -18,4 +22,5 @@ __all__ = [
     "MultiOutputMulticlassClassificationModel",
     "MultiOutputMulticlassModel",
     "MultiOutputMulticlassClassificationGPModel",
+    "apply_multiclass_posterior_compat",
 ]

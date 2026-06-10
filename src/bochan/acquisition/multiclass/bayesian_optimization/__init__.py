@@ -17,6 +17,8 @@ from .hetero_single_output import (
 )
 from .multi_output import (
     OutputReductionType,
+    compute_observed_multiclass_target_probability_values,
+    compute_observed_multiclass_utility,
     qMultiOutputMulticlassExpectedHypervolumeImprovement,
     qMultiOutputMulticlassExpectedImprovement,
     qMultiOutputMulticlassNParEGO,
@@ -40,6 +42,8 @@ __all__ = [
     "OutputReductionType",
     "compute_multiclass_target_probability_best_f",
     "compute_multiclass_target_probability_values",
+    "compute_observed_multiclass_utility",
+    "compute_observed_multiclass_target_probability_values",
     "qMulticlassProbabilityOfFeasibility",
     "qMulticlassExpectedImprovement",
     "qMulticlassProbabilityOfImprovement",

@@ -553,11 +553,15 @@ class qMultiOutputMulticlassExpectedHypervolumeImprovement(qExpectedHypervolumeI
             partitioning=partitioning,
             sampler=sampler,
             objective=objective,
-            constraints=constraints or [],
+            constraints=constraints,
             X_pending=X_pending,
             eta=eta,
             fat=fat,
         )
+        # BoTorch のバージョン差により、constraints=[] などで eta/fat が
+        # base class に保持されない場合があるため、subclass 側でも明示的に保持する。
+        self.eta = eta
+        self.fat = fat
 
 
 class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qNoisyExpectedHypervolumeImprovement):
@@ -616,6 +620,8 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qNoisyExpectedHy
             cache_root=cache_root,
             marginalize_dim=marginalize_dim,
         )
+        self.eta = eta
+        self.fat = fat
 
 
 class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):

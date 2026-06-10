@@ -39,7 +39,7 @@ def _finalize_qehvi_output(value: Tensor, X: Tensor) -> Tensor:
     if value.ndim == 0:
         return value.expand(*target_shape) if len(target_shape) > 0 else value
 
-    # Current failure pattern: qEHVI returns [batch, 1] although BoTorch expects [batch].
+    # Common failure pattern: qEHVI returns [batch, 1] although BoTorch expects [batch].
     while value.ndim > len(target_shape) and value.shape[-1] == 1:
         value = value.squeeze(-1)
         if value.shape == target_shape:
@@ -57,14 +57,24 @@ def _finalize_qehvi_output(value: Tensor, X: Tensor) -> Tensor:
     return value
 
 
+def _is_objective_q_shape_error(err: RuntimeError) -> bool:
+    msg = str(err)
+    return (
+        "The q-batch shape of the objective values does not agree with the q-batch shape of X" in msg
+        or "one-to-many input transform" in msg
+    )
+
+
 class qMultiOutputMulticlassExpectedHypervolumeImprovement(_BaseQEHVI):
     """Shape-safe qEHVI wrapper for multiclass multi-output objectives.
 
-    Some BoTorch versions return a trailing singleton shape ``batch_shape x 1``
-    for qEHVI when the objective ultimately has one q-candidate after sequential
-    optimization. The standard ``t_batch_mode_transform`` assertion expects just
-    ``batch_shape``. This wrapper computes qEHVI directly and removes only those
-    redundant singleton / sample-like dimensions.
+    Some BoTorch versions are strict about objective q-batch shape. For the
+    multiclass probability posterior, q can be represented differently before
+    / after the objective maps ``[..., q, m, C]`` to ``[..., q, m]``. If BoTorch's
+    objective shape check rejects that representation, this wrapper retries the
+    same qEHVI computation with ``X=None`` so the objective can be evaluated
+    without the q-shape assertion. The resulting acquisition value is then
+    aligned back to the t-batch shape expected by ``optimize_acqf``.
     """
 
     def forward(self, X: Tensor) -> Tensor:
@@ -75,7 +85,12 @@ class qMultiOutputMulticlassExpectedHypervolumeImprovement(_BaseQEHVI):
 
         posterior = self.model.posterior(Xq)
         samples = self.get_posterior_samples(posterior)
-        value = self._compute_qehvi(samples=samples, X=Xq)
+        try:
+            value = self._compute_qehvi(samples=samples, X=Xq)
+        except RuntimeError as err:
+            if not _is_objective_q_shape_error(err):
+                raise
+            value = self._compute_qehvi(samples=samples, X=None)
         return _finalize_qehvi_output(value, Xq)
 
 

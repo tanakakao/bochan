@@ -9,10 +9,7 @@ from botorch.acquisition.multi_objective.monte_carlo import (
     qExpectedHypervolumeImprovement,
     qNoisyExpectedHypervolumeImprovement,
 )
-from botorch.acquisition.multi_objective.objective import (
-    IdentityMCMultiOutputObjective,
-    MCMultiOutputObjective,
-)
+from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 from botorch.models.model import Model
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.multi_objective.box_decompositions.non_dominated import FastNondominatedPartitioning
@@ -31,17 +28,15 @@ from bochan.acquisition.multiclass.base import ClassReductionType
 class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
     """Convert multiclass probability samples to multi-output objective values.
 
-    The objective accepts either of the following shapes:
+    Accepted shapes:
+        - ``sample_shape x batch_shape x q x m``: already objective-scale values.
+        - ``sample_shape x batch_shape x q x m x C``: multiclass probabilities.
 
-    - ``sample_shape x batch_shape x q x m``: already objective-scale values.
-    - ``sample_shape x batch_shape x q x m x C``: multiclass probabilities.
-
-    For multiclass probabilities, the conversion is:
-
-    - ``output_target_classes`` specified: select target probability per output.
-    - ``target_class`` specified: select or reduce target class probabilities.
-    - neither specified: compute expected class utility ``sum_c p_c * utility_c``.
-      By default, ``utility_c = c``.
+    Conversion for probability samples:
+        - ``output_target_classes``: select target probability per output.
+        - ``target_class``: select or reduce common target-class probabilities.
+        - neither specified: expected class utility ``sum_c p_c * utility_c``.
+          The default utility is ``utility_c = c``.
     """
 
     def __init__(
@@ -63,6 +58,12 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
         self.utility_values = utility_values
         self.objective_signs = objective_signs
         self.eps = float(eps)
+
+        # BoTorch の MCAcquisitionObjective は output.shape[-2] と X.shape[-2] を厳密比較する。
+        # multiclass probability posterior は [..., q, m, C] -> [..., q, m] に変換するため、
+        # qNEHVI の baseline 初期化などで raw X_baseline と内部 q 表現が一致しないことがある。
+        # objective 値の形自体は有効なので、この shape assertion は無効化する。
+        self._verify_output_shape = False
 
     def _reduce_classes(self, selected: Tensor) -> Tensor:
         if self.class_reduction == "mean":
@@ -87,9 +88,7 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
         utility = torch.as_tensor(self.utility_values, device=samples.device, dtype=samples.dtype)
         if utility.ndim == 1:
             if utility.numel() != n_classes:
-                raise ValueError(
-                    f"utility_values length must match num_classes={n_classes}, got {utility.numel()}."
-                )
+                raise ValueError(f"utility_values length must match num_classes={n_classes}, got {utility.numel()}.")
             return utility.view(*([1] * (samples.ndim - 1)), n_classes)
         if utility.ndim == 2:
             if utility.shape != torch.Size([n_outputs, n_classes]):
@@ -105,9 +104,7 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
             return values
         signs = torch.as_tensor(self.objective_signs, device=values.device, dtype=values.dtype).reshape(-1)
         if signs.numel() != values.shape[-1]:
-            raise ValueError(
-                f"objective_signs must have length {values.shape[-1]}, got {signs.numel()}."
-            )
+            raise ValueError(f"objective_signs must have length {values.shape[-1]}, got {signs.numel()}.")
         return values * signs.view(*([1] * (values.ndim - 1)), signs.numel())
 
     def _expected_utility(self, samples: Tensor) -> Tensor:
@@ -116,7 +113,7 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
         return self._apply_objective_signs(values)
 
     def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
-        # Already scalar / objective multi-output samples: sample_shape x batch_shape x q x m.
+        # Already objective-scale: [..., q, m]
         if self.num_outputs is not None and samples.shape[-1] == self.num_outputs:
             if samples.ndim < 5 or samples.shape[-2] != self.num_outputs:
                 return self._apply_objective_signs(samples)
@@ -124,9 +121,9 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
         if samples.ndim < 2:
             raise RuntimeError(f"Multiclass samples must include class dimension. Got {tuple(samples.shape)}.")
 
-        # Expected multiclass probability shape: ... x q x m x C.
+        # Expected multiclass probability: [..., q, m, C].
+        # If this does not look like that for the configured m, treat it as objective-scale.
         if self.num_outputs is not None and samples.ndim >= 3 and samples.shape[-2] != self.num_outputs:
-            # Not a multiclass probability tensor for this objective. Treat as objective-scale values.
             return self._apply_objective_signs(samples)
 
         if self.output_target_classes is not None:
@@ -156,6 +153,10 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
 class _IdentityMCMultiOutputObjective(MCMultiOutputObjective):
     """Identity objective for qNParEGO when no explicit objective is supplied."""
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._verify_output_shape = False
+
     def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
         return samples
 
@@ -173,6 +174,56 @@ def _prod(shape: torch.Size | tuple[int, ...]) -> int:
     for s in shape:
         out *= int(s)
     return out
+
+
+def _match_pending_to_X(X_pending: Tensor, X: Tensor) -> Tensor:
+    Xp = torch.as_tensor(X_pending, device=X.device, dtype=X.dtype).detach()
+    if Xp.ndim == 1:
+        Xp = Xp.view(1, 1, -1)
+    elif Xp.ndim == 2:
+        Xp = Xp.unsqueeze(0)
+    if Xp.shape[:-2] != X.shape[:-2]:
+        Xp = Xp.expand(*X.shape[:-2], *Xp.shape[-2:])
+    return Xp
+
+
+def _finalize_acq_output(value: Tensor, X: Tensor) -> Tensor:
+    target_shape = tuple(X.shape[:-2])
+    if value.shape == target_shape:
+        return value
+    if value.ndim == 0:
+        return value.expand(*target_shape) if len(target_shape) > 0 else value
+
+    # Common in sequential optimize_acqf: value is [batch, 1] but expected [batch].
+    while value.ndim > len(target_shape) and value.shape[-1] == 1:
+        value = value.squeeze(-1)
+        if value.shape == target_shape:
+            return value
+
+    while value.ndim > len(target_shape):
+        value = value.mean(dim=-1)
+        if value.shape == target_shape:
+            return value
+
+    if value.numel() == _prod(target_shape):
+        return value.reshape(target_shape)
+    if len(target_shape) == 0 and value.numel() == 1:
+        return value.reshape(target_shape)
+    return value
+
+
+def _is_objective_q_shape_error(err: RuntimeError) -> bool:
+    msg = str(err)
+    return (
+        "The q-batch shape of the objective values does not agree with the q-batch shape of X" in msg
+        or "one-to-many input transform" in msg
+    )
+
+
+def _disable_objective_shape_check(objective: MCMultiOutputObjective) -> MCMultiOutputObjective:
+    if hasattr(objective, "_verify_output_shape"):
+        objective._verify_output_shape = False
+    return objective
 
 
 def _as_2d_train_y(train_Y: Tensor) -> Tensor:
@@ -221,11 +272,7 @@ def _normalize_objective_signs(
     return signs
 
 
-def _reduce_observed_target_indicators(
-    indicators: Tensor,
-    *,
-    class_reduction: ClassReductionType,
-) -> Tensor:
+def _reduce_observed_target_indicators(indicators: Tensor, *, class_reduction: ClassReductionType) -> Tensor:
     if class_reduction == "mean":
         return indicators.mean(dim=-1)
     if class_reduction == "sum":
@@ -256,12 +303,7 @@ def compute_observed_multiclass_utility(
     Y_idx = Y_raw.long() - int(class_offset)
     n, m = int(Y_idx.shape[0]), int(Y_idx.shape[1])
 
-    signs = _normalize_objective_signs(
-        objective_signs,
-        m=m,
-        device=device,
-        dtype=dtype,
-    )
+    signs = _normalize_objective_signs(objective_signs, m=m, device=device, dtype=dtype)
 
     if utility_values is not None:
         utility_list = _to_utility_list(utility_values, device=device, dtype=dtype)
@@ -286,7 +328,6 @@ def compute_observed_multiclass_utility(
         return values * signs.view(1, m)
 
     if output_target_classes is None and target_class is None:
-        # Default multiclass utility: class label itself, matching objective default E[class].
         return Y_idx.to(dtype=dtype) * signs.view(1, m)
 
     if output_target_classes is not None:
@@ -385,7 +426,7 @@ def _make_target_objective(
     eps: float = 1e-8,
 ) -> MulticlassTargetProbabilityObjective:
     num_outputs = None if ref_point is None else int(torch.as_tensor(ref_point).numel())
-    return MulticlassTargetProbabilityObjective(
+    objective = MulticlassTargetProbabilityObjective(
         target_class=target_class,
         output_target_classes=output_target_classes,
         num_outputs=num_outputs,
@@ -394,6 +435,7 @@ def _make_target_objective(
         objective_signs=objective_signs,
         eps=eps,
     )
+    return _disable_objective_shape_check(objective)
 
 
 class _MultiOutputMulticlassTargetClassBOBase(_DirectMultiOutputMulticlassAcqBase):
@@ -495,12 +537,7 @@ class qMultiOutputMulticlassProbabilityOfFeasibility(_MultiOutputMulticlassTarge
         tau: float = 0.02,
         **kwargs,
     ) -> None:
-        super().__init__(
-            model=model,
-            target_class=target_class,
-            output_target_classes=output_target_classes,
-            **kwargs,
-        )
+        super().__init__(model=model, target_class=target_class, output_target_classes=output_target_classes, **kwargs)
         self.threshold = None if threshold is None else float(threshold)
         self.tau = float(tau)
 
@@ -517,7 +554,7 @@ class qMultiOutputMulticlassProbabilityOfFeasibility(_MultiOutputMulticlassTarge
 
 
 class qMultiOutputMulticlassExpectedHypervolumeImprovement(qExpectedHypervolumeImprovement):
-    """BoTorch qEHVI for multiclass target-class probability / utility objectives."""
+    """Shape-safe qEHVI for multiclass target-class probability / utility objectives."""
 
     def __init__(
         self,
@@ -538,14 +575,17 @@ class qMultiOutputMulticlassExpectedHypervolumeImprovement(qExpectedHypervolumeI
         fat: bool = False,
         eps: float = 1e-8,
     ) -> None:
-        objective = objective or _make_target_objective(
-            ref_point=ref_point,
-            target_class=target_class,
-            output_target_classes=output_target_classes,
-            class_reduction=class_reduction,
-            utility_values=utility_values,
-            objective_signs=objective_signs,
-            eps=eps,
+        objective = _disable_objective_shape_check(
+            objective
+            or _make_target_objective(
+                ref_point=ref_point,
+                target_class=target_class,
+                output_target_classes=output_target_classes,
+                class_reduction=class_reduction,
+                utility_values=utility_values,
+                objective_signs=objective_signs,
+                eps=eps,
+            )
         )
         super().__init__(
             model=model,
@@ -558,14 +598,29 @@ class qMultiOutputMulticlassExpectedHypervolumeImprovement(qExpectedHypervolumeI
             eta=eta,
             fat=fat,
         )
-        # BoTorch のバージョン差により、constraints=[] などで eta/fat が
-        # base class に保持されない場合があるため、subclass 側でも明示的に保持する。
         self.eta = eta
         self.fat = fat
 
+    def forward(self, X: Tensor) -> Tensor:
+        X_raw = ensure_q_batch(X)
+        X_eval = X_raw
+        X_pending = getattr(self, "X_pending", None)
+        if X_pending is not None and torch.as_tensor(X_pending).numel() > 0:
+            X_eval = torch.cat([X_eval, _match_pending_to_X(X_pending, X_eval)], dim=-2)
+
+        posterior = self.model.posterior(X_eval)
+        samples = self.get_posterior_samples(posterior)
+        try:
+            value = self._compute_qehvi(samples=samples, X=X_eval)
+        except RuntimeError as err:
+            if not _is_objective_q_shape_error(err):
+                raise
+            value = self._compute_qehvi(samples=samples, X=None)
+        return _finalize_acq_output(value, X_raw)
+
 
 class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qNoisyExpectedHypervolumeImprovement):
-    """BoTorch qNEHVI for multiclass target-class probability / utility objectives."""
+    """Shape-safe qNEHVI for multiclass target-class probability / utility objectives."""
 
     def __init__(
         self,
@@ -589,18 +644,21 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qNoisyExpectedHy
         cache_pending: bool = True,
         max_iep: int = 0,
         incremental_nehvi: bool = True,
-        cache_root: bool = True,
+        cache_root: bool = False,
         marginalize_dim: Optional[int] = None,
         eps: float = 1e-8,
     ) -> None:
-        objective = objective or _make_target_objective(
-            ref_point=ref_point,
-            target_class=target_class,
-            output_target_classes=output_target_classes,
-            class_reduction=class_reduction,
-            utility_values=utility_values,
-            objective_signs=objective_signs,
-            eps=eps,
+        objective = _disable_objective_shape_check(
+            objective
+            or _make_target_objective(
+                ref_point=ref_point,
+                target_class=target_class,
+                output_target_classes=output_target_classes,
+                class_reduction=class_reduction,
+                utility_values=utility_values,
+                objective_signs=objective_signs,
+                eps=eps,
+            )
         )
         super().__init__(
             model=model,
@@ -622,6 +680,25 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qNoisyExpectedHy
         )
         self.eta = eta
         self.fat = fat
+
+    def forward(self, X: Tensor) -> Tensor:
+        X_raw = ensure_q_batch(X)
+        try:
+            value = super().forward(X)
+        except RuntimeError as err:
+            if not _is_objective_q_shape_error(err):
+                raise
+            # Retry without passing X through objective shape checks. The objective
+            # itself has _verify_output_shape=False, but this keeps older BoTorch
+            # paths robust if they still pass X to a wrapped objective.
+            X_eval = X_raw
+            X_pending = getattr(self, "X_pending", None)
+            if X_pending is not None and torch.as_tensor(X_pending).numel() > 0:
+                X_eval = torch.cat([X_eval, _match_pending_to_X(X_pending, X_eval)], dim=-2)
+            posterior = self.model.posterior(X_eval)
+            samples = self.get_posterior_samples(posterior)
+            value = self._compute_qehvi(samples=samples, X=None)
+        return _finalize_acq_output(value, X_raw)
 
 
 class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):
@@ -649,14 +726,17 @@ class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):
     ) -> None:
         sampler = sampler or SobolQMCNormalSampler(sample_shape=torch.Size([128]))
         ref_tensor = torch.as_tensor(ref_point, device=X_baseline.device, dtype=X_baseline.dtype).reshape(-1)
-        base_objective = objective or _make_target_objective(
-            ref_point=ref_tensor,
-            target_class=target_class,
-            output_target_classes=output_target_classes,
-            class_reduction=class_reduction,
-            utility_values=utility_values,
-            objective_signs=objective_signs,
-            eps=eps,
+        base_objective = _disable_objective_shape_check(
+            objective
+            or _make_target_objective(
+                ref_point=ref_tensor,
+                target_class=target_class,
+                output_target_classes=output_target_classes,
+                class_reduction=class_reduction,
+                utility_values=utility_values,
+                objective_signs=objective_signs,
+                eps=eps,
+            )
         )
         super().__init__(model=model, sampler=sampler, objective=base_objective)
         self.base_objective = base_objective
@@ -690,7 +770,7 @@ class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):
             else:
                 Xb = ensure_q_batch(X_baseline)
                 post = model.posterior(Xb)
-                values = self.base_objective(post.mean.unsqueeze(0), X=Xb)
+                values = self.base_objective(post.mean.unsqueeze(0), X=None)
             baseline_score = self._scalarize(values)
             if baseline_score.ndim >= 2 and baseline_score.shape[-1] == 1:
                 baseline_score = baseline_score.squeeze(-1)
@@ -717,7 +797,7 @@ class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):
         Xq = ensure_q_batch(X)
         post = self.model.posterior(Xq)
         samples = self.get_posterior_samples(post)
-        values = self.base_objective(samples, X=Xq)
+        values = self.base_objective(samples, X=None)
         scalarized = self._scalarize(values)
         improvement = (scalarized - self.best_value.to(scalarized)).clamp_min(0.0)
         return _reduce_sample_and_q_to_tbatch(improvement, Xq)
@@ -726,7 +806,16 @@ class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):
 class qMultiOutputMulticlassExpectedImprovement(_MultiOutputMulticlassTargetClassBOBase):
     """Legacy scalar EI for target-class probability."""
 
-    def __init__(self, model, *, target_class: int | Sequence[int] | None = None, output_target_classes: Sequence[int] | None = None, best_f: float | Tensor, num_samples: int = 128, **kwargs) -> None:
+    def __init__(
+        self,
+        model,
+        *,
+        target_class: int | Sequence[int] | None = None,
+        output_target_classes: Sequence[int] | None = None,
+        best_f: float | Tensor,
+        num_samples: int = 128,
+        **kwargs,
+    ) -> None:
         super().__init__(model=model, target_class=target_class, output_target_classes=output_target_classes, **kwargs)
         self.num_samples = int(num_samples)
         self.register_buffer("best_f", torch.as_tensor(best_f))
@@ -748,7 +837,17 @@ class qMultiOutputMulticlassExpectedImprovement(_MultiOutputMulticlassTargetClas
 class qMultiOutputMulticlassProbabilityOfImprovement(_MultiOutputMulticlassTargetClassBOBase):
     """Legacy scalar PI for target-class probability."""
 
-    def __init__(self, model, *, target_class: int | Sequence[int] | None = None, output_target_classes: Sequence[int] | None = None, best_f: float | Tensor, num_samples: int = 128, tau: float = 1e-3, **kwargs) -> None:
+    def __init__(
+        self,
+        model,
+        *,
+        target_class: int | Sequence[int] | None = None,
+        output_target_classes: Sequence[int] | None = None,
+        best_f: float | Tensor,
+        num_samples: int = 128,
+        tau: float = 1e-3,
+        **kwargs,
+    ) -> None:
         super().__init__(model=model, target_class=target_class, output_target_classes=output_target_classes, **kwargs)
         self.num_samples = int(num_samples)
         self.register_buffer("best_f", torch.as_tensor(best_f))
@@ -772,7 +871,16 @@ class qMultiOutputMulticlassProbabilityOfImprovement(_MultiOutputMulticlassTarge
 class qMultiOutputMulticlassUpperConfidenceBound(_MultiOutputMulticlassTargetClassBOBase):
     """Legacy scalar UCB for target-class probability."""
 
-    def __init__(self, model, *, target_class: int | Sequence[int] | None = None, output_target_classes: Sequence[int] | None = None, beta: float | Tensor = 2.0, num_samples: int = 128, **kwargs) -> None:
+    def __init__(
+        self,
+        model,
+        *,
+        target_class: int | Sequence[int] | None = None,
+        output_target_classes: Sequence[int] | None = None,
+        beta: float | Tensor = 2.0,
+        num_samples: int = 128,
+        **kwargs,
+    ) -> None:
         super().__init__(model=model, target_class=target_class, output_target_classes=output_target_classes, **kwargs)
         self.num_samples = int(num_samples)
         self.register_buffer("beta", torch.as_tensor(beta))

@@ -34,6 +34,8 @@ OptimizerName = Literal[
     "optimize_acqf_torch",
     "torch_mixed",
     "optimize_acqf_torch_mixed",
+    "nsgaii",
+    "optimize_acqf_nsgaii",
 ]
 FinalPriority = Literal["grid", "constraints"]
 SparseScore = Literal["abs", "value"]

@@ -29,15 +29,19 @@ from bochan.acquisition.multiclass.base import ClassReductionType
 
 
 class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
-    """Convert multiclass probability samples to target-class objective values.
+    """Convert multiclass probability samples to multi-output objective values.
 
     The objective accepts either of the following shapes:
 
-    - ``sample_shape x batch_shape x q x m``: already target probability / objective values.
+    - ``sample_shape x batch_shape x q x m``: already objective-scale values.
     - ``sample_shape x batch_shape x q x m x C``: multiclass probabilities.
 
-    In the latter case, it selects ``target_class`` for all outputs or
-    ``output_target_classes[i]`` for output ``i``.
+    For multiclass probabilities, the conversion is:
+
+    - ``output_target_classes`` specified: select target probability per output.
+    - ``target_class`` specified: select or reduce target class probabilities.
+    - neither specified: compute expected class utility ``sum_c p_c * utility_c``.
+      By default, ``utility_c = c``.
     """
 
     def __init__(
@@ -47,18 +51,17 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
         output_target_classes: Sequence[int] | None = None,
         num_outputs: int | None = None,
         class_reduction: ClassReductionType = "mean",
+        utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
         eps: float = 1e-8,
     ) -> None:
         super().__init__()
-        if target_class is None and output_target_classes is None:
-            # Identity behavior for HybridMultiOutputModel or user-provided objective-scale models.
-            self.target_class = None
-            self.output_target_classes = None
-        else:
-            self.target_class = target_class
-            self.output_target_classes = None if output_target_classes is None else [int(i) for i in output_target_classes]
+        self.target_class = target_class
+        self.output_target_classes = None if output_target_classes is None else [int(i) for i in output_target_classes]
         self.num_outputs = None if num_outputs is None else int(num_outputs)
         self.class_reduction = class_reduction
+        self.utility_values = utility_values
+        self.objective_signs = objective_signs
         self.eps = float(eps)
 
     def _reduce_classes(self, selected: Tensor) -> Tensor:
@@ -74,20 +77,58 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
             return selected.prod(dim=-1)
         raise ValueError(f"Unknown class_reduction: {self.class_reduction!r}.")
 
+    def _utility_tensor(self, samples: Tensor) -> Tensor:
+        n_outputs = int(samples.shape[-2])
+        n_classes = int(samples.shape[-1])
+        if self.utility_values is None:
+            utility = torch.arange(n_classes, device=samples.device, dtype=samples.dtype)
+            return utility.view(*([1] * (samples.ndim - 1)), n_classes)
+
+        utility = torch.as_tensor(self.utility_values, device=samples.device, dtype=samples.dtype)
+        if utility.ndim == 1:
+            if utility.numel() != n_classes:
+                raise ValueError(
+                    f"utility_values length must match num_classes={n_classes}, got {utility.numel()}."
+                )
+            return utility.view(*([1] * (samples.ndim - 1)), n_classes)
+        if utility.ndim == 2:
+            if utility.shape != torch.Size([n_outputs, n_classes]):
+                raise ValueError(
+                    "2D utility_values must have shape [num_outputs, num_classes]. "
+                    f"Expected [{n_outputs}, {n_classes}], got {tuple(utility.shape)}."
+                )
+            return utility.view(*([1] * (samples.ndim - 2)), n_outputs, n_classes)
+        raise ValueError("utility_values must be [C] or [m, C].")
+
+    def _apply_objective_signs(self, values: Tensor) -> Tensor:
+        if self.objective_signs is None:
+            return values
+        signs = torch.as_tensor(self.objective_signs, device=values.device, dtype=values.dtype).reshape(-1)
+        if signs.numel() != values.shape[-1]:
+            raise ValueError(
+                f"objective_signs must have length {values.shape[-1]}, got {signs.numel()}."
+            )
+        return values * signs.view(*([1] * (values.ndim - 1)), signs.numel())
+
+    def _expected_utility(self, samples: Tensor) -> Tensor:
+        utility = self._utility_tensor(samples)
+        values = (samples * utility).sum(dim=-1)
+        return self._apply_objective_signs(values)
+
     def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
         # Already scalar / objective multi-output samples: sample_shape x batch_shape x q x m.
         if self.num_outputs is not None and samples.shape[-1] == self.num_outputs:
             if samples.ndim < 5 or samples.shape[-2] != self.num_outputs:
-                return samples
-
-        # If no target is specified, keep identity behavior.
-        if self.target_class is None and self.output_target_classes is None:
-            return samples
+                return self._apply_objective_signs(samples)
 
         if samples.ndim < 2:
             raise RuntimeError(f"Multiclass samples must include class dimension. Got {tuple(samples.shape)}.")
 
-        # Expected multiclass shape: ... x m x C.
+        # Expected multiclass probability shape: ... x q x m x C.
+        if self.num_outputs is not None and samples.ndim >= 3 and samples.shape[-2] != self.num_outputs:
+            # Not a multiclass probability tensor for this objective. Treat as objective-scale values.
+            return self._apply_objective_signs(samples)
+
         if self.output_target_classes is not None:
             n_outputs = int(samples.shape[-2])
             if len(self.output_target_classes) != n_outputs:
@@ -97,14 +138,19 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
                 )
             idx = torch.as_tensor(self.output_target_classes, device=samples.device, dtype=torch.long)
             gather_idx = idx.view(*([1] * (samples.ndim - 2)), n_outputs, 1).expand(*samples.shape[:-1], 1)
-            return torch.gather(samples, dim=-1, index=gather_idx).squeeze(-1)
+            return self._apply_objective_signs(torch.gather(samples, dim=-1, index=gather_idx).squeeze(-1))
 
         if isinstance(self.target_class, int):
-            return samples[..., int(self.target_class)]
+            return self._apply_objective_signs(samples[..., int(self.target_class)])
 
-        indices = [int(i) for i in self.target_class]
-        selected = samples[..., indices]
-        return self._reduce_classes(selected)
+        if self.target_class is not None:
+            indices = [int(i) for i in self.target_class]
+            if len(indices) == 0:
+                raise ValueError("target_class sequence must not be empty.")
+            selected = samples[..., indices]
+            return self._apply_objective_signs(self._reduce_classes(selected))
+
+        return self._expected_utility(samples)
 
 
 class _IdentityMCMultiOutputObjective(MCMultiOutputObjective):
@@ -203,28 +249,7 @@ def compute_observed_multiclass_utility(
     objective_signs: Optional[Sequence[float] | Tensor] = None,
     class_offset: int = 0,
 ) -> Tensor:
-    """観測 multiclass label を multi-output BO の目的値空間へ変換する。
-
-    Args:
-        train_Y: 観測ラベル。shape は ``[n]`` または ``[n, m]``。
-        target_class: 全出力共通で最大化したい class。複数 class を指定した場合は
-            ``class_reduction`` で indicator を集約する。
-        output_target_classes: 出力ごとに最大化したい class。shape は ``[m]``。
-        class_reduction: ``target_class`` が複数 class のときの集約方法。
-        utility_values: 指定した場合は label を utility table で直接変換する。
-            ``target_class`` / ``output_target_classes`` より優先する。
-        objective_signs: 出力ごとの符号。最小化したい目的は ``-1`` を指定する。
-        class_offset: ラベルが 1 始まりなどの場合に差し引く offset。
-
-    Returns:
-        Tensor: shape ``[n, m]`` の観測目的値。
-
-    Notes:
-        - ``utility_values`` がある場合: ordinal の ``compute_observed_ordinal_utility``
-          と同様に、観測 class label を utility table に写像する。
-        - ``utility_values`` がない場合: 観測 class が target class なら 1、そうでなければ
-          0 の target-class probability objective として扱う。
-    """
+    """観測 multiclass label を multi-output BO の目的値空間へ変換する。"""
     Y_raw = _as_2d_train_y(torch.as_tensor(train_Y))
     device = Y_raw.device
     dtype = torch.get_default_dtype() if not torch.is_floating_point(Y_raw) else Y_raw.dtype
@@ -261,10 +286,8 @@ def compute_observed_multiclass_utility(
         return values * signs.view(1, m)
 
     if output_target_classes is None and target_class is None:
-        raise ValueError(
-            "target_class or output_target_classes must be provided when utility_values is None. "
-            "If train_Y is already objective-scale, pass it as Y_baseline directly."
-        )
+        # Default multiclass utility: class label itself, matching objective default E[class].
+        return Y_idx.to(dtype=dtype) * signs.view(1, m)
 
     if output_target_classes is not None:
         target_per_output = torch.as_tensor(output_target_classes, device=device, dtype=torch.long).reshape(-1)
@@ -357,6 +380,8 @@ def _make_target_objective(
     target_class: int | Sequence[int] | None = None,
     output_target_classes: Sequence[int] | None = None,
     class_reduction: ClassReductionType = "mean",
+    utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
+    objective_signs: Sequence[float] | Tensor | None = None,
     eps: float = 1e-8,
 ) -> MulticlassTargetProbabilityObjective:
     num_outputs = None if ref_point is None else int(torch.as_tensor(ref_point).numel())
@@ -365,6 +390,8 @@ def _make_target_objective(
         output_target_classes=output_target_classes,
         num_outputs=num_outputs,
         class_reduction=class_reduction,
+        utility_values=utility_values,
+        objective_signs=objective_signs,
         eps=eps,
     )
 
@@ -490,7 +517,7 @@ class qMultiOutputMulticlassProbabilityOfFeasibility(_MultiOutputMulticlassTarge
 
 
 class qMultiOutputMulticlassExpectedHypervolumeImprovement(qExpectedHypervolumeImprovement):
-    """BoTorch qEHVI for multiclass target-class probability objectives."""
+    """BoTorch qEHVI for multiclass target-class probability / utility objectives."""
 
     def __init__(
         self,
@@ -501,6 +528,8 @@ class qMultiOutputMulticlassExpectedHypervolumeImprovement(qExpectedHypervolumeI
         target_class: int | Sequence[int] | None = None,
         output_target_classes: Sequence[int] | None = None,
         class_reduction: ClassReductionType = "mean",
+        utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
         sampler: Optional[SobolQMCNormalSampler] = None,
         objective: Optional[MCMultiOutputObjective] = None,
         constraints: Optional[list] = None,
@@ -514,6 +543,8 @@ class qMultiOutputMulticlassExpectedHypervolumeImprovement(qExpectedHypervolumeI
             target_class=target_class,
             output_target_classes=output_target_classes,
             class_reduction=class_reduction,
+            utility_values=utility_values,
+            objective_signs=objective_signs,
             eps=eps,
         )
         super().__init__(
@@ -530,7 +561,7 @@ class qMultiOutputMulticlassExpectedHypervolumeImprovement(qExpectedHypervolumeI
 
 
 class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qNoisyExpectedHypervolumeImprovement):
-    """BoTorch qNEHVI for multiclass target-class probability objectives."""
+    """BoTorch qNEHVI for multiclass target-class probability / utility objectives."""
 
     def __init__(
         self,
@@ -541,6 +572,8 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qNoisyExpectedHy
         target_class: int | Sequence[int] | None = None,
         output_target_classes: Sequence[int] | None = None,
         class_reduction: ClassReductionType = "mean",
+        utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
         sampler: Optional[SobolQMCNormalSampler] = None,
         objective: Optional[MCMultiOutputObjective] = None,
         constraints: Optional[list] = None,
@@ -561,6 +594,8 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qNoisyExpectedHy
             target_class=target_class,
             output_target_classes=output_target_classes,
             class_reduction=class_reduction,
+            utility_values=utility_values,
+            objective_signs=objective_signs,
             eps=eps,
         )
         super().__init__(
@@ -584,12 +619,7 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qNoisyExpectedHy
 
 
 class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):
-    """Multi-output multiclass qNParEGO-style acquisition.
-
-    This mirrors the binary implementation: posterior samples are transformed by
-    an MCMultiOutputObjective, scalarized with augmented Chebyshev, and evaluated
-    as qEI on the scalarized objective.
-    """
+    """Multi-output multiclass qNParEGO-style acquisition."""
 
     def __init__(
         self,
@@ -618,10 +648,10 @@ class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):
             target_class=target_class,
             output_target_classes=output_target_classes,
             class_reduction=class_reduction,
+            utility_values=utility_values,
+            objective_signs=objective_signs,
             eps=eps,
         )
-        if objective is None and target_class is None and output_target_classes is None:
-            base_objective = _IdentityMCMultiOutputObjective()
         super().__init__(model=model, sampler=sampler, objective=base_objective)
         self.base_objective = base_objective
         self.eps = float(eps)
@@ -638,12 +668,6 @@ class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):
         self.register_buffer("ref_point", ref_tensor)
 
         if Y_baseline is None and train_Y is not None:
-            if utility_values is None and target_class is None and output_target_classes is None:
-                raise ValueError(
-                    "target_class, output_target_classes, or utility_values must be provided "
-                    "to build Y_baseline from train_Y. If train_Y is already objective-scale, "
-                    "pass it as Y_baseline."
-                )
             Y_baseline = compute_observed_multiclass_utility(
                 train_Y=train_Y,
                 target_class=target_class,

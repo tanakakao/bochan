@@ -129,6 +129,183 @@ def _prod(shape: torch.Size | tuple[int, ...]) -> int:
     return out
 
 
+def _as_2d_train_y(train_Y: Tensor) -> Tensor:
+    if train_Y.ndim == 1:
+        train_Y = train_Y.unsqueeze(-1)
+    if train_Y.ndim != 2:
+        raise ValueError(f"train_Y must be [n] or [n, m], got {tuple(train_Y.shape)}.")
+    return train_Y
+
+
+def _to_utility_list(
+    utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor,
+    *,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> list[Tensor]:
+    if isinstance(utility_values, Tensor):
+        uv = utility_values.to(device=device, dtype=dtype)
+        if uv.ndim == 1:
+            return [uv]
+        if uv.ndim == 2:
+            return [uv[i] for i in range(uv.shape[0])]
+        raise ValueError("utility_values tensor must be [C] or [m, C].")
+
+    if len(utility_values) == 0:
+        raise ValueError("utility_values must not be empty.")
+
+    first = utility_values[0]  # type: ignore[index]
+    if isinstance(first, (int, float)):
+        return [torch.as_tensor(utility_values, device=device, dtype=dtype)]  # type: ignore[arg-type]
+    return [torch.as_tensor(v, device=device, dtype=dtype) for v in utility_values]  # type: ignore[arg-type]
+
+
+def _normalize_objective_signs(
+    objective_signs: Optional[Sequence[float] | Tensor],
+    *,
+    m: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> Tensor:
+    if objective_signs is None:
+        return torch.ones(m, device=device, dtype=dtype)
+    signs = torch.as_tensor(objective_signs, device=device, dtype=dtype).reshape(-1)
+    if signs.shape != torch.Size([m]):
+        raise ValueError(f"objective_signs must have shape [{m}], got {tuple(signs.shape)}.")
+    return signs
+
+
+def _reduce_observed_target_indicators(
+    indicators: Tensor,
+    *,
+    class_reduction: ClassReductionType,
+) -> Tensor:
+    if class_reduction == "mean":
+        return indicators.mean(dim=-1)
+    if class_reduction == "sum":
+        return indicators.sum(dim=-1)
+    if class_reduction == "max":
+        return indicators.max(dim=-1).values
+    if class_reduction == "min":
+        return indicators.min(dim=-1).values
+    if class_reduction == "prod":
+        return indicators.prod(dim=-1)
+    raise ValueError(f"Unknown class_reduction: {class_reduction!r}.")
+
+
+def compute_observed_multiclass_utility(
+    train_Y: Tensor,
+    *,
+    target_class: int | Sequence[int] | None = None,
+    output_target_classes: Sequence[int] | Tensor | None = None,
+    class_reduction: ClassReductionType = "mean",
+    utility_values: Optional[Sequence[Sequence[float]] | Sequence[float] | Tensor] = None,
+    objective_signs: Optional[Sequence[float] | Tensor] = None,
+    class_offset: int = 0,
+) -> Tensor:
+    """観測 multiclass label を multi-output BO の目的値空間へ変換する。
+
+    Args:
+        train_Y: 観測ラベル。shape は ``[n]`` または ``[n, m]``。
+        target_class: 全出力共通で最大化したい class。複数 class を指定した場合は
+            ``class_reduction`` で indicator を集約する。
+        output_target_classes: 出力ごとに最大化したい class。shape は ``[m]``。
+        class_reduction: ``target_class`` が複数 class のときの集約方法。
+        utility_values: 指定した場合は label を utility table で直接変換する。
+            ``target_class`` / ``output_target_classes`` より優先する。
+        objective_signs: 出力ごとの符号。最小化したい目的は ``-1`` を指定する。
+        class_offset: ラベルが 1 始まりなどの場合に差し引く offset。
+
+    Returns:
+        Tensor: shape ``[n, m]`` の観測目的値。
+
+    Notes:
+        - ``utility_values`` がある場合: ordinal の ``compute_observed_ordinal_utility``
+          と同様に、観測 class label を utility table に写像する。
+        - ``utility_values`` がない場合: 観測 class が target class なら 1、そうでなければ
+          0 の target-class probability objective として扱う。
+    """
+    Y_raw = _as_2d_train_y(torch.as_tensor(train_Y))
+    device = Y_raw.device
+    dtype = torch.get_default_dtype() if not torch.is_floating_point(Y_raw) else Y_raw.dtype
+    Y_idx = Y_raw.long() - int(class_offset)
+    n, m = int(Y_idx.shape[0]), int(Y_idx.shape[1])
+
+    signs = _normalize_objective_signs(
+        objective_signs,
+        m=m,
+        device=device,
+        dtype=dtype,
+    )
+
+    if utility_values is not None:
+        utility_list = _to_utility_list(utility_values, device=device, dtype=dtype)
+        if len(utility_list) == 1 and m > 1:
+            utility_list = utility_list * m
+        if len(utility_list) != m:
+            raise ValueError(f"utility_values must have length 1 or m={m}, got {len(utility_list)}.")
+
+        values = torch.empty(n, m, device=device, dtype=dtype)
+        for j, utility_j in enumerate(utility_list):
+            y_j = Y_idx[:, j]
+            if y_j.numel() > 0:
+                y_min = int(y_j.min().item())
+                y_max = int(y_j.max().item())
+                if y_min < 0 or y_max >= utility_j.numel():
+                    raise ValueError(
+                        f"train_Y[:, {j}] contains class outside utility_values[{j}] range. "
+                        f"Got min={y_min}, max={y_max}, num_classes={utility_j.numel()}, "
+                        f"class_offset={class_offset}."
+                    )
+            values[:, j] = utility_j[y_j]
+        return values * signs.view(1, m)
+
+    if output_target_classes is None and target_class is None:
+        raise ValueError(
+            "target_class or output_target_classes must be provided when utility_values is None. "
+            "If train_Y is already objective-scale, pass it as Y_baseline directly."
+        )
+
+    if output_target_classes is not None:
+        target_per_output = torch.as_tensor(output_target_classes, device=device, dtype=torch.long).reshape(-1)
+        if target_per_output.numel() != m:
+            raise ValueError(f"output_target_classes must have shape [{m}], got {tuple(target_per_output.shape)}.")
+        values = (Y_idx == target_per_output.view(1, m)).to(dtype=dtype)
+        return values * signs.view(1, m)
+
+    if isinstance(target_class, int):
+        values = (Y_idx == int(target_class)).to(dtype=dtype)
+        return values * signs.view(1, m)
+
+    target_classes = torch.as_tensor([int(i) for i in target_class], device=device, dtype=torch.long).reshape(-1)
+    if target_classes.numel() == 0:
+        raise ValueError("target_class sequence must not be empty.")
+    indicators = (Y_idx.unsqueeze(-1) == target_classes.view(1, 1, -1)).to(dtype=dtype)
+    values = _reduce_observed_target_indicators(indicators, class_reduction=class_reduction)
+    return values * signs.view(1, m)
+
+
+def compute_observed_multiclass_target_probability_values(
+    train_Y: Tensor,
+    *,
+    target_class: int | Sequence[int] | None = None,
+    output_target_classes: Sequence[int] | Tensor | None = None,
+    class_reduction: ClassReductionType = "mean",
+    objective_signs: Optional[Sequence[float] | Tensor] = None,
+    class_offset: int = 0,
+) -> Tensor:
+    """target-class probability 目的専用の観測値変換 helper。"""
+    return compute_observed_multiclass_utility(
+        train_Y=train_Y,
+        target_class=target_class,
+        output_target_classes=output_target_classes,
+        class_reduction=class_reduction,
+        utility_values=None,
+        objective_signs=objective_signs,
+        class_offset=class_offset,
+    )
+
+
 def _squeeze_only_output_singleton(value: Tensor, X: Tensor) -> Tensor:
     q = int(X.shape[-2])
     batch_ndim = len(X.shape[:-2])
@@ -423,6 +600,11 @@ class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):
         target_class: int | Sequence[int] | None = None,
         output_target_classes: Sequence[int] | None = None,
         class_reduction: ClassReductionType = "mean",
+        utility_values: Optional[Sequence[Sequence[float]] | Sequence[float] | Tensor] = None,
+        objective_signs: Optional[Sequence[float] | Tensor] = None,
+        train_Y: Optional[Tensor] = None,
+        Y_baseline: Optional[Tensor] = None,
+        class_offset: int = 0,
         weights: Optional[Tensor] = None,
         sampler: Optional[SobolQMCNormalSampler] = None,
         objective: Optional[MCMultiOutputObjective] = None,
@@ -455,10 +637,30 @@ class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):
         self.register_buffer("weights", weights)
         self.register_buffer("ref_point", ref_tensor)
 
+        if Y_baseline is None and train_Y is not None:
+            if utility_values is None and target_class is None and output_target_classes is None:
+                raise ValueError(
+                    "target_class, output_target_classes, or utility_values must be provided "
+                    "to build Y_baseline from train_Y. If train_Y is already objective-scale, "
+                    "pass it as Y_baseline."
+                )
+            Y_baseline = compute_observed_multiclass_utility(
+                train_Y=train_Y,
+                target_class=target_class,
+                output_target_classes=output_target_classes,
+                class_reduction=class_reduction,
+                utility_values=utility_values,
+                objective_signs=objective_signs,
+                class_offset=class_offset,
+            )
+
         with torch.no_grad():
-            Xb = ensure_q_batch(X_baseline)
-            post = model.posterior(Xb)
-            values = self.base_objective(post.mean.unsqueeze(0), X=Xb)
+            if Y_baseline is not None:
+                values = Y_baseline.to(device=X_baseline.device, dtype=X_baseline.dtype).unsqueeze(0).unsqueeze(0)
+            else:
+                Xb = ensure_q_batch(X_baseline)
+                post = model.posterior(Xb)
+                values = self.base_objective(post.mean.unsqueeze(0), X=Xb)
             baseline_score = self._scalarize(values)
             if baseline_score.ndim >= 2 and baseline_score.shape[-1] == 1:
                 baseline_score = baseline_score.squeeze(-1)
@@ -562,6 +764,8 @@ class qMultiOutputMulticlassUpperConfidenceBound(_MultiOutputMulticlassTargetCla
 
 __all__ = [
     "MulticlassTargetProbabilityObjective",
+    "compute_observed_multiclass_utility",
+    "compute_observed_multiclass_target_probability_values",
     "OutputReductionType",
     "OutputModeType",
     "qMultiOutputMulticlassProbabilityOfFeasibility",

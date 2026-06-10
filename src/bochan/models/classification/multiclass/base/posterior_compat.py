@@ -6,6 +6,13 @@ from torch import Tensor
 from bochan.models.classification.multiclass.base.multioutput import MultiOutputMulticlassProbsPosterior
 from bochan.models.components.multiclass import MulticlassProbsPosterior
 
+try:
+    from botorch.sampling.get_sampler import GetSampler
+    from botorch.sampling.normal import SobolQMCNormalSampler
+except Exception:  # pragma: no cover - BoTorch import compatibility guard
+    GetSampler = None  # type: ignore[assignment]
+    SobolQMCNormalSampler = None  # type: ignore[assignment]
+
 
 def _as_sample_shape(sample_shape: torch.Size | None = None) -> torch.Size:
     return torch.Size() if sample_shape is None else torch.Size(sample_shape)
@@ -76,6 +83,43 @@ def _single_multiclass_batch_shape(self: MulticlassProbsPosterior) -> torch.Size
     if mean.ndim <= 2:
         return torch.Size()
     return torch.Size(mean.shape[:-2])
+
+
+def _make_sobol_sampler(sample_shape: torch.Size, seed: int | None = None):
+    if SobolQMCNormalSampler is None:
+        raise NotImplementedError("SobolQMCNormalSampler is unavailable.")
+    try:
+        return SobolQMCNormalSampler(sample_shape=sample_shape, seed=seed)
+    except TypeError:
+        # Older BoTorch versions may not expose the seed keyword.
+        return SobolQMCNormalSampler(sample_shape=sample_shape)
+
+
+if GetSampler is not None:
+
+    @GetSampler.register(MultiOutputMulticlassProbsPosterior)
+    def _get_multioutput_multiclass_sampler(
+        posterior: MultiOutputMulticlassProbsPosterior,
+        sample_shape: torch.Size,
+        seed: int | None = None,
+    ):
+        """Return a normal MC sampler for multi-output multiclass probability posterior.
+
+        ``MultiOutputMulticlassProbsPosterior`` implements ``rsample`` and
+        ``rsample_from_base_samples``, so BoTorch's ``SobolQMCNormalSampler`` can
+        be used. Registering this function prevents ``get_sampler`` from falling
+        through to the generic ``NotImplementedError`` path in qEHVI/qNEHVI.
+        """
+        return _make_sobol_sampler(sample_shape=sample_shape, seed=seed)
+
+    @GetSampler.register(MulticlassProbsPosterior)
+    def _get_single_multiclass_sampler(
+        posterior: MulticlassProbsPosterior,
+        sample_shape: torch.Size,
+        seed: int | None = None,
+    ):
+        """Return a normal MC sampler for single-output multiclass probability posterior."""
+        return _make_sobol_sampler(sample_shape=sample_shape, seed=seed)
 
 
 def apply_multiclass_posterior_compat() -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import itertools
 from collections.abc import Sequence
-from typing import Any, Literal
+from typing import Literal
 
 import torch
 from botorch.acquisition.acquisition import AcquisitionFunction
@@ -22,6 +22,17 @@ def _prod(shape: torch.Size | tuple[int, ...]) -> int:
     for s in shape:
         out *= int(s)
     return out
+
+
+def _find_subsequence(shape: tuple[int, ...], pattern: tuple[int, ...]) -> int | None:
+    if len(pattern) == 0:
+        return 0
+    if len(shape) < len(pattern):
+        return None
+    for i in range(len(shape) - len(pattern) + 1):
+        if tuple(shape[i : i + len(pattern)]) == tuple(pattern):
+            return i
+    return None
 
 
 def _align_pointwise_to_reference(value: Tensor, reference: Tensor, *, name: str) -> Tensor:
@@ -98,27 +109,7 @@ class _MaybeProbabilityPosterior:
         return self._to_probs(self.posterior.rsample(sample_shape))
 
 
-class _SoftmaxPosterior:
-    def __init__(self, posterior) -> None:
-        self.posterior = posterior
-
-    @property
-    def mean(self) -> Tensor:
-        return torch.softmax(self.posterior.mean, dim=-1)
-
-    def rsample(self, sample_shape: torch.Size | None = None) -> Tensor:
-        if sample_shape is None:
-            sample_shape = torch.Size()
-        return torch.softmax(self.posterior.rsample(sample_shape), dim=-1)
-
-
 class _StackedMulticlassPosterior:
-    """Stack single-output multiclass posteriors into one multi-output posterior.
-
-    mean: ``batch_shape x q x m x C``
-    rsample: ``sample_shape x batch_shape x q x m x C``
-    """
-
     def __init__(self, posteriors: Sequence, *, eps: float = 1e-8) -> None:
         if len(posteriors) == 0:
             raise ValueError("At least one posterior is required.")
@@ -136,11 +127,13 @@ class _StackedMulticlassPosterior:
 
 
 class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
-    """Complete direct-tensor base for multi-output multiclass active learning.
+    """Direct tensor base for multi-output multiclass active learning.
 
-    Internally, class probabilities are normalized to
-    ``batch_shape x q_like x m x C``. A plain single-output multiclass model
-    returning ``batch_shape x q_like x C`` is treated as ``m = 1``.
+    Internally class probabilities are normalized to
+    ``sample_like x batch_shape x q_like x m x C``. A plain single-output
+    multiclass model returning ``sample_like x batch_shape x q_like x C`` is
+    treated as ``m = 1``. Extra singleton / latent-batch axes between q and C
+    are averaged out for single-output models.
     """
 
     def __init__(
@@ -225,6 +218,9 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
             return list(submodels)
         return []
 
+    def _has_explicit_multi_output(self) -> bool:
+        return callable(getattr(self.model, "class_probs_list", None)) or len(self._submodels()) > 0
+
     def _posterior_for_submodel(self, submodel, X: Tensor):
         class_probs = getattr(submodel, "class_probs", None)
         if callable(class_probs):
@@ -232,9 +228,6 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
         prob_post = getattr(submodel, "probability_posterior", None)
         if callable(prob_post):
             return _MaybeProbabilityPosterior(prob_post(X), eps=self.eps, apply_softmax_if_needed=False)
-        # submodel.posterior(X) should be preferred over latent_posterior(X) for
-        # multiclass models because it already moves the class-batch dimension to
-        # the final probability dimension.
         return _MaybeProbabilityPosterior(
             submodel.posterior(X),
             eps=self.eps,
@@ -243,7 +236,6 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
 
     def _get_multiclass_probability_posterior(self, X: Tensor):
         X = self._ensure_q_batch(X)
-
         fn = getattr(self.model, "class_probs_list", None)
         if callable(fn):
             probs_list = fn(X)
@@ -251,70 +243,112 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
                 [_TensorProbabilityPosterior(p, eps=self.eps) for p in probs_list],
                 eps=self.eps,
             )
-
         submodels = self._submodels()
         if len(submodels) > 0:
             return _StackedMulticlassPosterior(
                 [self._posterior_for_submodel(submodel, X) for submodel in submodels],
                 eps=self.eps,
             )
-
-        # A plain single-output multiclass model usually has class_probs(X) and
-        # posterior(X). Use class_probs/posterior first. Avoid latent_posterior
-        # here because its class dimension may be a GPyTorch batch dimension.
         class_probs = getattr(self.model, "class_probs", None)
         if callable(class_probs):
             return _TensorProbabilityPosterior(class_probs(X), eps=self.eps)
-
         prob_post = getattr(self.model, "probability_posterior", None)
         if callable(prob_post):
             return _MaybeProbabilityPosterior(prob_post(X), eps=self.eps, apply_softmax_if_needed=False)
-
         return _MaybeProbabilityPosterior(
             self.model.posterior(X),
             eps=self.eps,
             apply_softmax_if_needed=self.apply_softmax_if_needed,
         )
 
-    def _ensure_multi_output_probs(self, probs: Tensor, X: Tensor, *, name: str) -> Tensor:
-        """Return probabilities with shape ``... x batch_shape x q_like x m x C``.
-
-        The function preserves any leading sample-like dimensions and inserts
-        ``m = 1`` when a single multiclass model returns ``... x batch x q x C``.
-        If q has been expanded by an input transform, ``q_like`` may be a
-        multiple of the raw q and is reduced later by score alignment.
-        """
+    def _coerce_single_output_probs(self, probs: Tensor, X: Tensor, *, name: str) -> Tensor:
         X = self._ensure_q_batch(X)
         batch_shape = tuple(X.shape[:-2])
         q = int(X.shape[-2])
+        c = int(probs.shape[-1])
+        pre = tuple(probs.shape[:-1])
+        batch_start = _find_subsequence(pre, batch_shape)
+        if batch_start is None:
+            if len(batch_shape) == 0:
+                batch_start = len(pre) - 1
+            else:
+                raise RuntimeError(
+                    f"{name}: could not locate batch_shape={batch_shape} in probs.shape={tuple(probs.shape)}."
+                )
+        leading = pre[:batch_start]
+        after_batch = pre[batch_start + len(batch_shape) :]
+        if len(after_batch) == 0:
+            raise RuntimeError(f"{name}: missing q dimension in probs.shape={tuple(probs.shape)}.")
+
+        q_pos = None
+        for j, size in enumerate(after_batch):
+            if int(size) % q == 0:
+                q_pos = j
+                break
+        if q_pos is None:
+            raise RuntimeError(
+                f"{name}: could not find q_like dimension divisible by q={q} in probs.shape={tuple(probs.shape)}."
+            )
+
+        q_like = int(after_batch[q_pos])
+        out = probs.reshape(*leading, *batch_shape, *after_batch, c)
+        # Average singleton / class-batch / latent-batch axes before q_like.
+        for _ in range(q_pos):
+            dim = len(leading) + len(batch_shape)
+            out = out.mean(dim=dim)
+        # Average any axes after q_like and before class C.
+        while out.ndim > len(leading) + len(batch_shape) + 2:
+            out = out.mean(dim=-2)
+        return out.unsqueeze(-2)  # ... x batch_shape x q_like x 1 x C
+
+    def _coerce_explicit_multi_output_probs(self, probs: Tensor, X: Tensor, *, name: str) -> Tensor:
+        X = self._ensure_q_batch(X)
+        batch_shape = tuple(X.shape[:-2])
+        q = int(X.shape[-2])
+        c = int(probs.shape[-1])
+        pre = tuple(probs.shape[:-1])
+        batch_start = _find_subsequence(pre, batch_shape)
+        if batch_start is None:
+            if len(batch_shape) == 0:
+                batch_start = 0
+            else:
+                raise RuntimeError(
+                    f"{name}: could not locate batch_shape={batch_shape} in probs.shape={tuple(probs.shape)}."
+                )
+        leading = pre[:batch_start]
+        after_batch = pre[batch_start + len(batch_shape) :]
+        if len(after_batch) < 2:
+            # explicit wrapper with one output may still produce single-output shape.
+            return self._coerce_single_output_probs(probs, X, name=name)
+        q_pos = None
+        for j, size in enumerate(after_batch[:-1]):
+            if int(size) % q == 0:
+                q_pos = j
+                break
+        if q_pos is None:
+            return self._coerce_single_output_probs(probs, X, name=name)
+        q_like = int(after_batch[q_pos])
+        m = int(after_batch[-1])
+        out = probs.reshape(*leading, *batch_shape, *after_batch, c)
+        for _ in range(q_pos):
+            dim = len(leading) + len(batch_shape)
+            out = out.mean(dim=dim)
+        while out.ndim > len(leading) + len(batch_shape) + 3:
+            # Average axes between q_like and m.
+            out = out.mean(dim=-3)
+        if int(out.shape[-2]) != m:
+            raise RuntimeError(f"{name}: failed to preserve output dimension in probs.shape={tuple(probs.shape)}.")
+        if int(out.shape[-3]) != q_like:
+            raise RuntimeError(f"{name}: failed to preserve q_like dimension in probs.shape={tuple(probs.shape)}.")
+        return out
+
+    def _ensure_multi_output_probs(self, probs: Tensor, X: Tensor, *, name: str) -> Tensor:
+        """Return probabilities as ``sample_like x batch_shape x q_like x m x C``."""
         if probs.ndim < 2:
             raise RuntimeError(f"{name}: expected class probabilities with class dim. Got {tuple(probs.shape)}.")
-
-        # Already multi-output: ... x batch_shape x q_like x m x C
-        multi_tail_len = len(batch_shape) + 3
-        if probs.ndim >= multi_tail_len:
-            tail = tuple(probs.shape[-multi_tail_len:])
-            if tail[: len(batch_shape)] == batch_shape and tail[len(batch_shape)] % q == 0:
-                return probs
-
-        # Single multiclass output: ... x batch_shape x q_like x C
-        single_tail_len = len(batch_shape) + 2
-        if probs.ndim >= single_tail_len:
-            tail = tuple(probs.shape[-single_tail_len:])
-            if tail[: len(batch_shape)] == batch_shape and tail[len(batch_shape)] % q == 0:
-                return probs.unsqueeze(-2)
-
-        # Fallback for no explicit t-batch: q_like x C or q_like x m x C.
-        if len(batch_shape) == 0:
-            if probs.ndim >= 3 and probs.shape[-3] % q == 0:
-                return probs
-            if probs.ndim >= 2 and probs.shape[-2] % q == 0:
-                return probs.unsqueeze(-2)
-
-        raise RuntimeError(
-            f"{name}: could not normalize probabilities to [..., q_like, m, C]. "
-            f"probs.shape={tuple(probs.shape)}, X.shape={tuple(X.shape)}."
-        )
+        if self._has_explicit_multi_output():
+            return self._coerce_explicit_multi_output_probs(probs, X, name=name)
+        return self._coerce_single_output_probs(probs, X, name=name)
 
     def _mean_probs(self, X: Tensor) -> Tensor:
         X = self._ensure_q_batch(X)
@@ -338,66 +372,64 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
         return 1.0 - (top2[..., 0] - top2[..., 1])
 
     def _align_score_per_output_to_raw_X(self, score: Tensor, raw_X: Tensor, *, name: str) -> Tensor:
-        """Align pointwise per-output score to ``batch_shape x q x m``.
-
-        Extra leading dimensions (e.g. prediction sample dimensions left by a
-        posterior implementation) are averaged. If input perturbation expands
-        q to q*n_w, the expanded axis is averaged back to raw q.
-        """
         raw_X = self._ensure_q_batch(raw_X)
         batch_shape = tuple(raw_X.shape[:-2])
         q = int(raw_X.shape[-2])
-
-        # Expected multi-output score: ... x batch_shape x q_like x m
-        multi_tail_len = len(batch_shape) + 2
-        if score.ndim >= multi_tail_len:
-            tail = tuple(score.shape[-multi_tail_len:])
-            if tail[: len(batch_shape)] == batch_shape and tail[len(batch_shape)] % q == 0:
-                extra_ndim = score.ndim - multi_tail_len
-                if extra_ndim > 0:
-                    score = score.mean(dim=tuple(range(extra_ndim)))
-                q_like = int(score.shape[-2])
-                m = int(score.shape[-1])
-                if q_like != q:
-                    score = score.reshape(*batch_shape, q, q_like // q, m).mean(dim=-2)
-                return score
-
-        # Single-output score without explicit m: ... x batch_shape x q_like
-        single_tail_len = len(batch_shape) + 1
-        if score.ndim >= single_tail_len:
-            tail = tuple(score.shape[-single_tail_len:])
-            if tail[: len(batch_shape)] == batch_shape and tail[len(batch_shape)] % q == 0:
-                extra_ndim = score.ndim - single_tail_len
-                if extra_ndim > 0:
-                    score = score.mean(dim=tuple(range(extra_ndim)))
-                q_like = int(score.shape[-1])
-                if q_like != q:
-                    score = score.reshape(*batch_shape, q, q_like // q).mean(dim=-1)
-                return score.unsqueeze(-1)
-
-        raise RuntimeError(
-            f"{name}: could not align score to batch_shape x q x m. "
-            f"score.shape={tuple(score.shape)}, raw_X.shape={tuple(raw_X.shape)}."
-        )
+        pre = tuple(score.shape)
+        batch_start = _find_subsequence(pre, batch_shape)
+        if batch_start is None:
+            if len(batch_shape) == 0:
+                batch_start = 0
+            else:
+                raise RuntimeError(
+                    f"{name}: could not locate batch_shape={batch_shape} in score.shape={tuple(score.shape)}."
+                )
+        leading = pre[:batch_start]
+        after_batch = pre[batch_start + len(batch_shape) :]
+        if len(after_batch) == 0:
+            return score.reshape(*leading, *batch_shape, 1, 1).mean(dim=tuple(range(len(leading))))
+        q_pos = None
+        for j, size in enumerate(after_batch):
+            if int(size) % q == 0:
+                q_pos = j
+                break
+        if q_pos is None:
+            raise RuntimeError(f"{name}: could not identify q_like in score.shape={tuple(score.shape)}.")
+        q_like = int(after_batch[q_pos])
+        m = int(after_batch[-1]) if len(after_batch) >= 2 else 1
+        out = score.reshape(*leading, *batch_shape, *after_batch)
+        for _ in range(q_pos):
+            dim = len(leading) + len(batch_shape)
+            out = out.mean(dim=dim)
+        while out.ndim > len(leading) + len(batch_shape) + 2:
+            out = out.mean(dim=-2)
+        if out.ndim == len(leading) + len(batch_shape) + 1:
+            out = out.unsqueeze(-1)
+        if q_like != q:
+            out = out.reshape(*leading, *batch_shape, q, q_like // q, m).mean(dim=-2)
+        if len(leading) > 0:
+            out = out.mean(dim=tuple(range(len(leading))))
+        return out
 
     def _align_joint_score_per_output_to_raw_X(self, score: Tensor, raw_X: Tensor, *, name: str) -> Tensor:
-        """Align joint per-output score to ``batch_shape x m``."""
         raw_X = self._ensure_q_batch(raw_X)
         batch_shape = tuple(raw_X.shape[:-2])
-        tail_len = len(batch_shape) + 1
-        if score.ndim >= tail_len:
-            tail = tuple(score.shape[-tail_len:])
-            if tail[: len(batch_shape)] == batch_shape:
-                extra_ndim = score.ndim - tail_len
-                if extra_ndim > 0:
-                    score = score.mean(dim=tuple(range(extra_ndim)))
-                return score
-        if score.shape == batch_shape:
-            return score.unsqueeze(-1)
-        raise RuntimeError(
-            f"{name}: could not align joint score to batch_shape x m. "
-            f"score.shape={tuple(score.shape)}, raw_X.shape={tuple(raw_X.shape)}."
-        )
+        pre = tuple(score.shape)
+        batch_start = _find_subsequence(pre, batch_shape)
+        if batch_start is None:
+            if score.shape == batch_shape:
+                return score.unsqueeze(-1)
+            raise RuntimeError(f"{name}: could not locate batch_shape={batch_shape} in score.shape={tuple(score.shape)}.")
+        leading = pre[:batch_start]
+        after_batch = pre[batch_start + len(batch_shape) :]
+        out = score.reshape(*leading, *batch_shape, *after_batch)
+        while out.ndim > len(leading) + len(batch_shape) + 1:
+            out = out.mean(dim=-2)
+        if out.ndim == len(leading) + len(batch_shape):
+            out = out.unsqueeze(-1)
+        if len(leading) > 0:
+            out = out.mean(dim=tuple(range(len(leading))))
+        return out
 
     def _aggregate_outputs(self, score_per_output: Tensor) -> Tensor:
         if self.output_mode == "mean":

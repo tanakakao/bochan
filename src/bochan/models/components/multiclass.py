@@ -225,7 +225,12 @@ class MulticlassProbsPosterior(Posterior):
     def rsample(self, sample_shape: Optional[torch.Size] = None, base_samples: Optional[Tensor] = None) -> Tensor:
         if sample_shape is None:
             sample_shape = torch.Size()
-        latent_samples = self.latent_posterior.rsample(sample_shape=sample_shape, base_samples=base_samples)
+        if base_samples is not None:
+            try:
+                return self.rsample_from_base_samples(sample_shape=sample_shape, base_samples=base_samples)
+            except Exception:
+                pass
+        latent_samples = self.latent_posterior.rsample(sample_shape=sample_shape)
         logits = move_class_dim_to_last(latent_samples, num_classes=self.num_classes)
         return torch.softmax(logits / self.temperature, dim=-1)
 
@@ -239,7 +244,9 @@ class MulticlassProbsPosterior(Posterior):
             logits = move_class_dim_to_last(latent_samples, num_classes=self.num_classes)
             return torch.softmax(logits / self.temperature, dim=-1)
         except Exception:
-            return self.rsample(sample_shape=sample_shape)
+            latent_samples = self.latent_posterior.rsample(sample_shape=sample_shape)
+            logits = move_class_dim_to_last(latent_samples, num_classes=self.num_classes)
+            return torch.softmax(logits / self.temperature, dim=-1)
 
     def class_probs(self) -> Tensor:
         return self.mean

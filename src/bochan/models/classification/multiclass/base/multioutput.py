@@ -82,6 +82,11 @@ class MultiOutputMulticlassProbsPosterior(Posterior):
 
     @property
     def base_sample_shape(self) -> torch.Size:
+        # BoTorch sampler 互換のため、外から見える probability shape を返す。
+        # 内部の subposterior は latent GP の base_sample_shape を持つ場合があり、
+        # その形は probability shape と一致しないことがある。そのため
+        # rsample_from_base_samples では base_samples を best-effort で使い、
+        # 合わない場合は通常の rsample にフォールバックする。
         return torch.Size(self.mean.shape)
 
     @property
@@ -113,7 +118,7 @@ class MultiOutputMulticlassProbsPosterior(Posterior):
                     base_i = None
             try:
                 s_i = posterior.rsample(sample_shape=sample_shape, base_samples=base_i)
-            except TypeError:
+            except Exception:
                 s_i = posterior.rsample(sample_shape=sample_shape)
             samples.append(s_i)
 
@@ -125,6 +130,27 @@ class MultiOutputMulticlassProbsPosterior(Posterior):
                 f"Got num_classes={num_classes}."
             )
         return torch.stack(samples, dim=-2)
+
+    def rsample_from_base_samples(
+        self,
+        sample_shape: torch.Size,
+        base_samples: Tensor,
+    ) -> Tensor:
+        """BoTorch NormalMCSampler / SobolQMCNormalSampler 互換の sampling method。
+
+        ``MultiOutputMulticlassProbsPosterior`` は probability posterior の wrapper だが、
+        内部の single-output posterior は latent GP の base sample shape を持つことがある。
+        BoTorch sampler から渡される ``base_samples`` は wrapper の probability shape に
+        基づくため、subposterior の latent shape と一致しない場合がある。
+
+        そのため、まず best-effort で base_samples を各 subposterior に分配し、失敗したら
+        通常の ``rsample`` にフォールバックする。これにより qEHVI / qNEHVI の sampler 呼び出しで
+        ``NotImplementedError`` にならないようにする。
+        """
+        try:
+            return self.rsample(sample_shape=sample_shape, base_samples=base_samples)
+        except Exception:
+            return self.rsample(sample_shape=sample_shape)
 
     def class_probs(self) -> Tensor:
         return self.mean
@@ -564,11 +590,8 @@ class MultiOutputMulticlassClassificationModel(Model):
         output_indices: Optional[Sequence[int]] = None,
         **kwargs: Any,
     ) -> Tensor:
-        idcs = self._normalize_output_indices(output_indices)
         preds = []
-        for local_j, probs in enumerate(
-            self.class_probs_list(X=X, output_indices=idcs, observation_noise=False, **kwargs)
-        ):
+        for probs in self.class_probs_list(X=X, output_indices=output_indices, observation_noise=False, **kwargs):
             pred_i = probs.argmax(dim=-1)
             if pred_i.ndim == X.ndim - 1:
                 pred_i = pred_i.unsqueeze(-1)

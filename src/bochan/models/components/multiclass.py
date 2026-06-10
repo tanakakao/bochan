@@ -229,6 +229,18 @@ class MulticlassProbsPosterior(Posterior):
         logits = move_class_dim_to_last(latent_samples, num_classes=self.num_classes)
         return torch.softmax(logits / self.temperature, dim=-1)
 
+    def rsample_from_base_samples(self, sample_shape: torch.Size, base_samples: Tensor) -> Tensor:
+        """BoTorch NormalMCSampler / SobolQMCNormalSampler 互換の sampling method。"""
+        try:
+            latent_samples = self.latent_posterior.rsample_from_base_samples(
+                sample_shape=sample_shape,
+                base_samples=base_samples,
+            )
+            logits = move_class_dim_to_last(latent_samples, num_classes=self.num_classes)
+            return torch.softmax(logits / self.temperature, dim=-1)
+        except Exception:
+            return self.rsample(sample_shape=sample_shape)
+
     def class_probs(self) -> Tensor:
         return self.mean
 

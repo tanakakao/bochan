@@ -5,10 +5,7 @@ from typing import Optional
 
 import torch
 from botorch.acquisition.monte_carlo import MCAcquisitionFunction
-from botorch.acquisition.multi_objective.monte_carlo import (
-    qExpectedHypervolumeImprovement,
-    qNoisyExpectedHypervolumeImprovement,
-)
+from botorch.acquisition.multi_objective.monte_carlo import qExpectedHypervolumeImprovement
 from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 from botorch.models.model import Model
 from botorch.sampling.normal import SobolQMCNormalSampler
@@ -76,10 +73,7 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
         return bool(torch.allclose(summed, ones, atol=1e-3, rtol=1e-3))
 
     def _canonicalize_probability_samples(self, samples: Tensor) -> Tensor | None:
-        """Return samples as ``... x q x m x C`` when they look like probabilities.
-
-        Returns ``None`` if the tensor should be treated as already objective-scale.
-        """
+        """Return samples as ``... x q x m x C`` when they look like probabilities."""
         if self.num_outputs is None or samples.ndim < 4:
             return None
 
@@ -90,32 +84,32 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
             if self._looks_like_probabilities_along_dim(samples, dim=-1):
                 return samples
 
-        # Swapped layout seen with some multiclass wrappers: ... x q x C x m.
+        # Swapped layout: ... x q x C x m.
         if samples.shape[-1] == m and samples.shape[-2] != m:
             if self._looks_like_probabilities_along_dim(samples, dim=-2):
                 return samples.movedim(-1, -2)
 
         return None
 
-    def _utility_tensor(self, samples: Tensor) -> Tensor:
-        n_outputs = int(samples.shape[-2])
-        n_classes = int(samples.shape[-1])
+    def _utility_tensor(self, probs: Tensor) -> Tensor:
+        n_outputs = int(probs.shape[-2])
+        n_classes = int(probs.shape[-1])
         if self.utility_values is None:
-            utility = torch.arange(n_classes, device=samples.device, dtype=samples.dtype)
-            return utility.view(*([1] * (samples.ndim - 1)), n_classes)
+            utility = torch.arange(n_classes, device=probs.device, dtype=probs.dtype)
+            return utility.view(*([1] * (probs.ndim - 1)), n_classes)
 
-        utility = torch.as_tensor(self.utility_values, device=samples.device, dtype=samples.dtype)
+        utility = torch.as_tensor(self.utility_values, device=probs.device, dtype=probs.dtype)
         if utility.ndim == 1:
             if utility.numel() != n_classes:
                 raise ValueError(f"utility_values length must match num_classes={n_classes}, got {utility.numel()}.")
-            return utility.view(*([1] * (samples.ndim - 1)), n_classes)
+            return utility.view(*([1] * (probs.ndim - 1)), n_classes)
         if utility.ndim == 2:
             if utility.shape != torch.Size([n_outputs, n_classes]):
                 raise ValueError(
                     "2D utility_values must have shape [num_outputs, num_classes]. "
                     f"Expected [{n_outputs}, {n_classes}], got {tuple(utility.shape)}."
                 )
-            return utility.view(*([1] * (samples.ndim - 2)), n_outputs, n_classes)
+            return utility.view(*([1] * (probs.ndim - 2)), n_outputs, n_classes)
         raise ValueError("utility_values must be [C] or [m, C].")
 
     def _apply_objective_signs(self, values: Tensor) -> Tensor:
@@ -126,16 +120,14 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
             raise ValueError(f"objective_signs must have length {values.shape[-1]}, got {signs.numel()}.")
         return values * signs.view(*([1] * (values.ndim - 1)), signs.numel())
 
-    def _expected_utility(self, samples: Tensor) -> Tensor:
-        utility = self._utility_tensor(samples)
-        values = (samples * utility).sum(dim=-1)
-        return self._apply_objective_signs(values)
+    def _expected_utility(self, probs: Tensor) -> Tensor:
+        utility = self._utility_tensor(probs)
+        return self._apply_objective_signs((probs * utility).sum(dim=-1))
 
     def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
         probs = self._canonicalize_probability_samples(samples)
         if probs is None:
-            # Already objective-scale: ... x q x m. This also covers user-provided
-            # objectives or posterior means that are not probability tensors.
+            # Already objective-scale: ... x q x m.
             return self._apply_objective_signs(samples)
 
         if self.output_target_classes is not None:
@@ -156,8 +148,7 @@ class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
             indices = [int(i) for i in self.target_class]
             if len(indices) == 0:
                 raise ValueError("target_class sequence must not be empty.")
-            selected = probs[..., indices]
-            return self._apply_objective_signs(self._reduce_classes(selected))
+            return self._apply_objective_signs(self._reduce_classes(probs[..., indices]))
 
         return self._expected_utility(probs)
 
@@ -230,6 +221,7 @@ def _is_qehvi_runtime_shape_error(err: RuntimeError) -> bool:
         or "one-to-many input transform" in msg
         or "The size of tensor a" in msg
         or "must match the size of tensor b" in msg
+        or "doesn't match the broadcast shape" in msg
     )
 
 
@@ -451,6 +443,48 @@ def _make_target_objective(
     return _disable_objective_shape_check(objective)
 
 
+def _collapse_objective_values_to_2d(values: Tensor, *, num_outputs: int) -> Tensor:
+    """Collapse objective values to ``[n, m]`` for partitioning."""
+    if values.shape[-1] != num_outputs:
+        values = values.reshape(*values.shape[:-1], num_outputs)
+    while values.ndim > 2:
+        squeezed = False
+        for dim in range(values.ndim - 1):
+            if values.shape[dim] == 1:
+                values = values.squeeze(dim)
+                squeezed = True
+                break
+        if not squeezed:
+            values = values.reshape(-1, num_outputs)
+    if values.ndim == 1:
+        values = values.view(-1, num_outputs)
+    if values.shape[-1] != num_outputs:
+        values = values.reshape(-1, num_outputs)
+    return values
+
+
+def _baseline_partitioning_from_model(
+    *,
+    model: Model,
+    X_baseline: Tensor,
+    ref_point: Tensor,
+    objective: MCMultiOutputObjective,
+) -> FastNondominatedPartitioning:
+    """Build a deterministic partitioning from posterior mean at X_baseline.
+
+    This is used for the multiclass qNEHVI wrapper. It deliberately avoids
+    BoTorch's NoisyExpectedHypervolumeMixin because that mixin caches baseline
+    box decompositions in terms of raw posterior shapes, which is fragile for
+    probability tensors with an additional class dimension.
+    """
+    with torch.no_grad():
+        Xb = ensure_q_batch(X_baseline)
+        posterior = model.posterior(Xb)
+        values = objective(posterior.mean.unsqueeze(0), X=None)
+        Y_baseline = _collapse_objective_values_to_2d(values, num_outputs=int(ref_point.numel()))
+    return FastNondominatedPartitioning(ref_point=ref_point, Y=Y_baseline)
+
+
 class _MultiOutputMulticlassTargetClassBOBase(_DirectMultiOutputMulticlassAcqBase):
     """Direct target-class probability BO base for PoF and legacy scalar variants."""
 
@@ -632,8 +666,21 @@ class qMultiOutputMulticlassExpectedHypervolumeImprovement(qExpectedHypervolumeI
         return _finalize_acq_output(value, X_raw)
 
 
-class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qNoisyExpectedHypervolumeImprovement):
-    """Shape-safe qNEHVI for multiclass target-class probability / utility objectives."""
+class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qMultiOutputMulticlassExpectedHypervolumeImprovement):
+    """Shape-safe qNEHVI-style acquisition for multiclass multi-output objectives.
+
+    This class keeps the qNEHVI public API, but it does not inherit BoTorch's
+    ``qNoisyExpectedHypervolumeImprovement``. Instead, it builds a deterministic
+    non-dominated partitioning from ``model.posterior(X_baseline).mean`` and then
+    evaluates the same shape-safe multiclass qEHVI used above.
+
+    The reason is practical: BoTorch's noisy hypervolume mixin caches baseline
+    box decompositions using raw posterior sample shapes. Multiclass probability
+    posteriors have an additional class dimension ``C``, and that dimension can
+    be mistaken for an objective dimension in the cached path. The deterministic
+    partitioning avoids that fragile baseline cache while retaining the intended
+    use of ``X_baseline``.
+    """
 
     def __init__(
         self,
@@ -661,10 +708,11 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qNoisyExpectedHy
         marginalize_dim: Optional[int] = None,
         eps: float = 1e-8,
     ) -> None:
+        ref_tensor = torch.as_tensor(ref_point, device=X_baseline.device, dtype=X_baseline.dtype).reshape(-1)
         objective = _disable_objective_shape_check(
             objective
             or _make_target_objective(
-                ref_point=ref_point,
+                ref_point=ref_tensor,
                 target_class=target_class,
                 output_target_classes=output_target_classes,
                 class_reduction=class_reduction,
@@ -673,42 +721,37 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qNoisyExpectedHy
                 eps=eps,
             )
         )
+        partitioning = _baseline_partitioning_from_model(
+            model=model,
+            X_baseline=X_baseline,
+            ref_point=ref_tensor,
+            objective=objective,
+        )
         super().__init__(
             model=model,
-            ref_point=ref_point,
-            X_baseline=X_baseline,
+            ref_point=ref_tensor,
+            partitioning=partitioning,
+            target_class=target_class,
+            output_target_classes=output_target_classes,
+            class_reduction=class_reduction,
+            utility_values=utility_values,
+            objective_signs=objective_signs,
             sampler=sampler,
             objective=objective,
             constraints=constraints,
             X_pending=X_pending,
             eta=eta,
             fat=fat,
-            prune_baseline=prune_baseline,
-            alpha=alpha,
-            cache_pending=cache_pending,
-            max_iep=max_iep,
-            incremental_nehvi=incremental_nehvi,
-            cache_root=cache_root,
-            marginalize_dim=marginalize_dim,
+            eps=eps,
         )
-        self.eta = eta
-        self.fat = fat
-
-    def forward(self, X: Tensor) -> Tensor:
-        X_raw = ensure_q_batch(X)
-        try:
-            value = super().forward(X)
-        except RuntimeError as err:
-            if not _is_qehvi_runtime_shape_error(err):
-                raise
-            X_eval = X_raw
-            X_pending = getattr(self, "X_pending", None)
-            if X_pending is not None and torch.as_tensor(X_pending).numel() > 0:
-                X_eval = torch.cat([X_eval, _match_pending_to_X(X_pending, X_eval)], dim=-2)
-            posterior = self.model.posterior(X_eval)
-            samples = self.get_posterior_samples(posterior)
-            value = self._compute_qehvi(samples=samples, X=None)
-        return _finalize_acq_output(value, X_raw)
+        self.X_baseline = X_baseline
+        self.prune_baseline = prune_baseline
+        self.alpha = alpha
+        self.cache_pending = cache_pending
+        self.max_iep = max_iep
+        self.incremental_nehvi = incremental_nehvi
+        self.cache_root = cache_root
+        self.marginalize_dim = marginalize_dim
 
 
 class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):

@@ -159,8 +159,43 @@ class _MultiOutputMulticlassTargetProbabilityBase(_DirectMultiOutputMulticlassAc
     def _target_prob_samples_per_output(self, X: Tensor, *, num_samples: int | None = None) -> Tensor:
         return self._target_prob_per_output(self._sample_probs(X, num_samples=int(num_samples or self.num_samples)))
 
+    def _output_only_score_to_raw(self, score: Tensor, raw_X: Tensor, *, name: str) -> Tensor:
+        """DeepGP の output-only score を raw candidate 形状へ展開する。
+
+        DeepGP では posterior sample / latent 軸だけが残り、batch/q 次元が
+        collapse された ``[S, m]`` のような score が返ることがある。
+        その場合は leading 軸を平均して ``[m]`` にし、``batch_shape x q x m``
+        へ broadcast する。
+        """
+        raw_X = self._ensure_q_batch(raw_X)
+        batch_shape = raw_X.shape[:-2]
+        q = int(raw_X.shape[-2])
+
+        if score.ndim == 0:
+            score = score.reshape(1)
+        else:
+            while score.ndim > 1:
+                score = score.mean(dim=0)
+
+        if score.ndim != 1:
+            raise RuntimeError(
+                f"{name}: output-only fallback expected [m] after reduction, got {tuple(score.shape)}."
+            )
+
+        m = int(score.numel())
+        view_shape = (1,) * len(batch_shape) + (1, m)
+        return score.reshape(view_shape).expand(*batch_shape, q, m).to(device=raw_X.device, dtype=raw_X.dtype)
+
     def _align_score_per_output_to_raw(self, score: Tensor, raw_X: Tensor, *, name: str) -> Tensor:
-        return self._align_score_per_output_to_raw_X(score, raw_X, name=name)
+        try:
+            return self._align_score_per_output_to_raw_X(score, raw_X, name=name)
+        except RuntimeError as err:
+            msg = str(err)
+            if "could not locate batch_shape" not in msg and "could not identify q_like" not in msg:
+                raise
+            # DeepGP fallback: e.g. score=(10, 2), raw_X batch=(128,), q=1.
+            # This means only latent/sample and output dimensions remained.
+            return self._output_only_score_to_raw(score, raw_X, name=name)
 
     def _target_prob_mean_per_output_raw(self, raw_X: Tensor, *, name: str) -> Tensor:
         p = self._target_prob_mean_per_output(raw_X)

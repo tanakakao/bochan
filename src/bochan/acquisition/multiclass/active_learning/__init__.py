@@ -1,3 +1,4 @@
+from .alignment_compat import apply_active_learning_alignment_compat
 from .hetero_multi_output import (
     qHeteroMultiOutputMulticlassBALD,
     qHeteroMultiOutputMulticlassGreedyJointBALD,
@@ -39,11 +40,15 @@ from .single_output import (
     qMulticlassProbabilityVariance,
 )
 
+# DeepGP などで posterior sample / latent 軸が片側だけに残る場合の align 互換 patch。
+apply_active_learning_alignment_compat()
+
 __all__ = [
     "NoiseCombineType",
     "NoiseQAggregateType",
     "NoiseWeightMode",
     "OutputReductionType",
+    "apply_active_learning_alignment_compat",
     "qMulticlassPredictiveEntropy",
     "qMulticlassProbabilityVariance",
     "qMulticlassMarginUncertainty",

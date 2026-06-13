@@ -1,3 +1,4 @@
+from .output_compat import apply_bayesian_optimization_output_compat
 from .hetero_multi_output import (
     qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement,
     qHeteroMultiOutputMulticlassExpectedImprovement,
@@ -36,10 +37,14 @@ from .single_output import (
     qMulticlassUpperConfidenceBound,
 )
 
+# DeepGP などで qEHVI の戻り値に extra sample / latent 次元が残る場合の出力整形 patch。
+apply_bayesian_optimization_output_compat()
+
 __all__ = [
     "NoiseCombineType",
     "NoiseWeightMode",
     "OutputReductionType",
+    "apply_bayesian_optimization_output_compat",
     "compute_multiclass_target_probability_best_f",
     "compute_multiclass_target_probability_values",
     "compute_observed_multiclass_utility",

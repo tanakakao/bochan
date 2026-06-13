@@ -4,6 +4,7 @@ import torch
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 
+from bochan.acquisition.multiclass.active_learning.hetero_alignment_compat import apply_hetero_noise_alignment_compat
 from bochan.acquisition.multiclass.active_learning.hetero_multi_output import _HeteroMultiOutputMulticlassMixin
 
 from .sample_compat import apply_levelset_q_like_compat
@@ -19,8 +20,9 @@ from .multi_output import (
     qMultiOutputMulticlassProbabilityOfExceedance,
 )
 
-# Direct imports from this module should also get the q_like compatibility patch.
+# Direct imports from this module should also get compatibility patches.
 apply_levelset_q_like_compat()
+apply_hetero_noise_alignment_compat()
 
 
 class qHeteroMultiOutputMulticlassLatentStraddleAcquisition(

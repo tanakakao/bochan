@@ -108,8 +108,9 @@ class qHeteroMultiOutputMulticlassJointLatentStraddleAcquisition(
     def _joint_score_per_output(self, X: Tensor) -> Tensor:
         """Return q-aggregated joint score for each output.
 
-        Shape is ``batch_shape x m``. This method is intentionally hetero-specific:
-        noise weighting is applied after q aggregation but before output aggregation.
+        Shape is usually ``batch_shape x m``. Some heteroscedastic wrappers may
+        preserve a q-like dimension; downstream marginalization handles that
+        shape explicitly.
         """
         Xq = self._ensure_q_batch(X)
         target_samples = self._sample_target_probs(Xq)
@@ -118,6 +119,59 @@ class qHeteroMultiOutputMulticlassJointLatentStraddleAcquisition(
         uncertainty = self._joint_uncertainty_per_output(samples)
         boundary = self._boundary_distance_per_output(mean)
         return self.beta * uncertainty - boundary
+
+    def _candidate_increment_score_per_output(
+        self,
+        *,
+        all_score: Tensor,
+        pending_score: Tensor,
+        raw_X: Tensor,
+    ) -> Tensor:
+        """Return candidate-side marginal score with robust shape handling.
+
+        The intended formula is ``all_score - pending_score``. In practice,
+        heteroscedastic multiclass wrappers can preserve a q-like dimension in
+        one or both tensors, e.g. ``all_score=[batch, pending_q + raw_q, m]`` and
+        ``pending_score=[batch, pending_q, m]``. In that case, the candidate
+        contribution is the tail ``raw_q`` slice of ``all_score``.
+        """
+        all_score = torch.as_tensor(all_score)
+        pending_score = torch.as_tensor(pending_score, device=all_score.device, dtype=all_score.dtype)
+        raw_q = int(self._ensure_q_batch(raw_X).shape[-2])
+
+        if all_score.shape == pending_score.shape:
+            return all_score - pending_score
+
+        # q-like axis remains in both scores: all = pending + candidate.
+        if all_score.ndim == pending_score.ndim and all_score.shape[-1] == pending_score.shape[-1]:
+            for dim in range(all_score.ndim - 1):
+                same_except_dim = all(
+                    all_score.shape[j] == pending_score.shape[j]
+                    for j in range(all_score.ndim)
+                    if j != dim
+                )
+                if same_except_dim and all_score.shape[dim] == pending_score.shape[dim] + raw_q:
+                    cand = all_score.narrow(dim, int(pending_score.shape[dim]), raw_q)
+                    return cand.mean(dim=dim) if raw_q > 1 or cand.shape[dim] == 1 else cand
+
+        # output-first q-like axis pattern, e.g. [m, pending+q, batch].
+        if all_score.ndim == pending_score.ndim and all_score.shape[0] == pending_score.shape[0]:
+            for dim in range(1, all_score.ndim):
+                same_except_dim = all(
+                    all_score.shape[j] == pending_score.shape[j]
+                    for j in range(all_score.ndim)
+                    if j != dim
+                )
+                if same_except_dim and all_score.shape[dim] == pending_score.shape[dim] + raw_q:
+                    cand = all_score.narrow(dim, int(pending_score.shape[dim]), raw_q)
+                    return cand.mean(dim=dim)
+
+        try:
+            return all_score - pending_score
+        except RuntimeError:
+            # Conservative fallback: use candidate-only joint score. Pending is
+            # still discouraged by repulsion / pending penalties downstream.
+            return self._joint_score_per_output(raw_X)
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
@@ -139,7 +193,11 @@ class qHeteroMultiOutputMulticlassJointLatentStraddleAcquisition(
         Xp_batch = self._expand_pending_to_batch(Xp, batch_shape)
         pending_score = self._joint_score_per_output(Xp_batch)
         all_score = self._joint_score_per_output(torch.cat([Xp_batch, raw_X], dim=-2))
-        score_per_output = all_score - pending_score
+        score_per_output = self._candidate_increment_score_per_output(
+            all_score=all_score,
+            pending_score=pending_score,
+            raw_X=raw_X,
+        )
         score_per_output = self._apply_noise_to_q_aggregated_output_score(score_per_output, self._apply_input_transform(raw_X))
         value = self._aggregate_outputs(score_per_output)
         value = value - self._repulsion_penalty(raw_X)

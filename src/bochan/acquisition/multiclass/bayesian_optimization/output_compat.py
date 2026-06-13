@@ -6,6 +6,9 @@ from torch import Tensor
 from . import multi_output as _multi_output
 
 
+_ORIGINAL_FORWARD_ATTR = "_bochan_original_forward_before_output_compat"
+
+
 def _prod(shape: torch.Size | tuple[int, ...]) -> int:
     out = 1
     for s in shape:
@@ -26,9 +29,8 @@ def _finalize_acq_output(value: Tensor, X: Tensor) -> Tensor:
 
     DeepGP posteriors can leave extra leading sample / latent dimensions in qEHVI,
     for example ``value.shape == [S, raw_samples]`` while BoTorch expects
-    ``[raw_samples]``. The original helper reduced extra dimensions from the
-    right, which turned ``[10, 128]`` into ``[10]``. This helper preserves the
-    target t-batch suffix and averages only leading sample-like dimensions.
+    ``[raw_samples]``. This helper preserves the target t-batch suffix and
+    averages only leading sample-like dimensions.
     """
     target_shape = tuple(X.shape[:-2])
     if value.shape == target_shape:
@@ -50,13 +52,11 @@ def _finalize_acq_output(value: Tensor, X: Tensor) -> Tensor:
         if value.shape == target_shape:
             return value
 
-    # If target shape is scalar, reduce everything to scalar.
     if len(target_shape) == 0:
         return value.mean()
 
-    # If target shape appears contiguously inside the tensor, move to it by
-    # averaging all dimensions outside that block. This covers e.g. [S, B, Q]
-    # when target is [B] only if there is no exact suffix match.
+    # Target shape appears contiguously inside value. Preserve it and average
+    # all other axes.
     shape = tuple(value.shape)
     for start in range(0, len(shape) - len(target_shape) + 1):
         if shape[start : start + len(target_shape)] == target_shape:
@@ -66,7 +66,13 @@ def _finalize_acq_output(value: Tensor, X: Tensor) -> Tensor:
             if value.shape == target_shape:
                 return value
 
-    # Legacy fallback, but avoid reducing the preserved target suffix when present.
+    # If the result has only a DeepGP sample / latent axis left, it is safer to
+    # average it and broadcast than to return a mismatched length that breaks
+    # BoTorch's restart bookkeeping. This is a last-resort fallback for cases
+    # where an older forward already collapsed the candidate axis.
+    if value.ndim == 1 and len(target_shape) == 1 and value.numel() != target_shape[0]:
+        return value.mean().expand(*target_shape)
+
     while value.ndim > len(target_shape):
         value = value.mean(dim=0)
         if value.shape == target_shape:
@@ -79,9 +85,26 @@ def _finalize_acq_output(value: Tensor, X: Tensor) -> Tensor:
     return value
 
 
+def _wrap_forward(cls) -> None:
+    if hasattr(cls, _ORIGINAL_FORWARD_ATTR):
+        return
+
+    original_forward = cls.forward
+    setattr(cls, _ORIGINAL_FORWARD_ATTR, original_forward)
+
+    def _forward(self, X: Tensor) -> Tensor:
+        value = original_forward(self, X)
+        X_raw = _multi_output.ensure_q_batch(X)
+        return _finalize_acq_output(value, X_raw)
+
+    cls.forward = _forward
+
+
 def apply_bayesian_optimization_output_compat() -> None:
-    """Patch multiclass BO output finalization helper in-place."""
+    """Patch multiclass BO output finalization helper and EHVI forwards in-place."""
     _multi_output._finalize_acq_output = _finalize_acq_output
+    _wrap_forward(_multi_output.qMultiOutputMulticlassExpectedHypervolumeImprovement)
+    _wrap_forward(_multi_output.qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement)
 
 
 apply_bayesian_optimization_output_compat()

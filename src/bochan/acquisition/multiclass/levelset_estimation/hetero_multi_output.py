@@ -6,6 +6,7 @@ from torch import Tensor
 
 from bochan.acquisition.multiclass.active_learning.hetero_multi_output import _HeteroMultiOutputMulticlassMixin
 
+from .sample_compat import apply_levelset_q_like_compat
 from .multi_output import (
     _boundary_weight,
     _class_entropy,
@@ -17,6 +18,9 @@ from .multi_output import (
     qMultiOutputMulticlassLevelSetUncertainty,
     qMultiOutputMulticlassProbabilityOfExceedance,
 )
+
+# Direct imports from this module should also get the q_like compatibility patch.
+apply_levelset_q_like_compat()
 
 
 class qHeteroMultiOutputMulticlassLatentStraddleAcquisition(

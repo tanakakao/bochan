@@ -1,3 +1,4 @@
+from .heteroscedastic_compat import apply_heteroscedastic_alignment_compat
 from .heteroscedastic import (
     HeteroscedasticMulticlassClassificationGPModel,
     HeteroscedasticMulticlassClassificationMixedGPModel,
@@ -9,6 +10,9 @@ from .relevance_pursuit import (
     SparseOutlierSoftmaxLikelihood,
 )
 
+# InputPerturbation 等で base posterior と noise posterior の軸順がずれる場合の互換 patch。
+apply_heteroscedastic_alignment_compat()
+
 __all__ = [
     "SparseOutlierSoftmaxLikelihood",
     "OutlierRelevancePursuitMulticlassClassificationGPModel",
@@ -16,4 +20,5 @@ __all__ = [
     "HeteroscedasticMulticlassPosterior",
     "HeteroscedasticMulticlassClassificationGPModel",
     "HeteroscedasticMulticlassClassificationMixedGPModel",
+    "apply_heteroscedastic_alignment_compat",
 ]

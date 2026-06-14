@@ -16,18 +16,61 @@ def _prod(shape: torch.Size | tuple[int, ...]) -> int:
     return out
 
 
+def _expand_q_like_to_ref(t: Tensor, ref: Tensor) -> Tensor | None:
+    """Expand raw q-like noise to an InputPerturbation-expanded reference.
+
+    Examples:
+        ``[B, q, C]``     -> ``[B, q * n_w, 1, C]``
+        ``[B, q, 1, C]``  -> ``[B, q * n_w, 1, C]``
+        ``[1, B, q, C]``  -> ``[B, q * n_w, 1, C]``
+    """
+    if ref.ndim < 4 or t.shape[-1] != ref.shape[-1]:
+        return None
+
+    b = int(ref.shape[0])
+    q_ref = int(ref.shape[1])
+    c = int(ref.shape[-1])
+
+    work = t
+    while work.ndim > 0 and work.shape[0] == 1 and work.ndim > 3:
+        work = work.squeeze(0)
+
+    # [B, q, C]
+    if work.ndim == 3 and work.shape[0] == b and work.shape[-1] == c:
+        q_like = int(work.shape[1])
+        if q_like == q_ref:
+            return work.unsqueeze(-2).expand_as(ref)
+        if q_like > 0 and q_ref % q_like == 0:
+            return work.repeat_interleave(q_ref // q_like, dim=1).unsqueeze(-2).expand_as(ref)
+        if q_like > q_ref and q_like % q_ref == 0:
+            reduced = work.reshape(b, q_ref, q_like // q_ref, c).mean(dim=2)
+            return reduced.unsqueeze(-2).expand_as(ref)
+
+    # [B, q, 1, C]
+    if work.ndim == 4 and work.shape[0] == b and work.shape[-1] == c and work.shape[-2] == 1:
+        q_like = int(work.shape[1])
+        if q_like == q_ref:
+            return work.expand_as(ref)
+        if q_like > 0 and q_ref % q_like == 0:
+            return work.repeat_interleave(q_ref // q_like, dim=1).expand_as(ref)
+        if q_like > q_ref and q_like % q_ref == 0:
+            reduced = work.reshape(b, q_ref, q_like // q_ref, 1, c).mean(dim=2)
+            return reduced.expand_as(ref)
+
+    return None
+
+
 def _align_like(t: Tensor, ref: Tensor) -> Tensor:
     """Align a noise tensor to a reference probability tensor.
 
     Heteroscedastic noise models are often evaluated on the raw candidate batch,
     while the base multiclass posterior may be evaluated after one-to-many input
-    transforms such as InputPerturbation. A common shape pair is:
+    transforms such as InputPerturbation. Common shape pairs are:
 
-    - noise logvar: ``[1, batch, 1, C]``
-    - ref_like:     ``[batch, n_w, 1, C]``
-
-    In that case the raw batch axis must be moved to the reference batch axis and
-    the perturbation axis must be broadcast.
+    - noise logvar: ``[1, B, 1, C]``
+      ref_like:     ``[B, n_w, 1, C]``
+    - noise logvar: ``[B, q, C]`` or ``[B, q, 1, C]``
+      ref_like:     ``[B, q * n_w, 1, C]``
     """
     t = torch.as_tensor(t, device=ref.device, dtype=ref.dtype)
 
@@ -37,6 +80,12 @@ def _align_like(t: Tensor, ref: Tensor) -> Tensor:
     # Exact element count: reshape is unambiguous.
     if t.numel() == ref.numel():
         return t.reshape_as(ref)
+
+    # Handle q-like raw candidate axis before generic broadcasting, because
+    # [B, q, C] must become [B, q * n_w, 1, C], not [1, B, q, C].
+    expanded_q = _expand_q_like_to_ref(t, ref)
+    if expanded_q is not None:
+        return expanded_q
 
     # Standard broadcasting may already work.
     try:
@@ -49,6 +98,10 @@ def _align_like(t: Tensor, ref: Tensor) -> Tensor:
     while t_work.ndim > 0 and t_work.shape[0] == 1 and t_work.ndim >= ref.ndim:
         t_work = t_work.squeeze(0)
     if t_work.ndim <= ref.ndim:
+        # Try q-like expansion again after dropping leading singleton axes.
+        expanded_q = _expand_q_like_to_ref(t_work, ref)
+        if expanded_q is not None:
+            return expanded_q
         view_shape = (1,) * (ref.ndim - t_work.ndim) + tuple(t_work.shape)
         try:
             return t_work.reshape(view_shape).expand_as(ref)
@@ -70,8 +123,10 @@ def _align_like(t: Tensor, ref: Tensor) -> Tensor:
             moved = moved.reshape(b, *([1] * (ref.ndim - 2)), c)
             return moved.expand_as(ref)
 
-        # [B, 1, C] -> [B, 1, 1, C] -> [B, W, 1, C]
-        if t.ndim == ref.ndim - 1 and t.shape[0] == b and t.shape[-1] == c:
+        # [B, 1, C] -> [B, 1, 1, C] -> [B, W, 1, C].
+        # If the middle dimension is not 1, it is q-like and should have been
+        # handled by _expand_q_like_to_ref above.
+        if t.ndim == ref.ndim - 1 and t.shape[0] == b and t.shape[-1] == c and t.shape[1] == 1:
             moved = t
             while moved.ndim < ref.ndim:
                 moved = moved.unsqueeze(-2)
@@ -86,6 +141,9 @@ def _align_like(t: Tensor, ref: Tensor) -> Tensor:
     t_work = t
     while t_work.ndim > 0:
         if t_work.ndim <= ref.ndim:
+            expanded_q = _expand_q_like_to_ref(t_work, ref)
+            if expanded_q is not None:
+                return expanded_q
             view_shape = (1,) * (ref.ndim - t_work.ndim) + tuple(t_work.shape)
             try:
                 return t_work.reshape(view_shape).expand_as(ref)

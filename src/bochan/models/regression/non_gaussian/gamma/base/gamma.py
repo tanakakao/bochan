@@ -10,7 +10,9 @@ from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.approximate_gp import ApproximateGPyTorchModel
 from botorch.models.kernels.categorical import CategoricalKernel
 from botorch.models.transforms.input import InputTransform
+from botorch.models.transforms.outcome import OutcomeTransform
 from botorch.models.utils.gpytorch_modules import get_covar_module_with_dim_scaled_prior
+from botorch.posteriors import Posterior
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 
 from gpytorch.distributions import MultivariateNormal
@@ -35,6 +37,69 @@ from bochan.models.components.gamma import (
     select_inducing_points,
     to_device_dtype_transform,
 )
+
+
+def clone_outcome_transform(outcome_transform: Optional[OutcomeTransform]) -> Optional[OutcomeTransform]:
+    """OutcomeTransform を安全に複製する。"""
+    return None if outcome_transform is None else copy.deepcopy(outcome_transform)
+
+
+def to_device_dtype_outcome_transform(
+    outcome_transform: Optional[OutcomeTransform],
+    ref: Tensor,
+) -> Optional[OutcomeTransform]:
+    """OutcomeTransform を ref と同じ device / dtype に移す。"""
+    if outcome_transform is not None and hasattr(outcome_transform, "to"):
+        outcome_transform = outcome_transform.to(device=ref.device, dtype=ref.dtype)
+    return outcome_transform
+
+
+def apply_outcome_transform_for_training(
+    train_Y: Tensor,
+    train_X: Tensor,
+    outcome_transform: Optional[OutcomeTransform],
+    *,
+    min_mean: float,
+    name: str,
+) -> tuple[Tensor, Tensor, Optional[OutcomeTransform]]:
+    """Gamma 用に正値を保つ形で outcome_transform を適用する。
+
+    Returns:
+        raw_train_Y:
+            元スケールの正値 target。condition_on_observations 用に保持する。
+        transformed_train_Y:
+            likelihood / latent model に渡す model-scale target。
+        outcome_transform:
+            device / dtype を揃えた transform。
+    """
+    raw_train_Y = prepare_positive_targets(train_Y, train_X, min_value=min_mean)
+    outcome_transform = to_device_dtype_outcome_transform(outcome_transform, train_X)
+
+    if outcome_transform is None:
+        return raw_train_Y, raw_train_Y, None
+
+    Y_for_transform = raw_train_Y.unsqueeze(-1) if raw_train_Y.ndim == 1 else raw_train_Y
+    transformed_Y, _ = outcome_transform(Y_for_transform, X=train_X)
+    transformed_train_Y = prepare_positive_targets(
+        transformed_Y,
+        train_X,
+        min_value=min_mean,
+    )
+
+    if transformed_train_Y.shape[-1:] == torch.Size([1]) and transformed_train_Y.ndim > 1:
+        transformed_train_Y = transformed_train_Y.squeeze(-1)
+
+    if transformed_train_Y.shape != raw_train_Y.shape:
+        try:
+            transformed_train_Y = transformed_train_Y.reshape_as(raw_train_Y)
+        except RuntimeError as err:
+            raise RuntimeError(
+                f"{name} produced an incompatible target shape. "
+                f"raw_train_Y.shape={tuple(raw_train_Y.shape)}, "
+                f"transformed_train_Y.shape={tuple(transformed_train_Y.shape)}."
+            ) from err
+
+    return raw_train_Y, transformed_train_Y.contiguous(), outcome_transform
 
 
 def _make_cat_kernel(cat_dims: Sequence[int], batch_shape: torch.Size) -> ScaleKernel:
@@ -171,7 +236,8 @@ class _BaseGammaGPModel(ApproximateGPyTorchModel):
     Notes:
         - wrapper は raw-space X を受け取る。
         - latent model は input_transform 後の X を保持する。
-        - posterior(X) は GammaPosterior を返す。
+        - likelihood / latent model は outcome_transform 後の Y で学習する。
+        - posterior(X) は、outcome_transform があれば元スケールに戻した posterior を返す。
         - latent_posterior(X) は GPyTorchPosterior を返す。
     """
 
@@ -183,6 +249,8 @@ class _BaseGammaGPModel(ApproximateGPyTorchModel):
         train_X: Tensor,
         train_Y: Tensor,
         input_transform: Optional[InputTransform],
+        outcome_transform: Optional[OutcomeTransform] = None,
+        train_Y_raw: Optional[Tensor] = None,
         cat_dims: Optional[Sequence[int]] = None,
         num_inducing_points: int = 128,
         learn_inducing_locations: bool = True,
@@ -192,11 +260,17 @@ class _BaseGammaGPModel(ApproximateGPyTorchModel):
     ) -> None:
         super().__init__(model=latent_model, likelihood=likelihood, num_outputs=1)
         self.input_transform = input_transform
+        self.outcome_transform = outcome_transform
         self.cat_dims = None if cat_dims is None else list(cat_dims)
 
         self.train_inputs_raw = (train_X.detach().clone(),)
         self.train_inputs = (train_X,)
-        self.train_targets = prepare_positive_targets(train_Y, train_X)
+        self.train_targets_raw = prepare_positive_targets(
+            train_Y if train_Y_raw is None else train_Y_raw,
+            train_X,
+            min_value=min_mean,
+        )
+        self.train_targets = prepare_positive_targets(train_Y, train_X, min_value=min_mean)
 
         self.num_inducing_points = int(num_inducing_points)
         self.learn_inducing_locations = bool(learn_inducing_locations)
@@ -217,6 +291,15 @@ class _BaseGammaGPModel(ApproximateGPyTorchModel):
             self.input_transform,
             cat_dims=self.cat_dims,
         )
+
+    def transform_outcomes(self, Y: Tensor, X: Optional[Tensor] = None) -> Tensor:
+        """raw target を model-scale target に変換する。"""
+        Y = prepare_positive_targets(Y, self.train_inputs_raw[0] if X is None else X, min_value=self.min_mean)
+        if self.outcome_transform is None:
+            return Y
+        Y_for_transform = Y.unsqueeze(-1) if Y.ndim == 1 else Y
+        Y_tf, _ = self.outcome_transform(Y_for_transform, X=X)
+        return prepare_positive_targets(Y_tf, self.train_inputs_raw[0] if X is None else X, min_value=self.min_mean)
 
     def latent_posterior(
         self,
@@ -245,7 +328,7 @@ class _BaseGammaGPModel(ApproximateGPyTorchModel):
         observation_noise: bool | Tensor = True,
         posterior_transform: Optional[PosteriorTransform] = None,
         **kwargs: Any,
-    ) -> GammaPosterior:
+    ) -> Posterior:
         if torch.is_tensor(observation_noise):
             raise NotImplementedError(
                 f"{self.__class__.__name__} does not support tensor observation_noise."
@@ -256,11 +339,13 @@ class _BaseGammaGPModel(ApproximateGPyTorchModel):
             posterior_transform=None,
             **kwargs,
         )
-        posterior = GammaPosterior(
+        posterior: Posterior = GammaPosterior(
             latent_posterior=latent_post,
             likelihood=self.likelihood,
             add_observation_noise=bool(observation_noise),
         )
+        if self.outcome_transform is not None:
+            posterior = self.outcome_transform.untransform_posterior(posterior, X=X)
         if posterior_transform is not None:
             posterior = posterior_transform(posterior)
         return posterior
@@ -298,6 +383,7 @@ class GammaGPModel(_BaseGammaGPModel):
         *,
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
         num_inducing_points: int = 128,
@@ -311,8 +397,15 @@ class GammaGPModel(_BaseGammaGPModel):
         min_concentration: float = 1e-6,
     ) -> None:
         train_X = torch.as_tensor(train_X)
-        train_Y = prepare_positive_targets(train_Y, train_X, min_value=min_mean)
         input_transform = to_device_dtype_transform(clone_input_transform(input_transform), train_X)
+        outcome_transform = clone_outcome_transform(outcome_transform)
+        raw_train_Y, train_Y, outcome_transform = apply_outcome_transform_for_training(
+            train_Y=train_Y,
+            train_X=train_X,
+            outcome_transform=outcome_transform,
+            min_mean=min_mean,
+            name="GammaGPModel.outcome_transform",
+        )
         train_X_tf = apply_input_transform_for_training(
             train_X,
             input_transform,
@@ -342,6 +435,8 @@ class GammaGPModel(_BaseGammaGPModel):
             train_X=train_X,
             train_Y=train_Y,
             input_transform=input_transform,
+            outcome_transform=outcome_transform,
+            train_Y_raw=raw_train_Y,
             cat_dims=None,
             num_inducing_points=num_inducing_points,
             learn_inducing_locations=learn_inducing_locations,
@@ -363,12 +458,13 @@ class GammaGPModel(_BaseGammaGPModel):
             X = X.unsqueeze(0)
         Y = prepare_positive_targets(Y, X, min_value=self.min_mean)
         new_X = torch.cat([self.train_inputs_raw[0], X], dim=-2)
-        new_Y = torch.cat([self.train_targets, Y], dim=0)
+        new_Y = torch.cat([self.train_targets_raw, Y], dim=0)
         return self.__class__(
             train_X=new_X,
             train_Y=new_Y,
             likelihood=copy.deepcopy(self.likelihood),
             input_transform=clone_input_transform(self.input_transform),
+            outcome_transform=clone_outcome_transform(self.outcome_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             covar_module=copy.deepcopy(self.model.covar_module),
             num_inducing_points=self.num_inducing_points,
@@ -394,6 +490,7 @@ class GammaMixedGPModel(_BaseGammaGPModel):
         cat_dims: Sequence[int],
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
         num_inducing_points: int = 128,
@@ -411,8 +508,15 @@ class GammaMixedGPModel(_BaseGammaGPModel):
         cat_dims = normalize_dims(cat_dims, d)
         if len(cat_dims) == 0:
             raise ValueError("cat_dims must be non-empty for GammaMixedGPModel.")
-        train_Y = prepare_positive_targets(train_Y, train_X, min_value=min_mean)
         input_transform = to_device_dtype_transform(clone_input_transform(input_transform), train_X)
+        outcome_transform = clone_outcome_transform(outcome_transform)
+        raw_train_Y, train_Y, outcome_transform = apply_outcome_transform_for_training(
+            train_Y=train_Y,
+            train_X=train_X,
+            outcome_transform=outcome_transform,
+            min_mean=min_mean,
+            name="GammaMixedGPModel.outcome_transform",
+        )
 
         train_X_tf = apply_input_transform_for_training(
             train_X,
@@ -446,6 +550,8 @@ class GammaMixedGPModel(_BaseGammaGPModel):
             train_X=train_X,
             train_Y=train_Y,
             input_transform=input_transform,
+            outcome_transform=outcome_transform,
+            train_Y_raw=raw_train_Y,
             cat_dims=cat_dims,
             num_inducing_points=num_inducing_points,
             learn_inducing_locations=learn_inducing_locations,
@@ -464,5 +570,7 @@ __all__ = [
     "GammaPosterior",
     "GammaGPModel",
     "GammaMixedGPModel",
+    "apply_outcome_transform_for_training",
     "build_mixed_gamma_kernel",
+    "clone_outcome_transform",
 ]

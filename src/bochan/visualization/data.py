@@ -126,6 +126,50 @@ def create_grid(xx: np.ndarray, yy: np.ndarray, row: np.ndarray, feature_cols: S
     return grid
 
 
+def _constraint_sum_value(obj: Any, select_idx: Sequence[int], default: float | None = None) -> float:
+    """対象3列を含む線形制約から三角グリッドの合計値を推定する。"""
+
+    if default is not None:
+        return float(default)
+
+    selected = {int(i) for i in select_idx}
+    candidates = (obj, getattr(obj, "data_context", None), getattr(obj, "bundle", None))
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        constraint_idx = getattr(candidate, "constraint_idx", None)
+        constraint_values = getattr(candidate, "constraint_values", None)
+        if constraint_idx is None or constraint_values is None:
+            continue
+        try:
+            values = np.ravel(to_numpy(constraint_values)).astype(float)
+        except (TypeError, ValueError):
+            continue
+        for idx_group, value in zip(list(constraint_idx), values, strict=False):
+            try:
+                idx_set = {int(i) for i in np.ravel(to_numpy(idx_group)).tolist()}
+            except (TypeError, ValueError):
+                continue
+            if selected.issubset(idx_set) and np.isfinite(value) and value > 0.0:
+                return float(value)
+    return 1.0
+
+
+def _reference_x_for_grid(obj: Any, candidate_result: Any | None = None) -> Any | None:
+    """固定行作成に使う参照Xを旧実装に近い順序で取得する。"""
+
+    for candidate in (obj, getattr(obj, "data_context", None), getattr(obj, "bundle", None)):
+        if candidate is None:
+            continue
+        reference_x = getattr(candidate, "candidates_raw", None)
+        if reference_x is not None:
+            return reference_x
+    result = candidate_result or candidate_result_from(obj)
+    if result is not None and getattr(result, "candidates", None) is not None:
+        return getattr(result, "candidates")
+    return None
+
+
 def grid_1d_plot(
     obj: Any,
     select_col: str,
@@ -199,7 +243,7 @@ def grid_2d(
             raise ValueError(f"target_col must be one of {list(mean_df.columns)}.")
         Z = mean_df[target_col].to_numpy().reshape(len(x2), len(x1))
 
-    for axis_name, values in zip(select_cols, (x1, x2)):
+    for axis_name, values in zip(select_cols, (x1, x2), strict=False):
         mapping = labels_from(obj, axis_name)
         if mapping is not None:
             decoded = np.asarray(decode_values(list(values), mapping), dtype=object)
@@ -220,8 +264,8 @@ def tri_grid(
     target_cols: Sequence[str] | None = None,
     candidate_result: Any | None = None,
     acqf: Any | None = None,
-    sum_value: float = 1.0,
-    n: int = 50,
+    sum_value: float | None = None,
+    n: int = 35,
     show_type: ShowType = "acqf",
 ) -> tuple[np.ndarray, np.ndarray]:
     """3成分制約 x1+x2+x3=sum_value の三角グリッド上で評価する。"""
@@ -234,16 +278,20 @@ def tri_grid(
     train_X = get_train_X(obj)
     cols = infer_feature_cols(obj, feature_cols, ensure_2d(train_X).shape[1])
     idx = [cols.index(c) for c in select_cols]
-    x = np.linspace(0.0, float(sum_value), int(n))
+    max_value = _constraint_sum_value(obj, idx, default=sum_value)
+
+    x = np.linspace(0.0, max_value, int(n))
     xx, yy = np.meshgrid(x, x)
-    mask = (xx.ravel() + yy.ravel()) <= float(sum_value)
-    a = xx.ravel()[mask]
-    b = yy.ravel()[mask]
-    c = float(sum_value) - a - b
+    valid_idx = (xx.ravel() + yy.ravel()) <= max_value
+    a = xx.ravel()[valid_idx]
+    b = yy.ravel()[valid_idx]
+    c = np.maximum(max_value - a - b, 0.0)
     tri_values = np.column_stack([a, b, c])
 
-    row = fixed_row_from(obj, feature_cols=cols, value_dict=value_dict)
-    grid = np.repeat(row, repeats=len(tri_values), axis=0)
+    reference_x = _reference_x_for_grid(obj, candidate_result=candidate_result)
+    row = fixed_row_from(obj, feature_cols=cols, value_dict=value_dict, reference_x=reference_x)
+    row = ensure_2d(row)[:, : len(cols)]
+    grid = np.broadcast_to(row, (len(tri_values), len(cols))).copy()
     grid[:, idx] = tri_values
     grid_t = to_tensor_like(grid, obj)
 

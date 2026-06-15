@@ -12,6 +12,7 @@ from .gamma import (
     GammaGPModel as _GammaGPModel,
     GammaMixedGPModel as _GammaMixedGPModel,
     GammaPosterior,
+    clone_outcome_transform,
 )
 
 
@@ -60,13 +61,14 @@ class GammaMixedGPModel(_AlignedGammaMixin, _GammaMixedGPModel):
             X = X.unsqueeze(0)
         Y = prepare_positive_targets(Y, X, min_value=self.min_mean)
         new_X = torch.cat([self.train_inputs_raw[0], X], dim=-2)
-        new_Y = torch.cat([self.train_targets, Y], dim=0)
+        new_Y = torch.cat([self.train_targets_raw, Y], dim=0)
         return self.__class__(
             train_X=new_X,
             train_Y=new_Y,
             cat_dims=list(self.cat_dims),
             likelihood=copy.deepcopy(self.likelihood),
             input_transform=clone_input_transform(self.input_transform),
+            outcome_transform=clone_outcome_transform(self.outcome_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             covar_module=copy.deepcopy(self.model.covar_module),
             num_inducing_points=self.num_inducing_points,

@@ -238,7 +238,7 @@ def show_triscatter_with_acqf(feature_col1: str, feature_col2: str, feature_col3
             grid_valid,
             values_valid,
             pole_labels=[feature_col1, feature_col2, feature_col3],
-            ncontours=20,
+            ncontours=12,
             coloring=None,
             colorscale="RdBu",
             showscale=False,
@@ -321,7 +321,7 @@ def show_scatter_with_acqf_from_optimizer(obj: Any, feature_col1: str, feature_c
     return show_scatter_with_acqf(feature_col1, feature_col2, target_col, data, X_df, y_df, df_cand, show_type=show_type, cycle=cycle)
 
 
-def show_triscatter_with_acqf_from_optimizer(obj: Any, feature_col1: str, feature_col2: str, feature_col3: str, target_col: str, *, feature_cols: Sequence[str] | None = None, target_cols: Sequence[str] | None = None, value_dict: dict[str, Any] | None = None, candidate_result: Any | None = None, sum_value: float = 1.0, n: int = 50, show_type: str = "acqf", cycle: str | Sequence[Any] | pd.Series | None = None) -> Figure:
+def show_triscatter_with_acqf_from_optimizer(obj: Any, feature_col1: str, feature_col2: str, feature_col3: str, target_col: str, *, feature_cols: Sequence[str] | None = None, target_cols: Sequence[str] | None = None, value_dict: dict[str, Any] | None = None, candidate_result: Any | None = None, sum_value: float | None = None, n: int = 35, show_type: str = "acqf", cycle: str | Sequence[Any] | pd.Series | None = None) -> Figure:
     X_df, y_df = training_dataframe(obj, feature_cols=feature_cols, target_cols=target_cols)
     data = tri_grid(obj, [feature_col1, feature_col2, feature_col3], target_col, value_dict, feature_cols=list(X_df.columns), target_cols=list(y_df.columns), candidate_result=candidate_result, sum_value=sum_value, n=n, show_type=show_type)  # type: ignore[arg-type]
     df_cand = candidates_dataframe(obj, candidate_result=candidate_result, feature_cols=list(X_df.columns), target_cols=list(y_df.columns))

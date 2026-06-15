@@ -6,6 +6,7 @@ import torch
 from torch import Tensor
 
 from botorch.models.map_saas import add_saas_prior
+from botorch.models.transforms.outcome import OutcomeTransform
 from gpytorch.kernels import Kernel, MaternKernel, ScaleKernel
 from gpytorch.means import Mean
 
@@ -54,6 +55,7 @@ class SaasGammaGPModel(GammaGPModel):
         *,
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Any | None = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
         num_inducing_points: int = 128,
@@ -86,6 +88,7 @@ class SaasGammaGPModel(GammaGPModel):
             train_Y=train_Y,
             likelihood=likelihood,
             input_transform=input_transform,
+            outcome_transform=outcome_transform,
             mean_module=mean_module,
             covar_module=covar_module,
             num_inducing_points=num_inducing_points,
@@ -111,6 +114,7 @@ class SaasGammaMixedGPModel(GammaMixedGPModel):
         cat_dims: Sequence[int],
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Any | None = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
         num_inducing_points: int = 128,
@@ -145,6 +149,7 @@ class SaasGammaMixedGPModel(GammaMixedGPModel):
             cat_dims=cat_dims,
             likelihood=likelihood,
             input_transform=input_transform,
+            outcome_transform=outcome_transform,
             mean_module=mean_module,
             covar_module=covar_module,
             num_inducing_points=num_inducing_points,

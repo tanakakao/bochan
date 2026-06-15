@@ -33,6 +33,10 @@ from .single_output import (
     qRegressionProbabilityOfExceedance,
 )
 
+# Apply stronger q-batch diversity behavior for pointwise regression level-set
+# acquisitions imported through this package.
+from . import diversity as _diversity  # noqa: F401
+
 __all__ = [
     "HeteroMultiOutputRegressionLevelSetScoreObjective",
     "qHeteroMultiOutputRegressionStraddle",

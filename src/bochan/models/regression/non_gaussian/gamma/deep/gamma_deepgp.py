@@ -9,6 +9,8 @@ from torch import Tensor
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.gpytorch import GPyTorchModel
 from botorch.models.transforms.input import InputTransform
+from botorch.models.transforms.outcome import OutcomeTransform
+from botorch.posteriors import Posterior
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 
 from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
@@ -29,8 +31,11 @@ from bochan.models.components.gamma import (
     clone_input_transform,
     get_cont_dims,
     normalize_dims,
-    prepare_positive_targets,
     to_device_dtype_transform,
+)
+from bochan.models.regression.non_gaussian.gamma.base.gamma import (
+    apply_outcome_transform_for_training,
+    clone_outcome_transform,
 )
 
 
@@ -83,15 +88,17 @@ class _BaseGammaDeepGPModel(DeepGP, GPyTorchModel):
         observation_noise: bool | Tensor = True,
         posterior_transform: Optional[PosteriorTransform] = None,
         **kwargs: Any,
-    ) -> GammaPosterior:
+    ) -> Posterior:
         if torch.is_tensor(observation_noise):
             raise NotImplementedError(f"{self.__class__.__name__} does not support tensor observation_noise.")
         latent_post = self.latent_posterior(X, output_indices=output_indices, posterior_transform=None, **kwargs)
-        posterior = GammaPosterior(
+        posterior: Posterior = GammaPosterior(
             latent_posterior=latent_post,
             likelihood=self.likelihood,
             add_observation_noise=bool(observation_noise),
         )
+        if getattr(self, "outcome_transform", None) is not None:
+            posterior = self.outcome_transform.untransform_posterior(posterior, X=X)
         if posterior_transform is not None:
             posterior = posterior_transform(posterior)
         return posterior
@@ -123,6 +130,7 @@ class GammaDeepGPModel(_BaseGammaDeepGPModel):
         num_inducing: int = 128,
         list_hidden_dims: Optional[Sequence[int]] = None,
         input_transform: Optional[InputTransform] = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         likelihood: Optional[GammaLogLikelihood] = None,
         link: GammaLink = "softplus",
         init_concentration: float = 10.0,
@@ -136,9 +144,16 @@ class GammaDeepGPModel(_BaseGammaDeepGPModel):
     ) -> None:
         super().__init__()
         train_X = torch.as_tensor(train_X)
-        train_Y = prepare_positive_targets(train_Y, train_X, min_value=min_mean)
-
         self.input_transform = to_device_dtype_transform(clone_input_transform(input_transform), train_X)
+        self.outcome_transform = clone_outcome_transform(outcome_transform)
+        raw_train_Y, train_Y, self.outcome_transform = apply_outcome_transform_for_training(
+            train_Y=train_Y,
+            train_X=train_X,
+            outcome_transform=self.outcome_transform,
+            min_mean=min_mean,
+            name="GammaDeepGPModel.outcome_transform",
+        )
+
         train_X_tf = apply_input_transform_for_training(train_X, self.input_transform, name="GammaDeepGPModel.input_transform")
 
         d = train_X_tf.shape[-1]
@@ -203,6 +218,7 @@ class GammaDeepGPModel(_BaseGammaDeepGPModel):
         self.train_inputs_raw = (train_X.detach().clone(),)
         self.train_inputs = (train_X,)
         self.transformed_train_inputs = (train_X_tf.detach().clone(),)
+        self.train_targets_raw = raw_train_Y
         self.train_targets = train_Y
 
         self.hidden_dim = int(hidden_dim)
@@ -234,9 +250,12 @@ class GammaDeepGPModel(_BaseGammaDeepGPModel):
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
         if X.ndim == 1:
             X = X.unsqueeze(0)
-        Y = prepare_positive_targets(Y, X, min_value=self.min_mean)
+        Y = torch.as_tensor(Y, device=X.device, dtype=X.dtype)
+        if Y.ndim > 1 and Y.shape[-1] == 1:
+            Y = Y.squeeze(-1)
+        Y = Y.clamp_min(self.min_mean)
         new_X = torch.cat([self.train_inputs_raw[0], X], dim=-2)
-        new_Y = torch.cat([self.train_targets, Y], dim=0)
+        new_Y = torch.cat([self.train_targets_raw, Y], dim=0)
         new_model = self.__class__(
             train_X=new_X,
             train_Y=new_Y,
@@ -244,6 +263,7 @@ class GammaDeepGPModel(_BaseGammaDeepGPModel):
             num_inducing=self.num_inducing,
             list_hidden_dims=self.list_hidden_dims,
             input_transform=clone_input_transform(self.input_transform),
+            outcome_transform=clone_outcome_transform(self.outcome_transform),
             likelihood=copy.deepcopy(self.likelihood),
             link=self.link,
             init_concentration=float(self.likelihood.concentration.detach().cpu()),
@@ -273,6 +293,7 @@ class GammaMixedDeepGPModel(_BaseGammaDeepGPModel):
         hidden_dim: int = 4,
         num_inducing: int = 128,
         input_transform: Optional[InputTransform] = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         likelihood: Optional[GammaLogLikelihood] = None,
         link: GammaLink = "softplus",
         init_concentration: float = 10.0,
@@ -286,7 +307,14 @@ class GammaMixedDeepGPModel(_BaseGammaDeepGPModel):
     ) -> None:
         super().__init__()
         train_X = torch.as_tensor(train_X)
-        train_Y = prepare_positive_targets(train_Y, train_X, min_value=min_mean)
+        self.outcome_transform = clone_outcome_transform(outcome_transform)
+        raw_train_Y, train_Y, self.outcome_transform = apply_outcome_transform_for_training(
+            train_Y=train_Y,
+            train_X=train_X,
+            outcome_transform=self.outcome_transform,
+            min_mean=min_mean,
+            name="GammaMixedDeepGPModel.outcome_transform",
+        )
 
         d = train_X.shape[-1]
         self.cat_dims = normalize_dims(cat_dims, d)
@@ -344,6 +372,7 @@ class GammaMixedDeepGPModel(_BaseGammaDeepGPModel):
         self.train_inputs_raw = (train_X.detach().clone(),)
         self.train_inputs = (train_X,)
         self.transformed_train_inputs = (train_X_tf.detach().clone(),)
+        self.train_targets_raw = raw_train_Y
         self.train_targets = train_Y
 
         self.hidden_dim = int(hidden_dim)

@@ -7,6 +7,7 @@ import torch
 from torch import Tensor
 from botorch.models.model import Model
 from botorch.models.transforms.input import InputTransform
+from botorch.models.transforms.outcome import OutcomeTransform
 
 from bochan.models.components.decomposition import (
     PCAConfig,
@@ -28,6 +29,7 @@ from bochan.models.regression.non_gaussian.gamma import (
     GammaGPModel,
     GammaLogLikelihood,
     GammaMixedGPModel,
+    clone_outcome_transform,
 )
 
 
@@ -75,6 +77,10 @@ class _BaseProjectedGammaModel(Model):
 
     @property
     def train_targets(self) -> Tensor:
+        return self._train_targets
+
+    @property
+    def train_targets_raw(self) -> Tensor:
         return self._train_targets
 
     @property
@@ -145,6 +151,7 @@ class _ContinuousProjectedGammaModel(_BaseProjectedGammaModel):
             train_Y=new_Y,
             likelihood=copy.deepcopy(self.base_model.likelihood),
             input_transform=clone_input_transform(self.input_transform),
+            outcome_transform=clone_outcome_transform(self.outcome_transform),
             projector=self._clone_projector(),
             latent_dim=self.latent_dim,
             num_inducing_points=self.num_inducing_points,
@@ -168,6 +175,7 @@ class PCAGammaGPModel(_ContinuousProjectedGammaModel):
         projector: Optional[PCATransformer] = None,
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         num_inducing_points: int = 128,
         link: GammaLink = "softplus",
         exp_clip: float = 20.0,
@@ -179,6 +187,7 @@ class PCAGammaGPModel(_ContinuousProjectedGammaModel):
         self.input_dim_original = train_X.shape[-1]
         self.latent_dim = int(n_components if n_components is not None else latent_dim)
         self.input_transform = clone_input_transform(input_transform)
+        self.outcome_transform = clone_outcome_transform(outcome_transform)
         pre_X = apply_input_transform_for_training(
             train_X,
             self.input_transform,
@@ -208,6 +217,7 @@ class PCAGammaGPModel(_ContinuousProjectedGammaModel):
             train_Y=train_Y,
             likelihood=likelihood,
             input_transform=None,
+            outcome_transform=clone_outcome_transform(self.outcome_transform),
             num_inducing_points=num_inducing_points,
             link=link,
             exp_clip=exp_clip,
@@ -232,6 +242,7 @@ class REMBOGammaGPModel(_ContinuousProjectedGammaModel):
         projector: Optional[REMBOTransformer] = None,
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         num_inducing_points: int = 128,
         seed: int = 42,
         link: GammaLink = "softplus",
@@ -244,6 +255,7 @@ class REMBOGammaGPModel(_ContinuousProjectedGammaModel):
         self.input_dim_original = train_X.shape[-1]
         self.latent_dim = int(n_components if n_components is not None else latent_dim)
         self.input_transform = clone_input_transform(input_transform)
+        self.outcome_transform = clone_outcome_transform(outcome_transform)
         pre_X = apply_input_transform_for_training(
             train_X,
             self.input_transform,
@@ -274,6 +286,7 @@ class REMBOGammaGPModel(_ContinuousProjectedGammaModel):
             train_Y=train_Y,
             likelihood=likelihood,
             input_transform=None,
+            outcome_transform=clone_outcome_transform(self.outcome_transform),
             num_inducing_points=num_inducing_points,
             link=link,
             exp_clip=exp_clip,
@@ -320,6 +333,7 @@ class PCAGammaMixedGPModel(_MixedProjectedGammaModel):
         projector: Optional[PCATransformer] = None,
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         num_inducing_points: int = 128,
         link: GammaLink = "softplus",
         exp_clip: float = 20.0,
@@ -333,6 +347,7 @@ class PCAGammaMixedGPModel(_MixedProjectedGammaModel):
         self.cont_dims = get_cont_dims(self.input_dim_original, self.cat_dims)
         self.latent_dim = int(n_components if n_components is not None else latent_dim)
         self.input_transform = clone_input_transform(input_transform)
+        self.outcome_transform = clone_outcome_transform(outcome_transform)
         pre_X = apply_input_transform_for_training(
             train_X,
             self.input_transform,
@@ -368,6 +383,7 @@ class PCAGammaMixedGPModel(_MixedProjectedGammaModel):
             cat_dims=latent_cat_dims,
             likelihood=likelihood,
             input_transform=None,
+            outcome_transform=clone_outcome_transform(self.outcome_transform),
             num_inducing_points=num_inducing_points,
             link=link,
             exp_clip=exp_clip,
@@ -390,6 +406,7 @@ class REMBOGammaMixedGPModel(PCAGammaMixedGPModel):
         projector: Optional[REMBOTransformer] = None,
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         num_inducing_points: int = 128,
         seed: int = 42,
         link: GammaLink = "softplus",
@@ -404,6 +421,7 @@ class REMBOGammaMixedGPModel(PCAGammaMixedGPModel):
         self.cont_dims = get_cont_dims(self.input_dim_original, self.cat_dims)
         self.latent_dim = int(n_components if n_components is not None else latent_dim)
         self.input_transform = clone_input_transform(input_transform)
+        self.outcome_transform = clone_outcome_transform(outcome_transform)
         pre_X = apply_input_transform_for_training(
             train_X,
             self.input_transform,
@@ -440,6 +458,7 @@ class REMBOGammaMixedGPModel(PCAGammaMixedGPModel):
             cat_dims=latent_cat_dims,
             likelihood=likelihood,
             input_transform=None,
+            outcome_transform=clone_outcome_transform(self.outcome_transform),
             num_inducing_points=num_inducing_points,
             link=link,
             exp_clip=exp_clip,

@@ -15,7 +15,11 @@ for q-batches.
   distance.
 - ``qRegressionICU`` and ``qRegressionBoundaryVariance`` use a weighted
   posterior-covariance log-det score when ``q > 1``.
+- Custom posterior wrappers such as GammaPosterior / TransformedPosterior are
+  unwrapped to recover latent Gaussian covariance when available.
 """
+
+from typing import Any, Optional
 
 import torch
 from torch import Tensor
@@ -26,6 +30,7 @@ from .single_output import (
     _RegressionLevelSetBase,
     _ensure_q_batch,
     _safe_logdet,
+    _safe_prod,
     qRegressionBoundaryVariance,
     qRegressionICU,
 )
@@ -95,6 +100,127 @@ def _same_batch_penalty_per_point(self: _RegressionLevelSetBase, Xt: Tensor) -> 
         per_point = per_point + float(self.hard_duplicate_penalty) * dup.sum(dim=-1)
 
     return per_point
+
+
+def _maybe_covariance_matrix(obj: Any) -> Optional[Tensor]:
+    """Return covariance_matrix from a posterior-like object if available."""
+    if obj is None:
+        return None
+    covar = getattr(obj, "covariance_matrix", None)
+    if torch.is_tensor(covar):
+        return covar
+    mvn = getattr(obj, "mvn", None)
+    if mvn is not None:
+        covar = getattr(mvn, "covariance_matrix", None)
+        if torch.is_tensor(covar):
+            return covar
+    dist = getattr(obj, "distribution", None)
+    if dist is not None:
+        covar = getattr(dist, "covariance_matrix", None)
+        if torch.is_tensor(covar):
+            return covar
+    return None
+
+
+def _iter_inner_posteriors(obj: Any) -> list[Any]:
+    """Return likely wrapped / latent posteriors without calling posterior methods."""
+    out: list[Any] = []
+    for attr in (
+        "latent_posterior",
+        "base_posterior",
+        "_posterior",
+        "posterior",
+    ):
+        try:
+            inner = getattr(obj, attr, None)
+        except Exception:
+            inner = None
+        if inner is not None and not callable(inner):
+            out.append(inner)
+    return out
+
+
+def _extract_covariance_matrix(obj: Any, visited: Optional[set[int]] = None) -> Optional[Tensor]:
+    """Recursively extract covariance from posterior wrappers.
+
+    GammaPosterior exposes covariance only through ``latent_posterior``.
+    Outcome transforms may wrap that GammaPosterior in TransformedPosterior.
+    Without unwrapping, q-batch ICU / BoundaryVariance fall back to diagonal
+    covariance and become effectively pointwise again, allowing exact duplicate
+    candidates.
+    """
+    if obj is None:
+        return None
+    if visited is None:
+        visited = set()
+    oid = id(obj)
+    if oid in visited:
+        return None
+    visited.add(oid)
+
+    covar = _maybe_covariance_matrix(obj)
+    if covar is not None:
+        return covar
+
+    for inner in _iter_inner_posteriors(obj):
+        covar = _extract_covariance_matrix(inner, visited=visited)
+        if covar is not None:
+            return covar
+    return None
+
+
+def _align_covar_to_target(
+    owner: _RegressionLevelSetBase,
+    posterior: Any,
+    Xt: Tensor,
+) -> Tensor:
+    """Extract and align covariance to ``Xt.shape[:-2] + [q, q]``.
+
+    Falls back to diagonal covariance from posterior variance only when no joint
+    covariance can be found.  The fallback is still valid but does not provide
+    duplicate-aware information gain.
+    """
+    Xt = _ensure_q_batch(Xt)
+    q_like = int(Xt.shape[-2])
+    target_covar_shape = torch.Size(Xt.shape[:-2]) + torch.Size([q_like, q_like])
+
+    covar = _extract_covariance_matrix(posterior)
+    if covar is None:
+        var = owner._reduce_outputs_if_needed(posterior.variance, Xt, name="posterior.variance")
+        var = owner._align_pointwise_score_to_X(var, Xt, name="posterior.variance")
+        return torch.diag_embed(var.clamp_min(owner.eps))
+
+    while covar.ndim > len(target_covar_shape):
+        covar = covar.mean(dim=0)
+        if covar.shape == target_covar_shape:
+            break
+
+    if covar.shape != target_covar_shape:
+        if covar.numel() == _safe_prod(target_covar_shape):
+            covar = covar.reshape(target_covar_shape)
+        else:
+            var = owner._reduce_outputs_if_needed(posterior.variance, Xt, name="posterior.variance")
+            var = owner._align_pointwise_score_to_X(var, Xt, name="posterior.variance")
+            covar = torch.diag_embed(var.clamp_min(owner.eps))
+
+    return 0.5 * (covar + covar.transpose(-1, -2))
+
+
+def _posterior_covariance(
+    self: _RegressionLevelSetBase,
+    X: Tensor,
+) -> tuple[Tensor, Tensor, Tensor]:
+    """Posterior mean and q-batch covariance with wrapper-aware extraction."""
+    Xq = _ensure_q_batch(X)
+    self._prepare_eval()
+
+    posterior = self.model.posterior(Xq, observation_noise=False)
+    Xt = self._apply_input_transform_for_distance(Xq)
+
+    mean = self._reduce_outputs_if_needed(posterior.mean, Xt, name="posterior.mean")
+    mean = self._align_pointwise_score_to_X(mean, Xt, name="posterior.mean")
+    covar = _align_covar_to_target(self, posterior=posterior, Xt=Xt)
+    return mean, covar, Xt
 
 
 def _weighted_logdet_joint_score(
@@ -194,6 +320,7 @@ def _q_regression_boundary_variance_forward(self: qRegressionBoundaryVariance, X
 # qRegressionBoundaryVariance, and qRegressionProbabilityOfExceedance when they
 # are imported from bochan.acquisition.regression.levelset_estimation.
 _RegressionLevelSetBase._same_batch_penalty_per_point = _same_batch_penalty_per_point
+_RegressionLevelSetBase._posterior_covariance = _posterior_covariance
 
 # Patch the two most duplicate-prone pointwise acquisitions to use joint
 # covariance-aware scores when q > 1.
@@ -202,6 +329,8 @@ qRegressionBoundaryVariance.forward = _q_regression_boundary_variance_forward
 
 
 __all__ = [
+    "_extract_covariance_matrix",
+    "_posterior_covariance",
     "_same_batch_penalty_per_point",
     "_weighted_logdet_joint_score",
 ]

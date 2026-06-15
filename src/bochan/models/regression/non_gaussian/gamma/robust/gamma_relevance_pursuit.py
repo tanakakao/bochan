@@ -9,6 +9,7 @@ from torch.nn import Parameter
 
 from botorch.models.relevance_pursuit import RelevancePursuitMixin
 from botorch.models.transforms.input import InputTransform
+from botorch.models.transforms.outcome import OutcomeTransform
 
 from gpytorch.distributions import MultivariateNormal
 from gpytorch.kernels import Kernel
@@ -23,6 +24,7 @@ from bochan.models.components.gamma import (
 from bochan.models.regression.non_gaussian.gamma import (
     GammaGPModel,
     GammaMixedGPModel,
+    clone_outcome_transform,
 )
 
 
@@ -149,6 +151,7 @@ class OutlierRelevancePursuitGammaGPModel(GammaGPModel):
         train_Y: Tensor,
         *,
         input_transform: Optional[InputTransform] = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
         num_inducing_points: int = 128,
@@ -187,6 +190,7 @@ class OutlierRelevancePursuitGammaGPModel(GammaGPModel):
             train_Y=train_Y_pos,
             likelihood=likelihood,
             input_transform=input_transform,
+            outcome_transform=outcome_transform,
             mean_module=mean_module,
             covar_module=covar_module,
             num_inducing_points=num_inducing_points,
@@ -211,12 +215,13 @@ class OutlierRelevancePursuitGammaGPModel(GammaGPModel):
 
         Y = prepare_positive_targets(Y, X, min_value=self.min_mean)
         new_X = torch.cat([self.train_inputs_raw[0], X], dim=-2)
-        new_Y = torch.cat([self.train_targets, Y], dim=0)
+        new_Y = torch.cat([self.train_targets_raw, Y], dim=0)
 
         new_model = self.__class__(
             train_X=new_X,
             train_Y=new_Y,
             input_transform=copy.deepcopy(self.input_transform),
+            outcome_transform=clone_outcome_transform(self.outcome_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             covar_module=copy.deepcopy(self.model.covar_module),
             num_inducing_points=self.num_inducing_points,
@@ -246,6 +251,7 @@ class OutlierRelevancePursuitGammaMixedGPModel(GammaMixedGPModel):
         *,
         cat_dims: Sequence[int],
         input_transform: Optional[InputTransform] = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
         num_inducing_points: int = 128,
@@ -285,6 +291,7 @@ class OutlierRelevancePursuitGammaMixedGPModel(GammaMixedGPModel):
             cat_dims=cat_dims,
             likelihood=likelihood,
             input_transform=input_transform,
+            outcome_transform=outcome_transform,
             mean_module=mean_module,
             covar_module=covar_module,
             num_inducing_points=num_inducing_points,

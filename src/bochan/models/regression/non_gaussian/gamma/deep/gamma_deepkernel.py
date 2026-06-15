@@ -14,6 +14,7 @@ from gpytorch.utils.grid import ScaleToBounds
 from gpytorch.variational import CholeskyVariationalDistribution, VariationalStrategy
 
 from botorch.models.transforms.input import InputTransform
+from botorch.models.transforms.outcome import OutcomeTransform
 
 from bochan.models.components.layers.feature_extractor import LargeFeatureExtractor, SkipLargeFeatureExtractor
 from bochan.models.components.gamma import (
@@ -23,11 +24,15 @@ from bochan.models.components.gamma import (
     clone_input_transform,
     get_cont_dims,
     normalize_dims,
-    prepare_positive_targets,
     select_inducing_points,
     to_device_dtype_transform,
 )
-from bochan.models.regression.non_gaussian.gamma import _BaseGammaGPModel, build_mixed_gamma_kernel
+from bochan.models.regression.non_gaussian.gamma.base.gamma import (
+    _BaseGammaGPModel,
+    apply_outcome_transform_for_training,
+    build_mixed_gamma_kernel,
+    clone_outcome_transform,
+)
 
 
 def make_gamma_feature_extractor(
@@ -207,6 +212,7 @@ class DeepKernelGammaGPModel(_BaseGammaGPModel):
         *,
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         ext_type: str = "DEFAULT",
         hidden_dims: Optional[Sequence[int]] = None,
         feature_extractor: Optional[nn.Module] = None,
@@ -223,8 +229,15 @@ class DeepKernelGammaGPModel(_BaseGammaGPModel):
         min_concentration: float = 1e-6,
     ) -> None:
         train_X = torch.as_tensor(train_X)
-        train_Y = prepare_positive_targets(train_Y, train_X, min_value=min_mean)
         input_transform = to_device_dtype_transform(clone_input_transform(input_transform), train_X)
+        outcome_transform = clone_outcome_transform(outcome_transform)
+        raw_train_Y, train_Y, outcome_transform = apply_outcome_transform_for_training(
+            train_Y=train_Y,
+            train_X=train_X,
+            outcome_transform=outcome_transform,
+            min_mean=min_mean,
+            name="DeepKernelGammaGPModel.outcome_transform",
+        )
         train_X_tf = apply_input_transform_for_training(
             train_X,
             input_transform,
@@ -256,6 +269,8 @@ class DeepKernelGammaGPModel(_BaseGammaGPModel):
             train_X=train_X,
             train_Y=train_Y,
             input_transform=input_transform,
+            outcome_transform=outcome_transform,
+            train_Y_raw=raw_train_Y,
             cat_dims=None,
             num_inducing_points=num_inducing_points,
             learn_inducing_locations=learn_inducing_locations,
@@ -278,6 +293,7 @@ class DeepKernelGammaMixedGPModel(_BaseGammaGPModel):
         cat_dims: Sequence[int],
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         ext_type: str = "DEFAULT",
         hidden_dims: Optional[Sequence[int]] = None,
         feature_extractor: Optional[nn.Module] = None,
@@ -295,8 +311,15 @@ class DeepKernelGammaMixedGPModel(_BaseGammaGPModel):
     ) -> None:
         train_X = torch.as_tensor(train_X)
         cat_dims = normalize_dims(cat_dims, train_X.shape[-1])
-        train_Y = prepare_positive_targets(train_Y, train_X, min_value=min_mean)
         input_transform = to_device_dtype_transform(clone_input_transform(input_transform), train_X)
+        outcome_transform = clone_outcome_transform(outcome_transform)
+        raw_train_Y, train_Y, outcome_transform = apply_outcome_transform_for_training(
+            train_Y=train_Y,
+            train_X=train_X,
+            outcome_transform=outcome_transform,
+            min_mean=min_mean,
+            name="DeepKernelGammaMixedGPModel.outcome_transform",
+        )
         train_X_tf = apply_input_transform_for_training(
             train_X,
             input_transform,
@@ -330,6 +353,8 @@ class DeepKernelGammaMixedGPModel(_BaseGammaGPModel):
             train_X=train_X,
             train_Y=train_Y,
             input_transform=input_transform,
+            outcome_transform=outcome_transform,
+            train_Y_raw=raw_train_Y,
             cat_dims=cat_dims,
             num_inducing_points=num_inducing_points,
             learn_inducing_locations=learn_inducing_locations,

@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import MixedSingleTaskGP, SingleTaskGP
 from botorch.models.transforms.input import InputTransform
+from botorch.models.transforms.outcome import OutcomeTransform
 from botorch.posteriors import Posterior
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
@@ -26,12 +27,13 @@ from bochan.models.regression.non_gaussian.gamma import (
     GammaLogLikelihood,
     GammaMixedGPModel,
 )
+from bochan.models.regression.non_gaussian.gamma.base.gamma import clone_outcome_transform
 
 
 class HeteroscedasticGammaPosterior(Posterior):
     """GammaPosterior に追加の heteroscedastic variance を加える wrapper。"""
 
-    def __init__(self, base_posterior: GammaPosterior, extra_noise_var: Optional[Tensor] = None) -> None:
+    def __init__(self, base_posterior: Posterior, extra_noise_var: Optional[Tensor] = None) -> None:
         super().__init__()
         self.base_posterior = base_posterior
         self.extra_noise_var = extra_noise_var
@@ -70,7 +72,12 @@ class HeteroscedasticGammaPosterior(Posterior):
     def rsample(self, sample_shape: Optional[torch.Size] = None, base_samples: Optional[Tensor] = None) -> Tensor:
         return self.base_posterior.rsample(sample_shape=sample_shape, base_samples=base_samples)
 
+    def rsample_from_base_samples(self, sample_shape: torch.Size, base_samples: Tensor) -> Tensor:
+        return self.base_posterior.rsample_from_base_samples(sample_shape=sample_shape, base_samples=base_samples)
+
     def sample_observations(self, sample_shape: Optional[torch.Size] = None) -> Tensor:
+        if not hasattr(self.base_posterior, "sample_observations"):
+            raise NotImplementedError("The wrapped base posterior does not support sample_observations.")
         return self.base_posterior.sample_observations(sample_shape=sample_shape)
 
 
@@ -216,6 +223,7 @@ class HeteroscedasticGammaGPModel(_HeteroscedasticGammaMixin, GammaGPModel):
         *,
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         num_inducing_points: int = 128,
         link: GammaLink = "softplus",
         init_concentration: float = 10.0,
@@ -246,6 +254,7 @@ class HeteroscedasticGammaGPModel(_HeteroscedasticGammaMixin, GammaGPModel):
                 train_X=train_X,
                 train_Y=train_Y,
                 input_transform=copy.deepcopy(noise_tf),
+                outcome_transform=clone_outcome_transform(outcome_transform),
                 num_inducing_points=num_inducing_points,
                 link=link,
                 init_concentration=init_concentration,
@@ -279,6 +288,7 @@ class HeteroscedasticGammaGPModel(_HeteroscedasticGammaMixin, GammaGPModel):
             train_Y=train_Y,
             likelihood=likelihood,
             input_transform=input_transform,
+            outcome_transform=outcome_transform,
             num_inducing_points=num_inducing_points,
             link=link,
             init_concentration=init_concentration,
@@ -300,6 +310,7 @@ class HeteroscedasticGammaMixedGPModel(_HeteroscedasticGammaMixin, GammaMixedGPM
         cat_dims: Sequence[int],
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
+        outcome_transform: Optional[OutcomeTransform] = None,
         num_inducing_points: int = 128,
         link: GammaLink = "softplus",
         init_concentration: float = 10.0,
@@ -331,6 +342,7 @@ class HeteroscedasticGammaMixedGPModel(_HeteroscedasticGammaMixin, GammaMixedGPM
                 train_Y=train_Y,
                 cat_dims=cat_dims,
                 input_transform=copy.deepcopy(noise_tf),
+                outcome_transform=clone_outcome_transform(outcome_transform),
                 num_inducing_points=num_inducing_points,
                 link=link,
                 init_concentration=init_concentration,
@@ -366,6 +378,7 @@ class HeteroscedasticGammaMixedGPModel(_HeteroscedasticGammaMixin, GammaMixedGPM
             cat_dims=cat_dims,
             likelihood=likelihood,
             input_transform=input_transform,
+            outcome_transform=outcome_transform,
             num_inducing_points=num_inducing_points,
             link=link,
             init_concentration=init_concentration,

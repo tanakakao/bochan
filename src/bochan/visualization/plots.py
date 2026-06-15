@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import plotly.figure_factory as ff
 import plotly.graph_objects as go
 from plotly.graph_objs._figure import Figure
 
@@ -20,6 +21,25 @@ from .data import (
     tri_grid,
 )
 from .utils import cycle_color_map, cycle_series
+
+
+def _finite_range(values: Any) -> list[float] | None:
+    """有限な数値から Plotly axis range を作成する。"""
+
+    try:
+        arr = np.asarray(values, dtype=float).ravel()
+    except (TypeError, ValueError):
+        return None
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return None
+    lo = float(np.nanmin(arr))
+    hi = float(np.nanmax(arr))
+    if lo == hi:
+        pad = 0.5 if lo == 0.0 else abs(lo) * 0.05
+        lo -= pad
+        hi += pad
+    return [lo, hi]
 
 
 def show_yyplot(
@@ -167,9 +187,11 @@ def show_scatter_with_acqf(feature_col1: str, feature_col2: str, target_col: str
     """2D 散布図に獲得関数または予測値の等高線を重ねる。"""
 
     Z_raw, grid1, grid2 = data_2d_plot
+    grid1_arr = np.asarray(grid1).ravel()
+    grid2_arr = np.asarray(grid2).ravel()
     Z = np.asarray(Z_raw)[0] if np.asarray(Z_raw).ndim == 3 else np.asarray(Z_raw)
     fig = go.Figure()
-    fig.add_trace(go.Contour(z=Z, x=np.asarray(grid1).ravel(), y=np.asarray(grid2).ravel(), ncontours=25, contours_coloring="heatmap", colorscale="RdBu_r", colorbar=dict(title="獲得関数" if show_type == "acqf" else "予測値", lenmode="pixels", len=200), hoverinfo="none"))
+    fig.add_trace(go.Contour(z=Z, x=grid1_arr, y=grid2_arr, ncontours=25, contours_coloring="heatmap", colorscale="RdBu_r", colorbar=dict(title="獲得関数" if show_type == "acqf" else "予測値", lenmode="pixels", len=200), hoverinfo="none"))
     if df_cand is not None and feature_col1 in df_cand and feature_col2 in df_cand:
         fig.add_trace(go.Scatter(x=df_cand[feature_col1], y=df_cand[feature_col2], mode="markers", name="候補点", marker=dict(color="green", size=12, symbol="diamond", line=dict(width=0.8, color="black"))))
     cyc = cycle_series(cycle, X=X, y=y, length=len(X)) if cycle is not None else None
@@ -181,18 +203,79 @@ def show_scatter_with_acqf(feature_col1: str, feature_col2: str, target_col: str
             mask = cyc == c
             fig.add_trace(go.Scatter(x=X.loc[mask, feature_col1], y=X.loc[mask, feature_col2], mode="markers", name=f"入力データ (cycle {c})", marker=dict(size=10, color=color, line=dict(width=0.6, color="black"))))
     fig.update_layout(height=600, width=800, xaxis_title=feature_col1, yaxis_title=feature_col2, legend_title_text="cycle" if cyc is not None else "系列", font_size=16)
+    x_range = _finite_range(grid1_arr)
+    y_range = _finite_range(grid2_arr)
+    if x_range is not None:
+        fig.update_xaxes(range=x_range)
+    if y_range is not None:
+        fig.update_yaxes(range=y_range)
     return fig
 
 
 def show_triscatter_with_acqf(feature_col1: str, feature_col2: str, feature_col3: str, target_col: str, data_tri_plot: tuple[np.ndarray, Any], X: pd.DataFrame, y: pd.DataFrame, df_cand: pd.DataFrame | None = None, *, show_type: str = "acqf", cycle: str | Sequence[Any] | pd.Series | None = None) -> Figure:
-    """三角散布図に獲得関数または予測値を色で重ねる。"""
+    """三角散布図に獲得関数または予測値の等高線を重ねる。"""
 
     values, grid = data_tri_plot
-    grid = np.asarray(grid)
-    if grid.shape[0] != 3:
+    grid = np.asarray(grid, dtype=float)
+    values_flat = np.ravel(values).astype(float)
+
+    if grid.ndim != 2 or grid.shape[0] != 3:
         raise ValueError("grid must have shape (3, n).")
+    if grid.shape[1] != values_flat.size:
+        raise ValueError("grid と values の点数が一致していません。")
+
+    finite_mask = np.isfinite(values_flat) & np.all(np.isfinite(grid), axis=0)
+    if not np.any(finite_mask):
+        raise ValueError("テルナリー等高線を生成できる有限な grid / values がありません。")
+
+    grid_valid = grid[:, finite_mask]
+    values_valid = values_flat[finite_mask]
+
     fig = go.Figure()
-    fig.add_trace(go.Scatterternary(a=grid[0], b=grid[1], c=grid[2], mode="markers", name="grid", marker=dict(color=np.ravel(values), colorscale="RdBu_r", showscale=True, colorbar=dict(title="獲得関数" if show_type == "acqf" else "予測値", lenmode="pixels", len=200), size=5, opacity=0.65)))
+
+    try:
+        contour_fig = ff.create_ternary_contour(
+            grid_valid,
+            values_valid,
+            pole_labels=[feature_col1, feature_col2, feature_col3],
+            ncontours=20,
+            coloring=None,
+            colorscale="RdBu",
+            showscale=False,
+            showmarkers=False,
+        )
+        contour_fig.update_traces(showlegend=False)
+        fig.add_traces(contour_fig.data)
+    except Exception as e:
+        raise ValueError(
+            "テルナリー等高線の生成に失敗しました。"
+            "`grid` は shape=(3, n) で、各点の和が 1 になるように正規化されている必要があります。"
+            f" 元のエラー: {e}"
+        ) from e
+
+    value_range = _finite_range(values_valid) or [0.0, 1.0]
+    fig.add_trace(
+        go.Scatter(
+            x=[None, None],
+            y=[None, None],
+            mode="markers",
+            marker=dict(
+                color=value_range,
+                cmin=value_range[0],
+                cmax=value_range[1],
+                colorscale="RdBu_r",
+                showscale=True,
+                colorbar=dict(
+                    title="獲得関数" if show_type == "acqf" else "予測値",
+                    lenmode="pixels",
+                    len=200,
+                ),
+            ),
+            showlegend=False,
+            hoverinfo="skip",
+        )
+    )
+
     if df_cand is not None and all(c in df_cand for c in (feature_col1, feature_col2, feature_col3)):
         fig.add_trace(go.Scatterternary(a=df_cand[feature_col1], b=df_cand[feature_col2], c=df_cand[feature_col3], mode="markers", name="候補点", marker=dict(color="green", size=12, symbol="diamond", line=dict(width=0.8, color="black"))))
     cyc = cycle_series(cycle, X=X, y=y, length=len(X)) if cycle is not None else None
@@ -203,7 +286,17 @@ def show_triscatter_with_acqf(feature_col1: str, feature_col2: str, feature_col3
         for c, color in cmap.items():
             mask = cyc == c
             fig.add_trace(go.Scatterternary(a=X.loc[mask, feature_col1], b=X.loc[mask, feature_col2], c=X.loc[mask, feature_col3], mode="markers", name=f"入力データ (cycle {c})", marker=dict(color=color, size=10, line=dict(width=0.6, color="black"))))
-    fig.update_layout(height=600, width=800, ternary=dict(aaxis=dict(title=feature_col1), baxis=dict(title=feature_col2), caxis=dict(title=feature_col3), sum=1), legend_title_text="cycle" if cyc is not None else "系列", font_size=12)
+    fig.update_layout(
+        height=600,
+        width=800,
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        ternary=dict(aaxis=dict(title=feature_col1), baxis=dict(title=feature_col2), caxis=dict(title=feature_col3), sum=1),
+        legend_title_text="cycle" if cyc is not None else "系列",
+        font_size=12,
+    )
     return fig
 
 

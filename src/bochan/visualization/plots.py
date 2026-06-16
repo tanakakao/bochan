@@ -42,27 +42,6 @@ def _finite_range(values: Any) -> list[float] | None:
     return [lo, hi]
 
 
-def _clip_range(values: Any, clip_percentile: tuple[float, float] | None = None) -> tuple[float, float]:
-    """色表示に使う値範囲を返す。percentile 指定時は外れ値の影響を抑える。"""
-
-    arr = np.asarray(values, dtype=float).ravel()
-    arr = arr[np.isfinite(arr)]
-    if arr.size == 0:
-        return 0.0, 1.0
-    if clip_percentile is None:
-        lo, hi = float(np.nanmin(arr)), float(np.nanmax(arr))
-    else:
-        lo, hi = np.nanpercentile(arr, clip_percentile)
-        lo, hi = float(lo), float(hi)
-        if not np.isfinite(lo) or not np.isfinite(hi) or lo == hi:
-            lo, hi = float(np.nanmin(arr)), float(np.nanmax(arr))
-    if lo == hi:
-        pad = 0.5 if lo == 0.0 else abs(lo) * 0.05
-        lo -= pad
-        hi += pad
-    return lo, hi
-
-
 def show_yyplot(
     y: pd.DataFrame,
     target: str,
@@ -245,219 +224,164 @@ def show_triscatter_with_acqf(
     *,
     show_type: str = "acqf",
     cycle: str | Sequence[Any] | pd.Series | None = None,
-    ncontours: int = 12,
-    contour_coloring: str | None = "fill",
-    clip_percentile: tuple[float, float] | None = (2.0, 98.0),
-    show_best_point: bool = True,
-    show_grid_points: bool = False,
+    ncontours: int = 20,
 ) -> Figure:
     """三角散布図に獲得関数または予測値の等高線を重ねる。"""
 
-    values, grid = data_tri_plot
-    grid = np.asarray(grid, dtype=float)
-    values_flat = np.ravel(values).astype(float)
+    if not (isinstance(data_tri_plot, (tuple, list)) and len(data_tri_plot) == 2):
+        raise ValueError("`data_tri_plot` は (ac, grid) のタプルで指定してください。")
+    ac, grid = data_tri_plot
+    ac_flat = np.ravel(ac)
 
-    if grid.ndim != 2 or grid.shape[0] != 3:
-        raise ValueError("grid must have shape (3, n).")
-    if grid.shape[1] != values_flat.size:
-        raise ValueError("grid と values の点数が一致していません。")
-
-    finite_mask = np.isfinite(values_flat) & np.all(np.isfinite(grid), axis=0)
-    if not np.any(finite_mask):
-        raise ValueError("テルナリー等高線を生成できる有限な grid / values がありません。")
-
-    grid_valid = grid[:, finite_mask]
-    values_valid = values_flat[finite_mask]
-    cmin, cmax = _clip_range(values_valid, clip_percentile=clip_percentile)
-    values_color = np.clip(values_valid, cmin, cmax)
+    if isinstance(grid, pd.DataFrame) and grid.shape[1] != 3:
+        raise ValueError("`grid` は 3 列の DataFrame を想定しています。")
+    if isinstance(grid, np.ndarray) and (grid.ndim != 2 or grid.shape[0] != 3):
+        raise ValueError("`grid` は形状 (3, N) の ndarray を想定しています。")
 
     fig = go.Figure()
 
-    try:
-        contour_fig = ff.create_ternary_contour(
-            grid_valid,
-            values_color,
-            pole_labels=[feature_col1, feature_col2, feature_col3],
-            ncontours=int(ncontours),
-            coloring=contour_coloring,
-            colorscale="RdBu_r",
-            showscale=False,
-            showmarkers=False,
-        )
-    except Exception:
-        contour_fig = ff.create_ternary_contour(
-            grid_valid,
-            values_color,
-            pole_labels=[feature_col1, feature_col2, feature_col3],
-            ncontours=int(ncontours),
-            coloring=None,
-            colorscale="RdBu",
-            showscale=False,
-            showmarkers=False,
-        )
+    contour_fig = ff.create_ternary_contour(
+        grid,
+        ac_flat,
+        pole_labels=[feature_col1, feature_col2, feature_col3],
+        ncontours=int(ncontours),
+        coloring=None,
+        colorscale="RdBu",
+        showscale=False,
+        showmarkers=False,
+    )
     contour_fig.update_traces(showlegend=False)
     fig.add_traces(contour_fig.data)
 
+    ac_min = float(np.nanmin(ac_flat)) if np.isfinite(ac_flat).any() else 0.0
+    ac_max = float(np.nanmax(ac_flat)) if np.isfinite(ac_flat).any() else 1.0
+    if ac_min == ac_max:
+        ac_min, ac_max = ac_min - 0.5, ac_max + 0.5
+
     fig.add_trace(
         go.Scatter(
-            x=[None, None],
-            y=[None, None],
+            x=[None],
+            y=[None],
             mode="markers",
             marker=dict(
-                color=[cmin, cmax],
-                cmin=cmin,
-                cmax=cmax,
                 colorscale="RdBu_r",
-                showscale=True,
+                cmin=ac_min,
+                cmax=ac_max,
                 colorbar=dict(
                     title="獲得関数" if show_type == "acqf" else "予測値",
                     lenmode="pixels",
-                    len=220,
+                    len=200,
                 ),
             ),
             showlegend=False,
-            hoverinfo="skip",
         )
     )
 
-    if show_grid_points:
-        fig.add_trace(
-            go.Scatterternary(
-                a=grid_valid[0],
-                b=grid_valid[1],
-                c=grid_valid[2],
-                mode="markers",
-                name="grid",
-                marker=dict(size=3, color=values_color, colorscale="RdBu_r", cmin=cmin, cmax=cmax, opacity=0.35, showscale=False),
-                customdata=np.column_stack([grid_valid[0], grid_valid[1], grid_valid[2], values_valid]),
-                hovertemplate=(
-                    f"{feature_col1}: %{{customdata[0]:.3f}}<br>"
-                    f"{feature_col2}: %{{customdata[1]:.3f}}<br>"
-                    f"{feature_col3}: %{{customdata[2]:.3f}}<br>"
-                    "value: %{customdata[3]:.4g}<extra></extra>"
-                ),
-            )
-        )
+    fig.update_layout(
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
 
-    if show_best_point:
-        best_idx = int(np.nanargmax(values_valid))
-        fig.add_trace(
-            go.Scatterternary(
-                a=[grid_valid[0, best_idx]],
-                b=[grid_valid[1, best_idx]],
-                c=[grid_valid[2, best_idx]],
-                mode="markers",
-                name="max acqf" if show_type == "acqf" else "max pred",
-                marker=dict(size=16, symbol="star", color="gold", line=dict(width=1.2, color="black")),
-                customdata=np.array([[grid_valid[0, best_idx], grid_valid[1, best_idx], grid_valid[2, best_idx], values_valid[best_idx]]]),
-                hovertemplate=(
-                    "MAX<br>"
-                    f"{feature_col1}: %{{customdata[0]:.3f}}<br>"
-                    f"{feature_col2}: %{{customdata[1]:.3f}}<br>"
-                    f"{feature_col3}: %{{customdata[2]:.3f}}<br>"
-                    "value: %{customdata[3]:.4g}<extra></extra>"
-                ),
-            )
-        )
+    use_cycle = cycle is not None
+    if use_cycle:
+        cyc_series = cycle_series(cycle, X=X, y=y, length=len(X)).astype("Int64")
+        unique_cycles = sorted(pd.unique(cyc_series.dropna().astype(int)))
+        color_map = cycle_color_map(cyc_series)
 
-    if df_cand is not None and all(c in df_cand for c in (feature_col1, feature_col2, feature_col3)):
-        cand_a = pd.to_numeric(df_cand[feature_col1], errors="coerce")
-        cand_b = pd.to_numeric(df_cand[feature_col2], errors="coerce")
-        cand_c = pd.to_numeric(df_cand[feature_col3], errors="coerce")
-        mask = np.isfinite(cand_a) & np.isfinite(cand_b) & np.isfinite(cand_c)
-        fig.add_trace(
-            go.Scatterternary(
-                a=cand_a[mask],
-                b=cand_b[mask],
-                c=cand_c[mask],
-                mode="markers",
-                name="候補点",
-                marker=dict(color="limegreen", size=12, symbol="diamond", line=dict(width=0.8, color="black")),
-                customdata=np.column_stack([cand_a[mask], cand_b[mask], cand_c[mask]]),
-                hovertemplate=(
-                    "candidate<br>"
-                    f"{feature_col1}: %{{customdata[0]:.3f}}<br>"
-                    f"{feature_col2}: %{{customdata[1]:.3f}}<br>"
-                    f"{feature_col3}: %{{customdata[2]:.3f}}<extra></extra>"
-                ),
-            )
-        )
+    if isinstance(df_cand, pd.DataFrame):
+        mean_col = f"{target_col}_mean"
+        coord_cols = (feature_col1, feature_col2, feature_col3)
+        if all(c in df_cand.columns for c in coord_cols):
+            a = pd.to_numeric(df_cand[feature_col1], errors="coerce")
+            b = pd.to_numeric(df_cand[feature_col2], errors="coerce")
+            c = pd.to_numeric(df_cand[feature_col3], errors="coerce")
+            m = np.isfinite(a) & np.isfinite(b) & np.isfinite(c)
+            if mean_col in df_cand.columns:
+                val = pd.to_numeric(df_cand[mean_col], errors="coerce")
+            else:
+                val = pd.Series(np.nan, index=df_cand.index)
+            if m.any():
+                marker = dict(color="green", size=12, symbol="diamond", line=dict(width=0.8, color="black"), showscale=False)
+                custom = np.stack([a[m], b[m], c[m], val[m]], axis=1)
+                fig.add_trace(
+                    go.Scatterternary(
+                        a=a[m],
+                        b=b[m],
+                        c=c[m],
+                        mode="markers",
+                        name="候補点",
+                        marker=marker,
+                        customdata=custom,
+                        hovertemplate=(
+                            f"{feature_col1}: %{{customdata[0]}}<br>"
+                            f"{feature_col2}: %{{customdata[1]}}<br>"
+                            f"{feature_col3}: %{{customdata[2]}}<br>"
+                            f"{target_col}: %{{customdata[3]}}<extra></extra>"
+                        ),
+                    )
+                )
 
-    cyc = cycle_series(cycle, X=X, y=y, length=len(X)) if cycle is not None else None
-    cmap = cycle_color_map(cyc)
-    x_a = pd.to_numeric(X[feature_col1], errors="coerce")
-    x_b = pd.to_numeric(X[feature_col2], errors="coerce")
-    x_c = pd.to_numeric(X[feature_col3], errors="coerce")
-    y_val = pd.to_numeric(y[target_col], errors="coerce") if target_col in y.columns else pd.Series(np.nan, index=X.index)
-    train_mask = np.isfinite(x_a) & np.isfinite(x_b) & np.isfinite(x_c)
-    if cyc is None:
-        color_values = y_val if np.isfinite(y_val).any() else None
-        fig.add_trace(
-            go.Scatterternary(
-                a=x_a[train_mask],
-                b=x_b[train_mask],
-                c=x_c[train_mask],
-                mode="markers",
-                name="入力データ",
-                marker=dict(color=color_values[train_mask] if color_values is not None else "blue", colorscale="RdBu_r", showscale=False, size=10, line=dict(width=0.6, color="black")),
-                customdata=np.column_stack([x_a[train_mask], x_b[train_mask], x_c[train_mask], y_val[train_mask]]),
-                hovertemplate=(
-                    f"{feature_col1}: %{{customdata[0]:.3f}}<br>"
-                    f"{feature_col2}: %{{customdata[1]:.3f}}<br>"
-                    f"{feature_col3}: %{{customdata[2]:.3f}}<br>"
-                    f"{target_col}: %{{customdata[3]:.4g}}<extra></extra>"
-                ),
-            )
-        )
-    else:
-        for c, color in cmap.items():
-            mask = (cyc == c) & train_mask
+    a = pd.to_numeric(X[feature_col1], errors="coerce")
+    b = pd.to_numeric(X[feature_col2], errors="coerce")
+    c = pd.to_numeric(X[feature_col3], errors="coerce")
+    col = pd.to_numeric(y[target_col], errors="coerce")
+    m = np.isfinite(a) & np.isfinite(b) & np.isfinite(c) & np.isfinite(col)
+
+    if m.any():
+        if use_cycle:
+            for cyc in unique_cycles:
+                mask = (cyc_series == cyc) & m
+                if mask.any():
+                    fig.add_trace(
+                        go.Scatterternary(
+                            a=a[mask],
+                            b=b[mask],
+                            c=c[mask],
+                            mode="markers",
+                            name=f"入力データ (cycle {cyc})",
+                            marker=dict(color=color_map.get(cyc, "#000000"), size=10, line=dict(width=0.6, color="black"), showscale=False),
+                            customdata=np.stack([a[mask], b[mask], c[mask], col[mask]], axis=1),
+                            hovertemplate=(
+                                f"{feature_col1}: %{{customdata[0]}}<br>"
+                                f"{feature_col2}: %{{customdata[1]}}<br>"
+                                f"{feature_col3}: %{{customdata[2]}}<br>"
+                                f"{target_col}: %{{customdata[3]}}<extra></extra>"
+                            ),
+                        )
+                    )
+        else:
             fig.add_trace(
                 go.Scatterternary(
-                    a=x_a[mask],
-                    b=x_b[mask],
-                    c=x_c[mask],
+                    a=a[m],
+                    b=b[m],
+                    c=c[m],
                     mode="markers",
-                    name=f"入力データ (cycle {c})",
-                    marker=dict(color=color, size=10, line=dict(width=0.6, color="black")),
-                    customdata=np.column_stack([x_a[mask], x_b[mask], x_c[mask], y_val[mask]]),
+                    name="入力データ",
+                    marker=dict(color=col[m], colorscale="RdBu_r", showscale=False, size=10),
+                    customdata=np.stack([a[m], b[m], c[m], col[m]], axis=1),
                     hovertemplate=(
-                        f"{feature_col1}: %{{customdata[0]:.3f}}<br>"
-                        f"{feature_col2}: %{{customdata[1]:.3f}}<br>"
-                        f"{feature_col3}: %{{customdata[2]:.3f}}<br>"
-                        f"{target_col}: %{{customdata[3]:.4g}}<extra></extra>"
+                        f"{feature_col1}: %{{customdata[0]}}<br>"
+                        f"{feature_col2}: %{{customdata[1]}}<br>"
+                        f"{feature_col3}: %{{customdata[2]}}<br>"
+                        f"{target_col}: %{{customdata[3]}}<extra></extra>"
                     ),
                 )
             )
 
-    title = None
-    if show_best_point:
-        best_idx = int(np.nanargmax(values_valid))
-        title = (
-            f"Ternary {'acquisition' if show_type == 'acqf' else 'prediction'} map "
-            f"(max={values_valid[best_idx]:.4g}, "
-            f"{feature_col1}={grid_valid[0, best_idx]:.3f}, "
-            f"{feature_col2}={grid_valid[1, best_idx]:.3f}, "
-            f"{feature_col3}={grid_valid[2, best_idx]:.3f})"
-        )
     fig.update_layout(
-        title=title,
-        height=700,
-        width=850,
+        height=600,
+        width=800,
         showlegend=True,
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
+        font_size=12,
+        legend_title_text="cycle" if use_cycle else "系列",
         ternary=dict(
-            aaxis=dict(title=feature_col1, min=0, linewidth=1.5, ticks="outside", tickformat=".1f"),
-            baxis=dict(title=feature_col2, min=0, linewidth=1.5, ticks="outside", tickformat=".1f"),
-            caxis=dict(title=feature_col3, min=0, linewidth=1.5, ticks="outside", tickformat=".1f"),
+            aaxis=dict(title=feature_col1),
+            baxis=dict(title=feature_col2),
+            caxis=dict(title=feature_col3),
             sum=1,
         ),
-        legend_title_text="cycle" if cyc is not None else "系列",
-        font_size=13,
-        margin=dict(l=40, r=40, t=70, b=40),
     )
     return fig
 
@@ -495,32 +419,12 @@ def show_triscatter_with_acqf_from_optimizer(
     value_dict: dict[str, Any] | None = None,
     candidate_result: Any | None = None,
     sum_value: float | None = None,
-    n: int = 30,
+    n: int = 50,
     show_type: str = "acqf",
     cycle: str | Sequence[Any] | pd.Series | None = None,
-    ncontours: int = 12,
-    contour_coloring: str | None = "fill",
-    clip_percentile: tuple[float, float] | None = (2.0, 98.0),
-    show_best_point: bool = True,
-    show_grid_points: bool = False,
+    ncontours: int = 20,
 ) -> Figure:
     X_df, y_df = training_dataframe(obj, feature_cols=feature_cols, target_cols=target_cols)
     data = tri_grid(obj, [feature_col1, feature_col2, feature_col3], target_col, value_dict, feature_cols=list(X_df.columns), target_cols=list(y_df.columns), candidate_result=candidate_result, sum_value=sum_value, n=n, show_type=show_type)  # type: ignore[arg-type]
     df_cand = candidates_dataframe(obj, candidate_result=candidate_result, feature_cols=list(X_df.columns), target_cols=list(y_df.columns), include_prediction=False)
-    return show_triscatter_with_acqf(
-        feature_col1,
-        feature_col2,
-        feature_col3,
-        target_col,
-        data,
-        X_df,
-        y_df,
-        df_cand,
-        show_type=show_type,
-        cycle=cycle,
-        ncontours=ncontours,
-        contour_coloring=contour_coloring,
-        clip_percentile=clip_percentile,
-        show_best_point=show_best_point,
-        show_grid_points=show_grid_points,
-    )
+    return show_triscatter_with_acqf(feature_col1, feature_col2, feature_col3, target_col, data, X_df, y_df, df_cand, show_type=show_type, cycle=cycle, ncontours=ncontours)

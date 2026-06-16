@@ -126,50 +126,6 @@ def create_grid(xx: np.ndarray, yy: np.ndarray, row: np.ndarray, feature_cols: S
     return grid
 
 
-def _constraint_sum_value(obj: Any, select_idx: Sequence[int], default: float | None = None) -> float:
-    """対象3列を含む線形制約から三角グリッドの合計値を推定する。"""
-
-    if default is not None:
-        return float(default)
-
-    selected = {int(i) for i in select_idx}
-    candidates = (obj, getattr(obj, "data_context", None), getattr(obj, "bundle", None))
-    for candidate in candidates:
-        if candidate is None:
-            continue
-        constraint_idx = getattr(candidate, "constraint_idx", None)
-        constraint_values = getattr(candidate, "constraint_values", None)
-        if constraint_idx is None or constraint_values is None:
-            continue
-        try:
-            values = np.ravel(to_numpy(constraint_values)).astype(float)
-        except (TypeError, ValueError):
-            continue
-        for idx_group, value in zip(list(constraint_idx), values, strict=False):
-            try:
-                idx_set = {int(i) for i in np.ravel(to_numpy(idx_group)).tolist()}
-            except (TypeError, ValueError):
-                continue
-            if selected.issubset(idx_set) and np.isfinite(value) and value > 0.0:
-                return float(value)
-    return 1.0
-
-
-def _reference_x_for_grid(obj: Any, candidate_result: Any | None = None) -> Any | None:
-    """固定行作成に使う参照Xを旧実装に近い順序で取得する。"""
-
-    for candidate in (obj, getattr(obj, "data_context", None), getattr(obj, "bundle", None)):
-        if candidate is None:
-            continue
-        reference_x = getattr(candidate, "candidates_raw", None)
-        if reference_x is not None:
-            return reference_x
-    result = candidate_result or candidate_result_from(obj)
-    if result is not None and getattr(result, "candidates", None) is not None:
-        return getattr(result, "candidates")
-    return None
-
-
 def grid_1d_plot(
     obj: Any,
     select_col: str,
@@ -265,51 +221,110 @@ def tri_grid(
     candidate_result: Any | None = None,
     acqf: Any | None = None,
     sum_value: float | None = None,
-    n: int = 35,
+    n: int = 50,
     show_type: ShowType = "acqf",
 ) -> tuple[np.ndarray, np.ndarray]:
-    """3成分制約 x1+x2+x3=sum_value の三角グリッド上で評価する。"""
+    """3成分制約 x1+x2+x3=max_value の三角グリッド上で評価する。"""
 
     if len(select_cols) != 3:
         raise ValueError("select_cols must contain exactly three columns.")
     if show_type == "pred" and target_col is None:
-        raise ValueError("target_col is required when show_type='pred'.")
+        raise ValueError("予測値ヒートマップを表示するにはtarget_colを指定してください。")
 
-    train_X = get_train_X(obj)
-    cols = infer_feature_cols(obj, feature_cols, ensure_2d(train_X).shape[1])
-    idx = [cols.index(c) for c in select_cols]
-    max_value = _constraint_sum_value(obj, idx, default=sum_value)
+    model_feature_cols = list(getattr(obj, "feature_cols", feature_cols or []))
+    if not model_feature_cols:
+        train_X = get_train_X(obj)
+        model_feature_cols = infer_feature_cols(obj, feature_cols, ensure_2d(train_X).shape[1])
+    cols = [f for f in model_feature_cols if f != "task"]
+
+    select_idx = [cols.index(col) for col in select_cols]
+
+    model_target_cols = list(getattr(obj, "target_cols", target_cols or []))
+    if target_col is not None and model_target_cols and target_col not in model_target_cols:
+        raise ValueError(f"target_col must be one of {model_target_cols}.")
+    target_idx = model_target_cols.index(target_col) if target_col in model_target_cols else None
+
+    candidates_raw = getattr(obj, "candidates_raw", None)
+    if candidates_raw is None:
+        result = candidate_result or candidate_result_from(obj)
+        candidates_raw = getattr(result, "candidates", None) if result is not None else None
+    if candidates_raw is None:
+        candidates_raw = get_train_X(obj)
+    const_array = get_const_array(candidates_raw, value_dict, cols)
+
+    if sum_value is None:
+        eq_cons_idx = getattr(obj, "constraint_idx", None)
+        eq_cons_vals = getattr(obj, "constraint_values", None)
+        if eq_cons_idx is None or eq_cons_vals is None:
+            raise ValueError("三角グリッドの合計値を決める constraint_idx / constraint_values が見つかりません。")
+
+        eq_cons_idx_list = list(eq_cons_idx)
+        hit = np.where([all([c in t for c in select_idx]) for t in eq_cons_idx_list])[0]
+        if len(hit) == 0:
+            raise ValueError("select_cols の3列を含む制約が constraint_idx に見つかりません。")
+        cons_pos = int(hit[0])
+        _const_idx = eq_cons_idx_list[cons_pos]
+        eq_cons_vals_arr = np.ravel(to_numpy(eq_cons_vals)).astype(float)
+        max_value = float(eq_cons_vals_arr[cons_pos])
+    else:
+        max_value = float(sum_value)
 
     x = np.linspace(0.0, max_value, int(n))
     xx, yy = np.meshgrid(x, x)
-    valid_idx = (xx.ravel() + yy.ravel()) <= max_value
-    a = xx.ravel()[valid_idx]
-    b = yy.ravel()[valid_idx]
-    c = np.maximum(max_value - a - b, 0.0)
-    tri_values = np.column_stack([a, b, c])
+    valid_idx = xx.ravel() + yy.ravel() <= max_value
+    xx = xx.ravel()[valid_idx].reshape(-1, 1)
+    yy = yy.ravel()[valid_idx].reshape(-1, 1)
 
-    reference_x = _reference_x_for_grid(obj, candidate_result=candidate_result)
-    row = fixed_row_from(obj, feature_cols=cols, value_dict=value_dict, reference_x=reference_x)
-    row = ensure_2d(row)[:, : len(cols)]
-    grid = np.broadcast_to(row, (len(tri_values), len(cols))).copy()
-    grid[:, idx] = tri_values
-    grid_t = to_tensor_like(grid, obj)
+    zz = max_value - xx - yy
+    zz[zz < 0] = 0.0
+    grid_values = np.concatenate([xx, yy, zz], axis=1)
+
+    grid_array = np.ones((len(xx), len(cols))) * const_array
+    grid_array[:, select_idx] = grid_values
+
+    try:
+        import torch
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError("bochan.visualization requires torch for ternary grid evaluation.") from exc
+
+    train_X = get_train_X(obj)
+    dtype = getattr(obj, "dtype", getattr(train_X, "dtype", torch.double))
+    device = getattr(train_X, "device", None)
+    grid_tensor = torch.tensor(grid_array, dtype=dtype, device=device)
 
     if show_type == "acqf":
-        result = candidate_result or candidate_result_from(obj)
-        acqf = acqf or getattr(result, "acqf", None)
-        if acqf is None:
-            raise ValueError("acqf を指定するか、candidate(..., return_result=True) の結果を渡してください。")
-        values = np.ravel(evaluate_acqf_on_points(acqf, grid_t))
+        acq_callable = getattr(obj, "acquisition_function", None)
+        if acq_callable is None:
+            result = candidate_result or candidate_result_from(obj)
+            acq_callable = acqf or getattr(result, "acqf", None)
+        if acq_callable is None:
+            raise ValueError("acquisition_function が見つかりません。")
+        try:
+            values = acq_callable(grid_tensor)
+        except Exception:
+            values = evaluate_acqf_on_points(acq_callable, grid_tensor)
+        values = np.ravel(to_numpy(values))
     else:
-        mean_df, _ = prediction_dataframe(obj, grid_t, target_cols=target_cols)
-        if target_col not in mean_df.columns:
-            raise ValueError(f"target_col must be one of {list(mean_df.columns)}.")
-        values = mean_df[target_col].to_numpy()
+        if not hasattr(obj, "predict"):
+            mean_df, _ = prediction_dataframe(obj, grid_tensor, target_cols=target_cols)
+            if target_col not in mean_df.columns:
+                raise ValueError(f"target_col must be one of {list(mean_df.columns)}.")
+            values = mean_df[target_col].to_numpy()
+        else:
+            pred = obj.predict(grid_tensor)[0]
+            try:
+                values = pred[target_col].to_numpy()
+            except Exception:
+                pred_arr = ensure_2d(pred)
+                if target_idx is None:
+                    raise ValueError("target_col の列番号を特定できません。target_cols を指定してください。")
+                values = pred_arr[:, target_idx]
 
-    denom = tri_values.sum(axis=1, keepdims=True)
+    grid_values = grid_values.T
+    denom = grid_values.sum(axis=0)
     denom[denom == 0] = 1.0
-    return values, (tri_values / denom).T
+    grid_values = grid_values / denom
+    return values, grid_values
 
 
 def study_target_dataframe(study: Any, *, target: str, target_cols: Sequence[str] | None = None, cycle_col: str = "cycle") -> pd.DataFrame:

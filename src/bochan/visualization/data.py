@@ -294,14 +294,10 @@ def tri_grid(
     n_grid = len(grid_values)
 
     if show_type == "acqf":
-        acq_callable = acqf
+        result = candidate_result or candidate_result_from(obj)
+        acq_callable = acqf or (getattr(result, "acqf", None) if result is not None else None)
         if acq_callable is None:
-            result = candidate_result or candidate_result_from(obj)
-            acq_callable = getattr(result, "acqf", None) if result is not None else None
-        if acq_callable is None:
-            acq_callable = getattr(obj, "acquisition_function", None)
-        if acq_callable is None:
-            raise ValueError("acquisition_function が見つかりません。")
+            raise ValueError("acqf を指定するか、candidate(..., return_result=True) の結果を渡してください。")
         values = np.ravel(evaluate_acqf_on_points(acq_callable, grid_tensor))
         if values.size != n_grid:
             raise ValueError(

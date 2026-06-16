@@ -221,7 +221,7 @@ def tri_grid(
     candidate_result: Any | None = None,
     acqf: Any | None = None,
     sum_value: float | None = None,
-    n: int = 50,
+    n: int = 30,
     show_type: ShowType = "acqf",
 ) -> tuple[np.ndarray, np.ndarray]:
     """3成分制約 x1+x2+x3=max_value の三角グリッド上で評価する。"""
@@ -294,18 +294,19 @@ def tri_grid(
     n_grid = len(grid_values)
 
     if show_type == "acqf":
-        acq_callable = getattr(obj, "acquisition_function", None)
+        acq_callable = acqf
         if acq_callable is None:
             result = candidate_result or candidate_result_from(obj)
-            acq_callable = acqf or getattr(result, "acqf", None)
+            acq_callable = getattr(result, "acqf", None) if result is not None else None
+        if acq_callable is None:
+            acq_callable = getattr(obj, "acquisition_function", None)
         if acq_callable is None:
             raise ValueError("acquisition_function が見つかりません。")
-        try:
-            values = np.ravel(to_numpy(acq_callable(grid_tensor)))
-        except Exception:
-            values = np.ravel(evaluate_acqf_on_points(acq_callable, grid_tensor))
+        values = np.ravel(evaluate_acqf_on_points(acq_callable, grid_tensor))
         if values.size != n_grid:
-            values = np.ravel(evaluate_acqf_on_points(acq_callable, grid_tensor))
+            raise ValueError(
+                f"acqf の評価値数がグリッド点数と一致しません: values={values.size}, grid={n_grid}"
+            )
     else:
         if not hasattr(obj, "predict"):
             mean_df, _ = prediction_dataframe(obj, grid_tensor, target_cols=target_cols)

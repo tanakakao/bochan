@@ -291,6 +291,7 @@ def tri_grid(
     dtype = getattr(obj, "dtype", getattr(train_X, "dtype", torch.double))
     device = getattr(train_X, "device", None)
     grid_tensor = torch.tensor(grid_array, dtype=dtype, device=device)
+    n_grid = len(grid_values)
 
     if show_type == "acqf":
         acq_callable = getattr(obj, "acquisition_function", None)
@@ -300,10 +301,11 @@ def tri_grid(
         if acq_callable is None:
             raise ValueError("acquisition_function が見つかりません。")
         try:
-            values = acq_callable(grid_tensor)
+            values = np.ravel(to_numpy(acq_callable(grid_tensor)))
         except Exception:
-            values = evaluate_acqf_on_points(acq_callable, grid_tensor)
-        values = np.ravel(to_numpy(values))
+            values = np.ravel(evaluate_acqf_on_points(acq_callable, grid_tensor))
+        if values.size != n_grid:
+            values = np.ravel(evaluate_acqf_on_points(acq_callable, grid_tensor))
     else:
         if not hasattr(obj, "predict"):
             mean_df, _ = prediction_dataframe(obj, grid_tensor, target_cols=target_cols)
@@ -313,12 +315,17 @@ def tri_grid(
         else:
             pred = obj.predict(grid_tensor)[0]
             try:
-                values = pred[target_col].to_numpy()
+                values = np.ravel(pred[target_col].to_numpy())
             except Exception:
                 pred_arr = ensure_2d(pred)
                 if target_idx is None:
                     raise ValueError("target_col の列番号を特定できません。target_cols を指定してください。")
-                values = pred_arr[:, target_idx]
+                values = np.ravel(pred_arr[:, target_idx])
+        if values.size != n_grid:
+            mean_df, _ = prediction_dataframe(obj, grid_tensor, target_cols=target_cols)
+            if target_col not in mean_df.columns:
+                raise ValueError(f"target_col must be one of {list(mean_df.columns)}.")
+            values = mean_df[target_col].to_numpy()
 
     grid_values = grid_values.T
     denom = grid_values.sum(axis=0)

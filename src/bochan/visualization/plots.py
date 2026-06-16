@@ -292,36 +292,52 @@ def show_triscatter_with_acqf(
 
     if isinstance(df_cand, pd.DataFrame):
         mean_col = f"{target_col}_mean"
-        coord_cols = (feature_col1, feature_col2, feature_col3)
-        if all(c in df_cand.columns for c in coord_cols):
+        needed_cols = (feature_col1, feature_col2, feature_col3, mean_col)
+        if all(c in df_cand.columns for c in needed_cols):
             a = pd.to_numeric(df_cand[feature_col1], errors="coerce")
             b = pd.to_numeric(df_cand[feature_col2], errors="coerce")
             c = pd.to_numeric(df_cand[feature_col3], errors="coerce")
+            val = pd.to_numeric(df_cand[mean_col], errors="coerce")
             m = np.isfinite(a) & np.isfinite(b) & np.isfinite(c)
-            if mean_col in df_cand.columns:
-                val = pd.to_numeric(df_cand[mean_col], errors="coerce")
-            else:
-                val = pd.Series(np.nan, index=df_cand.index)
             if m.any():
-                marker = dict(color="green", size=12, symbol="diamond", line=dict(width=0.8, color="black"), showscale=False)
-                custom = np.stack([a[m], b[m], c[m], val[m]], axis=1)
-                fig.add_trace(
-                    go.Scatterternary(
-                        a=a[m],
-                        b=b[m],
-                        c=c[m],
-                        mode="markers",
-                        name="候補点",
-                        marker=marker,
-                        customdata=custom,
-                        hovertemplate=(
-                            f"{feature_col1}: %{{customdata[0]}}<br>"
-                            f"{feature_col2}: %{{customdata[1]}}<br>"
-                            f"{feature_col3}: %{{customdata[2]}}<br>"
-                            f"{target_col}: %{{customdata[3]}}<extra></extra>"
-                        ),
+                if use_cycle:
+                    fig.add_trace(
+                        go.Scatterternary(
+                            a=a[m],
+                            b=b[m],
+                            c=c[m],
+                            mode="markers",
+                            name="候補点",
+                            marker=dict(color="green", size=12, symbol="diamond", line=dict(width=0.8, color="black"), showscale=False),
+                            customdata=np.stack([a[m], b[m], c[m], val[m]], axis=1),
+                            hovertemplate=(
+                                f"{feature_col1}: %{{customdata[0]}}<br>"
+                                f"{feature_col2}: %{{customdata[1]}}<br>"
+                                f"{feature_col3}: %{{customdata[2]}}<br>"
+                                f"{target_col}: %{{customdata[3]}}<extra></extra>"
+                            ),
+                        )
                     )
-                )
+                else:
+                    valid = m & np.isfinite(val)
+                    if valid.any():
+                        fig.add_trace(
+                            go.Scatterternary(
+                                a=a[valid],
+                                b=b[valid],
+                                c=c[valid],
+                                mode="markers",
+                                name="候補点",
+                                marker=dict(color=val[valid], colorscale="bluered", showscale=False, size=12, symbol="diamond", line=dict(width=0.8, color="black")),
+                                customdata=np.stack([a[valid], b[valid], c[valid], val[valid]], axis=1),
+                                hovertemplate=(
+                                    f"{feature_col1}: %{{customdata[0]}}<br>"
+                                    f"{feature_col2}: %{{customdata[1]}}<br>"
+                                    f"{feature_col3}: %{{customdata[2]}}<br>"
+                                    f"{target_col}: %{{customdata[3]}}<extra></extra>"
+                                ),
+                            )
+                        )
 
     a = pd.to_numeric(X[feature_col1], errors="coerce")
     b = pd.to_numeric(X[feature_col2], errors="coerce")

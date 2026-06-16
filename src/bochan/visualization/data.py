@@ -221,7 +221,7 @@ def tri_grid(
     candidate_result: Any | None = None,
     acqf: Any | None = None,
     sum_value: float | None = None,
-    n: int = 30,
+    n: int = 50,
     show_type: ShowType = "acqf",
 ) -> tuple[np.ndarray, np.ndarray]:
     """3成分制約 x1+x2+x3=max_value の三角グリッド上で評価する。"""
@@ -231,26 +231,17 @@ def tri_grid(
     if show_type == "pred" and target_col is None:
         raise ValueError("予測値ヒートマップを表示するにはtarget_colを指定してください。")
 
-    model_feature_cols = list(getattr(obj, "feature_cols", feature_cols or []))
-    if not model_feature_cols:
-        train_X = get_train_X(obj)
-        model_feature_cols = infer_feature_cols(obj, feature_cols, ensure_2d(train_X).shape[1])
-    cols = [f for f in model_feature_cols if f != "task"]
-
+    train_X = get_train_X(obj)
+    X_arr = ensure_2d(train_X)
+    cols = [f for f in infer_feature_cols(obj, feature_cols, X_arr.shape[1]) if f != "task"]
     select_idx = [cols.index(col) for col in select_cols]
 
-    model_target_cols = list(getattr(obj, "target_cols", target_cols or []))
-    if target_col is not None and model_target_cols and target_col not in model_target_cols:
+    model_target_cols = infer_target_cols(obj, target_cols, ensure_2d(get_train_Y(obj)).shape[1])
+    if target_col is not None and target_col not in model_target_cols:
         raise ValueError(f"target_col must be one of {model_target_cols}.")
     target_idx = model_target_cols.index(target_col) if target_col in model_target_cols else None
 
-    candidates_raw = getattr(obj, "candidates_raw", None)
-    if candidates_raw is None:
-        result = candidate_result or candidate_result_from(obj)
-        candidates_raw = getattr(result, "candidates", None) if result is not None else None
-    if candidates_raw is None:
-        candidates_raw = get_train_X(obj)
-    const_array = get_const_array(candidates_raw, value_dict, cols)
+    const_array = fixed_row_from(obj, feature_cols=cols, value_dict=value_dict)
 
     if sum_value is None:
         eq_cons_idx = getattr(obj, "constraint_idx", None)
@@ -282,15 +273,7 @@ def tri_grid(
     grid_array = np.ones((len(xx), len(cols))) * const_array
     grid_array[:, select_idx] = grid_values
 
-    try:
-        import torch
-    except Exception as exc:  # pragma: no cover
-        raise RuntimeError("bochan.visualization requires torch for ternary grid evaluation.") from exc
-
-    train_X = get_train_X(obj)
-    dtype = getattr(obj, "dtype", getattr(train_X, "dtype", torch.double))
-    device = getattr(train_X, "device", None)
-    grid_tensor = torch.tensor(grid_array, dtype=dtype, device=device)
+    grid_tensor = to_tensor_like(grid_array, obj)
     n_grid = len(grid_values)
 
     if show_type == "acqf":

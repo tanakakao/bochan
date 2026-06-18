@@ -241,15 +241,7 @@ def run_regression_workflow(request: Any, store: DatasetStore) -> dict[str, Any]
     import pandas as pd
     import torch
 
-    from bochan.api import (
-        AcquisitionConfig,
-        BayesianOptimizer,
-        CandidateRepairConfig,
-        FitConfig,
-        InputTransformConfig,
-        ModelConfig,
-        OptimizeConfig,
-    )
+    from bochan.api import AcquisitionConfig, BayesianOptimizer, FitConfig, InputTransformConfig, ModelConfig, OptimizeConfig
     from bochan.serving.fastapi.converters import to_serializable
 
     record = store.get(request.dataset_id)
@@ -498,15 +490,15 @@ def _build_repair_config(*, request: Any, encoded: dict[str, Any], bounds: Any) 
         return None
 
     steps_tensor = None
+    repair_numeric_indices = encoded["numeric_indices"]
     if has_steps:
-        steps = [0.0 for _ in encoded["feature_columns"]]
-        for idx, step in encoded["steps"].items():
-            steps[int(idx)] = float(step)
-        steps_tensor = torch.as_tensor(steps, dtype=torch.double)
+        step_indices = sorted(int(idx) for idx in encoded["steps"])
+        steps_tensor = torch.as_tensor([float(encoded["steps"][idx]) for idx in step_indices], dtype=torch.double)
+        repair_numeric_indices = step_indices
 
     return CandidateRepairConfig(
         bounds=bounds,
-        numeric_indices=encoded["numeric_indices"],
+        numeric_indices=repair_numeric_indices,
         steps=steps_tensor,
         comp_idx=comp_idx or None,
         k=request.k_sparse.k if request.k_sparse and request.k_sparse.enabled else 0,

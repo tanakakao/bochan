@@ -395,8 +395,9 @@ async function loadDataset() {
     if (!res.ok) throw new Error(json.detail || 'load failed');
     currentDataset = json;
     profileColumns = json.profile.columns;
-    selectedFeatures = new Set(profileColumns.filter(c => c.kind === 'numeric').slice(0, 2).map(c => c.name));
-    selectedTarget = profileColumns.find(c => c.kind === 'numeric')?.name || null;
+    const numericColumns = profileColumns.filter(c => c.kind === 'numeric');
+    selectedTarget = numericColumns[0]?.name || null;
+    selectedFeatures = new Set(numericColumns.filter(c => c.name !== selectedTarget).slice(0, 2).map(c => c.name));
     setStatus('dataStatus', {dataset_id: json.dataset_id, profile: json.profile});
     renderPreview(json.preview);
     renderColumns();
@@ -415,19 +416,32 @@ function renderPreview(rows) {
 
 function renderColumns() {
   const html = '<table><thead><tr><th>feature</th><th>target</th><th>column</th><th>kind</th><th>dtype</th><th>missing</th><th>unique</th></tr></thead><tbody>' +
-    profileColumns.map(c => `<tr>
-      <td><input type="checkbox" ${selectedFeatures.has(c.name) ? 'checked' : ''} onchange="toggleFeature('${c.name}', this.checked)" /></td>
-      <td><input type="radio" name="target" ${selectedTarget === c.name ? 'checked' : ''} onchange="setTarget('${c.name}')" /></td>
-      <td>${c.name}</td><td>${c.kind}</td><td>${c.dtype}</td><td>${c.missing_count}</td><td>${c.unique_count}</td>
-    </tr>`).join('') + '</tbody></table>';
+    profileColumns.map(c => {
+      const nameArg = JSON.stringify(c.name);
+      const isTarget = selectedTarget === c.name;
+      return `<tr>
+        <td><input type="checkbox" ${selectedFeatures.has(c.name) ? 'checked' : ''} ${isTarget ? 'disabled' : ''} onchange='toggleFeature(${nameArg}, this.checked)' /></td>
+        <td><input type="radio" name="target" ${isTarget ? 'checked' : ''} onchange='setTarget(${nameArg})' /></td>
+        <td>${c.name}</td><td>${c.kind}</td><td>${c.dtype}</td><td>${c.missing_count}</td><td>${c.unique_count}</td>
+      </tr>`;
+    }).join('') + '</tbody></table>';
   document.getElementById('columnsTable').innerHTML = html;
 }
 
-function toggleFeature(name, checked) { checked ? selectedFeatures.add(name) : selectedFeatures.delete(name); renderSearchSpace(); }
-function setTarget(name) { selectedTarget = name; }
+function toggleFeature(name, checked) {
+  if (name === selectedTarget) return;
+  checked ? selectedFeatures.add(name) : selectedFeatures.delete(name);
+  renderSearchSpace();
+}
+function setTarget(name) {
+  selectedTarget = name;
+  selectedFeatures.delete(name);
+  renderColumns();
+  renderSearchSpace();
+}
 
 function renderSearchSpace() {
-  const cols = profileColumns.filter(c => selectedFeatures.has(c.name));
+  const cols = profileColumns.filter(c => selectedFeatures.has(c.name) && c.name !== selectedTarget);
   const html = '<table><thead><tr><th>column</th><th>type</th><th>lower</th><th>upper</th><th>step</th><th>fixed</th><th>fixed_value</th></tr></thead><tbody>' +
     cols.map(c => `<tr data-var="${c.name}">
       <td>${c.name}</td>
@@ -461,9 +475,11 @@ async function runRegression() {
   try {
     if (!currentDataset) throw new Error('データを先に読込んでください');
     if (!selectedTarget) throw new Error('目的変数を選択してください');
+    const featureColumns = [...selectedFeatures].filter(name => name !== selectedTarget);
+    if (featureColumns.length === 0) throw new Error('説明変数を1つ以上選択してください');
     const payload = {
       dataset_id: currentDataset.dataset_id,
-      feature_columns: [...selectedFeatures],
+      feature_columns: featureColumns,
       target_column: selectedTarget,
       direction: document.getElementById('direction').value,
       model_type: document.getElementById('modelType').value,

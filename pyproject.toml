@@ -55,6 +55,16 @@ visualization = [
   "plotly>=5.18",
 ]
 
+desktop = [
+  "duckdb>=1.0",
+  "fastapi>=0.110",
+  "openpyxl>=3.1",
+  "pandas>=2.0",
+  "pydantic>=2.0",
+  "pywebview>=5.0",
+  "uvicorn[standard]>=0.27",
+]
+
 evo = [
   "cma>=3.3",
 ]
@@ -95,13 +105,16 @@ dev = [
 
 all = [
   "cma>=3.3",
+  "duckdb>=1.0",
   "fastapi>=0.110",
   "ipykernel>=6.0",
   "jupyterlab>=4.0",
   "matplotlib>=3.7",
+  "openpyxl>=3.1",
   "pandas>=2.0",
   "plotly>=5.18",
   "pydantic>=2.0",
+  "pywebview>=5.0",
   "scikit-learn>=1.3",
   "uvicorn[standard]>=0.27",
 ]

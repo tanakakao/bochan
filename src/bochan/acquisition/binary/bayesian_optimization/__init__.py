@@ -18,6 +18,7 @@ from .multi_output import (
 )
 
 from .single_output import (
+    QBatchMode,
     qBinaryProbabilityOfFeasibility,
     qBinaryExpectedImprovement,
     qBinaryProbabilityOfImprovement,
@@ -25,10 +26,11 @@ from .single_output import (
 )
 from ._utils import (
     compute_binary_best_f,
-    compute_hetero_binary_classification_best_f
+    compute_hetero_binary_classification_best_f,
 )
 
 __all__ = [
+    "QBatchMode",
     "qHeteroMultiOutputBinaryExpectedHypervolumeImprovement",
     "qHeteroMultiOutputBinaryNoisyExpectedHypervolumeImprovement",
     "qHeteroMultiOutputBinaryNParEGO",
@@ -44,5 +46,5 @@ __all__ = [
     "qBinaryProbabilityOfImprovement",
     "qBinaryUpperConfidenceBound",
     "compute_binary_best_f",
-    "compute_hetero_binary_classification_best_f"
+    "compute_hetero_binary_classification_best_f",
 ]

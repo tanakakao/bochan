@@ -758,13 +758,11 @@ class qMultiOutputRegressionBALD(_MultiOutputRegressionActiveLearningBase):
 class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
     """True BoTorch qNegIntegratedPosteriorVariance wrapper.
 
-    This delegates to BoTorch's implementation and therefore requires a model
-    that supports the operations expected by BoTorch, especially fantasize().
-    For multi-output models, pass a scalarizing objective or posterior_transform
-    if your BoTorch version requires one.
-
-    Use qMultiOutputRegressionIntegratedPosteriorVarianceProxy for DeepGP /
-    custom models that do not support fantasize().
+    This delegates the fantasy / conditioning calculation to BoTorch and adds
+    multi-output result reduction. Some multi-output or hybrid models return the
+    unreduced shape ``integration_shape x batch_shape x m`` rather than the
+    expected ``batch_shape``. This class preserves the t-batch dimensions and
+    reduces the integration and output dimensions explicitly.
     """
 
     def __init__(
@@ -776,6 +774,10 @@ class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
         objective: Optional[Any] = None,
         posterior_transform: Optional[Any] = None,
         X_pending: Optional[Tensor] = None,
+        integration_reduction: ReductionType = "mean",
+        output_reduction: OutputReductionType = "mean",
+        output_weights: Optional[Tensor | Sequence[float]] = None,
+        normalize_output_weights: bool = True,
         **kwargs: Any,
     ) -> None:
         if _BoTorchQNegIntegratedPosteriorVariance is None:
@@ -783,8 +785,32 @@ class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
                 "botorch.acquisition.active_learning.qNegIntegratedPosteriorVariance "
                 "is not available in this BoTorch version."
             )
+        if integration_reduction not in ("mean", "sum", "max", "min"):
+            raise ValueError(
+                "integration_reduction must be one of 'mean', 'sum', 'max', or 'min'."
+            )
+        if output_reduction not in (
+            "mean",
+            "sum",
+            "max",
+            "min",
+            "weighted_sum",
+            "weighted_mean",
+        ):
+            raise ValueError(
+                "output_reduction must be one of 'mean', 'sum', 'max', 'min', "
+                "'weighted_sum', or 'weighted_mean'."
+            )
 
         super().__init__(model=model)
+        self.integration_reduction = integration_reduction
+        self.output_reduction = output_reduction
+        self.normalize_output_weights = bool(normalize_output_weights)
+        if output_weights is None:
+            self.output_weights = None
+        else:
+            weights = torch.as_tensor(output_weights).reshape(-1)
+            self.register_buffer("output_weights", weights.detach().clone())
 
         init_kwargs: dict[str, Any] = {
             "model": model,
@@ -800,7 +826,7 @@ class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
             init_kwargs["X_pending"] = X_pending
         init_kwargs.update(kwargs)
 
-        # BoTorch signatures differ slightly across versions.  Try the most
+        # BoTorch signatures differ slightly across versions. Try the most
         # complete call first, then progressively remove optional keywords.
         try:
             self.acqf = _BoTorchQNegIntegratedPosteriorVariance(**init_kwargs)
@@ -823,9 +849,102 @@ class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
         else:
             self.acqf.X_pending = X_pending
 
+    def _reduce_output_dimension(self, value: Tensor) -> Tensor:
+        if value.shape[-1] == 1:
+            return value.squeeze(-1)
+
+        if self.output_reduction == "weighted_sum":
+            if self.output_weights is None:
+                raise ValueError("output_reduction='weighted_sum' requires output_weights.")
+            weights = self.output_weights.to(device=value.device, dtype=value.dtype)
+            if weights.numel() != value.shape[-1]:
+                raise ValueError(
+                    f"output_weights length={weights.numel()} does not match "
+                    f"output dimension={value.shape[-1]}."
+                )
+            if self.normalize_output_weights:
+                weights = weights / weights.sum().clamp_min(torch.finfo(value.dtype).eps)
+            return (value * weights).sum(dim=-1)
+
+        if self.output_reduction == "weighted_mean":
+            if self.output_weights is None:
+                return value.mean(dim=-1)
+            weights = self.output_weights.to(device=value.device, dtype=value.dtype)
+            if weights.numel() != value.shape[-1]:
+                raise ValueError(
+                    f"output_weights length={weights.numel()} does not match "
+                    f"output dimension={value.shape[-1]}."
+                )
+            if self.normalize_output_weights:
+                weights = weights / weights.sum().clamp_min(torch.finfo(value.dtype).eps)
+            return (value * weights).sum(dim=-1)
+
+        return _reduce(value, dim=-1, mode=self.output_reduction)
+
+    def _finalize_output(self, value: Tensor, X: Tensor) -> Tensor:
+        """Reduce non-t-batch dimensions while preserving ``X.shape[:-2]``."""
+        target_shape = torch.Size(X.shape[:-2])
+        if value.shape == target_shape:
+            return value
+        if value.ndim == 0:
+            return value.expand(target_shape) if len(target_shape) > 0 else value
+        if len(target_shape) == 0:
+            return value.mean()
+
+        shape = tuple(value.shape)
+        target_tuple = tuple(target_shape)
+        start = None
+        for index in range(len(shape) - len(target_tuple) + 1):
+            if shape[index : index + len(target_tuple)] == target_tuple:
+                start = index
+                break
+
+        if start is not None:
+            # Reduce integration / fantasy dimensions before the t-batch block.
+            for _ in range(start):
+                value = _reduce(value, dim=0, mode=self.integration_reduction)
+
+            # Preserve t-batch dimensions. Reduce extra dimensions between the
+            # t-batch block and the final output dimension.
+            while value.ndim > len(target_shape) + 1:
+                value = _reduce(
+                    value,
+                    dim=len(target_shape),
+                    mode=self.integration_reduction,
+                )
+
+            if value.ndim == len(target_shape) + 1:
+                value = self._reduce_output_dimension(value)
+
+            if value.shape == target_shape:
+                return value
+
+        if value.numel() == _safe_prod(target_shape):
+            return value.reshape(target_shape)
+
+        # One-dimensional t-batch fallback for uncommon axis orders such as
+        # [m, batch, integration].
+        if len(target_shape) == 1:
+            batch_size = int(target_shape[0])
+            matching_dims = [i for i, size in enumerate(value.shape) if int(size) == batch_size]
+            if len(matching_dims) == 1:
+                value = value.movedim(matching_dims[0], 0)
+                while value.ndim > 2:
+                    value = _reduce(value, dim=1, mode=self.integration_reduction)
+                if value.ndim == 2:
+                    value = self._reduce_output_dimension(value)
+                if value.shape == target_shape:
+                    return value
+
+        raise RuntimeError(
+            "qMultiOutputRegressionNegIntegratedPosteriorVariance could not align "
+            f"inner output shape={tuple(value.shape)} to t-batch shape={tuple(target_shape)} "
+            f"for X.shape={tuple(X.shape)}."
+        )
+
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
-        return self.acqf(X)
+        return self._finalize_output(self.acqf(X), X)
 
 
 class qMultiOutputRegressionIntegratedPosteriorVarianceProxy(_MultiOutputRegressionActiveLearningBase):

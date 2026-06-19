@@ -224,7 +224,7 @@ def show_triscatter_with_acqf(
     *,
     show_type: str = "acqf",
     cycle: str | Sequence[Any] | pd.Series | None = None,
-    ncontours: int = 20,
+    ncontours: int = 25,
 ) -> Figure:
     """三角散布図に獲得関数または予測値の等高線を重ねる。"""
 
@@ -246,8 +246,9 @@ def show_triscatter_with_acqf(
         pole_labels=[feature_col1, feature_col2, feature_col3],
         ncontours=int(ncontours),
         coloring=None,
-        colorscale="RdBu",
+        colorscale="RdBu_r",
         showscale=False,
+        interp_mode="cartesian",
         showmarkers=False,
     )
     contour_fig.update_traces(showlegend=False)
@@ -412,7 +413,7 @@ def show_triscatter_with_acqf_from_optimizer(
     n: int = 50,
     show_type: str = "acqf",
     cycle: str | Sequence[Any] | pd.Series | None = None,
-    ncontours: int = 20,
+    ncontours: int = 25,
 ) -> Figure:
     X_df, y_df = training_dataframe(obj, feature_cols=feature_cols, target_cols=target_cols)
     data = tri_grid(obj, [feature_col1, feature_col2, feature_col3], target_col, value_dict, feature_cols=list(X_df.columns), target_cols=list(y_df.columns), candidate_result=candidate_result, sum_value=sum_value, n=n, show_type=show_type)  # type: ignore[arg-type]

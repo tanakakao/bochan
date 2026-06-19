@@ -239,7 +239,6 @@ def tri_grid(
     model_target_cols = infer_target_cols(obj, target_cols, ensure_2d(get_train_Y(obj)).shape[1])
     if target_col is not None and target_col not in model_target_cols:
         raise ValueError(f"target_col must be one of {model_target_cols}.")
-    target_idx = model_target_cols.index(target_col) if target_col in model_target_cols else None
 
     const_array = fixed_row_from(obj, feature_cols=cols, value_dict=value_dict)
 
@@ -254,7 +253,6 @@ def tri_grid(
         if len(hit) == 0:
             raise ValueError("select_cols の3列を含む制約が constraint_idx に見つかりません。")
         cons_pos = int(hit[0])
-        _const_idx = eq_cons_idx_list[cons_pos]
         eq_cons_vals_arr = np.ravel(to_numpy(eq_cons_vals)).astype(float)
         max_value = float(eq_cons_vals_arr[cons_pos])
     else:
@@ -282,30 +280,16 @@ def tri_grid(
         if acq_callable is None:
             raise ValueError("acqf を指定するか、candidate(..., return_result=True) の結果を渡してください。")
         values = np.ravel(evaluate_acqf_on_points(acq_callable, grid_tensor))
-        if values.size != n_grid:
-            raise ValueError(
-                f"acqf の評価値数がグリッド点数と一致しません: values={values.size}, grid={n_grid}"
-            )
     else:
-        if not hasattr(obj, "predict"):
-            mean_df, _ = prediction_dataframe(obj, grid_tensor, target_cols=target_cols)
-            if target_col not in mean_df.columns:
-                raise ValueError(f"target_col must be one of {list(mean_df.columns)}.")
-            values = mean_df[target_col].to_numpy()
-        else:
-            pred = obj.predict(grid_tensor)[0]
-            try:
-                values = np.ravel(pred[target_col].to_numpy())
-            except Exception:
-                pred_arr = ensure_2d(pred)
-                if target_idx is None:
-                    raise ValueError("target_col の列番号を特定できません。target_cols を指定してください。")
-                values = np.ravel(pred_arr[:, target_idx])
-        if values.size != n_grid:
-            mean_df, _ = prediction_dataframe(obj, grid_tensor, target_cols=target_cols)
-            if target_col not in mean_df.columns:
-                raise ValueError(f"target_col must be one of {list(mean_df.columns)}.")
-            values = mean_df[target_col].to_numpy()
+        mean_df, _ = prediction_dataframe(obj, grid_tensor, target_cols=target_cols)
+        if target_col not in mean_df.columns:
+            raise ValueError(f"target_col must be one of {list(mean_df.columns)}.")
+        values = mean_df[target_col].to_numpy()
+
+    if values.size != n_grid:
+        raise ValueError(
+            f"評価値数がグリッド点数と一致しません: values={values.size}, grid={n_grid}"
+        )
 
     grid_values = grid_values.T
     denom = grid_values.sum(axis=0)

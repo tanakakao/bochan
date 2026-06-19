@@ -13,15 +13,14 @@ from botorch.models import ModelListGP
 from botorch.models.gpytorch import ModelListGPyTorchModel
 from botorch.models.model import Model
 from botorch.sampling.normal import SobolQMCNormalSampler
-from botorch.utils.transforms import t_batch_mode_transform
+from botorch.utils.transforms import match_batch_shape, t_batch_mode_transform
 
 from bochan.acquisition.binary.base import ReductionType, _BinaryClassificationAcqBase
 
 from ._utils import (
     apply_score_objective,
-    binary_entropy,
+    compute_binary_best_f,
     ensure_q_batch,
-    normalize_binary_mean_shape,
     reshape_binary_samples,
     to_probability,
 )
@@ -29,9 +28,9 @@ from ._utils import (
 
 PoFMode = Literal["mc_sigmoid", "latent_cdf"]
 QFeasMode = Literal["prod", "mean", "min", "max"]
+QBatchMode = Literal["pointwise", "joint"]
 CombineMode = Literal["product", "log_product", "penalty"]
 BaseTransformMode = Literal["identity", "clamp_nonnegative", "softplus"]
-
 
 
 def _finalize_binary_acq_output_to_batch(
@@ -40,24 +39,15 @@ def _finalize_binary_acq_output_to_batch(
     *,
     name: str,
 ) -> Tensor:
-    """binary BO acquisition output を BoTorch の t-batch shape に揃える。
-
-    q=1 / batch=1 で MC 平均後に scalar になると、
-    gen_batch_initial_conditions の torch.cat で落ちるため、必ず batch shape を
-    保持して返す。
-    """
+    """binary BO acquisition outputをBoTorchのt-batch shapeに揃える。"""
     Xq = ensure_q_batch(X)
     target = tuple(Xq.shape[:-2])
     out = value
 
     if out.shape == target:
         return out
-
     if len(target) == 0:
-        if out.ndim == 0:
-            return out
-        return out.mean()
-
+        return out if out.ndim == 0 else out.mean()
     if out.ndim == 0:
         return out.expand(*target)
 
@@ -68,10 +58,8 @@ def _finalize_binary_acq_output_to_batch(
 
     if out.shape == target:
         return out
-
     if out.numel() == int(torch.tensor(target).prod().item()):
         return out.reshape(target)
-
     if out.ndim == 1 and len(target) == 1:
         if out.shape[0] == target[0]:
             return out
@@ -83,26 +71,64 @@ def _finalize_binary_acq_output_to_batch(
     )
 
 
+def _coerce_reference_tensor(
+    X_ref: Tensor | list[Tensor] | tuple[Tensor, ...] | None,
+    *,
+    ref: Tensor | None = None,
+) -> Tensor | None:
+    """参照点を単一Tensorへ揃える。"""
+    if X_ref is None:
+        return None
+    if torch.is_tensor(X_ref):
+        out = X_ref
+    elif isinstance(X_ref, (list, tuple)):
+        tensors = [
+            _coerce_reference_tensor(item, ref=ref)
+            for item in X_ref
+            if item is not None
+        ]
+        tensors = [
+            item
+            for item in tensors
+            if item is not None and item.numel() > 0
+        ]
+        if len(tensors) == 0:
+            return None
+        out = torch.cat(
+            [item.reshape(-1, item.shape[-1]) for item in tensors],
+            dim=-2,
+        )
+    else:
+        raise TypeError(
+            "Reference points must be Tensor, sequence of Tensors, or None. "
+            f"Got {type(X_ref)}."
+        )
+    if ref is not None:
+        out = out.to(device=ref.device, dtype=ref.dtype)
+    return out.detach()
+
+
+def _resolve_observed_X(model: Model) -> Tensor | None:
+    """モデルから学習入力をbest-effortで取り出す。"""
+    for attr in ("train_X_original", "train_X", "train_inputs_raw"):
+        value = getattr(model, attr, None)
+        if value is not None:
+            return value[0] if isinstance(value, tuple) else value
+
+    value = getattr(model, "train_inputs", None)
+    if isinstance(value, tuple) and len(value) > 0:
+        return value[0]
+
+    inner = getattr(model, "model", None)
+    if inner is not None and inner is not model:
+        value = getattr(inner, "train_inputs", None)
+        if isinstance(value, tuple) and len(value) > 0:
+            return value[0]
+    return None
+
+
 class qBinaryProbabilityOfFeasibility(_BinaryClassificationAcqBase):
-    """binary classification 用 probability of feasibility acquisition。実現可能確率を最大化します。
-    
-    Args:
-        model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
-        num_samples: classification probability や BALD などを MC 近似する sample 数。
-        threshold: binary classification や level-set で使う境界値。
-        mode: 獲得関数の計算モード。例: `mc_sigmoid` または `latent_cdf`。
-        reduction: q-batch 方向の集約方法。通常は `mean` または `sum`。
-        pending_penalty_weight: X_pending 近傍を避ける penalty の強さ。
-        pending_penalty_beta: X_pending penalty の距離減衰率。
-        eps: 数値安定化用の微小値。
-        objective: posterior samples または計算済み score に作用する objective。InputPerturbation の q*n_w -> q 集約にも使えます。
-    
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    """
+    """binary classification用probability of feasibility acquisition。"""
 
     def __init__(
         self,
@@ -147,17 +173,30 @@ class qBinaryProbabilityOfFeasibility(_BinaryClassificationAcqBase):
                 f"numel={f_samples.numel()}, expected={expected}"
             )
         f_samples = f_samples.reshape(self.num_samples, *orig)
-        return torch.sigmoid(f_samples).clamp(self.eps, 1.0 - self.eps).mean(dim=0)
+        return torch.sigmoid(f_samples).clamp(
+            self.eps,
+            1.0 - self.eps,
+        ).mean(dim=0)
 
     def _latent_cdf_prob(self, latent_dist, orig: torch.Size) -> Tensor:
         mu = self._reshape_pointwise_tensor(latent_dist.mean, orig)
-        var = self._reshape_pointwise_tensor(latent_dist.variance, orig).clamp_min(self.eps)
+        var = self._reshape_pointwise_tensor(
+            latent_dist.variance,
+            orig,
+        ).clamp_min(self.eps)
         sigma = var.sqrt()
         z = (mu - self.threshold) / sigma
-        normal = torch.distributions.Normal(torch.zeros_like(z), torch.ones_like(z))
+        normal = torch.distributions.Normal(
+            torch.zeros_like(z),
+            torch.ones_like(z),
+        )
         return normal.cdf(z).clamp(self.eps, 1.0 - self.eps)
 
-    def _pointwise_pof_from_latent_dist(self, latent_dist, orig: torch.Size) -> Tensor:
+    def _pointwise_pof_from_latent_dist(
+        self,
+        latent_dist,
+        orig: torch.Size,
+    ) -> Tensor:
         if self.mode == "mc_sigmoid":
             return self._mc_sigmoid_prob(latent_dist, orig)
         if self.mode == "latent_cdf":
@@ -180,87 +219,247 @@ class qBinaryProbabilityOfFeasibility(_BinaryClassificationAcqBase):
             score = score - penalty.reshape_as(score)
         elif self.pending_penalty_weight > 0:
             raise RuntimeError(
-                f"Pending penalty shape mismatch: score={tuple(score.shape)}, penalty={tuple(penalty.shape)}"
+                "Pending penalty shape mismatch: "
+                f"score={tuple(score.shape)}, penalty={tuple(penalty.shape)}"
             )
 
-        score = apply_score_objective(self, score, X=X, attr_name="objective", name="PoF")
+        score = apply_score_objective(
+            self,
+            score,
+            X=X,
+            attr_name="objective",
+            name="PoF",
+        )
         out = self._reduce_q(score)
         self._check_output_shape(out, original_batch_shape, "PoF")
         return out
 
 
 class _BinaryProbabilityBOBase(MCAcquisitionFunction):
+    """Binary probability-space BO acquisition共通基底。
+
+    ``q_mode="joint"``はBoTorchのqEI/qPI/qUCBと同様に、joint posteriorを
+    sampleし、sampleごとにq方向を最大化する。``q_mode="pointwise"``は
+    各候補点のscoreを個別に計算してq方向へ集約する。
+    """
+
     def __init__(
         self,
         model: Model,
         *,
         sampler: Optional[SobolQMCNormalSampler] = None,
-        apply_sigmoid_if_needed: bool = False,
+        apply_sigmoid_if_needed: bool = True,
+        q_mode: QBatchMode = "pointwise",
+        reduction: ReductionType = "mean",
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
+        X_baseline: Tensor | None = None,
+        pending_penalty_weight: float = 0.0,
+        pending_penalty_beta: float = 10.0,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        same_batch_penalty_weight: float = 0.0,
+        same_batch_penalty_beta: float = 10.0,
         eps: float = 1e-6,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
         **kwargs,
     ) -> None:
         if sampler is None:
             sampler = SobolQMCNormalSampler(sample_shape=torch.Size([128]))
+        if q_mode not in {"pointwise", "joint"}:
+            raise ValueError("q_mode must be 'pointwise' or 'joint'.")
+        if reduction not in {"mean", "sum", "max"}:
+            raise ValueError("reduction must be 'mean', 'sum', or 'max'.")
 
-        # MCAcquisitionFunction は objective=None でも single-output model では
-        # default Identity objective を self.objective として持つことがある。
-        # そのため「ユーザーが明示的に渡した objective」だけを別管理する。
         super().__init__(model=model, sampler=sampler, objective=None, **kwargs)
 
         self.apply_sigmoid_if_needed = bool(apply_sigmoid_if_needed)
+        self.q_mode = q_mode
+        self.reduction = reduction
+        self.pending_penalty_weight = float(pending_penalty_weight)
+        self.pending_penalty_beta = float(pending_penalty_beta)
+        self.observed_penalty_weight = float(observed_penalty_weight)
+        self.observed_penalty_beta = float(observed_penalty_beta)
+        self.same_batch_penalty_weight = float(same_batch_penalty_weight)
+        self.same_batch_penalty_beta = float(same_batch_penalty_beta)
         self.eps = float(eps)
         self.score_objective = objective
 
-    # def _posterior_samples_as_prob(self, X: Tensor) -> Tensor:
-    #     X = ensure_q_batch(X)
-    #     post = self.model.posterior(X)
-    #     samples = self.get_posterior_samples(post)
-    #     samples = reshape_binary_samples(samples, X)
-    #     return to_probability(
-    #         samples,
-    #         apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
-    #         eps=self.eps,
-    #         name="posterior samples",
-    #     )
+        observed = X_observed
+        if observed is None:
+            observed = X_baseline
+        if observed is None:
+            observed = _resolve_observed_X(model)
+        self.X_observed = _coerce_reference_tensor(observed)
+        self.set_X_pending(X_pending)
+
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
+        self.X_pending = _coerce_reference_tensor(X_pending)
+
+    @property
+    def _sample_ndim(self) -> int:
+        return len(getattr(self.sampler, "sample_shape", torch.Size([1])))
+
+    def _mean_over_sample_dims(self, value: Tensor) -> Tensor:
+        if self._sample_ndim <= 0:
+            return value
+        return value.mean(dim=tuple(range(self._sample_ndim)))
+
+    def _apply_input_transform(self, X: Tensor) -> Tensor:
+        X = ensure_q_batch(X)
+
+        for name in ("_to_internal", "_to_latent", "_to_training_feature_space"):
+            transform = getattr(self.model, name, None)
+            if callable(transform):
+                Xt = transform(X)
+                if isinstance(Xt, tuple):
+                    Xt = Xt[0]
+                return ensure_q_batch(Xt)
+
+        input_transform = getattr(self.model, "input_transform", None)
+        if callable(input_transform):
+            Xt = input_transform(X)
+            if isinstance(Xt, tuple):
+                Xt = Xt[0]
+            return ensure_q_batch(Xt)
+        return X
+
+    def _reference_to_transformed(
+        self,
+        X_ref: Tensor | list[Tensor] | tuple[Tensor, ...] | None,
+        *,
+        ref: Tensor,
+    ) -> Tensor | None:
+        X_ref = _coerce_reference_tensor(X_ref, ref=ref)
+        if X_ref is None or X_ref.numel() == 0:
+            return None
+        Xt = self._apply_input_transform(X_ref)
+        return Xt.reshape(-1, Xt.shape[-1]).to(ref)
+
+    def _reference_penalty_per_point(
+        self,
+        Xt: Tensor,
+        X_ref: Tensor | list[Tensor] | tuple[Tensor, ...] | None,
+        *,
+        weight: float,
+        beta: float,
+    ) -> Tensor:
+        Xt = ensure_q_batch(Xt)
+        if weight <= 0.0:
+            return Xt.new_zeros(Xt.shape[:-1])
+
+        ref = self._reference_to_transformed(X_ref, ref=Xt)
+        if ref is None:
+            return Xt.new_zeros(Xt.shape[:-1])
+
+        distance = torch.cdist(
+            Xt.reshape(-1, Xt.shape[-1]),
+            ref,
+        ).min(dim=-1).values
+        return weight * torch.exp(
+            -beta * distance.reshape(*Xt.shape[:-1])
+        )
+
+    def _pending_penalty_per_point(self, Xt: Tensor) -> Tensor:
+        return self._reference_penalty_per_point(
+            Xt,
+            self.X_pending,
+            weight=self.pending_penalty_weight,
+            beta=self.pending_penalty_beta,
+        )
+
+    def _observed_penalty_per_point(self, Xt: Tensor) -> Tensor:
+        return self._reference_penalty_per_point(
+            Xt,
+            self.X_observed,
+            weight=self.observed_penalty_weight,
+            beta=self.observed_penalty_beta,
+        )
+
+    def _same_batch_penalty(self, Xt: Tensor) -> Tensor:
+        Xt = ensure_q_batch(Xt)
+        if self.same_batch_penalty_weight <= 0.0 or Xt.shape[-2] <= 1:
+            return Xt.new_zeros(Xt.shape[:-2])
+
+        batch_shape = Xt.shape[:-2]
+        q = int(Xt.shape[-2])
+        Xb = Xt.reshape(-1, q, Xt.shape[-1])
+        distance = torch.cdist(Xb, Xb)
+        eye = torch.eye(
+            q,
+            device=Xt.device,
+            dtype=torch.bool,
+        ).unsqueeze(0)
+        distance = distance.masked_fill(eye, float("inf"))
+        penalty = (
+            0.5
+            * self.same_batch_penalty_weight
+            * torch.exp(-self.same_batch_penalty_beta * distance).sum(
+                dim=(-1, -2)
+            )
+        )
+        return penalty.reshape(*batch_shape)
+
+    def _reduce_q(self, score: Tensor) -> Tensor:
+        if self.reduction == "mean":
+            return score.mean(dim=-1)
+        if self.reduction == "sum":
+            return score.sum(dim=-1)
+        if self.reduction == "max":
+            return score.max(dim=-1).values
+        raise ValueError(f"Unknown reduction: {self.reduction!r}.")
+
+    def _pointwise_score_to_value(
+        self,
+        score: Tensor,
+        X: Tensor,
+    ) -> Tensor:
+        raw_X = ensure_q_batch(X)
+        Xt = self._apply_input_transform(raw_X)
+
+        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._observed_penalty_per_point(Xt)
+        value = self._reduce_q(score)
+        value = value - self._same_batch_penalty(Xt)
+        return _finalize_binary_acq_output_to_batch(
+            value,
+            raw_X,
+            name=self.__class__.__name__,
+        )
+
+    def _joint_X(self, X: Tensor) -> Tensor:
+        X = ensure_q_batch(X)
+        if self.X_pending is None:
+            return X
+        X_pending = self.X_pending.to(device=X.device, dtype=X.dtype)
+        return torch.cat(
+            [X, match_batch_shape(X_pending, X)],
+            dim=-2,
+        )
+
     @staticmethod
-    def _squeeze_binary_output_dim_if_present(probs: Tensor, X: Tensor) -> Tensor:
-        """
-        binary output dim=1 が本当に存在するときだけ squeeze する。
-
-        OK:
-            X.shape     = batch_shape x q x d
-            probs.shape = sample_shape x batch_shape x q x 1
-            -> sample_shape x batch_shape x q
-
-        NG:
-            X.shape     = batch_shape x 1 x d
-            probs.shape = sample_shape x batch_shape x 1
-            -> これは最後の 1 が q=1 なので squeeze しない
-        """
+    def _squeeze_binary_output_dim_if_present(
+        probs: Tensor,
+        X: Tensor,
+    ) -> Tensor:
         if probs.ndim > X.ndim and probs.shape[-1] == 1:
             return probs.squeeze(-1)
         return probs
 
     def _posterior_samples_as_prob(self, X: Tensor) -> Tensor:
-        """posterior samples を binary probability samples に変換する。
-
-        方針:
-            - apply_sigmoid_if_needed=True かつ model.latent_posterior がある場合は、
-              latent posterior から sample して sigmoid で probability に変換する。
-            - これは BinaryClassificationGPModel の設計
-              posterior() = probability posterior
-              latent_posterior() = latent f posterior
-              に合わせた挙動。
-            - model.posterior(X).rsample() は SimpleBernoulliPosterior の実装次第で
-              [0, 1] 外の連続値を返すことがあるため、latent -> sigmoid を優先する。
-        """
+        """posterior samplesをbinary probability samplesへ変換する。"""
         X = ensure_q_batch(X)
 
-        if self.apply_sigmoid_if_needed and hasattr(self.model, "latent_posterior"):
+        if self.apply_sigmoid_if_needed and hasattr(
+            self.model,
+            "latent_posterior",
+        ):
             post = self.model.latent_posterior(X)
             samples = self.get_posterior_samples(post)
-            probs = torch.sigmoid(samples).clamp(self.eps, 1.0 - self.eps)
+            probs = torch.sigmoid(samples).clamp(
+                self.eps,
+                1.0 - self.eps,
+            )
         else:
             post = self.model.posterior(X)
             samples = self.get_posterior_samples(post)
@@ -271,158 +470,281 @@ class _BinaryProbabilityBOBase(MCAcquisitionFunction):
                 name="posterior samples",
             )
 
-        # ユーザーが明示的に渡した objective のみ適用する。
-        # BoTorch 親クラスが持つ default Identity objective は使わない。
-        #
-        # objective は [mc, batch, q, 1] / [mc, batch, q] のどちらにも
-        # 対応している可能性があるため、unsafe squeeze より前に適用する。
-        if getattr(self, "score_objective", None) is not None:
+        if self.score_objective is not None:
             probs = self.score_objective(probs, X=X)
 
-        # binary output dim=1 だけを落とす。
-        # q=1 の q 次元は落とさない。
         probs = self._squeeze_binary_output_dim_if_present(probs, X)
+        return reshape_binary_samples(probs, X)
 
-        # 最終的に binary acquisition 用 shape に整える
-        probs = reshape_binary_samples(probs, X)
+    def _resolve_best_f(
+        self,
+        best_f: float | Tensor | None,
+        *,
+        best_f_margin: float,
+        best_f_quantile: float | None,
+    ) -> Tensor:
+        if best_f is not None:
+            return torch.as_tensor(best_f)
 
-        return probs
-
-    def _posterior_mean_std_prob(self, X: Tensor) -> tuple[Tensor, Tensor]:
-        """posterior samples を probability 空間に変換して mean/std を返す。
-
-        qBinaryUpperConfidenceBound 用の helper。
-        classification posterior は latent / probability のどちらを返す実装もあるため、
-        EI/PI と同じ _posterior_samples_as_prob() を経由して probability 空間に揃える。
-        """
-        probs = self._posterior_samples_as_prob(X)
-
-        if probs.ndim < 2:
-            raise RuntimeError(
-                "_posterior_samples_as_prob must return sample_shape x ... x q. "
-                f"Got probs.shape={tuple(probs.shape)}."
+        train_X = _resolve_observed_X(self.model)
+        if train_X is None:
+            raise ValueError(
+                "best_f was not provided and training inputs could not be "
+                "resolved from the model."
             )
 
-        mean = probs.mean(dim=0)
-        std = probs.std(dim=0, unbiased=False).clamp_min(self.eps)
-
-        return mean, std
-
-
-class qBinaryExpectedImprovement(_BinaryProbabilityBOBase):
-    """classification 用 expected improvement acquisition。現在の best_f からの改善量を評価します。
-    
-    Args:
-        model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
-        best_f: 既存観測点または baseline から計算した現在の最良値。
-        **kwargs: 親クラスまたは BoTorch acquisition に渡す追加 keyword arguments。
-            latent posterior を持つ分類モデルでは `apply_sigmoid_if_needed=True` を推奨します。
-    
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    """
-
-    def __init__(self, model: Model, best_f: float | Tensor, **kwargs) -> None:
-        super().__init__(model=model, **kwargs)
-        self.register_buffer("best_f", torch.as_tensor(best_f))
-
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        probs = self._posterior_samples_as_prob(X)
-        best_q = probs.max(dim=-1).values
-        best_f = self.best_f.to(best_q)
-        value = (best_q - best_f).clamp_min(0.0).mean(dim=0)
-        return _finalize_binary_acq_output_to_batch(
-            value,
-            X,
-            name="qBinaryExpectedImprovement",
+        objective = self.score_objective
+        risk_type = getattr(objective, "risk_type", None)
+        alpha = float(getattr(objective, "alpha", 0.5))
+        return compute_binary_best_f(
+            self.model,
+            train_X,
+            apply_sigmoid_if_needed=True,
+            risk_type=risk_type,
+            alpha=alpha,
+            eps=self.eps,
+            best_f_margin=best_f_margin,
+            best_f_quantile=best_f_quantile,
         )
 
 
-class qBinaryProbabilityOfImprovement(_BinaryProbabilityBOBase):
-    """classification 用 probability of improvement acquisition。best_f を上回る確率を評価します。
-    
-    Args:
-        model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
-        best_f: 既存観測点または baseline から計算した現在の最良値。
-        tau: soft PI や境界近傍重み付けに使う温度・幅パラメータ。
-        **kwargs: 親クラスまたは BoTorch acquisition に渡す追加 keyword arguments。
-    
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
+class qBinaryExpectedImprovement(_BinaryProbabilityBOBase):
+    """Positive-class probabilityに対するExpected Improvement。
+
+    ``q_mode="joint"``はBoTorch qEIと同じjoint max、既定の
+    ``q_mode="pointwise"``は各点のEIをq方向へ集約する。
     """
 
-    def __init__(self, model: Model, best_f: float | Tensor, tau: float = 1e-3, **kwargs) -> None:
-        super().__init__(model=model, **kwargs)
-        self.register_buffer("best_f", torch.as_tensor(best_f))
+    def __init__(
+        self,
+        model: Model,
+        best_f: float | Tensor | None = None,
+        *,
+        sampler: Optional[SobolQMCNormalSampler] = None,
+        apply_sigmoid_if_needed: bool = True,
+        q_mode: QBatchMode = "pointwise",
+        reduction: ReductionType = "mean",
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
+        X_baseline: Tensor | None = None,
+        pending_penalty_weight: float = 0.0,
+        pending_penalty_beta: float = 10.0,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        same_batch_penalty_weight: float = 0.0,
+        same_batch_penalty_beta: float = 10.0,
+        best_f_margin: float = 1e-4,
+        best_f_quantile: float | None = None,
+        eps: float = 1e-6,
+        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    ) -> None:
+        super().__init__(
+            model=model,
+            sampler=sampler,
+            apply_sigmoid_if_needed=apply_sigmoid_if_needed,
+            q_mode=q_mode,
+            reduction=reduction,
+            X_pending=X_pending,
+            X_observed=X_observed,
+            X_baseline=X_baseline,
+            pending_penalty_weight=pending_penalty_weight,
+            pending_penalty_beta=pending_penalty_beta,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            same_batch_penalty_weight=same_batch_penalty_weight,
+            same_batch_penalty_beta=same_batch_penalty_beta,
+            eps=eps,
+            objective=objective,
+        )
+        resolved_best_f = self._resolve_best_f(
+            best_f,
+            best_f_margin=best_f_margin,
+            best_f_quantile=best_f_quantile,
+        )
+        self.register_buffer("best_f", resolved_best_f)
+
+    @t_batch_mode_transform()
+    def forward(self, X: Tensor) -> Tensor:
+        raw_X = ensure_q_batch(X)
+        eval_X = self._joint_X(raw_X) if self.q_mode == "joint" else raw_X
+        probs = self._posterior_samples_as_prob(eval_X)
+        improvement = (
+            probs - self.best_f.to(probs)
+        ).clamp_min(0.0)
+
+        if self.q_mode == "joint":
+            value = self._mean_over_sample_dims(
+                improvement.max(dim=-1).values
+            )
+            value = value - self._same_batch_penalty(
+                self._apply_input_transform(raw_X)
+            )
+            return _finalize_binary_acq_output_to_batch(
+                value,
+                raw_X,
+                name=self.__class__.__name__,
+            )
+
+        pointwise = self._mean_over_sample_dims(improvement)
+        return self._pointwise_score_to_value(pointwise, raw_X)
+
+
+class qBinaryProbabilityOfImprovement(_BinaryProbabilityBOBase):
+    """Positive-class probabilityに対するProbability of Improvement。"""
+
+    def __init__(
+        self,
+        model: Model,
+        best_f: float | Tensor | None = None,
+        *,
+        tau: float = 1e-3,
+        sampler: Optional[SobolQMCNormalSampler] = None,
+        apply_sigmoid_if_needed: bool = True,
+        q_mode: QBatchMode = "pointwise",
+        reduction: ReductionType = "mean",
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
+        X_baseline: Tensor | None = None,
+        pending_penalty_weight: float = 0.0,
+        pending_penalty_beta: float = 10.0,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        same_batch_penalty_weight: float = 0.0,
+        same_batch_penalty_beta: float = 10.0,
+        best_f_margin: float = 1e-4,
+        best_f_quantile: float | None = None,
+        eps: float = 1e-6,
+        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    ) -> None:
+        super().__init__(
+            model=model,
+            sampler=sampler,
+            apply_sigmoid_if_needed=apply_sigmoid_if_needed,
+            q_mode=q_mode,
+            reduction=reduction,
+            X_pending=X_pending,
+            X_observed=X_observed,
+            X_baseline=X_baseline,
+            pending_penalty_weight=pending_penalty_weight,
+            pending_penalty_beta=pending_penalty_beta,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            same_batch_penalty_weight=same_batch_penalty_weight,
+            same_batch_penalty_beta=same_batch_penalty_beta,
+            eps=eps,
+            objective=objective,
+        )
+        resolved_best_f = self._resolve_best_f(
+            best_f,
+            best_f_margin=best_f_margin,
+            best_f_quantile=best_f_quantile,
+        )
+        self.register_buffer("best_f", resolved_best_f)
         self.register_buffer("tau", torch.as_tensor(tau))
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
-        probs = self._posterior_samples_as_prob(X)
-        best_q = probs.max(dim=-1).values
-        best_f = self.best_f.to(best_q)
-        tau = self.tau.to(best_q).clamp_min(1e-9)
-        value = torch.sigmoid((best_q - best_f) / tau).mean(dim=0)
-        return _finalize_binary_acq_output_to_batch(
-            value,
-            X,
-            name="qBinaryProbabilityOfImprovement",
+        raw_X = ensure_q_batch(X)
+        eval_X = self._joint_X(raw_X) if self.q_mode == "joint" else raw_X
+        probs = self._posterior_samples_as_prob(eval_X)
+        tau = self.tau.to(probs).clamp_min(self.eps)
+        indicator = torch.sigmoid(
+            (probs - self.best_f.to(probs)) / tau
         )
+
+        if self.q_mode == "joint":
+            value = self._mean_over_sample_dims(
+                indicator.max(dim=-1).values
+            )
+            value = value - self._same_batch_penalty(
+                self._apply_input_transform(raw_X)
+            )
+            return _finalize_binary_acq_output_to_batch(
+                value,
+                raw_X,
+                name=self.__class__.__name__,
+            )
+
+        pointwise = self._mean_over_sample_dims(indicator)
+        return self._pointwise_score_to_value(pointwise, raw_X)
 
 
 class qBinaryUpperConfidenceBound(_BinaryProbabilityBOBase):
-    """classification 用 upper confidence bound acquisition。平均と不確実性を組み合わせて探索します。
-    
-    Args:
-        model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
-        beta: 不確実性または sample deviation をどれだけ重視するかを決める係数。
-        **kwargs: 親クラスまたは BoTorch acquisition に渡す追加 keyword arguments。
-            `apply_sigmoid_if_needed` が未指定の場合、このクラスでは True を既定値にします。
-    
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    """
+    """Positive-class probabilityに対するUpper Confidence Bound。"""
 
-    def __init__(self, model: Model, beta: float | Tensor = 2.0, **kwargs) -> None:
-        # UCB は probability 空間の mean/std を使う acquisition。
-        # BinaryClassificationGPModel の posterior samples は latent のことが多いため、
-        # ユーザーが明示しない場合は sigmoid 変換を有効にする。
-        # 既に probability posterior を返すモデルでは、明示的に
-        # apply_sigmoid_if_needed=False を渡せば従来通りにできる。
-        kwargs.setdefault("apply_sigmoid_if_needed", True)
-        super().__init__(model=model, **kwargs)
+    def __init__(
+        self,
+        model: Model,
+        beta: float | Tensor = 2.0,
+        *,
+        sampler: Optional[SobolQMCNormalSampler] = None,
+        apply_sigmoid_if_needed: bool = True,
+        q_mode: QBatchMode = "pointwise",
+        reduction: ReductionType = "mean",
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
+        X_baseline: Tensor | None = None,
+        pending_penalty_weight: float = 0.0,
+        pending_penalty_beta: float = 10.0,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        same_batch_penalty_weight: float = 0.0,
+        same_batch_penalty_beta: float = 10.0,
+        eps: float = 1e-6,
+        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    ) -> None:
+        super().__init__(
+            model=model,
+            sampler=sampler,
+            apply_sigmoid_if_needed=apply_sigmoid_if_needed,
+            q_mode=q_mode,
+            reduction=reduction,
+            X_pending=X_pending,
+            X_observed=X_observed,
+            X_baseline=X_baseline,
+            pending_penalty_weight=pending_penalty_weight,
+            pending_penalty_beta=pending_penalty_beta,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            same_batch_penalty_weight=same_batch_penalty_weight,
+            same_batch_penalty_beta=same_batch_penalty_beta,
+            eps=eps,
+            objective=objective,
+        )
         self.register_buffer("beta", torch.as_tensor(beta))
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
-        mean, std = self._posterior_mean_std_prob(X)
-        beta = self.beta.to(mean)
-        score = mean + beta.sqrt() * std
-        value = score.max(dim=-1).values
-        return _finalize_binary_acq_output_to_batch(
-            value,
-            X,
-            name="qBinaryUpperConfidenceBound",
+        raw_X = ensure_q_batch(X)
+        eval_X = self._joint_X(raw_X) if self.q_mode == "joint" else raw_X
+        probs = self._posterior_samples_as_prob(eval_X)
+
+        sample_dims = tuple(range(self._sample_ndim))
+        mean = probs.mean(dim=sample_dims, keepdim=True)
+        beta_prime = torch.sqrt(
+            self.beta.to(probs) * probs.new_tensor(math.pi / 2.0)
         )
+        sample_ucb = mean + beta_prime * (probs - mean).abs()
+
+        if self.q_mode == "joint":
+            value = self._mean_over_sample_dims(
+                sample_ucb.max(dim=-1).values
+            )
+            value = value - self._same_batch_penalty(
+                self._apply_input_transform(raw_X)
+            )
+            return _finalize_binary_acq_output_to_batch(
+                value,
+                raw_X,
+                name=self.__class__.__name__,
+            )
+
+        pointwise = self._mean_over_sample_dims(sample_ucb)
+        return self._pointwise_score_to_value(pointwise, raw_X)
 
 
 class _qBinaryFeasibilityWeightedAcquisition(AcquisitionFunction):
-    """
-    Feasibility-weighted wrapper for arbitrary objective-side acquisition.
-
-    Examples:
-        EI * PoF, NEI * PoF, softplus(UCB) * PoF, logEI + log(PoF)
-    """
+    """Feasibility-weighted wrapper for arbitrary objective acquisition。"""
 
     def __init__(
         self,
@@ -437,12 +759,19 @@ class _qBinaryFeasibilityWeightedAcquisition(AcquisitionFunction):
         base_transform: BaseTransformMode = "identity",
         penalty_weight: float = 1.0,
         eps: float = 1e-8,
-        feasibility_objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        feasibility_objective: Optional[
+            Callable[[Tensor, Optional[Tensor]], Tensor]
+        ] = None,
     ):
-        if isinstance(feasibility_model, (ModelListGP, ModelListGPyTorchModel)):
+        if isinstance(
+            feasibility_model,
+            (ModelListGP, ModelListGPyTorchModel),
+        ):
             feasibility_model = feasibility_model.models[0]
 
-        super().__init__(getattr(objective_acqf, "model", feasibility_model))
+        super().__init__(
+            getattr(objective_acqf, "model", feasibility_model)
+        )
         self.objective_acqf = objective_acqf
         self.feasibility_model = feasibility_model
         self.num_pof_samples = int(num_pof_samples)
@@ -457,7 +786,10 @@ class _qBinaryFeasibilityWeightedAcquisition(AcquisitionFunction):
         self.feasibility_objective = feasibility_objective
         self.set_X_pending(None)
 
-    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
+    def set_X_pending(
+        self,
+        X_pending: Tensor | None = None,
+    ) -> None:
         self.X_pending = X_pending
         if hasattr(self.objective_acqf, "set_X_pending"):
             self.objective_acqf.set_X_pending(X_pending)
@@ -483,7 +815,9 @@ class _qBinaryFeasibilityWeightedAcquisition(AcquisitionFunction):
             return base_val.clamp_min(0.0)
         if self.base_transform == "softplus":
             return F.softplus(base_val)
-        raise ValueError(f"Unknown base_transform: {self.base_transform}")
+        raise ValueError(
+            f"Unknown base_transform: {self.base_transform}"
+        )
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
@@ -491,7 +825,10 @@ class _qBinaryFeasibilityWeightedAcquisition(AcquisitionFunction):
 
         pof_acqf = self._pof_acqf()
         latent_dist, orig, _ = pof_acqf._get_latent_dist_and_orig(X)
-        pof_point = pof_acqf._pointwise_pof_from_latent_dist(latent_dist, orig)
+        pof_point = pof_acqf._pointwise_pof_from_latent_dist(
+            latent_dist,
+            orig,
+        )
         pof_point = apply_score_objective(
             self,
             pof_point,
@@ -499,6 +836,7 @@ class _qBinaryFeasibilityWeightedAcquisition(AcquisitionFunction):
             attr_name="feasibility_objective",
             name="FeasibilityWeightedAcquisitionBinary",
         )
+
         if self.q_feas_mode == "prod":
             q_pof = pof_point.prod(dim=-1)
         elif self.q_feas_mode == "mean":
@@ -508,34 +846,37 @@ class _qBinaryFeasibilityWeightedAcquisition(AcquisitionFunction):
         elif self.q_feas_mode == "max":
             q_pof = pof_point.max(dim=-1).values
         else:
-            raise ValueError(f"Unknown q_feas_mode: {self.q_feas_mode}")
+            raise ValueError(
+                f"Unknown q_feas_mode: {self.q_feas_mode}"
+            )
 
         q_pof = q_pof.clamp(self.eps, 1.0 - self.eps)
 
         if self.combine_mode == "product":
-            value = self._transform_objective(base_val) * q_pof.pow(self.feasibility_power)
-            return _finalize_binary_acq_output_to_batch(
-                value,
-                X,
-                name="qBinaryFeasibilityWeightedAcquisition",
-            )
-        if self.combine_mode == "log_product":
+            value = self._transform_objective(
+                base_val
+            ) * q_pof.pow(self.feasibility_power)
+        elif self.combine_mode == "log_product":
             value = base_val + self.feasibility_power * torch.log(q_pof)
-            return _finalize_binary_acq_output_to_batch(
-                value,
-                X,
-                name="qBinaryFeasibilityWeightedAcquisition",
+        elif self.combine_mode == "penalty":
+            value = (
+                self._transform_objective(base_val)
+                - self.penalty_weight * (1.0 - q_pof)
             )
-        if self.combine_mode == "penalty":
-            value = self._transform_objective(base_val) - self.penalty_weight * (1.0 - q_pof)
-            return _finalize_binary_acq_output_to_batch(
-                value,
-                X,
-                name="qBinaryFeasibilityWeightedAcquisition",
+        else:
+            raise ValueError(
+                f"Unknown combine_mode: {self.combine_mode}"
             )
-        raise ValueError(f"Unknown combine_mode: {self.combine_mode}")
+
+        return _finalize_binary_acq_output_to_batch(
+            value,
+            X,
+            name="qBinaryFeasibilityWeightedAcquisition",
+        )
+
 
 __all__ = [
+    "QBatchMode",
     "qBinaryProbabilityOfFeasibility",
     "qBinaryExpectedImprovement",
     "qBinaryProbabilityOfImprovement",

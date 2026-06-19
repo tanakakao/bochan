@@ -191,7 +191,7 @@ def show_scatter_with_acqf(feature_col1: str, feature_col2: str, target_col: str
     grid2_arr = np.asarray(grid2).ravel()
     Z = np.asarray(Z_raw)[0] if np.asarray(Z_raw).ndim == 3 else np.asarray(Z_raw)
     fig = go.Figure()
-    fig.add_trace(go.Contour(z=Z, x=grid1_arr, y=grid2_arr, ncontours=25, contours_coloring="heatmap", colorscale="RdBu", colorbar=dict(title="獲得関数" if show_type == "acqf" else "予測値", lenmode="pixels", len=200), hoverinfo="none"))
+    fig.add_trace(go.Contour(z=Z, x=grid1_arr, y=grid2_arr, ncontours=25, contours_coloring="heatmap", colorscale="RdBu", line=dict(color="rgba(128,128,128,0.65)", width=0.6), colorbar=dict(title="獲得関数" if show_type == "acqf" else "予測値", lenmode="pixels", len=200), hoverinfo="none"))
     if df_cand is not None and feature_col1 in df_cand and feature_col2 in df_cand:
         fig.add_trace(go.Scatter(x=df_cand[feature_col1], y=df_cand[feature_col2], mode="markers", name="候補点", marker=dict(color="green", size=12, symbol="diamond", line=dict(width=0.8, color="black"))))
     cyc = cycle_series(cycle, X=X, y=y, length=len(X)) if cycle is not None else None

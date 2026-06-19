@@ -29,8 +29,17 @@ from .single_output import (
     qBinaryGreedyJointBALD,
     qBinaryProbabilityVariance,
     qBinaryMarginUncertainty,
-    qBinaryFantasyNegIntegratedPosteriorVariance,
+    qBinaryFantasyNegIntegratedPosteriorVariance as qBinaryFantasyNegIntegratedPosteriorVarianceEvo,
 )
+from .integrated_posterior_variance import (
+    qBinaryIntegratedPosteriorVarianceProxy,
+)
+
+# The contextual short name ``nipv`` is currently registered against
+# qBinaryFantasyNegIntegratedPosteriorVariance. For standard optimize_acqf,
+# expose the differentiable proxy under that package-level name. The original
+# refit/fantasy implementation remains available explicitly as the ``Evo`` name.
+qBinaryFantasyNegIntegratedPosteriorVariance = qBinaryIntegratedPosteriorVarianceProxy
 
 __all__ = [
     "qHeteroMultiOutputBinaryPredictiveEntropy",
@@ -54,5 +63,7 @@ __all__ = [
     "qBinaryGreedyJointBALD",
     "qBinaryProbabilityVariance",
     "qBinaryMarginUncertainty",
+    "qBinaryIntegratedPosteriorVarianceProxy",
     "qBinaryFantasyNegIntegratedPosteriorVariance",
+    "qBinaryFantasyNegIntegratedPosteriorVarianceEvo",
 ]

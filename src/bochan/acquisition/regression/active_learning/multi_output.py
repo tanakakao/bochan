@@ -15,10 +15,8 @@ Design policy:
         -> optional score objective / input-perturbation aggregation
         -> q reduction
 
-    - If BoTorch already provides the true acquisition, this module wraps it
-      instead of reimplementing it.  In particular,
-      qMultiOutputRegressionNegIntegratedPosteriorVariance delegates to
-      botorch.acquisition.active_learning.qNegIntegratedPosteriorVariance.
+    - If BoTorch already provides the true acquisition, this module follows its
+      computation directly rather than nesting another decorated acquisition.
 
 Notes:
     qMultiOutputRegressionIntegratedPosteriorVarianceProxy is intentionally a
@@ -31,15 +29,10 @@ from typing import Any, Callable, Literal, Optional, Sequence
 import torch
 from torch import Tensor
 
+from botorch import settings
 from botorch.acquisition.acquisition import AcquisitionFunction
-from botorch.utils.transforms import t_batch_mode_transform
-
-try:
-    from botorch.acquisition.active_learning import (
-        qNegIntegratedPosteriorVariance as _BoTorchQNegIntegratedPosteriorVariance,
-    )
-except Exception:  # pragma: no cover - depends on BoTorch version
-    _BoTorchQNegIntegratedPosteriorVariance = None
+from botorch.sampling.normal import SobolQMCNormalSampler
+from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
 
 try:
     from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
@@ -756,13 +749,13 @@ class qMultiOutputRegressionBALD(_MultiOutputRegressionActiveLearningBase):
 
 
 class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
-    """True BoTorch qNegIntegratedPosteriorVariance wrapper.
+    """Multi-output negative integrated posterior variance.
 
-    This delegates the fantasy / conditioning calculation to BoTorch and adds
-    multi-output result reduction. Some multi-output or hybrid models return the
-    unreduced shape ``integration_shape x batch_shape x m`` rather than the
-    expected ``batch_shape``. This class preserves the t-batch dimensions and
-    reduces the integration and output dimensions explicitly.
+    The fantasy / conditioning calculation follows BoTorch's
+    ``qNegIntegratedPosteriorVariance`` directly. It is implemented here rather
+    than wrapping a second acquisition instance, because the inner BoTorch
+    ``t_batch_mode_transform`` validates its unreduced multi-output tensor before
+    this class can aggregate the integration and output dimensions.
     """
 
     def __init__(
@@ -780,11 +773,11 @@ class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
         normalize_output_weights: bool = True,
         **kwargs: Any,
     ) -> None:
-        if _BoTorchQNegIntegratedPosteriorVariance is None:
-            raise ImportError(
-                "botorch.acquisition.active_learning.qNegIntegratedPosteriorVariance "
-                "is not available in this BoTorch version."
-            )
+        super().__init__(model=model)
+
+        if kwargs:
+            unexpected = ", ".join(sorted(kwargs))
+            raise TypeError(f"Unexpected NIPV keyword arguments: {unexpected}.")
         if integration_reduction not in ("mean", "sum", "max", "min"):
             raise ValueError(
                 "integration_reduction must be one of 'mean', 'sum', 'max', or 'min'."
@@ -802,52 +795,26 @@ class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
                 "'weighted_sum', or 'weighted_mean'."
             )
 
-        super().__init__(model=model)
+        self.posterior_transform = posterior_transform
+        self.objective = objective
         self.integration_reduction = integration_reduction
         self.output_reduction = output_reduction
         self.normalize_output_weights = bool(normalize_output_weights)
+
+        if sampler is None:
+            sampler = SobolQMCNormalSampler(sample_shape=torch.Size([1]))
+        self.sampler = sampler
+        self.X_pending = X_pending
+        self.register_buffer("mc_points", mc_points)
+
         if output_weights is None:
             self.output_weights = None
         else:
             weights = torch.as_tensor(output_weights).reshape(-1)
             self.register_buffer("output_weights", weights.detach().clone())
 
-        init_kwargs: dict[str, Any] = {
-            "model": model,
-            "mc_points": mc_points,
-        }
-        if sampler is not None:
-            init_kwargs["sampler"] = sampler
-        if objective is not None:
-            init_kwargs["objective"] = objective
-        if posterior_transform is not None:
-            init_kwargs["posterior_transform"] = posterior_transform
-        if X_pending is not None:
-            init_kwargs["X_pending"] = X_pending
-        init_kwargs.update(kwargs)
-
-        # BoTorch signatures differ slightly across versions. Try the most
-        # complete call first, then progressively remove optional keywords.
-        try:
-            self.acqf = _BoTorchQNegIntegratedPosteriorVariance(**init_kwargs)
-        except TypeError:
-            last_error = None
-            for key in ("X_pending", "posterior_transform", "objective", "sampler"):
-                init_kwargs.pop(key, None)
-                try:
-                    self.acqf = _BoTorchQNegIntegratedPosteriorVariance(**init_kwargs)
-                    break
-                except TypeError as exc:
-                    last_error = exc
-                    continue
-            else:
-                raise last_error  # type: ignore[misc]
-
     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
-        if hasattr(self.acqf, "set_X_pending"):
-            self.acqf.set_X_pending(X_pending)
-        else:
-            self.acqf.X_pending = X_pending
+        self.X_pending = X_pending
 
     def _reduce_output_dimension(self, value: Tensor) -> Tensor:
         if value.shape[-1] == 1:
@@ -900,12 +867,9 @@ class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
                 break
 
         if start is not None:
-            # Reduce integration / fantasy dimensions before the t-batch block.
             for _ in range(start):
                 value = _reduce(value, dim=0, mode=self.integration_reduction)
 
-            # Preserve t-batch dimensions. Reduce extra dimensions between the
-            # t-batch block and the final output dimension.
             while value.ndim > len(target_shape) + 1:
                 value = _reduce(
                     value,
@@ -922,8 +886,6 @@ class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
         if value.numel() == _safe_prod(target_shape):
             return value.reshape(target_shape)
 
-        # One-dimensional t-batch fallback for uncommon axis orders such as
-        # [m, batch, integration].
         if len(target_shape) == 1:
             batch_size = int(target_shape[0])
             matching_dims = [i for i, size in enumerate(value.shape) if int(size) == batch_size]
@@ -938,13 +900,29 @@ class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
 
         raise RuntimeError(
             "qMultiOutputRegressionNegIntegratedPosteriorVariance could not align "
-            f"inner output shape={tuple(value.shape)} to t-batch shape={tuple(target_shape)} "
-            f"for X.shape={tuple(X.shape)}."
+            f"posterior variance shape={tuple(value.shape)} to "
+            f"t-batch shape={tuple(target_shape)} for X.shape={tuple(X.shape)}."
         )
 
+    @concatenate_pending_points
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
-        return self._finalize_output(self.acqf(X), X)
+        fantasy_model = self.model.fantasize(X=X, sampler=self.sampler)
+
+        bdims = tuple(1 for _ in X.shape[:-2])
+        if int(getattr(self.model, "num_outputs", 1)) > 1:
+            mc_points = self.mc_points.view(-1, *bdims, 1, X.size(-1))
+        else:
+            mc_points = self.mc_points.view(*bdims, -1, X.size(-1))
+
+        with settings.propagate_grads(True):
+            posterior = fantasy_model.posterior(
+                mc_points,
+                posterior_transform=self.posterior_transform,
+            )
+
+        neg_variance = posterior.variance.mul(-1.0)
+        return self._finalize_output(neg_variance, X)
 
 
 class qMultiOutputRegressionIntegratedPosteriorVarianceProxy(_MultiOutputRegressionActiveLearningBase):
@@ -1001,8 +979,6 @@ class qMultiOutputRegressionIntegratedPosteriorVarianceProxy(_MultiOutputRegress
                 ref_var = ref_var.mean(dim=0)
 
         if ref_var.shape[-1] != X_ref_2d.shape[-2]:
-            # InputPerturbation may expand X_ref in distance space.  Collapse
-            # repeated reference points back to nominal reference count if possible.
             n_ref = int(self.X_ref.shape[-2])
             if X_ref_2d.shape[-2] % n_ref == 0:
                 n_w_ref = X_ref_2d.shape[-2] // n_ref

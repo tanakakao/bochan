@@ -20,18 +20,25 @@ from .multi_output import (
     qMultiOutputOrdinalExpectedHypervolumeImprovement,
     qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
     qMultiOutputOrdinalNParEGO,
-    compute_observed_ordinal_utility
+    compute_observed_ordinal_utility,
 )
 
 from .single_output import (
+    qOrdinalProbabilityOfFeasibility,
+    compute_ordinal_expected_utility_best_f,
+)
+from .utility_acquisitions import (
+    OrdinalQBatchMode,
+    OrdinalQReduction,
+    qOrdinalExpectedUtility,
     qOrdinalExpectedImprovement,
     qOrdinalProbabilityOfImprovement,
     qOrdinalUpperConfidenceBound,
-    qOrdinalProbabilityOfFeasibility,
-    compute_ordinal_expected_utility_best_f
 )
 
 __all__ = [
+    "OrdinalQBatchMode",
+    "OrdinalQReduction",
     "qHeteroMultiOutputOrdinalNormalScoreObjective",
     "qHeteroMultiOutputOrdinalExpectedUtility",
     "qHeteroMultiOutputOrdinalProbabilityOfImprovement",
@@ -48,9 +55,10 @@ __all__ = [
     "qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement",
     "qMultiOutputOrdinalNParEGO",
     "compute_observed_ordinal_utility",
+    "qOrdinalExpectedUtility",
     "qOrdinalExpectedImprovement",
     "qOrdinalProbabilityOfImprovement",
     "qOrdinalUpperConfidenceBound",
     "qOrdinalProbabilityOfFeasibility",
-    "compute_ordinal_expected_utility_best_f"
+    "compute_ordinal_expected_utility_best_f",
 ]

@@ -191,13 +191,13 @@ def show_scatter_with_acqf(feature_col1: str, feature_col2: str, target_col: str
     grid2_arr = np.asarray(grid2).ravel()
     Z = np.asarray(Z_raw)[0] if np.asarray(Z_raw).ndim == 3 else np.asarray(Z_raw)
     fig = go.Figure()
-    fig.add_trace(go.Contour(z=Z, x=grid1_arr, y=grid2_arr, ncontours=25, contours_coloring="heatmap", colorscale="Bluered", line=dict(color="rgba(128,128,128,0.65)", width=0.6), colorbar=dict(title="獲得関数" if show_type == "acqf" else "予測値", lenmode="pixels", len=200), hoverinfo="none"))
+    fig.add_trace(go.Contour(z=Z, x=grid1_arr, y=grid2_arr, ncontours=25, contours_coloring="heatmap", colorscale="RdBu", reversescale=True, line=dict(color="rgba(128,128,128,0.65)", width=0.6), colorbar=dict(title="獲得関数" if show_type == "acqf" else "予測値", lenmode="pixels", len=200), hoverinfo="none"))
     if df_cand is not None and feature_col1 in df_cand and feature_col2 in df_cand:
         fig.add_trace(go.Scatter(x=df_cand[feature_col1], y=df_cand[feature_col2], mode="markers", name="候補点", marker=dict(color="green", size=12, symbol="diamond", line=dict(width=0.8, color="black"))))
     cyc = cycle_series(cycle, X=X, y=y, length=len(X)) if cycle is not None else None
     cmap = cycle_color_map(cyc)
     if cyc is None:
-        fig.add_trace(go.Scatter(x=X[feature_col1], y=X[feature_col2], mode="markers", name="入力データ", marker=dict(size=10, color=y[target_col], colorscale="Bluered", showscale=False)))
+        fig.add_trace(go.Scatter(x=X[feature_col1], y=X[feature_col2], mode="markers", name="入力データ", marker=dict(size=10, color=y[target_col], colorscale="RdBu", reversescale=True, showscale=False)))
     else:
         for c, color in cmap.items():
             mask = cyc == c
@@ -242,16 +242,16 @@ def show_triscatter_with_acqf(
 
     contour_fig = ff.create_ternary_contour(
         grid,
-        ac_flat,
+        -ac_flat,
         pole_labels=[feature_col1, feature_col2, feature_col3],
         ncontours=int(ncontours),
         coloring=None,
-        colorscale="Bluered",
+        colorscale="RdBu",
         showscale=False,
         interp_mode="cartesian",
         showmarkers=False,
     )
-    contour_fig.update_traces(showlegend=False)
+    contour_fig.update_traces(showlegend=False, hoverinfo="skip")
     fig.add_traces(contour_fig.data)
 
     ac_min = float(np.nanmin(ac_flat)) if np.isfinite(ac_flat).any() else 0.0
@@ -265,7 +265,8 @@ def show_triscatter_with_acqf(
             y=[None],
             mode="markers",
             marker=dict(
-                colorscale="Bluered",
+                colorscale="RdBu",
+                reversescale=True,
                 cmin=ac_min,
                 cmax=ac_max,
                 colorbar=dict(
@@ -350,7 +351,7 @@ def show_triscatter_with_acqf(
                     c=c[m],
                     mode="markers",
                     name="入力データ",
-                    marker=dict(color=col[m], colorscale="Bluered", showscale=False, size=10),
+                    marker=dict(color=col[m], colorscale="RdBu", reversescale=True, showscale=False, size=10),
                     customdata=np.stack([a[m], b[m], c[m], col[m]], axis=1),
                     hovertemplate=(
                         f"{feature_col1}: %{{customdata[0]}}<br>"

@@ -17,37 +17,16 @@ from .single_output import (
 
 
 class qBinaryIntegratedPosteriorVarianceProxy(qBinaryProbabilityVariance):
-    """Differentiable integrated probability-variance proxy for binary models.
-
-    This acquisition evaluates binary probability uncertainty ``p(1-p)`` on
-    ``mc_points`` and scores candidate points by differentiable RBF coverage of
-    those uncertain reference regions. Unlike the fantasy/refit NIPV variant,
-    this proxy remains differentiable with respect to candidate ``X`` and can be
-    optimized with BoTorch's standard ``optimize_acqf`` / L-BFGS-B backend.
-
-    Args:
-        model: Binary classification model.
-        mc_points: Integration/reference points with shape ``n_mc x d``.
-        kernel_lengthscale: RBF lengthscale in transformed input space.
-        normalize_weights: Normalize RBF weights over ``mc_points``.
-        reduction: q-batch reduction inherited from
-            :class:`qBinaryProbabilityVariance`.
-        pending_penalty_weight: Penalty applied near pending points.
-        pending_penalty_beta: Distance decay for pending-point penalty.
-        apply_sigmoid_if_needed: Convert latent posterior means to
-            probabilities when necessary.
-        eps: Numerical stability constant.
-        objective: Optional classification score objective, including
-            InputPerturbation risk aggregation.
-    """
+    """Binary IPV proxy using the same score design as multiclass IPV."""
 
     def __init__(
         self,
         model: Model,
-        mc_points: Tensor,
         *,
-        kernel_lengthscale: float = 0.2,
-        normalize_weights: bool = True,
+        mc_points: Optional[Tensor] = None,
+        integration_beta: float = 25.0,
+        local_weight: Optional[float] = None,
+        integrated_weight: float = 1.0,
         reduction: str = "mean",
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
@@ -64,90 +43,93 @@ class qBinaryIntegratedPosteriorVarianceProxy(qBinaryProbabilityVariance):
             eps=eps,
             objective=objective,
         )
-        if mc_points.ndim != 2:
-            raise ValueError(
-                "mc_points must have shape [n_mc, d]. "
-                f"Got shape={tuple(mc_points.shape)}."
-            )
-        if kernel_lengthscale <= 0.0:
-            raise ValueError("kernel_lengthscale must be positive.")
-
-        ref_X = getattr(model, "train_X", None)
-        if ref_X is None:
+        if integration_beta <= 0.0:
+            raise ValueError("integration_beta must be positive.")
+        if mc_points is not None:
+            if mc_points.ndim != 2:
+                raise ValueError(
+                    "mc_points must have shape [n_mc, d]. "
+                    f"Got {tuple(mc_points.shape)}."
+                )
             train_inputs = getattr(model, "train_inputs", None)
-            if isinstance(train_inputs, tuple) and len(train_inputs) > 0:
-                ref_X = train_inputs[0]
-        if ref_X is not None:
-            mc_points = mc_points.to(device=ref_X.device, dtype=ref_X.dtype)
+            ref_X = train_inputs[0] if isinstance(train_inputs, tuple) else train_inputs
+            if ref_X is not None:
+                mc_points = mc_points.to(device=ref_X.device, dtype=ref_X.dtype)
+            self.register_buffer("mc_points", mc_points.detach().clone())
+        else:
+            self.mc_points = None
 
-        self.register_buffer("mc_points", mc_points.detach().clone())
-        self.kernel_lengthscale = float(kernel_lengthscale)
-        self.normalize_weights = bool(normalize_weights)
-
-    def _reference_points_and_uncertainty(self) -> tuple[Tensor, Tensor]:
-        """Return transformed integration points and detached uncertainty."""
-        self._prepare_eval()
-
-        prob_fn = getattr(self.model, "probability_posterior", None)
-        posterior = (
-            prob_fn(self.mc_points)
-            if callable(prob_fn)
-            else self.model.posterior(self.mc_points)
+        self.integration_beta = float(integration_beta)
+        self.local_weight = (
+            1.0 if local_weight is None and mc_points is None else float(local_weight or 0.0)
         )
-        prob = _binary_values_to_probability_for_ipv(
+        self.integrated_weight = float(integrated_weight)
+
+    def _probability(self, X: Tensor, *, name: str) -> Tensor:
+        prob_fn = getattr(self.model, "probability_posterior", None)
+        posterior = prob_fn(X) if callable(prob_fn) else self.model.posterior(X)
+        probability = _binary_values_to_probability_for_ipv(
             posterior.mean,
             apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
             eps=self.eps,
+            name=name,
+        )
+        return probability.squeeze(-1) if probability.shape[-1] == 1 else probability
+
+    def _integrated_score(self, Xt: Tensor) -> Tensor:
+        if self.mc_points is None:
+            return Xt.new_zeros(Xt.shape[:-1])
+
+        mc_probability = self._probability(
+            self.mc_points,
             name="binary mc_points posterior mean",
         ).reshape(-1)
-
-        transformed = _apply_input_transform_for_ipv(
+        mc_uncertainty = mc_probability * (1.0 - mc_probability)
+        mc_transformed = _apply_input_transform_for_ipv(
             self.model,
             self.mc_points,
-        ).reshape(-1, self.mc_points.shape[-1])
+        ).reshape(-1, Xt.shape[-1])
 
-        n_ref = int(transformed.shape[-2])
-        if prob.numel() == n_ref:
-            aligned_prob = prob
-        elif n_ref % prob.numel() == 0:
-            aligned_prob = prob.repeat_interleave(n_ref // prob.numel())
-        elif prob.numel() % n_ref == 0:
-            aligned_prob = prob.reshape(n_ref, prob.numel() // n_ref).mean(dim=-1)
-        else:
-            raise RuntimeError(
-                "Could not align binary probability values with transformed "
-                "mc_points. "
-                f"prob.shape={tuple(prob.shape)}, "
-                f"transformed.shape={tuple(transformed.shape)}."
-            )
+        if mc_uncertainty.numel() != mc_transformed.shape[-2]:
+            if mc_transformed.shape[-2] % mc_uncertainty.numel() == 0:
+                mc_uncertainty = mc_uncertainty.repeat_interleave(
+                    mc_transformed.shape[-2] // mc_uncertainty.numel()
+                )
+            elif mc_uncertainty.numel() % mc_transformed.shape[-2] == 0:
+                mc_uncertainty = mc_uncertainty.reshape(
+                    mc_transformed.shape[-2], -1
+                ).mean(dim=-1)
+            else:
+                raise RuntimeError("Could not align mc_points and binary uncertainty.")
 
-        uncertainty = aligned_prob * (1.0 - aligned_prob)
-        return transformed.detach(), uncertainty.detach()
+        d2 = torch.cdist(
+            Xt.reshape(-1, Xt.shape[-1]),
+            mc_transformed.detach(),
+        ).pow(2)
+        weights = torch.exp(-self.integration_beta * d2)
+        score = (
+            weights * mc_uncertainty.detach().reshape(1, -1)
+        ).sum(dim=-1) / weights.sum(dim=-1).clamp_min(self.eps)
+        return score.reshape(*Xt.shape[:-1])
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
         self._prepare_eval()
         raw_X = _ensure_q_batch_for_ipv(X)
         original_batch_shape = raw_X.shape[:-2]
-
         Xt = _apply_input_transform_for_ipv(self.model, raw_X)
-        ref_points, ref_uncertainty = self._reference_points_and_uncertainty()
-        ref_points = ref_points.to(device=Xt.device, dtype=Xt.dtype)
-        ref_uncertainty = ref_uncertainty.to(device=Xt.device, dtype=Xt.dtype)
 
-        X2d = Xt.reshape(-1, Xt.shape[-1])
-        d2 = torch.cdist(X2d, ref_points).pow(2)
-        d2 = d2.reshape(*Xt.shape[:-1], ref_points.shape[-2])
+        probability = self._probability(
+            raw_X,
+            name="binary candidate posterior mean",
+        )
+        local_score = probability * (1.0 - probability)
+        integrated_score = self._integrated_score(Xt)
+        if integrated_score.shape != local_score.shape:
+            integrated_score = integrated_score.reshape_as(local_score)
 
-        lengthscale2 = max(self.kernel_lengthscale**2, self.eps)
-        weights = torch.exp(-0.5 * d2 / lengthscale2)
-        if self.normalize_weights:
-            weights = weights / weights.sum(dim=-1, keepdim=True).clamp_min(self.eps)
-
-        view_shape = (1,) * (weights.ndim - 1) + (ref_uncertainty.numel(),)
-        score = (weights * ref_uncertainty.view(*view_shape)).sum(dim=-1)
+        score = self.local_weight * local_score + self.integrated_weight * integrated_score
         score = score - self._pending_penalty_per_point(Xt)
-
         score = _apply_objective_to_pointwise_score(
             self,
             score,
@@ -155,7 +137,6 @@ class qBinaryIntegratedPosteriorVarianceProxy(qBinaryProbabilityVariance):
             expanded_X=Xt,
             name="BinaryIntegratedPosteriorVarianceProxy",
         )
-
         out = self._reduce_q(score)
         self._check_output_shape(
             out,

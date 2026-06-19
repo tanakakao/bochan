@@ -197,7 +197,7 @@ def show_scatter_with_acqf(feature_col1: str, feature_col2: str, target_col: str
     cyc = cycle_series(cycle, X=X, y=y, length=len(X)) if cycle is not None else None
     cmap = cycle_color_map(cyc)
     if cyc is None:
-        fig.add_trace(go.Scatter(x=X[feature_col1], y=X[feature_col2], mode="markers", name="入力データ", marker=dict(size=10, color=y[target_col], colorscale="RdBu", reversescale=True, showscale=False)))
+        fig.add_trace(go.Scatter(x=X[feature_col1], y=X[feature_col2], mode="markers", name="入力データ", marker=dict(size=10, color=y[target_col], colorscale="RdBu", reversescale=True, showscale=False, line=dict(width=0.6, color="black"))))
     else:
         for c, color in cmap.items():
             mask = cyc == c
@@ -351,7 +351,7 @@ def show_triscatter_with_acqf(
                     c=c[m],
                     mode="markers",
                     name="入力データ",
-                    marker=dict(color=col[m], colorscale="RdBu", reversescale=True, showscale=False, size=10),
+                    marker=dict(color=col[m], colorscale="RdBu", reversescale=True, showscale=False, size=10, line=dict(width=0.6, color="black")),
                     customdata=np.stack([a[m], b[m], c[m], col[m]], axis=1),
                     hovertemplate=(
                         f"{feature_col1}: %{{customdata[0]}}<br>"

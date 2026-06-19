@@ -290,54 +290,28 @@ def show_triscatter_with_acqf(
         unique_cycles = sorted(pd.unique(cyc_series.dropna().astype(int)))
         color_map = cycle_color_map(cyc_series)
 
-    if isinstance(df_cand, pd.DataFrame):
-        mean_col = f"{target_col}_mean"
-        needed_cols = (feature_col1, feature_col2, feature_col3, mean_col)
-        if all(c in df_cand.columns for c in needed_cols):
-            a = pd.to_numeric(df_cand[feature_col1], errors="coerce")
-            b = pd.to_numeric(df_cand[feature_col2], errors="coerce")
-            c = pd.to_numeric(df_cand[feature_col3], errors="coerce")
-            val = pd.to_numeric(df_cand[mean_col], errors="coerce")
-            m = np.isfinite(a) & np.isfinite(b) & np.isfinite(c)
-            if m.any():
-                if use_cycle:
-                    fig.add_trace(
-                        go.Scatterternary(
-                            a=a[m],
-                            b=b[m],
-                            c=c[m],
-                            mode="markers",
-                            name="候補点",
-                            marker=dict(color="green", size=12, symbol="diamond", line=dict(width=0.8, color="black"), showscale=False),
-                            customdata=np.stack([a[m], b[m], c[m], val[m]], axis=1),
-                            hovertemplate=(
-                                f"{feature_col1}: %{{customdata[0]}}<br>"
-                                f"{feature_col2}: %{{customdata[1]}}<br>"
-                                f"{feature_col3}: %{{customdata[2]}}<br>"
-                                f"{target_col}: %{{customdata[3]}}<extra></extra>"
-                            ),
-                        )
-                    )
-                else:
-                    valid = m & np.isfinite(val)
-                    if valid.any():
-                        fig.add_trace(
-                            go.Scatterternary(
-                                a=a[valid],
-                                b=b[valid],
-                                c=c[valid],
-                                mode="markers",
-                                name="候補点",
-                                marker=dict(color=val[valid], colorscale="bluered", showscale=False, size=12, symbol="diamond", line=dict(width=0.8, color="black")),
-                                customdata=np.stack([a[valid], b[valid], c[valid], val[valid]], axis=1),
-                                hovertemplate=(
-                                    f"{feature_col1}: %{{customdata[0]}}<br>"
-                                    f"{feature_col2}: %{{customdata[1]}}<br>"
-                                    f"{feature_col3}: %{{customdata[2]}}<br>"
-                                    f"{target_col}: %{{customdata[3]}}<extra></extra>"
-                                ),
-                            )
-                        )
+    if df_cand is not None and all(c in df_cand for c in (feature_col1, feature_col2, feature_col3)):
+        cand_a = pd.to_numeric(df_cand[feature_col1], errors="coerce")
+        cand_b = pd.to_numeric(df_cand[feature_col2], errors="coerce")
+        cand_c = pd.to_numeric(df_cand[feature_col3], errors="coerce")
+        cand_mask = np.isfinite(cand_a) & np.isfinite(cand_b) & np.isfinite(cand_c)
+        if cand_mask.any():
+            fig.add_trace(
+                go.Scatterternary(
+                    a=cand_a[cand_mask],
+                    b=cand_b[cand_mask],
+                    c=cand_c[cand_mask],
+                    mode="markers",
+                    name="候補点",
+                    marker=dict(color="green", size=12, symbol="diamond", line=dict(width=0.8, color="black"), showscale=False),
+                    customdata=np.stack([cand_a[cand_mask], cand_b[cand_mask], cand_c[cand_mask]], axis=1),
+                    hovertemplate=(
+                        f"{feature_col1}: %{{customdata[0]}}<br>"
+                        f"{feature_col2}: %{{customdata[1]}}<br>"
+                        f"{feature_col3}: %{{customdata[2]}}<extra></extra>"
+                    ),
+                )
+            )
 
     a = pd.to_numeric(X[feature_col1], errors="coerce")
     b = pd.to_numeric(X[feature_col2], errors="coerce")
@@ -390,7 +364,7 @@ def show_triscatter_with_acqf(
         height=600,
         width=800,
         showlegend=True,
-        font_size=12,
+        font_size=16,
         legend_title_text="cycle" if use_cycle else "系列",
         ternary=dict(
             aaxis=dict(title=feature_col1),

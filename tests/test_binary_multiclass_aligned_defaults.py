@@ -33,10 +33,10 @@ def _make_binary_data(
 
 
 def _walk_kernels(kernel: Kernel):
-    yield kernel
-    for child in kernel.children():
-        if isinstance(child, Kernel):
-            yield from _walk_kernels(child)
+    """Yield all nested kernels, including kernels stored in ModuleList."""
+    for module in kernel.modules():
+        if isinstance(module, Kernel):
+            yield module
 
 
 def test_binary_public_default_num_inducing_points_matches_multiclass() -> None:

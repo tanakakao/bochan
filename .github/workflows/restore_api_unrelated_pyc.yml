@@ -1,0 +1,39 @@
+name: Restore unrelated API bytecode files
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/binary-api-probability-contract
+          fetch-depth: 0
+      - name: Restore tracked pyc files from main
+        run: |
+          mapfile -t deleted_pyc < <(
+            git diff --name-only --diff-filter=D origin/main...HEAD | grep -E '\.pyc$' || true
+          )
+          if [ "${#deleted_pyc[@]}" -gt 0 ]; then
+            git checkout origin/main -- "${deleted_pyc[@]}"
+          fi
+      - name: Remove one-off workflow
+        run: rm .github/workflows/restore_api_unrelated_pyc.yml
+      - name: Commit cleanup
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Restore unrelated tracked bytecode files'
+          git push origin HEAD:fix/binary-api-probability-contract

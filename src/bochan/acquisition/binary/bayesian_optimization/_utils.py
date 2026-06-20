@@ -303,14 +303,30 @@ def to_probability(
     eps: float,
     name: str,
     model: Optional[Model] = None,
+    values_are_probs: Optional[bool] = None,
 ) -> Tensor:
     """Convert probability values or latent values using the model likelihood.
 
-    ``apply_sigmoid_if_needed`` is retained as a compatibility argument.  When
-    conversion is required it no longer means a hard-coded sigmoid: the model's
-    binary likelihood is used, so GPyTorch ``BernoulliLikelihood`` follows its
-    probit link and custom likelihoods follow their own conditional link.
+    ``values_are_probs=False`` is the unambiguous latent path and always applies
+    the model's likelihood, even when all latent values happen to be in
+    ``[0, 1]``.  ``apply_sigmoid_if_needed`` remains a compatibility name for
+    range-inferred inputs, but conversion is likelihood-aware rather than a
+    hard-coded sigmoid.
     """
+    if values_are_probs is False:
+        if model is None:
+            raise RuntimeError(
+                f"{name} is declared latent, but no model was provided for "
+                "likelihood-aware conversion."
+            )
+        return values_to_binary_probabilities(
+            model,
+            x,
+            eps=eps,
+            name=name,
+            values_are_probabilities=False,
+        )
+
     xmin = x.min().item()
     xmax = x.max().item()
     if 0.0 <= xmin and xmax <= 1.0:
@@ -326,6 +342,7 @@ def to_probability(
             x,
             eps=eps,
             name=name,
+            values_are_probabilities=values_are_probs,
         )
     raise RuntimeError(
         f"{name} is not in [0,1] (min={xmin:.4g}, max={xmax:.4g}). "

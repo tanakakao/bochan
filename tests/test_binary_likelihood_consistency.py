@@ -73,6 +73,40 @@ def test_probability_values_are_not_transformed_twice() -> None:
     assert torch.allclose(actual, probability)
 
 
+def test_known_latent_values_inside_unit_interval_are_transformed() -> None:
+    latent = torch.tensor([0.1, 0.4, 0.8], dtype=torch.double)
+    model = _Model(BernoulliLikelihood())
+
+    actual = values_to_binary_probabilities(
+        model,
+        latent,
+        eps=1e-12,
+        values_are_probabilities=False,
+    )
+    expected = Normal(0.0, 1.0).cdf(latent)
+
+    assert torch.allclose(actual, expected, atol=1e-10, rtol=1e-10)
+    assert not torch.allclose(actual, latent)
+
+
+def test_to_probability_forces_known_latent_values_through_likelihood() -> None:
+    latent = torch.tensor([0.1, 0.4, 0.8], dtype=torch.double)
+    model = _Model(BernoulliLikelihood())
+
+    actual = to_probability(
+        latent,
+        apply_sigmoid_if_needed=True,
+        eps=1e-12,
+        name="known latent values",
+        model=model,
+        values_are_probs=False,
+    )
+    expected = Normal(0.0, 1.0).cdf(latent)
+
+    assert torch.allclose(actual, expected, atol=1e-10, rtol=1e-10)
+    assert not torch.allclose(actual, latent)
+
+
 def test_legacy_to_probability_argument_is_likelihood_aware() -> None:
     latent = torch.tensor([-1.0, 0.0, 1.0], dtype=torch.double)
     model = _Model(BernoulliLikelihood())

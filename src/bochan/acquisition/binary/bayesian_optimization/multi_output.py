@@ -56,9 +56,9 @@ def _get_binary_mc_posterior_for_probability_samples(
         latent_posterior(X) -> latent f posterior
     という設計が多い。
 
-    MC acquisition で sigmoid 変換を使う場合、posterior(X).rsample() に
-    sigmoid をかけるより、latent_posterior(X).rsample() に sigmoid をかける方が
-    意味的に自然。そのため samples_are_probs=False では latent_posterior を優先する。
+    MC acquisition で likelihood link を使う場合、probability posterior の
+    samples を再変換するのではなく、latent posterior samples を各モデルの
+    likelihood に通す。そのため samples_are_probs=False では latent_posterior を優先する。
     """
     if (not samples_are_probs) and prefer_latent:
         latent_fn = getattr(model, "latent_posterior", None)
@@ -239,7 +239,16 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
             )
             samples = post.rsample(torch.Size([self.num_samples]))
             samples = reshape_samples(samples, expanded_X, torch.Size([self.num_samples]))
-            probs = to_probability(samples, apply_sigmoid_if_needed=not self.samples_are_probs or self.apply_sigmoid_if_needed, eps=self.eps, name='posterior.rsample()', model=self.model)
+            probs = to_probability(
+                samples,
+                apply_sigmoid_if_needed=(
+                    not self.samples_are_probs or self.apply_sigmoid_if_needed
+                ),
+                eps=self.eps,
+                name="posterior.rsample()",
+                model=self.model,
+                values_are_probs=self.samples_are_probs,
+            )
             p = probs.mean(dim=0)
         elif self.mode == "latent_cdf":
             post = _get_binary_mc_posterior_for_probability_samples(
@@ -578,7 +587,16 @@ class qMultiOutputBinaryNParEGO(MCAcquisitionFunction):
         )
         samples = self.get_posterior_samples(post)
 
-        values = to_probability(samples, apply_sigmoid_if_needed=not self.samples_are_probs or self.apply_sigmoid_if_needed, eps=self.eps, name='NParEGO posterior samples', model=self.model)
+        values = to_probability(
+            samples,
+            apply_sigmoid_if_needed=(
+                not self.samples_are_probs or self.apply_sigmoid_if_needed
+            ),
+            eps=self.eps,
+            name="NParEGO posterior samples",
+            model=self.model,
+            values_are_probs=self.samples_are_probs,
+        )
 
         values = self.base_objective(values, X=Xq)
 

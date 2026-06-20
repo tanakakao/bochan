@@ -120,14 +120,20 @@ def values_to_binary_probabilities(
     eps: float = 1e-6,
     name: str = "binary values",
     output_dim: int = -1,
+    values_are_probabilities: bool | None = None,
 ) -> Tensor:
-    """Validate probability values or transform latent values via likelihood."""
+    """Validate probabilities or transform latent values via likelihood.
+
+    ``values_are_probabilities=False`` forces likelihood conversion even when
+    every latent value happens to lie inside ``[0, 1]``.  ``None`` preserves the
+    compatibility behavior that infers the value space from the numeric range.
+    """
     if not torch.isfinite(values).all():
         raise RuntimeError(f"{name}: values contain NaN or inf.")
 
     vmin = values.detach().min().item()
     vmax = values.detach().max().item()
-    if 0.0 <= vmin and vmax <= 1.0:
+    if values_are_probabilities is not False and 0.0 <= vmin and vmax <= 1.0:
         return values.clamp(eps, 1.0 - eps)
 
     return latent_samples_to_binary_probabilities(

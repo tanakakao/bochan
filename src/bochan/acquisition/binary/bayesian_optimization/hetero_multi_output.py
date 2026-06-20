@@ -102,10 +102,26 @@ def hetero_adjust_classification_samples(
         posterior = get_model_posterior(model, X, samples_are_probs=samples_are_probs)
 
     mean_prob = normalize_mean_shape(posterior.mean, shape_X)
-    mean_prob = to_probability(mean_prob, apply_sigmoid_if_needed=apply_sigmoid_if_needed, eps=eps, name='posterior.mean', model=model)
+    mean_prob = to_probability(
+        mean_prob,
+        apply_sigmoid_if_needed=apply_sigmoid_if_needed,
+        eps=eps,
+        name="posterior.mean",
+        model=model,
+        values_are_probs=samples_are_probs,
+    )
 
     samples = reshape_samples(samples, shape_X)
-    samples = to_probability(samples, apply_sigmoid_if_needed=not samples_are_probs or apply_sigmoid_if_needed, eps=eps, name='posterior samples', model=model)
+    samples = to_probability(
+        samples,
+        apply_sigmoid_if_needed=(
+            not samples_are_probs or apply_sigmoid_if_needed
+        ),
+        eps=eps,
+        name="posterior samples",
+        model=model,
+        values_are_probs=samples_are_probs,
+    )
 
     sigma = _get_noise_std(
         model,
@@ -136,7 +152,14 @@ def compute_hetero_multi_output_classification_train_y(
         shape_X = shape_X_for_model(model, X)
         post = get_model_posterior(model, X, samples_are_probs=True)
         mean = normalize_mean_shape(post.mean, shape_X)
-        mean = to_probability(mean, apply_sigmoid_if_needed=apply_sigmoid_if_needed, eps=eps, name='posterior.mean', model=model)
+        mean = to_probability(
+            mean,
+            apply_sigmoid_if_needed=apply_sigmoid_if_needed,
+            eps=eps,
+            name="posterior.mean",
+            model=model,
+            values_are_probs=True,
+        )
         sigma = _get_noise_std(
             model,
             X,

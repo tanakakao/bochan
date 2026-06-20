@@ -747,7 +747,7 @@ class qBinaryFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
         conditioning_steps: `condition_on_observations(..., refit=True)` に渡す再学習 step 数。
         conditioning_lr: 再学習時の learning rate。
         conditioning_batch_size: 再学習時の batch size。
-        apply_sigmoid_if_needed: posterior mean が latent 値の場合に sigmoid で確率化するか。
+        apply_sigmoid_if_needed: posterior mean が latent 値の場合に likelihood link で確率化するか。
         pending_penalty_weight: X_pending 近傍を避ける penalty の強さ。
         pending_penalty_beta: pending penalty の距離減衰率。
         observed_penalty_weight: X_observed 近傍を避ける penalty の強さ。
@@ -826,7 +826,13 @@ class qBinaryFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
     def _sample_fantasy_labels(self, X: Tensor) -> Tensor:
         prob_fn = getattr(self.model, "probability_posterior", None)
         posterior = prob_fn(X) if callable(prob_fn) else self.model.posterior(X)
-        prob = _binary_values_to_probability_for_ipv(self.model, posterior.mean, apply_sigmoid_if_needed=self.apply_sigmoid_if_needed, eps=self.eps, name='binary posterior mean')
+        prob = _binary_values_to_probability_for_ipv(
+            self.model,
+            posterior.mean,
+            apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
+            eps=self.eps,
+            name="binary posterior mean",
+        )
 
         # prob: q or batch_shape x q. ここでは X は通常 q x d。
         prob = prob.reshape(*prob.shape[:-1], prob.shape[-1]) if prob.ndim > 1 else prob
@@ -843,7 +849,13 @@ class qBinaryFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
     def _integrated_probability_variance(self, fantasy_model: Model) -> Tensor:
         prob_fn = getattr(fantasy_model, "probability_posterior", None)
         posterior = prob_fn(self.mc_points) if callable(prob_fn) else fantasy_model.posterior(self.mc_points)
-        prob = _binary_values_to_probability_for_ipv(self.model, posterior.mean, apply_sigmoid_if_needed=self.apply_sigmoid_if_needed, eps=self.eps, name='fantasy posterior mean')
+        prob = _binary_values_to_probability_for_ipv(
+            fantasy_model,
+            posterior.mean,
+            apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
+            eps=self.eps,
+            name="fantasy posterior mean",
+        )
         return (prob * (1.0 - prob)).mean()
 
     def _aggregated_reference_penalty(self, X: Tensor) -> Tensor:

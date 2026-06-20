@@ -13,6 +13,7 @@ from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_tr
 
 from ._utils import (
     ensure_q_batch,
+    get_single_model_posterior,
     normalize_binary_mean_shape,
     reshape_binary_samples,
     to_probability,
@@ -131,14 +132,30 @@ def hetero_adjust_binary_classification_samples(
         X,
         perturbation_reduction="mean",
     )
-    mean_prob = to_probability(mean_prob, apply_sigmoid_if_needed=apply_sigmoid_if_needed, eps=eps, name='posterior.mean', model=model)
+    mean_prob = to_probability(
+        mean_prob,
+        apply_sigmoid_if_needed=apply_sigmoid_if_needed,
+        eps=eps,
+        name="posterior.mean",
+        model=model,
+        values_are_probs=samples_are_probs,
+    )
 
     samples = reshape_binary_samples(
         samples,
         X,
         perturbation_reduction="mean",
     )
-    samples = to_probability(samples, apply_sigmoid_if_needed=not samples_are_probs or apply_sigmoid_if_needed, eps=eps, name='posterior samples', model=model)
+    samples = to_probability(
+        samples,
+        apply_sigmoid_if_needed=(
+            not samples_are_probs or apply_sigmoid_if_needed
+        ),
+        eps=eps,
+        name="posterior samples",
+        model=model,
+        values_are_probs=samples_are_probs,
+    )
 
     sigma_noise = _get_noise_std(
         model,
@@ -177,7 +194,14 @@ def compute_hetero_binary_classification_best_f(
     with torch.no_grad():
         post = model.posterior(train_X)
         mean_prob = normalize_binary_mean_shape(post.mean, train_X)
-        mean_prob = to_probability(mean_prob, apply_sigmoid_if_needed=apply_sigmoid_if_needed, eps=eps, name='posterior.mean', model=model)
+        mean_prob = to_probability(
+            mean_prob,
+            apply_sigmoid_if_needed=apply_sigmoid_if_needed,
+            eps=eps,
+            name="posterior.mean",
+            model=model,
+            values_are_probs=True,
+        )
 
         sigma_noise = _get_noise_std(
             model,
@@ -228,7 +252,11 @@ class _HeteroBinaryBOBase(MCAcquisitionFunction):
         self.eps = float(eps)
 
     def _hetero_samples(self, X: Tensor) -> Tensor:
-        post = self.model.posterior(X)
+        post = get_single_model_posterior(
+            self.model,
+            X,
+            samples_are_probs=self.samples_are_probs,
+        )
         samples = self.get_posterior_samples(post)
 
         return hetero_adjust_binary_classification_samples(

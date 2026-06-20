@@ -106,15 +106,46 @@ class BayesianOptimizer:
         return_result: bool = False,
         posterior_kwargs: dict[str, Any] | None = None,
     ) -> Any:
-        """予測を行う。"""
+        """予測を行う。
+
+        binary classification では、利用可能なら ``probability_posterior``
+        を優先する。mean はクラス1確率、variance は通常 Bernoulli 観測分散。
+        """
         self._check_fitted()
         posterior_kwargs = posterior_kwargs or {}
-        posterior = self.model.posterior(X, **posterior_kwargs)
+        task_type = str(self.bundle.task_type)
+
+        probability_posterior = getattr(self.model, "probability_posterior", None)
+        if task_type == "binary" and callable(probability_posterior):
+            posterior = probability_posterior(X, **posterior_kwargs)
+        else:
+            posterior = self.model.posterior(X, **posterior_kwargs)
+
         mean = getattr(posterior, "mean", None)
         variance = getattr(posterior, "variance", None)
 
+        if task_type == "binary":
+            prediction_space = "probability"
+            observation_noise = posterior_kwargs.get("observation_noise", False)
+            has_observation_noise = observation_noise is not False and observation_noise is not None
+            variance_kind = (
+                "bernoulli_observation_plus_noise"
+                if has_observation_noise
+                else "bernoulli_observation"
+            )
+        else:
+            prediction_space = "outcome"
+            variance_kind = "posterior"
+
         if return_result:
-            return PredictionResult(posterior=posterior, mean=mean, variance=variance)
+            return PredictionResult(
+                posterior=posterior,
+                mean=mean,
+                variance=variance,
+                task_type=task_type,
+                prediction_space=prediction_space,
+                variance_kind=variance_kind,
+            )
         if return_type == "posterior":
             return posterior
         if return_type == "mean":
@@ -123,7 +154,9 @@ class BayesianOptimizer:
             return variance
         if return_type == "mean_variance":
             return mean, variance
-        raise ValueError("Unknown return_type. Expected 'posterior', 'mean', 'variance', or 'mean_variance'.")
+        raise ValueError(
+            "Unknown return_type. Expected 'posterior', 'mean', 'variance', or 'mean_variance'."
+        )
 
     def _resolve_acquisition_config(self, acq_config: AcquisitionConfig) -> AcquisitionConfig:
         if acq_config.acqf_cls is not None or acq_config.acqf_factory is not None:

@@ -130,6 +130,9 @@ class CandidateResponse(APIBaseModel):
 
 
 class PredictResponse(APIBaseModel):
+    task_type: str | None = None
+    prediction_space: str | None = None
+    variance_kind: str | None = None
     posterior: Any | None = None
     mean: Any | None = None
     variance: Any | None = None
@@ -484,11 +487,22 @@ def create_router(store: SessionStore | None = None) -> APIRouter:
                 return_result=True,
                 posterior_kwargs=request.posterior_kwargs,
             )
-            posterior_payload = None if request.return_type != "posterior" else str(result.posterior)
+            mean = _to_python(result.mean)
+            variance = _to_python(result.variance)
+            posterior_payload = None
+            if request.return_type == "posterior":
+                posterior_payload = {
+                    "type": type(result.posterior).__name__,
+                    "mean": mean,
+                    "variance": variance,
+                }
             return PredictResponse(
+                task_type=result.task_type,
+                prediction_space=result.prediction_space,
+                variance_kind=result.variance_kind,
                 posterior=posterior_payload,
-                mean=_to_python(result.mean),
-                variance=_to_python(result.variance),
+                mean=mean,
+                variance=variance,
             )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

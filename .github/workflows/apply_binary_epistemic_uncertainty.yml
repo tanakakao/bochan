@@ -1,0 +1,95 @@
+name: Apply binary epistemic uncertainty migration
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/binary-epistemic-uncertainty
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Apply source migrations
+        run: |
+          python .github/scripts/patch_binary_bo_single.py
+          python .github/scripts/patch_binary_bo_utils.py
+          python .github/scripts/patch_binary_bo_multi_imports.py
+          python .github/scripts/patch_binary_bo_multi_ehvi.py
+          python .github/scripts/patch_binary_bo_hetero_multi.py
+          python .github/scripts/patch_binary_bo_hetero_defaults.py
+          python .github/scripts/patch_binary_active_single.py
+          python .github/scripts/patch_binary_ipv.py
+          python .github/scripts/patch_binary_active_multi.py
+          python .github/scripts/patch_binary_active_hetero_probability.py
+          python .github/scripts/patch_binary_active_hetero_unified.py
+          python .github/scripts/patch_binary_active_hetero_multi.py
+          python .github/scripts/patch_binary_visualization_epistemic.py
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[test,tabular,evo,visualization]'
+
+      - name: Compile changed modules
+        run: |
+          python -m compileall -q \
+            src/bochan/acquisition/binary \
+            src/bochan/visualization \
+            tests/test_binary_epistemic_uncertainty.py \
+            tests/test_binary_visualization_probability.py
+
+      - name: Run epistemic tests
+        run: |
+          pytest -q \
+            tests/test_binary_epistemic_uncertainty.py \
+            tests/test_binary_visualization_probability.py
+
+      - name: Run binary regression tests
+        run: |
+          pytest -q \
+            tests/test_binary_probability_bo_pointwise.py \
+            tests/test_binary_likelihood_consistency.py \
+            tests/test_binary_multiclass_aligned_defaults.py
+
+      - name: Collect binary tests
+        run: pytest --collect-only -q tests/test_binary*.py
+
+      - name: Remove one-off migration files
+        run: |
+          rm -f .github/scripts/patch_binary_*.py
+          rm -f .github/workflows/apply_binary_epistemic_uncertainty.yml
+
+      - name: Commit implementation
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            src/bochan/acquisition/binary \
+            src/bochan/visualization \
+            tests/test_binary_epistemic_uncertainty.py \
+            tests/test_binary_visualization_probability.py \
+            .github/scripts \
+            .github/workflows
+          git diff --cached --stat
+          git commit -m 'Use epistemic uncertainty for binary optimization'
+          git push origin HEAD:fix/binary-epistemic-uncertainty

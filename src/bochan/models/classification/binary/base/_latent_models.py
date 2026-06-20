@@ -188,6 +188,15 @@ class _LatentBinarySVGP(ApproximateGP):
 
         self.to(device=ref_device, dtype=ref_dtype)
 
+    def transform_inputs(self, X: Tensor) -> Tensor:
+        """変換済みの内部入力をそのまま返す。
+
+        RRP の最適化処理は MLL 内部の model に対して
+        ``transform_inputs`` を呼ぶ。外側 wrapper ですでに input transform
+        を適用しているため、内部 model では再変換しない。
+        """
+        return X
+
     def forward(self, X: Tensor) -> MultivariateNormal:
         mean_x = self.mean_module(X)
         covar_x = self.covar_module(X)
@@ -263,6 +272,10 @@ class _LatentMixedBinarySVGP(ApproximateGP):
         self.train_Yvar = train_Yvar
 
         self.to(device=ref_device, dtype=ref_dtype)
+
+    def transform_inputs(self, X: Tensor) -> Tensor:
+        """変換済みの内部入力をそのまま返す。"""
+        return X
 
     def forward(self, X: Tensor) -> MultivariateNormal:
         mean_x = self.mean_module(X)

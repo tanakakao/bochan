@@ -546,6 +546,8 @@ class SparseOutlierBernoulliLikelihood(BernoulliLikelihood, RelevancePursuitMixi
 
     @property
     def dense_delta(self) -> Tensor:
+        if not self.is_sparse:
+            return self.raw_delta
         dense = torch.zeros(self.dim, dtype=self.raw_delta.dtype, device=self.raw_delta.device)
         if len(self.support) > 0:
             idx = torch.tensor(self.support, dtype=torch.long, device=dense.device)

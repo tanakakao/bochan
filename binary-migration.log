@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/home/runner/work/bochan/bochan/.github/scripts/apply_binary_likelihood_fix.py", line 654, in <module>
+    main()
+  File "/home/runner/work/bochan/bochan/.github/scripts/apply_binary_likelihood_fix.py", line 633, in main
+    rewrite_plain_sigmoid_calls(path)
+  File "/home/runner/work/bochan/bochan/.github/scripts/apply_binary_likelihood_fix.py", line 133, in rewrite_plain_sigmoid_calls
+    model_expr, eps_expr = model_and_eps_expr(function, text, line_offsets)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/bochan/bochan/.github/scripts/apply_binary_likelihood_fix.py", line 99, in model_and_eps_expr
+    raise RuntimeError(
+RuntimeError: Cannot resolve model for likelihood conversion in function '_binary_values_to_probability_for_ipv'.

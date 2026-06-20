@@ -13,6 +13,8 @@ from apply_binary_likelihood_fix_impl import main as apply_main
 
 apply_main()
 
+import prepare_nsgaii_import  # noqa: F401,E402
+
 root = Path(__file__).resolve().parents[2]
 test_path = root / "tests/test_binary_likelihood_consistency.py"
 test_text = test_path.read_text(encoding="utf-8")
@@ -32,3 +34,4 @@ ast.parse(
 script_dir = Path(__file__).resolve().parent
 (script_dir / "apply_binary_likelihood_fix_impl.py").unlink(missing_ok=True)
 (script_dir / "prepare_binary_likelihood_migration.py").unlink(missing_ok=True)
+(script_dir / "prepare_nsgaii_import.py").unlink(missing_ok=True)

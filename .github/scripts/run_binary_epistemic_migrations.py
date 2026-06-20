@@ -6,7 +6,7 @@ import traceback
 root = Path(__file__).resolve().parent
 repo = root.parents[1]
 names = [
-    "patch_binary_bo_single.py",
+    "patch_binary_bo_single_current.py",
     "patch_binary_bo_utils.py",
     "patch_binary_bo_multi_imports.py",
     "patch_binary_bo_multi_ehvi.py",

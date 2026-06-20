@@ -10,6 +10,7 @@ from botorch.models.model import Model
 from botorch.models import ModelListGP
 from botorch.models.gpytorch import ModelListGPyTorchModel
 from torch import Tensor
+from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 
 
 ReductionType = Literal["mean", "sum", "max"]
@@ -821,7 +822,7 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
             )
 
         f_samples = f_samples.reshape(num_samples, *orig)
-        probs = torch.sigmoid(f_samples).clamp(self.eps, 1.0 - self.eps)
+        probs = latent_samples_to_binary_probabilities(self.model, f_samples, eps=self.eps, name="f_samples via binary likelihood").clamp(self.eps, 1.0 - self.eps)
         return probs, orig, Xt
 
     def _get_joint_latent_dist(self, X: Tensor):
@@ -889,7 +890,7 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
             q=q,
             num_samples=num_samples,
         )
-        probs = torch.sigmoid(f_samples).clamp(self.eps, 1.0 - self.eps)
+        probs = latent_samples_to_binary_probabilities(self.model, f_samples, eps=self.eps, name="f_samples via binary likelihood").clamp(self.eps, 1.0 - self.eps)
         return probs, batch_shape, q, Xt
 
     def _joint_predictive_entropy_binary(

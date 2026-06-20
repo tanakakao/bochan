@@ -6,6 +6,7 @@ from typing import Callable, Literal, Optional
 import torch
 import torch.nn.functional as F
 from torch import Tensor
+from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 
 from botorch.acquisition import AcquisitionFunction
 from botorch.acquisition.monte_carlo import MCAcquisitionFunction
@@ -26,7 +27,7 @@ from ._utils import (
 )
 
 
-PoFMode = Literal["mc_sigmoid", "latent_cdf"]
+PoFMode = Literal["mc_likelihood", "mc_sigmoid", "latent_cdf"]
 QFeasMode = Literal["prod", "mean", "min", "max"]
 QBatchMode = Literal["pointwise", "joint"]
 CombineMode = Literal["product", "log_product", "penalty"]
@@ -135,7 +136,7 @@ class qBinaryProbabilityOfFeasibility(_BinaryClassificationAcqBase):
         model,
         num_samples: int = 32,
         threshold: float = 0.0,
-        mode: PoFMode = "mc_sigmoid",
+        mode: PoFMode = "mc_likelihood",
         reduction: ReductionType = "mean",
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
@@ -164,7 +165,7 @@ class qBinaryProbabilityOfFeasibility(_BinaryClassificationAcqBase):
         self.mode = mode
         self.objective = objective
 
-    def _mc_sigmoid_prob(self, latent_dist, orig: torch.Size) -> Tensor:
+    def _mc_likelihood_prob(self, latent_dist, orig: torch.Size) -> Tensor:
         f_samples = latent_dist.rsample(torch.Size([self.num_samples]))
         expected = self.num_samples * math.prod(orig)
         if f_samples.numel() != expected:
@@ -173,7 +174,7 @@ class qBinaryProbabilityOfFeasibility(_BinaryClassificationAcqBase):
                 f"numel={f_samples.numel()}, expected={expected}"
             )
         f_samples = f_samples.reshape(self.num_samples, *orig)
-        return torch.sigmoid(f_samples).clamp(
+        return latent_samples_to_binary_probabilities(self.model, f_samples, eps=self.eps, name="f_samples via binary likelihood").clamp(
             self.eps,
             1.0 - self.eps,
         ).mean(dim=0)
@@ -197,8 +198,8 @@ class qBinaryProbabilityOfFeasibility(_BinaryClassificationAcqBase):
         latent_dist,
         orig: torch.Size,
     ) -> Tensor:
-        if self.mode == "mc_sigmoid":
-            return self._mc_sigmoid_prob(latent_dist, orig)
+        if self.mode in {"mc_likelihood", "mc_sigmoid"}:
+            return self._mc_likelihood_prob(latent_dist, orig)
         if self.mode == "latent_cdf":
             return self._latent_cdf_prob(latent_dist, orig)
         raise ValueError(f"Unknown mode: {self.mode}")
@@ -456,19 +457,14 @@ class _BinaryProbabilityBOBase(MCAcquisitionFunction):
         ):
             post = self.model.latent_posterior(X)
             samples = self.get_posterior_samples(post)
-            probs = torch.sigmoid(samples).clamp(
+            probs = latent_samples_to_binary_probabilities(self.model, samples, eps=self.eps, name="samples via binary likelihood").clamp(
                 self.eps,
                 1.0 - self.eps,
             )
         else:
             post = self.model.posterior(X)
             samples = self.get_posterior_samples(post)
-            probs = to_probability(
-                samples,
-                apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
-                eps=self.eps,
-                name="posterior samples",
-            )
+            probs = to_probability(samples, apply_sigmoid_if_needed=self.apply_sigmoid_if_needed, eps=self.eps, name='posterior samples', model=self.model)
 
         if self.score_objective is not None:
             probs = self.score_objective(probs, X=X)
@@ -752,7 +748,7 @@ class _qBinaryFeasibilityWeightedAcquisition(AcquisitionFunction):
         feasibility_model,
         num_pof_samples: int = 32,
         threshold: float = 0.0,
-        pof_mode: PoFMode = "mc_sigmoid",
+        pof_mode: PoFMode = "mc_likelihood",
         combine_mode: CombineMode = "product",
         q_feas_mode: QFeasMode = "prod",
         feasibility_power: float = 1.0,

@@ -107,14 +107,20 @@ def hetero_adjust_classification_samples(
         apply_sigmoid_if_needed=apply_sigmoid_if_needed,
         eps=eps,
         name="posterior.mean",
+        model=model,
+        values_are_probs=samples_are_probs,
     )
 
     samples = reshape_samples(samples, shape_X)
     samples = to_probability(
         samples,
-        apply_sigmoid_if_needed=(not samples_are_probs) or apply_sigmoid_if_needed,
+        apply_sigmoid_if_needed=(
+            not samples_are_probs or apply_sigmoid_if_needed
+        ),
         eps=eps,
         name="posterior samples",
+        model=model,
+        values_are_probs=samples_are_probs,
     )
 
     sigma = _get_noise_std(
@@ -146,7 +152,14 @@ def compute_hetero_multi_output_classification_train_y(
         shape_X = shape_X_for_model(model, X)
         post = get_model_posterior(model, X, samples_are_probs=True)
         mean = normalize_mean_shape(post.mean, shape_X)
-        mean = to_probability(mean, apply_sigmoid_if_needed=apply_sigmoid_if_needed, eps=eps, name="posterior.mean")
+        mean = to_probability(
+            mean,
+            apply_sigmoid_if_needed=apply_sigmoid_if_needed,
+            eps=eps,
+            name="posterior.mean",
+            model=model,
+            values_are_probs=True,
+        )
         sigma = _get_noise_std(
             model,
             X,
@@ -276,8 +289,8 @@ class qHeteroMultiOutputBinaryExpectedHypervolumeImprovement(qExpectedHypervolum
         noise_penalty: heteroscedastic noise を避けるための penalty 係数。大きいほど noise の大きい点を避けます。
         default_sigma: noise posterior を取得できない場合に使う fallback の noise 標準偏差。
         noise_is_log_var: noise model の出力を log variance として扱うかどうか。
-        samples_are_probs: posterior samples が probability 空間の値かどうか。False の場合は sigmoid 変換を検討します。
-        apply_sigmoid_if_needed: posterior mean / samples が [0, 1] にない場合に sigmoid 変換するかどうか。
+        samples_are_probs: posterior samples が probability 空間の値かどうか。False の場合は likelihood link による変換を検討します。
+        apply_sigmoid_if_needed: posterior mean / samples が [0, 1] にない場合に likelihood link で変換するかどうか。
         eps: 数値安定化用の微小値。
         sampler: posterior samples を生成する BoTorch sampler。省略時は SobolQMCNormalSampler を使います。
         objective: posterior samples または計算済み score に作用する objective。InputPerturbation の q*n_w -> q 集約にも使えます。
@@ -383,8 +396,8 @@ class qHeteroMultiOutputBinaryNoisyExpectedHypervolumeImprovement(qNoisyExpected
         noise_penalty: heteroscedastic noise を避けるための penalty 係数。大きいほど noise の大きい点を避けます。
         default_sigma: noise posterior を取得できない場合に使う fallback の noise 標準偏差。
         noise_is_log_var: noise model の出力を log variance として扱うかどうか。
-        samples_are_probs: posterior samples が probability 空間の値かどうか。False の場合は sigmoid 変換を検討します。
-        apply_sigmoid_if_needed: posterior mean / samples が [0, 1] にない場合に sigmoid 変換するかどうか。
+        samples_are_probs: posterior samples が probability 空間の値かどうか。False の場合は likelihood link による変換を検討します。
+        apply_sigmoid_if_needed: posterior mean / samples が [0, 1] にない場合に likelihood link で変換するかどうか。
         eps: 数値安定化用の微小値。
     
     Forward Args:
@@ -472,8 +485,8 @@ class qHeteroMultiOutputBinaryNParEGO(MCAcquisitionFunction):
         noise_penalty: heteroscedastic noise を避けるための penalty 係数。大きいほど noise の大きい点を避けます。
         default_sigma: noise posterior を取得できない場合に使う fallback の noise 標準偏差。
         noise_is_log_var: noise model の出力を log variance として扱うかどうか。
-        samples_are_probs: posterior samples が probability 空間の値かどうか。False の場合は sigmoid 変換を検討します。
-        apply_sigmoid_if_needed: posterior mean / samples が [0, 1] にない場合に sigmoid 変換するかどうか。
+        samples_are_probs: posterior samples が probability 空間の値かどうか。False の場合は likelihood link による変換を検討します。
+        apply_sigmoid_if_needed: posterior mean / samples が [0, 1] にない場合に likelihood link で変換するかどうか。
         eps: 数値安定化用の微小値。
     
     Forward Args:

@@ -136,6 +136,9 @@ namespaces = true
 minversion = "8.0"
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+  "slow: marks computationally expensive model tests",
+]
 addopts = [
   "-ra",
   "--strict-config",

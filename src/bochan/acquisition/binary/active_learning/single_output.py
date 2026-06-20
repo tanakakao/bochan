@@ -8,6 +8,7 @@ from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.models.model import Model
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
+from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 
 from bochan.acquisition.binary.base import (
     LargeQStrategy,
@@ -366,7 +367,7 @@ class _UncertaintySamplingClassifierAcquisition(BinaryClassificationScoreObjecti
         if 0.0 <= pmin and pmax <= 1.0:
             return p.clamp(self.eps, 1.0 - self.eps)
         if self.apply_sigmoid_if_needed:
-            return torch.sigmoid(p).clamp(self.eps, 1.0 - self.eps)
+            return latent_samples_to_binary_probabilities(self.model, p, eps=self.eps, name="p via binary likelihood").clamp(self.eps, 1.0 - self.eps)
         raise RuntimeError(
             f"posterior.mean is not in [0,1] (min={pmin:.4g}, max={pmax:.4g}). "
             "This acquisition assumes probability output. "
@@ -700,6 +701,7 @@ def _resolve_observed_X_for_ipv(
 
 
 def _binary_values_to_probability_for_ipv(
+    model: Model,
     values: Tensor,
     *,
     apply_sigmoid_if_needed: bool,
@@ -717,7 +719,7 @@ def _binary_values_to_probability_for_ipv(
         return values.clamp(eps, 1.0 - eps)
 
     if apply_sigmoid_if_needed:
-        return torch.sigmoid(values).clamp(eps, 1.0 - eps)
+        return latent_samples_to_binary_probabilities(model, values, eps=eps, name="values via binary likelihood").clamp(eps, 1.0 - eps)
 
     raise RuntimeError(
         f"{name} is not in [0, 1] (min={vmin:.4g}, max={vmax:.4g}). "
@@ -745,7 +747,7 @@ class qBinaryFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
         conditioning_steps: `condition_on_observations(..., refit=True)` に渡す再学習 step 数。
         conditioning_lr: 再学習時の learning rate。
         conditioning_batch_size: 再学習時の batch size。
-        apply_sigmoid_if_needed: posterior mean が latent 値の場合に sigmoid で確率化するか。
+        apply_sigmoid_if_needed: posterior mean が latent 値の場合に likelihood link で確率化するか。
         pending_penalty_weight: X_pending 近傍を避ける penalty の強さ。
         pending_penalty_beta: pending penalty の距離減衰率。
         observed_penalty_weight: X_observed 近傍を避ける penalty の強さ。
@@ -825,6 +827,7 @@ class qBinaryFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
         prob_fn = getattr(self.model, "probability_posterior", None)
         posterior = prob_fn(X) if callable(prob_fn) else self.model.posterior(X)
         prob = _binary_values_to_probability_for_ipv(
+            self.model,
             posterior.mean,
             apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
             eps=self.eps,
@@ -847,6 +850,7 @@ class qBinaryFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
         prob_fn = getattr(fantasy_model, "probability_posterior", None)
         posterior = prob_fn(self.mc_points) if callable(prob_fn) else fantasy_model.posterior(self.mc_points)
         prob = _binary_values_to_probability_for_ipv(
+            fantasy_model,
             posterior.mean,
             apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
             eps=self.eps,

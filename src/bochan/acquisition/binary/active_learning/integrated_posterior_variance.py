@@ -68,12 +68,7 @@ class qBinaryIntegratedPosteriorVarianceProxy(qBinaryProbabilityVariance):
     def _probability(self, X: Tensor, *, name: str) -> Tensor:
         prob_fn = getattr(self.model, "probability_posterior", None)
         posterior = prob_fn(X) if callable(prob_fn) else self.model.posterior(X)
-        probability = _binary_values_to_probability_for_ipv(
-            posterior.mean,
-            apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
-            eps=self.eps,
-            name=name,
-        )
+        probability = _binary_values_to_probability_for_ipv(self.model, posterior.mean, apply_sigmoid_if_needed=self.apply_sigmoid_if_needed, eps=self.eps, name=name)
         return probability.squeeze(-1) if probability.shape[-1] == 1 else probability
 
     def _integrated_score(self, Xt: Tensor) -> Tensor:

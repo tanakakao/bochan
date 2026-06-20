@@ -13,7 +13,16 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from botorch.utils.multi_objective.optimize import optimize_with_nsgaii
+try:
+    from botorch.utils.multi_objective.optimize import optimize_with_nsgaii
+except ImportError as exc:  # pragma: no cover - depends on BoTorch version
+    _NSGAII_IMPORT_ERROR = exc
+
+    def optimize_with_nsgaii(*args, **kwargs):
+        raise ImportError(
+            "optimize_with_nsgaii is unavailable in the installed BoTorch version."
+        ) from _NSGAII_IMPORT_ERROR
+
 
 LinearConstraint = tuple[Sequence[int] | Tensor, Sequence[float] | Tensor, float]
 OutcomeConstraint = Callable[[Tensor], Tensor]

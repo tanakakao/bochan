@@ -5,6 +5,7 @@ from typing import Callable, Literal, Optional
 
 import torch
 from torch import Tensor
+from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 from botorch.acquisition import AcquisitionFunction
 from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 from botorch.utils.transforms import t_batch_mode_transform
@@ -357,7 +358,7 @@ class _MultiOutputBinaryClassificationAcqBase(AcquisitionFunction):
           3. fallback: model.posterior(X)
 
         BALD では probability posterior の rsample より、latent posterior から
-        sample して sigmoid する方が binary classification model の設計と合う。
+        sample して likelihood link で確率化 する方が binary classification model の設計と合う。
         """
         fn = getattr(self.model, "latent_posterior", None)
         if callable(fn):
@@ -452,7 +453,7 @@ class _MultiOutputBinaryClassificationAcqBase(AcquisitionFunction):
             return x.clamp(self.eps, 1.0 - self.eps)
 
         if apply_sigmoid_if_needed:
-            return torch.sigmoid(x).clamp(self.eps, 1.0 - self.eps)
+            return latent_samples_to_binary_probabilities(self.model, x, eps=self.eps, name="x via binary likelihood").clamp(self.eps, 1.0 - self.eps)
 
         raise RuntimeError(
             f"{name} is not in [0,1] (min={xmin:.4g}, max={xmax:.4g}). "
@@ -763,7 +764,7 @@ class _BALDMultiOutputAcquisition(_MultiOutputBinaryClassificationAcqBase):
             posterior = self._get_latent_posterior(raw_X)
             latent_samples = posterior.rsample(torch.Size([self.num_samples]))
             latent_samples = self._reshape_samples(latent_samples, Xt, self.num_samples)
-            probs = torch.sigmoid(latent_samples).clamp(self.eps, 1.0 - self.eps)
+            probs = latent_samples_to_binary_probabilities(self.model, latent_samples, eps=self.eps, name="latent_samples via binary likelihood").clamp(self.eps, 1.0 - self.eps)
 
         if self.output_mode == "all_positive":
             log_p_all = probs.log().sum(dim=-1)  # (S, *batch, q_like)

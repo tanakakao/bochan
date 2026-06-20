@@ -10,7 +10,14 @@ from bochan.acquisition.binary.bayesian_optimization import (
     qBinaryProbabilityOfImprovement,
     qBinaryUpperConfidenceBound,
 )
-from bochan.models.classification.binary.base import BinaryClassificationGPModel
+from bochan.acquisition.objective.binary import (
+    BinaryClassificationScoreObjective,
+)
+from bochan.models.classification.binary.base import (
+    BinaryClassificationGPModel,
+    BinaryClassificationMixedGPModel,
+)
+from bochan.models.transforms.input import build_input_transform
 
 
 def _make_model() -> BinaryClassificationGPModel:
@@ -209,3 +216,104 @@ def test_pointwise_ei_keeps_candidate_gradients() -> None:
     assert gradient.shape == X.shape
     assert torch.isfinite(value).all()
     assert torch.isfinite(gradient).all()
+
+
+def test_input_perturbation_penalties_keep_original_q_shape() -> None:
+    torch.manual_seed(17)
+    n_w = 8
+    continuous = torch.rand(20, 2, dtype=torch.double)
+    categorical = torch.randint(0, 2, (20, 1)).to(dtype=torch.double)
+    train_X = torch.cat([continuous, categorical], dim=-1)
+    train_Y = (
+        train_X[:, 0] + 0.25 * train_X[:, 1] > 0.6
+    ).to(dtype=train_X.dtype).unsqueeze(-1)
+    bounds = torch.stack(
+        [
+            train_X.min(dim=0).values,
+            train_X.max(dim=0).values,
+        ],
+        dim=0,
+    )
+    input_transform = build_input_transform(
+        train_X=train_X,
+        bounds=bounds,
+        perturbation=True,
+        categorical_idx=[2],
+        n_w=n_w,
+        std=0.1,
+    )
+    model = BinaryClassificationMixedGPModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        cat_dims=[2],
+        input_transform=input_transform,
+        num_inducing_points=12,
+    )
+
+    X = torch.tensor(
+        [[[0.2, 0.3, 0.0], [0.5, 0.6, 1.0], [0.8, 0.4, 0.0]]],
+        dtype=torch.double,
+    )
+    X_pending = torch.tensor([[0.4, 0.5, 1.0]], dtype=torch.double)
+    acqf = qBinaryExpectedImprovement(
+        model=model,
+        best_f=0.5,
+        q_mode="pointwise",
+        objective=BinaryClassificationScoreObjective(n_w=n_w),
+        X_pending=X_pending,
+        pending_penalty_weight=0.2,
+        observed_penalty_weight=0.2,
+        same_batch_penalty_weight=0.2,
+    )
+    samples = torch.full((16, 1, 3), 0.8, dtype=torch.double)
+    _bind_probability_samples(acqf, samples)
+
+    penalty_X = acqf._apply_penalty_input_transform(X)
+    value = acqf(X)
+
+    assert penalty_X.shape == X.shape
+    assert torch.equal(penalty_X[..., 2], X[..., 2])
+    assert value.shape == torch.Size([1])
+    assert torch.isfinite(value).all()
+
+
+def test_zero_weight_penalties_do_not_expand_pointwise_score() -> None:
+    torch.manual_seed(19)
+    n_w = 8
+    train_X = torch.rand(16, 2, dtype=torch.double)
+    train_Y = (train_X[:, :1] > 0.5).to(dtype=train_X.dtype)
+    bounds = torch.stack(
+        [
+            train_X.min(dim=0).values,
+            train_X.max(dim=0).values,
+        ],
+        dim=0,
+    )
+    input_transform = build_input_transform(
+        train_X=train_X,
+        bounds=bounds,
+        perturbation=True,
+        n_w=n_w,
+        std=0.1,
+    )
+    model = BinaryClassificationGPModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        input_transform=input_transform,
+        num_inducing_points=12,
+    )
+    acqf = qBinaryExpectedImprovement(
+        model=model,
+        best_f=0.5,
+        q_mode="pointwise",
+        objective=BinaryClassificationScoreObjective(n_w=n_w),
+    )
+    X = torch.rand(1, 3, 2, dtype=torch.double)
+    samples = torch.full((16, 1, 3), 0.8, dtype=torch.double)
+    _bind_probability_samples(acqf, samples)
+
+    value = acqf(X)
+
+    assert value.shape == torch.Size([1])
+    assert torch.isfinite(value).all()
+

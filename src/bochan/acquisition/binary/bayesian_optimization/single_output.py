@@ -14,6 +14,10 @@ from botorch.acquisition.monte_carlo import MCAcquisitionFunction
 from botorch.models import ModelListGP
 from botorch.models.gpytorch import ModelListGPyTorchModel
 from botorch.models.model import Model
+from botorch.models.transforms.input import (
+    ChainedInputTransform,
+    InputPerturbation,
+)
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.transforms import match_batch_shape, t_batch_mode_transform
 
@@ -326,6 +330,82 @@ class _BinaryProbabilityBOBase(MCAcquisitionFunction):
             return ensure_q_batch(Xt)
         return X
 
+    @staticmethod
+    def _collapse_perturbation_axis(Xt: Tensor, X: Tensor) -> Tensor:
+        """InputPerturbationで展開された候補軸を元のqへ集約する。"""
+        Xt = ensure_q_batch(Xt)
+        X = ensure_q_batch(X)
+        q = int(X.shape[-2])
+        q_transformed = int(Xt.shape[-2])
+
+        if q_transformed == q:
+            return Xt
+        if q <= 0 or q_transformed % q != 0:
+            raise RuntimeError(
+                "Could not align transformed inputs with the original q dimension. "
+                f"X.shape={tuple(X.shape)}, Xt.shape={tuple(Xt.shape)}."
+            )
+
+        n_w = q_transformed // q
+        return Xt.reshape(
+            *Xt.shape[:-2],
+            q,
+            n_w,
+            Xt.shape[-1],
+        ).mean(dim=-2)
+
+    @classmethod
+    def _transform_without_input_perturbation(
+        cls,
+        transform,
+        X: Tensor,
+    ) -> Tensor:
+        """変換チェーンからInputPerturbationだけを除いて適用する。"""
+        if isinstance(transform, InputPerturbation):
+            return X
+        if isinstance(transform, ChainedInputTransform):
+            Xt = X
+            for child_transform in transform.values():
+                Xt = cls._transform_without_input_perturbation(
+                    child_transform,
+                    Xt,
+                )
+            return Xt
+        return transform(X)
+
+    def _apply_penalty_input_transform(self, X: Tensor) -> Tensor:
+        """距離ペナルティ用に候補数を増やさない入力変換を適用する。"""
+        X = ensure_q_batch(X)
+
+        # Deep-kernel等のモデル固有変換を優先し、候補軸が展開された場合は
+        # 各候補の摂動方向を集約して元のqへ戻す。
+        for name in ("_to_internal", "_to_latent", "_to_training_feature_space"):
+            transform = getattr(self.model, name, None)
+            if callable(transform):
+                Xt = transform(X)
+                if isinstance(Xt, tuple):
+                    Xt = Xt[0]
+                return self._collapse_perturbation_axis(Xt, X)
+
+        input_transform = getattr(self.model, "input_transform", None)
+        if input_transform is None:
+            return X
+
+        if isinstance(
+            input_transform,
+            (ChainedInputTransform, InputPerturbation),
+        ):
+            Xt = self._transform_without_input_perturbation(
+                input_transform,
+                X,
+            )
+        else:
+            Xt = input_transform(X)
+
+        if isinstance(Xt, tuple):
+            Xt = Xt[0]
+        return self._collapse_perturbation_axis(Xt, X)
+
     def _reference_to_transformed(
         self,
         X_ref: Tensor | list[Tensor] | tuple[Tensor, ...] | None,
@@ -335,7 +415,7 @@ class _BinaryProbabilityBOBase(MCAcquisitionFunction):
         X_ref = _coerce_reference_tensor(X_ref, ref=ref)
         if X_ref is None or X_ref.numel() == 0:
             return None
-        Xt = self._apply_input_transform(X_ref)
+        Xt = self._apply_penalty_input_transform(X_ref)
         return Xt.reshape(-1, Xt.shape[-1]).to(ref)
 
     def _reference_penalty_per_point(
@@ -417,12 +497,16 @@ class _BinaryProbabilityBOBase(MCAcquisitionFunction):
         X: Tensor,
     ) -> Tensor:
         raw_X = ensure_q_batch(X)
-        Xt = self._apply_input_transform(raw_X)
+        Xt = self._apply_penalty_input_transform(raw_X)
 
-        score = score - self._pending_penalty_per_point(Xt)
-        score = score - self._observed_penalty_per_point(Xt)
+        if self.pending_penalty_weight > 0.0:
+            score = score - self._pending_penalty_per_point(Xt)
+        if self.observed_penalty_weight > 0.0:
+            score = score - self._observed_penalty_per_point(Xt)
+
         value = self._reduce_q(score)
-        value = value - self._same_batch_penalty(Xt)
+        if self.same_batch_penalty_weight > 0.0:
+            value = value - self._same_batch_penalty(Xt)
         return _finalize_binary_acq_output_to_batch(
             value,
             raw_X,
@@ -580,7 +664,7 @@ class qBinaryExpectedImprovement(_BinaryProbabilityBOBase):
                 improvement.max(dim=-1).values
             )
             value = value - self._same_batch_penalty(
-                self._apply_input_transform(raw_X)
+                self._apply_penalty_input_transform(raw_X)
             )
             return _finalize_binary_acq_output_to_batch(
                 value,
@@ -660,7 +744,7 @@ class qBinaryProbabilityOfImprovement(_BinaryProbabilityBOBase):
                 indicator.max(dim=-1).values
             )
             value = value - self._same_batch_penalty(
-                self._apply_input_transform(raw_X)
+                self._apply_penalty_input_transform(raw_X)
             )
             return _finalize_binary_acq_output_to_batch(
                 value,
@@ -734,7 +818,7 @@ class qBinaryUpperConfidenceBound(_BinaryProbabilityBOBase):
                 sample_ucb.max(dim=-1).values
             )
             value = value - self._same_batch_penalty(
-                self._apply_input_transform(raw_X)
+                self._apply_penalty_input_transform(raw_X)
             )
             return _finalize_binary_acq_output_to_batch(
                 value,

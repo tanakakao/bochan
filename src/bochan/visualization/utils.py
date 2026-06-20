@@ -63,12 +63,23 @@ def to_tensor_like(x: Any, obj: Any) -> Any:
 
 
 def get_model(obj: Any) -> Any:
-    """BayesianOptimizer / ModelBundle / model から model 本体を取り出す。"""
+    """BayesianOptimizer / ModelBundle / model から model 本体を取り出す。
 
+    ``posterior`` を持つ model wrapper 自身を先に返す。binary classification
+    wrapper の ``model`` 属性は latent GP なので、先に unwrap すると
+    probability posterior ではなく latent model を参照してしまう。
+    """
+
+    if callable(getattr(obj, "probability_posterior", None)) or callable(
+        getattr(obj, "posterior", None)
+    ):
+        return obj
+    if hasattr(obj, "bundle") and getattr(obj, "bundle") is not None:
+        bundle_model = getattr(obj.bundle, "model", None)
+        if bundle_model is not None:
+            return bundle_model
     if hasattr(obj, "model") and getattr(obj, "model") is not None:
         return getattr(obj, "model")
-    if hasattr(obj, "bundle") and getattr(obj, "bundle") is not None:
-        return getattr(obj.bundle, "model")
     return obj
 
 
@@ -192,18 +203,30 @@ def candidate_result_from(obj: Any) -> Any | None:
 
 
 def prediction_mean_std(obj: Any, X: Any) -> tuple[np.ndarray, np.ndarray]:
-    """予測平均と標準偏差を配列で返す内部 helper。"""
+    """予測平均と標準偏差を配列で返す内部 helper。
+
+    binary classification model が ``probability_posterior`` を提供する場合は
+    それを最優先する。これにより visualization は latent ``f(x)`` ではなく、
+    model likelihood と整合した ``p(y=1 | x)`` を表示する。
+    """
 
     X_t = to_tensor_like(X, obj)
-    if hasattr(obj, "predict"):
+    model = get_model(obj)
+    probability_posterior = getattr(model, "probability_posterior", None)
+
+    if callable(probability_posterior):
+        posterior = probability_posterior(X_t)
+        mean, var = posterior.mean, posterior.variance
+    elif hasattr(obj, "predict"):
         try:
             mean, var = obj.predict(X_t, return_type="mean_variance")
         except TypeError:
-            posterior = get_model(obj).posterior(X_t)
+            posterior = model.posterior(X_t)
             mean, var = posterior.mean, posterior.variance
     else:
-        posterior = get_model(obj).posterior(X_t)
+        posterior = model.posterior(X_t)
         mean, var = posterior.mean, posterior.variance
+
     mean_arr = ensure_2d(mean)
     std_arr = np.sqrt(np.clip(ensure_2d(var), 0.0, None))
     return mean_arr, std_arr

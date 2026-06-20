@@ -60,6 +60,15 @@ app = create_app(title="bochan Optimization API")
 
 現在の store はプロセス内インメモリです。サーバー再起動で fitted model は失われます。実運用では `dependencies.py` の `get_optimizer_store()` を差し替え、モデル artifact や metadata を DB / object storage / model registry に保存してください。
 
+### Binary prediction response
+
+binary prediction response は `prediction_space="probability"` を返します。
+`mean` はクラス1確率です。`variance_kind="bernoulli_observation"` の
+`variance` は `p * (1 - p)` であり、確率推定値の epistemic variance ではありません。
+
+`return_type="posterior"` でも Python posterior オブジェクトの文字列ではなく、
+`type`・`mean`・`variance` を持つ JSON summary を返します。
+
 ---
 
 ## 4. 全体フロー

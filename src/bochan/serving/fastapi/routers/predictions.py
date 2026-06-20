@@ -23,20 +23,39 @@ def predict(
         result = optimizer.predict(
             X,
             return_type=request.return_type,
+            return_result=True,
             posterior_kwargs=request.posterior_kwargs,
         )
-        if request.return_type == "mean_variance":
-            mean, variance = result
+
+        common = {
+            "model_id": model_id,
+            "task_type": result.task_type,
+            "prediction_space": result.prediction_space,
+            "variance_kind": result.variance_kind,
+        }
+        mean = to_serializable(result.mean)
+        variance = to_serializable(result.variance)
+
+        if request.return_type == "posterior":
+            summary = {
+                "type": type(result.posterior).__name__,
+                "mean": mean,
+                "variance": variance,
+            }
             return PredictResponse(
-                model_id=model_id,
-                mean=to_serializable(mean),
-                variance=to_serializable(variance),
+                **common,
+                posterior=summary,
+                mean=mean,
+                variance=variance,
+                value=summary,
             )
+        if request.return_type == "mean_variance":
+            return PredictResponse(**common, mean=mean, variance=variance)
         if request.return_type == "mean":
-            return PredictResponse(model_id=model_id, mean=to_serializable(result), value=to_serializable(result))
+            return PredictResponse(**common, mean=mean, value=mean)
         if request.return_type == "variance":
-            return PredictResponse(model_id=model_id, variance=to_serializable(result), value=to_serializable(result))
-        return PredictResponse(model_id=model_id, value=to_serializable(result))
+            return PredictResponse(**common, variance=variance, value=variance)
+        raise ValueError(f"Unsupported return_type: {request.return_type!r}.")
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:

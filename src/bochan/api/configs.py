@@ -486,8 +486,16 @@ class CandidateResult:
 
 @dataclass
 class PredictionResult:
-    """予測結果。"""
+    """予測結果。
+
+    binary の ``mean`` はクラス1確率です。``variance_kind`` が
+    ``bernoulli_observation`` の場合、variance は ``p * (1 - p)`` であり、
+    確率推定値そのものの epistemic variance ではありません。
+    """
 
     posterior: Any
     mean: Any | None = None
     variance: Any | None = None
+    task_type: str | None = None
+    prediction_space: str | None = None
+    variance_kind: str | None = None

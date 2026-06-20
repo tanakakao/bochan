@@ -30,6 +30,10 @@ class ModelDeleteResponse(BaseModel):
 
 class PredictResponse(BaseModel):
     model_id: str
+    task_type: str | None = None
+    prediction_space: str | None = None
+    variance_kind: str | None = None
+    posterior: Any | None = None
     mean: Any | None = None
     variance: Any | None = None
     value: Any | None = None

@@ -46,6 +46,20 @@ bo.fit(train_X, train_Y)
 posterior = bo.predict(test_X)
 ```
 
+### Binary prediction contract
+
+`task_type="binary"` では、`BayesianOptimizer.predict()` は利用可能なら
+`model.probability_posterior()` を優先します。`mean` はクラス1確率
+`p(y=1 | x)` です。
+
+`variance` は通常 `p * (1 - p)` の **Bernoulli observation variance** であり、
+確率推定値そのものの epistemic uncertainty ではありません。
+`return_result=True` の `PredictionResult` には次が入ります。
+
+- `prediction_space="probability"`
+- `variance_kind="bernoulli_observation"`
+- observation noise を加えた場合は `bernoulli_observation_plus_noise`
+
 以前は `model_registry=MODEL_REGISTRY` を明示的に渡していましたが、現在は通常不要です。省略時は API 標準の `DEFAULT_MODEL_REGISTRY` を内部で参照します。
 
 ```python

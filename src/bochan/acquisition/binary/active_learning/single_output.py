@@ -8,6 +8,7 @@ from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.models.model import Model
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
+from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 
 from bochan.acquisition.binary.base import (
     LargeQStrategy,
@@ -366,7 +367,7 @@ class _UncertaintySamplingClassifierAcquisition(BinaryClassificationScoreObjecti
         if 0.0 <= pmin and pmax <= 1.0:
             return p.clamp(self.eps, 1.0 - self.eps)
         if self.apply_sigmoid_if_needed:
-            return torch.sigmoid(p).clamp(self.eps, 1.0 - self.eps)
+            return latent_samples_to_binary_probabilities(self.model, p, eps=self.eps, name="p via binary likelihood").clamp(self.eps, 1.0 - self.eps)
         raise RuntimeError(
             f"posterior.mean is not in [0,1] (min={pmin:.4g}, max={pmax:.4g}). "
             "This acquisition assumes probability output. "
@@ -700,6 +701,7 @@ def _resolve_observed_X_for_ipv(
 
 
 def _binary_values_to_probability_for_ipv(
+    model: Model,
     values: Tensor,
     *,
     apply_sigmoid_if_needed: bool,
@@ -717,7 +719,7 @@ def _binary_values_to_probability_for_ipv(
         return values.clamp(eps, 1.0 - eps)
 
     if apply_sigmoid_if_needed:
-        return torch.sigmoid(values).clamp(eps, 1.0 - eps)
+        return latent_samples_to_binary_probabilities(model, values, eps=eps, name="values via binary likelihood").clamp(eps, 1.0 - eps)
 
     raise RuntimeError(
         f"{name} is not in [0, 1] (min={vmin:.4g}, max={vmax:.4g}). "
@@ -824,12 +826,7 @@ class qBinaryFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
     def _sample_fantasy_labels(self, X: Tensor) -> Tensor:
         prob_fn = getattr(self.model, "probability_posterior", None)
         posterior = prob_fn(X) if callable(prob_fn) else self.model.posterior(X)
-        prob = _binary_values_to_probability_for_ipv(
-            posterior.mean,
-            apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
-            eps=self.eps,
-            name="binary posterior mean",
-        )
+        prob = _binary_values_to_probability_for_ipv(self.model, posterior.mean, apply_sigmoid_if_needed=self.apply_sigmoid_if_needed, eps=self.eps, name='binary posterior mean')
 
         # prob: q or batch_shape x q. ここでは X は通常 q x d。
         prob = prob.reshape(*prob.shape[:-1], prob.shape[-1]) if prob.ndim > 1 else prob
@@ -846,12 +843,7 @@ class qBinaryFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
     def _integrated_probability_variance(self, fantasy_model: Model) -> Tensor:
         prob_fn = getattr(fantasy_model, "probability_posterior", None)
         posterior = prob_fn(self.mc_points) if callable(prob_fn) else fantasy_model.posterior(self.mc_points)
-        prob = _binary_values_to_probability_for_ipv(
-            posterior.mean,
-            apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
-            eps=self.eps,
-            name="fantasy posterior mean",
-        )
+        prob = _binary_values_to_probability_for_ipv(self.model, posterior.mean, apply_sigmoid_if_needed=self.apply_sigmoid_if_needed, eps=self.eps, name='fantasy posterior mean')
         return (prob * (1.0 - prob)).mean()
 
     def _aggregated_reference_penalty(self, X: Tensor) -> Tensor:

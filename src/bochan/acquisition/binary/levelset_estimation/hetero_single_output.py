@@ -5,6 +5,7 @@ from typing import Callable, Optional
 import torch
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
+from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 
 from bochan.acquisition.binary.base import (
     NoiseCombineType,
@@ -140,7 +141,7 @@ class _BaseHeteroBinaryLevelSetAcquisition(_BinaryClassificationAcqBase):
             name="posterior mean probability",
         )
         if not (0.0 <= mean_prob.min().item() and mean_prob.max().item() <= 1.0):
-            mean_prob = torch.sigmoid(mean_prob)
+            mean_prob = latent_samples_to_binary_probabilities(self.model, mean_prob, eps=self.eps, name="mean_prob via binary likelihood")
         mean_prob = mean_prob.clamp(self.eps, 1.0 - self.eps)
         return mu_f, var_f, mean_prob, Xt
 

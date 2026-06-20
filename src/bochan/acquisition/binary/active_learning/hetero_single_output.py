@@ -5,6 +5,7 @@ from typing import Callable, Literal, Optional
 import torch
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
+from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 
 from bochan.acquisition.binary.base import (
     ReductionType,
@@ -310,7 +311,7 @@ class _HeteroUncertaintySamplingBinary(BinaryClassificationScoreObjectiveMixin, 
         pmin = p.min().item()
         pmax = p.max().item()
         if not (0.0 <= pmin and pmax <= 1.0):
-            p = torch.sigmoid(p)
+            p = latent_samples_to_binary_probabilities(self.model, p, eps=self.eps, name="p via binary likelihood")
         p = p.clamp(self.eps, 1.0 - self.eps)
         p = _align_pointwise_score_to_X(
             p,

@@ -6,6 +6,7 @@ from typing import Callable, Literal, Optional
 
 import torch
 from torch import Tensor
+from bochan.acquisition.binary._likelihood import values_to_binary_probabilities
 
 from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 from botorch.models.model import Model
@@ -13,7 +14,7 @@ from botorch.models.model import Model
 
 ReductionType = Literal["mean", "sum"]
 MultiOutputMode = Literal["mean", "sum", "max", "min", "weighted_mean", "all_positive"]
-PoFMode = Literal["mc_sigmoid", "latent_cdf"]
+PoFMode = Literal["mc_likelihood", "mc_sigmoid", "latent_cdf"]
 
 def _as_t_batch_X(X: Tensor) -> Tensor:
     """X を batch_shape x q x d 形式にそろえる。"""
@@ -301,16 +302,34 @@ def to_probability(
     apply_sigmoid_if_needed: bool,
     eps: float,
     name: str,
+    model: Optional[Model] = None,
 ) -> Tensor:
+    """Convert probability values or latent values using the model likelihood.
+
+    ``apply_sigmoid_if_needed`` is retained as a compatibility argument.  When
+    conversion is required it no longer means a hard-coded sigmoid: the model's
+    binary likelihood is used, so GPyTorch ``BernoulliLikelihood`` follows its
+    probit link and custom likelihoods follow their own conditional link.
+    """
     xmin = x.min().item()
     xmax = x.max().item()
     if 0.0 <= xmin and xmax <= 1.0:
         return x.clamp(eps, 1.0 - eps)
     if apply_sigmoid_if_needed:
-        return torch.sigmoid(x).clamp(eps, 1.0 - eps)
+        if model is None:
+            raise RuntimeError(
+                f"{name} requires latent-to-probability conversion, but no model "
+                "was provided. Pass model=... so the binary likelihood link can be used."
+            )
+        return values_to_binary_probabilities(
+            model,
+            x,
+            eps=eps,
+            name=name,
+        )
     raise RuntimeError(
         f"{name} is not in [0,1] (min={xmin:.4g}, max={xmax:.4g}). "
-        "Enable sigmoid conversion or return probability posterior."
+        "Return a probability posterior or enable likelihood-aware conversion."
     )
 
 
@@ -724,12 +743,7 @@ def compute_binary_best_f(
         posterior = get_model_posterior(model, Xq, samples_are_probs=True)
         mean = normalize_binary_mean_shape(posterior.mean, shape_X)
 
-        prob = to_probability(
-            mean,
-            apply_sigmoid_if_needed=apply_sigmoid_if_needed,
-            eps=eps,
-            name="posterior.mean",
-        )
+        prob = to_probability(mean, apply_sigmoid_if_needed=apply_sigmoid_if_needed, eps=eps, name='posterior.mean', model=model)
 
         prob_train = _aggregate_expanded_binary_values(
             prob,
@@ -809,12 +823,7 @@ def compute_hetero_binary_classification_best_f(
         posterior = get_model_posterior(model, Xq, samples_are_probs=True)
         mean = normalize_binary_mean_shape(posterior.mean, shape_X)
 
-        prob = to_probability(
-            mean,
-            apply_sigmoid_if_needed=apply_sigmoid_if_needed,
-            eps=eps,
-            name="posterior.mean",
-        )
+        prob = to_probability(mean, apply_sigmoid_if_needed=apply_sigmoid_if_needed, eps=eps, name='posterior.mean', model=model)
 
         sigma_noise = get_binary_noise_std(
             model,

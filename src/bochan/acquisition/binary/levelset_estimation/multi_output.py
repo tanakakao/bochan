@@ -8,6 +8,7 @@ from botorch.models.model import ModelList
 from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
+from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 
 from bochan.acquisition.binary.base import (
     ReductionType,
@@ -620,7 +621,7 @@ class _MultiOutputLatentStraddleBase(_BinaryClassificationAcqBase):
         ModelList では各 submodel.posterior(X) を cat する。
 
         apply_sigmoid_if_needed=True の場合、posterior.mean が latent f を返す
-        wrapper / submodel でも sigmoid で probability に変換する。
+        wrapper / submodel でも likelihood link で probability に変換する。
         """
         X = self._ensure_q_batch(self._as_tensor(X))
         shape_X = self._ensure_q_batch(self._apply_input_transform_safe(X))
@@ -688,7 +689,7 @@ class _MultiOutputLatentStraddleBase(_BinaryClassificationAcqBase):
             return x.clamp(self.eps, 1.0 - self.eps)
 
         if apply_sigmoid_if_needed:
-            return torch.sigmoid(x).clamp(self.eps, 1.0 - self.eps)
+            return latent_samples_to_binary_probabilities(self.model, x, eps=self.eps, name="x via binary likelihood").clamp(self.eps, 1.0 - self.eps)
 
         raise RuntimeError(
             f"{name} is not in [0,1] (min={xmin:.4g}, max={xmax:.4g}). "

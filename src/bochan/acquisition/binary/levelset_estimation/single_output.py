@@ -6,6 +6,7 @@ from typing import Callable, Literal, Optional
 import torch
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
+from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 
 from bochan.acquisition.binary.base import (
     ReductionType,
@@ -379,7 +380,7 @@ class qBinaryICUAcquisition(_BinaryClassificationAcqBase):
         post = prob_fn(X) if callable(prob_fn) else self.model.posterior(X)
         prob = self._reshape_pointwise_tensor(post.mean, Xt.shape[:-1])
         if not (0.0 <= prob.min().item() and prob.max().item() <= 1.0):
-            prob = torch.sigmoid(prob)
+            prob = latent_samples_to_binary_probabilities(self.model, prob, eps=self.eps, name="prob via binary likelihood")
         prob = prob.clamp(self.eps, 1.0 - self.eps)
         score = 4.0 * prob * (1.0 - prob)
         score = score - self._pending_penalty_per_point(Xt)
@@ -491,7 +492,7 @@ class qBinaryClassEntropyAcquisition(_BinaryClassificationAcqBase):
         post = prob_fn(X) if callable(prob_fn) else self.model.posterior(X)
         prob = self._reshape_pointwise_tensor(post.mean, Xt.shape[:-1])
         if not (0.0 <= prob.min().item() and prob.max().item() <= 1.0):
-            prob = torch.sigmoid(prob)
+            prob = latent_samples_to_binary_probabilities(self.model, prob, eps=self.eps, name="prob via binary likelihood")
         score = bernoulli_entropy(prob, eps=self.eps)
         score = score - self._pending_penalty_per_point(Xt)
         score = align_pointwise_score_to_X(score, Xt, name="qBinaryClassEntropy score before objective")

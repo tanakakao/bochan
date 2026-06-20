@@ -131,24 +131,14 @@ def hetero_adjust_binary_classification_samples(
         X,
         perturbation_reduction="mean",
     )
-    mean_prob = to_probability(
-        mean_prob,
-        apply_sigmoid_if_needed=apply_sigmoid_if_needed,
-        eps=eps,
-        name="posterior.mean",
-    )
+    mean_prob = to_probability(mean_prob, apply_sigmoid_if_needed=apply_sigmoid_if_needed, eps=eps, name='posterior.mean', model=model)
 
     samples = reshape_binary_samples(
         samples,
         X,
         perturbation_reduction="mean",
     )
-    samples = to_probability(
-        samples,
-        apply_sigmoid_if_needed=(not samples_are_probs) or apply_sigmoid_if_needed,
-        eps=eps,
-        name="posterior samples",
-    )
+    samples = to_probability(samples, apply_sigmoid_if_needed=not samples_are_probs or apply_sigmoid_if_needed, eps=eps, name='posterior samples', model=model)
 
     sigma_noise = _get_noise_std(
         model,
@@ -187,12 +177,7 @@ def compute_hetero_binary_classification_best_f(
     with torch.no_grad():
         post = model.posterior(train_X)
         mean_prob = normalize_binary_mean_shape(post.mean, train_X)
-        mean_prob = to_probability(
-            mean_prob,
-            apply_sigmoid_if_needed=apply_sigmoid_if_needed,
-            eps=eps,
-            name="posterior.mean",
-        )
+        mean_prob = to_probability(mean_prob, apply_sigmoid_if_needed=apply_sigmoid_if_needed, eps=eps, name='posterior.mean', model=model)
 
         sigma_noise = _get_noise_std(
             model,

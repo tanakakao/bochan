@@ -83,15 +83,15 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
         model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
         num_samples: classification probability や BALD などを MC 近似する sample 数。
         threshold: binary classification や level-set で使う境界値。
-        mode: 獲得関数の計算モード。例: `mc_sigmoid` または `latent_cdf`。
+        mode: 獲得関数の計算モード。例: `mc_likelihood` または `latent_cdf`。
         reduction: q-batch 方向の集約方法。通常は `mean` または `sum`。
         output_mode: classification multi-output の出力方向集約方法。`mean`、`weighted_mean`、`all_positive` など。
         output_weights: multi-output score を集約するときの出力方向の重み。
         pending_penalty_weight: X_pending 近傍を避ける penalty の強さ。
         pending_penalty_beta: X_pending penalty の距離減衰率。
-        samples_are_probs: posterior samples が probability 空間の値かどうか。False の場合は sigmoid 変換を検討します。
+        samples_are_probs: posterior samples が probability 空間の値かどうか。False の場合は likelihood link による変換を検討します。
         mean_is_latent: この acquisition / objective の動作を制御するパラメータ。
-        apply_sigmoid_if_needed: posterior mean / samples が [0, 1] にない場合に sigmoid 変換するかどうか。
+        apply_sigmoid_if_needed: posterior mean / samples が [0, 1] にない場合に likelihood link で変換するかどうか。
         eps: 数値安定化用の微小値。
         objective: posterior samples または計算済み score に作用する objective。InputPerturbation の q*n_w -> q 集約にも使えます。
     
@@ -107,7 +107,7 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
         model,
         num_samples: int = 32,
         threshold: float = 0.0,
-        mode: PoFMode = "mc_sigmoid",
+        mode: PoFMode = "mc_likelihood",
         reduction: ReductionType = "mean",
         output_mode: MultiOutputMode = "all_positive",
         output_weights: Optional[Tensor] = None,
@@ -230,7 +230,7 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
         return self.pending_penalty_weight * torch.exp(-self.pending_penalty_beta * dist)
 
     def _pointwise_pof(self, raw_X: Tensor, expanded_X: Tensor) -> Tensor:
-        if self.mode == "mc_sigmoid":
+        if self.mode in {"mc_likelihood", "mc_sigmoid"}:
             post = _get_binary_mc_posterior_for_probability_samples(
                 self.model,
                 raw_X,
@@ -239,12 +239,7 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
             )
             samples = post.rsample(torch.Size([self.num_samples]))
             samples = reshape_samples(samples, expanded_X, torch.Size([self.num_samples]))
-            probs = to_probability(
-                samples,
-                apply_sigmoid_if_needed=(not self.samples_are_probs) or self.apply_sigmoid_if_needed,
-                eps=self.eps,
-                name="posterior.rsample()",
-            )
+            probs = to_probability(samples, apply_sigmoid_if_needed=not self.samples_are_probs or self.apply_sigmoid_if_needed, eps=self.eps, name='posterior.rsample()', model=self.model)
             p = probs.mean(dim=0)
         elif self.mode == "latent_cdf":
             post = _get_binary_mc_posterior_for_probability_samples(
@@ -509,12 +504,7 @@ class qMultiOutputBinaryNParEGO(MCAcquisitionFunction):
             prob_fn = getattr(model, "probability_posterior", None)
             post = prob_fn(X_baseline) if callable(prob_fn) else model.posterior(X_baseline)
             y = normalize_mean_shape(post.mean, Xb)
-            y = to_probability(
-                y,
-                apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
-                eps=self.eps,
-                name="NParEGO baseline posterior.mean",
-            ).reshape(-1, m)
+            y = to_probability(y, apply_sigmoid_if_needed=self.apply_sigmoid_if_needed, eps=self.eps, name='NParEGO baseline posterior.mean', model=self.model).reshape(-1, m)
 
             if X_baseline.ndim == 2:
                 X_obj = X_baseline.unsqueeze(0)  # [1, N, d]
@@ -588,12 +578,7 @@ class qMultiOutputBinaryNParEGO(MCAcquisitionFunction):
         )
         samples = self.get_posterior_samples(post)
 
-        values = to_probability(
-            samples,
-            apply_sigmoid_if_needed=(not self.samples_are_probs) or self.apply_sigmoid_if_needed,
-            eps=self.eps,
-            name="NParEGO posterior samples",
-        )
+        values = to_probability(samples, apply_sigmoid_if_needed=not self.samples_are_probs or self.apply_sigmoid_if_needed, eps=self.eps, name='NParEGO posterior samples', model=self.model)
 
         values = self.base_objective(values, X=Xq)
 

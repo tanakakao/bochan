@@ -1,0 +1,249 @@
+--- a/tests/test_binary_epistemic_uncertainty.py
++++ b/tests/test_binary_epistemic_uncertainty.py
+@@ -57,7 +57,9 @@
+         self.train_inputs = (
+             torch.tensor([[0.2, default_std], [0.8, default_std]], dtype=torch.double),
+         )
+-        self.num_outputs = 1
++    @property
++    def num_outputs(self) -> int:
++        return 1
+ 
+     @property
+     def batch_shape(self) -> torch.Size:
+--- a/src/bochan/visualization/utils.py
++++ b/src/bochan/visualization/utils.py
+@@ -7,6 +7,8 @@
+ 
+ import numpy as np
+ import pandas as pd
++
++from bochan.acquisition.binary.epistemic import binary_probability_moments
+ 
+ CYCLE_COLORS = [
+     "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+@@ -202,21 +204,54 @@
+     return None
+ 
+ 
+-def prediction_mean_std(obj: Any, X: Any) -> tuple[np.ndarray, np.ndarray]:
+-    """予測平均と標準偏差を配列で返す内部 helper。
+-
+-    binary classification model が ``probability_posterior`` を提供する場合は
+-    それを最優先する。これにより visualization は latent ``f(x)`` ではなく、
+-    model likelihood と整合した ``p(y=1 | x)`` を表示する。
++def _is_binary_prediction_object(obj: Any, model: Any) -> bool:
++    """Return whether binary uncertainty semantics should be used."""
++    bundle = getattr(obj, "bundle", None)
++    task_type = getattr(bundle, "task_type", None)
++    if task_type is None:
++        config = getattr(obj, "model_config", None)
++        task_type = getattr(config, "task_type", None)
++    if str(task_type).lower() == "binary":
++        return True
++    module_name = type(model).__module__.lower()
++    class_name = type(model).__name__.lower()
++    return "classification.binary" in module_name or "binary" in class_name
++
++
++def prediction_mean_std(
++    obj: Any,
++    X: Any,
++    *,
++    uncertainty_kind: str = "epistemic",
++    num_uncertainty_samples: int = 256,
++) -> tuple[np.ndarray, np.ndarray]:
++    """Return predictive mean and standard deviation for visualization.
++
++    Binary classification defaults to probability epistemic uncertainty
++    ``sqrt(Var_f[p(y=1|f)])``.  Set ``uncertainty_kind`` to ``aleatoric`` or
++    ``observation`` / ``bernoulli`` to inspect label-level uncertainty.
+     """
+-
+     X_t = to_tensor_like(X, obj)
+     model = get_model(obj)
+-    probability_posterior = getattr(model, "probability_posterior", None)
+-
+-    if callable(probability_posterior):
+-        posterior = probability_posterior(X_t)
+-        mean, var = posterior.mean, posterior.variance
++
++    if _is_binary_prediction_object(obj, model):
++        mean, epistemic, aleatoric, observation = binary_probability_moments(
++            model,
++            X_t,
++            num_samples=num_uncertainty_samples,
++        )
++        key = str(uncertainty_kind).lower()
++        if key == "epistemic":
++            var = epistemic
++        elif key == "aleatoric":
++            var = aleatoric
++        elif key in {"observation", "bernoulli", "total_label"}:
++            var = observation
++        else:
++            raise ValueError(
++                "binary uncertainty_kind must be 'epistemic', 'aleatoric', "
++                "'observation', or 'bernoulli'."
++            )
+     elif hasattr(obj, "predict"):
+         try:
+             mean, var = obj.predict(X_t, return_type="mean_variance")
+--- a/src/bochan/visualization/data.py
++++ b/src/bochan/visualization/data.py
+@@ -32,10 +32,24 @@
+ ShowType = Literal["acqf", "pred"]
+ 
+ 
+-def prediction_dataframe(obj: Any, X: Any, *, target_cols: Sequence[str] | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
+-    """bochan モデルの予測平均・標準偏差を DataFrame で返す。"""
+-
+-    mean, std = prediction_mean_std(obj, X)
++def prediction_dataframe(
++    obj: Any,
++    X: Any,
++    *,
++    target_cols: Sequence[str] | None = None,
++    uncertainty_kind: str = "epistemic",
++    num_uncertainty_samples: int = 256,
++) -> tuple[pd.DataFrame, pd.DataFrame]:
++    """Return predictive mean and uncertainty band as DataFrames.
++
++    Binary classification defaults to probability epistemic uncertainty.
++    """
++    mean, std = prediction_mean_std(
++        obj,
++        X,
++        uncertainty_kind=uncertainty_kind,
++        num_uncertainty_samples=num_uncertainty_samples,
++    )
+     cols = infer_target_cols(obj, target_cols, mean.shape[1])
+     return pd.DataFrame(mean, columns=cols), pd.DataFrame(std, columns=cols)
+ 
+--- a/src/bochan/acquisition/binary/bayesian_optimization/single_output.py
++++ b/src/bochan/acquisition/binary/bayesian_optimization/single_output.py
+@@ -459,7 +459,8 @@
+         )
+         if self.score_objective is not None:
+             probs = self.score_objective(probs, X=X)
+-        probs = self._squeeze_binary_output_dim_if_present(probs, X)
++        # Keep the explicit output dimension here. reshape_binary_samples
++        # removes it after distinguishing sample_shape from q=1.
+         return reshape_binary_samples(probs, X)
+ 
+     def _resolve_best_f(
+@@ -470,7 +471,15 @@
+         best_f_quantile: float | None,
+     ) -> Tensor:
+         if best_f is not None:
+-            resolved = torch.as_tensor(best_f)
++            train_X = _resolve_observed_X(self.model)
++            if torch.is_tensor(train_X):
++                resolved = torch.as_tensor(
++                    best_f,
++                    device=train_X.device,
++                    dtype=train_X.dtype,
++                )
++            else:
++                resolved = torch.as_tensor(best_f)
+             if resolved.numel() != 1 or not torch.isfinite(resolved):
+                 raise ValueError("binary best_f must be one finite scalar probability.")
+             if resolved.item() < 0.0 or resolved.item() > 1.0:
+--- a/src/bochan/acquisition/binary/bayesian_optimization/multi_output.py
++++ b/src/bochan/acquisition/binary/bayesian_optimization/multi_output.py
+@@ -306,7 +306,7 @@
+     """
+     def __init__(self, model: Model, *args, **kwargs) -> None:
+         super().__init__(
+-            model=as_epistemic_probability_model(model),
++            as_epistemic_probability_model(model),
+             *args,
+             **kwargs,
+         )
+@@ -326,7 +326,7 @@
+     """
+     def __init__(self, model: Model, *args, **kwargs) -> None:
+         super().__init__(
+-            model=as_epistemic_probability_model(model),
++            as_epistemic_probability_model(model),
+             *args,
+             **kwargs,
+         )
+--- a/src/bochan/acquisition/binary/active_learning/single_output.py
++++ b/src/bochan/acquisition/binary/active_learning/single_output.py
+@@ -9,6 +9,7 @@
+ from botorch.utils.transforms import t_batch_mode_transform
+ from torch import Tensor
+ from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
++from bochan.acquisition.binary.epistemic import binary_probability_moments
+ 
+ from bochan.acquisition.binary.base import (
+     LargeQStrategy,
+@@ -303,6 +304,7 @@
+         model,
+         reduction: ReductionType = "mean",
+         score_type: UncertaintyScoreType = "variance",
++        num_samples: int = 128,
+         pending_penalty_weight: float = 0.0,
+         pending_penalty_beta: float = 10.0,
+         apply_sigmoid_if_needed: bool = False,
+@@ -318,6 +320,7 @@
+             eps=eps,
+         )
+         self.score_type = score_type
++        self.num_samples = int(num_samples)
+         self.apply_sigmoid_if_needed = bool(apply_sigmoid_if_needed)
+         self._set_classification_score_objective(objective)
+@@ -390,12 +393,21 @@
+         X = self._ensure_q_batch(X)
+         original_batch_shape = X.shape[:-2]
+ 
+-        prob_fn = getattr(self.model, "probability_posterior", None)
+-        posterior = prob_fn(X) if callable(prob_fn) else self.model.posterior(X)
+-        p = self._normalize_prob_shape(posterior.mean, X)
+-        p = self._to_probability(p)
+-
+-        score = self._uncertainty_score(p)
++        if self.score_type == "variance":
++            mean_prob, epistemic_var, _, _ = binary_probability_moments(
++                self.model,
++                X,
++                num_samples=self.num_samples,
++                eps=self.eps,
++            )
++            p = self._normalize_prob_shape(mean_prob, X)
++            score = self._normalize_prob_shape(epistemic_var, X)
++        else:
++            prob_fn = getattr(self.model, "probability_posterior", None)
++            posterior = prob_fn(X) if callable(prob_fn) else self.model.posterior(X)
++            p = self._normalize_prob_shape(posterior.mean, X)
++            p = self._to_probability(p)
++            score = self._uncertainty_score(p)
+         Xt = self._apply_input_transform(X)
+ 
+         score = _align_pointwise_score_to_X(
+@@ -445,7 +457,7 @@
+ 
+ 
+ class _qBinaryProbabilityVarianceAcquisition(_UncertaintySamplingClassifierAcquisition):
+-    """Binary classification probability variance p(1-p) acquisition."""
++    """Binary probability epistemic variance acquisition."""
+ 
+     def __init__(self, model, **kwargs):
+         kwargs.pop("score_type", None)
+@@ -527,7 +539,7 @@
+ class qBinaryProbabilityVariance(_qBinaryProbabilityVarianceAcquisition):
+     """classification 用の軽量 probability variance acquisition。
+ 
+-    候補点上の `p(1-p)` を使う proxy であり、mc_points は不要です。
++    候補点上の `Var_f[p(y=1|f)]` を使い、mc_points は不要です。
+     
+     Forward Args:
+         X: 候補点。shape は通常 `batch_shape x q x d` です。
+@@ -705,6 +717,7 @@
+         self,
+         model: Model,
+         mc_points: Tensor,
+         num_fantasies: int = 8,
++        num_epistemic_samples: int = 128,
+         conditioning_steps: int = 10,

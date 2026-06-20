@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 from prepare_binary_likelihood_migration import main as prepare_main
@@ -11,6 +12,14 @@ from apply_binary_likelihood_fix_impl import main as apply_main
 
 
 apply_main()
+
+root = Path(__file__).resolve().parents[2]
+for path in sorted((root / "src/bochan/acquisition/binary").rglob("*.py")):
+    ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+ast.parse(
+    (root / "tests/test_binary_likelihood_consistency.py").read_text(encoding="utf-8"),
+    filename="tests/test_binary_likelihood_consistency.py",
+)
 
 script_dir = Path(__file__).resolve().parent
 (script_dir / "apply_binary_likelihood_fix_impl.py").unlink(missing_ok=True)

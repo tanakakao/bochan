@@ -1,0 +1,27 @@
+name: Capture epistemic workspace
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+permissions:
+  contents: read
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/binary-epistemic-uncertainty
+      - name: Apply migrations
+        continue-on-error: true
+        run: python .github/scripts/run_binary_epistemic_migrations.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: epistemic-workspace
+          path: |
+            src/bochan/acquisition/binary
+            src/bochan/visualization
+            tests/test_binary_epistemic_uncertainty.py
+            tests/test_binary_visualization_probability.py
+            binary-epistemic-migration-failure.log

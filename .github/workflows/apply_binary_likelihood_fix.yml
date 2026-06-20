@@ -58,8 +58,13 @@ jobs:
 
       - name: Format generated Python files
         run: |
-          ruff check --fix src/bochan/acquisition/binary tests/test_binary_likelihood_consistency.py || true
-          ruff format src/bochan/acquisition/binary tests/test_binary_likelihood_consistency.py
+          mapfile -t changed_python < <(
+            git diff --name-only --diff-filter=ACM | grep -E '\.py$' || true
+          )
+          if [ "${#changed_python[@]}" -gt 0 ]; then
+            ruff check --fix "${changed_python[@]}" || true
+            ruff format "${changed_python[@]}"
+          fi
 
       - name: Compile source and tests
         run: python -m compileall -q src tests
@@ -89,6 +94,12 @@ jobs:
       - name: Collect all binary tests
         run: pytest --collect-only -q tests/test_binary*.py
 
+      - name: Remove generated build artifacts
+        run: |
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
+          find . -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete
+          rm -rf src/bochan.egg-info .pytest_cache
+
       - name: Remove one-off migration files
         run: |
           rm .github/scripts/apply_binary_likelihood_fix.py
@@ -98,7 +109,15 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
+          git add -A \
+            src/bochan/acquisition/binary \
+            src/bochan/optim/nsgaii.py \
+            pyproject.toml \
+            tests/__init__.py \
+            tests/test_binary_likelihood_consistency.py \
+            tests/test_binary_multiclass_aligned_defaults.py \
+            .github/scripts \
+            .github/workflows
           git diff --cached --stat
           git commit -m 'Fix binary likelihood link consistency'
           git push origin HEAD:fix/binary-likelihood-consistency

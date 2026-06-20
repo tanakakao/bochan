@@ -1,0 +1,27 @@
+name: Debug binary epistemic migration
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+permissions:
+  contents: read
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/binary-epistemic-uncertainty
+      - name: Run migrations
+        id: migrate
+        continue-on-error: true
+        run: |
+          bash -x .github/scripts/run_binary_epistemic_migrations.sh > migration.log 2>&1
+      - name: Show log
+        if: always()
+        run: cat migration.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: binary-epistemic-migration-debug
+          path: migration.log

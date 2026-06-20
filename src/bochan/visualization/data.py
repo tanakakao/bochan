@@ -32,10 +32,24 @@ from .utils import (
 ShowType = Literal["acqf", "pred"]
 
 
-def prediction_dataframe(obj: Any, X: Any, *, target_cols: Sequence[str] | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """bochan モデルの予測平均・標準偏差を DataFrame で返す。"""
+def prediction_dataframe(
+    obj: Any,
+    X: Any,
+    *,
+    target_cols: Sequence[str] | None = None,
+    uncertainty_kind: str = "epistemic",
+    num_uncertainty_samples: int = 256,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return predictive mean and uncertainty band as DataFrames.
 
-    mean, std = prediction_mean_std(obj, X)
+    Binary classification defaults to probability epistemic uncertainty.
+    """
+    mean, std = prediction_mean_std(
+        obj,
+        X,
+        uncertainty_kind=uncertainty_kind,
+        num_uncertainty_samples=num_uncertainty_samples,
+    )
     cols = infer_target_cols(obj, target_cols, mean.shape[1])
     return pd.DataFrame(mean, columns=cols), pd.DataFrame(std, columns=cols)
 

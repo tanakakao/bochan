@@ -6,6 +6,7 @@ import torch
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
+from bochan.acquisition.binary.epistemic import binary_probability_moments
 
 from bochan.acquisition.binary.base import (
     ReductionType,
@@ -134,6 +135,7 @@ class _HeteroProbabilityVarianceBinary(BinaryClassificationScoreObjectiveMixin, 
         self,
         model,
         reduction: ReductionType = "mean",
+        num_samples: int = 128,
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
         eps: float = 1e-6,
@@ -180,6 +182,7 @@ class _HeteroProbabilityVarianceBinary(BinaryClassificationScoreObjectiveMixin, 
             noise_model_outputs_log_var=noise_model_outputs_log_var,
             noise_weight_fn=noise_weight_fn,
         )
+        self.num_samples = int(num_samples)
         self._set_classification_score_objective(objective)
 
     @t_batch_mode_transform()
@@ -188,17 +191,25 @@ class _HeteroProbabilityVarianceBinary(BinaryClassificationScoreObjectiveMixin, 
         X_in = X if X.dim() > 2 else X.unsqueeze(0)
         original_batch_shape = X_in.shape[:-2]
 
-        post = self.model.posterior(X_in)
+        mean_prob, epistemic_var, _, _ = binary_probability_moments(
+            self.model,
+            X_in,
+            num_samples=self.num_samples,
+            eps=self.eps,
+        )
         Xt = self._apply_input_transform(X_in)
-
-        p = self._squeeze_last_output_dim(post.mean).clamp(self.eps, 1.0 - self.eps)
         p = _align_pointwise_score_to_X(
-            p,
+            self._squeeze_last_output_dim(mean_prob),
             Xt,
             name="HeteroProbabilityVariance probability",
             reduce_extra="mean",
         )
-        score = p * (1.0 - p)
+        score = _align_pointwise_score_to_X(
+            self._squeeze_last_output_dim(epistemic_var),
+            Xt,
+            name="HeteroProbabilityVariance epistemic variance",
+            reduce_extra="mean",
+        )
 
         score = self._apply_roi_weight_per_point(score, p, Xt)
         score = self._apply_noise_weight_per_point(score, Xt)
@@ -231,7 +242,7 @@ class _HeteroUncertaintySamplingBinary(BinaryClassificationScoreObjectiveMixin, 
 
     score_type:
         - "entropy": predictive entropy
-        - "variance": probability variance p(1-p)
+        - "variance": probability epistemic variance Var_f[p(y=1|f)]
         - "least_confidence": margin / least-confidence uncertainty
     """
 
@@ -240,6 +251,7 @@ class _HeteroUncertaintySamplingBinary(BinaryClassificationScoreObjectiveMixin, 
         model,
         reduction: ReductionType = "mean",
         score_type: Literal["entropy", "variance", "least_confidence"] = "variance",
+        num_samples: int = 128,
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
         eps: float = 1e-6,
@@ -287,6 +299,7 @@ class _HeteroUncertaintySamplingBinary(BinaryClassificationScoreObjectiveMixin, 
             noise_weight_fn=noise_weight_fn,
         )
         self.score_type = score_type
+        self.num_samples = int(num_samples)
         self._set_classification_score_objective(objective)
 
     def _uncertainty_score(self, p: Tensor) -> Tensor:
@@ -304,23 +317,39 @@ class _HeteroUncertaintySamplingBinary(BinaryClassificationScoreObjectiveMixin, 
         X_in = X if X.dim() > 2 else X.unsqueeze(0)
         original_batch_shape = X_in.shape[:-2]
 
-        post = self.model.posterior(X_in)
         Xt = self._apply_input_transform(X_in)
-
-        p = self._squeeze_last_output_dim(post.mean)
-        pmin = p.min().item()
-        pmax = p.max().item()
-        if not (0.0 <= pmin and pmax <= 1.0):
-            p = latent_samples_to_binary_probabilities(self.model, p, eps=self.eps, name="p via binary likelihood")
-        p = p.clamp(self.eps, 1.0 - self.eps)
+        if self.score_type == "variance":
+            mean_prob, epistemic_var, _, _ = binary_probability_moments(
+                self.model,
+                X_in,
+                num_samples=self.num_samples,
+                eps=self.eps,
+            )
+            p = self._squeeze_last_output_dim(mean_prob)
+            score = _align_pointwise_score_to_X(
+                self._squeeze_last_output_dim(epistemic_var),
+                Xt,
+                name="HeteroUncertaintySampling epistemic variance",
+                reduce_extra="mean",
+            )
+        else:
+            post = self.model.posterior(X_in)
+            p = self._squeeze_last_output_dim(post.mean)
+            if not (0.0 <= p.min().item() and p.max().item() <= 1.0):
+                p = latent_samples_to_binary_probabilities(
+                    self.model,
+                    p,
+                    eps=self.eps,
+                    name="p via binary likelihood",
+                )
+            p = p.clamp(self.eps, 1.0 - self.eps)
+            score = self._uncertainty_score(p)
         p = _align_pointwise_score_to_X(
             p,
             Xt,
             name="HeteroUncertaintySampling probability",
             reduce_extra="mean",
         )
-
-        score = self._uncertainty_score(p)
         score = self._apply_roi_weight_per_point(score, p, Xt)
         score = self._apply_noise_weight_per_point(score, Xt)
         score = score - self._pending_penalty_per_point(Xt)
@@ -405,7 +434,7 @@ class qHeteroBinaryBALD(_HeteroBALDAcquisitionBinary):
 
 
 class qHeteroBinaryProbabilityVariance(_qHeteroBinaryProbabilityVarianceAcquisition):
-    """heteroscedastic classification 用 variance-based acquisition。posterior / probability / utility の分散が大きい点を選びます。
+    """heteroscedastic classification 用 variance-based acquisition。latent posterior が誘導する確率の epistemic variance が大きい点を選びます。
     
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
@@ -435,7 +464,7 @@ class qHeteroBinaryMarginUncertainty(_qHeteroBinaryMarginUncertaintyAcquisition)
 
 
 class qHeteroBinaryIntegratedPosteriorVariance(_qHeteroBinaryIntegratedPosteriorVarianceProxy):
-    """heteroscedastic classification 用 variance-based acquisition。posterior / probability / utility の分散が大きい点を選びます。
+    """heteroscedastic classification 用 variance-based acquisition。latent posterior が誘導する確率の epistemic variance が大きい点を選びます。
     
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。

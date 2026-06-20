@@ -9,6 +9,7 @@ from botorch.models.model import Model
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
+from bochan.acquisition.binary.epistemic import binary_probability_moments
 
 from bochan.acquisition.binary.base import (
     LargeQStrategy,
@@ -303,6 +304,7 @@ class _UncertaintySamplingClassifierAcquisition(BinaryClassificationScoreObjecti
         model,
         reduction: ReductionType = "mean",
         score_type: UncertaintyScoreType = "variance",
+        num_samples: int = 128,
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
         apply_sigmoid_if_needed: bool = False,
@@ -317,6 +319,7 @@ class _UncertaintySamplingClassifierAcquisition(BinaryClassificationScoreObjecti
             eps=eps,
         )
         self.score_type = score_type
+        self.num_samples = int(num_samples)
         self.apply_sigmoid_if_needed = bool(apply_sigmoid_if_needed)
         self._set_classification_score_objective(objective)
 
@@ -390,12 +393,21 @@ class _UncertaintySamplingClassifierAcquisition(BinaryClassificationScoreObjecti
         X = self._ensure_q_batch(X)
         original_batch_shape = X.shape[:-2]
 
-        prob_fn = getattr(self.model, "probability_posterior", None)
-        posterior = prob_fn(X) if callable(prob_fn) else self.model.posterior(X)
-        p = self._normalize_prob_shape(posterior.mean, X)
-        p = self._to_probability(p)
-
-        score = self._uncertainty_score(p)
+        if self.score_type == "variance":
+            mean_prob, epistemic_var, _, _ = binary_probability_moments(
+                self.model,
+                X,
+                num_samples=self.num_samples,
+                eps=self.eps,
+            )
+            p = self._normalize_prob_shape(mean_prob, X)
+            score = self._normalize_prob_shape(epistemic_var, X)
+        else:
+            prob_fn = getattr(self.model, "probability_posterior", None)
+            posterior = prob_fn(X) if callable(prob_fn) else self.model.posterior(X)
+            p = self._normalize_prob_shape(posterior.mean, X)
+            p = self._to_probability(p)
+            score = self._uncertainty_score(p)
         Xt = self._apply_input_transform(X)
 
         score = _align_pointwise_score_to_X(
@@ -441,7 +453,7 @@ class _qBinaryPredictiveEntropyAcquisition(_UncertaintySamplingClassifierAcquisi
 
 
 class _qBinaryProbabilityVarianceAcquisition(_UncertaintySamplingClassifierAcquisition):
-    """Binary classification probability variance p(1-p) acquisition."""
+    """Binary probability epistemic variance acquisition."""
 
     def __init__(self, model, **kwargs):
         kwargs.pop("score_type", None)
@@ -527,7 +539,7 @@ class qBinaryGreedyJointBALD(_GreedyJointQBALDAcquisitionBinary):
 class qBinaryProbabilityVariance(_qBinaryProbabilityVarianceAcquisition):
     """classification 用の軽量 probability variance acquisition。
 
-    候補点上の `p(1-p)` を使う proxy であり、mc_points は不要です。
+    候補点上の `Var_f[p(y=1|f)]` を使い、mc_points は不要です。
     
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
@@ -762,6 +774,7 @@ class qBinaryFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
         model: Model,
         mc_points: Tensor,
         num_fantasies: int = 8,
+        num_epistemic_samples: int = 128,
         conditioning_steps: int = 10,
         conditioning_lr: float | None = None,
         conditioning_batch_size: int | None = None,
@@ -792,6 +805,7 @@ class qBinaryFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
 
         self.register_buffer("mc_points", mc_points)
         self.num_fantasies = int(num_fantasies)
+        self.num_epistemic_samples = int(num_epistemic_samples)
         self.conditioning_steps = int(conditioning_steps)
         self.conditioning_lr = conditioning_lr
         self.conditioning_batch_size = conditioning_batch_size
@@ -847,16 +861,13 @@ class qBinaryFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
 
     @torch.no_grad()
     def _integrated_probability_variance(self, fantasy_model: Model) -> Tensor:
-        prob_fn = getattr(fantasy_model, "probability_posterior", None)
-        posterior = prob_fn(self.mc_points) if callable(prob_fn) else fantasy_model.posterior(self.mc_points)
-        prob = _binary_values_to_probability_for_ipv(
+        _, epistemic_var, _, _ = binary_probability_moments(
             fantasy_model,
-            posterior.mean,
-            apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
+            self.mc_points,
+            num_samples=self.num_epistemic_samples,
             eps=self.eps,
-            name="fantasy posterior mean",
         )
-        return (prob * (1.0 - prob)).mean()
+        return epistemic_var.mean()
 
     def _aggregated_reference_penalty(self, X: Tensor) -> Tensor:
         Xt = _apply_input_transform_for_ipv(self.model, X)

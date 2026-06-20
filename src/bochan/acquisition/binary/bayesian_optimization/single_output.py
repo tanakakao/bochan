@@ -7,6 +7,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
+from bochan.acquisition.binary.epistemic import binary_probability_samples
 
 from botorch.acquisition import AcquisitionFunction
 from botorch.acquisition.monte_carlo import MCAcquisitionFunction
@@ -448,28 +449,18 @@ class _BinaryProbabilityBOBase(MCAcquisitionFunction):
         return probs
 
     def _posterior_samples_as_prob(self, X: Tensor) -> Tensor:
-        """posterior samplesをbinary probability samplesへ変換する。"""
+        """Draw probability samples induced only by latent GP uncertainty."""
         X = ensure_q_batch(X)
-
-        if self.apply_sigmoid_if_needed and hasattr(
+        probs = binary_probability_samples(
             self.model,
-            "latent_posterior",
-        ):
-            post = self.model.latent_posterior(X)
-            samples = self.get_posterior_samples(post)
-            probs = latent_samples_to_binary_probabilities(self.model, samples, eps=self.eps, name="samples via binary likelihood").clamp(
-                self.eps,
-                1.0 - self.eps,
-            )
-        else:
-            post = self.model.posterior(X)
-            samples = self.get_posterior_samples(post)
-            probs = to_probability(samples, apply_sigmoid_if_needed=self.apply_sigmoid_if_needed, eps=self.eps, name='posterior samples', model=self.model)
-
+            X,
+            sample_shape=self.sampler.sample_shape,
+            eps=self.eps,
+        )
         if self.score_objective is not None:
             probs = self.score_objective(probs, X=X)
-
-        probs = self._squeeze_binary_output_dim_if_present(probs, X)
+        # Keep the explicit output dimension here. reshape_binary_samples
+        # removes it after distinguishing sample_shape from q=1.
         return reshape_binary_samples(probs, X)
 
     def _resolve_best_f(
@@ -480,7 +471,23 @@ class _BinaryProbabilityBOBase(MCAcquisitionFunction):
         best_f_quantile: float | None,
     ) -> Tensor:
         if best_f is not None:
-            return torch.as_tensor(best_f)
+            train_X = _resolve_observed_X(self.model)
+            if torch.is_tensor(train_X):
+                resolved = torch.as_tensor(
+                    best_f,
+                    device=train_X.device,
+                    dtype=train_X.dtype,
+                )
+            else:
+                resolved = torch.as_tensor(best_f)
+            if resolved.numel() != 1 or not torch.isfinite(resolved):
+                raise ValueError("binary best_f must be one finite scalar probability.")
+            if resolved.item() < 0.0 or resolved.item() > 1.0:
+                raise ValueError("binary best_f must be in [0, 1].")
+            return resolved.clamp(
+                min=self.eps,
+                max=1.0 - float(best_f_margin),
+            )
 
         train_X = _resolve_observed_X(self.model)
         if train_X is None:

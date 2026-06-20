@@ -7,6 +7,7 @@ from typing import Callable, Optional
 import torch
 from torch import Tensor
 from botorch.utils.transforms import t_batch_mode_transform
+from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 
 from .multi_output import (
     _MultiOutputBinaryClassificationAcqBase,
@@ -213,7 +214,7 @@ class _HeteroMultiOutputBinaryBALDBase(
         output_weights: Tensor | None = None,
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
-        samples_are_probs: bool = True,
+        samples_are_probs: bool = False,
         eps: float = 1e-6,
         noise_mode: str = "inverse_linear",
         noise_combine: str = "multiply",
@@ -265,15 +266,30 @@ class _HeteroMultiOutputBinaryBALDBase(
         original_batch_shape = raw_X.shape[:-2]
 
         Xt = self._apply_input_transform(raw_X)
-        posterior = self._get_probability_posterior(raw_X)
-
-        samples = posterior.rsample(torch.Size([self.num_samples]))
-        probs = self._reshape_samples(samples, Xt, self.num_samples)
-        probs = self._to_probability(
-            probs,
-            apply_sigmoid_if_needed=not self.samples_are_probs,
-            name="probability_posterior.rsample()",
-        )
+        if self.samples_are_probs:
+            posterior = self._get_probability_posterior(raw_X)
+            samples = posterior.rsample(torch.Size([self.num_samples]))
+            probs = self._reshape_samples(samples, Xt, self.num_samples)
+            probs = self._to_probability(
+                probs,
+                apply_sigmoid_if_needed=False,
+                name="probability_posterior.rsample()",
+            )
+        else:
+            posterior = self._get_latent_posterior(raw_X)
+            latent_samples = posterior.rsample(torch.Size([self.num_samples]))
+            latent_samples = self._reshape_samples(
+                latent_samples,
+                Xt,
+                self.num_samples,
+            )
+            probs = latent_samples_to_binary_probabilities(
+                self.model,
+                latent_samples,
+                eps=self.eps,
+                name="hetero multi-output latent samples",
+                output_dim=-1,
+            )
 
         if self.output_mode == "all_positive":
             log_p_all = probs.log().sum(dim=-1)
@@ -325,6 +341,7 @@ class _HeteroMultiOutputBinaryProbabilityVarianceBase(
         reduction: str = "mean",
         output_mode: str = "all_positive",
         output_weights: Tensor | None = None,
+        num_samples: int = 128,
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
         mean_is_probs: bool = True,
@@ -360,6 +377,7 @@ class _HeteroMultiOutputBinaryProbabilityVarianceBase(
         )
         self.output_mode = output_mode
         self.output_weights = output_weights
+        self.num_samples = int(num_samples)
         self.mean_is_probs = bool(mean_is_probs)
         self._set_multioutput_classification_objective(objective)
 
@@ -372,19 +390,27 @@ class _HeteroMultiOutputBinaryProbabilityVarianceBase(
         original_batch_shape = raw_X.shape[:-2]
 
         Xt = self._apply_input_transform(raw_X)
-        posterior = self._get_probability_posterior(raw_X)
-
-        probs = self._normalize_mean_shape(posterior.mean, Xt)
-        probs = self._to_probability(
-            probs,
-            apply_sigmoid_if_needed=not self.mean_is_probs,
-            name="probability_posterior.mean",
+        latent_posterior = self._get_latent_posterior(raw_X)
+        latent_samples = latent_posterior.rsample(torch.Size([self.num_samples]))
+        latent_samples = self._reshape_samples(
+            latent_samples,
+            Xt,
+            self.num_samples,
         )
+        probability_samples = latent_samples_to_binary_probabilities(
+            self.model,
+            latent_samples,
+            eps=self.eps,
+            name="hetero multi-output latent samples",
+            output_dim=-1,
+        )
+        probs = probability_samples.mean(dim=0)
 
         if self.output_mode == "all_positive":
-            log_p_all = probs.log().sum(dim=-1)
-            p_all = log_p_all.exp().clamp(self.eps, 1.0 - self.eps)
-            score = p_all * (1.0 - p_all)
+            score = probability_samples.prod(dim=-1).var(
+                dim=0,
+                unbiased=False,
+            )
             score = self._apply_noise_weight_event_score(
                 score,
                 Xt,
@@ -392,7 +418,7 @@ class _HeteroMultiOutputBinaryProbabilityVarianceBase(
                 output_weights=self.output_weights,
             )
         else:
-            score_per_output = probs * (1.0 - probs)
+            score_per_output = probability_samples.var(dim=0, unbiased=False)
             score_per_output = self._apply_noise_weight_per_output_score(score_per_output, Xt)
             score = self._aggregate_outputs(
                 score_per_output,
@@ -430,6 +456,7 @@ class _HeteroMultiOutputUncertaintySamplingClassifierAcquisition(
         model,
         reduction: str = "mean",
         score_type: str = "variance",
+        num_samples: int = 128,
         output_mode: str = "all_positive",
         output_weights: Tensor | None = None,
         pending_penalty_weight: float = 0.0,
@@ -466,6 +493,7 @@ class _HeteroMultiOutputUncertaintySamplingClassifierAcquisition(
             noise_weight_fn=noise_weight_fn,
         )
         self.score_type = score_type
+        self.num_samples = int(num_samples)
         self.output_mode = output_mode
         self.output_weights = output_weights
         self.mean_is_probs = bool(mean_is_probs)
@@ -478,17 +506,44 @@ class _HeteroMultiOutputUncertaintySamplingClassifierAcquisition(
         raw_X = X
         original_batch_shape = raw_X.shape[:-2]
         Xt = self._apply_input_transform(raw_X)
-        posterior = self._get_probability_posterior(raw_X)
-        probs = self._normalize_mean_shape(posterior.mean, Xt)
-        probs = self._to_probability(
-            probs,
-            apply_sigmoid_if_needed=not self.mean_is_probs,
-            name="probability_posterior.mean",
-        )
+        probability_samples = None
+        if self.score_type == "variance":
+            latent_posterior = self._get_latent_posterior(raw_X)
+            latent_samples = latent_posterior.rsample(torch.Size([self.num_samples]))
+            latent_samples = self._reshape_samples(
+                latent_samples,
+                Xt,
+                self.num_samples,
+            )
+            probability_samples = latent_samples_to_binary_probabilities(
+                self.model,
+                latent_samples,
+                eps=self.eps,
+                name="hetero multi-output latent samples",
+                output_dim=-1,
+            )
+            probs = probability_samples.mean(dim=0)
+        else:
+            posterior = self._get_probability_posterior(raw_X)
+            probs = self._normalize_mean_shape(posterior.mean, Xt)
+            probs = self._to_probability(
+                probs,
+                apply_sigmoid_if_needed=not self.mean_is_probs,
+                name="probability_posterior.mean",
+            )
 
         if self.output_mode == "all_positive":
-            p_all = probs.log().sum(dim=-1).exp().clamp(self.eps, 1.0 - self.eps)
-            score = self._uncertainty_score_binary_event(p_all, self.score_type)
+            if self.score_type == "variance":
+                score = probability_samples.prod(dim=-1).var(
+                    dim=0,
+                    unbiased=False,
+                )
+            else:
+                p_all = probs.log().sum(dim=-1).exp().clamp(self.eps, 1.0 - self.eps)
+                score = self._uncertainty_score_binary_event(
+                    p_all,
+                    self.score_type,
+                )
             score = self._apply_noise_weight_event_score(
                 score,
                 Xt,
@@ -496,7 +551,16 @@ class _HeteroMultiOutputUncertaintySamplingClassifierAcquisition(
                 output_weights=self.output_weights,
             )
         else:
-            score_per_output = self._uncertainty_score_binary_event(probs, self.score_type)
+            if self.score_type == "variance":
+                score_per_output = probability_samples.var(
+                    dim=0,
+                    unbiased=False,
+                )
+            else:
+                score_per_output = self._uncertainty_score_binary_event(
+                    probs,
+                    self.score_type,
+                )
             score_per_output = self._apply_noise_weight_per_output_score(score_per_output, Xt)
             score = self._aggregate_outputs(
                 score_per_output,
@@ -542,7 +606,7 @@ class qHeteroMultiOutputBinaryPredictiveEntropy(_HeteroMultiOutputUncertaintySam
 
 
 class qHeteroMultiOutputBinaryProbabilityVariance(_HeteroMultiOutputUncertaintySamplingClassifierAcquisition):
-    """heteroscedastic multi-output classification 用 variance-based acquisition。posterior / probability / utility の分散が大きい点を選びます。
+    """heteroscedastic multi-output classification 用 variance-based acquisition。latent posterior が誘導する確率の epistemic variance が大きい点を選びます。
     
     Args:
         model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
@@ -602,7 +666,7 @@ class qHeteroMultiOutputBinaryBALD(_HeteroMultiOutputBinaryBALDBase):
 
 
 class qHeteroMultiOutputBinaryIntegratedPosteriorVarianceProxy(qHeteroMultiOutputBinaryProbabilityVariance):
-    """heteroscedastic multi-output classification 用 variance-based acquisition。posterior / probability / utility の分散が大きい点を選びます。
+    """heteroscedastic multi-output classification 用 variance-based acquisition。latent posterior が誘導する確率の epistemic variance が大きい点を選びます。
     
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。

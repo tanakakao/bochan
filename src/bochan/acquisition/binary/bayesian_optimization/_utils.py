@@ -7,6 +7,7 @@ from typing import Callable, Literal, Optional
 import torch
 from torch import Tensor
 from bochan.acquisition.binary._likelihood import values_to_binary_probabilities
+from bochan.acquisition.binary.epistemic import get_binary_latent_posterior
 
 from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 from botorch.models.model import Model
@@ -230,12 +231,7 @@ def get_single_model_posterior(model, X: Tensor, *, samples_are_probs: bool):
         if callable(fn):
             return fn(X)
         return model.posterior(X)
-
-    for name in ("latent_posterior", "posterior_latent", "posterior_f"):
-        fn = getattr(model, name, None)
-        if callable(fn):
-            return fn(X)
-    return model.posterior(X)
+    return get_binary_latent_posterior(model, X)
 
 
 def get_model_posterior(model: Model, X: Tensor, *, samples_are_probs: bool):
@@ -246,10 +242,10 @@ def get_model_posterior(model: Model, X: Tensor, *, samples_are_probs: bool):
         if callable(fn):
             return fn(X)
     else:
-        for name in ("latent_posterior", "posterior_latent", "posterior_f"):
-            fn = getattr(model, name, None)
-            if callable(fn):
-                return fn(X)
+        try:
+            return get_binary_latent_posterior(model, X)
+        except AttributeError:
+            pass
 
     if hasattr(model, "models"):
         return _StackedPosterior([
@@ -257,7 +253,11 @@ def get_model_posterior(model: Model, X: Tensor, *, samples_are_probs: bool):
             for sm in model.models
         ])
 
-    return model.posterior(X)
+    if samples_are_probs:
+        return model.posterior(X)
+    raise AttributeError(
+        f"{type(model).__name__} has no latent posterior for binary epistemic sampling."
+    )
 
 
 def normalize_mean_shape(mean: Tensor, X: Tensor) -> Tensor:

@@ -25,6 +25,11 @@ from botorch.utils.multi_objective.box_decompositions.non_dominated import (
 )
 from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
 
+from bochan.acquisition.binary.epistemic import (
+    as_epistemic_probability_model,
+    get_binary_latent_posterior,
+)
+
 from ._utils import (
     MultiOutputMode,
     PoFMode,
@@ -61,9 +66,7 @@ def _get_binary_mc_posterior_for_probability_samples(
     likelihood に通す。そのため samples_are_probs=False では latent_posterior を優先する。
     """
     if (not samples_are_probs) and prefer_latent:
-        latent_fn = getattr(model, "latent_posterior", None)
-        if callable(latent_fn):
-            return latent_fn(X)
+        return get_binary_latent_posterior(model, X)
 
     return get_model_posterior(model, X, samples_are_probs=samples_are_probs)
 
@@ -301,7 +304,12 @@ class qMultiOutputBinaryExpectedHypervolumeImprovement(qExpectedHypervolumeImpro
     Notes:
         全目的は最大化方向に揃えてください。classification / ordinal では probability または utility objective を通して目的空間に変換します。
     """
-    pass
+    def __init__(self, model: Model, *args, **kwargs) -> None:
+        super().__init__(
+            as_epistemic_probability_model(model),
+            *args,
+            **kwargs,
+        )
 
 
 class qMultiOutputBinaryNoisyExpectedHypervolumeImprovement(qNoisyExpectedHypervolumeImprovement):
@@ -316,7 +324,12 @@ class qMultiOutputBinaryNoisyExpectedHypervolumeImprovement(qNoisyExpectedHyperv
     Notes:
         全目的は最大化方向に揃えてください。classification / ordinal では probability または utility objective を通して目的空間に変換します。
     """
-    pass
+    def __init__(self, model: Model, *args, **kwargs) -> None:
+        super().__init__(
+            as_epistemic_probability_model(model),
+            *args,
+            **kwargs,
+        )
 
 def _prod(shape: torch.Size | tuple[int, ...]) -> int:
     out = 1

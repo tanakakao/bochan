@@ -631,6 +631,7 @@ class _MultiOutputUncertaintySamplingClassifierAcquisition(_MultiOutputBinaryCla
         model,
         reduction: ReductionType = "mean",
         score_type: UncertaintyScoreType = "variance",
+        num_samples: int = 128,
         output_mode: MultiOutputMode = "mean",
         output_weights: Optional[Tensor] = None,
         pending_penalty_weight: float = 0.0,
@@ -647,6 +648,7 @@ class _MultiOutputUncertaintySamplingClassifierAcquisition(_MultiOutputBinaryCla
             eps=eps,
         )
         self.score_type = score_type
+        self.num_samples = int(num_samples)
         self.output_mode = output_mode
         self.output_weights = output_weights
         self.apply_sigmoid_if_needed = bool(apply_sigmoid_if_needed)
@@ -660,25 +662,57 @@ class _MultiOutputUncertaintySamplingClassifierAcquisition(_MultiOutputBinaryCla
         raw_X = X
         original_batch_shape = raw_X.shape[:-2]
 
-        # posterior は raw_X で評価する。shape 整合と penalty には expanded_X を使う。
         Xt = self._apply_input_transform(raw_X)
-        posterior = self._get_probability_posterior(raw_X)
-
-        probs = self._normalize_mean_shape(posterior.mean, Xt)
-        probs = self._to_probability(
-            probs,
-            apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
-            name="probability_posterior.mean",
-        )
-
-        score_per_output = self._uncertainty_score_binary_event(probs, self.score_type)
-        score = self._aggregate_outputs(
-            score_per_output,
-            output_mode=self.output_mode,
-            output_weights=self.output_weights,
-            probs_for_all_positive=probs,
-            score_type_for_all_positive=self.score_type,
-        )  # (*batch, q_like)
+        if self.score_type == "variance":
+            latent_posterior = self._get_latent_posterior(raw_X)
+            latent_samples = latent_posterior.rsample(torch.Size([self.num_samples]))
+            latent_samples = self._reshape_samples(
+                latent_samples,
+                Xt,
+                self.num_samples,
+            )
+            probability_samples = latent_samples_to_binary_probabilities(
+                self.model,
+                latent_samples,
+                eps=self.eps,
+                name="multi-output latent posterior samples",
+                output_dim=-1,
+            )
+            probs = probability_samples.mean(dim=0)
+            if self.output_mode == "all_positive":
+                score = probability_samples.prod(dim=-1).var(
+                    dim=0,
+                    unbiased=False,
+                )
+            else:
+                score_per_output = probability_samples.var(
+                    dim=0,
+                    unbiased=False,
+                )
+                score = self._aggregate_outputs(
+                    score_per_output,
+                    output_mode=self.output_mode,
+                    output_weights=self.output_weights,
+                )
+        else:
+            posterior = self._get_probability_posterior(raw_X)
+            probs = self._normalize_mean_shape(posterior.mean, Xt)
+            probs = self._to_probability(
+                probs,
+                apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
+                name="probability_posterior.mean",
+            )
+            score_per_output = self._uncertainty_score_binary_event(
+                probs,
+                self.score_type,
+            )
+            score = self._aggregate_outputs(
+                score_per_output,
+                output_mode=self.output_mode,
+                output_weights=self.output_weights,
+                probs_for_all_positive=probs,
+                score_type_for_all_positive=self.score_type,
+            )
 
         score = score - self._pending_penalty_per_point(Xt)
 
@@ -819,7 +853,7 @@ class qMultiOutputBinaryPredictiveEntropy(_MultiOutputUncertaintySamplingClassif
 
 
 class qMultiOutputBinaryProbabilityVariance(_MultiOutputUncertaintySamplingClassifierAcquisition):
-    """multi-output classification 用 variance-based acquisition。posterior / probability / utility の分散が大きい点を選びます。
+    """multi-output classification 用 variance-based acquisition。latent posterior が誘導する確率の epistemic variance が大きい点を選びます。
     
     Args:
         model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
@@ -875,7 +909,7 @@ class qMultiOutputBinaryBALD(_BALDMultiOutputAcquisition):
 
 
 class qMultiOutputBinaryIntegratedPosteriorVarianceProxy(qMultiOutputBinaryProbabilityVariance):
-    """multi-output classification 用 variance-based acquisition。posterior / probability / utility の分散が大きい点を選びます。
+    """multi-output classification 用 variance-based acquisition。latent posterior が誘導する確率の epistemic variance が大きい点を選びます。
     
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。

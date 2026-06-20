@@ -4,77 +4,63 @@ import numpy as np
 import torch
 
 from bochan.visualization.utils import get_model, prediction_mean_std
-
-
-class _Posterior:
-    def __init__(self, mean: torch.Tensor, variance: torch.Tensor) -> None:
-        self.mean = mean
-        self.variance = variance
-
-
-class _LatentModel:
-    def posterior(self, X: torch.Tensor) -> _Posterior:
-        mean = torch.full(X.shape[:-1] + (1,), 4.0, dtype=X.dtype)
-        variance = torch.ones_like(mean)
-        return _Posterior(mean, variance)
-
-
-class _BinaryWrapper:
-    def __init__(self) -> None:
-        self.model = _LatentModel()
-        self.train_X = torch.zeros(2, 1, dtype=torch.double)
-        self.probability_calls = 0
-        self.posterior_calls = 0
-
-    def probability_posterior(self, X: torch.Tensor) -> _Posterior:
-        self.probability_calls += 1
-        mean = torch.tensor([[0.2], [0.8]], dtype=X.dtype, device=X.device)
-        variance = mean * (1.0 - mean)
-        return _Posterior(mean, variance)
-
-    def posterior(self, X: torch.Tensor) -> _Posterior:
-        self.posterior_calls += 1
-        raise AssertionError("probability_posterior must be preferred")
+from tests.test_binary_epistemic_uncertainty import _EpistemicBinaryModel
 
 
 class _Optimizer:
-    def __init__(self, model: _BinaryWrapper) -> None:
+    def __init__(self, model: _EpistemicBinaryModel) -> None:
         self.model = model
-        self.train_X = model.train_X
+        self.train_X = model.train_inputs[0]
         self.predict_calls = 0
 
     def predict(self, X: torch.Tensor, return_type: str):
         self.predict_calls += 1
-        raise AssertionError("binary probability_posterior must be preferred")
+        raise AssertionError("binary epistemic visualization must use the model")
 
 
 def test_get_model_keeps_binary_wrapper_instead_of_unwrapping_latent_gp() -> None:
-    model = _BinaryWrapper()
+    model = _EpistemicBinaryModel()
 
     assert get_model(model) is model
-    assert get_model(model) is not model.model
 
 
-def test_prediction_uses_probability_posterior_for_direct_binary_model() -> None:
-    model = _BinaryWrapper()
-    X = torch.tensor([[0.0], [1.0]], dtype=torch.double)
+def test_binary_visualization_defaults_to_probability_epistemic_std() -> None:
+    model = _EpistemicBinaryModel()
+    X = torch.tensor([[0.2, 0.02], [0.8, 0.02]], dtype=torch.double)
 
-    mean, std = prediction_mean_std(model, X)
+    mean, epistemic_std = prediction_mean_std(
+        model,
+        X,
+        num_uncertainty_samples=1001,
+    )
+    _, observation_std = prediction_mean_std(
+        model,
+        X,
+        uncertainty_kind="observation",
+        num_uncertainty_samples=1001,
+    )
 
-    assert model.probability_calls == 1
-    assert model.posterior_calls == 0
     np.testing.assert_allclose(mean[:, 0], [0.2, 0.8])
-    np.testing.assert_allclose(std[:, 0], np.sqrt([0.16, 0.16]))
-    assert np.all((0.0 <= mean) & (mean <= 1.0))
+    assert np.all(epistemic_std[:, 0] < 0.03)
+    np.testing.assert_allclose(
+        observation_std[:, 0],
+        np.sqrt([0.16, 0.16]),
+        atol=1e-8,
+    )
+    assert np.all(observation_std > epistemic_std)
 
 
-def test_prediction_uses_nested_binary_probability_posterior_before_predict() -> None:
-    model = _BinaryWrapper()
+def test_nested_optimizer_uses_binary_epistemic_model_before_predict() -> None:
+    model = _EpistemicBinaryModel()
     optimizer = _Optimizer(model)
-    X = torch.tensor([[0.0], [1.0]], dtype=torch.double)
+    X = torch.tensor([[0.2, 0.02], [0.8, 0.02]], dtype=torch.double)
 
-    mean, _ = prediction_mean_std(optimizer, X)
+    mean, std = prediction_mean_std(
+        optimizer,
+        X,
+        num_uncertainty_samples=257,
+    )
 
     assert optimizer.predict_calls == 0
-    assert model.probability_calls == 1
     np.testing.assert_allclose(mean[:, 0], [0.2, 0.8])
+    assert np.all(std[:, 0] < 0.03)

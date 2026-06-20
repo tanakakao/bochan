@@ -23,6 +23,7 @@ from botorch.utils.multi_objective.box_decompositions.non_dominated import (
     FastNondominatedPartitioning,
 )
 from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
+from bochan.acquisition.binary.epistemic import as_epistemic_probability_model
 
 from ._utils import (
     ensure_q_batch,
@@ -446,12 +447,12 @@ class qHeteroMultiOutputBinaryNoisyExpectedHypervolumeImprovement(qNoisyExpected
             noise_penalty=noise_penalty,
             default_sigma=default_sigma,
             noise_is_log_var=noise_is_log_var,
-            samples_are_probs=samples_are_probs,
-            apply_sigmoid_if_needed=apply_sigmoid_if_needed,
+            samples_are_probs=True,
+            apply_sigmoid_if_needed=False,
             eps=eps,
         )
         super().__init__(
-            model=model,
+            model=as_epistemic_probability_model(model),
             ref_point=ref_point,
             X_baseline=X_baseline,
             sampler=sampler,

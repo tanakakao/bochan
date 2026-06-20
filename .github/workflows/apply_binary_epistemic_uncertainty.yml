@@ -30,20 +30,7 @@ jobs:
           cache: pip
 
       - name: Apply source migrations
-        run: |
-          python .github/scripts/patch_binary_bo_single.py
-          python .github/scripts/patch_binary_bo_utils.py
-          python .github/scripts/patch_binary_bo_multi_imports.py
-          python .github/scripts/patch_binary_bo_multi_ehvi.py
-          python .github/scripts/patch_binary_bo_hetero_multi.py
-          python .github/scripts/patch_binary_bo_hetero_defaults.py
-          python .github/scripts/patch_binary_active_single.py
-          python .github/scripts/patch_binary_ipv.py
-          python .github/scripts/patch_binary_active_multi.py
-          python .github/scripts/patch_binary_active_hetero_probability.py
-          python .github/scripts/patch_binary_active_hetero_unified.py
-          python .github/scripts/patch_binary_active_hetero_multi.py
-          python .github/scripts/patch_binary_visualization_epistemic.py
+        run: python .github/scripts/run_binary_epistemic_migrations.py
 
       - name: Install package
         run: |
@@ -77,6 +64,8 @@ jobs:
       - name: Remove one-off migration files
         run: |
           rm -f .github/scripts/patch_binary_*.py
+          rm -f .github/scripts/run_binary_epistemic_migrations.py
+          rm -f .github/workflows/debug_binary_epistemic.yml
           rm -f .github/workflows/apply_binary_epistemic_uncertainty.yml
 
       - name: Commit implementation

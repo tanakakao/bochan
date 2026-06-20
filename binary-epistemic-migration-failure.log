@@ -1,0 +1,11 @@
+FAILED patch_binary_bo_single.py
+
+Traceback (most recent call last):
+  File "/home/runner/work/bochan/bochan/.github/scripts/run_binary_epistemic_migrations.py", line 27, in <module>
+    runpy.run_path(str(root / name), run_name="__main__")
+  File "<frozen runpy>", line 291, in run_path
+  File "<frozen runpy>", line 98, in _run_module_code
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/runner/work/bochan/bochan/.github/scripts/patch_binary_bo_single.py", line 38, in <module>
+    raise RuntimeError(f"_posterior_samples_as_prob replacement count={count}")
+RuntimeError: _posterior_samples_as_prob replacement count=0

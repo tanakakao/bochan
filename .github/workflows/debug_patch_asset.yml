@@ -1,0 +1,27 @@
+name: Debug epistemic patch asset
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+permissions:
+  contents: read
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/binary-epistemic-uncertainty
+      - name: Inspect patch asset
+        run: |
+          set +e
+          ls -l .github/assets/binary_epistemic_patch.dat > patch-debug.log 2>&1
+          file .github/assets/binary_epistemic_patch.dat >> patch-debug.log 2>&1
+          wc -c .github/assets/binary_epistemic_patch.dat >> patch-debug.log 2>&1
+          xxd -l 16 .github/assets/binary_epistemic_patch.dat >> patch-debug.log 2>&1
+          unzip -t .github/assets/binary_epistemic_patch.dat >> patch-debug.log 2>&1
+          cat patch-debug.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: epistemic-patch-debug
+          path: patch-debug.log

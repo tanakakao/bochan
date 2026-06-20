@@ -44,6 +44,25 @@ __all__ = [
 ]
 
 
+class _RRPVariationalELBO(VariationalELBO):
+    """BoTorch Relevance Pursuit 互換の VariationalELBO。
+
+    BoTorch の relevance pursuit は ExactMLL 互換として、変換済み訓練入力を
+    追加の位置引数で MLL に渡す。VariationalELBO 自体はその引数を受け取らない
+    ため、binary RRP では受け取って無視する。
+    """
+
+    def forward(
+        self,
+        variational_dist_f,
+        target: Tensor,
+        *transformed_inputs: Tensor,
+        **kwargs: Any,
+    ) -> Tensor:
+        _ = transformed_inputs
+        return super().forward(variational_dist_f, target, **kwargs)
+
+
 class _OutlierRRPBinaryClassificationBase(ApproximateGPyTorchModel):
     """
     train-point outlier RRP 用 binary classification wrapper。
@@ -197,7 +216,7 @@ class _OutlierRRPBinaryClassificationBase(ApproximateGPyTorchModel):
 
     def make_mll(self, beta: float = 1.0) -> VariationalELBO:
         """この wrapper 用の VariationalELBO を返す。"""
-        return VariationalELBO(
+        return _RRPVariationalELBO(
             likelihood=self.likelihood,
             model=self.model,
             num_data=self.fit_train_input.shape[-2],

@@ -188,6 +188,10 @@ class _LatentBinarySVGP(ApproximateGP):
 
         self.to(device=ref_device, dtype=ref_dtype)
 
+    def transform_inputs(self, X: Tensor) -> Tensor:
+        """外側wrapperで変換済みの内部入力をそのまま返す。"""
+        return X
+
     def forward(self, X: Tensor) -> MultivariateNormal:
         mean_x = self.mean_module(X)
         covar_x = self.covar_module(X)
@@ -263,6 +267,10 @@ class _LatentMixedBinarySVGP(ApproximateGP):
         self.train_Yvar = train_Yvar
 
         self.to(device=ref_device, dtype=ref_dtype)
+
+    def transform_inputs(self, X: Tensor) -> Tensor:
+        """外側wrapperで変換済みの内部入力をそのまま返す。"""
+        return X
 
     def forward(self, X: Tensor) -> MultivariateNormal:
         mean_x = self.mean_module(X)

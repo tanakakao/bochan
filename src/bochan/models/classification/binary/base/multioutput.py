@@ -413,7 +413,15 @@ class MultiOutputBinaryClassificationModel(Model):
             dist_i = self._average_extra_sample_dims_in_mvn(dist_i, X)
             mvns.append(dist_i)
 
-        joint = MultitaskMultivariateNormal.from_independent_mvns(mvns)
+        if len(mvns) == 1:
+            # from_independent_mvns は 2 出力以上を要求する。
+            # 1 出力選択時も (..., q, 1) を維持する。
+            joint = MultitaskMultivariateNormal.from_repeated_mvn(
+                mvns[0],
+                num_tasks=1,
+            )
+        else:
+            joint = MultitaskMultivariateNormal.from_independent_mvns(mvns)
         posterior = GPyTorchPosterior(joint)
 
         if posterior_transform is not None:

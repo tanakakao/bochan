@@ -1,0 +1,170 @@
+e = "mean",
+         score_type: UncertaintyScoreType = "variance",
++        num_samples: int = 128,
+         pending_penalty_weight: float = 0.0,
+         pending_penalty_beta: float = 10.0,
+         apply_sigmoid_if_needed: bool = False,
+@@ -317,6 +319,7 @@
+             eps=eps,
+         )
+         self.score_type = score_type
++        self.num_samples = int(num_samples)
+         self.apply_sigmoid_if_needed = bool(apply_sigmoid_if_needed)
+         self._set_classification_score_objective(objective)
+ 
+@@ -390,12 +393,21 @@
+         X = self._ensure_q_batch(X)
+         original_batch_shape = X.shape[:-2]
+ 
+-        prob_fn = getattr(self.model, "probability_posterior", None)
+-        posterior = prob_fn(X) if callable(prob_fn) else self.model.posterior(X)
+-        p = self._normalize_prob_shape(posterior.mean, X)
+-        p = self._to_probability(p)
+-
+-        score = self._uncertainty_score(p)
++        if self.score_type == "variance":
++            mean_prob, epistemic_var, _, _ = binary_probability_moments(
++                self.model,
++                X,
++                num_samples=self.num_samples,
++                eps=self.eps,
++            )
++            p = self._normalize_prob_shape(mean_prob, X)
++            score = self._normalize_prob_shape(epistemic_var, X)
++        else:
++            prob_fn = getattr(self.model, "probability_posterior", None)
++            posterior = prob_fn(X) if callable(prob_fn) else self.model.posterior(X)
++            p = self._normalize_prob_shape(posterior.mean, X)
++            p = self._to_probability(p)
++            score = self._uncertainty_score(p)
+         Xt = self._apply_input_transform(X)
+ 
+         score = _align_pointwise_score_to_X(
+@@ -441,7 +453,7 @@
+ 
+ 
+ class _qBinaryProbabilityVarianceAcquisition(_UncertaintySamplingClassifierAcquisition):
+-    """Binary classification probability variance p(1-p) acquisition."""
++    """Binary probability epistemic variance acquisition."""
+ 
+     def __init__(self, model, **kwargs):
+         kwargs.pop("score_type", None)
+@@ -527,7 +539,7 @@
+ class qBinaryProbabilityVariance(_qBinaryProbabilityVarianceAcquisition):
+     """classification 用の軽量 probability variance acquisition。
+ 
+-    候補点上の `p(1-p)` を使う proxy であり、mc_points は不要です。
++    候補点上の `Var_f[p(y=1|f)]` を使い、mc_points は不要です。
+     
+     Forward Args:
+         X: 候補点。shape は通常 `batch_shape x q x d` です。
+@@ -762,6 +774,7 @@
+         model: Model,
+         mc_points: Tensor,
+         num_fantasies: int = 8,
++        num_epistemic_samples: int = 128,
+         conditioning_steps: int = 10,
+         conditioning_lr: float | None = None,
+         conditioning_batch_size: int | None = None,
+@@ -792,6 +805,7 @@
+ 
+         self.register_buffer("mc_points", mc_points)
+         self.num_fantasies = int(num_fantasies)
++        self.num_epistemic_samples = int(num_epistemic_samples)
+         self.conditioning_steps = int(conditioning_steps)
+         self.conditioning_lr = conditioning_lr
+         self.conditioning_batch_size = conditioning_batch_size
+@@ -847,16 +861,13 @@
+ 
+     @torch.no_grad()
+     def _integrated_probability_variance(self, fantasy_model: Model) -> Tensor:
+-        prob_fn = getattr(fantasy_model, "probability_posterior", None)
+-        posterior = prob_fn(self.mc_points) if callable(prob_fn) else fantasy_model.posterior(self.mc_points)
+-        prob = _binary_values_to_probability_for_ipv(
++        _, epistemic_var, _, _ = binary_probability_moments(
+             fantasy_model,
+-            posterior.mean,
+-            apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
++            self.mc_points,
++            num_samples=self.num_epistemic_samples,
+             eps=self.eps,
+-            name="fantasy posterior mean",
+-        )
+-        return (prob * (1.0 - prob)).mean()
++        )
++        return epistemic_var.mean()
+ 
+     def _aggregated_reference_penalty(self, X: Tensor) -> Tensor:
+         Xt = _apply_input_transform_for_ipv(self.model, X)
+--- a/src/bochan/acquisition/binary/active_learning/integrated_posterior_variance.py
++++ b/src/bochan/acquisition/binary/active_learning/integrated_posterior_variance.py
+@@ -8,16 +8,16 @@
+ from torch import Tensor
+ 
+ from ._utils import _apply_objective_to_pointwise_score
++from bochan.acquisition.binary.epistemic import binary_probability_moments
+ from .single_output import (
+     qBinaryProbabilityVariance,
+     _apply_input_transform_for_ipv,
+-    _binary_values_to_probability_for_ipv,
+     _ensure_q_batch_for_ipv,
+ )
+ 
+ 
+ class qBinaryIntegratedPosteriorVarianceProxy(qBinaryProbabilityVariance):
+-    """Binary IPV proxy using the same score design as multiclass IPV."""
++    """Binary IPV proxy based on probability epistemic variance."""
+ 
+     def __init__(
+         self,
+@@ -25,6 +25,7 @@
+         *,
+         mc_points: Optional[Tensor] = None,
+         integration_beta: float = 25.0,
++        num_epistemic_samples: int = 128,
+         local_weight: Optional[float] = None,
+         integrated_weight: float = 1.0,
+         reduction: str = "mean",
+@@ -37,6 +38,7 @@
+         super().__init__(
+             model=model,
+             reduction=reduction,
++            num_samples=num_epistemic_samples,
+             pending_penalty_weight=pending_penalty_weight,
+             pending_penalty_beta=pending_penalty_beta,
+             apply_sigmoid_if_needed=apply_sigmoid_if_needed,
+@@ -60,26 +62,31 @@
+             self.mc_points = None
+ 
+         self.integration_beta = float(integration_beta)
++        self.num_epistemic_samples = int(num_epistemic_samples)
+         self.local_weight = (
+             1.0 if local_weight is None and mc_points is None else float(local_weight or 0.0)
+         )
+         self.integrated_weight = float(integrated_weight)
+ 
+-    def _probability(self, X: Tensor, *, name: str) -> Tensor:
+-        prob_fn = getattr(self.model, "probability_posterior", None)
+-        posterior = prob_fn(X) if callable(prob_fn) else self.model.posterior(X)
+-        probability = _binary_values_to_probability_for_ipv(self.model, posterior.mean, apply_sigmoid_if_needed=self.apply_sigmoid_if_needed, eps=self.eps, name=name)
+-        return probability.squeeze(-1) if probability.shape[-1] == 1 else probability
++    def _epistemic_stats(self, X: Tensor) -> tuple[Tensor, Tensor]:
++        mean, epistemic_var, _, _ = binary_probability_moments(
++            self.model,
++            X,
++            num_samples=self.num_epistemic_samples,
++            eps=self.eps,
++        )
++        if mean.shape[-1] == 1:
++            mean = mean.squeeze(-1)
++        if epistemic_var.shape[-1] == 1:
++            epistemic_var = epistemic_var.squeeze(-1)
++        return mean, epistemic_var
+ 
+     def _integrated_score(self, Xt: Tensor) -> Tensor:
+         if self.mc_points is None:
+             return Xt.new_zeros(Xt.shape[:-1])
+ 
+-        mc_probability = self._probability(
+-            self.mc_points,
+-

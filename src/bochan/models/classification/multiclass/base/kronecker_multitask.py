@@ -77,11 +77,11 @@ class BlockDesignMulticlassLikelihood(Likelihood):
         return function_samples.movedim(-3, -1) / self.temperature
 
     @staticmethod
-    def _expand_targets(target: Tensor, reference: Tensor) -> Tensor:
+    def _expand_targets(target: Tensor, reference_shape: torch.Size) -> Tensor:
         target = target.long()
-        while target.ndim < reference.ndim:
+        while target.ndim < len(reference_shape):
             target = target.unsqueeze(0)
-        return target.expand(reference.shape)
+        return target.expand(reference_shape)
 
     def forward(self, function_samples: Tensor, *args: Any, **kwargs: Any) -> Categorical:
         return Categorical(logits=self._logits_from_samples(function_samples))
@@ -483,6 +483,22 @@ class KroneckerMultiTaskMulticlassClassificationGPModel(ApproximateGPyTorchModel
         return torch.Size()
 
     @property
+    def train_input(self) -> Tensor:
+        return self.train_inputs[0]
+
+    @property
+    def train_input_raw(self) -> Tensor:
+        return self.train_inputs_raw[0]
+
+    @property
+    def train_X(self) -> Tensor:
+        return self.train_input_raw
+
+    @property
+    def train_Y(self) -> Tensor:
+        return self.train_targets
+
+    @property
     def task_covar_matrix(self) -> Tensor:
         """Return class-specific task covariances with shape ``[C, m, m]``."""
         return self.model.task_covar_matrix
@@ -580,6 +596,24 @@ class KroneckerMultiTaskMulticlassClassificationGPModel(ApproximateGPyTorchModel
         **kwargs: Any,
     ) -> Tensor:
         return self.posterior(X, output_indices=output_indices, **kwargs).mean
+
+    def class_probs_list(
+        self,
+        X: Tensor,
+        output_indices: Optional[Sequence[int]] = None,
+        **kwargs: Any,
+    ) -> list[Tensor]:
+        probabilities = self.class_probs(X, output_indices=output_indices, **kwargs)
+        return [probabilities[..., i, :] for i in range(probabilities.shape[-2])]
+
+    def padded_class_probs(
+        self,
+        X: Tensor,
+        output_indices: Optional[Sequence[int]] = None,
+        **kwargs: Any,
+    ) -> Tensor:
+        """Return class probabilities; padding is unnecessary because all tasks share C."""
+        return self.class_probs(X, output_indices=output_indices, **kwargs)
 
     def probability_variance(
         self,

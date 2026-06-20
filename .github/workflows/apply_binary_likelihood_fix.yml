@@ -69,9 +69,22 @@ jobs:
 
       - name: Run core binary acquisition tests
         run: |
+          set +e
           pytest -q \
             tests/test_binary_probability_bo_pointwise.py \
-            tests/test_binary_multiclass_aligned_defaults.py
+            tests/test_binary_multiclass_aligned_defaults.py \
+            > binary-test.log 2>&1
+          status=$?
+          cat binary-test.log
+          if [ "$status" -ne 0 ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add binary-test.log
+            git commit -m 'Record binary regression test failure'
+            git push origin HEAD:fix/binary-likelihood-consistency
+            exit "$status"
+          fi
+          rm -f binary-test.log
 
       - name: Collect all binary tests
         run: pytest --collect-only -q tests/test_binary*.py

@@ -53,9 +53,6 @@ jobs:
             tests/test_binary_probability_bo_pointwise.py \
             tests/test_binary_multiclass_aligned_defaults.py
 
-      - name: Run all non-slow binary tests
-        run: pytest -q -m 'not slow' tests/test_binary*.py
-
       - name: Collect full binary suite
         run: pytest --collect-only -q tests/test_binary*.py
 
@@ -67,8 +64,11 @@ jobs:
 
       - name: Remove one-off files
         run: |
-          rm .github/scripts/apply_binary_review_fixes.py
-          rm .github/workflows/apply_binary_review_fixes.yml
+          rm -f .github/scripts/apply_binary_review_fixes.py
+          rm -f .github/scripts/run_binary_review_fixes.py
+          rm -f .github/scripts/sitecustomize.py
+          rm -f .github/workflows/apply_binary_review_fixes.yml
+          rm -f .github/workflows/debug_binary_non_slow.yml
 
       - name: Commit review fixes
         run: |

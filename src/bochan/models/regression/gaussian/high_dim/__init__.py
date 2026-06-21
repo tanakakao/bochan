@@ -6,6 +6,7 @@ from .decomposition import (
 )
 from .saas import SaasMixedSingleTaskGP, SaasSingleTaskGP
 from .vae import VAESingleTaskGP
+from .vae_mixed import VAEMixedSingleTaskGP
 
 __all__ = [
     "SaasSingleTaskGP",
@@ -15,4 +16,5 @@ __all__ = [
     "PCASingleTaskGP",
     "PCAMixedSingleTaskGP",
     "VAESingleTaskGP",
+    "VAEMixedSingleTaskGP",
 ]

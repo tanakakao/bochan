@@ -347,7 +347,12 @@ Gaussian exact GPはBoTorch標準posteriorを返すため、EI、UCB、KG、EHVI
 mixed task-feature modelは`model_type="multitask"`で解決できます。
 
 ```python
-from bochan.api import BayesianOptimizer, FitConfig, ModelConfig
+from bochan.api import (
+    BayesianOptimizer,
+    FitConfig,
+    InputTransformConfig,
+    ModelConfig,
+)
 
 bo = BayesianOptimizer(
     model_config=ModelConfig(
@@ -359,6 +364,10 @@ bo = BayesianOptimizer(
             "task_feature": 1,
             "rank": 2,
         },
+        input_transform_config=InputTransformConfig(
+            normalize=True,
+            categorical_idx=[1, 2],
+        ),
     ),
     fit_config=FitConfig(maxiter=128),
     bounds=torch.tensor(

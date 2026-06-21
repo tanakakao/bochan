@@ -1,9 +1,6 @@
 # Mixed task-feature multi-task models
 
-This guide describes correlated multi-task models for mixed continuous and
-categorical inputs. Training observations use long format with an explicit task
-id. Unlike Kronecker models, tasks may have different input locations and
-missing observations.
+This guide describes correlated multi-task models for mixed continuous and categorical inputs. Training observations use long format with an explicit task id. Unlike Kronecker models, tasks may have different input locations and missing observations.
 
 ## 1. Data contracts
 
@@ -26,8 +23,7 @@ The covariance is
 K_mixed(data, data') * K_task(task_id, task_id')
 ```
 
-The task-id column is modeled by an `IndexKernel`. It must not also be included
-in `cat_dims`.
+The task-id column is modeled by an `IndexKernel`. It must not also be included in `cat_dims`.
 
 ### Kronecker block design
 
@@ -74,8 +70,7 @@ from bochan.models.ordinal.base import KroneckerMultiTaskOrdinalMixedGPModel
 
 ## 3. Input transforms
 
-Normalize continuous columns only. Both categorical columns and task ids must
-remain unchanged.
+Normalize continuous columns only. Both categorical columns and task ids must remain unchanged.
 
 ```python
 from botorch.models.transforms.input import Normalize
@@ -169,8 +164,7 @@ model = MixedMultiTaskGP(
 )
 ```
 
-BoTorch `MultiTaskGP.posterior` receives non-task data columns and selected
-output tasks.
+BoTorch `MultiTaskGP.posterior` receives non-task data columns and selected output tasks.
 
 ```python
 posterior = model.posterior(
@@ -179,13 +173,11 @@ posterior = model.posterior(
 )
 ```
 
-This differs from classification and ordinal task-feature models, whose
-candidate and prediction tensors include the task-id column.
+This differs from classification and ordinal task-feature models, whose candidate and prediction tensors include the task-id column.
 
 ## 8. Candidate optimization
 
-For binary, multiclass, and ordinal task-feature models, fix the selected task
-and enumerate ordinary categories.
+For binary, multiclass, and ordinal task-feature models, fix the selected task and enumerate ordinary categories.
 
 ```python
 from botorch.optim import optimize_acqf_mixed
@@ -253,8 +245,7 @@ ModelConfig(
 )
 ```
 
-The mixed registry supports both keys for regression, multi-objective
-regression, binary, multiclass, and ordinal tasks.
+The mixed registry supports both keys for regression, multi-objective regression, binary, multiclass, and ordinal tasks.
 
 ## 10. FastAPI
 
@@ -341,13 +332,11 @@ updated = model.condition_on_observations(
 )
 ```
 
-Variational classification and ordinal conditioning reconstructs the model and
-may require refitting.
+Variational classification and ordinal conditioning reconstructs the model and may require refitting.
 
 ## 12. Task covariance interpretation
 
-Task covariance is a latent GP covariance, not raw Pearson correlation, label
-agreement, or a confusion matrix.
+Task covariance is a latent GP covariance, not raw Pearson correlation, label agreement, or a confusion matrix.
 
 Binary and ordinal:
 
@@ -361,12 +350,12 @@ Multiclass:
 task_covar = model.task_covar_matrix  # [C, m, m]
 ```
 
-Convert covariance to correlation with diagonal standardization before comparing
-relative task relationships.
+Convert covariance to correlation with diagonal standardization before comparing relative task relationships.
 
 ## 13. Related documentation and tests
 
 ```text
+README.md
 src/bochan/api/README.md
 src/bochan/serving/fastapi/README.md
 src/bochan/models/regression/gaussian/README.md

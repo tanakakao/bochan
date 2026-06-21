@@ -1,3 +1,6 @@
+from bochan.acquisition._nehvi_cache_root import patch_nehvi_cache_root_init
+
+from . import multi_output as _multi_output
 from .hetero_multi_output import (
     qHeteroMultiOutputOrdinalNormalScoreObjective,
     qHeteroMultiOutputOrdinalExpectedUtility,
@@ -13,6 +16,13 @@ from .hetero_single_output import (
     qHeteroOrdinalExpectedImprovement,
     qHeteroOrdinalProbabilityOfImprovement,
     qHeteroOrdinalExpectedUtilityUpperConfidenceBound,
+)
+
+# Correlated Kronecker posteriors cannot use BoTorch's cached-Cholesky qNEHVI
+# path. Patch the class in-place before exporting it so package-level imports and
+# direct ``...multi_output`` imports share the same model-aware default.
+patch_nehvi_cache_root_init(
+    _multi_output.qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement
 )
 
 from .multi_output import (

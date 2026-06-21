@@ -94,6 +94,11 @@ class MultiTaskBinaryClassificationMixedGPModel(MultiTaskBinaryClassificationGPM
             input_dim=train_X.shape[-1],
         ).to(device=train_X.device, dtype=train_X.dtype)
 
+    @property
+    def task_covar_matrix(self) -> Tensor:
+        """Return the latent task covariance matrix with shape ``[m, m]``."""
+        return self.model.task_covar_module.covar_matrix.to_dense()
+
     def transform_inputs(self, X: Tensor) -> Tensor:
         return transform_mixed_task_inputs(
             X,

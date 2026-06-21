@@ -3,6 +3,9 @@ from .kronecker_multitask import (
     KroneckerMultiTaskMulticlassClassificationGPModel,
     KroneckerMultiTaskMulticlassProbsPosterior,
 )
+from .kronecker_multitask_mixed import (
+    KroneckerMultiTaskMulticlassClassificationMixedGPModel,
+)
 from .models import (
     MulticlassClassificationGPModel,
     MulticlassClassificationMixedGPModel,
@@ -16,12 +19,12 @@ from .multioutput import (
 )
 from .posterior_compat import apply_multiclass_posterior_compat
 
-# BoTorch qEHVI / qNEHVI compatibility for multiclass probability posteriors.
 apply_multiclass_posterior_compat()
 
 __all__ = [
     "BlockDesignMulticlassLikelihood",
     "KroneckerMultiTaskMulticlassClassificationGPModel",
+    "KroneckerMultiTaskMulticlassClassificationMixedGPModel",
     "KroneckerMultiTaskMulticlassProbsPosterior",
     "MulticlassClassificationGPModel",
     "MulticlassClassificationMixedGPModel",

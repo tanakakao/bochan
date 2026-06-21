@@ -1,6 +1,6 @@
 # Gaussian regression models
 
-`bochan.models.regression.gaussian` は、連続値をGaussian likelihoodで扱う回帰モデル群です。このREADMEでは、標準回帰、mixed input、独立multi-output、task-id形式のmulti-task、block-designのKronecker multi-taskを説明します。
+`bochan.models.regression.gaussian` は、連続値を Gaussian likelihood で扱う回帰モデル群です。この README では、標準回帰、mixed input、独立 multi-output、task-id 形式の multi-task、block-design の Kronecker multi-task を説明します。
 
 ## 1. データ形式
 
@@ -21,7 +21,7 @@ train_Y = torch.rand(40, 3, dtype=torch.double)  # [n, m]
 
 ### task-feature long format
 
-タスクごとに入力点が異なる場合や、一部タスクだけが観測されている場合は、task-id列を含むlong formatを使います。
+タスクごとに入力点が異なる場合や、一部タスクだけが観測されている場合は、task-id 列を含む long format を使います。
 
 ```text
 train_X: [N, d + 1]
@@ -46,28 +46,28 @@ train_X: [n, d]
 train_Y: [n, m]
 ```
 
-モデル、学習データ、boundsは同じdtype / deviceに揃えてください。連続説明変数は通常`[0, 1]`へ正規化し、目的変数は出力ごとに標準化します。
+モデル、学習データ、bounds は同じ dtype / device に揃えてください。連続説明変数は通常 `[0, 1]` へ正規化し、目的変数は出力ごとに標準化します。
 
 ## 2. モデル選択
 
 | 用途 | 通常入力 | mixed input |
 |---|---|---|
-| 標準exact GP | `SingleTaskGP` | `MixedSingleTaskGP` |
-| 独立multi-output | `SingleTaskGP(train_Y=[n, m])` / `ModelListGP` | 各submodelにmixed modelを使用 |
+| 標準 exact GP | `SingleTaskGP` | `MixedSingleTaskGP` |
+| 独立 multi-output | `SingleTaskGP(train_Y=[n, m])` / `ModelListGP` | 各 submodel に mixed model を使用 |
 | task-id long-format multi-task | `MultiTaskGP` | `MixedMultiTaskGP` |
 | block-design Kronecker multi-task | `KroneckerMultiTaskGP` | `MixedKroneckerMultiTaskGP` |
 | DeepGP | `DeepGPModel` | `DeepMixedGPModel` |
 | DeepKernel | `DeepKernelGPModel` | `DeepKernelMixedGPModel` |
-| 高次元SAAS | `SaasSingleTaskGP` | `SaasMixedSingleTaskGP` |
-| PCA / REMBO | `PCASingleTaskGP` / `REMBOSingleTaskGP` | 対応mixed model |
-| robust / heteroscedastic | `SafeRobustRelevancePursuitSingleTaskGP` / `HeteroscedasticSingleTaskGP` | 対応mixed model |
+| 高次元 SAAS | `SaasSingleTaskGP` | `SaasMixedSingleTaskGP` |
+| PCA / REMBO | `PCASingleTaskGP` / `REMBOSingleTaskGP` | 対応 mixed model |
+| robust / heteroscedastic | `SafeRobustRelevancePursuitSingleTaskGP` / `HeteroscedasticSingleTaskGP` | 対応 mixed model |
 
 使い分けの基準:
 
 - 各出力を独立に扱う: independent multi-output
 - タスクごとに入力位置や観測数が異なる: task-feature multi-task
 - 全タスクが同じ入力点で観測される: Kronecker multi-task
-- 連続列とカテゴリ列が混在する: mixed版
+- 連続列とカテゴリ列が混在する: mixed 版
 
 ## 3. 標準回帰の最小例
 
@@ -112,11 +112,11 @@ print(posterior.mean.shape)      # [10, 1]
 print(posterior.variance.shape)  # [10, 1]
 ```
 
-`posterior()`は`outcome_transform`を自動的に逆変換するため、予測値は元の目的変数scaleで返ります。
+`posterior()` は `outcome_transform` を自動的に逆変換するため、予測値は元の目的変数 scale で返ります。
 
 ## 4. mixed input
 
-カテゴリ列を同じTensorへ格納し、`cat_dims`で列番号を指定します。
+カテゴリ列を同じ Tensor へ格納し、`cat_dims` で列番号を指定します。
 
 ```python
 from botorch.fit import fit_gpytorch_mll
@@ -144,7 +144,7 @@ fit_gpytorch_mll(mll)
 
 カテゴリ列を通常の連続変数として正規化しないでください。
 
-## 5. 独立multi-output
+## 5. 独立 multi-output
 
 ```python
 from botorch.models import SingleTaskGP
@@ -172,9 +172,9 @@ posterior = model.posterior(X_test)
 print(posterior.mean.shape)  # [q, m]
 ```
 
-この形式は各出力を独立に学習します。出力間相関をモデル化する場合はmulti-task modelを使用します。
+この形式は各出力を独立に学習します。出力間相関をモデル化する場合は multi-task model を使用します。
 
-## 6. task-id列を使うmulti-task
+## 6. task-id 列を使う multi-task
 
 ### 6.1 continuous input: BoTorch `MultiTaskGP`
 
@@ -212,7 +212,7 @@ fit_gpytorch_mll(mll)
 
 ### 6.2 mixed input: `MixedMultiTaskGP`
 
-`MixedMultiTaskGP`は、連続列・カテゴリ列・task-id列を持つlong-format exact GPです。タスク列は`IndexKernel`のみに渡され、mixed data kernelには含まれません。
+`MixedMultiTaskGP` は、連続列・カテゴリ列・task-id 列を持つ long-format exact GP です。タスク列は `IndexKernel` のみに渡され、mixed data kernel には含まれません。
 
 ```python
 from botorch.models.transforms.input import Normalize
@@ -252,7 +252,7 @@ mll = ExactMarginalLogLikelihood(model.likelihood, model)
 fit_gpytorch_mll(mll)
 ```
 
-BoTorch `MultiTaskGP.posterior()`は予測時にtask列を含まない入力を受け取り、`output_indices`でタスクを選択します。
+BoTorch `MultiTaskGP.posterior()` は予測時に task 列を含まない入力を受け取り、`output_indices` でタスクを選択します。
 
 ```python
 X_test = torch.tensor(
@@ -264,18 +264,18 @@ posterior = model.posterior(X_test, output_indices=[0, 1])
 print(posterior.mean.shape)  # [2, 2]
 ```
 
-### 6.3 InputTransformの注意
+### 6.3 InputTransform の注意
 
-カテゴリ列とtask-id列は正規化・摂動しないでください。
+カテゴリ列と task-id 列は正規化・摂動しないでください。
 
 ```python
 Normalize(d=3, indices=[0])  # OK
 Normalize(d=3)               # NG
 ```
 
-`task_feature`を`cat_dims`に重複して指定することもできません。
+`task_feature` を `cat_dims` に重複して指定することもできません。
 
-## 7. Kronecker multi-taskを使うblock design
+## 7. Kronecker multi-task を使う block design
 
 ### 7.1 continuous input
 
@@ -309,7 +309,7 @@ fit_gpytorch_mll(mll)
 
 ### 7.2 mixed input
 
-`MixedKroneckerMultiTaskGP`は、同じ入力点で全タスクが観測されたmixed block designを扱います。
+`MixedKroneckerMultiTaskGP` は、同じ入力点で全タスクが観測された mixed block design を扱います。
 
 ```python
 from bochan.models.regression.gaussian import MixedKroneckerMultiTaskGP
@@ -331,20 +331,20 @@ task_std = task_covar.diag().clamp_min(1e-12).sqrt()
 task_corr = task_covar / task_std[:, None] / task_std[None, :]
 ```
 
-`task_covar`の非対角成分はlatent functionの共変動です。目的変数から直接計算したPearson相関とは異なります。
+`task_covar` の非対角成分は latent function の共変動です。目的変数から直接計算した Pearson 相関とは異なります。
 
-Kronecker版はblock design専用です。タスクごとに入力点が異なる場合や欠測タスクがある場合は`MultiTaskGP`または`MixedMultiTaskGP`を使用してください。
+Kronecker 版は block design 専用です。タスクごとに入力点が異なる場合や欠測タスクがある場合は `MultiTaskGP` または `MixedMultiTaskGP` を使用してください。
 
 ## 8. Bayesian optimization
 
-Gaussian exact GPはBoTorch標準posteriorを返すため、EI、UCB、KG、EHVI、NEHVIなどへ接続できます。
+Gaussian exact GP は BoTorch 標準 posterior を返すため、EI、UCB、KG、EHVI、NEHVI などへ接続できます。
 
-- Gaussian `MultiTaskGP`系: candidate tensorはtask列を含めず、posteriorの`output_indices`でタスクを選択
-- binary / multiclass / ordinal task-feature model: candidate tensor自体にtask-id列を含める
+- Gaussian `MultiTaskGP` 系: candidate tensor は task 列を含めず、posterior の `output_indices` でタスクを選択
+- binary / multiclass / ordinal task-feature model: candidate tensor 自体に task-id 列を含める
 
 ## 9. high-level API
 
-mixed task-feature modelは`model_type="multitask"`で解決できます。
+mixed task-feature model は `model_type="multitask"` で解決できます。
 
 ```python
 from bochan.api import (
@@ -388,7 +388,7 @@ result = bo.predict(
 )
 ```
 
-mixed block-design Kroneckerは`model_type="kronecker"`です。
+mixed block-design Kronecker は `model_type="kronecker"` です。
 
 ```python
 ModelConfig(
@@ -405,18 +405,18 @@ ModelConfig(
 ### 全行の予測平均が同じになる
 
 1. 学習が完了しているか
-2. `input_transform`を二重適用していないか
-3. `train_X`に重複や極端な距離集中がないか
-4. lengthscaleが過度に大きくなっていないか
-5. outcome standardizationと保存・復元が整合しているか
+2. `input_transform` を二重適用していないか
+3. `train_X` に重複や極端な距離集中がないか
+4. lengthscale が過度に大きくなっていないか
+5. outcome standardization と保存・復元が整合しているか
 
-### task covarianceとデータ相関が一致しない
+### task covariance とデータ相関が一致しない
 
-正常です。task covarianceはlatent GPの共分散であり、単純な観測値相関ではありません。
+正常です。task covariance は latent GP の共分散であり、単純な観測値相関ではありません。
 
-### category / task-idが変化する
+### category / task-id が変化する
 
-`Normalize(indices=...)`にカテゴリ列またはtask-id列を含めないでください。APIの`InputTransformConfig`では両方を`categorical_idx`に含めます。
+`Normalize(indices=...)` にカテゴリ列または task-id 列を含めないでください。API の `InputTransformConfig` では両方を `categorical_idx` に含めます。
 
 ## 11. 関連実装・テスト
 

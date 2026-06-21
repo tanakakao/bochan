@@ -377,8 +377,12 @@ bo = BayesianOptimizer(
 )
 bo.fit(train_X, train_Y)
 
+X_test_without_task = torch.tensor(
+    [[0.20, 0.0], [0.80, 1.0]],
+    dtype=torch.double,
+)
 result = bo.predict(
-    X_test,
+    X_test_without_task,
     return_result=True,
     posterior_kwargs={"output_indices": [0, 1]},
 )

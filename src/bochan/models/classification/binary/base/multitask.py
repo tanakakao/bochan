@@ -32,7 +32,7 @@ class _TaskProductKernel(Kernel):
 
     ``IndexKernel`` expects integer task indices, while BoTorch-style inputs often
     store the task feature in the same floating-point tensor as the continuous
-    features.  This wrapper splits the task column, rounds/casts it to ``long``,
+    features. This wrapper splits the task column, rounds/casts it to ``long``,
     and delegates the remaining columns to the data kernel.
     """
 
@@ -89,7 +89,9 @@ class _TaskProductKernel(Kernel):
             **params,
         )
         task_covar = self.task_kernel(t1, t2, diag=diag, **params)
-        return data_covar * task_covar
+        if diag:
+            return data_covar * task_covar
+        return data_covar.mul(task_covar.to_dense())
 
 
 class _LatentMultiTaskBinarySVGP(ApproximateGP):
@@ -168,7 +170,7 @@ class MultiTaskBinaryClassificationGPModel(BinaryClassificationGPModel, Fantasiz
 
     The input tensor must be in long format and contain a task-id column.
     For example, with ``task_feature=-1``, ``train_X[..., -1]`` contains integer
-    task ids in ``0, ..., num_tasks - 1``.  The latent covariance is an ICM-style
+    task ids in ``0, ..., num_tasks - 1``. The latent covariance is an ICM-style
     product of a data kernel and an ``IndexKernel`` over task ids.
     """
 

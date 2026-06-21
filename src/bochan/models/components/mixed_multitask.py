@@ -5,7 +5,7 @@ from typing import Optional
 
 import torch
 from botorch.models.transforms.input import InputTransform
-from gpytorch.kernels import Kernel
+from gpytorch.kernels import IndexKernel, Kernel
 from torch import Tensor
 
 from .mixed_kronecker import (
@@ -86,6 +86,69 @@ def build_mixed_task_data_kernel(
     )
 
 
+class MixedTaskProductKernel(Kernel):
+    """Product of a mixed data kernel and an ``IndexKernel`` over task ids.
+
+    The task covariance is materialized for non-diagonal cross-covariances. This
+    avoids root decompositions on non-square lazy operators during variational
+    posterior evaluation with optimizer t-batches.
+    """
+
+    has_lengthscale = False
+
+    def __init__(
+        self,
+        data_kernel: Kernel,
+        task_kernel: IndexKernel,
+        *,
+        task_feature: int,
+        input_dim: int,
+    ) -> None:
+        super().__init__()
+        if int(input_dim) < 2:
+            raise ValueError(
+                "Multi-task models require at least one data feature and one task feature."
+            )
+        self.data_kernel = data_kernel
+        self.task_kernel = task_kernel
+        self.task_feature = normalize_task_feature(task_feature, input_dim)
+        self.input_dim = int(input_dim)
+        self.data_dims = [
+            index for index in range(self.input_dim) if index != self.task_feature
+        ]
+
+    def _split(self, X: Tensor) -> tuple[Tensor, Tensor]:
+        if X.shape[-1] != self.input_dim:
+            raise ValueError(
+                f"Expected input feature dim {self.input_dim}, got {X.shape[-1]}."
+            )
+        data = X[..., self.data_dims]
+        task = X[..., self.task_feature].round().long().unsqueeze(-1)
+        return data, task
+
+    def forward(
+        self,
+        x1: Tensor,
+        x2: Tensor,
+        diag: bool = False,
+        last_dim_is_batch: bool = False,
+        **params,
+    ):
+        x1_data, task_1 = self._split(x1)
+        x2_data, task_2 = self._split(x2)
+        data_covar = self.data_kernel(
+            x1_data,
+            x2_data,
+            diag=diag,
+            last_dim_is_batch=last_dim_is_batch,
+            **params,
+        )
+        task_covar = self.task_kernel(task_1, task_2, diag=diag, **params)
+        if diag:
+            return data_covar * task_covar
+        return data_covar.mul(task_covar.to_dense())
+
+
 def validate_mixed_task_input_transform(
     X: Tensor,
     input_transform: Optional[InputTransform],
@@ -127,6 +190,7 @@ def transform_mixed_task_inputs(
 
 
 __all__ = [
+    "MixedTaskProductKernel",
     "build_mixed_task_data_kernel",
     "normalize_mixed_task_dims",
     "normalize_task_feature",

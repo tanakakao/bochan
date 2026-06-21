@@ -119,7 +119,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "deepgpdeepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelDeepMixedGPModel"),
             "saas": ("bochan.models.regression.gaussian.high_dim", "SaasMixedSingleTaskGP"),
             "pca": ("bochan.models.regression.gaussian.high_dim", "PCAMixedSingleTaskGP"),
-            "rembo": ("bochan.models.regression.gaussian.high_dim", "REMBOSingleTaskGP"),
+            "rembo": ("bochan.models.regression.gaussian.high_dim", "REMBOMixedSingleTaskGP"),
             "rrp": ("bochan.models.regression.gaussian.robust", "SafeRobustRelevancePursuitMixedSingleTaskGP"),
             "hetero": ("bochan.models.regression.gaussian.robust", "HeteroscedasticMixedSingleTaskGP"),
         },

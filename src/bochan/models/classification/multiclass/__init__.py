@@ -1,4 +1,7 @@
 from .base import (
+    BlockDesignMulticlassLikelihood,
+    KroneckerMultiTaskMulticlassClassificationGPModel,
+    KroneckerMultiTaskMulticlassProbsPosterior,
     MultiOutputMulticlassClassificationGPModel,
     MultiOutputMulticlassClassificationModel,
     MultiOutputMulticlassModel,
@@ -33,6 +36,9 @@ from .robust import (
 
 __all__ = [
     "_BaseMulticlassClassificationModel",
+    "BlockDesignMulticlassLikelihood",
+    "KroneckerMultiTaskMulticlassClassificationGPModel",
+    "KroneckerMultiTaskMulticlassProbsPosterior",
     "MulticlassClassificationGPModel",
     "MulticlassClassificationMixedGPModel",
     "build_mixed_multiclass_kernel",

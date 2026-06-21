@@ -10,6 +10,7 @@ from gpytorch.likelihoods import BernoulliLikelihood
 from gpytorch.means import Mean
 from torch import Tensor
 
+from .kronecker_multitask import KroneckerMultiTaskBinaryClassificationGPModel
 from .models import (
     BinaryClassificationGPModel as _BinaryClassificationGPModel,
     BinaryClassificationMixedGPModel as _BinaryClassificationMixedGPModel,
@@ -96,6 +97,7 @@ class BinaryClassificationMixedGPModel(_BinaryClassificationMixedGPModel):
 __all__ = [
     "BinaryClassificationGPModel",
     "BinaryClassificationMixedGPModel",
+    "KroneckerMultiTaskBinaryClassificationGPModel",
     "MultiOutputBinaryClassificationModel",
     "MultiTaskBinaryClassificationGPModel",
 ]

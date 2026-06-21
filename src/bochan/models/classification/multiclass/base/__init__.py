@@ -1,3 +1,8 @@
+from .kronecker_multitask import (
+    BlockDesignMulticlassLikelihood,
+    KroneckerMultiTaskMulticlassClassificationGPModel,
+    KroneckerMultiTaskMulticlassProbsPosterior,
+)
 from .models import (
     MulticlassClassificationGPModel,
     MulticlassClassificationMixedGPModel,
@@ -15,6 +20,9 @@ from .posterior_compat import apply_multiclass_posterior_compat
 apply_multiclass_posterior_compat()
 
 __all__ = [
+    "BlockDesignMulticlassLikelihood",
+    "KroneckerMultiTaskMulticlassClassificationGPModel",
+    "KroneckerMultiTaskMulticlassProbsPosterior",
     "MulticlassClassificationGPModel",
     "MulticlassClassificationMixedGPModel",
     "build_mixed_multiclass_kernel",

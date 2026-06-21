@@ -29,6 +29,111 @@ from .models import (
 )
 
 
+class _KroneckerOrdinalTaskView:
+    """Single-task read-only view of a joint Kronecker ordinal model.
+
+    Existing ordinal multi-output acquisition functions were originally written
+    for :class:`MultiOutputOrdinalModel` and therefore iterate over
+    ``model.models``. This adapter exposes each task of the joint Kronecker
+    posterior through the same minimal interface without copying parameters or
+    discarding the parent model during posterior evaluation.
+    """
+
+    def __init__(
+        self,
+        parent: "KroneckerMultiTaskOrdinalGPModel",
+        task_index: int,
+    ) -> None:
+        self.parent = parent
+        self.task_index = int(task_index)
+        self.num_outputs = 1
+        self.cat_dims: list[int] = []
+
+    @property
+    def likelihood(self) -> OrdinalLogitLikelihood:
+        return self.parent.likelihood
+
+    @property
+    def ordinal_likelihood(self) -> OrdinalLogitLikelihood:
+        return self.parent.ordinal_likelihood
+
+    @property
+    def input_transform(self) -> Optional[InputTransform]:
+        return self.parent.input_transform
+
+    @property
+    def train_X(self) -> Tensor:
+        return self.parent.train_inputs_raw[0]
+
+    @property
+    def train_input_raw(self) -> Tensor:
+        return self.parent.train_inputs_raw[0]
+
+    @property
+    def train_inputs_raw(self) -> tuple[Tensor]:
+        return self.parent.train_inputs_raw
+
+    @property
+    def train_inputs(self) -> tuple[Tensor]:
+        return self.parent.train_inputs
+
+    @property
+    def train_targets(self) -> Tensor:
+        return self.parent.train_targets[..., self.task_index]
+
+    @property
+    def train_Y(self) -> Tensor:
+        return self.train_targets
+
+    @property
+    def batch_shape(self) -> torch.Size:
+        return self.parent.batch_shape
+
+    def eval(self) -> "_KroneckerOrdinalTaskView":
+        self.parent.eval()
+        self.parent.likelihood.eval()
+        return self
+
+    def train(self, mode: bool = True) -> "_KroneckerOrdinalTaskView":
+        self.parent.train(mode)
+        self.parent.likelihood.train(mode)
+        return self
+
+    def posterior(
+        self,
+        X: Tensor,
+        output_indices=None,
+        observation_noise: bool | Tensor = False,
+        posterior_transform: Optional[PosteriorTransform] = None,
+        **kwargs: Any,
+    ) -> GPyTorchPosterior:
+        """Return the selected task marginal while preserving data covariance."""
+        if output_indices is not None:
+            raise NotImplementedError("A Kronecker ordinal task view is single-output.")
+        if observation_noise is not False:
+            raise NotImplementedError("Ordinal task views do not support observation_noise.")
+
+        joint_posterior = self.parent.posterior(X)
+        task_distribution = joint_posterior.distribution[..., :, self.task_index]
+        posterior = GPyTorchPosterior(task_distribution)
+        if posterior_transform is not None:
+            posterior = posterior_transform(posterior)
+        return posterior
+
+    def class_probs(self, X: Tensor) -> Tensor:
+        return self.parent.class_probs(X, output_indices=[self.task_index]).squeeze(-2)
+
+    @torch.no_grad()
+    def predict_class(self, X: Tensor) -> Tensor:
+        return self.class_probs(X).argmax(dim=-1)
+
+    def condition_on_observations(self, *args: Any, **kwargs: Any):
+        raise NotImplementedError(
+            "A single Kronecker task cannot be conditioned independently. "
+            "Condition the parent model with block-design Y shaped [n_new, m]."
+        )
+
+
 class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
     r"""Block-design ordinal model with an ICM/Kronecker latent GP.
 
@@ -173,6 +278,14 @@ class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
         return self.num_tasks
 
     @property
+    def models(self) -> tuple[_KroneckerOrdinalTaskView, ...]:
+        """Return task views compatible with independent multi-output acquisitions."""
+        return tuple(
+            _KroneckerOrdinalTaskView(self, task_index)
+            for task_index in range(self.num_tasks)
+        )
+
+    @property
     def task_covar_matrix(self) -> Tensor:
         """Return the learned positive-semidefinite latent task covariance."""
         return self.model.task_covar_matrix
@@ -242,6 +355,15 @@ class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
             self.posterior(X),
             output_indices=output_indices,
         )
+
+    def class_probs_list(
+        self,
+        X: Tensor,
+        output_indices: Optional[Sequence[int]] = None,
+    ) -> list[Tensor]:
+        """Return one ``[..., q, K]`` probability tensor per selected task."""
+        probs = self.class_probs(X, output_indices=output_indices)
+        return [probs[..., i, :] for i in range(probs.shape[-2])]
 
     @torch.no_grad()
     def predict_class(

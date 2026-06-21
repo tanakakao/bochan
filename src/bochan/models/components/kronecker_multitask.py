@@ -210,6 +210,26 @@ class LatentKroneckerMultiTaskGP(ApproximateGP):
 
         self.to(device=train_X.device, dtype=train_X.dtype)
 
+    @staticmethod
+    def _expand_inputs_for_latent_batch(X: Tensor) -> Tensor:
+        """Insert a broadcast axis between t-batch and point dimensions.
+
+        The variational inducing points have latent batch shape ``[rank]``. A
+        BoTorch optimizer evaluates candidates with shape ``[..., q, d]``. For
+        non-empty t-batches, ``[..., q, d]`` and ``[rank, p, d]`` cannot be
+        broadcast directly when the final t-batch size differs from ``rank``.
+        ``[..., 1, q, d]`` broadcasts to ``[..., rank, q, d]`` instead.
+        """
+        if X.ndim <= 2:
+            return X
+        return X.unsqueeze(-3)
+
+    def __call__(self, inputs: Tensor, *args, **kwargs):
+        """Evaluate the latent model for point inputs and arbitrary t-batches."""
+        if inputs is not None:
+            inputs = self._expand_inputs_for_latent_batch(inputs)
+        return super().__call__(inputs, *args, **kwargs)
+
     def forward(self, X: Tensor) -> MultivariateNormal:
         mean_x = self.mean_module(X)
         covar_x = self.data_covar_module(X)

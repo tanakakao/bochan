@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import torch
+from botorch.acquisition.analytic import UpperConfidenceBound
 from botorch.models.transforms.input import Normalize
+from botorch.optim import optimize_acqf
 
 from bochan.api import BayesianOptimizer, FitConfig, ModelConfig
 from bochan.fit import VAEFitResult, fit_vae_gp
@@ -27,7 +29,7 @@ def make_regression_data(
     return train_X, train_Y, bounds
 
 
-def test_vae_single_task_gp_joint_fit_and_posterior() -> None:
+def test_vae_single_task_gp_joint_fit_posterior_and_acquisition() -> None:
     train_X, train_Y, bounds = make_regression_data()
     model = VAESingleTaskGP(
         train_X=train_X,
@@ -70,6 +72,20 @@ def test_vae_single_task_gp_joint_fit_and_posterior() -> None:
     assert posterior.variance.shape == torch.Size([4, 1])
     assert torch.isfinite(posterior.mean).all()
     assert torch.isfinite(posterior.variance).all()
+
+    acquisition = UpperConfidenceBound(model=model, beta=0.1)
+    candidates, acquisition_value = optimize_acqf(
+        acq_function=acquisition,
+        bounds=bounds,
+        q=1,
+        num_restarts=2,
+        raw_samples=16,
+        options={"maxiter": 20},
+    )
+    assert candidates.shape == torch.Size([1, train_X.shape[-1]])
+    assert torch.all(candidates >= bounds[0])
+    assert torch.all(candidates <= bounds[1])
+    assert torch.isfinite(acquisition_value).all()
 
 
 def test_high_level_api_resolves_and_fits_vae_model() -> None:

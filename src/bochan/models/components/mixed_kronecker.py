@@ -6,22 +6,14 @@ from typing import Optional
 
 import torch
 from botorch.models.kernels.categorical import CategoricalKernel
-from botorch.models.transforms.input import InputTransform
+from botorch.models.transforms.input import AffineInputTransform, InputTransform
 from gpytorch.constraints import GreaterThan
 from gpytorch.kernels import Kernel, MaternKernel, ProductKernel, ScaleKernel
 from torch import Tensor
 
 
 def normalize_mixed_dims(cat_dims: Sequence[int], d: int) -> list[int]:
-    """Normalize categorical feature indices.
-
-    Args:
-        cat_dims: Categorical feature indices. Negative indices are accepted.
-        d: Total input dimension.
-
-    Returns:
-        Sorted unique non-negative categorical indices.
-    """
+    """Normalize categorical feature indices."""
     normalized: list[int] = []
     for raw_index in cat_dims:
         index = int(raw_index)
@@ -78,29 +70,7 @@ def build_mixed_kronecker_kernel(
     cat_dims: Sequence[int],
     batch_shape: torch.Size = torch.Size(),
 ) -> Kernel:
-    r"""Build a continuous/categorical kernel for Kronecker multi-task models.
-
-    The default structure follows the mixed-input models used elsewhere in
-    bochan:
-
-    .. math::
-
-        K_X = s\left(K_{c,1} + K_{g,1} + K_{c,2}K_{g,2}\right),
-
-    where ``c`` denotes continuous features and ``g`` categorical features.
-    For all-categorical input only the categorical term is used. The outer
-    :class:`ScaleKernel` supplies one shared output scale per ``batch_shape``.
-
-    Args:
-        d: Total input dimension.
-        cat_dims: Categorical feature indices.
-        batch_shape: Kernel parameter batch shape. Use ``[]`` for binary,
-            ordinal, and Gaussian Kronecker models, and ``[C, 1]`` for the
-            class-batched multiclass Kronecker model.
-
-    Returns:
-        Mixed-input covariance module.
-    """
+    """Build an additive-plus-interaction kernel for mixed inputs."""
     cat_dims = normalize_mixed_dims(cat_dims, d)
     cont_dims = [index for index in range(int(d)) if index not in set(cat_dims)]
     batch_shape = torch.Size(batch_shape)
@@ -140,32 +110,36 @@ def _expand_raw_to_transformed_shape(X: Tensor, X_tf: Tensor) -> Tensor:
     return X
 
 
+def _transform_targeted_dims(module: torch.nn.Module, d: int) -> Optional[set[int]]:
+    if isinstance(module, AffineInputTransform):
+        indices = getattr(module, "indices", None)
+        if indices is None:
+            return set(range(int(d)))
+        return {
+            int(index)
+            for index in torch.as_tensor(indices).detach().cpu().reshape(-1).tolist()
+        }
+    if hasattr(module, "indices"):
+        indices = getattr(module, "indices")
+        if indices is None:
+            return set(range(int(d)))
+        return {
+            int(index)
+            for index in torch.as_tensor(indices).detach().cpu().reshape(-1).tolist()
+        }
+    return None
+
+
 def _validate_transform_feature_indices(
     input_transform: InputTransform,
     *,
     cat_dims: Sequence[int],
     d: int,
 ) -> None:
-    """Reject transform modules explicitly configured for categorical columns.
-
-    Value-based validation alone is insufficient when categorical values happen
-    to be 0 and 1, because an all-feature normalization can leave those values
-    unchanged. Input transforms exposing an ``indices`` attribute are therefore
-    checked structurally, including transforms nested in a chain.
-    """
     categorical = set(normalize_mixed_dims(cat_dims, d))
     for module in input_transform.modules():
-        if not hasattr(module, "indices"):
-            continue
-        indices = getattr(module, "indices")
-        if indices is None:
-            targeted = set(range(int(d)))
-        else:
-            targeted = {
-                int(index)
-                for index in torch.as_tensor(indices).detach().cpu().reshape(-1).tolist()
-            }
-        if categorical.intersection(targeted):
+        targeted = _transform_targeted_dims(module, d)
+        if targeted is not None and categorical.intersection(targeted):
             raise ValueError(
                 "input_transform must not target or modify categorical columns. "
                 "Configure transform indices for continuous columns only."

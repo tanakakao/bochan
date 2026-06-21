@@ -17,6 +17,10 @@ from .multioutput import (
     MultiOutputMulticlassModel,
     MultiOutputMulticlassProbsPosterior,
 )
+from .multitask import (
+    MultiTaskMulticlassClassificationGPModel,
+    MultiTaskMulticlassClassificationMixedGPModel,
+)
 from .posterior_compat import apply_multiclass_posterior_compat
 
 apply_multiclass_posterior_compat()
@@ -33,5 +37,7 @@ __all__ = [
     "MultiOutputMulticlassClassificationModel",
     "MultiOutputMulticlassModel",
     "MultiOutputMulticlassClassificationGPModel",
+    "MultiTaskMulticlassClassificationGPModel",
+    "MultiTaskMulticlassClassificationMixedGPModel",
     "apply_multiclass_posterior_compat",
 ]

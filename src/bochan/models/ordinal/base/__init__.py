@@ -3,6 +3,7 @@ from .kronecker_multitask_mixed import KroneckerMultiTaskOrdinalMixedGPModel
 from .models import OrdinalGPModel, OrdinalMixedGPModel
 from .multioutput import MultiOutputOrdinalModel
 from .multitask import MultiTaskOrdinalGPModel
+from .multitask_mixed import MultiTaskOrdinalMixedGPModel
 
 __all__ = [
     "KroneckerMultiTaskOrdinalGPModel",
@@ -11,4 +12,5 @@ __all__ = [
     "OrdinalMixedGPModel",
     "MultiOutputOrdinalModel",
     "MultiTaskOrdinalGPModel",
+    "MultiTaskOrdinalMixedGPModel",
 ]

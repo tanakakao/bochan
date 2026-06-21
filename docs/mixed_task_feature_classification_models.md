@@ -122,6 +122,8 @@ All ordinal tasks share the same class definition and ordered-logit cutpoints.
 Candidate tensors contain the task-id column. Fix the target task and enumerate
 ordinary categorical values.
 
+Low-level BoTorch example:
+
 ```python
 from botorch.optim import optimize_acqf_mixed
 
@@ -145,7 +147,7 @@ candidates, value = optimize_acqf_mixed(
 Use `model_type="multitask"` with mixed input.
 
 ```python
-from bochan.api import InputTransformConfig, ModelConfig
+from bochan.api import InputTransformConfig, ModelConfig, OptimizeConfig
 
 model_config = ModelConfig(
     task_type="binary",
@@ -161,6 +163,22 @@ model_config = ModelConfig(
         normalize=True,
         categorical_idx=[1, 2],
     ),
+)
+```
+
+At the high-level API, keep the user-facing optimizer name as
+`optimizer="optimize_acqf"`. Because the fitted model has categorical dimensions,
+`BayesianOptimizer` resolves the mixed optimizer automatically.
+
+```python
+opt_config = OptimizeConfig(
+    optimizer="optimize_acqf",
+    q=1,
+    fixed_features={1: 1.0},
+    fixed_features_list=[
+        {2: 0.0},
+        {2: 1.0},
+    ],
 )
 ```
 

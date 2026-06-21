@@ -11,6 +11,7 @@ from torch import Tensor
 
 from bochan.fit.ordinal import fit_ordinal_gp
 from bochan.models.components.mixed_multitask import (
+    MixedTaskProductKernel,
     build_mixed_task_data_kernel,
     normalize_mixed_task_dims,
     transform_mixed_task_inputs,
@@ -95,6 +96,12 @@ class MultiTaskOrdinalMixedGPModel(MultiTaskOrdinalGPModel):
             conditioning_batch_size=conditioning_batch_size,
         )
         self.cat_dims = list(cat_dims)
+        self.model.covar_module = MixedTaskProductKernel(
+            self.model.data_covar_module,
+            self.model.task_covar_module,
+            task_feature=self.task_feature,
+            input_dim=train_X.shape[-1],
+        ).to(device=train_X.device, dtype=train_X.dtype)
 
     def transform_inputs(self, X: Tensor) -> Tensor:
         return transform_mixed_task_inputs(

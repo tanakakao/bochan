@@ -1,6 +1,7 @@
 from .base import (
     BlockDesignMulticlassLikelihood,
     KroneckerMultiTaskMulticlassClassificationGPModel,
+    KroneckerMultiTaskMulticlassClassificationMixedGPModel,
     KroneckerMultiTaskMulticlassProbsPosterior,
     MultiOutputMulticlassClassificationGPModel,
     MultiOutputMulticlassClassificationModel,
@@ -38,6 +39,7 @@ __all__ = [
     "_BaseMulticlassClassificationModel",
     "BlockDesignMulticlassLikelihood",
     "KroneckerMultiTaskMulticlassClassificationGPModel",
+    "KroneckerMultiTaskMulticlassClassificationMixedGPModel",
     "KroneckerMultiTaskMulticlassProbsPosterior",
     "MulticlassClassificationGPModel",
     "MulticlassClassificationMixedGPModel",

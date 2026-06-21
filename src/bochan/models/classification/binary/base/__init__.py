@@ -11,6 +11,9 @@ from gpytorch.means import Mean
 from torch import Tensor
 
 from .kronecker_multitask import KroneckerMultiTaskBinaryClassificationGPModel
+from .kronecker_multitask_mixed import (
+    KroneckerMultiTaskBinaryClassificationMixedGPModel,
+)
 from .models import (
     BinaryClassificationGPModel as _BinaryClassificationGPModel,
     BinaryClassificationMixedGPModel as _BinaryClassificationMixedGPModel,
@@ -98,6 +101,7 @@ __all__ = [
     "BinaryClassificationGPModel",
     "BinaryClassificationMixedGPModel",
     "KroneckerMultiTaskBinaryClassificationGPModel",
+    "KroneckerMultiTaskBinaryClassificationMixedGPModel",
     "MultiOutputBinaryClassificationModel",
     "MultiTaskBinaryClassificationGPModel",
 ]

@@ -140,6 +140,38 @@ def _expand_raw_to_transformed_shape(X: Tensor, X_tf: Tensor) -> Tensor:
     return X
 
 
+def _validate_transform_feature_indices(
+    input_transform: InputTransform,
+    *,
+    cat_dims: Sequence[int],
+    d: int,
+) -> None:
+    """Reject transform modules explicitly configured for categorical columns.
+
+    Value-based validation alone is insufficient when categorical values happen
+    to be 0 and 1, because an all-feature normalization can leave those values
+    unchanged. Input transforms exposing an ``indices`` attribute are therefore
+    checked structurally, including transforms nested in a chain.
+    """
+    categorical = set(normalize_mixed_dims(cat_dims, d))
+    for module in input_transform.modules():
+        if not hasattr(module, "indices"):
+            continue
+        indices = getattr(module, "indices")
+        if indices is None:
+            targeted = set(range(int(d)))
+        else:
+            targeted = {
+                int(index)
+                for index in torch.as_tensor(indices).detach().cpu().reshape(-1).tolist()
+            }
+        if categorical.intersection(targeted):
+            raise ValueError(
+                "input_transform must not target or modify categorical columns. "
+                "Configure transform indices for continuous columns only."
+            )
+
+
 def check_categorical_columns_unchanged(
     X: Tensor,
     X_tf: Tensor,
@@ -172,6 +204,11 @@ def validate_mixed_input_transform_for_training(
     """Validate a copy of a transform without changing the caller's module state."""
     if input_transform is None:
         return
+    _validate_transform_feature_indices(
+        input_transform,
+        cat_dims=cat_dims,
+        d=X.shape[-1],
+    )
     transform = copy.deepcopy(input_transform).to(device=X.device, dtype=X.dtype)
     transform.train()
     with torch.no_grad():
@@ -188,6 +225,11 @@ def transform_mixed_inputs(
     """Apply an evaluation transform and validate categorical columns."""
     if input_transform is None:
         return X
+    _validate_transform_feature_indices(
+        input_transform,
+        cat_dims=cat_dims,
+        d=X.shape[-1],
+    )
     X_tf = input_transform(X)
     if isinstance(X_tf, tuple):
         X_tf = X_tf[0]

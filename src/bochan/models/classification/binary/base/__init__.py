@@ -20,6 +20,7 @@ from .models import (
 )
 from .multioutput import MultiOutputBinaryClassificationModel
 from .multitask import MultiTaskBinaryClassificationGPModel
+from .multitask_mixed import MultiTaskBinaryClassificationMixedGPModel
 
 
 class BinaryClassificationGPModel(_BinaryClassificationGPModel):
@@ -104,4 +105,5 @@ __all__ = [
     "KroneckerMultiTaskBinaryClassificationMixedGPModel",
     "MultiOutputBinaryClassificationModel",
     "MultiTaskBinaryClassificationGPModel",
+    "MultiTaskBinaryClassificationMixedGPModel",
 ]

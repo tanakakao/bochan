@@ -1,49 +1,65 @@
 # Ordinal models
 
-`bochan.models.ordinal` は、順序を持つカテゴリラベルをlatent Gaussian processとordered-logit likelihoodで扱うモデル群です。このREADMEでは、標準ordinal、mixed input、独立multi-output、task-id形式のmulti-task、block-designのKronecker multi-taskを説明します。
+`bochan.models.ordinal` は、順序を持つカテゴリラベルを latent Gaussian process と ordered-logit likelihood で扱うモデル群です。この README では、標準 ordinal、mixed input、独立 multi-output、task-id long-format multi-task、block-design Kronecker multi-task を説明します。
 
 ## 1. データ形式
 
-ordinal labelは、順序を保った連続整数`0, 1, ..., K - 1`で表します。
+ordinal label は、順序を保った連続整数 `0, 1, ..., K - 1` で表します。
 
 ```python
 import torch
 
-train_X = torch.rand(50, 4, dtype=torch.double)  # [n, d]
-train_Y = torch.randint(0, 4, (50,), dtype=torch.long)  # [n]
+train_X = torch.rand(50, 4, dtype=torch.double)         # [n, d]
+train_Y = torch.randint(0, 4, (50,), dtype=torch.long) # [n]
 ```
 
-block-design multi-taskでは、同じ入力点に対して複数のordinal labelを持ちます。
+### task-feature long format
 
-```python
-train_Y = torch.randint(0, 4, (50, 3), dtype=torch.long)  # [n, m]
+タスクごとに入力点や観測数が異なる場合は、task-id 列を入力に含めます。
+
+```text
+train_X: [N, d + 1]
+train_Y: [N]
 ```
 
-- `K`: ordinal class数。現在のordinalモデルは3クラス以上を前提
-- `m`: ordinalタスク数
+### Kronecker block design
+
+同じ入力点で全タスクが観測される場合は次の形です。
+
+```text
+train_X: [n, d]
+train_Y: [n, m]
+```
+
+- `K`: ordinal class 数。現在の ordinal model は 3 クラス以上を前提
+- `m`: ordinal task 数
 - label dtype: `torch.long`
-- labelは0から始まる連続整数
+- label は 0 から始まる連続整数
 
-クラス番号の差を通常の連続値として直接回帰するのではなく、latent scoreとcutpointからクラス確率を計算します。
+クラス番号の差を連続値として直接回帰するのではなく、latent score と cutpoint からクラス確率を計算します。
 
 ## 2. モデル選択
 
 | 用途 | 通常入力 | mixed input |
 |---|---|---|
-| 標準ordinal SVGP | `OrdinalGPModel` | `OrdinalMixedGPModel` |
-| 独立multi-output | `MultiOutputOrdinalModel` | 各submodelにmixed modelを使用 |
-| task-id列を使うmulti-task | `MultiTaskOrdinalGPModel` | - |
-| 相関ありblock-design multi-task | `KroneckerMultiTaskOrdinalGPModel` | - |
+| 標準 ordinal SVGP | `OrdinalGPModel` | `OrdinalMixedGPModel` |
+| 独立 multi-output | `MultiOutputOrdinalModel` | 各 submodel に mixed model を使用 |
+| task-id long-format multi-task | `MultiTaskOrdinalGPModel` | `MultiTaskOrdinalMixedGPModel` |
+| block-design Kronecker multi-task | `KroneckerMultiTaskOrdinalGPModel` | `KroneckerMultiTaskOrdinalMixedGPModel` |
 | DeepGP | `OrdinalDeepGPModel` | `OrdinalMixedDeepGPModel` |
 | DeepKernel | `DeepKernelOrdinalGPModel` | `DeepKernelOrdinalMixedGPModel` |
-| 高次元SAAS | `SaasOrdinalGPModel` | `SaasOrdinalMixedGPModel` |
-| PCA / REMBO | `PCAOrdinalGPModel` / `REMBOOrdinalGPModel` | 対応mixed model |
-| 外れラベルRRP | `OutlierRelevancePursuitOrdinalGPModel` | 対応mixed model |
-| 不均一ノイズ | `HeteroscedasticOrdinalGPModel` | 対応mixed model |
+| 高次元 SAAS | `SaasOrdinalGPModel` | `SaasOrdinalMixedGPModel` |
+| PCA / REMBO | `PCAOrdinalGPModel` / `REMBOOrdinalGPModel` | 対応 mixed model |
+| 外れラベル RRP | `OutlierRelevancePursuitOrdinalGPModel` | 対応 mixed model |
+| 不均一ノイズ | `HeteroscedasticOrdinalGPModel` | 対応 mixed model |
 
-各出力を独立に扱うなら`MultiOutputOrdinalModel`、同一尺度のタスク間相関を利用するならKronecker multi-taskを使用します。
+使い分け:
 
-## 3. 標準ordinalの最小例
+- 出力ごとにクラス定義や cutpoint が異なる: independent multi-output
+- 共通尺度で、タスクごとに入力位置や観測数が異なる: task-feature multi-task
+- 共通尺度で、全タスクが同じ入力点にある: Kronecker multi-task
+
+## 3. 標準 ordinal の最小例
 
 ```python
 import torch
@@ -68,24 +84,14 @@ train_Y = torch.bucketize(
     boundaries=torch.tensor([-0.2, 0.3, 0.8], dtype=dtype),
 ).long()
 
-bounds = torch.tensor(
-    [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
-    dtype=dtype,
-)
-
 model = OrdinalGPModel(
     train_X=train_X,
     train_Y=train_Y,
     num_classes=num_classes,
-    input_transform=Normalize(d=train_X.shape[-1], bounds=bounds),
+    input_transform=Normalize(d=train_X.shape[-1]),
     inducing_points_num=32,
 )
-
-fit_ordinal_gp(
-    model,
-    num_epochs=300,
-    lr=0.03,
-)
+fit_ordinal_gp(model, num_epochs=300, lr=0.03)
 
 X_test = torch.rand(10, 3, dtype=dtype)
 latent_posterior = model.posterior(X_test)
@@ -97,53 +103,33 @@ print(class_probability.shape)     # [10, 4]
 print(prediction.shape)            # [10]
 ```
 
-`posterior()`はクラス確率ではなくlatent score `f(x)`のGaussian posteriorを返します。クラス確率には`class_probs()`を使用してください。
+`posterior()` はクラス確率ではなく latent score `f(x)` の Gaussian posterior を返します。クラス確率には `class_probs()` を使用してください。
 
-## 4. cutpointとクラス確率
-
-ordered-logitでは、学習されたcutpointでlatent scoreを順序クラスへ分割します。
+## 4. cutpoint・クラス確率・expected utility
 
 ```python
 cutpoints = model.ordinal_likelihood.cutpoints
 print(cutpoints.shape)  # [K - 1]
-```
 
-クラス確率は次のshapeです。
-
-```python
 probability = model.class_probs(X_test)
-print(probability.shape)          # [q, K]
-print(probability.sum(dim=-1))    # approximately ones
+print(probability.shape)        # [q, K]
+print(probability.sum(dim=-1))  # approximately ones
 ```
 
-予測クラスは最大確率クラスです。
-
-```python
-prediction = probability.argmax(dim=-1)
-# model.predict_class(X_test) と同じ
-```
-
-## 5. expected utility
-
-ordinal classに実用上の価値を割り当てる場合は、expected utilityを計算できます。
+ordinal class に実用上の価値を割り当てる場合は expected utility を計算できます。
 
 ```python
 utilities = torch.tensor([0.0, 1.0, 3.0, 6.0], dtype=dtype)
 expected_utility = model.expected_utility(X_test, utilities)
-
 print(expected_utility.shape)  # [q]
 ```
 
-クラス番号そのものを期待値化する場合は、`utilities=torch.arange(K)`を使用します。ただし、ordinal class間隔が等しいとは限らないため、用途に応じたutilityを指定してください。
+クラス番号そのものを期待値化する場合は `utilities=torch.arange(K)` を使用します。ただし ordinal class 間隔が等しいとは限らないため、用途に応じた utility を指定してください。
 
-## 6. mixed input
-
-カテゴリ列を同じTensorに格納し、`cat_dims`を指定します。
+## 5. mixed input
 
 ```python
 from botorch.models.transforms.input import Normalize
-
-from bochan.fit import fit_ordinal_gp
 from bochan.models.ordinal.base import OrdinalMixedGPModel
 
 continuous_X = torch.rand(60, 3, dtype=torch.double)
@@ -164,21 +150,20 @@ model = OrdinalMixedGPModel(
 fit_ordinal_gp(model, num_epochs=300, lr=0.03)
 ```
 
-カテゴリ列を`Normalize(indices=...)`に含めないでください。
+カテゴリ列を `Normalize(indices=...)` に含めないでください。
 
-## 7. 独立multi-output ordinal
+## 6. 独立 multi-output ordinal
 
-同じ入力に対する複数のordinal出力を独立に学習する場合は、出力ごとにsubmodelを作り、`MultiOutputOrdinalModel`で包みます。
+同じ入力に対する複数の ordinal 出力を独立に学習する場合は、出力ごとに submodel を作り、`MultiOutputOrdinalModel` で包みます。
 
 ```python
-from bochan.fit import fit_ordinal_gp
 from bochan.models.ordinal.base import MultiOutputOrdinalModel, OrdinalGPModel
 
 submodels = []
-for task_index in range(train_Y.shape[-1]):
+for task_index in range(train_Y_multi.shape[-1]):
     submodel = OrdinalGPModel(
         train_X=train_X,
-        train_Y=train_Y[:, task_index],
+        train_Y=train_Y_multi[:, task_index],
         num_classes=4,
         inducing_points_num=32,
     )
@@ -186,21 +171,17 @@ for task_index in range(train_Y.shape[-1]):
     submodels.append(submodel)
 
 model = MultiOutputOrdinalModel(*submodels)
-class_probability = model.class_probs(X_test)
-
-print(class_probability.shape)  # [q, m, K] when class counts are common
+probability = model.class_probs(X_test)
+print(probability.shape)  # [q, m, K] when class counts are common
 ```
 
-このwrapperは各出力を独立に扱います。出力ごとにcutpointやクラス数を変えられますが、タスク間共分散は学習しません。
+この wrapper はタスク間共分散を学習しません。出力ごとにクラス数や cutpoint を変えられます。
 
-## 8. task-id列を使うmulti-task
+## 7. task-id 列を使う multi-task
 
-各タスクの入力点が異なる場合や欠測タスクがある場合は、`MultiTaskOrdinalGPModel`を使います。task-id列を含むlong formatです。
+### 7.1 continuous input
 
 ```python
-import torch
-
-from bochan.fit import fit_ordinal_gp
 from bochan.models.ordinal.base import MultiTaskOrdinalGPModel
 
 X_data = torch.rand(70, 3, dtype=torch.double)
@@ -220,64 +201,98 @@ model = MultiTaskOrdinalGPModel(
 fit_ordinal_gp(model, num_epochs=300, lr=0.03)
 ```
 
-task-idは`0, ..., num_tasks - 1`の整数値にし、連続説明変数として正規化しないでください。
+### 7.2 mixed input
 
-## 9. Kronecker multi-taskを使うblock design
-
-すべてのordinalタスクが同じ入力点で観測され、同じordinal尺度を使う場合は、`KroneckerMultiTaskOrdinalGPModel`を使用できます。
-
-```text
-train_X: [n, d]
-train_Y: [n, m]
-labels: 0, ..., K - 1
-```
-
-latent scoreのタスク共分散は概念的に`K_X ⊗ K_task`です。1組のordered-logit cutpointを全タスクで共有します。
+`MultiTaskOrdinalMixedGPModel` は、連続列・カテゴリ列・task-id 列を含む long format を扱います。タスクごとに異なる入力位置と欠測を許容します。
 
 ```python
-import torch
 from botorch.models.transforms.input import Normalize
+from bochan.models.ordinal.base import MultiTaskOrdinalMixedGPModel
 
+# columns: continuous, task_id, category
+train_X = torch.tensor(
+    [
+        [0.05, 0.0, 0.0],
+        [0.20, 0.0, 1.0],
+        [0.65, 0.0, 0.0],
+        [0.10, 1.0, 1.0],
+        [0.45, 1.0, 0.0],
+        [0.90, 1.0, 1.0],
+    ],
+    dtype=torch.double,
+)
+train_Y = torch.tensor([0, 1, 3, 0, 2, 3], dtype=torch.long)
+
+model = MultiTaskOrdinalMixedGPModel(
+    train_X=train_X,
+    train_Y=train_Y,
+    cat_dims=[2],
+    num_classes=4,
+    num_tasks=2,
+    task_feature=1,
+    rank=2,
+    input_transform=Normalize(d=3, indices=[0]),
+    inducing_points_num=32,
+)
+fit_ordinal_gp(model, num_epochs=300, lr=0.03)
+```
+
+予測候補にも task-id 列を含めます。
+
+```python
+X_test = torch.tensor(
+    [
+        [0.25, 0.0, 1.0],
+        [0.25, 1.0, 1.0],
+    ],
+    dtype=torch.double,
+)
+
+probability = model.class_probs(X_test)
+expected_utility = model.expected_utility(X_test, utilities)
+
+print(probability.shape)       # [2, K]
+print(expected_utility.shape)  # [2]
+```
+
+### 7.3 共通尺度の前提
+
+`MultiTaskOrdinalGPModel` と `MultiTaskOrdinalMixedGPModel` は全タスクで次を共有します。
+
+- `num_classes`
+- ordinal class の意味
+- ordered-logit cutpoint
+- utility の解釈
+
+タスクごとに尺度が異なる場合は independent multi-output を使用してください。
+
+### 7.4 task covariance
+
+```python
+task_covar = model.task_covar_matrix  # [m, m]
+
+task_std = task_covar.diag().clamp_min(1e-12).sqrt()
+task_corr = task_covar / task_std[:, None] / task_std[None, :]
+```
+
+これは latent score のタスク共分散です。観測ラベルから直接計算した相関とは異なります。
+
+## 8. Kronecker multi-task を使う block design
+
+### 8.1 continuous input
+
+```python
 from bochan.fit import fit_ordinal_mll
 from bochan.models.ordinal.base import KroneckerMultiTaskOrdinalGPModel
 
-
-torch.manual_seed(0)
-dtype = torch.double
-num_classes = 4
-num_tasks = 3
-n = 70
-
-train_X = torch.rand(n, 3, dtype=dtype)
-shared_score = 1.4 * train_X[:, 0] - 0.8 * train_X[:, 1]
-
-task_scores = torch.stack(
-    [
-        shared_score,
-        shared_score + 0.4 * train_X[:, 2],
-        0.6 * shared_score - 0.3 * train_X[:, 2],
-    ],
-    dim=-1,
-)
-
-boundaries = torch.tensor([-0.2, 0.3, 0.8], dtype=dtype)
-train_Y = torch.bucketize(task_scores, boundaries=boundaries).long()  # [n, 3]
-
-bounds = torch.tensor(
-    [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
-    dtype=dtype,
-)
-
 model = KroneckerMultiTaskOrdinalGPModel(
-    train_X=train_X,
-    train_Y=train_Y,
-    num_classes=num_classes,
+    train_X=train_X_block,  # [n, d]
+    train_Y=train_Y_block,  # [n, m]
+    num_classes=4,
     rank=2,
-    input_transform=Normalize(d=train_X.shape[-1], bounds=bounds),
-    num_inducing_points=32,
+    inducing_points_num=32,
 )
 
-# block-design用ELBOを使うため、model.make_mll()を使用
 mll = model.make_mll()
 fit_ordinal_mll(
     mll,
@@ -286,70 +301,25 @@ fit_ordinal_mll(
     lr=0.03,
     batch_size=None,
 )
-
-X_test = torch.rand(10, 3, dtype=dtype)
-latent_posterior = model.posterior(X_test)
-class_probability = model.class_probs(X_test)
-prediction = model.predict_class(X_test)
-
-print(latent_posterior.mean.shape)  # [10, 3] = [q, m]
-print(class_probability.shape)     # [10, 3, 4] = [q, m, K]
-print(prediction.shape)            # [10, 3]
 ```
 
-### 共有cutpoint
+### 8.2 mixed input
 
 ```python
-cutpoints = model.ordinal_likelihood.cutpoints
-print(cutpoints.shape)  # [K - 1]
-```
+from bochan.models.ordinal.base import KroneckerMultiTaskOrdinalMixedGPModel
 
-全タスクで同じ評価尺度を使う設計です。タスクごとにクラス定義やcutpointが異なる場合は、独立multi-output modelを使用してください。
-
-### タスク共分散と相関
-
-```python
-task_covar = model.task_covar_matrix  # [m, m]
-
-task_std = task_covar.diag().clamp_min(1e-12).sqrt()
-task_corr = task_covar / task_std[:, None] / task_std[None, :]
-
-print(task_covar.shape)  # [3, 3]
-print(task_corr.shape)   # [3, 3]
-```
-
-この相関はlatent ordinal score間のモデル相関です。クラス番号のPearson相関や順位相関と同じ値になる必要はありません。
-
-### expected utility
-
-```python
-utilities = torch.tensor([0.0, 1.0, 3.0, 6.0], dtype=dtype)
-expected_utility = model.expected_utility(X_test, utilities)
-
-print(expected_utility.shape)  # [q, m]
-```
-
-### 出力タスクの選択
-
-```python
-selected_probs = model.class_probs(X_test, output_indices=[0, 2])
-selected_utility = model.expected_utility(
-    X_test,
-    utilities,
-    output_indices=[0, 2],
+model = KroneckerMultiTaskOrdinalMixedGPModel(
+    train_X=train_X_mixed,  # [n, d]
+    train_Y=train_Y_block,  # [n, m]
+    cat_dims=[2],
+    num_classes=4,
+    rank=2,
 )
-
-print(selected_probs.shape)    # [q, 2, K]
-print(selected_utility.shape)  # [q, 2]
 ```
 
-`posterior()`は相関を保ったlatent distributionを全タスクまとめて返すため、`output_indices`には対応していません。タスク選択は`class_probs()`または`expected_utility()`で行います。
+Kronecker 版も全タスクで共通の cutpoint を使用します。block design 専用であり、タスクごとに入力点が異なる場合は task-feature 版を使用してください。
 
-`KroneckerMultiTaskOrdinalGPModel`はblock design専用です。タスクごとに入力点が異なる場合は`MultiTaskOrdinalGPModel`を使用してください。
-
-## 10. 新しい観測の追加
-
-Kronecker modelでは、追加する`Y`も`[n_new, m]`で全タスクを含めます。
+## 9. 新しい観測の追加
 
 ```python
 updated_model = model.condition_on_observations(
@@ -361,53 +331,129 @@ updated_model = model.condition_on_observations(
 )
 ```
 
-非Gaussian likelihoodのためclosed-form conditioningではなく、モデルを再構築して必要に応じて再学習します。
+非 Gaussian likelihood のため closed-form conditioning ではなく、モデルを再構築して必要に応じて再学習します。
+
+- task-feature model: `X_new` に task-id 列を含める
+- Kronecker model: `Y_new` は `[n_new, m]` で全タスクを含める
+
+## 10. 候補点最適化
+
+classification / ordinal の task-feature model では、candidate tensor 自体に task-id 列を含めます。探索対象タスクを固定し、通常カテゴリを列挙します。
+
+```python
+from botorch.optim import optimize_acqf_mixed
+
+fixed_features_list = [
+    {1: 1.0, 2: 0.0},  # task 1, category 0
+    {1: 1.0, 2: 1.0},  # task 1, category 1
+]
+
+candidates, acq_value = optimize_acqf_mixed(
+    acq_function=acq_function,
+    bounds=bounds,
+    q=1,
+    num_restarts=10,
+    raw_samples=256,
+    fixed_features_list=fixed_features_list,
+)
+```
 
 ## 11. high-level API
 
-標準single-output ordinalはhigh-level APIから構築できます。
+mixed task-feature ordinal は `model_type="multitask"` で構築できます。
 
 ```python
-from bochan.api import BayesianOptimizer, FitConfig, ModelConfig
+from bochan.api import (
+    BayesianOptimizer,
+    FitConfig,
+    InputTransformConfig,
+    ModelConfig,
+    OptimizeConfig,
+)
 
 bo = BayesianOptimizer(
     model_config=ModelConfig(
         task_type="ordinal",
-        model_type="base",
-        model_kwargs={"num_classes": 4},
+        input_type="mixed",
+        model_type="multitask",
+        cat_dims=[2],
+        model_kwargs={
+            "num_classes": 4,
+            "num_tasks": 2,
+            "task_feature": 1,
+            "rank": 2,
+        },
+        input_transform_config=InputTransformConfig(
+            normalize=True,
+            categorical_idx=[1, 2],  # task-idとcategoryを保護
+        ),
     ),
-    fit_config=FitConfig(),
-    bounds=bounds,
+    fit_config=FitConfig(num_epochs=300, lr=0.03),
+    bounds=torch.tensor(
+        [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+        dtype=torch.double,
+    ),
 )
-bo.fit(train_X, train_Y_single)
+bo.fit(train_X, train_Y)
 ```
 
-Kronecker multi-task専用registry keyは現在ないため、モデルを直接構築してください。
+候補生成では task-id を固定します。
+
+```python
+opt_config = OptimizeConfig(
+    optimizer="optimize_acqf_mixed",
+    q=1,
+    fixed_features={1: 1.0},
+    fixed_features_list=[{2: 0.0}, {2: 1.0}],
+)
+```
+
+mixed block-design Kronecker は `model_type="kronecker"` です。
+
+```python
+ModelConfig(
+    task_type="ordinal",
+    input_type="mixed",
+    model_type="kronecker",
+    cat_dims=[2],
+    model_kwargs={
+        "num_classes": 4,
+        "rank": 2,
+    },
+)
+```
 
 ## 12. よくある問題
 
-### `posterior.mean`がクラス番号ではない
+### `posterior.mean` がクラス番号ではない
 
-`posterior()`はlatent scoreを返します。クラス確率は`class_probs()`、予測クラスは`predict_class()`を使用してください。
+`posterior()` は latent score を返します。クラス確率は `class_probs()`、予測クラスは `predict_class()` を使用してください。
 
-### cutpointが狭い、または一部クラスが予測されない
+### cutpoint が狭い、または一部クラスが予測されない
 
-クラス不均衡、データ数、learning rate、`init_gap`、学習回数を確認してください。各クラスの観測が極端に少ない場合、cutpoint推定は不安定になります。
+クラス不均衡、データ数、learning rate、`init_gap`、学習回数を確認してください。
 
-### Kronecker modelのタスク間比較が不自然
+### task-feature mixed model で category / task-id が変化する
 
-タスク間でordinal尺度やクラス定義が本当に共通か確認してください。尺度が異なる場合、cutpoint共有の前提が成立しません。
+`Normalize(indices=...)` にカテゴリ列や task-id 列を含めないでください。`InputTransformConfig` では両方を `categorical_idx` に指定します。
 
-### labelが1から始まる
+### task covariance が不自然
 
-学習前に`0, ..., K - 1`へ変換してください。
+タスク間で ordinal 尺度やクラス定義が本当に共通か確認してください。尺度が異なる場合、cutpoint 共有の前提が成立しません。
 
-## 13. 関連テスト
+### label が 1 から始まる
+
+学習前に `0, ..., K - 1` へ変換してください。
+
+## 13. 関連実装・テスト
 
 ```text
+src/bochan/models/ordinal/base/multitask.py
+src/bochan/models/ordinal/base/multitask_mixed.py
+src/bochan/models/ordinal/base/kronecker_multitask.py
+src/bochan/models/ordinal/base/kronecker_multitask_mixed.py
+src/bochan/models/components/mixed_multitask.py
+tests/test_mixed_task_feature_multitask_models.py
+tests/test_mixed_task_feature_multitask_registry.py
 tests/test_kronecker_multitask_classification_ordinal_models.py
-src/bochan/models/ordinal/base/
-src/bochan/models/ordinal/deep/
-src/bochan/models/ordinal/high_dim/
-src/bochan/models/ordinal/robust/
 ```

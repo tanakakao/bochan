@@ -32,10 +32,12 @@ from .robust import (
     fit_rrp_ordinal_mll,
     fit_rrp_ordinal_mll_optimizer,
 )
+from .vae import VAEFitResult, fit_vae_gp
 
 __all__ = [
     "ClassificationFitResult",
     "FitResult",
+    "VAEFitResult",
     "fit_binary_classifier_mll",
     "fit_classification_gp",
     "fit_classification_mll",
@@ -55,6 +57,7 @@ __all__ = [
     "fit_poisson_mll",
     "fit_negative_binomial_gp",
     "fit_negative_binomial_mll",
+    "fit_vae_gp",
     "make_ordinal_mll",
     "fit_ordinal_mll",
     "fit_ordinal_gp",

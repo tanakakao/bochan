@@ -63,6 +63,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "saas": ("bochan.models.regression.gaussian.high_dim", "SaasSingleTaskGP"),
             "pca": ("bochan.models.regression.gaussian.high_dim", "PCASingleTaskGP"),
             "rembo": ("bochan.models.regression.gaussian.high_dim", "REMBOSingleTaskGP"),
+            "vae": ("bochan.models.regression.gaussian.high_dim", "VAESingleTaskGP"),
             "rrp": ("bochan.models.regression.gaussian.robust", "SafeRobustRelevancePursuitSingleTaskGP"),
             "hetero": ("bochan.models.regression.gaussian.robust", "HeteroscedasticSingleTaskGP"),
         },

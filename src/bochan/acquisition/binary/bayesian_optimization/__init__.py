@@ -1,3 +1,6 @@
+from bochan.acquisition._nehvi_cache_root import patch_nehvi_cache_root_init
+
+from . import multi_output as _multi_output
 from .hetero_multi_output import (
     qHeteroMultiOutputBinaryExpectedHypervolumeImprovement,
     qHeteroMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
@@ -8,6 +11,12 @@ from .hetero_single_output import (
     qHeteroBinaryUpperConfidenceBound,
     qHeteroBinaryExpectedImprovement,
     qHeteroBinaryProbabilityOfImprovement,
+)
+
+# Apply the same model-aware qNEHVI default used by ordinal models. This keeps
+# Kronecker binary models out of BoTorch's incompatible cached-Cholesky path.
+patch_nehvi_cache_root_init(
+    _multi_output.qMultiOutputBinaryNoisyExpectedHypervolumeImprovement
 )
 
 from .multi_output import (

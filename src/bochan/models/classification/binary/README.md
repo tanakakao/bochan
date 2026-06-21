@@ -29,6 +29,7 @@ cat_dims = [4]
 | 用途 | 通常入力 | mixed input |
 |---|---|---|
 | 標準SVGP | `BinaryClassificationGPModel` | `BinaryClassificationMixedGPModel` |
+| 相関ありblock-design multi-task | `KroneckerMultiTaskBinaryClassificationGPModel` | - |
 | DeepGP | `BinaryClassificationDeepGPModel` | `BinaryClassificationMixedDeepGPModel` |
 | DeepKernel | `DeepKernelBinaryClassificationGPModel` | `DeepKernelBinaryClassificationMixedGPModel` |
 | DeepKernel + DeepGP | `DeepKernelBinaryClassificationDeepGPModel` | `DeepKernelBinaryClassificationMixedDeepGPModel` |
@@ -216,6 +217,8 @@ print(subset_latent.mean.shape)       # [n, 1]
 
 ## 7. multi-task
 
+### task-id列を使うlong format
+
 `MultiTaskBinaryClassificationGPModel`はtask-id列を含むlong formatを使います。
 
 ```python
@@ -247,6 +250,97 @@ fit_binary_classifier_mll(mll, num_epochs=300, lr=0.01)
 ```
 
 task-id列は連続変数として正規化しないでください。
+
+### Kronecker multi-taskを使うblock design
+
+すべてのタスクが同じ入力点で観測されている場合は、`KroneckerMultiTaskBinaryClassificationGPModel`を使用できます。`train_X`は`[n, d]`、`train_Y`は`[n, m]`です。`m`は相関を学習するbinaryタスク数です。
+
+```python
+import torch
+from botorch.models.transforms.input import Normalize
+
+from bochan.fit import fit_binary_classifier_mll
+from bochan.models.classification.binary.base import (
+    KroneckerMultiTaskBinaryClassificationGPModel,
+)
+
+
+torch.manual_seed(0)
+dtype = torch.double
+
+n = 60
+num_tasks = 3
+train_X = torch.rand(n, 3, dtype=dtype)
+
+shared_score = 1.5 * train_X[:, 0] - train_X[:, 1]
+task_scores = torch.stack(
+    [
+        shared_score,
+        shared_score + 0.5 * train_X[:, 2] - 0.1,
+        -0.6 * shared_score + train_X[:, 2],
+    ],
+    dim=-1,
+)
+train_Y = (task_scores > 0.0).to(dtype)  # [n, 3]
+
+bounds = torch.tensor(
+    [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+    dtype=dtype,
+)
+
+model = KroneckerMultiTaskBinaryClassificationGPModel(
+    train_X=train_X,
+    train_Y=train_Y,
+    rank=2,
+    input_transform=Normalize(d=train_X.shape[-1], bounds=bounds),
+    num_inducing_points=32,
+)
+
+# block-design用のELBOを使うため、model.make_mll()を推奨
+mll = model.make_mll()
+fit_binary_classifier_mll(
+    mll,
+    num_epochs=300,
+    lr=0.01,
+    batch_size=None,
+)
+
+X_test = torch.rand(10, 3, dtype=dtype)
+posterior = model.posterior(X_test)
+probability = posterior.mean
+prediction = model.predict_class(X_test)
+class_probability = model.class_probs(X_test)
+
+print(probability.shape)       # [10, 3]: P(y_task=1)
+print(prediction.shape)        # [10, 3]
+print(class_probability.shape) # [10, 3, 2]: [P(y=0), P(y=1)]
+```
+
+latent GPの相関構造は次のように確認できます。
+
+```python
+latent_posterior = model.latent_posterior(X_test)
+task_covar = model.task_covar_matrix
+
+print(latent_posterior.mean.shape)  # [10, 3]
+print(task_covar.shape)             # [3, 3]
+```
+
+`task_covar_matrix`はLMC係数から得られる正半定値行列です。対角成分は各タスクのlatent scale、非対角成分はタスク間の共変動を表します。相関係数として比較する場合は、対角成分で標準化します。
+
+```python
+task_std = task_covar.diag().clamp_min(1e-12).sqrt()
+task_corr = task_covar / task_std[:, None] / task_std[None, :]
+```
+
+出力の一部だけを確率scaleで選択できます。
+
+```python
+selected = model.posterior(X_test, output_indices=[0, 2])
+print(selected.mean.shape)  # [10, 2]
+```
+
+`KroneckerMultiTaskBinaryClassificationGPModel`はblock design専用です。入力点ごとに観測されるタスクが異なる欠測・long formatデータには、`MultiTaskBinaryClassificationGPModel`を使用してください。
 
 ## 8. advanced modelの学習
 
@@ -371,4 +465,5 @@ tests/test_binary_classification_pca_rembo_single_output.py
 tests/test_binary_classification_rrp_single_output.py
 tests/test_binary_classification_hetero_single_output.py
 tests/test_binary_probability_bo_pointwise.py
+tests/test_kronecker_multitask_classification_ordinal_models.py
 ```

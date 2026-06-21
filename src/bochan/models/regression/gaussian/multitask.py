@@ -18,12 +18,7 @@ from bochan.models.components.mixed_multitask import (
 
 
 class MixedMultiTaskGP(MultiTaskGP):
-    """Exact Gaussian task-feature GP for mixed inputs.
-
-    Training data is long-format with one explicit task-id column. The model uses
-    a mixed continuous/categorical data kernel multiplied by BoTorch's task index
-    kernel. Tasks may have different observation locations and missing values.
-    """
+    """Exact Gaussian task-feature GP for mixed inputs."""
 
     def __init__(
         self,
@@ -57,6 +52,7 @@ class MixedMultiTaskGP(MultiTaskGP):
 
         self.cat_dims = list(cat_dims)
         self.task_feature_index = int(task_feature)
+        self._mixed_full_input_dim = int(train_X.shape[-1])
         super().__init__(
             train_X=train_X,
             train_Y=train_Y,
@@ -78,15 +74,13 @@ class MixedMultiTaskGP(MultiTaskGP):
             if input_transform is not None
             else getattr(self, "input_transform", None)
         )
-        if X.shape[-1] == self.train_inputs[0].shape[-1]:
+        if X.shape[-1] == self._mixed_full_input_dim:
             return transform_mixed_task_inputs(
                 X,
                 transform,
                 cat_dims=self.cat_dims,
                 task_feature=self.task_feature_index,
             )
-        # MultiTaskGP posterior may receive non-task features and insert task ids
-        # internally. In that path, defer to the supplied transform directly.
         if transform is None:
             return X
         return transform(X)

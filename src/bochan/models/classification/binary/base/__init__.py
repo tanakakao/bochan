@@ -24,7 +24,12 @@ from .multitask_mixed import MultiTaskBinaryClassificationMixedGPModel
 
 
 class BinaryClassificationGPModel(_BinaryClassificationGPModel):
-    """Binary SVGP model with multiclass-aligned defaults."""
+    """Binary SVGP model with multiclass-aligned defaults.
+
+    The public binary base model uses up to 128 inducing points by default,
+    matching :class:`MulticlassClassificationGPModel`. The latent kernel is
+    provided by ``_LatentBinarySVGP`` and defaults to ARD Matérn 2.5.
+    """
 
     def __init__(
         self,
@@ -54,7 +59,11 @@ class BinaryClassificationGPModel(_BinaryClassificationGPModel):
 
 
 class BinaryClassificationMixedGPModel(_BinaryClassificationMixedGPModel):
-    """Mixed-input binary SVGP with multiclass-aligned defaults."""
+    """Mixed-input binary SVGP with multiclass-aligned defaults.
+
+    The public mixed binary model uses up to 128 inducing points and the same
+    additive-plus-interaction kernel structure as the multiclass mixed model.
+    """
 
     def __init__(
         self,

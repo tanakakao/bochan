@@ -4,7 +4,7 @@ The public API is intended to expose bochan's implemented model families through
 simple string keys such as ``task_type="regression"`` and ``model_type="base"``.
 
 This module keeps the registry lazy: model modules are imported only when the
-corresponding registry entry is actually requested.  This avoids making
+corresponding registry entry is actually requested. This avoids making
 ``import bochan.api`` unnecessarily heavy.
 """
 from __future__ import annotations
@@ -119,7 +119,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "deepgpdeepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelDeepMixedGPModel"),
             "saas": ("bochan.models.regression.gaussian.high_dim", "SaasMixedSingleTaskGP"),
             "pca": ("bochan.models.regression.gaussian.high_dim", "PCAMixedSingleTaskGP"),
-            "rembo": ("bochan.models.regression.gaussian.high_dim", "REMBOMixedSingleTaskGP"),
+            "rembo": ("bochan.models.regression.gaussian.high_dim", "REMBOSingleTaskGP"),
             "rrp": ("bochan.models.regression.gaussian.robust", "SafeRobustRelevancePursuitMixedSingleTaskGP"),
             "hetero": ("bochan.models.regression.gaussian.robust", "HeteroscedasticMixedSingleTaskGP"),
         },
@@ -138,6 +138,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
         "binary": {
             "base": ("bochan.models.classification.binary.base", "BinaryClassificationMixedGPModel"),
             "kronecker": ("bochan.models.classification.binary.base", "KroneckerMultiTaskBinaryClassificationMixedGPModel"),
+            "multitask": ("bochan.models.classification.binary.base", "MultiTaskBinaryClassificationMixedGPModel"),
             "deepgp": ("bochan.models.classification.binary.deep", "BinaryClassificationMixedDeepGPModel"),
             "deepkernel": ("bochan.models.classification.binary.deep", "DeepKernelBinaryClassificationMixedGPModel"),
             "deepgpdeepkernel": ("bochan.models.classification.binary.deep", "DeepKernelBinaryClassificationMixedDeepGPModel"),
@@ -150,6 +151,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
         "ordinal": {
             "base": ("bochan.models.ordinal.base", "OrdinalMixedGPModel"),
             "kronecker": ("bochan.models.ordinal.base", "KroneckerMultiTaskOrdinalMixedGPModel"),
+            "multitask": ("bochan.models.ordinal.base", "MultiTaskOrdinalMixedGPModel"),
             "deepgp": ("bochan.models.ordinal.deep", "OrdinalMixedDeepGPModel"),
             "deepkernel": ("bochan.models.ordinal.deep", "DeepKernelOrdinalMixedGPModel"),
             "deepgpdeepkernel": ("bochan.models.ordinal.deep", "DeepKernelOrdinalMixedDeepGPModel"),
@@ -162,6 +164,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
         "multiclass": {
             "base": ("bochan.models.classification.multiclass.base", "MulticlassClassificationMixedGPModel"),
             "kronecker": ("bochan.models.classification.multiclass.base", "KroneckerMultiTaskMulticlassClassificationMixedGPModel"),
+            "multitask": ("bochan.models.classification.multiclass.base", "MultiTaskMulticlassClassificationMixedGPModel"),
             "deepgp": ("bochan.models.classification.multiclass.deep", "MulticlassMixedDeepGPModel"),
             "deepkernel": ("bochan.models.classification.multiclass.deep", "DeepKernelMulticlassClassificationMixedGPModel"),
             "saas": ("bochan.models.classification.multiclass.high_dim", "SaasMulticlassClassificationMixedGPModel"),

@@ -86,6 +86,46 @@ def build_mixed_task_data_kernel(
     )
 
 
+class _FullInputMixedDataKernel(Kernel):
+    """Apply a data-only mixed kernel to full inputs containing a task column."""
+
+    has_lengthscale = False
+
+    def __init__(
+        self,
+        data_kernel: Kernel,
+        *,
+        task_feature: int,
+        input_dim: int,
+    ) -> None:
+        super().__init__(active_dims=torch.arange(int(input_dim)))
+        self.data_kernel = data_kernel
+        self.task_feature = normalize_task_feature(task_feature, input_dim)
+        self.input_dim = int(input_dim)
+        self.data_dims = [i for i in range(self.input_dim) if i != self.task_feature]
+
+    def forward(
+        self,
+        x1: Tensor,
+        x2: Tensor,
+        diag: bool = False,
+        last_dim_is_batch: bool = False,
+        **params,
+    ):
+        if x1.shape[-1] != self.input_dim or x2.shape[-1] != self.input_dim:
+            raise ValueError(
+                f"Expected full input dim {self.input_dim}, got "
+                f"{x1.shape[-1]} and {x2.shape[-1]}."
+            )
+        return self.data_kernel(
+            x1[..., self.data_dims],
+            x2[..., self.data_dims],
+            diag=diag,
+            last_dim_is_batch=last_dim_is_batch,
+            **params,
+        )
+
+
 def build_full_input_mixed_kernel(
     *,
     d: int,
@@ -93,24 +133,23 @@ def build_full_input_mixed_kernel(
     task_feature: int,
     batch_shape: torch.Size = torch.Size(),
 ) -> Kernel:
-    """Build a mixed kernel that receives the full task-feature input tensor.
+    """Build a data kernel for BoTorch ``MultiTaskGP`` full inputs.
 
-    This is used by BoTorch's exact ``MultiTaskGP``. Inner kernels select only
-    continuous and categorical data columns, while the outer kernel is marked as
-    accepting all columns so ``MultiTaskGP`` does not re-index it a second time.
+    The wrapper receives the full tensor, removes the task-id column, and then
+    evaluates the mixed data kernel. This prevents task ids from being treated as
+    continuous values in addition to their dedicated task ``IndexKernel``.
     """
-    cat_dims, task_feature = normalize_mixed_task_dims(
-        cat_dims,
-        task_feature=task_feature,
-        d=d,
-    )
-    kernel = build_mixed_kronecker_kernel(
+    data_kernel = build_mixed_task_data_kernel(
         d=d,
         cat_dims=cat_dims,
+        task_feature=task_feature,
         batch_shape=batch_shape,
     )
-    kernel.active_dims = torch.arange(int(d))
-    return kernel
+    return _FullInputMixedDataKernel(
+        data_kernel,
+        task_feature=task_feature,
+        input_dim=d,
+    )
 
 
 def validate_mixed_task_input_transform(

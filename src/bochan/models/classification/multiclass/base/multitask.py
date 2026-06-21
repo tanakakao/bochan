@@ -10,8 +10,8 @@ from gpytorch.likelihoods import SoftmaxLikelihood
 from gpytorch.means import Mean
 from torch import Tensor
 
-from bochan.models.classification.binary.base.multitask import _TaskProductKernel
 from bochan.models.components.mixed_multitask import (
+    MixedTaskProductKernel,
     build_mixed_task_data_kernel,
     normalize_mixed_task_dims,
     normalize_task_feature,
@@ -122,7 +122,7 @@ class _BaseMultiTaskMulticlassClassificationGPModel(
                 batch_shape=torch.Size([num_classes]),
             )
 
-        covar_module = _TaskProductKernel(
+        covar_module = MixedTaskProductKernel(
             data_kernel=data_covar_module,
             task_kernel=task_covar_module,
             task_feature=task_feature,

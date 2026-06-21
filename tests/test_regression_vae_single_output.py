@@ -57,7 +57,11 @@ def test_vae_single_task_gp_joint_fit_posterior_and_acquisition() -> None:
     assert torch.isfinite(torch.tensor(result.loss_history)).all()
     assert any(
         not torch.allclose(before, after.detach())
-        for before, after in zip(encoder_before, model.vae.parameters())
+        for before, after in zip(
+            encoder_before,
+            model.vae.parameters(),
+            strict=True,
+        )
     )
 
     latent = model.encode(train_X)

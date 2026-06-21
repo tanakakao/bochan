@@ -109,12 +109,19 @@ class MultiTaskOrdinalMixedGPModel(MultiTaskOrdinalGPModel):
         return self.model.task_covar_module.covar_matrix.to_dense()
 
     def transform_inputs(self, X: Tensor) -> Tensor:
-        return transform_mixed_task_inputs(
+        X_tf = transform_mixed_task_inputs(
             X,
             self.input_transform,
             cat_dims=self.cat_dims,
             task_feature=self.task_feature,
         )
+        self._validate_task_feature(
+            X_tf,
+            num_tasks=self.num_tasks,
+            task_feature=self.task_feature,
+            name="transformed X",
+        )
+        return X_tf
 
     def condition_on_observations(
         self,

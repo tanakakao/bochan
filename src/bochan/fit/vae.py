@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 import torch
 from gpytorch.mlls import ExactMarginalLogLikelihood
@@ -11,14 +11,30 @@ from bochan.fit.common import (
     set_model_and_likelihood_eval_mode,
     set_model_and_likelihood_train_mode,
 )
-from bochan.models.regression.gaussian.high_dim.vae import VAESingleTaskGP
+
+
+class VAERegressionModel(Protocol):
+    """Protocol implemented by normal and mixed VAE regression wrappers."""
+
+    likelihood: Any
+
+    def parameters(self, recurse: bool = True): ...
+
+    def make_gp_mll(self) -> ExactMarginalLogLikelihood: ...
+
+    def joint_loss_components(
+        self,
+        gp_mll: ExactMarginalLogLikelihood,
+    ) -> dict[str, torch.Tensor]: ...
+
+    def refresh_latent_train_inputs(self) -> torch.Tensor: ...
 
 
 @dataclass
 class VAEFitResult:
     """Training diagnostics returned by :func:`fit_vae_gp`."""
 
-    model: VAESingleTaskGP
+    model: VAERegressionModel
     gp_mll: ExactMarginalLogLikelihood
     loss_history: list[float]
     gp_loss_history: list[float]
@@ -31,8 +47,25 @@ class VAEFitResult:
         return self.loss_history[-1]
 
 
+def _validate_vae_regression_model(model: Any) -> None:
+    """Validate the minimal joint-training interface without task-class imports."""
+    required = (
+        "parameters",
+        "make_gp_mll",
+        "joint_loss_components",
+        "refresh_latent_train_inputs",
+        "likelihood",
+    )
+    missing = [name for name in required if not hasattr(model, name)]
+    if missing:
+        raise TypeError(
+            "fit_vae_gp expects a VAE regression model implementing "
+            f"{required}; missing={missing}."
+        )
+
+
 def fit_vae_gp(
-    model: VAESingleTaskGP,
+    model: VAERegressionModel,
     *,
     lr: float = 1e-2,
     num_epochs: int | None = None,
@@ -44,14 +77,14 @@ def fit_vae_gp(
     log_interval: int = 50,
     **_: Any,
 ) -> VAEFitResult:
-    """Jointly fit the VAE encoder/decoder and latent-space exact GP.
+    """Jointly fit a VAE encoder/decoder and latent-space exact GP.
 
-    The GP uses the encoder mean, while reconstruction uses a reparameterized
-    latent sample. Training is full-batch because the exact GP marginal
-    likelihood requires all observations in each optimization step.
+    Both normal and mixed Gaussian regression wrappers use this routine. The GP
+    uses the encoder mean, while reconstruction uses a reparameterized latent
+    sample. Training is full-batch because the exact GP marginal likelihood
+    requires all observations in each optimization step.
     """
-    if not isinstance(model, VAESingleTaskGP):
-        raise TypeError("fit_vae_gp expects a VAESingleTaskGP instance.")
+    _validate_vae_regression_model(model)
     if num_epochs is None:
         num_epochs = 300 if epoch is None else int(epoch)
     if num_epochs <= 0:
@@ -80,7 +113,7 @@ def fit_vae_gp(
         if not torch.isfinite(loss):
             raise RuntimeError(
                 "Non-finite VAE-GP loss encountered. Consider reducing lr, "
-                "lowering kl_weight, or normalizing train_X."
+                "lowering kl_weight, or normalizing continuous train_X columns."
             )
         loss.backward()
         maybe_clip_grad_norm(model.parameters(), clip_grad_norm)
@@ -119,4 +152,4 @@ def fit_vae_gp(
     )
 
 
-__all__ = ["VAEFitResult", "fit_vae_gp"]
+__all__ = ["VAEFitResult", "VAERegressionModel", "fit_vae_gp"]

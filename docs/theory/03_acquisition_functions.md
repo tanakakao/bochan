@@ -14,13 +14,13 @@ acquisitions in Chapter 07.
 
 For posterior state `D_t` and candidate batch
 
-$$
+```math
 X=[x_1,\ldots,x_q],
-$$
+```
 
 an acquisition function is
 
-$$
+```math
 \alpha_t(X)
 =
 \mathbb E
@@ -28,19 +28,19 @@ $$
 V(X,F;\mathcal D_t)
 \mid\mathcal D_t
 \right],
-$$
+```
 
 where `V` is a decision-specific value function and the expectation is over
 posterior uncertainty.
 
 The optimizer solves
 
-$$
+```math
 X_{t+1}
 \in
 \arg\max_{X\in\mathcal X^q}
 \alpha_t(X).
-$$
+```
 
 In BoTorch tensor notation:
 
@@ -78,27 +78,27 @@ Limitations:
 
 Draw reparameterized samples
 
-$$
+```math
 f^{(s)}(X)
 \sim p(f(X)\mid\mathcal D_t),
 \qquad s=1,\ldots,S,
-$$
+```
 
 apply an objective
 
-$$
+```math
 u^{(s)}(X)=T(f^{(s)}(X),X),
-$$
+```
 
 and estimate
 
-$$
+```math
 \alpha(X)
 \approx
 \frac1S
 \sum_{s=1}^{S}
 V(u^{(s)}(X)).
-$$
+```
 
 MC acquisitions support q-batches, nonlinear objectives, constraints, and
 multi-output models.  Their accuracy depends on sample count and base-sample
@@ -114,31 +114,31 @@ integrals.
 
 For maximization, define improvement threshold
 
-$$
+```math
 \tau=f_{\mathrm{best}}+\xi,
-$$
+```
 
 where `xi>=0` is an optional exploration margin.  Probability of Improvement is
 
-$$
+```math
 \operatorname{PI}(x)
 =
 P(f(x)\ge\tau\mid\mathcal D).
-$$
+```
 
 For Gaussian posterior
 
-$$
+```math
 f(x)\sim\mathcal N(\mu(x),\sigma^2(x)),
-$$
+```
 
-$$
+```math
 \operatorname{PI}(x)
 =
 \Phi\left(
 \frac{\mu(x)-\tau}{\sigma(x)}
 \right).
-$$
+```
 
 PI ignores the magnitude of improvement.  A tiny likely improvement can be
 preferred over a large but less likely improvement.
@@ -152,45 +152,45 @@ that transformed scale.
 
 Define
 
-$$
+```math
 I(x)=\max(f(x)-f_{\mathrm{best}},0).
-$$
+```
 
 Expected Improvement is
 
-$$
+```math
 \operatorname{EI}(x)
 =
 \mathbb E[I(x)\mid\mathcal D].
-$$
+```
 
 For Gaussian posterior and
 
-$$
+```math
 z=rac{\mu-f_{\mathrm{best}}}{\sigma},
-$$
+```
 
-$$
+```math
 \operatorname{EI}(x)
 =
 (\mu-f_{\mathrm{best}})\Phi(z)
 +
 \sigma\phi(z),
-$$
+```
 
 for `sigma>0`.  The first term is mean improvement weighted by its probability;
 the second is an uncertainty contribution.
 
 For q-batch EI,
 
-$$
+```math
 I(X)
 =
 \max\left(
 \max_{i=1,\ldots,q}f(x_i)-f_{\mathrm{best}},
 0
 \right),
-$$
+```
 
 and the expectation is usually evaluated by Monte Carlo.
 
@@ -217,7 +217,7 @@ are uncertain under noisy observations.
 
 A conceptual qNEI definition is
 
-$$
+```math
 \operatorname{qNEI}(X)
 =
 \mathbb E
@@ -227,7 +227,7 @@ $$
 0
 \right)
 \right].
-$$
+```
 
 The expectation is joint over candidate and baseline latent values.
 
@@ -250,22 +250,22 @@ from fixed best observation to a posterior-distributed latent baseline.
 
 For maximization, a common UCB form is
 
-$$
+```math
 \operatorname{UCB}(x)
 =
 \mu(x)+\sqrt\beta\,\sigma(x).
-$$
+```
 
 Some implementations parameterize the coefficient directly as `beta` rather
 than `sqrt(beta)`.  Always check the concrete class definition.
 
 For minimization, use
 
-$$
+```math
 \operatorname{LCB}(x)
 =
 \mu(x)-\sqrt\beta\,\sigma(x)
-$$
+```
 
 or negate the objective and maximize UCB.
 
@@ -285,15 +285,15 @@ summing pointwise UCB values.
 
 Thompson sampling draws a function sample
 
-$$
+```math
 \tilde f\sim p(f\mid\mathcal D)
-$$
+```
 
 and selects
 
-$$
+```math
 x_{t+1}\in\arg\max_x\tilde f(x).
-$$
+```
 
 Repeated function samples naturally randomize exploration.  For a finite
 candidate set, sampling posterior values and choosing the maximum is direct.
@@ -321,13 +321,13 @@ after observing a candidate.
 
 Let
 
-$$
+```math
 M_t=\max_{x'}\mu_t(x').
-$$
+```
 
 Then a one-step KG concept is
 
-$$
+```math
 \operatorname{KG}(x)
 =
 \mathbb E_{y_x}
@@ -336,7 +336,7 @@ $$
 \right]
 -
 M_t.
-$$
+```
 
 KG differs from EI:
 
@@ -354,7 +354,7 @@ future decisions.
 
 A multi-step policy recursively values a decision tree:
 
-$$
+```math
 \alpha_t(x_1)
 =
 \mathbb E_{y_1}
@@ -365,7 +365,7 @@ $$
 \cdots
 \right]
 \right].
-$$
+```
 
 BoTorch's `qMultiStepLookahead` represents this with fantasy samples, stage
 batch sizes, and stage value functions.
@@ -393,29 +393,29 @@ quantity.
 
 Targets mutual information between the observation and optimizer `x*`:
 
-$$
+```math
 I(y_x;x^*\mid\mathcal D).
-$$
+```
 
 ### Max-value Entropy Search
 
 Targets information about the optimum value
 
-$$
+```math
 f^*=\max_xf(x):
-$$
+```
 
-$$
+```math
 I(y_x;f^*\mid\mathcal D).
-$$
+```
 
 ### Joint Entropy Search
 
 Targets joint information about optimizer and optimum value:
 
-$$
+```math
 I(y_x;(x^*,f^*)\mid\mathcal D).
-$$
+```
 
 These methods can be sample efficient but require approximations to optimum or
 max-value distributions.
@@ -428,21 +428,21 @@ A model output need not equal the acquisition objective.
 
 For posterior sample
 
-$$
+```math
 Y^{(s)}\in\mathbb R^m,
-$$
+```
 
 an MC objective maps
 
-$$
+```math
 T:\mathbb R^m\rightarrow\mathbb R
-$$
+```
 
 or
 
-$$
+```math
 T:\mathbb R^m\rightarrow\mathbb R^{m_{\mathrm{obj}}}.
-$$
+```
 
 Examples:
 
@@ -457,10 +457,10 @@ A posterior transform changes the posterior representation before acquisition
 evaluation.  An MC objective changes samples after sampling.  They are related
 but not interchangeable, especially for nonlinear transformations because
 
-$$
+```math
 T(\mathbb E[Y])
 e\mathbb E[T(Y)].
-$$
+```
 
 ---
 
@@ -468,18 +468,18 @@ $$
 
 Suppose sample-level constraint functions satisfy
 
-$$
+```math
 c_j(Y)\le0.
-$$
+```
 
 A constrained improvement value may be written
 
-$$
+```math
 V(Y)
 =
 I(Y)
 \prod_j\mathbf 1[c_j(Y)\le0].
-$$
+```
 
 Smooth approximations replace hard indicators by sigmoid functions.  This
 improves gradients but introduces a temperature parameter and changes the
@@ -487,11 +487,11 @@ constraint interpretation.
 
 Probability-of-feasibility weighting is
 
-$$
+```math
 \alpha_c(x)
 =
 \alpha_0(x)P(\text{feasible}\mid x).
-$$
+```
 
 This factorization is exact only under particular independence and value
 assumptions.  MC constrained acquisitions can represent joint samples more
@@ -503,11 +503,11 @@ directly.
 
 For q-batch acquisition, candidate values are correlated.  Let
 
-$$
+```math
 \mathbf f_X
 \sim
 \mathcal N(\boldsymbol\mu_X,\Sigma_X).
-$$
+```
 
 The covariance affects:
 
@@ -537,12 +537,12 @@ An acquisition may handle `X_pending` by:
 
 A simple distance penalty has form
 
-$$
+```math
 P(x)
 =
 \lambda
 \exp[-\eta d(x,X_{\mathrm{pending}})].
-$$
+```
 
 It encourages diversity but does not represent uncertainty about pending
 outcomes.

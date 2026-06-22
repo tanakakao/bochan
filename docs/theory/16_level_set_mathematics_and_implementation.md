@@ -14,31 +14,31 @@ variants.
 
 For candidate batch
 
-$$
+```math
 X=[x_1,\ldots,x_q],
-$$
+```
 
 let
 
-$$
+```math
 \mu_i=\mu(x_i),
 \qquad
 v_i=\operatorname{Var}[f(x_i)],
 \qquad
 \sigma_i=\sqrt{v_i}.
-$$
+```
 
 Let threshold be `h`.  For classification probability, write
 
-$$
+```math
 p_i=P(Y\in A\mid x_i,\mathcal D)
-$$
+```
 
 for a target class or acceptable class set.  For ordinal models, cutpoints are
 
-$$
+```math
 c_0<\cdots<c_{K-2}.
-$$
+```
 
 A pointwise acquisition constructs
 
@@ -90,11 +90,11 @@ model's posterior contract.  Multiple output channels can be reduced through
 
 Implemented pointwise score:
 
-$$
+```math
 s_i
 =
 \beta\sigma_i-|\mu_i-h|.
-$$
+```
 
 Code correspondence:
 
@@ -120,51 +120,51 @@ over q.
 
 Let posterior covariance across the q-batch be
 
-$$
+```math
 \Sigma_X\in\mathbb R^{q\times q}.
-$$
+```
 
 Boundary-proximity term is
 
-$$
+```math
 D(X)
 =
 \frac1q
 \sum_{i=1}^{q}|\mu_i-h|.
-$$
+```
 
 Implemented score:
 
-$$
+```math
 s(X)
 =-D(X)+\beta U(\Sigma_X).
-$$
+```
 
 Supported uncertainty functions are:
 
 ### Trace
 
-$$
+```math
 U_{\mathrm{trace}}(\Sigma)
 =
 \operatorname{tr}(\Sigma).
-$$
+```
 
 ### Log determinant
 
-$$
+```math
 U_{\log\det}(\Sigma)
 =
 \log\det(\Sigma+\epsilon I).
-$$
+```
 
 ### Log determinant of identity plus covariance
 
-$$
+```math
 U_{\log\det1p}(\Sigma)
 =
 \log\det(I+\Sigma+\epsilon I).
-$$
+```
 
 The log-determinant variants reward joint uncertainty volume and penalize
 redundancy through covariance.
@@ -175,7 +175,7 @@ redundancy through covariance.
 
 The current ICU-style local score is
 
-$$
+```math
 s_i
 =
 \exp\left[
@@ -185,19 +185,19 @@ s_i
 \right)^2
 \right]
 \sigma_i.
-$$
+```
 
 If no bandwidth is supplied,
 
-$$
+```math
 b_i=\sigma_i.
-$$
+```
 
 With fixed `bandwidth`,
 
-$$
+```math
 b_i=b.
-$$
+```
 
 This is a local contour-weighted uncertainty proxy.  It is not a full numerical
 integration of expected global contour-loss reduction.
@@ -208,7 +208,7 @@ integration of expected global contour-loss reduction.
 
 Boundary weight:
 
-$$
+```math
 w_i
 =
 \exp\left[
@@ -217,13 +217,13 @@ w_i
 \frac{\mu_i-h}{\tau}
 \right)^2
 \right].
-$$
+```
 
 Score:
 
-$$
+```math
 s_i=v_iw_i.
-$$
+```
 
 `tau` controls the latent-response width of the boundary neighborhood.
 
@@ -233,7 +233,7 @@ $$
 
 For Gaussian posterior and `mode="above"`, the exact normal-CDF path is
 
-$$
+```math
 s_i
 =
 P(f_i\ge h)
@@ -241,21 +241,21 @@ P(f_i\ge h)
 \Phi\left(
 \frac{\mu_i-h}{\sigma_i}
 \right).
-$$
+```
 
 For `mode="below"`,
 
-$$
+```math
 s_i
 =
 \Phi\left(
 \frac{h-\mu_i}{\sigma_i}
 \right).
-$$
+```
 
 For interval `[l,u]`,
 
-$$
+```math
 s_i
 =
 \Phi\left(
@@ -265,7 +265,7 @@ s_i
 \Phi\left(
 \frac{l-\mu_i}{\sigma_i}
 \right).
-$$
+```
 
 When `temperature` is supplied, the implementation uses smooth sigmoid
 approximations in mean space rather than Gaussian posterior CDFs.
@@ -294,20 +294,20 @@ Reshape:
 
 ### Mean
 
-$$
+```math
 \bar s_i
 =
 \frac1{n_w}
 \sum_{r=1}^{n_w}s_{ir}.
-$$
+```
 
 ### VaR path
 
 Scores are sorted according to `maximize`; the selected tail size is
 
-$$
+```math
 k=\lceil\alpha n_w\rceil.
-$$
+```
 
 The boundary tail element is returned.
 
@@ -331,9 +331,9 @@ The regression base supports:
 
 For transformed points `z_i`, a same-batch term is based on
 
-$$
+```math
 \exp[-\eta\|z_i-z_j\|^2].
-$$
+```
 
 Reference penalties use distance to the nearest transformed reference point.
 The implementation prefers `model.transform_inputs()` so wrapper-specific raw
@@ -359,27 +359,27 @@ The binary acquisition base obtains a latent posterior through
 
 Latent posterior:
 
-$$
+```math
 f_i\mid\mathcal D
 \sim
 \mathcal N(\mu_i,v_i).
-$$
+```
 
 Implemented smoothed score:
 
-$$
+```math
 s_i
 =
 \beta\sigma_i
 -
 \sqrt{(\mu_i-h_f)^2+10^{-8}}.
-$$
+```
 
 Default latent threshold is
 
-$$
+```math
 h_f=0.
-$$
+```
 
 This targets the latent decision boundary, not a probability threshold unless
 the link and threshold correspondence are specified.
@@ -390,18 +390,18 @@ the link and threshold correspondence are specified.
 
 Joint score:
 
-$$
+```math
 s(X)
 =
 \beta U(\Sigma_f)
 -D(\boldsymbol\mu_f,h_f).
-$$
+```
 
 Supported uncertainty modes:
 
 ### `logdet1p`
 
-$$
+```math
 U(\Sigma)
 =
 \frac12
@@ -409,54 +409,54 @@ U(\Sigma)
 \left(
 I+\frac{\Sigma}{\tau^2}
 \right).
-$$
+```
 
 ### `logdet`
 
-$$
+```math
 U(\Sigma)
 =
 \frac12\log\det(\Sigma).
-$$
+```
 
 ### `sqrt_trace`
 
-$$
+```math
 U(\Sigma)
 =
 \sqrt{\operatorname{tr}(\Sigma)}.
-$$
+```
 
 Supported boundary distances:
 
-$$
+```math
 D_{\mathrm{mean\ abs}}
 =
 \frac1q\sum_i|\mu_i-h_f|,
-$$
+```
 
-$$
+```math
 D_{\mathrm{l2\ mean}}
 =
 \sqrt{
 \frac1q\sum_i(\mu_i-h_f)^2
 },
-$$
+```
 
-$$
+```math
 D_{\mathrm{max\ abs}}
 =
 \max_i|\mu_i-h_f|.
-$$
+```
 
 If `marginalize_pending=True`, the implementation evaluates the incremental
 joint score:
 
-$$
+```math
 s(X_{\mathrm{pending}}\cup X)
 -
 s(X_{\mathrm{pending}}).
-$$
+```
 
 This is a joint-score difference, not full fantasy conditioning on pending
 outcomes.
@@ -467,16 +467,16 @@ outcomes.
 
 The probability posterior mean is converted to
 
-$$
+```math
 p_i\in(0,1).
-$$
+```
 
 Implemented score:
 
-$$
+```math
 s_i
 =4p_i(1-p_i).
-$$
+```
 
 This score is one at `p=0.5` and zero at `p=0` or `1`.  It is a normalized
 binary boundary ambiguity score.
@@ -491,7 +491,7 @@ reduction.
 Uses latent mean and variance.  Boundary kernel weight is a Gaussian function
 centered at latent threshold:
 
-$$
+```math
 w_i
 =
 \exp\left[
@@ -500,13 +500,13 @@ w_i
 \frac{\mu_i-h_f}{\tau}
 \right)^2
 \right].
-$$
+```
 
 Score:
 
-$$
+```math
 s_i=v_iw_i.
-$$
+```
 
 ---
 
@@ -514,11 +514,11 @@ $$
 
 For binary probability `p_i`, score is Bernoulli entropy:
 
-$$
+```math
 s_i
 =-p_i\log p_i
 -(1-p_i)\log(1-p_i).
-$$
+```
 
 This is predictive class ambiguity.  It is not the same as latent posterior
 variance or BALD.
@@ -535,18 +535,18 @@ src/bochan/acquisition/multiclass/levelset_estimation/single_output.py
 
 The current family reduces multiclass output to a target probability
 
-$$
+```math
 p_T(x)
 =
 \operatorname{class\_reduce}
 \{p_k(x):k\in T\}.
-$$
+```
 
 The level set is defined in probability space:
 
-$$
+```math
 p_T(x)=h_p.
-$$
+```
 
 The historical class name contains `LatentStraddle`, but the implemented
 single-output score is target-probability Straddle.
@@ -561,9 +561,9 @@ how selected probabilities are combined.
 For an acceptable union of mutually exclusive classes, the probabilistically
 meaningful quantity is
 
-$$
+```math
 p_T=\sum_{k\in T}p_k.
-$$
+```
 
 Mean or max reductions are scores with different interpretations.
 
@@ -573,40 +573,40 @@ Mean or max reductions are scores with different interpretations.
 
 Let posterior target-probability samples be
 
-$$
+```math
 p_i^{(s)}.
-$$
+```
 
 ### `bernoulli`
 
-$$
+```math
 u_i
 =
 \sqrt{p_i(1-p_i)}.
-$$
+```
 
 This treats target-set membership as a binary observation.
 
 ### `posterior`
 
-$$
+```math
 u_i
 =
 \operatorname{Std}_s[p_i^{(s)}].
-$$
+```
 
 This measures posterior variation of the target probability.
 
 ### `combined`
 
-$$
+```math
 u_i
 =
 \sqrt{
 \operatorname{Var}_s[p_i^{(s)}]
 +p_i(1-p_i)
 }.
-$$
+```
 
 This combines probability-function uncertainty with Bernoulli observation
 ambiguity.
@@ -617,11 +617,11 @@ ambiguity.
 
 Implemented probability-space score:
 
-$$
+```math
 s_i
 =
 \beta u_i-|p_i-h_p|.
-$$
+```
 
 `u_i` is selected by `uncertainty_mode`.
 
@@ -634,7 +634,7 @@ should call it target-probability Straddle.
 
 Target-probability samples across q are used to estimate sample covariance:
 
-$$
+```math
 \widehat\Sigma_p
 =
 \frac1{S-1}
@@ -642,16 +642,16 @@ $$
 (\mathbf p^{(s)}-\bar{\mathbf p})
 (\mathbf p^{(s)}-\bar{\mathbf p})^\top
 +\epsilon I.
-$$
+```
 
 Implemented joint score:
 
-$$
+```math
 s(X)
 =
 \beta U(\widehat\Sigma_p)
 -D(\bar{\mathbf p},h_p).
-$$
+```
 
 Uncertainty modes:
 
@@ -675,7 +675,7 @@ binary joint class.
 
 Contour weight:
 
-$$
+```math
 w_i
 =
 \exp\left[
@@ -684,14 +684,14 @@ w_i
 \frac{p_i-h_p}{b}
 \right)^2
 \right].
-$$
+```
 
 Score:
 
-$$
+```math
 s_i
 =u_i^2w_i.
-$$
+```
 
 The uncertainty `u_i` can use Bernoulli, posterior, or combined mode.
 
@@ -701,20 +701,20 @@ The uncertainty `u_i` can use Bernoulli, posterior, or combined mode.
 
 Boundary weight uses exponential absolute distance:
 
-$$
+```math
 w_i
 =
 \exp\left(
 -\frac{|p_i-h_p|}{b}
 \right).
-$$
+```
 
 Score:
 
-$$
+```math
 s_i
 =u_i^2w_i.
-$$
+```
 
 This differs from the Gaussian squared-distance boundary weight used in ICU.
 The actual helper `_boundary_weight` defines the formula.
@@ -725,23 +725,23 @@ The actual helper `_boundary_weight` defines the formula.
 
 Without target-class selection, score is full categorical entropy:
 
-$$
+```math
 s_i
 =-\sum_{k=0}^{K-1}p_{ik}\log p_{ik}.
-$$
+```
 
 With selected target classes, the current code selects/reduces probabilities and
 computes
 
-$$
+```math
 s_i=-p_T\log p_T.
-$$
+```
 
 This selected-class path is not full binary entropy because it omits
 
-$$
+```math
 -(1-p_T)\log(1-p_T).
-$$
+```
 
 That distinction should be considered when interpreting target-specific class
 entropy.
@@ -752,13 +752,13 @@ entropy.
 
 Implemented smooth score:
 
-$$
+```math
 s_i
 =
 \sigma\left(
 \frac{p_i-h_p}{\tau}
 \right).
-$$
+```
 
 This is a smooth probability-space membership score, not posterior probability
 that an uncertain probability function exceeds the threshold.
@@ -816,25 +816,25 @@ Given boundary scores `s_ij`, the implementation supports:
 
 ### Specific boundary
 
-$$
+```math
 s_i=s_{i,j^*}.
-$$
+```
 
 ### Weighted sum
 
-$$
+```math
 s_i
 =
 \sum_jw_js_{ij}.
-$$
+```
 
 ### Mean, max, or min
 
-$$
+```math
 s_i
 =
 \operatorname{reduce}_j(s_{ij}).
-$$
+```
 
 If `target_boundary_idx` is supplied, boundary weights and reduction are
 ignored.
@@ -845,26 +845,26 @@ ignored.
 
 Boundary-specific distance:
 
-$$
+```math
 d_{ij}=|\mu_i-c_j|.
-$$
+```
 
 Boundary score:
 
-$$
+```math
 s_{ij}
 =
 \beta\sigma_i-d_{ij}.
-$$
+```
 
 After boundary selection or reduction, pointwise penalties and optional score
 objective are applied, then q is reduced by sum or mean.
 
 The single-point private variant uses nearest-cutpoint distance:
 
-$$
+```math
 \min_j|\mu_i-c_j|.
-$$
+```
 
 The public q variant supports explicit boundary control.
 
@@ -878,15 +878,15 @@ Joint uncertainty is:
 
 ### Trace
 
-$$
+```math
 U(\Sigma)=\operatorname{tr}(\Sigma).
-$$
+```
 
 ### Logdet mode
 
 The current implementation computes
 
-$$
+```math
 U(\Sigma)
 =
 \frac12
@@ -894,24 +894,24 @@ U(\Sigma)
 \left(
 I+rac{\Sigma}{\tau^2}
 \right).
-$$
+```
 
 Boundary contribution uses negative cutpoint distance, reduced over boundaries
 and averaged over q:
 
-$$
+```math
 B(X)
 =
 \frac1q
 \sum_i
 \operatorname{boundary\_reduce}_j[-|\mu_i-c_j|].
-$$
+```
 
 Final score:
 
-$$
+```math
 s(X)=\beta U(\Sigma)+B(X)-P(X).
-$$
+```
 
 `P(X)` includes configured same-batch, pending, and observed reference
 penalties.
@@ -923,19 +923,19 @@ penalties.
 From predictive class probabilities, define cumulative upper-class probability
 for boundary `j`:
 
-$$
+```math
 g_{ij}
 =P(Y_i\ge j+1)
 =
 \sum_{k=j+1}^{K-1}p_{ik}.
-$$
+```
 
 Boundary ambiguity is
 
-$$
+```math
 u_{ij}
 =4g_{ij}(1-g_{ij}).
-$$
+```
 
 The acquisition selects or reduces `u_ij` across boundaries, subtracts
 pointwise repulsion, applies the score objective, and reduces q.
@@ -949,7 +949,7 @@ contour-loss calculation.
 
 For cutpoint `c_j`, Gaussian boundary kernel weight is
 
-$$
+```math
 w_{ij}
 =
 \exp\left[
@@ -958,13 +958,13 @@ w_{ij}
 \frac{\mu_i-c_j}{\tau}
 \right)^2
 \right].
-$$
+```
 
 Boundary score:
 
-$$
+```math
 s_{ij}=v_iw_{ij}.
-$$
+```
 
 Scores are selected or reduced across boundaries.
 
@@ -977,10 +977,10 @@ The legacy `reduce` argument maps to boundary reduction `sum` or `max`.
 Predictive class probabilities are estimated by latent posterior sampling and
 ordered-logit conversion.  Score is
 
-$$
+```math
 s_i
 =-\sum_{k=0}^{K-1}p_{ik}\log p_{ik}.
-$$
+```
 
 This measures full grade ambiguity.  It does not target a specific cutpoint.
 
@@ -1100,9 +1100,9 @@ replicas of one candidate would repel each other.
 
 Group index is
 
-$$
+```math
 g(r)=\left\lfloor\frac{r}{n_w}\right\rfloor.
-$$
+```
 
 Pairs with the same group are masked from duplicate penalty.
 
@@ -1133,7 +1133,7 @@ scientifically valuable.
 
 Pointwise classes support q reduction such as:
 
-$$
+```math
 \operatorname{mean}_i s_i,
 \qquad
 \sum_i s_i,
@@ -1141,7 +1141,7 @@ $$
 \max_i s_i,
 \qquad
 \min_i s_i
-$$
+```
 
 according to family-specific accepted modes.
 

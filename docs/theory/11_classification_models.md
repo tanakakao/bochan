@@ -22,41 +22,41 @@ The central distinction is:
 
 Let
 
-$$
+```math
 y_i\in\{0,1\}.
-$$
+```
 
 A scalar latent function follows
 
-$$
+```math
 f\sim\mathcal{GP}(m,k).
-$$
+```
 
 The likelihood maps the latent value to class probability:
 
-$$
+```math
 P(Y=1\mid f)=\pi(f),
 \qquad
 P(Y=0\mid f)=1-\pi(f).
-$$
+```
 
 Common inverse links are:
 
 ### Logistic link
 
-$$
+```math
 \pi(f)
 =
 \sigma(f)
 =
 \frac{1}{1+e^{-f}}.
-$$
+```
 
 ### Probit link
 
-$$
+```math
 \pi(f)=\Phi(f).
-$$
+```
 
 GPyTorch's standard `BernoulliLikelihood` uses a probit-style construction.
 Code should therefore not assume that every binary posterior was produced by a
@@ -68,52 +68,52 @@ logistic sigmoid.
 
 For observations
 
-$$
+```math
 \mathbf y=(y_1,\ldots,y_n),
-$$
+```
 
 the likelihood is
 
-$$
+```math
 p(\mathbf y\mid\mathbf f)
 =
 \prod_{i=1}^{n}
 \pi(f_i)^{y_i}
 [1-\pi(f_i)]^{1-y_i}.
-$$
+```
 
 The latent scale is not directly observed.  Its interpretation depends on the
 link:
 
 ### Logistic odds
 
-$$
+```math
 \log
 \frac{P(Y=1\mid f)}{P(Y=0\mid f)}
 =f.
-$$
+```
 
 ### Probit latent-noise interpretation
 
 Introduce
 
-$$
+```math
 z=f+\epsilon,
 \qquad
 \epsilon\sim\mathcal N(0,1),
-$$
+```
 
 and set
 
-$$
+```math
 Y=\mathbf1[z>0].
-$$
+```
 
 Then
 
-$$
+```math
 P(Y=1\mid f)=\Phi(f).
-$$
+```
 
 Latent values from different links are not directly comparable even when their
 probabilities are similar.
@@ -124,22 +124,22 @@ probabilities are similar.
 
 Bayes' theorem gives
 
-$$
+```math
 p(\mathbf f\mid\mathbf y)
 \propto
 p(\mathbf y\mid\mathbf f)
 \mathcal N(\mathbf f;\mathbf m,K).
-$$
+```
 
 The Bernoulli likelihood is not Gaussian, so this posterior is not analytically
 Gaussian and the evidence
 
-$$
+```math
 p(\mathbf y)
 =
 \int
 p(\mathbf y\mid\mathbf f)p(\mathbf f)d\mathbf f
-$$
+```
 
 is not available in closed form.
 
@@ -159,37 +159,37 @@ inference.
 
 Choose inducing inputs
 
-$$
+```math
 Z=(z_1,\ldots,z_M)
-$$
+```
 
 and inducing variables
 
-$$
+```math
 \mathbf u=f(Z).
-$$
+```
 
 Let
 
-$$
+```math
 q(\mathbf u)
 =
 \mathcal N(\mathbf m_u,S_u).
-$$
+```
 
 The induced variational latent distribution is
 
-$$
+```math
 q(\mathbf f)
 =
 \int
 p(\mathbf f\mid\mathbf u)
 q(\mathbf u)d\mathbf u.
-$$
+```
 
 Training maximizes
 
-$$
+```math
 \mathcal L_{\mathrm{ELBO}}
 =
 \sum_{i=1}^{n}
@@ -200,7 +200,7 @@ $$
 -
 \operatorname{KL}
 [q(\mathbf u)\|p(\mathbf u)].
-$$
+```
 
 The expected log likelihood is evaluated through GPyTorch likelihood
 quadrature.  Both GP and variational parameters are optimized.
@@ -221,36 +221,36 @@ Important practical parameters are:
 
 At a test input, the variational latent posterior is approximately Gaussian:
 
-$$
+```math
 q(f_*)
 =
 \mathcal N(\mu_f,\sigma_f^2).
-$$
+```
 
 The predictive class probability is
 
-$$
+```math
 p_*(x)
 =
 P(Y=1\mid x,\mathcal D)
 =
 \int
 \pi(f_*)q(f_*)df_*.
-$$
+```
 
 In general,
 
-$$
+```math
 p_*(x)
 \ne
 \pi(\mu_f).
-$$
+```
 
 The plug-in value ignores latent uncertainty.
 
 For a probit link and Gaussian latent posterior, the integral has the identity
 
-$$
+```math
 \int
 \Phi(f)
 \mathcal N(f;\mu,\sigma^2)df
@@ -258,7 +258,7 @@ $$
 \Phi\left(
 \frac{\mu}{\sqrt{1+\sigma^2}}
 \right).
-$$
+```
 
 The probability moves toward `0.5` as latent uncertainty increases.
 
@@ -268,11 +268,11 @@ The probability moves toward `0.5` as latent uncertainty increases.
 
 ### 6.1 Latent posterior variance
 
-$$
+```math
 V_f(x)
 =
 \operatorname{Var}[f(x)\mid\mathcal D].
-$$
+```
 
 This measures uncertainty in the latent decision function.
 
@@ -280,17 +280,17 @@ This measures uncertainty in the latent decision function.
 
 If latent posterior samples generate
 
-$$
+```math
 p^{(s)}(x)=\pi(f^{(s)}(x)),
-$$
+```
 
 then
 
-$$
+```math
 V_p(x)
 =
 \operatorname{Var}_s[p^{(s)}(x)].
-$$
+```
 
 This measures posterior uncertainty in the class probability.
 
@@ -298,9 +298,9 @@ This measures posterior uncertainty in the class probability.
 
 For fixed predictive probability `p`,
 
-$$
+```math
 V_Y(x)=p(x)[1-p(x)].
-$$
+```
 
 This is randomness of a future binary label.  It is maximal at `p=0.5` even if
 `p` is known exactly.
@@ -346,9 +346,9 @@ latent_posterior = model.latent_posterior(X)
 
 Its mean is probability of class `1`:
 
-$$
+```math
 \operatorname{mean}=P(Y=1\mid x,\mathcal D).
-$$
+```
 
 Its variance is based on the predictive Bernoulli distribution, with optional
 engineering noise addition where configured.
@@ -389,29 +389,29 @@ src/bochan/posteriors/bernoulli.py
 
 For a symmetric monotone link,
 
-$$
+```math
 f(x)=0
-$$
+```
 
 corresponds to
 
-$$
+```math
 P(Y=1\mid f)=0.5.
-$$
+```
 
 For a probability threshold `tau_p`, the link-level threshold is
 
-$$
+```math
 tau_f=\pi^{-1}(tau_p).
-$$
+```
 
 However, the marginal predictive probability
 
-$$
+```math
 P(Y=1\mid x,\mathcal D)
 =
 \int\pi(f)q(f)df
-$$
+```
 
 also depends on latent variance.  Consequently, setting the posterior latent
 mean equal to `pi^{-1}(tau_p)` is not always exactly equivalent to a marginal
@@ -442,28 +442,28 @@ training can change probability calibration and should be evaluated explicitly.
 
 A calibrated binary model satisfies approximately
 
-$$
+```math
 P(Y=1\mid p(X)=r)=r.
-$$
+```
 
 Useful metrics include:
 
 ### Brier score
 
-$$
+```math
 \operatorname{BS}
 =
 \frac1n
 \sum_i(p_i-y_i)^2.
-$$
+```
 
 ### Log loss
 
-$$
+```math
 -rac1n
 \sum_i
 [y_i\log p_i+(1-y_i)\log(1-p_i)].
-$$
+```
 
 ### Reliability diagram
 
@@ -482,30 +482,30 @@ held-out data may not transfer perfectly to acquisition-selected regions.
 
 Let
 
-$$
+```math
 y\in\{0,1,\ldots,K-1\}.
-$$
+```
 
 Introduce class-wise latent functions
 
-$$
+```math
 f_k(x),
 \qquad k=0,\ldots,K-1.
-$$
+```
 
 Let
 
-$$
+```math
 \mathbf f(x)
 =[f_0(x),\ldots,f_{K-1}(x)].
-$$
+```
 
 A categorical likelihood uses class probabilities
 
-$$
+```math
 p_k(x)
 =P(Y=k\mid\mathbf f(x)).
-$$
+```
 
 ---
 
@@ -513,12 +513,12 @@ $$
 
 The softmax model is
 
-$$
+```math
 p_k
 =
 \frac{\exp(f_k/T)}
 {\sum_{j=0}^{K-1}\exp(f_j/T)},
-$$
+```
 
 where `T>0` is temperature.
 
@@ -526,11 +526,11 @@ where `T>0` is temperature.
 
 For any scalar `a`,
 
-$$
+```math
 \operatorname{softmax}(\mathbf f+a\mathbf1)
 =
 \operatorname{softmax}(\mathbf f).
-$$
+```
 
 Only relative logits are identifiable.  Absolute class-wise latent means do not
 have independent interpretation.
@@ -550,9 +550,9 @@ separate calibration data.
 The current multiclass base model uses one class-batched latent SVGP.
 Conceptually,
 
-$$
+```math
 f_k\sim\mathcal{GP}(m_k,k_k).
-$$
+```
 
 The inducing-point and kernel batch shape is
 
@@ -562,7 +562,7 @@ The inducing-point and kernel batch shape is
 
 and the variational objective is
 
-$$
+```math
 \mathcal L
 =
 \sum_i
@@ -573,7 +573,7 @@ $$
 -
 \sum_k
 \operatorname{KL}[q(\mathbf u_k)\|p(\mathbf u_k)].
-$$
+```
 
 With the current independent class-batch kernel construction, dependence among
 class probabilities arises through the softmax normalization, while latent GP
@@ -666,7 +666,7 @@ src/bochan/models/components/multiclass.py
 
 The predictive probability requires integration over latent logits:
 
-$$
+```math
 p_k(x)
 =
 \mathbb E_{q(\mathbf f(x))}
@@ -674,14 +674,14 @@ p_k(x)
 rac{e^{f_k/T}}
 {\sum_je^{f_j/T}}
 \right].
-$$
+```
 
 This is not generally equal to
 
-$$
+```math
 rac{e^{\mathbb E[f_k]/T}}
 {\sum_je^{\mathbb E[f_j]/T}}.
-$$
+```
 
 `MulticlassProbsPosterior` uses the latent posterior to provide probability
 moments or sampling behavior suitable for current acquisitions.  Its exact
@@ -693,32 +693,32 @@ approximation should be interpreted from the implementation.
 
 ### Predictive entropy
 
-$$
+```math
 H(Y\mid x,\mathcal D)
 =-\sum_kp_k\log p_k.
-$$
+```
 
 ### Top-two margin
 
 Let
 
-$$
+```math
 p_{(1)}\ge p_{(2)}.
-$$
+```
 
 Margin is
 
-$$
+```math
 p_{(1)}-p_{(2)}.
-$$
+```
 
 ### Probability covariance
 
 Posterior samples of the probability vector yield
 
-$$
+```math
 \operatorname{Cov}[\mathbf p(x)].
-$$
+```
 
 Because probabilities sum to one, their covariance is singular in the full
 `K`-dimensional space.
@@ -727,11 +727,11 @@ Because probabilities sum to one, their covariance is singular in the full
 
 For one-hot label vector `e_Y`,
 
-$$
+```math
 \operatorname{Cov}(e_Y\mid\mathbf p)
 =
 \operatorname{diag}(\mathbf p)-\mathbf p\mathbf p^\top.
-$$
+```
 
 This is future-label randomness, not posterior uncertainty in `p`.
 
@@ -741,17 +741,17 @@ This is future-label randomness, not posterior uncertainty in `p`.
 
 A target class probability is
 
-$$
+```math
 p_{k^*}(x).
-$$
+```
 
 For acceptable class set `A`, union probability is
 
-$$
+```math
 P(Y\in A\mid x)
 =
 \sum_{k\in A}p_k(x).
-$$
+```
 
 This sum is probabilistically meaningful because classes are mutually
 exclusive.  A mean, maximum, or minimum over selected class probabilities is a
@@ -768,11 +768,11 @@ likelihood.
 For continuous dimensions `C` and categorical dimensions `G`, current mixed
 kernels follow a pattern such as
 
-$$
+```math
 k(x,x')
 =
 k_C+k_G+k_C'k_G'.
-$$
+```
 
 The implementation:
 
@@ -818,21 +818,21 @@ requires a precise generative meaning, such as:
 
 ### Label corruption
 
-$$
+```math
 P(Y_{\mathrm{obs}}=1)
 =[1-\rho(x)]p(x)+\rho(x)[1-p(x)].
-$$
+```
 
 ### Input-dependent temperature
 
-$$
+```math
 p_k
 =
 \operatorname{softmax}
 \left(
 \frac{f_k}{T(x)}
 \right).
-$$
+```
 
 ### External probability-estimation uncertainty
 

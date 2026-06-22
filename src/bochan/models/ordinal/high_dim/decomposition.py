@@ -548,7 +548,7 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        num_classes: int,
+        num_classes: Optional[int] = None,
         cat_dims: Sequence[int] = (),
         category_counts: Optional[dict[int, int]] = None,
         cont_kernel: str = "matern52",
@@ -589,7 +589,7 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
             self.pca.fit(self.preproject_train_input[..., self.cont_dims])
         self._projected_train_X = self._project_preprojected_inputs(self.preproject_train_input).detach().clone()
 
-        self.num_classes = int(num_classes)
+        resolved_num_classes = None if num_classes is None else int(num_classes)
         self.cont_kernel = str(cont_kernel)
         self.inducing_points_num = int(inducing_points_num)
         self.learn_inducing_locations = bool(learn_inducing_locations)
@@ -604,7 +604,7 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         self.base_model = base_model or OrdinalMixedGPModel(
             train_X=self.projected_train_input,
             train_Y=train_Y,
-            num_classes=self.num_classes,
+            num_classes=resolved_num_classes,
             cat_dims=remapped_cat_dims,
             category_counts=self._make_remapped_counts(),
             cont_kernel=self.cont_kernel,
@@ -617,6 +617,7 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
             conditioning_lr=self.conditioning_lr,
             conditioning_batch_size=self.conditioning_batch_size,
         )
+        self.num_classes = int(self.base_model.num_classes)
 
     def _project_preprojected_inputs(self, X: Tensor) -> Tensor:
         x_cont = self.pca.transform(X[..., self.cont_dims])
@@ -653,7 +654,7 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        num_classes: int,
+        num_classes: Optional[int] = None,
         cat_dims: Sequence[int] = (),
         category_counts: Optional[dict[int, int]] = None,
         cont_kernel: str = "matern52",
@@ -696,7 +697,7 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
             self.rembo.fit(self.preproject_train_input[..., self.cont_dims])
         self._projected_train_X = self._project_preprojected_inputs(self.preproject_train_input).detach().clone()
 
-        self.num_classes = int(num_classes)
+        resolved_num_classes = None if num_classes is None else int(num_classes)
         self.cont_kernel = str(cont_kernel)
         self.inducing_points_num = int(inducing_points_num)
         self.learn_inducing_locations = bool(learn_inducing_locations)
@@ -711,7 +712,7 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         self.base_model = base_model or OrdinalMixedGPModel(
             train_X=self.projected_train_input,
             train_Y=train_Y,
-            num_classes=self.num_classes,
+            num_classes=resolved_num_classes,
             cat_dims=remapped_cat_dims,
             category_counts=self._make_remapped_counts(),
             cont_kernel=self.cont_kernel,
@@ -724,6 +725,7 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
             conditioning_lr=self.conditioning_lr,
             conditioning_batch_size=self.conditioning_batch_size,
         )
+        self.num_classes = int(self.base_model.num_classes)
 
     def _project_preprojected_inputs(self, X: Tensor) -> Tensor:
         x_cont = self.rembo.transform(X[..., self.cont_dims])

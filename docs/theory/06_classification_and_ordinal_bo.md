@@ -312,7 +312,7 @@ I(x)
 Expected Improvement is
 
 ```math
-\operatorname{EI}_U(x)
+\mathrm{EI}_U(x)
 =
 \mathbb E[I(x)\mid\mathcal D].
 ```
@@ -321,9 +321,9 @@ The expectation must account for uncertainty in transformed utility.  In
 general,
 
 ```math
-\operatorname{EI}(\mathbb E[U])
+\mathrm{EI}(\mathbb E[U])
 \ne
-\mathbb E[\operatorname{I}(U)].
+\mathbb E[\mathrm{I}(U)].
 ```
 
 A deterministic EI formula applied only to posterior mean probability ignores
@@ -354,7 +354,7 @@ chosen utility scale.
 A generic transformed UCB is
 
 ```math
-\operatorname{UCB}_U(x)
+\mathrm{UCB}_U(x)
 =
 \mu_U(x)+\lambda\sigma_U(x).
 ```
@@ -368,7 +368,7 @@ If posterior samples produce probabilities `p^{(s)}`, then
 ```math
 \sigma_p^2
 =
-\operatorname{Var}_s[p^{(s)}].
+\mathrm{Var}_s[p^{(s)}].
 ```
 
 ### Bernoulli observation variance
@@ -385,7 +385,7 @@ function.
 Given fixed class probabilities,
 
 ```math
-\operatorname{Var}(u_Y\mid x)
+\mathrm{Var}(u_Y\mid x)
 =
 \sum_kp_k(u_k-U)^2.
 ```
@@ -402,7 +402,7 @@ A class-specific UCB implementation must state which variance it uses.
 For transformed utility threshold `tau`,
 
 ```math
-\operatorname{PI}_U(x)
+\mathrm{PI}_U(x)
 =
 P(U(x)\ge\tau\mid\mathcal D).
 ```
@@ -522,13 +522,13 @@ Possible risk summaries include:
 ### Lower quantile
 
 ```math
-\operatorname{VaR}_\alpha(U).
+\mathrm{VaR}_\alpha(U).
 ```
 
 ### Lower-tail CVaR
 
 ```math
-\operatorname{CVaR}_\alpha(U)
+\mathrm{CVaR}_\alpha(U)
 =
 \mathbb E[U\mid U\text{ is in the lower tail}].
 ```
@@ -564,7 +564,7 @@ P_\delta(p(Y=1\mid x+\delta)\ge\gamma),
 ```
 
 ```math
-\operatorname{CVaR}_\alpha
+\mathrm{CVaR}_\alpha
 [U(x+\delta)].
 ```
 

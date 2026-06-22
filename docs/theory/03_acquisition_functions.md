@@ -121,7 +121,7 @@ For maximization, define improvement threshold
 where `xi>=0` is an optional exploration margin.  Probability of Improvement is
 
 ```math
-\operatorname{PI}(x)
+\mathrm{PI}(x)
 =
 P(f(x)\ge\tau\mid\mathcal D).
 ```
@@ -133,7 +133,7 @@ f(x)\sim\mathcal N(\mu(x),\sigma^2(x)),
 ```
 
 ```math
-\operatorname{PI}(x)
+\mathrm{PI}(x)
 =
 \Phi\left(
 \frac{\mu(x)-\tau}{\sigma(x)}
@@ -159,7 +159,7 @@ I(x)=\max(f(x)-f_{\mathrm{best}},0).
 Expected Improvement is
 
 ```math
-\operatorname{EI}(x)
+\mathrm{EI}(x)
 =
 \mathbb E[I(x)\mid\mathcal D].
 ```
@@ -171,7 +171,7 @@ z=rac{\mu-f_{\mathrm{best}}}{\sigma},
 ```
 
 ```math
-\operatorname{EI}(x)
+\mathrm{EI}(x)
 =
 (\mu-f_{\mathrm{best}})\Phi(z)
 +
@@ -218,7 +218,7 @@ are uncertain under noisy observations.
 A conceptual qNEI definition is
 
 ```math
-\operatorname{qNEI}(X)
+\mathrm{qNEI}(X)
 =
 \mathbb E
 \left[
@@ -251,7 +251,7 @@ from fixed best observation to a posterior-distributed latent baseline.
 For maximization, a common UCB form is
 
 ```math
-\operatorname{UCB}(x)
+\mathrm{UCB}(x)
 =
 \mu(x)+\sqrt\beta\,\sigma(x).
 ```
@@ -262,7 +262,7 @@ than `sqrt(beta)`.  Always check the concrete class definition.
 For minimization, use
 
 ```math
-\operatorname{LCB}(x)
+\mathrm{LCB}(x)
 =
 \mu(x)-\sqrt\beta\,\sigma(x)
 ```
@@ -328,7 +328,7 @@ M_t=\max_{x'}\mu_t(x').
 Then a one-step KG concept is
 
 ```math
-\operatorname{KG}(x)
+\mathrm{KG}(x)
 =
 \mathbb E_{y_x}
 \left[

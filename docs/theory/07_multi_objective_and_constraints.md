@@ -130,7 +130,7 @@ chosen worse than the objective region of interest.  For a nondominated set
 `P`, dominated hypervolume is
 
 ```math
-\operatorname{HV}(P;\mathbf r)
+\mathrm{HV}(P;\mathbf r)
 =
 \lambda_M\left(
 \bigcup_{\mathbf y\in P}
@@ -143,34 +143,34 @@ where `lambda_M` is `M`-dimensional volume.
 For a candidate outcome `y`, hypervolume improvement is
 
 ```math
-\operatorname{HVI}(\mathbf y)
+\mathrm{HVI}(\mathbf y)
 =
-\operatorname{HV}(P\cup\{\mathbf y\};\mathbf r)
+\mathrm{HV}(P\cup\{\mathbf y\};\mathbf r)
 -
-\operatorname{HV}(P;\mathbf r).
+\mathrm{HV}(P;\mathbf r).
 ```
 
 Expected Hypervolume Improvement is
 
 ```math
-\operatorname{EHVI}(x)
+\mathrm{EHVI}(x)
 =
 \mathbb E
 [
-\operatorname{HVI}(\mathbf f(x))
+\mathrm{HVI}(\mathbf f(x))
 ].
 ```
 
 For q-batch candidates,
 
 ```math
-\operatorname{qEHVI}(X)
+\mathrm{qEHVI}(X)
 =
 \mathbb E
 \left[
-\operatorname{HV}(P\cup\mathbf f(X);\mathbf r)
+\mathrm{HV}(P\cup\mathbf f(X);\mathbf r)
 -
-\operatorname{HV}(P;\mathbf r)
+\mathrm{HV}(P;\mathbf r)
 \right].
 ```
 
@@ -185,14 +185,14 @@ points.
 Conceptually,
 
 ```math
-\operatorname{qNEHVI}(X)
+\mathrm{qNEHVI}(X)
 =
 \mathbb E
 \left[
-\operatorname{HV}
+\mathrm{HV}
 (P(\mathbf f_B)\cup\mathbf f_X;\mathbf r)
 -
-\operatorname{HV}
+\mathrm{HV}
 (P(\mathbf f_B);\mathbf r)
 \right],
 ```

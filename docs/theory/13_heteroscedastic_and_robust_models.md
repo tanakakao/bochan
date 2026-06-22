@@ -20,9 +20,9 @@ Y=f(X)+\varepsilon,
 the predictive variance may be decomposed conceptually as
 
 ```math
-\operatorname{Var}(Y_*\mid\mathcal D)
+\mathrm{Var}(Y_*\mid\mathcal D)
 =
-\underbrace{\operatorname{Var}(f_*\mid\mathcal D)}_{\text{epistemic}}
+\underbrace{\mathrm{Var}(f_*\mid\mathcal D)}_{\text{epistemic}}
 +
 \underbrace{\mathbb E[\sigma_n^2(X_*)\mid\mathcal D]}_{\text{aleatoric}}
 +
@@ -55,7 +55,7 @@ y_i\mid f_i\sim\mathcal N(f_i,s_i^2).
 The covariance of the observations is
 
 ```math
-K_y=K_f+\operatorname{diag}(s_1^2,\ldots,s_n^2).
+K_y=K_f+\mathrm{diag}(s_1^2,\ldots,s_n^2).
 ```
 
 This is appropriate when variances come from:
@@ -97,7 +97,7 @@ g\sim\mathcal{GP}(m_g,k_g),
 or
 
 ```math
-\sigma^2(x)=\operatorname{softplus}(g(x))+\epsilon.
+\sigma^2(x)=\mathrm{softplus}(g(x))+\epsilon.
 ```
 
 The full posterior is
@@ -152,9 +152,9 @@ For a test point,
 ```
 
 ```math
-\operatorname{Var}(Y\mid x,\mathcal D)
+\mathrm{Var}(Y\mid x,\mathcal D)
 \approx
-\operatorname{Var}(f(x)\mid\mathcal D)
+\mathrm{Var}(f(x)\mid\mathcal D)
 +
 \hat\sigma^2(x).
 ```
@@ -226,13 +226,13 @@ replicate design should be configured separately.
 Classification already has a non-Gaussian likelihood.  For binary data,
 
 ```math
-Y\mid f\sim\operatorname{Bernoulli}(\pi(f)).
+Y\mid f\sim\mathrm{Bernoulli}(\pi(f)).
 ```
 
 The conditional observation variance is
 
 ```math
-\operatorname{Var}(Y\mid f)=\pi(f)[1-\pi(f)].
+\mathrm{Var}(Y\mid f)=\pi(f)[1-\pi(f)].
 ```
 
 An additional `noise_model` needs a precise interpretation.
@@ -376,7 +376,7 @@ Sparse outlier correction is one robustness strategy.  Another is a heavy-tailed
 likelihood, for example
 
 ```math
-y_i\mid f_i\sim\operatorname{StudentT}(\nu,f_i,\sigma).
+y_i\mid f_i\sim\mathrm{StudentT}(\nu,f_i,\sigma).
 ```
 
 A Student-t likelihood downweights large residuals continuously, whereas sparse
@@ -451,7 +451,7 @@ metrics are:
 ### Mean prediction
 
 ```math
-\operatorname{RMSE}
+\mathrm{RMSE}
 =
 \sqrt{\frac1n\sum_i(y_i-\hat\mu_i)^2}.
 ```
@@ -459,7 +459,7 @@ metrics are:
 ### Predictive log likelihood
 
 ```math
-\operatorname{NLPD}
+\mathrm{NLPD}
 =-\frac1n\sum_i\log p(y_i\mid x_i,\mathcal D).
 ```
 

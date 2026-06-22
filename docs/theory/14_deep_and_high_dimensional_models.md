@@ -135,7 +135,7 @@ objective is
 \mathbb E_{q(f_L)}[\log p(\mathbf y\mid f_L)]
 -
 \sum_{l=1}^L
-\operatorname{KL}[q(u_l)\|p(u_l)].
+\mathrm{KL}[q(u_l)\|p(u_l)].
 ```
 
 The expected log likelihood is estimated using samples propagated through the
@@ -247,11 +247,11 @@ SAAS assumes that only a small number of coordinate axes are important.  In a
 simplified form, inverse length scales obey a global-local shrinkage prior:
 
 ```math
-\tau\sim\operatorname{HalfCauchy}(\beta),
+\tau\sim\mathrm{HalfCauchy}(\beta),
 ```
 
 ```math
-\rho_j=\ell_j^{-1}\sim\operatorname{HalfCauchy}(\tau).
+\rho_j=\ell_j^{-1}\sim\mathrm{HalfCauchy}(\tau).
 ```
 
 A small global scale shrinks most inverse length scales toward zero, equivalent
@@ -384,7 +384,7 @@ A VAE encoder defines
 q_\phi(z\mid x)
 =
 \mathcal N(\mu_\phi(x),
-\operatorname{diag}(\sigma_\phi^2(x))).
+\mathrm{diag}(\sigma_\phi^2(x))).
 ```
 
 Using reparameterization,
@@ -413,7 +413,7 @@ The `bochan` VAE-GP loss combines
 \lambda_{\mathrm{rec}}\|x-\hat x\|^2
 +
 \lambda_{\mathrm{KL}}
-\operatorname{KL}[q_\phi(z\mid x)\|p(z)].
+\mathrm{KL}[q_\phi(z\mid x)\|p(z)].
 ```
 
 The GP and acquisition use the deterministic encoder mean

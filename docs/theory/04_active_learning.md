@@ -209,9 +209,9 @@ Predictive uncertainty can be decomposed conceptually into:
 For Gaussian regression with known noise,
 
 ```math
-\operatorname{Var}(Y\mid x,\mathcal D)
+\mathrm{Var}(Y\mid x,\mathcal D)
 =
-\underbrace{\operatorname{Var}(f(x)\mid\mathcal D)}_{\text{epistemic}}
+\underbrace{\mathrm{Var}(f(x)\mid\mathcal D)}_{\text{epistemic}}
 +
 \underbrace{\sigma_n^2(x)}_{\text{aleatoric}}.
 ```
@@ -243,7 +243,7 @@ Let `Theta` denote the latent function, model parameters, or another learning
 target.  Then
 
 ```math
-\operatorname{BALD}(x)
+\mathrm{BALD}(x)
 =
 I(Y;\Theta\mid x,\mathcal D).
 ```
@@ -288,7 +288,7 @@ and define
 Then
 
 ```math
-\widehat{\operatorname{BALD}}
+\widehat{\mathrm{BALD}}
 =
 H(\bar p)
 -
@@ -304,7 +304,7 @@ For sampled class-probability vectors
 ```
 
 ```math
-\widehat{\operatorname{BALD}}
+\widehat{\mathrm{BALD}}
 =
 H\left(\frac1S\sum_s\mathbf p_s\right)
 -
@@ -365,7 +365,7 @@ p^{(s)}(x).
 Probability-function uncertainty is
 
 ```math
-\operatorname{Var}_s[p^{(s)}(x)].
+\mathrm{Var}_s[p^{(s)}(x)].
 ```
 
 This differs from Bernoulli observation variance
@@ -395,7 +395,7 @@ region.
 For reference measure `nu`, current integrated variance is
 
 ```math
-\operatorname{IPV}_t
+\mathrm{IPV}_t
 =
 \int_{\mathcal X}
 \sigma_t^2(z)
@@ -405,12 +405,12 @@ For reference measure `nu`, current integrated variance is
 The ideal one-step reduction from observing at `x` is
 
 ```math
-\Delta\operatorname{IPV}(x)
+\Delta\mathrm{IPV}(x)
 =
-\operatorname{IPV}_t
+\mathrm{IPV}_t
 -
 \mathbb E_{y_x}
-[\operatorname{IPV}_{t+1}\mid x,y_x].
+[\mathrm{IPV}_{t+1}\mid x,y_x].
 ```
 
 For an exact noiseless GP, posterior covariance update does not depend on the
@@ -428,7 +428,7 @@ observed value, and variance reduction can be computed from covariance:
 Therefore
 
 ```math
-\Delta\operatorname{IPV}(x)
+\Delta\mathrm{IPV}(x)
 =
 \int
 \frac{k_t(z,x)^2}
@@ -444,7 +444,7 @@ may be required.
 Some APIs maximize
 
 ```math
--\operatorname{IPV}_{t+1}
+-\mathrm{IPV}_{t+1}
 ```
 
 rather than directly maximizing variance reduction.  The sign and baseline
@@ -479,7 +479,7 @@ Useful criteria include:
 ### Latent posterior variance
 
 ```math
-\alpha(x)=\operatorname{Var}[f(x)\mid\mathcal D].
+\alpha(x)=\mathrm{Var}[f(x)\mid\mathcal D].
 ```
 
 ### Predictive entropy
@@ -512,7 +512,7 @@ Values global covariance reduction over a reference set.
 For scientific weight `w(z)`,
 
 ```math
-\operatorname{IPV}_w
+\mathrm{IPV}_w
 =
 \int w(z)\sigma^2(z)d\nu(z).
 ```
@@ -548,11 +548,11 @@ The class dimension must be retained until a meaningful reduction is applied.
 Possible reductions are:
 
 ```math
-\sum_k\operatorname{Var}[p_k],
+\sum_k\mathrm{Var}[p_k],
 ```
 
 ```math
-\max_k\operatorname{Var}[p_k],
+\max_k\mathrm{Var}[p_k],
 ```
 
 or uncertainty in a target set of classes.
@@ -585,7 +585,7 @@ For class utilities `u_k`,
 ```
 
 ```math
-\operatorname{Var}(U\mid x)
+\mathrm{Var}(U\mid x)
 =
 \sum_kp_k(x)[u_k-\bar u(x)]^2.
 ```

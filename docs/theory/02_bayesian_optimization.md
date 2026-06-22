@@ -443,7 +443,7 @@ future decisions after one or more hypothetical observations.
 The one-step KG concept is
 
 ```math
-\operatorname{KG}(x)
+\mathrm{KG}(x)
 =
 \mathbb E_{y_x}
 \left[

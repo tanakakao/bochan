@@ -1278,22 +1278,22 @@ src/bochan/api/acquisition_registry.py
 
 | Class | Space | Core score |
 |---|---|---|
-| `qRegressionStraddle` | regression posterior | \(\beta\sigma-|\mu-h|\) |
-| `qRegressionJointStraddle` | regression joint covariance | \(-\operatorname{mean}|\mu-h|+\beta U(\Sigma)\) |
-| `qRegressionICU` | regression posterior | Gaussian contour weight times \(\sigma\) |
+| `qRegressionStraddle` | regression posterior | $\beta\sigma-|\mu-h|$ |
+| `qRegressionJointStraddle` | regression joint covariance | $-\operatorname{mean}|\mu-h|+\beta U(\Sigma)$ |
+| `qRegressionICU` | regression posterior | Gaussian contour weight times $\sigma$ |
 | `qRegressionBoundaryVariance` | regression posterior | boundary weight times variance |
 | `qRegressionProbabilityOfExceedance` | response membership | Gaussian CDF or sigmoid mode |
-| `qBinaryLatentStraddleAcquisition` | binary latent | smoothed \(\beta\sigma-|\mu-h_f|\) |
-| `qBinaryICUAcquisition` | binary probability | \(4p(1-p)\) |
+| `qBinaryLatentStraddleAcquisition` | binary latent | smoothed $\beta\sigma-|\mu-h_f|$ |
+| `qBinaryICUAcquisition` | binary probability | $4p(1-p)$ |
 | `qBinaryBoundaryVarianceAcquisition` | binary latent | boundary weight times latent variance |
 | `qBinaryClassEntropyAcquisition` | binary probability | Bernoulli entropy |
-| `qMulticlassLatentStraddleAcquisition` | target probability | \(\beta u-|p_T-h_p|\) |
-| `qMulticlassICUAcquisition` | target probability | \(u^2\) times Gaussian contour weight |
-| `qMulticlassBoundaryVarianceAcquisition` | target probability | \(u^2\) times exponential boundary weight |
+| `qMulticlassLatentStraddleAcquisition` | target probability | $\beta u-|p_T-h_p|$ |
+| `qMulticlassICUAcquisition` | target probability | $u^2$ times Gaussian contour weight |
+| `qMulticlassBoundaryVarianceAcquisition` | target probability | $u^2$ times exponential boundary weight |
 | `qMulticlassClassEntropyAcquisition` | class probabilities | categorical or selected-class entropy score |
 | `qMulticlassProbabilityOfExceedance` | target probability | sigmoid threshold score |
-| `qOrdinalLatentStraddleAcquisition` | ordinal latent/cutpoints | \(\beta\sigma-|\mu-c_j|\) |
-| `qOrdinalICUAcquisition` | cumulative ordinal probability | \(4g_j(1-g_j)\) |
+| `qOrdinalLatentStraddleAcquisition` | ordinal latent/cutpoints | $\beta\sigma-|\mu-c_j|$ |
+| `qOrdinalICUAcquisition` | cumulative ordinal probability | $4g_j(1-g_j)$ |
 | `qOrdinalBoundaryVarianceAcquisition` | ordinal latent/cutpoints | variance times cutpoint kernel weight |
 | `qOrdinalClassEntropyAcquisition` | ordinal class probability | categorical entropy |
 

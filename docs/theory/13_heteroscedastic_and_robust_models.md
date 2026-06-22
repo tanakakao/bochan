@@ -39,14 +39,14 @@ $$
 \widetilde X=X+\Delta,
 $$
 
-then variability in \(f(\widetilde X)\) is induced by uncertain inputs even if
+then variability in $f(\widetilde X)$ is induced by uncertain inputs even if
 the observation likelihood is noiseless.
 
 ---
 
 ## 2. Known heteroscedastic observation variance
 
-When each experiment has a known measurement variance \(s_i^2\), use
+When each experiment has a known measurement variance $s_i^2$, use
 
 $$
 y_i\mid f_i\sim\mathcal N(f_i,s_i^2).
@@ -115,7 +115,7 @@ which is non-conjugate because the covariance depends on the latent process
 
 A common practical approximation is:
 
-1. fit a mean GP \(\hat f\);
+1. fit a mean GP $\hat f$;
 2. compute residuals
 $$
    r_i=y_i-\hat f(x_i);
@@ -124,7 +124,7 @@ $$
 $$
    z_i=\log(r_i^2+\epsilon);
 $$
-4. fit a second GP to \((x_i,z_i)\);
+4. fit a second GP to $(x_i,z_i)$;
 5. predict
 $$
    \hat\sigma^2(x)=\exp(\mu_g(x)).
@@ -239,7 +239,7 @@ An additional `noise_model` needs a precise interpretation.
 
 ### 5.1 Label-flip model
 
-Let \(\rho(x)\in[0,0.5)\) be the probability that a label is flipped.  Then
+Let $\rho(x)\in[0,0.5)$ be the probability that a label is flipped.  Then
 
 $$
 P(Y_{\mathrm{obs}}=1\mid f,x)
@@ -337,7 +337,7 @@ $$
 y_i=f(x_i)+o_i+\varepsilon_i,
 $$
 
-where the outlier effects \(o_i\) are sparse.
+where the outlier effects $o_i$ are sparse.
 
 A sparsity-inducing prior or iterative pursuit mechanism prefers
 
@@ -345,7 +345,7 @@ $$
 \|\mathbf o\|_0\ll n
 $$
 
-or a continuous relaxation such as an \(\ell_1\)-type penalty.
+or a continuous relaxation such as an $\ell_1$-type penalty.
 
 This is different from ARD or SAAS:
 

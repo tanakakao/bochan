@@ -336,21 +336,21 @@ behavior.
 
 | Symbol | Meaning |
 |---|---|
-| \(n\) | number of observations |
-| \(d\) | input dimension |
-| \(q\) | number of candidates selected jointly |
-| \(m\) | number of outputs or objective dimensions |
-| \(K\) | number of classes |
-| \(n_w\) | number of input-perturbation samples per nominal candidate |
-| \(X\) | candidate tensor or design matrix |
-| \(\mathcal D_t\) | observed data at iteration `t` |
-| \(f\) | latent function |
-| \(y\) | observed response |
-| \(u\) | utility or objective value |
-| \(k\) | covariance kernel |
-| \(\mu,\Sigma\) | posterior mean and covariance |
-| \(\alpha\) | acquisition function; also a risk level when context is explicit |
-| \(h\) | level-set threshold |
+| $n$ | number of observations |
+| $d$ | input dimension |
+| $q$ | number of candidates selected jointly |
+| $m$ | number of outputs or objective dimensions |
+| $K$ | number of classes |
+| $n_w$ | number of input-perturbation samples per nominal candidate |
+| $X$ | candidate tensor or design matrix |
+| $\mathcal D_t$ | observed data at iteration `t` |
+| $f$ | latent function |
+| $y$ | observed response |
+| $u$ | utility or objective value |
+| $k$ | covariance kernel |
+| $\mu,\Sigma$ | posterior mean and covariance |
+| $\alpha$ | acquisition function; also a risk level when context is explicit |
+| $h$ | level-set threshold |
 
 When the same Greek symbol is common in two fields, the chapter states the
 local meaning explicitly.  For example, `alpha` can denote an acquisition

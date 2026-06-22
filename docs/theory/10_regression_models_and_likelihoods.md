@@ -30,11 +30,11 @@ The response support determines plausible likelihoods.
 
 | Response support | Typical model |
 |---|---|
-| \(\mathbb R\) | Gaussian regression |
-| \((0,1)\) | Beta regression |
-| \((0,\infty)\) continuous | Gamma regression |
-| \(\{0,1,2,\ldots\}\) | Poisson or Negative-Binomial regression |
-| bounded interval \((a,b)\) | transformed Beta or bounded likelihood |
+| $\mathbb R$ | Gaussian regression |
+| $(0,1)$ | Beta regression |
+| $(0,\infty)$ continuous | Gamma regression |
+| $\{0,1,2,\ldots\}$ | Poisson or Negative-Binomial regression |
+| bounded interval $(a,b)$ | transformed Beta or bounded likelihood |
 | heavy-tailed real response | Student-t or robust likelihood |
 
 A Gaussian likelihood can still be a useful approximation after transformation,
@@ -540,8 +540,8 @@ A model may use:
 | Property | Poisson | Negative Binomial |
 |---|---|---|
 | Support | nonnegative integers | nonnegative integers |
-| Mean | \(\lambda\) | \(\mu\) |
-| Variance | \(\lambda\) | \(\mu+\mu^2/r\) |
+| Mean | $\lambda$ | $\mu$ |
+| Variance | $\lambda$ | $\mu+\mu^2/r$ |
 | Overdispersion | not represented | represented |
 | Complexity | lower | higher |
 | Dispersion identifiability | not applicable | can be weak with few data |

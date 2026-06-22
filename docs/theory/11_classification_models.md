@@ -198,7 +198,7 @@ Training maximizes
 \log p(y_i\mid f_i)
 ]
 -
-\operatorname{KL}
+\mathrm{KL}
 [q(\mathbf u)\|p(\mathbf u)].
 ```
 
@@ -271,7 +271,7 @@ The probability moves toward `0.5` as latent uncertainty increases.
 ```math
 V_f(x)
 =
-\operatorname{Var}[f(x)\mid\mathcal D].
+\mathrm{Var}[f(x)\mid\mathcal D].
 ```
 
 This measures uncertainty in the latent decision function.
@@ -289,7 +289,7 @@ then
 ```math
 V_p(x)
 =
-\operatorname{Var}_s[p^{(s)}(x)].
+\mathrm{Var}_s[p^{(s)}(x)].
 ```
 
 This measures posterior uncertainty in the class probability.
@@ -347,7 +347,7 @@ latent_posterior = model.latent_posterior(X)
 Its mean is probability of class `1`:
 
 ```math
-\operatorname{mean}=P(Y=1\mid x,\mathcal D).
+\mathrm{mean}=P(Y=1\mid x,\mathcal D).
 ```
 
 Its variance is based on the predictive Bernoulli distribution, with optional
@@ -451,7 +451,7 @@ Useful metrics include:
 ### Brier score
 
 ```math
-\operatorname{BS}
+\mathrm{BS}
 =
 \frac1n
 \sum_i(p_i-y_i)^2.
@@ -527,9 +527,9 @@ where `T>0` is temperature.
 For any scalar `a`,
 
 ```math
-\operatorname{softmax}(\mathbf f+a\mathbf1)
+\mathrm{softmax}(\mathbf f+a\mathbf1)
 =
-\operatorname{softmax}(\mathbf f).
+\mathrm{softmax}(\mathbf f).
 ```
 
 Only relative logits are identifiable.  Absolute class-wise latent means do not
@@ -572,7 +572,7 @@ and the variational objective is
 ]
 -
 \sum_k
-\operatorname{KL}[q(\mathbf u_k)\|p(\mathbf u_k)].
+\mathrm{KL}[q(\mathbf u_k)\|p(\mathbf u_k)].
 ```
 
 With the current independent class-batch kernel construction, dependence among
@@ -717,7 +717,7 @@ p_{(1)}-p_{(2)}.
 Posterior samples of the probability vector yield
 
 ```math
-\operatorname{Cov}[\mathbf p(x)].
+\mathrm{Cov}[\mathbf p(x)].
 ```
 
 Because probabilities sum to one, their covariance is singular in the full
@@ -728,9 +728,9 @@ Because probabilities sum to one, their covariance is singular in the full
 For one-hot label vector `e_Y`,
 
 ```math
-\operatorname{Cov}(e_Y\mid\mathbf p)
+\mathrm{Cov}(e_Y\mid\mathbf p)
 =
-\operatorname{diag}(\mathbf p)-\mathbf p\mathbf p^\top.
+\mathrm{diag}(\mathbf p)-\mathbf p\mathbf p^\top.
 ```
 
 This is future-label randomness, not posterior uncertainty in `p`.
@@ -828,7 +828,7 @@ P(Y_{\mathrm{obs}}=1)
 ```math
 p_k
 =
-\operatorname{softmax}
+\mathrm{softmax}
 \left(
 \frac{f_k}{T(x)}
 \right).

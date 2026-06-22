@@ -100,7 +100,7 @@ The covariance function is
 ```math
 k(x,x')
 =
-\operatorname{Cov}[f(x),f(x')].
+\mathrm{Cov}[f(x),f(x')].
 ```
 
 It determines:
@@ -325,9 +325,9 @@ p(y_*\mid\mathcal D)
 For Gaussian noise,
 
 ```math
-\operatorname{Var}(y_*\mid\mathcal D)
+\mathrm{Var}(y_*\mid\mathcal D)
 =
-\operatorname{Var}(f_*\mid\mathcal D)
+\mathrm{Var}(f_*\mid\mathcal D)
 +\sigma_n^2.
 ```
 
@@ -471,7 +471,7 @@ The evidence lower bound is
 \mathbb E_{q(\mathbf f)}
 [\log p(\mathbf y\mid\mathbf f)]
 -
-\operatorname{KL}
+\mathrm{KL}
 [q(\mathbf u)\|p(\mathbf u)].
 ```
 
@@ -540,7 +540,7 @@ For vector-valued latent function
 a separable covariance can be written
 
 ```math
-\operatorname{Cov}[f_a(x),f_b(x')]
+\mathrm{Cov}[f_a(x),f_b(x')]
 =
 B_{ab}k_X(x,x').
 ```
@@ -556,7 +556,7 @@ K_{\mathrm{full}}
 An independent ModelList instead assumes
 
 ```math
-\operatorname{Cov}[f_a(x),f_b(x')]=0
+\mathrm{Cov}[f_a(x),f_b(x')]=0
 \quad\text{for }a\ne b.
 ```
 

@@ -169,7 +169,7 @@ c_0<c_1<\cdots<c_{K-2}.
 ```math
 \Delta_j
 =
-\operatorname{softplus}(r_j)+\epsilon,
+\mathrm{softplus}(r_j)+\epsilon,
 \qquad
 \Delta_j>0.
 ```
@@ -331,7 +331,7 @@ Training maximizes
 \log P(y_i\mid f_i,\mathbf c)
 ]
 -
-\operatorname{KL}
+\mathrm{KL}
 [q(\mathbf u)\|p(\mathbf u)].
 ```
 
@@ -524,7 +524,7 @@ not only the latent mean.
 For realized class utility `U_Y=u_Y`, conditional variance is
 
 ```math
-\operatorname{Var}(U_Y\mid x)
+\mathrm{Var}(U_Y\mid x)
 =
 \sum_kp_k(x)
 [u_k-U(x)]^2.
@@ -538,7 +538,7 @@ function.  The latter requires posterior samples of class probabilities or
 latent functions:
 
 ```math
-\operatorname{Var}_{f\mid\mathcal D}
+\mathrm{Var}_{f\mid\mathcal D}
 \left[
 \sum_ku_kP(Y=k\mid f)
 \right].
@@ -857,7 +857,7 @@ This is often more stable and directly tied to ordinal thresholds.
 For cumulative predicted probabilities `F_k` and observed class `y`,
 
 ```math
-\operatorname{RPS}
+\mathrm{RPS}
 =
 \sum_{k=0}^{K-2}
 \left[
@@ -968,7 +968,7 @@ This supports different:
 A correlated ordinal multitask model introduces latent covariance
 
 ```math
-\operatorname{Cov}[f_r(x),f_s(x')]
+\mathrm{Cov}[f_r(x),f_s(x')]
 =
 B_{rs}k(x,x').
 ```

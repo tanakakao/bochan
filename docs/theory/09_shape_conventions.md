@@ -738,9 +738,9 @@ batch_shape
 Reversing the order can change the result for nonlinear reductions:
 
 ```math
-\max_q\operatorname{mean}_m a_{qm}
+\max_q\mathrm{mean}_m a_{qm}
 \ne
-\operatorname{mean}_m\max_q a_{qm}.
+\mathrm{mean}_m\max_q a_{qm}.
 ```
 
 The acquisition definition must state the order.

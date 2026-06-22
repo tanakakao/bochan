@@ -677,7 +677,7 @@ then possible robust level sets include:
 
 ```math
 \left\{
- x:\operatorname{CVaR}_\alpha[f(x+\delta)]\ge h
+ x:\mathrm{CVaR}_\alpha[f(x+\delta)]\ge h
 \right\}.
 ```
 

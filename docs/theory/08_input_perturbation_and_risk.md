@@ -85,7 +85,7 @@ Y=f(x,E)+\varepsilon.
 ### Random class outcome
 
 ```math
-Y\sim\operatorname{Categorical}(\mathbf p(x)).
+Y\sim\mathrm{Categorical}(\mathbf p(x)).
 ```
 
 The robust objective must state over which randomness `rho` is taken.  For
@@ -155,7 +155,7 @@ R_{\mathrm{MV}}(x)
 \mathbb E[Z_x]
 -
 \lambda
-\operatorname{Var}(Z_x),
+\mathrm{Var}(Z_x),
 \qquad \lambda\ge0.
 ```
 
@@ -166,7 +166,7 @@ R_{\mathrm{MSD}}(x)
 =
 \mathbb E[Z_x]
 -
-\lambda\sqrt{\operatorname{Var}(Z_x)}.
+\lambda\sqrt{\mathrm{Var}(Z_x)}.
 ```
 
 Mean-variance objectives are easy to compute but do not distinguish symmetric
@@ -176,12 +176,12 @@ If posterior uncertainty and input perturbation are both random, the law of
 total variance gives
 
 ```math
-\operatorname{Var}(Z_x\mid\mathcal D)
+\mathrm{Var}(Z_x\mid\mathcal D)
 =
 \mathbb E_W
-[\operatorname{Var}_f(f(T(x,W))\mid W,\mathcal D)]
+[\mathrm{Var}_f(f(T(x,W))\mid W,\mathcal D)]
 +
-\operatorname{Var}_W
+\mathrm{Var}_W
 [\mathbb E_f(f(T(x,W))\mid W,\mathcal D)].
 ```
 
@@ -245,7 +245,7 @@ F_x^{-1}(\alpha)
 For maximization, a conservative Value at Risk can be defined as
 
 ```math
-\operatorname{VaR}_\alpha^{\mathrm{lower}}(Z_x)
+\mathrm{VaR}_\alpha^{\mathrm{lower}}(Z_x)
 =q_\alpha(x),
 ```
 
@@ -274,7 +274,7 @@ For lower-tail utility risk, CVaR is the average utility in the worst `alpha`
 fraction:
 
 ```math
-\operatorname{CVaR}_\alpha^{\mathrm{lower}}(Z_x)
+\mathrm{CVaR}_\alpha^{\mathrm{lower}}(Z_x)
 =
 \mathbb E[
 Z_x\mid Z_x\le q_\alpha(x)
@@ -286,7 +286,7 @@ for continuous distributions.
 A variational representation is
 
 ```math
-\operatorname{CVaR}_\alpha^{\mathrm{lower}}(Z)
+\mathrm{CVaR}_\alpha^{\mathrm{lower}}(Z)
 =
 \sup_{\eta}
 \left[
@@ -314,11 +314,11 @@ outcomes than VaR.
 For a loss `L` to minimize, upper-tail risk is often used:
 
 ```math
-\operatorname{VaR}_{1-\alpha}^{\mathrm{upper}}(L),
+\mathrm{VaR}_{1-\alpha}^{\mathrm{upper}}(L),
 ```
 
 ```math
-\operatorname{CVaR}_{1-\alpha}^{\mathrm{upper}}(L).
+\mathrm{CVaR}_{1-\alpha}^{\mathrm{upper}}(L).
 ```
 
 For utility `Z` to maximize, lower-tail risk is natural.
@@ -468,7 +468,7 @@ W\sim\mathcal N(0,\Sigma_W).
 ### 13.2 Uniform tolerance
 
 ```math
-W_j\sim\operatorname{Uniform}(-a_j,a_j).
+W_j\sim\mathrm{Uniform}(-a_j,a_j).
 ```
 
 ### 13.3 Multiplicative error
@@ -638,14 +638,14 @@ outputs `m`.  Nonlinear operations do not generally commute.
 These are generally different:
 
 ```math
-\operatorname{EI}
+\mathrm{EI}
 \left(
-\operatorname{CVaR}_W[f]
+\mathrm{CVaR}_W[f]
 \right)
 \ne
-\operatorname{CVaR}_W
+\mathrm{CVaR}_W
 \left(
-\operatorname{EI}[f]
+\mathrm{EI}[f]
 \right).
 ```
 
@@ -680,7 +680,7 @@ Possible robust objectives include:
 ### Lower-tail CVaR of probability
 
 ```math
-\operatorname{CVaR}_\alpha^{\mathrm{lower}}[p_W(x)].
+\mathrm{CVaR}_\alpha^{\mathrm{lower}}[p_W(x)].
 ```
 
 ### Probability that success probability exceeds requirement
@@ -734,13 +734,13 @@ Because expected utility is linear,
 Nonlinear quantities do not commute:
 
 ```math
-\operatorname{CVaR}_W
+\mathrm{CVaR}_W
 \left[
 \sum_ku_kp_k
 \right]
 \ne
 \sum_ku_k
-\operatorname{CVaR}_W[p_k].
+\mathrm{CVaR}_W[p_k].
 ```
 
 Minimum-grade reliability is
@@ -818,7 +818,7 @@ L_{h,\gamma}^{\mathrm{chance}}
 ```math
 L_h^{\mathrm{CVaR}}
 =
-\{x:\operatorname{CVaR}_\alpha^{\mathrm{lower}}[f(T(x,W))]\ge h\}.
+\{x:\mathrm{CVaR}_\alpha^{\mathrm{lower}}[f(T(x,W))]\ge h\}.
 ```
 
 Each set has a different boundary.  Robust LSE must state which one is being

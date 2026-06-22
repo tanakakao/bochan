@@ -150,7 +150,7 @@ f_j(x)
 The latent covariance is
 
 ```math
-\operatorname{Cov}[f_j(x),f_l(x')]
+\mathrm{Cov}[f_j(x),f_l(x')]
 =
 \sum_{q=1}^{Q}
 a_{jq}a_{lq}k_q(x,x').
@@ -564,7 +564,7 @@ For nonlinear `h`, exact transformed mean and variance are
 ```
 
 ```math
-\operatorname{Var}[h(Y)]
+\mathrm{Var}[h(Y)]
 =
 \mathbb E[h(Y)^2]-\mathbb E[h(Y)]^2.
 ```
@@ -580,9 +580,9 @@ h(\mathbb E[Y])
 A first-order delta approximation is
 
 ```math
-\operatorname{Var}[h(Y)]
+\mathrm{Var}[h(Y)]
 \approx
-[h'(\mu)]^2\operatorname{Var}(Y).
+[h'(\mu)]^2\mathrm{Var}(Y).
 ```
 
 The current custom `OutputSpec.transform` acts on the mean and does not
@@ -620,7 +620,7 @@ The current posterior does not contain a full covariance matrix across:
 Therefore:
 
 ```math
-\operatorname{Cov}(T_j,T_l)=0
+\mathrm{Cov}(T_j,T_l)=0
 ```
 
 in proxy sampling for distinct elements unless dependence is represented before

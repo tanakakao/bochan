@@ -23,7 +23,7 @@ let
 ```math
 \mu_i=\mu(x_i),
 \qquad
-v_i=\operatorname{Var}[f(x_i)],
+v_i=\mathrm{Var}[f(x_i)],
 \qquad
 \sigma_i=\sqrt{v_i}.
 ```
@@ -147,7 +147,7 @@ Supported uncertainty functions are:
 ```math
 U_{\mathrm{trace}}(\Sigma)
 =
-\operatorname{tr}(\Sigma).
+\mathrm{tr}(\Sigma).
 ```
 
 ### Log determinant
@@ -424,7 +424,7 @@ U(\Sigma)
 ```math
 U(\Sigma)
 =
-\sqrt{\operatorname{tr}(\Sigma)}.
+\sqrt{\mathrm{tr}(\Sigma)}.
 ```
 
 Supported boundary distances:
@@ -538,7 +538,7 @@ The current family reduces multiclass output to a target probability
 ```math
 p_T(x)
 =
-\operatorname{class\_reduce}
+\mathrm{class\_reduce}
 \{p_k(x):k\in T\}.
 ```
 
@@ -592,7 +592,7 @@ This treats target-set membership as a binary observation.
 ```math
 u_i
 =
-\operatorname{Std}_s[p_i^{(s)}].
+\mathrm{Std}_s[p_i^{(s)}].
 ```
 
 This measures posterior variation of the target probability.
@@ -603,7 +603,7 @@ This measures posterior variation of the target probability.
 u_i
 =
 \sqrt{
-\operatorname{Var}_s[p_i^{(s)}]
+\mathrm{Var}_s[p_i^{(s)}]
 +p_i(1-p_i)
 }.
 ```
@@ -833,7 +833,7 @@ s_i
 ```math
 s_i
 =
-\operatorname{reduce}_j(s_{ij}).
+\mathrm{reduce}_j(s_{ij}).
 ```
 
 If `target_boundary_idx` is supplied, boundary weights and reduction are
@@ -879,7 +879,7 @@ Joint uncertainty is:
 ### Trace
 
 ```math
-U(\Sigma)=\operatorname{tr}(\Sigma).
+U(\Sigma)=\mathrm{tr}(\Sigma).
 ```
 
 ### Logdet mode
@@ -904,7 +904,7 @@ B(X)
 =
 \frac1q
 \sum_i
-\operatorname{boundary\_reduce}_j[-|\mu_i-c_j|].
+\mathrm{boundary\_reduce}_j[-|\mu_i-c_j|].
 ```
 
 Final score:
@@ -1134,7 +1134,7 @@ scientifically valuable.
 Pointwise classes support q reduction such as:
 
 ```math
-\operatorname{mean}_i s_i,
+\mathrm{mean}_i s_i,
 \qquad
 \sum_i s_i,
 \qquad
@@ -1279,7 +1279,7 @@ src/bochan/api/acquisition_registry.py
 | Class | Space | Core score |
 |---|---|---|
 | `qRegressionStraddle` | regression posterior | $\beta\sigma-|\mu-h|$ |
-| `qRegressionJointStraddle` | regression joint covariance | $-\operatorname{mean}|\mu-h|+\beta U(\Sigma)$ |
+| `qRegressionJointStraddle` | regression joint covariance | $-\mathrm{mean}|\mu-h|+\beta U(\Sigma)$ |
 | `qRegressionICU` | regression posterior | Gaussian contour weight times $\sigma$ |
 | `qRegressionBoundaryVariance` | regression posterior | boundary weight times variance |
 | `qRegressionProbabilityOfExceedance` | response membership | Gaussian CDF or sigmoid mode |

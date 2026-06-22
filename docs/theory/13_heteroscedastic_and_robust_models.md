@@ -155,7 +155,8 @@ For a test point,
 \operatorname{Var}(Y\mid x,\mathcal D)
 \approx
 \operatorname{Var}(f(x)\mid\mathcal D)
-+\hat\sigma^2(x).
++
+\hat\sigma^2(x).
 \]
 
 This addition is valid for Gaussian observations when the noise is conditionally
@@ -309,12 +310,15 @@ P(Y=j\mid x)
 A larger scale produces more overlap between adjacent grades.  This model is
 different from adding a noise variance after computing ordinal probabilities.
 
-The current ordinal heteroscedastic wrappers and acquisition utilities should be
+The current ordinal heteroscedastic wrappers and acquisitions should be
 interpreted according to their actual implementation:
 
 ```text
 src/bochan/models/ordinal/robust/heteroscedastic.py
-src/bochan/acquisition/ordinal/hetero_utils.py
+src/bochan/acquisition/ordinal/active_learning/hetero_single_output.py
+src/bochan/acquisition/ordinal/active_learning/hetero_multi_output.py
+src/bochan/acquisition/ordinal/levelset_estimation/hetero_single_output.py
+src/bochan/acquisition/ordinal/levelset_estimation/hetero_multi_output.py
 ```
 
 When the noise model only reweights an acquisition, the correct phrase is
@@ -492,7 +496,7 @@ quantiles, and constraint violation rate at the recommended candidate.
 | Binary heteroscedastic models | `src/bochan/models/classification/binary/robust/heteroscedastic.py` |
 | Multiclass heteroscedastic models | `src/bochan/models/classification/multiclass/robust/heteroscedastic.py` |
 | Ordinal heteroscedastic models | `src/bochan/models/ordinal/robust/heteroscedastic.py` |
-| Noise-aware ordinal acquisitions | `src/bochan/acquisition/ordinal/hetero_utils.py` |
+| Noise-aware ordinal acquisitions | `src/bochan/acquisition/ordinal/active_learning/hetero_*.py`, `src/bochan/acquisition/ordinal/levelset_estimation/hetero_*.py` |
 | RRP fitting | `src/bochan/fit/robust/` |
 
 ---

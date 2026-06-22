@@ -62,18 +62,15 @@ jobs:
               print(f'  - {path}')
           PY
 
-      - name: Remove one-shot workflow
-        run: git rm .github/workflows/fix-theory-math-rendering.yml
-
       - name: Commit converted documentation
         shell: bash
         run: |
-          if git diff --quiet && git diff --cached --quiet; then
-            echo 'No changes required.'
+          if git diff --quiet -- docs/theory; then
+            echo 'No documentation changes required.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/theory .github/workflows/fix-theory-math-rendering.yml
+          git add docs/theory
           git commit -m 'docs: use GitHub-compatible display math delimiters'
           git push origin HEAD:${{ github.event.pull_request.head.ref }}

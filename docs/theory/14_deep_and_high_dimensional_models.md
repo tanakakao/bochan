@@ -24,25 +24,25 @@ The correct choice depends on the expected geometry of the effective function.
 
 Let a neural network define a deterministic feature map
 
-\[
+$$
 \phi_\theta:\mathbb R^d\rightarrow\mathbb R^p.
-\]
+$$
 
 A GP is placed on the transformed representation:
 
-\[
+$$
 f(x)=g(\phi_\theta(x)),
 \qquad
  g\sim\mathcal{GP}(m,k).
-\]
+$$
 
 The effective kernel in raw input space is
 
-\[
+$$
 k_{\mathrm{DKL}}(x,x')
 =
 k(\phi_\theta(x),\phi_\theta(x')).
-\]
+$$
 
 The neural network is not itself probabilistic in the usual DKL
 implementation.  Conditional on learned parameters `theta`, uncertainty comes
@@ -53,9 +53,9 @@ from the GP layer.
 For Gaussian regression, network and GP parameters can be trained jointly by
 maximizing the exact marginal likelihood
 
-\[
+$$
 \log p(\mathbf y\mid \phi_\theta(X),\theta_{\mathrm{GP}}).
-\]
+$$
 
 Equivalently, minimize the negative marginal log likelihood.  Gradients flow
 through the kernel matrix and the feature extractor.
@@ -104,21 +104,21 @@ for regression, binary, multiclass, and ordinal families where registered.
 
 A Deep GP composes random functions:
 
-\[
+$$
 h_1(x)\sim\mathcal{GP}(m_1,k_1),
-\]
+$$
 
-\[
+$$
 h_2(h_1)\sim\mathcal{GP}(m_2,k_2),
-\]
+$$
 
-\[
+$$
 \cdots
-\]
+$$
 
-\[
+$$
 f(x)=h_L(h_{L-1}(\cdots h_1(x))).
-\]
+$$
 
 Unlike DKL, hidden representations are random variables.  Integrating over
 intermediate layers produces a non-Gaussian predictive distribution even when
@@ -129,14 +129,14 @@ each conditional layer is Gaussian.
 Each layer commonly uses inducing variables.  A schematic variational
 objective is
 
-\[
+$$
 \mathcal L
 =
 \mathbb E_{q(f_L)}[\log p(\mathbf y\mid f_L)]
 -
 \sum_{l=1}^L
 \operatorname{KL}[q(u_l)\|p(u_l)].
-\]
+$$
 
 The expected log likelihood is estimated using samples propagated through the
 layers.  GPyTorch uses `DeepApproximateMLL` together with a variational ELBO.
@@ -145,20 +145,20 @@ layers.  GPyTorch uses `DeepApproximateMLL` together with a variational ELBO.
 
 DeepGP prediction often contains an extra sample dimension:
 
-\[
+$$
 f_*^{(s)}\sim q(f_*),
 \qquad s=1,\ldots,S.
-\]
+$$
 
 A moment-matched approximation uses
 
-\[
+$$
 \hat\mu
 =
 \frac1S\sum_s\mu_s,
-\]
+$$
 
-\[
+$$
 \hat\Sigma
 =
 \frac1S\sum_s
@@ -167,7 +167,7 @@ A moment-matched approximation uses
 \right]
 -
 \hat\mu\hat\mu^\top.
-\]
+$$
 
 Simply averaging variances omits between-sample variation.  Implementations
 that collapse extra DeepGP sample dimensions should document whether they use
@@ -202,10 +202,10 @@ src/bochan/models/ordinal/deep/
 The combined model first applies a deterministic neural representation and then
 passes it through stochastic GP layers:
 
-\[
+$$
 x\xrightarrow{\phi_\theta}z
 \xrightarrow{h_1}\cdots\xrightarrow{h_L}f.
-\]
+$$
 
 This is more expressive but introduces two sources of representation learning
 and a difficult optimization problem.  It should be treated as an experimental
@@ -231,12 +231,12 @@ The methods below solve different versions of this problem.
 
 An ARD kernel uses one length scale per dimension:
 
-\[
+$$
 r^2(x,x')
 =
 \sum_{j=1}^d
 \frac{(x_j-x_j')^2}{\ell_j^2}.
-\]
+$$
 
 Large `ell_j` makes the function insensitive to dimension `j`.  Maximum
 marginal-likelihood ARD can be unstable when `d` is large and `n` is small.
@@ -246,13 +246,13 @@ marginal-likelihood ARD can be unstable when `d` is large and `n` is small.
 SAAS assumes that only a small number of coordinate axes are important.  In a
 simplified form, inverse length scales obey a global-local shrinkage prior:
 
-\[
+$$
 \tau\sim\operatorname{HalfCauchy}(\beta),
-\]
+$$
 
-\[
+$$
 \rho_j=\ell_j^{-1}\sim\operatorname{HalfCauchy}(\tau).
-\]
+$$
 
 A small global scale shrinks most inverse length scales toward zero, equivalent
 to large length scales and low relevance.  A few local scales may escape the
@@ -261,9 +261,9 @@ shrinkage.
 SAAS is appropriate when the effective subspace is axis aligned.  It is less
 appropriate when the response depends on dense linear combinations such as
 
-\[
+$$
 f(x)=g(a^\top x)
-\]
+$$
 
 with many nonzero components in `a`.
 
@@ -290,21 +290,21 @@ where supported.
 PCA computes a linear projection from the empirical covariance of inputs.  Let
 centered data be
 
-\[
+$$
 X_c=X-\mathbf 1\bar x^\top.
-\]
+$$
 
 If
 
-\[
+$$
 X_c=U\Sigma V^\top,
-\]
+$$
 
 the first `p` principal components define
 
-\[
+$$
 z=V_p^\top(x-\bar x).
-\]
+$$
 
 A GP is fitted in `z` space.
 
@@ -330,22 +330,22 @@ with task-specific variants in corresponding high-dimensional folders.
 REMBO assumes the function has low effective dimension `p` embedded in a high
 ambient dimension `d`.  A random matrix
 
-\[
+$$
 A\in\mathbb R^{d\times p},
 \qquad p\ll d
-\]
+$$
 
 maps a latent candidate `z` to raw space:
 
-\[
+$$
 x=Az.
-\]
+$$
 
 With box constraints, a projection or clipping map is applied:
 
-\[
+$$
 x=\Pi_{\mathcal X}(Az).
-\]
+$$
 
 The GP is fitted in the low-dimensional latent coordinates.
 
@@ -380,32 +380,32 @@ and corresponding task wrappers.  The registry key is `rembo`.
 
 A VAE encoder defines
 
-\[
+$$
 q_\phi(z\mid x)
 =
 \mathcal N(\mu_\phi(x),
 \operatorname{diag}(\sigma_\phi^2(x))).
-\]
+$$
 
 Using reparameterization,
 
-\[
+$$
 z=\mu_\phi(x)+\sigma_\phi(x)\odot\epsilon,
 \qquad
 \epsilon\sim\mathcal N(0,I).
-\]
+$$
 
 A decoder models
 
-\[
+$$
 p_\psi(x\mid z),
-\]
+$$
 
 and a GP predicts the target from a latent representation.
 
 The `bochan` VAE-GP loss combines
 
-\[
+$$
 \mathcal J
 =
 \lambda_{\mathrm{GP}}\mathcal J_{\mathrm{GP}}
@@ -414,13 +414,13 @@ The `bochan` VAE-GP loss combines
 +
 \lambda_{\mathrm{KL}}
 \operatorname{KL}[q_\phi(z\mid x)\|p(z)].
-\]
+$$
 
 The GP and acquisition use the deterministic encoder mean
 
-\[
+$$
 z=\mu_\phi(x)
-\]
+$$
 
 rather than a random sample.  This keeps acquisition evaluation deterministic.
 The decoder reconstruction term uses reparameterized latent samples.
@@ -429,9 +429,9 @@ The decoder reconstruction term uses reparameterized latent samples.
 
 The current implementation optimizes acquisitions in raw `X` space:
 
-\[
+$$
 x\rightarrow\mu_\phi(x)\rightarrow\text{GP posterior}.
-\]
+$$
 
 It does not directly optimize an arbitrary latent `z` and decode it to a raw
 candidate.  This avoids invalid decoded points but means the raw-space
@@ -442,9 +442,9 @@ acquisition problem remains high dimensional.
 For mixed inputs, only continuous columns are encoded.  Categorical columns are
 preserved and concatenated to the latent continuous representation:
 
-\[
+$$
 [\mu_\phi(x_{\mathrm{cont}}),x_{\mathrm{cat}}].
-\]
+$$
 
 The decoder does not generate categories.  Categorical values must be supplied
 when decoding a mixed latent representation.

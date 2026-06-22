@@ -591,14 +591,14 @@ batch_shape x q x n_w x q x n_w
 
 and average both perturbation axes:
 
-\[
+$$
 [\Sigma_q]_{ij}
 =
 \frac1{n_w^2}
 \sum_{r=1}^{n_w}
 \sum_{s=1}^{n_w}
 \Sigma_{(i,r),(j,s)}.
-\]
+$$
 
 A diagonal-only approximation instead averages marginal variances and discards
 cross-candidate and cross-perturbation covariance.
@@ -737,11 +737,11 @@ batch_shape
 
 Reversing the order can change the result for nonlinear reductions:
 
-\[
+$$
 \max_q\operatorname{mean}_m a_{qm}
 \ne
 \operatorname{mean}_m\max_q a_{qm}.
-\]
+$$
 
 The acquisition definition must state the order.
 

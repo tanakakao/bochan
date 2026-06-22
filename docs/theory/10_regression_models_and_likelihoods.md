@@ -16,15 +16,15 @@ The central modeling question is:
 
 A regression observation is associated with input
 
-\[
+$$
 x_i\in\mathcal X
-\]
+$$
 
 and response
 
-\[
+$$
 y_i\in\mathcal Y.
-\]
+$$
 
 The response support determines plausible likelihoods.
 
@@ -46,25 +46,25 @@ but the transformation and inverse interpretation must be explicit.
 
 Let
 
-\[
+$$
 f(x)
-\]
+$$
 
 be a latent GP function.  A likelihood parameter is defined through a link:
 
-\[
+$$
 \eta(x)=f(x),
 \qquad
 \vartheta(x)=g^{-1}(\eta(x)).
-\]
+$$
 
 The observation model is
 
-\[
+$$
 y\mid x
 \sim
 p(y\mid\vartheta(x)).
-\]
+$$
 
 Three spaces must be distinguished:
 
@@ -74,11 +74,11 @@ Three spaces must be distinguished:
 
 For a nonlinear inverse link,
 
-\[
+$$
 g^{-1}(\mathbb E[f])
 \ne
 \mathbb E[g^{-1}(f)].
-\]
+$$
 
 Therefore a plug-in response mean based only on latent posterior mean can differ
 from the correctly marginalized predictive mean.
@@ -91,25 +91,25 @@ from the correctly marginalized predictive mean.
 
 The standard model is
 
-\[
+$$
 y_i=f(x_i)+\varepsilon_i,
 \qquad
 \varepsilon_i\sim\mathcal N(0,\sigma_n^2).
-\]
+$$
 
 Equivalently,
 
-\[
+$$
 y_i\mid f_i
 \sim
 \mathcal N(f_i,\sigma_n^2).
-\]
+$$
 
 The observation covariance is
 
-\[
+$$
 K_y=K_f+\sigma_n^2I.
-\]
+$$
 
 The model estimates one global noise variance unless a fixed-noise or
 heteroscedastic construction is used.
@@ -118,17 +118,17 @@ heteroscedastic construction is used.
 
 If measurement variance `s_i^2` is known,
 
-\[
+$$
 y_i\mid f_i
 \sim
 \mathcal N(f_i,s_i^2),
-\]
+$$
 
-\[
+$$
 K_y
 =
 K_f+\operatorname{diag}(s_1^2,\ldots,s_n^2).
-\]
+$$
 
 In implementation, `train_Yvar` contains variances, not standard deviations.
 It should have the same output scaling as `train_Y` after any outcome transform.
@@ -141,12 +141,12 @@ Chapter 13 treats learned heteroscedastic models.
 The latent posterior predicts `f(x)`.  The predictive observation distribution
 adds likelihood noise:
 
-\[
+$$
 \operatorname{Var}(Y_*\mid\mathcal D)
 =
 \operatorname{Var}(f_*\mid\mathcal D)
 +\sigma_n^2.
-\]
+$$
 
 Use cases:
 
@@ -162,45 +162,45 @@ The `observation_noise` argument controls this distinction where supported.
 
 For scalar posterior
 
-\[
+$$
 f(x)\mid\mathcal D
 \sim
 \mathcal N(\mu(x),\sigma^2(x)),
-\]
+$$
 
 important summaries include:
 
 ### Mean
 
-\[
+$$
 \mathbb E[f(x)\mid\mathcal D]=\mu(x).
-\]
+$$
 
 ### Quantile
 
-\[
+$$
 q_\alpha(x)
 =
 \mu(x)+\Phi^{-1}(\alpha)\sigma(x).
-\]
+$$
 
 ### Exceedance probability
 
-\[
+$$
 P(f(x)\ge h\mid\mathcal D)
 =
 \Phi\left(
 \frac{\mu(x)-h}{\sigma(x)}
 \right).
-\]
+$$
 
 ### Posterior sample
 
-\[
+$$
 f^{(s)}(X)
 \sim
 p(f(X)\mid\mathcal D).
-\]
+$$
 
 The choice between latent and noisy prediction must be made before computing
 these quantities.
@@ -211,19 +211,19 @@ these quantities.
 
 For outputs
 
-\[
+$$
 \mathbf y(x)
 =[y_1(x),\ldots,y_m(x)],
-\]
+$$
 
 independent models assume
 
-\[
+$$
 p(f_1,\ldots,f_m\mid\mathcal D)
 =
 \prod_{j=1}^m
 p(f_j\mid\mathcal D_j).
-\]
+$$
 
 Advantages:
 
@@ -247,19 +247,19 @@ BoTorch ModelList-style constructions implement this pattern.
 
 A separable multitask covariance is
 
-\[
+$$
 \operatorname{Cov}[f_a(x),f_b(x')]
 =
 B_{ab}k_X(x,x').
-\]
+$$
 
 `B` is a positive-semidefinite task covariance matrix.  If all tasks share the
 same input grid, the full covariance may use
 
-\[
+$$
 K_{\mathrm{full}}
 =B\otimes K_X.
-\]
+$$
 
 ### Interpretation
 
@@ -289,27 +289,27 @@ common inputs.
 
 Let
 
-\[
+$$
 x=(x_c,x_g)
-\]
+$$
 
 contain continuous and categorical variables.
 
 A mixed kernel can be written schematically as
 
-\[
+$$
 k(x,x')
 =
 k_c(x_c,x_c')
 +k_g(x_g,x_g')
 +k_{cg}(x,x').
-\]
+$$
 
 A common implementation uses
 
-\[
+$$
 k_{cg}=k_c'k_g'.
-\]
+$$
 
 Important rules:
 
@@ -326,19 +326,19 @@ Important rules:
 
 Beta regression is suitable for continuous responses
 
-\[
+$$
 y\in(0,1).
-\]
+$$
 
 Parameterize
 
-\[
+$$
 y\sim\operatorname{Beta}(\alpha,\beta).
-\]
+$$
 
 Using mean and precision,
 
-\[
+$$
 \mu
 =
 \frac{\alpha}{\alpha+\beta},
@@ -346,37 +346,37 @@ Using mean and precision,
 \phi
 =
 \alpha+\beta,
-\]
+$$
 
-\[
+$$
 \alpha=\mu\phi,
 \qquad
 \beta=(1-\mu)\phi.
-\]
+$$
 
 The conditional variance is
 
-\[
+$$
 \operatorname{Var}(Y\mid x)
 =
 \frac{\mu(x)[1-\mu(x)]}{\phi(x)+1}.
-\]
+$$
 
 ### Link functions
 
 A latent mean function can use
 
-\[
+$$
 \mu(x)=\sigma(f_\mu(x)).
-\]
+$$
 
 Precision must be positive:
 
-\[
+$$
 \phi(x)
 =
 \operatorname{softplus}(f_\phi(x))+\epsilon.
-\]
+$$
 
 ### Modeling choices
 
@@ -403,38 +403,38 @@ The chosen treatment affects tail predictions.
 
 Gamma regression models positive continuous responses:
 
-\[
+$$
 y>0.
-\]
+$$
 
 Using shape `a` and rate `b`,
 
-\[
+$$
 y\sim\operatorname{Gamma}(a,b),
-\]
+$$
 
-\[
+$$
 \mathbb E[Y]=\frac{a}{b},
 \qquad
 \operatorname{Var}(Y)=\frac{a}{b^2}.
-\]
+$$
 
 Using shape and scale `theta`,
 
-\[
+$$
 \mathbb E[Y]=a\theta,
 \qquad
 \operatorname{Var}(Y)=a\theta^2.
-\]
+$$
 
 Documentation and code must state whether the second parameter is rate or
 scale.
 
 Positive parameters can be generated by
 
-\[
+$$
 \operatorname{softplus}(f)+\epsilon
-\]
+$$
 
 or exponentiation.
 
@@ -454,48 +454,48 @@ specified.
 
 For count response
 
-\[
+$$
 y\in\{0,1,2,\ldots\},
-\]
+$$
 
 Poisson regression uses
 
-\[
+$$
 y\mid x
 \sim
 \operatorname{Poisson}(\lambda(x)),
-\]
+$$
 
-\[
+$$
 \lambda(x)>0.
-\]
+$$
 
 A log link is
 
-\[
+$$
 \lambda(x)=\exp(f(x)).
-\]
+$$
 
 Then
 
-\[
+$$
 \mathbb E[Y\mid x]
 =
 \lambda(x),
-\]
+$$
 
-\[
+$$
 \operatorname{Var}(Y\mid x)
 =
 \lambda(x).
-\]
+$$
 
 The equal mean-variance assumption is restrictive.  Exposure or observation
 window `e(x)` can be included as offset:
 
-\[
+$$
 \lambda(x)=e(x)\exp(f(x)).
-\]
+$$
 
 Ignoring exposure differences can create spurious input effects.
 
@@ -506,21 +506,21 @@ Ignoring exposure differences can create spurious input effects.
 Negative-Binomial regression allows overdispersed counts.  A common
 mean-dispersion parameterization is
 
-\[
+$$
 \mathbb E[Y\mid x]=\mu(x),
-\]
+$$
 
-\[
+$$
 \operatorname{Var}(Y\mid x)
 =
 \mu(x)+\frac{\mu(x)^2}{r(x)}.
-\]
+$$
 
 Here `r` is a positive dispersion or size parameter.  As
 
-\[
+$$
 r\rightarrow\infty,
-\]
+$$
 
 the variance approaches the Poisson variance.
 
@@ -555,26 +555,26 @@ quantiles, not only RMSE.
 
 A positive response can be transformed:
 
-\[
+$$
 z=\log y
-\]
+$$
 
 and modeled with Gaussian regression.  This differs from Gamma regression.
 
 ### Log-Gaussian model
 
-\[
+$$
 \log Y=f(x)+\varepsilon.
-\]
+$$
 
 The response is approximately lognormal.  The predictive mean in original
 space is not simply `exp(mu)`:
 
-\[
+$$
 \mathbb E[Y]
 =
 \exp\left(\mu+\frac12\sigma^2\right)
-\]
+$$
 
 for a Gaussian log response.
 
@@ -677,9 +677,9 @@ Inspect:
 
 For continuous predictive CDF `F_i`, compute
 
-\[
+$$
 u_i=F_i(y_i).
-\]
+$$
 
 A calibrated model gives approximately uniform `u_i`.
 

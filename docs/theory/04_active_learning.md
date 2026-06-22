@@ -15,18 +15,18 @@ separately in Chapters 05 and 16 because it has a boundary-specific loss.
 
 Let the current data be
 
-\[
+$$
 \mathcal D_t=\{(x_i,y_i)\}_{i=1}^{n_t}.
-\]
+$$
 
 An Active Learning policy chooses
 
-\[
+$$
 x_{t+1}
 \in
 \arg\max_{x\in\mathcal X}
 \alpha_{\mathrm{AL}}(x;\mathcal D_t).
-\]
+$$
 
 The acquisition is valuable only relative to a learning target.  Examples are:
 
@@ -51,18 +51,18 @@ value but high learning value.
 
 Candidates come from a finite set
 
-\[
+$$
 \mathcal P=\{x^{(1)},\ldots,x^{(N)}\}.
-\]
+$$
 
 The next point is
 
-\[
+$$
 x_{t+1}
 \in
 \arg\max_{x\in\mathcal P\setminus X_{\mathrm{observed}}}
 \alpha(x).
-\]
+$$
 
 This is common when unlabeled specimens or simulation cases already exist.
 
@@ -70,12 +70,12 @@ This is common when unlabeled specimens or simulation cases already exist.
 
 Candidates are optimized over a domain:
 
-\[
+$$
 x_{t+1}
 \in
 \arg\max_{x\in\mathcal X}
 \alpha(x).
-\]
+$$
 
 This uses the same acquisition-optimization machinery as BO, including bounds,
 mixed variables, q-batches, and constraints.
@@ -94,17 +94,17 @@ The simplest strategy samples where the model is uncertain.
 
 For regression latent posterior
 
-\[
+$$
 f(x)\mid\mathcal D
 \sim
 \mathcal N(\mu(x),\sigma_f^2(x)),
-\]
+$$
 
 posterior-variance sampling uses
 
-\[
+$$
 \alpha_{\mathrm{var}}(x)=\sigma_f^2(x).
-\]
+$$
 
 This is a local criterion.  It does not directly measure how observing `x`
 reduces uncertainty elsewhere.
@@ -130,33 +130,33 @@ Limitations:
 
 For a random future observation `Y`, predictive entropy is
 
-\[
+$$
 H(Y\mid x,\mathcal D)
 =
 -\mathbb E
 \left[
 \log p(Y\mid x,\mathcal D)
 \right].
-\]
+$$
 
 ### 4.1 Gaussian regression
 
 If
 
-\[
+$$
 Y\mid x,\mathcal D
 \sim
 \mathcal N(\mu_Y(x),\sigma_Y^2(x)),
-\]
+$$
 
 then
 
-\[
+$$
 H(Y\mid x,\mathcal D)
 =
 \frac12
 \log\left(2\pi e\sigma_Y^2(x)\right).
-\]
+$$
 
 Maximizing Gaussian entropy is equivalent to maximizing predictive variance.
 If `sigma_Y^2` includes observation noise, entropy may prefer irreducibly noisy
@@ -166,15 +166,15 @@ regions.
 
 For probability
 
-\[
+$$
 p=P(Y=1\mid x,\mathcal D),
-\]
+$$
 
-\[
+$$
 H(Y\mid x,\mathcal D)
 =
 -p\log p-(1-p)\log(1-p).
-\]
+$$
 
 The maximum occurs at `p=0.5`.
 
@@ -182,15 +182,15 @@ The maximum occurs at `p=0.5`.
 
 For class probabilities
 
-\[
+$$
 \mathbf p=(p_0,\ldots,p_{K-1}),
-\]
+$$
 
-\[
+$$
 H(Y\mid x,\mathcal D)
 =
 -\sum_{k=0}^{K-1}p_k\log p_k.
-\]
+$$
 
 Entropy treats classes as labels.  For ordinal models it does not encode that
 confusion between adjacent grades is less severe than confusion between distant
@@ -208,19 +208,19 @@ Predictive uncertainty can be decomposed conceptually into:
 
 For Gaussian regression with known noise,
 
-\[
+$$
 \operatorname{Var}(Y\mid x,\mathcal D)
 =
 \underbrace{\operatorname{Var}(f(x)\mid\mathcal D)}_{\text{epistemic}}
 +
 \underbrace{\sigma_n^2(x)}_{\text{aleatoric}}.
-\]
+$$
 
 For classification, Bernoulli variance
 
-\[
+$$
 p(1-p)
-\]
+$$
 
 can be high even if `p` is known exactly.  It is observation ambiguity, not by
 itself epistemic uncertainty.
@@ -242,22 +242,22 @@ future observation and latent model uncertainty.
 Let `Theta` denote the latent function, model parameters, or another learning
 target.  Then
 
-\[
+$$
 \operatorname{BALD}(x)
 =
 I(Y;\Theta\mid x,\mathcal D).
-\]
+$$
 
 Using the entropy identity,
 
-\[
+$$
 I(Y;\Theta\mid x,\mathcal D)
 =
 H(Y\mid x,\mathcal D)
 -
 \mathbb E_{\Theta\mid\mathcal D}
 [H(Y\mid x,\Theta)].
-\]
+$$
 
 The first term is total predictive uncertainty.  The second is expected
 irreducible uncertainty after the latent state is known.  Their difference
@@ -267,49 +267,49 @@ isolates disagreement due to posterior uncertainty.
 
 Draw latent samples
 
-\[
+$$
 f^{(s)}(x)
 \sim
 p(f(x)\mid\mathcal D),
-\]
+$$
 
 convert to probabilities
 
-\[
+$$
 p_s=\pi(f^{(s)}(x)),
-\]
+$$
 
 and define
 
-\[
+$$
 \bar p=\frac1S\sum_{s=1}^Sp_s.
-\]
+$$
 
 Then
 
-\[
+$$
 \widehat{\operatorname{BALD}}
 =
 H(\bar p)
 -
 \frac1S\sum_{s=1}^SH(p_s).
-\]
+$$
 
 ### 6.2 Multiclass estimator
 
 For sampled class-probability vectors
 
-\[
+$$
 \mathbf p_s,
-\]
+$$
 
-\[
+$$
 \widehat{\operatorname{BALD}}
 =
 H\left(\frac1S\sum_s\mathbf p_s\right)
 -
 \frac1S\sum_sH(\mathbf p_s).
-\]
+$$
 
 ### 6.3 Interpretation
 
@@ -325,10 +325,10 @@ for consistent aleatoric ambiguity.
 
 A simple score is
 
-\[
+$$
 \alpha_{\mathrm{margin}}(x)
 =1-|2p(x)-1|.
-\]
+$$
 
 It is maximal at `p=0.5`.
 
@@ -336,16 +336,16 @@ It is maximal at `p=0.5`.
 
 Let
 
-\[
+$$
 p_{(1)}\ge p_{(2)}\ge\cdots
-\]
+$$
 
 be sorted class probabilities.  A margin score is
 
-\[
+$$
 \alpha_{\mathrm{margin}}(x)
 =1-[p_{(1)}-p_{(2)}].
-\]
+$$
 
 A small top-two gap indicates ambiguous classification.
 
@@ -358,21 +358,21 @@ uncertainty.
 
 Suppose posterior latent samples produce probabilities
 
-\[
+$$
 p^{(s)}(x).
-\]
+$$
 
 Probability-function uncertainty is
 
-\[
+$$
 \operatorname{Var}_s[p^{(s)}(x)].
-\]
+$$
 
 This differs from Bernoulli observation variance
 
-\[
+$$
 \bar p(1-\bar p).
-\]
+$$
 
 For multiclass probabilities, one can compute per-class variance and reduce by:
 
@@ -394,47 +394,47 @@ region.
 
 For reference measure `nu`, current integrated variance is
 
-\[
+$$
 \operatorname{IPV}_t
 =
 \int_{\mathcal X}
 \sigma_t^2(z)
 \,d\nu(z).
-\]
+$$
 
 The ideal one-step reduction from observing at `x` is
 
-\[
+$$
 \Delta\operatorname{IPV}(x)
 =
 \operatorname{IPV}_t
 -
 \mathbb E_{y_x}
 [\operatorname{IPV}_{t+1}\mid x,y_x].
-\]
+$$
 
 For an exact noiseless GP, posterior covariance update does not depend on the
 observed value, and variance reduction can be computed from covariance:
 
-\[
+$$
 \sigma_{t+1}^2(z)
 =
 \sigma_t^2(z)
 -
 \frac{k_t(z,x)^2}
 {k_t(x,x)+\sigma_n^2}.
-\]
+$$
 
 Therefore
 
-\[
+$$
 \Delta\operatorname{IPV}(x)
 =
 \int
 \frac{k_t(z,x)^2}
 {k_t(x,x)+\sigma_n^2}
 \,d\nu(z).
-\]
+$$
 
 In non-Gaussian or approximate models, fantasy conditioning or proxy criteria
 may be required.
@@ -443,9 +443,9 @@ may be required.
 
 Some APIs maximize
 
-\[
+$$
 -\operatorname{IPV}_{t+1}
-\]
+$$
 
 rather than directly maximizing variance reduction.  The sign and baseline
 must be documented.
@@ -457,14 +457,14 @@ must be documented.
 Another family values the expected change in model parameters or predictions.
 For parameter vector `theta`, a gradient-based proxy is
 
-\[
+$$
 \alpha(x)
 =
 \mathbb E_{Y\mid x,\mathcal D}
 \left[
 \|\nabla_\theta\ell(Y,x;\theta)\|^2
 \right].
-\]
+$$
 
 For GP models, information gain and posterior variance reduction are often more
 natural because the model is explicitly probabilistic.  Expected model change
@@ -478,9 +478,9 @@ Useful criteria include:
 
 ### Latent posterior variance
 
-\[
+$$
 \alpha(x)=\operatorname{Var}[f(x)\mid\mathcal D].
-\]
+$$
 
 ### Predictive entropy
 
@@ -491,7 +491,7 @@ Includes observation noise when the observation distribution is used.
 For Gaussian latent value and additive Gaussian noise, mutual information
 between noisy observation and latent function at the same point is
 
-\[
+$$
 I(Y;f(x)\mid\mathcal D)
 =
 \frac12
@@ -499,7 +499,7 @@ I(Y;f(x)\mid\mathcal D)
 1+
 \frac{\sigma_f^2(x)}{\sigma_n^2(x)}
 \right).
-\]
+$$
 
 This favors large epistemic variance relative to noise.
 
@@ -511,11 +511,11 @@ Values global covariance reduction over a reference set.
 
 For scientific weight `w(z)`,
 
-\[
+$$
 \operatorname{IPV}_w
 =
 \int w(z)\sigma^2(z)d\nu(z).
-\]
+$$
 
 This avoids spending budget in irrelevant parts of the domain.
 
@@ -547,13 +547,13 @@ Corresponding acquisitions include:
 The class dimension must be retained until a meaningful reduction is applied.
 Possible reductions are:
 
-\[
+$$
 \sum_k\operatorname{Var}[p_k],
-\]
+$$
 
-\[
+$$
 \max_k\operatorname{Var}[p_k],
-\]
+$$
 
 or uncertainty in a target set of classes.
 
@@ -580,36 +580,36 @@ Treats classes as categorical labels.
 
 For class utilities `u_k`,
 
-\[
+$$
 \bar u(x)=\sum_kp_k(x)u_k,
-\]
+$$
 
-\[
+$$
 \operatorname{Var}(U\mid x)
 =
 \sum_kp_k(x)[u_k-\bar u(x)]^2.
-\]
+$$
 
 This respects utility spacing but is conditional class-distribution variance,
 not necessarily epistemic uncertainty in expected utility.
 
 ### Ordinal BALD
 
-\[
+$$
 I(Y;f\mid x,\mathcal D)
 =
 H\left(\mathbb E_f[p(Y\mid f)]\right)
 -
 \mathbb E_f[H(p(Y\mid f))].
-\]
+$$
 
 ### Boundary-specific learning
 
 When one grade transition matters, reduce the ordinal prediction to binary event
 
-\[
+$$
 Z_j=\mathbf1[Y\ge j+1]
-\]
+$$
 
 and learn its probability or latent cutpoint boundary.
 
@@ -620,17 +620,17 @@ and learn its probability or latent cutpoint boundary.
 For outputs `j=1,...,m`, let `a_j(x)` be an output-wise information score.
 Common reductions include
 
-\[
+$$
 \alpha(x)=\sum_jw_ja_j(x),
-\]
+$$
 
-\[
+$$
 \alpha(x)=\max_ja_j(x),
-\]
+$$
 
-\[
+$$
 \alpha(x)=\min_ja_j(x).
-\]
+$$
 
 Interpretation:
 
@@ -641,11 +641,11 @@ Interpretation:
 If outputs are correlated, the joint information is not generally the sum of
 marginal information:
 
-\[
+$$
 I(Y_1,\ldots,Y_m;\Theta)
 \ne
 \sum_jI(Y_j;\Theta).
-\]
+$$
 
 Independent ModelList and `HybridPosterior` approximations do not provide full
 cross-output information.
@@ -657,18 +657,18 @@ cross-output information.
 Selecting the top `q` pointwise scores can be redundant.  Joint batch
 information is
 
-\[
+$$
 I(\mathbf Y_X;\Theta\mid\mathcal D),
 \qquad
 \mathbf Y_X=[Y(x_1),\ldots,Y(x_q)].
-\]
+$$
 
 ### 15.1 Gaussian log-determinant criterion
 
 For Gaussian observations with covariance `Sigma_X` and independent noise
 variance `sigma_n^2`, information about latent values has form
 
-\[
+$$
 I(\mathbf Y_X;\mathbf f_X)
 =
 \frac12
@@ -676,7 +676,7 @@ I(\mathbf Y_X;\mathbf f_X)
 \left(
 I+\sigma_n^{-2}\Sigma_X
 \right).
-\]
+$$
 
 The determinant rewards uncertain and nonredundant batches.
 
@@ -684,9 +684,9 @@ The determinant rewards uncertain and nonredundant batches.
 
 For classification, joint BALD estimates
 
-\[
+$$
 I(\mathbf Y_X;\Theta\mid\mathcal D).
-\]
+$$
 
 Exact enumeration scales as `K^q`.  Greedy or Monte Carlo approximations are
 needed for larger class count or batch size.
@@ -702,11 +702,11 @@ to joint information gain.
 
 If observation noise depends on input,
 
-\[
+$$
 Y=f(x)+\varepsilon(x),
 \qquad
 \varepsilon(x)\sim\mathcal N(0,\sigma_n^2(x)),
-\]
+$$
 
 maximum predictive variance can select points with large irreducible noise.
 
@@ -716,9 +716,9 @@ Possible goals differ:
 
 Prefer epistemic variance relative to noise, for example
 
-\[
+$$
 \frac{\sigma_f^2(x)}{\sigma_n^2(x)+\epsilon}
-\]
+$$
 
 or Gaussian mutual information.
 
@@ -730,9 +730,9 @@ Sample where the noise-model posterior is uncertain.
 
 Use
 
-\[
+$$
 \alpha(x)=\alpha_f(x)+\lambda\alpha_g(x).
-\]
+$$
 
 ### Improve prediction of future observations
 
@@ -746,24 +746,24 @@ The goal must be declared before applying inverse-noise weighting.
 
 For nominal point `x`, execution is
 
-\[
+$$
 \tilde x=x+\delta.
-\]
+$$
 
 A robust learning score may average pointwise information:
 
-\[
+$$
 \alpha_{\mathrm{mean}}(x)
 =
 \mathbb E_\delta[\alpha_0(x+\delta)].
-\]
+$$
 
 Alternatively, define information about a neighborhood-level functional, such
 as
 
-\[
+$$
 \rho[f(x+\delta)].
-\]
+$$
 
 These are not the same.  Averaging acquisition scores and computing acquisition
 about an aggregated robust target involve different orders of expectation and
@@ -778,11 +778,11 @@ Chapter 08 defines risk measures and Chapter 09 defines `q*n_w` shapes.
 If observation cost depends on `x` or measured output set `S`, use information
 per cost:
 
-\[
+$$
 \alpha_{\mathrm{cost}}(x,S)
 =
 \frac{I(Y_S;\Theta\mid x,\mathcal D)}{c(x,S)}.
-\]
+$$
 
 In heterogeneous experiments, the decision may include which response to
 measure.  A wrapper that always observes all outputs cannot represent decoupled

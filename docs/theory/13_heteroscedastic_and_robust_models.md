@@ -13,13 +13,13 @@ adding variances unless the resulting generative model is explicitly defined.
 
 For a continuous observation
 
-\[
+$$
 Y=f(X)+\varepsilon,
-\]
+$$
 
 the predictive variance may be decomposed conceptually as
 
-\[
+$$
 \operatorname{Var}(Y_*\mid\mathcal D)
 =
 \underbrace{\operatorname{Var}(f_*\mid\mathcal D)}_{\text{epistemic}}
@@ -27,7 +27,7 @@ the predictive variance may be decomposed conceptually as
 \underbrace{\mathbb E[\sigma_n^2(X_*)\mid\mathcal D]}_{\text{aleatoric}}
 +
 \text{additional approximation terms}.
-\]
+$$
 
 Epistemic uncertainty may decrease after informative observations.  Aleatoric
 noise is inherent in repeated measurements at the same input unless the data
@@ -35,9 +35,9 @@ collection mechanism is improved.
 
 Input perturbation is separate.  If the executed input is random,
 
-\[
+$$
 \widetilde X=X+\Delta,
-\]
+$$
 
 then variability in \(f(\widetilde X)\) is induced by uncertain inputs even if
 the observation likelihood is noiseless.
@@ -48,15 +48,15 @@ the observation likelihood is noiseless.
 
 When each experiment has a known measurement variance \(s_i^2\), use
 
-\[
+$$
 y_i\mid f_i\sim\mathcal N(f_i,s_i^2).
-\]
+$$
 
 The covariance of the observations is
 
-\[
+$$
 K_y=K_f+\operatorname{diag}(s_1^2,\ldots,s_n^2).
-\]
+$$
 
 This is appropriate when variances come from:
 
@@ -76,37 +76,37 @@ second GP unless the goal is to smooth or extrapolate those variance estimates.
 
 A standard formulation is
 
-\[
+$$
 y_i=f(x_i)+\varepsilon_i,
 \qquad
 \varepsilon_i\sim\mathcal N(0,\sigma^2(x_i)),
-\]
+$$
 
 with
 
-\[
+$$
 f\sim\mathcal{GP}(m_f,k_f),
-\]
+$$
 
-\[
+$$
 g\sim\mathcal{GP}(m_g,k_g),
 \qquad
 \sigma^2(x)=\exp(g(x))
-\]
+$$
 
 or
 
-\[
+$$
 \sigma^2(x)=\operatorname{softplus}(g(x))+\epsilon.
-\]
+$$
 
 The full posterior is
 
-\[
+$$
 p(f,g\mid\mathbf y)
 \propto
 p(\mathbf y\mid f,g)p(f)p(g),
-\]
+$$
 
 which is non-conjugate because the covariance depends on the latent process
 `g`.
@@ -117,18 +117,18 @@ A common practical approximation is:
 
 1. fit a mean GP \(\hat f\);
 2. compute residuals
-   \[
+$$
    r_i=y_i-\hat f(x_i);
-   \]
+$$
 3. construct log-variance targets
-   \[
+$$
    z_i=\log(r_i^2+\epsilon);
-   \]
+$$
 4. fit a second GP to \((x_i,z_i)\);
 5. predict
-   \[
+$$
    \hat\sigma^2(x)=\exp(\mu_g(x)).
-   \]
+$$
 
 This is not joint Bayesian inference.  The residual targets depend on the
 estimated mean, and uncertainty in the mean GP is not fully propagated into the
@@ -147,17 +147,17 @@ mapping log-noise predictions back to variance.
 
 For a test point,
 
-\[
+$$
 \mu_Y(x)=\mu_f(x),
-\]
+$$
 
-\[
+$$
 \operatorname{Var}(Y\mid x,\mathcal D)
 \approx
 \operatorname{Var}(f(x)\mid\mathcal D)
 +
 \hat\sigma^2(x).
-\]
+$$
 
 This addition is valid for Gaussian observations when the noise is conditionally
 independent of the latent mean and the noise estimate is treated as fixed.
@@ -177,23 +177,23 @@ There is no universally correct way to use the learned noise.
 
 A noise-penalized score can be written as
 
-\[
+$$
 \alpha_{\mathrm{pen}}(x)
 =
 \alpha_0(x)w(\sigma_n^2(x)),
-\]
+$$
 
 with, for example,
 
-\[
+$$
 w_{\mathrm{linear}}(v)=\frac{1}{1+\lambda v},
-\]
+$$
 
 or
 
-\[
+$$
 w_{\mathrm{exp}}(v)=\exp(-\lambda v).
-\]
+$$
 
 This is reasonable when the objective is to learn a reproducible process and
 measurements in high-noise regions have low value.
@@ -204,11 +204,11 @@ If noise itself is scientifically important, high-noise or uncertain-noise
 regions may deserve more observations.  A criterion may combine mean-model and
 noise-model information:
 
-\[
+$$
 \alpha(x)
 =
 \alpha_f(x)+\lambda\alpha_g(x).
-\]
+$$
 
 Penalizing high predicted noise would work against this goal.
 
@@ -225,15 +225,15 @@ replicate design should be configured separately.
 
 Classification already has a non-Gaussian likelihood.  For binary data,
 
-\[
+$$
 Y\mid f\sim\operatorname{Bernoulli}(\pi(f)).
-\]
+$$
 
 The conditional observation variance is
 
-\[
+$$
 \operatorname{Var}(Y\mid f)=\pi(f)[1-\pi(f)].
-\]
+$$
 
 An additional `noise_model` needs a precise interpretation.
 
@@ -241,11 +241,11 @@ An additional `noise_model` needs a precise interpretation.
 
 Let \(\rho(x)\in[0,0.5)\) be the probability that a label is flipped.  Then
 
-\[
+$$
 P(Y_{\mathrm{obs}}=1\mid f,x)
 =
 [1-\rho(x)]\pi(f)+\rho(x)[1-\pi(f)].
-\]
+$$
 
 This shrinks probabilities toward `0.5` in unreliable regions.
 
@@ -253,12 +253,12 @@ This shrinks probabilities toward `0.5` in unreliable regions.
 
 For logit classification,
 
-\[
+$$
 P(Y=1\mid f,x)
 =
 \sigma\left(\frac{f(x)}{s(x)}\right),
 \qquad s(x)>0.
-\]
+$$
 
 A large scale `s(x)` makes the class transition diffuse.
 
@@ -290,22 +290,22 @@ src/bochan/models/components/heteroscedastic.py
 
 A principled input-dependent ordered-logit scale is
 
-\[
+$$
 P(Y\le j\mid x)
 =
 \sigma\left(\frac{c_j-f(x)}{s(x)}\right),
 \qquad s(x)>0.
-\]
+$$
 
 Class probabilities are
 
-\[
+$$
 P(Y=j\mid x)
 =
 \sigma\left(\frac{c_j-f(x)}{s(x)}\right)
 -
 \sigma\left(\frac{c_{j-1}-f(x)}{s(x)}\right).
-\]
+$$
 
 A larger scale produces more overlap between adjacent grades.  This model is
 different from adding a noise variance after computing ordinal probabilities.
@@ -333,17 +333,17 @@ Robust Relevance Pursuit (RRP) and outlier relevance models aim to identify a
 small subset of observations or components that need additional flexibility.
 A generic robust observation model is
 
-\[
+$$
 y_i=f(x_i)+o_i+\varepsilon_i,
-\]
+$$
 
 where the outlier effects \(o_i\) are sparse.
 
 A sparsity-inducing prior or iterative pursuit mechanism prefers
 
-\[
+$$
 \|\mathbf o\|_0\ll n
-\]
+$$
 
 or a continuous relaxation such as an \(\ell_1\)-type penalty.
 
@@ -375,9 +375,9 @@ src/bochan/fit/robust/
 Sparse outlier correction is one robustness strategy.  Another is a heavy-tailed
 likelihood, for example
 
-\[
+$$
 y_i\mid f_i\sim\operatorname{StudentT}(\nu,f_i,\sigma).
-\]
+$$
 
 A Student-t likelihood downweights large residuals continuously, whereas sparse
 outlier pursuit attempts to isolate a small number of exceptional points.
@@ -395,17 +395,17 @@ The correct choice depends on the data-generating mechanism:
 
 Let a nominal candidate be `x`, but the executed condition be
 
-\[
+$$
 \widetilde x=x+\delta,
 \qquad
 \delta\sim p(\delta).
-\]
+$$
 
 A robust objective may be
 
-\[
+$$
 \rho[f(\widetilde x)]
-\]
+$$
 
 where `rho` is mean, VaR, CVaR, or another risk functional.
 
@@ -450,27 +450,27 @@ metrics are:
 
 ### Mean prediction
 
-\[
+$$
 \operatorname{RMSE}
 =
 \sqrt{\frac1n\sum_i(y_i-\hat\mu_i)^2}.
-\]
+$$
 
 ### Predictive log likelihood
 
-\[
+$$
 \operatorname{NLPD}
 =-\frac1n\sum_i\log p(y_i\mid x_i,\mathcal D).
-\]
+$$
 
 ### Interval coverage
 
 For a nominal coverage `1-alpha`, compare
 
-\[
+$$
 \frac1n\sum_i
 \mathbf 1[y_i\in C_{1-\alpha}(x_i)]
-\]
+$$
 
 with `1-alpha`.
 

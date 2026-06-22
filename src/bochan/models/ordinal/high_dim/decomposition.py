@@ -252,7 +252,7 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        num_classes: int,
+        num_classes: Optional[int] = None,
         n_components: Optional[int] = 8,
         pca_config: Optional[PCAConfig] = None,
         inducing_points_num: int = 128,
@@ -288,7 +288,7 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
             self.pca.fit(self.preproject_train_input)
         self._projected_train_X = self._project_preprojected_inputs(self.preproject_train_input).detach().clone()
 
-        self.num_classes = int(num_classes)
+        resolved_num_classes = None if num_classes is None else int(num_classes)
         self.inducing_points_num = int(inducing_points_num)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.fix_first_cutpoint = bool(fix_first_cutpoint)
@@ -301,7 +301,7 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
         self.base_model = base_model or OrdinalGPModel(
             train_X=self.projected_train_input,
             train_Y=train_Y,
-            num_classes=self.num_classes,
+            num_classes=resolved_num_classes,
             inducing_points_num=self.inducing_points_num,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
@@ -311,6 +311,7 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
             conditioning_lr=self.conditioning_lr,
             conditioning_batch_size=self.conditioning_batch_size,
         )
+        self.num_classes = int(self.base_model.num_classes)
 
     def _project_preprojected_inputs(self, X: Tensor) -> Tensor:
         return self.pca.transform(X)
@@ -343,7 +344,7 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        num_classes: int,
+        num_classes: Optional[int] = None,
         n_components: Optional[int] = 8,
         rembo_config: Optional[REMBOConfig] = None,
         seed: int = 42,
@@ -381,7 +382,7 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
             self.rembo.fit(self.preproject_train_input)
         self._projected_train_X = self._project_preprojected_inputs(self.preproject_train_input).detach().clone()
 
-        self.num_classes = int(num_classes)
+        resolved_num_classes = None if num_classes is None else int(num_classes)
         self.inducing_points_num = int(inducing_points_num)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.fix_first_cutpoint = bool(fix_first_cutpoint)
@@ -394,7 +395,7 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
         self.base_model = base_model or OrdinalGPModel(
             train_X=self.projected_train_input,
             train_Y=train_Y,
-            num_classes=self.num_classes,
+            num_classes=resolved_num_classes,
             inducing_points_num=self.inducing_points_num,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
@@ -404,6 +405,7 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
             conditioning_lr=self.conditioning_lr,
             conditioning_batch_size=self.conditioning_batch_size,
         )
+        self.num_classes = int(self.base_model.num_classes)
 
     def _project_preprojected_inputs(self, X: Tensor) -> Tensor:
         return self.rembo.transform(X)

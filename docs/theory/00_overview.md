@@ -26,29 +26,29 @@ implements that object.
 
 Find inputs with high utility:
 
-\[
+$$
 x^*\in\arg\max_{x\in\mathcal X}u(x).
-\]
+$$
 
 ### Active Learning
 
 Choose observations that improve a model, reduce uncertainty, or maximize
 information gain:
 
-\[
+$$
 x_{t+1}\in\arg\max_{x\in\mathcal X}
 I(\text{future observation};\text{learning target}\mid\mathcal D_t).
-\]
+$$
 
 ### Level-set Estimation
 
 Identify a region or boundary such as
 
-\[
+$$
 L_h^+=\{x:f(x)\ge h\},
 \qquad
 B_h=\{x:f(x)=h\}.
-\]
+$$
 
 The same surrogate model can support all three goals, but the acquisition
 function and evaluation loss are different.  A model that is appropriate for
@@ -61,30 +61,30 @@ LSE.
 
 At iteration `t`, the observed dataset is
 
-\[
+$$
 \mathcal D_t
 =\{(x_i,y_i)\}_{i=1}^{n_t}.
-\]
+$$
 
 A probabilistic model defines a posterior
 
-\[
+$$
 p(f\mid\mathcal D_t).
-\]
+$$
 
 An objective or posterior transform converts model outputs into the quantity of
 interest.  An acquisition function evaluates the value of collecting data at a
 candidate batch `X`:
 
-\[
+$$
 \alpha_t(X;\mathcal D_t).
-\]
+$$
 
 The next batch is selected by
 
-\[
+$$
 X_{t+1}\in\arg\max_{X\in\mathcal X^q}\alpha_t(X;\mathcal D_t).
-\]
+$$
 
 After the experiment or simulator returns new observations, the data are
 appended and the cycle repeats.
@@ -118,17 +118,17 @@ were interchangeable.
 
 The original design variable is
 
-\[
+$$
 x\in\mathcal X\subseteq\mathbb R^d
-\]
+$$
 
 or a mixed continuous/categorical space.
 
 A model may internally use
 
-\[
+$$
 z=T(x)
-\]
+$$
 
 where `T` is normalization, PCA, REMBO, a VAE encoder, or a neural feature map.
 Candidate optimization still needs a clearly defined search space and an
@@ -138,9 +138,9 @@ inverse or wrapper relationship to the original input.
 
 A GP commonly models
 
-\[
+$$
 f(x).
-\]
+$$
 
 For regression this may be close to the observed response.  For classification
 and ordinal models it is only a latent score.
@@ -149,9 +149,9 @@ and ordinal models it is only a latent score.
 
 The likelihood maps latent values to observations:
 
-\[
+$$
 y\sim p(y\mid f(x)).
-\]
+$$
 
 Examples are Gaussian responses, Bernoulli labels, categorical labels, ordered
 classes, counts, and positive continuous measurements.
@@ -160,9 +160,9 @@ classes, counts, and positive continuous measurements.
 
 The user values a quantity
 
-\[
+$$
 u(x)=T_{\mathrm{decision}}[p(y\mid x,\mathcal D)].
-\]
+$$
 
 Examples include:
 
@@ -336,21 +336,21 @@ behavior.
 
 | Symbol | Meaning |
 |---|---|
-| \(n\) | number of observations |
-| \(d\) | input dimension |
-| \(q\) | number of candidates selected jointly |
-| \(m\) | number of outputs or objective dimensions |
-| \(K\) | number of classes |
-| \(n_w\) | number of input-perturbation samples per nominal candidate |
-| \(X\) | candidate tensor or design matrix |
-| \(\mathcal D_t\) | observed data at iteration `t` |
-| \(f\) | latent function |
-| \(y\) | observed response |
-| \(u\) | utility or objective value |
-| \(k\) | covariance kernel |
-| \(\mu,\Sigma\) | posterior mean and covariance |
-| \(\alpha\) | acquisition function; also a risk level when context is explicit |
-| \(h\) | level-set threshold |
+| $n$ | number of observations |
+| $d$ | input dimension |
+| $q$ | number of candidates selected jointly |
+| $m$ | number of outputs or objective dimensions |
+| $K$ | number of classes |
+| $n_w$ | number of input-perturbation samples per nominal candidate |
+| $X$ | candidate tensor or design matrix |
+| $\mathcal D_t$ | observed data at iteration `t` |
+| $f$ | latent function |
+| $y$ | observed response |
+| $u$ | utility or objective value |
+| $k$ | covariance kernel |
+| $\mu,\Sigma$ | posterior mean and covariance |
+| $\alpha$ | acquisition function; also a risk level when context is explicit |
+| $h$ | level-set threshold |
 
 When the same Greek symbol is common in two fields, the chapter states the
 local meaning explicitly.  For example, `alpha` can denote an acquisition

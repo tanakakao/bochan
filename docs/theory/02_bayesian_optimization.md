@@ -14,15 +14,15 @@ functions.  Chapters 06 and 07 explain discrete-output and multi-objective BO.
 
 The standard single-objective problem is
 
-\[
+$$
 x^*\in\arg\max_{x\in\mathcal X} f(x),
-\]
+$$
 
 where evaluating `f(x)` is expensive.  The observation may be noisy:
 
-\[
+$$
 y(x)=f(x)+\varepsilon(x).
-\]
+$$
 
 The design space may include:
 
@@ -42,41 +42,41 @@ the number required by ordinary global optimization.
 
 After `t` rounds, define
 
-\[
+$$
 \mathcal D_t
 =
 \{(x_i,y_i)\}_{i=1}^{n_t}.
-\]
+$$
 
 The surrogate posterior is
 
-\[
+$$
 p(f\mid\mathcal D_t).
-\]
+$$
 
 For non-Gaussian observations, `f` may be a latent function and the decision
 quantity may instead be a probability or expected utility.  It is useful to
 write the decision function as
 
-\[
+$$
 u(x)=T[p(y\mid x,\mathcal D_t)],
-\]
+$$
 
 where `T` maps a predictive distribution to what the user values.
 
 Examples:
 
-\[
+$$
 u(x)=\mathbb E[f(x)\mid\mathcal D_t],
-\]
+$$
 
-\[
+$$
 u(x)=P(Y=1\mid x,\mathcal D_t),
-\]
+$$
 
-\[
+$$
 u(x)=\sum_k u_kP(Y=k\mid x,\mathcal D_t).
-\]
+$$
 
 The acquisition must use a posterior or sample representation consistent with
 this objective space.
@@ -87,28 +87,28 @@ this objective space.
 
 A BO policy chooses
 
-\[
+$$
 x_{t+1}
 \in
 \arg\max_{x\in\mathcal X}
 \alpha_t(x;\mathcal D_t).
-\]
+$$
 
 For a batch of `q` candidates,
 
-\[
+$$
 X_{t+1}
 =
 [x_{t+1,1},\ldots,x_{t+1,q}]
 \in\mathcal X^q,
-\]
+$$
 
-\[
+$$
 X_{t+1}
 \in
 \arg\max_{X\in\mathcal X^q}
 \alpha_t(X;\mathcal D_t).
-\]
+$$
 
 The policy is adaptive because every new observation changes the posterior and
 therefore the next acquisition surface.
@@ -122,9 +122,9 @@ prefers candidates whose observations may improve future decisions.
 
 A purely greedy policy is
 
-\[
+$$
 x_{t+1}\in\arg\max_x\mathbb E[u(x)\mid\mathcal D_t].
-\]
+$$
 
 It can fail when the posterior mean is inaccurate in unexplored regions.
 
@@ -140,15 +140,15 @@ look-ahead value.
 BoTorch acquisition functions generally use a maximization convention.  A
 minimization objective `g(x)` is commonly transformed as
 
-\[
+$$
 u(x)=-g(x).
-\]
+$$
 
 For a target-matching problem,
 
-\[
+$$
 u(x)=-|g(x)-a|
-\]
+$$
 
 or a smooth alternative can be used.
 
@@ -172,25 +172,25 @@ standardized space, its references must be standardized too.
 
 For maximization,
 
-\[
+$$
 r_t=f(x^*)-f(x_t).
-\]
+$$
 
 ### 6.2 Cumulative regret
 
-\[
+$$
 R_T=\sum_{t=1}^{T}r_t.
-\]
+$$
 
 This is important when every evaluated candidate is deployed and poor trials
 have real cost.
 
 ### 6.3 Simple regret
 
-\[
+$$
 s_T
 =f(x^*)-\max_{1\le t\le T}f(x_t).
-\]
+$$
 
 Simple regret is often the main metric in experimental BO, where the final best
 condition matters more than intermediate trial quality.
@@ -199,18 +199,18 @@ condition matters more than intermediate trial quality.
 
 If the final recommendation is
 
-\[
+$$
 \hat x_T
 \in
 \arg\max_x\mathbb E[f(x)\mid\mathcal D_T],
-\]
+$$
 
 then
 
-\[
+$$
 r_{\mathrm{rec}}
 =f(x^*)-f(\hat x_T).
-\]
+$$
 
 Evaluation should state whether it uses best observed, best latent, or posterior
 recommended value.
@@ -221,17 +221,17 @@ recommended value.
 
 Suppose
 
-\[
+$$
 y_i=f(x_i)+\varepsilon_i,
 \qquad
 \varepsilon_i\sim\mathcal N(0,\sigma_i^2).
-\]
+$$
 
 The best observed value
 
-\[
+$$
 \max_i y_i
-\]
+$$
 
 is biased upward under noise.  An unusually positive noise realization can look
 like an optimum.
@@ -239,7 +239,7 @@ like an optimum.
 Noise-aware acquisitions treat latent baseline values as uncertain.  Noisy
 Expected Improvement integrates over posterior samples at baseline points:
 
-\[
+$$
 \alpha_{\mathrm{NEI}}(X)
 =
 \mathbb E_{\mathbf f_B,\mathbf f_X}
@@ -249,7 +249,7 @@ Expected Improvement integrates over posterior samples at baseline points:
 0
 \right)
 \right].
-\]
+$$
 
 Here `B` denotes baseline inputs.  The exact implementation includes q-batch,
 objective, and constraint handling.
@@ -287,17 +287,17 @@ needed.
 
 A batch acquisition evaluates the joint value of multiple points:
 
-\[
+$$
 \alpha(X),
 \qquad X=[x_1,\ldots,x_q].
-\]
+$$
 
 The value is generally not additive:
 
-\[
+$$
 \alpha(X)
 e\sum_{i=1}^q\alpha(x_i).
-\]
+$$
 
 Correlated candidates provide redundant information.  A proper joint
 acquisition uses joint posterior samples or covariance.
@@ -325,9 +325,9 @@ when evaluations are naturally independent across discrete groups.
 In asynchronous BO, some candidates have been launched but their outcomes are
 unknown.  Let
 
-\[
+$$
 X_{\mathrm{pending}}
-\]
+$$
 
 denote those points.
 
@@ -349,12 +349,12 @@ approximation rather than Bayesian conditioning.
 
 The general constrained problem is
 
-\[
+$$
 \max_x f(x)
 \quad\text{subject to}\quad
 c_j(x)\le 0,
 \qquad j=1,\ldots,J.
-\]
+$$
 
 There are three distinct layers.
 
@@ -362,9 +362,9 @@ There are three distinct layers.
 
 These are deterministic functions of `x`, such as
 
-\[
+$$
 Ax\le b.
-\]
+$$
 
 They belong in acquisition optimization or candidate repair.
 
@@ -372,9 +372,9 @@ They belong in acquisition optimization or candidate repair.
 
 These require surrogate models.  A feasibility probability is
 
-\[
+$$
 P(c_j(x)\le0\mid\mathcal D_t).
-\]
+$$
 
 A constrained acquisition may multiply utility by feasibility or include
 sample-level constraint indicators.
@@ -393,9 +393,9 @@ Chapter 07 gives detailed multi-objective and constraint theory.
 
 Let
 
-\[
+$$
 x=(x_c,x_g)
-\]
+$$
 
 contain continuous and categorical components.
 
@@ -442,7 +442,7 @@ future decisions after one or more hypothetical observations.
 
 The one-step KG concept is
 
-\[
+$$
 \operatorname{KG}(x)
 =
 \mathbb E_{y_x}
@@ -451,7 +451,7 @@ The one-step KG concept is
 \right]
 -
 \max_{x'}\mu_t(x').
-\]
+$$
 
 It values improvement in the best posterior decision rather than immediate
 objective improvement at `x`.

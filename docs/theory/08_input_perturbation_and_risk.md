@@ -15,40 +15,40 @@ and 13.  Robust Level-set Estimation is connected in Chapters 05 and 16.
 
 Let the selected nominal input be
 
-\[
+$$
 x\in\mathcal X.
-\]
+$$
 
 The executed input is random:
 
-\[
+$$
 \widetilde X
 =T(x,W),
-\]
+$$
 
 where `W` is an execution perturbation.  The additive case is
 
-\[
+$$
 \widetilde X=x+W.
-\]
+$$
 
 The resulting response is
 
-\[
+$$
 Z_x=f(\widetilde X).
-\]
+$$
 
 A nominal optimizer solves
 
-\[
+$$
 \max_x f(x),
-\]
+$$
 
 whereas a robust optimizer solves
 
-\[
+$$
 \max_x\rho(Z_x)
-\]
+$$
 
 for a risk functional `rho`.
 
@@ -60,52 +60,52 @@ Several random mechanisms can coexist.
 
 ### Posterior epistemic uncertainty
 
-\[
+$$
 f\sim p(f\mid\mathcal D).
-\]
+$$
 
 ### Observation noise
 
-\[
+$$
 Y=f(X)+\varepsilon.
-\]
+$$
 
 ### Input perturbation
 
-\[
+$$
 \widetilde X=T(x,W).
-\]
+$$
 
 ### Environmental variability
 
-\[
+$$
 Y=f(x,E)+\varepsilon.
-\]
+$$
 
 ### Random class outcome
 
-\[
+$$
 Y\sim\operatorname{Categorical}(\mathbf p(x)).
-\]
+$$
 
 The robust objective must state over which randomness `rho` is taken.  For
 example,
 
-\[
+$$
 \mathbb E_W[f(x+W)]
-\]
+$$
 
 is different from
 
-\[
+$$
 \mathbb E_{f\mid\mathcal D,W}[f(x+W)]
-\]
+$$
 
 and from expected future noisy measurement
 
-\[
+$$
 \mathbb E_{f,W,\varepsilon}[Y].
-\]
+$$
 
 ---
 
@@ -113,32 +113,32 @@ and from expected future noisy measurement
 
 The expected perturbed response is
 
-\[
+$$
 R_{\mathrm{mean}}(x)
 =
 \mathbb E_W[f(T(x,W))].
-\]
+$$
 
 For maximization, choose
 
-\[
+$$
 x^*
 \in
 \arg\max_xR_{\mathrm{mean}}(x).
-\]
+$$
 
 This rewards average neighborhood performance.  It does not directly control
 bad-tail outcomes.
 
 A Monte Carlo estimator with perturbations `W_1,...,W_nw` is
 
-\[
+$$
 \widehat R_{\mathrm{mean}}(x)
 =
 \frac1{n_w}
 \sum_{r=1}^{n_w}
 f(T(x,W_r)).
-\]
+$$
 
 For posterior samples, the estimator retains both posterior-sample and
 perturbation axes until the objective reduces them.
@@ -149,7 +149,7 @@ perturbation axes until the objective reduces them.
 
 A mean-variance utility is
 
-\[
+$$
 R_{\mathrm{MV}}(x)
 =
 \mathbb E[Z_x]
@@ -157,17 +157,17 @@ R_{\mathrm{MV}}(x)
 \lambda
 \operatorname{Var}(Z_x),
 \qquad \lambda\ge0.
-\]
+$$
 
 or, using standard deviation,
 
-\[
+$$
 R_{\mathrm{MSD}}(x)
 =
 \mathbb E[Z_x]
 -
 \lambda\sqrt{\operatorname{Var}(Z_x)}.
-\]
+$$
 
 Mean-variance objectives are easy to compute but do not distinguish symmetric
 variance from one-sided downside risk.
@@ -175,7 +175,7 @@ variance from one-sided downside risk.
 If posterior uncertainty and input perturbation are both random, the law of
 total variance gives
 
-\[
+$$
 \operatorname{Var}(Z_x\mid\mathcal D)
 =
 \mathbb E_W
@@ -183,7 +183,7 @@ total variance gives
 +
 \operatorname{Var}_W
 [\mathbb E_f(f(T(x,W))\mid W,\mathcal D)].
-\]
+$$
 
 The first term is average model uncertainty; the second is sensitivity to
 execution perturbation.
@@ -194,21 +194,21 @@ execution perturbation.
 
 For perturbation support `W in mathcal W`, worst-case objective is
 
-\[
+$$
 R_{\mathrm{worst}}(x)
 =
 \inf_{w\in\mathcal W}
 f(T(x,w)).
-\]
+$$
 
 A sample approximation is
 
-\[
+$$
 \widehat R_{\mathrm{worst}}(x)
 =
 \min_{r=1,\ldots,n_w}
 f(T(x,W_r)).
-\]
+$$
 
 Properties:
 
@@ -227,27 +227,27 @@ must be tolerated.  It is not a probability-weighted risk measure.
 
 Let `Z_x` be a utility to maximize with cumulative distribution function
 
-\[
+$$
 F_x(z)=P(Z_x\le z).
-\]
+$$
 
 Define lower-tail quantile
 
-\[
+$$
 q_\alpha(x)
 =
 F_x^{-1}(\alpha)
 =
 \inf\{z:F_x(z)\ge\alpha\},
 \qquad 0<\alpha<1.
-\]
+$$
 
 For maximization, a conservative Value at Risk can be defined as
 
-\[
+$$
 \operatorname{VaR}_\alpha^{\mathrm{lower}}(Z_x)
 =q_\alpha(x),
-\]
+$$
 
 where small `alpha` targets a bad lower tail.  For example, `alpha=0.1`
 represents the 10th percentile of utility.
@@ -259,9 +259,9 @@ Some financial conventions define `alpha` as a high confidence level and use
 
 A sample estimator is the corresponding order statistic of
 
-\[
+$$
 Z_1,\ldots,Z_{n_w}.
-\]
+$$
 
 VaR ignores outcomes beyond the quantile and can change discontinuously when
 sample order changes.
@@ -273,19 +273,19 @@ sample order changes.
 For lower-tail utility risk, CVaR is the average utility in the worst `alpha`
 fraction:
 
-\[
+$$
 \operatorname{CVaR}_\alpha^{\mathrm{lower}}(Z_x)
 =
 \mathbb E[
 Z_x\mid Z_x\le q_\alpha(x)
 ]
-\]
+$$
 
 for continuous distributions.
 
 A variational representation is
 
-\[
+$$
 \operatorname{CVaR}_\alpha^{\mathrm{lower}}(Z)
 =
 \sup_{\eta}
@@ -294,13 +294,13 @@ A variational representation is
 \frac1\alpha
 \mathbb E[(\eta-Z)_+]
 \right].
-\]
+$$
 
 For samples, sort utilities ascending and average the worst
 
-\[
+$$
 k=\max(1,\lceil\alpha n_w\rceil)
-\]
+$$
 
 values.
 
@@ -313,21 +313,21 @@ outcomes than VaR.
 
 For a loss `L` to minimize, upper-tail risk is often used:
 
-\[
+$$
 \operatorname{VaR}_{1-\alpha}^{\mathrm{upper}}(L),
-\]
+$$
 
-\[
+$$
 \operatorname{CVaR}_{1-\alpha}^{\mathrm{upper}}(L).
-\]
+$$
 
 For utility `Z` to maximize, lower-tail risk is natural.
 
 Converting loss to utility
 
-\[
+$$
 Z=-L
-\]
+$$
 
 changes tail direction.  A robust implementation should expose:
 
@@ -343,21 +343,21 @@ changes tail direction.  A robust implementation should expose:
 
 For loss `L`, entropic risk is
 
-\[
+$$
 \rho_\lambda(L)
 =
 \frac1\lambda
 \log\mathbb E[e^{\lambda L}],
 \qquad\lambda>0.
-\]
+$$
 
 For utility maximization, a risk-averse certainty equivalent can be
 
-\[
+$$
 R_\lambda(Z)
 =-\frac1\lambda
 \log\mathbb E[e^{-\lambda Z}].
-\]
+$$
 
 Entropic risk is smooth and emphasizes tails exponentially.  It can be
 numerically sensitive and should use log-sum-exp stabilization in sample
@@ -369,34 +369,34 @@ estimation.
 
 For utility threshold `h`, reliability is
 
-\[
+$$
 R_h(x)
 =P_W(f(T(x,W))\ge h).
-\]
+$$
 
 A chance-constrained robust design requires
 
-\[
+$$
 R_h(x)\ge1-\epsilon.
-\]
+$$
 
 A Monte Carlo estimator is
 
-\[
+$$
 \widehat R_h(x)
 =
 \frac1{n_w}
 \sum_{r=1}^{n_w}
 \mathbf1[f(T(x,W_r))\ge h].
-\]
+$$
 
 A smooth approximation can replace the indicator with
 
-\[
+$$
 \sigma\left(
 \frac{f(T(x,W_r))-h}{\tau}
 \right).
-\]
+$$
 
 The smoothing temperature `tau` trades bias for differentiability.
 
@@ -408,30 +408,30 @@ Consider uncertain latent function and input perturbation.
 
 ### Posterior-mean execution reliability
 
-\[
+$$
 P_W(
 \mathbb E_f[f(T(x,W))\mid\mathcal D]
 \ge h
 ).
-\]
+$$
 
 ### Joint posterior-execution reliability
 
-\[
+$$
 P_{f,W}(
 f(T(x,W))\ge h
 \mid\mathcal D
 ).
-\]
+$$
 
 ### Predictive measurement reliability
 
-\[
+$$
 P_{f,W,\varepsilon}(
 Y(T(x,W))\ge h
 \mid\mathcal D
 ).
-\]
+$$
 
 These probabilities answer different questions.  The last includes future
 measurement noise and is usually smaller when noise is large.
@@ -443,10 +443,10 @@ measurement noise and is usually smaller when noise is large.
 During acquisition optimization, perturbation samples can be fixed across
 candidate evaluations:
 
-\[
+$$
 W_1,\ldots,W_{n_w}
 \quad\text{fixed during optimization}.
-\]
+$$
 
 This creates a sample-average approximation with a smoother deterministic
 objective.  Resampling perturbations every forward pass introduces stochastic
@@ -461,28 +461,28 @@ fixed set, while maintaining reproducibility through recorded seeds.
 
 ### 13.1 Additive Gaussian
 
-\[
+$$
 W\sim\mathcal N(0,\Sigma_W).
-\]
+$$
 
 ### 13.2 Uniform tolerance
 
-\[
+$$
 W_j\sim\operatorname{Uniform}(-a_j,a_j).
-\]
+$$
 
 ### 13.3 Multiplicative error
 
-\[
+$$
 \widetilde X_j
 =x_j(1+W_j).
-\]
+$$
 
 ### 13.4 Correlated execution error
 
-\[
+$$
 W\sim\mathcal N(0,\Sigma_W)
-\]
+$$
 
 with off-diagonal covariance.
 
@@ -490,9 +490,9 @@ with off-diagonal covariance.
 
 Use historical deviations
 
-\[
+$$
 W_r\in\{w^{(1)},\ldots,w^{(N)}\}
-\]
+$$
 
 or bootstrap samples.
 
@@ -500,9 +500,9 @@ or bootstrap samples.
 
 A categorical transition matrix can model execution or labeling errors:
 
-\[
+$$
 P(\widetilde C=j\mid C=i)=M_{ij}.
-\]
+$$
 
 Adding Gaussian noise to integer category codes is not a valid category
 perturbation model.
@@ -515,11 +515,11 @@ Perturbed points may leave the valid domain.  Possible policies include:
 
 ### Clipping
 
-\[
+$$
 \widetilde x_j
 \leftarrow
 \min(u_j,\max(l_j,\widetilde x_j)).
-\]
+$$
 
 Clipping creates mass at boundaries.
 
@@ -548,11 +548,11 @@ has an explicit transition model.
 
 For composition vector
 
-\[
+$$
 x_j\ge0,
 \qquad
 \sum_jx_j=1,
-\]
+$$
 
 independent additive perturbation breaks the simplex.  Alternatives include:
 
@@ -637,7 +637,7 @@ outputs `m`.  Nonlinear operations do not generally commute.
 
 These are generally different:
 
-\[
+$$
 \operatorname{EI}
 \left(
 \operatorname{CVaR}_W[f]
@@ -647,7 +647,7 @@ These are generally different:
 \left(
 \operatorname{EI}[f]
 \right).
-\]
+$$
 
 The current score-objective pattern in several `bochan` Active Learning and LSE
 modules reduces already-computed pointwise scores.  It should be interpreted as
@@ -659,45 +659,45 @@ robust score aggregation, not automatically as BO on a robust latent function.
 
 For binary class probability under perturbation,
 
-\[
+$$
 p_W(x)=P(Y=1\mid T(x,W),\mathcal D).
-\]
+$$
 
 Possible robust objectives include:
 
 ### Mean success probability
 
-\[
+$$
 \mathbb E_W[p_W(x)].
-\]
+$$
 
 ### Worst sampled success probability
 
-\[
+$$
 \min_Wp_W(x).
-\]
+$$
 
 ### Lower-tail CVaR of probability
 
-\[
+$$
 \operatorname{CVaR}_\alpha^{\mathrm{lower}}[p_W(x)].
-\]
+$$
 
 ### Probability that success probability exceeds requirement
 
-\[
+$$
 P_W(p_W(x)\ge\gamma).
-\]
+$$
 
 ### Future-label reliability
 
 If execution and label are both random,
 
-\[
+$$
 P(Y=1\mid x)
 =
 \mathbb E_W[p_W(x)].
-\]
+$$
 
 The last identity follows from the law of total probability.
 
@@ -707,33 +707,33 @@ The last identity follows from the law of total probability.
 
 Let class probabilities under perturbation be
 
-\[
+$$
 p_k(x,W).
-\]
+$$
 
 Expected utility under perturbation is
 
-\[
+$$
 \mathbb E_W
 \left[
 \sum_ku_kp_k(x,W)
 \right].
-\]
+$$
 
 Because expected utility is linear,
 
-\[
+$$
 \mathbb E_W
 \left[
 \sum_ku_kp_k
 \right]
 =
 \sum_ku_k\mathbb E_W[p_k].
-\]
+$$
 
 Nonlinear quantities do not commute:
 
-\[
+$$
 \operatorname{CVaR}_W
 \left[
 \sum_ku_kp_k
@@ -741,22 +741,22 @@ Nonlinear quantities do not commute:
 \ne
 \sum_ku_k
 \operatorname{CVaR}_W[p_k].
-\]
+$$
 
 Minimum-grade reliability is
 
-\[
+$$
 P_W
 \left(
 P(Y\ge g\mid T(x,W))\ge\gamma
 \right).
-\]
+$$
 
 This differs from average probability
 
-\[
+$$
 \mathbb E_W[P(Y\ge g\mid T(x,W))].
-\]
+$$
 
 ---
 
@@ -764,9 +764,9 @@ This differs from average probability
 
 For vector response
 
-\[
+$$
 \mathbf f(T(x,W)),
-\]
+$$
 
 possible objectives are:
 
@@ -778,15 +778,15 @@ possible objectives are:
 
 Order matters:
 
-\[
+$$
 \rho_W[s(\mathbf f)]
-\]
+$$
 
 is not generally equal to
 
-\[
+$$
 s(\rho_W[f_1],\ldots,\rho_W[f_m]).
-\]
+$$
 
 A component-wise CVaR vector can be overly conservative because worst outcomes
 for different objectives may occur at different perturbations.
@@ -799,27 +799,27 @@ Possible robust sets include:
 
 ### Mean set
 
-\[
+$$
 L_h^{\mathrm{mean}}
 =
 \{x:\mathbb E_W[f(T(x,W))]\ge h\}.
-\]
+$$
 
 ### Chance set
 
-\[
+$$
 L_{h,\gamma}^{\mathrm{chance}}
 =
 \{x:P_W(f(T(x,W))\ge h)\ge\gamma\}.
-\]
+$$
 
 ### CVaR set
 
-\[
+$$
 L_h^{\mathrm{CVaR}}
 =
 \{x:\operatorname{CVaR}_\alpha^{\mathrm{lower}}[f(T(x,W))]\ge h\}.
-\]
+$$
 
 Each set has a different boundary.  Robust LSE must state which one is being
 estimated.
@@ -834,9 +834,9 @@ Risk estimates depend on `n_w`.
 
 Monte Carlo standard error decreases approximately as
 
-\[
+$$
 O(n_w^{-1/2}).
-\]
+$$
 
 ### VaR
 
@@ -847,9 +847,9 @@ tails.
 
 The effective number of tail samples is approximately
 
-\[
+$$
 \alpha n_w.
-\]
+$$
 
 For `alpha=0.05` and `n_w=20`, only one sample defines the empirical tail.  The
 result behaves like a minimum rather than a stable CVaR estimate.

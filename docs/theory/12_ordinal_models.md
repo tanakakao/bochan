@@ -21,16 +21,16 @@ Decision criteria are treated separately:
 
 Let
 
-\[
+$$
 Y\in\{0,1,\ldots,K-1\},
 \qquad K\ge3,
-\]
+$$
 
 with order
 
-\[
+$$
 0<1<\cdots<K-1.
-\]
+$$
 
 The labels indicate ranking, but the numeric spacing is not necessarily equal.
 For example, the difference between grades 0 and 1 need not equal the
@@ -46,34 +46,34 @@ ignores the known ordering.
 
 Introduce a scalar latent function
 
-\[
+$$
 f\sim\mathcal{GP}(m,k)
-\]
+$$
 
 and ordered cutpoints
 
-\[
+$$
 c_0<c_1<\cdots<c_{K-2}.
-\]
+$$
 
 Use the conventions
 
-\[
+$$
 c_{-1}=-\infty,
 \qquad
 c_{K-1}=+\infty.
-\]
+$$
 
 The class is determined by the interval containing an unobserved continuous
 latent variable.
 
 In a deterministic threshold representation,
 
-\[
+$$
 Y=k
 \quad\Longleftrightarrow\quad
 c_{k-1}<f(x)\le c_k.
-\]
+$$
 
 A probabilistic ordinal likelihood adds link noise around these thresholds.
 
@@ -83,44 +83,44 @@ A probabilistic ordinal likelihood adds link noise around these thresholds.
 
 The cumulative probability is
 
-\[
+$$
 P(Y\le k\mid f)
 =
 \sigma(c_k-f),
 \qquad k=0,\ldots,K-2.
-\]
+$$
 
 Equivalently,
 
-\[
+$$
 P(Y>k\mid f)
 =
 \sigma(f-c_k).
-\]
+$$
 
 Class probabilities are differences of adjacent cumulative probabilities:
 
-\[
+$$
 P(Y=k\mid f)
 =
 \sigma(c_k-f)
 -
 \sigma(c_{k-1}-f).
-\]
+$$
 
 At the endpoints:
 
-\[
+$$
 P(Y=0\mid f)
 =
 \sigma(c_0-f),
-\]
+$$
 
-\[
+$$
 P(Y=K-1\mid f)
 =
 1-\sigma(c_{K-2}-f).
-\]
+$$
 
 As `f` increases, probability mass shifts toward higher classes.
 
@@ -130,26 +130,26 @@ As `f` increases, probability mass shifts toward higher classes.
 
 Ordered logit can be written using latent continuous response
 
-\[
+$$
 Z=f(x)+\epsilon,
-\]
+$$
 
 where `epsilon` follows a standard logistic distribution.  The observed class
 is
 
-\[
+$$
 Y=k
 \quad\Longleftrightarrow\quad
 c_{k-1}<Z\le c_k.
-\]
+$$
 
 Then
 
-\[
+$$
 P(Y\le k\mid f)
 =P(Z\le c_k\mid f)
 =\sigma(c_k-f).
-\]
+$$
 
 An ordered-probit model instead uses Gaussian latent noise and cumulative normal
 probabilities.  Logit and probit latent scales are not numerically identical.
@@ -160,56 +160,56 @@ probabilities.  Logit and probit latent scales are not numerically identical.
 
 Directly optimizing unrestricted cutpoints can violate
 
-\[
+$$
 c_0<c_1<\cdots<c_{K-2}.
-\]
+$$
 
 `bochan` parameterizes positive gaps:
 
-\[
+$$
 \Delta_j
 =
 \operatorname{softplus}(r_j)+\epsilon,
 \qquad
 \Delta_j>0.
-\]
+$$
 
 ### Fixed first cutpoint
 
 When `fix_first_cutpoint=True`,
 
-\[
+$$
 c_0=0,
-\]
+$$
 
 and remaining cutpoints are cumulative sums:
 
-\[
+$$
 c_j
 =
 \sum_{l=1}^{j}\Delta_l.
-\]
+$$
 
 ### Free centered cutpoints
 
 When the first cutpoint is not fixed, construct cumulative values
 
-\[
+$$
 \tilde c_j
 =
 \sum_{l=0}^{j}\Delta_l
-\]
+$$
 
 and center them:
 
-\[
+$$
 c_j
 =
 \tilde c_j
 -
 \frac1{K-1}
 \sum_{r=0}^{K-2}\tilde c_r.
-\]
+$$
 
 Both constructions preserve strict order.
 
@@ -219,19 +219,19 @@ Both constructions preserve strict order.
 
 The ordered likelihood is invariant to a common shift:
 
-\[
+$$
 f(x)\mapsto f(x)+a,
-\]
+$$
 
-\[
+$$
 c_j\mapsto c_j+a.
-\]
+$$
 
 Because
 
-\[
+$$
 (c_j+a)-(f+a)=c_j-f,
-\]
+$$
 
 class probabilities do not change.
 
@@ -253,13 +253,13 @@ the relative scale of latent function and cutpoint gaps.
 
 If an additional scale `s` is introduced,
 
-\[
+$$
 P(Y\le k\mid f)
 =
 \sigma\left(
 \frac{c_k-f}{s}
 \right),
-\]
+$$
 
 then multiplying `f`, cutpoints, and `s` by a common factor creates another
 identifiability issue unless one component is constrained.
@@ -273,21 +273,21 @@ learned cutpoint gaps.
 
 For training labels `y_i`, the likelihood is
 
-\[
+$$
 p(\mathbf y\mid\mathbf f,\mathbf c)
 =
 \prod_{i=1}^{n}
 P(Y_i=y_i\mid f_i,\mathbf c).
-\]
+$$
 
 The log likelihood is
 
-\[
+$$
 \log p(\mathbf y\mid\mathbf f,\mathbf c)
 =
 \sum_i
 \log P(Y_i=y_i\mid f_i,\mathbf c).
-\]
+$$
 
 Very small class probabilities can create numerical instability.  The
 implementation clamps probabilities by an `eps` floor and renormalizes them.
@@ -298,31 +298,31 @@ implementation clamps probabilities by an `eps` floor and renormalizes them.
 
 The ordered likelihood is non-Gaussian.  The model uses inducing variables
 
-\[
+$$
 \mathbf u=f(Z)
-\]
+$$
 
 and variational distribution
 
-\[
+$$
 q(\mathbf u)
 =
 \mathcal N(\mathbf m_u,S_u).
-\]
+$$
 
 The induced latent posterior is
 
-\[
+$$
 q(\mathbf f)
 =
 \int
 p(\mathbf f\mid\mathbf u)
 q(\mathbf u)d\mathbf u.
-\]
+$$
 
 Training maximizes
 
-\[
+$$
 \mathcal L_{\mathrm{ELBO}}
 =
 \sum_i
@@ -333,7 +333,7 @@ Training maximizes
 -
 \operatorname{KL}
 [q(\mathbf u)\|p(\mathbf u)].
-\]
+$$
 
 The optimization variables include:
 
@@ -351,29 +351,29 @@ Cutpoints are likelihood parameters and must be included in the optimizer.
 
 For one-dimensional latent `f_i`, expectations such as
 
-\[
+$$
 \mathbb E_{q(f_i)}
 [
 \log P(y_i\mid f_i)
 ]
-\]
+$$
 
 and marginal class probabilities can be evaluated by Gaussian quadrature.
 
 If
 
-\[
+$$
 f_i\sim\mathcal N(\mu_i,\sigma_i^2),
-\]
+$$
 
 then
 
-\[
+$$
 \mathbb E[g(f_i)]
 =
 \int g(f)
 \mathcal N(f;\mu_i,\sigma_i^2)df.
-\]
+$$
 
 Gauss-Hermite quadrature approximates this integral as a weighted sum at
 transformed nodes.  It is practical because the ordinal latent dimension per
@@ -385,13 +385,13 @@ observation is scalar.
 
 The conditional likelihood probability is
 
-\[
+$$
 P(Y=k\mid f).
-\]
+$$
 
 The predictive probability integrates latent uncertainty:
 
-\[
+$$
 p_k(x)
 =
 P(Y=k\mid x,\mathcal D)
@@ -399,13 +399,13 @@ P(Y=k\mid x,\mathcal D)
 \int
 P(Y=k\mid f)
 q(f\mid x,\mathcal D)df.
-\]
+$$
 
 This is not generally equal to the plug-in probability
 
-\[
+$$
 P(Y=k\mid f=\mu_f(x)).
-\]
+$$
 
 `OrdinalLogitLikelihood.marginal_class_probs` applies quadrature separately for
 each class and renormalizes the result.
@@ -418,27 +418,27 @@ Ordered models are naturally interpreted through cumulative events.
 
 ### Probability below or equal to grade `k`
 
-\[
+$$
 P(Y\le k\mid x)
 =
 \sum_{r=0}^{k}p_r(x).
-\]
+$$
 
 ### Probability at or above grade `g`
 
-\[
+$$
 P(Y\ge g\mid x)
 =
 \sum_{r=g}^{K-1}p_r(x).
-\]
+$$
 
 For boundary `j` between classes `j` and `j+1`, define
 
-\[
+$$
 g_j(x)
 =
 P(Y\ge j+1\mid x).
-\]
+$$
 
 These cumulative probabilities are useful for calibration, constraints, and
 boundary interpretation.
@@ -449,28 +449,28 @@ boundary interpretation.
 
 The maximum-probability class is
 
-\[
+$$
 \hat y_{\mathrm{mode}}(x)
 =
 \arg\max_kp_k(x).
-\]
+$$
 
 For an ordered absolute-error loss, the Bayes-optimal class is a posterior
 median, not necessarily the mode.
 
 A posterior median class `k*` satisfies
 
-\[
+$$
 P(Y\le k^*\mid x)
 \ge\frac12
-\]
+$$
 
 and
 
-\[
+$$
 P(Y\ge k^*\mid x)
 \ge\frac12.
-\]
+$$
 
 For squared error on numeric class scores, the posterior mean class index may be
 optimal, but this assumes equal numeric spacing.
@@ -483,34 +483,34 @@ The current `predict_class(X)` returns the probability mode through `argmax`.
 
 Assign class utilities
 
-\[
+$$
 \mathbf u=(u_0,\ldots,u_{K-1}).
-\]
+$$
 
 Expected utility is
 
-\[
+$$
 U(x)
 =
 \sum_{k=0}^{K-1}u_kp_k(x).
-\]
+$$
 
 The likelihood encodes order; utility encodes user preference.  They are not the
 same.
 
 ### Equal class index
 
-\[
+$$
 u_k=k
-\]
+$$
 
 assumes equal spacing.
 
 ### Domain-specific utility
 
-\[
+$$
 \mathbf u=(0,0.1,0.7,1.0)
-\]
+$$
 
 can encode a large value increase when a specification grade is reached.
 
@@ -523,12 +523,12 @@ not only the latent mean.
 
 For realized class utility `U_Y=u_Y`, conditional variance is
 
-\[
+$$
 \operatorname{Var}(U_Y\mid x)
 =
 \sum_kp_k(x)
 [u_k-U(x)]^2.
-\]
+$$
 
 This measures uncertainty of the next realized class utility given the
 predictive class probabilities.
@@ -537,12 +537,12 @@ It is not automatically posterior epistemic variance of the expected-utility
 function.  The latter requires posterior samples of class probabilities or
 latent functions:
 
-\[
+$$
 \operatorname{Var}_{f\mid\mathcal D}
 \left[
 \sum_ku_kP(Y=k\mid f)
 \right].
-\]
+$$
 
 ---
 
@@ -550,29 +550,29 @@ latent functions:
 
 Cutpoint `c_j` separates lower classes
 
-\[
+$$
 \{0,\ldots,j\}
-\]
+$$
 
 from upper classes
 
-\[
+$$
 \{j+1,\ldots,K-1\}.
-\]
+$$
 
 At fixed latent value,
 
-\[
+$$
 P(Y\ge j+1\mid f)
 =
 \sigma(f-c_j).
-\]
+$$
 
 At
 
-\[
+$$
 f=c_j,
-\]
+$$
 
 this cumulative probability is `0.5` under the logistic likelihood.
 
@@ -580,9 +580,9 @@ For a posterior over `f`, the marginalized cumulative probability also depends
 on latent variance.  A contour of posterior mean `mu_f=c_j` is therefore a
 latent boundary approximation, while
 
-\[
+$$
 P(Y\ge j+1\mid x)=0.5
-\]
+$$
 
 is a probability-space boundary.
 
@@ -592,28 +592,28 @@ is a probability-space boundary.
 
 For cumulative upper probability
 
-\[
+$$
 g_j(x)=P(Y\ge j+1\mid x),
-\]
+$$
 
 a normalized ambiguity score is
 
-\[
+$$
 A_j(x)
 =4g_j(x)[1-g_j(x)].
-\]
+$$
 
 Properties:
 
-\[
+$$
 A_j=1
 \quad\text{at}\quad g_j=0.5,
-\]
+$$
 
-\[
+$$
 A_j=0
 \quad\text{at}\quad g_j\in\{0,1\}.
-\]
+$$
 
 This score is used by ordinal LSE ICU-style acquisitions described in Chapter
 16.  It is predictive boundary ambiguity, not latent posterior variance.
@@ -712,9 +712,9 @@ where the latter is in transformed space.
 If inducing points are not supplied, a subset of training inputs is selected.
 The number used is
 
-\[
+$$
 M=\min(M_{\mathrm{requested}},n).
-\]
+$$
 
 Learning inducing locations can improve the approximation but may move them
 away from valid categorical codes in an improperly constructed mixed model.
@@ -726,19 +726,19 @@ Mixed-input kernels and transforms must preserve categorical semantics.
 
 The public `OrdinalGPModel` uses an ARD Matérn-5/2 covariance by default:
 
-\[
+$$
 k(x,x')
 =
 \sigma_f^2
 \left(1+\sqrt5r+rac53r^2\right)e^{-\sqrt5r},
-\]
+$$
 
-\[
+$$
 r^2
 =
 \sum_j
 \frac{(x_j-x'_j)^2}{\ell_j^2}.
-\]
+$$
 
 The legacy internal latent class can default to RBF when no covariance is
 provided, but the public wrapper supplies Matérn-5/2.  Documentation should
@@ -751,13 +751,13 @@ refer to the public model behavior.
 For continuous dimensions `C` and category dimensions `G`, the mixed ordinal
 kernel follows the pattern
 
-\[
+$$
 k(x,x')
 =
 k_C(x_C,x_C')
 +k_G(x_G,x_G')
 +k_C'(x_C,x_C')k_G'(x_G,x_G').
-\]
+$$
 
 Implementation rules:
 
@@ -846,9 +846,9 @@ For each class `k`, compare predicted `p_k` with observed frequency.
 
 For each boundary `j`, calibrate
 
-\[
+$$
 P(Y\ge j+1\mid x).
-\]
+$$
 
 This is often more stable and directly tied to ordinal thresholds.
 
@@ -856,23 +856,23 @@ This is often more stable and directly tied to ordinal thresholds.
 
 For cumulative predicted probabilities `F_k` and observed class `y`,
 
-\[
+$$
 \operatorname{RPS}
 =
 \sum_{k=0}^{K-2}
 \left[
 F_k-\mathbf1(y\le k)
 \right]^2.
-\]
+$$
 
 RPS penalizes errors according to ordinal distance through cumulative events.
 
 ### Mean absolute class error
 
-\[
+$$
 rac1n
 \sum_i|\hat y_i-y_i|.
-\]
+$$
 
 This assumes unit spacing between adjacent classes, but respects order better
 than ordinary accuracy.
@@ -903,14 +903,14 @@ weakly identified.
 
 A principled input-dependent scale model is
 
-\[
+$$
 P(Y\le j\mid x)
 =
 \sigma\left(
 \frac{c_j-f(x)}{s(x)}
 \right),
 \qquad s(x)>0.
-\]
+$$
 
 Large `s(x)` creates diffuse class transitions.
 
@@ -950,12 +950,12 @@ See Chapter 14 for the representation assumptions.
 
 Independent ordinal outputs use separate latent functions and cutpoints:
 
-\[
+$$
 p(\mathbf y\mid x)
 =
 \prod_{r=1}^{m}
 p_r(y_r\mid x).
-\]
+$$
 
 This supports different:
 
@@ -967,11 +967,11 @@ This supports different:
 
 A correlated ordinal multitask model introduces latent covariance
 
-\[
+$$
 \operatorname{Cov}[f_r(x),f_s(x')]
 =
 B_{rs}k(x,x').
-\]
+$$
 
 and task-specific cutpoints.  The current practical wrappers frequently use
 ModelList-style independent submodels.  A learned task covariance should not be

@@ -1,0 +1,102 @@
+name: Fix theory inline math rendering
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  fix-inline-math:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          fetch-depth: 0
+
+      - name: Convert inline math delimiters for GitHub Markdown
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def convert_outside_code_spans(line: str) -> str:
+              out = []
+              i = 0
+              code_ticks = None
+              while i < len(line):
+                  if line[i] == '`':
+                      j = i
+                      while j < len(line) and line[j] == '`':
+                          j += 1
+                      run = line[i:j]
+                      if code_ticks is None:
+                          code_ticks = run
+                      elif run == code_ticks:
+                          code_ticks = None
+                      out.append(run)
+                      i = j
+                      continue
+
+                  if code_ticks is None and line.startswith(r'\(', i):
+                      out.append('$')
+                      i += 2
+                      continue
+                  if code_ticks is None and line.startswith(r'\)', i):
+                      out.append('$')
+                      i += 2
+                      continue
+
+                  out.append(line[i])
+                  i += 1
+              return ''.join(out)
+
+          theory_dir = Path('docs/theory')
+          changed = []
+
+          for path in sorted(theory_dir.glob('*.md')):
+              original = path.read_text(encoding='utf-8')
+              lines = original.splitlines(keepends=True)
+              converted = []
+              in_fence = False
+
+              for line in lines:
+                  stripped = line.strip()
+                  if stripped.startswith('```'):
+                      in_fence = not in_fence
+                      converted.append(line)
+                  elif in_fence:
+                      converted.append(line)
+                  else:
+                      converted.append(convert_outside_code_spans(line))
+
+              updated = ''.join(converted)
+              if updated != original:
+                  path.write_text(updated, encoding='utf-8')
+                  changed.append(str(path))
+
+          print(f'Converted inline-math delimiters in {len(changed)} files:')
+          for path in changed:
+              print(f'  - {path}')
+          PY
+
+      - name: Commit converted documentation
+        shell: bash
+        run: |
+          if git diff --quiet -- docs/theory; then
+            echo 'No documentation changes required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/theory
+          git commit -m 'docs: use GitHub-compatible inline math delimiters'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}

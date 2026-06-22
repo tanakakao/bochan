@@ -14,17 +14,17 @@ Heterogeneous-output posterior construction is treated in Chapter 15.
 
 A model is multi-output if it predicts
 
-$$
+```math
 \mathbf y(x)
 =[y_1(x),\ldots,y_m(x)].
-$$
+```
 
 A problem is multi-objective if several transformed outputs are optimized:
 
-$$
+```math
 \mathbf f(x)
 =[f_1(x),\ldots,f_M(x)].
-$$
+```
 
 The number of model outputs `m` and objective dimensions `M` need not match.
 For example:
@@ -48,28 +48,28 @@ covariance.
 BoTorch multi-objective acquisitions generally use maximization.  For original
 objectives with direction indicators
 
-$$
+```math
 s_j=
 \begin{cases}
 +1,&\text{maximize},\\
 -1,&\text{minimize},
 \end{cases}
-$$
+```
 
 define
 
-$$
+```math
 f_j(x)=s_jg_j(x).
-$$
+```
 
 All Pareto, dominance, and reference-point calculations must use the transformed
 maximization space.
 
 For target matching,
 
-$$
+```math
 f_j(x)=-|g_j(x)-a_j|
-$$
+```
 
 or a smooth alternative can be used.  This is a nonlinear transformation, so
 posterior moments should be transformed by sampling or an appropriate
@@ -81,20 +81,20 @@ approximation.
 
 For maximization, vector `a` weakly dominates `b` if
 
-$$
+```math
 a_j\ge b_j
 \quad\forall j.
-$$
+```
 
 It strictly dominates `b` if it weakly dominates and
 
-$$
+```math
 \exists j:a_j>b_j.
-$$
+```
 
 The Pareto set in input space is
 
-$$
+```math
 \mathcal P_X
 =
 \left\{
@@ -103,15 +103,15 @@ $$
 \text{ such that }
 \mathbf f(x')\succ\mathbf f(x)
 \right\}.
-$$
+```
 
 The Pareto frontier is its image in objective space:
 
-$$
+```math
 \mathcal P_Y
 =
 \{\mathbf f(x):x\in\mathcal P_X\}.
-$$
+```
 
 A multi-objective optimizer approximates a set of trade-offs, not one unique
 optimum, unless an additional preference model is supplied.
@@ -122,48 +122,48 @@ optimum, unless an additional preference model is supplied.
 
 Let the maximization reference point be
 
-$$
+```math
 \mathbf r=(r_1,\ldots,r_M),
-$$
+```
 
 chosen worse than the objective region of interest.  For a nondominated set
 `P`, dominated hypervolume is
 
-$$
+```math
 \operatorname{HV}(P;\mathbf r)
 =
 \lambda_M\left(
 \bigcup_{\mathbf y\in P}
 [\mathbf r,\mathbf y]
 \right),
-$$
+```
 
 where `lambda_M` is `M`-dimensional volume.
 
 For a candidate outcome `y`, hypervolume improvement is
 
-$$
+```math
 \operatorname{HVI}(\mathbf y)
 =
 \operatorname{HV}(P\cup\{\mathbf y\};\mathbf r)
 -
 \operatorname{HV}(P;\mathbf r).
-$$
+```
 
 Expected Hypervolume Improvement is
 
-$$
+```math
 \operatorname{EHVI}(x)
 =
 \mathbb E
 [
 \operatorname{HVI}(\mathbf f(x))
 ].
-$$
+```
 
 For q-batch candidates,
 
-$$
+```math
 \operatorname{qEHVI}(X)
 =
 \mathbb E
@@ -172,7 +172,7 @@ $$
 -
 \operatorname{HV}(P;\mathbf r)
 \right].
-$$
+```
 
 ---
 
@@ -184,7 +184,7 @@ points.
 
 Conceptually,
 
-$$
+```math
 \operatorname{qNEHVI}(X)
 =
 \mathbb E
@@ -195,7 +195,7 @@ $$
 \operatorname{HV}
 (P(\mathbf f_B);\mathbf r)
 \right],
-$$
+```
 
 where `B` is `X_baseline` and `P(.)` extracts nondominated latent baseline
 outcomes for each posterior sample.
@@ -214,9 +214,9 @@ matter.
 
 If an output is transformed by
 
-$$
+```math
 f_j=s_jw_jg_j,
-$$
+```
 
 then `r_j` must be expressed after the same sign and weight transformation.
 
@@ -246,22 +246,22 @@ curves.  Benchmark evaluations should usually use a fixed reference point.
 
 Hypervolume and scalarization are sensitive to objective scale.  Suppose
 
-$$
+```math
 f_1\in[0,1],
 \qquad
 f_2\in[0,1000].
-$$
+```
 
 Without normalization, changes in `f_2` dominate Euclidean geometry and many
 scalarizations.
 
 Possible scaling includes:
 
-$$
+```math
 \tilde f_j
 =
 \frac{f_j-a_j}{b_j-a_j},
-$$
+```
 
 or standardization.  Scaling parameters should be based on:
 
@@ -278,19 +278,19 @@ Adaptive normalization can change preferences between iterations.
 
 For weights
 
-$$
+```math
 w_j\ge0,
 \qquad
 \sum_jw_j=1,
-$$
+```
 
 define
 
-$$
+```math
 s_w(\mathbf f)
 =
 \sum_jw_jf_j.
-$$
+```
 
 Advantages:
 
@@ -310,7 +310,7 @@ Limitations:
 
 For reference or ideal point `z`, augmented Chebyshev scalarization is
 
-$$
+```math
 s_w(\mathbf f)
 =
 \min_j
@@ -318,7 +318,7 @@ w_j(f_j-z_j)
 +
 \rho
 \sum_jw_j(f_j-z_j),
-$$
+```
 
 under a maximization-oriented convention.  Sign conventions vary; the
 implementation must be checked.
@@ -354,9 +354,9 @@ or hypervolume methods are often more suitable.
 When the user ultimately needs one decision, a utility function may be more
 appropriate than a Pareto frontier:
 
-$$
+```math
 U(\mathbf f).
-$$
+```
 
 Examples:
 
@@ -377,13 +377,13 @@ requires downstream selection.
 
 Known design-space constraints include
 
-$$
+```math
 A_{\mathrm{eq}}x=b_{\mathrm{eq}},
-$$
+```
 
-$$
+```math
 A_{\mathrm{ineq}}x\le b_{\mathrm{ineq}}.
-$$
+```
 
 They can be enforced by:
 
@@ -404,10 +404,10 @@ accepted.
 
 For base `a_j` and step `s_j`,
 
-$$
+```math
 x_j=a_j+k_js_j,
 \qquad k_j\in\mathbb Z.
-$$
+```
 
 Rounding after optimization can violate coupled constraints.  Constraint-aware
 rounding or repair is needed.
@@ -416,9 +416,9 @@ rounding or repair is needed.
 
 Examples include
 
-$$
+```math
 \sum_{j\in S}x_j=c
-$$
+```
 
 with lower/upper bounds.  Independent rounding of components can break the sum.
 
@@ -426,9 +426,9 @@ with lower/upper bounds.  Independent rounding of components can break the sum.
 
 A candidate may require
 
-$$
+```math
 \|x\|_0\le k.
-$$
+```
 
 This is a design constraint, not the same as SAAS feature sparsity in the GP.
 
@@ -438,41 +438,41 @@ This is a design constraint, not the same as SAAS feature sparsity in the GP.
 
 Suppose constraint latent response is
 
-$$
+```math
 g_j(x)
-$$
+```
 
 and feasibility is
 
-$$
+```math
 g_j(x)\le0.
-$$
+```
 
 Posterior probability of feasibility is
 
-$$
+```math
 p_j^{\mathrm{feas}}(x)
 =
 P(g_j(x)\le0\mid\mathcal D).
-$$
+```
 
 For Gaussian posterior,
 
-$$
+```math
 p_j^{\mathrm{feas}}(x)
 =
 \Phi\left(
 \frac{-\mu_j(x)}{\sigma_j(x)}
 \right).
-$$
+```
 
 If constraints are independent,
 
-$$
+```math
 P(\text{all feasible})
 =
 \prod_jp_j^{\mathrm{feas}}.
-$$
+```
 
 With correlated constraints, use a joint multivariate probability or posterior
 samples.
@@ -483,25 +483,25 @@ samples.
 
 A binary classifier can directly model
 
-$$
+```math
 P(\mathrm{feasible}\mid x).
-$$
+```
 
 A multiclass constraint may define acceptable class set `A`:
 
-$$
+```math
 P(Y\in A\mid x)
 =
 \sum_{k\in A}p_k(x).
-$$
+```
 
 An ordinal minimum-grade constraint is
 
-$$
+```math
 P(Y\ge g\mid x)
 =
 \sum_{k=g}^{K-1}p_k(x).
-$$
+```
 
 These probabilities should be calibrated.  Using hard predicted class labels
 discards uncertainty and produces discontinuous feasibility decisions.
@@ -512,10 +512,10 @@ discards uncertainty and produces discontinuous feasibility decisions.
 
 A chance constraint is
 
-$$
+```math
 P(g(x,\omega)\le0)
 \ge1-\epsilon,
-$$
+```
 
 where `omega` represents observation noise, environmental uncertainty, input
 perturbation, or posterior uncertainty depending on the problem.
@@ -535,21 +535,21 @@ These lead to different feasible sets.
 
 A common approximation is
 
-$$
+```math
 \alpha_c(x)
 =
 \alpha_0(x)
 P(\mathrm{feasible}\mid x).
-$$
+```
 
 For several independent constraints,
 
-$$
+```math
 \alpha_c(x)
 =
 \alpha_0(x)
 \prod_jp_j^{\mathrm{feas}}(x).
-$$
+```
 
 Advantages:
 
@@ -571,22 +571,22 @@ Limitations:
 For posterior sample `Y^(s)` and constraint functions `c_j`, define feasible
 indicator
 
-$$
+```math
 I^{(s)}
 =
 \prod_j
 \mathbf1[c_j(Y^{(s)})\le0].
-$$
+```
 
 A constrained improvement estimator is
 
-$$
+```math
 \hat\alpha(X)
 =
 \frac1S
 \sum_s
 I^{(s)}V(Y^{(s)}).
-$$
+```
 
 This preserves sample-level dependence between objective and constraints if the
 posterior samples contain it.
@@ -600,14 +600,14 @@ bias.
 
 For multi-objective constrained optimization, the feasible Pareto set is
 
-$$
+```math
 \mathcal P_X^{\mathrm{feas}}
 =
 \left\{
  x\in\mathcal X:
  x\text{ feasible and nondominated among feasible points}
 \right\}.
-$$
+```
 
 Hypervolume should be computed from feasible outcomes.  Under uncertain
 constraints, posterior samples can have different feasible Pareto frontiers.
@@ -710,16 +710,16 @@ but does not represent their uncertain future outcomes.
 
 Suppose acquisition optimization returns `X_raw`, then repair produces
 
-$$
+```math
 X_{\mathrm{repair}}=R(X_{\mathrm{raw}}).
-$$
+```
 
 Because
 
-$$
+```math
 \alpha(R(X))
 e\alpha(X)
-$$
+```
 
 in general, repair can change candidate quality.  After repair:
 

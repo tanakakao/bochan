@@ -19,51 +19,51 @@ Detailed response models are treated later:
 
 A scalar Gaussian random variable is written
 
-$$
+```math
 Z\sim\mathcal N(\mu,\sigma^2).
-$$
+```
 
 A Gaussian random vector is
 
-$$
+```math
 \mathbf z\sim\mathcal N(\boldsymbol\mu,\Sigma),
-$$
+```
 
 where `Sigma` is symmetric positive semidefinite.  For every vector `a`,
 
-$$
+```math
 \mathbf a^\top\Sigma\mathbf a\ge 0.
-$$
+```
 
 A Gaussian process extends this idea from a finite vector to a random function.
 A function `f` follows a GP if every finite collection of evaluations is jointly
 Gaussian:
 
-$$
+```math
 f\sim\mathcal{GP}(m,k)
-$$
+```
 
 means that, for arbitrary inputs
 
-$$
+```math
 X=(x_1,\ldots,x_n),
-$$
+```
 
-$$
+```math
 \mathbf f_X
 =
 [f(x_1),\ldots,f(x_n)]^\top
 \sim
 \mathcal N(\mathbf m_X,K_{XX}),
-$$
+```
 
 with
 
-$$
+```math
 [\mathbf m_X]_i=m(x_i),
 \qquad
 [K_{XX}]_{ij}=k(x_i,x_j).
-$$
+```
 
 A GP is therefore a distribution over functions, not a single fitted curve.
 Posterior means, variances, and samples are summaries of that function
@@ -77,9 +77,9 @@ distribution after observing data.
 
 The mean function is
 
-$$
+```math
 m(x)=\mathbb E[f(x)].
-$$
+```
 
 Common choices are:
 
@@ -97,11 +97,11 @@ the prior mean.
 
 The covariance function is
 
-$$
+```math
 k(x,x')
 =
 \operatorname{Cov}[f(x),f(x')].
-$$
+```
 
 It determines:
 
@@ -124,14 +124,14 @@ set.
 
 The isotropic radial-basis-function kernel is
 
-$$
+```math
 k(x,x')
 =
 \sigma_f^2
 \exp\left(
 -\frac{\|x-x'\|^2}{2\ell^2}
 \right).
-$$
+```
 
 It implies infinitely differentiable sample paths.  This can be smoother than
 many physical response surfaces.
@@ -140,32 +140,32 @@ many physical response surfaces.
 
 The Matérn family is
 
-$$
+```math
 k_\nu(r)
 =
 \sigma_f^2
 \frac{2^{1-\nu}}{\Gamma(\nu)}
 \left(\sqrt{2\nu}r\right)^\nu
 K_\nu\left(\sqrt{2\nu}r\right),
-$$
+```
 
 where
 
-$$
+```math
 r^2
 =
 \sum_{j=1}^d
 \frac{(x_j-x_j')^2}{\ell_j^2}.
-$$
+```
 
 For `nu=5/2`,
 
-$$
+```math
 k(r)
 =
 \sigma_f^2
 \left(1+\sqrt5r+\frac53r^2\right)e^{-\sqrt5r}.
-$$
+```
 
 Matérn-5/2 is a common default in Bayesian optimization because it allows less
 smooth functions than the RBF kernel while remaining differentiable enough for
@@ -175,12 +175,12 @@ gradient-based acquisition optimization.
 
 ARD assigns one length scale per input dimension:
 
-$$
+```math
 r^2
 =
 \sum_j
 \frac{(x_j-x'_j)^2}{\ell_j^2}.
-$$
+```
 
 A large `ell_j` makes the kernel insensitive to dimension `j`; a small `ell_j`
 allows rapid variation along that dimension.
@@ -199,21 +199,21 @@ Length scales are not causal feature importances.  They depend on:
 
 If
 
-$$
+```math
 f(x)=f_1(x_{S_1})+f_2(x_{S_2}),
-$$
+```
 
 an additive kernel can be used:
 
-$$
+```math
 k(x,x')=k_1(x_{S_1},x'_{S_1})+k_2(x_{S_2},x'_{S_2}).
-$$
+```
 
 A product kernel represents interactions:
 
-$$
+```math
 k(x,x')=k_1(x,x')k_2(x,x').
-$$
+```
 
 Mixed continuous/categorical models in `bochan` frequently use a combination of
 continuous, categorical, and interaction kernels.
@@ -222,11 +222,11 @@ continuous, categorical, and interaction kernels.
 
 A scaled kernel is
 
-$$
+```math
 k_{\mathrm{scaled}}(x,x')
 =
 \sigma_f^2k_0(x,x').
-$$
+```
 
 The signal variance `sigma_f^2` describes function variation.  It must not be
 confused with observation-noise variance `sigma_n^2`.
@@ -237,7 +237,7 @@ confused with observation-noise variance `sigma_n^2`.
 
 Let the training latent values and test latent values have joint distribution
 
-$$
+```math
 \begin{bmatrix}
 \mathbf f\\
 \mathbf f_*
@@ -253,27 +253,27 @@ K_{XX} & K_{X X_*}\\
 K_{X_*X} & K_{X_*X_*}
 \end{bmatrix}
 \right).
-$$
+```
 
 For Gaussian observations
 
-$$
+```math
 \mathbf y=\mathbf f+\boldsymbol\varepsilon,
 \qquad
 \boldsymbol\varepsilon\sim\mathcal N(0,\Sigma_n),
-$$
+```
 
 we obtain
 
-$$
+```math
 \mathbf y
 \sim
 \mathcal N(\mathbf m,K_{XX}+\Sigma_n).
-$$
+```
 
 Conditioning gives
 
-$$
+```math
 \boldsymbol\mu_*
 =
 \mathbf m_*
@@ -281,9 +281,9 @@ $$
 K_{X_*X}
 (K_{XX}+\Sigma_n)^{-1}
 (\mathbf y-\mathbf m),
-$$
+```
 
-$$
+```math
 \Sigma_*
 =
 K_{X_*X_*}
@@ -291,7 +291,7 @@ K_{X_*X_*}
 K_{X_*X}
 (K_{XX}+\Sigma_n)^{-1}
 K_{XX_*}.
-$$
+```
 
 The posterior mean is a kernel-weighted interpolation or smoothing of observed
 residuals.  The posterior covariance depends on input geometry and noise, not
@@ -300,9 +300,9 @@ on the observed target values for a fixed set of hyperparameters.
 In numerical implementations, the inverse is not formed explicitly.  A
 Cholesky factorization or linear solve is used:
 
-$$
+```math
 K_y=LL^\top.
-$$
+```
 
 ---
 
@@ -310,26 +310,26 @@ $$
 
 The latent posterior is
 
-$$
+```math
 p(f_*\mid\mathcal D).
-$$
+```
 
 The predictive observation distribution is
 
-$$
+```math
 p(y_*\mid\mathcal D)
 =
 \int p(y_*\mid f_*)p(f_*\mid\mathcal D)df_*.
-$$
+```
 
 For Gaussian noise,
 
-$$
+```math
 \operatorname{Var}(y_*\mid\mathcal D)
 =
 \operatorname{Var}(f_*\mid\mathcal D)
 +\sigma_n^2.
-$$
+```
 
 This distinction matters for sequential decisions:
 
@@ -351,21 +351,21 @@ response distribution is not obtained by simply adding a variance term.
 
 For Gaussian regression,
 
-$$
+```math
 p(\mathbf y\mid X,\theta)
 =
 \mathcal N(\mathbf y;\mathbf m,K_y),
-$$
+```
 
 where
 
-$$
+```math
 K_y=K_{XX}+\Sigma_n.
-$$
+```
 
 The log marginal likelihood is
 
-$$
+```math
 \log p(\mathbf y\mid X,\theta)
 =
 -\frac12
@@ -374,7 +374,7 @@ $$
 \frac12\log|K_y|
 -
 \frac n2\log(2\pi).
-$$
+```
 
 The terms are:
 
@@ -404,19 +404,19 @@ analytic Gaussian integration.
 
 For a general likelihood,
 
-$$
+```math
 p(\mathbf y\mid\mathbf f)
 =
 \prod_i p(y_i\mid f_i),
-$$
+```
 
 Bayes' theorem gives
 
-$$
+```math
 p(\mathbf f\mid\mathbf y)
 \propto
 p(\mathbf y\mid\mathbf f)p(\mathbf f).
-$$
+```
 
 For Bernoulli, categorical, ordered-logit, Poisson, and many other likelihoods,
 this posterior is not Gaussian and the evidence integral is not closed form.
@@ -438,34 +438,34 @@ inference.
 
 Choose inducing inputs
 
-$$
+```math
 Z=(z_1,\ldots,z_M),
 \qquad M\ll n,
-$$
+```
 
 and inducing variables
 
-$$
+```math
 \mathbf u=f(Z).
-$$
+```
 
 Introduce a variational distribution
 
-$$
+```math
 q(\mathbf u)=\mathcal N(\mathbf m_u,S_u).
-$$
+```
 
 The GP conditional induces
 
-$$
+```math
 q(\mathbf f)
 =
 \int p(\mathbf f\mid\mathbf u)q(\mathbf u)d\mathbf u.
-$$
+```
 
 The evidence lower bound is
 
-$$
+```math
 \mathcal L_{\mathrm{ELBO}}
 =
 \mathbb E_{q(\mathbf f)}
@@ -473,7 +473,7 @@ $$
 -
 \operatorname{KL}
 [q(\mathbf u)\|p(\mathbf u)].
-$$
+```
 
 The first term rewards predictive fit under the likelihood.  The KL term
 regularizes the approximate posterior toward the GP prior.
@@ -497,26 +497,26 @@ Important implementation parameters include:
 
 Maximum-likelihood fitting estimates one hyperparameter vector
 
-$$
+```math
 \hat\theta.
-$$
+```
 
 A fully Bayesian model integrates hyperparameters:
 
-$$
+```math
 p(f_*\mid\mathcal D)
 =
 \int
 p(f_*\mid\mathcal D,\theta)
 \,p(\theta\mid\mathcal D)
 \,d\theta.
-$$
+```
 
 In practice, posterior samples
 
-$$
+```math
 \theta^{(s)}\sim p(\theta\mid\mathcal D)
-$$
+```
 
 create an additional model-batch dimension.  Acquisition functions must either
 average over this dimension or preserve it according to BoTorch ensemble
@@ -531,34 +531,34 @@ Chapter 14.
 
 For vector-valued latent function
 
-$$
+```math
 \mathbf f(x)
 =
 [f_1(x),\ldots,f_m(x)]^\top,
-$$
+```
 
 a separable covariance can be written
 
-$$
+```math
 \operatorname{Cov}[f_a(x),f_b(x')]
 =
 B_{ab}k_X(x,x').
-$$
+```
 
 The matrix `B` is a task covariance.  On a common input grid, the full
 covariance may have Kronecker form
 
-$$
+```math
 K_{\mathrm{full}}
 =B\otimes K_X.
-$$
+```
 
 An independent ModelList instead assumes
 
-$$
+```math
 \operatorname{Cov}[f_a(x),f_b(x')]=0
 \quad\text{for }a\ne b.
-$$
+```
 
 The learned task covariance is a property of the probabilistic model.  It is not
 identical to the empirical correlation of observed targets because it is
@@ -574,11 +574,11 @@ Chapter 15 treats heterogeneous outputs with different likelihoods.
 
 For lower and upper bounds `l_j,u_j`, normalization is
 
-$$
+```math
 \tilde x_j
 =
 \frac{x_j-l_j}{u_j-l_j}.
-$$
+```
 
 Length scales are then measured in normalized coordinates.  Without consistent
 normalization, ARD values and optimizer step sizes are difficult to interpret.
@@ -587,11 +587,11 @@ normalization, ARD values and optimizer step sizes are difficult to interpret.
 
 For output mean `bar y` and standard deviation `s_y`,
 
-$$
+```math
 \tilde y
 =
 \frac{y-\bar y}{s_y}.
-$$
+```
 
 A model may fit in standardized space and untransform posterior means and
 variances when returning predictions.  Thresholds, `best_f`, and constraints
@@ -631,19 +631,19 @@ expansion at acquisition evaluation time only.
 
 A differentiable Monte Carlo acquisition uses samples
 
-$$
+```math
 f^{(s)}
 =
 \mu+L\epsilon^{(s)},
 \qquad
 \epsilon^{(s)}\sim\mathcal N(0,I),
-$$
+```
 
 where
 
-$$
+```math
 LL^\top=\Sigma.
-$$
+```
 
 This reparameterization moves randomness into fixed base samples, allowing
 gradients to flow through `mu`, `L`, and ultimately candidate input `X`.
@@ -669,9 +669,9 @@ sampling.  The chapter for each model states the approximation.
 
 A small diagonal term is often added:
 
-$$
+```math
 K\leftarrow K+\epsilon I.
-$$
+```
 
 Jitter stabilizes factorization.  It is not a scientific observation-noise
 parameter.

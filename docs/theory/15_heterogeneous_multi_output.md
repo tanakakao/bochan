@@ -3,14 +3,14 @@
 A heterogeneous multi-output problem contains responses with different sample
 spaces or likelihoods.  One experiment may return
 
-$$
+```math
 \mathbf y(x)
 =
 [y_{\mathrm{strength}},
  y_{\mathrm{pass/fail}},
  y_{\mathrm{grade}},
  y_{\mathrm{failure\ mode}}].
-$$
+```
 
 The responses may be continuous, binary, ordered, or multiclass.  They cannot be
 stacked into one Gaussian target and interpreted as equivalent outputs.
@@ -26,11 +26,11 @@ optimization, scalarization, and constraints are treated in Chapter 07.
 
 All outputs share the same response type and often the same likelihood family:
 
-$$
+```math
 \mathbf y(x)
 =[y_1(x),\ldots,y_m(x)]
 \in\mathbb R^m.
-$$
+```
 
 Examples:
 
@@ -42,17 +42,17 @@ Examples:
 
 Outputs have different supports:
 
-$$
+```math
 y_r\in\mathbb R,
 \qquad
 y_b\in\{0,1\},
-$$
+```
 
-$$
+```math
 y_o\in\{0,\ldots,K_o-1\},
 \qquad
 y_c\in\{0,\ldots,K_c-1\}.
-$$
+```
 
 Each output needs a compatible likelihood and posterior interpretation.
 
@@ -66,12 +66,12 @@ Heterogeneous systems can be represented at three distinct levels.
 
 Fit one model per output:
 
-$$
+```math
 p(f_1,\ldots,f_m\mid\mathcal D)
 =
 \prod_{j=1}^{m}
 p(f_j\mid\mathcal D_j).
-$$
+```
 
 Each output may use a different likelihood, kernel, input transform, and fitting
 procedure.
@@ -95,11 +95,11 @@ does not by itself introduce cross-output statistical dependence.
 
 Let output-specific data be
 
-$$
+```math
 \mathcal D_j
 =
 \{(x_{ij},y_{ij})\}_{i=1}^{n_j}.
-$$
+```
 
 The input sets and observation counts may differ across outputs.
 
@@ -132,39 +132,39 @@ Examples:
 
 Introduce shared latent GPs
 
-$$
+```math
 u_q(x)
 \sim
 \mathcal{GP}(0,k_q),
 \qquad q=1,\ldots,Q.
-$$
+```
 
 For output `j`, define latent predictor
 
-$$
+```math
 f_j(x)
 =
 \sum_{q=1}^{Q}a_{jq}u_q(x).
-$$
+```
 
 The latent covariance is
 
-$$
+```math
 \operatorname{Cov}[f_j(x),f_l(x')]
 =
 \sum_{q=1}^{Q}
 a_{jq}a_{lq}k_q(x,x').
-$$
+```
 
 Each output has a task-specific likelihood:
 
-$$
+```math
 p(\mathbf y\mid\mathbf f)
 =
 \prod_{j}
 \prod_i
 p_j(y_{ij}\mid f_j(x_{ij})).
-$$
+```
 
 Examples:
 
@@ -184,18 +184,18 @@ latent stochastic structure.
 The shared-latent construction is a Linear Model of Coregionalization (LMC).
 For kernels `k_q`,
 
-$$
+```math
 K_{jl}(x,x')
 =
 \sum_qB_{jl}^{(q)}k_q(x,x'),
-$$
+```
 
 where
 
-$$
+```math
 B^{(q)}
 =\mathbf a_q\mathbf a_q^\top
-$$
+```
 
 for rank-one coregionalization component, or a higher-rank positive-semidefinite
 matrix.
@@ -216,9 +216,9 @@ Latent correlation does not imply observed-label Pearson correlation.
 
 For binary or ordinal outputs, the likelihood is nonlinear:
 
-$$
+```math
 f_j\rightarrow p_j(y\mid f_j).
-$$
+```
 
 The observed dependence is affected by:
 
@@ -259,20 +259,20 @@ sequential decision metrics.
 
 Let observation indicator be
 
-$$
+```math
 m_{ij}
 =
 \mathbf1[y_{ij}\text{ observed}].
-$$
+```
 
 The likelihood is
 
-$$
+```math
 p(\mathbf y_{\mathrm{obs}}\mid\mathbf f)
 =
 \prod_{i,j:m_{ij}=1}
 p_j(y_{ij}\mid f_j(x_i)).
-$$
+```
 
 Independent submodels naturally handle different `n_j`.  A dense `n x m`
 target tensor with fabricated values or naive imputation changes the likelihood
@@ -293,21 +293,21 @@ Some outputs arrive at different times.  For example:
 
 The data state is output specific:
 
-$$
+```math
 \mathcal D_t
 =
 (\mathcal D_{1,t},\ldots,\mathcal D_{m,t}).
-$$
+```
 
 A hybrid wrapper should not assume that every output has the same training rows
 or pending status.
 
 Decoupled experimental design may choose both input and output subset:
 
-$$
+```math
 (x,S),
 \qquad S\subseteq\{1,\ldots,m\}.
-$$
+```
 
 The current wrapper unifies posterior channels but does not by itself solve
 output-selection or asynchronous cost-aware acquisition.
@@ -318,46 +318,46 @@ output-selection or asynchronous cost-aware acquisition.
 
 For decision making, each output is mapped to a scalar channel
 
-$$
+```math
 t_j(x)=T_j[p_j(y_j\mid x,\mathcal D_j)].
-$$
+```
 
 The combined vector is
 
-$$
+```math
 \mathbf t(x)
 =[t_1(x),\ldots,t_m(x)].
-$$
+```
 
 Examples:
 
 ### Regression
 
-$$
+```math
 t_j=s_jw_jy_j.
-$$
+```
 
 ### Binary probability
 
-$$
+```math
 t_j=P(Y_j=c^*\mid x).
-$$
+```
 
 ### Multiclass acceptable-set probability
 
-$$
+```math
 t_j
 =
 \sum_{k\in A_j}P(Y_j=k\mid x).
-$$
+```
 
 ### Ordinal expected utility
 
-$$
+```math
 t_j
 =
 \sum_k u_{jk}P(Y_j=k\mid x).
-$$
+```
 
 The transformation converts heterogeneous outputs to comparable tensor
 channels, but it does not create statistical dependence.
@@ -406,17 +406,17 @@ Selects one channel when a submodel is itself multi-output.
 
 Apply maximization direction and linear scale:
 
-$$
+```math
 t=swy.
-$$
+```
 
 ### `eq_target`
 
 Creates target-distance score
 
-$$
+```math
 t=-w|y-a|.
-$$
+```
 
 ### `utility_values`
 
@@ -507,18 +507,18 @@ preserved.
 
 For binary class-1 probability `p`, selected class probability is
 
-$$
+```math
 t=
 \begin{cases}
 p,&c^*=1,\\1-p,&c^*=0.
 \end{cases}
-$$
+```
 
 If the source posterior exposes Bernoulli variance,
 
-$$
+```math
 v=p(1-p),
-$$
+```
 
 that is observation variance of a label, not necessarily posterior uncertainty
 of the probability function.
@@ -532,17 +532,17 @@ according to the source accessor and wrapper calculation.
 
 For class probabilities `p_k` and utility values `u_k`,
 
-$$
+```math
 \mu_U
 =
 \sum_kp_ku_k,
-$$
+```
 
-$$
+```math
 \sigma_U^2
 =
 \sum_kp_k(u_k-\mu_U)^2.
-$$
+```
 
 These are moments of the realized discrete utility conditional on the given
 class probabilities.
@@ -559,31 +559,31 @@ It does not preserve its finite support or multimodality.
 
 For nonlinear `h`, exact transformed mean and variance are
 
-$$
+```math
 \mathbb E[h(Y)],
-$$
+```
 
-$$
+```math
 \operatorname{Var}[h(Y)]
 =
 \mathbb E[h(Y)^2]-\mathbb E[h(Y)]^2.
-$$
+```
 
 In general,
 
-$$
+```math
 h(\mathbb E[Y])
 \ne
 \mathbb E[h(Y)].
-$$
+```
 
 A first-order delta approximation is
 
-$$
+```math
 \operatorname{Var}[h(Y)]
 \approx
 [h'(\mu)]^2\operatorname{Var}(Y).
-$$
+```
 
 The current custom `OutputSpec.transform` acts on the mean and does not
 generally implement exact transformed variance.  Treat such channels as
@@ -602,13 +602,13 @@ variance: batch_shape x q x m
 
 and returns reparameterized proxy samples
 
-$$
+```math
 T_j^{(s)}
 =
 \mu_j+\sqrt{v_j}\epsilon_j^{(s)},
 \qquad
 \epsilon_j^{(s)}\sim\mathcal N(0,1).
-$$
+```
 
 ### Important limitations
 
@@ -619,9 +619,9 @@ The current posterior does not contain a full covariance matrix across:
 
 Therefore:
 
-$$
+```math
 \operatorname{Cov}(T_j,T_l)=0
-$$
+```
 
 in proxy sampling for distinct elements unless dependence is represented before
 conversion in a way retained by the wrapper.

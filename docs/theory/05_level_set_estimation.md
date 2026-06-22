@@ -14,57 +14,57 @@ rules, and evaluation protocol.  Task-specific acquisition formulas and their
 
 Let
 
-$$
+```math
 f:\mathcal X\rightarrow\mathbb R
-$$
+```
 
 be unknown and let `h` be a threshold.
 
 The upper level set is
 
-$$
+```math
 L_h^+
 =
 \{x\in\mathcal X:f(x)\ge h\}.
-$$
+```
 
 The lower level set is
 
-$$
+```math
 L_h^-
 =
 \{x\in\mathcal X:f(x)<h\}.
-$$
+```
 
 The boundary or contour is
 
-$$
+```math
 B_h
 =
 \{x\in\mathcal X:f(x)=h\}.
-$$
+```
 
 The design-space membership indicator is
 
-$$
+```math
 z_h(x)=\mathbf1[f(x)\ge h].
-$$
+```
 
 LSE seeks an estimator
 
-$$
+```math
 \widehat z_{h,t}(x)
-$$
+```
 
 or estimated sets
 
-$$
+```math
 \widehat L_{h,t}^+,
 \qquad
 \widehat L_{h,t}^-,
 \qquad
 \widehat B_{h,t}
-$$
+```
 
 using a limited observation budget.
 
@@ -98,15 +98,15 @@ by the best observed response.
 
 For a Gaussian latent posterior
 
-$$
+```math
 f(x)\mid\mathcal D_t
 \sim
 \mathcal N(\mu_t(x),\sigma_t^2(x)),
-$$
+```
 
 the posterior probability of upper-set membership is
 
-$$
+```math
 \pi_t(x)
 =
 P(f(x)\ge h\mid\mathcal D_t)
@@ -114,21 +114,21 @@ P(f(x)\ge h\mid\mathcal D_t)
 \Phi\left(
 \frac{\mu_t(x)-h}{\sigma_t(x)}
 \right).
-$$
+```
 
 A Bayes classifier under symmetric 0-1 loss is
 
-$$
+```math
 \widehat z_t(x)
 =
 \mathbf1[\pi_t(x)\ge 1/2].
-$$
+```
 
 This is equivalent to classifying by
 
-$$
+```math
 \mu_t(x)\ge h
-$$
+```
 
 when the posterior is symmetric and `sigma_t(x)>0`.
 
@@ -141,37 +141,37 @@ threshold is not `1/2`.
 
 Let
 
-$$
+```math
 l_t(x)
 =
 \mu_t(x)-\beta_t^{1/2}\sigma_t(x),
-$$
+```
 
-$$
+```math
 u_t(x)
 =
 \mu_t(x)+\beta_t^{1/2}\sigma_t(x).
-$$
+```
 
 A conservative partition is
 
-$$
+```math
 H_t
 =
 \{x:l_t(x)\ge h\},
-$$
+```
 
-$$
+```math
 L_t
 =
 \{x:u_t(x)<h\},
-$$
+```
 
-$$
+```math
 U_t
 =
 \mathcal X\setminus(H_t\cup L_t).
-$$
+```
 
 Interpretation:
 
@@ -193,7 +193,7 @@ The correct acquisition depends on the external loss.
 
 For finite evaluation set `G`,
 
-$$
+```math
 \mathcal L_{\mathrm{mis}}
 =
 \frac1{|\mathcal G|}
@@ -201,21 +201,21 @@ $$
 \mathbf1[
 \widehat z_t(x)\ne z_h(x)
 ].
-$$
+```
 
 ### 5.2 Weighted classification loss
 
 Let false-safe and false-unsafe costs be
 
-$$
+```math
 c_{\mathrm{FS}},
 \qquad
 c_{\mathrm{FU}}.
-$$
+```
 
 Then
 
-$$
+```math
 \mathcal L_{\mathrm{weighted}}
 =
 \frac1{|\mathcal G|}
@@ -227,7 +227,7 @@ $$
  c_{\mathrm{FU}}
  \mathbf1(\widehat z=0,z=1)
 \right].
-$$
+```
 
 Safety applications commonly assign a larger cost to false-safe decisions.
 
@@ -235,7 +235,7 @@ Safety applications commonly assign a larger cost to false-safe decisions.
 
 For continuous domain with measure `nu`,
 
-$$
+```math
 \mathcal L_\Delta
 =
 \nu(
@@ -243,13 +243,13 @@ $$
 \triangle
 L_h^+
 ),
-$$
+```
 
 where `triangle` denotes symmetric difference.
 
 ### 5.4 Jaccard loss
 
-$$
+```math
 J
 =
 \frac{
@@ -257,11 +257,11 @@ J
 }{
 \nu(\widehat L_h^+\cup L_h^+)
 },
-$$
+```
 
-$$
+```math
 \mathcal L_J=1-J.
-$$
+```
 
 Jaccard is useful when the positive region occupies a small fraction of the
 domain.
@@ -270,7 +270,7 @@ domain.
 
 For estimated and true boundaries,
 
-$$
+```math
 d_H(\widehat B_h,B_h)
 =
 \max\left\{
@@ -279,7 +279,7 @@ d_H(\widehat B_h,B_h)
 \sup_{y\in B_h}
 \inf_{x\in\widehat B_h}\|x-y\|
 \right\}.
-$$
+```
 
 It is interpretable in low-dimensional geometry but sensitive to isolated
 boundary errors.
@@ -288,18 +288,18 @@ boundary errors.
 
 Under symmetric loss, posterior pointwise risk is
 
-$$
+```math
 r_t(x)=\min[\pi_t(x),1-\pi_t(x)].
-$$
+```
 
 Integrated Bayes risk is
 
-$$
+```math
 R_t
 =
 \int_{\mathcal X}
 r_t(x)d\nu(x).
-$$
+```
 
 A principled acquisition values expected reduction in `R_t`.
 
@@ -312,7 +312,7 @@ scientific or operational weight.
 
 Weighted set loss is
 
-$$
+```math
 \mathcal L_w
 =
 \int
@@ -321,7 +321,7 @@ w(x)
 \widehat z_t(x)\ne z_h(x)
 ]
 d\nu(x).
-$$
+```
 
 Examples:
 
@@ -340,18 +340,18 @@ part of the mathematical domain.
 
 Suppose thresholds are
 
-$$
+```math
 h_1<h_2<\cdots<h_R.
-$$
+```
 
 They partition the response into bands:
 
-$$
+```math
 (-\infty,h_1),
 [h_1,h_2),
 \ldots,
 [h_R,\infty).
-$$
+```
 
 The acquisition may:
 
@@ -374,7 +374,7 @@ likelihood and class uncertainty require additional care; see Chapters 12 and
 
 A probabilistic excursion set may be defined as
 
-$$
+```math
 E_{h,\gamma}
 =
 \left\{
@@ -382,20 +382,20 @@ E_{h,\gamma}
 P(f(x)\ge h\mid\mathcal D)
 \ge\gamma
 \right\}.
-$$
+```
 
 Here `h` is a response threshold and `gamma` is a posterior-confidence
 threshold.
 
 This differs from the latent level set
 
-$$
+```math
 L_h^+=\{x:f(x)\ge h\}.
-$$
+```
 
 A reliability set for future noisy observations is
 
-$$
+```math
 R_{h,\gamma}
 =
 \left\{
@@ -403,7 +403,7 @@ R_{h,\gamma}
 P(Y(x)\ge h\mid\mathcal D)
 \ge\gamma
 \right\}.
-$$
+```
 
 `R` includes observation noise; `E` may refer to latent function uncertainty.
 The scientific question determines which set is correct.
@@ -414,26 +414,26 @@ The scientific question determines which set is correct.
 
 For binary classification, a probability level set is
 
-$$
+```math
 L_\tau
 =
 \{x:P(Y=1\mid x,\mathcal D)\ge\tau\}.
-$$
+```
 
 The ordinary class-decision boundary uses `tau=0.5`, but safety or quality
 requirements may use another threshold such as `0.9`.
 
 A latent boundary
 
-$$
+```math
 \{x:f(x)=c\}
-$$
+```
 
 and probability boundary
 
-$$
+```math
 \{x:p(x)=\tau\}
-$$
+```
 
 are equivalent only under a specified monotone link and consistent threshold
 conversion.
@@ -455,23 +455,23 @@ For ordered classes `0,...,K-1`, useful sets include:
 
 ### Latent cutpoint set
 
-$$
+```math
 \{x:f(x)\ge c_j\}.
-$$
+```
 
 ### Minimum-grade probability set
 
-$$
+```math
 \left\{
  x:P(Y\ge g\mid x,\mathcal D)\ge\gamma
 \right\}.
-$$
+```
 
 ### Expected-utility set
 
-$$
+```math
 \{x:\mathbb E[U(Y)\mid x,\mathcal D]\ge u_0\}.
-$$
+```
 
 These sets are different even when they are derived from the same ordinal
 model.
@@ -482,34 +482,34 @@ model.
 
 Let
 
-$$
+```math
 \mathbf f(x)
 =[f_1(x),\ldots,f_m(x)].
-$$
+```
 
 ### 11.1 Intersection
 
-$$
+```math
 L_\cap
 =
 \bigcap_{j=1}^m
 \{x:f_j(x)\ge h_j\}.
-$$
+```
 
 This is a joint feasible region.
 
 ### 11.2 Union
 
-$$
+```math
 L_\cup
 =
 \bigcup_{j=1}^m
 \{x:f_j(x)\ge h_j\}.
-$$
+```
 
 ### 11.3 At-least-r-of-m rule
 
-$$
+```math
 L_r
 =
 \left\{
@@ -518,15 +518,15 @@ L_r
 \mathbf1[f_j(x)\ge h_j]
 \ge r
 \right\}.
-$$
+```
 
 ### 11.4 Scalarized response set
 
-$$
+```math
 L_s
 =
 \{x:s(\mathbf f(x))\ge h\}.
-$$
+```
 
 Output-wise score averaging does not automatically estimate any of these sets.
 The logical region must be defined before acquisition reduction.
@@ -537,17 +537,17 @@ The logical region must be defined before acquisition reduction.
 
 If output events are independent,
 
-$$
+```math
 P(x\in L_\cap)
 =
 \prod_jP(f_j(x)\ge h_j).
-$$
+```
 
 With correlated output posterior, the correct probability is multivariate:
 
-$$
+```math
 P(f_1\ge h_1,\ldots,f_m\ge h_m).
-$$
+```
 
 The product formula is then generally wrong.
 
@@ -561,7 +561,7 @@ probabilities are exact or factorized approximations.
 
 A generic one-step LSE policy is
 
-$$
+```math
 x_{t+1}
 \in
 \arg\max_x
@@ -571,7 +571,7 @@ x_{t+1}
 \mathcal L_{t+1}
 \mid x,\mathcal D_t
 \right].
-$$
+```
 
 Direct expected-loss reduction is often expensive because it requires:
 
@@ -598,7 +598,7 @@ Chapter 16 gives exact implemented formulas.
 A q-batch should reduce set uncertainty at distinct or complementary locations.
 The ideal batch value is joint expected loss reduction:
 
-$$
+```math
 \alpha(X)
 =
 \mathbb E
@@ -607,7 +607,7 @@ $$
 \mathcal L_{t+1}
 \mid X,\mathcal D_t
 \right].
-$$
+```
 
 Practical approximations include:
 
@@ -651,35 +651,35 @@ accidental optimizer duplicates.
 
 If the executed condition is
 
-$$
+```math
 \tilde x=x+\delta,
-$$
+```
 
 then possible robust level sets include:
 
 ### Expected-response set
 
-$$
+```math
 \left\{
  x:\mathbb E_\delta[f(x+\delta)]\ge h
 \right\}.
-$$
+```
 
 ### Chance-constrained set
 
-$$
+```math
 \left\{
  x:P_\delta(f(x+\delta)\ge h)\ge\gamma
 \right\}.
-$$
+```
 
 ### Lower-tail risk set
 
-$$
+```math
 \left\{
  x:\operatorname{CVaR}_\alpha[f(x+\delta)]\ge h
 \right\}.
-$$
+```
 
 Averaging pointwise LSE scores over perturbations is an acquisition heuristic;
 it is not necessarily the acquisition corresponding to one of these robust
@@ -694,26 +694,26 @@ score-level aggregation.
 
 Stop when
 
-$$
+```math
 \nu(U_t)\le\epsilon.
-$$
+```
 
 ### Maximum ambiguity criterion
 
 Stop when
 
-$$
+```math
 \sup_{x\in\mathcal X}
 r_t(x)\le\epsilon.
-$$
+```
 
 ### Integrated risk criterion
 
 Stop when
 
-$$
+```math
 R_t\le\epsilon.
-$$
+```
 
 ### Boundary-width criterion
 
@@ -762,9 +762,9 @@ Recommended plots include:
 
 A constraint model may estimate
 
-$$
+```math
 P(g(x)\le0\mid\mathcal D).
-$$
+```
 
 Constrained BO uses this estimate to find a high-value feasible candidate.
 LSE uses observations to learn the entire constraint boundary or feasible

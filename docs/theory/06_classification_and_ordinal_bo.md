@@ -14,9 +14,9 @@ contracts are treated in Chapters 11 and 12.
 
 Suppose an observed label is
 
-$$
+```math
 y\in\{0,1,\ldots,K-1\}.
-$$
+```
 
 Treating the integer code as an ordinary continuous response imposes assumptions
 that may be false:
@@ -29,9 +29,9 @@ that may be false:
 
 A classification or ordinal likelihood instead estimates class probabilities
 
-$$
+```math
 p_k(x)=P(Y=k\mid x,\mathcal D).
-$$
+```
 
 BO then optimizes a user-defined functional of the probability vector.
 
@@ -41,23 +41,23 @@ BO then optimizes a user-defined functional of the probability vector.
 
 Let the predictive class distribution be
 
-$$
+```math
 \mathbf p(x)
 =[p_0(x),\ldots,p_{K-1}(x)].
-$$
+```
 
 A scalar decision objective is
 
-$$
+```math
 u(x)=T(\mathbf p(x)).
-$$
+```
 
 A multi-objective decision vector is
 
-$$
+```math
 \mathbf u(x)=
 [T_1(\mathbf p(x)),\ldots,T_m(\mathbf p(x))].
-$$
+```
 
 The transformation `T` defines what is being optimized.  The classifier only
 provides probabilities.
@@ -68,21 +68,21 @@ provides probabilities.
 
 For binary outcome `Y in {0,1}`, let
 
-$$
+```math
 p(x)=P(Y=1\mid x,\mathcal D).
-$$
+```
 
 To maximize probability of class `1`, use
 
-$$
+```math
 u(x)=p(x).
-$$
+```
 
 To maximize probability of class `0`, use
 
-$$
+```math
 u(x)=1-p(x).
-$$
+```
 
 This is appropriate when one class is unambiguously preferred and all successful
 outcomes have equal value.
@@ -91,9 +91,9 @@ outcomes have equal value.
 
 A requirement such as
 
-$$
+```math
 p(x)\ge0.95
-$$
+```
 
 is a probabilistic constraint or level set.  Maximizing `p(x)` is not identical
 to finding all points that satisfy the threshold.
@@ -104,22 +104,22 @@ to finding all points that satisfy the threshold.
 
 Assign utilities
 
-$$
+```math
 u_0,\quad u_1.
-$$
+```
 
 The expected utility is
 
-$$
+```math
 U(x)
 =u_0[1-p(x)]+u_1p(x).
-$$
+```
 
 This is affine in `p(x)`:
 
-$$
+```math
 U(x)=u_0+(u_1-u_0)p(x).
-$$
+```
 
 If `u_1>u_0`, maximizing expected utility gives the same ranking as maximizing
 `p(x)`, but the utility scale matters for:
@@ -132,10 +132,10 @@ If `u_1>u_0`, maximizing expected utility gives the same ranking as maximizing
 
 When utility depends on process cost or input `x`, use
 
-$$
+```math
 U(x)
 =u_0(x)[1-p(x)]+u_1(x)p(x).
-$$
+```
 
 The ranking is then not determined by probability alone.
 
@@ -145,18 +145,18 @@ The ranking is then not determined by probability alone.
 
 For target class `k*`, define
 
-$$
+```math
 U_{k^*}(x)=p_{k^*}(x).
-$$
+```
 
 For a set of acceptable classes `A`, the probability of acceptance is
 
-$$
+```math
 U_A(x)
 =P(Y\in A\mid x)
 =
 \sum_{k\in A}p_k(x).
-$$
+```
 
 Because classes are mutually exclusive, the sum has a direct probability
 interpretation.  A mean over selected class probabilities differs by the factor
@@ -168,17 +168,17 @@ interpretation.  A mean over selected class probabilities differs by the factor
 
 Assign class utilities
 
-$$
+```math
 \mathbf u=[u_0,\ldots,u_{K-1}].
-$$
+```
 
 Then
 
-$$
+```math
 U(x)
 =
 \sum_{k=0}^{K-1}u_kp_k(x).
-$$
+```
 
 Examples:
 
@@ -196,45 +196,45 @@ not make an unordered multiclass likelihood ordinal.
 
 For ordered classes
 
-$$
+```math
 0<1<\cdots<K-1,
-$$
+```
 
 class utility may respect the order:
 
-$$
+```math
 u_0\le u_1\le\cdots\le u_{K-1}.
-$$
+```
 
 The expected utility is
 
-$$
+```math
 U(x)
 =
 \sum_{k=0}^{K-1}u_kp_k(x).
-$$
+```
 
 ### Equal-spacing utility
 
-$$
+```math
 u_k=k
-$$
+```
 
 assumes each adjacent grade improvement has equal value.
 
 ### Normalized utility
 
-$$
+```math
 u_k=\frac{k}{K-1}
-$$
+```
 
 maps utility to `[0,1]` but retains equal spacing.
 
 ### Domain-specific utility
 
-$$
+```math
 \mathbf u=[0,0.1,0.7,1.0]
-$$
+```
 
 can represent a large value jump between grades 1 and 2.
 
@@ -247,11 +247,11 @@ operationally.  They are separate choices.
 
 For required grade `g`, define
 
-$$
+```math
 P(Y\ge g\mid x)
 =
 \sum_{k=g}^{K-1}p_k(x).
-$$
+```
 
 This can be used as:
 
@@ -269,9 +269,9 @@ requirement is explicitly grade based.
 
 A GP classifier or ordinal model contains latent score `f(x)`.  One can define
 
-$$
+```math
 u(x)=f(x)
-$$
+```
 
 or optimize a posterior functional of `f`.
 
@@ -297,34 +297,34 @@ Probability or utility space is usually preferable for user-facing BO.
 
 Let transformed objective be
 
-$$
+```math
 U(x)=T(Y(x)).
-$$
+```
 
 Improvement is
 
-$$
+```math
 I(x)
 =
 \max[U(x)-U_{\mathrm{best}},0].
-$$
+```
 
 Expected Improvement is
 
-$$
+```math
 \operatorname{EI}_U(x)
 =
 \mathbb E[I(x)\mid\mathcal D].
-$$
+```
 
 The expectation must account for uncertainty in transformed utility.  In
 general,
 
-$$
+```math
 \operatorname{EI}(\mathbb E[U])
 \ne
 \mathbb E[\operatorname{I}(U)].
-$$
+```
 
 A deterministic EI formula applied only to posterior mean probability ignores
 uncertainty in the probability function.
@@ -333,16 +333,16 @@ uncertainty in the probability function.
 
 For binary probability objective:
 
-$$
+```math
 U_{\mathrm{best}}\in[0,1].
-$$
+```
 
 For ordinal expected utility:
 
-$$
+```math
 U_{\mathrm{best}}
 \in[\min u_k,\max u_k].
-$$
+```
 
 It must not be an observed class integer unless that integer is exactly the
 chosen utility scale.
@@ -353,11 +353,11 @@ chosen utility scale.
 
 A generic transformed UCB is
 
-$$
+```math
 \operatorname{UCB}_U(x)
 =
 \mu_U(x)+\lambda\sigma_U(x).
-$$
+```
 
 Defining `sigma_U` requires care.
 
@@ -365,17 +365,17 @@ Defining `sigma_U` requires care.
 
 If posterior samples produce probabilities `p^{(s)}`, then
 
-$$
+```math
 \sigma_p^2
 =
 \operatorname{Var}_s[p^{(s)}].
-$$
+```
 
 ### Bernoulli observation variance
 
-$$
+```math
 p(1-p)
-$$
+```
 
 is variance of the next binary label, not uncertainty in the probability
 function.
@@ -384,11 +384,11 @@ function.
 
 Given fixed class probabilities,
 
-$$
+```math
 \operatorname{Var}(u_Y\mid x)
 =
 \sum_kp_k(u_k-U)^2.
-$$
+```
 
 This is uncertainty in realized class utility, not necessarily epistemic
 uncertainty in expected utility.
@@ -401,18 +401,18 @@ A class-specific UCB implementation must state which variance it uses.
 
 For transformed utility threshold `tau`,
 
-$$
+```math
 \operatorname{PI}_U(x)
 =
 P(U(x)\ge\tau\mid\mathcal D).
-$$
+```
 
 For binary probability objective, this asks whether the uncertain probability
 function exceeds a probability target.  It is not the same as
 
-$$
+```math
 P(Y=1\mid x)=p(x).
-$$
+```
 
 The first probability is over posterior uncertainty in `p(x)`; the second is
 over the future class label conditional on the model.
@@ -426,20 +426,20 @@ predicts feasibility.
 
 A probability-weighted acquisition is
 
-$$
+```math
 \alpha_c(x)
 =
 \alpha_f(x)
 P(Y_{\mathrm{feasible}}=1\mid x).
-$$
+```
 
 For multiple independent constraints,
 
-$$
+```math
 P(\mathrm{all\ feasible}\mid x)
 =
 \prod_jp_j(x).
-$$
+```
 
 If constraint outputs are correlated, the product can be inaccurate.  Joint
 posterior samples or a correlated model are needed for the joint event.
@@ -448,10 +448,10 @@ posterior samples or a correlated model are needed for the joint event.
 
 A chance constraint is
 
-$$
+```math
 P(Y_{\mathrm{feasible}}=1\mid x)
 \ge\gamma.
-$$
+```
 
 This defines a feasible decision region.  Multiplying acquisition by
 probability does not strictly enforce the threshold.
@@ -462,17 +462,17 @@ probability does not strictly enforce the threshold.
 
 A minimum-grade constraint is
 
-$$
+```math
 P(Y\ge g\mid x)
 \ge\gamma.
-$$
+```
 
 Expected utility constraint is
 
-$$
+```math
 \mathbb E[u_Y\mid x]
 \ge u_0.
-$$
+```
 
 These are different.  A distribution with small probability of catastrophic
 low grade can have acceptable expected utility but fail the minimum-grade
@@ -507,37 +507,37 @@ future BO outcomes.
 
 The full class-utility distribution is
 
-$$
+```math
 P(U=u_k\mid x)=p_k(x).
-$$
+```
 
 Possible risk summaries include:
 
 ### Mean
 
-$$
+```math
 \mathbb E[U]=\sum_kp_ku_k.
-$$
+```
 
 ### Lower quantile
 
-$$
+```math
 \operatorname{VaR}_\alpha(U).
-$$
+```
 
 ### Lower-tail CVaR
 
-$$
+```math
 \operatorname{CVaR}_\alpha(U)
 =
 \mathbb E[U\mid U\text{ is in the lower tail}].
-$$
+```
 
 ### Probability of unacceptable utility
 
-$$
+```math
 P(U<u_{\min}).
-$$
+```
 
 For discrete class distributions, VaR is discontinuous in probabilities when
 the quantile crosses a class boundary.  CVaR and chance constraints may provide
@@ -549,36 +549,36 @@ more stable decision criteria.
 
 For uncertain execution
 
-$$
+```math
 \tilde x=x+\delta,
-$$
+```
 
 possible robust class objectives are:
 
-$$
+```math
 \mathbb E_\delta[p(Y=1\mid x+\delta)],
-$$
+```
 
-$$
+```math
 P_\delta(p(Y=1\mid x+\delta)\ge\gamma),
-$$
+```
 
-$$
+```math
 \operatorname{CVaR}_\alpha
 [U(x+\delta)].
-$$
+```
 
 The order of operations matters:
 
-$$
+```math
 U\left(\mathbb E_\delta[\mathbf p]\right)
-$$
+```
 
 may equal
 
-$$
+```math
 \mathbb E_\delta[U(\mathbf p)]
-$$
+```
 
 for linear expected utility, but nonlinear risk measures or target-distance
 transforms do not commute with expectation.
@@ -589,10 +589,10 @@ transforms do not commute with expectation.
 
 Several transformed outputs can define a Pareto problem:
 
-$$
+```math
 \mathbf U(x)
 =[U_1(x),\ldots,U_m(x)].
-$$
+```
 
 Examples:
 
@@ -628,12 +628,12 @@ multiclass failure-mode model
 The combined decision layer converts each output to one scalar channel, for
 example:
 
-$$
+```math
 [t_{\mathrm{property}},
  p_{\mathrm{feasible}},
  E[u_{\mathrm{grade}}],
  p_{\mathrm{acceptable\ failure\ class}}].
-$$
+```
 
 This vector can be scalarized, optimized by hypervolume, or split into objectives
 and constraints.

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 import pytest
 import torch
 
@@ -84,6 +86,18 @@ def _mock_heteroscedastic_noise_fit(monkeypatch: pytest.MonkeyPatch) -> None:
         "predict_noise_var_from_log_noise_model",
         _predict_noise_var,
     )
+
+
+@pytest.mark.parametrize(("model_cls", "mixed", "heteroscedastic"), MODEL_CASES)
+def test_robust_ordinal_num_classes_defaults_to_none(
+    model_cls,
+    mixed: bool,
+    heteroscedastic: bool,
+) -> None:
+    del mixed, heteroscedastic
+    signature = inspect.signature(model_cls)
+
+    assert signature.parameters["num_classes"].default is None
 
 
 @pytest.mark.parametrize(("model_cls", "mixed", "heteroscedastic"), MODEL_CASES)

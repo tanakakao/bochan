@@ -560,7 +560,10 @@ Relevant code:
 
 ```text
 src/bochan/models/ordinal/robust/heteroscedastic.py
-src/bochan/acquisition/ordinal/hetero_utils.py
+src/bochan/acquisition/ordinal/active_learning/hetero_single_output.py
+src/bochan/acquisition/ordinal/active_learning/hetero_multi_output.py
+src/bochan/acquisition/ordinal/levelset_estimation/hetero_single_output.py
+src/bochan/acquisition/ordinal/levelset_estimation/hetero_multi_output.py
 ```
 
 ---
@@ -577,7 +580,7 @@ src/bochan/acquisition/ordinal/hetero_utils.py
 | BO acquisitions | `src/bochan/acquisition/ordinal/bayesian_optimization/` |
 | Active Learning | `src/bochan/acquisition/ordinal/active_learning/` |
 | Level-set Estimation | `src/bochan/acquisition/ordinal/levelset_estimation/` |
-| Heteroscedastic support | `src/bochan/models/ordinal/robust/` |
+| Heteroscedastic support | `src/bochan/models/ordinal/robust/` and ordinal `hetero_*.py` acquisition modules |
 | Deep ordinal models | `src/bochan/models/ordinal/deep/` |
 | High-dimensional ordinal models | `src/bochan/models/ordinal/high_dim/` |
 

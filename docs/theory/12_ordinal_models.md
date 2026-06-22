@@ -1,38 +1,62 @@
 # 12. Ordinal Models
 
-Ordinal regression models ordered categories such as quality grades, severity
-levels, ratings, or process states.  It is not equivalent to ordinary
-multiclass classification because the likelihood explicitly encodes the order
-between classes.
+Ordinal regression models ordered labels such as quality grades, severity
+levels, ratings, or process states.  It differs from ordinary multiclass
+classification because one scalar latent ordering and a sequence of cutpoints
+encode class order.
 
-This chapter describes the ordered-logit model implemented in `bochan`, its
-posterior contract, expected utility, boundary probabilities, and its relation
-to Bayesian optimization and Level-set Estimation.
+This chapter focuses on the ordered-logit model, identifiability, variational
+inference, marginal class probabilities, utility summaries, and the current
+`bochan` implementation contract.
+
+Decision criteria are treated separately:
+
+- Chapter 04: ordinal Active Learning;
+- Chapter 06: ordinal outputs in Bayesian optimization and constraints;
+- Chapter 16: ordinal Level-set Estimation formulas.
 
 ---
 
-## 1. Ordered latent-variable model
+## 1. Ordinal response
 
 Let
 
 \[
-y\in\{0,1,\ldots,K-1\},
-\qquad K\ge 3.
+Y\in\{0,1,\ldots,K-1\},
+\qquad K\ge3,
 \]
 
-A scalar latent quality function is assigned a GP prior:
+with order
 
 \[
-f\sim\mathcal{GP}(m,k).
+0<1<\cdots<K-1.
 \]
 
-Let the ordered cutpoints be
+The labels indicate ranking, but the numeric spacing is not necessarily equal.
+For example, the difference between grades 0 and 1 need not equal the
+difference between grades 2 and 3.
+
+Treating labels as Gaussian regression targets incorrectly assumes metric
+spacing and Gaussian residuals.  Treating them as unordered multiclass labels
+ignores the known ordering.
+
+---
+
+## 2. Latent-threshold construction
+
+Introduce a scalar latent function
+
+\[
+f\sim\mathcal{GP}(m,k)
+\]
+
+and ordered cutpoints
 
 \[
 c_0<c_1<\cdots<c_{K-2}.
 \]
 
-Introduce the conventions
+Use the conventions
 
 \[
 c_{-1}=-\infty,
@@ -40,7 +64,24 @@ c_{-1}=-\infty,
 c_{K-1}=+\infty.
 \]
 
-For an ordered-logit model,
+The class is determined by the interval containing an unobserved continuous
+latent variable.
+
+In a deterministic threshold representation,
+
+\[
+Y=k
+\quad\Longleftrightarrow\quad
+c_{k-1}<f(x)\le c_k.
+\]
+
+A probabilistic ordinal likelihood adds link noise around these thresholds.
+
+---
+
+## 3. Ordered-logit likelihood
+
+The cumulative probability is
 
 \[
 P(Y\le k\mid f)
@@ -49,498 +90,818 @@ P(Y\le k\mid f)
 \qquad k=0,\ldots,K-2.
 \]
 
-The class probability is a difference of cumulative probabilities:
+Equivalently,
+
+\[
+P(Y>k\mid f)
+=
+\sigma(f-c_k).
+\]
+
+Class probabilities are differences of adjacent cumulative probabilities:
 
 \[
 P(Y=k\mid f)
 =
-\sigma(c_k-f)-\sigma(c_{k-1}-f).
+\sigma(c_k-f)
+-
+\sigma(c_{k-1}-f).
 \]
 
-At the two ends,
+At the endpoints:
 
 \[
-P(Y=0\mid f)=\sigma(c_0-f),
+P(Y=0\mid f)
+=
+\sigma(c_0-f),
 \]
 
 \[
-P(Y=K-1\mid f)=1-\sigma(c_{K-2}-f).
+P(Y=K-1\mid f)
+=
+1-\sigma(c_{K-2}-f).
 \]
 
-As `f` increases, probability mass moves toward higher ordered classes.
+As `f` increases, probability mass shifts toward higher classes.
 
 ---
 
-## 2. Cutpoint parameterization
+## 4. Latent-noise interpretation
 
-Directly optimizing unconstrained cutpoints can violate their order.  `bochan`
-uses positive gaps:
+Ordered logit can be written using latent continuous response
 
 \[
-\Delta_j=\operatorname{softplus}(r_j)+\epsilon,
-\qquad \Delta_j>0.
+Z=f(x)+\epsilon,
 \]
 
-When the first cutpoint is fixed,
+where `epsilon` follows a standard logistic distribution.  The observed class
+is
+
+\[
+Y=k
+\quad\Longleftrightarrow\quad
+c_{k-1}<Z\le c_k.
+\]
+
+Then
+
+\[
+P(Y\le k\mid f)
+=P(Z\le c_k\mid f)
+=\sigma(c_k-f).
+\]
+
+An ordered-probit model instead uses Gaussian latent noise and cumulative normal
+probabilities.  Logit and probit latent scales are not numerically identical.
+
+---
+
+## 5. Cutpoint ordering
+
+Directly optimizing unrestricted cutpoints can violate
+
+\[
+c_0<c_1<\cdots<c_{K-2}.
+\]
+
+`bochan` parameterizes positive gaps:
+
+\[
+\Delta_j
+=
+\operatorname{softplus}(r_j)+\epsilon,
+\qquad
+\Delta_j>0.
+\]
+
+### Fixed first cutpoint
+
+When `fix_first_cutpoint=True`,
 
 \[
 c_0=0,
-\qquad
-c_j=\sum_{l=1}^{j}\Delta_l.
 \]
 
-When all cutpoints are free, cumulative positive gaps are centered:
+and remaining cutpoints are cumulative sums:
 
 \[
-\tilde c_j=\sum_{l=0}^{j}\Delta_l,
-\qquad
-c_j=\tilde c_j-\frac1{K-1}\sum_{r=0}^{K-2}\tilde c_r.
+c_j
+=
+\sum_{l=1}^{j}\Delta_l.
 \]
 
-The centering or fixed-first-cutpoint convention addresses a location
-non-identifiability.  Shifting the latent function and every cutpoint by the
-same constant leaves the class probabilities unchanged:
+### Free centered cutpoints
+
+When the first cutpoint is not fixed, construct cumulative values
 
 \[
-(f,c_0,\ldots,c_{K-2})
-\mapsto
-(f+a,c_0+a,\ldots,c_{K-2}+a).
+\tilde c_j
+=
+\sum_{l=0}^{j}\Delta_l
 \]
 
-Implementation:
+and center them:
 
-```text
-src/bochan/likelihoods/ordinal.py
-OrdinalLogitLikelihood.cutpoints
-```
+\[
+c_j
+=
+\tilde c_j
+-
+\frac1{K-1}
+\sum_{r=0}^{K-2}\tilde c_r.
+\]
+
+Both constructions preserve strict order.
 
 ---
 
-## 3. Marginal class probabilities
+## 6. Location identifiability
 
-The likelihood defines \(P(Y=k\mid f)\), but prediction requires integration
-over the latent posterior:
+The ordered likelihood is invariant to a common shift:
+
+\[
+f(x)\mapsto f(x)+a,
+\]
+
+\[
+c_j\mapsto c_j+a.
+\]
+
+Because
+
+\[
+(c_j+a)-(f+a)=c_j-f,
+\]
+
+class probabilities do not change.
+
+Therefore the model needs a location convention, such as:
+
+- fixing the first cutpoint;
+- centering all cutpoints;
+- constraining the latent mean.
+
+Without a convention, the latent level and cutpoint locations are not separately
+identified.
+
+---
+
+## 7. Scale interpretation
+
+In a standard ordered-logit model, logistic noise scale is fixed.  This fixes
+the relative scale of latent function and cutpoint gaps.
+
+If an additional scale `s` is introduced,
+
+\[
+P(Y\le k\mid f)
+=
+\sigma\left(
+\frac{c_k-f}{s}
+\right),
+\]
+
+then multiplying `f`, cutpoints, and `s` by a common factor creates another
+identifiability issue unless one component is constrained.
+
+The current base `OrdinalLogitLikelihood` uses the fixed logistic scale and
+learned cutpoint gaps.
+
+---
+
+## 8. Likelihood for observed labels
+
+For training labels `y_i`, the likelihood is
+
+\[
+p(\mathbf y\mid\mathbf f,\mathbf c)
+=
+\prod_{i=1}^{n}
+P(Y_i=y_i\mid f_i,\mathbf c).
+\]
+
+The log likelihood is
+
+\[
+\log p(\mathbf y\mid\mathbf f,\mathbf c)
+=
+\sum_i
+\log P(Y_i=y_i\mid f_i,\mathbf c).
+\]
+
+Very small class probabilities can create numerical instability.  The
+implementation clamps probabilities by an `eps` floor and renormalizes them.
+
+---
+
+## 9. Sparse variational inference
+
+The ordered likelihood is non-Gaussian.  The model uses inducing variables
+
+\[
+\mathbf u=f(Z)
+\]
+
+and variational distribution
+
+\[
+q(\mathbf u)
+=
+\mathcal N(\mathbf m_u,S_u).
+\]
+
+The induced latent posterior is
+
+\[
+q(\mathbf f)
+=
+\int
+p(\mathbf f\mid\mathbf u)
+q(\mathbf u)d\mathbf u.
+\]
+
+Training maximizes
+
+\[
+\mathcal L_{\mathrm{ELBO}}
+=
+\sum_i
+\mathbb E_{q(f_i)}
+[
+\log P(y_i\mid f_i,\mathbf c)
+]
+-
+\operatorname{KL}
+[q(\mathbf u)\|p(\mathbf u)].
+\]
+
+The optimization variables include:
+
+- variational mean and covariance;
+- kernel parameters;
+- mean-function parameters;
+- inducing locations when learnable;
+- raw cutpoint gaps.
+
+Cutpoints are likelihood parameters and must be included in the optimizer.
+
+---
+
+## 10. Quadrature for likelihood expectations
+
+For one-dimensional latent `f_i`, expectations such as
+
+\[
+\mathbb E_{q(f_i)}
+[
+\log P(y_i\mid f_i)
+]
+\]
+
+and marginal class probabilities can be evaluated by Gaussian quadrature.
+
+If
+
+\[
+f_i\sim\mathcal N(\mu_i,\sigma_i^2),
+\]
+
+then
+
+\[
+\mathbb E[g(f_i)]
+=
+\int g(f)
+\mathcal N(f;\mu_i,\sigma_i^2)df.
+\]
+
+Gauss-Hermite quadrature approximates this integral as a weighted sum at
+transformed nodes.  It is practical because the ordinal latent dimension per
+observation is scalar.
+
+---
+
+## 11. Marginal class probabilities
+
+The conditional likelihood probability is
+
+\[
+P(Y=k\mid f).
+\]
+
+The predictive probability integrates latent uncertainty:
 
 \[
 p_k(x)
 =
 P(Y=k\mid x,\mathcal D)
 =
-\int P(Y=k\mid f)p(f\mid x,\mathcal D)df.
+\int
+P(Y=k\mid f)
+q(f\mid x,\mathcal D)df.
 \]
 
-`OrdinalLogitLikelihood.marginal_class_probs` performs one-dimensional Gaussian
-quadrature for each class.  Therefore
-
-```python
-model.class_probs(X)
-```
-
-uses the latent posterior uncertainty, not only the posterior mean.
-
-A plug-in probability
+This is not generally equal to the plug-in probability
 
 \[
-P(Y=k\mid f=\mu_f(x))
+P(Y=k\mid f=\mu_f(x)).
 \]
 
-is cheaper but is not generally equal to the marginal probability.
+`OrdinalLogitLikelihood.marginal_class_probs` applies quadrature separately for
+each class and renormalizes the result.
 
 ---
 
-## 4. Implementation posterior contract
+## 12. Cumulative probabilities
 
-The public base model is
+Ordered models are naturally interpreted through cumulative events.
+
+### Probability below or equal to grade `k`
+
+\[
+P(Y\le k\mid x)
+=
+\sum_{r=0}^{k}p_r(x).
+\]
+
+### Probability at or above grade `g`
+
+\[
+P(Y\ge g\mid x)
+=
+\sum_{r=g}^{K-1}p_r(x).
+\]
+
+For boundary `j` between classes `j` and `j+1`, define
+
+\[
+g_j(x)
+=
+P(Y\ge j+1\mid x).
+\]
+
+These cumulative probabilities are useful for calibration, constraints, and
+boundary interpretation.
+
+---
+
+## 13. Class prediction
+
+The maximum-probability class is
+
+\[
+\hat y_{\mathrm{mode}}(x)
+=
+\arg\max_kp_k(x).
+\]
+
+For an ordered absolute-error loss, the Bayes-optimal class is a posterior
+median, not necessarily the mode.
+
+A posterior median class `k*` satisfies
+
+\[
+P(Y\le k^*\mid x)
+\ge\frac12
+\]
+
+and
+
+\[
+P(Y\ge k^*\mid x)
+\ge\frac12.
+\]
+
+For squared error on numeric class scores, the posterior mean class index may be
+optimal, but this assumes equal numeric spacing.
+
+The current `predict_class(X)` returns the probability mode through `argmax`.
+
+---
+
+## 14. Expected utility
+
+Assign class utilities
+
+\[
+\mathbf u=(u_0,\ldots,u_{K-1}).
+\]
+
+Expected utility is
+
+\[
+U(x)
+=
+\sum_{k=0}^{K-1}u_kp_k(x).
+\]
+
+The likelihood encodes order; utility encodes user preference.  They are not the
+same.
+
+### Equal class index
+
+\[
+u_k=k
+\]
+
+assumes equal spacing.
+
+### Domain-specific utility
+
+\[
+\mathbf u=(0,0.1,0.7,1.0)
+\]
+
+can encode a large value increase when a specification grade is reached.
+
+`model.expected_utility(X, utilities)` uses marginalized class probabilities,
+not only the latent mean.
+
+---
+
+## 15. Utility variance
+
+For realized class utility `U_Y=u_Y`, conditional variance is
+
+\[
+\operatorname{Var}(U_Y\mid x)
+=
+\sum_kp_k(x)
+[u_k-U(x)]^2.
+\]
+
+This measures uncertainty of the next realized class utility given the
+predictive class probabilities.
+
+It is not automatically posterior epistemic variance of the expected-utility
+function.  The latter requires posterior samples of class probabilities or
+latent functions:
+
+\[
+\operatorname{Var}_{f\mid\mathcal D}
+\left[
+\sum_ku_kP(Y=k\mid f)
+\right].
+\]
+
+---
+
+## 16. Boundary interpretation
+
+Cutpoint `c_j` separates lower classes
+
+\[
+\{0,\ldots,j\}
+\]
+
+from upper classes
+
+\[
+\{j+1,\ldots,K-1\}.
+\]
+
+At fixed latent value,
+
+\[
+P(Y\ge j+1\mid f)
+=
+\sigma(f-c_j).
+\]
+
+At
+
+\[
+f=c_j,
+\]
+
+this cumulative probability is `0.5` under the logistic likelihood.
+
+For a posterior over `f`, the marginalized cumulative probability also depends
+on latent variance.  A contour of posterior mean `mu_f=c_j` is therefore a
+latent boundary approximation, while
+
+\[
+P(Y\ge j+1\mid x)=0.5
+\]
+
+is a probability-space boundary.
+
+---
+
+## 17. Boundary ambiguity
+
+For cumulative upper probability
+
+\[
+g_j(x)=P(Y\ge j+1\mid x),
+\]
+
+a normalized ambiguity score is
+
+\[
+A_j(x)
+=4g_j(x)[1-g_j(x)].
+\]
+
+Properties:
+
+\[
+A_j=1
+\quad\text{at}\quad g_j=0.5,
+\]
+
+\[
+A_j=0
+\quad\text{at}\quad g_j\in\{0,1\}.
+\]
+
+This score is used by ordinal LSE ICU-style acquisitions described in Chapter
+16.  It is predictive boundary ambiguity, not latent posterior variance.
+
+---
+
+## 18. Ordinal posterior contract in `bochan`
+
+The main models are
 
 ```text
 OrdinalGPModel
 OrdinalMixedGPModel
 ```
 
-with implementation in
+under
 
 ```text
 src/bochan/models/ordinal/base/
 ```
 
-Unlike binary and multiclass wrappers, the ordinal model currently defines
+The current contract is:
 
 ```python
-latent_posterior = model.posterior(X)
-```
-
-as the posterior of the scalar latent function.  It does **not** return class
-probabilities.
-
-The probability-space API is
-
-```python
+latent = model.posterior(X)
 probs = model.class_probs(X)
 predicted_class = model.predict_class(X)
-expected_utility = model.expected_utility(X, utilities)
+utility = model.expected_utility(X, utilities)
 ```
 
-This difference must be respected by acquisition functions:
+### `posterior(X)`
 
-| Model family | `posterior(X)` in current implementation |
-|---|---|
-| Binary classification | probability posterior |
-| Multiclass classification | probability posterior |
-| Ordinal | latent scalar posterior |
+Returns a `GPyTorchPosterior` over scalar latent `f(x)`.
 
-For generic code, test model capabilities rather than assuming all
-classification-like models return probabilities from `posterior()`.
+It does not return class probabilities.
 
----
+### `class_probs(X)`
 
-## 5. Variational inference
-
-The ordered likelihood is non-Gaussian, so the model uses a sparse variational
-latent GP.  With inducing variables \(u=f(Z)\), optimize
-
-\[
-\mathcal L
-=
-\sum_{i=1}^n
-\mathbb E_{q(f_i)}
-  [\log P(y_i\mid f_i,c)]
--
-\operatorname{KL}[q(u)\|p(u)].
-\]
-
-Both GP parameters and cutpoint gaps are learned.  The cutpoints should be
-included in the optimizer through the likelihood parameters.
-
-The latent model classes include
+Uses the latent posterior distribution and ordinal likelihood quadrature to
+return
 
 ```text
-_OrdinalLatentGP
-_MixedOrdinalLatentGP
+batch_shape x q x K
 ```
 
-and use inducing-point variational distributions.
+probabilities.
 
----
+### `expected_utility(X, utilities)`
 
-## 6. Expected ordinal utility
-
-Assign a utility to each ordered class:
-
-\[
-\mathbf u=(u_0,\ldots,u_{K-1}).
-\]
-
-The posterior expected utility is
-
-\[
-U(x)
-=
-\mathbb E[u_Y\mid x,\mathcal D]
-=
-\sum_{k=0}^{K-1}u_kp_k(x).
-\]
-
-Typical utility choices include:
-
-### Class index
-
-\[
-u_k=k.
-\]
-
-This assumes equal spacing between adjacent grades.
-
-### Normalized index
-
-\[
-u_k=\frac{k}{K-1}.
-\]
-
-This maps utility to `[0, 1]` but still assumes equal spacing.
-
-### Domain-specific utility
-
-\[
-\mathbf u=(0,0.1,0.7,1.0).
-\]
-
-This is appropriate when improvement from class 1 to 2 is more valuable than
-improvement from class 0 to 1.
-
-Expected utility provides a scalar objective for BO, but it does not remove the
-uncertainty in the class distribution.  Two candidates can have the same
-expected utility and very different risk profiles.
-
-Implementation:
+Returns
 
 ```text
-src/bochan/acquisition/objective/ordinal.py
-src/bochan/acquisition/ordinal/bayesian_optimization/utility_acquisitions.py
+batch_shape x q
 ```
+
+expected utilities.
+
+This differs from binary and multiclass wrappers, whose base `posterior()`
+methods return probability-space posteriors.
 
 ---
 
-## 7. Boundary probabilities
+## 19. Training-input contract
 
-Each cutpoint defines a boundary between adjacent ordered groups.
+The base ordinal wrapper explicitly tracks two spaces.
 
-For boundary `j`, define the cumulative upper-group probability
+### `train_inputs_raw`
 
-\[
-q_j(x)
-=
-P(Y\ge j+1\mid x,\mathcal D)
-=
-\sum_{k=j+1}^{K-1}p_k(x).
-\]
+Original search-space input before `input_transform`.
 
-In the deterministic latent limit,
+### `train_inputs`
 
-\[
-q_j(x)=P(f>c_j\mid x,\mathcal D)
-\]
+Transformed inputs used by the latent GP.
 
-under the corresponding threshold interpretation.
+The wrapper disables BoTorch's automatic transformed-input update because the
+stored training input is already transformed.  Reapplying an evaluation-mode
+`InputPerturbation` could expand the q dimension and make it inconsistent with
+training labels.
 
-A natural boundary-ambiguity score is
+`set_train_data()` expects raw-space input and applies the training transform
+internally.
 
-\[
-A_j(x)=4q_j(x)[1-q_j(x)].
-\]
+---
 
-Properties:
+## 20. Inducing points
 
-- `A_j=1` at `q_j=0.5`;
-- `A_j=0` at `q_j=0` or `1`;
-- it is symmetric around the boundary probability.
-
-The implementation uses this form in
+The ordinal wrapper stores:
 
 ```text
-ordinal_boundary_uncertainty
+inducing_points_raw
+inducing_points
 ```
 
-inside
+where the latter is in transformed space.
+
+If inducing points are not supplied, a subset of training inputs is selected.
+The number used is
+
+\[
+M=\min(M_{\mathrm{requested}},n).
+\]
+
+Learning inducing locations can improve the approximation but may move them
+away from valid categorical codes in an improperly constructed mixed model.
+Mixed-input kernels and transforms must preserve categorical semantics.
+
+---
+
+## 21. Default covariance
+
+The public `OrdinalGPModel` uses an ARD Matérn-5/2 covariance by default:
+
+\[
+k(x,x')
+=
+\sigma_f^2
+\left(1+\sqrt5r+rac53r^2\right)e^{-\sqrt5r},
+\]
+
+\[
+r^2
+=
+\sum_j
+\frac{(x_j-x'_j)^2}{\ell_j^2}.
+\]
+
+The legacy internal latent class can default to RBF when no covariance is
+provided, but the public wrapper supplies Matérn-5/2.  Documentation should
+refer to the public model behavior.
+
+---
+
+## 22. Mixed ordinal inputs
+
+For continuous dimensions `C` and category dimensions `G`, the mixed ordinal
+kernel follows the pattern
+
+\[
+k(x,x')
+=
+k_C(x_C,x_C')
++k_G(x_G,x_G')
++k_C'(x_C,x_C')k_G'(x_G,x_G').
+\]
+
+Implementation rules:
+
+- categorical dimensions are normalized as indices only, not numerically
+  standardized;
+- continuous kernels use continuous active dimensions;
+- categorical kernels use `CategoricalKernel`;
+- `input_transform` must not modify category columns;
+- raw inputs may be repeated only to align with q expansion for validation.
+
+The main mixed model is
 
 ```text
-src/bochan/acquisition/ordinal/levelset_estimation/single_output.py
+OrdinalMixedGPModel
 ```
 
----
-
-## 8. Latent cutpoint distance
-
-When the acquisition operates directly in latent space, boundary `j` is
-
-\[
-f(x)=c_j.
-\]
-
-Given posterior mean and standard deviation
-
-\[
-\mu_f(x),\qquad \sigma_f(x),
-\]
-
-a Straddle-like score for boundary `j` is
-
-\[
-\alpha_j(x)
-=
-\beta\sigma_f(x)-|\mu_f(x)-c_j|.
-\]
-
-For a set of boundaries \(J\), reduce the boundary-wise scores using
-
-\[
-\operatorname{mean}_{j\in J}\alpha_j,
-\quad
-\sum_{j\in J}\alpha_j,
-\quad
-\max_{j\in J}\alpha_j,
-\quad
-\min_{j\in J}\alpha_j.
-\]
-
-These reductions have different meanings:
-
-- `max`: sample near any one uncertain boundary;
-- `mean`: balance all boundaries;
-- `sum`: similar to mean but scale depends on boundary count;
-- `min`: favor points useful for every selected boundary, often restrictive.
-
-The API argument `target_boundary_idx` selects a specific cutpoint.  The index
-refers to cutpoint `c_j`, not class `j` itself.
+under the ordinal base package.
 
 ---
 
-## 9. Ordinal Bayesian optimization
+## 23. Class-count inference
 
-### 9.1 Expected-utility improvement
+When `num_classes` is omitted, the base implementation infers it from unique
+training labels.
 
-Let
+Requirements are:
 
-\[
-U(x)=\sum_k u_kp_k(x).
-\]
+- at least three classes;
+- labels are consecutive integers;
+- labels start at zero.
 
-A deterministic improvement score is
-
-\[
-I_U(x)=\max(U(x)-U_{\mathrm{best}},0).
-\]
-
-A Monte Carlo expected-improvement variant samples latent functions, converts
-each sample to class probabilities or utilities, and averages the positive
-improvement:
-
-\[
-\operatorname{EI}_U(x)
-=
-\mathbb E\left[
-\max(U^{(s)}(x)-U_{\mathrm{best}},0)
-\right].
-\]
-
-The `best_f` reference must be expressed in the same utility scale.
-
-### 9.2 Target class or grade probability
-
-For a required minimum grade `g`, optimize
-
-\[
-P(Y\ge g\mid x)
-=
-\sum_{k=g}^{K-1}p_k(x).
-\]
-
-This is often more interpretable than maximizing class-index utility.  It can
-also be used as a feasibility probability.
-
-### 9.3 Risk-sensitive ordinal objective
-
-For class utility `u_Y`, possible risk summaries include:
-
-\[
-\mathbb E[u_Y],
-\qquad
-\operatorname{VaR}_{\alpha}(u_Y),
-\qquad
-\operatorname{CVaR}_{\alpha}(u_Y).
-\]
-
-Because ordinal utility is discrete, VaR can jump abruptly when class
-probability crosses a quantile boundary.  CVaR is usually smoother but still
-requires a clear convention for whether the lower or upper tail is undesirable.
-
----
-
-## 10. Ordinal Active Learning
-
-Possible information targets are different:
-
-1. the scalar latent function `f`;
-2. cutpoint locations `c_j`;
-3. the complete class-probability vector;
-4. one selected boundary probability `q_j`;
-5. expected utility;
-6. the predicted class label.
-
-An acquisition should state which target it learns.
-
-### Predictive entropy
-
-\[
-H(Y\mid x,\mathcal D)
-=-\sum_{k=0}^{K-1}p_k(x)\log p_k(x).
-\]
-
-This selects ambiguous grade predictions.
-
-### Ordinal BALD
-
-\[
-I(Y;f\mid x,\mathcal D)
-=
-H\!\left(\mathbb E_f[p(Y\mid f)]\right)
--
-\mathbb E_f[H(p(Y\mid f))].
-\]
-
-This distinguishes latent epistemic uncertainty from unavoidable class overlap
-induced by the ordered likelihood.
-
-### Boundary-specific entropy
-
-For boundary `j`, treat
-
-\[
-Z_j=\mathbf 1[Y\ge j+1]
-\]
-
-as a binary event and use
-
-\[
-H(Z_j)
-=-q_j\log q_j-(1-q_j)\log(1-q_j).
-\]
-
-This is useful when only one engineering grade transition matters.
-
----
-
-## 11. Multi-output ordinal models
-
-For `m` ordinal outputs, independent models imply
-
-\[
-p(\mathbf y\mid x,\mathcal D)
-=
-\prod_{r=1}^m p(y_r\mid x,\mathcal D_r).
-\]
-
-This is the practical ModelList-style interpretation used by many `bochan`
-wrappers.  It supports different class counts and cutpoints per output, but it
-does not model cross-output dependence.
-
-A correlated ordinal multitask model instead introduces vector-valued latent
-functions
-
-\[
-\mathbf f(x)=(f_1(x),\ldots,f_m(x))
-\]
-
-with
-
-\[
-\operatorname{Cov}[f_r(x),f_s(x')]
-=k_X(x,x')B_{rs}.
-\]
-
-Each output can retain its own cutpoints and likelihood.  The task covariance
-`B` describes latent association, not observed-label Pearson correlation.
-
-Implementation families include ModelList-style wrappers, explicit multitask
-models, and Kronecker variants under
+For example,
 
 ```text
-src/bochan/models/ordinal/base/
+[0, 1, 2]
 ```
+
+is valid, while
+
+```text
+[1, 2, 3]
+```
+
+or
+
+```text
+[0, 2, 3]
+```
+
+must be remapped or supplied with an explicitly supported configuration.
+
+The inferred class count only reflects classes observed in training data.  If a
+valid class is absent from the initial sample, explicitly setting class count is
+safer.
 
 ---
 
-## 12. Heteroscedastic ordinal caveat
+## 24. Conditioning behavior
 
-An ordered-logit likelihood already contains stochastic class overlap.  A
-second input-dependent noise model must have a specified role, for example:
+`condition_on_observations()` for a variational ordinal model cannot perform the
+same analytic rank update as an exact Gaussian GP.
 
-- a scale parameter in `sigma((c_j-f)/s(x))`;
-- uncertainty in externally supplied grade labels;
-- annotator reliability;
-- an acquisition penalty unrelated to the generative likelihood.
+The wrapper reconstructs a model with old plus new data, copies learned state,
+and can run configurable conditioning optimization steps.
 
-These alternatives lead to different probabilities.  A principled
-input-dependent scale model is
+Relevant parameters include:
+
+```text
+conditioning_steps
+conditioning_lr
+conditioning_batch_size
+```
+
+This is approximate variational conditioning.  Fantasy dimensions and exact
+look-ahead semantics require careful testing.
+
+---
+
+## 25. Calibration for ordinal models
+
+### Classwise calibration
+
+For each class `k`, compare predicted `p_k` with observed frequency.
+
+### Cumulative calibration
+
+For each boundary `j`, calibrate
+
+\[
+P(Y\ge j+1\mid x).
+\]
+
+This is often more stable and directly tied to ordinal thresholds.
+
+### Ranked Probability Score
+
+For cumulative predicted probabilities `F_k` and observed class `y`,
+
+\[
+\operatorname{RPS}
+=
+\sum_{k=0}^{K-2}
+\left[
+F_k-\mathbf1(y\le k)
+\right]^2.
+\]
+
+RPS penalizes errors according to ordinal distance through cumulative events.
+
+### Mean absolute class error
+
+\[
+rac1n
+\sum_i|\hat y_i-y_i|.
+\]
+
+This assumes unit spacing between adjacent classes, but respects order better
+than ordinary accuracy.
+
+---
+
+## 26. Identifiability and diagnostics
+
+Inspect:
+
+- ordered cutpoints;
+- gap sizes;
+- latent mean distribution relative to cutpoints;
+- class frequencies;
+- inducing-point coverage;
+- predictive class calibration;
+- whether one class receives nearly zero probability everywhere;
+- sensitivity to cutpoint initialization;
+- sensitivity to fixed-first versus centered convention.
+
+Very large cutpoint gaps can isolate a class; very small gaps can make a class
+rare or unstable.  A missing class in training data makes its cutpoint region
+weakly identified.
+
+---
+
+## 27. Heteroscedastic ordinal interpretation
+
+A principled input-dependent scale model is
 
 \[
 P(Y\le j\mid x)
@@ -551,43 +912,116 @@ P(Y\le j\mid x)
 \qquad s(x)>0.
 \]
 
-Larger `s(x)` makes class transitions more diffuse.  If the current wrapper only
-predicts a separate noise score and combines it with an acquisition, describe
-it as noise-aware acquisition weighting rather than a full heteroscedastic
-ordered-logit likelihood.
+Large `s(x)` creates diffuse class transitions.
 
-Relevant code:
+This is not the same as:
 
-```text
-src/bochan/models/ordinal/robust/heteroscedastic.py
-src/bochan/acquisition/ordinal/active_learning/hetero_single_output.py
-src/bochan/acquisition/ordinal/active_learning/hetero_multi_output.py
-src/bochan/acquisition/ordinal/levelset_estimation/hetero_single_output.py
-src/bochan/acquisition/ordinal/levelset_estimation/hetero_multi_output.py
-```
+- adding a noise variance to latent posterior variance;
+- adding noise to class-utility variance;
+- multiplying an acquisition score by a noise weight.
+
+Current robust ordinal wrappers may use auxiliary noise models for posterior or
+acquisition adjustments.  They should be described according to their actual
+implementation rather than as a full input-dependent-scale ordered-logit model.
+
+See Chapter 13.
 
 ---
 
-## 13. Source map
+## 28. Deep and high-dimensional ordinal variants
 
-| Theory component | Implementation |
+Ordinal model families include:
+
+- DeepGP;
+- Deep Kernel GP;
+- Deep Kernel DeepGP;
+- SAAS;
+- decomposition or embedding variants;
+- heteroscedastic and robust variants.
+
+These change the latent function representation but retain the ordered
+likelihood and cutpoint interpretation.
+
+See Chapter 14 for the representation assumptions.
+
+---
+
+## 29. Multi-output ordinal models
+
+Independent ordinal outputs use separate latent functions and cutpoints:
+
+\[
+p(\mathbf y\mid x)
+=
+\prod_{r=1}^{m}
+p_r(y_r\mid x).
+\]
+
+This supports different:
+
+- class counts;
+- utilities;
+- cutpoints;
+- kernels;
+- missingness patterns.
+
+A correlated ordinal multitask model introduces latent covariance
+
+\[
+\operatorname{Cov}[f_r(x),f_s(x')]
+=
+B_{rs}k(x,x').
+\]
+
+and task-specific cutpoints.  The current practical wrappers frequently use
+ModelList-style independent submodels.  A learned task covariance should not be
+interpreted as raw label correlation.
+
+---
+
+## 30. `bochan` source map
+
+| Component | Source |
 |---|---|
-| Ordered-logit likelihood and cutpoints | `src/bochan/likelihoods/ordinal.py` |
-| Base continuous and mixed ordinal GP | `src/bochan/models/ordinal/base/` |
-| Class probabilities and expected utility | methods on `OrdinalGPModel` and `OrdinalLogitLikelihood` |
-| Posterior transforms | `src/bochan/models/transforms/posterior/ordinal.py` |
-| Utility objectives | `src/bochan/acquisition/objective/ordinal.py` |
-| BO acquisitions | `src/bochan/acquisition/ordinal/bayesian_optimization/` |
-| Active Learning | `src/bochan/acquisition/ordinal/active_learning/` |
-| Level-set Estimation | `src/bochan/acquisition/ordinal/levelset_estimation/` |
-| Heteroscedastic support | `src/bochan/models/ordinal/robust/` and ordinal `hetero_*.py` acquisition modules |
-| Deep ordinal models | `src/bochan/models/ordinal/deep/` |
-| High-dimensional ordinal models | `src/bochan/models/ordinal/high_dim/` |
+| Ordered-logit likelihood | `src/bochan/likelihoods/ordinal.py` |
+| Continuous and mixed base models | `src/bochan/models/ordinal/base/` |
+| Variational fit helper | `src/bochan/fit/ordinal.py` |
+| Ordinal posterior transforms | `src/bochan/models/transforms/posterior/ordinal.py` |
+| Ordinal objective classes | `src/bochan/acquisition/objective/ordinal.py` |
+| Ordinal BO | `src/bochan/acquisition/ordinal/bayesian_optimization/` |
+| Ordinal Active Learning | `src/bochan/acquisition/ordinal/active_learning/` |
+| Ordinal LSE | `src/bochan/acquisition/ordinal/levelset_estimation/` |
+| Ordinal robust models | `src/bochan/models/ordinal/robust/` |
+| Ordinal deep models | `src/bochan/models/ordinal/deep/` |
+| Ordinal high-dimensional models | `src/bochan/models/ordinal/high_dim/` |
+| High-level registration | `src/bochan/api/model_registry.py` |
 
 ---
 
-## 14. References
+## 31. Model checklist
 
-- Chu and Ghahramani, *Gaussian Processes for Ordinal Regression*, JMLR, 2005.
+1. Are labels truly ordered?
+2. How many valid classes exist?
+3. Are labels encoded consecutively from zero?
+4. Ordered logit or another link?
+5. Cutpoint location convention?
+6. Cutpoint initialization and minimum gap?
+7. Kernel and ARD configuration?
+8. Inducing-point count and learning?
+9. Continuous or mixed inputs?
+10. `posterior()` latent or predictive?
+11. Class probabilities marginalized or plug-in?
+12. Utility values and their spacing?
+13. Calibration metric?
+14. Conditioning/fantasy support?
+15. Missing-class and imbalance handling?
+16. Deep, high-dimensional, or heteroscedastic extension?
+
+---
+
+## 32. References
+
+- McCullagh, *Regression Models for Ordinal Data*, 1980.
+- Chu and Ghahramani, *Gaussian Processes for Ordinal Regression*, 2005.
 - Titsias, *Variational Learning of Inducing Variables in Sparse Gaussian Processes*, 2009.
-- Houlsby et al., *Bayesian Active Learning for Classification and Preference Learning*, 2011.
+- Gneiting and Raftery, work on proper scoring rules, including ranked probability scoring concepts.

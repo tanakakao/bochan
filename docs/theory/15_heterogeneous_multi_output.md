@@ -1,7 +1,7 @@
 # 15. Heterogeneous Multi-output Models
 
-A heterogeneous multi-output problem has several responses with different
-sample spaces or likelihoods.  For example, one experiment may return
+A heterogeneous multi-output problem contains responses with different sample
+spaces or likelihoods.  One experiment may return
 
 \[
 \mathbf y(x)
@@ -9,282 +9,366 @@ sample spaces or likelihoods.  For example, one experiment may return
 [y_{\mathrm{strength}},
  y_{\mathrm{pass/fail}},
  y_{\mathrm{grade}},
- y_{\mathrm{defect\ type}}].
+ y_{\mathrm{failure\ mode}}].
 \]
 
-These outputs cannot be stacked into one Gaussian target tensor without first
-defining what each output means.  This chapter separates three constructions:
+The responses may be continuous, binary, ordered, or multiclass.  They cannot be
+stacked into one Gaussian target and interpreted as equivalent outputs.
 
-1. independent heterogeneous submodels;
-2. correlated latent multi-output models with heterogeneous likelihoods;
-3. objective-space wrappers used for decision making.
-
-The current `HybridMultiOutputModel` primarily implements construction 3 on top
-of independent or separately constructed submodels.  It does not by itself
-create cross-output posterior covariance.
+This chapter focuses on statistical and posterior construction.  Pareto
+optimization, scalarization, and constraints are treated in Chapter 07.
 
 ---
 
-## 1. Homogeneous versus heterogeneous outputs
+## 1. Homogeneous and heterogeneous outputs
 
-### 1.1 Homogeneous multi-output
+### Homogeneous outputs
 
-For `m` continuous outputs,
+All outputs share the same response type and often the same likelihood family:
 
 \[
-\mathbf y(x)=[y_1(x),\ldots,y_m(x)]\in\mathbb R^m.
+\mathbf y(x)
+=[y_1(x),\ldots,y_m(x)]
+\in\mathbb R^m.
 \]
 
-All outputs may use Gaussian likelihoods and share one posterior tensor
+Examples:
 
-```text
-batch_shape x q x m
-```
+- several continuous material properties;
+- several binary labels;
+- several ordinal grades with the same class structure.
 
-Examples are several material properties measured on the same continuous
-scale family.
+### Heterogeneous outputs
 
-### 1.2 Heterogeneous multi-output
-
-A heterogeneous response may contain
+Outputs have different supports:
 
 \[
 y_r\in\mathbb R,
 \qquad
 y_b\in\{0,1\},
-\qquad
+\]
+
+\[
 y_o\in\{0,\ldots,K_o-1\},
 \qquad
 y_c\in\{0,\ldots,K_c-1\}.
 \]
 
-Each output needs its own likelihood:
-
-\[
-p(y_r\mid f_r),
-\quad
-p(y_b\mid f_b),
-\quad
-p(y_o\mid f_o,c),
-\quad
-p(y_c\mid\mathbf f_c).
-\]
-
-A raw class label cannot be averaged with a regression value.  The outputs must
-be transformed to probabilities, utilities, constraints, or another common
-decision representation.
+Each output needs a compatible likelihood and posterior interpretation.
 
 ---
 
-## 2. Independent heterogeneous submodels
+## 2. Three modeling levels
 
-The simplest model factorizes the posterior:
+Heterogeneous systems can be represented at three distinct levels.
+
+### 2.1 Independent submodels
+
+Fit one model per output:
 
 \[
 p(f_1,\ldots,f_m\mid\mathcal D)
 =
-\prod_{j=1}^{m}p(f_j\mid\mathcal D_j).
+\prod_{j=1}^{m}
+p(f_j\mid\mathcal D_j).
 \]
 
-Each output can use a different model family and training procedure.
+Each output may use a different likelihood, kernel, input transform, and fitting
+procedure.
+
+### 2.2 Correlated latent heterogeneous model
+
+Introduce shared latent functions and task-specific likelihoods.  Outputs share
+information statistically.
+
+### 2.3 Objective-space wrapper
+
+Keep the submodels separate, transform each output into a scalar decision
+channel, and expose a common tensor interface for acquisitions.
+
+The current `HybridMultiOutputModel` primarily implements the third level.  It
+does not by itself introduce cross-output statistical dependence.
+
+---
+
+## 3. Independent heterogeneous submodels
+
+Let output-specific data be
+
+\[
+\mathcal D_j
+=
+\{(x_{ij},y_{ij})\}_{i=1}^{n_j}.
+\]
+
+The input sets and observation counts may differ across outputs.
+
+Examples:
+
+- strength measured for every specimen;
+- failure label available only after a long test;
+- ordinal quality assessed by a subset of experts;
+- failure mode recorded only when failure occurs.
 
 ### Advantages
 
 - supports different likelihoods;
-- supports different class counts and cutpoints;
-- handles different noise models;
-- can use different kernels and transforms;
-- missing observations can be represented by different datasets;
-- one unstable output model does not invalidate a joint covariance factorization.
+- supports missing and asynchronous outputs;
+- permits output-specific noise models;
+- permits different kernels and model families;
+- easy to diagnose and fit independently;
+- avoids negative transfer.
 
 ### Limitations
 
-- no information transfer between outputs;
-- no cross-output covariance;
-- posterior samples from different outputs are independent unless dependence is
-  added externally;
-- multi-output information acquisitions cannot exploit correlations.
-
-The current hybrid wrapper is compatible with this construction.
+- no cross-output information transfer;
+- no cross-output posterior covariance;
+- independent joint-event approximation;
+- output relationships are used only in the decision layer, if at all.
 
 ---
 
-## 3. Correlated latent heterogeneous model
+## 4. Correlated latent heterogeneous model
 
-A more general construction introduces `Q` shared latent GPs:
+Introduce shared latent GPs
 
 \[
-u_q(x)\sim\mathcal{GP}(0,k_q),
+u_q(x)
+\sim
+\mathcal{GP}(0,k_q),
 \qquad q=1,\ldots,Q.
 \]
 
-For output `j`, define
+For output `j`, define latent predictor
 
 \[
-f_j(x)=\sum_{q=1}^{Q}a_{jq}u_q(x).
+f_j(x)
+=
+\sum_{q=1}^{Q}a_{jq}u_q(x).
 \]
 
-Then
+The latent covariance is
 
 \[
 \operatorname{Cov}[f_j(x),f_l(x')]
 =
-\sum_{q=1}^{Q}a_{jq}a_{lq}k_q(x,x').
+\sum_{q=1}^{Q}
+a_{jq}a_{lq}k_q(x,x').
 \]
 
-Each latent response is connected to a task-specific likelihood:
+Each output has a task-specific likelihood:
 
 \[
 p(\mathbf y\mid\mathbf f)
 =
-\prod_{i,j}p_j(y_{ij}\mid f_j(x_i)).
+\prod_{j}
+\prod_i
+p_j(y_{ij}\mid f_j(x_{ij})).
 \]
 
 Examples:
 
-- Gaussian likelihood for regression;
-- Bernoulli likelihood for binary classification;
+- Gaussian likelihood for continuous output;
+- Bernoulli likelihood for binary output;
 - ordered-logit likelihood for ordinal output;
 - categorical likelihood for multiclass output;
-- Poisson likelihood for counts.
+- Poisson likelihood for count output.
 
-This is a heterogeneous multi-output GP in the statistical sense.  Its
-posterior may transfer information through the shared latent processes.
-
-### Identifiability and negative transfer
-
-The loading matrix `A` and latent kernels are not always identifiable without
-constraints.  Moreover, forcing unrelated outputs to share latent functions can
-cause negative transfer.  Correlation should therefore be validated using
-held-out predictive performance and sequential decision performance.
-
-The current `HybridMultiOutputModel` should not be described as this correlated
-model unless its submodels themselves share a joint latent process.
+This is a statistical heterogeneous multi-output GP because the outputs share
+latent stochastic structure.
 
 ---
 
-## 4. Objective-space representation
+## 5. Linear model of coregionalization
 
-For decision making, each output is mapped to a scalar score
-
-\[
-t_j(x)=T_j[y_j(x)].
-\]
-
-The resulting objective vector is
+The shared-latent construction is a Linear Model of Coregionalization (LMC).
+For kernels `k_q`,
 
 \[
-\mathbf t(x)=[t_1(x),\ldots,t_m(x)].
+K_{jl}(x,x')
+=
+\sum_qB_{jl}^{(q)}k_q(x,x'),
 \]
 
-`bochan.models.hybrid.OutputSpec` records how each output is transformed.
-
-### 4.1 Regression output
-
-For a maximization output,
+where
 
 \[
-t_j=y_j.
+B^{(q)}
+=\mathbf a_q\mathbf a_q^\top
 \]
 
-For minimization,
+for rank-one coregionalization component, or a higher-rank positive-semidefinite
+matrix.
+
+LMC can express:
+
+- positive or negative latent association;
+- different smoothness components;
+- shared global trend plus task-specific variation.
+
+It also introduces identifiability and computational complexity.
+
+---
+
+## 6. Cross-output dependence and likelihoods
+
+Latent correlation does not imply observed-label Pearson correlation.
+
+For binary or ordinal outputs, the likelihood is nonlinear:
 
 \[
-t_j=-y_j.
+f_j\rightarrow p_j(y\mid f_j).
 \]
 
-With weight `w_j` and sign `s_j`,
+The observed dependence is affected by:
+
+- latent covariance;
+- link functions;
+- class imbalance;
+- cutpoints;
+- observation noise;
+- missingness;
+- input distribution.
+
+Therefore raw label correlation is not an estimator of latent task covariance.
+
+---
+
+## 7. Negative transfer
+
+Shared structure helps only when outputs are related in a way the model can
+represent.
+
+Negative transfer occurs when shared parameters degrade one or more outputs.
+Causes include:
+
+- unrelated responses;
+- dependence changing across input regions;
+- different relevant input dimensions;
+- incompatible smoothness;
+- one poorly calibrated likelihood dominating training;
+- large output imbalance;
+- missing-not-at-random patterns.
+
+Compare independent and correlated models using held-out predictive and
+sequential decision metrics.
+
+---
+
+## 8. Missing outputs
+
+Let observation indicator be
+
+\[
+m_{ij}
+=
+\mathbf1[y_{ij}\text{ observed}].
+\]
+
+The likelihood is
+
+\[
+p(\mathbf y_{\mathrm{obs}}\mid\mathbf f)
+=
+\prod_{i,j:m_{ij}=1}
+p_j(y_{ij}\mid f_j(x_i)).
+\]
+
+Independent submodels naturally handle different `n_j`.  A dense `n x m`
+target tensor with fabricated values or naive imputation changes the likelihood
+and can bias the model.
+
+A correlated model must support masked likelihood terms or task-indexed
+observations.
+
+---
+
+## 9. Asynchronous outputs
+
+Some outputs arrive at different times.  For example:
+
+- quick sensor result;
+- later destructive test;
+- delayed quality inspection.
+
+The data state is output specific:
+
+\[
+\mathcal D_t
+=
+(\mathcal D_{1,t},\ldots,\mathcal D_{m,t}).
+\]
+
+A hybrid wrapper should not assume that every output has the same training rows
+or pending status.
+
+Decoupled experimental design may choose both input and output subset:
+
+\[
+(x,S),
+\qquad S\subseteq\{1,\ldots,m\}.
+\]
+
+The current wrapper unifies posterior channels but does not by itself solve
+output-selection or asynchronous cost-aware acquisition.
+
+---
+
+## 10. Decision-space representation
+
+For decision making, each output is mapped to a scalar channel
+
+\[
+t_j(x)=T_j[p_j(y_j\mid x,\mathcal D_j)].
+\]
+
+The combined vector is
+
+\[
+\mathbf t(x)
+=[t_1(x),\ldots,t_m(x)].
+\]
+
+Examples:
+
+### Regression
 
 \[
 t_j=s_jw_jy_j.
 \]
 
-For a target value `a_j`, the current objective convention is
+### Binary probability
 
 \[
-t_j=-w_j|y_j-a_j|.
+t_j=P(Y_j=c^*\mid x).
 \]
 
-This transformation is nondifferentiable at `y_j=a_j`, although it is
-differentiable almost everywhere.
-
-### 4.2 Binary probability
-
-For positive class `1`,
-
-\[
-t_j=p_j=P(Y_j=1\mid x).
-\]
-
-For positive class `0`,
-
-\[
-t_j=1-p_j.
-\]
-
-### 4.3 Binary expected utility
-
-With class utilities `u_0,u_1`,
-
-\[
-t_j=u_0(1-p_j)+u_1p_j.
-\]
-
-The conditional utility variance is
-
-\[
-\operatorname{Var}(U_j\mid x)
-=(1-p_j)(u_0-\bar u_j)^2
-+p_j(u_1-\bar u_j)^2.
-\]
-
-### 4.4 Ordinal expected utility
-
-For ordinal probabilities `p_jk` and utilities `u_jk`,
+### Multiclass acceptable-set probability
 
 \[
 t_j
 =
-\sum_{k=0}^{K_j-1}u_{jk}p_{jk}.
+\sum_{k\in A_j}P(Y_j=k\mid x).
 \]
 
-The class-distribution utility variance is
+### Ordinal expected utility
 
 \[
-v_j
+t_j
 =
-\sum_k p_{jk}(u_{jk}-t_j)^2.
+\sum_k u_{jk}P(Y_j=k\mid x).
 \]
 
-This variance reflects uncertainty of the discrete class utility conditional on
-the predicted probabilities.  It is not automatically the epistemic variance
-of the expected utility function.
-
-### 4.5 Multiclass probability or utility
-
-For target class `k*`,
-
-\[
-t_j=p_{jk^*}.
-\]
-
-For utilities,
-
-\[
-t_j=\sum_k u_{jk}p_{jk}.
-\]
+The transformation converts heterogeneous outputs to comparable tensor
+channels, but it does not create statistical dependence.
 
 ---
 
-## 5. Current `HybridMultiOutputModel`
+## 11. OutputSpec
 
-The implementation is located in
+`bochan.models.hybrid.OutputSpec` describes one scalar output channel.
 
-```text
-src/bochan/models/hybrid/multi_output.py
-```
-
-It receives a sequence of `OutputSpec` objects with fields including:
+Fields include:
 
 ```text
 name
@@ -299,21 +383,59 @@ positive_class
 transform
 ```
 
-The wrapper calls task-specific accessors such as
+### `name`
 
-- `posterior` or `latent_posterior` for regression;
-- probability posterior accessors for binary outputs;
-- `class_probs` and ordinal likelihood helpers for ordinal outputs;
-- `class_probs` for multiclass outputs.
+Provides stable output identification and string-based subsetting.
 
-It returns a unified posterior in an objective or requested output mode with
-shape
+### `task_type`
+
+Current supported values are:
 
 ```text
-batch_shape x q x m
+regression
+binary
+ordinal
+multiclass
 ```
 
-The available modes are
+### `output_index`
+
+Selects one channel when a submodel is itself multi-output.
+
+### `sign` and `weight`
+
+Apply maximization direction and linear scale:
+
+\[
+t=swy.
+\]
+
+### `eq_target`
+
+Creates target-distance score
+
+\[
+t=-w|y-a|.
+\]
+
+### `utility_values`
+
+Maps binary, multiclass, or ordinal probabilities to expected utility.
+
+### `positive_class`
+
+Selects class probability for binary or multiclass probability mode.
+
+### `transform`
+
+Applies a custom callable to the transformed mean.  The current variance
+handling does not generally compute exact nonlinear transformed moments.
+
+---
+
+## 12. Posterior modes
+
+The hybrid wrapper supports modes such as:
 
 ```text
 objective
@@ -323,74 +445,136 @@ probability
 expected_utility
 ```
 
-as defined in
+The meaning depends on task type.
 
-```text
-src/bochan/models/hybrid/specs.py
-```
+### Regression
+
+- `mean`: response posterior mean;
+- `latent`: latent accessor when available;
+- `objective`: sign, weight, target transformation.
+
+### Binary
+
+- `probability`: selected class probability;
+- `expected_utility`: binary class utility;
+- `latent`: latent GP accessor when supported.
+
+### Multiclass
+
+- `probability`: selected class or configured target;
+- `expected_utility`: class-utility expectation;
+- `latent`: class-wise latent representation if requested by supported path.
+
+### Ordinal
+
+- `probability`: selected ordered-class probability or configured probability
+  mode;
+- `expected_utility`: utility expectation;
+- `latent`: scalar ordinal latent posterior.
+
+A request for a mode that is not meaningful for a submodel should fail rather
+than silently use an unrelated quantity.
 
 ---
 
-## 6. Current `HybridPosterior`
+## 13. Scalar extraction from submodels
 
-`HybridPosterior` is defined in
-
-```text
-src/bochan/models/hybrid/posterior.py
-```
-
-Its mean and marginal variance have shape
+A submodel may return
 
 ```text
-batch_shape x q x m
+batch_shape x q x m_sub
 ```
 
-The current posterior has **no cross-output covariance matrix**.  Its
-reparameterized sampling uses independent normal proxies:
+and `output_index` selects one channel:
+
+```text
+batch_shape x q
+```
+
+The wrapper then appends a hybrid output axis and stacks values:
+
+```text
+batch_shape x q x m_hybrid
+```
+
+Extra sample-like dimensions from DeepGP or ensemble models may be averaged by
+wrapper helpers.  This is an approximation unless the full distribution is
+preserved.
+
+---
+
+## 14. Binary probability statistics
+
+For binary class-1 probability `p`, selected class probability is
 
 \[
-\tilde t_j
+t=
+\begin{cases}
+p,&c^*=1,\\1-p,&c^*=0.
+\end{cases}
+\]
+
+If the source posterior exposes Bernoulli variance,
+
+\[
+v=p(1-p),
+\]
+
+that is observation variance of a label, not necessarily posterior uncertainty
+of the probability function.
+
+When mapped into `HybridPosterior`, the variance channel should be interpreted
+according to the source accessor and wrapper calculation.
+
+---
+
+## 15. Class-utility moments
+
+For class probabilities `p_k` and utility values `u_k`,
+
+\[
+\mu_U
 =
-\mu_j+\sqrt{v_j}\epsilon_j,
-\qquad
-\epsilon_j\overset{\mathrm{iid}}{\sim}\mathcal N(0,1).
+\sum_kp_ku_k,
 \]
 
-Consequences:
+\[
+\sigma_U^2
+=
+\sum_kp_k(u_k-\mu_U)^2.
+\]
 
-1. covariance between heterogeneous outputs is zero in the proxy posterior;
-2. non-Gaussian output distributions are moment-matched or summarized before
-   proxy sampling;
-3. class-utility distributions are approximated by normal variables;
-4. joint-tail events and joint chance constraints may be inaccurate;
-5. Monte Carlo multi-objective acquisitions operate on this proxy distribution,
-   not the exact joint heterogeneous posterior.
+These are moments of the realized discrete utility conditional on the given
+class probabilities.
 
-This design is useful for BoTorch interoperability, but its approximation must
-be stated explicitly in theory documents and empirical studies.
+They do not include posterior epistemic uncertainty in `p_k` unless that
+uncertainty is integrated separately.
+
+A normal proxy with these moments approximates a discrete utility distribution.
+It does not preserve its finite support or multimodality.
 
 ---
 
-## 7. Transforming variance
+## 16. Nonlinear transforms
 
-For a linear transformation
-
-\[
-t=swy,
-\]
-
-variance transforms exactly as
+For nonlinear `h`, exact transformed mean and variance are
 
 \[
-\operatorname{Var}(t)=w^2\operatorname{Var}(y).
+\mathbb E[h(Y)],
 \]
-
-For a nonlinear transform `h`, the exact variance is
 
 \[
 \operatorname{Var}[h(Y)]
 =
 \mathbb E[h(Y)^2]-\mathbb E[h(Y)]^2.
+\]
+
+In general,
+
+\[
+h(\mathbb E[Y])
+\ne
+\mathbb E[h(Y)].
 \]
 
 A first-order delta approximation is
@@ -401,230 +585,333 @@ A first-order delta approximation is
 [h'(\mu)]^2\operatorname{Var}(Y).
 \]
 
-The current `OutputSpec.transform` applies an arbitrary callable to the mean,
-while variance is primarily adjusted by `weight**2`.  Unless the transform is
-linear, this is not an exact transformed variance.  Such outputs should be
-considered decision-score approximations.
-
-The target-distance transform
-
-\[
-t=-w|Y-a|
-\]
-
-also requires either Monte Carlo transformation or an analytic folded-normal
-calculation for exact moments.  Applying `-abs(mu-a)` to the mean is a plug-in
-approximation.
+The current custom `OutputSpec.transform` acts on the mean and does not
+generally implement exact transformed variance.  Treat such channels as
+objective-score proxies unless the transform is linear.
 
 ---
 
-## 8. Scalarization and multi-objective use
+## 17. HybridPosterior
 
-### 8.1 Weighted scalarization
+`HybridPosterior` stores
 
-A scalar objective is
+```text
+mean:     batch_shape x q x m
+variance: batch_shape x q x m
+```
 
-\[
-S(x)=\sum_{j=1}^{m}\lambda_jt_j(x).
-\]
-
-Weights encode units and preference.  Standardizing each response before
-scalarization changes the interpretation of the weights and must be documented.
-
-For independent output proxies,
+and returns reparameterized proxy samples
 
 \[
-\operatorname{Var}[S]
+T_j^{(s)}
 =
-\sum_j\lambda_j^2v_j.
+\mu_j+\sqrt{v_j}\epsilon_j^{(s)},
+\qquad
+\epsilon_j^{(s)}\sim\mathcal N(0,1).
 \]
 
-For correlated outputs, the correct formula is
+### Important limitations
+
+The current posterior does not contain a full covariance matrix across:
+
+- q candidates;
+- heterogeneous output channels.
+
+Therefore:
 
 \[
-\operatorname{Var}[S]
-=
-\boldsymbol\lambda^\top
-\Sigma_t
-\boldsymbol\lambda.
+\operatorname{Cov}(T_j,T_l)=0
 \]
 
-The current hybrid posterior cannot represent the cross terms.
+in proxy sampling for distinct elements unless dependence is represented before
+conversion in a way retained by the wrapper.
 
-### 8.2 Pareto optimization
+Consequences include approximate:
 
-For vector objective
+- joint tail probabilities;
+- scalarization variance;
+- joint chance constraints;
+- q-batch redundancy;
+- multi-output information gain;
+- hypervolume distributions.
 
-\[
-\mathbf t(x)\in\mathbb R^m,
-\]
-
-Pareto dominance is defined after all directions have been transformed to
-maximization:
-
-\[
-\mathbf a\succeq\mathbf b
-\Longleftrightarrow
-a_j\ge b_j\ \forall j
-\quad\text{and}\quad
-\exists j:a_j>b_j.
-\]
-
-Probability and expected-utility outputs can be included in EHVI/NEHVI, but
-their scales and approximation quality affect hypervolume.  Reference points
-must be specified in the same transformed objective space.
+The interface is useful for BoTorch interoperability, but it is not a full
+correlated heterogeneous posterior.
 
 ---
 
-## 9. Heterogeneous outputs as constraints
+## 18. Why a normal proxy is useful
 
-Some outputs should not be objectives.  A binary classifier may represent
-feasibility:
+A normal proxy provides:
 
-\[
-C(x)=P(Y_{\mathrm{feasible}}=1\mid x).
-\]
+- differentiable `rsample()`;
+- compatibility with MC acquisitions;
+- common `[...,q,m]` shape;
+- sampler dispatcher integration;
+- simple marginal uncertainty representation.
 
-An ordinal grade can define
+It is reasonable when:
 
-\[
-C(x)=P(Y\ge g_{\min}\mid x).
-\]
+- acquisitions mainly use means and marginal scales;
+- transformed output distributions are approximately unimodal;
+- cross-output correlation is weak or not essential;
+- the wrapper is used as a practical decision interface.
 
-A regression constraint may define
-
-\[
-C(x)=P(g(x)\le 0\mid x).
-\]
-
-A constrained acquisition can use
-
-\[
-\alpha_c(x)
-=
-\alpha_o(x)\prod_{j=1}^{m_c}C_j(x).
-\]
-
-This preserves the distinction between objective value and feasibility.
-Converting every output into one weighted utility can obscure hard engineering
-requirements.
+It is risky when decisions depend on discrete support, extreme tails, or joint
+dependence.
 
 ---
 
-## 10. Missing and asynchronously observed outputs
+## 19. Alternative posterior constructions
 
-In real experiments, not every output is observed at every input.  Independent
-submodels naturally support datasets
+### 19.1 Exact sample transformation
 
-\[
-\mathcal D_j=\{(x_i,y_{ij}):y_{ij}\text{ observed}\}.
-\]
+Draw samples from each submodel in its native posterior space and apply
+`T_j` sample by sample.  This preserves nonlinearity and discrete utility more
+faithfully.
 
-A shared-input tensor interface may incorrectly imply complete observations.
-The hybrid wrapper's `train_Y` concatenation assumes aligned rows when exposing
-a combined training tensor.  For incomplete data, the submodels and their raw
-datasets should remain the source of truth.
+### 19.2 Copula coupling
 
-For asynchronous measurement, acquisitions may need to value an experiment
-according to which outputs will actually be returned and at what cost.
+Estimate marginal transformed distributions and connect them with a copula.
+This requires dependence estimation and differentiable sampling.
 
----
+### 19.3 Shared latent heterogeneous GP
 
-## 11. Information acquisition for heterogeneous outputs
+Build one joint variational model with task-specific likelihoods.  This is the
+most coherent but most complex approach.
 
-A general information objective is
+### 19.4 Empirical joint residual model
 
-\[
-\alpha(x)
-=
-I(Y_{\mathcal O};\Theta_{\mathcal T}\mid x,\mathcal D),
-\]
-
-where `O` is the set of measured outputs and `T` is the scientific target.
-Examples include:
-
-- learning all output functions;
-- learning only feasibility;
-- learning a Pareto frontier;
-- learning a joint safe region;
-- learning one ordinal boundary while also predicting a continuous property.
-
-Summing output-wise entropies assumes separability:
-
-\[
-\alpha(x)=\sum_jw_j\alpha_j(x).
-\]
-
-A correlated latent model would permit joint mutual information, but the
-current independent proxy does not contain all required dependence.
+Fit independent submodels and model dependence among calibrated residual or
+latent variables.  This is a two-stage approximation.
 
 ---
 
-## 12. Recommended terminology
+## 20. Input transforms across submodels
 
-Use the following terms precisely:
+A hybrid wrapper may expose one common `input_transform` only when all submodels
+share the same transform object.  Otherwise the wrapper delegates transformation
+to each submodel.
 
-| Term | Meaning |
-|---|---|
-| Multi-output | More than one response channel. |
-| Multitask | Outputs/tasks are explicitly modeled and may share statistical structure. |
-| ModelList / independent | Separate posterior models combined at the interface level. |
-| Heterogeneous likelihood | Different response distributions across outputs. |
-| Hybrid objective wrapper | Converts heterogeneous model outputs to a common score tensor. |
-| Correlated heterogeneous GP | Joint latent model with cross-output covariance and task-specific likelihoods. |
+Potential problems:
 
-The current `HybridMultiOutputModel` is principally a hybrid objective wrapper.
-Its submodels may themselves be multitask, but the wrapper alone does not add
-cross-output covariance.
+- one submodel expects raw `X`, another transformed `X`;
+- categorical dimensions differ;
+- one model uses PCA or VAE projection;
+- one model expands q through input perturbation;
+- distance penalties assume one shared transformed space.
 
----
-
-## 13. Validation
-
-A heterogeneous model should be evaluated at three levels.
-
-### Per-output prediction
-
-- regression RMSE/NLPD/coverage;
-- binary Brier score, log loss, calibration;
-- multiclass log loss and expected calibration error;
-- ordinal ranked probability score and boundary calibration.
-
-### Cross-output behavior
-
-- empirical residual dependence;
-- held-out performance with and without shared structure;
-- calibration of joint events;
-- negative transfer.
-
-### Decision performance
-
-- scalar regret;
-- hypervolume regret;
-- feasible-regret;
-- boundary estimation loss;
-- experiments required to reach a target.
-
-A joint model should not be preferred solely because it reports a nonzero task
-correlation.
+Hybrid acquisitions should generally pass raw-space candidates to submodels and
+let each model apply its own transform.
 
 ---
 
-## 14. Source map
+## 21. Training-data properties
 
-| Component | Implementation |
-|---|---|
-| Heterogeneous model wrapper | `src/bochan/models/hybrid/multi_output.py` |
-| Output metadata and modes | `src/bochan/models/hybrid/specs.py` |
-| Independent normal proxy posterior | `src/bochan/models/hybrid/posterior.py` |
-| Hybrid prediction helpers | `src/bochan/models/hybrid/prediction.py` |
-| Hybrid objective | `src/bochan/acquisition/objective/hybrid.py` |
-| API model construction | `src/bochan/api/factory.py` and `src/bochan/api/configs.py` |
-| Multi-objective theory | `docs/theory/07_multi_objective_and_constraints.md` |
+`HybridMultiOutputModel.train_Y` concatenates submodel targets when possible.
+This is mainly an interface convenience.
+
+It is statistically meaningful only when:
+
+- rows refer to the same inputs;
+- observation counts match;
+- target alignment is known.
+
+For missing or asynchronous outputs, submodel training data remain authoritative.
 
 ---
 
-## 15. References
+## 22. Subsetting outputs
+
+A hybrid model should support selection by:
+
+- integer output index;
+- output name;
+- list of names or indices.
+
+Subsetting must also subset:
+
+- specifications;
+- posterior mean and variance channels;
+- output metadata;
+- objective transformations.
+
+Stable names reduce mistakes when the output order changes.
+
+---
+
+## 23. Conditioning and fantasies
+
+Look-ahead acquisitions require conditioning on hypothetical observations.
+For a hybrid model, this requires output-specific fantasy handling:
+
+- Gaussian regression can use exact conditioning;
+- variational classification may rebuild and refit approximately;
+- ordinal models may require variational optimization;
+- different outputs may be observed asynchronously.
+
+A wrapper cannot provide exact joint fantasies if its submodels do not support
+compatible conditioning.
+
+Hybrid look-ahead should therefore document whether conditioning is exact,
+approximate, or unsupported.
+
+---
+
+## 24. Calibration across outputs
+
+A common objective vector can hide output-specific calibration problems.
+Evaluate each submodel with suitable metrics:
+
+### Regression
+
+- RMSE/MAE;
+- NLPD;
+- interval coverage.
+
+### Binary
+
+- Brier score;
+- log loss;
+- calibration curve.
+
+### Multiclass
+
+- multiclass log loss;
+- classwise calibration;
+- confusion matrix.
+
+### Ordinal
+
+- ranked probability score;
+- cumulative calibration;
+- mean absolute grade error.
+
+Then evaluate the transformed decision channels themselves.
+
+---
+
+## 25. Independent versus correlated model selection
+
+Prefer independent submodels when:
+
+- output relationships are weak or uncertain;
+- missingness patterns differ;
+- likelihoods and scales are highly different;
+- data are sufficient per output;
+- implementation reliability is the priority.
+
+Consider a correlated heterogeneous model when:
+
+- some outputs are data-poor;
+- shared physical mechanisms are credible;
+- joint probabilities matter;
+- cross-output information transfer is validated;
+- the added inference complexity is justified.
+
+Always compare against independent baselines.
+
+---
+
+## 26. `bochan` implementation correspondence
+
+### Model wrapper
+
+```text
+src/bochan/models/hybrid/multi_output.py
+```
+
+contains `HybridMultiOutputModel`.
+
+### Output metadata
+
+```text
+src/bochan/models/hybrid/specs.py
+```
+
+contains `OutputSpec`, `TaskType`, and `PosteriorMode`.
+
+### Proxy posterior
+
+```text
+src/bochan/models/hybrid/posterior.py
+```
+
+contains `HybridPosterior` and sampler registration.
+
+### Prediction helpers
+
+```text
+src/bochan/models/hybrid/prediction.py
+```
+
+contains hybrid prediction utilities.
+
+### Objective support
+
+```text
+src/bochan/acquisition/objective/hybrid.py
+```
+
+contains objective transformations for hybrid outputs.
+
+### High-level construction
+
+```text
+src/bochan/api/factory.py
+src/bochan/api/configs.py
+```
+
+construct models and specifications from high-level configuration.
+
+### Main current contract
+
+`HybridMultiOutputModel`:
+
+1. receives single-output or selected submodel channels;
+2. converts each according to `OutputSpec` and requested mode;
+3. stacks scalar means and variances into `[...,q,m]`;
+4. returns `HybridPosterior`;
+5. does not add cross-output covariance.
+
+---
+
+## 27. Extension directions
+
+Potential future improvements include:
+
+- sample-wise native posterior transformations;
+- covariance-aware hybrid posterior;
+- heterogeneous shared-latent variational model;
+- masked and asynchronous training-data interface;
+- decoupled output-selection acquisitions;
+- exact nonlinear transformed moments where available;
+- calibrated copula dependence;
+- output-specific costs and delays;
+- joint fantasy support.
+
+---
+
+## 28. New heterogeneous-model checklist
+
+1. What is each output support?
+2. Which likelihood is used per output?
+3. Are submodels independent or correlated?
+4. How are missing outputs represented?
+5. What posterior mode is exposed?
+6. How is each output transformed to a scalar channel?
+7. What does each variance channel mean?
+8. Is nonlinear transformation moment-matched or sample based?
+9. Is cross-output covariance represented?
+10. Is q-point covariance represented?
+11. Are input transforms compatible?
+12. Is conditioning supported?
+13. Which predictive metrics validate each output?
+14. Which decision metrics validate the combined model?
+
+---
+
+## 29. References
 
 - Álvarez, Rosasco, and Lawrence, *Kernels for Vector-Valued Functions: A Review*, 2012.
 - Moreno-Muñoz et al., *Heterogeneous Multi-output Gaussian Process Prediction*, 2018.

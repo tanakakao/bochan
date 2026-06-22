@@ -1,204 +1,740 @@
-# 06. Classification and Ordinal Bayesian Optimization
+# 06. Bayesian Optimization with Classification and Ordinal Outputs
 
-Many practical optimization problems do not produce only continuous regression targets. Outputs may be binary labels, multiclass labels, ordered grades, or mixtures of continuous and discrete responses. This document explains the theoretical assumptions used when applying Bayesian optimization, active learning, and level-set estimation to classification and ordinal models.
+Binary, multiclass, and ordinal models do not directly return a continuous
+physical response in the same sense as Gaussian regression.  Bayesian
+optimization therefore requires an explicit decision transformation from class
+probabilities or latent values to utility.
 
----
-
-## 1. Binary classification
-
-In binary classification,
-
-```text
-y in {0, 1}.
-```
-
-A common GP classification model uses a latent function:
-
-```text
-f(x) ~ GP(m(x), k(x, x'))
-```
-
-and maps it to a class probability:
-
-```text
-p(y = 1 | x) = sigmoid(f(x)).
-```
-
-The latent value `f(x)` and the probability `p(y = 1 | x)` are different quantities.
-
-This distinction matters because an acquisition function may use either:
-
-- latent posterior uncertainty, or
-- predictive class probability uncertainty.
+This chapter focuses on that decision layer.  Model likelihoods and posterior
+contracts are treated in Chapters 11 and 12.
 
 ---
 
-## 2. Latent uncertainty versus probability uncertainty
+## 1. Why labels are not regression targets
 
-A binary classifier can be uncertain for different reasons:
+Suppose an observed label is
 
-1. the latent function has high posterior variance,
-2. the predicted probability is close to 0.5,
-3. the model parameters or inducing representation are uncertain,
-4. input perturbation changes the predicted class.
+\[
+y\in\{0,1,\ldots,K-1\}.
+\]
 
-For example, a point can have high latent variance but still produce a saturated probability after a sigmoid transform. Conversely, a point near probability 0.5 may be a decision-boundary point even if latent variance is not maximal.
+Treating the integer code as an ordinary continuous response imposes assumptions
+that may be false:
 
-This is why API names and documentation should specify whether an acquisition uses latent or predictive quantities.
+- distance between classes is numerical;
+- class `2` is twice class `1`;
+- Gaussian residuals are meaningful;
+- predictions outside the valid class range are acceptable;
+- unordered classes have a natural order.
+
+A classification or ordinal likelihood instead estimates class probabilities
+
+\[
+p_k(x)=P(Y=k\mid x,\mathcal D).
+\]
+
+BO then optimizes a user-defined functional of the probability vector.
 
 ---
 
-## 3. Classification objectives
+## 2. Decision-space transformation
 
-For Bayesian optimization with classification outputs, the objective may be a score derived from class probabilities.
+Let the predictive class distribution be
+
+\[
+\mathbf p(x)
+=[p_0(x),\ldots,p_{K-1}(x)].
+\]
+
+A scalar decision objective is
+
+\[
+u(x)=T(\mathbf p(x)).
+\]
+
+A multi-objective decision vector is
+
+\[
+\mathbf u(x)=
+[T_1(\mathbf p(x)),\ldots,T_m(\mathbf p(x))].
+\]
+
+The transformation `T` defines what is being optimized.  The classifier only
+provides probabilities.
+
+---
+
+## 3. Binary probability objective
+
+For binary outcome `Y in {0,1}`, let
+
+\[
+p(x)=P(Y=1\mid x,\mathcal D).
+\]
+
+To maximize probability of class `1`, use
+
+\[
+u(x)=p(x).
+\]
+
+To maximize probability of class `0`, use
+
+\[
+u(x)=1-p(x).
+\]
+
+This is appropriate when one class is unambiguously preferred and all successful
+outcomes have equal value.
+
+### Probability threshold
+
+A requirement such as
+
+\[
+p(x)\ge0.95
+\]
+
+is a probabilistic constraint or level set.  Maximizing `p(x)` is not identical
+to finding all points that satisfy the threshold.
+
+---
+
+## 4. Binary expected utility
+
+Assign utilities
+
+\[
+u_0,\quad u_1.
+\]
+
+The expected utility is
+
+\[
+U(x)
+=u_0[1-p(x)]+u_1p(x).
+\]
+
+This is affine in `p(x)`:
+
+\[
+U(x)=u_0+(u_1-u_0)p(x).
+\]
+
+If `u_1>u_0`, maximizing expected utility gives the same ranking as maximizing
+`p(x)`, but the utility scale matters for:
+
+- `best_f`;
+- EI magnitude;
+- multi-objective reference points;
+- weighted scalarization;
+- economic interpretation.
+
+When utility depends on process cost or input `x`, use
+
+\[
+U(x)
+=u_0(x)[1-p(x)]+u_1(x)p(x).
+\]
+
+The ranking is then not determined by probability alone.
+
+---
+
+## 5. Multiclass target probability
+
+For target class `k*`, define
+
+\[
+U_{k^*}(x)=p_{k^*}(x).
+\]
+
+For a set of acceptable classes `A`, the probability of acceptance is
+
+\[
+U_A(x)
+=P(Y\in A\mid x)
+=
+\sum_{k\in A}p_k(x).
+\]
+
+Because classes are mutually exclusive, the sum has a direct probability
+interpretation.  A mean over selected class probabilities differs by the factor
+`1/|A|` and changes threshold meaning.
+
+---
+
+## 6. Multiclass expected utility
+
+Assign class utilities
+
+\[
+\mathbf u=[u_0,\ldots,u_{K-1}].
+\]
+
+Then
+
+\[
+U(x)
+=
+\sum_{k=0}^{K-1}u_kp_k(x).
+\]
 
 Examples:
 
-```text
-score(x) = p(y = 1 | x)
-score(x) = logit probability
-score(x) = class utility expectation
-score(x) = probability of satisfying a constraint class
-```
+- failure modes with different repair costs;
+- product categories with different revenue;
+- manufacturing states with different downstream yield;
+- decisions where some classes are acceptable and others are not.
 
-For binary classification used as a constraint, the class probability can be used as a feasibility probability. For classification used as an objective, the probability or utility should be clearly defined.
-
----
-
-## 4. Multiclass classification
-
-In multiclass classification,
-
-```text
-y in {0, 1, ..., K - 1}.
-```
-
-The model may produce class probabilities:
-
-```text
-p(y = k | x),  k = 0, ..., K - 1.
-```
-
-A decision score can be defined by class utilities:
-
-```text
-U(x) = sum_k u_k p(y = k | x).
-```
-
-where `u_k` is the utility of class `k`.
-
-This utility view makes multiclass classification compatible with scalar Bayesian optimization.
+Expected utility is a decision model layered on top of classification.  It does
+not make an unordered multiclass likelihood ordinal.
 
 ---
 
-## 5. Ordinal regression
+## 7. Ordinal expected utility
 
-Ordinal regression is different from ordinary multiclass classification because labels have an order:
+For ordered classes
 
-```text
-y in {0, 1, ..., K - 1},  0 < 1 < ... < K - 1.
-```
+\[
+0<1<\cdots<K-1,
+\]
 
-A common latent-threshold formulation uses cutpoints:
+class utility may respect the order:
 
-```text
-c_0 < c_1 < ... < c_{K-2}.
-```
+\[
+u_0\le u_1\le\cdots\le u_{K-1}.
+\]
 
-The class probability is:
+The expected utility is
 
-```text
-P(y = k | x) = P(c_{k-1} < f(x) <= c_k).
-```
+\[
+U(x)
+=
+\sum_{k=0}^{K-1}u_kp_k(x).
+\]
 
-with implicit lower and upper bounds for the first and last classes.
+### Equal-spacing utility
 
----
+\[
+u_k=k
+\]
 
-## 6. Ordinal expected utility
+assumes each adjacent grade improvement has equal value.
 
-Because ordinal classes are ordered, it is natural to assign utility values:
+### Normalized utility
 
-```text
-u = [u_0, u_1, ..., u_{K-1}].
-```
+\[
+u_k=\frac{k}{K-1}
+\]
 
-The expected utility is:
+maps utility to `[0,1]` but retains equal spacing.
 
-```text
-EU(x) = sum_k u_k P(y = k | x).
-```
+### Domain-specific utility
 
-If no custom utility is provided, a simple default is:
+\[
+\mathbf u=[0,0.1,0.7,1.0]
+\]
 
-```text
-u_k = k.
-```
+can represent a large value jump between grades 1 and 2.
 
-This makes ordinal predictions compatible with scalar objectives while preserving the ordered-label interpretation.
-
----
-
-## 7. Ordinal level-set estimation
-
-Ordinal level-set estimation often targets class boundaries. The boundaries are represented by cutpoints, not arbitrary class labels.
-
-A boundary acquisition may target:
-
-```text
-f(x) ~= c_j
-```
-
-for a selected boundary index `j`.
-
-This explains arguments such as:
-
-```text
-target_boundary_idx
-boundary_reduction
-utility_values
-```
-
-- `target_boundary_idx` chooses a specific cutpoint.
-- `boundary_reduction` defines how to aggregate multiple boundaries.
-- `utility_values` defines the score used when ordinal output is treated as an objective.
+The likelihood encodes order statistically; the utility encodes preference
+operationally.  They are separate choices.
 
 ---
 
-## 8. Hybrid model lists
+## 8. Minimum-grade probability
 
-Practical BO problems may combine:
+For required grade `g`, define
 
-- regression objective outputs,
-- binary feasibility outputs,
-- ordinal quality grades,
-- multiclass category predictions.
+\[
+P(Y\ge g\mid x)
+=
+\sum_{k=g}^{K-1}p_k(x).
+\]
 
-A model list can represent these outputs as separate surrogate models. A common objective layer can then convert them into comparable scores.
+This can be used as:
 
-Example:
+- an objective to maximize;
+- a feasibility probability;
+- a Level-set Estimation target;
+- a reliability metric.
 
-```text
-output 1: regression value to maximize
-output 2: binary probability of feasibility
-output 3: ordinal expected utility
-```
-
-The acquisition function should not need to know the internal likelihood of each model if the objective layer exposes the intended decision values.
+It is often more interpretable than expected class index when the engineering
+requirement is explicitly grade based.
 
 ---
 
-## 9. Design guidance
+## 9. Latent-score optimization
 
-Classification and ordinal BO components should document:
+A GP classifier or ordinal model contains latent score `f(x)`.  One can define
 
-1. whether `posterior(X)` returns latent values or predictive probabilities,
-2. whether sigmoid, softmax, or cutpoint conversion is applied internally,
-3. how class utilities are defined,
-4. how multi-output predictions are stacked,
-5. whether the acquisition expects latent or probability values,
-6. whether q-batch sampling is supported,
-7. how input perturbation is aggregated,
-8. how constraints should use classification probabilities.
+\[
+u(x)=f(x)
+\]
 
-Without these conventions, it is easy to accidentally optimize a latent score when the intended quantity was a probability or utility.
+or optimize a posterior functional of `f`.
+
+This can be useful when:
+
+- the latent ordering itself is meaningful;
+- the probability link is monotone and only ranking matters;
+- boundary exploration is the goal;
+- numerical probability saturation is undesirable.
+
+However, latent-score optimization has limitations:
+
+- latent scale is model dependent;
+- cutpoint or link calibration affects interpretation;
+- a latent improvement has no direct probability or economic meaning;
+- `best_f` cannot be copied from observed class labels.
+
+Probability or utility space is usually preferable for user-facing BO.
+
+---
+
+## 10. Improvement in probability or utility space
+
+Let transformed objective be
+
+\[
+U(x)=T(Y(x)).
+\]
+
+Improvement is
+
+\[
+I(x)
+=
+\max[U(x)-U_{\mathrm{best}},0].
+\]
+
+Expected Improvement is
+
+\[
+\operatorname{EI}_U(x)
+=
+\mathbb E[I(x)\mid\mathcal D].
+\]
+
+The expectation must account for uncertainty in transformed utility.  In
+general,
+
+\[
+\operatorname{EI}(\mathbb E[U])
+\ne
+\mathbb E[\operatorname{I}(U)].
+\]
+
+A deterministic EI formula applied only to posterior mean probability ignores
+uncertainty in the probability function.
+
+### `best_f` scale
+
+For binary probability objective:
+
+\[
+U_{\mathrm{best}}\in[0,1].
+\]
+
+For ordinal expected utility:
+
+\[
+U_{\mathrm{best}}
+\in[\min u_k,\max u_k].
+\]
+
+It must not be an observed class integer unless that integer is exactly the
+chosen utility scale.
+
+---
+
+## 11. UCB in transformed spaces
+
+A generic transformed UCB is
+
+\[
+\operatorname{UCB}_U(x)
+=
+\mu_U(x)+\lambda\sigma_U(x).
+\]
+
+Defining `sigma_U` requires care.
+
+### Probability posterior variance
+
+If posterior samples produce probabilities `p^{(s)}`, then
+
+\[
+\sigma_p^2
+=
+\operatorname{Var}_s[p^{(s)}].
+\]
+
+### Bernoulli observation variance
+
+\[
+p(1-p)
+\]
+
+is variance of the next binary label, not uncertainty in the probability
+function.
+
+### Utility-distribution variance
+
+Given fixed class probabilities,
+
+\[
+\operatorname{Var}(u_Y\mid x)
+=
+\sum_kp_k(u_k-U)^2.
+\]
+
+This is uncertainty in realized class utility, not necessarily epistemic
+uncertainty in expected utility.
+
+A class-specific UCB implementation must state which variance it uses.
+
+---
+
+## 12. Probability of Improvement
+
+For transformed utility threshold `tau`,
+
+\[
+\operatorname{PI}_U(x)
+=
+P(U(x)\ge\tau\mid\mathcal D).
+\]
+
+For binary probability objective, this asks whether the uncertain probability
+function exceeds a probability target.  It is not the same as
+
+\[
+P(Y=1\mid x)=p(x).
+\]
+
+The first probability is over posterior uncertainty in `p(x)`; the second is
+over the future class label conditional on the model.
+
+---
+
+## 13. Classification as a constraint
+
+Suppose the objective is continuous response `f(x)` and binary classifier
+predicts feasibility.
+
+A probability-weighted acquisition is
+
+\[
+\alpha_c(x)
+=
+\alpha_f(x)
+P(Y_{\mathrm{feasible}}=1\mid x).
+\]
+
+For multiple independent constraints,
+
+\[
+P(\mathrm{all\ feasible}\mid x)
+=
+\prod_jp_j(x).
+\]
+
+If constraint outputs are correlated, the product can be inaccurate.  Joint
+posterior samples or a correlated model are needed for the joint event.
+
+### Hard probability threshold
+
+A chance constraint is
+
+\[
+P(Y_{\mathrm{feasible}}=1\mid x)
+\ge\gamma.
+\]
+
+This defines a feasible decision region.  Multiplying acquisition by
+probability does not strictly enforce the threshold.
+
+---
+
+## 14. Ordinal constraint
+
+A minimum-grade constraint is
+
+\[
+P(Y\ge g\mid x)
+\ge\gamma.
+\]
+
+Expected utility constraint is
+
+\[
+\mathbb E[u_Y\mid x]
+\ge u_0.
+\]
+
+These are different.  A distribution with small probability of catastrophic
+low grade can have acceptable expected utility but fail the minimum-grade
+reliability requirement.
+
+---
+
+## 15. Calibration and BO
+
+Optimization exploits errors.  If a probability model is overconfident, BO can
+seek regions where predicted probability is spuriously high.
+
+Evaluate:
+
+- reliability diagrams;
+- Brier score;
+- log loss;
+- expected calibration error;
+- class-specific calibration;
+- ordinal cumulative-probability calibration;
+- out-of-distribution confidence.
+
+Calibration estimated on random validation data may not hold at adaptively
+selected BO candidates.  Sequential monitoring is important.
+
+Temperature scaling or other calibration methods must be fitted without leaking
+future BO outcomes.
+
+---
+
+## 16. Risk-sensitive class utility
+
+The full class-utility distribution is
+
+\[
+P(U=u_k\mid x)=p_k(x).
+\]
+
+Possible risk summaries include:
+
+### Mean
+
+\[
+\mathbb E[U]=\sum_kp_ku_k.
+\]
+
+### Lower quantile
+
+\[
+\operatorname{VaR}_\alpha(U).
+\]
+
+### Lower-tail CVaR
+
+\[
+\operatorname{CVaR}_\alpha(U)
+=
+\mathbb E[U\mid U\text{ is in the lower tail}].
+\]
+
+### Probability of unacceptable utility
+
+\[
+P(U<u_{\min}).
+\]
+
+For discrete class distributions, VaR is discontinuous in probabilities when
+the quantile crosses a class boundary.  CVaR and chance constraints may provide
+more stable decision criteria.
+
+---
+
+## 17. Input perturbation
+
+For uncertain execution
+
+\[
+\tilde x=x+\delta,
+\]
+
+possible robust class objectives are:
+
+\[
+\mathbb E_\delta[p(Y=1\mid x+\delta)],
+\]
+
+\[
+P_\delta(p(Y=1\mid x+\delta)\ge\gamma),
+\]
+
+\[
+\operatorname{CVaR}_\alpha
+[U(x+\delta)].
+\]
+
+The order of operations matters:
+
+\[
+U\left(\mathbb E_\delta[\mathbf p]\right)
+\]
+
+may equal
+
+\[
+\mathbb E_\delta[U(\mathbf p)]
+\]
+
+for linear expected utility, but nonlinear risk measures or target-distance
+transforms do not commute with expectation.
+
+---
+
+## 18. Multi-objective discrete outputs
+
+Several transformed outputs can define a Pareto problem:
+
+\[
+\mathbf U(x)
+=[U_1(x),\ldots,U_m(x)].
+\]
+
+Examples:
+
+- continuous strength and binary success probability;
+- yield and ordinal quality utility;
+- probabilities of several desirable classes;
+- expected utility and failure probability.
+
+Before EHVI or NEHVI:
+
+1. transform all directions to maximization;
+2. choose objective units and scaling;
+3. define a reference point in transformed space;
+4. decide whether probabilities are objectives or constraints;
+5. verify whether the posterior samples preserve cross-output dependence.
+
+Chapter 07 treats Pareto theory and Chapter 15 treats heterogeneous output
+wrappers.
+
+---
+
+## 19. Hybrid model lists
+
+A hybrid experiment may use separate submodels:
+
+```text
+regression property model
+binary feasibility model
+ordinal quality model
+multiclass failure-mode model
+```
+
+The combined decision layer converts each output to one scalar channel, for
+example:
+
+\[
+[t_{\mathrm{property}},
+ p_{\mathrm{feasible}},
+ E[u_{\mathrm{grade}}],
+ p_{\mathrm{acceptable\ failure\ class}}].
+\]
+
+This vector can be scalarized, optimized by hypervolume, or split into objectives
+and constraints.
+
+The current `HybridMultiOutputModel` provides a common objective-space posterior
+interface but does not automatically create cross-output covariance; see
+Chapter 15.
+
+---
+
+## 20. `bochan` implementation correspondence
+
+### 20.1 Binary BO
+
+```text
+src/bochan/acquisition/binary/bayesian_optimization/
+```
+
+Registered classes include:
+
+- `qBinaryProbabilityOfFeasibility`;
+- `qBinaryExpectedImprovement`;
+- `qBinaryProbabilityOfImprovement`;
+- `qBinaryUpperConfidenceBound`;
+- multi-output and heteroscedastic variants.
+
+The base binary model exposes probability through `posterior(X)` and latent GP
+through `latent_posterior(X)`.
+
+### 20.2 Multiclass BO
+
+```text
+src/bochan/acquisition/multiclass/bayesian_optimization/
+```
+
+The acquisition base selects target classes or class reductions from a
+probability posterior.  Utility and target-class transformations must preserve
+the class axis until reduction.
+
+### 20.3 Ordinal BO
+
+```text
+src/bochan/acquisition/ordinal/bayesian_optimization/
+```
+
+Registered classes include:
+
+- `qOrdinalExpectedImprovement`;
+- `qOrdinalProbabilityOfImprovement`;
+- `qOrdinalUpperConfidenceBound`;
+- `qOrdinalProbabilityOfFeasibility`;
+- multi-output and heteroscedastic utility acquisitions.
+
+Ordinal class probabilities are obtained from the latent posterior and
+`OrdinalLogitLikelihood`; the base ordinal `posterior()` itself is latent.
+
+### 20.4 Objective implementations
+
+```text
+src/bochan/acquisition/objective/ordinal.py
+src/bochan/acquisition/objective/hybrid.py
+src/bochan/models/transforms/posterior/classification.py
+src/bochan/models/transforms/posterior/ordinal.py
+```
+
+### 20.5 Hybrid wrapper
+
+```text
+src/bochan/models/hybrid/multi_output.py
+src/bochan/models/hybrid/specs.py
+src/bochan/models/hybrid/posterior.py
+```
+
+`OutputSpec` records task type, sign, weight, target class, utility values, and
+optional target-distance transformation.
+
+---
+
+## 21. Configuration checklist
+
+For every discrete-output BO channel, specify:
+
+1. class semantics;
+2. target class or acceptable class set;
+3. probability, latent, or utility objective;
+4. utility values and units;
+5. maximization direction;
+6. `best_f` scale;
+7. uncertainty definition used by UCB or EI;
+8. calibration method;
+9. objective versus constraint role;
+10. risk treatment;
+11. input-perturbation aggregation;
+12. multi-output dependence assumption;
+13. acquisition class and posterior accessor.
+
+---
+
+## 22. References
+
+- Rasmussen and Williams, *Gaussian Processes for Machine Learning*, 2006.
+- Chu and Ghahramani, *Gaussian Processes for Ordinal Regression*, 2005.
+- Berger, *Statistical Decision Theory and Bayesian Analysis*.
+- Balandat et al., *BoTorch: A Framework for Efficient Monte-Carlo Bayesian Optimization*, 2020.

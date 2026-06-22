@@ -1,91 +1,326 @@
 # 11. Classification Models
 
-This chapter distinguishes the latent Gaussian process, the likelihood, the
-predictive class probabilities, and the uncertainty measures used by
-classification acquisitions in `bochan`.
+Gaussian-process classification models discrete labels through one or more
+latent Gaussian processes and a non-Gaussian likelihood.  This chapter focuses
+on model construction, likelihoods, variational inference, probability
+prediction, calibration, and the current `bochan` posterior contracts.
 
-The central implementation warning is:
+Decision criteria are treated elsewhere:
 
-> A latent Gaussian posterior, a posterior distribution of class probability,
-> and the categorical observation variance are different mathematical objects.
+- Chapter 04: Active Learning, entropy, BALD, and margin sampling;
+- Chapter 06: classification outputs as BO objectives or constraints;
+- Chapter 16: classification Level-set Estimation formulas.
+
+The central distinction is:
+
+> latent-function uncertainty, uncertainty in a class-probability function, and
+> randomness of a future class label are different mathematical objects.
 
 ---
 
-## 1. Binary Gaussian-process classification
-
-### 1.1 Latent function and Bernoulli likelihood
+## 1. Binary classification
 
 Let
+
+\[
+y_i\in\{0,1\}.
+\]
+
+A scalar latent function follows
 
 \[
 f\sim\mathcal{GP}(m,k).
 \]
 
-For a binary label \(y\in\{0,1\}\), define
+The likelihood maps the latent value to class probability:
 
 \[
-p(y=1\mid f)=\pi(f),
+P(Y=1\mid f)=\pi(f),
 \qquad
-p(y=0\mid f)=1-\pi(f),
+P(Y=0\mid f)=1-\pi(f).
 \]
 
-where `pi` is a monotone inverse link.  Common choices are
+Common inverse links are:
+
+### Logistic link
 
 \[
-\pi(f)=\sigma(f)=\frac{1}{1+e^{-f}}
+\pi(f)
+=
+\sigma(f)
+=
+\frac{1}{1+e^{-f}}.
 \]
 
-for a logit model, or
+### Probit link
 
 \[
-\pi(f)=\Phi(f)
+\pi(f)=\Phi(f).
 \]
-
-for a probit model.
 
 GPyTorch's standard `BernoulliLikelihood` uses a probit-style construction.
-Code and documentation should therefore avoid assuming that every binary model
-uses a logistic sigmoid merely because the output is a probability.
+Code should therefore not assume that every binary posterior was produced by a
+logistic sigmoid.
 
-The class probability conditioned on the dataset is
+---
+
+## 2. Likelihood and latent scale
+
+For observations
 
 \[
-p(y=1\mid x,\mathcal D)
-=
-\int \pi(f)\,p(f\mid x,\mathcal D)\,df.
+\mathbf y=(y_1,\ldots,y_n),
 \]
 
-This integral is not generally equal to
+the likelihood is
 
 \[
-\pi\!\left(\mathbb E[f\mid x,\mathcal D]\right).
+p(\mathbf y\mid\mathbf f)
+=
+\prod_{i=1}^{n}
+\pi(f_i)^{y_i}
+[1-\pi(f_i)]^{1-y_i}.
 \]
 
-The latter is a plug-in approximation that ignores latent uncertainty.
+The latent scale is not directly observed.  Its interpretation depends on the
+link:
 
-### 1.2 Variational posterior
-
-The binary models in `bochan` use a sparse variational latent GP.  With inducing
-variables \(u=f(Z)\), training maximizes
+### Logistic odds
 
 \[
-\mathcal L
+\log
+\frac{P(Y=1\mid f)}{P(Y=0\mid f)}
+=f.
+\]
+
+### Probit latent-noise interpretation
+
+Introduce
+
+\[
+z=f+\epsilon,
+\qquad
+\epsilon\sim\mathcal N(0,1),
+\]
+
+and set
+
+\[
+Y=\mathbf1[z>0].
+\]
+
+Then
+
+\[
+P(Y=1\mid f)=\Phi(f).
+\]
+
+Latent values from different links are not directly comparable even when their
+probabilities are similar.
+
+---
+
+## 3. Non-conjugate posterior
+
+Bayes' theorem gives
+
+\[
+p(\mathbf f\mid\mathbf y)
+\propto
+p(\mathbf y\mid\mathbf f)
+\mathcal N(\mathbf f;\mathbf m,K).
+\]
+
+The Bernoulli likelihood is not Gaussian, so this posterior is not analytically
+Gaussian and the evidence
+
+\[
+p(\mathbf y)
 =
-\sum_{i=1}^n
-\mathbb E_{q(f_i)}[\log p(y_i\mid f_i)]
+\int
+p(\mathbf y\mid\mathbf f)p(\mathbf f)d\mathbf f
+\]
+
+is not available in closed form.
+
+Approximation methods include:
+
+- Laplace approximation;
+- expectation propagation;
+- variational inference;
+- MCMC.
+
+The current base classification models in `bochan` use sparse variational GP
+inference.
+
+---
+
+## 4. Sparse variational binary GP
+
+Choose inducing inputs
+
+\[
+Z=(z_1,\ldots,z_M)
+\]
+
+and inducing variables
+
+\[
+\mathbf u=f(Z).
+\]
+
+Let
+
+\[
+q(\mathbf u)
+=
+\mathcal N(\mathbf m_u,S_u).
+\]
+
+The induced variational latent distribution is
+
+\[
+q(\mathbf f)
+=
+\int
+p(\mathbf f\mid\mathbf u)
+q(\mathbf u)d\mathbf u.
+\]
+
+Training maximizes
+
+\[
+\mathcal L_{\mathrm{ELBO}}
+=
+\sum_{i=1}^{n}
+\mathbb E_{q(f_i)}
+[
+\log p(y_i\mid f_i)
+]
 -
-\operatorname{KL}[q(u)\|p(u)].
+\operatorname{KL}
+[q(\mathbf u)\|p(\mathbf u)].
 \]
 
-The variational expectation is evaluated through GPyTorch's likelihood and
-quadrature machinery.
+The expected log likelihood is evaluated through GPyTorch likelihood
+quadrature.  Both GP and variational parameters are optimized.
 
-### 1.3 Implementation contract
+Important practical parameters are:
 
-The relevant public models are
+- number and initial position of inducing points;
+- whether inducing locations are learned;
+- kernel and ARD dimensions;
+- optimizer learning rate;
+- number of epochs;
+- minibatch size;
+- class imbalance treatment.
+
+---
+
+## 5. Predictive class probability
+
+At a test input, the variational latent posterior is approximately Gaussian:
+
+\[
+q(f_*)
+=
+\mathcal N(\mu_f,\sigma_f^2).
+\]
+
+The predictive class probability is
+
+\[
+p_*(x)
+=
+P(Y=1\mid x,\mathcal D)
+=
+\int
+\pi(f_*)q(f_*)df_*.
+\]
+
+In general,
+
+\[
+p_*(x)
+\ne
+\pi(\mu_f).
+\]
+
+The plug-in value ignores latent uncertainty.
+
+For a probit link and Gaussian latent posterior, the integral has the identity
+
+\[
+\int
+\Phi(f)
+\mathcal N(f;\mu,\sigma^2)df
+=
+\Phi\left(
+\frac{\mu}{\sqrt{1+\sigma^2}}
+\right).
+\]
+
+The probability moves toward `0.5` as latent uncertainty increases.
+
+---
+
+## 6. Three binary uncertainty quantities
+
+### 6.1 Latent posterior variance
+
+\[
+V_f(x)
+=
+\operatorname{Var}[f(x)\mid\mathcal D].
+\]
+
+This measures uncertainty in the latent decision function.
+
+### 6.2 Probability-function variance
+
+If latent posterior samples generate
+
+\[
+p^{(s)}(x)=\pi(f^{(s)}(x)),
+\]
+
+then
+
+\[
+V_p(x)
+=
+\operatorname{Var}_s[p^{(s)}(x)].
+\]
+
+This measures posterior uncertainty in the class probability.
+
+### 6.3 Bernoulli observation variance
+
+For fixed predictive probability `p`,
+
+\[
+V_Y(x)=p(x)[1-p(x)].
+\]
+
+This is randomness of a future binary label.  It is maximal at `p=0.5` even if
+`p` is known exactly.
+
+These quantities support different decisions and must not be given the same
+name simply as "classification variance."
+
+---
+
+## 7. Binary posterior contract in `bochan`
+
+The main continuous-input model is
 
 ```text
 BinaryClassificationGPModel
+```
+
+and the mixed-input model is
+
+```text
 BinaryClassificationMixedGPModel
 ```
 
@@ -95,205 +330,304 @@ in
 src/bochan/models/classification/binary/base/models.py
 ```
 
-Their contract is intentionally asymmetric:
+The public accessors are:
 
 ```python
 probability_posterior = model.posterior(X)
 latent_posterior = model.latent_posterior(X)
 ```
 
-`posterior(X)` applies the Bernoulli likelihood and returns a
-`SimpleBernoulliPosterior`.  Its mean is the class-1 probability
+### `posterior(X)`
+
+1. transforms the input;
+2. evaluates the latent variational GP;
+3. applies the Bernoulli likelihood;
+4. constructs `SimpleBernoulliPosterior`.
+
+Its mean is probability of class `1`:
 
 \[
-\mu_p(x)=p(y=1\mid x,\mathcal D).
+\operatorname{mean}=P(Y=1\mid x,\mathcal D).
 \]
 
-`latent_posterior(X)` bypasses the likelihood and returns the Gaussian posterior
-of \(f(x)\).
+Its variance is based on the predictive Bernoulli distribution, with optional
+engineering noise addition where configured.
 
-This means the default binary boundary is written in two equivalent model
-spaces only under a symmetric monotone link:
+### `latent_posterior(X)`
+
+Bypasses the likelihood and returns a `GPyTorchPosterior` over `f(x)`.
+
+This distinction is relied on by latent-boundary LSE and probability-space BO.
+
+---
+
+## 8. `SimpleBernoulliPosterior`
+
+The custom binary posterior provides a BoTorch-style interface:
+
+```text
+mean:     batch_shape x q x 1
+variance: batch_shape x q x 1
+```
+
+and sampling behavior expected by acquisitions.
+
+A Bernoulli random variable is discrete, while many BoTorch MC acquisitions
+expect differentiable reparameterized samples.  Any continuous probability or
+normal-proxy sampling path should be interpreted according to the posterior
+implementation rather than as exact discrete label sampling.
+
+The relevant source is:
+
+```text
+src/bochan/posteriors/bernoulli.py
+```
+
+---
+
+## 9. Binary decision boundary
+
+For a symmetric monotone link,
 
 \[
 f(x)=0
-\quad\Longleftrightarrow\quad
-p(y=1\mid x)=0.5.
 \]
 
-For a different probability threshold \(\tau_p\), the corresponding latent
-threshold is
+corresponds to
 
 \[
-\tau_f=\pi^{-1}(\tau_p).
+P(Y=1\mid f)=0.5.
 \]
 
-### 1.4 Bernoulli variance is not epistemic variance
-
-For a Bernoulli observation with class probability \(p\),
+For a probability threshold `tau_p`, the link-level threshold is
 
 \[
-\operatorname{Var}(Y\mid p)=p(1-p).
+tau_f=\pi^{-1}(tau_p).
 \]
 
-This is largest at `p=0.5`, even when the model knows `p` exactly.  It is an
-observation variance caused by the discrete label distribution.
-
-Epistemic uncertainty concerns uncertainty in the probability itself:
+However, the marginal predictive probability
 
 \[
-\operatorname{Var}_{p(f\mid\mathcal D)}[\pi(f)].
+P(Y=1\mid x,\mathcal D)
+=
+\int\pi(f)q(f)df
 \]
 
-These quantities answer different questions:
-
-| Quantity | Interpretation |
-|---|---|
-| \(p(1-p)\) | ambiguity of the next binary observation |
-| \(\operatorname{Var}[\pi(f)]\) | uncertainty about the probability function |
-| \(\operatorname{Var}[f]\) | uncertainty about the latent decision function |
-
-`SimpleBernoulliPosterior.variance` is primarily a Bernoulli predictive
-variance.  It should not automatically be used as a calibrated epistemic
-uncertainty measure.
+also depends on latent variance.  Consequently, setting the posterior latent
+mean equal to `pi^{-1}(tau_p)` is not always exactly equivalent to a marginal
+probability contour at `tau_p`.
 
 ---
 
-## 2. Binary active learning
+## 10. Class imbalance
 
-### 2.1 Predictive entropy
+If class proportions are highly unequal, maximum likelihood can produce a model
+with good overall accuracy but poor minority-class behavior.
 
-For
+Possible approaches include:
 
-\[
-p=p(y=1\mid x,\mathcal D),
-\]
+- stratified initial data;
+- weighted likelihood or resampling;
+- calibrated decision thresholds;
+- utility-sensitive objectives;
+- targeted Active Learning;
+- class-specific evaluation metrics.
 
-the Bernoulli predictive entropy is
-
-\[
-H[Y\mid x,\mathcal D]
-=-p\log p-(1-p)\log(1-p).
-\]
-
-Entropy sampling selects points where the predicted label is ambiguous.  It
-cannot distinguish aleatoric ambiguity from model uncertainty.
-
-### 2.2 BALD
-
-Bayesian Active Learning by Disagreement uses mutual information between the
-future label and model parameters or latent function:
-
-\[
-\operatorname{BALD}(x)
-=
-I(Y;f\mid x,\mathcal D).
-\]
-
-Using the entropy identity,
-
-\[
-I(Y;f\mid x,\mathcal D)
-=
-H[Y\mid x,\mathcal D]
--
-\mathbb E_{p(f\mid x,\mathcal D)}
-  [H[Y\mid f,x]].
-\]
-
-The first term is total predictive uncertainty.  The second is expected
-conditional label noise.  Their difference emphasizes reducible model
-uncertainty.
-
-A Monte Carlo approximation is
-
-\[
-\widehat I
-=
-H\!\left(\frac1S\sum_{s=1}^S p_s\right)
--
-\frac1S\sum_{s=1}^S H(p_s),
-\]
-
-where
-
-\[
-p_s=\pi(f^{(s)}),
-\qquad
-f^{(s)}\sim p(f\mid x,\mathcal D).
-\]
-
-### 2.3 Margin uncertainty
-
-For binary probability,
-
-\[
-M(x)=1-|2p(x)-1|.
-\]
-
-For multiclass probabilities sorted as
-
-\[
-p_{(1)}\ge p_{(2)}\ge\cdots,
-\]
-
-a common margin score is
-
-\[
-M(x)=1-[p_{(1)}-p_{(2)}].
-\]
-
-Margin sampling is computationally cheap but does not explicitly represent
-posterior epistemic uncertainty.
+Changing the class threshold does not retrain the probability model.  Weighted
+training can change probability calibration and should be evaluated explicitly.
 
 ---
 
-## 3. Multiclass GP classification
+## 11. Calibration
 
-### 3.1 Class-wise latent functions
-
-For `K` unordered classes, use one latent function per class:
+A calibrated binary model satisfies approximately
 
 \[
-f_k\sim\mathcal{GP}(m_k,k_k),
-\qquad k=1,\ldots,K.
+P(Y=1\mid p(X)=r)=r.
 \]
 
-The categorical probabilities are obtained by a softmax:
+Useful metrics include:
+
+### Brier score
 
 \[
-p(y=k\mid\mathbf f)
+\operatorname{BS}
+=
+\frac1n
+\sum_i(p_i-y_i)^2.
+\]
+
+### Log loss
+
+\[
+-rac1n
+\sum_i
+[y_i\log p_i+(1-y_i)\log(1-p_i)].
+\]
+
+### Reliability diagram
+
+Bin predictions and compare mean probability with observed class frequency.
+
+### Expected calibration error
+
+Weighted average of binwise probability-frequency gaps.
+
+BO and adaptive sampling alter the input distribution, so calibration on random
+held-out data may not transfer perfectly to acquisition-selected regions.
+
+---
+
+## 12. Multiclass classification
+
+Let
+
+\[
+y\in\{0,1,\ldots,K-1\}.
+\]
+
+Introduce class-wise latent functions
+
+\[
+f_k(x),
+\qquad k=0,\ldots,K-1.
+\]
+
+Let
+
+\[
+\mathbf f(x)
+=[f_0(x),\ldots,f_{K-1}(x)].
+\]
+
+A categorical likelihood uses class probabilities
+
+\[
+p_k(x)
+=P(Y=k\mid\mathbf f(x)).
+\]
+
+---
+
+## 13. Softmax likelihood
+
+The softmax model is
+
+\[
+p_k
 =
 \frac{\exp(f_k/T)}
-{\sum_{j=1}^{K}\exp(f_j/T)},
+{\sum_{j=0}^{K-1}\exp(f_j/T)},
 \]
 
-where `T` is an optional temperature.
+where `T>0` is temperature.
 
-The model is invariant to adding the same constant to all logits:
+### Shift invariance
+
+For any scalar `a`,
 
 \[
-\operatorname{softmax}(\mathbf f+c\mathbf 1)
+\operatorname{softmax}(\mathbf f+a\mathbf1)
 =
 \operatorname{softmax}(\mathbf f).
 \]
 
-Consequently, absolute latent levels are not identifiable; differences between
-class logits determine the prediction.
+Only relative logits are identifiable.  Absolute class-wise latent means do not
+have independent interpretation.
 
-### 3.2 Variational multiclass model
+### Temperature
 
-`MulticlassClassificationGPModel` uses a class-batched sparse variational GP.
-The latent batch shape is `[num_classes]`.  For an input tensor
+- `T<1`: sharper probabilities;
+- `T>1`: flatter probabilities.
+
+Post-hoc temperature scaling can improve calibration but should be fitted on
+separate calibration data.
+
+---
+
+## 14. Class-wise variational GP
+
+The current multiclass base model uses one class-batched latent SVGP.
+Conceptually,
+
+\[
+f_k\sim\mathcal{GP}(m_k,k_k).
+\]
+
+The inducing-point and kernel batch shape is
+
+```text
+[num_classes]
+```
+
+and the variational objective is
+
+\[
+\mathcal L
+=
+\sum_i
+\mathbb E_{q(\mathbf f_i)}
+[
+\log P(y_i\mid\mathbf f_i)
+]
+-
+\sum_k
+\operatorname{KL}[q(\mathbf u_k)\|p(\mathbf u_k)].
+\]
+
+With the current independent class-batch kernel construction, dependence among
+class probabilities arises through the softmax normalization, while latent GP
+processes are represented in a class-wise batched form.
+
+---
+
+## 15. Multiclass implementation shapes
+
+For acquisition input
 
 ```text
 batch_shape x q x d
 ```
 
-the implementation inserts a singleton class-batch axis before evaluating the
-latent model so that GPyTorch can broadcast the class-wise inducing-point batch.
+the class-batched variational GP needs a class axis.  The wrapper inserts
 
-The public methods are
+```text
+batch_shape x 1 x q x d
+```
+
+which broadcasts internally to class batch
+
+```text
+batch_shape x K x q x d
+```
+
+The probability posterior exposes
+
+```text
+batch_shape x q x K
+```
+
+This class batch is model structure and must not be averaged as if it were a
+DeepGP or fully Bayesian sample axis.
+
+---
+
+## 16. Multiclass posterior contract in `bochan`
+
+The main classes are
+
+```text
+MulticlassClassificationGPModel
+MulticlassClassificationMixedGPModel
+```
+
+in
+
+```text
+src/bochan/models/classification/multiclass/base/models.py
+```
+
+Public accessors:
 
 ```python
 latent = model.latent_posterior(X)
@@ -302,196 +636,309 @@ probs = model.class_probs(X)
 predicted_class = model.predict_class(X)
 ```
 
-`model.posterior(X)` wraps the latent posterior in
-`MulticlassProbsPosterior`.  Its mean has shape
+### `latent_posterior(X)`
+
+Returns a class-batched `GPyTorchPosterior` over latent logits.
+
+### `posterior(X)`
+
+Wraps the latent posterior in `MulticlassProbsPosterior`.
+
+### `class_probs(X)`
+
+Returns
 
 ```text
 batch_shape x q x K
 ```
 
-and represents marginal class probabilities.
+probability means.
 
-Main implementation:
+The posterior object and shared helpers are in
 
 ```text
-src/bochan/models/classification/multiclass/base/models.py
 src/bochan/models/components/multiclass.py
 ```
 
-### 3.3 Predictive entropy
+---
 
-For a categorical probability vector \(\mathbf p\),
+## 17. Multiclass predictive probabilities
 
-\[
-H(Y\mid x,\mathcal D)
-=-\sum_{k=1}^Kp_k\log p_k.
-\]
-
-The maximum entropy is \(\log K\), attained by the uniform distribution.
-Normalized entropy may be defined by
+The predictive probability requires integration over latent logits:
 
 \[
-H_{\mathrm{norm}}=\frac{H}{\log K}.
-\]
-
-### 3.4 Multiclass BALD
-
-The multiclass mutual information is
-
-\[
-I(Y;\mathbf f\mid x,\mathcal D)
+p_k(x)
 =
-H\!\left(\mathbb E_{\mathbf f}[\mathbf p(\mathbf f)]\right)
--
-\mathbb E_{\mathbf f}[H(\mathbf p(\mathbf f))].
+\mathbb E_{q(\mathbf f(x))}
+\left[
+rac{e^{f_k/T}}
+{\sum_je^{f_j/T}}
+\right].
 \]
 
-The same distinction between total ambiguity and reducible uncertainty applies
-as in the binary case.
+This is not generally equal to
+
+\[
+rac{e^{\mathbb E[f_k]/T}}
+{\sum_je^{\mathbb E[f_j]/T}}.
+\]
+
+`MulticlassProbsPosterior` uses the latent posterior to provide probability
+moments or sampling behavior suitable for current acquisitions.  Its exact
+approximation should be interpreted from the implementation.
 
 ---
 
-## 4. Mixed continuous and categorical inputs
+## 18. Multiclass uncertainty
 
-For an input decomposed as
+### Predictive entropy
 
 \[
-x=(x_{\mathrm{cont}},x_{\mathrm{cat}}),
+H(Y\mid x,\mathcal D)
+=-\sum_kp_k\log p_k.
 \]
 
-the mixed kernels in the classification implementations follow the pattern
+### Top-two margin
+
+Let
+
+\[
+p_{(1)}\ge p_{(2)}.
+\]
+
+Margin is
+
+\[
+p_{(1)}-p_{(2)}.
+\]
+
+### Probability covariance
+
+Posterior samples of the probability vector yield
+
+\[
+\operatorname{Cov}[\mathbf p(x)].
+\]
+
+Because probabilities sum to one, their covariance is singular in the full
+`K`-dimensional space.
+
+### Categorical observation covariance
+
+For one-hot label vector `e_Y`,
+
+\[
+\operatorname{Cov}(e_Y\mid\mathbf p)
+=
+\operatorname{diag}(\mathbf p)-\mathbf p\mathbf p^\top.
+\]
+
+This is future-label randomness, not posterior uncertainty in `p`.
+
+---
+
+## 19. Target class and class set
+
+A target class probability is
+
+\[
+p_{k^*}(x).
+\]
+
+For acceptable class set `A`, union probability is
+
+\[
+P(Y\in A\mid x)
+=
+\sum_{k\in A}p_k(x).
+\]
+
+This sum is probabilistically meaningful because classes are mutually
+exclusive.  A mean, maximum, or minimum over selected class probabilities is a
+score with different meaning.
+
+The target selection belongs in an objective, posterior transform, or
+acquisition configuration rather than changing the underlying multiclass
+likelihood.
+
+---
+
+## 20. Mixed-input classification
+
+For continuous dimensions `C` and categorical dimensions `G`, current mixed
+kernels follow a pattern such as
 
 \[
 k(x,x')
 =
-k_c+k_g+k_c'k_g'.
+k_C+k_G+k_C'k_G'.
 \]
 
-This contains additive continuous and categorical similarity plus an interaction
-term.  Category integers are identifiers, not quantities on an interval.
-Therefore:
+The implementation:
 
-- do not normalize category codes as continuous variables;
-- do not interpret a category difference of two as twice a difference of one;
-- use fixed-feature enumeration or an optimizer designed for mixed spaces;
-- preserve categorical columns under `input_transform`.
+- normalizes continuous columns only;
+- uses `CategoricalKernel` for category dimensions;
+- checks that `input_transform` does not alter categories;
+- uses class-batched kernels for multiclass output;
+- preserves categorical values when `InputPerturbation` expands q.
 
-`bochan` explicitly checks that mixed-model transforms do not modify categorical
-columns.
+Category counts and valid fixed-feature combinations must be consistent with
+candidate optimization.
 
 ---
 
-## 5. Classification Bayesian optimization
+## 21. Condition-on-observations behavior
 
-Classification BO converts class probabilities into a scalar objective.
+Exact Gaussian conditioning is not available for variational classification in
+the same closed form as exact regression.
 
-### 5.1 Target-class probability
+The binary and multiclass wrappers can implement
 
-For target class `k*`,
-
-\[
-u(x)=p(y=k^*\mid x,\mathcal D).
-\]
-
-A probability-space EI-style acquisition uses improvement over a probability
-reference `best_f`:
-
-\[
-I(x)=\max(u(x)-u_{\mathrm{best}},0).
-\]
-
-The reference and objective must both be in probability space.  A latent
-`best_f` must not be mixed with probability samples.
-
-### 5.2 Expected class utility
-
-For utilities \(u_1,\ldots,u_K\),
-
-\[
-U(x)=\sum_{k=1}^K u_kp_k(x).
-\]
-
-This is useful when classes have known economic or engineering values.  It is
-not ordinal modeling unless the likelihood itself represents the order; an
-unordered multiclass model with monotone utilities still estimates the class
-probabilities independently of order.
-
-### 5.3 Probability of feasibility
-
-A classification output can define a feasibility multiplier:
-
-\[
-\alpha_{\mathrm{constrained}}(x)
-=
-\alpha_{\mathrm{objective}}(x)
-\prod_{j=1}^{m_c}p_j(\mathrm{feasible}\mid x).
-\]
-
-This is a constrained optimization role, not Level-set Estimation.  The same
-classifier can be reused, but the acquisition objective differs.
-
----
-
-## 6. Heteroscedastic classification caveat
-
-A binary or multiclass response is already stochastic.  A heteroscedastic
-classification extension must define what its second noise process represents.
-Possible interpretations include:
-
-1. label corruption probability;
-2. annotator or measurement reliability;
-3. local temperature or dispersion of the link;
-4. uncertainty attached to an externally estimated class probability;
-5. a heuristic penalty model used by an acquisition.
-
-These interpretations are not equivalent.  Merely adding a predicted variance
-to \(p(1-p)\) does not define a generative heteroscedastic Bernoulli model.
-
-The current `bochan` robust classification wrappers expose a `noise_model` and
-may add predicted noise to a probability-posterior variance.  Documentation and
-acquisitions should call this an engineering noise convention unless the
-likelihood explicitly contains the noise process.
-
-Relevant locations:
-
-```text
-src/bochan/models/classification/binary/robust/
-src/bochan/models/classification/multiclass/robust/
-src/bochan/models/components/heteroscedastic.py
+```python
+condition_on_observations(X, Y)
 ```
 
----
+by reconstructing a new model on old plus new data and copying learned
+parameters.  This is an approximate workflow and may not perform full
+variational refitting unless explicitly invoked.
 
-## 7. Acquisition-space selection
+Consequences:
 
-| Goal | Recommended model output |
-|---|---|
-| Find the latent decision boundary | `latent_posterior(X)` |
-| Maximize probability of one class | probability posterior |
-| Predict the next observed class | probability posterior |
-| Entropy sampling | class probabilities |
-| BALD | latent posterior samples transformed through likelihood |
-| Feasibility weighting | probability posterior |
-| Measure reducible model uncertainty | BALD or probability posterior variance, not only Bernoulli variance |
+- look-ahead fantasies are approximate;
+- fantasy sample dimensions may be unsupported;
+- acquisition classes requiring exact conditioning should be validated
+  separately.
 
 ---
 
-## 8. Source map
+## 22. Heteroscedastic classification interpretation
 
-| Component | Implementation |
+A binary or multiclass likelihood is already stochastic.  A second noise model
+requires a precise generative meaning, such as:
+
+### Label corruption
+
+\[
+P(Y_{\mathrm{obs}}=1)
+=[1-\rho(x)]p(x)+\rho(x)[1-p(x)].
+\]
+
+### Input-dependent temperature
+
+\[
+p_k
+=
+\operatorname{softmax}
+\left(
+\frac{f_k}{T(x)}
+\right).
+\]
+
+### External probability-estimation uncertainty
+
+Targets may be estimated class proportions with measurement variance rather
+than individual labels.
+
+The current robust wrappers can add or combine an auxiliary noise prediction
+with posterior variance or acquisition scores.  This should be called a
+noise-aware engineering convention unless the likelihood itself includes the
+noise process.  Chapter 13 gives the full distinction.
+
+---
+
+## 23. Deep and high-dimensional variants
+
+Classification families include:
+
+- DeepGP;
+- Deep Kernel GP;
+- Deep Kernel DeepGP;
+- SAAS;
+- decomposition or embedding variants where implemented;
+- heteroscedastic and robust variants.
+
+The likelihood and posterior-space distinctions in this chapter remain valid.
+The deep or high-dimensional model changes latent representation and inference,
+not the semantic meaning of the class label.
+
+See Chapter 14.
+
+---
+
+## 24. Model evaluation
+
+### Binary
+
+- log loss;
+- Brier score;
+- ROC-AUC and precision-recall AUC;
+- sensitivity/specificity at operational threshold;
+- calibration;
+- class-specific error;
+- posterior probability error in simulations.
+
+### Multiclass
+
+- categorical log loss;
+- macro and weighted F1;
+- classwise recall;
+- confusion matrix;
+- multiclass Brier score;
+- classwise and aggregate calibration.
+
+### Sequential decision evaluation
+
+Predictive metrics should be accompanied by:
+
+- BO regret or target success;
+- Active Learning loss versus labels;
+- LSE boundary or set error;
+- robustness under adaptive sampling.
+
+---
+
+## 25. `bochan` source map
+
+| Component | Source |
 |---|---|
-| Binary latent and probability wrapper | `src/bochan/models/classification/binary/base/models.py` |
-| Binary posterior object | `src/bochan/posteriors/bernoulli.py` |
-| Multiclass latent and probability wrapper | `src/bochan/models/classification/multiclass/base/models.py` |
-| Multiclass posterior helper | `src/bochan/models/components/multiclass.py` |
-| Binary acquisitions | `src/bochan/acquisition/binary/` |
-| Multiclass acquisitions | `src/bochan/acquisition/multiclass/` |
+| Binary base models | `src/bochan/models/classification/binary/base/models.py` |
+| Binary custom posterior | `src/bochan/posteriors/bernoulli.py` |
+| Binary fitting | `src/bochan/fit/` classification fitting helpers |
+| Binary robust models | `src/bochan/models/classification/binary/robust/` |
+| Binary deep models | `src/bochan/models/classification/binary/deep/` |
+| Binary high-dimensional models | `src/bochan/models/classification/binary/high_dim/` |
+| Multiclass base models | `src/bochan/models/classification/multiclass/base/models.py` |
+| Multiclass posterior helpers | `src/bochan/models/components/multiclass.py` |
+| Multiclass robust models | `src/bochan/models/classification/multiclass/robust/` |
+| Multiclass deep models | `src/bochan/models/classification/multiclass/deep/` |
+| Multiclass high-dimensional models | `src/bochan/models/classification/multiclass/high_dim/` |
 | Classification posterior transforms | `src/bochan/models/transforms/posterior/classification.py` |
+| High-level model resolution | `src/bochan/api/model_registry.py` |
 
 ---
 
-## 9. References
+## 26. Model checklist
+
+1. Binary or multiclass?
+2. Link and likelihood?
+3. Latent GP kernel?
+4. Inducing-point count and initialization?
+5. Class imbalance treatment?
+6. `posterior()` latent or probability?
+7. Probability marginalization or plug-in approximation?
+8. Variance meaning?
+9. Calibration procedure?
+10. Mixed-input category handling?
+11. Conditioning/fantasy support?
+12. Deep/high-dimensional representation?
+13. Evaluation metrics?
+14. Decision objective or constraint transformation?
+
+---
+
+## 27. References
 
 - Rasmussen and Williams, *Gaussian Processes for Machine Learning*, 2006.
+- Nickisch and Rasmussen, *Approximations for Binary Gaussian Process Classification*, 2008.
 - Titsias, *Variational Learning of Inducing Variables in Sparse Gaussian Processes*, 2009.
-- Houlsby et al., *Bayesian Active Learning for Classification and Preference Learning*, 2011.
+- Guo et al., *On Calibration of Modern Neural Networks*, 2017, for temperature-scaling concepts.

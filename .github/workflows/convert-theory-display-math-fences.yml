@@ -1,0 +1,87 @@
+name: Convert theory display math fences
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  convert-display-math:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          fetch-depth: 0
+
+      - name: Convert display math to fenced math blocks
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          theory_dir = Path('docs/theory')
+          changed = []
+
+          for path in sorted(theory_dir.glob('*.md')):
+              original = path.read_text(encoding='utf-8')
+              lines = original.splitlines(keepends=True)
+              converted = []
+              in_code_fence = False
+              in_math_block = False
+
+              for line in lines:
+                  stripped = line.strip()
+
+                  if stripped.startswith('```') and not in_math_block:
+                      in_code_fence = not in_code_fence
+                      converted.append(line)
+                      continue
+
+                  if not in_code_fence and stripped == '$$':
+                      newline = '\n' if line.endswith('\n') else ''
+                      if in_math_block:
+                          converted.append('```' + newline)
+                          in_math_block = False
+                      else:
+                          converted.append('```math' + newline)
+                          in_math_block = True
+                      continue
+
+                  converted.append(line)
+
+              if in_math_block:
+                  raise RuntimeError(f'Unclosed display math block in {path}')
+
+              updated = ''.join(converted)
+              if updated != original:
+                  path.write_text(updated, encoding='utf-8')
+                  changed.append(str(path))
+
+          print(f'Converted display math fences in {len(changed)} files:')
+          for path in changed:
+              print(f'  - {path}')
+          PY
+
+      - name: Commit converted documentation
+        shell: bash
+        run: |
+          if git diff --quiet -- docs/theory; then
+            echo 'No documentation changes required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/theory
+          git commit -m 'docs: use fenced math blocks for display equations'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}

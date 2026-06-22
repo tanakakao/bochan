@@ -1,1025 +1,1337 @@
-# 16. Level-set Mathematics and Implementation
+# 16. Level-set Acquisition Formulas and Implementation Reference
 
-Level-set Estimation (LSE) is a sequential design problem whose goal is to
-identify a region or boundary, not necessarily to find the global optimum.
-This chapter gives the mathematical definitions and maps them to the regression,
-binary, multiclass, ordinal, multi-output, heteroscedastic, and batch
-implementations in `bochan`.
+Chapter 05 defines Level-set Estimation problems, losses, confidence sets, and
+evaluation.  This chapter is the implementation reference: it records the
+actual score formulas, posterior spaces, reductions, and source classes used by
+current `bochan` LSE acquisitions.
+
+The class implementation is authoritative when a literature name has several
+variants.
 
 ---
 
-## 1. Problem definition
+## 1. Common notation
 
-Let
+For candidate batch
 
 \[
-f:\mathcal X\rightarrow\mathbb R
+X=[x_1,\ldots,x_q],
 \]
 
-be unknown and let `h` be a threshold.  The upper and lower level sets are
+let
 
 \[
-L_h^+=\{x\in\mathcal X:f(x)\ge h\},
-\]
-
-\[
-L_h^-=\{x\in\mathcal X:f(x)<h\}.
-\]
-
-The boundary or contour is
-
-\[
-B_h=\{x\in\mathcal X:f(x)=h\}.
-\]
-
-After `t` observations, an estimator partitions the domain into
-
-\[
-\widehat L_{h,t}^+,
+\mu_i=\mu(x_i),
 \qquad
-\widehat L_{h,t}^-,
+v_i=\operatorname{Var}[f(x_i)],
 \qquad
-U_t,
+\sigma_i=\sqrt{v_i}.
 \]
 
-where `U_t` is an undecided region.
+Let threshold be `h`.  For classification probability, write
 
-LSE differs from Bayesian optimization:
+\[
+p_i=P(Y\in A\mid x_i,\mathcal D)
+\]
 
-- BO concentrates on inputs with large objective value;
-- LSE values observations that reduce uncertainty about membership in a set;
-- a point far below the maximum can be highly valuable if it lies near the
-  boundary.
+for a target class or acceptable class set.  For ordinal models, cutpoints are
+
+\[
+c_0<\cdots<c_{K-2}.
+\]
+
+A pointwise acquisition constructs
+
+```text
+batch_shape x q_like
+```
+
+then applies:
+
+```text
+pointwise score
+    -> duplicate / pending / observed penalties
+    -> optional score objective
+    -> q*n_w to q perturbation reduction
+    -> q reduction
+    -> batch_shape acquisition value
+```
+
+A joint acquisition constructs one value from the q-dimensional posterior
+covariance before applying batch-level penalties.
 
 ---
 
-## 2. Loss functions for LSE
+## 2. Regression LSE implementation family
 
-A complete LSE specification requires a loss, not only an acquisition score.
-
-### 2.1 Pointwise set-classification loss
-
-For a finite evaluation set \(\mathcal G\),
-
-\[
-\mathcal L_{\mathrm{mis}}
-=
-\frac1{|\mathcal G|}
-\sum_{x\in\mathcal G}
-\mathbf 1\left[
-\widehat z(x)\ne z(x)
-\right],
-\]
-
-where
-
-\[
-z(x)=\mathbf 1[f(x)\ge h].
-\]
-
-### 2.2 Weighted false-safe and false-unsafe loss
-
-In safety problems, the two errors have different costs:
-
-\[
-\mathcal L
-=
-\lambda_{\mathrm{FS}}
-P(\widehat z=1,z=0)
-+
-\lambda_{\mathrm{FU}}
-P(\widehat z=0,z=1).
-\]
-
-Usually `lambda_FS` is larger when incorrectly declaring an unsafe condition
-safe is critical.
-
-### 2.3 Symmetric-difference measure
-
-For continuous domains,
-
-\[
-\mathcal L_{\Delta}
-=
-\mu\left(
-\widehat L_h^+\triangle L_h^+
-\right),
-\]
-
-where `triangle` is the symmetric difference and `mu` is a reference measure on
-the design space.
-
-### 2.4 Boundary loss
-
-In two or low dimensions, a contour metric such as Hausdorff distance may be
-used:
-
-\[
-d_H(\widehat B_h,B_h)
-=
-\max\left\{
-\sup_{x\in\widehat B_h}\inf_{y\in B_h}\|x-y\|,
-\sup_{y\in B_h}\inf_{x\in\widehat B_h}\|x-y\|
-\right\}.
-\]
-
-An acquisition cannot be judged only by its own score; it should be evaluated
-against one or more of these external losses.
-
----
-
-## 3. GP confidence classification
-
-For a regression GP posterior,
-
-\[
-f(x)\mid\mathcal D_t
-\sim\mathcal N(\mu_t(x),\sigma_t^2(x)).
-\]
-
-Define a confidence interval
-
-\[
-C_t(x)
-=
-[\mu_t(x)-\beta_t^{1/2}\sigma_t(x),
- \mu_t(x)+\beta_t^{1/2}\sigma_t(x)].
-\]
-
-A conservative partition is
-
-\[
-H_t
-=
-\{x:\mu_t(x)-\beta_t^{1/2}\sigma_t(x)\ge h\},
-\]
-
-\[
-L_t
-=
-\{x:\mu_t(x)+\beta_t^{1/2}\sigma_t(x)< h\},
-\]
-
-\[
-U_t=\mathcal X\setminus(H_t\cup L_t).
-\]
-
-The width of the unresolved interval relative to `h` motivates Straddle-like
-criteria.
-
----
-
-## 4. Regression LSE acquisitions
-
-The main implementations are in
+Main source:
 
 ```text
 src/bochan/acquisition/regression/levelset_estimation/single_output.py
 ```
 
-### 4.1 Pointwise Straddle
+Multi-output and heteroscedastic variants are in the same package.
 
-The implemented score is
+### 2.1 Posterior accessor
+
+Regression LSE uses
+
+```python
+posterior = model.posterior(X)
+```
+
+and extracts response or latent mean and variance according to the regression
+model's posterior contract.  Multiple output channels can be reduced through
+`output_reduction`.
+
+---
+
+## 3. `qRegressionStraddle`
+
+Implemented pointwise score:
 
 \[
-\alpha_{\mathrm{straddle}}(x)
+s_i
 =
-\beta\sigma(x)-|\mu(x)-h|.
+\beta\sigma_i-|\mu_i-h|.
 \]
 
-Code:
+Code correspondence:
 
-```text
-qRegressionStraddle
+```python
+mean, var, Xt = self._posterior_mean_variance(X)
+std = var.sqrt()
+score = beta * std - (mean - threshold).abs()
 ```
 
 Interpretation:
 
-- `beta * sigma` rewards uncertainty;
-- `-|mu-h|` rewards proximity to the threshold;
-- the score is maximized;
-- a negative score is valid and means the point is not especially useful.
+- `beta * sigma`: uncertainty reward;
+- `-|mu-h|`: boundary proximity;
+- the implementation parameter `beta` multiplies standard deviation directly;
+- `h` can also be supplied through the alias argument used by the base.
 
-The implementation parameter `beta` multiplies the standard deviation directly.
-It is therefore not identical to a theoretical confidence parameter written as
-`sqrt(beta_t)` unless the convention is adjusted.
+Final pointwise scores are penalized, optionally risk aggregated, and reduced
+over q.
 
-### 4.2 Joint Straddle
+---
 
-For a q-batch with posterior mean vector \(\boldsymbol\mu\) and covariance
-\(\Sigma\), the implementation uses
+## 4. `qRegressionJointStraddle`
+
+Let posterior covariance across the q-batch be
 
 \[
-\alpha_{\mathrm{joint}}
+\Sigma_X\in\mathbb R^{q\times q}.
+\]
+
+Boundary-proximity term is
+
+\[
+D(X)
 =
--\frac1q\sum_{i=1}^q|\mu_i-h|
-+
-\beta U(\Sigma),
+\frac1q
+\sum_{i=1}^{q}|\mu_i-h|.
 \]
 
-where `U` can be
+Implemented score:
 
 \[
-U_{\mathrm{trace}}(\Sigma)=\operatorname{tr}(\Sigma),
+s(X)
+=-D(X)+\beta U(\Sigma_X).
 \]
 
+Supported uncertainty functions are:
+
+### Trace
+
 \[
-U_{\log\det}(\Sigma)=\log\det(\Sigma+\epsilon I),
+U_{\mathrm{trace}}(\Sigma)
+=
+\operatorname{tr}(\Sigma).
 \]
 
-or
+### Log determinant
 
 \[
-U_{\log\det 1p}(\Sigma)
+U_{\log\det}(\Sigma)
+=
+\log\det(\Sigma+\epsilon I).
+\]
+
+### Log determinant of identity plus covariance
+
+\[
+U_{\log\det1p}(\Sigma)
 =
 \log\det(I+\Sigma+\epsilon I).
 \]
 
-Code:
-
-```text
-qRegressionJointStraddle
-```
-
-A log determinant rewards joint volume and accounts for correlation.  In
-contrast, a sum of marginal variances can select redundant nearby points.
-
-### 4.3 ICU-style score
-
-The implemented local contour-uncertainty proxy is
-
-\[
-\alpha_{\mathrm{ICU}}(x)
-=
-\exp\left[
--\frac12
-\left(
-\frac{\mu(x)-h}{b(x)}
-\right)^2
-\right]
-\sigma(x),
-\]
-
-where `b` is either a supplied bandwidth or the posterior standard deviation.
-
-Code:
-
-```text
-qRegressionICU
-```
-
-This is an ICU-style local weighting, not necessarily the exact globally
-integrated expected reduction in contour uncertainty used by every paper under
-the name ICU.  The implementation name should therefore be interpreted through
-this explicit formula.
-
-### 4.4 Boundary variance
-
-The implemented score is
-
-\[
-w_h(x)
-=
-\exp\left[
--\frac12
-\left(
-\frac{\mu(x)-h}{\tau}
-\right)^2
-\right],
-\]
-
-\[
-\alpha_{\mathrm{BV}}(x)
-=
-\sigma^2(x)w_h(x).
-\]
-
-Code:
-
-```text
-qRegressionBoundaryVariance
-```
-
-`tau` controls the width of the region treated as near the boundary.
-
-### 4.5 Probability of exceedance
-
-For a Gaussian latent posterior,
-
-\[
-P(f(x)\ge h\mid\mathcal D)
-=
-\Phi\left(
-\frac{\mu(x)-h}{\sigma(x)}
-\right).
-\]
-
-Similarly,
-
-\[
-P(f(x)<h\mid\mathcal D)
-=
-\Phi\left(
-\frac{h-\mu(x)}{\sigma(x)}
-\right).
-\]
-
-For an interval `[l,u]`,
-
-\[
-P(l\le f(x)\le u)
-=
-\Phi\left(\frac{u-\mu}{\sigma}\right)
--
-\Phi\left(\frac{l-\mu}{\sigma}\right).
-\]
-
-Code:
-
-```text
-qRegressionProbabilityOfExceedance
-```
-
-Probability of exceedance estimates membership; by itself it tends to favor
-points already confidently above the threshold.  It is not always an efficient
-boundary-learning acquisition unless combined with an ambiguity term.
+The log-determinant variants reward joint uncertainty volume and penalize
+redundancy through covariance.
 
 ---
 
-## 5. Binary classification LSE
+## 5. `qRegressionICU`
 
-For binary classification, two spaces are available.
-
-### 5.1 Latent-space boundary
-
-Let
+The current ICU-style local score is
 
 \[
-f(x)\mid\mathcal D
-\sim\mathcal N(\mu_f(x),\sigma_f^2(x)).
-\]
-
-For a symmetric link, the class boundary at probability `0.5` corresponds to
-
-\[
-f(x)=0.
-\]
-
-A latent Straddle score is
-
-\[
-\alpha(x)
+s_i
 =
-\beta\sigma_f(x)-|\mu_f(x)-h_f|.
+\exp\left[
+-\frac12
+\left(
+\frac{\mu_i-h}{b_i}
+\right)^2
+\right]
+\sigma_i.
 \]
 
-The binary implementation uses a smoothed absolute value:
+If no bandwidth is supplied,
 
 \[
-\alpha(x)
+b_i=\sigma_i.
+\]
+
+With fixed `bandwidth`,
+
+\[
+b_i=b.
+\]
+
+This is a local contour-weighted uncertainty proxy.  It is not a full numerical
+integration of expected global contour-loss reduction.
+
+---
+
+## 6. `qRegressionBoundaryVariance`
+
+Boundary weight:
+
+\[
+w_i
 =
-\beta\sigma_f(x)
+\exp\left[
+-\frac12
+\left(
+\frac{\mu_i-h}{\tau}
+\right)^2
+\right].
+\]
+
+Score:
+
+\[
+s_i=v_iw_i.
+\]
+
+`tau` controls the latent-response width of the boundary neighborhood.
+
+---
+
+## 7. `qRegressionProbabilityOfExceedance`
+
+For Gaussian posterior and `mode="above"`, the exact normal-CDF path is
+
+\[
+s_i
+=
+P(f_i\ge h)
+=
+\Phi\left(
+\frac{\mu_i-h}{\sigma_i}
+\right).
+\]
+
+For `mode="below"`,
+
+\[
+s_i
+=
+\Phi\left(
+\frac{h-\mu_i}{\sigma_i}
+\right).
+\]
+
+For interval `[l,u]`,
+
+\[
+s_i
+=
+\Phi\left(
+\frac{u-\mu_i}{\sigma_i}
+\right)
 -
-\sqrt{(\mu_f(x)-h_f)^2+\epsilon}.
+\Phi\left(
+\frac{l-\mu_i}{\sigma_i}
+\right).
 \]
 
-Code:
+When `temperature` is supplied, the implementation uses smooth sigmoid
+approximations in mean space rather than Gaussian posterior CDFs.
+
+Probability of exceedance is a membership score.  It tends to reward points
+already likely to be above the threshold and is not automatically a
+boundary-learning criterion.
+
+---
+
+## 8. Regression score objective
+
+`RegressionLevelSetScoreObjective` supports perturbation aggregation.
+
+Input score:
 
 ```text
-qBinaryLatentStraddleAcquisition
+... x (q * n_w)
 ```
 
-in
+Reshape:
+
+```text
+... x q x n_w
+```
+
+### Mean
+
+\[
+\bar s_i
+=
+\frac1{n_w}
+\sum_{r=1}^{n_w}s_{ir}.
+\]
+
+### VaR path
+
+Scores are sorted according to `maximize`; the selected tail size is
+
+\[
+k=\lceil\alpha n_w\rceil.
+\]
+
+The boundary tail element is returned.
+
+### CVaR path
+
+The selected tail mean is returned.
+
+This operates on the already constructed LSE score.  It is score-level risk
+aggregation, not necessarily LSE of a robust latent response.
+
+---
+
+## 9. Regression penalties
+
+The regression base supports:
+
+- same-batch soft penalty;
+- pending-point soft penalty;
+- observed-point soft penalty;
+- hard duplicate penalty.
+
+For transformed points `z_i`, a same-batch term is based on
+
+\[
+\exp[-\eta\|z_i-z_j\|^2].
+\]
+
+Reference penalties use distance to the nearest transformed reference point.
+The implementation prefers `model.transform_inputs()` so wrapper-specific raw
+to internal mappings are respected.
+
+---
+
+## 10. Binary LSE implementation family
+
+Main source:
 
 ```text
 src/bochan/acquisition/binary/levelset_estimation/single_output.py
 ```
 
-This acquisition explicitly asks the model base class for a latent
-distribution.  It should not use `SimpleBernoulliPosterior.variance` as a latent
-variance.
-
-### 5.2 Probability-space boundary
-
-For a target probability `h_p`, define
-
-\[
-B_{h_p}=\{x:p(Y=1\mid x,\mathcal D)=h_p\}.
-\]
-
-Typical ambiguity weights are
-
-\[
-p(1-p)
-\]
-
-or Bernoulli entropy
-
-\[
-H(p)=-p\log p-(1-p)\log(1-p).
-\]
-
-At `h_p=0.5`, these peak at the ordinary decision boundary.  For `h_p != 0.5`,
-a boundary-specific weight should be centered on `h_p`, not automatically on
-`0.5`.
-
-### 5.3 Joint latent Straddle
-
-For batch mean vector and covariance,
-
-\[
-\alpha(X)
-=
-\beta U(\Sigma_f)-D(\boldsymbol\mu_f,h_f),
-\]
-
-where the implementation supports joint uncertainty based on log determinant
-or square-root trace, and boundary distance based on mean absolute, root mean
-square, or maximum absolute distance.
-
-Code:
-
-```text
-qBinaryJointLatentStraddleAcquisition
-```
-
-The implementation also applies same-batch, pending-point, and observed-point
-repulsion.
+The binary acquisition base obtains a latent posterior through
+`latent_posterior()` or a supported fallback.  Probability-space criteria use
+`probability_posterior()` when available or `posterior()`.
 
 ---
 
-## 6. Multiclass LSE
+## 11. `qBinaryLatentStraddleAcquisition`
 
-There is no unique scalar boundary for unordered multiclass classification.
-`bochan` defines a target-class probability function
+Latent posterior:
 
 \[
-p_T(x)
-=
-\operatorname{reduce}_{k\in T}p(Y=k\mid x),
+f_i\mid\mathcal D
+\sim
+\mathcal N(\mu_i,v_i).
 \]
 
-where `T` is one class or a selected set of classes.
-
-The target level set is
+Implemented smoothed score:
 
 \[
-L_{h,T}
+s_i
 =
-\{x:p_T(x)\ge h\}.
+\beta\sigma_i
+-
+\sqrt{(\mu_i-h_f)^2+10^{-8}}.
 \]
 
-### 6.1 Target-probability Straddle
-
-The implementation uses
+Default latent threshold is
 
 \[
-\alpha(x)
-=
-\beta u(x)-|p_T(x)-h|.
+h_f=0.
 \]
 
-Code:
+This targets the latent decision boundary, not a probability threshold unless
+the link and threshold correspondence are specified.
 
-```text
-qMulticlassLatentStraddleAcquisition
-```
+---
 
-Despite the historical name `LatentStraddle`, the current formula is centered
-on target-class probability.  Its `uncertainty_mode` controls `u(x)`:
+## 12. `qBinaryJointLatentStraddleAcquisition`
 
-#### Bernoulli ambiguity
-
-Treat target membership as a binary event:
+Joint score:
 
 \[
-u_{\mathrm{Bern}}(x)
+s(X)
 =
-\sqrt{p_T(x)[1-p_T(x)]}.
+\beta U(\Sigma_f)
+-D(\boldsymbol\mu_f,h_f).
 \]
 
-#### Posterior uncertainty
+Supported uncertainty modes:
 
-From probability samples \(p_T^{(s)}(x)\),
+### `logdet1p`
 
 \[
-u_{\mathrm{post}}(x)
+U(\Sigma)
 =
-\operatorname{Std}_s[p_T^{(s)}(x)].
+\frac12
+\log\det
+\left(
+I+\frac{\Sigma}{\tau^2}
+\right).
 \]
 
-#### Combined
+### `logdet`
 
 \[
-u_{\mathrm{combined}}(x)
+U(\Sigma)
+=
+\frac12\log\det(\Sigma).
+\]
+
+### `sqrt_trace`
+
+\[
+U(\Sigma)
+=
+\sqrt{\operatorname{tr}(\Sigma)}.
+\]
+
+Supported boundary distances:
+
+\[
+D_{\mathrm{mean\ abs}}
+=
+\frac1q\sum_i|\mu_i-h_f|,
+\]
+
+\[
+D_{\mathrm{l2\ mean}}
 =
 \sqrt{
-\operatorname{Var}_s[p_T^{(s)}(x)]
-+p_T(x)[1-p_T(x)]
-}.
+\frac1q\sum_i(\mu_i-h_f)^2
+},
 \]
 
-The combined quantity mixes epistemic probability uncertainty with categorical
-observation ambiguity.  It is useful as a heuristic score but should not be
-called purely epistemic.
+\[
+D_{\mathrm{max\ abs}}
+=
+\max_i|\mu_i-h_f|.
+\]
 
-Implementation:
+If `marginalize_pending=True`, the implementation evaluates the incremental
+joint score:
+
+\[
+s(X_{\mathrm{pending}}\cup X)
+-
+s(X_{\mathrm{pending}}).
+\]
+
+This is a joint-score difference, not full fantasy conditioning on pending
+outcomes.
+
+---
+
+## 13. `qBinaryICUAcquisition`
+
+The probability posterior mean is converted to
+
+\[
+p_i\in(0,1).
+\]
+
+Implemented score:
+
+\[
+s_i
+=4p_i(1-p_i).
+\]
+
+This score is one at `p=0.5` and zero at `p=0` or `1`.  It is a normalized
+binary boundary ambiguity score.
+
+Despite the ICU name, this class does not integrate global contour-loss
+reduction.
+
+---
+
+## 14. `qBinaryBoundaryVarianceAcquisition`
+
+Uses latent mean and variance.  Boundary kernel weight is a Gaussian function
+centered at latent threshold:
+
+\[
+w_i
+=
+\exp\left[
+-\frac12
+\left(
+\frac{\mu_i-h_f}{\tau}
+\right)^2
+\right].
+\]
+
+Score:
+
+\[
+s_i=v_iw_i.
+\]
+
+---
+
+## 15. `qBinaryClassEntropyAcquisition`
+
+For binary probability `p_i`, score is Bernoulli entropy:
+
+\[
+s_i
+=-p_i\log p_i
+-(1-p_i)\log(1-p_i).
+\]
+
+This is predictive class ambiguity.  It is not the same as latent posterior
+variance or BALD.
+
+---
+
+## 16. Multiclass LSE implementation family
+
+Main source:
 
 ```text
 src/bochan/acquisition/multiclass/levelset_estimation/single_output.py
 ```
 
-### 6.2 Class reduction
-
-When several target classes are supplied, `class_reduction` determines whether
-the target probability is a mean, sum, max, or another supported reduction.
-The mathematical event changes with the reduction.  In particular,
+The current family reduces multiclass output to a target probability
 
 \[
-\sum_{k\in T}p_k
+p_T(x)
+=
+\operatorname{class\_reduce}
+\{p_k(x):k\in T\}.
 \]
 
-is the probability of membership in the union of mutually exclusive target
-classes, while
+The level set is defined in probability space:
 
 \[
-\frac1{|T|}\sum_{k\in T}p_k
+p_T(x)=h_p.
 \]
 
-is only a scaled score.  The distinction matters when the threshold is given a
-probabilistic interpretation.
+The historical class name contains `LatentStraddle`, but the implemented
+single-output score is target-probability Straddle.
 
 ---
 
-## 7. Ordinal LSE
+## 17. Multiclass target-class reduction
 
-Ordinal models have `K-1` natural boundaries at cutpoints
+`target_class` can select one class or a sequence.  `class_reduction` determines
+how selected probabilities are combined.
+
+For an acceptable union of mutually exclusive classes, the probabilistically
+meaningful quantity is
 
 \[
-c_0,\ldots,c_{K-2}.
+p_T=\sum_{k\in T}p_k.
 \]
 
-### 7.1 Latent boundary
+Mean or max reductions are scores with different interpretations.
 
-Boundary `j` is
+---
+
+## 18. Multiclass uncertainty modes
+
+Let posterior target-probability samples be
 
 \[
-B_j=\{x:f(x)=c_j\}.
+p_i^{(s)}.
 \]
 
-A latent score can use
+### `bernoulli`
 
 \[
-\alpha_j(x)
+u_i
 =
-\beta\sigma_f(x)-|\mu_f(x)-c_j|.
+\sqrt{p_i(1-p_i)}.
 \]
 
-### 7.2 Cumulative boundary probability
+This treats target-set membership as a binary observation.
 
-From class probabilities,
+### `posterior`
 
 \[
-q_j(x)
-=P(Y\ge j+1\mid x)
+u_i
 =
-\sum_{k=j+1}^{K-1}p_k(x).
+\operatorname{Std}_s[p_i^{(s)}].
 \]
 
-The implementation computes cumulative upper probabilities and uses the
-boundary ambiguity
+This measures posterior variation of the target probability.
+
+### `combined`
 
 \[
-A_j(x)=4q_j(x)[1-q_j(x)].
+u_i
+=
+\sqrt{
+\operatorname{Var}_s[p_i^{(s)}]
++p_i(1-p_i)
+}.
 \]
 
-This is one at the boundary-probability midpoint and zero at confident extremes.
+This combines probability-function uncertainty with Bernoulli observation
+ambiguity.
 
-Code helpers:
+---
 
-```text
-ordinal_cumulative_ge_probs_from_class_probs
-ordinal_boundary_uncertainty
-```
+## 19. `qMulticlassLatentStraddleAcquisition`
 
-in
+Implemented probability-space score:
+
+\[
+s_i
+=
+\beta u_i-|p_i-h_p|.
+\]
+
+`u_i` is selected by `uncertainty_mode`.
+
+The class name is retained for API compatibility, but theory documentation
+should call it target-probability Straddle.
+
+---
+
+## 20. `qMulticlassJointLatentStraddleAcquisition`
+
+Target-probability samples across q are used to estimate sample covariance:
+
+\[
+\widehat\Sigma_p
+=
+\frac1{S-1}
+\sum_s
+(\mathbf p^{(s)}-\bar{\mathbf p})
+(\mathbf p^{(s)}-\bar{\mathbf p})^\top
++\epsilon I.
+\]
+
+Implemented joint score:
+
+\[
+s(X)
+=
+\beta U(\widehat\Sigma_p)
+-D(\bar{\mathbf p},h_p).
+\]
+
+Uncertainty modes:
+
+- `logdet1p`;
+- `logdet`;
+- `sqrt_trace`;
+- `trace`.
+
+Boundary-distance modes:
+
+- `mean_abs`;
+- `l2_mean`;
+- `max_abs`.
+
+Pending marginalization uses the same incremental joint-score difference as the
+binary joint class.
+
+---
+
+## 21. `qMulticlassICUAcquisition`
+
+Contour weight:
+
+\[
+w_i
+=
+\exp\left[
+-\frac12
+\left(
+\frac{p_i-h_p}{b}
+\right)^2
+\right].
+\]
+
+Score:
+
+\[
+s_i
+=u_i^2w_i.
+\]
+
+The uncertainty `u_i` can use Bernoulli, posterior, or combined mode.
+
+---
+
+## 22. `qMulticlassBoundaryVarianceAcquisition`
+
+Boundary weight uses exponential absolute distance:
+
+\[
+w_i
+=
+\exp\left(
+-\frac{|p_i-h_p|}{b}
+\right).
+\]
+
+Score:
+
+\[
+s_i
+=u_i^2w_i.
+\]
+
+This differs from the Gaussian squared-distance boundary weight used in ICU.
+The actual helper `_boundary_weight` defines the formula.
+
+---
+
+## 23. `qMulticlassClassEntropyAcquisition`
+
+Without target-class selection, score is full categorical entropy:
+
+\[
+s_i
+=-\sum_{k=0}^{K-1}p_{ik}\log p_{ik}.
+\]
+
+With selected target classes, the current code selects/reduces probabilities and
+computes
+
+\[
+s_i=-p_T\log p_T.
+\]
+
+This selected-class path is not full binary entropy because it omits
+
+\[
+-(1-p_T)\log(1-p_T).
+\]
+
+That distinction should be considered when interpreting target-specific class
+entropy.
+
+---
+
+## 24. `qMulticlassProbabilityOfExceedance`
+
+Implemented smooth score:
+
+\[
+s_i
+=
+\sigma\left(
+\frac{p_i-h_p}{\tau}
+\right).
+\]
+
+This is a smooth probability-space membership score, not posterior probability
+that an uncertain probability function exceeds the threshold.
+
+`qMulticlassLevelSetUncertainty` is an alias subclass of the multiclass ICU
+implementation.
+
+---
+
+## 25. Ordinal LSE implementation family
+
+Main source:
 
 ```text
 src/bochan/acquisition/ordinal/levelset_estimation/single_output.py
 ```
 
-### 7.3 Selecting and reducing boundaries
+The base obtains:
 
-`target_boundary_idx=j` selects cutpoint `c_j`.  Without a specific target,
-boundary-wise scores can be reduced by
+- latent posterior through `model.posterior(X)`;
+- cutpoints from `ordinal_likelihood` or `likelihood`;
+- class probabilities by sampling latent `f` and applying ordered-logit
+  probabilities.
 
-\[
-\operatorname{mean}_j,
-\quad
-\sum_j,
-\quad
-\max_j,
-\quad
-\min_j.
-\]
-
-Interpretation:
-
-- `max`: find whichever boundary is currently most informative;
-- `mean`: balance all transitions;
-- `sum`: similar ranking to mean when boundary count is fixed;
-- `min`: seek a point useful for every boundary, often overly conservative.
-
-### 7.4 Grade-region estimation
-
-A practical ordinal set is
-
-\[
-L_g=\{x:P(Y\ge g\mid x)\ge\gamma\}.
-\]
-
-This has two thresholds:
-
-- grade threshold `g`;
-- probability confidence threshold `gamma`.
-
-It is different from the latent cutpoint set
-
-\[
-\{x:f(x)\ge c_{g-1}\}.
-\]
-
-The probability set accounts for posterior and likelihood uncertainty.
+Cutpoints are detached and stored as buffers during acquisition optimization,
+so only candidate `X` is optimized.
 
 ---
 
-## 8. Multi-output LSE
+## 26. Ordinal boundary indexing
 
-For outputs
+For `K` classes there are `K-1` cutpoints.  Index `j` is the boundary between
+class `j` and class `j+1`.
 
-\[
-f_j(x),\qquad j=1,\ldots,m,
-\]
+For classes `0/1/2`:
 
-with thresholds \(h_j\), define output-wise membership scores or boundary
-acquisitions \(a_j(x)\).
+```text
+target_boundary_idx = 0 -> boundary 0/1
+target_boundary_idx = 1 -> boundary 1/2
+```
 
-### 8.1 Intersection set
+Boundary-wise tensor shape is
 
-A joint feasible region is
+```text
+batch_shape x q_like x (K - 1)
+```
 
-\[
-L_{\cap}
-=
-\bigcap_{j=1}^{m}
-\{x:f_j(x)\ge h_j\}.
-\]
-
-Under independent output posteriors, the membership probability is
-
-\[
-P(x\in L_{\cap})
-=
-\prod_{j=1}^{m}P(f_j(x)\ge h_j).
-\]
-
-With correlated outputs, this product is generally incorrect; a joint
-multivariate probability is required.
-
-### 8.2 Union set
-
-\[
-L_{\cup}
-=
-\bigcup_{j=1}^{m}
-\{x:f_j(x)\ge h_j\}.
-\]
-
-Under independence,
-
-\[
-P(x\in L_{\cup})
-=
-1-
-\prod_j[1-P(f_j(x)\ge h_j)].
-\]
-
-### 8.3 Score reductions
-
-The implementation commonly supports
-
-\[
-\operatorname{mean}_j a_j,
-\quad
-\sum_j a_j,
-\quad
-\max_j a_j,
-\quad
-\min_j a_j.
-\]
-
-These are acquisition-score reductions, not necessarily probabilities of an
-intersection or union.  A product-of-feasibility reduction has a distinct
-probabilistic interpretation.
-
-### 8.4 Heterogeneous outputs
-
-For regression, binary, multiclass, and ordinal outputs, convert each output to
-a meaningful boundary event first:
-
-\[
-z_j(x)=
-\begin{cases}
-\mathbf 1[f_j(x)\ge h_j], & \text{regression},\\
-\mathbf 1[p_j(x)\ge h_j], & \text{classification},\\
-\mathbf 1[P(Y_j\ge g_j\mid x)\ge\gamma_j], & \text{ordinal}.
-\end{cases}
-\]
-
-Only after this definition should output scores be combined.
+before reduction.
 
 ---
 
-## 9. Heteroscedastic LSE
+## 27. Ordinal boundary reduction
 
-Suppose
+Given boundary scores `s_ij`, the implementation supports:
+
+### Specific boundary
 
 \[
-y(x)=f(x)+\varepsilon(x),
-\qquad
-\varepsilon(x)\sim\mathcal N(0,\sigma_n^2(x)).
+s_i=s_{i,j^*}.
 \]
 
-There are two different level sets.
-
-### 9.1 Latent-process level set
+### Weighted sum
 
 \[
-L_h^{f}=\{x:f(x)\ge h\}.
-\]
-
-Use the posterior of `f` and exclude observation noise from the boundary
-uncertainty.  This estimates the underlying mean process.
-
-### 9.2 Future-observation reliability set
-
-For a required success probability `gamma`,
-
-\[
-L_{h,\gamma}^{Y}
+s_i
 =
-\left\{
- x:
- P(Y(x)\ge h\mid\mathcal D)\ge\gamma
-\right\}.
+\sum_jw_js_{ij}.
 \]
 
-With Gaussian predictive mean and total variance,
+### Mean, max, or min
 
 \[
-P(Y\ge h)
+s_i
 =
-\Phi\left(
-\frac{\mu_f-h}
-{\sqrt{\sigma_f^2+\sigma_n^2}}
+\operatorname{reduce}_j(s_{ij}).
+\]
+
+If `target_boundary_idx` is supplied, boundary weights and reduction are
+ignored.
+
+---
+
+## 28. `qOrdinalLatentStraddleAcquisition`
+
+Boundary-specific distance:
+
+\[
+d_{ij}=|\mu_i-c_j|.
+\]
+
+Boundary score:
+
+\[
+s_{ij}
+=
+\beta\sigma_i-d_{ij}.
+\]
+
+After boundary selection or reduction, pointwise penalties and optional score
+objective are applied, then q is reduced by sum or mean.
+
+The single-point private variant uses nearest-cutpoint distance:
+
+\[
+\min_j|\mu_i-c_j|.
+\]
+
+The public q variant supports explicit boundary control.
+
+---
+
+## 29. `qOrdinalJointLatentStraddleAcquisition`
+
+Input perturbation may first reduce expanded mean and covariance to nominal q.
+
+Joint uncertainty is:
+
+### Trace
+
+\[
+U(\Sigma)=\operatorname{tr}(\Sigma).
+\]
+
+### Logdet mode
+
+The current implementation computes
+
+\[
+U(\Sigma)
+=
+\frac12
+\log\det
+\left(
+I+rac{\Sigma}{\tau^2}
 \right).
 \]
 
-This set shrinks in high-noise regions and is often closer to an engineering
-reliability requirement.
+Boundary contribution uses negative cutpoint distance, reduced over boundaries
+and averaged over q:
 
-A noise penalty applied to an ordinary latent LSE score is a heuristic and is
-not automatically equivalent to estimating `L^Y`.
+\[
+B(X)
+=
+\frac1q
+\sum_i
+\operatorname{boundary\_reduce}_j[-|\mu_i-c_j|].
+\]
+
+Final score:
+
+\[
+s(X)=\beta U(\Sigma)+B(X)-P(X).
+\]
+
+`P(X)` includes configured same-batch, pending, and observed reference
+penalties.
 
 ---
 
-## 10. Robust LSE under input perturbation
+## 30. `qOrdinalICUAcquisition`
 
-Let the executed input be
-
-\[
-\widetilde x=x+\delta,
-\qquad
-\delta\sim p(\delta).
-\]
-
-Possible robust sets include:
-
-### Mean-response set
+From predictive class probabilities, define cumulative upper-class probability
+for boundary `j`:
 
 \[
-L_h^{\mathrm{mean}}
+g_{ij}
+=P(Y_i\ge j+1)
 =
-\{x:\mathbb E_\delta[f(x+\delta)]\ge h\}.
+\sum_{k=j+1}^{K-1}p_{ik}.
 \]
 
-### Chance-constrained set
+Boundary ambiguity is
 
 \[
-L_{h,\gamma}^{\mathrm{chance}}
-=
-\{x:P_\delta(f(x+\delta)\ge h)\ge\gamma\}.
+u_{ij}
+=4g_{ij}(1-g_{ij}).
 \]
 
-### Worst-tail or CVaR set
+The acquisition selects or reduces `u_ij` across boundaries, subtracts
+pointwise repulsion, applies the score objective, and reduces q.
 
-\[
-L_h^{\mathrm{CVaR}}
-=
-\{x:\operatorname{CVaR}_\alpha[f(x+\delta)]\ge h\}.
-\]
-
-The current objective pattern expands each nominal point into `n_w` perturbed
-points and reduces the corresponding scores.  A mean of pointwise Straddle
-scores,
-
-\[
-\frac1{n_w}\sum_r
-\alpha_{\mathrm{straddle}}(x+\delta_r),
-\]
-
-is not identical to applying Straddle to the mean perturbed response.  The
-chosen order of operations must be documented.
+This is an ordinal boundary-ambiguity score; it is not a global integrated
+contour-loss calculation.
 
 ---
 
-## 11. Batch diversity and repulsion
+## 31. `qOrdinalBoundaryVarianceAcquisition`
 
-Pointwise acquisition values do not guarantee a diverse q-batch.  `bochan` LSE
-implementations support several penalties.
-
-### 11.1 Same-batch soft repulsion
-
-For transformed candidates \(z_i\), a typical penalty is
+For cutpoint `c_j`, Gaussian boundary kernel weight is
 
 \[
-P_{\mathrm{batch}}
+w_{ij}
 =
-\lambda_b
-\sum_{i\ne j}
-\exp(-\eta_b\|z_i-z_j\|^2).
+\exp\left[
+-\frac12
+\left(
+\frac{\mu_i-c_j}{\tau}
+\right)^2
+\right].
 \]
 
-### 11.2 Pending or observed-point repulsion
-
-For reference set `R`,
+Boundary score:
 
 \[
-P_R(x)
-=
-\lambda_R
-\exp[-\eta_R d(x,R)],
+s_{ij}=v_iw_{ij}.
 \]
 
-where
+Scores are selected or reduced across boundaries.
+
+The legacy `reduce` argument maps to boundary reduction `sum` or `max`.
+
+---
+
+## 32. `qOrdinalClassEntropyAcquisition`
+
+Predictive class probabilities are estimated by latent posterior sampling and
+ordered-logit conversion.  Score is
 
 \[
-d(x,R)=\min_{r\in R}\|z(x)-z(r)\|.
+s_i
+=-\sum_{k=0}^{K-1}p_{ik}\log p_{ik}.
 \]
 
-### 11.3 Hard duplicate penalty
+This measures full grade ambiguity.  It does not target a specific cutpoint.
+
+---
+
+## 33. Ordinal score objective
+
+The ordinal LSE score objective supports:
+
+- multiplicative `sign` and `weight`;
+- `q*n_w -> q` mean aggregation;
+- VaR or CVaR tail reduction;
+- `maximize` direction;
+- `alpha` tail size.
+
+As with regression, risk is applied to the computed acquisition score unless
+the acquisition itself constructs a robust latent target.
+
+---
+
+## 34. Multi-output LSE wrappers
+
+Task packages provide multi-output classes, including registered names such as:
+
+```text
+qMultiOutputRegressionStraddle
+qMultiOutputRegressionJointStraddle
+qMultiOutputBinaryLatentStraddleAcquisition
+qMultiOutputBinaryJointLatentStraddleAcquisition
+qMultiOutputMulticlassLatentStraddleAcquisition
+qMultiOutputOrdinalLatentStraddleAcquisition
+```
+
+A multi-output implementation typically:
+
+1. obtains output-wise posterior or probability scores;
+2. retains shape `... x q x m`;
+3. reduces outputs with configured rule or objective;
+4. reduces q;
+5. returns t-batch shape.
+
+Output mean, sum, max, and min are score reductions.  They do not automatically
+represent intersection or union membership probabilities.
+
+---
+
+## 35. Heteroscedastic LSE wrappers
+
+Registered heteroscedastic families include regression, binary, multiclass, and
+ordinal single- and multi-output classes.
+
+Examples:
+
+```text
+qHeteroRegressionStraddle
+qHeteroBinaryLatentStraddleAcquisition
+qHeteroMulticlassICUAcquisition
+qHeteroOrdinalBoundaryVarianceAcquisition
+qHeteroMultiOutputOrdinalLevelSetUncertainty
+```
+
+The heteroscedastic wrapper can combine base score with a predicted noise or
+reliability term by configured weighting or combination modes.
+
+Interpretation depends on the concrete module:
+
+- noise penalty can avoid irreducibly noisy measurements;
+- noise uncertainty can value learning the noise process;
+- adding noise to probability variance is an engineering convention, not a
+  fully specified noisy-label likelihood;
+- a noise-aware score is not automatically LSE of future-observation
+  reliability.
+
+Chapter 13 defines these distinctions.
+
+---
+
+## 36. Input-perturbation covariance reduction
+
+Joint ordinal LSE contains explicit reduction from expanded covariance
+
+```text
+... x (q*n_w) x (q*n_w)
+```
+
+to nominal covariance
+
+```text
+... x q x q
+```
+
+### `block_mean`
+
+Reshape covariance as
+
+```text
+... x q x n_w x q x n_w
+```
+
+and average both perturbation axes.  This approximates covariance of perturbation
+means.
+
+### `diagonal_mean`
+
+Average marginal variances inside each perturbation group and build a diagonal
+q covariance.  This discards cross-candidate covariance.
+
+A jitter term is added after symmetrization.
+
+---
+
+## 37. Distance penalties and perturbation groups
+
+Ordinal pointwise same-batch penalty excludes pairs belonging to the same
+nominal candidate when q has been expanded by `n_w`.  Otherwise perturbation
+replicas of one candidate would repel each other.
+
+Group index is
 
 \[
-P_{\mathrm{dup}}
-=
-M\mathbf 1[d(x,R)\le\epsilon].
+g(r)=\left\lfloor\frac{r}{n_w}\right\rfloor.
 \]
 
-### 11.4 Distance space
+Pairs with the same group are masked from duplicate penalty.
 
-Distances should be computed in a representation consistent with the model:
+This logic is required only when the distance calculation sees expanded
+perturbation points.
 
-- normalized continuous space for ordinary models;
-- transformed continuous plus categorical representation for mixed models;
-- projected space for PCA/REMBO wrappers only if the model uses it for
-  similarity;
-- not an accidentally expanded `q*n_w` layout without grouping perturbations.
+---
 
-A repulsion penalty changes the acquisition objective and may prevent useful
-replicate experiments.  It should be disabled or modified when replication is
+## 38. Pending and observed reference handling
+
+Reference inputs are detached and transformed into the same model distance
+space as candidates.
+
+The code supports:
+
+- Tensor;
+- list or tuple of tensors;
+- flattening multiple reference batches;
+- first-submodel transform fallback for some wrappers.
+
+Pending penalties discourage already launched conditions.  Observed penalties
+discourage remeasurement.  Both should be disabled when replication is
 scientifically valuable.
 
 ---
 
-## 12. Shape contract
+## 39. q reduction
 
-For a candidate tensor
+Pointwise classes support q reduction such as:
 
-```text
-X: batch_shape x q x d
-```
+\[
+\operatorname{mean}_i s_i,
+\qquad
+\sum_i s_i,
+\qquad
+\max_i s_i,
+\qquad
+\min_i s_i
+\]
 
-a pointwise score should normally be
+according to family-specific accepted modes.
 
-```text
-batch_shape x q
-```
-
-and the final acquisition value should be
-
-```text
-batch_shape
-```
-
-For input perturbation,
-
-```text
-batch_shape x q x d
-    -> batch_shape x (q * n_w) x d
-    -> batch_shape x (q * n_w) score
-    -> batch_shape x q robust score
-    -> batch_shape acquisition value
-```
-
-For multiple outputs, intermediate score shapes may be
-
-```text
-batch_shape x q x m
-```
-
-before output reduction.
-
-DeepGPs and Monte Carlo probability paths may add leading sample dimensions.
-The implementation reduces those sample-like axes while preserving t-batch and
-q axes.  Silent reduction over a true model-batch or task axis would change the
-mathematics; shape handling must therefore be tested with explicit examples.
+`sum` makes acquisition magnitude grow with q.  `mean` is more comparable
+across batch sizes but can undervalue adding one highly useful point.  `max`
+can ignore diversity.  Joint classes should be preferred when covariance-aware
+batch value is required.
 
 ---
 
-## 13. Implementation inventory
+## 40. Class, boundary, output, and q reduction order
 
-| Family | Main source |
+A common pointwise ordinal order is:
+
+```text
+latent or probability values
+    -> boundary-wise score
+    -> boundary reduction
+    -> pointwise penalties
+    -> perturbation objective
+    -> q reduction
+```
+
+A common multi-output order is:
+
+```text
+output-wise point score
+    -> output reduction
+    -> perturbation reduction
+    -> q reduction
+```
+
+Nonlinear reductions do not commute.  The implementation order must be used
+when reproducing results.
+
+---
+
+## 41. Ensemble and extra sample dimensions
+
+Some public methods use
+
+```python
+@average_over_ensemble_models
+```
+
+which averages acquisition values across model ensemble batches according to
+BoTorch conventions.
+
+DeepGP and probability-sampling paths can leave extra leading sample dimensions.
+Helper functions reduce those dimensions while attempting to preserve t-batch,
+q, class, and output axes.
+
+Shape tests should include:
+
+- ordinary exact GP;
+- variational classifier;
+- DeepGP;
+- fully Bayesian or ensemble batch;
+- `q>1`;
+- `n_w>1`.
+
+---
+
+## 42. Registry inventory
+
+High-level public registration is in
+
+```text
+src/bochan/api/acquisition_registry.py
+```
+
+### Regression
+
+- Straddle;
+- Joint Straddle;
+- ICU;
+- Boundary Variance;
+- Probability of Exceedance;
+- multi-output and heteroscedastic variants.
+
+### Binary
+
+- Latent Straddle;
+- Joint Latent Straddle;
+- ICU;
+- Boundary Variance;
+- Class Entropy;
+- multi-output and heteroscedastic variants.
+
+### Multiclass
+
+- target-probability Straddle;
+- joint target-probability Straddle;
+- ICU;
+- Boundary Variance;
+- Class Entropy;
+- Probability of Exceedance;
+- Level-set Uncertainty alias;
+- multi-output and heteroscedastic variants.
+
+### Ordinal
+
+- Latent Straddle;
+- Joint Latent Straddle;
+- ICU;
+- Boundary Variance;
+- Class Entropy;
+- multi-output and heteroscedastic variants.
+
+---
+
+## 43. Source map
+
+| Family | Source |
 |---|---|
-| Regression single-output LSE | `src/bochan/acquisition/regression/levelset_estimation/single_output.py` |
-| Regression multi-output LSE | `src/bochan/acquisition/regression/levelset_estimation/multi_output.py` |
-| Regression heteroscedastic LSE | corresponding hetero modules under `regression/levelset_estimation/` |
-| Binary LSE | `src/bochan/acquisition/binary/levelset_estimation/` |
-| Multiclass LSE | `src/bochan/acquisition/multiclass/levelset_estimation/` |
-| Ordinal LSE | `src/bochan/acquisition/ordinal/levelset_estimation/` |
-| Non-Gaussian regression LSE | `src/bochan/acquisition/non_gaussian/levelset_estimation/` |
-| Feasibility wrappers | `src/bochan/acquisition/feasible/` |
-| Risk and perturbation objectives | task-specific score objectives and `docs/theory/08_input_perturbation_and_risk.md` |
+| Regression single-output | `src/bochan/acquisition/regression/levelset_estimation/single_output.py` |
+| Regression multi-output | `src/bochan/acquisition/regression/levelset_estimation/multi_output.py` |
+| Regression heteroscedastic | `src/bochan/acquisition/regression/levelset_estimation/hetero_*.py` |
+| Binary single-output | `src/bochan/acquisition/binary/levelset_estimation/single_output.py` |
+| Binary multi-output | `src/bochan/acquisition/binary/levelset_estimation/multi_output.py` |
+| Binary heteroscedastic | `src/bochan/acquisition/binary/levelset_estimation/hetero_*.py` |
+| Multiclass single-output | `src/bochan/acquisition/multiclass/levelset_estimation/single_output.py` |
+| Multiclass multi-output | `src/bochan/acquisition/multiclass/levelset_estimation/multi_output.py` |
+| Multiclass heteroscedastic | `src/bochan/acquisition/multiclass/levelset_estimation/hetero_*.py` |
+| Ordinal single-output | `src/bochan/acquisition/ordinal/levelset_estimation/single_output.py` |
+| Ordinal multi-output | `src/bochan/acquisition/ordinal/levelset_estimation/multi_output.py` |
+| Ordinal heteroscedastic | `src/bochan/acquisition/ordinal/levelset_estimation/hetero_*.py` |
+| Non-Gaussian regression | `src/bochan/acquisition/non_gaussian/levelset_estimation/` |
+| Public registry | `src/bochan/api/acquisition_registry.py` |
 
 ---
 
-## 14. Acquisition naming and interpretation
+## 44. Formula-to-class summary
 
-Names such as `Straddle`, `ICU`, `BoundaryVariance`, or `JointStraddle` describe
-families of ideas.  The exact implementation is defined by the formula in code.
-For each public acquisition, documentation should state:
-
-1. model space: latent, response, probability, or utility;
-2. threshold scale;
-3. uncertainty term;
-4. pointwise or joint q-batch formulation;
-5. output and class reductions;
-6. pending/observed/duplicate penalties;
-7. input-perturbation order of operations;
-8. whether the result is a published criterion or an implementation-specific
-   proxy.
-
-This prevents two acquisitions with similar names but different probability
-spaces from being treated as equivalent.
-
----
-
-## 15. Recommended evaluation protocol
-
-### Synthetic problems
-
-- Branin or Gaussian mixtures in two dimensions for contour visualization;
-- Hartmann6 for higher-dimensional set classification;
-- several thresholds corresponding to 50th, 80th, and 95th function-value
-  quantiles;
-- homoscedastic, heteroscedastic, and input-perturbed variants.
-
-### Metrics
-
-- set misclassification rate;
-- Jaccard index;
-- false-safe and false-unsafe rates;
-- symmetric-difference measure;
-- Hausdorff distance in low dimension;
-- number of observations required to reach a target loss;
-- batch duplicate rate and acquisition optimization failure rate.
-
-### Baselines
-
-- random or Sobol sampling;
-- maximum posterior variance;
-- predictive entropy for classification;
-- pointwise Straddle;
-- joint Straddle;
-- probability-of-exceedance sampling.
-
-All methods should receive identical initial points, noise draws, candidate
-budgets, and evaluation grids.
+| Class | Space | Core score |
+|---|---|---|
+| `qRegressionStraddle` | regression posterior | \(\beta\sigma-|\mu-h|\) |
+| `qRegressionJointStraddle` | regression joint covariance | \(-\operatorname{mean}|\mu-h|+\beta U(\Sigma)\) |
+| `qRegressionICU` | regression posterior | Gaussian contour weight times \(\sigma\) |
+| `qRegressionBoundaryVariance` | regression posterior | boundary weight times variance |
+| `qRegressionProbabilityOfExceedance` | response membership | Gaussian CDF or sigmoid mode |
+| `qBinaryLatentStraddleAcquisition` | binary latent | smoothed \(\beta\sigma-|\mu-h_f|\) |
+| `qBinaryICUAcquisition` | binary probability | \(4p(1-p)\) |
+| `qBinaryBoundaryVarianceAcquisition` | binary latent | boundary weight times latent variance |
+| `qBinaryClassEntropyAcquisition` | binary probability | Bernoulli entropy |
+| `qMulticlassLatentStraddleAcquisition` | target probability | \(\beta u-|p_T-h_p|\) |
+| `qMulticlassICUAcquisition` | target probability | \(u^2\) times Gaussian contour weight |
+| `qMulticlassBoundaryVarianceAcquisition` | target probability | \(u^2\) times exponential boundary weight |
+| `qMulticlassClassEntropyAcquisition` | class probabilities | categorical or selected-class entropy score |
+| `qMulticlassProbabilityOfExceedance` | target probability | sigmoid threshold score |
+| `qOrdinalLatentStraddleAcquisition` | ordinal latent/cutpoints | \(\beta\sigma-|\mu-c_j|\) |
+| `qOrdinalICUAcquisition` | cumulative ordinal probability | \(4g_j(1-g_j)\) |
+| `qOrdinalBoundaryVarianceAcquisition` | ordinal latent/cutpoints | variance times cutpoint kernel weight |
+| `qOrdinalClassEntropyAcquisition` | ordinal class probability | categorical entropy |
 
 ---
 
-## 16. References
+## 45. Validation checklist for an LSE implementation
 
-- Bryan et al., *Active Learning for Identifying Function Threshold Boundaries*, 2006.
-- Gotovos et al., *Active Learning for Level Set Estimation*, 2013.
-- Bogunovic et al., work on level-set estimation under input uncertainty.
-- Rasmussen and Williams, *Gaussian Processes for Machine Learning*, 2006.
+1. Verify posterior accessor and threshold space.
+2. Verify formula against class `forward()`.
+3. Test `q=1` and `q>1`.
+4. Test t-batch output shape.
+5. Test single and multiple outputs.
+6. Test class or boundary indexing.
+7. Test `X_pending` updates.
+8. Test observed-point penalty.
+9. Test exact duplicates.
+10. Test mixed input transform.
+11. Test `InputPerturbation` with `n_w>1`.
+12. Test DeepGP or ensemble extra axes.
+13. Compare pointwise and joint batch behavior.
+14. Compare acquisition against external LSE loss from Chapter 05.
+15. Record whether the score is a published criterion or an implementation
+    proxy.
+
+---
+
+## 46. Interpretation rules
+
+- `ICU` in this repository denotes family-specific contour-uncertainty proxies;
+  it does not always mean exact integrated expected contour-loss reduction.
+- `LatentStraddle` in the multiclass class name currently operates on selected
+  target-class probability.
+- Bernoulli variance and class entropy include observation ambiguity.
+- Posterior probability variance is a different uncertainty source.
+- Output reductions are score aggregations unless a joint event is explicitly
+  computed.
+- Distance penalties encourage diversity but are not Bayesian conditioning.
+- Risk score objectives aggregate acquisition scores unless the class defines a
+  robust latent target before scoring.
+
+These rules should be used when comparing acquisitions across task families.

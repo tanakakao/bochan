@@ -77,10 +77,13 @@ def enable_num_classes_inference(model_cls: T) -> T:
         else parameter
         for parameter in original_signature.parameters.values()
     ]
-    wrapped_init.__signature__ = original_signature.replace(parameters=parameters)
+    annotations = dict(getattr(wrapped_init, "__annotations__", {}))
+    annotations["num_classes"] = Optional[int]
 
-    model_cls.__init__ = wrapped_init
-    model_cls._num_classes_inference_enabled = True
+    setattr(wrapped_init, "__signature__", original_signature.replace(parameters=parameters))
+    setattr(wrapped_init, "__annotations__", annotations)
+    setattr(model_cls, "__init__", wrapped_init)
+    setattr(model_cls, "_num_classes_inference_enabled", True)
     return model_cls
 
 

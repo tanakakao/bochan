@@ -1,0 +1,365 @@
+name: Build bilingual theory documentation
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  build-bilingual-docs:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          fetch-depth: 0
+
+      - name: Install offline translation engine
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install argostranslate
+
+      - name: Split English docs and generate Japanese edition
+        shell: bash
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import re
+          import shutil
+          from pathlib import Path
+
+          import argostranslate.package
+          import argostranslate.translate
+
+
+          THEORY_DIR = Path("docs/theory")
+          EN_DIR = THEORY_DIR / "en"
+          JA_DIR = THEORY_DIR / "ja"
+          ROOT_README = THEORY_DIR / "README.md"
+
+          # Install the reproducible offline English -> Japanese package.
+          argostranslate.package.update_package_index()
+          packages = argostranslate.package.get_available_packages()
+          package = next(
+              (p for p in packages if p.from_code == "en" and p.to_code == "ja"),
+              None,
+          )
+          if package is None:
+              raise RuntimeError("Argos Translate English-to-Japanese package was not found.")
+          argostranslate.package.install_from_path(package.download())
+
+          # Terms that should remain consistent across all chapters.
+          TERMS = {
+              "Level-set Estimation": "レベル集合推定",
+              "Level Set Estimation": "レベル集合推定",
+              "Bayesian optimization": "ベイズ最適化",
+              "Bayesian Optimization": "ベイズ最適化",
+              "Active Learning": "能動学習",
+              "Gaussian process": "ガウス過程",
+              "Gaussian Process": "ガウス過程",
+              "acquisition function": "獲得関数",
+              "Acquisition Function": "獲得関数",
+              "posterior distribution": "事後分布",
+              "posterior": "事後分布",
+              "likelihood": "尤度",
+              "latent function": "潜在関数",
+              "latent": "潜在",
+              "multi-objective": "多目的",
+              "multi-output": "多出力",
+              "heteroscedastic": "異分散",
+              "input perturbation": "入力摂動",
+              "expected utility": "期待効用",
+              "classification": "分類",
+              "regression": "回帰",
+              "ordinal": "順序",
+              "constraint": "制約",
+              "constraints": "制約",
+              "uncertainty": "不確かさ",
+              "calibration": "較正",
+          }
+
+          # Product/library and API names should not be translated.
+          PROTECTED_WORDS = [
+              "bochan",
+              "BoTorch",
+              "GPyTorch",
+              "PyTorch",
+              "DeepGP",
+              "Deep Kernel Learning",
+              "Deep Kernel",
+              "SAAS",
+              "MAP-SAAS",
+              "PCA",
+              "REMBO",
+              "VAE-GP",
+              "ModelList",
+              "HybridPosterior",
+              "HybridMultiOutputModel",
+              "OutputSpec",
+              "InputPerturbation",
+              "VaR",
+              "CVaR",
+              "BALD",
+              "EHVI",
+              "NEHVI",
+              "NParEGO",
+              "UCB",
+              "EI",
+              "NEI",
+              "PI",
+              "KG",
+              "ICU",
+          ]
+
+          PLACEHOLDER_PREFIX = "ZXQPH"
+
+
+          def install_placeholders(text: str) -> tuple[str, dict[str, str]]:
+              """Protect Markdown/code/math tokens and normalize terminology."""
+              replacements: dict[str, str] = {}
+              counter = 0
+
+              def protect(value: str, replacement: str | None = None) -> str:
+                  nonlocal counter
+                  token = f"{PLACEHOLDER_PREFIX}{counter:05d}QXZ"
+                  counter += 1
+                  replacements[token] = value if replacement is None else replacement
+                  return token
+
+              # Backtick spans and inline mathematics are opaque.
+              opaque_patterns = [
+                  r"`+[^`]+`+",
+                  r"\$[^$\n]+\$",
+                  r"https?://[^\s)]+",
+                  r"src/bochan/[A-Za-z0-9_./*+-]+",
+                  r"docs/theory/[A-Za-z0-9_./*+-]+",
+              ]
+              for pattern in opaque_patterns:
+                  text = re.sub(pattern, lambda m: protect(m.group(0)), text)
+
+              # Protect library and algorithm names.
+              for word in sorted(PROTECTED_WORDS, key=len, reverse=True):
+                  text = re.sub(
+                      rf"(?<![A-Za-z0-9_]){re.escape(word)}(?![A-Za-z0-9_])",
+                      lambda m, w=word: protect(m.group(0), w),
+                      text,
+                  )
+
+              # Force consistent Japanese technical terminology.
+              for source, target in sorted(TERMS.items(), key=lambda kv: len(kv[0]), reverse=True):
+                  text = re.sub(
+                      rf"(?<![A-Za-z0-9_]){re.escape(source)}(?![A-Za-z0-9_])",
+                      lambda m, t=target: protect(m.group(0), t),
+                      text,
+                      flags=re.IGNORECASE,
+                  )
+
+              return text, replacements
+
+
+          def restore_placeholders(text: str, replacements: dict[str, str]) -> str:
+              for token, value in replacements.items():
+                  text = text.replace(token, value)
+              return text
+
+
+          def translate_text(text: str) -> str:
+              if not text.strip():
+                  return text
+              protected, replacements = install_placeholders(text)
+              translated = argostranslate.translate.translate(protected, "en", "ja")
+              translated = restore_placeholders(translated, replacements)
+              return translated
+
+
+          def translate_table_line(line: str) -> str:
+              # Preserve delimiter rows such as |---|:---:|.
+              if re.fullmatch(r"\s*\|?[\s:|-]+\|?\s*", line):
+                  return line
+              leading = "|" if line.startswith("|") else ""
+              trailing = "|" if line.rstrip().endswith("|") else ""
+              cells = line.strip().strip("|").split("|")
+              translated = [translate_text(cell.strip()) for cell in cells]
+              return leading + " " + " | ".join(translated) + " " + trailing
+
+
+          def translate_markdown(text: str) -> str:
+              lines = text.splitlines()
+              output: list[str] = []
+              paragraph: list[str] = []
+              in_fence = False
+
+              def flush_paragraph() -> None:
+                  if not paragraph:
+                      return
+                  joined = " ".join(part.strip() for part in paragraph)
+                  output.append(translate_text(joined))
+                  paragraph.clear()
+
+              for line in lines:
+                  stripped = line.strip()
+
+                  if stripped.startswith("```"):
+                      flush_paragraph()
+                      in_fence = not in_fence
+                      output.append(line)
+                      continue
+
+                  if in_fence:
+                      output.append(line)
+                      continue
+
+                  if not stripped:
+                      flush_paragraph()
+                      output.append("")
+                      continue
+
+                  if stripped == "---":
+                      flush_paragraph()
+                      output.append(line)
+                      continue
+
+                  if line.lstrip().startswith("#"):
+                      flush_paragraph()
+                      match = re.match(r"^(\s*#{1,6}\s+)(.*)$", line)
+                      if match:
+                          output.append(match.group(1) + translate_text(match.group(2)))
+                      else:
+                          output.append(line)
+                      continue
+
+                  if stripped.startswith("|") and "|" in stripped[1:]:
+                      flush_paragraph()
+                      output.append(translate_table_line(line))
+                      continue
+
+                  list_match = re.match(r"^(\s*(?:[-*+] |\d+\. ))(.*)$", line)
+                  if list_match:
+                      flush_paragraph()
+                      output.append(list_match.group(1) + translate_text(list_match.group(2)))
+                      continue
+
+                  quote_match = re.match(r"^(\s*>\s?)(.*)$", line)
+                  if quote_match:
+                      flush_paragraph()
+                      output.append(quote_match.group(1) + translate_text(quote_match.group(2)))
+                      continue
+
+                  paragraph.append(line)
+
+              flush_paragraph()
+              return "\n".join(output).rstrip() + "\n"
+
+
+          # Rebuild language folders from the current canonical English files.
+          if EN_DIR.exists():
+              shutil.rmtree(EN_DIR)
+          if JA_DIR.exists():
+              shutil.rmtree(JA_DIR)
+          EN_DIR.mkdir(parents=True)
+          JA_DIR.mkdir(parents=True)
+
+          source_files = sorted(
+              p for p in THEORY_DIR.glob("*.md") if p.name != "README.md"
+          )
+          if len(source_files) != 17:
+              raise RuntimeError(
+                  f"Expected 17 theory chapters before restructuring, found {len(source_files)}."
+              )
+
+          # Move the canonical English chapters without altering formulas or code.
+          for source in source_files:
+              shutil.move(str(source), str(EN_DIR / source.name))
+
+          # Keep the existing detailed table of contents as the English index.
+          english_index = ROOT_README.read_text(encoding="utf-8")
+          (EN_DIR / "README.md").write_text(english_index, encoding="utf-8")
+
+          # Generate the Japanese chapters and Japanese index.
+          for english_file in sorted(EN_DIR.glob("*.md")):
+              japanese_text = translate_markdown(
+                  english_file.read_text(encoding="utf-8")
+              )
+              (JA_DIR / english_file.name).write_text(japanese_text, encoding="utf-8")
+              print(f"Translated: {english_file.name}")
+
+          root_readme = """# `bochan` Theory Reference / 理論リファレンス
+
+The theory documentation is maintained in separate English and Japanese editions.
+
+理論ドキュメントは、英語版と日本語版を別フォルダで管理しています。
+
+| Language / 言語 | Documentation / ドキュメント |
+|---|---|
+| English | [English theory reference](./en/README.md) |
+| 日本語 | [日本語版 理論リファレンス](./ja/README.md) |
+
+## Directory structure / ディレクトリ構成
+
+```text
+docs/theory/
+├── README.md
+├── en/
+│   ├── README.md
+│   ├── 00_overview.md
+│   └── ...
+└── ja/
+    ├── README.md
+    ├── 00_overview.md
+    └── ...
+```
+
+The English and Japanese editions use the same chapter numbers, filenames,
+equations, code examples, class names, and implementation paths so that the two
+versions can be compared directly.
+
+英語版と日本語版では、章番号、ファイル名、数式、コード例、クラス名、実装パスを一致させています。対応する章を直接比較できます。
+"""
+          ROOT_README.write_text(root_readme, encoding="utf-8")
+
+          # Structural validation.
+          english_names = {p.name for p in EN_DIR.glob("*.md")}
+          japanese_names = {p.name for p in JA_DIR.glob("*.md")}
+          if english_names != japanese_names:
+              raise RuntimeError(
+                  "English and Japanese file sets differ: "
+                  f"en-only={sorted(english_names - japanese_names)}, "
+                  f"ja-only={sorted(japanese_names - english_names)}"
+              )
+
+          for ja_file in JA_DIR.glob("*.md"):
+              content = ja_file.read_text(encoding="utf-8")
+              if PLACEHOLDER_PREFIX in content:
+                  raise RuntimeError(f"Unrestored placeholder remains in {ja_file}")
+              if "\\operatorname" in content:
+                  raise RuntimeError(f"Unsupported math macro remains in {ja_file}")
+
+          print(f"English files: {len(english_names)}")
+          print(f"Japanese files: {len(japanese_names)}")
+          PY
+
+      - name: Commit bilingual documentation
+        shell: bash
+        run: |
+          if git diff --quiet -- docs/theory; then
+            echo 'No documentation changes required.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/theory
+          git commit -m 'docs: split theory reference into English and Japanese editions'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}

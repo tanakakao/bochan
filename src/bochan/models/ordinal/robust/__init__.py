@@ -1,17 +1,18 @@
-from . import heteroscedastic as _heteroscedastic
-from . import relevance_pursuit as _relevance_pursuit
-from ._num_classes import (
-    HeteroscedasticOrdinalGPModel,
-    HeteroscedasticOrdinalMixedGPModel,
+from ._num_classes import enable_num_classes_inference
+from .heteroscedastic import HeteroscedasticOrdinalGPModel, HeteroscedasticOrdinalMixedGPModel
+from .relevance_pursuit import OutlierRelevancePursuitOrdinalGPModel, OutlierRelevancePursuitOrdinalMixedGPModel
+
+
+_ROBUST_ORDINAL_MODELS = (
     OutlierRelevancePursuitOrdinalGPModel,
     OutlierRelevancePursuitOrdinalMixedGPModel,
+    HeteroscedasticOrdinalGPModel,
+    HeteroscedasticOrdinalMixedGPModel,
 )
 
-# Keep direct imports from the implementation modules aligned with the public API.
-_relevance_pursuit.OutlierRelevancePursuitOrdinalGPModel = OutlierRelevancePursuitOrdinalGPModel
-_relevance_pursuit.OutlierRelevancePursuitOrdinalMixedGPModel = OutlierRelevancePursuitOrdinalMixedGPModel
-_heteroscedastic.HeteroscedasticOrdinalGPModel = HeteroscedasticOrdinalGPModel
-_heteroscedastic.HeteroscedasticOrdinalMixedGPModel = HeteroscedasticOrdinalMixedGPModel
+for _model_cls in _ROBUST_ORDINAL_MODELS:
+    enable_num_classes_inference(_model_cls)
+
 
 __all__ = [
     "OutlierRelevancePursuitOrdinalGPModel",

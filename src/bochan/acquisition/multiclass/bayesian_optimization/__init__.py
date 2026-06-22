@@ -1,3 +1,6 @@
+from .input_perturbation_compat import (
+    patch_multiclass_hypervolume_input_perturbation,
+)
 from .output_compat import apply_bayesian_optimization_output_compat
 from .hetero_multi_output import (
     qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement,
@@ -17,6 +20,7 @@ from .hetero_single_output import (
     qHeteroMulticlassUpperConfidenceBound,
 )
 from .multi_output import (
+    MulticlassTargetProbabilityObjective,
     OutputReductionType,
     compute_observed_multiclass_target_probability_values,
     compute_observed_multiclass_utility,
@@ -35,6 +39,14 @@ from .single_output import (
     qMulticlassProbabilityOfFeasibility,
     qMulticlassProbabilityOfImprovement,
     qMulticlassUpperConfidenceBound,
+)
+
+# A one-to-many InputPerturbation transform expands q to q*n_w. qEHVI subset
+# enumeration is exponential in that effective q, so aggregate the built-in
+# multiclass objective back to raw q before BoTorch enters the subset loop.
+patch_multiclass_hypervolume_input_perturbation(
+    qMultiOutputMulticlassExpectedHypervolumeImprovement,
+    default_objective_type=MulticlassTargetProbabilityObjective,
 )
 
 # DeepGP などで qEHVI の戻り値に extra sample / latent 次元が残る場合の出力整形 patch。

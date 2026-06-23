@@ -1,0 +1,1 @@
+Move root English theory files to docs/theory/en and remove merge artifacts.

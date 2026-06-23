@@ -146,7 +146,10 @@ def _observed_multiobjective_values(
     import torch
 
     values = torch.as_tensor(values)
-    if not torch.is_floating_point(values):
+    train_X = bundle.train_X
+    if torch.is_tensor(train_X) and torch.is_floating_point(train_X):
+        values = values.to(device=train_X.device, dtype=train_X.dtype)
+    elif not torch.is_floating_point(values):
         values = values.to(dtype=torch.get_default_dtype())
     if values.ndim == 1:
         values = values.unsqueeze(-1)

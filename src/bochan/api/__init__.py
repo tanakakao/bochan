@@ -1,5 +1,7 @@
 """High-level API for bochan."""
 
+# ruff: noqa: E402
+
 from . import engine as _engine
 from .acquisition_registry import available_acqf_names, resolve_acqf_cls
 from .configs import (

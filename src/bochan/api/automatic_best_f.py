@@ -19,7 +19,9 @@ def _compute_binary_best_f(bundle: ModelBundle, config: AcquisitionConfig) -> An
     from bochan.acquisition.binary.bayesian_optimization import compute_binary_best_f
 
     kwargs = {
-        "apply_sigmoid_if_needed": config.acqf_kwargs.get("apply_sigmoid_if_needed", False),
+        "apply_sigmoid_if_needed": config.acqf_kwargs.get(
+            "apply_sigmoid_if_needed", False
+        ),
         "risk_type": config.acqf_kwargs.get(
             "risk_type",
             _objective_config_value(config, "risk_type"),

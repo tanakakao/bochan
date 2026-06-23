@@ -27,13 +27,18 @@ from .multiclass import (
     show_multiclass_heatmap_from_optimizer,
     show_scatter_with_acqf_from_optimizer,
 )
+from .multiclass_ternary import (
+    multiclass_tri_grid,
+    show_multiclass_triscatter,
+    show_multiclass_triscatter_from_optimizer,
+    show_triscatter_with_acqf_from_optimizer,
+)
 from .plots import (
     show_1dplot_with_pred,
     show_pareto_plot,
     show_scatter_with_acqf,
     show_target_over_cycle_study,
     show_triscatter_with_acqf,
-    show_triscatter_with_acqf_from_optimizer,
     show_yyplot,
     show_yyplot_from_optimizer,
 )
@@ -44,6 +49,7 @@ from .utils import CYCLE_COLORS
 # non-multiclass models.
 _plots.show_1dplot_from_optimizer = show_1dplot_from_optimizer
 _plots.show_scatter_with_acqf_from_optimizer = show_scatter_with_acqf_from_optimizer
+_plots.show_triscatter_with_acqf_from_optimizer = show_triscatter_with_acqf_from_optimizer
 
 __all__ = [
     "CYCLE_COLORS",
@@ -60,6 +66,7 @@ __all__ = [
     "multiclass_grid_2d",
     "multiclass_prediction_dataframe",
     "multiclass_probabilities",
+    "multiclass_tri_grid",
     "prediction_dataframe",
     "training_dataframe",
     "tri_grid",
@@ -69,6 +76,8 @@ __all__ = [
     "show_multiclass_1dplot_from_optimizer",
     "show_multiclass_heatmap",
     "show_multiclass_heatmap_from_optimizer",
+    "show_multiclass_triscatter",
+    "show_multiclass_triscatter_from_optimizer",
     "show_pareto_plot",
     "show_scatter_with_acqf",
     "show_scatter_with_acqf_from_optimizer",

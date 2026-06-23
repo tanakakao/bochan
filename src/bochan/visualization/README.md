@@ -114,6 +114,31 @@ fig = show_triscatter_with_acqf_from_optimizer(
 fig.show()
 ```
 
+multiclass でも同じ関数を使用し、`show_type="pred"` を指定します。
+
+```python
+fig = show_triscatter_with_acqf_from_optimizer(
+    bo,
+    "a",
+    "b",
+    "c",
+    "class",
+    feature_cols=["a", "b", "c", "temp"],
+    target_cols=["class"],
+    value_dict={"temp": 1000.0},
+    sum_value=1.0,
+    show_type="pred",
+    multiclass_mode="class_confidence",
+    boundary_margin=0.08,
+    n=60,
+)
+fig.show()
+```
+
+三角図の `class_confidence` 表示では、色相が予測クラス、明度が最大予測確率を表します。`boundary_margin` 以下の top-2 確率差を持つ点は黒いリングで表示され、決定境界の候補を確認できます。2次元図と同様に `entropy` / `margin` / `class` へ切り替えられます。
+
+専用関数 `show_multiclass_triscatter_from_optimizer` と前処理関数 `multiclass_tri_grid` も利用できます。
+
 ## 補足
 
 `plotly`, `pandas`, `numpy`, `torch` が必要です。既存の API には依存を強制せず、可視化を使う場合だけインストールする想定です。

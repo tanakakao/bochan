@@ -1,5 +1,8 @@
 """High-level API for bochan."""
 
+# ruff: noqa: E402
+
+from . import engine as _engine
 from .acquisition_registry import available_acqf_names, resolve_acqf_cls
 from .configs import (
     AcquisitionConfig,
@@ -18,7 +21,12 @@ from .configs import (
     OutputConfig,
     PredictionResult,
 )
-from .engine import BayesianOptimizer
+from .engine_defaults import BayesianOptimizer
+
+# Keep ``from bochan.api.engine import BayesianOptimizer`` aligned with the
+# public high-level API before importing modules that depend on it.
+_engine.BayesianOptimizer = BayesianOptimizer
+
 from .factory import (
     build_acquisition,
     build_model,
@@ -37,6 +45,7 @@ from .study_controls import (
     GenerationStep,
     StopDecision,
 )
+
 
 __all__ = [
     "AcquisitionConfig",

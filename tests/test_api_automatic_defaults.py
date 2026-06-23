@@ -37,13 +37,6 @@ class _NeedsRefPoint:
         self.X_baseline = X_baseline
 
 
-class _VariadicEHVI:
-    def __init__(self, model, *args, **kwargs) -> None:
-        self.model = model
-        self.args = args
-        self.kwargs = kwargs
-
-
 def _make_bundle(
     *,
     task_type: str = "regression",
@@ -73,11 +66,9 @@ def test_two_column_train_y_enables_empty_multi_output_config() -> None:
         model_type="base",
         outcome_transform=False,
     )
+    train_Y = torch.zeros(4, 2, dtype=torch.double)
 
-    resolved = engine_defaults.resolve_multi_output_model_config(
-        config,
-        torch.zeros(4, 2, dtype=torch.double),
-    )
+    resolved = engine_defaults.resolve_multi_output_model_config(config, train_Y)
 
     assert config.multi_output_config is None
     assert isinstance(resolved.multi_output_config, MultiOutputConfig)
@@ -137,9 +128,12 @@ def test_bayesian_optimizer_fit_uses_automatic_multi_output_config(monkeypatch) 
 
 
 def test_regression_ei_computes_best_f_from_observed_values() -> None:
+    bundle = _make_bundle()
+    config = AcquisitionConfig(name="ei", acqf_cls=_NeedsBestF)
+
     context = engine_defaults.resolve_acquisition_data_context(
-        _make_bundle(),
-        AcquisitionConfig(name="ei", acqf_cls=_NeedsBestF),
+        bundle,
+        config,
         DataContext(),
     )
 
@@ -147,6 +141,10 @@ def test_regression_ei_computes_best_f_from_observed_values() -> None:
 
 
 def test_binary_ei_uses_binary_best_f_helper(monkeypatch) -> None:
+    bundle = _make_bundle(
+        task_type="binary",
+        train_Y=torch.tensor([[0.0], [1.0], [1.0]], dtype=torch.double),
+    )
     expected = torch.tensor(0.73, dtype=torch.double)
     calls = []
 
@@ -160,10 +158,7 @@ def test_binary_ei_uses_binary_best_f_helper(monkeypatch) -> None:
     )
 
     context = engine_defaults.resolve_acquisition_data_context(
-        _make_bundle(
-            task_type="binary",
-            train_Y=torch.tensor([[0.0], [1.0], [1.0]], dtype=torch.double),
-        ),
+        bundle,
         AcquisitionConfig(name="pi", acqf_cls=_NeedsBestF),
         DataContext(),
     )
@@ -173,6 +168,7 @@ def test_binary_ei_uses_binary_best_f_helper(monkeypatch) -> None:
 
 
 def test_explicit_best_f_is_not_overwritten(monkeypatch) -> None:
+    bundle = _make_bundle()
     explicit = torch.tensor(9.0, dtype=torch.double)
     monkeypatch.setattr(
         engine_defaults,
@@ -181,7 +177,7 @@ def test_explicit_best_f_is_not_overwritten(monkeypatch) -> None:
     )
 
     context = engine_defaults.resolve_acquisition_data_context(
-        _make_bundle(),
+        bundle,
         AcquisitionConfig(name="ei", acqf_cls=_NeedsBestF),
         DataContext(best_f=explicit),
     )
@@ -194,6 +190,7 @@ def test_ehvi_computes_ref_point_and_partitioning(monkeypatch) -> None:
         [[1.0, 3.0], [2.0, 2.0], [0.0, 4.0]],
         dtype=torch.double,
     )
+    bundle = _make_bundle(train_Y=train_Y)
     sentinel = object()
     captured = {}
 
@@ -205,7 +202,7 @@ def test_ehvi_computes_ref_point_and_partitioning(monkeypatch) -> None:
     monkeypatch.setattr(engine_defaults, "make_partitioning", fake_partitioning)
 
     context = engine_defaults.resolve_acquisition_data_context(
-        _make_bundle(train_Y=train_Y),
+        bundle,
         AcquisitionConfig(name="ehi", acqf_cls=_NeedsEHVIContext),
         DataContext(),
     )
@@ -225,9 +222,10 @@ def test_nehvi_and_nparego_compute_ref_point_without_partitioning(name: str) -> 
         [[1.0, 3.0], [2.0, 2.0], [0.0, 4.0]],
         dtype=torch.double,
     )
+    bundle = _make_bundle(train_Y=train_Y)
 
     context = engine_defaults.resolve_acquisition_data_context(
-        _make_bundle(train_Y=train_Y),
+        bundle,
         AcquisitionConfig(name=name, acqf_cls=_NeedsRefPoint),
         DataContext(),
     )
@@ -240,18 +238,21 @@ def test_nehvi_and_nparego_compute_ref_point_without_partitioning(name: str) -> 
 
 
 def test_explicit_ref_point_and_partitioning_are_preserved(monkeypatch) -> None:
+    bundle = _make_bundle(
+        train_Y=torch.tensor([[1.0, 2.0], [2.0, 1.0]], dtype=torch.double)
+    )
     ref_point = torch.tensor([-5.0, -6.0], dtype=torch.double)
     partitioning = object()
     monkeypatch.setattr(
         engine_defaults,
         "observed_multiobjective_values",
-        lambda *args, **kwargs: pytest.fail("automatic defaults must not run"),
+        lambda *args, **kwargs: pytest.fail(
+            "automatic multi-objective defaults must not run"
+        ),
     )
 
     context = engine_defaults.resolve_acquisition_data_context(
-        _make_bundle(
-            train_Y=torch.tensor([[1.0, 2.0], [2.0, 1.0]], dtype=torch.double)
-        ),
+        bundle,
         AcquisitionConfig(name="ehi", acqf_cls=_NeedsEHVIContext),
         DataContext(ref_point=ref_point, partitioning=partitioning),
     )
@@ -260,11 +261,19 @@ def test_explicit_ref_point_and_partitioning_are_preserved(monkeypatch) -> None:
     assert context.partitioning is partitioning
 
 
+class _VariadicEHVI:
+    def __init__(self, model, *args, **kwargs) -> None:
+        self.model = model
+        self.args = args
+        self.kwargs = kwargs
+
+
 def test_variadic_wrapper_receives_defaults_through_acqf_kwargs(monkeypatch) -> None:
     train_Y = torch.tensor(
         [[1.0, 3.0], [2.0, 2.0], [0.0, 4.0]],
         dtype=torch.double,
     )
+    bundle = _make_bundle(train_Y=train_Y)
     partitioning = object()
     monkeypatch.setattr(
         engine_defaults,
@@ -273,7 +282,7 @@ def test_variadic_wrapper_receives_defaults_through_acqf_kwargs(monkeypatch) -> 
     )
 
     resolved, context = engine_defaults.resolve_acquisition_defaults(
-        _make_bundle(train_Y=train_Y),
+        bundle,
         AcquisitionConfig(name="ehi", acqf_cls=_VariadicEHVI),
         DataContext(),
     )
@@ -288,6 +297,7 @@ def test_variadic_wrapper_receives_defaults_through_acqf_kwargs(monkeypatch) -> 
 
 
 def test_acqf_kwargs_best_f_has_priority_over_data_context(monkeypatch) -> None:
+    bundle = _make_bundle()
     explicit = torch.tensor(7.0, dtype=torch.double)
     monkeypatch.setattr(
         engine_defaults,
@@ -296,7 +306,7 @@ def test_acqf_kwargs_best_f_has_priority_over_data_context(monkeypatch) -> None:
     )
 
     resolved, context = engine_defaults.resolve_acquisition_defaults(
-        _make_bundle(),
+        bundle,
         AcquisitionConfig(
             name="ei",
             acqf_cls=_NeedsBestF,

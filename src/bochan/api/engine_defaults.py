@@ -42,24 +42,21 @@ def _acquisition_kind(config: AcquisitionConfig) -> str | None:
     if "nparego" in combined:
         return "nparego"
     if (
-        name in {"nehi", "qnehi", "nehvi", "qnehvi", "noisyexpectedhypervolumeimprovement"}
+        name
+        in {"nehi", "qnehi", "nehvi", "qnehvi", "noisyexpectedhypervolumeimprovement"}
         or "noisyexpectedhypervolumeimprovement" in cls_name
     ):
         return "nehvi"
-    if (
-        name
-        in {
-            "ehi",
-            "qehi",
-            "ehvi",
-            "qehvi",
-            "expectedhypervolumeimprovement",
-            "qexpectedhypervolumeimprovement",
-        }
-        or (
-            "expectedhypervolumeimprovement" in cls_name
-            and "noisyexpectedhypervolumeimprovement" not in cls_name
-        )
+    if name in {
+        "ehi",
+        "qehi",
+        "ehvi",
+        "qehvi",
+        "expectedhypervolumeimprovement",
+        "qexpectedhypervolumeimprovement",
+    } or (
+        "expectedhypervolumeimprovement" in cls_name
+        and "noisyexpectedhypervolumeimprovement" not in cls_name
     ):
         return "ehvi"
     if name in {

@@ -10,8 +10,95 @@ from .automatic_default_utils import (
     _infer_ordinal_utility_values,
     _num_outputs,
     _objective_config_value,
+    _sub_bundles,
 )
 from .configs import AcquisitionConfig, DataContext, ModelBundle
+
+
+def _observed_train_targets(bundle: ModelBundle) -> Any:
+    """Return original observed targets, including auto-wrapped outputs.
+
+    Multi-output wrappers such as ``ModelListGP`` may expose ``train_targets`` as
+    a tuple of one-dimensional tensors.  The original, untransformed targets are
+    retained by the sub-bundles, so prefer those when available.
+    """
+
+    sub_bundles = _sub_bundles(bundle)
+    if sub_bundles:
+        targets = [sub.train_Y for sub in sub_bundles]
+        if any(target is None for target in targets):
+            raise ValueError("Every sub-bundle must provide train_Y.")
+        return targets
+    return bundle.train_Y
+
+
+def _as_observed_matrix(
+    values: Any,
+    *,
+    train_X: Any | None = None,
+    match_train_x_dtype: bool = False,
+) -> Any:
+    """Normalize tensor-like observed values to shape ``[n, m]``.
+
+    ``torch.as_tensor`` cannot directly convert ``list[Tensor]`` when each
+    tensor has multiple elements.  Model-list and hybrid wrappers commonly
+    expose targets in exactly that form, so tensor sequences are converted to
+    columns and concatenated explicitly.
+    """
+
+    import torch
+
+    expected_rows = None
+    train_x_shape = getattr(train_X, "shape", None)
+    if train_x_shape is not None and len(train_x_shape) >= 2:
+        expected_rows = int(train_x_shape[-2])
+
+    def _normalize_part(part: Any) -> Any:
+        tensor = part if torch.is_tensor(part) else torch.as_tensor(part)
+        while tensor.ndim > 2 and tensor.shape[0] == 1:
+            tensor = tensor.squeeze(0)
+        if tensor.ndim == 0:
+            tensor = tensor.reshape(1, 1)
+        elif tensor.ndim == 1:
+            tensor = tensor.unsqueeze(-1)
+        elif tensor.ndim > 2:
+            tensor = tensor.reshape(-1, tensor.shape[-1])
+        if (
+            tensor.ndim == 2
+            and expected_rows is not None
+            and tensor.shape[0] != expected_rows
+            and tensor.shape[1] == expected_rows
+        ):
+            tensor = tensor.transpose(-1, -2)
+        if tensor.ndim != 2:
+            raise RuntimeError(
+                "Could not convert an observed target to shape [n, m]. "
+                f"Got shape={tuple(tensor.shape)}."
+            )
+        return tensor
+
+    if isinstance(values, (list, tuple)):
+        if len(values) == 0:
+            raise ValueError("Observed target sequence must not be empty.")
+        parts = [_normalize_part(part) for part in values]
+        row_counts = {int(part.shape[0]) for part in parts}
+        if len(row_counts) != 1:
+            raise RuntimeError(
+                "Observed target tensors must have the same number of rows. "
+                f"Got row counts={sorted(row_counts)}."
+            )
+        tensor = torch.cat(parts, dim=-1)
+    else:
+        tensor = _normalize_part(values)
+
+    if match_train_x_dtype:
+        if torch.is_tensor(train_X):
+            tensor = tensor.to(device=train_X.device)
+            if torch.is_floating_point(train_X):
+                tensor = tensor.to(dtype=train_X.dtype)
+        elif not torch.is_floating_point(tensor):
+            tensor = tensor.to(dtype=torch.get_default_dtype())
+    return tensor
 
 
 def _regression_observed_values(
@@ -21,7 +108,10 @@ def _regression_observed_values(
 ) -> Any:
     from .factory import build_objective
 
-    values = bundle.train_Y
+    values = _as_observed_matrix(
+        _observed_train_targets(bundle),
+        train_X=bundle.train_X,
+    )
     objective = build_objective(bundle=bundle, config=config, data_context=context)
     if objective is not None:
         values = _call_objective(objective, values, bundle.train_X)
@@ -82,7 +172,11 @@ def _ordinal_observed_values(bundle: ModelBundle, config: AcquisitionConfig) -> 
     if utility_values is None:
         utility_values = _infer_ordinal_utility_values(bundle.model)
 
-    n_outputs = _num_outputs(bundle.train_Y)
+    train_Y = _as_observed_matrix(
+        _observed_train_targets(bundle),
+        train_X=bundle.train_X,
+    )
+    n_outputs = _num_outputs(train_Y)
     if n_outputs > 1 and not (
         isinstance(utility_values, (list, tuple))
         and len(utility_values) == n_outputs
@@ -99,7 +193,7 @@ def _ordinal_observed_values(bundle: ModelBundle, config: AcquisitionConfig) -> 
         if directions is not None:
             objective_signs = [_direction_sign(direction) for direction in directions]
     return compute_observed_ordinal_utility(
-        bundle.train_Y,
+        train_Y,
         utility_values=utility_values,
         objective_signs=objective_signs,
         class_offset=config.acqf_kwargs.get("class_offset", 0),
@@ -117,8 +211,12 @@ def _multiclass_observed_values(bundle: ModelBundle, config: AcquisitionConfig) 
         directions = _objective_config_value(config, "directions")
         if directions is not None:
             objective_signs = [_direction_sign(direction) for direction in directions]
+    train_Y = _as_observed_matrix(
+        _observed_train_targets(bundle),
+        train_X=bundle.train_X,
+    )
     return compute_observed_multiclass_utility(
-        bundle.train_Y,
+        train_Y,
         target_class=config.acqf_kwargs.get("target_class"),
         output_target_classes=config.acqf_kwargs.get("output_target_classes"),
         class_reduction=config.acqf_kwargs.get("class_reduction", "mean"),
@@ -143,25 +241,11 @@ def _observed_multiobjective_values(
     else:
         values = _regression_observed_values(bundle, config, context)
 
-    import torch
-
-    values = torch.as_tensor(values)
-    train_X = bundle.train_X
-    if torch.is_tensor(train_X) and torch.is_floating_point(train_X):
-        values = values.to(device=train_X.device, dtype=train_X.dtype)
-    elif not torch.is_floating_point(values):
-        values = values.to(dtype=torch.get_default_dtype())
-    if values.ndim == 1:
-        values = values.unsqueeze(-1)
-    while values.ndim > 2 and values.shape[0] == 1:
-        values = values.squeeze(0)
-    if values.ndim > 2:
-        values = values.reshape(-1, values.shape[-1])
-    if values.ndim != 2:
-        raise RuntimeError(
-            "Could not convert observed objective values to shape [n, m]. "
-            f"Got shape={tuple(values.shape)}."
-        )
+    values = _as_observed_matrix(
+        values,
+        train_X=bundle.train_X,
+        match_train_x_dtype=True,
+    )
     return values.detach()
 
 

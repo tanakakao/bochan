@@ -16,7 +16,9 @@ def _num_outputs(train_Y: Any) -> int:
     return 1 if len(shape) == 1 else int(shape[-1])
 
 
-def _objective_config_value(config: AcquisitionConfig, name: str, default: Any = None) -> Any:
+def _objective_config_value(
+    config: AcquisitionConfig, name: str, default: Any = None
+) -> Any:
     objective_config = config.objective_config
     if objective_config is None:
         return default
@@ -99,7 +101,9 @@ def _call_objective(objective: Any, values: Any, X: Any) -> Any:
             try:
                 result = objective(candidate, X=X) if with_X else objective(candidate)
                 if not torch.is_tensor(result):
-                    result = torch.as_tensor(result, device=values.device, dtype=values.dtype)
+                    result = torch.as_tensor(
+                        result, device=values.device, dtype=values.dtype
+                    )
                 while result.ndim > 2 and result.shape[0] == 1:
                     result = result.squeeze(0)
                 return result

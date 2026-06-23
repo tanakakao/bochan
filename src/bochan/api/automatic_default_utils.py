@@ -100,12 +100,15 @@ def _call_objective(objective: Any, values: Any, X: Any) -> Any:
         for with_X in (True, False):
             try:
                 result = objective(candidate, X=X) if with_X else objective(candidate)
-                if not torch.is_tensor(result):
+                if not torch.is_tensor(result) and not isinstance(
+                    result, (list, tuple)
+                ):
                     result = torch.as_tensor(
                         result, device=values.device, dtype=values.dtype
                     )
-                while result.ndim > 2 and result.shape[0] == 1:
-                    result = result.squeeze(0)
+                if torch.is_tensor(result):
+                    while result.ndim > 2 and result.shape[0] == 1:
+                        result = result.squeeze(0)
                 return result
             except (TypeError, RuntimeError, ValueError) as exc:
                 last_error = exc

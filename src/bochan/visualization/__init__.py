@@ -1,5 +1,6 @@
 """Visualization helpers for bochan."""
 
+from . import multiclass as _multiclass
 from . import plots as _plots
 from .data import (
     candidates_dataframe,
@@ -12,6 +13,10 @@ from .data import (
     training_dataframe,
     tri_grid,
 )
+from .heatmap_layout import install_multiclass_heatmap_layout_patch
+
+install_multiclass_heatmap_layout_patch(_multiclass)
+
 from .multiclass import (
     MulticlassHeatmapMode,
     infer_class_labels,

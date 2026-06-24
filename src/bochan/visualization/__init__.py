@@ -31,18 +31,20 @@ from .multiclass_ternary import (
     show_multiclass_triscatter_from_optimizer,
 )
 from .ordinal import (
-    OrdinalDisplayMode,
-    OrdinalProbabilityMode,
     is_ordinal_object,
     ordinal_grid_1d,
     ordinal_grid_2d,
     ordinal_prediction_dataframe,
     ordinal_probabilities,
     ordinal_tri_grid,
-    show_1dplot_from_optimizer,
     show_ordinal_1dplot_from_optimizer,
     show_ordinal_heatmap_from_optimizer,
     show_ordinal_triscatter_from_optimizer,
+)
+from .ordinal_display import (
+    OrdinalDisplayMode,
+    OrdinalProbabilityMode,
+    show_1dplot_from_optimizer,
     show_scatter_with_acqf_from_optimizer,
     show_triscatter_with_acqf_from_optimizer,
 )

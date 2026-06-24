@@ -16,6 +16,21 @@ from ..common import (
 )
 
 
+def _is_deep_classification_mll(mll) -> bool:
+    """Return whether the MLL wraps a DeepGP / DeepKernel classification model."""
+
+    model = getattr(mll, "model", None)
+    module_name = type(model).__module__.lower()
+    class_name = type(model).__name__.lower()
+    return (
+        ".deep." in module_name
+        or "deepgp" in module_name
+        or "deepkernel" in module_name
+        or "deepgp" in class_name
+        or "deepkernel" in class_name
+    )
+
+
 def fit_binary_classifier_mll(
     mll,
     *,
@@ -23,7 +38,7 @@ def fit_binary_classifier_mll(
     num_epochs: int = 300,
     batch_size: Optional[int] = None,
     shuffle: bool = True,
-    optimizer_cls= torch.optim.Adam,
+    optimizer_cls=torch.optim.Adam,
     clip_grad_norm: Optional[float] = None,
     verbose: bool = False,
     **ignore,
@@ -34,14 +49,31 @@ def fit_binary_classifier_mll(
     Intended MLLs:
         - gpytorch.mlls.VariationalELBO
         - gpytorch.mlls.PredictiveLogLikelihood
+        - gpytorch.mlls.DeepApproximateMLL
 
     Notes:
-        - This keeps the original mini-batch training behavior.
+        - Standard variational classifiers keep the existing mini-batch behavior.
+        - DeepGP / DeepKernel classifiers use the dedicated full-batch loop so
+          their wrapper-specific transformed training inputs and MLL structure
+          are handled consistently.
         - `mll.model.train_inputs` is used as X.
         - `mll.model.train_targets` is used as y.
         - Single-output targets shaped [n, 1] are squeezed to [n].
         - Returns the input `mll`, following BoTorch-style fit helpers.
     """
+    if _is_deep_classification_mll(mll):
+        from ..deep.common import fit_deep_full_batch_mll
+
+        return fit_deep_full_batch_mll(
+            mll,
+            lr=lr,
+            num_epochs=num_epochs,
+            optimizer_cls=optimizer_cls,
+            clip_grad_norm=clip_grad_norm,
+            verbose=verbose,
+            log_prefix="fit_binary_classifier_mll",
+        )
+
     set_mll_train_mode(mll)
 
     model = mll.model

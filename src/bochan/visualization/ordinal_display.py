@@ -9,8 +9,10 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from .multiclass import MulticlassHeatmapMode
+from ._heatmap_layout import apply_probability_heatmap_layout
+from .multiclass import MulticlassHeatmapMode, is_multiclass_object
 from .ordinal import (
+    is_ordinal_object,
     show_1dplot_from_optimizer as _show_1dplot_from_optimizer,
     show_scatter_with_acqf_from_optimizer as _show_scatter_from_optimizer,
     show_triscatter_with_acqf_from_optimizer as _show_triscatter_from_optimizer,
@@ -61,7 +63,7 @@ def show_scatter_with_acqf_from_optimizer(
 ) -> Any:
     """Plot a 2D ordinal latent surface or category-probability diagnostic."""
 
-    return _show_scatter_from_optimizer(
+    figure = _show_scatter_from_optimizer(
         obj,
         feature_col1,
         feature_col2,
@@ -70,6 +72,13 @@ def show_scatter_with_acqf_from_optimizer(
         ordinal_mode=ordinal_mode,
         **kwargs,
     )
+    is_probability_heatmap = kwargs.get("show_type", "acqf") == "pred" and (
+        is_multiclass_object(obj)
+        or (is_ordinal_object(obj) and ordinal_display == "probability")
+    )
+    if is_probability_heatmap:
+        return apply_probability_heatmap_layout(figure)
+    return figure
 
 
 def show_triscatter_with_acqf_from_optimizer(

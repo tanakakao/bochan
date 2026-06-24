@@ -67,15 +67,21 @@ def test_probability_heatmap_layout_handles_category_axes() -> None:
     assert list(result.layout.yaxis.range) == [-0.5, 1.5]
 
 
-def test_public_dispatch_applies_layout_only_to_probability_heatmaps(monkeypatch) -> None:
+def test_public_dispatch_applies_layout_only_to_probability_heatmaps(
+    monkeypatch,
+) -> None:
     multiclass_obj = SimpleNamespace(
         model_config=SimpleNamespace(task_type="multiclass"),
         model=SimpleNamespace(),
     )
+
+    def return_heatmap(*_args, **_kwargs):
+        return _heatmap_figure()
+
     monkeypatch.setattr(
         ordinal_display,
         "_show_scatter_from_optimizer",
-        lambda *args, **kwargs: _heatmap_figure(),
+        return_heatmap,
     )
 
     result = ordinal_display.show_scatter_with_acqf_from_optimizer(

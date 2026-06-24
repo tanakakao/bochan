@@ -140,6 +140,54 @@ def _place_context_value(
     return config, context
 
 
+def _is_ordinal_utility_acquisition(config: AcquisitionConfig) -> bool:
+    """Return whether the acquisition derives from the ordinal utility BO base."""
+
+    acqf_cls = config.acqf_cls
+    if acqf_cls is None:
+        return False
+    try:
+        return any(
+            base.__name__ == "_OrdinalPointwiseUtilityBOBase"
+            for base in inspect.getmro(acqf_cls)
+        )
+    except (AttributeError, TypeError):
+        return False
+
+
+def _resolve_default_ordinal_objective(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+) -> AcquisitionConfig:
+    """Create expected-utility objective for ordinal utility acquisitions.
+
+    Explicit ``objective``, ``objective_factory`` and ``objective_config`` always
+    take precedence.  Utility values are inferred as ``[0, ..., K - 1]`` from
+    ``num_classes`` or the ordinal cutpoints.
+    """
+
+    if str(bundle.task_type) != "ordinal":
+        return config
+    if (
+        config.objective is not None
+        or config.objective_factory is not None
+        or config.objective_config is not None
+        or not _is_ordinal_utility_acquisition(config)
+    ):
+        return config
+
+    from bochan.acquisition.objective import OrdinalExpectedUtilityMCObjective
+    from .factory import _infer_ordinal_likelihood, _infer_ordinal_utility_values
+
+    likelihood = _infer_ordinal_likelihood(bundle.model)
+    utility_values = _infer_ordinal_utility_values(bundle.model, likelihood)
+    objective = OrdinalExpectedUtilityMCObjective(
+        ordinal_likelihood=likelihood,
+        utility_values=utility_values,
+    )
+    return replace(config, objective=objective)
+
+
 def resolve_acquisition_defaults(
     bundle: ModelBundle,
     config: AcquisitionConfig,
@@ -150,6 +198,7 @@ def resolve_acquisition_defaults(
     from .factory import prepare_multi_objective_context
 
     context = prepare_multi_objective_context(bundle, context, config)
+    config = _resolve_default_ordinal_objective(bundle, config)
     kind = _acquisition_kind(config)
     if kind is None:
         return config, context

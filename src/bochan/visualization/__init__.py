@@ -30,6 +30,10 @@ from .multiclass_ternary import (
     show_multiclass_triscatter,
     show_multiclass_triscatter_from_optimizer,
 )
+from .multiclass_yyplot import (
+    show_multiclass_yyplot,
+    show_yyplot_from_optimizer,
+)
 from .ordinal import (
     is_ordinal_object,
     ordinal_grid_1d,
@@ -55,7 +59,6 @@ from .plots import (
     show_target_over_cycle_study,
     show_triscatter_with_acqf,
     show_yyplot,
-    show_yyplot_from_optimizer,
 )
 from .utils import CYCLE_COLORS
 
@@ -65,6 +68,7 @@ from .utils import CYCLE_COLORS
 _plots.show_1dplot_from_optimizer = show_1dplot_from_optimizer
 _plots.show_scatter_with_acqf_from_optimizer = show_scatter_with_acqf_from_optimizer
 _plots.show_triscatter_with_acqf_from_optimizer = show_triscatter_with_acqf_from_optimizer
+_plots.show_yyplot_from_optimizer = show_yyplot_from_optimizer
 
 __all__ = [
     "CYCLE_COLORS",
@@ -101,6 +105,7 @@ __all__ = [
     "show_multiclass_heatmap_from_optimizer",
     "show_multiclass_triscatter",
     "show_multiclass_triscatter_from_optimizer",
+    "show_multiclass_yyplot",
     "show_ordinal_1dplot_from_optimizer",
     "show_ordinal_heatmap_from_optimizer",
     "show_ordinal_triscatter_from_optimizer",

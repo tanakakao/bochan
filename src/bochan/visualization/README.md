@@ -7,7 +7,7 @@
 - YY plot
 - 1D 予測曲線
 - 2D 獲得関数または予測値ヒートマップ
-- multiclass のクラス別予測確率・決定領域・不確かさ
+- multiclass / ordinal のクラス別予測確率・決定領域・不確かさ
 - 3成分制約の三角プロット
 - 2目的散布図
 - study の cycle 推移
@@ -94,6 +94,66 @@ fig.show()
 
 multi-output multiclass では `target` から出力列を推定します。明示する場合は `output_index` を指定してください。
 
+## Ordinal
+
+ordinal は従来の潜在値・予測値表示を既定のまま維持します。
+
+```python
+fig = show_scatter_with_acqf_from_optimizer(
+    bo,
+    "x0",
+    "x1",
+    "level",
+    feature_cols=["x0", "x1"],
+    target_cols=["level"],
+    show_type="pred",
+    ordinal_display="current",  # 省略時も current
+)
+```
+
+順序カテゴリごとの確率を表示する場合だけ、`ordinal_display="probability"` に切り替えます。確率は latent mean を単純にカテゴリ化するのではなく、ordinal likelihood の cutpoint を通して計算します。
+
+```python
+fig = show_scatter_with_acqf_from_optimizer(
+    bo,
+    "x0",
+    "x1",
+    "level",
+    feature_cols=["x0", "x1"],
+    target_cols=["level"],
+    show_type="pred",
+    ordinal_display="probability",
+    ordinal_mode="class_confidence",
+    class_labels=["low", "middle", "high"],
+    n=60,
+)
+fig.show()
+```
+
+1次元でも同じ切替を使用します。
+
+```python
+fig = show_1dplot_from_optimizer(
+    bo,
+    feature="x0",
+    target="level",
+    feature_cols=["x0", "x1"],
+    target_cols=["level"],
+    value_dict={"x1": 0.5},
+    ordinal_display="probability",
+    n=100,
+)
+```
+
+`ordinal_mode` は次から選択できます。
+
+- `class_confidence`: 色相が最尤カテゴリ、濃さがその最大確率。
+- `class`: 最尤カテゴリだけを離散色で表示。
+- `entropy`: 順序カテゴリ分布の正規化エントロピー。
+- `margin`: 1位と2位のカテゴリ確率差。
+
+専用関数 `show_ordinal_1dplot_from_optimizer` / `show_ordinal_heatmap_from_optimizer` / `show_ordinal_triscatter_from_optimizer` と、`ordinal_probabilities` / `ordinal_grid_1d` / `ordinal_grid_2d` / `ordinal_tri_grid` も利用できます。multi-output ordinal は `target` または `output_index` で対象出力を選択します。
+
 ## 三角プロット
 
 三角プロットは、3列の和が `sum_value` になるグリッドで評価します。
@@ -135,9 +195,29 @@ fig = show_triscatter_with_acqf_from_optimizer(
 fig.show()
 ```
 
-三角図の `class_confidence` 表示では、色相が予測クラス、明度が最大予測確率を表します。`boundary_margin` 以下の top-2 確率差を持つ点は黒いリングで表示され、決定境界の候補を確認できます。2次元図と同様に `entropy` / `margin` / `class` へ切り替えられます。
+ordinal の三角図も、現行表示とカテゴリ確率表示を切り替えられます。
 
-専用関数 `show_multiclass_triscatter_from_optimizer` と前処理関数 `multiclass_tri_grid` も利用できます。
+```python
+fig = show_triscatter_with_acqf_from_optimizer(
+    bo,
+    "a",
+    "b",
+    "c",
+    "level",
+    feature_cols=["a", "b", "c", "temp"],
+    target_cols=["level"],
+    value_dict={"temp": 1000.0},
+    sum_value=1.0,
+    show_type="pred",
+    ordinal_display="probability",
+    ordinal_mode="class_confidence",
+    boundary_margin=0.08,
+    n=60,
+)
+fig.show()
+```
+
+三角図の `class_confidence` 表示では、色相が予測クラス、明度が最大予測確率を表します。`boundary_margin` 以下の top-2 確率差を持つ点は黒いリングで表示され、決定境界の候補を確認できます。2次元図と同様に `entropy` / `margin` / `class` へ切り替えられます。
 
 ## 補足
 

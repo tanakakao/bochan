@@ -96,7 +96,10 @@ multi-output multiclass では `target` から出力列を推定します。明�
 
 ## Ordinal
 
-ordinal は従来の潜在値・予測値表示を既定のまま維持します。
+multiclass の予測表示は常にカテゴリ確率ベースです。ordinal では潜在スコア表示にも意味があるため、`ordinal_display` で次の2種類を明示的に選択します。
+
+- `ordinal_display="latent"`: 従来の潜在スコア・予測値表示。既定値。
+- `ordinal_display="probability"`: ordinal likelihood の cutpoint を通して求めた順序カテゴリ確率。
 
 ```python
 fig = show_scatter_with_acqf_from_optimizer(
@@ -107,11 +110,11 @@ fig = show_scatter_with_acqf_from_optimizer(
     feature_cols=["x0", "x1"],
     target_cols=["level"],
     show_type="pred",
-    ordinal_display="current",  # 省略時も current
+    ordinal_display="latent",  # 省略時も latent
 )
 ```
 
-順序カテゴリごとの確率を表示する場合だけ、`ordinal_display="probability"` に切り替えます。確率は latent mean を単純にカテゴリ化するのではなく、ordinal likelihood の cutpoint を通して計算します。
+順序カテゴリごとの確率を表示する場合は `ordinal_display="probability"` に切り替えます。latent mean を単純にカテゴリ化するのではなく、ordinal likelihood の cutpoint を通して計算します。
 
 ```python
 fig = show_scatter_with_acqf_from_optimizer(
@@ -145,7 +148,7 @@ fig = show_1dplot_from_optimizer(
 )
 ```
 
-`ordinal_mode` は次から選択できます。
+`ordinal_mode` は multiclass の `multiclass_mode` と同じ値を使用します。
 
 - `class_confidence`: 色相が最尤カテゴリ、濃さがその最大確率。
 - `class`: 最尤カテゴリだけを離散色で表示。
@@ -195,7 +198,7 @@ fig = show_triscatter_with_acqf_from_optimizer(
 fig.show()
 ```
 
-ordinal の三角図も、現行表示とカテゴリ確率表示を切り替えられます。
+ordinal の三角図も、潜在スコア表示とカテゴリ確率表示を切り替えられます。
 
 ```python
 fig = show_triscatter_with_acqf_from_optimizer(

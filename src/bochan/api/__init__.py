@@ -10,7 +10,6 @@ from .configs import (
     CandidateRepairConfig,
     CandidateResult,
     DataContext,
-    FitConfig,
     InputTransformConfig,
     ModelBundle,
     ModelConfig,
@@ -21,6 +20,7 @@ from .configs import (
     OutputConfig,
     PredictionResult,
 )
+from .fit_config import FitConfig
 from .engine_defaults import BayesianOptimizer
 
 # Keep ``from bochan.api.engine import BayesianOptimizer`` aligned with the

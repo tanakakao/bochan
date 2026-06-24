@@ -36,6 +36,18 @@ def _numeric_axis_range(values: Sequence[Any]) -> list[float] | None:
     ]
 
 
+def _compact_colorbar_title(title: Any) -> str:
+    """Shorten verbose colorbar titles while preserving their meaning."""
+
+    text = str(title or "")
+    replacements = {
+        "predicted class": "class",
+        "normalized entropy": "entropy",
+        "top-2 probability margin": "margin",
+    }
+    return replacements.get(text, text)
+
+
 def apply_multiclass_heatmap_layout(fig: Figure) -> Figure:
     """Align axes with the heatmap and separate legend from a compact colorbar."""
 
@@ -52,27 +64,32 @@ def apply_multiclass_heatmap_layout(fig: Figure) -> Figure:
 
     heatmap.update(
         colorbar=dict(
-            x=1.04,
+            x=1.055,
             xanchor="left",
-            y=0.24,
+            y=0.20,
             yanchor="middle",
-            len=0.32,
+            len=0.28,
             lenmode="fraction",
-            thickness=18,
+            thickness=16,
             thicknessmode="pixels",
-            title=dict(side="top"),
+            outlinewidth=0,
+            title=dict(
+                text=_compact_colorbar_title(heatmap.colorbar.title.text),
+                side="top",
+            ),
         )
     )
     fig.update_layout(
-        width=max(int(fig.layout.width or 850), 980),
-        margin=dict(r=230),
+        width=max(int(fig.layout.width or 850), 950),
+        margin=dict(l=70, r=235, t=55, b=70),
         legend=dict(
-            x=1.03,
+            title=dict(text="observed class"),
+            x=1.02,
             xanchor="left",
             y=1.0,
             yanchor="top",
             orientation="v",
-            bgcolor="rgba(255,255,255,0.85)",
+            bgcolor="rgba(255,255,255,0.82)",
         ),
     )
     return fig

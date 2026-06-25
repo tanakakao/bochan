@@ -85,14 +85,21 @@ class _BaseProjectedModel(Model):
         """base_model の batch_shape。なければ空 batch。"""
         return getattr(self.base_model, "batch_shape", torch.Size())
 
-    def make_mll(self):
-        """内部 ``base_model`` 用の ExactMarginalLogLikelihood を返す。
+    def make_mll(self, **kwargs: Any):
+        """内部 ``base_model`` 用の MLL を構築する。
 
-        Projected wrapper 自体は ``gpytorch.models.GP`` ではないため、
-        ``ExactMarginalLogLikelihood(self.likelihood, self)`` には渡せない。
-        学習時は projected-space の内部 GP である ``base_model`` に対して
-        MLL を構築する。
+        ``base_model`` が独自の ``make_mll`` を持つ場合は、``beta`` などの
+        タスク固有引数を含めてそのまま委譲する。独自実装がない exact GP の場合は
+        従来どおり ``ExactMarginalLogLikelihood`` を構築する。
         """
+        if hasattr(self.base_model, "make_mll"):
+            return self.base_model.make_mll(**kwargs)
+        if kwargs:
+            names = ", ".join(sorted(kwargs))
+            raise TypeError(
+                "Exact projected models do not accept MLL keyword arguments: "
+                f"{names}."
+            )
         return ExactMarginalLogLikelihood(self.base_model.likelihood, self.base_model)
 
     # ------------------------------------------------------------------

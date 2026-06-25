@@ -3,9 +3,9 @@
 # ruff: noqa: E402
 
 from . import engine as _engine
+from .acquisition_config import AcquisitionConfig
 from .acquisition_registry import available_acqf_names, resolve_acqf_cls
 from .configs import (
-    AcquisitionConfig,
     AutoStandardizeOutcomeTransform,
     CandidateRepairConfig,
     CandidateResult,

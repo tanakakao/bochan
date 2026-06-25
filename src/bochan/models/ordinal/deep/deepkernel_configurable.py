@@ -11,6 +11,7 @@ from botorch.models.transforms.input import InputTransform
 from gpytorch.kernels import Kernel
 from gpytorch.likelihoods import _OneDimensionalLikelihood
 from gpytorch.means import Mean
+from gpytorch.mlls import PredictiveLogLikelihood, VariationalELBO
 
 from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
 from bochan.models.components.layers.feature_extractor import (
@@ -162,6 +163,22 @@ class DeepKernelOrdinalGPModel(_BaseDeepKernelOrdinalGPModel):
         self.num_classes = int(num_classes)
         self.ext_type = str(ext_type)
         self.hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
+
+    def make_mll(self, beta: Optional[float] = None):
+        kwargs = {
+            "likelihood": self.likelihood,
+            "model": self.deepkernel,
+            "num_data": self.train_X.shape[-2],
+        }
+        if beta is not None:
+            kwargs["beta"] = float(beta)
+
+        mll_cls = (
+            PredictiveLogLikelihood
+            if self.use_predictive_log_likelihood
+            else VariationalELBO
+        )
+        return mll_cls(**kwargs)
 
     def _get_rebuild_kwargs(self) -> dict:
         return {
@@ -318,6 +335,22 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
         self.hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
         self.cont_kernel = str(cont_kernel)
         self._ignore_X_dims_scaling_check = self.cat_dims
+
+    def make_mll(self, beta: Optional[float] = None):
+        kwargs = {
+            "likelihood": self.likelihood,
+            "model": self.deepkernel,
+            "num_data": self.train_X.shape[-2],
+        }
+        if beta is not None:
+            kwargs["beta"] = float(beta)
+
+        mll_cls = (
+            PredictiveLogLikelihood
+            if self.use_predictive_log_likelihood
+            else VariationalELBO
+        )
+        return mll_cls(**kwargs)
 
     @staticmethod
     def _infer_category_counts(

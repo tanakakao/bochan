@@ -219,11 +219,12 @@ class _BaseMulticlassClassificationModel(ApproximateGPyTorchModel):
     def predict_class(self, X: Tensor) -> Tensor:
         return self.class_probs(X).argmax(dim=-1)
 
-    def make_mll(self) -> VariationalELBO:
+    def make_mll(self, beta: float = 1.0) -> VariationalELBO:
         return VariationalELBO(
             likelihood=self.likelihood,
             model=self.model,
             num_data=self.train_inputs_raw[0].shape[-2],
+            beta=float(beta),
         )
 
 

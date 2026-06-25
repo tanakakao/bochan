@@ -5,11 +5,11 @@ from types import SimpleNamespace
 
 import pytest
 
+import bochan.models.ordinal.deep.deepkernel_configurable as deepkernel_module
 from bochan.models.ordinal.deep import (
     DeepKernelOrdinalGPModel,
     DeepKernelOrdinalMixedGPModel,
 )
-from bochan.models.ordinal.deep._mll_beta import enable_make_mll_beta
 
 
 @pytest.mark.parametrize(
@@ -22,34 +22,80 @@ def test_public_deepkernel_make_mll_accepts_beta(model_cls) -> None:
     assert parameter.default is None
 
 
-def test_make_mll_beta_adapter_updates_variational_weight() -> None:
-    class DummyModel:
-        def make_mll(self):
-            return SimpleNamespace(beta=1.0)
+@pytest.mark.parametrize(
+    "model_cls",
+    [DeepKernelOrdinalGPModel, DeepKernelOrdinalMixedGPModel],
+)
+def test_make_mll_passes_beta_to_variational_elbo(monkeypatch, model_cls) -> None:
+    captured = {}
 
-    model_cls = enable_make_mll_beta(DummyModel)
-    mll = model_cls().make_mll(beta=0.01)
+    def fake_variational_elbo(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(**kwargs)
 
-    assert mll.beta == 0.01
+    monkeypatch.setattr(deepkernel_module, "VariationalELBO", fake_variational_elbo)
+    model = SimpleNamespace(
+        likelihood="likelihood",
+        deepkernel="model",
+        train_X=SimpleNamespace(shape=(8, 3)),
+        use_predictive_log_likelihood=False,
+    )
+
+    result = model_cls.make_mll(model, beta=0.01)
+
+    assert result.beta == 0.01
+    assert captured == {
+        "likelihood": "likelihood",
+        "model": "model",
+        "num_data": 8,
+        "beta": 0.01,
+    }
 
 
-def test_make_mll_beta_adapter_preserves_default_when_omitted() -> None:
-    class DummyModel:
-        def make_mll(self):
-            return SimpleNamespace(beta=0.75)
+@pytest.mark.parametrize(
+    "model_cls",
+    [DeepKernelOrdinalGPModel, DeepKernelOrdinalMixedGPModel],
+)
+def test_make_mll_omits_beta_when_not_specified(monkeypatch, model_cls) -> None:
+    captured = {}
 
-    model_cls = enable_make_mll_beta(DummyModel)
-    mll = model_cls().make_mll()
+    def fake_variational_elbo(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(**kwargs)
 
-    assert mll.beta == 0.75
+    monkeypatch.setattr(deepkernel_module, "VariationalELBO", fake_variational_elbo)
+    model = SimpleNamespace(
+        likelihood="likelihood",
+        deepkernel="model",
+        train_X=SimpleNamespace(shape=(8, 3)),
+        use_predictive_log_likelihood=False,
+    )
+
+    model_cls.make_mll(model)
+
+    assert "beta" not in captured
 
 
-def test_make_mll_beta_adapter_rejects_unsupported_mll() -> None:
-    class DummyModel:
-        def make_mll(self):
-            return SimpleNamespace()
+def test_make_mll_preserves_predictive_log_likelihood_choice(monkeypatch) -> None:
+    captured = {}
 
-    model_cls = enable_make_mll_beta(DummyModel)
+    def fake_predictive_log_likelihood(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(**kwargs)
 
-    with pytest.raises(TypeError, match="does not support the beta parameter"):
-        model_cls().make_mll(beta=0.01)
+    monkeypatch.setattr(
+        deepkernel_module,
+        "PredictiveLogLikelihood",
+        fake_predictive_log_likelihood,
+    )
+    model = SimpleNamespace(
+        likelihood="likelihood",
+        deepkernel="model",
+        train_X=SimpleNamespace(shape=(8, 3)),
+        use_predictive_log_likelihood=True,
+    )
+
+    result = DeepKernelOrdinalGPModel.make_mll(model, beta=0.25)
+
+    assert result.beta == 0.25
+    assert captured["num_data"] == 8

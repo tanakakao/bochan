@@ -17,8 +17,8 @@ from .saas import (
 class _ProjectedMulticlassMLLMixin:
     """Delegate projected-wrapper MLL construction to the internal model."""
 
-    def make_mll(self, **kwargs: Any):
-        return self.base_model.make_mll(**kwargs)
+    def make_mll(self, beta: float = 1.0, **kwargs: Any):
+        return self.base_model.make_mll(beta=float(beta), **kwargs)
 
 
 class PCAMulticlassClassificationGPModel(

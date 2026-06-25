@@ -14,6 +14,12 @@ from bochan.models.classification.multiclass.deep import (
     MulticlassDeepGPModel,
     MulticlassMixedDeepGPModel,
 )
+from bochan.models.classification.multiclass.high_dim import (
+    PCAMulticlassClassificationGPModel,
+    PCAMulticlassClassificationMixedGPModel,
+    REMBOMulticlassClassificationGPModel,
+    REMBOMulticlassClassificationMixedGPModel,
+)
 
 
 @pytest.mark.parametrize(
@@ -25,6 +31,10 @@ from bochan.models.classification.multiclass.deep import (
         DeepKernelMixedMulticlassClassificationGPModel,
         MulticlassDeepGPModel,
         MulticlassMixedDeepGPModel,
+        PCAMulticlassClassificationGPModel,
+        PCAMulticlassClassificationMixedGPModel,
+        REMBOMulticlassClassificationGPModel,
+        REMBOMulticlassClassificationMixedGPModel,
     ],
 )
 def test_multiclass_make_mll_accepts_beta(model_cls) -> None:

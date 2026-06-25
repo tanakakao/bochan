@@ -154,11 +154,12 @@ class _BaseMulticlassDeepGPModel(DeepGP, GPyTorchModel):
     def predict_class(self, X: Tensor) -> Tensor:
         return self.class_probs(X).argmax(dim=-1)
 
-    def make_mll(self) -> DeepApproximateMLL:
+    def make_mll(self, beta: float = 1.0) -> DeepApproximateMLL:
         base_mll = VariationalELBO(
             likelihood=self.likelihood,
             model=self,
             num_data=self.train_inputs_raw[0].shape[-2],
+            beta=float(beta),
         )
         return DeepApproximateMLL(base_mll)
 

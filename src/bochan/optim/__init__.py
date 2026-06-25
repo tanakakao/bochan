@@ -13,6 +13,10 @@ from .nsgaii import (
     optimize_acqf_nsgaii,
     validate_discrete_choices,
 )
+from .thompson_sampling import (
+    optimize_thompson_sampling,
+    optimize_thompson_sampling_mixed,
+)
 from .torch_opt import (
     optimize_acqf_torch,
     optimize_acqf_torch_mixed,
@@ -31,6 +35,8 @@ __all__ = [
     "equality_constraints_to_inequality_constraints",
     "optimize_acqf_nsgaii",
     "validate_discrete_choices",
+    "optimize_thompson_sampling",
+    "optimize_thompson_sampling_mixed",
     "optimize_acqf_torch",
     "optimize_acqf_torch_mixed",
     "optimize_acqf_torch_k_sparse",

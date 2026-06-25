@@ -83,16 +83,23 @@ class _BaseProjectedModel(Model):
         """内部 ``base_model`` 用の MLL を構築する。
 
         ``base_model`` が独自の ``make_mll`` を持つ場合は、``beta`` などの
-        タスク固有引数を含めてそのまま委譲する。独自実装がない exact GP の場合は
-        ``beta`` を無視して ``ExactMarginalLogLikelihood`` を構築する。
+        タスク固有引数を含めてそのまま委譲する。ordinal projected model では
+        ``make_ordinal_mll`` を使い、それ以外の exact GP では ``beta`` を無視して
+        ``ExactMarginalLogLikelihood`` を構築する。
         """
         if hasattr(self.base_model, "make_mll"):
             return self.base_model.make_mll(**kwargs)
 
-        exact_kwargs = dict(kwargs)
-        exact_kwargs.pop("beta", None)
-        if exact_kwargs:
-            names = ", ".join(sorted(exact_kwargs))
+        mll_kwargs = dict(kwargs)
+        mll_kwargs.pop("beta", None)
+
+        if hasattr(self, "ordinal_likelihood"):
+            from bochan.fit import make_ordinal_mll
+
+            return make_ordinal_mll(self, **mll_kwargs)
+
+        if mll_kwargs:
+            names = ", ".join(sorted(mll_kwargs))
             raise TypeError(
                 "Exact projected models received unsupported MLL keyword arguments: "
                 f"{names}."

@@ -84,14 +84,17 @@ class _BaseProjectedModel(Model):
 
         ``base_model`` が独自の ``make_mll`` を持つ場合は、``beta`` などの
         タスク固有引数を含めてそのまま委譲する。独自実装がない exact GP の場合は
-        従来どおり ``ExactMarginalLogLikelihood`` を構築する。
+        ``beta`` を無視して ``ExactMarginalLogLikelihood`` を構築する。
         """
         if hasattr(self.base_model, "make_mll"):
             return self.base_model.make_mll(**kwargs)
-        if kwargs:
-            names = ", ".join(sorted(kwargs))
+
+        exact_kwargs = dict(kwargs)
+        exact_kwargs.pop("beta", None)
+        if exact_kwargs:
+            names = ", ".join(sorted(exact_kwargs))
             raise TypeError(
-                "Exact projected models do not accept MLL keyword arguments: "
+                "Exact projected models received unsupported MLL keyword arguments: "
                 f"{names}."
             )
         return ExactMarginalLogLikelihood(self.base_model.likelihood, self.base_model)

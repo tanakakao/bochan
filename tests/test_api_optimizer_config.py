@@ -29,7 +29,33 @@ def test_optimizer_kwargs_method_has_priority() -> None:
         optimizer_kwargs={"method": "sa"},
     )
 
+    assert config.evo_method == "sa"
     assert config.optimizer_kwargs["method"] == "sa"
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"optimizer": "cmaes", "q": 3},
+        {
+            "optimizer": "evo",
+            "q": 3,
+            "optimizer_kwargs": {"method": "cmaes"},
+        },
+    ],
+)
+def test_cmaes_q_greater_than_one_enables_sequential(kwargs: dict) -> None:
+    config = OptimizeConfig(**kwargs)
+
+    assert config.optimizer == "evo"
+    assert config.evo_method == "cmaes"
+    assert config.sequential is True
+
+
+def test_cmaes_q_one_preserves_sequential_false() -> None:
+    config = OptimizeConfig(optimizer="cmaes", q=1)
+
+    assert config.sequential is False
 
 
 @pytest.mark.parametrize(
@@ -72,3 +98,8 @@ def test_mixed_backend_is_selected_from_cat_dims(
 def test_unknown_optimizer_is_rejected() -> None:
     with pytest.raises(ValueError, match="Unknown optimizer"):
         OptimizeConfig(optimizer="unknown")
+
+
+def test_unknown_evolutionary_method_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Unknown evolutionary method"):
+        OptimizeConfig(optimizer="evo", optimizer_kwargs={"method": "unknown"})

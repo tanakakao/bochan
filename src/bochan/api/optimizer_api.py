@@ -1,9 +1,4 @@
-"""Public optimizer configuration and dispatch helpers.
-
-The public API exposes backend families instead of separate mixed/non-mixed
-optimizer names. Mixed dispatch is inferred from categorical dimensions or a
-``fixed_features_list``.
-"""
+"""Canonical optimizer configuration and high-level dispatch helpers."""
 
 from __future__ import annotations
 
@@ -11,8 +6,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any, Literal, Sequence
 
-from .configs import OptimizeConfig as _BaseOptimizeConfig
 from . import factory as _factory
+from .configs import OptimizeConfig as _BaseOptimizeConfig
+
+_BASE_OPTIMIZE_CANDIDATES = _factory.optimize_candidates
 
 EvolutionaryMethod = Literal["ga", "pso", "sa", "cmaes"]
 OptimizerName = Literal[
@@ -56,12 +53,11 @@ def _optimizer_name(optimizer: str) -> str:
 
 @dataclass
 class OptimizeConfig(_BaseOptimizeConfig):
-    """Candidate optimization configuration with canonical backend names.
+    """Candidate optimization configuration using backend-family names.
 
-    ``optimizer`` accepts the backend families ``optimize_acqf``, ``evo``,
-    ``torch``, ``nsgaii``, and ``thompson_sampling``. Evolutionary methods may
-    also be selected directly with ``ga``, ``pso``, ``sa``, or ``cmaes``.
-    Mixed dispatch is selected automatically by the high-level API.
+    Mixed/non-mixed implementations are selected automatically. Evolutionary
+    backends may be selected with ``optimizer="evo"`` plus ``evo_method``, or
+    directly with ``optimizer="ga"``, ``"pso"``, ``"sa"``, or ``"cmaes"``.
     """
 
     optimizer: OptimizerName | str | Callable[..., Any] = "optimize_acqf"
@@ -71,7 +67,8 @@ class OptimizeConfig(_BaseOptimizeConfig):
         if callable(self.optimizer) and not isinstance(self.optimizer, str):
             return
 
-        name = _ALIASES.get(_optimizer_name(str(self.optimizer)), _optimizer_name(str(self.optimizer)))
+        raw_name = _optimizer_name(str(self.optimizer))
+        name = _ALIASES.get(raw_name, raw_name)
         if name in _EVOLUTIONARY_METHODS:
             self.evo_method = name  # type: ignore[assignment]
             name = "evo"
@@ -90,7 +87,7 @@ def resolve_optimizer_from_cat_dims(
     opt_config: _BaseOptimizeConfig,
     cat_dims: Sequence[int] | None,
 ) -> _BaseOptimizeConfig:
-    """Resolve a canonical backend to its mixed implementation when needed."""
+    """Resolve canonical backend names to mixed implementations."""
 
     if not cat_dims:
         return opt_config
@@ -98,18 +95,17 @@ def resolve_optimizer_from_cat_dims(
     if callable(optimizer) and not isinstance(optimizer, str):
         return opt_config
 
-    mixed_by_name = {
+    mixed_name = {
         "optimize_acqf": "optimize_acqf_mixed",
         "evo": "evo_mixed",
         "torch": "torch_mixed",
         "thompson_sampling": "thompson_sampling_mixed",
-    }
-    mixed_name = mixed_by_name.get(_optimizer_name(str(optimizer)))
+    }.get(_optimizer_name(str(optimizer)))
     return opt_config if mixed_name is None else replace(opt_config, optimizer=mixed_name)
 
 
 def uses_mixed_fixed_features(optimizer: Any) -> bool:
-    """Return whether an optimizer requires mixed fixed-feature enumeration."""
+    """Return whether the backend needs categorical fixed-feature enumeration."""
 
     if callable(optimizer) and not isinstance(optimizer, str):
         return False
@@ -125,7 +121,7 @@ def uses_mixed_fixed_features(optimizer: Any) -> bool:
 
 
 def _common_kwargs(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> dict[str, Any]:
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "acq_function": acqf,
         "bounds": bounds,
         "q": config.q,
@@ -148,13 +144,13 @@ def _common_kwargs(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> dict[
 
 
 def optimize_candidates(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> tuple[Any, Any]:
-    """Dispatch canonical optimizer names, including NSGA-II and Thompson sampling."""
+    """Dispatch canonical names, including NSGA-II and Thompson sampling."""
 
     if bounds is None:
         raise ValueError("bounds must be provided.")
     optimizer = config.optimizer
     if callable(optimizer) and not isinstance(optimizer, str):
-        return _factory.optimize_candidates(acqf=acqf, bounds=bounds, config=config)
+        return _BASE_OPTIMIZE_CANDIDATES(acqf=acqf, bounds=bounds, config=config)
 
     name = _optimizer_name(str(optimizer))
     is_mixed = config.fixed_features_list is not None
@@ -165,21 +161,22 @@ def optimize_candidates(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> 
             "evo": "evo_mixed",
             "torch": "torch_mixed",
         }[name]
-        return _factory.optimize_candidates(
+        return _BASE_OPTIMIZE_CANDIDATES(
             acqf=acqf,
             bounds=bounds,
             config=replace(config, optimizer=mixed_name),
         )
 
-    if name not in {
+    special = {
         "nsgaii",
         "optimize_acqf_nsgaii",
         "thompson_sampling",
         "optimize_thompson_sampling",
         "thompson_sampling_mixed",
         "optimize_thompson_sampling_mixed",
-    }:
-        return _factory.optimize_candidates(acqf=acqf, bounds=bounds, config=config)
+    }
+    if name not in special:
+        return _BASE_OPTIMIZE_CANDIDATES(acqf=acqf, bounds=bounds, config=config)
 
     kwargs = _common_kwargs(acqf, bounds, config)
     if name in {"nsgaii", "optimize_acqf_nsgaii"}:
@@ -188,9 +185,11 @@ def optimize_candidates(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> 
         kwargs = _factory._filter_kwargs_for_callable(optimize_acqf_nsgaii, kwargs)
         return optimize_acqf_nsgaii(**kwargs)
 
-    if name in {"thompson_sampling_mixed", "optimize_thompson_sampling_mixed"} or (
-        name in {"thompson_sampling", "optimize_thompson_sampling"} and is_mixed
-    ):
+    use_mixed = name in {
+        "thompson_sampling_mixed",
+        "optimize_thompson_sampling_mixed",
+    } or (name in {"thompson_sampling", "optimize_thompson_sampling"} and is_mixed)
+    if use_mixed:
         from bochan.optim import optimize_thompson_sampling_mixed
 
         fixed_features_list = _factory._merge_fixed_features_list(

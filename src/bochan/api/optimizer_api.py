@@ -58,6 +58,9 @@ class OptimizeConfig(_BaseOptimizeConfig):
     Mixed/non-mixed implementations are selected automatically. Evolutionary
     backends may be selected with ``optimizer="evo"`` plus ``evo_method``, or
     directly with ``optimizer="ga"``, ``"pso"``, ``"sa"``, or ``"cmaes"``.
+
+    CMA-ES only optimizes one point at a time. Therefore, when its effective
+    method is ``cmaes`` and ``q > 1``, ``sequential`` is enabled automatically.
     """
 
     optimizer: OptimizerName | str | Callable[..., Any] = "optimize_acqf"
@@ -79,7 +82,17 @@ class OptimizeConfig(_BaseOptimizeConfig):
         self.optimizer = name
         self.optimizer_kwargs = dict(self.optimizer_kwargs)
         if name == "evo":
-            self.optimizer_kwargs.setdefault("method", self.evo_method)
+            effective_method = _optimizer_name(
+                str(self.optimizer_kwargs.setdefault("method", self.evo_method))
+            )
+            if effective_method not in _EVOLUTIONARY_METHODS:
+                raise ValueError(
+                    f"Unknown evolutionary method: {effective_method!r}. "
+                    f"Expected one of {sorted(_EVOLUTIONARY_METHODS)}."
+                )
+            self.evo_method = effective_method  # type: ignore[assignment]
+            if effective_method == "cmaes" and self.q > 1:
+                self.sequential = True
 
 
 def resolve_optimizer_from_cat_dims(

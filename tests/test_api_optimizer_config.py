@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from bochan.api import OptimizeConfig
-from bochan.api.optimizer_api import resolve_optimizer_from_cat_dims
+from bochan.api.optimizer_api import (
+    _resolve_thompson_sampling_target,
+    resolve_optimizer_from_cat_dims,
+)
 
 
 @pytest.mark.parametrize("method", ["ga", "pso", "sa", "cmaes"])
@@ -56,6 +61,19 @@ def test_cmaes_q_one_preserves_sequential_false() -> None:
     config = OptimizeConfig(optimizer="cmaes", q=1)
 
     assert config.sequential is False
+
+
+def test_thompson_sampling_uses_model_not_acquisition_objective() -> None:
+    model = object()
+    acquisition = SimpleNamespace(model=model, objective=object())
+
+    assert _resolve_thompson_sampling_target(acquisition) is model
+
+
+def test_thompson_sampling_accepts_model_directly() -> None:
+    model = object()
+
+    assert _resolve_thompson_sampling_target(model) is model
 
 
 @pytest.mark.parametrize(

@@ -34,27 +34,10 @@ except Exception:  # pragma: no cover
 class qMultiOutputRegressionNParEGO(MCAcquisitionFunction):
     """Multi-output regression NParEGO acquisition.
 
-    ``objective`` is treated as a multi-output preprocessing objective. For
-    example, ``RegressionLinearMCObjective`` can select outputs, align maximize /
-    minimize directions, apply output scales, and convert equality targets. The
-    resulting objective values are then scalarized internally with an augmented
-    Chebyshev scalarization and evaluated using qEI-style improvement.
-
-    Args:
-        model: BoTorch-compatible multi-output model.
-        X_baseline: Existing evaluated inputs used to determine ``best_value``.
-        ref_point: Reference point in the transformed objective space.
-        weights: NParEGO scalarization weights. Random normalized weights are
-            generated when omitted.
-        sampler: Posterior sampler. Defaults to 128 Sobol QMC samples.
-        objective: Optional multi-output preprocessing objective. Identity is
-            used when omitted.
-        constraints: BoTorch outcome constraints applied to raw posterior
-            samples. A constraint is feasible when its value is ``<= 0``.
-        X_pending: Pending candidates appended during acquisition evaluation.
-        eta: Constraint smoothing temperature.
-        fat: Whether to use fat-tailed smooth feasibility approximations.
-        rho: Augmentation coefficient for Chebyshev scalarization.
+    ``objective`` is treated as preprocessing before augmented Chebyshev
+    scalarization. Multi-output objectives return ``[..., q, m]`` directly.
+    Scalar objectives returning ``[..., q]`` are also accepted and are
+    normalized internally to ``[..., q, 1]``.
     """
 
     def __init__(
@@ -105,18 +88,15 @@ class qMultiOutputRegressionNParEGO(MCAcquisitionFunction):
         with torch.no_grad():
             posterior = model.posterior(self.X_baseline)
             baseline_values = base_objective(posterior.mean, X=self.X_baseline)
-            if baseline_values.ndim < 1:
-                raise RuntimeError(
-                    "objective must return values with an objective dimension. "
-                    f"Got shape {tuple(baseline_values.shape)}."
-                )
+            baseline_values = self._normalize_objective_values(baseline_values)
             objective_dim = int(baseline_values.shape[-1])
 
         if objective_dim != ref.numel():
             raise ValueError(
                 "ref_point length must match the transformed objective dimension. "
                 f"Got ref_point length {ref.numel()} and objective dimension "
-                f"{objective_dim}."
+                f"{objective_dim}. objective output shape was "
+                f"{tuple(baseline_values.shape)}."
             )
 
         if weights is None:
@@ -144,6 +124,27 @@ class qMultiOutputRegressionNParEGO(MCAcquisitionFunction):
         with torch.no_grad():
             baseline_score = self._scalarize(baseline_values)
             self.register_buffer("best_value", baseline_score.max())
+
+    def _normalize_objective_values(self, values: Tensor) -> Tensor:
+        """Ensure objective values have an explicit final objective dimension."""
+
+        if not torch.is_tensor(values):
+            raise TypeError(
+                "objective must return a Tensor during NParEGO evaluation. "
+                f"Got {type(values)}."
+            )
+        if values.ndim < 1:
+            raise RuntimeError(
+                "objective must return at least one q-batch dimension. "
+                f"Got shape {tuple(values.shape)}."
+            )
+
+        # BoTorch scalar MC objectives return [..., q], whereas multi-output
+        # objectives return [..., q, m]. Without this normalization, a baseline
+        # with n rows is incorrectly interpreted as having n objectives.
+        if not bool(getattr(self.base_objective, "_is_mo", False)):
+            values = values.unsqueeze(-1)
+        return values
 
     def _scalarize(self, values: Tensor) -> Tensor:
         """Apply augmented Chebyshev scalarization in objective space."""
@@ -180,13 +181,13 @@ class qMultiOutputRegressionNParEGO(MCAcquisitionFunction):
         posterior = self.model.posterior(X)
         samples = self.get_posterior_samples(posterior)
         objective_values = self.base_objective(samples, X=X)
+        objective_values = self._normalize_objective_values(objective_values)
         scalarized = self._scalarize(objective_values)
         improvement = (
             scalarized - self.best_value.to(device=scalarized.device, dtype=scalarized.dtype)
         ).clamp_min(0.0)
         improvement = self._apply_constraints(improvement, samples)
 
-        # qEI-style reduction: maximize within q, then average MC sample dims.
         value = improvement.max(dim=-1).values
         batch_ndim = len(X.shape[:-2])
         while value.ndim > batch_ndim:

@@ -59,7 +59,6 @@ from .hybrid import (
 from .outcome_constraints import (
     ConstraintOperator,
     OutcomeConstraint,
-    OutcomeConstraintSpec,
     make_interval_outcome_constraints,
     make_outcome_constraint,
     make_outcome_constraints,
@@ -111,7 +110,6 @@ __all__ = [
     "resolve_hybrid_output_indices",
     "ConstraintOperator",
     "OutcomeConstraint",
-    "OutcomeConstraintSpec",
     "make_interval_outcome_constraints",
     "make_outcome_constraint",
     "make_outcome_constraints",

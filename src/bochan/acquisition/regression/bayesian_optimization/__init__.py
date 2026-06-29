@@ -4,11 +4,17 @@ from .hetero_multi_output import (
     qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement,
     qHeteroMultiOutputRegressionNParEGO,
 )
-
 from .hetero_single_output import (
     qHeteroRegressionUpperConfidenceBound,
     qHeteroRegressionExpectedImprovement,
     qHeteroRegressionProbabilityOfImprovement,
+)
+from .multi_output import (
+    qMultiOutputRegressionExpectedHypervolumeImprovement,
+    qMultiOutputRegressionLogExpectedHypervolumeImprovement,
+    qMultiOutputRegressionLogNoisyExpectedHypervolumeImprovement,
+    qMultiOutputRegressionNoisyExpectedHypervolumeImprovement,
+    qMultiOutputRegressionNParEGO,
 )
 
 __all__ = [
@@ -19,4 +25,9 @@ __all__ = [
     "qHeteroRegressionUpperConfidenceBound",
     "qHeteroRegressionExpectedImprovement",
     "qHeteroRegressionProbabilityOfImprovement",
+    "qMultiOutputRegressionExpectedHypervolumeImprovement",
+    "qMultiOutputRegressionLogExpectedHypervolumeImprovement",
+    "qMultiOutputRegressionLogNoisyExpectedHypervolumeImprovement",
+    "qMultiOutputRegressionNoisyExpectedHypervolumeImprovement",
+    "qMultiOutputRegressionNParEGO",
 ]

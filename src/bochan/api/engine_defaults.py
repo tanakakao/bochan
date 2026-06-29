@@ -90,6 +90,35 @@ def resolve_multi_output_model_config(
     return replace(model_config, multi_output_config=MultiOutputConfig())
 
 
+def _resolve_default_regression_nparego_class(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+) -> AcquisitionConfig:
+    """Use bochan's regression NParEGO implementation for multi-output regression.
+
+    The short aliases ``nparego`` and ``qnparego`` historically resolve to
+    BoTorch ``qExpectedImprovement`` and rely on a separately scalarized
+    objective. For multi-output regression, default to
+    ``qMultiOutputRegressionNParEGO`` instead so a normal
+    ``RegressionLinearMCObjective`` can be supplied as the multi-output
+    preprocessing objective.
+
+    Explicit canonical acquisition names and non-regression tasks are left
+    unchanged.
+    """
+
+    if _normalize_name(config.name) not in {"nparego", "qnparego"}:
+        return config
+    if str(bundle.task_type) != "regression" or _num_outputs(bundle.train_Y) < 2:
+        return config
+
+    from bochan.acquisition.regression.bayesian_optimization import (
+        qMultiOutputRegressionNParEGO,
+    )
+
+    return replace(config, acqf_cls=qMultiOutputRegressionNParEGO)
+
+
 def _explicit_acqf_value(config: AcquisitionConfig, name: str) -> Any:
     """Return a non-None value explicitly supplied in ``acqf_kwargs``."""
 
@@ -260,6 +289,7 @@ def resolve_acquisition_defaults(
 
     from .factory import prepare_multi_objective_context
 
+    config = _resolve_default_regression_nparego_class(bundle, config)
     context = prepare_multi_objective_context(bundle, context, config)
     config = _resolve_default_ordinal_objective(bundle, config)
     kind = _acquisition_kind(config)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 import torch
+from botorch.acquisition.objective import GenericMCObjective
 from botorch.models import SingleTaskGP
 
 from bochan.acquisition.objective import RegressionLinearMCObjective
@@ -49,6 +50,24 @@ def test_regression_nparego_accepts_linear_multi_output_objective() -> None:
         acqf.weights,
         torch.tensor([0.4, 0.6], dtype=torch.double),
     )
+
+
+def test_regression_nparego_accepts_scalar_objective() -> None:
+    model, train_X = _make_model()
+    objective = GenericMCObjective(lambda samples, X=None: samples[..., 0])
+
+    acqf = qMultiOutputRegressionNParEGO(
+        model=model,
+        X_baseline=train_X,
+        ref_point=torch.tensor([-0.1], dtype=torch.double),
+        objective=objective,
+    )
+
+    value = acqf(torch.tensor([[[0.2], [0.8]]], dtype=torch.double))
+
+    assert acqf.weights.shape == torch.Size([1])
+    assert value.shape == torch.Size([1])
+    assert torch.isfinite(value).all()
 
 
 def test_regression_nparego_supports_outcome_constraints() -> None:

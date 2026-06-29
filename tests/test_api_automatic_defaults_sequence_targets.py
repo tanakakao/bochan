@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import torch
+from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 
 from bochan.api import AcquisitionConfig, DataContext, ModelBundle, ModelConfig
 import bochan.api.engine_defaults as engine_defaults
@@ -14,6 +15,11 @@ class _NeedsEHVIContext:
         self.model = model
         self.ref_point = ref_point
         self.partitioning = partitioning
+
+
+class _ListReturningHybridObjective(MCMultiOutputObjective):
+    def forward(self, samples, X=None):
+        return [samples[..., 0], -samples[..., 1]]
 
 
 def _make_sequence_target_bundle() -> tuple[ModelBundle, torch.Tensor]:
@@ -41,8 +47,6 @@ def _make_sequence_target_bundle() -> tuple[ModelBundle, torch.Tensor]:
     bundle = ModelBundle(
         model=SimpleNamespace(),
         train_X=train_X,
-        # ModelListGP-like parent targets. These deliberately differ from the
-        # original observations to verify that sub-bundle train_Y is preferred.
         train_Y=(
             torch.tensor([-1.0, 0.0, 1.0], dtype=torch.double),
             torch.tensor([10.0, 11.0, 12.0], dtype=torch.double),
@@ -65,6 +69,23 @@ def test_observed_multiobjective_values_combine_sub_bundle_targets() -> None:
     )
 
     torch.testing.assert_close(values, original_Y)
+
+
+def test_observed_values_normalize_list_returning_hybrid_objective() -> None:
+    bundle, original_Y = _make_sequence_target_bundle()
+
+    values = observed_multiobjective_values(
+        bundle,
+        AcquisitionConfig(
+            name="nparego",
+            acqf_cls=_NeedsEHVIContext,
+            objective=_ListReturningHybridObjective(),
+        ),
+        DataContext(),
+    )
+
+    expected = torch.stack([original_Y[:, 0], -original_Y[:, 1]], dim=-1)
+    torch.testing.assert_close(values, expected)
 
 
 def test_ehvi_defaults_support_model_list_target_sequences(monkeypatch) -> None:

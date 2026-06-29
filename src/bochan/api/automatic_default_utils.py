@@ -102,31 +102,71 @@ def _infer_ordinal_utility_values(model: Any) -> Any:
     return utility_values[0] if len(utility_values) == 1 else utility_values
 
 
+def _normalize_objective_result(result: Any, *, values: Any) -> Any:
+    """Normalize deterministic objective outputs to a tensor when possible."""
+
+    import torch
+
+    if isinstance(result, (list, tuple)):
+        if len(result) == 0:
+            raise ValueError("objective returned an empty sequence.")
+        parts = []
+        for part in result:
+            tensor = part if torch.is_tensor(part) else torch.as_tensor(part)
+            if tensor.ndim == 0:
+                tensor = tensor.reshape(1, 1)
+            elif tensor.ndim == 1:
+                tensor = tensor.unsqueeze(-1)
+            parts.append(tensor)
+        prefix_shapes = {tuple(part.shape[:-1]) for part in parts}
+        if len(prefix_shapes) != 1:
+            raise RuntimeError(
+                "objective sequence outputs must share the same leading shape. "
+                f"Got shapes={[tuple(part.shape) for part in parts]}."
+            )
+        result = torch.cat(parts, dim=-1)
+    elif not torch.is_tensor(result):
+        device = getattr(values, "device", None)
+        dtype = getattr(values, "dtype", None)
+        result = torch.as_tensor(result, device=device, dtype=dtype)
+
+    if torch.is_tensor(result):
+        while result.ndim > 2 and result.shape[0] == 1:
+            result = result.squeeze(0)
+    return result
+
+
 def _call_objective(objective: Any, values: Any, X: Any) -> Any:
-    """Apply an MC objective to deterministic observed values."""
+    """Apply an MC objective to deterministic observed values.
+
+    For hybrid objectives, ``forward`` may return a list of per-output tensors.
+    Calling ``MCAcquisitionObjective.__call__`` performs BoTorch's tensor shape
+    verification before such a list can be normalized. Therefore deterministic
+    baseline evaluation tries ``forward`` directly first, then falls back to the
+    normal callable interface.
+    """
 
     import torch
 
     attempts = [values]
     if torch.is_tensor(values) and values.ndim <= 2:
         attempts.append(values.unsqueeze(0))
+
+    callables = []
+    forward = getattr(objective, "forward", None)
+    if callable(forward):
+        callables.append(forward)
+    callables.append(objective)
+
     last_error: Exception | None = None
     for candidate in attempts:
-        for with_X in (True, False):
-            try:
-                result = objective(candidate, X=X) if with_X else objective(candidate)
-                if not torch.is_tensor(result) and not isinstance(
-                    result, (list, tuple)
-                ):
-                    result = torch.as_tensor(
-                        result, device=values.device, dtype=values.dtype
-                    )
-                if torch.is_tensor(result):
-                    while result.ndim > 2 and result.shape[0] == 1:
-                        result = result.squeeze(0)
-                return result
-            except (TypeError, RuntimeError, ValueError) as exc:
-                last_error = exc
+        for fn in callables:
+            for with_X in (True, False):
+                try:
+                    result = fn(candidate, X=X) if with_X else fn(candidate)
+                    return _normalize_objective_result(result, values=values)
+                except (AttributeError, TypeError, RuntimeError, ValueError) as exc:
+                    last_error = exc
     if last_error is not None:
         raise last_error
     return values

@@ -162,7 +162,7 @@ def _resolve_default_ordinal_objective(
     """Create expected-utility objective for ordinal utility acquisitions.
 
     Explicit ``objective``, ``objective_factory`` and ``objective_config`` always
-    take precedence.  Utility values are inferred as ``[0, ..., K - 1]`` from
+    take precedence. Utility values are inferred as ``[0, ..., K - 1]`` from
     ``num_classes`` or the ordinal cutpoints.
     """
 
@@ -188,6 +188,26 @@ def _resolve_default_ordinal_objective(
     return replace(config, objective=objective)
 
 
+def _resolve_best_f_default(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    context: DataContext,
+) -> tuple[AcquisitionConfig, DataContext]:
+    """Fill ``best_f`` without overwriting an explicit configuration value."""
+
+    explicit = _explicit_acqf_value(config, "best_f")
+    if explicit is not None:
+        context.best_f = None
+        return config, context
+
+    value = context.best_f
+    if value is None and _callable_accepts_keyword(config.acqf_cls, "best_f"):
+        value = compute_best_f(bundle, config, context)
+    if value is not None:
+        config, context = _place_context_value(config, context, "best_f", value)
+    return config, context
+
+
 def resolve_acquisition_defaults(
     bundle: ModelBundle,
     config: AcquisitionConfig,
@@ -203,17 +223,10 @@ def resolve_acquisition_defaults(
     if kind is None:
         return config, context
 
-    if kind == "ei_pi":
-        explicit = _explicit_acqf_value(config, "best_f")
-        if explicit is not None:
-            context.best_f = None
+    if kind in {"ei_pi", "nparego"}:
+        config, context = _resolve_best_f_default(bundle, config, context)
+        if kind == "ei_pi":
             return config, context
-        value = context.best_f
-        if value is None and _callable_accepts_keyword(config.acqf_cls, "best_f"):
-            value = compute_best_f(bundle, config, context)
-        if value is not None:
-            config, context = _place_context_value(config, context, "best_f", value)
-        return config, context
 
     explicit_ref = _explicit_acqf_value(config, "ref_point")
     explicit_partitioning = _explicit_acqf_value(config, "partitioning")

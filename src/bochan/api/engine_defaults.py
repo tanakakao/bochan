@@ -140,6 +140,117 @@ def _place_context_value(
     return config, context
 
 
+def _is_ordinal_utility_acquisition(config: AcquisitionConfig) -> bool:
+    """Return whether the acquisition derives from the ordinal utility BO base."""
+
+    acqf_cls = config.acqf_cls
+    if acqf_cls is None:
+        return False
+    try:
+        return any(
+            base.__name__ == "_OrdinalPointwiseUtilityBOBase"
+            for base in inspect.getmro(acqf_cls)
+        )
+    except (AttributeError, TypeError):
+        return False
+
+
+def _resolve_default_ordinal_objective(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+) -> AcquisitionConfig:
+    """Create expected-utility objective for ordinal utility acquisitions.
+
+    Explicit ``objective``, ``objective_factory`` and ``objective_config`` always
+    take precedence. Utility values are inferred as ``[0, ..., K - 1]`` from
+    ``num_classes`` or the ordinal cutpoints.
+    """
+
+    if str(bundle.task_type) != "ordinal":
+        return config
+    if (
+        config.objective is not None
+        or config.objective_factory is not None
+        or config.objective_config is not None
+        or not _is_ordinal_utility_acquisition(config)
+    ):
+        return config
+
+    from bochan.acquisition.objective import OrdinalExpectedUtilityMCObjective
+    from .factory import _infer_ordinal_likelihood, _infer_ordinal_utility_values
+
+    likelihood = _infer_ordinal_likelihood(bundle.model)
+    utility_values = _infer_ordinal_utility_values(bundle.model, likelihood)
+    objective = OrdinalExpectedUtilityMCObjective(
+        ordinal_likelihood=likelihood,
+        utility_values=utility_values,
+    )
+    return replace(config, objective=objective)
+
+
+def _resolve_default_nparego_objective(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    context: DataContext,
+) -> AcquisitionConfig:
+    """Create a random Chebyshev scalarization for default NParEGO use.
+
+    Explicit objective settings always take precedence. The scalarization is
+    built from observed objective values and a random simplex weight vector, as
+    in the standard NParEGO construction. The same objective is subsequently
+    used when inferring ``best_f``.
+    """
+
+    if (
+        config.objective is not None
+        or config.objective_factory is not None
+        or config.objective_config is not None
+    ):
+        return config
+
+    import torch
+    from botorch.acquisition.objective import GenericMCObjective
+    from botorch.utils.multi_objective.scalarization import get_chebyshev_scalarization
+
+    values = observed_multiobjective_values(bundle, config, context)
+    values = torch.as_tensor(values)
+    if values.ndim != 2 or values.shape[-1] < 2:
+        raise ValueError(
+            "NParEGO requires observed values with shape [n, m] and m >= 2. "
+            f"Got {tuple(values.shape)}."
+        )
+
+    concentration = torch.ones(
+        values.shape[-1],
+        dtype=values.dtype,
+        device=values.device,
+    )
+    weights = torch.distributions.Dirichlet(concentration).sample()
+    scalarization = get_chebyshev_scalarization(weights=weights, Y=values)
+    objective = GenericMCObjective(lambda samples, X=None: scalarization(samples))
+    return replace(config, objective=objective)
+
+
+def _resolve_best_f_default(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    context: DataContext,
+) -> tuple[AcquisitionConfig, DataContext]:
+    """Fill ``best_f`` without overwriting an explicit configuration value."""
+
+    explicit = _explicit_acqf_value(config, "best_f")
+    if explicit is not None:
+        context.best_f = None
+        return config, context
+
+    value = context.best_f
+    if value is None and _callable_accepts_keyword(config.acqf_cls, "best_f"):
+        value = compute_best_f(bundle, config, context)
+    if value is not None:
+        config, context = _place_context_value(config, context, "best_f", value)
+    return config, context
+
+
 def resolve_acquisition_defaults(
     bundle: ModelBundle,
     config: AcquisitionConfig,
@@ -150,21 +261,18 @@ def resolve_acquisition_defaults(
     from .factory import prepare_multi_objective_context
 
     context = prepare_multi_objective_context(bundle, context, config)
+    config = _resolve_default_ordinal_objective(bundle, config)
     kind = _acquisition_kind(config)
     if kind is None:
         return config, context
 
-    if kind == "ei_pi":
-        explicit = _explicit_acqf_value(config, "best_f")
-        if explicit is not None:
-            context.best_f = None
+    if kind == "nparego":
+        config = _resolve_default_nparego_objective(bundle, config, context)
+
+    if kind in {"ei_pi", "nparego"}:
+        config, context = _resolve_best_f_default(bundle, config, context)
+        if kind == "ei_pi":
             return config, context
-        value = context.best_f
-        if value is None and _callable_accepts_keyword(config.acqf_cls, "best_f"):
-            value = compute_best_f(bundle, config, context)
-        if value is not None:
-            config, context = _place_context_value(config, context, "best_f", value)
-        return config, context
 
     explicit_ref = _explicit_acqf_value(config, "ref_point")
     explicit_partitioning = _explicit_acqf_value(config, "partitioning")

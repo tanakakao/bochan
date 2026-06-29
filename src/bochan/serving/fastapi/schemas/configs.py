@@ -132,6 +132,7 @@ class DataContextSchema(_Schema):
 class AcquisitionConfigSchema(_Schema):
     name: str
     objective_config: ObjectiveConfigSchema | None = None
+    constraints: Any | None = None
     sampler: Any | None = None
     acqf_kwargs: dict[str, Any] = Field(default_factory=dict)
     context_fields: tuple[str, ...] = (

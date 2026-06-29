@@ -2,26 +2,41 @@
 
 # ruff: noqa: E402
 
+from . import configs as _configs
 from . import engine as _engine
+from . import factory as _factory
+from .acquisition_config import AcquisitionConfig
 from .acquisition_registry import available_acqf_names, resolve_acqf_cls
 from .configs import (
-    AcquisitionConfig,
     AutoStandardizeOutcomeTransform,
     CandidateRepairConfig,
     CandidateResult,
     DataContext,
-    FitConfig,
     InputTransformConfig,
     ModelBundle,
     ModelConfig,
     MultiObjectiveConfig,
     MultiOutputConfig,
     ObjectiveConfig,
-    OptimizeConfig,
     OutputConfig,
     PredictionResult,
 )
+from .fit_config import FitConfig
+from .optimizer_api import (
+    OptimizeConfig,
+    optimize_candidates,
+    resolve_optimizer_from_cat_dims,
+    uses_mixed_fixed_features,
+)
 from .engine_defaults import BayesianOptimizer
+
+# Keep direct submodule imports aligned with the public high-level API.
+_configs.OptimizeConfig = OptimizeConfig
+_engine.OptimizeConfig = OptimizeConfig
+_engine._resolve_optimizer_from_cat_dims = resolve_optimizer_from_cat_dims
+_engine._uses_mixed_fixed_features = uses_mixed_fixed_features
+_engine.optimize_candidates = optimize_candidates
+_factory.optimize_candidates = optimize_candidates
 
 # Keep ``from bochan.api.engine import BayesianOptimizer`` aligned with the
 # public high-level API before importing modules that depend on it.
@@ -32,7 +47,6 @@ from .factory import (
     build_model,
     fit_model,
     infer_input_type,
-    optimize_candidates,
     prepare_multi_objective_context,
     resolve_model_cls,
 )

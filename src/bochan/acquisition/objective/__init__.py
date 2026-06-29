@@ -35,7 +35,7 @@ from .ordinal import (
     MultiOutputOrdinalScoreObjectiveMixin,
     ordinal_logit_probs_from_latent,
     ordinal_expected_utility_from_latent,
-    OrdinalExpectedUtilityMCObjective
+    OrdinalExpectedUtilityMCObjective,
 )
 
 from .regression import (
@@ -54,6 +54,14 @@ from .hybrid import (
     make_hybrid_objective_specs,
     make_hybrid_scalar_objective,
     resolve_hybrid_output_indices,
+)
+
+from .outcome_constraints import (
+    ConstraintOperator,
+    OutcomeConstraint,
+    make_interval_outcome_constraints,
+    make_outcome_constraint,
+    make_outcome_constraints,
 )
 
 __all__ = [
@@ -100,4 +108,9 @@ __all__ = [
     "make_hybrid_objective_specs",
     "make_hybrid_scalar_objective",
     "resolve_hybrid_output_indices",
+    "ConstraintOperator",
+    "OutcomeConstraint",
+    "make_interval_outcome_constraints",
+    "make_outcome_constraint",
+    "make_outcome_constraints",
 ]

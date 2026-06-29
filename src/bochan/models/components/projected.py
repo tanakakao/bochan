@@ -55,16 +55,10 @@ class _BaseProjectedModel(Model):
     def __init__(self) -> None:
         super().__init__()
 
-    # ------------------------------------------------------------------
-    # BoTorch eval-time transform の無効化
-    # ------------------------------------------------------------------
     def _set_transformed_inputs(self) -> None:
         """BoTorch の eval 時 transformed input 自動更新を無効化する。"""
         return None
 
-    # ------------------------------------------------------------------
-    # base model aliases
-    # ------------------------------------------------------------------
     @property
     def model(self):
         """内部 base_model の ``model`` 属性があれば返す。"""
@@ -85,42 +79,51 @@ class _BaseProjectedModel(Model):
         """base_model の batch_shape。なければ空 batch。"""
         return getattr(self.base_model, "batch_shape", torch.Size())
 
-    def make_mll(self):
-        """内部 ``base_model`` 用の ExactMarginalLogLikelihood を返す。
+    def make_mll(self, **kwargs: Any):
+        """内部 ``base_model`` 用の MLL を構築する。
 
-        Projected wrapper 自体は ``gpytorch.models.GP`` ではないため、
-        ``ExactMarginalLogLikelihood(self.likelihood, self)`` には渡せない。
-        学習時は projected-space の内部 GP である ``base_model`` に対して
-        MLL を構築する。
+        ``base_model`` が独自の ``make_mll`` を持つ場合は、``beta`` などの
+        タスク固有引数を含めてそのまま委譲する。ordinal projected model では
+        ``make_ordinal_mll`` を使い、それ以外の exact GP では ``beta`` を無視して
+        ``ExactMarginalLogLikelihood`` を構築する。
         """
+        if hasattr(self.base_model, "make_mll"):
+            return self.base_model.make_mll(**kwargs)
+
+        mll_kwargs = dict(kwargs)
+        mll_kwargs.pop("beta", None)
+
+        if hasattr(self, "ordinal_likelihood"):
+            from bochan.fit import make_ordinal_mll
+
+            return make_ordinal_mll(self, **mll_kwargs)
+
+        if mll_kwargs:
+            names = ", ".join(sorted(mll_kwargs))
+            raise TypeError(
+                "Exact projected models received unsupported MLL keyword arguments: "
+                f"{names}."
+            )
         return ExactMarginalLogLikelihood(self.base_model.likelihood, self.base_model)
 
-    # ------------------------------------------------------------------
-    # train inputs / targets
-    # ------------------------------------------------------------------
     @property
     def train_input_raw(self) -> Tensor:
-        """次元削減前の raw training X。"""
         return self._raw_train_X
 
     @property
     def train_inputs_raw(self) -> tuple[Tensor]:
-        """raw training X を BoTorch 風 tuple で返す。"""
         return (self.train_input_raw,)
 
     @property
     def train_input(self) -> Tensor:
-        """wrapper が受け取る入力空間の training X。raw X と同じ。"""
         return self.train_input_raw
 
     @property
     def train_inputs(self) -> tuple[Tensor]:
-        """BoTorch-style training inputs。wrapper では raw X を返す。"""
         return (self.train_input,)
 
     @property
     def preproject_train_input(self) -> Tensor:
-        """input_transform 後、projection 前の training X。"""
         return self._preproject_train_X
 
     @property
@@ -129,7 +132,6 @@ class _BaseProjectedModel(Model):
 
     @property
     def projected_train_input(self) -> Tensor:
-        """PCA / REMBO 後、base_model に渡す training X。"""
         return self._projected_train_X
 
     @property
@@ -140,7 +142,6 @@ class _BaseProjectedModel(Model):
     def train_targets(self) -> Tensor:
         return self._train_targets
 
-    # 後方互換 alias
     @property
     def raw_train_X(self) -> Tensor:
         return self.train_input_raw
@@ -153,11 +154,7 @@ class _BaseProjectedModel(Model):
     def train_Y(self) -> Tensor:
         return self.train_targets
 
-    # ------------------------------------------------------------------
-    # 変換経路
-    # ------------------------------------------------------------------
     def _to_preprojection_space(self, X: Tensor) -> Tensor:
-        """raw X -> input_transform 後の preproject-space X。"""
         if isinstance(X, tuple):
             X = X[0]
         X = torch.as_tensor(
@@ -178,26 +175,16 @@ class _BaseProjectedModel(Model):
         )
 
     def _project_preprojected_inputs(self, X: Tensor) -> Tensor:
-        """preproject-space X -> projected-space X。
-
-        サブクラスで PCA / REMBO ごとに実装する。
-        """
         raise NotImplementedError
 
     def transform_inputs(self, X: Tensor) -> Tensor:
-        """raw X -> projected-space X。"""
         X_pre = self._to_preprojection_space(X)
         return self._project_preprojected_inputs(X_pre)
 
-    # ------------------------------------------------------------------
-    # BoTorch-style API
-    # ------------------------------------------------------------------
     def posterior(self, X: Tensor, *args: Any, **kwargs: Any):
-        """raw X を受け取り、projected-space に写して base_model.posterior を呼ぶ。"""
         return self.base_model.posterior(self.transform_inputs(X), *args, **kwargs)
 
     def forward(self, X: Tensor):
-        """raw X を受け取り、projected-space に写して base_model を呼ぶ。"""
         return self.base_model(self.transform_inputs(X))
 
     def set_train_data(
@@ -206,16 +193,6 @@ class _BaseProjectedModel(Model):
         targets: Optional[Tensor] = None,
         strict: bool = True,
     ) -> None:
-        """wrapper と base_model の training data を更新する。
-
-        Args:
-            inputs: raw-space の新しい training X。
-            targets: 新しい training target。
-            strict: base_model 側に渡す ``strict``。wrapper では厳密には使わない。
-
-        Notes:
-            このメソッドは既存の projector を再利用する。PCA を再 fit する用途ではない。
-        """
         if inputs is not None:
             if torch.is_tensor(inputs):
                 X_raw = inputs
@@ -256,11 +233,6 @@ class _BaseProjectedModel(Model):
 
 
 class _BaseProjectedMixedModel(_BaseProjectedModel):
-    """mixed 入力用の固定射影 wrapper base。
-
-    連続列だけを PCA / REMBO に通し、カテゴリ列は raw encoding のまま末尾に結合する。
-    """
-
     def _setup_mixed_dims(
         self,
         *,
@@ -268,7 +240,6 @@ class _BaseProjectedMixedModel(_BaseProjectedModel):
         cat_dims: Sequence[int],
         category_counts: Optional[dict[int, int]] = None,
     ) -> None:
-        """mixed 入力のカテゴリ列・連続列情報を初期化する。"""
         if len(cat_dims) == 0:
             raise ValueError("cat_dims must be specified for mixed projected models.")
         self.input_dim_original = int(input_dim)
@@ -290,7 +261,6 @@ class _BaseProjectedMixedModel(_BaseProjectedModel):
         *,
         category_counts: Optional[dict[int, int]] = None,
     ) -> dict[int, int]:
-        """カテゴリ数を明示値または training X から推定する。"""
         inferred: dict[int, int] = {}
         if category_counts is not None:
             inferred.update({int(k): int(v) for k, v in category_counts.items()})
@@ -313,7 +283,6 @@ class _BaseProjectedMixedModel(_BaseProjectedModel):
         *,
         category_counts: Optional[dict[int, int]] = None,
     ) -> None:
-        """カテゴリ列が整数エンコード 0..K-1 であることを確認する。"""
         counts = self.category_counts if category_counts is None else category_counts
         if counts is None:
             return
@@ -331,7 +300,6 @@ class _BaseProjectedMixedModel(_BaseProjectedModel):
                 )
 
     def _project_continuous_and_concat_categorical(self, X_pre: Tensor, x_cont_projected: Tensor) -> Tensor:
-        """射影済み連続列とカテゴリ列を結合する。"""
         x_cat = X_pre[..., self.cat_dims]
         return torch.cat([x_cont_projected, x_cat], dim=-1)
 

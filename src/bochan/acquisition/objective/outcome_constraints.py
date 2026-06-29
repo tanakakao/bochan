@@ -7,7 +7,7 @@ returned values are less than or equal to zero.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Literal, Mapping, Sequence
+from typing import Callable, Literal, Mapping, Sequence, cast
 
 from torch import Tensor
 
@@ -38,6 +38,13 @@ class OutcomeConstraintSpec:
     threshold: float
 
 
+def _normalize_operator(operator: str) -> ConstraintOperator:
+    op = str(operator).lower()
+    if op not in {"ge", "gt", "le", "lt"}:
+        raise ValueError("operator must be one of 'ge', 'gt', 'le', or 'lt'.")
+    return cast(ConstraintOperator, op)
+
+
 def make_outcome_constraint(
     output_index: int,
     operator: ConstraintOperator,
@@ -63,10 +70,7 @@ def make_outcome_constraint(
     if idx < 0:
         raise ValueError("output_index must be non-negative.")
 
-    op = str(operator).lower()
-    if op not in {"ge", "gt", "le", "lt"}:
-        raise ValueError("operator must be one of 'ge', 'gt', 'le', or 'lt'.")
-
+    op = _normalize_operator(operator)
     threshold_f = float(threshold)
 
     def constraint(samples: Tensor) -> Tensor:
@@ -105,14 +109,14 @@ def make_outcome_constraints(
         elif isinstance(spec, Mapping):
             parsed = OutcomeConstraintSpec(
                 output_index=int(spec["output_index"]),
-                operator=str(spec["operator"]),  # type: ignore[arg-type]
+                operator=_normalize_operator(str(spec["operator"])),
                 threshold=float(spec["threshold"]),
             )
         else:
             output_index, operator, threshold = spec
             parsed = OutcomeConstraintSpec(
                 output_index=int(output_index),
-                operator=str(operator),  # type: ignore[arg-type]
+                operator=_normalize_operator(operator),
                 threshold=float(threshold),
             )
 

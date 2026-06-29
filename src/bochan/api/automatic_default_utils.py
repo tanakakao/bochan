@@ -8,11 +8,26 @@ from .configs import AcquisitionConfig, ModelBundle
 
 
 def _num_outputs(train_Y: Any) -> int:
-    """Infer the number of target columns from an array-like object."""
+    """Infer the number of target columns from tensor or sequence targets.
+
+    Hybrid and auto-wrapped model bundles may retain targets as a sequence of
+    tensors, one entry per sub-model. In that representation, the total output
+    count is the sum of the output counts of each entry.
+    """
+
+    if isinstance(train_Y, (list, tuple)):
+        if len(train_Y) == 0:
+            raise ValueError("train_Y sequence must not be empty.")
+        return sum(_num_outputs(target) for target in train_Y)
 
     shape = getattr(train_Y, "shape", None)
     if shape is None:
-        raise TypeError("train_Y must have a shape attribute.")
+        raise TypeError(
+            "train_Y must have a shape attribute or be a non-empty sequence "
+            "of array-like targets."
+        )
+    if len(shape) == 0:
+        return 1
     return 1 if len(shape) == 1 else int(shape[-1])
 
 

@@ -4,7 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from bochan.acquisition.objective import make_outcome_constraint
+from bochan.acquisition.objective import (
+    make_outcome_constraint,
+    make_outcome_constraints,
+)
 from bochan.api import AcquisitionConfig, ModelBundle, ModelConfig, build_acquisition
 
 
@@ -30,7 +33,7 @@ def _make_bundle() -> ModelBundle:
     )
 
 
-def test_acquisition_config_forwards_first_class_constraints() -> None:
+def test_acquisition_config_forwards_single_constraint() -> None:
     constraints = [make_outcome_constraint(1, "ge", 0.5)]
     objective = object()
     config = AcquisitionConfig(
@@ -44,6 +47,24 @@ def test_acquisition_config_forwards_first_class_constraints() -> None:
 
     assert acqf.constraints is constraints
     assert acqf.objective is objective
+
+
+def test_acquisition_config_forwards_parallel_list_constraints() -> None:
+    constraints = make_outcome_constraints(
+        output_indices=[1, 2],
+        operators=["ge", "le"],
+        thresholds=[0.5, 1.2],
+    )
+    config = AcquisitionConfig(
+        name="qei",
+        acqf_cls=_AcquisitionWithConstraints,
+        constraints=constraints,
+    )
+
+    acqf = build_acquisition(bundle=_make_bundle(), config=config)
+
+    assert acqf.constraints is constraints
+    assert len(acqf.constraints) == 2
 
 
 def test_constraints_are_parallel_to_objective_in_config() -> None:

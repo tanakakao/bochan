@@ -188,6 +188,49 @@ def _resolve_default_ordinal_objective(
     return replace(config, objective=objective)
 
 
+def _resolve_default_nparego_objective(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    context: DataContext,
+) -> AcquisitionConfig:
+    """Create a random Chebyshev scalarization for default NParEGO use.
+
+    Explicit objective settings always take precedence. The scalarization is
+    built from observed objective values and a random simplex weight vector, as
+    in the standard NParEGO construction. The same objective is subsequently
+    used when inferring ``best_f``.
+    """
+
+    if (
+        config.objective is not None
+        or config.objective_factory is not None
+        or config.objective_config is not None
+    ):
+        return config
+
+    import torch
+    from botorch.acquisition.objective import GenericMCObjective
+    from botorch.utils.multi_objective.scalarization import get_chebyshev_scalarization
+
+    values = observed_multiobjective_values(bundle, config, context)
+    values = torch.as_tensor(values)
+    if values.ndim != 2 or values.shape[-1] < 2:
+        raise ValueError(
+            "NParEGO requires observed values with shape [n, m] and m >= 2. "
+            f"Got {tuple(values.shape)}."
+        )
+
+    concentration = torch.ones(
+        values.shape[-1],
+        dtype=values.dtype,
+        device=values.device,
+    )
+    weights = torch.distributions.Dirichlet(concentration).sample()
+    scalarization = get_chebyshev_scalarization(weights=weights, Y=values)
+    objective = GenericMCObjective(lambda samples, X=None: scalarization(samples))
+    return replace(config, objective=objective)
+
+
 def _resolve_best_f_default(
     bundle: ModelBundle,
     config: AcquisitionConfig,
@@ -222,6 +265,9 @@ def resolve_acquisition_defaults(
     kind = _acquisition_kind(config)
     if kind is None:
         return config, context
+
+    if kind == "nparego":
+        config = _resolve_default_nparego_objective(bundle, config, context)
 
     if kind in {"ei_pi", "nparego"}:
         config, context = _resolve_best_f_default(bundle, config, context)

@@ -51,6 +51,19 @@ def _optimizer_name(optimizer: str) -> str:
     return optimizer.replace("-", "_").lower()
 
 
+def _resolve_thompson_sampling_target(acqf: Any) -> Any:
+    """Return the posterior model used by Thompson sampling.
+
+    Thompson sampling draws directly from the model posterior. Acquisition
+    objectives such as BALD are defined for a particular q-batch and must not be
+    forwarded implicitly to ``MaxPosteriorSampling`` over a large candidate
+    pool. Passing the model itself keeps Thompson sampling independent from the
+    acquisition function used to enter the high-level candidate API.
+    """
+
+    return getattr(acqf, "model", acqf)
+
+
 @dataclass
 class OptimizeConfig(_BaseOptimizeConfig):
     """Candidate optimization configuration using backend-family names.
@@ -198,6 +211,7 @@ def optimize_candidates(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> 
         kwargs = _factory._filter_kwargs_for_callable(optimize_acqf_nsgaii, kwargs)
         return optimize_acqf_nsgaii(**kwargs)
 
+    kwargs["acq_function"] = _resolve_thompson_sampling_target(acqf)
     use_mixed = name in {
         "thompson_sampling_mixed",
         "optimize_thompson_sampling_mixed",

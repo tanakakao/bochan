@@ -6,36 +6,13 @@ returned values are less than or equal to zero.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Callable, Literal, Mapping, Sequence, cast
+from typing import Callable, Literal, Sequence, cast
 
 from torch import Tensor
 
 
 ConstraintOperator = Literal["ge", "gt", "le", "lt"]
 OutcomeConstraint = Callable[[Tensor], Tensor]
-
-
-@dataclass(frozen=True)
-class OutcomeConstraintSpec:
-    """Declarative specification for a scalar model-output constraint.
-
-    Args:
-        output_index: Index of the constrained model output.
-        operator: Comparison operator. ``"ge"`` / ``"gt"`` mean that the
-            output must be greater than the threshold. ``"le"`` / ``"lt"``
-            mean that it must be smaller than the threshold.
-        threshold: Constraint threshold in the model output space.
-
-    Notes:
-        BoTorch uses a smooth feasibility indicator, so strict and non-strict
-        operators have the same numerical representation at the acquisition
-        level. Both are retained for a natural public API.
-    """
-
-    output_index: int
-    operator: ConstraintOperator
-    threshold: float
 
 
 def _normalize_operator(operator: str) -> ConstraintOperator:
@@ -59,11 +36,11 @@ def make_outcome_constraint(
     Examples:
         ``y[1] >= 0.5``::
 
-            make_outcome_constraint(1, "ge", 0.5)
-
-        ``y[2] <= 1.2``::
-
-            make_outcome_constraint(2, "le", 1.2)
+            constraint = make_outcome_constraint(
+                output_index=1,
+                operator="ge",
+                threshold=0.5,
+            )
     """
 
     idx = int(output_index)
@@ -91,44 +68,48 @@ def make_outcome_constraint(
 
 
 def make_outcome_constraints(
-    specs: Sequence[OutcomeConstraintSpec | Mapping[str, object] | tuple[int, str, float]],
+    output_indices: Sequence[int],
+    operators: Sequence[ConstraintOperator],
+    thresholds: Sequence[float],
 ) -> list[OutcomeConstraint]:
-    """Create multiple outcome constraints from declarative specifications.
+    """Create multiple outcome constraints from parallel sequences.
 
-    Supported specification forms are:
+    The values at the same position define one constraint. For example,
+    ``output_indices=[1, 2]``, ``operators=["ge", "le"]``, and
+    ``thresholds=[0.5, 1.2]`` create ``y[1] >= 0.5`` and ``y[2] <= 1.2``.
 
-    - ``OutcomeConstraintSpec(output_index=1, operator="ge", threshold=0.5)``
-    - ``{"output_index": 1, "operator": "ge", "threshold": 0.5}``
-    - ``(1, "ge", 0.5)``
+    Args:
+        output_indices: Constrained model-output indices.
+        operators: Comparison operators for the corresponding outputs.
+        thresholds: Thresholds for the corresponding outputs.
+
+    Returns:
+        list[OutcomeConstraint]: BoTorch-compatible outcome constraints.
     """
 
-    constraints: list[OutcomeConstraint] = []
-    for spec in specs:
-        if isinstance(spec, OutcomeConstraintSpec):
-            parsed = spec
-        elif isinstance(spec, Mapping):
-            parsed = OutcomeConstraintSpec(
-                output_index=int(spec["output_index"]),
-                operator=_normalize_operator(str(spec["operator"])),
-                threshold=float(spec["threshold"]),
-            )
-        else:
-            output_index, operator, threshold = spec
-            parsed = OutcomeConstraintSpec(
-                output_index=int(output_index),
-                operator=_normalize_operator(operator),
-                threshold=float(threshold),
-            )
-
-        constraints.append(
-            make_outcome_constraint(
-                output_index=parsed.output_index,
-                operator=parsed.operator,
-                threshold=parsed.threshold,
-            )
+    lengths = {
+        "output_indices": len(output_indices),
+        "operators": len(operators),
+        "thresholds": len(thresholds),
+    }
+    if len(set(lengths.values())) != 1:
+        raise ValueError(
+            "output_indices, operators, and thresholds must have the same length. "
+            f"Got: {lengths}"
         )
 
-    return constraints
+    return [
+        make_outcome_constraint(
+            output_index=output_index,
+            operator=operator,
+            threshold=threshold,
+        )
+        for output_index, operator, threshold in zip(
+            output_indices,
+            operators,
+            thresholds,
+        )
+    ]
 
 
 def make_interval_outcome_constraints(
@@ -152,7 +133,6 @@ def make_interval_outcome_constraints(
 __all__ = [
     "ConstraintOperator",
     "OutcomeConstraint",
-    "OutcomeConstraintSpec",
     "make_interval_outcome_constraints",
     "make_outcome_constraint",
     "make_outcome_constraints",

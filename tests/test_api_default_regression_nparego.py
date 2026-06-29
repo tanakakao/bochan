@@ -78,6 +78,34 @@ def test_qnparego_alias_also_uses_custom_acquisition() -> None:
     assert resolved.acqf_cls is qMultiOutputRegressionNParEGO
 
 
+def test_sequence_targets_use_custom_regression_nparego() -> None:
+    train_X = torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.double)
+    train_Y = (
+        torch.tensor([1.0, 2.0, 0.0], dtype=torch.double),
+        torch.tensor([3.0, 2.0, 4.0], dtype=torch.double),
+    )
+    bundle = ModelBundle(
+        model=SimpleNamespace(),
+        train_X=train_X,
+        train_Y=train_Y,
+        model_config=ModelConfig(
+            task_type="regression",
+            model_type="hybrid",
+            outcome_transform=False,
+        ),
+        task_type="regression",
+        model_type="hybrid",
+    )
+
+    resolved, _ = resolve_acquisition_defaults(
+        bundle,
+        AcquisitionConfig(name="nparego", acqf_cls=qExpectedImprovement),
+        DataContext(X_baseline=train_X),
+    )
+
+    assert resolved.acqf_cls is qMultiOutputRegressionNParEGO
+
+
 def test_single_output_regression_nparego_keeps_standard_acquisition() -> None:
     bundle = _make_bundle(
         torch.tensor([[1.0], [2.0], [0.0]], dtype=torch.double)

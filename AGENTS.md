@@ -88,10 +88,8 @@ mixed input は独立カテゴリではなく、各モデル族に対する標�
 - fit API
 - shape convention
 
-### 2.5 Minimal-diff refactor
-既存コードを壊しすぎない。既存 public API を変更する場合は、
-deprecated alias または wrapper を残す。
-
+余計なファイルは追加しない。
+できるだけ修正は既存のプログラムを書き直す。
 
 ## 3. Package Structure Standard
 

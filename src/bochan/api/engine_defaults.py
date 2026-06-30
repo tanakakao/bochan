@@ -83,8 +83,15 @@ def resolve_multi_output_model_config(
     model_config: ModelConfig,
     train_Y: Any,
 ) -> ModelConfig:
-    """Create an empty ``MultiOutputConfig`` for targets with two or more columns."""
+    """Resolve automatic wrapping for targets with two or more columns.
 
+    Kronecker multi-task models consume block-design targets with shape
+    ``[n, m]`` directly, so they must remain a single correlated model rather
+    than being split into a ModelList-style wrapper.
+    """
+
+    if _normalize_name(model_config.model_type) == "kronecker":
+        return model_config
     if model_config.multi_output_config is not None or _num_outputs(train_Y) < 2:
         return model_config
     return replace(model_config, multi_output_config=MultiOutputConfig())

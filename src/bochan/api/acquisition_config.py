@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Literal, Sequence
 
 from .configs import AcquisitionConfig as _BaseAcquisitionConfig
 
 
 _DEFAULT_UCB_BETA = 3.0
 _UCB_NAMES = {"ucb", "qucb", "upperconfidencebound", "qupperconfidencebound"}
+ConstraintOperator = Literal["ge", "gt", "le", "lt"]
 
 
 def _normalize_acquisition_name(name: str) -> str:
@@ -17,35 +18,103 @@ def _normalize_acquisition_name(name: str) -> str:
 
 
 @dataclass
+class OutcomeConstraintConfig:
+    """Serializable configuration for threshold-based outcome constraints.
+
+    The values at the same position define one constraint. For example,
+    ``output_indices=[1, 2]``, ``operators=["ge", "le"]``, and
+    ``thresholds=[0.5, 1.2]`` represent ``y[1] >= 0.5`` and ``y[2] <= 1.2``.
+
+    BoTorch considers a generated constraint feasible when its callable returns
+    a value less than or equal to zero.
+    """
+
+    output_indices: Sequence[int] = field(default_factory=list)
+    operators: Sequence[ConstraintOperator] = field(default_factory=list)
+    thresholds: Sequence[float] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.output_indices = list(self.output_indices)
+        self.operators = list(self.operators)
+        self.thresholds = list(self.thresholds)
+
+        lengths = {
+            "output_indices": len(self.output_indices),
+            "operators": len(self.operators),
+            "thresholds": len(self.thresholds),
+        }
+        if len(set(lengths.values())) != 1:
+            raise ValueError(
+                "output_indices, operators, and thresholds must have the same "
+                f"length. Got: {lengths}"
+            )
+        if any(int(index) < 0 for index in self.output_indices):
+            raise ValueError("output_indices must contain non-negative integers.")
+        invalid = [
+            operator
+            for operator in self.operators
+            if str(operator).lower() not in {"ge", "gt", "le", "lt"}
+        ]
+        if invalid:
+            raise ValueError(
+                "operators must contain only 'ge', 'gt', 'le', or 'lt'. "
+                f"Got invalid values: {invalid}"
+            )
+
+    def build(self) -> list[Any]:
+        """Build BoTorch-compatible constraint callables."""
+
+        from bochan.acquisition.objective import make_outcome_constraints
+
+        return make_outcome_constraints(
+            output_indices=self.output_indices,
+            operators=self.operators,
+            thresholds=self.thresholds,
+        )
+
+
+@dataclass
 class AcquisitionConfig(_BaseAcquisitionConfig):
     """High-level acquisition configuration.
 
     Args:
-        constraints: BoTorch outcome-constraint callables. Each callable receives
-            posterior samples with shape ``sample_shape x batch_shape x q x m``
-            and must return ``sample_shape x batch_shape x q``. A constraint is
-            satisfied when its output is less than or equal to zero.
+        constraints: Explicit BoTorch outcome-constraint callables for advanced
+            Python use.
+        outcome_constraint_config: Serializable threshold constraints. These are
+            converted internally with ``make_outcome_constraints``.
 
     Notes:
-        ``constraints`` is a first-class acquisition setting, parallel to
-        ``objective``. It is forwarded to the acquisition constructor through
-        ``acqf_kwargs`` because BoTorch acquisition classes expose it as a direct
-        constructor keyword.
+        ``constraints`` and ``outcome_constraint_config`` are mutually exclusive.
+        Both are first-class acquisition settings parallel to ``objective``.
 
         UCB aliases use ``beta=3.0`` when ``acqf_kwargs`` does not explicitly
         provide a beta value. Explicit user configuration always takes priority.
     """
 
     constraints: list[Any] | None = None
+    outcome_constraint_config: OutcomeConstraintConfig | None = None
 
     def __post_init__(self) -> None:
         kwargs = dict(self.acqf_kwargs)
 
         if "constraints" in kwargs:
             raise ValueError(
-                "Pass outcome constraints through AcquisitionConfig.constraints, "
-                "not acqf_kwargs['constraints']."
+                "Pass outcome constraints through AcquisitionConfig.constraints "
+                "or AcquisitionConfig.outcome_constraint_config, not "
+                "acqf_kwargs['constraints']."
             )
+        if self.constraints is not None and self.outcome_constraint_config is not None:
+            raise ValueError(
+                "Specify either constraints or outcome_constraint_config, not both."
+            )
+
+        if self.outcome_constraint_config is not None:
+            constraint_config = self.outcome_constraint_config
+            if isinstance(constraint_config, dict):
+                constraint_config = OutcomeConstraintConfig(**constraint_config)
+                self.outcome_constraint_config = constraint_config
+            self.constraints = constraint_config.build()
+
         if self.constraints is not None:
             kwargs["constraints"] = self.constraints
 
@@ -58,4 +127,4 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
         self.acqf_kwargs = kwargs
 
 
-__all__ = ["AcquisitionConfig"]
+__all__ = ["AcquisitionConfig", "ConstraintOperator", "OutcomeConstraintConfig"]

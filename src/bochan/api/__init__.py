@@ -28,7 +28,7 @@ from .optimizer_api import (
     resolve_optimizer_from_cat_dims,
     uses_mixed_fixed_features,
 )
-from .engine_defaults import BayesianOptimizer
+from .kronecker_defaults import BayesianOptimizer
 
 # Keep direct submodule imports aligned with the public high-level API.
 _configs.OptimizeConfig = OptimizeConfig

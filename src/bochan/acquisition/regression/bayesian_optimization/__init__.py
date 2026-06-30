@@ -1,8 +1,10 @@
 from .hetero_multi_output import (
     qHeteroMultiOutputRegressionDecoupledExpectedHypervolumeImprovement,
-    qHeteroMultiOutputRegressionExpectedHypervolumeImprovement,
     qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement,
     qHeteroMultiOutputRegressionNParEGO,
+)
+from .hetero_multi_output_compat import (
+    qHeteroMultiOutputRegressionExpectedHypervolumeImprovement,
 )
 from .hetero_single_output import (
     qHeteroRegressionUpperConfidenceBound,

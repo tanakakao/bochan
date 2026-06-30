@@ -2,9 +2,11 @@ from bochan.acquisition._nehvi_cache_root import patch_nehvi_cache_root_init
 
 from . import multi_output as _multi_output
 from .hetero_multi_output import (
-    qHeteroMultiOutputBinaryExpectedHypervolumeImprovement,
     qHeteroMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
     qHeteroMultiOutputBinaryNParEGO,
+)
+from .hetero_multi_output_compat import (
+    qHeteroMultiOutputBinaryExpectedHypervolumeImprovement,
 )
 
 from .hetero_single_output import (

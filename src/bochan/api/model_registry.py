@@ -82,10 +82,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
         },
         "binary": {
             "base": ("bochan.models.classification.binary.base", "BinaryClassificationGPModel"),
-            "kronecker": (
-                "bochan.models.classification.binary.base",
-                "KroneckerMultiTaskBinaryClassificationGPModel",
-            ),
+            "kronecker": ("bochan.models.classification.binary.base", "KroneckerMultiTaskBinaryClassificationGPModel"),
             "deepgp": ("bochan.models.classification.binary.deep", "BinaryClassificationDeepGPModel"),
             "deepkernel": ("bochan.models.classification.binary.deep", "DeepKernelBinaryClassificationGPModel"),
             "deepgpdeepkernel": ("bochan.models.classification.binary.deep", "DeepKernelBinaryClassificationDeepGPModel"),
@@ -109,10 +106,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
         },
         "multiclass": {
             "base": ("bochan.models.classification.multiclass.base", "MulticlassClassificationGPModel"),
-            "kronecker": (
-                "bochan.models.classification.multiclass.base",
-                "KroneckerMultiTaskMulticlassClassificationGPModel",
-            ),
+            "kronecker": ("bochan.models.classification.multiclass.base", "KroneckerMultiTaskMulticlassClassificationGPModel"),
             "deepgp": ("bochan.models.classification.multiclass.deep", "MulticlassDeepGPModel"),
             "deepkernel": ("bochan.models.classification.multiclass.deep", "DeepKernelMulticlassClassificationGPModel"),
             "saas": ("bochan.models.classification.multiclass.high_dim", "SaasMulticlassClassificationGPModel"),
@@ -182,7 +176,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "deepkernel": ("bochan.models.classification.multiclass.deep", "DeepKernelMulticlassClassificationMixedGPModel"),
             "saas": ("bochan.models.classification.multiclass.high_dim", "SaasMulticlassClassificationMixedGPModel"),
             "pca": ("bochan.models.classification.multiclass.high_dim", "PCAMulticlassClassificationMixedGPModel"),
-            "rembo": ("bochan.models.classification.multiclass.high_dim", "REMBOBinaryClassificationMixedGPModel"),
+            "rembo": ("bochan.models.classification.multiclass.high_dim", "REMBOMulticlassClassificationMixedGPModel"),
             "rrp": ("bochan.models.classification.multiclass.robust", "OutlierRelevancePursuitMulticlassClassificationMixedGPModel"),
             "hetero": ("bochan.models.classification.multiclass.robust", "HeteroscedasticMulticlassClassificationMixedGPModel"),
         },

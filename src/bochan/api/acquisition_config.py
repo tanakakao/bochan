@@ -11,6 +11,7 @@ from .configs import AcquisitionConfig as _BaseAcquisitionConfig
 _DEFAULT_UCB_BETA = 3.0
 _UCB_NAMES = {"ucb", "qucb", "upperconfidencebound", "qupperconfidencebound"}
 ConstraintOperator = Literal["ge", "gt", "le", "lt"]
+_MISSING = object()
 
 
 def _normalize_acquisition_name(name: str) -> str:
@@ -87,6 +88,9 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
         ``constraints`` and ``outcome_constraint_config`` are mutually exclusive.
         Both are first-class acquisition settings parallel to ``objective``.
 
+        ``__post_init__`` is intentionally idempotent because the optimizer uses
+        ``dataclasses.replace`` while resolving acquisition classes and defaults.
+
         UCB aliases use ``beta=3.0`` when ``acqf_kwargs`` does not explicitly
         provide a beta value. Explicit user configuration always takes priority.
     """
@@ -97,16 +101,29 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
     def __post_init__(self) -> None:
         kwargs = dict(self.acqf_kwargs)
 
-        if "constraints" in kwargs:
+        kwargs_constraints = kwargs.pop("constraints", _MISSING)
+        replaying_internal_constraints = (
+            kwargs_constraints is not _MISSING
+            and self.constraints is not None
+            and kwargs_constraints is self.constraints
+        )
+        if kwargs_constraints is not _MISSING and not replaying_internal_constraints:
             raise ValueError(
                 "Pass outcome constraints through AcquisitionConfig.constraints "
                 "or AcquisitionConfig.outcome_constraint_config, not "
                 "acqf_kwargs['constraints']."
             )
+
         if self.constraints is not None and self.outcome_constraint_config is not None:
-            raise ValueError(
-                "Specify either constraints or outcome_constraint_config, not both."
-            )
+            if replaying_internal_constraints:
+                # ``dataclasses.replace`` replays the fields after the first
+                # ``__post_init__`` generated ``constraints`` from the config.
+                # Clear that derived value and rebuild it below.
+                self.constraints = None
+            else:
+                raise ValueError(
+                    "Specify either constraints or outcome_constraint_config, not both."
+                )
 
         if self.outcome_constraint_config is not None:
             constraint_config = self.outcome_constraint_config

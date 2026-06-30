@@ -13,6 +13,7 @@ from .configs import (
     MultiOutputConfigSchema,
     ObjectiveConfigSchema,
     OptimizeConfigSchema,
+    OutcomeConstraintConfigSchema,
     OutputConfigSchema,
 )
 from .requests import CandidateRequest, CompareCandidatesRequest, FitModelRequest, PredictRequest, RefitModelRequest, TellRequest
@@ -48,6 +49,7 @@ __all__ = [
     "MultiOutputConfigSchema",
     "ObjectiveConfigSchema",
     "OptimizeConfigSchema",
+    "OutcomeConstraintConfigSchema",
     "OutputConfigSchema",
     "PredictRequest",
     "PredictResponse",

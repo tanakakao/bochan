@@ -5,7 +5,7 @@
 from . import configs as _configs
 from . import engine as _engine
 from . import factory as _factory
-from .acquisition_config import AcquisitionConfig
+from .acquisition_config import AcquisitionConfig, OutcomeConstraintConfig
 from .acquisition_registry import available_acqf_names, resolve_acqf_cls
 from .configs import (
     AutoStandardizeOutcomeTransform,
@@ -84,6 +84,7 @@ __all__ = [
     "MultiOutputConfig",
     "ObjectiveConfig",
     "OptimizeConfig",
+    "OutcomeConstraintConfig",
     "OutputConfig",
     "PredictionResult",
     "StopDecision",

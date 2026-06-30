@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class _Schema(BaseModel):
@@ -100,6 +100,25 @@ class ObjectiveConfigSchema(_Schema):
     objective_kwargs: dict[str, Any] = Field(default_factory=dict)
 
 
+class OutcomeConstraintConfigSchema(_Schema):
+    output_indices: list[int] = Field(default_factory=list)
+    operators: list[Literal["ge", "gt", "le", "lt"]] = Field(default_factory=list)
+    thresholds: list[float] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_parallel_lengths(self):
+        lengths = {
+            len(self.output_indices),
+            len(self.operators),
+            len(self.thresholds),
+        }
+        if len(lengths) != 1:
+            raise ValueError(
+                "output_indices, operators, and thresholds must have the same length."
+            )
+        return self
+
+
 class MultiObjectiveConfigSchema(_Schema):
     ref_point: Any | None = None
     Y_baseline: Any | None = None
@@ -133,6 +152,7 @@ class AcquisitionConfigSchema(_Schema):
     name: str
     objective_config: ObjectiveConfigSchema | None = None
     constraints: Any | None = None
+    outcome_constraint_config: OutcomeConstraintConfigSchema | None = None
     sampler: Any | None = None
     acqf_kwargs: dict[str, Any] = Field(default_factory=dict)
     context_fields: tuple[str, ...] = (
@@ -147,6 +167,14 @@ class AcquisitionConfigSchema(_Schema):
         "constraints",
     )
     filter_kwargs_by_signature: bool = True
+
+    @model_validator(mode="after")
+    def validate_constraint_source(self):
+        if self.constraints is not None and self.outcome_constraint_config is not None:
+            raise ValueError(
+                "Specify either constraints or outcome_constraint_config, not both."
+            )
+        return self
 
 
 class CandidateRepairConfigSchema(_Schema):

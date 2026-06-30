@@ -57,6 +57,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
     "normal": {
         "regression": {
             "base": ("botorch.models.gp_regression", "SingleTaskGP"),
+            "kronecker": ("botorch.models.multitask", "KroneckerMultiTaskGP"),
             "deepgp": ("bochan.models.regression.gaussian.deep", "DeepGPModel"),
             "deepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelGPModel"),
             "deepgpdeepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelDeepGPModel"),
@@ -69,6 +70,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
         },
         "multi_objective": {
             "base": ("botorch.models.gp_regression", "SingleTaskGP"),
+            "kronecker": ("botorch.models.multitask", "KroneckerMultiTaskGP"),
             "deepgp": ("bochan.models.regression.gaussian.deep", "DeepGPModel"),
             "deepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelGPModel"),
             "deepgpdeepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelDeepGPModel"),
@@ -80,6 +82,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
         },
         "binary": {
             "base": ("bochan.models.classification.binary.base", "BinaryClassificationGPModel"),
+            "kronecker": ("bochan.models.classification.binary.base", "KroneckerMultiTaskBinaryClassificationGPModel"),
             "deepgp": ("bochan.models.classification.binary.deep", "BinaryClassificationDeepGPModel"),
             "deepkernel": ("bochan.models.classification.binary.deep", "DeepKernelBinaryClassificationGPModel"),
             "deepgpdeepkernel": ("bochan.models.classification.binary.deep", "DeepKernelBinaryClassificationDeepGPModel"),
@@ -91,6 +94,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
         },
         "ordinal": {
             "base": ("bochan.models.ordinal.base", "OrdinalGPModel"),
+            "kronecker": ("bochan.models.ordinal.base", "KroneckerMultiTaskOrdinalGPModel"),
             "deepgp": ("bochan.models.ordinal.deep", "OrdinalDeepGPModel"),
             "deepkernel": ("bochan.models.ordinal.deep", "DeepKernelOrdinalGPModel"),
             "deepgpdeepkernel": ("bochan.models.ordinal.deep", "DeepKernelOrdinalDeepGPModel"),
@@ -102,6 +106,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
         },
         "multiclass": {
             "base": ("bochan.models.classification.multiclass.base", "MulticlassClassificationGPModel"),
+            "kronecker": ("bochan.models.classification.multiclass.base", "KroneckerMultiTaskMulticlassClassificationGPModel"),
             "deepgp": ("bochan.models.classification.multiclass.deep", "MulticlassDeepGPModel"),
             "deepkernel": ("bochan.models.classification.multiclass.deep", "DeepKernelMulticlassClassificationGPModel"),
             "saas": ("bochan.models.classification.multiclass.high_dim", "SaasMulticlassClassificationGPModel"),

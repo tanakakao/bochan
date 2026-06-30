@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -101,6 +102,39 @@ def test_outcome_constraint_config_builds_and_forwards_constraints() -> None:
         acqf.constraints[1](samples),
         torch.tensor([[[-0.2]]], dtype=torch.double),
     )
+
+
+def test_outcome_constraint_config_survives_dataclasses_replace() -> None:
+    config = AcquisitionConfig(
+        name="nparego",
+        outcome_constraint_config=OutcomeConstraintConfig(
+            output_indices=[1],
+            operators=["ge"],
+            thresholds=[0.5],
+        ),
+    )
+
+    resolved = replace(config, acqf_cls=_AcquisitionWithConstraints)
+    acqf = build_acquisition(bundle=_make_bundle(), config=resolved)
+    samples = torch.tensor([[[[0.0, 0.7]]]], dtype=torch.double)
+
+    assert resolved.outcome_constraint_config is config.outcome_constraint_config
+    assert resolved.constraints is not config.constraints
+    assert resolved.acqf_kwargs["constraints"] is resolved.constraints
+    torch.testing.assert_close(
+        acqf.constraints[0](samples),
+        torch.tensor([[[-0.2]]], dtype=torch.double),
+    )
+
+
+def test_direct_constraints_survive_dataclasses_replace() -> None:
+    constraints = [make_outcome_constraint(0, "le", 1.0)]
+    config = AcquisitionConfig(name="qei", constraints=constraints)
+
+    resolved = replace(config, acqf_cls=_AcquisitionWithConstraints)
+
+    assert resolved.constraints is constraints
+    assert resolved.acqf_kwargs["constraints"] is constraints
 
 
 def test_outcome_constraint_config_accepts_dictionary_input() -> None:

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import torch
 
 from bochan.acquisition.ordinal.bayesian_optimization import (
+    _infer_multioutput_ordinal_train_y,
     infer_multioutput_ordinal_utility_values,
     qMultiOutputOrdinalExpectedHypervolumeImprovement,
     qMultiOutputOrdinalNParEGO,
@@ -39,6 +40,32 @@ def test_infers_per_output_utilities_for_different_class_counts():
     assert [value.numel() for value in utility_values] == [3, 4]
 
 
+def test_infers_raw_train_y_from_wrapper_submodels():
+    model = SimpleNamespace(
+        models=[
+            SimpleNamespace(train_targets=torch.tensor([0, 1, 2])),
+            SimpleNamespace(train_targets=torch.tensor([2, 1, 0])),
+        ]
+    )
+
+    train_y = _infer_multioutput_ordinal_train_y(model)
+
+    assert torch.equal(
+        train_y,
+        torch.tensor([[0, 2], [1, 1], [2, 0]]),
+    )
+
+
+def test_infers_raw_train_y_from_correlated_model():
+    model = SimpleNamespace(
+        train_targets=torch.tensor([[0, 1], [1, 2], [2, 0]])
+    )
+
+    train_y = _infer_multioutput_ordinal_train_y(model)
+
+    assert torch.equal(train_y, model.train_targets)
+
+
 def test_registry_resolves_ordinal_bo_aliases_to_defaulting_constructors():
     expected = {
         "ehvi": qMultiOutputOrdinalExpectedHypervolumeImprovement,
@@ -63,4 +90,6 @@ def test_ordinal_bo_wrappers_expose_automatic_context_parameters():
 
     assert {"ref_point", "partitioning"} <= set(ehvi.parameters)
     assert {"ref_point", "X_baseline"} <= set(nehvi.parameters)
-    assert {"ref_point", "X_baseline", "best_f"} <= set(nparego.parameters)
+    assert {"ref_point", "X_baseline", "best_f", "train_Y"} <= set(
+        nparego.parameters
+    )

@@ -1,9 +1,9 @@
 """Binary-classification acquisition utilities.
 
-This package registers the custom epistemic probability posterior with
-BoTorch's sampler dispatcher. The posterior exposes the normal base-sample
-interface required by BoTorch, so standard normal MC samplers can be reused by
-qEHVI, qNEHVI, and other cached Monte Carlo acquisition functions.
+This package registers the custom binary probability posteriors with BoTorch's
+sampler dispatcher. The posteriors expose the normal base-sample interface
+required by BoTorch, so standard normal MC samplers can be reused by qEHVI,
+qNEHVI, and other Monte Carlo acquisition functions.
 """
 
 from __future__ import annotations
@@ -11,6 +11,10 @@ from __future__ import annotations
 import torch
 from botorch.sampling.get_sampler import GetSampler
 from botorch.sampling.normal import SobolQMCNormalSampler
+
+from bochan.models.classification.binary.base.multioutput import (
+    MultiOutputBernoulliPosterior,
+)
 
 from .epistemic import BinaryEpistemicProbabilityPosterior
 
@@ -71,4 +75,27 @@ def _get_binary_epistemic_probability_sampler(
     )
 
 
-__all__ = ["BinaryEpistemicProbabilityPosterior"]
+@GetSampler.register(MultiOutputBernoulliPosterior)
+def _get_multioutput_bernoulli_sampler(
+    posterior: MultiOutputBernoulliPosterior,
+    sample_shape: torch.Size,
+    seed: int | None = None,
+) -> SobolQMCNormalSampler:
+    """Return a normal QMC sampler for the continuous Bernoulli proxy posterior.
+
+    ``MultiOutputBernoulliPosterior`` implements ``base_sample_shape`` and
+    ``rsample_from_base_samples``. Registering the standard Sobol normal sampler
+    lets BoTorch's generic MC acquisitions obtain reparameterized probability
+    samples without requiring a posterior-specific sampler implementation.
+    """
+    del posterior
+    return SobolQMCNormalSampler(
+        sample_shape=torch.Size(sample_shape),
+        seed=seed,
+    )
+
+
+__all__ = [
+    "BinaryEpistemicProbabilityPosterior",
+    "MultiOutputBernoulliPosterior",
+]

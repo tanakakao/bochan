@@ -9,6 +9,7 @@ from torch import Tensor
 
 from bochan.acquisition._nehvi_cache_root import patch_nehvi_cache_root_init
 
+from . import hetero_multi_output as _hetero_multi_output
 from . import multi_output as _multi_output
 from .hetero_multi_output import (
     qHeteroMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
@@ -28,6 +29,48 @@ from .hetero_single_output import (
 # Kronecker binary models out of BoTorch's incompatible cached-Cholesky path.
 patch_nehvi_cache_root_init(
     _multi_output.qMultiOutputBinaryNoisyExpectedHypervolumeImprovement
+)
+
+
+def _normalized_hetero_objective_forward(
+    self,
+    samples: Tensor,
+    X: Tensor | None = None,
+) -> Tensor:
+    """Normalize singleton q dimensions before applying the base objective."""
+    if X is None:
+        raise ValueError(
+            "X must be provided for _HeteroClassificationMCMultiOutputObjective."
+        )
+
+    adjusted = _hetero_multi_output.hetero_adjust_classification_samples(
+        self.model,
+        X,
+        samples,
+        beta=self.beta,
+        noise_penalty=self.noise_penalty,
+        default_sigma=self.default_sigma,
+        noise_is_log_var=self.noise_is_log_var,
+        samples_are_probs=self.samples_are_probs,
+        apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
+        eps=self.eps,
+    )
+
+    x_q = int(X.shape[-2])
+    if (
+        adjusted.ndim >= 4
+        and adjusted.shape[-2] == 1
+        and adjusted.shape[-3] == x_q
+    ):
+        adjusted = adjusted.squeeze(-2)
+
+    if self.base_objective is None:
+        return adjusted
+    return self.base_objective(adjusted, X=X)
+
+
+_hetero_multi_output._HeteroClassificationMCMultiOutputObjective.forward = (
+    _normalized_hetero_objective_forward
 )
 
 

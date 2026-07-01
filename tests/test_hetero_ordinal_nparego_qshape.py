@@ -7,17 +7,27 @@ bo_module = importlib.import_module(
 )
 
 
-def test_hetero_ordinal_nparego_disables_early_objective_shape_check(monkeypatch):
-    objective = SimpleNamespace(_verify_output_shape=True)
-    acquisition = SimpleNamespace(objective=objective)
+def test_hetero_ordinal_nparego_ignores_external_scalar_objective(monkeypatch):
+    captured = {}
+    internal_objective = SimpleNamespace(_verify_output_shape=True)
+    acquisition = SimpleNamespace(objective=internal_objective)
+
+    def fake_constructor(*args, **kwargs):
+        captured.update(kwargs)
+        return acquisition
 
     monkeypatch.setattr(
         bo_module,
         "_qHeteroMultiOutputOrdinalNParEGO",
-        lambda *args, **kwargs: acquisition,
+        fake_constructor,
     )
 
-    result = bo_module.qHeteroMultiOutputOrdinalNParEGO(model=object())
+    external_objective = object()
+    result = bo_module.qHeteroMultiOutputOrdinalNParEGO(
+        model=object(),
+        objective=external_objective,
+    )
 
     assert result is acquisition
-    assert objective._verify_output_shape is False
+    assert captured["objective"] is None
+    assert internal_objective._verify_output_shape is True

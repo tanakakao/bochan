@@ -23,7 +23,7 @@ from .multi_output import (
 )
 
 from .single_output import (
-    qBinaryPredictiveEntropy,
+    qBinaryPredictiveEntropy as _SingleOutputBinaryPredictiveEntropy,
     qBinaryBALD as _SingleOutputBinaryBALD,
     qBinaryJointBALD,
     qBinaryGreedyJointBALD,
@@ -34,6 +34,18 @@ from .single_output import (
 from .integrated_posterior_variance import (
     qBinaryIntegratedPosteriorVarianceProxy,
 )
+
+
+def qBinaryPredictiveEntropy(model, *args, **kwargs):
+    """Construct single- or multi-output binary predictive entropy.
+
+    Correlated Kronecker models are represented by one model object even when
+    they expose multiple outputs. Use ``model.num_outputs`` rather than wrapper
+    metadata to select the acquisition implementation.
+    """
+    if int(getattr(model, "num_outputs", 1)) > 1:
+        return qMultiOutputBinaryPredictiveEntropy(model=model, *args, **kwargs)
+    return _SingleOutputBinaryPredictiveEntropy(model=model, *args, **kwargs)
 
 
 def qBinaryBALD(model, *args, **kwargs):

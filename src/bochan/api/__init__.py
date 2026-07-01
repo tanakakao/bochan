@@ -2,6 +2,7 @@
 
 # ruff: noqa: E402
 
+import inspect
 from dataclasses import replace
 
 from . import configs as _configs
@@ -71,6 +72,52 @@ def _resolve_acquisition_config_with_model_outputs(
 # multi-output acquisition family for contextual short names.
 BayesianOptimizer._resolve_acquisition_config = (
     _resolve_acquisition_config_with_model_outputs
+)
+
+
+_original_prepare_default_acquisition_context = (
+    BayesianOptimizer._prepare_default_acquisition_context
+)
+
+
+def _prepare_default_acquisition_context_with_ordinal_utilities(
+    self,
+    acq_config: AcquisitionConfig,
+    data_context: DataContext | None,
+):
+    """Infer ordinal utility values before multi-objective defaults are built.
+
+    Multi-output ordinal EHVI / NEHVI / NParEGO constructors accept
+    ``utility_values`` directly rather than inheriting from the pointwise ordinal
+    utility base. Supplying these values before default partitioning and reference
+    point construction keeps all automatic quantities in utility space.
+    """
+    resolved = self._resolve_acquisition_config(acq_config)
+    if str(self.bundle.task_type) == "ordinal" and resolved.acqf_cls is not None:
+        try:
+            accepts_utility_values = "utility_values" in inspect.signature(
+                resolved.acqf_cls
+            ).parameters
+        except (TypeError, ValueError):
+            accepts_utility_values = False
+        if accepts_utility_values and resolved.acqf_kwargs.get("utility_values") is None:
+            likelihood = _factory._infer_ordinal_likelihood(self.bundle.model)
+            utility_values = _factory._infer_ordinal_utility_values(
+                self.bundle.model,
+                likelihood,
+            )
+            kwargs = dict(resolved.acqf_kwargs)
+            kwargs["utility_values"] = utility_values
+            resolved = replace(resolved, acqf_kwargs=kwargs)
+    return _original_prepare_default_acquisition_context(
+        self,
+        resolved,
+        data_context,
+    )
+
+
+BayesianOptimizer._prepare_default_acquisition_context = (
+    _prepare_default_acquisition_context_with_ordinal_utilities
 )
 
 # Keep direct submodule imports aligned with the public high-level API.

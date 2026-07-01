@@ -4,6 +4,7 @@
 
 from dataclasses import replace
 
+from . import acquisition_registry as _acquisition_registry
 from . import configs as _configs
 from . import engine as _engine
 from . import factory as _factory
@@ -31,6 +32,32 @@ from .optimizer_api import (
     uses_mixed_fixed_features,
 )
 from .engine_defaults import BayesianOptimizer
+
+
+def _register_contextual_levelset_aliases() -> None:
+    """Register compatibility names for hetero ordinal level-set classes.
+
+    The generic contextual resolver follows the binary / multiclass naming
+    convention, while the hetero multi-output ordinal implementations expose
+    shorter class names. Register only semantically equivalent aliases.
+    """
+    module_name = "bochan.acquisition.ordinal.levelset_estimation"
+    aliases = {
+        "qHeteroMultiOutputOrdinalLatentStraddleAcquisition": (
+            "qHeteroMultiOutputOrdinalStraddle"
+        ),
+        "qHeteroMultiOutputOrdinalBoundaryVarianceAcquisition": (
+            "qHeteroMultiOutputOrdinalBoundaryVariance"
+        ),
+        "qHeteroMultiOutputOrdinalICUAcquisition": (
+            "qHeteroMultiOutputOrdinalLevelSetUncertainty"
+        ),
+    }
+    for alias, attr_name in aliases.items():
+        _acquisition_registry._register_alias(alias, module_name, attr_name)
+
+
+_register_contextual_levelset_aliases()
 
 
 def _infer_bundle_multi_output(bundle) -> bool:

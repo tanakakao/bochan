@@ -75,6 +75,39 @@ _hetero_multi_output._HeteroClassificationMCMultiOutputObjective.forward = (
 )
 
 
+def _reduce_to_t_batch(values: Tensor, X: Tensor) -> Tensor:
+    """Reduce MC/model/q dimensions while preserving ``X`` t-batch dimensions."""
+    target_shape = tuple(int(size) for size in X.shape[:-2])
+    q = int(X.shape[-2])
+
+    q_dims = [i for i, size in enumerate(values.shape) if int(size) == q]
+    if q_dims:
+        values = values.max(dim=q_dims[-1]).values
+
+    if not target_shape:
+        return values.mean()
+
+    shape = tuple(int(size) for size in values.shape)
+    keep_dims: list[int] | None = None
+    width = len(target_shape)
+    for start in range(len(shape) - width + 1):
+        if shape[start : start + width] == target_shape:
+            keep_dims = list(range(start, start + width))
+            break
+
+    if keep_dims is None:
+        raise RuntimeError(
+            "Could not preserve the t-batch dimensions in hetero NParEGO: "
+            f"values shape={shape}, expected t-batch shape={target_shape}."
+        )
+
+    reduce_dims = [dim for dim in range(values.ndim) if dim not in keep_dims]
+    values = values.permute(*keep_dims, *reduce_dims)
+    if reduce_dims:
+        values = values.mean(dim=tuple(range(width, values.ndim)))
+    return values
+
+
 class qHeteroMultiOutputBinaryNParEGO(_BaseHeteroBinaryNParEGO):
     """Heteroscedastic binary NParEGO with scalar t-batch output."""
 
@@ -110,13 +143,7 @@ class qHeteroMultiOutputBinaryNParEGO(_BaseHeteroBinaryNParEGO):
 
         scalarized = self.base_objective(hetero, X=X)
         improvement = (scalarized - self.best_value.to(scalarized)).clamp_min(0.0)
-        target_ndim = X.ndim - 2
-        while improvement.ndim > target_ndim:
-            if improvement.shape[-1] == x_q:
-                improvement = improvement.max(dim=-1).values
-            else:
-                improvement = improvement.mean(dim=0)
-        return improvement
+        return _reduce_to_t_batch(improvement, X)
 
 
 class _OneToManyObjectiveAdapter(MCMultiOutputObjective):

@@ -24,7 +24,7 @@ from .multi_output import (
 
 from .single_output import (
     qBinaryPredictiveEntropy,
-    qBinaryBALD,
+    qBinaryBALD as _SingleOutputBinaryBALD,
     qBinaryJointBALD,
     qBinaryGreedyJointBALD,
     qBinaryProbabilityVariance,
@@ -34,6 +34,20 @@ from .single_output import (
 from .integrated_posterior_variance import (
     qBinaryIntegratedPosteriorVarianceProxy,
 )
+
+
+def qBinaryBALD(model, *args, **kwargs):
+    """Construct single- or multi-output binary BALD from the model shape.
+
+    Correlated Kronecker models are built as one model rather than a ModelList
+    wrapper, so high-level metadata may still label them as a single model. Their
+    ``num_outputs`` property is the reliable source for selecting the correct
+    acquisition implementation.
+    """
+    if int(getattr(model, "num_outputs", 1)) > 1:
+        return qMultiOutputBinaryBALD(model=model, *args, **kwargs)
+    return _SingleOutputBinaryBALD(model=model, *args, **kwargs)
+
 
 # The contextual short name ``nipv`` is currently registered against
 # qBinaryFantasyNegIntegratedPosteriorVariance. For standard optimize_acqf,

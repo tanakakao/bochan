@@ -1,8 +1,8 @@
 """Binary-classification acquisition utilities.
 
 This package also registers the custom epistemic probability posterior with
-BoTorch's sampler dispatcher.  The posterior already implements ``rsample``
-and ``rsample_from_base_samples``; the registration below allows standard MC
+BoTorch's sampler dispatcher. The posterior already implements ``rsample`` and
+``rsample_from_base_samples``; the registration below allows standard MC
 acquisition functions such as qEHVI and qNEHVI to obtain samples from it.
 """
 
@@ -13,6 +13,31 @@ from botorch.posteriors.posterior import Posterior
 from botorch.sampling.get_sampler import GetSampler
 
 from .epistemic import BinaryEpistemicProbabilityPosterior
+
+
+def _normalize_binary_epistemic_extended_shape(
+    self: BinaryEpistemicProbabilityPosterior,
+    sample_shape: torch.Size | None = None,
+) -> torch.Size:
+    """Delegate shape calculation using BoTorch's empty sample-shape default.
+
+    BoTorch may call ``posterior._extended_shape()`` without an explicit
+    ``sample_shape``. ``GPyTorchPosterior`` expects a ``torch.Size`` rather than
+    ``None``, so normalize the optional argument before delegation.
+    """
+    resolved_sample_shape = (
+        torch.Size() if sample_shape is None else torch.Size(sample_shape)
+    )
+    return self.latent_posterior._extended_shape(
+        sample_shape=resolved_sample_shape,
+    )
+
+
+# Keep compatibility with BoTorch versions whose Posterior API calls
+# ``_extended_shape()`` with the default ``None`` value.
+BinaryEpistemicProbabilityPosterior._extended_shape = (
+    _normalize_binary_epistemic_extended_shape
+)
 
 
 class _BinaryEpistemicPosteriorSampler:

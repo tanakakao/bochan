@@ -109,9 +109,14 @@ class qHeteroMultiOutputBinaryNParEGO(_BaseHeteroBinaryNParEGO):
             hetero = hetero.squeeze(-2)
 
         scalarized = self.base_objective(hetero, X=X)
-        best_q = scalarized.max(dim=-1).values
-        improvement = (best_q - self.best_value.to(best_q)).clamp_min(0.0)
-        return improvement.mean(dim=0)
+        improvement = (scalarized - self.best_value.to(scalarized)).clamp_min(0.0)
+        target_ndim = X.ndim - 2
+        while improvement.ndim > target_ndim:
+            if improvement.shape[-1] == x_q:
+                improvement = improvement.max(dim=-1).values
+            else:
+                improvement = improvement.mean(dim=0)
+        return improvement
 
 
 class _OneToManyObjectiveAdapter(MCMultiOutputObjective):

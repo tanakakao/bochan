@@ -13,7 +13,7 @@ from .hetero_multi_output import (
     qHeteroMultiOutputOrdinalExpectedImprovement,
     qHeteroMultiOutputOrdinalExpectedHypervolumeImprovement,
     qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement as _qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
-    qHeteroMultiOutputOrdinalNParEGO,
+    qHeteroMultiOutputOrdinalNParEGO as _qHeteroMultiOutputOrdinalNParEGO,
 )
 
 from .hetero_single_output import (
@@ -101,6 +101,21 @@ def qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
         Y_baseline=Y_baseline,
         **kwargs,
     )
+
+
+@wraps(_qHeteroMultiOutputOrdinalNParEGO)
+def qHeteroMultiOutputOrdinalNParEGO(*args, **kwargs):
+    """Construct hetero ordinal NParEGO with deferred q-shape validation.
+
+    One-to-many input transforms can expand the objective q dimension before
+    NParEGO's own alignment step runs. Disable BoTorch's earlier generic
+    objective check so the acquisition can realign the expanded samples.
+    """
+    acquisition = _qHeteroMultiOutputOrdinalNParEGO(*args, **kwargs)
+    objective = getattr(acquisition, "objective", None)
+    if objective is not None:
+        objective._verify_output_shape = False
+    return acquisition
 
 
 def qMultiOutputOrdinalExpectedHypervolumeImprovement(

@@ -1,6 +1,7 @@
 from bochan.acquisition._nehvi_cache_root import patch_nehvi_cache_root_init
 
 from . import multi_output as _multi_output
+from ._utility_defaults import infer_multioutput_ordinal_utility_values
 from .hetero_multi_output import (
     qHeteroMultiOutputOrdinalNormalScoreObjective,
     qHeteroMultiOutputOrdinalExpectedUtility,
@@ -27,11 +28,63 @@ patch_nehvi_cache_root_init(
 
 from .multi_output import (
     qMultiOutputOrdinalUtilityObjective,
-    qMultiOutputOrdinalExpectedHypervolumeImprovement,
-    qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
-    qMultiOutputOrdinalNParEGO,
+    qMultiOutputOrdinalExpectedHypervolumeImprovement as _qMultiOutputOrdinalExpectedHypervolumeImprovement,
+    qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement as _qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
+    qMultiOutputOrdinalNParEGO as _qMultiOutputOrdinalNParEGO,
     compute_observed_ordinal_utility,
 )
+
+
+def _with_default_utility_values(model, utility_values):
+    if utility_values is not None:
+        return utility_values
+    return infer_multioutput_ordinal_utility_values(model)
+
+
+def qMultiOutputOrdinalExpectedHypervolumeImprovement(
+    model,
+    *args,
+    utility_values=None,
+    **kwargs,
+):
+    """Construct ordinal qEHVI with inferred utility values when omitted."""
+    return _qMultiOutputOrdinalExpectedHypervolumeImprovement(
+        model,
+        *args,
+        utility_values=_with_default_utility_values(model, utility_values),
+        **kwargs,
+    )
+
+
+def qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
+    model,
+    *args,
+    utility_values=None,
+    **kwargs,
+):
+    """Construct ordinal qNEHVI with inferred utility values when omitted."""
+    return _qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
+        model,
+        *args,
+        utility_values=_with_default_utility_values(model, utility_values),
+        **kwargs,
+    )
+
+
+def qMultiOutputOrdinalNParEGO(
+    model,
+    *args,
+    utility_values=None,
+    **kwargs,
+):
+    """Construct ordinal NParEGO with inferred utility values when omitted."""
+    return _qMultiOutputOrdinalNParEGO(
+        model,
+        *args,
+        utility_values=_with_default_utility_values(model, utility_values),
+        **kwargs,
+    )
+
 
 from .single_output import (
     qOrdinalProbabilityOfFeasibility,

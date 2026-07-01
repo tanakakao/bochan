@@ -1,3 +1,4 @@
+import inspect
 from types import SimpleNamespace
 
 import torch
@@ -53,3 +54,13 @@ def test_registry_resolves_ordinal_bo_aliases_to_defaulting_constructors():
             multi_output=True,
         )
         assert resolved is constructor
+
+
+def test_ordinal_bo_wrappers_expose_automatic_context_parameters():
+    ehvi = inspect.signature(qMultiOutputOrdinalExpectedHypervolumeImprovement)
+    nehvi = inspect.signature(qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement)
+    nparego = inspect.signature(qMultiOutputOrdinalNParEGO)
+
+    assert {"ref_point", "partitioning"} <= set(ehvi.parameters)
+    assert {"ref_point", "X_baseline"} <= set(nehvi.parameters)
+    assert {"ref_point", "X_baseline"} <= set(nparego.parameters)

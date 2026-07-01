@@ -43,14 +43,22 @@ def _with_default_utility_values(model, utility_values):
 
 def qMultiOutputOrdinalExpectedHypervolumeImprovement(
     model,
-    *args,
+    ref_point,
+    *,
+    partitioning=None,
     utility_values=None,
     **kwargs,
 ):
-    """Construct ordinal qEHVI with inferred utility values when omitted."""
+    """Construct ordinal qEHVI with explicit context-facing parameters.
+
+    ``ref_point`` and ``partitioning`` are kept in the public signature so the
+    high-level API can retain automatically inferred context values when it
+    filters keyword arguments by callable signature.
+    """
     return _qMultiOutputOrdinalExpectedHypervolumeImprovement(
-        model,
-        *args,
+        model=model,
+        ref_point=ref_point,
+        partitioning=partitioning,
         utility_values=_with_default_utility_values(model, utility_values),
         **kwargs,
     )
@@ -58,14 +66,21 @@ def qMultiOutputOrdinalExpectedHypervolumeImprovement(
 
 def qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
     model,
-    *args,
+    ref_point,
+    X_baseline,
+    *,
     utility_values=None,
     **kwargs,
 ):
-    """Construct ordinal qNEHVI with inferred utility values when omitted."""
+    """Construct ordinal qNEHVI with explicit baseline and utility defaults.
+
+    ``X_baseline`` must be explicit: the high-level engine filters automatic
+    context fields against this signature before constructing the acquisition.
+    """
     return _qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
-        model,
-        *args,
+        model=model,
+        ref_point=ref_point,
+        X_baseline=X_baseline,
         utility_values=_with_default_utility_values(model, utility_values),
         **kwargs,
     )
@@ -73,14 +88,17 @@ def qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
 
 def qMultiOutputOrdinalNParEGO(
     model,
-    *args,
+    X_baseline,
+    ref_point,
+    *,
     utility_values=None,
     **kwargs,
 ):
-    """Construct ordinal NParEGO with inferred utility values when omitted."""
+    """Construct ordinal NParEGO with explicit baseline and reference point."""
     return _qMultiOutputOrdinalNParEGO(
-        model,
-        *args,
+        model=model,
+        X_baseline=X_baseline,
+        ref_point=ref_point,
         utility_values=_with_default_utility_values(model, utility_values),
         **kwargs,
     )

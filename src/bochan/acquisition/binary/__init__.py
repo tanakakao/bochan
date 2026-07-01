@@ -9,14 +9,24 @@ qNEHVI, and other Monte Carlo acquisition functions.
 from __future__ import annotations
 
 import torch
+from botorch.acquisition.multi_objective.monte_carlo import (
+    qNoisyExpectedHypervolumeImprovement,
+)
 from botorch.sampling.get_sampler import GetSampler
 from botorch.sampling.normal import SobolQMCNormalSampler
 
+from bochan.acquisition._nehvi_cache_root import patch_nehvi_cache_root_init
 from bochan.models.classification.binary.base.multioutput import (
     MultiOutputBernoulliPosterior,
 )
 
 from .epistemic import BinaryEpistemicProbabilityPosterior
+
+
+# The high-level registry may resolve the generic BoTorch qNEHVI class directly.
+# Patch it here as well as the bochan-specific wrappers so models such as the
+# Kronecker binary classifier can disable the incompatible cached-Cholesky path.
+patch_nehvi_cache_root_init(qNoisyExpectedHypervolumeImprovement)
 
 
 def _normalize_binary_epistemic_extended_shape(

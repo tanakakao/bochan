@@ -12,9 +12,7 @@ from typing import Any, Optional
 import torch
 from torch import Tensor
 
-from botorch.models.model import Model
 from botorch.models.multitask import MultiTaskGP
-from botorch.models.transforms.input import InputTransform
 from botorch.posteriors.transformed import TransformedPosterior
 
 from bochan.models.classification.binary.base.multitask import (
@@ -126,8 +124,8 @@ class _WidePosteriorMixin:
         posterior = TransformedPosterior(
             posterior=base,
             sample_transform=transform,
-            mean_transform=transform,
-            variance_transform=transform,
+            mean_transform=lambda mean, variance: transform(mean),
+            variance_transform=lambda mean, variance: transform(variance),
         )
         return posterior_transform(posterior) if posterior_transform is not None else posterior
 
@@ -158,7 +156,8 @@ class WideMultiTaskBinaryClassificationGPModel(
     """Binary multi-task GP accepting wide 0/1 targets with optional NaNs."""
 
     def __init__(self, train_X: Tensor, train_Y: Tensor, **kwargs: Any) -> None:
-        observed = torch.as_tensor(train_Y)[~torch.isnan(torch.as_tensor(train_Y))]
+        train_Y_tensor = torch.as_tensor(train_Y)
+        observed = train_Y_tensor[~torch.isnan(train_Y_tensor)]
         if not torch.all((observed == 0) | (observed == 1)):
             raise ValueError("Observed binary targets must be 0 or 1.")
         X_long, Y_long, num_tasks = wide_to_long(train_X, train_Y)
@@ -172,14 +171,15 @@ class WideMultiTaskBinaryClassificationGPModel(
             **kwargs,
         )
         self.train_X_wide = torch.as_tensor(train_X)
-        self.train_Y_wide = torch.as_tensor(train_Y)
+        self.train_Y_wide = train_Y_tensor
 
 
 class WideMultiTaskOrdinalGPModel(_WidePosteriorMixin, MultiTaskOrdinalGPModel):
     """Ordinal multi-task GP accepting wide class ids with optional NaNs."""
 
     def __init__(self, train_X: Tensor, train_Y: Tensor, **kwargs: Any) -> None:
-        observed = torch.as_tensor(train_Y)[~torch.isnan(torch.as_tensor(train_Y))]
+        train_Y_tensor = torch.as_tensor(train_Y)
+        observed = train_Y_tensor[~torch.isnan(train_Y_tensor)]
         if not torch.allclose(observed, observed.round()):
             raise ValueError("Observed ordinal targets must be integer-coded.")
         X_long, Y_long, num_tasks = wide_to_long(train_X, train_Y)
@@ -193,7 +193,7 @@ class WideMultiTaskOrdinalGPModel(_WidePosteriorMixin, MultiTaskOrdinalGPModel):
             **kwargs,
         )
         self.train_X_wide = torch.as_tensor(train_X)
-        self.train_Y_wide = torch.as_tensor(train_Y)
+        self.train_Y_wide = train_Y_tensor
 
 
 class WideMultiTaskMulticlassClassificationGPModel(
@@ -203,7 +203,8 @@ class WideMultiTaskMulticlassClassificationGPModel(
     """Multiclass multi-task GP accepting wide class ids with optional NaNs."""
 
     def __init__(self, train_X: Tensor, train_Y: Tensor, **kwargs: Any) -> None:
-        observed = torch.as_tensor(train_Y)[~torch.isnan(torch.as_tensor(train_Y))]
+        train_Y_tensor = torch.as_tensor(train_Y)
+        observed = train_Y_tensor[~torch.isnan(train_Y_tensor)]
         if not torch.allclose(observed, observed.round()):
             raise ValueError("Observed multiclass targets must be integer-coded.")
         X_long, Y_long, num_tasks = wide_to_long(train_X, train_Y)
@@ -217,7 +218,7 @@ class WideMultiTaskMulticlassClassificationGPModel(
             **kwargs,
         )
         self.train_X_wide = torch.as_tensor(train_X)
-        self.train_Y_wide = torch.as_tensor(train_Y)
+        self.train_Y_wide = train_Y_tensor
 
 
 __all__ = [

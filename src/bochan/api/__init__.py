@@ -5,6 +5,8 @@
 import inspect
 from dataclasses import replace
 
+import torch
+
 from . import configs as _configs
 from . import engine as _engine
 from . import factory as _factory
@@ -80,6 +82,38 @@ _original_prepare_default_acquisition_context = (
 )
 
 
+def _infer_ordinal_utility_values_without_required_likelihood(bundle: ModelBundle):
+    """Infer ordinal utilities from likelihood, model metadata, or observed labels.
+
+    Multi-output wrapper models do not always expose one likelihood directly on
+    the wrapper. Utility scores only require the class count, so fall back to the
+    model and finally to ``train_Y`` instead of failing likelihood discovery.
+    """
+    likelihood = None
+    try:
+        likelihood = _factory._infer_ordinal_likelihood(bundle.model)
+    except ValueError:
+        pass
+
+    try:
+        return _factory._infer_ordinal_utility_values(bundle.model, likelihood)
+    except ValueError:
+        train_Y = bundle.train_Y
+        if train_Y is None:
+            raise
+        labels = torch.as_tensor(train_Y)
+        if labels.numel() == 0:
+            raise ValueError(
+                "Could not infer ordinal utility_values from an empty train_Y."
+            )
+        num_classes = int(labels.max().item()) + 1
+        return torch.arange(
+            num_classes,
+            dtype=torch.double,
+            device=labels.device,
+        )
+
+
 def _prepare_default_acquisition_context_with_ordinal_utilities(
     self,
     acq_config: AcquisitionConfig,
@@ -101,10 +135,8 @@ def _prepare_default_acquisition_context_with_ordinal_utilities(
         except (TypeError, ValueError):
             accepts_utility_values = False
         if accepts_utility_values and resolved.acqf_kwargs.get("utility_values") is None:
-            likelihood = _factory._infer_ordinal_likelihood(self.bundle.model)
-            utility_values = _factory._infer_ordinal_utility_values(
-                self.bundle.model,
-                likelihood,
+            utility_values = _infer_ordinal_utility_values_without_required_likelihood(
+                self.bundle
             )
             kwargs = dict(resolved.acqf_kwargs)
             kwargs["utility_values"] = utility_values

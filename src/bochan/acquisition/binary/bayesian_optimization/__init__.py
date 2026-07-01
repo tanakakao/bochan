@@ -5,6 +5,7 @@ from botorch.acquisition.multi_objective.objective import (
     IdentityMCMultiOutputObjective,
     MCMultiOutputObjective,
 )
+from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 
 from bochan.acquisition._nehvi_cache_root import patch_nehvi_cache_root_init
@@ -13,7 +14,7 @@ from . import hetero_multi_output as _hetero_multi_output
 from . import multi_output as _multi_output
 from .hetero_multi_output import (
     qHeteroMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
-    qHeteroMultiOutputBinaryNParEGO,
+    qHeteroMultiOutputBinaryNParEGO as _BaseHeteroBinaryNParEGO,
 )
 from .hetero_multi_output_compat import (
     qHeteroMultiOutputBinaryExpectedHypervolumeImprovement,
@@ -72,6 +73,45 @@ def _normalized_hetero_objective_forward(
 _hetero_multi_output._HeteroClassificationMCMultiOutputObjective.forward = (
     _normalized_hetero_objective_forward
 )
+
+
+class qHeteroMultiOutputBinaryNParEGO(_BaseHeteroBinaryNParEGO):
+    """Heteroscedastic binary NParEGO with scalar t-batch output."""
+
+    @t_batch_mode_transform()
+    def forward(self, X: Tensor) -> Tensor:
+        post = _hetero_multi_output.get_model_posterior(
+            self.model,
+            X,
+            samples_are_probs=self.samples_are_probs,
+        )
+        samples = post.rsample(self.sampler.sample_shape)
+        hetero = _hetero_multi_output.hetero_adjust_classification_samples(
+            self.model,
+            X,
+            samples,
+            beta=self.beta,
+            noise_penalty=self.noise_penalty,
+            default_sigma=self.default_sigma,
+            noise_is_log_var=self.noise_is_log_var,
+            samples_are_probs=self.samples_are_probs,
+            apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
+            eps=self.eps,
+            posterior=post,
+        )
+
+        x_q = int(X.shape[-2])
+        if (
+            hetero.ndim >= 4
+            and hetero.shape[-2] == 1
+            and hetero.shape[-3] == x_q
+        ):
+            hetero = hetero.squeeze(-2)
+
+        scalarized = self.base_objective(hetero, X=X)
+        best_q = scalarized.max(dim=-1).values
+        improvement = (best_q - self.best_value.to(best_q)).clamp_min(0.0)
+        return improvement.mean(dim=0)
 
 
 class _OneToManyObjectiveAdapter(MCMultiOutputObjective):

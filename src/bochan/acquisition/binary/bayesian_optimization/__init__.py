@@ -60,11 +60,14 @@ class _OneToManyObjectiveAdapter(MCMultiOutputObjective):
 
 
 class qMultiOutputBinaryNParEGO(_multi_output.qMultiOutputBinaryNParEGO):
-    """Binary NParEGO with one-to-many objective input alignment."""
+    """Binary NParEGO with high-level API compatibility."""
 
     def __init__(
         self,
-        *args,
+        model,
+        X_baseline: Tensor,
+        ref_point: Tensor,
+        *,
         objective=None,
         best_f=None,
         **kwargs,
@@ -79,7 +82,9 @@ class qMultiOutputBinaryNParEGO(_multi_output.qMultiOutputBinaryNParEGO):
             else IdentityMCMultiOutputObjective()
         )
         super().__init__(
-            *args,
+            model=model,
+            X_baseline=X_baseline,
+            ref_point=ref_point,
             objective=_OneToManyObjectiveAdapter(base_objective),
             **kwargs,
         )

@@ -62,7 +62,17 @@ class _OneToManyObjectiveAdapter(MCMultiOutputObjective):
 class qMultiOutputBinaryNParEGO(_multi_output.qMultiOutputBinaryNParEGO):
     """Binary NParEGO with one-to-many objective input alignment."""
 
-    def __init__(self, *args, objective=None, **kwargs) -> None:
+    def __init__(
+        self,
+        *args,
+        objective=None,
+        best_f=None,
+        **kwargs,
+    ) -> None:
+        # ``best_f`` may be injected by the high-level API's generic EI defaults,
+        # but NParEGO computes and registers its own scalarized ``best_value`` from
+        # ``X_baseline``. Accept and intentionally ignore the generic value.
+        del best_f
         base_objective = (
             objective
             if objective is not None

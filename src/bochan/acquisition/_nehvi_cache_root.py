@@ -9,6 +9,7 @@ This module makes custom qNEHVI wrappers respect that capability flag whenever
 
 from __future__ import annotations
 
+import inspect
 from functools import wraps
 from typing import Any, TypeVar
 
@@ -32,14 +33,54 @@ def resolve_nehvi_cache_root(model: Any, cache_root: bool | None = None) -> bool
     return bool(getattr(model, "_supports_cache_root", True))
 
 
+def _expose_x_baseline_signature(acquisition_cls: AcquisitionType) -> None:
+    """Expose ``X_baseline`` to API signature-based context filtering.
+
+    Several bochan qNEHVI wrappers accept acquisition-specific arguments only
+    through ``*args`` / ``**kwargs``. The high-level API filters automatically
+    supplied context fields by constructor signature, so a hidden
+    ``X_baseline`` would otherwise be removed even though the wrapper forwards it
+    to BoTorch's qNEHVI implementation.
+    """
+    try:
+        signature = inspect.signature(acquisition_cls.__init__, follow_wrapped=False)
+    except (TypeError, ValueError):
+        return
+
+    if "X_baseline" in signature.parameters:
+        return
+
+    parameters = list(signature.parameters.values())
+    insert_at = next(
+        (
+            index
+            for index, parameter in enumerate(parameters)
+            if parameter.kind == inspect.Parameter.VAR_KEYWORD
+        ),
+        len(parameters),
+    )
+    parameters.insert(
+        insert_at,
+        inspect.Parameter(
+            "X_baseline",
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            default=None,
+        ),
+    )
+    acquisition_cls.__signature__ = signature.replace(parameters=parameters[1:])
+
+
 def patch_nehvi_cache_root_init(acquisition_cls: AcquisitionType) -> AcquisitionType:
     """Patch a qNEHVI-style class to use a model-aware ``cache_root`` default.
 
     The patch is idempotent and preserves the original constructor metadata via
     ``functools.wraps``. It is used at package import time so both package-level
     imports and direct ``...multi_output`` imports receive the same behavior.
+    The public class signature additionally exposes ``X_baseline`` so the
+    high-level API can supply its default ``train_X`` baseline.
     """
     if getattr(acquisition_cls, "_bochan_cache_root_compat_patched", False):
+        _expose_x_baseline_signature(acquisition_cls)
         return acquisition_cls
 
     original_init = acquisition_cls.__init__
@@ -55,6 +96,7 @@ def patch_nehvi_cache_root_init(acquisition_cls: AcquisitionType) -> Acquisition
     acquisition_cls.__init__ = model_aware_init
     acquisition_cls._bochan_cache_root_compat_patched = True
     acquisition_cls._bochan_original_init = original_init
+    _expose_x_baseline_signature(acquisition_cls)
     return acquisition_cls
 
 

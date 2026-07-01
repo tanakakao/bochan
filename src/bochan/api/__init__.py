@@ -2,10 +2,7 @@
 
 # ruff: noqa: E402
 
-import inspect
 from dataclasses import replace
-
-import torch
 
 from . import configs as _configs
 from . import engine as _engine
@@ -74,82 +71,6 @@ def _resolve_acquisition_config_with_model_outputs(
 # multi-output acquisition family for contextual short names.
 BayesianOptimizer._resolve_acquisition_config = (
     _resolve_acquisition_config_with_model_outputs
-)
-
-
-_original_prepare_default_acquisition_context = (
-    BayesianOptimizer._prepare_default_acquisition_context
-)
-
-
-def _infer_ordinal_utility_values_without_required_likelihood(bundle: ModelBundle):
-    """Infer ordinal utilities from likelihood, model metadata, or observed labels.
-
-    Multi-output wrapper models do not always expose one likelihood directly on
-    the wrapper. Utility scores only require the class count, so fall back to the
-    model and finally to ``train_Y`` instead of failing likelihood discovery.
-    """
-    likelihood = None
-    try:
-        likelihood = _factory._infer_ordinal_likelihood(bundle.model)
-    except ValueError:
-        pass
-
-    try:
-        return _factory._infer_ordinal_utility_values(bundle.model, likelihood)
-    except ValueError:
-        train_Y = bundle.train_Y
-        if train_Y is None:
-            raise
-        labels = torch.as_tensor(train_Y)
-        if labels.numel() == 0:
-            raise ValueError(
-                "Could not infer ordinal utility_values from an empty train_Y."
-            )
-        num_classes = int(labels.max().item()) + 1
-        return torch.arange(
-            num_classes,
-            dtype=torch.double,
-            device=labels.device,
-        )
-
-
-def _prepare_default_acquisition_context_with_ordinal_utilities(
-    self,
-    acq_config: AcquisitionConfig,
-    data_context: DataContext | None,
-):
-    """Infer ordinal utility values before multi-objective defaults are built.
-
-    Multi-output ordinal EHVI / NEHVI / NParEGO constructors accept
-    ``utility_values`` directly rather than inheriting from the pointwise ordinal
-    utility base. Supplying these values before default partitioning and reference
-    point construction keeps all automatic quantities in utility space.
-    """
-    resolved = self._resolve_acquisition_config(acq_config)
-    if str(self.bundle.task_type) == "ordinal" and resolved.acqf_cls is not None:
-        try:
-            accepts_utility_values = "utility_values" in inspect.signature(
-                resolved.acqf_cls
-            ).parameters
-        except (TypeError, ValueError):
-            accepts_utility_values = False
-        if accepts_utility_values and resolved.acqf_kwargs.get("utility_values") is None:
-            utility_values = _infer_ordinal_utility_values_without_required_likelihood(
-                self.bundle
-            )
-            kwargs = dict(resolved.acqf_kwargs)
-            kwargs["utility_values"] = utility_values
-            resolved = replace(resolved, acqf_kwargs=kwargs)
-    return _original_prepare_default_acquisition_context(
-        self,
-        resolved,
-        data_context,
-    )
-
-
-BayesianOptimizer._prepare_default_acquisition_context = (
-    _prepare_default_acquisition_context_with_ordinal_utilities
 )
 
 # Keep direct submodule imports aligned with the public high-level API.

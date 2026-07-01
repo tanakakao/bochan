@@ -2,6 +2,8 @@
 
 # ruff: noqa: E402
 
+from dataclasses import replace
+
 from . import configs as _configs
 from . import engine as _engine
 from . import factory as _factory
@@ -29,6 +31,47 @@ from .optimizer_api import (
     uses_mixed_fixed_features,
 )
 from .engine_defaults import BayesianOptimizer
+
+
+def _infer_bundle_multi_output(bundle) -> bool:
+    """Infer multi-output status for wrappers and correlated multitask models.
+
+    ModelList-style wrappers explicitly set ``metadata['multi_output']``. A
+    correlated model such as the Kronecker binary classifier is represented by
+    one model object, so the model's ``num_outputs`` property must also be used.
+    """
+    if bool(bundle.metadata.get("multi_output", False)):
+        return True
+    num_outputs = getattr(bundle.model, "num_outputs", 1)
+    try:
+        return int(num_outputs) > 1
+    except (TypeError, ValueError):
+        return False
+
+
+def _resolve_acquisition_config_with_model_outputs(
+    self,
+    acq_config: AcquisitionConfig,
+) -> AcquisitionConfig:
+    """Resolve contextual aliases using the model's actual output count."""
+    if acq_config.acqf_cls is not None or acq_config.acqf_factory is not None:
+        return acq_config
+    self._check_fitted()
+    acqf_cls = resolve_acqf_cls(
+        acq_config.name,
+        self.acquisition_registry,
+        task_type=self.bundle.task_type,
+        model_type=self.bundle.model_type,
+        multi_output=_infer_bundle_multi_output(self.bundle),
+    )
+    return replace(acq_config, acqf_cls=acqf_cls)
+
+
+# Correlated multitask models are single model objects but still require the
+# multi-output acquisition family for contextual short names.
+BayesianOptimizer._resolve_acquisition_config = (
+    _resolve_acquisition_config_with_model_outputs
+)
 
 # Keep direct submodule imports aligned with the public high-level API.
 _configs.OptimizeConfig = OptimizeConfig

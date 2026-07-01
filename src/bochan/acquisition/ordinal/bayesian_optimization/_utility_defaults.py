@@ -25,13 +25,31 @@ def _num_classes_from_object(obj: Any) -> int | None:
     return None
 
 
-def infer_multioutput_ordinal_utility_values(model: Any) -> Tensor | list[Tensor]:
-    """Infer ``[0, ..., K - 1]`` utilities from an ordinal model.
+def _infer_num_outputs(model: Any) -> int:
+    num_outputs = getattr(model, "num_outputs", None)
+    if num_outputs is not None:
+        try:
+            return max(1, int(num_outputs))
+        except (TypeError, ValueError):
+            pass
+    submodels = getattr(model, "models", None)
+    if submodels is not None:
+        try:
+            return max(1, len(submodels))
+        except TypeError:
+            pass
+    return 1
 
-    Supports correlated models with one shared likelihood and independent
-    multi-output wrappers containing one ordinal submodel per output.
+
+def infer_multioutput_ordinal_utility_values(model: Any) -> Tensor | list[Tensor]:
+    """Infer one ordinal utility vector per model output.
+
+    A one-dimensional tensor represents one output in the downstream utility
+    normalizer. Therefore a shared class scale must still be repeated for every
+    output of a multi-output model.
     """
     counts: list[int] = []
+    num_outputs = _infer_num_outputs(model)
 
     for obj in (
         model,
@@ -80,6 +98,14 @@ def infer_multioutput_ordinal_utility_values(model: Any) -> Tensor | list[Tensor
             "Pass utility_values explicitly."
         )
 
+    if len(counts) == 1 and num_outputs > 1:
+        counts = counts * num_outputs
+    elif len(counts) not in {1, num_outputs}:
+        raise ValueError(
+            "Inferred ordinal class counts do not match model outputs: "
+            f"counts={counts}, num_outputs={num_outputs}."
+        )
+
     device = None
     dtype = torch.double
     train_input = getattr(model, "train_X", None)
@@ -92,6 +118,6 @@ def infer_multioutput_ordinal_utility_values(model: Any) -> Tensor | list[Tensor
         dtype = train_input.dtype if train_input.is_floating_point() else torch.double
 
     utilities = [torch.arange(count, device=device, dtype=dtype) for count in counts]
-    if len(utilities) == 1 or len(set(counts)) == 1:
+    if num_outputs == 1:
         return utilities[0]
     return utilities

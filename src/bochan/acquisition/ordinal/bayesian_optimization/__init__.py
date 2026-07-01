@@ -92,9 +92,17 @@ def qMultiOutputOrdinalNParEGO(
     ref_point,
     *,
     utility_values=None,
+    best_f=None,
     **kwargs,
 ):
-    """Construct ordinal NParEGO with explicit baseline and reference point."""
+    """Construct ordinal NParEGO with high-level API compatibility.
+
+    The generic acquisition-default resolver may inject ``best_f`` because
+    NParEGO is EI-based. This implementation computes its own scalarized
+    ``best_value`` from the baseline, matching the binary implementation, so the
+    generic value is accepted and intentionally ignored.
+    """
+    del best_f
     return _qMultiOutputOrdinalNParEGO(
         model=model,
         X_baseline=X_baseline,

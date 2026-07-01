@@ -104,18 +104,26 @@ def qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
 
 
 @wraps(_qHeteroMultiOutputOrdinalNParEGO)
-def qHeteroMultiOutputOrdinalNParEGO(*args, **kwargs):
-    """Construct hetero ordinal NParEGO with deferred q-shape validation.
+def qHeteroMultiOutputOrdinalNParEGO(
+    *args,
+    objective=None,
+    **kwargs,
+):
+    """Construct hetero ordinal NParEGO without double scalarization.
 
-    One-to-many input transforms can expand the objective q dimension before
-    NParEGO's own alignment step runs. Disable BoTorch's earlier generic
-    objective check so the acquisition can realign the expanded samples.
+    NParEGO performs its own augmented Chebyshev scalarization after the
+    heteroscedastic ordinal utility objective has produced one value per output.
+    The generic high-level objective may already reduce the output dimension,
+    which would remove the ``m`` axis before NParEGO can scalarize it. Match the
+    binary NParEGO behavior by accepting the compatibility argument but not
+    applying it inside the utility objective.
     """
-    acquisition = _qHeteroMultiOutputOrdinalNParEGO(*args, **kwargs)
-    objective = getattr(acquisition, "objective", None)
-    if objective is not None:
-        objective._verify_output_shape = False
-    return acquisition
+    del objective
+    return _qHeteroMultiOutputOrdinalNParEGO(
+        *args,
+        objective=None,
+        **kwargs,
+    )
 
 
 def qMultiOutputOrdinalExpectedHypervolumeImprovement(

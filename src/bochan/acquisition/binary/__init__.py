@@ -33,10 +33,21 @@ def _normalize_binary_epistemic_extended_shape(
     )
 
 
+def _binary_epistemic_batch_shape(
+    self: BinaryEpistemicProbabilityPosterior,
+) -> torch.Size:
+    """Return the latent posterior batch shape for BoTorch normal samplers."""
+    return torch.Size(getattr(self.latent_posterior, "batch_shape", torch.Size()))
+
+
 # Keep compatibility with BoTorch versions whose Posterior API calls
-# ``_extended_shape()`` with the default ``None`` value.
+# ``_extended_shape()`` with the default ``None`` value and whose normal sampler
+# reads ``posterior.batch_shape`` while updating cached base samples.
 BinaryEpistemicProbabilityPosterior._extended_shape = (
     _normalize_binary_epistemic_extended_shape
+)
+BinaryEpistemicProbabilityPosterior.batch_shape = property(
+    _binary_epistemic_batch_shape
 )
 
 
@@ -50,8 +61,8 @@ def _get_binary_epistemic_probability_sampler(
 
     ``SobolQMCNormalSampler`` implements the complete ``MCSampler`` contract,
     including ``_update_base_samples`` used by qNEHVI's cached-Cholesky path.
-    The custom posterior already forwards ``base_sample_shape``, ``batch_range``,
-    and ``rsample_from_base_samples`` to its latent Gaussian posterior.
+    The custom posterior forwards the base-sample interface to its latent
+    Gaussian posterior.
     """
     del posterior
     return SobolQMCNormalSampler(

@@ -1,3 +1,12 @@
+from __future__ import annotations
+
+import torch
+from botorch.acquisition.multi_objective.objective import (
+    IdentityMCMultiOutputObjective,
+    MCMultiOutputObjective,
+)
+from torch import Tensor
+
 from bochan.acquisition._nehvi_cache_root import patch_nehvi_cache_root_init
 
 from . import multi_output as _multi_output
@@ -21,11 +30,55 @@ patch_nehvi_cache_root_init(
     _multi_output.qMultiOutputBinaryNoisyExpectedHypervolumeImprovement
 )
 
+
+class _OneToManyObjectiveAdapter(MCMultiOutputObjective):
+    """Align objective ``X`` with one-to-many expanded posterior samples.
+
+    Binary models may expand each raw design point into ``n_w`` transformed
+    points. BoTorch verifies that the objective output q-dimension matches the
+    supplied ``X`` q-dimension, so the raw baseline ``X`` must be expanded before
+    it is passed to an inner multi-output objective.
+    """
+
+    def __init__(self, objective: MCMultiOutputObjective) -> None:
+        super().__init__()
+        self.objective = objective
+        self._verify_output_shape = False
+
+    def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
+        if X is not None:
+            sample_q = int(samples.shape[-2])
+            x_q = int(X.shape[-2])
+            if sample_q != x_q:
+                if x_q <= 0 or sample_q % x_q != 0:
+                    raise RuntimeError(
+                        "Cannot align one-to-many objective inputs: "
+                        f"samples q={sample_q}, X q={x_q}."
+                    )
+                X = X.repeat_interleave(sample_q // x_q, dim=-2)
+        return self.objective(samples, X=X)
+
+
+class qMultiOutputBinaryNParEGO(_multi_output.qMultiOutputBinaryNParEGO):
+    """Binary NParEGO with one-to-many objective input alignment."""
+
+    def __init__(self, *args, objective=None, **kwargs) -> None:
+        base_objective = (
+            objective
+            if objective is not None
+            else IdentityMCMultiOutputObjective()
+        )
+        super().__init__(
+            *args,
+            objective=_OneToManyObjectiveAdapter(base_objective),
+            **kwargs,
+        )
+
+
 from .multi_output import (
     qMultiOutputBinaryProbabilityOfFeasibility,
     qMultiOutputBinaryExpectedHypervolumeImprovement,
     qMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
-    qMultiOutputBinaryNParEGO,
 )
 
 from .single_output import (

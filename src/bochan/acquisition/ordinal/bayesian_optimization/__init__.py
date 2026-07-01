@@ -1,5 +1,7 @@
 from bochan.acquisition._nehvi_cache_root import patch_nehvi_cache_root_init
 
+import torch
+
 from . import multi_output as _multi_output
 from ._utility_defaults import infer_multioutput_ordinal_utility_values
 from .hetero_multi_output import (
@@ -39,6 +41,39 @@ def _with_default_utility_values(model, utility_values):
     if utility_values is not None:
         return utility_values
     return infer_multioutput_ordinal_utility_values(model)
+
+
+def _infer_multioutput_ordinal_train_y(model):
+    """Infer raw ordinal training labels from correlated or wrapper models."""
+    for name in ("train_Y", "train_targets"):
+        value = getattr(model, name, None)
+        if value is not None:
+            tensor = torch.as_tensor(value)
+            if tensor.ndim == 1:
+                tensor = tensor.unsqueeze(-1)
+            return tensor
+
+    submodels = getattr(model, "models", None)
+    if submodels is None:
+        return None
+
+    columns = []
+    for submodel in submodels:
+        value = getattr(submodel, "train_Y", None)
+        if value is None:
+            value = getattr(submodel, "train_targets", None)
+        if value is None:
+            return None
+        column = torch.as_tensor(value)
+        if column.ndim == 1:
+            column = column.unsqueeze(-1)
+        elif column.shape[-1] != 1:
+            return None
+        columns.append(column)
+
+    if not columns:
+        return None
+    return torch.cat(columns, dim=-1)
 
 
 def qMultiOutputOrdinalExpectedHypervolumeImprovement(
@@ -92,6 +127,7 @@ def qMultiOutputOrdinalNParEGO(
     ref_point,
     *,
     utility_values=None,
+    train_Y=None,
     best_f=None,
     **kwargs,
 ):
@@ -101,13 +137,20 @@ def qMultiOutputOrdinalNParEGO(
     NParEGO is EI-based. This implementation computes its own scalarized
     ``best_value`` from the baseline, matching the binary implementation, so the
     generic value is accepted and intentionally ignored.
+
+    When neither ``train_Y`` nor an explicit utility-space ``Y_baseline`` is
+    supplied, raw ordinal labels are recovered from the model. The underlying
+    acquisition then performs the existing label-to-utility conversion.
     """
     del best_f
+    if train_Y is None and kwargs.get("Y_baseline") is None:
+        train_Y = _infer_multioutput_ordinal_train_y(model)
     return _qMultiOutputOrdinalNParEGO(
         model=model,
         X_baseline=X_baseline,
         ref_point=ref_point,
         utility_values=_with_default_utility_values(model, utility_values),
+        train_Y=train_Y,
         **kwargs,
     )
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import torch
+from botorch.sampling.normal import SobolQMCNormalSampler
 
 from bochan.api import ModelConfig
 from bochan.api.engine_defaults import resolve_multi_output_model_config
@@ -98,3 +99,24 @@ def test_regression_wide_multitask_posterior_has_standard_multioutput_shape() ->
     assert posterior.variance.shape == torch.Size([2, 2])
     samples = posterior.rsample(torch.Size([3]))
     assert samples.shape == torch.Size([3, 2, 2])
+
+
+def test_qmc_samples_preserve_flat_base_shape_and_candidate_gradients() -> None:
+    train_X, train_Y = _wide_data()
+    model = WideMultiTaskGP(train_X=train_X, train_Y=train_Y)
+    model.eval()
+    X = torch.tensor(
+        [[[0.2], [0.5], [0.8]]],
+        dtype=torch.double,
+        requires_grad=True,
+    )
+
+    posterior = model.posterior(X)
+    sampler = SobolQMCNormalSampler(sample_shape=torch.Size([16]))
+    samples = sampler(posterior)
+    loss = samples.sum()
+    gradient = torch.autograd.grad(loss, X)[0]
+
+    assert samples.shape[-2:] == torch.Size([3, 2])
+    assert gradient.shape == X.shape
+    assert torch.isfinite(gradient).all()

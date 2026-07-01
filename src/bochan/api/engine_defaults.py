@@ -85,12 +85,11 @@ def resolve_multi_output_model_config(
 ) -> ModelConfig:
     """Resolve automatic wrapping for targets with two or more columns.
 
-    Kronecker multi-task models consume block-design targets with shape
-    ``[n, m]`` directly, so they must remain a single correlated model rather
-    than being split into a ModelList-style wrapper.
+    Correlated multi-task models consume wide targets directly and must remain a
+    single model rather than being split into a ModelList-style wrapper.
     """
 
-    if _normalize_name(model_config.model_type) == "kronecker":
+    if _normalize_name(model_config.model_type) in {"kronecker", "multitask"}:
         return model_config
     if model_config.multi_output_config is not None or _num_outputs(train_Y) < 2:
         return model_config

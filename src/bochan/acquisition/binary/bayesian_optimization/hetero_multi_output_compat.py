@@ -53,6 +53,7 @@ class qHeteroMultiOutputBinaryExpectedHypervolumeImprovement(
         resolved_sampler = sampler or SobolQMCNormalSampler(
             sample_shape=torch.Size([128])
         )
+        resolved_constraints = constraints if constraints else None
         qExpectedHypervolumeImprovement.__init__(
             self,
             model=model,
@@ -60,11 +61,21 @@ class qHeteroMultiOutputBinaryExpectedHypervolumeImprovement(
             partitioning=partitioning,
             sampler=resolved_sampler,
             objective=objective or IdentityMCMultiOutputObjective(),
-            constraints=constraints or [],
+            constraints=resolved_constraints,
             X_pending=X_pending,
             eta=eta,
             fat=fat,
         )
+        # Some supported BoTorch versions only create these attributes when
+        # constraints are configured. The inherited custom forward path uses
+        # BoTorch's `_compute_qehvi`, so preserve the attributes explicitly when
+        # they are needed without replacing any buffers already registered by
+        # BoTorch.
+        if resolved_constraints is not None and not hasattr(self, "eta"):
+            self.eta = eta
+        if not hasattr(self, "fat"):
+            self.fat = bool(fat)
+
         self.beta = float(beta)
         self.noise_penalty = float(noise_penalty)
         self.default_sigma = float(default_sigma)

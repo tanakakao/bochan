@@ -13,7 +13,7 @@ import torch
 from torch import Tensor
 
 from botorch.models.multitask import MultiTaskGP
-from botorch.posteriors.transformed import TransformedPosterior
+from botorch.posteriors.posterior import Posterior
 
 from bochan.models.classification.binary.base.multitask import (
     MultiTaskBinaryClassificationGPModel,
@@ -86,6 +86,80 @@ def _reshape_wide(value: Tensor, q: int, num_tasks: int) -> Tensor:
     return value.reshape(*value.shape[:-2], q, num_tasks, value.shape[-1])
 
 
+class _WidePosterior(Posterior):
+    """Posterior view that preserves base-sample compatibility.
+
+    The wrapped posterior keeps its flattened ``q * m`` base-sample shape. Only
+    user-visible moments and samples are reshaped to ``q x m``. This is required
+    by BoTorch MC samplers and acquisition gradients.
+    """
+
+    def __init__(
+        self,
+        posterior: Posterior,
+        *,
+        q: int,
+        num_tasks: int,
+        output_indices: list[int],
+        input_ndim: int,
+    ) -> None:
+        self.posterior = posterior
+        self.q = int(q)
+        self.num_tasks = int(num_tasks)
+        self.output_indices = list(output_indices)
+        self.input_ndim = int(input_ndim)
+
+    def _transform(self, value: Tensor) -> Tensor:
+        wide = _reshape_wide(value, q=self.q, num_tasks=self.num_tasks)
+        task_dim = -1 if wide.ndim == self.input_ndim else -2
+        index = torch.tensor(self.output_indices, device=wide.device)
+        return wide.index_select(task_dim, index)
+
+    @property
+    def mean(self) -> Tensor:
+        return self._transform(self.posterior.mean)
+
+    @property
+    def variance(self) -> Tensor:
+        return self._transform(self.posterior.variance)
+
+    @property
+    def device(self) -> torch.device:
+        return self.posterior.device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return self.posterior.dtype
+
+    @property
+    def base_sample_shape(self) -> torch.Size:
+        return self.posterior.base_sample_shape
+
+    @property
+    def batch_range(self) -> tuple[int, int]:
+        return self.posterior.batch_range
+
+    def rsample(self, sample_shape: torch.Size | None = None) -> Tensor:
+        return self._transform(self.posterior.rsample(sample_shape=sample_shape))
+
+    def rsample_from_base_samples(
+        self,
+        sample_shape: torch.Size,
+        base_samples: Tensor,
+    ) -> Tensor:
+        samples = self.posterior.rsample_from_base_samples(
+            sample_shape=sample_shape,
+            base_samples=base_samples,
+        )
+        return self._transform(samples)
+
+    def _extended_shape(
+        self,
+        sample_shape: torch.Size = torch.Size(),
+    ) -> torch.Size:
+        return sample_shape + self.mean.shape
+
+
 class _WidePosteriorMixin:
     """Expose a task-feature model as a normal wide multi-output model."""
 
@@ -114,18 +188,12 @@ class _WidePosteriorMixin:
             posterior_transform=None,
             **kwargs,
         )
-
-        def transform(value: Tensor) -> Tensor:
-            wide = _reshape_wide(value, q=q, num_tasks=self.num_tasks)
-            task_dim = -1 if wide.ndim == X.ndim else -2
-            index = torch.tensor(selected, device=wide.device)
-            return wide.index_select(task_dim, index)
-
-        posterior = TransformedPosterior(
-            posterior=base,
-            sample_transform=transform,
-            mean_transform=lambda mean, variance: transform(mean),
-            variance_transform=lambda mean, variance: transform(variance),
+        posterior = _WidePosterior(
+            base,
+            q=q,
+            num_tasks=self.num_tasks,
+            output_indices=selected,
+            input_ndim=X.ndim,
         )
         return posterior_transform(posterior) if posterior_transform is not None else posterior
 

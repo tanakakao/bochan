@@ -44,6 +44,13 @@ def _binary_epistemic_batch_shape(
     return torch.Size(getattr(self.latent_posterior, "batch_shape", torch.Size()))
 
 
+def _multioutput_bernoulli_batch_shape(
+    self: MultiOutputBernoulliPosterior,
+) -> torch.Size:
+    """Return dimensions preceding the posterior's ``q`` and output axes."""
+    return torch.Size(self.mean.shape[:-2])
+
+
 # Keep compatibility with BoTorch versions whose Posterior API calls
 # ``_extended_shape()`` with the default ``None`` value and whose normal sampler
 # reads ``posterior.batch_shape`` while updating cached base samples.
@@ -52,6 +59,9 @@ BinaryEpistemicProbabilityPosterior._extended_shape = (
 )
 BinaryEpistemicProbabilityPosterior.batch_shape = property(
     _binary_epistemic_batch_shape
+)
+MultiOutputBernoulliPosterior.batch_shape = property(
+    _multioutput_bernoulli_batch_shape
 )
 
 

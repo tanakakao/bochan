@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Optional, Union
 
+import torch
 from torch import Tensor
 
 from botorch.acquisition.multi_objective.monte_carlo import (
@@ -27,7 +28,7 @@ from .hetero_multi_output import (
 class qHeteroMultiOutputBinaryExpectedHypervolumeImprovement(
     _BaseHeteroBinaryEHVI
 ):
-    """Binary heteroscedastic qEHVI without overwriting ``eta`` buffers."""
+    """Binary heteroscedastic qEHVI with stable defaults."""
 
     def __init__(
         self,
@@ -49,12 +50,15 @@ class qHeteroMultiOutputBinaryExpectedHypervolumeImprovement(
         eta: Union[float, Tensor] = 1e-3,
         fat: bool = False,
     ) -> None:
+        resolved_sampler = sampler or SobolQMCNormalSampler(
+            sample_shape=torch.Size([128])
+        )
         qExpectedHypervolumeImprovement.__init__(
             self,
             model=model,
             ref_point=ref_point,
             partitioning=partitioning,
-            sampler=sampler,
+            sampler=resolved_sampler,
             objective=objective or IdentityMCMultiOutputObjective(),
             constraints=constraints or [],
             X_pending=X_pending,

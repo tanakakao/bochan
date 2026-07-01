@@ -51,6 +51,62 @@ def _optimizer_name(optimizer: str) -> str:
     return optimizer.replace("-", "_").lower()
 
 
+def _uses_kronecker_model(value: Any, *, _seen: set[int] | None = None) -> bool:
+    """Return whether an acquisition/model tree contains a Kronecker model."""
+
+    if value is None:
+        return False
+    if _seen is None:
+        _seen = set()
+    value_id = id(value)
+    if value_id in _seen:
+        return False
+    _seen.add(value_id)
+
+    if "kronecker" in value.__class__.__name__.lower():
+        return True
+
+    nested_model = getattr(value, "model", None)
+    if nested_model is not None and nested_model is not value:
+        if _uses_kronecker_model(nested_model, _seen=_seen):
+            return True
+
+    nested_models = getattr(value, "models", None)
+    if nested_models is not None:
+        try:
+            return any(_uses_kronecker_model(model, _seen=_seen) for model in nested_models)
+        except TypeError:
+            pass
+    return False
+
+
+def _force_sequential_for_kronecker(
+    acqf: Any,
+    config: _BaseOptimizeConfig,
+) -> _BaseOptimizeConfig:
+    """Use sequential q-batch optimization for Kronecker model acquisitions.
+
+    Native joint ``q > 1`` optimization of Kronecker multi-task posteriors can
+    fail during LinearOperator backward because the task dimension ``m`` and the
+    flattened event dimension ``q * m`` are mixed. Sequential optimization keeps
+    each internal optimization step at ``q=1`` while returning the requested
+    number of candidates.
+    """
+
+    optimizer = config.optimizer
+    if callable(optimizer) and not isinstance(optimizer, str):
+        return config
+    name = _ALIASES.get(_optimizer_name(str(optimizer)), _optimizer_name(str(optimizer)))
+    if (
+        name == "optimize_acqf"
+        and config.q > 1
+        and not config.sequential
+        and _uses_kronecker_model(acqf)
+    ):
+        return replace(config, sequential=True)
+    return config
+
+
 def _resolve_thompson_sampling_target(acqf: Any) -> Any:
     """Return the posterior model used by Thompson sampling.
 
@@ -174,6 +230,7 @@ def optimize_candidates(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> 
 
     if bounds is None:
         raise ValueError("bounds must be provided.")
+    config = _force_sequential_for_kronecker(acqf, config)
     optimizer = config.optimizer
     if callable(optimizer) and not isinstance(optimizer, str):
         return _BASE_OPTIMIZE_CANDIDATES(acqf=acqf, bounds=bounds, config=config)

@@ -63,4 +63,4 @@ def test_ordinal_bo_wrappers_expose_automatic_context_parameters():
 
     assert {"ref_point", "partitioning"} <= set(ehvi.parameters)
     assert {"ref_point", "X_baseline"} <= set(nehvi.parameters)
-    assert {"ref_point", "X_baseline"} <= set(nparego.parameters)
+    assert {"ref_point", "X_baseline", "best_f"} <= set(nparego.parameters)

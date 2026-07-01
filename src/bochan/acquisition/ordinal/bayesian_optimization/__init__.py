@@ -1,3 +1,5 @@
+from functools import wraps
+
 from bochan.acquisition._nehvi_cache_root import patch_nehvi_cache_root_init
 
 import torch
@@ -10,7 +12,7 @@ from .hetero_multi_output import (
     qHeteroMultiOutputOrdinalProbabilityOfImprovement,
     qHeteroMultiOutputOrdinalExpectedImprovement,
     qHeteroMultiOutputOrdinalExpectedHypervolumeImprovement,
-    qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
+    qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement as _qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
     qHeteroMultiOutputOrdinalNParEGO,
 )
 
@@ -74,6 +76,31 @@ def _infer_multioutput_ordinal_train_y(model):
     if not columns:
         return None
     return torch.cat(columns, dim=-1)
+
+
+@wraps(_qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement)
+def qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
+    *args,
+    Y_baseline=None,
+    **kwargs,
+):
+    """Construct hetero ordinal NEHVI with a utility-space baseline.
+
+    The high-level API may inject raw ordinal labels through ``Y_baseline``.
+    Integer tensors are therefore treated as labels rather than precomputed
+    utility values and are discarded so the underlying acquisition recomputes
+    the heteroscedastic utility baseline from ``X_baseline``. Floating-point
+    baselines remain supported as explicit utility-space overrides.
+    """
+    if Y_baseline is not None:
+        baseline = torch.as_tensor(Y_baseline)
+        if not baseline.is_floating_point():
+            Y_baseline = None
+    return _qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
+        *args,
+        Y_baseline=Y_baseline,
+        **kwargs,
+    )
 
 
 def qMultiOutputOrdinalExpectedHypervolumeImprovement(

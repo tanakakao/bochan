@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
 
 from .acquisition_config import AcquisitionConfig
 from .configs import ModelBundle, ObjectiveConfig
@@ -56,7 +55,12 @@ def install_kronecker_input_perturbation_objective_defaults() -> None:
     ) -> AcquisitionConfig:
         if bundle is not None and not _has_explicit_objective(acq_config):
             task_type = str(bundle.task_type)
-            model_type = str(bundle.model_type).replace("-", "").replace("_", "").lower()
+            model_type = (
+                str(bundle.model_type)
+                .replace("-", "")
+                .replace("_", "")
+                .lower()
+            )
             if (
                 model_type == "kronecker"
                 and task_type in {"regression", "multi_objective"}

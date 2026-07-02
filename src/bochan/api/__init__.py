@@ -272,6 +272,14 @@ _engine_defaults._resolve_objective_config_n_w_from_input_transform = (
     _resolve_objective_config_n_w_with_default
 )
 
+# Extend the same defaults to ordinal and multiclass vector objectives after
+# the binary / regression resolver above is installed.
+from .classification_perturbation_defaults import (
+    apply_classification_perturbation_defaults,
+)
+
+apply_classification_perturbation_defaults()
+
 
 def _resolve_acquisition_config_with_model_outputs(
     self,

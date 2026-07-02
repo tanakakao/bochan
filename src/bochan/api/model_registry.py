@@ -57,7 +57,10 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
     "normal": {
         "regression": {
             "base": ("botorch.models.gp_regression", "SingleTaskGP"),
-            "kronecker": ("botorch.models.multitask", "KroneckerMultiTaskGP"),
+            "kronecker": (
+                "bochan.models.regression.gaussian",
+                "PerturbationCompatibleKroneckerMultiTaskGP",
+            ),
             "multitask": ("bochan.models.wide_multitask", "WideMultiTaskGP"),
             "deepgp": ("bochan.models.regression.gaussian.deep", "DeepGPModel"),
             "deepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelGPModel"),
@@ -71,7 +74,10 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
         },
         "multi_objective": {
             "base": ("botorch.models.gp_regression", "SingleTaskGP"),
-            "kronecker": ("botorch.models.multitask", "KroneckerMultiTaskGP"),
+            "kronecker": (
+                "bochan.models.regression.gaussian",
+                "PerturbationCompatibleKroneckerMultiTaskGP",
+            ),
             "multitask": ("bochan.models.wide_multitask", "WideMultiTaskGP"),
             "deepgp": ("bochan.models.regression.gaussian.deep", "DeepGPModel"),
             "deepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelGPModel"),
@@ -179,15 +185,14 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "multitask": ("bochan.models.classification.multiclass.base", "MultiTaskMulticlassClassificationMixedGPModel"),
             "deepgp": ("bochan.models.classification.multiclass.deep", "MulticlassMixedDeepGPModel"),
             "deepkernel": ("bochan.models.classification.multiclass.deep", "DeepKernelMulticlassClassificationMixedGPModel"),
-            "saas": ("bochan.models.classification.multiclass.high_dim", "SaasMulticlassClassificationMixedGPModel"),
-            "pca": ("bochan.models.classification.multiclass.high_dim", "PCAMulticlassClassificationMixedGPModel"),
-            "rembo": ("bochan.models.classification.multiclass.high_dim", "REMBOMulticlassClassificationMixedGPModel"),
+            "saas": ("bochan.models.classification.multiclass.high_dim", "SaasMulticlassClassificationGPModel"),
+            "pca": ("bochan.models.classification.multiclass.high_dim", "PCAMulticlassClassificationGPModel"),
+            "rembo": ("bochan.models.classification.multiclass.high_dim", "REMBOBinaryClassificationMixedGPModel"),
             "rrp": ("bochan.models.classification.multiclass.robust", "OutlierRelevancePursuitMulticlassClassificationMixedGPModel"),
             "hetero": ("bochan.models.classification.multiclass.robust", "HeteroscedasticMulticlassClassificationMixedGPModel"),
         },
     },
 }
-
 
 MODEL_REGISTRY = LazyModelRegistry(_MODEL_REGISTRY_TREE)
 DEFAULT_MODEL_REGISTRY = MODEL_REGISTRY

@@ -77,11 +77,20 @@ def _normalize_multi_output_values(values: Tensor, n_candidates: int) -> Tensor:
     )
 
 
-def _random_scalarize(values: Tensor) -> Tensor:
+def _random_scalarize(values: Tensor, *, n_candidates: int) -> Tensor:
     """Randomly scalarize ``... x N x m`` values after per-sample scaling."""
 
-    if values.ndim < 3:
+    # Scalar objectives may include one or more model batch dimensions, e.g.
+    # ``sample x model_batch x N``. Candidate-axis position, not ndim, is the
+    # reliable discriminator.
+    if values.shape[-1] == n_candidates:
         return values
+
+    if values.ndim < 3 or values.shape[-2] != n_candidates:
+        raise RuntimeError(
+            "Expected scalar values ending in N or multi-output values ending in N x m. "
+            f"Expected N={n_candidates}, got shape={tuple(values.shape)}."
+        )
 
     lower = values.amin(dim=-2, keepdim=True)
     scale = (values.amax(dim=-2, keepdim=True) - lower).clamp_min(1e-12)
@@ -166,7 +175,7 @@ class ThompsonScalarizedObjective(MCAcquisitionObjective):
         n_candidates = int(X.shape[-2])
         values = _call_objective_forward(self.objective, samples, X)
         values = _normalize_multi_output_values(values, n_candidates)
-        scores = _random_scalarize(values)
+        scores = _random_scalarize(values, n_candidates=n_candidates)
         if scores.shape[-1] != n_candidates:
             raise RuntimeError(
                 "Thompson scalarization did not preserve the candidate dimension. "

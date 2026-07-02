@@ -7,6 +7,9 @@ from . import multi_output as _multi_output
 
 
 _ORIGINAL_FORWARD_ATTR = "_bochan_original_forward_before_output_compat"
+_ORIGINAL_OBJECTIVE_CANONICALIZE_ATTR = (
+    "_bochan_original_canonicalize_probability_samples"
+)
 
 
 def _prod(shape: torch.Size | tuple[int, ...]) -> int:
@@ -100,8 +103,63 @@ def _wrap_forward(cls) -> None:
     cls.forward = _forward
 
 
+def _patch_multiclass_probability_objective() -> None:
+    """Normalize ``... x q x m x C`` even when ``m == C``.
+
+    GPyTorch single-output posteriors may retain a singleton output axis, so a
+    dedicated multiclass wrapper can temporarily produce
+    ``... x q x 1 x m x C``. In addition, the original layout detector used
+    unequal axis sizes to distinguish ``m`` from ``C`` and therefore failed when
+    the number of objectives equalled the number of classes. The patched method
+    removes only the singleton between q and m, then detects probabilities by
+    their normalization rather than by axis-size inequality.
+    """
+
+    cls = _multi_output.MulticlassTargetProbabilityObjective
+    if hasattr(cls, _ORIGINAL_OBJECTIVE_CANONICALIZE_ATTR):
+        return
+
+    original = cls._canonicalize_probability_samples
+    setattr(cls, _ORIGINAL_OBJECTIVE_CANONICALIZE_ATTR, original)
+
+    def _canonicalize_probability_samples(self, samples: Tensor) -> Tensor | None:
+        num_outputs = self.num_outputs
+        if num_outputs is not None and samples.ndim >= 4:
+            m = int(num_outputs)
+            normalized = samples
+
+            # Standard wrapper shape should be ... x q x m x C. Remove only
+            # GPyTorch's extra singleton output axis: ... x q x 1 x m x C.
+            if (
+                normalized.ndim >= 5
+                and normalized.shape[-3] == 1
+                and normalized.shape[-2] == m
+            ):
+                normalized = normalized.squeeze(-3)
+
+            # Prefer the documented standard layout. This remains unambiguous
+            # through probability normalization even when m == C.
+            if (
+                normalized.shape[-2] == m
+                and self._looks_like_probabilities_along_dim(normalized, dim=-1)
+            ):
+                return normalized
+
+            # Compatibility layout: ... x q x C x m.
+            if (
+                normalized.shape[-1] == m
+                and self._looks_like_probabilities_along_dim(normalized, dim=-2)
+            ):
+                return normalized.movedim(-1, -2)
+
+        return original(self, samples)
+
+    cls._canonicalize_probability_samples = _canonicalize_probability_samples
+
+
 def apply_bayesian_optimization_output_compat() -> None:
-    """Patch multiclass BO output finalization helper and EHVI forwards in-place."""
+    """Patch multiclass BO probability and acquisition output shapes in-place."""
+    _patch_multiclass_probability_objective()
     _multi_output._finalize_acq_output = _finalize_acq_output
     _wrap_forward(_multi_output.qMultiOutputMulticlassExpectedHypervolumeImprovement)
     _wrap_forward(_multi_output.qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement)

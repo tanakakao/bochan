@@ -25,11 +25,9 @@ def _transform_without_one_to_many(
 ) -> Tensor:
     """Apply only transforms that preserve the number of input rows.
 
-    ``KroneckerMultiTaskGP.posterior`` transforms both test inputs and the stored
-    training inputs while the model is in evaluation mode. A one-to-many
-    transform such as ``InputPerturbation`` must be applied to the test inputs,
-    but applying it to the stored training inputs changes ``n`` and breaks the
-    Kronecker training caches.
+    During training, pointwise transforms such as ``Normalize`` must remain
+    active, while one-to-many transforms such as ``InputPerturbation`` must not
+    expand the block-design training data.
     """
 
     if transform is None:
@@ -52,7 +50,7 @@ def _transform_without_one_to_many(
 
 
 def _is_stored_training_input(model: Any, X: Tensor) -> bool:
-    """Return whether ``X`` is one of the exact tensors stored by ExactGP."""
+    """Return whether ``X`` is one of the tensors stored by ``ExactGP``."""
 
     train_inputs = getattr(model, "train_inputs", None)
     if isinstance(train_inputs, tuple):
@@ -60,29 +58,19 @@ def _is_stored_training_input(model: Any, X: Tensor) -> bool:
     return X is train_inputs
 
 
-def _must_preserve_kronecker_training_shape(model: Any, X: Tensor) -> bool:
-    """Return whether one-to-many input transforms must be skipped."""
-
-    # During construction ``training`` may not yet be initialized. Treat that
-    # state as training so constructor validation sees the original number of
-    # rows. During posterior evaluation, the stored training tensor is detected
-    # by identity and kept pointwise, while independent candidate tensors are
-    # still expanded by InputPerturbation.
-    return bool(getattr(model, "training", True)) or _is_stored_training_input(
-        model,
-        X,
-    )
-
-
 class PerturbationCompatibleKroneckerMultiTaskGP(KroneckerMultiTaskGP):
-    """Kronecker GP that applies one-to-many transforms only to test inputs.
+    """Kronecker GP compatible with one-to-many input perturbations.
 
-    BoTorch's Kronecker posterior calls ``transform_inputs`` for both ``X`` and
-    ``self.train_inputs[0]`` in evaluation mode. With ``InputPerturbation`` this
-    expands the stored training design from ``n`` to ``n * n_w`` while
-    ``train_targets`` remains ``n x m``. This subclass preserves pointwise
-    transforms such as ``Normalize`` for training inputs and limits the
-    one-to-many perturbation expansion to candidate inputs.
+    In affected BoTorch versions, ``KroneckerMultiTaskGP.posterior`` and its
+    cached properties transform the already-preprocessed ``train_inputs`` a
+    second time. With ``InputPerturbation`` this can repeatedly multiply the
+    training row count while ``train_targets`` remains unchanged.
+
+    This subclass keeps three paths separate:
+
+    - training forward: apply only pointwise transforms;
+    - stored evaluation training inputs: return them unchanged;
+    - independent evaluation candidates: apply the full transform chain.
     """
 
     def transform_inputs(
@@ -97,8 +85,17 @@ class PerturbationCompatibleKroneckerMultiTaskGP(KroneckerMultiTaskGP):
         )
         if transform is None:
             return X
-        if _must_preserve_kronecker_training_shape(self, X):
+
+        if bool(getattr(self, "training", True)):
             return _transform_without_one_to_many(X, transform).contiguous()
+
+        # ``Model.eval()`` preprocesses and stores the training inputs once.
+        # Old Kronecker posterior/cache implementations call transform_inputs on
+        # these stored tensors again; returning them directly mirrors BoTorch's
+        # upstream fix for the duplicate transformation.
+        if _is_stored_training_input(self, X):
+            return X
+
         return super().transform_inputs(
             X,
             input_transform=transform,
@@ -181,7 +178,7 @@ class MixedKroneckerMultiTaskGP(PerturbationCompatibleKroneckerMultiTaskGP):
         if transform is None:
             return X
 
-        if _must_preserve_kronecker_training_shape(self, X):
+        if bool(getattr(self, "training", True)):
             X_tf = _transform_without_one_to_many(X, transform).contiguous()
             check_categorical_columns_unchanged(
                 X,
@@ -189,6 +186,9 @@ class MixedKroneckerMultiTaskGP(PerturbationCompatibleKroneckerMultiTaskGP):
                 cat_dims=self.cat_dims,
             )
             return X_tf
+
+        if _is_stored_training_input(self, X):
+            return X
 
         return transform_mixed_inputs(
             X,

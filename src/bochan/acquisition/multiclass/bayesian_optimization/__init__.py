@@ -1,3 +1,8 @@
+from bochan.acquisition._nparego_shape import (
+    reduce_nparego_sample_and_q_to_tbatch,
+)
+
+from . import multi_output as _multi_output
 from .input_perturbation_compat import (
     patch_multiclass_hypervolume_input_perturbation,
 )
@@ -19,6 +24,13 @@ from .hetero_single_output import (
     qHeteroMulticlassProbabilityOfImprovement,
     qHeteroMulticlassUpperConfidenceBound,
 )
+
+# Keep q=1 sequential optimization shape handling aligned across classification
+# and ordinal NParEGO implementations.
+_multi_output._reduce_sample_and_q_to_tbatch = (
+    reduce_nparego_sample_and_q_to_tbatch
+)
+
 from .multi_output import (
     MulticlassTargetProbabilityObjective,
     OutputReductionType,

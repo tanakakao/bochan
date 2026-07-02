@@ -5,6 +5,9 @@ import torch
 from bochan.acquisition.multiclass.bayesian_optimization import (
     MulticlassTargetProbabilityObjective,
 )
+from bochan.acquisition.multiclass.bayesian_optimization.input_perturbation_compat import (
+    validate_hypervolume_objective_q,
+)
 from bochan.models.components.multiclass import MulticlassProbsPosterior
 
 
@@ -66,7 +69,9 @@ def test_multiclass_objective_handles_outputs_equal_to_classes() -> None:
 
     values = objective(probabilities)
 
-    assert values.shape == torch.Size([sample_shape, batch_size, q, num_outputs])
+    assert values.shape == torch.Size(
+        [sample_shape, batch_size, q, num_outputs]
+    )
 
 
 def test_multiclass_objective_removes_singleton_between_q_and_outputs() -> None:
@@ -91,4 +96,59 @@ def test_multiclass_objective_removes_singleton_between_q_and_outputs() -> None:
 
     values = objective(probabilities)
 
-    assert values.shape == torch.Size([sample_shape, batch_size, q, num_outputs])
+    assert values.shape == torch.Size(
+        [sample_shape, batch_size, q, num_outputs]
+    )
+
+
+def test_multiclass_objective_restores_q1_from_raw_X() -> None:
+    sample_shape = 128
+    batch_size = 32
+    num_outputs = 2
+    num_classes = 3
+    probabilities_without_q = torch.softmax(
+        torch.randn(
+            sample_shape,
+            batch_size,
+            num_outputs,
+            num_classes,
+            dtype=torch.double,
+        ),
+        dim=-1,
+    )
+    X = torch.rand(batch_size, 1, 4, dtype=torch.double)
+    objective = MulticlassTargetProbabilityObjective(num_outputs=num_outputs)
+
+    values = objective(probabilities_without_q, X=X)
+
+    assert values.shape == torch.Size(
+        [sample_shape, batch_size, 1, num_outputs]
+    )
+    validate_hypervolume_objective_q(values, X)
+
+
+def test_multiclass_objective_does_not_duplicate_existing_q1() -> None:
+    sample_shape = 8
+    batch_size = 6
+    num_outputs = 2
+    num_classes = 3
+    probabilities = torch.softmax(
+        torch.randn(
+            sample_shape,
+            batch_size,
+            1,
+            num_outputs,
+            num_classes,
+            dtype=torch.double,
+        ),
+        dim=-1,
+    )
+    X = torch.rand(batch_size, 1, 4, dtype=torch.double)
+    objective = MulticlassTargetProbabilityObjective(num_outputs=num_outputs)
+
+    values = objective(probabilities, X=X)
+
+    assert values.shape == torch.Size(
+        [sample_shape, batch_size, 1, num_outputs]
+    )
+    validate_hypervolume_objective_q(values, X)

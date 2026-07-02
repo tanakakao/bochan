@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from typing import Sequence
 
 from torch.nn import Module
 
@@ -11,13 +11,13 @@ from bochan.models.hybrid.specs import OutputSpec
 class _DummyModel(Module):
     """HybridMultiOutputModel の初期化だけを検証する最小モデル。"""
 
-    def __init__(self, cat_dims: Optional[Sequence[int]]) -> None:
+    def __init__(self, cat_dims: Sequence[int] | None) -> None:
         super().__init__()
         self.cat_dims = None if cat_dims is None else list(cat_dims)
         self.input_transform = None
 
 
-def _make_spec(name: str, cat_dims: Optional[Sequence[int]]) -> OutputSpec:
+def _make_spec(name: str, cat_dims: Sequence[int] | None) -> OutputSpec:
     return OutputSpec(
         name=name,
         task_type="multiclass",

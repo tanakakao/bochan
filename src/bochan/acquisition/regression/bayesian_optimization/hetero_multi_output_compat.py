@@ -22,12 +22,17 @@ from .hetero_multi_output import (
 
 
 class qHeteroMultiOutputRegressionExpectedHypervolumeImprovement(_BaseHeteroEHVI):
-    """Heteroscedastic qEHVI without overwriting BoTorch's ``eta`` buffer.
+    """Heteroscedastic qEHVI with BoTorch-version-safe constraint state.
 
-    BoTorch registers ``eta`` as a tensor buffer in
-    ``qExpectedHypervolumeImprovement``. The previous implementation assigned the
-    original float to ``self.eta`` after ``super().__init__()``, which raises a
-    ``TypeError`` whenever outcome constraints are enabled.
+    ``constraints=None`` must remain ``None``. Converting it to an empty list can
+    leave ``self.constraints`` non-None while some BoTorch versions do not create
+    the corresponding ``eta`` buffer for zero constraints. Then ``_compute_qehvi``
+    enters its constrained path and raises ``AttributeError: ... has no attribute
+    'eta'``.
+
+    When actual outcome constraints are supplied, BoTorch owns the tensor
+    conversion and registration of ``eta``. The compatibility subclass therefore
+    does not overwrite that buffer after initialization.
     """
 
     def __init__(
@@ -54,7 +59,7 @@ class qHeteroMultiOutputRegressionExpectedHypervolumeImprovement(_BaseHeteroEHVI
             partitioning=partitioning,
             sampler=sampler,
             objective=objective,
-            constraints=constraints or [],
+            constraints=constraints,
             X_pending=X_pending,
             eta=eta,
             fat=fat,

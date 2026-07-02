@@ -230,10 +230,16 @@ def apply_classification_perturbation_defaults() -> None:
     global _APPLIED
     if _APPLIED:
         return
+
+    from .hetero_ordinal_perturbation_compat import (
+        apply_hetero_ordinal_perturbation_compat,
+    )
+
     _factory._build_ordinal_objective = _build_ordinal
     _factory.build_objective = _build_objective
     _engine._resolve_objective_config_n_w_from_input_transform = _resolve_objective
     _engine_defaults._resolve_objective_config_n_w_from_input_transform = _resolve_objective
+    apply_hetero_ordinal_perturbation_compat()
     _APPLIED = True
 
 

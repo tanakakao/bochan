@@ -1,6 +1,8 @@
 """Visualization helpers for bochan."""
 
+from . import data as _data
 from . import plots as _plots
+from . import utils as _utils
 from .data import (
     candidates_dataframe,
     create_grid,
@@ -12,6 +14,15 @@ from .data import (
     training_dataframe,
     tri_grid,
 )
+from .input_perturbation import (
+    prediction_mean_std as _prediction_mean_std_with_input_perturbation,
+)
+
+# ``data.py`` imports prediction_mean_std directly. Replace both references so
+# package and direct submodule imports use perturbation-aware visualization.
+_data.prediction_mean_std = _prediction_mean_std_with_input_perturbation
+_utils.prediction_mean_std = _prediction_mean_std_with_input_perturbation
+
 from .multiclass import (
     MulticlassHeatmapMode,
     infer_class_labels,

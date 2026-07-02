@@ -129,6 +129,49 @@ def aggregate_input_perturbation_moments(
     return aggregated_mean, np.sqrt(aggregated_var)
 
 
+def aggregate_input_perturbation_probabilities(
+    values: Any,
+    *,
+    n_points: int,
+    n_w: int | None,
+) -> np.ndarray:
+    """Average expanded class probabilities back to one row per input point.
+
+    Input perturbation commonly flattens ``n_points x n_w`` into one candidate
+    axis. Probability visualization must restore that grouping before checking
+    that the number of probability rows matches the original input grid.
+
+    Additional leading dimensions, such as posterior sample or model batch
+    dimensions, are averaged together after preserving the point-major
+    ``n_points x n_w`` grouping.
+    """
+
+    arr = np.asarray(to_numpy(values), dtype=float)
+    if n_w is None or n_w <= 1 or n_points <= 0 or arr.ndim < 2:
+        return arr
+
+    while arr.ndim > 2 and arr.shape[0] == 1:
+        arr = np.squeeze(arr, axis=0)
+    while arr.ndim > 2 and arr.shape[-2] == 1:
+        arr = np.squeeze(arr, axis=-2)
+
+    expanded_points = n_points * n_w
+    if (
+        arr.ndim == 2
+        and arr.shape[0] != expanded_points
+        and arr.shape[1] == expanded_points
+    ):
+        arr = arr.T
+
+    n_classes = int(arr.shape[-1])
+    flat = arr.reshape(-1, n_classes)
+    if flat.shape[0] % expanded_points != 0:
+        return arr
+
+    grouped = flat.reshape(-1, n_points, n_w, n_classes)
+    return grouped.mean(axis=(0, 2))
+
+
 def prediction_mean_std(
     obj: Any,
     X: Any,
@@ -154,6 +197,7 @@ def prediction_mean_std(
 
 __all__ = [
     "aggregate_input_perturbation_moments",
+    "aggregate_input_perturbation_probabilities",
     "input_perturbation_n_w",
     "prediction_mean_std",
 ]

@@ -177,6 +177,20 @@ def move_class_dim_to_last(t: Tensor, *, num_classes: int) -> Tensor:
     raise RuntimeError(f'Could not find class dimension of size {c} in tensor shape {tuple(t.shape)}.')
 
 
+def _canonicalize_multiclass_logits(t: Tensor, *, num_classes: int) -> Tensor:
+    """class axis を末尾へ移し、GPyTorch の singleton output axis を除く。"""
+    had_trailing_output_axis = t.ndim >= 2 and t.shape[-1] == 1
+    logits = move_class_dim_to_last(t, num_classes=num_classes)
+    if (
+        had_trailing_output_axis
+        and logits.ndim >= 2
+        and logits.shape[-2] == 1
+        and logits.shape[-1] == int(num_classes)
+    ):
+        logits = logits.squeeze(-2)
+    return logits
+
+
 class MulticlassProbsPosterior(Posterior):
     """多クラス分類の probability posterior。`mean` は class probability。"""
 
@@ -208,9 +222,10 @@ class MulticlassProbsPosterior(Posterior):
 
     @property
     def logits(self) -> Tensor:
-        logits = move_class_dim_to_last(self.latent_posterior.mean, num_classes=self.num_classes)
-        if logits.shape[-1] == 1 and logits.ndim >= 3 and logits.shape[-2] == self.num_classes:
-            logits = logits.squeeze(-1).movedim(-1, -2)
+        logits = _canonicalize_multiclass_logits(
+            self.latent_posterior.mean,
+            num_classes=self.num_classes,
+        )
         return logits / self.temperature
 
     @property
@@ -231,7 +246,10 @@ class MulticlassProbsPosterior(Posterior):
             except Exception:
                 pass
         latent_samples = self.latent_posterior.rsample(sample_shape=sample_shape)
-        logits = move_class_dim_to_last(latent_samples, num_classes=self.num_classes)
+        logits = _canonicalize_multiclass_logits(
+            latent_samples,
+            num_classes=self.num_classes,
+        )
         return torch.softmax(logits / self.temperature, dim=-1)
 
     def rsample_from_base_samples(self, sample_shape: torch.Size, base_samples: Tensor) -> Tensor:
@@ -241,11 +259,17 @@ class MulticlassProbsPosterior(Posterior):
                 sample_shape=sample_shape,
                 base_samples=base_samples,
             )
-            logits = move_class_dim_to_last(latent_samples, num_classes=self.num_classes)
+            logits = _canonicalize_multiclass_logits(
+                latent_samples,
+                num_classes=self.num_classes,
+            )
             return torch.softmax(logits / self.temperature, dim=-1)
         except Exception:
             latent_samples = self.latent_posterior.rsample(sample_shape=sample_shape)
-            logits = move_class_dim_to_last(latent_samples, num_classes=self.num_classes)
+            logits = _canonicalize_multiclass_logits(
+                latent_samples,
+                num_classes=self.num_classes,
+            )
             return torch.softmax(logits / self.temperature, dim=-1)
 
     def class_probs(self) -> Tensor:

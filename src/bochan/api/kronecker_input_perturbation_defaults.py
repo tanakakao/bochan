@@ -29,6 +29,39 @@ def _has_explicit_objective(config: AcquisitionConfig) -> bool:
     )
 
 
+def _install_nested_objective_q_shape_compatibility() -> None:
+    """Defer q-shape validation until perturbation aggregation is complete.
+
+    ``MCMultiOutputObjective.__call__`` normally checks that the objective output
+    q dimension equals ``X.shape[-2]``. For a one-to-many input transform, the
+    inner objective intentionally returns ``q * n_w`` values, which are reduced
+    to ``q`` by ``MultiOutputRegressionInputPerturbationObjective``. Therefore
+    the inner check is premature; the outer objective retains its own normal
+    BoTorch q-shape validation after aggregation.
+    """
+
+    from bochan.acquisition.objective.regression import (
+        MultiOutputRegressionInputPerturbationObjective,
+    )
+
+    cls = MultiOutputRegressionInputPerturbationObjective
+    marker = "_bochan_nested_q_shape_compat_installed"
+    if bool(getattr(cls, marker, False)):
+        return
+
+    original_init = cls.__init__
+
+    def init_compat(self, *args, **kwargs) -> None:
+        original_init(self, *args, **kwargs)
+        inner_objective = self.inner_objective
+        if hasattr(inner_objective, "_verify_output_shape"):
+            inner_objective._verify_output_shape = False
+
+    cls.__init__ = init_compat
+    setattr(cls, "_bochan_original_init", original_init)
+    setattr(cls, marker, True)
+
+
 def install_kronecker_input_perturbation_objective_defaults() -> None:
     """Install risk-neutral ``n_w`` aggregation for Kronecker multi-output BO.
 
@@ -39,6 +72,8 @@ def install_kronecker_input_perturbation_objective_defaults() -> None:
     therefore require a multi-output preprocessing objective that averages the
     perturbation dimension before applying their own multi-objective logic.
     """
+
+    _install_nested_objective_q_shape_compatibility()
 
     from . import engine as engine_module
     from . import engine_defaults as defaults_module

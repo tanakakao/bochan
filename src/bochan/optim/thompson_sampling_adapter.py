@@ -28,6 +28,57 @@ from . import thompson_sampling as _base
 Constraint = Callable[[Tensor], Tensor]
 
 
+def _coerce_outcome_constraints(value: Any) -> list[Constraint]:
+    """Normalize a stored outcome-constraint sequence.
+
+    Acquisition classes may inherit a callable named ``constraints`` from a
+    base class when no outcome constraints were configured. Such methods are
+    not constraint collections and must be filtered before this helper is
+    called.
+    """
+
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise TypeError(
+            "Outcome constraints must be a sequence of callables or None. "
+            f"Got {type(value)}."
+        )
+
+    constraints = list(value)
+    invalid = [type(constraint) for constraint in constraints if not callable(constraint)]
+    if invalid:
+        raise TypeError(
+            "Every outcome constraint must be callable. "
+            f"Got invalid element types: {invalid}."
+        )
+    return constraints
+
+
+def _resolve_outcome_constraints(acq_function: Any) -> list[Constraint]:
+    """Read configured constraints without mistaking inherited methods for data."""
+
+    namespace = getattr(acq_function, "__dict__", {})
+    for name in ("constraints", "outcome_constraints", "_constraints"):
+        if name in namespace:
+            value = namespace[name]
+            if value is None:
+                return []
+            if callable(value):
+                continue
+            return _coerce_outcome_constraints(value)
+
+    # Fallback for acquisition wrappers exposing constraints through a property.
+    # Bound methods are deliberately ignored: they are API methods, not lists of
+    # posterior-sample constraint functions.
+    for name in ("constraints", "outcome_constraints", "_constraints"):
+        value = getattr(acq_function, name, None)
+        if value is None or callable(value):
+            continue
+        return _coerce_outcome_constraints(value)
+    return []
+
+
 def _call_objective_forward(
     objective: Any | None,
     samples: Tensor,
@@ -166,7 +217,7 @@ class ThompsonScalarizedObjective(MCAcquisitionObjective):
     ) -> None:
         super().__init__()
         self.objective = objective
-        self.constraints = list(constraints or [])
+        self.outcome_constraints = _coerce_outcome_constraints(constraints)
 
     def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
         if X is None:
@@ -184,7 +235,7 @@ class ThompsonScalarizedObjective(MCAcquisitionObjective):
         return _apply_outcome_constraints(
             scores,
             samples,
-            self.constraints,
+            self.outcome_constraints,
             n_candidates=n_candidates,
         )
 
@@ -202,7 +253,7 @@ def _select_with_scalarized_max_posterior_sampling(
     model = _base._resolve_model(acq_function)
     objective = ThompsonScalarizedObjective(
         objective=getattr(acq_function, "objective", None),
-        constraints=getattr(acq_function, "constraints", None),
+        constraints=_resolve_outcome_constraints(acq_function),
     )
     posterior_transform = getattr(acq_function, "posterior_transform", None)
 

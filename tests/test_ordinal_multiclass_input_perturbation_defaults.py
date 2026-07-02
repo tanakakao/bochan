@@ -8,14 +8,18 @@ from torch import nn
 import bochan.api  # noqa: F401 - installs high-level compatibility routes
 import bochan.api.engine as engine_module
 import bochan.api.factory as factory_module
+import bochan.acquisition.ordinal.bayesian_optimization as ordinal_bo_package
+from bochan.acquisition.multiclass.bayesian_optimization import (
+    hetero_multi_output as hetero_multiclass_module,
+)
 from bochan.acquisition.multiclass.bayesian_optimization.input_perturbation_compat import (
     InputPerturbationMultiOutputObjectiveAdapter,
 )
 from bochan.acquisition.ordinal.bayesian_optimization import (
-    qMultiOutputOrdinalUtilityObjective,
+    hetero_multi_output as hetero_ordinal_module,
 )
 from bochan.acquisition.ordinal.bayesian_optimization import (
-    hetero_multi_output as hetero_ordinal_module,
+    qMultiOutputOrdinalUtilityObjective,
 )
 from bochan.api import (
     AcquisitionConfig,
@@ -205,6 +209,34 @@ def test_multiclass_objective_aggregates_48_rows_to_q3() -> None:
     assert torch.allclose(objective(samples=probabilities, X=None), expected)
 
 
+def test_hetero_multiclass_aggregates_before_noise_weighting() -> None:
+    bundle = _make_bundle("multiclass", _DummyMulticlassModel())
+    resolved = _resolve(
+        bundle,
+        "ehvi",
+        acqf_kwargs={"output_target_classes": [1, 2]},
+    )
+    base_objective = factory_module.build_objective(
+        bundle=bundle,
+        config=resolved,
+    )
+    objective = hetero_multiclass_module._HeteroMulticlassTargetProbabilityObjective(
+        base_objective=base_objective,
+        model=bundle.model,
+        noise_mode="none",
+    )
+
+    logits = torch.randn(5, 2, 48, 2, 3, dtype=torch.double)
+    probabilities = torch.softmax(logits, dim=-1)
+    X = torch.rand(2, 3, 5, dtype=torch.double)
+
+    values = objective(samples=probabilities, X=X)
+    expected = base_objective(samples=probabilities, X=X)
+
+    assert values.shape == torch.Size([5, 2, 3, 2])
+    assert torch.allclose(values, expected)
+
+
 def test_hetero_ordinal_aggregates_after_utility_adjustment(monkeypatch) -> None:
     model = _DummyOrdinalModel()
     base_objective = qMultiOutputOrdinalUtilityObjective(
@@ -253,6 +285,11 @@ def test_hetero_ordinal_aggregates_after_utility_adjustment(monkeypatch) -> None
 
     assert getattr(
         objective.__class__,
+        "_bochan_input_perturbation_patched",
+        False,
+    )
+    assert getattr(
+        ordinal_bo_package.qHeteroMultiOutputOrdinalNParEGO,
         "_bochan_input_perturbation_patched",
         False,
     )

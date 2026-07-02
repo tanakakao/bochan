@@ -56,6 +56,25 @@ from .ordinal import (
     show_ordinal_heatmap_from_optimizer,
     show_ordinal_triscatter_from_optimizer,
 )
+
+# Probability models with input perturbation can return ``n_points * n_w`` rows.
+# Replace both module-level references so 1D, 2D, ternary, YY, and direct helper
+# calls consistently aggregate those rows back to one probability vector per
+# original input point.
+from . import multiclass as _multiclass
+from . import ordinal as _ordinal
+from .probability_input_perturbation import (
+    multiclass_probabilities as _multiclass_probabilities_with_input_perturbation,
+    ordinal_probabilities as _ordinal_probabilities_with_input_perturbation,
+)
+
+_multiclass.multiclass_probabilities = (
+    _multiclass_probabilities_with_input_perturbation
+)
+_ordinal.ordinal_probabilities = _ordinal_probabilities_with_input_perturbation
+multiclass_probabilities = _multiclass_probabilities_with_input_perturbation
+ordinal_probabilities = _ordinal_probabilities_with_input_perturbation
+
 from .ordinal_display import (
     OrdinalDisplayMode,
     OrdinalProbabilityMode,

@@ -77,6 +77,33 @@ def _is_standard_ordinal_preprocessor(objective: Any) -> bool:
     }
 
 
+def _align_summary_to_shape(
+    module: Any,
+    value: Tensor,
+    *,
+    X_raw: Tensor,
+    X_shape: Tensor,
+    m: int,
+    name: str,
+) -> Tensor:
+    """Accept hetero summaries returned at either raw-q or expanded-q shape."""
+
+    raw_q = int(X_raw.shape[-2])
+    expanded_q = int(X_shape.shape[-2])
+    if (
+        expanded_q != raw_q
+        and value.ndim >= 2
+        and int(value.shape[-2]) == raw_q
+    ):
+        value = value.repeat_interleave(expanded_q // raw_q, dim=-2)
+    return module._align_pointwise_to_X_q_m(
+        value,
+        X_shape,
+        m=m,
+        name=name,
+    )
+
+
 def _patch_utility_forward() -> None:
     """Patch hetero utility conversion so expanded q is reduced after adjustment."""
 
@@ -167,17 +194,21 @@ def _patch_utility_forward() -> None:
                 default_sigmas=self.default_sigma,
                 eps=self.eps,
             )
-            robust_mean = module._align_pointwise_to_X_q_m(
+            robust_mean = _align_summary_to_shape(
+                module,
                 summary["robust_mean"],
-                X_shape,
+                X_raw=Xq,
+                X_shape=X_shape,
                 m=m,
                 name="qHeteroMultiOutputOrdinalUtilityObjective.robust_mean",
             )
             sigma = summary.get("sigma", summary.get("total_std", None))
             if sigma is not None:
-                sigma = module._align_pointwise_to_X_q_m(
+                sigma = _align_summary_to_shape(
+                    module,
                     sigma,
-                    X_shape,
+                    X_raw=Xq,
+                    X_shape=X_shape,
                     m=m,
                     name="qHeteroMultiOutputOrdinalUtilityObjective.sigma",
                 )

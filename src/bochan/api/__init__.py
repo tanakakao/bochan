@@ -102,6 +102,34 @@ _engine_defaults._resolve_best_f_default = (
 )
 
 
+_original_resolve_default_nparego_objective = (
+    _engine_defaults._resolve_default_nparego_objective
+)
+
+
+def _resolve_default_nparego_objective_without_double_scalarization(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    context: DataContext,
+) -> AcquisitionConfig:
+    """Keep built-in NParEGO objectives as preprocessing objectives.
+
+    Built-in bochan NParEGO classes perform augmented Chebyshev scalarization
+    internally. Their ``objective`` argument converts raw posterior samples to
+    ``[..., q, m]`` objective values and must not be replaced with a scalar
+    ``GenericMCObjective``. External NParEGO implementations retain the generic
+    automatic scalarization path.
+    """
+    if _uses_internal_nparego_baseline(config):
+        return config
+    return _original_resolve_default_nparego_objective(bundle, config, context)
+
+
+_engine_defaults._resolve_default_nparego_objective = (
+    _resolve_default_nparego_objective_without_double_scalarization
+)
+
+
 def _infer_bundle_multi_output(bundle) -> bool:
     """Infer multi-output status for wrappers and correlated multitask models.
 

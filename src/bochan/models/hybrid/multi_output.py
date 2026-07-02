@@ -64,6 +64,17 @@ class HybridMultiOutputModel(Model):
         cat_dims = getattr(model, "cat_dims", None)
         return [] if cat_dims is None else list(cat_dims)
 
+    def _set_transformed_inputs(self) -> None:
+        """ラッパー自身では学習入力の変換を行わない。
+
+        各サブモデルが自身の ``input_transform`` と生の学習入力を管理するため、
+        BoTorch ``Model.eval`` の標準変換をラッパーで再実行すると二重変換になる。
+        ``input_transform`` が ``None`` の場合にも標準実装は属性の存在だけで変換を
+        試みるため、このフックを no-op として上書きする。
+        """
+
+        return None
+
     @property
     def num_outputs(self) -> int:
         return len(self.specs)

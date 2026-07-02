@@ -48,6 +48,12 @@ from .multi_output import (
 )
 
 
+_NPAREGO_TBATCH_SHAPE_ERROR = (
+    "Expected scalarized NParEGO values to end in q or, for q=1, "
+    "to end in the t-batch shape."
+)
+
+
 def _with_default_utility_values(model, utility_values):
     if utility_values is not None:
         return utility_values
@@ -85,6 +91,48 @@ def _infer_multioutput_ordinal_train_y(model):
     if not columns:
         return None
     return torch.cat(columns, dim=-1)
+
+
+class _TBatchSafeMultiOutputOrdinalNParEGO(_qMultiOutputOrdinalNParEGO):
+    """Ordinal NParEGO fallback for Kronecker t-batch / latent-rank collisions.
+
+    LMC Kronecker posteriors normally preserve optimizer t-batches. During
+    batched L-BFGS-B, however, an optimizer sub-batch can have the same size as
+    the latent rank. In that ambiguous case GPyTorch may consume the optimizer
+    batch as the latent batch and return samples without the t-batch dimension.
+
+    The acquisition must not broadcast that single value across candidates,
+    because each optimizer row needs its own value and gradient. Instead, only
+    after the specific shape failure, evaluate each t-batch row independently
+    and stack the scalar acquisition values back into the original batch shape.
+    """
+
+    def _evaluate_single_tbatch(self, X_single: torch.Tensor) -> torch.Tensor:
+        """Evaluate one ``q x d`` design batch without an optimizer t-batch."""
+        posterior = self.model.posterior(X_single)
+        samples = self.get_posterior_samples(posterior)
+        values = self.base_objective(samples, X=X_single)
+        scalarized = self._scalarize(values)
+        improvement = (
+            scalarized - self.best_value.to(scalarized)
+        ).clamp_min(0.0)
+        return reduce_nparego_sample_and_q_to_tbatch(improvement, X_single)
+
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        try:
+            return super().forward(X)
+        except RuntimeError as err:
+            if _NPAREGO_TBATCH_SHAPE_ERROR not in str(err):
+                raise
+
+            batch_shape = X.shape[:-2]
+            if len(batch_shape) == 0:
+                raise
+
+            q, d = int(X.shape[-2]), int(X.shape[-1])
+            X_flat = X.reshape(-1, q, d)
+            values = [self._evaluate_single_tbatch(X_i) for X_i in X_flat]
+            return torch.stack(values).reshape(batch_shape)
 
 
 @wraps(_qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement)
@@ -204,7 +252,7 @@ def qMultiOutputOrdinalNParEGO(
     del best_f
     if train_Y is None and kwargs.get("Y_baseline") is None:
         train_Y = _infer_multioutput_ordinal_train_y(model)
-    return _qMultiOutputOrdinalNParEGO(
+    return _TBatchSafeMultiOutputOrdinalNParEGO(
         model=model,
         X_baseline=X_baseline,
         ref_point=ref_point,

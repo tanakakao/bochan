@@ -13,7 +13,7 @@ from .nsgaii import (
     optimize_acqf_nsgaii,
     validate_discrete_choices,
 )
-from .thompson_sampling import (
+from .thompson_sampling_adapter import (
     optimize_thompson_sampling,
     optimize_thompson_sampling_mixed,
 )

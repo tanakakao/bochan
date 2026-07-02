@@ -146,6 +146,69 @@ def _infer_bundle_multi_output(bundle) -> bool:
         return False
 
 
+_original_resolve_objective_config_n_w_from_input_transform = (
+    _engine._resolve_objective_config_n_w_from_input_transform
+)
+
+
+def _resolve_objective_config_n_w_with_default(
+    *,
+    acq_config: AcquisitionConfig,
+    bundle: ModelBundle | None,
+) -> AcquisitionConfig:
+    """Infer a default scalar objective from single-output input perturbation.
+
+    When input perturbation is enabled, posterior samples contain an additional
+    perturbation dimension. If no objective configuration is supplied, create a
+    risk-neutral scalar objective and reuse ``InputTransformConfig.n_w`` so the
+    perturbation samples are averaged consistently.
+
+    Multi-output models are intentionally excluded because selecting output 0
+    implicitly would hide an important objective-selection decision.
+    """
+    if (
+        acq_config.objective is not None
+        or acq_config.objective_factory is not None
+        or acq_config.acqf_factory is not None
+        or acq_config.objective_config is not None
+    ):
+        return _original_resolve_objective_config_n_w_from_input_transform(
+            acq_config=acq_config,
+            bundle=bundle,
+        )
+
+    if bundle is None or _infer_bundle_multi_output(bundle):
+        return acq_config
+
+    if str(bundle.task_type) not in {
+        "regression",
+        "multi_objective",
+        "binary",
+        "ordinal",
+    }:
+        return acq_config
+
+    inferred_n_w = _engine._input_transform_n_w_from_bundle(bundle)
+    if inferred_n_w is None:
+        return acq_config
+
+    return replace(
+        acq_config,
+        objective_config=ObjectiveConfig(
+            n_w=inferred_n_w,
+            risk_type=None,
+        ),
+    )
+
+
+_engine._resolve_objective_config_n_w_from_input_transform = (
+    _resolve_objective_config_n_w_with_default
+)
+_engine_defaults._resolve_objective_config_n_w_from_input_transform = (
+    _resolve_objective_config_n_w_with_default
+)
+
+
 def _resolve_acquisition_config_with_model_outputs(
     self,
     acq_config: AcquisitionConfig,

@@ -3,7 +3,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import torch
+from botorch.acquisition.multi_objective.objective import (
+    WeightedMCMultiOutputObjective,
+)
 
+import bochan.acquisition.binary.bayesian_optimization as binary_bo_module
 import bochan.api as api_module
 from bochan.acquisition.objective import (
     MultiOutputBinaryClassificationInputPerturbationObjective,
@@ -129,6 +133,54 @@ def test_inferred_binary_objective_aggregates_48_rows_to_q3() -> None:
 
     values = objective(samples=samples, X=X)
     expected = samples.reshape(5, 2, 3, 16, 2).mean(dim=-2)
+
+    assert values.shape == torch.Size([5, 2, 3, 2])
+    assert torch.allclose(values, expected)
+
+
+def test_nparego_adapter_keeps_raw_x_for_perturbation_objective() -> None:
+    objective = MultiOutputBinaryClassificationInputPerturbationObjective(
+        n_w=16,
+        risk_type=None,
+    )
+    adapter = binary_bo_module._OneToManyObjectiveAdapter(objective)
+    samples = torch.arange(
+        5 * 2 * 48 * 2,
+        dtype=torch.double,
+    ).reshape(5, 2, 48, 2)
+    X = torch.rand(2, 3, 5, dtype=torch.double)
+
+    values = adapter(samples=samples, X=X)
+    expected = samples.reshape(5, 2, 3, 16, 2).mean(dim=-2)
+
+    assert values.shape == torch.Size([5, 2, 3, 2])
+    assert torch.allclose(values, expected)
+
+
+def test_hetero_nparego_composition_aggregates_before_weighting() -> None:
+    preprocessor = MultiOutputBinaryClassificationInputPerturbationObjective(
+        n_w=16,
+        risk_type=None,
+    )
+    weighted = WeightedMCMultiOutputObjective(
+        weights=torch.tensor([0.25, 0.75], dtype=torch.double),
+    )
+    objective = binary_bo_module._SequentialMCMultiOutputObjective(
+        preprocessor=preprocessor,
+        objective=weighted,
+    )
+    samples = torch.arange(
+        5 * 2 * 48 * 2,
+        dtype=torch.double,
+    ).reshape(5, 2, 48, 2)
+    X = torch.rand(2, 3, 5, dtype=torch.double)
+
+    values = objective(samples=samples, X=X)
+    aggregated = samples.reshape(5, 2, 3, 16, 2).mean(dim=-2)
+    expected = aggregated * torch.tensor(
+        [0.25, 0.75],
+        dtype=torch.double,
+    )
 
     assert values.shape == torch.Size([5, 2, 3, 2])
     assert torch.allclose(values, expected)

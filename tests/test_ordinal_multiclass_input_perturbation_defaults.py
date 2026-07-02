@@ -258,10 +258,11 @@ def test_hetero_ordinal_aggregates_after_utility_adjustment(monkeypatch) -> None
     def fake_stack_multi_summaries(model, X, **kwargs):
         del model, kwargs
         batch_shape = X.shape[:-2]
-        q_expanded = int(X.shape[-2]) * 16
+        # Exercise the compatibility path where the summary remains at raw q,
+        # while latent posterior samples have already expanded to q * n_w.
         robust_mean = torch.zeros(
             *batch_shape,
-            q_expanded,
+            int(X.shape[-2]),
             2,
             dtype=X.dtype,
             device=X.device,

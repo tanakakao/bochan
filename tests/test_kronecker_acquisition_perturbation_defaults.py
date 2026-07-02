@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import torch
 
+import bochan.api.engine as engine
 from bochan.api import (
     AcquisitionConfig,
     InputTransformConfig,
@@ -11,7 +12,6 @@ from bochan.api import (
     ObjectiveConfig,
 )
 from bochan.api.factory import build_model
-import bochan.api.engine as engine
 
 
 def _make_bundle(*, n_w: int = 4):

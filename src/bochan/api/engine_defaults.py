@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any, Callable
 
@@ -79,6 +80,63 @@ def _acquisition_kind(config: AcquisitionConfig) -> str | None:
     return None
 
 
+def _configured_output_task_types(
+    model_config: ModelConfig,
+    multi_output_config: MultiOutputConfig,
+    n_outputs: int,
+) -> list[str]:
+    """Return the task type configured for every split output."""
+
+    if multi_output_config.output_configs is not None:
+        task_types: list[str] = []
+        for raw in multi_output_config.output_configs:
+            if isinstance(raw, str):
+                task_type = raw
+            elif isinstance(raw, Mapping):
+                task_type = raw.get("task_type", model_config.task_type)
+            else:
+                task_type = getattr(raw, "task_type", model_config.task_type)
+            task_types.append(str(task_type))
+        return task_types
+
+    if multi_output_config.output_task_types is not None:
+        return [str(task_type) for task_type in multi_output_config.output_task_types]
+
+    return [str(model_config.task_type) for _ in range(n_outputs)]
+
+
+def _resolve_multiclass_multi_output_wrapper(
+    model_config: ModelConfig,
+    multi_output_config: MultiOutputConfig,
+    n_outputs: int,
+) -> MultiOutputConfig:
+    """Select the homogeneous multiclass wrapper unless Hybrid was requested."""
+
+    if str(model_config.task_type) != "multiclass":
+        return multi_output_config
+    if multi_output_config.wrapper_cls is not None or multi_output_config.wrapper_factory is not None:
+        return multi_output_config
+    if multi_output_config.use_hybrid is True:
+        return multi_output_config
+
+    task_types = _configured_output_task_types(
+        model_config,
+        multi_output_config,
+        n_outputs,
+    )
+    if len(task_types) != n_outputs or set(task_types) != {"multiclass"}:
+        return multi_output_config
+
+    from bochan.models.classification.multiclass.base import (
+        MultiOutputMulticlassClassificationModel,
+    )
+
+    return replace(
+        multi_output_config,
+        wrapper_cls=MultiOutputMulticlassClassificationModel,
+    )
+
+
 def resolve_multi_output_model_config(
     model_config: ModelConfig,
     train_Y: Any,
@@ -87,13 +145,29 @@ def resolve_multi_output_model_config(
 
     Correlated multi-task models consume wide targets directly and must remain a
     single model rather than being split into a ModelList-style wrapper.
+    Homogeneous multiclass outputs use their dedicated probability-aware wrapper;
+    Hybrid remains reserved for heterogeneous output task types or explicit use.
     """
 
     if _normalize_name(model_config.model_type) in {"kronecker", "multitask"}:
         return model_config
-    if model_config.multi_output_config is not None or _num_outputs(train_Y) < 2:
+
+    n_outputs = _num_outputs(train_Y)
+    if n_outputs < 2:
         return model_config
-    return replace(model_config, multi_output_config=MultiOutputConfig())
+
+    multi_output_config = model_config.multi_output_config or MultiOutputConfig()
+    resolved_multi_output_config = _resolve_multiclass_multi_output_wrapper(
+        model_config,
+        multi_output_config,
+        n_outputs,
+    )
+    if resolved_multi_output_config is model_config.multi_output_config:
+        return model_config
+    return replace(
+        model_config,
+        multi_output_config=resolved_multi_output_config,
+    )
 
 
 def _resolve_default_regression_nparego_class(

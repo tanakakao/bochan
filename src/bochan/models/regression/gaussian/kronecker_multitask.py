@@ -23,12 +23,7 @@ def _transform_without_one_to_many(
     X: Tensor,
     transform: Optional[InputTransform],
 ) -> Tensor:
-    """Apply only transforms that preserve the number of input rows.
-
-    During training, pointwise transforms such as ``Normalize`` must remain
-    active, while one-to-many transforms such as ``InputPerturbation`` must not
-    expand the block-design training data.
-    """
+    """Apply only transforms that preserve the number of input rows."""
 
     if transform is None:
         return X
@@ -58,23 +53,27 @@ def _is_stored_training_input(model: Any, X: Tensor) -> bool:
     return X is train_inputs
 
 
-class PerturbationCompatibleKroneckerMultiTaskGP(KroneckerMultiTaskGP):
-    """Kronecker GP compatible with one-to-many input perturbations.
+def _install_kronecker_input_transform_compatibility() -> None:
+    """Backport BoTorch's no-double-transform behavior for Kronecker GPs.
 
-    In affected BoTorch versions, ``KroneckerMultiTaskGP.posterior`` and its
-    cached properties transform the already-preprocessed ``train_inputs`` a
-    second time. With ``InputPerturbation`` this can repeatedly multiply the
-    training row count while ``train_targets`` remains unchanged.
+    Affected BoTorch versions transform stored training inputs again inside the
+    Kronecker posterior and cached properties. This wrapper leaves already stored
+    evaluation inputs untouched, while retaining full transforms for independent
+    candidate tensors. During training, one-to-many transforms are excluded so
+    the block-design row count remains aligned with ``train_targets``.
 
-    This subclass keeps three paths separate:
-
-    - training forward: apply only pointwise transforms;
-    - stored evaluation training inputs: return them unchanged;
-    - independent evaluation candidates: apply the full transform chain.
+    The patch modifies only ``transform_inputs`` and preserves the identity of
+    BoTorch's public ``KroneckerMultiTaskGP`` class for API compatibility.
     """
 
-    def transform_inputs(
-        self,
+    marker = "_bochan_input_perturbation_compat_installed"
+    if bool(getattr(KroneckerMultiTaskGP, marker, False)):
+        return
+
+    original_transform_inputs = KroneckerMultiTaskGP.transform_inputs
+
+    def transform_inputs_compat(
+        self: KroneckerMultiTaskGP,
         X: Tensor,
         input_transform: Optional[InputTransform] = None,
     ) -> Tensor:
@@ -89,20 +88,36 @@ class PerturbationCompatibleKroneckerMultiTaskGP(KroneckerMultiTaskGP):
         if bool(getattr(self, "training", True)):
             return _transform_without_one_to_many(X, transform).contiguous()
 
-        # ``Model.eval()`` preprocesses and stores the training inputs once.
-        # Old Kronecker posterior/cache implementations call transform_inputs on
-        # these stored tensors again; returning them directly mirrors BoTorch's
-        # upstream fix for the duplicate transformation.
+        # ``Model.eval()`` preprocesses and stores training inputs once. Old
+        # Kronecker posterior/cache implementations pass these tensors through
+        # ``transform_inputs`` again; return them unchanged to avoid duplicate
+        # Normalize and InputPerturbation application.
         if _is_stored_training_input(self, X):
             return X
 
-        return super().transform_inputs(
+        return original_transform_inputs(
+            self,
             X,
             input_transform=transform,
         ).contiguous()
 
+    setattr(
+        KroneckerMultiTaskGP,
+        "_bochan_original_transform_inputs",
+        original_transform_inputs,
+    )
+    KroneckerMultiTaskGP.transform_inputs = transform_inputs_compat
+    setattr(KroneckerMultiTaskGP, marker, True)
 
-class MixedKroneckerMultiTaskGP(PerturbationCompatibleKroneckerMultiTaskGP):
+
+_install_kronecker_input_transform_compatibility()
+
+# Public compatibility name. This is intentionally an alias, not a subclass, so
+# code and tests comparing against BoTorch's class by identity keep working.
+PerturbationCompatibleKroneckerMultiTaskGP = KroneckerMultiTaskGP
+
+
+class MixedKroneckerMultiTaskGP(KroneckerMultiTaskGP):
     r"""Exact Gaussian Kronecker multi-task GP for mixed inputs.
 
     The model retains BoTorch's block-design Gaussian multi-task likelihood and

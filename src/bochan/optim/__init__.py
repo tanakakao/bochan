@@ -8,7 +8,7 @@ from .evo import (
     optimize_acqf_evo_mixed,
     optimize_acqf_evo_mixed_k_sparse,
 )
-from .nsgaii import (
+from .nsgaii_adapter import (
     equality_constraints_to_inequality_constraints,
     optimize_acqf_nsgaii,
     validate_discrete_choices,

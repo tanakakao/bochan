@@ -110,7 +110,18 @@ def _install_kronecker_input_transform_compatibility() -> None:
     setattr(KroneckerMultiTaskGP, marker, True)
 
 
+def _install_high_level_objective_defaults() -> None:
+    """Install Kronecker-specific ``n_w`` aggregation in the high-level API."""
+
+    from bochan.api.kronecker_input_perturbation_defaults import (
+        install_kronecker_input_perturbation_objective_defaults,
+    )
+
+    install_kronecker_input_perturbation_objective_defaults()
+
+
 _install_kronecker_input_transform_compatibility()
+_install_high_level_objective_defaults()
 
 # Public compatibility name. This is intentionally an alias, not a subclass, so
 # code and tests comparing against BoTorch's class by identity keep working.

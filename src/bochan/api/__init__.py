@@ -76,6 +76,40 @@ def _is_nsgaii_strategy(config: AcquisitionConfig) -> bool:
     }
 
 
+def _uses_multi_output_sample_objective(config: AcquisitionConfig) -> bool:
+    """Return whether a strategy consumes vector posterior samples / means.
+
+    EHVI, NEHVI, NParEGO, and NSGA-II preserve the objective-output dimension
+    and therefore need ``q * n_w -> q`` preprocessing when a multi-output model
+    uses a one-to-many input transform. Classification active-learning and
+    level-set acquisitions instead operate on already computed scalar scores and
+    must not receive this Monte Carlo multi-output objective automatically.
+    """
+
+    name = _normalize_strategy_name(config.name)
+    cls_name = _normalize_strategy_name(
+        getattr(config.acqf_cls, "__name__", "")
+    )
+    combined = f"{name}{cls_name}"
+
+    if _is_nsgaii_strategy(config):
+        return True
+    if "nparego" in combined:
+        return True
+    if "expectedhypervolumeimprovement" in combined:
+        return True
+    return name in {
+        "ehi",
+        "qehi",
+        "ehvi",
+        "qehvi",
+        "nehi",
+        "qnehi",
+        "nehvi",
+        "qnehvi",
+    }
+
+
 def _uses_internal_nparego_baseline(config: AcquisitionConfig) -> bool:
     """Return whether a bochan NParEGO computes its own baseline value."""
     acqf_cls = config.acqf_cls
@@ -171,20 +205,18 @@ def _resolve_objective_config_n_w_with_default(
     acq_config: AcquisitionConfig,
     bundle: ModelBundle | None,
 ) -> AcquisitionConfig:
-    """Infer a default scalar objective from single-output input perturbation.
+    """Infer risk-neutral objectives for one-to-many input perturbation.
 
-    When input perturbation is enabled, posterior samples contain an additional
-    perturbation dimension. If no objective configuration is supplied, create a
-    risk-neutral scalar objective and reuse ``InputTransformConfig.n_w`` so the
-    perturbation samples are averaged consistently.
-
-    Multi-output models are intentionally excluded because selecting output 0
-    implicitly would hide an important objective-selection decision.
+    Single-output models receive the existing scalar objective. Multi-output
+    models receive ``mode='multi_output'`` only for strategies that consume
+    vector posterior samples or posterior means: EHVI, NEHVI, NParEGO, and
+    NSGA-II. Score-based active-learning and level-set acquisitions are excluded
+    because they use classification / utility score objectives instead.
     """
+
     if (
         acq_config.objective is not None
         or acq_config.objective_factory is not None
-        or acq_config.acqf_factory is not None
         or acq_config.objective_config is not None
     ):
         return _original_resolve_objective_config_n_w_from_input_transform(
@@ -192,19 +224,36 @@ def _resolve_objective_config_n_w_with_default(
             bundle=bundle,
         )
 
-    if bundle is None or _infer_bundle_multi_output(bundle):
+    if bundle is None:
         return acq_config
 
-    if str(bundle.task_type) not in {
+    task_type = str(bundle.task_type)
+    if task_type not in {
         "regression",
         "multi_objective",
         "binary",
         "ordinal",
+        "hybrid",
     }:
         return acq_config
 
     inferred_n_w = _engine._input_transform_n_w_from_bundle(bundle)
     if inferred_n_w is None:
+        return acq_config
+
+    if _infer_bundle_multi_output(bundle):
+        if not _uses_multi_output_sample_objective(acq_config):
+            return acq_config
+        return replace(
+            acq_config,
+            objective_config=ObjectiveConfig(
+                mode="multi_output",
+                n_w=inferred_n_w,
+                risk_type=None,
+            ),
+        )
+
+    if acq_config.acqf_factory is not None:
         return acq_config
 
     return replace(
@@ -222,6 +271,14 @@ _engine._resolve_objective_config_n_w_from_input_transform = (
 _engine_defaults._resolve_objective_config_n_w_from_input_transform = (
     _resolve_objective_config_n_w_with_default
 )
+
+# Extend the same defaults to ordinal and multiclass vector objectives after
+# the binary / regression resolver above is installed.
+from .classification_perturbation_defaults import (
+    apply_classification_perturbation_defaults,
+)
+
+apply_classification_perturbation_defaults()
 
 
 def _resolve_acquisition_config_with_model_outputs(

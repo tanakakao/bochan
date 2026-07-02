@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import torch
+from botorch.acquisition.monte_carlo import MCAcquisitionFunction
 from botorch.acquisition.multi_objective.objective import (
     IdentityMCMultiOutputObjective,
     MCMultiOutputObjective,
+    WeightedMCMultiOutputObjective,
 )
+from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 
@@ -22,11 +25,10 @@ from .hetero_multi_output import (
 from .hetero_multi_output_compat import (
     qHeteroMultiOutputBinaryExpectedHypervolumeImprovement,
 )
-
 from .hetero_single_output import (
-    qHeteroBinaryUpperConfidenceBound,
     qHeteroBinaryExpectedImprovement,
     qHeteroBinaryProbabilityOfImprovement,
+    qHeteroBinaryUpperConfidenceBound,
 )
 
 # Keep q=1 sequential optimization shape handling aligned across classification
@@ -117,8 +119,123 @@ def _reduce_to_t_batch(values: Tensor, X: Tensor) -> Tensor:
     return values
 
 
+class _OneToManyObjectiveAdapter(MCMultiOutputObjective):
+    """Align objective ``X`` with one-to-many expanded posterior samples.
+
+    Plain multi-output objectives require an expanded ``X`` so BoTorch's q-shape
+    validation sees the same number of points as the posterior samples. An
+    input-perturbation objective with ``n_w > 1`` is different: it intentionally
+    needs the raw ``X`` so it can aggregate ``q * n_w`` samples back to ``q``.
+    """
+
+    def __init__(self, objective: MCMultiOutputObjective) -> None:
+        super().__init__()
+        self.objective = objective
+        self._verify_output_shape = False
+
+    def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
+        n_w = getattr(self.objective, "n_w", None)
+        aggregates_one_to_many = n_w is not None and int(n_w) > 1
+        if aggregates_one_to_many:
+            return self.objective(samples, X=X)
+
+        if X is not None:
+            sample_q = int(samples.shape[-2])
+            x_q = int(X.shape[-2])
+            if sample_q != x_q:
+                if x_q <= 0 or sample_q % x_q != 0:
+                    raise RuntimeError(
+                        "Cannot align one-to-many objective inputs: "
+                        f"samples q={sample_q}, X q={x_q}."
+                    )
+                X = X.repeat_interleave(sample_q // x_q, dim=-2)
+        return self.objective(samples, X=X)
+
+
+class _SequentialMCMultiOutputObjective(MCMultiOutputObjective):
+    """Apply perturbation preprocessing before an output weighting objective."""
+
+    def __init__(
+        self,
+        preprocessor: MCMultiOutputObjective,
+        objective: MCMultiOutputObjective,
+    ) -> None:
+        super().__init__()
+        self.preprocessor = _OneToManyObjectiveAdapter(preprocessor)
+        self.objective = _OneToManyObjectiveAdapter(objective)
+
+    def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
+        values = self.preprocessor(samples, X=X)
+        return self.objective(values, X=X)
+
+
 class qHeteroMultiOutputBinaryNParEGO(_BaseHeteroBinaryNParEGO):
-    """Heteroscedastic binary NParEGO with scalar t-batch output."""
+    """Heteroscedastic binary NParEGO with perturbation preprocessing."""
+
+    def __init__(
+        self,
+        model,
+        X_baseline: Tensor,
+        ref_point: Tensor,
+        *,
+        weights: Tensor | None = None,
+        sampler: SobolQMCNormalSampler | None = None,
+        beta: float = 1.0,
+        noise_penalty: float = 0.3,
+        default_sigma: float = 0.0,
+        noise_is_log_var: bool = True,
+        samples_are_probs: bool = False,
+        apply_sigmoid_if_needed: bool = True,
+        eps: float = 1e-6,
+        objective: MCMultiOutputObjective | None = None,
+        best_f=None,
+    ) -> None:
+        del best_f
+        sampler = sampler or SobolQMCNormalSampler(sample_shape=torch.Size([128]))
+        tkwargs = {"dtype": X_baseline.dtype, "device": X_baseline.device}
+        m = int(ref_point.numel())
+        if weights is None:
+            raw_weights = torch.rand(m, **tkwargs)
+            weights = raw_weights / raw_weights.sum().clamp_min(1e-12)
+        else:
+            weights = weights.to(**tkwargs)
+            weights = weights / weights.sum().clamp_min(1e-12)
+
+        preprocessor = objective or IdentityMCMultiOutputObjective()
+        weighted = WeightedMCMultiOutputObjective(weights=weights)
+        composed_objective = _SequentialMCMultiOutputObjective(
+            preprocessor=preprocessor,
+            objective=weighted,
+        )
+        MCAcquisitionFunction.__init__(
+            self,
+            model=model,
+            sampler=sampler,
+            objective=composed_objective,
+        )
+        self.base_objective = composed_objective
+        self.beta = float(beta)
+        self.noise_penalty = float(noise_penalty)
+        self.default_sigma = float(default_sigma)
+        self.noise_is_log_var = bool(noise_is_log_var)
+        self.samples_are_probs = bool(samples_are_probs)
+        self.apply_sigmoid_if_needed = bool(apply_sigmoid_if_needed)
+        self.eps = float(eps)
+
+        with torch.no_grad():
+            y = _hetero_multi_output.compute_hetero_multi_output_classification_train_y(
+                model,
+                X_baseline,
+                noise_penalty=noise_penalty,
+                default_sigma=default_sigma,
+                noise_is_log_var=noise_is_log_var,
+                apply_sigmoid_if_needed=apply_sigmoid_if_needed,
+                eps=eps,
+            )
+            X_obj = X_baseline.unsqueeze(0)
+            values = y.unsqueeze(0).unsqueeze(0)
+            obj_train = self.base_objective(values, X=X_obj).squeeze()
+            self.register_buffer("best_value", obj_train.max())
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
@@ -155,34 +272,6 @@ class qHeteroMultiOutputBinaryNParEGO(_BaseHeteroBinaryNParEGO):
         return _reduce_to_t_batch(improvement, X)
 
 
-class _OneToManyObjectiveAdapter(MCMultiOutputObjective):
-    """Align objective ``X`` with one-to-many expanded posterior samples.
-
-    Binary models may expand each raw design point into ``n_w`` transformed
-    points. BoTorch verifies that the objective output q-dimension matches the
-    supplied ``X`` q-dimension, so the raw baseline ``X`` must be expanded before
-    it is passed to an inner multi-output objective.
-    """
-
-    def __init__(self, objective: MCMultiOutputObjective) -> None:
-        super().__init__()
-        self.objective = objective
-        self._verify_output_shape = False
-
-    def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
-        if X is not None:
-            sample_q = int(samples.shape[-2])
-            x_q = int(X.shape[-2])
-            if sample_q != x_q:
-                if x_q <= 0 or sample_q % x_q != 0:
-                    raise RuntimeError(
-                        "Cannot align one-to-many objective inputs: "
-                        f"samples q={sample_q}, X q={x_q}."
-                    )
-                X = X.repeat_interleave(sample_q // x_q, dim=-2)
-        return self.objective(samples, X=X)
-
-
 class qMultiOutputBinaryNParEGO(_multi_output.qMultiOutputBinaryNParEGO):
     """Binary NParEGO with high-level API compatibility."""
 
@@ -215,15 +304,14 @@ class qMultiOutputBinaryNParEGO(_multi_output.qMultiOutputBinaryNParEGO):
 
 
 from .multi_output import (
-    qMultiOutputBinaryProbabilityOfFeasibility,
     qMultiOutputBinaryExpectedHypervolumeImprovement,
     qMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
+    qMultiOutputBinaryProbabilityOfFeasibility,
 )
-
 from .single_output import (
     QBatchMode,
-    qBinaryProbabilityOfFeasibility,
     qBinaryExpectedImprovement,
+    qBinaryProbabilityOfFeasibility,
     qBinaryProbabilityOfImprovement,
     qBinaryUpperConfidenceBound,
 )

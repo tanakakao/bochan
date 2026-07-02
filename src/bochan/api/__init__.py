@@ -61,6 +61,21 @@ def _register_contextual_levelset_aliases() -> None:
 _register_contextual_levelset_aliases()
 
 
+def _normalize_strategy_name(value) -> str:
+    """Normalize acquisition / candidate-strategy names."""
+
+    return "".join(ch for ch in str(value).lower() if ch.isalnum())
+
+
+def _is_nsgaii_strategy(config: AcquisitionConfig) -> bool:
+    """Return whether the acquisition-side strategy is NSGA-II."""
+
+    return _normalize_strategy_name(config.name) in {
+        "nsgaii",
+        "nsga2",
+    }
+
+
 def _uses_internal_nparego_baseline(config: AcquisitionConfig) -> bool:
     """Return whether a bochan NParEGO computes its own baseline value."""
     acqf_cls = config.acqf_cls
@@ -216,6 +231,10 @@ def _resolve_acquisition_config_with_model_outputs(
     """Resolve contextual aliases using the model's actual output count."""
     if acq_config.acqf_cls is not None or acq_config.acqf_factory is not None:
         return acq_config
+    if _is_nsgaii_strategy(acq_config):
+        from bochan.optim.nsgaii_strategy import build_nsgaii_strategy
+
+        return replace(acq_config, acqf_factory=build_nsgaii_strategy)
     self._check_fitted()
     acqf_cls = resolve_acqf_cls(
         acq_config.name,
@@ -232,6 +251,40 @@ def _resolve_acquisition_config_with_model_outputs(
 BayesianOptimizer._resolve_acquisition_config = (
     _resolve_acquisition_config_with_model_outputs
 )
+
+
+_original_candidate = BayesianOptimizer.candidate
+
+
+def _candidate_with_acquisition_side_nsgaii(
+    self,
+    acq_config: AcquisitionConfig,
+    opt_config: OptimizeConfig,
+    *,
+    data_context: DataContext | None = None,
+    bounds=None,
+    return_result: bool = False,
+):
+    """Force the NSGA-II backend when ``AcquisitionConfig.name`` selects it.
+
+    The optimizer field is intentionally ignored for this strategy. Other
+    optimizer options, candidate repair settings, constraints, and ``q`` remain
+    available through ``OptimizeConfig``.
+    """
+
+    if _is_nsgaii_strategy(acq_config):
+        opt_config = replace(opt_config, optimizer="nsgaii")
+    return _original_candidate(
+        self,
+        acq_config,
+        opt_config,
+        data_context=data_context,
+        bounds=bounds,
+        return_result=return_result,
+    )
+
+
+BayesianOptimizer.candidate = _candidate_with_acquisition_side_nsgaii
 
 # Keep direct submodule imports aligned with the public high-level API.
 _configs.OptimizeConfig = OptimizeConfig

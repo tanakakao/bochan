@@ -29,13 +29,7 @@ Constraint = Callable[[Tensor], Tensor]
 
 
 def _coerce_outcome_constraints(value: Any) -> list[Constraint]:
-    """Normalize a stored outcome-constraint sequence.
-
-    Acquisition classes may inherit a callable named ``constraints`` from a
-    base class when no outcome constraints were configured. Such methods are
-    not constraint collections and must be filtered before this helper is
-    called.
-    """
+    """Normalize an explicitly supplied outcome-constraint sequence."""
 
     if value is None:
         return []
@@ -55,27 +49,47 @@ def _coerce_outcome_constraints(value: Any) -> list[Constraint]:
     return constraints
 
 
+def _try_coerce_stored_constraints(value: Any) -> list[Constraint] | None:
+    """Return stored callable constraints, or ``None`` for unrelated internals."""
+
+    if value is None:
+        return []
+    if callable(value) or isinstance(value, (str, bytes)):
+        return None
+    if not isinstance(value, Sequence):
+        return None
+
+    constraints = list(value)
+    if not all(callable(constraint) for constraint in constraints):
+        return None
+    return constraints
+
+
 def _resolve_outcome_constraints(acq_function: Any) -> list[Constraint]:
-    """Read configured constraints without mistaking inherited methods for data."""
+    """Read configured constraints without mistaking framework internals for data.
 
+    Only public storage names are considered. In particular, ``_constraints``
+    is deliberately ignored because PyTorch / GPyTorch modules may use it as an
+    internal dictionary unrelated to outcome constraints.
+    """
+
+    names = ("constraints", "outcome_constraints")
     namespace = getattr(acq_function, "__dict__", {})
-    for name in ("constraints", "outcome_constraints", "_constraints"):
-        if name in namespace:
-            value = namespace[name]
-            if value is None:
-                return []
-            if callable(value):
-                continue
-            return _coerce_outcome_constraints(value)
-
-    # Fallback for acquisition wrappers exposing constraints through a property.
-    # Bound methods are deliberately ignored: they are API methods, not lists of
-    # posterior-sample constraint functions.
-    for name in ("constraints", "outcome_constraints", "_constraints"):
-        value = getattr(acq_function, name, None)
-        if value is None or callable(value):
+    for name in names:
+        if name not in namespace:
             continue
-        return _coerce_outcome_constraints(value)
+        constraints = _try_coerce_stored_constraints(namespace[name])
+        if constraints is not None:
+            return constraints
+
+    # Fallback for wrappers exposing constraints through a property. Bound
+    # methods and non-sequence framework state are ignored.
+    for name in names:
+        constraints = _try_coerce_stored_constraints(
+            getattr(acq_function, name, None)
+        )
+        if constraints is not None:
+            return constraints
     return []
 
 

@@ -11,6 +11,8 @@ from botorch.models.model import Model
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
 
+from bochan.models.components.heteroscedastic import align_like
+
 
 def _ensure_q_batch(X: Tensor) -> Tensor:
     if X.ndim == 2:
@@ -129,12 +131,7 @@ def hetero_adjust_regression_samples(
         noise_is_log_var=noise_is_log_var,
         eps=eps,
     )
-
-    if sigma_noise.shape != mean.shape:
-        if sigma_noise.numel() == mean.numel():
-            sigma_noise = sigma_noise.reshape_as(mean)
-        else:
-            sigma_noise = sigma_noise.expand_as(mean)
+    sigma_noise = align_like(sigma_noise, mean)
 
     robust = mean.unsqueeze(0) + float(beta) * (samples - mean.unsqueeze(0))
     robust = robust - float(noise_penalty) * sigma_noise.unsqueeze(0)
@@ -160,6 +157,7 @@ def compute_hetero_regression_best_f(
             default_sigma=default_sigma,
             noise_is_log_var=noise_is_log_var,
         )
+        sigma_noise = align_like(sigma_noise, mean)
         robust_y = mean - float(noise_penalty) * sigma_noise
         return robust_y.max().detach()
 
@@ -291,6 +289,7 @@ class qHeteroRegressionProbabilityOfImprovement(_HeteroRegressionBOBase):
         best_f = self.best_f.to(best_q)
         tau = self.tau.to(best_q).clamp_min(1e-9)
         return torch.sigmoid((best_q - best_f) / tau).mean(dim=0)
+
 
 __all__ = [
     "qHeteroRegressionUpperConfidenceBound",

@@ -7,6 +7,7 @@ from dataclasses import replace
 from . import acquisition_registry as _acquisition_registry
 from . import configs as _configs
 from . import engine as _engine
+from . import engine_defaults as _engine_defaults
 from . import factory as _factory
 from .acquisition_config import AcquisitionConfig, OutcomeConstraintConfig
 from .acquisition_registry import available_acqf_names, resolve_acqf_cls
@@ -58,6 +59,47 @@ def _register_contextual_levelset_aliases() -> None:
 
 
 _register_contextual_levelset_aliases()
+
+
+def _uses_internal_nparego_baseline(config: AcquisitionConfig) -> bool:
+    """Return whether a bochan NParEGO computes its own baseline value."""
+    acqf_cls = config.acqf_cls
+    if acqf_cls is None:
+        return False
+    normalized = "".join(
+        ch
+        for ch in f"{config.name} {getattr(acqf_cls, '__name__', '')}".lower()
+        if ch.isalnum()
+    )
+    module_name = str(getattr(acqf_cls, "__module__", ""))
+    return "nparego" in normalized and module_name.startswith("bochan.acquisition.")
+
+
+_original_resolve_best_f_default = _engine_defaults._resolve_best_f_default
+
+
+def _resolve_best_f_default_without_internal_nparego(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    context: DataContext,
+):
+    """Skip EI/PI ``best_f`` inference for self-baselining NParEGO classes.
+
+    Built-in bochan NParEGO implementations compute ``best_value`` from their
+    baseline observations during construction. Running the generic EI/PI
+    ``best_f`` path first is redundant and can incorrectly route multi-output
+    ordinal utility lists through a single-output helper.
+    """
+    explicit_best_f = config.acqf_kwargs.get("best_f")
+    if explicit_best_f is None and _uses_internal_nparego_baseline(config):
+        context.best_f = None
+        return config, context
+    return _original_resolve_best_f_default(bundle, config, context)
+
+
+_engine_defaults._resolve_best_f_default = (
+    _resolve_best_f_default_without_internal_nparego
+)
 
 
 def _infer_bundle_multi_output(bundle) -> bool:

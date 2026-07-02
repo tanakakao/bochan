@@ -5,12 +5,13 @@ from typing import Any, Optional
 
 import torch
 from botorch.models.multitask import KroneckerMultiTaskGP
-from botorch.models.transforms.input import InputTransform
+from botorch.models.transforms.input import ChainedInputTransform, InputTransform
 from gpytorch.kernels import Kernel
 from torch import Tensor
 
 from bochan.models.components.mixed_kronecker import (
     build_mixed_kronecker_kernel,
+    check_categorical_columns_unchanged,
     get_continuous_dims,
     normalize_mixed_dims,
     transform_mixed_inputs,
@@ -18,7 +19,93 @@ from bochan.models.components.mixed_kronecker import (
 )
 
 
-class MixedKroneckerMultiTaskGP(KroneckerMultiTaskGP):
+def _transform_without_one_to_many(
+    X: Tensor,
+    transform: Optional[InputTransform],
+) -> Tensor:
+    """Apply only transforms that preserve the number of input rows.
+
+    ``KroneckerMultiTaskGP.posterior`` transforms both test inputs and the stored
+    training inputs while the model is in evaluation mode. A one-to-many
+    transform such as ``InputPerturbation`` must be applied to the test inputs,
+    but applying it to the stored training inputs changes ``n`` and breaks the
+    Kronecker training caches.
+    """
+
+    if transform is None:
+        return X
+    if isinstance(transform, ChainedInputTransform):
+        transformed = X
+        for subtransform in transform.values():
+            transformed = _transform_without_one_to_many(
+                transformed,
+                subtransform,
+            )
+        return transformed
+    if bool(getattr(transform, "is_one_to_many", False)):
+        return X
+
+    transformed = transform(X)
+    if isinstance(transformed, tuple):
+        transformed = transformed[0]
+    return transformed
+
+
+def _is_stored_training_input(model: Any, X: Tensor) -> bool:
+    """Return whether ``X`` is one of the exact tensors stored by ExactGP."""
+
+    train_inputs = getattr(model, "train_inputs", None)
+    if isinstance(train_inputs, tuple):
+        return any(X is train_input for train_input in train_inputs)
+    return X is train_inputs
+
+
+def _must_preserve_kronecker_training_shape(model: Any, X: Tensor) -> bool:
+    """Return whether one-to-many input transforms must be skipped."""
+
+    # During construction ``training`` may not yet be initialized. Treat that
+    # state as training so constructor validation sees the original number of
+    # rows. During posterior evaluation, the stored training tensor is detected
+    # by identity and kept pointwise, while independent candidate tensors are
+    # still expanded by InputPerturbation.
+    return bool(getattr(model, "training", True)) or _is_stored_training_input(
+        model,
+        X,
+    )
+
+
+class PerturbationCompatibleKroneckerMultiTaskGP(KroneckerMultiTaskGP):
+    """Kronecker GP that applies one-to-many transforms only to test inputs.
+
+    BoTorch's Kronecker posterior calls ``transform_inputs`` for both ``X`` and
+    ``self.train_inputs[0]`` in evaluation mode. With ``InputPerturbation`` this
+    expands the stored training design from ``n`` to ``n * n_w`` while
+    ``train_targets`` remains ``n x m``. This subclass preserves pointwise
+    transforms such as ``Normalize`` for training inputs and limits the
+    one-to-many perturbation expansion to candidate inputs.
+    """
+
+    def transform_inputs(
+        self,
+        X: Tensor,
+        input_transform: Optional[InputTransform] = None,
+    ) -> Tensor:
+        transform = (
+            input_transform
+            if input_transform is not None
+            else getattr(self, "input_transform", None)
+        )
+        if transform is None:
+            return X
+        if _must_preserve_kronecker_training_shape(self, X):
+            return _transform_without_one_to_many(X, transform).contiguous()
+        return super().transform_inputs(
+            X,
+            input_transform=transform,
+        ).contiguous()
+
+
+class MixedKroneckerMultiTaskGP(PerturbationCompatibleKroneckerMultiTaskGP):
     r"""Exact Gaussian Kronecker multi-task GP for mixed inputs.
 
     The model retains BoTorch's block-design Gaussian multi-task likelihood and
@@ -91,6 +178,18 @@ class MixedKroneckerMultiTaskGP(KroneckerMultiTaskGP):
             if input_transform is not None
             else getattr(self, "input_transform", None)
         )
+        if transform is None:
+            return X
+
+        if _must_preserve_kronecker_training_shape(self, X):
+            X_tf = _transform_without_one_to_many(X, transform).contiguous()
+            check_categorical_columns_unchanged(
+                X,
+                X_tf,
+                cat_dims=self.cat_dims,
+            )
+            return X_tf
+
         return transform_mixed_inputs(
             X,
             transform,
@@ -105,4 +204,5 @@ KroneckerMultiTaskMixedGP = MixedKroneckerMultiTaskGP
 __all__ = [
     "KroneckerMultiTaskMixedGP",
     "MixedKroneckerMultiTaskGP",
+    "PerturbationCompatibleKroneckerMultiTaskGP",
 ]

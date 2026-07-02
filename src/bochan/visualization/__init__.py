@@ -58,10 +58,12 @@ from .ordinal import (
 )
 
 # Probability models with input perturbation can return ``n_points * n_w`` rows.
-# Replace both module-level references so 1D, 2D, ternary, YY, and direct helper
+# Replace every module-level reference so 1D, 2D, ternary, YY, and direct helper
 # calls consistently aggregate those rows back to one probability vector per
 # original input point.
 from . import multiclass as _multiclass
+from . import multiclass_ternary as _multiclass_ternary
+from . import multiclass_yy as _multiclass_yy
 from . import ordinal as _ordinal
 from .probability_input_perturbation import (
     multiclass_probabilities as _multiclass_probabilities_with_input_perturbation,
@@ -69,6 +71,12 @@ from .probability_input_perturbation import (
 )
 
 _multiclass.multiclass_probabilities = (
+    _multiclass_probabilities_with_input_perturbation
+)
+_multiclass_ternary.multiclass_probabilities = (
+    _multiclass_probabilities_with_input_perturbation
+)
+_multiclass_yy.multiclass_probabilities = (
     _multiclass_probabilities_with_input_perturbation
 )
 _ordinal.ordinal_probabilities = _ordinal_probabilities_with_input_perturbation

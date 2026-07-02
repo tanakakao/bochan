@@ -43,10 +43,10 @@ class HybridMultiOutputModel(Model):
             models.append(spec.model)
         self.models = ModuleList(models)
 
-        first_cat_dims = list(getattr(self.models[0], "cat_dims", []))
+        first_cat_dims = self._get_cat_dims(self.models[0])
         self.cat_dims = (
             first_cat_dims
-            if all(list(getattr(m, "cat_dims", [])) == first_cat_dims for m in self.models)
+            if all(self._get_cat_dims(model) == first_cat_dims for model in self.models)
             else []
         )
 
@@ -56,6 +56,13 @@ class HybridMultiOutputModel(Model):
             if all(getattr(m, "input_transform", None) is first_tf for m in self.models)
             else None
         )
+
+    @staticmethod
+    def _get_cat_dims(model: Module) -> list[int]:
+        """モデルのカテゴリ次元を比較可能なリストへ正規化する。"""
+
+        cat_dims = getattr(model, "cat_dims", None)
+        return [] if cat_dims is None else list(cat_dims)
 
     @property
     def num_outputs(self) -> int:

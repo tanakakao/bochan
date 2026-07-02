@@ -1,6 +1,9 @@
 from functools import wraps
 
 from bochan.acquisition._nehvi_cache_root import patch_nehvi_cache_root_init
+from bochan.acquisition._nparego_shape import (
+    reduce_nparego_sample_and_q_to_tbatch,
+)
 
 import torch
 
@@ -21,6 +24,12 @@ from .hetero_single_output import (
     qHeteroOrdinalExpectedImprovement,
     qHeteroOrdinalProbabilityOfImprovement,
     qHeteroOrdinalExpectedUtilityUpperConfidenceBound,
+)
+
+# Keep q=1 sequential optimization shape handling aligned across classification
+# and ordinal NParEGO implementations.
+_multi_output._reduce_sample_and_q_to_tbatch = (
+    reduce_nparego_sample_and_q_to_tbatch
 )
 
 # Correlated Kronecker posteriors cannot use BoTorch's cached-Cholesky qNEHVI

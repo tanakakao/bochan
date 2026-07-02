@@ -56,3 +56,19 @@ def test_mismatched_cat_dims_fall_back_to_empty_list() -> None:
     )
 
     assert model.cat_dims == []
+
+
+def test_eval_skips_wrapper_input_transform_and_updates_submodels() -> None:
+    model = HybridMultiOutputModel(
+        specs=[
+            _make_spec("output_0", None),
+            _make_spec("output_1", None),
+        ]
+    )
+
+    returned = model.eval()
+
+    assert returned is model
+    assert model.input_transform is None
+    assert not model.training
+    assert all(not submodel.training for submodel in model.models)

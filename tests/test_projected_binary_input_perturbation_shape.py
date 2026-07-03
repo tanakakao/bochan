@@ -21,6 +21,17 @@ from bochan.models.classification.binary.high_dim import (
     PCABinaryClassificationGPModel,
     REMBOBinaryClassificationGPModel,
 )
+from bochan.models.classification.multiclass.high_dim import (
+    PCAMulticlassClassificationGPModel,
+    REMBOMulticlassClassificationGPModel,
+)
+from bochan.models.ordinal.high_dim import (
+    PCAOrdinalGPModel,
+    REMBOOrdinalGPModel,
+)
+from bochan.models.projected_input_perturbation_compat import (
+    flatten_projected_one_to_many_point_axes,
+)
 from bochan.models.transforms.input import build_input_transform
 
 
@@ -47,6 +58,32 @@ class _NestedOneToManyTransform(nn.Module):
         )
         offsets = offsets.view(*([1] * (X.ndim - 1)), self.n_w, 1)
         return X.unsqueeze(-2) + offsets
+
+
+def test_shared_projected_shape_helper_flattens_only_point_axes() -> None:
+    X = torch.rand(7, 3, 5, dtype=torch.double)
+    projected = torch.rand(7, 3, 4, 2, dtype=torch.double)
+
+    normalized = flatten_projected_one_to_many_point_axes(X, projected)
+
+    assert normalized.shape == torch.Size([7, 12, 2])
+    assert torch.allclose(normalized, projected.reshape(7, 12, 2))
+
+
+def test_projected_shape_compat_is_installed_for_classification_and_ordinal() -> None:
+    classes = (
+        PCABinaryClassificationGPModel,
+        REMBOBinaryClassificationGPModel,
+        PCAMulticlassClassificationGPModel,
+        REMBOMulticlassClassificationGPModel,
+        PCAOrdinalGPModel,
+        REMBOOrdinalGPModel,
+    )
+
+    assert all(
+        getattr(cls, "_bochan_projected_perturbation_patched", False)
+        for cls in classes
+    )
 
 
 @pytest.mark.parametrize(

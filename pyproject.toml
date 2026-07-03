@@ -65,6 +65,15 @@ desktop = [
   "uvicorn[standard]>=0.27",
 ]
 
+web = [
+  "fastapi>=0.110",
+  "openpyxl>=3.1",
+  "pandas>=2.0",
+  "pydantic>=2.0",
+  "scikit-learn>=1.3",
+  "uvicorn[standard]>=0.27",
+]
+
 evo = [
   "cma>=3.3",
 ]

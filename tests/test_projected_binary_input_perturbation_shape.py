@@ -21,6 +21,7 @@ from bochan.models.classification.binary.high_dim import (
     PCABinaryClassificationGPModel,
     REMBOBinaryClassificationGPModel,
 )
+from bochan.models.transforms.input import build_input_transform
 
 
 class _NestedOneToManyTransform(nn.Module):
@@ -62,6 +63,38 @@ def test_projected_binary_transform_flattens_nested_perturbation_axis(
         train_X=train_X,
         train_Y=train_Y,
         input_transform=_NestedOneToManyTransform(n_w=4),
+        n_components=2,
+    )
+    model.eval()
+
+    X = torch.rand(7, 3, 5, dtype=torch.double)
+    transformed = model.transform_inputs(X)
+
+    assert transformed.shape == torch.Size([7, 12, 2])
+
+
+@pytest.mark.parametrize(
+    "model_cls",
+    [PCABinaryClassificationGPModel, REMBOBinaryClassificationGPModel],
+)
+def test_projected_binary_real_input_perturbation_has_one_point_axis(
+    model_cls,
+) -> None:
+    torch.manual_seed(2)
+    train_X = torch.rand(12, 5, dtype=torch.double)
+    train_Y = torch.randint(0, 2, (12,), dtype=torch.double)
+    bounds = torch.stack((train_X.min(dim=0).values, train_X.max(dim=0).values))
+    input_transform = build_input_transform(
+        train_X=train_X,
+        bounds=bounds,
+        perturbation=True,
+        n_w=4,
+        normalize=True,
+    )
+    model = model_cls(
+        train_X=train_X,
+        train_Y=train_Y,
+        input_transform=input_transform,
         n_components=2,
     )
     model.eval()

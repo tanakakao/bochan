@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from bochan.models.projected_input_perturbation_compat import (
+    patch_projected_model_classes,
+)
+
 from .decomposition import (
     PCAMulticlassClassificationGPModel as _PCAMulticlassClassificationGPModel,
     PCAMulticlassClassificationMixedGPModel as _PCAMulticlassClassificationMixedGPModel,
@@ -47,6 +51,14 @@ class REMBOMulticlassClassificationMixedGPModel(
     _REMBOMulticlassClassificationMixedGPModel,
 ):
     pass
+
+
+patch_projected_model_classes(
+    [
+        PCAMulticlassClassificationGPModel,
+        REMBOMulticlassClassificationGPModel,
+    ]
+)
 
 
 __all__ = [

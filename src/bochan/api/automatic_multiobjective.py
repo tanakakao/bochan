@@ -118,6 +118,35 @@ def _regression_observed_values(
     return values
 
 
+def _normalize_binary_posterior_mean(
+    bundle: ModelBundle,
+    mean: Any,
+    shape_X: Any,
+) -> Any:
+    """Preserve the explicit output axis of binary multi-output posteriors.
+
+    Projected models with one-to-many input transforms can expose posterior means
+    as ``[..., q * n_w, m]`` while ``shape_X_for_model`` falls back to the raw
+    ``[..., q, d]`` input shape. Blindly normalizing by the raw point count then
+    folds ``n_w`` into the output axis and turns ``m`` objectives into
+    ``n_w * m`` objectives. When the last dimension already matches the trained
+    target count, it is the explicit output axis and must be retained.
+    """
+
+    from bochan.acquisition.binary.bayesian_optimization._utils import (
+        normalize_mean_shape,
+    )
+
+    n_outputs = _num_outputs(_observed_train_targets(bundle))
+    if (
+        n_outputs > 1
+        and getattr(mean, "ndim", 0) >= 2
+        and int(mean.shape[-1]) == n_outputs
+    ):
+        return mean
+    return normalize_mean_shape(mean, shape_X)
+
+
 def _binary_observed_values(
     bundle: ModelBundle,
     config: AcquisitionConfig,
@@ -128,7 +157,6 @@ def _binary_observed_values(
     from bochan.acquisition.binary.bayesian_optimization._utils import (
         ensure_q_batch,
         get_model_posterior,
-        normalize_mean_shape,
         shape_X_for_model,
         to_probability,
     )
@@ -142,7 +170,11 @@ def _binary_observed_values(
             Xq,
             samples_are_probs=True,
         )
-        values = normalize_mean_shape(posterior.mean, shape_X)
+        values = _normalize_binary_posterior_mean(
+            bundle,
+            posterior.mean,
+            shape_X,
+        )
         values = to_probability(
             values,
             apply_sigmoid_if_needed=config.acqf_kwargs.get(

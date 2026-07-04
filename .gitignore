@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+
+# Web frontend
+web/node_modules/
+web/dist/
+
+# bochan runtime files
+.bochan/

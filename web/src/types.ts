@@ -48,6 +48,19 @@ export interface CandidateRow {
   constraints_ok: boolean;
 }
 
+export interface PlotlyFigurePayload {
+  data: unknown[];
+  layout: Record<string, unknown>;
+  frames?: unknown[];
+}
+
+export interface ResultVisualization {
+  id: string;
+  title: string;
+  description: string;
+  figure: PlotlyFigurePayload;
+}
+
 export interface RegressionResult {
   dataset_id: string;
   dataset_name: string;
@@ -60,5 +73,7 @@ export interface RegressionResult {
   direction: "maximize" | "minimize";
   best_observed: number;
   candidates: CandidateRow[];
+  visualizations: ResultVisualization[];
+  visualization_warnings: string[];
   metadata: Record<string, unknown>;
 }

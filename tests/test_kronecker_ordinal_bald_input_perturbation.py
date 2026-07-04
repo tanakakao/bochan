@@ -6,6 +6,7 @@ from botorch.sampling.normal import SobolQMCNormalSampler
 from bochan.acquisition.ordinal.active_learning import qMultiOutputOrdinalBALD
 from bochan.acquisition.ordinal.active_learning.bald_compat import (
     _align_pointwise_axes,
+    _squeeze_redundant_trailing_output_axes,
 )
 from bochan.models.ordinal.base import KroneckerMultiTaskOrdinalGPModel
 from bochan.models.transforms.input import build_input_transform
@@ -58,6 +59,36 @@ def test_align_pointwise_axes_uses_permutation_instead_of_reshape() -> None:
     )
 
     torch.testing.assert_close(aligned, values.transpose(0, 1))
+
+
+def test_singleton_task_axis_is_removed_only_from_higher_rank_tensor() -> None:
+    conditional_entropy = torch.rand(32, 16, dtype=torch.double)
+    predictive_entropy = torch.rand(32, 16, 1, dtype=torch.double)
+
+    conditional_entropy, predictive_entropy = (
+        _squeeze_redundant_trailing_output_axes(
+            conditional_entropy,
+            predictive_entropy,
+        )
+    )
+
+    assert conditional_entropy.shape == torch.Size([32, 16])
+    assert predictive_entropy.shape == torch.Size([32, 16])
+
+
+def test_shared_q1_axis_is_not_removed_when_ranks_match() -> None:
+    conditional_entropy = torch.rand(32, 1, dtype=torch.double)
+    predictive_entropy = torch.rand(32, 1, dtype=torch.double)
+
+    conditional_entropy, predictive_entropy = (
+        _squeeze_redundant_trailing_output_axes(
+            conditional_entropy,
+            predictive_entropy,
+        )
+    )
+
+    assert conditional_entropy.shape == torch.Size([32, 1])
+    assert predictive_entropy.shape == torch.Size([32, 1])
 
 
 def test_kronecker_ordinal_bald_supports_input_perturbation_t_batches() -> None:

@@ -16,6 +16,38 @@ from .multi_output import (
 )
 
 
+def _squeeze_redundant_trailing_output_axes(
+    values: Tensor,
+    reference: Tensor,
+) -> tuple[Tensor, Tensor]:
+    """Remove only unmatched trailing singleton output axes.
+
+    A Kronecker task view is logically single-output, but some BoTorch / GPyTorch
+    versions preserve a trailing singleton output dimension in marginal
+    probabilities while posterior samples have already squeezed it. The axis is
+    removed only when one tensor has more dimensions than the other and its last
+    dimension is one. This avoids mistaking a shared ``q=1`` point axis for an
+    output axis when both tensors use the same rank.
+    """
+
+    normalized_values = values
+    normalized_reference = reference
+
+    while (
+        normalized_values.ndim > normalized_reference.ndim
+        and normalized_values.shape[-1] == 1
+    ):
+        normalized_values = normalized_values.squeeze(-1)
+
+    while (
+        normalized_reference.ndim > normalized_values.ndim
+        and normalized_reference.shape[-1] == 1
+    ):
+        normalized_reference = normalized_reference.squeeze(-1)
+
+    return normalized_values, normalized_reference
+
+
 def _align_pointwise_axes(
     values: Tensor,
     reference: Tensor,
@@ -90,6 +122,12 @@ class qMultiOutputOrdinalBALD(_BaseMultiOutputOrdinalBALD):
                 class_probs_given_f,
                 eps=self.eps,
             ).mean(dim=0)
+            cond_entropy, predictive_entropy = (
+                _squeeze_redundant_trailing_output_axes(
+                    cond_entropy,
+                    predictive_entropy,
+                )
+            )
             cond_entropy = _align_pointwise_axes(
                 cond_entropy,
                 predictive_entropy,

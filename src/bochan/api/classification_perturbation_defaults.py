@@ -211,9 +211,14 @@ def _resolve_objective(
     ):
         return resolved
 
-    n_w = _engine._input_transform_n_w_from_bundle(bundle)
-    if n_w is None or not _is_multi_output(bundle) or not _is_vector_strategy(resolved):
+    if not _is_multi_output(bundle) or not _is_vector_strategy(resolved):
         return resolved
+
+    # A multiclass vector strategy always needs a class-reducing objective,
+    # regardless of whether InputPerturbation is enabled. Without it, NSGA-II
+    # receives raw probabilities shaped (..., q, m, C) instead of objective
+    # values shaped (..., q, m). n_w is only needed for perturbation aggregation.
+    n_w = _engine._input_transform_n_w_from_bundle(bundle)
     return replace(
         resolved,
         objective_config=ObjectiveConfig(

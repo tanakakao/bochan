@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { runRegression, uploadDataset } from "./api";
+import ResultVisualizations from "./ResultVisualizations";
 import type { ColumnProfile, DatasetResponse, RegressionResult, SearchVariable } from "./types";
 
 const STEPS = ["データ", "変数", "探索設定", "結果"];
@@ -378,6 +379,11 @@ export default function App() {
                 <div className="metric"><span>説明変数</span><strong>{result.n_features}</strong></div>
                 <div className="metric"><span>候補数</span><strong>{result.candidates.length}</strong></div>
               </div>
+
+              <ResultVisualizations
+                visualizations={result.visualizations ?? []}
+                warnings={result.visualization_warnings ?? []}
+              />
 
               <div className="card">
                 <h3>推奨候補</h3>

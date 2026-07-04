@@ -1,4 +1,4 @@
-import type { DatasetResponse, RegressionResult, SearchVariable } from "./types";
+import type { DatasetResponse, LogsResponse, RegressionResult, SearchVariable } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api/v1";
 
@@ -88,4 +88,18 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       drop_missing: true
     })
   });
+}
+
+export async function fetchLogs(options?: {
+  limit?: number;
+  level?: string;
+  event?: string;
+  requestId?: string;
+}): Promise<LogsResponse> {
+  const params = new URLSearchParams();
+  params.set("limit", String(options?.limit ?? 200));
+  if (options?.level) params.set("level", options.level);
+  if (options?.event) params.set("event", options.event);
+  if (options?.requestId) params.set("request_id", options.requestId);
+  return request<LogsResponse>(`/logs?${params.toString()}`);
 }

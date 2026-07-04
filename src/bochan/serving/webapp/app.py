@@ -13,9 +13,10 @@ from bochan.desktop.services import (
     build_dataset_record,
     dataframe_preview,
     load_dataframe_from_payload,
-    run_regression_workflow,
 )
 from bochan.serving.fastapi.routers import acquisitions, candidates, health, models, predictions
+
+from .workflows import run_regression_web_workflow
 
 
 class _Schema(BaseModel):
@@ -95,6 +96,7 @@ WEB_CAPABILITIES: dict[str, Any] = {
     "acquisitions": ["EI", "NEI", "UCB"],
     "optimizers": ["optimize_acqf"],
     "data_sources": ["csv", "excel"],
+    "visualizations": ["yyplot", "prediction-1d", "prediction-2d"],
 }
 
 
@@ -183,7 +185,7 @@ def create_app(*, title: str = "bochan Web API", version: str = "0.1.0") -> Fast
     @router.post("/regression/run")
     def run_regression(request: RegressionRunRequest) -> dict[str, Any]:
         try:
-            return run_regression_workflow(request, dataset_store)
+            return run_regression_web_workflow(request, dataset_store)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except Exception as exc:

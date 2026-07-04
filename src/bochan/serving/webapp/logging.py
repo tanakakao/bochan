@@ -172,7 +172,15 @@ def log_event(
 ) -> None:
     """Write one structured event without requiring callers to build ``extra``."""
 
-    logger.log(level, message, extra={"event": event, **fields})
+    exc_info = fields.pop("exc_info", False)
+    stack_info = bool(fields.pop("stack_info", False))
+    logger.log(
+        level,
+        message,
+        extra={"event": event, **fields},
+        exc_info=exc_info,
+        stack_info=stack_info,
+    )
 
 
 def read_recent_logs(

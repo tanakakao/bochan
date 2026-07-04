@@ -13,7 +13,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const detail = payload?.detail ?? `HTTP ${response.status}`;
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    const requestId = response.headers.get("X-Request-ID");
+    const message = typeof detail === "string" ? detail : JSON.stringify(detail);
+    throw new Error(requestId ? `${message} [request_id=${requestId}]` : message);
   }
   return payload as T;
 }

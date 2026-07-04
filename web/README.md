@@ -35,6 +35,7 @@ Open `http://localhost:5173`.
   - observed-versus-predicted YY plot
   - one-dimensional prediction mean and uncertainty curve
   - two-dimensional prediction contour for the first two numeric search variables
+- structured execution logs with request IDs and stage timings
 
 The one-dimensional and two-dimensional figures are generated only when enough non-fixed numeric search variables are available. Visualization failures are reported separately and do not discard the candidate table.
 
@@ -62,3 +63,35 @@ Datasets and fitted models are stored in memory. Restarting FastAPI clears the c
 ```
 
 The React frontend renders these payloads with `react-plotly.js`.
+
+## Logging
+
+The backend writes human-readable logs to the console and structured JSONL records to:
+
+```text
+.bochan/logs/bochan-web.jsonl
+```
+
+Log files rotate at 10 MiB and retain five backups by default. Configure logging with environment variables:
+
+```bash
+set BOCHAN_LOG_LEVEL=DEBUG
+set BOCHAN_LOG_DIR=C:\logs\bochan
+set BOCHAN_LOG_MAX_BYTES=20971520
+set BOCHAN_LOG_BACKUP_COUNT=10
+```
+
+For bash or PowerShell, use the corresponding environment-variable syntax.
+
+Each HTTP response includes an `X-Request-ID` header. The same ID is attached to dataset, model fitting, candidate generation, prediction, visualization, completion, and error records.
+
+Recent records are available from:
+
+```text
+GET /api/v1/logs?limit=200
+GET /api/v1/logs?request_id=<request-id>
+GET /api/v1/logs?level=ERROR
+GET /api/v1/logs?event=model_fit_completed
+```
+
+The result page automatically locates the most recent regression request ID and displays its execution log. The regression response also includes stage timings in `metadata.timings_ms`.

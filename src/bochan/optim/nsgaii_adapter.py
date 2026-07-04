@@ -191,7 +191,12 @@ def _make_version_compatible_optimizer(function: Callable[..., Any]) -> Callable
             for name, value in kwargs.items()
             if supports(name)
         }
-        X, Y = original(*args, **filtered_kwargs)
+        # NSGA-II is derivative-free. Some BoTorch versions evaluate the
+        # objective transform outside their internal no-grad block and then call
+        # ``numpy()`` on the result. If the transform references Parameters, the
+        # result requires gradients and that conversion raises a RuntimeError.
+        with torch.no_grad():
+            X, Y = original(*args, **filtered_kwargs)
 
         changed = False
         if legacy_discrete_choices:

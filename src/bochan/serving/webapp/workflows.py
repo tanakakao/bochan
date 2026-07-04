@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+from time import perf_counter
 from typing import Any
 
 from bochan.desktop.services import (
@@ -15,6 +17,10 @@ from bochan.desktop.services import (
     _requires_beta,
     _validate_regression_columns,
 )
+
+from .logging import current_request_id, get_logger, log_event
+
+LOGGER = get_logger("workflow")
 
 
 def _figure_payload(
@@ -63,6 +69,7 @@ def _build_regression_visualizations(
         show_yyplot,
     )
 
+    started = perf_counter()
     feature_columns = list(encoded["feature_columns"])
     train_X = optimizer.train_X
     if train_X is None:
@@ -110,8 +117,26 @@ def _build_regression_visualizations(
                 description="学習データに対する予測平均と不確かさを、実測値と比較します。",
             )
         )
+        log_event(
+            LOGGER,
+            logging.INFO,
+            "visualization_created",
+            "Visualization created",
+            visualization_id="yyplot",
+            target_column=target_column,
+        )
     except Exception as exc:
-        warnings.append(f"YY plotを生成できませんでした: {exc}")
+        warning = f"YY plotを生成できませんでした: {exc}"
+        warnings.append(warning)
+        LOGGER.warning(
+            "YY plot generation failed",
+            exc_info=True,
+            extra={
+                "event": "visualization_failed",
+                "visualization_id": "yyplot",
+                "target_column": target_column,
+            },
+        )
 
     fixed_indices = {int(index) for index in encoded["fixed_features"]}
     numeric_features = [
@@ -147,8 +172,28 @@ def _build_regression_visualizations(
                     description="他の説明変数を代表値に固定したときの予測平均、±1σ、入力データ、候補点です。",
                 )
             )
+            log_event(
+                LOGGER,
+                logging.INFO,
+                "visualization_created",
+                "Visualization created",
+                visualization_id="prediction-1d",
+                feature_columns=[feature],
+                target_column=target_column,
+            )
         except Exception as exc:
-            warnings.append(f"1次元予測グラフを生成できませんでした: {exc}")
+            warning = f"1次元予測グラフを生成できませんでした: {exc}"
+            warnings.append(warning)
+            LOGGER.warning(
+                "One-dimensional visualization generation failed",
+                exc_info=True,
+                extra={
+                    "event": "visualization_failed",
+                    "visualization_id": "prediction-1d",
+                    "feature_columns": [feature],
+                    "target_column": target_column,
+                },
+            )
 
     if len(numeric_features) >= 2:
         feature_1, feature_2 = numeric_features[:2]
@@ -182,9 +227,38 @@ def _build_regression_visualizations(
                     description="他の説明変数を代表値に固定した予測平均の等高線に、入力データと候補点を重ねます。",
                 )
             )
+            log_event(
+                LOGGER,
+                logging.INFO,
+                "visualization_created",
+                "Visualization created",
+                visualization_id="prediction-2d",
+                feature_columns=[feature_1, feature_2],
+                target_column=target_column,
+            )
         except Exception as exc:
-            warnings.append(f"2次元予測グラフを生成できませんでした: {exc}")
+            warning = f"2次元予測グラフを生成できませんでした: {exc}"
+            warnings.append(warning)
+            LOGGER.warning(
+                "Two-dimensional visualization generation failed",
+                exc_info=True,
+                extra={
+                    "event": "visualization_failed",
+                    "visualization_id": "prediction-2d",
+                    "feature_columns": [feature_1, feature_2],
+                    "target_column": target_column,
+                },
+            )
 
+    log_event(
+        LOGGER,
+        logging.INFO,
+        "visualization_batch_completed",
+        "Visualization batch completed",
+        n_visualizations=len(figures),
+        n_warnings=len(warnings),
+        duration_ms=round((perf_counter() - started) * 1000, 3),
+    )
     return figures, warnings
 
 
@@ -204,6 +278,22 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     )
     from bochan.serving.fastapi.converters import to_serializable
 
+    workflow_started = perf_counter()
+    timings_ms: dict[str, float] = {}
+    request_id = current_request_id()
+    log_event(
+        LOGGER,
+        logging.INFO,
+        "workflow_started",
+        "Regression workflow started",
+        dataset_id=request.dataset_id,
+        model_type=request.model_type,
+        acquisition=request.acquisition.name,
+        optimizer=request.optimizer.name,
+        q=request.optimizer.q,
+    )
+
+    preparation_started = perf_counter()
     record = store.get(request.dataset_id)
     data = record.data.copy()
     feature_columns = list(request.feature_columns)
@@ -235,6 +325,19 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         dtype=torch.double,
     )
     bounds = torch.as_tensor(encoded["bounds"], dtype=torch.double)
+    timings_ms["prepare"] = round((perf_counter() - preparation_started) * 1000, 3)
+    log_event(
+        LOGGER,
+        logging.INFO,
+        "workflow_data_prepared",
+        "Regression data prepared",
+        dataset_id=record.dataset_id,
+        n_train=int(train_X.shape[0]),
+        n_features=int(train_X.shape[1]),
+        n_dropped=int(record.profile["n_rows"] - len(data)),
+        categorical_dimensions=encoded["cat_dims"],
+        duration_ms=timings_ms["prepare"],
+    )
 
     model_config = ModelConfig(
         task_type="regression",
@@ -258,7 +361,40 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         fit_config=fit_config,
         bounds=bounds,
     )
-    optimizer.fit(train_X, train_Y)
+    fit_started = perf_counter()
+    log_event(
+        LOGGER,
+        logging.INFO,
+        "model_fit_started",
+        "Model fitting started",
+        model_type=request.model_type,
+        n_train=int(train_X.shape[0]),
+        n_features=int(train_X.shape[1]),
+        fit_maxiter=request.fit_maxiter,
+    )
+    try:
+        optimizer.fit(train_X, train_Y)
+    except Exception:
+        LOGGER.exception(
+            "Model fitting failed",
+            extra={
+                "event": "model_fit_failed",
+                "model_type": request.model_type,
+                "n_train": int(train_X.shape[0]),
+                "n_features": int(train_X.shape[1]),
+                "duration_ms": round((perf_counter() - fit_started) * 1000, 3),
+            },
+        )
+        raise
+    timings_ms["fit"] = round((perf_counter() - fit_started) * 1000, 3)
+    log_event(
+        LOGGER,
+        logging.INFO,
+        "model_fit_completed",
+        "Model fitting completed",
+        model_type=request.model_type,
+        duration_ms=timings_ms["fit"],
+    )
 
     acqf_kwargs = dict(request.acquisition.acqf_kwargs or {})
     acq_name = request.acquisition.name
@@ -283,11 +419,37 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         fixed_features=encoded["fixed_features"] or None,
     )
 
-    candidate_result = optimizer.candidate(
-        acq_config,
-        opt_config,
-        return_result=True,
+    candidate_started = perf_counter()
+    log_event(
+        LOGGER,
+        logging.INFO,
+        "candidate_generation_started",
+        "Candidate generation started",
+        acquisition=acq_name,
+        optimizer=request.optimizer.name,
+        q=request.optimizer.q,
+        num_restarts=request.optimizer.num_restarts,
+        raw_samples=request.optimizer.raw_samples,
+        repair_enabled=repair_config is not None,
     )
+    try:
+        candidate_result = optimizer.candidate(
+            acq_config,
+            opt_config,
+            return_result=True,
+        )
+    except Exception:
+        LOGGER.exception(
+            "Candidate generation failed",
+            extra={
+                "event": "candidate_generation_failed",
+                "acquisition": acq_name,
+                "optimizer": request.optimizer.name,
+                "q": request.optimizer.q,
+                "duration_ms": round((perf_counter() - candidate_started) * 1000, 3),
+            },
+        )
+        raise
     raw_candidates = candidate_result.candidates
     raw_acq_value = candidate_result.acq_value
     candidates = _postprocess_candidates(
@@ -295,7 +457,19 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         request=request,
         encoded=encoded,
     )
+    timings_ms["candidate"] = round((perf_counter() - candidate_started) * 1000, 3)
+    log_event(
+        LOGGER,
+        logging.INFO,
+        "candidate_generation_completed",
+        "Candidate generation completed",
+        acquisition=acq_name,
+        optimizer=request.optimizer.name,
+        n_candidates=int(candidates.shape[0]),
+        duration_ms=timings_ms["candidate"],
+    )
 
+    prediction_started = perf_counter()
     mean, variance = optimizer.predict(candidates, return_type="mean_variance")
     std = variance.clamp_min(0).sqrt()
     rows = _candidate_rows(
@@ -306,7 +480,17 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         encoded=encoded,
         request=request,
     )
+    timings_ms["prediction"] = round((perf_counter() - prediction_started) * 1000, 3)
+    log_event(
+        LOGGER,
+        logging.INFO,
+        "candidate_prediction_completed",
+        "Candidate prediction completed",
+        n_candidates=len(rows),
+        duration_ms=timings_ms["prediction"],
+    )
 
+    visualization_started = perf_counter()
     try:
         visualizations, visualization_warnings = _build_regression_visualizations(
             optimizer=optimizer,
@@ -320,12 +504,35 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     except Exception as exc:
         visualizations = []
         visualization_warnings = [f"可視化を初期化できませんでした: {exc}"]
+        LOGGER.exception(
+            "Visualization initialization failed",
+            extra={
+                "event": "visualization_batch_failed",
+                "target_column": target_column,
+            },
+        )
+    timings_ms["visualization"] = round((perf_counter() - visualization_started) * 1000, 3)
 
     best_observed = (
         float(target.max())
         if request.direction == "maximize"
         else float(target.min())
     )
+    timings_ms["total"] = round((perf_counter() - workflow_started) * 1000, 3)
+    log_event(
+        LOGGER,
+        logging.INFO,
+        "workflow_completed",
+        "Regression workflow completed",
+        dataset_id=record.dataset_id,
+        model_type=request.model_type,
+        acquisition=acq_name,
+        n_candidates=len(rows),
+        n_visualizations=len(visualizations),
+        n_visualization_warnings=len(visualization_warnings),
+        timings_ms=timings_ms,
+    )
+
     return {
         "dataset_id": record.dataset_id,
         "dataset_name": record.name,
@@ -345,10 +552,12 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         "visualizations": visualizations,
         "visualization_warnings": visualization_warnings,
         "metadata": {
+            "request_id": request_id,
             "dropped_rows": int(record.profile["n_rows"] - len(data)),
             "acquisition": acq_name,
             "optimizer": request.optimizer.name,
             "repair_enabled": repair_config is not None,
+            "timings_ms": timings_ms,
         },
     }
 

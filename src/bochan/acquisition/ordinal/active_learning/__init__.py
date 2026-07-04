@@ -1,33 +1,30 @@
+from .bald_compat import qMultiOutputOrdinalBALD
 from .hetero_multi_output import (
+    qHeteroMultiOutputOrdinalBALD,
     qHeteroMultiOutputOrdinalIntegratedPosteriorVarianceProxy,
+    qHeteroMultiOutputOrdinalMarginUncertainty,
     qHeteroMultiOutputOrdinalPredictiveEntropy,
     qHeteroMultiOutputOrdinalUtilityVariance,
-    qHeteroMultiOutputOrdinalMarginUncertainty,
-    qHeteroMultiOutputOrdinalBALD,
 )
-
 from .hetero_single_output import (
-    qHeteroOrdinalPredictiveEntropy,
-    qHeteroOrdinalUtilityVariance,
-    qHeteroOrdinalMarginUncertainty,
     qHeteroOrdinalBALD,
     qHeteroOrdinalIntegratedPosteriorVariance,
+    qHeteroOrdinalMarginUncertainty,
+    qHeteroOrdinalPredictiveEntropy,
+    qHeteroOrdinalUtilityVariance,
 )
-
 from .multi_output import (
+    qMultiOutputOrdinalFantasyNegIntegratedPosteriorVariance,
+    qMultiOutputOrdinalMarginUncertainty,
     qMultiOutputOrdinalPredictiveEntropy,
     qMultiOutputOrdinalUtilityVariance,
-    qMultiOutputOrdinalMarginUncertainty,
-    qMultiOutputOrdinalFantasyNegIntegratedPosteriorVariance,
 )
-from .bald_compat import qMultiOutputOrdinalBALD
-
 from .single_output import (
-    qOrdinalPredictiveEntropy,
     qOrdinalBALD,
-    qOrdinalUtilityVariance,
-    qOrdinalMarginUncertainty,
     qOrdinalFantasyNegIntegratedPosteriorVariance,
+    qOrdinalMarginUncertainty,
+    qOrdinalPredictiveEntropy,
+    qOrdinalUtilityVariance,
 )
 
 __all__ = [

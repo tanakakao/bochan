@@ -16,11 +16,11 @@ from .hetero_single_output import (
 
 from .multi_output import (
     qMultiOutputOrdinalPredictiveEntropy,
-    qMultiOutputOrdinalBALD,
     qMultiOutputOrdinalUtilityVariance,
     qMultiOutputOrdinalMarginUncertainty,
     qMultiOutputOrdinalFantasyNegIntegratedPosteriorVariance,
 )
+from .bald_compat import qMultiOutputOrdinalBALD
 
 from .single_output import (
     qOrdinalPredictiveEntropy,

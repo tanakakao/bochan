@@ -61,6 +61,23 @@ export interface ResultVisualization {
   figure: PlotlyFigurePayload;
 }
 
+export interface LogEntry {
+  timestamp: string;
+  level: string;
+  logger: string;
+  message: string;
+  event?: string;
+  request_id?: string;
+  duration_ms?: number;
+  [key: string]: unknown;
+}
+
+export interface LogsResponse {
+  entries: LogEntry[];
+  count: number;
+  log_file: string;
+}
+
 export interface RegressionResult {
   dataset_id: string;
   dataset_name: string;

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from itertools import permutations
 
+import torch
 from torch import Tensor
 
 from botorch.utils.transforms import t_batch_mode_transform
@@ -99,7 +100,7 @@ class qMultiOutputOrdinalBALD(_BaseMultiOutputOrdinalBALD):
         if len(scores) == 0:
             raise RuntimeError("No submodels were available.")
 
-        score_per_output = __import__("torch").stack(scores, dim=-1)
+        score_per_output = torch.stack(scores, dim=-1)
         score = self._aggregate_outputs(score_per_output)
         return self._finalize_pointwise_score(
             score,

@@ -89,6 +89,25 @@ td input, td select { min-width: 100px; padding: 6px 8px; }
 .visualization-heading p { margin: 0 0 4px; font-size: 13px; line-height: 1.55; }
 .plot-container { width: 100%; height: 520px; min-width: 0; }
 .visualization-card:first-child .plot-container { height: 500px; }
+.log-card { padding: 0; overflow: hidden; }
+.log-heading { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; padding: 18px; border-bottom: 1px solid #e5e9f1; }
+.log-heading h3 { margin-bottom: 5px; }
+.log-heading p { margin: 0 0 8px; font-size: 13px; }
+.log-heading code { display: inline-block; max-width: 100%; padding: 4px 7px; border-radius: 6px; background: #f3f5f9; color: #546177; font-size: 11px; overflow-wrap: anywhere; }
+.log-list { max-height: 520px; overflow: auto; background: #fbfcfe; }
+.log-entry { border-bottom: 1px solid #e8ecf3; }
+.log-entry:last-child { border-bottom: 0; }
+.log-entry summary { display: grid; grid-template-columns: 165px 74px minmax(170px, .8fr) minmax(240px, 2fr) 90px; gap: 10px; align-items: center; padding: 10px 14px; cursor: pointer; font-size: 12px; }
+.log-entry summary:hover { background: #f2f6fd; }
+.log-entry pre { margin: 0; padding: 12px 18px 16px 42px; overflow: auto; background: #111827; color: #dbe7ff; font-size: 11px; line-height: 1.55; }
+.log-time { color: #6f7b91; font-variant-numeric: tabular-nums; }
+.log-level { display: inline-flex; justify-content: center; padding: 3px 6px; border-radius: 999px; background: #e8eef9; color: #40516e; font-size: 10px; font-weight: 900; }
+.level-warning .log-level { background: #fff1be; color: #755800; }
+.level-error .log-level, .level-critical .log-level { background: #ffd6d6; color: #981d1d; }
+.log-event { color: #275ee8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; }
+.log-message { overflow: hidden; text-overflow: ellipsis; }
+.log-duration { text-align: right; color: #59657c; font-variant-numeric: tabular-nums; }
+.empty-log { padding: 24px; color: #758097; text-align: center; }
 
 @media (max-width: 1200px) {
   body { min-width: 900px; }
@@ -97,4 +116,6 @@ td input, td select { min-width: 100px; padding: 6px 8px; }
   .three-columns { grid-template-columns: 1fr; }
   .visualization-grid { grid-template-columns: 1fr; }
   .visualization-card:first-child { grid-column: auto; }
+  .log-entry summary { grid-template-columns: 145px 70px minmax(150px, .8fr) minmax(180px, 2fr); }
+  .log-duration { display: none; }
 }

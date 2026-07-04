@@ -39,3 +39,26 @@ Open `http://localhost:5173`.
 The one-dimensional and two-dimensional figures are generated only when enough non-fixed numeric search variables are available. Visualization failures are reported separately and do not discard the candidate table.
 
 Datasets and fitted models are stored in memory. Restarting FastAPI clears the current session.
+
+## Visualization response
+
+`POST /api/v1/regression/run` returns Plotly-compatible JSON under `visualizations`:
+
+```json
+{
+  "visualizations": [
+    {
+      "id": "yyplot",
+      "title": "実測値と予測値",
+      "description": "...",
+      "figure": {
+        "data": [],
+        "layout": {}
+      }
+    }
+  ],
+  "visualization_warnings": []
+}
+```
+
+The React frontend renders these payloads with `react-plotly.js`.

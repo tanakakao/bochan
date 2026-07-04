@@ -65,6 +65,9 @@ def _build_regression_visualizations(
 
     feature_columns = list(encoded["feature_columns"])
     train_X = optimizer.train_X
+    if train_X is None:
+        raise RuntimeError("Optimizer has no training inputs for visualization.")
+
     X_df = pd.DataFrame(train_X.detach().cpu().numpy(), columns=feature_columns)
     y_df = pd.DataFrame({target_column: target.to_numpy(dtype=float)})
 
@@ -304,15 +307,19 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         request=request,
     )
 
-    visualizations, visualization_warnings = _build_regression_visualizations(
-        optimizer=optimizer,
-        candidate_result=candidate_result,
-        candidates=candidates,
-        encoded=encoded,
-        target=target,
-        target_column=target_column,
-        direction_sign=direction_sign,
-    )
+    try:
+        visualizations, visualization_warnings = _build_regression_visualizations(
+            optimizer=optimizer,
+            candidate_result=candidate_result,
+            candidates=candidates,
+            encoded=encoded,
+            target=target,
+            target_column=target_column,
+            direction_sign=direction_sign,
+        )
+    except Exception as exc:
+        visualizations = []
+        visualization_warnings = [f"可視化を初期化できませんでした: {exc}"]
 
     best_observed = (
         float(target.max())

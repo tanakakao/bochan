@@ -16,8 +16,18 @@ function entryDetails(entry: LogEntry): Record<string, unknown> {
   return details;
 }
 
+function latestWorkflowRequestId(entries: LogEntry[]): string | undefined {
+  return [...entries]
+    .reverse()
+    .find((entry) =>
+      Boolean(entry.request_id) &&
+      ["workflow_completed", "regression_run_completed", "regression_run_failed"].includes(entry.event ?? "")
+    )?.request_id;
+}
+
 export default function ExecutionLogs({ requestId }: ExecutionLogsProps) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [resolvedRequestId, setResolvedRequestId] = useState(requestId);
   const [logFile, setLogFile] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,8 +36,14 @@ export default function ExecutionLogs({ requestId }: ExecutionLogsProps) {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetchLogs({ limit: 200, requestId });
-      setEntries(response.entries);
+      const response = await fetchLogs({ limit: 300, requestId });
+      const detectedRequestId = requestId ?? latestWorkflowRequestId(response.entries);
+      setResolvedRequestId(detectedRequestId);
+      setEntries(
+        detectedRequestId
+          ? response.entries.filter((entry) => entry.request_id === detectedRequestId)
+          : response.entries
+      );
       setLogFile(response.log_file);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -46,7 +62,9 @@ export default function ExecutionLogs({ requestId }: ExecutionLogsProps) {
         <div>
           <h3>実行ログ</h3>
           <p>
-            {requestId ? `この実行のリクエストID: ${requestId}` : "直近のWeb APIログ"}
+            {resolvedRequestId
+              ? `表示中のリクエストID: ${resolvedRequestId}`
+              : "直近のWeb APIログ"}
           </p>
           {logFile && <code>{logFile}</code>}
         </div>

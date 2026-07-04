@@ -16,6 +16,7 @@ import torch
 from torch import Tensor
 
 from . import nsgaii as _base
+from .nsgaii_output_compat import adapt_nsgaii_outputs
 
 
 LinearConstraint = _base.LinearConstraint
@@ -37,7 +38,9 @@ def _callable_sequence(value: Any) -> list[Callable[[Tensor], Tensor]] | None:
     return values
 
 
-def _resolve_acquisition_constraints(acq_function: Any) -> list[OutcomeConstraint] | None:
+def _resolve_acquisition_constraints(
+    acq_function: Any,
+) -> list[OutcomeConstraint] | None:
     """Extract explicitly stored outcome constraints from an acquisition."""
 
     namespace = getattr(acq_function, "__dict__", {})
@@ -143,7 +146,9 @@ def _evaluate_objectives(
     return values
 
 
-def _accepted_parameters(function: Callable[..., Any]) -> tuple[set[str], bool]:
+def _accepted_parameters(
+    function: Callable[..., Any],
+) -> tuple[set[str], bool]:
     """Return named parameters and whether ``**kwargs`` is accepted."""
 
     try:
@@ -157,7 +162,9 @@ def _accepted_parameters(function: Callable[..., Any]) -> tuple[set[str], bool]:
     return set(parameters), accepts_var_kwargs
 
 
-def _make_version_compatible_optimizer(function: Callable[..., Any]) -> Callable[..., Any]:
+def _make_version_compatible_optimizer(
+    function: Callable[..., Any],
+) -> Callable[..., Any]:
     """Wrap BoTorch's NSGA-II utility with runtime signature adaptation."""
 
     original = getattr(function, "_bochan_original", function)
@@ -262,6 +269,11 @@ def optimize_acqf_nsgaii(
             candidate_ref_point = getattr(acq_function, "ref_point", None)
             if candidate_ref_point is not None and not callable(candidate_ref_point):
                 ref_point = candidate_ref_point
+
+    # BoTorch's Pymoo bridge converts objective values directly to NumPy. DeepGP
+    # model lists may retain a leading likelihood-sample axis, so pair the target
+    # and objective with a shared X context and reduce only those leading axes.
+    target, objective = adapt_nsgaii_outputs(target, objective)
 
     return _base.optimize_acqf_nsgaii(
         acq_function=target,

@@ -10,18 +10,17 @@ utility objectives. Explicit advanced callables retain raw-sample semantics.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import Any
 
-from torch import Tensor
 from botorch.utils.objective import compute_smoothed_feasibility_indicator
+from torch import Tensor
 
 from bochan.acquisition.objective.outcome_constraints import (
     OutcomeConstraint,
     split_outcome_constraints,
     wrap_objective_space_constraints,
 )
-
 
 _APPLIED = False
 

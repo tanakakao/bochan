@@ -6,10 +6,10 @@ returned values are less than or equal to zero.
 
 from __future__ import annotations
 
-from typing import Callable, Literal, Sequence, cast
+from collections.abc import Callable, Sequence
+from typing import Literal, cast
 
 from torch import Tensor
-
 
 ConstraintOperator = Literal["ge", "gt", "le", "lt"]
 OutcomeConstraint = Callable[[Tensor], Tensor]

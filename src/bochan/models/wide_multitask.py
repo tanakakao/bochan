@@ -8,15 +8,14 @@ long task-feature representation used by the existing multi-task models.
 from __future__ import annotations
 
 import inspect
-from typing import Any, Optional
+from typing import Any
 
 import torch
-from torch import Tensor
-
 from botorch.models.multitask import MultiTaskGP
 from botorch.posteriors.posterior import Posterior
 from botorch.sampling.base import MCSampler
 from botorch.sampling.get_sampler import GetSampler, get_sampler
+from torch import Tensor
 
 from bochan.models.classification.binary.base.multitask import (
     MultiTaskBinaryClassificationGPModel,
@@ -198,7 +197,7 @@ class _WidePosteriorMixin:
 
     num_tasks: int
 
-    def _selected_outputs(self, output_indices: Optional[list[int]]) -> list[int]:
+    def _selected_outputs(self, output_indices: list[int] | None) -> list[int]:
         selected = (
             list(range(self.num_tasks))
             if output_indices is None
@@ -230,7 +229,7 @@ class _WidePosteriorMixin:
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
+        output_indices: list[int] | None = None,
         observation_noise: bool | Tensor = False,
         posterior_transform: Any = None,
         **kwargs: Any,
@@ -254,7 +253,7 @@ class _WidePosteriorMixin:
     def _wide_latent_posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
+        output_indices: list[int] | None = None,
         posterior_transform: Any = None,
         **kwargs: Any,
     ) -> Posterior:
@@ -337,7 +336,7 @@ class WideMultiTaskBinaryClassificationGPModel(
     def latent_posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
+        output_indices: list[int] | None = None,
         posterior_transform: Any = None,
         **kwargs: Any,
     ) -> Posterior:

@@ -6,7 +6,6 @@ import torch
 
 from bochan.models.wide_multitask import _WidePosterior
 
-
 _APPLIED = False
 
 

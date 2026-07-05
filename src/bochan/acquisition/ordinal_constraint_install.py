@@ -2,7 +2,6 @@
 
 import torch
 
-
 _APPLIED = False
 
 

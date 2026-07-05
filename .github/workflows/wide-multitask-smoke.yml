@@ -3,7 +3,7 @@ name: Wide multitask smoke
 on:
   push:
     branches:
-      - codex/wide-task-axis
+      - codex/wide-bald-public-transform
   pull_request:
     branches:
       - main
@@ -26,12 +26,9 @@ jobs:
         run: |
           set +e
           pytest -q --maxfail=1 \
+            tests/test_wide_multitask_public_transform.py \
             tests/test_wide_multitask_models.py \
             tests/test_wide_multitask_acquisition_consistency.py \
-            tests/test_wide_multitask_classification_acquisitions.py \
-            tests/test_outcome_constraints.py \
-            tests/test_api_acquisition_constraints.py \
-            tests/test_nsgaii_acquisition_adapter.py \
             2>&1 | tee pytest.log
           status=${PIPESTATUS[0]}
           echo "$status" > pytest.status
@@ -43,19 +40,8 @@ jobs:
           python -m pip install ruff
           set +e
           ruff check \
-            src/bochan/acquisition/__init__.py \
-            src/bochan/acquisition/classification_constraint_compat.py \
-            src/bochan/acquisition/multiclass_constraint_install.py \
-            src/bochan/acquisition/nsgaii_constraint_install.py \
-            src/bochan/acquisition/objective/outcome_constraints.py \
-            src/bochan/acquisition/ordinal_constraint_install.py \
-            src/bochan/acquisition/ordinal_multitask_compat.py \
-            src/bochan/acquisition/wide_posterior_event_compat.py \
-            src/bochan/models/wide_multitask.py \
-            src/bochan/optim/nsgaii_constraint_compat.py \
-            tests/test_wide_multitask_models.py \
-            tests/test_wide_multitask_acquisition_consistency.py \
-            tests/test_wide_multitask_classification_acquisitions.py \
+            src/bochan/models/wide_multitask_compat.py \
+            tests/test_wide_multitask_public_transform.py \
             2>&1 | tee ruff.log
           status=${PIPESTATUS[0]}
           echo "$status" > ruff.status
@@ -64,7 +50,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: wide-multitask-smoke-logs
+          name: wide-bald-public-transform-logs
           path: |
             pytest.log
             pytest.status

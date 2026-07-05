@@ -7,6 +7,7 @@ long task-feature representation used by the existing multi-task models.
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, Optional
 
 import torch
@@ -92,8 +93,8 @@ class _WidePosterior(Posterior):
     """Posterior view that preserves base-sample compatibility.
 
     The wrapped posterior keeps its flattened ``q * m`` base-sample shape. Only
-    user-visible moments and samples are reshaped to ``q x m``. This is required
-    by BoTorch MC samplers and acquisition gradients.
+    user-visible moments and samples are reshaped to ``q x m``. Class-valued
+    posteriors additionally preserve their final class axis.
     """
 
     def __init__(
@@ -110,11 +111,11 @@ class _WidePosterior(Posterior):
         self.num_tasks = int(num_tasks)
         self.output_indices = list(output_indices)
         self.input_ndim = int(input_ndim)
+        self.scalar_task_values = bool(posterior.mean.shape[-1] == 1)
 
     def _transform(self, value: Tensor) -> Tensor:
-        scalar_task_values = value.shape[-1] == 1
         wide = _reshape_wide(value, q=self.q, num_tasks=self.num_tasks)
-        task_dim = -1 if scalar_task_values else -2
+        task_dim = -1 if self.scalar_task_values else -2
         index = torch.tensor(self.output_indices, device=wide.device)
         return wide.index_select(task_dim, index)
 
@@ -142,6 +143,14 @@ class _WidePosterior(Posterior):
     def batch_range(self) -> tuple[int, int]:
         return self.posterior.batch_range
 
+    @property
+    def batch_shape(self) -> torch.Size:
+        mean = self.mean
+        trailing = 2 if self.scalar_task_values else 3
+        if mean.ndim <= trailing:
+            return torch.Size()
+        return torch.Size(mean.shape[:-trailing])
+
     def rsample(self, sample_shape: torch.Size | None = None) -> Tensor:
         return self._transform(self.posterior.rsample(sample_shape=sample_shape))
 
@@ -160,7 +169,12 @@ class _WidePosterior(Posterior):
         self,
         sample_shape: torch.Size = torch.Size(),
     ) -> torch.Size:
-        return sample_shape + self.mean.shape
+        mean_shape = self.mean.shape
+        if not self.scalar_task_values:
+            # Multiclass probability objectives reduce the final class axis and
+            # expose ``[..., q, m]`` to BoTorch's multi-objective machinery.
+            mean_shape = mean_shape[:-1]
+        return torch.Size(sample_shape) + torch.Size(mean_shape)
 
 
 @GetSampler.register(_WidePosterior)
@@ -184,6 +198,35 @@ class _WidePosteriorMixin:
 
     num_tasks: int
 
+    def _selected_outputs(self, output_indices: Optional[list[int]]) -> list[int]:
+        selected = (
+            list(range(self.num_tasks))
+            if output_indices is None
+            else [int(index) for index in output_indices]
+        )
+        if not selected:
+            raise ValueError("output_indices must contain at least one task index.")
+        if min(selected) < 0 or max(selected) >= self.num_tasks:
+            raise ValueError(f"output_indices must be in [0, {self.num_tasks - 1}].")
+        return selected
+
+    def _wrap_wide_posterior(
+        self,
+        base: Posterior,
+        *,
+        X: Tensor,
+        selected: list[int],
+        posterior_transform: Any = None,
+    ) -> Posterior:
+        posterior = _WidePosterior(
+            base,
+            q=int(X.shape[-2]),
+            num_tasks=self.num_tasks,
+            output_indices=selected,
+            input_ndim=X.ndim,
+        )
+        return posterior_transform(posterior) if posterior_transform is not None else posterior
+
     def posterior(
         self,
         X: Tensor,
@@ -191,15 +234,9 @@ class _WidePosteriorMixin:
         observation_noise: bool | Tensor = False,
         posterior_transform: Any = None,
         **kwargs: Any,
-    ):
+    ) -> Posterior:
         X = torch.as_tensor(X)
-        selected = list(range(self.num_tasks)) if output_indices is None else list(output_indices)
-        if not selected:
-            raise ValueError("output_indices must contain at least one task index.")
-        if min(selected) < 0 or max(selected) >= self.num_tasks:
-            raise ValueError(f"output_indices must be in [0, {self.num_tasks - 1}].")
-
-        q = X.shape[-2]
+        selected = self._selected_outputs(output_indices)
         X_all = _expand_tasks(X, self.num_tasks)
         base = super().posterior(
             X_all,
@@ -207,14 +244,51 @@ class _WidePosteriorMixin:
             posterior_transform=None,
             **kwargs,
         )
-        posterior = _WidePosterior(
+        return self._wrap_wide_posterior(
             base,
-            q=q,
-            num_tasks=self.num_tasks,
-            output_indices=selected,
-            input_ndim=X.ndim,
+            X=X,
+            selected=selected,
+            posterior_transform=posterior_transform,
         )
-        return posterior_transform(posterior) if posterior_transform is not None else posterior
+
+    def _wide_latent_posterior(
+        self,
+        X: Tensor,
+        output_indices: Optional[list[int]] = None,
+        posterior_transform: Any = None,
+        **kwargs: Any,
+    ) -> Posterior:
+        """Expand raw candidates before calling a long-format latent accessor."""
+
+        X = torch.as_tensor(X)
+        selected = self._selected_outputs(output_indices)
+        X_all = _expand_tasks(X, self.num_tasks)
+        accessor = super().latent_posterior
+
+        try:
+            parameters = inspect.signature(accessor).parameters
+        except (TypeError, ValueError):
+            parameters = {}
+        accepts_kwargs = any(
+            parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters.values()
+        )
+        call_kwargs = dict(kwargs)
+        if accepts_kwargs or "posterior_transform" in parameters:
+            call_kwargs["posterior_transform"] = None
+        call_kwargs = {
+            key: value
+            for key, value in call_kwargs.items()
+            if accepts_kwargs or key in parameters
+        }
+
+        base = accessor(X_all, **call_kwargs)
+        return self._wrap_wide_posterior(
+            base,
+            X=X,
+            selected=selected,
+            posterior_transform=posterior_transform,
+        )
 
 
 class WideMultiTaskGP(_WidePosteriorMixin, MultiTaskGP):
@@ -259,6 +333,22 @@ class WideMultiTaskBinaryClassificationGPModel(
         )
         self.train_X_wide = torch.as_tensor(train_X)
         self.train_Y_wide = train_Y_tensor
+
+    def latent_posterior(
+        self,
+        X: Tensor,
+        output_indices: Optional[list[int]] = None,
+        posterior_transform: Any = None,
+        **kwargs: Any,
+    ) -> Posterior:
+        """Return the latent binary posterior in public ``[..., q, m]`` form."""
+
+        return self._wide_latent_posterior(
+            X,
+            output_indices=output_indices,
+            posterior_transform=posterior_transform,
+            **kwargs,
+        )
 
 
 class WideMultiTaskOrdinalGPModel(_WidePosteriorMixin, MultiTaskOrdinalGPModel):

@@ -1,5 +1,7 @@
 """Constraint compatibility for multiclass hypervolume acquisitions."""
 
+# ruff: noqa: I001
+
 from __future__ import annotations
 
 from collections.abc import Callable

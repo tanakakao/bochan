@@ -1,3 +1,5 @@
+# ruff: noqa: I001
+
 from .binary import (
     BinaryClassificationScoreObjective,
     MultiOutputBinaryClassificationScoreObjective,

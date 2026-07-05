@@ -45,6 +45,7 @@ jobs:
           ruff check \
             src/bochan/acquisition/__init__.py \
             src/bochan/acquisition/classification_constraint_compat.py \
+            src/bochan/acquisition/multiclass_constraint_install.py \
             src/bochan/acquisition/nsgaii_constraint_install.py \
             src/bochan/acquisition/objective/outcome_constraints.py \
             src/bochan/acquisition/ordinal_constraint_install.py \

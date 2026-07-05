@@ -10,6 +10,9 @@ from .nehvi_baseline_compat import patch_multiclass_nehvi_baseline_input
 from .nparego_input_perturbation_compat import (
     patch_multiclass_nparego_input_perturbation,
 )
+from .nparego_observed_baseline_compat import (
+    patch_multiclass_nparego_observed_baseline,
+)
 from .output_compat import apply_bayesian_optimization_output_compat
 from .hetero_multi_output import (
     qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement,
@@ -65,6 +68,11 @@ patch_multiclass_nehvi_baseline_input(_multi_output)
 # qNParEGO also calls its objective with X=None for baseline and candidate
 # evaluation. Supply raw X so the adapter can distinguish q from q * n_w.
 patch_multiclass_nparego_input_perturbation(_multi_output)
+
+# The high-level API defaults Y_baseline to the original wide class-label tensor.
+# qNParEGO expects objective-space baseline values, so convert only that retained
+# training-label tensor and preserve explicit user-provided objective baselines.
+patch_multiclass_nparego_observed_baseline(_multi_output)
 
 # A one-to-many InputPerturbation transform expands q to q*n_w. qEHVI subset
 # enumeration is exponential in that effective q, so aggregate the built-in

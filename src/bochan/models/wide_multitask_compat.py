@@ -181,6 +181,72 @@ class PerturbationAwareStratifiedStandardize(StratifiedStandardize):
         return super().untransform_posterior(posterior=posterior, X=X)
 
 
+class PerturbationAwareWidePosterior(_WidePosterior):
+    """Reorder flattened ``[q, task, n_w]`` values to ``[q*n_w, task]``."""
+
+    def __init__(
+        self,
+        posterior,
+        *,
+        public_q: int,
+        num_tasks: int,
+        output_indices: list[int],
+        input_ndim: int,
+    ) -> None:
+        flat_points = int(posterior.mean.shape[-2])
+        expected_without_perturbation = int(public_q) * int(num_tasks)
+        if (
+            expected_without_perturbation <= 0
+            or flat_points % expected_without_perturbation != 0
+        ):
+            raise RuntimeError(
+                "Wide posterior point count must equal q * num_tasks * n_w. "
+                f"Got flat_points={flat_points}, q={public_q}, "
+                f"num_tasks={num_tasks}."
+            )
+        self.public_q = int(public_q)
+        self.n_w = flat_points // expected_without_perturbation
+        super().__init__(
+            posterior,
+            q=self.public_q * self.n_w,
+            num_tasks=num_tasks,
+            output_indices=output_indices,
+            input_ndim=input_ndim,
+        )
+
+    def _transform(self, value: Tensor) -> Tensor:
+        index = torch.tensor(self.output_indices, device=value.device)
+        if self.scalar_task_values:
+            values = value.squeeze(-1)
+            grid = values.reshape(
+                *values.shape[:-1],
+                self.public_q,
+                self.num_tasks,
+                self.n_w,
+            )
+            wide = grid.transpose(-1, -2).reshape(
+                *values.shape[:-1],
+                self.public_q * self.n_w,
+                self.num_tasks,
+            )
+            return wide.index_select(-1, index)
+
+        grid = value.reshape(
+            *value.shape[:-2],
+            self.public_q,
+            self.num_tasks,
+            self.n_w,
+            value.shape[-1],
+        )
+        wide = grid.transpose(-3, -2).reshape(
+            *value.shape[:-2],
+            self.public_q * self.n_w,
+            self.num_tasks,
+            value.shape[-1],
+        )
+        return wide.index_select(-2, index)
+
+
 def _build_stratified_standardize(
     train_X: Tensor,
     train_Y: Tensor,
@@ -268,17 +334,10 @@ class _PublicTaskOutputMixin:
         selected: list[int],
         posterior_transform: Any = None,
     ):
-        flat_points = int(base.mean.shape[-2])
-        num_tasks = int(self.num_tasks)
-        if flat_points % num_tasks != 0:
-            raise RuntimeError(
-                "Wide posterior point count must be divisible by num_tasks. "
-                f"Got flat_points={flat_points}, num_tasks={num_tasks}."
-            )
-        posterior = _WidePosterior(
+        posterior = PerturbationAwareWidePosterior(
             base,
-            q=flat_points // num_tasks,
-            num_tasks=num_tasks,
+            public_q=int(X.shape[-2]),
+            num_tasks=int(self.num_tasks),
             output_indices=selected,
             input_ndim=X.ndim,
         )
@@ -375,6 +434,7 @@ class WideMultiTaskMulticlassClassificationGPModel(
 __all__ = [
     "TaskFeatureInputTransform",
     "PerturbationAwareStratifiedStandardize",
+    "PerturbationAwareWidePosterior",
     "WideMultiTaskGP",
     "WideMultiTaskBinaryClassificationGPModel",
     "WideMultiTaskOrdinalGPModel",

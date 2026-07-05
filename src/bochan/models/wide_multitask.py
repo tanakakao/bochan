@@ -112,8 +112,9 @@ class _WidePosterior(Posterior):
         self.input_ndim = int(input_ndim)
 
     def _transform(self, value: Tensor) -> Tensor:
+        scalar_task_values = value.shape[-1] == 1
         wide = _reshape_wide(value, q=self.q, num_tasks=self.num_tasks)
-        task_dim = -1 if wide.ndim == self.input_ndim else -2
+        task_dim = -1 if scalar_task_values else -2
         index = torch.tensor(self.output_indices, device=wide.device)
         return wide.index_select(task_dim, index)
 

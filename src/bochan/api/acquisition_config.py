@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, Sequence
+from typing import Any, Literal
 
 from .configs import AcquisitionConfig as _BaseAcquisitionConfig
+from .nan_multiobjective_compat import apply_nan_multiobjective_compat
 
 
 _DEFAULT_UCB_BETA = 3.0
@@ -142,9 +144,6 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
             kwargs["beta"] = _DEFAULT_UCB_BETA
 
         self.acqf_kwargs = kwargs
-
-
-from .nan_multiobjective_compat import apply_nan_multiobjective_compat
 
 
 apply_nan_multiobjective_compat()

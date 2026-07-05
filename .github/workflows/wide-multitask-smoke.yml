@@ -3,7 +3,7 @@ name: Wide multitask smoke
 on:
   push:
     branches:
-      - codex/wide-task-axis
+      - codex/handle-wide-nan-multiobjective
   pull_request:
     branches:
       - main
@@ -26,6 +26,7 @@ jobs:
         run: |
           set +e
           pytest -q --maxfail=1 \
+            tests/test_wide_nan_multiobjective_defaults.py \
             tests/test_wide_multitask_models.py \
             tests/test_wide_multitask_acquisition_consistency.py \
             tests/test_wide_multitask_classification_acquisitions.py \
@@ -43,19 +44,9 @@ jobs:
           python -m pip install ruff
           set +e
           ruff check \
-            src/bochan/acquisition/__init__.py \
-            src/bochan/acquisition/classification_constraint_compat.py \
-            src/bochan/acquisition/multiclass_constraint_install.py \
-            src/bochan/acquisition/nsgaii_constraint_install.py \
-            src/bochan/acquisition/objective/outcome_constraints.py \
-            src/bochan/acquisition/ordinal_constraint_install.py \
-            src/bochan/acquisition/ordinal_multitask_compat.py \
-            src/bochan/acquisition/wide_posterior_event_compat.py \
-            src/bochan/models/wide_multitask.py \
-            src/bochan/optim/nsgaii_constraint_compat.py \
-            tests/test_wide_multitask_models.py \
-            tests/test_wide_multitask_acquisition_consistency.py \
-            tests/test_wide_multitask_classification_acquisitions.py \
+            src/bochan/api/acquisition_config.py \
+            src/bochan/api/nan_multiobjective_compat.py \
+            tests/test_wide_nan_multiobjective_defaults.py \
             2>&1 | tee ruff.log
           status=${PIPESTATUS[0]}
           echo "$status" > ruff.status
@@ -64,7 +55,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: wide-multitask-smoke-logs
+          name: wide-nan-multiobjective-logs
           path: |
             pytest.log
             pytest.status

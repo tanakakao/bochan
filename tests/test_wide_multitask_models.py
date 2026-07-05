@@ -12,6 +12,7 @@ from botorch.utils.multi_objective.box_decompositions.non_dominated import (
     FastNondominatedPartitioning,
 )
 
+from bochan.acquisition.objective import make_outcome_constraints
 from bochan.api import AutoStandardizeOutcomeTransform, ModelConfig
 from bochan.api.engine_defaults import resolve_multi_output_model_config
 from bochan.api.model_registry import MODEL_REGISTRY
@@ -171,7 +172,7 @@ def test_regression_wide_posterior_auto_sampler_and_qehvi() -> None:
     model.eval()
 
     Xq = torch.tensor(
-        [[[0.2], [0.8]]],
+        [[[0.1], [0.3], [0.5], [0.7], [0.9]]],
         dtype=torch.double,
         requires_grad=True,
     )
@@ -182,7 +183,7 @@ def test_regression_wide_posterior_auto_sampler_and_qehvi() -> None:
         seed=123,
     )
     samples = sampler(posterior)
-    assert samples.shape == torch.Size([16, 1, 2, 2])
+    assert samples.shape == torch.Size([16, 1, 5, 2])
 
     ref_point = torch.tensor([-0.1, -0.1], dtype=torch.double)
     partitioning = FastNondominatedPartitioning(ref_point=ref_point, Y=Y)
@@ -190,6 +191,11 @@ def test_regression_wide_posterior_auto_sampler_and_qehvi() -> None:
         model=model,
         ref_point=ref_point.tolist(),
         partitioning=partitioning,
+        constraints=make_outcome_constraints(
+            output_indices=[0, 1],
+            operators=["ge", "le"],
+            thresholds=[0.1, 0.3],
+        ),
     )
     values = acquisition(Xq)
     gradient = torch.autograd.grad(values.sum(), Xq)[0]

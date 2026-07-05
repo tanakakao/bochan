@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import torch
 from botorch.acquisition.multi_objective.monte_carlo import (
     qExpectedHypervolumeImprovement,
@@ -23,6 +25,7 @@ from bochan.acquisition.regression.bayesian_optimization import (
 from bochan.api import AutoStandardizeOutcomeTransform
 from bochan.models.transforms.input import build_input_transform
 from bochan.models.wide_multitask_compat import (
+    PerturbationAwareWidePosterior,
     TaskFeatureInputTransform,
     WideMultiTaskGP,
 )
@@ -118,6 +121,55 @@ def test_wide_multitask_bald_uses_public_distance_transform() -> None:
     assert torch.isfinite(value).all()
     assert gradient.shape == Xq.shape
     assert torch.isfinite(gradient).all()
+
+
+def test_perturbed_wide_posterior_preserves_task_order() -> None:
+    flat_values = torch.tensor(
+        [
+            [
+                [0.0],
+                [1.0],
+                [2.0],
+                [10.0],
+                [11.0],
+                [12.0],
+                [100.0],
+                [101.0],
+                [102.0],
+                [110.0],
+                [111.0],
+                [112.0],
+            ]
+        ],
+        dtype=torch.double,
+    )
+    base = SimpleNamespace(mean=flat_values)
+    posterior = PerturbationAwareWidePosterior(
+        base,
+        public_q=2,
+        num_tasks=2,
+        output_indices=[0, 1],
+        input_ndim=3,
+    )
+
+    transformed = posterior._transform(flat_values)
+
+    torch.testing.assert_close(
+        transformed,
+        torch.tensor(
+            [
+                [
+                    [0.0, 10.0],
+                    [1.0, 11.0],
+                    [2.0, 12.0],
+                    [100.0, 110.0],
+                    [101.0, 111.0],
+                    [102.0, 112.0],
+                ]
+            ],
+            dtype=torch.double,
+        ),
+    )
 
 
 def _perturbed_wide_case():

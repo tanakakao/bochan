@@ -2,3 +2,13 @@
 
 Objective helpers live in :mod:`acquisition.objective`.
 """
+
+from .classification_constraint_compat import (
+    apply_classification_constraint_compat,
+)
+
+
+apply_classification_constraint_compat()
+
+
+__all__ = ["apply_classification_constraint_compat"]

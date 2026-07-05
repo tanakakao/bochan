@@ -31,6 +31,7 @@ jobs:
             tests/test_wide_multitask_acquisition_consistency.py \
             tests/test_wide_multitask_classification_acquisitions.py \
             tests/test_api_objective_input_transform_defaults.py \
+            tests/test_ordinal_missing_multiobjective.py \
             tests/test_outcome_constraints.py \
             tests/test_api_acquisition_constraints.py \
             tests/test_nsgaii_acquisition_adapter.py \
@@ -55,6 +56,7 @@ jobs:
             src/bochan/acquisition/ordinal_constraint_install.py \
             src/bochan/acquisition/ordinal_multitask_compat.py \
             src/bochan/acquisition/wide_posterior_event_compat.py \
+            src/bochan/api/automatic_multiobjective.py \
             src/bochan/models/wide_multitask.py \
             src/bochan/models/wide_multitask_compat.py \
             src/bochan/optim/nsgaii_constraint_compat.py \
@@ -63,6 +65,7 @@ jobs:
             tests/test_wide_multitask_acquisition_consistency.py \
             tests/test_wide_multitask_classification_acquisitions.py \
             tests/test_api_objective_input_transform_defaults.py \
+            tests/test_ordinal_missing_multiobjective.py \
             2>&1 | tee ruff.log
           status=${PIPESTATUS[0]}
           echo "$status" > ruff.status

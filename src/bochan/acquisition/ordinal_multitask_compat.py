@@ -77,7 +77,7 @@ def _wide_task_proxies(model: Any) -> list[Any] | None:
     if not callable(getattr(model, "_wrap_wide_posterior", None)):
         return None
     try:
-        num_tasks = int(getattr(model, "num_tasks"))
+        num_tasks = int(model.num_tasks)
     except (AttributeError, TypeError, ValueError):
         return None
     if num_tasks < 1:

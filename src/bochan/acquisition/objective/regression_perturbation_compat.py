@@ -1,5 +1,7 @@
 """Compatibility for nested regression input-perturbation objectives."""
 
+# ruff: noqa: I001
+
 from __future__ import annotations
 
 from torch import Tensor

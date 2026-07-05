@@ -8,6 +8,7 @@ ids, and exposes the task count as the public output count.
 
 from __future__ import annotations
 
+import inspect
 from typing import Any
 
 import torch
@@ -108,6 +109,41 @@ class TaskFeatureInputTransform(InputTransform):
         return torch.cat([untransformed, task_feature], dim=-1)
 
 
+def _build_stratified_standardize(
+    train_X: Tensor,
+    train_Y: Tensor,
+) -> StratifiedStandardize:
+    """Construct StratifiedStandardize across supported BoTorch signatures.
+
+    BoTorch 0.15/0.16 uses ``task_values`` while newer releases use
+    ``all_task_values`` and optionally accept ``dtype``. Inspecting the installed
+    constructor avoids pinning the adapter to either API generation.
+    """
+
+    task_values = torch.arange(
+        int(train_Y.shape[-1]),
+        device=train_X.device,
+        dtype=train_X.dtype,
+    )
+    parameters = inspect.signature(StratifiedStandardize.__init__).parameters
+    transform_kwargs: dict[str, Any] = {"stratification_idx": -1}
+
+    if "all_task_values" in parameters:
+        transform_kwargs["all_task_values"] = task_values
+        if "dtype" in parameters:
+            transform_kwargs["dtype"] = train_X.dtype
+    elif "task_values" in parameters:
+        transform_kwargs["task_values"] = task_values
+    else:
+        available = ", ".join(parameters)
+        raise RuntimeError(
+            "Unsupported StratifiedStandardize constructor. Expected either "
+            f"'task_values' or 'all_task_values'; available parameters: {available}."
+        )
+
+    return StratifiedStandardize(**transform_kwargs)
+
+
 def _prepare_kwargs(
     train_X: Tensor,
     train_Y: Tensor,
@@ -135,15 +171,9 @@ def _prepare_kwargs(
             and outcome_transform.__class__.__name__
             == "AutoStandardizeOutcomeTransform"
         ):
-            num_tasks = int(train_Y.shape[-1])
-            prepared["outcome_transform"] = StratifiedStandardize(
-                stratification_idx=-1,
-                all_task_values=torch.arange(
-                    num_tasks,
-                    device=train_X.device,
-                    dtype=train_X.dtype,
-                ),
-                dtype=train_X.dtype,
+            prepared["outcome_transform"] = _build_stratified_standardize(
+                train_X,
+                train_Y,
             )
     return prepared
 

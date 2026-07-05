@@ -30,6 +30,7 @@ jobs:
             tests/test_wide_multitask_public_transform.py \
             tests/test_wide_multitask_acquisition_consistency.py \
             tests/test_wide_multitask_classification_acquisitions.py \
+            tests/test_api_objective_input_transform_defaults.py \
             tests/test_outcome_constraints.py \
             tests/test_api_acquisition_constraints.py \
             tests/test_nsgaii_acquisition_adapter.py \
@@ -61,6 +62,7 @@ jobs:
             tests/test_wide_multitask_public_transform.py \
             tests/test_wide_multitask_acquisition_consistency.py \
             tests/test_wide_multitask_classification_acquisitions.py \
+            tests/test_api_objective_input_transform_defaults.py \
             2>&1 | tee ruff.log
           status=${PIPESTATUS[0]}
           echo "$status" > ruff.status

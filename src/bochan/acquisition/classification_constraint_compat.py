@@ -10,7 +10,9 @@ utility objectives. Explicit advanced callables retain raw-sample semantics.
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Sequence
+from functools import wraps
 from typing import Any
 
 from botorch.utils.objective import compute_smoothed_feasibility_indicator
@@ -23,6 +25,66 @@ from bochan.acquisition.objective.outcome_constraints import (
 )
 
 _APPLIED = False
+
+
+def _capture_public_signature(acquisition_cls: type) -> inspect.Signature | None:
+    """Capture the constructor signature visible to the high-level API."""
+
+    try:
+        return inspect.signature(acquisition_cls)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extend_keyword_only_signature(
+    signature: inspect.Signature | None,
+    defaults: dict[str, Any],
+) -> inspect.Signature | None:
+    """Add compatibility-only keyword parameters without hiding base arguments."""
+
+    if signature is None:
+        return None
+    parameters = list(signature.parameters.values())
+    existing = {parameter.name for parameter in parameters}
+    insert_at = next(
+        (
+            index
+            for index, parameter in enumerate(parameters)
+            if parameter.kind == inspect.Parameter.VAR_KEYWORD
+        ),
+        len(parameters),
+    )
+    additions = [
+        inspect.Parameter(
+            name,
+            kind=inspect.Parameter.KEYWORD_ONLY,
+            default=default,
+        )
+        for name, default in defaults.items()
+        if name not in existing
+    ]
+    parameters[insert_at:insert_at] = additions
+    return signature.replace(parameters=parameters)
+
+
+def _install_init_patch(
+    acquisition_cls: type,
+    compatible_init: Any,
+    public_signature: inspect.Signature | None,
+) -> None:
+    """Install a patched initializer while preserving signature-based context."""
+
+    acquisition_cls.__init__ = compatible_init
+    if public_signature is None:
+        return
+    acquisition_cls.__signature__ = public_signature
+    self_parameter = inspect.Parameter(
+        "self",
+        kind=inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    )
+    compatible_init.__signature__ = public_signature.replace(
+        parameters=[self_parameter, *public_signature.parameters.values()]
+    )
 
 
 def _feasibility_factor(
@@ -62,7 +124,9 @@ def _patch_hypervolume_constraints(acquisition_cls: type) -> None:
         return
 
     original_init = acquisition_cls.__init__
+    public_signature = _capture_public_signature(acquisition_cls)
 
+    @wraps(original_init)
     def compatible_init(self, *args: Any, **kwargs: Any) -> None:
         constraints = kwargs.get("constraints")
         if constraints is not None:
@@ -72,7 +136,7 @@ def _patch_hypervolume_constraints(acquisition_cls: type) -> None:
             )
         original_init(self, *args, **kwargs)
 
-    acquisition_cls.__init__ = compatible_init
+    _install_init_patch(acquisition_cls, compatible_init, public_signature)
     acquisition_cls._bochan_original_init_before_objective_constraints = original_init
     acquisition_cls._bochan_objective_constraint_patched = True
 
@@ -92,6 +156,19 @@ def _install_nparego_constraint_state(
     acquisition.fat = bool(fat)
 
 
+def _nparego_public_signature(acquisition_cls: type) -> inspect.Signature | None:
+    """Preserve required context fields and expose constraint compatibility."""
+
+    return _extend_keyword_only_signature(
+        _capture_public_signature(acquisition_cls),
+        {
+            "constraints": None,
+            "eta": 1e-3,
+            "fat": False,
+        },
+    )
+
+
 def _patch_binary_nparego() -> None:
     from bochan.acquisition.binary.bayesian_optimization import multi_output as module
 
@@ -99,7 +176,9 @@ def _patch_binary_nparego() -> None:
     if getattr(cls, "_bochan_objective_constraint_patched", False):
         return
     original_init = cls.__init__
+    public_signature = _nparego_public_signature(cls)
 
+    @wraps(original_init)
     def compatible_init(
         self,
         *args: Any,
@@ -154,7 +233,7 @@ def _patch_binary_nparego() -> None:
             improvement = improvement * factor
         return module._reduce_sample_and_q_to_tbatch(improvement, Xq)
 
-    cls.__init__ = compatible_init
+    _install_init_patch(cls, compatible_init, public_signature)
     cls.forward = compatible_forward
     cls._bochan_original_init_before_objective_constraints = original_init
     cls._bochan_objective_constraint_patched = True
@@ -167,7 +246,9 @@ def _patch_ordinal_nparego() -> None:
     if getattr(cls, "_bochan_objective_constraint_patched", False):
         return
     original_init = cls.__init__
+    public_signature = _nparego_public_signature(cls)
 
+    @wraps(original_init)
     def compatible_init(
         self,
         *args: Any,
@@ -206,7 +287,7 @@ def _patch_ordinal_nparego() -> None:
             improvement = improvement * factor
         return module._reduce_sample_and_q_to_tbatch(improvement, Xq)
 
-    cls.__init__ = compatible_init
+    _install_init_patch(cls, compatible_init, public_signature)
     cls.forward = compatible_forward
     cls._bochan_original_init_before_objective_constraints = original_init
     cls._bochan_objective_constraint_patched = True
@@ -219,7 +300,9 @@ def _patch_multiclass_nparego() -> None:
     if getattr(cls, "_bochan_objective_constraint_patched", False):
         return
     original_init = cls.__init__
+    public_signature = _nparego_public_signature(cls)
 
+    @wraps(original_init)
     def compatible_init(
         self,
         *args: Any,
@@ -258,7 +341,7 @@ def _patch_multiclass_nparego() -> None:
             improvement = improvement * factor
         return module._reduce_sample_and_q_to_tbatch(improvement, Xq)
 
-    cls.__init__ = compatible_init
+    _install_init_patch(cls, compatible_init, public_signature)
     cls.forward = compatible_forward
     cls._bochan_original_init_before_objective_constraints = original_init
     cls._bochan_objective_constraint_patched = True

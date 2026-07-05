@@ -3,11 +3,6 @@ from bochan.acquisition._nparego_shape import (
 )
 
 from . import multi_output as _multi_output
-from .input_perturbation_compat import (
-    patch_multiclass_hypervolume_input_perturbation,
-)
-from .nehvi_baseline_compat import patch_multiclass_nehvi_baseline_input
-from .output_compat import apply_bayesian_optimization_output_compat
 from .hetero_multi_output import (
     qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement,
     qHeteroMultiOutputMulticlassExpectedImprovement,
@@ -25,6 +20,14 @@ from .hetero_single_output import (
     qHeteroMulticlassProbabilityOfImprovement,
     qHeteroMulticlassUpperConfidenceBound,
 )
+from .input_perturbation_compat import (
+    patch_multiclass_hypervolume_input_perturbation,
+)
+from .nehvi_baseline_compat import patch_multiclass_nehvi_baseline_input
+from .nparego_input_perturbation_compat import (
+    patch_multiclass_nparego_input_perturbation,
+)
+from .output_compat import apply_bayesian_optimization_output_compat
 
 # Keep q=1 sequential optimization shape handling aligned across classification
 # and ordinal NParEGO implementations.
@@ -58,6 +61,10 @@ from .single_output import (
 # InputPerturbation objective adapter. Preserve raw X_baseline for an explicitly
 # pre-wrapped objective so it can distinguish raw q from q * n_w.
 patch_multiclass_nehvi_baseline_input(_multi_output)
+
+# qNParEGO also calls its objective with X=None for baseline and candidate
+# evaluation. Supply raw X so the adapter can distinguish q from q * n_w.
+patch_multiclass_nparego_input_perturbation(_multi_output)
 
 # A one-to-many InputPerturbation transform expands q to q*n_w. qEHVI subset
 # enumeration is exponential in that effective q, so aggregate the built-in

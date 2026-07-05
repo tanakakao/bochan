@@ -1,0 +1,45 @@
+name: Wide multitask smoke
+
+on:
+  push:
+    branches:
+      - codex/wide-task-axis
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[test]"
+      - name: Run focused tests
+        run: |
+          pytest -q \
+            tests/test_wide_multitask_models.py \
+            tests/test_wide_multitask_acquisition_consistency.py \
+            tests/test_wide_multitask_classification_acquisitions.py \
+            tests/test_outcome_constraints.py \
+            tests/test_api_acquisition_constraints.py \
+            tests/test_nsgaii_acquisition_adapter.py
+      - name: Run lint on changed modules
+        run: |
+          python -m pip install ruff
+          ruff check \
+            src/bochan/acquisition/__init__.py \
+            src/bochan/acquisition/classification_constraint_compat.py \
+            src/bochan/acquisition/nsgaii_constraint_install.py \
+            src/bochan/acquisition/objective/outcome_constraints.py \
+            src/bochan/acquisition/ordinal_constraint_install.py \
+            src/bochan/acquisition/ordinal_multitask_compat.py \
+            src/bochan/acquisition/wide_posterior_event_compat.py \
+            src/bochan/models/wide_multitask.py \
+            src/bochan/optim/nsgaii_constraint_compat.py \
+            tests/test_wide_multitask_models.py \
+            tests/test_wide_multitask_acquisition_consistency.py \
+            tests/test_wide_multitask_classification_acquisitions.py

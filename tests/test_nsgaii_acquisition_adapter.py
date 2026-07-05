@@ -9,7 +9,11 @@ class _FakeMultiOutputModel:
     num_outputs = 2
 
     def posterior(self, X: torch.Tensor):
-        return type("Posterior", (), {"mean": torch.cat([X[..., :1], 1.0 - X[..., :1]], dim=-1)})()
+        return type(
+            "Posterior",
+            (),
+            {"mean": torch.cat([X[..., :1], 1.0 - X[..., :1]], dim=-1)},
+        )()
 
 
 class _ScalarEhviLikeAcquisition:
@@ -45,13 +49,21 @@ def test_scalar_multiobjective_acquisition_is_adapted_to_posterior_mean(monkeypa
 
     target = captured["acq_function"]
     assert target is not acquisition
-    assert target.__class__.__name__ == "MultiOutputPosteriorMean"
-    assert captured["objective"] is acquisition.objective
+    assert target.__class__.__name__ == "NSGAIIAcquisitionContextAdapter"
+    assert target.acq_function.__class__.__name__ == "MultiOutputPosteriorMean"
+
+    objective = captured["objective"]
+    assert objective.__class__.__name__ == "NSGAIIObjectiveOutputAdapter"
+    assert objective.objective is acquisition.objective
+    assert objective.acquisition_context is target
+
     assert captured["constraints"] == acquisition.constraints
     torch.testing.assert_close(captured["ref_point"], acquisition.ref_point)
 
 
-def test_existing_multioutput_acquisition_is_preserved(monkeypatch) -> None:
+def test_existing_multioutput_acquisition_is_preserved_inside_context_adapter(
+    monkeypatch,
+) -> None:
     from botorch.acquisition.multioutput_acquisition import MultiOutputPosteriorMean
 
     target = MultiOutputPosteriorMean(model=_FakeMultiOutputModel())
@@ -76,7 +88,14 @@ def test_existing_multioutput_acquisition_is_preserved(monkeypatch) -> None:
         q=2,
     )
 
-    assert captured["acq_function"] is target
-    assert captured["objective"] is None
+    acquisition_context = captured["acq_function"]
+    assert acquisition_context.__class__.__name__ == "NSGAIIAcquisitionContextAdapter"
+    assert acquisition_context.acq_function is target
+
+    objective = captured["objective"]
+    assert objective.__class__.__name__ == "NSGAIIObjectiveOutputAdapter"
+    assert objective.objective is None
+    assert objective.acquisition_context is acquisition_context
+
     assert captured["constraints"] is None
     assert captured["ref_point"] is None

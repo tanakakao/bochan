@@ -1,9 +1,12 @@
 """Public acquisition configuration with common defaults."""
 
+# ruff: noqa: I001
+
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, Sequence
+from typing import Any, Literal
 
 from .configs import AcquisitionConfig as _BaseAcquisitionConfig
 
@@ -142,6 +145,15 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
             kwargs["beta"] = _DEFAULT_UCB_BETA
 
         self.acqf_kwargs = kwargs
+
+
+def _install_nan_multiobjective_compat() -> None:
+    from .nan_multiobjective_compat import apply_nan_multiobjective_compat
+
+    apply_nan_multiobjective_compat()
+
+
+_install_nan_multiobjective_compat()
 
 
 __all__ = ["AcquisitionConfig", "ConstraintOperator", "OutcomeConstraintConfig"]

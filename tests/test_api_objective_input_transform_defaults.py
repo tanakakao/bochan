@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import torch
 
+import bochan.api.engine as engine
 from bochan.api import (
     AcquisitionConfig,
     InputTransformConfig,
@@ -11,7 +12,6 @@ from bochan.api import (
     ModelConfig,
     ObjectiveConfig,
 )
-import bochan.api.engine as engine
 
 
 def _make_bundle(

@@ -185,6 +185,7 @@ def make_outcome_constraints(
             output_indices,
             operators,
             thresholds,
+            strict=True,
         )
     ]
 

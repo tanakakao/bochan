@@ -166,14 +166,17 @@ class _WidePosterior(Posterior):
 
     def _extended_shape(
         self,
-        sample_shape: torch.Size = torch.Size(),
+        sample_shape: torch.Size | None = None,
     ) -> torch.Size:
         mean_shape = self.mean.shape
         if not self.scalar_task_values:
             # Multiclass probability objectives reduce the final class axis and
             # expose ``[..., q, m]`` to BoTorch's multi-objective machinery.
             mean_shape = mean_shape[:-1]
-        return torch.Size(sample_shape) + torch.Size(mean_shape)
+        sample_shape = (
+            torch.Size() if sample_shape is None else torch.Size(sample_shape)
+        )
+        return sample_shape + torch.Size(mean_shape)
 
 
 @GetSampler.register(_WidePosterior)

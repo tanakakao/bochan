@@ -50,7 +50,7 @@ def _sampler() -> SobolQMCNormalSampler:
 
 
 def _assert_value_and_gradient(value: torch.Tensor, X: torch.Tensor) -> None:
-    gradient = torch.autograd.grad(value.sum(), X)[0]
+    gradient = torch.autograd.grad(value.sum(), X, retain_graph=True)[0]
     assert value.shape == torch.Size([1])
     assert torch.isfinite(value).all()
     assert gradient.shape == X.shape

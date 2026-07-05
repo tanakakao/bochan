@@ -1,5 +1,7 @@
 """Automatic multi-objective baselines for high-level acquisitions."""
 
+# ruff: noqa: I001
+
 from __future__ import annotations
 
 from typing import Any

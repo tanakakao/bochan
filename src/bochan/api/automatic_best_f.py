@@ -144,7 +144,13 @@ def _compute_regression_best_f(
     import torch
 
     values = torch.as_tensor(values)
-    return values.reshape(-1).max().detach()
+    finite_values = values[torch.isfinite(values)]
+    if finite_values.numel() == 0:
+        raise ValueError(
+            "Cannot infer best_f because no finite regression objective values "
+            "are available."
+        )
+    return finite_values.max().detach()
 
 
 def _compute_best_f(

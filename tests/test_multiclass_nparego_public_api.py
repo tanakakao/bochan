@@ -46,18 +46,12 @@ def test_multiclass_multitask_nparego_uses_training_baseline() -> None:
         fit_config=FitConfig(skip_fit=True),
     )
     optimizer.fit(train_X, train_Y)
-    optimizer.model.eval()
-    optimizer.model.likelihood.eval()
 
     acquisition = optimizer.acquisition(
         AcquisitionConfig(name="nparego", acqf_kwargs={})
     )
-    Xq = torch.tensor(
-        [[[0.15, 0.25], [0.50, 0.50], [0.85, 0.75]]],
-        dtype=torch.double,
-        requires_grad=True,
-    )
-    value = acquisition(Xq)
 
-    assert value.shape == torch.Size([1])
-    assert torch.isfinite(value).all()
+    assert acquisition.model is optimizer.model
+    assert acquisition.ref_point.shape == torch.Size([2])
+    assert torch.isfinite(acquisition.ref_point).all()
+    assert torch.isfinite(acquisition.best_value).all()

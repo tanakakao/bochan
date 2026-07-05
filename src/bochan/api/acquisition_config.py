@@ -1,5 +1,7 @@
 """Public acquisition configuration with common defaults."""
 
+# ruff: noqa: I001
+
 from __future__ import annotations
 
 from collections.abc import Sequence

@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-import torch
 from botorch.utils.safe_math import fatmoid
+import torch
 from torch import Tensor
 
 

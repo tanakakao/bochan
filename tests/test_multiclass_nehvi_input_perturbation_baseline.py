@@ -22,9 +22,7 @@ from bochan.acquisition.multiclass.bayesian_optimization.multi_output import (
 class _BaselinePosteriorModel(Model):
     def __init__(self, *, n_w: int, expand_posterior: bool, num_classes: int = 3) -> None:
         super().__init__()
-        self.input_transform = InputPerturbation(
-            perturbation_set=torch.zeros(n_w, 2, dtype=torch.double)
-        )
+        self.input_transform = InputPerturbation(perturbation_set=torch.zeros(n_w, 2, dtype=torch.double))
         self.n_w = int(n_w)
         self.expand_posterior = bool(expand_posterior)
         self.num_classes = int(num_classes)

@@ -6,7 +6,7 @@ _APPLIED = False
 
 
 def _patch_eta_buffer_assignment(acquisition_cls: type) -> None:
-    """Pass eta as a Tensor when an ordinal wrapper reassigns the buffer."""
+    """Pass eta with the shape required by BoTorch's registered buffer."""
 
     if getattr(acquisition_cls, "_bochan_eta_buffer_patched", False):
         return
@@ -14,7 +14,16 @@ def _patch_eta_buffer_assignment(acquisition_cls: type) -> None:
     original_init = acquisition_cls.__init__
 
     def compatible_init(self, *args, eta=1e-3, **kwargs) -> None:
-        eta_tensor = eta if torch.is_tensor(eta) else torch.as_tensor(float(eta))
+        constraints = kwargs.get("constraints")
+        num_constraints = 0 if constraints is None else len(constraints)
+        if torch.is_tensor(eta):
+            eta_tensor = eta
+            if eta_tensor.ndim == 0 and num_constraints:
+                eta_tensor = eta_tensor.expand(num_constraints).clone()
+        elif num_constraints:
+            eta_tensor = torch.full((num_constraints,), float(eta))
+        else:
+            eta_tensor = torch.as_tensor(float(eta))
         original_init(self, *args, eta=eta_tensor, **kwargs)
 
     acquisition_cls.__init__ = compatible_init

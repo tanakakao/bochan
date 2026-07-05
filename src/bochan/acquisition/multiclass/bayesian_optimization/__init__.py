@@ -6,6 +6,7 @@ from . import multi_output as _multi_output
 from .input_perturbation_compat import (
     patch_multiclass_hypervolume_input_perturbation,
 )
+from .nehvi_baseline_compat import patch_multiclass_nehvi_baseline_input
 from .output_compat import apply_bayesian_optimization_output_compat
 from .hetero_multi_output import (
     qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement,
@@ -52,6 +53,11 @@ from .single_output import (
     qMulticlassProbabilityOfImprovement,
     qMulticlassUpperConfidenceBound,
 )
+
+# qNEHVI builds its baseline partitioning before qEHVI installs the automatic
+# InputPerturbation objective adapter. Preserve raw X_baseline for an explicitly
+# pre-wrapped objective so it can distinguish raw q from q * n_w.
+patch_multiclass_nehvi_baseline_input(_multi_output)
 
 # A one-to-many InputPerturbation transform expands q to q*n_w. qEHVI subset
 # enumeration is exponential in that effective q, so aggregate the built-in

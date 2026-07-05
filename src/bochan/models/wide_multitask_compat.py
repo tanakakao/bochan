@@ -63,7 +63,17 @@ def _align_task_feature(task_feature: Tensor, transformed: Tensor) -> tuple[Tens
 
 
 class TaskFeatureInputTransform(InputTransform):
-    """Apply a public-space transform while preserving the appended task id."""
+    """Apply a public-space transform with optional appended task ids.
+
+    Model internals call this transform with long-format inputs ``[..., d + 1]``
+    whose final column is the task id. Acquisition functions may also use the
+    model transform directly for distance and diversity calculations, in which
+    case they pass public inputs ``[..., d]``. Both layouts are supported:
+
+    - public input ``[..., d]``: apply only ``base_transform``;
+    - internal input ``[..., d + 1]``: transform data columns and preserve the
+      task-id column.
+    """
 
     def __init__(self, base_transform: InputTransform, *, data_dim: int) -> None:
         super().__init__()
@@ -82,15 +92,30 @@ class TaskFeatureInputTransform(InputTransform):
             getattr(base_transform, "is_one_to_many", False)
         )
 
+    def _has_task_feature(self, X: Tensor) -> bool:
+        feature_dim = int(X.shape[-1])
+        if feature_dim == self.data_dim:
+            return False
+        if feature_dim == self.data_dim + 1:
+            return True
+        raise RuntimeError(
+            "Expected either public data columns or public data columns followed "
+            "by one task-id column. "
+            f"Expected d={self.data_dim} or d={self.data_dim + 1}, got {feature_dim}."
+        )
+
     def _split(self, X: Tensor) -> tuple[Tensor, Tensor]:
-        if X.shape[-1] != self.data_dim + 1:
+        if not self._has_task_feature(X):
             raise RuntimeError(
-                "Expected public data columns followed by one task-id column. "
+                "Task-feature splitting requires an appended task-id column. "
                 f"Expected d={self.data_dim + 1}, got {X.shape[-1]}."
             )
         return X[..., : self.data_dim], X[..., self.data_dim :]
 
     def transform(self, X: Tensor) -> Tensor:
+        if not self._has_task_feature(X):
+            return self.base_transform(X)
+
         data, task_feature = self._split(X)
         transformed = self.base_transform(data)
         task_feature, transformed = _align_task_feature(
@@ -100,6 +125,9 @@ class TaskFeatureInputTransform(InputTransform):
         return torch.cat([transformed, task_feature], dim=-1)
 
     def untransform(self, X: Tensor) -> Tensor:
+        if not self._has_task_feature(X):
+            return self.base_transform.untransform(X)
+
         data, task_feature = self._split(X)
         untransformed = self.base_transform.untransform(data)
         task_feature, untransformed = _align_task_feature(
@@ -224,7 +252,7 @@ class WideMultiTaskOrdinalGPModel(
     _PublicTaskOutputMixin,
     _WideMultiTaskOrdinalGPModel,
 ):
-    """Wide ordinal multi-task model with task-safe input transforms."""
+    """Wide ordinal multi-task GP accepting public input transforms."""
 
     def __init__(self, train_X: Tensor, train_Y: Tensor, **kwargs: Any) -> None:
         train_X = torch.as_tensor(train_X)
@@ -240,12 +268,7 @@ class WideMultiTaskMulticlassClassificationGPModel(
     _PublicTaskOutputMixin,
     _WideMultiTaskMulticlassClassificationGPModel,
 ):
-    """Wide multiclass multi-task model exposing an explicit task output axis.
-
-    Class ids remain categorical labels and are not standardized as continuous
-    outcomes. All tasks share the configured class set, while task correlation is
-    learned by the task kernel.
-    """
+    """Wide multiclass multi-task GP accepting public input transforms."""
 
     def __init__(self, train_X: Tensor, train_Y: Tensor, **kwargs: Any) -> None:
         train_X = torch.as_tensor(train_X)

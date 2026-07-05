@@ -144,4 +144,10 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
         self.acqf_kwargs = kwargs
 
 
+from .nan_multiobjective_compat import apply_nan_multiobjective_compat
+
+
+apply_nan_multiobjective_compat()
+
+
 __all__ = ["AcquisitionConfig", "ConstraintOperator", "OutcomeConstraintConfig"]

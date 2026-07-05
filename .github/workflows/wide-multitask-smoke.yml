@@ -52,6 +52,7 @@ jobs:
             src/bochan/acquisition/__init__.py \
             src/bochan/acquisition/_nehvi_cache_root.py \
             src/bochan/acquisition/classification_constraint_compat.py \
+            src/bochan/acquisition/multiclass/bayesian_optimization/nparego_observed_baseline_compat.py \
             src/bochan/acquisition/multiclass_constraint_install.py \
             src/bochan/acquisition/nsgaii_constraint_install.py \
             src/bochan/acquisition/objective/__init__.py \
@@ -72,6 +73,8 @@ jobs:
             tests/test_api_objective_input_transform_defaults.py \
             tests/test_ordinal_missing_multiobjective.py \
             tests/test_multiclass_nparego_context.py \
+            tests/test_multiclass_nparego_signature.py \
+            tests/test_multiclass_nparego_public_api.py \
             2>&1 | tee ruff.log
           status=${PIPESTATUS[0]}
           echo "$status" > ruff.status

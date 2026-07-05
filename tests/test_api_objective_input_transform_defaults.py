@@ -105,9 +105,21 @@ def test_missing_objective_config_is_not_created_without_perturbation() -> None:
     assert resolved.objective_config is None
 
 
-def test_missing_objective_config_is_not_created_for_multi_output() -> None:
-    config = AcquisitionConfig(name="qEHVI")
-    resolved = _resolve(config, _make_bundle(n_outputs=2))
+def test_multi_output_vector_acquisitions_use_perturbation_objective() -> None:
+    bundle = _make_bundle(n_outputs=2, n_w=4)
+
+    for name in ("ehvi", "nehvi", "nparego", "nsgaii"):
+        resolved = _resolve(AcquisitionConfig(name=name), bundle)
+
+        assert resolved.objective_config is not None
+        assert resolved.objective_config.mode == "multi_output"
+        assert resolved.objective_config.n_w == 4
+        assert resolved.objective_config.risk_type is None
+
+
+def test_multi_output_score_acquisition_does_not_receive_mc_objective() -> None:
+    config = AcquisitionConfig(name="bald")
+    resolved = _resolve(config, _make_bundle(n_outputs=2, n_w=4))
 
     assert resolved is config
     assert resolved.objective_config is None

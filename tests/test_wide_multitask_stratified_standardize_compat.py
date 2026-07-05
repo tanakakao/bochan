@@ -18,7 +18,7 @@ def test_build_stratified_standardize_supports_task_values(monkeypatch) -> None:
             self,
             task_values,
             stratification_idx,
-            batch_shape=torch.Size(),
+            batch_shape=None,
             min_stdv=1e-8,
         ) -> None:
             self.task_values = task_values
@@ -51,7 +51,7 @@ def test_build_stratified_standardize_supports_all_task_values(monkeypatch) -> N
             self,
             stratification_idx,
             all_task_values,
-            batch_shape=torch.Size(),
+            batch_shape=None,
             min_stdv=1e-8,
             dtype=torch.double,
         ) -> None:

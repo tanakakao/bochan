@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from torch import Tensor
 
 
@@ -38,7 +36,7 @@ def apply_regression_perturbation_objective_compat() -> None:
         samples: Tensor,
         X: Tensor | None = None,
     ) -> Tensor:
-        inner_objective: Any = self.inner_objective
+        inner_objective = self.inner_objective
         had_verify_flag = hasattr(inner_objective, "_verify_output_shape")
         original_verify = getattr(inner_objective, "_verify_output_shape", None)
         if had_verify_flag:

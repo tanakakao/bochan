@@ -14,6 +14,8 @@ from torch import Tensor
 
 from botorch.models.multitask import MultiTaskGP
 from botorch.posteriors.posterior import Posterior
+from botorch.sampling.base import MCSampler
+from botorch.sampling.get_sampler import GetSampler, get_sampler
 
 from bochan.models.classification.binary.base.multitask import (
     MultiTaskBinaryClassificationGPModel,
@@ -158,6 +160,22 @@ class _WidePosterior(Posterior):
         sample_shape: torch.Size = torch.Size(),
     ) -> torch.Size:
         return sample_shape + self.mean.shape
+
+
+@GetSampler.register(_WidePosterior)
+def _get_wide_posterior_sampler(
+    posterior: _WidePosterior,
+    sample_shape: torch.Size,
+    *,
+    seed: int | None = None,
+) -> MCSampler:
+    """Reuse the wrapped posterior's registered sampler for wide samples."""
+
+    return get_sampler(
+        posterior=posterior.posterior,
+        sample_shape=sample_shape,
+        seed=seed,
+    )
 
 
 class _WidePosteriorMixin:

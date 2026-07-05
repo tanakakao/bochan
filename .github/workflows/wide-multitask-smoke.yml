@@ -9,73 +9,18 @@ on:
       - main
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'push' && github.ref_name || '' }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
       - name: Install
         run: python -m pip install -e ".[test]"
-      - name: Apply focused compatibility edits
-        if: github.event_name == 'push'
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          test_path = Path("tests/test_wide_multitask_classification_acquisitions.py")
-          text = test_path.read_text()
-          text = text.replace(
-              "gradient = torch.autograd.grad(value.sum(), X)[0]",
-              "gradient = torch.autograd.grad(value.sum(), X, retain_graph=True)[0]",
-          )
-          test_path.write_text(text)
-
-          constraint_path = Path("src/bochan/acquisition/objective/outcome_constraints.py")
-          text = constraint_path.read_text()
-          text = text.replace(
-              "            thresholds,\n        )",
-              "            thresholds,\n            strict=True,\n        )",
-          )
-          constraint_path.write_text(text)
-
-          posterior_path = Path("src/bochan/models/wide_multitask.py")
-          text = posterior_path.read_text()
-          text = text.replace(
-              "sample_shape: torch.Size = torch.Size(),",
-              "sample_shape: torch.Size | None = None,",
-          )
-          text = text.replace(
-              "        return torch.Size(sample_shape) + torch.Size(mean_shape)",
-              "        sample_shape = (\n"
-              "            torch.Size() if sample_shape is None else torch.Size(sample_shape)\n"
-              "        )\n"
-              "        return sample_shape + torch.Size(mean_shape)",
-          )
-          posterior_path.write_text(text)
-          PY
-          files=(
-            tests/test_wide_multitask_classification_acquisitions.py
-            src/bochan/acquisition/objective/outcome_constraints.py
-            src/bochan/models/wide_multitask.py
-          )
-          if ! git diff --quiet -- "${files[@]}"; then
-            git config user.name github-actions[bot]
-            git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-            git add -- "${files[@]}"
-            git commit -m "fix focused wide multitask smoke findings"
-            git push origin HEAD:codex/wide-task-axis
-          fi
       - name: Run focused tests
         shell: bash
         run: |

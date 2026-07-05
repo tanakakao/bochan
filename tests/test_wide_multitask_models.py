@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import torch
+from botorch.acquisition.multi_objective.monte_carlo import (
+    qExpectedHypervolumeImprovement,
+)
 from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import StratifiedStandardize
+from botorch.sampling.get_sampler import get_sampler
 from botorch.sampling.normal import SobolQMCNormalSampler
+from botorch.utils.multi_objective.box_decompositions.non_dominated import (
+    FastNondominatedPartitioning,
+)
 
 from bochan.api import AutoStandardizeOutcomeTransform, ModelConfig
 from bochan.api.engine_defaults import resolve_multi_output_model_config
@@ -150,5 +157,44 @@ def test_regression_posterior_and_qmc_gradients() -> None:
     samples = SobolQMCNormalSampler(torch.Size([16]))(model.posterior(Xq))
     gradient = torch.autograd.grad(samples.sum(), Xq)[0]
     assert samples.shape[-2:] == torch.Size([3, 2])
+    assert gradient.shape == Xq.shape
+    assert torch.isfinite(gradient).all()
+
+
+def test_regression_wide_posterior_auto_sampler_and_qehvi() -> None:
+    X = torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.double)
+    Y = torch.tensor(
+        [[0.0, 1.0], [0.5, 0.5], [1.0, 0.0]],
+        dtype=torch.double,
+    )
+    model = WideMultiTaskGP(train_X=X, train_Y=Y)
+    model.eval()
+
+    Xq = torch.tensor(
+        [[[0.2], [0.8]]],
+        dtype=torch.double,
+        requires_grad=True,
+    )
+    posterior = model.posterior(Xq)
+    sampler = get_sampler(
+        posterior=posterior,
+        sample_shape=torch.Size([16]),
+        seed=123,
+    )
+    samples = sampler(posterior)
+    assert samples.shape == torch.Size([16, 1, 2, 2])
+
+    ref_point = torch.tensor([-0.1, -0.1], dtype=torch.double)
+    partitioning = FastNondominatedPartitioning(ref_point=ref_point, Y=Y)
+    acquisition = qExpectedHypervolumeImprovement(
+        model=model,
+        ref_point=ref_point.tolist(),
+        partitioning=partitioning,
+    )
+    values = acquisition(Xq)
+    gradient = torch.autograd.grad(values.sum(), Xq)[0]
+
+    assert values.shape == torch.Size([1])
+    assert torch.isfinite(values).all()
     assert gradient.shape == Xq.shape
     assert torch.isfinite(gradient).all()

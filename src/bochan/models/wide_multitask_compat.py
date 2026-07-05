@@ -173,11 +173,8 @@ class PerturbationAwareStratifiedStandardize(StratifiedStandardize):
             distribution = getattr(posterior, "distribution", None)
             mean = getattr(distribution, "mean", None)
             if mean is not None:
-                if bool(getattr(posterior, "_is_mt", False)):
-                    target_n = int(mean.shape[-2])
-                else:
-                    target_n = int(mean.shape[-1])
-                X = self._repeat_X_to_length(X, target_n)
+                target_axis = -2 if bool(getattr(posterior, "_is_mt", False)) else -1
+                X = self._repeat_X_to_length(X, int(mean.shape[target_axis]))
         return super().untransform_posterior(posterior=posterior, X=X)
 
 

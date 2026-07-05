@@ -1,0 +1,52 @@
+"""Install buffer-compatible eta handling for multiclass hypervolume classes."""
+
+import torch
+
+
+_APPLIED = False
+
+
+def _patch_eta_buffer_assignment(acquisition_cls: type) -> None:
+    """Pass eta with the shape required by BoTorch's registered buffer."""
+
+    if getattr(acquisition_cls, "_bochan_eta_buffer_patched", False):
+        return
+
+    original_init = acquisition_cls.__init__
+
+    def compatible_init(self, *args, eta=1e-3, **kwargs) -> None:
+        constraints = kwargs.get("constraints")
+        num_constraints = 0 if constraints is None else len(constraints)
+        if torch.is_tensor(eta):
+            eta_tensor = eta
+            if eta_tensor.ndim == 0 and num_constraints:
+                eta_tensor = eta_tensor.expand(num_constraints).clone()
+        elif num_constraints:
+            eta_tensor = torch.full((num_constraints,), float(eta))
+        else:
+            eta_tensor = torch.as_tensor(float(eta))
+        original_init(self, *args, eta=eta_tensor, **kwargs)
+
+    acquisition_cls.__init__ = compatible_init
+    acquisition_cls._bochan_eta_buffer_patched = True
+
+
+def apply_multiclass_constraint_compat() -> None:
+    """Patch multiclass EHVI classes after generic constraint adaptation."""
+
+    global _APPLIED
+    if _APPLIED:
+        return
+
+    from bochan.acquisition.multiclass.bayesian_optimization import multi_output
+
+    for acquisition_cls in (
+        multi_output.qMultiOutputMulticlassExpectedHypervolumeImprovement,
+        multi_output.qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
+    ):
+        _patch_eta_buffer_assignment(acquisition_cls)
+
+    _APPLIED = True
+
+
+__all__ = ["apply_multiclass_constraint_compat"]

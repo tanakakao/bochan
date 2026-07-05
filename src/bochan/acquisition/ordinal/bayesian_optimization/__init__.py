@@ -61,14 +61,28 @@ def _with_default_utility_values(model, utility_values):
 
 
 def _infer_multioutput_ordinal_train_y(model):
-    """Infer raw ordinal training labels from correlated or wrapper models."""
-    for name in ("train_Y", "train_targets"):
+    """Infer raw wide ordinal labels without mistaking long targets for outputs."""
+
+    expected_outputs = getattr(model, "num_tasks", None)
+    if expected_outputs is None:
+        expected_outputs = getattr(model, "num_outputs", None)
+    try:
+        expected_outputs = None if expected_outputs is None else int(expected_outputs)
+    except (TypeError, ValueError):
+        expected_outputs = None
+
+    for name in ("train_Y_wide", "train_Y", "train_targets"):
         value = getattr(model, name, None)
-        if value is not None:
-            tensor = torch.as_tensor(value)
-            if tensor.ndim == 1:
-                tensor = tensor.unsqueeze(-1)
-            return tensor
+        if value is None:
+            continue
+        tensor = torch.as_tensor(value)
+        if tensor.ndim == 1:
+            tensor = tensor.unsqueeze(-1)
+        if tensor.ndim != 2:
+            continue
+        if expected_outputs is not None and tensor.shape[-1] != expected_outputs:
+            continue
+        return tensor
 
     submodels = getattr(model, "models", None)
     if submodels is None:

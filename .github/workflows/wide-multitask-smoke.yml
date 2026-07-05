@@ -9,297 +9,65 @@ on:
       - main
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: codex/fix-wide-missing-objective-defaults
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
-      - name: Apply missing-objective patch
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          multi_path = Path("src/bochan/api/automatic_multiobjective.py")
-          text = multi_path.read_text()
-          old = '''def _make_default_ref_point(values: Any, margin: float = 0.1) -> Any:
-              """Create a maximization-space reference point below all observed values."""
-
-              return (values.min(dim=-2).values - float(margin)).detach()
-
-
-          def _make_partitioning(ref_point: Any, values: Any) -> Any:
-              from botorch.utils.multi_objective.box_decompositions.non_dominated import (
-                  FastNondominatedPartitioning,
-              )
-
-              return FastNondominatedPartitioning(ref_point=ref_point, Y=values)
-          '''.replace("          ", "")
-          new = '''def _make_default_ref_point(values: Any, margin: float = 0.1) -> Any:
-              """Create a reference point from finite observations per objective.
-
-              Wide multi-task targets may contain cell-wise NaNs for unobserved tasks.
-              A reference point only needs an observed lower bound for each objective,
-              so missing cells are ignored independently for every output.
-              """
-
-              import torch
-
-              tensor = values if torch.is_tensor(values) else torch.as_tensor(values)
-              if tensor.ndim != 2:
-                  raise ValueError(
-                      "Observed multi-objective values must have shape [n, m]. "
-                      f"Got shape={tuple(tensor.shape)}."
-                  )
-              if not torch.is_floating_point(tensor):
-                  tensor = tensor.to(dtype=torch.get_default_dtype())
-
-              finite = torch.isfinite(tensor)
-              observed_outputs = finite.any(dim=-2)
-              if not bool(observed_outputs.all()):
-                  missing_outputs = torch.where(~observed_outputs)[0].detach().cpu().tolist()
-                  raise ValueError(
-                      "Cannot infer a multi-objective reference point because some "
-                      "objectives have no finite observations. Missing output indices: "
-                      f"{missing_outputs}."
-                  )
-
-              safe_values = torch.where(
-                  finite,
-                  tensor,
-                  torch.full_like(tensor, float("inf")),
-              )
-              return (safe_values.min(dim=-2).values - float(margin)).detach()
-
-
-          def _make_partitioning(ref_point: Any, values: Any) -> Any:
-              """Build EHVI partitioning from jointly observed objective vectors.
-
-              Cell-wise NaNs are valid training inputs for wide multi-task models, but
-              an EHVI Pareto point must contain every objective at the same input.
-              Incomplete rows are therefore excluded rather than imputed silently.
-              """
-
-              import torch
-              from botorch.utils.multi_objective.box_decompositions.non_dominated import (
-                  FastNondominatedPartitioning,
-              )
-
-              tensor = values if torch.is_tensor(values) else torch.as_tensor(values)
-              if tensor.ndim != 2:
-                  raise ValueError(
-                      "Observed multi-objective values must have shape [n, m]. "
-                      f"Got shape={tuple(tensor.shape)}."
-                  )
-
-              finite = torch.isfinite(tensor)
-              complete_rows = finite.all(dim=-1)
-              if not bool(complete_rows.any()):
-                  observed_counts = finite.sum(dim=0).detach().cpu().tolist()
-                  raise ValueError(
-                      "EHVI requires at least one training row with finite values for "
-                      "every objective. Wide multi-task fitting accepts cell-wise NaN "
-                      "targets and omits those individual observations, but Pareto "
-                      "partitioning cannot use an incomplete objective vector. "
-                      f"Finite observation counts by output: {observed_counts}. "
-                      "Add at least one jointly observed row, use qNEHVI with the "
-                      "model baseline, or provide an explicit partitioning."
-                  )
-
-              complete_values = tensor[complete_rows]
-              return FastNondominatedPartitioning(
-                  ref_point=ref_point,
-                  Y=complete_values,
-              )
-          '''.replace("          ", "")
-          if old in text:
-              multi_path.write_text(text.replace(old, new))
-          elif "EHVI requires at least one training row" not in text:
-              raise RuntimeError("automatic_multiobjective.py target block was not found")
-
-          best_path = Path("src/bochan/api/automatic_best_f.py")
-          text = best_path.read_text()
-          old = '''def _compute_regression_best_f(
-              bundle: ModelBundle,
-              config: AcquisitionConfig,
-              context: DataContext,
-          ) -> Any:
-              values = _regression_observed_values(bundle, config, context)
-              import torch
-
-              values = torch.as_tensor(values)
-              return values.reshape(-1).max().detach()
-          '''.replace("          ", "")
-          new = '''def _compute_regression_best_f(
-              bundle: ModelBundle,
-              config: AcquisitionConfig,
-              context: DataContext,
-          ) -> Any:
-              values = _regression_observed_values(bundle, config, context)
-              import torch
-
-              values = torch.as_tensor(values)
-              finite_values = values[torch.isfinite(values)]
-              if finite_values.numel() == 0:
-                  raise ValueError(
-                      "Cannot infer best_f because no finite regression objective "
-                      "values are available."
-                  )
-              return finite_values.max().detach()
-          '''.replace("          ", "")
-          if old in text:
-              best_path.write_text(text.replace(old, new))
-          elif "finite_values = values[torch.isfinite(values)]" not in text:
-              raise RuntimeError("automatic_best_f.py target block was not found")
-
-          test_path = Path("tests/test_wide_missing_objective_defaults.py")
-          if not test_path.exists():
-              test_path.write_text('''from __future__ import annotations
-
-from types import SimpleNamespace
-
-import pytest
-import torch
-
-import bochan.api.automatic_best_f as automatic_best_f
-import bochan.api.automatic_multiobjective as automatic_multiobjective
-from bochan.models.wide_multitask import wide_to_long
-
-
-def test_wide_to_long_omits_only_nan_target_cells() -> None:
-    train_X = torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.double)
-    train_Y = torch.tensor(
-        [[0.0, 1.0], [0.5, float("nan")], [1.0, 0.0]],
-        dtype=torch.double,
-    )
-
-    X_long, Y_long, num_tasks = wide_to_long(train_X, train_Y)
-
-    assert num_tasks == 2
-    torch.testing.assert_close(
-        X_long,
-        torch.tensor(
-            [[0.0, 0.0], [0.0, 1.0], [0.5, 0.0], [1.0, 0.0], [1.0, 1.0]],
-            dtype=torch.double,
-        ),
-    )
-    torch.testing.assert_close(
-        Y_long,
-        torch.tensor([[0.0], [1.0], [0.5], [1.0], [0.0]], dtype=torch.double),
-    )
-    assert not torch.isnan(Y_long).any()
-
-
-def test_default_ref_point_ignores_missing_cells_per_output() -> None:
-    values = torch.tensor(
-        [[1.0, float("nan")], [float("nan"), 3.0], [2.0, 2.0]],
-        dtype=torch.double,
-    )
-
-    ref_point = automatic_multiobjective.make_default_ref_point(values, margin=0.1)
-
-    torch.testing.assert_close(
-        ref_point,
-        torch.tensor([0.9, 1.9], dtype=torch.double),
-    )
-
-
-def test_partitioning_uses_only_complete_objective_rows(monkeypatch) -> None:
-    values = torch.tensor(
-        [[1.0, float("nan")], [float("nan"), 3.0], [2.0, 2.0]],
-        dtype=torch.double,
-    )
-    ref_point = torch.tensor([0.9, 1.9], dtype=torch.double)
-    captured: dict[str, torch.Tensor] = {}
-    sentinel = object()
-
-    def fake_partitioning(*, ref_point, Y):
-        captured["ref_point"] = ref_point
-        captured["Y"] = Y
-        return sentinel
-
-    from botorch.utils.multi_objective.box_decompositions import non_dominated
-
-    monkeypatch.setattr(
-        non_dominated,
-        "FastNondominatedPartitioning",
-        fake_partitioning,
-    )
-
-    result = automatic_multiobjective.make_partitioning(ref_point, values)
-
-    assert result is sentinel
-    torch.testing.assert_close(captured["ref_point"], ref_point)
-    torch.testing.assert_close(
-        captured["Y"],
-        torch.tensor([[2.0, 2.0]], dtype=torch.double),
-    )
-
-
-def test_partitioning_rejects_data_without_a_jointly_observed_row() -> None:
-    values = torch.tensor(
-        [[1.0, float("nan")], [float("nan"), 3.0]],
-        dtype=torch.double,
-    )
-
-    with pytest.raises(ValueError, match="at least one training row"):
-        automatic_multiobjective.make_partitioning(
-            torch.tensor([0.9, 2.9], dtype=torch.double),
-            values,
-        )
-
-
-def test_regression_best_f_ignores_nan_values(monkeypatch) -> None:
-    monkeypatch.setattr(
-        automatic_best_f,
-        "_regression_observed_values",
-        lambda *args, **kwargs: torch.tensor(
-            [[1.0, float("nan")], [2.0, 3.0]],
-            dtype=torch.double,
-        ),
-    )
-
-    result = automatic_best_f._compute_regression_best_f(
-        SimpleNamespace(),
-        SimpleNamespace(),
-        SimpleNamespace(),
-    )
-
-    torch.testing.assert_close(result, torch.tensor(3.0, dtype=torch.double))
-''')
-          PY
       - name: Install
         run: python -m pip install -e ".[test]"
       - name: Run focused tests
         shell: bash
         run: |
-          pytest -q \
-            tests/test_wide_missing_objective_defaults.py \
-            tests/test_api_automatic_defaults.py \
-            tests/test_wide_multitask_models.py
-      - name: Commit missing-objective patch
+          set +e
+          pytest -q --maxfail=1 \
+            tests/test_wide_multitask_models.py \
+            tests/test_wide_multitask_acquisition_consistency.py \
+            tests/test_wide_multitask_classification_acquisitions.py \
+            tests/test_outcome_constraints.py \
+            tests/test_api_acquisition_constraints.py \
+            tests/test_nsgaii_acquisition_adapter.py \
+            2>&1 | tee pytest.log
+          status=${PIPESTATUS[0]}
+          echo "$status" > pytest.status
+          exit "$status"
+      - name: Run lint on changed modules
+        if: always()
         shell: bash
         run: |
-          files=(
-            src/bochan/api/automatic_multiobjective.py
-            src/bochan/api/automatic_best_f.py
-            tests/test_wide_missing_objective_defaults.py
-          )
-          if git diff --quiet -- "${files[@]}"; then
-            exit 0
-          fi
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -- "${files[@]}"
-          git commit -m "handle missing wide objectives in automatic defaults"
-          git push origin HEAD:codex/fix-wide-missing-objective-defaults
+          python -m pip install ruff
+          set +e
+          ruff check \
+            src/bochan/acquisition/__init__.py \
+            src/bochan/acquisition/classification_constraint_compat.py \
+            src/bochan/acquisition/multiclass_constraint_install.py \
+            src/bochan/acquisition/nsgaii_constraint_install.py \
+            src/bochan/acquisition/objective/outcome_constraints.py \
+            src/bochan/acquisition/ordinal_constraint_install.py \
+            src/bochan/acquisition/ordinal_multitask_compat.py \
+            src/bochan/acquisition/wide_posterior_event_compat.py \
+            src/bochan/models/wide_multitask.py \
+            src/bochan/optim/nsgaii_constraint_compat.py \
+            tests/test_wide_multitask_models.py \
+            tests/test_wide_multitask_acquisition_consistency.py \
+            tests/test_wide_multitask_classification_acquisitions.py \
+            2>&1 | tee ruff.log
+          status=${PIPESTATUS[0]}
+          echo "$status" > ruff.status
+          exit "$status"
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wide-multitask-smoke-logs
+          path: |
+            pytest.log
+            pytest.status
+            ruff.log
+            ruff.status
+          if-no-files-found: warn

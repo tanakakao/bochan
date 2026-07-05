@@ -60,15 +60,56 @@ def _with_default_utility_values(model, utility_values):
     return infer_multioutput_ordinal_utility_values(model)
 
 
+def _complete_ordinal_baseline_rows(train_Y):
+    """Return rows with every ordinal output observed for scalarization."""
+
+    tensor = torch.as_tensor(train_Y)
+    if tensor.ndim == 1:
+        tensor = tensor.unsqueeze(-1)
+    if tensor.ndim != 2:
+        raise ValueError(
+            "Ordinal multi-output baseline labels must have shape [n, m]. "
+            f"Got shape={tuple(tensor.shape)}."
+        )
+    if not tensor.is_floating_point():
+        return tensor
+
+    finite = torch.isfinite(tensor)
+    complete = finite.all(dim=-1)
+    if bool(complete.any()):
+        return tensor[complete]
+
+    observed_counts = finite.sum(dim=0).detach().cpu().tolist()
+    raise ValueError(
+        "Ordinal NParEGO requires at least one training row with every output "
+        "observed to construct its baseline scalarization. Partially observed "
+        f"rows remain usable for model fitting. Observed counts per output={observed_counts}."
+    )
+
+
 def _infer_multioutput_ordinal_train_y(model):
-    """Infer raw ordinal training labels from correlated or wrapper models."""
-    for name in ("train_Y", "train_targets"):
+    """Infer complete raw wide labels without mistaking long targets for outputs."""
+
+    expected_outputs = getattr(model, "num_tasks", None)
+    if expected_outputs is None:
+        expected_outputs = getattr(model, "num_outputs", None)
+    try:
+        expected_outputs = None if expected_outputs is None else int(expected_outputs)
+    except (TypeError, ValueError):
+        expected_outputs = None
+
+    for name in ("train_Y_wide", "train_Y", "train_targets"):
         value = getattr(model, name, None)
-        if value is not None:
-            tensor = torch.as_tensor(value)
-            if tensor.ndim == 1:
-                tensor = tensor.unsqueeze(-1)
-            return tensor
+        if value is None:
+            continue
+        tensor = torch.as_tensor(value)
+        if tensor.ndim == 1:
+            tensor = tensor.unsqueeze(-1)
+        if tensor.ndim != 2:
+            continue
+        if expected_outputs is not None and tensor.shape[-1] != expected_outputs:
+            continue
+        return _complete_ordinal_baseline_rows(tensor)
 
     submodels = getattr(model, "models", None)
     if submodels is None:
@@ -90,7 +131,7 @@ def _infer_multioutput_ordinal_train_y(model):
 
     if not columns:
         return None
-    return torch.cat(columns, dim=-1)
+    return _complete_ordinal_baseline_rows(torch.cat(columns, dim=-1))
 
 
 class _TBatchSafeMultiOutputOrdinalNParEGO(_qMultiOutputOrdinalNParEGO):
@@ -197,6 +238,8 @@ def qMultiOutputOrdinalExpectedHypervolumeImprovement(
     high-level API can retain automatically inferred context values when it
     filters keyword arguments by callable signature.
     """
+    if kwargs.get("train_Y") is not None:
+        kwargs["train_Y"] = _complete_ordinal_baseline_rows(kwargs["train_Y"])
     return _qMultiOutputOrdinalExpectedHypervolumeImprovement(
         model=model,
         ref_point=ref_point,
@@ -252,6 +295,8 @@ def qMultiOutputOrdinalNParEGO(
     del best_f
     if train_Y is None and kwargs.get("Y_baseline") is None:
         train_Y = _infer_multioutput_ordinal_train_y(model)
+    if train_Y is not None:
+        train_Y = _complete_ordinal_baseline_rows(train_Y)
     return _TBatchSafeMultiOutputOrdinalNParEGO(
         model=model,
         X_baseline=X_baseline,

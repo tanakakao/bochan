@@ -31,6 +31,7 @@ jobs:
             tests/test_wide_multitask_acquisition_consistency.py \
             tests/test_wide_multitask_classification_acquisitions.py \
             tests/test_api_objective_input_transform_defaults.py \
+            tests/test_ordinal_missing_multiobjective.py \
             tests/test_outcome_constraints.py \
             tests/test_api_acquisition_constraints.py \
             tests/test_nsgaii_acquisition_adapter.py \
@@ -45,16 +46,21 @@ jobs:
           python -m pip install ruff
           set +e
           ruff check \
+            --per-file-ignores "src/bochan/acquisition/ordinal/bayesian_optimization/__init__.py:E402" \
+            --per-file-ignores "src/bochan/acquisition/ordinal/bayesian_optimization/__init__.py:I001" \
             src/bochan/acquisition/__init__.py \
+            src/bochan/acquisition/_nehvi_cache_root.py \
             src/bochan/acquisition/classification_constraint_compat.py \
             src/bochan/acquisition/multiclass_constraint_install.py \
             src/bochan/acquisition/nsgaii_constraint_install.py \
             src/bochan/acquisition/objective/__init__.py \
             src/bochan/acquisition/objective/outcome_constraints.py \
             src/bochan/acquisition/objective/regression_perturbation_compat.py \
+            src/bochan/acquisition/ordinal/bayesian_optimization/__init__.py \
             src/bochan/acquisition/ordinal_constraint_install.py \
             src/bochan/acquisition/ordinal_multitask_compat.py \
             src/bochan/acquisition/wide_posterior_event_compat.py \
+            src/bochan/api/automatic_multiobjective.py \
             src/bochan/models/wide_multitask.py \
             src/bochan/models/wide_multitask_compat.py \
             src/bochan/optim/nsgaii_constraint_compat.py \
@@ -63,6 +69,7 @@ jobs:
             tests/test_wide_multitask_acquisition_consistency.py \
             tests/test_wide_multitask_classification_acquisitions.py \
             tests/test_api_objective_input_transform_defaults.py \
+            tests/test_ordinal_missing_multiobjective.py \
             2>&1 | tee ruff.log
           status=${PIPESTATUS[0]}
           echo "$status" > ruff.status

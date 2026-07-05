@@ -1,11 +1,14 @@
 """Compatibility helpers for BoTorch noisy hypervolume acquisitions.
 
-BoTorch's cached-Cholesky qNEHVI path assumes that a multitask posterior can be
-converted to independent output batches. Correlated Kronecker posteriors do not
-satisfy that assumption, so their models expose ``_supports_cache_root=False``.
-This module makes custom qNEHVI wrappers respect that capability flag whenever
-``cache_root`` is not explicitly supplied by the caller.
+BoTorch's cached-Cholesky qNEHVI path assumes direct access to a posterior
+``distribution`` and a covariance layout that can be converted to independent
+output batches. Correlated Kronecker posteriors and bochan's wide posterior
+adapters do not satisfy those assumptions. This module makes custom qNEHVI
+wrappers respect model capability whenever ``cache_root`` is not explicitly
+supplied by the caller.
 """
+
+# ruff: noqa: I001
 
 from __future__ import annotations
 
@@ -15,6 +18,19 @@ from typing import Any, TypeVar
 
 
 AcquisitionType = TypeVar("AcquisitionType", bound=type)
+
+
+def _model_supports_cache_root(model: Any) -> bool:
+    """Return whether the model's public posterior supports cached Cholesky."""
+
+    explicit = getattr(model, "_supports_cache_root", None)
+    if explicit is not None:
+        return bool(explicit)
+
+    # Wide-format adapters wrap the base posterior in a shape-preserving view.
+    # The view intentionally exposes moments and sampling, but not the raw
+    # ``distribution`` object required by BoTorch's cached-Cholesky mixin.
+    return not callable(getattr(model, "_wrap_wide_posterior", None))
 
 
 def resolve_nehvi_cache_root(model: Any, cache_root: bool | None = None) -> bool:
@@ -30,7 +46,7 @@ def resolve_nehvi_cache_root(model: Any, cache_root: bool | None = None) -> bool
     """
     if cache_root is not None:
         return bool(cache_root)
-    return bool(getattr(model, "_supports_cache_root", True))
+    return _model_supports_cache_root(model)
 
 
 def _expose_x_baseline_signature(acquisition_cls: AcquisitionType) -> None:

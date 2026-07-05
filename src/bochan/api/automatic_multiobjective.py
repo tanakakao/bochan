@@ -1,5 +1,7 @@
 """Automatic multi-objective baselines for high-level acquisitions."""
 
+# ruff: noqa: I001
+
 from __future__ import annotations
 
 from typing import Any
@@ -99,6 +101,37 @@ def _as_observed_matrix(
         elif not torch.is_floating_point(tensor):
             tensor = tensor.to(dtype=torch.get_default_dtype())
     return tensor
+
+
+def _complete_observed_rows(values: Any, *, source: str) -> Any:
+    """Keep rows with all objectives observed for Pareto baseline operations.
+
+    Correlated multi-task models may train from partially observed wide targets,
+    but a Pareto point, reference point, and EHVI partitioning require a complete
+    objective vector. Missing cells therefore remain valid for model fitting but
+    their rows are excluded from observed multi-objective baselines.
+    """
+
+    import torch
+
+    tensor = values if torch.is_tensor(values) else torch.as_tensor(values)
+    if tensor.ndim != 2:
+        raise RuntimeError(
+            f"{source} must have shape [n, m] before complete-row filtering. "
+            f"Got shape={tuple(tensor.shape)}."
+        )
+    finite = torch.isfinite(tensor)
+    complete = finite.all(dim=-1)
+    if bool(complete.any()):
+        return tensor[complete]
+
+    observed_counts = finite.sum(dim=0).detach().cpu().tolist()
+    raise ValueError(
+        "Automatic multi-objective baselines require at least one training row "
+        "with every objective observed. Partially observed rows remain usable for "
+        f"model fitting, but {source} contains no complete objective vector. "
+        f"Observed counts per output={observed_counts}."
+    )
 
 
 def _regression_observed_values(
@@ -208,6 +241,7 @@ def _ordinal_observed_values(bundle: ModelBundle, config: AcquisitionConfig) -> 
         _observed_train_targets(bundle),
         train_X=bundle.train_X,
     )
+    train_Y = _complete_observed_rows(train_Y, source="ordinal train_Y")
     n_outputs = _num_outputs(train_Y)
     if n_outputs > 1 and not (
         isinstance(utility_values, (list, tuple))
@@ -247,6 +281,7 @@ def _multiclass_observed_values(bundle: ModelBundle, config: AcquisitionConfig) 
         _observed_train_targets(bundle),
         train_X=bundle.train_X,
     )
+    train_Y = _complete_observed_rows(train_Y, source="multiclass train_Y")
     return compute_observed_multiclass_utility(
         train_Y,
         target_class=config.acqf_kwargs.get("target_class"),
@@ -278,6 +313,7 @@ def _observed_multiobjective_values(
         train_X=bundle.train_X,
         match_train_x_dtype=True,
     )
+    values = _complete_observed_rows(values, source="multi-objective values")
     return values.detach()
 
 

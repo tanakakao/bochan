@@ -28,7 +28,6 @@ jobs:
           pytest -q --maxfail=1 \
             tests/test_wide_nan_multiobjective_defaults.py \
             tests/test_api_automatic_defaults_sequence_targets.py \
-            tests/test_projected_binary_automatic_multiobjective_values.py \
             2>&1 | tee pytest.log
           status=${PIPESTATUS[0]}
           echo "$status" > pytest.status

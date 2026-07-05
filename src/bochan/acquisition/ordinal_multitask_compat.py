@@ -4,16 +4,95 @@ from __future__ import annotations
 
 from typing import Any
 
+import torch
+from torch import Tensor
+
 _APPLIED = False
 
 
-def apply_ordinal_multitask_compat() -> None:
-    """Install wide posterior and shared ordinal-likelihood compatibility.
+class _WideOrdinalTaskProxy:
+    """Expose one task of a wide correlated ordinal model as a scalar model."""
 
-    The long-format multi-task ordinal model learns one shared ordinal likelihood
-    and a task covariance. Its wide public interface exposes one objective per
-    task. Multi-output utility objectives require one likelihood entry per public
-    output, so repeat the shared likelihood without copying its parameters.
+    def __init__(self, parent: Any, task_index: int) -> None:
+        self.parent = parent
+        self.task_index = int(task_index)
+
+    @property
+    def likelihood(self):
+        return self.parent.likelihood
+
+    @property
+    def ordinal_likelihood(self):
+        return self.parent.likelihood
+
+    @property
+    def input_transform(self):
+        return getattr(self.parent, "input_transform", None)
+
+    def eval(self):
+        self.parent.eval()
+        likelihood = getattr(self.parent, "likelihood", None)
+        if likelihood is not None and hasattr(likelihood, "eval"):
+            likelihood.eval()
+        return self
+
+    def posterior(
+        self,
+        X: Tensor,
+        output_indices=None,
+        observation_noise: bool | Tensor = False,
+        posterior_transform=None,
+        **kwargs: Any,
+    ):
+        """Evaluate the underlying long-format model at one fixed task id."""
+
+        if output_indices not in (None, [0], (0,)):
+            raise ValueError("A fixed ordinal task proxy exposes one output only.")
+        X = torch.as_tensor(X)
+        task = torch.full(
+            (*X.shape[:-1], 1),
+            float(self.task_index),
+            device=X.device,
+            dtype=X.dtype,
+        )
+        X_long = torch.cat([X, task], dim=-1)
+
+        from bochan.models.ordinal.base.multitask import MultiTaskOrdinalGPModel
+
+        return MultiTaskOrdinalGPModel.posterior(
+            self.parent,
+            X_long,
+            observation_noise=observation_noise,
+            posterior_transform=posterior_transform,
+            **kwargs,
+        )
+
+    def __getattr__(self, name: str):
+        return getattr(self.parent, name)
+
+
+def _wide_task_proxies(model: Any) -> list[Any] | None:
+    """Return fixed-task proxies when ``model`` is a wide correlated adapter."""
+
+    if not callable(getattr(model, "_wrap_wide_posterior", None)):
+        return None
+    try:
+        num_tasks = int(getattr(model, "num_tasks"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if num_tasks < 1:
+        return None
+    return [_WideOrdinalTaskProxy(model, index) for index in range(num_tasks)]
+
+
+def apply_ordinal_multitask_compat() -> None:
+    """Install wide posterior, likelihood, and task-proxy compatibility.
+
+    A long-format correlated ordinal model learns one shared likelihood and task
+    covariance, while older multi-output acquisitions expect a ModelList-style
+    ``model.models`` collection. Fixed-task proxies preserve the correlated
+    parent posterior and expose one scalar task to those acquisitions without
+    copying model or likelihood parameters.
     """
 
     from bochan.acquisition.wide_posterior_event_compat import (
@@ -26,18 +105,17 @@ def apply_ordinal_multitask_compat() -> None:
     if _APPLIED:
         return
 
-    from bochan.acquisition.ordinal.bayesian_optimization import multi_output as module
+    from bochan.acquisition.ordinal.active_learning import multi_output as active
+    from bochan.acquisition.ordinal.bayesian_optimization import multi_output as bo
+    from bochan.acquisition.ordinal.levelset_estimation import multi_output as levelset
 
-    original = module._extract_ordinal_likelihoods
-    if getattr(original, "_bochan_wide_multitask_compatible", False):
-        _APPLIED = True
-        return
+    original_extract = bo._extract_ordinal_likelihoods
 
     def compatible_extract(
         model: Any,
         ordinal_likelihoods: Any = None,
     ) -> list[Any]:
-        likelihoods = list(original(model, ordinal_likelihoods))
+        likelihoods = list(original_extract(model, ordinal_likelihoods))
         try:
             num_outputs = int(getattr(model, "num_outputs", 1))
         except (TypeError, ValueError):
@@ -47,8 +125,24 @@ def apply_ordinal_multitask_compat() -> None:
         return likelihoods
 
     compatible_extract._bochan_wide_multitask_compatible = True  # type: ignore[attr-defined]
-    compatible_extract._bochan_original = original  # type: ignore[attr-defined]
-    module._extract_ordinal_likelihoods = compatible_extract
+    compatible_extract._bochan_original = original_extract  # type: ignore[attr-defined]
+    bo._extract_ordinal_likelihoods = compatible_extract
+
+    original_active_resolve = active._resolve_submodels
+
+    def compatible_active_resolve(model: Any) -> list[Any]:
+        proxies = _wide_task_proxies(model)
+        return proxies if proxies is not None else list(original_active_resolve(model))
+
+    active._resolve_submodels = compatible_active_resolve
+
+    original_levelset_resolve = levelset._get_submodels
+
+    def compatible_levelset_resolve(model: Any) -> list[Any]:
+        proxies = _wide_task_proxies(model)
+        return proxies if proxies is not None else list(original_levelset_resolve(model))
+
+    levelset._get_submodels = compatible_levelset_resolve
     _APPLIED = True
 
 

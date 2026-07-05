@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 import torch
 from botorch.models.model import Model
 from botorch.models.transforms.input import InputPerturbation
@@ -19,20 +20,24 @@ from bochan.acquisition.multiclass.bayesian_optimization.multi_output import (
 
 
 class _BaselinePosteriorModel(Model):
-    def __init__(self, *, n_w: int, num_classes: int = 3) -> None:
+    def __init__(self, *, n_w: int, expand_posterior: bool, num_classes: int = 3) -> None:
         super().__init__()
         self.input_transform = InputPerturbation(
             perturbation_set=torch.zeros(n_w, 2, dtype=torch.double)
         )
+        self.n_w = int(n_w)
+        self.expand_posterior = bool(expand_posterior)
         self.num_classes = int(num_classes)
 
     @property
     def num_outputs(self) -> int:
         return 2
 
-    def posterior(self, X: Tensor, *args, **kwargs):
+    def posterior(self, X: Tensor, *args, **kwargs) -> SimpleNamespace:
+        q = int(X.shape[-2]) * (self.n_w if self.expand_posterior else 1)
         logits = torch.zeros(
-            *X.shape[:-1],
+            *X.shape[:-2],
+            q,
             self.num_outputs,
             self.num_classes,
             device=X.device,
@@ -41,10 +46,13 @@ class _BaselinePosteriorModel(Model):
         return SimpleNamespace(mean=torch.softmax(logits, dim=-1))
 
 
-def test_qnehvi_baseline_passes_raw_x_to_input_perturbation_objective() -> None:
+@pytest.mark.parametrize("expand_posterior", [False, True])
+def test_qnehvi_baseline_passes_raw_x_to_input_perturbation_objective(
+    expand_posterior: bool,
+) -> None:
     n_baseline = 60
     n_w = 16
-    model = _BaselinePosteriorModel(n_w=n_w)
+    model = _BaselinePosteriorModel(n_w=n_w, expand_posterior=expand_posterior)
     X_baseline = torch.rand(n_baseline, 2, dtype=torch.double)
     base_objective = MulticlassTargetProbabilityObjective(
         output_target_classes=[1, 2],

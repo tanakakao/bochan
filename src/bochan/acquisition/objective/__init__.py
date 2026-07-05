@@ -44,6 +44,9 @@ from .regression import (
     MultiOutputRegressionInputPerturbationObjective,
     make_regression_scalar_callable,
 )
+from .regression_perturbation_compat import (
+    apply_regression_perturbation_objective_compat,
+)
 
 from .hybrid import (
     Direction,
@@ -63,6 +66,10 @@ from .outcome_constraints import (
     make_outcome_constraint,
     make_outcome_constraints,
 )
+
+
+apply_regression_perturbation_objective_compat()
+
 
 __all__ = [
     "BinaryClassificationScoreObjective",

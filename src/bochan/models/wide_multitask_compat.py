@@ -24,7 +24,7 @@ from .wide_multitask import (
     WideMultiTaskMulticlassClassificationGPModel as _WideMultiTaskMulticlassClassificationGPModel,
 )
 from .wide_multitask import WideMultiTaskOrdinalGPModel as _WideMultiTaskOrdinalGPModel
-from .wide_multitask import wide_to_long
+from .wide_multitask import _WidePosterior, wide_to_long
 
 
 def _align_task_feature(task_feature: Tensor, transformed: Tensor) -> tuple[Tensor, Tensor]:
@@ -136,6 +136,51 @@ class TaskFeatureInputTransform(InputTransform):
         return torch.cat([untransformed, task_feature], dim=-1)
 
 
+class PerturbationAwareStratifiedStandardize(StratifiedStandardize):
+    """Align task-wise outcome statistics with one-to-many input transforms.
+
+    BoTorch passes the pre-transform long-format ``X`` to
+    ``untransform_posterior``. An ``InputPerturbation`` expands every long row by
+    ``n_w`` inside the model, so the posterior contains more points than ``X``.
+    Repeating each task-id row by the inferred expansion factor keeps the
+    per-task means and standard deviations aligned with the posterior.
+    """
+
+    @staticmethod
+    def _repeat_X_to_length(X: Tensor, target_n: int) -> Tensor:
+        current_n = int(X.shape[-2])
+        if target_n == current_n:
+            return X
+        if current_n <= 0 or target_n % current_n != 0:
+            raise RuntimeError(
+                "Could not align StratifiedStandardize inputs with the posterior. "
+                f"X has {current_n} rows, posterior has {target_n} points."
+            )
+        return X.repeat_interleave(target_n // current_n, dim=-2)
+
+    def untransform(
+        self,
+        Y: Tensor,
+        Yvar: Tensor | None = None,
+        X: Tensor | None = None,
+    ) -> tuple[Tensor, Tensor | None]:
+        if X is not None:
+            X = self._repeat_X_to_length(X, int(Y.shape[-2]))
+        return super().untransform(Y=Y, Yvar=Yvar, X=X)
+
+    def untransform_posterior(self, posterior, X: Tensor | None = None):
+        if X is not None:
+            distribution = getattr(posterior, "distribution", None)
+            mean = getattr(distribution, "mean", None)
+            if mean is not None:
+                if bool(getattr(posterior, "_is_mt", False)):
+                    target_n = int(mean.shape[-2])
+                else:
+                    target_n = int(mean.shape[-1])
+                X = self._repeat_X_to_length(X, target_n)
+        return super().untransform_posterior(posterior=posterior, X=X)
+
+
 def _build_stratified_standardize(
     train_X: Tensor,
     train_Y: Tensor,
@@ -143,8 +188,9 @@ def _build_stratified_standardize(
     """Construct StratifiedStandardize across supported BoTorch signatures.
 
     BoTorch 0.15/0.16 uses ``task_values`` while newer releases use
-    ``all_task_values`` and optionally accept ``dtype``. Inspecting the installed
-    constructor avoids pinning the adapter to either API generation.
+    ``observed_task_values`` / ``all_task_values`` and optionally accept
+    ``dtype``. Inspecting the installed constructor avoids pinning the adapter to
+    either API generation.
     """
 
     task_values = torch.arange(
@@ -155,6 +201,8 @@ def _build_stratified_standardize(
     parameters = inspect.signature(StratifiedStandardize.__init__).parameters
     transform_kwargs: dict[str, Any] = {"stratification_idx": -1}
 
+    if "observed_task_values" in parameters:
+        transform_kwargs["observed_task_values"] = task_values
     if "all_task_values" in parameters:
         transform_kwargs["all_task_values"] = task_values
         if "dtype" in parameters:
@@ -168,7 +216,7 @@ def _build_stratified_standardize(
             f"'task_values' or 'all_task_values'; available parameters: {available}."
         )
 
-    return StratifiedStandardize(**transform_kwargs)
+    return PerturbationAwareStratifiedStandardize(**transform_kwargs)
 
 
 def _prepare_kwargs(
@@ -206,11 +254,35 @@ def _prepare_kwargs(
 
 
 class _PublicTaskOutputMixin:
-    """Expose task count rather than latent class count as ``num_outputs``."""
+    """Expose task count and perturbation-expanded q as public dimensions."""
 
     @property
     def num_outputs(self) -> int:
         return int(getattr(self, "num_tasks", 1))
+
+    def _wrap_wide_posterior(
+        self,
+        base,
+        *,
+        X: Tensor,
+        selected: list[int],
+        posterior_transform: Any = None,
+    ):
+        flat_points = int(base.mean.shape[-2])
+        num_tasks = int(self.num_tasks)
+        if flat_points % num_tasks != 0:
+            raise RuntimeError(
+                "Wide posterior point count must be divisible by num_tasks. "
+                f"Got flat_points={flat_points}, num_tasks={num_tasks}."
+            )
+        posterior = _WidePosterior(
+            base,
+            q=flat_points // num_tasks,
+            num_tasks=num_tasks,
+            output_indices=selected,
+            input_ndim=X.ndim,
+        )
+        return posterior_transform(posterior) if posterior_transform is not None else posterior
 
 
 class WideMultiTaskGP(_PublicTaskOutputMixin, _WideMultiTaskGP):
@@ -302,6 +374,7 @@ class WideMultiTaskMulticlassClassificationGPModel(
 
 __all__ = [
     "TaskFeatureInputTransform",
+    "PerturbationAwareStratifiedStandardize",
     "WideMultiTaskGP",
     "WideMultiTaskBinaryClassificationGPModel",
     "WideMultiTaskOrdinalGPModel",

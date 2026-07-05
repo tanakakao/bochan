@@ -82,6 +82,7 @@ def test_wide_binary_multitask_acquisition_family_preserves_q_and_constraints() 
     Xq = _candidate_x()
     latent = model.latent_posterior(Xq)
     assert latent.mean.shape == torch.Size([1, 5, 2])
+    assert latent.event_shape == torch.Size([5, 2])
     assert latent.rsample(torch.Size([4])).shape == torch.Size([4, 1, 5, 2])
 
     constraints = make_outcome_constraints(
@@ -252,6 +253,7 @@ def test_wide_multiclass_multitask_acquisition_family_reduces_class_axis() -> No
     assert posterior.mean.shape == torch.Size([1, 5, 2, 3])
     assert posterior._extended_shape() == torch.Size([1, 5, 2])
     assert posterior.batch_shape == torch.Size([1])
+    assert posterior.event_shape == torch.Size([5, 2, 3])
     assert samples.shape == torch.Size([4, 1, 5, 2, 3])
     assert values.shape == torch.Size([4, 1, 5, 2])
 
@@ -321,6 +323,9 @@ def test_public_nsgaii_applies_generated_constraints_after_multiclass_objective(
             torch.tensor([[0.2, 0.8], [0.8, 0.2]], dtype=torch.double),
         )
 
+    def raw_constraint(samples: torch.Tensor) -> torch.Tensor:
+        return samples[..., 0, 0] - 1.0
+
     monkeypatch.setattr(
         compatibility,
         "_base_optimize_acqf_nsgaii",
@@ -336,7 +341,6 @@ def test_public_nsgaii_applies_generated_constraints_after_multiclass_objective(
         operators=["ge", "le"],
         thresholds=[0.1, 1.9],
     )
-    raw_constraint = lambda samples: samples[..., 0, 0] - 1.0
 
     optim.optimize_acqf_nsgaii(
         acq_function=object(),

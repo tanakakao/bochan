@@ -8,6 +8,8 @@ wrappers respect model capability whenever ``cache_root`` is not explicitly
 supplied by the caller.
 """
 
+# ruff: noqa: I001
+
 from __future__ import annotations
 
 import inspect
@@ -28,10 +30,7 @@ def _model_supports_cache_root(model: Any) -> bool:
     # Wide-format adapters wrap the base posterior in a shape-preserving view.
     # The view intentionally exposes moments and sampling, but not the raw
     # ``distribution`` object required by BoTorch's cached-Cholesky mixin.
-    if callable(getattr(model, "_wrap_wide_posterior", None)):
-        return False
-
-    return True
+    return not callable(getattr(model, "_wrap_wide_posterior", None))
 
 
 def resolve_nehvi_cache_root(model: Any, cache_root: bool | None = None) -> bool:

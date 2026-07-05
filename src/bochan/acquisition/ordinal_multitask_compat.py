@@ -9,13 +9,19 @@ _APPLIED = False
 
 
 def apply_ordinal_multitask_compat() -> None:
-    """Replicate a shared ordinal likelihood across public task outputs.
+    """Install wide posterior and shared ordinal-likelihood compatibility.
 
     The long-format multi-task ordinal model learns one shared ordinal likelihood
     and a task covariance. Its wide public interface exposes one objective per
     task. Multi-output utility objectives require one likelihood entry per public
     output, so repeat the shared likelihood without copying its parameters.
     """
+
+    from bochan.acquisition.wide_posterior_event_compat import (
+        apply_wide_posterior_event_compat,
+    )
+
+    apply_wide_posterior_event_compat()
 
     global _APPLIED
     if _APPLIED:

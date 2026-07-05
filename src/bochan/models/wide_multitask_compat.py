@@ -11,11 +11,10 @@ from __future__ import annotations
 import inspect
 from typing import Any
 
-import torch
-from torch import Tensor
-
 from botorch.models.transforms.input import InputTransform
 from botorch.models.transforms.outcome import StratifiedStandardize
+import torch
+from torch import Tensor
 
 from .wide_multitask import (
     WideMultiTaskBinaryClassificationGPModel as _WideMultiTaskBinaryClassificationGPModel,

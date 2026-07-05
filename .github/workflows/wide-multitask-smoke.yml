@@ -27,12 +27,8 @@ jobs:
           set +e
           pytest -q --maxfail=1 \
             tests/test_wide_nan_multiobjective_defaults.py \
-            tests/test_wide_multitask_models.py \
-            tests/test_wide_multitask_acquisition_consistency.py \
-            tests/test_wide_multitask_classification_acquisitions.py \
-            tests/test_outcome_constraints.py \
-            tests/test_api_acquisition_constraints.py \
-            tests/test_nsgaii_acquisition_adapter.py \
+            tests/test_api_automatic_defaults_sequence_targets.py \
+            tests/test_projected_binary_automatic_multiobjective_values.py \
             2>&1 | tee pytest.log
           status=${PIPESTATUS[0]}
           echo "$status" > pytest.status

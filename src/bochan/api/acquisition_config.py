@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from .configs import AcquisitionConfig as _BaseAcquisitionConfig
-from .nan_multiobjective_compat import apply_nan_multiobjective_compat
 
 
 _DEFAULT_UCB_BETA = 3.0
@@ -146,7 +145,13 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
         self.acqf_kwargs = kwargs
 
 
-apply_nan_multiobjective_compat()
+def _install_nan_multiobjective_compat() -> None:
+    from .nan_multiobjective_compat import apply_nan_multiobjective_compat
+
+    apply_nan_multiobjective_compat()
+
+
+_install_nan_multiobjective_compat()
 
 
 __all__ = ["AcquisitionConfig", "ConstraintOperator", "OutcomeConstraintConfig"]

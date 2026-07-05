@@ -46,7 +46,8 @@ jobs:
           python -m pip install ruff
           set +e
           ruff check \
-            --per-file-ignores "src/bochan/acquisition/ordinal/bayesian_optimization/__init__.py:E402,I001" \
+            --per-file-ignores "src/bochan/acquisition/ordinal/bayesian_optimization/__init__.py:E402" \
+            --per-file-ignores "src/bochan/acquisition/ordinal/bayesian_optimization/__init__.py:I001" \
             src/bochan/acquisition/__init__.py \
             src/bochan/acquisition/_nehvi_cache_root.py \
             src/bochan/acquisition/classification_constraint_compat.py \

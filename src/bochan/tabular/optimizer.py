@@ -115,6 +115,102 @@ def _make_tabular_data_config(
     )
 
 
+def _as_prediction_array(value: Any):
+    '''Convert tensor-like prediction values to a numpy array without exposing torch.'''
+
+    if value is None:
+        return None
+    import numpy as np
+
+    if hasattr(value, "detach"):
+        value = value.detach()
+    if hasattr(value, "cpu"):
+        value = value.cpu()
+    if hasattr(value, "numpy"):
+        value = value.numpy()
+    array = np.asarray(value)
+    if array.ndim == 0:
+        array = array.reshape(1, 1)
+    elif array.ndim == 1:
+        array = array.reshape(-1, 1)
+    return array
+
+
+def _target_names_or_default(target_names: Sequence[ColumnKey] | None) -> list[str]:
+    names = [str(name) for name in (target_names or [])]
+    return names or ["prediction"]
+
+
+def _prediction_column_names(
+    *,
+    kind: str,
+    tail_shape: tuple[int, ...],
+    target_names: Sequence[ColumnKey] | None,
+    task_type: str | None,
+) -> list[str]:
+    '''Build flat DataFrame column names for prediction mean / variance arrays.'''
+
+    import numpy as np
+
+    names = _target_names_or_default(target_names)
+    task = str(task_type or "").lower()
+
+    if not tail_shape:
+        return [f"{names[0]}_{kind}"]
+
+    if len(tail_shape) == 1:
+        width = tail_shape[0]
+        if width == len(names):
+            return [f"{name}_{kind}" for name in names]
+        if task in {"multiclass", "ordinal"} and len(names) == 1:
+            return [f"{names[0]}_class_{i}_{kind}" for i in range(width)]
+        if len(names) == 1 and width == 1:
+            return [f"{names[0]}_{kind}"]
+        return [f"output_{i}_{kind}" for i in range(width)]
+
+    if len(tail_shape) == 2 and task in {"multiclass", "ordinal"}:
+        n_outputs, n_classes = tail_shape
+        columns: list[str] = []
+        for output_idx in range(n_outputs):
+            base = names[output_idx] if output_idx < len(names) else f"output_{output_idx}"
+            columns.extend(f"{base}_class_{class_idx}_{kind}" for class_idx in range(n_classes))
+        return columns
+
+    columns = []
+    for index in np.ndindex(tail_shape):
+        suffix = "_".join(str(i) for i in index)
+        columns.append(f"output_{suffix}_{kind}")
+    return columns
+
+
+def _prediction_array_to_frame(
+    value: Any,
+    *,
+    kind: str,
+    target_names: Sequence[ColumnKey] | None,
+    task_type: str | None,
+):
+    '''Convert one prediction array, e.g. mean or variance, to a DataFrame.'''
+
+    import pandas as pd
+
+    array = _as_prediction_array(value)
+    if array is None:
+        return pd.DataFrame()
+    n_rows = array.shape[0]
+    tail_shape = tuple(int(dim) for dim in array.shape[1:])
+    flat = array.reshape(n_rows, -1)
+    columns = _prediction_column_names(
+        kind=kind,
+        tail_shape=tail_shape,
+        target_names=target_names,
+        task_type=task_type,
+    )
+    if len(columns) != flat.shape[1]:
+        columns = [f"{kind}_{i}" for i in range(flat.shape[1])]
+    return pd.DataFrame(flat, columns=columns)
+
+
 class TabularBayesianOptimizer:
     '''BayesianOptimizer wrapper for DataFrame / numpy / CSV workflows.'''
 
@@ -574,8 +670,17 @@ class TabularBayesianOptimizer:
 
         return self.candidate(*args, **kwargs)
 
-    def predict(self, data: Any, *, return_dataframe_input: bool = False, **kwargs: Any) -> Any:
-        '''Predict from tabular input or raw tensor input.'''
+    def predict(
+        self,
+        data: Any,
+        *,
+        return_type: str = "dataframe",
+        include_input: bool = False,
+        return_dataframe_input: bool = False,
+        posterior_kwargs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        '''Predict from tabular input and return mean / variance as a DataFrame by default.'''
 
         if self.dataset is None:
             raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
@@ -584,17 +689,94 @@ class TabularBayesianOptimizer:
         except ImportError:
             pd = None
         X = data
+        original_index = None
         if pd is not None and isinstance(data, pd.DataFrame):
+            original_index = data.index
             tmp_config = replace(
                 self.data_config,
                 target_cols=None,
                 input_cols=self.dataset.feature_names,
             )
             X = dataframe_to_tensors(data, tmp_config).X
-        prediction = self.bo.predict(X, **kwargs)
+
+        normalized_return_type = str(return_type).lower()
+        dataframe_return_types = {"dataframe", "df", "mean_variance_dataframe", "mean_variance_df"}
+        if normalized_return_type not in dataframe_return_types:
+            prediction = self.bo.predict(
+                X,
+                return_type=return_type,
+                posterior_kwargs=posterior_kwargs,
+                **kwargs,
+            )
+            if return_dataframe_input:
+                return prediction, data
+            return prediction
+
+        result = self.bo.predict(
+            X,
+            return_result=True,
+            posterior_kwargs=posterior_kwargs,
+            **kwargs,
+        )
+        prediction_df = self.prediction_to_dataframe(result)
+        if original_index is not None:
+            prediction_df.index = original_index
+        if include_input:
+            input_df = self._prediction_input_to_dataframe(data, X)
+            if original_index is not None:
+                input_df.index = original_index
+            prediction_df = input_df.join(prediction_df)
         if return_dataframe_input:
-            return prediction, data
-        return prediction
+            return prediction_df, data
+        return prediction_df
+
+    def prediction_to_dataframe(self, prediction: Any):
+        '''Convert a PredictionResult or posterior-like object to a pandas DataFrame.'''
+
+        import pandas as pd
+
+        mean = getattr(prediction, "mean", None)
+        variance = getattr(prediction, "variance", None)
+        task_type = getattr(prediction, "task_type", None)
+        if mean is None and hasattr(prediction, "posterior"):
+            posterior = getattr(prediction, "posterior")
+            mean = getattr(posterior, "mean", None)
+            variance = getattr(posterior, "variance", None)
+
+        target_names = self.dataset.target_names if self.dataset is not None else []
+        mean_df = _prediction_array_to_frame(
+            mean,
+            kind="mean",
+            target_names=target_names,
+            task_type=task_type,
+        )
+        variance_df = _prediction_array_to_frame(
+            variance,
+            kind="variance",
+            target_names=target_names,
+            task_type=task_type,
+        )
+        prediction_df = pd.concat([mean_df, variance_df], axis=1)
+        prediction_df.attrs["task_type"] = task_type
+        prediction_df.attrs["prediction_space"] = getattr(prediction, "prediction_space", None)
+        prediction_df.attrs["variance_kind"] = getattr(prediction, "variance_kind", None)
+        return prediction_df
+
+    def _prediction_input_to_dataframe(self, original_data: Any, X: Any):
+        '''Return input data as a DataFrame without exposing tensor internals.'''
+
+        try:
+            import pandas as pd
+        except ImportError:
+            pd = None
+        if pd is not None and isinstance(original_data, pd.DataFrame):
+            return original_data.copy()
+        return tensor_to_dataframe(
+            X,
+            self.dataset.feature_names if self.dataset is not None else [],
+            inverse_category_maps=self.dataset.inverse_category_maps if self.dataset is not None else None,
+            decode_categories=self.data_config.return_original_categories,
+        )
 
     def update_data(self, new_data: Any, new_y: Any | None = None) -> "TabularBayesianOptimizer":
         '''Append new observations to the underlying tensor optimizer state.'''

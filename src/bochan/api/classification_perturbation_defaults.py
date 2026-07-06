@@ -223,6 +223,38 @@ def _build_objective(
     return _build_multiclass(bundle, config)
 
 
+def _wrap_input_perturbation_constraints(
+    *,
+    bundle: ModelBundle | None,
+    config: AcquisitionConfig,
+) -> AcquisitionConfig:
+    """Reduce constraint values from q * n_w back to q for InputPerturbation."""
+
+    if bundle is None or config.constraints is None:
+        return config
+    n_w = _engine._input_transform_n_w_from_bundle(bundle)
+    if n_w is None or int(n_w) <= 1:
+        return config
+
+    from bochan.acquisition.feasible import wrap_sample_constraints_for_input_perturbation
+
+    reduction = config.acqf_kwargs.get(
+        "constraint_perturbation_reduction",
+        config.acqf_kwargs.get("perturbation_reduction", "mean"),
+    )
+    wrapped_constraints = wrap_sample_constraints_for_input_perturbation(
+        config.constraints,
+        n_w=int(n_w),
+        reduction=reduction,
+    )
+
+    kwargs = dict(config.acqf_kwargs)
+    if kwargs.get("constraints") is config.constraints:
+        kwargs["constraints"] = wrapped_constraints
+
+    return replace(config, constraints=wrapped_constraints, acqf_kwargs=kwargs)
+
+
 def _resolve_objective(
     *,
     acq_config: AcquisitionConfig,
@@ -232,6 +264,7 @@ def _resolve_objective(
         acq_config=acq_config,
         bundle=bundle,
     )
+    resolved = _wrap_input_perturbation_constraints(bundle=bundle, config=resolved)
     if (
         bundle is None
         or str(bundle.task_type) != "multiclass"

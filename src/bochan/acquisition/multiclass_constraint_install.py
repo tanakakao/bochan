@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import wraps
 from typing import Any
 
 from botorch.utils.safe_math import fatmoid
@@ -21,8 +22,15 @@ def _patch_eta_buffer_assignment(acquisition_cls: type) -> None:
     if getattr(acquisition_cls, "_bochan_eta_buffer_patched", False):
         return
 
-    original_init = acquisition_cls.__init__
+    from bochan.acquisition.classification_constraint_compat import (
+        _capture_public_signature,
+        _install_init_patch,
+    )
 
+    original_init = acquisition_cls.__init__
+    public_signature = _capture_public_signature(acquisition_cls)
+
+    @wraps(original_init)
     def compatible_init(self, *args, eta=1e-3, **kwargs) -> None:
         constraints = kwargs.get("constraints")
         num_constraints = 0 if constraints is None else len(constraints)
@@ -36,8 +44,9 @@ def _patch_eta_buffer_assignment(acquisition_cls: type) -> None:
             eta_tensor = torch.as_tensor(float(eta))
         original_init(self, *args, eta=eta_tensor, **kwargs)
 
-    acquisition_cls.__init__ = compatible_init
+    _install_init_patch(acquisition_cls, compatible_init, public_signature)
     acquisition_cls._bochan_eta_buffer_patched = True
+    acquisition_cls._bochan_original_init_before_eta_buffer = original_init
 
 
 def _constraint_parameter_list(

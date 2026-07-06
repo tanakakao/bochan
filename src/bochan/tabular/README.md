@@ -4,7 +4,9 @@
 
 内部では DataFrame / numpy 配列を `torch.Tensor` に変換し、モデル学習・獲得関数生成・候補点最適化は既存の `bochan.api` に委譲します。候補点は必要に応じて pandas `DataFrame` として返します。
 
-## 目的
+---
+
+## 1. 目的
 
 実験データや CSV をそのまま扱えるようにすることが目的です。
 
@@ -12,25 +14,26 @@
 - CSV を `from_csv()` で読み込める
 - numpy 配列にも対応する
 - 列名で説明変数・目的変数・カテゴリ列を指定できる
-- `CandidateRepairConfig` 相当の設定も列名で指定できる
 - 文字列カテゴリ列を label encoding して、候補点では元の文字列に戻せる
 - 欠損値を削除または補完できる
-- 既存の `ModelConfig`, `AcquisitionConfig`, `OptimizeConfig` なども引き続き使える
+- `CandidateRepairConfig` 相当の step 丸め・k-sparse・固定特徴量を列名で指定できる
+- `FitConfig.beta`, `OptimizeConfig.evo_method`, `OutcomeConstraintConfig` など、公開 `bochan.api` の設定を直接または config object 経由で使える
+- 既存の `ModelConfig`, `FitConfig`, `AcquisitionConfig`, `OptimizeConfig` なども引き続き使える
 
 ---
 
-## インストール
+## 2. インストール
 
 通常の DataFrame / CSV 利用では `pandas` が必要です。
 
 ```bash
-pip install -e .
+pip install -e ".[tabular]"
 ```
 
-IterativeImputer による多重代入法風の補完も使う場合は、`impute` extra を入れます。
+開発時に FastAPI や可視化もまとめて入れる場合です。
 
 ```bash
-pip install -e ".[impute]"
+pip install -e ".[dev,api,tabular,visualization,evo]"
 ```
 
 全部入りで入れる場合は次の通りです。
@@ -39,9 +42,11 @@ pip install -e ".[impute]"
 pip install -e ".[all]"
 ```
 
+`continuous_impute_strategy="iterative"` には scikit-learn が必要です。`tabular` extra または `all` extra に含まれます。
+
 ---
 
-## 最小例: DataFrame から学習して候補点を出す
+## 3. 最小例: DataFrame から学習して候補点を出す
 
 ```python
 import pandas as pd
@@ -84,7 +89,7 @@ candidates_df.to_csv("next_candidates.csv", index=False)
 
 ---
 
-## CSV から直接使う
+## 4. CSV から直接使う
 
 ```python
 from bochan.tabular import TabularBayesianOptimizer
@@ -126,7 +131,7 @@ bo = TabularBayesianOptimizer.from_csv(
 
 ---
 
-## numpy 配列から使う
+## 5. numpy 配列から使う
 
 numpy 配列の場合は列名がないため、必要に応じて `feature_names` を渡します。
 
@@ -163,9 +168,11 @@ bo.fit(
 )
 ```
 
+文字列カテゴリや欠損値補完を本格的に使う場合は、numpy より DataFrame の方が扱いやすいです。
+
 ---
 
-## 直接引数 API
+## 6. 直接引数 API と config object API
 
 `bochan.tabular` では、既存の config dataclass を明示的に作らなくても使えます。
 
@@ -185,6 +192,7 @@ candidates_df, acq_value = bo.candidate(
     acq_name="NIPV",
     q=10,
     optimizer="evo",
+    evo_method="ga",
 )
 ```
 
@@ -197,7 +205,7 @@ candidates_df, acq_value = bo.candidate(
 - `OptimizeConfig`
 - `CandidateRepairConfig`
 
-既存の config オブジェクトも引き続き利用できます。
+既存の config object も引き続き利用できます。
 
 ```python
 from bochan.api import AcquisitionConfig, ModelConfig, OptimizeConfig
@@ -218,11 +226,278 @@ candidates_df, acq_value = bo.candidate(
 )
 ```
 
+直接引数と config object を混ぜる場合は、直接引数が config object に上書き適用されます。
+
+```python
+from bochan.api import OptimizeConfig
+
+
+candidates_df, acq_value = bo.candidate(
+    opt_config=OptimizeConfig(q=3, optimizer="evo"),
+    evo_method="pso",
+)
+```
+
 ---
 
-## カテゴリ列の扱い
+## 7. FitConfig.beta
 
-### 説明変数側のカテゴリ
+`FitConfig.beta` は `mll_kwargs["beta"]` への便利 alias です。DeepGP / DeepKernel classifier などで ELBO の beta を調整したい場合に使います。
+
+初期化時に指定する例です。
+
+```python
+bo = TabularBayesianOptimizer(
+    task_type="multiclass",
+    model_type="deepgp",
+    input_cols=["x1", "x2"],
+    target_cols="label",
+    model_kwargs={"num_classes": 3, "num_inducing_points": 32},
+    num_epochs=300,
+    lr=0.03,
+    fit_beta=0.5,
+)
+
+bo.fit(df)
+```
+
+`beta` という短い alias も使えます。
+
+```python
+bo = TabularBayesianOptimizer(
+    task_type="multiclass",
+    model_type="deepgp",
+    input_cols=["x1", "x2"],
+    target_cols="label",
+    beta=0.5,
+)
+```
+
+`fit()` 時にだけ上書きする例です。
+
+```python
+bo.fit(df, fit_beta=0.8)
+```
+
+`fit_beta` と `beta` を同時に指定すると曖昧なのでエラーになります。
+
+---
+
+## 8. optimizer と evo_method
+
+候補点最適化 backend は `candidate()` の `optimizer` で指定します。
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="EI",
+    q=3,
+    optimizer="optimize_acqf",
+    num_restarts=10,
+    raw_samples=256,
+)
+```
+
+Evolutionary backend を使う場合です。
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="NIPV",
+    q=5,
+    optimizer="evo",
+    evo_method="ga",
+    optimizer_kwargs={
+        "population_size": 128,
+        "num_generations": 80,
+    },
+)
+```
+
+`evo_method` は次を指定できます。
+
+```text
+ga / pso / sa / cmaes
+```
+
+`optimizer="ga"`, `optimizer="pso"`, `optimizer="sa"`, `optimizer="cmaes"` のように直接指定しても、内部では `optimizer="evo"` に正規化されます。
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="NIPV",
+    q=3,
+    optimizer="pso",
+)
+```
+
+---
+
+## 9. acquisition / objective の指定
+
+### 9.1 EI / UCB / NIPV
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="EI",
+    q=3,
+    acqf_kwargs={"best_f": 1.0},
+)
+```
+
+UCB の `beta` は `acqf_kwargs` に入れます。`FitConfig.beta` とは別物です。
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="UCB",
+    q=3,
+    acqf_kwargs={"beta": 2.0},
+)
+```
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="NIPV",
+    q=10,
+)
+```
+
+### 9.2 ObjectiveConfig を直接引数で指定する
+
+`objective_*` 形式の引数は `ObjectiveConfig` に変換されます。
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="EI",
+    q=3,
+    objective_mode="scalar",
+    objective_output=0,
+    objective_direction="maximize",
+    objective_weight=1.0,
+)
+```
+
+multi-output の重み付き目的の例です。
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="EI",
+    q=3,
+    objective_mode="multi_output",
+    objective_outputs=[0, 1],
+    objective_directions=["maximize", "minimize"],
+    objective_weights=[0.7, 0.3],
+)
+```
+
+input perturbation を使う場合は、`objective_n_w`, `objective_risk_type`, `objective_alpha` を指定できます。
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="EI",
+    q=3,
+    objective_n_w=8,
+    objective_risk_type="cvar",
+    objective_alpha=0.2,
+)
+```
+
+### 9.3 multiclass active learning
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="entropy",
+    q=5,
+)
+```
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="BALD",
+    q=5,
+)
+```
+
+### 9.4 multiclass / ordinal level-set
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="straddle",
+    q=5,
+    acqf_kwargs={
+        "target_class": 2,
+        "threshold": 0.5,
+    },
+)
+```
+
+---
+
+## 10. outcome constraints
+
+`AcquisitionConfig` には、低レベルの `constraints` と、JSON / notebook で扱いやすい `outcome_constraint_config` があります。通常は `outcome_constraint_config` を推奨します。
+
+### 10.1 数値出力に対する制約
+
+```python
+from bochan.api import OutcomeConstraintConfig
+
+
+candidates_df, acq_value = bo.candidate(
+    acq_name="NEHVI",
+    q=3,
+    outcome_constraint_config=OutcomeConstraintConfig(
+        output_indices=[0, 1],
+        operators=["ge", "le"],
+        thresholds=[0.5, 1.2],
+    ),
+)
+```
+
+直接 dict で渡すこともできます。
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="NEHVI",
+    q=3,
+    outcome_constraint_config={
+        "output_indices": [0, 1],
+        "operators": ["ge", "le"],
+        "thresholds": [0.5, 1.2],
+    },
+)
+```
+
+### 10.2 feasibility constraint spec
+
+classification / ordinal の確率制約など、model access が必要な制約は feasibility wrapper 経由で扱います。
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="EI",
+    q=1,
+    outcome_constraint_config={
+        "constraints": [
+            {
+                "kind": "feasibility",
+                "output": "defect",
+                "operator": "le",
+                "threshold": 0.2,
+            }
+        ],
+        "eta": 1e-3,
+        "reduce_constraints": "prod",
+        "reduce_q": "mean",
+        "posterior_mode": "objective",
+    },
+    acqf_kwargs={"best_f": 1.0},
+)
+```
+
+`constraints` と `outcome_constraint_config` は同時指定できません。
+
+---
+
+## 11. カテゴリ列の扱い
+
+### 11.1 説明変数側のカテゴリ
 
 説明変数にカテゴリ列がある場合は `categorical_cols` に指定します。
 
@@ -247,7 +522,7 @@ print(candidates_df["machine"])
 
 数値カテゴリは、すでにエンコード済みとして扱います。
 
-### 明示的なカテゴリ mapping
+### 11.2 明示的なカテゴリ mapping
 
 カテゴリの符号化を固定したい場合は `category_maps` を指定します。
 
@@ -273,7 +548,7 @@ bo.dataset.inverse_category_maps
 
 ---
 
-## 目的変数がカテゴリの場合
+## 12. 目的変数がカテゴリの場合
 
 目的変数が文字列カテゴリの場合も label encoding されます。
 
@@ -319,9 +594,9 @@ bo.dataset.inverse_target_category_maps
 
 ---
 
-## 欠損値の扱い
+## 13. 欠損値の扱い
 
-### デフォルト: 欠損行を削除
+### 13.1 デフォルト: 欠損行を削除
 
 デフォルトでは `dropna=True` により、説明変数または目的変数に欠損がある行を削除します。
 
@@ -336,7 +611,7 @@ bo = TabularBayesianOptimizer(
 bo.fit(df)
 ```
 
-### 欠損値を補完する
+### 13.2 欠損値を補完する
 
 `missing_strategy="impute"` を指定すると、説明変数の欠損を補完します。
 
@@ -370,7 +645,7 @@ bo.dataset.impute_values
 bo.dataset.target_impute_values
 ```
 
-### 連続値を IterativeImputer で補完する
+### 13.3 連続値を IterativeImputer で補完する
 
 `continuous_impute_strategy="iterative"` を指定すると、scikit-learn の `IterativeImputer` を使います。
 
@@ -391,13 +666,7 @@ bo = TabularBayesianOptimizer(
 bo.fit(df)
 ```
 
-`continuous_impute_strategy="iterative"` には scikit-learn が必要です。
-
-```bash
-pip install -e ".[impute]"
-```
-
-### 目的変数も補完する
+### 13.4 目的変数も補完する
 
 目的変数の欠損は安全側で削除されます。目的変数も補完したい場合は `impute_targets=True` を指定します。
 
@@ -416,7 +685,7 @@ bo.fit(df)
 
 ---
 
-## bounds の指定
+## 14. bounds の指定
 
 `bounds` は列名の dict で指定できます。
 
@@ -436,9 +705,23 @@ bo = TabularBayesianOptimizer(
 
 内部では BoTorch 形式の `2 x d` tensor に変換されます。
 
+候補点生成時だけ bounds を上書きすることもできます。
+
+```python
+candidates_df, acq_value = bo.candidate(
+    acq_name="EI",
+    q=3,
+    bounds={
+        "x1": [0.2, 0.8],
+        "x2": [1.0, 5.0],
+        "x3": [-0.5, 0.5],
+    },
+)
+```
+
 ---
 
-## 候補点の後処理: step 丸め・k-sparse
+## 15. 候補点の後処理: step 丸め・k-sparse
 
 `candidate()` の直接引数として `CandidateRepairConfig` 相当の設定を渡せます。
 
@@ -474,9 +757,11 @@ candidates_df, acq_value = bo.candidate(
 )
 ```
 
+`steps=None` の場合は丸めません。`comp_idx=[]` または `comp_idx=None` の場合は、k-sparse ではなく丸め・制約補修だけを行います。
+
 ---
 
-## 固定特徴量
+## 16. 固定特徴量
 
 `fixed_features` も列名で指定できます。
 
@@ -510,7 +795,7 @@ bo.dataset.category_maps
 
 ---
 
-## ask / tell 形式
+## 17. ask / tell 形式
 
 候補点を出して、実験結果を追加し、再学習する ask / tell 形式も使えます。
 
@@ -527,9 +812,22 @@ new_df["y"] = measured_y
 bo.tell(new_df, refit=True)
 ```
 
+`fit_config` を渡すと、tell 後の再学習設定を変えられます。
+
+```python
+from bochan.api import FitConfig
+
+
+bo.tell(
+    new_df,
+    refit=True,
+    fit_config=FitConfig(num_epochs=150, lr=0.03, beta=0.5),
+)
+```
+
 ---
 
-## 予測
+## 18. 予測
 
 DataFrame を直接渡して予測できます。
 
@@ -548,9 +846,18 @@ mean = bo.predict(
 )
 ```
 
+入力 DataFrame も一緒に返したい場合です。
+
+```python
+prediction, input_df = bo.predict(
+    df[["x1", "x2", "x3"]],
+    return_dataframe_input=True,
+)
+```
+
 ---
 
-## 低レベル変換関数
+## 19. 低レベル変換関数
 
 `bochan.tabular` には、変換だけを行う関数もあります。
 
@@ -580,7 +887,7 @@ train_Y = dataset.Y
 
 ---
 
-## よく使う属性
+## 20. よく使う属性
 
 学習後は以下を確認できます。
 
@@ -607,9 +914,16 @@ bo.dataset.target_impute_values
 bo.bo
 ```
 
+学習データ tensor は property からも確認できます。
+
+```python
+bo.train_X
+bo.train_Y
+```
+
 ---
 
-## 注意点
+## 21. 注意点
 
 - `bochan.tabular` は薄いラッパーであり、モデル構築・学習・獲得関数・候補点最適化の中核は `bochan.api` に委譲します。
 - DataFrame / CSV 利用には pandas が必要です。
@@ -617,3 +931,4 @@ bo.bo
 - 文字列カテゴリの候補点は元の文字列に戻しますが、最適化中は数値コードとして扱います。
 - 目的変数の文字列カテゴリは学習用に label encoding されます。候補点 DataFrame には目的変数は含まれません。
 - numpy 入力で文字列カテゴリや欠損値補完を本格的に使う場合は、DataFrame に変換してから使う方が扱いやすいです。
+- `FitConfig.beta` と UCB の `acqf_kwargs["beta"]` は別物です。前者は学習時の MLL / ELBO 側、後者は acquisition 側の探索パラメータです。

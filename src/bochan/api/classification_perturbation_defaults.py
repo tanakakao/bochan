@@ -223,36 +223,40 @@ def _build_objective(
     return _build_multiclass(bundle, config)
 
 
-def _wrap_input_perturbation_constraints(
+def _keep_constrained_perturbation_q_expanded(
     *,
     bundle: ModelBundle | None,
     config: AcquisitionConfig,
 ) -> AcquisitionConfig:
-    """Reduce constraint values from q * n_w back to q for InputPerturbation."""
+    """Keep constrained MC acquisition objective and constraints shape-aligned.
 
-    if bundle is None or config.constraints is None:
+    BoTorch's constrained MC acquisitions compute feasibility indicators before
+    their q-reduction. With one-to-many InputPerturbation, posterior samples have
+    q_like = q * n_w. Therefore both the objective values and the constraint
+    values must remain on q_like at the constraint-weighting step. Aggregating the
+    objective or the constraints to q at this stage causes q versus q*n_w shape
+    errors inside BoTorch.
+    """
+
+    if bundle is None or config.constraints is None or config.objective_config is None:
         return config
-    n_w = _engine._input_transform_n_w_from_bundle(bundle)
+    n_w = _engine._input_transform_n_w_from_bundle(bundle, output=config.objective_config.output)
     if n_w is None or int(n_w) <= 1:
         return config
+    if config.objective_config.risk_type is not None:
+        return config
+    if config.objective_config.aggregate_mean_when_no_risk is False:
+        return config
+    if "aggregate_mean_when_no_risk" in config.objective_config.objective_kwargs:
+        return config
 
-    from bochan.acquisition.feasible import wrap_sample_constraints_for_input_perturbation
-
-    reduction = config.acqf_kwargs.get(
-        "constraint_perturbation_reduction",
-        config.acqf_kwargs.get("perturbation_reduction", "mean"),
+    return replace(
+        config,
+        objective_config=replace(
+            config.objective_config,
+            aggregate_mean_when_no_risk=False,
+        ),
     )
-    wrapped_constraints = wrap_sample_constraints_for_input_perturbation(
-        config.constraints,
-        n_w=int(n_w),
-        reduction=reduction,
-    )
-
-    kwargs = dict(config.acqf_kwargs)
-    if kwargs.get("constraints") is config.constraints:
-        kwargs["constraints"] = wrapped_constraints
-
-    return replace(config, constraints=wrapped_constraints, acqf_kwargs=kwargs)
 
 
 def _resolve_objective(
@@ -264,7 +268,7 @@ def _resolve_objective(
         acq_config=acq_config,
         bundle=bundle,
     )
-    resolved = _wrap_input_perturbation_constraints(bundle=bundle, config=resolved)
+    resolved = _keep_constrained_perturbation_q_expanded(bundle=bundle, config=resolved)
     if (
         bundle is None
         or str(bundle.task_type) != "multiclass"

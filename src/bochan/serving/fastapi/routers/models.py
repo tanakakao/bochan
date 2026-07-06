@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from bochan.api import BayesianOptimizer
 
-from ..converters import model_metadata, to_fit_config, to_data_context, to_model_config, to_tensor
+from ..converters import model_metadata, to_data_context, to_fit_config, to_model_config, to_tensor
 from ..dependencies import InMemoryOptimizerStore, get_optimizer_store
 from ..schemas import FitModelRequest, ModelDeleteResponse, ModelFitResponse, ModelListResponse, RefitModelRequest, TellRequest
 
@@ -34,12 +34,13 @@ def fit_model(
     store: InMemoryOptimizerStore = Depends(get_optimizer_store),
 ) -> ModelFitResponse:
     try:
-        train_X = to_tensor(request.train_X)
-        train_Y = to_tensor(request.train_Y)
-        bounds = to_tensor(request.bounds) if request.bounds is not None else None
-        model_config = to_model_config(request.bo_model_config)
+        options = request.tensor_options
+        train_X = to_tensor(request.train_X, options)
+        train_Y = to_tensor(request.train_Y, options)
+        bounds = to_tensor(request.bounds, options) if request.bounds is not None else None
+        model_config = to_model_config(request.bo_model_config, options)
         fit_config = to_fit_config(request.fit_config)
-        data_context = to_data_context(request.data_context) if request.data_context is not None else None
+        data_context = to_data_context(request.data_context, options) if request.data_context is not None else None
 
         optimizer = BayesianOptimizer(
             model_config=model_config,
@@ -84,8 +85,9 @@ def tell_model(
 ) -> ModelFitResponse:
     try:
         optimizer = store.get(model_id)
-        new_X = to_tensor(request.new_X)
-        new_Y = to_tensor(request.new_Y)
+        options = request.tensor_options
+        new_X = to_tensor(request.new_X, options)
+        new_Y = to_tensor(request.new_Y, options)
         fit_config = to_fit_config(request.fit_config) if request.fit_config is not None else None
         optimizer.tell(new_X, new_Y, refit=request.refit, fit_config=fit_config)
         return _model_fit_response(model_id, optimizer)

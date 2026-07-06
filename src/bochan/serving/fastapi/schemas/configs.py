@@ -33,7 +33,11 @@ class FitConfigSchema(_Schema):
     fit_kwargs: dict[str, Any] = Field(default_factory=dict)
     mll_kwargs: dict[str, Any] = Field(default_factory=dict)
     skip_fit: bool = False
+    fit_func: Any | None = None
+    mll_factory: Any | None = None
+    mll_cls: Any | None = None
     use_model_make_mll: bool = True
+    beta: float | None = None
 
 
 class OutputConfigSchema(_Schema):
@@ -101,9 +105,16 @@ class ObjectiveConfigSchema(_Schema):
 
 
 class OutcomeConstraintConfigSchema(_Schema):
+    constraints: list[Any] | None = None
     output_indices: list[int] = Field(default_factory=list)
     operators: list[Literal["ge", "gt", "le", "lt"]] = Field(default_factory=list)
     thresholds: list[float] = Field(default_factory=list)
+    eta: float = 1e-3
+    reduce_constraints: str = "prod"
+    reduce_q: str = "mean"
+    posterior_mode: str = "objective"
+    min_feasibility: float = 0.0
+    detach_feasibility: bool = False
 
     @model_validator(mode="after")
     def validate_parallel_lengths(self):
@@ -150,7 +161,12 @@ class DataContextSchema(_Schema):
 
 class AcquisitionConfigSchema(_Schema):
     name: str
+    acqf_cls: Any | None = None
+    acqf_factory: Any | None = None
+    objective: Any | None = None
     objective_config: ObjectiveConfigSchema | None = None
+    objective_factory: Any | None = None
+    objective_kwargs: dict[str, Any] = Field(default_factory=dict)
     constraints: Any | None = None
     outcome_constraint_config: OutcomeConstraintConfigSchema | None = None
     sampler: Any | None = None
@@ -207,7 +223,9 @@ class OptimizeConfigSchema(_Schema):
     raw_samples: int = 256
     sequential: bool = False
     optimizer: Any = "optimize_acqf"
+    evo_method: Literal["ga", "pso", "sa", "cmaes"] = "ga"
     optimizer_kwargs: dict[str, Any] = Field(default_factory=dict)
+    post_processing_func: Any | None = None
     repair_config: CandidateRepairConfigSchema | None = None
     fixed_features: dict[int, float] | None = None
     fixed_features_list: list[dict[int, float]] | None = None

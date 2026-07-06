@@ -9,6 +9,7 @@ from torch import Tensor
 
 ConstraintSense = Literal["ge", "le", "eq"]
 OrdinalRankSense = Literal["ge", "le", "eq"]
+PerturbationReduction = Literal["mean", "min", "max", "prod"]
 OutputKey = Union[int, str]
 
 
@@ -185,10 +186,105 @@ def constraint_value_from_ordinal_probs(
     return value / float(spec.scale)
 
 
+def reduce_input_perturbation_values(
+    value: Tensor,
+    *,
+    n_w: int | None,
+    reduction: PerturbationReduction = "mean",
+) -> Tensor:
+    """Reduce the perturbation-expanded q dimension back to the original q.
+
+    InputPerturbation expands an input q-batch from ``q`` to ``q * n_w``. BoTorch
+    constrained MC acquisitions multiply acquisition values shaped ``... x q``
+    by feasibility indicators from the raw posterior samples. Without reducing
+    the constraint value, the indicator keeps shape ``... x (q * n_w)`` and can
+    no longer be multiplied with the acquisition values.
+    """
+
+    if n_w is None or int(n_w) <= 1:
+        return value
+    n_w = int(n_w)
+    if reduction not in {"mean", "min", "max", "prod"}:
+        raise ValueError("reduction must be 'mean', 'min', 'max', or 'prod'.")
+    if value.ndim < 1:
+        return value
+    q_times_n_w = int(value.shape[-1])
+    if q_times_n_w % n_w != 0:
+        raise RuntimeError(
+            "Cannot reduce input-perturbation constraint values because the "
+            f"last dimension {q_times_n_w} is not divisible by n_w={n_w}. "
+            f"value.shape={tuple(value.shape)}."
+        )
+    q = q_times_n_w // n_w
+    reshaped = value.reshape(*value.shape[:-1], q, n_w)
+    if reduction == "mean":
+        return reshaped.mean(dim=-1)
+    if reduction == "min":
+        return reshaped.min(dim=-1).values
+    if reduction == "max":
+        return reshaped.max(dim=-1).values
+    if reduction == "prod":
+        return reshaped.prod(dim=-1)
+    raise ValueError(f"Unknown reduction={reduction!r}.")
+
+
+def wrap_sample_constraint_for_input_perturbation(
+    constraint: Callable[[Tensor], Tensor],
+    *,
+    n_w: int | None,
+    reduction: PerturbationReduction = "mean",
+) -> Callable[[Tensor], Tensor]:
+    """Wrap an existing BoTorch sample constraint for InputPerturbation.
+
+    The wrapped callable first evaluates the original constraint, then reduces
+    the final q-like dimension from ``q * n_w`` back to ``q``.
+    """
+
+    if n_w is None or int(n_w) <= 1:
+        return constraint
+    n_w = int(n_w)
+    if getattr(constraint, "_bochan_input_perturbation_n_w", None) == n_w:
+        if getattr(constraint, "_bochan_input_perturbation_reduction", None) == reduction:
+            return constraint
+
+    def wrapped(samples: Tensor) -> Tensor:
+        value = constraint(samples)
+        return reduce_input_perturbation_values(
+            value,
+            n_w=n_w,
+            reduction=reduction,
+        )
+
+    setattr(wrapped, "_bochan_input_perturbation_n_w", n_w)
+    setattr(wrapped, "_bochan_input_perturbation_reduction", reduction)
+    setattr(wrapped, "_bochan_wrapped_constraint", constraint)
+    return wrapped
+
+
+def wrap_sample_constraints_for_input_perturbation(
+    constraints: Sequence[Callable[[Tensor], Tensor]],
+    *,
+    n_w: int | None,
+    reduction: PerturbationReduction = "mean",
+) -> list[Callable[[Tensor], Tensor]]:
+    """Wrap multiple BoTorch sample constraints for InputPerturbation."""
+
+    return [
+        wrap_sample_constraint_for_input_perturbation(
+            constraint,
+            n_w=n_w,
+            reduction=reduction,
+        )
+        for constraint in constraints
+    ]
+
+
 def make_sample_constraint(
     spec: FeasibilityConstraintSpec | OrdinalRankConstraintSpec,
     *,
     output_names: Optional[Sequence[str]] = None,
+    input_perturbation_n_w: int | None = None,
+    perturbation_reduction: PerturbationReduction = "mean",
 ) -> Callable[[Tensor], Tensor]:
     """BoTorch MC acquisition の ``constraints`` に渡せる callable を作る。
 
@@ -207,7 +303,12 @@ def make_sample_constraint(
         # output が指定されている場合でも、通常の [..., m] 形式から K クラス確率を
         # 復元することはできないため、ここでは最後の次元を class dimension とみなす。
         def ordinal_constraint(samples: Tensor) -> Tensor:
-            return constraint_value_from_ordinal_probs(samples, spec)
+            value = constraint_value_from_ordinal_probs(samples, spec)
+            return reduce_input_perturbation_values(
+                value,
+                n_w=input_perturbation_n_w,
+                reduction=perturbation_reduction,
+            )
 
         return ordinal_constraint
 
@@ -220,7 +321,12 @@ def make_sample_constraint(
                 f"samples.shape={tuple(samples.shape)}."
             )
         y = samples[..., idx]
-        return constraint_value_from_output(y, spec)
+        value = constraint_value_from_output(y, spec)
+        return reduce_input_perturbation_values(
+            value,
+            n_w=input_perturbation_n_w,
+            reduction=perturbation_reduction,
+        )
 
     return constraint
 
@@ -229,10 +335,20 @@ def make_sample_constraints(
     specs: Sequence[FeasibilityConstraintSpec | OrdinalRankConstraintSpec],
     *,
     output_names: Optional[Sequence[str]] = None,
+    input_perturbation_n_w: int | None = None,
+    perturbation_reduction: PerturbationReduction = "mean",
 ) -> list[Callable[[Tensor], Tensor]]:
     """複数の constraint spec を BoTorch 互換 callable の list に変換する。"""
 
-    return [make_sample_constraint(spec, output_names=output_names) for spec in specs]
+    return [
+        make_sample_constraint(
+            spec,
+            output_names=output_names,
+            input_perturbation_n_w=input_perturbation_n_w,
+            perturbation_reduction=perturbation_reduction,
+        )
+        for spec in specs
+    ]
 
 
 def evaluate_sample_constraints(
@@ -240,6 +356,8 @@ def evaluate_sample_constraints(
     specs: Sequence[FeasibilityConstraintSpec | OrdinalRankConstraintSpec],
     *,
     output_names: Optional[Sequence[str]] = None,
+    input_perturbation_n_w: int | None = None,
+    perturbation_reduction: PerturbationReduction = "mean",
 ) -> Tensor:
     """samples 上で複数制約を評価する。
 
@@ -251,7 +369,12 @@ def evaluate_sample_constraints(
 
     values = []
     for spec in specs:
-        fn = make_sample_constraint(spec, output_names=output_names)
+        fn = make_sample_constraint(
+            spec,
+            output_names=output_names,
+            input_perturbation_n_w=input_perturbation_n_w,
+            perturbation_reduction=perturbation_reduction,
+        )
         values.append(fn(samples).unsqueeze(-1))
 
     if len(values) == 0:
@@ -305,6 +428,7 @@ __all__ = [
     "OrdinalRankConstraintSpec",
     "OrdinalRankSense",
     "OutputKey",
+    "PerturbationReduction",
     "constraint_value_from_ordinal_probs",
     "constraint_value_from_output",
     "evaluate_sample_constraints",
@@ -312,5 +436,8 @@ __all__ = [
     "make_sample_constraints",
     "normalize_output_index",
     "ordinal_rank_probability",
+    "reduce_input_perturbation_values",
     "soft_feasibility_from_constraint_values",
+    "wrap_sample_constraint_for_input_perturbation",
+    "wrap_sample_constraints_for_input_perturbation",
 ]

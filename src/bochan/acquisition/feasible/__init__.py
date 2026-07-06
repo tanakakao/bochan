@@ -4,6 +4,7 @@ from .constraints import (
     OrdinalRankConstraintSpec,
     OrdinalRankSense,
     OutputKey,
+    PerturbationReduction,
     constraint_value_from_ordinal_probs,
     constraint_value_from_output,
     evaluate_sample_constraints,
@@ -11,7 +12,10 @@ from .constraints import (
     make_sample_constraints,
     normalize_output_index,
     ordinal_rank_probability,
+    reduce_input_perturbation_values,
     soft_feasibility_from_constraint_values,
+    wrap_sample_constraint_for_input_perturbation,
+    wrap_sample_constraints_for_input_perturbation,
 )
 from .wrapper import (
     ConstraintReduction,
@@ -30,6 +34,7 @@ __all__ = [
     "OrdinalRankConstraintSpec",
     "OrdinalRankSense",
     "OutputKey",
+    "PerturbationReduction",
     "PosteriorMode",
     "QReduction",
     "constraint_value_from_ordinal_probs",
@@ -39,5 +44,8 @@ __all__ = [
     "make_sample_constraints",
     "normalize_output_index",
     "ordinal_rank_probability",
+    "reduce_input_perturbation_values",
     "soft_feasibility_from_constraint_values",
+    "wrap_sample_constraint_for_input_perturbation",
+    "wrap_sample_constraints_for_input_perturbation",
 ]

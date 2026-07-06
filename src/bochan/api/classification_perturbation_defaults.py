@@ -8,6 +8,7 @@ from typing import Any
 from . import engine as _engine
 from . import engine_defaults as _engine_defaults
 from . import factory as _factory
+from .automatic_default_utils import _num_outputs as _bundle_num_outputs
 from .configs import AcquisitionConfig, ModelBundle, ObjectiveConfig
 
 
@@ -15,6 +16,7 @@ _APPLIED = False
 _BASE_BUILD_OBJECTIVE = _factory.build_objective
 _BASE_BUILD_ORDINAL = _factory._build_ordinal_objective
 _BASE_RESOLVE_OBJECTIVE = _engine._resolve_objective_config_n_w_from_input_transform
+_BASE_RESOLVE_NPAREGO_CLASS = _engine_defaults._resolve_default_regression_nparego_class
 
 
 def _normalize(value: Any) -> str:
@@ -60,6 +62,34 @@ def _num_outputs(bundle: ModelBundle) -> int:
     except (AttributeError, TypeError, ValueError):
         shape = getattr(bundle.train_Y, "shape", None)
         return 1 if shape is None or len(shape) <= 1 else int(shape[-1])
+
+
+def _resolve_hybrid_nparego_class(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+) -> AcquisitionConfig:
+    """Route hybrid multi-output NParEGO to bochan's vector implementation.
+
+    ``engine_defaults`` historically only applies this route when
+    ``bundle.task_type == 'regression'``. A heterogeneous Hybrid bundle still
+    exposes a vector objective space and must use the same self-scalarizing
+    NParEGO implementation; otherwise the generic ``qExpectedImprovement``
+    path returns one value per candidate, shaped ``t_batch x q``.
+    """
+
+    resolved = _BASE_RESOLVE_NPAREGO_CLASS(bundle, config)
+    if resolved.acqf_cls is not config.acqf_cls:
+        return resolved
+    if _normalize(config.name) not in {"nparego", "qnparego"}:
+        return config
+    if str(bundle.task_type) != "hybrid" or _bundle_num_outputs(bundle.train_Y) < 2:
+        return config
+
+    from bochan.acquisition.regression.bayesian_optimization import (
+        qMultiOutputRegressionNParEGO,
+    )
+
+    return replace(config, acqf_cls=qMultiOutputRegressionNParEGO)
 
 
 def _signs(bundle: ModelBundle, config: ObjectiveConfig, kwargs: dict[str, Any]):
@@ -244,6 +274,9 @@ def apply_classification_perturbation_defaults() -> None:
     _factory.build_objective = _build_objective
     _engine._resolve_objective_config_n_w_from_input_transform = _resolve_objective
     _engine_defaults._resolve_objective_config_n_w_from_input_transform = _resolve_objective
+    _engine_defaults._resolve_default_regression_nparego_class = (
+        _resolve_hybrid_nparego_class
+    )
     apply_hetero_ordinal_perturbation_compat()
     _APPLIED = True
 

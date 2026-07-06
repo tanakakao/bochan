@@ -17,24 +17,14 @@ OutputKey = Union[int, str]
 class FeasibilityConstraintSpec:
     """Feasible acquisition 用の outcome constraint 定義。
 
-    BoTorch の MC acquisition に渡す constraint callable は、
-    feasible なときに ``constraint(samples) <= 0`` を返す必要がある。
+    ``target_class`` / ``target_classes`` を指定しない場合は、posterior sample
+    の1出力値をしきい値判定する。指定した場合は、対象 output の class
+    probability から ``P(class == target_class)`` または
+    ``P(class in target_classes)`` を計算してしきい値判定する。
 
-    Args:
-        output:
-            posterior samples の最後の出力次元 index、または
-            `HybridMultiOutputModel.output_names` に含まれる出力名。
-        threshold:
-            制約の閾値。
-        sense:
-            - ``"ge"``: ``y >= threshold`` を feasible とする。
-            - ``"le"``: ``y <= threshold`` を feasible とする。
-            - ``"eq"``: ``abs(y - threshold) <= margin`` を feasible とする。
-        margin:
-            ``sense="eq"`` の許容幅。
-        scale:
-            constraint value のスケール調整。BoTorch の sigmoid feasibility で
-            constraint 間の感度を揃えたい場合に使う。
+    BoTorch 標準 ``constraints=`` は sample だけを受け取るため、class
+    probability 制約は model access がある ``outcome_constraint_config`` /
+    ``FeasibilityWeightedAcquisition`` 経由で使うのが基本。
     """
 
     output: OutputKey
@@ -42,6 +32,8 @@ class FeasibilityConstraintSpec:
     sense: ConstraintSense = "ge"
     margin: float = 0.0
     scale: float = 1.0
+    target_class: int | None = None
+    target_classes: Sequence[int] | None = None
 
     def __post_init__(self) -> None:
         if self.sense not in {"ge", "le", "eq"}:
@@ -50,6 +42,31 @@ class FeasibilityConstraintSpec:
             raise ValueError("scale must be positive.")
         if self.sense == "eq" and float(self.margin) < 0.0:
             raise ValueError("margin must be non-negative for equality constraints.")
+        if self.target_class is not None and self.target_classes is not None:
+            raise ValueError("Specify either target_class or target_classes, not both.")
+        if self.target_class is not None:
+            if int(self.target_class) < 0:
+                raise ValueError("target_class must be non-negative.")
+            object.__setattr__(self, "target_class", int(self.target_class))
+        if self.target_classes is not None:
+            classes = [int(cls) for cls in self.target_classes]
+            if len(classes) == 0:
+                raise ValueError("target_classes must not be empty.")
+            if any(cls < 0 for cls in classes):
+                raise ValueError("target_classes must contain non-negative class indices.")
+            object.__setattr__(self, "target_classes", tuple(classes))
+
+    @property
+    def has_target_classes(self) -> bool:
+        return self.target_class is not None or self.target_classes is not None
+
+    @property
+    def resolved_target_classes(self) -> tuple[int, ...]:
+        if self.target_class is not None:
+            return (int(self.target_class),)
+        if self.target_classes is not None:
+            return tuple(int(cls) for cls in self.target_classes)
+        return ()
 
 
 @dataclass(frozen=True)
@@ -59,22 +76,6 @@ class OrdinalRankConstraintSpec:
     例:
         ``OrdinalRankConstraintSpec("quality_rank", rank=2, sense="ge", probability_threshold=0.8)``
         は ``P(y >= 2) >= 0.8`` を feasible とする。
-
-    Args:
-        output:
-            ordinal 出力の index または name。
-            `FeasibilityWeightedAcquisition` では `HybridMultiOutputModel.output_names` と
-            `class_probs_list` を使って該当 ordinal 出力の class probability を取得する。
-        rank:
-            しきい値にするランク。通常は 0 始まりのクラス index。
-        sense:
-            - ``"ge"``: ``P(y >= rank) >= probability_threshold``。
-            - ``"le"``: ``P(y <= rank) >= probability_threshold``。
-            - ``"eq"``: ``P(y == rank) >= probability_threshold``。
-        probability_threshold:
-            feasibility に必要な累積 / 点確率の下限。
-        scale:
-            constraint value のスケール調整。
     """
 
     output: OutputKey
@@ -93,6 +94,7 @@ class OrdinalRankConstraintSpec:
             raise ValueError("probability_threshold must be in [0, 1].")
         if float(self.scale) <= 0.0:
             raise ValueError("scale must be positive.")
+        object.__setattr__(self, "rank", int(self.rank))
 
 
 def normalize_output_index(
@@ -126,13 +128,10 @@ def constraint_value_from_output(y: Tensor, spec: FeasibilityConstraintSpec) -> 
     scale = float(spec.scale)
 
     if spec.sense == "ge":
-        # y >= threshold  <=>  threshold - y <= 0
         value = threshold - y
     elif spec.sense == "le":
-        # y <= threshold  <=>  y - threshold <= 0
         value = y - threshold
     elif spec.sense == "eq":
-        # |y - threshold| <= margin  <=>  |y - threshold| - margin <= 0
         value = torch.abs(y - threshold) - float(spec.margin)
     else:
         raise ValueError(f"Unknown sense={spec.sense!r}.")
@@ -140,19 +139,36 @@ def constraint_value_from_output(y: Tensor, spec: FeasibilityConstraintSpec) -> 
     return value / scale
 
 
+def class_probability_from_probs(probs: Tensor, spec: FeasibilityConstraintSpec) -> Tensor:
+    """class probability tensor から指定クラスの確率を取り出す。"""
+
+    classes = spec.resolved_target_classes
+    if len(classes) == 0:
+        raise ValueError("target_class or target_classes is required.")
+    if probs.ndim < 1:
+        raise ValueError("probs must have a final class dimension.")
+    num_classes = int(probs.shape[-1])
+    if any(cls >= num_classes for cls in classes):
+        raise IndexError(
+            f"target classes {classes} are out of range for probs.shape={tuple(probs.shape)}."
+        )
+    class_idx = torch.as_tensor(classes, dtype=torch.long, device=probs.device)
+    selected = probs.index_select(dim=-1, index=class_idx)
+    return selected.sum(dim=-1)
+
+
+def constraint_value_from_class_probs(
+    probs: Tensor,
+    spec: FeasibilityConstraintSpec,
+) -> Tensor:
+    """class probabilities から BoTorch 形式の constraint value を計算する。"""
+
+    p = class_probability_from_probs(probs, spec)
+    return constraint_value_from_output(p, spec)
+
+
 def ordinal_rank_probability(probs: Tensor, spec: OrdinalRankConstraintSpec) -> Tensor:
-    """ordinal class probabilities から rank 条件の確率を計算する。
-
-    Args:
-        probs:
-            shape ``[..., K]`` の class probability。
-        spec:
-            ordinal rank constraint spec。
-
-    Returns:
-        Tensor:
-            shape ``probs.shape[:-1]``。
-    """
+    """ordinal class probabilities から rank 条件の確率を計算する。"""
 
     if probs.ndim < 1:
         raise ValueError("probs must have at least one class dimension.")
@@ -175,11 +191,7 @@ def constraint_value_from_ordinal_probs(
     probs: Tensor,
     spec: OrdinalRankConstraintSpec,
 ) -> Tensor:
-    """ordinal probabilities から BoTorch 形式の constraint value を計算する。
-
-    feasible 条件は ``ordinal_rank_probability(probs, spec) >= probability_threshold``。
-    戻り値は feasible なときに ``<= 0`` になる。
-    """
+    """ordinal probabilities から BoTorch 形式の constraint value を計算する。"""
 
     p_rank = ordinal_rank_probability(probs, spec)
     value = float(spec.probability_threshold) - p_rank
@@ -192,14 +204,7 @@ def reduce_input_perturbation_values(
     n_w: int | None,
     reduction: PerturbationReduction = "mean",
 ) -> Tensor:
-    """Reduce the perturbation-expanded q dimension back to the original q.
-
-    InputPerturbation expands an input q-batch from ``q`` to ``q * n_w``. BoTorch
-    constrained MC acquisitions multiply acquisition values shaped ``... x q``
-    by feasibility indicators from the raw posterior samples. Without reducing
-    the constraint value, the indicator keeps shape ``... x (q * n_w)`` and can
-    no longer be multiplied with the acquisition values.
-    """
+    """Reduce the perturbation-expanded q dimension back to the original q."""
 
     if n_w is None or int(n_w) <= 1:
         return value
@@ -234,11 +239,7 @@ def wrap_sample_constraint_for_input_perturbation(
     n_w: int | None,
     reduction: PerturbationReduction = "mean",
 ) -> Callable[[Tensor], Tensor]:
-    """Wrap an existing BoTorch sample constraint for InputPerturbation.
-
-    The wrapped callable first evaluates the original constraint, then reduces
-    the final q-like dimension from ``q * n_w`` back to ``q``.
-    """
+    """Wrap an existing BoTorch sample constraint for InputPerturbation."""
 
     if n_w is None or int(n_w) <= 1:
         return constraint
@@ -288,20 +289,13 @@ def make_sample_constraint(
 ) -> Callable[[Tensor], Tensor]:
     """BoTorch MC acquisition の ``constraints`` に渡せる callable を作る。
 
-    Notes:
-        ``FeasibilityConstraintSpec`` は samples の最後の出力次元から1列を取り出す。
-        ``OrdinalRankConstraintSpec`` は、samples の最後の次元に ordinal class probability
-        が並んでいる場合に使う。つまり samples 自体が ``[..., K]``、または
-        ``output`` で選んだ要素が ``[..., K]`` になる posterior を想定する。
-        通常の `HybridMultiOutputModel.objective_posterior` は expected utility だけを
-        返すため、BoTorch 標準 ``constraints=`` では `FeasibilityConstraintSpec` を使う。
-        rank probability 制約は `FeasibilityWeightedAcquisition` と組み合わせるのが基本。
+    ``target_class`` / ``target_classes`` 付きの ``FeasibilityConstraintSpec``
+    は class probability tensor を必要とするため、通常は
+    ``FeasibilityWeightedAcquisition`` 経由で使う。ここでは samples が
+    class probability を含む特殊ケースのみサポートする。
     """
 
     if isinstance(spec, OrdinalRankConstraintSpec):
-        # samples が [..., K] の ordinal probability そのものとして渡るケースを扱う。
-        # output が指定されている場合でも、通常の [..., m] 形式から K クラス確率を
-        # 復元することはできないため、ここでは最後の次元を class dimension とみなす。
         def ordinal_constraint(samples: Tensor) -> Tensor:
             value = constraint_value_from_ordinal_probs(samples, spec)
             return reduce_input_perturbation_values(
@@ -315,13 +309,20 @@ def make_sample_constraint(
     idx = normalize_output_index(spec.output, output_names=output_names)
 
     def constraint(samples: Tensor) -> Tensor:
-        if samples.shape[-1] <= idx:
-            raise IndexError(
-                f"Constraint output index {idx} is out of range for "
-                f"samples.shape={tuple(samples.shape)}."
-            )
-        y = samples[..., idx]
-        value = constraint_value_from_output(y, spec)
+        if spec.has_target_classes:
+            if samples.ndim >= 2 and samples.shape[-2] > idx:
+                probs = samples[..., idx, :]
+            else:
+                probs = samples
+            value = constraint_value_from_class_probs(probs, spec)
+        else:
+            if samples.shape[-1] <= idx:
+                raise IndexError(
+                    f"Constraint output index {idx} is out of range for "
+                    f"samples.shape={tuple(samples.shape)}."
+                )
+            y = samples[..., idx]
+            value = constraint_value_from_output(y, spec)
         return reduce_input_perturbation_values(
             value,
             n_w=input_perturbation_n_w,
@@ -359,13 +360,7 @@ def evaluate_sample_constraints(
     input_perturbation_n_w: int | None = None,
     perturbation_reduction: PerturbationReduction = "mean",
 ) -> Tensor:
-    """samples 上で複数制約を評価する。
-
-    Returns:
-        Tensor:
-            shape は ``samples.shape[:-1] + (n_constraints,)``。
-            最後の制約次元の各値が ``<= 0`` なら feasible。
-    """
+    """samples 上で複数制約を評価する。"""
 
     values = []
     for spec in specs:
@@ -389,21 +384,7 @@ def soft_feasibility_from_constraint_values(
     eta: float = 1e-3,
     reduce_constraints: Literal["prod", "min", "mean", "none"] = "prod",
 ) -> Tensor:
-    """constraint value から soft feasibility を計算する。
-
-    Args:
-        values:
-            ``[..., n_constraints]``。各 constraint は ``<= 0`` が feasible。
-        eta:
-            sigmoid の温度。小さいほど hard constraint に近い。
-        reduce_constraints:
-            複数制約の集約方法。
-
-    Returns:
-        Tensor:
-            ``reduce_constraints='none'`` の場合は ``values`` と同じ shape。
-            それ以外は最後の制約次元を集約した Tensor。
-    """
+    """constraint value から soft feasibility を計算する。"""
 
     if float(eta) <= 0.0:
         raise ValueError("eta must be positive.")
@@ -429,6 +410,8 @@ __all__ = [
     "OrdinalRankSense",
     "OutputKey",
     "PerturbationReduction",
+    "class_probability_from_probs",
+    "constraint_value_from_class_probs",
     "constraint_value_from_ordinal_probs",
     "constraint_value_from_output",
     "evaluate_sample_constraints",

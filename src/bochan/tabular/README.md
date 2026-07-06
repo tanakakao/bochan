@@ -829,29 +829,70 @@ bo.tell(
 
 ## 18. 予測
 
-DataFrame を直接渡して予測できます。
+`bochan.tabular` の `predict()` は、ユーザー側に `torch.Tensor` や posterior object を出さないため、既定で pandas `DataFrame` を返します。出力には期待値とばらつきの両方を含めます。
 
 ```python
-posterior = bo.predict(df[["x1", "x2", "x3"]])
-mean = posterior.mean
-variance = posterior.variance
+pred_df = bo.predict(df[["x1", "x2", "x3"]])
+print(pred_df)
 ```
 
-既存の tensor API と同様に `return_type` も指定できます。
+単一目的の回帰で `target_cols="y"` の場合、列名は次のようになります。
+
+```text
+y_mean
+y_variance
+```
+
+複数目的の場合は目的変数名ごとに列が作られます。
+
+```text
+yield_mean
+yield_variance
+defect_rate_mean
+defect_rate_variance
+```
+
+multiclass / ordinal のように class 次元を持つ場合は、class index を含めた列名になります。
+
+```text
+label_class_0_mean
+label_class_1_mean
+label_class_2_mean
+label_class_0_variance
+label_class_1_variance
+label_class_2_variance
+```
+
+入力列も同じ DataFrame に含めたい場合は `include_input=True` を指定します。
 
 ```python
-mean = bo.predict(
+pred_df = bo.predict(
     df[["x1", "x2", "x3"]],
-    return_type="mean",
+    include_input=True,
 )
 ```
 
-入力 DataFrame も一緒に返したい場合です。
+出力 DataFrame の `attrs` には、予測空間や分散の意味を残します。
 
 ```python
-prediction, input_df = bo.predict(
+pred_df.attrs["task_type"]
+pred_df.attrs["prediction_space"]
+pred_df.attrs["variance_kind"]
+```
+
+binary classification では `prediction_space="probability"` になり、`mean` はクラス1確率、`variance` は通常 `p * (1 - p)` に対応する Bernoulli 観測分散です。
+
+従来の tensor API 相当の戻り値が必要な場合だけ、`return_type` を明示します。この場合は低レベル互換用であり、戻り値は tensor / posterior object になります。
+
+```python
+posterior = bo.predict(
     df[["x1", "x2", "x3"]],
-    return_dataframe_input=True,
+    return_type="posterior",
+)
+
+mean, variance = bo.predict(
+    df[["x1", "x2", "x3"]],
+    return_type="mean_variance",
 )
 ```
 
@@ -932,3 +973,4 @@ bo.train_Y
 - 目的変数の文字列カテゴリは学習用に label encoding されます。候補点 DataFrame には目的変数は含まれません。
 - numpy 入力で文字列カテゴリや欠損値補完を本格的に使う場合は、DataFrame に変換してから使う方が扱いやすいです。
 - `FitConfig.beta` と UCB の `acqf_kwargs["beta"]` は別物です。前者は学習時の MLL / ELBO 側、後者は acquisition 側の探索パラメータです。
+- `predict()` は既定で DataFrame を返します。`return_type="posterior"`, `return_type="mean"`, `return_type="variance"`, `return_type="mean_variance"` は低レベル互換用です。

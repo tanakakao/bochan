@@ -104,6 +104,14 @@ class OutcomeConstraintConfig:
     def has_spec_constraints(self) -> bool:
         return bool(self.constraints)
 
+    def has_named_outputs(self) -> bool:
+        """Return whether spec constraints need model output names to build."""
+
+        for spec in self.constraints or []:
+            if isinstance(getattr(spec, "output", None), str):
+                return True
+        return False
+
     def has_model_dependent_constraints(self) -> bool:
         """Return whether constraints require model access, not just samples."""
 
@@ -130,6 +138,8 @@ class OutcomeConstraintConfig:
 
         if self.has_spec_constraints():
             if self.has_model_dependent_constraints():
+                return []
+            if output_names is None and self.has_named_outputs():
                 return []
             from bochan.acquisition.feasible import make_sample_constraints
 

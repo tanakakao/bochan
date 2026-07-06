@@ -13,6 +13,7 @@ from .configs import AcquisitionConfig, ModelBundle, ObjectiveConfig
 
 
 _APPLIED = False
+_BASE_BUILD_ACQUISITION = _factory.build_acquisition
 _BASE_BUILD_OBJECTIVE = _factory.build_objective
 _BASE_BUILD_ORDINAL = _factory._build_ordinal_objective
 _BASE_RESOLVE_OBJECTIVE = _engine._resolve_objective_config_n_w_from_input_transform
@@ -64,18 +65,55 @@ def _num_outputs(bundle: ModelBundle) -> int:
         return 1 if shape is None or len(shape) <= 1 else int(shape[-1])
 
 
+def _output_names(bundle: ModelBundle | None) -> list[str] | None:
+    if bundle is None:
+        return None
+    names = getattr(bundle.model, "output_names", None)
+    if callable(names):
+        names = names()
+    return None if names is None else list(names)
+
+
+def _resolve_outcome_constraint_config(
+    *,
+    bundle: ModelBundle | None,
+    config: AcquisitionConfig,
+) -> AcquisitionConfig:
+    """Resolve deferred high-level outcome constraints once model outputs exist."""
+
+    constraint_config = getattr(config, "outcome_constraint_config", None)
+    if constraint_config is None:
+        return config
+    if isinstance(constraint_config, dict):
+        from .acquisition_config import OutcomeConstraintConfig
+
+        constraint_config = OutcomeConstraintConfig(**constraint_config)
+        config.outcome_constraint_config = constraint_config
+
+    # Model-dependent class / rank constraints are applied by wrapping the base
+    # acquisition, not by BoTorch's sample-only constraints argument.
+    if constraint_config.wrapper_constraints():
+        kwargs = dict(config.acqf_kwargs)
+        kwargs.pop("constraints", None)
+        config.constraints = None
+        config.acqf_kwargs = kwargs
+        return config
+
+    if config.constraints is None:
+        built_constraints = constraint_config.build(output_names=_output_names(bundle))
+        if built_constraints:
+            kwargs = dict(config.acqf_kwargs)
+            kwargs["constraints"] = built_constraints
+            config.constraints = built_constraints
+            config.acqf_kwargs = kwargs
+    return config
+
+
 def _resolve_hybrid_nparego_class(
     bundle: ModelBundle,
     config: AcquisitionConfig,
 ) -> AcquisitionConfig:
-    """Route hybrid multi-output NParEGO to bochan's vector implementation.
-
-    ``engine_defaults`` historically only applies this route when
-    ``bundle.task_type == 'regression'``. A heterogeneous Hybrid bundle still
-    exposes a vector objective space and must use the same self-scalarizing
-    NParEGO implementation; otherwise the generic ``qExpectedImprovement``
-    path returns one value per candidate, shaped ``t_batch x q``.
-    """
+    """Route hybrid multi-output NParEGO to bochan's vector implementation."""
 
     resolved = _BASE_RESOLVE_NPAREGO_CLASS(bundle, config)
     if resolved.acqf_cls is not config.acqf_cls:
@@ -243,21 +281,56 @@ def _build_objective(
     return _build_multiclass(bundle, config)
 
 
+def _build_acquisition(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    data_context: Any | None = None,
+) -> Any:
+    """Build acquisition and wrap model-dependent outcome constraints."""
+
+    config = _resolve_outcome_constraint_config(bundle=bundle, config=config)
+    constraint_config = getattr(config, "outcome_constraint_config", None)
+    wrapper_constraints = [] if constraint_config is None else constraint_config.wrapper_constraints()
+    if not wrapper_constraints:
+        return _BASE_BUILD_ACQUISITION(bundle=bundle, config=config, data_context=data_context)
+
+    base_kwargs = dict(config.acqf_kwargs)
+    base_kwargs.pop("constraints", None)
+    base_config = replace(
+        config,
+        constraints=None,
+        outcome_constraint_config=None,
+        acqf_kwargs=base_kwargs,
+    )
+    base_acqf = _BASE_BUILD_ACQUISITION(
+        bundle=bundle,
+        config=base_config,
+        data_context=data_context,
+    )
+
+    from bochan.acquisition.feasible import FeasibilityWeightedAcquisition
+
+    return FeasibilityWeightedAcquisition(
+        acqf=base_acqf,
+        model=bundle.model,
+        constraints=wrapper_constraints,
+        eta=constraint_config.eta,
+        posterior_mode=constraint_config.posterior_mode,
+        reduce_constraints=constraint_config.reduce_constraints,
+        reduce_q=constraint_config.reduce_q,
+        min_feasibility=constraint_config.min_feasibility,
+        detach_feasibility=constraint_config.detach_feasibility,
+    )
+
+
 def _keep_constrained_perturbation_q_expanded(
     *,
     bundle: ModelBundle | None,
     config: AcquisitionConfig,
 ) -> AcquisitionConfig:
-    """Keep constrained MC acquisition objective and constraints shape-aligned.
+    """Keep constrained MC acquisition objective and constraints shape-aligned."""
 
-    BoTorch's constrained MC acquisitions compute feasibility indicators before
-    their q-reduction. With one-to-many InputPerturbation, posterior samples have
-    q_like = q * n_w. Therefore both the objective values and the constraint
-    values must remain on q_like at the constraint-weighting step. Aggregating the
-    objective or the constraints to q at this stage causes q versus q*n_w shape
-    errors inside BoTorch.
-    """
-
+    config = _resolve_outcome_constraint_config(bundle=bundle, config=config)
     if bundle is None or config.constraints is None or config.objective_config is None:
         return config
     n_w = _engine._input_transform_n_w_from_bundle(bundle, output=config.objective_config.output)
@@ -301,10 +374,6 @@ def _resolve_objective(
     if not _is_multi_output(bundle) or not _is_vector_strategy(resolved):
         return resolved
 
-    # A multiclass vector strategy always needs a class-reducing objective,
-    # regardless of whether InputPerturbation is enabled. Without it, NSGA-II
-    # receives raw probabilities shaped (..., q, m, C) instead of objective
-    # values shaped (..., q, m). n_w is only needed for perturbation aggregation.
     n_w = _engine._input_transform_n_w_from_bundle(bundle)
     return replace(
         resolved,
@@ -328,7 +397,9 @@ def apply_classification_perturbation_defaults() -> None:
     )
 
     _factory._build_ordinal_objective = _build_ordinal
+    _factory.build_acquisition = _build_acquisition
     _factory.build_objective = _build_objective
+    _engine.build_acquisition = _build_acquisition
     _engine._resolve_objective_config_n_w_from_input_transform = _resolve_objective
     _engine_defaults._resolve_objective_config_n_w_from_input_transform = _resolve_objective
     _engine_defaults._resolve_default_regression_nparego_class = (

@@ -68,6 +68,15 @@ class OutcomeConstraintConfig:
     operators: Sequence[ConstraintOperator] = field(default_factory=list)
     thresholds: Sequence[float] = field(default_factory=list)
 
+    # Settings used only when constraints need model access and are therefore
+    # applied through FeasibilityWeightedAcquisition.
+    eta: float = 1e-3
+    reduce_constraints: str = "prod"
+    reduce_q: str = "mean"
+    posterior_mode: str = "objective"
+    min_feasibility: float = 0.0
+    detach_feasibility: bool = False
+
     def __post_init__(self) -> None:
         self.output_indices = list(self.output_indices)
         self.operators = list(self.operators)
@@ -100,6 +109,8 @@ class OutcomeConstraintConfig:
                 "operators must contain only 'ge', 'gt', 'le', or 'lt'. "
                 f"Got invalid values: {invalid}"
             )
+        if float(self.eta) <= 0.0:
+            raise ValueError("eta must be positive.")
 
     def has_spec_constraints(self) -> bool:
         return bool(self.constraints)

@@ -19,7 +19,7 @@ def predict(
 ) -> PredictResponse:
     try:
         optimizer = store.get(model_id)
-        X = to_tensor(request.X)
+        X = to_tensor(request.X, request.tensor_options)
         result = optimizer.predict(
             X,
             return_type=request.return_type,

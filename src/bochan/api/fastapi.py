@@ -25,11 +25,12 @@ try:
 except Exception as exc:  # pragma: no cover - optional dependency import guard
     raise ImportError(
         "bochan.api.fastapi requires optional API dependencies. "
-        "Install with: pip install 'botorch_ext[api]'"
+        "Install with: pip install 'bochan[api]'"
     ) from exc
 
-from .configs import (
+from bochan.api import (
     AcquisitionConfig,
+    BayesianOptimizer,
     CandidateRepairConfig,
     DataContext,
     FitConfig,
@@ -37,10 +38,11 @@ from .configs import (
     ModelConfig,
     MultiObjectiveConfig,
     MultiOutputConfig,
+    ObjectiveConfig,
     OptimizeConfig,
+    OutcomeConstraintConfig,
     OutputConfig,
 )
-from .engine import BayesianOptimizer
 
 
 class APIBaseModel(BaseModel):
@@ -139,11 +141,7 @@ class PredictResponse(APIBaseModel):
 
 
 class SessionStore:
-    """Thread-safe in-memory store for fitted BayesianOptimizer sessions.
-
-    This is intended for local apps and prototypes. For production deployments,
-    replace it with an external store or create one optimizer per request.
-    """
+    """Thread-safe in-memory store for fitted BayesianOptimizer sessions."""
 
     def __init__(self) -> None:
         self._lock = RLock()
@@ -177,12 +175,12 @@ SESSION_STORE = SessionStore()
 def _torch_dtype(dtype: str) -> Any:
     import torch
 
-    normalized = str(dtype).lower()
-    if normalized in {"float64", "double", "torch.float64"}:
+    normalized = str(dtype).replace("torch.", "").lower()
+    if normalized in {"float64", "double"}:
         return torch.double
-    if normalized in {"float32", "float", "torch.float32"}:
+    if normalized in {"float32", "float"}:
         return torch.float
-    if normalized in {"int64", "long", "torch.int64"}:
+    if normalized in {"int64", "long"}:
         return torch.long
     raise ValueError(f"Unsupported tensor dtype: {dtype!r}.")
 
@@ -286,12 +284,12 @@ def _config_dict(data: dict[str, Any] | None) -> dict[str, Any]:
     return dict(data or {})
 
 
-def _build_input_transform_config(data: Any | None) -> InputTransformConfig | None:
+def _build_input_transform_config(data: Any | None, options: TensorOptions | None = None) -> InputTransformConfig | None:
     if data is None or isinstance(data, InputTransformConfig):
         return data
     raw = dict(data)
     if raw.get("bounds") is not None:
-        raw["bounds"] = _to_tensor(raw["bounds"])
+        raw["bounds"] = _to_tensor(raw["bounds"], options)
     return InputTransformConfig(**raw)
 
 
@@ -301,23 +299,23 @@ def _build_fit_config(data: Any | None) -> FitConfig | None:
     return FitConfig(**dict(data))
 
 
-def _build_output_config(data: Any) -> Any:
+def _build_output_config(data: Any, options: TensorOptions | None = None) -> Any:
     if isinstance(data, (str, ModelConfig, OutputConfig)):
         return data
     raw = dict(data)
     if raw.get("input_transform_config") is not None:
-        raw["input_transform_config"] = _build_input_transform_config(raw["input_transform_config"])
+        raw["input_transform_config"] = _build_input_transform_config(raw["input_transform_config"], options)
     if raw.get("fit_config") is not None:
         raw["fit_config"] = _build_fit_config(raw["fit_config"])
     return OutputConfig(**raw)
 
 
-def _build_multi_output_config(data: Any | None) -> MultiOutputConfig | None:
+def _build_multi_output_config(data: Any | None, options: TensorOptions | None = None) -> MultiOutputConfig | None:
     if data is None or isinstance(data, MultiOutputConfig):
         return data
     raw = dict(data)
     if raw.get("output_configs") is not None:
-        raw["output_configs"] = [_build_output_config(item) for item in raw["output_configs"]]
+        raw["output_configs"] = [_build_output_config(item, options) for item in raw["output_configs"]]
     if raw.get("output_fit_configs") is not None:
         output_fit_configs = raw["output_fit_configs"]
         if isinstance(output_fit_configs, dict):
@@ -330,16 +328,31 @@ def _build_multi_output_config(data: Any | None) -> MultiOutputConfig | None:
     return MultiOutputConfig(**raw)
 
 
-def _build_model_config(data: dict[str, Any] | None) -> ModelConfig:
+def _build_model_config(data: dict[str, Any] | None, options: TensorOptions | None = None) -> ModelConfig:
     raw = _config_dict(data)
     if raw.get("input_transform_config") is not None:
-        raw["input_transform_config"] = _build_input_transform_config(raw["input_transform_config"])
+        raw["input_transform_config"] = _build_input_transform_config(raw["input_transform_config"], options)
     if raw.get("multi_output_config") is not None:
-        raw["multi_output_config"] = _build_multi_output_config(raw["multi_output_config"])
+        raw["multi_output_config"] = _build_multi_output_config(raw["multi_output_config"], options)
     return ModelConfig(**raw)
 
 
-def _build_multi_objective_config(data: Any | None, options: TensorOptions) -> MultiObjectiveConfig | None:
+def _build_objective_config(data: Any | None) -> ObjectiveConfig | None:
+    if data is None or isinstance(data, ObjectiveConfig):
+        return data
+    return ObjectiveConfig(**dict(data))
+
+
+def _build_outcome_constraint_config(data: Any | None) -> OutcomeConstraintConfig | None:
+    if data is None or isinstance(data, OutcomeConstraintConfig):
+        return data
+    return OutcomeConstraintConfig(**dict(data))
+
+
+def _build_multi_objective_config(
+    data: Any | None,
+    options: TensorOptions,
+) -> MultiObjectiveConfig | None:
     if data is None or isinstance(data, MultiObjectiveConfig):
         return data
     raw = dict(data)
@@ -406,6 +419,10 @@ def _build_acquisition_config(data: dict[str, Any] | None) -> AcquisitionConfig:
     raw = _config_dict(data)
     if "name" not in raw:
         raise ValueError("acquisition_config.name is required.")
+    if raw.get("objective_config") is not None:
+        raw["objective_config"] = _build_objective_config(raw["objective_config"])
+    if raw.get("outcome_constraint_config") is not None:
+        raw["outcome_constraint_config"] = _build_outcome_constraint_config(raw["outcome_constraint_config"])
     return AcquisitionConfig(**raw)
 
 
@@ -454,7 +471,7 @@ def create_router(store: SessionStore | None = None) -> APIRouter:
             train_X = _to_tensor(request.train_X, request.tensor_options)
             train_Y = _to_tensor(request.train_Y, request.tensor_options)
             bounds = _to_tensor(request.bounds, request.tensor_options) if request.bounds is not None else None
-            model_config = _build_model_config(request.model_config_payload)
+            model_config = _build_model_config(request.model_config_payload, request.tensor_options)
             fit_config = _build_fit_config(request.fit_config_payload)
             bo = BayesianOptimizer(
                 model_config=model_config,
@@ -551,7 +568,7 @@ def create_router(store: SessionStore | None = None) -> APIRouter:
             train_X = _to_tensor(request.train_X, request.tensor_options)
             train_Y = _to_tensor(request.train_Y, request.tensor_options)
             bounds = _to_tensor(request.bounds, request.tensor_options)
-            model_config = _build_model_config(request.model_config_payload)
+            model_config = _build_model_config(request.model_config_payload, request.tensor_options)
             fit_config = _build_fit_config(request.fit_config_payload)
             acq_config = _build_acquisition_config(request.acquisition_config_payload)
             opt_config = _build_optimize_config(request.optimize_config_payload, request.tensor_options)
@@ -589,6 +606,7 @@ app = create_app()
 
 
 __all__ = [
+    "APIBaseModel",
     "CandidateRequest",
     "CandidateResponse",
     "FitSessionRequest",

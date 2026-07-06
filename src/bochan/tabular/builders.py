@@ -72,6 +72,7 @@ def make_fit_config(fit_config: FitConfig | None = None, **values: Any) -> FitCo
         {
             "fit_method": "method",
             "fit_optimizer_kwargs": "optimizer_kwargs",
+            "fit_beta": "beta",
         },
     )
     fit_values.update(_take_fields(FitConfig, values))

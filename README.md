@@ -90,176 +90,6 @@ pip install -e ".[all]"
 
 ---
 
-## Package layout
-
-```text
-src/bochan/
-├── api/
-├── acquisition/
-│   ├── objective/
-│   ├── feasible/
-│   ├── regression/
-│   ├── binary/
-│   ├── multiclass/
-│   ├── ordinal/
-│   └── non_gaussian/
-├── fit/
-├── models/
-│   ├── components/
-│   ├── transforms/
-│   ├── regression/
-│   │   ├── gaussian/
-│   │   └── non_gaussian/
-│   ├── classification/
-│   │   ├── binary/
-│   │   └── multiclass/
-│   ├── ordinal/
-│   └── hybrid/
-├── tabular/
-├── visualization/
-└── serving/
-    └── fastapi/
-```
-
-### Model layout
-
-Model families use the following broad structure:
-
-```text
-models/
-├── regression/
-│   ├── gaussian/
-│   │   ├── base/
-│   │   ├── deep/
-│   │   ├── high_dim/
-│   │   └── robust/
-│   └── non_gaussian/
-│       ├── poisson/
-│       ├── beta/
-│       ├── gamma/
-│       └── negative_binomial/
-├── classification/
-│   ├── binary/
-│   └── multiclass/
-├── ordinal/
-└── hybrid/
-```
-
-Binary and multiclass classification use the same folder pattern:
-
-```text
-classification/binary/
-├── base/
-├── deep/
-├── high_dim/
-└── robust/
-
-classification/multiclass/
-├── base/
-├── deep/
-├── high_dim/
-└── robust/
-```
-
-Major model families:
-
-| Family | Purpose |
-|---|---|
-| `regression/gaussian` | Standard continuous-output Gaussian regression models. |
-| `regression/non_gaussian` | Poisson, Beta, Gamma, and Negative Binomial response models. |
-| `classification/binary` | Binary GP classification and related wrappers. |
-| `classification/multiclass` | Multiclass GP classification and related wrappers. |
-| `ordinal` | Ordered-label / ordinal-regression GP wrappers. |
-| `hybrid` | Multi-output wrapper for heterogeneous task families. |
-| `components` | Shared likelihoods, posterior wrappers, transforms, decomposition utilities, and helper functions. |
-| `transforms` | Input transform builders for Normalize and input perturbation. |
-
-### High-level model registry
-
-The default API registry exposes these `task_type` values:
-
-```python
-"regression"
-"multi_objective"
-"binary"
-"multiclass"
-"ordinal"
-"hybrid"
-```
-
-The registered `model_type` values are:
-
-```python
-"base"
-"deepgp"
-"deepkernel"
-"deepgpdeepkernel"
-"saas"
-"pca"
-"rembo"
-"rrp"
-"hetero"
-```
-
-For `multiclass`, `deepgpdeepkernel` is not currently registered as a separate
-model type. Non-Gaussian models exist under `models/regression/non_gaussian/`,
-but they are not part of the default `ModelConfig` registry yet; use `model_cls`,
-`model_factory`, or a custom registry to connect them to the high-level API.
-
-If `cat_dims` is provided and `input_type` is omitted, the API infers
-`input_type="mixed"`; otherwise it uses `input_type="normal"`.
-
-### Acquisition layout
-
-Acquisition functions are divided by model family and task:
-
-```text
-acquisition/<family>/
-├── active_learning/
-├── levelset_estimation/
-└── bayesian_optimization/
-```
-
-Main acquisition families:
-
-| Family | Scope |
-|---|---|
-| `regression` | Standard Gaussian / continuous-output acquisitions. |
-| `binary` | Binary probability, feasibility, boundary, and classification BO acquisitions. |
-| `multiclass` | Target-class probability, class entropy, multiclass level-set, and multiclass BO acquisitions. |
-| `ordinal` | Expected utility, ordered-boundary, ordinal feasibility, and ordinal BO acquisitions. |
-| `non_gaussian` | Active-learning and level-set acquisitions for response-scale non-Gaussian models. |
-| `objective` | Scalarization, probability / utility conversion, input perturbation, and risk aggregation. |
-| `feasible` | Shared feasibility constraints and constrained acquisition wrappers. |
-
-Multiclass acquisitions follow the same single / multi / hetero split as binary
-and ordinal:
-
-```text
-acquisition/multiclass/
-├── active_learning/
-│   ├── single_output.py
-│   ├── multi_output.py
-│   ├── hetero_single_output.py
-│   └── hetero_multi_output.py
-├── levelset_estimation/
-│   ├── single_output.py
-│   ├── multi_output.py
-│   ├── hetero_single_output.py
-│   └── hetero_multi_output.py
-└── bayesian_optimization/
-    ├── single_output.py
-    ├── multi_output.py
-    ├── hetero_single_output.py
-    └── hetero_multi_output.py
-```
-
-Non-Gaussian Bayesian-optimization modules are currently placeholders. Standard
-BoTorch qEI / qNEI / qUCB / qPI / qEHVI / qNEHVI / qNParEGO should be reused
-when a response-scale posterior and objective are sufficient.
-
----
-
 ## Which API should I use?
 
 | API | Use when |
@@ -283,11 +113,7 @@ higher-level wrappers around that design.
 
 ---
 
-## Python API: tensor-based optimizer
-
-The high-level tensor API is exposed through `bochan.api.BayesianOptimizer`.
-
-### Single-output regression BO
+## Quick start: tensor-based optimizer
 
 ```python
 import torch
@@ -310,6 +136,51 @@ candidates, acq_value = bo.candidate(
     opt_config=OptimizeConfig(q=3, num_restarts=10, raw_samples=128, sequential=True),
 )
 ```
+
+### FitConfig.beta
+
+`FitConfig.beta` is a convenience alias for `mll_kwargs["beta"]`. It is useful for
+variational models such as DeepGP and DeepKernel classifiers.
+
+```python
+fit_config = FitConfig(
+    num_epochs=300,
+    lr=0.03,
+    beta=0.5,
+)
+```
+
+When both `beta` and `mll_kwargs["beta"]` are provided, the explicit value in
+`mll_kwargs` takes precedence.
+
+### Optimizer backend and evo_method
+
+`OptimizeConfig` uses backend-family names. Mixed / non-mixed dispatch is resolved
+from categorical settings where possible.
+
+```python
+OptimizeConfig(optimizer="optimize_acqf")
+OptimizeConfig(optimizer="evo", evo_method="ga")
+OptimizeConfig(optimizer="torch")
+OptimizeConfig(optimizer="nsgaii")
+OptimizeConfig(optimizer="thompson_sampling")
+```
+
+Evolutionary methods can also be selected directly:
+
+```python
+OptimizeConfig(optimizer="ga")
+OptimizeConfig(optimizer="pso")
+OptimizeConfig(optimizer="sa")
+OptimizeConfig(optimizer="cmaes")
+```
+
+Those direct names are normalized to `optimizer="evo"` and stored in
+`evo_method`.
+
+---
+
+## Python API: classification and level-set examples
 
 ### Single-output multiclass active learning
 
@@ -423,6 +294,10 @@ AcquisitionConfig(name="PoF", acqf_kwargs={"target_class": 2})
 `ObjectiveConfig` currently does not auto-build multiclass objectives. Use the
 multiclass acquisition's own `target_class`, `threshold`, `best_f`, and related
 keyword arguments, or pass `objective` / `objective_factory` explicitly.
+
+---
+
+## Multi-output and heteroscedastic examples
 
 ### Mixed-input multiclass model
 
@@ -554,23 +429,61 @@ an acquisition needs to aggregate expanded `q * n_w` samples back to `q`.
 
 ---
 
+## Outcome constraints
+
+Use `OutcomeConstraintConfig` for user-facing feasibility constraints.
+
+```python
+from bochan.api import OutcomeConstraintConfig
+
+acq_config = AcquisitionConfig(
+    name="NEHVI",
+    outcome_constraint_config=OutcomeConstraintConfig(
+        output_indices=[0, 1],
+        operators=["ge", "le"],
+        thresholds=[0.5, 1.2],
+    ),
+)
+```
+
+For model-dependent feasibility constraints, pass constraint specs through
+`outcome_constraint_config.constraints`.
+
+```python
+acq_config = AcquisitionConfig(
+    name="EI",
+    outcome_constraint_config=OutcomeConstraintConfig(
+        constraints=[
+            {
+                "kind": "feasibility",
+                "output": "defect",
+                "operator": "le",
+                "threshold": 0.2,
+            }
+        ],
+        eta=1e-3,
+        reduce_constraints="prod",
+        reduce_q="mean",
+    ),
+    acqf_kwargs={"best_f": train_Y.max()},
+)
+```
+
+Do not specify low-level `constraints` and `outcome_constraint_config` at the same
+time.
+
+---
+
 ## Candidate optimization and repair
 
 `OptimizeConfig` controls the candidate optimization backend:
 
 ```python
 OptimizeConfig(optimizer="optimize_acqf")
-OptimizeConfig(optimizer="optimize_acqf_mixed")
-OptimizeConfig(optimizer="evo")
-OptimizeConfig(optimizer="optimize_acqf_evo")
-OptimizeConfig(optimizer="evo_mixed")
-OptimizeConfig(optimizer="optimize_acqf_evo_mixed")
+OptimizeConfig(optimizer="evo", evo_method="ga")
 OptimizeConfig(optimizer="torch")
-OptimizeConfig(optimizer="optimize_acqf_torch")
-OptimizeConfig(optimizer="torch_mixed")
-OptimizeConfig(optimizer="optimize_acqf_torch_mixed")
 OptimizeConfig(optimizer="nsgaii")
-OptimizeConfig(optimizer="optimize_acqf_nsgaii")
+OptimizeConfig(optimizer="thompson_sampling")
 ```
 
 Mixed optimization can use `fixed_features_list`:
@@ -725,6 +638,8 @@ bo.fit(df)
 candidates_df, acq_value = bo.candidate(
     acq_name="NIPV",
     q=10,
+    optimizer="evo",
+    evo_method="ga",
     numeric_indices=["x1", "x2", "x3"],
     steps={"x1": 0.1, "x2": 0.1, "x3": 0.1},
     comp_idx=["x1", "x2", "x3"],
@@ -732,38 +647,16 @@ candidates_df, acq_value = bo.candidate(
 )
 ```
 
-### CSV and numpy examples
-
-```python
-bo = TabularBayesianOptimizer.from_csv(
-    "data.csv",
-    task_type="regression",
-    model_type="base",
-    input_cols=["x1", "x2", "x3"],
-    target_cols="y",
-)
-
-bo.fit()
-```
-
-```python
-bo = TabularBayesianOptimizer(task_type="regression", model_type="base")
-bo.fit(
-    X_np,
-    y_np,
-    feature_names=["x1", "x2", "x3"],
-    input_cols=["x1", "x2", "x3"],
-    target_names=["y"],
-)
-```
-
 The tabular API supports:
 
 - direct keyword arguments instead of explicit config objects;
 - existing `ModelConfig`, `FitConfig`, `AcquisitionConfig`, `OptimizeConfig`, and `CandidateRepairConfig` objects;
+- `fit_beta` / `beta` for `FitConfig.beta`;
+- `evo_method` for evolutionary backend selection;
+- `outcome_constraint_config` for user-facing outcome constraints;
 - string categorical input columns through label encoding and candidate decoding;
 - string categorical target columns for binary / classification workflows;
-- missing-value deletion or imputation when the installed optional dependencies support it;
+- missing-value deletion or imputation;
 - column-name based `bounds`, `steps`, `comp_idx`, `fixed_features`, and `fixed_features_list`.
 
 See `src/bochan/tabular/README.md` for detailed examples.
@@ -786,8 +679,8 @@ uvicorn bochan.serving.fastapi.app:app --reload
 ```
 
 The FastAPI layer mirrors the Python API. It accepts JSON versions of
-`ModelConfig`, `FitConfig`, `AcquisitionConfig`, `OptimizeConfig`, and
-`DataContext`.
+`ModelConfig`, `FitConfig`, `AcquisitionConfig`, `OutcomeConstraintConfig`,
+`OptimizeConfig`, and `DataContext`.
 
 Important endpoints:
 
@@ -804,8 +697,131 @@ Important endpoints:
 | `POST` | `/models/{model_id}/candidates/compare` | Compare multiple acquisitions |
 | `GET` | `/acquisitions/names` | List acquisition aliases |
 
+Example candidate payload:
+
+```json
+{
+  "acquisition_config": {"name": "EI", "acqf_kwargs": {"best_f": 1.0}},
+  "optimize_config": {"q": 1, "num_restarts": 10, "raw_samples": 256}
+}
+```
+
+The serving layer also accepts `tensor_options` for JSON-to-tensor conversion.
+
+```json
+{
+  "tensor_options": {"dtype": "float64", "device": "cpu"}
+}
+```
+
 See `src/bochan/serving/fastapi/README.md` for HTTP examples, including
-multiclass model fitting and target-class BO.
+tensor options, candidate repair, `evo_method`, outcome constraints, multiclass
+model fitting, and target-class BO.
+
+---
+
+## Package layout
+
+```text
+src/bochan/
+├── api/
+├── acquisition/
+│   ├── objective/
+│   ├── feasible/
+│   ├── regression/
+│   ├── binary/
+│   ├── multiclass/
+│   ├── ordinal/
+│   └── non_gaussian/
+├── fit/
+├── models/
+│   ├── components/
+│   ├── transforms/
+│   ├── regression/
+│   │   ├── gaussian/
+│   │   └── non_gaussian/
+│   ├── classification/
+│   │   ├── binary/
+│   │   └── multiclass/
+│   ├── ordinal/
+│   └── hybrid/
+├── tabular/
+├── visualization/
+└── serving/
+    └── fastapi/
+```
+
+### Model layout
+
+Model families use the following broad structure:
+
+```text
+models/
+├── regression/
+│   ├── gaussian/
+│   │   ├── base/
+│   │   ├── deep/
+│   │   ├── high_dim/
+│   │   └── robust/
+│   └── non_gaussian/
+│       ├── poisson/
+│       ├── beta/
+│       ├── gamma/
+│       └── negative_binomial/
+├── classification/
+│   ├── binary/
+│   └── multiclass/
+├── ordinal/
+└── hybrid/
+```
+
+Major model families:
+
+| Family | Purpose |
+|---|---|
+| `regression/gaussian` | Standard continuous-output Gaussian regression models. |
+| `regression/non_gaussian` | Poisson, Beta, Gamma, and Negative Binomial response models. |
+| `classification/binary` | Binary GP classification and related wrappers. |
+| `classification/multiclass` | Multiclass GP classification and related wrappers. |
+| `ordinal` | Ordered-label / ordinal-regression GP wrappers. |
+| `hybrid` | Multi-output wrapper for heterogeneous task families. |
+| `components` | Shared likelihoods, posterior wrappers, transforms, decomposition utilities, and helper functions. |
+| `transforms` | Input transform builders for Normalize and input perturbation. |
+
+### High-level model registry
+
+The default API registry exposes these `task_type` values:
+
+```python
+"regression"
+"multi_objective"
+"binary"
+"multiclass"
+"ordinal"
+"hybrid"
+```
+
+The registered `model_type` values are:
+
+```python
+"base"
+"deepgp"
+"deepkernel"
+"deepgpdeepkernel"
+"saas"
+"pca"
+"rembo"
+"rrp"
+"hetero"
+```
+
+For `multiclass`, `deepgpdeepkernel` is not currently registered as a separate
+model type. Non-Gaussian models exist under `models/regression/non_gaussian/`,
+but they are not part of the default `ModelConfig` registry yet; use `model_cls`,
+`model_factory`, or a custom registry to connect them to the high-level API.
+
+If `cat_dims` is provided and `input_type` is omitted, the API infers
+`input_type="mixed"`; otherwise it uses `input_type="normal"`.
 
 ---
 
@@ -880,8 +896,8 @@ should raise explicit `NotImplementedError` rather than being ignored.
 | `src/bochan/acquisition/feasible/README.md` | Feasibility constraints and feasibility wrapper usage. |
 | `src/bochan/api/README.md` | Tensor-based Python API usage, config objects, registries, objectives, candidate optimization, and repair. |
 | `src/bochan/api/STUDY_README.md` | `BochanStudy` optimization loop, `ask()` / `tell()`, `optimize()`, save / load, early stopping, and generation schedules. |
-| `src/bochan/tabular/README.md` | pandas / numpy / CSV wrapper, column-name based settings, categorical encoding, imputation, and candidate repair. |
-| `src/bochan/serving/fastapi/README.md` | HTTP / JSON serving examples. |
+| `src/bochan/tabular/README.md` | pandas / numpy / CSV wrapper, column-name based settings, categorical encoding, imputation, candidate repair, `fit_beta`, `evo_method`, and constraints. |
+| `src/bochan/serving/fastapi/README.md` | HTTP / JSON serving examples, tensor conversion, optimizer settings, candidate repair, constraints, and multiclass workflows. |
 
 ---
 
@@ -896,7 +912,6 @@ Current priorities:
 - keep tensor shapes q-batch safe;
 - make optimization-loop APIs usable from both Python functions and human-in-the-loop experiments;
 - keep DataFrame / CSV wrappers thin and consistent with the tensor API;
+- keep HTTP / JSON payloads aligned with public `bochan.api` config objects;
 - prefer shared implementation over distribution-specific duplication;
-- reuse BoTorch standard functionality whenever possible;
-- make placeholder modules explicit when a family or variant is not implemented yet;
-- keep README files aligned with the implementation registry and public API.
+- reuse BoTorch standard functionality whenever possible.

@@ -18,6 +18,8 @@ bochan.serving.fastapi
 
 `bochan.api` 側は FastAPI / Pydantic に依存しません。FastAPI を使わない Python API 利用者が余計な依存を import しないようにするためです。
 
+FastAPI 側の request schema は、公開 API の dataclass にできるだけ近い名前・構造を受け取ります。例えば、HTTP payload の `model_config` は `bochan.api.ModelConfig` に、`fit_config` は `bochan.api.FitConfig` に、`acquisition_config` は `bochan.api.AcquisitionConfig` に変換されます。
+
 ---
 
 ## 2. インストールと起動
@@ -40,6 +42,13 @@ from bochan.serving.fastapi import create_app
 app = create_app(title="bochan Optimization API")
 ```
 
+OpenAPI / Swagger UI は、通常 FastAPI の既定通り次で確認できます。
+
+```text
+http://127.0.0.1:8000/docs
+http://127.0.0.1:8000/redoc
+```
+
 ---
 
 ## 3. endpoint 一覧
@@ -60,18 +69,58 @@ app = create_app(title="bochan Optimization API")
 
 現在の store はプロセス内インメモリです。サーバー再起動で fitted model は失われます。実運用では `dependencies.py` の `get_optimizer_store()` を差し替え、モデル artifact や metadata を DB / object storage / model registry に保存してください。
 
-### Binary prediction response
+---
 
-binary prediction response は `prediction_space="probability"` を返します。
-`mean` はクラス1確率です。`variance_kind="bernoulli_observation"` の
-`variance` は `p * (1 - p)` であり、確率推定値の epistemic variance ではありません。
+## 4. payload の基本ルール
 
-`return_type="posterior"` でも Python posterior オブジェクトの文字列ではなく、
-`type`・`mean`・`variance` を持つ JSON summary を返します。
+### 4.1 API 風の名前と互換 alias
+
+候補点生成 payload では、推奨名として `acquisition_config` / `optimize_config` を使います。
+
+```json
+{
+  "acquisition_config": {"name": "EI", "acqf_kwargs": {"best_f": 1.0}},
+  "optimize_config": {"q": 1, "num_restarts": 10, "raw_samples": 256}
+}
+```
+
+既存コードとの互換のため、短い名前 `acq_config` / `opt_config` も受け取れます。
+
+```json
+{
+  "acq_config": {"name": "EI", "acqf_kwargs": {"best_f": 1.0}},
+  "opt_config": {"q": 1, "num_restarts": 10, "raw_samples": 256}
+}
+```
+
+複数 acquisition の比較では、推奨名は `acquisition_configs` です。互換名として `acq_configs` も使えます。
+
+### 4.2 tensor_options
+
+JSON の数値配列は converter で `torch.Tensor` に変換されます。dtype や device を明示したい場合は、各 request に `tensor_options` を指定します。
+
+```json
+{
+  "tensor_options": {
+    "dtype": "float64",
+    "device": "cpu"
+  }
+}
+```
+
+対応する dtype 名の例です。
+
+```text
+float64 / double / torch.float64
+float32 / float / torch.float32
+int64 / long / torch.int64
+```
+
+通常の `train_X`, `train_Y`, `bounds`, `X`, `new_X`, `new_Y`, `X_baseline`, `best_f`, `ref_point`, `objective_thresholds`, `steps` などは、この設定に従って tensor 化されます。線形制約の `indices` だけは long tensor に変換されます。
 
 ---
 
-## 4. 全体フロー
+## 5. 全体フロー
 
 ```text
 POST /models
@@ -96,9 +145,9 @@ POST /models/{model_id}/tell
 
 ---
 
-## 5. モデル学習リクエスト
+## 6. モデル学習リクエスト
 
-### 5.1 single-output regression
+### 6.1 single-output regression
 
 ```json
 {
@@ -116,7 +165,71 @@ POST /models/{model_id}/tell
 }
 ```
 
-### 5.2 single-output multiclass
+curl 例です。
+
+```bash
+curl -X POST http://127.0.0.1:8000/models \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model_config": {"task_type": "regression", "model_type": "base"},
+    "fit_config": {"maxiter": 128},
+    "train_X": [[0.0], [0.5], [1.0]],
+    "train_Y": [[0.0], [0.25], [1.0]],
+    "bounds": [[0.0], [1.0]]
+  }'
+```
+
+レスポンス例です。
+
+```json
+{
+  "model_id": "e2f1...",
+  "task_type": "regression",
+  "model_type": "base",
+  "n_train": 3,
+  "metadata": {
+    "model_cls": "SingleTaskGP"
+  }
+}
+```
+
+### 6.2 FitConfig.beta
+
+`FitConfig.beta` は `mll_kwargs["beta"]` への便利 alias です。DeepGP / DeepKernel classifier などで ELBO の beta を変えたい場合に使います。
+
+```json
+{
+  "model_config": {
+    "task_type": "multiclass",
+    "model_type": "deepgp",
+    "model_kwargs": {
+      "num_classes": 3,
+      "num_inducing_points": 32
+    }
+  },
+  "fit_config": {
+    "num_epochs": 300,
+    "lr": 0.03,
+    "beta": 0.5
+  },
+  "train_X": [[0.10, 0.20], [0.80, 0.25], [0.50, 0.85], [0.30, 0.70]],
+  "train_Y": [0, 1, 2, 2],
+  "bounds": [[0.0, 0.0], [1.0, 1.0]]
+}
+```
+
+`mll_kwargs` に明示的に `beta` を入れた場合は、そちらが優先されます。
+
+```json
+{
+  "fit_config": {
+    "beta": 0.5,
+    "mll_kwargs": {"beta": 0.8}
+  }
+}
+```
+
+### 6.3 single-output multiclass
 
 `task_type="multiclass"`、`model_type="base"` を指定します。`model_kwargs.num_classes` は明示するのが安全です。
 
@@ -140,21 +253,7 @@ POST /models/{model_id}/tell
 }
 ```
 
-レスポンス例です。
-
-```json
-{
-  "model_id": "e2f1...",
-  "task_type": "multiclass",
-  "model_type": "base",
-  "n_train": 4,
-  "metadata": {
-    "model_cls": "MulticlassClassificationGPModel"
-  }
-}
-```
-
-### 5.3 mixed-input multiclass
+### 6.4 mixed-input multiclass
 
 `cat_dims` を指定すると Python API 側で `input_type="mixed"` に解決されます。
 
@@ -179,31 +278,34 @@ POST /models/{model_id}/tell
 }
 ```
 
-### 5.4 heteroscedastic multiclass
+### 6.5 input_transform_config
+
+Normalize と input perturbation は `model_config.input_transform_config` で指定します。
 
 ```json
 {
   "model_config": {
-    "task_type": "multiclass",
-    "model_type": "hetero",
-    "model_kwargs": {
-      "num_classes": 3,
-      "num_inducing_points": 32
+    "task_type": "regression",
+    "model_type": "base",
+    "input_transform_config": {
+      "normalize": true,
+      "perturbation": true,
+      "n_w": 8,
+      "std": 0.05,
+      "categorical_idx": [2]
     }
   },
-  "fit_config": {
-    "num_epochs": 250,
-    "lr": 0.03
-  },
-  "train_X": [[0.10, 0.20], [0.80, 0.25], [0.50, 0.85], [0.30, 0.70]],
-  "train_Y": [0, 1, 2, 2],
-  "bounds": [[0.0, 0.0], [1.0, 1.0]]
+  "train_X": [[0.10, 0.20, 0], [0.80, 0.25, 1], [0.50, 0.85, 2]],
+  "train_Y": [[0.1], [0.5], [0.9]],
+  "bounds": [[0.0, 0.0, 0.0], [1.0, 1.0, 2.0]]
 }
 ```
 
-### 5.5 multi-output multiclass
+`bounds` を `input_transform_config` の中に書くこともできます。その場合、Normalize / perturbation 用の bounds として使われます。
 
-`multi_output_config` を使います。多クラス multi-output は hybrid wrapper 経由で扱うため、`use_hybrid=true` を指定してください。
+### 6.6 multi-output / hybrid
+
+`multi_output_config` を使います。異なる task family を混ぜる場合や multiclass multi-output では `use_hybrid=true` を指定してください。
 
 ```json
 {
@@ -230,9 +332,27 @@ POST /models/{model_id}/tell
 }
 ```
 
+出力ごとに設定を変える場合は `output_configs` を使います。
+
+```json
+{
+  "model_config": {
+    "task_type": "hybrid",
+    "model_type": "base",
+    "multi_output_config": {
+      "use_hybrid": true,
+      "output_configs": [
+        {"name": "yield", "task_type": "regression", "model_type": "base"},
+        {"name": "defect", "task_type": "binary", "model_type": "base"}
+      ]
+    }
+  }
+}
+```
+
 ---
 
-## 6. 予測リクエスト
+## 7. 予測リクエスト
 
 ```json
 {
@@ -258,23 +378,34 @@ curl -X POST http://127.0.0.1:8000/models/<model_id>/predict \
 }
 ```
 
+`return_type` は次を指定できます。
+
+| return_type | 内容 |
+|---|---|
+| `posterior` | posterior summary を返す |
+| `mean` | mean のみ返す |
+| `variance` | variance のみ返す |
+| `mean_variance` | mean と variance を返す |
+
+binary prediction response は `prediction_space="probability"` を返します。`mean` はクラス1確率です。`variance_kind="bernoulli_observation"` の `variance` は `p * (1 - p)` であり、確率推定値の epistemic variance ではありません。
+
 Multiclass の `mean` は class probability として扱います。shape は概ね `n x C` または `n x output x C` 系になります。
 
 ---
 
-## 7. 候補点生成リクエスト
+## 8. 候補点生成リクエスト
 
-### 7.1 regression EI
+### 8.1 regression EI
 
 ```json
 {
-  "acq_config": {
+  "acquisition_config": {
     "name": "EI",
     "acqf_kwargs": {
       "best_f": 1.0
     }
   },
-  "opt_config": {
+  "optimize_config": {
     "q": 1,
     "num_restarts": 10,
     "raw_samples": 256
@@ -282,16 +413,164 @@ Multiclass の `mean` は class probability として扱います。shape は概
 }
 ```
 
-### 7.2 multiclass active learning: entropy
+### 8.2 regression UCB
+
+`bochan.api.AcquisitionConfig` では UCB に `beta=3.0` の既定値があります。変えたい場合は `acqf_kwargs.beta` を指定します。
+
+```json
+{
+  "acquisition_config": {
+    "name": "UCB",
+    "acqf_kwargs": {
+      "beta": 2.0
+    }
+  },
+  "optimize_config": {
+    "q": 3,
+    "num_restarts": 10,
+    "raw_samples": 256,
+    "sequential": true
+  }
+}
+```
+
+### 8.3 optimizer と evo_method
+
+`OptimizeConfig.optimizer` には backend family 名を指定します。
+
+```json
+{
+  "optimize_config": {
+    "optimizer": "optimize_acqf",
+    "q": 3,
+    "num_restarts": 10,
+    "raw_samples": 256
+  }
+}
+```
+
+Evolutionary backend を使う場合です。
+
+```json
+{
+  "acquisition_config": {"name": "NIPV"},
+  "optimize_config": {
+    "optimizer": "evo",
+    "evo_method": "ga",
+    "q": 5,
+    "optimizer_kwargs": {
+      "population_size": 128,
+      "num_generations": 80
+    }
+  }
+}
+```
+
+`evo_method` は次を指定できます。
+
+```text
+ga / pso / sa / cmaes
+```
+
+`optimizer` に直接 `"ga"`, `"pso"`, `"sa"`, `"cmaes"` を指定した場合も `optimizer="evo"` に正規化されます。`cmaes` は `q > 1` のとき sequential に解決されます。
+
+### 8.4 fixed_features / fixed_features_list
+
+特定列を固定したい場合は `fixed_features` を使います。JSON object の key は文字列になりますが、converter で int に変換されます。
+
+```json
+{
+  "acquisition_config": {"name": "EI", "acqf_kwargs": {"best_f": 1.0}},
+  "optimize_config": {
+    "q": 3,
+    "fixed_features": {
+      "2": 1.0
+    }
+  }
+}
+```
+
+Mixed optimizer のカテゴリ列展開では `fixed_features_list` を使います。
+
+```json
+{
+  "acquisition_config": {"name": "EI", "acqf_kwargs": {"best_f": 1.0}},
+  "optimize_config": {
+    "q": 3,
+    "fixed_features_list": [
+      {"2": 0.0},
+      {"2": 1.0},
+      {"2": 2.0}
+    ]
+  }
+}
+```
+
+### 8.5 linear constraints
+
+BoTorch 互換の線形制約は、dict 形式または list 形式で指定できます。
+
+```json
+{
+  "optimize_config": {
+    "q": 1,
+    "inequality_constraints": [
+      {"indices": [0, 1], "coefficients": [1.0, 1.0], "rhs": 1.0}
+    ]
+  }
+}
+```
+
+同じ内容を list で書く例です。
+
+```json
+{
+  "optimize_config": {
+    "q": 1,
+    "inequality_constraints": [
+      [[0, 1], [1.0, 1.0], 1.0]
+    ]
+  }
+}
+```
+
+### 8.6 candidate repair: step 丸め・k-sparse
+
+`repair_config` は `CandidateRepairConfig` に変換されます。候補点の丸め、k-sparse、制約補修に使います。
+
+```json
+{
+  "acquisition_config": {"name": "NIPV"},
+  "optimize_config": {
+    "q": 5,
+    "repair_config": {
+      "bounds": [[0.0, 0.0, 0.0], [1.0, 1.0, 1.0]],
+      "numeric_indices": [0, 1, 2],
+      "steps": [0.1, 0.1, 0.1],
+      "comp_idx": [0, 1, 2],
+      "k": 2,
+      "final_priority": "constraints"
+    }
+  }
+}
+```
+
+`steps=null` なら丸めません。`comp_idx=[]` または `null` の場合は k-sparse ではなく、丸め・制約補修だけを行う用途になります。
+
+---
+
+## 9. active learning / level-set examples
+
+### 9.1 multiclass active learning: entropy
 
 `task_type="multiclass"` の fitted model に対して `name="entropy"` を指定すると、single / multi / hetero の状態に応じて対応する multiclass acquisition に解決されます。
 
 ```json
 {
-  "acq_config": {
+  "acquisition_config": {
     "name": "entropy"
   },
-  "opt_config": {
+  "optimize_config": {
     "q": 3,
     "num_restarts": 10,
     "raw_samples": 128,
@@ -309,20 +588,20 @@ Multiclass の `mean` は class probability として扱います。shape は概
 {"name": "NIPV"}
 ```
 
-### 7.3 multiclass level-set estimation
+### 9.2 multiclass level-set estimation
 
 クラス2の確率が 0.5 付近の境界を探索する例です。
 
 ```json
 {
-  "acq_config": {
+  "acquisition_config": {
     "name": "straddle",
     "acqf_kwargs": {
       "target_class": 2,
       "threshold": 0.5
     }
   },
-  "opt_config": {
+  "optimize_config": {
     "q": 3,
     "num_restarts": 10,
     "raw_samples": 128
@@ -341,13 +620,13 @@ Multiclass の `mean` は class probability として扱います。shape は概
 {"name": "levelset"}
 ```
 
-### 7.4 multiclass Bayesian optimization: target class EI
+### 9.3 multiclass Bayesian optimization: target class EI
 
 多クラス BO では `target_class` が必須です。目的は `p(target_class | x)` の最大化です。
 
 ```json
 {
-  "acq_config": {
+  "acquisition_config": {
     "name": "EI",
     "acqf_kwargs": {
       "target_class": 2,
@@ -355,7 +634,7 @@ Multiclass の `mean` は class probability として扱います。shape は概
       "num_samples": 128
     }
   },
-  "opt_config": {
+  "optimize_config": {
     "q": 1,
     "num_restarts": 10,
     "raw_samples": 128
@@ -363,33 +642,13 @@ Multiclass の `mean` は class probability として扱います。shape は概
 }
 ```
 
-UCB の例です。
-
-```json
-{
-  "acq_config": {
-    "name": "UCB",
-    "acqf_kwargs": {
-      "target_class": 2,
-      "beta": 2.0,
-      "num_samples": 128
-    }
-  },
-  "opt_config": {
-    "q": 1,
-    "num_restarts": 10,
-    "raw_samples": 128
-  }
-}
-```
-
-### 7.5 hetero multiclass acquisition
+### 9.4 hetero multiclass acquisition
 
 `model_type="hetero"` の multiclass model では、同じ alias が hetero 版に解決されます。ノイズ重み付けを変えたい場合は `acqf_kwargs` で指定します。
 
 ```json
 {
-  "acq_config": {
+  "acquisition_config": {
     "name": "entropy",
     "acqf_kwargs": {
       "noise_mode": "inverse_linear",
@@ -397,7 +656,7 @@ UCB の例です。
       "noise_penalty_lambda": 1.0
     }
   },
-  "opt_config": {
+  "optimize_config": {
     "q": 3,
     "num_restarts": 10,
     "raw_samples": 128
@@ -405,20 +664,20 @@ UCB の例です。
 }
 ```
 
-### 7.6 multi-output multiclass acquisition
+### 9.5 multi-output multiclass acquisition
 
 multi-output multiclass acquisition では `output_reduction` を指定できます。
 
 ```json
 {
-  "acq_config": {
+  "acquisition_config": {
     "name": "entropy",
     "acqf_kwargs": {
       "output_reduction": "weighted_mean",
       "output_weights": [0.7, 0.3]
     }
   },
-  "opt_config": {
+  "optimize_config": {
     "q": 3,
     "num_restarts": 10,
     "raw_samples": 128
@@ -428,20 +687,86 @@ multi-output multiclass acquisition では `output_reduction` を指定できま
 
 ---
 
-## 8. ask / tell / refit
+## 10. outcome constraints
 
-### 8.1 ask
+`AcquisitionConfig` は、低レベルの BoTorch sample constraint である `constraints` と、user-facing な `outcome_constraint_config` を受け取れます。通常は JSON 化しやすい `outcome_constraint_config` を推奨します。
+
+### 10.1 numeric outcome constraints
+
+出力0が 0.5 以上、出力1が 1.2 以下、のような sample 上の制約です。
+
+```json
+{
+  "acquisition_config": {
+    "name": "NEHVI",
+    "outcome_constraint_config": {
+      "output_indices": [0, 1],
+      "operators": ["ge", "le"],
+      "thresholds": [0.5, 1.2]
+    }
+  },
+  "optimize_config": {
+    "q": 3,
+    "num_restarts": 10,
+    "raw_samples": 256
+  },
+  "data_context": {
+    "X_baseline": [[0.0, 0.0], [1.0, 1.0]],
+    "ref_point": [0.0, 0.0]
+  }
+}
+```
+
+### 10.2 feasibility / ordinal rank constraints
+
+`constraints` フィールドには、`kind` 付きの dict を渡せます。内部で feasibility constraint spec に変換されます。
+
+```json
+{
+  "acquisition_config": {
+    "name": "EI",
+    "outcome_constraint_config": {
+      "constraints": [
+        {
+          "kind": "feasibility",
+          "output": "defect",
+          "operator": "le",
+          "threshold": 0.2
+        }
+      ],
+      "eta": 0.001,
+      "reduce_constraints": "prod",
+      "reduce_q": "mean",
+      "posterior_mode": "objective"
+    },
+    "acqf_kwargs": {
+      "best_f": 1.0
+    }
+  },
+  "optimize_config": {
+    "q": 1
+  }
+}
+```
+
+低レベルの `constraints` と `outcome_constraint_config` は同時指定できません。
+
+---
+
+## 11. ask / tell / refit
+
+### 11.1 ask
 
 ```bash
 curl -X POST http://127.0.0.1:8000/models/<model_id>/ask \
   -H "Content-Type: application/json" \
   -d '{
-    "acq_config": {"name": "entropy"},
-    "opt_config": {"q": 1, "num_restarts": 10, "raw_samples": 128}
+    "acquisition_config": {"name": "entropy"},
+    "optimize_config": {"q": 1, "num_restarts": 10, "raw_samples": 128}
   }'
 ```
 
-### 8.2 tell
+### 11.2 tell
 
 ```json
 {
@@ -450,12 +775,13 @@ curl -X POST http://127.0.0.1:8000/models/<model_id>/ask \
   "refit": true,
   "fit_config": {
     "num_epochs": 150,
-    "lr": 0.03
+    "lr": 0.03,
+    "beta": 0.5
   }
 }
 ```
 
-### 8.3 refit
+### 11.3 refit
 
 ```json
 {
@@ -468,22 +794,26 @@ curl -X POST http://127.0.0.1:8000/models/<model_id>/ask \
 
 ---
 
-## 9. acquisition comparison
+## 12. acquisition comparison
+
+推奨 payload 名は `acquisition_configs` です。
 
 ```json
 {
-  "acq_configs": [
+  "acquisition_configs": [
     {"name": "entropy"},
     {"name": "margin"},
     {"name": "EI", "acqf_kwargs": {"target_class": 2, "best_f": 0.70}}
   ],
-  "opt_config": {
+  "optimize_config": {
     "q": 1,
     "num_restarts": 10,
     "raw_samples": 128
   }
 }
 ```
+
+互換名として `acq_configs` も使えます。
 
 ```bash
 curl -X POST http://127.0.0.1:8000/models/<model_id>/candidates/compare \
@@ -500,20 +830,34 @@ curl -X POST http://127.0.0.1:8000/models/<model_id>/candidates/compare \
 
 ---
 
-## 10. schema と converter の考え方
+## 13. schema と converter の考え方
 
-FastAPI 側では `ModelConfigSchema`, `ObjectiveConfigSchema`, `OptimizeConfigSchema` などの Pydantic schema を受け取ります。
+FastAPI 側では `ModelConfigSchema`, `FitConfigSchema`, `ObjectiveConfigSchema`, `OutcomeConstraintConfigSchema`, `OptimizeConfigSchema` などの Pydantic schema を受け取ります。
 
 `converters.py` が次の変換を担当します。
 
 ```text
-ModelConfigSchema       -> bochan.api.ModelConfig
-FitConfigSchema         -> bochan.api.FitConfig
-ObjectiveConfigSchema   -> bochan.api.ObjectiveConfig
-AcquisitionConfigSchema -> bochan.api.AcquisitionConfig
-OptimizeConfigSchema    -> bochan.api.OptimizeConfig
-DataContextSchema       -> bochan.api.DataContext
-JSON numeric arrays     -> torch.Tensor
+ModelConfigSchema            -> bochan.api.ModelConfig
+FitConfigSchema              -> bochan.api.FitConfig
+ObjectiveConfigSchema        -> bochan.api.ObjectiveConfig
+OutcomeConstraintConfigSchema -> bochan.api.OutcomeConstraintConfig
+AcquisitionConfigSchema      -> bochan.api.AcquisitionConfig
+OptimizeConfigSchema         -> bochan.api.OptimizeConfig
+DataContextSchema            -> bochan.api.DataContext
+JSON numeric arrays          -> torch.Tensor
 ```
 
 Multiclass でよく使う `target_class`, `threshold`, `num_samples`, `output_reduction`, `output_weights`, `noise_mode` などは `acqf_kwargs` にそのまま渡します。`output_weights`, `best_f`, `ref_point`, `X_baseline` など tensor 的に扱う値は converter 側で必要に応じて tensor 化されます。
+
+---
+
+## 14. `bochan.api.fastapi` との違い
+
+`bochan.api.fastapi` は、`/bochan/sessions` を中心にした軽量な高レベル API です。`bochan.serving.fastapi` は `/models` を中心にした serving 用 API です。
+
+| module | endpoint style | 用途 |
+|---|---|---|
+| `bochan.api.fastapi` | `/bochan/sessions`, `/bochan/suggest` | 最小構成・prototype |
+| `bochan.serving.fastapi` | `/models`, `/models/{model_id}/...` | serving 層として拡張しやすい構成 |
+
+どちらも公開 `bochan.api` の config dataclass に揃える方針です。新しくアプリを作る場合は、router が分割されている `bochan.serving.fastapi` を推奨します。

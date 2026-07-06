@@ -27,10 +27,11 @@ def generate_candidates(
 ) -> CandidateResponse:
     try:
         optimizer = store.get(model_id)
-        acq_config = to_acquisition_config(request.acq_config)
-        opt_config = to_optimize_config(request.opt_config)
-        data_context = to_data_context(request.data_context) if request.data_context is not None else None
-        bounds = to_tensor(request.bounds) if request.bounds is not None else None
+        options = request.tensor_options
+        acq_config = to_acquisition_config(request.acq_config, options)
+        opt_config = to_optimize_config(request.opt_config, options)
+        data_context = to_data_context(request.data_context, options) if request.data_context is not None else None
+        bounds = to_tensor(request.bounds, options) if request.bounds is not None else None
         candidates, acq_value = optimizer.candidate(
             acq_config=acq_config,
             opt_config=opt_config,
@@ -50,14 +51,13 @@ def ask_candidates(
     request: CandidateRequest,
     store: InMemoryOptimizerStore = Depends(get_optimizer_store),
 ) -> CandidateResponse:
-    """Alias endpoint for ask-and-tell optimization loops."""
-
     try:
         optimizer = store.get(model_id)
-        acq_config = to_acquisition_config(request.acq_config)
-        opt_config = to_optimize_config(request.opt_config)
-        data_context = to_data_context(request.data_context) if request.data_context is not None else None
-        bounds = to_tensor(request.bounds) if request.bounds is not None else None
+        options = request.tensor_options
+        acq_config = to_acquisition_config(request.acq_config, options)
+        opt_config = to_optimize_config(request.opt_config, options)
+        data_context = to_data_context(request.data_context, options) if request.data_context is not None else None
+        bounds = to_tensor(request.bounds, options) if request.bounds is not None else None
         candidates, acq_value = optimizer.ask(
             acq_config=acq_config,
             opt_config=opt_config,
@@ -79,10 +79,11 @@ def compare_candidates(
 ) -> CompareCandidatesResponse:
     try:
         optimizer = store.get(model_id)
-        acq_configs = [to_acquisition_config(config) for config in request.acq_configs]
-        opt_config = to_optimize_config(request.opt_config)
-        data_context = to_data_context(request.data_context) if request.data_context is not None else None
-        bounds = to_tensor(request.bounds) if request.bounds is not None else None
+        options = request.tensor_options
+        acq_configs = [to_acquisition_config(config, options) for config in request.acq_configs]
+        opt_config = to_optimize_config(request.opt_config, options)
+        data_context = to_data_context(request.data_context, options) if request.data_context is not None else None
+        bounds = to_tensor(request.bounds, options) if request.bounds is not None else None
         results = optimizer.compare_acquisitions(
             acq_configs=acq_configs,
             opt_config=opt_config,

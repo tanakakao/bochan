@@ -21,7 +21,7 @@ from .converter import (
     resolve_repair_config_columns,
     tensor_to_dataframe,
 )
-from .optimizer import TabularBayesianOptimizer
+from .optimizer_api import TabularBayesianOptimizer
 
 __all__ = [
     "ColumnKey",

@@ -204,6 +204,25 @@ def _build_multiclass(bundle: ModelBundle, config: AcquisitionConfig):
     )
 
 
+def _objective_keeps_perturbation_expanded(config: AcquisitionConfig) -> bool:
+    objective_config = config.objective_config
+    return bool(
+        objective_config is not None
+        and objective_config.n_w is not None
+        and int(objective_config.n_w) > 1
+        and objective_config.risk_type is None
+        and objective_config.aggregate_mean_when_no_risk is False
+    )
+
+
+def _maybe_disable_objective_shape_check(objective: Any, config: AcquisitionConfig) -> Any:
+    """Allow one-to-many objective values to stay on q*n_w before constraints."""
+
+    if objective is not None and _objective_keeps_perturbation_expanded(config):
+        setattr(objective, "_verify_output_shape", False)
+    return objective
+
+
 def _build_objective(
     bundle: ModelBundle,
     config: AcquisitionConfig,
@@ -215,11 +234,12 @@ def _build_objective(
         or config.objective_factory is not None
         or config.objective_config is None
     ):
-        return _BASE_BUILD_OBJECTIVE(
+        objective = _BASE_BUILD_OBJECTIVE(
             bundle=bundle,
             config=config,
             data_context=data_context,
         )
+        return _maybe_disable_objective_shape_check(objective, config)
     return _build_multiclass(bundle, config)
 
 

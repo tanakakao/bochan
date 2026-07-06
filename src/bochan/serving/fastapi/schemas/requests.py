@@ -9,49 +9,65 @@ from pydantic import BaseModel, ConfigDict, Field
 from .configs import AcquisitionConfigSchema, DataContextSchema, FitConfigSchema, ModelConfigSchema, OptimizeConfigSchema
 
 
-class FitModelRequest(BaseModel):
+class APIRequest(BaseModel):
+    """Base request model with API-compatible aliases enabled."""
+
     model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
 
+
+class TensorOptionsSchema(APIRequest):
+    """Tensor conversion options for JSON payloads."""
+
+    dtype: str = "float64"
+    device: str | None = None
+
+
+class FitModelRequest(APIRequest):
     bo_model_config: ModelConfigSchema = Field(alias="model_config")
     train_X: Any
     train_Y: Any
     bounds: Any | None = None
     fit_config: FitConfigSchema | None = None
     data_context: DataContextSchema | None = None
+    tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
 
 
-class RefitModelRequest(BaseModel):
+class RefitModelRequest(APIRequest):
     """Request body for refitting an existing in-memory optimizer."""
 
     fit_config: FitConfigSchema | None = None
 
 
-class TellRequest(BaseModel):
+class TellRequest(APIRequest):
     """Append observations to an existing optimizer and optionally refit."""
 
     new_X: Any
     new_Y: Any
     refit: bool = True
     fit_config: FitConfigSchema | None = None
+    tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
 
 
-class PredictRequest(BaseModel):
+class PredictRequest(APIRequest):
     X: Any
     return_type: Literal["posterior", "mean", "variance", "mean_variance"] = "mean_variance"
     posterior_kwargs: dict[str, Any] = Field(default_factory=dict)
+    tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
 
 
-class CandidateRequest(BaseModel):
-    acq_config: AcquisitionConfigSchema
-    opt_config: OptimizeConfigSchema = Field(default_factory=OptimizeConfigSchema)
+class CandidateRequest(APIRequest):
+    acq_config: AcquisitionConfigSchema = Field(alias="acquisition_config")
+    opt_config: OptimizeConfigSchema = Field(default_factory=OptimizeConfigSchema, alias="optimize_config")
     data_context: DataContextSchema | None = None
     bounds: Any | None = None
+    tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
 
 
-class CompareCandidatesRequest(BaseModel):
+class CompareCandidatesRequest(APIRequest):
     """Generate candidates for multiple acquisition functions on the same fitted model."""
 
-    acq_configs: list[AcquisitionConfigSchema]
-    opt_config: OptimizeConfigSchema = Field(default_factory=OptimizeConfigSchema)
+    acq_configs: list[AcquisitionConfigSchema] = Field(alias="acquisition_configs")
+    opt_config: OptimizeConfigSchema = Field(default_factory=OptimizeConfigSchema, alias="optimize_config")
     data_context: DataContextSchema | None = None
     bounds: Any | None = None
+    tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)

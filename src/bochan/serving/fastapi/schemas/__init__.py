@@ -16,7 +16,16 @@ from .configs import (
     OutcomeConstraintConfigSchema,
     OutputConfigSchema,
 )
-from .requests import CandidateRequest, CompareCandidatesRequest, FitModelRequest, PredictRequest, RefitModelRequest, TellRequest
+from .requests import (
+    APIRequest,
+    CandidateRequest,
+    CompareCandidatesRequest,
+    FitModelRequest,
+    PredictRequest,
+    RefitModelRequest,
+    TellRequest,
+    TensorOptionsSchema,
+)
 from .responses import (
     AcquisitionNamesResponse,
     CandidateResponse,
@@ -29,6 +38,7 @@ from .responses import (
 )
 
 __all__ = [
+    "APIRequest",
     "AcquisitionConfigSchema",
     "AcquisitionNamesResponse",
     "CandidateRepairConfigSchema",
@@ -55,4 +65,5 @@ __all__ = [
     "PredictResponse",
     "RefitModelRequest",
     "TellRequest",
+    "TensorOptionsSchema",
 ]

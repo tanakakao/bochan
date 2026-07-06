@@ -9,6 +9,41 @@ from bochan.api import AcquisitionConfig, FitConfig, ModelConfig, OptimizeConfig
 from .builders import UNSET, make_acquisition_config, make_fit_config, make_optimize_config
 from .optimizer import TabularBayesianOptimizer as _BaseTabularBayesianOptimizer
 
+_ACQUISITION_DIRECT_KEYS = {
+    "acq_name",
+    "name",
+    "acqf_cls",
+    "acqf_factory",
+    "objective",
+    "objective_config",
+    "objective_factory",
+    "objective_kwargs",
+    "sampler",
+    "acqf_kwargs",
+    "context_fields",
+    "filter_kwargs_by_signature",
+    "objective_mode",
+    "objective_output",
+    "objective_outputs",
+    "objective_specs",
+    "objective_directions",
+    "objective_weights",
+    "objective_eq_targets",
+    "objective_direction",
+    "objective_weight",
+    "objective_eq_target",
+    "objective_n_w",
+    "objective_risk_type",
+    "objective_alpha",
+    "objective_maximize",
+    "objective_aggregate_mean_when_no_risk",
+    "objective_allow_unexpanded",
+    "objective_utility_values",
+    "objective_ordinal_likelihood",
+    "constraints",
+    "outcome_constraint_config",
+}
+
 
 class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
     '''Pandas / numpy friendly optimizer with public API convenience fields.
@@ -71,15 +106,22 @@ class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
         **kwargs: Any,
     ) -> Any:
         acq_values = {
-            "constraints": constraints,
-            "outcome_constraint_config": outcome_constraint_config,
-            "objective_eq_targets": objective_eq_targets,
-            "objective_eq_target": objective_eq_target,
-            "objective_maximize": objective_maximize,
-            "objective_aggregate_mean_when_no_risk": objective_aggregate_mean_when_no_risk,
-            "objective_allow_unexpanded": objective_allow_unexpanded,
-            "objective_ordinal_likelihood": objective_ordinal_likelihood,
+            key: kwargs.pop(key)
+            for key in list(kwargs)
+            if key in _ACQUISITION_DIRECT_KEYS
         }
+        acq_values.update(
+            {
+                "constraints": constraints,
+                "outcome_constraint_config": outcome_constraint_config,
+                "objective_eq_targets": objective_eq_targets,
+                "objective_eq_target": objective_eq_target,
+                "objective_maximize": objective_maximize,
+                "objective_aggregate_mean_when_no_risk": objective_aggregate_mean_when_no_risk,
+                "objective_allow_unexpanded": objective_allow_unexpanded,
+                "objective_ordinal_likelihood": objective_ordinal_likelihood,
+            }
+        )
         if any(value is not UNSET for value in acq_values.values()):
             acq_config = make_acquisition_config(acq_config, **acq_values)
         if evo_method is not UNSET:

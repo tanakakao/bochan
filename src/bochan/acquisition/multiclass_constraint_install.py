@@ -37,7 +37,7 @@ def _own_init_signature(acquisition_cls: type) -> inspect.Signature | None:
 def _patch_eta_buffer_assignment(acquisition_cls: type) -> None:
     """Pass eta with the shape required by BoTorch's registered buffer."""
 
-    if getattr(acquisition_cls, "_bochan_eta_buffer_patched", False):
+    if acquisition_cls.__dict__.get("_bochan_eta_buffer_patched", False):
         return
 
     from bochan.acquisition.classification_constraint_compat import (
@@ -206,7 +206,7 @@ def _compute_multiclass_qehvi(
 def _patch_multiclass_qehvi(acquisition_cls: type) -> None:
     """Replace BoTorch's raw-sample feasibility shape assumption."""
 
-    if getattr(acquisition_cls, "_bochan_multiclass_qehvi_patched", False):
+    if acquisition_cls.__dict__.get("_bochan_multiclass_qehvi_patched", False):
         return
     acquisition_cls._compute_qehvi = _compute_multiclass_qehvi
     acquisition_cls._bochan_multiclass_qehvi_patched = True

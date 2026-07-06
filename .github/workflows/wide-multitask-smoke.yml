@@ -30,6 +30,7 @@ jobs:
             tests/test_wide_multitask_public_transform.py \
             tests/test_wide_multitask_acquisition_consistency.py \
             tests/test_wide_multitask_classification_acquisitions.py \
+            tests/test_classification_hypervolume_signatures.py \
             tests/test_api_objective_input_transform_defaults.py \
             tests/test_ordinal_missing_multiobjective.py \
             tests/test_multiclass_nparego_context.py \
@@ -70,6 +71,7 @@ jobs:
             tests/test_wide_multitask_public_transform.py \
             tests/test_wide_multitask_acquisition_consistency.py \
             tests/test_wide_multitask_classification_acquisitions.py \
+            tests/test_classification_hypervolume_signatures.py \
             tests/test_api_objective_input_transform_defaults.py \
             tests/test_ordinal_missing_multiobjective.py \
             tests/test_multiclass_nparego_context.py \

@@ -10,6 +10,7 @@ from torch import Tensor
 from .constraints import (
     FeasibilityConstraintSpec,
     OrdinalRankConstraintSpec,
+    constraint_value_from_class_probs,
     constraint_value_from_ordinal_probs,
     constraint_value_from_output,
     normalize_output_index,
@@ -25,13 +26,9 @@ ConstraintSpec = FeasibilityConstraintSpec | OrdinalRankConstraintSpec
 class FeasibilityWeightedAcquisition(AcquisitionFunction):
     """既存 acquisition に soft feasibility を掛ける wrapper。
 
-    既存の `base_acqf(X)` をそのまま使い、別途 model posterior から
-    ``P(feasible | X)`` 風の soft weight を計算して掛ける。
-
-    これは以下の用途を想定する。
-      - BoTorch の `constraints=` 引数に乗せにくい自作 acquisition
-      - UCB / active learning / level-set などの score-based acquisition
-      - HybridMultiOutputModel の分類・順序回帰出力を feasibility として使う場合
+    `target_class` / `target_classes` 付きの `FeasibilityConstraintSpec` と
+    `OrdinalRankConstraintSpec` は、model.class_probs_list() から確率を取得して
+    評価する。そのため、モデル定義側の positive_class に依存しない。
     """
 
     def __init__(
@@ -84,8 +81,21 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
         if self.posterior_mode == "mean" and callable(getattr(self.model, "mean_posterior", None)):
             return self.model.mean_posterior(X)
 
-        # HybridMultiOutputModel 以外でも使えるように fallback する。
         return self.model.posterior(X, output_mode=self.posterior_mode)
+
+    def _class_probs_for_output(self, X: Tensor, output) -> Tensor:
+        if not callable(getattr(self.model, "class_probs_list", None)):
+            raise AttributeError(
+                "Class-probability feasibility constraints require "
+                "model.class_probs_list(X, output_indices=...)."
+            )
+        probs_list = self.model.class_probs_list(X, output_indices=[output])
+        if len(probs_list) != 1:
+            raise RuntimeError(
+                "Expected exactly one class probability tensor for "
+                f"output={output!r}, got {len(probs_list)}."
+            )
+        return probs_list[0]
 
     def _ordinal_rank_constraint_value(
         self,
@@ -94,18 +104,18 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
     ) -> Tensor:
         """OrdinalRankConstraintSpec を class probability から評価する。"""
 
-        if not callable(getattr(self.model, "class_probs_list", None)):
-            raise AttributeError(
-                "OrdinalRankConstraintSpec requires model.class_probs_list(X, output_indices=...)."
-            )
+        probs = self._class_probs_for_output(X, spec.output)
+        return constraint_value_from_ordinal_probs(probs, spec)
 
-        probs_list = self.model.class_probs_list(X, output_indices=[spec.output])
-        if len(probs_list) != 1:
-            raise RuntimeError(
-                "Expected exactly one ordinal probability tensor for "
-                f"output={spec.output!r}, got {len(probs_list)}."
-            )
-        return constraint_value_from_ordinal_probs(probs_list[0], spec)
+    def _class_probability_constraint_value(
+        self,
+        X: Tensor,
+        spec: FeasibilityConstraintSpec,
+    ) -> Tensor:
+        """target_class / target_classes を class probability から評価する。"""
+
+        probs = self._class_probs_for_output(X, spec.output)
+        return constraint_value_from_class_probs(probs, spec)
 
     def constraint_values(self, X: Tensor) -> Tensor:
         """posterior mean / class probability 上で制約値を評価する。
@@ -120,7 +130,9 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
         values = []
 
         continuous_specs = [
-            spec for spec in self.constraints if isinstance(spec, FeasibilityConstraintSpec)
+            spec
+            for spec in self.constraints
+            if isinstance(spec, FeasibilityConstraintSpec) and not spec.has_target_classes
         ]
         posterior_mean = None
         if len(continuous_specs) > 0:
@@ -129,6 +141,9 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
         for spec in self.constraints:
             if isinstance(spec, OrdinalRankConstraintSpec):
                 values.append(self._ordinal_rank_constraint_value(X, spec).unsqueeze(-1))
+                continue
+            if spec.has_target_classes:
+                values.append(self._class_probability_constraint_value(X, spec).unsqueeze(-1))
                 continue
 
             idx = normalize_output_index(spec.output, output_names=output_names)
@@ -183,7 +198,6 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
         pf = self.feasibility(X)
 
         if self.reduce_q == "none":
-            # base_value が joint score (*batch) の場合は、q feasibility を平均して合わせる。
             if base_value.shape == pf.shape[:-1]:
                 pf = pf.mean(dim=-1)
 

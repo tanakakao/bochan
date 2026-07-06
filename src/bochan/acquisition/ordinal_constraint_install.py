@@ -14,8 +14,9 @@ def _own_init_signature(acquisition_cls: type) -> inspect.Signature | None:
     initializer = acquisition_cls.__dict__.get("__init__")
     if initializer is None:
         return None
+    initializer = inspect.unwrap(initializer)
     try:
-        signature = inspect.signature(initializer)
+        signature = inspect.signature(initializer, follow_wrapped=False)
     except (TypeError, ValueError):
         return None
     parameters = list(signature.parameters.values())

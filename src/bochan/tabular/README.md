@@ -1108,7 +1108,7 @@ bo.train_Y
 
 - `bochan.tabular` は薄いラッパーであり、モデル構築・学習・獲得関数・候補点最適化の中核は `bochan.api` に委譲します。
 - DataFrame / CSV 利用には pandas が必要です。
-- 可視化メソッドには `plotly` が必要です。
+- 可視化メソッドには `plotly` が必要です。可視化を使う場合は `[visualization]`, `[all]`, または可視化依存を含む extra をインストールしてください。
 - `continuous_impute_strategy="iterative"` には scikit-learn が必要です。
 - 文字列カテゴリの候補点は元の文字列に戻しますが、最適化中は数値コードとして扱います。
 - 目的変数の文字列カテゴリは学習用に label encoding されます。候補点 DataFrame には目的変数は含まれません。

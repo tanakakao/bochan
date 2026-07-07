@@ -95,8 +95,10 @@ def build_llm_candidate_set(
     candidates = remove_duplicate_rows(candidates)
 
     if fallback_sobol and candidates.shape[0] < target_n:
+        import torch
+
         supplement = _sobol_candidates(bounds, target_n - candidates.shape[0], seed=seed)
-        candidates = remove_duplicate_rows(candidates=torch.cat([candidates, supplement], dim=0))
+        candidates = remove_duplicate_rows(torch.cat([candidates, supplement], dim=0))
     return candidates
 
 

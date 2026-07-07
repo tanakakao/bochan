@@ -261,5 +261,5 @@ Do not include API key values in HTTP request bodies. Keep keys on the server si
 
 - The initial implementation reranks each LLM candidate with q=1 acquisition values.
 - It is candidate-set reranking, not exact joint q-batch optimization.
-- The planner returns serializable config dictionaries and warnings; applications should show these to users for review in high-risk workflows.
+- The planner returns serializable config dictionaries and warnings; applications should show these to users for review in important workflows.
 - Provider-backed planner and candidate generation require optional SDKs and environment variables.

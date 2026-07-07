@@ -393,6 +393,68 @@ class TabularBayesianOptimizer:
             return self.model_config
         return replace(self.model_config, cat_dims=dataset.cat_dims)
 
+    def _check_tabular_fitted(self) -> None:
+        if self.dataset is None:
+            raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
+
+    def _visualization_feature_cols(
+        self,
+        feature_cols: Sequence[ColumnKey] | None = None,
+    ) -> list[ColumnKey]:
+        self._check_tabular_fitted()
+        assert self.dataset is not None
+        return list(self.dataset.feature_names if feature_cols is None else feature_cols)
+
+    def _visualization_target_cols(
+        self,
+        target_cols: Sequence[ColumnKey] | None = None,
+    ) -> list[ColumnKey]:
+        self._check_tabular_fitted()
+        assert self.dataset is not None
+        return list(self.dataset.target_names if target_cols is None else target_cols)
+
+    def _resolve_plot_target(
+        self,
+        target: ColumnKey | None,
+        target_cols: Sequence[ColumnKey],
+        *,
+        name: str = "target",
+    ) -> ColumnKey:
+        if target is not None:
+            return target
+        if len(target_cols) == 1:
+            return target_cols[0]
+        raise ValueError(f"{name} must be specified when multiple target columns are available: {list(target_cols)!r}.")
+
+    def _sync_visualization_metadata(self) -> None:
+        '''Attach tabular column names and labels to the underlying optimizer bundle.'''
+
+        if self.dataset is None or self.bo.bundle is None:
+            return
+        metadata = dict(getattr(self.bo.bundle, "metadata", {}) or {})
+        metadata["feature_cols"] = list(self.dataset.feature_names)
+        metadata["target_cols"] = list(self.dataset.target_names)
+
+        if self.dataset.category_maps:
+            labels = dict(metadata.get("labels") or {})
+            labels.update(self.dataset.category_maps)
+            metadata["labels"] = labels
+
+        if self.dataset.inverse_target_category_maps:
+            class_label_map: dict[int, list[Any]] = {}
+            for output_idx, target_name in enumerate(self.dataset.target_names):
+                inverse = self.dataset.inverse_target_category_maps.get(target_name)
+                if inverse is None:
+                    inverse = self.dataset.inverse_target_category_maps.get(str(target_name))
+                if inverse:
+                    class_label_map[output_idx] = [inverse[key] for key in sorted(inverse)]
+            if len(class_label_map) == 1:
+                metadata["class_labels"] = next(iter(class_label_map.values()))
+            elif class_label_map:
+                metadata["class_labels"] = class_label_map
+
+        self.bo.bundle.metadata = metadata
+
     def fit(
         self,
         data: Any | None = None,
@@ -502,6 +564,7 @@ class TabularBayesianOptimizer:
         )
         if dataset.bounds is not None:
             self.bo.set_bounds(dataset.bounds)
+        self._sync_visualization_metadata()
         return self
 
     def candidate(
@@ -778,6 +841,222 @@ class TabularBayesianOptimizer:
             decode_categories=self.data_config.return_original_categories,
         )
 
+    def visualization_training_dataframe(
+        self,
+        *,
+        feature_cols: Sequence[ColumnKey] | None = None,
+        target_cols: Sequence[ColumnKey] | None = None,
+    ) -> Any:
+        '''Return training X / Y DataFrames using bochan.visualization helpers.'''
+
+        from bochan.visualization import training_dataframe
+
+        return training_dataframe(
+            self.bo,
+            feature_cols=self._visualization_feature_cols(feature_cols),
+            target_cols=self._visualization_target_cols(target_cols),
+        )
+
+    def visualization_candidates_dataframe(
+        self,
+        *,
+        candidate_result: Any | None = None,
+        feature_cols: Sequence[ColumnKey] | None = None,
+        target_cols: Sequence[ColumnKey] | None = None,
+        include_prediction: bool = True,
+    ) -> Any:
+        '''Return the latest candidate batch as a visualization-friendly DataFrame.'''
+
+        from bochan.visualization import candidates_dataframe
+
+        return candidates_dataframe(
+            self.bo,
+            candidate_result=candidate_result,
+            feature_cols=self._visualization_feature_cols(feature_cols),
+            target_cols=self._visualization_target_cols(target_cols),
+            include_prediction=include_prediction,
+        )
+
+    def plot_yy(
+        self,
+        target: ColumnKey | None = None,
+        *,
+        feature_cols: Sequence[ColumnKey] | None = None,
+        target_cols: Sequence[ColumnKey] | None = None,
+        candidate_result: Any | None = None,
+        cycle: str | Sequence[Any] | Any | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        '''Create a YY plot or multiclass correct-label probability plot.'''
+
+        from bochan.visualization import show_yyplot_from_optimizer
+
+        resolved_target_cols = self._visualization_target_cols(target_cols)
+        resolved_target = self._resolve_plot_target(target, resolved_target_cols)
+        return show_yyplot_from_optimizer(
+            self.bo,
+            resolved_target,
+            feature_cols=self._visualization_feature_cols(feature_cols),
+            target_cols=resolved_target_cols,
+            candidate_result=candidate_result,
+            cycle=cycle,
+            **kwargs,
+        )
+
+    def plot_1d(
+        self,
+        feature: ColumnKey,
+        target: ColumnKey | None = None,
+        *,
+        feature_cols: Sequence[ColumnKey] | None = None,
+        target_cols: Sequence[ColumnKey] | None = None,
+        value_dict: dict[str, Any] | None = None,
+        candidate_result: Any | None = None,
+        n: int = 50,
+        cycle: str | Sequence[Any] | Any | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        '''Create a 1D prediction curve from the fitted tabular optimizer.'''
+
+        from bochan.visualization import show_1dplot_from_optimizer
+
+        resolved_target_cols = self._visualization_target_cols(target_cols)
+        resolved_target = self._resolve_plot_target(target, resolved_target_cols)
+        return show_1dplot_from_optimizer(
+            self.bo,
+            feature,
+            resolved_target,
+            feature_cols=self._visualization_feature_cols(feature_cols),
+            target_cols=resolved_target_cols,
+            value_dict=value_dict,
+            candidate_result=candidate_result,
+            n=n,
+            cycle=cycle,
+            **kwargs,
+        )
+
+    def plot_2d(
+        self,
+        feature_col1: ColumnKey,
+        feature_col2: ColumnKey,
+        target: ColumnKey | None = None,
+        *,
+        feature_cols: Sequence[ColumnKey] | None = None,
+        target_cols: Sequence[ColumnKey] | None = None,
+        value_dict: dict[str, Any] | None = None,
+        candidate_result: Any | None = None,
+        n: int = 25,
+        show_type: str = "acqf",
+        cycle: str | Sequence[Any] | Any | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        '''Create a 2D acquisition or prediction heatmap from the fitted optimizer.'''
+
+        from bochan.visualization import show_scatter_with_acqf_from_optimizer
+
+        resolved_target_cols = self._visualization_target_cols(target_cols)
+        resolved_target = self._resolve_plot_target(target, resolved_target_cols)
+        return show_scatter_with_acqf_from_optimizer(
+            self.bo,
+            feature_col1,
+            feature_col2,
+            resolved_target,
+            feature_cols=self._visualization_feature_cols(feature_cols),
+            target_cols=resolved_target_cols,
+            value_dict=value_dict,
+            candidate_result=candidate_result,
+            n=n,
+            show_type=show_type,
+            cycle=cycle,
+            **kwargs,
+        )
+
+    def plot_heatmap(self, *args: Any, **kwargs: Any) -> Any:
+        '''Alias for plot_2d().'''
+
+        return self.plot_2d(*args, **kwargs)
+
+    def plot_scatter(self, *args: Any, **kwargs: Any) -> Any:
+        '''Alias for plot_2d().'''
+
+        return self.plot_2d(*args, **kwargs)
+
+    def plot_tri(
+        self,
+        feature_col1: ColumnKey,
+        feature_col2: ColumnKey,
+        feature_col3: ColumnKey,
+        target: ColumnKey | None = None,
+        *,
+        feature_cols: Sequence[ColumnKey] | None = None,
+        target_cols: Sequence[ColumnKey] | None = None,
+        value_dict: dict[str, Any] | None = None,
+        candidate_result: Any | None = None,
+        sum_value: float | None = None,
+        n: int = 50,
+        show_type: str = "acqf",
+        cycle: str | Sequence[Any] | Any | None = None,
+        ncontours: int = 25,
+        **kwargs: Any,
+    ) -> Any:
+        '''Create a ternary acquisition or prediction plot from the fitted optimizer.'''
+
+        from bochan.visualization import show_triscatter_with_acqf_from_optimizer
+
+        resolved_target_cols = self._visualization_target_cols(target_cols)
+        resolved_target = self._resolve_plot_target(target, resolved_target_cols)
+        return show_triscatter_with_acqf_from_optimizer(
+            self.bo,
+            feature_col1,
+            feature_col2,
+            feature_col3,
+            resolved_target,
+            feature_cols=self._visualization_feature_cols(feature_cols),
+            target_cols=resolved_target_cols,
+            value_dict=value_dict,
+            candidate_result=candidate_result,
+            sum_value=sum_value,
+            n=n,
+            show_type=show_type,
+            cycle=cycle,
+            ncontours=ncontours,
+            **kwargs,
+        )
+
+    def plot_ternary(self, *args: Any, **kwargs: Any) -> Any:
+        '''Alias for plot_tri().'''
+
+        return self.plot_tri(*args, **kwargs)
+
+    def plot_pareto(
+        self,
+        target1: ColumnKey | None = None,
+        target2: ColumnKey | None = None,
+        *,
+        target_cols: Sequence[ColumnKey] | None = None,
+        candidate_result: Any | None = None,
+        df_cand: Any | None = None,
+        cycle: str | Sequence[Any] | Any | None = None,
+    ) -> Any:
+        '''Create a two-objective scatter plot with optional candidate predictions.'''
+
+        from bochan.visualization import show_pareto_plot
+
+        resolved_target_cols = self._visualization_target_cols(target_cols)
+        if target1 is None or target2 is None:
+            if len(resolved_target_cols) < 2:
+                raise ValueError("target1 and target2 are required when fewer than two target columns are available.")
+            target1 = resolved_target_cols[0] if target1 is None else target1
+            target2 = resolved_target_cols[1] if target2 is None else target2
+        _, y_df = self.visualization_training_dataframe(target_cols=resolved_target_cols)
+        if df_cand is None:
+            df_cand = self.visualization_candidates_dataframe(
+                candidate_result=candidate_result,
+                target_cols=resolved_target_cols,
+                include_prediction=True,
+            )
+        return show_pareto_plot(y_df, target1, target2, df_cand=df_cand, cycle=cycle)
+
     def update_data(self, new_data: Any, new_y: Any | None = None) -> "TabularBayesianOptimizer":
         '''Append new observations to the underlying tensor optimizer state.'''
 
@@ -802,6 +1081,7 @@ class TabularBayesianOptimizer:
         self.update_data(new_data, new_y)
         if refit:
             self.bo.refit(fit_config=fit_config or self.fit_config)
+            self._sync_visualization_metadata()
         return self
 
     def candidates_to_dataframe(self, candidates: Any):

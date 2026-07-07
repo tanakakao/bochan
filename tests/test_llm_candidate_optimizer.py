@@ -2,7 +2,15 @@ from __future__ import annotations
 
 import torch
 
-from bochan.api import BayesianOptimizer, ModelConfig, OptimizeConfig, optimize_candidates
+from bochan.api import (
+    AcquisitionConfig,
+    BayesianOptimizer,
+    BochanStudy,
+    ModelConfig,
+    OptimizeConfig,
+    StudySuggestion,
+    optimize_candidates,
+)
 from bochan.llm import LLMSettings, plan_configs
 from bochan.optim import optimize_acqf_llm_candidate_set
 
@@ -117,3 +125,40 @@ def test_configure_llm_injects_shared_candidate_kwargs():
     assert merged.optimizer_kwargs["goal"] == "large sum"
     assert merged.optimizer_kwargs["candidate_set"] == [[0.1, 0.2], [0.8, 0.9]]
     assert merged.optimizer_kwargs["n_llm_candidates"] == 2
+
+
+def test_bochan_study_suggest_config_and_apply_without_provider_call():
+    study = BochanStudy(
+        bounds=torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double),
+        llm_settings=LLMSettings(
+            goal="yを大きくしたい",
+            planner_response={
+                "model_config": {"task_type": "regression", "model_type": "base"},
+                "fit_config": {"method": "auto", "skip_fit": True},
+                "acquisition_config": {"name": "UCB", "acqf_kwargs": {"beta": 0.2}},
+                "optimize_config": {"optimizer": "llm_candidate_set", "q": 1},
+                "warnings": ["offline study suggestion"],
+                "reasoning_summary": "Use a simple regression model and UCB for this smoke test.",
+            },
+        ),
+    )
+    study.add_observations(
+        torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double),
+        torch.tensor([[0.0], [1.0]], dtype=torch.double),
+    )
+
+    suggestion = study.suggest(mode="config")
+
+    assert isinstance(suggestion, StudySuggestion)
+    assert suggestion.model_config.model_type == "base"
+    assert suggestion.fit_config.skip_fit is True
+    assert suggestion.acq_config.name == "UCB"
+    assert suggestion.opt_config.optimizer == "llm_candidate_set"
+    assert suggestion.warnings == ["offline study suggestion"]
+
+    study.apply_suggestion(suggestion)
+
+    assert study.model_config.model_type == "base"
+    assert study.fit_config.skip_fit is True
+    assert study.acq_config.name == "UCB"
+    assert study.opt_config.optimizer == "llm_candidate_set"

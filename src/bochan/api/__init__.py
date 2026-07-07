@@ -364,7 +364,7 @@ from .factory import (
     resolve_model_cls,
 )
 from .model_registry import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
-from .study import CandidateBatch, StudySnapshot, Trial, TrialState
+from .study import CandidateBatch, StudySnapshot, StudySuggestion, Trial, TrialState
 from .study_controls import (
     BochanStudy,
     EarlyStoppingConfig,
@@ -402,6 +402,7 @@ __all__ = [
     "PredictionResult",
     "StopDecision",
     "StudySnapshot",
+    "StudySuggestion",
     "Trial",
     "TrialState",
     "available_acqf_names",

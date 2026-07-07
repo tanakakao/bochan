@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 
 from bochan.api import OptimizeConfig, optimize_candidates
+from bochan.llm import plan_configs
 from bochan.optim import optimize_acqf_llm_candidate_set
 
 
@@ -52,3 +53,20 @@ def test_public_optimize_config_dispatches_llm_candidate_set():
     assert candidates.shape == torch.Size([1, 2])
     assert torch.allclose(candidates[0], torch.tensor([0.8, 0.9], dtype=torch.double))
     assert values.shape == torch.Size([1])
+
+
+def test_plan_configs_accepts_explicit_planner_response_without_provider_call():
+    plan = plan_configs(
+        goal="導電率を高くし、収縮率を低くしたい",
+        mode="model_config",
+        planner_response={
+            "model_config": {"task_type": "regression", "model_type": "base"},
+            "fit_config": {"method": "auto"},
+            "warnings": ["weights were not specified"],
+        },
+    )
+
+    assert plan["model_config"]["task_type"] == "regression"
+    assert plan["fit_config"]["method"] == "auto"
+    assert plan["warnings"] == ["weights were not specified"]
+    assert "reasoning_summary" in plan

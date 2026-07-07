@@ -1,7 +1,7 @@
-"""Configuration objects for LLM-assisted candidate generation.
+"""Configuration objects for LLM-assisted bochan workflows.
 
-このモジュールは、LLM provider の設定と、LLM に渡すドメイン文脈を
-bochan 本体の最適化設定から分離して扱うための dataclass を定義します。
+このモジュールは、LLM provider の設定、LLM に渡すドメイン文脈、
+および optimizer 全体で共有する LLM 設定を定義します。
 API key そのものは保存・ログ出力しない前提です。
 """
 
@@ -95,6 +95,90 @@ class GoalConfig:
     require_confirmation: bool = False
 
 
+@dataclass
+class LLMSettings:
+    """BayesianOptimizer 全体で共有する LLM 実行文脈。
+
+    ``ModelConfig(model_type="llm_selected")`` と
+    ``OptimizeConfig(optimizer="llm_candidate_set")`` の両方から参照される
+    共通設定です。個別の ``model_kwargs`` / ``optimizer_kwargs`` に同名キーを
+    渡した場合は、個別設定が優先されます。
+    """
+
+    goal: str | GoalConfig | None = None
+    llm_config: LLMConfig | Mapping[str, Any] | None = None
+    llm_context: LLMContextConfig | Mapping[str, Any] | None = None
+
+    # planner / model selection
+    planner_response: Any | None = None
+    planner_mode: str = "model_config"
+    existing_model_config: dict[str, Any] | None = None
+    existing_fit_config: dict[str, Any] | None = None
+
+    # candidate generation
+    candidate_set: Any | None = None
+    n_llm_candidates: int | None = None
+    history_summary: dict[str, Any] | None = None
+    pending_candidates: Any | None = None
+    fallback_sobol: bool | None = None
+    seed: int | None = None
+
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def model_kwargs(self) -> dict[str, Any]:
+        """LLM model selector に渡す既定 kwargs を返す。"""
+
+        data: dict[str, Any] = {}
+        if self.goal is not None:
+            data["goal"] = self.goal
+        if self.llm_config is not None:
+            data["llm_config"] = self.llm_config
+        if self.llm_context is not None:
+            data["llm_context"] = self.llm_context
+        if self.planner_response is not None:
+            data["planner_response"] = self.planner_response
+        if self.planner_mode is not None:
+            data["mode"] = self.planner_mode
+        if self.existing_model_config is not None:
+            data["existing_model_config"] = self.existing_model_config
+        if self.existing_fit_config is not None:
+            data["existing_fit_config"] = self.existing_fit_config
+        return data
+
+    def optimizer_kwargs(self) -> dict[str, Any]:
+        """LLM candidate-set optimizer に渡す既定 kwargs を返す。"""
+
+        data: dict[str, Any] = {}
+        if self.goal is not None:
+            data["goal"] = self.goal
+        if self.llm_config is not None:
+            data["llm_config"] = self.llm_config
+        if self.llm_context is not None:
+            data["llm_context"] = self.llm_context
+        if self.candidate_set is not None:
+            data["candidate_set"] = self.candidate_set
+        if self.n_llm_candidates is not None:
+            data["n_llm_candidates"] = self.n_llm_candidates
+        if self.history_summary is not None:
+            data["history_summary"] = self.history_summary
+        if self.pending_candidates is not None:
+            data["pending_candidates"] = self.pending_candidates
+        if self.fallback_sobol is not None:
+            data["fallback_sobol"] = self.fallback_sobol
+        if self.seed is not None:
+            data["seed"] = self.seed
+        return data
+
+    def safe_dict(self) -> dict[str, Any]:
+        """secret をマスクした保存・表示用 dict を返す。"""
+
+        data = asdict(self)
+        llm_config = coerce_llm_config(self.llm_config)
+        if llm_config is not None:
+            data["llm_config"] = llm_config.safe_dict()
+        return data
+
+
 def coerce_llm_config(value: LLMConfig | Mapping[str, Any] | None) -> LLMConfig | None:
     """dict / dataclass / None を :class:`LLMConfig` に正規化する。"""
 
@@ -121,3 +205,11 @@ def coerce_goal_config(value: GoalConfig | Mapping[str, Any] | str | None) -> Go
     if isinstance(value, str):
         return GoalConfig(text=value)
     return GoalConfig(**dict(value))
+
+
+def coerce_llm_settings(value: LLMSettings | Mapping[str, Any] | None) -> LLMSettings | None:
+    """dict / dataclass / None を :class:`LLMSettings` に正規化する。"""
+
+    if value is None or isinstance(value, LLMSettings):
+        return value
+    return LLMSettings(**dict(value))

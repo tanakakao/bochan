@@ -2,13 +2,15 @@
 
 This document describes the experimental LLM-assisted planner and candidate-set optimizer.
 
-The recommended Python API is to define LLM information once with `LLMSettings` and reuse it for both model selection and candidate generation.
+The recommended Python API is to define LLM information once with `LLMSettings` and reuse it for model selection, candidate generation, and Study-level suggestions.
 
 ```text
 LLMSettings
   -> shared goal / provider / domain context
+  -> BayesianOptimizer / BochanStudy
   -> ModelConfig(model_type="llm_selected")
   -> OptimizeConfig(optimizer="llm_candidate_set")
+  -> study.suggest(mode="config")
 ```
 
 The LLM is not the final optimizer. It proposes configuration dictionaries or candidate pools; bochan still fits the selected model, validates / repairs candidates, and reranks them with the acquisition function.
@@ -44,7 +46,7 @@ setx GEMINI_API_KEY "..."
 
 ---
 
-## Recommended Python usage
+## Shared LLM settings
 
 Define the shared LLM settings once.
 
@@ -78,7 +80,13 @@ llm_settings = LLMSettings(
 )
 ```
 
-Use it for model selection by setting `model_type="llm_selected"`.
+Individual `model_kwargs` / `optimizer_kwargs` override shared settings when needed.
+
+---
+
+## BayesianOptimizer usage
+
+Use shared settings for model selection by setting `model_type="llm_selected"`.
 
 ```python
 from bochan.api import BayesianOptimizer, ModelConfig
@@ -92,7 +100,7 @@ bo = BayesianOptimizer(
 bo.fit(train_X, train_Y)
 ```
 
-Then use it for candidate generation by setting `optimizer="llm_candidate_set"`. You do not need to repeat `goal`, `llm_config`, or `llm_context`.
+Use the same shared settings for candidate generation by setting `optimizer="llm_candidate_set"`. You do not need to repeat `goal`, `llm_config`, or `llm_context`.
 
 ```python
 from bochan.api import AcquisitionConfig, ObjectiveConfig, OptimizeConfig
@@ -113,36 +121,12 @@ opt_config = OptimizeConfig(
     raw_samples=64,
 )
 
-candidates, acq_value = bo.candidate(
-    acq_config=acq_config,
-    opt_config=opt_config,
-)
+candidates, acq_value = bo.candidate(acq_config=acq_config, opt_config=opt_config)
 ```
 
-Local overrides are still possible. Individual `model_kwargs` / `optimizer_kwargs` take precedence over `LLMSettings`.
+You can also configure LLM settings later.
 
 ```python
-opt_config = OptimizeConfig(
-    optimizer="llm_candidate_set",
-    q=3,
-    optimizer_kwargs={
-        "n_llm_candidates": 100,
-    },
-)
-```
-
----
-
-## Alternative: configure later
-
-You can also configure LLM settings after constructing the optimizer.
-
-```python
-bo = BayesianOptimizer(
-    model_config=ModelConfig(model_type="llm_selected"),
-    bounds=bounds,
-)
-
 bo.configure_llm(
     goal="導電率を高くし、収縮率を低くしたい",
     llm_config=LLMConfig(provider="openai", model="gpt-4.1-mini"),
@@ -152,13 +136,67 @@ bo.configure_llm(
     ),
     n_llm_candidates=50,
 )
-
-bo.fit(train_X, train_Y)
 ```
 
 ---
 
-## Offline smoke test without API keys
+## BochanStudy usage
+
+`BochanStudy` can now carry the same `LLMSettings` and pass it into the internal `BayesianOptimizer` used by `ask()`.
+
+```python
+from bochan.api import BochanStudy, ModelConfig, OptimizeConfig
+
+study = BochanStudy(
+    model_config=ModelConfig(model_type="llm_selected"),
+    opt_config=OptimizeConfig(optimizer="llm_candidate_set", q=3),
+    bounds=bounds,
+    llm_settings=llm_settings,
+)
+
+study.add_observations(train_X, train_Y)
+batch = study.ask(return_batch=True)
+```
+
+### Study-level config suggestion
+
+Use `study.suggest(mode="config")` when you want the LLM to propose Study settings from the current history before generating candidates.
+
+```python
+suggestion = study.suggest(mode="config")
+
+print(suggestion.model_config)
+print(suggestion.fit_config)
+print(suggestion.acq_config)
+print(suggestion.opt_config)
+print(suggestion.reasoning_summary)
+print(suggestion.warnings)
+```
+
+The suggestion is not automatically applied unless requested.
+
+```python
+study.apply_suggestion(suggestion)
+```
+
+Or apply immediately:
+
+```python
+suggestion = study.suggest(mode="config", apply=True)
+```
+
+This is the recommended review flow for important experiments:
+
+```text
+study.suggest(mode="config")
+  -> review model / acquisition / optimizer proposal
+  -> study.apply_suggestion(...)
+  -> study.ask(...)
+```
+
+---
+
+## Offline smoke tests without API keys
 
 Use `planner_response` and `candidate_set` to test the full wiring without calling OpenAI or Gemini.
 
@@ -221,31 +259,18 @@ bo = BayesianOptimizer(
     llm_settings=llm_settings,
 )
 bo.fit(train_X, train_Y)
-
-acq_config = AcquisitionConfig(
-    name="NEHVI",
-    objective_config=ObjectiveConfig(
-        mode="multi_output",
-        outputs=[0, 1],
-        directions=["maximize", "minimize"],
-        weights=[1.0, 0.5],
-    ),
-)
-opt_config = OptimizeConfig(
-    optimizer="llm_candidate_set",
-    q=2,
-    raw_samples=4,
-)
-
-candidates, acq_value = bo.candidate(acq_config=acq_config, opt_config=opt_config)
-print(candidates)
-print(acq_value)
 ```
 
-The same code is available as:
+Run the complete BayesianOptimizer smoke test:
 
 ```bash
 python examples/llm_same_pattern.py
+```
+
+Run the complete BochanStudy smoke test:
+
+```bash
+python examples/llm_study_suggestion.py
 ```
 
 ---
@@ -268,7 +293,7 @@ llm_config = LLMConfig(
 
 ## Lower-level planner API
 
-`plan_configs()` is still available when you only want a configuration proposal and do not want to create a `BayesianOptimizer` yet.
+`plan_configs()` is still available when you only want a configuration proposal and do not want to create a `BayesianOptimizer` or `BochanStudy` yet.
 
 ```python
 from bochan.llm import LLMConfig, LLMContextConfig, plan_configs
@@ -307,6 +332,7 @@ Do not include API key values in HTTP request bodies. Keep keys on the server si
 
 ## Current limitations
 
+- `study.suggest(mode="config")` is implemented; `mode="next_action"` is intentionally left for a later phase.
 - The candidate-set optimizer reranks each LLM candidate with q=1 acquisition values.
 - It is candidate-set reranking, not exact joint q-batch optimization.
 - The planner returns serializable config dictionaries and warnings; applications should show these to users for review in important workflows.

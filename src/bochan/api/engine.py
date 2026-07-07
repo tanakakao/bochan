@@ -28,6 +28,10 @@ from .configs import (
 from .factory import build_acquisition, build_model, fit_model, optimize_candidates
 
 
+def _compact_name(value: Any) -> str:
+    return "".join(ch for ch in str(value).replace("-", "_").lower() if ch.isalnum() or ch == "_")
+
+
 class BayesianOptimizer:
     """Bayesian Optimization の高レベル API。"""
 
@@ -42,7 +46,6 @@ class BayesianOptimizer:
         data_context: DataContext | None = None,
         llm_settings: Any | None = None,
     ) -> None:
-        self.model_config = model_config
         self.fit_config = fit_config
         self.bounds = bounds
         self.model_registry = model_registry
@@ -50,6 +53,7 @@ class BayesianOptimizer:
 
         self.data_context = data_context
         self.llm_settings = self._coerce_llm_settings(llm_settings)
+        self.model_config = self._merge_llm_settings_into_model_config(model_config)
 
         self.bundle: ModelBundle | None = None
         self.model: Any | None = None
@@ -84,6 +88,7 @@ class BayesianOptimizer:
             llm_context=llm_context,
             **settings_kwargs,
         )
+        self.model_config = self._merge_llm_settings_into_model_config(self.model_config)
         return self
 
     @staticmethod
@@ -93,6 +98,31 @@ class BayesianOptimizer:
         from bochan.llm.configs import coerce_llm_settings
 
         return coerce_llm_settings(value)
+
+    @staticmethod
+    def _is_llm_selected_model_config(model_config: ModelConfig) -> bool:
+        return _compact_name(model_config.model_type) in {
+            "llm",
+            "llm_selected",
+            "llmselected",
+            "llm_model_select",
+            "llmmodelselect",
+            "llm_model_selected",
+            "llmmodelselected",
+            "llm_planned",
+            "llmplanned",
+            "llm_planner",
+            "llmplanner",
+        }
+
+    def _merge_llm_settings_into_model_config(self, model_config: ModelConfig) -> ModelConfig:
+        if self.llm_settings is None or not self._is_llm_selected_model_config(model_config):
+            return model_config
+        default_kwargs = self.llm_settings.model_kwargs()
+        if not default_kwargs:
+            return model_config
+        merged_kwargs = {**default_kwargs, **dict(model_config.model_kwargs or {})}
+        return replace(model_config, model_kwargs=merged_kwargs)
 
     def _merge_llm_settings_into_opt_config(self, opt_config: OptimizeConfig) -> OptimizeConfig:
         if self.llm_settings is None:
@@ -125,7 +155,7 @@ class BayesianOptimizer:
     ) -> "BayesianOptimizer":
         """モデルを生成し、必要なら学習する。"""
         if model_config is not None:
-            self.model_config = model_config
+            self.model_config = self._merge_llm_settings_into_model_config(model_config)
         if fit_config is not None:
             self.fit_config = fit_config
 

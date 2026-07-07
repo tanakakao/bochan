@@ -1,4 +1,4 @@
-"""LLM model selection and candidate generation with the same config pattern.
+"""Shared LLM settings for model selection and candidate generation.
 
 This example intentionally uses offline `planner_response` and `candidate_set` so it can run
 without OpenAI / Gemini API keys. Replace these with `llm_config` when calling providers.
@@ -9,6 +9,7 @@ from __future__ import annotations
 import torch
 
 from bochan.api import AcquisitionConfig, BayesianOptimizer, ModelConfig, ObjectiveConfig, OptimizeConfig
+from bochan.llm import LLMSettings
 
 
 def main() -> None:
@@ -38,30 +39,36 @@ def main() -> None:
         dtype=torch.double,
     )
 
-    # Model selection follows the same style as candidate generation:
-    # - model selection: ModelConfig(model_type="llm_selected", model_kwargs={...})
-    # - candidate generation: OptimizeConfig(optimizer="llm_candidate_set", optimizer_kwargs={...})
-    bo = BayesianOptimizer(
-        model_config=ModelConfig(
-            model_type="llm_selected",
-            model_kwargs={
-                "goal": "導電率を高くし、収縮率を低くしたい",
-                # Offline test path. No provider call is made when planner_response is supplied.
-                "planner_response": {
-                    "model_config": {
-                        "task_type": "regression",
-                        "model_type": "base",
-                        "outcome_transform": True,
-                    },
-                    "fit_config": {
-                        "method": "auto",
-                    },
-                    "warnings": ["offline planner response for local verification"],
-                    "reasoning_summary": "Use a base regression model for two continuous outputs.",
-                },
+    # Shared settings are supplied once. Both model selection and candidate generation reuse them.
+    llm_settings = LLMSettings(
+        goal="導電率を高くし、収縮率を低くしたい",
+        # Offline planner path. No provider call is made when planner_response is supplied.
+        planner_response={
+            "model_config": {
+                "task_type": "regression",
+                "model_type": "base",
+                "outcome_transform": True,
             },
-        ),
+            "fit_config": {
+                "method": "auto",
+            },
+            "warnings": ["offline planner response for local verification"],
+            "reasoning_summary": "Use a base regression model for two continuous outputs.",
+        },
+        # Offline candidate path. No provider call is made when candidate_set is supplied.
+        candidate_set=[
+            [840.0, 3.0, 1.0],
+            [860.0, 2.5, 2.0],
+            [800.0, 4.0, 1.0],
+            [920.0, 5.0, 2.0],
+        ],
+        n_llm_candidates=4,
+    )
+
+    bo = BayesianOptimizer(
+        model_config=ModelConfig(model_type="llm_selected"),
         bounds=bounds,
+        llm_settings=llm_settings,
     )
     bo.fit(train_X, train_Y)
 
@@ -83,16 +90,6 @@ def main() -> None:
         optimizer="llm_candidate_set",
         q=2,
         raw_samples=4,
-        optimizer_kwargs={
-            # Offline test path. No provider call is made when candidate_set is supplied.
-            "candidate_set": [
-                [840.0, 3.0, 1.0],
-                [860.0, 2.5, 2.0],
-                [800.0, 4.0, 1.0],
-                [920.0, 5.0, 2.0],
-            ],
-            "n_llm_candidates": 4,
-        },
     )
 
     candidates, acq_value = bo.candidate(acq_config=acq_config, opt_config=opt_config)

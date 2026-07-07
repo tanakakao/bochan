@@ -78,6 +78,53 @@ def test_make_optimize_config_accepts_dict_with_nested_repair_config() -> None:
     assert config.repair_config.final_priority == "constraints"
 
 
+def test_make_optimize_config_routes_shared_direct_fields_to_optimizer_config() -> None:
+    equality_constraints = [([0, 1, 2], [1.0, 1.0, 1.0], 1.0)]
+    inequality_constraints = [([3], [1.0], 100.0)]
+
+    config = make_optimize_config(
+        q=5,
+        equality_constraints=equality_constraints,
+        inequality_constraints=inequality_constraints,
+        fixed_features={4: 10.0},
+        numeric_indices=[0, 1, 2],
+        steps=[0.01, 0.01, 0.01],
+        comp_idx=[0, 1, 2],
+        k=2,
+    )
+
+    assert config.q == 5
+    assert config.equality_constraints is equality_constraints
+    assert config.inequality_constraints is inequality_constraints
+    assert config.fixed_features == {4: 10.0}
+    assert config.repair_config is not None
+    assert config.repair_config.equality_constraints is None
+    assert config.repair_config.inequality_constraints is None
+    assert config.repair_config.fixed_features is None
+    assert config.repair_config.numeric_indices == [0, 1, 2]
+    assert config.repair_config.steps == [0.01, 0.01, 0.01]
+    assert config.repair_config.comp_idx == [0, 1, 2]
+    assert config.repair_config.k == 2
+
+
+def test_make_optimize_config_accepts_repair_prefixed_shared_field_overrides() -> None:
+    optimizer_equality_constraints = [([0, 1], [1.0, 1.0], 1.0)]
+    repair_equality_constraints = [([0, 1, 2], [1.0, 1.0, 1.0], 1.0)]
+
+    config = make_optimize_config(
+        equality_constraints=optimizer_equality_constraints,
+        repair_equality_constraints=repair_equality_constraints,
+        repair_fixed_features={2: 0.0},
+        steps=[0.01, 0.01, 0.01],
+    )
+
+    assert config.equality_constraints is optimizer_equality_constraints
+    assert config.repair_config is not None
+    assert config.repair_config.equality_constraints is repair_equality_constraints
+    assert config.repair_config.fixed_features == {2: 0.0}
+    assert config.repair_config.steps == [0.01, 0.01, 0.01]
+
+
 def test_tabular_constructor_accepts_dict_configs() -> None:
     bo = TabularBayesianOptimizer(
         model_config={

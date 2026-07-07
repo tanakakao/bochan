@@ -680,8 +680,6 @@ bo = TabularBayesianOptimizer(
     missing_strategy="impute",
     impute_targets=True,
 )
-
-bo.fit(df)
 ```
 
 ---

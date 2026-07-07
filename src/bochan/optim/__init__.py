@@ -8,6 +8,7 @@ from .evo import (
     optimize_acqf_evo_mixed,
     optimize_acqf_evo_mixed_k_sparse,
 )
+from .llm import optimize_acqf_llm_candidate_set
 from .nsgaii_adapter import (
     equality_constraints_to_inequality_constraints,
     optimize_acqf_nsgaii,
@@ -32,6 +33,7 @@ __all__ = [
     "optimize_acqf_evo_k_sparse",
     "optimize_acqf_evo_mixed",
     "optimize_acqf_evo_mixed_k_sparse",
+    "optimize_acqf_llm_candidate_set",
     "equality_constraints_to_inequality_constraints",
     "optimize_acqf_nsgaii",
     "validate_discrete_choices",

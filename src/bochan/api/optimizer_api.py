@@ -22,6 +22,7 @@ OptimizerName = Literal[
     "torch",
     "nsgaii",
     "thompson_sampling",
+    "llm_candidate_set",
 ]
 
 _CANONICAL_OPTIMIZERS = {
@@ -30,6 +31,7 @@ _CANONICAL_OPTIMIZERS = {
     "torch",
     "nsgaii",
     "thompson_sampling",
+    "llm_candidate_set",
 }
 _EVOLUTIONARY_METHODS = {"ga", "pso", "sa", "cmaes"}
 _ALIASES = {
@@ -44,6 +46,10 @@ _ALIASES = {
     "optimize_thompson_sampling": "thompson_sampling",
     "optimize_thompson_sampling_mixed": "thompson_sampling",
     "thompson": "thompson_sampling",
+    "llm": "llm_candidate_set",
+    "llm_candidate": "llm_candidate_set",
+    "optimize_acqf_llm": "llm_candidate_set",
+    "optimize_acqf_llm_candidate_set": "llm_candidate_set",
 }
 
 
@@ -127,6 +133,8 @@ class OptimizeConfig(_BaseOptimizeConfig):
     Mixed/non-mixed implementations are selected automatically. Evolutionary
     backends may be selected with ``optimizer="evo"`` plus ``evo_method``, or
     directly with ``optimizer="ga"``, ``"pso"``, ``"sa"``, or ``"cmaes"``.
+    ``optimizer="llm_candidate_set"`` asks an LLM for a candidate set and then
+    reranks that set with the existing acquisition function.
 
     CMA-ES only optimizes one point at a time. Therefore, when its effective
     method is ``cmaes`` and ``q > 1``, ``sequential`` is enabled automatically.
@@ -226,7 +234,7 @@ def _common_kwargs(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> dict[
 
 
 def optimize_candidates(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> tuple[Any, Any]:
-    """Dispatch canonical names, including NSGA-II and Thompson sampling."""
+    """Dispatch canonical names, including NSGA-II, Thompson sampling, and LLM reranking."""
 
     if bounds is None:
         raise ValueError("bounds must be provided.")
@@ -257,6 +265,9 @@ def optimize_candidates(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> 
         "optimize_thompson_sampling",
         "thompson_sampling_mixed",
         "optimize_thompson_sampling_mixed",
+        "llm_candidate_set",
+        "optimize_acqf_llm",
+        "optimize_acqf_llm_candidate_set",
     }
     if name not in special:
         return _BASE_OPTIMIZE_CANDIDATES(acqf=acqf, bounds=bounds, config=config)
@@ -267,6 +278,12 @@ def optimize_candidates(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> 
 
         kwargs = _factory._filter_kwargs_for_callable(optimize_acqf_nsgaii, kwargs)
         return optimize_acqf_nsgaii(**kwargs)
+
+    if name in {"llm_candidate_set", "optimize_acqf_llm", "optimize_acqf_llm_candidate_set"}:
+        from bochan.optim import optimize_acqf_llm_candidate_set
+
+        kwargs = _factory._filter_kwargs_for_callable(optimize_acqf_llm_candidate_set, kwargs)
+        return optimize_acqf_llm_candidate_set(**kwargs)
 
     kwargs["acq_function"] = _resolve_thompson_sampling_target(acqf)
     use_mixed = name in {

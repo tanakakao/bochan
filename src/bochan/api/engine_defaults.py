@@ -18,6 +18,7 @@ from .configs import (
     AcquisitionConfig,
     DataContext,
     FitConfig,
+    InputTransformConfig,
     ModelBundle,
     ModelConfig,
     MultiOutputConfig,
@@ -78,6 +79,103 @@ def _acquisition_kind(config: AcquisitionConfig) -> str | None:
     ):
         return "ei_pi"
     return None
+
+
+def _is_llm_selected_model_config(model_config: ModelConfig) -> bool:
+    return _normalize_name(model_config.model_type) in {
+        "llm",
+        "llmselected",
+        "llmmodelselect",
+        "llmmodelselected",
+        "llmplanned",
+        "llmplanner",
+    }
+
+
+def _coerce_input_transform_config(value: Any) -> Any:
+    if value is None or isinstance(value, InputTransformConfig):
+        return value
+    if isinstance(value, Mapping):
+        return InputTransformConfig(**dict(value))
+    return value
+
+
+def _coerce_multi_output_config(value: Any) -> Any:
+    if value is None or isinstance(value, MultiOutputConfig):
+        return value
+    if isinstance(value, Mapping):
+        return MultiOutputConfig(**dict(value))
+    return value
+
+
+def _coerce_model_config(value: Any) -> ModelConfig:
+    if isinstance(value, ModelConfig):
+        return value
+    data = dict(value or {})
+    if data.get("input_transform_config") is not None:
+        data["input_transform_config"] = _coerce_input_transform_config(data["input_transform_config"])
+    if data.get("multi_output_config") is not None:
+        data["multi_output_config"] = _coerce_multi_output_config(data["multi_output_config"])
+    return ModelConfig(**data)
+
+
+def _coerce_fit_config(value: Any) -> FitConfig:
+    if value is None:
+        return FitConfig()
+    if isinstance(value, FitConfig):
+        return value
+    return FitConfig(**dict(value))
+
+
+def resolve_llm_selected_model_config(
+    model_config: ModelConfig,
+    train_X: Any,
+    train_Y: Any,
+    *,
+    bounds: Any | None = None,
+    fit_config: FitConfig | None = None,
+) -> tuple[ModelConfig, FitConfig | None, dict[str, Any] | None]:
+    """Resolve ``ModelConfig(model_type='llm_selected')`` into a concrete model config.
+
+    This mirrors candidate generation's ``OptimizeConfig(optimizer='llm_candidate_set')``
+    pattern: the selector is configured through an existing config object, and provider
+    details are passed through ``model_kwargs``.
+    """
+
+    if not _is_llm_selected_model_config(model_config):
+        return model_config, fit_config, None
+
+    from bochan.llm import plan_configs
+
+    kwargs = dict(model_config.model_kwargs or {})
+    goal = kwargs.pop("goal", None) or kwargs.pop("text", None) or "Select a suitable bochan model configuration."
+    llm_config = kwargs.pop("llm_config", None)
+    llm_context = kwargs.pop("llm_context", None)
+    planner_response = kwargs.pop("planner_response", None)
+    mode = kwargs.pop("mode", "model_config")
+    existing_model_config = kwargs.pop("existing_model_config", None)
+    existing_fit_config = kwargs.pop("existing_fit_config", None)
+
+    plan = plan_configs(
+        goal=goal,
+        llm_config=llm_config,
+        llm_context=llm_context,
+        train_X=train_X,
+        train_Y=train_Y,
+        bounds=bounds,
+        mode=mode,
+        planner_response=planner_response,
+        existing_model_config=existing_model_config,
+        existing_fit_config=existing_fit_config,
+    )
+    if "model_config" not in plan:
+        raise ValueError("LLM model selector response must include 'model_config'.")
+
+    resolved_model_config = _coerce_model_config(plan["model_config"])
+    resolved_fit_config = fit_config
+    if resolved_fit_config is None and plan.get("fit_config") is not None:
+        resolved_fit_config = _coerce_fit_config(plan["fit_config"])
+    return resolved_model_config, resolved_fit_config, plan
 
 
 def _configured_output_task_types(
@@ -457,16 +555,31 @@ class BayesianOptimizer(_BaseBayesianOptimizer):
         model_config: ModelConfig | None = None,
         fit_config: FitConfig | None = None,
     ) -> "BayesianOptimizer":
+        base_model_config = model_config or self.model_config
+        base_fit_config = fit_config or self.fit_config
+        llm_plan = None
+        base_model_config, base_fit_config, llm_plan = resolve_llm_selected_model_config(
+            base_model_config,
+            train_X,
+            train_Y,
+            bounds=self.bounds,
+            fit_config=base_fit_config,
+        )
         resolved_model_config = resolve_multi_output_model_config(
-            model_config or self.model_config,
+            base_model_config,
             train_Y,
         )
         super().fit(
             train_X,
             train_Y,
             model_config=resolved_model_config,
-            fit_config=fit_config,
+            fit_config=base_fit_config,
         )
+        if llm_plan is not None:
+            self.llm_plan = llm_plan
+            if self.bundle is not None:
+                self.bundle.metadata["llm_plan"] = llm_plan
+                self.bundle.metadata["llm_selected_model_config"] = resolved_model_config
         return self
 
     def _prepare_default_acquisition_context(

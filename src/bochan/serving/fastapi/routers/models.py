@@ -58,6 +58,14 @@ def _schema_to_dict(value: Any | None) -> dict[str, Any] | None:
     return dict(value)
 
 
+def _request_config(request: Any, name: str) -> dict[str, Any] | None:
+    if name == "model_config":
+        value = getattr(request, "bo_model_config", None)
+    else:
+        value = getattr(request, name, None)
+    return None if value is None else dict(value)
+
+
 def _plan_from_request(request: LLMPlanRequest | AutoCandidateRequest, train_X: Any, train_Y: Any, bounds: Any) -> dict[str, Any]:
     return plan_configs(
         goal=request.goal,
@@ -68,17 +76,17 @@ def _plan_from_request(request: LLMPlanRequest | AutoCandidateRequest, train_X: 
         bounds=bounds,
         mode=getattr(request, "mode", "full"),
         planner_response=getattr(request, "planner_response", None),
-        existing_model_config=getattr(request, "model_config", None),
-        existing_fit_config=getattr(request, "fit_config", None),
-        existing_acquisition_config=getattr(request, "acquisition_config", None),
-        existing_optimize_config=getattr(request, "optimize_config", None),
+        existing_model_config=_request_config(request, "model_config"),
+        existing_fit_config=_request_config(request, "fit_config"),
+        existing_acquisition_config=_request_config(request, "acquisition_config"),
+        existing_optimize_config=_request_config(request, "optimize_config"),
     )
 
 
 def _planned_config(plan: dict[str, Any], request: Any, name: str) -> dict[str, Any]:
-    explicit = getattr(request, name, None)
+    explicit = _request_config(request, name)
     if explicit is not None:
-        return dict(explicit)
+        return explicit
     value = plan.get(name)
     if value is None:
         raise ValueError(f"LLM plan did not include {name}.")

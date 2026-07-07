@@ -884,7 +884,7 @@ class TabularBayesianOptimizer:
         feature_cols: Sequence[ColumnKey] | None = None,
         target_cols: Sequence[ColumnKey] | None = None,
         candidate_result: Any | None = None,
-        cycle: str | Sequence[Any] | Any | None = None,
+        cycle: str | Sequence[Any] | None = None,
         **kwargs: Any,
     ) -> Any:
         '''Create a YY plot or multiclass correct-label probability plot.'''
@@ -913,7 +913,7 @@ class TabularBayesianOptimizer:
         value_dict: dict[str, Any] | None = None,
         candidate_result: Any | None = None,
         n: int = 50,
-        cycle: str | Sequence[Any] | Any | None = None,
+        cycle: str | Sequence[Any] | None = None,
         **kwargs: Any,
     ) -> Any:
         '''Create a 1D prediction curve from the fitted tabular optimizer.'''
@@ -947,7 +947,7 @@ class TabularBayesianOptimizer:
         candidate_result: Any | None = None,
         n: int = 25,
         show_type: str = "acqf",
-        cycle: str | Sequence[Any] | Any | None = None,
+        cycle: str | Sequence[Any] | None = None,
         **kwargs: Any,
     ) -> Any:
         '''Create a 2D acquisition or prediction heatmap from the fitted optimizer.'''
@@ -995,7 +995,7 @@ class TabularBayesianOptimizer:
         sum_value: float | None = None,
         n: int = 50,
         show_type: str = "acqf",
-        cycle: str | Sequence[Any] | Any | None = None,
+        cycle: str | Sequence[Any] | None = None,
         ncontours: int = 25,
         **kwargs: Any,
     ) -> Any:
@@ -1036,7 +1036,7 @@ class TabularBayesianOptimizer:
         target_cols: Sequence[ColumnKey] | None = None,
         candidate_result: Any | None = None,
         df_cand: Any | None = None,
-        cycle: str | Sequence[Any] | Any | None = None,
+        cycle: str | Sequence[Any] | None = None,
     ) -> Any:
         '''Create a two-objective scatter plot with optional candidate predictions.'''
 

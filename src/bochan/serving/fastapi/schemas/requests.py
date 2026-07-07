@@ -56,6 +56,42 @@ class FitModelRequest(APIRequest):
     tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
 
 
+class LLMPlanRequest(APIRequest):
+    """Infer bochan configuration dictionaries from a natural-language goal."""
+
+    goal: str
+    mode: Literal["model_config", "full"] = "full"
+    train_X: Any | None = None
+    train_Y: Any | None = None
+    bounds: Any | None = None
+    llm_config: LLMConfigSchema | None = None
+    llm_context: LLMContextSchema | None = None
+    planner_response: Any | None = None
+    model_config: dict[str, Any] | None = None
+    fit_config: dict[str, Any] | None = None
+    acquisition_config: dict[str, Any] | None = None
+    optimize_config: dict[str, Any] | None = None
+    tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
+
+
+class AutoCandidateRequest(APIRequest):
+    """Plan model settings, fit a model, and generate candidates in one request."""
+
+    goal: str
+    train_X: Any
+    train_Y: Any
+    bounds: Any | None = None
+    llm_config: LLMConfigSchema | None = None
+    llm_context: LLMContextSchema | None = None
+    planner_response: Any | None = None
+    model_config: dict[str, Any] | None = None
+    fit_config: dict[str, Any] | None = None
+    acquisition_config: dict[str, Any] | None = None
+    optimize_config: dict[str, Any] | None = None
+    data_context: DataContextSchema | None = None
+    tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
+
+
 class RefitModelRequest(APIRequest):
     """Request body for refitting an existing in-memory optimizer."""
 

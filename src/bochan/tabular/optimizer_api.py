@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
-from bochan.api import AcquisitionConfig, FitConfig, ModelConfig, OptimizeConfig
+from bochan.api import (
+    AcquisitionConfig,
+    FitConfig,
+    InputTransformConfig,
+    ModelConfig,
+    OptimizeConfig,
+)
 
 from .builders import UNSET, make_acquisition_config, make_fit_config, make_optimize_config
 from .optimizer import TabularBayesianOptimizer as _BaseTabularBayesianOptimizer
@@ -45,6 +52,75 @@ _ACQUISITION_DIRECT_KEYS = {
 }
 
 
+def _merge_input_transform_direct_values(
+    *,
+    model_config: ModelConfig | None,
+    input_transform_config: Any = UNSET,
+    normalize: bool | Any = UNSET,
+    perturbation: bool | Any = UNSET,
+    n_w: int | Any = UNSET,
+    std: float | Any = UNSET,
+) -> Any:
+    """Merge direct tabular input-transform fields into ``InputTransformConfig``.
+
+    ``TabularBayesianOptimizer`` is intended to be usable from notebooks without
+    importing config objects.  The public API therefore accepts fields such as
+    ``perturbation=True`` directly and converts them to the internal
+    ``InputTransformConfig`` representation here.
+    """
+
+    updates = {
+        key: value
+        for key, value in {
+            "normalize": normalize,
+            "perturbation": perturbation,
+            "n_w": n_w,
+            "std": std,
+        }.items()
+        if value is not UNSET
+    }
+    if not updates:
+        return input_transform_config
+
+    base = input_transform_config
+    if base is UNSET and model_config is not None:
+        base = model_config.input_transform_config
+
+    if base is UNSET or base is None:
+        return InputTransformConfig(**updates)
+    if isinstance(base, dict):
+        return InputTransformConfig(**{**base, **updates})
+    if isinstance(base, InputTransformConfig):
+        return replace(base, **updates)
+
+    raise TypeError(
+        "Direct input transform fields such as perturbation, n_w, std, and "
+        "normalize require input_transform_config to be None, dict, or "
+        f"InputTransformConfig. Got {type(base).__name__}."
+    )
+
+
+def _apply_input_transform_direct_values(
+    kwargs: dict[str, Any],
+    *,
+    model_config: ModelConfig | None,
+    normalize: bool | Any = UNSET,
+    perturbation: bool | Any = UNSET,
+    n_w: int | Any = UNSET,
+    std: float | Any = UNSET,
+) -> None:
+    merged = _merge_input_transform_direct_values(
+        model_config=model_config,
+        input_transform_config=kwargs.get("input_transform_config", UNSET),
+        normalize=normalize,
+        perturbation=perturbation,
+        n_w=n_w,
+        std=std,
+    )
+    if merged is not UNSET:
+        kwargs["input_transform_config"] = merged
+
+
 class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
     '''Pandas / numpy friendly optimizer with public API convenience fields.
 
@@ -61,8 +137,20 @@ class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
         *,
         fit_beta: float | None | Any = UNSET,
         beta: float | None | Any = UNSET,
+        normalize: bool | Any = UNSET,
+        perturbation: bool | Any = UNSET,
+        n_w: int | Any = UNSET,
+        std: float | Any = UNSET,
         **kwargs: Any,
     ) -> None:
+        _apply_input_transform_direct_values(
+            kwargs,
+            model_config=model_config,
+            normalize=normalize,
+            perturbation=perturbation,
+            n_w=n_w,
+            std=std,
+        )
         if fit_beta is not UNSET and beta is not UNSET:
             raise ValueError("Specify either fit_beta or beta, not both.")
         if beta is not UNSET:
@@ -79,8 +167,20 @@ class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
         fit_config: FitConfig | None = None,
         fit_beta: float | None | Any = UNSET,
         beta: float | None | Any = UNSET,
+        normalize: bool | Any = UNSET,
+        perturbation: bool | Any = UNSET,
+        n_w: int | Any = UNSET,
+        std: float | Any = UNSET,
         **kwargs: Any,
     ) -> "TabularBayesianOptimizer":
+        _apply_input_transform_direct_values(
+            kwargs,
+            model_config=kwargs.get("model_config", self.model_config),
+            normalize=normalize,
+            perturbation=perturbation,
+            n_w=n_w,
+            std=std,
+        )
         if fit_beta is not UNSET and beta is not UNSET:
             raise ValueError("Specify either fit_beta or beta, not both.")
         if beta is not UNSET:

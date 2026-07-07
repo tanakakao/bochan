@@ -67,7 +67,7 @@ class LLMPlanRequest(APIRequest):
     llm_config: LLMConfigSchema | None = None
     llm_context: LLMContextSchema | None = None
     planner_response: Any | None = None
-    model_config: dict[str, Any] | None = None
+    bo_model_config: dict[str, Any] | None = Field(default=None, alias="model_config")
     fit_config: dict[str, Any] | None = None
     acquisition_config: dict[str, Any] | None = None
     optimize_config: dict[str, Any] | None = None
@@ -84,7 +84,7 @@ class AutoCandidateRequest(APIRequest):
     llm_config: LLMConfigSchema | None = None
     llm_context: LLMContextSchema | None = None
     planner_response: Any | None = None
-    model_config: dict[str, Any] | None = None
+    bo_model_config: dict[str, Any] | None = Field(default=None, alias="model_config")
     fit_config: dict[str, Any] | None = None
     acquisition_config: dict[str, Any] | None = None
     optimize_config: dict[str, Any] | None = None

@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from bochan.api import BayesianOptimizer, ModelConfig, OptimizeConfig, optimize_candidates
-from bochan.llm import plan_configs
+from bochan.llm import LLMSettings, plan_configs
 from bochan.optim import optimize_acqf_llm_candidate_set
 
 
@@ -72,28 +72,26 @@ def test_plan_configs_accepts_explicit_planner_response_without_provider_call():
     assert "reasoning_summary" in plan
 
 
-def test_model_config_llm_selected_resolves_before_fit_without_provider_call():
+def test_model_config_llm_selected_uses_shared_settings_before_fit_without_provider_call():
     train_X = torch.tensor([[0.0, 0.0], [1.0, 1.0], [0.5, 0.2]], dtype=torch.double)
     train_Y = torch.tensor([[0.0], [1.0], [0.4]], dtype=torch.double)
     bounds = torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double)
 
     optimizer = BayesianOptimizer(
-        model_config=ModelConfig(
-            model_type="llm_selected",
-            model_kwargs={
-                "goal": "yを大きくしたい",
-                "planner_response": {
-                    "model_config": {
-                        "task_type": "regression",
-                        "model_type": "base",
-                        "outcome_transform": True,
-                    },
-                    "fit_config": {"method": "auto", "skip_fit": True},
-                    "warnings": [],
+        model_config=ModelConfig(model_type="llm_selected"),
+        bounds=bounds,
+        llm_settings=LLMSettings(
+            goal="yを大きくしたい",
+            planner_response={
+                "model_config": {
+                    "task_type": "regression",
+                    "model_type": "base",
+                    "outcome_transform": True,
                 },
+                "fit_config": {"method": "auto", "skip_fit": True},
+                "warnings": [],
             },
         ),
-        bounds=bounds,
     )
 
     optimizer.fit(train_X, train_Y)
@@ -102,3 +100,20 @@ def test_model_config_llm_selected_resolves_before_fit_without_provider_call():
     assert optimizer.fit_config.skip_fit is True
     assert optimizer.llm_plan["model_config"]["model_type"] == "base"
     assert optimizer.bundle.metadata["llm_plan"]["warnings"] == []
+
+
+def test_configure_llm_injects_shared_candidate_kwargs():
+    bounds = torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double)
+    optimizer = BayesianOptimizer(model_config=ModelConfig(), bounds=bounds)
+    optimizer.configure_llm(
+        goal="large sum",
+        candidate_set=[[0.1, 0.2], [0.8, 0.9]],
+        n_llm_candidates=2,
+    )
+
+    config = OptimizeConfig(optimizer="llm_candidate_set", q=1)
+    merged = optimizer._merge_llm_settings_into_opt_config(config)
+
+    assert merged.optimizer_kwargs["goal"] == "large sum"
+    assert merged.optimizer_kwargs["candidate_set"] == [[0.1, 0.2], [0.8, 0.9]]
+    assert merged.optimizer_kwargs["n_llm_candidates"] == 2

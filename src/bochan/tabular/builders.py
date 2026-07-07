@@ -249,8 +249,10 @@ def make_optimize_config(opt_config: OptimizeConfig | Mapping[str, Any] | None =
     opt_config, values = _merge_base_dict(opt_config, values)
 
     repair_config = values.pop("repair_config", None)
+    opt_values = _take_fields(OptimizeConfig, values)
+
     repair_direct: dict[str, Any] = {}
-    repair_field_names = _field_names(CandidateRepairConfig)
+    repair_field_names = _field_names(CandidateRepairConfig) - _field_names(OptimizeConfig)
     repair_aliases = {
         "repair_bounds",
         "repair_fixed_features",
@@ -264,7 +266,6 @@ def make_optimize_config(opt_config: OptimizeConfig | Mapping[str, Any] | None =
     if repair_config is not None or repair_direct:
         repair_config = make_repair_config(repair_config, **repair_direct)
 
-    opt_values = _take_fields(OptimizeConfig, values)
     if repair_config is not None:
         opt_values["repair_config"] = repair_config
     if values:

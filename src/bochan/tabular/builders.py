@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import fields, replace
 from typing import Any
 
@@ -9,7 +10,9 @@ from bochan.api import (
     AcquisitionConfig,
     CandidateRepairConfig,
     FitConfig,
+    InputTransformConfig,
     ModelConfig,
+    MultiOutputConfig,
     ObjectiveConfig,
     OptimizeConfig,
 )
@@ -44,17 +47,72 @@ def _take_aliases(values: dict[str, Any], aliases: dict[str, str]) -> dict[str, 
     return taken
 
 
+def _merge_base_dict(base: Any | None, values: dict[str, Any]) -> tuple[Any | None, dict[str, Any]]:
+    '''Merge a user-facing config dict with direct override values.'''
+
+    if isinstance(base, Mapping):
+        merged = dict(base)
+        merged.update(values)
+        return None, merged
+    return base, values
+
+
 def _replace_or_create(cls: type, base: Any | None, values: dict[str, Any]) -> Any | None:
+    if isinstance(base, Mapping):
+        payload = dict(base)
+        payload.update(values)
+        return cls(**payload)
     if base is None:
         return cls(**values) if values else None
     return replace(base, **values) if values else base
 
 
-def make_model_config(model_config: ModelConfig | None = None, **values: Any) -> ModelConfig:
-    '''Create or update ``ModelConfig`` from direct keyword arguments.'''
+def _coerce_input_transform_config(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return InputTransformConfig(**dict(value))
+    return value
+
+
+def _coerce_fit_config_like(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return make_fit_config(value)
+    return value
+
+
+def _coerce_multi_output_config(value: Any) -> Any:
+    if not isinstance(value, Mapping):
+        return value
+
+    payload = dict(value)
+    output_fit_configs = payload.get("output_fit_configs")
+    if isinstance(output_fit_configs, Mapping):
+        payload["output_fit_configs"] = make_fit_config(output_fit_configs)
+    elif isinstance(output_fit_configs, (list, tuple)):
+        payload["output_fit_configs"] = [
+            _coerce_fit_config_like(item) for item in output_fit_configs
+        ]
+    return MultiOutputConfig(**payload)
+
+
+def _coerce_model_config_values(values: dict[str, Any]) -> dict[str, Any]:
+    if "input_transform_config" in values:
+        values["input_transform_config"] = _coerce_input_transform_config(
+            values["input_transform_config"]
+        )
+    if "multi_output_config" in values:
+        values["multi_output_config"] = _coerce_multi_output_config(
+            values["multi_output_config"]
+        )
+    return values
+
+
+def make_model_config(model_config: ModelConfig | Mapping[str, Any] | None = None, **values: Any) -> ModelConfig:
+    '''Create or update ``ModelConfig`` from direct keyword arguments or a dict.'''
 
     values = drop_unset(values)
+    model_config, values = _merge_base_dict(model_config, values)
     model_values = _take_fields(ModelConfig, values)
+    model_values = _coerce_model_config_values(model_values)
     if values:
         unknown = sorted(values)
         raise TypeError(f"Unknown ModelConfig arguments: {unknown!r}.")
@@ -63,10 +121,11 @@ def make_model_config(model_config: ModelConfig | None = None, **values: Any) ->
     return replace(model_config, **model_values) if model_values else model_config
 
 
-def make_fit_config(fit_config: FitConfig | None = None, **values: Any) -> FitConfig | None:
-    '''Create or update ``FitConfig`` from direct keyword arguments.'''
+def make_fit_config(fit_config: FitConfig | Mapping[str, Any] | None = None, **values: Any) -> FitConfig | None:
+    '''Create or update ``FitConfig`` from direct keyword arguments or a dict.'''
 
     values = drop_unset(values)
+    fit_config, values = _merge_base_dict(fit_config, values)
     fit_values = _take_aliases(
         values,
         {
@@ -83,12 +142,13 @@ def make_fit_config(fit_config: FitConfig | None = None, **values: Any) -> FitCo
 
 
 def make_objective_config(
-    objective_config: ObjectiveConfig | None = None,
+    objective_config: ObjectiveConfig | Mapping[str, Any] | None = None,
     **values: Any,
 ) -> ObjectiveConfig | None:
-    '''Create or update ``ObjectiveConfig`` from direct keyword arguments.'''
+    '''Create or update ``ObjectiveConfig`` from direct keyword arguments or a dict.'''
 
     values = drop_unset(values)
+    objective_config, values = _merge_base_dict(objective_config, values)
     objective_values = _take_aliases(
         values,
         {
@@ -121,12 +181,13 @@ def make_objective_config(
 
 
 def make_acquisition_config(
-    acq_config: AcquisitionConfig | None = None,
+    acq_config: AcquisitionConfig | Mapping[str, Any] | None = None,
     **values: Any,
 ) -> AcquisitionConfig:
-    '''Create or update ``AcquisitionConfig`` from direct keyword arguments.'''
+    '''Create or update ``AcquisitionConfig`` from direct keyword arguments or a dict.'''
 
     values = drop_unset(values)
+    acq_config, values = _merge_base_dict(acq_config, values)
     name = values.pop("acq_name", UNSET)
     if name is UNSET:
         name = values.pop("name", UNSET)
@@ -157,12 +218,13 @@ def make_acquisition_config(
 
 
 def make_repair_config(
-    repair_config: CandidateRepairConfig | None = None,
+    repair_config: CandidateRepairConfig | Mapping[str, Any] | None = None,
     **values: Any,
 ) -> CandidateRepairConfig | None:
-    '''Create or update ``CandidateRepairConfig`` from direct keyword arguments.'''
+    '''Create or update ``CandidateRepairConfig`` from direct keyword arguments or a dict.'''
 
     values = drop_unset(values)
+    repair_config, values = _merge_base_dict(repair_config, values)
     repair_values = _take_aliases(
         values,
         {
@@ -180,10 +242,11 @@ def make_repair_config(
     return _replace_or_create(CandidateRepairConfig, repair_config, repair_values)
 
 
-def make_optimize_config(opt_config: OptimizeConfig | None = None, **values: Any) -> OptimizeConfig:
-    '''Create or update ``OptimizeConfig`` and nested repair config.'''
+def make_optimize_config(opt_config: OptimizeConfig | Mapping[str, Any] | None = None, **values: Any) -> OptimizeConfig:
+    '''Create or update ``OptimizeConfig`` and nested repair config from direct kwargs or a dict.'''
 
     values = drop_unset(values)
+    opt_config, values = _merge_base_dict(opt_config, values)
 
     repair_config = values.pop("repair_config", None)
     repair_direct: dict[str, Any] = {}

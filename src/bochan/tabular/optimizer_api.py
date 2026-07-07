@@ -54,7 +54,7 @@ _ACQUISITION_DIRECT_KEYS = {
 
 def _merge_input_transform_direct_values(
     *,
-    model_config: ModelConfig | None,
+    model_config: Any | None,
     input_transform_config: Any = UNSET,
     normalize: bool | Any = UNSET,
     perturbation: bool | Any = UNSET,
@@ -84,7 +84,10 @@ def _merge_input_transform_direct_values(
 
     base = input_transform_config
     if base is UNSET and model_config is not None:
-        base = model_config.input_transform_config
+        if isinstance(model_config, dict):
+            base = model_config.get("input_transform_config", UNSET)
+        else:
+            base = model_config.input_transform_config
 
     if base is UNSET or base is None:
         return InputTransformConfig(**updates)
@@ -103,7 +106,7 @@ def _merge_input_transform_direct_values(
 def _apply_input_transform_direct_values(
     kwargs: dict[str, Any],
     *,
-    model_config: ModelConfig | None,
+    model_config: Any | None,
     normalize: bool | Any = UNSET,
     perturbation: bool | Any = UNSET,
     n_w: int | Any = UNSET,
@@ -132,8 +135,8 @@ class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
 
     def __init__(
         self,
-        model_config: ModelConfig | None = None,
-        fit_config: FitConfig | None = None,
+        model_config: ModelConfig | dict[str, Any] | None = None,
+        fit_config: FitConfig | dict[str, Any] | None = None,
         *,
         fit_beta: float | None | Any = UNSET,
         beta: float | None | Any = UNSET,
@@ -164,7 +167,7 @@ class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
         data: Any | None = None,
         y: Any | None = None,
         *,
-        fit_config: FitConfig | None = None,
+        fit_config: FitConfig | dict[str, Any] | None = None,
         fit_beta: float | None | Any = UNSET,
         beta: float | None | Any = UNSET,
         normalize: bool | Any = UNSET,
@@ -191,8 +194,8 @@ class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
 
     def candidate(
         self,
-        acq_config: AcquisitionConfig | None = None,
-        opt_config: OptimizeConfig | None = None,
+        acq_config: AcquisitionConfig | dict[str, Any] | None = None,
+        opt_config: OptimizeConfig | dict[str, Any] | None = None,
         *,
         constraints: Any = UNSET,
         outcome_constraint_config: Any = UNSET,

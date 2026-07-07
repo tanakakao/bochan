@@ -1,13 +1,14 @@
 # bochan.llm
 
-`bochan.llm` provides experimental LLM helpers for two workflows:
+`bochan.llm` provides experimental LLM helpers for these workflows:
 
 ```text
 1. planner: natural language goal -> bochan config dictionaries
 2. candidate generator: LLM candidate set -> validation / repair -> acquisition reranking
+3. study suggestion: BochanStudy history -> model / acquisition / optimizer config proposal
 ```
 
-The recommended Python API is `LLMSettings`. Define the shared LLM context once, then reuse it for both model selection and candidate generation.
+The recommended Python API is `LLMSettings`. Define the shared LLM context once, then reuse it for model selection, candidate generation, and Study-level suggestions.
 
 ---
 
@@ -94,9 +95,57 @@ ModelConfig(model_type="llm_selected")
 
 OptimizeConfig(optimizer="llm_candidate_set")
   -> consumes LLMSettings.optimizer_kwargs()
+
+BochanStudy.suggest(mode="config")
+  -> consumes LLMSettings + current trial history
 ```
 
 Individual `model_kwargs` / `optimizer_kwargs` override shared settings.
+
+---
+
+## BochanStudy suggestions
+
+`BochanStudy` can carry the same `LLMSettings` and use it for both `ask()` and `suggest()`.
+
+```python
+from bochan.api import BochanStudy, ModelConfig, OptimizeConfig
+
+study = BochanStudy(
+    model_config=ModelConfig(model_type="llm_selected"),
+    opt_config=OptimizeConfig(optimizer="llm_candidate_set", q=3),
+    bounds=bounds,
+    llm_settings=llm_settings,
+)
+
+study.add_observations(train_X, train_Y)
+```
+
+Ask the LLM for a config proposal based on current study history.
+
+```python
+suggestion = study.suggest(mode="config")
+
+print(suggestion.model_config)
+print(suggestion.fit_config)
+print(suggestion.acq_config)
+print(suggestion.opt_config)
+print(suggestion.reasoning_summary)
+print(suggestion.warnings)
+```
+
+Apply it explicitly after review.
+
+```python
+study.apply_suggestion(suggestion)
+batch = study.ask(return_batch=True)
+```
+
+Or apply immediately.
+
+```python
+suggestion = study.suggest(mode="config", apply=True)
+```
 
 ---
 
@@ -150,10 +199,11 @@ llm_settings = LLMSettings(
 )
 ```
 
-A complete example is available at:
+Complete examples are available at:
 
 ```bash
 python examples/llm_same_pattern.py
+python examples/llm_study_suggestion.py
 ```
 
 ---
@@ -227,6 +277,7 @@ LLM output or explicit candidate_set
 
 Current limitations:
 
+- `study.suggest(mode="config")` is implemented; `mode="next_action"` is a future phase
 - candidate-set optimizer uses q=1 acquisition values for reranking
 - this is candidate-set reranking, not exact joint q-batch optimization
 - provider-backed calls require optional SDKs and environment variables

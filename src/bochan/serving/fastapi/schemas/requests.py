@@ -22,6 +22,30 @@ class TensorOptionsSchema(APIRequest):
     device: str | None = None
 
 
+class LLMConfigSchema(APIRequest):
+    """Provider-independent LLM settings for candidate generation."""
+
+    provider: Literal["openai", "gemini"] | str = "openai"
+    model: str = "gpt-4.1-mini"
+    api_key_env: str | None = None
+    temperature: float = 0.2
+    max_output_tokens: int = 4096
+    timeout: float | None = 60.0
+    extra_kwargs: dict[str, Any] = Field(default_factory=dict)
+
+
+class LLMContextSchema(APIRequest):
+    """Optional domain context passed to the LLM prompt builder."""
+
+    variable_names: list[str] | None = None
+    target_names: list[str] | None = None
+    variable_descriptions: dict[str, str] = Field(default_factory=dict)
+    target_descriptions: dict[str, str] = Field(default_factory=dict)
+    domain_notes: list[str] = Field(default_factory=list)
+    candidate_policy: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class FitModelRequest(APIRequest):
     bo_model_config: ModelConfigSchema = Field(alias="model_config")
     train_X: Any
@@ -60,6 +84,9 @@ class CandidateRequest(APIRequest):
     opt_config: OptimizeConfigSchema = Field(default_factory=OptimizeConfigSchema, alias="optimize_config")
     data_context: DataContextSchema | None = None
     bounds: Any | None = None
+    goal: str | None = None
+    llm_config: LLMConfigSchema | None = None
+    llm_context: LLMContextSchema | None = None
     tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
 
 

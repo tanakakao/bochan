@@ -21,11 +21,22 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from .configs import AcquisitionConfig, DataContext, FitConfig, ModelConfig, OptimizeConfig
+from .configs import (
+    AcquisitionConfig,
+    CandidateRepairConfig,
+    DataContext,
+    FitConfig,
+    InputTransformConfig,
+    ModelConfig,
+    MultiOutputConfig,
+    ObjectiveConfig,
+    OptimizeConfig,
+)
 from .engine import BayesianOptimizer
 
 
 TrialStateLike = Literal["CANDIDATE", "RUNNING", "COMPLETED", "FAILED"] | str
+StudySuggestMode = Literal["config"] | str
 
 
 class TrialState(str, Enum):
@@ -94,6 +105,34 @@ class StudySnapshot:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class StudySuggestion:
+    """LLM planner が提案した study-level 設定。"""
+
+    mode: str
+    plan: dict[str, Any]
+    model_config: ModelConfig | None = None
+    fit_config: FitConfig | None = None
+    acq_config: AcquisitionConfig | None = None
+    opt_config: OptimizeConfig | None = None
+    warnings: list[Any] = field(default_factory=list)
+    reasoning_summary: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON表示・保存向けの dict に変換する。"""
+
+        return {
+            "mode": self.mode,
+            "plan": _to_jsonable(self.plan),
+            "model_config": _safe_config_repr(self.model_config),
+            "fit_config": _safe_config_repr(self.fit_config),
+            "acq_config": _safe_config_repr(self.acq_config),
+            "opt_config": _safe_config_repr(self.opt_config),
+            "warnings": _to_jsonable(self.warnings),
+            "reasoning_summary": self.reasoning_summary,
+        }
+
+
 class BochanStudy:
     """Optuna / Ax 風に最適化ループを管理する上位 API。
 
@@ -109,6 +148,7 @@ class BochanStudy:
             0 の場合でも、完了 trial が0件なら初回のみランダム候補を使います。
         model_registry: BayesianOptimizer に渡すモデル registry。
         acquisition_registry: BayesianOptimizer に渡す獲得関数 registry。
+        llm_settings: Study 全体で共有する LLM 設定。
         metadata: study に保存する任意メタデータ。
 
     Notes:
@@ -129,6 +169,7 @@ class BochanStudy:
         n_initial_random: int = 0,
         model_registry: Mapping[Any, Any] | None = None,
         acquisition_registry: Mapping[str, Any] | None = None,
+        llm_settings: Any | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> None:
         self.model_config = model_config
@@ -140,12 +181,108 @@ class BochanStudy:
         self.n_initial_random = int(n_initial_random)
         self.model_registry = model_registry
         self.acquisition_registry = acquisition_registry
+        self.llm_settings = _coerce_llm_settings(llm_settings)
         self.metadata: dict[str, Any] = dict(metadata or {})
 
         self.trials: list[Trial] = []
         self.next_trial_id: int = 0
         self.optimizer: BayesianOptimizer | None = None
         self.last_candidate_batch: CandidateBatch | None = None
+        self.last_suggestion: StudySuggestion | None = None
+
+    # ------------------------------------------------------------------
+    # LLM settings / suggestions
+    # ------------------------------------------------------------------
+    def configure_llm(
+        self,
+        *,
+        goal: Any | None = None,
+        llm_config: Any | None = None,
+        llm_context: Any | None = None,
+        **settings_kwargs: Any,
+    ) -> "BochanStudy":
+        """Study 全体で共有する LLM 設定を登録する。"""
+
+        from bochan.llm import LLMSettings
+
+        self.llm_settings = LLMSettings(
+            goal=goal,
+            llm_config=llm_config,
+            llm_context=llm_context,
+            **settings_kwargs,
+        )
+        return self
+
+    def suggest(
+        self,
+        mode: StudySuggestMode = "config",
+        *,
+        llm_settings: Any | None = None,
+        planner_response: Any | None = None,
+        apply: bool = False,
+    ) -> StudySuggestion:
+        """LLMに study-level 設定案を提案させる。
+
+        現時点の対応 mode は ``"config"`` です。完了 trial / pending trial / failed
+        trial と現在の設定を要約し、`model_config`, `fit_config`, `acq_config`,
+        `opt_config` の候補を返します。
+        """
+
+        normalized_mode = str(mode).lower()
+        if normalized_mode not in {"config", "model_config", "settings"}:
+            raise ValueError("Only suggest(mode='config') is currently supported.")
+
+        from bochan.llm import plan_configs
+
+        settings = _coerce_llm_settings(llm_settings) or self.llm_settings
+        settings_kwargs = settings.model_kwargs() if settings is not None else {}
+        goal = settings_kwargs.get("goal") or self.metadata.get("goal") or "Suggest bochan study configuration."
+        train_X, train_Y = self.completed_data()
+        pending_X = self.pending_data()
+        plan = plan_configs(
+            goal=goal,
+            llm_config=settings_kwargs.get("llm_config"),
+            llm_context=settings_kwargs.get("llm_context"),
+            train_X=train_X,
+            train_Y=train_Y,
+            bounds=self._optional_bounds(),
+            mode="model_config",
+            planner_response=planner_response if planner_response is not None else settings_kwargs.get("planner_response"),
+            study_summary=self._study_summary(train_X=train_X, train_Y=train_Y, pending_X=pending_X),
+            existing_model_config=_safe_config_repr(self.model_config),
+            existing_fit_config=_safe_config_repr(self.fit_config),
+            existing_acquisition_config=_safe_config_repr(self.acq_config),
+            existing_optimize_config=_safe_config_repr(self.opt_config),
+        )
+        suggestion = _suggestion_from_plan(plan, mode="config")
+        self.last_suggestion = suggestion
+        if apply:
+            self.apply_suggestion(suggestion)
+        return suggestion
+
+    def apply_suggestion(
+        self,
+        suggestion: StudySuggestion | Mapping[str, Any],
+        *,
+        model_config: bool = True,
+        fit_config: bool = True,
+        acq_config: bool = True,
+        opt_config: bool = True,
+    ) -> "BochanStudy":
+        """`suggest()` の結果を study の既定 config に反映する。"""
+
+        if not isinstance(suggestion, StudySuggestion):
+            suggestion = _suggestion_from_plan(dict(suggestion), mode="config")
+        if model_config and suggestion.model_config is not None:
+            self.model_config = suggestion.model_config
+        if fit_config and suggestion.fit_config is not None:
+            self.fit_config = suggestion.fit_config
+        if acq_config and suggestion.acq_config is not None:
+            self.acq_config = suggestion.acq_config
+        if opt_config and suggestion.opt_config is not None:
+            self.opt_config = suggestion.opt_config
+        self.last_suggestion = suggestion
+        return self
 
     # ------------------------------------------------------------------
     # データ登録
@@ -222,6 +359,7 @@ class BochanStudy:
                 model_registry=self.model_registry,
                 acquisition_registry=self.acquisition_registry,
                 data_context=context,
+                llm_settings=self.llm_settings,
             )
             if fit:
                 optimizer.fit(train_X, train_Y)
@@ -452,6 +590,10 @@ class BochanStudy:
         meta.setdefault("model_config", _safe_config_repr(self.model_config))
         meta.setdefault("acq_config", _safe_config_repr(self.acq_config))
         meta.setdefault("opt_config", _safe_config_repr(self.opt_config))
+        if self.llm_settings is not None:
+            meta.setdefault("llm_settings", _safe_llm_settings_repr(self.llm_settings))
+        if self.last_suggestion is not None:
+            meta.setdefault("last_suggestion", self.last_suggestion.to_dict())
         return StudySnapshot(
             schema_version=1,
             next_trial_id=int(self.next_trial_id),
@@ -482,6 +624,7 @@ class BochanStudy:
         n_initial_random: int = 0,
         model_registry: Mapping[Any, Any] | None = None,
         acquisition_registry: Mapping[str, Any] | None = None,
+        llm_settings: Any | None = None,
     ) -> "BochanStudy":
         """save() した JSON から study を復元する。"""
 
@@ -496,6 +639,7 @@ class BochanStudy:
             n_initial_random=n_initial_random,
             model_registry=model_registry,
             acquisition_registry=acquisition_registry,
+            llm_settings=llm_settings,
             metadata=raw.get("metadata") or {},
         )
         study.next_trial_id = int(raw.get("next_trial_id", 0))
@@ -512,11 +656,17 @@ class BochanStudy:
         self.next_trial_id += 1
         return trial_id
 
-    def _require_bounds(self) -> Any:
+    def _optional_bounds(self) -> Any | None:
         if self.bounds is not None:
             return self.bounds
         if self.data_context is not None and self.data_context.bounds is not None:
             return self.data_context.bounds
+        return None
+
+    def _require_bounds(self) -> Any:
+        bounds = self._optional_bounds()
+        if bounds is not None:
+            return bounds
         raise RuntimeError("bounds are required for initial random candidate generation.")
 
     def _resolve_opt_config(self, *, opt_config: OptimizeConfig | None, q: int | None) -> OptimizeConfig:
@@ -564,6 +714,24 @@ class BochanStudy:
             context.X_pending = pending_X
         return context
 
+    def _study_summary(self, *, train_X: Any | None, train_Y: Any | None, pending_X: Any | None) -> dict[str, Any]:
+        completed = self.completed_trials()
+        pending = self.pending_trials()
+        failed = [trial for trial in self.trials if trial.state == TrialState.FAILED]
+        return {
+            "n_trials": len(self.trials),
+            "n_completed": len(completed),
+            "n_pending": len(pending),
+            "n_failed": len(failed),
+            "completed_X_shape": _shape_of(train_X),
+            "completed_Y_shape": _shape_of(train_Y),
+            "pending_X_shape": _shape_of(pending_X),
+            "recent_completed": [trial.to_dict() for trial in completed[-5:]],
+            "recent_pending": [trial.to_dict() for trial in pending[-5:]],
+            "recent_failed": [trial.to_dict() for trial in failed[-5:]],
+            "metadata": _to_jsonable(self.metadata),
+        }
+
     def _resolve_trial_ids_from_candidates(self, candidates: Any, values: Any | None) -> list[int]:
         candidate_rows = _split_rows(candidates)
         if self.last_candidate_batch is not None and len(self.last_candidate_batch.trial_ids) == len(candidate_rows):
@@ -583,6 +751,66 @@ class BochanStudy:
             if _row_equal(trial.x, row):
                 return trial
         raise ValueError("Could not match candidates to pending trials. Pass trial_ids explicitly.")
+
+
+# ----------------------------------------------------------------------
+# Suggestion/config coercion helpers
+# ----------------------------------------------------------------------
+def _coerce_llm_settings(value: Any | None) -> Any | None:
+    if value is None:
+        return None
+    from bochan.llm.configs import coerce_llm_settings
+
+    return coerce_llm_settings(value)
+
+
+def _suggestion_from_plan(plan: Mapping[str, Any], *, mode: str) -> StudySuggestion:
+    plan_dict = dict(plan)
+    return StudySuggestion(
+        mode=mode,
+        plan=plan_dict,
+        model_config=_coerce_model_config(plan_dict.get("model_config")),
+        fit_config=_coerce_fit_config(plan_dict.get("fit_config")),
+        acq_config=_coerce_acq_config(plan_dict.get("acquisition_config") or plan_dict.get("acq_config")),
+        opt_config=_coerce_opt_config(plan_dict.get("optimize_config") or plan_dict.get("opt_config")),
+        warnings=list(plan_dict.get("warnings") or []),
+        reasoning_summary=str(plan_dict.get("reasoning_summary") or ""),
+    )
+
+
+def _coerce_model_config(value: Any) -> ModelConfig | None:
+    if value is None or isinstance(value, ModelConfig):
+        return value
+    data = dict(value)
+    if isinstance(data.get("input_transform_config"), Mapping):
+        data["input_transform_config"] = InputTransformConfig(**dict(data["input_transform_config"]))
+    if isinstance(data.get("multi_output_config"), Mapping):
+        data["multi_output_config"] = MultiOutputConfig(**dict(data["multi_output_config"]))
+    return ModelConfig(**data)
+
+
+def _coerce_fit_config(value: Any) -> FitConfig | None:
+    if value is None or isinstance(value, FitConfig):
+        return value
+    return FitConfig(**dict(value))
+
+
+def _coerce_acq_config(value: Any) -> AcquisitionConfig | None:
+    if value is None or isinstance(value, AcquisitionConfig):
+        return value
+    data = dict(value)
+    if isinstance(data.get("objective_config"), Mapping):
+        data["objective_config"] = ObjectiveConfig(**dict(data["objective_config"]))
+    return AcquisitionConfig(**data)
+
+
+def _coerce_opt_config(value: Any) -> OptimizeConfig | None:
+    if value is None or isinstance(value, OptimizeConfig):
+        return value
+    data = dict(value)
+    if isinstance(data.get("repair_config"), Mapping):
+        data["repair_config"] = CandidateRepairConfig(**dict(data["repair_config"]))
+    return OptimizeConfig(**data)
 
 
 # ----------------------------------------------------------------------
@@ -617,6 +845,18 @@ def _normalize_metadata_rows(
     if len(metadata) != n:
         raise ValueError(f"metadata length must be {n}. Got {len(metadata)}.")
     return list(metadata)
+
+
+def _shape_of(value: Any) -> list[int] | None:
+    if value is None:
+        return None
+    shape = getattr(value, "shape", None)
+    if shape is None:
+        try:
+            return [len(value)]
+        except Exception:
+            return None
+    return [int(v) for v in shape]
 
 
 def _split_rows(data: Any) -> list[Any]:
@@ -667,12 +907,7 @@ def _split_rows(data: Any) -> list[Any]:
 
 
 def _split_rows_expected(data: Any, expected: int) -> list[Any]:
-    """期待行数を考慮して data を行分解する。
-
-    1D tensor / ndarray は、候補点 X では 1 行を表すことがありますが、
-    評価値 Y では `q` 個の scalar 観測を表すこともあります。expected と長さが
-    一致する場合は後者として扱います。
-    """
+    """期待行数を考慮して data を行分解する。"""
 
     if data is None:
         return []
@@ -922,3 +1157,11 @@ def _safe_config_repr(config: Any) -> Any:
         return _to_jsonable(asdict(config))
     except Exception:
         return repr(config)
+
+
+def _safe_llm_settings_repr(settings: Any) -> Any:
+    if settings is None:
+        return None
+    if hasattr(settings, "safe_dict"):
+        return _to_jsonable(settings.safe_dict())
+    return _safe_config_repr(settings)

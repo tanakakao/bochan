@@ -42,6 +42,20 @@ def _resolve_api_key(config: LLMConfig) -> str | None:
     return os.environ.get(env_name) if env_name else None
 
 
+def _usage_to_dict(usage: Any) -> dict[str, Any] | None:
+    if usage is None:
+        return None
+    if hasattr(usage, "model_dump"):
+        return usage.model_dump()
+    if isinstance(usage, dict):
+        return usage
+    data: dict[str, Any] = {}
+    for name in ("prompt_tokens", "completion_tokens", "total_tokens", "input_tokens", "output_tokens"):
+        if hasattr(usage, name):
+            data[name] = getattr(usage, name)
+    return data or None
+
+
 def _missing_dependency(provider: str, package: str) -> ImportError:
     return ImportError(
         f"LLM provider {provider!r} requires optional dependency {package!r}. "
@@ -101,7 +115,7 @@ class OpenAIClient(BaseLLMClient):
             raw=response,
             provider="openai",
             model=self.config.model,
-            usage=None if usage is None else dict(usage),
+            usage=_usage_to_dict(usage),
         )
 
 

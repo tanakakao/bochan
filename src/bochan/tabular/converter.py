@@ -560,6 +560,50 @@ def _resolve_fixed_features_list(
     return [_resolve_feature_mapping(item, feature_names) or {} for item in values]
 
 
+def _is_tensor(value: Any) -> bool:
+    torch = _torch()
+    return bool(torch.is_tensor(value))
+
+
+def _resolve_constraint_indices(
+    indices: Any,
+    feature_names: Sequence[ColumnKey],
+) -> Any:
+    if _is_tensor(indices):
+        return indices
+    return resolve_column_indices(indices, feature_names)
+
+
+def _resolve_linear_constraints(
+    constraints: Any | None,
+    feature_names: Sequence[ColumnKey],
+) -> Any | None:
+    if constraints is None:
+        return None
+
+    resolved = []
+    for indices, coefficients, rhs in constraints:
+        resolved.append(
+            (
+                _resolve_constraint_indices(indices, feature_names),
+                coefficients,
+                rhs,
+            )
+        )
+    return resolved
+
+
+def _resolve_final_sum_constraint(
+    value: tuple[Sequence[Any], float] | None,
+    feature_names: Sequence[ColumnKey],
+) -> tuple[Any, float] | None:
+    if value is None:
+        return None
+
+    indices, rhs = value
+    return (_resolve_constraint_indices(indices, feature_names), rhs)
+
+
 def resolve_repair_config_columns(
     repair: CandidateRepairConfig | None,
     feature_names: Sequence[ColumnKey],
@@ -586,7 +630,10 @@ def resolve_repair_config_columns(
         numeric_indices=numeric_indices,
         steps=steps,
         comp_idx=comp_idx,
+        equality_constraints=_resolve_linear_constraints(repair.equality_constraints, feature_names),
+        inequality_constraints=_resolve_linear_constraints(repair.inequality_constraints, feature_names),
         fixed_features=_resolve_feature_mapping(repair.fixed_features, feature_names),
+        final_sum_constraint=_resolve_final_sum_constraint(repair.final_sum_constraint, feature_names),
     )
 
 
@@ -610,5 +657,7 @@ def resolve_optimize_config_columns(
         config,
         fixed_features=_resolve_feature_mapping(config.fixed_features, feature_names),
         fixed_features_list=_resolve_fixed_features_list(config.fixed_features_list, feature_names),
+        equality_constraints=_resolve_linear_constraints(config.equality_constraints, feature_names),
+        inequality_constraints=_resolve_linear_constraints(config.inequality_constraints, feature_names),
         repair_config=repair_config,
     )

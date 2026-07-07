@@ -19,6 +19,7 @@
 - `CandidateRepairConfig` 相当の step 丸め・k-sparse・固定特徴量を列名で指定できる
 - `FitConfig.beta`, `OptimizeConfig.evo_method`, `OutcomeConstraintConfig` など、公開 `bochan.api` の設定を直接または config object 経由で使える
 - 既存の `ModelConfig`, `FitConfig`, `AcquisitionConfig`, `OptimizeConfig` なども引き続き使える
+- `bochan.visualization` の Plotly 可視化を `TabularBayesianOptimizer` のメソッドとして直接呼べる
 
 ---
 
@@ -679,8 +680,6 @@ bo = TabularBayesianOptimizer(
     missing_strategy="impute",
     impute_targets=True,
 )
-
-bo.fit(df)
 ```
 
 ---
@@ -829,35 +828,215 @@ bo.tell(
 
 ## 18. 予測
 
-DataFrame を直接渡して予測できます。
+`bochan.tabular` の `predict()` は、ユーザー側に `torch.Tensor` や posterior object を出さないため、既定で pandas `DataFrame` を返します。出力には期待値とばらつきの両方を含めます。
 
 ```python
-posterior = bo.predict(df[["x1", "x2", "x3"]])
-mean = posterior.mean
-variance = posterior.variance
+pred_df = bo.predict(df[["x1", "x2", "x3"]])
+print(pred_df)
 ```
 
-既存の tensor API と同様に `return_type` も指定できます。
+単一目的の回帰で `target_cols="y"` の場合、列名は次のようになります。
+
+```text
+y_mean
+y_variance
+```
+
+複数目的の場合は目的変数名ごとに列が作られます。
+
+```text
+yield_mean
+yield_variance
+defect_rate_mean
+defect_rate_variance
+```
+
+multiclass / ordinal のように class 次元を持つ場合は、class index を含めた列名になります。
+
+```text
+label_class_0_mean
+label_class_1_mean
+label_class_2_mean
+label_class_0_variance
+label_class_1_variance
+label_class_2_variance
+```
+
+入力列も同じ DataFrame に含めたい場合は `include_input=True` を指定します。
 
 ```python
-mean = bo.predict(
+pred_df = bo.predict(
     df[["x1", "x2", "x3"]],
-    return_type="mean",
+    include_input=True,
 )
 ```
 
-入力 DataFrame も一緒に返したい場合です。
+出力 DataFrame の `attrs` には、予測空間や分散の意味を残します。
 
 ```python
-prediction, input_df = bo.predict(
+pred_df.attrs["task_type"]
+pred_df.attrs["prediction_space"]
+pred_df.attrs["variance_kind"]
+```
+
+binary classification では `prediction_space="probability"` になり、`mean` はクラス1確率、`variance` は通常 `p * (1 - p)` に対応する Bernoulli 観測分散です。
+
+従来の tensor API 相当の戻り値が必要な場合だけ、`return_type` を明示します。この場合は低レベル互換用であり、戻り値は tensor / posterior object になります。
+
+```python
+posterior = bo.predict(
     df[["x1", "x2", "x3"]],
-    return_dataframe_input=True,
+    return_type="posterior",
+)
+
+mean, variance = bo.predict(
+    df[["x1", "x2", "x3"]],
+    return_type="mean_variance",
 )
 ```
 
 ---
 
-## 19. 低レベル変換関数
+## 19. 可視化
+
+`TabularBayesianOptimizer` から `bochan.visualization` の Plotly 可視化を直接呼べます。学習時の `input_cols` / `target_cols` は自動的に使われるため、通常は列名を再指定する必要はありません。
+
+```python
+fig = bo.plot_yy()
+fig.show()
+```
+
+単一目的でない場合は、対象の目的変数を指定します。
+
+```python
+fig = bo.plot_yy(target="yield")
+fig.show()
+```
+
+### 19.1 1D 予測曲線
+
+1つの説明変数だけを動かし、他の変数は代表値に固定して、予測平均と不確かさを表示します。
+
+```python
+fig = bo.plot_1d(
+    feature="temperature",
+    target="yield",
+    value_dict={"pressure": 0.5, "machine": 1},
+    n=100,
+)
+fig.show()
+```
+
+### 19.2 2D ヒートマップ
+
+2つの説明変数を動かして、獲得関数または予測値をヒートマップ表示します。
+
+```python
+fig = bo.plot_2d(
+    "temperature",
+    "pressure",
+    target="yield",
+    show_type="pred",
+    value_dict={"machine": 1},
+    n=60,
+)
+fig.show()
+```
+
+`plot_heatmap()` と `plot_scatter()` は `plot_2d()` の alias です。
+
+候補点生成後に呼ぶと、直近の `CandidateResult` が自動的に使われます。別の候補点結果を重ねたい場合は `candidate_result` を渡します。
+
+```python
+result = bo.candidate(
+    acq_name="EI",
+    q=3,
+    return_result=True,
+)
+
+fig = bo.plot_2d(
+    "temperature",
+    "pressure",
+    target="yield",
+    show_type="acqf",
+    candidate_result=result,
+)
+```
+
+### 19.3 三角プロット
+
+3成分制約の組成探索では三角プロットを使えます。
+
+```python
+fig = bo.plot_tri(
+    "a",
+    "b",
+    "c",
+    target="yield",
+    sum_value=1.0,
+    value_dict={"temperature": 1000.0},
+    show_type="pred",
+    n=60,
+)
+fig.show()
+```
+
+`plot_ternary()` は `plot_tri()` の alias です。
+
+### 19.4 2目的散布図
+
+2目的の実測値と候補点予測を確認する場合は `plot_pareto()` を使います。
+
+```python
+fig = bo.plot_pareto("yield", "cost")
+fig.show()
+```
+
+`target_cols` が2列以上ある場合は、先頭2列を自動的に使えます。
+
+```python
+fig = bo.plot_pareto()
+```
+
+### 19.5 multiclass / ordinal
+
+multiclass / ordinal の可視化引数もそのまま渡せます。
+
+```python
+fig = bo.plot_2d(
+    "x1",
+    "x2",
+    target="label",
+    show_type="pred",
+    multiclass_mode="class_confidence",
+    n=60,
+)
+```
+
+ordinal probability 表示に切り替える例です。
+
+```python
+fig = bo.plot_2d(
+    "x1",
+    "x2",
+    target="level",
+    show_type="pred",
+    ordinal_display="probability",
+    ordinal_mode="entropy",
+    n=60,
+)
+```
+
+可視化用の DataFrame だけを取り出したい場合は、次を使います。
+
+```python
+X_df, y_df = bo.visualization_training_dataframe()
+df_cand = bo.visualization_candidates_dataframe()
+```
+
+---
+
+## 20. 低レベル変換関数
 
 `bochan.tabular` には、変換だけを行う関数もあります。
 
@@ -887,7 +1066,7 @@ train_Y = dataset.Y
 
 ---
 
-## 20. よく使う属性
+## 21. よく使う属性
 
 学習後は以下を確認できます。
 
@@ -923,12 +1102,14 @@ bo.train_Y
 
 ---
 
-## 21. 注意点
+## 22. 注意点
 
 - `bochan.tabular` は薄いラッパーであり、モデル構築・学習・獲得関数・候補点最適化の中核は `bochan.api` に委譲します。
 - DataFrame / CSV 利用には pandas が必要です。
+- 可視化メソッドには `plotly` が必要です。可視化を使う場合は `[visualization]`, `[all]`, または可視化依存を含む extra をインストールしてください。
 - `continuous_impute_strategy="iterative"` には scikit-learn が必要です。
 - 文字列カテゴリの候補点は元の文字列に戻しますが、最適化中は数値コードとして扱います。
 - 目的変数の文字列カテゴリは学習用に label encoding されます。候補点 DataFrame には目的変数は含まれません。
 - numpy 入力で文字列カテゴリや欠損値補完を本格的に使う場合は、DataFrame に変換してから使う方が扱いやすいです。
 - `FitConfig.beta` と UCB の `acqf_kwargs["beta"]` は別物です。前者は学習時の MLL / ELBO 側、後者は acquisition 側の探索パラメータです。
+- `predict()` は既定で DataFrame を返します。`return_type="posterior"`, `return_type="mean"`, `return_type="variance"`, `return_type="mean_variance"` は低レベル互換用です。

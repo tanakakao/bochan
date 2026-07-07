@@ -40,6 +40,7 @@ class BayesianOptimizer:
         model_registry: Mapping[Any, Any] | None = None,
         acquisition_registry: Mapping[str, Any] | None = None,
         data_context: DataContext | None = None,
+        llm_settings: Any | None = None,
     ) -> None:
         self.model_config = model_config
         self.fit_config = fit_config
@@ -48,6 +49,7 @@ class BayesianOptimizer:
         self.acquisition_registry = acquisition_registry
 
         self.data_context = data_context
+        self.llm_settings = self._coerce_llm_settings(llm_settings)
 
         self.bundle: ModelBundle | None = None
         self.model: Any | None = None
@@ -57,6 +59,61 @@ class BayesianOptimizer:
         self.train_Y: Any | None = None
 
         self.history: list[CandidateResult] = []
+
+    def configure_llm(
+        self,
+        *,
+        goal: Any | None = None,
+        llm_config: Any | None = None,
+        llm_context: Any | None = None,
+        **settings_kwargs: Any,
+    ) -> "BayesianOptimizer":
+        """LLM planner / candidate generator の共通設定を登録する。
+
+        ``ModelConfig(model_type="llm_selected")`` と
+        ``OptimizeConfig(optimizer="llm_candidate_set")`` の両方がこの設定を参照します。
+        個別の ``model_kwargs`` / ``optimizer_kwargs`` に同名キーがある場合は、
+        個別設定が優先されます。
+        """
+
+        from bochan.llm import LLMSettings
+
+        self.llm_settings = LLMSettings(
+            goal=goal,
+            llm_config=llm_config,
+            llm_context=llm_context,
+            **settings_kwargs,
+        )
+        return self
+
+    @staticmethod
+    def _coerce_llm_settings(value: Any | None) -> Any | None:
+        if value is None:
+            return None
+        from bochan.llm.configs import coerce_llm_settings
+
+        return coerce_llm_settings(value)
+
+    def _merge_llm_settings_into_opt_config(self, opt_config: OptimizeConfig) -> OptimizeConfig:
+        if self.llm_settings is None:
+            return opt_config
+        optimizer = opt_config.optimizer
+        if callable(optimizer) and not isinstance(optimizer, str):
+            return opt_config
+        if _optimizer_name(str(optimizer)) not in {
+            "llm",
+            "llm_candidate",
+            "llm_candidate_set",
+            "optimize_acqf_llm",
+            "optimize_acqf_llm_candidate_set",
+        }:
+            return opt_config
+
+        default_kwargs = self.llm_settings.optimizer_kwargs()
+        if not default_kwargs:
+            return opt_config
+        merged_kwargs = {**default_kwargs, **dict(opt_config.optimizer_kwargs or {})}
+        return replace(opt_config, optimizer_kwargs=merged_kwargs)
 
     def fit(
         self,
@@ -209,6 +266,7 @@ class BayesianOptimizer:
             self.bounds = opt_bounds
             context.bounds = opt_bounds
 
+        opt_config = self._merge_llm_settings_into_opt_config(opt_config)
         cat_dims = self.bundle.cat_dims if self.bundle is not None else []
         opt_config = _resolve_optimizer_from_cat_dims(
             opt_config=opt_config,

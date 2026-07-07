@@ -1,22 +1,17 @@
 # LLM-assisted planning and candidate generation
 
-This document describes the experimental LLM-assisted planning and candidate-set optimizer added to `bochan`.
+This document describes the experimental LLM-assisted planner and candidate-set optimizer.
 
-There are two LLM layers:
+The recommended Python API is to define LLM information once with `LLMSettings` and reuse it for both model selection and candidate generation.
 
 ```text
-LLM planner
-  -> natural-language goal + data metadata
-  -> model_config / fit_config / acquisition_config / optimize_config
-
-LLM candidate generator
-  -> broad candidate set
-  -> bochan validation / repair
-  -> existing acquisition function reranking
-  -> top-q candidates
+LLMSettings
+  -> shared goal / provider / domain context
+  -> ModelConfig(model_type="llm_selected")
+  -> OptimizeConfig(optimizer="llm_candidate_set")
 ```
 
-The LLM is not the final optimizer. It acts as a configuration assistant and domain-aware candidate generator.
+The LLM is not the final optimizer. It proposes configuration dictionaries or candidate pools; bochan still fits the selected model, validates / repairs candidates, and reranks them with the acquisition function.
 
 ---
 
@@ -49,9 +44,231 @@ setx GEMINI_API_KEY "..."
 
 ---
 
-## Mode 1: model/settings planning only
+## Recommended Python usage
 
-Use `plan_configs()` when you want the LLM to choose settings but do not want to fit a model yet.
+Define the shared LLM settings once.
+
+```python
+from bochan.llm import LLMConfig, LLMContextConfig, LLMSettings
+
+llm_settings = LLMSettings(
+    goal="導電率を高くし、収縮率を低くしたい",
+    llm_config=LLMConfig(
+        provider="openai",
+        model="gpt-4.1-mini",
+        api_key_env="OPENAI_API_KEY",
+    ),
+    llm_context=LLMContextConfig(
+        variable_names=["temperature", "time", "atmosphere"],
+        target_names=["conductivity", "shrinkage"],
+        variable_descriptions={
+            "temperature": "焼成温度。高すぎると粒成長や収縮率増加の懸念がある。",
+            "time": "焼成保持時間。長いほど焼結が進む可能性がある。",
+            "atmosphere": "焼成雰囲気。0=air, 1=N2, 2=Arとして符号化している。",
+        },
+        target_descriptions={
+            "conductivity": "導電率。高いほど望ましい。",
+            "shrinkage": "焼成収縮率。低いほど望ましい。",
+        },
+        domain_notes=[
+            "高温長時間では収縮率が大きくなりやすい。",
+        ],
+    ),
+    n_llm_candidates=50,
+)
+```
+
+Use it for model selection by setting `model_type="llm_selected"`.
+
+```python
+from bochan.api import BayesianOptimizer, ModelConfig
+
+bo = BayesianOptimizer(
+    model_config=ModelConfig(model_type="llm_selected"),
+    bounds=bounds,
+    llm_settings=llm_settings,
+)
+
+bo.fit(train_X, train_Y)
+```
+
+Then use it for candidate generation by setting `optimizer="llm_candidate_set"`. You do not need to repeat `goal`, `llm_config`, or `llm_context`.
+
+```python
+from bochan.api import AcquisitionConfig, ObjectiveConfig, OptimizeConfig
+
+acq_config = AcquisitionConfig(
+    name="NEHVI",
+    objective_config=ObjectiveConfig(
+        mode="multi_output",
+        outputs=[0, 1],
+        directions=["maximize", "minimize"],
+        weights=[1.0, 0.5],
+    ),
+)
+
+opt_config = OptimizeConfig(
+    optimizer="llm_candidate_set",
+    q=3,
+    raw_samples=64,
+)
+
+candidates, acq_value = bo.candidate(
+    acq_config=acq_config,
+    opt_config=opt_config,
+)
+```
+
+Local overrides are still possible. Individual `model_kwargs` / `optimizer_kwargs` take precedence over `LLMSettings`.
+
+```python
+opt_config = OptimizeConfig(
+    optimizer="llm_candidate_set",
+    q=3,
+    optimizer_kwargs={
+        "n_llm_candidates": 100,
+    },
+)
+```
+
+---
+
+## Alternative: configure later
+
+You can also configure LLM settings after constructing the optimizer.
+
+```python
+bo = BayesianOptimizer(
+    model_config=ModelConfig(model_type="llm_selected"),
+    bounds=bounds,
+)
+
+bo.configure_llm(
+    goal="導電率を高くし、収縮率を低くしたい",
+    llm_config=LLMConfig(provider="openai", model="gpt-4.1-mini"),
+    llm_context=LLMContextConfig(
+        variable_names=["temperature", "time", "atmosphere"],
+        target_names=["conductivity", "shrinkage"],
+    ),
+    n_llm_candidates=50,
+)
+
+bo.fit(train_X, train_Y)
+```
+
+---
+
+## Offline smoke test without API keys
+
+Use `planner_response` and `candidate_set` to test the full wiring without calling OpenAI or Gemini.
+
+```python
+import torch
+
+from bochan.api import AcquisitionConfig, BayesianOptimizer, ModelConfig, ObjectiveConfig, OptimizeConfig
+from bochan.llm import LLMSettings
+
+train_X = torch.tensor(
+    [
+        [800.0, 2.0, 0.0],
+        [850.0, 3.0, 1.0],
+        [900.0, 4.0, 2.0],
+        [830.0, 2.5, 1.0],
+    ],
+    dtype=torch.double,
+)
+train_Y = torch.tensor(
+    [
+        [10.2, 5.1],
+        [12.4, 4.8],
+        [11.0, 7.2],
+        [11.8, 4.9],
+    ],
+    dtype=torch.double,
+)
+bounds = torch.tensor(
+    [
+        [700.0, 1.0, 0.0],
+        [950.0, 5.0, 2.0],
+    ],
+    dtype=torch.double,
+)
+
+llm_settings = LLMSettings(
+    goal="導電率を高くし、収縮率を低くしたい",
+    planner_response={
+        "model_config": {
+            "task_type": "regression",
+            "model_type": "base",
+            "outcome_transform": True,
+        },
+        "fit_config": {"method": "auto"},
+        "warnings": ["offline planner response"],
+        "reasoning_summary": "Use a base regression model for two continuous outputs.",
+    },
+    candidate_set=[
+        [840.0, 3.0, 1.0],
+        [860.0, 2.5, 2.0],
+        [800.0, 4.0, 1.0],
+        [920.0, 5.0, 2.0],
+    ],
+    n_llm_candidates=4,
+)
+
+bo = BayesianOptimizer(
+    model_config=ModelConfig(model_type="llm_selected"),
+    bounds=bounds,
+    llm_settings=llm_settings,
+)
+bo.fit(train_X, train_Y)
+
+acq_config = AcquisitionConfig(
+    name="NEHVI",
+    objective_config=ObjectiveConfig(
+        mode="multi_output",
+        outputs=[0, 1],
+        directions=["maximize", "minimize"],
+        weights=[1.0, 0.5],
+    ),
+)
+opt_config = OptimizeConfig(
+    optimizer="llm_candidate_set",
+    q=2,
+    raw_samples=4,
+)
+
+candidates, acq_value = bo.candidate(acq_config=acq_config, opt_config=opt_config)
+print(candidates)
+print(acq_value)
+```
+
+The same code is available as:
+
+```bash
+python examples/llm_same_pattern.py
+```
+
+---
+
+## Gemini
+
+Only `LLMConfig` changes.
+
+```python
+from bochan.llm import LLMConfig
+
+llm_config = LLMConfig(
+    provider="gemini",
+    model="gemini-2.5-flash",
+    api_key_env="GEMINI_API_KEY",
+)
+```
+
+---
+
+## Lower-level planner API
+
+`plan_configs()` is still available when you only want a configuration proposal and do not want to create a `BayesianOptimizer` yet.
 
 ```python
 from bochan.llm import LLMConfig, LLMContextConfig, plan_configs
@@ -66,192 +283,23 @@ plan = plan_configs(
     llm_context=LLMContextConfig(
         variable_names=["temperature", "time", "atmosphere"],
         target_names=["conductivity", "shrinkage"],
-        variable_descriptions={
-            "temperature": "焼成温度。",
-            "time": "焼成保持時間。",
-            "atmosphere": "焼成雰囲気。0=air, 1=N2, 2=Ar。",
-        },
-        target_descriptions={
-            "conductivity": "導電率。高いほど望ましい。",
-            "shrinkage": "焼成収縮率。低いほど望ましい。",
-        },
     ),
 )
 
 print(plan["model_config"])
 print(plan["fit_config"])
-```
-
-Expected shape:
-
-```json
-{
-  "model_config": {
-    "task_type": "regression",
-    "model_type": "base",
-    "input_transform_config": {"normalize": true},
-    "outcome_transform": true
-  },
-  "fit_config": {"method": "auto"},
-  "warnings": [],
-  "reasoning_summary": "..."
-}
-```
-
-Explicit configs can be supplied as guardrails. The prompt tells the LLM to preserve them unless they conflict with the goal.
-
----
-
-## Mode 2: plan, fit, and generate candidates
-
-The FastAPI endpoint `/models/auto-candidates` uses the planner result to fit a model and generate candidates in one request. For Python code, the low-level pieces are still explicit: call `plan_configs()`, build `BayesianOptimizer`, then call `candidate()`.
-
----
-
-## Python API: LLM candidate-set reranking
-
-```python
-from bochan.api import AcquisitionConfig, ObjectiveConfig, OptimizeConfig
-from bochan.llm import LLMConfig, LLMContextConfig
-
-acq_config = AcquisitionConfig(
-    name="NEHVI",
-    objective_config=ObjectiveConfig(
-        mode="multi_output",
-        outputs=["conductivity", "shrinkage"],
-        directions=["maximize", "minimize"],
-        weights=[1.0, 0.5],
-    ),
-)
-
-opt_config = OptimizeConfig(
-    optimizer="llm_candidate_set",
-    q=3,
-    raw_samples=64,
-    optimizer_kwargs={
-        "n_llm_candidates": 64,
-        "goal": "導電率を高くし、収縮率を低くしたい",
-        "llm_config": LLMConfig(
-            provider="openai",
-            model="gpt-4.1-mini",
-            api_key_env="OPENAI_API_KEY",
-        ),
-        "llm_context": LLMContextConfig(
-            variable_names=["temperature", "time", "atmosphere"],
-            target_names=["conductivity", "shrinkage"],
-            variable_descriptions={
-                "temperature": "焼成温度。高すぎると粒成長や収縮率増加の懸念がある。",
-                "time": "焼成保持時間。",
-                "atmosphere": "焼成雰囲気。0=air, 1=N2, 2=Ar として符号化している。",
-            },
-            target_descriptions={
-                "conductivity": "導電率。高いほど望ましい。",
-                "shrinkage": "焼成収縮率。低いほど望ましい。",
-            },
-        ),
-    },
-)
-
-candidates, acq_value = bo.candidate(acq_config=acq_config, opt_config=opt_config)
-```
-
-`goal` is optional when `ObjectiveConfig` already defines the optimization direction. In that case, it is only used as additional LLM prompt context.
-
----
-
-## Gemini
-
-```python
-from bochan.llm import LLMConfig
-
-llm_config = LLMConfig(
-    provider="gemini",
-    model="gemini-2.5-flash",
-    api_key_env="GEMINI_API_KEY",
-)
+print(plan["warnings"])
 ```
 
 ---
 
-## Offline candidate-set reranking
+## FastAPI
 
-When `candidate_set` is supplied, no LLM call is made. This is useful for tests and local debugging.
+The serving API still supports explicit request-level LLM fields.
 
-```python
-opt_config = OptimizeConfig(
-    optimizer="llm_candidate_set",
-    q=2,
-    optimizer_kwargs={
-        "candidate_set": [
-            [840.0, 3.0, 1.0],
-            [860.0, 2.5, 2.0],
-            [800.0, 4.0, 1.0],
-        ],
-    },
-)
-```
-
-`planner_response` similarly lets you test the planner path without calling a provider.
-
----
-
-## FastAPI: plan only
-
-`POST /models/plan` returns inferred configuration dictionaries without fitting a model.
-
-```json
-{
-  "goal": "導電率を高くし、収縮率を低くしたい",
-  "mode": "model_config",
-  "train_X": [[800.0, 2.0, 0.0], [850.0, 3.0, 1.0]],
-  "train_Y": [[10.2, 5.1], [12.4, 4.8]],
-  "bounds": [[700.0, 1.0, 0.0], [950.0, 5.0, 2.0]],
-  "llm_config": {
-    "provider": "openai",
-    "model": "gpt-4.1-mini",
-    "api_key_env": "OPENAI_API_KEY"
-  },
-  "llm_context": {
-    "variable_names": ["temperature", "time", "atmosphere"],
-    "target_names": ["conductivity", "shrinkage"],
-    "variable_descriptions": {
-      "temperature": "焼成温度。",
-      "time": "焼成保持時間。",
-      "atmosphere": "焼成雰囲気。0=air, 1=N2, 2=Ar。"
-    },
-    "target_descriptions": {
-      "conductivity": "導電率。高いほど望ましい。",
-      "shrinkage": "焼成収縮率。低いほど望ましい。"
-    }
-  }
-}
-```
-
----
-
-## FastAPI: plan + fit + candidates
-
-`POST /models/auto-candidates` infers configs, fits a model, stores it in the in-memory model store, and returns candidates.
-
-```json
-{
-  "goal": "導電率を高くし、収縮率を低くしたい",
-  "train_X": [[800.0, 2.0, 0.0], [850.0, 3.0, 1.0], [900.0, 4.0, 2.0]],
-  "train_Y": [[10.2, 5.1], [12.4, 4.8], [11.0, 7.2]],
-  "bounds": [[700.0, 1.0, 0.0], [950.0, 5.0, 2.0]],
-  "llm_config": {
-    "provider": "openai",
-    "model": "gpt-4.1-mini",
-    "api_key_env": "OPENAI_API_KEY"
-  },
-  "llm_context": {
-    "variable_names": ["temperature", "time", "atmosphere"],
-    "target_names": ["conductivity", "shrinkage"]
-  }
-}
-```
-
-You can still pass explicit `model_config`, `fit_config`, `acquisition_config`, or `optimize_config` fields. Explicit request configs override the LLM plan.
+- `POST /models/plan`: return inferred config dictionaries without fitting a model.
+- `POST /models/auto-candidates`: infer configs, fit a model, and return candidates.
+- `POST /models/{model_id}/candidates`: use `optimizer="llm_candidate_set"` with top-level `goal`, `llm_config`, and `llm_context`.
 
 Do not include API key values in HTTP request bodies. Keep keys on the server side as environment variables.
 
@@ -259,7 +307,7 @@ Do not include API key values in HTTP request bodies. Keep keys on the server si
 
 ## Current limitations
 
-- The initial implementation reranks each LLM candidate with q=1 acquisition values.
+- The candidate-set optimizer reranks each LLM candidate with q=1 acquisition values.
 - It is candidate-set reranking, not exact joint q-batch optimization.
 - The planner returns serializable config dictionaries and warnings; applications should show these to users for review in important workflows.
 - Provider-backed planner and candidate generation require optional SDKs and environment variables.

@@ -87,7 +87,7 @@ def _coerce_multi_output_config(value: Any) -> Any:
     output_fit_configs = payload.get("output_fit_configs")
     if isinstance(output_fit_configs, Mapping):
         payload["output_fit_configs"] = make_fit_config(output_fit_configs)
-    elif isinstance(output_fit_configs, list | tuple):
+    elif isinstance(output_fit_configs, (list, tuple)):
         payload["output_fit_configs"] = [
             _coerce_fit_config_like(item) for item in output_fit_configs
         ]

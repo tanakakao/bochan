@@ -47,6 +47,83 @@ def _take_aliases(values: dict[str, Any], aliases: dict[str, str]) -> dict[str, 
     return taken
 
 
+def _normalize_constraint_sense(sense: Any) -> str:
+    value = str(sense).strip().lower()
+    aliases = {
+        "eq": "eq",
+        "=": "eq",
+        "==": "eq",
+        "equal": "eq",
+        "equals": "eq",
+        "ge": "ge",
+        ">=": "ge",
+        "=>": "ge",
+        "gte": "ge",
+        "greater_equal": "ge",
+        "greater_than_or_equal": "ge",
+        "le": "le",
+        "<=": "le",
+        "=<": "le",
+        "lte": "le",
+        "less_equal": "le",
+        "less_than_or_equal": "le",
+    }
+    if value not in aliases:
+        raise ValueError(
+            "Constraint sense must be one of 'eq', 'ge', 'le', '=', '==', '>=', or '<='. "
+            f"Got {sense!r}."
+        )
+    return aliases[value]
+
+
+def _negate_numeric_sequence_or_value(value: Any) -> Any:
+    try:
+        return -value
+    except TypeError:
+        return [-float(item) for item in value]
+
+
+def _append_constraints(existing: Any | None, extra: list[Any]) -> Any | None:
+    if not extra:
+        return existing
+    if existing is None:
+        return extra
+    return list(existing) + list(extra)
+
+
+def _split_linear_constraints(constraints: Any | None) -> tuple[list[Any], list[Any]]:
+    '''Split unified tabular constraints into equality and BoTorch-style inequalities.'''
+
+    if constraints is None:
+        return [], []
+
+    equality_constraints: list[Any] = []
+    inequality_constraints: list[Any] = []
+    for constraint in constraints:
+        if len(constraint) != 4:
+            raise ValueError(
+                "Each constraint must be (indices, coefficients, sense, rhs). "
+                f"Got {constraint!r}."
+            )
+        indices, coefficients, sense, rhs = constraint
+        normalized_sense = _normalize_constraint_sense(sense)
+        if normalized_sense == "eq":
+            equality_constraints.append((indices, coefficients, rhs))
+        elif normalized_sense == "ge":
+            inequality_constraints.append((indices, coefficients, rhs))
+        else:
+            # BoTorch inequality constraints use a^T x >= rhs.  Convert
+            # a^T x <= rhs to (-a)^T x >= -rhs.
+            inequality_constraints.append(
+                (
+                    indices,
+                    _negate_numeric_sequence_or_value(coefficients),
+                    _negate_numeric_sequence_or_value(rhs),
+                )
+            )
+    return equality_constraints, inequality_constraints
+
+
 def _merge_base_dict(base: Any | None, values: dict[str, Any]) -> tuple[Any | None, dict[str, Any]]:
     '''Merge a user-facing config dict with direct override values.'''
 
@@ -249,11 +326,34 @@ def make_repair_config(
     return _replace_or_create(CandidateRepairConfig, repair_config, repair_values)
 
 
+def _repair_config_has_explicit_inequality_sense(repair_config: Any) -> bool:
+    return isinstance(repair_config, Mapping) and "inequality_sense" in repair_config
+
+
+def _repair_config_has_explicit_inequality_constraints(repair_config: Any) -> bool:
+    if isinstance(repair_config, Mapping):
+        return "inequality_constraints" in repair_config
+    return getattr(repair_config, "inequality_constraints", None) is not None
+
+
 def make_optimize_config(opt_config: OptimizeConfig | Mapping[str, Any] | None = None, **values: Any) -> OptimizeConfig:
     '''Create or update ``OptimizeConfig`` and nested repair config from direct kwargs or a dict.'''
 
     values = drop_unset(values)
     opt_config, values = _merge_base_dict(opt_config, values)
+
+    unified_constraints = values.pop("constraints", None)
+    parsed_equalities, parsed_inequalities = _split_linear_constraints(unified_constraints)
+    if parsed_equalities:
+        values["equality_constraints"] = _append_constraints(
+            values.get("equality_constraints"),
+            parsed_equalities,
+        )
+    if parsed_inequalities:
+        values["inequality_constraints"] = _append_constraints(
+            values.get("inequality_constraints"),
+            parsed_inequalities,
+        )
 
     repair_config = values.pop("repair_config", None)
     opt_values = _take_fields(OptimizeConfig, values)
@@ -270,6 +370,22 @@ def make_optimize_config(opt_config: OptimizeConfig | Mapping[str, Any] | None =
     for key in list(values):
         if key in repair_field_names or key in repair_aliases:
             repair_direct[key] = values.pop(key)
+
+    if (
+        parsed_inequalities
+        and (repair_config is not None or repair_direct)
+        and not _repair_config_has_explicit_inequality_constraints(repair_config)
+        and "repair_inequality_constraints" not in repair_direct
+        and "inequality_constraints" not in repair_direct
+        and not _repair_config_has_explicit_inequality_sense(repair_config)
+        and "repair_inequality_sense" not in repair_direct
+        and "inequality_sense" not in repair_direct
+    ):
+        # Unified constraints are canonicalized to BoTorch's a^T x >= rhs
+        # convention.  When repair falls back to these top-level inequalities,
+        # it must use the same sense.
+        repair_direct["repair_inequality_sense"] = "ge"
+
     if repair_config is not None or repair_direct:
         repair_config = make_repair_config(repair_config, **repair_direct)
 

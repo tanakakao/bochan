@@ -6,6 +6,19 @@ from bochan.tabular.builders import make_optimize_config
 from bochan.tabular.converter import resolve_optimize_config_columns
 
 
+def _assert_linear_constraint(
+    constraint,
+    *,
+    expected_indices: list[int],
+    expected_coefficients: list[float],
+    expected_rhs: float,
+) -> None:
+    indices, coefficients, rhs = constraint
+    assert torch.equal(indices, torch.tensor(expected_indices, dtype=torch.long))
+    assert torch.allclose(coefficients, torch.tensor(expected_coefficients, dtype=torch.double))
+    assert rhs == expected_rhs
+
+
 def test_optimize_config_constraints_accept_column_names() -> None:
     config = make_optimize_config(
         q=3,
@@ -26,8 +39,20 @@ def test_optimize_config_constraints_accept_column_names() -> None:
         device=None,
     )
 
-    assert resolved.equality_constraints == [([0, 1, 2], [1.0, 1.0, 1.0], 1.0)]
-    assert resolved.inequality_constraints == [([3], [1.0], 100.0)]
+    assert resolved.equality_constraints is not None
+    assert resolved.inequality_constraints is not None
+    _assert_linear_constraint(
+        resolved.equality_constraints[0],
+        expected_indices=[0, 1, 2],
+        expected_coefficients=[1.0, 1.0, 1.0],
+        expected_rhs=1.0,
+    )
+    _assert_linear_constraint(
+        resolved.inequality_constraints[0],
+        expected_indices=[3],
+        expected_coefficients=[1.0],
+        expected_rhs=100.0,
+    )
     assert resolved.fixed_features == {4: 10.0}
 
     assert resolved.repair_config is not None
@@ -55,10 +80,28 @@ def test_repair_prefixed_constraints_accept_column_names() -> None:
         device=None,
     )
 
-    assert resolved.equality_constraints == [([0, 1], [1.0, 1.0], 1.0)]
+    assert resolved.equality_constraints is not None
+    _assert_linear_constraint(
+        resolved.equality_constraints[0],
+        expected_indices=[0, 1],
+        expected_coefficients=[1.0, 1.0],
+        expected_rhs=1.0,
+    )
     assert resolved.repair_config is not None
-    assert resolved.repair_config.equality_constraints == [([0, 1, 2], [1.0, 1.0, 1.0], 1.0)]
-    assert resolved.repair_config.inequality_constraints == [([3], [1.0], 120.0)]
+    assert resolved.repair_config.equality_constraints is not None
+    assert resolved.repair_config.inequality_constraints is not None
+    _assert_linear_constraint(
+        resolved.repair_config.equality_constraints[0],
+        expected_indices=[0, 1, 2],
+        expected_coefficients=[1.0, 1.0, 1.0],
+        expected_rhs=1.0,
+    )
+    _assert_linear_constraint(
+        resolved.repair_config.inequality_constraints[0],
+        expected_indices=[3],
+        expected_coefficients=[1.0],
+        expected_rhs=120.0,
+    )
     assert resolved.repair_config.fixed_features == {4: 5.0}
     assert resolved.repair_config.numeric_indices == [0, 1, 2]
     assert resolved.repair_config.steps == [0.01, 0.01, 0.01]

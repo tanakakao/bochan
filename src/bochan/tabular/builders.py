@@ -52,7 +52,14 @@ def _merge_base_dict(base: Any | None, values: dict[str, Any]) -> tuple[Any | No
 
     if isinstance(base, Mapping):
         merged = dict(base)
-        merged.update(values)
+        for key, value in values.items():
+            # TabularBayesianOptimizer.candidate historically passes
+            # repair_config=None when the direct repair_config argument is not
+            # supplied.  Do not let that synthetic None erase a nested
+            # repair_config that the user provided inside opt_config={...}.
+            if key == "repair_config" and value is None and key in merged:
+                continue
+            merged[key] = value
         return None, merged
     return base, values
 

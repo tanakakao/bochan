@@ -78,6 +78,28 @@ def test_make_optimize_config_accepts_dict_with_nested_repair_config() -> None:
     assert config.repair_config.final_priority == "constraints"
 
 
+def test_make_optimize_config_preserves_dict_repair_config_when_direct_none_is_synthetic() -> None:
+    config = make_optimize_config(
+        {
+            "q": 2,
+            "repair_config": {
+                "numeric_indices": [0, 1, 2],
+                "steps": [0.01, 0.01, 0.01],
+                "comp_idx": [0, 1, 2],
+                "k": 2,
+            },
+        },
+        repair_config=None,
+    )
+
+    assert config.q == 2
+    assert config.repair_config is not None
+    assert config.repair_config.numeric_indices == [0, 1, 2]
+    assert config.repair_config.steps == [0.01, 0.01, 0.01]
+    assert config.repair_config.comp_idx == [0, 1, 2]
+    assert config.repair_config.k == 2
+
+
 def test_make_optimize_config_routes_shared_direct_fields_to_optimizer_config() -> None:
     equality_constraints = [([0, 1, 2], [1.0, 1.0, 1.0], 1.0)]
     inequality_constraints = [([3], [1.0], 100.0)]

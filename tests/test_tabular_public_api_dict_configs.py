@@ -100,6 +100,35 @@ def test_make_optimize_config_preserves_dict_repair_config_when_direct_none_is_s
     assert config.repair_config.k == 2
 
 
+def test_make_optimize_config_accepts_unified_linear_constraints() -> None:
+    config = make_optimize_config(
+        {
+            "q": 2,
+            "constraints": [
+                ([0, 1, 2], [1.0, 1.0, 1.0], "eq", 1.0),
+                ([3, 4], [1.0, 1.0], "ge", 100.0),
+                ([0, 1], [1.0, 1.0], "le", 0.2),
+            ],
+            "repair_config": {
+                "steps": [0.01, 0.01, 0.01],
+                "comp_idx": [0, 1, 2],
+                "k": 2,
+            },
+        }
+    )
+
+    assert config.equality_constraints == [([0, 1, 2], [1.0, 1.0, 1.0], 1.0)]
+    assert config.inequality_constraints == [
+        ([3, 4], [1.0, 1.0], 100.0),
+        ([0, 1], [-1.0, -1.0], -0.2),
+    ]
+    assert config.repair_config is not None
+    assert config.repair_config.inequality_sense == "ge"
+    assert config.repair_config.steps == [0.01, 0.01, 0.01]
+    assert config.repair_config.comp_idx == [0, 1, 2]
+    assert config.repair_config.k == 2
+
+
 def test_make_optimize_config_routes_shared_direct_fields_to_optimizer_config() -> None:
     equality_constraints = [([0, 1, 2], [1.0, 1.0, 1.0], 1.0)]
     inequality_constraints = [([3], [1.0], 100.0)]

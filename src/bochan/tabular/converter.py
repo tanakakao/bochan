@@ -430,7 +430,7 @@ def dataframe_to_tensors(data: Any, config: TabularDataConfig) -> TabularDataset
         category_maps=category_maps,
         inverse_category_maps=inverse_maps,
         target_category_maps=target_category_maps,
-        inverse_target_category_maps=inverse_target_category_maps,
+        inverse_target_category_maps=inverse_target_maps if False else inverse_target_category_maps,
         impute_values=impute_values,
         target_impute_values=target_impute_values,
         source_index=work.index,
@@ -617,6 +617,8 @@ def resolve_repair_config_columns(
         return None
 
     numeric_cols = _as_list(repair.numeric_indices) if repair.numeric_indices is not None else None
+    if numeric_cols is None and isinstance(repair.steps, Mapping):
+        numeric_cols = list(repair.steps.keys())
     comp_cols = _as_list(repair.comp_idx) if repair.comp_idx is not None else None
 
     numeric_indices = resolve_column_indices(numeric_cols, feature_names) if numeric_cols is not None else None

@@ -430,7 +430,7 @@ def dataframe_to_tensors(data: Any, config: TabularDataConfig) -> TabularDataset
         category_maps=category_maps,
         inverse_category_maps=inverse_maps,
         target_category_maps=target_category_maps,
-        inverse_target_category_maps=inverse_target_maps if False else inverse_target_category_maps,
+        inverse_target_category_maps=inverse_target_category_maps,
         impute_values=impute_values,
         target_impute_values=target_impute_values,
         source_index=work.index,

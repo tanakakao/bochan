@@ -617,6 +617,8 @@ def resolve_repair_config_columns(
         return None
 
     numeric_cols = _as_list(repair.numeric_indices) if repair.numeric_indices is not None else None
+    if numeric_cols is None and isinstance(repair.steps, Mapping):
+        numeric_cols = list(repair.steps.keys())
     comp_cols = _as_list(repair.comp_idx) if repair.comp_idx is not None else None
 
     numeric_indices = resolve_column_indices(numeric_cols, feature_names) if numeric_cols is not None else None

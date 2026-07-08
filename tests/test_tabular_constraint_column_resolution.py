@@ -62,3 +62,24 @@ def test_repair_prefixed_constraints_accept_column_names() -> None:
     assert resolved.repair_config.fixed_features == {4: 5.0}
     assert resolved.repair_config.numeric_indices == [0, 1, 2]
     assert resolved.repair_config.steps == [0.01, 0.01, 0.01]
+
+
+def test_mapping_steps_infer_numeric_indices_from_step_keys() -> None:
+    config = make_optimize_config(
+        steps={"raw_1": 0.01, "raw_2": 0.02, "raw_3": 0.03},
+        comp_idx=["raw_1", "raw_2", "raw_3"],
+        k=2,
+    )
+
+    resolved = resolve_optimize_config_columns(
+        config,
+        ["raw_1", "raw_2", "raw_3", "temperature", "time"],
+        dtype=torch.double,
+        device=None,
+    )
+
+    assert resolved.repair_config is not None
+    assert resolved.repair_config.numeric_indices == [0, 1, 2]
+    assert resolved.repair_config.steps == [0.01, 0.02, 0.03]
+    assert resolved.repair_config.comp_idx == [0, 1, 2]
+    assert resolved.repair_config.k == 2

@@ -116,6 +116,49 @@ def _call_objective_forward(
         return objective(samples)
 
 
+def _reduce_expanded_candidate_axis(
+    values: Tensor,
+    n_candidates: int,
+    *,
+    candidate_dim: int,
+    reduction: str,
+) -> Tensor:
+    """Reduce an InputPerturbation-expanded candidate axis back to ``N``.
+
+    BoTorch ``InputPerturbation`` evaluates a finite pool of ``N`` candidates as
+    ``N * n_w`` perturbed points, while ``MaxPosteriorSampling`` still passes the
+    original finite pool ``X`` to the objective. Thompson sampling therefore has
+    to aggregate the expanded axis before BoTorch's q-batch validation sees it.
+    """
+
+    if n_candidates <= 0:
+        raise RuntimeError(f"n_candidates must be positive. Got {n_candidates}.")
+
+    candidate_dim = candidate_dim if candidate_dim >= 0 else values.ndim + candidate_dim
+    q_expanded = int(values.shape[candidate_dim])
+    if q_expanded == n_candidates:
+        return values
+    if q_expanded % n_candidates != 0:
+        return values
+
+    n_w = q_expanded // n_candidates
+    if n_w <= 1:
+        return values
+
+    values_w = values.reshape(
+        *values.shape[:candidate_dim],
+        n_candidates,
+        n_w,
+        *values.shape[candidate_dim + 1 :],
+    )
+    risk_dim = candidate_dim + 1
+    if reduction == "mean":
+        return values_w.mean(dim=risk_dim)
+    if reduction == "max":
+        return values_w.amax(dim=risk_dim)
+    raise ValueError(f"Unknown reduction: {reduction!r}.")
+
+
 def _normalize_multi_output_values(values: Tensor, n_candidates: int) -> Tensor:
     """Convert objective values to ``... x N x m`` or scalar ``... x N``."""
 
@@ -132,6 +175,28 @@ def _normalize_multi_output_values(values: Tensor, n_candidates: int) -> Tensor:
 
     # True multi-output objectives conventionally use ``... x N x m``.
     if values.shape[-2] == n_candidates:
+        if values.shape[-1] == 1:
+            return values.squeeze(-1)
+        return values
+
+    # InputPerturbation expands the finite pool from N to N * n_w. Default to
+    # mean aggregation, matching the default bochan regression objective when no
+    # explicit risk objective is supplied.
+    if values.shape[-1] % n_candidates == 0:
+        return _reduce_expanded_candidate_axis(
+            values,
+            n_candidates,
+            candidate_dim=-1,
+            reduction="mean",
+        )
+
+    if values.ndim >= 2 and values.shape[-2] % n_candidates == 0:
+        values = _reduce_expanded_candidate_axis(
+            values,
+            n_candidates,
+            candidate_dim=-2,
+            reduction="mean",
+        )
         if values.shape[-1] == 1:
             return values.squeeze(-1)
         return values
@@ -180,6 +245,25 @@ def _normalize_constraint_value(value: Tensor, n_candidates: int) -> Tensor:
 
     if value.ndim >= 1 and value.shape[-1] == n_candidates:
         return value
+
+    if value.ndim >= 2 and value.shape[-2] % n_candidates == 0:
+        value = _reduce_expanded_candidate_axis(
+            value,
+            n_candidates,
+            candidate_dim=-2,
+            reduction="max",
+        )
+        if value.shape[-1] == 1:
+            return value.squeeze(-1)
+        return value.amax(dim=-1)
+
+    if value.ndim >= 1 and value.shape[-1] % n_candidates == 0:
+        return _reduce_expanded_candidate_axis(
+            value,
+            n_candidates,
+            candidate_dim=-1,
+            reduction="max",
+        )
 
     raise RuntimeError(
         "Could not identify the candidate dimension in outcome-constraint values. "
@@ -294,7 +378,10 @@ def _select_with_scalarized_max_posterior_sampling(
             observation_noise=observation_noise,
             posterior_transform=posterior_transform,
         )
-        values = posterior.mean
+        values = _normalize_multi_output_values(
+            posterior.mean,
+            n_candidates=int(candidates.shape[-2]),
+        )
         if values.ndim >= 2 and values.shape[-1] == 1:
             values = values.squeeze(-1)
     return candidates, values

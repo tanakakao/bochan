@@ -19,6 +19,11 @@ class _Acquisition:
     model: object
 
 
+class _PosteriorAcquisition(_Acquisition):
+    def posterior(self, X, **kwargs):
+        return X
+
+
 def test_resolve_thompson_sampling_target_prefers_configured_public_model() -> None:
     latent_model = _LatentModel()
     public_model = _PosteriorModel()
@@ -36,8 +41,15 @@ def test_resolve_thompson_sampling_target_uses_model_with_posterior() -> None:
     assert _resolve_thompson_sampling_target(acqf) is public_model
 
 
-def test_resolve_thompson_sampling_target_preserves_legacy_nonposterior_fallback() -> None:
+def test_resolve_thompson_sampling_target_uses_acquisition_with_posterior() -> None:
+    latent_model = _LatentModel()
+    acqf = _PosteriorAcquisition(model=latent_model)
+
+    assert _resolve_thompson_sampling_target(acqf) is acqf
+
+
+def test_resolve_thompson_sampling_target_keeps_nonposterior_acquisition() -> None:
     latent_model = _LatentModel()
     acqf = _Acquisition(model=latent_model)
 
-    assert _resolve_thompson_sampling_target(acqf) is latent_model
+    assert _resolve_thompson_sampling_target(acqf) is acqf

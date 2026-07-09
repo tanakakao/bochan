@@ -32,11 +32,45 @@ from .hetero_single_output import (
     qHeteroMulticlassUpperConfidenceBound,
 )
 
+
 # Keep q=1 sequential optimization shape handling aligned across classification
 # and ordinal NParEGO implementations.
 _multi_output._reduce_sample_and_q_to_tbatch = (
     reduce_nparego_sample_and_q_to_tbatch
 )
+
+
+def _patch_default_multioutput_target_class() -> None:
+    """Use class 0 when target-probability acquisitions omit a target class."""
+
+    base_cls = _multi_output._MultiOutputMulticlassTargetClassBOBase
+    original_init = base_cls.__init__
+    if getattr(original_init, "_bochan_default_target_class_zero", False):
+        return
+
+    def _init_with_default_target(
+        self,
+        model,
+        *,
+        target_class=None,
+        output_target_classes=None,
+        **kwargs,
+    ) -> None:
+        if target_class is None and output_target_classes is None:
+            target_class = 0
+        original_init(
+            self,
+            model=model,
+            target_class=target_class,
+            output_target_classes=output_target_classes,
+            **kwargs,
+        )
+
+    _init_with_default_target._bochan_default_target_class_zero = True
+    base_cls.__init__ = _init_with_default_target
+
+
+_patch_default_multioutput_target_class()
 
 from .multi_output import (
     MulticlassTargetProbabilityObjective,

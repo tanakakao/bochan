@@ -130,13 +130,13 @@ def _configured_thompson_sampling_model(acqf: Any) -> Any | None:
 
 
 def _resolve_thompson_sampling_target(acqf: Any) -> Any:
-    """Return the posterior model used by Thompson sampling.
+    """Return the object consumed by the Thompson sampling adapter.
 
-    Thompson sampling draws directly from a model posterior. For some custom
-    binary acquisitions, the acquisition's public ``model`` attribute may point
-    to an internal latent GP that is callable but does not expose ``posterior``.
-    The high-level API stores the original public model on the acquisition so
-    Thompson sampling can still use the probability posterior model.
+    Thompson sampling draws directly from a posterior model when one is safely
+    available. If the acquisition exposes only a latent internal ``.model`` that
+    has no ``posterior`` method, keep the acquisition object instead of stripping
+    it down to the latent GP. The adapter can then recover the stored public
+    model or fall back to finite-pool acquisition scoring.
     """
 
     configured_model = _configured_thompson_sampling_model(acqf)
@@ -148,8 +148,6 @@ def _resolve_thompson_sampling_target(acqf: Any) -> Any:
         return model
     if _has_posterior(acqf):
         return acqf
-    if model is not None:
-        return model
     return acqf
 
 

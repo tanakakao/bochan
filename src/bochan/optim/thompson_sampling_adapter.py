@@ -298,6 +298,86 @@ def _apply_outcome_constraints(
     return torch.where(has_feasible, feasible_scores, fallback_scores)
 
 
+def _has_posterior(value: Any) -> bool:
+    """Return whether ``value`` exposes a BoTorch-compatible posterior method."""
+
+    return callable(getattr(value, "posterior", None))
+
+
+def _configured_thompson_sampling_model(acq_function: Any) -> Any | None:
+    """Return a public posterior model stored by the high-level API."""
+
+    for name in ("_bochan_thompson_model", "_thompson_sampling_model"):
+        model = getattr(acq_function, name, None)
+        if model is not None and _has_posterior(model):
+            return model
+    return None
+
+
+def _resolve_sampling_model(acq_function: Any) -> Any | None:
+    """Resolve a model for MaxPosteriorSampling, if one is safely available."""
+
+    configured = _configured_thompson_sampling_model(acq_function)
+    if configured is not None:
+        return configured
+
+    if _has_posterior(acq_function):
+        return acq_function
+
+    model = getattr(acq_function, "model", None)
+    if model is not None and _has_posterior(model):
+        return model
+
+    try:
+        model = _base._resolve_model(acq_function)
+    except ValueError:
+        return None
+    if _has_posterior(model):
+        return model
+    return None
+
+
+def _normalize_acquisition_scores(scores: Tensor, n_candidates: int) -> Tensor:
+    """Normalize finite-pool acquisition values to one score per candidate."""
+
+    scores = torch.as_tensor(scores)
+    if scores.ndim > 0 and scores.shape[-1] == 1:
+        scores = scores.squeeze(-1)
+    if scores.ndim > 0 and scores.shape[0] == n_candidates:
+        while scores.ndim > 1:
+            scores = scores.mean(dim=-1)
+        return scores
+    if scores.numel() == n_candidates:
+        return scores.reshape(n_candidates)
+    raise RuntimeError(
+        "Could not normalize finite-pool acquisition scores. "
+        f"Expected N={n_candidates}, got shape={tuple(scores.shape)}."
+    )
+
+
+def _select_with_acquisition_scores(
+    *,
+    acq_function: Any,
+    X_candidates: Tensor,
+    q: int,
+) -> tuple[Tensor, Tensor]:
+    """Fallback for acquisitions whose internal model is not a posterior model."""
+
+    if not callable(acq_function):
+        raise AttributeError(
+            f"{type(acq_function).__name__} does not expose a posterior model and is not callable."
+        )
+
+    with torch.no_grad():
+        try:
+            raw_scores = acq_function(X_candidates.unsqueeze(-2))
+        except Exception:
+            raw_scores = acq_function(X_candidates)
+        scores = _normalize_acquisition_scores(raw_scores, int(X_candidates.shape[0]))
+        topk = torch.topk(scores, k=int(q), largest=True).indices
+        return X_candidates.index_select(0, topk), scores.index_select(0, topk)
+
+
 class ThompsonScalarizedObjective(MCAcquisitionObjective):
     """Return one Thompson score per finite-pool candidate.
 
@@ -348,7 +428,14 @@ def _select_with_scalarized_max_posterior_sampling(
 ) -> tuple[Tensor, Tensor]:
     """Select candidates with an objective compatible with posterior sampling."""
 
-    model = _base._resolve_model(acq_function)
+    model = _resolve_sampling_model(acq_function)
+    if model is None:
+        return _select_with_acquisition_scores(
+            acq_function=acq_function,
+            X_candidates=X_candidates,
+            q=q,
+        )
+
     objective = ThompsonScalarizedObjective(
         objective=getattr(acq_function, "objective", None),
         constraints=_resolve_outcome_constraints(acq_function),

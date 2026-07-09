@@ -113,17 +113,44 @@ def _force_sequential_for_kronecker(
     return config
 
 
+def _has_posterior(value: Any) -> bool:
+    """Return whether ``value`` can be used as a BoTorch posterior model."""
+
+    return callable(getattr(value, "posterior", None))
+
+
+def _configured_thompson_sampling_model(acqf: Any) -> Any | None:
+    """Return an explicitly stored Thompson-sampling model when available."""
+
+    for name in ("_bochan_thompson_model", "_thompson_sampling_model"):
+        model = getattr(acqf, name, None)
+        if model is not None and _has_posterior(model):
+            return model
+    return None
+
+
 def _resolve_thompson_sampling_target(acqf: Any) -> Any:
     """Return the posterior model used by Thompson sampling.
 
-    Thompson sampling draws directly from the model posterior. Acquisition
-    objectives such as BALD are defined for a particular q-batch and must not be
-    forwarded implicitly to ``MaxPosteriorSampling`` over a large candidate
-    pool. Passing the model itself keeps Thompson sampling independent from the
-    acquisition function used to enter the high-level candidate API.
+    Thompson sampling draws directly from a model posterior. For some custom
+    binary acquisitions, the acquisition's public ``model`` attribute may point
+    to an internal latent GP that is callable but does not expose ``posterior``.
+    The high-level API stores the original public model on the acquisition so
+    Thompson sampling can still use the probability posterior model.
     """
 
-    return getattr(acqf, "model", acqf)
+    configured_model = _configured_thompson_sampling_model(acqf)
+    if configured_model is not None:
+        return configured_model
+
+    model = getattr(acqf, "model", None)
+    if model is not None and _has_posterior(model):
+        return model
+    if _has_posterior(acqf):
+        return acqf
+    if model is not None:
+        return model
+    return acqf
 
 
 @dataclass

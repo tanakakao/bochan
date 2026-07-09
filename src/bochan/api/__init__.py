@@ -310,6 +310,37 @@ BayesianOptimizer._resolve_acquisition_config = (
 )
 
 
+_original_build_acquisition = _factory.build_acquisition
+
+
+def _build_acquisition_with_thompson_sampling_target(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    data_context: DataContext | None = None,
+):
+    """Attach the public model used by high-level Thompson sampling dispatch.
+
+    Some acquisition classes expose an internal latent GP through ``.model``.
+    Thompson sampling needs a posterior-bearing public model instead, especially
+    for binary probability-space models.
+    """
+
+    acqf = _original_build_acquisition(bundle, config, data_context)
+    model = getattr(bundle, "model", None)
+    if model is not None:
+        try:
+            object.__setattr__(acqf, "_bochan_thompson_model", model)
+        except Exception:
+            pass
+    return acqf
+
+
+_factory.build_acquisition = _build_acquisition_with_thompson_sampling_target
+_engine.build_acquisition = _build_acquisition_with_thompson_sampling_target
+if hasattr(_engine_defaults, "build_acquisition"):
+    _engine_defaults.build_acquisition = _build_acquisition_with_thompson_sampling_target
+
+
 _original_candidate = BayesianOptimizer.candidate
 
 
@@ -382,8 +413,8 @@ __all__ = [
     "CandidateBatch",
     "CandidateRepairConfig",
     "CandidateResult",
-    "DEFAULT_MODEL_REGISTRY",
     "DataContext",
+    "DEFAULT_MODEL_REGISTRY",
     "EarlyStoppingConfig",
     "FitConfig",
     "GenerationSchedule",
@@ -396,9 +427,9 @@ __all__ = [
     "MultiObjectiveConfig",
     "MultiOutputConfig",
     "ObjectiveConfig",
-    "OptimizeConfig",
     "OutcomeConstraintConfig",
     "OutputConfig",
+    "OptimizeConfig",
     "PredictionResult",
     "StopDecision",
     "StudySnapshot",
@@ -414,4 +445,6 @@ __all__ = [
     "prepare_multi_objective_context",
     "resolve_acqf_cls",
     "resolve_model_cls",
+    "resolve_optimizer_from_cat_dims",
+    "uses_mixed_fixed_features",
 ]

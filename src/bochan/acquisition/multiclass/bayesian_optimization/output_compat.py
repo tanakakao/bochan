@@ -7,6 +7,9 @@ from . import multi_output as _multi_output
 
 
 _ORIGINAL_FORWARD_ATTR = "_bochan_original_forward_before_output_compat"
+_ORIGINAL_DIRECT_FINALIZE_ATTR = (
+    "_bochan_original_finalize_before_output_compat"
+)
 _ORIGINAL_OBJECTIVE_CANONICALIZE_ATTR = (
     "_bochan_original_canonicalize_probability_samples"
 )
@@ -160,6 +163,41 @@ def _wrap_forward(cls) -> None:
     cls.forward = _forward
 
 
+def _patch_direct_multioutput_finalize() -> None:
+    """Fallback to the shared DeepGP output aligner for direct acquisitions.
+
+    EI / PI / UCB and the direct active-learning acquisitions use the shared
+    ``_DirectMultiOutputMulticlassAcqBase._finalize`` method instead of the
+    qEHVI wrappers below. A DeepGP posterior can leave only an extra latent axis,
+    e.g. ``value.shape == (10,)`` for a single t-batch point. The original
+    finalizer cannot distinguish that axis from t-batch and raises before the
+    existing output compatibility helper is reached.
+    """
+    cls = _multi_output._DirectMultiOutputMulticlassAcqBase
+    if hasattr(cls, _ORIGINAL_DIRECT_FINALIZE_ATTR):
+        return
+
+    original_finalize = cls._finalize
+    setattr(cls, _ORIGINAL_DIRECT_FINALIZE_ATTR, original_finalize)
+
+    def _finalize(
+        self,
+        value: Tensor,
+        X: Tensor,
+        *,
+        name: str,
+    ) -> Tensor:
+        try:
+            return original_finalize(self, value, X, name=name)
+        except RuntimeError:
+            aligned = _finalize_acq_output(value, X)
+            if aligned.shape == tuple(X.shape[:-2]):
+                return aligned
+            raise
+
+    cls._finalize = _finalize
+
+
 def _patch_multiclass_probability_objective() -> None:
     """Normalize probability layout and restore an omitted ``q == 1`` axis.
 
@@ -246,6 +284,7 @@ def _patch_multiclass_probability_objective() -> None:
 def apply_bayesian_optimization_output_compat() -> None:
     """Patch multiclass BO probability and acquisition output shapes in-place."""
     _patch_multiclass_probability_objective()
+    _patch_direct_multioutput_finalize()
     _multi_output._finalize_acq_output = _finalize_acq_output
     _wrap_forward(
         _multi_output.qMultiOutputMulticlassExpectedHypervolumeImprovement

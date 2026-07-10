@@ -22,6 +22,9 @@ from .converter import (
     tensor_to_dataframe,
 )
 from .optimizer_api import TabularBayesianOptimizer
+from .candidate_output_compat import apply_tabular_candidate_output_compat
+
+apply_tabular_candidate_output_compat()
 
 __all__ = [
     "ColumnKey",

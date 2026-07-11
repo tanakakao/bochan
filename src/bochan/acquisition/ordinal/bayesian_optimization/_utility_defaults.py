@@ -10,7 +10,6 @@ from torch import Tensor
 from . import multi_output as _multi_output
 from ._fixed_likelihood_graph import apply_fixed_ordinal_likelihood_graph_compat
 
-
 apply_fixed_ordinal_likelihood_graph_compat(_multi_output)
 
 

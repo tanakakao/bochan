@@ -112,27 +112,55 @@ def _force_sequential_for_kronecker(
     acqf: Any,
     config: _BaseOptimizeConfig,
 ) -> _BaseOptimizeConfig:
-    """Use sequential q-batch optimization for Kronecker model acquisitions.
+    """Stabilize SciPy optimization for Kronecker model acquisitions.
 
     Native joint ``q > 1`` optimization of Kronecker multi-task posteriors can
     fail during LinearOperator backward because the task dimension ``m`` and the
     flattened event dimension ``q * m`` are mixed. Sequential optimization keeps
     each internal optimization step at ``q=1`` while returning the requested
     number of candidates.
+
+    Kronecker posteriors can also fail during input-gradient evaluation when an
+    input perturbation transform expands a single candidate to ``n_w`` replicas.
+    In that case, even sequential ``q=1`` optimization differentiates through a
+    ``q * n_w`` Kronecker event. BoTorch's SciPy generator supports finite
+    differences via ``options={"with_grad": False}``, so disable autograd
+    gradients for Kronecker acquisitions unless the caller explicitly set that
+    option.
+
+    Args:
+        acqf: Acquisition function being optimized.
+        config: Candidate optimizer configuration.
+
+    Returns:
+        Optimizer configuration with Kronecker-safe defaults applied when the
+        standard SciPy ``optimize_acqf`` backend is used.
     """
 
     optimizer = config.optimizer
     if callable(optimizer) and not isinstance(optimizer, str):
         return config
+
     name = _ALIASES.get(_optimizer_name(str(optimizer)), _optimizer_name(str(optimizer)))
-    if (
-        name == "optimize_acqf"
-        and config.q > 1
-        and not config.sequential
-        and _uses_kronecker_model(acqf)
-    ):
-        return replace(config, sequential=True)
-    return config
+    if name != "optimize_acqf" or not _uses_kronecker_model(acqf):
+        return config
+
+    needs_update = False
+    kwargs = dict(config.optimizer_kwargs)
+    options = dict(kwargs.get("options") or {})
+    if "with_grad" not in options:
+        options["with_grad"] = False
+        kwargs["options"] = options
+        needs_update = True
+
+    sequential = config.sequential
+    if config.q > 1 and not sequential:
+        sequential = True
+        needs_update = True
+
+    if not needs_update:
+        return config
+    return replace(config, sequential=sequential, optimizer_kwargs=kwargs)
 
 
 def _has_posterior(value: Any) -> bool:

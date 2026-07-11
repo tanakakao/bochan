@@ -35,6 +35,7 @@ jobs:
             tests/test_api_optimizer_config.py \
             tests/test_hetero_regression_nehvi_autograd.py \
             tests/test_ordinal_missing_multiobjective.py \
+            tests/test_ordinal_nehvi_repeated_backward.py \
             tests/test_multiclass_nparego_context.py \
             tests/test_outcome_constraints.py \
             tests/test_api_acquisition_constraints.py \
@@ -64,6 +65,8 @@ jobs:
             src/bochan/acquisition/objective/outcome_constraints.py \
             src/bochan/acquisition/objective/regression_perturbation_compat.py \
             src/bochan/acquisition/ordinal/bayesian_optimization/__init__.py \
+            src/bochan/acquisition/ordinal/bayesian_optimization/_fixed_likelihood_graph.py \
+            src/bochan/acquisition/ordinal/bayesian_optimization/_utility_defaults.py \
             src/bochan/acquisition/ordinal_constraint_install.py \
             src/bochan/acquisition/ordinal_multitask_compat.py \
             src/bochan/acquisition/regression/bayesian_optimization/__init__.py \
@@ -87,6 +90,7 @@ jobs:
             tests/test_api_optimizer_config.py \
             tests/test_hetero_regression_nehvi_autograd.py \
             tests/test_ordinal_missing_multiobjective.py \
+            tests/test_ordinal_nehvi_repeated_backward.py \
             tests/test_multiclass_nparego_context.py \
             tests/test_multiclass_nparego_signature.py \
             tests/test_multiclass_nparego_public_api.py \

@@ -7,6 +7,11 @@ from typing import Any
 import torch
 from torch import Tensor
 
+from . import multi_output as _multi_output
+from ._fixed_likelihood_graph import apply_fixed_ordinal_likelihood_graph_compat
+
+apply_fixed_ordinal_likelihood_graph_compat(_multi_output)
+
 
 def _num_classes_from_object(obj: Any) -> int | None:
     if obj is None:

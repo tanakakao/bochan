@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional, Union
-
-import torch
-from torch import Tensor
-
 from botorch.acquisition.multi_objective.monte_carlo import (
     qExpectedHypervolumeImprovement,
     qNoisyExpectedHypervolumeImprovement,
@@ -20,6 +15,8 @@ from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.multi_objective.box_decompositions import (
     FastNondominatedPartitioning,
 )
+import torch
+from torch import Tensor
 
 from .hetero_multi_output import (
     _HeteroRegressionMCMultiOutputObjective,
@@ -44,7 +41,7 @@ class _AutogradSafeHeteroRegressionMCMultiOutputObjective(
     the normal differentiable path used by acquisition optimization.
     """
 
-    def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
         if X is None:
             raise ValueError(
                 "X must be provided for "
@@ -73,18 +70,18 @@ class qHeteroMultiOutputRegressionExpectedHypervolumeImprovement(_BaseHeteroEHVI
     def __init__(
         self,
         model: Model,
-        ref_point: Union[Tensor, list[float]],
+        ref_point: Tensor | list[float],
         partitioning: FastNondominatedPartitioning,
         *,
         beta: float = 2.0,
         noise_penalty: float = 2.0,
         default_sigma: float = 0.0,
         noise_is_log_var: bool = True,
-        sampler: Optional[SobolQMCNormalSampler] = None,
-        objective: Optional[MCMultiOutputObjective] = None,
-        constraints: Optional[list] = None,
-        X_pending: Optional[Tensor] = None,
-        eta: Union[float, Tensor] = 1e-3,
+        sampler: SobolQMCNormalSampler | None = None,
+        objective: MCMultiOutputObjective | None = None,
+        constraints: list | None = None,
+        X_pending: Tensor | None = None,
+        eta: float | Tensor = 1e-3,
         fat: bool = False,
     ) -> None:
         qExpectedHypervolumeImprovement.__init__(
@@ -116,11 +113,11 @@ class qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement(
         ref_point: Tensor,
         X_baseline: Tensor,
         *,
-        sampler: Optional[SobolQMCNormalSampler] = None,
-        objective: Optional[MCMultiOutputObjective] = None,
-        constraints: Optional[list] = None,
-        X_pending: Optional[Tensor] = None,
-        eta: Union[float, Tensor] = 1e-3,
+        sampler: SobolQMCNormalSampler | None = None,
+        objective: MCMultiOutputObjective | None = None,
+        constraints: list | None = None,
+        X_pending: Tensor | None = None,
+        eta: float | Tensor = 1e-3,
         fat: bool = False,
         prune_baseline: bool = False,
         alpha: float = 0.0,
@@ -128,7 +125,7 @@ class qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement(
         max_iep: int = 0,
         incremental_nehvi: bool = True,
         cache_root: bool = True,
-        marginalize_dim: Optional[int] = None,
+        marginalize_dim: int | None = None,
         beta: float = 0.0,
         noise_penalty: float = 0.0,
         default_sigma: float = 0.0,

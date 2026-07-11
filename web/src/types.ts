@@ -1,5 +1,10 @@
 export type ColumnKind = "numeric" | "categorical" | "datetime" | "string";
 
+export interface HealthResponse {
+  status: string;
+  application: string;
+}
+
 export interface ColumnProfile {
   name: string;
   dtype: string;

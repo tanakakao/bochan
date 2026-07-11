@@ -75,3 +75,48 @@ def test_multitask_straddle_accepts_explicit_restart_initial_conditions() -> Non
     assert value.shape == torch.Size([1])
     assert torch.isfinite(candidates).all()
     assert torch.isfinite(value).all()
+
+
+def test_multitask_straddle_trims_sequential_pending_scores_with_perturbation_n_w() -> None:
+    model = _make_model()
+    acquisition = qMultiOutputRegressionStraddle(
+        model=model,
+        thresholds=[0.0, 0.0],
+        reduction="mean",
+        output_reduction="mean",
+        n_w=4,
+    )
+    score = torch.tensor([[1.0, 2.0]], dtype=torch.double)
+
+    aggregated = acquisition._aggregate_n_w_if_needed(
+        score,
+        q=1,
+        context="qMultiOutputRegressionStraddle",
+    )
+
+    assert aggregated.shape == torch.Size([1, 1])
+    assert torch.equal(aggregated, score[..., :1])
+
+
+def test_multitask_straddle_broadcasts_singleton_score_to_raw_initialization_batch() -> None:
+    model = _make_model()
+    acquisition = qMultiOutputRegressionStraddle(
+        model=model,
+        thresholds=[0.0, 0.0],
+        reduction="mean",
+        output_reduction="mean",
+        n_w=4,
+    )
+    X = torch.rand(4, 1, 1, dtype=torch.double)
+    Xt = torch.rand(1, 2, 1, dtype=torch.double)
+    score = torch.tensor([[1.0, 2.0]], dtype=torch.double)
+
+    out = acquisition._finalize_pointwise_score(
+        score,
+        X,
+        Xt,
+        name="qMultiOutputRegressionStraddle",
+    )
+
+    assert out.shape == torch.Size([4])
+    assert torch.equal(out, torch.ones(4, dtype=torch.double))

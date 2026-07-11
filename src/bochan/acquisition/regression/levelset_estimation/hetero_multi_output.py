@@ -60,6 +60,37 @@ def _objective_call(objective: Callable, score: Tensor, X: Optional[Tensor]):
         return objective(score)
 
 
+
+def _objective_X_for_score(score: Tensor, X: Optional[Tensor]) -> Optional[Tensor]:
+    """Return an ``X`` tensor whose q dimension matches ``score``.
+
+    Args:
+        score: Pointwise score tensor passed to an optional objective.
+        X: Raw candidate tensor originally passed to the acquisition function.
+
+    Returns:
+        ``None`` or an ``X``-like tensor with ``shape[-2]`` aligned to the
+        score q dimension so BoTorch objectives can validate one-to-many
+        transformed scores.
+    """
+    if X is None or X.ndim < 3 or score.ndim == 0:
+        return X
+
+    score_q = int(score.shape[-1])
+    if score_q == int(X.shape[-2]):
+        return X
+
+    if tuple(score.shape) == tuple(X.shape[:-2]):
+        return score.unsqueeze(-1)
+
+    d = int(X.shape[-1])
+    target_shape = tuple(score.shape) + (d,)
+    try:
+        base = X[..., :1, :].expand(*score.shape[:-1], 1, d)
+        return base.expand(*target_shape)
+    except RuntimeError:
+        return X.new_zeros(target_shape)
+
 def _safe_normal_cdf(z: Tensor) -> Tensor:
     two = torch.as_tensor(2.0, device=z.device, dtype=z.dtype)
     return 0.5 * (1.0 + torch.erf(z / torch.sqrt(two)))
@@ -581,7 +612,8 @@ class _HeteroMultiOutputRegressionLevelSetBase(AcquisitionFunction):
     def _apply_objective_to_score(self, score: Tensor, X: Tensor, name: str) -> Tensor:
         if self.objective is None:
             return score
-        out = _objective_call(self.objective, score, X)
+        X_for_objective = _objective_X_for_score(score, X)
+        out = _objective_call(self.objective, score, X_for_objective)
         if not torch.is_tensor(out):
             raise RuntimeError(f"{name}: objective must return Tensor. Got {type(out)}.")
         return out

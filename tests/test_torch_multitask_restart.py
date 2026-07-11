@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import torch
+from botorch.acquisition.objective import GenericMCObjective
 from botorch.models.multitask import KroneckerMultiTaskGP
 
 from bochan.acquisition.regression.levelset_estimation.multi_output import (
@@ -105,6 +106,32 @@ def test_multitask_straddle_broadcasts_singleton_score_to_raw_initialization_bat
         thresholds=[0.0, 0.0],
         reduction="mean",
         output_reduction="mean",
+        n_w=4,
+    )
+    X = torch.rand(4, 1, 1, dtype=torch.double)
+    Xt = torch.rand(1, 2, 1, dtype=torch.double)
+    score = torch.tensor([[1.0, 2.0]], dtype=torch.double)
+
+    out = acquisition._finalize_pointwise_score(
+        score,
+        X,
+        Xt,
+        name="qMultiOutputRegressionStraddle",
+    )
+
+    assert out.shape == torch.Size([4])
+    assert torch.equal(out, torch.ones(4, dtype=torch.double))
+
+
+def test_multitask_straddle_passes_score_aligned_x_to_objective() -> None:
+    model = _make_model()
+    objective = GenericMCObjective(lambda samples, X=None: samples)
+    acquisition = qMultiOutputRegressionStraddle(
+        model=model,
+        thresholds=[0.0, 0.0],
+        reduction="mean",
+        output_reduction="mean",
+        objective=objective,
         n_w=4,
     )
     X = torch.rand(4, 1, 1, dtype=torch.double)

@@ -4,8 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from bochan.tabular import TabularBayesianOptimizer
-from bochan.tabular import optimizer_api
+from bochan.tabular import TabularBayesianOptimizer, optimizer_api
 
 
 def _make_fitted_stub() -> TabularBayesianOptimizer:

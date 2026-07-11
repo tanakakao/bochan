@@ -5,16 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any
 
-from botorch.acquisition.acquisition import AcquisitionFunction
 import torch
+from botorch.acquisition.acquisition import AcquisitionFunction
 from torch import Tensor
 
-from .torch_opt import (
-    InequalitySense,
-    LinearConstraint,
-    TorchOptimizerName,
-    optimize_acqf_torch as _optimize_acqf_torch,
-)
+from .torch_opt import InequalitySense, LinearConstraint, TorchOptimizerName
+from .torch_opt import optimize_acqf_torch as _optimize_acqf_torch
 
 _WRAPPED_ACQF_ATTRIBUTES = (
     "base_acqf",

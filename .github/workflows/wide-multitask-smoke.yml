@@ -39,6 +39,7 @@ jobs:
             tests/test_outcome_constraints.py \
             tests/test_api_acquisition_constraints.py \
             tests/test_nsgaii_acquisition_adapter.py \
+            tests/test_nsgaii_legacy_linear_constraint_compat.py \
             tests/test_tabular_outcome_constraint_column_names.py \
             tests/test_tabular_non_native_outcome_constraints.py \
             2>&1 | tee pytest.log
@@ -72,7 +73,9 @@ jobs:
             src/bochan/api/optimizer_api.py \
             src/bochan/models/wide_multitask.py \
             src/bochan/models/wide_multitask_compat.py \
+            src/bochan/optim/__init__.py \
             src/bochan/optim/nsgaii_constraint_compat.py \
+            src/bochan/optim/nsgaii_legacy_linear_constraint_compat.py \
             src/bochan/tabular/optimizer_api.py \
             src/bochan/tabular/outcome_constraint_compat.py \
             tests/test_wide_multitask_models.py \
@@ -87,6 +90,7 @@ jobs:
             tests/test_multiclass_nparego_context.py \
             tests/test_multiclass_nparego_signature.py \
             tests/test_multiclass_nparego_public_api.py \
+            tests/test_nsgaii_legacy_linear_constraint_compat.py \
             tests/test_tabular_outcome_constraint_column_names.py \
             tests/test_tabular_non_native_outcome_constraints.py \
             2>&1 | tee ruff.log

@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Any
 
-import torch
 from botorch.acquisition.acquisition import AcquisitionFunction
+import torch
 from torch import Tensor
 
 from .torch_opt import (

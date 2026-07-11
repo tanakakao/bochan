@@ -7,7 +7,6 @@ from typing import Any, Literal
 import torch
 from torch import Tensor
 
-
 LinkType = Literal["auto", "probit", "logit"]
 
 
@@ -39,10 +38,11 @@ def _ordered_probs_from_detached_cutpoints(
 
     cuts = cutpoints.detach().to(device=latent.device, dtype=latent.dtype).reshape(-1)
     z = cuts - latent.unsqueeze(-1)
-    if link == "logit":
-        cdf = torch.sigmoid(z)
-    else:
-        cdf = 0.5 * (1.0 + torch.erf(z / (2.0**0.5)))
+    cdf = (
+        torch.sigmoid(z)
+        if link == "logit"
+        else 0.5 * (1.0 + torch.erf(z / (2.0**0.5)))
+    )
 
     probs = torch.cat(
         [cdf[..., :1], cdf[..., 1:] - cdf[..., :-1], 1.0 - cdf[..., -1:]],

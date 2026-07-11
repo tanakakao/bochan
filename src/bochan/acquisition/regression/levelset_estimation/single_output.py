@@ -18,15 +18,14 @@ Design policy:
       This file is for the development-stage aligned API.
 """
 
-from typing import Any, Callable, Literal, Optional, Sequence
+from collections.abc import Callable
+from typing import Any, Literal
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.models.model import Model
 from botorch.utils.transforms import t_batch_mode_transform
-
+from torch import Tensor
 
 ReductionType = Literal["mean", "sum", "max", "min"]
 OutputReductionType = Literal["mean", "sum", "max", "min"]
@@ -67,7 +66,7 @@ def _safe_prod(shape: torch.Size | tuple[int, ...]) -> int:
     return out
 
 
-def _objective_call(objective: Callable, score: Tensor, X: Optional[Tensor]):
+def _objective_call(objective: Callable, score: Tensor, X: Tensor | None):
     try:
         return objective(score, X=X)
     except TypeError:
@@ -103,8 +102,8 @@ class RegressionLevelSetScoreObjective(torch.nn.Module):
 
     def __init__(
         self,
-        n_w: Optional[int] = None,
-        risk_type: Optional[Literal["var", "cvar"]] = None,
+        n_w: int | None = None,
+        risk_type: Literal["var", "cvar"] | None = None,
         alpha: float = 0.5,
         maximize: bool = True,
         weight: float = 1.0,
@@ -132,13 +131,13 @@ class RegressionLevelSetScoreObjective(torch.nn.Module):
             raise ValueError("aggregated_risk_mode must be 'ignore' or 'error'.")
 
     @staticmethod
-    def _is_aggregated_score(score: Tensor, X: Optional[Tensor]) -> bool:
+    def _is_aggregated_score(score: Tensor, X: Tensor | None) -> bool:
         if X is None or score.ndim == 0:
             return False
         Xq = _ensure_q_batch(X)
         return tuple(score.shape) == tuple(Xq.shape[:-2])
 
-    def forward(self, score: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def forward(self, score: Tensor, X: Tensor | None = None) -> Tensor:
         if not torch.is_tensor(score):
             raise TypeError(f"score must be a Tensor. Got {type(score)}.")
 
@@ -183,8 +182,8 @@ class RegressionLevelSetScoreObjective(torch.nn.Module):
         raise ValueError(f"Unknown risk_type: {self.risk_type}")
 
 
-def _objective_X_for_score(score: Tensor, X: Optional[Tensor]) -> Optional[Tensor]:
-    """Return an X argument compatible with score's q-batch semantics."""
+def _objective_X_for_score(score: Tensor, X: Tensor | None) -> Tensor | None:
+    """Return an X argument supported with score's q-batch semantics."""
     if X is None or X.ndim < 3 or score.ndim == 0:
         return X
 
@@ -197,7 +196,7 @@ def _objective_X_for_score(score: Tensor, X: Optional[Tensor]) -> Optional[Tenso
 def _apply_regression_levelset_objective_to_score(
     owner,
     score: Tensor,
-    X: Optional[Tensor] = None,
+    X: Tensor | None = None,
     name: str = "RegressionLevelSetAcquisition",
 ) -> Tensor:
     objective = getattr(owner, "objective", None)
@@ -226,11 +225,11 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         model: Model,
         *,
         threshold: float | Tensor = 0.0,
-        h: Optional[float | Tensor] = None,
+        h: float | Tensor | None = None,
         reduction: ReductionType = "mean",
         output_reduction: OutputReductionType = "mean",
-        X_pending: Optional[Tensor] = None,
-        X_observed: Optional[Tensor] = None,
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
         pending_penalty_weight: float = 0.0,
@@ -239,8 +238,8 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         observed_penalty_beta: float = 10.0,
         hard_duplicate_penalty: float = 0.0,
         hard_duplicate_tol: float = 1e-8,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
-        n_w: Optional[int] = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
+        n_w: int | None = None,
         eps: float = 1e-12,
     ) -> None:
         super().__init__(model=model)
@@ -273,8 +272,8 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         if self.n_w is not None and self.n_w <= 0:
             raise ValueError("n_w must be positive or None.")
 
-        self.X_pending: Optional[Tensor] = None
-        self.X_observed: Optional[Tensor] = None
+        self.X_pending: Tensor | None = None
+        self.X_observed: Tensor | None = None
         self.set_X_pending(X_pending)
         self.set_X_observed(X_observed)
 
@@ -282,8 +281,8 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         self,
         ref,
         *,
-        like: Optional[Tensor] = None,
-    ) -> Optional[Tensor]:
+        like: Tensor | None = None,
+    ) -> Tensor | None:
         if ref is None:
             return None
 
@@ -317,10 +316,10 @@ class _RegressionLevelSetBase(AcquisitionFunction):
 
         return out.detach()
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         self.X_pending = self._coerce_reference_to_tensor(X_pending)
 
-    def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+    def set_X_observed(self, X_observed: Tensor | None = None) -> None:
         self.X_observed = self._coerce_reference_to_tensor(X_observed)
 
     def _prepare_eval(self) -> None:
@@ -376,7 +375,7 @@ class _RegressionLevelSetBase(AcquisitionFunction):
 
         return X
 
-    def _reference_to_distance_space(self, ref, *, like: Tensor) -> Optional[Tensor]:
+    def _reference_to_distance_space(self, ref, *, like: Tensor) -> Tensor | None:
         ref = self._coerce_reference_to_tensor(ref, like=like)
         if ref is None or ref.numel() == 0:
             return None
@@ -733,7 +732,7 @@ class qRegressionJointStraddle(_RegressionLevelSetBase):
 class qRegressionICU(_RegressionLevelSetBase):
     """Integrated contour uncertainty style acquisition."""
 
-    def __init__(self, model: Model, *, bandwidth: Optional[float | Tensor] = None, **kwargs: Any) -> None:
+    def __init__(self, model: Model, *, bandwidth: float | Tensor | None = None, **kwargs: Any) -> None:
         super().__init__(model=model, **kwargs)
         self.bandwidth = None if bandwidth is None else torch.as_tensor(bandwidth)
 
@@ -776,9 +775,9 @@ class qRegressionProbabilityOfExceedance(_RegressionLevelSetBase):
         model: Model,
         *,
         mode: ProbabilityMode = "above",
-        lower: Optional[float | Tensor] = None,
-        upper: Optional[float | Tensor] = None,
-        temperature: Optional[float | Tensor] = None,
+        lower: float | Tensor | None = None,
+        upper: float | Tensor | None = None,
+        temperature: float | Tensor | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(model=model, **kwargs)

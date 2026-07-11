@@ -11,7 +11,7 @@ The current design separates acquisition functions by model family and task:
 - feasibility and constraint handling
 - objective / score transformation
 
-Legacy class names and compatibility aliases are intentionally not treated as
+Previous class names are not treated as
 public API. Public classes should use the unified naming scheme described below.
 
 ---
@@ -88,7 +88,7 @@ Notes:
 
 ## Naming policy
 
-Only unified names are public. Legacy class names and compatibility aliases are
+Only unified names are public. Previous aliases are
 intentionally removed unless explicitly documented.
 
 Public acquisition names follow these patterns:

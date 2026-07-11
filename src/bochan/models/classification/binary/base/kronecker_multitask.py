@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Optional, Sequence, Union
+from collections.abc import Sequence
+from typing import Any
 
 import torch
 from botorch.acquisition.objective import PosteriorTransform
@@ -47,15 +48,15 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
         self,
         train_X: Tensor,
         train_Y: Tensor,
-        train_Yvar: Optional[Tensor] = None,
+        train_Yvar: Tensor | None = None,
         *,
-        rank: Optional[int] = None,
-        likelihood: Optional[BernoulliLikelihood] = None,
-        input_transform: Optional[InputTransform] = None,
-        mean_module: Optional[Mean] = None,
-        data_covar_module: Optional[Kernel] = None,
+        rank: int | None = None,
+        likelihood: BernoulliLikelihood | None = None,
+        input_transform: InputTransform | None = None,
+        mean_module: Mean | None = None,
+        data_covar_module: Kernel | None = None,
         num_inducing_points: int = 128,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
     ) -> None:
         raw_train_X = torch.as_tensor(train_X).contiguous()
@@ -134,11 +135,11 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
 
     @staticmethod
     def _canonicalize_train_Yvar(
-        train_Yvar: Optional[Tensor],
+        train_Yvar: Tensor | None,
         *,
         train_X: Tensor,
         train_Y: Tensor,
-    ) -> Optional[Tensor]:
+    ) -> Tensor | None:
         if train_Yvar is None:
             return None
         train_Yvar = torch.as_tensor(
@@ -157,7 +158,7 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
     def _transform_for_training(
         X: Tensor,
         *,
-        input_transform: Optional[InputTransform],
+        input_transform: InputTransform | None,
     ) -> Tensor:
         if input_transform is None:
             return X.detach().clone().contiguous()
@@ -169,7 +170,7 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
 
         if X_tf.shape[-2] != X.shape[-2]:
             raise RuntimeError(
-                "input_transform expanded the training inputs, which is incompatible "
+                "input_transform expanded the training inputs, which is insupported "
                 "with block-design train_Y. Configure perturbation transforms with "
                 "transform_on_train=False."
             )
@@ -204,7 +205,7 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
 
     def _normalize_output_indices(
         self,
-        output_indices: Optional[Sequence[int]],
+        output_indices: Sequence[int] | None,
     ) -> list[int]:
         if output_indices is None:
             return list(range(self.num_tasks))
@@ -219,9 +220,9 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
-        observation_noise: Union[bool, Tensor] = False,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        output_indices: Sequence[int] | None = None,
+        observation_noise: bool | Tensor = False,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> MultiOutputBernoulliPosterior:
         """Return the Bernoulli probability posterior ``[..., q, m]``."""
@@ -264,9 +265,9 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
     def latent_posterior(
         self,
         X: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
         observation_noise: bool | Tensor = False,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> GPyTorchPosterior:
         """Return the correlated latent multi-task Gaussian posterior."""
@@ -298,7 +299,7 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
         *,
         X: Tensor,
         output_indices: Sequence[int],
-    ) -> Optional[Tensor]:
+    ) -> Tensor | None:
         selected_outputs = len(output_indices)
         expected_prefix = X.shape[:-1]
 
@@ -329,7 +330,7 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
     def class_probs(
         self,
         X: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
     ) -> Tensor:
         """Return ``[..., q, m, 2]`` probabilities ordered as class 0 and 1."""
         p1 = self.posterior(X, output_indices=output_indices).mean
@@ -339,7 +340,7 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
     def predict_class(
         self,
         X: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
     ) -> Tensor:
         return self.class_probs(X, output_indices=output_indices).argmax(dim=-1)
 
@@ -347,7 +348,7 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
         self,
         X: Tensor,
         utilities: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
     ) -> Tensor:
         utilities = torch.as_tensor(
             utilities,
@@ -364,7 +365,7 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
     def make_mll(
         self,
         *,
-        num_data: Optional[int] = None,
+        num_data: int | None = None,
         beta: float = 1.0,
     ) -> BlockDesignVariationalELBO:
         """Build the recommended variational ELBO for this model."""
@@ -381,9 +382,9 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
         self,
         X: Tensor,
         Y: Tensor,
-        noise: Optional[Tensor] = None,
+        noise: Tensor | None = None,
         **kwargs: Any,
-    ) -> "KroneckerMultiTaskBinaryClassificationGPModel":
+    ) -> KroneckerMultiTaskBinaryClassificationGPModel:
         """Rebuild the variational model after appending block-design observations."""
         X = torch.as_tensor(
             X,

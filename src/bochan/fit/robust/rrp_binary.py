@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 import torch
 from botorch.models.relevance_pursuit import (
@@ -22,10 +22,10 @@ def fit_rrp_binary_classifier_mll_optimizer(
     closure=None,
     lr: float = 0.01,
     num_epochs: int = 300,
-    batch_size=None,   # kept for compatibility; intentionally unused
-    shuffle: bool = True,      # kept for compatibility; intentionally unused
+    batch_size=None,   # kept for support; intentionally unused
+    shuffle: bool = True,      # kept for support; intentionally unused
     optimizer_cls= torch.optim.Adam,
-    clip_grad_norm: Optional[float] = None,
+    clip_grad_norm: float | None = None,
     verbose: bool = False,
     **ignore,
 ):
@@ -84,16 +84,16 @@ def fit_rrp_binary_classifier_mll(
     mll,
     *,
     method: str = "backward",
-    sparsity_levels: Optional[Sequence[int]] = None,
-    initial_support: Optional[list[int]] = None,
+    sparsity_levels: Sequence[int] | None = None,
+    initial_support: list[int] | None = None,
     reset_parameters: bool = True,
     reset_dense_parameters: bool = False,
-    record_model_trace: Optional[bool] = None,
+    record_model_trace: bool | None = None,
     return_all: bool = False,
     optimizer=fit_rrp_binary_classifier_mll_optimizer,
-    optimizer_kwargs: Optional[dict] = None,
+    optimizer_kwargs: dict | None = None,
     closure=None,
-    closure_kwargs: Optional[dict] = None,
+    closure_kwargs: dict | None = None,
 ):
     """
     Fit an RRP classification MLL via forward/backward relevance pursuit.

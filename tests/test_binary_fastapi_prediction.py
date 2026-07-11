@@ -27,7 +27,7 @@ def test_modular_fastapi_returns_json_posterior_summary() -> None:
     assert response.value == response.posterior
 
 
-def test_legacy_fastapi_returns_json_posterior_summary() -> None:
+def test_old_fastapi_returns_json_posterior_summary() -> None:
     optimizer = make_optimizer("binary", _BinaryModel())
     store = SessionStore()
     session_id = store.create(optimizer)

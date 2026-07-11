@@ -17,7 +17,7 @@ from bochan.api import AutoStandardizeOutcomeTransform, ModelConfig
 from bochan.api.engine_defaults import resolve_multi_output_model_config
 from bochan.api.model_registry import MODEL_REGISTRY
 from bochan.models.wide_multitask import wide_to_long
-from bochan.models.wide_multitask_compat import (
+from bochan.models.wide_multitask_variants import (
     TaskFeatureInputTransform,
     WideMultiTaskBinaryClassificationGPModel,
     WideMultiTaskGP,

@@ -4,12 +4,12 @@ from types import SimpleNamespace
 
 import torch
 
-import bochan.api  # noqa: F401 - installs multiclass objective compatibility
+import bochan.api  # noqa: F401 - installs multiclass objective support
 import bochan.optim.nsgaii_adapter as nsgaii_adapter
 from bochan.acquisition.multiclass.bayesian_optimization.multi_output import (
     MulticlassTargetProbabilityObjective,
 )
-from bochan.optim.nsgaii_output_compat import adapt_nsgaii_outputs
+from bochan.optim.nsgaii_outputs import adapt_nsgaii_outputs
 
 
 class _FixedAcquisition:
@@ -75,7 +75,7 @@ def test_identity_objective_restores_missing_singleton_q_axis() -> None:
     torch.testing.assert_close(values, model_samples.mean(dim=0).unsqueeze(-2))
 
 
-def test_public_nsgaii_adapter_passes_shape_compatible_objective(monkeypatch) -> None:
+def test_public_nsgaii_adapter_passes_shape_supported_objective(monkeypatch) -> None:
     X_eval = torch.rand(250, 1, 5, dtype=torch.double)
     logits = torch.randn(10, 250, 2, 3, dtype=torch.double)
     probabilities = torch.softmax(logits, dim=-1)

@@ -1,11 +1,11 @@
-from .decomposition import PCAOrdinalGPModel, REMBOOrdinalGPModel, PCAOrdinalMixedGPModel, REMBOOrdinalMixedGPModel
-from .saas_fixed import SaasOrdinalGPModel, SaasOrdinalMixedGPModel
-from bochan.models.projected_input_perturbation_compat import (
-    patch_projected_model_classes,
+from bochan.models.projected_input_perturbation import (
+    configure_projected_model_classes,
 )
 
+from .decomposition import PCAOrdinalGPModel, PCAOrdinalMixedGPModel, REMBOOrdinalGPModel, REMBOOrdinalMixedGPModel
+from .saas_fixed import SaasOrdinalGPModel, SaasOrdinalMixedGPModel
 
-patch_projected_model_classes(
+configure_projected_model_classes(
     [
         PCAOrdinalGPModel,
         REMBOOrdinalGPModel,

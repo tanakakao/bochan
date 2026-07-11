@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from botorch.models.multitask import KroneckerMultiTaskGP
@@ -21,7 +21,7 @@ from bochan.models.components.mixed_kronecker import (
 
 def _transform_without_one_to_many(
     X: Tensor,
-    transform: Optional[InputTransform],
+    transform: InputTransform | None,
 ) -> Tensor:
     """Apply only transforms that preserve the number of input rows."""
 
@@ -53,7 +53,7 @@ def _is_stored_training_input(model: Any, X: Tensor) -> bool:
     return X is train_inputs
 
 
-def _install_kronecker_input_transform_compatibility() -> None:
+def _install_kronecker_input_transform_support() -> None:
     """Backport BoTorch's no-double-transform behavior for Kronecker GPs.
 
     Affected BoTorch versions transform stored training inputs again inside the
@@ -63,19 +63,19 @@ def _install_kronecker_input_transform_compatibility() -> None:
     the block-design row count remains aligned with ``train_targets``.
 
     The patch modifies only ``transform_inputs`` and preserves the identity of
-    BoTorch's public ``KroneckerMultiTaskGP`` class for API compatibility.
+    BoTorch's public ``KroneckerMultiTaskGP`` class for API support.
     """
 
-    marker = "_bochan_input_perturbation_compat_installed"
+    marker = "_bochan_input_perturbation_installed"
     if bool(getattr(KroneckerMultiTaskGP, marker, False)):
         return
 
     original_transform_inputs = KroneckerMultiTaskGP.transform_inputs
 
-    def transform_inputs_compat(
+    def transform_inputs_support(
         self: KroneckerMultiTaskGP,
         X: Tensor,
-        input_transform: Optional[InputTransform] = None,
+        input_transform: InputTransform | None = None,
     ) -> Tensor:
         transform = (
             input_transform
@@ -101,12 +101,8 @@ def _install_kronecker_input_transform_compatibility() -> None:
             input_transform=transform,
         ).contiguous()
 
-    setattr(
-        KroneckerMultiTaskGP,
-        "_bochan_original_transform_inputs",
-        original_transform_inputs,
-    )
-    KroneckerMultiTaskGP.transform_inputs = transform_inputs_compat
+    KroneckerMultiTaskGP._bochan_original_transform_inputs = original_transform_inputs
+    KroneckerMultiTaskGP.transform_inputs = transform_inputs_support
     setattr(KroneckerMultiTaskGP, marker, True)
 
 
@@ -120,12 +116,12 @@ def _install_high_level_objective_defaults() -> None:
     install_kronecker_input_perturbation_objective_defaults()
 
 
-_install_kronecker_input_transform_compatibility()
+_install_kronecker_input_transform_support()
 _install_high_level_objective_defaults()
 
-# Public compatibility name. This is intentionally an alias, not a subclass, so
+# Public support name. This is intentionally an alias, not a subclass, so
 # code and tests comparing against BoTorch's class by identity keep working.
-PerturbationCompatibleKroneckerMultiTaskGP = KroneckerMultiTaskGP
+PerturbationSupportedKroneckerMultiTaskGP = KroneckerMultiTaskGP
 
 
 class MixedKroneckerMultiTaskGP(KroneckerMultiTaskGP):
@@ -153,8 +149,8 @@ class MixedKroneckerMultiTaskGP(KroneckerMultiTaskGP):
         train_Y: Tensor,
         cat_dims: Sequence[int],
         *,
-        data_covar_module: Optional[Kernel] = None,
-        input_transform: Optional[InputTransform] = None,
+        data_covar_module: Kernel | None = None,
+        input_transform: InputTransform | None = None,
         **kwargs: Any,
     ) -> None:
         raw_train_X = torch.as_tensor(train_X).contiguous()
@@ -194,7 +190,7 @@ class MixedKroneckerMultiTaskGP(KroneckerMultiTaskGP):
     def transform_inputs(
         self,
         X: Tensor,
-        input_transform: Optional[InputTransform] = None,
+        input_transform: InputTransform | None = None,
     ) -> Tensor:
         transform = (
             input_transform
@@ -223,12 +219,12 @@ class MixedKroneckerMultiTaskGP(KroneckerMultiTaskGP):
         )
 
 
-# Backward-compatible alternative naming order.
+# Backward-supported alternative naming order.
 KroneckerMultiTaskMixedGP = MixedKroneckerMultiTaskGP
 
 
 __all__ = [
     "KroneckerMultiTaskMixedGP",
     "MixedKroneckerMultiTaskGP",
-    "PerturbationCompatibleKroneckerMultiTaskGP",
+    "PerturbationSupportedKroneckerMultiTaskGP",
 ]

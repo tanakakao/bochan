@@ -1,4 +1,4 @@
-"""Compatibility helpers for BoTorch noisy hypervolume acquisitions.
+"""Support helpers for BoTorch noisy hypervolume acquisitions.
 
 BoTorch's cached-Cholesky qNEHVI path assumes direct access to a posterior
 ``distribution`` and a covariance layout that can be converted to independent
@@ -95,7 +95,7 @@ def patch_nehvi_cache_root_init(acquisition_cls: AcquisitionType) -> Acquisition
     The public class signature additionally exposes ``X_baseline`` so the
     high-level API can supply its default ``train_X`` baseline.
     """
-    if getattr(acquisition_cls, "_bochan_cache_root_compat_patched", False):
+    if getattr(acquisition_cls, "_bochan_cache_root_support_patched", False):
         _expose_x_baseline_signature(acquisition_cls)
         return acquisition_cls
 
@@ -110,7 +110,7 @@ def patch_nehvi_cache_root_init(acquisition_cls: AcquisitionType) -> Acquisition
         original_init(self, model, *args, **kwargs)
 
     acquisition_cls.__init__ = model_aware_init
-    acquisition_cls._bochan_cache_root_compat_patched = True
+    acquisition_cls._bochan_cache_root_support_patched = True
     acquisition_cls._bochan_original_init = original_init
     _expose_x_baseline_signature(acquisition_cls)
     return acquisition_cls

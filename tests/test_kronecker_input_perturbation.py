@@ -5,7 +5,7 @@ import torch
 from bochan.api import InputTransformConfig, ModelConfig
 from bochan.api.factory import build_model
 from bochan.models.regression.gaussian import (
-    PerturbationCompatibleKroneckerMultiTaskGP,
+    PerturbationSupportedKroneckerMultiTaskGP,
 )
 
 
@@ -42,12 +42,12 @@ def _make_bundle(*, n_w: int = 4):
     return build_model(train_X, train_Y, config), train_X
 
 
-def test_kronecker_registry_builds_perturbation_compatible_model() -> None:
+def test_kronecker_registry_builds_perturbation_supported_model() -> None:
     bundle, _ = _make_bundle()
 
     assert isinstance(
         bundle.model,
-        PerturbationCompatibleKroneckerMultiTaskGP,
+        PerturbationSupportedKroneckerMultiTaskGP,
     )
 
 

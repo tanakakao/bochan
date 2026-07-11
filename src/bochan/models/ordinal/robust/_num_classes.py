@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Compatibility adapter for robust ordinal ``num_classes`` inference."""
+"""Support adapter for robust ordinal ``num_classes`` inference."""
 
 import inspect
 from functools import wraps
@@ -13,7 +13,6 @@ from bochan.models.ordinal.base.models import (
     _infer_num_classes_from_train_Y,
 )
 
-
 T = TypeVar("T", bound=type)
 
 
@@ -21,7 +20,7 @@ def _resolve_num_classes(
     *,
     train_X: Tensor,
     train_Y: Tensor,
-    num_classes: Optional[int],
+    num_classes: int | None,
 ) -> int:
     """Resolve an explicit class count or infer it from canonical ordinal labels."""
     raw_train_X = _BaseOrdinalGPModel._canonicalize_train_X(train_X)
@@ -40,7 +39,7 @@ def enable_num_classes_inference(model_cls: T) -> T:
 
     The adapter updates the existing class object rather than introducing a public
     subclass. This preserves module paths, ``isinstance`` behavior, rebuilding via
-    ``self.__class__``, and saved-model compatibility.
+    ``self.__class__``, and saved-model support.
     """
     if getattr(model_cls, "_num_classes_inference_enabled", False):
         return model_cls
@@ -54,7 +53,7 @@ def enable_num_classes_inference(model_cls: T) -> T:
         train_X: Tensor,
         train_Y: Tensor,
         *args,
-        num_classes: Optional[int] = None,
+        num_classes: int | None = None,
         **kwargs,
     ) -> None:
         resolved_num_classes = _resolve_num_classes(
@@ -80,10 +79,10 @@ def enable_num_classes_inference(model_cls: T) -> T:
     annotations = dict(getattr(wrapped_init, "__annotations__", {}))
     annotations["num_classes"] = Optional[int]
 
-    setattr(wrapped_init, "__signature__", original_signature.replace(parameters=parameters))
-    setattr(wrapped_init, "__annotations__", annotations)
-    setattr(model_cls, "__init__", wrapped_init)
-    setattr(model_cls, "_num_classes_inference_enabled", True)
+    wrapped_init.__signature__ = original_signature.replace(parameters=parameters)
+    wrapped_init.__annotations__ = annotations
+    model_cls.__init__ = wrapped_init
+    model_cls._num_classes_inference_enabled = True
     return model_cls
 
 

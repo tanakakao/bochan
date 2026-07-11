@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import torch
 from botorch.acquisition.objective import PosteriorTransform
@@ -41,7 +42,7 @@ class _KroneckerOrdinalTaskView:
 
     def __init__(
         self,
-        parent: "KroneckerMultiTaskOrdinalGPModel",
+        parent: KroneckerMultiTaskOrdinalGPModel,
         task_index: int,
     ) -> None:
         self.parent = parent
@@ -58,7 +59,7 @@ class _KroneckerOrdinalTaskView:
         return self.parent.ordinal_likelihood
 
     @property
-    def input_transform(self) -> Optional[InputTransform]:
+    def input_transform(self) -> InputTransform | None:
         return self.parent.input_transform
 
     @property
@@ -89,12 +90,12 @@ class _KroneckerOrdinalTaskView:
     def batch_shape(self) -> torch.Size:
         return self.parent.batch_shape
 
-    def eval(self) -> "_KroneckerOrdinalTaskView":
+    def eval(self) -> _KroneckerOrdinalTaskView:
         self.parent.eval()
         self.parent.likelihood.eval()
         return self
 
-    def train(self, mode: bool = True) -> "_KroneckerOrdinalTaskView":
+    def train(self, mode: bool = True) -> _KroneckerOrdinalTaskView:
         self.parent.train(mode)
         self.parent.likelihood.train(mode)
         return self
@@ -104,7 +105,7 @@ class _KroneckerOrdinalTaskView:
         X: Tensor,
         output_indices=None,
         observation_noise: bool | Tensor = False,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> GPyTorchPosterior:
         """Return the selected task marginal while preserving data covariance."""
@@ -160,22 +161,22 @@ class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
         self,
         train_X: Tensor,
         train_Y: Tensor,
-        num_classes: Optional[int] = None,
+        num_classes: int | None = None,
         *,
-        rank: Optional[int] = None,
-        likelihood: Optional[OrdinalLogitLikelihood] = None,
-        input_transform: Optional[InputTransform] = None,
-        mean_module: Optional[Mean] = None,
-        data_covar_module: Optional[Kernel] = None,
+        rank: int | None = None,
+        likelihood: OrdinalLogitLikelihood | None = None,
+        input_transform: InputTransform | None = None,
+        mean_module: Mean | None = None,
+        data_covar_module: Kernel | None = None,
         num_inducing_points: int = 128,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         eps: float = 1e-8,
         init_gap: float = 1.0,
         fix_first_cutpoint: bool = True,
         conditioning_steps: int = 50,
-        conditioning_lr: Optional[float] = None,
-        conditioning_batch_size: Optional[int] = None,
+        conditioning_lr: float | None = None,
+        conditioning_batch_size: int | None = None,
     ) -> None:
         raw_train_X = self._canonicalize_train_X(train_X)
         train_Y = canonicalize_block_design_targets(
@@ -279,7 +280,7 @@ class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
 
     @property
     def models(self) -> tuple[_KroneckerOrdinalTaskView, ...]:
-        """Return task views compatible with independent multi-output acquisitions."""
+        """Return task views supported with independent multi-output acquisitions."""
         return tuple(
             _KroneckerOrdinalTaskView(self, task_index)
             for task_index in range(self.num_tasks)
@@ -292,7 +293,7 @@ class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
 
     def _normalize_output_indices(
         self,
-        output_indices: Optional[Sequence[int]],
+        output_indices: Sequence[int] | None,
     ) -> list[int]:
         if output_indices is None:
             return list(range(self.num_tasks))
@@ -307,9 +308,9 @@ class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
         observation_noise: bool | Tensor = False,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> GPyTorchPosterior:
         """Return the correlated latent ordinal posterior ``[..., q, m]``."""
@@ -339,7 +340,7 @@ class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
     def class_probs_from_posterior(
         self,
         posterior: GPyTorchPosterior,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
     ) -> Tensor:
         """Return ``[..., q, m, K]`` class probabilities from a latent posterior."""
         probs = self.ordinal_likelihood.marginal_class_probs(posterior.distribution)
@@ -349,7 +350,7 @@ class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
     def class_probs(
         self,
         X: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
     ) -> Tensor:
         return self.class_probs_from_posterior(
             self.posterior(X),
@@ -359,7 +360,7 @@ class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
     def class_probs_list(
         self,
         X: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
     ) -> list[Tensor]:
         """Return one ``[..., q, K]`` probability tensor per selected task."""
         probs = self.class_probs(X, output_indices=output_indices)
@@ -369,7 +370,7 @@ class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
     def predict_class(
         self,
         X: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
     ) -> Tensor:
         return self.class_probs(X, output_indices=output_indices).argmax(dim=-1)
 
@@ -377,7 +378,7 @@ class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
         self,
         X: Tensor,
         utilities: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
     ) -> Tensor:
         utilities = torch.as_tensor(
             utilities,
@@ -399,7 +400,7 @@ class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
     def make_mll(
         self,
         *,
-        num_data: Optional[int] = None,
+        num_data: int | None = None,
         beta: float = 1.0,
     ) -> BlockDesignVariationalELBO:
         """Build the recommended variational ELBO for this model."""
@@ -417,12 +418,12 @@ class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
         X: Tensor,
         Y: Tensor,
         refit: bool = True,
-        num_steps: Optional[int] = None,
-        lr: Optional[float] = None,
-        batch_size: Optional[int] = None,
+        num_steps: int | None = None,
+        lr: float | None = None,
+        batch_size: int | None = None,
         verbose: bool = False,
         **kwargs: Any,
-    ) -> "KroneckerMultiTaskOrdinalGPModel":
+    ) -> KroneckerMultiTaskOrdinalGPModel:
         """Rebuild the variational model after appending block-design observations."""
         if kwargs.get("noise") is not None:
             raise NotImplementedError(

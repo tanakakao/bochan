@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Literal, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Any, Literal
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.models.model import Model
 from botorch.utils.transforms import t_batch_mode_transform
-
+from torch import Tensor
 
 ReductionType = Literal["mean", "sum", "max", "min"]
 OutputReductionType = Literal[
@@ -53,7 +52,7 @@ def _safe_prod(shape: torch.Size | tuple[int, ...]) -> int:
     return out
 
 
-def _objective_call(objective: Callable, score: Tensor, X: Optional[Tensor]):
+def _objective_call(objective: Callable, score: Tensor, X: Tensor | None):
     try:
         return objective(score, X=X)
     except TypeError:
@@ -101,16 +100,16 @@ class _HeteroMultiOutputRegressionActiveLearningBase(AcquisitionFunction):
         *,
         reduction: ReductionType = "mean",
         output_reduction: OutputReductionType = "weighted_mean",
-        output_weights: Optional[Tensor | Sequence[float]] = None,
+        output_weights: Tensor | Sequence[float] | None = None,
         normalize_output_weights: bool = True,
         variance_source: VarianceSource = "latent",
-        noise_penalty: Optional[float] = None,
+        noise_penalty: float | None = None,
         noise_penalty_lambda: float = 1.0,
         noise_mode: NoiseWeightMode = "inverse_linear",
         noise_combine: NoiseCombineType = "multiply",
         noise_min_weight: float = 0.0,
-        X_pending: Optional[Tensor] = None,
-        X_observed: Optional[Tensor] = None,
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
         pending_penalty_weight: float = 0.0,
@@ -119,8 +118,8 @@ class _HeteroMultiOutputRegressionActiveLearningBase(AcquisitionFunction):
         observed_penalty_beta: float = 10.0,
         hard_duplicate_penalty: float = 0.0,
         hard_duplicate_tol: float = 1e-8,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
-        n_w: Optional[int] = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
+        n_w: int | None = None,
         eps: float = 1e-12,
     ) -> None:
         super().__init__(model=model)
@@ -160,7 +159,7 @@ class _HeteroMultiOutputRegressionActiveLearningBase(AcquisitionFunction):
 
         self.variance_source = variance_source
 
-        # Backward compatibility: old noise_penalty means subtract lambda * noise.
+        # Backward support: old noise_penalty means subtract lambda * noise.
         if noise_penalty is not None:
             noise_penalty_lambda = float(noise_penalty)
             noise_combine = "subtract"
@@ -188,15 +187,15 @@ class _HeteroMultiOutputRegressionActiveLearningBase(AcquisitionFunction):
         if self.n_w is not None and self.n_w <= 0:
             raise ValueError("n_w must be positive or None.")
 
-        self.X_pending: Optional[Tensor] = None
-        self.X_observed: Optional[Tensor] = None
+        self.X_pending: Tensor | None = None
+        self.X_observed: Tensor | None = None
         self.set_X_pending(X_pending)
         self.set_X_observed(X_observed)
 
     # ------------------------------------------------------------
     # reference / transform helpers
     # ------------------------------------------------------------
-    def _coerce_reference_to_tensor(self, ref, *, like: Optional[Tensor] = None) -> Optional[Tensor]:
+    def _coerce_reference_to_tensor(self, ref, *, like: Tensor | None = None) -> Tensor | None:
         if ref is None:
             return None
         if torch.is_tensor(ref):
@@ -227,10 +226,10 @@ class _HeteroMultiOutputRegressionActiveLearningBase(AcquisitionFunction):
             out = out.to(device=like.device, dtype=like.dtype)
         return out.detach()
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         self.X_pending = self._coerce_reference_to_tensor(X_pending)
 
-    def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+    def set_X_observed(self, X_observed: Tensor | None = None) -> None:
         self.X_observed = self._coerce_reference_to_tensor(X_observed)
 
     def _prepare_eval(self) -> None:
@@ -258,7 +257,7 @@ class _HeteroMultiOutputRegressionActiveLearningBase(AcquisitionFunction):
                 return _ensure_q_batch(Xt)
         return X
 
-    def _reference_to_distance_space(self, ref, *, like: Tensor) -> Optional[Tensor]:
+    def _reference_to_distance_space(self, ref, *, like: Tensor) -> Tensor | None:
         ref = self._coerce_reference_to_tensor(ref, like=like)
         if ref is None or ref.numel() == 0:
             return None
@@ -268,7 +267,7 @@ class _HeteroMultiOutputRegressionActiveLearningBase(AcquisitionFunction):
     # ------------------------------------------------------------
     # output / shape helpers
     # ------------------------------------------------------------
-    def _output_weights_like(self, value: Tensor) -> Optional[Tensor]:
+    def _output_weights_like(self, value: Tensor) -> Tensor | None:
         weights = self.output_weights
         if weights is None:
             return None

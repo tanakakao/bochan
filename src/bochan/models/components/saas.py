@@ -16,18 +16,18 @@ Notes:
     - public な ``train_inputs_raw`` は raw-space を保持することを推奨する。
 """
 
+import weakref
+from collections.abc import Callable, Mapping, MutableMapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from itertools import product
-from typing import Any, Callable, Dict, List, Mapping, MutableMapping, Optional, Sequence
-import weakref
+from typing import Any
 
 import torch
-from torch import Tensor
-
 from botorch.models.map_saas import add_saas_prior
 from botorch.models.transforms.input import Normalize
 from gpytorch.kernels import MaternKernel, ScaleKernel
+from torch import Tensor
 
 
 @dataclass(frozen=True)
@@ -118,7 +118,7 @@ def flatten_targets(y: Tensor, *, dtype: torch.dtype | None = None) -> Tensor:
     return y if dtype is None else y.to(dtype=dtype)
 
 
-def flatten_optional_noise(noise: Optional[Tensor]) -> Optional[Tensor]:
+def flatten_optional_noise(noise: Tensor | None) -> Tensor | None:
     """optional noise を [n] にそろえる。"""
     if noise is None:
         return None
@@ -129,13 +129,13 @@ def flatten_optional_noise(noise: Optional[Tensor]) -> Optional[Tensor]:
 
 def concat_optional_noise(
     old_Y: Tensor,
-    old_Yvar: Optional[Tensor],
+    old_Yvar: Tensor | None,
     new_Y: Tensor,
-    new_Yvar: Optional[Tensor],
+    new_Yvar: Tensor | None,
     *,
     dtype: torch.dtype,
     device: torch.device,
-) -> Optional[Tensor]:
+) -> Tensor | None:
     """old/new の Yvar を連結する。片方だけ None の場合は 0 で補う。"""
     if old_Yvar is None and new_Yvar is None:
         return None
@@ -153,13 +153,13 @@ def concat_optional_noise(
 def prepare_mixed_conditioning_data(
     X: Tensor,
     Y: Tensor,
-    noise: Optional[Tensor],
+    noise: Tensor | None,
     *,
     raw_dim: int,
     encoded_dim: int,
     decode_fn: Callable[[Tensor], Tensor],
     target_dtype: torch.dtype | None = None,
-) -> tuple[Tensor, Tensor, Optional[Tensor]]:
+) -> tuple[Tensor, Tensor, Tensor | None]:
     """mixed one-hot wrapper 用の condition_on_observations 入力を整形する。
 
     Args:
@@ -280,7 +280,7 @@ class OneHotEncodingMixin:
     def _init_one_hot_encoding(
         self,
         train_X: Tensor,
-        cat_dims: Optional[Sequence[int]],
+        cat_dims: Sequence[int] | None,
     ) -> Tensor:
         """カテゴリ仕様を推定し、train_X を encoded-space に変換する。"""
         self._raw_dim = int(train_X.shape[-1])
@@ -304,7 +304,7 @@ class OneHotEncodingMixin:
         return list(self._cat_dims)
 
     @property
-    def encoded_cat_dims(self) -> Dict[int, List[int]]:
+    def encoded_cat_dims(self) -> dict[int, list[int]]:
         return {
             d: [int(i) for i in spec.encoded_indices.tolist()]
             for d, spec in self._cat_specs.items()
@@ -440,7 +440,7 @@ class OneHotEncodingMixin:
             return [int(i) for i in self._cat_specs[raw_dim].encoded_indices.tolist()]
         return [int(self._raw_to_single_encoded_index(raw_dim))]
 
-    def _raw_indices_to_encoded_indices(self, raw_indices: Optional[Sequence[int]]) -> Optional[list[int]]:
+    def _raw_indices_to_encoded_indices(self, raw_indices: Sequence[int] | None) -> list[int] | None:
         if raw_indices is None:
             return None
         encoded: list[int] = []
@@ -454,7 +454,7 @@ class OneHotEncodingMixin:
                 seen.add(idx)
         return out
 
-    def _canonicalize_inducing_points_for_encoded_space(self, inducing_points: Optional[Tensor]) -> Optional[Tensor]:
+    def _canonicalize_inducing_points_for_encoded_space(self, inducing_points: Tensor | None) -> Tensor | None:
         """inducing_points を encoded-space にそろえる。raw/encoded の両方を許容する。"""
         if inducing_points is None:
             return None
@@ -651,7 +651,7 @@ class OneHotEncodingMixin:
         value: Tensor,
         *,
         fill_value: float = 0.0,
-    ) -> Optional[Tensor]:
+    ) -> Tensor | None:
         """raw-space feature tensor ``[..., raw_dim]`` を ``[..., encoded_dim]`` へ拡張する。"""
         if value.shape[-1] == self.encoded_dim:
             return value
@@ -708,7 +708,7 @@ class OneHotEncodingMixin:
             return set(encoded)
         return encoded
 
-    def _expand_bounds_tensor_to_encoded_space(self, bounds: Tensor) -> Optional[Tensor]:
+    def _expand_bounds_tensor_to_encoded_space(self, bounds: Tensor) -> Tensor | None:
         if bounds.shape[-1] == self.encoded_dim:
             return bounds
         if bounds.shape[-1] != self.raw_dim:
@@ -761,7 +761,7 @@ class OneHotEncodingMixin:
             return Normalize(d=self.encoded_dim, bounds=bounds_2d, indices=encoded_indices)
         else:
             raise ValueError(
-                f"Normalize bounds shape {tuple(bounds_2d.shape)} is incompatible with "
+                f"Normalize bounds shape {tuple(bounds_2d.shape)} is insupported with "
                 f"raw_dim={self.raw_dim}, encoded_dim={self.encoded_dim}."
             )
 

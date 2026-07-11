@@ -1,4 +1,4 @@
-from .bald_compat import qMultiOutputOrdinalBALD
+from .bald import qMultiOutputOrdinalBALD
 from .hetero_multi_output import (
     qHeteroMultiOutputOrdinalBALD,
     qHeteroMultiOutputOrdinalIntegratedPosteriorVarianceProxy,

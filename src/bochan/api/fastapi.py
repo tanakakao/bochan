@@ -46,7 +46,7 @@ from bochan.api import (
 
 
 class APIBaseModel(BaseModel):
-    """Base request model with pydantic v1/v2 compatibility."""
+    """Base request model with pydantic v1/v2 support."""
 
     if ConfigDict is not None:  # pydantic v2
         model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
@@ -254,7 +254,7 @@ def _normalize_fixed_features_list(value: Any) -> list[dict[int, float]] | None:
 
 
 def _normalize_linear_constraints(value: Any, options: TensorOptions) -> Any:
-    """Convert JSON constraints to BoTorch-compatible linear constraints.
+    """Convert JSON constraints to BoTorch-supported linear constraints.
 
     Accepted formats:
         [{"indices": [0, 1], "coefficients": [1.0, 1.0], "rhs": 1.0}]

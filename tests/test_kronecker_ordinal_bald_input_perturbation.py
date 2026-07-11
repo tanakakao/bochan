@@ -4,7 +4,7 @@ import torch
 from botorch.sampling.normal import SobolQMCNormalSampler
 
 from bochan.acquisition.ordinal.active_learning import qMultiOutputOrdinalBALD
-from bochan.acquisition.ordinal.active_learning.bald_compat import (
+from bochan.acquisition.ordinal.active_learning.bald import (
     _align_pointwise_axes,
     _squeeze_redundant_trailing_output_axes,
 )

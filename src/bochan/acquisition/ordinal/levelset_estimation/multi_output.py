@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import math
-from typing import Callable, Literal, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Literal, Optional
 
 import torch
-from torch import Tensor
 from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.models.model import Model
 from botorch.sampling.base import MCSampler
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.transforms import t_batch_mode_transform
+from torch import Tensor
 
 from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
-
 
 RiskType = Optional[Literal["var", "cvar"]]
 ReductionType = Literal["mean", "sum"]
@@ -26,7 +26,7 @@ PerturbationJointReduction = Literal["block_mean", "diagonal_mean"]
 # =========================================================
 def _validate_n_w_risk(
     *,
-    n_w: Optional[int],
+    n_w: int | None,
     risk_type: RiskType,
     alpha: float,
 ) -> None:
@@ -74,7 +74,7 @@ class MultiOutputOrdinalLevelSetScoreObjective(torch.nn.Module):
 
     def __init__(
         self,
-        n_w: Optional[int] = None,
+        n_w: int | None = None,
         risk_type: RiskType = None,
         alpha: float = 0.5,
         maximize: bool = True,
@@ -99,13 +99,13 @@ class MultiOutputOrdinalLevelSetScoreObjective(torch.nn.Module):
     def _ensure_q_batch(X: Tensor) -> Tensor:
         return X if X.ndim > 2 else X.unsqueeze(0)
 
-    def _is_aggregated_score(self, score: Tensor, X: Optional[Tensor]) -> bool:
+    def _is_aggregated_score(self, score: Tensor, X: Tensor | None) -> bool:
         if X is None or score.ndim == 0:
             return False
         Xq = self._ensure_q_batch(X)
         return tuple(score.shape) == tuple(Xq.shape[:-2])
 
-    def forward(self, score: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def forward(self, score: Tensor, X: Tensor | None = None) -> Tensor:
         if not torch.is_tensor(score):
             raise TypeError(f"score must be Tensor. Got {type(score)}.")
 
@@ -141,14 +141,14 @@ class MultiOutputOrdinalLevelSetScoreObjective(torch.nn.Module):
         )
 
 
-# Backward compatible internal name.
+# Backward supported internal name.
 _MultiOutputOrdinalLevelSetScoreObjective = MultiOutputOrdinalLevelSetScoreObjective
 
 
 def _apply_score_objective(
     owner,
     score: Tensor,
-    X: Optional[Tensor],
+    X: Tensor | None,
     *,
     name: str,
 ) -> Tensor:
@@ -202,7 +202,7 @@ def _get_ordinal_likelihood(model: Model) -> OrdinalLogitLikelihood:
 
 def _get_cutpoints_from_likelihood(ordinal_likelihood) -> Tensor:
     if hasattr(ordinal_likelihood, "get_cutpoints"):
-        cutpoints = _try_call_zero_arg(getattr(ordinal_likelihood, "get_cutpoints"))
+        cutpoints = _try_call_zero_arg(ordinal_likelihood.get_cutpoints)
         return torch.as_tensor(cutpoints).reshape(-1)
 
     for name in ("transformed_cutpoints", "cutpoints", "thresholds", "cuts", "cutoffs"):
@@ -211,7 +211,7 @@ def _get_cutpoints_from_likelihood(ordinal_likelihood) -> Tensor:
             return torch.as_tensor(cutpoints).reshape(-1)
 
     if hasattr(ordinal_likelihood, "raw_cutpoints"):
-        raw = torch.as_tensor(_try_call_zero_arg(getattr(ordinal_likelihood, "raw_cutpoints")))
+        raw = torch.as_tensor(_try_call_zero_arg(ordinal_likelihood.raw_cutpoints))
         if hasattr(ordinal_likelihood, "transform_cutpoints"):
             cutpoints = ordinal_likelihood.transform_cutpoints(raw)
             return torch.as_tensor(cutpoints).reshape(-1)
@@ -411,12 +411,12 @@ def _to_optional_list(value, n: int, *, name: str) -> list:
 
 
 def _prepare_boundary_weights(
-    boundary_weights: Optional[Tensor | Sequence[float]],
+    boundary_weights: Tensor | Sequence[float] | None,
     n_boundaries: int,
     *,
     device,
     dtype,
-) -> Optional[Tensor]:
+) -> Tensor | None:
     if boundary_weights is None:
         return None
 
@@ -429,8 +429,8 @@ def _prepare_boundary_weights(
 def _aggregate_boundary_scores(
     boundary_scores: Tensor,
     *,
-    target_boundary_idx: Optional[int] = None,
-    boundary_weights: Optional[Tensor | Sequence[float]] = None,
+    target_boundary_idx: int | None = None,
+    boundary_weights: Tensor | Sequence[float] | None = None,
     boundary_reduction: BoundaryReduction = "sum",
 ) -> Tensor:
     """
@@ -494,8 +494,8 @@ def _ensure_q_batch(X: Tensor) -> Tensor:
 def _coerce_reference_to_tensor(
     X_ref,
     *,
-    ref: Optional[Tensor] = None,
-) -> Optional[Tensor]:
+    ref: Tensor | None = None,
+) -> Tensor | None:
     if X_ref is None:
         return None
 
@@ -529,7 +529,7 @@ def _coerce_reference_to_tensor(
     return out
 
 
-# Backward-compatible helper name.
+# Backward-supported helper name.
 _coerce_pending_to_tensor = _coerce_reference_to_tensor
 
 
@@ -563,7 +563,7 @@ def _transform_reference_like_candidate(
     X_ref,
     *,
     ref: Tensor,
-) -> Optional[Tensor]:
+) -> Tensor | None:
     Xr = _coerce_reference_to_tensor(X_ref, ref=ref)
     if Xr is None or Xr.numel() == 0:
         return None
@@ -575,7 +575,7 @@ def _transform_reference_like_candidate(
 _transform_pending_like_candidate = _transform_reference_like_candidate
 
 
-def _resolve_observed_X(model: Model, X_observed: Optional[Tensor] = None) -> Optional[Tensor]:
+def _resolve_observed_X(model: Model, X_observed: Tensor | None = None) -> Tensor | None:
     if X_observed is not None:
         return X_observed
 
@@ -615,7 +615,7 @@ def _resolve_cat_dims(model: Model) -> list[int]:
     return []
 
 
-def _split_cont_cat(X: Tensor, cat_dims: Sequence[int]) -> tuple[Optional[Tensor], Optional[Tensor]]:
+def _split_cont_cat(X: Tensor, cat_dims: Sequence[int]) -> tuple[Tensor | None, Tensor | None]:
     d = X.shape[-1]
     cat_dims = [i for i in cat_dims if 0 <= i < d]
     cont_dims = [i for i in range(d) if i not in cat_dims]
@@ -663,7 +663,7 @@ def _broadcast_reference_to_batch(X_ref: Tensor, batch_shape: torch.Size) -> Ten
 
 def _reference_penalty_per_point(
     X: Tensor,
-    X_ref: Optional[Tensor],
+    X_ref: Tensor | None,
     *,
     beta: float,
     weight: float,
@@ -706,7 +706,7 @@ def _same_batch_penalty_per_point(
 
 def _reference_penalty_aggregated(
     X: Tensor,
-    X_ref: Optional[Tensor],
+    X_ref: Tensor | None,
     *,
     beta: float,
     weight: float,
@@ -738,7 +738,7 @@ def _same_batch_penalty_aggregated(
 # =========================================================
 # InputPerturbation joint reduction
 # =========================================================
-def _infer_n_w_from_objective_or_owner(owner) -> Optional[int]:
+def _infer_n_w_from_objective_or_owner(owner) -> int | None:
     n_w = getattr(owner, "input_perturbation_n_w", None)
     if n_w is not None:
         return int(n_w)
@@ -754,7 +754,7 @@ def _reduce_input_perturbation_mean_cov(
     mean: Tensor,
     cov: Tensor,
     X: Tensor,
-    n_w: Optional[int],
+    n_w: int | None,
     *,
     mode: PerturbationJointReduction = "block_mean",
     jitter: float = 1e-6,
@@ -809,10 +809,10 @@ class _qMultiOutputOrdinalBoundaryBase(AcquisitionFunction):
     def __init__(
         self,
         model: Model,
-        output_weights: Optional[Tensor | Sequence[float]] = None,
+        output_weights: Tensor | Sequence[float] | None = None,
         reduction: ReductionType = "mean",
         output_mode: MultiOutputMode = "mean",
-        sampler: Optional[MCSampler] = None,
+        sampler: MCSampler | None = None,
         eps: float = 1e-6,
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
@@ -820,9 +820,9 @@ class _qMultiOutputOrdinalBoundaryBase(AcquisitionFunction):
         observed_penalty_beta: float = 10.0,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
-        X_pending: Optional[Tensor] = None,
-        X_observed: Optional[Tensor] = None,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
     ) -> None:
         super().__init__(model=model)
 
@@ -876,15 +876,15 @@ class _qMultiOutputOrdinalBoundaryBase(AcquisitionFunction):
         self.cat_dims = _resolve_cat_dims(model)
         self.objective = objective
 
-        self.X_pending: Optional[Tensor] = None
-        self.X_observed: Optional[Tensor] = None
+        self.X_pending: Tensor | None = None
+        self.X_observed: Tensor | None = None
         self.set_X_pending(X_pending)
         self.set_X_observed(X_observed)
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         self.X_pending = _coerce_reference_to_tensor(X_pending)
 
-    def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+    def set_X_observed(self, X_observed: Tensor | None = None) -> None:
         self.X_observed = _coerce_reference_to_tensor(_resolve_observed_X(self.model, X_observed))
 
     def _set_eval_mode(self) -> None:
@@ -970,7 +970,7 @@ class _qMultiOutputOrdinalBoundaryBase(AcquisitionFunction):
                 f"{name}: output shape mismatch. Expected {tuple(expected)}, got {tuple(out.shape)}."
             )
 
-    def _latent_mean_var_list(self, X: Tensor, X_like: Optional[Tensor] = None) -> list[tuple[Tensor, Tensor]]:
+    def _latent_mean_var_list(self, X: Tensor, X_like: Tensor | None = None) -> list[tuple[Tensor, Tensor]]:
         if X_like is None:
             X_like = _apply_input_transform_for_reference(self.model, X)
 
@@ -985,7 +985,7 @@ class _qMultiOutputOrdinalBoundaryBase(AcquisitionFunction):
     def _latent_covariance_list(self, X: Tensor) -> list[Tensor]:
         return [_posterior_covariance(m.posterior(X)) for m in self.submodels]
 
-    def _predictive_class_probs_list(self, X: Tensor, X_like: Optional[Tensor] = None) -> list[Tensor]:
+    def _predictive_class_probs_list(self, X: Tensor, X_like: Tensor | None = None) -> list[Tensor]:
         if X_like is None:
             X_like = _apply_input_transform_for_reference(self.model, X)
 
@@ -1099,7 +1099,7 @@ class _qMultiOutputOrdinalBoundaryBase(AcquisitionFunction):
         return out
 
 
-# Backward-compatible non-q base name.
+# Backward-supported non-q base name.
 _MultiOutputOrdinalBoundaryBase = _qMultiOutputOrdinalBoundaryBase
 
 
@@ -1131,13 +1131,13 @@ class qMultiOutputOrdinalLatentStraddleAcquisition(_qMultiOutputOrdinalBoundaryB
         self,
         model: Model,
         beta: float | Sequence[float] | Tensor = 1.0,
-        output_weights: Optional[Tensor | Sequence[float]] = None,
+        output_weights: Tensor | Sequence[float] | None = None,
         reduction: ReductionType = "mean",
         output_mode: MultiOutputMode = "mean",
-        boundary_weights_list: Optional[Sequence[Optional[Tensor | Sequence[float]]]] = None,
-        target_boundary_idx_list: Optional[Sequence[Optional[int]] | int] = None,
+        boundary_weights_list: Sequence[Tensor | Sequence[float] | None] | None = None,
+        target_boundary_idx_list: Sequence[int | None] | int | None = None,
         boundary_reduction: BoundaryReduction = "sum",
-        sampler: Optional[MCSampler] = None,
+        sampler: MCSampler | None = None,
         eps: float = 1e-6,
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
@@ -1145,9 +1145,9 @@ class qMultiOutputOrdinalLatentStraddleAcquisition(_qMultiOutputOrdinalBoundaryB
         observed_penalty_beta: float = 10.0,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
-        X_pending: Optional[Tensor] = None,
-        X_observed: Optional[Tensor] = None,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
     ) -> None:
         super().__init__(
             model=model,
@@ -1223,13 +1223,13 @@ class qMultiOutputOrdinalICUAcquisition(_qMultiOutputOrdinalBoundaryBase):
     def __init__(
         self,
         model: Model,
-        boundary_weights_list: Optional[Sequence[Optional[Tensor | Sequence[float]]]] = None,
-        target_boundary_idx_list: Optional[Sequence[Optional[int]] | int] = None,
+        boundary_weights_list: Sequence[Tensor | Sequence[float] | None] | None = None,
+        target_boundary_idx_list: Sequence[int | None] | int | None = None,
         boundary_reduction: BoundaryReduction = "sum",
-        output_weights: Optional[Tensor | Sequence[float]] = None,
+        output_weights: Tensor | Sequence[float] | None = None,
         reduction: ReductionType = "mean",
         output_mode: MultiOutputMode = "mean",
-        sampler: Optional[MCSampler] = None,
+        sampler: MCSampler | None = None,
         eps: float = 1e-6,
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
@@ -1237,9 +1237,9 @@ class qMultiOutputOrdinalICUAcquisition(_qMultiOutputOrdinalBoundaryBase):
         observed_penalty_beta: float = 10.0,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
-        X_pending: Optional[Tensor] = None,
-        X_observed: Optional[Tensor] = None,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
     ) -> None:
         super().__init__(
             model=model,
@@ -1300,13 +1300,13 @@ class qMultiOutputOrdinalBoundaryVarianceAcquisition(_qMultiOutputOrdinalBoundar
         self,
         model: Model,
         tau: float = 1.0,
-        boundary_weights_list: Optional[Sequence[Optional[Tensor | Sequence[float]]]] = None,
-        target_boundary_idx_list: Optional[Sequence[Optional[int]] | int] = None,
+        boundary_weights_list: Sequence[Tensor | Sequence[float] | None] | None = None,
+        target_boundary_idx_list: Sequence[int | None] | int | None = None,
         boundary_reduction: BoundaryReduction = "sum",
-        output_weights: Optional[Tensor | Sequence[float]] = None,
+        output_weights: Tensor | Sequence[float] | None = None,
         reduction: ReductionType = "mean",
         output_mode: MultiOutputMode = "mean",
-        sampler: Optional[MCSampler] = None,
+        sampler: MCSampler | None = None,
         eps: float = 1e-6,
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
@@ -1314,12 +1314,12 @@ class qMultiOutputOrdinalBoundaryVarianceAcquisition(_qMultiOutputOrdinalBoundar
         observed_penalty_beta: float = 10.0,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
-        X_pending: Optional[Tensor] = None,
-        X_observed: Optional[Tensor] = None,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
-        # Compatibility with older API. If provided, it overrides boundary_reduction
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
+        # Support with older API. If provided, it overrides boundary_reduction
         # for boundary aggregation with "sum" or "max".
-        reduce: Optional[Literal["sum", "max"]] = None,
+        reduce: Literal["sum", "max"] | None = None,
     ) -> None:
         if reduce is not None:
             boundary_reduction = reduce
@@ -1392,13 +1392,13 @@ class qMultiOutputOrdinalBoundaryEntropyAcquisition(_qMultiOutputOrdinalBoundary
     def __init__(
         self,
         model: Model,
-        boundary_weights_list: Optional[Sequence[Optional[Tensor | Sequence[float]]]] = None,
-        target_boundary_idx_list: Optional[Sequence[Optional[int]] | int] = None,
+        boundary_weights_list: Sequence[Tensor | Sequence[float] | None] | None = None,
+        target_boundary_idx_list: Sequence[int | None] | int | None = None,
         boundary_reduction: BoundaryReduction = "sum",
-        output_weights: Optional[Tensor | Sequence[float]] = None,
+        output_weights: Tensor | Sequence[float] | None = None,
         reduction: ReductionType = "mean",
         output_mode: MultiOutputMode = "mean",
-        sampler: Optional[MCSampler] = None,
+        sampler: MCSampler | None = None,
         eps: float = 1e-6,
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
@@ -1406,9 +1406,9 @@ class qMultiOutputOrdinalBoundaryEntropyAcquisition(_qMultiOutputOrdinalBoundary
         observed_penalty_beta: float = 10.0,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
-        X_pending: Optional[Tensor] = None,
-        X_observed: Optional[Tensor] = None,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
     ) -> None:
         super().__init__(
             model=model,
@@ -1514,22 +1514,22 @@ class qMultiOutputOrdinalJointLatentStraddleAcquisition(_qMultiOutputOrdinalBoun
         beta: float | Sequence[float] | Tensor = 1.0,
         tau: float = 1.0,
         uncertainty_measure: Literal["logdet", "trace"] = "logdet",
-        output_weights: Optional[Tensor | Sequence[float]] = None,
+        output_weights: Tensor | Sequence[float] | None = None,
         output_mode: MultiOutputMode = "weighted_mean",
         same_batch_penalty_weight: float = 0.0,
         pending_penalty_weight: float = 0.0,
         observed_penalty_weight: float = 0.0,
-        penalty_lengthscale: Optional[float] = None,
-        distance_beta: Optional[float] = None,
-        X_pending: Optional[Tensor] = None,
-        X_observed: Optional[Tensor] = None,
-        sampler: Optional[MCSampler] = None,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
-        input_perturbation_n_w: Optional[int] = None,
+        penalty_lengthscale: float | None = None,
+        distance_beta: float | None = None,
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
+        sampler: MCSampler | None = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
+        input_perturbation_n_w: int | None = None,
         perturbation_joint_reduction: PerturbationJointReduction = "block_mean",
         jitter: float = 1e-6,
-        boundary_weights_list: Optional[Sequence[Optional[Tensor | Sequence[float]]]] = None,
-        target_boundary_idx_list: Optional[Sequence[Optional[int]] | int] = None,
+        boundary_weights_list: Sequence[Tensor | Sequence[float] | None] | None = None,
+        target_boundary_idx_list: Sequence[int | None] | int | None = None,
         boundary_reduction: BoundaryReduction = "sum",
     ) -> None:
         beta_for_penalty = 10.0 if distance_beta is None else float(distance_beta)

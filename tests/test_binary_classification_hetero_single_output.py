@@ -29,10 +29,10 @@ from bochan.models.classification.binary.robust import (
     HeteroscedasticBinaryClassificationMixedGPModel,
 )
 from tests.test_binary_classification_base_single_output import (
-    DTYPE,
     DEVICE,
+    DTYPE,
     assert_candidates_in_bounds,
-    assert_optimizer_compatibility_result,
+    assert_optimizer_support_result,
     make_binary_toy_data,
     make_constraint_cases,
     make_random_batch,
@@ -41,7 +41,6 @@ from tests.test_binary_classification_base_single_output import (
     optimize_mixed_with_case,
     optimize_with_case,
     optimizer_cases,
-    print_linear_constraint_diagnostics,
 )
 
 
@@ -521,7 +520,7 @@ def test_binary_hetero_optimizer_constraint_case_smoke(
                 maxiter=10,
             )
 
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,
@@ -571,7 +570,7 @@ def test_binary_hetero_mixed_optimizer_constraint_case_smoke(
                 maxiter=10,
             )
 
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,

@@ -1,29 +1,32 @@
 from functools import wraps
 
+import torch
+
 from bochan.acquisition._nehvi_cache_root import patch_nehvi_cache_root_init
 from bochan.acquisition._nparego_shape import (
     reduce_nparego_sample_and_q_to_tbatch,
 )
 
-import torch
-
 from . import multi_output as _multi_output
 from ._utility_defaults import infer_multioutput_ordinal_utility_values
 from .hetero_multi_output import (
-    qHeteroMultiOutputOrdinalNormalScoreObjective,
-    qHeteroMultiOutputOrdinalExpectedUtility,
-    qHeteroMultiOutputOrdinalProbabilityOfImprovement,
-    qHeteroMultiOutputOrdinalExpectedImprovement,
     qHeteroMultiOutputOrdinalExpectedHypervolumeImprovement,
+    qHeteroMultiOutputOrdinalExpectedImprovement,
+    qHeteroMultiOutputOrdinalExpectedUtility,
+    qHeteroMultiOutputOrdinalNormalScoreObjective,
+    qHeteroMultiOutputOrdinalProbabilityOfImprovement,
+)
+from .hetero_multi_output import (
     qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement as _qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
+)
+from .hetero_multi_output import (
     qHeteroMultiOutputOrdinalNParEGO as _qHeteroMultiOutputOrdinalNParEGO,
 )
-
 from .hetero_single_output import (
-    qHeteroOrdinalExpectedUtility,
     qHeteroOrdinalExpectedImprovement,
-    qHeteroOrdinalProbabilityOfImprovement,
+    qHeteroOrdinalExpectedUtility,
     qHeteroOrdinalExpectedUtilityUpperConfidenceBound,
+    qHeteroOrdinalProbabilityOfImprovement,
 )
 
 # Keep q=1 sequential optimization shape handling aligned across classification
@@ -40,13 +43,18 @@ patch_nehvi_cache_root_init(
 )
 
 from .multi_output import (
-    qMultiOutputOrdinalUtilityObjective,
-    qMultiOutputOrdinalExpectedHypervolumeImprovement as _qMultiOutputOrdinalExpectedHypervolumeImprovement,
-    qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement as _qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
-    qMultiOutputOrdinalNParEGO as _qMultiOutputOrdinalNParEGO,
     compute_observed_ordinal_utility,
+    qMultiOutputOrdinalUtilityObjective,
 )
-
+from .multi_output import (
+    qMultiOutputOrdinalExpectedHypervolumeImprovement as _qMultiOutputOrdinalExpectedHypervolumeImprovement,
+)
+from .multi_output import (
+    qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement as _qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
+)
+from .multi_output import (
+    qMultiOutputOrdinalNParEGO as _qMultiOutputOrdinalNParEGO,
+)
 
 _NPAREGO_TBATCH_SHAPE_ERROR = (
     "Expected scalarized NParEGO values to end in q or, for q=1, "
@@ -213,7 +221,7 @@ def qHeteroMultiOutputOrdinalNParEGO(
     heteroscedastic ordinal utility objective has produced one value per output.
     The generic high-level objective may already reduce the output dimension,
     which would remove the ``m`` axis before NParEGO can scalarize it. Match the
-    binary NParEGO behavior by accepting the compatibility argument but not
+    binary NParEGO behavior by accepting the support argument but not
     applying it inside the utility objective.
     """
     del objective
@@ -281,7 +289,7 @@ def qMultiOutputOrdinalNParEGO(
     best_f=None,
     **kwargs,
 ):
-    """Construct ordinal NParEGO with high-level API compatibility.
+    """Construct ordinal NParEGO with high-level API support.
 
     The generic acquisition-default resolver may inject ``best_f`` because
     NParEGO is EI-based. This implementation computes its own scalarized
@@ -308,14 +316,14 @@ def qMultiOutputOrdinalNParEGO(
 
 
 from .single_output import (
-    qOrdinalProbabilityOfFeasibility,
     compute_ordinal_expected_utility_best_f,
+    qOrdinalProbabilityOfFeasibility,
 )
 from .utility_acquisitions import (
     OrdinalQBatchMode,
     OrdinalQReduction,
-    qOrdinalExpectedUtility,
     qOrdinalExpectedImprovement,
+    qOrdinalExpectedUtility,
     qOrdinalProbabilityOfImprovement,
     qOrdinalUpperConfidenceBound,
 )

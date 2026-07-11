@@ -22,11 +22,11 @@ from bochan.models.classification.binary.deep import (
     BinaryClassificationMixedDeepGPModel,
 )
 from tests.test_binary_classification_base_single_output import (
-    DTYPE,
     DEVICE,
+    DTYPE,
     acquisition_cases,
     assert_candidates_in_bounds,
-    assert_optimizer_compatibility_result,
+    assert_optimizer_support_result,
     make_binary_toy_data,
     make_constraint_cases,
     make_random_batch,
@@ -477,7 +477,7 @@ def test_binary_deepgp_optimizer_constraint_case_smoke(
                 maxiter=10,
             )
 
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,
@@ -528,7 +528,7 @@ def test_binary_deepgp_mixed_optimizer_constraint_case_smoke(
                 maxiter=10,
             )
 
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,
@@ -767,7 +767,7 @@ def run_jupyter_optimize_acqf_mixed_all_acquisitions_check(
     return bundle
 
 
-def run_jupyter_optimizer_constraint_compatibility_check(
+def run_jupyter_optimizer_constraint_support_check(
     *,
     n: int = 16,
     d: int = 5,
@@ -781,7 +781,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
     suppress_botorch_warnings: bool = True,
 ) -> dict[str, Any]:
     if d < 5:
-        raise ValueError("constraint compatibility check では d >= 5 が必要です。")
+        raise ValueError("constraint support check では d >= 5 が必要です。")
 
     bundle = create_binary_deepgp_model_bundle(
         cat=False,
@@ -801,7 +801,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
     failed_cases: list[tuple[str, Exception]] = []
 
     print("=" * 100)
-    print("Jupyter DeepGP optimizer / constraint compatibility check")
+    print("Jupyter DeepGP optimizer / constraint support check")
     print(f"n={n}, d={d}, q={q}, num_epochs={num_epochs}, full_matrix={full_matrix}")
     print(f"num_cases={len(scenarios)}")
     print("=" * 100)
@@ -830,7 +830,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
                     raw_samples=16,
                     maxiter=10,
                 )
-            assert_optimizer_compatibility_result(
+            assert_optimizer_support_result(
                 cands=cands,
                 acq_value=acq_value,
                 bounds=bounds,
@@ -866,13 +866,13 @@ def run_jupyter_optimizer_constraint_compatibility_check(
     print(
         f"failed_cases={len(failed_cases)}"
         if failed_cases
-        else "all optimizer / constraint compatibility checks passed."
+        else "all optimizer / constraint support checks passed."
     )
     print("=" * 100)
     return bundle
 
 
-def run_jupyter_mixed_optimizer_constraint_compatibility_check(
+def run_jupyter_mixed_optimizer_constraint_support_check(
     *,
     n: int = 16,
     d: int = 5,
@@ -886,7 +886,7 @@ def run_jupyter_mixed_optimizer_constraint_compatibility_check(
     suppress_botorch_warnings: bool = True,
 ) -> dict[str, Any]:
     if d < 5:
-        raise ValueError("constraint compatibility check では d >= 5 が必要です。")
+        raise ValueError("constraint support check では d >= 5 が必要です。")
 
     bundle = create_binary_deepgp_model_bundle(
         cat=True,
@@ -914,7 +914,7 @@ def run_jupyter_mixed_optimizer_constraint_compatibility_check(
     failed_cases: list[tuple[str, Exception]] = []
 
     print("=" * 100)
-    print("Jupyter DeepGP mixed optimizer / constraint compatibility check")
+    print("Jupyter DeepGP mixed optimizer / constraint support check")
     print(
         f"n={n}, d={d}, q={q}, num_epochs={num_epochs}, "
         f"full_matrix={full_matrix}, cat_dims={bundle['cat_dims']}"
@@ -947,7 +947,7 @@ def run_jupyter_mixed_optimizer_constraint_compatibility_check(
                     raw_samples=16,
                     maxiter=10,
                 )
-            assert_optimizer_compatibility_result(
+            assert_optimizer_support_result(
                 cands=cands,
                 acq_value=acq_value,
                 bounds=bounds,
@@ -984,7 +984,7 @@ def run_jupyter_mixed_optimizer_constraint_compatibility_check(
     print(
         f"failed_cases={len(failed_cases)}"
         if failed_cases
-        else "all mixed optimizer / constraint compatibility checks passed."
+        else "all mixed optimizer / constraint support checks passed."
     )
     print("=" * 100)
     return bundle
@@ -1024,7 +1024,7 @@ def run_jupyter_all_checks(
             continue_on_error=continue_on_error,
             suppress_botorch_warnings=suppress_botorch_warnings,
         )
-        run_jupyter_optimizer_constraint_compatibility_check(
+        run_jupyter_optimizer_constraint_support_check(
             num_epochs=num_epochs,
             full_matrix=full_matrix,
             continue_on_error=continue_on_error,
@@ -1033,7 +1033,7 @@ def run_jupyter_all_checks(
             verbose_constraints=verbose_constraints,
             suppress_botorch_warnings=suppress_botorch_warnings,
         )
-        run_jupyter_mixed_optimizer_constraint_compatibility_check(
+        run_jupyter_mixed_optimizer_constraint_support_check(
             num_epochs=num_epochs,
             full_matrix=full_matrix,
             continue_on_error=continue_on_error,

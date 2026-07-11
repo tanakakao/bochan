@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import pytest
 import torch
-from torch import nn
-
 from botorch.acquisition.multi_objective.monte_carlo import (
     qExpectedHypervolumeImprovement,
 )
 from botorch.utils.multi_objective.box_decompositions.non_dominated import (
     FastNondominatedPartitioning,
 )
+from torch import nn
 
 from bochan.acquisition.objective import (
     MultiOutputBinaryClassificationInputPerturbationObjective,
@@ -29,7 +28,7 @@ from bochan.models.ordinal.high_dim import (
     PCAOrdinalGPModel,
     REMBOOrdinalGPModel,
 )
-from bochan.models.projected_input_perturbation_compat import (
+from bochan.models.projected_input_perturbation import (
     flatten_projected_one_to_many_point_axes,
 )
 from bochan.models.transforms.input import build_input_transform
@@ -70,7 +69,7 @@ def test_shared_projected_shape_helper_flattens_only_point_axes() -> None:
     assert torch.allclose(normalized, projected.reshape(7, 12, 2))
 
 
-def test_projected_shape_compat_is_installed_for_classification_and_ordinal() -> None:
+def test_projected_shape_support_is_installed_for_classification_and_ordinal() -> None:
     classes = (
         PCABinaryClassificationGPModel,
         REMBOBinaryClassificationGPModel,

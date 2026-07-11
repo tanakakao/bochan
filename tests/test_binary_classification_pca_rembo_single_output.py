@@ -3,7 +3,7 @@ from __future__ import annotations
 """Binary classification PCA / REMBO single-output smoke tests.
 
 This module follows ``test_binary_classification_base_single_output.py`` and
-reuses its toy data, acquisition cases, optimizer wrappers, and compatibility
+reuses its toy data, acquisition cases, optimizer wrappers, and support
 assertions.  PCA / REMBO specific checks verify that
 
 - public wrapper inputs stay in raw-space,
@@ -27,11 +27,11 @@ from bochan.models.classification.binary.high_dim import (
     REMBOBinaryClassificationMixedGPModel,
 )
 from tests.test_binary_classification_base_single_output import (
-    DTYPE,
     DEVICE,
+    DTYPE,
     acquisition_cases,
     assert_candidates_in_bounds,
-    assert_optimizer_compatibility_result,
+    assert_optimizer_support_result,
     make_binary_toy_data,
     make_constraint_cases,
     make_random_batch,
@@ -40,7 +40,6 @@ from tests.test_binary_classification_base_single_output import (
     optimize_mixed_with_case,
     optimize_with_case,
     optimizer_cases,
-    print_linear_constraint_diagnostics,
 )
 
 ProjectionKind = Literal["pca", "rembo"]
@@ -155,7 +154,7 @@ def _assert_projected_model_training(
         assert model.projected_train_input.shape[-1] < train_x.shape[-1]
         assert projected_x.shape[-1] < train_x.shape[-1]
 
-    assert getattr(projector.config, "n_components") == n_components
+    assert projector.config.n_components == n_components
     assert model.base_model.train_inputs[0].shape == model.projected_train_input.shape
     assert torch.allclose(model.base_model.train_inputs[0], model.projected_train_input)
     assert torch.allclose(model.base_model.train_targets, train_y.reshape(-1))
@@ -529,7 +528,7 @@ def test_binary_projected_optimizer_constraint_case_smoke(
                 maxiter=10,
             )
 
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,
@@ -580,7 +579,7 @@ def test_binary_projected_mixed_optimizer_constraint_case_smoke(
                 maxiter=10,
             )
 
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,

@@ -19,11 +19,11 @@ from bochan.acquisition._nparego_shape import (
 from . import hetero_multi_output as _hetero_multi_output
 from . import multi_output as _multi_output
 from .hetero_multi_output import (
-    qHeteroMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
-    qHeteroMultiOutputBinaryNParEGO as _BaseHeteroBinaryNParEGO,
-)
-from .hetero_multi_output_compat import (
     qHeteroMultiOutputBinaryExpectedHypervolumeImprovement,
+    qHeteroMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
+)
+from .hetero_multi_output import (
+    qHeteroMultiOutputBinaryNParEGO as _BaseHeteroBinaryNParEGO,
 )
 from .hetero_single_output import (
     qHeteroBinaryExpectedImprovement,
@@ -38,7 +38,7 @@ _multi_output._reduce_sample_and_q_to_tbatch = (
 )
 
 # Apply the same model-aware qNEHVI default used by ordinal models. This keeps
-# Kronecker binary models out of BoTorch's incompatible cached-Cholesky path.
+# Kronecker binary models out of BoTorch's insupported cached-Cholesky path.
 patch_nehvi_cache_root_init(
     _multi_output.qMultiOutputBinaryNoisyExpectedHypervolumeImprovement
 )
@@ -273,7 +273,7 @@ class qHeteroMultiOutputBinaryNParEGO(_BaseHeteroBinaryNParEGO):
 
 
 class qMultiOutputBinaryNParEGO(_multi_output.qMultiOutputBinaryNParEGO):
-    """Binary NParEGO with high-level API compatibility."""
+    """Binary NParEGO with high-level API support."""
 
     def __init__(
         self,
@@ -303,6 +303,10 @@ class qMultiOutputBinaryNParEGO(_multi_output.qMultiOutputBinaryNParEGO):
         )
 
 
+from ._utils import (
+    compute_binary_best_f,
+    compute_hetero_binary_classification_best_f,
+)
 from .multi_output import (
     qMultiOutputBinaryExpectedHypervolumeImprovement,
     qMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
@@ -314,10 +318,6 @@ from .single_output import (
     qBinaryProbabilityOfFeasibility,
     qBinaryProbabilityOfImprovement,
     qBinaryUpperConfidenceBound,
-)
-from ._utils import (
-    compute_binary_best_f,
-    compute_hetero_binary_classification_best_f,
 )
 
 __all__ = [

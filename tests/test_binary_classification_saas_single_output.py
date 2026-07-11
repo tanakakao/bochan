@@ -21,11 +21,11 @@ from bochan.models.classification.binary.high_dim import (
     SaasBinaryClassificationMixedGPModel,
 )
 from tests.test_binary_classification_base_single_output import (
-    DTYPE,
     DEVICE,
+    DTYPE,
     acquisition_cases,
     assert_candidates_in_bounds,
-    assert_optimizer_compatibility_result,
+    assert_optimizer_support_result,
     make_binary_toy_data,
     make_constraint_cases,
     make_random_batch,
@@ -326,7 +326,7 @@ def test_binary_saas_optimizer_constraint_case_smoke(binary_saas_model_bundle: d
                 raw_samples=16,
                 maxiter=10,
             )
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,
@@ -360,7 +360,7 @@ def test_binary_saas_mixed_optimizer_constraint_case_smoke(binary_saas_mixed_mod
                 raw_samples=16,
                 maxiter=10,
             )
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,

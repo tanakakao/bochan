@@ -80,7 +80,7 @@ def test_thompson_sampling_accepts_model_directly() -> None:
 
 
 @pytest.mark.parametrize(
-    ("legacy", "canonical"),
+    ("old", "canonical"),
     [
         ("optimize_acqf_mixed", "optimize_acqf"),
         ("optimize_acqf_evo_mixed", "evo"),
@@ -90,8 +90,8 @@ def test_thompson_sampling_accepts_model_directly() -> None:
         ("optimize_thompson_sampling_mixed", "thompson_sampling"),
     ],
 )
-def test_legacy_optimizer_names_are_normalized(legacy: str, canonical: str) -> None:
-    config = OptimizeConfig(optimizer=legacy)
+def test_old_optimizer_names_are_normalized(old: str, canonical: str) -> None:
+    config = OptimizeConfig(optimizer=old)
 
     assert config.optimizer == canonical
 

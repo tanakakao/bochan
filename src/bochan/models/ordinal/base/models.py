@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from gpytorch.kernels import Kernel, MaternKernel, ScaleKernel
 from torch import Tensor
 
-from .legacy_models import (
-    OrdinalGPModel as _LegacyOrdinalGPModel,
+from .models_core import (
+    OrdinalGPModel as _OldOrdinalGPModel,
+)
+from .models_core import (
     OrdinalMixedGPModel,
     _BaseOrdinalGPModel,
-    _MixedOrdinalLatentGP,
-    _OrdinalLatentGP,
     _canonicalize_inducing_points,
     _check_categorical_columns_unchanged,
     _expand_raw_X_to_match_transformed_q,
@@ -18,7 +16,9 @@ from .legacy_models import (
     _infer_num_classes_from_train_Y,
     _make_cat_kernel,
     _make_cont_kernel,
+    _MixedOrdinalLatentGP,
     _normalize_dims,
+    _OrdinalLatentGP,
     _prepare_input_transform,
     _transform_tensor,
     _transform_tensor_for_training,
@@ -26,26 +26,26 @@ from .legacy_models import (
 )
 
 
-class OrdinalGPModel(_LegacyOrdinalGPModel):
+class OrdinalGPModel(_OldOrdinalGPModel):
     """Ordinal GP with an ARD Matern 2.5 kernel by default."""
 
     def __init__(
         self,
         train_X: Tensor,
         train_Y: Tensor,
-        num_classes: Optional[int] = None,
+        num_classes: int | None = None,
         inducing_points_num: int = 128,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         mean_module=None,
-        covar_module: Optional[Kernel] = None,
+        covar_module: Kernel | None = None,
         input_transform=None,
         eps: float = 1e-8,
         init_gap: float = 1.0,
         fix_first_cutpoint: bool = True,
         conditioning_steps: int = 50,
-        conditioning_lr: Optional[float] = None,
-        conditioning_batch_size: Optional[int] = None,
+        conditioning_lr: float | None = None,
+        conditioning_batch_size: int | None = None,
     ) -> None:
         if covar_module is None:
             covar_module = ScaleKernel(

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 import torch
 from torch import Tensor
 
@@ -47,10 +45,10 @@ def fit_deep_full_batch_mll(
     mll,
     *,
     lr: float = 0.01,
-    num_epochs: Optional[int] = None,
-    epoch: Optional[int] = None,
+    num_epochs: int | None = None,
+    epoch: int | None = None,
     optimizer_cls= torch.optim.Adam,
-    clip_grad_norm: Optional[float] = None,
+    clip_grad_norm: float | None = None,
     verbose: bool = False,
     log_prefix: str = "fit_deep_full_batch_mll",
     **ignore,
@@ -71,7 +69,7 @@ def fit_deep_full_batch_mll(
         num_epochs:
             Preferred epoch argument.
         epoch:
-            Backward-compatible alias. Used only when `num_epochs` is None.
+            Backward-supported alias. Used only when `num_epochs` is None.
         log_prefix:
             Name used in verbose logs.
 

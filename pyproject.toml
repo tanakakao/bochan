@@ -29,10 +29,10 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Information Analysis",
 ]
 dependencies = [
-  "torch>=2.2",
-  "botorch>=0.12",
-  "gpytorch>=1.13",
-  "linear-operator>=0.5.3",
+  "torch>=2.13,<2.14",
+  "botorch>=0.18,<0.19",
+  "gpytorch>=1.15,<1.16",
+  "linear-operator>=0.6,<0.7",
   "numpy>=1.26",
   "scipy>=1.11",
   "typing-extensions>=4.8",

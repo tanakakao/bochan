@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import math
-from typing import Callable, Literal, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Literal, Optional
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.models.model import Model
 from botorch.utils.transforms import t_batch_mode_transform
+from torch import Tensor
 
 from ..hetero_utils import (
     _expand_scalar_or_list,
@@ -17,7 +17,6 @@ from ..hetero_utils import (
     make_weight_tensor,
     stack_multi_summaries,
 )
-
 
 RiskType = Optional[Literal["var", "cvar"]]
 ReductionType = Literal["mean", "sum", "max"]
@@ -52,7 +51,7 @@ class HeteroMultiOutputOrdinalLevelSetScoreObjective(torch.nn.Module):
 
     def __init__(
         self,
-        n_w: Optional[int] = None,
+        n_w: int | None = None,
         risk_type: RiskType = None,
         alpha: float = 0.5,
         maximize: bool = True,
@@ -84,13 +83,13 @@ class HeteroMultiOutputOrdinalLevelSetScoreObjective(torch.nn.Module):
     def _ensure_q_batch(X: Tensor) -> Tensor:
         return X if X.dim() > 2 else X.unsqueeze(0)
 
-    def _is_aggregated_score(self, score: Tensor, X: Optional[Tensor]) -> bool:
+    def _is_aggregated_score(self, score: Tensor, X: Tensor | None) -> bool:
         if X is None or score.ndim == 0:
             return False
         Xq = self._ensure_q_batch(X)
         return tuple(score.shape) == tuple(Xq.shape[:-2])
 
-    def forward(self, score: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def forward(self, score: Tensor, X: Tensor | None = None) -> Tensor:
         if not torch.is_tensor(score):
             raise TypeError(f"score must be a Tensor. Got {type(score)}.")
 
@@ -135,7 +134,7 @@ class HeteroMultiOutputOrdinalLevelSetScoreObjective(torch.nn.Module):
         raise ValueError(f"Unknown risk_type: {self.risk_type!r}.")
 
 
-# Backward-compatible internal name; not a public acquisition alias.
+# Backward-supported internal name; not a public acquisition alias.
 _MultiObjectiveHeteroOrdinalLevelSetScoreObjective = (
     HeteroMultiOutputOrdinalLevelSetScoreObjective
 )
@@ -168,7 +167,7 @@ def _reduce_q(score: Tensor, reduction: ReductionType) -> Tensor:
     raise ValueError(f"Unknown reduction: {reduction!r}.")
 
 
-def _coerce_reference_to_tensor(X_ref, *, ref: Optional[Tensor] = None) -> Optional[Tensor]:
+def _coerce_reference_to_tensor(X_ref, *, ref: Tensor | None = None) -> Tensor | None:
     if X_ref is None:
         return None
 
@@ -248,7 +247,7 @@ def _align_pointwise_score_to_X(
     )
 
 
-def _objective_call(objective, score: Tensor, X: Optional[Tensor]):
+def _objective_call(objective, score: Tensor, X: Tensor | None):
     try:
         return objective(score, X=X)
     except TypeError:
@@ -258,7 +257,7 @@ def _objective_call(objective, score: Tensor, X: Optional[Tensor]):
 def _apply_multioutput_hetero_ordinal_levelset_objective_to_score(
     owner,
     score: Tensor,
-    X: Optional[Tensor] = None,
+    X: Tensor | None = None,
     name: str = "HeteroMultiOutputOrdinalLevelSet",
 ) -> Tensor:
     objective = getattr(owner, "objective", None)
@@ -304,7 +303,7 @@ def _get_ordinal_likelihood(model: Model):
 def _get_cutpoints_from_likelihood(ordinal_likelihood) -> Tensor:
     """ordinal likelihood から cutpoints を取得し、定数として detach して返す。"""
     if hasattr(ordinal_likelihood, "get_cutpoints"):
-        cutpoints = _try_call_zero_arg(getattr(ordinal_likelihood, "get_cutpoints"))
+        cutpoints = _try_call_zero_arg(ordinal_likelihood.get_cutpoints)
         return torch.as_tensor(cutpoints).detach().clone().reshape(-1)
 
     for name in ("transformed_cutpoints", "cutpoints", "thresholds", "cuts", "cutoffs"):
@@ -314,7 +313,7 @@ def _get_cutpoints_from_likelihood(ordinal_likelihood) -> Tensor:
 
     if hasattr(ordinal_likelihood, "raw_cutpoints"):
         raw = torch.as_tensor(
-            _try_call_zero_arg(getattr(ordinal_likelihood, "raw_cutpoints"))
+            _try_call_zero_arg(ordinal_likelihood.raw_cutpoints)
         ).detach().clone()
         if hasattr(ordinal_likelihood, "transform_cutpoints"):
             cutpoints = ordinal_likelihood.transform_cutpoints(raw)
@@ -340,12 +339,12 @@ def _to_optional_list(value, n: int, *, name: str) -> list:
 
 
 def _prepare_boundary_weights(
-    boundary_weights: Optional[Tensor | Sequence[float]],
+    boundary_weights: Tensor | Sequence[float] | None,
     n_boundaries: int,
     *,
     device,
     dtype,
-) -> Optional[Tensor]:
+) -> Tensor | None:
     if boundary_weights is None:
         return None
     w = torch.as_tensor(boundary_weights, device=device, dtype=dtype).detach().reshape(-1)
@@ -359,8 +358,8 @@ def _prepare_boundary_weights(
 def _aggregate_boundary_scores(
     boundary_scores: Tensor,
     *,
-    target_boundary_idx: Optional[int] = None,
-    boundary_weights: Optional[Tensor | Sequence[float]] = None,
+    target_boundary_idx: int | None = None,
+    boundary_weights: Tensor | Sequence[float] | None = None,
     boundary_reduction: BoundaryReduction = "sum",
 ) -> Tensor:
     """
@@ -437,31 +436,31 @@ class _BaseHeteroMultiOutputOrdinalLevelSetAcquisition(AcquisitionFunction):
         self,
         model: Model,
         *,
-        utility_values_list: Optional[Sequence[Optional[Sequence[float] | Tensor]]] = None,
-        objective_weights: Optional[Sequence[float] | Tensor] = None,
+        utility_values_list: Sequence[Sequence[float] | Tensor | None] | None = None,
+        objective_weights: Sequence[float] | Tensor | None = None,
         variance_scale: float | Sequence[float] | Tensor = 1.0,
         tau: float | Sequence[float] | Tensor = 1e-6,
         default_sigma: float | Sequence[float] | Tensor = 0.0,
         reduction: ReductionType = "mean",
-        # backward-compatible aliases
-        reduce: Optional[str] = None,
+        # backward-supported aliases
+        reduce: str | None = None,
         output_mode: OutputMode = "mean",
-        aggregate: Optional[str] = None,
+        aggregate: str | None = None,
         eps: float = 1e-12,
         # pending penalty
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
-        X_pending: Optional[Tensor] = None,
+        X_pending: Tensor | None = None,
         # ROI
         roi_mode: ROIWeightMode = "none",
         roi_combine: ROICombineType = "multiply",
         roi_threshold: float = 0.5,
-        roi_interval: Optional[tuple[float, float]] = None,
+        roi_interval: tuple[float, float] | None = None,
         roi_beta: float = 20.0,
         roi_bandwidth: float = 0.15,
         roi_min_weight: float = 0.0,
         roi_weight_scale: float = 1.0,
-        roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        roi_weight_fn: Callable[[Tensor, Tensor | None], Tensor] | None = None,
         # noise
         noise_mode: NoiseWeightMode = "inverse_linear",
         noise_combine: NoiseCombineType = "multiply",
@@ -469,10 +468,10 @@ class _BaseHeteroMultiOutputOrdinalLevelSetAcquisition(AcquisitionFunction):
         noise_min_weight: float = 0.0,
         noise_weight_scale: float = 1.0,
         noise_event_aggregate: OutputMode = "mean",
-        noise_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
-        # old compatibility
+        noise_weight_fn: Callable[[Tensor, Tensor | None], Tensor] | None = None,
+        # old support
         noise_penalty: float | Sequence[float] | Tensor = 0.0,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
     ) -> None:
         super().__init__(model=model)
 
@@ -557,10 +556,10 @@ class _BaseHeteroMultiOutputOrdinalLevelSetAcquisition(AcquisitionFunction):
         if any(float(v or 0.0) != 0.0 for v in self.noise_penalties):
             self.noise_combine = "subtract"
 
-        self.X_pending: Optional[Tensor] = None
+        self.X_pending: Tensor | None = None
         self.set_X_pending(X_pending)
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         self.X_pending = _coerce_reference_to_tensor(X_pending)
 
     def _set_eval_mode(self) -> None:
@@ -594,7 +593,7 @@ class _BaseHeteroMultiOutputOrdinalLevelSetAcquisition(AcquisitionFunction):
 
         return X
 
-    def _transform_reference_like_candidate(self, X_ref, *, ref: Tensor) -> Optional[Tensor]:
+    def _transform_reference_like_candidate(self, X_ref, *, ref: Tensor) -> Tensor | None:
         Xr = _coerce_reference_to_tensor(X_ref, ref=ref)
         if Xr is None or Xr.numel() == 0:
             return None
@@ -634,7 +633,7 @@ class _BaseHeteroMultiOutputOrdinalLevelSetAcquisition(AcquisitionFunction):
             eps=self.eps,
         )
 
-    def _weights(self, ref: Tensor) -> Optional[Tensor]:
+    def _weights(self, ref: Tensor) -> Tensor | None:
         return make_weight_tensor(self.objective_weights, ref=ref, m=self.m)
 
     def _aggregate_outputs(self, values: Tensor) -> Tensor:
@@ -694,8 +693,8 @@ class _BaseHeteroMultiOutputOrdinalLevelSetAcquisition(AcquisitionFunction):
         self,
         boundary_scores_list: Sequence[Tensor],
         *,
-        target_boundary_idx_list: Optional[Sequence[Optional[int]] | int] = None,
-        boundary_weights_list: Optional[Sequence[Optional[Tensor | Sequence[float]]]] = None,
+        target_boundary_idx_list: Sequence[int | None] | int | None = None,
+        boundary_weights_list: Sequence[Tensor | Sequence[float] | None] | None = None,
         boundary_reduction: BoundaryReduction = "sum",
     ) -> Tensor:
         target_list = _to_optional_list(
@@ -722,7 +721,7 @@ class _BaseHeteroMultiOutputOrdinalLevelSetAcquisition(AcquisitionFunction):
 
     def _roi_thresholds_from_boundaries(
         self,
-        target_boundary_idx_list: Optional[Sequence[Optional[int]] | int],
+        target_boundary_idx_list: Sequence[int | None] | int | None,
     ) -> list[Tensor]:
         """ROI の poe_* mode 用に、各出力の代表 cutpoint を 1 つ返す。
 
@@ -757,7 +756,7 @@ class _BaseHeteroMultiOutputOrdinalLevelSetAcquisition(AcquisitionFunction):
         self,
         summary: dict[str, Tensor],
         *,
-        thresholds: Optional[float | Sequence[float] | Tensor],
+        thresholds: float | Sequence[float] | Tensor | None,
     ) -> Tensor:
         if self.roi_mode.startswith("poe"):
             if thresholds is None:
@@ -816,7 +815,7 @@ class _BaseHeteroMultiOutputOrdinalLevelSetAcquisition(AcquisitionFunction):
         summary: dict[str, Tensor],
         Xt: Tensor,
         *,
-        thresholds: Optional[float | Sequence[float] | Tensor],
+        thresholds: float | Sequence[float] | Tensor | None,
     ) -> Tensor:
         if self.roi_mode == "none":
             return score_per_output
@@ -875,7 +874,7 @@ class _BaseHeteroMultiOutputOrdinalLevelSetAcquisition(AcquisitionFunction):
         score_per_output: Tensor,
         summary: dict[str, Tensor],
     ) -> Tensor:
-        sigma = summary.get("sigma", summary.get("total_std", None))
+        sigma = summary.get("sigma", summary.get("total_std"))
         if sigma is None:
             return score_per_output
 
@@ -911,7 +910,7 @@ class _BaseHeteroMultiOutputOrdinalLevelSetAcquisition(AcquisitionFunction):
         X: Tensor,
         *,
         summary: dict[str, Tensor],
-        thresholds_for_roi: Optional[float | Sequence[float] | Tensor],
+        thresholds_for_roi: float | Sequence[float] | Tensor | None,
         name: str,
     ) -> Tensor:
         raw_X = _ensure_q_batch(X)
@@ -994,10 +993,10 @@ class qHeteroMultiOutputOrdinalProbabilityOfExceedance(
     def __init__(
         self,
         model: Model,
-        thresholds: Optional[float | Sequence[float] | Tensor] = None,
+        thresholds: float | Sequence[float] | Tensor | None = None,
         *,
-        boundary_weights_list: Optional[Sequence[Optional[Tensor | Sequence[float]]]] = None,
-        target_boundary_idx_list: Optional[Sequence[Optional[int]] | int] = None,
+        boundary_weights_list: Sequence[Tensor | Sequence[float] | None] | None = None,
+        target_boundary_idx_list: Sequence[int | None] | int | None = None,
         boundary_reduction: BoundaryReduction = "sum",
         **kwargs,
     ) -> None:
@@ -1055,10 +1054,10 @@ class qHeteroMultiOutputOrdinalLevelSetUncertainty(
     def __init__(
         self,
         model: Model,
-        thresholds: Optional[float | Sequence[float] | Tensor] = None,
+        thresholds: float | Sequence[float] | Tensor | None = None,
         *,
-        boundary_weights_list: Optional[Sequence[Optional[Tensor | Sequence[float]]]] = None,
-        target_boundary_idx_list: Optional[Sequence[Optional[int]] | int] = None,
+        boundary_weights_list: Sequence[Tensor | Sequence[float] | None] | None = None,
+        target_boundary_idx_list: Sequence[int | None] | int | None = None,
         boundary_reduction: BoundaryReduction = "sum",
         **kwargs,
     ) -> None:
@@ -1114,11 +1113,11 @@ class qHeteroMultiOutputOrdinalStraddle(
     def __init__(
         self,
         model: Model,
-        targets: Optional[float | Sequence[float] | Tensor] = None,
+        targets: float | Sequence[float] | Tensor | None = None,
         *,
         beta: float | Sequence[float] | Tensor = 1.0,
-        boundary_weights_list: Optional[Sequence[Optional[Tensor | Sequence[float]]]] = None,
-        target_boundary_idx_list: Optional[Sequence[Optional[int]] | int] = None,
+        boundary_weights_list: Sequence[Tensor | Sequence[float] | None] | None = None,
+        target_boundary_idx_list: Sequence[int | None] | int | None = None,
         boundary_reduction: BoundaryReduction = "sum",
         **kwargs,
     ) -> None:
@@ -1200,11 +1199,11 @@ class qHeteroMultiOutputOrdinalBoundaryVariance(
     def __init__(
         self,
         model: Model,
-        targets: Optional[float | Sequence[float] | Tensor] = None,
+        targets: float | Sequence[float] | Tensor | None = None,
         *,
         kernel_tau: float | Sequence[float] | Tensor = 1.0,
-        boundary_weights_list: Optional[Sequence[Optional[Tensor | Sequence[float]]]] = None,
-        target_boundary_idx_list: Optional[Sequence[Optional[int]] | int] = None,
+        boundary_weights_list: Sequence[Tensor | Sequence[float] | None] | None = None,
+        target_boundary_idx_list: Sequence[int | None] | int | None = None,
         boundary_reduction: BoundaryReduction = "sum",
         **kwargs,
     ) -> None:

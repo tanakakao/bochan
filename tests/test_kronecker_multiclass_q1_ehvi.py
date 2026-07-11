@@ -11,7 +11,7 @@ from bochan.acquisition.multiclass.bayesian_optimization import (
     compute_observed_multiclass_utility,
     qMultiOutputMulticlassExpectedHypervolumeImprovement,
 )
-from bochan.acquisition.multiclass.bayesian_optimization.input_perturbation_compat import (
+from bochan.acquisition.multiclass.bayesian_optimization.input_perturbation import (
     validate_hypervolume_objective_q,
 )
 from bochan.models.classification.multiclass.base import (

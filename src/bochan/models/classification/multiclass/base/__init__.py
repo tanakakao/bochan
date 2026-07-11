@@ -21,9 +21,9 @@ from .multitask import (
     MultiTaskMulticlassClassificationGPModel,
     MultiTaskMulticlassClassificationMixedGPModel,
 )
-from .posterior_compat import apply_multiclass_posterior_compat
+from .posteriors import apply_multiclass_posteriors
 
-apply_multiclass_posterior_compat()
+apply_multiclass_posteriors()
 
 __all__ = [
     "BlockDesignMulticlassLikelihood",
@@ -39,5 +39,5 @@ __all__ = [
     "MultiOutputMulticlassClassificationGPModel",
     "MultiTaskMulticlassClassificationGPModel",
     "MultiTaskMulticlassClassificationMixedGPModel",
-    "apply_multiclass_posterior_compat",
+    "apply_multiclass_posteriors",
 ]

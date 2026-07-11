@@ -7,16 +7,17 @@ return ``Callable[[Tensor], Tensor]`` so they can be used as BoTorch
 
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Literal, Optional, Sequence, Tuple, Union
+from collections.abc import Callable, Sequence
+from typing import Literal
 
 import torch
 from torch import Tensor
 
-LinearConstraint = Tuple[Union[Sequence[int], Tensor], Union[Sequence[float], Tensor], float]
+LinearConstraint = tuple[Sequence[int] | Tensor, Sequence[float] | Tensor, float]
 InequalitySense = Literal["ge", "le"]
 
 
-def to_1d_long_tensor(indices: Union[Sequence[int], Tensor], *, device: torch.device) -> Tensor:
+def to_1d_long_tensor(indices: Sequence[int] | Tensor, *, device: torch.device) -> Tensor:
     """Convert indices to a flattened long tensor."""
     if isinstance(indices, Tensor):
         return indices.to(device=device, dtype=torch.long).reshape(-1)
@@ -24,7 +25,7 @@ def to_1d_long_tensor(indices: Union[Sequence[int], Tensor], *, device: torch.de
 
 
 def to_1d_value_tensor(
-    values: Union[Sequence[float], Tensor],
+    values: Sequence[float] | Tensor,
     *,
     device: torch.device,
     dtype: torch.dtype,
@@ -35,7 +36,7 @@ def to_1d_value_tensor(
     return torch.as_tensor(list(values), device=device, dtype=dtype).reshape(-1)
 
 
-def normalize_bounds(bounds: Tensor, *, d: int, device: torch.device, dtype: torch.dtype) -> Tuple[Tensor, Tensor]:
+def normalize_bounds(bounds: Tensor, *, d: int, device: torch.device, dtype: torch.dtype) -> tuple[Tensor, Tensor]:
     """Return lower / upper bounds with shape ``(d,)``.
 
     Args:
@@ -53,18 +54,18 @@ def normalize_bounds(bounds: Tensor, *, d: int, device: torch.device, dtype: tor
     lower = bounds_t[0].reshape(-1)[-d:]
     upper = bounds_t[1].reshape(-1)[-d:]
     if lower.numel() != d or upper.numel() != d:
-        raise ValueError(f"bounds last dimension is incompatible with d={d}.")
+        raise ValueError(f"bounds last dimension is insupported with d={d}.")
     if torch.any(lower > upper):
         raise ValueError("bounds lower must be <= upper for every dimension.")
     return lower, upper
 
 
 def normalize_constraints(
-    constraints: Optional[Sequence[LinearConstraint]],
+    constraints: Sequence[LinearConstraint] | None,
     *,
     device: torch.device,
     dtype: torch.dtype,
-) -> List[Tuple[Tensor, Tensor, float]]:
+) -> list[tuple[Tensor, Tensor, float]]:
     """Normalize linear constraints to tensor tuples.
 
     Each constraint is ``(indices, coefficients, rhs)``.
@@ -72,7 +73,7 @@ def normalize_constraints(
     if constraints is None:
         return []
 
-    out: List[Tuple[Tensor, Tensor, float]] = []
+    out: list[tuple[Tensor, Tensor, float]] = []
     for indices, coefficients, rhs in constraints:
         idx = to_1d_long_tensor(indices, device=device)
         coef = to_1d_value_tensor(coefficients, device=device, dtype=dtype)
@@ -91,7 +92,7 @@ def dense_constraint_vector(indices: Tensor, coefficients: Tensor, *, d: int) ->
     return a
 
 
-def _apply_fixed_features(Xf: Tensor, fixed_features: Optional[Dict[int, float]]) -> Tensor:
+def _apply_fixed_features(Xf: Tensor, fixed_features: dict[int, float] | None) -> Tensor:
     if not fixed_features:
         return Xf
     for j, value in fixed_features.items():
@@ -105,8 +106,8 @@ def _make_allowed_mask(
     d: int,
     device: torch.device,
     dtype: torch.dtype,
-    fixed_features: Optional[Dict[int, float]] = None,
-    adjustable_mask: Optional[Tensor] = None,
+    fixed_features: dict[int, float] | None = None,
+    adjustable_mask: Tensor | None = None,
 ) -> Tensor:
     allowed = torch.ones(n, d, device=device, dtype=dtype)
     if adjustable_mask is not None:
@@ -124,11 +125,11 @@ def project_linear_constraints(
     X: Tensor,
     *,
     bounds: Tensor,
-    equality_constraints: Optional[Sequence[LinearConstraint]] = None,
-    inequality_constraints: Optional[Sequence[LinearConstraint]] = None,
+    equality_constraints: Sequence[LinearConstraint] | None = None,
+    inequality_constraints: Sequence[LinearConstraint] | None = None,
     inequality_sense: InequalitySense = "ge",
-    fixed_features: Optional[Dict[int, float]] = None,
-    adjustable_mask: Optional[Tensor] = None,
+    fixed_features: dict[int, float] | None = None,
+    adjustable_mask: Tensor | None = None,
     max_iters: int = 10,
     clamp_each_iter: bool = True,
 ) -> Tensor:
@@ -229,14 +230,14 @@ def project_linear_constraints(
 def make_linear_constraint_repair_func(
     *,
     bounds: Tensor,
-    equality_constraints: Optional[Sequence[LinearConstraint]] = None,
-    inequality_constraints: Optional[Sequence[LinearConstraint]] = None,
+    equality_constraints: Sequence[LinearConstraint] | None = None,
+    inequality_constraints: Sequence[LinearConstraint] | None = None,
     inequality_sense: InequalitySense = "ge",
-    fixed_features: Optional[Dict[int, float]] = None,
-    adjustable_mask: Optional[Tensor] = None,
+    fixed_features: dict[int, float] | None = None,
+    adjustable_mask: Tensor | None = None,
     max_iters: int = 10,
 ) -> Callable[[Tensor], Tensor]:
-    """Create a BoTorch-compatible linear-constraint post-processing function."""
+    """Create a BoTorch-supported linear-constraint post-processing function."""
 
     def repair(X: Tensor) -> Tensor:
         return project_linear_constraints(
@@ -256,10 +257,10 @@ def make_linear_constraint_repair_func(
 def linear_constraint_violations(
     X: Tensor,
     *,
-    equality_constraints: Optional[Sequence[LinearConstraint]] = None,
-    inequality_constraints: Optional[Sequence[LinearConstraint]] = None,
+    equality_constraints: Sequence[LinearConstraint] | None = None,
+    inequality_constraints: Sequence[LinearConstraint] | None = None,
     inequality_sense: InequalitySense = "ge",
-) -> Dict[str, Tensor]:
+) -> dict[str, Tensor]:
     """Return per-candidate linear-constraint violation magnitudes.
 
     Returns:
@@ -276,13 +277,13 @@ def linear_constraint_violations(
     eq_constraints = normalize_constraints(equality_constraints, device=device, dtype=dtype)
     ineq_constraints = normalize_constraints(inequality_constraints, device=device, dtype=dtype)
 
-    eq_vals: List[Tensor] = []
+    eq_vals: list[Tensor] = []
     for idxs, coeffs, rhs in eq_constraints:
         a = dense_constraint_vector(idxs, coeffs, d=d)
         lhs = (Xf * a).sum(dim=1)
         eq_vals.append((lhs - torch.as_tensor(rhs, device=device, dtype=dtype)).abs())
 
-    ineq_vals: List[Tensor] = []
+    ineq_vals: list[Tensor] = []
     for idxs, coeffs, rhs in ineq_constraints:
         a = dense_constraint_vector(idxs, coeffs, d=d)
         lhs = (Xf * a).sum(dim=1)
@@ -300,15 +301,15 @@ def linear_constraint_violations(
     return {"eq": eq, "ineq": ineq}
 
 
-def convert_legacy_constraints(
+def convert_old_constraints(
     constraint_indices: Sequence[Sequence[int]],
     constraint_coeffs: Sequence[Sequence[float]],
     constraint_targets: Sequence[float],
     constraint_ops: Sequence[str],
     *,
     inequality_sense: InequalitySense = "ge",
-) -> Tuple[List[LinearConstraint], List[LinearConstraint]]:
-    """Convert legacy ``idx/coefs/target/op`` constraints to normalized lists.
+) -> tuple[list[LinearConstraint], list[LinearConstraint]]:
+    """Convert old ``idx/coefs/target/op`` constraints to normalized lists.
 
     Args:
         constraint_indices: List of index lists.
@@ -320,8 +321,8 @@ def convert_legacy_constraints(
     Returns:
         ``(equality_constraints, inequality_constraints)``.
     """
-    equality_constraints: List[LinearConstraint] = []
-    inequality_constraints: List[LinearConstraint] = []
+    equality_constraints: list[LinearConstraint] = []
+    inequality_constraints: list[LinearConstraint] = []
 
     for idxs, coeffs, target, op in zip(
         constraint_indices,

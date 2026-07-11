@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import itertools
-from collections.abc import Callable, Sequence
-from typing import Literal, Optional
+from collections.abc import Callable
+from typing import Literal
 
 import torch
 from botorch.sampling.base import MCSampler
@@ -12,8 +11,8 @@ from torch import Tensor
 
 from bochan.acquisition.multiclass.base import ReductionType
 from bochan.acquisition.multiclass.bayesian_optimization.single_output import (
-    _MulticlassProbabilityBOBase,
     _finalize_multiclass_acq_output_to_batch,
+    _MulticlassProbabilityBOBase,
     ensure_q_batch,
 )
 
@@ -199,7 +198,7 @@ class _MulticlassActiveLearningBase(_MulticlassProbabilityBOBase):
         model,
         *,
         num_samples: int = 128,
-        sampler: Optional[MCSampler] = None,
+        sampler: MCSampler | None = None,
         reduction: ReductionType = "mean",
         apply_softmax_if_needed: bool = True,
         pending_penalty_weight: float = 0.0,
@@ -210,7 +209,7 @@ class _MulticlassActiveLearningBase(_MulticlassProbabilityBOBase):
         same_batch_penalty_beta: float = 10.0,
         X_observed: Tensor | None = None,
         eps: float = 1e-8,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
     ) -> None:
         if sampler is None:
             sampler = SobolQMCNormalSampler(sample_shape=torch.Size([int(num_samples)]))
@@ -234,7 +233,7 @@ class _MulticlassActiveLearningBase(_MulticlassProbabilityBOBase):
         self.num_samples = int(num_samples)
         self.active_objective = objective
 
-    # Backward-compatible aliases used by older hetero wrappers and notebooks.
+    # Backward-supported aliases used by older hetero wrappers and notebooks.
     def _ensure_q_batch(self, X: Tensor) -> Tensor:
         return ensure_q_batch(X)
 
@@ -242,7 +241,7 @@ class _MulticlassActiveLearningBase(_MulticlassProbabilityBOBase):
         return self._posterior_mean_probs(X)
 
     def _sample_probs(self, X: Tensor, *, num_samples: int | None = None) -> Tensor:
-        # ``num_samples`` is kept for API compatibility. The actual sample shape
+        # ``num_samples`` is kept for API support. The actual sample shape
         # comes from ``self.sampler``.
         return self._posterior_samples_as_probs(X)
 

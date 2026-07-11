@@ -1,21 +1,17 @@
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 import torch
-from torch import Tensor
-
+from botorch.models.utils.gpytorch_modules import MIN_INFERRED_NOISE_LEVEL
 from gpytorch.constraints import GreaterThan
 from gpytorch.likelihoods import GaussianLikelihood, MultitaskGaussianLikelihood
 from gpytorch.priors.torch_priors import LogNormalPrior
-
-from botorch.models.utils.gpytorch_modules import MIN_INFERRED_NOISE_LEVEL
+from torch import Tensor
 
 
 def get_batch_dimensions(
     train_X: Tensor,
     train_Y: Tensor,
-) -> Tuple[torch.Size, torch.Size]:
+) -> tuple[torch.Size, torch.Size]:
     """
     train_X / train_Y から BoTorch-style の batch_shape を推定する。
 
@@ -109,7 +105,7 @@ def _default_noise_prior() -> LogNormalPrior:
 
 def _make_noise_constraint(
     alpha: float = MIN_INFERRED_NOISE_LEVEL,
-    noise_prior: Optional[LogNormalPrior] = None,
+    noise_prior: LogNormalPrior | None = None,
 ) -> GreaterThan:
     """
     Gaussian likelihood 用の noise_constraint を作成する。
@@ -138,7 +134,7 @@ def _make_noise_constraint(
 def _make_noise_prior_and_constraint(
     use_noise_prior: bool,
     alpha: float = MIN_INFERRED_NOISE_LEVEL,
-) -> tuple[Optional[LogNormalPrior], GreaterThan]:
+) -> tuple[LogNormalPrior | None, GreaterThan]:
     """
     noise_prior と noise_constraint をまとめて作成する。
 
@@ -222,7 +218,7 @@ def build_multitask_likelihood(
     train_Y: Tensor,
     *,
     deep: bool = False,
-    rank: Optional[int] = None,
+    rank: int | None = None,
     alpha: float = MIN_INFERRED_NOISE_LEVEL,
 ) -> MultitaskGaussianLikelihood:
     """
@@ -288,7 +284,7 @@ def build_multitask_likelihood(
 
 
 # ---------------------------------------------------------------------
-# Backward-compatible aliases
+# Backward-supported aliases
 # ---------------------------------------------------------------------
 
 def singletasklikelihood(
@@ -314,7 +310,7 @@ def multitasklikelihood(
     train_X: Tensor,
     train_Y: Tensor,
     deep: bool = False,
-    rank: Optional[int] = None,
+    rank: int | None = None,
     alpha: float = MIN_INFERRED_NOISE_LEVEL,
 ) -> MultitaskGaussianLikelihood:
     """

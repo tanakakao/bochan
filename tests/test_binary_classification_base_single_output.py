@@ -1,56 +1,52 @@
 from __future__ import annotations
+
 import sys
+
 sys.path.append("..")
 sys.path.append("../../src")
 
-from typing import Any
 import warnings
 from contextlib import contextmanager
+from typing import Any
 
 import pytest
 import torch
-
-from gpytorch.mlls.variational_elbo import VariationalELBO
-
+from botorch.exceptions.warnings import BadInitialCandidatesWarning
 from botorch.models.transforms.input import Normalize
 from botorch.optim.optimize import optimize_acqf, optimize_acqf_mixed
-from botorch.exceptions.warnings import BadInitialCandidatesWarning
+from gpytorch.mlls.variational_elbo import VariationalELBO
 
+from bochan.acquisition.binary.active_learning import (
+    qBinaryBALD,
+    qBinaryMarginUncertainty,
+    qBinaryPredictiveEntropy,
+    qBinaryProbabilityVariance,
+)
+from bochan.acquisition.binary.bayesian_optimization import (
+    compute_binary_best_f,
+    qBinaryExpectedImprovement,
+    qBinaryProbabilityOfFeasibility,
+    qBinaryProbabilityOfImprovement,
+    qBinaryUpperConfidenceBound,
+)
+from bochan.acquisition.binary.levelset_estimation import (
+    qBinaryBoundaryVarianceAcquisition,
+    qBinaryClassEntropyAcquisition,
+    qBinaryICUAcquisition,
+    qBinaryLatentStraddleAcquisition,
+)
+from bochan.constraints import make_grid_k_sparse_post_processing_func
+from bochan.fit import fit_binary_classifier_mll
 from bochan.models.classification.binary.base import (
     BinaryClassificationGPModel,
     BinaryClassificationMixedGPModel,
 )
-from bochan.fit import fit_binary_classifier_mll
-
-from bochan.acquisition.binary.active_learning import (
-    qBinaryPredictiveEntropy,
-    qBinaryBALD,
-    qBinaryProbabilityVariance,
-    qBinaryMarginUncertainty,
-)
-from bochan.acquisition.binary.levelset_estimation import (
-    qBinaryLatentStraddleAcquisition,
-    qBinaryICUAcquisition,
-    qBinaryBoundaryVarianceAcquisition,
-    qBinaryClassEntropyAcquisition,
-)
-from bochan.acquisition.binary.bayesian_optimization import (
-    qBinaryProbabilityOfFeasibility,
-    qBinaryExpectedImprovement,
-    qBinaryProbabilityOfImprovement,
-    qBinaryUpperConfidenceBound,
-    compute_binary_best_f,
-)
-
-from bochan.constraints import make_grid_k_sparse_post_processing_func
-
 from bochan.optim import (
     optimize_acqf_evo,
-    optimize_acqf_torch,
     optimize_acqf_evo_mixed,
+    optimize_acqf_torch,
     optimize_acqf_torch_mixed,
 )
-
 
 DTYPE = torch.double
 DEVICE = torch.device("cpu")
@@ -243,7 +239,7 @@ def assert_model_training(
         "model.posterior(train_x).mean に NaN/inf が含まれます。"
     )
 
-    assert (0.0 <= mean).all() and (mean <= 1.0).all(), (
+    assert (mean >= 0.0).all() and (mean <= 1.0).all(), (
         "model.posterior(train_x).mean が probability range 外です。"
         f"min={mean.min().item()}, max={mean.max().item()}"
     )
@@ -516,7 +512,7 @@ def representative_acquisition_cases(
     train_x: torch.Tensor,
 ) -> list[tuple[type, dict[str, Any], str]]:
     """
-    optimizer compatibility test 用の代表 acquisition 一覧。
+    optimizer support test 用の代表 acquisition 一覧。
 
     全 acquisition × 全 optimizer × 全制約条件を毎回回すと重いため、
     性質の異なる代表だけに絞る。
@@ -583,7 +579,7 @@ def representative_acquisition_cases(
 
 
 # ============================================================
-# Constraint / optimizer compatibility helpers
+# Constraint / optimizer support helpers
 # ============================================================
 
 def optimizer_cases() -> list[tuple[str, str | None, str]]:
@@ -1261,7 +1257,7 @@ def print_linear_constraint_diagnostics(
 
 
 
-def assert_optimizer_compatibility_result(
+def assert_optimizer_support_result(
     *,
     cands: torch.Tensor,
     acq_value: torch.Tensor,
@@ -1271,7 +1267,7 @@ def assert_optimizer_compatibility_result(
     constraint_case: dict[str, Any],
     case_id: str,
 ) -> None:
-    """optimizer compatibility test の共通 assert。"""
+    """optimizer support test の共通 assert。"""
     assert cands.shape == torch.Size([q, d]), (
         f"{case_id}: 候補点 shape が想定外です。"
         f"expected={torch.Size([q, d])}, actual={cands.shape}"
@@ -1654,7 +1650,7 @@ def test_binary_mixed_acquisition_optimize_acqf_mixed_smoke(
 
 
 @pytest.mark.slow
-def test_binary_optimizer_constraint_compatibility_smoke() -> None:
+def test_binary_optimizer_constraint_support_smoke() -> None:
     """
     代表 acquisition で optimizer / constraint / step / k-sparse の互換性を確認する。
 
@@ -1703,7 +1699,7 @@ def test_binary_optimizer_constraint_compatibility_smoke() -> None:
             maxiter=30,
         )
 
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,
@@ -1716,7 +1712,7 @@ def test_binary_optimizer_constraint_compatibility_smoke() -> None:
 
 
 @pytest.mark.slow
-def test_binary_mixed_optimizer_constraint_compatibility_smoke() -> None:
+def test_binary_mixed_optimizer_constraint_support_smoke() -> None:
     """
     mixed binary model でも optimizer / constraint / step / k-sparse の互換性を確認する。
 
@@ -1782,7 +1778,7 @@ def test_binary_mixed_optimizer_constraint_compatibility_smoke() -> None:
             maxiter=30,
         )
 
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,
@@ -2109,7 +2105,7 @@ def run_jupyter_optimize_acqf_mixed_all_acquisitions_check(
 
 
 
-def run_jupyter_optimizer_constraint_compatibility_check(
+def run_jupyter_optimizer_constraint_support_check(
     *,
     n: int = 30,
     d: int = 5,
@@ -2153,7 +2149,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
         bundle。
     """
     if d < 5:
-        raise ValueError("constraint compatibility check では d >= 5 が必要です。")
+        raise ValueError("constraint support check では d >= 5 が必要です。")
 
     bundle = create_binary_model_bundle(
         cat=False,
@@ -2194,7 +2190,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
         )
 
     print("=" * 100)
-    print("Jupyter optimizer / constraint compatibility check")
+    print("Jupyter optimizer / constraint support check")
     print(
         f"n={n}, d={d}, q={q}, num_epochs={num_epochs}, "
         f"full_matrix={full_matrix}, "
@@ -2237,7 +2233,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
                     maxiter=30,
                 )
 
-            assert_optimizer_compatibility_result(
+            assert_optimizer_support_result(
                 cands=cands,
                 acq_value=acq_value,
                 bounds=bounds,
@@ -2285,13 +2281,13 @@ def run_jupyter_optimizer_constraint_compatibility_check(
         for case_id, exc in failed_cases:
             print(f"  - {case_id}: {type(exc).__name__}: {exc}")
     else:
-        print("all optimizer / constraint compatibility checks passed.")
+        print("all optimizer / constraint support checks passed.")
     print("=" * 100)
 
     return bundle
 
 
-def run_jupyter_mixed_optimizer_constraint_compatibility_check(
+def run_jupyter_mixed_optimizer_constraint_support_check(
     *,
     n: int = 30,
     d: int = 5,
@@ -2335,7 +2331,7 @@ def run_jupyter_mixed_optimizer_constraint_compatibility_check(
         bundle。
     """
     if d < 5:
-        raise ValueError("constraint compatibility check では d >= 5 が必要です。")
+        raise ValueError("constraint support check では d >= 5 が必要です。")
 
     bundle = create_binary_model_bundle(
         cat=True,
@@ -2407,7 +2403,7 @@ def run_jupyter_mixed_optimizer_constraint_compatibility_check(
             )
 
     print("=" * 100)
-    print("Jupyter mixed optimizer / constraint compatibility check")
+    print("Jupyter mixed optimizer / constraint support check")
     print(
         f"n={n}, d={d}, q={q}, num_epochs={num_epochs}, "
         f"full_matrix={full_matrix}, "
@@ -2452,7 +2448,7 @@ def run_jupyter_mixed_optimizer_constraint_compatibility_check(
                     maxiter=30,
                 )
 
-            assert_optimizer_compatibility_result(
+            assert_optimizer_support_result(
                 cands=cands,
                 acq_value=acq_value,
                 bounds=bounds,
@@ -2507,7 +2503,7 @@ def run_jupyter_mixed_optimizer_constraint_compatibility_check(
         for case_id, exc in failed_cases:
             print(f"  - {case_id}: {type(exc).__name__}: {exc}")
     else:
-        print("all mixed optimizer / constraint compatibility checks passed.")
+        print("all mixed optimizer / constraint support checks passed.")
     print("=" * 100)
 
     return bundle
@@ -2539,7 +2535,7 @@ def run_jupyter_all_checks(
                 3. evo / torch / 制約 / step / k-sparse の代表 acquisition
                    通常モデルと mixed モデルの両方
         full_matrix:
-            optimizer / constraint compatibility で代表 acquisition × optimizer × 制約ケースの
+            optimizer / constraint support で代表 acquisition × optimizer × 制約ケースの
             全組み合わせを回すか。optimize_acqf / optimize_acqf_mixed 側は常に全 acquisition。
         verbose_forward_detail:
             True の場合、forward check の OK ケースで shape / min / max / finite も表示する。
@@ -2547,14 +2543,14 @@ def run_jupyter_all_checks(
         continue_on_error:
             True の場合、失敗しても次のケースに進む。
         verbose_ok_detail:
-            True の場合、optimizer / constraint compatibility の OK ケースで
+            True の場合、optimizer / constraint support の OK ケースで
             cands.shape と acq_value も表示する。
             False の場合、OK ケースは [OK ] case_id のみ表示する。
         verbose_candidates:
-            True の場合、optimizer / constraint compatibility の OK ケースでも
+            True の場合、optimizer / constraint support の OK ケースでも
             cands や簡易集計を表示する。
         verbose_constraints:
-            True の場合、optimizer / constraint compatibility の OK ケースでも
+            True の場合、optimizer / constraint support の OK ケースでも
             制約診断を表示する。
     """
     run_jupyter_forward_check(
@@ -2585,7 +2581,7 @@ def run_jupyter_all_checks(
 
         # 2) evo / torch / 制約 / step / k-sparse は代表 acquisition のみで確認する。
         #    通常モデルと mixed モデルの両方を実行する。
-        run_jupyter_optimizer_constraint_compatibility_check(
+        run_jupyter_optimizer_constraint_support_check(
             num_epochs=num_epochs,
             full_matrix=full_matrix,
             continue_on_error=continue_on_error,
@@ -2595,7 +2591,7 @@ def run_jupyter_all_checks(
             suppress_botorch_warnings=suppress_botorch_warnings,
         )
 
-        run_jupyter_mixed_optimizer_constraint_compatibility_check(
+        run_jupyter_mixed_optimizer_constraint_support_check(
             num_epochs=num_epochs,
             full_matrix=full_matrix,
             continue_on_error=continue_on_error,

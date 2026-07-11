@@ -7,7 +7,8 @@ passes.
 
 from __future__ import annotations
 
-from typing import Callable, Literal, Optional, Sequence, Union
+from collections.abc import Callable, Sequence
+from typing import Literal, Union
 
 import torch
 from torch import Tensor
@@ -29,10 +30,10 @@ def identity_post_processing_func(X: Tensor) -> Tensor:
 
 
 def _as_1d_long_tensor(
-    x: Optional[Union[Sequence[int], Tensor]],
+    x: Sequence[int] | Tensor | None,
     *,
     device: torch.device,
-) -> Optional[Tensor]:
+) -> Tensor | None:
     if x is None:
         return None
     return torch.as_tensor(x, dtype=torch.long, device=device).reshape(-1)
@@ -57,7 +58,7 @@ def resolve_step_full(
     steps: StepLike,
     *,
     d: int,
-    numeric_indices: Optional[Tensor],
+    numeric_indices: Tensor | None,
     device: torch.device,
     dtype: torch.dtype,
 ) -> Tensor:
@@ -96,10 +97,10 @@ def resolve_step_full(
 def round_numeric(
     X: Tensor,
     *,
-    steps: Optional[StepLike] = None,
+    steps: StepLike | None = None,
     bounds: Tensor,
-    base: Optional[TensorLike] = None,
-    numeric_indices: Optional[Union[Sequence[int], Tensor]] = None,
+    base: TensorLike | None = None,
+    numeric_indices: Sequence[int] | Tensor | None = None,
     clamp: bool = True,
 ) -> Tensor:
     """Round selected numeric dimensions to a regular grid.
@@ -159,11 +160,11 @@ def round_numeric(
 def round_numeric_preserve_sparse_support(
     X: Tensor,
     *,
-    steps: Optional[StepLike] = None,
+    steps: StepLike | None = None,
     bounds: Tensor,
-    base: Optional[TensorLike] = None,
-    numeric_indices: Optional[Union[Sequence[int], Tensor]] = None,
-    sparse_indices: Optional[Union[Sequence[int], Tensor]] = None,
+    base: TensorLike | None = None,
+    numeric_indices: Sequence[int] | Tensor | None = None,
+    sparse_indices: Sequence[int] | Tensor | None = None,
     support_eps: float = 0.0,
 ) -> Tensor:
     """Round numeric dimensions while preserving inactive sparse components.
@@ -200,14 +201,14 @@ def round_numeric_preserve_sparse_support(
 
 def make_grid_rounding_post_processing_func(
     *,
-    steps: Optional[StepLike] = None,
+    steps: StepLike | None = None,
     bounds: Tensor,
-    base: Optional[TensorLike] = None,
-    numeric_indices: Optional[Union[Sequence[int], Tensor]] = None,
-    sparse_indices: Optional[Union[Sequence[int], Tensor]] = None,
+    base: TensorLike | None = None,
+    numeric_indices: Sequence[int] | Tensor | None = None,
+    sparse_indices: Sequence[int] | Tensor | None = None,
     support_eps: float = 0.0,
 ) -> Callable[[Tensor], Tensor]:
-    """Create a BoTorch-compatible grid-rounding post-processing function.
+    """Create a BoTorch-supported grid-rounding post-processing function.
 
     If ``steps`` is ``None``, no grid rounding is applied and an identity
     function is returned.  This makes optional grid rounding easy to compose
@@ -241,15 +242,15 @@ def make_grid_rounding_post_processing_func(
 
 def make_grid_rounding_with_linear_repair_func(
     *,
-    steps: Optional[StepLike] = None,
+    steps: StepLike | None = None,
     bounds: Tensor,
-    base: Optional[TensorLike] = None,
-    numeric_indices: Optional[Union[Sequence[int], Tensor]] = None,
-    sparse_indices: Optional[Union[Sequence[int], Tensor]] = None,
-    equality_constraints: Optional[Sequence[LinearConstraint]] = None,
-    inequality_constraints: Optional[Sequence[LinearConstraint]] = None,
+    base: TensorLike | None = None,
+    numeric_indices: Sequence[int] | Tensor | None = None,
+    sparse_indices: Sequence[int] | Tensor | None = None,
+    equality_constraints: Sequence[LinearConstraint] | None = None,
+    inequality_constraints: Sequence[LinearConstraint] | None = None,
     inequality_sense: Literal["ge", "le"] = "ge",
-    fixed_features: Optional[dict[int, float]] = None,
+    fixed_features: dict[int, float] | None = None,
     max_iters: int = 8,
     num_alternations: int = 2,
     final_priority: FinalPriority = "grid",
@@ -301,10 +302,10 @@ def make_grid_rounding_with_linear_repair_func(
 def grid_residual(
     X: Tensor,
     *,
-    steps: Optional[StepLike] = None,
+    steps: StepLike | None = None,
     bounds: Tensor,
-    base: Optional[TensorLike] = None,
-    numeric_indices: Optional[Union[Sequence[int], Tensor]] = None,
+    base: TensorLike | None = None,
+    numeric_indices: Sequence[int] | Tensor | None = None,
 ) -> Tensor:
     """Return distance from the nearest grid point in step units.
 

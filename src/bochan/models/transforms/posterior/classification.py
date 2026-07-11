@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 import torch
 from torch import Tensor
@@ -9,7 +9,7 @@ class MeanVariancePosterior:
     def __init__(
         self,
         mean: torch.Tensor,
-        variance: Optional[torch.Tensor],
+        variance: torch.Tensor | None,
         *,
         q_dim: int = -2,
     ) -> None:
@@ -92,9 +92,9 @@ class AggregatedPerturbedPosterior:
 
     posterior: Any
     mean: Tensor
-    variance: Optional[Tensor]
+    variance: Tensor | None
     mean_per_w: Tensor
-    variance_per_w: Optional[Tensor]
+    variance_per_w: Tensor | None
     q_dim: int
 
 
@@ -135,7 +135,7 @@ def _infer_posterior_q_dim(
     if len(q_candidates) == 1:
         return q_candidates[0]
 
-    # Backward-compatible fallbacks for the historical layouts.
+    # Backward-supported fallbacks for the historical layouts.
     for q_dim in (moment.ndim - 2, moment.ndim - 3, moment.ndim - 1):
         if 0 <= q_dim < moment.ndim and int(moment.shape[q_dim]) in valid_sizes:
             return q_dim
@@ -149,12 +149,12 @@ def _infer_posterior_q_dim(
 
 
 def _canonicalize_perturbed_moment_shape(
-    moment: Optional[Tensor],
+    moment: Tensor | None,
     *,
     posterior: Any,
     q: int,
     n_w: int,
-) -> tuple[Optional[Tensor], Optional[int]]:
+) -> tuple[Tensor | None, int | None]:
     """Canonicalize a posterior moment and return its q-axis index.
 
     Some single-output multiclass posteriors expose ``[..., q_like, 1, C]``.
@@ -190,7 +190,7 @@ def _canonicalize_variance(
     n_w: int,
     q_dim: int,
     squeezed_output: bool,
-) -> Optional[Tensor]:
+) -> Tensor | None:
     if not hasattr(posterior, "variance"):
         return None
 
@@ -222,7 +222,7 @@ def aggregate_perturbed_posterior(
         "none",
     ] = "total",
     observation_noise: bool = False,
-    posterior_transform: Optional[Any] = None,
+    posterior_transform: Any | None = None,
     strict: bool = False,
     **posterior_kwargs: Any,
 ) -> AggregatedPerturbedPosterior:

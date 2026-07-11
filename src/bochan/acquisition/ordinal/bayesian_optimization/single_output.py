@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from . import legacy_single_output as _legacy
-from .legacy_single_output import *
-from .legacy_single_output import (
+from . import single_output_removed_api as _old
+from .single_output_removed_api import *
+from .single_output_removed_api import (
     _apply_input_transform_for_pending,
     _cat_dims_from_model,
     _coerce_pending_to_tensor,
@@ -18,8 +18,8 @@ from .legacy_single_output import (
 from .utility_acquisitions import (
     OrdinalQBatchMode,
     OrdinalQReduction,
-    qOrdinalExpectedUtility,
     qOrdinalExpectedImprovement,
+    qOrdinalExpectedUtility,
     qOrdinalProbabilityOfImprovement,
     qOrdinalUpperConfidenceBound,
 )
@@ -33,7 +33,7 @@ _REPLACED = {
 
 __all__ = [
     name
-    for name in getattr(_legacy, "__all__", [])
+    for name in getattr(_old, "__all__", [])
     if name not in _REPLACED
 ]
 __all__ += [

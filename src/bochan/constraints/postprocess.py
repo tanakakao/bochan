@@ -3,19 +3,20 @@
 from __future__ import annotations
 
 import inspect
-from typing import Callable, Dict, List, Literal, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Literal
 
 import torch
 from torch import Tensor
 
 from .constraints import LinearConstraint, linear_constraint_violations, normalize_bounds
-from .rounding import grid_residual, make_grid_rounding_post_processing_func
 from .ksparse import make_k_sparse_post_processing_func
+from .rounding import grid_residual, make_grid_rounding_post_processing_func
 
 FinalPriority = Literal["grid", "constraints"]
 
 
-def compose_post_processing_funcs(*funcs: Optional[Callable[[Tensor], Tensor]]) -> Callable[[Tensor], Tensor]:
+def compose_post_processing_funcs(*funcs: Callable[[Tensor], Tensor] | None) -> Callable[[Tensor], Tensor]:
     """Compose multiple ``Tensor -> Tensor`` post-processing functions.
 
     ``None`` entries are ignored, so optional pipeline parts can be assembled
@@ -45,7 +46,7 @@ def _infer_grid_base_from_repair_context(bounds: Tensor) -> Tensor:
     Rules:
         - ``CandidateRepairConfig.bounds is None`` -> zero-origin grid.
         - ``CandidateRepairConfig.bounds is not None`` -> ``bounds[0]`` origin.
-        - Non-factory callers -> ``bounds[0]`` origin for backward compatibility.
+        - Non-factory callers -> ``bounds[0]`` origin for backward support.
     """
     frame = inspect.currentframe()
     try:
@@ -63,22 +64,22 @@ def _infer_grid_base_from_repair_context(bounds: Tensor) -> Tensor:
 def make_grid_k_sparse_post_processing_func(
     *,
     bounds: Tensor,
-    steps: Optional[Tensor] = None,
-    comp_idx: Optional[Sequence[int]] = None,
+    steps: Tensor | None = None,
+    comp_idx: Sequence[int] | None = None,
     k: int = 0,
-    numeric_indices: Optional[Sequence[int]] = None,
-    equality_constraints: Optional[List[LinearConstraint]] = None,
-    inequality_constraints: Optional[List[LinearConstraint]] = None,
+    numeric_indices: Sequence[int] | None = None,
+    equality_constraints: list[LinearConstraint] | None = None,
+    inequality_constraints: list[LinearConstraint] | None = None,
     inequality_sense: Literal["le", "ge"] = "le",
-    fixed_features: Optional[Dict[int, float]] = None,
-    final_sum_constraint: Optional[tuple[Sequence[int], float]] = None,
+    fixed_features: dict[int, float] | None = None,
+    final_sum_constraint: tuple[Sequence[int], float] | None = None,
     diversify: bool = False,
-    diversify_kwargs: Optional[Dict] = None,
+    diversify_kwargs: dict | None = None,
     score: Literal["abs", "value"] = "abs",
     support_selection: Literal["topk", "sample"] = "topk",
     sample_tau: float = 0.2,
     sample_eps: float = 0.05,
-    generator: Optional[torch.Generator] = None,
+    generator: torch.Generator | None = None,
     max_iters: int = 12,
     num_alternations: int = 2,
     final_priority: FinalPriority = "grid",
@@ -110,7 +111,7 @@ def make_grid_k_sparse_post_processing_func(
             ends with k-sparse / linear repair.
 
     Returns:
-        BoTorch-compatible ``post_processing_func``.
+        BoTorch-supported ``post_processing_func``.
     """
     comp_idx = [] if comp_idx is None else list(comp_idx)
 
@@ -164,16 +165,16 @@ def validate_post_processed_candidates(
     X: Tensor,
     *,
     bounds: Tensor,
-    steps: Optional[Tensor] = None,
-    numeric_indices: Optional[Sequence[int]] = None,
-    base: Optional[Tensor] = None,
-    comp_idx: Optional[Sequence[int]] = None,
-    k: Optional[int] = None,
-    equality_constraints: Optional[Sequence[LinearConstraint]] = None,
-    inequality_constraints: Optional[Sequence[LinearConstraint]] = None,
+    steps: Tensor | None = None,
+    numeric_indices: Sequence[int] | None = None,
+    base: Tensor | None = None,
+    comp_idx: Sequence[int] | None = None,
+    k: int | None = None,
+    equality_constraints: Sequence[LinearConstraint] | None = None,
+    inequality_constraints: Sequence[LinearConstraint] | None = None,
     inequality_sense: Literal["ge", "le"] = "ge",
     tol: float = 1e-6,
-) -> Dict[str, object]:
+) -> dict[str, object]:
     """Validate bounds, grid, k-sparse, and linear constraints.
 
     Returns a small dictionary of scalar diagnostics.  This function is useful
@@ -189,7 +190,7 @@ def validate_post_processed_candidates(
     lower_violation = torch.clamp(lower - X, min=0.0).max().item()
     upper_violation = torch.clamp(X - upper, min=0.0).max().item()
 
-    result: Dict[str, object] = {
+    result: dict[str, object] = {
         "lower_violation": float(lower_violation),
         "upper_violation": float(upper_violation),
         "is_bounds_ok": lower_violation <= tol and upper_violation <= tol,

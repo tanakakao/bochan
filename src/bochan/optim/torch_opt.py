@@ -15,11 +15,12 @@ Typical use cases:
 
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Literal, Optional, Sequence, Tuple
+from collections.abc import Callable, Sequence
+from typing import Literal
 
 import torch
-from torch import Tensor
 from botorch.acquisition.acquisition import AcquisitionFunction
+from torch import Tensor
 
 try:
     from ..constraints.k_sparse import (
@@ -46,7 +47,7 @@ InequalitySense = Literal["ge", "le"]
 
 def _set_X_pending_on_acqf(
     acq_function: AcquisitionFunction,
-    X_pending: Optional[Tensor],
+    X_pending: Tensor | None,
 ) -> None:
     """Set ``X_pending`` when the acquisition function supports it."""
     if hasattr(acq_function, "set_X_pending"):
@@ -56,9 +57,9 @@ def _set_X_pending_on_acqf(
 
 
 def _compose_post_processing(
-    first: Optional[Callable[[Tensor], Tensor]],
-    second: Optional[Callable[[Tensor], Tensor]],
-) -> Optional[Callable[[Tensor], Tensor]]:
+    first: Callable[[Tensor], Tensor] | None,
+    second: Callable[[Tensor], Tensor] | None,
+) -> Callable[[Tensor], Tensor] | None:
     if first is None:
         return second
     if second is None:
@@ -71,9 +72,9 @@ def _compose_post_processing(
 
 
 def _merge_fixed_features(
-    *items: Optional[Dict[int, float]],
-) -> Dict[int, float]:
-    merged: Dict[int, float] = {}
+    *items: dict[int, float] | None,
+) -> dict[int, float]:
+    merged: dict[int, float] = {}
     for item in items:
         if not item:
             continue
@@ -89,7 +90,7 @@ def _merge_fixed_features(
     return merged
 
 
-def _apply_fixed_features(X: Tensor, fixed_features: Optional[Dict[int, float]]) -> Tensor:
+def _apply_fixed_features(X: Tensor, fixed_features: dict[int, float] | None) -> Tensor:
     if not fixed_features:
         return X
     X_new = X.clone()
@@ -102,7 +103,7 @@ def _project_to_box_and_fixed_(
     X: Tensor,
     *,
     bounds: Tensor,
-    fixed_features: Optional[Dict[int, float]],
+    fixed_features: dict[int, float] | None,
 ) -> None:
     """In-place projection onto box bounds and fixed features."""
     lower = bounds[0].to(device=X.device, dtype=X.dtype)
@@ -116,8 +117,8 @@ def _project_to_box_and_fixed_(
 def _linear_constraints_penalty(
     X: Tensor,
     *,
-    inequality_constraints: Optional[List[LinearConstraint]],
-    equality_constraints: Optional[List[LinearConstraint]],
+    inequality_constraints: list[LinearConstraint] | None,
+    equality_constraints: list[LinearConstraint] | None,
     inequality_sense: InequalitySense,
     penalty_factor: float,
 ) -> Tensor:
@@ -169,7 +170,7 @@ def _evaluate_acq_values(
 def _make_optimizer(
     method: TorchOptimizerName,
     params: Sequence[Tensor],
-    options: Dict,
+    options: dict,
 ) -> torch.optim.Optimizer:
     method_l = method.lower()
     lr = float(options.get("lr", 0.01))
@@ -200,11 +201,11 @@ def _make_optimizer(
             params,
             lr=lr,
             max_iter=int(options.get("lbfgs_max_iter", 20)),
-            max_eval=options.get("lbfgs_max_eval", None),
+            max_eval=options.get("lbfgs_max_eval"),
             tolerance_grad=float(options.get("lbfgs_tolerance_grad", 1e-7)),
             tolerance_change=float(options.get("lbfgs_tolerance_change", 1e-9)),
             history_size=int(options.get("lbfgs_history_size", 10)),
-            line_search_fn=options.get("lbfgs_line_search_fn", None),
+            line_search_fn=options.get("lbfgs_line_search_fn"),
         )
     raise ValueError(f"Unknown torch optimizer method: {method}")
 
@@ -212,8 +213,8 @@ def _make_optimizer(
 def _prepare_candidate_for_eval(
     X: Tensor,
     *,
-    candidate_transform: Optional[Callable[[Tensor], Tensor]],
-    post_processing_func: Optional[Callable[[Tensor], Tensor]],
+    candidate_transform: Callable[[Tensor], Tensor] | None,
+    post_processing_func: Callable[[Tensor], Tensor] | None,
     apply_post_processing_during_eval: bool,
 ) -> Tensor:
     X_eval = X
@@ -228,11 +229,11 @@ def _score_candidates_no_grad(
     acq_function: AcquisitionFunction,
     X: Tensor,
     *,
-    candidate_transform: Optional[Callable[[Tensor], Tensor]],
-    post_processing_func: Optional[Callable[[Tensor], Tensor]],
+    candidate_transform: Callable[[Tensor], Tensor] | None,
+    post_processing_func: Callable[[Tensor], Tensor] | None,
     apply_post_processing_during_eval: bool,
-    inequality_constraints: Optional[List[LinearConstraint]],
-    equality_constraints: Optional[List[LinearConstraint]],
+    inequality_constraints: list[LinearConstraint] | None,
+    equality_constraints: list[LinearConstraint] | None,
     inequality_sense: InequalitySense,
     penalty_factor: float,
 ) -> Tensor:
@@ -262,16 +263,16 @@ def _make_random_initial_conditions(
     bounds: Tensor,
     q: int,
     num_restarts: int,
-    raw_samples: Optional[int],
-    fixed_features: Optional[Dict[int, float]],
-    candidate_transform: Optional[Callable[[Tensor], Tensor]],
-    post_processing_func: Optional[Callable[[Tensor], Tensor]],
+    raw_samples: int | None,
+    fixed_features: dict[int, float] | None,
+    candidate_transform: Callable[[Tensor], Tensor] | None,
+    post_processing_func: Callable[[Tensor], Tensor] | None,
     repair_initial_conditions: bool,
-    inequality_constraints: Optional[List[LinearConstraint]],
-    equality_constraints: Optional[List[LinearConstraint]],
+    inequality_constraints: list[LinearConstraint] | None,
+    equality_constraints: list[LinearConstraint] | None,
     inequality_sense: InequalitySense,
     penalty_factor: float,
-    options: Dict,
+    options: dict,
 ) -> Tensor:
     """Generate random initial conditions and downselect by acquisition value."""
     device, dtype = bounds.device, bounds.dtype
@@ -279,7 +280,7 @@ def _make_random_initial_conditions(
     n_raw = int(raw_samples or max(num_restarts, 1))
     n_raw = max(n_raw, num_restarts)
 
-    generator = options.get("generator", None)
+    generator = options.get("generator")
     lower = bounds[0].to(device=device, dtype=dtype)
     upper = bounds[1].to(device=device, dtype=dtype)
     Xraw = lower + torch.rand(n_raw, q, d, device=device, dtype=dtype, generator=generator) * (upper - lower)
@@ -319,8 +320,8 @@ def _normalize_batch_initial_conditions(
     *,
     bounds: Tensor,
     q: int,
-    fixed_features: Optional[Dict[int, float]],
-    post_processing_func: Optional[Callable[[Tensor], Tensor]],
+    fixed_features: dict[int, float] | None,
+    post_processing_func: Callable[[Tensor], Tensor] | None,
     repair_initial_conditions: bool,
 ) -> Tensor:
     X0 = batch_initial_conditions.to(device=bounds.device, dtype=bounds.dtype)
@@ -345,21 +346,21 @@ def _optimize_acqf_torch_batch(
     q: int,
     method: TorchOptimizerName,
     num_restarts: int,
-    raw_samples: Optional[int],
-    inequality_constraints: Optional[List[LinearConstraint]],
-    equality_constraints: Optional[List[LinearConstraint]],
+    raw_samples: int | None,
+    inequality_constraints: list[LinearConstraint] | None,
+    equality_constraints: list[LinearConstraint] | None,
     inequality_sense: InequalitySense,
-    fixed_features: Optional[Dict[int, float]],
-    post_processing_func: Optional[Callable[[Tensor], Tensor]],
-    candidate_transform: Optional[Callable[[Tensor], Tensor]],
-    batch_initial_conditions: Optional[Tensor],
-    options: Dict,
-) -> Tuple[Tensor, Tensor]:
+    fixed_features: dict[int, float] | None,
+    post_processing_func: Callable[[Tensor], Tensor] | None,
+    candidate_transform: Callable[[Tensor], Tensor] | None,
+    batch_initial_conditions: Tensor | None,
+    options: dict,
+) -> tuple[Tensor, Tensor]:
     """Optimize a q-batch with torch.optim and return best candidate."""
     fixed_features = {int(k): float(v) for k, v in (fixed_features or {}).items()}
     num_steps = int(options.get("num_steps", 100))
     penalty_factor = float(options.get("penalty_factor", 1e3))
-    grad_clip_norm = options.get("grad_clip_norm", None)
+    grad_clip_norm = options.get("grad_clip_norm")
     repair_initial_conditions = bool(options.get("repair_initial_conditions", True))
     apply_post_processing_during_eval = bool(options.get("apply_post_processing_during_eval", False))
     apply_post_processing_after_step = bool(options.get("apply_post_processing_after_step", False))
@@ -496,19 +497,19 @@ def optimize_acqf_torch(
     q: int = 1,
     method: TorchOptimizerName = "adam",
     num_restarts: int = 10,
-    raw_samples: Optional[int] = 512,
-    inequality_constraints: Optional[List[LinearConstraint]] = None,
-    equality_constraints: Optional[List[LinearConstraint]] = None,
-    fixed_features: Optional[Dict[int, float]] = None,
-    post_processing_func: Optional[Callable[[Tensor], Tensor]] = None,
-    batch_initial_conditions: Optional[Tensor] = None,
+    raw_samples: int | None = 512,
+    inequality_constraints: list[LinearConstraint] | None = None,
+    equality_constraints: list[LinearConstraint] | None = None,
+    fixed_features: dict[int, float] | None = None,
+    post_processing_func: Callable[[Tensor], Tensor] | None = None,
+    batch_initial_conditions: Tensor | None = None,
     return_best_only: bool = True,
     sequential: bool = False,
-    options: Optional[Dict] = None,
-    candidate_transform: Optional[Callable[[Tensor], Tensor]] = None,
-    X_pending: Optional[Tensor] = None,
+    options: dict | None = None,
+    candidate_transform: Callable[[Tensor], Tensor] | None = None,
+    X_pending: Tensor | None = None,
     inequality_sense: InequalitySense = "le",
-) -> Tuple[Tensor, Tensor]:
+) -> tuple[Tensor, Tensor]:
     """Optimize an acquisition function with ``torch.optim``.
 
     The interface follows the common arguments of BoTorch's ``optimize_acqf``.
@@ -548,13 +549,13 @@ def optimize_acqf_torch(
     bounds = bounds.to(dtype=bounds.dtype)
     base_X_pending = X_pending
     if base_X_pending is None and hasattr(acq_function, "X_pending"):
-        base_X_pending = getattr(acq_function, "X_pending")
+        base_X_pending = acq_function.X_pending
 
-    def _run_single(q_local: int, X_pending_local: Optional[Tensor]) -> Tuple[Tensor, Tensor]:
+    def _run_single(q_local: int, X_pending_local: Tensor | None) -> tuple[Tensor, Tensor]:
         _set_X_pending_on_acqf(acq_function, X_pending_local)
         bic = batch_initial_conditions
         if bic is not None and q_local != q:
-            # Sequential optimization uses q_local=1.  Reuse only if compatible.
+            # Sequential optimization uses q_local=1.  Reuse only if supported.
             bic_t = bic.to(device=bounds.device, dtype=bounds.dtype)
             if bic_t.ndim == 3 and bic_t.shape[-2] >= 1:
                 bic = bic_t[:, :1, :]
@@ -582,8 +583,8 @@ def optimize_acqf_torch(
     if (not sequential) or q == 1:
         return _run_single(q, base_X_pending)
 
-    selected: List[Tensor] = []
-    values: List[Tensor] = []
+    selected: list[Tensor] = []
+    values: list[Tensor] = []
     for _ in range(q):
         cur_pending = base_X_pending
         if selected:
@@ -601,22 +602,22 @@ def optimize_acqf_torch_mixed(
     bounds: Tensor,
     q: int = 1,
     method: TorchOptimizerName = "adam",
-    fixed_features_list: Optional[List[Dict[int, float]]] = None,
-    categorical_features: Optional[Dict[int, Sequence[float]]] = None,
-    fixed_features: Optional[Dict[int, float]] = None,
+    fixed_features_list: list[dict[int, float]] | None = None,
+    categorical_features: dict[int, Sequence[float]] | None = None,
+    fixed_features: dict[int, float] | None = None,
     num_restarts: int = 10,
-    raw_samples: Optional[int] = 512,
-    inequality_constraints: Optional[List[LinearConstraint]] = None,
-    equality_constraints: Optional[List[LinearConstraint]] = None,
-    post_processing_func: Optional[Callable[[Tensor], Tensor]] = None,
-    batch_initial_conditions: Optional[Tensor] = None,
+    raw_samples: int | None = 512,
+    inequality_constraints: list[LinearConstraint] | None = None,
+    equality_constraints: list[LinearConstraint] | None = None,
+    post_processing_func: Callable[[Tensor], Tensor] | None = None,
+    batch_initial_conditions: Tensor | None = None,
     return_best_only: bool = True,
     sequential: bool = False,
-    options: Optional[Dict] = None,
-    candidate_transform: Optional[Callable[[Tensor], Tensor]] = None,
-    X_pending: Optional[Tensor] = None,
+    options: dict | None = None,
+    candidate_transform: Callable[[Tensor], Tensor] | None = None,
+    X_pending: Tensor | None = None,
     inequality_sense: InequalitySense = "le",
-) -> Tuple[Tensor, Tensor]:
+) -> tuple[Tensor, Tensor]:
     """Mixed-variable torch optimizer.
 
     This mirrors the role of BoTorch's ``optimize_acqf_mixed``: each entry in
@@ -642,11 +643,11 @@ def optimize_acqf_torch_mixed(
 
     base_X_pending = X_pending
     if base_X_pending is None and hasattr(acq_function, "X_pending"):
-        base_X_pending = getattr(acq_function, "X_pending")
+        base_X_pending = acq_function.X_pending
 
-    def _best_for_assignments(q_local: int, X_pending_local: Optional[Tensor]) -> Tuple[Tensor, Tensor]:
-        candidates: List[Tensor] = []
-        values: List[Tensor] = []
+    def _best_for_assignments(q_local: int, X_pending_local: Tensor | None) -> tuple[Tensor, Tensor]:
+        candidates: list[Tensor] = []
+        values: list[Tensor] = []
         for ff in fixed_features_list or []:
             X_i, v_i = optimize_acqf_torch(
                 acq_function=acq_function,
@@ -676,8 +677,8 @@ def optimize_acqf_torch_mixed(
     if (not sequential) or q == 1:
         return _best_for_assignments(q, base_X_pending)
 
-    selected: List[Tensor] = []
-    values: List[Tensor] = []
+    selected: list[Tensor] = []
+    values: list[Tensor] = []
     for _ in range(q):
         cur_pending = base_X_pending
         if selected:
@@ -695,26 +696,26 @@ def optimize_acqf_torch_k_sparse(
     q: int = 1,
     method: TorchOptimizerName = "adam",
     num_restarts: int = 10,
-    raw_samples: Optional[int] = 512,
+    raw_samples: int | None = 512,
     *,
     comp_idx: Sequence[int],
     k: int,
     score: ScoreMode = "abs",
-    equality_constraints: Optional[List[LinearConstraint]] = None,
-    inequality_constraints: Optional[List[LinearConstraint]] = None,
+    equality_constraints: list[LinearConstraint] | None = None,
+    inequality_constraints: list[LinearConstraint] | None = None,
     inequality_sense: InequalitySense = "le",
-    fixed_features: Optional[Dict[int, float]] = None,
-    final_sum_constraint: Optional[Tuple[Sequence[int], float]] = None,
+    fixed_features: dict[int, float] | None = None,
+    final_sum_constraint: tuple[Sequence[int], float] | None = None,
     diversify: bool = False,
-    diversify_kwargs: Optional[Dict] = None,
+    diversify_kwargs: dict | None = None,
     support_selection: SupportSelection = "topk",
-    batch_initial_conditions: Optional[Tensor] = None,
+    batch_initial_conditions: Tensor | None = None,
     return_best_only: bool = True,
     sequential: bool = False,
-    options: Optional[Dict] = None,
-    candidate_transform: Optional[Callable[[Tensor], Tensor]] = None,
-    X_pending: Optional[Tensor] = None,
-) -> Tuple[Tensor, Tensor]:
+    options: dict | None = None,
+    candidate_transform: Callable[[Tensor], Tensor] | None = None,
+    X_pending: Tensor | None = None,
+) -> tuple[Tensor, Tensor]:
     """k-sparse convenience wrapper around :func:`optimize_acqf_torch`."""
     options = dict(options or {})
     post = make_k_sparse_post_processing_func(
@@ -778,30 +779,30 @@ def optimize_acqf_torch_mixed_k_sparse(
     bounds: Tensor,
     q: int = 1,
     method: TorchOptimizerName = "adam",
-    fixed_features_list: Optional[List[Dict[int, float]]] = None,
-    categorical_features: Optional[Dict[int, Sequence[float]]] = None,
+    fixed_features_list: list[dict[int, float]] | None = None,
+    categorical_features: dict[int, Sequence[float]] | None = None,
     num_restarts: int = 10,
-    raw_samples: Optional[int] = 512,
+    raw_samples: int | None = 512,
     *,
     comp_idx: Sequence[int],
     k: int,
     score: ScoreMode = "abs",
-    equality_constraints: Optional[List[LinearConstraint]] = None,
-    inequality_constraints: Optional[List[LinearConstraint]] = None,
+    equality_constraints: list[LinearConstraint] | None = None,
+    inequality_constraints: list[LinearConstraint] | None = None,
     inequality_sense: InequalitySense = "le",
-    fixed_features: Optional[Dict[int, float]] = None,
-    final_sum_constraint: Optional[Tuple[Sequence[int], float]] = None,
+    fixed_features: dict[int, float] | None = None,
+    final_sum_constraint: tuple[Sequence[int], float] | None = None,
     diversify: bool = False,
-    diversify_kwargs: Optional[Dict] = None,
+    diversify_kwargs: dict | None = None,
     support_selection: SupportSelection = "topk",
     allow_sparse_on_fixed_features: bool = False,
-    batch_initial_conditions: Optional[Tensor] = None,
+    batch_initial_conditions: Tensor | None = None,
     return_best_only: bool = True,
     sequential: bool = False,
-    options: Optional[Dict] = None,
-    candidate_transform: Optional[Callable[[Tensor], Tensor]] = None,
-    X_pending: Optional[Tensor] = None,
-) -> Tuple[Tensor, Tensor]:
+    options: dict | None = None,
+    candidate_transform: Callable[[Tensor], Tensor] | None = None,
+    X_pending: Tensor | None = None,
+) -> tuple[Tensor, Tensor]:
     """Mixed-variable k-sparse convenience wrapper around torch optimizer."""
     base_fixed = {int(k_): float(v) for k_, v in (fixed_features or {}).items()}
     if fixed_features_list is None:

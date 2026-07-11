@@ -48,10 +48,10 @@ from tests.test_binary_classification_base_multi_output import (
     make_multi_output_binary_toy_data,
 )
 from tests.test_binary_classification_base_single_output import (
-    DTYPE,
     DEVICE,
+    DTYPE,
     assert_candidates_in_bounds,
-    assert_optimizer_compatibility_result,
+    assert_optimizer_support_result,
     make_constraint_cases,
     make_random_batch,
     make_random_mixed_batch,
@@ -325,7 +325,7 @@ def test_hetero_multi_output_binary_optimizer_constraint_case_smoke(hetero_multi
     for acq_cls, kwargs, _, optimize_func, optimize_method, constraint_case, case_id in _hetero_optimizer_constraint_scenarios(model, train_x, bounds):
         with maybe_suppress_botorch_initial_warnings():
             cands, acq_value = optimize_with_case(acqf=acq_cls(model=model, **kwargs), bounds=bounds, q=2, optimize_func=optimize_func, optimize_method=optimize_method, constraint_case=constraint_case, num_restarts=2, raw_samples=16, maxiter=10)
-        assert_optimizer_compatibility_result(cands=cands, acq_value=acq_value, bounds=bounds, q=2, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
+        assert_optimizer_support_result(cands=cands, acq_value=acq_value, bounds=bounds, q=2, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
 
 
 @pytest.mark.slow
@@ -339,7 +339,7 @@ def test_hetero_multi_output_binary_mixed_optimizer_constraint_case_smoke(hetero
     for acq_cls, kwargs, _, optimize_func, optimize_method, constraint_case, case_id in _hetero_optimizer_constraint_scenarios(model, train_x, bounds, mixed=True):
         with maybe_suppress_botorch_initial_warnings():
             cands, acq_value = optimize_mixed_with_case(acqf=acq_cls(model=model, **kwargs), bounds=bounds, q=2, fixed_features_list=fixed_features_list, optimize_func=optimize_func, optimize_method=optimize_method, constraint_case=constraint_case, num_restarts=2, raw_samples=16, maxiter=10)
-        assert_optimizer_compatibility_result(cands=cands, acq_value=acq_value, bounds=bounds, q=2, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
+        assert_optimizer_support_result(cands=cands, acq_value=acq_value, bounds=bounds, q=2, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
         assert torch.isin(cands[:, cat_id], cat_values).all(), case_id
 
 
@@ -491,7 +491,7 @@ def run_jupyter_optimize_all_acquisitions_check(
     return bundle
 
 
-def run_jupyter_optimizer_constraint_compatibility_check(
+def run_jupyter_optimizer_constraint_support_check(
     *,
     cat: bool = False,
     n: int = 12,
@@ -508,7 +508,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
     suppress_botorch_warnings: bool = True,
 ) -> dict[str, Any]:
     if d < 5:
-        raise ValueError("constraint compatibility check では d >= 5 が必要です。")
+        raise ValueError("constraint support check では d >= 5 が必要です。")
 
     bundle = create_hetero_multi_output_binary_model_bundle(cat=cat, n=n, d=d, m=m, num_epochs=num_epochs, aux_num_epochs=aux_num_epochs)
     model = bundle["model"]
@@ -526,7 +526,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
         fixed_features_list, cat_values = _fixed_features_for_bundle(bundle)
 
     print("=" * 100)
-    print(f"Jupyter Hetero {prefix}multi-output optimizer / constraint compatibility check")
+    print(f"Jupyter Hetero {prefix}multi-output optimizer / constraint support check")
     print(f"n={n}, d={d}, m={m}, q={q}, num_epochs={num_epochs}, aux_num_epochs={aux_num_epochs}, full_matrix={full_matrix}, num_cases={len(scenarios)}")
     print("=" * 100)
 
@@ -558,7 +558,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
                         raw_samples=16,
                         maxiter=10,
                     )
-            assert_optimizer_compatibility_result(cands=cands, acq_value=acq_value, bounds=bounds, q=q, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
+            assert_optimizer_support_result(cands=cands, acq_value=acq_value, bounds=bounds, q=q, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
             if cat:
                 assert cat_id is not None and cat_values is not None
                 assert torch.isin(cands[:, cat_id], cat_values).all(), case_id
@@ -608,7 +608,7 @@ def run_jupyter_all_checks(
     if run_optimize:
         run_jupyter_optimize_all_acquisitions_check(cat=False, n=n, d=d, m=m, num_epochs=num_epochs, aux_num_epochs=aux_num_epochs, q=q, continue_on_error=continue_on_error, suppress_botorch_warnings=suppress_botorch_warnings, verbose_ok_detail=verbose_ok_detail)
         run_jupyter_optimize_all_acquisitions_check(cat=True, n=n, d=d, m=m, num_epochs=num_epochs, aux_num_epochs=aux_num_epochs, q=q, continue_on_error=continue_on_error, suppress_botorch_warnings=suppress_botorch_warnings, verbose_ok_detail=verbose_ok_detail)
-        run_jupyter_optimizer_constraint_compatibility_check(cat=False, n=n, d=d, m=m, num_epochs=num_epochs, aux_num_epochs=aux_num_epochs, q=q, full_matrix=full_matrix, continue_on_error=continue_on_error, verbose_ok_detail=verbose_ok_detail, verbose_candidates=verbose_candidates, verbose_constraints=verbose_constraints, suppress_botorch_warnings=suppress_botorch_warnings)
-        run_jupyter_optimizer_constraint_compatibility_check(cat=True, n=n, d=d, m=m, num_epochs=num_epochs, aux_num_epochs=aux_num_epochs, q=q, full_matrix=full_matrix, continue_on_error=continue_on_error, verbose_ok_detail=verbose_ok_detail, verbose_candidates=verbose_candidates, verbose_constraints=verbose_constraints, suppress_botorch_warnings=suppress_botorch_warnings)
+        run_jupyter_optimizer_constraint_support_check(cat=False, n=n, d=d, m=m, num_epochs=num_epochs, aux_num_epochs=aux_num_epochs, q=q, full_matrix=full_matrix, continue_on_error=continue_on_error, verbose_ok_detail=verbose_ok_detail, verbose_candidates=verbose_candidates, verbose_constraints=verbose_constraints, suppress_botorch_warnings=suppress_botorch_warnings)
+        run_jupyter_optimizer_constraint_support_check(cat=True, n=n, d=d, m=m, num_epochs=num_epochs, aux_num_epochs=aux_num_epochs, q=q, full_matrix=full_matrix, continue_on_error=continue_on_error, verbose_ok_detail=verbose_ok_detail, verbose_candidates=verbose_candidates, verbose_constraints=verbose_constraints, suppress_botorch_warnings=suppress_botorch_warnings)
 
     print("all Hetero multi-output binary Jupyter checks passed.")

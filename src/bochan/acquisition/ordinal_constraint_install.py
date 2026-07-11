@@ -31,7 +31,7 @@ def _patch_eta_buffer_assignment(acquisition_cls: type) -> None:
     if acquisition_cls.__dict__.get("_bochan_eta_buffer_patched", False):
         return
 
-    from bochan.acquisition.classification_constraint_compat import (
+    from bochan.acquisition.classification_constraints import (
         _install_init_patch,
     )
 
@@ -39,7 +39,7 @@ def _patch_eta_buffer_assignment(acquisition_cls: type) -> None:
     public_signature = _own_init_signature(acquisition_cls)
 
     @wraps(original_init)
-    def compatible_init(self, *args, eta=1e-3, **kwargs) -> None:
+    def supported_init(self, *args, eta=1e-3, **kwargs) -> None:
         constraints = kwargs.get("constraints")
         num_constraints = 0 if constraints is None else len(constraints)
         if torch.is_tensor(eta):
@@ -52,19 +52,19 @@ def _patch_eta_buffer_assignment(acquisition_cls: type) -> None:
             eta_tensor = torch.as_tensor(float(eta))
         original_init(self, *args, eta=eta_tensor, **kwargs)
 
-    _install_init_patch(acquisition_cls, compatible_init, public_signature)
+    _install_init_patch(acquisition_cls, supported_init, public_signature)
     acquisition_cls._bochan_eta_buffer_patched = True
     acquisition_cls._bochan_original_init_before_eta_buffer = original_init
 
 
-def apply_ordinal_constraint_compat() -> None:
+def apply_ordinal_constraint_support() -> None:
     """Patch internal ordinal EHVI classes behind public factory functions."""
 
     global _APPLIED
     if _APPLIED:
         return
 
-    from bochan.acquisition.classification_constraint_compat import (
+    from bochan.acquisition.classification_constraints import (
         _patch_hypervolume_constraints,
     )
     from bochan.acquisition.ordinal.bayesian_optimization import multi_output
@@ -79,4 +79,4 @@ def apply_ordinal_constraint_compat() -> None:
     _APPLIED = True
 
 
-__all__ = ["apply_ordinal_constraint_compat"]
+__all__ = ["apply_ordinal_constraint_support"]

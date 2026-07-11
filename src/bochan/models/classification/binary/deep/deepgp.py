@@ -30,31 +30,28 @@ Notes:
 
 from __future__ import annotations
 
-from typing import List, Optional, Sequence, Union
+from collections.abc import Sequence
 
 import torch
-from torch import Tensor
-
-from gpytorch.distributions import MultivariateNormal
-from gpytorch.likelihoods import BernoulliLikelihood
-from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
-from gpytorch.models.deep_gps import DeepGP
-from gpytorch.settings import fast_pred_var
-
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.gpytorch import GPyTorchModel
 from botorch.models.transforms.input import InputTransform
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from botorch.utils.transforms import normalize_indices
+from gpytorch.distributions import MultivariateNormal
+from gpytorch.likelihoods import BernoulliLikelihood
+from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
+from gpytorch.models.deep_gps import DeepGP
+from gpytorch.settings import fast_pred_var
+from torch import Tensor
 
-from bochan.posteriors.bernoulli import SimpleBernoulliPosterior
 from bochan.models.components.layers import (
     DeepGPHiddenLayer,
     DeepMixedGPHiddenLayer,
     SkipDeepGPHiddenLayer,
     SkipDeepMixedGPHiddenLayer,
 )
-
+from bochan.posteriors.bernoulli import SimpleBernoulliPosterior
 
 # ============================================================
 # ヘルパー
@@ -62,9 +59,9 @@ from bochan.models.components.layers import (
 
 
 def _to_device_dtype_transform(
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     X: Tensor,
-) -> Optional[InputTransform]:
+) -> InputTransform | None:
     """input_transform を X の device / dtype に合わせる。"""
     if input_transform is None:
         return None
@@ -95,7 +92,7 @@ def _expand_raw_X_to_match_transformed_q(X: Tensor, X_tf: Tensor) -> Tensor:
 def _check_categorical_columns_unchanged(
     X: Tensor,
     X_tf: Tensor,
-    cat_dims: Optional[Sequence[int]],
+    cat_dims: Sequence[int] | None,
 ) -> None:
     """mixed model で input_transform がカテゴリ列を変更していないか確認する。"""
     if cat_dims is None or len(cat_dims) == 0:
@@ -122,9 +119,9 @@ def _check_categorical_columns_unchanged(
 
 def _apply_input_transform_for_training(
     X: Tensor,
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
-    cat_dims: Optional[Sequence[int]] = None,
+    cat_dims: Sequence[int] | None = None,
     name: str = "input_transform",
 ) -> Tensor:
     """
@@ -157,9 +154,9 @@ def _apply_input_transform_for_training(
 
 def _apply_input_transform_for_eval(
     X: Tensor,
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
-    cat_dims: Optional[Sequence[int]] = None,
+    cat_dims: Sequence[int] | None = None,
 ) -> Tensor:
     if input_transform is None:
         return X
@@ -209,7 +206,7 @@ def _reduce_deepgp_tensor(tensor: Tensor, X: Tensor) -> Tensor:
     )
 
 
-def _clone_train_inputs(inputs: Union[Tensor, tuple[Tensor, ...]]) -> tuple[Tensor, ...]:
+def _clone_train_inputs(inputs: Tensor | tuple[Tensor, ...]) -> tuple[Tensor, ...]:
     if torch.is_tensor(inputs):
         inputs = (inputs,)
     return tuple(x.detach().clone() for x in inputs)
@@ -267,9 +264,9 @@ class _BaseDeepGPBinaryClassificationModel(DeepGP, GPyTorchModel):
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[List[int]] = None,
-        observation_noise: Union[bool, Tensor] = False,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        output_indices: list[int] | None = None,
+        observation_noise: bool | Tensor = False,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs,
     ) -> SimpleBernoulliPosterior:
         """Bernoulli 確率 posterior ``p(y=1 | x)`` を返す。
@@ -320,9 +317,9 @@ class _BaseDeepGPBinaryClassificationModel(DeepGP, GPyTorchModel):
     def probability_posterior(
         self,
         X: Tensor,
-        output_indices: Optional[List[int]] = None,
-        observation_noise: Union[bool, Tensor] = False,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        output_indices: list[int] | None = None,
+        observation_noise: bool | Tensor = False,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs,
     ) -> SimpleBernoulliPosterior:
         """classification acquisition 用に probability posterior を明示名で返す。"""
@@ -337,7 +334,7 @@ class _BaseDeepGPBinaryClassificationModel(DeepGP, GPyTorchModel):
     def latent_posterior(
         self,
         X: Tensor,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        posterior_transform: PosteriorTransform | None = None,
         apply_input_transform: bool = True,
         **kwargs,
     ) -> GPyTorchPosterior:
@@ -387,8 +384,8 @@ class _BaseDeepGPBinaryClassificationModel(DeepGP, GPyTorchModel):
 
     def set_train_data(
         self,
-        inputs: Optional[Union[Tensor, tuple[Tensor, ...]]] = None,
-        targets: Optional[Tensor] = None,
+        inputs: Tensor | tuple[Tensor, ...] | None = None,
+        targets: Tensor | None = None,
         strict: bool = True,
     ) -> None:
         _ = strict
@@ -460,7 +457,7 @@ class _BaseDeepGPBinaryClassificationModel(DeepGP, GPyTorchModel):
             covar = covar.reshape(target_covar_shape)
             return MultivariateNormal(mean, covar)
 
-        # Fallback to diagonal covariance from latent variance if covariance shape is incompatible.
+        # Fallback to diagonal covariance from latent variance if covariance shape is insupported.
         var = _reduce_deepgp_tensor(latent_dist.variance, X).clamp_min(1e-12)
         covar = torch.diag_embed(var)
         return MultivariateNormal(mean, covar)
@@ -488,7 +485,7 @@ class BinaryClassificationDeepGPModel(_BaseDeepGPBinaryClassificationModel):
             ``forward`` / ``posterior`` 内で適用する。
         list_hidden_dims: hidden layer の出力次元リスト。デフォルトは ``[16]``。
         model_type: モデル構造の指定。``"DEFAULT"`` では通常の層状 DeepGP、
-            ``"skip"`` では元入力を skip-compatible layer に再注入する。
+            ``"skip"`` では元入力を skip-supported layer に再注入する。
         num_inducing: hidden layer の inducing point 数。
         num_inducing_last: 最終 latent layer の inducing point 数。
             ``None`` の場合は ``num_inducing`` を使う。
@@ -509,9 +506,9 @@ class BinaryClassificationDeepGPModel(_BaseDeepGPBinaryClassificationModel):
         self,
         train_X: Tensor,
         train_Y: Tensor,
-        likelihood: Optional[BernoulliLikelihood] = None,
-        input_transform: Optional[InputTransform] = None,
-        list_hidden_dims: Optional[Sequence[int]] = None,
+        likelihood: BernoulliLikelihood | None = None,
+        input_transform: InputTransform | None = None,
+        list_hidden_dims: Sequence[int] | None = None,
         model_type: str = "DEFAULT",
         num_inducing: int = 128,
     ) -> None:
@@ -650,12 +647,12 @@ class BinaryClassificationMixedDeepGPModel(_BaseDeepGPBinaryClassificationModel)
         train_X: Tensor,
         train_Y: Tensor,
         cat_dims: Sequence[int],
-        likelihood: Optional[BernoulliLikelihood] = None,
-        input_transform: Optional[InputTransform] = None,
+        likelihood: BernoulliLikelihood | None = None,
+        input_transform: InputTransform | None = None,
         hidden_dim: int = 16,
         model_type: str = "DEFAULT",
         num_inducing: int = 128,
-        num_inducing_last: Optional[int] = None,
+        num_inducing_last: int | None = None,
     ) -> None:
         super().__init__()
 

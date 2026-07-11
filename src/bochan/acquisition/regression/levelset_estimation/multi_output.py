@@ -19,15 +19,14 @@ Design policy:
       This file is for the development-stage aligned API.
 """
 
-from typing import Any, Callable, Literal, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Any, Literal
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.models.model import Model
 from botorch.utils.transforms import t_batch_mode_transform
-
+from torch import Tensor
 
 ReductionType = Literal["mean", "sum", "max", "min"]
 OutputReductionType = Literal[
@@ -81,7 +80,7 @@ def _safe_prod(shape: torch.Size | tuple[int, ...]) -> int:
     return out
 
 
-def _objective_call(objective: Callable, score: Tensor, X: Optional[Tensor]):
+def _objective_call(objective: Callable, score: Tensor, X: Tensor | None):
     try:
         return objective(score, X=X)
     except TypeError:
@@ -135,8 +134,8 @@ class MultiOutputRegressionLevelSetScoreObjective(torch.nn.Module):
 
     def __init__(
         self,
-        n_w: Optional[int] = None,
-        risk_type: Optional[Literal["var", "cvar"]] = None,
+        n_w: int | None = None,
+        risk_type: Literal["var", "cvar"] | None = None,
         alpha: float = 0.5,
         maximize: bool = True,
         weight: float = 1.0,
@@ -164,13 +163,13 @@ class MultiOutputRegressionLevelSetScoreObjective(torch.nn.Module):
             raise ValueError("aggregated_risk_mode must be 'ignore' or 'error'.")
 
     @staticmethod
-    def _is_aggregated_score(score: Tensor, X: Optional[Tensor]) -> bool:
+    def _is_aggregated_score(score: Tensor, X: Tensor | None) -> bool:
         if X is None or score.ndim == 0:
             return False
         Xq = _ensure_q_batch(X)
         return tuple(score.shape) == tuple(Xq.shape[:-2])
 
-    def forward(self, score: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def forward(self, score: Tensor, X: Tensor | None = None) -> Tensor:
         if not torch.is_tensor(score):
             raise TypeError(f"score must be a Tensor. Got {type(score)}.")
 
@@ -227,17 +226,17 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         self,
         model: Model,
         *,
-        thresholds: Optional[Sequence[float] | Tensor] = None,
-        threshold: Optional[float | Tensor] = None,
-        # Backward-compatible local alias only inside this new API.
+        thresholds: Sequence[float] | Tensor | None = None,
+        threshold: float | Tensor | None = None,
+        # Backward-supported local alias only inside this new API.
         # Public docs should prefer thresholds / threshold.
-        h: Optional[Sequence[float] | Tensor] = None,
+        h: Sequence[float] | Tensor | None = None,
         reduction: ReductionType = "mean",
         output_reduction: OutputReductionType = "weighted_mean",
-        output_weights: Optional[Tensor | Sequence[float]] = None,
+        output_weights: Tensor | Sequence[float] | None = None,
         normalize_output_weights: bool = True,
-        X_pending: Optional[Tensor] = None,
-        X_observed: Optional[Tensor] = None,
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
         pending_penalty_weight: float = 0.0,
@@ -246,8 +245,8 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         observed_penalty_beta: float = 10.0,
         hard_duplicate_penalty: float = 0.0,
         hard_duplicate_tol: float = 1e-8,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
-        n_w: Optional[int] = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
+        n_w: int | None = None,
         eps: float = 1e-12,
     ) -> None:
         super().__init__(model=model)
@@ -302,8 +301,8 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         if self.n_w is not None and self.n_w <= 0:
             raise ValueError("n_w must be positive or None.")
 
-        self.X_pending: Optional[Tensor] = None
-        self.X_observed: Optional[Tensor] = None
+        self.X_pending: Tensor | None = None
+        self.X_observed: Tensor | None = None
         self.set_X_pending(X_pending)
         self.set_X_observed(X_observed)
 
@@ -314,8 +313,8 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         self,
         ref,
         *,
-        like: Optional[Tensor] = None,
-    ) -> Optional[Tensor]:
+        like: Tensor | None = None,
+    ) -> Tensor | None:
         if ref is None:
             return None
 
@@ -349,10 +348,10 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
 
         return out.detach()
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         self.X_pending = self._coerce_reference_to_tensor(X_pending)
 
-    def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+    def set_X_observed(self, X_observed: Tensor | None = None) -> None:
         self.X_observed = self._coerce_reference_to_tensor(X_observed)
 
     # ------------------------------------------------------------
@@ -385,7 +384,7 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
 
         return X
 
-    def _reference_to_distance_space(self, ref, *, like: Tensor) -> Optional[Tensor]:
+    def _reference_to_distance_space(self, ref, *, like: Tensor) -> Tensor | None:
         ref = self._coerce_reference_to_tensor(ref, like=like)
         if ref is None or ref.numel() == 0:
             return None
@@ -447,7 +446,7 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
             f"value.shape={tuple(value.shape)}, Xt.shape={tuple(Xt.shape)}."
         )
 
-    def _output_weights_like(self, value: Tensor) -> Optional[Tensor]:
+    def _output_weights_like(self, value: Tensor) -> Tensor | None:
         weights = self.output_weights
         if weights is None:
             return None
@@ -907,7 +906,7 @@ class qMultiOutputRegressionICU(_MultiOutputRegressionLevelSetBase):
         self,
         model: Model,
         *,
-        bandwidth: Optional[float | Tensor] = None,
+        bandwidth: float | Tensor | None = None,
         joint_boundary: bool = False,
         **kwargs: Any,
     ) -> None:
@@ -998,9 +997,9 @@ class qMultiOutputRegressionProbabilityOfExceedance(_MultiOutputRegressionLevelS
         model: Model,
         *,
         mode: ProbabilityMode = "above",
-        lower: Optional[Sequence[float] | Tensor] = None,
-        upper: Optional[Sequence[float] | Tensor] = None,
-        temperature: Optional[float | Tensor] = None,
+        lower: Sequence[float] | Tensor | None = None,
+        upper: Sequence[float] | Tensor | None = None,
+        temperature: float | Tensor | None = None,
         joint: bool = False,
         **kwargs: Any,
     ) -> None:

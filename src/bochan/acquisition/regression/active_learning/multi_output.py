@@ -24,15 +24,15 @@ Notes:
     DeepGP wrappers.
 """
 
-from typing import Any, Callable, Literal, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Any, Literal
 
 import torch
-from torch import Tensor
-
 from botorch import settings
 from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
+from torch import Tensor
 
 try:
     from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
@@ -85,7 +85,7 @@ def _safe_prod(shape: torch.Size | tuple[int, ...]) -> int:
     return out
 
 
-def _objective_call(objective: Callable, score: Tensor, X: Optional[Tensor]):
+def _objective_call(objective: Callable, score: Tensor, X: Tensor | None):
     try:
         return objective(score, X=X)
     except TypeError:
@@ -119,7 +119,7 @@ class _MultiOutputRegressionActiveLearningBase(AcquisitionFunction):
 
     Args:
         model:
-            BoTorch-compatible multi-output regression model.
+            BoTorch-supported multi-output regression model.
         reduction:
             q-batch reduction.  This matches the classification / ordinal API.
         output_reduction:
@@ -148,10 +148,10 @@ class _MultiOutputRegressionActiveLearningBase(AcquisitionFunction):
         *,
         reduction: ReductionType = "mean",
         output_reduction: OutputReductionType = "weighted_mean",
-        output_weights: Optional[Tensor | Sequence[float]] = None,
+        output_weights: Tensor | Sequence[float] | None = None,
         normalize_output_weights: bool = True,
-        X_pending: Optional[Tensor] = None,
-        X_observed: Optional[Tensor] = None,
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
         pending_penalty_weight: float = 0.0,
@@ -160,8 +160,8 @@ class _MultiOutputRegressionActiveLearningBase(AcquisitionFunction):
         observed_penalty_beta: float = 10.0,
         hard_duplicate_penalty: float = 0.0,
         hard_duplicate_tol: float = 1e-8,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
-        n_w: Optional[int] = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
+        n_w: int | None = None,
         eps: float = 1e-12,
     ) -> None:
         super().__init__(model=model)
@@ -210,8 +210,8 @@ class _MultiOutputRegressionActiveLearningBase(AcquisitionFunction):
         if self.n_w is not None and self.n_w <= 0:
             raise ValueError("n_w must be positive or None.")
 
-        self.X_pending: Optional[Tensor] = None
-        self.X_observed: Optional[Tensor] = None
+        self.X_pending: Tensor | None = None
+        self.X_observed: Tensor | None = None
         self.set_X_pending(X_pending)
         self.set_X_observed(X_observed)
 
@@ -222,8 +222,8 @@ class _MultiOutputRegressionActiveLearningBase(AcquisitionFunction):
         self,
         ref,
         *,
-        like: Optional[Tensor] = None,
-    ) -> Optional[Tensor]:
+        like: Tensor | None = None,
+    ) -> Tensor | None:
         if ref is None:
             return None
 
@@ -258,10 +258,10 @@ class _MultiOutputRegressionActiveLearningBase(AcquisitionFunction):
         # Reference points are constants during acquisition optimization.
         return out.detach()
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         self.X_pending = self._coerce_reference_to_tensor(X_pending)
 
-    def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+    def set_X_observed(self, X_observed: Tensor | None = None) -> None:
         self.X_observed = self._coerce_reference_to_tensor(X_observed)
 
     # ------------------------------------------------------------
@@ -300,7 +300,7 @@ class _MultiOutputRegressionActiveLearningBase(AcquisitionFunction):
         ref,
         *,
         like: Tensor,
-    ) -> Optional[Tensor]:
+    ) -> Tensor | None:
         ref = self._coerce_reference_to_tensor(ref, like=like)
         if ref is None or ref.numel() == 0:
             return None
@@ -348,7 +348,7 @@ class _MultiOutputRegressionActiveLearningBase(AcquisitionFunction):
             f"score.shape={tuple(score.shape)}, expected={tuple(target)}, Xt.shape={tuple(Xt.shape)}."
         )
 
-    def _output_weights_like(self, value: Tensor) -> Optional[Tensor]:
+    def _output_weights_like(self, value: Tensor) -> Tensor | None:
         weights = self.output_weights
         if weights is None:
             return None
@@ -763,13 +763,13 @@ class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
         model,
         mc_points: Tensor,
         *,
-        sampler: Optional[Any] = None,
-        objective: Optional[Any] = None,
-        posterior_transform: Optional[Any] = None,
-        X_pending: Optional[Tensor] = None,
+        sampler: Any | None = None,
+        objective: Any | None = None,
+        posterior_transform: Any | None = None,
+        X_pending: Tensor | None = None,
         integration_reduction: ReductionType = "mean",
         output_reduction: OutputReductionType = "mean",
-        output_weights: Optional[Tensor | Sequence[float]] = None,
+        output_weights: Tensor | Sequence[float] | None = None,
         normalize_output_weights: bool = True,
         **kwargs: Any,
     ) -> None:
@@ -813,7 +813,7 @@ class qMultiOutputRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
             weights = torch.as_tensor(output_weights).reshape(-1)
             self.register_buffer("output_weights", weights.detach().clone())
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         self.X_pending = X_pending
 
     def _reduce_output_dimension(self, value: Tensor) -> Tensor:

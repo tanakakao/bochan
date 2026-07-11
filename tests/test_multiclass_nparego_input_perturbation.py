@@ -12,7 +12,7 @@ from torch import Tensor
 from bochan.acquisition.multiclass.bayesian_optimization import (
     qMultiOutputMulticlassNParEGO,
 )
-from bochan.acquisition.multiclass.bayesian_optimization.input_perturbation_compat import (
+from bochan.acquisition.multiclass.bayesian_optimization.input_perturbation import (
     InputPerturbationMultiOutputObjectiveAdapter,
 )
 from bochan.acquisition.multiclass.bayesian_optimization.multi_output import (

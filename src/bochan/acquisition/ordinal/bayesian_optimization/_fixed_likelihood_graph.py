@@ -52,7 +52,7 @@ def _ordered_probs_from_detached_cutpoints(
     return probs / probs.sum(dim=-1, keepdim=True).clamp_min(float(eps))
 
 
-def apply_fixed_ordinal_likelihood_graph_compat(module: Any) -> None:
+def apply_fixed_ordinal_likelihood_graph_support(module: Any) -> None:
     """Patch ordinal probability conversion for stable repeated acquisition backward.
 
     qNEHVI caches transformed baseline values. When the transformation includes
@@ -103,4 +103,4 @@ def apply_fixed_ordinal_likelihood_graph_compat(module: Any) -> None:
     module.ordinal_probs_from_latent = ordinal_probs_from_latent
 
 
-__all__ = ["apply_fixed_ordinal_likelihood_graph_compat"]
+__all__ = ["apply_fixed_ordinal_likelihood_graph_support"]

@@ -17,9 +17,9 @@ from bochan.api import (
 from .builders import UNSET, make_acquisition_config, make_fit_config, make_optimize_config
 from .converter import resolve_column_indices
 from .optimizer import TabularBayesianOptimizer as _BaseTabularBayesianOptimizer
-from .outcome_constraint_compat import apply_tabular_outcome_constraint_compat
+from .outcome_constraints import apply_tabular_outcome_constraints
 
-apply_tabular_outcome_constraint_compat()
+apply_tabular_outcome_constraints()
 
 _ACQUISITION_DIRECT_KEYS = {
     "acq_name",

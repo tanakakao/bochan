@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import math
-from typing import Callable, Literal, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Literal, Optional
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.models.model import Model
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.transforms import t_batch_mode_transform
+from torch import Tensor
 
 from ..hetero_utils import (
     aggregate_objectives,
@@ -17,7 +17,6 @@ from ..hetero_utils import (
     make_weight_tensor,
     stack_multi_summaries,
 )
-
 
 RiskType = Optional[Literal["var", "cvar"]]
 ReductionType = Literal["mean", "sum", "max"]
@@ -102,7 +101,7 @@ def _latent_samples_to_probs(
     latent_samples: Tensor,
     *,
     ordinal_likelihood=None,
-    latent_to_probs: Optional[Callable[[Tensor], Tensor]] = None,
+    latent_to_probs: Callable[[Tensor], Tensor] | None = None,
     eps: float = 1e-12,
 ) -> Tensor:
     if latent_samples.ndim >= 1 and latent_samples.shape[-1] != 1:
@@ -170,7 +169,7 @@ class HeteroMultiOutputOrdinalScoreObjective(torch.nn.Module):
 
     def __init__(
         self,
-        n_w: Optional[int] = None,
+        n_w: int | None = None,
         risk_type: RiskType = None,
         alpha: float = 0.5,
         maximize: bool = True,
@@ -202,13 +201,13 @@ class HeteroMultiOutputOrdinalScoreObjective(torch.nn.Module):
     def _ensure_q_batch(X: Tensor) -> Tensor:
         return X if X.dim() > 2 else X.unsqueeze(0)
 
-    def _is_aggregated_score(self, score: Tensor, X: Optional[Tensor]) -> bool:
+    def _is_aggregated_score(self, score: Tensor, X: Tensor | None) -> bool:
         if X is None or score.ndim == 0:
             return False
         Xq = self._ensure_q_batch(X)
         return tuple(score.shape) == tuple(Xq.shape[:-2])
 
-    def forward(self, score: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def forward(self, score: Tensor, X: Tensor | None = None) -> Tensor:
         if not torch.is_tensor(score):
             raise TypeError(f"score must be a Tensor. Got {type(score)}.")
 
@@ -252,7 +251,7 @@ class HeteroMultiOutputOrdinalScoreObjective(torch.nn.Module):
         raise ValueError(f"Unknown risk_type: {self.risk_type!r}.")
 
 
-# Backward-compatible internal name; not an alias for a public acquisition.
+# Backward-supported internal name; not an alias for a public acquisition.
 _MultiObjectiveHeteroOrdinalScoreObjective = HeteroMultiOutputOrdinalScoreObjective
 
 
@@ -283,7 +282,7 @@ def _reduce_q(score: Tensor, reduction: ReductionType) -> Tensor:
     raise ValueError(f"Unknown reduction: {reduction!r}.")
 
 
-def _coerce_reference_to_tensor(X_ref, *, ref: Optional[Tensor] = None) -> Optional[Tensor]:
+def _coerce_reference_to_tensor(X_ref, *, ref: Tensor | None = None) -> Tensor | None:
     if X_ref is None:
         return None
 
@@ -358,7 +357,7 @@ def _align_pointwise_score_to_X(
     )
 
 
-def _objective_call(objective, score: Tensor, X: Optional[Tensor]):
+def _objective_call(objective, score: Tensor, X: Tensor | None):
     try:
         return objective(score, X=X)
     except TypeError:
@@ -368,7 +367,7 @@ def _objective_call(objective, score: Tensor, X: Optional[Tensor]):
 def _apply_multioutput_hetero_ordinal_objective_to_score(
     owner,
     score: Tensor,
-    X: Optional[Tensor] = None,
+    X: Tensor | None = None,
     name: str = "HeteroMultiOutputOrdinalActiveLearning",
 ) -> Tensor:
     objective = getattr(owner, "objective", None)
@@ -405,18 +404,18 @@ class _BaseHeteroMultiOutputOrdinalActiveLearningAcquisition(AcquisitionFunction
         self,
         model: Model,
         *,
-        utility_values_list: Optional[Sequence[Optional[Sequence[float] | Tensor]]] = None,
-        objective_weights: Optional[Sequence[float] | Tensor] = None,
+        utility_values_list: Sequence[Sequence[float] | Tensor | None] | None = None,
+        objective_weights: Sequence[float] | Tensor | None = None,
         reduction: ReductionType = "mean",
-        # backward-compatible aliases
-        reduce: Optional[str] = None,
+        # backward-supported aliases
+        reduce: str | None = None,
         output_mode: OutputMode = "mean",
-        aggregate: Optional[str] = None,
+        aggregate: str | None = None,
         eps: float = 1e-12,
         # pending penalty
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
-        X_pending: Optional[Tensor] = None,
+        X_pending: Tensor | None = None,
         # noise
         noise_mode: NoiseWeightMode = "inverse_linear",
         noise_combine: NoiseCombineType = "multiply",
@@ -424,11 +423,11 @@ class _BaseHeteroMultiOutputOrdinalActiveLearningAcquisition(AcquisitionFunction
         noise_min_weight: float = 0.0,
         noise_weight_scale: float = 1.0,
         noise_event_aggregate: OutputMode = "mean",
-        noise_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
-        # old compatibility
+        noise_weight_fn: Callable[[Tensor, Tensor | None], Tensor] | None = None,
+        # old support
         noise_penalty: float | Sequence[float] | Tensor = 0.0,
         default_sigma: float | Sequence[float] | Tensor = 0.0,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
     ) -> None:
         super().__init__(model=model)
 
@@ -480,10 +479,10 @@ class _BaseHeteroMultiOutputOrdinalActiveLearningAcquisition(AcquisitionFunction
         if any(float(v or 0.0) != 0.0 for v in self.noise_penalties):
             self.noise_combine = "subtract"
 
-        self.X_pending: Optional[Tensor] = None
+        self.X_pending: Tensor | None = None
         self.set_X_pending(X_pending)
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         self.X_pending = _coerce_reference_to_tensor(X_pending)
 
     def _set_eval_mode(self) -> None:
@@ -516,7 +515,7 @@ class _BaseHeteroMultiOutputOrdinalActiveLearningAcquisition(AcquisitionFunction
 
         return X
 
-    def _transform_reference_like_candidate(self, X_ref, *, ref: Tensor) -> Optional[Tensor]:
+    def _transform_reference_like_candidate(self, X_ref, *, ref: Tensor) -> Tensor | None:
         Xr = _coerce_reference_to_tensor(X_ref, ref=ref)
         if Xr is None or Xr.numel() == 0:
             return None
@@ -554,7 +553,7 @@ class _BaseHeteroMultiOutputOrdinalActiveLearningAcquisition(AcquisitionFunction
             eps=self.eps,
         )
 
-    def _weights(self, ref: Tensor) -> Optional[Tensor]:
+    def _weights(self, ref: Tensor) -> Tensor | None:
         return make_weight_tensor(self.objective_weights, ref=ref, m=self.m)
 
     def _aggregate_outputs(self, values: Tensor) -> Tensor:
@@ -800,10 +799,10 @@ class qHeteroMultiOutputOrdinalBALD(
         self,
         model: Model,
         *,
-        ordinal_likelihoods: Optional[Sequence[object]] = None,
-        latent_to_probs_list: Optional[Sequence[Optional[Callable[[Tensor], Tensor]]]] = None,
+        ordinal_likelihoods: Sequence[object] | None = None,
+        latent_to_probs_list: Sequence[Callable[[Tensor], Tensor] | None] | None = None,
         num_samples: int = 128,
-        sampler: Optional[SobolQMCNormalSampler] = None,
+        sampler: SobolQMCNormalSampler | None = None,
         **kwargs,
     ) -> None:
         if sampler is None:

@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import math
-from typing import Callable, Literal, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Literal, Optional
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.monte_carlo import MCAcquisitionFunction
 from botorch.models.model import Model
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.transforms import t_batch_mode_transform
+from torch import Tensor
 
 from ..hetero_utils import get_hetero_ordinal_summary, get_noise_sigma
-
 
 RiskType = Optional[Literal["var", "cvar"]]
 ReductionType = Literal["mean", "sum", "max"]
@@ -35,7 +34,7 @@ class HeteroOrdinalScoreObjective(torch.nn.Module):
 
     def __init__(
         self,
-        n_w: Optional[int] = None,
+        n_w: int | None = None,
         risk_type: RiskType = None,
         alpha: float = 0.5,
         maximize: bool = True,
@@ -67,13 +66,13 @@ class HeteroOrdinalScoreObjective(torch.nn.Module):
     def _ensure_q_batch(X: Tensor) -> Tensor:
         return X if X.dim() > 2 else X.unsqueeze(0)
 
-    def _is_aggregated_score(self, score: Tensor, X: Optional[Tensor]) -> bool:
+    def _is_aggregated_score(self, score: Tensor, X: Tensor | None) -> bool:
         if X is None or score.ndim == 0:
             return False
         Xq = self._ensure_q_batch(X)
         return tuple(score.shape) == tuple(Xq.shape[:-2])
 
-    def forward(self, score: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def forward(self, score: Tensor, X: Tensor | None = None) -> Tensor:
         if not torch.is_tensor(score):
             raise TypeError(f"score must be a Tensor. Got {type(score)}.")
 
@@ -119,7 +118,7 @@ class HeteroOrdinalScoreObjective(torch.nn.Module):
         raise ValueError(f"Unknown risk_type: {self.risk_type!r}.")
 
 
-# Backward-compatible internal name used by older examples.
+# Backward-supported internal name used by older examples.
 _HeteroOrdinalScoreObjective = HeteroOrdinalScoreObjective
 
 
@@ -225,7 +224,7 @@ def _latent_samples_to_probs(
     latent_samples: Tensor,
     *,
     ordinal_likelihood=None,
-    latent_to_probs: Optional[Callable[[Tensor], Tensor]] = None,
+    latent_to_probs: Callable[[Tensor], Tensor] | None = None,
     eps: float = 1e-12,
 ) -> Tensor:
     if latent_samples.ndim >= 1 and latent_samples.shape[-1] != 1:
@@ -270,7 +269,7 @@ def _latent_samples_to_probs(
     return probs / probs.sum(dim=-1, keepdim=True).clamp_min(eps)
 
 
-def _coerce_reference_to_tensor(X_ref, *, ref: Optional[Tensor] = None) -> Optional[Tensor]:
+def _coerce_reference_to_tensor(X_ref, *, ref: Tensor | None = None) -> Tensor | None:
     if X_ref is None:
         return None
     if torch.is_tensor(X_ref):
@@ -352,7 +351,7 @@ def _align_pointwise_score_to_X(
     )
 
 
-def _objective_call(objective, score: Tensor, X: Optional[Tensor]):
+def _objective_call(objective, score: Tensor, X: Tensor | None):
     try:
         return objective(score, X=X)
     except TypeError:
@@ -362,7 +361,7 @@ def _objective_call(objective, score: Tensor, X: Optional[Tensor]):
 def _apply_hetero_ordinal_objective_to_score(
     owner,
     score: Tensor,
-    X: Optional[Tensor] = None,
+    X: Tensor | None = None,
     name: str = "HeteroOrdinalActiveLearning",
 ) -> Tensor:
     objective = getattr(owner, "objective", None)
@@ -397,37 +396,37 @@ class _BaseHeteroOrdinalActiveLearningAcquisition(MCAcquisitionFunction):
         self,
         model: Model,
         *,
-        utility_values: Optional[Sequence[float] | Tensor] = None,
+        utility_values: Sequence[float] | Tensor | None = None,
         reduction: ReductionType = "mean",
-        # backward-compatible alias. If provided, overrides reduction.
-        reduce: Optional[str] = None,
+        # backward-supported alias. If provided, overrides reduction.
+        reduce: str | None = None,
         eps: float = 1e-12,
-        sampler: Optional[SobolQMCNormalSampler] = None,
+        sampler: SobolQMCNormalSampler | None = None,
         # pending penalty
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
-        X_pending: Optional[Tensor] = None,
+        X_pending: Tensor | None = None,
         # ROI weighting based on expected utility if available in summary
         roi_mode: ROIWeightMode = "none",
         roi_combine: ROICombineType = "multiply",
         roi_threshold: float = 0.5,
-        roi_interval: Optional[tuple[float, float]] = None,
+        roi_interval: tuple[float, float] | None = None,
         roi_beta: float = 20.0,
         roi_bandwidth: float = 0.15,
         roi_min_weight: float = 0.0,
         roi_weight_scale: float = 1.0,
-        roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        roi_weight_fn: Callable[[Tensor, Tensor | None], Tensor] | None = None,
         # noise weighting
         noise_mode: NoiseWeightMode = "inverse_linear",
         noise_combine: NoiseCombineType = "multiply",
         noise_penalty_lambda: float = 1.0,
         noise_min_weight: float = 0.0,
         noise_weight_scale: float = 1.0,
-        noise_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
-        # compatibility with older ordinal implementation
-        noise_penalty: Optional[float] = None,
+        noise_weight_fn: Callable[[Tensor, Tensor | None], Tensor] | None = None,
+        # support with older ordinal implementation
+        noise_penalty: float | None = None,
         default_sigma: float = 0.0,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
     ) -> None:
         if sampler is None:
             sampler = SobolQMCNormalSampler(sample_shape=torch.Size([128]))
@@ -480,11 +479,11 @@ class _BaseHeteroOrdinalActiveLearningAcquisition(MCAcquisitionFunction):
         self.noise_weight_fn = noise_weight_fn
         self.default_sigma = float(default_sigma)
 
-        self.X_pending: Optional[Tensor] = None
+        self.X_pending: Tensor | None = None
         self.set_X_pending(X_pending)
 
     # BoTorch optimize_acqf sequential=True requires set_X_pending.
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         self.X_pending = _coerce_reference_to_tensor(X_pending)
 
     def _prepare_eval(self) -> None:
@@ -506,7 +505,7 @@ class _BaseHeteroOrdinalActiveLearningAcquisition(MCAcquisitionFunction):
             Xt = Xt[0]
         return _ensure_q_batch(Xt)
 
-    def _transform_reference_like_candidate(self, X_ref, *, ref: Tensor) -> Optional[Tensor]:
+    def _transform_reference_like_candidate(self, X_ref, *, ref: Tensor) -> Tensor | None:
         Xr = _coerce_reference_to_tensor(X_ref, ref=ref)
         if Xr is None or Xr.numel() == 0:
             return None
@@ -554,7 +553,7 @@ class _BaseHeteroOrdinalActiveLearningAcquisition(MCAcquisitionFunction):
     def _roi_weight_per_point(
         self,
         signal: Tensor,
-        X: Optional[Tensor],
+        X: Tensor | None,
     ) -> Tensor:
         if self.roi_mode == "none":
             return torch.ones_like(signal)
@@ -596,7 +595,7 @@ class _BaseHeteroOrdinalActiveLearningAcquisition(MCAcquisitionFunction):
         self,
         score: Tensor,
         signal: Tensor,
-        X: Optional[Tensor],
+        X: Tensor | None,
     ) -> Tensor:
         if self.roi_mode == "none":
             return score
@@ -611,7 +610,7 @@ class _BaseHeteroOrdinalActiveLearningAcquisition(MCAcquisitionFunction):
     def _noise_weight_per_point(
         self,
         sigma: Tensor,
-        X: Optional[Tensor],
+        X: Tensor | None,
     ) -> Tensor:
         sigma = sigma.clamp_min(0.0)
 
@@ -643,7 +642,7 @@ class _BaseHeteroOrdinalActiveLearningAcquisition(MCAcquisitionFunction):
         self,
         score: Tensor,
         sigma: Tensor,
-        X: Optional[Tensor],
+        X: Tensor | None,
     ) -> Tensor:
         sigma = _align_pointwise_score_to_X(
             sigma,
@@ -670,8 +669,8 @@ class _BaseHeteroOrdinalActiveLearningAcquisition(MCAcquisitionFunction):
         score: Tensor,
         X: Tensor,
         *,
-        summary: Optional[dict[str, Tensor]] = None,
-        roi_signal: Optional[Tensor] = None,
+        summary: dict[str, Tensor] | None = None,
+        roi_signal: Tensor | None = None,
         name: str,
     ) -> Tensor:
         raw_X = _ensure_q_batch(X)
@@ -816,7 +815,7 @@ class qHeteroOrdinalBALD(_BaseHeteroOrdinalActiveLearningAcquisition):
         model: Model,
         *,
         ordinal_likelihood=None,
-        latent_to_probs: Optional[Callable[[Tensor], Tensor]] = None,
+        latent_to_probs: Callable[[Tensor], Tensor] | None = None,
         num_samples: int = 128,
         **kwargs,
     ) -> None:
@@ -882,7 +881,7 @@ class qHeteroOrdinalBALD(_BaseHeteroOrdinalActiveLearningAcquisition):
 #   qHeteroOrdinalBALD
 #   qHeteroOrdinalIntegratedPosteriorVariance
 #
-# 不要な compatibility alias は定義しない。
+# 不要な support alias は定義しない。
 class qHeteroOrdinalIntegratedPosteriorVariance(qHeteroOrdinalUtilityVariance):
     """
     Lightweight IPV-style proxy based on hetero noise-aware ordinal utility variance.

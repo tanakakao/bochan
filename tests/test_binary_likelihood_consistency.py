@@ -107,7 +107,7 @@ def test_to_probability_forces_known_latent_values_through_likelihood() -> None:
     assert not torch.allclose(actual, latent)
 
 
-def test_legacy_to_probability_argument_is_likelihood_aware() -> None:
+def test_old_to_probability_argument_is_likelihood_aware() -> None:
     latent = torch.tensor([-1.0, 0.0, 1.0], dtype=torch.double)
     model = _Model(BernoulliLikelihood())
 
@@ -167,7 +167,7 @@ def test_binary_models_do_not_hard_code_sigmoid_link() -> None:
     assert not violations, "\n".join(violations)
 
 
-def test_mc_sigmoid_is_only_a_compatibility_alias() -> None:
+def test_mc_sigmoid_is_only_a_support_alias() -> None:
     root = Path(__file__).resolve().parents[1] / "src" / "bochan" / "acquisition" / "binary"
     bad_defaults: list[str] = []
     bad_method_names: list[str] = []

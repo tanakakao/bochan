@@ -58,7 +58,7 @@ class OutcomeConstraintConfig:
     are required.
 
     ``constraints`` accepts ``FeasibilityConstraintSpec`` /
-    ``OrdinalRankConstraintSpec`` objects or equivalent dictionaries. The legacy
+    ``OrdinalRankConstraintSpec`` objects or equivalent dictionaries. The old
     ``output_indices`` / ``operators`` / ``thresholds`` fields are still supported
     for numeric threshold constraints.
     """
@@ -139,7 +139,7 @@ class OutcomeConstraintConfig:
         return False
 
     def build(self, *, output_names: Sequence[str] | None = None) -> list[Any]:
-        """Build BoTorch-compatible sample constraint callables.
+        """Build BoTorch-supported sample constraint callables.
 
         Model-dependent class / rank probability constraints are intentionally
         not converted here; they should be applied through
@@ -237,13 +237,13 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
         self.acqf_kwargs = kwargs
 
 
-def _install_nan_multiobjective_compat() -> None:
-    from .nan_multiobjective_compat import apply_nan_multiobjective_compat
+def _install_nan_multiobjective() -> None:
+    from .nan_multiobjective import apply_nan_multiobjective
 
-    apply_nan_multiobjective_compat()
+    apply_nan_multiobjective()
 
 
-_install_nan_multiobjective_compat()
+_install_nan_multiobjective()
 
 
 __all__ = ["AcquisitionConfig", "ConstraintOperator", "OutcomeConstraintConfig"]

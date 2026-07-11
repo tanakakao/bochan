@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Compatibility-fixed ordinal MAP-SAAS wrappers.
+"""Support-fixed ordinal MAP-SAAS wrappers.
 
 This module keeps the public class names used by ``bochan.models.ordinal.high_dim``
 while avoiding the constructor fallbacks in ``saas.py``.  The main fixes are:
@@ -10,14 +10,14 @@ while avoiding the constructor fallbacks in ``saas.py``.  The main fixes are:
 - validate ordinal labels and explicit ``num_classes`` consistently.
 """
 
-from copy import deepcopy
-from typing import Any, Optional, Sequence
 import warnings
+from collections.abc import Sequence
+from typing import Any
 
 import torch
-from torch import Tensor
 from gpytorch.kernels import Kernel
 from gpytorch.means import Mean
+from torch import Tensor
 
 from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
 from bochan.models.components.saas import (
@@ -26,9 +26,12 @@ from bochan.models.components.saas import (
     to_device_dtype_transform,
 )
 from bochan.models.ordinal.base import OrdinalGPModel
+
 from .saas import (
-    SaasOrdinalGPModel as _LegacySaasOrdinalGPModel,
-    SaasOrdinalMixedGPModel as _LegacySaasOrdinalMixedGPModel,
+    SaasOrdinalGPModel as _OldSaasOrdinalGPModel,
+)
+from .saas import (
+    SaasOrdinalMixedGPModel as _OldSaasOrdinalMixedGPModel,
 )
 
 
@@ -44,7 +47,7 @@ def _labels_as_long(train_Y: Tensor) -> Tensor:
     return y
 
 
-def _infer_num_classes(train_Y: Tensor, num_classes: Optional[int]) -> int:
+def _infer_num_classes(train_Y: Tensor, num_classes: int | None) -> int:
     y = _labels_as_long(train_Y)
     if num_classes is not None:
         k = int(num_classes)
@@ -74,11 +77,11 @@ def _infer_num_classes(train_Y: Tensor, num_classes: Optional[int]) -> int:
 
 def _resolve_num_classes(
     train_Y: Tensor,
-    num_classes: Optional[int],
-    ordinal_likelihood: Optional[OrdinalLogitLikelihood],
+    num_classes: int | None,
+    ordinal_likelihood: OrdinalLogitLikelihood | None,
 ) -> int:
     if ordinal_likelihood is not None:
-        likelihood_num_classes = int(getattr(ordinal_likelihood, "num_classes"))
+        likelihood_num_classes = int(ordinal_likelihood.num_classes)
         if num_classes is None:
             num_classes = likelihood_num_classes
         elif int(num_classes) != likelihood_num_classes:
@@ -89,10 +92,10 @@ def _resolve_num_classes(
     return _infer_num_classes(train_Y, num_classes)
 
 
-def _warn_if_train_yvar_is_provided(train_Yvar: Optional[Tensor]) -> None:
+def _warn_if_train_yvar_is_provided(train_Yvar: Tensor | None) -> None:
     if train_Yvar is not None:
         warnings.warn(
-            "train_Yvar is accepted for API compatibility but is ignored by ordinal SAAS models. "
+            "train_Yvar is accepted for API support but is ignored by ordinal SAAS models. "
             "OrdinalLogitLikelihood does not use Gaussian observation-noise variances.",
             UserWarning,
             stacklevel=3,
@@ -115,7 +118,7 @@ def _flatten_ordinal_targets(y: Tensor) -> Tensor:
     return flatten_targets(y).long()
 
 
-class SaasOrdinalGPModel(_LegacySaasOrdinalGPModel):
+class SaasOrdinalGPModel(_OldSaasOrdinalGPModel):
     """MAP-SAAS style ordinal GP aligned with the current ``OrdinalGPModel`` API."""
 
     def __init__(
@@ -123,15 +126,15 @@ class SaasOrdinalGPModel(_LegacySaasOrdinalGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        num_classes: Optional[int] = None,
-        train_Yvar: Optional[Tensor] = None,
-        ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
-        likelihood: Optional[OrdinalLogitLikelihood] = None,
+        num_classes: int | None = None,
+        train_Yvar: Tensor | None = None,
+        ordinal_likelihood: OrdinalLogitLikelihood | None = None,
+        likelihood: OrdinalLogitLikelihood | None = None,
         input_transform: Any | None = None,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
         num_inducing_points: int = 20,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         tau: float | Tensor | None = None,
         saas_log_scale: bool = True,
@@ -201,7 +204,7 @@ class SaasOrdinalGPModel(_LegacySaasOrdinalGPModel):
         return self.class_probs(X)
 
 
-class SaasOrdinalMixedGPModel(_LegacySaasOrdinalMixedGPModel):
+class SaasOrdinalMixedGPModel(_OldSaasOrdinalMixedGPModel):
     """Mixed-input MAP-SAAS ordinal GP with the fixed parent constructor."""
 
     def __init__(
@@ -209,16 +212,16 @@ class SaasOrdinalMixedGPModel(_LegacySaasOrdinalMixedGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        num_classes: Optional[int] = None,
-        cat_dims: Optional[Sequence[int]] = None,
-        train_Yvar: Optional[Tensor] = None,
-        ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
-        likelihood: Optional[OrdinalLogitLikelihood] = None,
+        num_classes: int | None = None,
+        cat_dims: Sequence[int] | None = None,
+        train_Yvar: Tensor | None = None,
+        ordinal_likelihood: OrdinalLogitLikelihood | None = None,
+        likelihood: OrdinalLogitLikelihood | None = None,
         input_transform: Any | None = None,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
         num_inducing_points: int = 20,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         tau: float | Tensor | None = None,
         saas_log_scale: bool = True,
@@ -284,9 +287,9 @@ class SaasOrdinalMixedGPModel(_LegacySaasOrdinalMixedGPModel):
         self,
         X: Tensor,
         Y: Tensor,
-        noise: Optional[Tensor] = None,
+        noise: Tensor | None = None,
         **kwargs: Any,
-    ) -> "SaasOrdinalMixedGPModel":
+    ) -> SaasOrdinalMixedGPModel:
         if noise is not None:
             warnings.warn(
                 "noise is ignored by ordinal SAAS models because OrdinalLogitLikelihood "

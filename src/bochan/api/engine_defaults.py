@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import replace
-from typing import Any, Callable
+from typing import Any
 
 from .automatic_best_f import compute_best_f
 from .automatic_default_utils import _num_outputs
@@ -384,6 +384,7 @@ def _resolve_default_ordinal_objective(
         return config
 
     from bochan.acquisition.objective import OrdinalExpectedUtilityMCObjective
+
     from .factory import _infer_ordinal_likelihood, _infer_ordinal_utility_values
 
     likelihood = _infer_ordinal_likelihood(bundle.model)
@@ -538,7 +539,7 @@ def resolve_acquisition_data_context(
     config: AcquisitionConfig,
     context: DataContext,
 ) -> DataContext:
-    """Compatibility helper returning only the resolved ``DataContext``."""
+    """Support helper returning only the resolved ``DataContext``."""
 
     _, context = resolve_acquisition_defaults(bundle, config, context)
     return context
@@ -554,7 +555,7 @@ class BayesianOptimizer(_BaseBayesianOptimizer):
         *,
         model_config: ModelConfig | None = None,
         fit_config: FitConfig | None = None,
-    ) -> "BayesianOptimizer":
+    ) -> BayesianOptimizer:
         base_model_config = model_config or self.model_config
         base_fit_config = fit_config or self.fit_config
         llm_plan = None

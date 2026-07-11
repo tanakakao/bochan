@@ -123,9 +123,15 @@ def test_multitask_straddle_broadcasts_singleton_score_to_raw_initialization_bat
     assert torch.equal(out, torch.ones(4, dtype=torch.double))
 
 
-def test_multitask_straddle_passes_score_aligned_x_to_objective() -> None:
+def test_multitask_straddle_omits_mismatched_x_for_objective_validation() -> None:
     model = _make_model()
-    objective = GenericMCObjective(lambda samples, X=None: samples)
+    seen: dict[str, torch.Tensor | None] = {}
+
+    def _record_objective_x(samples: torch.Tensor, X: torch.Tensor | None = None) -> torch.Tensor:
+        seen["X"] = X
+        return samples
+
+    objective = GenericMCObjective(_record_objective_x)
     acquisition = qMultiOutputRegressionStraddle(
         model=model,
         thresholds=[0.0, 0.0],
@@ -147,3 +153,4 @@ def test_multitask_straddle_passes_score_aligned_x_to_objective() -> None:
 
     assert out.shape == torch.Size([4])
     assert torch.equal(out, torch.ones(4, dtype=torch.double))
+    assert seen["X"] is None

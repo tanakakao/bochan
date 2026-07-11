@@ -1,6 +1,5 @@
 """Optimizer wrappers."""
 
-from .standard import optimize_acqf_k_sparse, optimize_acqf_mixed_k_sparse
 from .evo import (
     candidate_transform_mixed_factory,
     optimize_acqf_evo,
@@ -17,14 +16,15 @@ from .nsgaii_adapter import (
 from .nsgaii_legacy_linear_constraint_compat import (
     apply_legacy_nsgaii_linear_constraint_compat,
 )
+from .standard import optimize_acqf_k_sparse, optimize_acqf_mixed_k_sparse
 from .thompson_sampling_adapter import (
     optimize_thompson_sampling,
     optimize_thompson_sampling_mixed,
 )
 from .torch_opt import (
     optimize_acqf_torch,
-    optimize_acqf_torch_mixed,
     optimize_acqf_torch_k_sparse,
+    optimize_acqf_torch_mixed,
     optimize_acqf_torch_mixed_k_sparse,
 )
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import torch
 from botorch.acquisition.multi_objective.monte_carlo import (
     qExpectedHypervolumeImprovement,
     qNoisyExpectedHypervolumeImprovement,
@@ -15,7 +16,6 @@ from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.multi_objective.box_decompositions import (
     FastNondominatedPartitioning,
 )
-import torch
 from torch import Tensor
 
 from .hetero_multi_output import (

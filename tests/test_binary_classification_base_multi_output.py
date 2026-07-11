@@ -6,10 +6,10 @@ The multi-output model is built as a list of independent single-output binary
 classifiers and wrapped by ``MultiOutputBinaryClassificationModel``.  This file
 mirrors the single-output base test while exercising multi-output active
 learning, level-set estimation, Bayesian optimization acquisitions, and
-Jupyter-oriented optimization / constraint compatibility runners.
+Jupyter-oriented optimization / constraint support runners.
 """
 
-from typing import Any, Optional
+from typing import Any
 
 import pytest
 import torch
@@ -48,10 +48,10 @@ from bochan.models.classification.binary.base import (
     MultiOutputBinaryClassificationModel,
 )
 from tests.test_binary_classification_base_single_output import (
-    DTYPE,
     DEVICE,
+    DTYPE,
     assert_candidates_in_bounds,
-    assert_optimizer_compatibility_result,
+    assert_optimizer_support_result,
     make_binary_toy_data,
     make_constraint_cases,
     make_random_batch,
@@ -62,7 +62,6 @@ from tests.test_binary_classification_base_single_output import (
     optimizer_cases,
     print_linear_constraint_diagnostics,
 )
-
 
 N_OUTPUTS = 3
 
@@ -247,7 +246,7 @@ def create_multi_output_binary_model_bundle(
     d: int = 5,
     m: int = N_OUTPUTS,
     num_epochs: int = 4,
-    input_transform: Optional[Normalize] = None,
+    input_transform: Normalize | None = None,
 ) -> dict[str, Any]:
     """出力ごとに single-output classifier を fit して multi-output wrapper を作る。"""
     train_x, train_y, bounds = make_multi_output_binary_toy_data(n=n, d=d, cat=cat, m=m)
@@ -481,7 +480,7 @@ def _constraint_multi_output_acquisition_cases(
     model: MultiOutputBinaryClassificationModel,
     train_x: torch.Tensor,
 ) -> list[tuple[type, dict[str, Any], str]]:
-    """制約・optimizer compatibility 用に AL / LSE / BO から代表を選ぶ。"""
+    """制約・optimizer support 用に AL / LSE / BO から代表を選ぶ。"""
     names = {
         "al_probability_variance",
         "lse_icu",
@@ -511,7 +510,7 @@ def _optimizer_constraint_scenarios(
     mixed: bool = False,
     full_matrix: bool = False,
 ):
-    """optimizer × constraint × acquisition の compatibility scenario を作る。"""
+    """optimizer × constraint × acquisition の support scenario を作る。"""
     scenarios = []
     acquisition_cases_for_constraints = (
         _representative_multi_output_acquisition_cases(model, train_x)
@@ -680,7 +679,7 @@ def test_multi_output_binary_optimizer_constraint_case_smoke(multi_output_binary
                 raw_samples=16,
                 maxiter=10,
             )
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,
@@ -717,7 +716,7 @@ def test_multi_output_binary_mixed_optimizer_constraint_case_smoke(
                 raw_samples=16,
                 maxiter=10,
             )
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,
@@ -904,7 +903,7 @@ def run_jupyter_optimize_acqf_mixed_all_acquisitions_check(
     return bundle
 
 
-def run_jupyter_optimizer_constraint_compatibility_check(
+def run_jupyter_optimizer_constraint_support_check(
     *,
     n: int = 20,
     d: int = 5,
@@ -919,7 +918,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
     suppress_botorch_warnings: bool = True,
 ) -> dict[str, Any]:
     if d < 5:
-        raise ValueError("constraint compatibility check では d >= 5 が必要です。")
+        raise ValueError("constraint support check では d >= 5 が必要です。")
 
     bundle = create_multi_output_binary_model_bundle(cat=False, n=n, d=d, m=m, num_epochs=num_epochs)
     model = bundle["model"]
@@ -929,7 +928,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
     failed_cases: list[tuple[str, Exception]] = []
 
     print("=" * 100)
-    print("Jupyter multi-output optimizer / constraint compatibility check")
+    print("Jupyter multi-output optimizer / constraint support check")
     print(f"n={n}, d={d}, m={m}, q={q}, num_epochs={num_epochs}, full_matrix={full_matrix}, num_cases={len(scenarios)}")
     print("=" * 100)
 
@@ -947,7 +946,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
                     raw_samples=16,
                     maxiter=10,
                 )
-            assert_optimizer_compatibility_result(cands=cands, acq_value=acq_value, bounds=bounds, q=q, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
+            assert_optimizer_support_result(cands=cands, acq_value=acq_value, bounds=bounds, q=q, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
             print(f"[OK] {case_id} cands.shape={tuple(cands.shape)} acq_value={acq_value}" if verbose_ok_detail else f"[OK] {case_id}")
             if verbose_candidates:
                 print(f"     cands={cands}")
@@ -973,7 +972,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
     return bundle
 
 
-def run_jupyter_mixed_optimizer_constraint_compatibility_check(
+def run_jupyter_mixed_optimizer_constraint_support_check(
     *,
     n: int = 20,
     d: int = 5,
@@ -988,7 +987,7 @@ def run_jupyter_mixed_optimizer_constraint_compatibility_check(
     suppress_botorch_warnings: bool = True,
 ) -> dict[str, Any]:
     if d < 5:
-        raise ValueError("constraint compatibility check では d >= 5 が必要です。")
+        raise ValueError("constraint support check では d >= 5 が必要です。")
 
     bundle = create_multi_output_binary_model_bundle(cat=True, n=n, d=d, m=m, num_epochs=num_epochs)
     model = bundle["model"]
@@ -1001,7 +1000,7 @@ def run_jupyter_mixed_optimizer_constraint_compatibility_check(
     failed_cases: list[tuple[str, Exception]] = []
 
     print("=" * 100)
-    print("Jupyter mixed multi-output optimizer / constraint compatibility check")
+    print("Jupyter mixed multi-output optimizer / constraint support check")
     print(f"n={n}, d={d}, m={m}, q={q}, num_epochs={num_epochs}, cat_id={cat_id}, full_matrix={full_matrix}, num_cases={len(scenarios)}")
     print("=" * 100)
 
@@ -1020,7 +1019,7 @@ def run_jupyter_mixed_optimizer_constraint_compatibility_check(
                     raw_samples=16,
                     maxiter=10,
                 )
-            assert_optimizer_compatibility_result(cands=cands, acq_value=acq_value, bounds=bounds, q=q, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
+            assert_optimizer_support_result(cands=cands, acq_value=acq_value, bounds=bounds, q=q, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
             assert torch.isin(cands[:, cat_id], cat_values).all(), case_id
             print(f"[OK] {case_id} cands.shape={tuple(cands.shape)} acq_value={acq_value}" if verbose_ok_detail else f"[OK] {case_id}")
             if verbose_candidates:
@@ -1105,7 +1104,7 @@ def run_jupyter_all_checks(
             suppress_botorch_warnings=suppress_botorch_warnings,
             verbose_ok_detail=verbose_ok_detail,
         )
-        run_jupyter_optimizer_constraint_compatibility_check(
+        run_jupyter_optimizer_constraint_support_check(
             n=n,
             d=d,
             m=m,
@@ -1118,7 +1117,7 @@ def run_jupyter_all_checks(
             verbose_constraints=verbose_constraints,
             suppress_botorch_warnings=suppress_botorch_warnings,
         )
-        run_jupyter_mixed_optimizer_constraint_compatibility_check(
+        run_jupyter_mixed_optimizer_constraint_support_check(
             n=n,
             d=d,
             m=m,

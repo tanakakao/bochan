@@ -262,7 +262,7 @@ def optimize_acqf_nsgaii(
 ) -> tuple[Tensor, Tensor]:
     """Optimize a multi-output acquisition function with NSGA-II.
 
-    This is a compatibility wrapper around BoTorch's
+    This is a support wrapper around BoTorch's
     ``optimize_with_nsgaii``.  It is intended for acquisition functions that
     return multiple objective values, especially ``MultiOutputPosteriorMean``.
 
@@ -293,9 +293,9 @@ def optimize_acqf_nsgaii(
         validate_output: If True, check finite output tensors.
         validate_discrete: If True, check that returned discrete dimensions are
             within ``discrete_choices``.
-        sequential: Accepted for API compatibility.  NSGA-II is population-based
+        sequential: Accepted for API support.  NSGA-II is population-based
             and does not use sequential greedy optimization.
-        **kwargs: Extra keyword arguments are ignored for compatibility with the
+        **kwargs: Extra keyword arguments are ignored for support with the
             existing optimizer dispatch layer.
 
     Returns:

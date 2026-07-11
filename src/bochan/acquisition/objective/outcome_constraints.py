@@ -1,4 +1,4 @@
-"""Factories for BoTorch-compatible outcome constraints.
+"""Factories for BoTorch-supported outcome constraints.
 
 BoTorch outcome constraints operate on posterior samples and are satisfied when
 returned values are less than or equal to zero.
@@ -99,7 +99,7 @@ def make_outcome_constraint(
     operator: ConstraintOperator,
     threshold: float,
 ) -> OutcomeConstraint:
-    """Create one BoTorch-compatible scalar outcome constraint.
+    """Create one BoTorch-supported scalar outcome constraint.
 
     The returned callable accepts objective values with shape
     ``sample_shape x batch_shape x q x m`` and returns a tensor with shape
@@ -161,7 +161,7 @@ def make_outcome_constraints(
         thresholds: Thresholds for the corresponding outputs.
 
     Returns:
-        list[OutcomeConstraint]: BoTorch-compatible outcome constraints.
+        list[OutcomeConstraint]: BoTorch-supported outcome constraints.
     """
 
     lengths = {

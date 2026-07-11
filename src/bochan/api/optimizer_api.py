@@ -66,7 +66,7 @@ _ALIASES = {
 class _InternalMixedOptimizerName(str):
     """Mark a mixed optimizer name selected internally from categorical dims.
 
-    Publicly supplied legacy mixed names are still normalized to canonical family
+    Publicly supplied old mixed names are still normalized to canonical family
     names. The marker survives ``dataclasses.replace`` so downstream config copies
     retain the internally selected mixed implementation.
     """

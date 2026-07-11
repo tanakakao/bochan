@@ -3,25 +3,25 @@
 Objective helpers live in :mod:`acquisition.objective`.
 """
 
-from .classification_constraint_compat import (
-    apply_classification_constraint_compat,
+from .classification_constraints import (
+    apply_classification_constraints,
 )
-from .multiclass_constraint_install import apply_multiclass_constraint_compat
-from .nsgaii_constraint_install import install_nsgaii_constraint_compat
-from .ordinal_constraint_install import apply_ordinal_constraint_compat
-from .ordinal_multitask_compat import apply_ordinal_multitask_compat
+from .multiclass_constraint_install import apply_multiclass_constraint_support
+from .nsgaii_constraint_install import install_nsgaii_constraints
+from .ordinal_constraint_install import apply_ordinal_constraint_support
+from .ordinal_multitask import apply_ordinal_multitask
 
-apply_ordinal_multitask_compat()
-apply_classification_constraint_compat()
-apply_multiclass_constraint_compat()
-apply_ordinal_constraint_compat()
-install_nsgaii_constraint_compat()
+apply_ordinal_multitask()
+apply_classification_constraints()
+apply_multiclass_constraint_support()
+apply_ordinal_constraint_support()
+install_nsgaii_constraints()
 
 
 __all__ = [
-    "apply_classification_constraint_compat",
-    "apply_multiclass_constraint_compat",
-    "apply_ordinal_constraint_compat",
-    "apply_ordinal_multitask_compat",
-    "install_nsgaii_constraint_compat",
+    "apply_classification_constraints",
+    "apply_multiclass_constraint_support",
+    "apply_ordinal_constraint_support",
+    "apply_ordinal_multitask",
+    "install_nsgaii_constraints",
 ]

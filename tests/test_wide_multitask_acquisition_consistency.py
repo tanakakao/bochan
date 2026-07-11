@@ -11,7 +11,7 @@ from bochan.acquisition.objective import make_outcome_constraints
 from bochan.acquisition.regression.bayesian_optimization import (
     qMultiOutputRegressionNParEGO,
 )
-from bochan.models.wide_multitask_compat import WideMultiTaskGP
+from bochan.models.wide_multitask_variants import WideMultiTaskGP
 
 
 def _case() -> tuple[

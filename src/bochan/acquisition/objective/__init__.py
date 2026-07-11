@@ -46,8 +46,8 @@ from .regression import (
     MultiOutputRegressionInputPerturbationObjective,
     make_regression_scalar_callable,
 )
-from .regression_perturbation_compat import (
-    apply_regression_perturbation_objective_compat,
+from .regression_perturbation import (
+    configure_regression_perturbation_objective,
 )
 
 from .hybrid import (
@@ -70,7 +70,7 @@ from .outcome_constraints import (
 )
 
 
-apply_regression_perturbation_objective_compat()
+configure_regression_perturbation_objective()
 
 
 __all__ = [

@@ -1,9 +1,13 @@
+from .decomposition import (
+    PCABinaryClassificationGPModel,
+    PCABinaryClassificationMixedGPModel,
+    REMBOBinaryClassificationGPModel,
+    REMBOBinaryClassificationMixedGPModel,
+)
+from .input_perturbation import configure_projected_binary_perturbation
 from .saas import SaasBinaryClassificationGPModel, SaasBinaryClassificationMixedGPModel
-from .decomposition import REMBOBinaryClassificationGPModel, REMBOBinaryClassificationMixedGPModel, PCABinaryClassificationGPModel, PCABinaryClassificationMixedGPModel
-from .input_perturbation_compat import apply_projected_binary_perturbation_compat
 
-
-apply_projected_binary_perturbation_compat()
+configure_projected_binary_perturbation()
 
 
 __all__ = [

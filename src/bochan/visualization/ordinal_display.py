@@ -13,8 +13,14 @@ from ._heatmap_layout import apply_probability_heatmap_layout
 from .multiclass import MulticlassHeatmapMode, is_multiclass_object
 from .ordinal import (
     is_ordinal_object,
+)
+from .ordinal import (
     show_1dplot_from_optimizer as _show_1dplot_from_optimizer,
+)
+from .ordinal import (
     show_scatter_with_acqf_from_optimizer as _show_scatter_from_optimizer,
+)
+from .ordinal import (
     show_triscatter_with_acqf_from_optimizer as _show_triscatter_from_optimizer,
 )
 
@@ -23,7 +29,7 @@ OrdinalProbabilityMode = MulticlassHeatmapMode
 
 
 def _to_internal_display(display: OrdinalDisplayMode) -> str:
-    """Translate the public selector to the legacy internal implementation."""
+    """Translate the public selector to the old internal implementation."""
 
     if display == "latent":
         return "current"

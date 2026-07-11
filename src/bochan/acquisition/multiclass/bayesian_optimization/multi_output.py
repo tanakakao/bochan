@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Optional
 
 import torch
 from botorch.acquisition.monte_carlo import MCAcquisitionFunction
@@ -25,7 +24,7 @@ from bochan.acquisition.multiclass.base import ClassReductionType
 class MulticlassTargetProbabilityObjective(MCMultiOutputObjective):
     """Convert multiclass probability samples to multi-output objective values.
 
-    Accepted probability shapes are ``... x q x m x C`` and, for compatibility
+    Accepted probability shapes are ``... x q x m x C`` and, for support
     with some posterior wrappers, ``... x q x C x m``. The latter is detected by
     checking whether the candidate class axis sums to one.
     """
@@ -160,7 +159,7 @@ class _IdentityMCMultiOutputObjective(MCMultiOutputObjective):
         super().__init__()
         self._verify_output_shape = False
 
-    def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
         return samples
 
 
@@ -263,7 +262,7 @@ def _to_utility_list(
 
 
 def _normalize_objective_signs(
-    objective_signs: Optional[Sequence[float] | Tensor],
+    objective_signs: Sequence[float] | Tensor | None,
     *,
     m: int,
     device: torch.device,
@@ -297,8 +296,8 @@ def compute_observed_multiclass_utility(
     target_class: int | Sequence[int] | None = None,
     output_target_classes: Sequence[int] | Tensor | None = None,
     class_reduction: ClassReductionType = "mean",
-    utility_values: Optional[Sequence[Sequence[float]] | Sequence[float] | Tensor] = None,
-    objective_signs: Optional[Sequence[float] | Tensor] = None,
+    utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
+    objective_signs: Sequence[float] | Tensor | None = None,
     class_offset: int = 0,
 ) -> Tensor:
     """観測 multiclass label を multi-output BO の目的値空間へ変換する。"""
@@ -360,7 +359,7 @@ def compute_observed_multiclass_target_probability_values(
     target_class: int | Sequence[int] | None = None,
     output_target_classes: Sequence[int] | Tensor | None = None,
     class_reduction: ClassReductionType = "mean",
-    objective_signs: Optional[Sequence[float] | Tensor] = None,
+    objective_signs: Sequence[float] | Tensor | None = None,
     class_offset: int = 0,
 ) -> Tensor:
     """target-class probability 目的専用の観測値変換 helper。"""
@@ -486,7 +485,7 @@ def _baseline_partitioning_from_model(
 
 
 class _MultiOutputMulticlassTargetClassBOBase(_DirectMultiOutputMulticlassAcqBase):
-    """Direct target-class probability BO base for PoF and legacy scalar variants."""
+    """Direct target-class probability BO base for PoF and old scalar variants."""
 
     def __init__(
         self,
@@ -614,10 +613,10 @@ class qMultiOutputMulticlassExpectedHypervolumeImprovement(qExpectedHypervolumeI
         class_reduction: ClassReductionType = "mean",
         utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
         objective_signs: Sequence[float] | Tensor | None = None,
-        sampler: Optional[SobolQMCNormalSampler] = None,
-        objective: Optional[MCMultiOutputObjective] = None,
-        constraints: Optional[list] = None,
-        X_pending: Optional[Tensor] = None,
+        sampler: SobolQMCNormalSampler | None = None,
+        objective: MCMultiOutputObjective | None = None,
+        constraints: list | None = None,
+        X_pending: Tensor | None = None,
         eta: float | Tensor = 1e-3,
         fat: bool = False,
         eps: float = 1e-8,
@@ -693,10 +692,10 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qMultiOutputMult
         class_reduction: ClassReductionType = "mean",
         utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
         objective_signs: Sequence[float] | Tensor | None = None,
-        sampler: Optional[SobolQMCNormalSampler] = None,
-        objective: Optional[MCMultiOutputObjective] = None,
-        constraints: Optional[list] = None,
-        X_pending: Optional[Tensor] = None,
+        sampler: SobolQMCNormalSampler | None = None,
+        objective: MCMultiOutputObjective | None = None,
+        constraints: list | None = None,
+        X_pending: Tensor | None = None,
         eta: float | Tensor = 1e-3,
         fat: bool = False,
         prune_baseline: bool = False,
@@ -705,7 +704,7 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(qMultiOutputMult
         max_iep: int = 0,
         incremental_nehvi: bool = True,
         cache_root: bool = False,
-        marginalize_dim: Optional[int] = None,
+        marginalize_dim: int | None = None,
         eps: float = 1e-8,
     ) -> None:
         ref_tensor = torch.as_tensor(ref_point, device=X_baseline.device, dtype=X_baseline.dtype).reshape(-1)
@@ -766,14 +765,14 @@ class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):
         target_class: int | Sequence[int] | None = None,
         output_target_classes: Sequence[int] | None = None,
         class_reduction: ClassReductionType = "mean",
-        utility_values: Optional[Sequence[Sequence[float]] | Sequence[float] | Tensor] = None,
-        objective_signs: Optional[Sequence[float] | Tensor] = None,
-        train_Y: Optional[Tensor] = None,
-        Y_baseline: Optional[Tensor] = None,
+        utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
+        train_Y: Tensor | None = None,
+        Y_baseline: Tensor | None = None,
         class_offset: int = 0,
-        weights: Optional[Tensor] = None,
-        sampler: Optional[SobolQMCNormalSampler] = None,
-        objective: Optional[MCMultiOutputObjective] = None,
+        weights: Tensor | None = None,
+        sampler: SobolQMCNormalSampler | None = None,
+        objective: MCMultiOutputObjective | None = None,
         rho: float = 0.05,
         eps: float = 1e-8,
     ) -> None:
@@ -857,7 +856,7 @@ class qMultiOutputMulticlassNParEGO(MCAcquisitionFunction):
 
 
 class qMultiOutputMulticlassExpectedImprovement(_MultiOutputMulticlassTargetClassBOBase):
-    """Legacy scalar EI for target-class probability."""
+    """Old scalar EI for target-class probability."""
 
     def __init__(
         self,
@@ -888,7 +887,7 @@ class qMultiOutputMulticlassExpectedImprovement(_MultiOutputMulticlassTargetClas
 
 
 class qMultiOutputMulticlassProbabilityOfImprovement(_MultiOutputMulticlassTargetClassBOBase):
-    """Legacy scalar PI for target-class probability."""
+    """Old scalar PI for target-class probability."""
 
     def __init__(
         self,
@@ -922,7 +921,7 @@ class qMultiOutputMulticlassProbabilityOfImprovement(_MultiOutputMulticlassTarge
 
 
 class qMultiOutputMulticlassUpperConfidenceBound(_MultiOutputMulticlassTargetClassBOBase):
-    """Legacy scalar UCB for target-class probability."""
+    """Old scalar UCB for target-class probability."""
 
     def __init__(
         self,

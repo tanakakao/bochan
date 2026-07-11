@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from bochan.optim.nsgaii_adapter import _make_version_compatible_optimizer
+from bochan.optim.nsgaii_adapter import _make_version_supported_optimizer
 
 
 class _TwoOutputAcquisition:
@@ -53,10 +53,10 @@ def test_optimizer_disables_grad_for_botorch_objective_numpy_conversion() -> Non
         values.cpu().numpy()
         return X, values.squeeze(-2)
 
-    compatible = _make_version_compatible_optimizer(
+    supported = _make_version_supported_optimizer(
         botorch_like_optimize_with_nsgaii
     )
-    X, Y = compatible(
+    X, Y = supported(
         acq_function=_TwoOutputAcquisition(),
         bounds=torch.tensor([[0.0], [1.0]], dtype=torch.double),
         num_objectives=2,

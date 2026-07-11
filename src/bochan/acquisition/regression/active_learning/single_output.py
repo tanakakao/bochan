@@ -24,13 +24,13 @@ Notes:
     models that do not support fantasize(), such as many custom DeepGP wrappers.
 """
 
-from typing import Any, Callable, Literal, Optional
+from collections.abc import Callable
+from typing import Any, Literal
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.utils.transforms import t_batch_mode_transform
+from torch import Tensor
 
 try:
     from botorch.acquisition.active_learning import (
@@ -83,7 +83,7 @@ def _safe_prod(shape: torch.Size | tuple[int, ...]) -> int:
     return out
 
 
-def _objective_call(objective: Callable, score: Tensor, X: Optional[Tensor]):
+def _objective_call(objective: Callable, score: Tensor, X: Tensor | None):
     try:
         return objective(score, X=X)
     except TypeError:
@@ -118,7 +118,7 @@ class _RegressionActiveLearningBase(AcquisitionFunction):
 
     Args:
         model:
-            BoTorch-compatible regression model.
+            BoTorch-supported regression model.
         reduction:
             q-batch reduction.  This is intentionally named ``reduction`` to
             match classification / ordinal APIs.
@@ -145,8 +145,8 @@ class _RegressionActiveLearningBase(AcquisitionFunction):
         *,
         reduction: ReductionType = "mean",
         output_reduction: OutputReductionType = "mean",
-        X_pending: Optional[Tensor] = None,
-        X_observed: Optional[Tensor] = None,
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
         pending_penalty_weight: float = 0.0,
@@ -155,8 +155,8 @@ class _RegressionActiveLearningBase(AcquisitionFunction):
         observed_penalty_beta: float = 10.0,
         hard_duplicate_penalty: float = 0.0,
         hard_duplicate_tol: float = 1e-8,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
-        n_w: Optional[int] = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
+        n_w: int | None = None,
         eps: float = 1e-12,
     ) -> None:
         super().__init__(model=model)
@@ -185,8 +185,8 @@ class _RegressionActiveLearningBase(AcquisitionFunction):
         if self.n_w is not None and self.n_w <= 0:
             raise ValueError("n_w must be positive or None.")
 
-        self.X_pending: Optional[Tensor] = None
-        self.X_observed: Optional[Tensor] = None
+        self.X_pending: Tensor | None = None
+        self.X_observed: Tensor | None = None
         self.set_X_pending(X_pending)
         self.set_X_observed(X_observed)
 
@@ -197,8 +197,8 @@ class _RegressionActiveLearningBase(AcquisitionFunction):
         self,
         ref,
         *,
-        like: Optional[Tensor] = None,
-    ) -> Optional[Tensor]:
+        like: Tensor | None = None,
+    ) -> Tensor | None:
         if ref is None:
             return None
 
@@ -233,10 +233,10 @@ class _RegressionActiveLearningBase(AcquisitionFunction):
         # Reference points are constants during acquisition optimization.
         return out.detach()
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         self.X_pending = self._coerce_reference_to_tensor(X_pending)
 
-    def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+    def set_X_observed(self, X_observed: Tensor | None = None) -> None:
         self.X_observed = self._coerce_reference_to_tensor(X_observed)
 
     # ------------------------------------------------------------
@@ -303,7 +303,7 @@ class _RegressionActiveLearningBase(AcquisitionFunction):
         ref,
         *,
         like: Tensor,
-    ) -> Optional[Tensor]:
+    ) -> Tensor | None:
         ref = self._coerce_reference_to_tensor(ref, like=like)
         if ref is None or ref.numel() == 0:
             return None
@@ -737,10 +737,10 @@ class qRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
         model,
         mc_points: Tensor,
         *,
-        sampler: Optional[Any] = None,
-        objective: Optional[Any] = None,
-        posterior_transform: Optional[Any] = None,
-        X_pending: Optional[Tensor] = None,
+        sampler: Any | None = None,
+        objective: Any | None = None,
+        posterior_transform: Any | None = None,
+        X_pending: Tensor | None = None,
         **kwargs: Any,
     ) -> None:
         if _BoTorchQNegIntegratedPosteriorVariance is None:
@@ -780,7 +780,7 @@ class qRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
             else:
                 raise
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         if hasattr(self.acqf, "set_X_pending"):
             self.acqf.set_X_pending(X_pending)
         else:

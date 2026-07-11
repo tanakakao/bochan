@@ -89,7 +89,7 @@ def _reshape_wide(value: Tensor, q: int, num_tasks: int) -> Tensor:
 
 
 class _WidePosterior(Posterior):
-    """Posterior view that preserves base-sample compatibility.
+    """Posterior view that preserves base-sample support.
 
     The wrapped posterior keeps its flattened ``q * m`` base-sample shape. Only
     user-visible moments and samples are reshaped to ``q x m``. Class-valued

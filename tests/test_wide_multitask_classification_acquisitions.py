@@ -26,7 +26,7 @@ from bochan.acquisition.ordinal.bayesian_optimization import (
     qMultiOutputOrdinalNParEGO,
     qMultiOutputOrdinalUtilityObjective,
 )
-from bochan.models.wide_multitask_compat import (
+from bochan.models.wide_multitask_variants import (
     WideMultiTaskBinaryClassificationGPModel,
     WideMultiTaskMulticlassClassificationGPModel,
     WideMultiTaskOrdinalGPModel,
@@ -312,7 +312,7 @@ def test_public_nsgaii_applies_generated_constraints_after_multiclass_objective(
     monkeypatch,
 ) -> None:
     import bochan.optim as optim
-    import bochan.optim.nsgaii_constraint_compat as compatibility
+    import bochan.optim.nsgaii_constraints as support
 
     captured: dict[str, object] = {}
 
@@ -327,7 +327,7 @@ def test_public_nsgaii_applies_generated_constraints_after_multiclass_objective(
         return samples[..., 0, 0] - 1.0
 
     monkeypatch.setattr(
-        compatibility,
+        support,
         "_base_optimize_acqf_nsgaii",
         fake_optimize_acqf_nsgaii,
     )

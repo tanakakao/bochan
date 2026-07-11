@@ -8,9 +8,9 @@ import torch
 from torch import Tensor
 
 from . import multi_output as _multi_output
-from ._fixed_likelihood_graph import apply_fixed_ordinal_likelihood_graph_compat
+from ._fixed_likelihood_graph import apply_fixed_ordinal_likelihood_graph_support
 
-apply_fixed_ordinal_likelihood_graph_compat(_multi_output)
+apply_fixed_ordinal_likelihood_graph_support(_multi_output)
 
 
 def _num_classes_from_object(obj: Any) -> int | None:

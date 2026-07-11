@@ -1,11 +1,11 @@
 from .kronecker_multitask import (
     KroneckerMultiTaskMixedGP,
     MixedKroneckerMultiTaskGP,
-    PerturbationCompatibleKroneckerMultiTaskGP,
+    PerturbationSupportedKroneckerMultiTaskGP,
 )
 
 __all__ = [
     "KroneckerMultiTaskMixedGP",
     "MixedKroneckerMultiTaskGP",
-    "PerturbationCompatibleKroneckerMultiTaskGP",
+    "PerturbationSupportedKroneckerMultiTaskGP",
 ]

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.approximate_gp import ApproximateGPyTorchModel
 from botorch.models.kernels.categorical import CategoricalKernel
@@ -14,13 +13,13 @@ from botorch.models.transforms.outcome import OutcomeTransform
 from botorch.models.utils.gpytorch_modules import get_covar_module_with_dim_scaled_prior
 from botorch.posteriors import Posterior
 from botorch.posteriors.gpytorch import GPyTorchPosterior
-
 from gpytorch.distributions import MultivariateNormal
 from gpytorch.kernels import Kernel, ProductKernel, ScaleKernel
 from gpytorch.means import ConstantMean, Mean
 from gpytorch.mlls import VariationalELBO
 from gpytorch.models import ApproximateGP
 from gpytorch.variational import CholeskyVariationalDistribution, VariationalStrategy
+from torch import Tensor
 
 from bochan.models.components.gamma import (
     GammaLink,
@@ -39,15 +38,15 @@ from bochan.models.components.gamma import (
 )
 
 
-def clone_outcome_transform(outcome_transform: Optional[OutcomeTransform]) -> Optional[OutcomeTransform]:
+def clone_outcome_transform(outcome_transform: OutcomeTransform | None) -> OutcomeTransform | None:
     """OutcomeTransform を安全に複製する。"""
     return None if outcome_transform is None else copy.deepcopy(outcome_transform)
 
 
 def to_device_dtype_outcome_transform(
-    outcome_transform: Optional[OutcomeTransform],
+    outcome_transform: OutcomeTransform | None,
     ref: Tensor,
-) -> Optional[OutcomeTransform]:
+) -> OutcomeTransform | None:
     """OutcomeTransform を ref と同じ device / dtype に移す。"""
     if outcome_transform is not None and hasattr(outcome_transform, "to"):
         outcome_transform = outcome_transform.to(device=ref.device, dtype=ref.dtype)
@@ -57,11 +56,11 @@ def to_device_dtype_outcome_transform(
 def apply_outcome_transform_for_training(
     train_Y: Tensor,
     train_X: Tensor,
-    outcome_transform: Optional[OutcomeTransform],
+    outcome_transform: OutcomeTransform | None,
     *,
     min_mean: float,
     name: str,
-) -> tuple[Tensor, Tensor, Optional[OutcomeTransform]]:
+) -> tuple[Tensor, Tensor, OutcomeTransform | None]:
     """Gamma 用に正値を保つ形で outcome_transform を適用する。
 
     Returns:
@@ -94,7 +93,7 @@ def apply_outcome_transform_for_training(
             transformed_train_Y = transformed_train_Y.reshape_as(raw_train_Y)
         except RuntimeError as err:
             raise RuntimeError(
-                f"{name} produced an incompatible target shape. "
+                f"{name} produced an insupported target shape. "
                 f"raw_train_Y.shape={tuple(raw_train_Y.shape)}, "
                 f"transformed_train_Y.shape={tuple(transformed_train_Y.shape)}."
             ) from err
@@ -151,11 +150,11 @@ class _LatentGammaSVGP(ApproximateGP):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         num_inducing_points: int = 128,
         learn_inducing_locations: bool = True,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
     ) -> None:
         inducing_points = select_inducing_points(
             train_X,
@@ -190,11 +189,11 @@ class _LatentMixedGammaSVGP(ApproximateGP):
         train_Y: Tensor,
         *,
         cat_dims: Sequence[int],
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         num_inducing_points: int = 128,
         learn_inducing_locations: bool = True,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
     ) -> None:
         d = train_X.shape[-1]
         self.cat_dims = normalize_dims(cat_dims, d)
@@ -248,10 +247,10 @@ class _BaseGammaGPModel(ApproximateGPyTorchModel):
         likelihood: GammaLogLikelihood,
         train_X: Tensor,
         train_Y: Tensor,
-        input_transform: Optional[InputTransform],
-        outcome_transform: Optional[OutcomeTransform] = None,
-        train_Y_raw: Optional[Tensor] = None,
-        cat_dims: Optional[Sequence[int]] = None,
+        input_transform: InputTransform | None,
+        outcome_transform: OutcomeTransform | None = None,
+        train_Y_raw: Tensor | None = None,
+        cat_dims: Sequence[int] | None = None,
         num_inducing_points: int = 128,
         learn_inducing_locations: bool = True,
         link: GammaLink = "softplus",
@@ -292,7 +291,7 @@ class _BaseGammaGPModel(ApproximateGPyTorchModel):
             cat_dims=self.cat_dims,
         )
 
-    def transform_outcomes(self, Y: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def transform_outcomes(self, Y: Tensor, X: Tensor | None = None) -> Tensor:
         """raw target を model-scale target に変換する。"""
         Y = prepare_positive_targets(Y, self.train_inputs_raw[0] if X is None else X, min_value=self.min_mean)
         if self.outcome_transform is None:
@@ -304,8 +303,8 @@ class _BaseGammaGPModel(ApproximateGPyTorchModel):
     def latent_posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        output_indices: list[int] | None = None,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> GPyTorchPosterior:
         if output_indices is not None:
@@ -324,9 +323,9 @@ class _BaseGammaGPModel(ApproximateGPyTorchModel):
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
+        output_indices: list[int] | None = None,
         observation_noise: bool | Tensor = True,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> Posterior:
         if torch.is_tensor(observation_noise):
@@ -381,13 +380,13 @@ class GammaGPModel(_BaseGammaGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        likelihood: Optional[GammaLogLikelihood] = None,
-        input_transform: Optional[InputTransform] = None,
-        outcome_transform: Optional[OutcomeTransform] = None,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
+        likelihood: GammaLogLikelihood | None = None,
+        input_transform: InputTransform | None = None,
+        outcome_transform: OutcomeTransform | None = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
         num_inducing_points: int = 128,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         link: GammaLink = "softplus",
         init_concentration: float = 10.0,
@@ -448,7 +447,7 @@ class GammaGPModel(_BaseGammaGPModel):
         self.learn_concentration = bool(learn_concentration)
         self.min_concentration = float(min_concentration)
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "GammaGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> GammaGPModel:
         if kwargs.get("noise") is not None:
             raise NotImplementedError("GammaGPModel does not support noise in condition_on_observations.")
         if isinstance(X, tuple):
@@ -488,13 +487,13 @@ class GammaMixedGPModel(_BaseGammaGPModel):
         train_Y: Tensor,
         *,
         cat_dims: Sequence[int],
-        likelihood: Optional[GammaLogLikelihood] = None,
-        input_transform: Optional[InputTransform] = None,
-        outcome_transform: Optional[OutcomeTransform] = None,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
+        likelihood: GammaLogLikelihood | None = None,
+        input_transform: InputTransform | None = None,
+        outcome_transform: OutcomeTransform | None = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
         num_inducing_points: int = 128,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         link: GammaLink = "softplus",
         init_concentration: float = 10.0,

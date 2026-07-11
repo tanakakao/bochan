@@ -91,7 +91,7 @@ def test_reference_point_requires_each_output_to_have_an_observation() -> None:
 
 
 def test_public_api_installs_nan_safe_engine_default_references() -> None:
-    # Importing the public AcquisitionConfig installs compatibility for the
+    # Importing the public AcquisitionConfig installs support for the
     # callables that engine_defaults imported by name.
     assert AcquisitionConfig is not None
     assert engine_defaults.make_default_ref_point is make_default_ref_point

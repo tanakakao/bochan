@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 import math
-from typing import Callable, Literal, Optional, Sequence, Union
+from collections.abc import Callable, Sequence
+from typing import Literal, Optional
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.acquisition.monte_carlo import MCAcquisitionFunction
 from botorch.acquisition.multi_objective.monte_carlo import (
     qExpectedHypervolumeImprovement,
-    qNoisyExpectedHypervolumeImprovement,
 )
 from botorch.acquisition.multi_objective.objective import (
     IdentityMCMultiOutputObjective,
@@ -22,6 +20,7 @@ from botorch.utils.multi_objective.box_decompositions.non_dominated import (
     FastNondominatedPartitioning,
 )
 from botorch.utils.transforms import t_batch_mode_transform
+from torch import Tensor
 
 from ..hetero_utils import (
     _normal_cdf,
@@ -30,7 +29,6 @@ from ..hetero_utils import (
     make_weight_tensor,
     stack_multi_summaries,
 )
-
 
 RiskType = Optional[Literal["var", "cvar"]]
 ReductionType = Literal["mean", "sum", "max"]
@@ -66,7 +64,7 @@ def _reduce_q(score: Tensor, reduction: ReductionType) -> Tensor:
     raise ValueError(f"Unknown reduction: {reduction!r}.")
 
 
-def _coerce_reference_to_tensor(X_ref, *, ref: Optional[Tensor] = None) -> Optional[Tensor]:
+def _coerce_reference_to_tensor(X_ref, *, ref: Tensor | None = None) -> Tensor | None:
     if X_ref is None:
         return None
 
@@ -162,14 +160,14 @@ def _expand_scalar_or_list(value, m: int, name: str):
     raise ValueError(f"Unsupported {name}: {type(value)}")
 
 
-def _objective_call(objective, score: Tensor, X: Optional[Tensor]):
+def _objective_call(objective, score: Tensor, X: Tensor | None):
     try:
         return objective(score, X=X)
     except TypeError:
         return objective(score)
 
 
-def _apply_score_objective(owner, score: Tensor, X: Optional[Tensor], name: str) -> Tensor:
+def _apply_score_objective(owner, score: Tensor, X: Tensor | None, name: str) -> Tensor:
     objective = getattr(owner, "objective", None)
     if objective is None:
         return score
@@ -379,12 +377,12 @@ def _extract_ordinal_likelihoods(model: Model, ordinal_likelihoods=None) -> list
         return [ordinal_likelihoods]
 
     if hasattr(model, "ordinal_likelihoods"):
-        likes = getattr(model, "ordinal_likelihoods")
+        likes = model.ordinal_likelihoods
         likes = likes() if callable(likes) else likes
         return list(likes)
 
     if hasattr(model, "likelihoods"):
-        likes = getattr(model, "likelihoods")
+        likes = model.likelihoods
         likes = likes() if callable(likes) else likes
         return list(likes)
 
@@ -467,7 +465,7 @@ def _latent_to_probs(
     latent: Tensor,
     *,
     ordinal_likelihood,
-    latent_to_probs: Optional[Callable[[Tensor], Tensor]] = None,
+    latent_to_probs: Callable[[Tensor], Tensor] | None = None,
     eps: float = 1e-12,
 ) -> Tensor:
     latent_in = latent.unsqueeze(-1) if latent.ndim >= 1 and latent.shape[-1] != 1 else latent
@@ -558,8 +556,8 @@ def ordinal_latent_samples_to_expected_utility(
     model: Model,
     utility_values_list=None,
     ordinal_likelihoods=None,
-    latent_to_probs_list: Optional[Sequence[Optional[Callable[[Tensor], Tensor]]]] = None,
-    objective_signs: Optional[Sequence[float] | Tensor] = None,
+    latent_to_probs_list: Sequence[Callable[[Tensor], Tensor] | None] | None = None,
+    objective_signs: Sequence[float] | Tensor | None = None,
     eps: float = 1e-12,
 ) -> Tensor:
     """
@@ -633,7 +631,7 @@ def compute_hetero_multi_output_ordinal_train_y(
     train_X: Tensor,
     *,
     utility_values_list=None,
-    objective_signs: Optional[Sequence[float] | Tensor] = None,
+    objective_signs: Sequence[float] | Tensor | None = None,
     noise_penalty: float | Sequence[float] | Tensor = 0.0,
     variance_scale: float | Sequence[float] | Tensor = 1.0,
     tau: float | Sequence[float] | Tensor = 1e-6,
@@ -678,7 +676,7 @@ class qHeteroMultiOutputOrdinalNormalScoreObjective(torch.nn.Module):
 
     def __init__(
         self,
-        n_w: Optional[int] = None,
+        n_w: int | None = None,
         risk_type: RiskType = None,
         alpha: float = 0.5,
         maximize: bool = True,
@@ -710,13 +708,13 @@ class qHeteroMultiOutputOrdinalNormalScoreObjective(torch.nn.Module):
     def _ensure_q_batch(X: Tensor) -> Tensor:
         return X if X.dim() > 2 else X.unsqueeze(0)
 
-    def _is_aggregated_score(self, score: Tensor, X: Optional[Tensor]) -> bool:
+    def _is_aggregated_score(self, score: Tensor, X: Tensor | None) -> bool:
         if X is None or score.ndim == 0:
             return False
         Xq = self._ensure_q_batch(X)
         return tuple(score.shape) == tuple(Xq.shape[:-2])
 
-    def forward(self, score: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def forward(self, score: Tensor, X: Tensor | None = None) -> Tensor:
         if not torch.is_tensor(score):
             raise TypeError(f"score must be a Tensor. Got {type(score)}.")
 
@@ -774,9 +772,9 @@ class qHeteroMultiOutputOrdinalUtilityObjective(MCMultiOutputObjective):
         model: Model,
         utility_values_list=None,
         ordinal_likelihoods=None,
-        latent_to_probs_list: Optional[Sequence[Optional[Callable[[Tensor], Tensor]]]] = None,
-        base_objective: Optional[MCMultiOutputObjective] = None,
-        objective_signs: Optional[Sequence[float] | Tensor] = None,
+        latent_to_probs_list: Sequence[Callable[[Tensor], Tensor] | None] | None = None,
+        base_objective: MCMultiOutputObjective | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
         beta: float = 1.0,
         noise_penalty: float | Sequence[float] | Tensor = 0.3,
         variance_scale: float | Sequence[float] | Tensor = 1.0,
@@ -798,7 +796,7 @@ class qHeteroMultiOutputOrdinalUtilityObjective(MCMultiOutputObjective):
         self.default_sigma = default_sigma
         self.eps = float(eps)
 
-    def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
         if X is None:
             raise ValueError("X must be provided for qHeteroMultiOutputOrdinalUtilityObjective.")
 
@@ -913,23 +911,23 @@ class _BaseHeteroMultiOutputOrdinalNormalAcquisition(AcquisitionFunction):
         self,
         model: Model,
         *,
-        utility_values_list: Optional[Sequence[Optional[Sequence[float] | Tensor]]] = None,
-        objective_weights: Optional[Sequence[float] | Tensor] = None,
+        utility_values_list: Sequence[Sequence[float] | Tensor | None] | None = None,
+        objective_weights: Sequence[float] | Tensor | None = None,
         noise_penalty: float | Sequence[float] | Tensor = 0.0,
         variance_scale: float | Sequence[float] | Tensor = 1.0,
         tau: float | Sequence[float] | Tensor = 1e-6,
         default_sigma: float | Sequence[float] | Tensor = 0.0,
         reduction: ReductionType = "max",
-        # backward-compatible aliases
-        reduce: Optional[str] = None,
+        # backward-supported aliases
+        reduce: str | None = None,
         output_mode: OutputMode = "weighted_mean",
-        aggregate: Optional[str] = None,
+        aggregate: str | None = None,
         eps: float = 1e-12,
         # pending penalty
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
-        X_pending: Optional[Tensor] = None,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        X_pending: Tensor | None = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
     ) -> None:
         super().__init__(model=model)
 
@@ -962,10 +960,10 @@ class _BaseHeteroMultiOutputOrdinalNormalAcquisition(AcquisitionFunction):
         self.pending_penalty_weight = float(pending_penalty_weight)
         self.pending_penalty_beta = float(pending_penalty_beta)
 
-        self.X_pending: Optional[Tensor] = None
+        self.X_pending: Tensor | None = None
         self.set_X_pending(X_pending)
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         self.X_pending = _coerce_reference_to_tensor(X_pending)
 
     def _set_eval_mode(self) -> None:
@@ -999,7 +997,7 @@ class _BaseHeteroMultiOutputOrdinalNormalAcquisition(AcquisitionFunction):
 
         return X
 
-    def _transform_reference_like_candidate(self, X_ref, *, ref: Tensor) -> Optional[Tensor]:
+    def _transform_reference_like_candidate(self, X_ref, *, ref: Tensor) -> Tensor | None:
         Xr = _coerce_reference_to_tensor(X_ref, ref=ref)
         if Xr is None or Xr.numel() == 0:
             return None
@@ -1041,7 +1039,7 @@ class _BaseHeteroMultiOutputOrdinalNormalAcquisition(AcquisitionFunction):
             eps=self.eps,
         )
 
-    def _weights(self, ref: Tensor) -> Optional[Tensor]:
+    def _weights(self, ref: Tensor) -> Tensor | None:
         return make_weight_tensor(self.objective_weights, ref=ref, m=self.m)
 
     def _aggregate_outputs(self, values: Tensor) -> Tensor:
@@ -1245,24 +1243,24 @@ class qHeteroMultiOutputOrdinalExpectedHypervolumeImprovement(
     def __init__(
         self,
         model: Model,
-        ref_point: Union[Tensor, list[float]],
+        ref_point: Tensor | list[float],
         partitioning: FastNondominatedPartitioning,
         *,
         utility_values_list=None,
         ordinal_likelihoods=None,
-        latent_to_probs_list: Optional[Sequence[Optional[Callable[[Tensor], Tensor]]]] = None,
-        objective_signs: Optional[Sequence[float] | Tensor] = None,
+        latent_to_probs_list: Sequence[Callable[[Tensor], Tensor] | None] | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
         beta: float = 1.0,
         noise_penalty: float | Sequence[float] | Tensor = 0.3,
         variance_scale: float | Sequence[float] | Tensor = 1.0,
         tau: float | Sequence[float] | Tensor = 1e-6,
         default_sigma: float | Sequence[float] | Tensor = 0.0,
         eps: float = 1e-12,
-        sampler: Optional[SobolQMCNormalSampler] = None,
-        objective: Optional[MCMultiOutputObjective] = None,
-        constraints: Optional[list] = None,
-        X_pending: Optional[Tensor] = None,
-        eta: Union[float, Tensor] = 1e-3,
+        sampler: SobolQMCNormalSampler | None = None,
+        objective: MCMultiOutputObjective | None = None,
+        constraints: list | None = None,
+        X_pending: Tensor | None = None,
+        eta: float | Tensor = 1e-3,
         fat: bool = False,
     ) -> None:
         base_objective = objective or IdentityMCMultiOutputObjective()
@@ -1342,22 +1340,22 @@ class qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
         *,
         utility_values_list=None,
         ordinal_likelihoods=None,
-        latent_to_probs_list: Optional[Sequence[Optional[Callable[[Tensor], Tensor]]]] = None,
-        objective_signs: Optional[Sequence[float] | Tensor] = None,
+        latent_to_probs_list: Sequence[Callable[[Tensor], Tensor] | None] | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
         beta: float = 1.0,
         noise_penalty: float | Sequence[float] | Tensor = 0.3,
         variance_scale: float | Sequence[float] | Tensor = 1.0,
         tau: float | Sequence[float] | Tensor = 1e-6,
         default_sigma: float | Sequence[float] | Tensor = 0.0,
         eps: float = 1e-12,
-        sampler: Optional[SobolQMCNormalSampler] = None,
-        objective: Optional[MCMultiOutputObjective] = None,
-        constraints: Optional[list] = None,
-        X_pending: Optional[Tensor] = None,
-        eta: Union[float, Tensor] = 1e-3,
+        sampler: SobolQMCNormalSampler | None = None,
+        objective: MCMultiOutputObjective | None = None,
+        constraints: list | None = None,
+        X_pending: Tensor | None = None,
+        eta: float | Tensor = 1e-3,
         fat: bool = False,
-        partitioning: Optional[FastNondominatedPartitioning] = None,
-        Y_baseline: Optional[Tensor] = None,
+        partitioning: FastNondominatedPartitioning | None = None,
+        Y_baseline: Tensor | None = None,
         # qNoisyExpectedHypervolumeImprovement 互換の未使用引数。
         prune_baseline: bool = False,
         alpha: float = 0.0,
@@ -1365,7 +1363,7 @@ class qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
         max_iep: int = 0,
         incremental_nehvi: bool = True,
         cache_root: bool = True,
-        marginalize_dim: Optional[int] = None,
+        marginalize_dim: int | None = None,
     ) -> None:
         base_objective = objective or IdentityMCMultiOutputObjective()
         hetero_objective = qHeteroMultiOutputOrdinalUtilityObjective(
@@ -1470,21 +1468,21 @@ class qHeteroMultiOutputOrdinalNParEGO(MCAcquisitionFunction):
         self,
         model: Model,
         X_baseline: Tensor,
-        ref_point: Optional[Tensor] = None,
+        ref_point: Tensor | None = None,
         *,
         utility_values_list=None,
         ordinal_likelihoods=None,
-        latent_to_probs_list: Optional[Sequence[Optional[Callable[[Tensor], Tensor]]]] = None,
-        objective_signs: Optional[Sequence[float] | Tensor] = None,
-        weights: Optional[Tensor] = None,
-        sampler: Optional[SobolQMCNormalSampler] = None,
+        latent_to_probs_list: Sequence[Callable[[Tensor], Tensor] | None] | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
+        weights: Tensor | None = None,
+        sampler: SobolQMCNormalSampler | None = None,
         beta: float = 1.0,
         noise_penalty: float | Sequence[float] | Tensor = 0.3,
         variance_scale: float | Sequence[float] | Tensor = 1.0,
         tau: float | Sequence[float] | Tensor = 1e-6,
         default_sigma: float | Sequence[float] | Tensor = 0.0,
         eps: float = 1e-12,
-        objective: Optional[MCMultiOutputObjective] = None,
+        objective: MCMultiOutputObjective | None = None,
         rho: float = 0.05,
     ) -> None:
         sampler = sampler or SobolQMCNormalSampler(sample_shape=torch.Size([128]))

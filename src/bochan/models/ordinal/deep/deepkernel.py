@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import copy
-from typing import List, Optional, Sequence, Union
+from collections.abc import Sequence
+from typing import Union
 
 import torch
 import torch.nn as nn
-from torch import Tensor
-from torch.utils.data import DataLoader, TensorDataset
-
+from botorch.acquisition.objective import PosteriorTransform
+from botorch.models.approximate_gp import ApproximateGPyTorchModel
+from botorch.models.transforms.input import InputTransform, Normalize
+from botorch.posteriors.gpytorch import GPyTorchPosterior
 from gpytorch.distributions import MultivariateNormal
 from gpytorch.kernels import Kernel
 from gpytorch.likelihoods import _OneDimensionalLikelihood
@@ -20,14 +22,11 @@ from gpytorch.variational import (
     CholeskyVariationalDistribution,
     VariationalStrategy,
 )
+from torch import Tensor
+from torch.utils.data import DataLoader, TensorDataset
 
-from botorch.acquisition.objective import PosteriorTransform
-from botorch.models.approximate_gp import ApproximateGPyTorchModel
-from botorch.models.transforms.input import InputTransform, Normalize
-from botorch.posteriors.gpytorch import GPyTorchPosterior
-
-from bochan.models.components.layers.feature_extractor import LargeFeatureExtractor, SkipLargeFeatureExtractor
 from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.models.components.layers.feature_extractor import LargeFeatureExtractor, SkipLargeFeatureExtractor
 from bochan.models.ordinal.base.models import (
     _get_cont_dims,
     _normalize_dims,
@@ -43,8 +42,8 @@ InputTransformArg = Union[str, InputTransform, None]
 
 
 def _clone_input_transform(
-    input_transform: Optional[InputTransform],
-) -> Optional[InputTransform]:
+    input_transform: InputTransform | None,
+) -> InputTransform | None:
     return None if input_transform is None else copy.deepcopy(input_transform)
 
 
@@ -61,8 +60,8 @@ def _resolve_input_transform(
     train_X: Tensor,
     input_transform: InputTransformArg,
     *,
-    indices: Optional[Sequence[int]] = None,
-) -> Optional[InputTransform]:
+    indices: Sequence[int] | None = None,
+) -> InputTransform | None:
     """string / object の input_transform を解決する。"""
     input_dim = train_X.shape[-1]
 
@@ -86,9 +85,9 @@ def _resolve_input_transform(
 
 
 def _to_device_dtype_transform(
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     X: Tensor,
-) -> Optional[InputTransform]:
+) -> InputTransform | None:
     """Move input transform to match X if possible."""
     if input_transform is None:
         return None
@@ -145,7 +144,7 @@ def _expand_raw_X_to_match_transformed_q(
 def _check_categorical_columns_unchanged(
     X: Tensor,
     X_tf: Tensor,
-    cat_dims: Optional[Sequence[int]],
+    cat_dims: Sequence[int] | None,
 ) -> None:
     """
     mixed model 用に、input_transform がカテゴリ列を変更していないか確認する。
@@ -179,9 +178,9 @@ def _check_categorical_columns_unchanged(
 
 def _make_train_X_tf_like_classification(
     train_X: Tensor,
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
-    cat_dims: Optional[Sequence[int]] = None,
+    cat_dims: Sequence[int] | None = None,
     name: str = "input_transform",
 ) -> Tensor:
     """
@@ -225,9 +224,9 @@ def _make_train_X_tf_like_classification(
 
 def _apply_input_transform_for_eval(
     X: Tensor,
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
-    cat_dims: Optional[Sequence[int]] = None,
+    cat_dims: Sequence[int] | None = None,
 ) -> Tensor:
     """
     posterior / acquisition 評価用の input_transform。
@@ -252,7 +251,7 @@ def _apply_input_transform_for_eval(
 def _select_inducing_points(
     X: Tensor,
     num_inducing_points: int,
-    inducing_points: Optional[Tensor] = None,
+    inducing_points: Tensor | None = None,
 ) -> Tensor:
     """Select inducing points from input-space candidates if not provided."""
     if inducing_points is not None:
@@ -312,10 +311,10 @@ class DeepKernelOrdinal(ApproximateGP):
         train_y: Tensor,
         likelihood: _OneDimensionalLikelihood,
         ext_type: str = "DEFAULT",
-        feature_extractor: Optional[nn.Module] = None,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
-        inducing_points: Optional[Tensor] = None,
+        feature_extractor: nn.Module | None = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
+        inducing_points: Tensor | None = None,
         inducing_points_num: int = 128,
         learn_inducing_locations: bool = True,
     ) -> None:
@@ -339,7 +338,7 @@ class DeepKernelOrdinal(ApproximateGP):
             input_dim=train_x.size(-1),
             ext_type=ext_type,
         )).to(train_x)
-        # backward-compatible alias
+        # backward-supported alias
         self.deepkernel = self.feature_extractor
         self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
         
@@ -393,9 +392,9 @@ class DeepKernelMixedOrdinal(ApproximateGP):
         cat_dims: Sequence[int],
         likelihood: _OneDimensionalLikelihood,
         ext_type: str = "DEFAULT",
-        feature_extractor: Optional[nn.Module] = None,
-        covar_module: Optional[Kernel] = None,
-        inducing_points: Optional[Tensor] = None,
+        feature_extractor: nn.Module | None = None,
+        covar_module: Kernel | None = None,
+        inducing_points: Tensor | None = None,
         inducing_points_num: int = 128,
         learn_inducing_locations: bool = True,
         cont_kernel: str = "matern52",
@@ -429,12 +428,12 @@ class DeepKernelMixedOrdinal(ApproximateGP):
                 input_dim=len(self.ord_dims),
                 ext_type=ext_type,
             )).to(train_x)
-            # backward-compatible alias
+            # backward-supported alias
             self.deepkernel = self.feature_extractor
             self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
         else:
             self.feature_extractor = nn.Identity()
-            # backward-compatible alias
+            # backward-supported alias
             self.deepkernel = self.feature_extractor
             self.scale_to_bounds = nn.Identity()
 
@@ -495,21 +494,21 @@ class _BaseDeepKernelOrdinalGPModel(ApproximateGPyTorchModel):
         likelihood: OrdinalLogitLikelihood,
         train_X: Tensor,
         train_Y: Tensor,
-        input_transform: Optional[InputTransform] = None,
+        input_transform: InputTransform | None = None,
         *,
         inducing_points_num: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.03,
         num_epochs: int = 300,
-        batch_size: Optional[int] = None,
+        batch_size: int | None = None,
         use_predictive_log_likelihood: bool = False,
         fix_first_cutpoint: bool = True,
         init_gap: float = 1.0,
         eps: float = 1e-8,
         verbose: bool = False,
         conditioning_steps: int = 50,
-        conditioning_lr: Optional[float] = None,
-        conditioning_batch_size: Optional[int] = None,
+        conditioning_lr: float | None = None,
+        conditioning_batch_size: int | None = None,
     ) -> None:
         super().__init__(model=latent_model, likelihood=likelihood, num_outputs=1)
         self.deepkernel = self.model
@@ -643,9 +642,9 @@ class _BaseDeepKernelOrdinalGPModel(ApproximateGPyTorchModel):
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
-        observation_noise: Union[bool, Tensor] = False,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        output_indices: list[int] | None = None,
+        observation_noise: bool | Tensor = False,
+        posterior_transform: PosteriorTransform | None = None,
     ):
         if output_indices is not None:
             raise NotImplementedError(
@@ -706,8 +705,8 @@ class _BaseDeepKernelOrdinalGPModel(ApproximateGPyTorchModel):
 
     def set_train_data(
         self,
-        inputs: Optional[Union[Tensor, tuple[Tensor, ...]]] = None,
-        targets: Optional[Tensor] = None,
+        inputs: Tensor | tuple[Tensor, ...] | None = None,
+        targets: Tensor | None = None,
         strict: bool = True,
     ) -> None:
         _ = strict
@@ -758,9 +757,9 @@ class _BaseDeepKernelOrdinalGPModel(ApproximateGPyTorchModel):
         X: Tensor,
         Y: Tensor,
         refit: bool = True,
-        num_steps: Optional[int] = None,
-        lr: Optional[float] = None,
-        batch_size: Optional[int] = None,
+        num_steps: int | None = None,
+        lr: float | None = None,
+        batch_size: int | None = None,
         verbose: bool = False,
         **kwargs,
     ):
@@ -814,26 +813,26 @@ class DeepKernelOrdinalGPModel(_BaseDeepKernelOrdinalGPModel):
         train_Y: Tensor,
         *,
         num_classes: int,
-        likelihood: Optional[_OneDimensionalLikelihood] = None,
+        likelihood: _OneDimensionalLikelihood | None = None,
         input_transform: InputTransformArg = "DEFAULT",
         ext_type: str = "DEFAULT",
         inducing_points_num: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.03,
         num_epochs: int = 300,
-        batch_size: Optional[int] = None,
+        batch_size: int | None = None,
         use_predictive_log_likelihood: bool = False,
         fix_first_cutpoint: bool = True,
         init_gap: float = 1.0,
         eps: float = 1e-8,
         verbose: bool = False,
         conditioning_steps: int = 50,
-        conditioning_lr: Optional[float] = None,
-        conditioning_batch_size: Optional[int] = None,
-        feature_extractor: Optional[nn.Module] = None,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
-        inducing_points: Optional[Tensor] = None,
+        conditioning_lr: float | None = None,
+        conditioning_batch_size: int | None = None,
+        feature_extractor: nn.Module | None = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
+        inducing_points: Tensor | None = None,
     ) -> None:
         train_Y = _prepare_ordinal_targets(train_Y, train_X)
         input_transform = _resolve_input_transform(train_X, input_transform)
@@ -932,8 +931,8 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
         *,
         num_classes: int,
         cat_dims: Sequence[int],
-        category_counts: Optional[dict[int, int]] = None,
-        likelihood: Optional[_OneDimensionalLikelihood] = None,
+        category_counts: dict[int, int] | None = None,
+        likelihood: _OneDimensionalLikelihood | None = None,
         input_transform: InputTransformArg = "DEFAULT",
         ext_type: str = "DEFAULT",
         cont_kernel: str = "matern52",
@@ -941,18 +940,18 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
         learn_inducing_locations: bool = True,
         lr: float = 0.03,
         num_epochs: int = 300,
-        batch_size: Optional[int] = None,
+        batch_size: int | None = None,
         use_predictive_log_likelihood: bool = False,
         fix_first_cutpoint: bool = True,
         init_gap: float = 1.0,
         eps: float = 1e-8,
         verbose: bool = False,
         conditioning_steps: int = 50,
-        conditioning_lr: Optional[float] = None,
-        conditioning_batch_size: Optional[int] = None,
-        feature_extractor: Optional[nn.Module] = None,
-        covar_module: Optional[Kernel] = None,
-        inducing_points: Optional[Tensor] = None,
+        conditioning_lr: float | None = None,
+        conditioning_batch_size: int | None = None,
+        feature_extractor: nn.Module | None = None,
+        covar_module: Kernel | None = None,
+        inducing_points: Tensor | None = None,
     ) -> None:
         if len(cat_dims) == 0:
             raise ValueError("カテゴリ次元を指定する必要があります (cat_dims)。")
@@ -1040,7 +1039,7 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
     def _infer_category_counts(
         X: Tensor,
         cat_dims: Sequence[int],
-        category_counts: Optional[dict[int, int]] = None,
+        category_counts: dict[int, int] | None = None,
     ) -> dict[int, int]:
         d = X.shape[-1]
         cat_dims = _normalize_dims(cat_dims, d)
@@ -1191,16 +1190,16 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
 #     return model
 
 
-# backward-compatible alias
+# backward-supported alias
 # fit_deep_ordinal_gp = fit_deepkernel_ordinal_gp
 
 
 def fit_deepkernel_ordinal_gp(
     model: _BaseDeepKernelOrdinalGPModel,
-    num_epochs: Optional[int] = None,
-    lr: Optional[float] = None,
-    batch_size: Optional[int] = None,
-    verbose: Optional[bool] = None,
+    num_epochs: int | None = None,
+    lr: float | None = None,
+    batch_size: int | None = None,
+    verbose: bool | None = None,
 ) -> _BaseDeepKernelOrdinalGPModel:
     """DeepKernel ordinal GP を学習する。"""
     num_epochs = model.num_epochs if num_epochs is None else int(num_epochs)
@@ -1251,7 +1250,7 @@ def fit_deepkernel_ordinal_gp(
     return model
 
 
-# backward-compatible alias
+# backward-supported alias
 fit_deep_ordinal_gp = fit_deepkernel_ordinal_gp
 
 

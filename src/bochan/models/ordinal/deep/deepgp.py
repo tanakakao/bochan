@@ -31,25 +31,22 @@ from __future__ import annotations
 
 import copy
 import inspect
-from typing import Dict, List, Optional, Sequence, Union
+from collections.abc import Sequence
 
 import torch
 import torch.nn as nn
-from torch import Tensor
-from torch.utils.data import DataLoader, TensorDataset
-
-from linear_operator.operators import DiagLinearOperator
-
-from gpytorch.distributions import MultivariateNormal
-from gpytorch.likelihoods import _OneDimensionalLikelihood
-from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
-from gpytorch.models.deep_gps import DeepGP
-
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.gpytorch import GPyTorchModel
 from botorch.models.transforms.input import InputTransform
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from botorch.utils.transforms import normalize_indices
+from gpytorch.distributions import MultivariateNormal
+from gpytorch.likelihoods import _OneDimensionalLikelihood
+from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
+from gpytorch.models.deep_gps import DeepGP
+from linear_operator.operators import DiagLinearOperator
+from torch import Tensor
+from torch.utils.data import DataLoader, TensorDataset
 
 # あなたの環境に合わせて import path は調整してください
 from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
@@ -62,16 +59,15 @@ from bochan.models.components.layers import (
     SkipDeepMixedGPHiddenLayer,
 )
 
-
 # ============================================================
 # ヘルパー
 # ============================================================
 
 
 def _to_device_dtype_transform(
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     X: Tensor,
-) -> Optional[InputTransform]:
+) -> InputTransform | None:
     """input_transform を X の device / dtype に揃える。"""
     if input_transform is None:
         return None
@@ -82,9 +78,9 @@ def _to_device_dtype_transform(
 
 
 def _clone_input_transform(
-    input_transform: Optional[InputTransform],
-    X: Optional[Tensor] = None,
-) -> Optional[InputTransform]:
+    input_transform: InputTransform | None,
+    X: Tensor | None = None,
+) -> InputTransform | None:
     """condition_on_observations 用に input_transform を複製する。"""
     if input_transform is None:
         return None
@@ -138,7 +134,7 @@ def _expand_raw_X_to_match_transformed_q(
 def _check_categorical_columns_unchanged(
     X: Tensor,
     X_tf: Tensor,
-    cat_dims: Optional[Sequence[int]],
+    cat_dims: Sequence[int] | None,
 ) -> None:
     """
     mixed model 用に input_transform がカテゴリ列を変更していないか確認する。
@@ -172,9 +168,9 @@ def _check_categorical_columns_unchanged(
 
 def _apply_input_transform_for_training(
     X: Tensor,
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
-    cat_dims: Optional[Sequence[int]] = None,
+    cat_dims: Sequence[int] | None = None,
     name: str = "input_transform",
 ) -> Tensor:
     """
@@ -217,9 +213,9 @@ def _apply_input_transform_for_training(
 
 def _apply_input_transform_for_eval(
     X: Tensor,
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
-    cat_dims: Optional[Sequence[int]] = None,
+    cat_dims: Sequence[int] | None = None,
 ) -> Tensor:
     """
     posterior / acquisition 評価用の input_transform。
@@ -240,14 +236,14 @@ def _apply_input_transform_for_eval(
 
 
 def _clone_train_inputs(
-    inputs: Union[Tensor, tuple[Tensor, ...]]
+    inputs: Tensor | tuple[Tensor, ...]
 ) -> tuple[Tensor, ...]:
     if torch.is_tensor(inputs):
         inputs = (inputs,)
     return tuple(x.detach().clone() for x in inputs)
 
 def _clone_tensor_tuple(
-    inputs: Union[Tensor, tuple[Tensor, ...]],
+    inputs: Tensor | tuple[Tensor, ...],
 ) -> tuple[Tensor, ...]:
     """生の train inputs を参照共有せず保持する。"""
     if torch.is_tensor(inputs):
@@ -292,7 +288,7 @@ def _normalize_cat_dims(cat_dims: Sequence[int], d: int) -> list[int]:
 def _validate_categorical_values(
     X: Tensor,
     cat_dims: Sequence[int],
-    category_counts: Dict[int, int],
+    category_counts: dict[int, int],
 ) -> None:
     """mixed 入力でカテゴリ列が整数エンコード (0..K-1) か確認する。"""
     d = X.shape[-1]
@@ -314,7 +310,7 @@ def _validate_categorical_values(
 
 
 
-def _default_hidden_dims(list_hidden_dims: Optional[Sequence[int]]) -> list[int]:
+def _default_hidden_dims(list_hidden_dims: Sequence[int] | None) -> list[int]:
     hidden_dims = list(list_hidden_dims) if list_hidden_dims is not None else [16]
     if len(hidden_dims) == 0:
         raise ValueError("list_hidden_dims must contain at least one element.")
@@ -409,9 +405,9 @@ class _BaseDeepOrdinalGPModel(DeepGP, GPyTorchModel):
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[List[int]] = None,
-        observation_noise: Union[bool, Tensor] = False,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        output_indices: list[int] | None = None,
+        observation_noise: bool | Tensor = False,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs,
     ) -> GPyTorchPosterior:
         """BoTorch の獲得関数で使う latent posterior を返す。
@@ -502,8 +498,8 @@ class _BaseDeepOrdinalGPModel(DeepGP, GPyTorchModel):
 
     def set_train_data(
         self,
-        inputs: Optional[Union[Tensor, tuple[Tensor, ...]]] = None,
-        targets: Optional[Tensor] = None,
+        inputs: Tensor | tuple[Tensor, ...] | None = None,
+        targets: Tensor | None = None,
         strict: bool = True,
     ) -> None:
         """
@@ -544,7 +540,7 @@ class _BaseDeepOrdinalGPModel(DeepGP, GPyTorchModel):
     def batch_shape(self) -> torch.Size:
         return torch.Size([])
 
-    def make_mll(self, beta: Optional[float] = None) -> DeepApproximateMLL:
+    def make_mll(self, beta: float | None = None) -> DeepApproximateMLL:
         """順序回帰 DeepGP の学習に使う marginal log likelihood を作成する。
 
         Args:
@@ -570,9 +566,9 @@ class _BaseDeepOrdinalGPModel(DeepGP, GPyTorchModel):
         X: Tensor,
         Y: Tensor,
         refit: bool = True,
-        num_steps: Optional[int] = None,
-        lr: Optional[float] = None,
-        batch_size: Optional[int] = None,
+        num_steps: int | None = None,
+        lr: float | None = None,
+        batch_size: int | None = None,
         verbose: bool = False,
         **kwargs,
     ):
@@ -672,7 +668,7 @@ class OrdinalDeepGPModel(_BaseDeepOrdinalGPModel):
         batch_size: デフォルト mini-batch size。``None`` の場合は full-batch 学習を行う。
         beta: ``VariationalELBO`` に渡す KL divergence の重み。
         model_type: モデル構造の指定。``"DEFAULT"`` では通常の層状 DeepGP、
-            ``"skip"`` では元入力を skip-compatible layer に再注入する。
+            ``"skip"`` では元入力を skip-supported layer に再注入する。
         fix_first_cutpoint: likelihood 実装において最初の ordinal cutpoint を固定するかどうか。
         init_gap: ordinal cutpoint 間隔の初期値。
         eps: ordinal likelihood で使う数値安定化定数。
@@ -704,12 +700,12 @@ class OrdinalDeepGPModel(_BaseDeepOrdinalGPModel):
         train_Y: Tensor,
         *,
         num_classes: int,
-        list_hidden_dims: Optional[Sequence[int]] = None,
+        list_hidden_dims: Sequence[int] | None = None,
         num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.01,
         num_epochs: int = 300,
-        batch_size: Optional[int] = None,
+        batch_size: int | None = None,
         beta: float = 1.0,
         model_type: str = "DEFAULT",
         fix_first_cutpoint: bool = True,
@@ -717,10 +713,10 @@ class OrdinalDeepGPModel(_BaseDeepOrdinalGPModel):
         eps: float = 1e-8,
         verbose: bool = False,
         conditioning_steps: int = 50,
-        conditioning_lr: Optional[float] = None,
-        conditioning_batch_size: Optional[int] = None,
-        input_transform: Optional[InputTransform] = None,
-        likelihood: Optional[_OneDimensionalLikelihood] = None,
+        conditioning_lr: float | None = None,
+        conditioning_batch_size: int | None = None,
+        input_transform: InputTransform | None = None,
+        likelihood: _OneDimensionalLikelihood | None = None,
     ) -> None:
         super().__init__()
 
@@ -930,7 +926,7 @@ class OrdinalMixedDeepGPModel(_BaseDeepOrdinalGPModel):
         batch_size: デフォルト mini-batch size。``None`` の場合は full-batch 学習を行う。
         beta: ``VariationalELBO`` に渡す KL divergence の重み。
         model_type: モデル構造の指定。``"DEFAULT"`` では通常の最終 layer、
-            ``"skip"`` では元入力を skip-compatible layer に再注入する。
+            ``"skip"`` では元入力を skip-supported layer に再注入する。
         fix_first_cutpoint: likelihood 実装において最初の ordinal cutpoint を固定するかどうか。
         init_gap: ordinal cutpoint 間隔の初期値。
         eps: ordinal likelihood で使う数値安定化定数。
@@ -960,13 +956,13 @@ class OrdinalMixedDeepGPModel(_BaseDeepOrdinalGPModel):
         *,
         num_classes: int,
         cat_dims: Sequence[int],
-        category_counts: Optional[Dict[int, int]] = None,
-        list_hidden_dims: Optional[Sequence[int]] = None,
+        category_counts: dict[int, int] | None = None,
+        list_hidden_dims: Sequence[int] | None = None,
         num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.01,
         num_epochs: int = 300,
-        batch_size: Optional[int] = None,
+        batch_size: int | None = None,
         beta: float = 1.0,
         model_type: str = "DEFAULT",
         fix_first_cutpoint: bool = True,
@@ -974,10 +970,10 @@ class OrdinalMixedDeepGPModel(_BaseDeepOrdinalGPModel):
         eps: float = 1e-8,
         verbose: bool = False,
         conditioning_steps: int = 50,
-        conditioning_lr: Optional[float] = None,
-        conditioning_batch_size: Optional[int] = None,
-        input_transform: Optional[InputTransform] = None,
-        likelihood: Optional[_OneDimensionalLikelihood] = None,
+        conditioning_lr: float | None = None,
+        conditioning_batch_size: int | None = None,
+        input_transform: InputTransform | None = None,
+        likelihood: _OneDimensionalLikelihood | None = None,
     ) -> None:
         super().__init__()
 
@@ -1108,11 +1104,11 @@ class OrdinalMixedDeepGPModel(_BaseDeepOrdinalGPModel):
     def _infer_category_counts(
         X: Tensor,
         cat_dims: Sequence[int],
-        category_counts: Optional[Dict[int, int]] = None,
-    ) -> Dict[int, int]:
+        category_counts: dict[int, int] | None = None,
+    ) -> dict[int, int]:
         cat_dims = _normalize_cat_dims(cat_dims, X.shape[-1])
 
-        inferred: Dict[int, int] = {}
+        inferred: dict[int, int] = {}
         if category_counts is not None:
             inferred.update({int(k): int(v) for k, v in category_counts.items()})
 
@@ -1235,12 +1231,12 @@ class OrdinalMixedDeepGPModel(_BaseDeepOrdinalGPModel):
 
 
 def fit_true_deep_ordinal_gp(
-    model: Union[OrdinalDeepGPModel, OrdinalMixedDeepGPModel],
-    num_epochs: Optional[int] = None,
-    lr: Optional[float] = None,
-    batch_size: Optional[int] = None,
-    beta: Optional[float] = None,
-    verbose: Optional[bool] = None,
+    model: OrdinalDeepGPModel | OrdinalMixedDeepGPModel,
+    num_epochs: int | None = None,
+    lr: float | None = None,
+    batch_size: int | None = None,
+    beta: float | None = None,
+    verbose: bool | None = None,
 ):
     """``DeepApproximateMLL`` を使って順序回帰 DeepGP を学習する。
 

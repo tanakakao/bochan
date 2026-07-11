@@ -32,17 +32,10 @@ Notes:
 
 from __future__ import annotations
 
-from typing import Optional, Sequence, Union
+from collections.abc import Sequence
+from typing import Union
 
 import torch
-from torch import Tensor
-
-from gpytorch.distributions import MultitaskMultivariateNormal, MultivariateNormal
-from gpytorch.likelihoods import MultitaskGaussianLikelihood
-from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
-from gpytorch.models.deep_gps import DeepGP
-from gpytorch.settings import fast_pred_var
-
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.gpytorch import GPyTorchModel
 from botorch.models.transforms.input import InputTransform, Normalize
@@ -52,6 +45,12 @@ from botorch.models.utils.gpytorch_modules import (
 )
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from botorch.utils.transforms import normalize_indices
+from gpytorch.distributions import MultitaskMultivariateNormal, MultivariateNormal
+from gpytorch.likelihoods import MultitaskGaussianLikelihood
+from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
+from gpytorch.models.deep_gps import DeepGP
+from gpytorch.settings import fast_pred_var
+from torch import Tensor
 
 from bochan.models.components.layers import (
     DeepGPHiddenLayer,
@@ -59,7 +58,6 @@ from bochan.models.components.layers import (
     SkipDeepGPHiddenLayer,
     SkipDeepMixedGPHiddenLayer,
 )
-
 
 InputTransformArg = Union[str, InputTransform, None]
 OutcomeTransformArg = Union[str, OutcomeTransform, None]
@@ -96,7 +94,7 @@ def _expand_raw_X_to_match_transformed_q(X: Tensor, X_tf: Tensor) -> Tensor:
 def _check_categorical_columns_unchanged(
     X: Tensor,
     X_tf: Tensor,
-    cat_dims: Optional[Sequence[int]],
+    cat_dims: Sequence[int] | None,
 ) -> None:
     """mixed model で input_transform がカテゴリ列を変更していないか確認する。"""
     if cat_dims is None or len(cat_dims) == 0:
@@ -123,9 +121,9 @@ def _check_categorical_columns_unchanged(
 
 def _apply_input_transform_for_training(
     X: Tensor,
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
-    cat_dims: Optional[Sequence[int]] = None,
+    cat_dims: Sequence[int] | None = None,
     name: str = "input_transform",
 ) -> Tensor:
     """
@@ -156,9 +154,9 @@ def _apply_input_transform_for_training(
 
 def _apply_input_transform_for_eval(
     X: Tensor,
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
-    cat_dims: Optional[Sequence[int]] = None,
+    cat_dims: Sequence[int] | None = None,
 ) -> Tensor:
     """
     posterior / acquisition 評価用の input_transform。
@@ -174,7 +172,7 @@ def _apply_input_transform_for_eval(
     return X_tf
 
 
-def _clone_train_inputs(inputs: Union[Tensor, tuple[Tensor, ...]]) -> tuple[Tensor, ...]:
+def _clone_train_inputs(inputs: Tensor | tuple[Tensor, ...]) -> tuple[Tensor, ...]:
     if torch.is_tensor(inputs):
         inputs = (inputs,)
     return tuple(x.detach().clone() for x in inputs)
@@ -228,13 +226,13 @@ class _BaseDeepGPModel(DeepGP, GPyTorchModel):
         self,
         train_X: Tensor,
         train_Y: Tensor,
-        train_Yvar: Optional[Tensor],
+        train_Yvar: Tensor | None,
         input_transform: InputTransformArg,
         outcome_transform: OutcomeTransformArg,
         *,
-        input_transform_indices: Optional[Sequence[int]] = None,
-        cat_dims: Optional[Sequence[int]] = None,
-    ) -> tuple[Tensor, Optional[Tensor]]:
+        input_transform_indices: Sequence[int] | None = None,
+        cat_dims: Sequence[int] | None = None,
+    ) -> tuple[Tensor, Tensor | None]:
         """input_transform / outcome_transform を解決してモデルへ設定する。"""
         input_dim = train_X.shape[-1]
 
@@ -287,7 +285,7 @@ class _BaseDeepGPModel(DeepGP, GPyTorchModel):
         self,
         train_X: Tensor,
         train_Y: Tensor,
-        train_Yvar: Optional[Tensor],
+        train_Yvar: Tensor | None,
     ) -> None:
         """学習データを検証し、BoTorch / GPyTorch 互換の属性を設定する。"""
         self._validate_tensor_args(X=train_X, Y=train_Y, Yvar=train_Yvar)
@@ -312,7 +310,7 @@ class _BaseDeepGPModel(DeepGP, GPyTorchModel):
             self.likelihood = MultitaskGaussianLikelihood(num_tasks=num_outputs)
 
     @staticmethod
-    def _unwrap_inputs(inputs: Union[Tensor, tuple[Tensor, ...]]) -> Tensor:
+    def _unwrap_inputs(inputs: Tensor | tuple[Tensor, ...]) -> Tensor:
         if isinstance(inputs, tuple):
             return inputs[0]
         return inputs
@@ -352,9 +350,9 @@ class _BaseDeepGPModel(DeepGP, GPyTorchModel):
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
-        observation_noise: Union[bool, Tensor] = False,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        output_indices: list[int] | None = None,
+        observation_noise: bool | Tensor = False,
+        posterior_transform: PosteriorTransform | None = None,
     ) -> GPyTorchPosterior:
         """回帰出力に対する BoTorch 互換の posterior を返す。
 
@@ -487,7 +485,7 @@ class DeepGPModel(_BaseDeepGPModel):
         list_hidden_dims: hidden layer の出力次元リスト。デフォルトは ``[10]``。
             各要素につき 1 つの DeepGP hidden layer を作成する。
         model_type: モデル構造の指定。``"DEFAULT"`` では通常の層状 DeepGP、
-            ``"skip"`` では元入力を skip-compatible layer に再注入する。
+            ``"skip"`` では元入力を skip-supported layer に再注入する。
         num_inducing: 各 DeepGP layer の inducing point 数。
 
     Attributes:
@@ -508,11 +506,11 @@ class DeepGPModel(_BaseDeepGPModel):
         self,
         train_X: Tensor,
         train_Y: Tensor,
-        train_Yvar: Optional[Tensor] = None,
+        train_Yvar: Tensor | None = None,
         likelihood=None,
         input_transform: InputTransformArg = "DEFAULT",
         outcome_transform: OutcomeTransformArg = "DEFAULT",
-        list_hidden_dims: Optional[Sequence[int]] = None,
+        list_hidden_dims: Sequence[int] | None = None,
         model_type: str = "DEFAULT",
         num_inducing: int = 128,
     ) -> None:
@@ -659,7 +657,7 @@ class DeepMixedGPModel(_BaseDeepGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         cat_dims: Sequence[int],
-        train_Yvar: Optional[Tensor] = None,
+        train_Yvar: Tensor | None = None,
         likelihood=None,
         input_transform: InputTransformArg = "DEFAULT",
         outcome_transform: OutcomeTransformArg = "DEFAULT",

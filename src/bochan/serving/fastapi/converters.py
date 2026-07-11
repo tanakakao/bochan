@@ -119,7 +119,7 @@ def _normalize_fixed_features_list(value: Any) -> list[dict[int, float]] | None:
 
 
 def _normalize_linear_constraints(value: Any, options: Any | None = None) -> Any:
-    """Convert JSON constraints to BoTorch-compatible linear constraints.
+    """Convert JSON constraints to BoTorch-supported linear constraints.
 
     Accepted formats:
         - {"indices": [0, 1], "coefficients": [1.0, 1.0], "rhs": 1.0}

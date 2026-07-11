@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from typing import Optional, Sequence, Any
+from collections.abc import Sequence
+from typing import Any
 
 import torch
-from torch import Tensor
-from torch.nn import ModuleList
-
 from botorch.models.model import Model
 from botorch.posteriors.gpytorch import GPyTorchPosterior
-
-from gpytorch.distributions import MultivariateNormal, MultitaskMultivariateNormal
+from gpytorch.distributions import MultitaskMultivariateNormal, MultivariateNormal
+from torch import Tensor
+from torch.nn import ModuleList
 
 
 class MultiOutputOrdinalModel(Model):
@@ -283,14 +282,14 @@ class MultiOutputOrdinalModel(Model):
         return torch.cat(ys, dim=-1)
 
     # ---------------------------------------------------------------------
-    # Backward-compatible aliases
+    # Backward-supported aliases
     # ---------------------------------------------------------------------
     @property
     def train_X(self) -> Tensor:
         """
-        Backward-compatible alias.
+        Backward-supported alias.
 
-        Deprecated:
+        Removed:
             Use train_input_raw or train_inputs_raw[0] instead.
         """
         return self.train_input_raw
@@ -298,9 +297,9 @@ class MultiOutputOrdinalModel(Model):
     @property
     def raw_train_X(self) -> Tensor:
         """
-        Backward-compatible alias.
+        Backward-supported alias.
 
-        Deprecated:
+        Removed:
             Use train_input_raw instead.
         """
         return self.train_input_raw
@@ -308,9 +307,9 @@ class MultiOutputOrdinalModel(Model):
     @property
     def train_Y(self) -> Tensor:
         """
-        Backward-compatible alias.
+        Backward-supported alias.
 
-        Deprecated:
+        Removed:
             Use train_targets instead.
         """
         return self.train_targets
@@ -324,7 +323,7 @@ class MultiOutputOrdinalModel(Model):
     # ---------------------------------------------------------------------
     def _normalize_output_indices(
         self,
-        output_indices: Optional[Sequence[int]],
+        output_indices: Sequence[int] | None,
     ) -> list[int]:
         if output_indices is None:
             return list(range(self.num_outputs))
@@ -346,7 +345,7 @@ class MultiOutputOrdinalModel(Model):
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
         observation_noise: bool | Tensor = False,
         posterior_transform=None,
         **kwargs: Any,
@@ -400,7 +399,7 @@ class MultiOutputOrdinalModel(Model):
         X: Tensor,
         Y: Tensor,
         **kwargs: Any,
-    ) -> "MultiOutputOrdinalModel":
+    ) -> MultiOutputOrdinalModel:
         if Y.shape[-1] != self.num_outputs:
             raise ValueError(
                 f"Expected Y.shape[-1] == {self.num_outputs}, "
@@ -427,7 +426,7 @@ class MultiOutputOrdinalModel(Model):
     def class_probs_list(
         self,
         X: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
         **kwargs: Any,
     ) -> list[Tensor]:
         """
@@ -451,7 +450,7 @@ class MultiOutputOrdinalModel(Model):
     def class_probs(
         self,
         X: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
         **kwargs: Any,
     ) -> Tensor:
         """
@@ -483,7 +482,7 @@ class MultiOutputOrdinalModel(Model):
     def padded_class_probs(
         self,
         X: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
         pad_value: float = 0.0,
         **kwargs: Any,
     ) -> Tensor:
@@ -526,7 +525,7 @@ class MultiOutputOrdinalModel(Model):
     def predict_class(
         self,
         X: Tensor,
-        output_indices: Optional[Sequence[int]] = None,
+        output_indices: Sequence[int] | None = None,
         **kwargs: Any,
     ) -> Tensor:
         """

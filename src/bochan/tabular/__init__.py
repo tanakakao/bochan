@@ -10,6 +10,7 @@ from .builders import (
     make_optimize_config,
     make_repair_config,
 )
+from .candidate_outputs import apply_tabular_candidate_outputs
 from .config import ColumnKey, TabularDataConfig
 from .converter import (
     TabularDataset,
@@ -22,9 +23,8 @@ from .converter import (
     tensor_to_dataframe,
 )
 from .optimizer_api import TabularBayesianOptimizer
-from .candidate_output_compat import apply_tabular_candidate_output_compat
 
-apply_tabular_candidate_output_compat()
+apply_tabular_candidate_outputs()
 
 __all__ = [
     "ColumnKey",

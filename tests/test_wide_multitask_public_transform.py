@@ -24,12 +24,12 @@ from bochan.acquisition.regression.bayesian_optimization import (
 )
 from bochan.api import AutoStandardizeOutcomeTransform
 from bochan.models.transforms.input import build_input_transform
-from bochan.models.wide_multitask_compat import (
+from bochan.models.wide_multitask_variants import (
     PerturbationAwareWidePosterior,
     TaskFeatureInputTransform,
     WideMultiTaskGP,
 )
-from bochan.optim.nsgaii_output_compat import adapt_nsgaii_outputs
+from bochan.optim.nsgaii_outputs import adapt_nsgaii_outputs
 
 
 def test_task_feature_transform_accepts_public_and_internal_inputs() -> None:

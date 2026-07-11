@@ -5,14 +5,14 @@ from types import SimpleNamespace
 import torch
 from torch import nn
 
-import bochan.api  # noqa: F401 - installs high-level compatibility routes
+import bochan.acquisition.ordinal.bayesian_optimization as ordinal_bo_package
+import bochan.api  # noqa: F401 - installs high-level support routes
 import bochan.api.engine as engine_module
 import bochan.api.factory as factory_module
-import bochan.acquisition.ordinal.bayesian_optimization as ordinal_bo_package
 from bochan.acquisition.multiclass.bayesian_optimization import (
     hetero_multi_output as hetero_multiclass_module,
 )
-from bochan.acquisition.multiclass.bayesian_optimization.input_perturbation_compat import (
+from bochan.acquisition.multiclass.bayesian_optimization.input_perturbation import (
     InputPerturbationMultiOutputObjectiveAdapter,
 )
 from bochan.acquisition.ordinal.bayesian_optimization import (
@@ -258,7 +258,7 @@ def test_hetero_ordinal_aggregates_after_utility_adjustment(monkeypatch) -> None
     def fake_stack_multi_summaries(model, X, **kwargs):
         del model, kwargs
         batch_shape = X.shape[:-2]
-        # Exercise the compatibility path where the summary remains at raw q,
+        # Exercise the support path where the summary remains at raw q,
         # while latent posterior samples have already expanded to q * n_w.
         robust_mean = torch.zeros(
             *batch_shape,

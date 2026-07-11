@@ -10,7 +10,7 @@ models, tabular data workflows, and ask/tell optimization loops. Acquisition
 functions, objectives, candidate repair, and optimization backends are designed
 to be reused across those model families.
 
-The codebase is still under active development. Backward compatibility is not
+The codebase is still under active development. Backward support is not
 the main priority yet; consistency of API design, tensor shapes, and
 BoTorch-like behavior is prioritized.
 
@@ -837,7 +837,7 @@ Examples:
 - Gaussian regression: continuous response posterior
 - Binary classification: probability-scale posterior
 - Multiclass classification: class-probability posterior
-- Ordinal regression: ordinal class-probability / utility-compatible posterior
+- Ordinal regression: ordinal class-probability / utility-supported posterior
 - Non-Gaussian regression: response-scale posterior such as rate or mean
 - Hybrid multi-output: task-aware output collection or objective-space posterior
 
@@ -907,7 +907,7 @@ This repository is under active development.
 
 Current priorities:
 
-- keep model wrappers BoTorch-compatible;
+- keep model wrappers BoTorch-supported;
 - align naming and arguments across regression / binary / multiclass / ordinal / non-Gaussian families;
 - keep tensor shapes q-batch safe;
 - make optimization-loop APIs usable from both Python functions and human-in-the-loop experiments;

@@ -1,23 +1,19 @@
-"""Version-compatible NSGA-II adapter for high-level optimizer dispatch.
+"""NSGA-II adapter for high-level optimizer dispatch.
 
-The public BoTorch ``optimize_with_nsgaii`` signature expanded over time.
-Bochan supports older BoTorch releases, so this module filters unsupported
-keywords at runtime and adapts scalar multi-objective acquisitions such as EHVI
-to the multi-output posterior-mean acquisition expected by NSGA-II.
+The adapter targets Bochan's current BoTorch requirement directly and adapts
+scalar multi-objective acquisitions such as EHVI to the multi-output posterior
+mean acquisition expected by NSGA-II.
 """
 
 from __future__ import annotations
 
-import inspect
 from collections.abc import Callable, Sequence
 from typing import Any
 
-import torch
 from torch import Tensor
 
 from . import nsgaii as _base
-from .nsgaii_output_compat import adapt_nsgaii_outputs
-
+from .nsgaii_outputs import adapt_nsgaii_outputs
 
 LinearConstraint = _base.LinearConstraint
 OutcomeConstraint = _base.OutcomeConstraint
@@ -79,13 +75,10 @@ def _resolve_nsgaii_target(acq_function: Any) -> Any:
     the EHVI objective transform, constraints, and reference point.
     """
 
-    try:
-        from botorch.acquisition.multioutput_acquisition import (
-            MultiOutputAcquisitionFunction,
-            MultiOutputPosteriorMean,
-        )
-    except ImportError:  # pragma: no cover - old BoTorch import layout
-        return acq_function
+    from botorch.acquisition.multioutput_acquisition import (
+        MultiOutputAcquisitionFunction,
+        MultiOutputPosteriorMean,
+    )
 
     if isinstance(acq_function, MultiOutputAcquisitionFunction):
         return acq_function
@@ -97,138 +90,6 @@ def _resolve_nsgaii_target(acq_function: Any) -> Any:
     if num_outputs is None or num_outputs < 2:
         return acq_function
     return MultiOutputPosteriorMean(model=model)
-
-
-def _apply_discrete_choices(
-    X: Tensor,
-    discrete_choices: dict[int, Sequence[float] | Tensor] | None,
-) -> Tensor:
-    """Apply nearest-choice rounding for legacy BoTorch releases."""
-
-    if not discrete_choices:
-        return X
-    repaired = X.clone()
-    for dim, choices in discrete_choices.items():
-        choices_t = torch.as_tensor(
-            choices,
-            dtype=X.dtype,
-            device=X.device,
-        ).reshape(-1)
-        if choices_t.numel() == 0:
-            raise ValueError(f"discrete_choices[{dim}] must not be empty.")
-        values = repaired[..., int(dim)].unsqueeze(-1)
-        nearest = (values - choices_t).abs().argmin(dim=-1)
-        repaired[..., int(dim)] = choices_t[nearest]
-    return repaired
-
-
-def _evaluate_objectives(
-    *,
-    acq_function: Any,
-    X: Tensor,
-    objective: Any | None,
-) -> Tensor:
-    """Re-evaluate NSGA-II objective values after legacy post-processing."""
-
-    X_eval = X.unsqueeze(-2)
-    with torch.no_grad():
-        values = acq_function(X=X_eval)
-        if objective is not None:
-            try:
-                values = objective(values, X=X_eval)
-            except TypeError:
-                values = objective(values)
-
-    if values.ndim >= 3 and values.shape[-2] == 1:
-        values = values.squeeze(-2)
-    if values.ndim == 1:
-        values = values.unsqueeze(-1)
-    return values
-
-
-def _accepted_parameters(
-    function: Callable[..., Any],
-) -> tuple[set[str], bool]:
-    """Return named parameters and whether ``**kwargs`` is accepted."""
-
-    try:
-        parameters = inspect.signature(function).parameters
-    except (TypeError, ValueError):
-        return set(), True
-    accepts_var_kwargs = any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD
-        for parameter in parameters.values()
-    )
-    return set(parameters), accepts_var_kwargs
-
-
-def _make_version_compatible_optimizer(
-    function: Callable[..., Any],
-) -> Callable[..., Any]:
-    """Wrap BoTorch's NSGA-II utility with runtime signature adaptation."""
-
-    original = getattr(function, "_bochan_original", function)
-
-    def compatible_optimize_with_nsgaii(*args: Any, **kwargs: Any):
-        accepted, accepts_var_kwargs = _accepted_parameters(original)
-
-        def supports(name: str) -> bool:
-            return accepts_var_kwargs or name in accepted
-
-        inequality_constraints = kwargs.get("inequality_constraints")
-        if inequality_constraints and not supports("inequality_constraints"):
-            raise NotImplementedError(
-                "The installed BoTorch optimize_with_nsgaii does not support "
-                "inequality_constraints. Upgrade BoTorch to a release whose "
-                "optimize_with_nsgaii signature includes this parameter."
-            )
-
-        legacy_discrete_choices = None
-        if kwargs.get("discrete_choices") and not supports("discrete_choices"):
-            legacy_discrete_choices = kwargs["discrete_choices"]
-
-        legacy_post_processing = None
-        if kwargs.get("post_processing_func") is not None and not supports(
-            "post_processing_func"
-        ):
-            legacy_post_processing = kwargs["post_processing_func"]
-
-        filtered_kwargs = {
-            name: value
-            for name, value in kwargs.items()
-            if supports(name)
-        }
-        # NSGA-II is derivative-free. Some BoTorch versions evaluate the
-        # objective transform outside their internal no-grad block and then call
-        # ``numpy()`` on the result. If the transform references Parameters, the
-        # result requires gradients and that conversion raises a RuntimeError.
-        with torch.no_grad():
-            X, Y = original(*args, **filtered_kwargs)
-
-        changed = False
-        if legacy_discrete_choices:
-            X = _apply_discrete_choices(X, legacy_discrete_choices)
-            changed = True
-        if legacy_post_processing is not None:
-            X = legacy_post_processing(X)
-            changed = True
-        if changed:
-            Y = _evaluate_objectives(
-                acq_function=kwargs["acq_function"],
-                X=X,
-                objective=kwargs.get("objective"),
-            )
-        return X, Y
-
-    compatible_optimize_with_nsgaii._bochan_original = original  # type: ignore[attr-defined]
-    return compatible_optimize_with_nsgaii
-
-
-# Patch the function referenced by nsgaii.py. Its public wrapper remains the
-# single source of validation, objective-count inference, and equality merging.
-_base.optimize_with_nsgaii = _make_version_compatible_optimizer(
-    _base.optimize_with_nsgaii
-)
 
 
 def optimize_acqf_nsgaii(
@@ -255,7 +116,34 @@ def optimize_acqf_nsgaii(
     sequential: bool = False,
     **kwargs: Any,
 ) -> tuple[Tensor, Tensor]:
-    """Optimize a model's vector objective with version-compatible NSGA-II."""
+    """Optimize a model's vector objective with NSGA-II.
+
+    Args:
+        acq_function: Acquisition function or model-backed multi-objective acquisition.
+        bounds: Tensor bounds with shape ``2 x d``.
+        q: Number of candidates to return.
+        num_objectives: Number of objective dimensions.
+        ref_point: Optional reference point for hypervolume validation.
+        objective: Optional objective transform.
+        constraints: Optional outcome constraints.
+        inequality_constraints: Optional linear inequality constraints.
+        equality_constraints: Optional linear equality constraints.
+        equality_tol: Equality-constraint conversion tolerance.
+        fixed_features: Fixed feature assignments.
+        discrete_choices: Discrete choices for dimensions.
+        post_processing_func: Candidate post-processing function.
+        population_size: NSGA-II population size.
+        max_gen: Maximum generations.
+        seed: Optional random seed.
+        max_attempts: Number of retry attempts.
+        validate_output: Whether to validate output shape.
+        validate_discrete: Whether to validate discrete choices.
+        sequential: Accepted for API alignment; NSGA-II is population based.
+        **kwargs: Additional current BoTorch optimizer options.
+
+    Returns:
+        A pair ``(candidates, values)`` returned by the optimizer.
+    """
 
     target = _resolve_nsgaii_target(acq_function)
     if target is not acq_function:

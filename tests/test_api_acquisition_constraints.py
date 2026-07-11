@@ -186,7 +186,7 @@ def test_constraints_are_parallel_to_objective_in_config() -> None:
     assert config.acqf_kwargs["constraints"] == [constraint]
 
 
-def test_legacy_constraints_inside_acqf_kwargs_are_rejected() -> None:
+def test_old_constraints_inside_acqf_kwargs_are_rejected() -> None:
     with pytest.raises(ValueError, match="AcquisitionConfig.constraints"):
         AcquisitionConfig(
             name="qei",

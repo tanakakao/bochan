@@ -6,11 +6,17 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .configs import AcquisitionConfigSchema, DataContextSchema, FitConfigSchema, ModelConfigSchema, OptimizeConfigSchema
+from .configs import (
+    AcquisitionConfigSchema,
+    DataContextSchema,
+    FitConfigSchema,
+    ModelConfigSchema,
+    OptimizeConfigSchema,
+)
 
 
 class APIRequest(BaseModel):
-    """Base request model with API-compatible aliases enabled."""
+    """Base request model with API-supported aliases enabled."""
 
     model_config = ConfigDict(populate_by_name=True, protected_namespaces=())
 

@@ -10,7 +10,6 @@ from typing import Any
 
 import pytest
 import torch
-from botorch.models.transforms.input import Normalize
 from botorch.optim.optimize import optimize_acqf, optimize_acqf_mixed
 
 from bochan.models.ordinal.deep.deepgp import (
@@ -19,10 +18,10 @@ from bochan.models.ordinal.deep.deepgp import (
     fit_true_deep_ordinal_gp,
 )
 from tests.test_binary_classification_base_single_output import (
-    DTYPE,
     DEVICE,
+    DTYPE,
     assert_candidates_in_bounds,
-    assert_optimizer_compatibility_result,
+    assert_optimizer_support_result,
     make_random_batch,
     maybe_suppress_botorch_initial_warnings,
     optimize_mixed_with_case,
@@ -294,7 +293,7 @@ def test_ordinal_deepgp_optimizer_constraint_case_smoke(ordinal_deepgp_model_bun
     for acq_cls, kwargs, _, optimize_func, optimize_method, constraint_case, case_id in _ordinal_optimizer_constraint_scenarios(model, train_x, bounds):
         with maybe_suppress_botorch_initial_warnings():
             cands, acq_value = optimize_with_case(acqf=acq_cls(model=model, **kwargs), bounds=bounds, q=2, optimize_func=optimize_func, optimize_method=optimize_method, constraint_case=constraint_case, num_restarts=2, raw_samples=16, maxiter=10)
-        assert_optimizer_compatibility_result(cands=cands, acq_value=acq_value, bounds=bounds, q=2, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
+        assert_optimizer_support_result(cands=cands, acq_value=acq_value, bounds=bounds, q=2, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
 
 
 @pytest.mark.slow
@@ -308,5 +307,5 @@ def test_ordinal_deepgp_mixed_optimizer_constraint_case_smoke(ordinal_deepgp_mix
     for acq_cls, kwargs, _, optimize_func, optimize_method, constraint_case, case_id in _ordinal_optimizer_constraint_scenarios(model, train_x, bounds, mixed=True):
         with maybe_suppress_botorch_initial_warnings():
             cands, acq_value = optimize_mixed_with_case(acqf=acq_cls(model=model, **kwargs), bounds=bounds, q=2, fixed_features_list=fixed_features_list, optimize_func=optimize_func, optimize_method=optimize_method, constraint_case=constraint_case, num_restarts=2, raw_samples=16, maxiter=10)
-        assert_optimizer_compatibility_result(cands=cands, acq_value=acq_value, bounds=bounds, q=2, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
+        assert_optimizer_support_result(cands=cands, acq_value=acq_value, bounds=bounds, q=2, d=train_x.shape[-1], constraint_case=constraint_case, case_id=case_id)
         assert torch.isin(cands[:, cat_id], cat_values).all(), case_id

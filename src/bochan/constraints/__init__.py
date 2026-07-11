@@ -8,7 +8,7 @@ Typical use:
 
 from .constraints import (
     LinearConstraint,
-    convert_legacy_constraints,
+    convert_old_constraints,
     linear_constraint_violations,
     make_linear_constraint_repair_func,
     project_linear_constraints,
@@ -38,7 +38,7 @@ from .rounding import (
 
 __all__ = [
     "LinearConstraint",
-    "convert_legacy_constraints",
+    "convert_old_constraints",
     "linear_constraint_violations",
     "make_linear_constraint_repair_func",
     "project_linear_constraints",

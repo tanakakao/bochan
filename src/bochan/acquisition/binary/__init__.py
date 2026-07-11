@@ -25,10 +25,9 @@ from bochan.models.classification.binary.base.multioutput import (
 
 from .epistemic import BinaryEpistemicProbabilityPosterior
 
-
 # The high-level registry may resolve the generic BoTorch qNEHVI class directly.
 # Patch it here as well as the bochan-specific wrappers so models such as the
-# Kronecker binary classifier can disable the incompatible cached-Cholesky path.
+# Kronecker binary classifier can disable the insupported cached-Cholesky path.
 patch_nehvi_cache_root_init(qNoisyExpectedHypervolumeImprovement)
 
 
@@ -272,7 +271,7 @@ def _aligned_binary_epistemic_rsample_from_base_samples(
     )
 
 
-# Keep compatibility with BoTorch versions whose Posterior API calls
+# Keep support with BoTorch versions whose Posterior API calls
 # ``_extended_shape()`` with the default ``None`` value and whose normal sampler
 # reads ``posterior.batch_shape`` while updating cached base samples.
 BinaryEpistemicProbabilityPosterior._extended_shape = (

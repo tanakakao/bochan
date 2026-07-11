@@ -29,7 +29,7 @@ def _has_explicit_objective(config: AcquisitionConfig) -> bool:
     )
 
 
-def _install_nested_objective_q_shape_compatibility() -> None:
+def _install_nested_objective_q_shape_support() -> None:
     """Defer q-shape validation until perturbation aggregation is complete.
 
     ``MCMultiOutputObjective.__call__`` normally checks that the objective output
@@ -45,20 +45,20 @@ def _install_nested_objective_q_shape_compatibility() -> None:
     )
 
     cls = MultiOutputRegressionInputPerturbationObjective
-    marker = "_bochan_nested_q_shape_compat_installed"
+    marker = "_bochan_nested_q_shape_support_installed"
     if bool(getattr(cls, marker, False)):
         return
 
     original_init = cls.__init__
 
-    def init_compat(self, *args, **kwargs) -> None:
+    def init_support(self, *args, **kwargs) -> None:
         original_init(self, *args, **kwargs)
         inner_objective = self.inner_objective
         if hasattr(inner_objective, "_verify_output_shape"):
             inner_objective._verify_output_shape = False
 
-    cls.__init__ = init_compat
-    setattr(cls, "_bochan_original_init", original_init)
+    cls.__init__ = init_support
+    cls._bochan_original_init = original_init
     setattr(cls, marker, True)
 
 
@@ -73,7 +73,7 @@ def install_kronecker_input_perturbation_objective_defaults() -> None:
     perturbation dimension before applying their own multi-objective logic.
     """
 
-    _install_nested_objective_q_shape_compatibility()
+    _install_nested_objective_q_shape_support()
 
     from . import engine as engine_module
     from . import engine_defaults as defaults_module
@@ -118,7 +118,7 @@ def install_kronecker_input_perturbation_objective_defaults() -> None:
         )
 
     setattr(resolve_with_kronecker_default, marker, True)
-    setattr(resolve_with_kronecker_default, "_wrapped", current)
+    resolve_with_kronecker_default._wrapped = current
     engine_module._resolve_objective_config_n_w_from_input_transform = (
         resolve_with_kronecker_default
     )

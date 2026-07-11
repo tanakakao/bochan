@@ -23,7 +23,7 @@ def test_hetero_multioutput_ordinal_levelset_short_aliases():
         assert resolved is expected_cls
 
 
-def test_hetero_multioutput_ordinal_canonical_compatibility_names():
+def test_hetero_multioutput_ordinal_canonical_support_names():
     expected = {
         "qHeteroMultiOutputOrdinalLatentStraddleAcquisition": (
             qHeteroMultiOutputOrdinalStraddle

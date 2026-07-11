@@ -9,7 +9,7 @@ for ordinal models. It covers
 - active learning acquisitions,
 - level-set estimation acquisitions,
 - Bayesian optimization acquisitions,
-- optimizer / constraint compatibility, including evo optimizers, and
+- optimizer / constraint support, including evo optimizers, and
 - Jupyter-oriented all-check runners.
 """
 
@@ -46,10 +46,10 @@ from bochan.acquisition.ordinal.levelset_estimation import (
 from bochan.fit.ordinal import fit_ordinal_mll, make_ordinal_mll
 from bochan.models.ordinal.base import OrdinalGPModel, OrdinalMixedGPModel
 from tests.test_binary_classification_base_single_output import (
-    DTYPE,
     DEVICE,
+    DTYPE,
     assert_candidates_in_bounds,
-    assert_optimizer_compatibility_result,
+    assert_optimizer_support_result,
     make_binary_toy_data,
     make_constraint_cases,
     make_random_batch,
@@ -60,7 +60,6 @@ from tests.test_binary_classification_base_single_output import (
     optimizer_cases,
     print_linear_constraint_diagnostics,
 )
-
 
 NUM_CLASSES = 3
 UTILITY_VALUES = torch.tensor([0.0, 1.0, 2.0], dtype=DTYPE, device=DEVICE)
@@ -512,7 +511,7 @@ def test_ordinal_optimizer_constraint_case_smoke(ordinal_model_bundle: dict[str,
                 raw_samples=16,
                 maxiter=10,
             )
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,
@@ -545,7 +544,7 @@ def test_ordinal_mixed_optimizer_constraint_case_smoke(ordinal_mixed_model_bundl
                 raw_samples=16,
                 maxiter=10,
             )
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,
@@ -702,7 +701,7 @@ def run_jupyter_optimize_all_acquisitions_check(
     return bundle
 
 
-def run_jupyter_optimizer_constraint_compatibility_check(
+def run_jupyter_optimizer_constraint_support_check(
     *,
     cat: bool = False,
     n: int = 24,
@@ -717,7 +716,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
     suppress_botorch_warnings: bool = True,
 ) -> dict[str, Any]:
     if d < 5:
-        raise ValueError("constraint compatibility check では d >= 5 が必要です。")
+        raise ValueError("constraint support check では d >= 5 が必要です。")
 
     bundle = create_ordinal_model_bundle(cat=cat, n=n, d=d, num_epochs=num_epochs)
     model = bundle["model"]
@@ -735,7 +734,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
         fixed_features_list, cat_values = _fixed_features_for_bundle(bundle)
 
     print("=" * 100)
-    print(f"Jupyter ordinal base {prefix}optimizer / constraint compatibility check")
+    print(f"Jupyter ordinal base {prefix}optimizer / constraint support check")
     print(f"n={n}, d={d}, q={q}, num_epochs={num_epochs}, full_matrix={full_matrix}, num_cases={len(scenarios)}")
     print("=" * 100)
 
@@ -767,7 +766,7 @@ def run_jupyter_optimizer_constraint_compatibility_check(
                         raw_samples=16,
                         maxiter=10,
                     )
-            assert_optimizer_compatibility_result(
+            assert_optimizer_support_result(
                 cands=cands,
                 acq_value=acq_value,
                 bounds=bounds,
@@ -841,7 +840,7 @@ def run_jupyter_all_checks(
             suppress_botorch_warnings=suppress_botorch_warnings,
             verbose_ok_detail=verbose_ok_detail,
         )
-        run_jupyter_optimizer_constraint_compatibility_check(
+        run_jupyter_optimizer_constraint_support_check(
             cat=False,
             n=n,
             d=d,
@@ -854,7 +853,7 @@ def run_jupyter_all_checks(
             verbose_constraints=verbose_constraints,
             suppress_botorch_warnings=suppress_botorch_warnings,
         )
-        run_jupyter_optimizer_constraint_compatibility_check(
+        run_jupyter_optimizer_constraint_support_check(
             cat=True,
             n=n,
             d=d,

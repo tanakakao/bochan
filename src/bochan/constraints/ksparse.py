@@ -7,13 +7,14 @@ here rather than duplicating k-sparse logic.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from itertools import product
-from typing import Callable, Dict, Iterable, List, Literal, Optional, Sequence, Tuple
+from typing import Literal
 
 import torch
 from torch import Tensor
 
-LinearConstraint = Tuple[Sequence[int], Sequence[float], float]
+LinearConstraint = tuple[Sequence[int], Sequence[float], float]
 ScoreMode = Literal["abs", "value"]
 SupportSelection = Literal["topk", "sample"]
 
@@ -30,14 +31,14 @@ def _to_1d_value_tensor(values: Sequence[float] | Tensor, *, device: torch.devic
     return torch.as_tensor(list(values), device=device, dtype=dtype)
 
 
-def _normalize_bounds(bounds: Tensor, *, d: int, device: torch.device, dtype: torch.dtype) -> Tuple[Tensor, Tensor]:
+def _normalize_bounds(bounds: Tensor, *, d: int, device: torch.device, dtype: torch.dtype) -> tuple[Tensor, Tensor]:
     """Return flattened lower / upper bounds with shape ``(d,)``."""
     if bounds.shape[0] != 2:
         raise ValueError(f"bounds must have first dimension 2. Got shape={tuple(bounds.shape)}.")
     lower = bounds[0].to(device=device, dtype=dtype).reshape(-1)[-d:]
     upper = bounds[1].to(device=device, dtype=dtype).reshape(-1)[-d:]
     if lower.numel() != d or upper.numel() != d:
-        raise ValueError(f"bounds last dimension is incompatible with d={d}.")
+        raise ValueError(f"bounds last dimension is insupported with d={d}.")
     return lower, upper
 
 
@@ -99,7 +100,7 @@ def sample_k_without_replacement(
     *,
     tau: float = 0.2,
     eps: float = 0.05,
-    generator: Optional[torch.Generator] = None,
+    generator: torch.Generator | None = None,
 ) -> Tensor:
     """Sample ``k`` indices without replacement from score-derived probabilities.
 
@@ -138,7 +139,7 @@ def _select_support_mask(
     support_selection: SupportSelection,
     sample_tau: float,
     sample_eps: float,
-    generator: Optional[torch.Generator],
+    generator: torch.Generator | None,
 ) -> Tensor:
     """Return boolean support mask for ``group`` with shape ``(N, m)``."""
     m = group.shape[-1]
@@ -167,15 +168,15 @@ def make_k_sparse_linear_constraints_repair(
     k: int,
     *,
     score: ScoreMode = "abs",
-    equality_constraints: Optional[List[LinearConstraint]] = None,
-    inequality_constraints: Optional[List[LinearConstraint]] = None,
+    equality_constraints: list[LinearConstraint] | None = None,
+    inequality_constraints: list[LinearConstraint] | None = None,
     inequality_sense: Literal["le", "ge"] = "le",
-    fixed_features: Optional[Dict[int, float]] = None,
+    fixed_features: dict[int, float] | None = None,
     max_iters: int = 12,
     support_selection: SupportSelection = "topk",
     sample_tau: float = 0.2,
     sample_eps: float = 0.05,
-    generator: Optional[torch.Generator] = None,
+    generator: torch.Generator | None = None,
 ) -> Callable[[Tensor], Tensor]:
     """Create a k-sparse repair function with box / fixed / linear constraints.
 
@@ -227,8 +228,8 @@ def make_k_sparse_linear_constraints_repair(
         # Initial clamp.
         Xf = Xf.clamp(min=lower, max=upper)
 
-        idx_t: Optional[Tensor]
-        support_mask: Optional[Tensor]
+        idx_t: Tensor | None
+        support_mask: Tensor | None
         if comp_idx:
             idx_t = torch.as_tensor(comp_idx, device=device, dtype=torch.long)
             group = Xf[:, idx_t]
@@ -396,15 +397,15 @@ def diversify_within_q(
     X: Tensor,
     repair: Callable[[Tensor], Tensor],
     *,
-    bounds: Optional[Tensor] = None,
-    tol: Optional[float] = None,
-    step: Optional[float] = None,
+    bounds: Tensor | None = None,
+    tol: float | None = None,
+    step: float | None = None,
     mode: Literal["deterministic", "random"] = "deterministic",
     frozen_idx: Sequence[int] = (),
     comp_idx: Sequence[int] = (),
     active_eps: float = 0.0,
     max_tries: int = 3,
-    generator: Optional[torch.Generator] = None,
+    generator: torch.Generator | None = None,
 ) -> Tensor:
     """Diversify nearly duplicated candidates inside the q-batch and re-repair.
 
@@ -452,7 +453,7 @@ def diversify_within_q(
             rows = torch.nonzero(rows_mask, as_tuple=False).squeeze(-1)
             nb = rows.numel()
 
-            dim_choice: Optional[Tensor] = None
+            dim_choice: Tensor | None = None
             if comp_list:
                 comp_tensor = torch.as_tensor(comp_list, device=X.device, dtype=torch.long)
                 vals = Xb[rows, i][:, comp_tensor].abs()
@@ -490,17 +491,17 @@ def make_k_sparse_post_processing_func(
     k: int,
     *,
     score: ScoreMode = "abs",
-    equality_constraints: Optional[List[LinearConstraint]] = None,
-    inequality_constraints: Optional[List[LinearConstraint]] = None,
+    equality_constraints: list[LinearConstraint] | None = None,
+    inequality_constraints: list[LinearConstraint] | None = None,
     inequality_sense: Literal["le", "ge"] = "le",
-    fixed_features: Optional[Dict[int, float]] = None,
-    final_sum_constraint: Optional[Tuple[Sequence[int], float]] = None,
+    fixed_features: dict[int, float] | None = None,
+    final_sum_constraint: tuple[Sequence[int], float] | None = None,
     diversify: bool = False,
-    diversify_kwargs: Optional[Dict] = None,
+    diversify_kwargs: dict | None = None,
     support_selection: SupportSelection = "topk",
     sample_tau: float = 0.2,
     sample_eps: float = 0.05,
-    generator: Optional[torch.Generator] = None,
+    generator: torch.Generator | None = None,
     max_iters: int = 12,
 ) -> Callable[[Tensor], Tensor]:
     """Create a complete post-processing function for optimizer wrappers."""
@@ -548,16 +549,16 @@ def generate_k_sparse_initial_conditions(
     q: int,
     comp_idx: Sequence[int],
     k: int,
-    fixed_features: Optional[Dict[int, float]] = None,
-    equality_constraints: Optional[List[LinearConstraint]] = None,
-    inequality_constraints: Optional[List[LinearConstraint]] = None,
+    fixed_features: dict[int, float] | None = None,
+    equality_constraints: list[LinearConstraint] | None = None,
+    inequality_constraints: list[LinearConstraint] | None = None,
     inequality_sense: Literal["le", "ge"] = "le",
-    final_sum_constraint: Optional[Tuple[Sequence[int], float]] = None,
+    final_sum_constraint: tuple[Sequence[int], float] | None = None,
     score: ScoreMode = "abs",
     support_selection: SupportSelection = "topk",
-    generator: Optional[torch.Generator] = None,
-    dtype: Optional[torch.dtype] = None,
-    device: Optional[torch.device] = None,
+    generator: torch.Generator | None = None,
+    dtype: torch.dtype | None = None,
+    device: torch.device | None = None,
 ) -> Tensor:
     """Generate repaired initial conditions with shape ``(num_restarts, q, d)``."""
     device = device or bounds.device
@@ -585,21 +586,21 @@ def generate_k_sparse_initial_conditions(
 
 
 def expand_categorical_features(
-    categorical_features: Dict[int, Sequence[float]],
+    categorical_features: dict[int, Sequence[float]],
     *,
-    base_fixed_features: Optional[Dict[int, float]] = None,
-) -> List[Dict[int, float]]:
+    base_fixed_features: dict[int, float] | None = None,
+) -> list[dict[int, float]]:
     """Expand ``{dim: values}`` categorical spec into BoTorch fixed_features_list."""
     base = {int(k): float(v) for k, v in (base_fixed_features or {}).items()}
     if not categorical_features:
         return [base]
 
-    dims = [int(dim) for dim in categorical_features.keys()]
+    dims = [int(dim) for dim in categorical_features]
     values = [list(vs) for vs in categorical_features.values()]
     if any(len(vs) == 0 for vs in values):
         raise ValueError("categorical_features must not contain an empty value list.")
 
-    fixed_features_list: List[Dict[int, float]] = []
+    fixed_features_list: list[dict[int, float]] = []
     for combo in product(*values):
         item = dict(base)
         for dim, value in zip(dims, combo):

@@ -16,10 +16,10 @@ from botorch.optim.optimize import optimize_acqf, optimize_acqf_mixed
 from bochan.fit.ordinal import fit_ordinal_mll, make_ordinal_mll
 from bochan.models.ordinal.high_dim import SaasOrdinalGPModel, SaasOrdinalMixedGPModel
 from tests.test_binary_classification_base_single_output import (
-    DTYPE,
     DEVICE,
+    DTYPE,
     assert_candidates_in_bounds,
-    assert_optimizer_compatibility_result,
+    assert_optimizer_support_result,
     make_random_batch,
     make_random_mixed_batch,
     maybe_suppress_botorch_initial_warnings,
@@ -315,7 +315,7 @@ def test_ordinal_saas_optimizer_constraint_case_smoke(ordinal_saas_model_bundle:
                 raw_samples=16,
                 maxiter=10,
             )
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,
@@ -348,7 +348,7 @@ def test_ordinal_saas_mixed_optimizer_constraint_case_smoke(ordinal_saas_mixed_m
                 raw_samples=16,
                 maxiter=10,
             )
-        assert_optimizer_compatibility_result(
+        assert_optimizer_support_result(
             cands=cands,
             acq_value=acq_value,
             bounds=bounds,

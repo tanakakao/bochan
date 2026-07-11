@@ -2,16 +2,15 @@
 from __future__ import annotations
 
 import math
-from typing import Callable, Literal, Optional
+from typing import Literal
 
 import torch
-from torch import Tensor
-from bochan.acquisition.binary._likelihood import values_to_binary_probabilities
-from bochan.acquisition.binary.epistemic import get_binary_latent_posterior
-
 from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 from botorch.models.model import Model
+from torch import Tensor
 
+from bochan.acquisition.binary._likelihood import values_to_binary_probabilities
+from bochan.acquisition.binary.epistemic import get_binary_latent_posterior
 
 ReductionType = Literal["mean", "sum"]
 MultiOutputMode = Literal["mean", "sum", "max", "min", "weighted_mean", "all_positive"]
@@ -154,7 +153,7 @@ def ensure_q_batch(X: Tensor) -> Tensor:
 def _try_apply_input_transform_for_shape(
     input_transform,
     X: Tensor,
-) -> Optional[Tensor]:
+) -> Tensor | None:
     """Safely apply an input transform for shape inference.
 
     Some mixed-input wrappers keep ``train_X`` in raw space while their internal
@@ -163,7 +162,7 @@ def _try_apply_input_transform_for_shape(
     dimension error such as ``Received 3, expected 4``.
 
     This helper only uses the transform when it can be applied safely.  If the
-    transform is incompatible with the provided raw X, it returns ``None`` and
+    transform is insupported with the provided raw X, it returns ``None`` and
     the caller can fall back to raw X as the shape reference.
 
     Args:
@@ -198,7 +197,7 @@ def shape_X_for_model(model: Model, X: Tensor) -> Tensor:
     In that case, this function falls back to raw ``X`` instead of raising.
 
     Args:
-        model: BoTorch-compatible model.
+        model: BoTorch-supported model.
         X: Raw candidate tensor.
 
     Returns:
@@ -302,14 +301,14 @@ def to_probability(
     apply_sigmoid_if_needed: bool,
     eps: float,
     name: str,
-    model: Optional[Model] = None,
-    values_are_probs: Optional[bool] = None,
+    model: Model | None = None,
+    values_are_probs: bool | None = None,
 ) -> Tensor:
     """Convert probability values or latent values using the model likelihood.
 
     ``values_are_probs=False`` is the unambiguous latent path and always applies
     the model's likelihood, even when all latent values happen to be in
-    ``[0, 1]``.  ``apply_sigmoid_if_needed`` remains a compatibility name for
+    ``[0, 1]``.  ``apply_sigmoid_if_needed`` remains a support name for
     range-inferred inputs, but conversion is likelihood-aware rather than a
     hard-coded sigmoid.
     """
@@ -329,7 +328,7 @@ def to_probability(
 
     xmin = x.min().item()
     xmax = x.max().item()
-    if 0.0 <= xmin and xmax <= 1.0:
+    if xmin >= 0.0 and xmax <= 1.0:
         return x.clamp(eps, 1.0 - eps)
     if apply_sigmoid_if_needed:
         if model is None:
@@ -367,8 +366,8 @@ def aggregate_outputs(
     score_per_output: Tensor,
     *,
     output_mode: MultiOutputMode,
-    output_weights: Optional[Tensor] = None,
-    probs_for_all_positive: Optional[Tensor] = None,
+    output_weights: Tensor | None = None,
+    probs_for_all_positive: Tensor | None = None,
     eps: float = 1e-6,
 ) -> Tensor:
     if output_mode == "mean":
@@ -487,7 +486,7 @@ def reshape_binary_samples(
 def apply_score_objective(
     owner,
     score: Tensor,
-    X: Optional[Tensor] = None,
+    X: Tensor | None = None,
     *,
     attr_name: str = "objective",
     name: str = "BinaryClassificationScore",
@@ -555,7 +554,7 @@ def _aggregate_expanded_binary_values(
     *,
     train_X: Tensor,
     shape_X: Tensor,
-    risk_type: Optional[Literal["var", "cvar"]] = None,
+    risk_type: Literal["var", "cvar"] | None = None,
     alpha: float = 0.5,
     maximize: bool = True,
 ) -> Tensor:
@@ -646,10 +645,10 @@ def get_binary_noise_posterior(model: Model, X: Tensor):
     Raises:
         AttributeError: If no noise posterior accessor is found.
     """
-    if hasattr(model, "posterior_noise") and callable(getattr(model, "posterior_noise")):
+    if hasattr(model, "posterior_noise") and callable(model.posterior_noise):
         return model.posterior_noise(X)
 
-    if hasattr(model, "noise_posterior") and callable(getattr(model, "noise_posterior")):
+    if hasattr(model, "noise_posterior") and callable(model.noise_posterior):
         return model.noise_posterior(X)
 
     noise_model = getattr(model, "noise_model", None)
@@ -683,7 +682,7 @@ def get_binary_noise_std(
     default_sigma: float = 0.0,
     noise_is_log_var: bool = True,
     eps: float = 1e-6,
-    shape_X: Optional[Tensor] = None,
+    shape_X: Tensor | None = None,
 ) -> Tensor:
     """
     Return heteroscedastic noise standard deviation for binary classification.
@@ -725,11 +724,11 @@ def compute_binary_best_f(
     train_X: Tensor,
     *,
     apply_sigmoid_if_needed: bool = False,
-    risk_type: Optional[Literal["var", "cvar"]] = None,
+    risk_type: Literal["var", "cvar"] | None = None,
     alpha: float = 0.5,
     eps: float = 1e-6,
     best_f_margin: float = 1e-4,
-    best_f_quantile: Optional[float] = None,
+    best_f_quantile: float | None = None,
 ) -> Tensor:
     """
     Compute ``best_f`` for ``qBinaryExpectedImprovement`` / binary qPI.
@@ -795,7 +794,7 @@ def compute_hetero_binary_classification_best_f(
     default_sigma: float = 0.0,
     noise_is_log_var: bool = True,
     apply_sigmoid_if_needed: bool = False,
-    risk_type: Optional[Literal["var", "cvar"]] = None,
+    risk_type: Literal["var", "cvar"] | None = None,
     alpha: float = 0.5,
     eps: float = 1e-6,
 ) -> Tensor:

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 import torch
 from gpytorch.mlls import MarginalLogLikelihood, PredictiveLogLikelihood, VariationalELBO
 
@@ -43,7 +41,7 @@ def make_ordinal_mll(
     model,
     *,
     use_predictive_log_likelihood: bool = False,
-    num_data: Optional[int] = None,
+    num_data: int | None = None,
 ):
     """
     Build an ordinal approximate MLL from a model or wrapper.
@@ -80,13 +78,13 @@ def fit_ordinal_mll(
     mll,
     *,
     fit_model=None,
-    lr: Optional[float] = None,
-    num_epochs: Optional[int] = None,
-    batch_size: Optional[int] = None,
+    lr: float | None = None,
+    num_epochs: int | None = None,
+    batch_size: int | None = None,
     shuffle: bool = True,
-    verbose: Optional[bool] = None,
+    verbose: bool | None = None,
     optimizer_cls= torch.optim.Adam,
-    clip_grad_norm: Optional[float] = None,
+    clip_grad_norm: float | None = None,
     **ignore,
 ):
     """
@@ -203,15 +201,15 @@ def fit_ordinal_mll(
 def fit_ordinal_gp(
     model_or_mll,
     *,
-    num_epochs: Optional[int] = None,
-    lr: Optional[float] = None,
-    batch_size: Optional[int] = None,
-    verbose: Optional[bool] = None,
-    use_predictive_log_likelihood: Optional[bool] = None,
+    num_epochs: int | None = None,
+    lr: float | None = None,
+    batch_size: int | None = None,
+    verbose: bool | None = None,
+    use_predictive_log_likelihood: bool | None = None,
     **kwargs,
 ):
     """
-    Backward-compatible ordinal fitting helper.
+    Backward-supported ordinal fitting helper.
 
     New recommended usage:
         mll = make_ordinal_mll(model)

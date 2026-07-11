@@ -17,13 +17,11 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.objective import MCAcquisitionObjective
 from botorch.generation import MaxPosteriorSampling
+from torch import Tensor
 
 from . import thompson_sampling as _base
-
 
 Constraint = Callable[[Tensor], Tensor]
 
@@ -299,7 +297,7 @@ def _apply_outcome_constraints(
 
 
 def _has_posterior(value: Any) -> bool:
-    """Return whether ``value`` exposes a BoTorch-compatible posterior method."""
+    """Return whether ``value`` exposes a BoTorch-supported posterior method."""
 
     return callable(getattr(value, "posterior", None))
 
@@ -426,7 +424,7 @@ def _select_with_scalarized_max_posterior_sampling(
     replacement: bool,
     observation_noise: bool | Tensor,
 ) -> tuple[Tensor, Tensor]:
-    """Select candidates with an objective compatible with posterior sampling."""
+    """Select candidates with an objective supported with posterior sampling."""
 
     model = _resolve_sampling_model(acq_function)
     if model is None:

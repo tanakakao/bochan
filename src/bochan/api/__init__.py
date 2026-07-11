@@ -25,6 +25,7 @@ from .configs import (
     OutputConfig,
     PredictionResult,
 )
+from .engine_defaults import BayesianOptimizer
 from .fit_config import FitConfig
 from .optimizer_api import (
     OptimizeConfig,
@@ -32,11 +33,10 @@ from .optimizer_api import (
     resolve_optimizer_from_cat_dims,
     uses_mixed_fixed_features,
 )
-from .engine_defaults import BayesianOptimizer
 
 
 def _register_contextual_levelset_aliases() -> None:
-    """Register compatibility names for hetero ordinal level-set classes.
+    """Register support names for hetero ordinal level-set classes.
 
     The generic contextual resolver follows the binary / multiclass naming
     convention, while the hetero multi-output ordinal implementations expose
@@ -403,7 +403,6 @@ from .study_controls import (
     GenerationStep,
     StopDecision,
 )
-
 
 __all__ = [
     "AcquisitionConfig",

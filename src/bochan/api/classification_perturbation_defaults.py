@@ -11,7 +11,6 @@ from . import factory as _factory
 from .automatic_default_utils import _num_outputs as _bundle_num_outputs
 from .configs import AcquisitionConfig, ModelBundle, ObjectiveConfig
 
-
 _APPLIED = False
 _BASE_BUILD_ACQUISITION = _factory.build_acquisition
 _BASE_BUILD_OBJECTIVE = _factory.build_objective
@@ -59,7 +58,7 @@ def _is_multi_output(bundle: ModelBundle | None) -> bool:
 
 def _num_outputs(bundle: ModelBundle) -> int:
     try:
-        return max(1, int(getattr(bundle.model, "num_outputs")))
+        return max(1, int(bundle.model.num_outputs))
     except (AttributeError, TypeError, ValueError):
         shape = getattr(bundle.train_Y, "shape", None)
         return 1 if shape is None or len(shape) <= 1 else int(shape[-1])
@@ -185,7 +184,7 @@ def _build_ordinal(bundle: ModelBundle, config: ObjectiveConfig):
 
 
 def _build_multiclass(bundle: ModelBundle, config: AcquisitionConfig):
-    from bochan.acquisition.multiclass.bayesian_optimization.input_perturbation_compat import (
+    from bochan.acquisition.multiclass.bayesian_optimization.input_perturbation import (
         InputPerturbationMultiOutputObjectiveAdapter,
     )
     from bochan.acquisition.multiclass.bayesian_optimization.multi_output import (
@@ -257,7 +256,7 @@ def _maybe_disable_objective_shape_check(objective: Any, config: AcquisitionConf
     """Allow one-to-many objective values to stay on q*n_w before constraints."""
 
     if objective is not None and _objective_keeps_perturbation_expanded(config):
-        setattr(objective, "_verify_output_shape", False)
+        objective._verify_output_shape = False
     return objective
 
 
@@ -386,14 +385,14 @@ def _resolve_objective(
 
 
 def apply_classification_perturbation_defaults() -> None:
-    """Register the compatibility routes once."""
+    """Register the support routes once."""
 
     global _APPLIED
     if _APPLIED:
         return
 
-    from .hetero_ordinal_perturbation_compat import (
-        apply_hetero_ordinal_perturbation_compat,
+    from .hetero_ordinal_perturbation import (
+        apply_hetero_ordinal_perturbation,
     )
 
     _factory._build_ordinal_objective = _build_ordinal
@@ -405,7 +404,7 @@ def apply_classification_perturbation_defaults() -> None:
     _engine_defaults._resolve_default_regression_nparego_class = (
         _resolve_hybrid_nparego_class
     )
-    apply_hetero_ordinal_perturbation_compat()
+    apply_hetero_ordinal_perturbation()
     _APPLIED = True
 
 

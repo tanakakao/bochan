@@ -4,13 +4,12 @@ from collections.abc import Sequence
 from typing import Any
 
 import torch
-from torch import Tensor
-from torch.nn import functional as F
-
 from botorch.models import SingleTaskGP
 from botorch.models.model import Model
 from botorch.models.transforms.input import InputTransform
 from gpytorch.mlls import ExactMarginalLogLikelihood
+from torch import Tensor
+from torch.nn import functional as F
 
 from bochan.models.components.projected_utils import (
     _apply_input_transform_for_eval,
@@ -147,7 +146,7 @@ class VAESingleTaskGP(Model):
 
     @property
     def raw_train_X(self) -> Tensor:
-        """Backward-compatible raw training input alias."""
+        """Backward-supported raw training input alias."""
         return self.train_input_raw
 
     @property
@@ -320,7 +319,7 @@ class VAESingleTaskGP(Model):
         return None
 
     @staticmethod
-    def fit(model: "VAESingleTaskGP", **kwargs: Any):
+    def fit(model: VAESingleTaskGP, **kwargs: Any):
         """Fit ``model`` with the dedicated full-batch joint objective."""
         from bochan.fit.vae import fit_vae_gp
 

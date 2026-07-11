@@ -1,4 +1,4 @@
-"""Constraint compatibility for multiclass hypervolume acquisitions."""
+"""Constraint support for multiclass hypervolume acquisitions."""
 
 # ruff: noqa: I001
 
@@ -40,7 +40,7 @@ def _patch_eta_buffer_assignment(acquisition_cls: type) -> None:
     if acquisition_cls.__dict__.get("_bochan_eta_buffer_patched", False):
         return
 
-    from bochan.acquisition.classification_constraint_compat import (
+    from bochan.acquisition.classification_constraints import (
         _install_init_patch,
     )
 
@@ -48,7 +48,7 @@ def _patch_eta_buffer_assignment(acquisition_cls: type) -> None:
     public_signature = _own_init_signature(acquisition_cls)
 
     @wraps(original_init)
-    def compatible_init(self, *args, eta=1e-3, **kwargs) -> None:
+    def supported_init(self, *args, eta=1e-3, **kwargs) -> None:
         constraints = kwargs.get("constraints")
         num_constraints = 0 if constraints is None else len(constraints)
         if torch.is_tensor(eta):
@@ -61,7 +61,7 @@ def _patch_eta_buffer_assignment(acquisition_cls: type) -> None:
             eta_tensor = torch.as_tensor(float(eta))
         original_init(self, *args, eta=eta_tensor, **kwargs)
 
-    _install_init_patch(acquisition_cls, compatible_init, public_signature)
+    _install_init_patch(acquisition_cls, supported_init, public_signature)
     acquisition_cls._bochan_eta_buffer_patched = True
     acquisition_cls._bochan_original_init_before_eta_buffer = original_init
 
@@ -136,7 +136,7 @@ def _compute_multiclass_qehvi(
 ) -> Tensor:
     """Compute qEHVI while keeping multiclass class and candidate axes separate."""
 
-    from bochan.acquisition.multiclass.bayesian_optimization.input_perturbation_compat import (
+    from bochan.acquisition.multiclass.bayesian_optimization.input_perturbation import (
         validate_hypervolume_objective_q,
     )
 
@@ -212,7 +212,7 @@ def _patch_multiclass_qehvi(acquisition_cls: type) -> None:
     acquisition_cls._bochan_multiclass_qehvi_patched = True
 
 
-def apply_multiclass_constraint_compat() -> None:
+def apply_multiclass_constraint_support() -> None:
     """Patch multiclass EHVI and NEHVI constraint handling."""
 
     global _APPLIED
@@ -231,4 +231,4 @@ def apply_multiclass_constraint_compat() -> None:
     _APPLIED = True
 
 
-__all__ = ["apply_multiclass_constraint_compat"]
+__all__ = ["apply_multiclass_constraint_support"]

@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import math
-from typing import Callable, List, Literal, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Literal, Optional
 
 import torch
-from torch import Tensor
-
-from botorch.acquisition.objective import MCAcquisitionObjective
 from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
-
+from botorch.acquisition.objective import MCAcquisitionObjective
+from torch import Tensor
 
 RiskType = Optional[Literal["var", "cvar"]]
 
@@ -27,7 +26,7 @@ def _validate_same_length(**items: Sequence[object]) -> None:
 
 def _validate_n_w_risk(
     *,
-    n_w: Optional[int],
+    n_w: int | None,
     risk_type: RiskType,
     alpha: float,
 ) -> None:
@@ -140,8 +139,8 @@ class RegressionScalarObjective(MCAcquisitionObjective):
         output_index: int = 0,
         weight: float = 1.0,
         sign: float = 1.0,
-        eq_target: Optional[float] = None,
-        n_w: Optional[int] = None,
+        eq_target: float | None = None,
+        n_w: int | None = None,
         risk_type: RiskType = None,
         alpha: float = 0.5,
         maximize: bool = True,
@@ -167,7 +166,7 @@ class RegressionScalarObjective(MCAcquisitionObjective):
             alpha=self.alpha,
         )
 
-    def _looks_like_pointwise_score(self, samples: Tensor, X: Optional[Tensor]) -> bool:
+    def _looks_like_pointwise_score(self, samples: Tensor, X: Tensor | None) -> bool:
         """Return True when samples already has pointwise score shape (..., q_like).
 
         For active-learning acquisitions, score is often passed as ``batch_shape x q``.
@@ -201,7 +200,7 @@ class RegressionScalarObjective(MCAcquisitionObjective):
 
         return False
 
-    def _scalarize(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def _scalarize(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
         if samples.ndim == 0:
             raise RuntimeError("samples must have at least one dimension.")
 
@@ -226,7 +225,7 @@ class RegressionScalarObjective(MCAcquisitionObjective):
 
         return y * self.sign * self.weight
 
-    def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
         if not torch.is_tensor(samples):
             raise TypeError(f"samples must be a Tensor. Got {type(samples)}.")
 
@@ -359,10 +358,10 @@ class RegressionLinearMCObjective(MCMultiOutputObjective):
         output_indices: Sequence[int],
         weights: Sequence[float] | Tensor,
         signs: Sequence[float] | Tensor,
-        eq_targets: Optional[Sequence[Optional[float]]] = None,
+        eq_targets: Sequence[float | None] | None = None,
         *,
         dtype: torch.dtype = torch.double,
-        device: Optional[torch.device] = None,
+        device: torch.device | None = None,
     ) -> None:
         super().__init__()
 
@@ -412,11 +411,11 @@ class RegressionLinearMCObjective(MCMultiOutputObjective):
         self.register_buffer("eq_values", eq_values)
 
     @property
-    def constraints_idx(self) -> List[int]:
-        """Backward-compatible list form of selected output indices."""
+    def constraints_idx(self) -> list[int]:
+        """Backward-supported list form of selected output indices."""
         return self.output_indices.detach().cpu().tolist()
 
-    def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
         if samples.ndim < 1:
             raise ValueError("samples must have at least one dimension.")
 
@@ -476,7 +475,7 @@ class MultiOutputRegressionInputPerturbationObjective(MCMultiOutputObjective):
     def __init__(
         self,
         inner_objective: MCMultiOutputObjective,
-        n_w: Optional[int] = None,
+        n_w: int | None = None,
         risk_type: RiskType = None,
         alpha: float = 0.5,
         maximize: bool = True,
@@ -509,7 +508,7 @@ class MultiOutputRegressionInputPerturbationObjective(MCMultiOutputObjective):
             maximize=self.maximize,
         )
 
-    def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
         if not torch.is_tensor(samples):
             raise TypeError(f"samples must be a Tensor. Got {type(samples)}.")
 
@@ -605,8 +604,8 @@ def make_regression_scalar_callable(
     output_index: int,
     weight: float = 1.0,
     sign: float = 1.0,
-    eq_target: Optional[float] = None,
-) -> Callable[[Tensor, Optional[Tensor]], Tensor]:
+    eq_target: float | None = None,
+) -> Callable[[Tensor, Tensor | None], Tensor]:
     """
     Create a lightweight scalar callable.
 
@@ -619,7 +618,7 @@ def make_regression_scalar_callable(
     sign_f = float(sign)
     target = None if eq_target is None else float(eq_target)
 
-    def scalar_obj(samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    def scalar_obj(samples: Tensor, X: Tensor | None = None) -> Tensor:
         if samples.ndim == 1:
             if idx != 0:
                 raise ValueError(f"samples is 1D but output_index={idx}.")

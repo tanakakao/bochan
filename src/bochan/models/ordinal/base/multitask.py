@@ -1,29 +1,26 @@
 from __future__ import annotations
 
 import copy
-from typing import Optional
 
 import torch
-from torch import Tensor
-
 from botorch.models.approximate_gp import ApproximateGPyTorchModel
 from botorch.models.transforms.input import InputTransform
-
 from gpytorch.kernels import IndexKernel, Kernel, RBFKernel, ScaleKernel
 from gpytorch.means import ConstantMean, Mean
+from torch import Tensor
 
 from bochan.fit.ordinal import fit_ordinal_gp
 from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.models.classification.binary.base.multitask import _TaskProductKernel
 
 from .models import (
     OrdinalGPModel,
-    _OrdinalLatentGP,
     _canonicalize_inducing_points,
     _infer_num_classes_from_train_Y,
+    _OrdinalLatentGP,
     _prepare_input_transform,
     _transform_tensor_for_training,
 )
-from bochan.models.classification.binary.base.multitask import _TaskProductKernel
 
 
 class _MultiTaskOrdinalLatentGP(_OrdinalLatentGP):
@@ -36,11 +33,11 @@ class _MultiTaskOrdinalLatentGP(_OrdinalLatentGP):
         task_feature: int = -1,
         rank: int = 1,
         inducing_points_num: int = 128,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
-        mean_module: Optional[Mean] = None,
-        data_covar_module: Optional[Kernel] = None,
-        task_covar_module: Optional[IndexKernel] = None,
+        mean_module: Mean | None = None,
+        data_covar_module: Kernel | None = None,
+        task_covar_module: IndexKernel | None = None,
     ) -> None:
         if train_X.ndim != 2:
             raise ValueError(f"train_X must be [N, d], got shape={tuple(train_X.shape)}.")
@@ -100,7 +97,7 @@ class _MultiTaskOrdinalLatentGP(_OrdinalLatentGP):
 
 
 class MultiTaskOrdinalGPModel(OrdinalGPModel):
-    """BoTorch-compatible ordinal GP with an explicit task feature.
+    """BoTorch-supported ordinal GP with an explicit task feature.
 
     The input tensor must be in long format and contain a task-id column.
     For example, with ``task_feature=-1``, ``train_X[..., -1]`` contains integer
@@ -112,24 +109,24 @@ class MultiTaskOrdinalGPModel(OrdinalGPModel):
         self,
         train_X: Tensor,
         train_Y: Tensor,
-        num_classes: Optional[int] = None,
+        num_classes: int | None = None,
         *,
         num_tasks: int,
         task_feature: int = -1,
         rank: int = 1,
         inducing_points_num: int = 128,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
-        mean_module: Optional[Mean] = None,
-        data_covar_module: Optional[Kernel] = None,
-        task_covar_module: Optional[IndexKernel] = None,
-        input_transform: Optional[InputTransform] = None,
+        mean_module: Mean | None = None,
+        data_covar_module: Kernel | None = None,
+        task_covar_module: IndexKernel | None = None,
+        input_transform: InputTransform | None = None,
         eps: float = 1e-8,
         init_gap: float = 1.0,
         fix_first_cutpoint: bool = True,
         conditioning_steps: int = 50,
-        conditioning_lr: Optional[float] = None,
-        conditioning_batch_size: Optional[int] = None,
+        conditioning_lr: float | None = None,
+        conditioning_batch_size: int | None = None,
     ) -> None:
         raw_train_X = self._canonicalize_train_X(train_X)
         if raw_train_X.shape[-1] < 2:
@@ -285,12 +282,12 @@ class MultiTaskOrdinalGPModel(OrdinalGPModel):
         X: Tensor,
         Y: Tensor,
         refit: bool = True,
-        num_steps: Optional[int] = None,
-        lr: Optional[float] = None,
-        batch_size: Optional[int] = None,
+        num_steps: int | None = None,
+        lr: float | None = None,
+        batch_size: int | None = None,
         verbose: bool = False,
         **kwargs,
-    ) -> "MultiTaskOrdinalGPModel":
+    ) -> MultiTaskOrdinalGPModel:
         if kwargs.get("noise") is not None:
             raise NotImplementedError("noise is not supported for MultiTaskOrdinalGPModel.")
 

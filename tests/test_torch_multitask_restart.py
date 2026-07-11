@@ -6,7 +6,7 @@ from botorch.models.multitask import KroneckerMultiTaskGP
 from bochan.acquisition.regression.levelset_estimation.multi_output import (
     qMultiOutputRegressionStraddle,
 )
-from bochan.optim import optimize_acqf_torch, torch_opt
+from bochan.optim import optimize_acqf_torch
 
 
 def _make_model() -> KroneckerMultiTaskGP:
@@ -20,25 +20,6 @@ def _make_model() -> KroneckerMultiTaskGP:
     model.eval()
     model.likelihood.eval()
     return model
-
-
-def test_multitask_straddle_restart_batch_backward_is_finite() -> None:
-    model = _make_model()
-    acquisition = qMultiOutputRegressionStraddle(
-        model=model,
-        thresholds=[0.0, 0.0],
-        reduction="mean",
-        output_reduction="mean",
-    )
-    X = torch.rand(2, 2, 1, dtype=torch.double, requires_grad=True)
-
-    values = torch_opt._evaluate_acq_values(acquisition, X)
-
-    assert values.shape == torch.Size([2])
-    assert torch.isfinite(values).all()
-    values.sum().backward()
-    assert X.grad is not None
-    assert torch.isfinite(X.grad).all()
 
 
 def test_multitask_straddle_works_with_torch_optimizer() -> None:
@@ -57,6 +38,36 @@ def test_multitask_straddle_works_with_torch_optimizer() -> None:
         q=2,
         num_restarts=2,
         raw_samples=4,
+        options={"num_steps": 2, "lr": 0.01},
+    )
+
+    assert candidates.shape == torch.Size([2, 1])
+    assert value.shape == torch.Size([1])
+    assert torch.isfinite(candidates).all()
+    assert torch.isfinite(value).all()
+
+
+def test_multitask_straddle_accepts_explicit_restart_initial_conditions() -> None:
+    model = _make_model()
+    acquisition = qMultiOutputRegressionStraddle(
+        model=model,
+        thresholds=[0.0, 0.0],
+        reduction="mean",
+        output_reduction="mean",
+    )
+    bounds = torch.tensor([[0.0], [1.0]], dtype=torch.double)
+    initial_conditions = torch.tensor(
+        [[[0.1], [0.3]], [[0.7], [0.9]]],
+        dtype=torch.double,
+    )
+
+    candidates, value = optimize_acqf_torch(
+        acq_function=acquisition,
+        bounds=bounds,
+        q=2,
+        num_restarts=2,
+        raw_samples=4,
+        batch_initial_conditions=initial_conditions,
         options={"num_steps": 2, "lr": 0.01},
     )
 

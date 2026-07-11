@@ -264,6 +264,17 @@ def test_perturbed_wide_ehvi_nehvi_and_nparego() -> None:
     _assert_scalar_with_gradient(nparego(Xq), Xq)
 
 
+def test_perturbed_wide_bald_skips_multioutput_objective_indexing() -> None:
+    model, _, _, Xq, objective = _perturbed_wide_case()
+    acquisition = qMultiOutputRegressionBALD(
+        model=model,
+        objective=objective,
+        fallback_to_variance=True,
+    )
+
+    _assert_scalar_with_gradient(acquisition(Xq), Xq)
+
+
 def test_perturbed_wide_nsgaii_objective_aggregates_n_w_axis() -> None:
     model, _, _, Xq, objective = _perturbed_wide_case()
     population_X = Xq.detach().squeeze(0).unsqueeze(-2)

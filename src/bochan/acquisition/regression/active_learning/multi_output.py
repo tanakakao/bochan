@@ -544,21 +544,15 @@ class _MultiOutputRegressionActiveLearningBase(AcquisitionFunction):
                 raise TypeError(f"{name}: objective must return Tensor. Got {type(out)}.")
             return out
 
-        # BoTorch MC multi-output objective.  Since active-learning pointwise
-        # score is already output-reduced, treat it as deterministic scalar samples.
+        # BoTorch MC multi-output objectives operate on posterior samples with
+        # an explicit output dimension. Active-learning scores have already
+        # reduced the model outputs to a scalar uncertainty score per point, so
+        # re-applying a multi-output objective (for example one selecting
+        # output_indices=[0, 1]) would incorrectly index a size-1 pseudo-output.
+        # Keep the scalar score unchanged here; input-perturbation n_w
+        # aggregation is handled by _aggregate_n_w_if_needed below.
         if _is_mc_multi_output_objective(objective):
-            pseudo = score
-            if pseudo.ndim == expanded_X.ndim - 1:
-                pseudo = pseudo.unsqueeze(-1)
-            pseudo = pseudo.unsqueeze(0)
-            out = _objective_call(objective, pseudo, raw_X)
-            if not torch.is_tensor(out):
-                raise TypeError(f"{name}: objective must return Tensor. Got {type(out)}.")
-            if out.ndim >= 1 and out.shape[0] == 1:
-                out = out.squeeze(0)
-            if out.ndim == raw_X.ndim and out.shape[-1] == 1:
-                out = out.squeeze(-1)
-            return out
+            return score
 
         # Generic callable: try score-objective style first.
         try:

@@ -34,6 +34,15 @@ _CANONICAL_OPTIMIZERS = {
     "llm_candidate_set",
 }
 _EVOLUTIONARY_METHODS = {"ga", "pso", "sa", "cmaes"}
+_MIXED_OPTIMIZERS = {
+    "optimize_acqf_mixed",
+    "evo_mixed",
+    "optimize_acqf_evo_mixed",
+    "torch_mixed",
+    "optimize_acqf_torch_mixed",
+    "thompson_sampling_mixed",
+    "optimize_thompson_sampling_mixed",
+}
 _ALIASES = {
     "optimize_acqf_mixed": "optimize_acqf",
     "optimize_acqf_evo": "evo",
@@ -44,6 +53,7 @@ _ALIASES = {
     "optimize_acqf_torch_mixed": "torch",
     "optimize_acqf_nsgaii": "nsgaii",
     "optimize_thompson_sampling": "thompson_sampling",
+    "thompson_sampling_mixed": "thompson_sampling",
     "optimize_thompson_sampling_mixed": "thompson_sampling",
     "thompson": "thompson_sampling",
     "llm": "llm_candidate_set",
@@ -51,6 +61,15 @@ _ALIASES = {
     "optimize_acqf_llm": "llm_candidate_set",
     "optimize_acqf_llm_candidate_set": "llm_candidate_set",
 }
+
+
+class _InternalMixedOptimizerName(str):
+    """Mark a mixed optimizer name selected internally from categorical dims.
+
+    Publicly supplied legacy mixed names are still normalized to canonical family
+    names. The marker survives ``dataclasses.replace`` so downstream config copies
+    retain the internally selected mixed implementation.
+    """
 
 
 def _optimizer_name(optimizer: str) -> str:
@@ -173,17 +192,20 @@ class OptimizeConfig(_BaseOptimizeConfig):
             return
 
         raw_name = _optimizer_name(str(self.optimizer))
-        name = _ALIASES.get(raw_name, raw_name)
-        if name in _EVOLUTIONARY_METHODS:
+        preserve_mixed = isinstance(self.optimizer, _InternalMixedOptimizerName)
+        name = raw_name if preserve_mixed else _ALIASES.get(raw_name, raw_name)
+        if not preserve_mixed and name in _EVOLUTIONARY_METHODS:
             self.evo_method = name  # type: ignore[assignment]
             name = "evo"
-        if name not in _CANONICAL_OPTIMIZERS:
+
+        valid_names = _MIXED_OPTIMIZERS if preserve_mixed else _CANONICAL_OPTIMIZERS
+        if name not in valid_names:
             valid = sorted(_CANONICAL_OPTIMIZERS | _EVOLUTIONARY_METHODS)
             raise ValueError(f"Unknown optimizer: {self.optimizer!r}. Expected one of {valid}.")
 
-        self.optimizer = name
+        self.optimizer = _InternalMixedOptimizerName(name) if preserve_mixed else name
         self.optimizer_kwargs = dict(self.optimizer_kwargs)
-        if name == "evo":
+        if name in {"evo", "evo_mixed", "optimize_acqf_evo_mixed"}:
             effective_method = _optimizer_name(
                 str(self.optimizer_kwargs.setdefault("method", self.evo_method))
             )
@@ -216,7 +238,11 @@ def resolve_optimizer_from_cat_dims(
         "torch": "torch_mixed",
         "thompson_sampling": "thompson_sampling_mixed",
     }.get(_optimizer_name(str(optimizer)))
-    return opt_config if mixed_name is None else replace(opt_config, optimizer=mixed_name)
+    return (
+        opt_config
+        if mixed_name is None
+        else replace(opt_config, optimizer=_InternalMixedOptimizerName(mixed_name))
+    )
 
 
 def uses_mixed_fixed_features(optimizer: Any) -> bool:
@@ -224,15 +250,7 @@ def uses_mixed_fixed_features(optimizer: Any) -> bool:
 
     if callable(optimizer) and not isinstance(optimizer, str):
         return False
-    return _optimizer_name(str(optimizer)) in {
-        "optimize_acqf_mixed",
-        "evo_mixed",
-        "optimize_acqf_evo_mixed",
-        "torch_mixed",
-        "optimize_acqf_torch_mixed",
-        "thompson_sampling_mixed",
-        "optimize_thompson_sampling_mixed",
-    }
+    return _optimizer_name(str(optimizer)) in _MIXED_OPTIMIZERS
 
 
 def _common_kwargs(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> dict[str, Any]:
@@ -280,7 +298,10 @@ def optimize_candidates(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> 
         return _BASE_OPTIMIZE_CANDIDATES(
             acqf=acqf,
             bounds=bounds,
-            config=replace(config, optimizer=mixed_name),
+            config=replace(
+                config,
+                optimizer=_InternalMixedOptimizerName(mixed_name),
+            ),
         )
 
     special = {

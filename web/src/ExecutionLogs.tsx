@@ -57,9 +57,10 @@ export default function ExecutionLogs({ requestId }: ExecutionLogsProps) {
   }, [load]);
 
   return (
-    <section className="card log-card">
+    <section className="panel log-card">
       <div className="log-heading">
         <div>
+          <span className="panel-kicker">STRUCTURED LOGS</span>
           <h3>実行ログ</h3>
           <p>
             {resolvedRequestId
@@ -69,7 +70,7 @@ export default function ExecutionLogs({ requestId }: ExecutionLogsProps) {
           {logFile && <code>{logFile}</code>}
         </div>
         <button className="secondary" type="button" onClick={() => void load()} disabled={loading}>
-          {loading ? "更新中..." : "更新"}
+          {loading ? "更新中..." : "ログを更新"}
         </button>
       </div>
 

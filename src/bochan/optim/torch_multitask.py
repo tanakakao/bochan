@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable, Iterable
+from typing import Any
 
 import torch
 from botorch.acquisition.acquisition import AcquisitionFunction
@@ -59,9 +59,9 @@ def _uses_correlated_multitask_model(acq_function: AcquisitionFunction) -> bool:
 
 
 def _initial_conditions_for_restart(
-    batch_initial_conditions: Optional[Tensor],
+    batch_initial_conditions: Tensor | None,
     restart: int,
-) -> Optional[Tensor]:
+) -> Tensor | None:
     if batch_initial_conditions is None or batch_initial_conditions.ndim < 3:
         return batch_initial_conditions
     if batch_initial_conditions.shape[0] == 1:
@@ -77,19 +77,19 @@ def optimize_acqf_torch(
     q: int = 1,
     method: TorchOptimizerName = "adam",
     num_restarts: int = 10,
-    raw_samples: Optional[int] = 512,
-    inequality_constraints: Optional[List[LinearConstraint]] = None,
-    equality_constraints: Optional[List[LinearConstraint]] = None,
-    fixed_features: Optional[Dict[int, float]] = None,
-    post_processing_func: Optional[Callable[[Tensor], Tensor]] = None,
-    batch_initial_conditions: Optional[Tensor] = None,
+    raw_samples: int | None = 512,
+    inequality_constraints: list[LinearConstraint] | None = None,
+    equality_constraints: list[LinearConstraint] | None = None,
+    fixed_features: dict[int, float] | None = None,
+    post_processing_func: Callable[[Tensor], Tensor] | None = None,
+    batch_initial_conditions: Tensor | None = None,
     return_best_only: bool = True,
     sequential: bool = False,
-    options: Optional[Dict] = None,
-    candidate_transform: Optional[Callable[[Tensor], Tensor]] = None,
-    X_pending: Optional[Tensor] = None,
+    options: dict | None = None,
+    candidate_transform: Callable[[Tensor], Tensor] | None = None,
+    X_pending: Tensor | None = None,
     inequality_sense: InequalitySense = "le",
-) -> Tuple[Tensor, Tensor]:
+) -> tuple[Tensor, Tensor]:
     """Optimize an acquisition, serializing restarts for correlated multitask models.
 
     Correlated multitask posteriors combine the candidate and task axes inside
@@ -149,7 +149,7 @@ def optimize_acqf_torch(
         scores.append(value.reshape(-1).mean().detach())
 
     stacked_scores = torch.stack(scores)
-    best = int(torch.argmax(stacked_scores))
+    best = int(torch.argmax(stacked_scores).item())
     return candidates[best], stacked_scores[best].reshape(1)
 
 

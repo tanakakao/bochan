@@ -21,6 +21,7 @@ from .thompson_sampling_adapter import (
     optimize_thompson_sampling,
     optimize_thompson_sampling_mixed,
 )
+from .torch_multitask_tbatch_compat import apply_torch_multitask_tbatch_compat
 from .torch_opt import (
     optimize_acqf_torch,
     optimize_acqf_torch_k_sparse,
@@ -29,6 +30,7 @@ from .torch_opt import (
 )
 
 apply_legacy_nsgaii_linear_constraint_compat()
+apply_torch_multitask_tbatch_compat()
 
 __all__ = [
     "optimize_acqf_k_sparse",

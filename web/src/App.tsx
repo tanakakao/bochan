@@ -44,6 +44,10 @@ function WorkbenchLayout() {
   const index = STEPS.findIndex(([id]) => id === step);
   const Page = PAGES[step];
 
+  function isComplete(id: WorkbenchStep, stepIndex: number): boolean {
+    return stepIndex < index && canOpenStep(id);
+  }
+
   return (
     <div className="app-root">
       <header className="app-header">
@@ -59,7 +63,7 @@ function WorkbenchLayout() {
           {STEPS.map(([id, label], stepIndex) => (
             <div className="workflow-item" key={id}>
               <button
-                className={`workflow-step ${id === step ? "active" : ""} ${stepIndex < index ? "complete" : ""}`}
+                className={`workflow-step ${id === step ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
                 onClick={() => setStep(id)}
                 disabled={!canOpenStep(id)}
               >
@@ -93,7 +97,7 @@ function WorkbenchLayout() {
             {STEPS.map(([id, label, detail], stepIndex) => (
               <button
                 key={id}
-                className={`tab ${step === id ? "active" : ""} ${stepIndex < index ? "complete" : ""}`}
+                className={`tab ${step === id ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
                 onClick={() => setStep(id)}
                 disabled={!canOpenStep(id)}
               >

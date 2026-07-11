@@ -14,6 +14,9 @@ from .nsgaii_adapter import (
     optimize_acqf_nsgaii,
     validate_discrete_choices,
 )
+from .nsgaii_legacy_linear_constraint_compat import (
+    apply_legacy_nsgaii_linear_constraint_compat,
+)
 from .thompson_sampling_adapter import (
     optimize_thompson_sampling,
     optimize_thompson_sampling_mixed,
@@ -24,6 +27,8 @@ from .torch_opt import (
     optimize_acqf_torch_k_sparse,
     optimize_acqf_torch_mixed_k_sparse,
 )
+
+apply_legacy_nsgaii_linear_constraint_compat()
 
 __all__ = [
     "optimize_acqf_k_sparse",

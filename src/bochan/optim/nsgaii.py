@@ -8,6 +8,7 @@ rather than replacing EHVI / NEHVI style Bayesian optimization acquisitions.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+import inspect
 from typing import Any
 
 import torch
@@ -26,6 +27,39 @@ except ImportError as exc:  # pragma: no cover - depends on BoTorch version
 
 LinearConstraint = tuple[Sequence[int] | Tensor, Sequence[float] | Tensor, float]
 OutcomeConstraint = Callable[[Tensor], Tensor]
+
+
+def _filter_kwargs_for_callable(func: Callable[..., Any], kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Return keyword arguments accepted by a callable.
+
+    Args:
+        func: Callable that will receive the filtered arguments.
+        kwargs: Candidate keyword arguments.
+
+    Returns:
+        A copy of ``kwargs`` containing only accepted keyword names. If the
+        callable accepts arbitrary ``**kwargs`` or its signature cannot be
+        inspected, all entries are returned unchanged.
+    """
+    try:
+        signature = inspect.signature(func)
+    except (TypeError, ValueError):
+        return dict(kwargs)
+
+    parameters = signature.parameters.values()
+    if any(param.kind is inspect.Parameter.VAR_KEYWORD for param in parameters):
+        return dict(kwargs)
+
+    accepted = {
+        name
+        for name, param in signature.parameters.items()
+        if param.kind
+        in (
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            inspect.Parameter.KEYWORD_ONLY,
+        )
+    }
+    return {name: value for name, value in kwargs.items() if name in accepted}
 
 
 def _constraint_to_tensor_tuple(
@@ -320,23 +354,25 @@ def optimize_acqf_nsgaii(
         bounds=bounds,
     )
 
-    X_pareto, Y_pareto = optimize_with_nsgaii(
-        acq_function=acq_function,
-        bounds=bounds,
-        num_objectives=n_obj,
-        q=q,
-        ref_point=ref_point,
-        objective=objective,
-        constraints=list(constraints) if constraints is not None else None,
-        inequality_constraints=merged_inequality_constraints,
-        population_size=population_size,
-        max_gen=max_gen,
-        seed=seed,
-        fixed_features=fixed_features,
-        max_attempts=max_attempts,
-        discrete_choices=discrete_choices,
-        post_processing_func=post_processing_func,
-    )
+    nsgaii_kwargs = {
+        "acq_function": acq_function,
+        "bounds": bounds,
+        "num_objectives": n_obj,
+        "q": q,
+        "ref_point": ref_point,
+        "objective": objective,
+        "constraints": list(constraints) if constraints is not None else None,
+        "inequality_constraints": merged_inequality_constraints,
+        "population_size": population_size,
+        "max_gen": max_gen,
+        "seed": seed,
+        "fixed_features": fixed_features,
+        "max_attempts": max_attempts,
+        "discrete_choices": discrete_choices,
+        "post_processing_func": post_processing_func,
+    }
+    nsgaii_kwargs = _filter_kwargs_for_callable(optimize_with_nsgaii, nsgaii_kwargs)
+    X_pareto, Y_pareto = optimize_with_nsgaii(**nsgaii_kwargs)
 
     if validate_output:
         if not torch.isfinite(X_pareto).all():

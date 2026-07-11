@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import torch
-from torch import nn
-
 from bochan.acquisition.ordinal.bayesian_optimization import (
+    multi_output,
     qMultiOutputOrdinalUtilityObjective,
 )
-from bochan.acquisition.ordinal.bayesian_optimization import multi_output
 from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from torch import nn
 
 
 def test_ordinal_probability_conversion_detaches_fitted_cutpoints() -> None:

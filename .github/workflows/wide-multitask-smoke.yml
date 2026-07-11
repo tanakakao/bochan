@@ -36,7 +36,7 @@ jobs:
             tests/test_hetero_regression_nehvi_autograd.py \
             tests/test_ordinal_missing_multiobjective.py \
             tests/test_ordinal_nehvi_repeated_backward.py \
-            tests/test_torch_multitask_tbatch_compat.py \
+            tests/test_torch_multitask_restart.py \
             tests/test_multiclass_nparego_context.py \
             tests/test_outcome_constraints.py \
             tests/test_api_acquisition_constraints.py \
@@ -80,7 +80,7 @@ jobs:
             src/bochan/optim/__init__.py \
             src/bochan/optim/nsgaii_constraint_compat.py \
             src/bochan/optim/nsgaii_legacy_linear_constraint_compat.py \
-            src/bochan/optim/torch_multitask_tbatch_compat.py \
+            src/bochan/optim/torch_multitask.py \
             src/bochan/tabular/optimizer_api.py \
             src/bochan/tabular/outcome_constraint_compat.py \
             tests/test_wide_multitask_models.py \
@@ -93,7 +93,7 @@ jobs:
             tests/test_hetero_regression_nehvi_autograd.py \
             tests/test_ordinal_missing_multiobjective.py \
             tests/test_ordinal_nehvi_repeated_backward.py \
-            tests/test_torch_multitask_tbatch_compat.py \
+            tests/test_torch_multitask_restart.py \
             tests/test_multiclass_nparego_context.py \
             tests/test_multiclass_nparego_signature.py \
             tests/test_multiclass_nparego_public_api.py \

@@ -211,7 +211,7 @@ class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
         n_w: int | Any = UNSET,
         std: float | Any = UNSET,
         **kwargs: Any,
-    ) -> "TabularBayesianOptimizer":
+    ) -> TabularBayesianOptimizer:
         _apply_input_transform_direct_values(
             kwargs,
             model_config=kwargs.get("model_config", self.model_config),

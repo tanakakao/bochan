@@ -79,7 +79,7 @@ jobs:
             src/bochan/models/wide_multitask_compat.py \
             src/bochan/optim/__init__.py \
             src/bochan/optim/nsgaii_constraint_compat.py \
-            src/bochan/optim/nsgaiii_legacy_linear_constraint_compat.py \
+            src/bochan/optim/nsgaii_legacy_linear_constraint_compat.py \
             src/bochan/optim/torch_multitask_tbatch_compat.py \
             src/bochan/tabular/optimizer_api.py \
             src/bochan/tabular/outcome_constraint_compat.py \

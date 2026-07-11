@@ -3,14 +3,11 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import torch
-from torch import Tensor, nn
+from torch import nn, Tensor
 
+from bochan.acquisition.regression import bayesian_optimization
 from bochan.acquisition.regression.bayesian_optimization import (
-    qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement,
-)
-from bochan.acquisition.regression.bayesian_optimization.hetero_multi_output_compat import (
-    _AutogradSafeHeteroRegressionMCMultiOutputObjective,
-    qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement as _CompatHeteroNEHVI,
+    hetero_multi_output_compat,
 )
 
 
@@ -33,18 +30,20 @@ def _posterior_samples(model: _LinearPosteriorModel, X: Tensor) -> Tensor:
 
 def test_public_hetero_nehvi_uses_autograd_safe_compat_class() -> None:
     assert (
-        qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement
-        is _CompatHeteroNEHVI
+        bayesian_optimization.qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement
+        is hetero_multi_output_compat.qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement
     )
 
 
 def test_hetero_nehvi_objective_detaches_baseline_cache() -> None:
     model = _LinearPosteriorModel()
-    objective = _AutogradSafeHeteroRegressionMCMultiOutputObjective(
-        base_objective=None,
-        model=model,
-        beta=1.0,
-        noise_penalty=0.0,
+    objective = (
+        hetero_multi_output_compat._AutogradSafeHeteroRegressionMCMultiOutputObjective(
+            base_objective=None,
+            model=model,
+            beta=1.0,
+            noise_penalty=0.0,
+        )
     )
     X_baseline = torch.tensor(
         [[0.1, 0.2], [0.3, 0.4]],
@@ -62,11 +61,13 @@ def test_hetero_nehvi_objective_detaches_baseline_cache() -> None:
 
 def test_hetero_nehvi_objective_supports_repeated_candidate_backward() -> None:
     model = _LinearPosteriorModel()
-    objective = _AutogradSafeHeteroRegressionMCMultiOutputObjective(
-        base_objective=None,
-        model=model,
-        beta=1.0,
-        noise_penalty=0.0,
+    objective = (
+        hetero_multi_output_compat._AutogradSafeHeteroRegressionMCMultiOutputObjective(
+            base_objective=None,
+            model=model,
+            beta=1.0,
+            noise_penalty=0.0,
+        )
     )
     X_baseline = torch.tensor(
         [[0.1, 0.2], [0.3, 0.4]],

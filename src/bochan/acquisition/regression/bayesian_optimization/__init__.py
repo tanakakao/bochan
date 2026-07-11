@@ -1,8 +1,10 @@
 from .hetero_multi_output import (
     qHeteroMultiOutputRegressionDecoupledExpectedHypervolumeImprovement,
+    qHeteroMultiOutputRegressionNParEGO,
+)
+from .hetero_multi_output_autograd import (
     qHeteroMultiOutputRegressionExpectedHypervolumeImprovement,
     qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement,
-    qHeteroMultiOutputRegressionNParEGO,
 )
 from .hetero_single_output import (
     qHeteroRegressionExpectedImprovement,

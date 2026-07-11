@@ -6,7 +6,7 @@ import torch
 from torch import Tensor, nn
 
 from bochan.acquisition.regression import bayesian_optimization
-from bochan.acquisition.regression.bayesian_optimization import hetero_multi_output
+from bochan.acquisition.regression.bayesian_optimization import hetero_multi_output_autograd
 
 
 class _LinearPosteriorModel(nn.Module):
@@ -29,14 +29,14 @@ def _posterior_samples(model: _LinearPosteriorModel, X: Tensor) -> Tensor:
 def test_public_hetero_nehvi_uses_autograd_safe_support_class() -> None:
     assert (
         bayesian_optimization.qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement
-        is hetero_multi_output.qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement
+        is hetero_multi_output_autograd.qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement
     )
 
 
 def test_hetero_nehvi_objective_detaches_baseline_cache() -> None:
     model = _LinearPosteriorModel()
     objective = (
-        hetero_multi_output._AutogradSafeHeteroRegressionMCMultiOutputObjective(
+        hetero_multi_output_autograd._AutogradSafeHeteroRegressionMCMultiOutputObjective(
             base_objective=None,
             model=model,
             beta=1.0,
@@ -60,7 +60,7 @@ def test_hetero_nehvi_objective_detaches_baseline_cache() -> None:
 def test_hetero_nehvi_objective_supports_repeated_candidate_backward() -> None:
     model = _LinearPosteriorModel()
     objective = (
-        hetero_multi_output._AutogradSafeHeteroRegressionMCMultiOutputObjective(
+        hetero_multi_output_autograd._AutogradSafeHeteroRegressionMCMultiOutputObjective(
             base_objective=None,
             model=model,
             beta=1.0,

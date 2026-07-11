@@ -41,7 +41,7 @@ jobs:
             tests/test_outcome_constraints.py \
             tests/test_api_acquisition_constraints.py \
             tests/test_nsgaii_acquisition_adapter.py \
-            tests/test_nsgaii_legacy_linear_constraint_compat.py \
+            tests/test_nsgaii_linear_constraint.py \
             tests/test_tabular_outcome_constraint_column_names.py \
             tests/test_tabular_non_native_outcome_constraints.py \
             2>&1 | tee pytest.log
@@ -59,30 +59,29 @@ jobs:
             --per-file-ignores "src/bochan/acquisition/ordinal/bayesian_optimization/__init__.py:I001" \
             src/bochan/acquisition/__init__.py \
             src/bochan/acquisition/_nehvi_cache_root.py \
-            src/bochan/acquisition/classification_constraint_compat.py \
-            src/bochan/acquisition/multiclass/bayesian_optimization/nparego_observed_baseline_compat.py \
+            src/bochan/acquisition/classification_constraints.py \
+            src/bochan/acquisition/multiclass/bayesian_optimization/nparego_observed_baseline.py \
             src/bochan/acquisition/nsgaii_constraint_install.py \
             src/bochan/acquisition/objective/__init__.py \
             src/bochan/acquisition/objective/outcome_constraints.py \
-            src/bochan/acquisition/objective/regression_perturbation_compat.py \
+            src/bochan/acquisition/objective/regression_perturbation.py \
             src/bochan/acquisition/ordinal/bayesian_optimization/__init__.py \
             src/bochan/acquisition/ordinal/bayesian_optimization/_fixed_likelihood_graph.py \
             src/bochan/acquisition/ordinal/bayesian_optimization/_utility_defaults.py \
             src/bochan/acquisition/ordinal_constraint_install.py \
-            src/bochan/acquisition/ordinal_multitask_compat.py \
+            src/bochan/acquisition/ordinal_multitask.py \
             src/bochan/acquisition/regression/bayesian_optimization/__init__.py \
-            src/bochan/acquisition/regression/bayesian_optimization/hetero_multi_output_compat.py \
-            src/bochan/acquisition/wide_posterior_event_compat.py \
+            src/bochan/acquisition/regression/bayesian_optimization/hetero_multi_output_autograd.py \
+            src/bochan/acquisition/wide_posterior_events.py \
             src/bochan/api/automatic_multiobjective.py \
             src/bochan/api/optimizer_api.py \
             src/bochan/models/wide_multitask.py \
-            src/bochan/models/wide_multitask_compat.py \
+            src/bochan/models/wide_multitask_variants.py \
             src/bochan/optim/__init__.py \
-            src/bochan/optim/nsgaii_constraint_compat.py \
-            src/bochan/optim/nsgaii_legacy_linear_constraint_compat.py \
+            src/bochan/optim/nsgaii_constraints.py \
             src/bochan/optim/torch_multitask.py \
             src/bochan/tabular/optimizer_api.py \
-            src/bochan/tabular/outcome_constraint_compat.py \
+            src/bochan/tabular/outcome_constraints.py \
             tests/test_wide_multitask_models.py \
             tests/test_wide_multitask_public_transform.py \
             tests/test_wide_multitask_acquisition_consistency.py \
@@ -97,7 +96,7 @@ jobs:
             tests/test_multiclass_nparego_context.py \
             tests/test_multiclass_nparego_signature.py \
             tests/test_multiclass_nparego_public_api.py \
-            tests/test_nsgaii_legacy_linear_constraint_compat.py \
+            tests/test_nsgaii_linear_constraint.py \
             tests/test_tabular_outcome_constraint_column_names.py \
             tests/test_tabular_non_native_outcome_constraints.py \
             2>&1 | tee ruff.log

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
-from typing import Any, Literal, Sequence
+from typing import Any, Literal
 
 from . import factory as _factory
 from .configs import OptimizeConfig as _BaseOptimizeConfig
@@ -92,9 +92,12 @@ def _uses_kronecker_model(value: Any, *, _seen: set[int] | None = None) -> bool:
         return True
 
     nested_model = getattr(value, "model", None)
-    if nested_model is not None and nested_model is not value:
-        if _uses_kronecker_model(nested_model, _seen=_seen):
-            return True
+    if (
+        nested_model is not None
+        and nested_model is not value
+        and _uses_kronecker_model(nested_model, _seen=_seen)
+    ):
+        return True
 
     nested_models = getattr(value, "models", None)
     if nested_models is not None:

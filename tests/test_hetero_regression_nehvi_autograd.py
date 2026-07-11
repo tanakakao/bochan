@@ -3,12 +3,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import torch
-from torch import nn, Tensor
+from torch import Tensor, nn
 
 from bochan.acquisition.regression import bayesian_optimization
-from bochan.acquisition.regression.bayesian_optimization import (
-    hetero_multi_output_compat,
-)
+from bochan.acquisition.regression.bayesian_optimization import hetero_multi_output_compat
 
 
 class _LinearPosteriorModel(nn.Module):

@@ -32,10 +32,10 @@ export default function ResultsPage() {
         title="候補と予測結果を確認する"
         text={`${result.model_type} · 学習 ${result.n_train}件 · best observed ${formatNumber(result.best_observed)}`}
         action={
-          <div className="section-actions">
+          <>
             <button className="secondary" onClick={() => setStep("optimize")}>設定を変更</button>
             <button onClick={() => setStep("logs")}>実行ログ</button>
-          </div>
+          </>
         }
       />
 

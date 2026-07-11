@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
 
+import bochan.api.optimizer_api as optimizer_api_module
 from bochan.api import OptimizeConfig
 from bochan.api.optimizer_api import (
     _resolve_thompson_sampling_target,
     resolve_optimizer_from_cat_dims,
+    uses_mixed_fixed_features,
 )
 
 
@@ -64,14 +67,14 @@ def test_cmaes_q_one_preserves_sequential_false() -> None:
 
 
 def test_thompson_sampling_uses_model_not_acquisition_objective() -> None:
-    model = object()
+    model = SimpleNamespace(posterior=lambda value: value)
     acquisition = SimpleNamespace(model=model, objective=object())
 
     assert _resolve_thompson_sampling_target(acquisition) is model
 
 
 def test_thompson_sampling_accepts_model_directly() -> None:
-    model = object()
+    model = SimpleNamespace(posterior=lambda value: value)
 
     assert _resolve_thompson_sampling_target(model) is model
 
@@ -83,6 +86,7 @@ def test_thompson_sampling_accepts_model_directly() -> None:
         ("optimize_acqf_evo_mixed", "evo"),
         ("optimize_acqf_torch_mixed", "torch"),
         ("optimize_acqf_nsgaii", "nsgaii"),
+        ("thompson_sampling_mixed", "thompson_sampling"),
         ("optimize_thompson_sampling_mixed", "thompson_sampling"),
     ],
 )
@@ -110,7 +114,60 @@ def test_mixed_backend_is_selected_from_cat_dims(
     resolved = resolve_optimizer_from_cat_dims(opt_config=config, cat_dims=[1])
 
     assert resolved.optimizer == mixed_optimizer
+    assert uses_mixed_fixed_features(resolved.optimizer)
     assert config.optimizer == optimizer
+
+    copied = replace(resolved, fixed_features_list=[{1: 0.0}])
+
+    assert copied.optimizer == mixed_optimizer
+    assert uses_mixed_fixed_features(copied.optimizer)
+
+
+@pytest.mark.parametrize(
+    ("optimizer", "mixed_optimizer"),
+    [
+        ("optimize_acqf", "optimize_acqf_mixed"),
+        ("evo", "evo_mixed"),
+        ("torch", "torch_mixed"),
+    ],
+)
+def test_fixed_features_dispatches_canonical_backend_to_mixed(
+    monkeypatch,
+    optimizer: str,
+    mixed_optimizer: str,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_optimize_candidates(*, acqf, bounds, config):
+        captured["acqf"] = acqf
+        captured["bounds"] = bounds
+        captured["optimizer"] = config.optimizer
+        return "candidates", "acq_value"
+
+    monkeypatch.setattr(
+        optimizer_api_module,
+        "_BASE_OPTIMIZE_CANDIDATES",
+        fake_optimize_candidates,
+    )
+    config = OptimizeConfig(
+        optimizer=optimizer,
+        fixed_features_list=[{1: 0.0}],
+    )
+    acqf = object()
+    bounds = object()
+
+    result = optimizer_api_module.optimize_candidates(
+        acqf=acqf,
+        bounds=bounds,
+        config=config,
+    )
+
+    assert result == ("candidates", "acq_value")
+    assert captured == {
+        "acqf": acqf,
+        "bounds": bounds,
+        "optimizer": mixed_optimizer,
+    }
 
 
 def test_unknown_optimizer_is_rejected() -> None:

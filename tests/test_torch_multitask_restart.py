@@ -96,3 +96,27 @@ def test_multitask_straddle_trims_sequential_pending_scores_with_perturbation_n_
 
     assert aggregated.shape == torch.Size([1, 1])
     assert torch.equal(aggregated, score[..., :1])
+
+
+def test_multitask_straddle_broadcasts_singleton_score_to_raw_initialization_batch() -> None:
+    model = _make_model()
+    acquisition = qMultiOutputRegressionStraddle(
+        model=model,
+        thresholds=[0.0, 0.0],
+        reduction="mean",
+        output_reduction="mean",
+        n_w=4,
+    )
+    X = torch.rand(4, 1, 1, dtype=torch.double)
+    Xt = torch.rand(1, 2, 1, dtype=torch.double)
+    score = torch.tensor([[1.0, 2.0]], dtype=torch.double)
+
+    out = acquisition._finalize_pointwise_score(
+        score,
+        X,
+        Xt,
+        name="qMultiOutputRegressionStraddle",
+    )
+
+    assert out.shape == torch.Size([4])
+    assert torch.equal(out, torch.ones(4, dtype=torch.double))

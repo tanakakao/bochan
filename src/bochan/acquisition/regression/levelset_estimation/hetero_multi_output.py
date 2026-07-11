@@ -646,6 +646,10 @@ class _HeteroMultiOutputRegressionLevelSetBase(AcquisitionFunction):
                 return out
         if out.shape == original_batch_shape:
             return out
+        if out.numel() == 1 and _safe_prod(original_batch_shape) > 1:
+            return out.reshape(*((1,) * len(original_batch_shape))).expand(
+                original_batch_shape
+            )
         if out.numel() == _safe_prod(original_batch_shape):
             return out.reshape(original_batch_shape)
         raise RuntimeError(

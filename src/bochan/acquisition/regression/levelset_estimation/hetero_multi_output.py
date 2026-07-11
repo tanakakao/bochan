@@ -60,6 +60,28 @@ def _objective_call(objective: Callable, score: Tensor, X: Optional[Tensor]):
         return objective(score)
 
 
+
+def _objective_X_for_score(score: Tensor, X: Optional[Tensor]) -> Optional[Tensor]:
+    """Return an ``X`` argument compatible with a pointwise score objective.
+
+    Args:
+        score: Pointwise score tensor passed to an optional objective.
+        X: Raw candidate tensor originally passed to the acquisition function.
+
+    Returns:
+        The original ``X`` when its q dimension already matches ``score``;
+        otherwise ``None`` so BoTorch objectives skip q-shape validation for
+        internally transformed pointwise scores.
+    """
+    if X is None or X.ndim < 3 or score.ndim == 0:
+        return X
+
+    if int(score.shape[-1]) == int(X.shape[-2]):
+        return X
+
+    return None
+
+
 def _safe_normal_cdf(z: Tensor) -> Tensor:
     two = torch.as_tensor(2.0, device=z.device, dtype=z.dtype)
     return 0.5 * (1.0 + torch.erf(z / torch.sqrt(two)))
@@ -581,23 +603,50 @@ class _HeteroMultiOutputRegressionLevelSetBase(AcquisitionFunction):
     def _apply_objective_to_score(self, score: Tensor, X: Tensor, name: str) -> Tensor:
         if self.objective is None:
             return score
-        out = _objective_call(self.objective, score, X)
+        X_for_objective = _objective_X_for_score(score, X)
+        out = _objective_call(self.objective, score, X_for_objective)
         if not torch.is_tensor(out):
             raise RuntimeError(f"{name}: objective must return Tensor. Got {type(out)}.")
         return out
 
     def _aggregate_n_w_if_needed(self, score: Tensor, *, q: int, context: str) -> Tensor:
+        """Aggregate one-to-many perturbation scores back to raw q points.
+
+        Args:
+            score: Pointwise acquisition scores with the candidate dimension last.
+            q: Number of raw candidate points passed to the acquisition function.
+            context: Human-readable acquisition name used in error messages.
+
+        Returns:
+            A score tensor whose last dimension is the raw candidate dimension.
+
+        Raises:
+            RuntimeError: If the score shape is incompatible with the raw q size,
+                the configured perturbation count, and known sequential q behavior.
+        """
         if self.n_w is None:
             return score
         expected = q * int(self.n_w)
-        if score.shape[-1] == q:
+        actual = int(score.shape[-1])
+        if actual == q:
             return score
-        if score.shape[-1] != expected:
-            raise RuntimeError(
-                f"{context}: expected last dimension q={q} or q*n_w={expected}, "
-                f"got score.shape={tuple(score.shape)}."
-            )
-        return score.reshape(*score.shape[:-1], q, int(self.n_w)).mean(dim=-1)
+        if actual == expected:
+            return score.reshape(*score.shape[:-1], q, int(self.n_w)).mean(dim=-1)
+
+        # BoTorch sequential q optimization evaluates a one-point acquisition
+        # while keeping already selected points in X_pending. Some one-to-many
+        # input transforms can expose those pending points in the transformed
+        # q-like dimension, so the internal score has more points than raw X.
+        # Only the leading raw q points correspond to the candidate currently
+        # optimized; pending-point interactions are still handled by the pending
+        # penalty path.
+        if q == 1 and actual > q:
+            return score[..., :q]
+
+        raise RuntimeError(
+            f"{context}: expected last dimension q={q} or q*n_w={expected}, "
+            f"got score.shape={tuple(score.shape)}."
+        )
 
     def _reduce_q(self, score: Tensor) -> Tensor:
         return _reduce(score, dim=-1, mode=self.reduction)
@@ -620,6 +669,10 @@ class _HeteroMultiOutputRegressionLevelSetBase(AcquisitionFunction):
                 return out
         if out.shape == original_batch_shape:
             return out
+        if out.numel() == 1 and _safe_prod(original_batch_shape) > 1:
+            return out.reshape(*((1,) * len(original_batch_shape))).expand(
+                original_batch_shape
+            )
         if out.numel() == _safe_prod(original_batch_shape):
             return out.reshape(original_batch_shape)
         raise RuntimeError(

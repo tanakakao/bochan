@@ -39,6 +39,7 @@ jobs:
             tests/test_outcome_constraints.py \
             tests/test_api_acquisition_constraints.py \
             tests/test_nsgaii_acquisition_adapter.py \
+            tests/test_tabular_outcome_constraint_column_names.py \
             2>&1 | tee pytest.log
           status=${PIPESTATUS[0]}
           echo "$status" > pytest.status
@@ -71,6 +72,7 @@ jobs:
             src/bochan/models/wide_multitask.py \
             src/bochan/models/wide_multitask_compat.py \
             src/bochan/optim/nsgaii_constraint_compat.py \
+            src/bochan/tabular/optimizer_api.py \
             tests/test_wide_multitask_models.py \
             tests/test_wide_multitask_public_transform.py \
             tests/test_wide_multitask_acquisition_consistency.py \
@@ -83,6 +85,7 @@ jobs:
             tests/test_multiclass_nparego_context.py \
             tests/test_multiclass_nparego_signature.py \
             tests/test_multiclass_nparego_public_api.py \
+            tests/test_tabular_outcome_constraint_column_names.py \
             2>&1 | tee ruff.log
           status=${PIPESTATUS[0]}
           echo "$status" > ruff.status

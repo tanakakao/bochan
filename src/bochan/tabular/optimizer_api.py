@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any
 
@@ -14,6 +15,7 @@ from bochan.api import (
 )
 
 from .builders import UNSET, make_acquisition_config, make_fit_config, make_optimize_config
+from .converter import resolve_column_indices
 from .optimizer import TabularBayesianOptimizer as _BaseTabularBayesianOptimizer
 
 _ACQUISITION_DIRECT_KEYS = {
@@ -124,6 +126,40 @@ def _apply_input_transform_direct_values(
         kwargs["input_transform_config"] = merged
 
 
+def _resolve_outcome_constraint_config_columns(
+    value: Any,
+    target_names: list[Any],
+) -> Any:
+    """Resolve tabular target names in a serializable outcome-constraint config."""
+
+    if value is UNSET or value is None or not isinstance(value, Mapping):
+        return value
+    if "output_indices" not in value:
+        return value
+
+    resolved = resolve_column_indices(value["output_indices"], target_names)
+    return {**value, "output_indices": resolved or []}
+
+
+def _resolve_acquisition_config_columns(
+    acq_config: Any,
+    target_names: list[Any],
+) -> Any:
+    """Resolve named outcome indices nested in an acquisition config mapping."""
+
+    if not isinstance(acq_config, Mapping):
+        return acq_config
+    if "outcome_constraint_config" not in acq_config:
+        return acq_config
+
+    resolved = dict(acq_config)
+    resolved["outcome_constraint_config"] = _resolve_outcome_constraint_config_columns(
+        resolved["outcome_constraint_config"],
+        target_names,
+    )
+    return resolved
+
+
 class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
     '''Pandas / numpy friendly optimizer with public API convenience fields.
 
@@ -175,7 +211,7 @@ class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
         n_w: int | Any = UNSET,
         std: float | Any = UNSET,
         **kwargs: Any,
-    ) -> "TabularBayesianOptimizer":
+    ) -> TabularBayesianOptimizer:
         _apply_input_transform_direct_values(
             kwargs,
             model_config=kwargs.get("model_config", self.model_config),
@@ -208,6 +244,14 @@ class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
         evo_method: Any = UNSET,
         **kwargs: Any,
     ) -> Any:
+        target_names = list(self.dataset.target_names) if self.dataset is not None else []
+        if target_names:
+            acq_config = _resolve_acquisition_config_columns(acq_config, target_names)
+            outcome_constraint_config = _resolve_outcome_constraint_config_columns(
+                outcome_constraint_config,
+                target_names,
+            )
+
         acq_values = {
             key: kwargs.pop(key)
             for key in list(kwargs)

@@ -18,15 +18,11 @@ from botorch.utils.multi_objective.box_decompositions import (
 )
 from torch import Tensor
 
-from .hetero_multi_output import (
-    _HeteroRegressionMCMultiOutputObjective,
-    qHeteroMultiOutputRegressionExpectedHypervolumeImprovement as _BaseHeteroEHVI,
-    qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement as _BaseHeteroNEHVI,
-)
+from . import hetero_multi_output as _hetero
 
 
 class _AutogradSafeHeteroRegressionMCMultiOutputObjective(
-    _HeteroRegressionMCMultiOutputObjective
+    _hetero._HeteroRegressionMCMultiOutputObjective
 ):
     """Detach static baseline evaluations while preserving candidate gradients.
 
@@ -53,7 +49,9 @@ class _AutogradSafeHeteroRegressionMCMultiOutputObjective(
             return super().forward(samples=samples, X=X)
 
 
-class qHeteroMultiOutputRegressionExpectedHypervolumeImprovement(_BaseHeteroEHVI):
+class qHeteroMultiOutputRegressionExpectedHypervolumeImprovement(
+    _hetero.qHeteroMultiOutputRegressionExpectedHypervolumeImprovement
+):
     """Heteroscedastic qEHVI with BoTorch-version-safe constraint state.
 
     ``constraints=None`` must remain ``None``. Converting it to an empty list can
@@ -103,7 +101,7 @@ class qHeteroMultiOutputRegressionExpectedHypervolumeImprovement(_BaseHeteroEHVI
 
 
 class qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement(
-    _BaseHeteroNEHVI
+    _hetero.qHeteroMultiOutputRegressionNoisyExpectedHypervolumeImprovement
 ):
     """Heteroscedastic qNEHVI without reusable baseline autograd graphs."""
 

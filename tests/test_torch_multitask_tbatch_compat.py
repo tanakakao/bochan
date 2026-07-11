@@ -6,8 +6,7 @@ from botorch.models.multitask import KroneckerMultiTaskGP
 from bochan.acquisition.regression.levelset_estimation.multi_output import (
     qMultiOutputRegressionStraddle,
 )
-from bochan.optim import optimize_acqf_torch
-from bochan.optim import torch_opt
+from bochan.optim import optimize_acqf_torch, torch_opt
 
 
 def _make_model() -> KroneckerMultiTaskGP:

@@ -1,4 +1,10 @@
-import type { DatasetResponse, LogsResponse, RegressionResult, SearchVariable } from "./types";
+import type {
+  DatasetResponse,
+  HealthResponse,
+  LogsResponse,
+  RegressionResult,
+  SearchVariable
+} from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api/v1";
 
@@ -18,6 +24,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(requestId ? `${message} [request_id=${requestId}]` : message);
   }
   return payload as T;
+}
+
+export async function fetchHealth(): Promise<HealthResponse> {
+  return request<HealthResponse>("/health");
 }
 
 export async function fileToDataUrl(file: File): Promise<string> {

@@ -33,6 +33,7 @@ jobs:
             tests/test_classification_hypervolume_signatures.py \
             tests/test_api_objective_input_transform_defaults.py \
             tests/test_api_optimizer_config.py \
+            tests/test_hetero_regression_nehvi_autograd.py \
             tests/test_ordinal_missing_multiobjective.py \
             tests/test_multiclass_nparego_context.py \
             tests/test_outcome_constraints.py \
@@ -55,7 +56,6 @@ jobs:
             src/bochan/acquisition/_nehvi_cache_root.py \
             src/bochan/acquisition/classification_constraint_compat.py \
             src/bochan/acquisition/multiclass/bayesian_optimization/nparego_observed_baseline_compat.py \
-            src/bochan/acquisition/multiclass_constraint_install.py \
             src/bochan/acquisition/nsgaii_constraint_install.py \
             src/bochan/acquisition/objective/__init__.py \
             src/bochan/acquisition/objective/outcome_constraints.py \
@@ -63,6 +63,8 @@ jobs:
             src/bochan/acquisition/ordinal/bayesian_optimization/__init__.py \
             src/bochan/acquisition/ordinal_constraint_install.py \
             src/bochan/acquisition/ordinal_multitask_compat.py \
+            src/bochan/acquisition/regression/bayesian_optimization/__init__.py \
+            src/bochan/acquisition/regression/bayesian_optimization/hetero_multi_output_compat.py \
             src/bochan/acquisition/wide_posterior_event_compat.py \
             src/bochan/api/automatic_multiobjective.py \
             src/bochan/api/optimizer_api.py \
@@ -76,6 +78,7 @@ jobs:
             tests/test_classification_hypervolume_signatures.py \
             tests/test_api_objective_input_transform_defaults.py \
             tests/test_api_optimizer_config.py \
+            tests/test_hetero_regression_nehvi_autograd.py \
             tests/test_ordinal_missing_multiobjective.py \
             tests/test_multiclass_nparego_context.py \
             tests/test_multiclass_nparego_signature.py \

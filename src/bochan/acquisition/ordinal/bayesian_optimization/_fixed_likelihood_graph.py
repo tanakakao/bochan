@@ -6,6 +6,7 @@ from functools import wraps
 from typing import Any, Literal
 
 import torch
+from gpytorch.utils.memoize import clear_cache_hook
 from torch import Tensor
 
 LinkType = Literal["auto", "probit", "logit"]
@@ -54,19 +55,7 @@ def _ordered_probs_from_detached_cutpoints(
 
 
 def _patch_utility_objective_forward(module: Any) -> None:
-    """Detach static baseline utilities while keeping candidate input gradients.
-
-    BoTorch constructs qNEHVI by evaluating the objective on ``X_baseline`` and
-    caching the transformed values. Variational and correlated multi-task models
-    can make those baseline posterior samples depend on model parameters and
-    inducing locations. Reusing that cache after an optimizer step then traverses
-    a stale LinearOperator graph and may raise an in-place version error.
-
-    Acquisition optimization only needs gradients with respect to candidate
-    inputs. A baseline tensor does not require gradients, whereas the candidate
-    tensor supplied by gradient optimizers does. Use that distinction to evaluate
-    static baselines under ``no_grad`` and preserve normal candidate gradients.
-    """
+    """Detach static baseline utilities while keeping candidate input gradients."""
 
     objective_cls = module.qMultiOutputOrdinalUtilityObjective
     current = objective_cls.forward
@@ -91,20 +80,35 @@ def _patch_utility_objective_forward(module: Any) -> None:
     objective_cls.forward = forward
 
 
-def _patch_nehvi_baseline_initialization(module: Any) -> None:
-    """Build qNEHVI baseline state without retaining fitted-model graphs.
+def _positional_argument(args: tuple[Any, ...], index: int) -> Any:
+    """Return a positional constructor argument after ``self`` when available."""
 
-    GPyTorch variational strategies memoize the inducing-point Cholesky factor.
-    qNEHVI first calls the model on ``X_baseline`` during construction. When that
-    call runs with autograd enabled, the memoized factor and baseline samples keep
-    a graph through fixed model parameters. A torch optimizer then reuses the
-    acquisition across closure calls, and the second backward traverses the freed
-    graph (or an in-place-updated saved tensor).
+    return args[index] if len(args) > index else None
 
-    The surrogate is already fitted and fixed during candidate optimization, so
-    all qNEHVI baseline initialization is constant. Candidate evaluations occur
-    after construction and remain fully differentiable with respect to ``X``.
+
+def _prime_fixed_variational_caches(model: Any, X_baseline: Any) -> None:
+    """Populate model-only prediction caches without an autograd graph.
+
+    GPyTorch's variational strategy memoizes the inducing covariance Cholesky
+    factor. It depends only on the fitted model and inducing locations, not on the
+    candidate input. During acquisition optimization it must therefore behave as
+    a constant. Clearing potentially graph-bearing caches and evaluating one
+    baseline posterior under ``no_grad`` creates a reusable detached factor while
+    preserving gradients through candidate-to-inducing covariances later.
     """
+
+    if model is None or X_baseline is None or not hasattr(model, "posterior"):
+        return
+
+    apply = getattr(model, "apply", None)
+    if callable(apply):
+        apply(clear_cache_hook)
+
+    model.posterior(X_baseline)
+
+
+def _patch_nehvi_baseline_initialization(module: Any) -> None:
+    """Build qNEHVI baseline state and variational caches as fitted constants."""
 
     acquisition_cls = module.qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement
     current = acquisition_cls.__init__
@@ -113,8 +117,11 @@ def _patch_nehvi_baseline_initialization(module: Any) -> None:
 
     @wraps(current)
     def init(self, *args, **kwargs) -> None:
+        model = kwargs.get("model", _positional_argument(args, 0))
+        X_baseline = kwargs.get("X_baseline", _positional_argument(args, 2))
         with torch.no_grad():
             current(self, *args, **kwargs)
+            _prime_fixed_variational_caches(model, X_baseline)
 
     init._bochan_detaches_baseline_initialization = True  # type: ignore[attr-defined]
     init._bochan_original = current  # type: ignore[attr-defined]
@@ -124,9 +131,9 @@ def _patch_nehvi_baseline_initialization(module: Any) -> None:
 def apply_fixed_ordinal_likelihood_graph_support(module: Any) -> None:
     """Patch ordinal qNEHVI for stable repeated acquisition backward.
 
-    Standard ordered-link cutpoints, transformed baseline utilities, and qNEHVI's
-    fitted-model baseline state are constants. Candidate latent samples remain
-    differentiable with respect to candidate inputs.
+    Standard ordered-link cutpoints, transformed baseline utilities, and
+    variational inducing-point factorizations are fixed after fitting. Candidate
+    latent samples remain differentiable with respect to candidate inputs.
     """
 
     current = module.ordinal_probs_from_latent

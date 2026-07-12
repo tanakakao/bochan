@@ -38,6 +38,8 @@ jobs:
             tests/test_ordinal_nehvi_repeated_backward.py \
             tests/test_torch_multitask_restart.py \
             tests/test_multiclass_nparego_context.py \
+            tests/test_multiobjective_thompson_sampling.py \
+            tests/test_thompson_sampling_target_resolution.py \
             tests/test_outcome_constraints.py \
             tests/test_api_acquisition_constraints.py \
             tests/test_nsgaii_acquisition_adapter.py \
@@ -96,6 +98,8 @@ jobs:
             tests/test_multiclass_nparego_context.py \
             tests/test_multiclass_nparego_signature.py \
             tests/test_multiclass_nparego_public_api.py \
+            tests/test_multiobjective_thompson_sampling.py \
+            tests/test_thompson_sampling_target_resolution.py \
             tests/test_nsgaii_linear_constraint.py \
             tests/test_tabular_outcome_constraint_column_names.py \
             tests/test_tabular_non_native_outcome_constraints.py \

@@ -17,6 +17,7 @@ class _LatentModel:
 @dataclass
 class _Acquisition:
     model: object
+    objective: object | None = None
 
 
 class _PosteriorAcquisition(_Acquisition):
@@ -39,6 +40,14 @@ def test_resolve_thompson_sampling_target_uses_model_with_posterior() -> None:
     acqf = _Acquisition(model=public_model)
 
     assert _resolve_thompson_sampling_target(acqf) is public_model
+
+
+def test_resolve_thompson_sampling_target_preserves_acquisition_objective() -> None:
+    public_model = _PosteriorModel()
+    objective = object()
+    acqf = _Acquisition(model=public_model, objective=objective)
+
+    assert _resolve_thompson_sampling_target(acqf) is acqf
 
 
 def test_resolve_thompson_sampling_target_uses_acquisition_with_posterior() -> None:

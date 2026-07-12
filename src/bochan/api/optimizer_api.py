@@ -179,15 +179,43 @@ def _configured_thompson_sampling_model(acqf: Any) -> Any | None:
     return None
 
 
+def _has_thompson_sampling_context(acqf: Any) -> bool:
+    """Return whether stripping an acquisition to its model would lose semantics.
+
+    Finite-pool posterior sampling uses the fitted model for draws, but the
+    Thompson adapter also needs acquisition-owned objective, posterior-transform,
+    and outcome-constraint state. Multiclass acquisitions in particular require
+    their objective to collapse the final class-probability axis before random
+    scalarization.
+    """
+
+    return any(
+        getattr(acqf, name, None) is not None
+        for name in (
+            "objective",
+            "posterior_transform",
+            "constraints",
+            "outcome_constraints",
+        )
+    )
+
+
 def _resolve_thompson_sampling_target(acqf: Any) -> Any:
     """Return the object consumed by the Thompson sampling adapter.
 
-    Thompson sampling draws directly from a posterior model when one is safely
-    available. If the acquisition exposes only a latent internal ``.model`` that
-    has no ``posterior`` method, keep the acquisition object instead of stripping
-    it down to the latent GP. The adapter can then recover the stored public
-    model or fall back to finite-pool acquisition scoring.
+    Keep the acquisition whenever it owns Thompson-relevant context. The adapter
+    can still resolve and sample from ``acqf.model`` (or an explicitly configured
+    public model), while retaining the objective required to convert binary,
+    ordinal, or multiclass posterior samples into optimization values.
+
+    Context-free acquisitions may still be reduced to a posterior model for the
+    lightweight direct-sampling path. If the acquisition exposes only a latent
+    internal ``.model`` without a public ``posterior`` method, keep the acquisition
+    so the adapter can recover a configured model or use acquisition scoring.
     """
+
+    if _has_thompson_sampling_context(acqf):
+        return acqf
 
     configured_model = _configured_thompson_sampling_model(acqf)
     if configured_model is not None:

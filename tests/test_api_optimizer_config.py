@@ -66,11 +66,11 @@ def test_cmaes_q_one_preserves_sequential_false() -> None:
     assert config.sequential is False
 
 
-def test_thompson_sampling_uses_model_not_acquisition_objective() -> None:
+def test_thompson_sampling_preserves_acquisition_objective() -> None:
     model = SimpleNamespace(posterior=lambda value: value)
     acquisition = SimpleNamespace(model=model, objective=object())
 
-    assert _resolve_thompson_sampling_target(acquisition) is model
+    assert _resolve_thompson_sampling_target(acquisition) is acquisition
 
 
 def test_thompson_sampling_accepts_model_directly() -> None:

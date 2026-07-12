@@ -80,52 +80,62 @@ def _patch_utility_objective_forward(module: Any) -> None:
     objective_cls.forward = forward
 
 
-def _positional_argument(args: tuple[Any, ...], index: int) -> Any:
-    """Return a positional constructor argument after ``self`` when available."""
+def _as_t_batch(X: Tensor) -> Tensor:
+    """Match BoTorch's implicit singleton t-batch for two-dimensional inputs."""
 
-    return args[index] if len(args) > index else None
+    return X.unsqueeze(0) if X.ndim == 2 else X
 
 
-def _prime_fixed_variational_caches(model: Any, X_baseline: Any) -> None:
+def _variational_cache_key(X: Tensor) -> tuple[Any, ...]:
+    """Return the input properties that determine variational cache batch shape."""
+
+    return (
+        tuple(X.shape[:-2]),
+        X.device.type,
+        X.device.index,
+        X.dtype,
+    )
+
+
+def _prime_fixed_variational_caches(model: Any, X: Tensor) -> None:
     """Populate model-only prediction caches without an autograd graph.
 
-    GPyTorch's variational strategy memoizes the inducing covariance Cholesky
-    factor. It depends only on the fitted model and inducing locations, not on the
-    candidate input. During acquisition optimization it must therefore behave as
-    a constant. Clearing potentially graph-bearing caches and evaluating one
-    baseline posterior under ``no_grad`` creates a reusable detached factor while
-    preserving gradients through candidate-to-inducing covariances later.
+    GPyTorch's ``VariationalStrategy`` memoizes the inducing covariance Cholesky
+    factor while ignoring call arguments. Its shape nevertheless depends on the
+    candidate t-batch through broadcasting. The factor depends only on the fitted
+    model and inducing locations, not on candidate values, so candidate
+    optimization should treat it as constant.
     """
-
-    if model is None or X_baseline is None or not hasattr(model, "posterior"):
-        return
 
     apply = getattr(model, "apply", None)
     if callable(apply):
         apply(clear_cache_hook)
+    model.posterior(X)
 
-    model.posterior(X_baseline)
 
-
-def _patch_nehvi_baseline_initialization(module: Any) -> None:
-    """Build qNEHVI baseline state and variational caches as fitted constants."""
+def _patch_nehvi_forward(module: Any) -> None:
+    """Prime detached variational caches for the actual candidate t-batch shape."""
 
     acquisition_cls = module.qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement
-    current = acquisition_cls.__init__
-    if getattr(current, "_bochan_detaches_baseline_initialization", False):
+    current = acquisition_cls.forward
+    if getattr(current, "_bochan_primes_variational_cache", False):
         return
 
     @wraps(current)
-    def init(self, *args, **kwargs) -> None:
-        model = kwargs.get("model", _positional_argument(args, 0))
-        X_baseline = kwargs.get("X_baseline", _positional_argument(args, 2))
-        with torch.no_grad():
-            current(self, *args, **kwargs)
-            _prime_fixed_variational_caches(model, X_baseline)
+    def forward(self, X: Tensor) -> Tensor:
+        X_t = _as_t_batch(X)
+        cache_key = _variational_cache_key(X_t)
+        if getattr(self, "_bochan_variational_cache_key", None) != cache_key:
+            model = getattr(self, "model", None)
+            if model is not None and hasattr(model, "posterior"):
+                with torch.no_grad():
+                    _prime_fixed_variational_caches(model, X_t)
+                self._bochan_variational_cache_key = cache_key
+        return current(self, X)
 
-    init._bochan_detaches_baseline_initialization = True  # type: ignore[attr-defined]
-    init._bochan_original = current  # type: ignore[attr-defined]
-    acquisition_cls.__init__ = init
+    forward._bochan_primes_variational_cache = True  # type: ignore[attr-defined]
+    forward._bochan_original = current  # type: ignore[attr-defined]
+    acquisition_cls.forward = forward
 
 
 def apply_fixed_ordinal_likelihood_graph_support(module: Any) -> None:
@@ -175,7 +185,7 @@ def apply_fixed_ordinal_likelihood_graph_support(module: Any) -> None:
         module.ordinal_probs_from_latent = ordinal_probs_from_latent
 
     _patch_utility_objective_forward(module)
-    _patch_nehvi_baseline_initialization(module)
+    _patch_nehvi_forward(module)
 
 
 __all__ = ["apply_fixed_ordinal_likelihood_graph_support"]

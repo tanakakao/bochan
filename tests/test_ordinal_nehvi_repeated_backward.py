@@ -60,16 +60,17 @@ def _assert_nehvi_supports_optimizer_style_repeated_backward(
         requires_grad=True,
     )
 
-    for _ in range(2):
-        value = acquisition(candidate)
-        (-value.sum()).backward()
+    with torch.autograd.detect_anomaly():
+        for _ in range(2):
+            value = acquisition(candidate)
+            (-value.sum()).backward()
 
-        assert candidate.grad is not None
-        assert torch.isfinite(candidate.grad).all()
+            assert candidate.grad is not None
+            assert torch.isfinite(candidate.grad).all()
 
-        with torch.no_grad():
-            candidate.add_(0.01).clamp_(0.0, 1.0)
-        candidate.grad = None
+            with torch.no_grad():
+                candidate.add_(0.01).clamp_(0.0, 1.0)
+            candidate.grad = None
 
 
 def test_ordinal_probability_conversion_detaches_fitted_cutpoints() -> None:

@@ -179,17 +179,35 @@ def _configured_thompson_sampling_model(acqf: Any) -> Any | None:
     return None
 
 
+def _is_callable_acquisition(acqf: Any) -> bool:
+    """Return whether ``acqf`` is an acquisition rather than a posterior model.
+
+    Active-learning acquisitions such as BALD, entropy, variance, straddle, and
+    ICU are callable and own their selection semantics, but commonly have
+    ``objective=None``. They must remain available to the Thompson adapter so it
+    can rank the finite candidate pool by acquisition value instead of sampling
+    raw multiclass probability tensors from the underlying model.
+    """
+
+    return (
+        callable(acqf)
+        and not _has_posterior(acqf)
+        and getattr(acqf, "model", None) is not None
+    )
+
+
 def _has_thompson_sampling_context(acqf: Any) -> bool:
     """Return whether stripping an acquisition to its model would lose semantics.
 
     Finite-pool posterior sampling uses the fitted model for draws, but the
     Thompson adapter also needs acquisition-owned objective, posterior-transform,
-    and outcome-constraint state. Multiclass acquisitions in particular require
-    their objective to collapse the final class-probability axis before random
-    scalarization.
+    and outcome-constraint state. Context-free callable acquisitions still need
+    to be preserved because the adapter optimizes their acquisition values over
+    the finite pool rather than treating raw posterior class probabilities as
+    scalar Thompson values.
     """
 
-    return any(
+    return _is_callable_acquisition(acqf) or any(
         getattr(acqf, name, None) is not None
         for name in (
             "objective",
@@ -203,15 +221,16 @@ def _has_thompson_sampling_context(acqf: Any) -> bool:
 def _resolve_thompson_sampling_target(acqf: Any) -> Any:
     """Return the object consumed by the Thompson sampling adapter.
 
-    Keep the acquisition whenever it owns Thompson-relevant context. The adapter
-    can still resolve and sample from ``acqf.model`` (or an explicitly configured
-    public model), while retaining the objective required to convert binary,
-    ordinal, or multiclass posterior samples into optimization values.
+    Keep the acquisition whenever it owns Thompson-relevant context or is itself
+    a callable acquisition. The adapter can resolve and sample from ``acqf.model``
+    for explicit posterior objectives, or score the acquisition directly for
+    active-learning criteria such as BALD and entropy.
 
-    Context-free acquisitions may still be reduced to a posterior model for the
-    lightweight direct-sampling path. If the acquisition exposes only a latent
-    internal ``.model`` without a public ``posterior`` method, keep the acquisition
-    so the adapter can recover a configured model or use acquisition scoring.
+    Non-callable context-free wrappers may still be reduced to a posterior model
+    for the lightweight direct-sampling path. If the acquisition exposes only a
+    latent internal ``.model`` without a public ``posterior`` method, keep the
+    acquisition so the adapter can recover a configured model or use acquisition
+    scoring.
     """
 
     if _has_thompson_sampling_context(acqf):
@@ -231,7 +250,7 @@ def _resolve_thompson_sampling_target(acqf: Any) -> Any:
 
 @dataclass
 class OptimizeConfig(_BaseOptimizeConfig):
-    """Candidate optimization configuration using backend-family names.
+    """Candidate optimizer configuration using backend-family names.
 
     Mixed/non-mixed implementations are selected automatically. Evolutionary
     backends may be selected with ``optimizer="evo"`` plus ``evo_method``, or

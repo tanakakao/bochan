@@ -4,6 +4,10 @@ from types import SimpleNamespace
 
 import torch
 
+from bochan.acquisition.multiclass.bayesian_optimization import (
+    MulticlassTargetProbabilityObjective,
+)
+from bochan.api.optimizer_api import OptimizeConfig, optimize_candidates
 from bochan.optim import optimize_thompson_sampling
 from bochan.optim.thompson_sampling_adapter import ThompsonScalarizedObjective
 
@@ -51,6 +55,29 @@ class _DeterministicModel:
         return _DeterministicPosterior(X[..., :1])
 
 
+class _MulticlassProbabilityModel:
+    """Return two-task, three-class probabilities increasing with x."""
+
+    def __init__(self) -> None:
+        self.train_inputs = (torch.zeros(2, 1, dtype=torch.double),)
+
+    def eval(self):
+        return self
+
+    def posterior(
+        self,
+        X: torch.Tensor,
+        observation_noise=False,
+        posterior_transform=None,
+    ) -> _DeterministicPosterior:
+        del observation_noise, posterior_transform
+        x = X[..., 0].clamp(0.0, 1.0)
+        zeros = torch.zeros_like(x)
+        task_0 = torch.stack([1.0 - x, x, zeros], dim=-1)
+        task_1 = torch.stack([1.0 - x, zeros, x], dim=-1)
+        return _DeterministicPosterior(torch.stack([task_0, task_1], dim=-2))
+
+
 class _InputPerturbationLikeModel:
     def __init__(self, n_w: int = 3) -> None:
         self.n_w = int(n_w)
@@ -92,6 +119,20 @@ def test_scalar_multiobjective_flag_does_not_break_q_batch_validation() -> None:
 
     assert scores.shape == torch.Size([2, 1024])
     torch.testing.assert_close(scores, samples[..., 0])
+
+
+def test_multiclass_probability_objective_reduces_class_axis() -> None:
+    X = torch.zeros(1024, 3, dtype=torch.double)
+    logits = torch.randn(2, 1024, 2, 3, dtype=torch.double)
+    samples = torch.softmax(logits, dim=-1)
+    objective = ThompsonScalarizedObjective(
+        objective=MulticlassTargetProbabilityObjective(num_outputs=2),
+    )
+
+    scores = objective(samples, X=X)
+
+    assert scores.shape == torch.Size([2, 1024])
+    assert torch.isfinite(scores).all()
 
 
 def test_expanded_input_perturbation_samples_are_averaged_to_original_pool() -> None:
@@ -208,6 +249,42 @@ def test_public_optimizer_accepts_scalar_output_from_multiobjective_class() -> N
 
     assert candidates.shape == torch.Size([2, 1])
     assert values.shape == torch.Size([2])
+    torch.testing.assert_close(
+        candidates.sort(dim=0).values,
+        torch.tensor([[0.8], [0.9]], dtype=torch.double),
+    )
+
+
+def test_high_level_dispatch_preserves_multiclass_objective() -> None:
+    torch.manual_seed(0)
+    model = _MulticlassProbabilityModel()
+    acq_function = SimpleNamespace(
+        model=model,
+        objective=MulticlassTargetProbabilityObjective(num_outputs=2),
+        posterior_transform=None,
+        constraints=None,
+    )
+    candidate_set = torch.tensor(
+        [[0.1], [0.9], [0.4], [0.8]],
+        dtype=torch.double,
+    )
+
+    candidates, _ = optimize_candidates(
+        acqf=acq_function,
+        bounds=torch.tensor([[0.0], [1.0]], dtype=torch.double),
+        config=OptimizeConfig(
+            q=2,
+            optimizer="thompson_sampling",
+            optimizer_kwargs={
+                "options": {
+                    "candidate_set": candidate_set,
+                    "replacement": False,
+                }
+            },
+        ),
+    )
+
+    assert candidates.shape == torch.Size([2, 1])
     torch.testing.assert_close(
         candidates.sort(dim=0).values,
         torch.tensor([[0.8], [0.9]], dtype=torch.double),

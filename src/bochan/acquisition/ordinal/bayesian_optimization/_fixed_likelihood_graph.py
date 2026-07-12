@@ -52,55 +52,92 @@ def _ordered_probs_from_detached_cutpoints(
     return probs / probs.sum(dim=-1, keepdim=True).clamp_min(float(eps))
 
 
-def apply_fixed_ordinal_likelihood_graph_support(module: Any) -> None:
-    """Patch ordinal probability conversion for stable repeated acquisition backward.
+def _patch_utility_objective_forward(module: Any) -> None:
+    """Detach static baseline utilities while keeping candidate input gradients.
 
-    qNEHVI caches transformed baseline values. When the transformation includes
-    trainable ordinal cutpoints, that cache retains a graph through the fitted
-    likelihood parameters and the second optimizer closure attempts to traverse
-    an already-freed graph. Candidate optimization must differentiate only with
-    respect to candidate inputs, so standard ordered-link cutpoints are detached.
+    BoTorch constructs qNEHVI by evaluating the objective on ``X_baseline`` and
+    caching the transformed values. Variational and correlated multi-task models
+    can make those baseline posterior samples depend on model parameters and
+    inducing locations. Reusing that cache after an optimizer step then traverses
+    a stale LinearOperator graph and may raise an in-place version error.
+
+    Acquisition optimization only needs gradients with respect to candidate
+    inputs. A baseline tensor does not require gradients, whereas the candidate
+    tensor supplied by gradient optimizers does. Use that distinction to evaluate
+    static baselines under ``no_grad`` and preserve normal candidate gradients.
     """
 
-    current = module.ordinal_probs_from_latent
-    if getattr(current, "_bochan_detaches_fitted_cutpoints", False):
+    objective_cls = module.qMultiOutputOrdinalUtilityObjective
+    current = objective_cls.forward
+    if getattr(current, "_bochan_detaches_static_baseline", False):
         return
 
     original = current
 
-    def ordinal_probs_from_latent(
-        latent: Tensor,
-        likelihood: Any,
-        *,
-        num_classes: int,
-        link: LinkType = "auto",
-        eps: float = 1e-12,
+    def forward(
+        self,
+        samples: Tensor,
+        X: Tensor | None = None,
     ) -> Tensor:
-        resolved_link = _resolve_ordered_link(likelihood, link)
-        if resolved_link is not None:
-            try:
-                cutpoints = module._get_cutpoints(likelihood)
-            except (AttributeError, ValueError):
-                cutpoints = None
-            if cutpoints is not None and int(cutpoints.numel()) + 1 == int(num_classes):
-                return _ordered_probs_from_detached_cutpoints(
-                    latent=latent,
-                    cutpoints=cutpoints,
-                    link=resolved_link,
-                    eps=eps,
-                )
-
-        return original(
-            latent,
-            likelihood,
-            num_classes=num_classes,
-            link=link,
-            eps=eps,
+        track_candidate_grad = torch.is_grad_enabled() and (
+            X is None or bool(X.requires_grad)
         )
+        with torch.set_grad_enabled(track_candidate_grad):
+            return original(self, samples=samples, X=X)
 
-    ordinal_probs_from_latent._bochan_detaches_fitted_cutpoints = True  # type: ignore[attr-defined]
-    ordinal_probs_from_latent._bochan_original = original  # type: ignore[attr-defined]
-    module.ordinal_probs_from_latent = ordinal_probs_from_latent
+    forward._bochan_detaches_static_baseline = True  # type: ignore[attr-defined]
+    forward._bochan_original = original  # type: ignore[attr-defined]
+    objective_cls.forward = forward
+
+
+def apply_fixed_ordinal_likelihood_graph_support(module: Any) -> None:
+    """Patch ordinal utility conversion for stable repeated acquisition backward.
+
+    qNEHVI caches transformed baseline values. Standard ordered-link cutpoints and
+    the baseline posterior itself must be treated as fitted constants, while the
+    latent candidate samples remain differentiable with respect to candidate
+    inputs.
+    """
+
+    current = module.ordinal_probs_from_latent
+    if not getattr(current, "_bochan_detaches_fitted_cutpoints", False):
+        original = current
+
+        def ordinal_probs_from_latent(
+            latent: Tensor,
+            likelihood: Any,
+            *,
+            num_classes: int,
+            link: LinkType = "auto",
+            eps: float = 1e-12,
+        ) -> Tensor:
+            resolved_link = _resolve_ordered_link(likelihood, link)
+            if resolved_link is not None:
+                try:
+                    cutpoints = module._get_cutpoints(likelihood)
+                except (AttributeError, ValueError):
+                    cutpoints = None
+                if cutpoints is not None and int(cutpoints.numel()) + 1 == int(num_classes):
+                    return _ordered_probs_from_detached_cutpoints(
+                        latent=latent,
+                        cutpoints=cutpoints,
+                        link=resolved_link,
+                        eps=eps,
+                    )
+
+            return original(
+                latent,
+                likelihood,
+                num_classes=num_classes,
+                link=link,
+                eps=eps,
+            )
+
+        ordinal_probs_from_latent._bochan_detaches_fitted_cutpoints = True  # type: ignore[attr-defined]
+        ordinal_probs_from_latent._bochan_original = original  # type: ignore[attr-defined]
+        module.ordinal_probs_from_latent = ordinal_probs_from_latent
+
+    _patch_utility_objective_forward(module)
 
 
 __all__ = ["apply_fixed_ordinal_likelihood_graph_support"]

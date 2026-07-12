@@ -180,7 +180,7 @@ def test_true_multioutput_values_are_scalarized_per_posterior_sample() -> None:
 
     assert scores.shape == torch.Size([2, 16])
     assert torch.isfinite(scores).all()
-    assert ((0.0 <= scores) & (scores <= 1.0)).all()
+    assert ((scores >= 0.0) & (scores <= 1.0)).all()
 
 
 def test_outcome_constraints_prefer_feasible_candidates() -> None:

@@ -359,7 +359,7 @@ def _select_with_acquisition_scores(
     X_candidates: Tensor,
     q: int,
 ) -> tuple[Tensor, Tensor]:
-    """Fallback for acquisitions whose internal model is not a posterior model."""
+    """Select the best finite-pool points by evaluating an acquisition directly."""
 
     if not callable(acq_function):
         raise AttributeError(
@@ -374,6 +374,25 @@ def _select_with_acquisition_scores(
         scores = _normalize_acquisition_scores(raw_scores, int(X_candidates.shape[0]))
         topk = torch.topk(scores, k=int(q), largest=True).indices
         return X_candidates.index_select(0, topk), scores.index_select(0, topk)
+
+
+def _should_score_acquisition(acq_function: Any) -> bool:
+    """Return whether finite-pool acquisition values should drive selection.
+
+    Active-learning criteria such as BALD, entropy, variance, straddle, and ICU
+    are already scalar acquisition functions. They commonly expose
+    ``objective=None`` while their underlying multiclass model returns
+    ``... x N x tasks x classes`` probability tensors. Running
+    ``MaxPosteriorSampling`` on those raw tensors discards the requested
+    acquisition semantics and cannot identify the candidate axis. Score the
+    acquisition itself instead.
+    """
+
+    return (
+        callable(acq_function)
+        and not _has_posterior(acq_function)
+        and getattr(acq_function, "objective", None) is None
+    )
 
 
 class ThompsonScalarizedObjective(MCAcquisitionObjective):
@@ -424,7 +443,14 @@ def _select_with_scalarized_max_posterior_sampling(
     replacement: bool,
     observation_noise: bool | Tensor,
 ) -> tuple[Tensor, Tensor]:
-    """Select candidates with an objective supported with posterior sampling."""
+    """Select candidates with posterior sampling or acquisition-score fallback."""
+
+    if _should_score_acquisition(acq_function):
+        return _select_with_acquisition_scores(
+            acq_function=acq_function,
+            X_candidates=X_candidates,
+            q=q,
+        )
 
     model = _resolve_sampling_model(acq_function)
     if model is None:

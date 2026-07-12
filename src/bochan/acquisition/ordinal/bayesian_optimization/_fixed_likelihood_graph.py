@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import wraps
 from typing import Any, Literal
 
 import torch
@@ -90,13 +91,42 @@ def _patch_utility_objective_forward(module: Any) -> None:
     objective_cls.forward = forward
 
 
-def apply_fixed_ordinal_likelihood_graph_support(module: Any) -> None:
-    """Patch ordinal utility conversion for stable repeated acquisition backward.
+def _patch_nehvi_baseline_initialization(module: Any) -> None:
+    """Build qNEHVI baseline state without retaining fitted-model graphs.
 
-    qNEHVI caches transformed baseline values. Standard ordered-link cutpoints and
-    the baseline posterior itself must be treated as fitted constants, while the
-    latent candidate samples remain differentiable with respect to candidate
-    inputs.
+    GPyTorch variational strategies memoize the inducing-point Cholesky factor.
+    qNEHVI first calls the model on ``X_baseline`` during construction. When that
+    call runs with autograd enabled, the memoized factor and baseline samples keep
+    a graph through fixed model parameters. A torch optimizer then reuses the
+    acquisition across closure calls, and the second backward traverses the freed
+    graph (or an in-place-updated saved tensor).
+
+    The surrogate is already fitted and fixed during candidate optimization, so
+    all qNEHVI baseline initialization is constant. Candidate evaluations occur
+    after construction and remain fully differentiable with respect to ``X``.
+    """
+
+    acquisition_cls = module.qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement
+    current = acquisition_cls.__init__
+    if getattr(current, "_bochan_detaches_baseline_initialization", False):
+        return
+
+    @wraps(current)
+    def init(self, *args, **kwargs) -> None:
+        with torch.no_grad():
+            current(self, *args, **kwargs)
+
+    init._bochan_detaches_baseline_initialization = True  # type: ignore[attr-defined]
+    init._bochan_original = current  # type: ignore[attr-defined]
+    acquisition_cls.__init__ = init
+
+
+def apply_fixed_ordinal_likelihood_graph_support(module: Any) -> None:
+    """Patch ordinal qNEHVI for stable repeated acquisition backward.
+
+    Standard ordered-link cutpoints, transformed baseline utilities, and qNEHVI's
+    fitted-model baseline state are constants. Candidate latent samples remain
+    differentiable with respect to candidate inputs.
     """
 
     current = module.ordinal_probs_from_latent
@@ -138,6 +168,7 @@ def apply_fixed_ordinal_likelihood_graph_support(module: Any) -> None:
         module.ordinal_probs_from_latent = ordinal_probs_from_latent
 
     _patch_utility_objective_forward(module)
+    _patch_nehvi_baseline_initialization(module)
 
 
 __all__ = ["apply_fixed_ordinal_likelihood_graph_support"]

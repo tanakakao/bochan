@@ -22,6 +22,10 @@ from .converter import (
     resolve_repair_config_columns,
     tensor_to_dataframe,
 )
+from .prediction_labels import apply_tabular_prediction_labels
+
+apply_tabular_prediction_labels()
+
 from .optimizer_api import TabularBayesianOptimizer
 
 apply_tabular_candidate_outputs()

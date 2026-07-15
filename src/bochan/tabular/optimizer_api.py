@@ -370,7 +370,9 @@ class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
     ) -> Any:
         target_names = list(self.dataset.target_names) if self.dataset is not None else []
         target_category_maps = (
-            dict(self.dataset.target_category_maps or {}) if self.dataset is not None else {}
+            dict(getattr(self.dataset, "target_category_maps", None) or {})
+            if self.dataset is not None
+            else {}
         )
         if target_names:
             acq_config = _resolve_acquisition_config_columns(

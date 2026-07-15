@@ -17,7 +17,7 @@ from bochan.desktop.services import (
     dataframe_preview,
     load_dataframe_from_payload,
 )
-from bochan.serving.fastapi.routers import acquisitions, candidates, health, models, predictions
+from bochan.serving.fastapi import create_api_router
 
 from .logging import (
     configure_logging,
@@ -184,19 +184,11 @@ def create_app(*, title: str = "bochan Web API", version: str = "0.1.0") -> Fast
         finally:
             reset_request_id(token)
 
-    # Preserve the existing tensor-oriented HTTP API.
-    app.include_router(health.router)
-    app.include_router(models.router)
-    app.include_router(predictions.router)
-    app.include_router(candidates.router)
-    app.include_router(acquisitions.router)
+    # Preserve the existing tensor-oriented HTTP API under the React default prefix.
+    app.include_router(create_api_router(prefix="/api/v1"))
 
     dataset_store = DatasetStore()
     router = APIRouter(prefix="/api/v1", tags=["web"])
-
-    @router.get("/health")
-    def web_health() -> dict[str, str]:
-        return {"status": "ok", "application": "bochan-web"}
 
     @router.get("/capabilities")
     def capabilities() -> dict[str, Any]:

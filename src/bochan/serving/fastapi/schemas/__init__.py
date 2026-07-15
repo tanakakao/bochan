@@ -25,8 +25,11 @@ from .requests import (
     LLMConfigSchema,
     LLMContextSchema,
     LLMPlanRequest,
+    LoadModelRequest,
     PredictRequest,
     RefitModelRequest,
+    SaveModelRequest,
+    SuggestRequest,
     TellRequest,
     TensorOptionsSchema,
 )
@@ -35,10 +38,13 @@ from .responses import (
     CandidateResponse,
     CompareCandidatesResponse,
     HealthResponse,
+    LoadModelResponse,
     ModelDeleteResponse,
     ModelFitResponse,
     ModelListResponse,
     PredictResponse,
+    SavedModelsResponse,
+    SaveModelResponse,
 )
 
 __all__ = [
@@ -59,6 +65,8 @@ __all__ = [
     "LLMConfigSchema",
     "LLMContextSchema",
     "LLMPlanRequest",
+    "LoadModelRequest",
+    "LoadModelResponse",
     "ModelConfigSchema",
     "ModelDeleteResponse",
     "ModelFitResponse",
@@ -72,6 +80,10 @@ __all__ = [
     "PredictRequest",
     "PredictResponse",
     "RefitModelRequest",
+    "SaveModelRequest",
+    "SaveModelResponse",
+    "SavedModelsResponse",
+    "SuggestRequest",
     "TellRequest",
     "TensorOptionsSchema",
 ]

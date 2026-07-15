@@ -20,7 +20,7 @@ from ..converters import (
     to_serializable,
     to_tensor,
 )
-from ..dependencies import InMemoryOptimizerStore, get_optimizer_store
+from ..dependencies import OptimizerStore, get_optimizer_store
 from ..schemas import (
     AutoCandidateRequest,
     FitModelRequest,
@@ -31,6 +31,8 @@ from ..schemas import (
     RefitModelRequest,
     TellRequest,
 )
+
+OPTIMIZER_STORE_DEP = Depends(get_optimizer_store)
 
 router = APIRouter(prefix="/models", tags=["models"])
 
@@ -59,10 +61,7 @@ def _schema_to_dict(value: Any | None) -> dict[str, Any] | None:
 
 
 def _request_config(request: Any, name: str) -> dict[str, Any] | None:
-    if name == "model_config":
-        value = getattr(request, "bo_model_config", None)
-    else:
-        value = getattr(request, name, None)
+    value = getattr(request, "bo_model_config", None) if name == "model_config" else getattr(request, name, None)
     return None if value is None else dict(value)
 
 
@@ -109,7 +108,7 @@ def _inject_llm_options(opt_config: object, request: AutoCandidateRequest) -> ob
 @router.post("", response_model=ModelFitResponse)
 def fit_model(
     request: FitModelRequest,
-    store: InMemoryOptimizerStore = Depends(get_optimizer_store),
+    store: OptimizerStore = OPTIMIZER_STORE_DEP,
 ) -> ModelFitResponse:
     try:
         options = request.tensor_options
@@ -151,7 +150,7 @@ def plan_model_config(request: LLMPlanRequest) -> dict[str, Any]:
 @router.post("/auto-candidates")
 def auto_candidates(
     request: AutoCandidateRequest,
-    store: InMemoryOptimizerStore = Depends(get_optimizer_store),
+    store: OptimizerStore = OPTIMIZER_STORE_DEP,
 ) -> dict[str, Any]:
     """Infer configs, fit a model, and generate candidates in one request."""
 
@@ -199,7 +198,7 @@ def auto_candidates(
 
 
 @router.get("", response_model=ModelListResponse)
-def list_models(store: InMemoryOptimizerStore = Depends(get_optimizer_store)) -> ModelListResponse:
+def list_models(store: OptimizerStore = OPTIMIZER_STORE_DEP) -> ModelListResponse:
     return ModelListResponse(model_ids=store.list_ids())
 
 
@@ -207,7 +206,7 @@ def list_models(store: InMemoryOptimizerStore = Depends(get_optimizer_store)) ->
 def refit_model(
     model_id: str,
     request: RefitModelRequest,
-    store: InMemoryOptimizerStore = Depends(get_optimizer_store),
+    store: OptimizerStore = OPTIMIZER_STORE_DEP,
 ) -> ModelFitResponse:
     try:
         optimizer = store.get(model_id)
@@ -224,7 +223,7 @@ def refit_model(
 def tell_model(
     model_id: str,
     request: TellRequest,
-    store: InMemoryOptimizerStore = Depends(get_optimizer_store),
+    store: OptimizerStore = OPTIMIZER_STORE_DEP,
 ) -> ModelFitResponse:
     try:
         optimizer = store.get(model_id)
@@ -243,7 +242,7 @@ def tell_model(
 @router.delete("/{model_id}", response_model=ModelDeleteResponse)
 def delete_model(
     model_id: str,
-    store: InMemoryOptimizerStore = Depends(get_optimizer_store),
+    store: OptimizerStore = OPTIMIZER_STORE_DEP,
 ) -> ModelDeleteResponse:
     try:
         store.delete(model_id)

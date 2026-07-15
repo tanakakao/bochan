@@ -140,3 +140,40 @@ class CompareCandidatesRequest(APIRequest):
     data_context: DataContextSchema | None = None
     bounds: Any | None = None
     tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
+
+
+class SuggestRequest(APIRequest):
+    """Stateless fit-and-candidate request.
+
+    The endpoint fits a temporary optimizer from the supplied training data and
+    immediately returns candidates without registering model state.
+    """
+
+    bo_model_config: ModelConfigSchema = Field(default_factory=ModelConfigSchema, alias="model_config")
+    train_X: Any
+    train_Y: Any
+    bounds: Any
+    fit_config: FitConfigSchema | None = None
+    acquisition_config: AcquisitionConfigSchema
+    optimize_config: OptimizeConfigSchema = Field(default_factory=OptimizeConfigSchema)
+    data_context: DataContextSchema | None = None
+    tensor_options: TensorOptionsSchema = Field(default_factory=TensorOptionsSchema)
+
+
+class SaveModelRequest(APIRequest):
+    """Request body for saving an in-memory optimizer to disk."""
+
+    filename: str | None = None
+    overwrite: bool = False
+
+
+class LoadModelRequest(APIRequest):
+    """Request body for loading a trusted optimizer artifact.
+
+    Loading uses pickle through ``torch.load``. Set ``trust_pickle`` to true only
+    for model files that were created by a trusted user or process.
+    """
+
+    filename: str
+    map_location: str | None = "cpu"
+    trust_pickle: bool = False

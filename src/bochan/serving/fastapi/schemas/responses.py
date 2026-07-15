@@ -52,3 +52,27 @@ class CompareCandidatesResponse(BaseModel):
 
 class AcquisitionNamesResponse(BaseModel):
     names: list[str]
+
+
+
+class SavedModelsResponse(BaseModel):
+    """Response listing saved optimizer artifact files."""
+
+    root_dir: str
+    filenames: list[str]
+
+
+class SaveModelResponse(BaseModel):
+    """Response returned after saving an optimizer artifact."""
+
+    model_id: str
+    filename: str
+    path: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class LoadModelResponse(ModelFitResponse):
+    """Response returned after loading an optimizer artifact."""
+
+    filename: str
+    path: str

@@ -22,7 +22,7 @@ def test_web_health() -> None:
     response = client.get("/api/v1/health")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "application": "bochan-web"}
+    assert response.json() == {"status": "ok"}
     assert response.headers["X-Request-ID"]
 
 

@@ -8,5 +8,6 @@ installed.
 from __future__ import annotations
 
 from .app import create_app
+from .router import create_api_router
 
-__all__ = ["create_app"]
+__all__ = ["create_api_router", "create_app"]

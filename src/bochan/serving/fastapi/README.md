@@ -55,17 +55,21 @@ http://127.0.0.1:8000/redoc
 
 | method | path | 内容 |
 |---|---|---|
-| `GET` | `/health` | ヘルスチェック |
-| `POST` | `/models` | モデル作成・学習 |
-| `GET` | `/models` | インメモリ store 内の model id 一覧 |
-| `DELETE` | `/models/{model_id}` | model id を削除 |
-| `POST` | `/models/{model_id}/predict` | 予測 |
-| `POST` | `/models/{model_id}/candidates` | 獲得関数生成 + 候補点最適化 |
-| `POST` | `/models/{model_id}/ask` | ask-and-tell 用の候補点生成 |
-| `POST` | `/models/{model_id}/tell` | 新規観測追加と任意の再学習 |
-| `POST` | `/models/{model_id}/refit` | 既存データで再学習 |
-| `POST` | `/models/{model_id}/candidates/compare` | 複数獲得関数を比較 |
-| `GET` | `/acquisitions/names` | 利用可能な acquisition alias 一覧 |
+| `GET` | `/api/v1/health` | ヘルスチェック |
+| `POST` | `/api/v1/models` | モデル作成・学習 |
+| `GET` | `/api/v1/models` | インメモリ store 内の model id 一覧 |
+| `DELETE` | `/api/v1/models/{model_id}` | model id を削除 |
+| `POST` | `/api/v1/models/{model_id}/predict` | 予測 |
+| `POST` | `/api/v1/models/{model_id}/candidates` | 獲得関数生成 + 候補点最適化 |
+| `POST` | `/api/v1/models/{model_id}/ask` | ask-and-tell 用の候補点生成 |
+| `POST` | `/api/v1/models/{model_id}/tell` | 新規観測追加と任意の再学習 |
+| `POST` | `/api/v1/models/{model_id}/refit` | 既存データで再学習 |
+| `POST` | `/api/v1/models/{model_id}/candidates/compare` | 複数獲得関数を比較 |
+| `GET` | `/api/v1/acquisitions/names` | 利用可能な acquisition alias 一覧 |
+| `POST` | `/api/v1/models/{model_id}/save` | インメモリモデルを保存 |
+| `POST` | `/api/v1/models/load` | 保存モデルを読み込み新しい model id として登録 |
+| `GET` | `/api/v1/artifacts` | 保存済みモデル一覧 |
+| `POST` | `/api/v1/suggest` | ステートレス候補生成 |
 
 現在の store はプロセス内インメモリです。サーバー再起動で fitted model は失われます。実運用では `dependencies.py` の `get_optimizer_store()` を差し替え、モデル artifact や metadata を DB / object storage / model registry に保存してください。
 
@@ -851,13 +855,6 @@ Multiclass でよく使う `target_class`, `threshold`, `num_samples`, `output_r
 
 ---
 
-## 14. `bochan.api.fastapi` との違い
+## 14. 旧 FastAPI 実装からの移行
 
-`bochan.api.fastapi` は、`/bochan/sessions` を中心にした軽量な高レベル API です。`bochan.serving.fastapi` は `/models` を中心にした serving 用 API です。
-
-| module | endpoint style | 用途 |
-|---|---|---|
-| `bochan.api.fastapi` | `/bochan/sessions`, `/bochan/suggest` | 最小構成・prototype |
-| `bochan.serving.fastapi` | `/models`, `/models/{model_id}/...` | serving 層として拡張しやすい構成 |
-
-どちらも公開 `bochan.api` の config dataclass に揃える方針です。新しくアプリを作る場合は、router が分割されている `bochan.serving.fastapi` を推奨します。
+正式な HTTP API は `bochan.serving.fastapi` に統一しました。旧 `/bochan/sessions` 系 API は削除され、同等のモデル作成・予測・候補生成・ask/tell・永続化は `/api/v1/models` 系エンドポイントで提供します。ステートレス候補生成は `/api/v1/suggest` を使用してください。

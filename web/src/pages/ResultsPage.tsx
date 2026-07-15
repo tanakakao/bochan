@@ -3,15 +3,7 @@ import { EmptyState, MetricCard, SectionHeader } from "../components/Common";
 import ResultVisualizations from "../ResultVisualizations";
 import { useWorkbench } from "../context/WorkbenchContext";
 
-/**
- * Formats numeric table values for compact display.
- *
- * Args:
- *   value: Numeric value from the API.
- *
- * Returns:
- *   A human-readable number or an em dash for missing values.
- */
+/** Formats numeric table values for compact display. */
 function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   return Math.abs(value) >= 1000 || (Math.abs(value) > 0 && Math.abs(value) < 0.001)
@@ -19,12 +11,17 @@ function formatNumber(value: number | null | undefined): string {
     : value.toFixed(4).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
 }
 
+function csvCell(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const text = String(value);
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
 /** Renders candidate results and selectable-axis visualizations. */
 export default function ResultsPage() {
   const { result, setStep } = useWorkbench();
   const [xAxis, setXAxis] = useState("rank");
   const [yAxis, setYAxis] = useState("predicted_target_mean");
-
 
   const axisOptions = useMemo(() => [
     { value: "rank", label: "順位" },
@@ -63,7 +60,6 @@ export default function ResultsPage() {
     };
   }, [axisOptions, result?.candidates, xAxis, yAxis]);
 
-
   if (!result) {
     return (
       <>
@@ -77,6 +73,34 @@ export default function ResultsPage() {
     );
   }
 
+  function downloadCandidates() {
+    const header = [
+      "rank",
+      ...result.feature_columns,
+      "predicted_target_mean",
+      "predicted_target_std",
+      "acq_value",
+      "constraints_ok"
+    ];
+    const rows = result.candidates.map((candidate) => [
+      candidate.rank,
+      ...result.feature_columns.map((column) => candidate.values[column]),
+      candidate.predicted_target_mean,
+      candidate.predicted_target_std,
+      candidate.acq_value,
+      candidate.constraints_ok
+    ]);
+    const csv = `\uFEFF${[header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${result.dataset_name.replace(/\.[^.]+$/, "")}_bo_candidates.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const droppedRows = Number(result.metadata?.dropped_rows ?? 0);
+
   return (
     <>
       <SectionHeader
@@ -86,6 +110,7 @@ export default function ResultsPage() {
         action={
           <>
             <button className="secondary" onClick={() => setStep("optimize")}>設定を変更</button>
+            <button className="secondary" onClick={downloadCandidates}>候補CSVを保存</button>
             <button onClick={() => setStep("logs")}>実行ログ</button>
           </>
         }
@@ -97,6 +122,19 @@ export default function ResultsPage() {
         <MetricCard icon="◇" label="Features" value={result.n_features} detail={result.feature_columns.join(", ")} />
         <MetricCard icon="▧" label="Candidates" value={result.candidates.length} detail="提案数" tone="success" />
       </div>
+
+      {droppedRows > 0 && (
+        <article className="panel compact-panel">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">DATA CLEANING</span>
+              <h3>欠損行を除外して学習しました</h3>
+              <p>選択した目的変数または説明変数に欠損がある {droppedRows} 行を除外しています。</p>
+            </div>
+            <span className="status-chip warning">{droppedRows} rows</span>
+          </div>
+        </article>
+      )}
 
       <article className="panel compact-panel">
         <div className="panel-title"><div><span className="panel-kicker">GRAPH AXES</span><h3>グラフ軸の選択</h3><p>候補グラフの横軸・縦軸に使う項目を選択します。</p></div></div>

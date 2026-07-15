@@ -18,6 +18,7 @@ from ..tabular_compat import (
     bind_category_metadata,
     to_acquisition_config,
     to_model_config,
+    to_target_tensor,
 )
 
 router = APIRouter(tags=["suggestions"])
@@ -38,9 +39,13 @@ def suggest(request: SuggestRequest) -> CandidateResponse:
     try:
         options = request.tensor_options
         train_X = to_tensor(request.train_X, options)
-        train_Y = to_tensor(request.train_Y, options)
         bounds = to_tensor(request.bounds, options)
         model_config = to_model_config(request.bo_model_config, options)
+        train_Y = to_target_tensor(
+            request.train_Y,
+            options,
+            model_config=model_config,
+        )
         fit_config = to_fit_config(request.fit_config)
         data_context = to_data_context(request.data_context, options) if request.data_context is not None else None
         opt_config = to_optimize_config(request.optimize_config, options)

@@ -13,6 +13,16 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api/v1";
 
+export interface WebCapabilities {
+  task_types: string[];
+  model_types: string[];
+  acquisitions: string[];
+  optimizers: string[];
+  data_sources: string[];
+  visualizations: string[];
+  logging?: Record<string, unknown>;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -33,6 +43,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function fetchHealth(): Promise<HealthResponse> {
   return request<HealthResponse>("/health");
+}
+
+export async function fetchCapabilities(): Promise<WebCapabilities> {
+  return request<WebCapabilities>("/capabilities");
 }
 
 export async function fileToDataUrl(file: File): Promise<string> {
@@ -84,35 +98,42 @@ interface RunRegressionInput {
 }
 
 /**
- * Runs the workbench optimization endpoint.
+ * Runs the currently supported Web workflow.
  *
- * Args:
- *   input: Complete optimization settings collected from the UI.
- *
- * Returns:
- *   Candidate generation result returned by the API.
+ * The backend endpoint is intentionally regression-only. Advanced workbench state
+ * is kept in the frontend for future expansion, but unsupported fields are not sent
+ * to the strict FastAPI schema. This prevents UI-only options from causing 422
+ * responses and keeps the browser contract aligned with `/api/v1/capabilities`.
  */
 export async function runRegression(input: RunRegressionInput): Promise<RegressionResult> {
+  if (input.taskType !== "regression") {
+    throw new Error("現在のWeb APIは単目的回帰のみ対応しています。");
+  }
+  if (input.targetColumns.length !== 1 || input.targetColumn !== input.targetColumns[0]) {
+    throw new Error("目的変数は1列だけ選択してください。");
+  }
+  if (input.acquisitionFamily !== "bayesian_optimization") {
+    throw new Error("現在のWeb APIはベイズ最適化の獲得関数のみ対応しています。");
+  }
+  if (input.outcomeConstraints.length > 0 || input.linearConstraints.length > 0 || input.kSparse.enabled) {
+    throw new Error("目的変数制約・線形制約・k-sparseは現在のWeb APIでは未対応です。");
+  }
+
   return request<RegressionResult>("/regression/run", {
     method: "POST",
     body: JSON.stringify({
       dataset_id: input.datasetId,
       feature_columns: input.featureColumns,
       target_column: input.targetColumn,
-      target_columns: input.targetColumns,
-      task_type: input.taskType,
-      ordinal_order: input.ordinalOrder,
       direction: input.direction,
       model_type: input.modelType,
       fit_maxiter: input.fitMaxiter,
       normalize: true,
       outcome_transform: true,
       search_space: input.searchSpace,
-      constraints: input.linearConstraints,
-      outcome_constraints: input.outcomeConstraints,
-      k_sparse: input.kSparse.enabled ? { k: input.kSparse.k, variables: input.kSparse.variables } : null,
+      constraints: [],
+      k_sparse: null,
       acquisition: {
-        family: input.acquisitionFamily,
         name: input.acquisition,
         beta: input.beta,
         acqf_kwargs: {}

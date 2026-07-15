@@ -7,15 +7,19 @@ from fastapi import APIRouter, HTTPException
 from bochan.api import BayesianOptimizer
 
 from ..converters import (
-    to_acquisition_config,
     to_data_context,
     to_fit_config,
-    to_model_config,
     to_optimize_config,
     to_serializable,
     to_tensor,
 )
 from ..schemas import CandidateResponse, SuggestRequest
+from ..tabular_compat import (
+    bind_category_metadata,
+    to_acquisition_config,
+    to_model_config,
+    to_target_tensor,
+)
 
 router = APIRouter(tags=["suggestions"])
 
@@ -35,12 +39,15 @@ def suggest(request: SuggestRequest) -> CandidateResponse:
     try:
         options = request.tensor_options
         train_X = to_tensor(request.train_X, options)
-        train_Y = to_tensor(request.train_Y, options)
         bounds = to_tensor(request.bounds, options)
         model_config = to_model_config(request.bo_model_config, options)
+        train_Y = to_target_tensor(
+            request.train_Y,
+            options,
+            model_config=model_config,
+        )
         fit_config = to_fit_config(request.fit_config)
         data_context = to_data_context(request.data_context, options) if request.data_context is not None else None
-        acq_config = to_acquisition_config(request.acquisition_config, options)
         opt_config = to_optimize_config(request.optimize_config, options)
 
         optimizer = BayesianOptimizer(
@@ -50,6 +57,12 @@ def suggest(request: SuggestRequest) -> CandidateResponse:
             data_context=data_context,
         )
         optimizer.fit(train_X, train_Y)
+        bind_category_metadata(optimizer, model_config)
+        acq_config = to_acquisition_config(
+            request.acquisition_config,
+            options,
+            optimizer=optimizer,
+        )
         candidates, acq_value = optimizer.candidate(
             acq_config=acq_config,
             opt_config=opt_config,

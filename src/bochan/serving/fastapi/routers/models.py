@@ -12,10 +12,8 @@ from bochan.llm import plan_configs
 
 from ..converters import (
     model_metadata,
-    to_acquisition_config,
     to_data_context,
     to_fit_config,
-    to_model_config,
     to_optimize_config,
     to_serializable,
     to_tensor,
@@ -30,6 +28,12 @@ from ..schemas import (
     ModelListResponse,
     RefitModelRequest,
     TellRequest,
+)
+from ..tabular_compat import (
+    bind_category_metadata,
+    to_acquisition_config,
+    to_model_config,
+    to_target_tensor,
 )
 
 OPTIMIZER_STORE_DEP = Depends(get_optimizer_store)
@@ -113,9 +117,13 @@ def fit_model(
     try:
         options = request.tensor_options
         train_X = to_tensor(request.train_X, options)
-        train_Y = to_tensor(request.train_Y, options)
         bounds = to_tensor(request.bounds, options) if request.bounds is not None else None
         model_config = to_model_config(request.bo_model_config, options)
+        train_Y = to_target_tensor(
+            request.train_Y,
+            options,
+            model_config=model_config,
+        )
         fit_config = to_fit_config(request.fit_config)
         data_context = to_data_context(request.data_context, options) if request.data_context is not None else None
 
@@ -126,6 +134,7 @@ def fit_model(
             data_context=data_context,
         )
         optimizer.fit(train_X, train_Y)
+        bind_category_metadata(optimizer, model_config)
         model_id = store.add(optimizer)
         return _model_fit_response(model_id, optimizer)
     except Exception as exc:
@@ -157,11 +166,27 @@ def auto_candidates(
     try:
         options = request.tensor_options
         train_X = to_tensor(request.train_X, options)
-        train_Y = to_tensor(request.train_Y, options)
         bounds = to_tensor(request.bounds, options) if request.bounds is not None else None
+        explicit_model_config = (
+            to_model_config(request.bo_model_config, options)
+            if request.bo_model_config is not None
+            else None
+        )
+        train_Y = (
+            to_target_tensor(
+                request.train_Y,
+                options,
+                model_config=explicit_model_config,
+            )
+            if explicit_model_config is not None
+            else to_tensor(request.train_Y, options)
+        )
         plan = _plan_from_request(request, train_X, train_Y, bounds)
 
-        model_config = to_model_config(_planned_config(plan, request, "model_config"), options)
+        model_config = explicit_model_config or to_model_config(
+            _planned_config(plan, request, "model_config"),
+            options,
+        )
         fit_config = to_fit_config(_planned_config(plan, request, "fit_config"))
         data_context = to_data_context(request.data_context, options) if request.data_context is not None else None
 
@@ -172,9 +197,14 @@ def auto_candidates(
             data_context=data_context,
         )
         optimizer.fit(train_X, train_Y)
+        bind_category_metadata(optimizer, model_config)
         model_id = store.add(optimizer)
 
-        acq_config = to_acquisition_config(_planned_config(plan, request, "acquisition_config"), options)
+        acq_config = to_acquisition_config(
+            _planned_config(plan, request, "acquisition_config"),
+            options,
+            optimizer=optimizer,
+        )
         opt_config = to_optimize_config(_planned_config(plan, request, "optimize_config"), options)
         opt_config = _inject_llm_options(opt_config, request)
         candidates, acq_value = optimizer.candidate(
@@ -229,7 +259,11 @@ def tell_model(
         optimizer = store.get(model_id)
         options = request.tensor_options
         new_X = to_tensor(request.new_X, options)
-        new_Y = to_tensor(request.new_Y, options)
+        new_Y = to_target_tensor(
+            request.new_Y,
+            options,
+            optimizer=optimizer,
+        )
         fit_config = to_fit_config(request.fit_config) if request.fit_config is not None else None
         optimizer.tell(new_X, new_Y, refit=request.refit, fit_config=fit_config)
         return _model_fit_response(model_id, optimizer)

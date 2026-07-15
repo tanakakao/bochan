@@ -44,6 +44,32 @@ export interface SearchVariable {
   categories?: string[];
 }
 
+export type TaskType = "regression" | "classification" | "ordinal";
+export type AcquisitionFamily = "bayesian_optimization" | "active_learning" | "level_set_estimation";
+export type ConstraintKind = "equality" | "inequality";
+export type ConstraintOperator = "=" | "<=" | ">=";
+
+export interface LinearConstraint {
+  id: string;
+  kind: ConstraintKind;
+  terms: Record<string, number>;
+  operator: ConstraintOperator;
+  rhs: number;
+}
+
+export interface OutcomeConstraint {
+  id: string;
+  target: string;
+  operator: "<=" | ">=";
+  value: number;
+}
+
+export interface KSparseConfig {
+  enabled: boolean;
+  k: number;
+  variables: string[];
+}
+
 export interface CandidateRow {
   rank: number;
   values: Record<string, string | number>;

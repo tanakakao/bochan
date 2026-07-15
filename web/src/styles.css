@@ -358,3 +358,12 @@ td input, td select { min-width: 105px; padding: 6px 8px; }
   .statusbar { gap: 10px; }
   .statusbar span:nth-child(2), .statusbar span:nth-child(3) { display: none; }
 }
+
+.compact-checklist { grid-template-columns: 1fr; max-height: 360px; overflow: auto; }
+.constraint-list { display: grid; gap: 10px; }
+.constraint-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.constraint-row.wide { align-items: center; }
+.constraint-row label { min-width: 120px; margin: 0; }
+.constraint-row input, .constraint-row select { min-width: 96px; }
+.ghost-button { border-color: transparent; background: transparent; color: var(--danger); box-shadow: none; }
+.ghost-button:hover { background: var(--danger-soft); }

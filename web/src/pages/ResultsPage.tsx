@@ -1,7 +1,17 @@
+import { useMemo, useState } from "react";
 import { EmptyState, MetricCard, SectionHeader } from "../components/Common";
 import ResultVisualizations from "../ResultVisualizations";
 import { useWorkbench } from "../context/WorkbenchContext";
 
+/**
+ * Formats numeric table values for compact display.
+ *
+ * Args:
+ *   value: Numeric value from the API.
+ *
+ * Returns:
+ *   A human-readable number or an em dash for missing values.
+ */
 function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   return Math.abs(value) >= 1000 || (Math.abs(value) > 0 && Math.abs(value) < 0.001)
@@ -9,8 +19,50 @@ function formatNumber(value: number | null | undefined): string {
     : value.toFixed(4).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
 }
 
+/** Renders candidate results and selectable-axis visualizations. */
 export default function ResultsPage() {
   const { result, setStep } = useWorkbench();
+  const [xAxis, setXAxis] = useState("rank");
+  const [yAxis, setYAxis] = useState("predicted_target_mean");
+
+
+  const axisOptions = useMemo(() => [
+    { value: "rank", label: "順位" },
+    ...(result?.feature_columns ?? []).map((column) => ({ value: `value:${column}`, label: column })),
+    { value: "predicted_target_mean", label: "予測平均" },
+    { value: "predicted_target_std", label: "予測標準偏差" },
+    { value: "acq_value", label: "獲得値" }
+  ], [result?.feature_columns]);
+
+  const axisVisualization = useMemo(() => {
+    const readValue = (candidate: NonNullable<typeof result>["candidates"][number], key: string) => {
+      if (key === "rank") return candidate.rank;
+      if (key === "predicted_target_mean") return candidate.predicted_target_mean;
+      if (key === "predicted_target_std") return candidate.predicted_target_std;
+      if (key === "acq_value") return candidate.acq_value;
+      if (key.startsWith("value:")) return candidate.values[key.slice(6)];
+      return null;
+    };
+    const xLabel = axisOptions.find((option) => option.value === xAxis)?.label ?? xAxis;
+    const yLabel = axisOptions.find((option) => option.value === yAxis)?.label ?? yAxis;
+    return {
+      id: "selected_axes",
+      title: "選択軸グラフ",
+      description: "候補テーブルから縦軸・横軸を選んで表示します。",
+      figure: {
+        data: [{
+          type: "scatter",
+          mode: "markers+text",
+          x: (result?.candidates ?? []).map((candidate) => readValue(candidate, xAxis)),
+          y: (result?.candidates ?? []).map((candidate) => readValue(candidate, yAxis)),
+          text: (result?.candidates ?? []).map((candidate) => `#${candidate.rank}`),
+          textposition: "top center"
+        }],
+        layout: { xaxis: { title: xLabel }, yaxis: { title: yLabel }, margin: { t: 24, r: 24, b: 56, l: 64 } }
+      }
+    };
+  }, [axisOptions, result?.candidates, xAxis, yAxis]);
+
 
   if (!result) {
     return (
@@ -46,8 +98,16 @@ export default function ResultsPage() {
         <MetricCard icon="▧" label="Candidates" value={result.candidates.length} detail="提案数" tone="success" />
       </div>
 
+      <article className="panel compact-panel">
+        <div className="panel-title"><div><span className="panel-kicker">GRAPH AXES</span><h3>グラフ軸の選択</h3><p>候補グラフの横軸・縦軸に使う項目を選択します。</p></div></div>
+        <div className="form-grid candidate-settings">
+          <label>横軸<select value={xAxis} onChange={(event) => setXAxis(event.target.value)}>{axisOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+          <label>縦軸<select value={yAxis} onChange={(event) => setYAxis(event.target.value)}>{axisOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+        </div>
+      </article>
+
       <ResultVisualizations
-        visualizations={result.visualizations ?? []}
+        visualizations={[axisVisualization, ...(result.visualizations ?? [])]}
         warnings={result.visualization_warnings ?? []}
       />
 

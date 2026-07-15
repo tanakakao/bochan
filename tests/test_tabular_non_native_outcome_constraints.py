@@ -6,7 +6,10 @@ import pytest
 import torch
 from botorch.acquisition.acquisition import AcquisitionFunction
 
-from bochan.acquisition.feasible import FeasibilityWeightedAcquisition
+from bochan.acquisition.feasible import (
+    FeasibilityWeightedAcquisition,
+    OrdinalRankConstraintSpec,
+)
 from bochan.acquisition.regression.active_learning import (
     qMultiOutputRegressionBALD,
     qMultiOutputRegressionPosteriorVariance,
@@ -39,6 +42,18 @@ class _PosteriorModel:
         return SimpleNamespace(mean=mean, variance=torch.ones_like(mean))
 
 
+class _OrdinalProbabilityModel(_PosteriorModel):
+    output_names = ["property", "quality"]
+
+    def class_probs_list(self, X, output_indices=None):
+        del output_indices
+        probs = torch.zeros(*X.shape[:-1], 3, dtype=X.dtype, device=X.device)
+        probs[..., 0] = 0.1
+        probs[..., 1] = 0.2
+        probs[..., 2] = 0.7
+        return [probs]
+
+
 class _NativeConstraintAcquisition(AcquisitionFunction):
     def __init__(self, model, constraints=None) -> None:
         super().__init__(model=model)
@@ -48,9 +63,9 @@ class _NativeConstraintAcquisition(AcquisitionFunction):
         return X.sum(dim=(-1, -2))
 
 
-def _make_bundle() -> ModelBundle:
+def _make_bundle(model=None) -> ModelBundle:
     return ModelBundle(
-        model=_PosteriorModel(),
+        model=_PosteriorModel() if model is None else model,
         train_X=torch.zeros(3, 2, dtype=torch.double),
         train_Y=torch.zeros(3, 2, dtype=torch.double),
         model_config=ModelConfig(
@@ -108,7 +123,6 @@ def test_feasibility_wrapper_falls_back_to_standard_posterior_signature() -> Non
     )
 
     values = acqf.constraint_values(torch.zeros(1, 2, 2, dtype=torch.double))
-
     expected = torch.tensor(
         [[[0.5 - 0.7, 1.0 - 1.2], [0.5 - 0.7, 1.0 - 1.2]]],
         dtype=torch.double,
@@ -127,3 +141,34 @@ def test_native_constraint_acquisition_keeps_sample_constraints() -> None:
 
     assert isinstance(acqf, _NativeConstraintAcquisition)
     assert acqf.constraints is config.constraints
+
+
+def test_model_dependent_ordinal_constraint_wraps_native_acquisition() -> None:
+    config = AcquisitionConfig(
+        name="native",
+        acqf_cls=_NativeConstraintAcquisition,
+        outcome_constraint_config=OutcomeConstraintConfig(
+            constraints=[
+                OrdinalRankConstraintSpec(
+                    output="quality",
+                    rank=1,
+                    sense="ge",
+                    probability_threshold=0.8,
+                )
+            ],
+            eta=0.05,
+        ),
+    )
+
+    assert config.constraints is None
+
+    acqf = api_engine.build_acquisition(
+        bundle=_make_bundle(model=_OrdinalProbabilityModel()),
+        config=config,
+    )
+
+    assert isinstance(acqf, FeasibilityWeightedAcquisition)
+    assert isinstance(acqf.acqf, _NativeConstraintAcquisition)
+    values = acqf.constraint_values(torch.zeros(1, 2, 2, dtype=torch.double))
+    expected = torch.full((1, 2, 1), -0.1, dtype=torch.double)
+    torch.testing.assert_close(values, expected)

@@ -51,6 +51,28 @@ class OutputConfigSchema(_Schema):
     fit_config: FitConfigSchema | None = None
     output_spec_kwargs: dict[str, Any] = Field(default_factory=dict)
 
+    # Tabular-only target metadata. The FastAPI converter removes these fields
+    # before constructing the tensor-oriented core OutputConfig and retains the
+    # resolved mapping for string class / ordinal-rank constraints.
+    ordered_categories: list[Any] | None = None
+    categories: list[Any] | None = None
+    category_map: dict[Any, int] | None = None
+
+    @model_validator(mode="after")
+    def validate_category_metadata(self):
+        declared = [
+            name
+            for name in ("ordered_categories", "categories", "category_map")
+            if getattr(self, name) is not None
+        ]
+        if len(declared) > 1:
+            raise ValueError(
+                "Specify only one of ordered_categories, categories, or category_map."
+            )
+        if self.ordered_categories is not None and self.task_type.lower() != "ordinal":
+            raise ValueError("ordered_categories is only valid for ordinal outputs.")
+        return self
+
 
 class MultiOutputConfigSchema(_Schema):
     output_configs: list[OutputConfigSchema | str | dict[str, Any]] | None = None

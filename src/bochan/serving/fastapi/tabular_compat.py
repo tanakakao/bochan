@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from . import converters as _converters
@@ -143,6 +143,129 @@ def _category_context(optimizer: Any) -> tuple[list[Any], dict[Any, dict[Any, in
     return target_names, category_maps
 
 
+def _category_context_from_model_config(
+    model_config: Any,
+) -> tuple[list[Any], dict[Any, dict[Any, int]]]:
+    """Return retained output names and category maps from a model config."""
+    category_maps = dict(
+        getattr(model_config, _CATEGORY_MAPS_ATTR, {}) or {}
+    )
+    target_names = list(
+        getattr(model_config, _TARGET_NAMES_ATTR, []) or []
+    )
+    multi_output_config = getattr(model_config, "multi_output_config", None)
+    if not category_maps and multi_output_config is not None:
+        category_maps = dict(
+            getattr(multi_output_config, _CATEGORY_MAPS_ATTR, {}) or {}
+        )
+    if not target_names and category_maps:
+        target_names = list(category_maps)
+    return target_names, category_maps
+
+
+def _resolve_category_label(
+    value: Any,
+    mapping: Mapping[Any, int],
+    *,
+    output: Any,
+) -> Any:
+    """Resolve one original label while preserving already encoded indices."""
+    try:
+        if value in mapping:
+            return int(mapping[value])
+    except TypeError:
+        pass
+
+    for label, index in mapping.items():
+        if str(label) == str(value):
+            return int(index)
+
+    if isinstance(value, int) and value in set(mapping.values()):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        encoded = int(value)
+        if encoded in set(mapping.values()):
+            return encoded
+
+    raise KeyError(
+        f"Unknown target label {value!r} for output {output!r}. "
+        f"Available labels: {list(mapping)!r}."
+    )
+
+
+def to_target_tensor(
+    value: Any,
+    options: Any | None = None,
+    *,
+    model_config: Any | None = None,
+    optimizer: Any | None = None,
+) -> Any:
+    """Encode FastAPI string target labels and convert them to a tensor."""
+    if optimizer is not None:
+        target_names, category_maps = _category_context(optimizer)
+    elif model_config is not None:
+        target_names, category_maps = _category_context_from_model_config(
+            model_config
+        )
+    else:
+        target_names, category_maps = [], {}
+
+    if not category_maps:
+        return _converters.to_tensor(value, options)
+
+    if hasattr(value, "detach"):
+        return _converters.to_tensor(value, options)
+    if hasattr(value, "tolist") and not isinstance(value, (list, tuple)):
+        value = value.tolist()
+
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise TypeError("train_Y / new_Y must be a sequence of target rows.")
+
+    rows = list(value)
+    single_output = len(target_names) == 1
+    is_matrix = bool(
+        rows
+        and not isinstance(rows[0], (str, bytes))
+        and isinstance(rows[0], Sequence)
+    )
+    if single_output and not is_matrix:
+        encoded = [
+            _resolve_category_label(
+                item,
+                category_maps.get(target_names[0], {}),
+                output=target_names[0],
+            )
+            for item in rows
+        ]
+        return _converters.to_tensor(encoded, options)
+
+    if not is_matrix:
+        raise ValueError(
+            "Multi-output train_Y / new_Y must be a two-dimensional sequence."
+        )
+
+    encoded_rows: list[list[Any]] = []
+    for row_index, row in enumerate(rows):
+        row_values = list(row)
+        if len(row_values) != len(target_names):
+            raise ValueError(
+                f"Target row {row_index} has {len(row_values)} values, "
+                f"but {len(target_names)} outputs are configured."
+            )
+        for output_index, output_name in enumerate(target_names):
+            mapping = category_maps.get(output_name)
+            if mapping is None:
+                mapping = category_maps.get(str(output_name))
+            if mapping is not None:
+                row_values[output_index] = _resolve_category_label(
+                    row_values[output_index],
+                    mapping,
+                    output=output_name,
+                )
+        encoded_rows.append(row_values)
+    return _converters.to_tensor(encoded_rows, options)
+
+
 def to_acquisition_config(
     value: Any,
     options: Any | None = None,
@@ -173,4 +296,5 @@ __all__ = [
     "bind_category_metadata",
     "to_acquisition_config",
     "to_model_config",
+    "to_target_tensor",
 ]

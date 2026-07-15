@@ -74,6 +74,7 @@ export default function ResultsPage() {
   }
 
   function downloadCandidates() {
+    if (!result) return;
     const header = [
       "rank",
       ...result.feature_columns,

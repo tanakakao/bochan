@@ -153,7 +153,7 @@ def to_acquisition_config(
     payload = _dump(value)
     if optimizer is not None:
         target_names, category_maps = _category_context(optimizer)
-        if target_names:
+        if target_names and category_maps:
             # Importing bochan.tabular applies the string target-class and
             # ordinal-rank label resolvers used by TabularBayesianOptimizer.
             import bochan.tabular  # noqa: F401

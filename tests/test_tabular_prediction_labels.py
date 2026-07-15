@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 import torch
 
-from bochan.tabular import TabularBayesianOptimizer
+from bochan.tabular import TabularBayesianOptimizer, TabularDataConfig
 
 
 class _PredictingBO:
@@ -170,11 +170,9 @@ def test_labels_return_type_returns_only_classification_columns() -> None:
         "rank_predicted_label",
         "rank_predicted_probability",
     ]
-    assert prediction.iloc[0].to_dict() == {
-        "rank_predicted_class_index": 1,
-        "rank_predicted_label": 1,
-        "rank_predicted_probability": pytest.approx(0.8),
-    }
+    assert prediction["rank_predicted_class_index"].tolist() == [1]
+    assert prediction["rank_predicted_label"].tolist() == [1]
+    assert prediction["rank_predicted_probability"].tolist() == pytest.approx([0.8])
 
 
 def test_regression_predict_keeps_existing_columns() -> None:
@@ -201,26 +199,9 @@ def test_dataframe_index_is_preserved_for_prediction_labels() -> None:
         target_names=["phase"],
         mean=torch.tensor([[0.9, 0.1], [0.1, 0.9]], dtype=torch.double),
     )
-    optimizer.data_config = SimpleNamespace(
-        target_cols=None,
+    optimizer.data_config = TabularDataConfig(
         input_cols=["x"],
-        categorical_cols=[],
-        target_categorical_cols=None,
-        bounds=None,
-        dtype=None,
-        device=None,
-        dropna=True,
-        missing_strategy=None,
-        continuous_impute_strategy="mean",
-        categorical_impute_strategy="mode",
-        impute_targets=False,
-        impute_random_state=None,
-        impute_max_iter=10,
-        multiple_impute_sample_posterior=False,
-        encode_categories=True,
-        category_maps=None,
-        target_category_maps=None,
-        return_original_categories=True,
+        target_cols=None,
     )
     data = pd.DataFrame({"x": [0.0, 1.0]}, index=["row-a", "row-b"])
 

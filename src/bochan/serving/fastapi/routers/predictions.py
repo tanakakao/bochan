@@ -5,8 +5,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..converters import to_serializable, to_tensor
-from ..dependencies import InMemoryOptimizerStore, get_optimizer_store
+from ..dependencies import OptimizerStore, get_optimizer_store
 from ..schemas import PredictRequest, PredictResponse
+
+OPTIMIZER_STORE_DEP = Depends(get_optimizer_store)
 
 router = APIRouter(prefix="/models", tags=["predictions"])
 
@@ -15,7 +17,7 @@ router = APIRouter(prefix="/models", tags=["predictions"])
 def predict(
     model_id: str,
     request: PredictRequest,
-    store: InMemoryOptimizerStore = Depends(get_optimizer_store),
+    store: OptimizerStore = OPTIMIZER_STORE_DEP,
 ) -> PredictResponse:
     try:
         optimizer = store.get(model_id)

@@ -8,8 +8,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..converters import to_acquisition_config, to_data_context, to_optimize_config, to_serializable, to_tensor
-from ..dependencies import InMemoryOptimizerStore, get_optimizer_store
+from ..dependencies import OptimizerStore, get_optimizer_store
 from ..schemas import CandidateRequest, CandidateResponse, CompareCandidatesRequest, CompareCandidatesResponse
+
+OPTIMIZER_STORE_DEP = Depends(get_optimizer_store)
 
 router = APIRouter(prefix="/models", tags=["candidates"])
 
@@ -58,7 +60,7 @@ def _inject_llm_options(opt_config: object, request: CandidateRequest) -> object
 def generate_candidates(
     model_id: str,
     request: CandidateRequest,
-    store: InMemoryOptimizerStore = Depends(get_optimizer_store),
+    store: OptimizerStore = OPTIMIZER_STORE_DEP,
 ) -> CandidateResponse:
     try:
         optimizer = store.get(model_id)
@@ -84,7 +86,7 @@ def generate_candidates(
 def ask_candidates(
     model_id: str,
     request: CandidateRequest,
-    store: InMemoryOptimizerStore = Depends(get_optimizer_store),
+    store: OptimizerStore = OPTIMIZER_STORE_DEP,
 ) -> CandidateResponse:
     try:
         optimizer = store.get(model_id)
@@ -110,7 +112,7 @@ def ask_candidates(
 def compare_candidates(
     model_id: str,
     request: CompareCandidatesRequest,
-    store: InMemoryOptimizerStore = Depends(get_optimizer_store),
+    store: OptimizerStore = OPTIMIZER_STORE_DEP,
 ) -> CompareCandidatesResponse:
     try:
         optimizer = store.get(model_id)

@@ -3,7 +3,12 @@ import type {
   HealthResponse,
   LogsResponse,
   RegressionResult,
-  SearchVariable
+  SearchVariable,
+  AcquisitionFamily,
+  KSparseConfig,
+  LinearConstraint,
+  OutcomeConstraint,
+  TaskType
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api/v1";
@@ -60,17 +65,33 @@ interface RunRegressionInput {
   datasetId: string;
   featureColumns: string[];
   targetColumn: string;
+  targetColumns: string[];
+  taskType: TaskType;
+  ordinalOrder: string[];
   direction: "maximize" | "minimize";
   modelType: string;
   fitMaxiter: number;
+  acquisitionFamily: AcquisitionFamily;
   acquisition: string;
   beta: number;
   q: number;
   numRestarts: number;
   rawSamples: number;
   searchSpace: SearchVariable[];
+  outcomeConstraints: OutcomeConstraint[];
+  linearConstraints: LinearConstraint[];
+  kSparse: KSparseConfig;
 }
 
+/**
+ * Runs the workbench optimization endpoint.
+ *
+ * Args:
+ *   input: Complete optimization settings collected from the UI.
+ *
+ * Returns:
+ *   Candidate generation result returned by the API.
+ */
 export async function runRegression(input: RunRegressionInput): Promise<RegressionResult> {
   return request<RegressionResult>("/regression/run", {
     method: "POST",
@@ -78,14 +99,20 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       dataset_id: input.datasetId,
       feature_columns: input.featureColumns,
       target_column: input.targetColumn,
+      target_columns: input.targetColumns,
+      task_type: input.taskType,
+      ordinal_order: input.ordinalOrder,
       direction: input.direction,
       model_type: input.modelType,
       fit_maxiter: input.fitMaxiter,
       normalize: true,
       outcome_transform: true,
       search_space: input.searchSpace,
-      constraints: [],
+      constraints: input.linearConstraints,
+      outcome_constraints: input.outcomeConstraints,
+      k_sparse: input.kSparse.enabled ? { k: input.kSparse.k, variables: input.kSparse.variables } : null,
       acquisition: {
+        family: input.acquisitionFamily,
         name: input.acquisition,
         beta: input.beta,
         acqf_kwargs: {}

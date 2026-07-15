@@ -17,6 +17,7 @@ from bochan.serving.fastapi.tabular_compat import (
     bind_category_metadata,
     to_acquisition_config,
     to_model_config,
+    to_target_tensor,
 )
 
 
@@ -70,6 +71,20 @@ def test_fastapi_model_converter_strips_and_retains_ordered_categories() -> None
 
     maps = optimizer._bochan_fastapi_target_category_maps
     assert maps == {"quality": {"a": 0, "b": 1, "c": 2}}
+
+
+def test_fastapi_encodes_string_target_values() -> None:
+    _, model_config = _optimizer_with_category_metadata()
+
+    train_y = to_target_tensor(
+        [
+            [0.2, "a"],
+            [0.7, "c"],
+        ],
+        model_config=model_config,
+    )
+
+    assert train_y.tolist() == [[0.2, 0.0], [0.7, 2.0]]
 
 
 def test_fastapi_resolves_string_ordinal_rank() -> None:

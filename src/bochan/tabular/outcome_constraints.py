@@ -102,27 +102,39 @@ class _TabularFeasibilityWeightedAcquisition:
 
 
 def _build_acquisition(bundle: Any, config: Any, data_context: Any | None = None) -> Any:
-    """Wrap non-native tabular acquisitions instead of forwarding ``constraints``."""
+    """Wrap tabular acquisitions when constraints require wrapper evaluation.
+
+    Model-dependent class-probability and ordinal-rank constraints cannot be
+    represented by BoTorch sample-constraint callables. ``AcquisitionConfig``
+    therefore intentionally leaves ``config.constraints`` as ``None`` for these
+    constraints. They must always be applied through
+    ``FeasibilityWeightedAcquisition``, even when the underlying acquisition
+    class natively accepts a ``constraints`` keyword.
+    """
 
     constraint_config = getattr(config, "outcome_constraint_config", None)
     if isinstance(constraint_config, dict):
         constraint_config = OutcomeConstraintConfig(**constraint_config)
 
-    should_wrap = bool(
+    wrapper_constraints = (
+        _constraint_specs(constraint_config)
+        if constraint_config is not None
+        else []
+    )
+    has_model_dependent_constraints = bool(
         constraint_config is not None
-        and config.constraints
-        and config.acqf_factory is None
+        and constraint_config.has_model_dependent_constraints()
+    )
+    needs_non_native_wrapper = bool(
+        config.constraints
         and not _explicitly_accepts_keyword(config.acqf_cls, "constraints")
     )
+    should_wrap = bool(
+        wrapper_constraints
+        and config.acqf_factory is None
+        and (has_model_dependent_constraints or needs_non_native_wrapper)
+    )
     if not should_wrap:
-        return _BASE_BUILD_ACQUISITION(
-            bundle=bundle,
-            config=config,
-            data_context=data_context,
-        )
-
-    wrapper_constraints = _constraint_specs(constraint_config)
-    if not wrapper_constraints:
         return _BASE_BUILD_ACQUISITION(
             bundle=bundle,
             config=config,

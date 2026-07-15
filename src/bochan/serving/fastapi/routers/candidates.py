@@ -7,9 +7,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from ..converters import to_acquisition_config, to_data_context, to_optimize_config, to_serializable, to_tensor
+from ..converters import to_data_context, to_optimize_config, to_serializable, to_tensor
 from ..dependencies import OptimizerStore, get_optimizer_store
 from ..schemas import CandidateRequest, CandidateResponse, CompareCandidatesRequest, CompareCandidatesResponse
+from ..tabular_compat import to_acquisition_config
 
 OPTIMIZER_STORE_DEP = Depends(get_optimizer_store)
 
@@ -65,7 +66,11 @@ def generate_candidates(
     try:
         optimizer = store.get(model_id)
         options = request.tensor_options
-        acq_config = to_acquisition_config(request.acq_config, options)
+        acq_config = to_acquisition_config(
+            request.acq_config,
+            options,
+            optimizer=optimizer,
+        )
         opt_config = _inject_llm_options(to_optimize_config(request.opt_config, options), request)
         data_context = to_data_context(request.data_context, options) if request.data_context is not None else None
         bounds = to_tensor(request.bounds, options) if request.bounds is not None else None
@@ -91,7 +96,11 @@ def ask_candidates(
     try:
         optimizer = store.get(model_id)
         options = request.tensor_options
-        acq_config = to_acquisition_config(request.acq_config, options)
+        acq_config = to_acquisition_config(
+            request.acq_config,
+            options,
+            optimizer=optimizer,
+        )
         opt_config = _inject_llm_options(to_optimize_config(request.opt_config, options), request)
         data_context = to_data_context(request.data_context, options) if request.data_context is not None else None
         bounds = to_tensor(request.bounds, options) if request.bounds is not None else None
@@ -117,7 +126,14 @@ def compare_candidates(
     try:
         optimizer = store.get(model_id)
         options = request.tensor_options
-        acq_configs = [to_acquisition_config(config, options) for config in request.acq_configs]
+        acq_configs = [
+            to_acquisition_config(
+                config,
+                options,
+                optimizer=optimizer,
+            )
+            for config in request.acq_configs
+        ]
         opt_config = to_optimize_config(request.opt_config, options)
         data_context = to_data_context(request.data_context, options) if request.data_context is not None else None
         bounds = to_tensor(request.bounds, options) if request.bounds is not None else None

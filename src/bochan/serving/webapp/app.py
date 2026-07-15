@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from time import perf_counter
 from typing import Any, Literal
 from uuid import uuid4
@@ -118,19 +119,37 @@ WEB_CAPABILITIES: dict[str, Any] = {
 }
 
 
-def create_app(*, title: str = "bochan Web API", version: str = "0.1.0") -> FastAPI:
-    """Create the API used by the React web application.
+def create_app(
+    *,
+    title: str = "bochan Web API",
+    version: str = "0.1.0",
+    api_prefix: str = "/api/v1",
+    cors_origins: Sequence[str] | None = None,
+    include_core_api: bool = True,
+) -> FastAPI:
+    """Create the FastAPI app used by the React web application.
 
-    The first release keeps datasets and fitted models in the FastAPI process.
-    The API is therefore intended for local use and single-process deployments.
+    Args:
+        title: OpenAPI application title.
+        version: OpenAPI application version.
+        api_prefix: Path prefix shared by the core FastAPI router and the
+            web-specific endpoints.
+        cors_origins: Browser origins allowed to call the web API. When
+            omitted, Vite's localhost origins are allowed.
+        include_core_api: Whether to mount the tensor-oriented bochan FastAPI
+            router next to the web-specific endpoints.
+
+    Returns:
+        Configured FastAPI application for the React web interface.
     """
 
     configured_log_path = configure_logging()
     logger = get_logger("api")
     app = FastAPI(title=title, version=version)
+    allowed_origins = list(cors_origins or ["http://localhost:5173", "http://127.0.0.1:5173"])
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_origins=allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -139,6 +158,16 @@ def create_app(*, title: str = "bochan Web API", version: str = "0.1.0") -> Fast
 
     @app.middleware("http")
     async def request_logging_middleware(request: Request, call_next: Any):
+        """Log request lifecycle events and propagate the request id.
+
+        Args:
+            request: Incoming FastAPI request.
+            call_next: ASGI callable that dispatches to the next middleware or
+                route handler.
+
+        Returns:
+            FastAPI response enriched with the ``X-Request-ID`` header.
+        """
         request_id = request.headers.get("X-Request-ID") or uuid4().hex
         token = set_request_id(request_id)
         started = perf_counter()
@@ -184,15 +213,27 @@ def create_app(*, title: str = "bochan Web API", version: str = "0.1.0") -> Fast
         finally:
             reset_request_id(token)
 
-    # Preserve the existing tensor-oriented HTTP API under the React default prefix.
-    app.include_router(create_api_router(prefix="/api/v1"))
+    if include_core_api:
+        # Preserve the existing tensor-oriented HTTP API under the same prefix
+        # as the React web endpoints.
+        app.include_router(create_api_router(prefix=api_prefix))
 
     dataset_store = DatasetStore()
-    router = APIRouter(prefix="/api/v1", tags=["web"])
+    router = APIRouter(prefix=api_prefix, tags=["web"])
 
     @router.get("/capabilities")
     def capabilities() -> dict[str, Any]:
-        return WEB_CAPABILITIES
+        """Return web-client capabilities advertised by this FastAPI app.
+
+        Returns:
+            Supported task types, model types, acquisitions, optimizers, data
+            sources, visualization ids, and logging metadata.
+        """
+        capabilities_payload = dict(WEB_CAPABILITIES)
+        logging_payload = dict(WEB_CAPABILITIES["logging"])
+        logging_payload["recent_logs_endpoint"] = f"{api_prefix}/logs"
+        capabilities_payload["logging"] = logging_payload
+        return capabilities_payload
 
     @router.get("/logs")
     def recent_logs(
@@ -201,6 +242,17 @@ def create_app(*, title: str = "bochan Web API", version: str = "0.1.0") -> Fast
         event: str | None = None,
         request_id: str | None = None,
     ) -> dict[str, Any]:
+        """Return recent structured web API log entries.
+
+        Args:
+            limit: Maximum number of recent records to return.
+            level: Optional log-level filter.
+            event: Optional structured event-name filter.
+            request_id: Optional request-id filter.
+
+        Returns:
+            JSON-safe log entries, entry count, and backing log file path.
+        """
         entries = read_recent_logs(
             limit=limit,
             level=level,
@@ -215,10 +267,23 @@ def create_app(*, title: str = "bochan Web API", version: str = "0.1.0") -> Fast
 
     @router.get("/datasets")
     def list_datasets() -> dict[str, Any]:
+        """List datasets currently loaded in the FastAPI process.
+
+        Returns:
+            Dataset metadata records without tabular preview rows.
+        """
         return {"datasets": dataset_store.list()}
 
     @router.post("/datasets")
     def load_dataset(request: DatasetLoadRequest) -> dict[str, Any]:
+        """Load a browser-uploaded dataset into the in-memory store.
+
+        Args:
+            request: Base64-encoded CSV or Excel dataset payload.
+
+        Returns:
+            Loaded dataset id, metadata profile, and preview rows.
+        """
         started = perf_counter()
         log_event(
             logger,
@@ -277,6 +342,15 @@ def create_app(*, title: str = "bochan Web API", version: str = "0.1.0") -> Fast
 
     @router.get("/datasets/{dataset_id}")
     def get_dataset(dataset_id: str, limit: int = 100) -> dict[str, Any]:
+        """Return one loaded dataset with preview rows.
+
+        Args:
+            dataset_id: Identifier returned by ``POST /datasets``.
+            limit: Maximum preview rows to include.
+
+        Returns:
+            Dataset id, name, source type, profile, and tabular preview.
+        """
         try:
             record = dataset_store.get(dataset_id)
             return {
@@ -304,6 +378,15 @@ def create_app(*, title: str = "bochan Web API", version: str = "0.1.0") -> Fast
 
     @router.post("/regression/run")
     def run_regression(request: RegressionRunRequest) -> dict[str, Any]:
+        """Run a single-objective regression optimization workflow.
+
+        Args:
+            request: Dataset id, feature/target columns, model, acquisition,
+                optimizer, and visualization settings from the web client.
+
+        Returns:
+            Candidate rows, model metadata, visualization payloads, and warnings.
+        """
         started = perf_counter()
         log_event(
             logger,

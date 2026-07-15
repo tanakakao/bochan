@@ -98,3 +98,16 @@ def test_figure_payload_is_json_safe() -> None:
     assert payload["id"] == "test"
     assert payload["figure"]["data"][0]["type"] == "scatter"
     json.dumps(payload)
+
+
+def test_web_app_uses_fastapi_prefix_configuration() -> None:
+    client = TestClient(create_app(api_prefix="/bochan", cors_origins=["http://example.test"]))
+
+    health_response = client.get("/bochan/health")
+    capabilities_response = client.get("/bochan/capabilities")
+    legacy_response = client.get("/api/v1/health")
+
+    assert health_response.status_code == 200
+    assert capabilities_response.status_code == 200
+    assert capabilities_response.json()["logging"]["recent_logs_endpoint"] == "/bochan/logs"
+    assert legacy_response.status_code == 404

@@ -12,10 +12,8 @@ from bochan.llm import plan_configs
 
 from ..converters import (
     model_metadata,
-    to_acquisition_config,
     to_data_context,
     to_fit_config,
-    to_model_config,
     to_optimize_config,
     to_serializable,
     to_tensor,
@@ -30,6 +28,11 @@ from ..schemas import (
     ModelListResponse,
     RefitModelRequest,
     TellRequest,
+)
+from ..tabular_compat import (
+    bind_category_metadata,
+    to_acquisition_config,
+    to_model_config,
 )
 
 OPTIMIZER_STORE_DEP = Depends(get_optimizer_store)
@@ -126,6 +129,7 @@ def fit_model(
             data_context=data_context,
         )
         optimizer.fit(train_X, train_Y)
+        bind_category_metadata(optimizer, model_config)
         model_id = store.add(optimizer)
         return _model_fit_response(model_id, optimizer)
     except Exception as exc:
@@ -172,9 +176,14 @@ def auto_candidates(
             data_context=data_context,
         )
         optimizer.fit(train_X, train_Y)
+        bind_category_metadata(optimizer, model_config)
         model_id = store.add(optimizer)
 
-        acq_config = to_acquisition_config(_planned_config(plan, request, "acquisition_config"), options)
+        acq_config = to_acquisition_config(
+            _planned_config(plan, request, "acquisition_config"),
+            options,
+            optimizer=optimizer,
+        )
         opt_config = to_optimize_config(_planned_config(plan, request, "optimize_config"), options)
         opt_config = _inject_llm_options(opt_config, request)
         candidates, acq_value = optimizer.candidate(

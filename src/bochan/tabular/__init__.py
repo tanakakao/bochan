@@ -23,8 +23,10 @@ from .converter import (
     tensor_to_dataframe,
 )
 from .optimizer_api import TabularBayesianOptimizer
+from .prediction_labels import apply_tabular_prediction_labels
 
 apply_tabular_candidate_outputs()
+apply_tabular_prediction_labels()
 
 __all__ = [
     "ColumnKey",

@@ -73,6 +73,15 @@ class TabularBatchCandidateResponse(BaseModel):
     results: list[TabularBatchCandidateResult] = Field(default_factory=list)
 
 
+class TabularBatchJobResponse(BaseModel):
+    """Status and optional result for an in-memory tabular batch job."""
+
+    job_id: str
+    status: Literal["queued", "running", "completed", "failed"]
+    result: TabularBatchCandidateResponse | None = None
+    error: str | None = None
+
+
 class AcquisitionNamesResponse(BaseModel):
     names: list[str]
 

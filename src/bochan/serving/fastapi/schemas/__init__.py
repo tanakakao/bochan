@@ -46,6 +46,14 @@ from .responses import (
     SavedModelsResponse,
     SaveModelResponse,
 )
+from .tabular import (
+    TabularCandidateRequest,
+    TabularCandidateResponse,
+    TabularFitModelRequest,
+    TabularModelFitResponse,
+    TabularPredictRequest,
+    TabularPredictResponse,
+)
 
 __all__ = [
     "APIRequest",
@@ -84,6 +92,12 @@ __all__ = [
     "SaveModelResponse",
     "SavedModelsResponse",
     "SuggestRequest",
+    "TabularCandidateRequest",
+    "TabularCandidateResponse",
+    "TabularFitModelRequest",
+    "TabularModelFitResponse",
+    "TabularPredictRequest",
+    "TabularPredictResponse",
     "TellRequest",
     "TensorOptionsSchema",
 ]

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Input-perturbation objective compatibility for regression level-set scores.
 
 Regression level-set acquisitions use two score shapes:
@@ -13,6 +11,8 @@ created ``RegressionScalarObjective`` can aggregate the perturbation-expanded
 axis. Joint scores must also retain ``X`` while bypassing BoTorch's generic
 q-batch output verification because they no longer have a q dimension.
 """
+
+from __future__ import annotations
 
 import torch
 from torch import Tensor
@@ -63,7 +63,7 @@ def _objective_forward_call(
     objective: object,
     score: Tensor,
     X: Tensor,
-):
+) -> Tensor:
     """Apply an objective without MCAcquisitionObjective q-shape verification.
 
     A joint score has already reduced the q dimension, so BoTorch's generic

@@ -20,7 +20,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install
-        run: python -m pip install -e ".[test,tabular]"
+        run: python -m pip install -e ".[test,tabular,api]"
       - name: Run focused tests
         shell: bash
         run: |
@@ -48,6 +48,7 @@ jobs:
             tests/test_tabular_non_native_outcome_constraints.py \
             tests/test_tabular_string_outcome_constraint_classes.py \
             tests/test_tabular_prediction_labels.py \
+            tests/test_fastapi_tabular_endpoints.py \
             2>&1 | tee pytest.log
           status=${PIPESTATUS[0]}
           echo "$status" > pytest.status
@@ -88,6 +89,13 @@ jobs:
             src/bochan/tabular/optimizer_api.py \
             src/bochan/tabular/outcome_constraints.py \
             src/bochan/tabular/prediction_labels.py \
+            src/bochan/serving/fastapi/dependencies.py \
+            src/bochan/serving/fastapi/router.py \
+            src/bochan/serving/fastapi/routers/tabular.py \
+            src/bochan/serving/fastapi/schemas/__init__.py \
+            src/bochan/serving/fastapi/schemas/tabular.py \
+            src/bochan/serving/fastapi/stores/__init__.py \
+            src/bochan/serving/fastapi/stores/tabular.py \
             tests/test_wide_multitask_models.py \
             tests/test_wide_multitask_public_transform.py \
             tests/test_wide_multitask_acquisition_consistency.py \
@@ -109,6 +117,7 @@ jobs:
             tests/test_tabular_non_native_outcome_constraints.py \
             tests/test_tabular_string_outcome_constraint_classes.py \
             tests/test_tabular_prediction_labels.py \
+            tests/test_fastapi_tabular_endpoints.py \
             2>&1 | tee ruff.log
           status=${PIPESTATUS[0]}
           echo "$status" > ruff.status

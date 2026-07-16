@@ -50,9 +50,31 @@ class CompareCandidatesResponse(BaseModel):
     results: dict[str, CandidateResponse]
 
 
+class TabularBatchCandidateResult(BaseModel):
+    """Result for one fit stage or candidate-generation combination."""
+
+    model_type: str
+    acquisition_name: str | None = None
+    optimizer: str | None = None
+    stage: Literal["fit", "candidate"]
+    status: Literal["ok", "error"]
+    candidates: Any | None = None
+    acq_value: Any | None = None
+    error: str | None = None
+
+
+class TabularBatchCandidateResponse(BaseModel):
+    """Summary of a tabular model/acquisition/optimizer matrix run."""
+
+    n_models: int
+    n_runs: int
+    n_success: int
+    n_failed: int
+    results: list[TabularBatchCandidateResult] = Field(default_factory=list)
+
+
 class AcquisitionNamesResponse(BaseModel):
     names: list[str]
-
 
 
 class SavedModelsResponse(BaseModel):

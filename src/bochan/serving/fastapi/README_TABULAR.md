@@ -2,7 +2,7 @@
 
 `/api/v1/tabular/models` は `TabularBayesianOptimizer` を直接利用するHTTP APIです。通常の `/api/v1/models` と異なり、DataFrame相当のJSON records、列名、文字列カテゴリを受け取ります。
 
-利用時はFastAPIとtabularのoptional dependencyを両方インストールします。
+利用にはFastAPI依存とtabular依存の両方が必要です。
 
 ```bash
 pip install -e ".[api,tabular]"
@@ -20,6 +20,8 @@ pip install -e ".[api,tabular]"
 | `DELETE` | `/api/v1/tabular/models/{model_id}` | インメモリモデルを削除 |
 
 Tensor APIとtabular APIは別のインメモリstoreを使います。サーバー再起動時には両方のstoreが消去されます。
+
+JSONから生成された文字列列はFastAPI境界で通常のobject列へ正規化されます。これにより、pandasが文字列列を`StringDtype`として推論する環境でも、カテゴリラベルを整数コードへ安全に変換できます。
 
 ## Jupyter / TestClient example
 

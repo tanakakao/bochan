@@ -1,5 +1,7 @@
 """Request and response schemas for tabular FastAPI endpoints."""
 
+# ruff: noqa: I001
+
 from __future__ import annotations
 
 from typing import Any, Literal

@@ -87,6 +87,11 @@ def _patch_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def _clear_jobs() -> None:
+    with tabular_router._JOB_LOCK:
+        tabular_router._JOBS.clear()
+
+
 def test_tabular_batch_runs_each_optimizer_except_for_nsgaii(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -126,3 +131,28 @@ def test_tabular_batch_rejects_missing_columns(
 
     with pytest.raises(ValueError, match="Missing required columns"):
         tabular_router._run_batch(request)
+
+
+def test_tabular_batch_job_stores_completed_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _DummyTabularBayesianOptimizer.instances.clear()
+    _patch_dependencies(monkeypatch)
+    _clear_jobs()
+
+    job_id = "test-job"
+    tabular_router._set_job(job_id, job_status="queued")
+    tabular_router._execute_job(job_id, _request())
+
+    job = tabular_router._get_job(job_id)
+    assert job.status == "completed"
+    assert job.result is not None
+    assert job.result.n_success == 3
+    assert job.error is None
+
+
+def test_unknown_tabular_batch_job_raises_key_error() -> None:
+    _clear_jobs()
+
+    with pytest.raises(KeyError, match="Unknown tabular batch job id"):
+        tabular_router._get_job("missing")

@@ -79,15 +79,19 @@ def _request(**updates: Any) -> TabularBatchCandidateRequest:
     return TabularBatchCandidateRequest.model_validate(payload)
 
 
+def _patch_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        tabular_router,
+        "_load_tabular_dependencies",
+        lambda: (pd, _DummyTabularBayesianOptimizer),
+    )
+
+
 def test_tabular_batch_runs_each_optimizer_except_for_nsgaii(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _DummyTabularBayesianOptimizer.instances.clear()
-    monkeypatch.setattr(
-        tabular_router,
-        "TabularBayesianOptimizer",
-        _DummyTabularBayesianOptimizer,
-    )
+    _patch_dependencies(monkeypatch)
 
     response = tabular_router._run_batch(_request())
 
@@ -114,7 +118,10 @@ def test_tabular_batch_runs_each_optimizer_except_for_nsgaii(
     assert response.results[0].acq_value is None
 
 
-def test_tabular_batch_rejects_missing_columns() -> None:
+def test_tabular_batch_rejects_missing_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_dependencies(monkeypatch)
     request = _request(data=[{"raw material 1": 0.1}])
 
     with pytest.raises(ValueError, match="Missing required columns"):

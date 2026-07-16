@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from .routers import acquisitions, artifacts, candidates, health, models, predictions, suggestions
+from .routers import (
+    acquisitions,
+    artifacts,
+    candidates,
+    health,
+    models,
+    predictions,
+    suggestions,
+    tabular,
+)
 
 
 def create_api_router(*, prefix: str = "") -> APIRouter:
@@ -15,7 +24,7 @@ def create_api_router(*, prefix: str = "") -> APIRouter:
 
     Returns:
         Router containing health, model lifecycle, prediction, candidate,
-        acquisition, and artifact endpoints.
+        acquisition, tabular batch, and artifact endpoints.
     """
     router = APIRouter(prefix=prefix)
     router.include_router(health.router)
@@ -24,5 +33,6 @@ def create_api_router(*, prefix: str = "") -> APIRouter:
     router.include_router(predictions.router)
     router.include_router(candidates.router)
     router.include_router(acquisitions.router)
+    router.include_router(tabular.router)
     router.include_router(artifacts.router)
     return router

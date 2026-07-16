@@ -18,10 +18,10 @@ import torch
 from torch import Tensor
 
 from .single_output import (
-    _RegressionLevelSetBase,
     _ensure_q_batch,
     _objective_call,
     _objective_X_for_score,
+    _RegressionLevelSetBase,
 )
 
 

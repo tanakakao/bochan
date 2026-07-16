@@ -2,6 +2,12 @@
 
 `/api/v1/tabular/models` は `TabularBayesianOptimizer` を直接利用するHTTP APIです。通常の `/api/v1/models` と異なり、DataFrame相当のJSON records、列名、文字列カテゴリを受け取ります。
 
+利用時はFastAPIとtabularのoptional dependencyを両方インストールします。
+
+```bash
+pip install -e ".[api,tabular]"
+```
+
 ## Endpoints
 
 | method | path | purpose |

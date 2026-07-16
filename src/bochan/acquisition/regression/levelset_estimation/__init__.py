@@ -41,6 +41,10 @@ from . import diversity as _diversity  # noqa: F401
 # expanded q * n_w dimension.
 from . import objective_compat as _objective_compat  # noqa: F401
 
+# Apply the same compatibility behavior to heteroscedastic regression level-set
+# acquisitions, which use a separate base implementation.
+from . import hetero_objective_compat as _hetero_objective_compat  # noqa: F401
+
 __all__ = [
     "HeteroMultiOutputRegressionLevelSetScoreObjective",
     "qHeteroMultiOutputRegressionStraddle",

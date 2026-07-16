@@ -8,10 +8,10 @@ Regression level-set acquisitions use two score shapes:
 - joint scores that have already reduced the candidate dimension and therefore
   match the raw candidate tensor's t-batch shape.
 
-The automatically created ``RegressionScalarObjective`` needs the raw candidate
-``X`` in both cases.  For pointwise scores it recognizes and aggregates the
-expanded perturbation dimension.  For joint scores it recognizes that the score
-is already aggregated and avoids applying ``n_w`` a second time.
+Pointwise scores must receive raw candidate ``X`` so that the automatically
+created ``RegressionScalarObjective`` can aggregate the perturbation-expanded
+axis. Joint scores must also retain ``X`` while bypassing BoTorch's generic
+q-batch output verification because they no longer have a q dimension.
 """
 
 import torch
@@ -25,26 +25,25 @@ from .single_output import (
 )
 
 
+def _is_joint_score(score: Tensor, X: Tensor | None) -> bool:
+    """Return whether ``score`` already contains one value per t-batch."""
+    if X is None:
+        return False
+    raw_X = _ensure_q_batch(X)
+    return tuple(score.shape) == tuple(raw_X.shape[:-2])
+
+
 def _objective_X_for_perturbed_score(
     score: Tensor,
     X: Tensor | None,
     objective: object,
 ) -> Tensor | None:
-    """Return raw ``X`` for expanded pointwise or aggregated joint scores."""
+    """Return raw ``X`` when an objective can aggregate ``q * n_w`` scores."""
     X_for_objective = _objective_X_for_score(score, X)
     if X_for_objective is not None or X is None or score.ndim == 0:
         return X_for_objective
 
     raw_X = _ensure_q_batch(X)
-
-    # Joint acquisitions such as qRegressionICU and
-    # qRegressionBoundaryVariance already reduce the transformed q dimension to
-    # one scalar per t-batch.  Passing raw X lets RegressionScalarObjective keep
-    # this batch-shaped value unchanged instead of interpreting the t-batch size
-    # as another perturbation-expanded q dimension.
-    if tuple(score.shape) == tuple(raw_X.shape[:-2]):
-        return raw_X
-
     n_w = getattr(objective, "n_w", None)
     try:
         n_w = None if n_w is None else int(n_w)
@@ -60,6 +59,28 @@ def _objective_X_for_perturbed_score(
     return None
 
 
+def _objective_forward_call(
+    objective: object,
+    score: Tensor,
+    X: Tensor,
+):
+    """Apply an objective without MCAcquisitionObjective q-shape verification.
+
+    A joint score has already reduced the q dimension, so BoTorch's generic
+    ``MCAcquisitionObjective.__call__`` check cannot compare it with
+    ``X.shape[-2]``. Calling ``forward`` directly still applies scalar direction,
+    weight, and equality-target handling while avoiding both that check and a
+    second ``n_w`` aggregation.
+    """
+    forward = getattr(objective, "forward", None)
+    if callable(forward):
+        try:
+            return forward(score, X=X)
+        except TypeError:
+            return forward(score)
+    return _objective_call(objective, score, None)
+
+
 def _apply_objective_to_score(
     self: _RegressionLevelSetBase,
     score: Tensor,
@@ -71,8 +92,13 @@ def _apply_objective_to_score(
     if objective is None:
         return score
 
-    X_for_objective = _objective_X_for_perturbed_score(score, X, objective)
-    out = _objective_call(objective, score, X_for_objective)
+    raw_X = _ensure_q_batch(X)
+    if _is_joint_score(score, raw_X):
+        out = _objective_forward_call(objective, score, raw_X)
+    else:
+        X_for_objective = _objective_X_for_perturbed_score(score, raw_X, objective)
+        out = _objective_call(objective, score, X_for_objective)
+
     if not torch.is_tensor(out):
         raise RuntimeError(f"{name}: objective must return Tensor. Got {type(out)}.")
     return out
@@ -84,5 +110,6 @@ _RegressionLevelSetBase._apply_objective_to_score = _apply_objective_to_score
 
 __all__ = [
     "_apply_objective_to_score",
+    "_is_joint_score",
     "_objective_X_for_perturbed_score",
 ]

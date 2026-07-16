@@ -42,6 +42,109 @@ from bochan.serving.fastapi import create_app
 app = create_app(title="bochan Optimization API")
 ```
 
+`main.py` などに上記を置くと、次のように module path を指定して起動できます。
+
+```bash
+uvicorn main:app --reload
+```
+
+`create_app()` は FastAPI の application factory なので、Python コードから直接 import して設定を変えたり、テスト用 client に渡したりできます。`version` は OpenAPI に表示される API version です。
+
+```python
+from fastapi.testclient import TestClient
+
+from bochan.serving.fastapi import create_app
+
+
+def build_client() -> TestClient:
+    """Create a test client for the bochan FastAPI app.
+
+    Returns:
+        TestClient connected to an in-process bochan FastAPI application.
+    """
+    app = create_app(title="bochan Optimization API", version="0.2.0")
+    return TestClient(app)
+
+
+client = build_client()
+response = client.get("/api/v1/health")
+response.raise_for_status()
+print(response.json())
+```
+
+学習から予測までを Python だけで smoke test したい場合は、同じ `TestClient` で HTTP endpoint を呼び出せます。`create_app()` の既定では router が `/api/v1` に mount されるため、path には `/api/v1/models` のように prefix を付けます。
+
+```python
+from fastapi.testclient import TestClient
+
+from bochan.serving.fastapi import create_app
+
+
+def fit_regression_model(client: TestClient) -> str:
+    """Fit a small regression model through the FastAPI layer.
+
+    Args:
+        client: Test client connected to a bochan FastAPI application.
+
+    Returns:
+        Model identifier returned by the in-memory optimizer store.
+    """
+    payload = {
+        "model_config": {"task_type": "regression", "model_type": "base"},
+        "fit_config": {"maxiter": 32},
+        "train_X": [[0.0], [0.5], [1.0]],
+        "train_Y": [[0.0], [0.25], [1.0]],
+        "bounds": [[0.0], [1.0]],
+    }
+    response = client.post("/api/v1/models", json=payload)
+    response.raise_for_status()
+    return response.json()["model_id"]
+
+
+def predict_mean_variance(client: TestClient, model_id: str) -> dict[str, object]:
+    """Predict posterior mean and variance through the FastAPI layer.
+
+    Args:
+        client: Test client connected to a bochan FastAPI application.
+        model_id: Identifier returned by the model fitting endpoint.
+
+    Returns:
+        JSON response containing mean and variance summaries.
+    """
+    response = client.post(
+        f"/api/v1/models/{model_id}/predict",
+        json={"X": [[0.25], [0.75]], "return_type": "mean_variance"},
+    )
+    response.raise_for_status()
+    return response.json()
+
+
+client = TestClient(create_app(title="bochan Optimization API"))
+model_id = fit_regression_model(client)
+prediction = predict_mean_variance(client, model_id)
+print(prediction["mean"], prediction["variance"])
+```
+
+外部サーバーとして起動済みの app に対して Python から呼び出す場合は、通常の HTTP client を使います。
+
+```python
+import httpx
+
+
+def check_health(base_url: str = "http://127.0.0.1:8000") -> dict[str, object]:
+    """Call the bochan FastAPI health endpoint.
+
+    Args:
+        base_url: Base URL where the FastAPI server is running.
+
+    Returns:
+        Parsed JSON health response.
+    """
+    response = httpx.get(f"{base_url}/api/v1/health", timeout=10.0)
+    response.raise_for_status()
+    return response.json()
+```
+
 OpenAPI / Swagger UI は、通常 FastAPI の既定通り次で確認できます。
 
 ```text

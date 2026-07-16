@@ -37,6 +37,10 @@ from .single_output import (
 # acquisitions imported through this package.
 from . import diversity as _diversity  # noqa: F401
 
+# Preserve the raw q-batch while score objectives aggregate InputPerturbation's
+# expanded q * n_w dimension.
+from . import objective_compat as _objective_compat  # noqa: F401
+
 __all__ = [
     "HeteroMultiOutputRegressionLevelSetScoreObjective",
     "qHeteroMultiOutputRegressionStraddle",

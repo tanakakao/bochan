@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import pandas as pd
 import pytest
 
 pytest.importorskip("fastapi")
+pd = pytest.importorskip("pandas")
 
 from fastapi.testclient import TestClient
 

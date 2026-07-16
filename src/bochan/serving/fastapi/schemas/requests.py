@@ -28,6 +28,81 @@ class TensorOptionsSchema(APIRequest):
     device: str | None = None
 
 
+class TabularBatchCandidateRequest(APIRequest):
+    """Run a matrix of tabular models, acquisitions, and optimizers."""
+
+    data: list[dict[str, Any]]
+    model_types: list[str] = Field(
+        default_factory=lambda: [
+            "base",
+            "deepgp",
+            "deepkernel",
+            "hetero",
+            "rrp",
+            "pca",
+            "rembo",
+            "saas",
+        ]
+    )
+    acquisition_names: list[str] = Field(
+        default_factory=lambda: [
+            "ehvi",
+            "nehvi",
+            "nparego",
+            "bald",
+            "entropy",
+            "variance",
+            "straddle",
+            "icu",
+            "nsgaii",
+        ]
+    )
+    optimizers: list[str] = Field(
+        default_factory=lambda: [
+            "optimize_acqf",
+            "torch",
+            "thompson_sampling",
+            "pso",
+            "ga",
+            "cmaes",
+        ]
+    )
+    input_cols: list[str] = Field(
+        default_factory=lambda: [
+            "raw material 1",
+            "raw material 2",
+            "raw material 3",
+            "temperature",
+            "time",
+        ]
+    )
+    target_cols: list[str] = Field(
+        default_factory=lambda: ["property", "property2"]
+    )
+    bo_model_config: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "task_type": "regression",
+            "input_transform_config": {
+                "perturbation": False,
+                "n_w": 4,
+                "std": 0.1,
+            },
+        },
+        alias="model_config",
+    )
+    fit_config: dict[str, Any] = Field(
+        default_factory=lambda: {"maxiter": 128}
+    )
+    optimize_config: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "q": 2,
+            "num_restarts": 2,
+            "raw_samples": 4,
+        }
+    )
+    continue_on_error: bool = True
+
+
 class LLMConfigSchema(APIRequest):
     """Provider-independent LLM settings for candidate generation."""
 

@@ -15,8 +15,8 @@ import torch
 from torch import Tensor
 
 from .hetero_single_output import (
-    _HeteroRegressionLevelSetBase,
     _ensure_q_batch,
+    _HeteroRegressionLevelSetBase,
     _objective_call,
     _objective_X_for_score,
 )

@@ -1,0 +1,223 @@
+"""TabularBayesianOptimizer endpoints."""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException
+
+from bochan.tabular import TabularBayesianOptimizer
+
+from ..converters import model_metadata, to_serializable
+from ..dependencies import TabularOptimizerStore, get_tabular_optimizer_store
+from ..schemas import ModelDeleteResponse, ModelListResponse
+from ..schemas.tabular import (
+    TabularCandidateRequest,
+    TabularCandidateResponse,
+    TabularFitModelRequest,
+    TabularModelFitResponse,
+    TabularPredictRequest,
+    TabularPredictResponse,
+)
+
+TABULAR_STORE_DEP = Depends(get_tabular_optimizer_store)
+
+router = APIRouter(prefix="/tabular/models", tags=["tabular"])
+
+
+def _to_dataframe(data: Any):
+    try:
+        import pandas as pd
+    except ImportError as exc:
+        raise ImportError("pandas is required for tabular FastAPI endpoints.") from exc
+
+    if isinstance(data, list):
+        frame = pd.DataFrame.from_records(data)
+    elif isinstance(data, dict):
+        frame = pd.DataFrame(data)
+    else:
+        raise TypeError("data must be a list of records or a column-oriented object.")
+    if frame.empty:
+        raise ValueError("data must contain at least one row.")
+    return frame
+
+
+def _schema_dict(value: Any | None) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if hasattr(value, "model_dump"):
+        return value.model_dump(exclude_none=True)
+    return dict(value)
+
+
+def _frame_records(frame: Any) -> tuple[list[str], list[dict[str, Any]]]:
+    """Return strict JSON records, converting NaN and timestamps safely."""
+
+    columns = [str(column) for column in frame.columns]
+    records = json.loads(frame.to_json(orient="records", date_format="iso"))
+    return columns, records
+
+
+def _fit_response(model_id: str, optimizer: TabularBayesianOptimizer) -> TabularModelFitResponse:
+    dataset = optimizer.dataset
+    bundle = optimizer.bo.bundle
+    if dataset is None or bundle is None:
+        raise RuntimeError("Tabular optimizer has no fitted dataset or model bundle.")
+
+    categorical_cols = [
+        dataset.feature_names[index]
+        for index in dataset.cat_dims
+        if 0 <= index < len(dataset.feature_names)
+    ]
+    return TabularModelFitResponse(
+        model_id=model_id,
+        task_type=str(bundle.task_type),
+        model_type=str(bundle.model_type),
+        n_train=int(dataset.X.shape[-2]) if hasattr(dataset.X, "shape") else None,
+        feature_names=to_serializable(dataset.feature_names),
+        target_names=to_serializable(dataset.target_names),
+        categorical_cols=to_serializable(categorical_cols),
+        category_maps=to_serializable(dataset.category_maps or {}),
+        target_category_maps=to_serializable(dataset.target_category_maps or {}),
+        metadata=model_metadata(optimizer.bo),
+    )
+
+
+@router.post("", response_model=TabularModelFitResponse)
+def fit_tabular_model(
+    request: TabularFitModelRequest,
+    store: TabularOptimizerStore = TABULAR_STORE_DEP,
+) -> TabularModelFitResponse:
+    """Fit a tabular optimizer from JSON records or column-oriented data."""
+
+    try:
+        frame = _to_dataframe(request.data)
+        optimizer = TabularBayesianOptimizer(
+            model_config=_schema_dict(request.bo_model_config),
+            fit_config=_schema_dict(request.fit_config),
+            input_cols=request.input_cols,
+            target_cols=request.target_cols,
+            categorical_cols=request.categorical_cols,
+            target_categorical_cols=request.target_categorical_cols,
+            bounds=request.bounds,
+            dtype=request.dtype,
+            device=request.device,
+            dropna=request.dropna,
+            missing_strategy=request.missing_strategy,
+            continuous_impute_strategy=request.continuous_impute_strategy,
+            categorical_impute_strategy=request.categorical_impute_strategy,
+            impute_targets=request.impute_targets,
+            impute_random_state=request.impute_random_state,
+            impute_max_iter=request.impute_max_iter,
+            multiple_impute_sample_posterior=request.multiple_impute_sample_posterior,
+            encode_categories=request.encode_categories,
+            category_maps=request.category_maps,
+            target_category_maps=request.target_category_maps,
+            return_original_categories=request.return_original_categories,
+        )
+        optimizer.fit(frame)
+        model_id = store.add(optimizer)
+        return _fit_response(model_id, optimizer)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("", response_model=ModelListResponse)
+def list_tabular_models(
+    store: TabularOptimizerStore = TABULAR_STORE_DEP,
+) -> ModelListResponse:
+    return ModelListResponse(model_ids=store.list_ids())
+
+
+@router.post("/{model_id}/predict", response_model=TabularPredictResponse)
+def predict_tabular_model(
+    model_id: str,
+    request: TabularPredictRequest,
+    store: TabularOptimizerStore = TABULAR_STORE_DEP,
+) -> TabularPredictResponse:
+    try:
+        optimizer = store.get(model_id)
+        frame = _to_dataframe(request.data)
+        value = optimizer.predict(
+            frame,
+            return_type=request.return_type,
+            include_input=request.include_input,
+            posterior_kwargs=request.posterior_kwargs,
+        )
+        if hasattr(value, "columns") and hasattr(value, "to_json"):
+            columns, records = _frame_records(value)
+            return TabularPredictResponse(
+                model_id=model_id,
+                columns=columns,
+                records=records,
+            )
+        return TabularPredictResponse(model_id=model_id, value=to_serializable(value))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def _generate_candidates(
+    model_id: str,
+    request: TabularCandidateRequest,
+    store: TabularOptimizerStore,
+    *,
+    use_ask: bool = False,
+) -> TabularCandidateResponse:
+    optimizer = store.get(model_id)
+    method = optimizer.ask if use_ask else optimizer.candidate
+    candidates, acq_value = method(
+        acq_config=request.acq_config,
+        opt_config=request.opt_config,
+        bounds=request.bounds,
+        return_dataframe=True,
+    )
+    columns, records = _frame_records(candidates)
+    return TabularCandidateResponse(
+        model_id=model_id,
+        columns=columns,
+        candidates=records,
+        acq_value=to_serializable(acq_value),
+    )
+
+
+@router.post("/{model_id}/candidates", response_model=TabularCandidateResponse)
+def generate_tabular_candidates(
+    model_id: str,
+    request: TabularCandidateRequest,
+    store: TabularOptimizerStore = TABULAR_STORE_DEP,
+) -> TabularCandidateResponse:
+    try:
+        return _generate_candidates(model_id, request, store)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{model_id}/ask", response_model=TabularCandidateResponse)
+def ask_tabular_candidates(
+    model_id: str,
+    request: TabularCandidateRequest,
+    store: TabularOptimizerStore = TABULAR_STORE_DEP,
+) -> TabularCandidateResponse:
+    try:
+        return _generate_candidates(model_id, request, store, use_ask=True)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/{model_id}", response_model=ModelDeleteResponse)
+def delete_tabular_model(
+    model_id: str,
+    store: TabularOptimizerStore = TABULAR_STORE_DEP,
+) -> ModelDeleteResponse:
+    try:
+        store.delete(model_id)
+        return ModelDeleteResponse(model_id=model_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

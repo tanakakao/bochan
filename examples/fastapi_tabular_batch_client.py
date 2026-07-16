@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -77,27 +78,64 @@ def build_payload(csv_path: str | Path = "resin.csv") -> dict[str, Any]:
     }
 
 
+def submit_job(
+    client: httpx.Client,
+    payload: dict[str, Any],
+    base_url: str,
+) -> str:
+    """Submit the candidate matrix and return its job identifier."""
+    response = client.post(
+        f"{base_url}/api/v1/tabular/batch-candidate-jobs",
+        json=payload,
+    )
+    response.raise_for_status()
+    return str(response.json()["job_id"])
+
+
+def wait_for_job(
+    client: httpx.Client,
+    job_id: str,
+    base_url: str,
+    poll_interval_seconds: float = 2.0,
+) -> dict[str, Any]:
+    """Poll a submitted job until it completes or fails."""
+    while True:
+        response = client.get(
+            f"{base_url}/api/v1/tabular/batch-candidate-jobs/{job_id}"
+        )
+        response.raise_for_status()
+        job = response.json()
+        if job["status"] == "completed":
+            return dict(job["result"])
+        if job["status"] == "failed":
+            raise RuntimeError(str(job.get("error") or "Tabular batch job failed."))
+        time.sleep(poll_interval_seconds)
+
+
 def run(
     csv_path: str | Path = "resin.csv",
     base_url: str = "http://127.0.0.1:8000",
+    poll_interval_seconds: float = 2.0,
 ) -> dict[str, Any]:
-    """Submit the full candidate matrix and return the parsed response.
+    """Submit the full candidate matrix and return its completed result.
 
     Args:
         csv_path: Path to the resin training data.
         base_url: Base URL of the running bochan FastAPI server.
+        poll_interval_seconds: Interval between job status requests.
 
     Returns:
         Parsed batch result containing successful candidates and per-run errors.
     """
     payload = build_payload(csv_path)
-    with httpx.Client(timeout=None) as client:
-        response = client.post(
-            f"{base_url}/api/v1/tabular/batch-candidates",
-            json=payload,
+    with httpx.Client(timeout=30.0) as client:
+        job_id = submit_job(client, payload, base_url)
+        return wait_for_job(
+            client,
+            job_id,
+            base_url,
+            poll_interval_seconds=poll_interval_seconds,
         )
-        response.raise_for_status()
-        return response.json()
 
 
 if __name__ == "__main__":

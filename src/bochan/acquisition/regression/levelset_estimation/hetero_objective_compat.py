@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Objective compatibility for hetero regression level-set scores.
 
 The high-level API automatically creates ``RegressionScalarObjective`` when a
@@ -8,6 +6,8 @@ produce either pointwise ``q * n_w`` scores or joint scores that already match
 the t-batch shape. Both shapes need special handling so the objective neither
 mistakes a candidate axis for an output axis nor aggregates ``n_w`` twice.
 """
+
+from __future__ import annotations
 
 from typing import Any
 

@@ -30,6 +30,7 @@ from .requests import (
     RefitModelRequest,
     SaveModelRequest,
     SuggestRequest,
+    TabularBatchCandidateRequest,
     TellRequest,
     TensorOptionsSchema,
 )
@@ -45,6 +46,8 @@ from .responses import (
     PredictResponse,
     SavedModelsResponse,
     SaveModelResponse,
+    TabularBatchCandidateResponse,
+    TabularBatchCandidateResult,
 )
 
 __all__ = [
@@ -84,6 +87,9 @@ __all__ = [
     "SaveModelResponse",
     "SavedModelsResponse",
     "SuggestRequest",
+    "TabularBatchCandidateRequest",
+    "TabularBatchCandidateResponse",
+    "TabularBatchCandidateResult",
     "TellRequest",
     "TensorOptionsSchema",
 ]

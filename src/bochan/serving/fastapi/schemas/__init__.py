@@ -48,6 +48,7 @@ from .responses import (
     SaveModelResponse,
     TabularBatchCandidateResponse,
     TabularBatchCandidateResult,
+    TabularBatchJobResponse,
 )
 
 __all__ = [
@@ -90,6 +91,7 @@ __all__ = [
     "TabularBatchCandidateRequest",
     "TabularBatchCandidateResponse",
     "TabularBatchCandidateResult",
+    "TabularBatchJobResponse",
     "TellRequest",
     "TensorOptionsSchema",
 ]

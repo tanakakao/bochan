@@ -26,6 +26,23 @@ TABULAR_STORE_DEP = Depends(get_tabular_optimizer_store)
 router = APIRouter(prefix="/tabular/models", tags=["tabular"])
 
 
+def _normalize_string_dtypes(frame: Any, pd: Any) -> Any:
+    """Convert pandas string extension columns to mutable object columns.
+
+    Pandas may infer JSON string fields as ``StringDtype``. The tabular
+    converter subsequently replaces categorical labels with integer codes, and
+    extension string arrays reject that dtype-changing assignment. Normalizing
+    string columns at the HTTP boundary keeps behavior consistent across pandas
+    versions while preserving the original string values.
+    """
+
+    for column in frame.columns:
+        series = frame.loc[:, column]
+        if pd.api.types.is_string_dtype(series.dtype):
+            frame[column] = series.astype(object)
+    return frame
+
+
 def _to_dataframe(data: Any):
     try:
         import pandas as pd
@@ -40,7 +57,7 @@ def _to_dataframe(data: Any):
         raise TypeError("data must be a list of records or a column-oriented object.")
     if frame.empty:
         raise ValueError("data must contain at least one row.")
-    return frame
+    return _normalize_string_dtypes(frame, pd)
 
 
 def _schema_dict(value: Any | None) -> dict[str, Any] | None:

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 from typing import Any
+from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 
 from ..converters import to_serializable
@@ -14,9 +17,17 @@ from ..schemas import (
     TabularBatchCandidateRequest,
     TabularBatchCandidateResponse,
     TabularBatchCandidateResult,
+    TabularBatchJobResponse,
 )
 
 router = APIRouter(prefix="/tabular", tags=["tabular"])
+
+_JOB_EXECUTOR = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="bochan-tabular-batch",
+)
+_JOB_LOCK = Lock()
+_JOBS: dict[str, TabularBatchJobResponse] = {}
 
 
 def _load_tabular_dependencies() -> tuple[Any, type[Any]]:
@@ -177,17 +188,78 @@ def _run_batch(request: TabularBatchCandidateRequest) -> TabularBatchCandidateRe
     )
 
 
+def _set_job(
+    job_id: str,
+    *,
+    job_status: str,
+    result: TabularBatchCandidateResponse | None = None,
+    error: str | None = None,
+) -> TabularBatchJobResponse:
+    """Atomically replace one in-memory job snapshot."""
+    job = TabularBatchJobResponse(
+        job_id=job_id,
+        status=job_status,
+        result=result,
+        error=error,
+    )
+    with _JOB_LOCK:
+        _JOBS[job_id] = job
+    return job
+
+
+def _get_job(job_id: str) -> TabularBatchJobResponse:
+    """Return an isolated snapshot of an in-memory job."""
+    with _JOB_LOCK:
+        job = _JOBS.get(job_id)
+        if job is None:
+            raise KeyError(f"Unknown tabular batch job id: {job_id!r}.")
+        return job.model_copy(deep=True)
+
+
+def _execute_job(job_id: str, request: TabularBatchCandidateRequest) -> None:
+    """Execute one submitted batch job and persist its final snapshot."""
+    _set_job(job_id, job_status="running")
+    try:
+        result = _run_batch(request)
+    except Exception as exc:
+        _set_job(job_id, job_status="failed", error=str(exc))
+        return
+    _set_job(job_id, job_status="completed", result=result)
+
+
 @router.post("/batch-candidates", response_model=TabularBatchCandidateResponse)
 async def generate_tabular_batch_candidates(
     request: TabularBatchCandidateRequest,
 ) -> TabularBatchCandidateResponse:
-    """Run the requested model, acquisition, and optimizer matrix.
-
-    The numerical work is executed in a worker thread so it does not block the
-    FastAPI event loop. This endpoint is still request/response based; production
-    deployments should move very large matrices to a durable job queue.
-    """
+    """Run the requested model, acquisition, and optimizer matrix synchronously."""
     try:
         return await run_in_threadpool(_run_batch, request)
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post(
+    "/batch-candidate-jobs",
+    response_model=TabularBatchJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def submit_tabular_batch_candidate_job(
+    request: TabularBatchCandidateRequest,
+) -> TabularBatchJobResponse:
+    """Submit a long-running tabular candidate matrix to the in-memory executor."""
+    job_id = uuid4().hex
+    job = _set_job(job_id, job_status="queued")
+    _JOB_EXECUTOR.submit(_execute_job, job_id, request)
+    return job
+
+
+@router.get(
+    "/batch-candidate-jobs/{job_id}",
+    response_model=TabularBatchJobResponse,
+)
+def get_tabular_batch_candidate_job(job_id: str) -> TabularBatchJobResponse:
+    """Return the current status and optional result of a submitted batch job."""
+    try:
+        return _get_job(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

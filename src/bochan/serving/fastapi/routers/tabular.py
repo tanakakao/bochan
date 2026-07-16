@@ -6,11 +6,8 @@ import math
 from collections.abc import Mapping
 from typing import Any
 
-import pandas as pd
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
-
-from bochan.tabular import TabularBayesianOptimizer
 
 from ..converters import to_serializable
 from ..schemas import (
@@ -20,6 +17,19 @@ from ..schemas import (
 )
 
 router = APIRouter(prefix="/tabular", tags=["tabular"])
+
+
+def _load_tabular_dependencies() -> tuple[Any, type[Any]]:
+    """Import optional tabular dependencies only when the endpoint is called."""
+    try:
+        import pandas as pd
+        from bochan.tabular import TabularBayesianOptimizer
+    except ImportError as exc:
+        raise RuntimeError(
+            "The tabular batch endpoint requires the API and tabular extras. "
+            'Install them with: pip install -e ".[api,tabular]"'
+        ) from exc
+    return pd, TabularBayesianOptimizer
 
 
 def _json_safe(value: Any) -> Any:
@@ -33,11 +43,11 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
-def _serialize_candidates(value: Any) -> Any:
+def _serialize_candidates(value: Any, pandas_module: Any) -> Any:
     """Convert tabular candidate outputs to JSON-compatible records."""
-    if isinstance(value, pd.DataFrame):
+    if isinstance(value, pandas_module.DataFrame):
         value = value.to_dict(orient="records")
-    elif isinstance(value, pd.Series):
+    elif isinstance(value, pandas_module.Series):
         value = value.tolist()
     return _json_safe(to_serializable(value))
 
@@ -47,7 +57,7 @@ def _serialize_value(value: Any) -> Any:
     return _json_safe(to_serializable(value))
 
 
-def _validate_request(request: TabularBatchCandidateRequest, df: pd.DataFrame) -> None:
+def _validate_request(request: TabularBatchCandidateRequest, df: Any) -> None:
     """Validate required columns and non-empty execution settings."""
     if df.empty:
         raise ValueError("data must contain at least one row.")
@@ -62,7 +72,9 @@ def _validate_request(request: TabularBatchCandidateRequest, df: pd.DataFrame) -
     if not request.acquisition_names:
         raise ValueError("acquisition_names must contain at least one acquisition name.")
     if not request.optimizers:
-        non_nsgaii = [name for name in request.acquisition_names if name.lower() != "nsgaii"]
+        non_nsgaii = [
+            name for name in request.acquisition_names if name.lower() != "nsgaii"
+        ]
         if non_nsgaii:
             raise ValueError(
                 "optimizers must contain at least one optimizer when non-NSGA-II "
@@ -88,6 +100,7 @@ def _candidate_opt_configs(
 
 def _run_batch(request: TabularBatchCandidateRequest) -> TabularBatchCandidateResponse:
     """Fit every requested tabular model and generate all candidate combinations."""
+    pd, optimizer_class = _load_tabular_dependencies()
     df = pd.DataFrame.from_records(request.data)
     _validate_request(request, df)
 
@@ -99,7 +112,7 @@ def _run_batch(request: TabularBatchCandidateRequest) -> TabularBatchCandidateRe
         model_config["model_type"] = model_type
 
         try:
-            optimizer = TabularBayesianOptimizer(
+            optimizer = optimizer_class(
                 model_config=model_config,
                 fit_config=dict(request.fit_config),
                 input_cols=list(request.input_cols),
@@ -136,7 +149,7 @@ def _run_batch(request: TabularBatchCandidateRequest) -> TabularBatchCandidateRe
                             optimizer=optimizer_name,
                             stage="candidate",
                             status="ok",
-                            candidates=_serialize_candidates(candidates),
+                            candidates=_serialize_candidates(candidates, pd),
                             acq_value=_serialize_value(acq_value),
                         )
                     )

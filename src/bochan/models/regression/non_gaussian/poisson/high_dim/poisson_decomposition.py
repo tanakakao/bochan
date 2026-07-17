@@ -207,6 +207,7 @@ class REMBOPoissonGPModel(_ContinuousProjectedPoissonModel):
     """REMBO 射影後の低次元空間で学習する Poisson GP。"""
     transformer_cls = REMBOTransformer
     config_cls = REMBOConfig
+    default_latent_dim = 2
 
     def __init__(self, *args, rembo_config: Optional[REMBOConfig] = None, **kwargs) -> None:
         super().__init__(*args, config=rembo_config, **kwargs)
@@ -315,6 +316,7 @@ class REMBOPoissonMixedGPModel(_MixedProjectedPoissonModel):
     """連続列だけ REMBO 射影し、カテゴリ列を保持する mixed Poisson GP。"""
     transformer_cls = REMBOTransformer
     config_cls = REMBOConfig
+    default_latent_dim = 2
 
     def __init__(self, *args, rembo_config: Optional[REMBOConfig] = None, **kwargs) -> None:
         super().__init__(*args, config=rembo_config, **kwargs)

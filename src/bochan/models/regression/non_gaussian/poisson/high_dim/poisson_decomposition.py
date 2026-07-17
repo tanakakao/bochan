@@ -102,13 +102,14 @@ class _BaseProjectedPoissonModel(Model):
 class _ContinuousProjectedPoissonModel(_BaseProjectedPoissonModel):
     transformer_cls = None
     config_cls = None
+    default_latent_dim = 8
 
     def __init__(
         self,
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        latent_dim: int = 8,
+        latent_dim: Optional[int] = None,
         n_components: Optional[int] = None,
         config: Any | None = None,
         projector: Any | None = None,
@@ -124,7 +125,7 @@ class _ContinuousProjectedPoissonModel(_BaseProjectedPoissonModel):
         train_X = torch.as_tensor(train_X)
         train_Y = prepare_count_targets(train_Y, train_X)
         self.input_dim_original = train_X.shape[-1]
-        self.latent_dim = int(n_components if n_components is not None else latent_dim)
+        self.latent_dim = int(n_components if n_components is not None else (latent_dim if latent_dim is not None else self.default_latent_dim))
         self.input_transform = clone_input_transform(input_transform)
         self.num_inducing_points = int(num_inducing_points)
         self.seed = int(seed)
@@ -196,6 +197,7 @@ class PCAPoissonGPModel(_ContinuousProjectedPoissonModel):
     """PCA 射影後の低次元空間で学習する Poisson GP。"""
     transformer_cls = PCATransformer
     config_cls = PCAConfig
+    default_latent_dim = 2
 
     def __init__(self, *args, pca_config: Optional[PCAConfig] = None, **kwargs) -> None:
         super().__init__(*args, config=pca_config, **kwargs)
@@ -205,6 +207,7 @@ class REMBOPoissonGPModel(_ContinuousProjectedPoissonModel):
     """REMBO 射影後の低次元空間で学習する Poisson GP。"""
     transformer_cls = REMBOTransformer
     config_cls = REMBOConfig
+    default_latent_dim = 2
 
     def __init__(self, *args, rembo_config: Optional[REMBOConfig] = None, **kwargs) -> None:
         super().__init__(*args, config=rembo_config, **kwargs)
@@ -213,6 +216,7 @@ class REMBOPoissonGPModel(_ContinuousProjectedPoissonModel):
 class _MixedProjectedPoissonModel(_BaseProjectedPoissonModel):
     transformer_cls = None
     config_cls = None
+    default_latent_dim = 8
 
     def __init__(
         self,
@@ -220,7 +224,7 @@ class _MixedProjectedPoissonModel(_BaseProjectedPoissonModel):
         train_Y: Tensor,
         *,
         cat_dims: Sequence[int],
-        latent_dim: int = 8,
+        latent_dim: Optional[int] = None,
         n_components: Optional[int] = None,
         config: Any | None = None,
         projector: Any | None = None,
@@ -238,7 +242,7 @@ class _MixedProjectedPoissonModel(_BaseProjectedPoissonModel):
         self.input_dim_original = train_X.shape[-1]
         self.cat_dims = normalize_dims(cat_dims, self.input_dim_original)
         self.cont_dims = get_cont_dims(self.input_dim_original, self.cat_dims)
-        self.latent_dim = int(n_components if n_components is not None else latent_dim)
+        self.latent_dim = int(n_components if n_components is not None else (latent_dim if latent_dim is not None else self.default_latent_dim))
         self.input_transform = clone_input_transform(input_transform)
         self.num_inducing_points = int(num_inducing_points)
         self.seed = int(seed)
@@ -302,6 +306,7 @@ class PCAPoissonMixedGPModel(_MixedProjectedPoissonModel):
     """連続列だけ PCA 射影し、カテゴリ列を保持する mixed Poisson GP。"""
     transformer_cls = PCATransformer
     config_cls = PCAConfig
+    default_latent_dim = 2
 
     def __init__(self, *args, pca_config: Optional[PCAConfig] = None, **kwargs) -> None:
         super().__init__(*args, config=pca_config, **kwargs)
@@ -311,6 +316,7 @@ class REMBOPoissonMixedGPModel(_MixedProjectedPoissonModel):
     """連続列だけ REMBO 射影し、カテゴリ列を保持する mixed Poisson GP。"""
     transformer_cls = REMBOTransformer
     config_cls = REMBOConfig
+    default_latent_dim = 2
 
     def __init__(self, *args, rembo_config: Optional[REMBOConfig] = None, **kwargs) -> None:
         super().__init__(*args, config=rembo_config, **kwargs)

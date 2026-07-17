@@ -200,7 +200,7 @@ class PCASingleTaskGP(_BaseProjectedSingleTaskGP):
         dim = _resolve_latent_dim(
             latent_dim=latent_dim,
             n_components=n_components,
-            default=train_X.shape[-1],
+            default=2,
         )
         self.pca_config = copy.deepcopy(pca_config) if pca_config is not None else PCAConfig(n_components=dim)
         self.pca = _clone_fitted_pca(fitted_pca) if fitted_pca is not None else PCATransformer(self.pca_config)
@@ -262,7 +262,7 @@ class REMBOSingleTaskGP(_BaseProjectedSingleTaskGP):
         dim = _resolve_latent_dim(
             latent_dim=latent_dim,
             n_components=n_components,
-            default=train_X.shape[-1],
+            default=2,
         )
         self.rembo_config = copy.deepcopy(rembo_config) if rembo_config is not None else REMBOConfig(n_components=dim, seed=seed)
         self.rembo = _clone_fitted_rembo(fitted_rembo) if fitted_rembo is not None else REMBOTransformer(self.rembo_config)
@@ -422,7 +422,7 @@ class PCAMixedSingleTaskGP(_BaseProjectedMixedSingleTaskGP):
             train_Yvar=train_Yvar,
             input_transform=input_transform,
         )
-        dim = _resolve_latent_dim(latent_dim=latent_dim, n_components=n_components, default=len(self.cont_dims))
+        dim = _resolve_latent_dim(latent_dim=latent_dim, n_components=n_components, default=2)
         self.pca_config = copy.deepcopy(pca_config) if pca_config is not None else PCAConfig(n_components=dim)
         self.pca = _clone_fitted_pca(fitted_pca) if fitted_pca is not None else PCATransformer(self.pca_config)
         if fitted_pca is None:
@@ -488,7 +488,7 @@ class REMBOMixedSingleTaskGP(_BaseProjectedMixedSingleTaskGP):
             train_Yvar=train_Yvar,
             input_transform=input_transform,
         )
-        dim = _resolve_latent_dim(latent_dim=latent_dim, n_components=n_components, default=len(self.cont_dims))
+        dim = _resolve_latent_dim(latent_dim=latent_dim, n_components=n_components, default=2)
         self.rembo_config = copy.deepcopy(rembo_config) if rembo_config is not None else REMBOConfig(n_components=dim, seed=seed)
         self.rembo = _clone_fitted_rembo(fitted_rembo) if fitted_rembo is not None else REMBOTransformer(self.rembo_config)
         if fitted_rembo is None:

@@ -253,7 +253,7 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
         train_Y: Tensor,
         *,
         num_classes: Optional[int] = None,
-        n_components: Optional[int] = 8,
+        n_components: Optional[int] = 2,
         pca_config: Optional[PCAConfig] = None,
         inducing_points_num: int = 128,
         learn_inducing_locations: bool = True,
@@ -276,7 +276,7 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
         self.pca_config = _resolve_pca_config(
             pca_config=pca_config,
             n_components=n_components,
-            default=self.preproject_train_input.shape[-1],
+            default=2,
         )
         self.projected_dim = int(self.pca_config.n_components)
         self.n_components = self.projected_dim
@@ -345,7 +345,7 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
         train_Y: Tensor,
         *,
         num_classes: Optional[int] = None,
-        n_components: Optional[int] = 8,
+        n_components: Optional[int] = 2,
         rembo_config: Optional[REMBOConfig] = None,
         seed: int = 42,
         inducing_points_num: int = 128,
@@ -369,7 +369,7 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
         self.rembo_config = _resolve_rembo_config(
             rembo_config=rembo_config,
             n_components=n_components,
-            default=self.preproject_train_input.shape[-1],
+            default=2,
             seed=seed,
         )
         self.projected_dim = int(self.rembo_config.n_components)
@@ -552,7 +552,7 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         cat_dims: Sequence[int] = (),
         category_counts: Optional[dict[int, int]] = None,
         cont_kernel: str = "matern52",
-        n_components: Optional[int] = 8,
+        n_components: Optional[int] = 2,
         pca_config: Optional[PCAConfig] = None,
         inducing_points_num: int = 128,
         learn_inducing_locations: bool = True,
@@ -577,7 +577,7 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         self.pca_config = _resolve_pca_config(
             pca_config=pca_config,
             n_components=n_components,
-            default=len(self.cont_dims),
+            default=2,
         )
         self.projected_dim = int(self.pca_config.n_components)
         self.n_components = self.projected_dim
@@ -658,7 +658,7 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         cat_dims: Sequence[int] = (),
         category_counts: Optional[dict[int, int]] = None,
         cont_kernel: str = "matern52",
-        n_components: Optional[int] = 8,
+        n_components: Optional[int] = 2,
         rembo_config: Optional[REMBOConfig] = None,
         seed: int = 42,
         inducing_points_num: int = 128,
@@ -684,7 +684,7 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         self.rembo_config = _resolve_rembo_config(
             rembo_config=rembo_config,
             n_components=n_components,
-            default=len(self.cont_dims),
+            default=2,
             seed=seed,
         )
         self.projected_dim = int(self.rembo_config.n_components)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from .automatic_default_utils import (
+    _call_objective,
     _infer_ordinal_utility_values,
     _objective_config_value,
     _sub_bundles,
@@ -135,12 +136,48 @@ def _compute_multiclass_best_f(bundle: ModelBundle, config: AcquisitionConfig) -
     )
 
 
+def _multifidelity_target_values(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    context: DataContext,
+) -> Any | None:
+    """Return observed values at the configured target fidelity when available."""
+
+    if str(bundle.model_type).replace("_", "").replace("-", "").lower() != "multifidelity":
+        return None
+    target_index = getattr(bundle.model, "target_fidelity_index", None)
+    if target_index is None:
+        return None
+
+    import torch
+
+    from .factory import build_objective
+
+    values = torch.as_tensor(bundle.train_Y)
+    if values.ndim != 2 or int(target_index) >= values.shape[-1]:
+        return None
+    target_values = values[:, int(target_index) : int(target_index) + 1]
+    finite_rows = torch.isfinite(target_values).all(dim=-1)
+    values = target_values[finite_rows]
+    if values.numel() == 0:
+        raise ValueError("No finite observations are available at target_fidelity.")
+    objective = build_objective(bundle=bundle, config=config, data_context=context)
+    if objective is not None:
+        objective_X = bundle.train_X
+        if torch.is_tensor(objective_X) and objective_X.shape[-2] == finite_rows.shape[0]:
+            objective_X = objective_X[finite_rows]
+        values = _call_objective(objective, values, objective_X)
+    return values
+
+
 def _compute_regression_best_f(
     bundle: ModelBundle,
     config: AcquisitionConfig,
     context: DataContext,
 ) -> Any:
-    values = _regression_observed_values(bundle, config, context)
+    values = _multifidelity_target_values(bundle, config, context)
+    if values is None:
+        values = _regression_observed_values(bundle, config, context)
     import torch
 
     values = torch.as_tensor(values)
@@ -168,5 +205,4 @@ def compute_best_f(
     context: DataContext,
 ) -> Any:
     """Compute the EI / PI baseline in the acquisition objective space."""
-
     return _compute_best_f(bundle, config, context)

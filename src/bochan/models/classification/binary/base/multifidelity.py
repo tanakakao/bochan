@@ -17,9 +17,6 @@ from bochan.models.components.mixed_kronecker import (
     normalize_mixed_dims,
     validate_mixed_input_transform_for_training,
 )
-from bochan.models.regression.gaussian.multifidelity import (
-    FidelityFeatureInputTransform,
-)
 
 from ._multifidelity_conditioning import _WideMultiFidelityConditioningMixin
 from ._multifidelity_core import _WideMultiFidelityBinaryCore
@@ -60,10 +57,10 @@ class WideMixedMultiFidelityBinaryClassificationGPModel(
         normalized_cat_dims = normalize_mixed_dims(
             cat_dims, int(raw_X.shape[-1])
         )
-        validation_transform = (
-            input_transform.base_transform
-            if isinstance(input_transform, FidelityFeatureInputTransform)
-            else input_transform
+        validation_transform = getattr(
+            input_transform,
+            "base_transform",
+            input_transform,
         )
         validate_mixed_input_transform_for_training(
             raw_X, validation_transform, cat_dims=normalized_cat_dims

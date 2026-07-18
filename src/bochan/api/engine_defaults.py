@@ -241,13 +241,18 @@ def resolve_multi_output_model_config(
 ) -> ModelConfig:
     """Resolve automatic wrapping for targets with two or more columns.
 
-    Correlated multi-task models consume wide targets directly and must remain a
-    single model rather than being split into a ModelList-style wrapper.
-    Homogeneous multiclass outputs use their dedicated probability-aware wrapper;
-    Hybrid remains reserved for heterogeneous output task types or explicit use.
+    Correlated multi-task and wide multi-fidelity models consume wide targets
+    directly and must remain a single model rather than being split into a
+    ModelList-style wrapper. Homogeneous multiclass outputs use their dedicated
+    probability-aware wrapper; Hybrid remains reserved for heterogeneous output
+    task types or explicit use.
     """
 
-    if _normalize_name(model_config.model_type) in {"kronecker", "multitask"}:
+    if _normalize_name(model_config.model_type) in {
+        "kronecker",
+        "multitask",
+        "multifidelity",
+    }:
         return model_config
 
     n_outputs = _num_outputs(train_Y)

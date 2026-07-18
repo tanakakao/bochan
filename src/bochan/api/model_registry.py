@@ -61,6 +61,10 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
                 "PerturbationSupportedKroneckerMultiTaskGP",
             ),
             "multitask": ("bochan.models.wide_multitask_variants", "WideMultiTaskGP"),
+            "multifidelity": (
+                "bochan.models.regression.gaussian",
+                "WideMultiFidelityGP",
+            ),
             "deepgp": ("bochan.models.regression.gaussian.deep", "DeepGPModel"),
             "deepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelGPModel"),
             "deepgpdeepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelDeepGPModel"),
@@ -91,6 +95,10 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "base": ("bochan.models.classification.binary.base", "BinaryClassificationGPModel"),
             "kronecker": ("bochan.models.classification.binary.base", "KroneckerMultiTaskBinaryClassificationGPModel"),
             "multitask": ("bochan.models.wide_multitask_variants", "WideMultiTaskBinaryClassificationGPModel"),
+            "multifidelity": (
+                "bochan.models.classification.binary.base",
+                "WideMultiFidelityBinaryClassificationGPModel",
+            ),
             "deepgp": ("bochan.models.classification.binary.deep", "BinaryClassificationDeepGPModel"),
             "deepkernel": ("bochan.models.classification.binary.deep", "DeepKernelBinaryClassificationGPModel"),
             "deepgpdeepkernel": ("bochan.models.classification.binary.deep", "DeepKernelBinaryClassificationDeepGPModel"),
@@ -130,6 +138,10 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
         "regression": {
             "base": ("botorch.models.gp_regression_mixed", "MixedSingleTaskGP"),
             "kronecker": ("bochan.models.regression.gaussian", "MixedKroneckerMultiTaskGP"),
+            "multifidelity": (
+                "bochan.models.regression.gaussian",
+                "WideMixedMultiFidelityGP",
+            ),
             "deepgp": ("bochan.models.regression.gaussian.deep", "DeepMixedGPModel"),
             "deepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelMixedGPModel"),
             "deepgpdeepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelDeepMixedGPModel"),
@@ -156,6 +168,10 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "base": ("bochan.models.classification.binary.base", "BinaryClassificationMixedGPModel"),
             "kronecker": ("bochan.models.classification.binary.base", "KroneckerMultiTaskBinaryClassificationMixedGPModel"),
             "multitask": ("bochan.models.classification.binary.base", "MultiTaskBinaryClassificationMixedGPModel"),
+            "multifidelity": (
+                "bochan.models.classification.binary.base",
+                "WideMixedMultiFidelityBinaryClassificationGPModel",
+            ),
             "deepgp": ("bochan.models.classification.binary.deep", "BinaryClassificationMixedDeepGPModel"),
             "deepkernel": ("bochan.models.classification.binary.deep", "DeepKernelBinaryClassificationMixedGPModel"),
             "deepgpdeepkernel": ("bochan.models.classification.binary.deep", "DeepKernelBinaryClassificationMixedDeepGPModel"),

@@ -2,16 +2,33 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from functools import lru_cache
+from typing import Any
+
 import torch
 from botorch.models.kernels.downsampling import DownsamplingKernel
 from botorch.models.transforms.input import InputTransform
 from gpytorch.kernels import Kernel, MaternKernel, ProductKernel, ScaleKernel
 from torch import Tensor
 
-from bochan.models.regression.gaussian.multifidelity import (
-    FidelityFeatureInputTransform,
-    wide_fidelity_to_long,
-)
+
+@lru_cache(maxsize=1)
+def _load_regression_multifidelity_helpers() -> tuple[type[InputTransform], Any]:
+    """Load shared fidelity helpers after model package initialization.
+
+    Importing the regression multi-fidelity module while the binary model package
+    is still initializing creates a cycle through ``wide_multitask_variants``.
+    The helpers are only needed when a binary multi-fidelity model is actually
+    constructed, so resolving them lazily keeps module imports acyclic.
+    """
+
+    from bochan.models.regression.gaussian.multifidelity import (
+        FidelityFeatureInputTransform,
+        wide_fidelity_to_long,
+    )
+
+    return FidelityFeatureInputTransform, wide_fidelity_to_long
 
 
 def prepare_fidelity_input_transform(
@@ -19,9 +36,28 @@ def prepare_fidelity_input_transform(
     data_dim: int,
 ) -> InputTransform | None:
     """Wrap a public-space transform while preserving appended fidelity."""
-    if transform is None or isinstance(transform, FidelityFeatureInputTransform):
+
+    fidelity_transform, _ = _load_regression_multifidelity_helpers()
+    if transform is None or isinstance(transform, fidelity_transform):
         return transform
-    return FidelityFeatureInputTransform(transform, data_dim=data_dim)
+    return fidelity_transform(transform, data_dim=data_dim)
+
+
+def wide_fidelity_to_long(
+    train_X: Tensor,
+    train_Y: Tensor,
+    fidelity_values: Sequence[float] | Tensor,
+    train_Yvar: Tensor | None = None,
+) -> tuple[Tensor, Tensor, Tensor | None]:
+    """Convert wide fidelity observations using the shared regression helper."""
+
+    _, converter = _load_regression_multifidelity_helpers()
+    return converter(
+        train_X,
+        train_Y,
+        fidelity_values,
+        train_Yvar=train_Yvar,
+    )
 
 
 def normalize_fidelity_values(
@@ -122,7 +158,6 @@ def wide_probability_tensors(
 
 
 __all__ = [
-    "FidelityFeatureInputTransform",
     "make_default_data_kernel",
     "make_multifidelity_kernel",
     "normalize_fidelity_values",

@@ -19,11 +19,13 @@ from bochan.acquisition._nparego_shape import (
 from . import hetero_multi_output as _hetero_multi_output
 from . import multi_output as _multi_output
 from .hetero_multi_output import (
-    qHeteroMultiOutputBinaryExpectedHypervolumeImprovement,
     qHeteroMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
 )
 from .hetero_multi_output import (
     qHeteroMultiOutputBinaryNParEGO as _BaseHeteroBinaryNParEGO,
+)
+from .hetero_multi_output_stable import (
+    qHeteroMultiOutputBinaryExpectedHypervolumeImprovement,
 )
 from .hetero_single_output import (
     qHeteroBinaryExpectedImprovement,

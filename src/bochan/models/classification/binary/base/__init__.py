@@ -18,6 +18,11 @@ from .models import (
     BinaryClassificationGPModel as _BinaryClassificationGPModel,
     BinaryClassificationMixedGPModel as _BinaryClassificationMixedGPModel,
 )
+from .multifidelity import (
+    WideMixedMultiFidelityBinaryClassificationGPModel,
+    WideMultiFidelityBinaryClassificationGPModel,
+    WideMultiFidelityBinaryClassificationMixedGPModel,
+)
 from .multioutput import MultiOutputBinaryClassificationModel
 from .multitask import MultiTaskBinaryClassificationGPModel
 from .multitask_mixed import MultiTaskBinaryClassificationMixedGPModel
@@ -106,4 +111,7 @@ __all__ = [
     "MultiOutputBinaryClassificationModel",
     "MultiTaskBinaryClassificationGPModel",
     "MultiTaskBinaryClassificationMixedGPModel",
+    "WideMixedMultiFidelityBinaryClassificationGPModel",
+    "WideMultiFidelityBinaryClassificationGPModel",
+    "WideMultiFidelityBinaryClassificationMixedGPModel",
 ]

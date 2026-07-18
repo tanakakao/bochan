@@ -95,6 +95,10 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "base": ("bochan.models.classification.binary.base", "BinaryClassificationGPModel"),
             "kronecker": ("bochan.models.classification.binary.base", "KroneckerMultiTaskBinaryClassificationGPModel"),
             "multitask": ("bochan.models.wide_multitask_variants", "WideMultiTaskBinaryClassificationGPModel"),
+            "multifidelity": (
+                "bochan.models.classification.binary.base",
+                "WideMultiFidelityBinaryClassificationGPModel",
+            ),
             "deepgp": ("bochan.models.classification.binary.deep", "BinaryClassificationDeepGPModel"),
             "deepkernel": ("bochan.models.classification.binary.deep", "DeepKernelBinaryClassificationGPModel"),
             "deepgpdeepkernel": ("bochan.models.classification.binary.deep", "DeepKernelBinaryClassificationDeepGPModel"),
@@ -164,6 +168,10 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "base": ("bochan.models.classification.binary.base", "BinaryClassificationMixedGPModel"),
             "kronecker": ("bochan.models.classification.binary.base", "KroneckerMultiTaskBinaryClassificationMixedGPModel"),
             "multitask": ("bochan.models.classification.binary.base", "MultiTaskBinaryClassificationMixedGPModel"),
+            "multifidelity": (
+                "bochan.models.classification.binary.base",
+                "WideMixedMultiFidelityBinaryClassificationGPModel",
+            ),
             "deepgp": ("bochan.models.classification.binary.deep", "BinaryClassificationMixedDeepGPModel"),
             "deepkernel": ("bochan.models.classification.binary.deep", "DeepKernelBinaryClassificationMixedGPModel"),
             "deepgpdeepkernel": ("bochan.models.classification.binary.deep", "DeepKernelBinaryClassificationMixedDeepGPModel"),

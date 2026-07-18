@@ -1,23 +1,31 @@
-"""Early stopping and generation scheduling for :mod:`bochan.api.study`.
+"""Early stopping, generation scheduling, and config defaults for studies.
 
-This module extends the base :class:`bochan.api.study.BochanStudy` with two
-study-level controls:
-
-- early stopping based on target achievement or lack of improvement
-- generation schedules that change q / acquisition / optimizer settings over time
-
-The implementation intentionally keeps the original study implementation intact
-and layers these controls on top of it.
+This module extends :class:`bochan.api.study.BochanStudy` without changing the
+ask/tell core.  The public study API accepts config dataclasses or serializable
+mappings and supplies practical single-objective regression defaults when the
+configs are omitted.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
-from .configs import AcquisitionConfig, DataContext, FitConfig, ModelConfig, OptimizeConfig
+from .acquisition_config import AcquisitionConfig
+from .configs import (
+    CandidateRepairConfig,
+    DataContext,
+    InputTransformConfig,
+    ModelConfig,
+    MultiObjectiveConfig,
+    MultiOutputConfig,
+    ObjectiveConfig,
+    OutputConfig,
+)
+from .fit_config import FitConfig
+from .optimizer_api import OptimizeConfig
 from .study import (
     BochanStudy as _BaseBochanStudy,
     CandidateBatch,
@@ -30,29 +38,12 @@ from .study import (
 
 Direction = Literal["maximize", "minimize"]
 TargetMode = Literal["ge", "le", "abs_diff_le"]
+ConfigLike = Mapping[str, Any]
 
 
 @dataclass
 class EarlyStoppingConfig:
-    """BochanStudy の batch 単位 early stopping 設定。
-
-    Args:
-        output_index: 停止判定に使う出力 index。
-        direction: 改善判定で使う方向。``maximize`` なら最大値、``minimize`` なら
-            最小値を best として扱う。
-        target: 目標値。None の場合は目標到達判定を無効にする。
-        target_mode: 目標到達の判定方法。
-            ``ge`` は target 以上、``le`` は target 以下、``abs_diff_le`` は
-            target との差の絶対値が ``target_tolerance`` 以下。
-        target_tolerance: 目標判定の許容幅。``ge`` / ``le`` では余裕幅として、
-            ``abs_diff_le`` では絶対誤差の閾値として使う。
-        target_patience: 目標到達が何 batch 続いたら停止するか。
-        no_improvement_patience: 改善なしが何 batch 続いたら停止するか。
-            None の場合は改善停滞による停止を無効にする。
-        min_delta: 改善とみなす最小変化量。
-        min_completed_trials: この数の COMPLETED trial が溜まるまでは停止判定しない。
-        enabled: False の場合は停止判定を無効にする。
-    """
+    """BochanStudy の batch 単位 early stopping 設定。"""
 
     output_index: int = 0
     direction: Direction = "maximize"
@@ -77,39 +68,48 @@ class StopDecision:
 
 @dataclass
 class GenerationStep:
-    """候補生成スケジュールの1区間。
-
-    Args:
-        name: 区間名。trial metadata にも保存する。
-        num_trials: この step を使う trial 数。複数 step で累積して解決される。
-        until_completed: この completed trial 数に到達するまでこの step を使う。
-            ``num_trials`` よりも絶対指定に近い。
-        q: この step で使う batch size。
-        acq_config: この step で使う獲得関数設定。
-        opt_config: この step で使う候補点最適化設定。
-        data_context: この step で使う DataContext。
-        metadata: 任意の補足情報。
-    """
+    """候補生成スケジュールの1区間。"""
 
     name: str | None = None
     num_trials: int | None = None
     until_completed: int | None = None
     q: int | None = None
-    acq_config: AcquisitionConfig | None = None
-    opt_config: OptimizeConfig | None = None
-    data_context: DataContext | None = None
+    acq_config: AcquisitionConfig | ConfigLike | str | None = None
+    opt_config: OptimizeConfig | ConfigLike | None = None
+    data_context: DataContext | ConfigLike | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.acq_config = _coerce_acquisition_config(
+            self.acq_config,
+            model_config=None,
+            use_default=False,
+        )
+        self.opt_config = _coerce_optimize_config(
+            self.opt_config,
+            use_default=False,
+        )
+        self.data_context = _coerce_data_context(
+            self.data_context,
+            bounds=None,
+            use_default=False,
+        )
+        self.metadata = dict(self.metadata)
 
 
 @dataclass
 class GenerationSchedule:
     """completed trial 数に応じて GenerationStep を切り替える設定。"""
 
-    steps: Sequence[GenerationStep]
+    steps: Sequence[GenerationStep | ConfigLike]
 
     def __post_init__(self) -> None:
         if not self.steps:
             raise ValueError("GenerationSchedule requires at least one step.")
+        self.steps = [
+            step if isinstance(step, GenerationStep) else GenerationStep(**dict(step))
+            for step in self.steps
+        ]
 
     def resolve(self, n_completed: int) -> GenerationStep:
         """現在の completed trial 数に対応する step を返す。"""
@@ -131,19 +131,64 @@ class GenerationSchedule:
         return last_step
 
 
+GenerationScheduleLike = (
+    GenerationSchedule
+    | Sequence[GenerationStep | ConfigLike]
+    | ConfigLike
+    | None
+)
+
+
 class BochanStudy(_BaseBochanStudy):
-    """Early stopping と generation schedule に対応した BochanStudy。"""
+    """Config defaults, dictionaries, early stopping, and schedules.
+
+    When omitted, the study uses ``ModelConfig()`` (regression/base),
+    ``FitConfig()``, ``AcquisitionConfig(name="EI")``, and ``OptimizeConfig()``.
+    Every config also accepts a mapping, including nested config mappings.
+    """
 
     def __init__(
         self,
         *args: Any,
-        generation_schedule: GenerationSchedule | Sequence[GenerationStep] | None = None,
-        early_stopping_config: EarlyStoppingConfig | None = None,
+        generation_schedule: GenerationScheduleLike = None,
+        early_stopping_config: EarlyStoppingConfig | ConfigLike | None = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(*args, **kwargs)
+        bounds = kwargs.get("bounds")
+        model_config = _coerce_model_config(
+            kwargs.pop("model_config", None),
+            use_default=True,
+        )
+        fit_config = _coerce_fit_config(
+            kwargs.pop("fit_config", None),
+            use_default=True,
+        )
+        acq_config = _coerce_acquisition_config(
+            kwargs.pop("acq_config", None),
+            model_config=model_config,
+            use_default=True,
+        )
+        opt_config = _coerce_optimize_config(
+            kwargs.pop("opt_config", None),
+            use_default=True,
+        )
+        data_context = _coerce_data_context(
+            kwargs.pop("data_context", None),
+            bounds=bounds,
+            use_default=True,
+        )
+
+        super().__init__(
+            *args,
+            model_config=model_config,
+            fit_config=fit_config,
+            acq_config=acq_config,
+            opt_config=opt_config,
+            data_context=data_context,
+            **kwargs,
+        )
         self.generation_schedule = _coerce_generation_schedule(generation_schedule)
-        self.early_stopping_config = early_stopping_config
+        self.early_stopping_config = _coerce_early_stopping_config(early_stopping_config)
         self._early_stopping_state: dict[str, Any] = {
             "target_count": 0,
             "no_improvement_count": 0,
@@ -155,19 +200,15 @@ class BochanStudy(_BaseBochanStudy):
         self,
         q: int | None = None,
         *,
-        acq_config: AcquisitionConfig | None = None,
-        opt_config: OptimizeConfig | None = None,
-        data_context: DataContext | None = None,
+        acq_config: AcquisitionConfig | ConfigLike | str | None = None,
+        opt_config: OptimizeConfig | ConfigLike | None = None,
+        data_context: DataContext | ConfigLike | None = None,
         mark_running: bool = False,
         return_batch: bool = False,
         fit: bool = True,
-        generation_schedule: GenerationSchedule | Sequence[GenerationStep] | None = None,
+        generation_schedule: GenerationScheduleLike = None,
     ) -> Any | CandidateBatch:
-        """次候補を生成する。
-
-        明示的な ``q`` / ``acq_config`` / ``opt_config`` / ``data_context`` が
-        渡された場合は、それらを schedule より優先します。
-        """
+        """次候補を生成する。明示値は generation step より優先する。"""
 
         step = self.current_generation_step(generation_schedule)
         if step is not None:
@@ -180,11 +221,26 @@ class BochanStudy(_BaseBochanStudy):
             if data_context is None and step.data_context is not None:
                 data_context = step.data_context
 
+        resolved_acq_config = _coerce_acquisition_config(
+            acq_config,
+            model_config=self.model_config,
+            use_default=False,
+        )
+        resolved_opt_config = _coerce_optimize_config(
+            opt_config,
+            use_default=False,
+        )
+        resolved_data_context = _coerce_data_context(
+            data_context,
+            bounds=self.bounds,
+            use_default=False,
+        )
+
         result = super().ask(
             q=q,
-            acq_config=acq_config,
-            opt_config=opt_config,
-            data_context=data_context,
+            acq_config=resolved_acq_config,
+            opt_config=resolved_opt_config,
+            data_context=resolved_data_context,
             mark_running=mark_running,
             return_batch=return_batch,
             fit=fit,
@@ -199,18 +255,14 @@ class BochanStudy(_BaseBochanStudy):
         *,
         n_trials: int,
         q: int = 1,
-        acq_config: AcquisitionConfig | None = None,
-        opt_config: OptimizeConfig | None = None,
+        acq_config: AcquisitionConfig | ConfigLike | str | None = None,
+        opt_config: OptimizeConfig | ConfigLike | None = None,
         save_path: str | Path | None = None,
         mark_running: bool = False,
-        early_stopping_config: EarlyStoppingConfig | None = None,
-        generation_schedule: GenerationSchedule | Sequence[GenerationStep] | None = None,
+        early_stopping_config: EarlyStoppingConfig | ConfigLike | None = None,
+        generation_schedule: GenerationScheduleLike = None,
     ) -> "BochanStudy":
-        """Python 関数を評価器として ask/tell ループを自動実行する。
-
-        各 batch の ``tell`` 後に early stopping を判定します。停止した場合は
-        ``self.stop_decision`` に理由を保存します。
-        """
+        """Python 関数を評価器として ask/tell ループを自動実行する。"""
 
         if n_trials <= 0:
             return self
@@ -245,7 +297,7 @@ class BochanStudy(_BaseBochanStudy):
 
     def current_generation_step(
         self,
-        generation_schedule: GenerationSchedule | Sequence[GenerationStep] | None = None,
+        generation_schedule: GenerationScheduleLike = None,
     ) -> GenerationStep | None:
         """現在の completed trial 数に対応する generation step を返す。"""
 
@@ -257,20 +309,13 @@ class BochanStudy(_BaseBochanStudy):
     def check_early_stop(
         self,
         *,
-        config: EarlyStoppingConfig | None = None,
+        config: EarlyStoppingConfig | ConfigLike | None = None,
         trial_ids: Sequence[int] | None = None,
         update: bool = True,
     ) -> StopDecision:
-        """early stopping 条件を判定する。
+        """early stopping 条件を判定する。"""
 
-        Args:
-            config: 明示的な停止設定。None の場合は study の既定設定を使う。
-            trial_ids: 直近 batch の trial ids。None の場合は completed trial 全体を
-                直近集合として扱う。
-            update: True の場合は patience counter を更新する。
-        """
-
-        cfg = config or self.early_stopping_config
+        cfg = _coerce_early_stopping_config(config) or self.early_stopping_config
         if cfg is None or not cfg.enabled:
             decision = StopDecision(False, None, {"enabled": False})
             self.stop_decision = decision
@@ -288,9 +333,21 @@ class BochanStudy(_BaseBochanStudy):
             self.stop_decision = decision
             return decision
 
-        recent_trials = self._completed_trials_from_ids(trial_ids) if trial_ids is not None else self.completed_trials()
-        recent_values = [_scalar_from_row(trial.y, cfg.output_index) for trial in recent_trials if trial.y is not None]
-        all_values = [_scalar_from_row(trial.y, cfg.output_index) for trial in self.completed_trials() if trial.y is not None]
+        recent_trials = (
+            self._completed_trials_from_ids(trial_ids)
+            if trial_ids is not None
+            else self.completed_trials()
+        )
+        recent_values = [
+            _scalar_from_row(trial.y, cfg.output_index)
+            for trial in recent_trials
+            if trial.y is not None
+        ]
+        all_values = [
+            _scalar_from_row(trial.y, cfg.output_index)
+            for trial in self.completed_trials()
+            if trial.y is not None
+        ]
         if not recent_values or not all_values:
             decision = StopDecision(False, None, {"reason": "no_completed_values"})
             self.stop_decision = decision
@@ -305,10 +362,7 @@ class BochanStudy(_BaseBochanStudy):
         target_hit = _target_hit(recent_values, cfg)
         if cfg.target is not None:
             target_count = int(self._early_stopping_state.get("target_count") or 0)
-            if target_hit:
-                target_count += 1
-            else:
-                target_count = 0
+            target_count = target_count + 1 if target_hit else 0
             if update:
                 self._early_stopping_state["target_count"] = target_count
             details.update(
@@ -334,7 +388,9 @@ class BochanStudy(_BaseBochanStudy):
                 direction=cfg.direction,
                 min_delta=float(cfg.min_delta),
             )
-            no_improvement_count = int(self._early_stopping_state.get("no_improvement_count") or 0)
+            no_improvement_count = int(
+                self._early_stopping_state.get("no_improvement_count") or 0
+            )
             if improved:
                 no_improvement_count = 0
                 if update:
@@ -379,8 +435,12 @@ class BochanStudy(_BaseBochanStudy):
 
         snapshot = super().to_snapshot()
         snapshot.metadata["generation_schedule"] = _safe_asdict(self.generation_schedule)
-        snapshot.metadata["early_stopping_config"] = _safe_asdict(self.early_stopping_config)
-        snapshot.metadata["early_stopping_state"] = _to_jsonable(self._early_stopping_state)
+        snapshot.metadata["early_stopping_config"] = _safe_asdict(
+            self.early_stopping_config
+        )
+        snapshot.metadata["early_stopping_state"] = _to_jsonable(
+            self._early_stopping_state
+        )
         snapshot.metadata["stop_decision"] = _safe_asdict(self.stop_decision)
         return snapshot
 
@@ -389,17 +449,17 @@ class BochanStudy(_BaseBochanStudy):
         cls,
         path: str | Path,
         *,
-        model_config: ModelConfig | None = None,
-        acq_config: AcquisitionConfig | None = None,
-        opt_config: OptimizeConfig | None = None,
-        fit_config: FitConfig | None = None,
+        model_config: ModelConfig | ConfigLike | None = None,
+        acq_config: AcquisitionConfig | ConfigLike | str | None = None,
+        opt_config: OptimizeConfig | ConfigLike | None = None,
+        fit_config: FitConfig | ConfigLike | None = None,
         bounds: Any | None = None,
-        data_context: DataContext | None = None,
+        data_context: DataContext | ConfigLike | None = None,
         n_initial_random: int = 0,
         model_registry: Mapping[Any, Any] | None = None,
         acquisition_registry: Mapping[str, Any] | None = None,
-        generation_schedule: GenerationSchedule | Sequence[GenerationStep] | None = None,
-        early_stopping_config: EarlyStoppingConfig | None = None,
+        generation_schedule: GenerationScheduleLike = None,
+        early_stopping_config: EarlyStoppingConfig | ConfigLike | None = None,
     ) -> "BochanStudy":
         """save() した JSON から study を復元する。"""
 
@@ -423,13 +483,19 @@ class BochanStudy(_BaseBochanStudy):
         study.next_trial_id = int(raw.get("next_trial_id", 0))
         study.trials = [Trial.from_dict(item) for item in raw.get("trials", [])]
         if study.trials:
-            study.next_trial_id = max(study.next_trial_id, max(trial.trial_id for trial in study.trials) + 1)
+            study.next_trial_id = max(
+                study.next_trial_id,
+                max(trial.trial_id for trial in study.trials) + 1,
+            )
         state = (raw.get("metadata") or {}).get("early_stopping_state")
         if isinstance(state, Mapping):
             study._early_stopping_state.update(dict(state))
         return study
 
-    def _completed_trials_from_ids(self, trial_ids: Sequence[int] | None) -> list[Trial]:
+    def _completed_trials_from_ids(
+        self,
+        trial_ids: Sequence[int] | None,
+    ) -> list[Trial]:
         if trial_ids is None:
             return self.completed_trials()
         by_id = {trial.trial_id: trial for trial in self.trials}
@@ -440,7 +506,11 @@ class BochanStudy(_BaseBochanStudy):
                 trials.append(trial)
         return trials
 
-    def _annotate_generation_step(self, trial_ids: Sequence[int], step: GenerationStep) -> None:
+    def _annotate_generation_step(
+        self,
+        trial_ids: Sequence[int],
+        step: GenerationStep,
+    ) -> None:
         by_id = {trial.trial_id: trial for trial in self.trials}
         for trial_id in trial_ids:
             trial = by_id.get(int(trial_id))
@@ -452,23 +522,240 @@ class BochanStudy(_BaseBochanStudy):
                 trial.metadata["generation_step_metadata"] = dict(step.metadata)
 
 
+def _coerce_input_transform_config(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return InputTransformConfig(**dict(value))
+    return value
+
+
+def _coerce_fit_config(
+    value: FitConfig | ConfigLike | None,
+    *,
+    use_default: bool,
+) -> FitConfig | Any | None:
+    if value is None:
+        return FitConfig() if use_default else None
+    if isinstance(value, Mapping):
+        payload = dict(value)
+        aliases = {
+            "fit_method": "method",
+            "fit_optimizer_kwargs": "optimizer_kwargs",
+            "fit_beta": "beta",
+        }
+        for alias, target in aliases.items():
+            if alias in payload and target not in payload:
+                payload[target] = payload.pop(alias)
+        return FitConfig(**payload)
+    return value
+
+
+def _coerce_output_config(value: Any) -> Any:
+    if not isinstance(value, Mapping):
+        return value
+    payload = dict(value)
+    if "input_transform_config" in payload:
+        payload["input_transform_config"] = _coerce_input_transform_config(
+            payload["input_transform_config"]
+        )
+    if "fit_config" in payload:
+        payload["fit_config"] = _coerce_fit_config(
+            payload["fit_config"],
+            use_default=False,
+        )
+    return OutputConfig(**payload)
+
+
+def _coerce_multi_output_config(value: Any) -> Any:
+    if not isinstance(value, Mapping):
+        return value
+    payload = dict(value)
+    output_configs = payload.get("output_configs")
+    if output_configs is not None:
+        payload["output_configs"] = [
+            _coerce_output_config(item) for item in output_configs
+        ]
+    output_fit_configs = payload.get("output_fit_configs")
+    if isinstance(output_fit_configs, Mapping):
+        payload["output_fit_configs"] = _coerce_fit_config(
+            output_fit_configs,
+            use_default=False,
+        )
+    elif isinstance(output_fit_configs, (list, tuple)):
+        payload["output_fit_configs"] = [
+            _coerce_fit_config(item, use_default=False)
+            for item in output_fit_configs
+        ]
+    return MultiOutputConfig(**payload)
+
+
+def _coerce_model_config(
+    value: ModelConfig | ConfigLike | None,
+    *,
+    use_default: bool,
+) -> ModelConfig | Any | None:
+    if value is None:
+        return ModelConfig() if use_default else None
+    if not isinstance(value, Mapping):
+        return value
+    payload = dict(value)
+    if "input_transform_config" in payload:
+        payload["input_transform_config"] = _coerce_input_transform_config(
+            payload["input_transform_config"]
+        )
+    if "multi_output_config" in payload:
+        payload["multi_output_config"] = _coerce_multi_output_config(
+            payload["multi_output_config"]
+        )
+    return ModelConfig(**payload)
+
+
+def _default_acquisition_name(model_config: ModelConfig | Any | None) -> str:
+    task_type = str(getattr(model_config, "task_type", "regression")).lower()
+    return "NEHVI" if task_type == "multi_objective" else "EI"
+
+
+def _coerce_acquisition_config(
+    value: AcquisitionConfig | ConfigLike | str | None,
+    *,
+    model_config: ModelConfig | Any | None,
+    use_default: bool,
+) -> AcquisitionConfig | Any | None:
+    if value is None:
+        if not use_default:
+            return None
+        return AcquisitionConfig(name=_default_acquisition_name(model_config))
+    if isinstance(value, str):
+        return AcquisitionConfig(name=value)
+    if not isinstance(value, Mapping):
+        return value
+
+    payload = dict(value)
+    if "acq_name" in payload and "name" not in payload:
+        payload["name"] = payload.pop("acq_name")
+    payload.setdefault("name", _default_acquisition_name(model_config))
+
+    objective_aliases = {
+        "objective_mode": "mode",
+        "objective_output": "output",
+        "objective_outputs": "outputs",
+        "objective_specs": "specs",
+        "objective_directions": "directions",
+        "objective_weights": "weights",
+        "objective_eq_targets": "eq_targets",
+        "objective_direction": "direction",
+        "objective_weight": "weight",
+        "objective_eq_target": "eq_target",
+        "objective_n_w": "n_w",
+        "objective_risk_type": "risk_type",
+        "objective_alpha": "alpha",
+        "objective_maximize": "maximize",
+        "objective_aggregate_mean_when_no_risk": (
+            "aggregate_mean_when_no_risk"
+        ),
+        "objective_allow_unexpanded": "allow_unexpanded",
+        "objective_utility_values": "utility_values",
+        "objective_ordinal_likelihood": "ordinal_likelihood",
+    }
+    objective_value = payload.get("objective_config")
+    objective_payload = (
+        dict(objective_value)
+        if isinstance(objective_value, Mapping)
+        else {}
+    )
+    for alias, target in objective_aliases.items():
+        if alias in payload:
+            objective_payload[target] = payload.pop(alias)
+    if objective_payload:
+        payload["objective_config"] = ObjectiveConfig(**objective_payload)
+    elif isinstance(objective_value, Mapping):
+        payload["objective_config"] = ObjectiveConfig(**dict(objective_value))
+    return AcquisitionConfig(**payload)
+
+
+def _coerce_repair_config(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return CandidateRepairConfig(**dict(value))
+    return value
+
+
+def _coerce_optimize_config(
+    value: OptimizeConfig | ConfigLike | None,
+    *,
+    use_default: bool,
+) -> OptimizeConfig | Any | None:
+    if value is None:
+        return OptimizeConfig() if use_default else None
+    if not isinstance(value, Mapping):
+        return value
+    payload = dict(value)
+    if "repair_config" in payload:
+        payload["repair_config"] = _coerce_repair_config(payload["repair_config"])
+    return OptimizeConfig(**payload)
+
+
+def _coerce_data_context(
+    value: DataContext | ConfigLike | None,
+    *,
+    bounds: Any | None,
+    use_default: bool,
+) -> DataContext | Any | None:
+    if value is None:
+        return DataContext(bounds=bounds) if use_default else None
+    if isinstance(value, Mapping):
+        payload = dict(value)
+        if isinstance(payload.get("multi_objective"), Mapping):
+            payload["multi_objective"] = MultiObjectiveConfig(
+                **dict(payload["multi_objective"])
+            )
+        if payload.get("bounds") is None and bounds is not None:
+            payload["bounds"] = bounds
+        return DataContext(**payload)
+    if getattr(value, "bounds", None) is None and bounds is not None:
+        try:
+            return replace(value, bounds=bounds)
+        except TypeError:
+            pass
+    return value
+
+
+def _coerce_early_stopping_config(
+    value: EarlyStoppingConfig | ConfigLike | None,
+) -> EarlyStoppingConfig | None:
+    if value is None or isinstance(value, EarlyStoppingConfig):
+        return value
+    if isinstance(value, Mapping):
+        return EarlyStoppingConfig(**dict(value))
+    raise TypeError(
+        "early_stopping_config must be None, a mapping, or EarlyStoppingConfig. "
+        f"Got {type(value).__name__}."
+    )
+
+
 def _coerce_generation_schedule(
-    schedule: GenerationSchedule | Sequence[GenerationStep] | None,
+    schedule: GenerationScheduleLike,
 ) -> GenerationSchedule | None:
     if schedule is None:
         return None
     if isinstance(schedule, GenerationSchedule):
         return schedule
+    if isinstance(schedule, Mapping):
+        return GenerationSchedule(**dict(schedule))
     return GenerationSchedule(steps=list(schedule))
 
 
 def _best_value(values: Sequence[float], direction: Direction) -> float:
     if direction == "minimize":
-        return min(float(v) for v in values)
-    return max(float(v) for v in values)
+        return min(float(value) for value in values)
+    return max(float(value) for value in values)
 
 
-def _is_improved(value: float, best: float, *, direction: Direction, min_delta: float) -> bool:
+def _is_improved(
+    value: float,
+    best: float,
+    *,
+    direction: Direction,
+    min_delta: float,
+) -> bool:
     if direction == "minimize":
         return float(value) < float(best) - float(min_delta)
     return float(value) > float(best) + float(min_delta)
@@ -478,13 +765,13 @@ def _target_hit(values: Sequence[float], config: EarlyStoppingConfig) -> bool:
     if config.target is None:
         return False
     target = float(config.target)
-    tol = float(config.target_tolerance)
+    tolerance = float(config.target_tolerance)
     if config.target_mode == "ge":
-        return max(float(v) for v in values) >= target + tol
+        return max(float(value) for value in values) >= target + tolerance
     if config.target_mode == "le":
-        return min(float(v) for v in values) <= target - tol
+        return min(float(value) for value in values) <= target - tolerance
     if config.target_mode == "abs_diff_le":
-        return min(abs(float(v) - target) for v in values) <= tol
+        return min(abs(float(value) - target) for value in values) <= tolerance
     raise ValueError(f"Unknown target_mode: {config.target_mode!r}")
 
 

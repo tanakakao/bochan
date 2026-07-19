@@ -1,0 +1,36 @@
+name: Study results smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[test,api,visualization]"
+      - name: Run Study tests
+        run: |
+          pytest -q --maxfail=1 \
+            tests/api/test_study.py \
+            tests/api/test_study_results.py \
+            tests/test_study_visualization.py
+      - name: Run lint
+        run: |
+          python -m pip install ruff
+          ruff check \
+            src/bochan/api/study_controls.py \
+            src/bochan/api/study_results.py \
+            src/bochan/visualization/__init__.py \
+            src/bochan/visualization/study.py \
+            tests/api/test_study_results.py \
+            tests/test_study_visualization.py

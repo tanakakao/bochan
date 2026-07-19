@@ -1,0 +1,56 @@
+name: Apply Study results integration
+
+on:
+  push:
+    branches:
+      - agent/study-best-results-visualization
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/study-best-results-visualization
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Apply integration patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("tools/agent_apply_study_results.py")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace(
+              'text = path.read_text(encoding="utf-8")n\nmethod_marker',
+              'text = path.read_text(encoding="utf-8")\nmethod_marker',
+          )
+          path.write_text(text, encoding="utf-8")
+          PY
+          python -m py_compile tools/agent_apply_study_results.py
+          python tools/agent_apply_study_results.py
+          python -m py_compile \
+            src/bochan/api/study_results.py \
+            src/bochan/api/study_controls.py \
+            src/bochan/visualization/study.py \
+            src/bochan/visualization/__init__.py \
+            tests/api/test_study_results.py \
+            tests/test_study_visualization.py
+      - name: Commit integrated changes
+        shell: bash
+        run: |
+          rm tools/agent_apply_study_results.py
+          rm .github/workflows/agent-study-results-patch.yml
+          git config user.name "OpenAI"
+          git config user.email "noreply@openai.com"
+          git add -A
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Add Study best results and visualization"
+          git push origin HEAD:agent/study-best-results-visualization

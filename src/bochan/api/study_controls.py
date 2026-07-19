@@ -35,6 +35,7 @@ from .study import (
     _scalar_from_row,
     _to_jsonable,
 )
+from .study_results import install_study_result_api
 
 Direction = Literal["maximize", "minimize"]
 TargetMode = Literal["ge", "le", "abs_diff_le"]
@@ -782,3 +783,6 @@ def _safe_asdict(value: Any) -> Any:
         return _to_jsonable(asdict(value))
     except Exception:
         return repr(value)
+
+
+install_study_result_api(BochanStudy)

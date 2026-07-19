@@ -51,7 +51,6 @@ jobs:
           git config user.name "OpenAI"
           git config user.email "noreply@openai.com"
           git add \
-            .github/workflows/wide-multitask-smoke.yml \
             src/bochan/api/STUDY_README.md \
             src/bochan/api/study_controls.py \
             src/bochan/visualization/README.md \

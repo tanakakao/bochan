@@ -59,6 +59,70 @@ def test_fit_tabular_model_encodes_string_categories(client_and_store) -> None:
     assert client.get("/api/v1/tabular/models").json()["model_ids"] == []
 
 
+def test_fit_tabular_hybrid_accepts_top_level_multi_output_config(
+    client_and_store,
+) -> None:
+    client, store = client_and_store
+    records = [
+        {
+            "x1": float(index) / 10.0,
+            "x2": float(index % 3),
+            "property": 0.1 + 0.05 * index,
+            "quality": "high" if index % 2 else "low",
+        }
+        for index in range(10)
+    ]
+
+    response = client.post(
+        "/api/v1/tabular/models",
+        json={
+            "data": records,
+            "input_cols": ["x1", "x2"],
+            "target_cols": ["property", "quality"],
+            "model_config": {
+                "task_type": "hybrid",
+                "input_transform_config": {
+                    "perturbation": False,
+                    "n_w": 4,
+                    "std": 0.1,
+                },
+            },
+            "multi_output_config": {
+                "output_configs": [
+                    {
+                        "task_type": "regression",
+                        "model_type": "base",
+                        "name": "property",
+                    },
+                    {
+                        "task_type": "binary",
+                        "model_type": "base",
+                        "name": "quality",
+                    },
+                ],
+                "use_hybrid": True,
+            },
+            "fit_config": {"skip_fit": True},
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["task_type"] == "hybrid"
+    assert body["target_names"] == ["property", "quality"]
+    assert body["target_category_maps"]["quality"] == {"low": 0, "high": 1}
+
+    optimizer = store.get(body["model_id"])
+    multi_output_config = optimizer.model_config.multi_output_config
+    assert multi_output_config is not None
+    assert multi_output_config.use_hybrid is True
+    assert multi_output_config.output_configs is not None
+    assert [config["name"] for config in multi_output_config.output_configs] == [
+        "property",
+        "quality",
+    ]
+
+
 class _FakeTabularOptimizer:
     def predict(self, data, **kwargs):
         assert list(data.columns) == ["material", "temperature"]

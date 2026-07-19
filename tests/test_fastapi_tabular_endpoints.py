@@ -115,3 +115,84 @@ def test_tabular_predict_and_candidate_return_records(client_and_store) -> None:
         {"material": "B", "temperature": 150.0}
     ]
     assert candidate_response.json()["acq_value"] == pytest.approx(1.25)
+
+
+def test_fastapi_multiclass_pca_nparego_matches_tabular_api(client_and_store) -> None:
+    client, store = client_and_store
+    records = []
+    for index in range(18):
+        class_index = index % 3
+        records.append(
+            {
+                "raw material 1": 0.1 + 0.02 * index,
+                "raw material 2": 0.8 - 0.015 * index,
+                "raw material 3": 0.1 + 0.005 * (index % 5),
+                "temperature": 90.0 + 3.0 * index,
+                "time": 5.0 + float(index % 6),
+                "y_ord_str": ["a", "b", "c"][class_index],
+                "y_ord_str2": class_index,
+            }
+        )
+
+    fit_response = client.post(
+        "/api/v1/tabular/models",
+        json={
+            "data": records,
+            "input_cols": [
+                "raw material 1",
+                "raw material 2",
+                "raw material 3",
+                "temperature",
+                "time",
+            ],
+            "target_cols": ["y_ord_str", "y_ord_str2"],
+            "model_config": {
+                "task_type": "multiclass",
+                "model_type": "pca",
+                "input_transform_config": {
+                    "perturbation": True,
+                    "n_w": 4,
+                    "std": 0.1,
+                },
+            },
+            "fit_config": {"maxiter": 8},
+        },
+    )
+    assert fit_response.status_code == 200, fit_response.text
+
+    model_id = fit_response.json()["model_id"]
+    optimizer = store.get(model_id)
+    direct_candidates, _ = optimizer.candidate(
+        acq_config={"name": "nparego"},
+        opt_config={
+            "q": 2,
+            "optimizer": "optimize_acqf",
+            "num_restarts": 2,
+            "raw_samples": 4,
+        },
+    )
+    assert len(direct_candidates) == 2
+
+    candidate_response = client.post(
+        f"/api/v1/tabular/models/{model_id}/candidates",
+        json={
+            "acquisition_config": {"name": "nparego"},
+            "optimize_config": {
+                "q": 2,
+                "optimizer": "optimize_acqf",
+                "num_restarts": 2,
+                "raw_samples": 4,
+            },
+        },
+    )
+
+    assert candidate_response.status_code == 200, candidate_response.text
+    body = candidate_response.json()
+    assert len(body["candidates"]) == 2
+    assert body["columns"] == [
+        "raw material 1",
+        "raw material 2",
+        "raw material 3",
+        "temperature",
+        "time",
+    ]

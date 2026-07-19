@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -204,7 +204,7 @@ def get_best(
     study_id: str,
     output_index: int = 0,
     direction: Literal["maximize", "minimize"] | None = None,
-    param_names: list[str] | None = Query(default=None),
+    param_names: Annotated[list[str] | None, Query()] = None,
     store: StudyStore = STUDY_STORE_DEP,
 ) -> StudyBestResponse:
     def operation(study: BochanStudy) -> StudyBestResponse:

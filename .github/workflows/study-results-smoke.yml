@@ -28,32 +28,34 @@ jobs:
 
           path = Path("src/bochan/api/study_results.py")
           text = path.read_text(encoding="utf-8")
-          old = '''    return get_best_trial(
-              self,
-              output_index=output_index,
-              direction=direction,
-          ).x
-          '''
-          new = '''    x = get_best_trial(
-              self,
-              output_index=output_index,
-              direction=direction,
-          ).x
-          shape = getattr(x, "shape", None)
-          if shape is not None:
-              try:
-                  if len(shape) > 1 and int(shape[0]) == 1:
-                      return x[0]
-              except (TypeError, ValueError):
-                  pass
-          if isinstance(x, Sequence) and not isinstance(x, (str, bytes)):
-              try:
-                  if len(x) == 1 and isinstance(x[0], Sequence):
-                      return x[0]
-              except (TypeError, IndexError):
-                  pass
-          return x
-          '''
+          old = (
+              "    return get_best_trial(\n"
+              "        self,\n"
+              "        output_index=output_index,\n"
+              "        direction=direction,\n"
+              "    ).x\n"
+          )
+          new = (
+              "    x = get_best_trial(\n"
+              "        self,\n"
+              "        output_index=output_index,\n"
+              "        direction=direction,\n"
+              "    ).x\n"
+              "    shape = getattr(x, \"shape\", None)\n"
+              "    if shape is not None:\n"
+              "        try:\n"
+              "            if len(shape) > 1 and int(shape[0]) == 1:\n"
+              "                return x[0]\n"
+              "        except (TypeError, ValueError):\n"
+              "            pass\n"
+              "    if isinstance(x, Sequence) and not isinstance(x, (str, bytes)):\n"
+              "        try:\n"
+              "            if len(x) == 1 and isinstance(x[0], Sequence):\n"
+              "                return x[0]\n"
+              "        except (TypeError, IndexError):\n"
+              "            pass\n"
+              "    return x\n"
+          )
           if old not in text:
               raise RuntimeError("get_best_x patch marker was not found")
           path.write_text(text.replace(old, new, 1), encoding="utf-8")

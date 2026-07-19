@@ -5,13 +5,16 @@ from __future__ import annotations
 from .stores import (
     FileOptimizerStore,
     InMemoryOptimizerStore,
+    InMemoryStudyStore,
     InMemoryTabularOptimizerStore,
     OptimizerStore,
+    StudyStore,
     TabularOptimizerStore,
 )
 
 _DEFAULT_STORE = InMemoryOptimizerStore()
 _DEFAULT_TABULAR_STORE = InMemoryTabularOptimizerStore()
+_DEFAULT_STUDY_STORE = InMemoryStudyStore()
 _DEFAULT_FILE_STORE = FileOptimizerStore()
 
 
@@ -27,6 +30,12 @@ def get_tabular_optimizer_store() -> TabularOptimizerStore:
     return _DEFAULT_TABULAR_STORE
 
 
+def get_study_store() -> StudyStore:
+    """Return the process-local store used by BochanStudy endpoints."""
+
+    return _DEFAULT_STUDY_STORE
+
+
 def get_file_optimizer_store() -> FileOptimizerStore:
     """Return the default file artifact store used by API endpoints."""
 
@@ -36,10 +45,13 @@ def get_file_optimizer_store() -> FileOptimizerStore:
 __all__ = [
     "FileOptimizerStore",
     "InMemoryOptimizerStore",
+    "InMemoryStudyStore",
     "InMemoryTabularOptimizerStore",
     "OptimizerStore",
+    "StudyStore",
     "TabularOptimizerStore",
     "get_file_optimizer_store",
     "get_optimizer_store",
+    "get_study_store",
     "get_tabular_optimizer_store",
 ]

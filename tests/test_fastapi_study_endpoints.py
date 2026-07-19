@@ -159,3 +159,31 @@ def test_study_observations_pareto_and_trial_states(client_and_store) -> None:
     delete_response = client.delete(f"/api/v1/studies/{state_study_id}")
     assert delete_response.status_code == 200
     assert client.get(f"/api/v1/studies/{state_study_id}").status_code == 404
+
+
+def test_study_create_preserves_public_dictionary_aliases(client_and_store) -> None:
+    client, store = client_and_store
+    response = client.post(
+        "/api/v1/studies",
+        json={
+            "bounds": [[0.0], [1.0]],
+            "n_initial_random": 2,
+            "fit_config": {
+                "fit_method": "auto",
+                "fit_optimizer_kwargs": {"options": {"maxiter": 16}},
+                "fit_beta": 0.5,
+            },
+            "acquisition_config": {
+                "acq_name": "UCB",
+                "objective_direction": "minimize",
+                "acqf_kwargs": {"beta": 2.0},
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+    study = store.get(response.json()["study_id"])
+    assert study.fit_config.method == "auto"
+    assert study.fit_config.optimizer_kwargs == {"options": {"maxiter": 16}}
+    assert study.fit_config.beta == pytest.approx(0.5)
+    assert study.acq_config.name == "UCB"
+    assert study.acq_config.objective_config.direction == "minimize"

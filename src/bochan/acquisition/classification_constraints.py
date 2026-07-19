@@ -122,7 +122,6 @@ def _patch_hypervolume_constraints(acquisition_cls: type) -> None:
 
     if getattr(acquisition_cls, "_bochan_objective_constraint_patched", False):
         return
-
     original_init = acquisition_cls.__init__
     public_signature = _capture_public_signature(acquisition_cls)
 
@@ -324,7 +323,10 @@ def _patch_multiclass_nparego() -> None:
         Xq = module.ensure_q_batch(X)
         posterior = self.model.posterior(Xq)
         samples = self.get_posterior_samples(posterior)
-        objective_values = self.base_objective(samples, X=None)
+        # Keep the public candidate tensor available to one-to-many objectives.
+        # This lets InputPerturbation distinguish an already raw-q posterior from
+        # an expanded q*n_w posterior before NParEGO scalarization.
+        objective_values = self.base_objective(samples, X=Xq)
         scalarized = self._scalarize(objective_values)
         improvement = (
             scalarized - self.best_value.to(scalarized)

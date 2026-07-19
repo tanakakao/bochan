@@ -4,12 +4,16 @@ on:
   push:
     branches:
       - agent/study-best-results-visualization
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   patch:
+    if: github.head_ref == 'agent/study-best-results-visualization' || github.ref_name == 'agent/study-best-results-visualization'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

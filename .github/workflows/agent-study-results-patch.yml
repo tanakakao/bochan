@@ -48,11 +48,15 @@ jobs:
       - name: Commit integrated changes
         shell: bash
         run: |
-          rm tools/agent_apply_study_results.py
-          rm .github/workflows/agent-study-results-patch.yml
           git config user.name "OpenAI"
           git config user.email "noreply@openai.com"
-          git add -A
+          git add \
+            .github/workflows/wide-multitask-smoke.yml \
+            src/bochan/api/STUDY_README.md \
+            src/bochan/api/study_controls.py \
+            src/bochan/visualization/README.md \
+            src/bochan/visualization/__init__.py \
+            src/bochan/visualization/study.py
           if git diff --cached --quiet; then
             exit 0
           fi

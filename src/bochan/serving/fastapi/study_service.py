@@ -19,14 +19,82 @@ from .converters import (
 )
 from .schemas.study import StudyCreateRequest, StudySummaryResponse
 
+_OBJECTIVE_ALIASES = {
+    "objective_mode": "mode",
+    "objective_output": "output",
+    "objective_outputs": "outputs",
+    "objective_specs": "specs",
+    "objective_directions": "directions",
+    "objective_weights": "weights",
+    "objective_eq_targets": "eq_targets",
+    "objective_direction": "direction",
+    "objective_weight": "weight",
+    "objective_eq_target": "eq_target",
+    "objective_n_w": "n_w",
+    "objective_risk_type": "risk_type",
+    "objective_alpha": "alpha",
+    "objective_maximize": "maximize",
+    "objective_aggregate_mean_when_no_risk": "aggregate_mean_when_no_risk",
+    "objective_allow_unexpanded": "allow_unexpanded",
+    "objective_utility_values": "utility_values",
+    "objective_ordinal_likelihood": "ordinal_likelihood",
+}
 
-def acquisition_config(value: Any, options: Any) -> Any:
-    if value is None or isinstance(value, str):
+
+def _default_acquisition_name(model_config: Any | None) -> str:
+    task_type = str(getattr(model_config, "task_type", "regression")).lower()
+    return "NEHVI" if task_type == "multi_objective" else "EI"
+
+
+def fit_config(value: Any) -> Any:
+    """Convert FitConfig while preserving Study convenience aliases."""
+    if value is None:
+        return None
+    payload = dict(value) if isinstance(value, Mapping) else value
+    if isinstance(payload, dict):
+        aliases = {
+            "fit_method": "method",
+            "fit_optimizer_kwargs": "optimizer_kwargs",
+            "fit_beta": "beta",
+        }
+        for alias, target in aliases.items():
+            if alias in payload and target not in payload:
+                payload[target] = payload.pop(alias)
+    return to_fit_config(payload)
+
+
+def acquisition_config(
+    value: Any,
+    options: Any,
+    *,
+    model_config: Any | None = None,
+) -> Any:
+    """Convert AcquisitionConfig and retain the public Study dict aliases."""
+    if value is None:
+        return None
+    if isinstance(value, str):
         return value
-    return to_acquisition_config(value, options)
+    payload = dict(value)
+    if "acq_name" in payload and "name" not in payload:
+        payload["name"] = payload.pop("acq_name")
+    payload.setdefault("name", _default_acquisition_name(model_config))
+
+    raw_objective = payload.get("objective_config")
+    objective_payload = dict(raw_objective) if isinstance(raw_objective, Mapping) else {}
+    for alias, target in _OBJECTIVE_ALIASES.items():
+        if alias in payload:
+            objective_payload[target] = payload.pop(alias)
+    if objective_payload:
+        payload["objective_config"] = objective_payload
+    return to_acquisition_config(payload, options)
 
 
-def generation_schedule(value: Any, options: Any) -> Any:
+def generation_schedule(
+    value: Any,
+    options: Any,
+    *,
+    model_config: Any | None = None,
+) -> Any:
     if value is None:
         return None
     payload = {"steps": value} if isinstance(value, list) else dict(value)
@@ -38,7 +106,11 @@ def generation_schedule(value: Any, options: Any) -> Any:
         if "optimize_config" in step and "opt_config" not in step:
             step["opt_config"] = step.pop("optimize_config")
         if step.get("acq_config") is not None:
-            step["acq_config"] = acquisition_config(step["acq_config"], options)
+            step["acq_config"] = acquisition_config(
+                step["acq_config"],
+                options,
+                model_config=model_config,
+            )
         if step.get("opt_config") is not None:
             step["opt_config"] = to_optimize_config(step["opt_config"], options)
         if step.get("data_context") is not None:
@@ -54,18 +126,19 @@ def build_study(
     metadata: Mapping[str, Any] | None = None,
 ) -> BochanStudy:
     options = request.tensor_options
+    model_config = (
+        to_model_config(request.bo_model_config, options)
+        if request.bo_model_config is not None
+        else None
+    )
     study = BochanStudy(
-        model_config=(
-            to_model_config(request.bo_model_config, options)
-            if request.bo_model_config is not None
-            else None
+        model_config=model_config,
+        fit_config=fit_config(request.fit_config),
+        acq_config=acquisition_config(
+            request.acq_config,
+            options,
+            model_config=model_config,
         ),
-        fit_config=(
-            to_fit_config(request.fit_config)
-            if request.fit_config is not None
-            else None
-        ),
-        acq_config=acquisition_config(request.acq_config, options),
         opt_config=(
             to_optimize_config(request.opt_config, options)
             if request.opt_config is not None
@@ -79,7 +152,11 @@ def build_study(
         bounds=to_tensor(request.bounds, options) if request.bounds is not None else None,
         n_initial_random=request.n_initial_random,
         early_stopping_config=request.early_stopping_config,
-        generation_schedule=generation_schedule(request.generation_schedule, options),
+        generation_schedule=generation_schedule(
+            request.generation_schedule,
+            options,
+            model_config=model_config,
+        ),
         metadata=dict(metadata if metadata is not None else request.metadata),
     )
     if (request.initial_X is None) != (request.initial_Y is None):
@@ -131,7 +208,8 @@ def history_records(
     resolved = _resolve_direction(study, output_index, direction)
     records: list[dict[str, Any]] = []
     best_value: float | None = None
-    for order, trial in enumerate(sorted(study.completed_trials(), key=lambda item: item.trial_id)):
+    completed = sorted(study.completed_trials(), key=lambda item: item.trial_id)
+    for order, trial in enumerate(completed):
         value = _trial_value(trial, output_index)
         if value is None:
             continue
@@ -192,6 +270,7 @@ def pareto_records(
 __all__ = [
     "acquisition_config",
     "build_study",
+    "fit_config",
     "history_records",
     "pareto_records",
     "restore_trials",

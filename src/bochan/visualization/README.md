@@ -225,3 +225,58 @@ fig.show()
 ## 補足
 
 `plotly`, `pandas`, `numpy`, `torch` が必要です。既存の API には依存を強制せず、可視化を使う場合だけインストールする想定です。
+
+## BochanStudy の結果と最適化履歴
+
+単目的studyのbest-so-far履歴を表示できます。
+
+```python
+from bochan.visualization import show_optimization_history_study
+
+fig = show_optimization_history_study(
+    study,
+    output_index=0,
+    direction="maximize",
+    target_name="strength",
+)
+fig.show()
+```
+
+描画に使うDataFrameは直接取得できます。
+
+```python
+from bochan.visualization import study_history_dataframe
+
+history = study_history_dataframe(study, target_name="strength")
+```
+
+trial metadataに`cycle`がある場合、既存の`show_target_over_cycle_study()`でcycle単位の推移を表示できます。
+
+```python
+from bochan.visualization import show_target_over_cycle_study
+
+fig = show_target_over_cycle_study(
+    study,
+    target="strength",
+    target_cols=["strength"],
+    agg="mean",
+)
+fig.show()
+```
+
+2目的studyでは、完了trialとPareto frontを表示できます。
+
+```python
+from bochan.visualization import show_pareto_front_study
+
+fig = show_pareto_front_study(
+    study,
+    output_indices=[0, 1],
+    directions=["maximize", "minimize"],
+    target_cols=["strength", "cost"],
+)
+fig.show()
+```
+
+Pareto判定済みの表は`study_pareto_dataframe()`で取得できます。
+

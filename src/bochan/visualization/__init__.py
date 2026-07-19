@@ -90,6 +90,12 @@ from .ordinal_display import (
     show_scatter_with_acqf_from_optimizer,
     show_triscatter_with_acqf_from_optimizer,
 )
+from .study import (
+    show_optimization_history_study,
+    show_pareto_front_study,
+    study_history_dataframe,
+    study_pareto_dataframe,
+)
 from .plots import (
     show_1dplot_with_pred,
     show_pareto_plot,
@@ -134,6 +140,8 @@ __all__ = [
     "ordinal_tri_grid",
     "prediction_dataframe",
     "training_dataframe",
+    "study_history_dataframe",
+    "study_pareto_dataframe",
     "tri_grid",
     "show_1dplot_from_optimizer",
     "show_1dplot_with_pred",
@@ -147,6 +155,8 @@ __all__ = [
     "show_ordinal_1dplot_from_optimizer",
     "show_ordinal_heatmap_from_optimizer",
     "show_ordinal_triscatter_from_optimizer",
+    "show_optimization_history_study",
+    "show_pareto_front_study",
     "show_pareto_plot",
     "show_scatter_with_acqf",
     "show_scatter_with_acqf_from_optimizer",

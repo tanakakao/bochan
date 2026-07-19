@@ -664,6 +664,14 @@ study = BochanStudy.load(
 | `completed_data()` | `COMPLETED` trialから `train_X`, `train_Y` を作成 |
 | `pending_data()` | `CANDIDATE` / `RUNNING` から `X_pending` を作成 |
 | `trials_dataframe()` | trial履歴を表形式へ変換 |
+| `best_trial` | 単目的studyの最良Trialを取得 |
+| `best_value` | 単目的studyの最良目的値を取得 |
+| `best_x` | 単目的studyの最良入力を取得 |
+| `best_params` | 最良入力をパラメータ名付きdictで取得 |
+| `get_best_trial(...)` | 出力indexと方向を指定して最良Trialを取得 |
+| `best_trials(top_k=...)` | 単一出力について上位Trialを取得 |
+| `best_result(...)` | 最良Trialの情報をまとめたdictを取得 |
+| `pareto_trials(...)` | 多目的studyの非劣解Trialを取得 |
 | `save(path)` | trial履歴をJSON保存 |
 | `load(path, ...)` | trial履歴をJSONから復元 |
 
@@ -685,3 +693,176 @@ candidates, acq_value = optimize_candidates(
 ```
 
 この処理を `BayesianOptimizer` 経由で候補生成の1 stepとして利用し、trial管理、ask/tell、保存、early stopping、generation scheduleを上位レイヤーとして追加しています。
+
+---
+
+## 14. best結果と可視化
+
+### 14.1 単目的のbest情報
+
+単目的studyでは、Optunaに近いプロパティで最良結果を取得できます。
+
+```python
+print(study.best_trial)   # Trialオブジェクト
+print(study.best_value)   # 最良目的値
+print(study.best_x)       # 最良入力
+print(study.best_params)  # {"x0": ..., "x1": ...}
+```
+
+入力名を付けたい場合は、studyのmetadataに`feature_names`または`param_names`を登録します。
+
+```python
+study = BochanStudy(
+    bounds=bounds,
+    metadata={
+        "feature_names": ["temperature", "pressure"],
+    },
+)
+
+print(study.best_params)
+# {"temperature": ..., "pressure": ...}
+```
+
+明示的な名前をその場で指定することもできます。
+
+```python
+params = study.get_best_params(
+    param_names=["temperature", "pressure"],
+)
+```
+
+最良trialの情報をまとめて取得する場合は`best_result()`を使用します。
+
+```python
+result = study.best_result()
+
+print(result["trial_id"])
+print(result["value"])
+print(result["values"])
+print(result["x"])
+print(result["params"])
+print(result["direction"])
+print(result["metadata"])
+```
+
+上位複数件は既存の`best_trials()`で取得できます。非有限値を持つtrialは自動的に除外されます。
+
+```python
+top_trials = study.best_trials(
+    top_k=5,
+    output_index=0,
+    direction="maximize",
+)
+```
+
+`direction`を省略すると、`acq_config.objective_config.direction`または`directions`から推定し、設定がなければ`maximize`を使用します。
+
+### 14.2 multi-output・多目的の結果
+
+複数の目的値がある場合、単一の`best_trial`は一意に決まりません。そのため、`best_trial`、`best_value`、`best_x`、`best_params`はエラーにし、目的を明示するAPIを使用します。
+
+```python
+best_strength = study.get_best_trial(
+    output_index=0,
+    direction="maximize",
+)
+
+lowest_cost = study.get_best_trial(
+    output_index=1,
+    direction="minimize",
+)
+```
+
+Pareto非劣解は`pareto_trials()`で取得できます。
+
+```python
+pareto_trials = study.pareto_trials(
+    output_indices=[0, 1],
+    directions=["maximize", "minimize"],
+)
+
+for trial in pareto_trials:
+    print(trial.trial_id, trial.x, trial.y)
+```
+
+### 14.3 最適化履歴
+
+`show_optimization_history_study()`は、各trialの観測値とbest-so-farを表示します。
+
+```python
+from bochan.visualization import show_optimization_history_study
+
+fig = show_optimization_history_study(
+    study,
+    output_index=0,
+    direction="maximize",
+    target_name="strength",
+)
+fig.show()
+```
+
+描画前のDataFrameだけが必要な場合は`study_history_dataframe()`を使用します。
+
+```python
+from bochan.visualization import study_history_dataframe
+
+history = study_history_dataframe(
+    study,
+    output_index=0,
+    target_name="strength",
+)
+```
+
+履歴には次の列が含まれます。
+
+- `trial_id`
+- `order`
+- `cycle`
+- 目的値列
+- `best_value`
+- `is_best`
+
+既存の`show_target_over_cycle_study()`は、trial metadataの`cycle`ごとの生データや平均・中央値・最大値などを表示する用途で引き続き利用できます。
+
+```python
+from bochan.visualization import show_target_over_cycle_study
+
+fig = show_target_over_cycle_study(
+    study,
+    target="strength",
+    target_cols=["strength"],
+    agg="mean",
+)
+fig.show()
+```
+
+### 14.4 Pareto front
+
+2目的のPareto frontは`show_pareto_front_study()`で表示できます。
+
+```python
+from bochan.visualization import show_pareto_front_study
+
+fig = show_pareto_front_study(
+    study,
+    output_indices=[0, 1],
+    directions=["maximize", "minimize"],
+    target_cols=["strength", "cost"],
+)
+fig.show()
+```
+
+表形式の結果だけが必要な場合は`study_pareto_dataframe()`を使用します。`is_pareto=True`が非劣解です。
+
+```python
+from bochan.visualization import study_pareto_dataframe
+
+pareto_df = study_pareto_dataframe(
+    study,
+    directions=["maximize", "minimize"],
+    target_cols=["strength", "cost"],
+)
+```
+
+可視化関数には`plotly`、データ作成関数には`pandas`が必要です。
+

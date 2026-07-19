@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from .configs import FitConfigSchema, ModelConfigSchema
+from .configs import FitConfigSchema, ModelConfigSchema, MultiOutputConfigSchema
 from .requests import APIRequest
 
 
@@ -21,6 +21,7 @@ class TabularFitModelRequest(APIRequest):
     data: TabularPayload
     bo_model_config: ModelConfigSchema = Field(alias="model_config")
     fit_config: FitConfigSchema | None = None
+    multi_output_config: MultiOutputConfigSchema | None = None
     input_cols: list[str]
     target_cols: list[str] | str
     categorical_cols: list[str] = Field(default_factory=list)

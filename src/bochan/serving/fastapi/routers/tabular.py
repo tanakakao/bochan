@@ -110,6 +110,11 @@ def fit_tabular_model(
 
     try:
         frame = _to_dataframe(request.data)
+        direct_model_kwargs: dict[str, Any] = {}
+        if request.multi_output_config is not None:
+            direct_model_kwargs["multi_output_config"] = _schema_dict(
+                request.multi_output_config
+            )
         optimizer = TabularBayesianOptimizer(
             model_config=_schema_dict(request.bo_model_config),
             fit_config=_schema_dict(request.fit_config),
@@ -132,6 +137,7 @@ def fit_tabular_model(
             category_maps=request.category_maps,
             target_category_maps=request.target_category_maps,
             return_original_categories=request.return_original_categories,
+            **direct_model_kwargs,
         )
         optimizer.fit(frame)
         model_id = store.add(optimizer)

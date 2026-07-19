@@ -212,11 +212,25 @@ def get_best_x(
     direction: Any | None = None,
 ) -> Any:
     """Return the candidate row of the best trial."""
-    return get_best_trial(
+    x = get_best_trial(
         self,
         output_index=output_index,
         direction=direction,
     ).x
+    shape = getattr(x, "shape", None)
+    if shape is not None:
+        try:
+            if len(shape) > 1 and int(shape[0]) == 1:
+                return x[0]
+        except (TypeError, ValueError):
+            pass
+    if isinstance(x, Sequence) and not isinstance(x, (str, bytes)):
+        try:
+            if len(x) == 1 and isinstance(x[0], Sequence):
+                return x[0]
+        except (TypeError, IndexError):
+            pass
+    return x
 
 
 def _parameter_names(study: Any, width: int, param_names: Sequence[str] | None) -> list[str]:

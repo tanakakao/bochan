@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import torch
-from botorch.models.transforms.input import InptTransform
+from botorch.models.transforms.input import InputTransform
 from gpytorch.kernels import Kernel
 from gpytorch.likelihoods import BernoulliLikelihood
 from gpytorch.means import Mean
@@ -16,9 +16,6 @@ from bochan.models.components.mixed_kronecker import (
     get_continuous_dims,
     normalize_mixed_dims,
     validate_mixed_input_transform_for_training,
-)
-from bochan.models.regression.gaussian.multifidelity import (
-    FidelityFeatureInputTransform,
 )
 
 from ._multifidelity_conditioning import _WideMultiFidelityConditioningMixin
@@ -60,10 +57,10 @@ class WideMixedMultiFidelityBinaryClassificationGPModel(
         normalized_cat_dims = normalize_mixed_dims(
             cat_dims, int(raw_X.shape[-1])
         )
-        validation_transform = (
-            input_transform.base_transform
-            if isinstance(input_transform, FidelityFeatureInputTransform)
-            else input_transform
+        validation_transform = getattr(
+            input_transform,
+            "base_transform",
+            input_transform,
         )
         validate_mixed_input_transform_for_training(
             raw_X, validation_transform, cat_dims=normalized_cat_dims

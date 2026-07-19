@@ -28,6 +28,7 @@ from .nparego_input_perturbation import (
     configure_multiclass_nparego_input_perturbation,
 )
 from .nparego_observed_baseline import (
+    configure_hetero_multiclass_nparego_observed_baseline,
     configure_multiclass_nparego_observed_baseline,
 )
 from .outputs import apply_bayesian_optimization_outputs
@@ -106,6 +107,10 @@ configure_multiclass_nparego_input_perturbation(_multi_output)
 # qNParEGO expects objective-space baseline values, so convert only that retained
 # training-label tensor and preserve explicit user-provided objective baselines.
 configure_multiclass_nparego_observed_baseline(_multi_output)
+configure_hetero_multiclass_nparego_observed_baseline(
+    _multi_output,
+    qHeteroMultiOutputMulticlassNParEGO,
+)
 
 # A one-to-many InputPerturbation transform expands q to q*n_w. qEHVI subset
 # enumeration is exponential in that effective q, so aggregate the built-in

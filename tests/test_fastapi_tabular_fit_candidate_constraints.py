@@ -21,8 +21,8 @@ def client() -> TestClient:
     return TestClient(create_app(title="tabular candidate constraints test"))
 
 
-def _hybrid_records() -> list[dict[str, float | int]]:
-    records: list[dict[str, float | int]] = []
+def _hybrid_records() -> list[dict[str, float | str]]:
+    records: list[dict[str, float | str]] = []
     x1_values = [0.0, 0.1, 0.2, 0.4, 0.6, 1.0]
     x2_values = [0.0, 0.1, 0.2, 0.4]
     x3_values = [0.0, 0.3, 0.6, 0.9]
@@ -43,7 +43,7 @@ def _hybrid_records() -> list[dict[str, float | int]]:
                 "temperature": temperature,
                 "time": time,
                 "property": property_value,
-                "y_cat_str": int(property_value > 0.35),
+                "y_cat_str": "b" if property_value > 0.35 else "a",
             }
         )
     return records
@@ -93,7 +93,9 @@ def _repair_config() -> dict[str, object]:
     }
 
 
-def test_fastapi_candidate_constraints_apply_to_hybrid_ehvi(client: TestClient) -> None:
+def test_fastapi_combines_outcome_and_input_constraints_for_hybrid_ei(
+    client: TestClient,
+) -> None:
     response = client.post(
         "/api/v1/tabular/models",
         json={
@@ -138,14 +140,25 @@ def test_fastapi_candidate_constraints_apply_to_hybrid_ehvi(client: TestClient) 
     candidate_response = client.post(
         f"/api/v1/tabular/models/{model_id}/candidates",
         json={
-            "acquisition_config": {"name": "ehvi"},
+            "objective_mode": "scalar",
+            "objective_output": "property",
+            "objective_direction": "maximize",
+            "acquisition_config": {"name": "ei"},
+            "outcome_constraint_config": {
+                "constraints": [
+                    {
+                        "output": "y_cat_str",
+                        "target_class": "b",
+                        "threshold": 0.75,
+                        "sense": "ge",
+                    }
+                ]
+            },
             "optimize_config": {
                 "q": 2,
                 "optimizer": "optimize_acqf",
                 "num_restarts": 4,
                 "raw_samples": 64,
-                "constraints": _constraints(),
-                "repair_config": _repair_config(),
                 "optimizer_kwargs": {
                     "options": {
                         "maxiter": 12,
@@ -153,6 +166,8 @@ def test_fastapi_candidate_constraints_apply_to_hybrid_ehvi(client: TestClient) 
                     }
                 },
             },
+            "constraints": _constraints(),
+            "repair_config": _repair_config(),
         },
     )
     assert candidate_response.status_code == 200, candidate_response.text

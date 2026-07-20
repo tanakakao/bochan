@@ -1,8 +1,8 @@
 """Shape compatibility for hybrid ordinal and multiclass probabilities.
 
 DeepGP probability accessors may retain one or more leading likelihood-sample
-axes.  Those axes are not model outputs and must not be confused with the
-``q`` or output axes when a hybrid model combines heterogeneous submodels.
+axes. InputPerturbation may also expand the public candidate axis from ``q`` to
+``q * n_w``. Neither case represents an additional model-output axis.
 """
 
 from __future__ import annotations
@@ -15,12 +15,37 @@ from torch import Tensor
 _PATCHED = False
 
 
-def _shape_endswith(shape: torch.Size | tuple[int, ...], suffix: tuple[int, ...]) -> bool:
+def _shape_endswith(
+    shape: torch.Size | tuple[int, ...],
+    suffix: tuple[int, ...],
+) -> bool:
     if len(suffix) == 0:
         return True
     if len(shape) < len(suffix):
         return False
     return tuple(shape[-len(suffix) :]) == suffix
+
+
+def _match_perturbation_q_suffix(
+    shape: torch.Size | tuple[int, ...],
+    *,
+    batch_shape: tuple[int, ...],
+    raw_q: int,
+) -> int | None:
+    """Return an expanded ``q_like`` suffix compatible with InputPerturbation."""
+
+    suffix_ndim = len(batch_shape) + 1
+    if len(shape) < suffix_ndim:
+        return None
+
+    suffix = tuple(int(size) for size in shape[-suffix_ndim:])
+    if suffix[:-1] != batch_shape:
+        return None
+
+    q_like = int(suffix[-1])
+    if q_like <= raw_q or raw_q <= 0 or q_like % raw_q != 0:
+        return None
+    return q_like
 
 
 def _select_class_probability_output(
@@ -30,16 +55,22 @@ def _select_class_probability_output(
     output_index: int,
     name: str,
 ) -> Tensor:
-    """Return canonical ``batch x q x classes`` probabilities.
+    """Return canonical ``batch x q_like x classes`` probabilities.
 
     Supported layouts are:
 
     - ``sample_dims x batch_shape x q x classes``
-    - ``sample_dims x batch_shape x q x outputs x classes``
+    - ``sample_dims x batch_shape x (q * n_w) x classes``
+    - ``sample_dims x batch_shape x q_like x outputs x classes``
 
-    A missing singleton ``q`` axis is also restored for ``q == 1``.  Leading
-    DeepGP / likelihood sample dimensions are averaged after the public input
-    shape has been identified from the trailing dimensions.
+    A missing singleton ``q`` axis is restored for ``q == 1``. Leading DeepGP
+    likelihood-sample dimensions are averaged after the public batch and
+    candidate axes have been identified.
+
+    The InputPerturbation-expanded axis is deliberately preserved. Regression
+    submodels expose the same ``q * n_w`` axis, and the acquisition objective is
+    responsible for reshaping it to ``q x n_w`` and applying the configured risk
+    or mean aggregation.
     """
 
     if not torch.is_tensor(probs):
@@ -51,8 +82,9 @@ def _select_class_probability_output(
     batch_shape = tuple(int(size) for size in X.shape[:-2])
     raw_q = int(X.shape[-2])
     missing_q = False
+    q_like = raw_q
 
-    # Standard single-output classifier layout.  Match the complete public
+    # Standard single-output classifier layout. Match the complete public
     # batch+q suffix rather than relying on ndim: DeepGP adds leading sample
     # axes, which previously made q look like a model-output axis.
     if _shape_endswith(probs.shape[:-1], input_batch_q):
@@ -81,12 +113,36 @@ def _select_class_probability_output(
             )
         selected = probs[..., output_index, :]
         missing_q = True
+    elif (
+        expanded_q := _match_perturbation_q_suffix(
+            probs.shape[:-1],
+            batch_shape=batch_shape,
+            raw_q=raw_q,
+        )
+    ) is not None:
+        selected = probs
+        q_like = expanded_q
+    elif probs.ndim >= 2 and (
+        expanded_q := _match_perturbation_q_suffix(
+            probs.shape[:-2],
+            batch_shape=batch_shape,
+            raw_q=raw_q,
+        )
+    ) is not None:
+        num_outputs = int(probs.shape[-2])
+        if output_index >= num_outputs:
+            raise IndexError(
+                f"output_index={output_index} is out of bounds for "
+                f"{name}.shape={tuple(probs.shape)}."
+            )
+        selected = probs[..., output_index, :]
+        q_like = expanded_q
     else:
         raise RuntimeError(
             f"Could not align {name} with X. "
             f"X.shape={tuple(X.shape)}, probabilities.shape={tuple(probs.shape)}. "
-            "Expected trailing batch/q/class dimensions, optionally with one "
-            "model-output axis before the class axis."
+            "Expected trailing batch/q/class dimensions, an InputPerturbation "
+            "q*n_w axis, and optionally one model-output axis before classes."
         )
 
     target_ndim = X.ndim - (1 if missing_q else 0)
@@ -96,17 +152,26 @@ def _select_class_probability_output(
     if missing_q:
         selected = selected.unsqueeze(-2)
 
-    expected_prefix = tuple(int(size) for size in X.shape[:-1])
-    if selected.ndim != X.ndim or tuple(selected.shape[:-1]) != expected_prefix:
+    expected_batch = tuple(int(size) for size in X.shape[:-2])
+    selected_batch = tuple(int(size) for size in selected.shape[:-2])
+    selected_q = int(selected.shape[-2]) if selected.ndim >= 2 else -1
+    if (
+        selected.ndim != X.ndim
+        or selected_batch != expected_batch
+        or selected_q != q_like
+        or selected_q < raw_q
+        or selected_q % raw_q != 0
+    ):
         raise RuntimeError(
             f"Could not reduce {name} to the public hybrid shape. "
-            f"Expected prefix={expected_prefix}, got shape={tuple(selected.shape)}."
+            f"Expected batch={expected_batch}, q_like={q_like}, "
+            f"got shape={tuple(selected.shape)}."
         )
     return selected
 
 
 def apply_hybrid_class_probability_shapes(hybrid_cls: type) -> None:
-    """Install DeepGP-safe probability shape handling on a hybrid model class."""
+    """Install DeepGP- and InputPerturbation-safe probability shape handling."""
 
     global _PATCHED
     if _PATCHED:

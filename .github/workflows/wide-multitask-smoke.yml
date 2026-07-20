@@ -53,6 +53,7 @@ jobs:
             tests/test_fastapi_tabular_endpoints.py \
             tests/test_fastapi_tabular_direct_candidate_config.py \
             tests/test_hybrid_deepgp_probability_shapes.py \
+            tests/test_hybrid_input_perturbation_probability_shapes.py \
             2>&1 | tee pytest.log
           status=${PIPESTATUS[0]}
           echo "$status" > pytest.status
@@ -130,6 +131,7 @@ jobs:
             tests/test_fastapi_tabular_endpoints.py \
             tests/test_fastapi_tabular_direct_candidate_config.py \
             tests/test_hybrid_deepgp_probability_shapes.py \
+            tests/test_hybrid_input_perturbation_probability_shapes.py \
             2>&1 | tee ruff.log
           status=${PIPESTATUS[0]}
           echo "$status" > ruff.status

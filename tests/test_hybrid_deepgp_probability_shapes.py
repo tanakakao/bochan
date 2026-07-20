@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pandas as pd
 import pytest
 import torch
 from torch import nn
@@ -11,6 +12,7 @@ from bochan.models.classification.multiclass.deep.deepgp import (
 )
 from bochan.models.hybrid import HybridMultiOutputModel, OutputSpec
 from bochan.models.regression.gaussian.deep.deepgp import DeepGPModel
+from bochan.tabular import TabularBayesianOptimizer
 
 
 class _RegressionModel(nn.Module):
@@ -166,3 +168,66 @@ def test_hybrid_regression_multiclass_deepgp_posterior_preserves_batch_and_q() -
     assert posterior.variance.shape == torch.Size([4, 2, 2])
     assert torch.isfinite(posterior.mean).all()
     assert torch.isfinite(posterior.variance).all()
+
+
+def test_tabular_hybrid_deepgp_ehvi_candidate_generation() -> None:
+    torch.manual_seed(0)
+    frame = pd.DataFrame(
+        {
+            "x1": [float(index) / 12.0 for index in range(12)],
+            "x2": [float(index % 4) / 4.0 for index in range(12)],
+            "property": [0.1 + 0.05 * index for index in range(12)],
+            "quality": ["a", "b", "c"] * 4,
+        }
+    )
+    optimizer = TabularBayesianOptimizer(
+        model_config={
+            "task_type": "hybrid",
+            "model_type": "deepgp",
+            "input_transform_config": {
+                "perturbation": False,
+                "n_w": 4,
+                "std": 0.1,
+            },
+        },
+        fit_config={"skip_fit": True},
+        multi_output_config={
+            "output_configs": [
+                {
+                    "task_type": "regression",
+                    "model_type": "deepgp",
+                    "name": "property",
+                    "model_kwargs": {
+                        "list_hidden_dims": [2],
+                        "num_inducing": 4,
+                    },
+                },
+                {
+                    "task_type": "multiclass",
+                    "model_type": "deepgp",
+                    "name": "quality",
+                    "model_kwargs": {
+                        "hidden_dim": 2,
+                        "list_hidden_dims": [2],
+                        "num_inducing": 4,
+                    },
+                },
+            ],
+            "use_hybrid": True,
+        },
+        input_cols=["x1", "x2"],
+        target_cols=["property", "quality"],
+    )
+    optimizer.fit(frame)
+
+    candidates, acq_value = optimizer.candidate(
+        acq_config={"name": "ehvi"},
+        opt_config={
+            "q": 2,
+            "num_restarts": 2,
+            "raw_samples": 4,
+        },
+    )
+
+    assert len(candidates) == 2
+    assert torch.isfinite(torch.as_tensor(acq_value)).all()

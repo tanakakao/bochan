@@ -1,4 +1,4 @@
-"""FastAPI tests for fit-time tabular candidate optimization defaults."""
+"""FastAPI tests for candidate-time tabular optimization constraints."""
 
 # ruff: noqa: E402
 
@@ -14,20 +14,11 @@ pd = pytest.importorskip("pandas")
 from fastapi.testclient import TestClient
 
 from bochan.serving.fastapi import create_app
-from bochan.serving.fastapi.dependencies import get_tabular_optimizer_store
-from bochan.serving.fastapi.routers.tabular import (
-    _FASTAPI_OPTIMIZE_DEFAULTS_ATTR,
-    _merge_optimize_config,
-)
-from bochan.serving.fastapi.stores import InMemoryTabularOptimizerStore
 
 
 @pytest.fixture
-def client_and_store():
-    store = InMemoryTabularOptimizerStore()
-    app = create_app(title="tabular persistent constraints test")
-    app.dependency_overrides[get_tabular_optimizer_store] = lambda: store
-    return TestClient(app), store
+def client() -> TestClient:
+    return TestClient(create_app(title="tabular candidate constraints test"))
 
 
 def _hybrid_records() -> list[dict[str, float | int]]:
@@ -102,29 +93,7 @@ def _repair_config() -> dict[str, object]:
     }
 
 
-def test_merge_optimize_config_preserves_and_overrides_nested_repair() -> None:
-    defaults = {
-        "constraints": _constraints(),
-        "repair_config": _repair_config(),
-    }
-
-    merged = _merge_optimize_config(
-        defaults,
-        {
-            "q": 2,
-            "repair_config": {"k": 1},
-        },
-    )
-
-    assert merged["constraints"] == _constraints()
-    assert merged["q"] == 2
-    assert merged["repair_config"]["k"] == 1
-    assert merged["repair_config"]["steps"] == _repair_config()["steps"]
-    assert _merge_optimize_config(defaults, {"repair_config": None})["repair_config"] is None
-
-
-def test_fastapi_fit_constraints_apply_to_hybrid_ehvi_candidates(client_and_store) -> None:
-    client, store = client_and_store
+def test_fastapi_candidate_constraints_apply_to_hybrid_ehvi(client: TestClient) -> None:
     response = client.post(
         "/api/v1/tabular/models",
         json={
@@ -160,22 +129,11 @@ def test_fastapi_fit_constraints_apply_to_hybrid_ehvi_candidates(client_and_stor
                 ],
                 "use_hybrid": True,
             },
-            "constraints": _constraints(),
-            "repair_config": _repair_config(),
             "fit_config": {"skip_fit": True},
         },
     )
     assert response.status_code == 200, response.text
     model_id = response.json()["model_id"]
-
-    optimizer = store.get(model_id)
-    defaults = getattr(optimizer, _FASTAPI_OPTIMIZE_DEFAULTS_ATTR)
-    assert defaults["constraints"] == _constraints()
-    assert defaults["repair_config"]["comp_idx"] == [
-        "raw material 1",
-        "raw material 2",
-        "raw material 3",
-    ]
 
     candidate_response = client.post(
         f"/api/v1/tabular/models/{model_id}/candidates",
@@ -186,6 +144,8 @@ def test_fastapi_fit_constraints_apply_to_hybrid_ehvi_candidates(client_and_stor
                 "optimizer": "optimize_acqf",
                 "num_restarts": 4,
                 "raw_samples": 64,
+                "constraints": _constraints(),
+                "repair_config": _repair_config(),
                 "optimizer_kwargs": {
                     "options": {
                         "maxiter": 12,
@@ -204,7 +164,10 @@ def test_fastapi_fit_constraints_apply_to_hybrid_ehvi_candidates(client_and_stor
         component_sum = float(candidate[component_cols].sum())
         first_two_sum = float(candidate[["raw material 1", "raw material 2"]].sum())
         process_sum = float(candidate[["temperature", "time"]].sum())
-        zero_count = sum(abs(float(candidate[column])) <= 1e-8 for column in component_cols)
+        zero_count = sum(
+            abs(float(candidate[column])) <= 1e-8
+            for column in component_cols
+        )
 
         assert math.isclose(component_sum, 1.0, rel_tol=0.0, abs_tol=1e-6)
         assert first_two_sum <= 0.4 + 1e-6

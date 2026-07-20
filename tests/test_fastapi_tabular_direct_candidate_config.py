@@ -36,10 +36,24 @@ class _CapturingOptimizer:
         return self.candidate(**kwargs)
 
 
-def test_tabular_candidate_forwards_explicit_direct_fields(client_and_store) -> None:
+def test_tabular_candidate_routes_input_aliases_and_outcome_constraints(
+    client_and_store,
+) -> None:
     client, store = client_and_store
     optimizer = _CapturingOptimizer()
     model_id = store.add(optimizer)
+    input_constraints = [
+        [
+            ["x1", "x2"],
+            [1.0, 1.0],
+            "=",
+            1.0,
+        ]
+    ]
+    repair_config = {
+        "steps": {"x1": 0.05, "x2": 0.05},
+        "final_priority": "constraints",
+    }
 
     response = client.post(
         f"/api/v1/tabular/models/{model_id}/candidates",
@@ -64,6 +78,8 @@ def test_tabular_candidate_forwards_explicit_direct_fields(client_and_store) -> 
                 "num_restarts": 2,
                 "raw_samples": 4,
             },
+            "constraints": input_constraints,
+            "repair_config": repair_config,
         },
     )
 
@@ -74,6 +90,35 @@ def test_tabular_candidate_forwards_explicit_direct_fields(client_and_store) -> 
     assert optimizer.candidate_kwargs["objective_direction"] == "maximize"
     constraint_config = optimizer.candidate_kwargs["outcome_constraint_config"]
     assert constraint_config["constraints"][0]["target_class"] == "b"
+    assert "constraints" not in {
+        key
+        for key in optimizer.candidate_kwargs
+        if key != "opt_config"
+    }
+    assert optimizer.candidate_kwargs["opt_config"]["constraints"] == input_constraints
+    assert optimizer.candidate_kwargs["opt_config"]["repair_config"] == repair_config
+
+
+def test_tabular_candidate_rejects_duplicate_input_aliases(client_and_store) -> None:
+    client, store = client_and_store
+    optimizer = _CapturingOptimizer()
+    model_id = store.add(optimizer)
+    constraints = [[["x1", "x2"], [1.0, 1.0], "=", 1.0]]
+
+    response = client.post(
+        f"/api/v1/tabular/models/{model_id}/candidates",
+        json={
+            "acquisition_config": {"name": "ei"},
+            "optimize_config": {
+                "q": 1,
+                "constraints": constraints,
+            },
+            "constraints": constraints,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "either at the candidate request top level" in response.json()["detail"]
 
 
 def test_fastapi_hybrid_ordinal_acquisitions_accept_direct_objective_and_constraint(

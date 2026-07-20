@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .class_probability_shapes import apply_hybrid_class_probability_shapes
 from .multi_output import HybridMultiOutputModel
 from .posterior import HybridPosterior
 from .prediction import attach_prediction_methods
@@ -39,6 +40,7 @@ def _hybrid_eval(self: HybridMultiOutputModel) -> HybridMultiOutputModel:
 # package has been initialized.
 HybridMultiOutputModel._set_transformed_inputs = _hybrid_set_transformed_inputs
 HybridMultiOutputModel.eval = _hybrid_eval
+apply_hybrid_class_probability_shapes(HybridMultiOutputModel)
 
 attach_prediction_methods(HybridMultiOutputModel)
 

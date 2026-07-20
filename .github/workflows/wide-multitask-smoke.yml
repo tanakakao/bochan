@@ -51,6 +51,7 @@ jobs:
             tests/test_tabular_string_outcome_constraint_classes.py \
             tests/test_tabular_prediction_labels.py \
             tests/test_fastapi_tabular_endpoints.py \
+            tests/test_hybrid_deepgp_probability_shapes.py \
             2>&1 | tee pytest.log
           status=${PIPESTATUS[0]}
           echo "$status" > pytest.status
@@ -84,6 +85,8 @@ jobs:
             src/bochan/acquisition/wide_posterior_events.py \
             src/bochan/api/automatic_multiobjective.py \
             src/bochan/api/optimizer_api.py \
+            src/bochan/models/hybrid/__init__.py \
+            src/bochan/models/hybrid/class_probability_shapes.py \
             src/bochan/models/wide_multitask.py \
             src/bochan/models/wide_multitask_variants.py \
             src/bochan/optim/__init__.py \
@@ -124,6 +127,7 @@ jobs:
             tests/test_tabular_string_outcome_constraint_classes.py \
             tests/test_tabular_prediction_labels.py \
             tests/test_fastapi_tabular_endpoints.py \
+            tests/test_hybrid_deepgp_probability_shapes.py \
             2>&1 | tee ruff.log
           status=${PIPESTATUS[0]}
           echo "$status" > ruff.status

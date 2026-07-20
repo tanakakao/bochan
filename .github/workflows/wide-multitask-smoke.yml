@@ -51,6 +51,7 @@ jobs:
             tests/test_tabular_string_outcome_constraint_classes.py \
             tests/test_tabular_prediction_labels.py \
             tests/test_fastapi_tabular_endpoints.py \
+            tests/test_fastapi_tabular_direct_candidate_config.py \
             tests/test_hybrid_deepgp_probability_shapes.py \
             2>&1 | tee pytest.log
           status=${PIPESTATUS[0]}
@@ -127,6 +128,7 @@ jobs:
             tests/test_tabular_string_outcome_constraint_classes.py \
             tests/test_tabular_prediction_labels.py \
             tests/test_fastapi_tabular_endpoints.py \
+            tests/test_fastapi_tabular_direct_candidate_config.py \
             tests/test_hybrid_deepgp_probability_shapes.py \
             2>&1 | tee ruff.log
           status=${PIPESTATUS[0]}

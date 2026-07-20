@@ -1,5 +1,7 @@
 """FastAPI tests for fit-time tabular candidate optimization defaults."""
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import math

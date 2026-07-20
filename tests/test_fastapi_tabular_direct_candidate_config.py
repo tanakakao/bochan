@@ -76,7 +76,7 @@ def test_tabular_candidate_forwards_explicit_direct_fields(client_and_store) -> 
     assert constraint_config["constraints"][0]["target_class"] == "b"
 
 
-def test_fastapi_hybrid_ordinal_ei_accepts_direct_scalar_objective_and_constraint(
+def test_fastapi_hybrid_ordinal_acquisitions_accept_direct_objective_and_constraint(
     client_and_store,
 ) -> None:
     client, _ = client_and_store
@@ -129,33 +129,47 @@ def test_fastapi_hybrid_ordinal_ei_accepts_direct_scalar_objective_and_constrain
     assert fit_response.status_code == 200, fit_response.text
     model_id = fit_response.json()["model_id"]
 
-    candidate_response = client.post(
-        f"/api/v1/tabular/models/{model_id}/candidates",
-        json={
-            "objective_mode": "scalar",
-            "objective_output": "property",
-            "objective_direction": "maximize",
-            "acquisition_config": {"name": "ei"},
-            "outcome_constraint_config": {
-                "constraints": [
-                    {
-                        "output": "y_ord_str",
-                        "target_class": "b",
-                        "threshold": 0.75,
-                        "sense": "ge",
-                    }
-                ]
+    acquisition_names = [
+        "ei",
+        "pi",
+        "ucb",
+        "bald",
+        "entropy",
+        "variance",
+        "straddle",
+        "icu",
+    ]
+    for acquisition_name in acquisition_names:
+        candidate_response = client.post(
+            f"/api/v1/tabular/models/{model_id}/candidates",
+            json={
+                "objective_mode": "scalar",
+                "objective_output": "property",
+                "objective_direction": "maximize",
+                "acquisition_config": {"name": acquisition_name},
+                "outcome_constraint_config": {
+                    "constraints": [
+                        {
+                            "output": "y_ord_str",
+                            "target_class": "b",
+                            "threshold": 0.75,
+                            "sense": "ge",
+                        }
+                    ]
+                },
+                "optimize_config": {
+                    "q": 2,
+                    "optimizer": "optimize_acqf",
+                    "num_restarts": 2,
+                    "raw_samples": 4,
+                },
             },
-            "optimize_config": {
-                "q": 2,
-                "optimizer": "optimize_acqf",
-                "num_restarts": 2,
-                "raw_samples": 4,
-            },
-        },
-    )
+        )
 
-    assert candidate_response.status_code == 200, candidate_response.text
-    body = candidate_response.json()
-    assert len(body["candidates"]) == 2
-    assert body["columns"] == ["x1", "x2"]
+        assert candidate_response.status_code == 200, (
+            acquisition_name,
+            candidate_response.text,
+        )
+        body = candidate_response.json()
+        assert len(body["candidates"]) == 2
+        assert body["columns"] == ["x1", "x2"]

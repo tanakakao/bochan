@@ -60,6 +60,12 @@ class TabularPredictRequest(APIRequest):
 class TabularCandidateRequest(APIRequest):
     """Generate candidates while preserving tabular column names and labels.
 
+    ``outcome_constraint_config`` constrains predicted model outputs. Linear
+    constraints on input columns and candidate repair settings belong to
+    ``optimize_config``. For convenience, ``constraints`` and ``repair_config``
+    may also be supplied at this request's top level; the router moves them into
+    the effective optimize config before calling ``TabularBayesianOptimizer``.
+
     The direct objective and outcome-constraint fields mirror
     :meth:`TabularBayesianOptimizer.candidate`. Only fields explicitly present in
     the JSON request are forwarded, so omitted values retain the optimizer's
@@ -70,7 +76,11 @@ class TabularCandidateRequest(APIRequest):
     opt_config: dict[str, Any] = Field(default_factory=dict, alias="optimize_config")
     bounds: Any | None = None
 
+    # Candidate-input convenience aliases. These are merged into opt_config by
+    # the router and are intentionally separate from outcome_constraint_config.
     constraints: Any | None = None
+    repair_config: dict[str, Any] | None = None
+
     outcome_constraint_config: OutcomeConstraintConfigSchema | None = None
     objective_mode: Literal["auto", "none", "scalar", "multi_output"] | None = None
     objective_output: Any | None = None

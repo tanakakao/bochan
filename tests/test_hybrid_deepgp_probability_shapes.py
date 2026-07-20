@@ -177,7 +177,7 @@ def test_tabular_hybrid_deepgp_ehvi_candidate_generation() -> None:
             "x1": [float(index) / 12.0 for index in range(12)],
             "x2": [float(index % 4) / 4.0 for index in range(12)],
             "property": [0.1 + 0.05 * index for index in range(12)],
-            "quality": ["a", "b", "c"] * 4,
+            "quality": pd.Series(["a", "b", "c"] * 4, dtype=object),
         }
     )
     optimizer = TabularBayesianOptimizer(

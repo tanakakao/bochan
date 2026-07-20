@@ -25,6 +25,30 @@ TABULAR_STORE_DEP = Depends(get_tabular_optimizer_store)
 
 router = APIRouter(prefix="/tabular/models", tags=["tabular"])
 
+_TABULAR_CANDIDATE_DIRECT_FIELDS = (
+    "constraints",
+    "outcome_constraint_config",
+    "objective_mode",
+    "objective_output",
+    "objective_outputs",
+    "objective_specs",
+    "objective_directions",
+    "objective_weights",
+    "objective_eq_targets",
+    "objective_direction",
+    "objective_weight",
+    "objective_eq_target",
+    "objective_n_w",
+    "objective_risk_type",
+    "objective_alpha",
+    "objective_maximize",
+    "objective_aggregate_mean_when_no_risk",
+    "objective_allow_unexpanded",
+    "objective_utility_values",
+    "objective_ordinal_likelihood",
+    "evo_method",
+)
+
 
 def _normalize_string_dtypes(frame: Any, pd: Any) -> Any:
     """Convert pandas string extension columns to mutable object columns.
@@ -66,6 +90,21 @@ def _schema_dict(value: Any | None) -> dict[str, Any] | None:
     if hasattr(value, "model_dump"):
         return value.model_dump(exclude_none=True)
     return dict(value)
+
+
+def _candidate_direct_kwargs(request: TabularCandidateRequest) -> dict[str, Any]:
+    """Return only explicitly supplied direct ``candidate`` keyword arguments."""
+
+    fields_set = getattr(request, "model_fields_set", set())
+    kwargs: dict[str, Any] = {}
+    for name in _TABULAR_CANDIDATE_DIRECT_FIELDS:
+        if name not in fields_set:
+            continue
+        value = getattr(request, name)
+        if hasattr(value, "model_dump"):
+            value = _schema_dict(value)
+        kwargs[name] = value
+    return kwargs
 
 
 def _frame_records(frame: Any) -> tuple[list[str], list[dict[str, Any]]]:
@@ -196,6 +235,7 @@ def _generate_candidates(
         opt_config=request.opt_config,
         bounds=request.bounds,
         return_dataframe=True,
+        **_candidate_direct_kwargs(request),
     )
     columns, records = _frame_records(candidates)
     return TabularCandidateResponse(

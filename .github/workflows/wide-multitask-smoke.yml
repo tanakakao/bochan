@@ -50,6 +50,7 @@ jobs:
             tests/test_tabular_non_native_outcome_constraints.py \
             tests/test_tabular_string_outcome_constraint_classes.py \
             tests/test_tabular_prediction_labels.py \
+            tests/test_direct_api_candidate_constraints.py \
             tests/test_fastapi_tabular_endpoints.py \
             tests/test_fastapi_tabular_direct_candidate_config.py \
             tests/test_fastapi_tabular_fit_candidate_constraints.py \
@@ -130,6 +131,7 @@ jobs:
             tests/test_tabular_non_native_outcome_constraints.py \
             tests/test_tabular_string_outcome_constraint_classes.py \
             tests/test_tabular_prediction_labels.py \
+            tests/test_direct_api_candidate_constraints.py \
             tests/test_fastapi_tabular_endpoints.py \
             tests/test_fastapi_tabular_direct_candidate_config.py \
             tests/test_fastapi_tabular_fit_candidate_constraints.py \

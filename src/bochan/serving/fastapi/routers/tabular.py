@@ -49,8 +49,6 @@ _TABULAR_CANDIDATE_DIRECT_FIELDS = (
     "evo_method",
 )
 
-_FASTAPI_OPTIMIZE_DEFAULTS_ATTR = "_bochan_fastapi_optimize_defaults"
-
 
 def _normalize_string_dtypes(frame: Any, pd: Any) -> Any:
     """Convert pandas string extension columns to mutable object columns.
@@ -92,42 +90,6 @@ def _schema_dict(value: Any | None) -> dict[str, Any] | None:
     if hasattr(value, "model_dump"):
         return value.model_dump(exclude_none=True)
     return dict(value)
-
-
-def _fit_optimize_defaults(request: TabularFitModelRequest) -> dict[str, Any]:
-    """Extract explicitly supplied candidate defaults from a fit request."""
-
-    fields_set = getattr(request, "model_fields_set", set())
-    defaults: dict[str, Any] = {}
-    if "constraints" in fields_set:
-        defaults["constraints"] = request.constraints
-    if "repair_config" in fields_set:
-        defaults["repair_config"] = (
-            None if request.repair_config is None else dict(request.repair_config)
-        )
-    return defaults
-
-
-def _merge_optimize_config(
-    defaults: dict[str, Any] | None,
-    request_config: dict[str, Any] | None,
-) -> dict[str, Any]:
-    """Merge persisted fit-time defaults with one candidate request.
-
-    Request values take precedence.  A partial request ``repair_config`` is
-    merged with the persisted repair settings so callers can change one repair
-    option without repeating the complete fit-time configuration.  Supplying
-    ``repair_config=null`` explicitly disables the persisted repair.
-    """
-
-    merged = dict(defaults or {})
-    overrides = dict(request_config or {})
-    default_repair = merged.get("repair_config")
-    override_repair = overrides.get("repair_config")
-    if isinstance(default_repair, dict) and isinstance(override_repair, dict):
-        overrides["repair_config"] = {**default_repair, **override_repair}
-    merged.update(overrides)
-    return merged
 
 
 def _candidate_direct_kwargs(request: TabularCandidateRequest) -> dict[str, Any]:
@@ -217,11 +179,6 @@ def fit_tabular_model(
             **direct_model_kwargs,
         )
         optimizer.fit(frame)
-        setattr(
-            optimizer,
-            _FASTAPI_OPTIMIZE_DEFAULTS_ATTR,
-            _fit_optimize_defaults(request),
-        )
         model_id = store.add(optimizer)
         return _fit_response(model_id, optimizer)
     except Exception as exc:
@@ -273,18 +230,9 @@ def _generate_candidates(
 ) -> TabularCandidateResponse:
     optimizer = store.get(model_id)
     method = optimizer.ask if use_ask else optimizer.candidate
-    persisted_optimize_defaults = getattr(
-        optimizer,
-        _FASTAPI_OPTIMIZE_DEFAULTS_ATTR,
-        None,
-    )
-    opt_config = _merge_optimize_config(
-        persisted_optimize_defaults,
-        request.opt_config,
-    )
     candidates, acq_value = method(
         acq_config=request.acq_config,
-        opt_config=opt_config,
+        opt_config=request.opt_config,
         bounds=request.bounds,
         return_dataframe=True,
         **_candidate_direct_kwargs(request),

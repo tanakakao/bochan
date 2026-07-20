@@ -89,6 +89,7 @@ jobs:
             src/bochan/api/optimizer_api.py \
             src/bochan/models/hybrid/__init__.py \
             src/bochan/models/hybrid/class_probability_shapes.py \
+            src/bochan/models/projected_input_perturbation.py \
             src/bochan/models/wide_multitask.py \
             src/bochan/models/wide_multitask_variants.py \
             src/bochan/optim/__init__.py \

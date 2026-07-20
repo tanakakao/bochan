@@ -118,10 +118,10 @@ class OutcomeConstraintConfig:
     def has_named_outputs(self) -> bool:
         """Return whether spec constraints need model output names to build."""
 
-        for spec in self.constraints or []:
-            if isinstance(getattr(spec, "output", None), str):
-                return True
-        return False
+        return any(
+            isinstance(getattr(spec, "output", None), str)
+            for spec in self.constraints or []
+        )
 
     def has_model_dependent_constraints(self) -> bool:
         """Return whether constraints require model access, not just samples."""
@@ -243,7 +243,14 @@ def _install_nan_multiobjective() -> None:
     apply_nan_multiobjective()
 
 
+def _install_repair_constraint_defaults() -> None:
+    from .repair_constraint_defaults import apply_repair_constraint_defaults
+
+    apply_repair_constraint_defaults()
+
+
 _install_nan_multiobjective()
+_install_repair_constraint_defaults()
 
 
 __all__ = ["AcquisitionConfig", "ConstraintOperator", "OutcomeConstraintConfig"]

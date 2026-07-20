@@ -50,8 +50,10 @@ jobs:
             tests/test_tabular_non_native_outcome_constraints.py \
             tests/test_tabular_string_outcome_constraint_classes.py \
             tests/test_tabular_prediction_labels.py \
+            tests/test_direct_api_candidate_constraints.py \
             tests/test_fastapi_tabular_endpoints.py \
             tests/test_fastapi_tabular_direct_candidate_config.py \
+            tests/test_fastapi_tabular_fit_candidate_constraints.py \
             tests/test_hybrid_deepgp_probability_shapes.py \
             tests/test_hybrid_input_perturbation_probability_shapes.py \
             2>&1 | tee pytest.log
@@ -85,8 +87,10 @@ jobs:
             src/bochan/acquisition/regression/levelset_estimation/objective_compat.py \
             src/bochan/acquisition/regression/levelset_estimation/hetero_objective_compat.py \
             src/bochan/acquisition/wide_posterior_events.py \
+            src/bochan/api/acquisition_config.py \
             src/bochan/api/automatic_multiobjective.py \
             src/bochan/api/optimizer_api.py \
+            src/bochan/api/repair_constraint_defaults.py \
             src/bochan/models/hybrid/__init__.py \
             src/bochan/models/hybrid/class_probability_shapes.py \
             src/bochan/models/projected_input_perturbation.py \
@@ -129,8 +133,10 @@ jobs:
             tests/test_tabular_non_native_outcome_constraints.py \
             tests/test_tabular_string_outcome_constraint_classes.py \
             tests/test_tabular_prediction_labels.py \
+            tests/test_direct_api_candidate_constraints.py \
             tests/test_fastapi_tabular_endpoints.py \
             tests/test_fastapi_tabular_direct_candidate_config.py \
+            tests/test_fastapi_tabular_fit_candidate_constraints.py \
             tests/test_hybrid_deepgp_probability_shapes.py \
             tests/test_hybrid_input_perturbation_probability_shapes.py \
             2>&1 | tee ruff.log

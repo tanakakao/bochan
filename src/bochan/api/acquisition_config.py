@@ -243,7 +243,14 @@ def _install_nan_multiobjective() -> None:
     apply_nan_multiobjective()
 
 
+def _install_repair_constraint_defaults() -> None:
+    from .repair_constraint_defaults import apply_repair_constraint_defaults
+
+    apply_repair_constraint_defaults()
+
+
 _install_nan_multiobjective()
+_install_repair_constraint_defaults()
 
 
 __all__ = ["AcquisitionConfig", "ConstraintOperator", "OutcomeConstraintConfig"]

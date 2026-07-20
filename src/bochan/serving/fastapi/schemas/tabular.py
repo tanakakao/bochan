@@ -8,7 +8,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from .configs import FitConfigSchema, ModelConfigSchema, MultiOutputConfigSchema
+from .configs import (
+    FitConfigSchema,
+    ModelConfigSchema,
+    MultiOutputConfigSchema,
+    OutcomeConstraintConfigSchema,
+)
 from .requests import APIRequest
 
 
@@ -53,11 +58,39 @@ class TabularPredictRequest(APIRequest):
 
 
 class TabularCandidateRequest(APIRequest):
-    """Generate candidates while preserving tabular column names and labels."""
+    """Generate candidates while preserving tabular column names and labels.
+
+    The direct objective and outcome-constraint fields mirror
+    :meth:`TabularBayesianOptimizer.candidate`. Only fields explicitly present in
+    the JSON request are forwarded, so omitted values retain the optimizer's
+    normal ``UNSET`` semantics.
+    """
 
     acq_config: dict[str, Any] = Field(alias="acquisition_config")
     opt_config: dict[str, Any] = Field(default_factory=dict, alias="optimize_config")
     bounds: Any | None = None
+
+    constraints: Any | None = None
+    outcome_constraint_config: OutcomeConstraintConfigSchema | None = None
+    objective_mode: Literal["auto", "none", "scalar", "multi_output"] | None = None
+    objective_output: Any | None = None
+    objective_outputs: list[Any] | None = None
+    objective_specs: list[Any] | None = None
+    objective_directions: list[Any] | None = None
+    objective_weights: list[float] | None = None
+    objective_eq_targets: list[float | None] | None = None
+    objective_direction: Any | None = None
+    objective_weight: float | None = None
+    objective_eq_target: float | None = None
+    objective_n_w: int | None = None
+    objective_risk_type: str | None = None
+    objective_alpha: float | None = None
+    objective_maximize: bool | None = None
+    objective_aggregate_mean_when_no_risk: bool | None = None
+    objective_allow_unexpanded: bool | None = None
+    objective_utility_values: Any | None = None
+    objective_ordinal_likelihood: Any | None = None
+    evo_method: str | None = None
 
 
 class TabularModelFitResponse(BaseModel):

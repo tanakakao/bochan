@@ -26,7 +26,6 @@ TABULAR_STORE_DEP = Depends(get_tabular_optimizer_store)
 router = APIRouter(prefix="/tabular/models", tags=["tabular"])
 
 _TABULAR_CANDIDATE_DIRECT_FIELDS = (
-    "constraints",
     "outcome_constraint_config",
     "objective_mode",
     "objective_output",
@@ -47,6 +46,11 @@ _TABULAR_CANDIDATE_DIRECT_FIELDS = (
     "objective_utility_values",
     "objective_ordinal_likelihood",
     "evo_method",
+)
+
+_TABULAR_CANDIDATE_OPTIMIZE_ALIASES = (
+    "constraints",
+    "repair_config",
 )
 
 
@@ -93,7 +97,7 @@ def _schema_dict(value: Any | None) -> dict[str, Any] | None:
 
 
 def _candidate_direct_kwargs(request: TabularCandidateRequest) -> dict[str, Any]:
-    """Return only explicitly supplied direct ``candidate`` keyword arguments."""
+    """Return explicitly supplied acquisition/objective candidate arguments."""
 
     fields_set = getattr(request, "model_fields_set", set())
     kwargs: dict[str, Any] = {}
@@ -105,6 +109,33 @@ def _candidate_direct_kwargs(request: TabularCandidateRequest) -> dict[str, Any]
             value = _schema_dict(value)
         kwargs[name] = value
     return kwargs
+
+
+def _candidate_optimize_config(request: TabularCandidateRequest) -> dict[str, Any]:
+    """Return optimize config with top-level input-constraint aliases applied.
+
+    ``outcome_constraint_config`` describes constraints on model outputs and is
+    forwarded directly to the acquisition builder. In contrast, linear input
+    ``constraints`` and candidate ``repair_config`` belong to ``OptimizeConfig``.
+    The FastAPI request accepts those two values either nested under
+    ``optimize_config`` or at the candidate-request top level for convenience.
+    """
+
+    fields_set = getattr(request, "model_fields_set", set())
+    opt_config = dict(request.opt_config or {})
+    for name in _TABULAR_CANDIDATE_OPTIMIZE_ALIASES:
+        if name not in fields_set:
+            continue
+        if name in opt_config:
+            raise ValueError(
+                f"Specify {name!r} either at the candidate request top level or "
+                f"inside optimize_config.{name}, not both."
+            )
+        value = getattr(request, name)
+        if hasattr(value, "model_dump"):
+            value = _schema_dict(value)
+        opt_config[name] = value
+    return opt_config
 
 
 def _frame_records(frame: Any) -> tuple[list[str], list[dict[str, Any]]]:
@@ -232,7 +263,7 @@ def _generate_candidates(
     method = optimizer.ask if use_ask else optimizer.candidate
     candidates, acq_value = method(
         acq_config=request.acq_config,
-        opt_config=request.opt_config,
+        opt_config=_candidate_optimize_config(request),
         bounds=request.bounds,
         return_dataframe=True,
         **_candidate_direct_kwargs(request),

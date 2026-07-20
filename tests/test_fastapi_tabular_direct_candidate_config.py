@@ -1,5 +1,7 @@
 """FastAPI parity tests for direct TabularBayesianOptimizer candidate fields."""
 
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import pytest

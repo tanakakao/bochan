@@ -21,13 +21,7 @@ TabularPayload = list[dict[str, Any]] | dict[str, list[Any]]
 
 
 class TabularFitModelRequest(APIRequest):
-    """Fit a :class:`TabularBayesianOptimizer` from JSON tabular data.
-
-    ``constraints`` and ``repair_config`` are retained as default candidate
-    optimization settings for subsequent ``/candidates`` and ``/ask`` calls.
-    Tabular column names are intentionally accepted inside both structures and
-    are resolved only after the fitted feature order is known.
-    """
+    """Fit a :class:`TabularBayesianOptimizer` from JSON tabular data."""
 
     data: TabularPayload
     bo_model_config: ModelConfigSchema = Field(alias="model_config")
@@ -52,11 +46,6 @@ class TabularFitModelRequest(APIRequest):
     category_maps: dict[str, dict[Any, int]] | None = None
     target_category_maps: dict[str, dict[Any, int]] | None = None
     return_original_categories: bool = True
-
-    # Default candidate optimization settings.  These are not model-fitting
-    # constraints: they are merged into each later optimize_config request.
-    constraints: list[Any] | None = None
-    repair_config: dict[str, Any] | None = None
 
 
 class TabularPredictRequest(APIRequest):

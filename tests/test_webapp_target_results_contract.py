@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from bochan.serving.webapp.target_results import _setting_constraint_result
 
 
@@ -52,4 +54,4 @@ def test_binary_probability_below_reports_violation() -> None:
     )
 
     assert result["ok"] is False
-    assert result["violation"] == 0.15
+    assert result["violation"] == pytest.approx(0.15)

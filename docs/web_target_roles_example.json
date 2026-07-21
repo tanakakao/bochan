@@ -1,0 +1,32 @@
+{
+  "model_kwargs": {
+    "web_target_settings": [
+      {
+        "target": "yield",
+        "task_type": "regression",
+        "optimize": true,
+        "direction": "maximize",
+        "goal": "none",
+        "value": null
+      },
+      {
+        "target": "defect_probability",
+        "task_type": "regression",
+        "optimize": false,
+        "direction": "minimize",
+        "goal": "below",
+        "value": 0.05
+      }
+    ],
+    "web_target_roles": {
+      "yield": {"optimize": true, "direction": "maximize"},
+      "defect_probability": {"optimize": false, "direction": "minimize"}
+    }
+  },
+  "acquisition": {
+    "name": "variance",
+    "acqf_kwargs": {
+      "web_family": "active_learning"
+    }
+  }
+}

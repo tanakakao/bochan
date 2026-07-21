@@ -1,0 +1,79 @@
+.constraint-actions {
+  margin-bottom: 16px;
+}
+
+.constraint-empty {
+  padding: 20px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  color: var(--muted);
+  background: var(--surface-subtle);
+  text-align: center;
+}
+
+.constraint-list {
+  display: grid;
+  gap: 10px;
+}
+
+.constraint-row {
+  display: grid;
+  grid-template-columns: 34px minmax(90px, 0.7fr) 22px minmax(180px, 2fr) 90px minmax(120px, 1fr) 44px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-subtle);
+}
+
+.constraint-index {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--primary);
+  background: var(--primary-soft);
+  font-weight: 800;
+}
+
+.constraint-times {
+  color: var(--muted);
+  text-align: center;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.constraint-delete {
+  width: 42px;
+  min-height: 42px;
+  padding: 0;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 24%, var(--line));
+  font-size: 22px;
+  line-height: 1;
+}
+
+.constraint-delete:hover:not(:disabled) {
+  color: #ffffff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.search-method-note {
+  margin-top: 10px;
+}
+
+@media (max-width: 1000px) {
+  .constraint-row {
+    grid-template-columns: 34px 1fr 22px 1.5fr;
+  }
+
+  .constraint-row select:nth-of-type(2),
+  .constraint-row input:last-of-type,
+  .constraint-delete {
+    grid-column: auto;
+  }
+}

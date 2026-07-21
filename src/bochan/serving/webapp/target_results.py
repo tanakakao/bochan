@@ -120,17 +120,17 @@ def _setting_constraint_result(
     row_index: int,
     class_probabilities: dict[str, Any],
 ) -> dict[str, Any]:
-    """Evaluate the displayed candidate against its single target setting."""
+    """Evaluate one displayed candidate against an optional target constraint."""
 
     del row_index, class_probabilities
     goal = str(setting["goal"])
     target = str(setting["target"])
     task = str(meta["internal_task"])
-    if goal == "target":
+    if goal in {"none", "target"}:
         return {
             "target": target,
             "goal": goal,
-            "value": meta["configured_value"],
+            "value": meta.get("configured_value"),
             "predicted_mean": predicted_mean,
             "ok": True,
             "violation": 0.0,
@@ -152,6 +152,7 @@ def _setting_constraint_result(
         "goal": goal,
         "value": meta["configured_value"] if task == "ordinal" else threshold,
         "threshold_rank": threshold if task == "ordinal" else None,
+        "target_classes": meta.get("target_classes", []),
         "predicted_mean": predicted_mean,
         "ok": bool(ok),
         "violation": float(violation),
@@ -213,7 +214,7 @@ def _candidate_rows(
                 "prediction_space": values_by_target["prediction_space"],
             }
             setting = setting_by_target[target]
-            if not setting.get("legacy"):
+            if not setting.get("legacy") and setting.get("goal") in {"above", "below"}:
                 constraint_results.append(
                     _setting_constraint_result(
                         setting,
@@ -336,14 +337,15 @@ def _best_observed(
             else:
                 values[target] = float(series.max())
         elif meta["internal_task"] in {"binary", "multiclass"}:
-            class_index = int(meta["class_index"])
-            values[target] = float((encoded_targets[target] == class_index).mean())
+            class_indices = [int(index) for index in meta.get("class_indices", [])]
+            values[target] = float(encoded_targets[target].isin(class_indices).mean())
         else:
             series = encoded_targets[target]
             if goal == "below":
                 values[target] = float(series.min())
             elif goal == "target":
-                values[target] = float(meta["class_index"])
+                target_indices = [int(index) for index in meta.get("class_indices", [])]
+                values[target] = float(target_indices[0]) if target_indices else float(series.max())
             else:
                 values[target] = float(series.max())
     return values

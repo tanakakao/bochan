@@ -138,10 +138,12 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       feature_columns: input.featureColumns,
       target_column: input.targetColumn,
       target_columns: input.targetColumns,
-      target_settings: input.targetSettings,
       direction: input.targetDirections[input.targetColumn] ?? input.direction,
       directions: input.targetDirections,
       model_type: backendModelType,
+      model_kwargs: {
+        web_target_settings: input.targetSettings
+      },
       fit_maxiter: input.fitMaxiter,
       normalize: true,
       outcome_transform: true,

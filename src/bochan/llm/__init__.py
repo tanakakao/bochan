@@ -8,8 +8,8 @@ from .candidate_generator import (
 )
 from .client import BaseLLMClient, GeminiClient, LLMResponse, OpenAIClient, make_llm_client
 from .configs import GoalConfig, LLMConfig, LLMContextConfig, LLMSettings
-from .planner import build_config_planner_prompt, plan_configs
 from .prompt_builder import build_candidate_prompt, build_goal_planner_prompt
+from .structured_planner import build_config_planner_prompt, plan_configs
 
 __all__ = [
     "BaseLLMClient",

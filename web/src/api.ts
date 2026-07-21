@@ -215,6 +215,9 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       optimize: setting.optimize,
       direction: setting.direction
     }])),
+    // The Web endpoint keeps its public schema backward compatible. This
+    // Web-only adapter setting is removed before model construction and is
+    // executed through the same tabular converter used by /tabular/models.
     web_feature_missing: {
       strategy: featureMissing.strategy,
       continuous_impute_strategy: featureMissing.continuousStrategy,

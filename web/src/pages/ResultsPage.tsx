@@ -32,24 +32,25 @@ export default function ResultsPage() {
     );
   }
 
-  const targetColumns = result.target_columns?.length
-    ? result.target_columns
-    : result.target_column
-      ? [result.target_column]
+  const completedResult = result;
+  const targetColumns = completedResult.target_columns?.length
+    ? completedResult.target_columns
+    : completedResult.target_column
+      ? [completedResult.target_column]
       : [];
-  const candidates = [...result.candidates].sort((left, right) => left.rank - right.rank);
+  const candidates = [...completedResult.candidates].sort((left, right) => left.rank - right.rank);
 
   function downloadCandidates() {
     const header = [
       "rank",
-      ...result.feature_columns,
+      ...completedResult.feature_columns,
       ...targetColumns.flatMap((target) => [`${target}_mean`, `${target}_std`]),
       "acq_value",
       "constraints_ok"
     ];
     const rows = candidates.map((candidate) => [
       candidate.rank,
-      ...result.feature_columns.map((column) => candidate.values[column]),
+      ...completedResult.feature_columns.map((column) => candidate.values[column]),
       ...targetColumns.flatMap((target) => [
         candidate.predictions?.[target]?.mean,
         candidate.predictions?.[target]?.std
@@ -61,18 +62,18 @@ export default function ResultsPage() {
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `${result.dataset_name.replace(/\.[^.]+$/, "")}_bo_candidates.csv`;
+    anchor.download = `${completedResult.dataset_name.replace(/\.[^.]+$/, "")}_bo_candidates.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
   }
 
-  const droppedRows = Number(result.metadata?.dropped_rows ?? 0);
-  const modelDetails = result.metadata?.model_details as Record<string, unknown> | undefined;
+  const droppedRows = Number(completedResult.metadata?.dropped_rows ?? 0);
+  const modelDetails = completedResult.metadata?.model_details as Record<string, unknown> | undefined;
   const effectiveAcquisition = String(
-    modelDetails?.effective_acquisition ?? result.metadata?.acquisition ?? "—"
+    modelDetails?.effective_acquisition ?? completedResult.metadata?.acquisition ?? "—"
   );
   const backend = String(
-    modelDetails?.optimizer_backend ?? result.metadata?.optimizer_backend ?? "TabularBayesianOptimizer"
+    modelDetails?.optimizer_backend ?? completedResult.metadata?.optimizer_backend ?? "TabularBayesianOptimizer"
   );
 
   return (
@@ -80,7 +81,7 @@ export default function ResultsPage() {
       <SectionHeader
         step="5 · RESULTS"
         title="推奨候補とモデル結果"
-        text={`${result.model_type} · ${effectiveAcquisition} · ${backend} · 学習 ${result.n_train}件`}
+        text={`${completedResult.model_type} · ${effectiveAcquisition} · ${backend} · 学習 ${completedResult.n_train}件`}
         action={
           <>
             <button className="secondary" onClick={() => setStep("settings")}>目的・探索設定</button>
@@ -105,7 +106,7 @@ export default function ResultsPage() {
             <thead>
               <tr>
                 <th>順位</th>
-                {result.feature_columns.map((column) => <th key={column}>{column}</th>)}
+                {completedResult.feature_columns.map((column) => <th key={column}>{column}</th>)}
                 {targetColumns.flatMap((target) => [
                   <th key={`${target}-mean`}>{target}<br />予測値</th>,
                   <th key={`${target}-std`}>{target}<br />予測標準偏差</th>
@@ -118,7 +119,7 @@ export default function ResultsPage() {
               {candidates.map((candidate) => (
                 <tr key={candidate.rank} className={candidate.rank === 1 ? "candidate-best" : ""}>
                   <td><span className="rank">{candidate.rank}</span></td>
-                  {result.feature_columns.map((column) => (
+                  {completedResult.feature_columns.map((column) => (
                     <td key={column}>
                       {typeof candidate.values[column] === "number"
                         ? formatNumber(candidate.values[column] as number)
@@ -155,11 +156,11 @@ export default function ResultsPage() {
         </article>
       )}
 
-      <InteractiveResultPlots result={result} />
+      <InteractiveResultPlots result={completedResult} />
 
-      {(result.visualization_warnings ?? []).length > 0 && (
+      {(completedResult.visualization_warnings ?? []).length > 0 && (
         <div className="alert warning">
-          {result.visualization_warnings.map((warning) => <div key={warning}>{warning}</div>)}
+          {completedResult.visualization_warnings.map((warning) => <div key={warning}>{warning}</div>)}
         </div>
       )}
     </>

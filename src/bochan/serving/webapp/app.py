@@ -19,6 +19,7 @@ from bochan.desktop.services import (
     load_dataframe_from_payload,
 )
 from bochan.serving.fastapi import create_api_router
+from bochan.serving.fastapi.converters import to_serializable
 
 from .logging import (
     configure_logging,
@@ -30,6 +31,7 @@ from .logging import (
     reset_request_id,
     set_request_id,
 )
+from .visualization_sessions import build_visualization
 from .workflows import run_regression_web_workflow
 
 
@@ -90,6 +92,31 @@ class OptimizerSettingsSchema(_Schema):
     sequential: bool = True
 
 
+class KSparseSettingsSchema(_Schema):
+    """Limit the number of non-zero variables selected from a feature subset."""
+
+    enabled: bool = False
+    columns: list[str] = Field(default_factory=list)
+    k: int = Field(default=1, ge=1)
+    score: Literal["abs", "value"] = "abs"
+    support_selection: str = "topk"
+    final_priority: str = "grid"
+
+
+class VisualizationRequestSchema(_Schema):
+    """Select one existing Plotly visualization for a fitted Web run."""
+
+    kind: Literal["yyplot", "pareto", "1d", "2d", "ternary"]
+    target: str | None = None
+    target_x: str | None = None
+    target_y: str | None = None
+    features: list[str] = Field(default_factory=list)
+    fixed_values: dict[str, Any] = Field(default_factory=dict)
+    show_type: Literal["pred", "acqf"] = "pred"
+    n: int = Field(default=50, ge=10, le=150)
+    sum_value: float | None = None
+
+
 class RegressionRunRequest(_Schema):
     """Run single- or multi-objective regression optimization."""
 
@@ -110,14 +137,14 @@ class RegressionRunRequest(_Schema):
     search_space: list[SearchVariableSchema] = Field(default_factory=list)
     constraints: list[Any] = Field(default_factory=list)
     outcome_constraints: list[OutcomeConstraintSchema] = Field(default_factory=list)
-    k_sparse: Any | None = None
+    k_sparse: KSparseSettingsSchema | None = None
     acquisition: AcquisitionSettingsSchema = Field(default_factory=AcquisitionSettingsSchema)
     optimizer: OptimizerSettingsSchema = Field(default_factory=OptimizerSettingsSchema)
     drop_missing: bool = True
 
 
 WEB_CAPABILITIES: dict[str, Any] = {
-    "task_types": ["regression", "multi_objective"],
+    "task_types": ["regression", "classification", "ordinal", "hybrid", "multi_objective"],
     "model_types": [
         "base",
         "deepgp",
@@ -129,10 +156,33 @@ WEB_CAPABILITIES: dict[str, Any] = {
         "hetero",
         "multitask",
     ],
-    "acquisitions": ["EI", "NEI", "UCB", "EHVI", "NEHVI"],
-    "optimizers": ["optimize_acqf"],
+    "acquisitions": [
+        "EI",
+        "PI",
+        "UCB",
+        "EHVI",
+        "NEHVI",
+        "NParEGO",
+        "variance",
+        "predictive_entropy",
+        "BALD",
+        "NIPV",
+        "straddle",
+        "boundary_variance",
+        "ICU",
+    ],
+    "optimizers": [
+        "optimize_acqf",
+        "torch",
+        "ga",
+        "sa",
+        "pso",
+        "cmaes",
+        "thompson_sampling",
+        "nsgaii",
+    ],
     "data_sources": ["csv", "excel"],
-    "visualizations": ["yyplot", "prediction-1d", "prediction-2d"],
+    "visualizations": ["yyplot", "pareto", "prediction-1d", "prediction-2d", "ternary"],
     "logging": {
         "format": "jsonl",
         "request_id_header": "X-Request-ID",
@@ -141,10 +191,25 @@ WEB_CAPABILITIES: dict[str, Any] = {
 }
 
 
+def _profile_with_category_values(record: Any) -> dict[str, Any]:
+    """Add complete low-cardinality values, including numeric categories, for UI selects."""
+
+    profile = {
+        **record.profile,
+        "columns": [dict(column) for column in record.profile["columns"]],
+    }
+    for column in profile["columns"]:
+        if int(column.get("unique_count", 0)) > 30:
+            continue
+        series = record.data[column["name"]].dropna()
+        column["values"] = to_serializable(series.unique().tolist())
+    return profile
+
+
 def create_app(
     *,
     title: str = "bochan Web API",
-    version: str = "0.2.0",
+    version: str = "0.3.0",
     api_prefix: str = "/api/v1",
     cors_origins: Sequence[str] | None = None,
     include_core_api: bool = True,
@@ -199,9 +264,7 @@ def create_app(
         else:
             duration_ms = round((perf_counter() - started) * 1000, 3)
             response.headers["X-Request-ID"] = request_id
-            response_level = (
-                logging.WARNING if response.status_code >= 400 else logging.INFO
-            )
+            response_level = logging.WARNING if response.status_code >= 400 else logging.INFO
             log_event(
                 logger,
                 response_level,
@@ -296,8 +359,8 @@ def create_app(
                 "dataset_id": record.dataset_id,
                 "name": record.name,
                 "source_type": record.source_type,
-                "profile": record.profile,
-                "preview": dataframe_preview(record.data, limit=50),
+                "profile": _profile_with_category_values(record),
+                "preview": dataframe_preview(record.data, limit=100),
             }
         except Exception as exc:
             logger.exception(
@@ -319,7 +382,7 @@ def create_app(
                 "dataset_id": record.dataset_id,
                 "name": record.name,
                 "source_type": record.source_type,
-                "profile": record.profile,
+                "profile": _profile_with_category_values(record),
                 "preview": dataframe_preview(record.data, limit=limit),
             }
         except KeyError as exc:
@@ -357,7 +420,12 @@ def create_app(
             n_features=len(request.feature_columns),
             target_columns=target_columns,
             directions=request.directions,
-            n_outcome_constraints=len(request.outcome_constraints),
+            normalize=request.normalize,
+            input_perturbation=request.input_perturbation,
+            n_w=request.n_w,
+            perturbation_std=request.perturbation_std,
+            n_feature_constraints=len(request.constraints),
+            k_sparse=to_serializable(request.k_sparse),
         )
         try:
             result = run_regression_web_workflow(request, dataset_store)
@@ -371,10 +439,7 @@ def create_app(
                 acquisition=request.acquisition.name,
                 n_train=result.get("n_train"),
                 n_candidates=len(result.get("candidates", [])),
-                n_visualizations=len(result.get("visualizations", [])),
-                visualization_warnings=len(
-                    result.get("visualization_warnings", [])
-                ),
+                model_details=result.get("metadata", {}).get("model_details"),
                 duration_ms=round((perf_counter() - started) * 1000, 3),
             )
             return result
@@ -401,6 +466,26 @@ def create_app(
             )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @router.post("/runs/{run_id}/visualizations")
+    def result_visualization(
+        run_id: str,
+        request: VisualizationRequestSchema,
+    ) -> dict[str, Any]:
+        try:
+            return build_visualization(run_id, request.model_dump())
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.exception(
+                "Result visualization failed",
+                extra={
+                    "event": "visualization_failed",
+                    "visualization_run_id": run_id,
+                    "visualization_kind": request.kind,
+                },
+            )
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     app.include_router(router)
     log_event(
         logger,
@@ -420,8 +505,10 @@ app = create_app()
 
 __all__ = [
     "DatasetLoadRequest",
+    "KSparseSettingsSchema",
     "OutcomeConstraintSchema",
     "RegressionRunRequest",
+    "VisualizationRequestSchema",
     "WEB_CAPABILITIES",
     "app",
     "create_app",

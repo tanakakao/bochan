@@ -13,12 +13,30 @@ from .configs import AcquisitionConfig as _BaseAcquisitionConfig
 
 _DEFAULT_UCB_BETA = 3.0
 _UCB_NAMES = {"ucb", "qucb", "upperconfidencebound", "qupperconfidencebound"}
+_LLM_SELECTED_NAMES = {
+    "llm",
+    "llmselected",
+    "llmacquisitionselect",
+    "llmacquisitionselected",
+    "llmplanned",
+    "llmplanner",
+}
 ConstraintOperator = Literal["ge", "gt", "le", "lt"]
 _MISSING = object()
 
 
 def _normalize_acquisition_name(name: str) -> str:
     return str(name).replace("_", "").replace("-", "").replace(" ", "").lower()
+
+
+def _install_llm_selected_runtime_if_needed(name: str) -> None:
+    """Install execution-time LLM acquisition resolution for selector names."""
+
+    if _normalize_acquisition_name(name) not in _LLM_SELECTED_NAMES:
+        return
+    from .llm_selected_acquisition import install_llm_selected_acquisition_api
+
+    install_llm_selected_acquisition_api()
 
 
 def _coerce_constraint_spec(value: Any) -> Any:
@@ -154,7 +172,10 @@ class OutcomeConstraintConfig:
                 return []
             from bochan.acquisition.feasible import make_sample_constraints
 
-            return make_sample_constraints(self.constraints or [], output_names=output_names)
+            return make_sample_constraints(
+                self.constraints or [],
+                output_names=output_names,
+            )
 
         from bochan.acquisition.objective import make_outcome_constraints
 
@@ -186,6 +207,11 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
         ``constraints`` and ``outcome_constraint_config`` are mutually exclusive
         user inputs. ``constraints`` is the low-level BoTorch-facing escape hatch;
         ``outcome_constraint_config`` is the high-level, serializable API.
+
+        ``name="llm_selected"`` defers acquisition selection until
+        ``BayesianOptimizer.acquisition()`` or ``candidate()`` is called. The
+        optimizer's shared ``llm_settings`` are used, while explicitly supplied
+        objective, constraint, sampler, and keyword settings remain authoritative.
     """
 
     constraints: list[Any] | None = None
@@ -207,14 +233,17 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
                 "acqf_kwargs['constraints']."
             )
 
-        if self.constraints is not None and self.outcome_constraint_config is not None:
+        if (
+            self.constraints is not None
+            and self.outcome_constraint_config is not None
+        ):
             if replaying_internal_constraints:
                 self.constraints = None
             else:
                 raise ValueError(
-                    "Specify either constraints or outcome_constraint_config, not both. "
-                    "Use outcome_constraint_config for user-facing specs and "
-                    "constraints only for explicit BoTorch callables."
+                    "Specify either constraints or outcome_constraint_config, "
+                    "not both. Use outcome_constraint_config for user-facing "
+                    "specs and constraints only for explicit BoTorch callables."
                 )
 
         if self.outcome_constraint_config is not None:
@@ -223,7 +252,9 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
                 constraint_config = OutcomeConstraintConfig(**constraint_config)
                 self.outcome_constraint_config = constraint_config
             built_constraints = constraint_config.build()
-            self.constraints = built_constraints if len(built_constraints) > 0 else None
+            self.constraints = (
+                built_constraints if len(built_constraints) > 0 else None
+            )
 
         if self.constraints is not None:
             kwargs["constraints"] = self.constraints
@@ -235,6 +266,7 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
             kwargs["beta"] = _DEFAULT_UCB_BETA
 
         self.acqf_kwargs = kwargs
+        _install_llm_selected_runtime_if_needed(self.name)
 
 
 def _install_nan_multiobjective() -> None:

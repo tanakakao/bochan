@@ -7,13 +7,19 @@ on:
     paths:
       - "src/bochan/llm/**"
       - "src/bochan/api/acquisition_config.py"
+      - "src/bochan/api/llm_candidate_explanation.py"
       - "src/bochan/api/llm_selected_acquisition.py"
       - "src/bochan/api/llm_suggestion.py"
       - "src/bochan/api/model_registry.py"
       - "tests/test_llm_client_tls.py"
+      - "tests/test_llm_candidate_explanation.py"
+      - "tests/test_llm_candidate_overall_explanation.py"
       - "tests/test_llm_candidate_optimizer.py"
       - "tests/test_llm_selected_acquisition_config.py"
+      - "tests/test_llm_structured_planner.py"
       - "README_LLM.md"
+      - "README_LLM_CANDIDATE_EXPLANATION.md"
+      - "README_LLM_HYBRID_CONSTRAINTS.md"
       - "docs/llm_selected_acquisition.md"
       - ".github/workflows/llm-client-smoke.yml"
   workflow_dispatch:
@@ -37,26 +43,37 @@ jobs:
           set -o pipefail
           pytest -q --maxfail=1 \
             tests/test_llm_client_tls.py \
+            tests/test_llm_candidate_explanation.py \
+            tests/test_llm_candidate_overall_explanation.py \
             tests/test_llm_candidate_optimizer.py \
             tests/test_llm_selected_acquisition_config.py \
+            tests/test_llm_structured_planner.py \
             2>&1 | tee pytest-llm-smoke.log
       - name: Run lint
         if: success()
         run: |
           set -o pipefail
-          ruff check \
-            src/bochan/api/acquisition_config.py \
-            src/bochan/api/llm_selected_acquisition.py \
-            src/bochan/api/llm_suggestion.py \
-            src/bochan/api/model_registry.py \
-            src/bochan/llm/__init__.py \
-            src/bochan/llm/client.py \
-            src/bochan/llm/configs.py \
-            src/bochan/llm/planner.py \
-            tests/test_llm_client_tls.py \
-            tests/test_llm_candidate_optimizer.py \
-            tests/test_llm_selected_acquisition_config.py \
-            2>&1 | tee ruff-llm-smoke.log
+          {
+            ruff check --ignore UP037 src/bochan/llm/candidate_explainer.py &&
+            ruff check \
+              src/bochan/api/acquisition_config.py \
+              src/bochan/api/llm_candidate_explanation.py \
+              src/bochan/api/llm_selected_acquisition.py \
+              src/bochan/api/llm_suggestion.py \
+              src/bochan/api/model_registry.py \
+              src/bochan/llm/__init__.py \
+              src/bochan/llm/candidate_explainer_overall.py \
+              src/bochan/llm/client.py \
+              src/bochan/llm/configs.py \
+              src/bochan/llm/planner.py \
+              src/bochan/llm/structured_planner.py \
+              tests/test_llm_client_tls.py \
+              tests/test_llm_candidate_explanation.py \
+              tests/test_llm_candidate_overall_explanation.py \
+              tests/test_llm_candidate_optimizer.py \
+              tests/test_llm_selected_acquisition_config.py \
+              tests/test_llm_structured_planner.py
+          } 2>&1 | tee ruff-llm-smoke.log
       - name: Upload focused logs
         if: always()
         uses: actions/upload-artifact@v4

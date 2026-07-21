@@ -8,12 +8,16 @@ from bochan.serving.webapp.tabular_backend import (
     fit_tabular_optimizer,
     target_category_maps,
 )
-from bochan.serving.webapp.workflows import run_regression_web_workflow
+from bochan.serving.webapp.workflows import (
+    _run_regression_web_workflow,
+    run_regression_web_workflow,
+)
 from bochan.tabular import TabularBayesianOptimizer
 
 
-def test_web_workflow_export_uses_tabular_implementation() -> None:
-    assert run_regression_web_workflow.__module__.endswith("workflows_tabular")
+def test_web_workflow_wrapper_calls_tabular_implementation() -> None:
+    assert run_regression_web_workflow.__module__.endswith("workflows")
+    assert _run_regression_web_workflow.__module__.endswith("workflows_tabular")
 
 
 def test_feature_category_maps_restore_numeric_labels() -> None:

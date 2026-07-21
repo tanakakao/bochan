@@ -1,11 +1,19 @@
 export type FeatureConstraintOperator = ">" | "<" | "=";
 
+/** One linear constraint: sum(coefficients[name] * name) operator value. */
 export interface FeatureConstraint {
   id: string;
-  variable: string;
-  coefficient: number;
+  variables: string[];
+  coefficients: Record<string, number>;
   operator: FeatureConstraintOperator;
   value: number;
+}
+
+/** Limits how many selected numeric variables remain non-zero in one candidate. */
+export interface SelectionCountConstraint {
+  enabled: boolean;
+  variables: string[];
+  k: number;
 }
 
 export type SearchMethod =
@@ -19,6 +27,7 @@ export type SearchMethod =
   | "nsgaii";
 
 const CONSTRAINTS_KEY = "bochan-web-feature-constraints";
+const SELECTION_COUNT_KEY = "bochan-web-selection-count-constraint";
 const SEARCH_METHOD_KEY = "bochan-web-search-method";
 
 function storage(): Storage | null {
@@ -32,12 +41,53 @@ export function newConstraintId(): string {
   return `constraint-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function finiteNumber(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeConstraint(raw: unknown): FeatureConstraint | null {
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  const id = typeof value.id === "string" && value.id ? value.id : newConstraintId();
+  const operator = value.operator === ">" || value.operator === "=" ? value.operator : "<";
+
+  // Migrate the previous single-term shape without discarding user settings.
+  if (typeof value.variable === "string" && value.variable) {
+    return {
+      id,
+      variables: [value.variable],
+      coefficients: { [value.variable]: finiteNumber(value.coefficient, 1) },
+      operator,
+      value: finiteNumber(value.value, 0)
+    };
+  }
+
+  const variables = Array.isArray(value.variables)
+    ? value.variables.filter((item): item is string => typeof item === "string" && item.length > 0)
+    : [];
+  const rawCoefficients = value.coefficients && typeof value.coefficients === "object"
+    ? value.coefficients as Record<string, unknown>
+    : {};
+  const coefficients = Object.fromEntries(
+    variables.map((name) => [name, finiteNumber(rawCoefficients[name], 1)])
+  );
+  return {
+    id,
+    variables: [...new Set(variables)],
+    coefficients,
+    operator,
+    value: finiteNumber(value.value, 0)
+  };
+}
+
 export function loadFeatureConstraints(): FeatureConstraint[] {
   const value = storage()?.getItem(CONSTRAINTS_KEY);
   if (!value) return [];
   try {
-    const parsed = JSON.parse(value) as FeatureConstraint[];
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeConstraint).filter((item): item is FeatureConstraint => Boolean(item));
   } catch {
     return [];
   }
@@ -45,6 +95,27 @@ export function loadFeatureConstraints(): FeatureConstraint[] {
 
 export function saveFeatureConstraints(constraints: FeatureConstraint[]): void {
   storage()?.setItem(CONSTRAINTS_KEY, JSON.stringify(constraints));
+}
+
+export function loadSelectionCountConstraint(): SelectionCountConstraint {
+  const value = storage()?.getItem(SELECTION_COUNT_KEY);
+  if (!value) return { enabled: false, variables: [], k: 1 };
+  try {
+    const parsed = JSON.parse(value) as Partial<SelectionCountConstraint>;
+    return {
+      enabled: Boolean(parsed.enabled),
+      variables: Array.isArray(parsed.variables)
+        ? parsed.variables.filter((item): item is string => typeof item === "string" && item.length > 0)
+        : [],
+      k: Math.max(1, Math.trunc(finiteNumber(parsed.k, 1)))
+    };
+  } catch {
+    return { enabled: false, variables: [], k: 1 };
+  }
+}
+
+export function saveSelectionCountConstraint(value: SelectionCountConstraint): void {
+  storage()?.setItem(SELECTION_COUNT_KEY, JSON.stringify(value));
 }
 
 export function loadSearchMethod(): SearchMethod {

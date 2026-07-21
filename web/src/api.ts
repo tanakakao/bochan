@@ -8,6 +8,10 @@ import type {
   SearchVariable,
   TargetSetting
 } from "./types";
+import {
+  loadFeatureConstraints,
+  loadSearchMethod
+} from "./webRunSettings";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api/v1";
 
@@ -101,20 +105,16 @@ function validateTargetSetting(setting: TargetSetting): string | null {
   if (setting.direction !== "maximize" && setting.direction !== "minimize") {
     return `${setting.target}: 最大化または最小化を選択してください。`;
   }
-
   if (setting.task_type === "regression") {
     if (setting.goal !== "none" && !Number.isFinite(Number(setting.value))) {
       return `${setting.target}: 回帰のしきい値または目標値を数値で指定してください。`;
     }
     return null;
   }
-
   if (setting.task_type === "classification") {
     const selectedClasses = setting.target_classes ?? [];
     if (setting.target_class === null || setting.target_class === undefined) {
-      if (selectedClasses.length === 0) {
-        return `${setting.target}: ターゲットクラスを指定してください。`;
-      }
+      if (selectedClasses.length === 0) return `${setting.target}: ターゲットクラスを指定してください。`;
     }
     if (
       (setting.goal === "above" || setting.goal === "below") &&
@@ -124,7 +124,6 @@ function validateTargetSetting(setting: TargetSetting): string | null {
     }
     return null;
   }
-
   const classOrder = setting.class_order ?? [];
   if (classOrder.length < 2) return `${setting.target}: 順序回帰のクラス順序を指定してください。`;
   if ((setting.goal === "above" || setting.goal === "below") && String(setting.value ?? "").trim() === "") {
@@ -138,9 +137,7 @@ function validateTargetSetting(setting: TargetSetting): string | null {
 
 /** Runs optimization, active learning, or level-set estimation through the Web API. */
 export async function runRegression(input: RunRegressionInput): Promise<RegressionResult> {
-  if (input.targetColumns.length < 1) {
-    throw new Error("目的変数を1列以上選択してください。");
-  }
+  if (input.targetColumns.length < 1) throw new Error("目的変数を1列以上選択してください。");
   if (!input.targetColumns.includes(input.targetColumn)) {
     throw new Error("代表目的変数が選択済み目的変数に含まれていません。");
   }
@@ -152,16 +149,35 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
     throw new Error("目的変数とTargetSettingの対応が不整合です。");
   }
   const optimized = input.targetSettings.filter((setting) => setting.optimize);
-  if (optimized.length === 0) {
-    throw new Error("最適化対象の目的変数を1つ以上選択してください。");
-  }
+  if (optimized.length === 0) throw new Error("最適化対象の目的変数を1つ以上選択してください。");
   if (!optimized.some((setting) => setting.target === input.targetColumn)) {
     throw new Error("代表目的変数は最適化対象から選択してください。");
   }
   const settingError = input.targetSettings.map(validateTargetSetting).find(Boolean);
   if (settingError) throw new Error(settingError);
 
+  const featureConstraints = loadFeatureConstraints();
+  const featureSet = new Set(input.featureColumns);
+  const invalidConstraint = featureConstraints.find((constraint) => (
+    !featureSet.has(constraint.variable) ||
+    !Number.isFinite(constraint.coefficient) ||
+    !Number.isFinite(constraint.value)
+  ));
+  if (invalidConstraint) throw new Error("説明変数の制約に無効な列、係数、または値があります。");
+
+  const searchMethod = loadSearchMethod();
+  if (searchMethod === "nsgaii" && optimized.length < 2) {
+    throw new Error("NSGA-IIは多目的の場合にのみ使用できます。");
+  }
   const backendModelType = input.modelType === "robust" ? "rrp" : input.modelType;
+  const acquisitionName = searchMethod === "nsgaii" ? "nsgaii" : input.acquisition;
+  const constraints = featureConstraints.map((constraint, index) => ({
+    name: `feature-constraint-${index + 1}`,
+    terms: [{ column: constraint.variable, coefficient: constraint.coefficient }],
+    sense: constraint.operator === ">" ? "ge" : constraint.operator === "<" ? "le" : "eq",
+    rhs: constraint.value,
+    enabled: true
+  }));
 
   return request<RegressionResult>("/regression/run", {
     method: "POST",
@@ -184,18 +200,16 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       normalize: true,
       outcome_transform: true,
       search_space: input.searchSpace,
-      constraints: [],
+      constraints,
       outcome_constraints: [],
       k_sparse: null,
       acquisition: {
-        name: input.acquisition,
+        name: acquisitionName,
         beta: input.beta,
-        acqf_kwargs: {
-          web_family: input.acquisitionFamily
-        }
+        acqf_kwargs: { web_family: input.acquisitionFamily }
       },
       optimizer: {
-        name: "optimize_acqf",
+        name: searchMethod,
         q: input.q,
         num_restarts: input.numRestarts,
         raw_samples: input.rawSamples,

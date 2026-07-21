@@ -123,17 +123,19 @@ def test_reuse_rejects_changed_model_settings() -> None:
     _register_source("mismatch-source", source_request)
     changed_request = _request(model_type="saas")
 
-    with model_reuse_run(changed_request, "mismatch-source"):
-        with pytest.raises(ValueError, match="cannot be reused"):
-            reuse_fitted_tabular_optimizer(
-                source_run_id="mismatch-source",
-                current_run_id="mismatch-next",
-                data=pd.DataFrame({"x": [0.0, 1.0], "y": [1.0, 2.0]}),
-                feature_columns=["x"],
-                target_columns=["y"],
-                target_metadata={"y": {"internal_task": "regression"}},
-                hybrid_model=False,
-            )
+    with (
+        model_reuse_run(changed_request, "mismatch-source"),
+        pytest.raises(ValueError, match="cannot be reused"),
+    ):
+        reuse_fitted_tabular_optimizer(
+            source_run_id="mismatch-source",
+            current_run_id="mismatch-next",
+            data=pd.DataFrame({"x": [0.0, 1.0], "y": [1.0, 2.0]}),
+            feature_columns=["x"],
+            target_columns=["y"],
+            target_metadata={"y": {"internal_task": "regression"}},
+            hybrid_model=False,
+        )
 
 
 def test_acquisition_changes_do_not_change_model_fingerprint() -> None:

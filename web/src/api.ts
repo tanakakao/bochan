@@ -174,7 +174,11 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       directions: input.targetDirections,
       model_type: backendModelType,
       model_kwargs: {
-        web_target_settings: input.targetSettings
+        web_target_settings: input.targetSettings,
+        web_target_roles: Object.fromEntries(input.targetSettings.map((setting) => [setting.target, {
+          optimize: setting.optimize,
+          direction: setting.direction
+        }]))
       },
       fit_maxiter: input.fitMaxiter,
       normalize: true,
@@ -184,10 +188,11 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       outcome_constraints: [],
       k_sparse: null,
       acquisition: {
-        family: input.acquisitionFamily,
         name: input.acquisition,
         beta: input.beta,
-        acqf_kwargs: {}
+        acqf_kwargs: {
+          web_family: input.acquisitionFamily
+        }
       },
       optimizer: {
         name: "optimize_acqf",

@@ -151,8 +151,13 @@ export default function ResultsPage() {
   const bestObservedText = typeof result.best_observed === "number"
     ? formatNumber(result.best_observed)
     : targetColumns.map((target) => `${target}: ${formatNumber(bestObservedMap?.[target])}`).join(" / ");
-  const settingText = result.target_settings?.length
-    ? result.target_settings.map(settingSummary).join(" / ")
+  const enrichedSettings = result.target_settings?.map((setting) => ({
+    ...setting,
+    ...(result.target_metadata?.[setting.target] ?? {}),
+    target: setting.target
+  } as TargetSetting));
+  const settingText = enrichedSettings?.length
+    ? enrichedSettings.map(settingSummary).join(" / ")
     : targetColumns
       .map((target) => `${target}: ${(result.directions?.[target] ?? result.direction) === "minimize" ? "最小化" : "最大化"}`)
       .join(" / ");

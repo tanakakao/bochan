@@ -7,6 +7,7 @@ from typing import Any
 
 from . import workflows_tabular as _workflows_tabular
 from .logging import current_request_id, get_logger, log_event
+from .model_reuse import model_reuse_run, prepare_model_reuse_request
 from .target_missing_policy import (
     install_workflow_adapters,
     model_variant,
@@ -38,7 +39,7 @@ def _attach_missing_metadata(
     variant: str | None = None,
     effective_model_type: str | None = None,
 ) -> dict[str, Any]:
-    """Attach explanatory-variable and target missing decisions to metadata."""
+    """Attach feature / target missing-value decisions to workflow metadata."""
 
     metadata = dict(result.get("metadata") or {})
     resolved_variant = variant or report.get("multitask_variant")
@@ -71,19 +72,43 @@ def _attach_missing_metadata(
     return metadata
 
 
+def _attach_reuse_metadata(
+    result: dict[str, Any],
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    """Attach whether the fitted model stage was skipped."""
+
+    metadata = dict(result.get("metadata") or {})
+    metadata.update(
+        {
+            "model_reuse_requested": bool(report.get("requested")),
+            "model_reused": bool(report.get("model_reused")),
+            "fit_skipped": bool(report.get("fit_skipped")),
+            "model_reuse_source_run_id": report.get("source_run_id"),
+        }
+    )
+    result["metadata"] = metadata
+    return metadata
+
+
 def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     """Run the Tabular workflow and retain objects needed by Results and Logs."""
 
+    processing_request, source_run_id = prepare_model_reuse_request(request)
     run_id = current_request_id()
-    with target_missing_run(request) as missing_report:
+    with (
+        target_missing_run(processing_request) as missing_report,
+        model_reuse_run(processing_request, source_run_id) as reuse_report,
+    ):
         if not run_id:
-            result = _run_regression_web_workflow(request, store)
+            result = _run_regression_web_workflow(processing_request, store)
             _attach_missing_metadata(result, missing_report)
+            _attach_reuse_metadata(result, reuse_report)
             return result
 
-        begin_visualization_run(run_id, request)
+        begin_visualization_run(run_id, processing_request)
         try:
-            result = _run_regression_web_workflow(request, store)
+            result = _run_regression_web_workflow(processing_request, store)
             session = finalize_visualization_run(run_id, result)
             variant, effective_model_type = model_variant(session.optimizer.model)
             metadata = _attach_missing_metadata(
@@ -92,6 +117,7 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
                 variant=variant,
                 effective_model_type=effective_model_type,
             )
+            metadata = _attach_reuse_metadata(result, reuse_report)
             details = model_details(session, result)
             details["feature_missing_strategy"] = metadata.get(
                 "feature_missing_strategy"
@@ -102,15 +128,7 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
             details["feature_missing_counts"] = metadata.get(
                 "feature_missing_counts"
             )
-            details["feature_impute_values"] = metadata.get(
-                "feature_impute_values"
-            )
-            details["continuous_impute_strategy"] = metadata.get(
-                "continuous_impute_strategy"
-            )
-            details["categorical_impute_strategy"] = metadata.get(
-                "categorical_impute_strategy"
-            )
+            details["feature_impute_values"] = metadata.get("feature_impute_values")
             details["target_missing_policy"] = metadata.get("target_missing_policy")
             details["target_missing_detected"] = metadata.get(
                 "target_missing_detected"
@@ -119,6 +137,11 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
             details["multitask_variant"] = metadata.get("multitask_variant")
             details["acquisition_baseline_completed"] = metadata.get(
                 "acquisition_baseline_completed"
+            )
+            details["model_reused"] = metadata.get("model_reused")
+            details["fit_skipped"] = metadata.get("fit_skipped")
+            details["model_reuse_source_run_id"] = metadata.get(
+                "model_reuse_source_run_id"
             )
             result["visualization_run_id"] = run_id
             result["visualization_options"] = visualization_options(session)

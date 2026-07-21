@@ -46,7 +46,7 @@ class CandidatePointExplanation:
     confidence: str = "unknown"
 
     @classmethod
-    def from_mapping(cls, value: Mapping[str, Any]) -> "CandidatePointExplanation":
+    def from_mapping(cls, value: Mapping[str, Any]) -> CandidatePointExplanation:
         data = dict(value)
         return cls(
             candidate_index=int(data.get("candidate_index", -1)),

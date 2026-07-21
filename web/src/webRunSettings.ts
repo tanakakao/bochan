@@ -133,6 +133,9 @@ export function saveSelectionCountConstraint(value: SelectionCountConstraint): v
 }
 
 export function loadFeatureMissingSettings(): FeatureMissingSettings {
+  // The application preserves the historical behavior until the user explicitly
+  // selects imputation: remove rows, mean-fill numeric columns, and mode-fill
+  // categorical columns when imputation is enabled.
   const fallback: FeatureMissingSettings = {
     strategy: "drop",
     continuousStrategy: "mean",

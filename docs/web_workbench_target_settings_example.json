@@ -4,20 +4,27 @@
       {
         "target": "yield",
         "task_type": "regression",
-        "goal": "above",
-        "value": 85.0
+        "goal": "none"
       },
       {
-        "target": "quality_class",
+        "target": "pass_fail",
         "task_type": "classification",
-        "goal": "target",
-        "value": "good"
+        "target_class": "pass",
+        "goal": "above",
+        "value": 0.8
+      },
+      {
+        "target": "phase",
+        "task_type": "classification",
+        "target_classes": ["alpha", "beta"],
+        "goal": "none"
       },
       {
         "target": "grade",
         "task_type": "ordinal",
-        "goal": "above",
-        "value": "B"
+        "class_order": ["D", "C", "B", "A"],
+        "goal": "target",
+        "target_values": ["B", "A"]
       }
     ]
   }

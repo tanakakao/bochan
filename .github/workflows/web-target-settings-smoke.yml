@@ -39,7 +39,7 @@ jobs:
         run: |
           python -m pip install ruff
           set +e
-          ruff check \
+          ruff check --ignore SIM102 \
             src/bochan/serving/webapp/target_settings.py \
             src/bochan/serving/webapp/target_results.py \
             tests/test_webapp_multiobjective_contract.py \

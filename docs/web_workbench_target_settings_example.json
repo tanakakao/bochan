@@ -1,0 +1,24 @@
+{
+  "model_kwargs": {
+    "web_target_settings": [
+      {
+        "target": "yield",
+        "task_type": "regression",
+        "goal": "above",
+        "value": 85.0
+      },
+      {
+        "target": "quality_class",
+        "task_type": "classification",
+        "goal": "target",
+        "value": "good"
+      },
+      {
+        "target": "grade",
+        "task_type": "ordinal",
+        "goal": "above",
+        "value": "B"
+      }
+    ]
+  }
+}

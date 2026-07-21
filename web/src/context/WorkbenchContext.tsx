@@ -12,15 +12,12 @@ import type {
   ColumnProfile,
   DatasetResponse,
   Direction,
-  KSparseConfig,
-  LinearConstraint,
-  OutcomeConstraint,
   RegressionResult,
   SearchVariable,
-  TaskType
+  TargetSetting
 } from "../types";
 
-export type WorkbenchStep = "data" | "prepare" | "optimize" | "results" | "logs";
+export type WorkbenchStep = "data" | "prepare" | "settings" | "optimize" | "results" | "logs";
 export type Theme = "light" | "dark";
 export type HealthState = {
   status: "loading" | "ready" | "error";
@@ -29,8 +26,9 @@ export type HealthState = {
 
 export const STEPS: Array<[WorkbenchStep, string, string]> = [
   ["data", "Data", "データ読込"],
-  ["prepare", "Prepare", "変数設定"],
-  ["optimize", "Optimize", "モデルと探索"],
+  ["prepare", "Select", "変数選択"],
+  ["settings", "Settings", "目的・探索設定"],
+  ["optimize", "Optimize", "モデルと候補生成"],
   ["results", "Results", "候補と可視化"],
   ["logs", "Logs", "実行履歴"]
 ];
@@ -59,6 +57,63 @@ function createVariable(column: ColumnProfile): SearchVariable {
   };
 }
 
+function createTargetSetting(column: ColumnProfile): TargetSetting {
+  if (column.kind === "numeric") {
+    return {
+      target: column.name,
+      task_type: "regression",
+      goal: "above",
+      value: column.mean ?? column.min ?? 0
+    };
+  }
+  return {
+    target: column.name,
+    task_type: "classification",
+    goal: "target",
+    value: column.values?.[0] ?? ""
+  };
+}
+
+function finiteNumber(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function validateVariable(variable: SearchVariable): boolean {
+  if (variable.type === "categorical") {
+    if (!variable.fixed) return true;
+    return variable.fixed_value !== undefined && String(variable.fixed_value).trim() !== "";
+  }
+  const lower = finiteNumber(variable.lower);
+  const upper = finiteNumber(variable.upper);
+  if (lower === null || upper === null || lower >= upper) return false;
+  if (variable.step !== undefined && (finiteNumber(variable.step) ?? 0) <= 0) return false;
+  if (!variable.fixed) return true;
+  const fixed = finiteNumber(variable.fixed_value);
+  return fixed !== null && fixed >= lower && fixed <= upper;
+}
+
+function validateTargetSetting(setting: TargetSetting, column?: ColumnProfile): boolean {
+  if (setting.task_type === "regression") {
+    return column?.kind === "numeric" && finiteNumber(setting.value) !== null;
+  }
+  if (
+    setting.task_type === "classification" &&
+    (setting.goal === "above" || setting.goal === "below")
+  ) {
+    const threshold = finiteNumber(setting.value);
+    return threshold !== null && threshold >= 0 && threshold <= 1;
+  }
+  if (
+    setting.task_type === "ordinal" &&
+    (setting.goal === "above" || setting.goal === "below") &&
+    column?.kind === "numeric"
+  ) {
+    return finiteNumber(setting.value) !== null;
+  }
+  return String(setting.value).trim() !== "";
+}
+
 interface WorkbenchContextValue {
   theme: Theme;
   setTheme: (theme: Theme) => void;
@@ -76,17 +131,12 @@ interface WorkbenchContextValue {
   featureColumns: string[];
   targetColumn: string;
   targetColumns: string[];
+  targetSettings: Record<string, TargetSetting>;
+  selectedTargetSettings: TargetSetting[];
   targetDirections: Record<string, Direction>;
+  direction: Direction;
   variables: Record<string, SearchVariable>;
   selectedVariables: SearchVariable[];
-  taskType: TaskType;
-  setTaskType: (taskType: TaskType) => void;
-  ordinalOrder: string[];
-  setOrdinalOrder: (ordinalOrder: string[]) => void;
-  toggleTarget: (name: string) => void;
-  setTargetDirection: (target: string, direction: Direction) => void;
-  direction: Direction;
-  setDirection: (direction: Direction) => void;
   modelType: string;
   setModelType: (modelType: string) => void;
   acquisitionFamily: AcquisitionFamily;
@@ -103,22 +153,13 @@ interface WorkbenchContextValue {
   setNumRestarts: (numRestarts: number) => void;
   rawSamples: number;
   setRawSamples: (rawSamples: number) => void;
-  outcomeConstraints: OutcomeConstraint[];
-  addOutcomeConstraint: (target?: string) => void;
-  patchOutcomeConstraint: (id: string, patch: Partial<OutcomeConstraint>) => void;
-  removeOutcomeConstraint: (id: string) => void;
-  linearConstraints: LinearConstraint[];
-  addLinearConstraint: (kind: LinearConstraint["kind"]) => void;
-  patchLinearConstraint: (id: string, patch: Partial<LinearConstraint>) => void;
-  patchLinearConstraintTerm: (id: string, variable: string, coefficient: number | undefined) => void;
-  removeLinearConstraint: (id: string) => void;
-  kSparse: KSparseConfig;
-  setKSparse: (kSparse: KSparseConfig) => void;
   result: RegressionResult | null;
   canConfigure: boolean;
+  settingsValid: boolean;
   handleFile: (file: File | null) => Promise<void>;
   toggleFeature: (name: string) => void;
-  changeTarget: (name: string) => void;
+  toggleTarget: (name: string) => void;
+  patchTargetSetting: (target: string, patch: Partial<TargetSetting>) => void;
   patchVariable: (name: string, patch: Partial<SearchVariable>) => void;
   execute: () => Promise<void>;
   numberOrUndefined: (value: string) => number | undefined;
@@ -139,11 +180,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [dataset, setDataset] = useState<DatasetResponse | null>(null);
   const [featureColumns, setFeatureColumns] = useState<string[]>([]);
   const [targetColumns, setTargetColumns] = useState<string[]>([]);
-  const [targetDirections, setTargetDirections] = useState<Record<string, Direction>>({});
+  const [targetSettings, setTargetSettings] = useState<Record<string, TargetSetting>>({});
   const [variables, setVariables] = useState<Record<string, SearchVariable>>({});
-  const [taskType, setTaskType] = useState<TaskType>("regression");
-  const [ordinalOrder, setOrdinalOrder] = useState<string[]>([]);
-  const [direction, setDirectionState] = useState<Direction>("maximize");
   const [modelType, setModelType] = useState("base");
   const [acquisitionFamily, setAcquisitionFamily] = useState<AcquisitionFamily>("bayesian_optimization");
   const [acquisition, setAcquisition] = useState("EI");
@@ -152,9 +190,6 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [q, setQ] = useState(3);
   const [numRestarts, setNumRestarts] = useState(10);
   const [rawSamples, setRawSamples] = useState(256);
-  const [outcomeConstraints, setOutcomeConstraints] = useState<OutcomeConstraint[]>([]);
-  const [linearConstraints, setLinearConstraints] = useState<LinearConstraint[]>([]);
-  const [kSparse, setKSparse] = useState<KSparseConfig>({ enabled: false, k: 1, variables: [] });
   const [result, setResult] = useState<RegressionResult | null>(null);
 
   useEffect(() => {
@@ -180,23 +215,42 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const selectableColumns = columns.filter(
     (column) => column.kind === "numeric" || column.kind === "categorical"
   );
-  const targetCandidates = columns.filter((column) =>
-    taskType === "regression"
-      ? column.kind === "numeric"
-      : column.kind === "numeric" || column.kind === "categorical"
-  );
+  const targetCandidates = selectableColumns;
   const targetColumn = targetColumns[0] ?? "";
+  const selectedTargetSettings = useMemo(
+    () => targetColumns
+      .map((name) => targetSettings[name])
+      .filter((setting): setting is TargetSetting => Boolean(setting)),
+    [targetColumns, targetSettings]
+  );
   const selectedVariables = useMemo(
     () => featureColumns
       .map((name) => variables[name])
       .filter((value): value is SearchVariable => Boolean(value)),
     [featureColumns, variables]
   );
+  const targetDirections = useMemo(
+    () => Object.fromEntries(selectedTargetSettings.map((setting) => [
+      setting.target,
+      setting.goal === "below" ? "minimize" : "maximize"
+    ])) as Record<string, Direction>,
+    [selectedTargetSettings]
+  );
+  const direction = targetDirections[targetColumn] ?? "maximize";
   const canConfigure = Boolean(
     dataset &&
     targetColumns.length > 0 &&
     featureColumns.length > 0 &&
     targetColumns.every((target) => !featureColumns.includes(target))
+  );
+  const settingsValid = Boolean(
+    canConfigure &&
+    selectedTargetSettings.length === targetColumns.length &&
+    selectedTargetSettings.every((setting) => validateTargetSetting(
+      setting,
+      columns.find((column) => column.name === setting.target)
+    )) &&
+    selectedVariables.every(validateVariable)
   );
 
   function setTheme(nextTheme: Theme) {
@@ -206,7 +260,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   function canOpenStep(nextStep: WorkbenchStep): boolean {
     if (nextStep === "data" || nextStep === "logs") return true;
     if (nextStep === "prepare") return Boolean(dataset);
-    if (nextStep === "optimize") return canConfigure;
+    if (nextStep === "settings") return canConfigure;
+    if (nextStep === "optimize") return settingsValid;
     if (nextStep === "results") return Boolean(result);
     return false;
   }
@@ -223,27 +278,19 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     try {
       const loaded = await uploadDataset(file);
       setDataset(loaded);
-      const numeric = loaded.profile.columns.filter((column) => column.kind === "numeric");
-      const initialTarget = numeric.at(-1)?.name ?? "";
-      const initialFeatures = loaded.profile.columns
-        .filter(
-          (column) =>
-            (column.kind === "numeric" || column.kind === "categorical") &&
-            column.name !== initialTarget
-        )
-        .map((column) => column.name);
-      setTargetColumns(initialTarget ? [initialTarget] : []);
-      setTargetDirections(initialTarget ? { [initialTarget]: "maximize" } : {});
-      setDirectionState("maximize");
-      setOutcomeConstraints([]);
-      setFeatureColumns(initialFeatures);
-      setVariables(
-        Object.fromEntries(
-          loaded.profile.columns
-            .filter((column) => column.kind === "numeric" || column.kind === "categorical")
-            .map((column) => [column.name, createVariable(column)])
-        )
+      const candidates = loaded.profile.columns.filter(
+        (column) => column.kind === "numeric" || column.kind === "categorical"
       );
+      const initialTarget = candidates.at(-1);
+      const initialFeatures = candidates
+        .filter((column) => column.name !== initialTarget?.name)
+        .map((column) => column.name);
+      setTargetColumns(initialTarget ? [initialTarget.name] : []);
+      setTargetSettings(initialTarget ? { [initialTarget.name]: createTargetSetting(initialTarget) } : {});
+      setFeatureColumns(initialFeatures);
+      setVariables(Object.fromEntries(candidates.map((column) => [column.name, createVariable(column)])));
+      setModelType("base");
+      setAcquisition("EI");
       setStepState("prepare");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -261,40 +308,28 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  /** Compatibility helper for consumers that still replace the target with one column. */
-  function changeTarget(name: string) {
-    setTargetColumns(name ? [name] : []);
-    setTargetDirections(name ? { [name]: targetDirections[name] ?? "maximize" } : {});
-    setFeatureColumns((current) => current.filter((column) => column !== name));
-    setOutcomeConstraints((current) => current.filter((constraint) => constraint.target === name));
-  }
-
   function toggleTarget(name: string) {
+    const profile = columns.find((column) => column.name === name);
+    if (!profile) return;
     setTargetColumns((current) => {
       const selected = current.includes(name);
       const next = selected ? current.filter((column) => column !== name) : [...current, name];
       setFeatureColumns((features) => features.filter((column) => !next.includes(column)));
-      setTargetDirections((directions) => {
-        const updated = { ...directions };
+      setTargetSettings((settings) => {
+        const updated = { ...settings };
         if (selected) delete updated[name];
-        else updated[name] = updated[name] ?? "maximize";
+        else updated[name] = updated[name] ?? createTargetSetting(profile);
         return updated;
       });
-      if (selected) {
-        setOutcomeConstraints((constraints) => constraints.filter((constraint) => constraint.target !== name));
-      }
       return next;
     });
   }
 
-  function setTargetDirection(target: string, nextDirection: Direction) {
-    setTargetDirections((current) => ({ ...current, [target]: nextDirection }));
-    if (target === targetColumn) setDirectionState(nextDirection);
-  }
-
-  function setDirection(nextDirection: Direction) {
-    setDirectionState(nextDirection);
-    if (targetColumn) setTargetDirection(targetColumn, nextDirection);
+  function patchTargetSetting(target: string, patch: Partial<TargetSetting>) {
+    setTargetSettings((current) => ({
+      ...current,
+      [target]: { ...current[target], ...patch, target }
+    }));
   }
 
   function patchVariable(name: string, patch: Partial<SearchVariable>) {
@@ -304,59 +339,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     }));
   }
 
-  function addOutcomeConstraint(target?: string) {
-    const resolvedTarget = target ?? targetColumns[0] ?? targetCandidates[0]?.name ?? "";
-    setOutcomeConstraints((current) => [
-      ...current,
-      { id: crypto.randomUUID(), target: resolvedTarget, operator: ">=", value: 0 }
-    ]);
-  }
-
-  function patchOutcomeConstraint(id: string, patch: Partial<OutcomeConstraint>) {
-    setOutcomeConstraints((current) => current.map(
-      (constraint) => constraint.id === id ? { ...constraint, ...patch } : constraint
-    ));
-  }
-
-  function removeOutcomeConstraint(id: string) {
-    setOutcomeConstraints((current) => current.filter((constraint) => constraint.id !== id));
-  }
-
-  function addLinearConstraint(kind: LinearConstraint["kind"]) {
-    setLinearConstraints((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        kind,
-        terms: {},
-        operator: kind === "equality" ? "=" : "<=",
-        rhs: 0
-      }
-    ]);
-  }
-
-  function patchLinearConstraint(id: string, patch: Partial<LinearConstraint>) {
-    setLinearConstraints((current) => current.map(
-      (constraint) => constraint.id === id ? { ...constraint, ...patch } : constraint
-    ));
-  }
-
-  function patchLinearConstraintTerm(id: string, variable: string, coefficient: number | undefined) {
-    setLinearConstraints((current) => current.map((constraint) => {
-      if (constraint.id !== id) return constraint;
-      const terms = { ...constraint.terms };
-      if (coefficient === undefined) delete terms[variable];
-      else terms[variable] = coefficient;
-      return { ...constraint, terms };
-    }));
-  }
-
-  function removeLinearConstraint(id: string) {
-    setLinearConstraints((current) => current.filter((constraint) => constraint.id !== id));
-  }
-
   async function execute() {
-    if (!dataset || !canConfigure) return;
+    if (!dataset || !settingsValid) return;
     setBusy("モデル学習と候補探索を実行しています");
     setError(null);
     try {
@@ -365,9 +349,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         featureColumns,
         targetColumn,
         targetColumns,
+        targetSettings: selectedTargetSettings,
         targetDirections,
-        taskType,
-        ordinalOrder,
         direction,
         modelType,
         fitMaxiter,
@@ -377,10 +360,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         q,
         numRestarts,
         rawSamples,
-        searchSpace: selectedVariables,
-        outcomeConstraints,
-        linearConstraints,
-        kSparse
+        searchSpace: selectedVariables
       });
       setResult(response);
       setStepState("results");
@@ -408,17 +388,12 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     featureColumns,
     targetColumn,
     targetColumns,
+    targetSettings,
+    selectedTargetSettings,
     targetDirections,
+    direction,
     variables,
     selectedVariables,
-    taskType,
-    setTaskType,
-    ordinalOrder,
-    setOrdinalOrder,
-    toggleTarget,
-    setTargetDirection,
-    direction,
-    setDirection,
     modelType,
     setModelType,
     acquisitionFamily,
@@ -435,22 +410,13 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     setNumRestarts,
     rawSamples,
     setRawSamples,
-    outcomeConstraints,
-    addOutcomeConstraint,
-    patchOutcomeConstraint,
-    removeOutcomeConstraint,
-    linearConstraints,
-    addLinearConstraint,
-    patchLinearConstraint,
-    patchLinearConstraintTerm,
-    removeLinearConstraint,
-    kSparse,
-    setKSparse,
     result,
     canConfigure,
+    settingsValid,
     handleFile,
     toggleFeature,
-    changeTarget,
+    toggleTarget,
+    patchTargetSetting,
     patchVariable,
     execute,
     numberOrUndefined

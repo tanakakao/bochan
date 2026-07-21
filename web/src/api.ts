@@ -3,13 +3,10 @@ import type {
   DatasetResponse,
   Direction,
   HealthResponse,
-  KSparseConfig,
-  LinearConstraint,
   LogsResponse,
-  OutcomeConstraint,
   RegressionResult,
   SearchVariable,
-  TaskType
+  TargetSetting
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api/v1";
@@ -81,9 +78,8 @@ interface RunRegressionInput {
   featureColumns: string[];
   targetColumn: string;
   targetColumns: string[];
+  targetSettings: TargetSetting[];
   targetDirections: Record<string, Direction>;
-  taskType: TaskType;
-  ordinalOrder: string[];
   direction: Direction;
   modelType: string;
   fitMaxiter: number;
@@ -94,39 +90,45 @@ interface RunRegressionInput {
   numRestarts: number;
   rawSamples: number;
   searchSpace: SearchVariable[];
-  outcomeConstraints: OutcomeConstraint[];
-  linearConstraints: LinearConstraint[];
-  kSparse: KSparseConfig;
 }
 
-/** Runs single- or multi-objective regression through the Web API. */
-export async function runRegression(input: RunRegressionInput): Promise<RegressionResult> {
-  if (input.taskType !== "regression") {
-    throw new Error("現在のWeb APIは回帰タスクに対応しています。");
+function validateTargetSetting(setting: TargetSetting): string | null {
+  if (!setting.target) return "目的変数名が空です。";
+  if (setting.task_type === "regression" && !Number.isFinite(Number(setting.value))) {
+    return `${setting.target}: 回帰のしきい値または目標値を数値で指定してください。`;
   }
+  if (
+    setting.task_type === "classification" &&
+    setting.goal !== "target" &&
+    (!Number.isFinite(Number(setting.value)) || Number(setting.value) < 0 || Number(setting.value) > 1)
+  ) {
+    return `${setting.target}: 分類の以上・以下は0〜1の確率しきい値を指定してください。`;
+  }
+  if (String(setting.value).trim() === "") return `${setting.target}: 設定値を入力してください。`;
+  return null;
+}
+
+/** Runs single-, multi-objective, or hybrid target optimization through the Web API. */
+export async function runRegression(input: RunRegressionInput): Promise<RegressionResult> {
   if (input.targetColumns.length < 1) {
     throw new Error("目的変数を1列以上選択してください。");
   }
   if (input.targetColumn !== input.targetColumns[0]) {
     throw new Error("先頭の目的変数設定が不整合です。目的変数を選択し直してください。");
   }
+  if (input.targetSettings.length !== input.targetColumns.length) {
+    throw new Error("すべての目的変数に1つずつ設定してください。");
+  }
+  const settingTargets = input.targetSettings.map((setting) => setting.target);
+  if (input.targetColumns.some((target) => !settingTargets.includes(target))) {
+    throw new Error("目的変数とTargetSettingの対応が不整合です。");
+  }
+  const settingError = input.targetSettings.map(validateTargetSetting).find(Boolean);
+  if (settingError) throw new Error(settingError);
   if (input.acquisitionFamily !== "bayesian_optimization") {
     throw new Error("現在のWeb APIはベイズ最適化の獲得関数のみ対応しています。");
   }
-  if (input.linearConstraints.length > 0 || input.kSparse.enabled) {
-    throw new Error("説明変数の線形制約・k-sparseは現在のWeb APIでは未対応です。");
-  }
 
-  const invalidConstraint = input.outcomeConstraints.find(
-    (constraint) => !input.targetColumns.includes(constraint.target) || !Number.isFinite(constraint.value)
-  );
-  if (invalidConstraint) {
-    throw new Error("目的変数制約の対象またはしきい値が不正です。");
-  }
-
-  const directions = Object.fromEntries(
-    input.targetColumns.map((target) => [target, input.targetDirections[target] ?? "maximize"])
-  );
   const backendModelType = input.modelType === "robust" ? "rrp" : input.modelType;
 
   return request<RegressionResult>("/regression/run", {
@@ -136,15 +138,18 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       feature_columns: input.featureColumns,
       target_column: input.targetColumn,
       target_columns: input.targetColumns,
-      direction: directions[input.targetColumn] ?? input.direction,
-      directions,
+      direction: input.targetDirections[input.targetColumn] ?? input.direction,
+      directions: input.targetDirections,
       model_type: backendModelType,
+      model_kwargs: {
+        web_target_settings: input.targetSettings
+      },
       fit_maxiter: input.fitMaxiter,
       normalize: true,
       outcome_transform: true,
       search_space: input.searchSpace,
       constraints: [],
-      outcome_constraints: input.outcomeConstraints,
+      outcome_constraints: [],
       k_sparse: null,
       acquisition: {
         name: input.acquisition,

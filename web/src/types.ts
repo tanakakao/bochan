@@ -45,10 +45,19 @@ export interface SearchVariable {
 }
 
 export type TaskType = "regression" | "classification" | "ordinal";
+export type TargetGoal = "above" | "below" | "target";
 export type Direction = "maximize" | "minimize";
 export type AcquisitionFamily = "bayesian_optimization" | "active_learning" | "level_set_estimation";
 export type ConstraintKind = "equality" | "inequality";
 export type ConstraintOperator = "=" | "<=" | ">=";
+
+/** One and only one optimization setting attached to a selected target column. */
+export interface TargetSetting {
+  target: string;
+  task_type: TaskType;
+  goal: TargetGoal;
+  value: string | number;
+}
 
 export interface LinearConstraint {
   id: string;
@@ -58,8 +67,9 @@ export interface LinearConstraint {
   rhs: number;
 }
 
+/** Legacy response shape kept for backward compatibility. */
 export interface OutcomeConstraint {
-  id: string;
+  id?: string;
   target: string;
   operator: "<=" | ">=";
   value: number;
@@ -74,6 +84,7 @@ export interface KSparseConfig {
 export interface CandidatePrediction {
   mean: number;
   std: number;
+  prediction_space?: string;
 }
 
 export interface CandidateRow {
@@ -129,6 +140,7 @@ export interface RegressionResult {
   target_columns: string[];
   /** First-target compatibility field. */
   target_column: string;
+  target_settings?: TargetSetting[];
   directions: Record<string, Direction>;
   /** First-target compatibility field. */
   direction: Direction;

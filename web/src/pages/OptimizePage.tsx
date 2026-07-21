@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchCapabilities, type WebCapabilities } from "../api";
 import { EmptyState, SectionHeader } from "../components/Common";
 import { useWorkbench } from "../context/WorkbenchContext";
-import type { SearchVariable } from "../types";
 
 const WEB_MODEL_TYPES = [
   "base",
@@ -17,7 +16,7 @@ const WEB_MODEL_TYPES = [
 ] as const;
 
 const FALLBACK_CAPABILITIES: WebCapabilities = {
-  task_types: ["regression", "multi_objective"],
+  task_types: ["regression", "classification", "ordinal", "hybrid"],
   model_types: [...WEB_MODEL_TYPES],
   acquisitions: ["EI", "NEI", "UCB", "EHVI", "NEHVI"],
   optimizers: ["optimize_acqf"],
@@ -25,56 +24,26 @@ const FALLBACK_CAPABILITIES: WebCapabilities = {
   visualizations: ["yyplot", "prediction-1d", "prediction-2d"]
 };
 
-function finiteNumber(value: unknown): number | null {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+function taskLabel(value: string): string {
+  if (value === "classification") return "分類";
+  if (value === "ordinal") return "順序回帰";
+  return "回帰";
 }
 
-function validateVariable(variable: SearchVariable): string[] {
-  const errors: string[] = [];
-  if (variable.type === "numeric") {
-    const lower = finiteNumber(variable.lower);
-    const upper = finiteNumber(variable.upper);
-    if (lower === null || upper === null) {
-      errors.push(`${variable.name}: 下限と上限を入力してください。`);
-      return errors;
-    }
-    if (lower >= upper) errors.push(`${variable.name}: 下限は上限より小さくしてください。`);
-    if (variable.step !== undefined) {
-      const step = finiteNumber(variable.step);
-      if (step === null || step <= 0) errors.push(`${variable.name}: 刻み幅は正の数にしてください。`);
-      else if (upper > lower && step > upper - lower) errors.push(`${variable.name}: 刻み幅が探索範囲より大きいです。`);
-    }
-    if (variable.fixed) {
-      const fixed = finiteNumber(variable.fixed_value);
-      if (fixed === null) errors.push(`${variable.name}: 固定値を数値で入力してください。`);
-      else if (fixed < lower || fixed > upper) errors.push(`${variable.name}: 固定値を探索範囲内にしてください。`);
-    }
-  } else {
-    if (variable.fixed && (variable.fixed_value === undefined || String(variable.fixed_value).trim() === "")) {
-      errors.push(`${variable.name}: 固定するカテゴリを入力してください。`);
-    }
-    if (
-      variable.fixed &&
-      variable.categories?.length &&
-      !variable.categories.map(String).includes(String(variable.fixed_value))
-    ) {
-      errors.push(`${variable.name}: 固定値が既知カテゴリに含まれていません。`);
-    }
-  }
-  return errors;
+function goalLabel(value: string): string {
+  if (value === "below") return "以下";
+  if (value === "target") return "目標値";
+  return "以上";
 }
 
-/** Renders single- and multi-objective regression settings. */
+/** Configures the surrogate, acquisition, and candidate-generation budget. */
 export default function OptimizePage() {
   const {
     dataset,
-    columns,
-    canConfigure,
+    settingsValid,
     targetColumns,
-    targetDirections,
-    taskType,
-    setTaskType,
+    selectedTargetSettings,
+    selectedVariables,
     modelType,
     setModelType,
     acquisitionFamily,
@@ -91,15 +60,7 @@ export default function OptimizePage() {
     setNumRestarts,
     rawSamples,
     setRawSamples,
-    selectedVariables,
-    patchVariable,
-    outcomeConstraints,
-    linearConstraints,
-    removeLinearConstraint,
-    kSparse,
-    setKSparse,
-    execute,
-    numberOrUndefined
+    execute
   } = useWorkbench();
   const [capabilities, setCapabilities] = useState<WebCapabilities>(FALLBACK_CAPABILITIES);
 
@@ -118,14 +79,16 @@ export default function OptimizePage() {
   }, []);
 
   useEffect(() => {
-    if (taskType !== "regression") setTaskType("regression");
     if (acquisitionFamily !== "bayesian_optimization") {
       setAcquisitionFamily("bayesian_optimization");
     }
-  }, [acquisitionFamily, setAcquisitionFamily, setTaskType, taskType]);
+  }, [acquisitionFamily, setAcquisitionFamily]);
 
   const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
-  const canUseMultitask = targetColumns.length > 1 && !hasCategoricalFeatures;
+  const taskTypes = selectedTargetSettings.map((setting) => setting.task_type);
+  const homogeneousTask = taskTypes.length > 0 && taskTypes.every((task) => task === taskTypes[0]);
+  const allRegression = taskTypes.length > 0 && taskTypes.every((task) => task === "regression");
+  const canUseMultitask = targetColumns.length > 1 && allRegression && !hasCategoricalFeatures;
   const availableModels = useMemo(
     () => WEB_MODEL_TYPES.filter((name) => name !== "multitask" || canUseMultitask),
     [canUseMultitask]
@@ -146,135 +109,94 @@ export default function OptimizePage() {
     }
   }, [acquisition, setAcquisition, targetColumns.length]);
 
-  const columnKind = useMemo(
-    () => Object.fromEntries(columns.map((column) => [column.name, column.kind])),
-    [columns]
-  );
   const validationErrors = useMemo(() => {
-    const errors = selectedVariables.flatMap(validateVariable);
-    if (targetColumns.length < 1) errors.unshift("目的変数を1列以上選択してください。");
+    const errors: string[] = [];
+    if (!settingsValid) errors.push("Settingsページの目的変数または探索変数設定を確認してください。");
     if (modelType === "multitask" && !canUseMultitask) {
-      errors.push("multitaskは複数の回帰目的かつ数値説明変数のみの場合に選択できます。");
+      errors.push("multitaskは複数の回帰目的で、説明変数がすべて数値の場合に選択できます。");
     }
-    outcomeConstraints.forEach((constraint) => {
-      if (!targetColumns.includes(constraint.target)) {
-        errors.push(`目的制約の対象が選択目的に含まれていません: ${constraint.target}`);
-      }
-      if (!Number.isFinite(constraint.value)) {
-        errors.push(`${constraint.target}: 制約値を数値で入力してください。`);
-      }
-    });
     if (fitMaxiter < 1) errors.push("fit maxiterは1以上にしてください。");
     if (q < 1 || q > 20) errors.push("候補点数qは1〜20にしてください。");
     if (numRestarts < 1) errors.push("num_restartsは1以上にしてください。");
     if (rawSamples < 1) errors.push("raw_samplesは1以上にしてください。");
-    if (linearConstraints.length || kSparse.enabled) {
-      errors.push("以前の画面で設定した未対応の説明変数制約またはk-sparse設定が残っています。クリアしてください。");
-    }
     return errors;
-  }, [
-    canUseMultitask,
-    fitMaxiter,
-    kSparse.enabled,
-    linearConstraints.length,
-    modelType,
-    numRestarts,
-    outcomeConstraints,
-    q,
-    rawSamples,
-    selectedVariables,
-    targetColumns
-  ]);
+  }, [canUseMultitask, fitMaxiter, modelType, numRestarts, q, rawSamples, settingsValid]);
 
   const canExecute = validationErrors.length === 0;
+  const modeLabel = targetColumns.length > 1 ? "多目的最適化" : "単目的最適化";
+  const taskSummary = homogeneousTask
+    ? taskLabel(taskTypes[0] ?? "regression")
+    : "混合タスク";
 
-  if (!dataset || !canConfigure) {
+  if (!dataset || !settingsValid) {
     return (
       <>
-        <SectionHeader step="3 · OPTIMIZE" title="モデルと探索空間を設定する" text="先に目的変数と説明変数を設定してください。" />
-        <EmptyState>探索に必要な変数設定が完了していません。</EmptyState>
+        <SectionHeader
+          step="4 · OPTIMIZE"
+          title="モデルと候補生成を設定する"
+          text="先にSettingsページで目的変数と探索変数を設定してください。"
+        />
+        <EmptyState>モデル学習に必要な設定が完了していません。</EmptyState>
       </>
     );
   }
 
-  function resetUnsupportedSettings() {
-    linearConstraints.forEach((constraint) => removeLinearConstraint(constraint.id));
-    setKSparse({ enabled: false, k: 1, variables: [] });
-  }
-
-  function setVariableType(variable: SearchVariable, categorical: boolean) {
-    const nextType = categorical ? "categorical" : "numeric";
-    patchVariable(variable.name, {
-      type: nextType,
-      fixed: false,
-      fixed_value: undefined,
-      step: nextType === "categorical" ? undefined : variable.step
-    });
-  }
-
-  const modeLabel = targetColumns.length > 1 ? "多目的回帰" : "単目的回帰";
-
   return (
     <>
       <SectionHeader
-        step="3 · OPTIMIZE"
-        title="モデルと探索空間を設定する"
-        text="目的数に応じて単目的または多目的の獲得関数を選び、探索範囲を実行前に検証します。"
+        step="4 · OPTIMIZE"
+        title="モデルと候補生成を設定する"
+        text="この画面ではモデル、獲得関数、候補点数と計算量だけを設定します。"
         action={<button disabled={!canExecute} onClick={() => void execute()}>候補を生成</button>}
       />
 
       <article className="panel compact-panel">
         <div className="panel-title">
           <div>
-            <span className="panel-kicker">SUPPORTED SCOPE</span>
-            <h3>現在のWeb API対応範囲</h3>
-            <p>単目的・多目的回帰、目的ごとの最大化／最小化、目的値制約、数値・カテゴリ説明変数に対応します。</p>
+            <span className="panel-kicker">CONFIGURATION SUMMARY</span>
+            <h3>目的変数設定</h3>
+            <p>{modeLabel} · {taskSummary} · {targetColumns.length} targets</p>
           </div>
-          <span className="status-chip success">{modeLabel}</span>
+          <span className="status-chip success">Configured</span>
         </div>
-        <p className="settings-note">
-          multitaskは複数目的が同じ回帰タスクで、説明変数がすべて数値の場合に表示されます。
-          カテゴリ説明変数を含む場合はbaseなどの独立出力モデルを使用してください。
-        </p>
-        {(linearConstraints.length > 0 || kSparse.enabled) && (
-          <button className="secondary" onClick={resetUnsupportedSettings}>未対応設定をクリア</button>
-        )}
+        <div className="cards">
+          {selectedTargetSettings.map((setting) => (
+            <div className="settings-note" key={setting.target}>
+              <strong>{setting.target}</strong>
+              <span> · {taskLabel(setting.task_type)} · {goalLabel(setting.goal)} {String(setting.value)}</span>
+            </div>
+          ))}
+        </div>
       </article>
 
       <div className="form-grid">
         <article className="panel compact-panel">
-          <div className="panel-title"><div><span className="panel-kicker">OBJECTIVES</span><h3>目的</h3></div></div>
-          {targetColumns.map((target) => (
-            <div className="settings-note" key={target}>
-              <strong>{target}</strong> · {targetDirections[target] === "minimize" ? "最小化" : "最大化"}
-              {outcomeConstraints
-                .filter((constraint) => constraint.target === target)
-                .map((constraint) => (
-                  <span key={constraint.id}> · {constraint.operator} {constraint.value}</span>
-                ))}
-            </div>
-          ))}
-        </article>
-
-        <article className="panel compact-panel">
-          <div className="panel-title"><div><span className="panel-kicker">SURROGATE</span><h3>モデル</h3></div></div>
-          <label>Model type
+          <div className="panel-title">
+            <div><span className="panel-kicker">SURROGATE</span><h3>モデル</h3></div>
+          </div>
+          <label>
+            Model type
             <select value={modelType} onChange={(event) => setModelType(event.target.value)}>
               {availableModels.map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
           </label>
           <p className="settings-note">
             {modelType === "robust" ? "内部ではrrpモデルを使用します。" : null}
-            {modelType === "multitask" ? "目的間相関を学習して情報共有します。" : null}
+            {modelType === "multitask" ? "回帰目的間の相関を学習して情報共有します。" : null}
+            {!homogeneousTask ? "混合タスクでは目的変数ごとのサブモデルをhybrid wrapperに束ねます。" : null}
           </p>
-          <label>Fit maxiter
+          <label>
+            Fit maxiter
             <input type="number" min={1} value={fitMaxiter} onChange={(event) => setFitMaxiter(Number(event.target.value))} />
           </label>
         </article>
 
         <article className="panel compact-panel">
-          <div className="panel-title"><div><span className="panel-kicker">ACQUISITION</span><h3>獲得関数</h3></div></div>
-          <label>Acquisition
+          <div className="panel-title">
+            <div><span className="panel-kicker">ACQUISITION</span><h3>獲得関数</h3></div>
+          </div>
+          <label>
+            Acquisition
             <select value={acquisition} onChange={(event) => setAcquisition(event.target.value)}>
               {acquisitionOptions
                 .filter((name) => capabilities.acquisitions.includes(name) || FALLBACK_CAPABILITIES.acquisitions.includes(name))
@@ -282,85 +204,29 @@ export default function OptimizePage() {
             </select>
           </label>
           {acquisition.toUpperCase().includes("UCB") && (
-            <label>Beta
+            <label>
+              Beta
               <input type="number" min={0} step="0.1" value={beta} onChange={(event) => setBeta(Number(event.target.value))} />
             </label>
           )}
         </article>
-      </div>
 
-      <article className="panel">
-        <div className="panel-title">
-          <div>
-            <span className="panel-kicker">CANDIDATE GENERATION</span>
-            <h3>候補生成設定</h3>
-            <p>候補点数と獲得関数最適化の計算量を設定します。</p>
+        <article className="panel compact-panel">
+          <div className="panel-title">
+            <div><span className="panel-kicker">CANDIDATES</span><h3>候補生成</h3></div>
           </div>
-        </div>
-        <div className="form-grid candidate-settings">
           <label>q<input type="number" min={1} max={20} value={q} onChange={(event) => setQ(Number(event.target.value))} /></label>
           <label>num_restarts<input type="number" min={1} value={numRestarts} onChange={(event) => setNumRestarts(Number(event.target.value))} /></label>
           <label>raw_samples<input type="number" min={1} value={rawSamples} onChange={(event) => setRawSamples(Number(event.target.value))} /></label>
-        </div>
-      </article>
-
-      <article className="panel">
-        <div className="panel-title">
-          <div>
-            <span className="panel-kicker">SEARCH SPACE</span>
-            <h3>探索変数</h3>
-            <p>観測範囲を初期値として、カテゴリ扱い・下限・上限・刻み・固定値を編集できます。</p>
-          </div>
-          <span className="status-chip success">{selectedVariables.length} variables</span>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th>変数</th><th>カテゴリ?</th><th>型</th><th>下限</th><th>上限</th><th>刻み</th><th>固定</th><th>固定値</th></tr></thead>
-            <tbody>
-              {selectedVariables.map((variable) => {
-                const detectedCategorical = columnKind[variable.name] === "categorical";
-                return (
-                  <tr key={variable.name}>
-                    <td><strong>{variable.name}</strong></td>
-                    <td>
-                      <input
-                        className="table-checkbox"
-                        type="checkbox"
-                        checked={variable.type === "categorical"}
-                        disabled={detectedCategorical}
-                        title={detectedCategorical ? "文字列・カテゴリ列は数値変数へ変更できません。" : "数値列を離散カテゴリとして扱えます。"}
-                        onChange={(event) => setVariableType(variable, event.target.checked)}
-                      />
-                    </td>
-                    <td><span className="status-chip">{variable.type}</span></td>
-                    <td>{variable.type === "numeric" ? <input type="number" value={variable.lower ?? ""} onChange={(event) => patchVariable(variable.name, { lower: numberOrUndefined(event.target.value) })} /> : "—"}</td>
-                    <td>{variable.type === "numeric" ? <input type="number" value={variable.upper ?? ""} onChange={(event) => patchVariable(variable.name, { upper: numberOrUndefined(event.target.value) })} /> : "—"}</td>
-                    <td>{variable.type === "numeric" ? <input type="number" min={0} value={variable.step ?? ""} placeholder="任意" onChange={(event) => patchVariable(variable.name, { step: numberOrUndefined(event.target.value) })} /> : "—"}</td>
-                    <td><input className="table-checkbox" type="checkbox" checked={variable.fixed} onChange={(event) => patchVariable(variable.name, { fixed: event.target.checked, fixed_value: event.target.checked ? variable.fixed_value : undefined })} /></td>
-                    <td>
-                      {variable.fixed && variable.type === "categorical" && variable.categories?.length ? (
-                        <select value={String(variable.fixed_value ?? "")} onChange={(event) => patchVariable(variable.name, { fixed_value: event.target.value })}>
-                          <option value="">選択</option>
-                          {variable.categories.map((category) => <option key={category} value={category}>{category}</option>)}
-                        </select>
-                      ) : variable.fixed ? (
-                        <input value={variable.fixed_value ?? ""} onChange={(event) => patchVariable(variable.name, { fixed_value: variable.type === "numeric" ? numberOrUndefined(event.target.value) : event.target.value })} />
-                      ) : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </article>
+        </article>
+      </div>
 
       <article className="panel compact-panel">
         <div className="panel-title">
           <div>
             <span className="panel-kicker">VALIDATION</span>
             <h3>実行前チェック</h3>
-            <p>目的、制約、探索範囲、固定値、候補生成設定を確認します。</p>
+            <p>モデル適用条件と候補生成設定を確認します。</p>
           </div>
           <span className={`status-chip ${canExecute ? "success" : "warning"}`}>
             {canExecute ? "Ready" : `${validationErrors.length} issues`}
@@ -369,14 +235,12 @@ export default function OptimizePage() {
         {canExecute ? (
           <p className="settings-note">設定に矛盾は見つかりませんでした。</p>
         ) : (
-          <ul>
-            {validationErrors.map((message) => <li key={message}>{message}</li>)}
-          </ul>
+          <ul>{validationErrors.map((message) => <li key={message}>{message}</li>)}</ul>
         )}
         <div className="train-launcher">
           <div>
             <strong>{modelType} × {acquisition}</strong>
-            <span>{modeLabel} · {targetColumns.length} targets · q={q}</span>
+            <span>{modeLabel} · {taskSummary} · q={q}</span>
           </div>
           <button disabled={!canExecute} onClick={() => void execute()}>学習して候補を生成</button>
         </div>

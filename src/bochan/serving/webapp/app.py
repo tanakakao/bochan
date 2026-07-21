@@ -1,4 +1,4 @@
-"""React-oriented FastAPI application for the bochan web MVP."""
+"""React-oriented FastAPI application for the bochan web workbench."""
 
 from __future__ import annotations
 
@@ -63,8 +63,17 @@ class SearchVariableSchema(_Schema):
     categories: list[Any] | None = None
 
 
+class OutcomeConstraintSchema(_Schema):
+    """Threshold constraint on one selected target in the original value scale."""
+
+    id: str | None = None
+    target: str
+    operator: Literal["<=", ">="]
+    value: float
+
+
 class AcquisitionSettingsSchema(_Schema):
-    """Acquisition-function settings supported by the first web MVP."""
+    """Acquisition-function settings exposed by the web workbench."""
 
     name: str = "EI"
     beta: float = 2.0
@@ -82,12 +91,14 @@ class OptimizerSettingsSchema(_Schema):
 
 
 class RegressionRunRequest(_Schema):
-    """Run one single-objective regression optimization workflow."""
+    """Run single- or multi-objective regression optimization."""
 
     dataset_id: str
     feature_columns: list[str]
-    target_column: str
+    target_column: str | None = None
+    target_columns: list[str] = Field(default_factory=list)
     direction: Literal["maximize", "minimize"] = "maximize"
+    directions: dict[str, Literal["maximize", "minimize"]] = Field(default_factory=dict)
     model_type: str = "base"
     model_kwargs: dict[str, Any] = Field(default_factory=dict)
     fit_maxiter: int = Field(default=128, ge=1)
@@ -98,6 +109,7 @@ class RegressionRunRequest(_Schema):
     perturbation_std: float = Field(default=0.1, gt=0.0)
     search_space: list[SearchVariableSchema] = Field(default_factory=list)
     constraints: list[Any] = Field(default_factory=list)
+    outcome_constraints: list[OutcomeConstraintSchema] = Field(default_factory=list)
     k_sparse: Any | None = None
     acquisition: AcquisitionSettingsSchema = Field(default_factory=AcquisitionSettingsSchema)
     optimizer: OptimizerSettingsSchema = Field(default_factory=OptimizerSettingsSchema)
@@ -105,9 +117,19 @@ class RegressionRunRequest(_Schema):
 
 
 WEB_CAPABILITIES: dict[str, Any] = {
-    "task_types": ["regression"],
-    "model_types": ["base", "saas", "deepkernel"],
-    "acquisitions": ["EI", "NEI", "UCB"],
+    "task_types": ["regression", "multi_objective"],
+    "model_types": [
+        "base",
+        "deepgp",
+        "deepkernel",
+        "saas",
+        "pca",
+        "rembo",
+        "robust",
+        "hetero",
+        "multitask",
+    ],
+    "acquisitions": ["EI", "NEI", "UCB", "EHVI", "NEHVI"],
     "optimizers": ["optimize_acqf"],
     "data_sources": ["csv", "excel"],
     "visualizations": ["yyplot", "prediction-1d", "prediction-2d"],
@@ -122,31 +144,20 @@ WEB_CAPABILITIES: dict[str, Any] = {
 def create_app(
     *,
     title: str = "bochan Web API",
-    version: str = "0.1.0",
+    version: str = "0.2.0",
     api_prefix: str = "/api/v1",
     cors_origins: Sequence[str] | None = None,
     include_core_api: bool = True,
 ) -> FastAPI:
-    """Create the FastAPI app used by the React web application.
-
-    Args:
-        title: OpenAPI application title.
-        version: OpenAPI application version.
-        api_prefix: Path prefix shared by the core FastAPI router and the
-            web-specific endpoints.
-        cors_origins: Browser origins allowed to call the web API. When
-            omitted, Vite's localhost origins are allowed.
-        include_core_api: Whether to mount the tensor-oriented bochan FastAPI
-            router next to the web-specific endpoints.
-
-    Returns:
-        Configured FastAPI application for the React web interface.
-    """
+    """Create the FastAPI application used by the React workbench."""
 
     configured_log_path = configure_logging()
     logger = get_logger("api")
     app = FastAPI(title=title, version=version)
-    allowed_origins = list(cors_origins or ["http://localhost:5173", "http://127.0.0.1:5173"])
+    allowed_origins = list(
+        cors_origins
+        or ["http://localhost:5173", "http://127.0.0.1:5173"]
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
@@ -158,16 +169,6 @@ def create_app(
 
     @app.middleware("http")
     async def request_logging_middleware(request: Request, call_next: Any):
-        """Log request lifecycle events and propagate the request id.
-
-        Args:
-            request: Incoming FastAPI request.
-            call_next: ASGI callable that dispatches to the next middleware or
-                route handler.
-
-        Returns:
-            FastAPI response enriched with the ``X-Request-ID`` header.
-        """
         request_id = request.headers.get("X-Request-ID") or uuid4().hex
         token = set_request_id(request_id)
         started = perf_counter()
@@ -198,7 +199,9 @@ def create_app(
         else:
             duration_ms = round((perf_counter() - started) * 1000, 3)
             response.headers["X-Request-ID"] = request_id
-            response_level = logging.WARNING if response.status_code >= 400 else logging.INFO
+            response_level = (
+                logging.WARNING if response.status_code >= 400 else logging.INFO
+            )
             log_event(
                 logger,
                 response_level,
@@ -214,8 +217,6 @@ def create_app(
             reset_request_id(token)
 
     if include_core_api:
-        # Preserve the existing tensor-oriented HTTP API under the same prefix
-        # as the React web endpoints.
         app.include_router(create_api_router(prefix=api_prefix))
 
     dataset_store = DatasetStore()
@@ -223,12 +224,6 @@ def create_app(
 
     @router.get("/capabilities")
     def capabilities() -> dict[str, Any]:
-        """Return web-client capabilities advertised by this FastAPI app.
-
-        Returns:
-            Supported task types, model types, acquisitions, optimizers, data
-            sources, visualization ids, and logging metadata.
-        """
         capabilities_payload = dict(WEB_CAPABILITIES)
         logging_payload = dict(WEB_CAPABILITIES["logging"])
         logging_payload["recent_logs_endpoint"] = f"{api_prefix}/logs"
@@ -242,17 +237,6 @@ def create_app(
         event: str | None = None,
         request_id: str | None = None,
     ) -> dict[str, Any]:
-        """Return recent structured web API log entries.
-
-        Args:
-            limit: Maximum number of recent records to return.
-            level: Optional log-level filter.
-            event: Optional structured event-name filter.
-            request_id: Optional request-id filter.
-
-        Returns:
-            JSON-safe log entries, entry count, and backing log file path.
-        """
         entries = read_recent_logs(
             limit=limit,
             level=level,
@@ -267,23 +251,10 @@ def create_app(
 
     @router.get("/datasets")
     def list_datasets() -> dict[str, Any]:
-        """List datasets currently loaded in the FastAPI process.
-
-        Returns:
-            Dataset metadata records without tabular preview rows.
-        """
         return {"datasets": dataset_store.list()}
 
     @router.post("/datasets")
     def load_dataset(request: DatasetLoadRequest) -> dict[str, Any]:
-        """Load a browser-uploaded dataset into the in-memory store.
-
-        Args:
-            request: Base64-encoded CSV or Excel dataset payload.
-
-        Returns:
-            Loaded dataset id, metadata profile, and preview rows.
-        """
         started = perf_counter()
         log_event(
             logger,
@@ -342,15 +313,6 @@ def create_app(
 
     @router.get("/datasets/{dataset_id}")
     def get_dataset(dataset_id: str, limit: int = 100) -> dict[str, Any]:
-        """Return one loaded dataset with preview rows.
-
-        Args:
-            dataset_id: Identifier returned by ``POST /datasets``.
-            limit: Maximum preview rows to include.
-
-        Returns:
-            Dataset id, name, source type, profile, and tabular preview.
-        """
         try:
             record = dataset_store.get(dataset_id)
             return {
@@ -378,16 +340,10 @@ def create_app(
 
     @router.post("/regression/run")
     def run_regression(request: RegressionRunRequest) -> dict[str, Any]:
-        """Run a single-objective regression optimization workflow.
-
-        Args:
-            request: Dataset id, feature/target columns, model, acquisition,
-                optimizer, and visualization settings from the web client.
-
-        Returns:
-            Candidate rows, model metadata, visualization payloads, and warnings.
-        """
         started = perf_counter()
+        target_columns = request.target_columns or (
+            [request.target_column] if request.target_column else []
+        )
         log_event(
             logger,
             logging.INFO,
@@ -399,8 +355,9 @@ def create_app(
             optimizer=request.optimizer.name,
             q=request.optimizer.q,
             n_features=len(request.feature_columns),
-            target_column=request.target_column,
-            direction=request.direction,
+            target_columns=target_columns,
+            directions=request.directions,
+            n_outcome_constraints=len(request.outcome_constraints),
         )
         try:
             result = run_regression_web_workflow(request, dataset_store)
@@ -415,7 +372,9 @@ def create_app(
                 n_train=result.get("n_train"),
                 n_candidates=len(result.get("candidates", [])),
                 n_visualizations=len(result.get("visualizations", [])),
-                visualization_warnings=len(result.get("visualization_warnings", [])),
+                visualization_warnings=len(
+                    result.get("visualization_warnings", [])
+                ),
                 duration_ms=round((perf_counter() - started) * 1000, 3),
             )
             return result
@@ -461,6 +420,7 @@ app = create_app()
 
 __all__ = [
     "DatasetLoadRequest",
+    "OutcomeConstraintSchema",
     "RegressionRunRequest",
     "WEB_CAPABILITIES",
     "app",

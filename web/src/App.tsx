@@ -21,6 +21,13 @@ const PAGES: Record<WorkbenchStep, ComponentType> = {
 
 const ICONS = ["▦", "◇", "↗", "◎", "▧"];
 
+function formatBestObserved(value: number | Record<string, number>): string {
+  if (typeof value === "number") return Number.isFinite(value) ? value.toPrecision(5) : "—";
+  return Object.entries(value)
+    .map(([target, observed]) => `${target}: ${Number.isFinite(observed) ? observed.toPrecision(5) : "—"}`)
+    .join(" / ");
+}
+
 function WorkbenchLayout() {
   const {
     theme,
@@ -34,8 +41,8 @@ function WorkbenchLayout() {
     setError,
     dataset,
     featureColumns,
-    targetColumn,
-    direction,
+    targetColumns,
+    targetDirections,
     modelType,
     acquisition,
     q,
@@ -43,6 +50,11 @@ function WorkbenchLayout() {
   } = useWorkbench();
   const index = STEPS.findIndex(([id]) => id === step);
   const Page = PAGES[step];
+  const directionSummary = targetColumns.length
+    ? targetColumns
+      .map((target) => `${target}: ${targetDirections[target] === "minimize" ? "min" : "max"}`)
+      .join(" / ")
+    : "—";
 
   function isComplete(id: WorkbenchStep, stepIndex: number): boolean {
     return stepIndex < index && canOpenStep(id);
@@ -146,7 +158,7 @@ function WorkbenchLayout() {
             <div className="context-list">
               <div><span>File</span><strong>{dataset?.name || "—"}</strong></div>
               <div><span>Rows</span><strong>{dataset?.profile.n_rows ?? "—"}</strong></div>
-              <div><span>Target</span><strong>{targetColumn || "—"}</strong></div>
+              <div><span>Targets</span><strong>{targetColumns.length ? targetColumns.join(", ") : "—"}</strong></div>
               <div><span>Features</span><strong>{featureColumns.length || "—"}</strong></div>
             </div>
           </div>
@@ -157,7 +169,7 @@ function WorkbenchLayout() {
               <strong>探索条件</strong>
             </div>
             <div className="context-list">
-              <div><span>Direction</span><strong>{direction}</strong></div>
+              <div><span>Directions</span><strong>{directionSummary}</strong></div>
               <div><span>Model</span><strong>{modelType}</strong></div>
               <div><span>Acquisition</span><strong>{acquisition}</strong></div>
               <div><span>q</span><strong>{q}</strong></div>
@@ -172,7 +184,7 @@ function WorkbenchLayout() {
             {result ? (
               <div className="context-list">
                 <div><span>Candidates</span><strong>{result.candidates.length}</strong></div>
-                <div><span>Best observed</span><strong>{result.best_observed}</strong></div>
+                <div><span>Best observed</span><strong>{formatBestObserved(result.best_observed)}</strong></div>
                 <div><span>Status</span><strong className="success-text">Ready</strong></div>
               </div>
             ) : (

@@ -4,10 +4,22 @@ import { EmptyState, SectionHeader } from "../components/Common";
 import { useWorkbench } from "../context/WorkbenchContext";
 import type { SearchVariable } from "../types";
 
+const WEB_MODEL_TYPES = [
+  "base",
+  "deepgp",
+  "deepkernel",
+  "saas",
+  "pca",
+  "rembo",
+  "robust",
+  "hetero",
+  "multitask"
+] as const;
+
 const FALLBACK_CAPABILITIES: WebCapabilities = {
-  task_types: ["regression"],
-  model_types: ["base", "saas", "deepkernel"],
-  acquisitions: ["EI", "NEI", "UCB"],
+  task_types: ["regression", "multi_objective"],
+  model_types: [...WEB_MODEL_TYPES],
+  acquisitions: ["EI", "NEI", "UCB", "EHVI", "NEHVI"],
   optimizers: ["optimize_acqf"],
   data_sources: ["csv", "excel"],
   visualizations: ["yyplot", "prediction-1d", "prediction-2d"]
@@ -53,17 +65,16 @@ function validateVariable(variable: SearchVariable): string[] {
   return errors;
 }
 
-/** Renders the verified single-objective regression settings. */
+/** Renders single- and multi-objective regression settings. */
 export default function OptimizePage() {
   const {
     dataset,
     columns,
     canConfigure,
     targetColumns,
+    targetDirections,
     taskType,
     setTaskType,
-    direction,
-    setDirection,
     modelType,
     setModelType,
     acquisitionFamily,
@@ -83,7 +94,6 @@ export default function OptimizePage() {
     selectedVariables,
     patchVariable,
     outcomeConstraints,
-    removeOutcomeConstraint,
     linearConstraints,
     removeLinearConstraint,
     kSparse,
@@ -114,17 +124,27 @@ export default function OptimizePage() {
     }
   }, [acquisitionFamily, setAcquisitionFamily, setTaskType, taskType]);
 
-  useEffect(() => {
-    if (!capabilities.model_types.includes(modelType)) {
-      setModelType(capabilities.model_types[0] ?? "base");
-    }
-  }, [capabilities.model_types, modelType, setModelType]);
+  const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
+  const canUseMultitask = targetColumns.length > 1 && !hasCategoricalFeatures;
+  const availableModels = useMemo(
+    () => WEB_MODEL_TYPES.filter((name) => name !== "multitask" || canUseMultitask),
+    [canUseMultitask]
+  );
+  const acquisitionOptions = targetColumns.length > 1
+    ? ["NEHVI", "EHVI"]
+    : ["EI", "NEI", "UCB"];
 
   useEffect(() => {
-    if (!capabilities.acquisitions.includes(acquisition)) {
-      setAcquisition(capabilities.acquisitions[0] ?? "EI");
+    if (!availableModels.includes(modelType as (typeof WEB_MODEL_TYPES)[number])) {
+      setModelType("base");
     }
-  }, [acquisition, capabilities.acquisitions, setAcquisition]);
+  }, [availableModels, modelType, setModelType]);
+
+  useEffect(() => {
+    if (!acquisitionOptions.includes(acquisition)) {
+      setAcquisition(targetColumns.length > 1 ? "NEHVI" : "EI");
+    }
+  }, [acquisition, setAcquisition, targetColumns.length]);
 
   const columnKind = useMemo(
     () => Object.fromEntries(columns.map((column) => [column.name, column.kind])),
@@ -132,16 +152,39 @@ export default function OptimizePage() {
   );
   const validationErrors = useMemo(() => {
     const errors = selectedVariables.flatMap(validateVariable);
-    if (targetColumns.length !== 1) errors.unshift("目的変数は1列だけ選択してください。");
+    if (targetColumns.length < 1) errors.unshift("目的変数を1列以上選択してください。");
+    if (modelType === "multitask" && !canUseMultitask) {
+      errors.push("multitaskは複数の回帰目的かつ数値説明変数のみの場合に選択できます。");
+    }
+    outcomeConstraints.forEach((constraint) => {
+      if (!targetColumns.includes(constraint.target)) {
+        errors.push(`目的制約の対象が選択目的に含まれていません: ${constraint.target}`);
+      }
+      if (!Number.isFinite(constraint.value)) {
+        errors.push(`${constraint.target}: 制約値を数値で入力してください。`);
+      }
+    });
     if (fitMaxiter < 1) errors.push("fit maxiterは1以上にしてください。");
     if (q < 1 || q > 20) errors.push("候補点数qは1〜20にしてください。");
     if (numRestarts < 1) errors.push("num_restartsは1以上にしてください。");
     if (rawSamples < 1) errors.push("raw_samplesは1以上にしてください。");
-    if (outcomeConstraints.length || linearConstraints.length || kSparse.enabled) {
-      errors.push("以前の画面で設定した未対応の制約またはk-sparse設定が残っています。クリアしてください。");
+    if (linearConstraints.length || kSparse.enabled) {
+      errors.push("以前の画面で設定した未対応の説明変数制約またはk-sparse設定が残っています。クリアしてください。");
     }
     return errors;
-  }, [fitMaxiter, kSparse.enabled, linearConstraints.length, numRestarts, outcomeConstraints.length, q, rawSamples, selectedVariables, targetColumns.length]);
+  }, [
+    canUseMultitask,
+    fitMaxiter,
+    kSparse.enabled,
+    linearConstraints.length,
+    modelType,
+    numRestarts,
+    outcomeConstraints,
+    q,
+    rawSamples,
+    selectedVariables,
+    targetColumns
+  ]);
 
   const canExecute = validationErrors.length === 0;
 
@@ -155,7 +198,6 @@ export default function OptimizePage() {
   }
 
   function resetUnsupportedSettings() {
-    outcomeConstraints.forEach((constraint) => removeOutcomeConstraint(constraint.id));
     linearConstraints.forEach((constraint) => removeLinearConstraint(constraint.id));
     setKSparse({ enabled: false, k: 1, variables: [] });
   }
@@ -170,12 +212,14 @@ export default function OptimizePage() {
     });
   }
 
+  const modeLabel = targetColumns.length > 1 ? "多目的回帰" : "単目的回帰";
+
   return (
     <>
       <SectionHeader
         step="3 · OPTIMIZE"
         title="モデルと探索空間を設定する"
-        text="FastAPIが公開する対応モデル・獲得関数に限定し、探索範囲を実行前に検証します。"
+        text="目的数に応じて単目的または多目的の獲得関数を選び、探索範囲を実行前に検証します。"
         action={<button disabled={!canExecute} onClick={() => void execute()}>候補を生成</button>}
       />
 
@@ -184,37 +228,45 @@ export default function OptimizePage() {
           <div>
             <span className="panel-kicker">SUPPORTED SCOPE</span>
             <h3>現在のWeb API対応範囲</h3>
-            <p>単目的回帰、数値・カテゴリ説明変数、最大化／最小化、範囲・刻み・固定値に対応します。</p>
+            <p>単目的・多目的回帰、目的ごとの最大化／最小化、目的値制約、数値・カテゴリ説明変数に対応します。</p>
           </div>
-          <span className="status-chip success">Regression MVP</span>
+          <span className="status-chip success">{modeLabel}</span>
         </div>
         <p className="settings-note">
-          多目的、分類、順序回帰、目的変数制約、線形制約、k-sparse、Active Learning、Level-setは
-          ライブラリ側には実装がありますが、このWeb APIにはまだ接続していません。
+          multitaskは複数目的が同じ回帰タスクで、説明変数がすべて数値の場合に表示されます。
+          カテゴリ説明変数を含む場合はbaseなどの独立出力モデルを使用してください。
         </p>
-        {(outcomeConstraints.length > 0 || linearConstraints.length > 0 || kSparse.enabled) && (
+        {(linearConstraints.length > 0 || kSparse.enabled) && (
           <button className="secondary" onClick={resetUnsupportedSettings}>未対応設定をクリア</button>
         )}
       </article>
 
       <div className="form-grid">
         <article className="panel compact-panel">
-          <div className="panel-title"><div><span className="panel-kicker">OBJECTIVE</span><h3>目的</h3></div></div>
-          <label>Direction
-            <select value={direction} onChange={(event) => setDirection(event.target.value as "maximize" | "minimize")}>
-              <option value="maximize">最大化</option>
-              <option value="minimize">最小化</option>
-            </select>
-          </label>
+          <div className="panel-title"><div><span className="panel-kicker">OBJECTIVES</span><h3>目的</h3></div></div>
+          {targetColumns.map((target) => (
+            <div className="settings-note" key={target}>
+              <strong>{target}</strong> · {targetDirections[target] === "minimize" ? "最小化" : "最大化"}
+              {outcomeConstraints
+                .filter((constraint) => constraint.target === target)
+                .map((constraint) => (
+                  <span key={constraint.id}> · {constraint.operator} {constraint.value}</span>
+                ))}
+            </div>
+          ))}
         </article>
 
         <article className="panel compact-panel">
           <div className="panel-title"><div><span className="panel-kicker">SURROGATE</span><h3>モデル</h3></div></div>
           <label>Model type
             <select value={modelType} onChange={(event) => setModelType(event.target.value)}>
-              {capabilities.model_types.map((name) => <option key={name} value={name}>{name}</option>)}
+              {availableModels.map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
           </label>
+          <p className="settings-note">
+            {modelType === "robust" ? "内部ではrrpモデルを使用します。" : null}
+            {modelType === "multitask" ? "目的間相関を学習して情報共有します。" : null}
+          </p>
           <label>Fit maxiter
             <input type="number" min={1} value={fitMaxiter} onChange={(event) => setFitMaxiter(Number(event.target.value))} />
           </label>
@@ -224,7 +276,9 @@ export default function OptimizePage() {
           <div className="panel-title"><div><span className="panel-kicker">ACQUISITION</span><h3>獲得関数</h3></div></div>
           <label>Acquisition
             <select value={acquisition} onChange={(event) => setAcquisition(event.target.value)}>
-              {capabilities.acquisitions.map((name) => <option key={name} value={name}>{name}</option>)}
+              {acquisitionOptions
+                .filter((name) => capabilities.acquisitions.includes(name) || FALLBACK_CAPABILITIES.acquisitions.includes(name))
+                .map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
           </label>
           {acquisition.toUpperCase().includes("UCB") && (
@@ -306,7 +360,7 @@ export default function OptimizePage() {
           <div>
             <span className="panel-kicker">VALIDATION</span>
             <h3>実行前チェック</h3>
-            <p>探索範囲、刻み幅、固定値、候補生成設定を確認します。</p>
+            <p>目的、制約、探索範囲、固定値、候補生成設定を確認します。</p>
           </div>
           <span className={`status-chip ${canExecute ? "success" : "warning"}`}>
             {canExecute ? "Ready" : `${validationErrors.length} issues`}
@@ -322,7 +376,7 @@ export default function OptimizePage() {
         <div className="train-launcher">
           <div>
             <strong>{modelType} × {acquisition}</strong>
-            <span>単目的回帰 · {direction === "maximize" ? "最大化" : "最小化"} · q={q}</span>
+            <span>{modeLabel} · {targetColumns.length} targets · q={q}</span>
           </div>
           <button disabled={!canExecute} onClick={() => void execute()}>学習して候補を生成</button>
         </div>

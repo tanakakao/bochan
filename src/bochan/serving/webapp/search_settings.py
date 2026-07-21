@@ -8,13 +8,19 @@ from typing import Any
 
 _SEARCH_METHODS = {
     "normal",
+    "optimize_acqf",
     "torch",
+    "optimize_acqf_torch",
     "ga",
     "sa",
     "pso",
     "cmaes",
+    "evo",
+    "optimize_acqf_evo",
     "thompson_sampling",
+    "optimize_thompson_sampling",
     "nsgaii",
+    "nsga2",
 }
 
 
@@ -39,8 +45,7 @@ def normalize_feature_constraints(
     normalized: list[SimpleNamespace] = []
     for index, raw_constraint in enumerate(constraints or []):
         constraint = _mapping(raw_constraint)
-        enabled = bool(constraint.get("enabled", True))
-        if not enabled:
+        if not bool(constraint.get("enabled", True)):
             continue
         sense = str(constraint.get("sense", "le")).lower()
         if sense not in {"le", "ge", "eq"}:
@@ -58,9 +63,11 @@ def normalize_feature_constraints(
                 raise ValueError(
                     f"Constraint {index + 1}: column is not a selected feature: {column}"
                 )
-            coefficient = float(term.get("coefficient", 1.0))
             terms.append(
-                SimpleNamespace(column=column, coefficient=coefficient)
+                SimpleNamespace(
+                    column=column,
+                    coefficient=float(term.get("coefficient", 1.0)),
+                )
             )
         normalized.append(
             SimpleNamespace(
@@ -125,17 +132,19 @@ def resolve_search_method(
     method = str(name or "normal").replace("-", "_").lower()
     if method not in _SEARCH_METHODS:
         raise ValueError(f"Unknown search method: {method!r}.")
-    if method == "nsgaii":
+    if method in {"nsgaii", "nsga2"}:
         if not multi_objective:
             raise ValueError("NSGA-II is available only for multi-objective search.")
         return "optimize_acqf", {}, True
-    if method == "normal":
+    if method in {"normal", "optimize_acqf"}:
         return "optimize_acqf", {}, False
-    if method == "torch":
+    if method in {"torch", "optimize_acqf_torch"}:
         return "torch", {}, False
+    if method in {"evo", "optimize_acqf_evo"}:
+        return "evo", {}, False
     if method in {"ga", "sa", "pso", "cmaes"}:
         return "evo", {"method": method}, False
-    if method == "thompson_sampling":
+    if method in {"thompson_sampling", "optimize_thompson_sampling"}:
         return "thompson_sampling", {}, False
     raise ValueError(f"Unsupported search method: {method!r}.")
 
@@ -151,9 +160,8 @@ def build_target_constraint_config(
 ) -> Any | None:
     """Build target constraints, using class probabilities for classification.
 
-    Classification constraints are intentionally model-dependent. This guarantees
-    that ``above`` and ``below`` are applied to the selected class probability for
-    EI/PI/UCB, active learning, and level-set acquisitions alike.
+    Classification constraints are model-dependent so above/below is applied to
+    the selected class probability for BO, active learning, and level-set methods.
     """
 
     if all(bool(setting.get("legacy")) for setting in target_settings):

@@ -70,6 +70,18 @@ export interface TargetSetting {
   target_values?: TargetClassValue[];
 }
 
+export interface TargetMetadata extends Partial<TargetSetting> {
+  target: string;
+  task_type: TaskType;
+  goal: TargetGoal;
+  internal_task?: string;
+  configured_value?: unknown;
+  classes?: TargetClassValue[] | null;
+  class_index?: number | null;
+  class_indices?: number[];
+  num_classes?: number | null;
+}
+
 export interface LinearConstraint {
   id: string;
   kind: ConstraintKind;
@@ -152,6 +164,7 @@ export interface RegressionResult {
   /** First-target compatibility field. */
   target_column: string;
   target_settings?: TargetSetting[];
+  target_metadata?: Record<string, TargetMetadata>;
   directions: Record<string, Direction>;
   /** First-target compatibility field. */
   direction: Direction;

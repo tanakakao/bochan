@@ -29,16 +29,6 @@ function themedLayout(
       color: text,
       family: 'Inter, "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif'
     },
-    title: source.title
-      ? {
-          ...(typeof source.title === "object" ? source.title : { text: String(source.title) }),
-          font: {
-            ...(typeof source.title === "object" ? source.title.font : undefined),
-            color: text,
-            size: 16
-          }
-        }
-      : undefined,
     xaxis: {
       ...source.xaxis,
       color: text,

@@ -63,31 +63,29 @@ function createTargetSetting(
   column: ColumnProfile,
   preview: Record<string, unknown>[]
 ): TargetSetting {
+  const common = {
+    target: column.name,
+    optimize: true,
+    direction: "maximize" as Direction,
+    goal: "none" as const,
+    value: null
+  };
   if (column.kind === "numeric") {
-    return {
-      target: column.name,
-      task_type: "regression",
-      goal: "none",
-      value: null
-    };
+    return { ...common, task_type: "regression" };
   }
 
   const classes = getColumnClassValues(column, preview);
   if (classes.length === 2) {
     return {
-      target: column.name,
+      ...common,
       task_type: "classification",
-      goal: "none",
-      value: null,
       target_class: classes[1],
       target_classes: [classes[1]]
     };
   }
   return {
-    target: column.name,
+    ...common,
     task_type: "classification",
-    goal: "none",
-    value: null,
     target_classes: classes.length ? [classes[0]] : []
   };
 }
@@ -135,6 +133,7 @@ function validateTargetSetting(
   preview: Record<string, unknown>[]
 ): boolean {
   if (!column) return false;
+  if (setting.goal === "target" && !setting.optimize) return false;
 
   if (setting.task_type === "regression") {
     if (column.kind !== "numeric") return false;
@@ -155,7 +154,7 @@ function validateTargetSetting(
       const threshold = finiteNumber(setting.value);
       return threshold !== null && threshold >= 0 && threshold <= 1;
     }
-    return setting.goal === "none" || setting.goal === "target";
+    return setting.goal === "none";
   }
 
   const order = setting.class_order ?? [];
@@ -187,6 +186,7 @@ interface WorkbenchContextValue {
   targetColumns: string[];
   targetSettings: Record<string, TargetSetting>;
   selectedTargetSettings: TargetSetting[];
+  optimizedTargetSettings: TargetSetting[];
   targetDirections: Record<string, Direction>;
   direction: Direction;
   variables: Record<string, SearchVariable>;
@@ -271,13 +271,17 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     (column) => column.kind === "numeric" || column.kind === "categorical"
   );
   const targetCandidates = selectableColumns;
-  const targetColumn = targetColumns[0] ?? "";
   const selectedTargetSettings = useMemo(
     () => targetColumns
       .map((name) => targetSettings[name])
       .filter((setting): setting is TargetSetting => Boolean(setting)),
     [targetColumns, targetSettings]
   );
+  const optimizedTargetSettings = useMemo(
+    () => selectedTargetSettings.filter((setting) => setting.optimize),
+    [selectedTargetSettings]
+  );
+  const targetColumn = optimizedTargetSettings[0]?.target ?? targetColumns[0] ?? "";
   const selectedVariables = useMemo(
     () => featureColumns
       .map((name) => variables[name])
@@ -287,7 +291,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const targetDirections = useMemo(
     () => Object.fromEntries(selectedTargetSettings.map((setting) => [
       setting.target,
-      setting.goal === "below" ? "minimize" : "maximize"
+      setting.goal === "target" ? "maximize" : setting.direction
     ])) as Record<string, Direction>,
     [selectedTargetSettings]
   );
@@ -300,6 +304,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   );
   const settingsValid = Boolean(
     canConfigure &&
+    optimizedTargetSettings.length > 0 &&
     selectedTargetSettings.length === targetColumns.length &&
     selectedTargetSettings.every((setting) => validateTargetSetting(
       setting,
@@ -348,6 +353,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       setFeatureColumns(initialFeatures);
       setVariables(Object.fromEntries(candidates.map((column) => [column.name, createVariable(column)])));
       setModelType("base");
+      setAcquisitionFamily("bayesian_optimization");
       setAcquisition("EI");
       setStepState("prepare");
     } catch (caught) {
@@ -448,6 +454,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     targetColumns,
     targetSettings,
     selectedTargetSettings,
+    optimizedTargetSettings,
     targetDirections,
     direction,
     variables,

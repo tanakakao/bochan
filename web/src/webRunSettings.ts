@@ -133,7 +133,6 @@ export function saveSelectionCountConstraint(value: SelectionCountConstraint): v
 }
 
 export function loadFeatureMissingSettings(): FeatureMissingSettings {
-  // Historical behavior remains the default until imputation is selected.
   const fallback: FeatureMissingSettings = {
     strategy: "drop",
     continuousStrategy: "mean",

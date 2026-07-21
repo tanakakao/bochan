@@ -13,7 +13,9 @@ on:
       - "tests/test_llm_client_tls.py"
       - "tests/test_llm_candidate_optimizer.py"
       - "tests/test_llm_selected_acquisition_config.py"
+      - "tests/test_llm_structured_planner.py"
       - "README_LLM.md"
+      - "README_LLM_HYBRID_CONSTRAINTS.md"
       - "docs/llm_selected_acquisition.md"
       - ".github/workflows/llm-client-smoke.yml"
   workflow_dispatch:
@@ -39,6 +41,7 @@ jobs:
             tests/test_llm_client_tls.py \
             tests/test_llm_candidate_optimizer.py \
             tests/test_llm_selected_acquisition_config.py \
+            tests/test_llm_structured_planner.py \
             2>&1 | tee pytest-llm-smoke.log
       - name: Run lint
         if: success()
@@ -53,9 +56,11 @@ jobs:
             src/bochan/llm/client.py \
             src/bochan/llm/configs.py \
             src/bochan/llm/planner.py \
+            src/bochan/llm/structured_planner.py \
             tests/test_llm_client_tls.py \
             tests/test_llm_candidate_optimizer.py \
             tests/test_llm_selected_acquisition_config.py \
+            tests/test_llm_structured_planner.py \
             2>&1 | tee ruff-llm-smoke.log
       - name: Upload focused logs
         if: always()

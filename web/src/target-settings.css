@@ -207,6 +207,131 @@
   margin-top: 18px;
 }
 
+/* Typography scale override: keep the dense workbench readable on desktop. */
+body {
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+button {
+  min-height: 44px;
+  padding: 10px 17px;
+  font-size: 14px;
+}
+
+.brand-wordmark h1 {
+  font-size: 22px;
+}
+
+.brand-wordmark p {
+  font-size: 9px;
+}
+
+.workflow-step strong {
+  font-size: 12px;
+}
+
+.workflow-step span {
+  font-size: 11px;
+}
+
+.rail-section-label,
+.side-card-title span,
+.panel-kicker,
+.settings-title span,
+.eyebrow {
+  font-size: 10px;
+}
+
+.tab strong {
+  font-size: 14px;
+}
+
+.tab small {
+  font-size: 11px;
+}
+
+.tab em,
+.nav-icon {
+  font-size: 12px;
+}
+
+.rail-note span,
+.runtime-copy small {
+  font-size: 9px;
+}
+
+.rail-note strong,
+.runtime-copy strong {
+  font-size: 12px;
+}
+
+.rail-note p,
+.runtime-large small {
+  font-size: 11px;
+}
+
+.side-card-title strong,
+.runtime-large strong {
+  font-size: 15px;
+}
+
+.context-list span,
+.context-list strong,
+.tips-card p {
+  font-size: 12px;
+}
+
+.section-header h2 {
+  font-size: clamp(30px, 2.5vw, 40px);
+}
+
+.section-header p {
+  font-size: 15px;
+}
+
+.panel h3 {
+  font-size: 19px;
+}
+
+.panel-title p,
+.settings-note,
+.message,
+.empty-state,
+.metric-card small,
+.metric-card p {
+  font-size: 14px;
+}
+
+.status-chip {
+  min-height: 29px;
+  padding: 5px 10px;
+  font-size: 11px;
+}
+
+label,
+th,
+td,
+input,
+select,
+textarea {
+  font-size: 14px;
+}
+
+input,
+select,
+textarea {
+  min-height: 42px;
+}
+
+th {
+  font-size: 12px;
+}
+
+.statusbar {
+  font-size: 11px;
+}
+
 @media (max-width: 1180px) {
   .optimize-grid {
     grid-template-columns: 1fr;

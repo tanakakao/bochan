@@ -14,6 +14,7 @@ import type {
   Direction,
   RegressionResult,
   SearchVariable,
+  TargetClassValue,
   TargetSetting
 } from "../types";
 
@@ -62,21 +63,52 @@ function createTargetSetting(column: ColumnProfile): TargetSetting {
     return {
       target: column.name,
       task_type: "regression",
-      goal: "above",
-      value: column.mean ?? column.min ?? 0
+      goal: "none",
+      value: null
+    };
+  }
+
+  const classes = column.values ?? [];
+  if (classes.length === 2) {
+    return {
+      target: column.name,
+      task_type: "classification",
+      goal: "none",
+      value: null,
+      target_class: classes[1],
+      target_classes: [classes[1]]
     };
   }
   return {
     target: column.name,
     task_type: "classification",
-    goal: "target",
-    value: column.values?.[0] ?? ""
+    goal: "none",
+    value: null,
+    target_classes: classes.length ? [classes[0]] : []
   };
 }
 
 function finiteNumber(value: unknown): number | null {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function classKey(value: TargetClassValue): string {
+  return String(value);
+}
+
+function containsClass(values: TargetClassValue[], value: TargetClassValue | null | undefined): boolean {
+  if (value === null || value === undefined) return false;
+  const requested = classKey(value);
+  return values.some((candidate) => classKey(candidate) === requested);
+}
+
+function sameClassSet(left: TargetClassValue[], right: TargetClassValue[]): boolean {
+  if (left.length !== right.length) return false;
+  const leftKeys = new Set(left.map(classKey));
+  const rightKeys = new Set(right.map(classKey));
+  return leftKeys.size === left.length && rightKeys.size === right.length &&
+    [...leftKeys].every((value) => rightKeys.has(value));
 }
 
 function validateVariable(variable: SearchVariable): boolean {
@@ -94,24 +126,38 @@ function validateVariable(variable: SearchVariable): boolean {
 }
 
 function validateTargetSetting(setting: TargetSetting, column?: ColumnProfile): boolean {
+  if (!column) return false;
+
   if (setting.task_type === "regression") {
-    return column?.kind === "numeric" && finiteNumber(setting.value) !== null;
+    if (column.kind !== "numeric") return false;
+    return setting.goal === "none" || finiteNumber(setting.value) !== null;
   }
-  if (
-    setting.task_type === "classification" &&
-    (setting.goal === "above" || setting.goal === "below")
-  ) {
-    const threshold = finiteNumber(setting.value);
-    return threshold !== null && threshold >= 0 && threshold <= 1;
+
+  const classes: TargetClassValue[] = column.values ?? [];
+  if (classes.length < 2) return false;
+
+  if (setting.task_type === "classification") {
+    if (classes.length === 2) {
+      if (!containsClass(classes, setting.target_class)) return false;
+    } else {
+      const selected = setting.target_classes ?? [];
+      if (selected.length === 0 || !selected.every((value) => containsClass(classes, value))) return false;
+    }
+    if (setting.goal === "above" || setting.goal === "below") {
+      const threshold = finiteNumber(setting.value);
+      return threshold !== null && threshold >= 0 && threshold <= 1;
+    }
+    return setting.goal === "none" || setting.goal === "target";
   }
-  if (
-    setting.task_type === "ordinal" &&
-    (setting.goal === "above" || setting.goal === "below") &&
-    column?.kind === "numeric"
-  ) {
-    return finiteNumber(setting.value) !== null;
+
+  const order = setting.class_order ?? [];
+  if (!sameClassSet(order, classes)) return false;
+  if (setting.goal === "none") return true;
+  if (setting.goal === "above" || setting.goal === "below") {
+    return containsClass(order, setting.value as TargetClassValue);
   }
-  return String(setting.value).trim() !== "";
+  const targets = setting.target_values ?? [];
+  return targets.length > 0 && targets.every((value) => containsClass(order, value));
 }
 
 interface WorkbenchContextValue {

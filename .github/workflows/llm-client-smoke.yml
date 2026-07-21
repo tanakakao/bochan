@@ -52,7 +52,7 @@ jobs:
         run: |
           set -o pipefail
           {
-            ruff check --ignore UP037 src/bochan/llm/candidate_explainer.py
+            ruff check --ignore UP037 src/bochan/llm/candidate_explainer.py &&
             ruff check \
               src/bochan/api/acquisition_config.py \
               src/bochan/api/llm_candidate_explanation.py \

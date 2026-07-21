@@ -93,7 +93,7 @@ export default function PreparePage() {
           </div>
 
           <div className="button-row">
-            <button className="secondary" onClick={() => replaceFeatureSelection(featureCandidates.map((column) => column.name)}>
+            <button className="secondary" onClick={() => replaceFeatureSelection(featureCandidates.map((column) => column.name))}>
               全選択
             </button>
             <button className="secondary" onClick={() => replaceFeatureSelection(numericFeatureNames)}>

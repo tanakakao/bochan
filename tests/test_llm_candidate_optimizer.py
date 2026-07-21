@@ -12,12 +12,8 @@ from bochan.api import (
     StudySuggestion,
     optimize_candidates,
 )
-from bochan.llm import (
-    BayesianOptimizerSuggestion,
-    LLMSettings,
-    build_config_planner_prompt,
-    plan_configs,
-)
+from bochan.api.llm_suggestion import BayesianOptimizerSuggestion
+from bochan.llm import LLMSettings, build_config_planner_prompt, plan_configs
 from bochan.optim import optimize_acqf_llm_candidate_set
 
 

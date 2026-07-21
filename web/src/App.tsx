@@ -10,22 +10,30 @@ import LogsPage from "./pages/LogsPage";
 import OptimizePage from "./pages/OptimizePage";
 import PreparePage from "./pages/PreparePage";
 import ResultsPage from "./pages/ResultsPage";
+import SettingsPage from "./pages/SettingsPage";
 
 const PAGES: Record<WorkbenchStep, ComponentType> = {
   data: DataPage,
   prepare: PreparePage,
+  settings: SettingsPage,
   optimize: OptimizePage,
   results: ResultsPage,
   logs: LogsPage
 };
 
-const ICONS = ["▦", "◇", "↗", "◎", "▧"];
+const ICONS = ["▦", "◇", "⚙", "↗", "◎", "▧"];
 
 function formatBestObserved(value: number | Record<string, number>): string {
   if (typeof value === "number") return Number.isFinite(value) ? value.toPrecision(5) : "—";
   return Object.entries(value)
     .map(([target, observed]) => `${target}: ${Number.isFinite(observed) ? observed.toPrecision(5) : "—"}`)
     .join(" / ");
+}
+
+function goalLabel(value: string): string {
+  if (value === "below") return "≤";
+  if (value === "target") return "=";
+  return "≥";
 }
 
 function WorkbenchLayout() {
@@ -42,7 +50,7 @@ function WorkbenchLayout() {
     dataset,
     featureColumns,
     targetColumns,
-    targetDirections,
+    selectedTargetSettings,
     modelType,
     acquisition,
     q,
@@ -50,9 +58,9 @@ function WorkbenchLayout() {
   } = useWorkbench();
   const index = STEPS.findIndex(([id]) => id === step);
   const Page = PAGES[step];
-  const directionSummary = targetColumns.length
-    ? targetColumns
-      .map((target) => `${target}: ${targetDirections[target] === "minimize" ? "min" : "max"}`)
+  const targetSummary = selectedTargetSettings.length
+    ? selectedTargetSettings
+      .map((setting) => `${setting.target}: ${goalLabel(setting.goal)} ${String(setting.value)}`)
       .join(" / ")
     : "—";
 
@@ -169,7 +177,7 @@ function WorkbenchLayout() {
               <strong>探索条件</strong>
             </div>
             <div className="context-list">
-              <div><span>Directions</span><strong>{directionSummary}</strong></div>
+              <div><span>Targets</span><strong>{targetSummary}</strong></div>
               <div><span>Model</span><strong>{modelType}</strong></div>
               <div><span>Acquisition</span><strong>{acquisition}</strong></div>
               <div><span>q</span><strong>{q}</strong></div>

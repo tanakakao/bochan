@@ -31,6 +31,8 @@ class LLMConfig:
         temperature: 生成温度。
         max_output_tokens: 出力 token 上限。
         timeout: provider client に渡す timeout 秒。
+        ssl_verify: HTTPS 証明書を検証するか。通常は ``True`` のまま使用します。
+        ca_bundle_path: 社内 CA などを含む PEM 形式の CA bundle path。OpenAI provider で使用します。
         extra_kwargs: provider 固有の追加引数。
     """
 
@@ -41,6 +43,8 @@ class LLMConfig:
     temperature: float = 0.2
     max_output_tokens: int = 4096
     timeout: float | None = 60.0
+    ssl_verify: bool = True
+    ca_bundle_path: str | None = None
     extra_kwargs: dict[str, Any] = field(default_factory=dict)
 
     def resolved_api_key_env(self) -> str | None:

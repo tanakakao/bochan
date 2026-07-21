@@ -7,8 +7,11 @@ OpenAI / Gemini などの SDK 差分はこのモジュールに閉じ込めま�
 from __future__ import annotations
 
 import os
+import ssl
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from .configs import LLMConfig, coerce_llm_config
@@ -40,6 +43,54 @@ def _resolve_api_key(config: LLMConfig) -> str | None:
         return config.api_key
     env_name = config.resolved_api_key_env()
     return os.environ.get(env_name) if env_name else None
+
+
+def _resolve_ca_bundle_path(config: LLMConfig) -> Path | None:
+    """明示設定または一般的な環境変数から CA bundle path を解決する。"""
+
+    raw_path = config.ca_bundle_path
+    if raw_path is None:
+        for env_name in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+            value = os.environ.get(env_name)
+            if value:
+                raw_path = value
+                break
+    if raw_path is None:
+        return None
+
+    path = Path(os.path.expandvars(str(raw_path))).expanduser()
+    if not path.is_file():
+        raise FileNotFoundError(f"CA bundle file was not found: {path}")
+    return path
+
+
+def _build_openai_http_client(config: LLMConfig) -> Any | None:
+    """OpenAI SDK 用の TLS 設定済み httpx client を必要時だけ生成する。"""
+
+    ca_bundle_path = _resolve_ca_bundle_path(config)
+    if config.ssl_verify and ca_bundle_path is None:
+        return None
+
+    try:
+        import httpx
+    except ImportError as exc:  # pragma: no cover - openai normally depends on httpx
+        raise _missing_dependency("openai TLS configuration", "httpx") from exc
+
+    ssl_context = ssl.create_default_context()
+    if ca_bundle_path is not None:
+        ssl_context.load_verify_locations(cafile=str(ca_bundle_path))
+
+    if not config.ssl_verify:
+        warnings.warn(
+            "LLMConfig.ssl_verify=False disables HTTPS certificate verification. "
+            "Use ca_bundle_path or SSL_CERT_FILE for normal operation.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+
+    return httpx.Client(verify=ssl_context)
 
 
 def _usage_to_dict(usage: Any) -> dict[str, Any] | None:
@@ -81,6 +132,9 @@ class OpenAIClient(BaseLLMClient):
         kwargs: dict[str, Any] = {"api_key": api_key}
         if config.timeout is not None:
             kwargs["timeout"] = config.timeout
+        http_client = _build_openai_http_client(config)
+        if http_client is not None:
+            kwargs["http_client"] = http_client
         self.client = OpenAI(**kwargs)
 
     def generate_json(self, prompt: str, *, schema: dict[str, Any] | None = None) -> LLMResponse:

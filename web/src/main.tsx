@@ -6,6 +6,7 @@ import "./styles.css";
 import "./target-settings.css";
 import "./constraint-settings.css";
 import "./advanced-settings.css";
+import "./constraint-selection.css";
 
 installDynamicNumberInputSteps();
 

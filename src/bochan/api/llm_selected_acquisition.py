@@ -6,6 +6,8 @@ is resolved to a concrete acquisition immediately before acquisition constructio
 or candidate generation.
 """
 
+# ruff: noqa: I001
+
 from __future__ import annotations
 
 import json

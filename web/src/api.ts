@@ -1,13 +1,14 @@
 import type {
-  DatasetResponse,
-  HealthResponse,
-  LogsResponse,
-  RegressionResult,
-  SearchVariable,
   AcquisitionFamily,
+  DatasetResponse,
+  Direction,
+  HealthResponse,
   KSparseConfig,
   LinearConstraint,
+  LogsResponse,
   OutcomeConstraint,
+  RegressionResult,
+  SearchVariable,
   TaskType
 } from "./types";
 
@@ -80,9 +81,10 @@ interface RunRegressionInput {
   featureColumns: string[];
   targetColumn: string;
   targetColumns: string[];
+  targetDirections: Record<string, Direction>;
   taskType: TaskType;
   ordinalOrder: string[];
-  direction: "maximize" | "minimize";
+  direction: Direction;
   modelType: string;
   fitMaxiter: number;
   acquisitionFamily: AcquisitionFamily;
@@ -97,27 +99,35 @@ interface RunRegressionInput {
   kSparse: KSparseConfig;
 }
 
-/**
- * Runs the currently supported Web workflow.
- *
- * The backend endpoint is intentionally regression-only. Advanced workbench state
- * is kept in the frontend for future expansion, but unsupported fields are not sent
- * to the strict FastAPI schema. This prevents UI-only options from causing 422
- * responses and keeps the browser contract aligned with `/api/v1/capabilities`.
- */
+/** Runs single- or multi-objective regression through the Web API. */
 export async function runRegression(input: RunRegressionInput): Promise<RegressionResult> {
   if (input.taskType !== "regression") {
-    throw new Error("現在のWeb APIは単目的回帰のみ対応しています。");
+    throw new Error("現在のWeb APIは回帰タスクに対応しています。");
   }
-  if (input.targetColumns.length !== 1 || input.targetColumn !== input.targetColumns[0]) {
-    throw new Error("目的変数は1列だけ選択してください。");
+  if (input.targetColumns.length < 1) {
+    throw new Error("目的変数を1列以上選択してください。");
+  }
+  if (input.targetColumn !== input.targetColumns[0]) {
+    throw new Error("先頭の目的変数設定が不整合です。目的変数を選択し直してください。");
   }
   if (input.acquisitionFamily !== "bayesian_optimization") {
     throw new Error("現在のWeb APIはベイズ最適化の獲得関数のみ対応しています。");
   }
-  if (input.outcomeConstraints.length > 0 || input.linearConstraints.length > 0 || input.kSparse.enabled) {
-    throw new Error("目的変数制約・線形制約・k-sparseは現在のWeb APIでは未対応です。");
+  if (input.linearConstraints.length > 0 || input.kSparse.enabled) {
+    throw new Error("説明変数の線形制約・k-sparseは現在のWeb APIでは未対応です。");
   }
+
+  const invalidConstraint = input.outcomeConstraints.find(
+    (constraint) => !input.targetColumns.includes(constraint.target) || !Number.isFinite(constraint.value)
+  );
+  if (invalidConstraint) {
+    throw new Error("目的変数制約の対象またはしきい値が不正です。");
+  }
+
+  const directions = Object.fromEntries(
+    input.targetColumns.map((target) => [target, input.targetDirections[target] ?? "maximize"])
+  );
+  const backendModelType = input.modelType === "robust" ? "rrp" : input.modelType;
 
   return request<RegressionResult>("/regression/run", {
     method: "POST",
@@ -125,13 +135,16 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       dataset_id: input.datasetId,
       feature_columns: input.featureColumns,
       target_column: input.targetColumn,
-      direction: input.direction,
-      model_type: input.modelType,
+      target_columns: input.targetColumns,
+      direction: directions[input.targetColumn] ?? input.direction,
+      directions,
+      model_type: backendModelType,
       fit_maxiter: input.fitMaxiter,
       normalize: true,
       outcome_transform: true,
       search_space: input.searchSpace,
       constraints: [],
+      outcome_constraints: input.outcomeConstraints,
       k_sparse: null,
       acquisition: {
         name: input.acquisition,

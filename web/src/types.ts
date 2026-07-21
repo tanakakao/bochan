@@ -45,6 +45,7 @@ export interface SearchVariable {
 }
 
 export type TaskType = "regression" | "classification" | "ordinal";
+export type Direction = "maximize" | "minimize";
 export type AcquisitionFamily = "bayesian_optimization" | "active_learning" | "level_set_estimation";
 export type ConstraintKind = "equality" | "inequality";
 export type ConstraintOperator = "=" | "<=" | ">=";
@@ -70,11 +71,19 @@ export interface KSparseConfig {
   variables: string[];
 }
 
+export interface CandidatePrediction {
+  mean: number;
+  std: number;
+}
+
 export interface CandidateRow {
   rank: number;
   values: Record<string, string | number>;
   acq_value: number | null;
+  predictions: Record<string, CandidatePrediction>;
+  /** First-target compatibility field. */
   predicted_target_mean: number;
+  /** First-target compatibility field. */
   predicted_target_std: number;
   constraints_ok: boolean;
 }
@@ -117,9 +126,14 @@ export interface RegressionResult {
   n_train: number;
   n_features: number;
   feature_columns: string[];
+  target_columns: string[];
+  /** First-target compatibility field. */
   target_column: string;
-  direction: "maximize" | "minimize";
-  best_observed: number;
+  directions: Record<string, Direction>;
+  /** First-target compatibility field. */
+  direction: Direction;
+  best_observed: number | Record<string, number>;
+  outcome_constraints?: OutcomeConstraint[];
   candidates: CandidateRow[];
   visualizations: ResultVisualization[];
   visualization_warnings: string[];

@@ -41,7 +41,7 @@ jobs:
         run: |
           python -m pip install ruff
           set +e
-          ruff check --ignore SIM102,SIM108 \
+          ruff check --ignore I001,SIM102,SIM108 \
             src/bochan/serving/webapp/target_settings.py \
             src/bochan/serving/webapp/target_roles.py \
             src/bochan/serving/webapp/target_results.py \

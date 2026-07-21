@@ -61,6 +61,8 @@ export default function OptimizePage() {
     selectedVariables,
     modelType,
     setModelType,
+    projectionDimensions,
+    setProjectionDimensions,
     acquisitionFamily,
     setAcquisitionFamily,
     acquisition,
@@ -87,6 +89,8 @@ export default function OptimizePage() {
   const allRegression = taskTypes.length > 0 && taskTypes.every((task) => task === "regression");
   const canUseMultitask = acquisitionFamily === "bayesian_optimization" &&
     multiObjective && allRegression && !hasCategoricalFeatures;
+  const projectedModel = modelType === "pca" || modelType === "rembo";
+  const maxProjectionDimensions = Math.max(selectedVariables.length, 1);
 
   const availableModels = useMemo(
     () => WEB_MODEL_TYPES.filter((name) => name !== "multitask" || canUseMultitask),
@@ -128,6 +132,12 @@ export default function OptimizePage() {
     }
   }, [searchMethod, searchMethodOptions]);
 
+  useEffect(() => {
+    if (projectionDimensions > maxProjectionDimensions) {
+      setProjectionDimensions(Math.min(2, maxProjectionDimensions));
+    }
+  }, [maxProjectionDimensions, projectionDimensions, setProjectionDimensions]);
+
   function changeFamily(nextFamily: AcquisitionFamily) {
     setAcquisitionFamily(nextFamily);
     if (nextFamily === "bayesian_optimization") {
@@ -151,6 +161,13 @@ export default function OptimizePage() {
     if (modelType === "multitask" && !canUseMultitask) {
       errors.push("multitaskはベイズ最適化で、複数の回帰目的かつ説明変数がすべて数値の場合に選択できます。");
     }
+    if (projectedModel && (
+      !Number.isInteger(projectionDimensions) ||
+      projectionDimensions < 1 ||
+      projectionDimensions > maxProjectionDimensions
+    )) {
+      errors.push(`射影次元は1〜${maxProjectionDimensions}にしてください。`);
+    }
     if (
       acquisitionFamily === "level_set_estimation" &&
       optimizedTargetSettings.some((setting) => setting.goal === "none")
@@ -169,11 +186,14 @@ export default function OptimizePage() {
     acquisitionFamily,
     canUseMultitask,
     fitMaxiter,
+    maxProjectionDimensions,
     modelType,
     multiObjective,
     numRestarts,
     optimizedCount,
     optimizedTargetSettings,
+    projectedModel,
+    projectionDimensions,
     q,
     rawSamples,
     searchMethod,
@@ -216,9 +236,24 @@ export default function OptimizePage() {
               {availableModels.map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
           </label>
+          {projectedModel && (
+            <label>
+              射影・潜在次元数
+              <input
+                type="number"
+                min={1}
+                max={maxProjectionDimensions}
+                step={1}
+                value={projectionDimensions}
+                onChange={(event) => setProjectionDimensions(Number(event.target.value))}
+              />
+            </label>
+          )}
           <p className="settings-note">
             {modelType === "robust" ? "内部ではrrpモデルを使用します。" : null}
             {modelType === "multitask" ? "回帰目的間の相関を学習して情報共有します。" : null}
+            {modelType === "pca" ? "指定次元へPCA射影してモデル化します。" : null}
+            {modelType === "rembo" ? "指定次元の低次元空間から探索します。" : null}
             {!homogeneousTask ? "混合タスクでは目的変数ごとのサブモデルをhybrid wrapperに束ねます。" : null}
           </p>
           <label>Fit maxiter<input type="number" min={1} value={fitMaxiter} onChange={(event) => setFitMaxiter(Number(event.target.value))} /></label>
@@ -278,7 +313,7 @@ export default function OptimizePage() {
         {canExecute ? <p className="settings-note">設定に矛盾は見つかりませんでした。</p> : <ul>{validationErrors.map((message) => <li key={message}>{message}</li>)}</ul>}
         <div className="train-launcher">
           <div>
-            <strong>{modelType} × {familyLabel(acquisitionFamily)} × {searchMethod === "nsgaii" ? "NSGA-II" : acquisition}</strong>
+            <strong>{modelType}{projectedModel ? `(${projectionDimensions}D)` : ""} × {familyLabel(acquisitionFamily)} × {searchMethod === "nsgaii" ? "NSGA-II" : acquisition}</strong>
             <span>{modeLabel} · {taskSummary} · {searchMethodLabel} · 最適化対象 {optimizedCount}件 · q={q}</span>
           </div>
           <button disabled={!canExecute} onClick={() => void execute()}>学習して候補を生成</button>

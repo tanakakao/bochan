@@ -15,6 +15,7 @@ export interface WebCapabilities {
   task_types: string[];
   model_types: string[];
   acquisitions: string[];
+  acquisition_families?: Partial<Record<AcquisitionFamily, string[]>>;
   optimizers: string[];
   data_sources: string[];
   visualizations: string[];
@@ -94,6 +95,12 @@ interface RunRegressionInput {
 
 function validateTargetSetting(setting: TargetSetting): string | null {
   if (!setting.target) return "目的変数名が空です。";
+  if (setting.goal === "target" && !setting.optimize) {
+    return `${setting.target}: 目標値を設定した目的変数は最適化対象にしてください。`;
+  }
+  if (setting.direction !== "maximize" && setting.direction !== "minimize") {
+    return `${setting.target}: 最大化または最小化を選択してください。`;
+  }
 
   if (setting.task_type === "regression") {
     if (setting.goal !== "none" && !Number.isFinite(Number(setting.value))) {
@@ -129,13 +136,13 @@ function validateTargetSetting(setting: TargetSetting): string | null {
   return null;
 }
 
-/** Runs single-, multi-objective, or hybrid target optimization through the Web API. */
+/** Runs optimization, active learning, or level-set estimation through the Web API. */
 export async function runRegression(input: RunRegressionInput): Promise<RegressionResult> {
   if (input.targetColumns.length < 1) {
     throw new Error("目的変数を1列以上選択してください。");
   }
-  if (input.targetColumn !== input.targetColumns[0]) {
-    throw new Error("先頭の目的変数設定が不整合です。目的変数を選択し直してください。");
+  if (!input.targetColumns.includes(input.targetColumn)) {
+    throw new Error("代表目的変数が選択済み目的変数に含まれていません。");
   }
   if (input.targetSettings.length !== input.targetColumns.length) {
     throw new Error("すべての目的変数にタスク種別を設定してください。");
@@ -144,11 +151,15 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
   if (input.targetColumns.some((target) => !settingTargets.includes(target))) {
     throw new Error("目的変数とTargetSettingの対応が不整合です。");
   }
+  const optimized = input.targetSettings.filter((setting) => setting.optimize);
+  if (optimized.length === 0) {
+    throw new Error("最適化対象の目的変数を1つ以上選択してください。");
+  }
+  if (!optimized.some((setting) => setting.target === input.targetColumn)) {
+    throw new Error("代表目的変数は最適化対象から選択してください。");
+  }
   const settingError = input.targetSettings.map(validateTargetSetting).find(Boolean);
   if (settingError) throw new Error(settingError);
-  if (input.acquisitionFamily !== "bayesian_optimization") {
-    throw new Error("現在のWeb APIはベイズ最適化の獲得関数のみ対応しています。");
-  }
 
   const backendModelType = input.modelType === "robust" ? "rrp" : input.modelType;
 
@@ -173,6 +184,7 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       outcome_constraints: [],
       k_sparse: null,
       acquisition: {
+        family: input.acquisitionFamily,
         name: input.acquisition,
         beta: input.beta,
         acqf_kwargs: {}

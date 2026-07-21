@@ -55,9 +55,11 @@ export default function SettingsPage() {
     );
   }
 
+  const preview = dataset.preview;
+
   function classesFor(target: string): TargetClassValue[] {
     const column = columns.find((candidate) => candidate.name === target);
-    return column ? getColumnClassValues(column, dataset.preview) : [];
+    return column ? getColumnClassValues(column, preview) : [];
   }
 
   function setVariableType(variable: SearchVariable, categorical: boolean) {

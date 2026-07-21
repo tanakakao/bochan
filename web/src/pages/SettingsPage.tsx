@@ -1,4 +1,5 @@
 import { EmptyState, SectionHeader } from "../components/Common";
+import FeatureConstraints from "../components/FeatureConstraints";
 import { useWorkbench } from "../context/WorkbenchContext";
 import { getColumnClassValues } from "../targetSettingUtils";
 import type {
@@ -28,7 +29,7 @@ function taskLabel(taskType: TaskType): string {
   return "回帰";
 }
 
-/** Configures target tasks/objectives/constraints and the complete search-variable definition. */
+/** Configures targets, search variables, and explanatory-variable constraints. */
 export default function SettingsPage() {
   const {
     dataset,
@@ -92,21 +93,16 @@ export default function SettingsPage() {
 
     if (nextTask === "regression") {
       patchTargetSetting(target, common);
-      return;
-    }
-    if (nextTask === "classification") {
+    } else if (nextTask === "classification") {
       const initialClass = classes.length === 2 ? classes[1] : classes[0];
       patchTargetSetting(target, {
         ...common,
         target_class: classes.length === 2 ? initialClass ?? null : null,
         target_classes: initialClass === undefined ? [] : [initialClass]
       });
-      return;
+    } else {
+      patchTargetSetting(target, { ...common, class_order: [...classes] });
     }
-    patchTargetSetting(target, {
-      ...common,
-      class_order: [...classes]
-    });
   }
 
   function changeGoal(target: string, nextGoal: TargetGoal) {
@@ -117,9 +113,7 @@ export default function SettingsPage() {
 
     if (nextGoal === "none") {
       patchTargetSetting(target, { goal: nextGoal, value: null, target_values: [] });
-      return;
-    }
-    if (setting.task_type === "regression") {
+    } else if (setting.task_type === "regression") {
       patchTargetSetting(target, {
         goal: nextGoal,
         optimize: nextGoal === "target" ? true : setting.optimize,
@@ -127,17 +121,13 @@ export default function SettingsPage() {
         value: column.mean ?? column.min ?? 0,
         target_values: []
       });
-      return;
-    }
-    if (setting.task_type === "classification") {
+    } else if (setting.task_type === "classification") {
       patchTargetSetting(target, {
         goal: nextGoal,
         value: nextGoal === "above" || nextGoal === "below" ? 0.5 : null,
         target_values: []
       });
-      return;
-    }
-    if (nextGoal === "target") {
+    } else if (nextGoal === "target") {
       patchTargetSetting(target, {
         goal: nextGoal,
         optimize: true,
@@ -145,24 +135,25 @@ export default function SettingsPage() {
         value: null,
         target_values: classes.length ? [classes[0]] : []
       });
-      return;
+    } else {
+      patchTargetSetting(target, {
+        goal: nextGoal,
+        value: classes[0] ?? null,
+        target_values: []
+      });
     }
-    patchTargetSetting(target, {
-      goal: nextGoal,
-      value: classes[0] ?? null,
-      target_values: []
-    });
   }
 
   function targetValueControl(target: string, setting: TargetSetting, classes: TargetClassValue[]) {
     if (setting.goal === "none") return <span className="muted-cell">制約なし</span>;
-
     if (setting.task_type === "regression") {
       return (
         <input
           type="number"
           value={setting.value ?? ""}
-          onChange={(event) => patchTargetSetting(target, { value: numberOrUndefined(event.target.value) ?? null })}
+          onChange={(event) => patchTargetSetting(target, {
+            value: numberOrUndefined(event.target.value) ?? null
+          })}
         />
       );
     }
@@ -174,7 +165,9 @@ export default function SettingsPage() {
           max={1}
           step={0.01}
           value={setting.value ?? ""}
-          onChange={(event) => patchTargetSetting(target, { value: numberOrUndefined(event.target.value) ?? null })}
+          onChange={(event) => patchTargetSetting(target, {
+            value: numberOrUndefined(event.target.value) ?? null
+          })}
         />
       );
     }
@@ -184,9 +177,13 @@ export default function SettingsPage() {
           multiple
           size={Math.min(Math.max(classes.length, 2), 5)}
           value={(setting.target_values ?? []).map(String)}
-          onChange={(event) => patchTargetSetting(target, { target_values: selectedValues(event.target) })}
+          onChange={(event) => patchTargetSetting(target, {
+            target_values: selectedValues(event.target)
+          })}
         >
-          {classes.map((value) => <option key={String(value)} value={String(value)}>{String(value)}</option>)}
+          {classes.map((value) => (
+            <option key={String(value)} value={String(value)}>{String(value)}</option>
+          ))}
         </select>
       );
     }
@@ -195,7 +192,9 @@ export default function SettingsPage() {
         value={String(setting.value ?? "")}
         onChange={(event) => patchTargetSetting(target, { value: event.target.value })}
       >
-        {classes.map((value) => <option key={String(value)} value={String(value)}>{String(value)}</option>)}
+        {classes.map((value) => (
+          <option key={String(value)} value={String(value)}>{String(value)}</option>
+        ))}
       </select>
     );
   }
@@ -214,7 +213,9 @@ export default function SettingsPage() {
                 target_classes: [event.target.value]
               })}
             >
-              {classes.map((value) => <option key={String(value)} value={String(value)}>{String(value)}</option>)}
+              {classes.map((value) => (
+                <option key={String(value)} value={String(value)}>{String(value)}</option>
+              ))}
             </select>
           </label>
         );
@@ -231,7 +232,9 @@ export default function SettingsPage() {
               target_classes: selectedValues(event.target)
             })}
           >
-            {classes.map((value) => <option key={String(value)} value={String(value)}>{String(value)}</option>)}
+            {classes.map((value) => (
+              <option key={String(value)} value={String(value)}>{String(value)}</option>
+            ))}
           </select>
         </label>
       );
@@ -270,7 +273,9 @@ export default function SettingsPage() {
     return (
       <select
         value={setting.direction}
-        onChange={(event) => patchTargetSetting(target, { direction: event.target.value as Direction })}
+        onChange={(event) => patchTargetSetting(target, {
+          direction: event.target.value as Direction
+        })}
       >
         <option value="maximize">最大化</option>
         <option value="minimize">最小化</option>
@@ -283,7 +288,7 @@ export default function SettingsPage() {
       <SectionHeader
         step="3 · SETTINGS"
         title="目的変数と探索変数を設定する"
-        text="最適化対象と方向を指定します。制約だけに利用する目的変数は、最適化対象のチェックを外してください。"
+        text="目的変数、探索範囲、説明変数の制約を設定します。"
         action={
           <button disabled={!settingsValid} onClick={() => setStep("optimize")}>
             モデル設定へ
@@ -300,18 +305,12 @@ export default function SettingsPage() {
           </div>
           <span className="status-chip success">{targetColumns.length} targets</span>
         </div>
-
         <div className="table-wrap target-settings-wrap">
           <table className="target-settings-table">
             <thead>
               <tr>
-                <th>目的変数</th>
-                <th>最適化対象</th>
-                <th>タスク</th>
-                <th>方向</th>
-                <th>制約</th>
-                <th>しきい値／目標</th>
-                <th>クラス設定／順序</th>
+                <th>目的変数</th><th>最適化対象</th><th>タスク</th><th>方向</th>
+                <th>制約</th><th>しきい値／目標</th><th>クラス設定／順序</th>
               </tr>
             </thead>
             <tbody>
@@ -323,10 +322,7 @@ export default function SettingsPage() {
                 const orderedClasses = setting.class_order?.length ? setting.class_order : classes;
                 return (
                   <tr key={target} className={setting.optimize ? "objective-row" : "constraint-only-row"}>
-                    <td className="target-name-cell">
-                      <strong>{target}</strong>
-                      <span>{taskLabel(setting.task_type)}</span>
-                    </td>
+                    <td className="target-name-cell"><strong>{target}</strong><span>{taskLabel(setting.task_type)}</span></td>
                     <td>
                       <input
                         className="table-checkbox"
@@ -338,10 +334,7 @@ export default function SettingsPage() {
                       />
                     </td>
                     <td>
-                      <select
-                        value={setting.task_type}
-                        onChange={(event) => changeTask(target, event.target.value as TaskType)}
-                      >
+                      <select value={setting.task_type} onChange={(event) => changeTask(target, event.target.value as TaskType)}>
                         <option value="regression" disabled={column.kind !== "numeric"}>回帰</option>
                         <option value="classification">分類</option>
                         <option value="ordinal">順序回帰</option>
@@ -349,10 +342,7 @@ export default function SettingsPage() {
                     </td>
                     <td>{directionControl(target, setting)}</td>
                     <td>
-                      <select
-                        value={setting.goal}
-                        onChange={(event) => changeGoal(target, event.target.value as TargetGoal)}
-                      >
+                      <select value={setting.goal} onChange={(event) => changeGoal(target, event.target.value as TargetGoal)}>
                         <option value="none">なし</option>
                         <option value="above">以上</option>
                         <option value="below">以下</option>
@@ -368,7 +358,7 @@ export default function SettingsPage() {
           </table>
         </div>
         <p className="settings-note">
-          「方向」は最適化の向き、「以上／以下」は実行可能性の制約です。目標値では方向を選ばず、目標からの距離が小さい候補を探索します。
+          「方向」は最適化の向き、「以上／以下」は実行可能性の制約です。分類制約は選択クラスの予測確率に対して適用します。
         </p>
       </article>
 
@@ -384,9 +374,7 @@ export default function SettingsPage() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr>
-                <th>変数</th><th>カテゴリ?</th><th>型</th><th>下限</th><th>上限</th><th>刻み</th><th>固定</th><th>固定値</th>
-              </tr>
+              <tr><th>変数</th><th>カテゴリ?</th><th>型</th><th>下限</th><th>上限</th><th>刻み</th><th>固定</th><th>固定値</th></tr>
             </thead>
             <tbody>
               {selectedVariables.map((variable) => {
@@ -394,16 +382,7 @@ export default function SettingsPage() {
                 return (
                   <tr key={variable.name}>
                     <td><strong>{variable.name}</strong></td>
-                    <td>
-                      <input
-                        className="table-checkbox"
-                        type="checkbox"
-                        checked={variable.type === "categorical"}
-                        disabled={detectedCategorical}
-                        title={detectedCategorical ? "文字列・カテゴリ列は数値変数へ変更できません。" : "数値列を離散カテゴリとして扱えます。"}
-                        onChange={(event) => setVariableType(variable, event.target.checked)}
-                      />
-                    </td>
+                    <td><input className="table-checkbox" type="checkbox" checked={variable.type === "categorical"} disabled={detectedCategorical} onChange={(event) => setVariableType(variable, event.target.checked)} /></td>
                     <td><span className="status-chip">{variable.type}</span></td>
                     <td>{variable.type === "numeric" ? <input type="number" value={variable.lower ?? ""} onChange={(event) => patchVariable(variable.name, { lower: numberOrUndefined(event.target.value) })} /> : "—"}</td>
                     <td>{variable.type === "numeric" ? <input type="number" value={variable.upper ?? ""} onChange={(event) => patchVariable(variable.name, { upper: numberOrUndefined(event.target.value) })} /> : "—"}</td>
@@ -426,6 +405,8 @@ export default function SettingsPage() {
           </table>
         </div>
       </article>
+
+      <FeatureConstraints variables={selectedVariables} />
 
       {!settingsValid && (
         <article className="panel compact-panel">

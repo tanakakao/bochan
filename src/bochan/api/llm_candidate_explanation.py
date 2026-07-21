@@ -7,8 +7,9 @@ from typing import Any
 
 import torch
 
-from bochan.llm import candidate_explainer as _candidate_explainer
-from bochan.llm.candidate_explainer import (
+from bochan.llm import candidate_explainer as _candidate_explainer_base
+from bochan.llm import candidate_explainer_overall as _candidate_explainer
+from bochan.llm.candidate_explainer_overall import (
     CandidateExplanation,
     CandidateExplanationConfig,
     build_candidate_explanation_prompt,
@@ -44,6 +45,7 @@ def _safe_bounds_tensor(bounds: Any, X: torch.Tensor) -> tuple[torch.Tensor, tor
     return torch.tensor(lower, dtype=torch.double), torch.tensor(upper, dtype=torch.double)
 
 
+_candidate_explainer_base._bounds_tensor = _safe_bounds_tensor
 _candidate_explainer._bounds_tensor = _safe_bounds_tensor
 
 
@@ -81,7 +83,9 @@ def install_bayesian_optimizer_candidate_explanation_api(optimizer_cls: type[Any
         """Explain final candidates from model and engineering perspectives.
 
         This method never regenerates candidates. For large batches it selects a
-        highest-ranked, central, and diverse subset before the LLM call.
+        highest-ranked, central, and diverse subset before the LLM call. Each
+        representative point includes both specialist perspectives and one
+        integrated, decision-oriented explanation.
         """
 
         resolved_config = _coerce_config(config)

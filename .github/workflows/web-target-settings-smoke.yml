@@ -41,7 +41,9 @@ jobs:
           set +e
           ruff check --ignore SIM102 \
             src/bochan/serving/webapp/target_settings.py \
+            src/bochan/serving/webapp/target_roles.py \
             src/bochan/serving/webapp/target_results.py \
+            src/bochan/serving/webapp/workflows.py \
             tests/test_webapp_multiobjective_contract.py \
             tests/test_webapp_target_results_contract.py \
             2>&1 | tee ruff-web-target-settings.log

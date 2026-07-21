@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "src/bochan/llm/**"
+      - "src/bochan/api/llm_suggestion.py"
       - "tests/test_llm_client_tls.py"
       - "tests/test_llm_candidate_optimizer.py"
       - "README_LLM.md"
@@ -34,6 +35,8 @@ jobs:
       - name: Run lint
         run: |
           ruff check \
+            src/bochan/api/llm_suggestion.py \
+            src/bochan/llm/__init__.py \
             src/bochan/llm/client.py \
             src/bochan/llm/configs.py \
             src/bochan/llm/planner.py \

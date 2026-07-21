@@ -2,6 +2,7 @@ import { EmptyState, SectionHeader } from "../components/Common";
 import { useWorkbench } from "../context/WorkbenchContext";
 import { getColumnClassValues } from "../targetSettingUtils";
 import type {
+  Direction,
   SearchVariable,
   TargetClassValue,
   TargetGoal,
@@ -27,7 +28,7 @@ function taskLabel(taskType: TaskType): string {
   return "回帰";
 }
 
-/** Configures target tasks/constraints and the complete search-variable definition. */
+/** Configures target tasks/objectives/constraints and the complete search-variable definition. */
 export default function SettingsPage() {
   const {
     dataset,
@@ -74,44 +75,37 @@ export default function SettingsPage() {
 
   function changeTask(target: string, nextTask: TaskType) {
     const column = columns.find((candidate) => candidate.name === target);
-    if (!column) return;
+    const current = targetSettings[target];
+    if (!column || !current) return;
     const classes = classesFor(target);
+    const common = {
+      task_type: nextTask,
+      optimize: current.optimize,
+      direction: current.direction,
+      goal: "none" as TargetGoal,
+      value: null,
+      target_class: null,
+      target_classes: [] as TargetClassValue[],
+      class_order: [] as TargetClassValue[],
+      target_values: [] as TargetClassValue[]
+    };
 
     if (nextTask === "regression") {
-      patchTargetSetting(target, {
-        task_type: nextTask,
-        goal: "none",
-        value: null,
-        target_class: null,
-        target_classes: [],
-        class_order: [],
-        target_values: []
-      });
+      patchTargetSetting(target, common);
       return;
     }
-
     if (nextTask === "classification") {
       const initialClass = classes.length === 2 ? classes[1] : classes[0];
       patchTargetSetting(target, {
-        task_type: nextTask,
-        goal: "none",
-        value: null,
+        ...common,
         target_class: classes.length === 2 ? initialClass ?? null : null,
-        target_classes: initialClass === undefined ? [] : [initialClass],
-        class_order: [],
-        target_values: []
+        target_classes: initialClass === undefined ? [] : [initialClass]
       });
       return;
     }
-
     patchTargetSetting(target, {
-      task_type: nextTask,
-      goal: "none",
-      value: null,
-      target_class: null,
-      target_classes: [],
-      class_order: [...classes],
-      target_values: []
+      ...common,
+      class_order: [...classes]
     });
   }
 
@@ -128,6 +122,8 @@ export default function SettingsPage() {
     if (setting.task_type === "regression") {
       patchTargetSetting(target, {
         goal: nextGoal,
+        optimize: nextGoal === "target" ? true : setting.optimize,
+        direction: nextGoal === "target" ? "maximize" : setting.direction,
         value: column.mean ?? column.min ?? 0,
         target_values: []
       });
@@ -144,6 +140,8 @@ export default function SettingsPage() {
     if (nextGoal === "target") {
       patchTargetSetting(target, {
         goal: nextGoal,
+        optimize: true,
+        direction: "maximize",
         value: null,
         target_values: classes.length ? [classes[0]] : []
       });
@@ -168,7 +166,6 @@ export default function SettingsPage() {
         />
       );
     }
-
     if (setting.task_type === "classification") {
       return (
         <input
@@ -181,7 +178,6 @@ export default function SettingsPage() {
         />
       );
     }
-
     if (setting.goal === "target") {
       return (
         <select
@@ -194,7 +190,6 @@ export default function SettingsPage() {
         </select>
       );
     }
-
     return (
       <select
         value={String(setting.value ?? "")}
@@ -207,7 +202,6 @@ export default function SettingsPage() {
 
   function classControl(target: string, setting: TargetSetting, classes: TargetClassValue[]) {
     if (setting.task_type === "regression") return <span className="muted-cell">—</span>;
-
     if (setting.task_type === "classification") {
       if (classes.length === 2) {
         return (
@@ -256,21 +250,31 @@ export default function SettingsPage() {
               disabled={index === 0}
               onClick={() => patchTargetSetting(target, { class_order: moveItem(order, index, -1) })}
               aria-label={`${String(value)}を上へ移動`}
-            >
-              ↑
-            </button>
+            >↑</button>
             <button
               type="button"
               className="secondary order-button"
               disabled={index === order.length - 1}
               onClick={() => patchTargetSetting(target, { class_order: moveItem(order, index, 1) })}
               aria-label={`${String(value)}を下へ移動`}
-            >
-              ↓
-            </button>
+            >↓</button>
           </div>
         ))}
       </div>
+    );
+  }
+
+  function directionControl(target: string, setting: TargetSetting) {
+    if (setting.goal === "target") return <span className="direction-note">目標へ近づける</span>;
+    if (!setting.optimize) return <span className="muted-cell">対象外</span>;
+    return (
+      <select
+        value={setting.direction}
+        onChange={(event) => patchTargetSetting(target, { direction: event.target.value as Direction })}
+      >
+        <option value="maximize">最大化</option>
+        <option value="minimize">最小化</option>
+      </select>
     );
   }
 
@@ -279,7 +283,7 @@ export default function SettingsPage() {
       <SectionHeader
         step="3 · SETTINGS"
         title="目的変数と探索変数を設定する"
-        text="目的変数はタスクとクラスを指定します。制約は任意で、設定しない目的変数もそのまま最適化対象として利用できます。"
+        text="最適化対象と方向を指定します。制約だけに利用する目的変数は、最適化対象のチェックを外してください。"
         action={
           <button disabled={!settingsValid} onClick={() => setStep("optimize")}>
             モデル設定へ
@@ -292,7 +296,7 @@ export default function SettingsPage() {
           <div>
             <span className="panel-kicker">1 · TARGET SETTINGS</span>
             <h3>目的変数の設定</h3>
-            <p>探索変数と同じ表形式で、タスク、任意の制約、ターゲットクラス、順序を設定します。</p>
+            <p>タスク、最適化対象、方向、任意の制約、ターゲットクラス、順序を設定します。</p>
           </div>
           <span className="status-chip success">{targetColumns.length} targets</span>
         </div>
@@ -302,7 +306,9 @@ export default function SettingsPage() {
             <thead>
               <tr>
                 <th>目的変数</th>
+                <th>最適化対象</th>
                 <th>タスク</th>
+                <th>方向</th>
                 <th>制約</th>
                 <th>しきい値／目標</th>
                 <th>クラス設定／順序</th>
@@ -316,10 +322,20 @@ export default function SettingsPage() {
                 const classes = classesFor(target);
                 const orderedClasses = setting.class_order?.length ? setting.class_order : classes;
                 return (
-                  <tr key={target}>
+                  <tr key={target} className={setting.optimize ? "objective-row" : "constraint-only-row"}>
                     <td className="target-name-cell">
                       <strong>{target}</strong>
                       <span>{taskLabel(setting.task_type)}</span>
+                    </td>
+                    <td>
+                      <input
+                        className="table-checkbox"
+                        type="checkbox"
+                        checked={setting.optimize}
+                        disabled={setting.goal === "target"}
+                        title={setting.goal === "target" ? "目標値は最適化目的として扱います。" : "制約専用にする場合はチェックを外します。"}
+                        onChange={(event) => patchTargetSetting(target, { optimize: event.target.checked })}
+                      />
                     </td>
                     <td>
                       <select
@@ -331,6 +347,7 @@ export default function SettingsPage() {
                         <option value="ordinal">順序回帰</option>
                       </select>
                     </td>
+                    <td>{directionControl(target, setting)}</td>
                     <td>
                       <select
                         value={setting.goal}
@@ -351,7 +368,7 @@ export default function SettingsPage() {
           </table>
         </div>
         <p className="settings-note">
-          分類の以上／以下は、選択したターゲットクラス群の合計予測確率に対する制約です。順序回帰の目標値は複数クラスを選択できます。
+          「方向」は最適化の向き、「以上／以下」は実行可能性の制約です。目標値では方向を選ばず、目標からの距離が小さい候補を探索します。
         </p>
       </article>
 
@@ -416,7 +433,7 @@ export default function SettingsPage() {
             <div>
               <span className="panel-kicker">VALIDATION</span>
               <h3>設定を確認してください</h3>
-              <p>分類ではターゲットクラス、順序回帰では全クラスの順序、数値探索変数では有効な上下限が必要です。制約自体は「なし」で構いません。</p>
+              <p>少なくとも1つの最適化対象が必要です。分類ではターゲットクラス、順序回帰では全クラスの順序、数値探索変数では有効な上下限を設定してください。</p>
             </div>
             <span className="status-chip warning">Not ready</span>
           </div>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchCapabilities, type WebCapabilities } from "../api";
 import { EmptyState, SectionHeader } from "../components/Common";
 import { useWorkbench } from "../context/WorkbenchContext";
-import type { TargetSetting } from "../types";
+import type { AcquisitionFamily } from "../types";
 
 const WEB_MODEL_TYPES = [
   "base",
@@ -16,10 +16,23 @@ const WEB_MODEL_TYPES = [
   "multitask"
 ] as const;
 
+const FAMILY_OPTIONS: Array<{ value: AcquisitionFamily; label: string }> = [
+  { value: "bayesian_optimization", label: "ベイズ最適化" },
+  { value: "active_learning", label: "アクティブラーニング" },
+  { value: "level_set_estimation", label: "レベルセット推定" }
+];
+
+const FAMILY_ACQUISITIONS: Record<AcquisitionFamily, string[]> = {
+  bayesian_optimization: ["EI", "NEI", "UCB", "EHVI", "NEHVI"],
+  active_learning: ["variance", "predictive_entropy", "BALD"],
+  level_set_estimation: ["straddle", "boundary_variance"]
+};
+
 const FALLBACK_CAPABILITIES: WebCapabilities = {
   task_types: ["regression", "classification", "ordinal", "hybrid"],
   model_types: [...WEB_MODEL_TYPES],
-  acquisitions: ["EI", "NEI", "UCB", "EHVI", "NEHVI"],
+  acquisitions: Object.values(FAMILY_ACQUISITIONS).flat(),
+  acquisition_families: FAMILY_ACQUISITIONS,
   optimizers: ["optimize_acqf"],
   data_sources: ["csv", "excel"],
   visualizations: ["yyplot", "prediction-1d", "prediction-2d"]
@@ -31,41 +44,16 @@ function taskLabel(value: string): string {
   return "回帰";
 }
 
-function goalLabel(value: string): string {
-  if (value === "none") return "制約なし";
-  if (value === "below") return "以下";
-  if (value === "target") return "目標値";
-  return "以上";
+function familyLabel(value: AcquisitionFamily): string {
+  return FAMILY_OPTIONS.find((option) => option.value === value)?.label ?? value;
 }
 
-function settingDetails(setting: TargetSetting): string {
-  const details: string[] = [taskLabel(setting.task_type)];
-  if (setting.task_type === "classification") {
-    const classes = setting.target_class !== null && setting.target_class !== undefined
-      ? [setting.target_class]
-      : (setting.target_classes ?? []);
-    details.push(`target class: ${classes.map(String).join(", ") || "—"}`);
-  }
-  if (setting.task_type === "ordinal") {
-    details.push(`order: ${(setting.class_order ?? []).map(String).join(" < ") || "—"}`);
-  }
-  if (setting.goal === "none") {
-    details.push(goalLabel(setting.goal));
-  } else if (setting.goal === "target" && setting.task_type === "ordinal") {
-    details.push(`${goalLabel(setting.goal)}: ${(setting.target_values ?? []).map(String).join(", ")}`);
-  } else {
-    details.push(`${goalLabel(setting.goal)} ${String(setting.value ?? "—")}`);
-  }
-  return details.join(" · ");
-}
-
-/** Configures the surrogate, acquisition, and candidate-generation budget. */
+/** Configures the surrogate, acquisition family, acquisition, and candidate-generation budget. */
 export default function OptimizePage() {
   const {
     dataset,
     settingsValid,
-    targetColumns,
-    selectedTargetSettings,
+    optimizedTargetSettings,
     selectedVariables,
     modelType,
     setModelType,
@@ -101,24 +89,30 @@ export default function OptimizePage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (acquisitionFamily !== "bayesian_optimization") {
-      setAcquisitionFamily("bayesian_optimization");
-    }
-  }, [acquisitionFamily, setAcquisitionFamily]);
-
+  const optimizedCount = optimizedTargetSettings.length;
   const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
-  const taskTypes = selectedTargetSettings.map((setting) => setting.task_type);
+  const taskTypes = optimizedTargetSettings.map((setting) => setting.task_type);
   const homogeneousTask = taskTypes.length > 0 && taskTypes.every((task) => task === taskTypes[0]);
   const allRegression = taskTypes.length > 0 && taskTypes.every((task) => task === "regression");
-  const canUseMultitask = targetColumns.length > 1 && allRegression && !hasCategoricalFeatures;
+  const canUseMultitask = acquisitionFamily === "bayesian_optimization" &&
+    optimizedCount > 1 && allRegression && !hasCategoricalFeatures;
   const availableModels = useMemo(
     () => WEB_MODEL_TYPES.filter((name) => name !== "multitask" || canUseMultitask),
     [canUseMultitask]
   );
-  const acquisitionOptions = targetColumns.length > 1
-    ? ["NEHVI", "EHVI"]
-    : ["EI", "NEI", "UCB"];
+
+  const supportedByApi = capabilities.acquisition_families?.[acquisitionFamily] ??
+    capabilities.acquisitions ?? FAMILY_ACQUISITIONS[acquisitionFamily];
+  const acquisitionOptions = useMemo(() => {
+    let requested: string[];
+    if (acquisitionFamily === "bayesian_optimization") {
+      requested = optimizedCount > 1 ? ["NEHVI", "EHVI"] : ["EI", "NEI", "UCB"];
+    } else {
+      requested = FAMILY_ACQUISITIONS[acquisitionFamily];
+    }
+    const filtered = requested.filter((name) => supportedByApi.includes(name));
+    return filtered.length ? filtered : requested;
+  }, [acquisitionFamily, optimizedCount, supportedByApi.join("\u0000")]);
 
   useEffect(() => {
     if (!availableModels.includes(modelType as (typeof WEB_MODEL_TYPES)[number])) {
@@ -128,25 +122,54 @@ export default function OptimizePage() {
 
   useEffect(() => {
     if (!acquisitionOptions.includes(acquisition)) {
-      setAcquisition(targetColumns.length > 1 ? "NEHVI" : "EI");
+      setAcquisition(acquisitionOptions[0]);
     }
-  }, [acquisition, setAcquisition, targetColumns.length]);
+  }, [acquisition, acquisitionOptions, setAcquisition]);
+
+  function changeFamily(nextFamily: AcquisitionFamily) {
+    setAcquisitionFamily(nextFamily);
+    if (nextFamily === "bayesian_optimization") {
+      setAcquisition(optimizedCount > 1 ? "NEHVI" : "EI");
+    } else if (nextFamily === "active_learning") {
+      setAcquisition("variance");
+    } else {
+      setAcquisition("straddle");
+    }
+  }
 
   const validationErrors = useMemo(() => {
     const errors: string[] = [];
     if (!settingsValid) errors.push("Settingsページの目的変数または探索変数設定を確認してください。");
+    if (optimizedCount === 0) errors.push("最適化対象の目的変数を1つ以上選択してください。");
     if (modelType === "multitask" && !canUseMultitask) {
-      errors.push("multitaskは複数の回帰目的で、説明変数がすべて数値の場合に選択できます。");
+      errors.push("multitaskはベイズ最適化で、複数の回帰目的かつ説明変数がすべて数値の場合に選択できます。");
+    }
+    if (
+      acquisitionFamily === "level_set_estimation" &&
+      optimizedTargetSettings.some((setting) => setting.goal === "none")
+    ) {
+      errors.push("レベルセット推定では、最適化対象ごとに以上・以下・目標値のいずれかを設定してください。");
     }
     if (fitMaxiter < 1) errors.push("fit maxiterは1以上にしてください。");
     if (q < 1 || q > 20) errors.push("候補点数qは1〜20にしてください。");
     if (numRestarts < 1) errors.push("num_restartsは1以上にしてください。");
     if (rawSamples < 1) errors.push("raw_samplesは1以上にしてください。");
     return errors;
-  }, [canUseMultitask, fitMaxiter, modelType, numRestarts, q, rawSamples, settingsValid]);
+  }, [
+    acquisitionFamily,
+    canUseMultitask,
+    fitMaxiter,
+    modelType,
+    numRestarts,
+    optimizedCount,
+    optimizedTargetSettings,
+    q,
+    rawSamples,
+    settingsValid
+  ]);
 
   const canExecute = validationErrors.length === 0;
-  const modeLabel = targetColumns.length > 1 ? "多目的最適化" : "単目的最適化";
+  const modeLabel = optimizedCount > 1 ? "多目的" : "単目的";
   const taskSummary = homogeneousTask
     ? taskLabel(taskTypes[0] ?? "regression")
     : "混合タスク";
@@ -169,30 +192,11 @@ export default function OptimizePage() {
       <SectionHeader
         step="4 · OPTIMIZE"
         title="モデルと候補生成を設定する"
-        text="この画面ではモデル、獲得関数、候補点数と計算量だけを設定します。"
+        text="モデル、探索の大分類、獲得関数、候補点数と計算量を設定します。"
         action={<button disabled={!canExecute} onClick={() => void execute()}>候補を生成</button>}
       />
 
-      <article className="panel compact-panel">
-        <div className="panel-title">
-          <div>
-            <span className="panel-kicker">CONFIGURATION SUMMARY</span>
-            <h3>目的変数設定</h3>
-            <p>{modeLabel} · {taskSummary} · {targetColumns.length} targets</p>
-          </div>
-          <span className="status-chip success">Configured</span>
-        </div>
-        <div className="cards">
-          {selectedTargetSettings.map((setting) => (
-            <div className="settings-note" key={setting.target}>
-              <strong>{setting.target}</strong>
-              <span> · {settingDetails(setting)}</span>
-            </div>
-          ))}
-        </div>
-      </article>
-
-      <div className="form-grid">
+      <div className="form-grid optimize-grid">
         <article className="panel compact-panel">
           <div className="panel-title">
             <div><span className="panel-kicker">SURROGATE</span><h3>モデル</h3></div>
@@ -216,14 +220,23 @@ export default function OptimizePage() {
 
         <article className="panel compact-panel">
           <div className="panel-title">
-            <div><span className="panel-kicker">ACQUISITION</span><h3>獲得関数</h3></div>
+            <div><span className="panel-kicker">ACQUISITION</span><h3>探索方法</h3></div>
           </div>
           <label>
-            Acquisition
+            大分類
+            <select
+              value={acquisitionFamily}
+              onChange={(event) => changeFamily(event.target.value as AcquisitionFamily)}
+            >
+              {FAMILY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            獲得関数
             <select value={acquisition} onChange={(event) => setAcquisition(event.target.value)}>
-              {acquisitionOptions
-                .filter((name) => capabilities.acquisitions.includes(name) || FALLBACK_CAPABILITIES.acquisitions.includes(name))
-                .map((name) => <option key={name} value={name}>{name}</option>)}
+              {acquisitionOptions.map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
           </label>
           {acquisition.toUpperCase().includes("UCB") && (
@@ -232,6 +245,11 @@ export default function OptimizePage() {
               <input type="number" min={0} step="0.1" value={beta} onChange={(event) => setBeta(Number(event.target.value))} />
             </label>
           )}
+          <p className="settings-note">
+            {acquisitionFamily === "bayesian_optimization" && "目的値の改善を狙って候補を選びます。"}
+            {acquisitionFamily === "active_learning" && "予測不確実性を減らすために情報量の高い候補を選びます。"}
+            {acquisitionFamily === "level_set_estimation" && "設定した境界や目標付近を重点的に探索します。"}
+          </p>
         </article>
 
         <article className="panel compact-panel">
@@ -244,12 +262,12 @@ export default function OptimizePage() {
         </article>
       </div>
 
-      <article className="panel compact-panel">
+      <article className="panel compact-panel validation-panel">
         <div className="panel-title">
           <div>
             <span className="panel-kicker">VALIDATION</span>
             <h3>実行前チェック</h3>
-            <p>モデル適用条件と候補生成設定を確認します。</p>
+            <p>モデル適用条件、目的変数の役割、獲得関数、候補生成設定を確認します。</p>
           </div>
           <span className={`status-chip ${canExecute ? "success" : "warning"}`}>
             {canExecute ? "Ready" : `${validationErrors.length} issues`}
@@ -262,8 +280,8 @@ export default function OptimizePage() {
         )}
         <div className="train-launcher">
           <div>
-            <strong>{modelType} × {acquisition}</strong>
-            <span>{modeLabel} · {taskSummary} · q={q}</span>
+            <strong>{modelType} × {familyLabel(acquisitionFamily)} × {acquisition}</strong>
+            <span>{modeLabel} · {taskSummary} · 最適化対象 {optimizedCount}件 · q={q}</span>
           </div>
           <button disabled={!canExecute} onClick={() => void execute()}>学習して候補を生成</button>
         </div>

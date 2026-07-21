@@ -17,7 +17,19 @@ function csvCell(value: unknown): string {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-/** Renders candidate results for one or more regression targets. */
+function taskLabel(value: string): string {
+  if (value === "classification") return "分類";
+  if (value === "ordinal") return "順序回帰";
+  return "回帰";
+}
+
+function goalLabel(value: string): string {
+  if (value === "below") return "以下";
+  if (value === "target") return "目標値";
+  return "以上";
+}
+
+/** Renders candidate results for one or more heterogeneous targets. */
 export default function ResultsPage() {
   const { result, setStep } = useWorkbench();
   const targetColumns = result?.target_columns?.length
@@ -32,7 +44,7 @@ export default function ResultsPage() {
     { value: "rank", label: "順位" },
     ...(result?.feature_columns ?? []).map((column) => ({ value: `value:${column}`, label: column })),
     ...targetColumns.flatMap((target) => [
-      { value: `prediction:${target}:mean`, label: `${target} 予測平均` },
+      { value: `prediction:${target}:mean`, label: `${target} 予測値` },
       { value: `prediction:${target}:std`, label: `${target} 予測標準偏差` }
     ]),
     { value: "acq_value", label: "獲得値" }
@@ -76,7 +88,7 @@ export default function ResultsPage() {
     return (
       <>
         <SectionHeader
-          step="4 · RESULTS"
+          step="5 · RESULTS"
           title="候補と予測結果を確認する"
           text="Optimizeページで候補を生成してください。"
         />
@@ -118,19 +130,24 @@ export default function ResultsPage() {
   const bestObservedText = typeof result.best_observed === "number"
     ? formatNumber(result.best_observed)
     : targetColumns.map((target) => `${target}: ${formatNumber(bestObservedMap?.[target])}`).join(" / ");
-  const directionText = targetColumns
-    .map((target) => `${target}: ${(result.directions?.[target] ?? result.direction) === "minimize" ? "最小化" : "最大化"}`)
-    .join(" / ");
+  const settingText = result.target_settings?.length
+    ? result.target_settings
+      .map((setting) => `${setting.target}: ${taskLabel(setting.task_type)}・${goalLabel(setting.goal)} ${String(setting.value)}`)
+      .join(" / ")
+    : targetColumns
+      .map((target) => `${target}: ${(result.directions?.[target] ?? result.direction) === "minimize" ? "最小化" : "最大化"}`)
+      .join(" / ");
 
   return (
     <>
       <SectionHeader
-        step="4 · RESULTS"
+        step="5 · RESULTS"
         title="候補と予測結果を確認する"
         text={`${result.model_type} · 学習 ${result.n_train}件 · best observed ${bestObservedText}`}
         action={
           <>
-            <button className="secondary" onClick={() => setStep("optimize")}>設定を変更</button>
+            <button className="secondary" onClick={() => setStep("settings")}>目的・探索設定</button>
+            <button className="secondary" onClick={() => setStep("optimize")}>モデル設定</button>
             <button className="secondary" onClick={downloadCandidates}>候補CSVを保存</button>
             <button onClick={() => setStep("logs")}>実行ログ</button>
           </>
@@ -139,7 +156,7 @@ export default function ResultsPage() {
 
       <div className="cards metric-grid">
         <MetricCard icon="◎" label="Targets" value={targetColumns.length} detail={targetColumns.join(", ")} />
-        <MetricCard icon="↗" label="Directions" value={directionText} />
+        <MetricCard icon="↗" label="Settings" value={settingText} />
         <MetricCard icon="◇" label="Features" value={result.n_features} detail={result.feature_columns.join(", ")} />
         <MetricCard icon="▧" label="Candidates" value={result.candidates.length} detail="提案数" tone="success" />
       </div>
@@ -158,7 +175,7 @@ export default function ResultsPage() {
       )}
 
       <article className="panel compact-panel">
-        <div className="panel-title"><div><span className="panel-kicker">GRAPH AXES</span><h3>グラフ軸の選択</h3><p>説明変数、各目的の予測平均・標準偏差、獲得値から選択します。</p></div></div>
+        <div className="panel-title"><div><span className="panel-kicker">GRAPH AXES</span><h3>グラフ軸の選択</h3><p>説明変数、各目的の予測値・標準偏差、獲得値から選択します。</p></div></div>
         <div className="form-grid candidate-settings">
           <label>横軸<select value={xAxis} onChange={(event) => setXAxis(event.target.value)}>{axisOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <label>縦軸<select value={yAxis} onChange={(event) => setYAxis(event.target.value)}>{axisOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
@@ -175,7 +192,7 @@ export default function ResultsPage() {
           <div>
             <span className="panel-kicker">RECOMMENDED CANDIDATES</span>
             <h3>推奨候補</h3>
-            <p>各目的の予測平均・標準偏差、獲得関数値、目的制約の判定を確認します。</p>
+            <p>各目的の予測値・標準偏差、獲得関数値、設定条件の判定を確認します。</p>
           </div>
           <span className="status-chip success">Ready</span>
         </div>
@@ -186,11 +203,11 @@ export default function ResultsPage() {
                 <th>順位</th>
                 {result.feature_columns.map((column) => <th key={column}>{column}</th>)}
                 {targetColumns.flatMap((target) => [
-                  <th key={`${target}-mean`}>{target}<br />予測平均</th>,
+                  <th key={`${target}-mean`}>{target}<br />予測値</th>,
                   <th key={`${target}-std`}>{target}<br />予測標準偏差</th>
                 ])}
                 <th>獲得値</th>
-                <th>制約</th>
+                <th>条件</th>
               </tr>
             </thead>
             <tbody>

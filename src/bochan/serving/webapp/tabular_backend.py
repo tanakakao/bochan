@@ -85,6 +85,33 @@ def categorical_target_columns(
     ]
 
 
+def _mutable_category_frame(
+    data: Any,
+    *,
+    categorical_columns: list[str],
+) -> Any:
+    """Cast extension string/category columns before replacing labels with codes.
+
+    Recent pandas versions infer ordinary Python string data as ``StringDtype``.
+    Assigning integer category codes back into such columns raises ``TypeError``.
+    The dedicated FastAPI tabular router performs the same normalization at its
+    HTTP boundary; the React one-shot workflow needs it before calling the public
+    tabular optimizer directly.
+    """
+
+    import pandas as pd
+
+    frame = data.copy()
+    for column in categorical_columns:
+        series = frame.loc[:, column]
+        if pd.api.types.is_string_dtype(series.dtype) or isinstance(
+            series.dtype,
+            pd.CategoricalDtype,
+        ):
+            frame[column] = series.astype(object)
+    return frame
+
+
 def fit_tabular_optimizer(
     *,
     data: Any,
@@ -99,13 +126,19 @@ def fit_tabular_optimizer(
 
     from bochan.tabular import TabularBayesianOptimizer
 
+    categorical_features = categorical_feature_columns(encoded_features)
+    categorical_targets = categorical_target_columns(target_metadata)
+    fit_data = _mutable_category_frame(
+        data,
+        categorical_columns=[*categorical_features, *categorical_targets],
+    )
     optimizer = TabularBayesianOptimizer(
         model_config=model_config,
         fit_config=fit_config,
         input_cols=feature_columns,
         target_cols=target_columns,
-        categorical_cols=categorical_feature_columns(encoded_features),
-        target_categorical_cols=categorical_target_columns(target_metadata),
+        categorical_cols=categorical_features,
+        target_categorical_cols=categorical_targets,
         bounds=tabular_bounds(encoded_features),
         category_maps=feature_category_maps(data, encoded_features),
         target_category_maps=target_category_maps(target_metadata),
@@ -113,7 +146,7 @@ def fit_tabular_optimizer(
         return_original_categories=True,
         dropna=False,
     )
-    optimizer.fit(data)
+    optimizer.fit(fit_data)
     if optimizer.dataset is None:
         raise RuntimeError("TabularBayesianOptimizer did not retain its fitted dataset.")
     return optimizer

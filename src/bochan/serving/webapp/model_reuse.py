@@ -6,10 +6,11 @@ import copy
 import hashlib
 import json
 from collections import OrderedDict
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from threading import RLock
-from typing import Any, Iterator
+from typing import Any
 
 _WEB_REUSE_MODEL_KEY = "web_reuse_model_run_id"
 _STATE: ContextVar[dict[str, Any] | None] = ContextVar(

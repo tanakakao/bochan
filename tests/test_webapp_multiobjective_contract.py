@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from bochan.serving.webapp.app import RegressionRunRequest, WEB_CAPABILITIES
+from bochan.serving.webapp.app import WEB_CAPABILITIES, RegressionRunRequest
 from bochan.serving.webapp.target_settings import (
     _build_outcome_constraint_config,
     _encode_targets,

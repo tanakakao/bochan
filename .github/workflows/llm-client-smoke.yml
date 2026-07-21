@@ -1,0 +1,35 @@
+name: LLM client smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/bochan/llm/client.py"
+      - "src/bochan/llm/configs.py"
+      - "tests/test_llm_client_tls.py"
+      - ".github/workflows/llm-client-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install -e ".[test]"
+          python -m pip install ruff
+      - name: Run focused tests
+        run: pytest -q --maxfail=1 tests/test_llm_client_tls.py
+      - name: Run lint
+        run: |
+          ruff check \
+            src/bochan/llm/client.py \
+            src/bochan/llm/configs.py \
+            tests/test_llm_client_tls.py

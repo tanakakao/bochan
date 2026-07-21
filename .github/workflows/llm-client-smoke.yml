@@ -1,13 +1,14 @@
-name: LLM client smoke
+name: LLM smoke
 
 on:
   pull_request:
     branches:
       - main
     paths:
-      - "src/bochan/llm/client.py"
-      - "src/bochan/llm/configs.py"
+      - "src/bochan/llm/**"
       - "tests/test_llm_client_tls.py"
+      - "tests/test_llm_candidate_optimizer.py"
+      - "README_LLM.md"
       - ".github/workflows/llm-client-smoke.yml"
   workflow_dispatch:
 
@@ -26,10 +27,15 @@ jobs:
           python -m pip install -e ".[test]"
           python -m pip install ruff
       - name: Run focused tests
-        run: pytest -q --maxfail=1 tests/test_llm_client_tls.py
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_llm_client_tls.py \
+            tests/test_llm_candidate_optimizer.py
       - name: Run lint
         run: |
           ruff check \
             src/bochan/llm/client.py \
             src/bochan/llm/configs.py \
-            tests/test_llm_client_tls.py
+            src/bochan/llm/planner.py \
+            tests/test_llm_client_tls.py \
+            tests/test_llm_candidate_optimizer.py

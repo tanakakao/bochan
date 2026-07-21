@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import torch
 
 from bochan.api import (
@@ -11,7 +13,7 @@ from bochan.api import (
     StudySuggestion,
     optimize_candidates,
 )
-from bochan.llm import LLMSettings, plan_configs
+from bochan.llm import LLMSettings, build_config_planner_prompt, plan_configs
 from bochan.optim import optimize_acqf_llm_candidate_set
 
 
@@ -19,6 +21,10 @@ class SumAcquisition:
     def __call__(self, X):
         # X shape: batch x q x d. The LLM optimizer evaluates candidates with q=1.
         return X.squeeze(-2).sum(dim=-1)
+
+
+def _planner_payload(prompt: str) -> dict:
+    return json.loads(prompt.split("\n", maxsplit=1)[1])
 
 
 def test_llm_candidate_optimizer_reranks_explicit_candidate_set():
@@ -78,6 +84,32 @@ def test_plan_configs_accepts_explicit_planner_response_without_provider_call():
     assert plan["fit_config"]["method"] == "auto"
     assert plan["warnings"] == ["weights were not specified"]
     assert "reasoning_summary" in plan
+
+
+def test_study_level_prompt_requires_acquisition_and_optimizer_configs():
+    prompt = build_config_planner_prompt(
+        goal="導電率を高くし、収縮率を低くしたい",
+        mode="model_config",
+        study_summary={"n_completed": 12, "n_pending": 2, "n_failed": 1},
+    )
+    payload = _planner_payload(prompt)
+
+    assert "Return model_config, fit_config, acquisition_config, and optimize_config." in payload["instructions"]
+    assert any("acquisition_config is required" in item for item in payload["instructions"])
+    assert "NEHVI" in payload["available_acquisition_choices"]["multi_objective_optimization"]
+    assert "nsgaii" not in payload["available_acquisition_choices"]["multi_objective_optimization"]
+    assert "nsgaii" in payload["available_optimizer_choices"]
+
+
+def test_model_only_prompt_keeps_acquisition_optional():
+    prompt = build_config_planner_prompt(
+        goal="yを大きくしたい",
+        mode="model_config",
+    )
+    payload = _planner_payload(prompt)
+
+    assert payload["instructions"][0] == "Focus on model_config and fit_config."
+    assert any("applications may ignore them" in item for item in payload["instructions"])
 
 
 def test_model_config_llm_selected_uses_shared_settings_before_fit_without_provider_call():

@@ -5,12 +5,15 @@ import type {
   HealthResponse,
   LogsResponse,
   RegressionResult,
+  ResultVisualization,
   SearchVariable,
-  TargetSetting
+  TargetSetting,
+  VisualizationRequest
 } from "./types";
 import {
   loadFeatureConstraints,
-  loadSearchMethod
+  loadSearchMethod,
+  loadSelectionCountConstraint
 } from "./webRunSettings";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api/v1";
@@ -87,7 +90,12 @@ interface RunRegressionInput {
   targetDirections: Record<string, Direction>;
   direction: Direction;
   modelType: string;
+  projectionDimensions: number;
   fitMaxiter: number;
+  normalize: boolean;
+  inputPerturbation: boolean;
+  nW: number;
+  perturbationStd: number;
   acquisitionFamily: AcquisitionFamily;
   acquisition: string;
   beta: number;
@@ -155,15 +163,30 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
   }
   const settingError = input.targetSettings.map(validateTargetSetting).find(Boolean);
   if (settingError) throw new Error(settingError);
+  if (!Number.isInteger(input.nW) || input.nW < 1) throw new Error("入力摂動のnは1以上の整数にしてください。");
+  if (!Number.isFinite(input.perturbationStd) || input.perturbationStd <= 0) {
+    throw new Error("入力摂動のばらつきは0より大きくしてください。");
+  }
 
   const featureConstraints = loadFeatureConstraints();
   const featureSet = new Set(input.featureColumns);
   const invalidConstraint = featureConstraints.find((constraint) => (
-    !featureSet.has(constraint.variable) ||
-    !Number.isFinite(constraint.coefficient) ||
+    constraint.variables.length === 0 ||
+    constraint.variables.some((name) => !featureSet.has(name)) ||
+    constraint.variables.some((name) => !Number.isFinite(constraint.coefficients[name])) ||
     !Number.isFinite(constraint.value)
   ));
   if (invalidConstraint) throw new Error("説明変数の制約に無効な列、係数、または値があります。");
+
+  const selectionCount = loadSelectionCountConstraint();
+  if (selectionCount.enabled) {
+    if (!selectionCount.variables.length || selectionCount.variables.some((name) => !featureSet.has(name))) {
+      throw new Error("有効変数数制約の説明変数を1つ以上選択してください。");
+    }
+    if (!Number.isInteger(selectionCount.k) || selectionCount.k < 1 || selectionCount.k > selectionCount.variables.length) {
+      throw new Error("有効変数数制約の採用数を選択変数数以下の正の整数にしてください。");
+    }
+  }
 
   const searchMethod = loadSearchMethod();
   if (searchMethod === "nsgaii" && optimized.length < 2) {
@@ -173,11 +196,24 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
   const acquisitionName = searchMethod === "nsgaii" ? "nsgaii" : input.acquisition;
   const constraints = featureConstraints.map((constraint, index) => ({
     name: `feature-constraint-${index + 1}`,
-    terms: [{ column: constraint.variable, coefficient: constraint.coefficient }],
+    terms: constraint.variables.map((column) => ({
+      column,
+      coefficient: constraint.coefficients[column] ?? 1
+    })),
     sense: constraint.operator === ">" ? "ge" : constraint.operator === "<" ? "le" : "eq",
     rhs: constraint.value,
     enabled: true
   }));
+  const modelKwargs: Record<string, unknown> = {
+    web_target_settings: input.targetSettings,
+    web_target_roles: Object.fromEntries(input.targetSettings.map((setting) => [setting.target, {
+      optimize: setting.optimize,
+      direction: setting.direction
+    }]))
+  };
+  if (input.modelType === "pca" || input.modelType === "rembo") {
+    modelKwargs.n_components = input.projectionDimensions;
+  }
 
   return request<RegressionResult>("/regression/run", {
     method: "POST",
@@ -189,20 +225,24 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       direction: input.targetDirections[input.targetColumn] ?? input.direction,
       directions: input.targetDirections,
       model_type: backendModelType,
-      model_kwargs: {
-        web_target_settings: input.targetSettings,
-        web_target_roles: Object.fromEntries(input.targetSettings.map((setting) => [setting.target, {
-          optimize: setting.optimize,
-          direction: setting.direction
-        }]))
-      },
+      model_kwargs: modelKwargs,
       fit_maxiter: input.fitMaxiter,
-      normalize: true,
+      normalize: input.normalize,
       outcome_transform: true,
+      input_perturbation: input.inputPerturbation,
+      n_w: input.nW,
+      perturbation_std: input.perturbationStd,
       search_space: input.searchSpace,
       constraints,
       outcome_constraints: [],
-      k_sparse: null,
+      k_sparse: selectionCount.enabled ? {
+        enabled: true,
+        columns: selectionCount.variables,
+        k: selectionCount.k,
+        score: "abs",
+        support_selection: "topk",
+        final_priority: "grid"
+      } : null,
       acquisition: {
         name: acquisitionName,
         beta: input.beta,
@@ -217,6 +257,16 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       },
       drop_missing: true
     })
+  });
+}
+
+export async function fetchResultVisualization(
+  runId: string,
+  value: VisualizationRequest
+): Promise<ResultVisualization> {
+  return request<ResultVisualization>(`/runs/${encodeURIComponent(runId)}/visualizations`, {
+    method: "POST",
+    body: JSON.stringify(value)
   });
 }
 

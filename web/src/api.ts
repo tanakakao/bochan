@@ -82,7 +82,7 @@ export async function uploadDataset(file: File): Promise<DatasetResponse> {
   });
 }
 
-interface RunRegressionInput {
+export interface RunRegressionInput {
   datasetId: string;
   featureColumns: string[];
   targetColumn: string;
@@ -104,6 +104,42 @@ interface RunRegressionInput {
   numRestarts: number;
   rawSamples: number;
   searchSpace: SearchVariable[];
+  reuseModelRunId?: string;
+}
+
+function canonicalValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, canonicalValue(item)])
+    );
+  }
+  return value;
+}
+
+/** Fingerprint of settings that affect fitted model parameters and training tensors. */
+export function buildModelReuseSignature(input: RunRegressionInput): string {
+  const featureMissing = loadFeatureMissingSettings();
+  return JSON.stringify(canonicalValue({
+    datasetId: input.datasetId,
+    featureColumns: input.featureColumns,
+    targetColumn: input.targetColumn,
+    targetColumns: input.targetColumns,
+    targetSettings: input.targetSettings,
+    targetDirections: input.targetDirections,
+    direction: input.direction,
+    modelType: input.modelType,
+    projectionDimensions: input.projectionDimensions,
+    fitMaxiter: input.fitMaxiter,
+    normalize: input.normalize,
+    inputPerturbation: input.inputPerturbation,
+    nW: input.nW,
+    perturbationStd: input.perturbationStd,
+    searchSpace: input.searchSpace,
+    featureMissing
+  }));
 }
 
 function validateTargetSetting(setting: TargetSetting): string | null {
@@ -227,6 +263,9 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       multiple_impute_sample_posterior: featureMissing.multipleImputeSamplePosterior
     }
   };
+  if (input.reuseModelRunId) {
+    modelKwargs.web_reuse_model_run_id = input.reuseModelRunId;
+  }
   if (input.modelType === "pca" || input.modelType === "rembo") {
     modelKwargs.n_components = input.projectionDimensions;
   }

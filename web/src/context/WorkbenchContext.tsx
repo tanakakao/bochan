@@ -6,7 +6,13 @@ import {
   useState,
   type ReactNode
 } from "react";
-import { fetchHealth, runRegression, uploadDataset } from "../api";
+import {
+  buildModelReuseSignature,
+  fetchHealth,
+  runRegression,
+  uploadDataset,
+  type RunRegressionInput
+} from "../api";
 import { getColumnClassValues } from "../targetSettingUtils";
 import type {
   AcquisitionFamily,
@@ -265,6 +271,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [numRestarts, setNumRestarts] = useState(10);
   const [rawSamples, setRawSamples] = useState(256);
   const [result, setResult] = useState<RegressionResult | null>(null);
+  const [lastModelSignature, setLastModelSignature] = useState<string | null>(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -357,6 +364,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     setBusy("データを読み込んでいます");
     setError(null);
     setResult(null);
+    setLastModelSignature(null);
     try {
       const loaded = await uploadDataset(file);
       setDataset(loaded);
@@ -433,33 +441,50 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 
   async function execute() {
     if (!dataset || !settingsValid) return;
-    setBusy("モデル学習と候補探索を実行しています");
+    const baseInput: RunRegressionInput = {
+      datasetId: dataset.dataset_id,
+      featureColumns,
+      targetColumn,
+      targetColumns,
+      targetSettings: selectedTargetSettings,
+      targetDirections,
+      direction,
+      modelType,
+      projectionDimensions,
+      fitMaxiter,
+      normalize,
+      inputPerturbation,
+      nW,
+      perturbationStd,
+      acquisitionFamily,
+      acquisition,
+      beta,
+      q,
+      numRestarts,
+      rawSamples,
+      searchSpace: selectedVariables
+    };
+    const modelSignature = buildModelReuseSignature(baseInput);
+    const reusableRunId = result?.visualization_run_id;
+    const canReuse = Boolean(reusableRunId && lastModelSignature === modelSignature);
+    const reuseModel = canReuse && window.confirm(
+      "作成済みモデルを使用しますか？\n\n" +
+      "OK: モデルを再学習せず、現在の獲得関数・探索手法で候補だけを生成します。\n" +
+      "キャンセル: モデルを再学習してから候補を生成します。"
+    );
+    const input: RunRegressionInput = {
+      ...baseInput,
+      reuseModelRunId: reuseModel ? reusableRunId : undefined
+    };
+
+    setBusy(reuseModel
+      ? "作成済みモデルを使用して候補探索を実行しています"
+      : "モデル学習と候補探索を実行しています");
     setError(null);
     try {
-      const response = await runRegression({
-        datasetId: dataset.dataset_id,
-        featureColumns,
-        targetColumn,
-        targetColumns,
-        targetSettings: selectedTargetSettings,
-        targetDirections,
-        direction,
-        modelType,
-        projectionDimensions,
-        fitMaxiter,
-        normalize,
-        inputPerturbation,
-        nW,
-        perturbationStd,
-        acquisitionFamily,
-        acquisition,
-        beta,
-        q,
-        numRestarts,
-        rawSamples,
-        searchSpace: selectedVariables
-      });
+      const response = await runRegression(input);
       setResult(response);
+      setLastModelSignature(modelSignature);
       setStepState("results");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));

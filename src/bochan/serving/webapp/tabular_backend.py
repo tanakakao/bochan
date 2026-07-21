@@ -115,7 +115,30 @@ def fit_tabular_optimizer(
     model_config: Any,
     fit_config: Any,
 ) -> Any:
-    """Fit the Web workflow using the public pandas-friendly optimizer."""
+    """Fit or reuse the public pandas-friendly optimizer for the Web workflow."""
+
+    from .logging import current_request_id
+    from .model_reuse import (
+        current_model_reuse_state,
+        register_fitted_model,
+        reuse_fitted_tabular_optimizer,
+    )
+
+    run_id = current_request_id()
+    reuse_state = current_model_reuse_state()
+    source_run_id = str((reuse_state or {}).get("source_run_id") or "")
+    if source_run_id:
+        if not run_id:
+            raise RuntimeError("Model reuse requires an active Web request identifier.")
+        return reuse_fitted_tabular_optimizer(
+            source_run_id=source_run_id,
+            current_run_id=run_id,
+            data=data,
+            feature_columns=feature_columns,
+            target_columns=target_columns,
+            target_metadata=target_metadata,
+            hybrid_model=str(getattr(model_config, "task_type", "")) == "hybrid",
+        )
 
     from bochan.tabular import TabularBayesianOptimizer
 
@@ -143,10 +166,8 @@ def fit_tabular_optimizer(
     if optimizer.dataset is None:
         raise RuntimeError("TabularBayesianOptimizer did not retain its fitted dataset.")
 
-    from .logging import current_request_id
     from .visualization_sessions import attach_fitted_tabular_optimizer
 
-    run_id = current_request_id()
     if run_id:
         attach_fitted_tabular_optimizer(
             run_id,
@@ -157,6 +178,7 @@ def fit_tabular_optimizer(
             target_metadata=target_metadata,
             hybrid_model=str(getattr(model_config, "task_type", "")) == "hybrid",
         )
+        register_fitted_model(run_id)
     return optimizer
 
 

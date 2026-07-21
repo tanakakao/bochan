@@ -29,7 +29,11 @@ function taskLabel(taskType: TaskType): string {
   return "回帰";
 }
 
-/** Configures targets, search variables, and explanatory-variable constraints. */
+function numericInputStep(variable: SearchVariable): number | "any" {
+  return Number(variable.upper) === 1 ? 0.1 : "any";
+}
+
+/** Configures targets, search variables, transforms, and explanatory-variable constraints. */
 export default function SettingsPage() {
   const {
     dataset,
@@ -39,6 +43,14 @@ export default function SettingsPage() {
     patchTargetSetting,
     selectedVariables,
     patchVariable,
+    normalize,
+    setNormalize,
+    inputPerturbation,
+    setInputPerturbation,
+    nW,
+    setNW,
+    perturbationStd,
+    setPerturbationStd,
     settingsValid,
     setStep,
     numberOrUndefined
@@ -64,12 +76,21 @@ export default function SettingsPage() {
     return column ? getColumnClassValues(column, preview) : [];
   }
 
+  function categoriesForVariable(name: string): TargetClassValue[] {
+    const column = columns.find((candidate) => candidate.name === name);
+    return column ? getColumnClassValues(column, preview) : [];
+  }
+
   function setVariableType(variable: SearchVariable, categorical: boolean) {
     const nextType = categorical ? "categorical" : "numeric";
+    const column = columns.find((candidate) => candidate.name === variable.name);
     patchVariable(variable.name, {
       type: nextType,
       fixed: false,
       fixed_value: undefined,
+      categories: nextType === "categorical" ? categoriesForVariable(variable.name) : undefined,
+      lower: nextType === "numeric" ? variable.lower ?? column?.min ?? undefined : undefined,
+      upper: nextType === "numeric" ? variable.upper ?? column?.max ?? undefined : undefined,
       step: nextType === "categorical" ? undefined : variable.step
     });
   }
@@ -150,6 +171,7 @@ export default function SettingsPage() {
       return (
         <input
           type="number"
+          step="any"
           value={setting.value ?? ""}
           onChange={(event) => patchTargetSetting(target, {
             value: numberOrUndefined(event.target.value) ?? null
@@ -288,7 +310,7 @@ export default function SettingsPage() {
       <SectionHeader
         step="3 · SETTINGS"
         title="目的変数と探索変数を設定する"
-        text="目的変数、探索範囲、説明変数の制約を設定します。"
+        text="目的変数、探索範囲、入力変換、説明変数の制約を設定します。"
         action={
           <button disabled={!settingsValid} onClick={() => setStep("optimize")}>
             モデル設定へ
@@ -378,24 +400,29 @@ export default function SettingsPage() {
             </thead>
             <tbody>
               {selectedVariables.map((variable) => {
-                const detectedCategorical = columns.find((column) => column.name === variable.name)?.kind === "categorical";
+                const column = columns.find((candidate) => candidate.name === variable.name);
+                const detectedCategorical = column?.kind === "categorical";
+                const inputStep = numericInputStep(variable);
+                const categories = variable.categories?.length
+                  ? variable.categories
+                  : categoriesForVariable(variable.name);
                 return (
                   <tr key={variable.name}>
                     <td><strong>{variable.name}</strong></td>
                     <td><input className="table-checkbox" type="checkbox" checked={variable.type === "categorical"} disabled={detectedCategorical} onChange={(event) => setVariableType(variable, event.target.checked)} /></td>
                     <td><span className="status-chip">{variable.type}</span></td>
-                    <td>{variable.type === "numeric" ? <input type="number" value={variable.lower ?? ""} onChange={(event) => patchVariable(variable.name, { lower: numberOrUndefined(event.target.value) })} /> : "—"}</td>
-                    <td>{variable.type === "numeric" ? <input type="number" value={variable.upper ?? ""} onChange={(event) => patchVariable(variable.name, { upper: numberOrUndefined(event.target.value) })} /> : "—"}</td>
-                    <td>{variable.type === "numeric" ? <input type="number" min={0} value={variable.step ?? ""} placeholder="任意" onChange={(event) => patchVariable(variable.name, { step: numberOrUndefined(event.target.value) })} /> : "—"}</td>
+                    <td>{variable.type === "numeric" ? <input type="number" step={inputStep} value={variable.lower ?? ""} onChange={(event) => patchVariable(variable.name, { lower: numberOrUndefined(event.target.value) })} /> : "—"}</td>
+                    <td>{variable.type === "numeric" ? <input type="number" step={inputStep} value={variable.upper ?? ""} onChange={(event) => patchVariable(variable.name, { upper: numberOrUndefined(event.target.value) })} /> : "—"}</td>
+                    <td>{variable.type === "numeric" ? <input type="number" min={0} step={inputStep} value={variable.step ?? ""} placeholder="任意" onChange={(event) => patchVariable(variable.name, { step: numberOrUndefined(event.target.value) })} /> : "—"}</td>
                     <td><input className="table-checkbox" type="checkbox" checked={variable.fixed} onChange={(event) => patchVariable(variable.name, { fixed: event.target.checked, fixed_value: event.target.checked ? variable.fixed_value : undefined })} /></td>
                     <td>
-                      {variable.fixed && variable.type === "categorical" && variable.categories?.length ? (
+                      {variable.fixed && variable.type === "categorical" ? (
                         <select value={String(variable.fixed_value ?? "")} onChange={(event) => patchVariable(variable.name, { fixed_value: event.target.value })}>
                           <option value="">選択</option>
-                          {variable.categories.map((category) => <option key={category} value={category}>{category}</option>)}
+                          {categories.map((category) => <option key={String(category)} value={String(category)}>{String(category)}</option>)}
                         </select>
                       ) : variable.fixed ? (
-                        <input value={variable.fixed_value ?? ""} onChange={(event) => patchVariable(variable.name, { fixed_value: variable.type === "numeric" ? numberOrUndefined(event.target.value) : event.target.value })} />
+                        <input type="number" step={inputStep} value={variable.fixed_value ?? ""} onChange={(event) => patchVariable(variable.name, { fixed_value: numberOrUndefined(event.target.value) })} />
                       ) : "—"}
                     </td>
                   </tr>
@@ -403,6 +430,36 @@ export default function SettingsPage() {
               })}
             </tbody>
           </table>
+        </div>
+
+        <div className="search-transform-grid">
+          <section className="transform-card">
+            <div className="transform-card-heading">
+              <div><span className="panel-kicker">NORMALIZATION</span><h4>正規化</h4></div>
+              <label className="switch-field">
+                <input type="checkbox" checked={normalize} onChange={(event) => setNormalize(event.target.checked)} />
+                <span>{normalize ? "使用する" : "使用しない"}</span>
+              </label>
+            </div>
+            <p>各探索変数に設定した下限・上限を使って入力を正規化します。デフォルトは有効です。</p>
+          </section>
+
+          <section className="transform-card">
+            <div className="transform-card-heading">
+              <div><span className="panel-kicker">INPUT PERTURBATION</span><h4>入力摂動</h4></div>
+              <label className="switch-field">
+                <input type="checkbox" checked={inputPerturbation} onChange={(event) => setInputPerturbation(event.target.checked)} />
+                <span>{inputPerturbation ? "使用する" : "使用しない"}</span>
+              </label>
+            </div>
+            <p>候補入力のばらつきをサンプリングし、頑健な候補評価へ反映します。デフォルトは無効です。</p>
+            {inputPerturbation && (
+              <div className="transform-fields">
+                <label>摂動サンプル数 n<input type="number" min={1} step={1} value={nW} onChange={(event) => setNW(Number(event.target.value))} /></label>
+                <label>ばらつき（標準偏差）<input type="number" min={0.000001} step={0.01} value={perturbationStd} onChange={(event) => setPerturbationStd(Number(event.target.value))} /></label>
+              </div>
+            )}
+          </section>
         </div>
       </article>
 
@@ -414,7 +471,7 @@ export default function SettingsPage() {
             <div>
               <span className="panel-kicker">VALIDATION</span>
               <h3>設定を確認してください</h3>
-              <p>少なくとも1つの最適化対象が必要です。分類ではターゲットクラス、順序回帰では全クラスの順序、数値探索変数では有効な上下限を設定してください。</p>
+              <p>少なくとも1つの最適化対象、有効な探索範囲、カテゴリ候補、入力摂動のサンプル数と標準偏差を確認してください。</p>
             </div>
             <span className="status-chip warning">Not ready</span>
           </div>

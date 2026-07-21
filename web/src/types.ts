@@ -1,4 +1,5 @@
 export type ColumnKind = "numeric" | "categorical" | "datetime" | "string";
+export type TargetClassValue = string | number;
 
 export interface HealthResponse {
   status: string;
@@ -16,7 +17,7 @@ export interface ColumnProfile {
   max?: number | null;
   mean?: number | null;
   std?: number | null;
-  values?: string[];
+  values?: TargetClassValue[];
 }
 
 export interface DatasetProfile {
@@ -41,12 +42,11 @@ export interface SearchVariable {
   step?: number;
   fixed: boolean;
   fixed_value?: string | number;
-  categories?: string[];
+  categories?: TargetClassValue[];
 }
 
 export type TaskType = "regression" | "classification" | "ordinal";
 export type TargetGoal = "none" | "above" | "below" | "target";
-export type TargetClassValue = string | number;
 export type Direction = "maximize" | "minimize";
 export type AcquisitionFamily = "bayesian_optimization" | "active_learning" | "level_set_estimation";
 export type ConstraintKind = "equality" | "inequality";
@@ -139,6 +139,28 @@ export interface ResultVisualization {
   figure: PlotlyFigurePayload;
 }
 
+export type VisualizationKind = "yyplot" | "pareto" | "1d" | "2d" | "ternary";
+
+export interface VisualizationRequest {
+  kind: VisualizationKind;
+  target?: string;
+  target_x?: string;
+  target_y?: string;
+  features?: string[];
+  fixed_values?: Record<string, string | number>;
+  show_type?: "pred" | "acqf";
+  n?: number;
+  sum_value?: number;
+}
+
+export interface VisualizationOptions {
+  feature_columns: string[];
+  numeric_features: string[];
+  target_columns: string[];
+  regression_targets: string[];
+  ternary_groups?: Array<{ features: string[]; sum_value: number }>;
+}
+
 export interface LogEntry {
   timestamp: string;
   level: string;
@@ -177,5 +199,7 @@ export interface RegressionResult {
   candidates: CandidateRow[];
   visualizations: ResultVisualization[];
   visualization_warnings: string[];
+  visualization_run_id?: string;
+  visualization_options?: VisualizationOptions;
   metadata: Record<string, unknown>;
 }

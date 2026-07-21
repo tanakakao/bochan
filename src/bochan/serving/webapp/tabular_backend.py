@@ -90,14 +90,7 @@ def _mutable_category_frame(
     *,
     categorical_columns: list[str],
 ) -> Any:
-    """Cast extension string/category columns before replacing labels with codes.
-
-    Recent pandas versions infer ordinary Python string data as ``StringDtype``.
-    Assigning integer category codes back into such columns raises ``TypeError``.
-    The dedicated FastAPI tabular router performs the same normalization at its
-    HTTP boundary; the React one-shot workflow needs it before calling the public
-    tabular optimizer directly.
-    """
+    """Cast extension string/category columns before replacing labels with codes."""
 
     import pandas as pd
 
@@ -149,6 +142,21 @@ def fit_tabular_optimizer(
     optimizer.fit(fit_data)
     if optimizer.dataset is None:
         raise RuntimeError("TabularBayesianOptimizer did not retain its fitted dataset.")
+
+    from .logging import current_request_id
+    from .visualization_sessions import attach_fitted_tabular_optimizer
+
+    run_id = current_request_id()
+    if run_id:
+        attach_fitted_tabular_optimizer(
+            run_id,
+            tabular_optimizer=optimizer,
+            data=data,
+            feature_columns=feature_columns,
+            target_columns=target_columns,
+            target_metadata=target_metadata,
+            hybrid_model=str(getattr(model_config, "task_type", "")) == "hybrid",
+        )
     return optimizer
 
 

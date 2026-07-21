@@ -1,0 +1,369 @@
+.search-transform-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.transform-card,
+.constraint-section {
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-subtle);
+}
+
+.transform-card-heading,
+.constraint-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.transform-card h4,
+.constraint-section h4 {
+  margin: 4px 0;
+  font-size: 16px;
+}
+
+.transform-card p,
+.constraint-section-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.transform-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 15px;
+}
+
+.switch-field {
+  display: inline-flex;
+  grid-template-columns: none;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.switch-field input {
+  width: 18px;
+  height: 18px;
+  min-height: auto;
+}
+
+.feature-constraint-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.constraint-section {
+  display: grid;
+  gap: 15px;
+}
+
+.constraint-actions {
+  justify-content: flex-end;
+}
+
+.constraint-list {
+  display: grid;
+  gap: 13px;
+}
+
+.constraint-card {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-xs);
+}
+
+.constraint-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.constraint-card-heading > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.constraint-card-heading strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.constraint-index {
+  width: 27px;
+  height: 27px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--primary);
+  background: var(--primary-soft);
+  font-weight: 800;
+}
+
+.constraint-delete {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  color: var(--danger);
+  background: transparent;
+  border-color: var(--line);
+  box-shadow: none;
+}
+
+.constraint-delete:hover:not(:disabled) {
+  color: var(--danger);
+  background: var(--danger-soft);
+  box-shadow: none;
+}
+
+.constraint-relation-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 90px minmax(120px, 0.5fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.constraint-expression {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--muted);
+  background: var(--surface-subtle);
+}
+
+.constraint-expander {
+  margin-top: 13px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.constraint-expander summary,
+.model-output-details summary {
+  color: var(--primary);
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.constraint-variable-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.constraint-variable-picker label {
+  display: inline-flex;
+  grid-template-columns: none;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  background: var(--surface-subtle);
+  cursor: pointer;
+}
+
+.constraint-variable-picker label.selected {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 32%, var(--line));
+  background: var(--primary-soft);
+}
+
+.constraint-variable-picker input {
+  width: 16px;
+  height: 16px;
+  min-height: auto;
+}
+
+.coefficient-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.selection-count-section {
+  border-color: color-mix(in srgb, var(--primary) 20%, var(--line));
+}
+
+.selection-count-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 210px;
+  gap: 18px;
+  align-items: end;
+}
+
+.selection-count-input small {
+  color: var(--subtle);
+}
+
+.constraint-empty {
+  padding: 22px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.recommended-first {
+  margin-top: 0;
+}
+
+.interactive-visualization-section {
+  margin-top: 24px;
+}
+
+.interactive-plot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.interactive-plot-card {
+  min-width: 0;
+  margin: 0;
+}
+
+.plot-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.interactive-plot-stage {
+  min-height: 500px;
+}
+
+.interactive-plot-stage .plot-container {
+  height: 510px;
+}
+
+.plot-loading {
+  min-height: 500px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  color: var(--muted);
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  background: var(--surface-subtle);
+}
+
+.plot-loading .spinner {
+  width: 34px;
+  height: 34px;
+}
+
+.plot-error {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+}
+
+.model-details-card {
+  border-color: color-mix(in srgb, var(--primary) 22%, var(--line));
+}
+
+.model-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.model-detail-grid > div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-subtle);
+}
+
+.model-detail-grid span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 760;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.model-detail-grid strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.model-output-details {
+  margin-top: 16px;
+}
+
+.model-output-details .table-wrap {
+  margin-top: 10px;
+}
+
+@media (max-width: 1180px) {
+  .interactive-plot-grid,
+  .search-transform-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .model-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .transform-fields,
+  .coefficient-grid,
+  .selection-count-editor,
+  .model-detail-grid,
+  .plot-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .constraint-relation-row {
+    grid-template-columns: 1fr;
+  }
+
+  .constraint-section-heading,
+  .transform-card-heading {
+    flex-direction: column;
+  }
+
+  .interactive-plot-stage,
+  .plot-loading {
+    min-height: 420px;
+  }
+
+  .interactive-plot-stage .plot-container {
+    height: 420px;
+  }
+}

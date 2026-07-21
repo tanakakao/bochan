@@ -16,6 +16,19 @@ export interface SelectionCountConstraint {
   k: number;
 }
 
+export type FeatureMissingStrategy = "drop" | "impute";
+export type ContinuousImputeStrategy = "mean" | "iterative";
+
+/** Missing-value handling applied only to explanatory variables. */
+export interface FeatureMissingSettings {
+  strategy: FeatureMissingStrategy;
+  continuousStrategy: ContinuousImputeStrategy;
+  categoricalStrategy: "mode";
+  imputeMaxIter: number;
+  imputeRandomState: number | null;
+  multipleImputeSamplePosterior: boolean;
+}
+
 export type SearchMethod =
   | "normal"
   | "torch"
@@ -29,6 +42,7 @@ export type SearchMethod =
 const CONSTRAINTS_KEY = "bochan-web-feature-constraints";
 const SELECTION_COUNT_KEY = "bochan-web-selection-count-constraint";
 const SEARCH_METHOD_KEY = "bochan-web-search-method";
+const FEATURE_MISSING_KEY = "bochan-web-feature-missing";
 
 function storage(): Storage | null {
   return typeof window === "undefined" ? null : window.localStorage;
@@ -116,6 +130,38 @@ export function loadSelectionCountConstraint(): SelectionCountConstraint {
 
 export function saveSelectionCountConstraint(value: SelectionCountConstraint): void {
   storage()?.setItem(SELECTION_COUNT_KEY, JSON.stringify(value));
+}
+
+export function loadFeatureMissingSettings(): FeatureMissingSettings {
+  const fallback: FeatureMissingSettings = {
+    strategy: "drop",
+    continuousStrategy: "mean",
+    categoricalStrategy: "mode",
+    imputeMaxIter: 10,
+    imputeRandomState: null,
+    multipleImputeSamplePosterior: false
+  };
+  const value = storage()?.getItem(FEATURE_MISSING_KEY);
+  if (!value) return fallback;
+  try {
+    const parsed = JSON.parse(value) as Partial<FeatureMissingSettings>;
+    return {
+      strategy: parsed.strategy === "impute" ? "impute" : "drop",
+      continuousStrategy: parsed.continuousStrategy === "iterative" ? "iterative" : "mean",
+      categoricalStrategy: "mode",
+      imputeMaxIter: Math.max(1, Math.trunc(finiteNumber(parsed.imputeMaxIter, 10))),
+      imputeRandomState: parsed.imputeRandomState === null || parsed.imputeRandomState === undefined
+        ? null
+        : Math.trunc(finiteNumber(parsed.imputeRandomState, 0)),
+      multipleImputeSamplePosterior: Boolean(parsed.multipleImputeSamplePosterior)
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveFeatureMissingSettings(value: FeatureMissingSettings): void {
+  storage()?.setItem(FEATURE_MISSING_KEY, JSON.stringify(value));
 }
 
 export function loadSearchMethod(): SearchMethod {

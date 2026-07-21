@@ -12,6 +12,7 @@ import type {
 } from "./types";
 import {
   loadFeatureConstraints,
+  loadFeatureMissingSettings,
   loadSearchMethod,
   loadSelectionCountConstraint
 } from "./webRunSettings";
@@ -168,6 +169,10 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
     throw new Error("入力摂動のばらつきは0より大きくしてください。");
   }
 
+  const featureMissing = loadFeatureMissingSettings();
+  if (!Number.isInteger(featureMissing.imputeMaxIter) || featureMissing.imputeMaxIter < 1) {
+    throw new Error("欠損値補完の最大反復回数は1以上の整数にしてください。");
+  }
   const featureConstraints = loadFeatureConstraints();
   const featureSet = new Set(input.featureColumns);
   const invalidConstraint = featureConstraints.find((constraint) => (
@@ -209,7 +214,18 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
     web_target_roles: Object.fromEntries(input.targetSettings.map((setting) => [setting.target, {
       optimize: setting.optimize,
       direction: setting.direction
-    }]))
+    }])),
+    // The Web endpoint keeps its public schema backward compatible. This
+    // Web-only adapter setting is removed before model construction and is
+    // executed through the same tabular converter used by /tabular/models.
+    web_feature_missing: {
+      strategy: featureMissing.strategy,
+      continuous_impute_strategy: featureMissing.continuousStrategy,
+      categorical_impute_strategy: featureMissing.categoricalStrategy,
+      impute_random_state: featureMissing.imputeRandomState,
+      impute_max_iter: featureMissing.imputeMaxIter,
+      multiple_impute_sample_posterior: featureMissing.multipleImputeSamplePosterior
+    }
   };
   if (input.modelType === "pca" || input.modelType === "rembo") {
     modelKwargs.n_components = input.projectionDimensions;
@@ -255,6 +271,8 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
         raw_samples: input.rawSamples,
         sequential: true
       },
+      // Target missing values still use the automatic target policy. Feature
+      // missing values are controlled independently through web_feature_missing.
       drop_missing: true
     })
   });

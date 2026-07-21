@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import type { SearchVariable } from "../types";
 import {
   loadFeatureConstraints,
+  loadFeatureMissingSettings,
   loadSelectionCountConstraint,
   newConstraintId,
   saveFeatureConstraints,
+  saveFeatureMissingSettings,
   saveSelectionCountConstraint,
   type FeatureConstraint,
   type FeatureConstraintOperator,
+  type FeatureMissingSettings,
   type SelectionCountConstraint
 } from "../webRunSettings";
 
@@ -22,7 +25,7 @@ function expression(constraint: FeatureConstraint): string {
     .join(" + ");
 }
 
-/** Edits linear-sum constraints and a k-sparse selection-count constraint. */
+/** Edits feature missing-value handling, linear constraints, and a k-sparse constraint. */
 export default function FeatureConstraints({ variables }: Props) {
   const numericVariables = useMemo(
     () => variables.filter((variable) => variable.type === "numeric"),
@@ -31,6 +34,9 @@ export default function FeatureConstraints({ variables }: Props) {
   const numericNames = useMemo(
     () => new Set(numericVariables.map((variable) => variable.name)),
     [numericVariables]
+  );
+  const [featureMissing, setFeatureMissing] = useState<FeatureMissingSettings>(
+    () => loadFeatureMissingSettings()
   );
   const [constraints, setConstraints] = useState<FeatureConstraint[]>(() => loadFeatureConstraints());
   const [selectionCount, setSelectionCount] = useState<SelectionCountConstraint>(
@@ -63,6 +69,11 @@ export default function FeatureConstraints({ variables }: Props) {
       return next;
     });
   }, [numericNames]);
+
+  function updateMissing(next: FeatureMissingSettings) {
+    setFeatureMissing(next);
+    saveFeatureMissingSettings(next);
+  }
 
   function update(next: FeatureConstraint[]) {
     setConstraints(next);
@@ -125,14 +136,83 @@ export default function FeatureConstraints({ variables }: Props) {
     <article className="panel feature-constraint-panel">
       <div className="panel-title">
         <div>
-          <span className="panel-kicker">3 · CONSTRAINTS</span>
-          <h3>制約</h3>
-          <p>複数の説明変数の重み付き和と、有効にする変数数を設定します。</p>
+          <span className="panel-kicker">3 · DATA & CONSTRAINTS</span>
+          <h3>欠損値と制約</h3>
+          <p>説明変数の欠損処理、重み付き和の制約、有効にする変数数を設定します。</p>
         </div>
-        <span className={`status-chip ${constraints.length || selectionCount.enabled ? "success" : ""}`}>
-          {constraints.length} linear
+        <span className={`status-chip ${constraints.length || selectionCount.enabled || featureMissing.strategy === "impute" ? "success" : ""}`}>
+          {featureMissing.strategy === "impute" ? "impute" : "drop"}
         </span>
       </div>
+
+      <section className="constraint-section feature-missing-section">
+        <div className="constraint-section-heading">
+          <div>
+            <h4>説明変数の欠損値</h4>
+            <p>目的変数の欠損処理とは独立して、説明変数を欠損した行の扱いを選択します。</p>
+          </div>
+        </div>
+        <div className="constraint-variable-picker" role="group" aria-label="説明変数の欠損値処理">
+          <button
+            type="button"
+            className={featureMissing.strategy === "drop" ? "selected" : ""}
+            aria-pressed={featureMissing.strategy === "drop"}
+            onClick={() => updateMissing({ ...featureMissing, strategy: "drop" })}
+          >
+            欠損行を削除
+          </button>
+          <button
+            type="button"
+            className={featureMissing.strategy === "impute" ? "selected" : ""}
+            aria-pressed={featureMissing.strategy === "impute"}
+            onClick={() => updateMissing({ ...featureMissing, strategy: "impute" })}
+          >
+            欠損値を補完
+          </button>
+        </div>
+
+        {featureMissing.strategy === "impute" && (
+          <div className="transform-fields">
+            <label>
+              数値変数の補完
+              <select
+                value={featureMissing.continuousStrategy}
+                onChange={(event) => updateMissing({
+                  ...featureMissing,
+                  continuousStrategy: event.target.value === "iterative" ? "iterative" : "mean"
+                })}
+              >
+                <option value="mean">平均値</option>
+                <option value="iterative">IterativeImputer</option>
+              </select>
+            </label>
+            <label>
+              カテゴリ変数の補完
+              <select value="mode" disabled>
+                <option value="mode">最頻値</option>
+              </select>
+            </label>
+            {featureMissing.continuousStrategy === "iterative" && (
+              <label>
+                最大反復回数
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={featureMissing.imputeMaxIter}
+                  onChange={(event) => updateMissing({
+                    ...featureMissing,
+                    imputeMaxIter: Math.max(1, Math.trunc(Number(event.target.value) || 1))
+                  })}
+                />
+              </label>
+            )}
+          </div>
+        )}
+        <p className="settings-note">
+          補完では、数値変数に平均値またはIterativeImputer、カテゴリ変数に最頻値を使用します。目的変数はここでは補完しません。
+        </p>
+      </section>
 
       <section className="constraint-section">
         <div className="constraint-section-heading">

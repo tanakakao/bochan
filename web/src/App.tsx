@@ -12,7 +12,7 @@ import PreparePage from "./pages/PreparePage";
 import ResultsPage from "./pages/ResultsPage";
 import SettingsPage from "./pages/SettingsPage";
 import { targetClassValues } from "./targetSettingUtils";
-import type { TargetSetting } from "./types";
+import type { AcquisitionFamily, TargetSetting } from "./types";
 
 const PAGES: Record<WorkbenchStep, ComponentType> = {
   data: DataPage,
@@ -39,7 +39,20 @@ function goalLabel(value: string): string {
   return "≥";
 }
 
+function familyLabel(value: AcquisitionFamily): string {
+  if (value === "active_learning") return "アクティブラーニング";
+  if (value === "level_set_estimation") return "レベルセット推定";
+  return "ベイズ最適化";
+}
+
 function summarizeTargetSetting(setting: TargetSetting): string {
+  const roleText = setting.optimize
+    ? setting.goal === "target"
+      ? "目標最適化"
+      : setting.direction === "minimize"
+        ? "最小化"
+        : "最大化"
+    : "制約専用";
   const classText = setting.task_type === "classification"
     ? `class=${targetClassValues(setting).map(String).join("|") || "—"}`
     : setting.task_type === "ordinal" && setting.goal === "target"
@@ -48,7 +61,7 @@ function summarizeTargetSetting(setting: TargetSetting): string {
   const constraintText = setting.goal === "none"
     ? goalLabel(setting.goal)
     : `${goalLabel(setting.goal)} ${setting.goal === "target" ? (setting.target_values ?? []).map(String).join("|") : String(setting.value ?? "—")}`;
-  return [setting.target, classText, constraintText].filter(Boolean).join(": ");
+  return [setting.target, roleText, classText, constraintText].filter(Boolean).join(": ");
 }
 
 function WorkbenchLayout() {
@@ -67,6 +80,7 @@ function WorkbenchLayout() {
     targetColumns,
     selectedTargetSettings,
     modelType,
+    acquisitionFamily,
     acquisition,
     q,
     result
@@ -201,6 +215,7 @@ function WorkbenchLayout() {
             <div className="context-list">
               <div><span>Targets</span><strong>{targetSummary}</strong></div>
               <div><span>Model</span><strong>{modelType}</strong></div>
+              <div><span>Family</span><strong>{familyLabel(acquisitionFamily)}</strong></div>
               <div><span>Acquisition</span><strong>{acquisition}</strong></div>
               <div><span>q</span><strong>{q}</strong></div>
             </div>

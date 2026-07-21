@@ -87,7 +87,8 @@ export default function OptimizePage() {
   const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
   const taskTypes = selectedTargetSettings.map((setting) => setting.task_type);
   const homogeneousTask = taskTypes.length > 0 && taskTypes.every((task) => task === taskTypes[0]);
-  const canUseMultitask = targetColumns.length > 1 && homogeneousTask && !hasCategoricalFeatures;
+  const allRegression = taskTypes.length > 0 && taskTypes.every((task) => task === "regression");
+  const canUseMultitask = targetColumns.length > 1 && allRegression && !hasCategoricalFeatures;
   const availableModels = useMemo(
     () => WEB_MODEL_TYPES.filter((name) => name !== "multitask" || canUseMultitask),
     [canUseMultitask]
@@ -112,7 +113,7 @@ export default function OptimizePage() {
     const errors: string[] = [];
     if (!settingsValid) errors.push("Settingsページの目的変数または探索変数設定を確認してください。");
     if (modelType === "multitask" && !canUseMultitask) {
-      errors.push("multitaskは複数目的が同じタスク種別で、説明変数がすべて数値の場合に選択できます。");
+      errors.push("multitaskは複数の回帰目的で、説明変数がすべて数値の場合に選択できます。");
     }
     if (fitMaxiter < 1) errors.push("fit maxiterは1以上にしてください。");
     if (q < 1 || q > 20) errors.push("候補点数qは1〜20にしてください。");
@@ -181,7 +182,7 @@ export default function OptimizePage() {
           </label>
           <p className="settings-note">
             {modelType === "robust" ? "内部ではrrpモデルを使用します。" : null}
-            {modelType === "multitask" ? "同じタスク種別の目的間相関を学習して情報共有します。" : null}
+            {modelType === "multitask" ? "回帰目的間の相関を学習して情報共有します。" : null}
             {!homogeneousTask ? "混合タスクでは目的変数ごとのサブモデルをhybrid wrapperに束ねます。" : null}
           </p>
           <label>

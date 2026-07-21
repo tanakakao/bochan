@@ -68,7 +68,7 @@ export default function SettingsPage() {
       patchTargetSetting(target, {
         task_type: nextTask,
         goal: "target",
-        value: column.values?.[0] ?? 1
+        value: column.values?.[0] ?? column.min ?? 1
       });
       return;
     }
@@ -83,9 +83,12 @@ export default function SettingsPage() {
     const column = columns.find((candidate) => candidate.name === target);
     const setting = targetSettings[target];
     if (!column || !setting) return;
-    let value: string | number = setting.value;
+    if (setting.task_type === "classification" && column.unique_count > 2 && nextGoal !== "target") {
+      return;
+    }
+    let value: string | number;
     if (setting.task_type === "classification") {
-      value = nextGoal === "target" ? (column.values?.[0] ?? 1) : 0.5;
+      value = nextGoal === "target" ? (column.values?.[0] ?? column.min ?? 1) : 0.5;
     } else if (setting.task_type === "ordinal") {
       value = column.values?.[0] ?? column.min ?? 0;
     } else {
@@ -123,12 +126,11 @@ export default function SettingsPage() {
             const setting = targetSettings[target];
             if (!column || !setting) return null;
             const categoryValues = column.values ?? [];
-            const useClassSelector =
-              setting.goal === "target" &&
-              (setting.task_type === "classification" || setting.task_type === "ordinal") &&
-              categoryValues.length > 0;
-            const useOrdinalSelector =
-              setting.task_type === "ordinal" && categoryValues.length > 0;
+            const multiclass = setting.task_type === "classification" && column.unique_count > 2;
+            const useValueSelector =
+              categoryValues.length > 0 &&
+              (setting.task_type === "ordinal" ||
+                (setting.task_type === "classification" && setting.goal === "target"));
             return (
               <article className="panel compact-panel" key={target}>
                 <div className="panel-title">
@@ -158,14 +160,14 @@ export default function SettingsPage() {
                       value={setting.goal}
                       onChange={(event) => changeGoal(target, event.target.value as TargetGoal)}
                     >
-                      <option value="above">以上</option>
-                      <option value="below">以下</option>
+                      <option value="above" disabled={multiclass}>以上</option>
+                      <option value="below" disabled={multiclass}>以下</option>
                       <option value="target">目標値</option>
                     </select>
                   </label>
                   <label>
                     {setting.goal === "target" ? "目標値" : "しきい値"}
-                    {useClassSelector || useOrdinalSelector ? (
+                    {useValueSelector ? (
                       <select
                         value={String(setting.value)}
                         onChange={(event) => patchTargetSetting(target, { value: event.target.value })}
@@ -187,13 +189,16 @@ export default function SettingsPage() {
 
                 <p className="settings-note">
                   {setting.task_type === "classification" && setting.goal !== "target"
-                    ? "分類の以上・以下では、二値分類のクラス1確率に対するしきい値として扱います。"
+                    ? "二値分類の以上・以下では、昇順で2番目のクラス確率に対するしきい値として扱います。"
+                    : null}
+                  {multiclass
+                    ? "3クラス以上の分類では、探索対象クラスを目標値として指定します。"
                     : null}
                   {setting.task_type === "classification" && setting.goal === "target"
                     ? "指定クラスの予測確率が高い候補を探索します。"
                     : null}
                   {setting.task_type === "ordinal"
-                    ? "順序はデータ中のカテゴリ値または数値の昇順として解釈します。"
+                    ? "順序はデータ中のカテゴリ値または数値の昇順として解釈し、以上・以下は予測期待順位で判定します。"
                     : null}
                   {setting.task_type === "regression" && setting.goal === "target"
                     ? "予測値と目標値の絶対偏差が小さい候補を探索します。"
@@ -269,7 +274,7 @@ export default function SettingsPage() {
             <div>
               <span className="panel-kicker">VALIDATION</span>
               <h3>設定を確認してください</h3>
-              <p>回帰目的は数値列、分類のしきい値は0〜1、数値探索変数は下限より上限を大きく設定してください。</p>
+              <p>回帰目的は数値列、二値分類のしきい値は0〜1、数値探索変数は下限より上限を大きく設定してください。</p>
             </div>
             <span className="status-chip warning">Not ready</span>
           </div>

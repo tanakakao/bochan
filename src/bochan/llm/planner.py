@@ -66,6 +66,7 @@ def build_config_planner_prompt(
     if goal_config is None:
         raise ValueError("goal is required for LLM config planning.")
     context = coerce_llm_context(llm_context)
+    is_study_level = study_summary is not None
 
     payload = {
         "role": "You are a bochan configuration planner for Bayesian optimization and active learning.",
@@ -75,6 +76,8 @@ def build_config_planner_prompt(
             "Return JSON only.",
             "Do not include API keys or secrets.",
             "Prefer simple, robust models unless the goal or data clearly requires a specialized model.",
+            "Choose an acquisition function that is compatible with the task, objective count, and goal.",
+            "Do not confuse the acquisition function with the candidate-optimization backend.",
             "Explicit existing configs should be preserved unless they conflict with the goal.",
             "If uncertain, add warnings instead of overfitting the configuration.",
             "For Study-level suggestions, account for completed, pending, and failed trials.",
@@ -103,11 +106,33 @@ def build_config_planner_prompt(
             ],
         },
         "available_acquisition_choices": {
-            "single_objective": ["EI", "UCB", "PI", "TS", "NIPV"],
-            "multi_objective": ["NEHVI", "EHVI", "NParEGO", "nsgaii"],
+            "single_objective_optimization": ["EI", "UCB", "PI", "TS"],
+            "multi_objective_optimization": ["NEHVI", "EHVI", "NParEGO"],
+            "regression_active_learning": ["NIPV"],
             "classification_active_learning": ["entropy", "BALD", "margin", "variance"],
-            "level_set": ["straddle", "ICU", "boundaryvariance", "levelset"],
+            "level_set_estimation": ["straddle", "ICU", "boundaryvariance", "levelset"],
         },
+        "acquisition_selection_guidance": [
+            "Use EI as a simple default for single-objective improvement-oriented optimization.",
+            "Use UCB when stronger explicit exploration is useful; include beta in acqf_kwargs when appropriate.",
+            "Use PI only when probability of improvement is specifically preferred over improvement magnitude.",
+            "Use TS when posterior sampling is desired.",
+            "Use NEHVI as the robust default for noisy multi-objective observations.",
+            "Use EHVI when a multi-objective problem is effectively noise-free and the required baseline/reference data are available.",
+            "Use NParEGO when scalarized multi-objective search is intentionally desired.",
+            "Use entropy, BALD, margin, or variance for classification active learning rather than EI/UCB.",
+            "Use straddle, ICU, boundaryvariance, or levelset when the goal is boundary or threshold estimation.",
+            "Use optimizer='nsgaii' only as an optimization backend; it is not an acquisition function name.",
+            "When objective directions or output indices are ambiguous, populate warnings instead of guessing silently.",
+        ],
+        "available_optimizer_choices": [
+            "optimize_acqf",
+            "llm_candidate_set",
+            "torch",
+            "evo",
+            "nsgaii",
+            "thompson_sampling",
+        ],
         "existing_configs": {
             "model_config": existing_model_config or {},
             "fit_config": existing_fit_config or {},
@@ -124,7 +149,8 @@ def build_config_planner_prompt(
             },
             "fit_config": {"method": "auto"},
             "acquisition_config": {
-                "name": "EI or NEHVI or another bochan acquisition alias",
+                "name": "EI or NEHVI or another compatible bochan acquisition alias",
+                "acqf_kwargs": {},
                 "objective_config": {
                     "mode": "auto or scalar or multi_output",
                     "outputs": ["target names or indices"],
@@ -150,10 +176,18 @@ def build_config_planner_prompt(
             "reasoning_summary": "short summary",
         },
     }
-    if mode == "model_config":
+    if mode == "model_config" and not is_study_level:
         payload["instructions"] = [
             "Focus on model_config and fit_config.",
             "You may still include acquisition_config and optimize_config as suggestions, but applications may ignore them.",
+        ]
+    elif is_study_level:
+        payload["instructions"] = [
+            "This is a Study-level configuration suggestion.",
+            "Return model_config, fit_config, acquisition_config, and optimize_config.",
+            "acquisition_config is required unless the supplied information is insufficient; explain any omission in warnings.",
+            "Use completed and pending trial information when deciding exploration versus exploitation.",
+            "Do not automatically replace an explicit objective_config unless it conflicts with the stated goal.",
         ]
     else:
         payload["instructions"] = [

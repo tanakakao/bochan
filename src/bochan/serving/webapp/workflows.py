@@ -1,6 +1,6 @@
 """Compatibility exports for the Web target workflow."""
 
-from .workflows_extended import (
+from .workflows_tabular import (
     _build_outcome_constraint_config,
     _figure_payload,
     _resolve_target_settings,

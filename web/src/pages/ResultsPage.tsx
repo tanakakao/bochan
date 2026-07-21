@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { EmptyState, SectionHeader } from "../components/Common";
 import InteractiveResultPlots from "../InteractiveResultPlots";
 import { useWorkbench } from "../context/WorkbenchContext";
@@ -38,10 +37,7 @@ export default function ResultsPage() {
     : result.target_column
       ? [result.target_column]
       : [];
-  const candidates = useMemo(
-    () => [...result.candidates].sort((left, right) => left.rank - right.rank),
-    [result.candidates]
-  );
+  const candidates = [...result.candidates].sort((left, right) => left.rank - right.rank);
 
   function downloadCandidates() {
     const header = [

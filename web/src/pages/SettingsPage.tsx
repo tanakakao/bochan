@@ -1,5 +1,6 @@
 import { EmptyState, SectionHeader } from "../components/Common";
 import { useWorkbench } from "../context/WorkbenchContext";
+import { getColumnClassValues } from "../targetSettingUtils";
 import type {
   SearchVariable,
   TargetClassValue,
@@ -54,6 +55,11 @@ export default function SettingsPage() {
     );
   }
 
+  function classesFor(target: string): TargetClassValue[] {
+    const column = columns.find((candidate) => candidate.name === target);
+    return column ? getColumnClassValues(column, dataset.preview) : [];
+  }
+
   function setVariableType(variable: SearchVariable, categorical: boolean) {
     const nextType = categorical ? "categorical" : "numeric";
     patchVariable(variable.name, {
@@ -67,7 +73,7 @@ export default function SettingsPage() {
   function changeTask(target: string, nextTask: TaskType) {
     const column = columns.find((candidate) => candidate.name === target);
     if (!column) return;
-    const classes = column.values ?? [];
+    const classes = classesFor(target);
 
     if (nextTask === "regression") {
       patchTargetSetting(target, {
@@ -111,7 +117,7 @@ export default function SettingsPage() {
     const column = columns.find((candidate) => candidate.name === target);
     const setting = targetSettings[target];
     if (!column || !setting) return;
-    const classes = setting.class_order?.length ? setting.class_order : (column.values ?? []);
+    const classes = setting.class_order?.length ? setting.class_order : classesFor(target);
 
     if (nextGoal === "none") {
       patchTargetSetting(target, { goal: nextGoal, value: null, target_values: [] });
@@ -305,7 +311,7 @@ export default function SettingsPage() {
                 const column = columns.find((candidate) => candidate.name === target);
                 const setting = targetSettings[target];
                 if (!column || !setting) return null;
-                const classes: TargetClassValue[] = column.values ?? [];
+                const classes = classesFor(target);
                 const orderedClasses = setting.class_order?.length ? setting.class_order : classes;
                 return (
                   <tr key={target}>

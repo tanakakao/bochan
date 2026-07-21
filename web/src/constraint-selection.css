@@ -1,0 +1,32 @@
+.constraint-variable-picker button {
+  min-height: 38px;
+  padding: 8px 12px;
+  color: var(--muted);
+  background: var(--surface-subtle);
+  border-color: var(--line);
+  box-shadow: none;
+  font-weight: 680;
+}
+
+.constraint-variable-picker button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-raised);
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--line));
+  box-shadow: var(--shadow-xs);
+  transform: none;
+}
+
+.constraint-variable-picker button.selected,
+.constraint-variable-picker button[aria-pressed="true"] {
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 38%, var(--line));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 10%, transparent);
+}
+
+.constraint-variable-picker button.selected:hover,
+.constraint-variable-picker button[aria-pressed="true"]:hover {
+  color: var(--primary);
+  background: var(--primary-soft-strong);
+  border-color: color-mix(in srgb, var(--primary) 48%, var(--line));
+}

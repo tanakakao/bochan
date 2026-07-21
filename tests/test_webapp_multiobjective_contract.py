@@ -3,12 +3,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pandas as pd
-import pytest
 
-from bochan.serving.webapp.app import RegressionRunRequest, WEB_CAPABILITIES
+from bochan.serving.webapp.app import WEB_CAPABILITIES, RegressionRunRequest
 from bochan.serving.webapp.target_settings import (
     _build_outcome_constraint_config,
     _encode_targets,
+    _output_spec_kwargs,
     _resolve_target_settings,
     _resolve_targets,
 )
@@ -69,7 +69,7 @@ def test_minimize_target_constraint_is_transformed_to_model_space() -> None:
     assert config.thresholds == [10.0, -5.0]
 
 
-def test_target_settings_are_one_to_one_and_keep_target_order() -> None:
+def test_target_settings_accept_optional_constraints_and_class_metadata() -> None:
     request = SimpleNamespace(
         target_columns=["yield", "quality", "rank"],
         target_column=None,
@@ -80,20 +80,22 @@ def test_target_settings_are_one_to_one_and_keep_target_order() -> None:
                 {
                     "target": "quality",
                     "task_type": "classification",
-                    "goal": "target",
-                    "value": "good",
+                    "goal": "above",
+                    "value": 0.6,
+                    "target_classes": ["good", "excellent"],
                 },
                 {
                     "target": "rank",
                     "task_type": "ordinal",
-                    "goal": "above",
-                    "value": "B",
+                    "goal": "target",
+                    "class_order": ["C", "B", "A"],
+                    "target_values": ["B", "A"],
                 },
                 {
                     "target": "yield",
                     "task_type": "regression",
-                    "goal": "target",
-                    "value": 5.0,
+                    "goal": "none",
+                    "value": None,
                 },
             ],
             "n_components": 2,
@@ -108,61 +110,41 @@ def test_target_settings_are_one_to_one_and_keep_target_order() -> None:
     )
 
     assert [setting["target"] for setting in settings] == targets
-    assert [setting["task_type"] for setting in settings] == [
-        "regression",
-        "classification",
-        "ordinal",
-    ]
+    assert settings[0]["goal"] == "none"
+    assert settings[1]["target_classes"] == ["good", "excellent"]
+    assert settings[2]["class_order"] == ["C", "B", "A"]
+    assert settings[2]["target_values"] == ["B", "A"]
     assert model_kwargs == {"n_components": 2}
 
 
-def test_target_encoding_supports_regression_classification_and_ordinal() -> None:
-    data = pd.DataFrame(
-        {
-            "yield": [1.0, 5.0, 9.0],
-            "quality": ["bad", "good", "good"],
-            "rank": ["A", "B", "C"],
-        }
-    )
+def test_target_encoding_supports_binary_target_class() -> None:
+    data = pd.DataFrame({"quality": ["bad", "good", "good"]})
     settings = [
-        {
-            "target": "yield",
-            "task_type": "regression",
-            "goal": "target",
-            "value": 5.0,
-            "legacy": False,
-        },
         {
             "target": "quality",
             "task_type": "classification",
-            "goal": "target",
-            "value": "good",
+            "goal": "none",
+            "value": None,
+            "target_class": "bad",
+            "target_classes": ["bad"],
+            "class_order": [],
+            "target_values": [],
             "legacy": False,
-        },
-        {
-            "target": "rank",
-            "task_type": "ordinal",
-            "goal": "above",
-            "value": "B",
-            "legacy": False,
-        },
+        }
     ]
 
     encoded, metadata = _encode_targets(data, settings)
+    spec = _output_spec_kwargs(metadata["quality"])
 
-    assert encoded.to_dict(orient="list") == {
-        "yield": [1.0, 5.0, 9.0],
-        "quality": [0.0, 1.0, 1.0],
-        "rank": [0.0, 1.0, 2.0],
-    }
-    assert metadata["yield"]["internal_task"] == "regression"
+    assert encoded["quality"].tolist() == [0.0, 1.0, 1.0]
     assert metadata["quality"]["internal_task"] == "binary"
-    assert metadata["quality"]["class_index"] == 1
-    assert metadata["rank"]["internal_task"] == "ordinal"
-    assert metadata["rank"]["class_index"] == 1
+    assert metadata["quality"]["class_indices"] == [0]
+    assert metadata["quality"]["target_classes"] == ["bad"]
+    assert spec["positive_class"] == 0
+    assert spec["utility_values"] == [1.0, 0.0]
 
 
-def test_multiclass_probability_threshold_requires_target_value_mode() -> None:
+def test_multiclass_supports_multiple_target_classes_and_probability_constraint() -> None:
     data = pd.DataFrame({"class": ["a", "b", "c", "a"]})
     settings = [
         {
@@ -170,9 +152,69 @@ def test_multiclass_probability_threshold_requires_target_value_mode() -> None:
             "task_type": "classification",
             "goal": "above",
             "value": 0.7,
+            "target_class": None,
+            "target_classes": ["a", "c"],
+            "class_order": [],
+            "target_values": [],
             "legacy": False,
         }
     ]
 
-    with pytest.raises(ValueError, match="exactly two classes"):
-        _encode_targets(data, settings)
+    _, metadata = _encode_targets(data, settings)
+    spec = _output_spec_kwargs(metadata["class"])
+
+    assert metadata["class"]["internal_task"] == "multiclass"
+    assert metadata["class"]["class_indices"] == [0, 2]
+    assert metadata["class"]["target_classes"] == ["a", "c"]
+    assert metadata["class"]["configured_value"] == 0.7
+    assert spec["utility_values"] == [1.0, 0.0, 1.0]
+    assert spec["sign"] == 1.0
+
+
+def test_ordinal_supports_custom_order_and_multiple_target_values() -> None:
+    data = pd.DataFrame({"rank": ["low", "medium", "high", "low"]})
+    settings = [
+        {
+            "target": "rank",
+            "task_type": "ordinal",
+            "goal": "target",
+            "value": None,
+            "target_class": None,
+            "target_classes": [],
+            "class_order": ["high", "medium", "low"],
+            "target_values": ["high", "medium"],
+            "legacy": False,
+        }
+    ]
+
+    encoded, metadata = _encode_targets(data, settings)
+    spec = _output_spec_kwargs(metadata["rank"])
+
+    assert encoded["rank"].tolist() == [2.0, 1.0, 0.0, 2.0]
+    assert metadata["rank"]["class_order"] == ["high", "medium", "low"]
+    assert metadata["rank"]["class_indices"] == [0, 1]
+    assert metadata["rank"]["target_values"] == ["high", "medium"]
+    assert spec["utility_values"] == [0, 0, -1]
+
+
+def test_regression_without_constraint_keeps_raw_maximization_objective() -> None:
+    data = pd.DataFrame({"yield": [1.0, 5.0, 9.0]})
+    settings = [
+        {
+            "target": "yield",
+            "task_type": "regression",
+            "goal": "none",
+            "value": None,
+            "target_class": None,
+            "target_classes": [],
+            "class_order": [],
+            "target_values": [],
+            "legacy": False,
+        }
+    ]
+
+    _, metadata = _encode_targets(data, settings)
+    spec = _output_spec_kwargs(metadata["yield"])
+
+    assert metadata["yield"]["configured_value"] is None
+    assert spec == {"sign": 1.0, "eq_target": None}

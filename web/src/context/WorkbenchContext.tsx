@@ -7,6 +7,7 @@ import {
   type ReactNode
 } from "react";
 import { fetchHealth, runRegression, uploadDataset } from "../api";
+import { getColumnClassValues } from "../targetSettingUtils";
 import type {
   AcquisitionFamily,
   ColumnProfile,
@@ -14,6 +15,7 @@ import type {
   Direction,
   RegressionResult,
   SearchVariable,
+  TargetClassValue,
   TargetSetting
 } from "../types";
 
@@ -57,26 +59,60 @@ function createVariable(column: ColumnProfile): SearchVariable {
   };
 }
 
-function createTargetSetting(column: ColumnProfile): TargetSetting {
+function createTargetSetting(
+  column: ColumnProfile,
+  preview: Record<string, unknown>[]
+): TargetSetting {
   if (column.kind === "numeric") {
     return {
       target: column.name,
       task_type: "regression",
-      goal: "above",
-      value: column.mean ?? column.min ?? 0
+      goal: "none",
+      value: null
+    };
+  }
+
+  const classes = getColumnClassValues(column, preview);
+  if (classes.length === 2) {
+    return {
+      target: column.name,
+      task_type: "classification",
+      goal: "none",
+      value: null,
+      target_class: classes[1],
+      target_classes: [classes[1]]
     };
   }
   return {
     target: column.name,
     task_type: "classification",
-    goal: "target",
-    value: column.values?.[0] ?? ""
+    goal: "none",
+    value: null,
+    target_classes: classes.length ? [classes[0]] : []
   };
 }
 
 function finiteNumber(value: unknown): number | null {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function classKey(value: TargetClassValue): string {
+  return String(value);
+}
+
+function containsClass(values: TargetClassValue[], value: TargetClassValue | null | undefined): boolean {
+  if (value === null || value === undefined) return false;
+  const requested = classKey(value);
+  return values.some((candidate) => classKey(candidate) === requested);
+}
+
+function sameClassSet(left: TargetClassValue[], right: TargetClassValue[]): boolean {
+  if (left.length !== right.length) return false;
+  const leftKeys = new Set(left.map(classKey));
+  const rightKeys = new Set(right.map(classKey));
+  return leftKeys.size === left.length && rightKeys.size === right.length &&
+    [...leftKeys].every((value) => rightKeys.has(value));
 }
 
 function validateVariable(variable: SearchVariable): boolean {
@@ -93,25 +129,43 @@ function validateVariable(variable: SearchVariable): boolean {
   return fixed !== null && fixed >= lower && fixed <= upper;
 }
 
-function validateTargetSetting(setting: TargetSetting, column?: ColumnProfile): boolean {
+function validateTargetSetting(
+  setting: TargetSetting,
+  column: ColumnProfile | undefined,
+  preview: Record<string, unknown>[]
+): boolean {
+  if (!column) return false;
+
   if (setting.task_type === "regression") {
-    return column?.kind === "numeric" && finiteNumber(setting.value) !== null;
+    if (column.kind !== "numeric") return false;
+    return setting.goal === "none" || finiteNumber(setting.value) !== null;
   }
-  if (
-    setting.task_type === "classification" &&
-    (setting.goal === "above" || setting.goal === "below")
-  ) {
-    const threshold = finiteNumber(setting.value);
-    return threshold !== null && threshold >= 0 && threshold <= 1;
+
+  const classes = getColumnClassValues(column, preview);
+  if (classes.length < 2) return false;
+
+  if (setting.task_type === "classification") {
+    if (classes.length === 2) {
+      if (!containsClass(classes, setting.target_class)) return false;
+    } else {
+      const selected = setting.target_classes ?? [];
+      if (selected.length === 0 || !selected.every((value) => containsClass(classes, value))) return false;
+    }
+    if (setting.goal === "above" || setting.goal === "below") {
+      const threshold = finiteNumber(setting.value);
+      return threshold !== null && threshold >= 0 && threshold <= 1;
+    }
+    return setting.goal === "none" || setting.goal === "target";
   }
-  if (
-    setting.task_type === "ordinal" &&
-    (setting.goal === "above" || setting.goal === "below") &&
-    column?.kind === "numeric"
-  ) {
-    return finiteNumber(setting.value) !== null;
+
+  const order = setting.class_order ?? [];
+  if (!sameClassSet(order, classes)) return false;
+  if (setting.goal === "none") return true;
+  if (setting.goal === "above" || setting.goal === "below") {
+    return containsClass(order, setting.value as TargetClassValue);
   }
-  return String(setting.value).trim() !== "";
+  const targets = setting.target_values ?? [];
+  return targets.length > 0 && targets.every((value) => containsClass(order, value));
 }
 
 interface WorkbenchContextValue {
@@ -212,6 +266,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const columns = dataset?.profile.columns ?? [];
+  const preview = dataset?.preview ?? [];
   const selectableColumns = columns.filter(
     (column) => column.kind === "numeric" || column.kind === "categorical"
   );
@@ -248,7 +303,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     selectedTargetSettings.length === targetColumns.length &&
     selectedTargetSettings.every((setting) => validateTargetSetting(
       setting,
-      columns.find((column) => column.name === setting.target)
+      columns.find((column) => column.name === setting.target),
+      preview
     )) &&
     selectedVariables.every(validateVariable)
   );
@@ -286,7 +342,9 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         .filter((column) => column.name !== initialTarget?.name)
         .map((column) => column.name);
       setTargetColumns(initialTarget ? [initialTarget.name] : []);
-      setTargetSettings(initialTarget ? { [initialTarget.name]: createTargetSetting(initialTarget) } : {});
+      setTargetSettings(initialTarget ? {
+        [initialTarget.name]: createTargetSetting(initialTarget, loaded.preview)
+      } : {});
       setFeatureColumns(initialFeatures);
       setVariables(Object.fromEntries(candidates.map((column) => [column.name, createVariable(column)])));
       setModelType("base");
@@ -318,7 +376,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       setTargetSettings((settings) => {
         const updated = { ...settings };
         if (selected) delete updated[name];
-        else updated[name] = updated[name] ?? createTargetSetting(profile);
+        else updated[name] = updated[name] ?? createTargetSetting(profile, preview);
         return updated;
       });
       return next;

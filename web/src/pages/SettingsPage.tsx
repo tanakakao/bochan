@@ -1,6 +1,25 @@
 import { EmptyState, SectionHeader } from "../components/Common";
 import { useWorkbench } from "../context/WorkbenchContext";
-import type { SearchVariable, TargetGoal, TaskType } from "../types";
+import { getColumnClassValues } from "../targetSettingUtils";
+import type {
+  SearchVariable,
+  TargetClassValue,
+  TargetGoal,
+  TargetSetting,
+  TaskType
+} from "../types";
+
+function selectedValues(select: HTMLSelectElement): string[] {
+  return Array.from(select.selectedOptions, (option) => option.value);
+}
+
+function moveItem(values: TargetClassValue[], index: number, offset: number): TargetClassValue[] {
+  const nextIndex = index + offset;
+  if (nextIndex < 0 || nextIndex >= values.length) return values;
+  const next = [...values];
+  [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+  return next;
+}
 
 function taskLabel(taskType: TaskType): string {
   if (taskType === "classification") return "分類";
@@ -8,13 +27,7 @@ function taskLabel(taskType: TaskType): string {
   return "回帰";
 }
 
-function goalLabel(goal: TargetGoal): string {
-  if (goal === "below") return "以下";
-  if (goal === "target") return "目標値";
-  return "以上";
-}
-
-/** Configures one target rule per target and the full search-variable definition. */
+/** Configures target tasks/constraints and the complete search-variable definition. */
 export default function SettingsPage() {
   const {
     dataset,
@@ -42,6 +55,13 @@ export default function SettingsPage() {
     );
   }
 
+  const preview = dataset.preview;
+
+  function classesFor(target: string): TargetClassValue[] {
+    const column = columns.find((candidate) => candidate.name === target);
+    return column ? getColumnClassValues(column, preview) : [];
+  }
+
   function setVariableType(variable: SearchVariable, categorical: boolean) {
     const nextType = categorical ? "categorical" : "numeric";
     patchVariable(variable.name, {
@@ -54,28 +74,44 @@ export default function SettingsPage() {
 
   function changeTask(target: string, nextTask: TaskType) {
     const column = columns.find((candidate) => candidate.name === target);
-    const current = targetSettings[target];
-    if (!column || !current) return;
+    if (!column) return;
+    const classes = classesFor(target);
+
     if (nextTask === "regression") {
       patchTargetSetting(target, {
         task_type: nextTask,
-        goal: "above",
-        value: column.mean ?? column.min ?? 0
+        goal: "none",
+        value: null,
+        target_class: null,
+        target_classes: [],
+        class_order: [],
+        target_values: []
       });
       return;
     }
+
     if (nextTask === "classification") {
+      const initialClass = classes.length === 2 ? classes[1] : classes[0];
       patchTargetSetting(target, {
         task_type: nextTask,
-        goal: "target",
-        value: column.values?.[0] ?? column.min ?? 1
+        goal: "none",
+        value: null,
+        target_class: classes.length === 2 ? initialClass ?? null : null,
+        target_classes: initialClass === undefined ? [] : [initialClass],
+        class_order: [],
+        target_values: []
       });
       return;
     }
+
     patchTargetSetting(target, {
       task_type: nextTask,
-      goal: "above",
-      value: column.values?.[0] ?? column.min ?? 0
+      goal: "none",
+      value: null,
+      target_class: null,
+      target_classes: [],
+      class_order: [...classes],
+      target_values: []
     });
   }
 
@@ -83,18 +119,159 @@ export default function SettingsPage() {
     const column = columns.find((candidate) => candidate.name === target);
     const setting = targetSettings[target];
     if (!column || !setting) return;
-    if (setting.task_type === "classification" && column.unique_count > 2 && nextGoal !== "target") {
+    const classes = setting.class_order?.length ? setting.class_order : classesFor(target);
+
+    if (nextGoal === "none") {
+      patchTargetSetting(target, { goal: nextGoal, value: null, target_values: [] });
       return;
     }
-    let value: string | number;
-    if (setting.task_type === "classification") {
-      value = nextGoal === "target" ? (column.values?.[0] ?? column.min ?? 1) : 0.5;
-    } else if (setting.task_type === "ordinal") {
-      value = column.values?.[0] ?? column.min ?? 0;
-    } else {
-      value = column.mean ?? column.min ?? 0;
+    if (setting.task_type === "regression") {
+      patchTargetSetting(target, {
+        goal: nextGoal,
+        value: column.mean ?? column.min ?? 0,
+        target_values: []
+      });
+      return;
     }
-    patchTargetSetting(target, { goal: nextGoal, value });
+    if (setting.task_type === "classification") {
+      patchTargetSetting(target, {
+        goal: nextGoal,
+        value: nextGoal === "above" || nextGoal === "below" ? 0.5 : null,
+        target_values: []
+      });
+      return;
+    }
+    if (nextGoal === "target") {
+      patchTargetSetting(target, {
+        goal: nextGoal,
+        value: null,
+        target_values: classes.length ? [classes[0]] : []
+      });
+      return;
+    }
+    patchTargetSetting(target, {
+      goal: nextGoal,
+      value: classes[0] ?? null,
+      target_values: []
+    });
+  }
+
+  function targetValueControl(target: string, setting: TargetSetting, classes: TargetClassValue[]) {
+    if (setting.goal === "none") return <span className="muted-cell">制約なし</span>;
+
+    if (setting.task_type === "regression") {
+      return (
+        <input
+          type="number"
+          value={setting.value ?? ""}
+          onChange={(event) => patchTargetSetting(target, { value: numberOrUndefined(event.target.value) ?? null })}
+        />
+      );
+    }
+
+    if (setting.task_type === "classification") {
+      return (
+        <input
+          type="number"
+          min={0}
+          max={1}
+          step={0.01}
+          value={setting.value ?? ""}
+          onChange={(event) => patchTargetSetting(target, { value: numberOrUndefined(event.target.value) ?? null })}
+        />
+      );
+    }
+
+    if (setting.goal === "target") {
+      return (
+        <select
+          multiple
+          size={Math.min(Math.max(classes.length, 2), 5)}
+          value={(setting.target_values ?? []).map(String)}
+          onChange={(event) => patchTargetSetting(target, { target_values: selectedValues(event.target) })}
+        >
+          {classes.map((value) => <option key={String(value)} value={String(value)}>{String(value)}</option>)}
+        </select>
+      );
+    }
+
+    return (
+      <select
+        value={String(setting.value ?? "")}
+        onChange={(event) => patchTargetSetting(target, { value: event.target.value })}
+      >
+        {classes.map((value) => <option key={String(value)} value={String(value)}>{String(value)}</option>)}
+      </select>
+    );
+  }
+
+  function classControl(target: string, setting: TargetSetting, classes: TargetClassValue[]) {
+    if (setting.task_type === "regression") return <span className="muted-cell">—</span>;
+
+    if (setting.task_type === "classification") {
+      if (classes.length === 2) {
+        return (
+          <label className="table-field">
+            <span>target_class</span>
+            <select
+              value={String(setting.target_class ?? "")}
+              onChange={(event) => patchTargetSetting(target, {
+                target_class: event.target.value,
+                target_classes: [event.target.value]
+              })}
+            >
+              {classes.map((value) => <option key={String(value)} value={String(value)}>{String(value)}</option>)}
+            </select>
+          </label>
+        );
+      }
+      return (
+        <label className="table-field">
+          <span>ターゲットクラス（複数可）</span>
+          <select
+            multiple
+            size={Math.min(Math.max(classes.length, 2), 6)}
+            value={(setting.target_classes ?? []).map(String)}
+            onChange={(event) => patchTargetSetting(target, {
+              target_class: null,
+              target_classes: selectedValues(event.target)
+            })}
+          >
+            {classes.map((value) => <option key={String(value)} value={String(value)}>{String(value)}</option>)}
+          </select>
+        </label>
+      );
+    }
+
+    const order = setting.class_order?.length ? setting.class_order : classes;
+    return (
+      <div className="class-order-editor">
+        {order.map((value, index) => (
+          <div className="class-order-item" key={String(value)}>
+            <span className="order-index">{index + 1}</span>
+            <strong>{String(value)}</strong>
+            <button
+              type="button"
+              className="secondary order-button"
+              disabled={index === 0}
+              onClick={() => patchTargetSetting(target, { class_order: moveItem(order, index, -1) })}
+              aria-label={`${String(value)}を上へ移動`}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              className="secondary order-button"
+              disabled={index === order.length - 1}
+              onClick={() => patchTargetSetting(target, { class_order: moveItem(order, index, 1) })}
+              aria-label={`${String(value)}を下へ移動`}
+            >
+              ↓
+            </button>
+          </div>
+        ))}
+      </div>
+    );
   }
 
   return (
@@ -102,7 +279,7 @@ export default function SettingsPage() {
       <SectionHeader
         step="3 · SETTINGS"
         title="目的変数と探索変数を設定する"
-        text="目的変数には1列につき1つのタスク・条件を設定し、説明変数には探索範囲と固定条件を設定します。"
+        text="目的変数はタスクとクラスを指定します。制約は任意で、設定しない目的変数もそのまま最適化対象として利用できます。"
         action={
           <button disabled={!settingsValid} onClick={() => setStep("optimize")}>
             モデル設定へ
@@ -115,102 +292,67 @@ export default function SettingsPage() {
           <div>
             <span className="panel-kicker">1 · TARGET SETTINGS</span>
             <h3>目的変数の設定</h3>
-            <p>各目的変数に対して、タスク種別と「以上・以下・目標値」のいずれか1つを設定します。</p>
+            <p>探索変数と同じ表形式で、タスク、任意の制約、ターゲットクラス、順序を設定します。</p>
           </div>
           <span className="status-chip success">{targetColumns.length} targets</span>
         </div>
 
-        <div className="cards">
-          {targetColumns.map((target) => {
-            const column = columns.find((candidate) => candidate.name === target);
-            const setting = targetSettings[target];
-            if (!column || !setting) return null;
-            const categoryValues = column.values ?? [];
-            const multiclass = setting.task_type === "classification" && column.unique_count > 2;
-            const useValueSelector =
-              categoryValues.length > 0 &&
-              (setting.task_type === "ordinal" ||
-                (setting.task_type === "classification" && setting.goal === "target"));
-            return (
-              <article className="panel compact-panel" key={target}>
-                <div className="panel-title">
-                  <div>
-                    <span className="panel-kicker">TARGET</span>
-                    <h3>{target}</h3>
-                    <p>{column.kind} · {column.unique_count} unique</p>
-                  </div>
-                  <span className="status-chip">{taskLabel(setting.task_type)}</span>
-                </div>
-
-                <div className="form-grid candidate-settings">
-                  <label>
-                    タスク種別
-                    <select
-                      value={setting.task_type}
-                      onChange={(event) => changeTask(target, event.target.value as TaskType)}
-                    >
-                      <option value="regression" disabled={column.kind !== "numeric"}>回帰</option>
-                      <option value="classification">分類</option>
-                      <option value="ordinal">順序回帰</option>
-                    </select>
-                  </label>
-                  <label>
-                    条件
-                    <select
-                      value={setting.goal}
-                      onChange={(event) => changeGoal(target, event.target.value as TargetGoal)}
-                    >
-                      <option value="above" disabled={multiclass}>以上</option>
-                      <option value="below" disabled={multiclass}>以下</option>
-                      <option value="target">目標値</option>
-                    </select>
-                  </label>
-                  <label>
-                    {setting.goal === "target" ? "目標値" : "しきい値"}
-                    {useValueSelector ? (
+        <div className="table-wrap target-settings-wrap">
+          <table className="target-settings-table">
+            <thead>
+              <tr>
+                <th>目的変数</th>
+                <th>タスク</th>
+                <th>制約</th>
+                <th>しきい値／目標</th>
+                <th>クラス設定／順序</th>
+              </tr>
+            </thead>
+            <tbody>
+              {targetColumns.map((target) => {
+                const column = columns.find((candidate) => candidate.name === target);
+                const setting = targetSettings[target];
+                if (!column || !setting) return null;
+                const classes = classesFor(target);
+                const orderedClasses = setting.class_order?.length ? setting.class_order : classes;
+                return (
+                  <tr key={target}>
+                    <td className="target-name-cell">
+                      <strong>{target}</strong>
+                      <span>{taskLabel(setting.task_type)}</span>
+                    </td>
+                    <td>
                       <select
-                        value={String(setting.value)}
-                        onChange={(event) => patchTargetSetting(target, { value: event.target.value })}
+                        value={setting.task_type}
+                        onChange={(event) => changeTask(target, event.target.value as TaskType)}
                       >
-                        {categoryValues.map((value) => <option key={value} value={value}>{value}</option>)}
+                        <option value="regression" disabled={column.kind !== "numeric"}>回帰</option>
+                        <option value="classification">分類</option>
+                        <option value="ordinal">順序回帰</option>
                       </select>
-                    ) : (
-                      <input
-                        type="number"
-                        min={setting.task_type === "classification" && setting.goal !== "target" ? 0 : undefined}
-                        max={setting.task_type === "classification" && setting.goal !== "target" ? 1 : undefined}
-                        step={setting.task_type === "classification" && setting.goal !== "target" ? 0.01 : "any"}
-                        value={setting.value}
-                        onChange={(event) => patchTargetSetting(target, { value: Number(event.target.value) })}
-                      />
-                    )}
-                  </label>
-                </div>
-
-                <p className="settings-note">
-                  {setting.task_type === "classification" && setting.goal !== "target"
-                    ? "二値分類の以上・以下では、昇順で2番目のクラス確率に対するしきい値として扱います。"
-                    : null}
-                  {multiclass
-                    ? "3クラス以上の分類では、探索対象クラスを目標値として指定します。"
-                    : null}
-                  {setting.task_type === "classification" && setting.goal === "target"
-                    ? "指定クラスの予測確率が高い候補を探索します。"
-                    : null}
-                  {setting.task_type === "ordinal"
-                    ? "順序はデータ中のカテゴリ値または数値の昇順として解釈し、以上・以下は予測期待順位で判定します。"
-                    : null}
-                  {setting.task_type === "regression" && setting.goal === "target"
-                    ? "予測値と目標値の絶対偏差が小さい候補を探索します。"
-                    : null}
-                </p>
-                <p className="settings-note">
-                  現在の設定: <strong>{taskLabel(setting.task_type)} · {goalLabel(setting.goal)} {String(setting.value)}</strong>
-                </p>
-              </article>
-            );
-          })}
+                    </td>
+                    <td>
+                      <select
+                        value={setting.goal}
+                        onChange={(event) => changeGoal(target, event.target.value as TargetGoal)}
+                      >
+                        <option value="none">なし</option>
+                        <option value="above">以上</option>
+                        <option value="below">以下</option>
+                        {setting.task_type !== "classification" && <option value="target">目標値</option>}
+                      </select>
+                    </td>
+                    <td>{targetValueControl(target, setting, orderedClasses)}</td>
+                    <td className="class-config-cell">{classControl(target, setting, classes)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
+        <p className="settings-note">
+          分類の以上／以下は、選択したターゲットクラス群の合計予測確率に対する制約です。順序回帰の目標値は複数クラスを選択できます。
+        </p>
       </article>
 
       <article className="panel">
@@ -274,7 +416,7 @@ export default function SettingsPage() {
             <div>
               <span className="panel-kicker">VALIDATION</span>
               <h3>設定を確認してください</h3>
-              <p>回帰目的は数値列、二値分類のしきい値は0〜1、数値探索変数は下限より上限を大きく設定してください。</p>
+              <p>分類ではターゲットクラス、順序回帰では全クラスの順序、数値探索変数では有効な上下限が必要です。制約自体は「なし」で構いません。</p>
             </div>
             <span className="status-chip warning">Not ready</span>
           </div>

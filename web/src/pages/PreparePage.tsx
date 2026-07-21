@@ -44,7 +44,7 @@ export default function PreparePage() {
       <SectionHeader
         step="2 · SELECT"
         title="目的変数と説明変数を選択する"
-        text="この画面では使用する列だけを選択します。タスク種別、目標、探索範囲は次のSettingsページで設定します。"
+        text="この画面では使用する列だけを選択します。タスク種別、クラス、制約、探索範囲は次のSettingsページで設定します。"
         action={
           <button disabled={!canConfigure} onClick={() => setStep("settings")}>
             設定ページへ
@@ -52,8 +52,8 @@ export default function PreparePage() {
         }
       />
 
-      <div className="workspace-two">
-        <article className="panel">
+      <div className="selection-grid">
+        <article className="panel selection-panel">
           <div className="panel-title">
             <div>
               <span className="panel-kicker">TARGET COLUMNS</span>
@@ -64,7 +64,7 @@ export default function PreparePage() {
               {targetColumns.length ? `${targetColumns.length} selected` : "Required"}
             </span>
           </div>
-          <div className="checklist feature-checklist">
+          <div className="checklist variable-selection-list">
             {targetCandidates.map((column) => (
               <label key={column.name}>
                 <input
@@ -73,15 +73,12 @@ export default function PreparePage() {
                   onChange={() => toggleTarget(column.name)}
                 />
                 <span className="feature-name">{column.name}</span>
-                <span className="feature-meta">
-                  {column.kind} · 欠損 {Math.round(column.missing_rate * 1000) / 10}% · ユニーク {column.unique_count}
-                </span>
               </label>
             ))}
           </div>
         </article>
 
-        <article className="panel">
+        <article className="panel selection-panel">
           <div className="panel-title">
             <div>
               <span className="panel-kicker">FEATURE COLUMNS</span>
@@ -93,7 +90,7 @@ export default function PreparePage() {
             </span>
           </div>
 
-          <div className="button-row">
+          <div className="button-row selection-actions">
             <button
               className="secondary"
               onClick={() => replaceFeatureSelection(featureCandidates.map((column) => column.name))}
@@ -113,7 +110,7 @@ export default function PreparePage() {
             </button>
           </div>
 
-          <div className="checklist feature-checklist">
+          <div className="checklist variable-selection-list">
             {featureCandidates.map((column) => (
               <label key={column.name}>
                 <input
@@ -122,9 +119,6 @@ export default function PreparePage() {
                   onChange={() => toggleFeature(column.name)}
                 />
                 <span className="feature-name">{column.name}</span>
-                <span className="feature-meta">
-                  {column.kind} · 欠損 {Math.round(column.missing_rate * 1000) / 10}% · ユニーク {column.unique_count}
-                </span>
               </label>
             ))}
           </div>

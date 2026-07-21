@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { EmptyState, MetricCard, SectionHeader } from "../components/Common";
 import ResultVisualizations from "../ResultVisualizations";
 import { useWorkbench } from "../context/WorkbenchContext";
+import { targetClassValues } from "../targetSettingUtils";
+import type { TargetSetting } from "../types";
 
 /** Formats numeric table values for compact display. */
 function formatNumber(value: number | null | undefined): string {
@@ -24,9 +26,28 @@ function taskLabel(value: string): string {
 }
 
 function goalLabel(value: string): string {
+  if (value === "none") return "制約なし";
   if (value === "below") return "以下";
   if (value === "target") return "目標値";
   return "以上";
+}
+
+function settingSummary(setting: TargetSetting): string {
+  const parts = [`${setting.target}: ${taskLabel(setting.task_type)}`];
+  if (setting.task_type === "classification") {
+    parts.push(`class=${targetClassValues(setting).map(String).join("|") || "—"}`);
+  }
+  if (setting.task_type === "ordinal") {
+    parts.push(`order=${(setting.class_order ?? []).map(String).join("<") || "—"}`);
+  }
+  if (setting.goal === "target" && setting.task_type === "ordinal") {
+    parts.push(`${goalLabel(setting.goal)} ${(setting.target_values ?? []).map(String).join("|")}`);
+  } else if (setting.goal === "none") {
+    parts.push(goalLabel(setting.goal));
+  } else {
+    parts.push(`${goalLabel(setting.goal)} ${String(setting.value ?? "—")}`);
+  }
+  return parts.join(" · ");
 }
 
 /** Renders candidate results for one or more heterogeneous targets. */
@@ -130,10 +151,13 @@ export default function ResultsPage() {
   const bestObservedText = typeof result.best_observed === "number"
     ? formatNumber(result.best_observed)
     : targetColumns.map((target) => `${target}: ${formatNumber(bestObservedMap?.[target])}`).join(" / ");
-  const settingText = result.target_settings?.length
-    ? result.target_settings
-      .map((setting) => `${setting.target}: ${taskLabel(setting.task_type)}・${goalLabel(setting.goal)} ${String(setting.value)}`)
-      .join(" / ")
+  const enrichedSettings = result.target_settings?.map((setting) => ({
+    ...setting,
+    ...(result.target_metadata?.[setting.target] ?? {}),
+    target: setting.target
+  } as TargetSetting));
+  const settingText = enrichedSettings?.length
+    ? enrichedSettings.map(settingSummary).join(" / ")
     : targetColumns
       .map((target) => `${target}: ${(result.directions?.[target] ?? result.direction) === "minimize" ? "最小化" : "最大化"}`)
       .join(" / ");

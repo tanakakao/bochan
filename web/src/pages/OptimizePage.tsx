@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { fetchCapabilities, type WebCapabilities } from "../api";
 import { EmptyState, SectionHeader } from "../components/Common";
 import { useWorkbench } from "../context/WorkbenchContext";
+import type { TargetSetting } from "../types";
 
 const WEB_MODEL_TYPES = [
   "base",
@@ -31,9 +32,31 @@ function taskLabel(value: string): string {
 }
 
 function goalLabel(value: string): string {
+  if (value === "none") return "制約なし";
   if (value === "below") return "以下";
   if (value === "target") return "目標値";
   return "以上";
+}
+
+function settingDetails(setting: TargetSetting): string {
+  const details: string[] = [taskLabel(setting.task_type)];
+  if (setting.task_type === "classification") {
+    const classes = setting.target_class !== null && setting.target_class !== undefined
+      ? [setting.target_class]
+      : (setting.target_classes ?? []);
+    details.push(`target class: ${classes.map(String).join(", ") || "—"}`);
+  }
+  if (setting.task_type === "ordinal") {
+    details.push(`order: ${(setting.class_order ?? []).map(String).join(" < ") || "—"}`);
+  }
+  if (setting.goal === "none") {
+    details.push(goalLabel(setting.goal));
+  } else if (setting.goal === "target" && setting.task_type === "ordinal") {
+    details.push(`${goalLabel(setting.goal)}: ${(setting.target_values ?? []).map(String).join(", ")}`);
+  } else {
+    details.push(`${goalLabel(setting.goal)} ${String(setting.value ?? "—")}`);
+  }
+  return details.join(" · ");
 }
 
 /** Configures the surrogate, acquisition, and candidate-generation budget. */
@@ -163,7 +186,7 @@ export default function OptimizePage() {
           {selectedTargetSettings.map((setting) => (
             <div className="settings-note" key={setting.target}>
               <strong>{setting.target}</strong>
-              <span> · {taskLabel(setting.task_type)} · {goalLabel(setting.goal)} {String(setting.value)}</span>
+              <span> · {settingDetails(setting)}</span>
             </div>
           ))}
         </div>

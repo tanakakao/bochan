@@ -45,18 +45,41 @@ export interface SearchVariable {
 }
 
 export type TaskType = "regression" | "classification" | "ordinal";
-export type TargetGoal = "above" | "below" | "target";
+export type TargetGoal = "none" | "above" | "below" | "target";
+export type TargetClassValue = string | number;
 export type Direction = "maximize" | "minimize";
 export type AcquisitionFamily = "bayesian_optimization" | "active_learning" | "level_set_estimation";
 export type ConstraintKind = "equality" | "inequality";
 export type ConstraintOperator = "=" | "<=" | ">=";
 
-/** One and only one optimization setting attached to a selected target column. */
+/** Task definition plus an optional optimization constraint for one target column. */
 export interface TargetSetting {
   target: string;
   task_type: TaskType;
+  /** `none` keeps the objective active without adding a hard constraint. */
   goal: TargetGoal;
-  value: string | number;
+  /** Regression value, probability threshold, or ordinal boundary class. */
+  value?: string | number | null;
+  /** Selected positive/desired class for binary classification. */
+  target_class?: TargetClassValue | null;
+  /** Desired class set for multiclass classification. */
+  target_classes?: TargetClassValue[];
+  /** Explicit low-to-high class order for ordinal regression. */
+  class_order?: TargetClassValue[];
+  /** One or more desired ordinal classes when goal is `target`. */
+  target_values?: TargetClassValue[];
+}
+
+export interface TargetMetadata extends Partial<TargetSetting> {
+  target: string;
+  task_type: TaskType;
+  goal: TargetGoal;
+  internal_task?: string;
+  configured_value?: unknown;
+  classes?: TargetClassValue[] | null;
+  class_index?: number | null;
+  class_indices?: number[];
+  num_classes?: number | null;
 }
 
 export interface LinearConstraint {
@@ -141,6 +164,7 @@ export interface RegressionResult {
   /** First-target compatibility field. */
   target_column: string;
   target_settings?: TargetSetting[];
+  target_metadata?: Record<string, TargetMetadata>;
   directions: Record<string, Direction>;
   /** First-target compatibility field. */
   direction: Direction;

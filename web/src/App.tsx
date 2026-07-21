@@ -11,6 +11,8 @@ import OptimizePage from "./pages/OptimizePage";
 import PreparePage from "./pages/PreparePage";
 import ResultsPage from "./pages/ResultsPage";
 import SettingsPage from "./pages/SettingsPage";
+import { targetClassValues } from "./targetSettingUtils";
+import type { TargetSetting } from "./types";
 
 const PAGES: Record<WorkbenchStep, ComponentType> = {
   data: DataPage,
@@ -31,9 +33,22 @@ function formatBestObserved(value: number | Record<string, number>): string {
 }
 
 function goalLabel(value: string): string {
+  if (value === "none") return "制約なし";
   if (value === "below") return "≤";
-  if (value === "target") return "=";
+  if (value === "target") return "目標";
   return "≥";
+}
+
+function summarizeTargetSetting(setting: TargetSetting): string {
+  const classText = setting.task_type === "classification"
+    ? `class=${targetClassValues(setting).map(String).join("|") || "—"}`
+    : setting.task_type === "ordinal" && setting.goal === "target"
+      ? `target=${(setting.target_values ?? []).map(String).join("|") || "—"}`
+      : "";
+  const constraintText = setting.goal === "none"
+    ? goalLabel(setting.goal)
+    : `${goalLabel(setting.goal)} ${setting.goal === "target" ? (setting.target_values ?? []).map(String).join("|") : String(setting.value ?? "—")}`;
+  return [setting.target, classText, constraintText].filter(Boolean).join(": ");
 }
 
 function WorkbenchLayout() {
@@ -59,9 +74,7 @@ function WorkbenchLayout() {
   const index = STEPS.findIndex(([id]) => id === step);
   const Page = PAGES[step];
   const targetSummary = selectedTargetSettings.length
-    ? selectedTargetSettings
-      .map((setting) => `${setting.target}: ${goalLabel(setting.goal)} ${String(setting.value)}`)
-      .join(" / ")
+    ? selectedTargetSettings.map(summarizeTargetSetting).join(" / ")
     : "—";
 
   function isComplete(id: WorkbenchStep, stepIndex: number): boolean {

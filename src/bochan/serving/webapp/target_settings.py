@@ -19,6 +19,19 @@ def _mapping(value: Any) -> dict[str, Any]:
     return dict(vars(value))
 
 
+def _list_values(value: Any) -> list[Any]:
+    """Normalize an optional scalar or sequence to a list."""
+
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes)):
+        return [value]
+    try:
+        return list(value)
+    except TypeError:
+        return [value]
+
+
 def _resolve_targets(request: Any) -> tuple[list[str], dict[str, str]]:
     """Resolve backward-compatible target and direction settings."""
 
@@ -51,12 +64,7 @@ def _resolve_target_settings(
     target_columns: list[str],
     directions: dict[str, str],
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Resolve one task/goal/value setting per target.
-
-    New web clients place serializable settings in ``model_kwargs`` so the
-    existing strict request schema remains backward compatible. The settings
-    are removed before model construction.
-    """
+    """Resolve one task definition and an optional constraint per target."""
 
     model_kwargs = dict(request.model_kwargs or {})
     raw_settings = model_kwargs.pop(_WEB_TARGET_SETTINGS_KEY, None)
@@ -67,6 +75,10 @@ def _resolve_target_settings(
                 "task_type": "regression",
                 "goal": "below" if directions[target] == "minimize" else "above",
                 "value": None,
+                "target_class": None,
+                "target_classes": [],
+                "class_order": [],
+                "target_values": [],
                 "legacy": True,
             }
             for target in target_columns
@@ -76,7 +88,7 @@ def _resolve_target_settings(
     settings = [_mapping(value) for value in list(raw_settings)]
     if len(settings) != len(target_columns):
         raise ValueError(
-            "Exactly one target setting is required for every target column. "
+            "Exactly one task setting is required for every target column. "
             f"Expected {len(target_columns)}, got {len(settings)}."
         )
     setting_targets = [str(setting.get("target", "")) for setting in settings]
@@ -97,18 +109,37 @@ def _resolve_target_settings(
             raise ValueError(
                 f"{target}: task_type must be regression, classification, or ordinal."
             )
-        goal = str(setting.get("goal", "above")).lower()
-        if goal not in {"above", "below", "target"}:
-            raise ValueError(f"{target}: goal must be above, below, or target.")
+        goal = str(setting.get("goal", "none")).lower()
+        if goal not in {"none", "above", "below", "target"}:
+            raise ValueError(
+                f"{target}: goal must be none, above, below, or target."
+            )
+
         value = setting.get("value")
-        if value is None or str(value).strip() == "":
-            raise ValueError(f"{target}: threshold or target value is required.")
+        target_class = setting.get("target_class")
+        target_classes = _list_values(setting.get("target_classes"))
+        class_order = _list_values(setting.get("class_order"))
+        target_values = _list_values(setting.get("target_values"))
+
+        # Compatibility with the previous `goal=target, value=<class>` contract.
+        if task_type == "classification" and target_class is None and not target_classes:
+            if goal == "target" and value is not None and str(value).strip() != "":
+                target_class = value
+                target_classes = [value]
+        if task_type == "ordinal" and goal == "target" and not target_values:
+            if value is not None and str(value).strip() != "":
+                target_values = [value]
+
         normalized.append(
             {
                 "target": target,
                 "task_type": task_type,
                 "goal": goal,
                 "value": value,
+                "target_class": target_class,
+                "target_classes": target_classes,
+                "class_order": class_order,
+                "target_values": target_values,
                 "legacy": False,
             }
         )
@@ -157,7 +188,7 @@ def _clean_rows(
     return data.dropna(subset=selected).reset_index(drop=True)
 
 
-def _ordered_classes(series: Any) -> list[Any]:
+def _default_ordered_classes(series: Any) -> list[Any]:
     """Return deterministic classes while preserving numeric order when possible."""
 
     import pandas as pd
@@ -190,6 +221,47 @@ def _class_index(classes: list[Any], requested: Any, *, target: str) -> int:
     )
 
 
+def _ordered_classes(series: Any, requested_order: list[Any], *, target: str) -> list[Any]:
+    """Apply a complete user-defined ordinal class order when supplied."""
+
+    observed = _default_ordered_classes(series)
+    if not requested_order:
+        return observed
+    if len(requested_order) != len(observed):
+        raise ValueError(
+            f"{target}: class_order must contain every observed class exactly once."
+        )
+    resolved = [observed[_class_index(observed, value, target=target)] for value in requested_order]
+    if len({str(value) for value in resolved}) != len(observed):
+        raise ValueError(
+            f"{target}: class_order must not contain duplicate classes."
+        )
+    if {str(value) for value in resolved} != {str(value) for value in observed}:
+        raise ValueError(
+            f"{target}: class_order must match observed classes exactly."
+        )
+    return resolved
+
+
+def _resolve_class_indices(
+    classes: list[Any],
+    requested: list[Any],
+    *,
+    target: str,
+    label: str,
+) -> list[int]:
+    """Resolve and de-duplicate one or more configured classes."""
+
+    indices: list[int] = []
+    for value in requested:
+        index = _class_index(classes, value, target=target)
+        if index not in indices:
+            indices.append(index)
+    if not indices:
+        raise ValueError(f"{target}: at least one {label} is required.")
+    return indices
+
+
 def _encode_targets(
     data: Any,
     target_settings: list[dict[str, Any]],
@@ -210,27 +282,37 @@ def _encode_targets(
             numeric = pd.to_numeric(series, errors="coerce")
             if numeric.isna().any():
                 raise ValueError(f"{target}: regression target must be numeric.")
-            try:
-                configured_value = float(setting["value"])
-            except (TypeError, ValueError) as exc:
-                if setting.get("legacy"):
-                    configured_value = float("nan")
-                else:
-                    raise ValueError(
-                        f"{target}: regression threshold or target value must be numeric."
-                    ) from exc
+            configured_value: float | None
+            if goal == "none":
+                configured_value = None
+            else:
+                try:
+                    configured_value = float(setting["value"])
+                except (TypeError, ValueError) as exc:
+                    if setting.get("legacy"):
+                        configured_value = float("nan")
+                    else:
+                        raise ValueError(
+                            f"{target}: regression threshold or target value must be numeric."
+                        ) from exc
             encoded[target] = numeric.to_numpy(dtype=float)
             metadata[target] = {
                 **setting,
                 "internal_task": "regression",
                 "configured_value": configured_value,
                 "classes": None,
+                "class_order": None,
                 "class_index": None,
+                "class_indices": [],
                 "num_classes": None,
             }
             continue
 
-        classes = _ordered_classes(series)
+        classes = _ordered_classes(
+            series,
+            _list_values(setting.get("class_order")) if task_type == "ordinal" else [],
+            target=target,
+        )
         if len(classes) < 2:
             raise ValueError(f"{target}: {task_type} requires at least two classes.")
         class_map = {str(value): index for index, value in enumerate(classes)}
@@ -240,31 +322,71 @@ def _encode_targets(
 
         if task_type == "classification":
             internal_task = "binary" if len(classes) == 2 else "multiclass"
+            if internal_task == "binary":
+                requested_class = setting.get("target_class")
+                if requested_class is None:
+                    requested_values = _list_values(setting.get("target_classes"))
+                    requested_class = requested_values[0] if requested_values else None
+                if requested_class is None:
+                    # Preserve the old binary above/below convention (class index 1).
+                    requested_class = classes[1]
+                class_indices = [
+                    _class_index(classes, requested_class, target=target)
+                ]
+            else:
+                requested_values = _list_values(setting.get("target_classes"))
+                if not requested_values and setting.get("target_class") is not None:
+                    requested_values = [setting.get("target_class")]
+                if not requested_values and goal == "target" and setting.get("value") is not None:
+                    requested_values = [setting.get("value")]
+                class_indices = _resolve_class_indices(
+                    classes,
+                    requested_values,
+                    target=target,
+                    label="target class",
+                )
+
             if goal in {"above", "below"}:
-                if internal_task != "binary":
-                    raise ValueError(
-                        f"{target}: classification above/below requires exactly two classes. "
-                        "Use target value for multiclass classification."
-                    )
                 try:
-                    threshold = float(setting["value"])
+                    configured_value: Any = float(setting["value"])
                 except (TypeError, ValueError) as exc:
                     raise ValueError(
                         f"{target}: classification probability threshold must be numeric."
                     ) from exc
-                if not 0.0 <= threshold <= 1.0:
+                if not 0.0 <= configured_value <= 1.0:
                     raise ValueError(
                         f"{target}: classification probability threshold must be in [0, 1]."
                     )
-                class_index = 1
-                configured_value: Any = threshold
             else:
-                class_index = _class_index(classes, setting["value"], target=target)
-                configured_value = classes[class_index]
+                configured_value = None
+            target_classes = [classes[index] for index in class_indices]
+            class_index = class_indices[0]
+            target_values: list[Any] = []
         else:
             internal_task = "ordinal"
-            class_index = _class_index(classes, setting["value"], target=target)
-            configured_value = classes[class_index]
+            if goal == "target":
+                class_indices = _resolve_class_indices(
+                    classes,
+                    _list_values(setting.get("target_values")),
+                    target=target,
+                    label="target ordinal class",
+                )
+                configured_value = [classes[index] for index in class_indices]
+                class_index = class_indices[0]
+                target_values = list(configured_value)
+            elif goal in {"above", "below"}:
+                if setting.get("value") is None or str(setting.get("value")).strip() == "":
+                    raise ValueError(f"{target}: ordinal boundary class is required.")
+                class_index = _class_index(classes, setting["value"], target=target)
+                class_indices = [class_index]
+                configured_value = classes[class_index]
+                target_values = []
+            else:
+                class_index = None
+                class_indices = []
+                configured_value = None
+                target_values = []
+            target_classes = []
 
         encoded[target] = coded.to_numpy(dtype=float)
         metadata[target] = {
@@ -272,7 +394,11 @@ def _encode_targets(
             "internal_task": internal_task,
             "configured_value": configured_value,
             "classes": classes,
-            "class_index": int(class_index),
+            "class_order": classes if internal_task == "ordinal" else None,
+            "class_index": int(class_index) if class_index is not None else None,
+            "class_indices": [int(index) for index in class_indices],
+            "target_classes": target_classes,
+            "target_values": target_values,
             "num_classes": len(classes),
         }
 
@@ -308,24 +434,23 @@ def _output_spec_kwargs(meta: dict[str, Any]) -> dict[str, Any]:
                 float(meta["configured_value"]) if goal == "target" else None
             ),
         }
-    if task == "binary":
+    if task in {"binary", "multiclass"}:
+        n_classes = int(meta["num_classes"])
+        class_indices = [int(index) for index in meta.get("class_indices", [])]
+        utilities = [1.0 if index in class_indices else 0.0 for index in range(n_classes)]
         return {
-            "positive_class": int(meta["class_index"]),
-            "sign": -1.0 if goal == "below" else 1.0,
-        }
-    if task == "multiclass":
-        utilities = [0.0] * int(meta["num_classes"])
-        utilities[int(meta["class_index"])] = 1.0
-        return {
-            "positive_class": int(meta["class_index"]),
+            "positive_class": class_indices[0],
             "utility_values": utilities,
-            "sign": 1.0,
+            "sign": -1.0 if goal == "below" else 1.0,
         }
     if task == "ordinal":
         n_classes = int(meta["num_classes"])
-        target_rank = int(meta["class_index"])
         if goal == "target":
-            utilities = [-abs(index - target_rank) for index in range(n_classes)]
+            target_ranks = [int(index) for index in meta.get("class_indices", [])]
+            utilities = [
+                -min(abs(index - target_rank) for target_rank in target_ranks)
+                for index in range(n_classes)
+            ]
             sign = 1.0
         else:
             utilities = list(range(n_classes))
@@ -383,7 +508,7 @@ def _build_target_constraint_config(
     directions: dict[str, str],
     hybrid_model: bool,
 ) -> Any | None:
-    """Build one feasibility rule for each above/below target setting."""
+    """Build one feasibility rule for each configured above/below target."""
 
     if all(bool(setting.get("legacy")) for setting in target_settings):
         return _build_outcome_constraint_config(
@@ -397,7 +522,7 @@ def _build_target_constraint_config(
 
     specs: list[Any] = []
     for setting in target_settings:
-        if setting["goal"] == "target":
+        if setting["goal"] not in {"above", "below"}:
             continue
         target = str(setting["target"])
         meta = target_metadata[target]

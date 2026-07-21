@@ -94,17 +94,38 @@ interface RunRegressionInput {
 
 function validateTargetSetting(setting: TargetSetting): string | null {
   if (!setting.target) return "目的変数名が空です。";
-  if (setting.task_type === "regression" && !Number.isFinite(Number(setting.value))) {
-    return `${setting.target}: 回帰のしきい値または目標値を数値で指定してください。`;
+
+  if (setting.task_type === "regression") {
+    if (setting.goal !== "none" && !Number.isFinite(Number(setting.value))) {
+      return `${setting.target}: 回帰のしきい値または目標値を数値で指定してください。`;
+    }
+    return null;
   }
-  if (
-    setting.task_type === "classification" &&
-    setting.goal !== "target" &&
-    (!Number.isFinite(Number(setting.value)) || Number(setting.value) < 0 || Number(setting.value) > 1)
-  ) {
-    return `${setting.target}: 分類の以上・以下は0〜1の確率しきい値を指定してください。`;
+
+  if (setting.task_type === "classification") {
+    const selectedClasses = setting.target_classes ?? [];
+    if (setting.target_class === null || setting.target_class === undefined) {
+      if (selectedClasses.length === 0) {
+        return `${setting.target}: ターゲットクラスを指定してください。`;
+      }
+    }
+    if (
+      (setting.goal === "above" || setting.goal === "below") &&
+      (!Number.isFinite(Number(setting.value)) || Number(setting.value) < 0 || Number(setting.value) > 1)
+    ) {
+      return `${setting.target}: 分類の以上・以下は0〜1の確率しきい値を指定してください。`;
+    }
+    return null;
   }
-  if (String(setting.value).trim() === "") return `${setting.target}: 設定値を入力してください。`;
+
+  const classOrder = setting.class_order ?? [];
+  if (classOrder.length < 2) return `${setting.target}: 順序回帰のクラス順序を指定してください。`;
+  if ((setting.goal === "above" || setting.goal === "below") && String(setting.value ?? "").trim() === "") {
+    return `${setting.target}: 順序回帰の境界クラスを指定してください。`;
+  }
+  if (setting.goal === "target" && (setting.target_values ?? []).length === 0) {
+    return `${setting.target}: 目標クラスを1つ以上指定してください。`;
+  }
   return null;
 }
 
@@ -117,7 +138,7 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
     throw new Error("先頭の目的変数設定が不整合です。目的変数を選択し直してください。");
   }
   if (input.targetSettings.length !== input.targetColumns.length) {
-    throw new Error("すべての目的変数に1つずつ設定してください。");
+    throw new Error("すべての目的変数にタスク種別を設定してください。");
   }
   const settingTargets = input.targetSettings.map((setting) => setting.target);
   if (input.targetColumns.some((target) => !settingTargets.includes(target))) {

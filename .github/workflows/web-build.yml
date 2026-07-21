@@ -20,10 +20,22 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
       - name: Build React application
-        run: npm run build
+        run: |
+          set +e
+          npm run build 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          exit "$status"
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build-log
+          path: web/build.log
+          if-no-files-found: warn

@@ -17,6 +17,7 @@ on:
       - "tests/test_llm_selected_acquisition_config.py"
       - "tests/test_llm_structured_planner.py"
       - "README_LLM.md"
+      - "README_LLM_CANDIDATE_EXPLANATION.md"
       - "README_LLM_HYBRID_CONSTRAINTS.md"
       - "docs/llm_selected_acquisition.md"
       - ".github/workflows/llm-client-smoke.yml"

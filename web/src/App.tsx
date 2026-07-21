@@ -11,6 +11,7 @@ import OptimizePage from "./pages/OptimizePage";
 import PreparePage from "./pages/PreparePage";
 import ResultsPage from "./pages/ResultsPage";
 import SettingsPage from "./pages/SettingsPage";
+import { targetClassValues } from "./targetSettingUtils";
 import type { TargetSetting } from "./types";
 
 const PAGES: Record<WorkbenchStep, ComponentType> = {
@@ -40,13 +41,13 @@ function goalLabel(value: string): string {
 
 function summarizeTargetSetting(setting: TargetSetting): string {
   const classText = setting.task_type === "classification"
-    ? `class=${setting.target_class ?? (setting.target_classes ?? []).join("|") || "—"}`
+    ? `class=${targetClassValues(setting).map(String).join("|") || "—"}`
     : setting.task_type === "ordinal" && setting.goal === "target"
-      ? `target=${(setting.target_values ?? []).join("|") || "—"}`
+      ? `target=${(setting.target_values ?? []).map(String).join("|") || "—"}`
       : "";
   const constraintText = setting.goal === "none"
     ? goalLabel(setting.goal)
-    : `${goalLabel(setting.goal)} ${setting.goal === "target" ? (setting.target_values ?? []).join("|") : String(setting.value ?? "—")}`;
+    : `${goalLabel(setting.goal)} ${setting.goal === "target" ? (setting.target_values ?? []).map(String).join("|") : String(setting.value ?? "—")}`;
   return [setting.target, classText, constraintText].filter(Boolean).join(": ");
 }
 

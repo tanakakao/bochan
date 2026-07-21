@@ -69,10 +69,11 @@ def _display_predictions(
     import torch
 
     n_rows = int(X.shape[0])
-    if hybrid_model:
-        posterior = optimizer.model.posterior(X, output_mode="mean")
-    else:
-        posterior = optimizer.model.posterior(X)
+    posterior = (
+        optimizer.model.posterior(X, output_mode="mean")
+        if hybrid_model
+        else optimizer.model.posterior(X)
+    )
     means = _as_2d(posterior.mean, n_rows=n_rows)
     variances = _as_2d(posterior.variance, n_rows=n_rows).clamp_min(0)
 

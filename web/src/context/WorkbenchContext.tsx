@@ -7,6 +7,7 @@ import {
   type ReactNode
 } from "react";
 import { fetchHealth, runRegression, uploadDataset } from "../api";
+import { getColumnClassValues } from "../targetSettingUtils";
 import type {
   AcquisitionFamily,
   ColumnProfile,
@@ -58,7 +59,10 @@ function createVariable(column: ColumnProfile): SearchVariable {
   };
 }
 
-function createTargetSetting(column: ColumnProfile): TargetSetting {
+function createTargetSetting(
+  column: ColumnProfile,
+  preview: Record<string, unknown>[]
+): TargetSetting {
   if (column.kind === "numeric") {
     return {
       target: column.name,
@@ -68,7 +72,7 @@ function createTargetSetting(column: ColumnProfile): TargetSetting {
     };
   }
 
-  const classes = column.values ?? [];
+  const classes = getColumnClassValues(column, preview);
   if (classes.length === 2) {
     return {
       target: column.name,
@@ -125,7 +129,11 @@ function validateVariable(variable: SearchVariable): boolean {
   return fixed !== null && fixed >= lower && fixed <= upper;
 }
 
-function validateTargetSetting(setting: TargetSetting, column?: ColumnProfile): boolean {
+function validateTargetSetting(
+  setting: TargetSetting,
+  column: ColumnProfile | undefined,
+  preview: Record<string, unknown>[]
+): boolean {
   if (!column) return false;
 
   if (setting.task_type === "regression") {
@@ -133,7 +141,7 @@ function validateTargetSetting(setting: TargetSetting, column?: ColumnProfile): 
     return setting.goal === "none" || finiteNumber(setting.value) !== null;
   }
 
-  const classes: TargetClassValue[] = column.values ?? [];
+  const classes = getColumnClassValues(column, preview);
   if (classes.length < 2) return false;
 
   if (setting.task_type === "classification") {
@@ -258,6 +266,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const columns = dataset?.profile.columns ?? [];
+  const preview = dataset?.preview ?? [];
   const selectableColumns = columns.filter(
     (column) => column.kind === "numeric" || column.kind === "categorical"
   );
@@ -294,7 +303,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     selectedTargetSettings.length === targetColumns.length &&
     selectedTargetSettings.every((setting) => validateTargetSetting(
       setting,
-      columns.find((column) => column.name === setting.target)
+      columns.find((column) => column.name === setting.target),
+      preview
     )) &&
     selectedVariables.every(validateVariable)
   );
@@ -332,7 +342,9 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         .filter((column) => column.name !== initialTarget?.name)
         .map((column) => column.name);
       setTargetColumns(initialTarget ? [initialTarget.name] : []);
-      setTargetSettings(initialTarget ? { [initialTarget.name]: createTargetSetting(initialTarget) } : {});
+      setTargetSettings(initialTarget ? {
+        [initialTarget.name]: createTargetSetting(initialTarget, loaded.preview)
+      } : {});
       setFeatureColumns(initialFeatures);
       setVariables(Object.fromEntries(candidates.map((column) => [column.name, createVariable(column)])));
       setModelType("base");
@@ -364,7 +376,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       setTargetSettings((settings) => {
         const updated = { ...settings };
         if (selected) delete updated[name];
-        else updated[name] = updated[name] ?? createTargetSetting(profile);
+        else updated[name] = updated[name] ?? createTargetSetting(profile, preview);
         return updated;
       });
       return next;

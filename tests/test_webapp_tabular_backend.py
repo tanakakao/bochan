@@ -7,6 +7,7 @@ import pytest
 import torch
 
 from bochan.api import FitConfig, ModelConfig
+from bochan.serving.fastapi.schemas.tabular import TabularFitModelRequest
 from bochan.serving.webapp import target_missing_policy as policy
 from bochan.serving.webapp.tabular_backend import (
     feature_category_maps,
@@ -23,6 +24,20 @@ from bochan.tabular import TabularBayesianOptimizer
 def test_web_workflow_wrapper_calls_tabular_implementation() -> None:
     assert run_regression_web_workflow.__module__.endswith("workflows")
     assert _run_regression_web_workflow.__module__.endswith("workflows_tabular")
+
+
+def test_tabular_fastapi_schema_accepts_feature_imputation_options() -> None:
+    fields = getattr(TabularFitModelRequest, "model_fields", {})
+    if not fields:
+        fields = getattr(TabularFitModelRequest, "__fields__", {})
+    assert {
+        "missing_strategy",
+        "continuous_impute_strategy",
+        "categorical_impute_strategy",
+        "impute_random_state",
+        "impute_max_iter",
+        "multiple_impute_sample_posterior",
+    }.issubset(fields)
 
 
 def test_feature_category_maps_restore_numeric_labels() -> None:
@@ -104,12 +119,92 @@ def test_fit_tabular_optimizer_uses_dataframe_backend() -> None:
     assert optimizer.dataset.Y.shape == (3, 1)
 
 
-def _request(*, targets: list[str], model_type: str) -> SimpleNamespace:
+def _request(
+    *,
+    targets: list[str],
+    model_type: str,
+    feature_missing: dict[str, object] | None = None,
+    categorical_features: list[str] | None = None,
+) -> SimpleNamespace:
+    categorical = set(categorical_features or [])
     return SimpleNamespace(
         target_columns=targets,
         target_column=targets[0],
         model_type=model_type,
+        model_kwargs=(
+            {"web_feature_missing": dict(feature_missing)}
+            if feature_missing is not None
+            else {}
+        ),
+        search_space=[
+            SimpleNamespace(name=name, type="categorical")
+            for name in categorical
+        ],
     )
+
+
+def test_feature_missing_rows_are_dropped_by_default() -> None:
+    data = pd.DataFrame({"x": [0.0, None, 2.0], "y": [1.0, 2.0, 3.0]})
+    with policy.target_missing_run(
+        _request(targets=["y"], model_type="base")
+    ) as report:
+        cleaned = policy.clean_rows(data, ["x"], ["y"], drop_missing=True)
+
+    assert cleaned["x"].tolist() == [0.0, 2.0]
+    assert report["feature_missing_strategy"] == "drop"
+    assert report["dropped_feature_rows"] == 1
+
+
+def test_feature_missing_values_are_imputed_with_tabular_strategies() -> None:
+    data = pd.DataFrame(
+        {
+            "x": [1.0, None, 3.0],
+            "material": ["A", None, "A"],
+            "y": [1.0, 2.0, 3.0],
+        }
+    )
+    request = _request(
+        targets=["y"],
+        model_type="base",
+        feature_missing={
+            "strategy": "impute",
+            "continuous_impute_strategy": "mean",
+            "categorical_impute_strategy": "mode",
+            "impute_max_iter": 10,
+        },
+        categorical_features=["material"],
+    )
+    with policy.target_missing_run(request) as report:
+        cleaned = policy.clean_rows(
+            data,
+            ["x", "material"],
+            ["y"],
+            drop_missing=True,
+        )
+
+    assert cleaned["x"].tolist() == [1.0, 2.0, 3.0]
+    assert cleaned["material"].tolist() == ["A", "A", "A"]
+    assert report["feature_missing_strategy"] == "impute"
+    assert report["dropped_feature_rows"] == 0
+    assert report["feature_impute_values"] == {"x": 2.0, "material": "A"}
+
+
+def test_web_feature_missing_settings_are_removed_from_model_kwargs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        policy,
+        "_ORIGINAL_RESOLVE_TARGET_SETTINGS",
+        lambda *args, **kwargs: (
+            [{"target": "y"}],
+            {"web_feature_missing": {"strategy": "impute"}, "keep": 1},
+        ),
+    )
+
+    settings, model_kwargs = policy.resolve_target_settings()
+
+    assert settings == [{"target": "y"}]
+    assert model_kwargs == {"keep": 1}
 
 
 def test_single_and_regular_multiobjective_drop_missing_targets() -> None:

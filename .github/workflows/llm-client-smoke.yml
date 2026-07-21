@@ -13,6 +13,7 @@ on:
       - "src/bochan/api/model_registry.py"
       - "tests/test_llm_client_tls.py"
       - "tests/test_llm_candidate_explanation.py"
+      - "tests/test_llm_candidate_overall_explanation.py"
       - "tests/test_llm_candidate_optimizer.py"
       - "tests/test_llm_selected_acquisition_config.py"
       - "tests/test_llm_structured_planner.py"
@@ -43,6 +44,7 @@ jobs:
           pytest -q --maxfail=1 \
             tests/test_llm_client_tls.py \
             tests/test_llm_candidate_explanation.py \
+            tests/test_llm_candidate_overall_explanation.py \
             tests/test_llm_candidate_optimizer.py \
             tests/test_llm_selected_acquisition_config.py \
             tests/test_llm_structured_planner.py \
@@ -60,12 +62,14 @@ jobs:
               src/bochan/api/llm_suggestion.py \
               src/bochan/api/model_registry.py \
               src/bochan/llm/__init__.py \
+              src/bochan/llm/candidate_explainer_overall.py \
               src/bochan/llm/client.py \
               src/bochan/llm/configs.py \
               src/bochan/llm/planner.py \
               src/bochan/llm/structured_planner.py \
               tests/test_llm_client_tls.py \
               tests/test_llm_candidate_explanation.py \
+              tests/test_llm_candidate_overall_explanation.py \
               tests/test_llm_candidate_optimizer.py \
               tests/test_llm_selected_acquisition_config.py \
               tests/test_llm_structured_planner.py

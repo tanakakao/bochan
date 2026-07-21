@@ -5,7 +5,6 @@ import json
 import torch
 
 from bochan.api import (
-    AcquisitionConfig,
     BayesianOptimizer,
     BochanStudy,
     ModelConfig,

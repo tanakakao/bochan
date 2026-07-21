@@ -41,13 +41,16 @@ function numberOrUndefined(value: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function createVariable(column: ColumnProfile): SearchVariable {
+function createVariable(
+  column: ColumnProfile,
+  preview: Record<string, unknown>[]
+): SearchVariable {
   if (column.kind === "categorical") {
     return {
       name: column.name,
       type: "categorical",
       fixed: false,
-      categories: column.values ?? []
+      categories: getColumnClassValues(column, preview)
     };
   }
   return {
@@ -115,8 +118,10 @@ function sameClassSet(left: TargetClassValue[], right: TargetClassValue[]): bool
 
 function validateVariable(variable: SearchVariable): boolean {
   if (variable.type === "categorical") {
+    if (!variable.categories?.length) return false;
     if (!variable.fixed) return true;
-    return variable.fixed_value !== undefined && String(variable.fixed_value).trim() !== "";
+    return variable.fixed_value !== undefined &&
+      variable.categories.some((value) => String(value) === String(variable.fixed_value));
   }
   const lower = finiteNumber(variable.lower);
   const upper = finiteNumber(variable.upper);
@@ -191,6 +196,16 @@ interface WorkbenchContextValue {
   direction: Direction;
   variables: Record<string, SearchVariable>;
   selectedVariables: SearchVariable[];
+  normalize: boolean;
+  setNormalize: (value: boolean) => void;
+  inputPerturbation: boolean;
+  setInputPerturbation: (value: boolean) => void;
+  nW: number;
+  setNW: (value: number) => void;
+  perturbationStd: number;
+  setPerturbationStd: (value: number) => void;
+  projectionDimensions: number;
+  setProjectionDimensions: (value: number) => void;
   modelType: string;
   setModelType: (modelType: string) => void;
   acquisitionFamily: AcquisitionFamily;
@@ -236,6 +251,11 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [targetColumns, setTargetColumns] = useState<string[]>([]);
   const [targetSettings, setTargetSettings] = useState<Record<string, TargetSetting>>({});
   const [variables, setVariables] = useState<Record<string, SearchVariable>>({});
+  const [normalize, setNormalize] = useState(true);
+  const [inputPerturbation, setInputPerturbation] = useState(false);
+  const [nW, setNW] = useState(16);
+  const [perturbationStd, setPerturbationStd] = useState(0.1);
+  const [projectionDimensions, setProjectionDimensions] = useState(2);
   const [modelType, setModelType] = useState("base");
   const [acquisitionFamily, setAcquisitionFamily] = useState<AcquisitionFamily>("bayesian_optimization");
   const [acquisition, setAcquisition] = useState("EI");
@@ -311,7 +331,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       columns.find((column) => column.name === setting.target),
       preview
     )) &&
-    selectedVariables.every(validateVariable)
+    selectedVariables.every(validateVariable) &&
+    (!inputPerturbation || (Number.isInteger(nW) && nW >= 1 && perturbationStd > 0))
   );
 
   function setTheme(nextTheme: Theme) {
@@ -351,7 +372,14 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         [initialTarget.name]: createTargetSetting(initialTarget, loaded.preview)
       } : {});
       setFeatureColumns(initialFeatures);
-      setVariables(Object.fromEntries(candidates.map((column) => [column.name, createVariable(column)])));
+      setVariables(Object.fromEntries(
+        candidates.map((column) => [column.name, createVariable(column, loaded.preview)])
+      ));
+      setNormalize(true);
+      setInputPerturbation(false);
+      setNW(16);
+      setPerturbationStd(0.1);
+      setProjectionDimensions(Math.min(2, Math.max(initialFeatures.length, 1)));
       setModelType("base");
       setAcquisitionFamily("bayesian_optimization");
       setAcquisition("EI");
@@ -417,7 +445,12 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         targetDirections,
         direction,
         modelType,
+        projectionDimensions,
         fitMaxiter,
+        normalize,
+        inputPerturbation,
+        nW,
+        perturbationStd,
         acquisitionFamily,
         acquisition,
         beta,
@@ -459,6 +492,16 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     direction,
     variables,
     selectedVariables,
+    normalize,
+    setNormalize,
+    inputPerturbation,
+    setInputPerturbation,
+    nW,
+    setNW,
+    perturbationStd,
+    setPerturbationStd,
+    projectionDimensions,
+    setProjectionDimensions,
     modelType,
     setModelType,
     acquisitionFamily,

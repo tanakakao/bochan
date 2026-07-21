@@ -66,8 +66,14 @@ def test_classification_above_and_below_use_selected_class_probability() -> None
     probs = torch.tensor([[0.2, 0.8], [0.8, 0.2]], dtype=torch.double)
     above_values = constraint_value_from_class_probs(probs, above_spec)
     below_values = constraint_value_from_class_probs(probs, below_spec)
-    assert above_values.tolist() == [-0.3, 0.3]
-    assert below_values.tolist() == [0.3, -0.3]
+    torch.testing.assert_close(
+        above_values,
+        torch.tensor([-0.3, 0.3], dtype=torch.double),
+    )
+    torch.testing.assert_close(
+        below_values,
+        torch.tensor([0.3, -0.3], dtype=torch.double),
+    )
 
 
 def test_feature_constraints_convert_to_botorch_convention() -> None:
@@ -137,6 +143,11 @@ def test_feature_constraint_results_distinguish_senses() -> None:
 
 def test_search_method_routing() -> None:
     assert resolve_search_method("normal", multi_objective=False) == (
+        "optimize_acqf",
+        {},
+        False,
+    )
+    assert resolve_search_method("optimize_acqf", multi_objective=False) == (
         "optimize_acqf",
         {},
         False,

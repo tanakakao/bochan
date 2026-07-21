@@ -29,11 +29,15 @@ jobs:
           python -m pip install ruff
       - name: Run focused tests
         run: |
+          set -o pipefail
           pytest -q --maxfail=1 \
             tests/test_llm_client_tls.py \
-            tests/test_llm_candidate_optimizer.py
+            tests/test_llm_candidate_optimizer.py \
+            2>&1 | tee pytest-llm-smoke.log
       - name: Run lint
+        if: success()
         run: |
+          set -o pipefail
           ruff check \
             src/bochan/api/llm_suggestion.py \
             src/bochan/llm/__init__.py \
@@ -41,4 +45,14 @@ jobs:
             src/bochan/llm/configs.py \
             src/bochan/llm/planner.py \
             tests/test_llm_client_tls.py \
-            tests/test_llm_candidate_optimizer.py
+            tests/test_llm_candidate_optimizer.py \
+            2>&1 | tee ruff-llm-smoke.log
+      - name: Upload focused logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm-smoke-logs
+          path: |
+            pytest-llm-smoke.log
+            ruff-llm-smoke.log
+          if-no-files-found: ignore

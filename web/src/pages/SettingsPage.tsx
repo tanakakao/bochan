@@ -11,6 +11,8 @@ import type {
   TaskType
 } from "../types";
 
+type OptimizationDirection = Direction | "target";
+
 function selectedValues(select: HTMLSelectElement): string[] {
   return Array.from(select.selectedOptions, (option) => option.value);
 }
@@ -126,7 +128,7 @@ export default function SettingsPage() {
     }
   }
 
-  function changeGoal(target: string, nextGoal: TargetGoal) {
+  function changeGoal(target: string, nextGoal: Exclude<TargetGoal, "target">) {
     const column = columns.find((candidate) => candidate.name === target);
     const setting = targetSettings[target];
     if (!column || !setting) return;
@@ -137,24 +139,14 @@ export default function SettingsPage() {
     } else if (setting.task_type === "regression") {
       patchTargetSetting(target, {
         goal: nextGoal,
-        optimize: nextGoal === "target" ? true : setting.optimize,
-        direction: nextGoal === "target" ? "maximize" : setting.direction,
         value: column.mean ?? column.min ?? 0,
         target_values: []
       });
     } else if (setting.task_type === "classification") {
       patchTargetSetting(target, {
         goal: nextGoal,
-        value: nextGoal === "above" || nextGoal === "below" ? 0.5 : null,
+        value: 0.5,
         target_values: []
-      });
-    } else if (nextGoal === "target") {
-      patchTargetSetting(target, {
-        goal: nextGoal,
-        optimize: true,
-        direction: "maximize",
-        value: null,
-        target_values: classes.length ? [classes[0]] : []
       });
     } else {
       patchTargetSetting(target, {
@@ -163,6 +155,48 @@ export default function SettingsPage() {
         target_values: []
       });
     }
+  }
+
+  function changeDirection(target: string, nextDirection: OptimizationDirection) {
+    const column = columns.find((candidate) => candidate.name === target);
+    const setting = targetSettings[target];
+    if (!column || !setting) return;
+
+    if (nextDirection === "target") {
+      if (setting.task_type === "classification") return;
+      const classes = setting.class_order?.length ? setting.class_order : classesFor(target);
+      if (setting.task_type === "regression") {
+        patchTargetSetting(target, {
+          optimize: true,
+          direction: "maximize",
+          goal: "target",
+          value: setting.goal === "target" ? setting.value : column.mean ?? column.min ?? 0,
+          target_values: []
+        });
+      } else {
+        patchTargetSetting(target, {
+          optimize: true,
+          direction: "maximize",
+          goal: "target",
+          value: null,
+          target_values: setting.goal === "target" && setting.target_values?.length
+            ? setting.target_values
+            : classes.length
+              ? [classes[0]]
+              : []
+        });
+      }
+      return;
+    }
+
+    patchTargetSetting(target, {
+      direction: nextDirection,
+      ...(setting.goal === "target" ? {
+        goal: "none",
+        value: null,
+        target_values: []
+      } : {})
+    });
   }
 
   function targetValueControl(target: string, setting: TargetSetting, classes: TargetClassValue[]) {
@@ -290,17 +324,18 @@ export default function SettingsPage() {
   }
 
   function directionControl(target: string, setting: TargetSetting) {
-    if (setting.goal === "target") return <span className="direction-note">目標へ近づける</span>;
     if (!setting.optimize) return <span className="muted-cell">対象外</span>;
+    const directionValue: OptimizationDirection = setting.goal === "target"
+      ? "target"
+      : setting.direction;
     return (
       <select
-        value={setting.direction}
-        onChange={(event) => patchTargetSetting(target, {
-          direction: event.target.value as Direction
-        })}
+        value={directionValue}
+        onChange={(event) => changeDirection(target, event.target.value as OptimizationDirection)}
       >
         <option value="maximize">最大化</option>
         <option value="minimize">最小化</option>
+        {setting.task_type !== "classification" && <option value="target">目標値</option>}
       </select>
     );
   }
@@ -332,7 +367,7 @@ export default function SettingsPage() {
             <thead>
               <tr>
                 <th>目的変数</th><th>最適化対象</th><th>タスク</th><th>方向</th>
-                <th>制約</th><th>しきい値／目標</th><th>クラス設定／順序</th>
+                <th>制約</th><th>しきい値／目標値</th><th>クラス設定／順序</th>
               </tr>
             </thead>
             <tbody>
@@ -342,6 +377,7 @@ export default function SettingsPage() {
                 if (!column || !setting) return null;
                 const classes = classesFor(target);
                 const orderedClasses = setting.class_order?.length ? setting.class_order : classes;
+                const targetMode = setting.goal === "target";
                 return (
                   <tr key={target} className={setting.optimize ? "objective-row" : "constraint-only-row"}>
                     <td className="target-name-cell"><strong>{target}</strong><span>{taskLabel(setting.task_type)}</span></td>
@@ -350,8 +386,8 @@ export default function SettingsPage() {
                         className="table-checkbox"
                         type="checkbox"
                         checked={setting.optimize}
-                        disabled={setting.goal === "target"}
-                        title={setting.goal === "target" ? "目標値は最適化目的として扱います。" : "制約専用にする場合はチェックを外します。"}
+                        disabled={targetMode}
+                        title={targetMode ? "目標値は最適化目的として扱います。" : "制約専用にする場合はチェックを外します。"}
                         onChange={(event) => patchTargetSetting(target, { optimize: event.target.checked })}
                       />
                     </td>
@@ -364,11 +400,18 @@ export default function SettingsPage() {
                     </td>
                     <td>{directionControl(target, setting)}</td>
                     <td>
-                      <select value={setting.goal} onChange={(event) => changeGoal(target, event.target.value as TargetGoal)}>
+                      <select
+                        value={targetMode ? "none" : setting.goal}
+                        disabled={targetMode}
+                        title={targetMode ? "目標値は方向で設定されています。" : undefined}
+                        onChange={(event) => changeGoal(
+                          target,
+                          event.target.value as Exclude<TargetGoal, "target">
+                        )}
+                      >
                         <option value="none">なし</option>
                         <option value="above">以上</option>
                         <option value="below">以下</option>
-                        {setting.task_type !== "classification" && <option value="target">目標値</option>}
                       </select>
                     </td>
                     <td>{targetValueControl(target, setting, orderedClasses)}</td>
@@ -380,7 +423,7 @@ export default function SettingsPage() {
           </table>
         </div>
         <p className="settings-note">
-          「方向」は最適化の向き、「以上／以下」は実行可能性の制約です。分類制約は選択クラスの予測確率に対して適用します。
+          「方向」では最大化・最小化・目標値への接近を選択します。「以上／以下」は実行可能性の制約です。目標値を選択した場合、制約はなしに固定されます。
         </p>
       </article>
 
@@ -438,7 +481,7 @@ export default function SettingsPage() {
               <div><span className="panel-kicker">NORMALIZATION</span><h4>正規化</h4></div>
               <label className="switch-field">
                 <input type="checkbox" checked={normalize} onChange={(event) => setNormalize(event.target.checked)} />
-                <span>{normalize ? "使用する" : "使用しない"}</span>
+                <span>使用する</span>
               </label>
             </div>
             <p>各探索変数に設定した下限・上限を使って入力を正規化します。デフォルトは有効です。</p>
@@ -449,7 +492,7 @@ export default function SettingsPage() {
               <div><span className="panel-kicker">INPUT PERTURBATION</span><h4>入力摂動</h4></div>
               <label className="switch-field">
                 <input type="checkbox" checked={inputPerturbation} onChange={(event) => setInputPerturbation(event.target.checked)} />
-                <span>{inputPerturbation ? "使用する" : "使用しない"}</span>
+                <span>使用する</span>
               </label>
             </div>
             <p>候補入力のばらつきをサンプリングし、頑健な候補評価へ反映します。デフォルトは無効です。</p>

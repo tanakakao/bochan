@@ -1,11 +1,8 @@
-import { useMemo, useState } from "react";
-import { EmptyState, MetricCard, SectionHeader } from "../components/Common";
-import ResultVisualizations from "../ResultVisualizations";
+import { useMemo } from "react";
+import { EmptyState, SectionHeader } from "../components/Common";
+import InteractiveResultPlots from "../InteractiveResultPlots";
 import { useWorkbench } from "../context/WorkbenchContext";
-import { targetClassValues } from "../targetSettingUtils";
-import type { TargetSetting } from "../types";
 
-/** Formats numeric table values for compact display. */
 function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   return Math.abs(value) >= 1000 || (Math.abs(value) > 0 && Math.abs(value) < 0.001)
@@ -19,91 +16,9 @@ function csvCell(value: unknown): string {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-function taskLabel(value: string): string {
-  if (value === "classification") return "分類";
-  if (value === "ordinal") return "順序回帰";
-  return "回帰";
-}
-
-function goalLabel(value: string): string {
-  if (value === "none") return "制約なし";
-  if (value === "below") return "以下";
-  if (value === "target") return "目標値";
-  return "以上";
-}
-
-function settingSummary(setting: TargetSetting): string {
-  const parts = [`${setting.target}: ${taskLabel(setting.task_type)}`];
-  if (setting.task_type === "classification") {
-    parts.push(`class=${targetClassValues(setting).map(String).join("|") || "—"}`);
-  }
-  if (setting.task_type === "ordinal") {
-    parts.push(`order=${(setting.class_order ?? []).map(String).join("<") || "—"}`);
-  }
-  if (setting.goal === "target" && setting.task_type === "ordinal") {
-    parts.push(`${goalLabel(setting.goal)} ${(setting.target_values ?? []).map(String).join("|")}`);
-  } else if (setting.goal === "none") {
-    parts.push(goalLabel(setting.goal));
-  } else {
-    parts.push(`${goalLabel(setting.goal)} ${String(setting.value ?? "—")}`);
-  }
-  return parts.join(" · ");
-}
-
-/** Renders candidate results for one or more heterogeneous targets. */
+/** Renders recommended candidates first, followed by selectable existing Plotly figures. */
 export default function ResultsPage() {
   const { result, setStep } = useWorkbench();
-  const targetColumns = result?.target_columns?.length
-    ? result.target_columns
-    : result?.target_column
-      ? [result.target_column]
-      : [];
-  const [xAxis, setXAxis] = useState("rank");
-  const [yAxis, setYAxis] = useState(() => targetColumns[0] ? `prediction:${targetColumns[0]}:mean` : "predicted_target_mean");
-
-  const axisOptions = useMemo(() => [
-    { value: "rank", label: "順位" },
-    ...(result?.feature_columns ?? []).map((column) => ({ value: `value:${column}`, label: column })),
-    ...targetColumns.flatMap((target) => [
-      { value: `prediction:${target}:mean`, label: `${target} 予測値` },
-      { value: `prediction:${target}:std`, label: `${target} 予測標準偏差` }
-    ]),
-    { value: "acq_value", label: "獲得値" }
-  ], [result?.feature_columns, targetColumns.join("\u0000")]);
-
-  const axisVisualization = useMemo(() => {
-    const readValue = (candidate: NonNullable<typeof result>["candidates"][number], key: string) => {
-      if (key === "rank") return candidate.rank;
-      if (key === "predicted_target_mean") return candidate.predicted_target_mean;
-      if (key === "predicted_target_std") return candidate.predicted_target_std;
-      if (key === "acq_value") return candidate.acq_value;
-      if (key.startsWith("value:")) return candidate.values[key.slice(6)];
-      if (key.startsWith("prediction:")) {
-        const [, target, statistic] = key.split(":");
-        const prediction = candidate.predictions?.[target];
-        return statistic === "std" ? prediction?.std : prediction?.mean;
-      }
-      return null;
-    };
-    const xLabel = axisOptions.find((option) => option.value === xAxis)?.label ?? xAxis;
-    const yLabel = axisOptions.find((option) => option.value === yAxis)?.label ?? yAxis;
-    return {
-      id: "selected_axes",
-      title: "選択軸グラフ",
-      description: "候補テーブルから縦軸・横軸を選んで表示します。",
-      figure: {
-        data: [{
-          type: "scatter",
-          mode: "markers+text",
-          x: (result?.candidates ?? []).map((candidate) => readValue(candidate, xAxis)),
-          y: (result?.candidates ?? []).map((candidate) => readValue(candidate, yAxis)),
-          text: (result?.candidates ?? []).map((candidate) => `#${candidate.rank}`),
-          textposition: "top center"
-        }],
-        layout: { xaxis: { title: xLabel }, yaxis: { title: yLabel }, margin: { t: 24, r: 24, b: 56, l: 64 } }
-      }
-    };
-  }, [axisOptions, result?.candidates, xAxis, yAxis]);
 
   if (!result) {
     return (
@@ -118,8 +33,17 @@ export default function ResultsPage() {
     );
   }
 
+  const targetColumns = result.target_columns?.length
+    ? result.target_columns
+    : result.target_column
+      ? [result.target_column]
+      : [];
+  const candidates = useMemo(
+    () => [...result.candidates].sort((left, right) => left.rank - right.rank),
+    [result.candidates]
+  );
+
   function downloadCandidates() {
-    if (!result) return;
     const header = [
       "rank",
       ...result.feature_columns,
@@ -127,7 +51,7 @@ export default function ResultsPage() {
       "acq_value",
       "constraints_ok"
     ];
-    const rows = result.candidates.map((candidate) => [
+    const rows = candidates.map((candidate) => [
       candidate.rank,
       ...result.feature_columns.map((column) => candidate.values[column]),
       ...targetColumns.flatMap((target) => [
@@ -147,78 +71,38 @@ export default function ResultsPage() {
   }
 
   const droppedRows = Number(result.metadata?.dropped_rows ?? 0);
-  const bestObservedMap = typeof result.best_observed === "number" ? null : result.best_observed;
-  const bestObservedText = typeof result.best_observed === "number"
-    ? formatNumber(result.best_observed)
-    : targetColumns.map((target) => `${target}: ${formatNumber(bestObservedMap?.[target])}`).join(" / ");
-  const enrichedSettings = result.target_settings?.map((setting) => ({
-    ...setting,
-    ...(result.target_metadata?.[setting.target] ?? {}),
-    target: setting.target
-  } as TargetSetting));
-  const settingText = enrichedSettings?.length
-    ? enrichedSettings.map(settingSummary).join(" / ")
-    : targetColumns
-      .map((target) => `${target}: ${(result.directions?.[target] ?? result.direction) === "minimize" ? "最小化" : "最大化"}`)
-      .join(" / ");
+  const modelDetails = result.metadata?.model_details as Record<string, unknown> | undefined;
+  const effectiveAcquisition = String(
+    modelDetails?.effective_acquisition ?? result.metadata?.acquisition ?? "—"
+  );
+  const backend = String(
+    modelDetails?.optimizer_backend ?? result.metadata?.optimizer_backend ?? "TabularBayesianOptimizer"
+  );
 
   return (
     <>
       <SectionHeader
         step="5 · RESULTS"
-        title="候補と予測結果を確認する"
-        text={`${result.model_type} · 学習 ${result.n_train}件 · best observed ${bestObservedText}`}
+        title="推奨候補とモデル結果"
+        text={`${result.model_type} · ${effectiveAcquisition} · ${backend} · 学習 ${result.n_train}件`}
         action={
           <>
             <button className="secondary" onClick={() => setStep("settings")}>目的・探索設定</button>
             <button className="secondary" onClick={() => setStep("optimize")}>モデル設定</button>
             <button className="secondary" onClick={downloadCandidates}>候補CSVを保存</button>
-            <button onClick={() => setStep("logs")}>実行ログ</button>
+            <button onClick={() => setStep("logs")}>モデル詳細・ログ</button>
           </>
         }
       />
 
-      <div className="cards metric-grid">
-        <MetricCard icon="◎" label="Targets" value={targetColumns.length} detail={targetColumns.join(", ")} />
-        <MetricCard icon="↗" label="Settings" value={settingText} />
-        <MetricCard icon="◇" label="Features" value={result.n_features} detail={result.feature_columns.join(", ")} />
-        <MetricCard icon="▧" label="Candidates" value={result.candidates.length} detail="提案数" tone="success" />
-      </div>
-
-      {droppedRows > 0 && (
-        <article className="panel compact-panel">
-          <div className="panel-title">
-            <div>
-              <span className="panel-kicker">DATA CLEANING</span>
-              <h3>欠損行を除外して学習しました</h3>
-              <p>選択した目的変数または説明変数に欠損がある {droppedRows} 行を除外しています。</p>
-            </div>
-            <span className="status-chip warning">{droppedRows} rows</span>
-          </div>
-        </article>
-      )}
-
-      <article className="panel compact-panel">
-        <div className="panel-title"><div><span className="panel-kicker">GRAPH AXES</span><h3>グラフ軸の選択</h3><p>説明変数、各目的の予測値・標準偏差、獲得値から選択します。</p></div></div>
-        <div className="form-grid candidate-settings">
-          <label>横軸<select value={xAxis} onChange={(event) => setXAxis(event.target.value)}>{axisOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-          <label>縦軸<select value={yAxis} onChange={(event) => setYAxis(event.target.value)}>{axisOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
-        </div>
-      </article>
-
-      <ResultVisualizations
-        visualizations={[axisVisualization, ...(result.visualizations ?? [])]}
-        warnings={result.visualization_warnings ?? []}
-      />
-
-      <article className="panel best-model-panel">
+      <article className="panel best-model-panel recommended-first">
         <div className="panel-title">
           <div>
             <span className="panel-kicker">RECOMMENDED CANDIDATES</span>
             <h3>推奨候補</h3>
-            <p>各目的の予測値・標準偏差、獲得関数値、設定条件の判定を確認します。</p>
+            <p>順位1を先頭に、各目的の予測値・標準偏差、獲得関数値、制約判定を表示します。</p>
           </div>
-          <span className="status-chip success">Ready</span>
+          <span className="status-chip success">{candidates.length} candidates</span>
         </div>
         <div className="table-wrap">
           <table>
@@ -235,7 +119,7 @@ export default function ResultsPage() {
               </tr>
             </thead>
             <tbody>
-              {result.candidates.map((candidate) => (
+              {candidates.map((candidate) => (
                 <tr key={candidate.rank} className={candidate.rank === 1 ? "candidate-best" : ""}>
                   <td><span className="rank">{candidate.rank}</span></td>
                   {result.feature_columns.map((column) => (
@@ -250,13 +134,38 @@ export default function ResultsPage() {
                     <td key={`${target}-std`}>{formatNumber(candidate.predictions?.[target]?.std)}</td>
                   ])}
                   <td>{formatNumber(candidate.acq_value)}</td>
-                  <td><span className={`status-chip ${candidate.constraints_ok ? "success" : "warning"}`}>{candidate.constraints_ok ? "OK" : "NG"}</span></td>
+                  <td>
+                    <span className={`status-chip ${candidate.constraints_ok ? "success" : "warning"}`}>
+                      {candidate.constraints_ok ? "OK" : "NG"}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </article>
+
+      {droppedRows > 0 && (
+        <article className="panel compact-panel">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">DATA CLEANING</span>
+              <h3>欠損行を除外して学習しました</h3>
+              <p>選択した目的変数または説明変数に欠損がある {droppedRows} 行を除外しています。</p>
+            </div>
+            <span className="status-chip warning">{droppedRows} rows</span>
+          </div>
+        </article>
+      )}
+
+      <InteractiveResultPlots result={result} />
+
+      {(result.visualization_warnings ?? []).length > 0 && (
+        <div className="alert warning">
+          {result.visualization_warnings.map((warning) => <div key={warning}>{warning}</div>)}
+        </div>
+      )}
     </>
   );
 }

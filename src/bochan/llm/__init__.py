@@ -1,6 +1,6 @@
 """LLM-assisted helpers for bochan."""
 
-from .candidate_explainer import (
+from .candidate_explainer_overall import (
     CandidateExplanation,
     CandidateExplanationConfig,
     CandidatePointExplanation,

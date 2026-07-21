@@ -52,11 +52,15 @@ export type AcquisitionFamily = "bayesian_optimization" | "active_learning" | "l
 export type ConstraintKind = "equality" | "inequality";
 export type ConstraintOperator = "=" | "<=" | ">=";
 
-/** Task definition plus an optional optimization constraint for one target column. */
+/** Task definition, optimization role, direction, and optional constraint for one target column. */
 export interface TargetSetting {
   target: string;
   task_type: TaskType;
-  /** `none` keeps the objective active without adding a hard constraint. */
+  /** Whether this output participates in the acquisition objective. */
+  optimize: boolean;
+  /** Optimization direction. Ignored when goal is `target`. */
+  direction: Direction;
+  /** `none` adds no hard constraint. */
   goal: TargetGoal;
   /** Regression value, probability threshold, or ordinal boundary class. */
   value?: string | number | null;

@@ -14,8 +14,7 @@ import type {
   Direction,
   RegressionResult,
   SearchVariable,
-  TargetSetting,
-  Theme as UnusedTheme
+  TargetSetting
 } from "../types";
 
 export type WorkbenchStep = "data" | "prepare" | "settings" | "optimize" | "results" | "logs";
@@ -98,9 +97,19 @@ function validateTargetSetting(setting: TargetSetting, column?: ColumnProfile): 
   if (setting.task_type === "regression") {
     return column?.kind === "numeric" && finiteNumber(setting.value) !== null;
   }
-  if (setting.goal === "above" || setting.goal === "below") {
+  if (
+    setting.task_type === "classification" &&
+    (setting.goal === "above" || setting.goal === "below")
+  ) {
     const threshold = finiteNumber(setting.value);
     return threshold !== null && threshold >= 0 && threshold <= 1;
+  }
+  if (
+    setting.task_type === "ordinal" &&
+    (setting.goal === "above" || setting.goal === "below") &&
+    column?.kind === "numeric"
+  ) {
+    return finiteNumber(setting.value) !== null;
   }
   return String(setting.value).trim() !== "";
 }

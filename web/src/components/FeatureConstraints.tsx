@@ -195,17 +195,21 @@ export default function FeatureConstraints({ variables }: Props) {
 
                 <details className="constraint-expander" open>
                   <summary>説明変数と係数を設定</summary>
-                  <div className="constraint-variable-picker">
-                    {numericVariables.map((variable) => (
-                      <label key={variable.name} className={constraint.variables.includes(variable.name) ? "selected" : ""}>
-                        <input
-                          type="checkbox"
-                          checked={constraint.variables.includes(variable.name)}
-                          onChange={() => toggleConstraintVariable(constraint, variable.name)}
-                        />
-                        <span>{variable.name}</span>
-                      </label>
-                    ))}
+                  <div className="constraint-variable-picker" role="group" aria-label={`制約${index + 1}の説明変数`}>
+                    {numericVariables.map((variable) => {
+                      const selected = constraint.variables.includes(variable.name);
+                      return (
+                        <button
+                          key={variable.name}
+                          type="button"
+                          className={selected ? "selected" : ""}
+                          aria-pressed={selected}
+                          onClick={() => toggleConstraintVariable(constraint, variable.name)}
+                        >
+                          {variable.name}
+                        </button>
+                      );
+                    })}
                   </div>
                   {constraint.variables.length > 0 && (
                     <div className="coefficient-grid">
@@ -244,6 +248,7 @@ export default function FeatureConstraints({ variables }: Props) {
             <input
               type="checkbox"
               checked={selectionCount.enabled}
+              aria-label="スパース制約を使用する"
               onChange={(event) => updateSelectionCount({
                 ...selectionCount,
                 enabled: event.target.checked
@@ -255,17 +260,21 @@ export default function FeatureConstraints({ variables }: Props) {
 
         {selectionCount.enabled && (
           <div className="selection-count-editor">
-            <div className="constraint-variable-picker">
-              {numericVariables.map((variable) => (
-                <label key={variable.name} className={selectionCount.variables.includes(variable.name) ? "selected" : ""}>
-                  <input
-                    type="checkbox"
-                    checked={selectionCount.variables.includes(variable.name)}
-                    onChange={() => toggleSelectionVariable(variable.name)}
-                  />
-                  <span>{variable.name}</span>
-                </label>
-              ))}
+            <div className="constraint-variable-picker" role="group" aria-label="スパース制約の候補変数">
+              {numericVariables.map((variable) => {
+                const selected = selectionCount.variables.includes(variable.name);
+                return (
+                  <button
+                    key={variable.name}
+                    type="button"
+                    className={selected ? "selected" : ""}
+                    aria-pressed={selected}
+                    onClick={() => toggleSelectionVariable(variable.name)}
+                  >
+                    {variable.name}
+                  </button>
+                );
+              })}
             </div>
             <label className="selection-count-input">
               <span>採用する変数数</span>

@@ -8,17 +8,56 @@ import {
   type SearchMethod
 } from "../webRunSettings";
 
-const WEB_MODEL_TYPES = [
-  "base",
-  "deepgp",
-  "deepkernel",
-  "saas",
-  "pca",
-  "rembo",
-  "robust",
-  "hetero",
-  "multitask"
-] as const;
+type ModelFamily =
+  | "standard_gp"
+  | "deep_representation"
+  | "high_dimensional"
+  | "robust_noise"
+  | "multitask";
+
+type SearchMethodFamily =
+  | "gradient"
+  | "metaheuristic"
+  | "sampling"
+  | "multiobjective";
+
+const MODEL_FAMILY_OPTIONS: Array<{ value: ModelFamily; label: string }> = [
+  { value: "standard_gp", label: "標準ガウス過程" },
+  { value: "deep_representation", label: "深層・表現学習" },
+  { value: "high_dimensional", label: "高次元・次元削減" },
+  { value: "robust_noise", label: "ノイズ・頑健" },
+  { value: "multitask", label: "マルチタスク" }
+];
+
+const MODEL_OPTIONS = [
+  { value: "base", label: "Base GP", family: "standard_gp" },
+  { value: "deepgp", label: "Deep GP", family: "deep_representation" },
+  { value: "deepkernel", label: "Deep Kernel", family: "deep_representation" },
+  { value: "saas", label: "SAAS", family: "high_dimensional" },
+  { value: "pca", label: "PCA", family: "high_dimensional" },
+  { value: "rembo", label: "REMBO", family: "high_dimensional" },
+  { value: "robust", label: "Robust (RRP)", family: "robust_noise" },
+  { value: "hetero", label: "Heteroskedastic", family: "robust_noise" },
+  { value: "multitask", label: "Multitask GP", family: "multitask" }
+] as const satisfies ReadonlyArray<{
+  value: string;
+  label: string;
+  family: ModelFamily;
+}>;
+
+type WebModelType = (typeof MODEL_OPTIONS)[number]["value"];
+
+const MODEL_DESCRIPTIONS: Record<WebModelType, string> = {
+  base: "標準的なガウス過程モデルです。",
+  deepgp: "複数層のガウス過程で非線形な表現を学習します。",
+  deepkernel: "ニューラルネットワークで特徴表現を学習し、ガウス過程へ接続します。",
+  saas: "高次元入力のうち重要な少数次元を疎に選択します。",
+  pca: "指定次元へPCA射影してモデル化します。",
+  rembo: "指定次元の低次元空間から探索します。",
+  robust: "内部ではRRPモデルを使用し、外れ値や頑健性を考慮します。",
+  hetero: "入力位置によって異なる観測ノイズをモデル化します。",
+  multitask: "回帰目的間の相関を学習して情報共有します。"
+};
 
 const FAMILY_OPTIONS: Array<{ value: AcquisitionFamily; label: string }> = [
   { value: "bayesian_optimization", label: "ベイズ最適化" },
@@ -32,15 +71,34 @@ const FAMILY_ACQUISITIONS: Record<AcquisitionFamily, string[]> = {
   level_set_estimation: ["straddle", "boundary_variance", "ICU"]
 };
 
-const BASE_SEARCH_METHODS: Array<{ value: SearchMethod; label: string }> = [
-  { value: "normal", label: "通常" },
-  { value: "torch", label: "Torch" },
-  { value: "ga", label: "GA" },
-  { value: "sa", label: "SA" },
-  { value: "pso", label: "PSO" },
-  { value: "cmaes", label: "CMA-ES" },
-  { value: "thompson_sampling", label: "Thompson sampling" }
+const SEARCH_METHOD_FAMILY_OPTIONS: Array<{ value: SearchMethodFamily; label: string }> = [
+  { value: "gradient", label: "勾配ベース" },
+  { value: "metaheuristic", label: "メタヒューリスティクス" },
+  { value: "sampling", label: "サンプリング" },
+  { value: "multiobjective", label: "多目的専用" }
 ];
+
+const SEARCH_METHOD_OPTIONS: Array<{
+  value: SearchMethod;
+  label: string;
+  family: SearchMethodFamily;
+}> = [
+  { value: "normal", label: "通常（BoTorch）", family: "gradient" },
+  { value: "torch", label: "Torch", family: "gradient" },
+  { value: "ga", label: "GA", family: "metaheuristic" },
+  { value: "sa", label: "SA", family: "metaheuristic" },
+  { value: "pso", label: "PSO", family: "metaheuristic" },
+  { value: "cmaes", label: "CMA-ES", family: "metaheuristic" },
+  { value: "thompson_sampling", label: "Thompson sampling", family: "sampling" },
+  { value: "nsgaii", label: "NSGA-II", family: "multiobjective" }
+];
+
+const SEARCH_FAMILY_DESCRIPTIONS: Record<SearchMethodFamily, string> = {
+  gradient: "獲得関数の勾配を利用して連続探索空間を効率的に最適化します。",
+  metaheuristic: "勾配を使わず、進化計算や確率的探索で候補を求めます。",
+  sampling: "事後分布からサンプリングし、有限候補集合から候補を選択します。",
+  multiobjective: "複数目的のベクトル値を直接扱う多目的専用探索です。"
+};
 
 function taskLabel(value: string): string {
   if (value === "classification") return "分類";
@@ -50,6 +108,14 @@ function taskLabel(value: string): string {
 
 function familyLabel(value: AcquisitionFamily): string {
   return FAMILY_OPTIONS.find((option) => option.value === value)?.label ?? value;
+}
+
+function modelFamilyFor(modelType: string): ModelFamily {
+  return MODEL_OPTIONS.find((option) => option.value === modelType)?.family ?? "standard_gp";
+}
+
+function searchMethodFamilyFor(searchMethod: SearchMethod): SearchMethodFamily {
+  return SEARCH_METHOD_OPTIONS.find((option) => option.value === searchMethod)?.family ?? "gradient";
 }
 
 /** Configures the surrogate, acquisition family/function, and search backend. */
@@ -93,8 +159,19 @@ export default function OptimizePage() {
   const maxProjectionDimensions = Math.max(selectedVariables.length, 1);
 
   const availableModels = useMemo(
-    () => WEB_MODEL_TYPES.filter((name) => name !== "multitask" || canUseMultitask),
+    () => MODEL_OPTIONS.filter((option) => option.value !== "multitask" || canUseMultitask),
     [canUseMultitask]
+  );
+  const modelFamily = modelFamilyFor(modelType);
+  const availableModelFamilies = useMemo(
+    () => MODEL_FAMILY_OPTIONS.filter((family) => (
+      availableModels.some((model) => model.family === family.value)
+    )),
+    [availableModels]
+  );
+  const modelOptions = useMemo(
+    () => availableModels.filter((option) => option.family === modelFamily),
+    [availableModels, modelFamily]
   );
 
   const acquisitionOptions = useMemo(() => {
@@ -106,15 +183,28 @@ export default function OptimizePage() {
     return FAMILY_ACQUISITIONS[acquisitionFamily];
   }, [acquisitionFamily, multiObjective]);
 
-  const searchMethodOptions = useMemo(() => {
-    if (acquisitionFamily === "bayesian_optimization" && multiObjective) {
-      return [...BASE_SEARCH_METHODS, { value: "nsgaii" as SearchMethod, label: "NSGA-II" }];
-    }
-    return BASE_SEARCH_METHODS;
-  }, [acquisitionFamily, multiObjective]);
+  const searchMethodOptions = useMemo(
+    () => SEARCH_METHOD_OPTIONS.filter((option) => (
+      option.value !== "nsgaii" || (
+        acquisitionFamily === "bayesian_optimization" && multiObjective
+      )
+    )),
+    [acquisitionFamily, multiObjective]
+  );
+  const searchMethodFamily = searchMethodFamilyFor(searchMethod);
+  const availableSearchMethodFamilies = useMemo(
+    () => SEARCH_METHOD_FAMILY_OPTIONS.filter((family) => (
+      searchMethodOptions.some((method) => method.family === family.value)
+    )),
+    [searchMethodOptions]
+  );
+  const searchMethods = useMemo(
+    () => searchMethodOptions.filter((option) => option.family === searchMethodFamily),
+    [searchMethodFamily, searchMethodOptions]
+  );
 
   useEffect(() => {
-    if (!availableModels.includes(modelType as (typeof WEB_MODEL_TYPES)[number])) {
+    if (!availableModels.some((option) => option.value === modelType)) {
       setModelType("base");
     }
   }, [availableModels, modelType, setModelType]);
@@ -138,6 +228,11 @@ export default function OptimizePage() {
     }
   }, [maxProjectionDimensions, projectionDimensions, setProjectionDimensions]);
 
+  function changeModelFamily(nextFamily: ModelFamily) {
+    const firstModel = availableModels.find((option) => option.family === nextFamily);
+    if (firstModel) setModelType(firstModel.value);
+  }
+
   function changeFamily(nextFamily: AcquisitionFamily) {
     setAcquisitionFamily(nextFamily);
     if (nextFamily === "bayesian_optimization") {
@@ -152,6 +247,11 @@ export default function OptimizePage() {
   function changeSearchMethod(nextMethod: SearchMethod) {
     setSearchMethod(nextMethod);
     saveSearchMethod(nextMethod);
+  }
+
+  function changeSearchMethodFamily(nextFamily: SearchMethodFamily) {
+    const firstMethod = searchMethodOptions.find((option) => option.family === nextFamily);
+    if (firstMethod) changeSearchMethod(firstMethod.value);
   }
 
   const validationErrors = useMemo(() => {
@@ -204,6 +304,7 @@ export default function OptimizePage() {
   const modeLabel = multiObjective ? "多目的" : "単目的";
   const taskSummary = homogeneousTask ? taskLabel(taskTypes[0] ?? "regression") : "混合タスク";
   const searchMethodLabel = searchMethodOptions.find((option) => option.value === searchMethod)?.label ?? searchMethod;
+  const selectedModelDescription = MODEL_DESCRIPTIONS[modelType as WebModelType] ?? "";
 
   if (!dataset || !settingsValid) {
     return (
@@ -231,9 +332,19 @@ export default function OptimizePage() {
         <article className="panel compact-panel">
           <div className="panel-title"><div><span className="panel-kicker">SURROGATE</span><h3>モデル</h3></div></div>
           <label>
-            Model type
+            大分類
+            <select value={modelFamily} onChange={(event) => changeModelFamily(event.target.value as ModelFamily)}>
+              {availableModelFamilies.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            モデル種類
             <select value={modelType} onChange={(event) => setModelType(event.target.value)}>
-              {availableModels.map((name) => <option key={name} value={name}>{name}</option>)}
+              {modelOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
           </label>
           {projectedModel && (
@@ -250,11 +361,8 @@ export default function OptimizePage() {
             </label>
           )}
           <p className="settings-note">
-            {modelType === "robust" ? "内部ではrrpモデルを使用します。" : null}
-            {modelType === "multitask" ? "回帰目的間の相関を学習して情報共有します。" : null}
-            {modelType === "pca" ? "指定次元へPCA射影してモデル化します。" : null}
-            {modelType === "rembo" ? "指定次元の低次元空間から探索します。" : null}
-            {!homogeneousTask ? "混合タスクでは目的変数ごとのサブモデルをhybrid wrapperに束ねます。" : null}
+            {selectedModelDescription}
+            {!homogeneousTask ? " 混合タスクでは目的変数ごとのサブモデルをhybrid wrapperに束ねます。" : null}
           </p>
           <label>Fit maxiter<input type="number" min={1} value={fitMaxiter} onChange={(event) => setFitMaxiter(Number(event.target.value))} /></label>
         </article>
@@ -287,13 +395,23 @@ export default function OptimizePage() {
         <article className="panel compact-panel">
           <div className="panel-title"><div><span className="panel-kicker">SEARCH METHOD</span><h3>探索手法</h3></div></div>
           <label>
-            Search method
+            大分類
+            <select value={searchMethodFamily} onChange={(event) => changeSearchMethodFamily(event.target.value as SearchMethodFamily)}>
+              {availableSearchMethodFamilies.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            最適化手法
             <select value={searchMethod} onChange={(event) => changeSearchMethod(event.target.value as SearchMethod)}>
-              {searchMethodOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              {searchMethods.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
           </label>
           <p className="settings-note search-method-note">
-            通常はBoTorchの勾配最適化、TorchはTorch実装、GA・SA・PSO・CMA-ESは非勾配探索です。Thompson samplingは有限候補集合から事後サンプルで選択します。
+            {SEARCH_FAMILY_DESCRIPTIONS[searchMethodFamily]}
           </p>
         </article>
 

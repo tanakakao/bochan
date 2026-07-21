@@ -2,7 +2,6 @@
 
 The public API is intended to expose bochan's implemented model families through
 simple string keys such as ``task_type="regression"`` and ``model_type="base"``.
-
 This module keeps the registry lazy: model modules are imported only when the
 corresponding registry entry is actually requested. This avoids making
 ``import bochan.api`` unnecessarily heavy.
@@ -212,6 +211,18 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
 
 MODEL_REGISTRY = LazyModelRegistry(_MODEL_REGISTRY_TREE)
 DEFAULT_MODEL_REGISTRY = MODEL_REGISTRY
+
+
+def _install_bayesian_optimizer_llm_api() -> None:
+    """Attach LLM suggestion methods after the public optimizer class is finalized."""
+
+    from .engine_defaults import BayesianOptimizer
+    from .llm_suggestion import install_bayesian_optimizer_llm_api
+
+    install_bayesian_optimizer_llm_api(BayesianOptimizer)
+
+
+_install_bayesian_optimizer_llm_api()
 
 
 __all__ = [

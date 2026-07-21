@@ -17,19 +17,26 @@ function csvCell(value: unknown): string {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-/** Renders candidate results and selectable-axis visualizations. */
+/** Renders candidate results for one or more regression targets. */
 export default function ResultsPage() {
   const { result, setStep } = useWorkbench();
+  const targetColumns = result?.target_columns?.length
+    ? result.target_columns
+    : result?.target_column
+      ? [result.target_column]
+      : [];
   const [xAxis, setXAxis] = useState("rank");
-  const [yAxis, setYAxis] = useState("predicted_target_mean");
+  const [yAxis, setYAxis] = useState(() => targetColumns[0] ? `prediction:${targetColumns[0]}:mean` : "predicted_target_mean");
 
   const axisOptions = useMemo(() => [
     { value: "rank", label: "順位" },
     ...(result?.feature_columns ?? []).map((column) => ({ value: `value:${column}`, label: column })),
-    { value: "predicted_target_mean", label: "予測平均" },
-    { value: "predicted_target_std", label: "予測標準偏差" },
+    ...targetColumns.flatMap((target) => [
+      { value: `prediction:${target}:mean`, label: `${target} 予測平均` },
+      { value: `prediction:${target}:std`, label: `${target} 予測標準偏差` }
+    ]),
     { value: "acq_value", label: "獲得値" }
-  ], [result?.feature_columns]);
+  ], [result?.feature_columns, targetColumns.join("\u0000")]);
 
   const axisVisualization = useMemo(() => {
     const readValue = (candidate: NonNullable<typeof result>["candidates"][number], key: string) => {
@@ -38,6 +45,11 @@ export default function ResultsPage() {
       if (key === "predicted_target_std") return candidate.predicted_target_std;
       if (key === "acq_value") return candidate.acq_value;
       if (key.startsWith("value:")) return candidate.values[key.slice(6)];
+      if (key.startsWith("prediction:")) {
+        const [, target, statistic] = key.split(":");
+        const prediction = candidate.predictions?.[target];
+        return statistic === "std" ? prediction?.std : prediction?.mean;
+      }
       return null;
     };
     const xLabel = axisOptions.find((option) => option.value === xAxis)?.label ?? xAxis;
@@ -78,16 +90,17 @@ export default function ResultsPage() {
     const header = [
       "rank",
       ...result.feature_columns,
-      "predicted_target_mean",
-      "predicted_target_std",
+      ...targetColumns.flatMap((target) => [`${target}_mean`, `${target}_std`]),
       "acq_value",
       "constraints_ok"
     ];
     const rows = result.candidates.map((candidate) => [
       candidate.rank,
       ...result.feature_columns.map((column) => candidate.values[column]),
-      candidate.predicted_target_mean,
-      candidate.predicted_target_std,
+      ...targetColumns.flatMap((target) => [
+        candidate.predictions?.[target]?.mean,
+        candidate.predictions?.[target]?.std
+      ]),
       candidate.acq_value,
       candidate.constraints_ok
     ]);
@@ -101,13 +114,20 @@ export default function ResultsPage() {
   }
 
   const droppedRows = Number(result.metadata?.dropped_rows ?? 0);
+  const bestObservedMap = typeof result.best_observed === "number" ? null : result.best_observed;
+  const bestObservedText = typeof result.best_observed === "number"
+    ? formatNumber(result.best_observed)
+    : targetColumns.map((target) => `${target}: ${formatNumber(bestObservedMap?.[target])}`).join(" / ");
+  const directionText = targetColumns
+    .map((target) => `${target}: ${(result.directions?.[target] ?? result.direction) === "minimize" ? "最小化" : "最大化"}`)
+    .join(" / ");
 
   return (
     <>
       <SectionHeader
         step="4 · RESULTS"
         title="候補と予測結果を確認する"
-        text={`${result.model_type} · 学習 ${result.n_train}件 · best observed ${formatNumber(result.best_observed)}`}
+        text={`${result.model_type} · 学習 ${result.n_train}件 · best observed ${bestObservedText}`}
         action={
           <>
             <button className="secondary" onClick={() => setStep("optimize")}>設定を変更</button>
@@ -118,8 +138,8 @@ export default function ResultsPage() {
       />
 
       <div className="cards metric-grid">
-        <MetricCard icon="◎" label="Target" value={result.target_column} detail="目的変数" />
-        <MetricCard icon="↗" label="Direction" value={result.direction === "maximize" ? "最大化" : "最小化"} />
+        <MetricCard icon="◎" label="Targets" value={targetColumns.length} detail={targetColumns.join(", ")} />
+        <MetricCard icon="↗" label="Directions" value={directionText} />
         <MetricCard icon="◇" label="Features" value={result.n_features} detail={result.feature_columns.join(", ")} />
         <MetricCard icon="▧" label="Candidates" value={result.candidates.length} detail="提案数" tone="success" />
       </div>
@@ -138,7 +158,7 @@ export default function ResultsPage() {
       )}
 
       <article className="panel compact-panel">
-        <div className="panel-title"><div><span className="panel-kicker">GRAPH AXES</span><h3>グラフ軸の選択</h3><p>候補グラフの横軸・縦軸に使う項目を選択します。</p></div></div>
+        <div className="panel-title"><div><span className="panel-kicker">GRAPH AXES</span><h3>グラフ軸の選択</h3><p>説明変数、各目的の予測平均・標準偏差、獲得値から選択します。</p></div></div>
         <div className="form-grid candidate-settings">
           <label>横軸<select value={xAxis} onChange={(event) => setXAxis(event.target.value)}>{axisOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
           <label>縦軸<select value={yAxis} onChange={(event) => setYAxis(event.target.value)}>{axisOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
@@ -155,7 +175,7 @@ export default function ResultsPage() {
           <div>
             <span className="panel-kicker">RECOMMENDED CANDIDATES</span>
             <h3>推奨候補</h3>
-            <p>予測平均、予測標準偏差、獲得関数値をまとめて確認します。</p>
+            <p>各目的の予測平均・標準偏差、獲得関数値、目的制約の判定を確認します。</p>
           </div>
           <span className="status-chip success">Ready</span>
         </div>
@@ -165,8 +185,10 @@ export default function ResultsPage() {
               <tr>
                 <th>順位</th>
                 {result.feature_columns.map((column) => <th key={column}>{column}</th>)}
-                <th>予測平均</th>
-                <th>予測標準偏差</th>
+                {targetColumns.flatMap((target) => [
+                  <th key={`${target}-mean`}>{target}<br />予測平均</th>,
+                  <th key={`${target}-std`}>{target}<br />予測標準偏差</th>
+                ])}
                 <th>獲得値</th>
                 <th>制約</th>
               </tr>
@@ -182,8 +204,10 @@ export default function ResultsPage() {
                         : String(candidate.values[column])}
                     </td>
                   ))}
-                  <td>{formatNumber(candidate.predicted_target_mean)}</td>
-                  <td>{formatNumber(candidate.predicted_target_std)}</td>
+                  {targetColumns.flatMap((target) => [
+                    <td key={`${target}-mean`}>{formatNumber(candidate.predictions?.[target]?.mean)}</td>,
+                    <td key={`${target}-std`}>{formatNumber(candidate.predictions?.[target]?.std)}</td>
+                  ])}
                   <td>{formatNumber(candidate.acq_value)}</td>
                   <td><span className={`status-chip ${candidate.constraints_ok ? "success" : "warning"}`}>{candidate.constraints_ok ? "OK" : "NG"}</span></td>
                 </tr>

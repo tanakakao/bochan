@@ -1499,6 +1499,26 @@ td select {
   height: 500px;
 }
 
+.plot-container .modebar {
+  top: 8px !important;
+  right: 8px !important;
+  padding: 3px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 10px !important;
+  background: color-mix(in srgb, var(--surface) 90%, transparent) !important;
+  box-shadow: var(--shadow-xs) !important;
+  backdrop-filter: blur(10px);
+}
+
+.plot-container .modebar-btn path {
+  fill: var(--muted) !important;
+}
+
+.plot-container .modebar-btn:hover path,
+.plot-container .modebar-btn.active path {
+  fill: var(--primary) !important;
+}
+
 .log-card {
   padding: 0;
   overflow: hidden;

@@ -38,13 +38,19 @@ def _attach_missing_metadata(
     variant: str | None = None,
     effective_model_type: str | None = None,
 ) -> dict[str, Any]:
-    """Attach target-missing decisions to the normal workflow metadata."""
+    """Attach explanatory-variable and target missing decisions to metadata."""
 
     metadata = dict(result.get("metadata") or {})
     resolved_variant = variant or report.get("multitask_variant")
     resolved_model_type = effective_model_type or report.get("effective_model_type")
     metadata.update(
         {
+            "feature_missing_strategy": report.get("feature_missing_strategy"),
+            "feature_missing_detected": bool(report.get("feature_missing_detected")),
+            "feature_missing_counts": dict(report.get("feature_missing_counts") or {}),
+            "feature_impute_values": dict(report.get("feature_impute_values") or {}),
+            "continuous_impute_strategy": report.get("continuous_impute_strategy"),
+            "categorical_impute_strategy": report.get("categorical_impute_strategy"),
             "target_missing_policy": report.get("policy"),
             "target_missing_detected": bool(report.get("target_missing_detected")),
             "target_missing_counts": dict(report.get("target_missing_counts") or {}),
@@ -87,6 +93,24 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
                 effective_model_type=effective_model_type,
             )
             details = model_details(session, result)
+            details["feature_missing_strategy"] = metadata.get(
+                "feature_missing_strategy"
+            )
+            details["feature_missing_detected"] = metadata.get(
+                "feature_missing_detected"
+            )
+            details["feature_missing_counts"] = metadata.get(
+                "feature_missing_counts"
+            )
+            details["feature_impute_values"] = metadata.get(
+                "feature_impute_values"
+            )
+            details["continuous_impute_strategy"] = metadata.get(
+                "continuous_impute_strategy"
+            )
+            details["categorical_impute_strategy"] = metadata.get(
+                "categorical_impute_strategy"
+            )
             details["target_missing_policy"] = metadata.get("target_missing_policy")
             details["target_missing_detected"] = metadata.get(
                 "target_missing_detected"

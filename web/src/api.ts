@@ -17,7 +17,9 @@ import {
   loadSelectionCountConstraint
 } from "./webRunSettings";
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "/api/v1";
+const RAW_API_BASE = String(import.meta.env.VITE_API_BASE ?? "/api/v1").trim();
+const API_BASE = (RAW_API_BASE || "/api/v1").replace(/\/+$/, "");
+const WEB_BACKEND_COMMAND = "uvicorn bochan.serving.webapp.app:app --reload --port 8000";
 
 export interface WebCapabilities {
   task_types: string[];
@@ -30,18 +32,42 @@ export interface WebCapabilities {
   logging?: Record<string, unknown>;
 }
 
+function webRouteNotFoundMessage(method: string, url: string): string {
+  return [
+    `Web APIが見つかりません (${method} ${url})。`,
+    "通常のbochan Core APIではなく、Webワークベンチ用FastAPIを起動してください。",
+    `起動コマンド: ${WEB_BACKEND_COMMAND}`,
+    `VITE_API_BASEを設定している場合は、Web APIのprefixを含むURL（例: http://127.0.0.1:8000/api/v1）にしてください。`
+  ].join("\n");
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const url = `${API_BASE}${path}`;
+  const response = await fetch(url, {
     ...init,
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {})
     }
   });
-  const payload = await response.json().catch(() => null);
+  const responseText = await response.text();
+  let payload: any = null;
+  if (responseText) {
+    try {
+      payload = JSON.parse(responseText);
+    } catch {
+      payload = responseText;
+    }
+  }
   if (!response.ok) {
-    const detail = payload?.detail ?? `HTTP ${response.status}`;
     const requestId = response.headers.get("X-Request-ID");
+    const method = String(init?.method ?? "GET").toUpperCase();
+    const missingWebRoute = response.status === 404 && (
+      path === "/capabilities" || path === "/datasets"
+    );
+    const detail = missingWebRoute
+      ? webRouteNotFoundMessage(method, url)
+      : (payload?.detail ?? payload ?? `HTTP ${response.status}`);
     const message = typeof detail === "string" ? detail : JSON.stringify(detail);
     throw new Error(requestId ? `${message} [request_id=${requestId}]` : message);
   }
@@ -49,7 +75,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function fetchHealth(): Promise<HealthResponse> {
-  return request<HealthResponse>("/health");
+  const [health] = await Promise.all([
+    request<HealthResponse>("/health"),
+    request<WebCapabilities>("/capabilities")
+  ]);
+  return health;
 }
 
 export async function fetchCapabilities(): Promise<WebCapabilities> {

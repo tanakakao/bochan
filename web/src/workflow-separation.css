@@ -1,3 +1,71 @@
+.workbench-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0 4px 18px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-strong);
+}
+
+.workbench-mode-switch button {
+  min-height: 34px;
+  padding: 6px 8px;
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
+  border-radius: 9px;
+  box-shadow: none;
+  font-size: 11px;
+}
+
+.workbench-mode-switch button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-raised);
+  border-color: var(--line);
+  box-shadow: var(--shadow-xs);
+  transform: none;
+}
+
+.workbench-mode-switch button.active {
+  color: #ffffff;
+  background: var(--primary);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-xs);
+}
+
+.simple-mode-summary {
+  margin-bottom: 18px;
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--line));
+  background: color-mix(in srgb, var(--primary-soft) 46%, var(--surface));
+}
+
+.simple-default-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.simple-default-grid span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 9px 11px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface-raised) 84%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+.simple-default-grid strong {
+  color: var(--text);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .feature-variable-choice {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -213,6 +281,10 @@
   .model-selection-panel .model-settings-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .simple-default-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -226,7 +298,8 @@
   }
 
   .model-settings-grid,
-  .model-selection-panel .model-settings-grid {
+  .model-selection-panel .model-settings-grid,
+  .simple-default-grid {
     grid-template-columns: 1fr;
   }
 }

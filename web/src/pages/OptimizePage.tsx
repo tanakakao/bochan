@@ -230,7 +230,7 @@ export default function OptimizePage() {
       <SectionHeader
         step="4 · SUGGEST"
         title="候補提案条件を設定する"
-        text="目的、探索範囲、制約、獲得関数、探索手法、候補数を設定します。"
+        text="目的、獲得関数、探索手法、候補数、探索範囲、制約を設定します。"
         action={<button disabled={!canExecute} onClick={() => void execute()}>候補を生成</button>}
       />
 
@@ -242,16 +242,6 @@ export default function OptimizePage() {
         patchTargetSetting={patchTargetSetting}
         numberOrUndefined={numberOrUndefined}
       />
-
-      <SearchVariableSettings
-        columns={columns}
-        preview={dataset.preview}
-        variables={selectedVariables}
-        patchVariable={patchVariable}
-        numberOrUndefined={numberOrUndefined}
-      />
-
-      <FeatureConstraints variables={selectedVariables} />
 
       <div className="form-grid optimize-grid suggestion-method-grid">
         <article className="panel compact-panel">
@@ -308,9 +298,19 @@ export default function OptimizePage() {
         </article>
       </div>
 
+      <SearchVariableSettings
+        columns={columns}
+        preview={dataset.preview}
+        variables={selectedVariables}
+        patchVariable={patchVariable}
+        numberOrUndefined={numberOrUndefined}
+      />
+
+      <FeatureConstraints variables={selectedVariables} />
+
       <article className="panel compact-panel validation-panel">
         <div className="panel-title">
-          <div><span className="panel-kicker">VALIDATION</span><h3>候補提案前チェック</h3><p>目的、探索範囲、制約、獲得関数、探索手法を確認します。</p></div>
+          <div><span className="panel-kicker">VALIDATION</span><h3>候補提案前チェック</h3><p>目的、獲得関数、探索手法、探索範囲、制約を確認します。</p></div>
           <span className={`status-chip ${canExecute ? "success" : "warning"}`}>{canExecute ? "Ready" : `${validationErrors.length} issues`}</span>
         </div>
         {canExecute ? <p className="settings-note">候補提案条件に矛盾は見つかりませんでした。</p> : <ul>{validationErrors.map((message) => <li key={message}>{message}</li>)}</ul>}

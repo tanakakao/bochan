@@ -13,6 +13,7 @@ import {
   uploadDataset,
   type RunRegressionInput
 } from "../api";
+import { MODEL_OPTIONS } from "../modelOptions";
 import { getColumnClassValues } from "../targetSettingUtils";
 import type {
   AcquisitionFamily,
@@ -34,9 +35,9 @@ export type HealthState = {
 
 export const STEPS: Array<[WorkbenchStep, string, string]> = [
   ["data", "Data", "データ読込"],
-  ["prepare", "Select", "変数選択"],
-  ["settings", "Settings", "目的・探索設定"],
-  ["optimize", "Optimize", "モデルと候補生成"],
+  ["prepare", "Select", "変数・型選択"],
+  ["settings", "Model", "モデル設定"],
+  ["optimize", "Suggest", "候補提案"],
   ["results", "Results", "候補と可視化"],
   ["logs", "Logs", "実行履歴"]
 ];
@@ -95,6 +96,7 @@ function createTargetSetting(
   return {
     ...common,
     task_type: "classification",
+    target_class: null,
     target_classes: classes.length ? [classes[0]] : []
   };
 }
@@ -122,7 +124,11 @@ function sameClassSet(left: TargetClassValue[], right: TargetClassValue[]): bool
     [...leftKeys].every((value) => rightKeys.has(value));
 }
 
-function validateVariable(variable: SearchVariable): boolean {
+function validateVariableModelSetting(variable: SearchVariable): boolean {
+  return variable.type !== "categorical" || Boolean(variable.categories?.length);
+}
+
+function validateVariableCandidateSetting(variable: SearchVariable): boolean {
   if (variable.type === "categorical") {
     if (!variable.categories?.length) return false;
     if (!variable.fixed) return true;
@@ -138,7 +144,23 @@ function validateVariable(variable: SearchVariable): boolean {
   return fixed !== null && fixed >= lower && fixed <= upper;
 }
 
-function validateTargetSetting(
+function validateTargetModelSetting(
+  setting: TargetSetting,
+  column: ColumnProfile | undefined,
+  preview: Record<string, unknown>[]
+): boolean {
+  if (!column) return false;
+  if (setting.task_type === "regression") return column.kind === "numeric";
+
+  const classes = getColumnClassValues(column, preview);
+  if (classes.length < 2) return false;
+  if (setting.task_type === "classification") {
+    return classes.length !== 2 || containsClass(classes, setting.target_class);
+  }
+  return sameClassSet(setting.class_order ?? [], classes);
+}
+
+function validateTargetCandidateSetting(
   setting: TargetSetting,
   column: ColumnProfile | undefined,
   preview: Record<string, unknown>[]
@@ -147,13 +169,11 @@ function validateTargetSetting(
   if (setting.goal === "target" && !setting.optimize) return false;
 
   if (setting.task_type === "regression") {
-    if (column.kind !== "numeric") return false;
     return setting.goal === "none" || finiteNumber(setting.value) !== null;
   }
 
   const classes = getColumnClassValues(column, preview);
   if (classes.length < 2) return false;
-
   if (setting.task_type === "classification") {
     if (classes.length === 2) {
       if (!containsClass(classes, setting.target_class)) return false;
@@ -231,6 +251,7 @@ interface WorkbenchContextValue {
   result: RegressionResult | null;
   canConfigure: boolean;
   settingsValid: boolean;
+  candidateSettingsValid: boolean;
   handleFile: (file: File | null) => Promise<void>;
   toggleFeature: (name: string) => void;
   toggleTarget: (name: string) => void;
@@ -329,17 +350,40 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     featureColumns.length > 0 &&
     targetColumns.every((target) => !featureColumns.includes(target))
   );
+  const allRegression = selectedTargetSettings.length > 0 &&
+    selectedTargetSettings.every((setting) => setting.task_type === "regression");
+  const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
+  const canUseMultitask = targetColumns.length > 1 && allRegression && !hasCategoricalFeatures;
+  const projectedModel = modelType === "pca" || modelType === "rembo";
+  const modelTypeKnown = MODEL_OPTIONS.some((option) => option.value === modelType);
   const settingsValid = Boolean(
     canConfigure &&
-    optimizedTargetSettings.length > 0 &&
     selectedTargetSettings.length === targetColumns.length &&
-    selectedTargetSettings.every((setting) => validateTargetSetting(
+    selectedTargetSettings.every((setting) => validateTargetModelSetting(
       setting,
       columns.find((column) => column.name === setting.target),
       preview
     )) &&
-    selectedVariables.every(validateVariable) &&
-    (!inputPerturbation || (Number.isInteger(nW) && nW >= 1 && perturbationStd > 0))
+    selectedVariables.every(validateVariableModelSetting) &&
+    (!inputPerturbation || (Number.isInteger(nW) && nW >= 1 && perturbationStd > 0)) &&
+    modelTypeKnown &&
+    (modelType !== "multitask" || canUseMultitask) &&
+    (!projectedModel || (
+      Number.isInteger(projectionDimensions) &&
+      projectionDimensions >= 1 &&
+      projectionDimensions <= Math.max(selectedVariables.length, 1)
+    )) &&
+    Number.isInteger(fitMaxiter) && fitMaxiter >= 1
+  );
+  const candidateSettingsValid = Boolean(
+    settingsValid &&
+    optimizedTargetSettings.length > 0 &&
+    selectedTargetSettings.every((setting) => validateTargetCandidateSetting(
+      setting,
+      columns.find((column) => column.name === setting.target),
+      preview
+    )) &&
+    selectedVariables.every(validateVariableCandidateSetting)
   );
 
   function setTheme(nextTheme: Theme) {
@@ -440,7 +484,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   }
 
   async function execute() {
-    if (!dataset || !settingsValid) return;
+    if (!dataset || !candidateSettingsValid) return;
     const baseInput: RunRegressionInput = {
       datasetId: dataset.dataset_id,
       featureColumns,
@@ -469,7 +513,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     const canReuse = Boolean(reusableRunId && lastModelSignature === modelSignature);
     const reuseModel = canReuse && window.confirm(
       "作成済みモデルを使用しますか？\n\n" +
-      "OK: モデルを再学習せず、現在の獲得関数・探索手法で候補だけを生成します。\n" +
+      "OK: モデルを再学習せず、現在の候補提案条件で候補だけを生成します。\n" +
       "キャンセル: モデルを再学習してから候補を生成します。"
     );
     const input: RunRegressionInput = {
@@ -478,8 +522,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     };
 
     setBusy(reuseModel
-      ? "作成済みモデルを使用して候補探索を実行しています"
-      : "モデル学習と候補探索を実行しています");
+      ? "作成済みモデルを使用して候補提案を実行しています"
+      : "モデル学習と候補提案を実行しています");
     setError(null);
     try {
       const response = await runRegression(input);
@@ -546,6 +590,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     result,
     canConfigure,
     settingsValid,
+    candidateSettingsValid,
     handleFile,
     toggleFeature,
     toggleTarget,

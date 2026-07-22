@@ -31,6 +31,7 @@ export default function PreparePage() {
     );
   }
 
+  const preview = dataset.preview;
   const targetSet = new Set(targetColumns);
   const featureCandidates = selectableColumns.filter((column) => !targetSet.has(column.name));
 
@@ -57,7 +58,7 @@ export default function PreparePage() {
       fixed: false,
       fixed_value: undefined,
       categories: nextType === "categorical"
-        ? getColumnClassValues(column, dataset.preview)
+        ? getColumnClassValues(column, preview)
         : undefined,
       lower: nextType === "numeric" ? variable.lower ?? column.min ?? undefined : undefined,
       upper: nextType === "numeric" ? variable.upper ?? column.max ?? undefined : undefined,

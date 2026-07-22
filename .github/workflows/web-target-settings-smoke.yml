@@ -5,13 +5,16 @@ on:
     branches:
       - main
     paths:
+      - "pyproject.toml"
       - "src/bochan/serving/webapp/**"
+      - "src/bochan/visualization/plots.py"
       - "tests/test_webapp_multiobjective_contract.py"
       - "tests/test_webapp_target_results_contract.py"
       - "tests/test_webapp_feature_constraints_optimizer_contract.py"
       - "tests/test_webapp_tabular_backend.py"
       - "tests/test_webapp_advanced_controls.py"
       - "tests/test_webapp_model_reuse.py"
+      - "tests/test_ternary_plot_dependency.py"
       - ".github/workflows/web-target-settings-smoke.yml"
   workflow_dispatch:
 
@@ -38,6 +41,7 @@ jobs:
             tests/test_webapp_tabular_backend.py \
             tests/test_webapp_advanced_controls.py \
             tests/test_webapp_model_reuse.py \
+            tests/test_ternary_plot_dependency.py \
             2>&1 | tee pytest-web-target-settings.log
           status=${PIPESTATUS[0]}
           exit "$status"
@@ -59,12 +63,14 @@ jobs:
             src/bochan/serving/webapp/workflows.py \
             src/bochan/serving/webapp/workflows_extended.py \
             src/bochan/serving/webapp/workflows_tabular.py \
+            src/bochan/visualization/plots.py \
             tests/test_webapp_multiobjective_contract.py \
             tests/test_webapp_target_results_contract.py \
             tests/test_webapp_feature_constraints_optimizer_contract.py \
             tests/test_webapp_tabular_backend.py \
             tests/test_webapp_advanced_controls.py \
             tests/test_webapp_model_reuse.py \
+            tests/test_ternary_plot_dependency.py \
             2>&1 | tee ruff-web-target-settings.log
           status=${PIPESTATUS[0]}
           exit "$status"

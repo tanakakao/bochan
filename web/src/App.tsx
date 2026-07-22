@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import { useEffect, type ComponentType } from "react";
 import {
   STEPS,
   WorkbenchProvider,
@@ -13,6 +13,7 @@ import ResultsPage from "./pages/ResultsPage";
 import SettingsPage from "./pages/SettingsPage";
 import { targetClassValues } from "./targetSettingUtils";
 import type { AcquisitionFamily, TargetSetting } from "./types";
+import { setWorkbenchMode, useWorkbenchMode } from "./workbenchMode";
 
 const PAGES: Record<WorkbenchStep, ComponentType> = {
   data: DataPage,
@@ -23,7 +24,14 @@ const PAGES: Record<WorkbenchStep, ComponentType> = {
   logs: LogsPage
 };
 
-const ICONS = ["▦", "◇", "⌘", "↗", "◎", "≡"];
+const ICONS: Record<WorkbenchStep, string> = {
+  data: "▦",
+  prepare: "◇",
+  settings: "⌘",
+  optimize: "↗",
+  results: "◎",
+  logs: "≡"
+};
 
 function formatBestObserved(value: number | Record<string, number>): string {
   if (typeof value === "number") return Number.isFinite(value) ? value.toPrecision(5) : "—";
@@ -65,6 +73,7 @@ function summarizeTargetSetting(setting: TargetSetting): string {
 }
 
 function WorkbenchLayout() {
+  const mode = useWorkbenchMode();
   const {
     theme,
     setTheme,
@@ -85,11 +94,20 @@ function WorkbenchLayout() {
     q,
     result
   } = useWorkbench();
-  const index = STEPS.findIndex(([id]) => id === step);
+  const visibleSteps = mode === "simple"
+    ? STEPS.filter(([id]) => id === "data" || id === "prepare" || id === "results" || id === "logs")
+    : STEPS;
+  const index = visibleSteps.findIndex(([id]) => id === step);
   const Page = PAGES[step];
   const targetSummary = selectedTargetSettings.length
     ? selectedTargetSettings.map(summarizeTargetSetting).join(" / ")
     : "—";
+
+  useEffect(() => {
+    if (mode === "simple" && (step === "settings" || step === "optimize")) {
+      setStep(dataset ? "prepare" : "data");
+    }
+  }, [dataset, mode, setStep, step]);
 
   function isComplete(id: WorkbenchStep, stepIndex: number): boolean {
     return stepIndex < index && canOpenStep(id);
@@ -107,7 +125,7 @@ function WorkbenchLayout() {
         </div>
 
         <div className="workflow-strip" aria-label="ワークフロー">
-          {STEPS.map(([id, label], stepIndex) => (
+          {visibleSteps.map(([id, label], stepIndex) => (
             <div className="workflow-item" key={id}>
               <button
                 className={`workflow-step ${id === step ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
@@ -118,7 +136,7 @@ function WorkbenchLayout() {
                 <span>{stepIndex + 1}</span>
                 <strong>{label}</strong>
               </button>
-              {stepIndex < STEPS.length - 1 && <i />}
+              {stepIndex < visibleSteps.length - 1 && <i />}
             </div>
           ))}
         </div>
@@ -144,9 +162,29 @@ function WorkbenchLayout() {
 
       <main className="app-shell">
         <aside className="left-rail">
+          <div className="rail-section-label">Mode</div>
+          <div className="workbench-mode-switch" role="group" aria-label="実行モード">
+            <button
+              type="button"
+              className={mode === "simple" ? "active" : ""}
+              aria-pressed={mode === "simple"}
+              onClick={() => setWorkbenchMode("simple")}
+            >
+              簡易
+            </button>
+            <button
+              type="button"
+              className={mode === "advanced" ? "active" : ""}
+              aria-pressed={mode === "advanced"}
+              onClick={() => setWorkbenchMode("advanced")}
+            >
+              詳細
+            </button>
+          </div>
+
           <div className="rail-section-label">Workflow</div>
           <nav className="tabs" aria-label="ページナビゲーション">
-            {STEPS.map(([id, label, detail], stepIndex) => (
+            {visibleSteps.map(([id, label, detail], stepIndex) => (
               <button
                 key={id}
                 className={`tab ${step === id ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
@@ -154,7 +192,7 @@ function WorkbenchLayout() {
                 disabled={!canOpenStep(id)}
                 aria-current={step === id ? "page" : undefined}
               >
-                <span className="nav-icon">{ICONS[stepIndex]}</span>
+                <span className="nav-icon">{ICONS[id]}</span>
                 <span><strong>{label}</strong><small>{detail}</small></span>
                 <em>{stepIndex + 1}</em>
               </button>
@@ -200,6 +238,7 @@ function WorkbenchLayout() {
               <strong>現在のデータ</strong>
             </div>
             <div className="context-list">
+              <div><span>Mode</span><strong>{mode === "simple" ? "簡易" : "詳細"}</strong></div>
               <div><span>File</span><strong>{dataset?.name || "—"}</strong></div>
               <div><span>Rows</span><strong>{dataset?.profile.n_rows ?? "—"}</strong></div>
               <div><span>Targets</span><strong>{targetColumns.length ? targetColumns.join(", ") : "—"}</strong></div>
@@ -241,6 +280,7 @@ function WorkbenchLayout() {
 
       <footer className="statusbar">
         <span><span className={`dot ${health.status}`} /> API {health.status}</span>
+        <span>{mode === "simple" ? "Simple mode" : "Advanced mode"}</span>
         <span>{dataset ? `${dataset.profile.n_rows} rows` : "No data"}</span>
         <span>{result ? `${result.candidates.length} candidates` : "No result"}</span>
         <span className="privacy-status">React · FastAPI · BoTorch</span>

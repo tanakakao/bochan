@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState, SectionHeader } from "../components/Common";
+import FeatureConstraints from "../components/FeatureConstraints";
+import SearchVariableSettings from "../components/SearchVariableSettings";
+import TargetProposalSettings from "../components/TargetProposalSettings";
 import { useWorkbench } from "../context/WorkbenchContext";
 import type { AcquisitionFamily } from "../types";
 import {
@@ -8,56 +11,11 @@ import {
   type SearchMethod
 } from "../webRunSettings";
 
-type ModelFamily =
-  | "standard_gp"
-  | "deep_representation"
-  | "high_dimensional"
-  | "robust_noise"
-  | "multitask";
-
 type SearchMethodFamily =
   | "gradient"
   | "metaheuristic"
   | "sampling"
   | "multiobjective";
-
-const MODEL_FAMILY_OPTIONS: Array<{ value: ModelFamily; label: string }> = [
-  { value: "standard_gp", label: "標準ガウス過程" },
-  { value: "deep_representation", label: "深層・表現学習" },
-  { value: "high_dimensional", label: "高次元・次元削減" },
-  { value: "robust_noise", label: "ノイズ・頑健" },
-  { value: "multitask", label: "マルチタスク" }
-];
-
-const MODEL_OPTIONS = [
-  { value: "base", label: "Base GP", family: "standard_gp" },
-  { value: "deepgp", label: "Deep GP", family: "deep_representation" },
-  { value: "deepkernel", label: "Deep Kernel", family: "deep_representation" },
-  { value: "saas", label: "SAAS", family: "high_dimensional" },
-  { value: "pca", label: "PCA", family: "high_dimensional" },
-  { value: "rembo", label: "REMBO", family: "high_dimensional" },
-  { value: "robust", label: "Robust (RRP)", family: "robust_noise" },
-  { value: "hetero", label: "Heteroskedastic", family: "robust_noise" },
-  { value: "multitask", label: "Multitask GP", family: "multitask" }
-] as const satisfies ReadonlyArray<{
-  value: string;
-  label: string;
-  family: ModelFamily;
-}>;
-
-type WebModelType = (typeof MODEL_OPTIONS)[number]["value"];
-
-const MODEL_DESCRIPTIONS: Record<WebModelType, string> = {
-  base: "標準的なガウス過程モデルです。",
-  deepgp: "複数層のガウス過程で非線形な表現を学習します。",
-  deepkernel: "ニューラルネットワークで特徴表現を学習し、ガウス過程へ接続します。",
-  saas: "高次元入力のうち重要な少数次元を疎に選択します。",
-  pca: "指定次元へPCA射影してモデル化します。",
-  rembo: "指定次元の低次元空間から探索します。",
-  robust: "内部ではRRPモデルを使用し、外れ値や頑健性を考慮します。",
-  hetero: "入力位置によって異なる観測ノイズをモデル化します。",
-  multitask: "回帰目的間の相関を学習して情報共有します。"
-};
 
 const FAMILY_OPTIONS: Array<{ value: AcquisitionFamily; label: string }> = [
   { value: "bayesian_optimization", label: "ベイズ最適化" },
@@ -110,25 +68,25 @@ function familyLabel(value: AcquisitionFamily): string {
   return FAMILY_OPTIONS.find((option) => option.value === value)?.label ?? value;
 }
 
-function modelFamilyFor(modelType: string): ModelFamily {
-  return MODEL_OPTIONS.find((option) => option.value === modelType)?.family ?? "standard_gp";
-}
-
 function searchMethodFamilyFor(searchMethod: SearchMethod): SearchMethodFamily {
   return SEARCH_METHOD_OPTIONS.find((option) => option.value === searchMethod)?.family ?? "gradient";
 }
 
-/** Configures the surrogate, acquisition family/function, and search backend. */
+/** Configures objectives, search space, constraints, acquisition, and candidate search. */
 export default function OptimizePage() {
   const {
     dataset,
+    columns,
     settingsValid,
+    candidateSettingsValid,
+    targetColumns,
+    targetSettings,
+    patchTargetSetting,
     optimizedTargetSettings,
     selectedVariables,
+    patchVariable,
     modelType,
-    setModelType,
     projectionDimensions,
-    setProjectionDimensions,
     acquisitionFamily,
     setAcquisitionFamily,
     acquisition,
@@ -136,43 +94,22 @@ export default function OptimizePage() {
     beta,
     setBeta,
     fitMaxiter,
-    setFitMaxiter,
     q,
     setQ,
     numRestarts,
     setNumRestarts,
     rawSamples,
     setRawSamples,
-    execute
+    execute,
+    numberOrUndefined
   } = useWorkbench();
   const [searchMethod, setSearchMethod] = useState<SearchMethod>(() => loadSearchMethod());
 
   const optimizedCount = optimizedTargetSettings.length;
   const multiObjective = optimizedCount > 1;
-  const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
   const taskTypes = optimizedTargetSettings.map((setting) => setting.task_type);
   const homogeneousTask = taskTypes.length > 0 && taskTypes.every((task) => task === taskTypes[0]);
-  const allRegression = taskTypes.length > 0 && taskTypes.every((task) => task === "regression");
-  const canUseMultitask = acquisitionFamily === "bayesian_optimization" &&
-    multiObjective && allRegression && !hasCategoricalFeatures;
   const projectedModel = modelType === "pca" || modelType === "rembo";
-  const maxProjectionDimensions = Math.max(selectedVariables.length, 1);
-
-  const availableModels = useMemo(
-    () => MODEL_OPTIONS.filter((option) => option.value !== "multitask" || canUseMultitask),
-    [canUseMultitask]
-  );
-  const modelFamily = modelFamilyFor(modelType);
-  const availableModelFamilies = useMemo(
-    () => MODEL_FAMILY_OPTIONS.filter((family) => (
-      availableModels.some((model) => model.family === family.value)
-    )),
-    [availableModels]
-  );
-  const modelOptions = useMemo(
-    () => availableModels.filter((option) => option.family === modelFamily),
-    [availableModels, modelFamily]
-  );
 
   const acquisitionOptions = useMemo(() => {
     if (acquisitionFamily === "bayesian_optimization") {
@@ -204,15 +141,7 @@ export default function OptimizePage() {
   );
 
   useEffect(() => {
-    if (!availableModels.some((option) => option.value === modelType)) {
-      setModelType("base");
-    }
-  }, [availableModels, modelType, setModelType]);
-
-  useEffect(() => {
-    if (!acquisitionOptions.includes(acquisition)) {
-      setAcquisition(acquisitionOptions[0]);
-    }
+    if (!acquisitionOptions.includes(acquisition)) setAcquisition(acquisitionOptions[0]);
   }, [acquisition, acquisitionOptions, setAcquisition]);
 
   useEffect(() => {
@@ -221,17 +150,6 @@ export default function OptimizePage() {
       saveSearchMethod("normal");
     }
   }, [searchMethod, searchMethodOptions]);
-
-  useEffect(() => {
-    if (projectionDimensions > maxProjectionDimensions) {
-      setProjectionDimensions(Math.min(2, maxProjectionDimensions));
-    }
-  }, [maxProjectionDimensions, projectionDimensions, setProjectionDimensions]);
-
-  function changeModelFamily(nextFamily: ModelFamily) {
-    const firstModel = availableModels.find((option) => option.family === nextFamily);
-    if (firstModel) setModelType(firstModel.value);
-  }
 
   function changeFamily(nextFamily: AcquisitionFamily) {
     setAcquisitionFamily(nextFamily);
@@ -256,17 +174,11 @@ export default function OptimizePage() {
 
   const validationErrors = useMemo(() => {
     const errors: string[] = [];
-    if (!settingsValid) errors.push("Settingsページの目的変数または探索変数設定を確認してください。");
+    if (!settingsValid) errors.push("モデル設定画面のタスク、前処理、欠損処理、モデル設定を確認してください。");
+    if (!candidateSettingsValid) errors.push("目的変数の候補条件または説明変数の探索範囲を確認してください。");
     if (optimizedCount === 0) errors.push("最適化対象の目的変数を1つ以上選択してください。");
-    if (modelType === "multitask" && !canUseMultitask) {
-      errors.push("multitaskはベイズ最適化で、複数の回帰目的かつ説明変数がすべて数値の場合に選択できます。");
-    }
-    if (projectedModel && (
-      !Number.isInteger(projectionDimensions) ||
-      projectionDimensions < 1 ||
-      projectionDimensions > maxProjectionDimensions
-    )) {
-      errors.push(`射影次元は1〜${maxProjectionDimensions}にしてください。`);
+    if (modelType === "multitask" && acquisitionFamily !== "bayesian_optimization") {
+      errors.push("Multitask GPは現在ベイズ最適化で使用してください。");
     }
     if (
       acquisitionFamily === "level_set_estimation" &&
@@ -277,23 +189,18 @@ export default function OptimizePage() {
     if (searchMethod === "nsgaii" && (!multiObjective || acquisitionFamily !== "bayesian_optimization")) {
       errors.push("NSGA-IIは多目的ベイズ最適化の場合にのみ選択できます。");
     }
-    if (fitMaxiter < 1) errors.push("fit maxiterは1以上にしてください。");
     if (q < 1 || q > 20) errors.push("候補点数qは1〜20にしてください。");
     if (numRestarts < 1) errors.push("num_restartsは1以上にしてください。");
     if (rawSamples < 1) errors.push("raw_samplesは1以上にしてください。");
     return errors;
   }, [
     acquisitionFamily,
-    canUseMultitask,
-    fitMaxiter,
-    maxProjectionDimensions,
+    candidateSettingsValid,
     modelType,
     multiObjective,
     numRestarts,
     optimizedCount,
     optimizedTargetSettings,
-    projectedModel,
-    projectionDimensions,
     q,
     rawSamples,
     searchMethod,
@@ -304,17 +211,16 @@ export default function OptimizePage() {
   const modeLabel = multiObjective ? "多目的" : "単目的";
   const taskSummary = homogeneousTask ? taskLabel(taskTypes[0] ?? "regression") : "混合タスク";
   const searchMethodLabel = searchMethodOptions.find((option) => option.value === searchMethod)?.label ?? searchMethod;
-  const selectedModelDescription = MODEL_DESCRIPTIONS[modelType as WebModelType] ?? "";
 
   if (!dataset || !settingsValid) {
     return (
       <>
         <SectionHeader
-          step="4 · OPTIMIZE"
-          title="モデルと候補生成を設定する"
-          text="先にSettingsページで目的変数と探索変数を設定してください。"
+          step="4 · SUGGEST"
+          title="候補提案条件を設定する"
+          text="先にモデル設定画面でタスク、前処理、欠損処理、モデルを設定してください。"
         />
-        <EmptyState>モデル学習に必要な設定が完了していません。</EmptyState>
+        <EmptyState>モデル作成に必要な設定が完了していません。</EmptyState>
       </>
     );
   }
@@ -322,51 +228,32 @@ export default function OptimizePage() {
   return (
     <>
       <SectionHeader
-        step="4 · OPTIMIZE"
-        title="モデルと候補生成を設定する"
-        text="モデル、獲得関数、探索手法、候補点数と計算量を設定します。"
+        step="4 · SUGGEST"
+        title="候補提案条件を設定する"
+        text="目的、探索範囲、制約、獲得関数、探索手法、候補数を設定します。"
         action={<button disabled={!canExecute} onClick={() => void execute()}>候補を生成</button>}
       />
 
-      <div className="form-grid optimize-grid">
-        <article className="panel compact-panel">
-          <div className="panel-title"><div><span className="panel-kicker">SURROGATE</span><h3>モデル</h3></div></div>
-          <label>
-            大分類
-            <select value={modelFamily} onChange={(event) => changeModelFamily(event.target.value as ModelFamily)}>
-              {availableModelFamilies.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            モデル種類
-            <select value={modelType} onChange={(event) => setModelType(event.target.value)}>
-              {modelOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </label>
-          {projectedModel && (
-            <label>
-              射影・潜在次元数
-              <input
-                type="number"
-                min={1}
-                max={maxProjectionDimensions}
-                step={1}
-                value={projectionDimensions}
-                onChange={(event) => setProjectionDimensions(Number(event.target.value))}
-              />
-            </label>
-          )}
-          <p className="settings-note">
-            {selectedModelDescription}
-            {!homogeneousTask ? " 混合タスクでは目的変数ごとのサブモデルをhybrid wrapperに束ねます。" : null}
-          </p>
-          <label>Fit maxiter<input type="number" min={1} value={fitMaxiter} onChange={(event) => setFitMaxiter(Number(event.target.value))} /></label>
-        </article>
+      <TargetProposalSettings
+        columns={columns}
+        preview={dataset.preview}
+        targetColumns={targetColumns}
+        targetSettings={targetSettings}
+        patchTargetSetting={patchTargetSetting}
+        numberOrUndefined={numberOrUndefined}
+      />
 
+      <SearchVariableSettings
+        columns={columns}
+        preview={dataset.preview}
+        variables={selectedVariables}
+        patchVariable={patchVariable}
+        numberOrUndefined={numberOrUndefined}
+      />
+
+      <FeatureConstraints variables={selectedVariables} />
+
+      <div className="form-grid optimize-grid suggestion-method-grid">
         <article className="panel compact-panel">
           <div className="panel-title"><div><span className="panel-kicker">ACQUISITION</span><h3>獲得関数</h3></div></div>
           <label>
@@ -382,7 +269,7 @@ export default function OptimizePage() {
             </select>
           </label>
           {acquisition.toUpperCase().includes("UCB") && searchMethod !== "nsgaii" && (
-            <label>Beta<input type="number" min={0} step="0.1" value={beta} onChange={(event) => setBeta(Number(event.target.value))} /></label>
+            <label>Beta<input type="number" min={0} step="any" value={beta} onChange={(event) => setBeta(Number(event.target.value))} /></label>
           )}
           <p className="settings-note">
             {searchMethod === "nsgaii" && "NSGA-II選択時は、内部的にNSGA-II用のベクトル獲得戦略へ切り替えます。"}
@@ -410,31 +297,29 @@ export default function OptimizePage() {
               ))}
             </select>
           </label>
-          <p className="settings-note search-method-note">
-            {SEARCH_FAMILY_DESCRIPTIONS[searchMethodFamily]}
-          </p>
+          <p className="settings-note search-method-note">{SEARCH_FAMILY_DESCRIPTIONS[searchMethodFamily]}</p>
         </article>
 
         <article className="panel compact-panel">
           <div className="panel-title"><div><span className="panel-kicker">CANDIDATES</span><h3>候補生成</h3></div></div>
-          <label>q<input type="number" min={1} max={20} value={q} onChange={(event) => setQ(Number(event.target.value))} /></label>
-          <label>num_restarts<input type="number" min={1} value={numRestarts} onChange={(event) => setNumRestarts(Number(event.target.value))} /></label>
-          <label>raw_samples<input type="number" min={1} value={rawSamples} onChange={(event) => setRawSamples(Number(event.target.value))} /></label>
+          <label>q<input type="number" min={1} max={20} step={1} value={q} onChange={(event) => setQ(Number(event.target.value))} /></label>
+          <label>num_restarts<input type="number" min={1} step={1} value={numRestarts} onChange={(event) => setNumRestarts(Number(event.target.value))} /></label>
+          <label>raw_samples<input type="number" min={1} step={1} value={rawSamples} onChange={(event) => setRawSamples(Number(event.target.value))} /></label>
         </article>
       </div>
 
       <article className="panel compact-panel validation-panel">
         <div className="panel-title">
-          <div><span className="panel-kicker">VALIDATION</span><h3>実行前チェック</h3><p>モデル、目的変数、獲得関数、探索手法を確認します。</p></div>
+          <div><span className="panel-kicker">VALIDATION</span><h3>候補提案前チェック</h3><p>目的、探索範囲、制約、獲得関数、探索手法を確認します。</p></div>
           <span className={`status-chip ${canExecute ? "success" : "warning"}`}>{canExecute ? "Ready" : `${validationErrors.length} issues`}</span>
         </div>
-        {canExecute ? <p className="settings-note">設定に矛盾は見つかりませんでした。</p> : <ul>{validationErrors.map((message) => <li key={message}>{message}</li>)}</ul>}
+        {canExecute ? <p className="settings-note">候補提案条件に矛盾は見つかりませんでした。</p> : <ul>{validationErrors.map((message) => <li key={message}>{message}</li>)}</ul>}
         <div className="train-launcher">
           <div>
             <strong>{modelType}{projectedModel ? `(${projectionDimensions}D)` : ""} × {familyLabel(acquisitionFamily)} × {searchMethod === "nsgaii" ? "NSGA-II" : acquisition}</strong>
-            <span>{modeLabel} · {taskSummary} · {searchMethodLabel} · 最適化対象 {optimizedCount}件 · q={q}</span>
+            <span>{modeLabel} · {taskSummary} · {searchMethodLabel} · 最適化対象 {optimizedCount}件 · q={q} · fit={fitMaxiter}</span>
           </div>
-          <button disabled={!canExecute} onClick={() => void execute()}>学習して候補を生成</button>
+          <button disabled={!canExecute} onClick={() => void execute()}>候補を生成</button>
         </div>
       </article>
     </>

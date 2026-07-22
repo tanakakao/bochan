@@ -119,17 +119,27 @@ function canonicalValue(value: unknown): unknown {
   return value;
 }
 
-/** Fingerprint of settings that affect fitted model parameters and training tensors. */
+/** Fingerprint containing only settings that affect model fitting and encoding. */
 export function buildModelReuseSignature(input: RunRegressionInput): string {
   const featureMissing = loadFeatureMissingSettings();
+  const targetModelSettings = input.targetSettings.map((setting) => ({
+    target: setting.target,
+    task_type: setting.task_type,
+    target_class: setting.target_class ?? null,
+    class_order: setting.class_order ?? []
+  }));
+  const modelSearchSpace = input.searchSpace.map((variable) => ({
+    name: variable.name,
+    type: variable.type,
+    lower: variable.lower,
+    upper: variable.upper,
+    categories: variable.categories ?? []
+  }));
   return JSON.stringify(canonicalValue({
     datasetId: input.datasetId,
     featureColumns: input.featureColumns,
-    targetColumn: input.targetColumn,
     targetColumns: input.targetColumns,
-    targetSettings: input.targetSettings,
-    targetDirections: input.targetDirections,
-    direction: input.direction,
+    targetModelSettings,
     modelType: input.modelType,
     projectionDimensions: input.projectionDimensions,
     fitMaxiter: input.fitMaxiter,
@@ -137,7 +147,7 @@ export function buildModelReuseSignature(input: RunRegressionInput): string {
     inputPerturbation: input.inputPerturbation,
     nW: input.nW,
     perturbationStd: input.perturbationStd,
-    searchSpace: input.searchSpace,
+    searchSpace: modelSearchSpace,
     featureMissing
   }));
 }

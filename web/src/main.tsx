@@ -7,6 +7,7 @@ import "./target-settings.css";
 import "./constraint-settings.css";
 import "./advanced-settings.css";
 import "./constraint-selection.css";
+import "./workflow-separation.css";
 
 installDynamicNumberInputSteps();
 

@@ -1,7 +1,8 @@
 import { EmptyState, SectionHeader } from "../components/Common";
 import { useWorkbench } from "../context/WorkbenchContext";
+import { getColumnClassValues } from "../targetSettingUtils";
 
-/** Selects target and feature columns without exposing optimization settings. */
+/** Selects targets/features and defines whether each selected feature is numeric or categorical. */
 export default function PreparePage() {
   const {
     dataset,
@@ -9,6 +10,8 @@ export default function PreparePage() {
     selectableColumns,
     targetColumns,
     featureColumns,
+    variables,
+    patchVariable,
     toggleTarget,
     toggleFeature,
     canConfigure,
@@ -28,6 +31,7 @@ export default function PreparePage() {
     );
   }
 
+  const preview = dataset.preview;
   const targetSet = new Set(targetColumns);
   const featureCandidates = selectableColumns.filter((column) => !targetSet.has(column.name));
 
@@ -43,15 +47,34 @@ export default function PreparePage() {
     [...targetColumns].forEach(toggleTarget);
   }
 
+  function setFeatureCategorical(name: string, categorical: boolean) {
+    const column = selectableColumns.find((candidate) => candidate.name === name);
+    const variable = variables[name];
+    if (!column || !variable) return;
+    if (!featureColumns.includes(name)) toggleFeature(name);
+    const nextType = categorical || column.kind === "categorical" ? "categorical" : "numeric";
+    patchVariable(name, {
+      type: nextType,
+      fixed: false,
+      fixed_value: undefined,
+      categories: nextType === "categorical"
+        ? getColumnClassValues(column, preview)
+        : undefined,
+      lower: nextType === "numeric" ? variable.lower ?? column.min ?? undefined : undefined,
+      upper: nextType === "numeric" ? variable.upper ?? column.max ?? undefined : undefined,
+      step: nextType === "numeric" ? variable.step : undefined
+    });
+  }
+
   return (
     <>
       <SectionHeader
         step="2 · SELECT"
-        title="目的変数と説明変数を選択する"
-        text="列名をクリックして選択します。選択済みの列はアクセントカラーで表示されます。"
+        title="変数と説明変数の型を設定する"
+        text="列名をクリックして選択します。説明変数は同じ枠内で数値／カテゴリ扱いを設定できます。"
         action={
           <button disabled={!canConfigure} onClick={() => setStep("settings")}>
-            設定ページへ
+            モデル設定へ
           </button>
         }
       />
@@ -62,7 +85,7 @@ export default function PreparePage() {
             <div>
               <span className="panel-kicker">TARGET COLUMNS</span>
               <h3>目的変数</h3>
-              <p>モデル化、最適化、制約判定に使用する出力列を選択します。</p>
+              <p>モデル化、候補提案、制約判定に使用する出力列を選択します。</p>
             </div>
             <span className={`status-chip ${targetColumns.length ? "success" : "warning"}`}>
               {targetColumns.length ? `${targetColumns.length} selected` : "Required"}
@@ -96,7 +119,7 @@ export default function PreparePage() {
             <div>
               <span className="panel-kicker">FEATURE COLUMNS</span>
               <h3>説明変数</h3>
-              <p>モデル入力と候補探索に使用する列を選択します。</p>
+              <p>青は数値、紫はカテゴリ扱いです。カテゴリ設定を変更すると、その列も選択されます。</p>
             </div>
             <span className={`status-chip ${featureColumns.length ? "success" : "warning"}`}>
               {featureColumns.length ? `${featureColumns.length} selected` : "Required"}
@@ -126,16 +149,32 @@ export default function PreparePage() {
           <div className="variable-selection-list" role="group" aria-label="説明変数">
             {featureCandidates.map((column) => {
               const selected = featureColumns.includes(column.name);
+              const variable = variables[column.name];
+              const categorical = variable?.type === "categorical" || column.kind === "categorical";
               return (
-                <button
-                  type="button"
+                <div
                   key={column.name}
-                  className={`variable-choice ${selected ? "selected" : ""}`}
-                  aria-pressed={selected}
-                  onClick={() => toggleFeature(column.name)}
+                  className={`variable-choice feature-variable-choice ${selected ? "selected" : ""} ${selected && categorical ? "selected-categorical" : ""}`}
                 >
-                  {column.name}
-                </button>
+                  <button
+                    type="button"
+                    className="variable-choice-main"
+                    aria-pressed={selected}
+                    onClick={() => toggleFeature(column.name)}
+                  >
+                    <span>{column.name}</span>
+                    <small>{categorical ? "categorical" : "numeric"}</small>
+                  </button>
+                  <label className="feature-type-toggle" title={column.kind === "categorical" ? "入力データ上カテゴリ列のため固定です。" : "カテゴリ変数として扱う"}>
+                    <input
+                      type="checkbox"
+                      checked={categorical}
+                      disabled={column.kind === "categorical"}
+                      onChange={(event) => setFeatureCategorical(column.name, event.target.checked)}
+                    />
+                    <span>カテゴリ</span>
+                  </label>
+                </div>
               );
             })}
           </div>

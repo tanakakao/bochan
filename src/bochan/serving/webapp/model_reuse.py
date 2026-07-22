@@ -41,25 +41,67 @@ def _plain(value: Any) -> Any:
     return str(value)
 
 
+def _target_model_settings(model_kwargs: dict[str, Any]) -> list[dict[str, Any]]:
+    """Keep only target fields that affect encoding or model construction."""
+
+    raw_settings = list(model_kwargs.pop("web_target_settings", []) or [])
+    model_kwargs.pop("web_target_roles", None)
+    settings: list[dict[str, Any]] = []
+    for raw in raw_settings:
+        value = _plain(raw)
+        if not isinstance(value, dict):
+            continue
+        settings.append(
+            {
+                "target": value.get("target"),
+                "task_type": value.get("task_type"),
+                "target_class": value.get("target_class"),
+                "class_order": list(value.get("class_order") or []),
+            }
+        )
+    return settings
+
+
+def _model_search_space(request: Any) -> list[dict[str, Any]]:
+    """Keep feature encoding and normalization bounds, not proposal-only fields."""
+
+    settings: list[dict[str, Any]] = []
+    for raw in list(getattr(request, "search_space", []) or []):
+        value = _plain(raw)
+        if not isinstance(value, dict):
+            continue
+        settings.append(
+            {
+                "name": value.get("name"),
+                "type": value.get("type"),
+                "lower": value.get("lower"),
+                "upper": value.get("upper"),
+                "categories": list(value.get("categories") or []),
+            }
+        )
+    return settings
+
+
 def model_reuse_signature(request: Any) -> str:
     """Return a fingerprint containing only settings that affect model fitting."""
 
+    model_kwargs = dict(getattr(request, "model_kwargs", {}) or {})
+    model_kwargs.pop(_WEB_REUSE_MODEL_KEY, None)
+    target_model_settings = _target_model_settings(model_kwargs)
     payload = {
         "dataset_id": getattr(request, "dataset_id", None),
         "feature_columns": list(getattr(request, "feature_columns", []) or []),
-        "target_column": getattr(request, "target_column", None),
         "target_columns": list(getattr(request, "target_columns", []) or []),
-        "direction": getattr(request, "direction", None),
-        "directions": dict(getattr(request, "directions", {}) or {}),
+        "target_model_settings": target_model_settings,
         "model_type": getattr(request, "model_type", None),
-        "model_kwargs": dict(getattr(request, "model_kwargs", {}) or {}),
+        "model_kwargs": model_kwargs,
         "fit_maxiter": getattr(request, "fit_maxiter", None),
         "normalize": getattr(request, "normalize", None),
         "outcome_transform": getattr(request, "outcome_transform", None),
         "input_perturbation": getattr(request, "input_perturbation", None),
         "n_w": getattr(request, "n_w", None),
         "perturbation_std": getattr(request, "perturbation_std", None),
-        "search_space": list(getattr(request, "search_space", []) or []),
+        "search_space": _model_search_space(request),
         "drop_missing": getattr(request, "drop_missing", None),
     }
     encoded = json.dumps(
@@ -165,8 +207,8 @@ def reuse_fitted_tabular_optimizer(
         )
     if source_signature != current_signature:
         raise ValueError(
-            "The fitted model cannot be reused because data, target, feature, model, "
-            "input-transform, missing-value, or fit settings have changed."
+            "The fitted model cannot be reused because data, target task, feature type, "
+            "model, input-transform, missing-value, bounds, or fit settings have changed."
         )
 
     source = get_visualization_session(source_run_id)

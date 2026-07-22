@@ -8,6 +8,7 @@ import torch
 
 from bochan.serving.webapp.model_reuse import (
     model_reuse_run,
+    model_reuse_signature,
     prepare_model_reuse_request,
     register_fitted_model,
     reuse_fitted_tabular_optimizer,
@@ -156,3 +157,76 @@ def test_acquisition_changes_do_not_change_model_fingerprint() -> None:
 
     assert reused.bo is source.bo
     assert report["model_reused"] is True
+
+
+def test_candidate_target_roles_do_not_change_model_fingerprint() -> None:
+    source = _request()
+    source.model_kwargs["web_target_settings"] = [
+        {
+            "target": "y",
+            "task_type": "regression",
+            "optimize": True,
+            "direction": "maximize",
+            "goal": "none",
+            "value": None,
+        }
+    ]
+    changed = _request()
+    changed.direction = "minimize"
+    changed.directions = {"y": "minimize"}
+    changed.model_kwargs["web_target_settings"] = [
+        {
+            "target": "y",
+            "task_type": "regression",
+            "optimize": False,
+            "direction": "minimize",
+            "goal": "below",
+            "value": 0.25,
+        }
+    ]
+    changed.model_kwargs["web_target_roles"] = {
+        "y": {"optimize": False, "direction": "minimize"}
+    }
+
+    assert model_reuse_signature(source) == model_reuse_signature(changed)
+
+
+def test_binary_target_class_changes_model_fingerprint() -> None:
+    positive_a = _request()
+    positive_b = _request()
+    positive_a.model_kwargs["web_target_settings"] = [
+        {
+            "target": "y",
+            "task_type": "classification",
+            "target_class": "A",
+            "target_classes": ["A"],
+        }
+    ]
+    positive_b.model_kwargs["web_target_settings"] = [
+        {
+            "target": "y",
+            "task_type": "classification",
+            "target_class": "B",
+            "target_classes": ["B"],
+        }
+    ]
+
+    assert model_reuse_signature(positive_a) != model_reuse_signature(positive_b)
+
+
+def test_fixed_value_and_step_do_not_change_model_fingerprint() -> None:
+    source = _request()
+    changed = _request()
+    changed.search_space = [
+        {
+            "name": "x",
+            "type": "numeric",
+            "lower": 0.0,
+            "upper": 1.0,
+            "step": 0.1,
+            "fixed": True,
+            "fixed_value": 0.5,
+        }
+    ]
+
+    assert model_reuse_signature(source) == model_reuse_signature(changed)

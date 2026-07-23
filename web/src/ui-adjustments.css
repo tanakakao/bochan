@@ -1,0 +1,73 @@
+.feature-type-toggle {
+  position: relative;
+  min-width: 108px;
+  justify-content: center;
+  gap: 0;
+  user-select: none;
+}
+
+.feature-type-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+  clip-path: inset(50%);
+}
+
+.feature-type-toggle span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.feature-type-toggle span::after {
+  content: "OFF";
+  min-width: 30px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface-raised);
+  font-size: 9px;
+  font-weight: 820;
+  line-height: 1.35;
+  letter-spacing: 0.05em;
+  text-align: center;
+}
+
+.feature-type-toggle input:checked + span::after {
+  content: "ON";
+  color: #ffffff;
+  background: #8f6bd8;
+  border-color: #8f6bd8;
+}
+
+.feature-type-toggle:has(input:checked) {
+  color: #6944b9;
+  background: color-mix(in srgb, #8f6bd8 16%, var(--surface));
+  border-color: color-mix(in srgb, #8f6bd8 45%, var(--line));
+}
+
+.feature-type-toggle:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.feature-type-toggle input:focus-visible + span {
+  outline: 3px solid color-mix(in srgb, var(--primary) 22%, transparent);
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
+.interactive-plot-grid {
+  grid-template-columns: minmax(340px, 0.85fr) minmax(0, 1.15fr);
+}
+
+@media (max-width: 1180px) {
+  .interactive-plot-grid {
+    grid-template-columns: 1fr;
+  }
+}

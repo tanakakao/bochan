@@ -20,7 +20,7 @@ export default function FeatureMissingSettings() {
     <article className="panel feature-constraint-panel">
       <div className="panel-title">
         <div>
-          <span className="panel-kicker">3 · MISSING VALUES</span>
+          <span className="panel-kicker">4 · MISSING VALUES</span>
           <h3>説明変数の欠損値</h3>
           <p>モデル学習前に、説明変数の欠損行を削除するか補完するかを設定します。</p>
         </div>

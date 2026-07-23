@@ -106,18 +106,70 @@ export default function SettingsPage() {
         }
       />
 
-      <TargetModelSettings
-        columns={columns}
-        preview={preview}
-        targetColumns={targetColumns}
-        targetSettings={targetSettings}
-        patchTargetSetting={patchTargetSetting}
-      />
+      <div className="model-primary-grid">
+        <TargetModelSettings
+          columns={columns}
+          preview={preview}
+          targetColumns={targetColumns}
+          targetSettings={targetSettings}
+          patchTargetSetting={patchTargetSetting}
+        />
+
+        <article className="panel model-selection-panel">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">2 · SURROGATE MODEL</span>
+              <h3>学習モデル</h3>
+              <p>モデルの大分類、種類、学習反復数を設定します。</p>
+            </div>
+            <span className="status-chip success">{modelType}</span>
+          </div>
+          <div className="model-settings-grid">
+            <label>
+              大分類
+              <select value={modelFamily} onChange={(event) => changeModelFamily(event.target.value as ModelFamily)}>
+                {availableModelFamilies.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              モデル種類
+              <select value={modelType} onChange={(event) => setModelType(event.target.value)}>
+                {modelOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            {projectedModel && (
+              <label>
+                射影・潜在次元数
+                <input
+                  type="number"
+                  min={1}
+                  max={maxProjectionDimensions}
+                  step={1}
+                  value={projectionDimensions}
+                  onChange={(event) => setProjectionDimensions(Number(event.target.value))}
+                />
+              </label>
+            )}
+            <label>
+              Fit maxiter
+              <input type="number" min={1} step={1} value={fitMaxiter} onChange={(event) => setFitMaxiter(Number(event.target.value))} />
+            </label>
+          </div>
+          <p className="settings-note">
+            {selectedModelDescription}
+            {modelType === "multitask" ? " 欠損目的値があればWideMultiTask、なければKroneckerを使用します。" : null}
+          </p>
+        </article>
+      </div>
 
       <article className="panel">
         <div className="panel-title">
           <div>
-            <span className="panel-kicker">2 · INPUT TRANSFORM</span>
+            <span className="panel-kicker">3 · INPUT TRANSFORM</span>
             <h3>説明変数の前処理</h3>
             <p>学習モデルへ入力する前の正規化と入力摂動を設定します。</p>
           </div>
@@ -160,56 +212,6 @@ export default function SettingsPage() {
       </article>
 
       <FeatureMissingSettings />
-
-      <article className="panel">
-        <div className="panel-title">
-          <div>
-            <span className="panel-kicker">4 · SURROGATE MODEL</span>
-            <h3>学習モデル</h3>
-            <p>モデルの大分類、種類、学習反復数を設定します。</p>
-          </div>
-          <span className="status-chip success">{modelType}</span>
-        </div>
-        <div className="model-settings-grid">
-          <label>
-            大分類
-            <select value={modelFamily} onChange={(event) => changeModelFamily(event.target.value as ModelFamily)}>
-              {availableModelFamilies.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            モデル種類
-            <select value={modelType} onChange={(event) => setModelType(event.target.value)}>
-              {modelOptions.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </select>
-          </label>
-          {projectedModel && (
-            <label>
-              射影・潜在次元数
-              <input
-                type="number"
-                min={1}
-                max={maxProjectionDimensions}
-                step={1}
-                value={projectionDimensions}
-                onChange={(event) => setProjectionDimensions(Number(event.target.value))}
-              />
-            </label>
-          )}
-          <label>
-            Fit maxiter
-            <input type="number" min={1} step={1} value={fitMaxiter} onChange={(event) => setFitMaxiter(Number(event.target.value))} />
-          </label>
-        </div>
-        <p className="settings-note">
-          {selectedModelDescription}
-          {modelType === "multitask" ? " 欠損目的値があればWideMultiTask、なければKroneckerを使用します。" : null}
-        </p>
-      </article>
 
       {!settingsValid && (
         <article className="panel compact-panel validation-panel">

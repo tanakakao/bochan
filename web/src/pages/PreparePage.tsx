@@ -1,9 +1,115 @@
+import { useEffect, useRef, useState } from "react";
 import { EmptyState, SectionHeader } from "../components/Common";
 import { useWorkbench } from "../context/WorkbenchContext";
 import { getColumnClassValues } from "../targetSettingUtils";
+import type { ColumnProfile, SearchVariable, TargetSetting } from "../types";
+import {
+  loadFeatureConstraints,
+  loadFeatureMissingSettings,
+  loadSearchMethod,
+  loadSelectionCountConstraint,
+  saveFeatureConstraints,
+  saveFeatureMissingSettings,
+  saveSearchMethod,
+  saveSelectionCountConstraint
+} from "../webRunSettings";
+import { useWorkbenchMode } from "../workbenchMode";
+
+interface StoredRunSettingsSnapshot {
+  featureConstraints: ReturnType<typeof loadFeatureConstraints>;
+  featureMissing: ReturnType<typeof loadFeatureMissingSettings>;
+  searchMethod: ReturnType<typeof loadSearchMethod>;
+  selectionCount: ReturnType<typeof loadSelectionCountConstraint>;
+}
+
+function simpleTargetPatch(
+  column: ColumnProfile,
+  preview: Record<string, unknown>[]
+): Partial<TargetSetting> {
+  const common: Partial<TargetSetting> = {
+    optimize: true,
+    direction: "maximize",
+    goal: "none",
+    value: null,
+    target_class: null,
+    target_classes: [],
+    class_order: [],
+    target_values: []
+  };
+  if (column.kind === "numeric") return { ...common, task_type: "regression" };
+
+  const classes = getColumnClassValues(column, preview);
+  const selectedClass = classes.length === 2 ? classes[1] : classes[0];
+  return {
+    ...common,
+    task_type: "classification",
+    target_class: classes.length === 2 ? selectedClass ?? null : null,
+    target_classes: selectedClass === undefined ? [] : [selectedClass]
+  };
+}
+
+function simpleVariablePatch(
+  column: ColumnProfile,
+  preview: Record<string, unknown>[],
+  current: SearchVariable | undefined
+): Partial<SearchVariable> {
+  const categorical = column.kind === "categorical" || current?.type === "categorical";
+  if (categorical) {
+    return {
+      type: "categorical",
+      categories: getColumnClassValues(column, preview),
+      lower: undefined,
+      upper: undefined,
+      step: undefined,
+      fixed: false,
+      fixed_value: undefined
+    };
+  }
+  return {
+    type: "numeric",
+    categories: undefined,
+    lower: column.min ?? undefined,
+    upper: column.max ?? undefined,
+    step: undefined,
+    fixed: false,
+    fixed_value: undefined
+  };
+}
+
+function captureStoredRunSettings(): StoredRunSettingsSnapshot {
+  return {
+    featureConstraints: loadFeatureConstraints(),
+    featureMissing: loadFeatureMissingSettings(),
+    searchMethod: loadSearchMethod(),
+    selectionCount: loadSelectionCountConstraint()
+  };
+}
+
+function applySimpleStoredRunSettings(): void {
+  saveFeatureConstraints([]);
+  saveSelectionCountConstraint({ enabled: false, variables: [], k: 1 });
+  saveFeatureMissingSettings({
+    strategy: "drop",
+    continuousStrategy: "mean",
+    categoricalStrategy: "mode",
+    imputeMaxIter: 10,
+    imputeRandomState: null,
+    multipleImputeSamplePosterior: false
+  });
+  saveSearchMethod("normal");
+}
+
+function restoreStoredRunSettings(snapshot: StoredRunSettingsSnapshot | null): void {
+  if (!snapshot) return;
+  saveFeatureConstraints(snapshot.featureConstraints);
+  saveFeatureMissingSettings(snapshot.featureMissing);
+  saveSearchMethod(snapshot.searchMethod);
+  saveSelectionCountConstraint(snapshot.selectionCount);
+}
 
 /** Selects targets/features and defines whether each selected feature is numeric or categorical. */
 export default function PreparePage() {
+  const mode = useWorkbenchMode();
   const {
     dataset,
     targetCandidates,
@@ -12,11 +118,51 @@ export default function PreparePage() {
     featureColumns,
     variables,
     patchVariable,
+    patchTargetSetting,
     toggleTarget,
     toggleFeature,
     canConfigure,
+    candidateSettingsValid,
+    setNormalize,
+    setInputPerturbation,
+    setNW,
+    setPerturbationStd,
+    setProjectionDimensions,
+    setModelType,
+    setAcquisitionFamily,
+    setAcquisition,
+    setBeta,
+    setFitMaxiter,
+    setQ,
+    setNumRestarts,
+    setRawSamples,
+    execute,
+    setError,
     setStep
   } = useWorkbench();
+  const [simpleExecutionPending, setSimpleExecutionPending] = useState(false);
+  const simpleExecutionStarted = useRef(false);
+  const storedRunSettings = useRef<StoredRunSettingsSnapshot | null>(null);
+
+  useEffect(() => {
+    if (!simpleExecutionPending || simpleExecutionStarted.current) return;
+    if (!candidateSettingsValid) {
+      restoreStoredRunSettings(storedRunSettings.current);
+      storedRunSettings.current = null;
+      setSimpleExecutionPending(false);
+      setError(
+        "簡易モードの既定値では実行できません。値が1種類しかない列、探索範囲を作れない列、または分類クラス数を確認してください。"
+      );
+      return;
+    }
+
+    simpleExecutionStarted.current = true;
+    setSimpleExecutionPending(false);
+    void execute().finally(() => {
+      restoreStoredRunSettings(storedRunSettings.current);
+      storedRunSettings.current = null;
+    });
+  }, [candidateSettingsValid, execute, setError, simpleExecutionPending]);
 
   if (!dataset) {
     return (
@@ -66,18 +212,82 @@ export default function PreparePage() {
     });
   }
 
+  function executeSimpleMode() {
+    if (!canConfigure || simpleExecutionPending) return;
+    setError(null);
+    simpleExecutionStarted.current = false;
+    storedRunSettings.current = captureStoredRunSettings();
+    applySimpleStoredRunSettings();
+
+    targetColumns.forEach((name) => {
+      const column = selectableColumns.find((candidate) => candidate.name === name);
+      if (column) patchTargetSetting(name, simpleTargetPatch(column, preview));
+    });
+    featureColumns.forEach((name) => {
+      const column = selectableColumns.find((candidate) => candidate.name === name);
+      if (column) patchVariable(name, simpleVariablePatch(column, preview, variables[name]));
+    });
+
+    setNormalize(true);
+    setInputPerturbation(false);
+    setNW(16);
+    setPerturbationStd(0.1);
+    setProjectionDimensions(Math.min(2, Math.max(featureColumns.length, 1)));
+    setModelType("base");
+    setAcquisitionFamily("bayesian_optimization");
+    setAcquisition(targetColumns.length > 1 ? "EHVI" : "EI");
+    setBeta(2);
+    setFitMaxiter(128);
+    setQ(3);
+    setNumRestarts(10);
+    setRawSamples(256);
+    setSimpleExecutionPending(true);
+  }
+
   return (
     <>
       <SectionHeader
         step="2 · SELECT"
         title="変数と説明変数の型を設定する"
-        text="列名をクリックして選択します。説明変数は同じ枠内で数値／カテゴリ扱いを設定できます。"
-        action={
+        text={mode === "simple"
+          ? "目的変数と説明変数を選択すると、既定値でモデル学習と候補生成を直接実行できます。"
+          : "列名をクリックして選択します。説明変数は同じ枠内で数値／カテゴリ扱いを設定できます。"}
+        action={mode === "simple" ? (
+          <button
+            disabled={!canConfigure || simpleExecutionPending}
+            onClick={executeSimpleMode}
+          >
+            {simpleExecutionPending ? "既定値を適用中" : "既定値で実行"}
+          </button>
+        ) : (
           <button disabled={!canConfigure} onClick={() => setStep("settings")}>
             モデル設定へ
           </button>
-        }
+        )}
       />
+
+      {mode === "simple" && (
+        <article className="panel compact-panel simple-mode-summary">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">SIMPLE MODE</span>
+              <h3>変数選択だけで候補を生成</h3>
+              <p>結果は通常モードと同じResults画面に表示します。</p>
+            </div>
+            <span className="status-chip success">Default</span>
+          </div>
+          <div className="simple-default-grid">
+            <span><strong>Task</strong> 数値=回帰 / 文字=分類</span>
+            <span><strong>Model</strong> Base GP</span>
+            <span><strong>Direction</strong> 最大化</span>
+            <span><strong>Acquisition</strong> EI / EHVI</span>
+            <span><strong>Search</strong> BoTorch</span>
+            <span><strong>Candidates</strong> q=3</span>
+            <span><strong>Missing</strong> 欠損行削除</span>
+            <span><strong>Constraints</strong> なし</span>
+          </div>
+        </article>
+      )}
 
       <div className="selection-grid">
         <article className="panel selection-panel">

@@ -1,18 +1,37 @@
 import { useMemo, useState } from "react";
 import { EmptyState, SectionHeader } from "../components/Common";
+import ExperimentHistoryPanel from "../components/ExperimentHistoryPanel";
 import { useWorkbench } from "../context/WorkbenchContext";
 import {
   appendExperimentFile,
   appendExperimentRows,
   downloadExperimentTemplate
 } from "../experimentData";
-import type { ColumnProfile, DatasetResponse, RegressionResult } from "../types";
+import { recordExperimentCycle } from "../experimentHistory";
+import type {
+  AcquisitionFamily,
+  ColumnProfile,
+  DatasetResponse,
+  RegressionResult,
+  TargetSetting
+} from "../types";
 
 interface DraftRow {
   id: string;
   source: string;
   selected: boolean;
   values: Record<string, string>;
+}
+
+interface SourceConfiguration {
+  modelType: string;
+  acquisitionFamily: AcquisitionFamily;
+  acquisition: string;
+  beta: number;
+  q: number;
+  numRestarts: number;
+  rawSamples: number;
+  targetSettings: TargetSetting[];
 }
 
 function textValue(value: unknown): string {
@@ -67,20 +86,61 @@ function markPreviousResultStale(result: RegressionResult, appendedRows: number)
   };
 }
 
+function bestObservedByTarget(
+  result: RegressionResult,
+  targetColumns: string[]
+): Record<string, number | null> {
+  if (typeof result.best_observed === "number") {
+    return Object.fromEntries(targetColumns.map((target, index) => [
+      target,
+      index === 0 && Number.isFinite(result.best_observed) ? result.best_observed : null
+    ]));
+  }
+  return Object.fromEntries(targetColumns.map((target) => {
+    const value = Number(result.best_observed[target]);
+    return [target, Number.isFinite(value) ? value : null];
+  }));
+}
+
+function metadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
 /** Records experimental outcomes against editable proposed conditions or an imported result file. */
 export default function ExperimentPage() {
   const {
     dataset,
     result,
     variables,
+    modelType,
+    acquisitionFamily,
+    acquisition,
+    beta,
+    q,
+    numRestarts,
+    rawSamples,
+    selectedTargetSettings,
     setError,
     setStep
   } = useWorkbench();
   const [sourceResult] = useState<RegressionResult | null>(() => result);
+  const [sourceConfiguration] = useState<SourceConfiguration>(() => ({
+    modelType,
+    acquisitionFamily,
+    acquisition,
+    beta,
+    q,
+    numRestarts,
+    rawSamples,
+    targetSettings: selectedTargetSettings
+  }));
   const [rows, setRows] = useState<DraftRow[]>(() => initialDraftRows(result));
   const [importFile, setImportFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [completedMessage, setCompletedMessage] = useState<string | null>(null);
+  const [historyVersion, setHistoryVersion] = useState(0);
 
   const featureColumns = sourceResult?.feature_columns ?? [];
   const targetColumns = sourceResult ? resultTargetColumns(sourceResult) : [];
@@ -105,6 +165,9 @@ export default function ExperimentPage() {
 
   const activeDataset = dataset;
   const activeResult = sourceResult;
+  const targetSettings = activeResult.target_settings?.length
+    ? activeResult.target_settings
+    : sourceConfiguration.targetSettings;
 
   function patchRow(id: string, column: string, value: string) {
     setRows((current) => current.map((row) => (
@@ -135,9 +198,60 @@ export default function ExperimentPage() {
     setRows((current) => current.filter((row) => row.id !== id));
   }
 
+  async function registerCycle(
+    updated: DatasetResponse,
+    appendedRows: Record<string, unknown>[],
+    appendMode: "manual" | "import"
+  ) {
+    const metadata = activeResult.metadata ?? {};
+    const modelDetails = metadataRecord(metadata.model_details);
+    await recordExperimentCycle({
+      parent_dataset_id: activeDataset.dataset_id,
+      dataset_id: updated.dataset_id,
+      dataset_name: updated.name,
+      source_run_id: activeResult.visualization_run_id,
+      append_mode: appendMode,
+      n_rows_before: activeDataset.profile.n_rows,
+      n_rows_after: updated.profile.n_rows,
+      rows: appendedRows,
+      feature_columns: featureColumns,
+      target_columns: targetColumns,
+      target_settings: targetSettings,
+      model: {
+        type: activeResult.model_type || sourceConfiguration.modelType,
+        n_train: activeResult.n_train,
+        n_features: activeResult.n_features,
+        details: modelDetails
+      },
+      acquisition: {
+        name: String(
+          modelDetails.effective_acquisition ??
+          metadata.acquisition ??
+          sourceConfiguration.acquisition
+        ),
+        family: sourceConfiguration.acquisitionFamily,
+        beta: sourceConfiguration.beta
+      },
+      optimizer: {
+        backend: String(
+          modelDetails.optimizer_backend ??
+          metadata.optimizer_backend ??
+          metadata.optimizer ??
+          "—"
+        ),
+        q: sourceConfiguration.q,
+        num_restarts: sourceConfiguration.numRestarts,
+        raw_samples: sourceConfiguration.rawSamples
+      },
+      best_observed_before: bestObservedByTarget(activeResult, targetColumns),
+      candidate_count: activeResult.candidates.length
+    });
+  }
+
   function applyUpdatedDataset(updated: DatasetResponse, appendedRows: number) {
     Object.assign(activeDataset, updated);
     markPreviousResultStale(activeResult, appendedRows);
+    setHistoryVersion((current) => current + 1);
     setCompletedMessage(
       `${appendedRows}件の実験データを追加しました。現在の変数・モデル設定を保持したまま再学習できます。`
     );
@@ -164,6 +278,7 @@ export default function ExperimentPage() {
       setSaving(true);
       setError(null);
       const updated = await appendExperimentRows(activeDataset, payload);
+      await registerCycle(updated, payload, "manual");
       applyUpdatedDataset(updated, payload.length);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -181,6 +296,7 @@ export default function ExperimentPage() {
       setSaving(true);
       setError(null);
       const imported = await appendExperimentFile(activeDataset, importFile, targetColumns);
+      await registerCycle(imported.dataset, imported.rows, "import");
       applyUpdatedDataset(imported.dataset, imported.appendedRows);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -351,6 +467,8 @@ export default function ExperimentPage() {
           </button>
         </div>
       </article>
+
+      <ExperimentHistoryPanel datasetId={activeDataset.dataset_id} refreshKey={historyVersion} />
     </>
   );
 }

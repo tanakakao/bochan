@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import unquote
 from uuid import uuid4
 
 import pytest
@@ -26,6 +28,8 @@ from bochan.serving.webapp.visualization_sessions import (  # noqa: E402
     register_visualization_session,
 )
 from bochan.tabular import TabularBayesianOptimizer  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _fake_tabular_optimizer() -> TabularBayesianOptimizer:
@@ -159,6 +163,12 @@ def test_web_model_artifact_roundtrip() -> None:
     assert content
     assert filename == "training.bochan.pt"
 
+    _, custom_filename = serialize_web_model_artifact(
+        run_id,
+        filename="日本語 モデル.pt",
+    )
+    assert custom_filename == "日本語 モデル.bochan.pt"
+
     with pytest.raises(ValueError, match="pickle"):
         deserialize_web_model_artifact(content, trust_pickle=False)
 
@@ -180,6 +190,21 @@ def test_web_model_artifact_roundtrip() -> None:
     assert restored.rows[0]["values"] == {"x": 0.5}
 
 
+def test_model_artifact_download_accepts_custom_filename() -> None:
+    run_id, _ = _register_exportable_session()
+    client = TestClient(create_app())
+
+    response = client.get(
+        f"/api/v1/runs/{run_id}/model-artifact",
+        params={"filename": "保存モデル.pt"},
+    )
+
+    assert response.status_code == 200
+    disposition = response.headers["content-disposition"]
+    encoded = disposition.split("filename*=UTF-8''", 1)[1]
+    assert unquote(encoded) == "保存モデル.bochan.pt"
+
+
 def test_model_artifact_import_requires_explicit_trust() -> None:
     client = TestClient(create_app())
     response = client.post(
@@ -190,3 +215,22 @@ def test_model_artifact_import_requires_explicit_trust() -> None:
 
     assert response.status_code == 400
     assert "pickle" in response.json()["detail"]
+
+
+def test_web_model_interaction_controls_are_explicit() -> None:
+    context = (ROOT / "web/src/context/WorkbenchContext.tsx").read_text(encoding="utf-8")
+    optimize = (ROOT / "web/src/pages/OptimizePage.tsx").read_text(encoding="utf-8")
+    results = (ROOT / "web/src/pages/ResultsPage.tsx").read_text(encoding="utf-8")
+    plot_config = (ROOT / "web/src/plotConfig.ts").read_text(encoding="utf-8")
+    styles = (ROOT / "web/src/result-interactions.css").read_text(encoding="utf-8")
+
+    assert "window.confirm" not in context
+    assert 'execute(mode: ModelExecutionMode = "retrain")' in context
+    assert "学習済みモデルを使用" in optimize
+    assert "再学習" in optimize
+    assert 'aria-label="モデル保存名"' in results
+    assert "downloadNamedModelArtifact" in results
+    assert "displayModeBar: true" in plot_config
+    assert "top: -34px" in styles
+    assert "opacity: 0.12" in styles
+    assert ".plot-container:hover .modebar-container" in styles

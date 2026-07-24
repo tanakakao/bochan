@@ -38,8 +38,24 @@ def _bochan_version() -> str:
 
 
 def _safe_stem(value: str) -> str:
-    stem = re.sub(r"[^0-9A-Za-z._-]+", "_", value).strip("._")
+    """Return a filename stem that preserves Unicode while removing unsafe characters."""
+
+    stem = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', "_", value).strip(" ._")
     return stem or "bochan_model"
+
+
+def _artifact_filename(dataset_name: str, requested_filename: str | None) -> str:
+    """Resolve a browser- and filesystem-safe ``.bochan.pt`` download name."""
+
+    if requested_filename and requested_filename.strip():
+        stem = requested_filename.strip()
+        if stem.lower().endswith(".bochan.pt"):
+            stem = stem[: -len(".bochan.pt")]
+        elif stem.lower().endswith(".pt"):
+            stem = stem[:-3]
+    else:
+        stem = dataset_name.rsplit(".", 1)[0]
+    return f"{_safe_stem(stem)}.bochan.pt"
 
 
 def _serializable_tabular_optimizer(session: VisualizationSession) -> TabularBayesianOptimizer:
@@ -50,7 +66,11 @@ def _serializable_tabular_optimizer(session: VisualizationSession) -> TabularBay
     return optimizer
 
 
-def serialize_web_model_artifact(run_id: str) -> tuple[bytes, str]:
+def serialize_web_model_artifact(
+    run_id: str,
+    *,
+    filename: str | None = None,
+) -> tuple[bytes, str]:
     """Serialize one fitted Web run and its reproducible Results state."""
 
     import torch
@@ -82,8 +102,7 @@ def serialize_web_model_artifact(run_id: str) -> tuple[bytes, str]:
     buffer = io.BytesIO()
     torch.save(payload, buffer)
     dataset_name = str(result.get("dataset_name") or "bochan_model")
-    filename = f"{_safe_stem(dataset_name.rsplit('.', 1)[0])}.bochan.pt"
-    return buffer.getvalue(), filename
+    return buffer.getvalue(), _artifact_filename(dataset_name, filename)
 
 
 def deserialize_web_model_artifact(

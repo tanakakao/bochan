@@ -1,6 +1,7 @@
 import Plot from "react-plotly.js";
 import type { Data } from "plotly.js";
 import { useWorkbench } from "./context/WorkbenchContext";
+import { RESULT_PLOT_CONFIG } from "./plotConfig";
 import { themedPlotLayout } from "./plotLayout";
 import type { ResultVisualization } from "./types";
 
@@ -44,11 +45,7 @@ export default function ResultVisualizations({ visualizations, warnings }: Resul
               <Plot
                 data={visualization.figure.data as Data[]}
                 layout={themedPlotLayout(visualization.figure.layout, theme)}
-                config={{
-                  responsive: true,
-                  displaylogo: false,
-                  modeBarButtonsToRemove: ["lasso2d", "select2d"]
-                }}
+                config={RESULT_PLOT_CONFIG}
                 useResizeHandler
                 style={{ width: "100%", height: "100%" }}
               />

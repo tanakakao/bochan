@@ -30,6 +30,7 @@ import type {
 
 export type WorkbenchStep = "data" | "prepare" | "settings" | "optimize" | "results" | "logs";
 export type Theme = "light" | "dark";
+export type ModelExecutionMode = "reuse" | "retrain";
 export type HealthState = {
   status: "loading" | "ready" | "error";
   text: string;
@@ -254,13 +255,14 @@ interface WorkbenchContextValue {
   canConfigure: boolean;
   settingsValid: boolean;
   candidateSettingsValid: boolean;
+  modelReuseAvailable: boolean;
   handleFile: (file: File | null) => Promise<void>;
   handleModelArtifact: (file: File | null) => Promise<void>;
   toggleFeature: (name: string) => void;
   toggleTarget: (name: string) => void;
   patchTargetSetting: (target: string, patch: Partial<TargetSetting>) => void;
   patchVariable: (name: string, patch: Partial<SearchVariable>) => void;
-  execute: () => Promise<void>;
+  execute: (mode?: ModelExecutionMode) => Promise<void>;
   numberOrUndefined: (value: string) => number | undefined;
 }
 
@@ -387,6 +389,38 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       preview
     )) &&
     selectedVariables.every(validateVariableCandidateSetting)
+  );
+  const currentRunInput: RunRegressionInput | null = dataset ? {
+    datasetId: dataset.dataset_id,
+    featureColumns,
+    targetColumn,
+    targetColumns,
+    targetSettings: selectedTargetSettings,
+    targetDirections,
+    direction,
+    modelType,
+    projectionDimensions,
+    fitMaxiter,
+    normalize,
+    inputPerturbation,
+    nW,
+    perturbationStd,
+    acquisitionFamily,
+    acquisition,
+    beta,
+    q,
+    numRestarts,
+    rawSamples,
+    searchSpace: selectedVariables
+  } : null;
+  const currentModelSignature = currentRunInput
+    ? buildModelReuseSignature(currentRunInput)
+    : null;
+  const modelReuseAvailable = Boolean(
+    candidateSettingsValid &&
+    result?.visualization_run_id &&
+    lastModelSignature &&
+    currentModelSignature === lastModelSignature
   );
 
   function setTheme(nextTheme: Theme) {
@@ -521,47 +555,26 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     }));
   }
 
-  async function execute() {
-    if (!dataset || !candidateSettingsValid) return;
-    const baseInput: RunRegressionInput = {
-      datasetId: dataset.dataset_id,
-      featureColumns,
-      targetColumn,
-      targetColumns,
-      targetSettings: selectedTargetSettings,
-      targetDirections,
-      direction,
-      modelType,
-      projectionDimensions,
-      fitMaxiter,
-      normalize,
-      inputPerturbation,
-      nW,
-      perturbationStd,
-      acquisitionFamily,
-      acquisition,
-      beta,
-      q,
-      numRestarts,
-      rawSamples,
-      searchSpace: selectedVariables
-    };
-    const modelSignature = buildModelReuseSignature(baseInput);
+  async function execute(mode: ModelExecutionMode = "retrain") {
+    if (!currentRunInput || !candidateSettingsValid) return;
+    const modelSignature = currentModelSignature ?? buildModelReuseSignature(currentRunInput);
     const reusableRunId = result?.visualization_run_id;
     const canReuse = Boolean(reusableRunId && lastModelSignature === modelSignature);
-    const reuseModel = canReuse && window.confirm(
-      "作成済みモデルを使用しますか？\n\n" +
-      "OK: モデルを再学習せず、現在の候補提案条件で候補だけを生成します。\n" +
-      "キャンセル: モデルを再学習してから候補を生成します。"
-    );
+    if (mode === "reuse" && !canReuse) {
+      setError(
+        "学習済みモデルを使用できません。データ、タスク、モデル、前処理、欠損処理、または探索範囲が変更されています。"
+      );
+      return;
+    }
+    const reuseModel = mode === "reuse";
     const input: RunRegressionInput = {
-      ...baseInput,
+      ...currentRunInput,
       reuseModelRunId: reuseModel ? reusableRunId : undefined
     };
 
     setBusy(reuseModel
-      ? "作成済みモデルを使用して候補提案を実行しています"
-      : "モデル学習と候補提案を実行しています");
+      ? "学習済みモデルを使用して候補提案を実行しています"
+      : "モデルを再学習して候補提案を実行しています");
     setError(null);
     try {
       const response = await runRegression(input);
@@ -629,6 +642,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     canConfigure,
     settingsValid,
     candidateSettingsValid,
+    modelReuseAvailable,
     handleFile,
     handleModelArtifact,
     toggleFeature,

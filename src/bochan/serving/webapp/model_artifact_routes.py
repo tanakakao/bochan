@@ -1,4 +1,4 @@
-"""FastAPI routes for downloading and restoring Web model artifacts."""
+"""FastAPI routes for Web model artifacts and experiment-cycle history."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from bochan.desktop.services import (
 )
 from bochan.serving.fastapi.converters import to_serializable
 
+from .experiment_history import ExperimentCycleRequest, ExperimentHistoryStore
 from .model_artifacts import (
     deserialize_web_model_artifact,
     restore_web_model_artifact,
@@ -41,6 +42,7 @@ def create_model_artifact_router(dataset_store: Any) -> APIRouter:
     """Create Web-only routes bound to the application's dataset store."""
 
     router = APIRouter(tags=["web-model-artifacts"])
+    experiment_history = ExperimentHistoryStore()
 
     @router.get("/runs/{run_id}/model-artifact")
     def download_model_artifact(
@@ -133,6 +135,35 @@ def create_model_artifact_router(dataset_store: Any) -> APIRouter:
                     ),
                 },
             }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.post("/experiment-cycles", tags=["web-experiment-history"])
+    def record_experiment_cycle(request: ExperimentCycleRequest) -> dict[str, Any]:
+        """Record actual conditions, outcomes, and optimization settings for one cycle."""
+
+        try:
+            parent_record = dataset_store.get(request.parent_dataset_id)
+            updated_record = dataset_store.get(request.dataset_id)
+            if int(parent_record.profile["n_rows"]) != request.n_rows_before:
+                raise ValueError("n_rows_before does not match the parent dataset.")
+            if int(updated_record.profile["n_rows"]) != request.n_rows_after:
+                raise ValueError("n_rows_after does not match the updated dataset.")
+            return {"cycle": experiment_history.add(request)}
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @router.get("/experiment-cycles", tags=["web-experiment-history"])
+    def list_experiment_cycles(dataset_id: str) -> dict[str, Any]:
+        """Return the experiment lineage and objective-progress visualizations."""
+
+        try:
+            dataset_store.get(dataset_id)
+            return experiment_history.response_for_dataset(dataset_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

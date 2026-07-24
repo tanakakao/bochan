@@ -56,11 +56,9 @@ async function responsePayload(response: Response): Promise<any> {
 function responseError(
   response: Response,
   payload: any,
-  *,
-  method: string,
-  url: string,
-  missingWebRoute = false
+  options: { method: string; url: string; missingWebRoute?: boolean }
 ): Error {
+  const { method, url, missingWebRoute = false } = options;
   const requestId = response.headers.get("X-Request-ID");
   const detail = missingWebRoute
     ? webRouteNotFoundMessage(method, url)
@@ -166,7 +164,7 @@ export async function downloadModelArtifact(runId: string, datasetName: string):
     throw responseError(response, payload, {
       method: "GET",
       url,
-      missingWebRoute: response.status === 404 && !runId
+      missingWebRoute: false
     });
   }
   const blob = await response.blob();

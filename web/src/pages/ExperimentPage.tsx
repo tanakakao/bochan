@@ -24,8 +24,14 @@ function closeAuxiliaryPage(): void {
   window.dispatchEvent(new HashChangeEvent("hashchange"));
 }
 
+function resultTargetColumns(result: RegressionResult): string[] {
+  if (result.target_columns?.length) return result.target_columns;
+  return result.target_column ? [result.target_column] : [];
+}
+
 function initialDraftRows(result: RegressionResult | null): DraftRow[] {
   if (!result) return [];
+  const targetColumns = resultTargetColumns(result);
   return [...result.candidates]
     .sort((left, right) => left.rank - right.rank)
     .map((candidate) => ({
@@ -36,7 +42,7 @@ function initialDraftRows(result: RegressionResult | null): DraftRow[] {
         ...Object.fromEntries(
           result.feature_columns.map((column) => [column, textValue(candidate.values[column])])
         ),
-        ...Object.fromEntries((result.target_columns ?? []).map((column) => [column, ""]))
+        ...Object.fromEntries(targetColumns.map((column) => [column, ""]))
       }
     }));
 }
@@ -52,8 +58,7 @@ function coerceValue(column: ColumnProfile | undefined, value: string): unknown 
   return parsed;
 }
 
-function markPreviousResultStale(result: RegressionResult | null, appendedRows: number): void {
-  if (!result) return;
+function markPreviousResultStale(result: RegressionResult, appendedRows: number): void {
   delete result.visualization_run_id;
   result.metadata = {
     ...result.metadata,
@@ -78,11 +83,7 @@ export default function ExperimentPage() {
   const [completedMessage, setCompletedMessage] = useState<string | null>(null);
 
   const featureColumns = sourceResult?.feature_columns ?? [];
-  const targetColumns = sourceResult?.target_columns?.length
-    ? sourceResult.target_columns
-    : sourceResult?.target_column
-      ? [sourceResult.target_column]
-      : [];
+  const targetColumns = sourceResult ? resultTargetColumns(sourceResult) : [];
   const columnsByName = useMemo(
     () => Object.fromEntries((dataset?.profile.columns ?? []).map((column) => [column.name, column])),
     [dataset]
@@ -101,6 +102,9 @@ export default function ExperimentPage() {
       </>
     );
   }
+
+  const activeDataset = dataset;
+  const activeResult = sourceResult;
 
   function patchRow(id: string, column: string, value: string) {
     setRows((current) => current.map((row) => (
@@ -132,8 +136,8 @@ export default function ExperimentPage() {
   }
 
   function applyUpdatedDataset(updated: DatasetResponse, appendedRows: number) {
-    Object.assign(dataset, updated);
-    markPreviousResultStale(result, appendedRows);
+    Object.assign(activeDataset, updated);
+    markPreviousResultStale(activeResult, appendedRows);
     setCompletedMessage(
       `${appendedRows}件の実験データを追加しました。現在の変数・モデル設定を保持したまま再学習できます。`
     );
@@ -159,7 +163,7 @@ export default function ExperimentPage() {
       });
       setSaving(true);
       setError(null);
-      const updated = await appendExperimentRows(dataset, payload);
+      const updated = await appendExperimentRows(activeDataset, payload);
       applyUpdatedDataset(updated, payload.length);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -176,7 +180,7 @@ export default function ExperimentPage() {
     try {
       setSaving(true);
       setError(null);
-      const imported = await appendExperimentFile(dataset, importFile, targetColumns);
+      const imported = await appendExperimentFile(activeDataset, importFile, targetColumns);
       applyUpdatedDataset(imported.dataset, imported.appendedRows);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -197,7 +201,7 @@ export default function ExperimentPage() {
 
   function downloadTemplate() {
     downloadExperimentTemplate(
-      dataset,
+      activeDataset,
       featureColumns,
       targetColumns,
       rows.map((row) => ({

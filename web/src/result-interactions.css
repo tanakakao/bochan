@@ -1,0 +1,88 @@
+.plot-container {
+  position: relative;
+  overflow: visible;
+  padding-top: 38px;
+}
+
+.plot-container > .js-plotly-plot {
+  height: 100% !important;
+}
+
+.plot-container .modebar-container {
+  top: -34px !important;
+  right: 8px !important;
+  z-index: 8;
+  opacity: 0.12;
+  transform: translateY(-2px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.plot-container:hover .modebar-container,
+.plot-container:focus-within .modebar-container,
+.plot-container .modebar-container:hover {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.plot-container .modebar {
+  padding: 3px 5px !important;
+  border: 1px solid var(--line) !important;
+  border-radius: 10px !important;
+  background: color-mix(in srgb, var(--surface-raised) 86%, transparent) !important;
+  box-shadow: var(--shadow-xs);
+  backdrop-filter: blur(10px) saturate(130%);
+}
+
+.plot-container .modebar-btn {
+  color: var(--muted) !important;
+}
+
+.plot-container .modebar-btn:hover,
+.plot-container .modebar-btn.active {
+  color: var(--primary) !important;
+}
+
+.model-save-control {
+  min-width: min(310px, 100%);
+  display: grid;
+  grid-template-columns: minmax(145px, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.model-save-control label {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.model-save-control input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+}
+
+.model-reuse-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 760px) {
+  .model-save-control {
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .model-reuse-actions {
+    width: 100%;
+  }
+
+  .model-reuse-actions button {
+    flex: 1 1 180px;
+  }
+}

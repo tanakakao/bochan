@@ -29,7 +29,7 @@ export interface DatasetProfile {
 export interface DatasetResponse {
   dataset_id: string;
   name: string;
-  source_type: "csv" | "excel";
+  source_type: "csv" | "excel" | "model_artifact";
   profile: DatasetProfile;
   preview: Record<string, unknown>[];
 }
@@ -202,4 +202,18 @@ export interface RegressionResult {
   visualization_run_id?: string;
   visualization_options?: VisualizationOptions;
   metadata: Record<string, unknown>;
+}
+
+export interface ModelArtifactImportResponse {
+  dataset: DatasetResponse;
+  result: RegressionResult;
+  request: Record<string, unknown>;
+  artifact: {
+    filename?: string | null;
+    artifact_version: number;
+    bochan_version?: string | null;
+    original_run_id?: string | null;
+    restored_run_id: string;
+    pickle_warning: string;
+  };
 }

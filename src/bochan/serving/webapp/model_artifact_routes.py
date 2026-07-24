@@ -94,7 +94,7 @@ def create_model_artifact_router(dataset_store: Any) -> APIRouter:
 
     @router.post("/experiment-projects/export", tags=["web-experiment-projects"])
     def export_experiment_project(request: ExperimentProjectExportRequest) -> Response:
-        """Download the complete dataset lineage, experiment history, and UI settings."""
+        """Download the complete project with latest and optional historical models."""
 
         try:
             content, filename = serialize_experiment_project(
@@ -124,7 +124,7 @@ def create_model_artifact_router(dataset_store: Any) -> APIRouter:
         request: Request,
         trust_pickle: bool = False,
     ) -> dict[str, Any]:
-        """Restore either a trusted model artifact or a safe project ZIP archive."""
+        """Restore either a trusted model artifact or a project ZIP archive."""
 
         try:
             content = await request.body()
@@ -136,9 +136,24 @@ def create_model_artifact_router(dataset_store: Any) -> APIRouter:
                     content,
                     dataset_store,
                     experiment_history,
+                    trust_pickle=trust_pickle,
                 )
                 record = imported["record"]
                 archive = imported["archive"]
+                if archive["model_included"]:
+                    if archive["model_restored"]:
+                        pickle_warning = (
+                            "Embedded project models were restored after explicit trust confirmation."
+                        )
+                    else:
+                        pickle_warning = (
+                            "The project contains model artifacts, but they were not loaded. "
+                            "Import again with explicit pickle trust to restore them."
+                        )
+                else:
+                    pickle_warning = (
+                        "This project does not contain a trained model; retraining is required."
+                    )
                 return {
                     "dataset": _dataset_response(record),
                     "result": imported["result"],
@@ -151,13 +166,19 @@ def create_model_artifact_router(dataset_store: Any) -> APIRouter:
                         "original_run_id": archive.get("original_run_id"),
                         "restored_run_id": archive["restored_run_id"],
                         "project_archive": True,
-                        "model_included": False,
+                        "model_included": archive["model_included"],
+                        "model_count": archive["model_count"],
+                        "latest_model_included": archive["latest_model_included"],
+                        "past_model_count": archive["past_model_count"],
+                        "model_restored": archive["model_restored"],
+                        "restored_model_count": archive["restored_model_count"],
+                        "active_model_restored": archive["active_model_restored"],
+                        "requires_pickle_trust": archive["requires_pickle_trust"],
+                        "restored_models": archive["restored_models"],
+                        "model_export_warnings": archive["model_export_warnings"],
                         "cycle_count": archive["cycle_count"],
                         "dataset_count": archive["dataset_count"],
-                        "pickle_warning": (
-                            "Project archives contain JSON and dataset snapshots only; "
-                            "the trained model is not restored and must be retrained."
-                        ),
+                        "pickle_warning": pickle_warning,
                     },
                 }
 

@@ -11,6 +11,7 @@ import "./workflow-separation.css";
 import "./ui-adjustments.css";
 import "./model-artifact.css";
 import "./result-interactions.css";
+import "./experiment-results.css";
 
 installDynamicNumberInputSteps();
 

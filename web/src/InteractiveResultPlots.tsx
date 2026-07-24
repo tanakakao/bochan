@@ -3,6 +3,7 @@ import Plot from "react-plotly.js";
 import type { Data } from "plotly.js";
 import { fetchResultVisualization } from "./api";
 import { useWorkbench } from "./context/WorkbenchContext";
+import { RESULT_PLOT_CONFIG } from "./plotConfig";
 import { themedPlotLayout } from "./plotLayout";
 import type {
   RegressionResult,
@@ -34,7 +35,7 @@ function PlotCard({
           <Plot
             data={visualization.figure.data as Data[]}
             layout={themedPlotLayout(visualization.figure.layout, theme)}
-            config={{ responsive: true, displaylogo: false }}
+            config={RESULT_PLOT_CONFIG}
             useResizeHandler
             style={{ width: "100%", height: "100%" }}
           />

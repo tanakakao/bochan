@@ -164,8 +164,8 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
                       <td><span className="rank">{cycle.cycle_number}</span></td>
                       <td>{formatDate(cycle.created_at)}</td>
                       <td>{cycle.appended_rows} rows<br /><small>{cycle.append_mode === "manual" ? "直接入力" : "ファイル"}</small></td>
-                      <td>{cycleModelName(cycle)}<br /><small>学習 {cycle.model.n_train ?? "—"}件</small></td>
-                      <td>{cycleAcquisitionName(cycle)}<br /><small>q={cycle.optimizer.q ?? "—"}</small></td>
+                      <td>{cycleModelName(cycle)}<br /><small>学習 {textSetting(cycle.model.n_train)}件</small></td>
+                      <td>{cycleAcquisitionName(cycle)}<br /><small>q={textSetting(cycle.optimizer.q)}</small></td>
                       <td>
                         {cycle.target_columns.map((target) => (
                           <div key={target} className="history-target-summary">

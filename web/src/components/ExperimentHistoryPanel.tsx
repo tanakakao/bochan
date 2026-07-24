@@ -48,6 +48,7 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
   const [history, setHistory] = useState<ExperimentHistoryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState("");
+  const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -69,7 +70,7 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
     return () => {
       active = false;
     };
-  }, [datasetId, refreshKey, setError]);
+  }, [datasetId, refreshKey, reloadVersion, setError]);
 
   const selectedVisualization = useMemo(
     () => history?.visualizations.find((visualization) => visualization.target === selectedTarget) ?? null,
@@ -87,11 +88,10 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
         </div>
         <button
           className="secondary"
-          onClick={() => setHistory(null)}
+          onClick={() => setReloadVersion((current) => current + 1)}
           disabled={loading}
-          title="ページを再表示するとAPIから履歴を再取得します。"
         >
-          {loading ? "読込中" : `${history?.count ?? 0} cycles`}
+          {loading ? "読込中" : `更新 · ${history?.count ?? 0} cycles`}
         </button>
       </div>
 

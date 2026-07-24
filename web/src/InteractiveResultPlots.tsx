@@ -30,21 +30,15 @@ function PlotCard({
       {loading && <div className="plot-loading"><span className="spinner" />図を生成しています...</div>}
       {error && !loading && <div className="alert warning plot-error">{error}</div>}
       {visualization && !loading && !error && (
-        <>
-          <div className="visualization-heading">
-            <h3>{visualization.title}</h3>
-            <p>{visualization.description}</p>
-          </div>
-          <div className="plot-container">
-            <Plot
-              data={visualization.figure.data as Data[]}
-              layout={themedPlotLayout(visualization.figure.layout, theme)}
-              config={{ responsive: true, displaylogo: false }}
-              useResizeHandler
-              style={{ width: "100%", height: "100%" }}
-            />
-          </div>
-        </>
+        <div className="plot-container">
+          <Plot
+            data={visualization.figure.data as Data[]}
+            layout={themedPlotLayout(visualization.figure.layout, theme)}
+            config={{ responsive: true, displaylogo: false }}
+            useResizeHandler
+            style={{ width: "100%", height: "100%" }}
+          />
+        </div>
       )}
     </div>
   );

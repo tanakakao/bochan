@@ -79,6 +79,7 @@ export default function OptimizePage() {
     columns,
     settingsValid,
     candidateSettingsValid,
+    modelReuseAvailable,
     targetColumns,
     targetSettings,
     patchTargetSetting,
@@ -212,6 +213,39 @@ export default function OptimizePage() {
   const taskSummary = homogeneousTask ? taskLabel(taskTypes[0] ?? "regression") : "混合タスク";
   const searchMethodLabel = searchMethodOptions.find((option) => option.value === searchMethod)?.label ?? searchMethod;
 
+  function executionButtons() {
+    if (!modelReuseAvailable) {
+      return (
+        <button
+          disabled={!canExecute}
+          onClick={() => void execute("retrain")}
+          title="現在の設定でモデルを学習してから候補を生成します。"
+        >
+          モデルを学習して候補を生成
+        </button>
+      );
+    }
+    return (
+      <div className="model-reuse-actions">
+        <button
+          className="secondary"
+          disabled={!canExecute}
+          onClick={() => void execute("retrain")}
+          title="現在の設定でモデルを学習し直してから候補を生成します。"
+        >
+          再学習
+        </button>
+        <button
+          disabled={!canExecute}
+          onClick={() => void execute("reuse")}
+          title="モデルの再学習を省略し、現在の候補提案条件で候補だけを生成します。"
+        >
+          学習済みモデルを使用
+        </button>
+      </div>
+    );
+  }
+
   if (!dataset || !settingsValid) {
     return (
       <>
@@ -231,7 +265,7 @@ export default function OptimizePage() {
         step="4 · SUGGEST"
         title="候補提案条件を設定する"
         text="目的、獲得関数、探索手法、候補数、探索範囲、制約を設定します。"
-        action={<button disabled={!canExecute} onClick={() => void execute()}>候補を生成</button>}
+        action={executionButtons()}
       />
 
       <TargetProposalSettings
@@ -319,7 +353,7 @@ export default function OptimizePage() {
             <strong>{modelType}{projectedModel ? `(${projectionDimensions}D)` : ""} × {familyLabel(acquisitionFamily)} × {searchMethod === "nsgaii" ? "NSGA-II" : acquisition}</strong>
             <span>{modeLabel} · {taskSummary} · {searchMethodLabel} · 最適化対象 {optimizedCount}件 · q={q} · fit={fitMaxiter}</span>
           </div>
-          <button disabled={!canExecute} onClick={() => void execute()}>候補を生成</button>
+          {executionButtons()}
         </div>
       </article>
     </>

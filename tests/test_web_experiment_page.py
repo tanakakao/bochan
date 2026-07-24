@@ -34,11 +34,15 @@ def test_experiment_result_page_is_connected() -> None:
     assert "fetchExperimentHistory" in history
     assert "downloadExperimentProject" in history
     assert "履歴込みプロジェクトを保存" in history
+    assert "最新モデルを含める" in history
+    assert "過去サイクルのモデルも含める（標準OFF）" in history
     assert ".bochan-project.zip" in data_page
     assert "履歴付きプロジェクトを開く" in data_page
+    assert "含まれるモデルを信頼" in data_page
     assert 'request<ExperimentHistoryResponse>' in history_api
     assert '"/experiment-projects/export"' in project_api
-    assert "model_included" not in project_api
+    assert "include_latest_model: options.includeLatestModel ?? true" in project_api
+    assert "include_past_models: options.includePastModels ?? false" in project_api
     assert 'import "./experiment-results.css"' in main
     assert 'import "./experiment-history.css"' in main
 

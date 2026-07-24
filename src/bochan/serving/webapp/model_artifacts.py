@@ -12,12 +12,17 @@ import copy
 import io
 import re
 from importlib.metadata import PackageNotFoundError, version
+from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
 from bochan.tabular import TabularBayesianOptimizer
 
-from .model_reuse import get_registered_model_signature, register_model_signature
+from .model_reuse import (
+    get_registered_model_signature,
+    model_reuse_signature,
+    register_model_signature,
+)
 from .visualization_sessions import (
     VisualizationSession,
     get_visualization_session,
@@ -211,10 +216,6 @@ def restore_web_model_artifact(
     session.result = copy.deepcopy(result)
     register_visualization_session(run_id, session)
 
-    signature = payload.get("model_signature")
-    if isinstance(signature, str) and signature:
-        register_model_signature(run_id, signature)
-
     request_payload = copy.deepcopy(
         session.request_details.get("request_payload") or {}
     )
@@ -222,6 +223,17 @@ def restore_web_model_artifact(
         request_payload["dataset_id"] = dataset_id
     else:
         request_payload = {}
+
+    if request_payload:
+        try:
+            signature = model_reuse_signature(SimpleNamespace(**request_payload))
+        except (AttributeError, TypeError, ValueError):
+            signature = payload.get("model_signature")
+    else:
+        signature = payload.get("model_signature")
+    if isinstance(signature, str) and signature:
+        register_model_signature(run_id, signature)
+
     return run_id, result, request_payload
 
 

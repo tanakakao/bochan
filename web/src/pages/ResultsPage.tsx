@@ -120,7 +120,7 @@ export default function ResultsPage() {
         }
       />
 
-      {completedResult.metadata?.model_artifact_loaded && (
+      {Boolean(completedResult.metadata?.model_artifact_loaded) && (
         <div className="alert success artifact-loaded-note">
           保存モデルから復元した結果です。学習済みモデルと設定を保持しているため、可視化の再生成や候補提案設定の変更ができます。
         </div>

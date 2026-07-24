@@ -11,21 +11,21 @@ pytest.importorskip("fastapi")
 pd = pytest.importorskip("pandas")
 pytest.importorskip("torch")
 
-from fastapi.testclient import TestClient
+from fastapi.testclient import TestClient  # noqa: E402
 
-from bochan.serving.webapp.app import create_app
-from bochan.serving.webapp.model_artifacts import (
+from bochan.serving.webapp.app import create_app  # noqa: E402
+from bochan.serving.webapp.model_artifacts import (  # noqa: E402
     deserialize_web_model_artifact,
     restore_web_model_artifact,
     serialize_web_model_artifact,
 )
-from bochan.serving.webapp.model_reuse import register_model_signature
-from bochan.serving.webapp.visualization_sessions import (
+from bochan.serving.webapp.model_reuse import register_model_signature  # noqa: E402
+from bochan.serving.webapp.visualization_sessions import (  # noqa: E402
     VisualizationSession,
     get_visualization_session,
     register_visualization_session,
 )
-from bochan.tabular import TabularBayesianOptimizer
+from bochan.tabular import TabularBayesianOptimizer  # noqa: E402
 
 
 def _fake_tabular_optimizer() -> TabularBayesianOptimizer:

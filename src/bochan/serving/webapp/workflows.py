@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 from typing import Any
 
@@ -110,6 +111,11 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         try:
             result = _run_regression_web_workflow(processing_request, store)
             session = finalize_visualization_run(run_id, result)
+            session.request_details["request_payload"] = (
+                processing_request.model_dump(exclude_none=False)
+                if hasattr(processing_request, "model_dump")
+                else dict(vars(processing_request))
+            )
             variant, effective_model_type = model_variant(session.optimizer.model)
             metadata = _attach_missing_metadata(
                 result,
@@ -148,6 +154,7 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
             metadata["model_details"] = details
             metadata["visualization_session"] = "in_memory"
             result["metadata"] = metadata
+            session.result = copy.deepcopy(result)
             log_event(
                 LOGGER,
                 logging.INFO,

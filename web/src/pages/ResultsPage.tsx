@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { downloadModelArtifact } from "../api";
+import { useEffect, useState } from "react";
 import { EmptyState, SectionHeader } from "../components/Common";
 import InteractiveResultPlots from "../InteractiveResultPlots";
+import { downloadNamedModelArtifact } from "../modelArtifactDownload";
 import { useWorkbench } from "../context/WorkbenchContext";
 
 function formatNumber(value: number | null | undefined): string {
@@ -17,10 +17,29 @@ function csvCell(value: unknown): string {
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
+function defaultModelFilename(datasetName: string | undefined): string {
+  const stem = String(datasetName ?? "bochan_model").replace(/\.[^.]+$/, "").trim();
+  return `${stem || "bochan_model"}.bochan.pt`;
+}
+
+function normalizedModelFilename(value: string, fallback: string): string {
+  let filename = value.trim() || fallback;
+  filename = filename.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "_").replace(/[. ]+$/g, "");
+  if (filename.toLowerCase().endsWith(".bochan.pt")) return filename;
+  if (filename.toLowerCase().endsWith(".pt")) filename = filename.slice(0, -3);
+  return `${filename || "bochan_model"}.bochan.pt`;
+}
+
 /** Renders recommended candidates first, followed by selectable existing Plotly figures. */
 export default function ResultsPage() {
   const { result, setError, setStep } = useWorkbench();
+  const suggestedFilename = defaultModelFilename(result?.dataset_name);
   const [modelDownloading, setModelDownloading] = useState(false);
+  const [modelFilename, setModelFilename] = useState(suggestedFilename);
+
+  useEffect(() => {
+    setModelFilename(suggestedFilename);
+  }, [suggestedFilename]);
 
   if (!result) {
     return (
@@ -76,10 +95,12 @@ export default function ResultsPage() {
       setError("保存対象の学習済みモデルがありません。候補を再生成してください。");
       return;
     }
+    const filename = normalizedModelFilename(modelFilename, suggestedFilename);
+    setModelFilename(filename);
     setModelDownloading(true);
     setError(null);
     try {
-      await downloadModelArtifact(runId, completedResult.dataset_name);
+      await downloadNamedModelArtifact(runId, filename);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -107,14 +128,26 @@ export default function ResultsPage() {
             <button className="secondary" onClick={() => setStep("settings")}>モデル設定</button>
             <button className="secondary" onClick={() => setStep("optimize")}>候補提案設定</button>
             <button className="secondary" onClick={downloadCandidates}>候補CSVを保存</button>
-            <button
-              className="secondary"
-              disabled={!completedResult.visualization_run_id || modelDownloading}
-              onClick={() => void downloadModel()}
-              title="モデル、学習データ、設定、候補結果を1ファイルに保存します。"
-            >
-              {modelDownloading ? "モデル保存中" : "モデルを保存"}
-            </button>
+            <div className="model-save-control">
+              <label>
+                保存名
+                <input
+                  type="text"
+                  value={modelFilename}
+                  onChange={(event) => setModelFilename(event.target.value)}
+                  onBlur={() => setModelFilename(normalizedModelFilename(modelFilename, suggestedFilename))}
+                  aria-label="モデル保存名"
+                />
+              </label>
+              <button
+                className="secondary"
+                disabled={!completedResult.visualization_run_id || modelDownloading}
+                onClick={() => void downloadModel()}
+                title="モデル、学習データ、設定、候補結果を指定した名前で保存します。"
+              >
+                {modelDownloading ? "モデル保存中" : "モデルを保存"}
+              </button>
+            </div>
             <button onClick={() => setStep("logs")}>モデル詳細・ログ</button>
           </>
         }

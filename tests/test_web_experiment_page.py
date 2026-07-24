@@ -13,8 +13,10 @@ def test_experiment_result_page_is_connected() -> None:
     results = (ROOT / "web/src/pages/ResultsPage.tsx").read_text(encoding="utf-8")
     experiment = (ROOT / "web/src/pages/ExperimentPage.tsx").read_text(encoding="utf-8")
     history = (ROOT / "web/src/components/ExperimentHistoryPanel.tsx").read_text(encoding="utf-8")
+    data_page = (ROOT / "web/src/pages/DataPage.tsx").read_text(encoding="utf-8")
     data_helpers = (ROOT / "web/src/experimentData.ts").read_text(encoding="utf-8")
     history_api = (ROOT / "web/src/experimentHistory.ts").read_text(encoding="utf-8")
+    project_api = (ROOT / "web/src/experimentProject.ts").read_text(encoding="utf-8")
     main = (ROOT / "web/src/main.tsx").read_text(encoding="utf-8")
 
     assert 'window.location.hash = "experiment"' in results
@@ -30,7 +32,13 @@ def test_experiment_result_page_is_connected() -> None:
     assert "stale_after_data_append" in experiment
     assert "サイクル内ベスト" in history
     assert "fetchExperimentHistory" in history
+    assert "downloadExperimentProject" in history
+    assert "履歴込みプロジェクトを保存" in history
+    assert ".bochan-project.zip" in data_page
+    assert "履歴付きプロジェクトを開く" in data_page
     assert 'request<ExperimentHistoryResponse>' in history_api
+    assert '"/experiment-projects/export"' in project_api
+    assert "model_included" not in project_api
     assert 'import "./experiment-results.css"' in main
     assert 'import "./experiment-history.css"' in main
 

@@ -20,12 +20,21 @@ export default function DataPage() {
     }
   }
 
+  async function selectProjectArchive(file: File | null, input: HTMLInputElement) {
+    try {
+      if (!file) return;
+      await handleModelArtifact(file);
+    } finally {
+      input.value = "";
+    }
+  }
+
   return (
     <>
       <SectionHeader
         step="1 · DATA"
-        title="最適化データまたは保存モデルを読み込む"
-        text="CSV・Excelから新規学習するか、保存済みモデルを読み込んで結果と設定を再現します。"
+        title="最適化データ、保存モデル、またはプロジェクトを読み込む"
+        text="CSV・Excelから新規学習するか、保存モデルまたは履歴付きプロジェクトを読み込んで作業を再開します。"
         action={
           dataset ? (
             <button onClick={() => setStep("prepare")}>変数設定へ</button>
@@ -83,6 +92,32 @@ export default function DataPage() {
           </label>
           <div className="alert warning artifact-security-note">
             保存モデルはpickle形式です。メールや外部サイトから入手した不明なファイルは読み込まないでください。
+          </div>
+        </article>
+
+        <article className="panel model-artifact-panel">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">EXPERIMENT PROJECT</span>
+              <h3>履歴付きプロジェクトを開く</h3>
+              <p>データセット系譜、実験サイクル、変数・モデル・獲得関数設定を復元します。</p>
+            </div>
+          </div>
+          <label className="dropzone model-dropzone">
+            <input
+              type="file"
+              accept=".bochan-project.zip,.zip,application/zip"
+              onChange={(event) => void selectProjectArchive(
+                event.target.files?.[0] ?? null,
+                event.currentTarget
+              )}
+            />
+            <span className="upload-symbol">▣</span>
+            <strong>bochanプロジェクトZIPを選択</strong>
+            <span>Experiment画面から保存した`.bochan-project.zip`を読み込みます。</span>
+          </label>
+          <div className="alert warning artifact-security-note">
+            プロジェクトZIPはJSONとデータのみでpickleを含みません。学習済みモデルは復元されないため、読込後に再学習してください。
           </div>
         </article>
       </div>
@@ -166,7 +201,7 @@ export default function DataPage() {
           </article>
         </>
       ) : (
-        <EmptyState>データまたは保存モデルを読み込むと、概要とプレビューを表示します。</EmptyState>
+        <EmptyState>データ、保存モデル、または履歴付きプロジェクトを読み込むと概要を表示します。</EmptyState>
       )}
     </>
   );

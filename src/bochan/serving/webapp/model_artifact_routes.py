@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
@@ -42,16 +43,26 @@ def create_model_artifact_router(dataset_store: Any) -> APIRouter:
     router = APIRouter(tags=["web-model-artifacts"])
 
     @router.get("/runs/{run_id}/model-artifact")
-    def download_model_artifact(run_id: str) -> Response:
-        """Download a fitted Web model, dataset, settings, and Results state."""
+    def download_model_artifact(
+        run_id: str,
+        filename: str | None = None,
+    ) -> Response:
+        """Download a fitted Web model with an optional user-selected filename."""
 
         try:
-            content, filename = serialize_web_model_artifact(run_id)
+            content, resolved_filename = serialize_web_model_artifact(
+                run_id,
+                filename=filename,
+            )
+            disposition = (
+                'attachment; filename="bochan_model.bochan.pt"; '
+                f"filename*=UTF-8''{quote(resolved_filename)}"
+            )
             return Response(
                 content=content,
                 media_type="application/octet-stream",
                 headers={
-                    "Content-Disposition": f'attachment; filename="{filename}"',
+                    "Content-Disposition": disposition,
                     "X-Model-Artifact-Version": "1",
                 },
             )

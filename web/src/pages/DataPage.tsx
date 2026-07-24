@@ -2,7 +2,7 @@ import { EmptyState, MetricCard, SectionHeader } from "../components/Common";
 import { useWorkbench } from "../context/WorkbenchContext";
 
 export default function DataPage() {
-  const { dataset, columns, handleFile, handleModelArtifact, setStep } = useWorkbench();
+  const { dataset, columns, handleFile, handleModelArtifact, setError, setStep } = useWorkbench();
   const numericCount = columns.filter((column) => column.kind === "numeric").length;
   const categoricalCount = columns.filter((column) => column.kind === "categorical").length;
 
@@ -23,6 +23,11 @@ export default function DataPage() {
   async function selectProjectArchive(file: File | null, input: HTMLInputElement) {
     try {
       if (!file) return;
+      if (!file.name.toLowerCase().endsWith(".bochan-project.zip")) {
+        setError("Experiment画面から保存した.bochan-project.zipファイルを選択してください。");
+        return;
+      }
+      setError(null);
       await handleModelArtifact(file);
     } finally {
       input.value = "";
@@ -106,7 +111,7 @@ export default function DataPage() {
           <label className="dropzone model-dropzone">
             <input
               type="file"
-              accept=".bochan-project.zip,.zip,application/zip"
+              accept=".bochan-project.zip,application/zip"
               onChange={(event) => void selectProjectArchive(
                 event.target.files?.[0] ?? null,
                 event.currentTarget

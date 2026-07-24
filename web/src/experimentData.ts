@@ -1,4 +1,4 @@
-import { fileToDataUrl, uploadDataset } from "./api";
+import { uploadDataset } from "./api";
 import type { DatasetResponse } from "./types";
 
 const RAW_API_BASE = String(import.meta.env.VITE_API_BASE ?? "/api/v1").trim();
@@ -114,6 +114,3 @@ export function downloadExperimentTemplate(
   anchor.click();
   URL.revokeObjectURL(url);
 }
-
-/** Read a file as a data URL for callers that need the same browser conversion as dataset upload. */
-export { fileToDataUrl };

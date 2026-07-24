@@ -154,11 +154,9 @@ def current_model_reuse_state() -> dict[str, Any] | None:
     return _STATE.get()
 
 
-def register_fitted_model(run_id: str) -> None:
-    """Associate the current request's model fingerprint with one fitted run."""
+def register_model_signature(run_id: str, signature: str) -> None:
+    """Associate a run id with an explicit fitted-model signature."""
 
-    state = _STATE.get()
-    signature = str((state or {}).get("model_signature") or "")
     if not run_id or not signature:
         return
     with _SIGNATURE_LOCK:
@@ -166,6 +164,24 @@ def register_fitted_model(run_id: str) -> None:
         _MODEL_SIGNATURES[run_id] = signature
         while len(_MODEL_SIGNATURES) > _MAX_SIGNATURES:
             _MODEL_SIGNATURES.popitem(last=False)
+
+
+def get_registered_model_signature(run_id: str) -> str | None:
+    """Return a fitted-model signature without removing the LRU entry."""
+
+    with _SIGNATURE_LOCK:
+        signature = _MODEL_SIGNATURES.get(run_id)
+        if signature is not None:
+            _MODEL_SIGNATURES.move_to_end(run_id)
+        return signature
+
+
+def register_fitted_model(run_id: str) -> None:
+    """Associate the current request's model fingerprint with one fitted run."""
+
+    state = _STATE.get()
+    signature = str((state or {}).get("model_signature") or "")
+    register_model_signature(run_id, signature)
 
 
 def mark_model_reused(source_run_id: str) -> None:
@@ -246,10 +262,12 @@ def reuse_fitted_tabular_optimizer(
 
 __all__ = [
     "current_model_reuse_state",
+    "get_registered_model_signature",
     "mark_model_reused",
     "model_reuse_run",
     "model_reuse_signature",
     "prepare_model_reuse_request",
     "register_fitted_model",
+    "register_model_signature",
     "reuse_fitted_tabular_optimizer",
 ]

@@ -90,14 +90,15 @@ function bestObservedByTarget(
   result: RegressionResult,
   targetColumns: string[]
 ): Record<string, number | null> {
-  if (typeof result.best_observed === "number") {
+  const bestObserved = result.best_observed;
+  if (typeof bestObserved === "number") {
     return Object.fromEntries(targetColumns.map((target, index) => [
       target,
-      index === 0 && Number.isFinite(result.best_observed) ? result.best_observed : null
+      index === 0 && Number.isFinite(bestObserved) ? bestObserved : null
     ]));
   }
   return Object.fromEntries(targetColumns.map((target) => {
-    const value = Number(result.best_observed[target]);
+    const value = Number(bestObserved[target]);
     return [target, Number.isFinite(value) ? value : null];
   }));
 }

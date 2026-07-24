@@ -27,6 +27,12 @@ export default function DataPage() {
         setError("Experiment画面から保存した.bochan-project.zipファイルを選択してください。");
         return;
       }
+      const trusted = window.confirm(
+        "プロジェクトZIPには学習済みモデルが含まれる場合があります。\n\n" +
+        "モデルの復元にはtorch.load / pickleを使用するため、このbochan Webアプリから自分で保存した信頼できるプロジェクトだけを選択してください。\n\n" +
+        "このプロジェクトと含まれるモデルを信頼して読み込みますか？"
+      );
+      if (!trusted) return;
       setError(null);
       await handleModelArtifact(file);
     } finally {
@@ -105,7 +111,7 @@ export default function DataPage() {
             <div>
               <span className="panel-kicker">EXPERIMENT PROJECT</span>
               <h3>履歴付きプロジェクトを開く</h3>
-              <p>データセット系譜、実験サイクル、変数・モデル・獲得関数設定を復元します。</p>
+              <p>データセット系譜、実験サイクル、設定、保存された学習済みモデルを復元します。</p>
             </div>
           </div>
           <label className="dropzone model-dropzone">
@@ -122,7 +128,7 @@ export default function DataPage() {
             <span>Experiment画面から保存した`.bochan-project.zip`を読み込みます。</span>
           </label>
           <div className="alert warning artifact-security-note">
-            プロジェクトZIPはJSONとデータのみでpickleを含みません。学習済みモデルは復元されないため、読込後に再学習してください。
+            通常のプロジェクトZIPには最新モデルが含まれます。モデルを含む場合はpickle形式のため、信頼できるプロジェクトだけを読み込んでください。
           </div>
         </article>
       </div>

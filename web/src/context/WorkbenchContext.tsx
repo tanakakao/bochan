@@ -11,8 +11,10 @@ import {
   fetchHealth,
   runRegression,
   uploadDataset,
+  uploadModelArtifact,
   type RunRegressionInput
 } from "../api";
+import { restoreWorkbenchFromArtifact } from "../modelArtifactRestore";
 import { MODEL_OPTIONS } from "../modelOptions";
 import { getColumnClassValues } from "../targetSettingUtils";
 import type {
@@ -253,6 +255,7 @@ interface WorkbenchContextValue {
   settingsValid: boolean;
   candidateSettingsValid: boolean;
   handleFile: (file: File | null) => Promise<void>;
+  handleModelArtifact: (file: File | null) => Promise<void>;
   toggleFeature: (name: string) => void;
   toggleTarget: (name: string) => void;
   patchTargetSetting: (target: string, patch: Partial<TargetSetting>) => void;
@@ -443,6 +446,41 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function handleModelArtifact(file: File | null) {
+    if (!file) return;
+    setBusy("保存モデルを読み込んでいます");
+    setError(null);
+    try {
+      const imported = await uploadModelArtifact(file);
+      const restored = restoreWorkbenchFromArtifact(imported);
+      setDataset(imported.dataset);
+      setFeatureColumns(restored.featureColumns);
+      setTargetColumns(restored.targetColumns);
+      setTargetSettings(restored.targetSettings);
+      setVariables(restored.variables);
+      setNormalize(restored.normalize);
+      setInputPerturbation(restored.inputPerturbation);
+      setNW(restored.nW);
+      setPerturbationStd(restored.perturbationStd);
+      setProjectionDimensions(restored.projectionDimensions);
+      setModelType(restored.modelType);
+      setAcquisitionFamily(restored.acquisitionFamily);
+      setAcquisition(restored.acquisition);
+      setBeta(restored.beta);
+      setFitMaxiter(restored.fitMaxiter);
+      setQ(restored.q);
+      setNumRestarts(restored.numRestarts);
+      setRawSamples(restored.rawSamples);
+      setResult(imported.result);
+      setLastModelSignature(restored.modelSignature);
+      setStepState("results");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function toggleFeature(name: string) {
     if (targetColumns.includes(name)) return;
     setFeatureColumns((current) =>
@@ -592,6 +630,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     settingsValid,
     candidateSettingsValid,
     handleFile,
+    handleModelArtifact,
     toggleFeature,
     toggleTarget,
     patchTargetSetting,

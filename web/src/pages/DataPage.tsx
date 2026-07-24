@@ -2,16 +2,30 @@ import { EmptyState, MetricCard, SectionHeader } from "../components/Common";
 import { useWorkbench } from "../context/WorkbenchContext";
 
 export default function DataPage() {
-  const { dataset, columns, handleFile, setStep } = useWorkbench();
+  const { dataset, columns, handleFile, handleModelArtifact, setStep } = useWorkbench();
   const numericCount = columns.filter((column) => column.kind === "numeric").length;
   const categoricalCount = columns.filter((column) => column.kind === "categorical").length;
+
+  async function selectModelArtifact(file: File | null, input: HTMLInputElement) {
+    try {
+      if (!file) return;
+      const trusted = window.confirm(
+        "保存モデルの読込にはtorch.load / pickleを使用します。\n\n" +
+        "pickleファイルは読込時にコードを実行できるため、このbochan Webアプリから自分で保存した信頼できるファイルだけを選択してください。\n\n" +
+        "このモデルファイルを信頼して読み込みますか？"
+      );
+      if (trusted) await handleModelArtifact(file);
+    } finally {
+      input.value = "";
+    }
+  }
 
   return (
     <>
       <SectionHeader
         step="1 · DATA"
-        title="最適化データを読み込む"
-        text="CSVまたはExcelをFastAPIへ送信し、列型・欠損・基本統計を確認します。"
+        title="最適化データまたは保存モデルを読み込む"
+        text="CSV・Excelから新規学習するか、保存済みモデルを読み込んで結果と設定を再現します。"
         action={
           dataset ? (
             <button onClick={() => setStep("prepare")}>変数設定へ</button>
@@ -19,32 +33,67 @@ export default function DataPage() {
         }
       />
 
-      <article className="panel">
-        <div className="panel-title">
-          <div>
-            <span className="panel-kicker">DATA SOURCE</span>
-            <h3>{dataset ? "データを入れ替える" : "データファイル"}</h3>
-            <p>対応形式: CSV / XLSX / XLS</p>
+      <div className="data-source-grid">
+        <article className="panel">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">DATA SOURCE</span>
+              <h3>{dataset ? "データを入れ替える" : "データファイル"}</h3>
+              <p>対応形式: CSV / XLSX / XLS</p>
+            </div>
+            {dataset && dataset.source_type !== "model_artifact" && (
+              <span className="status-chip success">Loaded</span>
+            )}
           </div>
-          {dataset && <span className="status-chip success">Loaded</span>}
+          <label className="dropzone">
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              onChange={(event) => void handleFile(event.target.files?.[0] ?? null)}
+            />
+            <span className="upload-symbol">⇧</span>
+            <strong>{dataset ? "別のファイルを選択" : "CSVまたはExcelを選択"}</strong>
+            <span>ファイルはAPIで解析され、現在のFastAPIプロセス内に保持されます。</span>
+          </label>
+        </article>
+
+        <article className="panel model-artifact-panel">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">SAVED MODEL</span>
+              <h3>保存モデルを読み込む</h3>
+              <p>モデル、学習データ、設定、候補結果を復元します。</p>
+            </div>
+            {dataset?.source_type === "model_artifact" && (
+              <span className="status-chip success">Restored</span>
+            )}
+          </div>
+          <label className="dropzone model-dropzone">
+            <input
+              type="file"
+              accept=".pt,.bochan.pt,application/octet-stream"
+              onChange={(event) => void selectModelArtifact(
+                event.target.files?.[0] ?? null,
+                event.currentTarget
+              )}
+            />
+            <span className="upload-symbol">↺</span>
+            <strong>bochan保存モデルを選択</strong>
+            <span>信頼できる`.bochan.pt`ファイルだけを読み込んでください。</span>
+          </label>
+          <div className="alert warning artifact-security-note">
+            保存モデルはpickle形式です。メールや外部サイトから入手した不明なファイルは読み込まないでください。
+          </div>
+        </article>
+      </div>
+
+      {dataset && (
+        <div className="file-summary">
+          <strong>{dataset.name}</strong>
+          <span>{dataset.profile.n_rows} rows × {dataset.profile.n_columns} columns</span>
+          <span className="status-chip">{dataset.source_type}</span>
         </div>
-        <label className="dropzone">
-          <input
-            type="file"
-            accept=".csv,.xlsx,.xls"
-            onChange={(event) => void handleFile(event.target.files?.[0] ?? null)}
-          />
-          <span className="upload-symbol">⇧</span>
-          <strong>{dataset ? "別のファイルを選択" : "CSVまたはExcelを選択"}</strong>
-          <span>ファイルはAPIで解析され、現在のFastAPIプロセス内に保持されます。</span>
-        </label>
-        {dataset && (
-          <div className="file-summary">
-            <strong>{dataset.name}</strong>
-            <span>{dataset.profile.n_rows} rows × {dataset.profile.n_columns} columns</span>
-          </div>
-        )}
-      </article>
+      )}
 
       {dataset ? (
         <>
@@ -117,7 +166,7 @@ export default function DataPage() {
           </article>
         </>
       ) : (
-        <EmptyState>ファイルを読み込むと、データ概要とプレビューを表示します。</EmptyState>
+        <EmptyState>データまたは保存モデルを読み込むと、概要とプレビューを表示します。</EmptyState>
       )}
     </>
   );

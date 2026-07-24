@@ -4,6 +4,7 @@ import type {
   Direction,
   HealthResponse,
   LogsResponse,
+  ModelArtifactImportResponse,
   RegressionResult,
   ResultVisualization,
   SearchVariable,
@@ -29,6 +30,7 @@ export interface WebCapabilities {
   optimizers: string[];
   data_sources: string[];
   visualizations: string[];
+  model_artifacts?: Record<string, unknown>;
   logging?: Record<string, unknown>;
 }
 
@@ -41,6 +43,30 @@ function webRouteNotFoundMessage(method: string, url: string): string {
   ].join("\n");
 }
 
+async function responsePayload(response: Response): Promise<any> {
+  const responseText = await response.text();
+  if (!responseText) return null;
+  try {
+    return JSON.parse(responseText);
+  } catch {
+    return responseText;
+  }
+}
+
+function responseError(
+  response: Response,
+  payload: any,
+  options: { method: string; url: string; missingWebRoute?: boolean }
+): Error {
+  const { method, url, missingWebRoute = false } = options;
+  const requestId = response.headers.get("X-Request-ID");
+  const detail = missingWebRoute
+    ? webRouteNotFoundMessage(method, url)
+    : (payload?.detail ?? payload ?? `HTTP ${response.status}`);
+  const message = typeof detail === "string" ? detail : JSON.stringify(detail);
+  return new Error(requestId ? `${message} [request_id=${requestId}]` : message);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${API_BASE}${path}`;
   const response = await fetch(url, {
@@ -50,26 +76,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {})
     }
   });
-  const responseText = await response.text();
-  let payload: any = null;
-  if (responseText) {
-    try {
-      payload = JSON.parse(responseText);
-    } catch {
-      payload = responseText;
-    }
-  }
+  const payload = await responsePayload(response);
   if (!response.ok) {
-    const requestId = response.headers.get("X-Request-ID");
     const method = String(init?.method ?? "GET").toUpperCase();
     const missingWebRoute = response.status === 404 && (
       path === "/capabilities" || path === "/datasets"
     );
-    const detail = missingWebRoute
-      ? webRouteNotFoundMessage(method, url)
-      : (payload?.detail ?? payload ?? `HTTP ${response.status}`);
-    const message = typeof detail === "string" ? detail : JSON.stringify(detail);
-    throw new Error(requestId ? `${message} [request_id=${requestId}]` : message);
+    throw responseError(response, payload, { method, url, missingWebRoute });
   }
   return payload as T;
 }
@@ -110,6 +123,59 @@ export async function uploadDataset(file: File): Promise<DatasetResponse> {
       sheet_name: 0
     })
   });
+}
+
+export async function uploadModelArtifact(file: File): Promise<ModelArtifactImportResponse> {
+  const path = "/model-artifacts/import?trust_pickle=true";
+  const url = `${API_BASE}${path}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "X-Model-Filename": file.name
+    },
+    body: file
+  });
+  const payload = await responsePayload(response);
+  if (!response.ok) {
+    throw responseError(response, payload, {
+      method: "POST",
+      url,
+      missingWebRoute: response.status === 404
+    });
+  }
+  return payload as ModelArtifactImportResponse;
+}
+
+function artifactFilename(response: Response, fallback: string): string {
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
+  const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return plainMatch?.[1] || fallback;
+}
+
+export async function downloadModelArtifact(runId: string, datasetName: string): Promise<void> {
+  const path = `/runs/${encodeURIComponent(runId)}/model-artifact`;
+  const url = `${API_BASE}${path}`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    const payload = await responsePayload(response);
+    throw responseError(response, payload, {
+      method: "GET",
+      url,
+      missingWebRoute: false
+    });
+  }
+  const blob = await response.blob();
+  const fallbackStem = datasetName.replace(/\.[^.]+$/, "") || "bochan_model";
+  const filename = artifactFilename(response, `${fallbackStem}.bochan.pt`);
+  const blobUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = blobUrl;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(blobUrl);
 }
 
 export interface RunRegressionInput {

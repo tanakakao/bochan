@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { downloadModelArtifact } from "../api";
 import { EmptyState, SectionHeader } from "../components/Common";
 import InteractiveResultPlots from "../InteractiveResultPlots";
 import { useWorkbench } from "../context/WorkbenchContext";
@@ -17,7 +19,8 @@ function csvCell(value: unknown): string {
 
 /** Renders recommended candidates first, followed by selectable existing Plotly figures. */
 export default function ResultsPage() {
-  const { result, setStep } = useWorkbench();
+  const { result, setError, setStep } = useWorkbench();
+  const [modelDownloading, setModelDownloading] = useState(false);
 
   if (!result) {
     return (
@@ -25,7 +28,7 @@ export default function ResultsPage() {
         <SectionHeader
           step="5 · RESULTS"
           title="候補と予測結果を確認する"
-          text="Optimizeページで候補を生成してください。"
+          text="Suggestページで候補を生成してください。"
         />
         <EmptyState>候補生成結果がありません。</EmptyState>
       </>
@@ -67,6 +70,23 @@ export default function ResultsPage() {
     URL.revokeObjectURL(url);
   }
 
+  async function downloadModel() {
+    const runId = completedResult.visualization_run_id;
+    if (!runId) {
+      setError("保存対象の学習済みモデルがありません。候補を再生成してください。");
+      return;
+    }
+    setModelDownloading(true);
+    setError(null);
+    try {
+      await downloadModelArtifact(runId, completedResult.dataset_name);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setModelDownloading(false);
+    }
+  }
+
   const droppedRows = Number(completedResult.metadata?.dropped_rows ?? 0);
   const modelDetails = completedResult.metadata?.model_details as Record<string, unknown> | undefined;
   const effectiveAcquisition = String(
@@ -84,13 +104,27 @@ export default function ResultsPage() {
         text={`${completedResult.model_type} · ${effectiveAcquisition} · ${backend} · 学習 ${completedResult.n_train}件`}
         action={
           <>
-            <button className="secondary" onClick={() => setStep("settings")}>目的・探索設定</button>
-            <button className="secondary" onClick={() => setStep("optimize")}>モデル設定</button>
+            <button className="secondary" onClick={() => setStep("settings")}>モデル設定</button>
+            <button className="secondary" onClick={() => setStep("optimize")}>候補提案設定</button>
             <button className="secondary" onClick={downloadCandidates}>候補CSVを保存</button>
+            <button
+              className="secondary"
+              disabled={!completedResult.visualization_run_id || modelDownloading}
+              onClick={() => void downloadModel()}
+              title="モデル、学習データ、設定、候補結果を1ファイルに保存します。"
+            >
+              {modelDownloading ? "モデル保存中" : "モデルを保存"}
+            </button>
             <button onClick={() => setStep("logs")}>モデル詳細・ログ</button>
           </>
         }
       />
+
+      {Boolean(completedResult.metadata?.model_artifact_loaded) && (
+        <div className="alert success artifact-loaded-note">
+          保存モデルから復元した結果です。学習済みモデルと設定を保持しているため、可視化の再生成や候補提案設定の変更ができます。
+        </div>
+      )}
 
       <article className="panel best-model-panel recommended-first">
         <div className="panel-title">

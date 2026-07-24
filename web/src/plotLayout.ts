@@ -11,13 +11,16 @@ export function themedPlotLayout(
   const muted = dark ? "#7f8ba0" : "#98a2b3";
   const grid = dark ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.08)";
   const sourceBottomMargin = typeof source.margin?.b === "number" ? source.margin.b : 0;
+  const sourceTopMargin = typeof source.margin?.t === "number" ? source.margin.t : 30;
 
   return {
     ...source,
+    title: undefined,
     autosize: true,
     width: undefined,
     margin: {
       ...source.margin,
+      t: Math.min(sourceTopMargin, 40),
       b: Math.max(sourceBottomMargin, 130)
     },
     paper_bgcolor: "rgba(0,0,0,0)",

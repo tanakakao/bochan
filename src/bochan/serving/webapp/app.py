@@ -31,6 +31,7 @@ from .logging import (
     reset_request_id,
     set_request_id,
 )
+from .model_artifact_routes import create_model_artifact_router
 from .visualization_sessions import build_visualization
 from .workflows import run_regression_web_workflow
 
@@ -181,8 +182,14 @@ WEB_CAPABILITIES: dict[str, Any] = {
         "thompson_sampling",
         "nsgaii",
     ],
-    "data_sources": ["csv", "excel"],
+    "data_sources": ["csv", "excel", "model_artifact"],
     "visualizations": ["yyplot", "pareto", "prediction-1d", "prediction-2d", "ternary"],
+    "model_artifacts": {
+        "download_endpoint": "/api/v1/runs/{run_id}/model-artifact",
+        "import_endpoint": "/api/v1/model-artifacts/import",
+        "format": "bochan.pt",
+        "pickle_trust_required": True,
+    },
     "logging": {
         "format": "jsonl",
         "request_id_header": "X-Request-ID",
@@ -229,7 +236,7 @@ def create_app(
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Request-ID"],
+        expose_headers=["X-Request-ID", "Content-Disposition", "X-Model-Artifact-Version"],
     )
 
     @app.middleware("http")
@@ -291,6 +298,10 @@ def create_app(
         logging_payload = dict(WEB_CAPABILITIES["logging"])
         logging_payload["recent_logs_endpoint"] = f"{api_prefix}/logs"
         capabilities_payload["logging"] = logging_payload
+        artifact_payload = dict(WEB_CAPABILITIES["model_artifacts"])
+        artifact_payload["download_endpoint"] = f"{api_prefix}/runs/{{run_id}}/model-artifact"
+        artifact_payload["import_endpoint"] = f"{api_prefix}/model-artifacts/import"
+        capabilities_payload["model_artifacts"] = artifact_payload
         return capabilities_payload
 
     @router.get("/logs")
@@ -486,6 +497,7 @@ def create_app(
             )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    router.include_router(create_model_artifact_router(dataset_store))
     app.include_router(router)
     log_event(
         logger,

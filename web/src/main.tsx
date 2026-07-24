@@ -9,6 +9,7 @@ import "./advanced-settings.css";
 import "./constraint-selection.css";
 import "./workflow-separation.css";
 import "./ui-adjustments.css";
+import "./model-artifact.css";
 
 installDynamicNumberInputSteps();
 

@@ -74,6 +74,8 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
   const [history, setHistory] = useState<ExperimentHistoryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [includeLatestModel, setIncludeLatestModel] = useState(true);
+  const [includePastModels, setIncludePastModels] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState("");
   const [reloadVersion, setReloadVersion] = useState(0);
 
@@ -133,7 +135,10 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
         numRestarts,
         rawSamples,
         searchSpace: selectedVariables
-      }, result, dataset.name);
+      }, result, dataset.name, {
+        includeLatestModel,
+        includePastModels
+      });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -143,33 +148,54 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
 
   return (
     <article className="panel experiment-history-panel">
-      <div className="panel-title">
+      <div className="panel-title history-panel-title">
         <div>
           <span className="panel-kicker">EXPERIMENT HISTORY</span>
           <h3>実験サイクル履歴</h3>
           <p>各サイクルの追加データ、モデル・獲得関数設定、目的変数の推移を確認します。</p>
         </div>
-        <div className="experiment-panel-actions">
-          <button
-            className="secondary"
-            onClick={() => void exportProject()}
-            disabled={!canExport || exporting}
-            title="データ、履歴、探索設定を安全なZIPへ保存します。学習済みモデル本体は含みません。"
-          >
-            {exporting ? "保存中" : "履歴込みプロジェクトを保存"}
-          </button>
-          <button
-            className="secondary"
-            onClick={() => setReloadVersion((current) => current + 1)}
-            disabled={loading}
-          >
-            {loading ? "読込中" : `更新 · ${history?.count ?? 0} cycles`}
-          </button>
+        <div className="history-panel-actions">
+          <div className="history-export-options">
+            <label>
+              <input
+                type="checkbox"
+                checked={includeLatestModel}
+                onChange={(event) => setIncludeLatestModel(event.target.checked)}
+                disabled={exporting}
+              />
+              最新モデルを含める
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={includePastModels}
+                onChange={(event) => setIncludePastModels(event.target.checked)}
+                disabled={exporting}
+              />
+              過去サイクルのモデルも含める（標準OFF）
+            </label>
+          </div>
+          <div className="history-action-buttons">
+            <button
+              onClick={() => void exportProject()}
+              disabled={!canExport || exporting}
+              title="データ、履歴、探索設定と選択した学習済みモデルをZIPへ保存します。"
+            >
+              {exporting ? "保存中" : "履歴込みプロジェクトを保存"}
+            </button>
+            <button
+              className="secondary"
+              onClick={() => setReloadVersion((current) => current + 1)}
+              disabled={loading}
+            >
+              {loading ? "読込中" : `更新 · ${history?.count ?? 0} cycles`}
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="alert warning">
-        プロジェクトZIPにはデータと履歴、変数・モデル・獲得関数設定が含まれます。学習済みモデル本体は含まれないため、読込後は再学習してください。
+        通常保存ではデータ・履歴・設定と最新の利用可能なモデルをまとめます。過去サイクルのモデルは標準では保存しません。モデルを含むZIPは信頼できる環境でのみ読み込んでください。
       </div>
 
       {loading && !history && <div className="empty-state">履歴を読み込んでいます。</div>}

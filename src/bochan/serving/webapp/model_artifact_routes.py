@@ -1,4 +1,4 @@
-"""FastAPI routes for Web model artifacts and experiment-cycle history."""
+"""FastAPI routes for Web artifacts, project archives, and experiment history."""
 
 from __future__ import annotations
 
@@ -21,6 +21,13 @@ from .model_artifacts import (
     serialize_web_model_artifact,
 )
 from .model_reuse import model_reuse_signature, register_model_signature
+from .project_archive import (
+    PROJECT_ARCHIVE_VERSION,
+    ExperimentProjectExportRequest,
+    is_experiment_project_archive,
+    restore_experiment_project,
+    serialize_experiment_project,
+)
 
 
 def _profile_with_category_values(record: Any) -> dict[str, Any]:
@@ -36,6 +43,18 @@ def _profile_with_category_values(record: Any) -> dict[str, Any]:
         series = record.data[column["name"]].dropna()
         column["values"] = to_serializable(series.unique().tolist())
     return profile
+
+
+def _dataset_response(record: Any) -> dict[str, Any]:
+    """Build the common Web dataset response for restored artifacts."""
+
+    return {
+        "dataset_id": record.dataset_id,
+        "name": record.name,
+        "source_type": record.source_type,
+        "profile": _profile_with_category_values(record),
+        "preview": dataframe_preview(record.data, limit=100),
+    }
 
 
 def create_model_artifact_router(dataset_store: Any) -> APIRouter:
@@ -73,22 +92,80 @@ def create_model_artifact_router(dataset_store: Any) -> APIRouter:
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @router.post("/experiment-projects/export", tags=["web-experiment-projects"])
+    def export_experiment_project(request: ExperimentProjectExportRequest) -> Response:
+        """Download the complete dataset lineage, experiment history, and UI settings."""
+
+        try:
+            content, filename = serialize_experiment_project(
+                dataset_store,
+                experiment_history,
+                request,
+            )
+            disposition = (
+                'attachment; filename="bochan_project.bochan-project.zip"; '
+                f"filename*=UTF-8''{quote(filename)}"
+            )
+            return Response(
+                content=content,
+                media_type="application/zip",
+                headers={
+                    "Content-Disposition": disposition,
+                    "X-Project-Archive-Version": str(PROJECT_ARCHIVE_VERSION),
+                },
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @router.post("/model-artifacts/import")
     async def import_model_artifact(
         request: Request,
         trust_pickle: bool = False,
     ) -> dict[str, Any]:
-        """Restore a trusted downloaded model artifact without retraining."""
+        """Restore either a trusted model artifact or a safe project ZIP archive."""
 
         try:
             content = await request.body()
+            supplied_name = request.headers.get("X-Model-Filename", "").strip()
+
+            if is_experiment_project_archive(content):
+                imported = restore_experiment_project(
+                    content,
+                    dataset_store,
+                    experiment_history,
+                )
+                record = imported["record"]
+                archive = imported["archive"]
+                return {
+                    "dataset": _dataset_response(record),
+                    "result": imported["result"],
+                    "request": to_serializable(imported["request"]),
+                    "history": imported["history"],
+                    "artifact": {
+                        "filename": supplied_name or None,
+                        "artifact_version": archive["version"],
+                        "bochan_version": None,
+                        "original_run_id": archive.get("original_run_id"),
+                        "restored_run_id": archive["restored_run_id"],
+                        "project_archive": True,
+                        "model_included": False,
+                        "cycle_count": archive["cycle_count"],
+                        "dataset_count": archive["dataset_count"],
+                        "pickle_warning": (
+                            "Project archives contain JSON and dataset snapshots only; "
+                            "the trained model is not restored and must be retrained."
+                        ),
+                    },
+                }
+
             payload = deserialize_web_model_artifact(
                 content,
                 trust_pickle=trust_pickle,
                 map_location="cpu",
             )
             original_result = payload["result"]
-            supplied_name = request.headers.get("X-Model-Filename", "").strip()
             dataset_name = str(
                 original_result.get("dataset_name")
                 or supplied_name.removesuffix(".bochan.pt")
@@ -115,13 +192,7 @@ def create_model_artifact_router(dataset_store: Any) -> APIRouter:
                 register_model_signature(run_id, signature)
 
             return {
-                "dataset": {
-                    "dataset_id": record.dataset_id,
-                    "name": record.name,
-                    "source_type": record.source_type,
-                    "profile": _profile_with_category_values(record),
-                    "preview": dataframe_preview(record.data, limit=100),
-                },
+                "dataset": _dataset_response(record),
                 "result": result,
                 "request": to_serializable(request_payload),
                 "artifact": {

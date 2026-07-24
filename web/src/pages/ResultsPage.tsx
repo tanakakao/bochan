@@ -55,6 +55,7 @@ export default function ResultsPage() {
   }
 
   const completedResult = result;
+  const staleAfterAppend = Boolean(completedResult.metadata?.stale_after_data_append);
   const targetColumns = completedResult.target_columns?.length
     ? completedResult.target_columns
     : completedResult.target_column
@@ -90,6 +91,10 @@ export default function ResultsPage() {
   }
 
   async function downloadModel() {
+    if (staleAfterAppend) {
+      setError("実験データ追加前のモデルです。更新データで再学習してから保存してください。");
+      return;
+    }
     const runId = completedResult.visualization_run_id;
     if (!runId) {
       setError("保存対象の学習済みモデルがありません。候補を再生成してください。");
@@ -127,6 +132,7 @@ export default function ResultsPage() {
           <>
             <button className="secondary" onClick={() => setStep("settings")}>モデル設定</button>
             <button className="secondary" onClick={() => setStep("optimize")}>候補提案設定</button>
+            <button onClick={() => { window.location.hash = "experiment"; }}>実験結果を追加</button>
             <button className="secondary" onClick={downloadCandidates}>候補CSVを保存</button>
             <div className="model-save-control">
               <label>
@@ -141,7 +147,7 @@ export default function ResultsPage() {
               </label>
               <button
                 className="secondary"
-                disabled={!completedResult.visualization_run_id || modelDownloading}
+                disabled={!completedResult.visualization_run_id || modelDownloading || staleAfterAppend}
                 onClick={() => void downloadModel()}
                 title="モデル、学習データ、設定、候補結果を指定した名前で保存します。"
               >
@@ -152,6 +158,12 @@ export default function ResultsPage() {
           </>
         }
       />
+
+      {staleAfterAppend && (
+        <div className="alert warning stale-result-note">
+          実験データを追加したため、この候補と予測は追加前のモデル結果です。現在の設定を確認して再学習してください。
+        </div>
+      )}
 
       {Boolean(completedResult.metadata?.model_artifact_loaded) && (
         <div className="alert success artifact-loaded-note">
@@ -166,7 +178,9 @@ export default function ResultsPage() {
             <h3>推奨候補</h3>
             <p>順位1を先頭に、各目的の予測値・標準偏差、獲得関数値、制約判定を表示します。</p>
           </div>
-          <span className="status-chip success">{candidates.length} candidates</span>
+          <span className={`status-chip ${staleAfterAppend ? "warning" : "success"}`}>
+            {candidates.length} candidates{staleAfterAppend ? " · stale" : ""}
+          </span>
         </div>
         <div className="table-wrap">
           <table>

@@ -7,6 +7,7 @@ import {
   type ExperimentCycle,
   type ExperimentHistoryResponse
 } from "../experimentHistory";
+import { downloadExperimentProject } from "../experimentProject";
 import { RESULT_PLOT_CONFIG } from "../plotConfig";
 import { themedPlotLayout } from "../plotLayout";
 
@@ -44,9 +45,35 @@ function cycleAcquisitionName(cycle: ExperimentCycle): string {
 
 /** Displays experiment-cycle settings, appended rows, and objective progress figures. */
 export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: ExperimentHistoryPanelProps) {
-  const { theme, setError } = useWorkbench();
+  const {
+    theme,
+    setError,
+    dataset,
+    result,
+    featureColumns,
+    targetColumn,
+    targetColumns,
+    selectedTargetSettings,
+    targetDirections,
+    direction,
+    selectedVariables,
+    normalize,
+    inputPerturbation,
+    nW,
+    perturbationStd,
+    projectionDimensions,
+    modelType,
+    acquisitionFamily,
+    acquisition,
+    beta,
+    fitMaxiter,
+    q,
+    numRestarts,
+    rawSamples
+  } = useWorkbench();
   const [history, setHistory] = useState<ExperimentHistoryResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState("");
   const [reloadVersion, setReloadVersion] = useState(0);
 
@@ -77,6 +104,42 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
     [history, selectedTarget]
   );
   const latest = history?.cycles.at(-1);
+  const canExport = Boolean(dataset && result && dataset.dataset_id === datasetId);
+
+  async function exportProject() {
+    if (!dataset || !result) return;
+    try {
+      setExporting(true);
+      setError(null);
+      await downloadExperimentProject({
+        datasetId: dataset.dataset_id,
+        featureColumns,
+        targetColumn,
+        targetColumns,
+        targetSettings: selectedTargetSettings,
+        targetDirections,
+        direction,
+        modelType,
+        projectionDimensions,
+        fitMaxiter,
+        normalize,
+        inputPerturbation,
+        nW,
+        perturbationStd,
+        acquisitionFamily,
+        acquisition,
+        beta,
+        q,
+        numRestarts,
+        rawSamples,
+        searchSpace: selectedVariables
+      }, result, dataset.name);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <article className="panel experiment-history-panel">
@@ -86,13 +149,27 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
           <h3>実験サイクル履歴</h3>
           <p>各サイクルの追加データ、モデル・獲得関数設定、目的変数の推移を確認します。</p>
         </div>
-        <button
-          className="secondary"
-          onClick={() => setReloadVersion((current) => current + 1)}
-          disabled={loading}
-        >
-          {loading ? "読込中" : `更新 · ${history?.count ?? 0} cycles`}
-        </button>
+        <div className="experiment-panel-actions">
+          <button
+            className="secondary"
+            onClick={() => void exportProject()}
+            disabled={!canExport || exporting}
+            title="データ、履歴、探索設定を安全なZIPへ保存します。学習済みモデル本体は含みません。"
+          >
+            {exporting ? "保存中" : "履歴込みプロジェクトを保存"}
+          </button>
+          <button
+            className="secondary"
+            onClick={() => setReloadVersion((current) => current + 1)}
+            disabled={loading}
+          >
+            {loading ? "読込中" : `更新 · ${history?.count ?? 0} cycles`}
+          </button>
+        </div>
+      </div>
+
+      <div className="alert warning">
+        プロジェクトZIPにはデータと履歴、変数・モデル・獲得関数設定が含まれます。学習済みモデル本体は含まれないため、読込後は再学習してください。
       </div>
 
       {loading && !history && <div className="empty-state">履歴を読み込んでいます。</div>}

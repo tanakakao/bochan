@@ -10,6 +10,11 @@ import {
 const RAW_API_BASE = String(import.meta.env.VITE_API_BASE ?? "/api/v1").trim();
 const API_BASE = (RAW_API_BASE || "/api/v1").replace(/\/+$/, "");
 
+export interface ExperimentProjectExportOptions {
+  includeLatestModel?: boolean;
+  includePastModels?: boolean;
+}
+
 async function responsePayload(response: Response): Promise<any> {
   const text = await response.text();
   if (!text) return null;
@@ -113,11 +118,12 @@ function buildProjectRunRequest(input: RunRegressionInput): Record<string, unkno
   };
 }
 
-/** Download a safe ZIP containing dataset lineage, experiment history, and UI settings. */
+/** Download a project ZIP with latest-model inclusion enabled by default. */
 export async function downloadExperimentProject(
   input: RunRegressionInput,
   result: RegressionResult,
-  datasetName: string
+  datasetName: string,
+  options: ExperimentProjectExportOptions = {}
 ): Promise<void> {
   const path = "/experiment-projects/export";
   const url = `${API_BASE}${path}`;
@@ -127,7 +133,9 @@ export async function downloadExperimentProject(
     body: JSON.stringify({
       dataset_id: input.datasetId,
       request: buildProjectRunRequest(input),
-      result
+      result,
+      include_latest_model: options.includeLatestModel ?? true,
+      include_past_models: options.includePastModels ?? false
     })
   });
   if (!response.ok) {

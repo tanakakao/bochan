@@ -1,4 +1,4 @@
-import { useEffect, type ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import {
   STEPS,
   WorkbenchProvider,
@@ -6,6 +6,7 @@ import {
   useWorkbench
 } from "./context/WorkbenchContext";
 import DataPage from "./pages/DataPage";
+import ExperimentPage from "./pages/ExperimentPage";
 import LogsPage from "./pages/LogsPage";
 import OptimizePage from "./pages/OptimizePage";
 import PreparePage from "./pages/PreparePage";
@@ -32,6 +33,17 @@ const ICONS: Record<WorkbenchStep, string> = {
   results: "◎",
   logs: "≡"
 };
+
+type AuxiliaryPage = "experiment";
+
+function currentAuxiliaryPage(): AuxiliaryPage | null {
+  return window.location.hash === "#experiment" ? "experiment" : null;
+}
+
+function clearAuxiliaryHash(): void {
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+}
 
 function formatBestObserved(value: number | Record<string, number>): string {
   if (typeof value === "number") return Number.isFinite(value) ? value.toPrecision(5) : "—";
@@ -74,6 +86,7 @@ function summarizeTargetSetting(setting: TargetSetting): string {
 
 function WorkbenchLayout() {
   const mode = useWorkbenchMode();
+  const [auxiliaryPage, setAuxiliaryPage] = useState<AuxiliaryPage | null>(currentAuxiliaryPage);
   const {
     theme,
     setTheme,
@@ -98,10 +111,17 @@ function WorkbenchLayout() {
     ? STEPS.filter(([id]) => id === "data" || id === "prepare" || id === "results" || id === "logs")
     : STEPS;
   const index = visibleSteps.findIndex(([id]) => id === step);
-  const Page = PAGES[step];
+  const Page = auxiliaryPage === "experiment" ? ExperimentPage : PAGES[step];
   const targetSummary = selectedTargetSettings.length
     ? selectedTargetSettings.map(summarizeTargetSetting).join(" / ")
     : "—";
+  const resultStale = Boolean(result?.metadata?.stale_after_data_append);
+
+  useEffect(() => {
+    const handleHashChange = () => setAuxiliaryPage(currentAuxiliaryPage());
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
 
   useEffect(() => {
     if (mode === "simple" && (step === "settings" || step === "optimize")) {
@@ -110,7 +130,20 @@ function WorkbenchLayout() {
   }, [dataset, mode, setStep, step]);
 
   function isComplete(id: WorkbenchStep, stepIndex: number): boolean {
+    if (auxiliaryPage === "experiment") {
+      return stepIndex <= index && canOpenStep(id);
+    }
     return stepIndex < index && canOpenStep(id);
+  }
+
+  function openStep(id: WorkbenchStep) {
+    if (auxiliaryPage) clearAuxiliaryHash();
+    setStep(id);
+  }
+
+  function openExperiment() {
+    if (!result) return;
+    window.location.hash = "experiment";
   }
 
   return (
@@ -128,10 +161,10 @@ function WorkbenchLayout() {
           {visibleSteps.map(([id, label], stepIndex) => (
             <div className="workflow-item" key={id}>
               <button
-                className={`workflow-step ${id === step ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
-                onClick={() => setStep(id)}
+                className={`workflow-step ${!auxiliaryPage && id === step ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
+                onClick={() => openStep(id)}
                 disabled={!canOpenStep(id)}
-                aria-current={id === step ? "step" : undefined}
+                aria-current={!auxiliaryPage && id === step ? "step" : undefined}
               >
                 <span>{stepIndex + 1}</span>
                 <strong>{label}</strong>
@@ -187,16 +220,26 @@ function WorkbenchLayout() {
             {visibleSteps.map(([id, label, detail], stepIndex) => (
               <button
                 key={id}
-                className={`tab ${step === id ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
-                onClick={() => setStep(id)}
+                className={`tab ${!auxiliaryPage && step === id ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
+                onClick={() => openStep(id)}
                 disabled={!canOpenStep(id)}
-                aria-current={step === id ? "page" : undefined}
+                aria-current={!auxiliaryPage && step === id ? "page" : undefined}
               >
                 <span className="nav-icon">{ICONS[id]}</span>
                 <span><strong>{label}</strong><small>{detail}</small></span>
                 <em>{stepIndex + 1}</em>
               </button>
             ))}
+            <button
+              className={`tab ${auxiliaryPage === "experiment" ? "active" : ""}`}
+              onClick={openExperiment}
+              disabled={!result}
+              aria-current={auxiliaryPage === "experiment" ? "page" : undefined}
+            >
+              <span className="nav-icon">＋</span>
+              <span><strong>Experiment</strong><small>実験結果追加</small></span>
+              <em>{visibleSteps.length + 1}</em>
+            </button>
           </nav>
           <div className="rail-spacer" />
           <div className="rail-note">
@@ -269,7 +312,12 @@ function WorkbenchLayout() {
               <div className="context-list">
                 <div><span>Candidates</span><strong>{result.candidates.length}</strong></div>
                 <div><span>Best observed</span><strong>{formatBestObserved(result.best_observed)}</strong></div>
-                <div><span>Status</span><strong className="success-text">Ready</strong></div>
+                <div>
+                  <span>Status</span>
+                  <strong className={resultStale ? "warning-text" : "success-text"}>
+                    {resultStale ? "再学習待ち" : "Ready"}
+                  </strong>
+                </div>
               </div>
             ) : (
               <p>候補生成後に、予測結果と可視化の概要をここへ表示します。</p>
@@ -282,7 +330,7 @@ function WorkbenchLayout() {
         <span><span className={`dot ${health.status}`} /> API {health.status}</span>
         <span>{mode === "simple" ? "Simple mode" : "Advanced mode"}</span>
         <span>{dataset ? `${dataset.profile.n_rows} rows` : "No data"}</span>
-        <span>{result ? `${result.candidates.length} candidates` : "No result"}</span>
+        <span>{result ? `${result.candidates.length} candidates${resultStale ? " · stale" : ""}` : "No result"}</span>
         <span className="privacy-status">React · FastAPI · BoTorch</span>
       </footer>
 

@@ -72,12 +72,16 @@ export async function appendExperimentRows(
   return uploadDataset(datasetFile(complete, [...complete.preview, ...appended]));
 }
 
-/** Import CSV/Excel experiment rows, merge them with the current data, and re-register the dataset. */
+/** Import CSV/Excel experiment rows, merge them with the current data, and return normalized rows. */
 export async function appendExperimentFile(
   dataset: DatasetResponse,
   file: File,
   requiredColumns: string[]
-): Promise<{ dataset: DatasetResponse; appendedRows: number }> {
+): Promise<{
+  dataset: DatasetResponse;
+  appendedRows: number;
+  rows: Record<string, unknown>[];
+}> {
   const imported = await uploadDataset(file);
   const importedComplete = await fetchDataset(imported.dataset_id);
   const importedColumns = new Set(importedComplete.profile.columns.map((column) => column.name));
@@ -88,9 +92,13 @@ export async function appendExperimentFile(
   if (!importedComplete.preview.length) {
     throw new Error("インポートファイルに追加できる行がありません。");
   }
+
+  const currentComplete = await fetchDataset(dataset.dataset_id);
+  const rows = normalizedRows(currentComplete, importedComplete.preview);
   return {
-    dataset: await appendExperimentRows(dataset, importedComplete.preview),
-    appendedRows: importedComplete.preview.length
+    dataset: await uploadDataset(datasetFile(currentComplete, [...currentComplete.preview, ...rows])),
+    appendedRows: rows.length,
+    rows
   };
 }
 

@@ -129,6 +129,7 @@ def create_model_artifact_router(dataset_store: Any) -> APIRouter:
         try:
             content = await request.body()
             supplied_name = request.headers.get("X-Model-Filename", "").strip()
+            expects_project = supplied_name.lower().endswith(".bochan-project.zip")
 
             if is_experiment_project_archive(content):
                 imported = restore_experiment_project(
@@ -159,6 +160,11 @@ def create_model_artifact_router(dataset_store: Any) -> APIRouter:
                         ),
                     },
                 }
+
+            if expects_project:
+                raise ValueError(
+                    "The selected .bochan-project.zip file is not a valid bochan project archive."
+                )
 
             payload = deserialize_web_model_artifact(
                 content,

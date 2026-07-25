@@ -7,7 +7,11 @@ import {
   type ExperimentCycle,
   type ExperimentHistoryResponse
 } from "../experimentHistory";
-import { downloadExperimentProject } from "../experimentProject";
+import {
+  defaultExperimentProjectFilename,
+  downloadExperimentProject,
+  normalizeExperimentProjectFilename
+} from "../experimentProject";
 import { RESULT_PLOT_CONFIG } from "../plotConfig";
 import { themedPlotLayout } from "../plotLayout";
 import "../experiment-history-cycle-plots.css";
@@ -331,17 +335,23 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
     numRestarts,
     rawSamples
   } = useWorkbench();
+  const suggestedProjectFilename = defaultExperimentProjectFilename(dataset?.name ?? "bochan_project");
   const [history, setHistory] = useState<ExperimentHistoryResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [includeLatestModel, setIncludeLatestModel] = useState(true);
   const [includePastModels, setIncludePastModels] = useState(false);
+  const [projectFilename, setProjectFilename] = useState(suggestedProjectFilename);
   const [selectedTarget, setSelectedTarget] = useState("");
   const [selectedFeatureX, setSelectedFeatureX] = useState("");
   const [selectedFeatureY, setSelectedFeatureY] = useState("");
   const [selectedParetoX, setSelectedParetoX] = useState("");
   const [selectedParetoY, setSelectedParetoY] = useState("");
   const [reloadVersion, setReloadVersion] = useState(0);
+
+  useEffect(() => {
+    setProjectFilename(suggestedProjectFilename);
+  }, [suggestedProjectFilename]);
 
   useEffect(() => {
     let active = true;
@@ -407,6 +417,8 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
 
   async function exportProject() {
     if (!dataset || !result) return;
+    const filename = normalizeExperimentProjectFilename(projectFilename, suggestedProjectFilename);
+    setProjectFilename(filename);
     try {
       setExporting(true);
       setError(null);
@@ -434,7 +446,8 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
         searchSpace: selectedVariables
       }, result, dataset.name, {
         includeLatestModel,
-        includePastModels
+        includePastModels,
+        filename
       });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -453,6 +466,19 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
         </div>
         <div className="history-panel-actions">
           <div className="history-export-options">
+            <label className="history-export-filename">
+              保存名
+              <input
+                type="text"
+                value={projectFilename}
+                onChange={(event) => setProjectFilename(event.target.value)}
+                onBlur={() => setProjectFilename(
+                  normalizeExperimentProjectFilename(projectFilename, suggestedProjectFilename)
+                )}
+                disabled={exporting}
+                aria-label="プロジェクト保存名"
+              />
+            </label>
             <label>
               <input
                 type="checkbox"
@@ -476,7 +502,7 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
             <button
               onClick={() => void exportProject()}
               disabled={!canExport || exporting}
-              title="データ、履歴、探索設定と選択した学習済みモデルをZIPへ保存します。"
+              title="データ、履歴、探索設定と選択した学習済みモデルを指定名のZIPへ保存します。"
             >
               {exporting ? "保存中" : "履歴込みプロジェクトを保存"}
             </button>

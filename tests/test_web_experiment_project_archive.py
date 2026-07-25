@@ -206,7 +206,7 @@ def test_project_archive_restores_dataset_history_and_settings() -> None:
     imported = import_response.json()
     assert imported["artifact"]["project_archive"] is True
     assert imported["artifact"]["model_included"] is False
-    assert imported["artifact"]["cycle_count"] == 1
+    assert imported["artifact"]["cycle_count"] == 2
     assert imported["dataset"]["profile"]["n_rows"] == 3
     assert imported["request"]["dataset_id"] == imported["dataset"]["dataset_id"]
     assert imported["request"]["model_type"] == "base"
@@ -221,8 +221,10 @@ def test_project_archive_restores_dataset_history_and_settings() -> None:
     )
     assert history_response.status_code == 200, history_response.text
     history = history_response.json()
-    assert history["count"] == 1
-    restored_cycle = history["cycles"][0]
+    assert history["count"] == 2
+    assert history["cycles"][0]["cycle_number"] == 0
+    assert history["cycles"][0]["append_mode"] == "initial"
+    restored_cycle = history["cycles"][1]
     assert restored_cycle["created_at"] == original_cycle["created_at"]
     assert restored_cycle["rows"] == [{"x": 3.0, "y": 3.0}]
     assert restored_cycle["model"]["type"] == "base"

@@ -347,7 +347,7 @@ class ExperimentHistoryStore:
                     "cycle_number": 0,
                     "created_at": datetime.now(UTC).isoformat(),
                     **initial_request.model_dump(mode="json"),
-                    "parent_dataset_id": "",
+                    "parent_dataset_id": request.parent_dataset_id,
                     "append_mode": "initial",
                     "appended_rows": len(initial_rows),
                     "model": {"type": "initial_data", "n_train": len(initial_rows)},

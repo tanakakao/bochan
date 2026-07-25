@@ -311,6 +311,17 @@ def _restore_cycles(
         if old_parent not in dataset_id_map or old_dataset not in dataset_id_map:
             raise ValueError("Experiment history references a dataset missing from the archive.")
 
+        if int(archived.get("cycle_number", -1)) == 0:
+            restored_initial = deepcopy(archived)
+            restored_initial["parent_dataset_id"] = dataset_id_map[old_parent]
+            restored_initial["dataset_id"] = dataset_id_map[old_dataset]
+            restored_initial["archived_cycle_id"] = archived.get("cycle_id")
+            restored_initial["archived_cycle_number"] = 0
+            with history_store._lock:  # noqa: SLF001
+                history_store._by_dataset[restored_initial["dataset_id"]] = restored_initial  # noqa: SLF001
+                history_store._by_cycle_id[restored_initial["cycle_id"]] = restored_initial  # noqa: SLF001
+            continue
+
         payload = {
             key: deepcopy(value)
             for key, value in archived.items()

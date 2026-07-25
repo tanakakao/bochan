@@ -216,7 +216,10 @@ def _history_visualizations(cycles: list[dict[str, Any]]) -> list[dict[str, Any]
         hover = [_cycle_hover_text(cycle) for cycle in usable]
 
         first_summary = usable[0]["target_summary"][target]
-        baseline = _safe_float(usable[0].get("best_observed_before", {}).get(target))
+        has_initial_cycle = any(int(cycle["cycle_number"]) == 0 for cycle in usable)
+        baseline = None if has_initial_cycle else _safe_float(
+            usable[0].get("best_observed_before", {}).get(target)
+        )
         cumulative_x: list[int] = []
         cumulative_y: list[float] = []
         cumulative_hover: list[str] = []
@@ -307,8 +310,22 @@ class ExperimentHistoryStore:
             reversed_cycles.reverse()
             return deepcopy(reversed_cycles)
 
-    def add(self, request: ExperimentCycleRequest) -> dict[str, Any]:
-        """Record a completed cycle and assign its lineage cycle number."""
+    def add(
+        self,
+        request: ExperimentCycleRequest,
+        *,
+        initial_rows: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Record a completed cycle and assign its lineage cycle number.
+
+        Args:
+            request: Completed experiment-cycle payload.
+            initial_rows: Original dataset rows used to create cycle zero when the
+                lineage has not yet been recorded.
+
+        Returns:
+            A copy of the newly recorded experiment cycle.
+        """
 
         if request.dataset_id == request.parent_dataset_id:
             raise ValueError("The updated dataset_id must differ from parent_dataset_id.")
@@ -317,9 +334,34 @@ class ExperimentHistoryStore:
 
         with self._lock:
             previous = self.list_for_dataset(request.parent_dataset_id)
+            if not previous and initial_rows is not None:
+                initial_request = request.model_copy(
+                    update={
+                        "dataset_id": request.parent_dataset_id,
+                        "n_rows_after": request.n_rows_before,
+                        "rows": initial_rows,
+                    }
+                )
+                initial_cycle = {
+                    "cycle_id": uuid4().hex,
+                    "cycle_number": 0,
+                    "created_at": datetime.now(UTC).isoformat(),
+                    **initial_request.model_dump(mode="json"),
+                    "parent_dataset_id": "",
+                    "append_mode": "initial",
+                    "appended_rows": len(initial_rows),
+                    "model": {"type": "initial_data", "n_train": len(initial_rows)},
+                    "acquisition": {},
+                    "optimizer": {},
+                    "source_run_id": None,
+                    "target_summary": _target_summaries(initial_request),
+                }
+                self._by_dataset[request.parent_dataset_id] = initial_cycle
+                self._by_cycle_id[initial_cycle["cycle_id"]] = initial_cycle
+                previous = [initial_cycle]
             cycle = {
                 "cycle_id": uuid4().hex,
-                "cycle_number": len(previous) + 1,
+                "cycle_number": len(previous),
                 "created_at": datetime.now(UTC).isoformat(),
                 **request.model_dump(mode="json"),
                 "appended_rows": len(request.rows),

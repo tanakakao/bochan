@@ -159,6 +159,13 @@ export interface VisualizationOptions {
   target_columns: string[];
   regression_targets: string[];
   ternary_groups?: Array<{ features: string[]; sum_value: number }>;
+  feature_controls?: Record<string, {
+    kind: "numeric" | "categorical";
+    min?: number;
+    max?: number;
+    default: string | number;
+    values?: Array<string | number>;
+  }>;
 }
 
 export interface LogEntry {

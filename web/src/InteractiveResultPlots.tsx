@@ -73,6 +73,9 @@ export default function InteractiveResultPlots({ result }: Props) {
   const [showType, setShowType] = useState<"pred" | "acqf">("pred");
   const initialGroup = options.ternary_groups?.[0];
   const [sumValue, setSumValue] = useState(initialGroup?.sum_value ?? 1);
+  const [fixedValues, setFixedValues] = useState<Record<string, string | number>>(() =>
+    Object.fromEntries(Object.entries(options.feature_controls ?? {}).map(([name, control]) => [name, control.default]))
+  );
   const [leftPlot, setLeftPlot] = useState<ResultVisualization | null>(null);
   const [rightPlot, setRightPlot] = useState<ResultVisualization | null>(null);
   const [leftLoading, setLeftLoading] = useState(false);
@@ -123,6 +126,7 @@ export default function InteractiveResultPlots({ result }: Props) {
       target: rightTarget,
       features,
       show_type: showType,
+      fixed_values: fixedValues,
       sum_value: rightKind === "ternary" ? sumValue : undefined,
       n: rightKind === "2d" ? 30 : 50
     })
@@ -130,7 +134,7 @@ export default function InteractiveResultPlots({ result }: Props) {
       .catch((caught) => { if (active) setRightError(caught instanceof Error ? caught.message : String(caught)); })
       .finally(() => { if (active) setRightLoading(false); });
     return () => { active = false; };
-  }, [featureA, featureB, featureC, rightKind, rightTarget, runId, showType, sumValue]);
+  }, [featureA, featureB, featureC, fixedValues, rightKind, rightTarget, runId, showType, sumValue]);
 
   function changeRightKind(value: "1d" | "2d" | "ternary") {
     setRightKind(value);
@@ -146,6 +150,8 @@ export default function InteractiveResultPlots({ result }: Props) {
   }
 
   const rightFeatures = rightKind === "1d" ? options.feature_columns : options.numeric_features;
+  const plottedFeatures = new Set(rightKind === "1d" ? [featureA] : rightKind === "2d"
+    ? [featureA, featureB] : [featureA, featureB, featureC]);
 
   return (
     <section className="interactive-visualization-section">
@@ -210,6 +216,33 @@ export default function InteractiveResultPlots({ result }: Props) {
             </>}
           </div>
           <PlotCard visualization={rightPlot} loading={rightLoading} error={rightError} />
+          {options.feature_controls && (
+            <div className="plot-slice-controls">
+              <div>
+                <strong>表示外の変数値</strong>
+                <p>図に使わない説明変数を固定します。表示中の変数は編集できません。</p>
+              </div>
+              <div className="plot-slice-control-grid">
+                {options.feature_columns.map((feature) => {
+                  const control = options.feature_controls?.[feature];
+                  if (!control) return null;
+                  const disabled = plottedFeatures.has(feature);
+                  return <label key={feature} className={disabled ? "plot-slice-disabled" : ""}>
+                    <span>{feature}{disabled && "（図で使用中）"}</span>
+                    {control.kind === "numeric" ? <>
+                      <input type="range" min={control.min} max={control.max} step="any"
+                        value={Number(fixedValues[feature] ?? control.default)} disabled={disabled}
+                        onChange={(event) => setFixedValues((current) => ({ ...current, [feature]: Number(event.target.value) }))} />
+                      <output>{Number(fixedValues[feature] ?? control.default).toPrecision(5)}</output>
+                    </> : <select value={String(fixedValues[feature] ?? control.default)} disabled={disabled}
+                      onChange={(event) => setFixedValues((current) => ({ ...current, [feature]: event.target.value }))}>
+                      {(control.values ?? []).map((value) => <option key={String(value)} value={String(value)}>{value}</option>)}
+                    </select>}
+                  </label>;
+                })}
+              </div>
+            </div>
+          )}
         </article>
       </div>
     </section>

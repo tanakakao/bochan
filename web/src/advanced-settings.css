@@ -263,6 +263,48 @@
   height: 510px;
 }
 
+.plot-slice-controls {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.plot-slice-controls p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.plot-slice-control-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.plot-slice-control-grid label {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 10px;
+  align-items: center;
+}
+
+.plot-slice-control-grid label > span,
+.plot-slice-control-grid select {
+  grid-column: 1 / -1;
+}
+
+.plot-slice-control-grid output {
+  min-width: 58px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.plot-slice-disabled {
+  opacity: 0.55;
+}
+
 .plot-loading {
   min-height: 500px;
   display: flex;

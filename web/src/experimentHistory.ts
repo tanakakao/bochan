@@ -24,7 +24,7 @@ export interface ExperimentCycle {
   dataset_id: string;
   dataset_name: string;
   source_run_id?: string | null;
-  append_mode: "manual" | "import";
+  append_mode: "initial" | "manual" | "import";
   n_rows_before: number;
   n_rows_after: number;
   appended_rows: number;

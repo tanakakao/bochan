@@ -247,7 +247,8 @@ def create_model_artifact_router(dataset_store: Any) -> APIRouter:
                 raise ValueError("n_rows_before does not match the parent dataset.")
             if int(updated_record.profile["n_rows"]) != request.n_rows_after:
                 raise ValueError("n_rows_after does not match the updated dataset.")
-            return {"cycle": experiment_history.add(request)}
+            initial_rows = to_serializable(parent_record.data.to_dict(orient="records"))
+            return {"cycle": experiment_history.add(request, initial_rows=initial_rows)}
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except Exception as exc:

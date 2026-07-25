@@ -28,12 +28,21 @@ jobs:
           import textwrap
           import traceback
 
+          Path('agent-patch-error.txt').unlink(missing_ok=True)
           source = Path('.github/workflows/agent-apply-experiment-categorical.yml').read_text(encoding='utf-8')
           start_marker = "          python - <<'PY'\n"
           end_marker = "\n          PY\n\n          git config"
           start = source.index(start_marker) + len(start_marker)
           end = source.index(end_marker, start)
           code = textwrap.dedent(source[start:end])
+          code = code.replace(
+              "'''          `${appendedRows}件の実験データを追加しました。現在の変数・モデル設定を保持したまま再学習できます。`''',",
+              "'''      `${appendedRows}件の実験データを追加しました。現在の変数・モデル設定を保持したまま再学習できます。`''',",
+          )
+          code = code.replace(
+              "'''          `${appendedRows}件の実験データを追加しました。Resultsでは追加前の最新モデルによるグラフを確認でき、候補更新には再学習が必要です。`'''",
+              "'''      `${appendedRows}件の実験データを追加しました。Resultsでは追加前の最新モデルによるグラフを確認でき、候補更新には再学習が必要です。`'''",
+          )
           try:
               exec(compile(code, 'agent-experiment-patch.py', 'exec'))
           except Exception:

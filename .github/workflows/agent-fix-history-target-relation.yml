@@ -1,0 +1,53 @@
+name: Fix history categorical target axes
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/experiment-categorical-plots-restore
+          fetch-depth: 0
+      - name: Apply focused fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('web/src/components/ExperimentHistoryPanel.tsx')
+          content = path.read_text(encoding='utf-8')
+          replacements = {
+              'const [selectedTargetX, setSelectedParetoX]': 'const [selectedTargetX, setSelectedTargetX]',
+              'const [selectedTargetY, setSelectedParetoY]': 'const [selectedTargetY, setSelectedTargetY]',
+              'setSelectedParetoX(': 'setSelectedTargetX(',
+              'setSelectedParetoY(': 'setSelectedTargetY(',
+              '''                      xaxis: { title: { text: selectedTargetX } },
+                      yaxis: { title: { text: selectedTargetY } }''': '''                      xaxis: {
+                        title: { text: selectedTargetX },
+                        ...(selectedTargetXTask === "regression" ? {} : { type: "category" as const })
+                      },
+                      yaxis: {
+                        title: { text: selectedTargetY },
+                        ...(selectedTargetYTask === "regression" ? {} : { type: "category" as const })
+                      }'''
+          }
+          for old, new in replacements.items():
+              if old not in content:
+                  raise RuntimeError(f'missing replacement target: {old!r}')
+              content = content.replace(old, new)
+          path.write_text(content, encoding='utf-8')
+          Path('.github/workflows/agent-fix-history-target-relation.yml').unlink()
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix categorical target relation axes"
+          git push origin HEAD:agent/experiment-categorical-plots-restore

@@ -23,10 +23,6 @@ export default function DataPage() {
   async function selectProjectArchive(file: File | null, input: HTMLInputElement) {
     try {
       if (!file) return;
-      if (!file.name.toLowerCase().endsWith(".bochan-project.zip")) {
-        setError("Experiment画面から保存した.bochan-project.zipファイルを選択してください。");
-        return;
-      }
       const trusted = window.confirm(
         "プロジェクトZIPには学習済みモデルが含まれる場合があります。\n\n" +
         "モデルの復元にはtorch.load / pickleを使用するため、このbochan Webアプリから自分で保存した信頼できるプロジェクトだけを選択してください。\n\n" +
@@ -117,7 +113,7 @@ export default function DataPage() {
           <label className="dropzone model-dropzone">
             <input
               type="file"
-              accept=".bochan-project.zip,application/zip"
+              accept=".bochan-project.zip,.zip,application/zip"
               onChange={(event) => void selectProjectArchive(
                 event.target.files?.[0] ?? null,
                 event.currentTarget
@@ -125,7 +121,7 @@ export default function DataPage() {
             />
             <span className="upload-symbol">▣</span>
             <strong>bochanプロジェクトZIPを選択</strong>
-            <span>Experiment画面から保存した`.bochan-project.zip`を読み込みます。</span>
+            <span>ファイル名が変更されたZIPも、内部のプロジェクト情報を検証して読み込みます。</span>
           </label>
           <div className="alert warning artifact-security-note">
             通常のプロジェクトZIPには最新モデルが含まれます。モデルを含む場合はpickle形式のため、信頼できるプロジェクトだけを読み込んでください。

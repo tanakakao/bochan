@@ -13,6 +13,7 @@ def test_experiment_result_page_is_connected() -> None:
     results = (ROOT / "web/src/pages/ResultsPage.tsx").read_text(encoding="utf-8")
     experiment = (ROOT / "web/src/pages/ExperimentPage.tsx").read_text(encoding="utf-8")
     history = (ROOT / "web/src/components/ExperimentHistoryPanel.tsx").read_text(encoding="utf-8")
+    history_css = (ROOT / "web/src/experiment-history.css").read_text(encoding="utf-8")
     history_cycle_css = (
         ROOT / "web/src/experiment-history-cycle-plots.css"
     ).read_text(encoding="utf-8")
@@ -44,6 +45,11 @@ def test_experiment_result_page_is_connected() -> None:
     assert "履歴込みプロジェクトを保存" in history
     assert "最新モデルを含める" in history
     assert "過去サイクルのモデルも含める（標準OFF）" in history
+    assert 'aria-label="プロジェクト保存名"' in history
+    assert "defaultExperimentProjectFilename" in history
+    assert "normalizeExperimentProjectFilename" in history
+    assert "filename" in history
+    assert ".history-export-filename" in history_css
     assert "説明変数の探索推移" in history
     assert "cycleScatterTraces" in history
     assert "多目的パレート推移" in history
@@ -54,13 +60,18 @@ def test_experiment_result_page_is_connected() -> None:
     assert "effective_optimizer" in history
     assert "Optimizer backend" in history
     assert "history-axis-controls" in history_cycle_css
-    assert ".bochan-project.zip" in data_page
+    assert 'accept=".bochan-project.zip,.zip,application/zip"' in data_page
+    assert 'endsWith(".bochan-project.zip")' not in data_page
+    assert "内部のプロジェクト情報を検証" in data_page
     assert "履歴付きプロジェクトを開く" in data_page
     assert "含まれるモデルを信頼" in data_page
     assert 'request<ExperimentHistoryResponse>' in history_api
     assert '"/experiment-projects/export"' in project_api
     assert "include_latest_model: options.includeLatestModel ?? true" in project_api
     assert "include_past_models: options.includePastModels ?? false" in project_api
+    assert "filename?: string" in project_api
+    assert "normalizeExperimentProjectFilename" in project_api
+    assert "anchor.download = filename" in project_api
     assert 'import "./experiment-results.css"' in main
     assert 'import "./experiment-history.css"' in main
 

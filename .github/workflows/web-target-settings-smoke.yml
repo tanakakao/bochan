@@ -21,6 +21,7 @@ on:
       - "tests/test_web_experiment_history.py"
       - "tests/test_web_experiment_project_archive.py"
       - "tests/test_web_experiment_page.py"
+      - "tests/test_web_project_archive_filename.py"
       - "tests/test_ternary_plot_dependency.py"
       - ".github/workflows/web-target-settings-smoke.yml"
   workflow_dispatch:
@@ -53,6 +54,7 @@ jobs:
             tests/test_web_experiment_history.py \
             tests/test_web_experiment_project_archive.py \
             tests/test_web_experiment_page.py \
+            tests/test_web_project_archive_filename.py \
             tests/test_ternary_plot_dependency.py \
             2>&1 | tee pytest-web-target-settings.log
           status=${PIPESTATUS[0]}
@@ -99,6 +101,7 @@ jobs:
             tests/test_web_experiment_history.py \
             tests/test_web_experiment_project_archive.py \
             tests/test_web_experiment_page.py \
+            tests/test_web_project_archive_filename.py \
             tests/test_ternary_plot_dependency.py \
             2>&1 | tee ruff-web-target-settings.log
           status=${PIPESTATUS[0]}

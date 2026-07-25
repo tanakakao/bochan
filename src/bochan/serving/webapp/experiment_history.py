@@ -214,9 +214,36 @@ def _history_visualizations(cycles: list[dict[str, Any]]) -> list[dict[str, Any]
         cycle_best = [float(cycle["target_summary"][target]["best"]) for cycle in usable]
         cycle_mean = [float(cycle["target_summary"][target]["mean"]) for cycle in usable]
         hover = [_cycle_hover_text(cycle) for cycle in usable]
+        observation_x: list[float] = []
+        observation_y: list[float] = []
+        observation_hover: list[str] = []
+        for cycle in usable:
+            setting = next(
+                (
+                    value
+                    for value in cycle.get("target_settings", [])
+                    if str(value.get("target")) == target
+                ),
+                {},
+            )
+            values, _, _ = _target_metric_values(cycle.get("rows", []), target, setting)
+            count = len(values)
+            offsets = [0.0] if count == 1 else [
+                -0.18 + 0.36 * index / (count - 1)
+                for index in range(count)
+            ]
+            observation_x.extend(int(cycle["cycle_number"]) + offset for offset in offsets)
+            observation_y.extend(values)
+            observation_hover.extend(
+                f"{_cycle_hover_text(cycle)}<br>データ #{index + 1}"
+                for index in range(count)
+            )
 
         first_summary = usable[0]["target_summary"][target]
-        baseline = _safe_float(usable[0].get("best_observed_before", {}).get(target))
+        has_initial_cycle = any(int(cycle["cycle_number"]) == 0 for cycle in usable)
+        baseline = None if has_initial_cycle else _safe_float(
+            usable[0].get("best_observed_before", {}).get(target)
+        )
         cumulative_x: list[int] = []
         cumulative_y: list[float] = []
         cumulative_hover: list[str] = []
@@ -263,6 +290,17 @@ def _history_visualizations(cycles: list[dict[str, Any]]) -> list[dict[str, Any]
                 hovertemplate="%{text}<br>累積ベスト: %{y}<extra></extra>",
             )
         )
+        figure.add_trace(
+            go.Scatter(
+                x=observation_x,
+                y=observation_y,
+                mode="markers",
+                name="各データ",
+                text=observation_hover,
+                marker=dict(size=8, opacity=0.62, symbol="circle-open"),
+                hovertemplate="%{text}<br>実測値: %{y}<extra></extra>",
+            )
+        )
         figure.update_layout(
             title=f"{target}: 実験サイクルごとの目的変数推移",
             autosize=True,
@@ -270,14 +308,14 @@ def _history_visualizations(cycles: list[dict[str, Any]]) -> list[dict[str, Any]
             margin=dict(l=64, r=30, t=70, b=58),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
         )
-        figure.update_xaxes(title="実験サイクル", dtick=1)
+        figure.update_xaxes(title="実験サイクル", dtick=1, tickmode="linear")
         figure.update_yaxes(title=target)
         visualizations.append(
             {
                 "id": f"experiment-history-{target}",
                 "target": target,
                 "title": f"{target}のサイクル推移",
-                "description": "各サイクルの実測ベスト、平均、初期データを含む累積ベストを表示します。",
+                "description": "各データの実測値と、サイクルごとのベスト・平均・累積ベストを表示します。",
                 "figure": json.loads(figure.to_json()),
             }
         )
@@ -307,8 +345,22 @@ class ExperimentHistoryStore:
             reversed_cycles.reverse()
             return deepcopy(reversed_cycles)
 
-    def add(self, request: ExperimentCycleRequest) -> dict[str, Any]:
-        """Record a completed cycle and assign its lineage cycle number."""
+    def add(
+        self,
+        request: ExperimentCycleRequest,
+        *,
+        initial_rows: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Record a completed cycle and assign its lineage cycle number.
+
+        Args:
+            request: Completed experiment-cycle payload.
+            initial_rows: Original dataset rows used to create cycle zero when the
+                lineage has not yet been recorded.
+
+        Returns:
+            A copy of the newly recorded experiment cycle.
+        """
 
         if request.dataset_id == request.parent_dataset_id:
             raise ValueError("The updated dataset_id must differ from parent_dataset_id.")
@@ -317,9 +369,34 @@ class ExperimentHistoryStore:
 
         with self._lock:
             previous = self.list_for_dataset(request.parent_dataset_id)
+            if not previous and initial_rows is not None:
+                initial_request = request.model_copy(
+                    update={
+                        "dataset_id": request.parent_dataset_id,
+                        "n_rows_after": request.n_rows_before,
+                        "rows": initial_rows,
+                    }
+                )
+                initial_cycle = {
+                    "cycle_id": uuid4().hex,
+                    "cycle_number": 0,
+                    "created_at": datetime.now(UTC).isoformat(),
+                    **initial_request.model_dump(mode="json"),
+                    "parent_dataset_id": request.parent_dataset_id,
+                    "append_mode": "initial",
+                    "appended_rows": len(initial_rows),
+                    "model": {"type": "initial_data", "n_train": len(initial_rows)},
+                    "acquisition": {},
+                    "optimizer": {},
+                    "source_run_id": None,
+                    "target_summary": _target_summaries(initial_request),
+                }
+                self._by_dataset[request.parent_dataset_id] = initial_cycle
+                self._by_cycle_id[initial_cycle["cycle_id"]] = initial_cycle
+                previous = [initial_cycle]
             cycle = {
                 "cycle_id": uuid4().hex,
-                "cycle_number": len(previous) + 1,
+                "cycle_number": len(previous),
                 "created_at": datetime.now(UTC).isoformat(),
                 **request.model_dump(mode="json"),
                 "appended_rows": len(request.rows),

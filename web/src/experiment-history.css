@@ -128,7 +128,8 @@
 }
 
 .history-plot-card {
-  min-height: 420px;
+  height: 460px;
+  min-height: 460px;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 14px;

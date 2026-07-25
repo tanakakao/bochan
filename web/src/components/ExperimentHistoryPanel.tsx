@@ -217,7 +217,7 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
             <div className="history-section-heading">
               <div>
                 <h4>目的変数の推移</h4>
-                <p>サイクル内ベスト・平均・初期データを含む累積ベストを比較します。</p>
+                <p>各データの実測値と、サイクル内ベスト・平均・累積ベストを比較します。</p>
               </div>
               <label>
                 目的変数
@@ -266,7 +266,7 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
                     <tr key={cycle.cycle_id}>
                       <td><span className="rank">{cycle.cycle_number}</span></td>
                       <td>{formatDate(cycle.created_at)}</td>
-                      <td>{cycle.appended_rows} rows<br /><small>{cycle.append_mode === "manual" ? "直接入力" : "ファイル"}</small></td>
+                      <td>{cycle.appended_rows} rows<br /><small>{cycle.append_mode === "initial" ? "初期データ" : cycle.append_mode === "manual" ? "直接入力" : "ファイル"}</small></td>
                       <td>{cycleModelName(cycle)}<br /><small>学習 {textSetting(cycle.model.n_train)}件</small></td>
                       <td>{cycleAcquisitionName(cycle)}<br /><small>q={textSetting(cycle.optimizer.q)}</small></td>
                       <td>

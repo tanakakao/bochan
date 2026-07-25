@@ -9,6 +9,10 @@
   margin-top: 0;
 }
 
+.data-file-panel {
+  grid-column: 1 / -1;
+}
+
 .model-artifact-panel {
   border-color: color-mix(in srgb, var(--primary) 22%, var(--line));
 }

@@ -33,6 +33,23 @@
   margin: 0;
 }
 
+.history-export-options .history-export-filename {
+  width: 100%;
+  justify-content: flex-end;
+  cursor: default;
+  font-weight: 750;
+}
+
+.history-export-filename input[type="text"] {
+  width: min(320px, 100%);
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
 .history-action-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -264,6 +281,15 @@
   .history-export-options,
   .history-action-buttons {
     justify-content: flex-start;
+  }
+
+  .history-export-options .history-export-filename {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .history-export-filename input[type="text"] {
+    width: 100%;
   }
 
   .history-overview-grid,

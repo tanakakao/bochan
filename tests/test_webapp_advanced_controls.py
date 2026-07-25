@@ -87,6 +87,7 @@ def test_visualization_request_accepts_target_relation() -> None:
     assert request.target_x == "property"
     assert request.target_y == "y_cat"
 
+
 def test_web_profile_includes_low_cardinality_numeric_values() -> None:
     data = pd.DataFrame({"category_code": [2, 1, 2, 3], "continuous": [0.1, 0.2, 0.3, 0.4]})
     record = SimpleNamespace(

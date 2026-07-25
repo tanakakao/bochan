@@ -19,6 +19,7 @@ from bochan.serving.webapp.visualization_sessions import (
     model_details,
     visualization_options,
 )
+from bochan.visualization import show_target_relation_plot
 
 
 def test_multi_term_feature_constraint_uses_weighted_sum() -> None:
@@ -256,8 +257,8 @@ def test_target_relation_accepts_categorical_targets() -> None:
         feature_columns=["x"],
         target_columns=["grade", "status"],
         target_metadata={
-            "grade": {"internal_task": "ordinal"},
-            "status": {"internal_task": "multiclass"},
+            "grade": {"internal_task": "ordinal", "classes": ["A", "B"]},
+            "status": {"internal_task": "multiclass", "classes": ["ok", "ng"]},
         },
         hybrid_model=True,
     )
@@ -266,5 +267,23 @@ def test_target_relation_accepts_categorical_targets() -> None:
 
     assert figure.layout.xaxis.type == "category"
     assert figure.layout.yaxis.type == "category"
+    assert list(figure.layout.xaxis.categoryarray) == ["A", "B"]
     assert sorted(figure.data[0].customdata) == [1, 2, 2]
 
+
+def test_target_relation_public_api_supports_mixed_output_types() -> None:
+    figure = show_target_relation_plot(
+        pd.DataFrame({
+            "strength": [1.2, 2.4, 3.1],
+            "grade": ["low", "middle", "high"],
+        }),
+        "strength",
+        "grade",
+        task_types={"strength": "regression", "grade": "ordinal"},
+        category_orders={"grade": ["low", "middle", "high"]},
+    )
+
+    assert figure.layout.xaxis.type is None
+    assert figure.layout.yaxis.type == "category"
+    assert list(figure.layout.yaxis.categoryarray) == ["low", "middle", "high"]
+    assert list(figure.data[0].x) == [1.2, 2.4, 3.1]

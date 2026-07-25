@@ -13,6 +13,7 @@ const API_BASE = (RAW_API_BASE || "/api/v1").replace(/\/+$/, "");
 export interface ExperimentProjectExportOptions {
   includeLatestModel?: boolean;
   includePastModels?: boolean;
+  filename?: string;
 }
 
 async function responsePayload(response: Response): Promise<any> {
@@ -38,6 +39,23 @@ function artifactFilename(response: Response, fallback: string): string {
   if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
   const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
   return plainMatch?.[1] || fallback;
+}
+
+export function defaultExperimentProjectFilename(datasetName: string): string {
+  const stem = String(datasetName || "bochan_project").replace(/\.[^.]+$/, "").trim();
+  return `${stem || "bochan_project"}.bochan-project.zip`;
+}
+
+export function normalizeExperimentProjectFilename(value: string, fallback: string): string {
+  let filename = value.trim() || fallback;
+  filename = filename.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "_").replace(/[. ]+$/g, "");
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".bochan-project.zip")) return filename;
+  if (lower.endsWith(".zip")) filename = filename.slice(0, -4);
+  if (filename.toLowerCase().endsWith(".bochan-project")) {
+    filename = filename.slice(0, -".bochan-project".length);
+  }
+  return `${filename || "bochan_project"}.bochan-project.zip`;
 }
 
 function buildProjectRunRequest(input: RunRegressionInput): Record<string, unknown> {
@@ -127,6 +145,7 @@ export async function downloadExperimentProject(
 ): Promise<void> {
   const path = "/experiment-projects/export";
   const url = `${API_BASE}${path}`;
+  const fallbackFilename = defaultExperimentProjectFilename(datasetName);
   const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -142,8 +161,11 @@ export async function downloadExperimentProject(
     throw errorFromResponse(response, await responsePayload(response));
   }
   const blob = await response.blob();
-  const stem = datasetName.replace(/\.[^.]+$/, "") || "bochan_project";
-  const filename = artifactFilename(response, `${stem}.bochan-project.zip`);
+  const serverFilename = artifactFilename(response, fallbackFilename);
+  const filename = normalizeExperimentProjectFilename(
+    options.filename ?? serverFilename,
+    fallbackFilename
+  );
   const blobUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = blobUrl;

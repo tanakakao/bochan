@@ -1,21 +1,18 @@
-"""Portable Web-workbench model artifacts.
-
-The Core FastAPI already persists :class:`BayesianOptimizer` objects with
-``torch.save``.  The React workbench uses :class:`TabularBayesianOptimizer`
-and keeps additional data required by the Results visualizations, so it needs
-its own versioned bundle around the same serialization mechanism.
-"""
+"""Web-workbench state stored inside the common ``.bochan.pt`` model artifact."""
 
 from __future__ import annotations
 
 import copy
-import io
 import re
-from importlib.metadata import PackageNotFoundError, version
 from types import SimpleNamespace
 from typing import Any
 from uuid import uuid4
 
+from bochan.model_artifact import (
+    MODEL_ARTIFACT_VERSION,
+    deserialize_model_artifact,
+    serialize_model_artifact,
+)
 from bochan.tabular import TabularBayesianOptimizer
 
 from .model_reuse import (
@@ -30,16 +27,7 @@ from .visualization_sessions import (
     visualization_options,
 )
 
-_ARTIFACT_VERSION = 1
-_OBJECT_TYPE = "bochan.web.TabularModelArtifact"
 _MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
-
-
-def _bochan_version() -> str:
-    try:
-        return version("bochan")
-    except PackageNotFoundError:
-        return "development"
 
 
 def _safe_stem(value: str) -> str:
@@ -76,22 +64,14 @@ def serialize_web_model_artifact(
     *,
     filename: str | None = None,
 ) -> tuple[bytes, str]:
-    """Serialize one fitted Web run and its reproducible Results state."""
-
-    import torch
+    """Serialize one fitted Web run using the common tensor/tabular envelope."""
 
     session = get_visualization_session(run_id)
     if not session.result:
         raise RuntimeError("The selected Web run has no finalized result to export.")
 
     result = copy.deepcopy(session.result)
-    payload = {
-        "artifact_version": _ARTIFACT_VERSION,
-        "object_type": _OBJECT_TYPE,
-        "bochan_version": _bochan_version(),
-        "original_run_id": run_id,
-        "model_signature": get_registered_model_signature(run_id),
-        "tabular_optimizer": _serializable_tabular_optimizer(session),
+    state = {
         "data": session.data.copy(),
         "encoded_targets": session.encoded_targets.copy(),
         "feature_columns": list(session.feature_columns),
@@ -104,10 +84,108 @@ def serialize_web_model_artifact(
         "request_details": copy.deepcopy(session.request_details),
         "result": result,
     }
-    buffer = io.BytesIO()
-    torch.save(payload, buffer)
+    content = serialize_model_artifact(
+        _serializable_tabular_optimizer(session),
+        backend="tabular",
+        metadata={
+            "surface": "web",
+            "original_run_id": run_id,
+            "model_signature": get_registered_model_signature(run_id),
+        },
+        state=state,
+    )
     dataset_name = str(result.get("dataset_name") or "bochan_model")
-    return buffer.getvalue(), _artifact_filename(dataset_name, filename)
+    return content, _artifact_filename(dataset_name, filename)
+
+
+def _task_type_for_web(value: Any) -> str:
+    task = str(value or "regression").lower()
+    if task in {"binary", "multiclass", "classification"}:
+        return "classification"
+    if task == "ordinal":
+        return "ordinal"
+    return "regression"
+
+
+def _fallback_web_state(
+    optimizer: TabularBayesianOptimizer,
+    artifact_metadata: dict[str, Any],
+) -> dict[str, Any]:
+    """Build minimal Web state for a common tabular artifact saved outside the UI."""
+
+    import pandas as pd
+
+    if optimizer.dataset is None or optimizer.bo.bundle is None:
+        raise ValueError("The artifact does not contain a fitted tabular model and dataset.")
+    try:
+        feature_data, target_data = optimizer.visualization_training_dataframe()
+        data = pd.concat(
+            [feature_data.reset_index(drop=True), target_data.reset_index(drop=True)],
+            axis=1,
+        )
+    except Exception as exc:
+        raise ValueError(
+            "This tabular artifact has no Web state and its training table could not be reconstructed."
+        ) from exc
+
+    feature_columns = [str(value) for value in optimizer.dataset.feature_names]
+    target_columns = [str(value) for value in optimizer.dataset.target_names]
+    task_type = _task_type_for_web(optimizer.bo.bundle.task_type)
+    target_metadata = {
+        target: {
+            "target": target,
+            "task_type": task_type,
+            "optimize": True,
+            "direction": "maximize",
+            "goal": "none",
+            "internal_task": str(optimizer.bo.bundle.task_type),
+        }
+        for target in target_columns
+    }
+    numeric_best: dict[str, float] = {}
+    for target in target_columns:
+        series = pd.to_numeric(data[target], errors="coerce")
+        numeric_best[target] = float(series.max()) if series.notna().any() else 0.0
+
+    result = {
+        "dataset_id": "",
+        "dataset_name": "imported_tabular_model",
+        "task_type": task_type,
+        "model_type": str(optimizer.bo.bundle.model_type),
+        "n_train": int(len(data)),
+        "n_features": len(feature_columns),
+        "feature_columns": feature_columns,
+        "target_columns": target_columns,
+        "target_column": target_columns[0] if target_columns else "",
+        "target_settings": list(target_metadata.values()),
+        "target_metadata": target_metadata,
+        "directions": {target: "maximize" for target in target_columns},
+        "direction": "maximize",
+        "best_observed": numeric_best,
+        "candidates": [],
+        "visualizations": [],
+        "visualization_warnings": [
+            "The model was saved outside the Web workbench, so candidate and plot state was not included."
+        ],
+        "metadata": {
+            "common_model_artifact": True,
+            "web_state_reconstructed": True,
+            "artifact_metadata": copy.deepcopy(artifact_metadata),
+        },
+    }
+    return {
+        "data": data,
+        "encoded_targets": data[target_columns].copy(),
+        "feature_columns": feature_columns,
+        "target_columns": target_columns,
+        "target_metadata": target_metadata,
+        "hybrid_model": False,
+        "feature_constraints": [],
+        "candidate_result": None,
+        "rows": [],
+        "request_details": {},
+        "result": result,
+    }
 
 
 def deserialize_web_model_artifact(
@@ -116,60 +194,47 @@ def deserialize_web_model_artifact(
     trust_pickle: bool,
     map_location: str = "cpu",
 ) -> dict[str, Any]:
-    """Load and validate a trusted Web model artifact.
+    """Load a trusted common tabular artifact and normalize its optional Web state."""
 
-    ``torch.load`` uses pickle and can execute code while loading.  The caller
-    must therefore provide an explicit trust confirmation.
-    """
-
-    if not trust_pickle:
-        raise ValueError(
-            "Model artifacts use torch.load / pickle. Confirm trust only for "
-            "files created by this bochan Web application."
-        )
     if not content:
         raise ValueError("The uploaded model artifact is empty.")
     if len(content) > _MAX_ARTIFACT_BYTES:
         raise ValueError("The uploaded model artifact exceeds the 512 MiB limit.")
 
-    import torch
-
-    buffer = io.BytesIO(content)
-    try:
-        payload = torch.load(buffer, map_location=map_location, weights_only=False)
-    except TypeError:
-        buffer.seek(0)
-        payload = torch.load(buffer, map_location=map_location)
-
-    if not isinstance(payload, dict):
-        raise TypeError("The uploaded file is not a bochan Web model artifact.")
-    if payload.get("object_type") != _OBJECT_TYPE:
-        raise TypeError("The uploaded file has an unsupported model artifact type.")
-    if int(payload.get("artifact_version", -1)) != _ARTIFACT_VERSION:
-        raise ValueError(
-            f"Unsupported model artifact version: {payload.get('artifact_version')!r}."
-        )
-
-    optimizer = payload.get("tabular_optimizer")
+    artifact = deserialize_model_artifact(
+        content,
+        trust_pickle=trust_pickle,
+        map_location=map_location,
+        expected_backend="tabular",
+    )
+    optimizer = artifact["optimizer"]
     if not isinstance(optimizer, TabularBayesianOptimizer):
         raise TypeError("The artifact does not contain a TabularBayesianOptimizer.")
-    if optimizer.dataset is None or optimizer.bo.bundle is None:
-        raise ValueError("The artifact does not contain a fitted tabular model and dataset.")
 
-    required = (
+    metadata = dict(artifact.get("metadata") or {})
+    state = dict(artifact.get("state") or {})
+    required = {
         "data",
         "encoded_targets",
         "feature_columns",
         "target_columns",
         "target_metadata",
         "result",
-    )
-    missing = [name for name in required if name not in payload]
-    if missing:
-        raise ValueError(f"The model artifact is incomplete: missing {missing!r}.")
-    if not isinstance(payload["result"], dict):
+    }
+    if not required.issubset(state):
+        state = _fallback_web_state(optimizer, metadata)
+    if not isinstance(state.get("result"), dict):
         raise TypeError("The model artifact result payload is invalid.")
-    return payload
+
+    return {
+        "artifact_version": artifact.get("artifact_version", MODEL_ARTIFACT_VERSION),
+        "bochan_version": artifact.get("bochan_version"),
+        "original_run_id": metadata.get("original_run_id"),
+        "model_signature": metadata.get("model_signature"),
+        "artifact_metadata": metadata,
+        "tabular_optimizer": optimizer,
+        **state,
+    }
 
 
 def restore_web_model_artifact(
@@ -178,7 +243,7 @@ def restore_web_model_artifact(
     dataset_id: str,
     dataset_name: str,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
-    """Register an imported artifact as a new in-memory Web visualization run."""
+    """Register an imported common tabular artifact as a Web visualization run."""
 
     optimizer = payload["tabular_optimizer"]
     optimizer.__dict__.pop("candidate", None)
@@ -206,7 +271,7 @@ def restore_web_model_artifact(
     metadata.update(
         {
             "model_artifact_loaded": True,
-            "model_artifact_version": _ARTIFACT_VERSION,
+            "model_artifact_version": payload.get("artifact_version"),
             "model_artifact_bochan_version": payload.get("bochan_version"),
             "model_artifact_original_run_id": payload.get("original_run_id"),
             "visualization_session": "imported_artifact",
@@ -216,9 +281,7 @@ def restore_web_model_artifact(
     session.result = copy.deepcopy(result)
     register_visualization_session(run_id, session)
 
-    request_payload = copy.deepcopy(
-        session.request_details.get("request_payload") or {}
-    )
+    request_payload = copy.deepcopy(session.request_details.get("request_payload") or {})
     if isinstance(request_payload, dict):
         request_payload["dataset_id"] = dataset_id
     else:

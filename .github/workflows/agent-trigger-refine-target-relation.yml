@@ -20,6 +20,7 @@ jobs:
       - name: Execute refinement
         shell: bash
         run: |
+          echo "Applying reusable target relation refinement"
           python - <<'PY'
           from pathlib import Path
           import textwrap

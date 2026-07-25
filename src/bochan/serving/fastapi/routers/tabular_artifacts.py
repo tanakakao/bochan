@@ -29,6 +29,19 @@ FILE_STORE_DEP = Depends(get_file_optimizer_store)
 router = APIRouter(prefix="/tabular/models", tags=["tabular", "artifacts"])
 
 
+def _synchronize_tabular_dataset(optimizer: TabularBayesianOptimizer) -> None:
+    """Keep tabular metadata tensors aligned after the underlying optimizer grows."""
+
+    if optimizer.dataset is None:
+        return
+    train_x = getattr(optimizer.bo, "train_X", None)
+    train_y = getattr(optimizer.bo, "train_Y", None)
+    if train_x is not None:
+        optimizer.dataset.X = train_x
+    if train_y is not None:
+        optimizer.dataset.Y = train_y
+
+
 @router.post("/{model_id}/tell", response_model=TabularModelFitResponse)
 def tell_tabular_model(
     model_id: str,
@@ -42,6 +55,7 @@ def tell_tabular_model(
         frame = _to_dataframe(request.data)
         fit_config = to_fit_config(request.fit_config) if request.fit_config is not None else None
         optimizer.tell(frame, refit=request.refit, fit_config=fit_config)
+        _synchronize_tabular_dataset(optimizer)
         return _fit_response(model_id, optimizer)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -60,6 +74,7 @@ def save_tabular_model(
 
     try:
         optimizer = store.get(model_id)
+        _synchronize_tabular_dataset(optimizer)
         path = file_store.save(
             optimizer,
             request.filename,
@@ -103,6 +118,7 @@ def load_tabular_model(
         )
         if not isinstance(optimizer, TabularBayesianOptimizer):
             raise TypeError("The selected artifact does not contain a tabular optimizer.")
+        _synchronize_tabular_dataset(optimizer)
         model_id = store.add(optimizer)
         response = _fit_response(model_id, optimizer).model_dump()
         return TabularModelLoadResponse(

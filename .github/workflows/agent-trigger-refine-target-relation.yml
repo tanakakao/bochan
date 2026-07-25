@@ -1,0 +1,42 @@
+name: Trigger target relation refinement
+
+on:
+  push:
+    branches:
+      - agent/experiment-categorical-plots-restore
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/experiment-categorical-plots-restore
+          fetch-depth: 0
+      - name: Execute refinement
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          source = Path('.github/workflows/agent-refine-target-relation.yml').read_text(encoding='utf-8')
+          start_marker = "          python - <<'PY'\n"
+          end_marker = "\n          PY\n\n          git config"
+          start = source.index(start_marker) + len(start_marker)
+          end = source.index(end_marker, start)
+          code = textwrap.dedent(source[start:end])
+          exec(compile(code, 'agent-refine-target-relation.py', 'exec'))
+          PY
+
+          rm -f .github/workflows/agent-trigger-refine-target-relation.yml
+          rm -f .github/workflows/agent-refine-target-relation.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Refine reusable target relation and history Pareto plots"
+          git push origin HEAD:agent/experiment-categorical-plots-restore

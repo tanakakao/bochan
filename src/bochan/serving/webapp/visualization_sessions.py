@@ -230,26 +230,39 @@ def visualization_options(session: VisualizationSession) -> dict[str, Any]:
     }
 
 
+def _class_path(value: Any) -> str:
+    """Return a stable fully qualified class name for model reporting."""
+
+    return f"{type(value).__module__}.{type(value).__name__}"
+
+
 def model_details(session: VisualizationSession, result: dict[str, Any]) -> dict[str, Any]:
     """Return compact, JSON-safe details about the actual fitted execution graph."""
 
     model = session.optimizer.model
     submodels = list(getattr(model, "models", []) or [])
     specs = list(getattr(model, "specs", []) or [])
+    effective_model = model
+    if len(specs) == 1 and getattr(specs[0], "model", None) is not None:
+        effective_model = specs[0].model
+    elif len(submodels) == 1:
+        effective_model = submodels[0]
+    execution_wrapper_class = _class_path(model) if effective_model is not model else None
     candidate_result = session.candidate_result
     acqf = getattr(candidate_result, "acqf", None)
     metadata = dict(result.get("metadata") or {})
     return {
         "optimizer_backend": "TabularBayesianOptimizer",
-        "model_class": f"{type(model).__module__}.{type(model).__name__}",
+        "model_class": _class_path(effective_model),
+        "execution_wrapper_class": execution_wrapper_class,
         "hybrid_model": bool(session.hybrid_model),
-        "submodel_classes": [f"{type(value).__module__}.{type(value).__name__}" for value in submodels],
+        "submodel_classes": [_class_path(value) for value in submodels],
         "output_specs": [
             {
                 "name": getattr(spec, "name", None),
                 "task_type": getattr(spec, "task_type", None),
                 "model_class": (
-                    f"{type(spec.model).__module__}.{type(spec.model).__name__}"
+                    _class_path(spec.model)
                     if getattr(spec, "model", None) is not None
                     else None
                 ),
@@ -260,9 +273,7 @@ def model_details(session: VisualizationSession, result: dict[str, Any]) -> dict
         "internal_model_type": metadata.get("internal_model_type"),
         "requested_acquisition": metadata.get("requested_acquisition"),
         "effective_acquisition": metadata.get("acquisition"),
-        "acquisition_class": (
-            f"{type(acqf).__module__}.{type(acqf).__name__}" if acqf is not None else None
-        ),
+        "acquisition_class": _class_path(acqf) if acqf is not None else None,
         "acquisition_family": metadata.get("acquisition_family"),
         "requested_search_method": session.request_details.get("requested_optimizer"),
         "effective_optimizer": metadata.get("optimizer"),

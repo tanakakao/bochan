@@ -247,8 +247,8 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
   const [selectedTarget, setSelectedTarget] = useState("");
   const [selectedFeatureX, setSelectedFeatureX] = useState("");
   const [selectedFeatureY, setSelectedFeatureY] = useState("");
-  const [selectedTargetX, setSelectedParetoX] = useState("");
-  const [selectedTargetY, setSelectedParetoY] = useState("");
+  const [selectedTargetX, setSelectedTargetX] = useState("");
+  const [selectedTargetY, setSelectedTargetY] = useState("");
   const [reloadVersion, setReloadVersion] = useState(0);
 
   useEffect(() => {
@@ -292,10 +292,10 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
   }, [historyFeatures]);
 
   useEffect(() => {
-    setSelectedParetoX((current) => (
+    setSelectedTargetX((current) => (
       relationTargets.includes(current) ? current : relationTargets[0] ?? ""
     ));
-    setSelectedParetoY((current) => (
+    setSelectedTargetY((current) => (
       relationTargets.includes(current) && current !== (relationTargets[0] ?? "")
         ? current
         : relationTargets[1] ?? relationTargets[0] ?? ""
@@ -522,13 +522,13 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
                 <div className="history-axis-controls">
                   <label>
                     X軸目的
-                    <select value={selectedTargetX} onChange={(event) => setSelectedParetoX(event.target.value)}>
+                    <select value={selectedTargetX} onChange={(event) => setSelectedTargetX(event.target.value)}>
                       {relationTargets.map((target) => <option key={target} value={target}>{target}</option>)}
                     </select>
                   </label>
                   <label>
                     Y軸目的
-                    <select value={selectedTargetY} onChange={(event) => setSelectedParetoY(event.target.value)}>
+                    <select value={selectedTargetY} onChange={(event) => setSelectedTargetY(event.target.value)}>
                       {relationTargets.map((target) => <option key={target} value={target}>{target}</option>)}
                     </select>
                   </label>
@@ -543,8 +543,14 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
                       autosize: true,
                       margin: { l: 64, r: 30, t: 70, b: 58 },
                       legend: { orientation: "h", yanchor: "bottom", y: 1.02, xanchor: "left", x: 0 },
-                      xaxis: { title: { text: selectedTargetX } },
-                      yaxis: { title: { text: selectedTargetY } }
+                      xaxis: {
+              title: { text: selectedTargetX },
+              ...(selectedTargetXTask === "regression" ? {} : { type: "category" as const })
+            },
+            yaxis: {
+              title: { text: selectedTargetY },
+              ...(selectedTargetYTask === "regression" ? {} : { type: "category" as const })
+            }
                     }, theme)}
                     config={RESULT_PLOT_CONFIG}
                     useResizeHandler

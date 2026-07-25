@@ -48,6 +48,14 @@ class TabularFitModelRequest(APIRequest):
     return_original_categories: bool = True
 
 
+class TabularTellRequest(APIRequest):
+    """Append records containing fitted feature and target columns."""
+
+    data: TabularPayload
+    refit: bool = True
+    fit_config: FitConfigSchema | None = None
+
+
 class TabularPredictRequest(APIRequest):
     """Predict from records containing the fitted feature columns."""
 
@@ -76,8 +84,6 @@ class TabularCandidateRequest(APIRequest):
     opt_config: dict[str, Any] = Field(default_factory=dict, alias="optimize_config")
     bounds: Any | None = None
 
-    # Candidate-input convenience aliases. These are merged into opt_config by
-    # the router and are intentionally separate from outcome_constraint_config.
     constraints: Any | None = None
     repair_config: dict[str, Any] | None = None
 
@@ -116,6 +122,13 @@ class TabularModelFitResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class TabularModelLoadResponse(TabularModelFitResponse):
+    """Response returned after loading a common tabular ``.bochan.pt`` file."""
+
+    filename: str
+    path: str
+
+
 class TabularPredictResponse(BaseModel):
     model_id: str
     columns: list[str] | None = None
@@ -135,6 +148,9 @@ __all__ = [
     "TabularCandidateResponse",
     "TabularFitModelRequest",
     "TabularModelFitResponse",
+    "TabularModelLoadResponse",
+    "TabularPayload",
     "TabularPredictRequest",
     "TabularPredictResponse",
+    "TabularTellRequest",
 ]

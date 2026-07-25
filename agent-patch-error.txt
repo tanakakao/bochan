@@ -1,5 +1,4 @@
 Traceback (most recent call last):
-  File "<stdin>", line 12, in <module>
-  File "agent-experiment-patch.py", line 53, in <module>
-  File "agent-experiment-patch.py", line 18, in replace_once
-RuntimeError: web/src/pages/ExperimentPage.tsx: expected one exact match, found 0: '          `${appendedRows}件の実験データを追加しました。現在の変数・モデル設定を保持したまま再学習できます。`'
+  File "<stdin>", line 21, in <module>
+  File "agent-experiment-patch.py", line 106, in <module>
+RuntimeError: ExperimentHistoryPanel.tsx still contains Pareto-specific UI

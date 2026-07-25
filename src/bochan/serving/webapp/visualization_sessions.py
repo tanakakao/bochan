@@ -201,7 +201,11 @@ def visualization_options(session: VisualizationSession) -> dict[str, Any]:
     numeric = set(_numeric_features(session))
     feature_controls: dict[str, dict[str, Any]] = {}
     for feature in session.feature_columns:
+        if feature not in session.data.columns:
+            continue
         series = session.data[feature].dropna()
+        if series.empty:
+            continue
         if feature in numeric:
             feature_controls[feature] = {
                 "kind": "numeric",

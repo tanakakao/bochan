@@ -70,8 +70,11 @@ from .tabular import (
     TabularCandidateResponse,
     TabularFitModelRequest,
     TabularModelFitResponse,
+    TabularModelLoadResponse,
+    TabularPayload,
     TabularPredictRequest,
     TabularPredictResponse,
+    TabularTellRequest,
 )
 
 __all__ = [
@@ -132,8 +135,11 @@ __all__ = [
     "TabularCandidateResponse",
     "TabularFitModelRequest",
     "TabularModelFitResponse",
+    "TabularModelLoadResponse",
+    "TabularPayload",
     "TabularPredictRequest",
     "TabularPredictResponse",
+    "TabularTellRequest",
     "TellRequest",
     "TensorOptionsSchema",
 ]

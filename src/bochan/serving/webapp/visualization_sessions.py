@@ -191,19 +191,42 @@ def _ternary_groups(session: VisualizationSession) -> list[dict[str, Any]]:
 
 
 def visualization_options(session: VisualizationSession) -> dict[str, Any]:
-    """Return valid selectors for the interactive result UI."""
+    """Return valid selectors and slice controls for the interactive result UI."""
 
     regression_targets = [
         target
         for target in session.target_columns
         if session.target_metadata[target].get("internal_task") == "regression"
     ]
+    numeric = set(_numeric_features(session))
+    feature_controls: dict[str, dict[str, Any]] = {}
+    for feature in session.feature_columns:
+        if feature not in session.data.columns:
+            continue
+        series = session.data[feature].dropna()
+        if series.empty:
+            continue
+        if feature in numeric:
+            feature_controls[feature] = {
+                "kind": "numeric",
+                "min": float(series.min()),
+                "max": float(series.max()),
+                "default": float(series.median()),
+            }
+        else:
+            values = list(dict.fromkeys(series.tolist()))
+            feature_controls[feature] = {
+                "kind": "categorical",
+                "values": values,
+                "default": values[0] if values else "",
+            }
     return {
         "feature_columns": list(session.feature_columns),
         "numeric_features": _numeric_features(session),
         "target_columns": list(session.target_columns),
         "regression_targets": regression_targets,
         "ternary_groups": _ternary_groups(session),
+        "feature_controls": feature_controls,
     }
 
 

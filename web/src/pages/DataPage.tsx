@@ -54,7 +54,7 @@ export default function DataPage() {
       />
 
       <div className="data-source-grid">
-        <article className="panel">
+        <article className="panel data-file-panel">
           <div className="panel-title">
             <div>
               <span className="panel-kicker">DATA SOURCE</span>

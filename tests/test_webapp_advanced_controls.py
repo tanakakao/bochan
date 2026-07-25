@@ -123,6 +123,36 @@ def test_visualization_options_include_numeric_features_and_ternary_group() -> N
     assert options["ternary_groups"] == [
         {"features": ["a", "b", "c"], "sum_value": 1.0}
     ]
+    assert options["feature_controls"] == {}
+
+
+def test_visualization_options_build_feature_controls_from_observed_data() -> None:
+    """Feature controls use robust defaults from numeric and categorical data."""
+
+    session = VisualizationSession(
+        optimizer=SimpleNamespace(model=SimpleNamespace()),
+        tabular_optimizer=SimpleNamespace(dataset=SimpleNamespace(cat_dims=[1])),
+        data=pd.DataFrame({"amount": [1.0, 3.0, 9.0], "grade": ["A", "B", "A"]}),
+        encoded_targets=pd.DataFrame(),
+        feature_columns=["amount", "grade"],
+        target_columns=["strength"],
+        target_metadata={"strength": {"internal_task": "regression"}},
+        hybrid_model=False,
+    )
+
+    controls = visualization_options(session)["feature_controls"]
+
+    assert controls["amount"] == {
+        "kind": "numeric",
+        "min": 1.0,
+        "max": 9.0,
+        "default": 3.0,
+    }
+    assert controls["grade"] == {
+        "kind": "categorical",
+        "values": ["A", "B"],
+        "default": "A",
+    }
 
 
 def test_model_details_report_hybrid_submodels_and_effective_acquisition() -> None:

@@ -205,5 +205,39 @@ def test_model_details_report_hybrid_submodels_and_effective_acquisition() -> No
     details = model_details(session, result)
     assert details["hybrid_model"] is True
     assert len(details["submodel_classes"]) == 2
+    assert details["execution_wrapper_class"] is None
     assert details["effective_acquisition"] == "EHVI"
     assert details["normalize"] is True
+
+
+def test_model_details_unwrap_single_output_for_display() -> None:
+    """A one-output hybrid adapter must report the fitted inner model as the model class."""
+
+    class SingleOutputModel:
+        pass
+
+    class HybridWrapper:
+        pass
+
+    fitted_model = SingleOutputModel()
+    wrapper = HybridWrapper()
+    wrapper.models = [fitted_model]
+    wrapper.specs = [
+        SimpleNamespace(name="y", task_type="regression", model=fitted_model)
+    ]
+    session = VisualizationSession(
+        optimizer=SimpleNamespace(model=wrapper),
+        tabular_optimizer=SimpleNamespace(dataset=SimpleNamespace(cat_dims=[])),
+        data=pd.DataFrame(),
+        encoded_targets=pd.DataFrame(),
+        feature_columns=["x"],
+        target_columns=["y"],
+        target_metadata={"y": {"internal_task": "regression"}},
+        hybrid_model=True,
+    )
+
+    details = model_details(session, {"metadata": {}})
+
+    assert details["model_class"].endswith(".SingleOutputModel")
+    assert details["execution_wrapper_class"].endswith(".HybridWrapper")
+    assert details["submodel_classes"] == [details["model_class"]]

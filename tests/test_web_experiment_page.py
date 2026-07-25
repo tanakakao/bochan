@@ -25,6 +25,11 @@ def test_experiment_result_page_is_connected() -> None:
     assert 'window.location.hash = "experiment"' in results
     assert 'import ExperimentPage from "./pages/ExperimentPage"' in app
     assert "strong>Experiment</strong><small>実験結果追加" in app
+    assert "const experimentAvailable = Boolean(dataset && result);" in app
+    assert 'auxiliaryPage === "experiment" && experimentAvailable' in app
+    assert 'if (auxiliaryPage === "experiment" && !experimentAvailable)' in app
+    assert 'setStep("data");\n      clearAuxiliaryHash();' in app
+    assert 'disabled={!experimentAvailable}' in app
     assert "appendExperimentRows" in experiment
     assert "appendExperimentFile" in experiment
     assert "recordExperimentCycle" in experiment

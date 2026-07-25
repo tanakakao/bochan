@@ -111,7 +111,11 @@ function WorkbenchLayout() {
     ? STEPS.filter(([id]) => id === "data" || id === "prepare" || id === "results" || id === "logs")
     : STEPS;
   const index = visibleSteps.findIndex(([id]) => id === step);
-  const Page = auxiliaryPage === "experiment" ? ExperimentPage : PAGES[step];
+  const experimentAvailable = Boolean(dataset && result);
+  const activeAuxiliaryPage = auxiliaryPage === "experiment" && experimentAvailable
+    ? "experiment"
+    : null;
+  const Page = activeAuxiliaryPage === "experiment" ? ExperimentPage : PAGES[step];
   const targetSummary = selectedTargetSettings.length
     ? selectedTargetSettings.map(summarizeTargetSetting).join(" / ")
     : "—";
@@ -124,13 +128,20 @@ function WorkbenchLayout() {
   }, []);
 
   useEffect(() => {
+    if (auxiliaryPage === "experiment" && !experimentAvailable) {
+      setStep("data");
+      clearAuxiliaryHash();
+    }
+  }, [auxiliaryPage, experimentAvailable, setStep]);
+
+  useEffect(() => {
     if (mode === "simple" && (step === "settings" || step === "optimize")) {
       setStep(dataset ? "prepare" : "data");
     }
   }, [dataset, mode, setStep, step]);
 
   function isComplete(id: WorkbenchStep, stepIndex: number): boolean {
-    if (auxiliaryPage === "experiment") {
+    if (activeAuxiliaryPage === "experiment") {
       return stepIndex <= index && canOpenStep(id);
     }
     return stepIndex < index && canOpenStep(id);
@@ -142,7 +153,7 @@ function WorkbenchLayout() {
   }
 
   function openExperiment() {
-    if (!result) return;
+    if (!experimentAvailable) return;
     window.location.hash = "experiment";
   }
 
@@ -161,10 +172,10 @@ function WorkbenchLayout() {
           {visibleSteps.map(([id, label], stepIndex) => (
             <div className="workflow-item" key={id}>
               <button
-                className={`workflow-step ${!auxiliaryPage && id === step ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
+                className={`workflow-step ${!activeAuxiliaryPage && id === step ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
                 onClick={() => openStep(id)}
                 disabled={!canOpenStep(id)}
-                aria-current={!auxiliaryPage && id === step ? "step" : undefined}
+                aria-current={!activeAuxiliaryPage && id === step ? "step" : undefined}
               >
                 <span>{stepIndex + 1}</span>
                 <strong>{label}</strong>
@@ -220,10 +231,10 @@ function WorkbenchLayout() {
             {visibleSteps.map(([id, label, detail], stepIndex) => (
               <button
                 key={id}
-                className={`tab ${!auxiliaryPage && step === id ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
+                className={`tab ${!activeAuxiliaryPage && step === id ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
                 onClick={() => openStep(id)}
                 disabled={!canOpenStep(id)}
-                aria-current={!auxiliaryPage && step === id ? "page" : undefined}
+                aria-current={!activeAuxiliaryPage && step === id ? "page" : undefined}
               >
                 <span className="nav-icon">{ICONS[id]}</span>
                 <span><strong>{label}</strong><small>{detail}</small></span>
@@ -231,10 +242,10 @@ function WorkbenchLayout() {
               </button>
             ))}
             <button
-              className={`tab ${auxiliaryPage === "experiment" ? "active" : ""}`}
+              className={`tab ${activeAuxiliaryPage === "experiment" ? "active" : ""}`}
               onClick={openExperiment}
-              disabled={!result}
-              aria-current={auxiliaryPage === "experiment" ? "page" : undefined}
+              disabled={!experimentAvailable}
+              aria-current={activeAuxiliaryPage === "experiment" ? "page" : undefined}
             >
               <span className="nav-icon">＋</span>
               <span><strong>Experiment</strong><small>実験結果追加</small></span>

@@ -1,4 +1,4 @@
-name: Apply target relation schema fix
+name: Finalize target relation schema fix
 
 on:
   push:
@@ -18,67 +18,24 @@ jobs:
           ref: agent/fix-target-relation-request-schema
           fetch-depth: 0
 
-      - name: Update request schema and regression test
+      - name: Format test and remove temporary workflow
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          app_path = Path("src/bochan/serving/webapp/app.py")
-          app = app_path.read_text(encoding="utf-8")
-          old_kind = '    kind: Literal["yyplot", "pareto", "1d", "2d", "ternary"]'
-          new_kind = '    kind: Literal["yyplot", "target_relation", "pareto", "1d", "2d", "ternary"]'
-          if app.count(old_kind) != 1:
-              raise RuntimeError(f"Expected one VisualizationRequestSchema kind definition, found {app.count(old_kind)}")
-          app = app.replace(old_kind, new_kind, 1)
-
-          old_caps = '    "visualizations": ["yyplot", "pareto", "prediction-1d", "prediction-2d", "ternary"],'
-          new_caps = '    "visualizations": ["yyplot", "target_relation", "pareto", "prediction-1d", "prediction-2d", "ternary"],'
-          if app.count(old_caps) != 1:
-              raise RuntimeError(f"Expected one visualization capability definition, found {app.count(old_caps)}")
-          app_path.write_text(app.replace(old_caps, new_caps, 1), encoding="utf-8")
-
-          test_path = Path("tests/test_webapp_advanced_controls.py")
-          tests = test_path.read_text(encoding="utf-8")
-          old_import = '''from bochan.serving.webapp.app import (
-              RegressionRunRequest,
-              _profile_with_category_values,
-          )'''
-          new_import = '''from bochan.serving.webapp.app import (
-              RegressionRunRequest,
-              VisualizationRequestSchema,
-              _profile_with_category_values,
-          )'''
-          if tests.count(old_import) != 1:
-              raise RuntimeError(f"Expected one app import block, found {tests.count(old_import)}")
-          tests = tests.replace(old_import, new_import, 1)
-
-          marker = '\n\ndef test_web_profile_includes_low_cardinality_numeric_values() -> None:'
-          addition = '''
-
-          def test_visualization_request_accepts_target_relation() -> None:
-              request = VisualizationRequestSchema(
-                  kind="target_relation",
-                  target_x="property",
-                  target_y="y_cat",
-              )
-
-              assert request.kind == "target_relation"
-              assert request.target_x == "property"
-              assert request.target_y == "y_cat"
-          '''
-          addition = "\n".join(line[10:] if line.startswith("          ") else line for line in addition.splitlines())
-          if marker not in tests:
-              raise RuntimeError("Could not find insertion marker for visualization schema regression test")
-          tests = tests.replace(marker, addition + marker, 1)
-          test_path.write_text(tests, encoding="utf-8")
+          path = Path("tests/test_webapp_advanced_controls.py")
+          content = path.read_text(encoding="utf-8")
+          old = '    assert request.target_y == "y_cat"\n\ndef test_web_profile_includes_low_cardinality_numeric_values() -> None:'
+          new = '    assert request.target_y == "y_cat"\n\n\ndef test_web_profile_includes_low_cardinality_numeric_values() -> None:'
+          if content.count(old) != 1:
+              raise RuntimeError(f"Expected one formatting target, found {content.count(old)}")
+          path.write_text(content.replace(old, new, 1), encoding="utf-8")
           PY
 
           rm -f .github/workflows/agent-fix-target-relation-schema.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/bochan/serving/webapp/app.py tests/test_webapp_advanced_controls.py .github/workflows/agent-fix-target-relation-schema.yml
-          git commit -m "Accept target relation visualization requests"
+          git add tests/test_webapp_advanced_controls.py .github/workflows/agent-fix-target-relation-schema.yml
+          git commit -m "Finalize target relation request schema fix"
           git push origin HEAD:agent/fix-target-relation-request-schema
-
-# trigger

@@ -43,6 +43,10 @@ jobs:
               "'''          `${appendedRows}件の実験データを追加しました。Resultsでは追加前の最新モデルによるグラフを確認でき、候補更新には再学習が必要です。`'''",
               "'''      `${appendedRows}件の実験データを追加しました。Resultsでは追加前の最新モデルによるグラフを確認でき、候補更新には再学習が必要です。`'''",
           )
+          code = code.replace(
+              "if 'Pareto' in content or 'pareto' in content:\n    raise RuntimeError('ExperimentHistoryPanel.tsx still contains Pareto-specific UI')\n",
+              "",
+          )
           try:
               exec(compile(code, 'agent-experiment-patch.py', 'exec'))
           except Exception:

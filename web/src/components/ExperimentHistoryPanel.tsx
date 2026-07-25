@@ -8,6 +8,11 @@ import {
   type ExperimentHistoryResponse
 } from "../experimentHistory";
 import {
+  historyParetoFrontTraces,
+  historyTargetClassOrder,
+  historyTargetTaskType
+} from "../experimentPareto";
+import {
   defaultExperimentProjectFilename,
   downloadExperimentProject,
   normalizeExperimentProjectFilename
@@ -20,7 +25,6 @@ interface ExperimentHistoryPanelProps {
   datasetId: string;
   refreshKey?: number;
 }
-
 
 const CYCLE_SYMBOLS = [
   "circle",
@@ -169,16 +173,6 @@ function uniqueTargetColumns(history: ExperimentHistoryResponse | null): string[
   return targets;
 }
 
-function targetTaskType(history: ExperimentHistoryResponse | null, target: string): string {
-  if (!history) return "regression";
-  for (const cycle of [...history.cycles].reverse()) {
-    const setting = cycle.target_settings.find((value) => value.target === target);
-    const taskType = setting?.task_type ?? cycle.target_summary[target]?.task_type;
-    if (taskType) return String(taskType);
-  }
-  return "regression";
-}
-
 function cycleScatterTraces(
   history: ExperimentHistoryResponse | null,
   xColumn: string,
@@ -310,12 +304,17 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
     () => cycleScatterTraces(history, selectedFeatureX, selectedFeatureY),
     [history, selectedFeatureX, selectedFeatureY]
   );
+  const selectedTargetXTask = historyTargetTaskType(history, selectedTargetX);
+  const selectedTargetYTask = historyTargetTaskType(history, selectedTargetY);
+  const selectedTargetXOrder = historyTargetClassOrder(history, selectedTargetX);
+  const selectedTargetYOrder = historyTargetClassOrder(history, selectedTargetY);
   const targetRelationData = useMemo(
-    () => cycleScatterTraces(history, selectedTargetX, selectedTargetY),
+    () => [
+      ...cycleScatterTraces(history, selectedTargetX, selectedTargetY),
+      ...historyParetoFrontTraces(history, selectedTargetX, selectedTargetY, cyclePointHover)
+    ],
     [history, selectedTargetX, selectedTargetY]
   );
-  const selectedTargetXTask = targetTaskType(history, selectedTargetX);
-  const selectedTargetYTask = targetTaskType(history, selectedTargetY);
   const latest = history?.cycles.at(-1);
   const canExport = Boolean(dataset && result && dataset.dataset_id === datasetId);
 
@@ -517,7 +516,7 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
               <div className="history-section-heading">
                 <div>
                   <h4>目的変数同士の関係</h4>
-                  <p>回帰値・カテゴリ値・順序カテゴリを同じ関係図でサイクル別に表示します。</p>
+                  <p>回帰値・カテゴリ値・順序カテゴリを表示し、両軸が回帰または順序目的の場合は累積Pareto frontを重ねます。</p>
                 </div>
                 <div className="history-axis-controls">
                   <label>
@@ -544,13 +543,21 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
                       margin: { l: 64, r: 30, t: 70, b: 58 },
                       legend: { orientation: "h", yanchor: "bottom", y: 1.02, xanchor: "left", x: 0 },
                       xaxis: {
-              title: { text: selectedTargetX },
-              ...(selectedTargetXTask === "regression" ? {} : { type: "category" as const })
-            },
-            yaxis: {
-              title: { text: selectedTargetY },
-              ...(selectedTargetYTask === "regression" ? {} : { type: "category" as const })
-            }
+                        title: { text: selectedTargetX },
+                        ...(selectedTargetXTask === "regression" ? {} : {
+                          type: "category" as const,
+                          categoryorder: "array" as const,
+                          categoryarray: selectedTargetXOrder
+                        })
+                      },
+                      yaxis: {
+                        title: { text: selectedTargetY },
+                        ...(selectedTargetYTask === "regression" ? {} : {
+                          type: "category" as const,
+                          categoryorder: "array" as const,
+                          categoryarray: selectedTargetYOrder
+                        })
+                      }
                     }, theme)}
                     config={RESULT_PLOT_CONFIG}
                     useResizeHandler

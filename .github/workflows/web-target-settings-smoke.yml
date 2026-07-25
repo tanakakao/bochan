@@ -15,6 +15,9 @@ on:
       - "tests/test_webapp_advanced_controls.py"
       - "tests/test_webapp_model_reuse.py"
       - "tests/test_webapp_model_artifacts.py"
+      - "tests/test_web_experiment_history.py"
+      - "tests/test_web_experiment_project_archive.py"
+      - "tests/test_web_experiment_page.py"
       - "tests/test_ternary_plot_dependency.py"
       - ".github/workflows/web-target-settings-smoke.yml"
   workflow_dispatch:
@@ -43,6 +46,9 @@ jobs:
             tests/test_webapp_advanced_controls.py \
             tests/test_webapp_model_reuse.py \
             tests/test_webapp_model_artifacts.py \
+            tests/test_web_experiment_history.py \
+            tests/test_web_experiment_project_archive.py \
+            tests/test_web_experiment_page.py \
             tests/test_ternary_plot_dependency.py \
             2>&1 | tee pytest-web-target-settings.log
           status=${PIPESTATUS[0]}
@@ -55,6 +61,8 @@ jobs:
           set +e
           ruff check --ignore I001,SIM102,SIM108 \
             src/bochan/serving/webapp/app.py \
+            src/bochan/serving/webapp/experiment_history.py \
+            src/bochan/serving/webapp/project_archive.py \
             src/bochan/serving/webapp/model_artifacts.py \
             src/bochan/serving/webapp/model_artifact_routes.py \
             src/bochan/serving/webapp/model_reuse.py \
@@ -75,6 +83,9 @@ jobs:
             tests/test_webapp_advanced_controls.py \
             tests/test_webapp_model_reuse.py \
             tests/test_webapp_model_artifacts.py \
+            tests/test_web_experiment_history.py \
+            tests/test_web_experiment_project_archive.py \
+            tests/test_web_experiment_page.py \
             tests/test_ternary_plot_dependency.py \
             2>&1 | tee ruff-web-target-settings.log
           status=${PIPESTATUS[0]}

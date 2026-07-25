@@ -6,6 +6,7 @@ import pandas as pd
 
 from bochan.serving.webapp.app import (
     RegressionRunRequest,
+    VisualizationRequestSchema,
     _profile_with_category_values,
 )
 from bochan.serving.webapp.search_settings import (
@@ -73,6 +74,18 @@ def test_regression_request_accepts_selection_count_constraint() -> None:
     assert request.k_sparse.enabled is True
     assert request.k_sparse.columns == ["x1", "x2", "x3"]
     assert request.k_sparse.k == 2
+
+
+def test_visualization_request_accepts_target_relation() -> None:
+    request = VisualizationRequestSchema(
+        kind="target_relation",
+        target_x="property",
+        target_y="y_cat",
+    )
+
+    assert request.kind == "target_relation"
+    assert request.target_x == "property"
+    assert request.target_y == "y_cat"
 
 
 def test_web_profile_includes_low_cardinality_numeric_values() -> None:

@@ -107,7 +107,7 @@ class KSparseSettingsSchema(_Schema):
 class VisualizationRequestSchema(_Schema):
     """Select one existing Plotly visualization for a fitted Web run."""
 
-    kind: Literal["yyplot", "pareto", "1d", "2d", "ternary"]
+    kind: Literal["yyplot", "target_relation", "pareto", "1d", "2d", "ternary"]
     target: str | None = None
     target_x: str | None = None
     target_y: str | None = None
@@ -183,7 +183,7 @@ WEB_CAPABILITIES: dict[str, Any] = {
         "nsgaii",
     ],
     "data_sources": ["csv", "excel", "model_artifact"],
-    "visualizations": ["yyplot", "pareto", "prediction-1d", "prediction-2d", "ternary"],
+    "visualizations": ["yyplot", "target_relation", "pareto", "prediction-1d", "prediction-2d", "ternary"],
     "model_artifacts": {
         "download_endpoint": "/api/v1/runs/{run_id}/model-artifact",
         "import_endpoint": "/api/v1/model-artifacts/import",

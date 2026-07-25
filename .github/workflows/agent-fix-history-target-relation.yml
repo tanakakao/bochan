@@ -21,16 +21,13 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('web/src/components/ExperimentHistoryPanel.tsx')
           content = path.read_text(encoding='utf-8')
-          replacements = {
-              'const [selectedTargetX, setSelectedParetoX]': 'const [selectedTargetX, setSelectedTargetX]',
-              'const [selectedTargetY, setSelectedParetoY]': 'const [selectedTargetY, setSelectedTargetY]',
-              'setSelectedParetoX(': 'setSelectedTargetX(',
-              'setSelectedParetoY(': 'setSelectedTargetY(',
-              '''                      xaxis: { title: { text: selectedTargetX } },
-                      yaxis: { title: { text: selectedTargetY } }''': '''                      xaxis: {
+          content = content.replace('setSelectedParetoX', 'setSelectedTargetX')
+          content = content.replace('setSelectedParetoY', 'setSelectedTargetY')
+          replacement = '''xaxis: {
                         title: { text: selectedTargetX },
                         ...(selectedTargetXTask === "regression" ? {} : { type: "category" as const })
                       },
@@ -38,11 +35,14 @@ jobs:
                         title: { text: selectedTargetY },
                         ...(selectedTargetYTask === "regression" ? {} : { type: "category" as const })
                       }'''
-          }
-          for old, new in replacements.items():
-              if old not in content:
-                  raise RuntimeError(f'missing replacement target: {old!r}')
-              content = content.replace(old, new)
+          content, count = re.subn(
+              r'xaxis: \{ title: \{ text: selectedTargetX \} \},\n\s*yaxis: \{ title: \{ text: selectedTargetY \} \}',
+              replacement,
+              content,
+              count=1,
+          )
+          if count != 1:
+              raise RuntimeError(f'expected one target axis block, found {count}')
           path.write_text(content, encoding='utf-8')
           Path('.github/workflows/agent-fix-history-target-relation.yml').unlink()
           PY

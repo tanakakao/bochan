@@ -13,6 +13,9 @@ def test_experiment_result_page_is_connected() -> None:
     results = (ROOT / "web/src/pages/ResultsPage.tsx").read_text(encoding="utf-8")
     experiment = (ROOT / "web/src/pages/ExperimentPage.tsx").read_text(encoding="utf-8")
     history = (ROOT / "web/src/components/ExperimentHistoryPanel.tsx").read_text(encoding="utf-8")
+    history_cycle_css = (
+        ROOT / "web/src/experiment-history-cycle-plots.css"
+    ).read_text(encoding="utf-8")
     data_page = (ROOT / "web/src/pages/DataPage.tsx").read_text(encoding="utf-8")
     data_helpers = (ROOT / "web/src/experimentData.ts").read_text(encoding="utf-8")
     history_api = (ROOT / "web/src/experimentHistory.ts").read_text(encoding="utf-8")
@@ -36,6 +39,16 @@ def test_experiment_result_page_is_connected() -> None:
     assert "履歴込みプロジェクトを保存" in history
     assert "最新モデルを含める" in history
     assert "過去サイクルのモデルも含める（標準OFF）" in history
+    assert "説明変数の探索推移" in history
+    assert "cycleScatterTraces" in history
+    assert "多目的パレート推移" in history
+    assert "cumulativeParetoFront" in history
+    assert "累積Pareto front" in history
+    assert "cycleSearchMethod" in history
+    assert "requested_search_method" in history
+    assert "effective_optimizer" in history
+    assert "Optimizer backend" in history
+    assert "history-axis-controls" in history_cycle_css
     assert ".bochan-project.zip" in data_page
     assert "履歴付きプロジェクトを開く" in data_page
     assert "含まれるモデルを信頼" in data_page

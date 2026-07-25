@@ -54,7 +54,9 @@ def test_experiment_result_page_is_connected() -> None:
     assert "effective_optimizer" in history
     assert "Optimizer backend" in history
     assert "history-axis-controls" in history_cycle_css
-    assert ".bochan-project.zip" in data_page
+    assert 'accept=".bochan-project.zip,.zip,application/zip"' in data_page
+    assert 'endsWith(".bochan-project.zip")' not in data_page
+    assert "内部のプロジェクト情報を検証" in data_page
     assert "履歴付きプロジェクトを開く" in data_page
     assert "含まれるモデルを信頼" in data_page
     assert 'request<ExperimentHistoryResponse>' in history_api

@@ -154,7 +154,6 @@ export default function ResultsPage() {
                 {modelDownloading ? "モデル保存中" : "モデルを保存"}
               </button>
             </div>
-            <button onClick={() => setStep("logs")}>モデル詳細・ログ</button>
           </>
         }
       />

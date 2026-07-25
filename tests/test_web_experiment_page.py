@@ -31,6 +31,8 @@ def test_experiment_result_page_is_connected() -> None:
     assert 'if (auxiliaryPage === "experiment" && !experimentAvailable)' in app
     assert 'setStep("data");\n      clearAuxiliaryHash();' in app
     assert 'disabled={!experimentAvailable}' in app
+    assert 'STEPS.filter(([id]) => id !== "logs")' in app
+    assert 'setStep("logs")' not in results
     assert "appendExperimentRows" in experiment
     assert "appendExperimentFile" in experiment
     assert "recordExperimentCycle" in experiment

@@ -160,7 +160,7 @@ export default function ResultsPage() {
 
       {staleAfterAppend && (
         <div className="alert warning stale-result-note">
-          実験データを追加したため、この候補と予測は追加前のモデル結果です。現在の設定を確認して再学習してください。
+          実験データを追加したため、この候補と予測は追加前の最新モデル結果です。グラフは引き続き確認できますが、候補更新とモデル再利用には更新データでの再学習が必要です。
         </div>
       )}
 

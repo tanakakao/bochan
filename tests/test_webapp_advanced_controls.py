@@ -15,9 +15,11 @@ from bochan.serving.webapp.search_settings import (
 )
 from bochan.serving.webapp.visualization_sessions import (
     VisualizationSession,
+    _target_relation,
     model_details,
     visualization_options,
 )
+from bochan.visualization import show_target_relation_plot
 
 
 def test_multi_term_feature_constraint_uses_weighted_sum() -> None:
@@ -241,3 +243,47 @@ def test_model_details_unwrap_single_output_for_display() -> None:
     assert details["model_class"].endswith(".SingleOutputModel")
     assert details["execution_wrapper_class"].endswith(".HybridWrapper")
     assert details["submodel_classes"] == [details["model_class"]]
+
+
+def test_target_relation_accepts_categorical_targets() -> None:
+    session = VisualizationSession(
+        optimizer=SimpleNamespace(model=SimpleNamespace()),
+        tabular_optimizer=SimpleNamespace(dataset=SimpleNamespace(cat_dims=[])),
+        data=pd.DataFrame({
+            "grade": ["A", "A", "B", "B", "B"],
+            "status": ["ok", "ok", "ok", "ng", "ng"],
+        }),
+        encoded_targets=pd.DataFrame(),
+        feature_columns=["x"],
+        target_columns=["grade", "status"],
+        target_metadata={
+            "grade": {"internal_task": "ordinal", "classes": ["A", "B"]},
+            "status": {"internal_task": "multiclass", "classes": ["ok", "ng"]},
+        },
+        hybrid_model=True,
+    )
+
+    figure = _target_relation(session, "grade", "status")
+
+    assert figure.layout.xaxis.type == "category"
+    assert figure.layout.yaxis.type == "category"
+    assert list(figure.layout.xaxis.categoryarray) == ["A", "B"]
+    assert sorted(figure.data[0].customdata) == [1, 2, 2]
+
+
+def test_target_relation_public_api_supports_mixed_output_types() -> None:
+    figure = show_target_relation_plot(
+        pd.DataFrame({
+            "strength": [1.2, 2.4, 3.1],
+            "grade": ["low", "middle", "high"],
+        }),
+        "strength",
+        "grade",
+        task_types={"strength": "regression", "grade": "ordinal"},
+        category_orders={"grade": ["low", "middle", "high"]},
+    )
+
+    assert figure.layout.xaxis.type is None
+    assert figure.layout.yaxis.type == "category"
+    assert list(figure.layout.yaxis.categoryarray) == ["low", "middle", "high"]
+    assert list(figure.data[0].x) == [1.2, 2.4, 3.1]

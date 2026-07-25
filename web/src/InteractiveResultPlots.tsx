@@ -59,12 +59,12 @@ function defaults(result: RegressionResult): VisualizationOptions {
 export default function InteractiveResultPlots({ result }: Props) {
   const options = useMemo(() => defaults(result), [result]);
   const runId = result.visualization_run_id;
-  const [leftKind, setLeftKind] = useState<"yyplot" | "pareto">(
-    options.regression_targets.length >= 2 ? "pareto" : "yyplot"
+  const [leftKind, setLeftKind] = useState<"yyplot" | "target_relation">(
+    result.visualization_run_id && options.target_columns.length >= 2 ? "target_relation" : "yyplot"
   );
   const [leftTarget, setLeftTarget] = useState(options.target_columns[0] ?? "");
-  const [targetX, setTargetX] = useState(options.regression_targets[0] ?? "");
-  const [targetY, setTargetY] = useState(options.regression_targets[1] ?? options.regression_targets[0] ?? "");
+  const [targetX, setTargetX] = useState(options.target_columns[0] ?? "");
+  const [targetY, setTargetY] = useState(options.target_columns[1] ?? options.target_columns[0] ?? "");
   const [rightKind, setRightKind] = useState<"1d" | "2d" | "ternary">("1d");
   const [rightTarget, setRightTarget] = useState(options.target_columns[0] ?? "");
   const [featureA, setFeatureA] = useState(options.feature_columns[0] ?? "");
@@ -85,11 +85,19 @@ export default function InteractiveResultPlots({ result }: Props) {
 
   useEffect(() => {
     if (!runId) {
-      setLeftError("可視化セッションがありません。候補を再生成してください。");
+      const saved = leftKind === "yyplot"
+        ? result.visualizations.find((value) => value.id === `${leftTarget}-yyplot`)
+          ?? result.visualizations.find((value) => value.id.endsWith("-yyplot"))
+          ?? null
+        : null;
+      setLeftPlot(saved);
+      setLeftError(saved
+        ? null
+        : "最新モデルの可視化セッションがありません。モデルを信頼してプロジェクトを読み込むか、候補を再生成してください。");
       return;
     }
-    if (leftKind === "pareto" && (!targetX || !targetY || targetX === targetY)) {
-      setLeftError("Pareto図には異なる2つの回帰目的変数が必要です。");
+    if (leftKind === "target_relation" && (!targetX || !targetY || targetX === targetY)) {
+      setLeftError("目的変数同士の図には異なる2つの目的変数が必要です。");
       return;
     }
     let active = true;
@@ -97,12 +105,12 @@ export default function InteractiveResultPlots({ result }: Props) {
     setLeftError(null);
     fetchResultVisualization(runId, leftKind === "yyplot"
       ? { kind: "yyplot", target: leftTarget }
-      : { kind: "pareto", target_x: targetX, target_y: targetY })
+      : { kind: "target_relation", target_x: targetX, target_y: targetY })
       .then((value) => { if (active) setLeftPlot(value); })
       .catch((caught) => { if (active) setLeftError(caught instanceof Error ? caught.message : String(caught)); })
       .finally(() => { if (active) setLeftLoading(false); });
     return () => { active = false; };
-  }, [leftKind, leftTarget, runId, targetX, targetY]);
+  }, [leftKind, leftTarget, result.visualizations, runId, targetX, targetY]);
 
   useEffect(() => {
     if (!runId) {
@@ -166,9 +174,9 @@ export default function InteractiveResultPlots({ result }: Props) {
       <div className="interactive-plot-grid">
         <article className="panel interactive-plot-card">
           <div className="plot-controls">
-            <label>図<select value={leftKind} onChange={(event) => setLeftKind(event.target.value as "yyplot" | "pareto")}>
+            <label>図<select value={leftKind} onChange={(event) => setLeftKind(event.target.value as "yyplot" | "target_relation")}>
               <option value="yyplot">YY plot</option>
-              <option value="pareto" disabled={options.regression_targets.length < 2}>Pareto図</option>
+              <option value="target_relation" disabled={options.target_columns.length < 2}>目的変数同士</option>
             </select></label>
             {leftKind === "yyplot" ? (
               <label>目的変数<select value={leftTarget} onChange={(event) => setLeftTarget(event.target.value)}>
@@ -177,10 +185,10 @@ export default function InteractiveResultPlots({ result }: Props) {
             ) : (
               <>
                 <label>横軸目的<select value={targetX} onChange={(event) => setTargetX(event.target.value)}>
-                  {options.regression_targets.map((target) => <option key={target} value={target}>{target}</option>)}
+                  {options.target_columns.map((target) => <option key={target} value={target}>{target}</option>)}
                 </select></label>
                 <label>縦軸目的<select value={targetY} onChange={(event) => setTargetY(event.target.value)}>
-                  {options.regression_targets.map((target) => <option key={target} value={target}>{target}</option>)}
+                  {options.target_columns.map((target) => <option key={target} value={target}>{target}</option>)}
                 </select></label>
               </>
             )}

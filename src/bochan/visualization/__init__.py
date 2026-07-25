@@ -96,6 +96,7 @@ from .study import (
     study_history_dataframe,
     study_pareto_dataframe,
 )
+from .target_relation import show_target_relation_plot
 from .plots import (
     show_1dplot_with_pred,
     show_pareto_plot,
@@ -161,6 +162,7 @@ __all__ = [
     "show_scatter_with_acqf",
     "show_scatter_with_acqf_from_optimizer",
     "show_target_over_cycle_study",
+    "show_target_relation_plot",
     "show_triscatter_with_acqf",
     "show_triscatter_with_acqf_from_optimizer",
     "show_yyplot",

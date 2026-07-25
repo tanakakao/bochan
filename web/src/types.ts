@@ -139,7 +139,7 @@ export interface ResultVisualization {
   figure: PlotlyFigurePayload;
 }
 
-export type VisualizationKind = "yyplot" | "pareto" | "1d" | "2d" | "ternary";
+export type VisualizationKind = "yyplot" | "target_relation" | "pareto" | "1d" | "2d" | "ternary";
 
 export interface VisualizationRequest {
   kind: VisualizationKind;
@@ -158,6 +158,7 @@ export interface VisualizationOptions {
   numeric_features: string[];
   target_columns: string[];
   regression_targets: string[];
+  target_tasks?: Record<string, string>;
   ternary_groups?: Array<{ features: string[]; sum_value: number }>;
   feature_controls?: Record<string, {
     kind: "numeric" | "categorical";

@@ -1,0 +1,29 @@
+.history-overview-grid {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.history-secondary-plot-section {
+  margin-top: 22px;
+}
+
+.history-axis-controls {
+  min-width: min(100%, 440px);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(170px, 1fr));
+  gap: 10px;
+}
+
+.history-axis-controls label {
+  min-width: 0;
+}
+
+.history-summary-table {
+  min-width: 1120px;
+}
+
+@media (max-width: 720px) {
+  .history-axis-controls {
+    min-width: 0;
+    grid-template-columns: 1fr;
+  }
+}

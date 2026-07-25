@@ -26,6 +26,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import textwrap
+          import traceback
 
           source = Path('.github/workflows/agent-apply-experiment-categorical.yml').read_text(encoding='utf-8')
           start_marker = "          python - <<'PY'\n"
@@ -33,8 +34,22 @@ jobs:
           start = source.index(start_marker) + len(start_marker)
           end = source.index(end_marker, start)
           code = textwrap.dedent(source[start:end])
-          exec(compile(code, 'agent-experiment-patch.py', 'exec'))
+          try:
+              exec(compile(code, 'agent-experiment-patch.py', 'exec'))
+          except Exception:
+              Path('/tmp/agent-patch-error.txt').write_text(traceback.format_exc(), encoding='utf-8')
           PY
+
+          if [ -f /tmp/agent-patch-error.txt ]; then
+            git reset --hard HEAD
+            cp /tmp/agent-patch-error.txt agent-patch-error.txt
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add agent-patch-error.txt
+            git commit -m "Record experiment patch diagnostic"
+            git push origin HEAD:agent/experiment-categorical-plots-restore
+            exit 0
+          fi
 
           rm -f .github/workflows/agent-trigger-experiment-categorical.yml
           rm -f agent-trigger-experiment-categorical.txt

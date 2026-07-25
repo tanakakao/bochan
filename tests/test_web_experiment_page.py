@@ -13,6 +13,7 @@ def test_experiment_result_page_is_connected() -> None:
     results = (ROOT / "web/src/pages/ResultsPage.tsx").read_text(encoding="utf-8")
     experiment = (ROOT / "web/src/pages/ExperimentPage.tsx").read_text(encoding="utf-8")
     history = (ROOT / "web/src/components/ExperimentHistoryPanel.tsx").read_text(encoding="utf-8")
+    history_pareto = (ROOT / "web/src/experimentPareto.ts").read_text(encoding="utf-8")
     interactive = (ROOT / "web/src/InteractiveResultPlots.tsx").read_text(encoding="utf-8")
     context = (ROOT / "web/src/context/WorkbenchContext.tsx").read_text(encoding="utf-8")
     history_css = (ROOT / "web/src/experiment-history.css").read_text(encoding="utf-8")
@@ -24,6 +25,15 @@ def test_experiment_result_page_is_connected() -> None:
     history_api = (ROOT / "web/src/experimentHistory.ts").read_text(encoding="utf-8")
     project_api = (ROOT / "web/src/experimentProject.ts").read_text(encoding="utf-8")
     main = (ROOT / "web/src/main.tsx").read_text(encoding="utf-8")
+    visualization_sessions = (
+        ROOT / "src/bochan/serving/webapp/visualization_sessions.py"
+    ).read_text(encoding="utf-8")
+    target_relation = (
+        ROOT / "src/bochan/visualization/target_relation.py"
+    ).read_text(encoding="utf-8")
+    visualization_init = (
+        ROOT / "src/bochan/visualization/__init__.py"
+    ).read_text(encoding="utf-8")
 
     assert 'window.location.hash = "experiment"' in results
     assert 'import ExperimentPage from "./pages/ExperimentPage"' in app
@@ -50,9 +60,12 @@ def test_experiment_result_page_is_connected() -> None:
     assert "実験結果" in experiment
 
     assert "目的変数同士の関係" in history
-    assert "selectedTargetXTask" in history
-    assert '{ type: "category" as const }' in history
-    assert "累積Pareto front" not in history
+    assert "historyParetoFrontTraces" in history
+    assert "categoryarray: selectedTargetXOrder" in history
+    assert "categoryarray: selectedTargetYOrder" in history
+    assert "累積Pareto front" in history_pareto
+    assert 'task === "regression" || task === "ordinal"' in history_pareto
+    assert "targetSetting(history, xTarget)?.optimize === false" in history_pareto
     assert "多目的パレート推移" not in history
     assert "cycleScatterTraces" in history
     assert "説明変数の探索推移" in history
@@ -77,6 +90,14 @@ def test_experiment_result_page_is_connected() -> None:
     assert "result.visualizations.find" in interactive
     assert "!result?.metadata?.stale_after_data_append" in context
     assert "グラフは引き続き確認できます" in results
+
+    assert "show_target_relation_plot" in target_relation
+    assert "aggregate_categorical" in target_relation
+    assert "category_orders" in target_relation
+    assert "from bochan.visualization import show_target_relation_plot" in visualization_sessions
+    assert "return show_target_relation_plot(" in visualization_sessions
+    assert "from .target_relation import show_target_relation_plot" in visualization_init
+    assert '"show_target_relation_plot"' in visualization_init
 
     assert "COMPLETE_DATASET_LIMIT" in data_helpers
     assert ".history-export-filename" in history_css

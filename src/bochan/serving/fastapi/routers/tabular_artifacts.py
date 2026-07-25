@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from bochan.tabular import TabularBayesianOptimizer
@@ -42,6 +44,30 @@ def _synchronize_tabular_dataset(optimizer: TabularBayesianOptimizer) -> None:
         optimizer.dataset.Y = train_y
 
 
+def _append_tabular_data(optimizer: TabularBayesianOptimizer, frame: object) -> None:
+    """Encode new rows with the fitted category maps and append their tensors."""
+
+    if optimizer.dataset is None:
+        raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
+    data_config = replace(
+        optimizer.data_config,
+        input_cols=list(optimizer.dataset.feature_names),
+        target_cols=list(optimizer.dataset.target_names),
+        category_maps=optimizer.dataset.category_maps,
+        target_category_maps=optimizer.dataset.target_category_maps,
+    )
+    new_dataset = optimizer._to_dataset(  # noqa: SLF001
+        frame,
+        data_config=data_config,
+        feature_names=optimizer.dataset.feature_names,
+        target_names=optimizer.dataset.target_names,
+    )
+    if new_dataset.Y is None:
+        raise ValueError("Target values are required for tabular tell().")
+    optimizer.bo.update_data(new_dataset.X, new_dataset.Y)
+    _synchronize_tabular_dataset(optimizer)
+
+
 @router.post("/{model_id}/tell", response_model=TabularModelFitResponse)
 def tell_tabular_model(
     model_id: str,
@@ -53,9 +79,11 @@ def tell_tabular_model(
     try:
         optimizer = store.get(model_id)
         frame = _to_dataframe(request.data)
-        fit_config = to_fit_config(request.fit_config) if request.fit_config is not None else None
-        optimizer.tell(frame, refit=request.refit, fit_config=fit_config)
-        _synchronize_tabular_dataset(optimizer)
+        _append_tabular_data(optimizer, frame)
+        if request.refit:
+            fit_config = to_fit_config(request.fit_config) if request.fit_config is not None else optimizer.fit_config
+            optimizer.bo.refit(fit_config=fit_config)
+            optimizer._sync_visualization_metadata()  # noqa: SLF001
         return _fit_response(model_id, optimizer)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

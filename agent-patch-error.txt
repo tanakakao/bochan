@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "<stdin>", line 25, in <module>
-  File "agent-experiment-patch.py", line 170, in <module>
-  File "agent-experiment-patch.py", line 18, in replace_once
-RuntimeError: web/src/InteractiveResultPlots.tsx: expected one exact match, found 2: '                  {options.regression_targets.map((target) => <option key={targe'

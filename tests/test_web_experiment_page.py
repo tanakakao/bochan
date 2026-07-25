@@ -33,6 +33,13 @@ def test_experiment_result_page_is_connected() -> None:
     assert 'disabled={!experimentAvailable}' in app
     assert 'STEPS.filter(([id]) => id !== "logs")' in app
     assert 'setStep("logs")' not in results
+    assert "<select" in experiment
+    assert "categoryValues(column)" in experiment
+    assert "visualization_uses_latest_saved_model" in experiment
+    assert "delete result.visualization_run_id" not in experiment
+    assert "目的変数同士の関係" in history
+    assert "累積Pareto front" not in history
+    assert "多目的パレート推移" not in history
     assert "appendExperimentRows" in experiment
     assert "appendExperimentFile" in experiment
     assert "recordExperimentCycle" in experiment
@@ -54,9 +61,8 @@ def test_experiment_result_page_is_connected() -> None:
     assert ".history-export-filename" in history_css
     assert "説明変数の探索推移" in history
     assert "cycleScatterTraces" in history
-    assert "多目的パレート推移" in history
-    assert "cumulativeParetoFront" in history
-    assert "累積Pareto front" in history
+    assert "目的変数同士の関係" in history
+    assert "cycleScatterTraces" in history
     assert "cycleSearchMethod" in history
     assert "requested_search_method" in history
     assert "effective_optimizer" in history

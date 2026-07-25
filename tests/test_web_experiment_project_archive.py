@@ -365,3 +365,33 @@ def test_model_import_rejects_invalid_project_zip() -> None:
         headers={"X-Model-Filename": "broken.bochan-project.zip"},
     )
     assert response.status_code == 400
+
+
+def test_latest_stale_result_model_is_associated_with_its_training_snapshot() -> None:
+    from bochan.serving.webapp.project_archive import (
+        ExperimentProjectExportRequest,
+        _model_export_candidates,
+    )
+
+    request = ExperimentProjectExportRequest(
+        dataset_id="dataset-after",
+        result={"visualization_run_id": "run-before"},
+    )
+    cycles = [
+        {
+            "source_run_id": "run-before",
+            "parent_dataset_id": "dataset-before",
+            "dataset_id": "dataset-after",
+            "cycle_number": 1,
+        }
+    ]
+
+    assert _model_export_candidates(request, cycles) == [
+        {
+            "run_id": "run-before",
+            "role": "latest",
+            "dataset_id": "dataset-before",
+            "cycle_number": 1,
+        }
+    ]
+

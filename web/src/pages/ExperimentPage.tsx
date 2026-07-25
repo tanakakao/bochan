@@ -77,12 +77,22 @@ function coerceValue(column: ColumnProfile | undefined, value: string): unknown 
   return parsed;
 }
 
+function uniqueCategoryValues(values: unknown[]): Array<string | number> {
+  const unique = new Map<string, string | number>();
+  for (const value of values) {
+    if (typeof value !== "string" && typeof value !== "number") continue;
+    const key = `${typeof value}:${String(value)}`;
+    if (!unique.has(key)) unique.set(key, value);
+  }
+  return [...unique.values()];
+}
+
 function markPreviousResultStale(result: RegressionResult, appendedRows: number): void {
-  delete result.visualization_run_id;
   result.metadata = {
     ...result.metadata,
     stale_after_data_append: true,
-    appended_experiment_rows: appendedRows
+    appended_experiment_rows: appendedRows,
+    visualization_uses_latest_saved_model: Boolean(result.visualization_run_id)
   };
 }
 
@@ -170,10 +180,73 @@ export default function ExperimentPage() {
     ? activeResult.target_settings
     : sourceConfiguration.targetSettings;
 
+  function isCategoricalColumn(column: string): boolean {
+    const targetSetting = targetSettings.find((setting) => setting.target === column);
+    const internalTask = activeResult.target_metadata?.[column]?.internal_task;
+    return variables[column]?.type === "categorical" ||
+      columnsByName[column]?.kind === "categorical" ||
+      targetSetting?.task_type === "classification" ||
+      targetSetting?.task_type === "ordinal" ||
+      internalTask === "binary" || internalTask === "multiclass" || internalTask === "ordinal";
+  }
+
+  function categoryValues(column: string): Array<string | number> {
+    if (!isCategoricalColumn(column)) return [];
+    const targetSetting = targetSettings.find((setting) => setting.target === column);
+    const metadata = activeResult.target_metadata?.[column];
+    return uniqueCategoryValues([
+      ...(variables[column]?.categories ?? []),
+      ...(metadata?.classes ?? []),
+      ...(targetSetting?.class_order ?? []),
+      ...(targetSetting?.target_classes ?? []),
+      ...(columnsByName[column]?.values ?? []),
+      ...activeDataset.preview.map((row) => row[column])
+    ]);
+  }
+
   function patchRow(id: string, column: string, value: string) {
     setRows((current) => current.map((row) => (
       row.id === id ? { ...row, values: { ...row.values, [column]: value } } : row
     )));
+  }
+
+  function experimentValueControl(
+    row: DraftRow,
+    column: string,
+    role: "condition" | "result"
+  ) {
+    const categorical = isCategoricalColumn(column);
+    const disabled = saving || Boolean(completedMessage);
+    const label = `${row.source} ${column} ${role === "condition" ? "実験条件" : "実験結果"}`;
+    const className = `experiment-cell-input${role === "result" ? " result-input" : ""}`;
+    if (categorical) {
+      return (
+        <select
+          className={className}
+          value={row.values[column] ?? ""}
+          onChange={(event) => patchRow(row.id, column, event.target.value)}
+          disabled={disabled}
+          aria-label={label}
+        >
+          <option value="">選択してください</option>
+          {categoryValues(column).map((value) => (
+            <option key={`${typeof value}:${String(value)}`} value={String(value)}>{String(value)}</option>
+          ))}
+        </select>
+      );
+    }
+    return (
+      <input
+        className={className}
+        type={columnsByName[column]?.kind === "numeric" ? "number" : "text"}
+        step={role === "condition" ? variables[column]?.step ?? "any" : "any"}
+        value={row.values[column] ?? ""}
+        onChange={(event) => patchRow(row.id, column, event.target.value)}
+        disabled={disabled}
+        placeholder={role === "result" ? "実測値" : undefined}
+        aria-label={label}
+      />
+    );
   }
 
   function toggleRow(id: string) {
@@ -254,7 +327,7 @@ export default function ExperimentPage() {
     markPreviousResultStale(activeResult, appendedRows);
     setHistoryVersion((current) => current + 1);
     setCompletedMessage(
-      `${appendedRows}件の実験データを追加しました。現在の変数・モデル設定を保持したまま再学習できます。`
+      `${appendedRows}件の実験データを追加しました。Resultsでは追加前の最新モデルによるグラフを確認でき、候補更新には再学習が必要です。`
     );
   }
 
@@ -389,31 +462,10 @@ export default function ExperimentPage() {
                   </td>
                   <td><strong>{row.source}</strong></td>
                   {featureColumns.map((column) => (
-                    <td key={column}>
-                      <input
-                        className="experiment-cell-input"
-                        type={columnsByName[column]?.kind === "numeric" ? "number" : "text"}
-                        step={variables[column]?.step ?? "any"}
-                        value={row.values[column] ?? ""}
-                        onChange={(event) => patchRow(row.id, column, event.target.value)}
-                        disabled={saving || Boolean(completedMessage)}
-                        aria-label={`${row.source} ${column} 実験条件`}
-                      />
-                    </td>
+                    <td key={column}>{experimentValueControl(row, column, "condition")}</td>
                   ))}
                   {targetColumns.map((column) => (
-                    <td key={column}>
-                      <input
-                        className="experiment-cell-input result-input"
-                        type={columnsByName[column]?.kind === "numeric" ? "number" : "text"}
-                        step="any"
-                        value={row.values[column] ?? ""}
-                        onChange={(event) => patchRow(row.id, column, event.target.value)}
-                        disabled={saving || Boolean(completedMessage)}
-                        placeholder="実測値"
-                        aria-label={`${row.source} ${column} 実験結果`}
-                      />
-                    </td>
+                    <td key={column}>{experimentValueControl(row, column, "result")}</td>
                   ))}
                   <td>
                     <button

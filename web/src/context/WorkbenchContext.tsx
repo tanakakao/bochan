@@ -418,6 +418,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     : null;
   const modelReuseAvailable = Boolean(
     candidateSettingsValid &&
+    !result?.metadata?.stale_after_data_append &&
     result?.visualization_run_id &&
     lastModelSignature &&
     currentModelSignature === lastModelSignature
@@ -559,7 +560,11 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     if (!currentRunInput || !candidateSettingsValid) return;
     const modelSignature = currentModelSignature ?? buildModelReuseSignature(currentRunInput);
     const reusableRunId = result?.visualization_run_id;
-    const canReuse = Boolean(reusableRunId && lastModelSignature === modelSignature);
+    const canReuse = Boolean(
+      reusableRunId &&
+      !result?.metadata?.stale_after_data_append &&
+      lastModelSignature === modelSignature
+    );
     if (mode === "reuse" && !canReuse) {
       setError(
         "学習済みモデルを使用できません。データ、タスク、モデル、前処理、欠損処理、または探索範囲が変更されています。"

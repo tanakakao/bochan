@@ -15,6 +15,7 @@ from bochan.serving.webapp.search_settings import (
 )
 from bochan.serving.webapp.visualization_sessions import (
     VisualizationSession,
+    _target_relation,
     model_details,
     visualization_options,
 )
@@ -241,3 +242,29 @@ def test_model_details_unwrap_single_output_for_display() -> None:
     assert details["model_class"].endswith(".SingleOutputModel")
     assert details["execution_wrapper_class"].endswith(".HybridWrapper")
     assert details["submodel_classes"] == [details["model_class"]]
+
+
+def test_target_relation_accepts_categorical_targets() -> None:
+    session = VisualizationSession(
+        optimizer=SimpleNamespace(model=SimpleNamespace()),
+        tabular_optimizer=SimpleNamespace(dataset=SimpleNamespace(cat_dims=[])),
+        data=pd.DataFrame({
+            "grade": ["A", "A", "B", "B", "B"],
+            "status": ["ok", "ok", "ok", "ng", "ng"],
+        }),
+        encoded_targets=pd.DataFrame(),
+        feature_columns=["x"],
+        target_columns=["grade", "status"],
+        target_metadata={
+            "grade": {"internal_task": "ordinal"},
+            "status": {"internal_task": "multiclass"},
+        },
+        hybrid_model=True,
+    )
+
+    figure = _target_relation(session, "grade", "status")
+
+    assert figure.layout.xaxis.type == "category"
+    assert figure.layout.yaxis.type == "category"
+    assert sorted(figure.data[0].customdata) == [1, 2, 2]
+

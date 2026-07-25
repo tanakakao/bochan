@@ -132,11 +132,27 @@ def _model_export_candidates(
     result_run_id = request.result.get("visualization_run_id")
     if request.include_latest_model:
         if result_run_id:
+            matching_cycle = next(
+                (
+                    cycle
+                    for cycle in reversed(cycles)
+                    if str(cycle.get("source_run_id") or "") == str(result_run_id)
+                ),
+                None,
+            )
             add_candidate(
                 result_run_id,
                 role="latest",
-                dataset_id=request.dataset_id,
-                cycle_number=None,
+                dataset_id=(
+                    str(matching_cycle["parent_dataset_id"])
+                    if matching_cycle is not None
+                    else request.dataset_id
+                ),
+                cycle_number=(
+                    int(matching_cycle["cycle_number"])
+                    if matching_cycle is not None
+                    else None
+                ),
             )
         else:
             for cycle in reversed(cycles):
@@ -571,12 +587,34 @@ def restore_experiment_project(
                     "restored_from_project_archive": True,
                     "project_model_included": True,
                     "project_model_restored": True,
+                    "project_model_active": True,
+                }
+            elif latest_model is not None:
+                model_result = latest_model.get("result")
+                model_result = model_result if isinstance(model_result, dict) else {}
+                result_payload["visualization_run_id"] = str(latest_model["restored_run_id"])
+                if model_result.get("visualization_options") is not None:
+                    result_payload["visualization_options"] = deepcopy(
+                        model_result["visualization_options"]
+                    )
+                if model_result.get("visualizations"):
+                    result_payload["visualizations"] = deepcopy(model_result["visualizations"])
+                metadata = result_payload.get("metadata")
+                metadata = metadata if isinstance(metadata, dict) else {}
+                result_payload["metadata"] = {
+                    **metadata,
+                    "stale_after_data_append": True,
+                    "restored_from_project_archive": True,
+                    "project_model_included": True,
+                    "project_model_restored": True,
+                    "project_model_active": False,
+                    "visualization_model_dataset_id": latest_model["dataset_id"],
                 }
 
             restored_count = sum(bool(item.get("restored")) for item in restored_models)
             restored_run_id = (
                 str(latest_model["restored_run_id"])
-                if active_model_restored and latest_model is not None
+                if latest_model is not None
                 else f"project-{uuid4().hex}"
             )
             return {
@@ -604,6 +642,7 @@ def restore_experiment_project(
                     "model_restored": restored_count > 0,
                     "restored_model_count": restored_count,
                     "active_model_restored": active_model_restored,
+                    "latest_model_visualization_restored": bool(latest_model),
                     "requires_pickle_trust": bool(model_entries) and not trust_pickle,
                     "restored_models": restored_models,
                     "model_export_warnings": manifest.get("model_export_warnings") or [],

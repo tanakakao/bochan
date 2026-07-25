@@ -217,7 +217,7 @@ export default function ExperimentHistoryPanel({ datasetId, refreshKey = 0 }: Ex
             <div className="history-section-heading">
               <div>
                 <h4>目的変数の推移</h4>
-                <p>サイクル内ベスト・平均・初期データを含む累積ベストを比較します。</p>
+                <p>各データの実測値と、サイクル内ベスト・平均・累積ベストを比較します。</p>
               </div>
               <label>
                 目的変数

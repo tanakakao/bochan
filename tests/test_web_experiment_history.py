@@ -120,6 +120,9 @@ def test_experiment_history_tracks_dataset_lineage_and_builds_plot() -> None:
     assert visualization["figure"]["data"][0]["y"] == [2.0, 3.0, 4.0]
     assert visualization["figure"]["data"][2]["name"] == "累積ベスト"
     assert visualization["figure"]["data"][2]["y"] == [2.0, 3.0, 4.0]
+    assert visualization["figure"]["data"][3]["name"] == "各データ"
+    assert visualization["figure"]["data"][3]["y"] == [1.0, 2.0, 3.0, 4.0]
+    assert visualization["figure"]["data"][3]["x"] == [-0.18, 0.18, 1.0, 2.0]
 
 
 def test_experiment_history_rejects_dataset_row_count_mismatch() -> None:

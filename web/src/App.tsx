@@ -107,9 +107,10 @@ function WorkbenchLayout() {
     q,
     result
   } = useWorkbench();
+  const workflowSteps = STEPS.filter(([id]) => id !== "logs");
   const visibleSteps = mode === "simple"
-    ? STEPS.filter(([id]) => id === "data" || id === "prepare" || id === "results" || id === "logs")
-    : STEPS;
+    ? workflowSteps.filter(([id]) => id === "data" || id === "prepare" || id === "results")
+    : workflowSteps;
   const index = visibleSteps.findIndex(([id]) => id === step);
   const experimentAvailable = Boolean(dataset && result);
   const activeAuxiliaryPage = auxiliaryPage === "experiment" && experimentAvailable
@@ -135,10 +136,14 @@ function WorkbenchLayout() {
   }, [auxiliaryPage, experimentAvailable, setStep]);
 
   useEffect(() => {
+    if (step === "logs") {
+      setStep(result ? "results" : dataset ? "prepare" : "data");
+      return;
+    }
     if (mode === "simple" && (step === "settings" || step === "optimize")) {
       setStep(dataset ? "prepare" : "data");
     }
-  }, [dataset, mode, setStep, step]);
+  }, [dataset, mode, result, setStep, step]);
 
   function isComplete(id: WorkbenchStep, stepIndex: number): boolean {
     if (activeAuxiliaryPage === "experiment") {

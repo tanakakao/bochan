@@ -342,73 +342,30 @@ def _yyplot(session: VisualizationSession, target: str):
 
 
 def _target_relation(session: VisualizationSession, target_x: str, target_y: str):
-    """Plot observed target pairs for numeric, categorical, and ordinal outputs."""
+    """Delegate mixed-output target plotting to the public visualization API."""
 
-    import plotly.graph_objects as go
+    from bochan.visualization import show_target_relation_plot
 
-    if target_x == target_y:
-        raise ValueError("Target relation plot requires two different target variables.")
-    missing = [
-        target
-        for target in (target_x, target_y)
-        if target not in session.target_columns
-    ]
-    if missing:
-        raise ValueError(
-            f"Unsupported target variables: {missing!r}; available={session.target_columns!r}."
+    task_types = {
+        target: str(session.target_metadata[target].get("internal_task") or "regression")
+        for target in session.target_columns
+    }
+    category_orders = {
+        target: list(
+            session.target_metadata[target].get("class_order")
+            or session.target_metadata[target].get("classes")
+            or []
         )
-
-    frame = session.data[[target_x, target_y]].dropna()
-    if frame.empty:
-        raise ValueError("The selected target variables have no paired observed values.")
-
-    task_x = str(session.target_metadata[target_x].get("internal_task") or "regression")
-    task_y = str(session.target_metadata[target_y].get("internal_task") or "regression")
-    figure = go.Figure()
-    if task_x != "regression" and task_y != "regression":
-        counts = frame.value_counts(sort=False).reset_index(name="count")
-        figure.add_trace(
-            go.Scatter(
-                x=counts[target_x],
-                y=counts[target_y],
-                mode="markers+text",
-                text=[str(value) for value in counts["count"]],
-                textposition="middle center",
-                customdata=counts["count"],
-                marker={
-                    "size": [min(46, 14 + 4 * int(value)) for value in counts["count"]],
-                    "opacity": 0.76,
-                },
-                name="observed pairs",
-                hovertemplate=(
-                    f"{target_x}: %{{x}}<br>{target_y}: %{{y}}"
-                    "<br>件数: %{customdata}<extra></extra>"
-                ),
-            )
-        )
-    else:
-        figure.add_trace(
-            go.Scatter(
-                x=frame[target_x],
-                y=frame[target_y],
-                mode="markers",
-                marker={"size": 9, "opacity": 0.72},
-                name="observed data",
-                hovertemplate=(
-                    f"{target_x}: %{{x}}<br>{target_y}: %{{y}}<extra></extra>"
-                ),
-            )
-        )
-
-    figure.update_xaxes(
-        title=target_x,
-        type="category" if task_x != "regression" else None,
+        for target in session.target_columns
+        if task_types[target] != "regression"
+    }
+    return show_target_relation_plot(
+        session.data[session.target_columns],
+        target_x,
+        target_y,
+        task_types=task_types,
+        category_orders=category_orders,
     )
-    figure.update_yaxes(
-        title=target_y,
-        type="category" if task_y != "regression" else None,
-    )
-    return figure
 
 
 def _require_features(

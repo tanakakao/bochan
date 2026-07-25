@@ -47,6 +47,10 @@ jobs:
               "if 'Pareto' in content or 'pareto' in content:\n    raise RuntimeError('ExperimentHistoryPanel.tsx still contains Pareto-specific UI')\n",
               "",
           )
+          code = code.replace(
+              "    if count != 1:\n        raise RuntimeError(f'{path}: expected one exact match, found {count}: {old[:80]!r}')\n    write(path, content.replace(old, new, 1))",
+              "    if 'options.regression_targets.map' in old:\n        if count == 2:\n            write(path, content.replace(old, new))\n            return\n        if count == 0:\n            return\n    if count != 1:\n        raise RuntimeError(f'{path}: expected one exact match, found {count}: {old[:80]!r}')\n    write(path, content.replace(old, new, 1))",
+          )
           try:
               exec(compile(code, 'agent-experiment-patch.py', 'exec'))
           except Exception:

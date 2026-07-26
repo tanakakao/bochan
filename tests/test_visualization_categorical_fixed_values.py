@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 import torch
 
+from bochan.visualization import show_1dplot_from_optimizer
 from bochan.visualization.data import grid_1d_plot
 from bochan.visualization.utils import encode_category_value, fixed_row_from
 
@@ -89,6 +90,34 @@ def test_categorical_axis_is_decoded_for_display() -> None:
     assert x.tolist() == ["a", "b"]
     assert optimizer.last_prediction_X is not None
     assert optimizer.last_prediction_X[:, 0].tolist() == [0.0, 1.0]
+
+
+def test_optimizer_1d_plot_uses_original_labels_for_all_x_traces() -> None:
+    optimizer = _CategoricalVisualizationOptimizer()
+    candidate_result = SimpleNamespace(
+        candidates=torch.tensor(
+            [[0.0, 125.0], [1.0, 175.0]],
+            dtype=torch.double,
+        ),
+        acq_value=torch.tensor([0.2, 0.3], dtype=torch.double),
+    )
+
+    figure = show_1dplot_from_optimizer(
+        optimizer,
+        "material",
+        "strength",
+        feature_cols=["material", "temperature"],
+        target_cols=["strength"],
+        value_dict={"temperature": 150},
+        candidate_result=candidate_result,
+    )
+
+    assert figure.layout.xaxis.type == "category"
+    assert list(figure.layout.xaxis.categoryarray) == ["a", "b"]
+    assert figure.data
+    for trace in figure.data:
+        values = [] if trace.x is None else list(trace.x)
+        assert set(values).issubset({"a", "b"})
 
 
 def test_numeric_category_from_select_string_is_encoded() -> None:

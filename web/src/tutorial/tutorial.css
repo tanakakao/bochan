@@ -1,0 +1,289 @@
+.header-actions.tutorial-enabled {
+  gap: 6px;
+  padding-right: 10px;
+  padding-left: 10px;
+}
+
+.header-actions.tutorial-enabled .runtime-pill {
+  min-width: 148px;
+}
+
+@media (max-width: 1420px) {
+  .header-actions.tutorial-enabled .runtime-pill {
+    width: 40px;
+    min-width: 40px;
+    justify-content: center;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .header-actions.tutorial-enabled .runtime-copy {
+    display: none;
+  }
+}
+
+.tutorial-button span {
+  font-size: 16px;
+  line-height: 1;
+  font-weight: 850;
+}
+
+.tutorial-focus-target {
+  outline: 3px solid color-mix(in srgb, var(--primary) 78%, white);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--primary) 16%, transparent), var(--shadow-sm) !important;
+  transition: outline-color 160ms ease, box-shadow 160ms ease;
+}
+
+.tutorial-prompt-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(7, 12, 22, 0.58);
+  backdrop-filter: blur(9px);
+}
+
+.tutorial-prompt-card,
+.tutorial-guide-card {
+  color: var(--text);
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.tutorial-prompt-card {
+  width: min(520px, 100%);
+  padding: 30px;
+  border-radius: 24px;
+  text-align: center;
+}
+
+.tutorial-prompt-card:focus,
+.tutorial-guide-card:focus {
+  outline: none;
+}
+
+.tutorial-prompt-icon {
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 16px;
+  border-radius: 16px;
+  color: #ffffff;
+  background: var(--primary);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--primary) 28%, transparent);
+  font-size: 21px;
+  font-weight: 900;
+}
+
+.tutorial-eyebrow {
+  display: block;
+  color: var(--primary);
+  font-size: 9px;
+  font-weight: 860;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.tutorial-prompt-card h2,
+.tutorial-guide-card h2 {
+  margin: 6px 0 0;
+  letter-spacing: -0.03em;
+}
+
+.tutorial-prompt-card h2 {
+  font-size: 23px;
+}
+
+.tutorial-prompt-card > p {
+  max-width: 430px;
+  margin: 14px auto 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.tutorial-privacy-note {
+  margin: 20px 0;
+  padding: 11px 13px;
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--line));
+  border-radius: 13px;
+  color: var(--muted);
+  background: var(--primary-soft);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.tutorial-prompt-actions {
+  display: flex;
+  justify-content: center;
+  gap: 9px;
+}
+
+.tutorial-dismiss-button {
+  min-height: 32px;
+  margin-top: 12px;
+  padding: 5px 8px;
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.tutorial-dismiss-button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-subtle);
+  box-shadow: none;
+  transform: none;
+}
+
+.tutorial-guide-card {
+  position: fixed;
+  right: 20px;
+  bottom: calc(var(--footer-h) + 16px);
+  z-index: 90;
+  width: min(410px, calc(100vw - 40px));
+  padding: 20px;
+  border-radius: 20px;
+}
+
+.tutorial-guide-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.tutorial-guide-card h2 {
+  font-size: 19px;
+}
+
+.tutorial-close-button {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  flex: 0 0 auto;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  background: var(--surface-subtle);
+  border-color: var(--line);
+  box-shadow: none;
+  font-size: 19px;
+  font-weight: 500;
+}
+
+.tutorial-close-button:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface-strong);
+  box-shadow: none;
+  transform: none;
+}
+
+.tutorial-guide-card > p {
+  margin: 14px 0 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.tutorial-guide-card ul {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.tutorial-progress {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 17px;
+}
+
+.tutorial-progress span {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-strong);
+}
+
+.tutorial-progress span.complete {
+  background: color-mix(in srgb, var(--primary) 44%, var(--surface-strong));
+}
+
+.tutorial-progress span.active {
+  background: var(--primary);
+}
+
+.tutorial-guide-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.tutorial-guide-footer > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tutorial-guide-footer > div {
+  display: flex;
+  gap: 8px;
+}
+
+.tutorial-guide-footer button {
+  min-height: 36px;
+  padding: 7px 13px;
+  font-size: 11px;
+}
+
+@media (max-width: 820px) {
+  .tutorial-guide-card {
+    right: 12px;
+    bottom: calc(var(--footer-h) + 10px);
+    width: calc(100vw - 24px);
+    padding: 17px;
+  }
+
+  .tutorial-focus-target {
+    outline-offset: 2px;
+  }
+}
+
+@media (max-width: 520px) {
+  .tutorial-prompt-backdrop {
+    padding: 14px;
+  }
+
+  .tutorial-prompt-card {
+    padding: 23px 18px;
+    border-radius: 20px;
+  }
+
+  .tutorial-prompt-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tutorial-prompt-actions button {
+    width: 100%;
+  }
+
+  .tutorial-guide-card {
+    max-height: calc(100vh - var(--header-h) - var(--footer-h) - 20px);
+    overflow: auto;
+  }
+}

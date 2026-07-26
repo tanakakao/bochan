@@ -13,6 +13,7 @@ import PreparePage from "./pages/PreparePage";
 import ResultsPage from "./pages/ResultsPage";
 import SettingsPage from "./pages/SettingsPage";
 import { targetClassValues } from "./targetSettingUtils";
+import TutorialGuide from "./tutorial/TutorialGuide";
 import type { AcquisitionFamily, TargetSetting } from "./types";
 import { setWorkbenchMode, useWorkbenchMode } from "./workbenchMode";
 
@@ -87,6 +88,7 @@ function summarizeTargetSetting(setting: TargetSetting): string {
 function WorkbenchLayout() {
   const mode = useWorkbenchMode();
   const [auxiliaryPage, setAuxiliaryPage] = useState<AuxiliaryPage | null>(currentAuxiliaryPage);
+  const [tutorialRequest, setTutorialRequest] = useState(0);
   const {
     theme,
     setTheme,
@@ -173,7 +175,7 @@ function WorkbenchLayout() {
           </div>
         </div>
 
-        <div className="workflow-strip" aria-label="ワークフロー">
+        <div className="workflow-strip" aria-label="ワークフロー" data-tutorial="workflow">
           {visibleSteps.map(([id, label], stepIndex) => (
             <div className="workflow-item" key={id}>
               <button
@@ -190,7 +192,7 @@ function WorkbenchLayout() {
           ))}
         </div>
 
-        <div className="header-actions">
+        <div className="header-actions tutorial-enabled">
           <div className="runtime-pill" title={health.text}>
             <span className={`dot ${health.status}`} />
             <span className="runtime-copy">
@@ -198,6 +200,15 @@ function WorkbenchLayout() {
               <strong>{health.text}</strong>
             </span>
           </div>
+          <button
+            type="button"
+            className="icon-button secondary tutorial-button"
+            title="チュートリアルを表示"
+            aria-label="チュートリアルを表示"
+            onClick={() => setTutorialRequest((current) => current + 1)}
+          >
+            <span aria-hidden="true">?</span>
+          </button>
           <button
             className="icon-button secondary theme-toggle"
             title={theme === "dark" ? "ライトテーマへ" : "ダークテーマへ"}
@@ -212,7 +223,7 @@ function WorkbenchLayout() {
       <main className="app-shell">
         <aside className="left-rail">
           <div className="rail-section-label">Mode</div>
-          <div className="workbench-mode-switch" role="group" aria-label="実行モード">
+          <div className="workbench-mode-switch" role="group" aria-label="実行モード" data-tutorial="mode">
             <button
               type="button"
               className={mode === "simple" ? "active" : ""}
@@ -232,7 +243,7 @@ function WorkbenchLayout() {
           </div>
 
           <div className="rail-section-label">Workflow</div>
-          <nav className="tabs" aria-label="ページナビゲーション">
+          <nav className="tabs" aria-label="ページナビゲーション" data-tutorial="navigation">
             {visibleSteps.map(([id, label, detail], stepIndex) => (
               <button
                 key={id}
@@ -268,7 +279,7 @@ function WorkbenchLayout() {
           </div>
         </aside>
 
-        <section className="content">
+        <section className="content" data-tutorial="workspace">
           <div className="content-inner">
             {error && (
               <button className="message error inline-message" onClick={() => setError(null)}>
@@ -279,7 +290,7 @@ function WorkbenchLayout() {
           </div>
         </section>
 
-        <aside className="right-rail">
+        <aside className="right-rail" data-tutorial="context">
           <div className={`side-card runtime-card ${health.status}`}>
             <div className="side-card-title">
               <span>Runtime</span>
@@ -342,13 +353,20 @@ function WorkbenchLayout() {
         </aside>
       </main>
 
-      <footer className="statusbar">
+      <footer className="statusbar" data-tutorial="status">
         <span><span className={`dot ${health.status}`} /> API {health.status}</span>
         <span>{mode === "simple" ? "Simple mode" : "Advanced mode"}</span>
         <span>{dataset ? `${dataset.profile.n_rows} rows` : "No data"}</span>
         <span>{result ? `${result.candidates.length} candidates${resultStale ? " · stale" : ""}` : "No result"}</span>
         <span className="privacy-status">React · FastAPI · BoTorch</span>
       </footer>
+
+      <TutorialGuide
+        requestId={tutorialRequest}
+        mode={mode}
+        hasDataset={Boolean(dataset)}
+        hasResult={Boolean(result)}
+      />
 
       {busy && (
         <div className="overlay" role="status" aria-live="polite">

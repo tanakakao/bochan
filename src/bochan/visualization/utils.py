@@ -193,6 +193,35 @@ def decode_values(values: Sequence[Any], mapping: Mapping[Any, Any] | None) -> l
     return [inv.get(v, v) for v in values]
 
 
+def encode_category_value(value: Any, mapping: Mapping[Any, Any] | None) -> Any:
+    """表示用カテゴリ値をモデル内部の数値コードへ変換する。
+
+    Web の ``select`` 要素は数値カテゴリも文字列として返すため、キーの直接一致に
+    加えて文字列表現も比較する。既に内部コードが渡された場合はそのまま返す。
+    """
+
+    if mapping is None:
+        return value
+
+    try:
+        if value in mapping:
+            return mapping[value]
+    except TypeError:
+        pass
+
+    raw_matches = [encoded for label, encoded in mapping.items() if str(label) == str(value)]
+    if len(raw_matches) == 1:
+        return raw_matches[0]
+
+    encoded_matches = [encoded for encoded in mapping.values() if str(encoded) == str(value)]
+    if len(encoded_matches) == 1:
+        return encoded_matches[0]
+
+    raise ValueError(
+        f"Unknown categorical value {value!r}; expected one of {list(mapping.keys())!r}."
+    )
+
+
 def candidate_result_from(obj: Any) -> Any | None:
     """BayesianOptimizer / BochanStudy から直近の CandidateResult を取り出す。"""
 
@@ -288,7 +317,11 @@ def fixed_row_from(
     value_dict: Mapping[str, Any] | None = None,
     reference_x: Any | None = None,
 ) -> np.ndarray:
-    """グリッド評価で固定する基準行を作る。"""
+    """グリッド評価で固定する基準行を作る。
+
+    カテゴリ値は、モデル学習時に保持されたラベル対応表を使って内部コードへ戻す。
+    これにより、Web UI から ``"a"`` のような表示値を渡しても数値テンソルを構築できる。
+    """
 
     if reference_x is not None:
         row = ensure_2d(reference_x)[:1].astype(float, copy=True)
@@ -297,7 +330,16 @@ def fixed_row_from(
     for key, value in dict(value_dict or {}).items():
         if key not in feature_cols:
             raise ValueError(f"value_dict のキー {key!r} は feature_cols に存在しません。")
-        row[0, list(feature_cols).index(key)] = value
+        mapping = labels_from(obj, key)
+        encoded_value = encode_category_value(value, mapping)
+        try:
+            row[0, list(feature_cols).index(key)] = encoded_value
+        except (TypeError, ValueError) as exc:
+            if mapping is not None:
+                raise ValueError(
+                    f"カテゴリ変数 {key!r} の値 {value!r} をモデル入力へ変換できません。"
+                ) from exc
+            raise
     return row
 
 

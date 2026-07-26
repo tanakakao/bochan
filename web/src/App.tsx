@@ -13,7 +13,7 @@ import PreparePage from "./pages/PreparePage";
 import ResultsPage from "./pages/ResultsPage";
 import SettingsPage from "./pages/SettingsPage";
 import { targetClassValues } from "./targetSettingUtils";
-import { default as TutorialGuide } from "./tutorial/TutorialGuide";
+import TutorialGuide from "./tutorial/TutorialGuide";
 import type { AcquisitionFamily, TargetSetting } from "./types";
 import { setWorkbenchMode, useWorkbenchMode } from "./workbenchMode";
 
@@ -192,7 +192,7 @@ function WorkbenchLayout() {
           ))}
         </div>
 
-        <div className="header-actions">
+        <div className="header-actions tutorial-enabled">
           <div className="runtime-pill" title={health.text}>
             <span className={`dot ${health.status}`} />
             <span className="runtime-copy">
@@ -201,6 +201,7 @@ function WorkbenchLayout() {
             </span>
           </div>
           <button
+            type="button"
             className="icon-button secondary tutorial-button"
             title="チュートリアルを表示"
             aria-label="チュートリアルを表示"

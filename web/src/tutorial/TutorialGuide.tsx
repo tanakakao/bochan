@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { WorkbenchMode } from "../workbenchMode";
+import {
+  type WorkbenchStep,
+  useWorkbench
+} from "../context/WorkbenchContext";
+import {
+  setWorkbenchMode,
+  type WorkbenchMode
+} from "../workbenchMode";
+import { TUTORIAL_SAMPLE_DATASET_NAME } from "./sampleDataset";
 import {
   TUTORIAL_VERSION,
+  type TutorialKind,
+  type TutorialProgress,
   readTutorialProgress,
   shouldPromptTutorial,
   writeTutorialProgress
@@ -9,6 +19,7 @@ import {
 import "./tutorial.css";
 
 type TutorialPhase = "hidden" | "prompt" | "tour";
+type TutorialAdvance = "manual" | "sample_loaded" | "result_ready";
 
 interface TutorialStep {
   id: string;
@@ -17,6 +28,9 @@ interface TutorialStep {
   title: string;
   description: string;
   notes: string[];
+  page?: WorkbenchStep;
+  advance?: TutorialAdvance;
+  waitingText?: string;
 }
 
 interface TutorialGuideProps {
@@ -31,7 +45,13 @@ function clampStep(stepIndex: number, stepCount: number): number {
   return Math.min(Math.max(0, stepIndex), stepCount - 1);
 }
 
-function buildTutorialSteps(
+function clearAuxiliaryPage(): void {
+  if (!window.location.hash) return;
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+}
+
+function buildOverviewSteps(
   mode: WorkbenchMode,
   hasDataset: boolean,
   hasResult: boolean
@@ -122,39 +142,144 @@ function buildTutorialSteps(
   ];
 }
 
+function buildSampleSteps(
+  targetColumns: string[],
+  featureColumns: string[]
+): TutorialStep[] {
+  const targetReady = targetColumns.length === 1 && targetColumns[0] === "strength";
+  const selectedFeatures = ["temperature", "hold_time", "additive_ratio"]
+    .filter((name) => featureColumns.includes(name));
+
+  return [
+    {
+      id: "load-sample",
+      selector: '[data-tutorial="sample-data"]',
+      label: "1 · Data",
+      title: "サンプルデータを読み込む",
+      description: "材料の製造条件と強度を含む30行のCSVを、通常のファイル読込APIで読み込みます。",
+      notes: [
+        "temperature、hold_time、additive_ratioからstrengthを最大化します。",
+        "既存データがある場合は、確認後に現在のワークスペースを置き換えます。"
+      ],
+      page: "data",
+      advance: "sample_loaded",
+      waitingText: "ハイライトされた「サンプルデータを読み込む」を押してください。"
+    },
+    {
+      id: "confirm-target",
+      selector: '[aria-label="目的変数"]',
+      label: "2 · Target",
+      title: "最大化する目的変数を確認",
+      description: "CSVの最後の列であるstrengthが、目的変数として自動選択されています。簡易モードでは数値目的を最大化として扱います。",
+      notes: [
+        targetReady ? "strengthが選択済みです。" : "strengthが選択されていることを確認してください。",
+        "目的変数はモデルが予測し、候補提案で改善を目指す値です。"
+      ],
+      page: "prepare"
+    },
+    {
+      id: "confirm-features",
+      selector: '[aria-label="説明変数"]',
+      label: "3 · Features",
+      title: "探索する説明変数を確認",
+      description: "temperature、hold_time、additive_ratioが説明変数として選択され、観測データの最小値から最大値までが探索範囲になります。",
+      notes: [
+        `${selectedFeatures.length}/3列が選択済みです。`,
+        "このチュートリアルではすべて数値変数として扱います。"
+      ],
+      page: "prepare"
+    },
+    {
+      id: "run-optimization",
+      selector: ".section-actions button",
+      label: "4 · Optimize",
+      title: "モデル学習と候補生成を実行",
+      description: "「既定値で実行」を押すと、Base GPを学習し、EIによって次に試す3条件を提案します。",
+      notes: [
+        "通常のFastAPI・BoTorch処理をそのまま実行します。",
+        "処理中は画面全体に進行表示が出て、完了後にResultsへ移動します。"
+      ],
+      page: "prepare",
+      advance: "result_ready",
+      waitingText: "ハイライトされた「既定値で実行」を押してください。"
+    },
+    {
+      id: "review-candidates",
+      selector: ".recommended-first",
+      label: "5 · Results",
+      title: "推奨候補を確認",
+      description: "順位1から順に、次に実験する製造条件、strengthの予測値、予測標準偏差、獲得関数値が表示されます。",
+      notes: [
+        "予測値は期待される強度、標準偏差はモデルの不確実性です。",
+        "EIは改善の大きさと不確実性を組み合わせて候補を選びます。"
+      ],
+      page: "results"
+    },
+    {
+      id: "review-visualization",
+      selector: ".interactive-visualization-section",
+      label: "6 · Visualize",
+      title: "予測モデルと探索空間を見る",
+      description: "YY plotで学習データへの当てはまりを確認し、1次元・2次元プロットで条件による予測値や獲得関数の変化を確認します。",
+      notes: [
+        "右側の図は表示する変数や予測値／獲得関数を切り替えられます。",
+        "ここまでが、データ読込から次実験候補を得る基本フローです。"
+      ],
+      page: "results"
+    }
+  ];
+}
+
 export default function TutorialGuide({
   requestId,
   mode,
   hasDataset,
   hasResult
 }: TutorialGuideProps) {
-  const steps = useMemo(
-    () => buildTutorialSteps(mode, hasDataset, hasResult),
-    [mode, hasDataset, hasResult]
-  );
-  const [savedProgress] = useState(readTutorialProgress);
+  const {
+    step,
+    setStep,
+    dataset,
+    targetColumns,
+    featureColumns,
+    busy,
+    result
+  } = useWorkbench();
+  const initialProgress = useMemo(() => readTutorialProgress(), []);
+  const [savedProgress, setSavedProgress] = useState<TutorialProgress | null>(initialProgress);
   const [phase, setPhase] = useState<TutorialPhase>(() =>
-    shouldPromptTutorial(savedProgress) ? "prompt" : "hidden"
+    shouldPromptTutorial(initialProgress) ? "prompt" : "hidden"
   );
-  const [stepIndex, setStepIndex] = useState(() =>
-    savedProgress?.version === TUTORIAL_VERSION && savedProgress.status === "in_progress"
-      ? clampStep(savedProgress.stepIndex, steps.length)
-      : 0
-  );
-  const [persistProgress, setPersistProgress] = useState(false);
+  const [tutorialKind, setTutorialKind] = useState<TutorialKind>(initialProgress?.kind ?? "overview");
+  const [stepIndex, setStepIndex] = useState(initialProgress?.stepIndex ?? 0);
+  const [sampleBaselineDatasetId, setSampleBaselineDatasetId] = useState<string | null>(null);
+  const [sampleBaselineResultId, setSampleBaselineResultId] = useState<string | null>(null);
   const lastRequestId = useRef(requestId);
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  const currentStep = steps[clampStep(stepIndex, steps.length)];
-  const isLastStep = stepIndex >= steps.length - 1;
+  const overviewSteps = useMemo(
+    () => buildOverviewSteps(mode, hasDataset, hasResult),
+    [mode, hasDataset, hasResult]
+  );
+  const sampleSteps = useMemo(
+    () => buildSampleSteps(targetColumns, featureColumns),
+    [featureColumns, targetColumns]
+  );
+  const steps = tutorialKind === "sample" ? sampleSteps : overviewSteps;
+  const currentIndex = clampStep(stepIndex, steps.length);
+  const currentStep = steps[currentIndex];
+  const isLastStep = currentIndex >= steps.length - 1;
+  const isTutorialDataset = dataset?.name === TUTORIAL_SAMPLE_DATASET_NAME;
+  const datasetId = dataset?.dataset_id ?? null;
+  const resultId = result?.visualization_run_id ?? null;
+  const isTutorialResult = isTutorialDataset && result?.dataset_name === TUTORIAL_SAMPLE_DATASET_NAME;
   const isResume = savedProgress?.version === TUTORIAL_VERSION && savedProgress.status === "in_progress";
+  const waitingForAction = currentStep.advance === "sample_loaded" || currentStep.advance === "result_ready";
 
   useEffect(() => {
     if (requestId === lastRequestId.current) return;
     lastRequestId.current = requestId;
-    setPersistProgress(false);
-    setStepIndex(0);
-    setPhase("tour");
+    setPhase("prompt");
   }, [requestId]);
 
   useEffect(() => {
@@ -162,28 +287,81 @@ export default function TutorialGuide({
   }, [steps.length]);
 
   useEffect(() => {
-    if (phase !== "tour" || !persistProgress) return;
-    writeTutorialProgress("in_progress", stepIndex);
-  }, [phase, persistProgress, stepIndex]);
+    if (phase !== "tour") return;
+    const progress = writeTutorialProgress("in_progress", currentIndex, tutorialKind);
+    setSavedProgress(progress);
+  }, [currentIndex, phase, tutorialKind]);
 
   useEffect(() => {
     if (phase === "hidden") return;
     dialogRef.current?.focus();
-  }, [phase, stepIndex]);
+  }, [phase, currentIndex]);
+
+  useEffect(() => {
+    if (phase !== "tour" || tutorialKind !== "sample" || !currentStep.page) return;
+    if (step === currentStep.page) return;
+    clearAuxiliaryPage();
+    setStep(currentStep.page);
+  }, [currentStep.page, phase, setStep, step, tutorialKind]);
 
   useEffect(() => {
     if (phase !== "tour" || !currentStep) return;
 
-    const target = document.querySelector<HTMLElement>(currentStep.selector);
-    if (!target) return;
-
-    target.classList.add("tutorial-focus-target");
-    target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    const timeoutId = window.setTimeout(() => {
+      const target = document.querySelector<HTMLElement>(currentStep.selector);
+      if (!target) return;
+      target.classList.add("tutorial-focus-target");
+      target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+    }, 80);
 
     return () => {
-      target.classList.remove("tutorial-focus-target");
+      window.clearTimeout(timeoutId);
+      document.querySelectorAll(".tutorial-focus-target")
+        .forEach((target) => target.classList.remove("tutorial-focus-target"));
     };
-  }, [currentStep, phase]);
+  }, [currentStep, phase, step]);
+
+  useEffect(() => {
+    if (
+      phase === "tour" &&
+      tutorialKind === "sample" &&
+      currentStep.id === "load-sample" &&
+      isTutorialDataset &&
+      datasetId !== sampleBaselineDatasetId &&
+      !busy
+    ) {
+      setStepIndex(1);
+    }
+  }, [
+    busy,
+    currentStep.id,
+    datasetId,
+    isTutorialDataset,
+    phase,
+    sampleBaselineDatasetId,
+    tutorialKind
+  ]);
+
+  useEffect(() => {
+    if (
+      phase === "tour" &&
+      tutorialKind === "sample" &&
+      currentStep.id === "run-optimization" &&
+      isTutorialResult &&
+      resultId !== sampleBaselineResultId &&
+      !busy
+    ) {
+      setStepIndex(4);
+    }
+  }, [
+    busy,
+    currentStep.id,
+    isTutorialResult,
+    phase,
+    resultId,
+    sampleBaselineResultId,
+    tutorialKind
+  ]);
 
   useEffect(() => {
     if (phase === "hidden") return;
@@ -195,55 +373,83 @@ export default function TutorialGuide({
       }
       if (phase !== "tour") return;
       if (event.key === "ArrowLeft") {
-        setStepIndex((current) => Math.max(0, current - 1));
+        goBack();
       }
-      if (event.key === "ArrowRight") {
-        if (isLastStep) {
-          writeTutorialProgress("completed", steps.length - 1);
-          setPhase("hidden");
-        } else {
-          setStepIndex((current) => Math.min(steps.length - 1, current + 1));
-        }
+      if (event.key === "ArrowRight" && !waitingForAction) {
+        goNext();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isLastStep, phase, steps.length]);
+  });
 
-  function startTutorial() {
-    const resumeStep = isResume ? clampStep(savedProgress.stepIndex, steps.length) : 0;
-    setPersistProgress(true);
-    setStepIndex(resumeStep);
+  function startTutorial(kind: TutorialKind, resume: boolean) {
+    let nextStepIndex = 0;
+    if (resume && savedProgress?.kind === kind) {
+      nextStepIndex = clampStep(savedProgress.stepIndex, kind === "sample" ? sampleSteps.length : overviewSteps.length);
+      if (kind === "sample") {
+        if (!isTutorialDataset) nextStepIndex = 0;
+        else if (nextStepIndex >= 4 && !isTutorialResult) nextStepIndex = 3;
+      }
+    }
+
+    setTutorialKind(kind);
+    setStepIndex(nextStepIndex);
+    setSampleBaselineDatasetId(datasetId);
+    setSampleBaselineResultId(resultId);
+    setSavedProgress(writeTutorialProgress("in_progress", nextStepIndex, kind));
+
+    if (kind === "sample") {
+      setWorkbenchMode("simple");
+      const destination = buildSampleSteps(targetColumns, featureColumns)[nextStepIndex]?.page ?? "data";
+      clearAuxiliaryPage();
+      setStep(destination);
+    }
+
     setPhase("tour");
   }
 
   function dismissTutorial() {
-    writeTutorialProgress("dismissed", 0);
+    setSavedProgress(writeTutorialProgress("dismissed", 0, tutorialKind));
     setPhase("hidden");
   }
 
   function finishTutorial() {
-    writeTutorialProgress("completed", steps.length - 1);
+    setSavedProgress(writeTutorialProgress("completed", steps.length - 1, tutorialKind));
     setPhase("hidden");
   }
 
+  function goBack() {
+    if (currentIndex === 0) return;
+    const nextIndex = currentIndex - 1;
+    if (tutorialKind === "sample" && nextIndex === 0) {
+      setSampleBaselineDatasetId(datasetId);
+    }
+    if (tutorialKind === "sample" && nextIndex === 3) {
+      setSampleBaselineResultId(resultId);
+    }
+    setStepIndex(nextIndex);
+  }
+
   function goNext() {
+    if (waitingForAction) return;
     if (isLastStep) {
       finishTutorial();
       return;
     }
-    setStepIndex((current) => Math.min(steps.length - 1, current + 1));
+    setStepIndex(currentIndex + 1);
   }
 
   if (phase === "hidden") return null;
 
   if (phase === "prompt") {
+    const resumeSampleFromStart = savedProgress?.kind === "sample" && !isTutorialDataset;
     return (
       <div className="tutorial-prompt-backdrop">
         <div
           ref={dialogRef}
-          className="tutorial-prompt-card"
+          className="tutorial-prompt-card tutorial-menu-card"
           role="dialog"
           aria-modal="true"
           aria-labelledby="tutorial-prompt-title"
@@ -251,19 +457,53 @@ export default function TutorialGuide({
         >
           <div className="tutorial-prompt-icon" aria-hidden="true">?</div>
           <span className="tutorial-eyebrow">Getting started</span>
-          <h2 id="tutorial-prompt-title">
-            {isResume ? "チュートリアルを続けますか？" : "bochanの使い方を確認しますか？"}
-          </h2>
-          <p>
-            約6ステップで、実行モード、ワークフロー、作業領域、設定確認、実験結果追加の流れを案内します。
-          </p>
+          <h2 id="tutorial-prompt-title">どのチュートリアルを開始しますか？</h2>
+          <p>実際に候補を生成する実践形式と、画面構成だけを確認するガイドを選べます。</p>
+
+          {isResume && (
+            <button
+              type="button"
+              className="tutorial-resume-button"
+              onClick={() => startTutorial(savedProgress.kind, true)}
+            >
+              <strong>
+                {savedProgress.kind === "sample"
+                  ? resumeSampleFromStart ? "サンプルを最初から再開" : "サンプルの続きから再開"
+                  : "画面案内の続きから再開"}
+              </strong>
+              <span>前回は {savedProgress.stepIndex + 1} ステップ目まで進みました。</span>
+            </button>
+          )}
+
+          <div className="tutorial-choice-grid">
+            <button
+              type="button"
+              className="tutorial-choice-card primary-choice"
+              onClick={() => startTutorial("sample", false)}
+            >
+              <span className="tutorial-choice-icon" aria-hidden="true">↗</span>
+              <strong>サンプルで最適化を体験</strong>
+              <small>データ読込 → 変数確認 → 候補生成 → 結果・グラフ確認</small>
+              <em>おすすめ · 6ステップ</em>
+            </button>
+            <button
+              type="button"
+              className="tutorial-choice-card"
+              onClick={() => startTutorial("overview", false)}
+            >
+              <span className="tutorial-choice-icon" aria-hidden="true">◇</span>
+              <strong>画面構成だけ確認</strong>
+              <small>ワークフロー、モード、ナビゲーション、設定確認欄を案内</small>
+              <em>操作なし · 6ステップ</em>
+            </button>
+          </div>
+
           <div className="tutorial-privacy-note">
-            チュートリアルの表示状態だけを、このPCの現在のブラウザに保存します。
+            {hasDataset && "サンプルデータの読込を選ぶと、確認後に現在のワークスペースを置き換えます。"}
+            {!hasDataset && "サンプルデータはブラウザで生成し、通常のCSV読込APIへ送信します。"}
+            <br />進捗情報だけを、このPCの現在のブラウザに保存します。
           </div>
           <div className="tutorial-prompt-actions">
-            <button type="button" onClick={startTutorial}>
-              {isResume ? "続きから再開" : "チュートリアルを開始"}
-            </button>
             <button type="button" className="secondary" onClick={() => setPhase("hidden")}>後で</button>
           </div>
           <button type="button" className="tutorial-dismiss-button" onClick={dismissTutorial}>
@@ -277,7 +517,7 @@ export default function TutorialGuide({
   return (
     <div
       ref={dialogRef}
-      className="tutorial-guide-card"
+      className={`tutorial-guide-card tutorial-kind-${tutorialKind}`}
       role="dialog"
       aria-modal="false"
       aria-labelledby="tutorial-guide-title"
@@ -304,25 +544,35 @@ export default function TutorialGuide({
         {currentStep.notes.map((note) => <li key={note}>{note}</li>)}
       </ul>
 
-      <div className="tutorial-progress" aria-label={`${stepIndex + 1} / ${steps.length}`}>
-        {steps.map((step, index) => (
-          <span key={step.id} className={index === stepIndex ? "active" : index < stepIndex ? "complete" : ""} />
+      {waitingForAction && (
+        <div className={`tutorial-action-note ${busy ? "busy" : ""}`}>
+          <span aria-hidden="true">{busy ? "…" : "→"}</span>
+          <strong>{busy ? "処理が完了するまでお待ちください。" : currentStep.waitingText}</strong>
+        </div>
+      )}
+
+      <div className="tutorial-progress" aria-label={`${currentIndex + 1} / ${steps.length}`}>
+        {steps.map((tutorialStep, index) => (
+          <span
+            key={tutorialStep.id}
+            className={index === currentIndex ? "active" : index < currentIndex ? "complete" : ""}
+          />
         ))}
       </div>
 
       <div className="tutorial-guide-footer">
-        <span>{stepIndex + 1} / {steps.length}</span>
+        <span>{currentIndex + 1} / {steps.length}</span>
         <div>
           <button
             type="button"
             className="secondary"
-            disabled={stepIndex === 0}
-            onClick={() => setStepIndex((current) => Math.max(0, current - 1))}
+            disabled={currentIndex === 0 || Boolean(busy)}
+            onClick={goBack}
           >
             戻る
           </button>
-          <button type="button" onClick={goNext}>
-            {isLastStep ? "完了" : "次へ"}
+          <button type="button" disabled={waitingForAction || Boolean(busy)} onClick={goNext}>
+            {waitingForAction ? busy ? "処理中" : "操作待ち" : isLastStep ? "完了" : "次へ"}
           </button>
         </div>
       </div>

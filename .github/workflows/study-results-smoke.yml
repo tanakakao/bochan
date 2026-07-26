@@ -25,6 +25,7 @@ jobs:
           pytest -q --maxfail=1 \
             tests/api/test_study_results.py \
             tests/test_study_visualization.py \
+            tests/test_visualization_categorical_fixed_values.py \
             tests/test_fastapi_study_endpoints.py \
             2>&1 | tee pytest-study.log
           status=${PIPESTATUS[0]}
@@ -39,6 +40,7 @@ jobs:
           ruff check \
             src/bochan/api/study_results.py \
             src/bochan/visualization/study.py \
+            src/bochan/visualization/utils.py \
             src/bochan/serving/fastapi/dependencies.py \
             src/bochan/serving/fastapi/router.py \
             src/bochan/serving/fastapi/routers/studies.py \
@@ -47,6 +49,7 @@ jobs:
             src/bochan/serving/fastapi/study_service.py \
             tests/api/test_study_results.py \
             tests/test_study_visualization.py \
+            tests/test_visualization_categorical_fixed_values.py \
             tests/test_fastapi_study_endpoints.py \
             2>&1 | tee ruff-study.log
           status=${PIPESTATUS[0]}

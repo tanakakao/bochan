@@ -4,9 +4,11 @@ import {
   createTutorialSampleFile,
   TUTORIAL_SAMPLE_DATASET_NAME
 } from "../tutorial/sampleDataset";
+import { useSampleTutorialActive } from "../tutorial/tutorialRuntime";
 
 export default function DataPage() {
   const { busy, dataset, columns, handleFile, handleModelArtifact, setError, setStep } = useWorkbench();
+  const sampleTutorialActive = useSampleTutorialActive();
   const numericCount = columns.filter((column) => column.kind === "numeric").length;
   const categoricalCount = columns.filter((column) => column.kind === "categorical").length;
   const tutorialSampleLoaded = dataset?.name === TUTORIAL_SAMPLE_DATASET_NAME;
@@ -64,32 +66,34 @@ export default function DataPage() {
       />
 
       <div className="data-source-grid">
-        <article className="panel tutorial-sample-panel" data-tutorial="sample-data">
-          <div className="panel-title">
-            <div>
-              <span className="panel-kicker">SAMPLE TUTORIAL</span>
-              <h3>サンプルデータで試す</h3>
-              <p>材料の製造条件から強度を最大化する流れを体験します。</p>
+        {sampleTutorialActive && (
+          <article className="panel tutorial-sample-panel" data-tutorial="sample-data">
+            <div className="panel-title">
+              <div>
+                <span className="panel-kicker">SAMPLE TUTORIAL</span>
+                <h3>サンプルデータで試す</h3>
+                <p>材料の製造条件から強度を最大化する流れを体験します。</p>
+              </div>
+              {tutorialSampleLoaded && <span className="status-chip success">Loaded</span>}
             </div>
-            {tutorialSampleLoaded && <span className="status-chip success">Loaded</span>}
-          </div>
-          <div className="tutorial-sample-specs">
-            <span><strong>30 rows</strong> 実験データ</span>
-            <span><strong>3 features</strong> 温度・保持時間・添加量</span>
-            <span><strong>1 target</strong> 強度を最大化</span>
-          </div>
-          <button
-            type="button"
-            className="tutorial-sample-load"
-            disabled={Boolean(busy)}
-            onClick={loadTutorialSample}
-          >
-            {tutorialSampleLoaded ? "サンプルを読み直す" : "サンプルデータを読み込む"}
-          </button>
-          <p className="tutorial-sample-note">
-            生成したCSVを通常のファイル読込APIへ渡すため、実データと同じ処理経路を使用します。
-          </p>
-        </article>
+            <div className="tutorial-sample-specs">
+              <span><strong>30 rows</strong> 実験データ</span>
+              <span><strong>3 features</strong> 温度・保持時間・添加量</span>
+              <span><strong>1 target</strong> 強度を最大化</span>
+            </div>
+            <button
+              type="button"
+              className="tutorial-sample-load"
+              disabled={Boolean(busy)}
+              onClick={loadTutorialSample}
+            >
+              {tutorialSampleLoaded ? "サンプルを読み直す" : "サンプルデータを読み込む"}
+            </button>
+            <p className="tutorial-sample-note">
+              生成したCSVを通常のファイル読込APIへ渡すため、実データと同じ処理経路を使用します。
+            </p>
+          </article>
+        )}
 
         <article className="panel data-file-panel">
           <div className="panel-title">
@@ -98,7 +102,7 @@ export default function DataPage() {
               <h3>{dataset ? "データを入れ替える" : "データファイル"}</h3>
               <p>対応形式: CSV / XLSX / XLS</p>
             </div>
-            {dataset && dataset.source_type !== "model_artifact" && !tutorialSampleLoaded && (
+            {dataset && dataset.source_type !== "model_artifact" && (
               <span className="status-chip success">Loaded</span>
             )}
           </div>

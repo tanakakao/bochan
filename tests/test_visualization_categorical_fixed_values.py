@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 import torch
@@ -28,7 +30,9 @@ class _CategoricalVisualizationOptimizer:
             dtype=torch.double,
         )
         self.cat_dims = [0]
-        self.labels = {"material": {"a": 0, "b": 1}}
+        self.bundle = SimpleNamespace(
+            metadata={"labels": {"material": {"a": 0, "b": 1}}}
+        )
         self.last_prediction_X: torch.Tensor | None = None
 
     def predict(self, X: torch.Tensor, *, return_type: str):

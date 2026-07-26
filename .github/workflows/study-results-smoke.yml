@@ -40,6 +40,8 @@ jobs:
           ruff check \
             --per-file-ignores "src/bochan/visualization/utils.py:B009" \
             src/bochan/api/study_results.py \
+            src/bochan/visualization/categorical_axis.py \
+            src/bochan/visualization/ordinal_display.py \
             src/bochan/visualization/study.py \
             src/bochan/visualization/utils.py \
             src/bochan/serving/fastapi/dependencies.py \

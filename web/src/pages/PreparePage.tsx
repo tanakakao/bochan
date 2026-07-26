@@ -133,6 +133,7 @@ export default function PreparePage() {
     setAcquisition,
     setBeta,
     setFitMaxiter,
+    q,
     setQ,
     setNumRestarts,
     setRawSamples,
@@ -212,6 +213,12 @@ export default function PreparePage() {
     });
   }
 
+  function changeSimpleCandidateCount(value: string) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    setQ(Math.min(20, Math.max(1, Math.trunc(parsed))));
+  }
+
   function executeSimpleMode() {
     if (!canConfigure || simpleExecutionPending) return;
     setError(null);
@@ -238,7 +245,6 @@ export default function PreparePage() {
     setAcquisition(targetColumns.length > 1 ? "EHVI" : "EI");
     setBeta(2);
     setFitMaxiter(128);
-    setQ(3);
     setNumRestarts(10);
     setRawSamples(256);
     setSimpleExecutionPending(true);
@@ -250,7 +256,7 @@ export default function PreparePage() {
         step="2 · SELECT"
         title="変数と説明変数の型を設定する"
         text={mode === "simple"
-          ? "目的変数と説明変数を選択すると、既定値でモデル学習と候補生成を直接実行できます。"
+          ? "目的変数と説明変数、提案点数を指定すると、既定値でモデル学習と候補生成を直接実行できます。"
           : "列名をクリックして選択します。説明変数は同じ枠内で数値／カテゴリ扱いを設定できます。"}
         action={mode === "simple" ? (
           <button
@@ -272,7 +278,7 @@ export default function PreparePage() {
             <div>
               <span className="panel-kicker">SIMPLE MODE</span>
               <h3>変数選択だけで候補を生成</h3>
-              <p>結果は通常モードと同じResults画面に表示します。</p>
+              <p>提案点数を指定し、結果は通常モードと同じResults画面で確認します。</p>
             </div>
             <span className="status-chip success">Default</span>
           </div>
@@ -282,7 +288,19 @@ export default function PreparePage() {
             <span><strong>Direction</strong> 最大化</span>
             <span><strong>Acquisition</strong> EI / EHVI</span>
             <span><strong>Search</strong> BoTorch</span>
-            <span><strong>Candidates</strong> q=3</span>
+            <span className="simple-candidate-count" data-tutorial="simple-candidate-count">
+              <strong>提案点数 q</strong>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                step={1}
+                value={q}
+                aria-label="簡易モードの提案点数"
+                onChange={(event) => changeSimpleCandidateCount(event.target.value)}
+              />
+              <small>1〜20点</small>
+            </span>
             <span><strong>Missing</strong> 欠損行削除</span>
             <span><strong>Constraints</strong> なし</span>
           </div>

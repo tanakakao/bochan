@@ -51,6 +51,24 @@ function clearAuxiliaryPage(): void {
   window.dispatchEvent(new HashChangeEvent("hashchange"));
 }
 
+function isPracticalTutorial(kind: TutorialKind): boolean {
+  return kind === "sample" || kind === "advanced";
+}
+
+function executeStepIndex(kind: TutorialKind): number {
+  return kind === "advanced" ? 10 : 3;
+}
+
+function resultStepIndex(kind: TutorialKind): number {
+  return kind === "advanced" ? 11 : 4;
+}
+
+function tutorialName(kind: TutorialKind): string {
+  if (kind === "advanced") return "詳細設定チュートリアル";
+  if (kind === "sample") return "簡易サンプルチュートリアル";
+  return "画面案内チュートリアル";
+}
+
 function buildOverviewSteps(
   mode: WorkbenchMode,
   hasDataset: boolean,
@@ -230,6 +248,181 @@ function buildSampleSteps(
   ];
 }
 
+function buildAdvancedSteps(
+  targetColumns: string[],
+  featureColumns: string[],
+  modelType: string,
+  acquisition: string,
+  q: number
+): TutorialStep[] {
+  const targetReady = targetColumns.length === 1 && targetColumns[0] === "strength";
+  const selectedFeatures = ["temperature", "hold_time", "additive_ratio"]
+    .filter((name) => featureColumns.includes(name));
+
+  return [
+    {
+      id: "load-sample",
+      selector: '[data-tutorial="sample-data"]',
+      label: "1 · Data",
+      title: "詳細設定用サンプルを読み込む",
+      description: "材料条件から強度を最大化する30行のCSVを読み込み、詳細モードの全設定を順番に確認します。",
+      notes: [
+        "サンプルは通常のCSV読込APIを通るため、実データと同じ状態が作られます。",
+        "既存データがある場合は、確認後に現在のワークスペースを置き換えます。"
+      ],
+      page: "data",
+      advance: "sample_loaded",
+      waitingText: "ハイライトされた「サンプルデータを読み込む」を押してください。"
+    },
+    {
+      id: "advanced-variables",
+      selector: ".selection-grid",
+      label: "2 · Select",
+      title: "目的変数と説明変数を確認",
+      description: "strengthを目的変数、temperature・hold_time・additive_ratioを説明変数として使用します。",
+      notes: [
+        targetReady ? "strengthが目的変数として選択済みです。" : "strengthを目的変数として選択してください。",
+        `${selectedFeatures.length}/3列の説明変数が選択済みです。`
+      ],
+      page: "prepare"
+    },
+    {
+      id: "advanced-target-model",
+      selector: ".target-model-settings-wrap",
+      label: "3 · Task",
+      title: "目的変数のタスクを設定",
+      description: "strengthは連続値なので回帰を使用します。分類では正例クラス、順序回帰ではクラス順もここで定義します。",
+      notes: [
+        "タスク設定は学習するモデルの出力形式を決めます。",
+        "このサンプルでは回帰のまま進めます。"
+      ],
+      page: "settings"
+    },
+    {
+      id: "advanced-surrogate",
+      selector: ".model-selection-panel",
+      label: "4 · Model",
+      title: "代理モデルを選択",
+      description: `現在は${modelType}が選択されています。モデルの大分類、種類、学習反復数を変更できます。`,
+      notes: [
+        "Base GPは少量の連続データに対する標準的な選択です。",
+        "PCAやREMBOでは射影次元、Multitaskでは複数目的の条件が追加されます。"
+      ],
+      page: "settings"
+    },
+    {
+      id: "advanced-transform",
+      selector: ".search-transform-grid",
+      label: "5 · Transform",
+      title: "正規化と入力摂動を設定",
+      description: "正規化は探索範囲を基準に説明変数のスケールを揃えます。入力摂動は条件ばらつきを考慮した頑健な候補評価に使います。",
+      notes: [
+        "このサンプルでは正規化を有効、入力摂動を無効のまま進められます。",
+        "入力摂動を使う場合はサンプル数nと標準偏差を設定します。"
+      ],
+      page: "settings"
+    },
+    {
+      id: "advanced-missing",
+      selector: ".feature-missing-section",
+      label: "6 · Missing",
+      title: "欠損値処理を選択",
+      description: "説明変数に欠損がある場合、欠損行の削除または補完を選択します。",
+      notes: [
+        "サンプルデータには欠損がないため、既定の欠損行削除で問題ありません。",
+        "補完では数値変数に平均値またはIterativeImputerを使用できます。"
+      ],
+      page: "settings"
+    },
+    {
+      id: "advanced-objective",
+      selector: ".proposal-target-table",
+      label: "7 · Objective",
+      title: "最適化方向と目的制約を設定",
+      description: "strengthを最適化対象として最大化します。必要に応じて最小化、目標値、以上・以下の実行可能性制約へ変更できます。",
+      notes: [
+        "モデル学習のタスクと、候補提案で狙う方向は別の設定です。",
+        "制約専用の目的変数は最適化対象のチェックを外して使用します。"
+      ],
+      page: "optimize"
+    },
+    {
+      id: "advanced-methods",
+      selector: ".suggestion-method-grid",
+      label: "8 · Strategy",
+      title: "獲得関数・探索手法・候補数を設定",
+      description: `現在は獲得関数${acquisition}、候補数q=${q}です。獲得関数は候補の評価基準、探索手法はその基準を最大化する方法です。`,
+      notes: [
+        "単目的ベイズ最適化ではEI・PI・UCBを選択できます。",
+        "通常のBoTorch探索に加え、GA・PSO・CMA-ES・Thompson samplingも選択できます。"
+      ],
+      page: "optimize"
+    },
+    {
+      id: "advanced-search-space",
+      selector: ".search-variable-table",
+      label: "9 · Bounds",
+      title: "探索範囲・刻み・固定値を設定",
+      description: "各説明変数の下限と上限を確認し、必要に応じて刻みや固定値を指定します。",
+      notes: [
+        "初期値には観測データの最小値と最大値が設定されています。",
+        "製造可能範囲が観測範囲と異なる場合は、ここで実際の上下限へ修正します。"
+      ],
+      page: "optimize"
+    },
+    {
+      id: "advanced-constraints",
+      selector: ".feature-constraint-panel",
+      label: "10 · Constraints",
+      title: "説明変数の候補制約を確認",
+      description: "変数の重み付き和に対する制約や、有効にする変数数の制約を設定できます。",
+      notes: [
+        "このサンプルでは制約なしのまま実行します。",
+        "配合合計、設備上限、使用材料数などの条件を候補生成へ反映できます。"
+      ],
+      page: "optimize"
+    },
+    {
+      id: "advanced-execute",
+      selector: ".train-launcher",
+      label: "11 · Run",
+      title: "詳細設定で候補を生成",
+      description: "検証表示がReadyであることを確認し、モデルを学習して候補を生成します。",
+      notes: [
+        "設定に矛盾がある場合は、検証欄に修正対象が表示されます。",
+        "実行後は自動的にResults画面へ移動します。"
+      ],
+      page: "optimize",
+      advance: "result_ready",
+      waitingText: "「モデルを学習して候補を生成」を押してください。"
+    },
+    {
+      id: "advanced-results",
+      selector: ".recommended-first",
+      label: "12 · Results",
+      title: "詳細設定による推奨候補を確認",
+      description: "候補ごとの説明変数、strengthの予測値、標準偏差、獲得関数値、制約判定を確認します。",
+      notes: [
+        "順位1が現在の設定で最も推奨される候補です。",
+        "制約を設定した場合は条件列のOK・NGも確認します。"
+      ],
+      page: "results"
+    },
+    {
+      id: "advanced-visualization",
+      selector: ".interactive-visualization-section",
+      label: "13 · Visualize",
+      title: "モデル評価と探索空間を確認",
+      description: "YY plotでモデルの当てはまりを確認し、予測値または獲得関数を1次元・2次元で表示します。",
+      notes: [
+        "図に使わない変数は固定値を変更して断面を比較できます。",
+        "詳細設定を変更して再実行すると、候補と可視化の違いを比較できます。"
+      ],
+      page: "results"
+    }
+  ];
+}
+
 export default function TutorialGuide({
   requestId,
   mode,
@@ -242,6 +435,9 @@ export default function TutorialGuide({
     dataset,
     targetColumns,
     featureColumns,
+    modelType,
+    acquisition,
+    q,
     busy,
     result
   } = useWorkbench();
@@ -265,7 +461,15 @@ export default function TutorialGuide({
     () => buildSampleSteps(targetColumns, featureColumns),
     [featureColumns, targetColumns]
   );
-  const steps = tutorialKind === "sample" ? sampleSteps : overviewSteps;
+  const advancedSteps = useMemo(
+    () => buildAdvancedSteps(targetColumns, featureColumns, modelType, acquisition, q),
+    [acquisition, featureColumns, modelType, q, targetColumns]
+  );
+  const steps = tutorialKind === "advanced"
+    ? advancedSteps
+    : tutorialKind === "sample"
+      ? sampleSteps
+      : overviewSteps;
   const currentIndex = clampStep(stepIndex, steps.length);
   const currentStep = steps[currentIndex];
   const isLastStep = currentIndex >= steps.length - 1;
@@ -298,7 +502,7 @@ export default function TutorialGuide({
   }, [phase, currentIndex]);
 
   useEffect(() => {
-    if (phase !== "tour" || tutorialKind !== "sample" || !currentStep.page) return;
+    if (phase !== "tour" || !isPracticalTutorial(tutorialKind) || !currentStep.page) return;
     if (step === currentStep.page) return;
     clearAuxiliaryPage();
     setStep(currentStep.page);
@@ -312,7 +516,7 @@ export default function TutorialGuide({
       if (!target) return;
       target.classList.add("tutorial-focus-target");
       target.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
-    }, 80);
+    }, 100);
 
     return () => {
       window.clearTimeout(timeoutId);
@@ -324,7 +528,7 @@ export default function TutorialGuide({
   useEffect(() => {
     if (
       phase === "tour" &&
-      tutorialKind === "sample" &&
+      isPracticalTutorial(tutorialKind) &&
       currentStep.id === "load-sample" &&
       isTutorialDataset &&
       datasetId !== sampleBaselineDatasetId &&
@@ -345,17 +549,17 @@ export default function TutorialGuide({
   useEffect(() => {
     if (
       phase === "tour" &&
-      tutorialKind === "sample" &&
-      currentStep.id === "run-optimization" &&
+      isPracticalTutorial(tutorialKind) &&
+      currentStep.advance === "result_ready" &&
       isTutorialResult &&
       resultId !== sampleBaselineResultId &&
       !busy
     ) {
-      setStepIndex(4);
+      setStepIndex(resultStepIndex(tutorialKind));
     }
   }, [
     busy,
-    currentStep.id,
+    currentStep.advance,
     isTutorialResult,
     phase,
     resultId,
@@ -372,25 +576,30 @@ export default function TutorialGuide({
         return;
       }
       if (phase !== "tour") return;
-      if (event.key === "ArrowLeft") {
-        goBack();
-      }
-      if (event.key === "ArrowRight" && !waitingForAction) {
-        goNext();
-      }
+      if (event.key === "ArrowLeft") goBack();
+      if (event.key === "ArrowRight" && !waitingForAction) goNext();
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   });
 
+  function stepsForKind(kind: TutorialKind): TutorialStep[] {
+    if (kind === "advanced") return advancedSteps;
+    if (kind === "sample") return sampleSteps;
+    return overviewSteps;
+  }
+
   function startTutorial(kind: TutorialKind, resume: boolean) {
+    const selectedSteps = stepsForKind(kind);
     let nextStepIndex = 0;
     if (resume && savedProgress?.kind === kind) {
-      nextStepIndex = clampStep(savedProgress.stepIndex, kind === "sample" ? sampleSteps.length : overviewSteps.length);
-      if (kind === "sample") {
+      nextStepIndex = clampStep(savedProgress.stepIndex, selectedSteps.length);
+      if (isPracticalTutorial(kind)) {
         if (!isTutorialDataset) nextStepIndex = 0;
-        else if (nextStepIndex >= 4 && !isTutorialResult) nextStepIndex = 3;
+        else if (nextStepIndex >= resultStepIndex(kind) && !isTutorialResult) {
+          nextStepIndex = executeStepIndex(kind);
+        }
       }
     }
 
@@ -400,9 +609,9 @@ export default function TutorialGuide({
     setSampleBaselineResultId(resultId);
     setSavedProgress(writeTutorialProgress("in_progress", nextStepIndex, kind));
 
-    if (kind === "sample") {
-      setWorkbenchMode("simple");
-      const destination = buildSampleSteps(targetColumns, featureColumns)[nextStepIndex]?.page ?? "data";
+    if (isPracticalTutorial(kind)) {
+      setWorkbenchMode(kind === "advanced" ? "advanced" : "simple");
+      const destination = selectedSteps[nextStepIndex]?.page ?? "data";
       clearAuxiliaryPage();
       setStep(destination);
     }
@@ -423,10 +632,10 @@ export default function TutorialGuide({
   function goBack() {
     if (currentIndex === 0) return;
     const nextIndex = currentIndex - 1;
-    if (tutorialKind === "sample" && nextIndex === 0) {
+    if (isPracticalTutorial(tutorialKind) && nextIndex === 0) {
       setSampleBaselineDatasetId(datasetId);
     }
-    if (tutorialKind === "sample" && nextIndex === 3) {
+    if (isPracticalTutorial(tutorialKind) && nextIndex === executeStepIndex(tutorialKind)) {
       setSampleBaselineResultId(resultId);
     }
     setStepIndex(nextIndex);
@@ -444,7 +653,7 @@ export default function TutorialGuide({
   if (phase === "hidden") return null;
 
   if (phase === "prompt") {
-    const resumeSampleFromStart = savedProgress?.kind === "sample" && !isTutorialDataset;
+    const resumeFromStart = isPracticalTutorial(savedProgress?.kind ?? "overview") && !isTutorialDataset;
     return (
       <div className="tutorial-prompt-backdrop">
         <div
@@ -458,19 +667,15 @@ export default function TutorialGuide({
           <div className="tutorial-prompt-icon" aria-hidden="true">?</div>
           <span className="tutorial-eyebrow">Getting started</span>
           <h2 id="tutorial-prompt-title">どのチュートリアルを開始しますか？</h2>
-          <p>実際に候補を生成する実践形式と、画面構成だけを確認するガイドを選べます。</p>
+          <p>簡易実行、詳細設定、画面構成の3種類から選択できます。</p>
 
-          {isResume && (
+          {isResume && savedProgress && (
             <button
               type="button"
               className="tutorial-resume-button"
               onClick={() => startTutorial(savedProgress.kind, true)}
             >
-              <strong>
-                {savedProgress.kind === "sample"
-                  ? resumeSampleFromStart ? "サンプルを最初から再開" : "サンプルの続きから再開"
-                  : "画面案内の続きから再開"}
-              </strong>
+              <strong>{resumeFromStart ? `${tutorialName(savedProgress.kind)}を最初から再開` : `${tutorialName(savedProgress.kind)}の続きから再開`}</strong>
               <span>前回は {savedProgress.stepIndex + 1} ステップ目まで進みました。</span>
             </button>
           )}
@@ -482,9 +687,19 @@ export default function TutorialGuide({
               onClick={() => startTutorial("sample", false)}
             >
               <span className="tutorial-choice-icon" aria-hidden="true">↗</span>
-              <strong>サンプルで最適化を体験</strong>
-              <small>データ読込 → 変数確認 → 候補生成 → 結果・グラフ確認</small>
-              <em>おすすめ · 6ステップ</em>
+              <strong>簡易モードで最適化を体験</strong>
+              <small>データ読込 → 変数確認 → 既定値で実行 → 結果確認</small>
+              <em>入門 · 6ステップ</em>
+            </button>
+            <button
+              type="button"
+              className="tutorial-choice-card advanced-choice"
+              onClick={() => startTutorial("advanced", false)}
+            >
+              <span className="tutorial-choice-icon" aria-hidden="true">⌘</span>
+              <strong>詳細設定で最適化を体験</strong>
+              <small>タスク、モデル、前処理、獲得関数、探索範囲、制約まで設定</small>
+              <em>詳細 · 13ステップ</em>
             </button>
             <button
               type="button"
@@ -499,8 +714,8 @@ export default function TutorialGuide({
           </div>
 
           <div className="tutorial-privacy-note">
-            {hasDataset && "サンプルデータの読込を選ぶと、確認後に現在のワークスペースを置き換えます。"}
-            {!hasDataset && "サンプルデータはブラウザで生成し、通常のCSV読込APIへ送信します。"}
+            {hasDataset && "実践チュートリアルでサンプルデータを読み込むと、確認後に現在のワークスペースを置き換えます。"}
+            {!hasDataset && "実践チュートリアルのサンプルデータはブラウザで生成し、通常のCSV読込APIへ送信します。"}
             <br />進捗情報だけを、このPCの現在のブラウザに保存します。
           </div>
           <div className="tutorial-prompt-actions">
@@ -551,7 +766,11 @@ export default function TutorialGuide({
         </div>
       )}
 
-      <div className="tutorial-progress" aria-label={`${currentIndex + 1} / ${steps.length}`}>
+      <div
+        className="tutorial-progress"
+        aria-label={`${currentIndex + 1} / ${steps.length}`}
+        style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}
+      >
         {steps.map((tutorialStep, index) => (
           <span
             key={tutorialStep.id}

@@ -1,16 +1,18 @@
 import { useEffect, useState } from "react";
 
-function sampleTutorialVisible(): boolean {
+function tutorialSampleLoaderVisible(): boolean {
   if (typeof document === "undefined") return false;
-  return Boolean(document.querySelector(".tutorial-guide-card.tutorial-kind-sample"));
+  return Boolean(document.querySelector(
+    ".tutorial-guide-card.tutorial-kind-sample, .tutorial-guide-card.tutorial-kind-advanced"
+  ));
 }
 
-/** Returns true only while the practical sample tutorial guide is open. */
+/** Returns true only while a practical tutorial that uses the sample dataset is open. */
 export function useSampleTutorialActive(): boolean {
-  const [active, setActive] = useState(sampleTutorialVisible);
+  const [active, setActive] = useState(tutorialSampleLoaderVisible);
 
   useEffect(() => {
-    const update = () => setActive(sampleTutorialVisible());
+    const update = () => setActive(tutorialSampleLoaderVisible());
     update();
 
     const observer = new MutationObserver(update);

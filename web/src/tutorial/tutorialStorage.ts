@@ -1,8 +1,8 @@
-export const TUTORIAL_VERSION = 1;
+export const TUTORIAL_VERSION = 2;
 
 const TUTORIAL_STORAGE_KEY = "bochan-web-tutorial";
 
-export type TutorialKind = "overview" | "sample";
+export type TutorialKind = "overview" | "sample" | "advanced";
 export type TutorialStatus = "in_progress" | "completed" | "dismissed";
 
 export interface TutorialProgress {
@@ -14,7 +14,7 @@ export interface TutorialProgress {
 }
 
 function isTutorialKind(value: unknown): value is TutorialKind {
-  return value === "overview" || value === "sample";
+  return value === "overview" || value === "sample" || value === "advanced";
 }
 
 function isTutorialStatus(value: unknown): value is TutorialStatus {

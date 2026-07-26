@@ -2,13 +2,19 @@ export const TUTORIAL_VERSION = 1;
 
 const TUTORIAL_STORAGE_KEY = "bochan-web-tutorial";
 
+export type TutorialKind = "overview" | "sample";
 export type TutorialStatus = "in_progress" | "completed" | "dismissed";
 
 export interface TutorialProgress {
   version: number;
+  kind: TutorialKind;
   status: TutorialStatus;
   stepIndex: number;
   updatedAt: string;
+}
+
+function isTutorialKind(value: unknown): value is TutorialKind {
+  return value === "overview" || value === "sample";
 }
 
 function isTutorialStatus(value: unknown): value is TutorialStatus {
@@ -35,6 +41,7 @@ export function readTutorialProgress(): TutorialProgress | null {
 
     return {
       version: parsed.version,
+      kind: isTutorialKind(parsed.kind) ? parsed.kind : "overview",
       status: parsed.status,
       stepIndex: Math.max(0, parsed.stepIndex),
       updatedAt: parsed.updatedAt
@@ -50,19 +57,26 @@ export function shouldPromptTutorial(progress: TutorialProgress | null): boolean
   return progress.status === "in_progress";
 }
 
-export function writeTutorialProgress(status: TutorialStatus, stepIndex: number): void {
-  if (typeof window === "undefined") return;
-
+export function writeTutorialProgress(
+  status: TutorialStatus,
+  stepIndex: number,
+  kind: TutorialKind = "overview"
+): TutorialProgress {
   const progress: TutorialProgress = {
     version: TUTORIAL_VERSION,
+    kind,
     status,
     stepIndex: Math.max(0, Math.trunc(stepIndex)),
     updatedAt: new Date().toISOString()
   };
+
+  if (typeof window === "undefined") return progress;
 
   try {
     window.localStorage.setItem(TUTORIAL_STORAGE_KEY, JSON.stringify(progress));
   } catch {
     // The tutorial remains usable even when browser storage is unavailable.
   }
+
+  return progress;
 }

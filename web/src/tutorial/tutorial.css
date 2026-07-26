@@ -1,3 +1,27 @@
+.header-actions.tutorial-enabled {
+  gap: 6px;
+  padding-right: 10px;
+  padding-left: 10px;
+}
+
+.header-actions.tutorial-enabled .runtime-pill {
+  min-width: 148px;
+}
+
+@media (max-width: 1420px) {
+  .header-actions.tutorial-enabled .runtime-pill {
+    width: 40px;
+    min-width: 40px;
+    justify-content: center;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .header-actions.tutorial-enabled .runtime-copy {
+    display: none;
+  }
+}
+
 .tutorial-button span {
   font-size: 16px;
   line-height: 1;

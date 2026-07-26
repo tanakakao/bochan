@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from ._heatmap_layout import apply_probability_heatmap_layout
+from .categorical_axis import apply_categorical_xaxis_labels
 from .multiclass import MulticlassHeatmapMode, is_multiclass_object
 from .ordinal import (
     is_ordinal_object,
@@ -46,15 +47,16 @@ def show_1dplot_from_optimizer(
     ordinal_display: OrdinalDisplayMode = "latent",
     **kwargs: Any,
 ) -> Any:
-    """Plot the ordinal latent score or all ordered-category probabilities."""
+    """Plot a 1D response using original labels for categorical feature axes."""
 
-    return _show_1dplot_from_optimizer(
+    figure = _show_1dplot_from_optimizer(
         obj,
         feature,
         target,
         ordinal_display=_to_internal_display(ordinal_display),
         **kwargs,
     )
+    return apply_categorical_xaxis_labels(figure, obj, feature)
 
 
 def show_scatter_with_acqf_from_optimizer(

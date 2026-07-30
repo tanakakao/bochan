@@ -13,6 +13,7 @@ import "./model-artifact.css";
 import "./result-interactions.css";
 import "./experiment-results.css";
 import "./experiment-history.css";
+import "./styles/workbench-design.css";
 
 installDynamicNumberInputSteps();
 

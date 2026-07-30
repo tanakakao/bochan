@@ -1,0 +1,12 @@
+.dropzone.dragging {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 12%, transparent);
+  transform: translateY(-1px) scale(1.005);
+}
+
+.dropzone.dragging .upload-symbol {
+  color: #ffffff;
+  background: var(--primary);
+  border-color: var(--primary);
+}

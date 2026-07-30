@@ -14,6 +14,7 @@ import "./result-interactions.css";
 import "./experiment-results.css";
 import "./experiment-history.css";
 import "./styles/workbench-design.css";
+import "./data-dropzone.css";
 
 installDynamicNumberInputSteps();
 

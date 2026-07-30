@@ -28,6 +28,18 @@ def test_normalizer_averages_consecutive_input_perturbation_rows() -> None:
     torch.testing.assert_close(actual, expected)
 
 
+def test_normalizer_handles_reported_80_by_1_shape() -> None:
+    values = torch.arange(80, dtype=torch.double).reshape(80, 1)
+
+    actual = normalize_prediction_rows(values, n_rows=5)
+
+    expected = torch.tensor(
+        [[7.5], [23.5], [39.5], [55.5], [71.5]],
+        dtype=torch.double,
+    )
+    torch.testing.assert_close(actual, expected)
+
+
 def test_normalizer_handles_leading_singleton_batch_dimension() -> None:
     values = torch.tensor(
         [[[1.0], [3.0], [10.0], [14.0]]],

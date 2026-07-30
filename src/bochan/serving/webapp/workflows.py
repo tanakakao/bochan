@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import copy
 import logging
+from importlib import import_module
 from typing import Any
 
-from . import workflows_tabular as _workflows_tabular
+from . import target_results as _target_results
+from . import target_settings as _target_settings
 from .logging import current_request_id, get_logger, log_event
 from .model_reuse import model_reuse_run, prepare_model_reuse_request
+from .prediction_shapes import normalize_prediction_rows
 from .target_missing_policy import (
     install_workflow_adapters,
     model_variant,
@@ -21,6 +24,13 @@ from .visualization_sessions import (
     model_details,
     visualization_options,
 )
+
+# ``app.py`` imports visualization helpers before this compatibility module, so
+# replace both already-bound helper references before loading the tabular workflow.
+_target_settings._as_2d = normalize_prediction_rows
+_target_results._as_2d = normalize_prediction_rows
+_workflows_tabular = import_module(".workflows_tabular", package=__package__)
+_workflows_tabular._as_2d = normalize_prediction_rows
 
 install_workflow_adapters(_workflows_tabular)
 

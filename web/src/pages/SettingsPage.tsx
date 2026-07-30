@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { EmptyState, SectionHeader } from "../components/Common";
 import FeatureMissingSettings from "../components/FeatureMissingSettings";
-import InputPerturbationRiskSettingsControl from "../components/InputPerturbationRiskSettings";
 import TargetModelSettings from "../components/TargetModelSettings";
 import { useWorkbench } from "../context/WorkbenchContext";
 import {
@@ -34,7 +33,6 @@ export default function SettingsPage() {
     setProjectionDimensions,
     modelType,
     setModelType,
-    acquisitionFamily,
     fitMaxiter,
     setFitMaxiter,
     settingsValid,
@@ -207,9 +205,6 @@ export default function SettingsPage() {
                   ばらつき（標準偏差）
                   <input type="number" min={0.000001} step="any" value={perturbationStd} onChange={(event) => setPerturbationStd(Number(event.target.value))} />
                 </label>
-                <InputPerturbationRiskSettingsControl
-                  disabled={acquisitionFamily !== "bayesian_optimization"}
-                />
               </div>
             )}
           </section>

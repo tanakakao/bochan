@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { EmptyState, MetricCard, SectionHeader } from "../components/Common";
 import { useWorkbench } from "../context/WorkbenchContext";
 import {
@@ -8,10 +9,15 @@ import { useSampleTutorialActive } from "../tutorial/tutorialRuntime";
 
 export default function DataPage() {
   const { busy, dataset, columns, handleFile, handleModelArtifact, setError, setStep } = useWorkbench();
+  const [dataDragging, setDataDragging] = useState(false);
   const sampleTutorialActive = useSampleTutorialActive();
   const numericCount = columns.filter((column) => column.kind === "numeric").length;
   const categoricalCount = columns.filter((column) => column.kind === "categorical").length;
   const tutorialSampleLoaded = dataset?.name === TUTORIAL_SAMPLE_DATASET_NAME;
+
+  function loadDataFile(file: File | null | undefined) {
+    if (file) void handleFile(file);
+  }
 
   async function selectModelArtifact(file: File | null, input: HTMLInputElement) {
     try {
@@ -106,14 +112,38 @@ export default function DataPage() {
               <span className="status-chip success">Loaded</span>
             )}
           </div>
-          <label className="dropzone">
+          <label
+            className={`dropzone ${dataDragging ? "dragging" : ""}`}
+            aria-label="CSVまたはExcelファイルをドロップまたは選択"
+            onDragEnter={(event) => {
+              event.preventDefault();
+              setDataDragging(true);
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+              setDataDragging(true);
+            }}
+            onDragLeave={() => setDataDragging(false)}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDataDragging(false);
+              loadDataFile(event.dataTransfer.files[0]);
+            }}
+          >
             <input
               type="file"
               accept=".csv,.xlsx,.xls"
-              onChange={(event) => void handleFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => loadDataFile(event.target.files?.[0])}
             />
             <span className="upload-symbol">⇧</span>
-            <strong>{dataset ? "別のファイルを選択" : "CSVまたはExcelを選択"}</strong>
+            <strong>
+              {dataDragging
+                ? "ここにドロップして読み込む"
+                : dataset
+                  ? "別のファイルをドロップまたは選択"
+                  : "CSVまたはExcelをドロップまたは選択"}
+            </strong>
             <span>ファイルはAPIで解析され、現在のFastAPIプロセス内に保持されます。</span>
           </label>
         </article>

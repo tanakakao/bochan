@@ -1,0 +1,375 @@
+:root {
+  --header-height: 72px;
+  --footer-height: 30px;
+  --left-rail-width: 236px;
+  --right-rail-width: 286px;
+  --radius-lg: 20px;
+  --header-h: var(--header-height);
+  --footer-h: var(--footer-height);
+  --left-w: var(--left-rail-width);
+  --right-w: var(--right-rail-width);
+}
+
+body {
+  font-variant-numeric: tabular-nums;
+}
+
+button.ghost {
+  color: var(--text);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+button.ghost:hover:not(:disabled) {
+  color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: none;
+}
+
+button.danger {
+  color: #ffffff;
+  background: var(--danger);
+}
+
+button.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 86%, black);
+}
+
+.app-header {
+  grid-template-columns: var(--left-w) minmax(0, 1fr) var(--right-w);
+}
+
+.header-actions.tutorial-enabled {
+  gap: 4px;
+  padding: 0 8px;
+}
+
+.header-actions.tutorial-enabled .runtime-pill {
+  width: 90px;
+  min-width: 90px;
+  max-width: 90px;
+}
+
+.portal-button {
+  width: 88px;
+  min-width: 88px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.portal-button > span:first-child {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.portal-button > span:last-child {
+  font-size: 10px;
+}
+
+.content {
+  padding: 30px 32px 52px;
+}
+
+.content-inner {
+  width: 100%;
+  max-width: 1540px;
+}
+
+.section-header {
+  margin: 0 0 20px;
+}
+
+.section-header h2 {
+  margin: 3px 0 5px;
+  font-size: 25px;
+  letter-spacing: -0.025em;
+}
+
+.section-header p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.panel {
+  padding: 18px;
+  border-radius: var(--radius-lg);
+}
+
+.side-card {
+  padding: 14px;
+  border-radius: 15px;
+  box-shadow: var(--shadow-sm);
+}
+
+.context-list strong {
+  white-space: nowrap;
+}
+
+.runtime-large > div {
+  min-width: 0;
+}
+
+.inline-alert {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 40px;
+  gap: 12px;
+  align-items: start;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-xs);
+}
+
+.inline-alert.error {
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--line));
+  background: var(--danger-soft);
+}
+
+.inline-alert-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: #ffffff;
+  background: var(--danger);
+  font-size: 15px;
+  font-weight: 850;
+}
+
+.inline-alert-copy {
+  min-width: 0;
+}
+
+.inline-alert-copy > strong {
+  display: block;
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.inline-alert-copy p {
+  margin: 5px 0 0;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.inline-alert-copy small {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.alert-close {
+  color: var(--danger) !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.alert-close:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 10%, transparent) !important;
+  transform: none;
+}
+
+.overlay {
+  z-index: 160;
+}
+
+.busy-card {
+  width: min(420px, 100%);
+  padding: 28px;
+  border-radius: var(--radius-lg);
+}
+
+.busy-card .eyebrow {
+  margin-top: 16px;
+}
+
+.busy-card h3 {
+  margin: 5px 0 7px;
+  font-size: 18px;
+}
+
+.busy-card p {
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.busy-state {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  margin-top: 18px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--warning) 24%, var(--line));
+  border-radius: 999px;
+  color: var(--warning);
+  background: var(--warning-soft);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --left-w: var(--left-rail-width);
+    --right-w: var(--right-rail-width);
+  }
+}
+
+@media (max-width: 1439px) {
+  .header-actions.tutorial-enabled .runtime-pill {
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .header-actions.tutorial-enabled .runtime-copy {
+    display: none;
+  }
+}
+
+@media (max-width: 1179px) {
+  :root {
+    --right-w: 0px;
+  }
+
+  .app-header {
+    grid-template-columns: var(--left-w) minmax(0, 1fr) auto;
+  }
+
+  .app-shell {
+    grid-template-columns: var(--left-w) minmax(0, 1fr);
+  }
+
+  .right-rail {
+    position: static;
+    grid-column: 1 / -1;
+    height: auto;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    padding: 14px;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .right-rail .side-card {
+    margin: 0;
+  }
+
+  .runtime-card {
+    position: relative;
+  }
+}
+
+@media (max-width: 899px) {
+  :root {
+    --left-w: 0px;
+  }
+
+  .app-header {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .workflow-strip,
+  .runtime-pill {
+    display: none !important;
+  }
+
+  .app-shell {
+    display: block;
+  }
+
+  .left-rail {
+    position: sticky;
+    top: var(--header-h);
+    z-index: 35;
+    width: 100%;
+    height: auto;
+    display: block;
+    padding: 8px;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: blur(16px);
+  }
+
+  .rail-section-label,
+  .rail-spacer,
+  .rail-note {
+    display: none;
+  }
+
+  .workbench-mode-switch {
+    margin-bottom: 8px;
+  }
+
+  .tabs {
+    min-width: max-content;
+    display: flex;
+    gap: 6px;
+  }
+
+  .tab {
+    min-width: 122px;
+    min-height: 46px;
+    grid-template-columns: 28px minmax(0, 1fr);
+    padding: 7px 9px;
+  }
+
+  .tab::before,
+  .tab em {
+    display: none;
+  }
+
+  .right-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .content {
+    padding: 22px 16px 46px;
+  }
+}
+
+@media (max-width: 620px) {
+  .portal-button {
+    width: 40px;
+    min-width: 40px;
+    padding: 0;
+  }
+
+  .portal-button > span:last-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .right-rail {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-alert {
+    grid-template-columns: 32px minmax(0, 1fr) 36px;
+    gap: 9px;
+    padding: 12px;
+  }
+}

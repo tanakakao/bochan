@@ -14,6 +14,7 @@ import type {
 import {
   loadFeatureConstraints,
   loadFeatureMissingSettings,
+  loadInputPerturbationRiskSettings,
   loadSearchMethod,
   loadSelectionCountConstraint
 } from "./webRunSettings";
@@ -311,6 +312,13 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
     throw new Error("入力摂動のばらつきは0より大きくしてください。");
   }
 
+  const perturbationRisk = loadInputPerturbationRiskSettings();
+  if (!Number.isFinite(perturbationRisk.alpha) || perturbationRisk.alpha <= 0 || perturbationRisk.alpha > 1) {
+    throw new Error("VaR/CVaRのαは0より大きく1以下にしてください。");
+  }
+  const riskSupported = input.inputPerturbation && input.acquisitionFamily === "bayesian_optimization";
+  const effectiveRiskType = riskSupported ? perturbationRisk.riskType : "none";
+
   const featureMissing = loadFeatureMissingSettings();
   if (!Number.isInteger(featureMissing.imputeMaxIter) || featureMissing.imputeMaxIter < 1) {
     throw new Error("欠損値補完の最大反復回数は1以上の整数にしてください。");
@@ -407,7 +415,11 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       acquisition: {
         name: acquisitionName,
         beta: input.beta,
-        acqf_kwargs: { web_family: input.acquisitionFamily }
+        acqf_kwargs: {
+          web_family: input.acquisitionFamily,
+          web_risk_type: effectiveRiskType,
+          web_risk_alpha: perturbationRisk.alpha
+        }
       },
       optimizer: {
         name: searchMethod,

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState, SectionHeader } from "../components/Common";
 import FeatureConstraints from "../components/FeatureConstraints";
+import InputPerturbationRiskSettingsControl from "../components/InputPerturbationRiskSettings";
 import SearchVariableSettings from "../components/SearchVariableSettings";
 import TargetProposalSettings from "../components/TargetProposalSettings";
 import { useWorkbench } from "../context/WorkbenchContext";
@@ -88,6 +89,7 @@ export default function OptimizePage() {
     patchVariable,
     modelType,
     projectionDimensions,
+    inputPerturbation,
     acquisitionFamily,
     setAcquisitionFamily,
     acquisition,
@@ -331,6 +333,23 @@ export default function OptimizePage() {
           <label>raw_samples<input type="number" min={1} step={1} value={rawSamples} onChange={(event) => setRawSamples(Number(event.target.value))} /></label>
         </article>
       </div>
+
+      {inputPerturbation && (
+        <article className="panel compact-panel">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">INPUT PERTURBATION RISK</span>
+              <h3>入力摂動の候補評価</h3>
+              <p>探索範囲から生成した候補を、入力ばらつきに対してどのように集約して評価するかを設定します。</p>
+            </div>
+          </div>
+          <div className="transform-fields">
+            <InputPerturbationRiskSettingsControl
+              disabled={acquisitionFamily !== "bayesian_optimization"}
+            />
+          </div>
+        </article>
+      )}
 
       <SearchVariableSettings
         columns={columns}

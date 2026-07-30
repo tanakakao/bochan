@@ -29,6 +29,14 @@ export interface FeatureMissingSettings {
   multipleImputeSamplePosterior: boolean;
 }
 
+export type InputPerturbationRiskType = "none" | "var" | "cvar";
+
+/** Risk aggregation applied to objective values expanded by InputPerturbation. */
+export interface InputPerturbationRiskSettings {
+  riskType: InputPerturbationRiskType;
+  alpha: number;
+}
+
 export type SearchMethod =
   | "normal"
   | "torch"
@@ -43,6 +51,7 @@ const CONSTRAINTS_KEY = "bochan-web-feature-constraints";
 const SELECTION_COUNT_KEY = "bochan-web-selection-count-constraint";
 const SEARCH_METHOD_KEY = "bochan-web-search-method";
 const FEATURE_MISSING_KEY = "bochan-web-feature-missing";
+const INPUT_PERTURBATION_RISK_KEY = "bochan-web-input-perturbation-risk";
 
 function storage(): Storage | null {
   return typeof window === "undefined" ? null : window.localStorage;
@@ -162,6 +171,29 @@ export function loadFeatureMissingSettings(): FeatureMissingSettings {
 
 export function saveFeatureMissingSettings(value: FeatureMissingSettings): void {
   storage()?.setItem(FEATURE_MISSING_KEY, JSON.stringify(value));
+}
+
+export function loadInputPerturbationRiskSettings(): InputPerturbationRiskSettings {
+  const fallback: InputPerturbationRiskSettings = { riskType: "none", alpha: 0.2 };
+  const value = storage()?.getItem(INPUT_PERTURBATION_RISK_KEY);
+  if (!value) return fallback;
+  try {
+    const parsed = JSON.parse(value) as Partial<InputPerturbationRiskSettings>;
+    const riskType = parsed.riskType === "var" || parsed.riskType === "cvar"
+      ? parsed.riskType
+      : "none";
+    const alpha = finiteNumber(parsed.alpha, fallback.alpha);
+    return {
+      riskType,
+      alpha: alpha > 0 && alpha <= 1 ? alpha : fallback.alpha
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveInputPerturbationRiskSettings(value: InputPerturbationRiskSettings): void {
+  storage()?.setItem(INPUT_PERTURBATION_RISK_KEY, JSON.stringify(value));
 }
 
 export function loadSearchMethod(): SearchMethod {

@@ -35,6 +35,23 @@ const ICONS: Record<WorkbenchStep, string> = {
   logs: "≡"
 };
 
+const API_STATUS_LABELS = {
+  loading: "確認中",
+  ready: "接続済み",
+  error: "エラー"
+} as const;
+const DEFAULT_PORTAL_URL = "http://127.0.0.1:5172";
+
+function resolvePortalUrl(): string {
+  const configured = import.meta.env.VITE_PORTAL_URL?.trim();
+  if (!configured) return DEFAULT_PORTAL_URL;
+  try {
+    return new URL(configured, window.location.href).toString();
+  } catch {
+    return DEFAULT_PORTAL_URL;
+  }
+}
+
 type AuxiliaryPage = "experiment";
 
 function currentAuxiliaryPage(): AuxiliaryPage | null {
@@ -123,6 +140,7 @@ function WorkbenchLayout() {
     ? selectedTargetSettings.map(summarizeTargetSetting).join(" / ")
     : "—";
   const resultStale = Boolean(result?.metadata?.stale_after_data_append);
+  const apiStatusLabel = API_STATUS_LABELS[health.status];
 
   useEffect(() => {
     const handleHashChange = () => setAuxiliaryPage(currentAuxiliaryPage());
@@ -170,8 +188,8 @@ function WorkbenchLayout() {
         <div className="brand-lockup">
           <div className="brand-mark" aria-hidden="true"><span>b</span></div>
           <div className="brand-wordmark">
-            <h1>bochan</h1>
-            <p>Bayesian optimization workbench</p>
+            <h1>ベイズ最適化</h1>
+            <p>Materials Analysis Workbench · bochan</p>
           </div>
         </div>
 
@@ -193,11 +211,11 @@ function WorkbenchLayout() {
         </div>
 
         <div className="header-actions tutorial-enabled">
-          <div className="runtime-pill" title={health.text}>
+          <div className="runtime-pill" title={`API接続: ${health.text}`}>
             <span className={`dot ${health.status}`} />
             <span className="runtime-copy">
-              <small>API status</small>
-              <strong>{health.text}</strong>
+              <small>API接続</small>
+              <strong>{apiStatusLabel}</strong>
             </span>
           </div>
           <button
@@ -210,6 +228,17 @@ function WorkbenchLayout() {
             <span aria-hidden="true">?</span>
           </button>
           <button
+            type="button"
+            className="portal-button secondary"
+            title="ツール一覧へ戻る"
+            aria-label="ツール一覧へ戻る"
+            onClick={() => window.location.assign(resolvePortalUrl())}
+          >
+            <span aria-hidden="true">▦</span>
+            <span>ツール一覧</span>
+          </button>
+          <button
+            type="button"
             className="icon-button secondary theme-toggle"
             title={theme === "dark" ? "ライトテーマへ" : "ダークテーマへ"}
             aria-label={theme === "dark" ? "ライトテーマへ切り替える" : "ダークテーマへ切り替える"}
@@ -282,9 +311,24 @@ function WorkbenchLayout() {
         <section className="content" data-tutorial="workspace">
           <div className="content-inner">
             {error && (
-              <button className="message error inline-message" onClick={() => setError(null)}>
-                {error}
-              </button>
+              <div className="inline-alert error" role="alert">
+                <div className="inline-alert-icon" aria-hidden="true">!</div>
+                <div className="inline-alert-copy">
+                  <span className="eyebrow">ERROR</span>
+                  <strong>処理を完了できませんでした</strong>
+                  <p>{error}</p>
+                  <small>入力内容と接続状態を確認し、必要な設定を修正して再実行してください。</small>
+                </div>
+                <button
+                  type="button"
+                  className="alert-close icon-button secondary"
+                  title="エラー表示を閉じる"
+                  aria-label="エラー表示を閉じる"
+                  onClick={() => setError(null)}
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
             )}
             <Page />
           </div>
@@ -298,7 +342,7 @@ function WorkbenchLayout() {
             </div>
             <div className="runtime-large">
               <span className={`dot ${health.status}`} />
-              <div><strong>FastAPI</strong><small>{health.text}</small></div>
+              <div><strong>FastAPI</strong><small>{apiStatusLabel} · {health.text}</small></div>
             </div>
           </div>
 
@@ -309,9 +353,9 @@ function WorkbenchLayout() {
             </div>
             <div className="context-list">
               <div><span>Mode</span><strong>{mode === "simple" ? "簡易" : "詳細"}</strong></div>
-              <div><span>File</span><strong>{dataset?.name || "—"}</strong></div>
+              <div><span>File</span><strong title={dataset?.name || undefined}>{dataset?.name || "—"}</strong></div>
               <div><span>Rows</span><strong>{dataset?.profile.n_rows ?? "—"}</strong></div>
-              <div><span>Targets</span><strong>{targetColumns.length ? targetColumns.join(", ") : "—"}</strong></div>
+              <div><span>Targets</span><strong title={targetColumns.join(", ") || undefined}>{targetColumns.length ? targetColumns.join(", ") : "—"}</strong></div>
               <div><span>Features</span><strong>{featureColumns.length || "—"}</strong></div>
             </div>
           </div>
@@ -322,10 +366,10 @@ function WorkbenchLayout() {
               <strong>探索条件</strong>
             </div>
             <div className="context-list">
-              <div><span>Targets</span><strong>{targetSummary}</strong></div>
-              <div><span>Model</span><strong>{modelType}</strong></div>
-              <div><span>Family</span><strong>{familyLabel(acquisitionFamily)}</strong></div>
-              <div><span>Acquisition</span><strong>{acquisition}</strong></div>
+              <div><span>Targets</span><strong title={targetSummary !== "—" ? targetSummary : undefined}>{targetSummary}</strong></div>
+              <div><span>Model</span><strong title={modelType}>{modelType}</strong></div>
+              <div><span>Family</span><strong title={familyLabel(acquisitionFamily)}>{familyLabel(acquisitionFamily)}</strong></div>
+              <div><span>Acquisition</span><strong title={acquisition}>{acquisition}</strong></div>
               <div><span>q</span><strong>{q}</strong></div>
             </div>
           </div>
@@ -338,7 +382,7 @@ function WorkbenchLayout() {
             {result ? (
               <div className="context-list">
                 <div><span>Candidates</span><strong>{result.candidates.length}</strong></div>
-                <div><span>Best observed</span><strong>{formatBestObserved(result.best_observed)}</strong></div>
+                <div><span>Best observed</span><strong title={formatBestObserved(result.best_observed)}>{formatBestObserved(result.best_observed)}</strong></div>
                 <div>
                   <span>Status</span>
                   <strong className={resultStale ? "warning-text" : "success-text"}>
@@ -354,7 +398,7 @@ function WorkbenchLayout() {
       </main>
 
       <footer className="statusbar" data-tutorial="status">
-        <span><span className={`dot ${health.status}`} /> API {health.status}</span>
+        <span><span className={`dot ${health.status}`} /> API接続 {apiStatusLabel}</span>
         <span>{mode === "simple" ? "Simple mode" : "Advanced mode"}</span>
         <span>{dataset ? `${dataset.profile.n_rows} rows` : "No data"}</span>
         <span>{result ? `${result.candidates.length} candidates${resultStale ? " · stale" : ""}` : "No result"}</span>
@@ -369,12 +413,13 @@ function WorkbenchLayout() {
       />
 
       {busy && (
-        <div className="overlay" role="status" aria-live="polite">
+        <div className="overlay" role="status" aria-live="polite" aria-busy="true">
           <div className="busy-card">
-            <div className="spinner" />
+            <div className="spinner" aria-hidden="true" />
+            <span className="eyebrow">PROCESSING</span>
             <h3>{busy}</h3>
-            <p>処理が完了すると自動的に次の画面へ移動します。</p>
-            <div className="busy-progress"><span /></div>
+            <p>処理中は画面操作を一時停止しています。完了後に結果を表示します。</p>
+            <span className="busy-state">処理中</span>
           </div>
         </div>
       )}

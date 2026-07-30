@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from bochan.serving.webapp import workflows as web_workflows
 from bochan.serving.webapp import target_results, target_settings
+from bochan.serving.webapp import workflows as web_workflows
 from bochan.serving.webapp.prediction_shapes import normalize_prediction_rows
 
 

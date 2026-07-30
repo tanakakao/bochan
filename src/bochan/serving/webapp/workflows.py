@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import copy
-from importlib import import_module
 import logging
+from importlib import import_module
 from typing import Any
 
 from . import target_results as _target_results

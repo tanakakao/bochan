@@ -11,9 +11,11 @@ import type {
 import {
   saveFeatureConstraints,
   saveFeatureMissingSettings,
+  saveInputPerturbationRiskSettings,
   saveSearchMethod,
   saveSelectionCountConstraint,
   type FeatureConstraint,
+  type InputPerturbationRiskType,
   type SearchMethod
 } from "./webRunSettings";
 
@@ -137,6 +139,17 @@ function restoreFeatureSettings(request: Record<string, any>): void {
       ? null
       : Math.trunc(finiteNumber(missing.impute_random_state, 0)),
     multipleImputeSamplePosterior: Boolean(missing.multiple_impute_sample_posterior)
+  });
+
+  const acquisitionKwargs = asRecord(asRecord(request.acquisition).acqf_kwargs);
+  const rawRiskType = String(acquisitionKwargs.web_risk_type ?? "none").toLowerCase();
+  const riskType: InputPerturbationRiskType = rawRiskType === "var" || rawRiskType === "cvar"
+    ? rawRiskType
+    : "none";
+  const riskAlpha = finiteNumber(acquisitionKwargs.web_risk_alpha, 0.2);
+  saveInputPerturbationRiskSettings({
+    riskType,
+    alpha: riskAlpha > 0 && riskAlpha <= 1 ? riskAlpha : 0.2
   });
 
   const validMethods: SearchMethod[] = [

@@ -12,6 +12,11 @@ from . import target_settings as _target_settings
 from .logging import current_request_id, get_logger, log_event
 from .model_reuse import model_reuse_run, prepare_model_reuse_request
 from .prediction_shapes import normalize_prediction_rows
+from .risk_settings import (
+    attach_web_risk_metadata,
+    install_web_risk_adapters,
+    web_risk_run,
+)
 from .target_missing_policy import (
     install_workflow_adapters,
     model_variant,
@@ -33,6 +38,7 @@ _workflows_tabular = import_module(".workflows_tabular", package=__package__)
 _workflows_tabular._as_2d = normalize_prediction_rows
 
 install_workflow_adapters(_workflows_tabular)
+install_web_risk_adapters(_workflows_tabular)
 
 _build_outcome_constraint_config = _workflows_tabular._build_outcome_constraint_config
 _figure_payload = _workflows_tabular._figure_payload
@@ -110,11 +116,13 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     with (
         target_missing_run(processing_request) as missing_report,
         model_reuse_run(processing_request, source_run_id) as reuse_report,
+        web_risk_run(processing_request) as risk_report,
     ):
         if not run_id:
             result = _run_regression_web_workflow(processing_request, store)
             _attach_missing_metadata(result, missing_report)
             _attach_reuse_metadata(result, reuse_report)
+            attach_web_risk_metadata(result, risk_report)
             return result
 
         begin_visualization_run(run_id, processing_request)
@@ -134,6 +142,7 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
                 effective_model_type=effective_model_type,
             )
             metadata = _attach_reuse_metadata(result, reuse_report)
+            metadata = attach_web_risk_metadata(result, risk_report)
             details = model_details(session, result)
             details["feature_missing_strategy"] = metadata.get(
                 "feature_missing_strategy"
@@ -158,6 +167,15 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
             details["fit_skipped"] = metadata.get("fit_skipped")
             details["model_reuse_source_run_id"] = metadata.get(
                 "model_reuse_source_run_id"
+            )
+            details["input_perturbation_risk_type"] = metadata.get(
+                "input_perturbation_risk_type"
+            )
+            details["input_perturbation_risk_alpha"] = metadata.get(
+                "input_perturbation_risk_alpha"
+            )
+            details["input_perturbation_risk_enabled"] = metadata.get(
+                "input_perturbation_risk_enabled"
             )
             result["visualization_run_id"] = run_id
             result["visualization_options"] = visualization_options(session)

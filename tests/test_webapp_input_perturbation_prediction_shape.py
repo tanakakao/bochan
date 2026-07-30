@@ -28,6 +28,40 @@ def test_normalizer_averages_consecutive_input_perturbation_rows() -> None:
     torch.testing.assert_close(actual, expected)
 
 
+def test_normalizer_applies_var_to_adverse_tail() -> None:
+    values = torch.tensor(
+        [[1.0], [2.0], [8.0], [9.0], [10.0], [20.0], [30.0], [40.0]],
+        dtype=torch.double,
+    )
+
+    actual = normalize_prediction_rows(
+        values,
+        n_rows=2,
+        risk_type="var",
+        alpha=0.5,
+    )
+
+    expected = torch.tensor([[2.0], [20.0]], dtype=torch.double)
+    torch.testing.assert_close(actual, expected)
+
+
+def test_normalizer_applies_cvar_to_adverse_tail() -> None:
+    values = torch.tensor(
+        [[1.0], [2.0], [8.0], [9.0], [10.0], [20.0], [30.0], [40.0]],
+        dtype=torch.double,
+    )
+
+    actual = normalize_prediction_rows(
+        values,
+        n_rows=2,
+        risk_type="cvar",
+        alpha=0.5,
+    )
+
+    expected = torch.tensor([[1.5], [15.0]], dtype=torch.double)
+    torch.testing.assert_close(actual, expected)
+
+
 def test_normalizer_handles_reported_80_by_1_shape() -> None:
     values = torch.arange(80, dtype=torch.double).reshape(80, 1)
 
@@ -57,7 +91,7 @@ def test_normalizer_rejects_non_divisible_expansion() -> None:
         normalize_prediction_rows(torch.ones(5, 1), n_rows=2)
 
 
-def test_web_workflow_installs_shared_prediction_normalizer() -> None:
+def test_web_workflow_keeps_display_mean_and_installs_risk_baseline_adapter() -> None:
     assert target_settings._as_2d is normalize_prediction_rows
     assert target_results._as_2d is normalize_prediction_rows
-    assert web_workflows._workflows_tabular._as_2d is normalize_prediction_rows
+    assert web_workflows._workflows_tabular._as_2d is not normalize_prediction_rows

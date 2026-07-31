@@ -10,6 +10,7 @@ on:
       - "src/bochan/serving/fastapi/**"
       - "src/bochan/serving/webapp/**"
       - "src/bochan/visualization/plots.py"
+      - "src/bochan/visualization/target_relation.py"
       - "tests/test_common_model_artifact_api.py"
       - "tests/test_webapp_multiobjective_contract.py"
       - "tests/test_webapp_target_results_contract.py"
@@ -17,6 +18,7 @@ on:
       - "tests/test_webapp_tabular_backend.py"
       - "tests/test_webapp_advanced_controls.py"
       - "tests/test_webapp_model_reuse.py"
+      - "tests/test_webapp_reuse_dataset_and_pareto.py"
       - "tests/test_webapp_model_artifacts.py"
       - "tests/test_web_experiment_history.py"
       - "tests/test_web_experiment_project_archive.py"
@@ -50,6 +52,7 @@ jobs:
             tests/test_webapp_tabular_backend.py \
             tests/test_webapp_advanced_controls.py \
             tests/test_webapp_model_reuse.py \
+            tests/test_webapp_reuse_dataset_and_pareto.py \
             tests/test_webapp_model_artifacts.py \
             tests/test_web_experiment_history.py \
             tests/test_web_experiment_project_archive.py \
@@ -80,6 +83,7 @@ jobs:
             src/bochan/serving/webapp/model_artifacts.py \
             src/bochan/serving/webapp/model_artifact_routes.py \
             src/bochan/serving/webapp/model_reuse.py \
+            src/bochan/serving/webapp/reuse_dataset.py \
             src/bochan/serving/webapp/target_settings.py \
             src/bochan/serving/webapp/target_roles.py \
             src/bochan/serving/webapp/target_results.py \
@@ -90,6 +94,7 @@ jobs:
             src/bochan/serving/webapp/workflows_extended.py \
             src/bochan/serving/webapp/workflows_tabular.py \
             src/bochan/visualization/plots.py \
+            src/bochan/visualization/target_relation.py \
             tests/test_common_model_artifact_api.py \
             tests/test_webapp_multiobjective_contract.py \
             tests/test_webapp_target_results_contract.py \
@@ -97,6 +102,7 @@ jobs:
             tests/test_webapp_tabular_backend.py \
             tests/test_webapp_advanced_controls.py \
             tests/test_webapp_model_reuse.py \
+            tests/test_webapp_reuse_dataset_and_pareto.py \
             tests/test_webapp_model_artifacts.py \
             tests/test_web_experiment_history.py \
             tests/test_web_experiment_project_archive.py \

@@ -12,6 +12,7 @@ from . import target_settings as _target_settings
 from .logging import current_request_id, get_logger, log_event
 from .model_reuse import model_reuse_run, prepare_model_reuse_request
 from .prediction_shapes import normalize_prediction_rows
+from .reuse_dataset import store_for_model_reuse
 from .risk_settings import (
     attach_web_risk_metadata,
     install_web_risk_adapters,
@@ -112,6 +113,11 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     """Run the Tabular workflow and retain objects needed by Results and Logs."""
 
     processing_request, source_run_id = prepare_model_reuse_request(request)
+    workflow_store = store_for_model_reuse(
+        store,
+        processing_request,
+        source_run_id,
+    )
     run_id = current_request_id()
     with (
         target_missing_run(processing_request) as missing_report,
@@ -119,7 +125,10 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         web_risk_run(processing_request) as risk_report,
     ):
         if not run_id:
-            result = _run_regression_web_workflow(processing_request, store)
+            result = _run_regression_web_workflow(
+                processing_request,
+                workflow_store,
+            )
             _attach_missing_metadata(result, missing_report)
             _attach_reuse_metadata(result, reuse_report)
             attach_web_risk_metadata(result, risk_report)
@@ -127,7 +136,10 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
 
         begin_visualization_run(run_id, processing_request)
         try:
-            result = _run_regression_web_workflow(processing_request, store)
+            result = _run_regression_web_workflow(
+                processing_request,
+                workflow_store,
+            )
             session = finalize_visualization_run(run_id, result)
             session.request_details["request_payload"] = (
                 processing_request.model_dump(exclude_none=False)

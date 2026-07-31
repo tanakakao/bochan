@@ -99,3 +99,29 @@ def test_existing_multioutput_acquisition_is_preserved_inside_context_adapter(
 
     assert captured["constraints"] is None
     assert captured["ref_point"] is None
+
+
+def test_sequential_true_is_forced_false_for_population_optimization(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def fake_optimize_acqf_nsgaii(**kwargs):
+        captured.update(kwargs)
+        return (
+            torch.tensor([[0.2], [0.8]], dtype=torch.double),
+            torch.tensor([[0.2, 0.8], [0.8, 0.2]], dtype=torch.double),
+        )
+
+    monkeypatch.setattr(
+        adapter._base,
+        "optimize_acqf_nsgaii",
+        fake_optimize_acqf_nsgaii,
+    )
+
+    adapter.optimize_acqf_nsgaii(
+        acq_function=_ScalarEhviLikeAcquisition(),
+        bounds=torch.tensor([[0.0], [1.0]], dtype=torch.double),
+        q=2,
+        sequential=True,
+    )
+
+    assert captured["sequential"] is False

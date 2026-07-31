@@ -138,7 +138,8 @@ def optimize_acqf_nsgaii(
         max_attempts: Number of retry attempts.
         validate_output: Whether to validate output shape.
         validate_discrete: Whether to validate discrete choices.
-        sequential: Accepted for API alignment; NSGA-II is population based.
+        sequential: Accepted for API alignment and ignored. NSGA-II always runs
+            as a non-sequential population-based optimizer.
         **kwargs: Additional current BoTorch optimizer options.
 
     Returns:
@@ -183,7 +184,7 @@ def optimize_acqf_nsgaii(
         max_attempts=max_attempts,
         validate_output=validate_output,
         validate_discrete=validate_discrete,
-        sequential=sequential,
+        sequential=False,
         **kwargs,
     )
 

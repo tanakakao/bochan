@@ -3,6 +3,10 @@ from __future__ import annotations
 import torch
 
 import bochan.optim.nsgaii_adapter as adapter
+from bochan.optim.nsgaii_outputs import (
+    NSGAIIAcquisitionContextAdapter,
+    NSGAIIObjectiveOutputAdapter,
+)
 
 
 class _FakeMultiOutputModel:
@@ -132,3 +136,23 @@ def test_sequential_true_is_forced_false_for_population_optimization(monkeypatch
     )
 
     assert captured["sequential"] is False
+
+
+def test_objective_adapter_restores_missing_singleton_q_axis_before_validation() -> None:
+    """Deterministic population values keep q=1 before BoTorch validates them."""
+    from botorch.acquisition.multi_objective.objective import (
+        IdentityMCMultiOutputObjective,
+    )
+
+    context = NSGAIIAcquisitionContextAdapter(lambda X: X)
+    context.last_X = torch.rand(250, 1, 3, dtype=torch.double)
+    objective = NSGAIIObjectiveOutputAdapter(
+        IdentityMCMultiOutputObjective(),
+        context,
+    )
+    samples = torch.rand(250, 2, dtype=torch.double)
+
+    values = objective(samples)
+
+    assert values.shape == torch.Size([250, 1, 2])
+    torch.testing.assert_close(values[:, 0, :], samples)

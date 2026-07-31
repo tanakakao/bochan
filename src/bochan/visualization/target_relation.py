@@ -32,6 +32,7 @@ def show_target_relation_plot(
     *,
     task_types: Mapping[str, str] | None = None,
     category_orders: Mapping[str, Sequence[Any]] | None = None,
+    df_cand: pd.DataFrame | None = None,
     cycle: str | Sequence[Any] | pd.Series | None = None,
     aggregate_categorical: bool = True,
 ) -> Figure:
@@ -48,6 +49,9 @@ def show_target_relation_plot(
         ``binary``、``multiclass``、``ordinal`` を受け付ける。省略時はdtypeから推定する。
     category_orders:
         分類・順序変数の表示順。順序回帰では低位から高位の順を指定する。
+    df_cand:
+        候補点の予測平均・標準偏差を含むデータフレーム。両軸が回帰の場合に
+        ``show_pareto_plot`` へ渡す。
     cycle:
         サイクル列名またはサイクル系列。指定時はサイクル別にトレースを分ける。
     aggregate_categorical:
@@ -76,6 +80,7 @@ def show_target_relation_plot(
             y,
             target1,
             target2,
+            df_cand=df_cand,
             cycle=cycle,
         )
 

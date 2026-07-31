@@ -365,6 +365,7 @@ def _target_relation(session: VisualizationSession, target_x: str, target_y: str
         target_y,
         task_types=task_types,
         category_orders=category_orders,
+        df_cand=_candidate_dataframe(session),
     )
 
 
@@ -399,19 +400,12 @@ def _pareto_plot(session: VisualizationSession, target_x: str, target_y: str):
             f"non-regression targets={non_regression!r}."
         )
 
-    figure = show_pareto_plot(
+    return show_pareto_plot(
         session.data[session.target_columns],
         target_x,
         target_y,
         df_cand=_candidate_dataframe(session),
     )
-    figure.update_xaxes(autorange=True)
-    figure.update_yaxes(
-        autorange=True,
-        scaleanchor=None,
-        scaleratio=None,
-    )
-    return figure
 
 
 def _require_features(

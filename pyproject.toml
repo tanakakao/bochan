@@ -30,7 +30,7 @@ classifiers = [
 ]
 dependencies = [
   "torch>=2.13,<2.14",
-  "botorch>=0.18,<0.19",
+  "botorch[pymoo]>=0.18,<0.19",
   "gpytorch>=1.15,<1.16",
   "linear-operator>=0.6,<0.7",
   "numpy>=1.26",
@@ -145,7 +145,7 @@ Repository = "https://github.com/tanakakao/bochan"
 Issues = "https://github.com/tanakakao/bochan/issues"
 
 [tool.setuptools]
-package-dir = { "" = "src" }
+package-dir = "src"
 include-package-data = true
 
 [tool.setuptools.packages.find]

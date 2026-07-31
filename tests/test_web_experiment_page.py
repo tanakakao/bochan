@@ -85,8 +85,11 @@ def test_experiment_result_page_is_connected() -> None:
     assert "Optimizer backend" in history
 
     assert '"target_relation"' in interactive
+    assert '"pareto"' in interactive
     assert "目的変数同士" in interactive
-    assert "Pareto図" not in interactive
+    assert "パレート図" in interactive
+    assert "現データのパレートフロント" in interactive
+    assert "show_pareto_front" in interactive
     assert "result.visualizations.find" in interactive
     assert "!result?.metadata?.stale_after_data_append" in context
     assert "グラフは引き続き確認できます" in results
@@ -94,6 +97,7 @@ def test_experiment_result_page_is_connected() -> None:
     assert "show_target_relation_plot" in target_relation
     assert "aggregate_categorical" in target_relation
     assert "category_orders" in target_relation
+    assert "show_pareto_front" in target_relation
     assert "from bochan.visualization import show_target_relation_plot" in visualization_sessions
     assert "return show_target_relation_plot(" in visualization_sessions
     assert "from .target_relation import show_target_relation_plot" in visualization_init

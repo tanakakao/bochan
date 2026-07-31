@@ -111,6 +111,7 @@ class VisualizationRequestSchema(_Schema):
     target: str | None = None
     target_x: str | None = None
     target_y: str | None = None
+    show_pareto_front: bool = False
     features: list[str] = Field(default_factory=list)
     fixed_values: dict[str, Any] = Field(default_factory=dict)
     show_type: Literal["pred", "acqf"] = "pred"

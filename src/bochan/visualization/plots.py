@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -40,6 +40,48 @@ def _finite_range(values: Any) -> list[float] | None:
         lo -= pad
         hi += pad
     return [lo, hi]
+
+
+def _pareto_front_dataframe(
+    y: pd.DataFrame,
+    target1: str,
+    target2: str,
+    directions: Mapping[str, str] | None,
+) -> pd.DataFrame:
+    """Return unique non-dominated observed points in the original value scale."""
+
+    frame = pd.DataFrame(
+        {
+            target1: pd.to_numeric(y[target1], errors="coerce"),
+            target2: pd.to_numeric(y[target2], errors="coerce"),
+        }
+    )
+    finite_mask = np.isfinite(frame[[target1, target2]].to_numpy(dtype=float)).all(axis=1)
+    frame = frame.loc[finite_mask].drop_duplicates().reset_index(drop=True)
+    if frame.empty:
+        return frame
+
+    resolved_directions: dict[str, str] = {}
+    for target in (target1, target2):
+        direction = str((directions or {}).get(target, "maximize")).strip().lower()
+        if direction not in {"maximize", "minimize"}:
+            raise ValueError(
+                f"directions[{target!r}] must be maximize or minimize, got {direction!r}."
+            )
+        resolved_directions[target] = direction
+
+    aligned = frame[[target1, target2]].to_numpy(dtype=float, copy=True)
+    for index, target in enumerate((target1, target2)):
+        if resolved_directions[target] == "minimize":
+            aligned[:, index] *= -1.0
+
+    dominated = np.zeros(len(frame), dtype=bool)
+    for index, point in enumerate(aligned):
+        no_worse = np.all(aligned >= point, axis=1)
+        strictly_better = np.any(aligned > point, axis=1)
+        dominated[index] = bool(np.any(no_worse & strictly_better))
+
+    return frame.loc[~dominated].sort_values(target1, kind="stable").reset_index(drop=True)
 
 
 def show_yyplot(
@@ -102,33 +144,148 @@ def show_yyplot(
     return fig
 
 
-def show_pareto_plot(y: pd.DataFrame, target1: str, target2: str, df_cand: pd.DataFrame | None = None, *, cycle: str | Sequence[Any] | pd.Series | None = None) -> Figure:
-    """2目的の実測値と候補点を散布する。"""
+def show_pareto_plot(
+    y: pd.DataFrame,
+    target1: str,
+    target2: str,
+    df_cand: pd.DataFrame | None = None,
+    *,
+    directions: Mapping[str, str] | None = None,
+    show_pareto_front: bool = False,
+    cycle: str | Sequence[Any] | pd.Series | None = None,
+    range_padding: float = 0.05,
+) -> Figure:
+    """2目的の実測値・候補点と、任意で現データのパレートフロントを描画する。
+
+    初期表示範囲は実測点と候補点の予測平均から算出する。候補点はフロント判定に
+    含めない。方向を省略した目的変数は最大化として扱う。
+    """
 
     for col in (target1, target2):
         if col not in y.columns:
             raise ValueError(f"y に列 {col!r} が存在しません。")
+    if target1 == target2:
+        raise ValueError("target1 and target2 must be different target variables.")
+    if range_padding < 0:
+        raise ValueError("range_padding must be greater than or equal to zero.")
+
     x = pd.to_numeric(y[target1], errors="coerce")
     z = pd.to_numeric(y[target2], errors="coerce")
+    x_values = [x]
+    y_values = [z]
     cyc = cycle_series(cycle, y=y, length=len(y)) if cycle is not None else None
     cmap = cycle_color_map(cyc)
     fig = go.Figure()
-    if df_cand is not None and all(c in df_cand for c in (f"{target1}_mean", f"{target1}_std", f"{target2}_mean", f"{target2}_std")):
-        fig.add_trace(go.Scatter(
-            x=pd.to_numeric(df_cand[f"{target1}_mean"], errors="coerce"),
-            y=pd.to_numeric(df_cand[f"{target2}_mean"], errors="coerce"),
-            mode="markers", name="候補点", marker=dict(color="green", size=10),
-            error_x=dict(type="data", array=pd.to_numeric(df_cand[f"{target1}_std"], errors="coerce").abs(), visible=True),
-            error_y=dict(type="data", array=pd.to_numeric(df_cand[f"{target2}_std"], errors="coerce").abs(), visible=True),
-        ))
+
+    candidate_columns = (
+        f"{target1}_mean",
+        f"{target1}_std",
+        f"{target2}_mean",
+        f"{target2}_std",
+    )
+    if df_cand is not None and all(column in df_cand for column in candidate_columns):
+        candidate_x = pd.to_numeric(df_cand[f"{target1}_mean"], errors="coerce")
+        candidate_y = pd.to_numeric(df_cand[f"{target2}_mean"], errors="coerce")
+        candidate_x_std = pd.to_numeric(
+            df_cand[f"{target1}_std"], errors="coerce"
+        ).abs()
+        candidate_y_std = pd.to_numeric(
+            df_cand[f"{target2}_std"], errors="coerce"
+        ).abs()
+        x_values.append(candidate_x)
+        y_values.append(candidate_y)
+        fig.add_trace(
+            go.Scatter(
+                x=candidate_x,
+                y=candidate_y,
+                mode="markers",
+                name="候補点",
+                marker=dict(color="green", size=10, symbol="diamond"),
+                error_x=dict(type="data", array=candidate_x_std, visible=True),
+                error_y=dict(type="data", array=candidate_y_std, visible=True),
+            )
+        )
+
     if cyc is None:
-        fig.add_trace(go.Scatter(x=x, y=z, mode="markers", name="入力データ", marker=dict(color="blue", size=10)))
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=z,
+                mode="markers",
+                name="入力データ",
+                marker=dict(color="blue", size=10),
+            )
+        )
     else:
         for c, color in cmap.items():
             mask = cyc == c
-            fig.add_trace(go.Scatter(x=x[mask], y=z[mask], mode="markers", name=f"cycle {c}", marker=dict(color=color, size=9, line=dict(width=0.5, color="black"))))
-    fig.update_yaxes(scaleanchor="x", scaleratio=1)
-    fig.update_layout(height=600, width=600, xaxis_title=target1, yaxis_title=target2, legend_title_text="系列", font_size=16)
+            fig.add_trace(
+                go.Scatter(
+                    x=x[mask],
+                    y=z[mask],
+                    mode="markers",
+                    name=f"cycle {c}",
+                    marker=dict(
+                        color=color,
+                        size=9,
+                        line=dict(width=0.5, color="black"),
+                    ),
+                )
+            )
+
+    if show_pareto_front:
+        pareto_front = _pareto_front_dataframe(y, target1, target2, directions)
+        if not pareto_front.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=pareto_front[target1],
+                    y=pareto_front[target2],
+                    mode="lines+markers",
+                    name="パレートフロント",
+                    line=dict(color="crimson", width=3),
+                    marker=dict(
+                        color="crimson",
+                        size=9,
+                        symbol="circle-open",
+                        line=dict(width=2, color="crimson"),
+                    ),
+                    hovertemplate=(
+                        f"{target1}: %{{x}}<br>{target2}: %{{y}}"
+                        "<extra>パレートフロント</extra>"
+                    ),
+                )
+            )
+
+    def displayed_range(values: list[pd.Series]) -> list[float] | None:
+        combined = pd.concat(values, ignore_index=True)
+        finite = pd.to_numeric(combined, errors="coerce").to_numpy(dtype=float)
+        finite = finite[np.isfinite(finite)]
+        if finite.size == 0:
+            return None
+        lower = float(np.min(finite))
+        upper = float(np.max(finite))
+        span = upper - lower
+        if span == 0.0:
+            padding = 0.5 if lower == 0.0 else max(abs(lower) * 0.05, 1e-12)
+        else:
+            padding = span * float(range_padding)
+        return [lower - padding, upper + padding]
+
+    x_range = displayed_range(x_values)
+    y_range = displayed_range(y_values)
+    if x_range is not None:
+        fig.update_xaxes(range=x_range, autorange=False, fixedrange=False)
+    if y_range is not None:
+        fig.update_yaxes(range=y_range, autorange=False, fixedrange=False)
+    fig.update_layout(
+        height=600,
+        width=600,
+        xaxis_title=target1,
+        yaxis_title=target2,
+        legend_title_text="系列",
+        font_size=16,
+        dragmode="zoom",
+    )
     return fig
 
 

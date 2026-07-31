@@ -22,6 +22,45 @@ def _find_last_contiguous_shape(
     return None
 
 
+def restore_nsgaii_singleton_q_axis(values: Tensor, X: Tensor | None) -> Tensor:
+    """Restore a missing ``q=1`` axis before BoTorch objective validation.
+
+    ``MultiOutputPosteriorMean`` may return deterministic values with shape
+    ``batch_shape x m`` for an input with shape ``batch_shape x 1 x d``. BoTorch
+    multi-output objectives validate the q-axis before bochan can post-process
+    their output, so the missing singleton axis must be restored before calling
+    the objective.
+
+    Expanded one-to-many outputs such as ``batch_shape x n_w x m`` are left
+    unchanged so their dedicated perturbation objectives can aggregate them.
+    """
+
+    values = torch.as_tensor(values)
+    if X is None or values.ndim == 0:
+        return values
+
+    X = torch.as_tensor(X)
+    if X.ndim < 2 or int(X.shape[-2]) != 1:
+        return values
+
+    batch_shape = tuple(int(size) for size in X.shape[:-2])
+    value_shape = tuple(int(size) for size in values.shape)
+
+    if not batch_shape:
+        if values.ndim == 1:
+            return values.unsqueeze(-2)
+        return values
+
+    start = _find_last_contiguous_shape(value_shape, batch_shape)
+    if start is None:
+        return values
+
+    q_axis = start + len(batch_shape)
+    if len(value_shape) - q_axis != 1:
+        return values
+    return values.unsqueeze(q_axis)
+
+
 def reduce_nsgaii_model_sample_axes(values: Tensor, X: Tensor | None) -> Tensor:
     """Average DeepGP sample axes while preserving X batch and q axes.
 
@@ -115,15 +154,16 @@ class NSGAIIObjectiveOutputAdapter:
         if eval_X is None:
             eval_X = self.acquisition_context.last_X
 
+        prepared_samples = restore_nsgaii_singleton_q_axis(samples, eval_X)
         if self.objective is None:
-            values = samples
+            values = prepared_samples
         elif eval_X is not None:
             try:
-                values = self.objective(samples, X=eval_X)
+                values = self.objective(prepared_samples, X=eval_X)
             except TypeError:
-                values = self.objective(samples)
+                values = self.objective(prepared_samples)
         else:
-            values = self.objective(samples)
+            values = self.objective(prepared_samples)
 
         return reduce_nsgaii_model_sample_axes(values, eval_X)
 
@@ -147,4 +187,5 @@ __all__ = [
     "NSGAIIObjectiveOutputAdapter",
     "adapt_nsgaii_outputs",
     "reduce_nsgaii_model_sample_axes",
+    "restore_nsgaii_singleton_q_axis",
 ]

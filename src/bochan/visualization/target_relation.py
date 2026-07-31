@@ -69,6 +69,16 @@ def show_target_relation_plot(
     normalized_orders = dict(category_orders or {})
     task1 = _normalize_task_type(normalized_tasks.get(target1), y[target1])
     task2 = _normalize_task_type(normalized_tasks.get(target2), y[target2])
+    if task1 == "regression" and task2 == "regression":
+        from .plots import show_pareto_plot
+
+        return show_pareto_plot(
+            y,
+            target1,
+            target2,
+            cycle=cycle,
+        )
+
     categorical_pair = task1 != "regression" and task2 != "regression"
 
     frame = y[[target1, target2]].copy()

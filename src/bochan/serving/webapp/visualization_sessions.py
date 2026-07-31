@@ -120,6 +120,7 @@ def finalize_visualization_run(run_id: str, result: dict[str, Any]) -> Visualiza
 
     session = get_visualization_session(run_id)
     session.rows = list(result.get("candidates") or [])
+    session.request_details["directions"] = dict(result.get("directions") or {})
     if session.candidate_result is not None and session.rows:
         raw_values = [row.get("raw", {}).get("candidate") for row in session.rows]
         if all(value is not None for value in raw_values):
@@ -305,6 +306,16 @@ def _candidate_dataframe(session: VisualizationSession):
     return pd.DataFrame(records)
 
 
+def _session_directions(session: VisualizationSession) -> dict[str, str]:
+    """Return effective target directions for current and restored sessions."""
+
+    directions = dict(session.request_details.get("directions") or {})
+    result = getattr(session, "result", None)
+    if isinstance(result, dict):
+        directions.update(dict(result.get("directions") or {}))
+    return {str(target): str(direction) for target, direction in directions.items()}
+
+
 def _yyplot(session: VisualizationSession, target: str):
     if target not in session.target_columns:
         raise ValueError(f"target must be one of {session.target_columns!r}.")
@@ -341,7 +352,13 @@ def _yyplot(session: VisualizationSession, target: str):
     return show_yyplot(y, target, preds=preds, df_cand=_candidate_dataframe(session))
 
 
-def _target_relation(session: VisualizationSession, target_x: str, target_y: str):
+def _target_relation(
+    session: VisualizationSession,
+    target_x: str,
+    target_y: str,
+    *,
+    show_pareto_front: bool = False,
+):
     """Delegate mixed-output target plotting to the public visualization API."""
 
     from bochan.visualization import show_target_relation_plot
@@ -366,10 +383,18 @@ def _target_relation(session: VisualizationSession, target_x: str, target_y: str
         task_types=task_types,
         category_orders=category_orders,
         df_cand=_candidate_dataframe(session),
+        directions=_session_directions(session),
+        show_pareto_front=show_pareto_front,
     )
 
 
-def _pareto_plot(session: VisualizationSession, target_x: str, target_y: str):
+def _pareto_plot(
+    session: VisualizationSession,
+    target_x: str,
+    target_y: str,
+    *,
+    show_pareto_front: bool = False,
+):
     """Build the public Pareto plot with observed and suggested candidate values."""
 
     from bochan.visualization import show_pareto_plot
@@ -405,6 +430,8 @@ def _pareto_plot(session: VisualizationSession, target_x: str, target_y: str):
         target_x,
         target_y,
         df_cand=_candidate_dataframe(session),
+        directions=_session_directions(session),
+        show_pareto_front=show_pareto_front,
     )
 
 
@@ -434,6 +461,7 @@ def build_visualization(run_id: str, request: dict[str, Any]) -> dict[str, Any]:
     target = str(request.get("target") or session.target_columns[0])
     features = [str(value) for value in list(request.get("features") or [])]
     fixed_values = dict(request.get("fixed_values") or {})
+    show_pareto_front = bool(request.get("show_pareto_front", False))
     n = max(10, min(int(request.get("n") or 50), 150))
     show_type = str(request.get("show_type") or "pred")
     if show_type not in {"pred", "acqf"}:
@@ -451,7 +479,12 @@ def build_visualization(run_id: str, request: dict[str, Any]) -> dict[str, Any]:
         target_x = str(request.get("target_x") or "")
         target_y = str(request.get("target_y") or "")
         return _figure_payload(
-            _target_relation(session, target_x, target_y),
+            _target_relation(
+                session,
+                target_x,
+                target_y,
+                show_pareto_front=show_pareto_front,
+            ),
             figure_id=f"target-relation-{target_x}-{target_y}",
             title=f"{target_x} × {target_y}",
             description="実測された目的変数同士の関係を、カテゴリ値を含めて表示します。",
@@ -460,11 +493,19 @@ def build_visualization(run_id: str, request: dict[str, Any]) -> dict[str, Any]:
     if kind == "pareto":
         target_x = str(request.get("target_x") or "")
         target_y = str(request.get("target_y") or "")
+        description = "実測値と候補点の予測平均・標準偏差を表示します。"
+        if show_pareto_front:
+            description += " 現データのパレートフロントを重ねています。"
         return _figure_payload(
-            _pareto_plot(session, target_x, target_y),
+            _pareto_plot(
+                session,
+                target_x,
+                target_y,
+                show_pareto_front=show_pareto_front,
+            ),
             figure_id=f"pareto-{target_x}-{target_y}",
             title=f"{target_x} × {target_y}: Pareto plot",
-            description="実測値と候補点の予測平均・標準偏差を表示します。",
+            description=description,
         )
 
     if target not in session.target_columns:

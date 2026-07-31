@@ -146,6 +146,7 @@ export interface VisualizationRequest {
   target?: string;
   target_x?: string;
   target_y?: string;
+  show_pareto_front?: boolean;
   features?: string[];
   fixed_values?: Record<string, string | number>;
   show_type?: "pred" | "acqf";

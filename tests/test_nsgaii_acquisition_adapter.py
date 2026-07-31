@@ -24,6 +24,13 @@ class _ScalarEhviLikeAcquisition:
         self.ref_point = torch.tensor([0.0, 0.0], dtype=torch.double)
 
 
+def test_botorch_nsgaii_backend_is_installed() -> None:
+    """The project dependency includes BoTorch's optional pymoo backend."""
+    from botorch.utils.multi_objective.optimize import optimize_with_nsgaii
+
+    assert callable(optimize_with_nsgaii)
+
+
 def test_scalar_multiobjective_acquisition_is_adapted_to_posterior_mean(monkeypatch) -> None:
     captured: dict[str, object] = {}
 

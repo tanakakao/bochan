@@ -368,6 +368,52 @@ def _target_relation(session: VisualizationSession, target_x: str, target_y: str
     )
 
 
+def _pareto_plot(session: VisualizationSession, target_x: str, target_y: str):
+    """Build the public Pareto plot with observed and suggested candidate values."""
+
+    from bochan.visualization import show_pareto_plot
+
+    if target_x == target_y:
+        raise ValueError("Pareto axes must use different target variables.")
+    missing = [
+        target
+        for target in (target_x, target_y)
+        if target not in session.target_columns
+    ]
+    if missing:
+        raise ValueError(
+            f"Unsupported Pareto target variables: {missing!r}; "
+            f"available={session.target_columns!r}."
+        )
+    non_regression = [
+        target
+        for target in (target_x, target_y)
+        if str(
+            session.target_metadata[target].get("internal_task") or "regression"
+        )
+        != "regression"
+    ]
+    if non_regression:
+        raise ValueError(
+            "Pareto plot requires two regression targets; "
+            f"non-regression targets={non_regression!r}."
+        )
+
+    figure = show_pareto_plot(
+        session.data[session.target_columns],
+        target_x,
+        target_y,
+        df_cand=_candidate_dataframe(session),
+    )
+    figure.update_xaxes(autorange=True)
+    figure.update_yaxes(
+        autorange=True,
+        scaleanchor=None,
+        scaleratio=None,
+    )
+    return figure
+
+
 def _require_features(
     session: VisualizationSession,
     values: list[str],
@@ -407,7 +453,7 @@ def build_visualization(run_id: str, request: dict[str, Any]) -> dict[str, Any]:
             description="既存のPlotly YY plotで実測値と予測値を比較します。",
         )
 
-    if kind in {"target_relation", "pareto"}:
+    if kind == "target_relation":
         target_x = str(request.get("target_x") or "")
         target_y = str(request.get("target_y") or "")
         return _figure_payload(
@@ -415,6 +461,16 @@ def build_visualization(run_id: str, request: dict[str, Any]) -> dict[str, Any]:
             figure_id=f"target-relation-{target_x}-{target_y}",
             title=f"{target_x} × {target_y}",
             description="実測された目的変数同士の関係を、カテゴリ値を含めて表示します。",
+        )
+
+    if kind == "pareto":
+        target_x = str(request.get("target_x") or "")
+        target_y = str(request.get("target_y") or "")
+        return _figure_payload(
+            _pareto_plot(session, target_x, target_y),
+            figure_id=f"pareto-{target_x}-{target_y}",
+            title=f"{target_x} × {target_y}: Pareto plot",
+            description="実測値と候補点の予測平均・標準偏差を表示します。",
         )
 
     if target not in session.target_columns:
@@ -503,7 +559,9 @@ def build_visualization(run_id: str, request: dict[str, Any]) -> dict[str, Any]:
             description="既存のPlotly三角図です。",
         )
 
-    raise ValueError("kind must be yyplot, target_relation, 1d, 2d, or ternary.")
+    raise ValueError(
+        "kind must be yyplot, target_relation, pareto, 1d, 2d, or ternary."
+    )
 
 
 __all__ = [

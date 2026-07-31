@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -40,6 +40,48 @@ def _finite_range(values: Any) -> list[float] | None:
         lo -= pad
         hi += pad
     return [lo, hi]
+
+
+def _pareto_front_dataframe(
+    y: pd.DataFrame,
+    target1: str,
+    target2: str,
+    directions: Mapping[str, str] | None,
+) -> pd.DataFrame:
+    """Return unique non-dominated observed points in the original value scale."""
+
+    frame = pd.DataFrame(
+        {
+            target1: pd.to_numeric(y[target1], errors="coerce"),
+            target2: pd.to_numeric(y[target2], errors="coerce"),
+        }
+    )
+    finite_mask = np.isfinite(frame[[target1, target2]].to_numpy(dtype=float)).all(axis=1)
+    frame = frame.loc[finite_mask].drop_duplicates().reset_index(drop=True)
+    if frame.empty:
+        return frame
+
+    resolved_directions: dict[str, str] = {}
+    for target in (target1, target2):
+        direction = str((directions or {}).get(target, "maximize")).strip().lower()
+        if direction not in {"maximize", "minimize"}:
+            raise ValueError(
+                f"directions[{target!r}] must be maximize or minimize, got {direction!r}."
+            )
+        resolved_directions[target] = direction
+
+    aligned = frame[[target1, target2]].to_numpy(dtype=float, copy=True)
+    for index, target in enumerate((target1, target2)):
+        if resolved_directions[target] == "minimize":
+            aligned[:, index] *= -1.0
+
+    dominated = np.zeros(len(frame), dtype=bool)
+    for index, point in enumerate(aligned):
+        no_worse = np.all(aligned >= point, axis=1)
+        strictly_better = np.any(aligned > point, axis=1)
+        dominated[index] = bool(np.any(no_worse & strictly_better))
+
+    return frame.loc[~dominated].sort_values(target1, kind="stable").reset_index(drop=True)
 
 
 def show_yyplot(
@@ -108,18 +150,22 @@ def show_pareto_plot(
     target2: str,
     df_cand: pd.DataFrame | None = None,
     *,
+    directions: Mapping[str, str] | None = None,
+    show_pareto_front: bool = False,
     cycle: str | Sequence[Any] | pd.Series | None = None,
     range_padding: float = 0.05,
 ) -> Figure:
-    """2目的の実測値と候補点を、独立したデータ範囲の軸で散布する。
+    """2目的の実測値・候補点と、任意で現データのパレートフロントを描画する。
 
-    初期表示範囲は実測点と候補点の予測平均から算出する。x/y 軸は連動させず、
-    Plotly のドラッグズームで選択した範囲と実際の拡大範囲を一致させる。
+    初期表示範囲は実測点と候補点の予測平均から算出する。候補点はフロント判定に
+    含めない。方向を省略した目的変数は最大化として扱う。
     """
 
     for col in (target1, target2):
         if col not in y.columns:
             raise ValueError(f"y に列 {col!r} が存在しません。")
+    if target1 == target2:
+        raise ValueError("target1 and target2 must be different target variables.")
     if range_padding < 0:
         raise ValueError("range_padding must be greater than or equal to zero.")
 
@@ -183,6 +229,29 @@ def show_pareto_plot(
                         color=color,
                         size=9,
                         line=dict(width=0.5, color="black"),
+                    ),
+                )
+            )
+
+    if show_pareto_front:
+        pareto_front = _pareto_front_dataframe(y, target1, target2, directions)
+        if not pareto_front.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=pareto_front[target1],
+                    y=pareto_front[target2],
+                    mode="lines+markers",
+                    name="パレートフロント",
+                    line=dict(color="crimson", width=3),
+                    marker=dict(
+                        color="crimson",
+                        size=9,
+                        symbol="circle-open",
+                        line=dict(width=2, color="crimson"),
+                    ),
+                    hovertemplate=(
+                        f"{target1}: %{{x}}<br>{target2}: %{{y}}"
+                        "<extra>パレートフロント</extra>"
                     ),
                 )
             )

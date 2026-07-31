@@ -7,6 +7,7 @@ import pandas as pd
 from bochan.serving.webapp.reuse_dataset import store_for_model_reuse
 from bochan.serving.webapp.visualization_sessions import (
     VisualizationSession,
+    _pareto_plot,
     register_visualization_session,
 )
 from bochan.visualization import show_target_relation_plot
@@ -113,3 +114,47 @@ def test_regression_target_relation_delegates_to_pareto_visualization(
     assert captured["df_cand"] is None
     assert captured["cycle"] is None
     pd.testing.assert_frame_equal(captured["y"], data)
+
+
+def test_web_pareto_includes_candidates_and_uses_independent_axes() -> None:
+    session = VisualizationSession(
+        optimizer=SimpleNamespace(model=SimpleNamespace()),
+        tabular_optimizer=SimpleNamespace(dataset=SimpleNamespace(cat_dims=[])),
+        data=pd.DataFrame(
+            {
+                "strength": [0.0, 300.0, 600.0],
+                "conductivity": [10.0, 14.0, 20.0],
+            }
+        ),
+        encoded_targets=pd.DataFrame(),
+        feature_columns=["x"],
+        target_columns=["strength", "conductivity"],
+        target_metadata={
+            "strength": {"internal_task": "regression"},
+            "conductivity": {"internal_task": "regression"},
+        },
+        hybrid_model=False,
+        rows=[
+            {
+                "values": {"x": 0.5},
+                "predictions": {
+                    "strength": {"mean": 420.0, "std": 12.0},
+                    "conductivity": {"mean": 17.5, "std": 0.8},
+                },
+                "acq_value": 1.2,
+            }
+        ],
+    )
+
+    figure = _pareto_plot(session, "strength", "conductivity")
+    traces = {trace.name: trace for trace in figure.data}
+
+    assert set(traces) == {"候補点", "入力データ"}
+    assert list(traces["候補点"].x) == [420.0]
+    assert list(traces["候補点"].y) == [17.5]
+    assert list(traces["候補点"].error_x.array) == [12.0]
+    assert list(traces["候補点"].error_y.array) == [0.8]
+    assert figure.layout.xaxis.autorange is True
+    assert figure.layout.yaxis.autorange is True
+    assert figure.layout.yaxis.scaleanchor is None
+    assert figure.layout.yaxis.scaleratio is None

@@ -13,6 +13,13 @@ class _TwoOutputAcquisition:
         return torch.cat([X[..., :1], 1.0 - X[..., :1]], dim=-1).squeeze(-2)
 
 
+def test_botorch_nsgaii_backend_is_installed() -> None:
+    """The core bochan installation includes BoTorch's optional pymoo backend."""
+    from botorch.utils.multi_objective.optimize import optimize_with_nsgaii
+
+    assert callable(optimize_with_nsgaii)
+
+
 def test_current_nsgaii_signature_receives_public_options(monkeypatch) -> None:
     """Check that the adapter targets the current BoTorch NSGA-II API directly."""
     received: dict[str, object] = {}
@@ -32,8 +39,10 @@ def test_current_nsgaii_signature_receives_public_options(monkeypatch) -> None:
         torch.tensor([1.0], dtype=torch.double),
         0.1,
     )
+
     def repair(X):
         return X
+
     optimize_acqf_nsgaii(
         acq_function=_TwoOutputAcquisition(),
         bounds=torch.tensor([[0.0], [1.0]], dtype=torch.double),

@@ -16,7 +16,7 @@ interface Props {
   result: RegressionResult;
 }
 
-type LeftVisualizationKind = "yyplot" | "target_relation" | "pareto";
+type LeftVisualizationKind = "yyplot" | "pareto";
 
 function PlotCard({
   visualization,
@@ -62,22 +62,30 @@ export default function InteractiveResultPlots({ result }: Props) {
   const options = useMemo(() => defaults(result), [result]);
   const runId = result.visualization_run_id;
   const [leftKind, setLeftKind] = useState<LeftVisualizationKind>(
-    result.visualization_run_id && options.target_columns.length >= 2 ? "target_relation" : "yyplot"
+    result.visualization_run_id && options.regression_targets.length >= 2 ? "pareto" : "yyplot"
   );
   const [leftTarget, setLeftTarget] = useState(options.target_columns[0] ?? "");
-  const [targetX, setTargetX] = useState(options.target_columns[0] ?? "");
-  const [targetY, setTargetY] = useState(options.target_columns[1] ?? options.target_columns[0] ?? "");
+  const [targetX, setTargetX] = useState(options.regression_targets[0] ?? "");
+  const [targetY, setTargetY] = useState(
+    options.regression_targets[1] ?? options.regression_targets[0] ?? ""
+  );
   const [showParetoFront, setShowParetoFront] = useState(false);
   const [rightKind, setRightKind] = useState<"1d" | "2d" | "ternary">("1d");
   const [rightTarget, setRightTarget] = useState(options.target_columns[0] ?? "");
   const [featureA, setFeatureA] = useState(options.feature_columns[0] ?? "");
-  const [featureB, setFeatureB] = useState(options.numeric_features[1] ?? options.numeric_features[0] ?? "");
-  const [featureC, setFeatureC] = useState(options.numeric_features[2] ?? options.numeric_features[0] ?? "");
+  const [featureB, setFeatureB] = useState(
+    options.numeric_features[1] ?? options.numeric_features[0] ?? ""
+  );
+  const [featureC, setFeatureC] = useState(
+    options.numeric_features[2] ?? options.numeric_features[0] ?? ""
+  );
   const [showType, setShowType] = useState<"pred" | "acqf">("pred");
   const initialGroup = options.ternary_groups?.[0];
   const [sumValue, setSumValue] = useState(initialGroup?.sum_value ?? 1);
   const [fixedValues, setFixedValues] = useState<Record<string, string | number>>(() =>
-    Object.fromEntries(Object.entries(options.feature_controls ?? {}).map(([name, control]) => [name, control.default]))
+    Object.fromEntries(
+      Object.entries(options.feature_controls ?? {}).map(([name, control]) => [name, control.default])
+    )
   );
   const [leftPlot, setLeftPlot] = useState<ResultVisualization | null>(null);
   const [rightPlot, setRightPlot] = useState<ResultVisualization | null>(null);
@@ -85,6 +93,12 @@ export default function InteractiveResultPlots({ result }: Props) {
   const [rightLoading, setRightLoading] = useState(false);
   const [leftError, setLeftError] = useState<string | null>(null);
   const [rightError, setRightError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (leftKind === "pareto" && options.regression_targets.length < 2) {
+      setLeftKind("yyplot");
+    }
+  }, [leftKind, options.regression_targets]);
 
   useEffect(() => {
     if (!runId) {
@@ -99,8 +113,8 @@ export default function InteractiveResultPlots({ result }: Props) {
         : "最新モデルの可視化セッションがありません。モデルを信頼してプロジェクトを読み込むか、候補を再生成してください。");
       return;
     }
-    if (leftKind !== "yyplot" && (!targetX || !targetY || targetX === targetY)) {
-      setLeftError("目的変数同士の図には異なる2つの目的変数が必要です。");
+    if (leftKind === "pareto" && (!targetX || !targetY || targetX === targetY)) {
+      setLeftError("パレート図には異なる2つの回帰目的変数が必要です。");
       return;
     }
     let active = true;
@@ -109,13 +123,15 @@ export default function InteractiveResultPlots({ result }: Props) {
     fetchResultVisualization(runId, leftKind === "yyplot"
       ? { kind: "yyplot", target: leftTarget }
       : {
-          kind: leftKind,
+          kind: "pareto",
           target_x: targetX,
           target_y: targetY,
-          show_pareto_front: leftKind === "pareto" ? showParetoFront : undefined
+          show_pareto_front: showParetoFront
         })
       .then((value) => { if (active) setLeftPlot(value); })
-      .catch((caught) => { if (active) setLeftError(caught instanceof Error ? caught.message : String(caught)); })
+      .catch((caught) => {
+        if (active) setLeftError(caught instanceof Error ? caught.message : String(caught));
+      })
       .finally(() => { if (active) setLeftLoading(false); });
     return () => { active = false; };
   }, [leftKind, leftTarget, result.visualizations, runId, showParetoFront, targetX, targetY]);
@@ -147,7 +163,9 @@ export default function InteractiveResultPlots({ result }: Props) {
       n: rightKind === "2d" ? 30 : 50
     })
       .then((value) => { if (active) setRightPlot(value); })
-      .catch((caught) => { if (active) setRightError(caught instanceof Error ? caught.message : String(caught)); })
+      .catch((caught) => {
+        if (active) setRightError(caught instanceof Error ? caught.message : String(caught));
+      })
       .finally(() => { if (active) setRightLoading(false); });
     return () => { active = false; };
   }, [featureA, featureB, featureC, fixedValues, rightKind, rightTarget, runId, showType, sumValue]);
@@ -173,7 +191,6 @@ export default function InteractiveResultPlots({ result }: Props) {
     }
   }
 
-  const leftAxisTargets = leftKind === "pareto" ? options.regression_targets : options.target_columns;
   const rightFeatures = rightKind === "1d" ? options.feature_columns : options.numeric_features;
   const plottedFeatures = new Set(rightKind === "1d" ? [featureA] : rightKind === "2d"
     ? [featureA, featureB] : [featureA, featureB, featureC]);
@@ -184,40 +201,49 @@ export default function InteractiveResultPlots({ result }: Props) {
         <div>
           <span className="eyebrow">Visualization</span>
           <h3>結果の可視化</h3>
-          <p>左にモデル評価／目的変数、右に説明変数空間の既存Plotly図を表示します。</p>
+          <p>左にモデル評価／パレート図、右に説明変数空間の既存Plotly図を表示します。</p>
         </div>
       </div>
 
       <div className="interactive-plot-grid">
         <article className="panel interactive-plot-card">
           <div className="plot-controls">
-            <label>図<select value={leftKind} onChange={(event) => changeLeftKind(event.target.value as LeftVisualizationKind)}>
+            <label>図<select
+              value={leftKind}
+              onChange={(event) => changeLeftKind(event.target.value as LeftVisualizationKind)}
+            >
               <option value="yyplot">YY plot</option>
-              <option value="target_relation" disabled={options.target_columns.length < 2}>目的変数同士</option>
               <option value="pareto" disabled={options.regression_targets.length < 2}>パレート図</option>
             </select></label>
             {leftKind === "yyplot" ? (
-              <label>目的変数<select value={leftTarget} onChange={(event) => setLeftTarget(event.target.value)}>
-                {options.target_columns.map((target) => <option key={target} value={target}>{target}</option>)}
+              <label>目的変数<select
+                value={leftTarget}
+                onChange={(event) => setLeftTarget(event.target.value)}
+              >
+                {options.target_columns.map((target) => (
+                  <option key={target} value={target}>{target}</option>
+                ))}
               </select></label>
             ) : (
               <>
                 <label>横軸目的<select value={targetX} onChange={(event) => setTargetX(event.target.value)}>
-                  {leftAxisTargets.map((target) => <option key={target} value={target}>{target}</option>)}
+                  {options.regression_targets.map((target) => (
+                    <option key={target} value={target}>{target}</option>
+                  ))}
                 </select></label>
                 <label>縦軸目的<select value={targetY} onChange={(event) => setTargetY(event.target.value)}>
-                  {leftAxisTargets.map((target) => <option key={target} value={target}>{target}</option>)}
+                  {options.regression_targets.map((target) => (
+                    <option key={target} value={target}>{target}</option>
+                  ))}
                 </select></label>
-                {leftKind === "pareto" && (
-                  <label className="switch-field">
-                    <input
-                      type="checkbox"
-                      checked={showParetoFront}
-                      onChange={(event) => setShowParetoFront(event.target.checked)}
-                    />
-                    現データのパレートフロント
-                  </label>
-                )}
+                <label className="switch-field">
+                  <input
+                    type="checkbox"
+                    checked={showParetoFront}
+                    onChange={(event) => setShowParetoFront(event.target.checked)}
+                  />
+                  現データのパレートフロント
+                </label>
               </>
             )}
           </div>
@@ -226,7 +252,10 @@ export default function InteractiveResultPlots({ result }: Props) {
 
         <article className="panel interactive-plot-card">
           <div className="plot-controls">
-            <label>図<select value={rightKind} onChange={(event) => changeRightKind(event.target.value as "1d" | "2d" | "ternary")}>
+            <label>図<select
+              value={rightKind}
+              onChange={(event) => changeRightKind(event.target.value as "1d" | "2d" | "ternary")}
+            >
               <option value="1d">1次元プロット</option>
               <option value="2d" disabled={options.numeric_features.length < 2}>2次元プロット</option>
               <option value="ternary" disabled={options.numeric_features.length < 3}>三角図</option>
@@ -248,7 +277,12 @@ export default function InteractiveResultPlots({ result }: Props) {
               <label>変数3<select value={featureC} onChange={(event) => setFeatureC(event.target.value)}>
                 {options.numeric_features.map((feature) => <option key={feature} value={feature}>{feature}</option>)}
               </select></label>
-              <label>合計値<input type="number" step="any" value={sumValue} onChange={(event) => setSumValue(Number(event.target.value))} /></label>
+              <label>合計値<input
+                type="number"
+                step="any"
+                value={sumValue}
+                onChange={(event) => setSumValue(Number(event.target.value))}
+              /></label>
             </>}
           </div>
           <PlotCard visualization={rightPlot} loading={rightLoading} error={rightError} />
@@ -266,13 +300,30 @@ export default function InteractiveResultPlots({ result }: Props) {
                   return <label key={feature} className={disabled ? "plot-slice-disabled" : ""}>
                     <span>{feature}{disabled && "（図で使用中）"}</span>
                     {control.kind === "numeric" ? <>
-                      <input type="range" min={control.min} max={control.max} step="any"
-                        value={Number(fixedValues[feature] ?? control.default)} disabled={disabled}
-                        onChange={(event) => setFixedValues((current) => ({ ...current, [feature]: Number(event.target.value) }))} />
+                      <input
+                        type="range"
+                        min={control.min}
+                        max={control.max}
+                        step="any"
+                        value={Number(fixedValues[feature] ?? control.default)}
+                        disabled={disabled}
+                        onChange={(event) => setFixedValues((current) => ({
+                          ...current,
+                          [feature]: Number(event.target.value)
+                        }))}
+                      />
                       <output>{Number(fixedValues[feature] ?? control.default).toPrecision(5)}</output>
-                    </> : <select value={String(fixedValues[feature] ?? control.default)} disabled={disabled}
-                      onChange={(event) => setFixedValues((current) => ({ ...current, [feature]: event.target.value }))}>
-                      {(control.values ?? []).map((value) => <option key={String(value)} value={String(value)}>{value}</option>)}
+                    </> : <select
+                      value={String(fixedValues[feature] ?? control.default)}
+                      disabled={disabled}
+                      onChange={(event) => setFixedValues((current) => ({
+                        ...current,
+                        [feature]: event.target.value
+                      }))}
+                    >
+                      {(control.values ?? []).map((value) => (
+                        <option key={String(value)} value={String(value)}>{value}</option>
+                      ))}
                     </select>}
                   </label>;
                 })}

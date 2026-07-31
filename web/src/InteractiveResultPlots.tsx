@@ -16,6 +16,8 @@ interface Props {
   result: RegressionResult;
 }
 
+type LeftVisualizationKind = "yyplot" | "target_relation" | "pareto";
+
 function PlotCard({
   visualization,
   loading,
@@ -59,12 +61,13 @@ function defaults(result: RegressionResult): VisualizationOptions {
 export default function InteractiveResultPlots({ result }: Props) {
   const options = useMemo(() => defaults(result), [result]);
   const runId = result.visualization_run_id;
-  const [leftKind, setLeftKind] = useState<"yyplot" | "target_relation">(
+  const [leftKind, setLeftKind] = useState<LeftVisualizationKind>(
     result.visualization_run_id && options.target_columns.length >= 2 ? "target_relation" : "yyplot"
   );
   const [leftTarget, setLeftTarget] = useState(options.target_columns[0] ?? "");
   const [targetX, setTargetX] = useState(options.target_columns[0] ?? "");
   const [targetY, setTargetY] = useState(options.target_columns[1] ?? options.target_columns[0] ?? "");
+  const [showParetoFront, setShowParetoFront] = useState(false);
   const [rightKind, setRightKind] = useState<"1d" | "2d" | "ternary">("1d");
   const [rightTarget, setRightTarget] = useState(options.target_columns[0] ?? "");
   const [featureA, setFeatureA] = useState(options.feature_columns[0] ?? "");
@@ -96,7 +99,7 @@ export default function InteractiveResultPlots({ result }: Props) {
         : "最新モデルの可視化セッションがありません。モデルを信頼してプロジェクトを読み込むか、候補を再生成してください。");
       return;
     }
-    if (leftKind === "target_relation" && (!targetX || !targetY || targetX === targetY)) {
+    if (leftKind !== "yyplot" && (!targetX || !targetY || targetX === targetY)) {
       setLeftError("目的変数同士の図には異なる2つの目的変数が必要です。");
       return;
     }
@@ -105,12 +108,17 @@ export default function InteractiveResultPlots({ result }: Props) {
     setLeftError(null);
     fetchResultVisualization(runId, leftKind === "yyplot"
       ? { kind: "yyplot", target: leftTarget }
-      : { kind: "target_relation", target_x: targetX, target_y: targetY })
+      : {
+          kind: leftKind,
+          target_x: targetX,
+          target_y: targetY,
+          show_pareto_front: leftKind === "pareto" ? showParetoFront : undefined
+        })
       .then((value) => { if (active) setLeftPlot(value); })
       .catch((caught) => { if (active) setLeftError(caught instanceof Error ? caught.message : String(caught)); })
       .finally(() => { if (active) setLeftLoading(false); });
     return () => { active = false; };
-  }, [leftKind, leftTarget, result.visualizations, runId, targetX, targetY]);
+  }, [leftKind, leftTarget, result.visualizations, runId, showParetoFront, targetX, targetY]);
 
   useEffect(() => {
     if (!runId) {
@@ -144,6 +152,14 @@ export default function InteractiveResultPlots({ result }: Props) {
     return () => { active = false; };
   }, [featureA, featureB, featureC, fixedValues, rightKind, rightTarget, runId, showType, sumValue]);
 
+  function changeLeftKind(value: LeftVisualizationKind) {
+    setLeftKind(value);
+    if (value === "pareto") {
+      setTargetX(options.regression_targets[0] ?? "");
+      setTargetY(options.regression_targets[1] ?? options.regression_targets[0] ?? "");
+    }
+  }
+
   function changeRightKind(value: "1d" | "2d" | "ternary") {
     setRightKind(value);
     if (value !== "1d" && !options.numeric_features.includes(featureA)) {
@@ -157,6 +173,7 @@ export default function InteractiveResultPlots({ result }: Props) {
     }
   }
 
+  const leftAxisTargets = leftKind === "pareto" ? options.regression_targets : options.target_columns;
   const rightFeatures = rightKind === "1d" ? options.feature_columns : options.numeric_features;
   const plottedFeatures = new Set(rightKind === "1d" ? [featureA] : rightKind === "2d"
     ? [featureA, featureB] : [featureA, featureB, featureC]);
@@ -174,9 +191,10 @@ export default function InteractiveResultPlots({ result }: Props) {
       <div className="interactive-plot-grid">
         <article className="panel interactive-plot-card">
           <div className="plot-controls">
-            <label>図<select value={leftKind} onChange={(event) => setLeftKind(event.target.value as "yyplot" | "target_relation")}>
+            <label>図<select value={leftKind} onChange={(event) => changeLeftKind(event.target.value as LeftVisualizationKind)}>
               <option value="yyplot">YY plot</option>
               <option value="target_relation" disabled={options.target_columns.length < 2}>目的変数同士</option>
+              <option value="pareto" disabled={options.regression_targets.length < 2}>パレート図</option>
             </select></label>
             {leftKind === "yyplot" ? (
               <label>目的変数<select value={leftTarget} onChange={(event) => setLeftTarget(event.target.value)}>
@@ -185,11 +203,21 @@ export default function InteractiveResultPlots({ result }: Props) {
             ) : (
               <>
                 <label>横軸目的<select value={targetX} onChange={(event) => setTargetX(event.target.value)}>
-                  {options.target_columns.map((target) => <option key={target} value={target}>{target}</option>)}
+                  {leftAxisTargets.map((target) => <option key={target} value={target}>{target}</option>)}
                 </select></label>
                 <label>縦軸目的<select value={targetY} onChange={(event) => setTargetY(event.target.value)}>
-                  {options.target_columns.map((target) => <option key={target} value={target}>{target}</option>)}
+                  {leftAxisTargets.map((target) => <option key={target} value={target}>{target}</option>)}
                 </select></label>
+                {leftKind === "pareto" && (
+                  <label className="switch-field">
+                    <input
+                      type="checkbox"
+                      checked={showParetoFront}
+                      onChange={(event) => setShowParetoFront(event.target.checked)}
+                    />
+                    現データのパレートフロント
+                  </label>
+                )}
               </>
             )}
           </div>

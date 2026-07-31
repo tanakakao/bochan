@@ -84,9 +84,10 @@ def test_experiment_result_page_is_connected() -> None:
     assert "effective_optimizer" in history
     assert "Optimizer backend" in history
 
-    assert '"target_relation"' in interactive
-    assert '"pareto"' in interactive
-    assert "目的変数同士" in interactive
+    assert 'type LeftVisualizationKind = "yyplot" | "pareto";' in interactive
+    assert '"target_relation"' not in interactive
+    assert "目的変数同士" not in interactive
+    assert 'kind: "pareto"' in interactive
     assert "パレート図" in interactive
     assert "現データのパレートフロント" in interactive
     assert "show_pareto_front" in interactive

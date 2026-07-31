@@ -3,11 +3,13 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 
 from bochan.serving.webapp.reuse_dataset import store_for_model_reuse
 from bochan.serving.webapp.visualization_sessions import (
     VisualizationSession,
     _pareto_plot,
+    _target_relation,
     register_visualization_session,
 )
 from bochan.visualization import show_target_relation_plot
@@ -62,7 +64,7 @@ def test_normal_workflow_keeps_original_dataset_store() -> None:
     assert store_for_model_reuse(store, SimpleNamespace(), None) is store
 
 
-def test_regression_target_relation_delegates_to_pareto_visualization(
+def test_regression_target_relation_delegates_candidates_to_pareto_visualization(
     monkeypatch,
 ) -> None:
     expected = SimpleNamespace(name="pareto-figure")
@@ -97,6 +99,14 @@ def test_regression_target_relation_delegates_to_pareto_visualization(
             "conductivity": [5.0, 4.0, 3.0],
         }
     )
+    candidates = pd.DataFrame(
+        {
+            "strength_mean": [2.5],
+            "strength_std": [0.1],
+            "conductivity_mean": [3.5],
+            "conductivity_std": [0.2],
+        }
+    )
 
     figure = show_target_relation_plot(
         data,
@@ -106,18 +116,19 @@ def test_regression_target_relation_delegates_to_pareto_visualization(
             "strength": "regression",
             "conductivity": "regression",
         },
+        df_cand=candidates,
     )
 
     assert figure is expected
     assert captured["target1"] == "strength"
     assert captured["target2"] == "conductivity"
-    assert captured["df_cand"] is None
+    assert captured["df_cand"] is candidates
     assert captured["cycle"] is None
     pd.testing.assert_frame_equal(captured["y"], data)
 
 
-def test_web_pareto_includes_candidates_and_uses_independent_axes() -> None:
-    session = VisualizationSession(
+def _pareto_session() -> VisualizationSession:
+    return VisualizationSession(
         optimizer=SimpleNamespace(model=SimpleNamespace()),
         tabular_optimizer=SimpleNamespace(dataset=SimpleNamespace(cat_dims=[])),
         data=pd.DataFrame(
@@ -138,23 +149,41 @@ def test_web_pareto_includes_candidates_and_uses_independent_axes() -> None:
             {
                 "values": {"x": 0.5},
                 "predictions": {
-                    "strength": {"mean": 420.0, "std": 12.0},
-                    "conductivity": {"mean": 17.5, "std": 0.8},
+                    "strength": {"mean": 420.0, "std": 1200.0},
+                    "conductivity": {"mean": 17.5, "std": 80.0},
                 },
                 "acq_value": 1.2,
             }
         ],
     )
 
-    figure = _pareto_plot(session, "strength", "conductivity")
+
+def test_web_pareto_uses_displayed_data_range_and_independent_zoom_axes() -> None:
+    figure = _pareto_plot(_pareto_session(), "strength", "conductivity")
     traces = {trace.name: trace for trace in figure.data}
 
     assert set(traces) == {"候補点", "入力データ"}
     assert list(traces["候補点"].x) == [420.0]
     assert list(traces["候補点"].y) == [17.5]
-    assert list(traces["候補点"].error_x.array) == [12.0]
-    assert list(traces["候補点"].error_y.array) == [0.8]
-    assert figure.layout.xaxis.autorange is True
-    assert figure.layout.yaxis.autorange is True
+    assert list(traces["候補点"].error_x.array) == [1200.0]
+    assert list(traces["候補点"].error_y.array) == [80.0]
+    assert list(figure.layout.xaxis.range) == pytest.approx([-30.0, 630.0])
+    assert list(figure.layout.yaxis.range) == pytest.approx([9.5, 20.5])
+    assert figure.layout.xaxis.autorange is False
+    assert figure.layout.yaxis.autorange is False
+    assert figure.layout.xaxis.fixedrange is False
+    assert figure.layout.yaxis.fixedrange is False
+    assert figure.layout.xaxis.scaleanchor is None
     assert figure.layout.yaxis.scaleanchor is None
     assert figure.layout.yaxis.scaleratio is None
+    assert figure.layout.dragmode == "zoom"
+
+
+def test_target_relation_web_path_uses_same_pareto_range_and_candidates() -> None:
+    figure = _target_relation(_pareto_session(), "strength", "conductivity")
+    traces = {trace.name: trace for trace in figure.data}
+
+    assert set(traces) == {"候補点", "入力データ"}
+    assert list(figure.layout.xaxis.range) == pytest.approx([-30.0, 630.0])
+    assert list(figure.layout.yaxis.range) == pytest.approx([9.5, 20.5])
+    assert figure.layout.yaxis.scaleanchor is None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from math import prod, sqrt
 from typing import Any, Optional, Sequence
 
 import torch
@@ -13,8 +14,10 @@ from botorch.models.transforms.outcome import OutcomeTransform
 from botorch.posteriors import Posterior
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 
+from gpytorch.distributions import MultivariateNormal
 from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
 from gpytorch.models.deep_gps import DeepGP
+from linear_operator.operators import PsdSumLinearOperator, RootLinearOperator
 
 from bochan.models.components.layers.hidden_layers import (
     DeepGPHiddenLayer,
@@ -62,6 +65,75 @@ class _BaseGammaDeepGPModel(DeepGP, GPyTorchModel):
             cat_dims=getattr(self, "cat_dims", None),
         )
 
+    @staticmethod
+    def _moment_match_deepgp_distribution(
+        dist: MultivariateNormal,
+        X: Tensor,
+    ) -> MultivariateNormal:
+        """DeepGP の内部サンプル次元をモーメントマッチングで集約する。
+
+        BoTorch の単一出力モデルは、入力 ``batch_shape x q x d`` に対して
+        posterior の event shape が ``q x 1`` となることを期待する。一方、
+        GPyTorch の DeepGP は likelihood sample 次元を先頭に追加するため、
+        その次元を公開 posterior に残さないように集約する。
+
+        各 DeepGP 成分を ``N(mu_s, Sigma_s)`` としたとき、
+
+        ``mu = E_s[mu_s]``
+        ``Sigma = E_s[Sigma_s] + Cov_s(mu_s)``
+
+        を用いて単一の MultivariateNormal に近似する。
+        """
+        mean = dist.mean
+        expected_mean_shape = torch.Size(X.shape[:-1])
+        extra_ndim = mean.ndim - len(expected_mean_shape)
+
+        if extra_ndim < 0:
+            raise RuntimeError(
+                "DeepGP posterior mean has fewer dimensions than expected. "
+                f"mean.shape={tuple(mean.shape)}, X.shape={tuple(X.shape)}."
+            )
+
+        if extra_ndim == 0:
+            return dist
+
+        if torch.Size(mean.shape[extra_ndim:]) != expected_mean_shape:
+            raise RuntimeError(
+                "DeepGP posterior mean cannot be aligned with X. "
+                f"mean.shape={tuple(mean.shape)}, X.shape={tuple(X.shape)}, "
+                f"extra_ndim={extra_ndim}."
+            )
+
+        q = int(X.shape[-2])
+        expected_covar_shape = torch.Size((*X.shape[:-2], q, q))
+        lazy_covar = dist.lazy_covariance_matrix
+        if torch.Size(lazy_covar.shape[extra_ndim:]) != expected_covar_shape:
+            raise RuntimeError(
+                "DeepGP posterior covariance cannot be aligned with X. "
+                f"covariance.shape={tuple(lazy_covar.shape)}, X.shape={tuple(X.shape)}, "
+                f"extra_ndim={extra_ndim}."
+            )
+
+        component_shape = mean.shape[:extra_ndim]
+        n_components = prod(int(size) for size in component_shape)
+        component_mean = mean.reshape(n_components, *expected_mean_shape)
+        matched_mean = component_mean.mean(dim=0)
+
+        centered_mean = component_mean - matched_mean.unsqueeze(0)
+        between_component_root = centered_mean.movedim(0, -1) / sqrt(n_components)
+        between_component_covar = RootLinearOperator(between_component_root)
+
+        within_component_covar = lazy_covar
+        for _ in range(extra_ndim):
+            within_component_covar = within_component_covar.sum(dim=0)
+        within_component_covar = within_component_covar * (1.0 / n_components)
+
+        matched_covar = PsdSumLinearOperator(
+            within_component_covar,
+            between_component_covar,
+        )
+        return MultivariateNormal(matched_mean, matched_covar)
+
     def latent_posterior(
         self,
         X: Tensor,
@@ -76,6 +148,7 @@ class _BaseGammaDeepGPModel(DeepGP, GPyTorchModel):
         self.eval()
         X_tf = self.transform_inputs(X)
         dist = self(X_tf)
+        dist = self._moment_match_deepgp_distribution(dist, X=X_tf)
         posterior = GPyTorchPosterior(dist)
         if posterior_transform is not None:
             posterior = posterior_transform(posterior)
@@ -154,7 +227,11 @@ class GammaDeepGPModel(_BaseGammaDeepGPModel):
             name="GammaDeepGPModel.outcome_transform",
         )
 
-        train_X_tf = apply_input_transform_for_training(train_X, self.input_transform, name="GammaDeepGPModel.input_transform")
+        train_X_tf = apply_input_transform_for_training(
+            train_X,
+            self.input_transform,
+            name="GammaDeepGPModel.input_transform",
+        )
 
         d = train_X_tf.shape[-1]
         if list_hidden_dims is None:

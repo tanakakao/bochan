@@ -15,3 +15,6 @@ web/dist/
 
 # bochan runtime files
 .bochan/
+
+# notebooks
+notebooks/

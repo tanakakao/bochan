@@ -343,6 +343,11 @@ class _AlignedGammaMixin:
     """Align non-Gaussian Gamma wrappers with regression / ordinal conventions."""
 
     @property
+    def batch_shape(self) -> torch.Size:
+        """Return the model I/O batch shape expected by BoTorch."""
+        return self.train_inputs_raw[0].shape[:-2]
+
+    @property
     def train_inputs(self) -> tuple[Tensor, ...]:
         return self.model.train_inputs
 

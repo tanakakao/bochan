@@ -4,6 +4,7 @@ import numpy as np
 import torch
 
 import bochan.optim.nsgaii_adapter as adapter
+from bochan.optim.nsgaii_diversity import select_diverse_nsgaii_candidates
 from bochan.optim.nsgaii_outputs import (
     NSGAIIAcquisitionContextAdapter,
     NSGAIIObjectiveOutputAdapter,
@@ -27,6 +28,32 @@ class _ScalarEhviLikeAcquisition:
         self.objective = lambda Y: Y
         self.constraints = [lambda Y: 0.2 - Y[..., 0]]
         self.ref_point = torch.tensor([0.0, 0.0], dtype=torch.double)
+
+
+def _clustered_pareto_pool() -> tuple[torch.Tensor, torch.Tensor]:
+    candidates = torch.tensor(
+        [
+            [0.00, 0.00],
+            [0.01, 0.00],
+            [0.02, 0.00],
+            [1.00, 0.00],
+            [0.00, 1.00],
+            [1.00, 1.00],
+        ],
+        dtype=torch.double,
+    )
+    values = torch.tensor(
+        [
+            [1.00, 0.00],
+            [0.99, 0.01],
+            [0.98, 0.02],
+            [0.60, 0.80],
+            [0.80, 0.60],
+            [0.00, 1.00],
+        ],
+        dtype=torch.double,
+    )
+    return candidates, values
 
 
 def test_botorch_nsgaii_backend_is_installed() -> None:
@@ -193,3 +220,78 @@ def test_pymoo_problem_aligns_objective_constraints_and_reference_point() -> Non
 
     assert out["F"].shape == (250, 2)
     assert out["G"].shape == (250, 3)
+
+
+def test_diverse_selector_separates_near_duplicate_input_conditions() -> None:
+    """Final q points should cover the input space as well as the Pareto front."""
+
+    candidates, values = _clustered_pareto_pool()
+
+    selected_X, selected_Y = select_diverse_nsgaii_candidates(
+        candidates,
+        values,
+        q=3,
+        bounds=torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double),
+        input_weight=0.7,
+    )
+
+    assert selected_X.shape == torch.Size([3, 2])
+    assert selected_Y.shape == torch.Size([3, 2])
+    assert float(torch.pdist(selected_X).min()) > 0.9
+
+
+def test_nsgaii_requests_larger_pool_then_returns_diverse_q_batch(monkeypatch) -> None:
+    """q=3 is selected from a larger Pareto-oriented NSGA-II result pool."""
+
+    captured: dict[str, object] = {}
+    pool_X, pool_Y = _clustered_pareto_pool()
+
+    def fake_optimize_acqf_nsgaii(**kwargs):
+        captured.update(kwargs)
+        return pool_X, pool_Y
+
+    monkeypatch.setattr(
+        adapter._base,
+        "optimize_acqf_nsgaii",
+        fake_optimize_acqf_nsgaii,
+    )
+
+    selected_X, selected_Y = adapter.optimize_acqf_nsgaii(
+        acq_function=_ScalarEhviLikeAcquisition(),
+        bounds=torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double),
+        q=3,
+        population_size=100,
+    )
+
+    assert captured["q"] == 60
+    assert selected_X.shape == torch.Size([3, 2])
+    assert selected_Y.shape == torch.Size([3, 2])
+    assert float(torch.pdist(selected_X).min()) > 0.9
+
+
+def test_nsgaii_diversity_can_be_disabled(monkeypatch) -> None:
+    """Direct API users can retain BoTorch's original q-selection behavior."""
+
+    captured: dict[str, object] = {}
+    pool_X, pool_Y = _clustered_pareto_pool()
+
+    def fake_optimize_acqf_nsgaii(**kwargs):
+        captured.update(kwargs)
+        return pool_X[:3], pool_Y[:3]
+
+    monkeypatch.setattr(
+        adapter._base,
+        "optimize_acqf_nsgaii",
+        fake_optimize_acqf_nsgaii,
+    )
+
+    selected_X, selected_Y = adapter.optimize_acqf_nsgaii(
+        acq_function=_ScalarEhviLikeAcquisition(),
+        bounds=torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double),
+        q=3,
+        diversify=False,
+    )
+
+    assert captured["q"] == 3
+    torch.testing.assert_close(selected_X, pool_X[:3])
+    torch.testing.assert_close(selected_Y, pool_Y[:3])

@@ -94,21 +94,27 @@ class _DeepKernelPoissonSVGP(ApproximateGP):
         super().__init__(variational_strategy)
 
         input_dim = train_X.shape[-1]
-        self.feature_extractor = feature_extractor or make_poisson_feature_extractor(
-            input_dim=input_dim,
-            output_dim=input_dim,
-            ext_type=ext_type,
-            hidden_dims=hidden_dims,
-        )
+        self.feature_extractor = (
+            feature_extractor
+            or make_poisson_feature_extractor(
+                input_dim=input_dim,
+                output_dim=input_dim,
+                ext_type=ext_type,
+                hidden_dims=hidden_dims,
+            )
+        ).to(train_X)
         self.deepkernel = self.feature_extractor
-        self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
+        self.scale_to_bounds = ScaleToBounds(-1.0, 1.0).to(train_X)
 
         with torch.no_grad():
             z = self.scale_to_bounds(self.deepkernel(train_X[:1]))
         latent_dim = z.shape[-1]
 
-        self.mean_module = mean_module or ConstantMean()
-        self.covar_module = covar_module or ScaleKernel(MaternKernel(nu=2.5, ard_num_dims=latent_dim)).to(train_X)
+        self.mean_module = (mean_module or ConstantMean()).to(train_X)
+        self.covar_module = (
+            covar_module
+            or ScaleKernel(MaternKernel(nu=2.5, ard_num_dims=latent_dim))
+        ).to(train_X)
         self.train_inputs = (train_X,)
         self.train_targets = train_Y
 
@@ -149,21 +155,31 @@ class _DeepKernelMixedPoissonSVGP(ApproximateGP):
         super().__init__(variational_strategy)
 
         if len(self.cont_dims) > 0:
-            self.feature_extractor = feature_extractor or make_poisson_feature_extractor(
-                input_dim=len(self.cont_dims),
-                output_dim=len(self.cont_dims),
-                ext_type=ext_type,
-                hidden_dims=hidden_dims,
-            )
+            self.feature_extractor = (
+                feature_extractor
+                or make_poisson_feature_extractor(
+                    input_dim=len(self.cont_dims),
+                    output_dim=len(self.cont_dims),
+                    ext_type=ext_type,
+                    hidden_dims=hidden_dims,
+                )
+            ).to(train_X)
             self.deepkernel = self.feature_extractor
-            self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
+            self.scale_to_bounds = ScaleToBounds(-1.0, 1.0).to(train_X)
         else:
-            self.feature_extractor = nn.Identity()
+            self.feature_extractor = nn.Identity().to(train_X)
             self.deepkernel = self.feature_extractor
-            self.scale_to_bounds = nn.Identity()
+            self.scale_to_bounds = nn.Identity().to(train_X)
 
-        self.mean_module = mean_module or ConstantMean()
-        self.covar_module = covar_module or build_mixed_poisson_kernel(d=d, cat_dims=self.cat_dims, batch_shape=torch.Size())
+        self.mean_module = (mean_module or ConstantMean()).to(train_X)
+        self.covar_module = (
+            covar_module
+            or build_mixed_poisson_kernel(
+                d=d,
+                cat_dims=self.cat_dims,
+                batch_shape=torch.Size(),
+            )
+        ).to(train_X)
         self.train_inputs = (train_X,)
         self.train_targets = train_Y
 
@@ -205,8 +221,16 @@ class DeepKernelPoissonGPModel(_BasePoissonGPModel):
         train_X = torch.as_tensor(train_X)
         train_Y = prepare_count_targets(train_Y, train_X)
         input_transform = to_device_dtype_transform(clone_input_transform(input_transform), train_X)
-        train_X_tf = apply_input_transform_for_training(train_X, input_transform, name="DeepKernelPoissonGPModel.input_transform")
-        likelihood = likelihood or PoissonLogLikelihood(link=link, exp_clip=exp_clip, min_rate=min_rate)
+        train_X_tf = apply_input_transform_for_training(
+            train_X,
+            input_transform,
+            name="DeepKernelPoissonGPModel.input_transform",
+        )
+        likelihood = likelihood or PoissonLogLikelihood(
+            link=link,
+            exp_clip=exp_clip,
+            min_rate=min_rate,
+        )
         latent_model = _DeepKernelPoissonSVGP(
             train_X=train_X_tf,
             train_Y=train_Y,
@@ -269,7 +293,11 @@ class DeepKernelPoissonMixedGPModel(_BasePoissonGPModel):
             cat_dims=cat_dims,
             name="DeepKernelPoissonMixedGPModel.input_transform",
         )
-        likelihood = likelihood or PoissonLogLikelihood(link=link, exp_clip=exp_clip, min_rate=min_rate)
+        likelihood = likelihood or PoissonLogLikelihood(
+            link=link,
+            exp_clip=exp_clip,
+            min_rate=min_rate,
+        )
         latent_model = _DeepKernelMixedPoissonSVGP(
             train_X=train_X_tf,
             train_Y=train_Y,

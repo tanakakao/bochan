@@ -13,6 +13,7 @@ from typing import Any
 from torch import Tensor
 
 from . import nsgaii as _base
+from .nsgaii_diversity import select_diverse_nsgaii_candidates
 from .nsgaii_outputs import adapt_nsgaii_outputs
 
 LinearConstraint = _base.LinearConstraint
@@ -92,6 +93,60 @@ def _resolve_nsgaii_target(acq_function: Any) -> Any:
     return MultiOutputPosteriorMean(model=model)
 
 
+def _resolve_diversity_pool_size(
+    *,
+    q: int,
+    population_size: int,
+    diversity_pool_size: int | None,
+) -> int:
+    """Return a larger final pool from which the requested batch is selected."""
+
+    if diversity_pool_size is not None:
+        pool_size = int(diversity_pool_size)
+        if pool_size < q:
+            raise ValueError(
+                "diversity_pool_size must be greater than or equal to q. "
+                f"Got diversity_pool_size={pool_size}, q={q}."
+            )
+        return pool_size
+
+    preferred = max(50, q * 20)
+    return max(q, min(max(int(population_size), q), preferred))
+
+
+def _select_final_diverse_batch(
+    candidates: Tensor,
+    values: Tensor,
+    *,
+    q: int,
+    bounds: Tensor,
+    input_weight: float,
+) -> tuple[Tensor, Tensor]:
+    """Prefer nondominated rows, then fill any shortage by maximin distance."""
+
+    from botorch.utils.multi_objective.pareto import is_non_dominated
+
+    pareto_mask = is_non_dominated(values, deduplicate=True)
+    pareto_indices = pareto_mask.nonzero(as_tuple=False).reshape(-1)
+    if pareto_indices.numel() >= q:
+        return select_diverse_nsgaii_candidates(
+            candidates[pareto_indices],
+            values[pareto_indices],
+            q=q,
+            bounds=bounds,
+            input_weight=input_weight,
+        )
+
+    return select_diverse_nsgaii_candidates(
+        candidates,
+        values,
+        q=q,
+        bounds=bounds,
+        input_weight=input_weight,
+        initial_indices=pareto_indices,
+    )
+
+
 def optimize_acqf_nsgaii(
     acq_function: Any,
     bounds: Tensor,
@@ -114,6 +169,9 @@ def optimize_acqf_nsgaii(
     validate_output: bool = True,
     validate_discrete: bool = True,
     sequential: bool = False,
+    diversify: bool = True,
+    diversity_input_weight: float = 0.7,
+    diversity_pool_size: int | None = None,
     **kwargs: Any,
 ) -> tuple[Tensor, Tensor]:
     """Optimize a model's vector objective with NSGA-II.
@@ -140,6 +198,14 @@ def optimize_acqf_nsgaii(
         validate_discrete: Whether to validate discrete choices.
         sequential: Accepted for API alignment and ignored. NSGA-II always runs
             as a non-sequential population-based optimizer.
+        diversify: Whether to select the final q-batch from a larger Pareto-oriented
+            pool using input-space and objective-space maximin distances.
+        diversity_input_weight: Weight of normalized input-space distance in the
+            diversity selector. Objective-space distance receives the remaining
+            weight.
+        diversity_pool_size: Optional number of NSGA-II results retained before
+            selecting the final q-batch. The automatic value is at least 50 or
+            ``20 * q``, capped by ``population_size`` when possible.
         **kwargs: Additional current BoTorch optimizer options.
 
     Returns:
@@ -164,10 +230,18 @@ def optimize_acqf_nsgaii(
     # and objective with a shared X context and reduce only those leading axes.
     target, objective = adapt_nsgaii_outputs(target, objective)
 
-    return _base.optimize_acqf_nsgaii(
+    backend_q = q
+    if diversify and q is not None and q > 1:
+        backend_q = _resolve_diversity_pool_size(
+            q=q,
+            population_size=population_size,
+            diversity_pool_size=diversity_pool_size,
+        )
+
+    candidates, values = _base.optimize_acqf_nsgaii(
         acq_function=target,
         bounds=bounds,
-        q=q,
+        q=backend_q,
         num_objectives=num_objectives,
         ref_point=ref_point,
         objective=objective,
@@ -187,6 +261,16 @@ def optimize_acqf_nsgaii(
         sequential=False,
         **kwargs,
     )
+
+    if diversify and q is not None and q > 1 and candidates.shape[-2] > q:
+        candidates, values = _select_final_diverse_batch(
+            candidates,
+            values,
+            q=q,
+            bounds=bounds,
+            input_weight=diversity_input_weight,
+        )
+    return candidates, values
 
 
 equality_constraints_to_inequality_constraints = (

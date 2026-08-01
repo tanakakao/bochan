@@ -97,7 +97,9 @@ jobs:
             src/bochan/models/wide_multitask.py \
             src/bochan/models/wide_multitask_variants.py \
             src/bochan/optim/__init__.py \
+            src/bochan/optim/nsgaii_adapter.py \
             src/bochan/optim/nsgaii_constraints.py \
+            src/bochan/optim/nsgaii_diversity.py \
             src/bochan/optim/torch_multitask.py \
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/optimizer_api.py \
@@ -128,6 +130,7 @@ jobs:
             tests/test_multiclass_nparego_public_api.py \
             tests/test_multiobjective_thompson_sampling.py \
             tests/test_thompson_sampling_target_resolution.py \
+            tests/test_nsgaii_acquisition_adapter.py \
             tests/test_nsgaii_linear_constraint.py \
             tests/test_tabular_outcome_constraint_column_names.py \
             tests/test_tabular_non_native_outcome_constraints.py \

@@ -6,12 +6,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, Literal, Sequence
+from typing import Any, Literal
 
 from torch import nn
-
 
 TaskType = Literal[
     "regression",
@@ -84,7 +83,7 @@ class AutoStandardizeOutcomeTransform(nn.Module):
     def untransform_posterior(self, posterior: Any, X: Any | None = None) -> Any:
         return self._ensure_transform().untransform_posterior(posterior, X=X)
 
-    def subset_output(self, idcs: Any) -> "AutoStandardizeOutcomeTransform":
+    def subset_output(self, idcs: Any) -> AutoStandardizeOutcomeTransform:
         new = type(self)()
         if self.standardize is not None:
             new.standardize = self.standardize.subset_output(idcs)
@@ -208,6 +207,11 @@ class ModelConfig:
             self.outcome_transform = None
             self.pass_outcome_transform = False
             return
+
+        if str(self.model_type).startswith("gamma_") and self.outcome_transform is True:
+            from bochan.models.transforms.outcome import PositiveScaleOutcomeTransform
+
+            self.outcome_transform = PositiveScaleOutcomeTransform(validate_positive=True)
 
         self.outcome_transform = build_outcome_transform_for_task(task_type, self.outcome_transform)
         self.pass_outcome_transform = self.outcome_transform is not None

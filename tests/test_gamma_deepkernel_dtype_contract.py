@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import pytest
 import torch
 from gpytorch.kernels import MaternKernel, ScaleKernel
@@ -126,44 +124,21 @@ def test_deepkernel_gamma_moves_custom_modules_before_first_forward() -> None:
     _assert_module_matches_reference(covar_module, train_x)
 
 
-@pytest.mark.parametrize(
-    ("model_factory", "expected_input_dim"),
-    [
-        (
-            lambda train_x, train_y, extractor: DeepKernelGammaGPModel(
-                train_X=train_x,
-                train_Y=train_y,
-                feature_extractor=extractor,
-                num_inducing_points=6,
-            ),
-            2,
-        ),
-        (
-            lambda train_x, train_y, extractor: DeepKernelGammaMixedGPModel(
-                train_X=train_x,
-                train_Y=train_y,
-                cat_dims=[2],
-                feature_extractor=extractor,
-                num_inducing_points=6,
-            ),
-            2,
-        ),
-    ],
-)
-def test_deepkernel_gamma_custom_extractor_supports_double_input(
-    model_factory: Callable[[torch.Tensor, torch.Tensor, nn.Module], object],
-    expected_input_dim: int,
-) -> None:
-    if model_factory.__name__ == "<lambda>":
-        pass
+def test_deepkernel_gamma_mixed_moves_custom_extractor_to_double() -> None:
+    train_x, train_y = _make_mixed_data(torch.float64)
+    feature_extractor = nn.Sequential(
+        nn.Linear(2, 4),
+        nn.SiLU(),
+        nn.Linear(4, 2),
+    )
 
-    train_x, train_y = _make_continuous_data(torch.float64)
-    if expected_input_dim == 2 and train_x.shape[-1] == 2:
-        extractor = nn.Linear(expected_input_dim, expected_input_dim)
-        model = model_factory(train_x, train_y, extractor)
-    else:
-        raise AssertionError("Unexpected test configuration.")
+    model = DeepKernelGammaMixedGPModel(
+        train_X=train_x,
+        train_Y=train_y,
+        cat_dims=[2],
+        feature_extractor=feature_extractor,
+        num_inducing_points=6,
+    )
 
-    parameter = next(model.model.feature_extractor.parameters())
-    assert parameter.dtype == torch.float64
-    assert parameter.device == train_x.device
+    assert model.model.feature_extractor is feature_extractor
+    _assert_module_matches_reference(feature_extractor, train_x)

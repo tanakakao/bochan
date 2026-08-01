@@ -14,12 +14,9 @@ from torch import Tensor
 
 from bochan.models.components.gamma import clone_input_transform, prepare_positive_targets
 
-from .gamma import (
-    GammaGPModel as _GammaGPModel,
-    GammaMixedGPModel as _GammaMixedGPModel,
-    GammaPosterior,
-    clone_outcome_transform,
-)
+from .gamma import GammaGPModel as _GammaGPModel
+from .gamma import GammaMixedGPModel as _GammaMixedGPModel
+from .gamma import GammaPosterior, clone_outcome_transform
 
 
 def _expand_batch(tensor: Tensor, batch_shape: torch.Size, *, event_ndims: int) -> Tensor:
@@ -379,7 +376,7 @@ class GammaGPModel(_GammaFantasizeMixin, _AlignedGammaMixin, _GammaGPModel):
 class GammaMixedGPModel(_GammaFantasizeMixin, _AlignedGammaMixin, _GammaMixedGPModel):
     """Mixed-input Gamma GP with approximate fantasy conditioning."""
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "GammaMixedGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> GammaMixedGPModel:
         if kwargs.get("noise") is not None:
             raise NotImplementedError("GammaMixedGPModel does not support noise in condition_on_observations.")
         if isinstance(X, tuple):

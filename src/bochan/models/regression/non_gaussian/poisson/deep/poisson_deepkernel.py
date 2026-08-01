@@ -27,7 +27,10 @@ from bochan.models.components.poisson import (
     select_inducing_points,
     to_device_dtype_transform,
 )
-from bochan.models.regression.non_gaussian.poisson import _BasePoissonGPModel, build_mixed_poisson_kernel
+from bochan.models.regression.non_gaussian.poisson.base.poisson import (
+    _BasePoissonGPModel,
+    build_mixed_poisson_kernel,
+)
 
 
 def make_poisson_feature_extractor(

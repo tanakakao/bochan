@@ -213,6 +213,14 @@ class ModelConfig:
 
             self.outcome_transform = PositiveScaleOutcomeTransform(validate_positive=True)
 
+        if str(self.model_type).startswith("poisson_"):
+            if self.outcome_transform not in (None, False, True):
+                raise ValueError(
+                    "Poisson models require raw non-negative integer counts and do not "
+                    "support outcome_transform."
+                )
+            self.outcome_transform = None
+
         self.outcome_transform = build_outcome_transform_for_task(task_type, self.outcome_transform)
         self.pass_outcome_transform = self.outcome_transform is not None
 

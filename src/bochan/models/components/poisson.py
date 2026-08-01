@@ -47,13 +47,26 @@ def positive_rate_from_latent(
 
 
 def prepare_count_targets(train_Y: Tensor, ref: Tensor) -> Tensor:
-    """Poisson 回帰用の count target を [n] に整形する。"""
+    """Validate and reshape count targets for Poisson regression.
+
+    Args:
+        train_Y: Count observations.
+        ref: Reference tensor controlling device and dtype.
+
+    Returns:
+        A contiguous one-dimensional count tensor.
+
+    Raises:
+        ValueError: If a target is non-finite, negative, or not integer-like.
+    """
     y = torch.as_tensor(train_Y, device=ref.device, dtype=ref.dtype)
     if y.ndim > 1 and y.shape[-1] == 1:
         y = y.squeeze(-1)
+    if not torch.isfinite(y).all():
+        raise ValueError("Poisson targets must be finite.")
     if (y < 0).any():
         raise ValueError("Poisson targets must be non-negative.")
-    if not torch.allclose(y, y.round()):
+    if not torch.isclose(y, y.round(), atol=1e-6, rtol=0.0).all():
         raise ValueError("Poisson targets must be integer counts.")
     return y.contiguous()
 
@@ -281,7 +294,8 @@ class PoissonPosterior(Posterior):
     def variance(self) -> Tensor:
         rate = self.mean
         latent_var = align_like(self.latent_posterior.variance, rate).clamp_min(0.0)
-        return rate + latent_var if self.add_observation_noise else latent_var
+        rate_var = rate.square() * latent_var
+        return rate + rate_var if self.add_observation_noise else rate_var
 
     def rsample(self, sample_shape: Optional[torch.Size] = None, base_samples: Optional[Tensor] = None) -> Tensor:
         if sample_shape is None:

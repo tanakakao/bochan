@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 import torch
 import torch.nn as nn
-from torch import Tensor
-
+from botorch.models.transforms.input import InputTransform
 from gpytorch.distributions import MultivariateNormal
 from gpytorch.kernels import Kernel, MaternKernel, ScaleKernel
 from gpytorch.means import ConstantMean, Mean
 from gpytorch.models import ApproximateGP
 from gpytorch.utils.grid import ScaleToBounds
 from gpytorch.variational import CholeskyVariationalDistribution, VariationalStrategy
-from botorch.models.transforms.input import InputTransform
+from torch import Tensor
 
 from bochan.models.components.layers.feature_extractor import LargeFeatureExtractor, SkipLargeFeatureExtractor
 from bochan.models.components.negative_binomial import (
@@ -26,7 +25,7 @@ from bochan.models.components.negative_binomial import (
     select_inducing_points,
     to_device_dtype_transform,
 )
-from bochan.models.regression.non_gaussian.negative_binomial import (
+from bochan.models.regression.non_gaussian.negative_binomial.base.negative_binomial import (
     _BaseNegativeBinomialGPModel,
     build_mixed_negative_binomial_kernel,
 )
@@ -34,9 +33,9 @@ from bochan.models.regression.non_gaussian.negative_binomial import (
 
 def make_negative_binomial_feature_extractor(
     input_dim: int,
-    output_dim: Optional[int] = None,
+    output_dim: int | None = None,
     ext_type: str = "DEFAULT",
-    hidden_dims: Optional[Sequence[int]] = None,
+    hidden_dims: Sequence[int] | None = None,
 ) -> nn.Module:
     """Negative Binomial DeepKernel 用 feature extractor を作る。"""
     output_dim = input_dim if output_dim is None else int(output_dim)
@@ -74,11 +73,11 @@ class _DeepKernelNegativeBinomialSVGP(ApproximateGP):
         train_Y: Tensor,
         *,
         ext_type: str = "DEFAULT",
-        hidden_dims: Optional[Sequence[int]] = None,
-        feature_extractor: Optional[nn.Module] = None,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
-        inducing_points: Optional[Tensor] = None,
+        hidden_dims: Sequence[int] | None = None,
+        feature_extractor: nn.Module | None = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
+        inducing_points: Tensor | None = None,
         num_inducing_points: int = 128,
         learn_inducing_locations: bool = True,
     ) -> None:
@@ -127,11 +126,11 @@ class _DeepKernelMixedNegativeBinomialSVGP(ApproximateGP):
         *,
         cat_dims: Sequence[int],
         ext_type: str = "DEFAULT",
-        hidden_dims: Optional[Sequence[int]] = None,
-        feature_extractor: Optional[nn.Module] = None,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
-        inducing_points: Optional[Tensor] = None,
+        hidden_dims: Sequence[int] | None = None,
+        feature_extractor: nn.Module | None = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
+        inducing_points: Tensor | None = None,
         num_inducing_points: int = 128,
         learn_inducing_locations: bool = True,
     ) -> None:
@@ -194,15 +193,15 @@ class DeepKernelNegativeBinomialGPModel(_BaseNegativeBinomialGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        likelihood: Optional[NegativeBinomialLogLikelihood] = None,
-        input_transform: Optional[InputTransform] = None,
+        likelihood: NegativeBinomialLogLikelihood | None = None,
+        input_transform: InputTransform | None = None,
         ext_type: str = "DEFAULT",
-        hidden_dims: Optional[Sequence[int]] = None,
-        feature_extractor: Optional[nn.Module] = None,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
+        hidden_dims: Sequence[int] | None = None,
+        feature_extractor: nn.Module | None = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
         num_inducing_points: int = 128,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         link: NBLink = "softplus",
         init_total_count: float = 10.0,
@@ -265,15 +264,15 @@ class DeepKernelNegativeBinomialMixedGPModel(_BaseNegativeBinomialGPModel):
         train_Y: Tensor,
         *,
         cat_dims: Sequence[int],
-        likelihood: Optional[NegativeBinomialLogLikelihood] = None,
-        input_transform: Optional[InputTransform] = None,
+        likelihood: NegativeBinomialLogLikelihood | None = None,
+        input_transform: InputTransform | None = None,
         ext_type: str = "DEFAULT",
-        hidden_dims: Optional[Sequence[int]] = None,
-        feature_extractor: Optional[nn.Module] = None,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
+        hidden_dims: Sequence[int] | None = None,
+        feature_extractor: nn.Module | None = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
         num_inducing_points: int = 128,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         link: NBLink = "softplus",
         init_total_count: float = 10.0,

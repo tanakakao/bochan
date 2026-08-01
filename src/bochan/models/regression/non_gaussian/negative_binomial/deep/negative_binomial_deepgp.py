@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.gpytorch import GPyTorchModel
 from botorch.models.transforms.input import InputTransform
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
 from gpytorch.models.deep_gps import DeepGP
+from torch import Tensor
 
 from bochan.models.components.layers.hidden_layers import (
     DeepGPHiddenLayer,
@@ -55,8 +55,8 @@ class _BaseNegativeBinomialDeepGPModel(DeepGP, GPyTorchModel):
     def latent_posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        output_indices: list[int] | None = None,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> GPyTorchPosterior:
         if output_indices is not None:
@@ -74,9 +74,9 @@ class _BaseNegativeBinomialDeepGPModel(DeepGP, GPyTorchModel):
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
+        output_indices: list[int] | None = None,
         observation_noise: bool | Tensor = True,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> NegativeBinomialPosterior:
         if torch.is_tensor(observation_noise):
@@ -119,9 +119,9 @@ class NegativeBinomialDeepGPModel(_BaseNegativeBinomialDeepGPModel):
         *,
         hidden_dim: int = 4,
         num_inducing: int = 128,
-        list_hidden_dims: Optional[Sequence[int]] = None,
-        input_transform: Optional[InputTransform] = None,
-        likelihood: Optional[NegativeBinomialLogLikelihood] = None,
+        list_hidden_dims: Sequence[int] | None = None,
+        input_transform: InputTransform | None = None,
+        likelihood: NegativeBinomialLogLikelihood | None = None,
         link: NBLink = "softplus",
         init_total_count: float = 10.0,
         learn_total_count: bool = True,
@@ -215,7 +215,7 @@ class NegativeBinomialDeepGPModel(_BaseNegativeBinomialDeepGPModel):
             h = layer(h)
         return self.last_layer(h)
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "NegativeBinomialDeepGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> NegativeBinomialDeepGPModel:
         if kwargs.get("noise") is not None:
             raise NotImplementedError("NegativeBinomialDeepGPModel does not support noise in condition_on_observations.")
         if isinstance(X, tuple):
@@ -261,8 +261,8 @@ class NegativeBinomialMixedDeepGPModel(_BaseNegativeBinomialDeepGPModel):
         cat_dims: Sequence[int],
         hidden_dim: int = 4,
         num_inducing: int = 128,
-        input_transform: Optional[InputTransform] = None,
-        likelihood: Optional[NegativeBinomialLogLikelihood] = None,
+        input_transform: InputTransform | None = None,
+        likelihood: NegativeBinomialLogLikelihood | None = None,
         link: NBLink = "softplus",
         init_total_count: float = 10.0,
         learn_total_count: bool = True,

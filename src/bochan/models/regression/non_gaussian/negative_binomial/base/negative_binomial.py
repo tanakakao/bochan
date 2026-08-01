@@ -1,24 +1,23 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.approximate_gp import ApproximateGPyTorchModel
 from botorch.models.kernels.categorical import CategoricalKernel
 from botorch.models.transforms.input import InputTransform
 from botorch.models.utils.gpytorch_modules import get_covar_module_with_dim_scaled_prior
 from botorch.posteriors.gpytorch import GPyTorchPosterior
-
 from gpytorch.distributions import MultivariateNormal
 from gpytorch.kernels import Kernel, ProductKernel, ScaleKernel
 from gpytorch.means import ConstantMean, Mean
 from gpytorch.mlls import VariationalELBO
 from gpytorch.models import ApproximateGP
 from gpytorch.variational import CholeskyVariationalDistribution, VariationalStrategy
+from torch import Tensor
 
 from bochan.models.components.negative_binomial import (
     NBLink,
@@ -55,9 +54,10 @@ def _make_cont_kernel(cont_dims: Sequence[int], batch_shape: torch.Size) -> Kern
 def build_mixed_negative_binomial_kernel(
     d: int,
     cat_dims: Sequence[int],
-    batch_shape: torch.Size = torch.Size(),
+    batch_shape: torch.Size | None = None,
 ) -> Kernel:
     """Negative Binomial mixed model 用の continuous + categorical kernel を作る。"""
+    batch_shape = torch.Size() if batch_shape is None else batch_shape
     cat_dims = normalize_dims(cat_dims, d)
     cont_dims = get_cont_dims(d, cat_dims)
     if len(cat_dims) == 0:
@@ -79,11 +79,11 @@ class _LatentNegativeBinomialSVGP(ApproximateGP):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         num_inducing_points: int = 128,
         learn_inducing_locations: bool = True,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
     ) -> None:
         inducing_points = select_inducing_points(
             train_X,
@@ -116,11 +116,11 @@ class _LatentMixedNegativeBinomialSVGP(ApproximateGP):
         train_Y: Tensor,
         *,
         cat_dims: Sequence[int],
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         num_inducing_points: int = 128,
         learn_inducing_locations: bool = True,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
     ) -> None:
         d = train_X.shape[-1]
         self.cat_dims = normalize_dims(cat_dims, d)
@@ -162,8 +162,8 @@ class _BaseNegativeBinomialGPModel(ApproximateGPyTorchModel):
         likelihood: NegativeBinomialLogLikelihood,
         train_X: Tensor,
         train_Y: Tensor,
-        input_transform: Optional[InputTransform],
-        cat_dims: Optional[Sequence[int]] = None,
+        input_transform: InputTransform | None,
+        cat_dims: Sequence[int] | None = None,
         num_inducing_points: int = 128,
         learn_inducing_locations: bool = True,
         link: NBLink = "softplus",
@@ -194,8 +194,8 @@ class _BaseNegativeBinomialGPModel(ApproximateGPyTorchModel):
     def latent_posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        output_indices: list[int] | None = None,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> GPyTorchPosterior:
         if output_indices is not None:
@@ -213,9 +213,9 @@ class _BaseNegativeBinomialGPModel(ApproximateGPyTorchModel):
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
+        output_indices: list[int] | None = None,
         observation_noise: bool | Tensor = True,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> NegativeBinomialPosterior:
         if torch.is_tensor(observation_noise):
@@ -229,6 +229,29 @@ class _BaseNegativeBinomialGPModel(ApproximateGPyTorchModel):
         if posterior_transform is not None:
             posterior = posterior_transform(posterior)
         return posterior
+
+    def mean_posterior(self, X: Tensor, **kwargs: Any) -> NegativeBinomialPosterior:
+        """Return the differentiable conditional-mean posterior for acquisition."""
+        return self.posterior(X, observation_noise=False, **kwargs)
+
+    def predictive_posterior(self, X: Tensor, **kwargs: Any) -> NegativeBinomialPosterior:
+        """Return the count predictive posterior including overdispersion."""
+        return self.posterior(X, observation_noise=True, **kwargs)
+
+    def dispersion(self, X: Tensor | None = None) -> Tensor:
+        """Return the positive global dispersion ``r``.
+
+        Args:
+            X: Ignored because base models use a global scalar dispersion.
+        """
+        del X
+        return self.likelihood.total_count
+
+    def sample_observations(
+        self, X: Tensor, sample_shape: torch.Size | None = None
+    ) -> Tensor:
+        """Draw non-reparameterized observed counts for prediction."""
+        return self.predictive_posterior(X).sample_counts(sample_shape)
 
     def predict_mean(self, X: Tensor) -> Tensor:
         """期待 count μ の予測値を返す。"""
@@ -265,12 +288,12 @@ class NegativeBinomialGPModel(_BaseNegativeBinomialGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        likelihood: Optional[NegativeBinomialLogLikelihood] = None,
-        input_transform: Optional[InputTransform] = None,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
+        likelihood: NegativeBinomialLogLikelihood | None = None,
+        input_transform: InputTransform | None = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
         num_inducing_points: int = 128,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         link: NBLink = "softplus",
         init_total_count: float = 10.0,
@@ -317,7 +340,7 @@ class NegativeBinomialGPModel(_BaseNegativeBinomialGPModel):
         self.learn_total_count = bool(learn_total_count)
         self.min_total_count = float(min_total_count)
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "NegativeBinomialGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> NegativeBinomialGPModel:
         if kwargs.get("noise") is not None:
             raise NotImplementedError("NegativeBinomialGPModel does not support noise in condition_on_observations.")
         if isinstance(X, tuple):
@@ -356,12 +379,12 @@ class NegativeBinomialMixedGPModel(_BaseNegativeBinomialGPModel):
         train_Y: Tensor,
         *,
         cat_dims: Sequence[int],
-        likelihood: Optional[NegativeBinomialLogLikelihood] = None,
-        input_transform: Optional[InputTransform] = None,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
+        likelihood: NegativeBinomialLogLikelihood | None = None,
+        input_transform: InputTransform | None = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
         num_inducing_points: int = 128,
-        inducing_points: Optional[Tensor] = None,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         link: NBLink = "softplus",
         init_total_count: float = 10.0,

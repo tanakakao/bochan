@@ -1,28 +1,28 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Literal, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any, Literal
 
 import torch
-from torch import Tensor
-from torch.distributions import NegativeBinomial as TorchNegativeBinomial
-
 from botorch.models.transforms.input import ChainedInputTransform, InputTransform, Normalize
 from botorch.posteriors import Posterior
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from gpytorch.distributions import MultivariateNormal
 from gpytorch.kernels import MaternKernel, ScaleKernel
 from gpytorch.likelihoods import _OneDimensionalLikelihood
+from torch import Tensor
+from torch.distributions import NegativeBinomial as TorchNegativeBinomial
 
 NBLink = Literal["softplus", "exp"]
 
 
-def clone_input_transform(input_transform: Optional[InputTransform]) -> Optional[InputTransform]:
+def clone_input_transform(input_transform: InputTransform | None) -> InputTransform | None:
     """input_transform を安全に複製する。"""
     return None if input_transform is None else copy.deepcopy(input_transform)
 
 
-def to_device_dtype_transform(input_transform: Optional[InputTransform], ref: Tensor) -> Optional[InputTransform]:
+def to_device_dtype_transform(input_transform: InputTransform | None, ref: Tensor) -> InputTransform | None:
     """InputTransform を ref と同じ device / dtype に移す。"""
     if input_transform is None:
         return None
@@ -56,9 +56,11 @@ def prepare_count_targets(train_Y: Tensor, ref: Tensor) -> Tensor:
     y = torch.as_tensor(train_Y, device=ref.device, dtype=ref.dtype)
     if y.ndim > 1 and y.shape[-1] == 1:
         y = y.squeeze(-1)
+    if not torch.isfinite(y).all():
+        raise ValueError("Negative Binomial targets must be finite.")
     if (y < 0).any():
         raise ValueError("Negative Binomial targets must be non-negative.")
-    if not torch.allclose(y, y.round()):
+    if not torch.isclose(y, y.round(), atol=1e-6, rtol=0.0).all():
         raise ValueError("Negative Binomial targets must be integer counts.")
     return y.contiguous()
 
@@ -105,7 +107,7 @@ def expand_raw_X_to_match_transformed_q(X: Tensor, X_tf: Tensor) -> Tensor:
     return X
 
 
-def check_categorical_columns_unchanged(X: Tensor, X_tf: Tensor, cat_dims: Optional[Sequence[int]]) -> None:
+def check_categorical_columns_unchanged(X: Tensor, X_tf: Tensor, cat_dims: Sequence[int] | None) -> None:
     """mixed model で input_transform がカテゴリ列を変えていないか確認する。"""
     if cat_dims is None or len(cat_dims) == 0:
         return
@@ -127,9 +129,9 @@ def check_categorical_columns_unchanged(X: Tensor, X_tf: Tensor, cat_dims: Optio
 
 def apply_input_transform_for_training(
     X: Tensor,
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
-    cat_dims: Optional[Sequence[int]] = None,
+    cat_dims: Sequence[int] | None = None,
     name: str = "input_transform",
 ) -> Tensor:
     """学習用 X に input_transform を適用する。InputPerturbation による点数増加は許さない。"""
@@ -152,9 +154,9 @@ def apply_input_transform_for_training(
 
 def apply_input_transform_for_eval(
     X: Tensor,
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
-    cat_dims: Optional[Sequence[int]] = None,
+    cat_dims: Sequence[int] | None = None,
 ) -> Tensor:
     """posterior / acquisition 評価用 transform。InputPerturbation による q 展開を許す。"""
     if input_transform is None:
@@ -164,14 +166,14 @@ def apply_input_transform_for_eval(
     return X_tf
 
 
-def extract_normalize_only_transform(input_transform: Optional[InputTransform]) -> Optional[InputTransform]:
+def extract_normalize_only_transform(input_transform: InputTransform | None) -> InputTransform | None:
     """ChainedInputTransform から Normalize のみを抽出する。"""
     if input_transform is None:
         return None
     if isinstance(input_transform, Normalize):
         return copy.deepcopy(input_transform)
     if isinstance(input_transform, ChainedInputTransform):
-        for key in input_transform.keys():
+        for key in input_transform:
             tf = input_transform[key]
             if isinstance(tf, Normalize):
                 return copy.deepcopy(tf)
@@ -201,7 +203,7 @@ def align_like(t: Tensor, ref: Tensor) -> Tensor:
     return t.expand_as(ref)
 
 
-def select_inducing_points(X: Tensor, num_inducing_points: int, inducing_points: Optional[Tensor] = None) -> Tensor:
+def select_inducing_points(X: Tensor, num_inducing_points: int, inducing_points: Tensor | None = None) -> Tensor:
     """inducing points を選ぶ。指定があればそれを使い、なければ training X から選ぶ。"""
     if inducing_points is not None:
         return torch.as_tensor(inducing_points, device=X.device, dtype=X.dtype).contiguous()
@@ -214,7 +216,7 @@ def select_inducing_points(X: Tensor, num_inducing_points: int, inducing_points:
 def build_default_negative_binomial_covar_module(
     train_X: Tensor,
     *,
-    ard_num_dims: Optional[int] = None,
+    ard_num_dims: int | None = None,
     nu: float = 2.5,
 ) -> ScaleKernel:
     """Negative Binomial latent GP 用のデフォルト Matern kernel を作る。"""
@@ -239,7 +241,7 @@ class NegativeBinomialLogLikelihood(_OneDimensionalLikelihood):
     def __init__(
         self,
         link: NBLink = "softplus",
-        init_total_count: float = 10.0,
+        init_total_count: float | Tensor = 10.0,
         learn_total_count: bool = True,
         exp_clip: float = 20.0,
         min_mean: float = 1e-8,
@@ -250,7 +252,7 @@ class NegativeBinomialLogLikelihood(_OneDimensionalLikelihood):
         self.exp_clip = float(exp_clip)
         self.min_mean = float(min_mean)
         self.min_total_count = float(min_total_count)
-        init = torch.as_tensor(float(init_total_count)).clamp_min(self.min_total_count)
+        init = torch.as_tensor(init_total_count).clone().detach().clamp_min(self.min_total_count)
         raw = torch.log(torch.expm1(init))
         if learn_total_count:
             self.register_parameter("raw_total_count", torch.nn.Parameter(raw.clone()))
@@ -272,11 +274,24 @@ class NegativeBinomialLogLikelihood(_OneDimensionalLikelihood):
         )
 
     def nb_params_from_f(self, f: Tensor) -> tuple[Tensor, Tensor]:
-        """latent f から NegativeBinomial(total_count, logits) の parameter を返す。"""
+        """Convert latent values to PyTorch ``total_count`` and ``logits``.
+
+        Task-specific dispersion vectors are repeated over an interleaved
+        point-task event axis. During training with partial wide observations,
+        ``observation_task_indices`` selects only the observed task entries.
+        """
         mean = self.mean_from_f(f)
         total_count = self.total_count.to(device=f.device, dtype=f.dtype)
+        task_indices = getattr(self, "observation_task_indices", None)
+        if total_count.ndim == 1 and total_count.numel() > 1:
+            if task_indices is not None and mean.shape[-1] == task_indices.numel():
+                total_count = total_count.index_select(0, task_indices.to(total_count.device))
+            elif mean.shape[-1] % total_count.numel() == 0:
+                repeats = mean.shape[-1] // total_count.numel()
+                total_count = total_count.repeat(repeats)
+        total_count = total_count.expand_as(mean)
         logits = (mean / total_count.clamp_min(self.min_total_count)).clamp_min(self.min_mean).log()
-        return total_count.expand_as(mean), logits
+        return total_count, logits
 
     def forward(self, function_samples: Tensor, *args: Any, **kwargs: Any) -> TorchNegativeBinomial:
         total_count, logits = self.nb_params_from_f(function_samples)
@@ -351,13 +366,13 @@ class NegativeBinomialPosterior(Posterior):
             return obs_var + latent_var
         return latent_var
 
-    def rsample(self, sample_shape: Optional[torch.Size] = None, base_samples: Optional[Tensor] = None) -> Tensor:
+    def rsample(self, sample_shape: torch.Size | None = None, base_samples: Tensor | None = None) -> Tensor:
         if sample_shape is None:
             sample_shape = torch.Size()
         f_samples = self.latent_posterior.rsample(sample_shape=sample_shape, base_samples=base_samples)
         return self.likelihood.mean_from_f(f_samples)
 
-    def sample_counts(self, sample_shape: Optional[torch.Size] = None) -> Tensor:
+    def sample_counts(self, sample_shape: torch.Size | None = None) -> Tensor:
         """Negative Binomial count sample を返す。非 reparameterized sample。"""
         if sample_shape is None:
             sample_shape = torch.Size()

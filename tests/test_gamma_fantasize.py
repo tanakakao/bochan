@@ -59,8 +59,8 @@ def test_gamma_fantasize_returns_finite_batched_posterior(is_mixed):
         )
         candidate = torch.tensor(
             [
-                [[0.25, 0.0]],
-                [[0.70, 1.0]],
+                [[0.25, 0.0], [0.35, 1.0]],
+                [[0.70, 1.0], [0.80, 0.0]],
             ],
             dtype=torch.double,
         )
@@ -77,8 +77,8 @@ def test_gamma_fantasize_returns_finite_batched_posterior(is_mixed):
         )
         candidate = torch.tensor(
             [
-                [[0.25, 0.35]],
-                [[0.70, 0.65]],
+                [[0.25, 0.35], [0.35, 0.45]],
+                [[0.70, 0.65], [0.80, 0.75]],
             ],
             dtype=torch.double,
         )
@@ -136,8 +136,8 @@ def test_gamma_nipv_uses_fantasy_model_and_is_differentiable():
 
     candidate = torch.tensor(
         [
-            [[0.25, 0.35]],
-            [[0.70, 0.65]],
+            [[0.25, 0.35], [0.35, 0.45]],
+            [[0.70, 0.65], [0.80, 0.75]],
         ],
         dtype=torch.double,
         requires_grad=True,

@@ -123,9 +123,10 @@ def _make_cont_kernel(cont_dims: Sequence[int], batch_shape: torch.Size) -> Kern
 def build_mixed_gamma_kernel(
     d: int,
     cat_dims: Sequence[int],
-    batch_shape: torch.Size = torch.Size(),
+    batch_shape: torch.Size | None = None,
 ) -> Kernel:
     """Gamma mixed model 用の continuous + categorical kernel を作る。"""
+    batch_shape = torch.Size() if batch_shape is None else batch_shape
     cat_dims = normalize_dims(cat_dims, d)
     cont_dims = get_cont_dims(d, cat_dims)
 

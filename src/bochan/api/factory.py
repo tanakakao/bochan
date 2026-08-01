@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
-from typing import Any, Callable
+from typing import Any
 
 from .configs import (
     AcquisitionConfig,
-    CandidateRepairConfig,
     DataContext,
     FitConfig,
     InputType,
@@ -271,7 +270,7 @@ def _build_single_model(
     if bundle_train_X is None:
         bundle_train_X = getattr(model, "train_X", None)
         if bundle_train_X is None and hasattr(model, "train_inputs"):
-            train_inputs = getattr(model, "train_inputs")
+            train_inputs = model.train_inputs
             bundle_train_X = train_inputs[0] if isinstance(train_inputs, tuple) else train_inputs
     if bundle_train_Y is None:
         bundle_train_Y = getattr(model, "train_Y", None)
@@ -362,7 +361,7 @@ def build_multi_output_model(train_X: Any, train_Y: Any, config: ModelConfig, *,
     model = _build_wrapper_from_submodels([b.model for b in sub_bundles], output_configs, mo_config, output_names=output_names, output_spec_kwargs=inline_spec_kwargs)
     bundle_train_X = getattr(model, "train_X", None)
     if bundle_train_X is None and hasattr(model, "train_inputs"):
-        train_inputs = getattr(model, "train_inputs")
+        train_inputs = model.train_inputs
         bundle_train_X = train_inputs[0] if isinstance(train_inputs, tuple) else train_inputs
     if bundle_train_X is None:
         bundle_train_X = train_X
@@ -508,6 +507,11 @@ def _resolve_fit_func(bundle: ModelBundle, config: FitConfig, mll: Any | None) -
 
         return fit_deepkernel_mll, False
 
+    if model_type.startswith("gamma_"):
+        from bochan.fit import fit_non_gaussian_mll
+
+        return fit_non_gaussian_mll, False
+
     if mll is not None:
         from botorch.fit import fit_gpytorch_mll
 
@@ -550,7 +554,7 @@ def fit_model(bundle: ModelBundle, config: FitConfig | None = None) -> ModelBund
         embedded_fit_configs = bundle.metadata.get("embedded_fit_configs", [])
         output_fit_configs = _resolve_output_fit_configs(config or FitConfig(), mo_config, len(sub_bundles), embedded=embedded_fit_configs)
         if mo_config.fit_submodels:
-            for sub_bundle, sub_fit_config in zip(sub_bundles, output_fit_configs):
+            for sub_bundle, sub_fit_config in zip(sub_bundles, output_fit_configs, strict=True):
                 _fit_single_bundle(sub_bundle, sub_fit_config)
         bundle.fit_config = config
         bundle.metadata["sub_fit_configs"] = output_fit_configs

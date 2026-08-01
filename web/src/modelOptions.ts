@@ -22,7 +22,16 @@ export const MODEL_OPTIONS = [
   { value: "rembo", label: "REMBO", family: "high_dimensional" },
   { value: "robust", label: "Robust (RRP)", family: "robust_noise" },
   { value: "hetero", label: "Heteroskedastic", family: "robust_noise" },
-  { value: "multitask", label: "Multitask GP", family: "multitask" }
+  { value: "multitask", label: "Multitask GP", family: "multitask" },
+  { value: "gamma_base", label: "Gamma Base", family: "standard_gp" },
+  { value: "gamma_deepgp", label: "Gamma Deep GP", family: "deep_representation" },
+  { value: "gamma_deepkernel", label: "Gamma Deep Kernel", family: "deep_representation" },
+  { value: "gamma_saas", label: "Gamma SAAS", family: "high_dimensional" },
+  { value: "gamma_pca", label: "Gamma PCA", family: "high_dimensional" },
+  { value: "gamma_rembo", label: "Gamma REMBO", family: "high_dimensional" },
+  { value: "gamma_rrp", label: "Gamma RRP", family: "robust_noise" },
+  { value: "gamma_hetero", label: "Gamma Heteroskedastic", family: "robust_noise" },
+  { value: "gamma_multitask", label: "Gamma Multitask", family: "multitask" }
 ] as const satisfies ReadonlyArray<{
   value: string;
   label: string;
@@ -40,7 +49,16 @@ export const MODEL_DESCRIPTIONS: Record<WebModelType, string> = {
   rembo: "指定次元の低次元空間から探索します。",
   robust: "内部ではRRPモデルを使用し、外れ値や頑健性を考慮します。",
   hetero: "入力位置によって異なる観測ノイズをモデル化します。",
-  multitask: "回帰目的間の相関を学習して情報共有します。"
+  multitask: "回帰目的間の相関を学習して情報共有します。",
+  gamma_base: "正値目的変数のGamma変分GPです。",
+  gamma_deepgp: "Gamma尤度を用いるDeep GPです。",
+  gamma_deepkernel: "学習特徴上のGamma変分GPです。",
+  gamma_saas: "高次元Gamma回帰向けSAASモデルです。",
+  gamma_pca: "raw入力をPCA射影するGamma回帰です。",
+  gamma_rembo: "raw入力をREMBO射影するGamma回帰です。",
+  gamma_rrp: "外れ値に頑健なGamma回帰です。",
+  gamma_hetero: "入力依存分散を扱うGamma回帰です。",
+  gamma_multitask: "正値の複数目的間の相関を学習する変分Gamma GPです。"
 };
 
 export function modelFamilyFor(modelType: string): ModelFamily {

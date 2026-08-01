@@ -215,6 +215,39 @@ class _BasePoissonGPModel(ApproximateGPyTorchModel):
         )
         return posterior_transform(posterior) if posterior_transform is not None else posterior
 
+    def rate_posterior(
+        self,
+        X: Tensor,
+        **kwargs: Any,
+    ) -> PoissonPosterior:
+        """Return the differentiable posterior of the expected Poisson rate.
+
+        Args:
+            X: Candidate inputs.
+            **kwargs: Arguments forwarded to :meth:`posterior`.
+
+        Returns:
+            A response-scale posterior without conditional count noise.
+        """
+        return self.posterior(X, observation_noise=False, **kwargs)
+
+    def sample_observations(
+        self,
+        X: Tensor,
+        sample_shape: torch.Size | None = None,
+    ) -> Tensor:
+        """Draw non-reparameterized posterior-predictive count samples.
+
+        Args:
+            X: Candidate inputs.
+            sample_shape: Leading sample dimensions.
+
+        Returns:
+            Non-negative integer-valued samples. These samples are for prediction
+            and diagnostics, not gradient-based acquisition optimization.
+        """
+        return self.rate_posterior(X).sample_counts(sample_shape)
+
     def predict_rate(self, X: Tensor) -> Tensor:
         return self.posterior(X, observation_noise=True).mean
 

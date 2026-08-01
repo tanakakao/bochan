@@ -18,8 +18,8 @@ class qRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
     """モデル能力に応じて真の NIPV または proxy を使用する獲得関数。
 
     BoTorch の ``qNegIntegratedPosteriorVariance`` は内部で
-    ``model.fantasize()`` を使用する。そのため、Gamma SVGP など
-    ``fantasize()`` を実装しないモデルではそのまま利用できない。
+    ``model.fantasize()`` を使用する。そのため、``fantasize()`` を
+    実装しないモデルではそのまま利用できない。
 
     本クラスは、``fantasize()`` 対応モデルでは従来の BoTorch 実装へ
     委譲し、非対応モデルでは ``mc_points`` を参照点とする

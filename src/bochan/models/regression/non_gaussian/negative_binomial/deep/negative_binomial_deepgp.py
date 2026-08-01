@@ -13,6 +13,7 @@ from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
 from gpytorch.models.deep_gps import DeepGP
 from torch import Tensor
 
+from bochan.models.components.deepgp_posterior import moment_match_deepgp_distribution
 from bochan.models.components.layers.hidden_layers import (
     DeepGPHiddenLayer,
     DeepKernelDeepGPHiddenLayer,
@@ -66,6 +67,7 @@ class _BaseNegativeBinomialDeepGPModel(DeepGP, GPyTorchModel):
         self.eval()
         X_tf = self.transform_inputs(X)
         dist = self(X_tf)
+        dist = moment_match_deepgp_distribution(dist, X=X_tf)
         posterior = GPyTorchPosterior(dist)
         if posterior_transform is not None:
             posterior = posterior_transform(posterior)

@@ -17,6 +17,7 @@ on:
       - "tests/test_webapp_feature_constraints_optimizer_contract.py"
       - "tests/test_webapp_tabular_backend.py"
       - "tests/test_webapp_advanced_controls.py"
+      - "tests/test_webapp_input_perturbation_disabled.py"
       - "tests/test_webapp_model_reuse.py"
       - "tests/test_webapp_reuse_dataset_and_pareto.py"
       - "tests/test_webapp_model_artifacts.py"
@@ -51,6 +52,7 @@ jobs:
             tests/test_webapp_feature_constraints_optimizer_contract.py \
             tests/test_webapp_tabular_backend.py \
             tests/test_webapp_advanced_controls.py \
+            tests/test_webapp_input_perturbation_disabled.py \
             tests/test_webapp_model_reuse.py \
             tests/test_webapp_reuse_dataset_and_pareto.py \
             tests/test_webapp_model_artifacts.py \
@@ -101,6 +103,7 @@ jobs:
             tests/test_webapp_feature_constraints_optimizer_contract.py \
             tests/test_webapp_tabular_backend.py \
             tests/test_webapp_advanced_controls.py \
+            tests/test_webapp_input_perturbation_disabled.py \
             tests/test_webapp_model_reuse.py \
             tests/test_webapp_reuse_dataset_and_pareto.py \
             tests/test_webapp_model_artifacts.py \

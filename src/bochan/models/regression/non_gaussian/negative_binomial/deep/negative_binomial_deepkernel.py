@@ -86,7 +86,9 @@ class _DeepKernelNegativeBinomialSVGP(ApproximateGP):
             num_inducing_points=num_inducing_points,
             inducing_points=inducing_points,
         )
-        variational_distribution = CholeskyVariationalDistribution(num_inducing_points=inducing_points.shape[-2])
+        variational_distribution = CholeskyVariationalDistribution(
+            num_inducing_points=inducing_points.shape[-2]
+        )
         variational_strategy = VariationalStrategy(
             self,
             inducing_points=inducing_points,
@@ -95,19 +97,25 @@ class _DeepKernelNegativeBinomialSVGP(ApproximateGP):
         )
         super().__init__(variational_strategy)
         input_dim = train_X.shape[-1]
-        self.feature_extractor = feature_extractor or make_negative_binomial_feature_extractor(
-            input_dim=input_dim,
-            output_dim=input_dim,
-            ext_type=ext_type,
-            hidden_dims=hidden_dims,
-        )
+        self.feature_extractor = (
+            feature_extractor
+            or make_negative_binomial_feature_extractor(
+                input_dim=input_dim,
+                output_dim=input_dim,
+                ext_type=ext_type,
+                hidden_dims=hidden_dims,
+            )
+        ).to(train_X)
         self.deepkernel = self.feature_extractor
-        self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
+        self.scale_to_bounds = ScaleToBounds(-1.0, 1.0).to(train_X)
         with torch.no_grad():
             z = self.scale_to_bounds(self.deepkernel(train_X[:1]))
         latent_dim = z.shape[-1]
-        self.mean_module = mean_module or ConstantMean()
-        self.covar_module = covar_module or ScaleKernel(MaternKernel(nu=2.5, ard_num_dims=latent_dim)).to(train_X)
+        self.mean_module = (mean_module or ConstantMean()).to(train_X)
+        self.covar_module = (
+            covar_module
+            or ScaleKernel(MaternKernel(nu=2.5, ard_num_dims=latent_dim))
+        ).to(train_X)
         self.train_inputs = (train_X,)
         self.train_targets = train_Y
 
@@ -142,7 +150,9 @@ class _DeepKernelMixedNegativeBinomialSVGP(ApproximateGP):
             num_inducing_points=num_inducing_points,
             inducing_points=inducing_points,
         )
-        variational_distribution = CholeskyVariationalDistribution(num_inducing_points=inducing_points.shape[-2])
+        variational_distribution = CholeskyVariationalDistribution(
+            num_inducing_points=inducing_points.shape[-2]
+        )
         variational_strategy = VariationalStrategy(
             self,
             inducing_points,
@@ -151,24 +161,30 @@ class _DeepKernelMixedNegativeBinomialSVGP(ApproximateGP):
         )
         super().__init__(variational_strategy)
         if len(self.cont_dims) > 0:
-            self.feature_extractor = feature_extractor or make_negative_binomial_feature_extractor(
-                input_dim=len(self.cont_dims),
-                output_dim=len(self.cont_dims),
-                ext_type=ext_type,
-                hidden_dims=hidden_dims,
-            )
+            self.feature_extractor = (
+                feature_extractor
+                or make_negative_binomial_feature_extractor(
+                    input_dim=len(self.cont_dims),
+                    output_dim=len(self.cont_dims),
+                    ext_type=ext_type,
+                    hidden_dims=hidden_dims,
+                )
+            ).to(train_X)
             self.deepkernel = self.feature_extractor
-            self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
+            self.scale_to_bounds = ScaleToBounds(-1.0, 1.0).to(train_X)
         else:
-            self.feature_extractor = nn.Identity()
+            self.feature_extractor = nn.Identity().to(train_X)
             self.deepkernel = self.feature_extractor
-            self.scale_to_bounds = nn.Identity()
-        self.mean_module = mean_module or ConstantMean()
-        self.covar_module = covar_module or build_mixed_negative_binomial_kernel(
-            d=d,
-            cat_dims=self.cat_dims,
-            batch_shape=torch.Size(),
-        )
+            self.scale_to_bounds = nn.Identity().to(train_X)
+        self.mean_module = (mean_module or ConstantMean()).to(train_X)
+        self.covar_module = (
+            covar_module
+            or build_mixed_negative_binomial_kernel(
+                d=d,
+                cat_dims=self.cat_dims,
+                batch_shape=torch.Size(),
+            )
+        ).to(train_X)
         self.train_inputs = (train_X,)
         self.train_targets = train_Y
 

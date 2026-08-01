@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Integrated posterior variance acquisitions with model capability fallback."""
+
+from __future__ import annotations
 
 import warnings
 from typing import Any
@@ -8,8 +8,8 @@ from typing import Any
 from botorch.acquisition.acquisition import AcquisitionFunction
 from torch import Tensor
 
+from .single_output import qRegressionIntegratedPosteriorVarianceProxy
 from .single_output import (
-    qRegressionIntegratedPosteriorVarianceProxy,
     qRegressionNegIntegratedPosteriorVariance as _BoTorchNegIntegratedPosteriorVariance,
 )
 

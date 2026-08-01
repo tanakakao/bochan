@@ -114,6 +114,39 @@ def _resolve_diversity_pool_size(
     return max(q, min(max(int(population_size), q), preferred))
 
 
+def _select_final_diverse_batch(
+    candidates: Tensor,
+    values: Tensor,
+    *,
+    q: int,
+    bounds: Tensor,
+    input_weight: float,
+) -> tuple[Tensor, Tensor]:
+    """Prefer nondominated rows, then fill any shortage by maximin distance."""
+
+    from botorch.utils.multi_objective.pareto import is_non_dominated
+
+    pareto_mask = is_non_dominated(values, deduplicate=True)
+    pareto_indices = pareto_mask.nonzero(as_tuple=False).reshape(-1)
+    if pareto_indices.numel() >= q:
+        return select_diverse_nsgaii_candidates(
+            candidates[pareto_indices],
+            values[pareto_indices],
+            q=q,
+            bounds=bounds,
+            input_weight=input_weight,
+        )
+
+    return select_diverse_nsgaii_candidates(
+        candidates,
+        values,
+        q=q,
+        bounds=bounds,
+        input_weight=input_weight,
+        initial_indices=pareto_indices,
+    )
+
+
 def optimize_acqf_nsgaii(
     acq_function: Any,
     bounds: Tensor,
@@ -230,7 +263,7 @@ def optimize_acqf_nsgaii(
     )
 
     if diversify and q is not None and q > 1 and candidates.shape[-2] > q:
-        candidates, values = select_diverse_nsgaii_candidates(
+        candidates, values = _select_final_diverse_batch(
             candidates,
             values,
             q=q,

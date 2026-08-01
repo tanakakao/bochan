@@ -1,32 +1,29 @@
 from .hetero_multi_output import (
-    qHeteroMultiOutputRegressionPredictiveEntropy,
     qHeteroMultiOutputRegressionBALD,
-    qHeteroMultiOutputRegressionPosteriorVariance,
     qHeteroMultiOutputRegressionIntegratedPosteriorVarianceProxy,
+    qHeteroMultiOutputRegressionPosteriorVariance,
+    qHeteroMultiOutputRegressionPredictiveEntropy,
 )
-
 from .hetero_single_output import (
-    qHeteroRegressionPredictiveEntropy,
     qHeteroRegressionBALD,
-    qHeteroRegressionPosteriorVariance,
-    qHeteroRegressionNegIntegratedPosteriorVariance,
     qHeteroRegressionIntegratedPosteriorVarianceProxy,
+    qHeteroRegressionNegIntegratedPosteriorVariance,
+    qHeteroRegressionPosteriorVariance,
+    qHeteroRegressionPredictiveEntropy,
 )
-
+from .integrated_variance import qRegressionNegIntegratedPosteriorVariance
 from .multi_output import (
-    qMultiOutputRegressionPredictiveEntropy,
     qMultiOutputRegressionBALD,
-    qMultiOutputRegressionPosteriorVariance,
-    qMultiOutputRegressionNegIntegratedPosteriorVariance,
     qMultiOutputRegressionIntegratedPosteriorVarianceProxy,
+    qMultiOutputRegressionNegIntegratedPosteriorVariance,
+    qMultiOutputRegressionPosteriorVariance,
+    qMultiOutputRegressionPredictiveEntropy,
 )
-
 from .single_output import (
-    qRegressionPredictiveEntropy,
     qRegressionBALD,
-    qRegressionPosteriorVariance,
-    qRegressionNegIntegratedPosteriorVariance,
     qRegressionIntegratedPosteriorVarianceProxy,
+    qRegressionPosteriorVariance,
+    qRegressionPredictiveEntropy,
 )
 
 __all__ = [

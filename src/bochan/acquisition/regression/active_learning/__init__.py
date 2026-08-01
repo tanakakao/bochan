@@ -25,9 +25,9 @@ from .single_output import (
     qRegressionPredictiveEntropy,
     qRegressionBALD,
     qRegressionPosteriorVariance,
-    qRegressionNegIntegratedPosteriorVariance,
     qRegressionIntegratedPosteriorVarianceProxy,
 )
+from .integrated_variance import qRegressionNegIntegratedPosteriorVariance
 
 __all__ = [
     "qHeteroMultiOutputRegressionPredictiveEntropy",

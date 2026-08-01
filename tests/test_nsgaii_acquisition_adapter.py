@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numpy as np
 import torch
 
 import bochan.optim.nsgaii_adapter as adapter
@@ -138,8 +139,8 @@ def test_sequential_true_is_forced_false_for_population_optimization(monkeypatch
     assert captured["sequential"] is False
 
 
-def test_objective_adapter_restores_missing_singleton_q_axis_before_validation() -> None:
-    """Deterministic population values keep q=1 before BoTorch validates them."""
+def test_objective_adapter_restores_q_for_validation_then_returns_pymoo_shape() -> None:
+    """The internal q-axis is removed again before values are returned to PyMOO."""
     from botorch.acquisition.multi_objective.objective import (
         IdentityMCMultiOutputObjective,
     )
@@ -154,5 +155,41 @@ def test_objective_adapter_restores_missing_singleton_q_axis_before_validation()
 
     values = objective(samples)
 
-    assert values.shape == torch.Size([250, 1, 2])
-    torch.testing.assert_close(values[:, 0, :], samples)
+    assert values.shape == torch.Size([250, 2])
+    torch.testing.assert_close(values, samples)
+
+
+def test_pymoo_problem_aligns_objective_constraints_and_reference_point() -> None:
+    """Web reference constraints must remain 2D with deterministic q=1 values."""
+    from botorch.acquisition.multi_objective.objective import (
+        IdentityMCMultiOutputObjective,
+    )
+    from botorch.utils.multi_objective.optimize import BotorchPymooProblem
+
+    def deterministic_objectives(X: torch.Tensor) -> torch.Tensor:
+        values = torch.cat([X[..., :1], 1.0 - X[..., :1]], dim=-1)
+        return values.squeeze(-2)
+
+    acquisition = NSGAIIAcquisitionContextAdapter(deterministic_objectives)
+    objective = NSGAIIObjectiveOutputAdapter(
+        IdentityMCMultiOutputObjective(),
+        acquisition,
+    )
+    problem = BotorchPymooProblem(
+        n_var=1,
+        n_obj=2,
+        xl=np.array([0.0]),
+        xu=np.array([1.0]),
+        acqf=acquisition,
+        dtype=torch.double,
+        device=torch.device("cpu"),
+        ref_point=torch.tensor([0.0, 0.0], dtype=torch.double),
+        objective=objective,
+        constraints=[lambda Y: 0.2 - Y[..., 0]],
+    )
+    out: dict[str, np.ndarray] = {}
+
+    problem._evaluate(np.linspace(0.0, 1.0, 250).reshape(-1, 1), out)
+
+    assert out["F"].shape == (250, 2)
+    assert out["G"].shape == (250, 3)

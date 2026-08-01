@@ -62,16 +62,15 @@ def restore_nsgaii_singleton_q_axis(values: Tensor, X: Tensor | None) -> Tensor:
 
 
 def reduce_nsgaii_model_sample_axes(values: Tensor, X: Tensor | None) -> Tensor:
-    """Average DeepGP sample axes while preserving X batch and q axes.
+    """Return one deterministic objective vector per PyMOO population member.
 
     DeepGP posterior means can retain a leading likelihood-sample axis, for
-    example ``(S, population, q, m)``. Pymoo requires one deterministic objective
-    vector per population member. The raw input X identifies the public batch and
-    q axes, so only dimensions before those axes are averaged.
+    example ``(S, population, q, m)``. Those leading sample axes are averaged.
 
-    Some DeepGP / model-list posteriors omit a singleton q axis. When the reduced
-    result contains only ``batch_shape + objective`` and ``q == 1``, the missing q
-    dimension is restored before BoTorch converts the result for Pymoo.
+    BoTorch's NSGA-II bridge evaluates every population member with ``q=1`` but
+    expects the objective returned to PyMOO to have shape ``population x m``.
+    Therefore, a singleton q-axis used only for inner objective validation is
+    removed again after the objective has been applied.
     """
 
     values = torch.as_tensor(values)
@@ -91,20 +90,19 @@ def reduce_nsgaii_model_sample_axes(values: Tensor, X: Tensor | None) -> Tensor:
     if start is not None:
         if start > 0:
             values = values.mean(dim=tuple(range(start)))
+        if q == 1:
+            q_axis = len(batch_shape)
+            if values.ndim > q_axis and int(values.shape[q_axis]) == 1:
+                values = values.squeeze(q_axis)
         return values
 
-    # Support path for posteriors that omit q when q == 1.
+    # Support deterministic posteriors that omit q, and DeepGP outputs shaped
+    # ``sample_shape x batch_shape x m``.
     start = _find_last_contiguous_shape(value_shape, batch_shape)
     if start is None:
         return values
     if start > 0:
         values = values.mean(dim=tuple(range(start)))
-
-    # Identity objectives may still expose ``batch_shape + m``. Restore q only
-    # when exactly one event/objective axis remains, avoiding interference with
-    # transformed q-like axes such as InputPerturbation's q * n_w dimension.
-    if q == 1 and values.ndim == len(batch_shape) + 1:
-        values = values.unsqueeze(len(batch_shape))
     return values
 
 
@@ -128,7 +126,7 @@ class NSGAIIAcquisitionContextAdapter:
 
 
 class NSGAIIObjectiveOutputAdapter:
-    """Apply an objective and collapse only leading DeepGP sample axes."""
+    """Apply an objective and normalize its deterministic PyMOO output shape."""
 
     def __init__(
         self,

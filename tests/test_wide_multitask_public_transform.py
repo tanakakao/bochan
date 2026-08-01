@@ -275,7 +275,7 @@ def test_perturbed_wide_bald_skips_multioutput_objective_indexing() -> None:
     _assert_scalar_with_gradient(acquisition(Xq), Xq)
 
 
-def test_perturbed_wide_nsgaii_objective_aggregates_n_w_axis() -> None:
+def test_perturbed_wide_nsgaii_objective_aggregates_to_pymoo_shape() -> None:
     model, _, _, Xq, objective = _perturbed_wide_case()
     population_X = Xq.detach().squeeze(0).unsqueeze(-2)
     acquisition = MultiOutputPosteriorMean(model=model)
@@ -288,5 +288,5 @@ def test_perturbed_wide_nsgaii_objective_aggregates_n_w_axis() -> None:
     values = objective_adapter(raw_values)
 
     assert raw_values.shape == torch.Size([3, 4, 2])
-    assert values.shape == torch.Size([3, 1, 2])
+    assert values.shape == torch.Size([3, 2])
     assert torch.isfinite(values).all()

@@ -427,7 +427,7 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
         q: input.q,
         num_restarts: input.numRestarts,
         raw_samples: input.rawSamples,
-        sequential: true
+        sequential: input.searchSpace.some((variable) => variable.type === "categorical")
       },
       // Target missing values still use the automatic target policy. Feature
       // missing values are controlled independently through web_feature_missing.

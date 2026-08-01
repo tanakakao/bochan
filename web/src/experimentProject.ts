@@ -130,7 +130,9 @@ function buildProjectRunRequest(input: RunRegressionInput): Record<string, unkno
       q: input.q,
       num_restarts: input.numRestarts,
       raw_samples: input.rawSamples,
-      sequential: input.searchSpace.some((variable) => variable.type === "categorical")
+      sequential:
+        input.searchSpace.some((variable) => variable.type === "categorical") ||
+        searchMethod === "cmaes"
     },
     drop_missing: true
   };

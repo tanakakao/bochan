@@ -26,6 +26,7 @@ jobs:
         run: |
           set +e
           pytest -q --maxfail=1 \
+            tests/test_gamma_fantasize.py \
             tests/test_wide_multitask_models.py \
             tests/test_wide_multitask_public_transform.py \
             tests/test_wide_multitask_acquisition_consistency.py \
@@ -82,6 +83,8 @@ jobs:
             src/bochan/acquisition/ordinal/bayesian_optimization/_utility_defaults.py \
             src/bochan/acquisition/ordinal_constraint_install.py \
             src/bochan/acquisition/ordinal_multitask.py \
+            src/bochan/acquisition/regression/active_learning/__init__.py \
+            src/bochan/acquisition/regression/active_learning/integrated_variance.py \
             src/bochan/acquisition/regression/bayesian_optimization/__init__.py \
             src/bochan/acquisition/regression/bayesian_optimization/hetero_multi_output_autograd.py \
             src/bochan/acquisition/regression/levelset_estimation/objective_compat.py \
@@ -94,6 +97,7 @@ jobs:
             src/bochan/models/hybrid/__init__.py \
             src/bochan/models/hybrid/class_probability_shapes.py \
             src/bochan/models/projected_input_perturbation.py \
+            src/bochan/models/regression/non_gaussian/gamma/base/aligned.py \
             src/bochan/models/wide_multitask.py \
             src/bochan/models/wide_multitask_variants.py \
             src/bochan/optim/__init__.py \
@@ -110,6 +114,7 @@ jobs:
             src/bochan/serving/fastapi/schemas/tabular.py \
             src/bochan/serving/fastapi/stores/__init__.py \
             src/bochan/serving/fastapi/stores/tabular.py \
+            tests/test_gamma_fantasize.py \
             tests/test_wide_multitask_models.py \
             tests/test_wide_multitask_public_transform.py \
             tests/test_wide_multitask_acquisition_consistency.py \

@@ -37,6 +37,17 @@ def test_web_capabilities_advertise_requested_models() -> None:
         "hetero",
         "multitask",
     ]
+    assert WEB_CAPABILITIES["gamma_model_types"] == [
+        "gamma_base",
+        "gamma_deepgp",
+        "gamma_deepkernel",
+        "gamma_saas",
+        "gamma_pca",
+        "gamma_rembo",
+        "gamma_rrp",
+        "gamma_hetero",
+        "gamma_multitask",
+    ]
     assert {"EHVI", "NEHVI"}.issubset(WEB_CAPABILITIES["acquisitions"])
 
 

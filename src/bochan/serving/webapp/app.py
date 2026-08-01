@@ -157,6 +157,8 @@ WEB_CAPABILITIES: dict[str, Any] = {
         "robust",
         "hetero",
         "multitask",
+    ],
+    "gamma_model_types": [
         "gamma_base",
         "gamma_deepgp",
         "gamma_deepkernel",

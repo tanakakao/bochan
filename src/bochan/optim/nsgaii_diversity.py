@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 
 import torch
 from torch import Tensor
@@ -39,6 +40,40 @@ def _normalize_columns(
     return torch.where(active.unsqueeze(0), normalized, torch.zeros_like(normalized))
 
 
+def _initial_selection(
+    *,
+    initial_indices: Sequence[int] | Tensor | None,
+    ideal_distance: Tensor,
+    q: int,
+) -> list[int]:
+    """Resolve required initial rows or choose a balanced objective anchor."""
+
+    if initial_indices is None:
+        return [int(torch.argmin(ideal_distance).item())]
+
+    indices = torch.as_tensor(
+        initial_indices,
+        device=ideal_distance.device,
+        dtype=torch.long,
+    ).reshape(-1)
+    selected: list[int] = []
+    for index in indices.tolist():
+        index = int(index)
+        if index < 0 or index >= ideal_distance.shape[0]:
+            raise IndexError(
+                f"initial index {index} is out of range for "
+                f"n={ideal_distance.shape[0]}."
+            )
+        if index not in selected:
+            selected.append(index)
+    if len(selected) > q:
+        raise ValueError(
+            "initial_indices contains more unique rows than q. "
+            f"Got {len(selected)} and q={q}."
+        )
+    return selected or [int(torch.argmin(ideal_distance).item())]
+
+
 def select_diverse_nsgaii_candidates(
     candidates: Tensor,
     values: Tensor,
@@ -46,14 +81,16 @@ def select_diverse_nsgaii_candidates(
     q: int,
     bounds: Tensor,
     input_weight: float = 0.7,
+    initial_indices: Sequence[int] | Tensor | None = None,
 ) -> tuple[Tensor, Tensor]:
     """Select a quality-anchored maximin subset in input and objective space.
 
     BoTorch's NSGA-II backend selects a requested subset by hypervolume in the
     objective space. That does not guarantee that the corresponding experimental
     conditions are separated in the input space. This selector starts from the
-    Pareto point nearest the normalized ideal point and greedily adds the point
-    whose minimum distance from the selected set is largest.
+    Pareto point nearest the normalized ideal point, or from explicitly required
+    rows, and greedily adds the point whose minimum distance from the selected set
+    is largest.
 
     Distances are calculated independently in normalized input and objective
     spaces, then combined using ``input_weight``. The candidate pool is already
@@ -66,6 +103,8 @@ def select_diverse_nsgaii_candidates(
         bounds: Search bounds with shape ``(2, d)``.
         input_weight: Weight assigned to normalized input-space distance. The
             objective-space distance receives ``1 - input_weight``.
+        initial_indices: Optional rows that must be retained before maximin
+            filling. This is used when fewer than q nondominated rows exist.
 
     Returns:
         The selected candidate and objective tensors, both preserving a shared
@@ -110,9 +149,12 @@ def select_diverse_nsgaii_candidates(
     )
     y_normalized = _normalize_columns(values)
 
-    # Anchor the subset at a balanced high-quality Pareto point.
     ideal_distance = (1.0 - y_normalized).pow(2).mean(dim=-1)
-    selected = [int(torch.argmin(ideal_distance).item())]
+    selected = _initial_selection(
+        initial_indices=initial_indices,
+        ideal_distance=ideal_distance,
+        q=q,
+    )
 
     x_scale = math.sqrt(max(1, x_normalized.shape[-1]))
     y_scale = math.sqrt(max(1, y_normalized.shape[-1]))

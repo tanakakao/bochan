@@ -19,7 +19,6 @@ from bochan.models.regression.non_gaussian.poisson.robust.poisson_heteroscedasti
     HeteroscedasticPoissonMixedGPModel,
 )
 
-
 DTYPE = torch.double
 
 

@@ -12,6 +12,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
+from bochan.api.model_capabilities import BETA_MODEL_TYPES
 from bochan.desktop.services import (
     DatasetStore,
     build_dataset_record,
@@ -185,17 +186,7 @@ WEB_CAPABILITIES: dict[str, Any] = {
         "gamma_hetero",
         "gamma_multitask",
     ],
-    "beta_model_types": [
-        "beta_base",
-        "beta_deepgp",
-        "beta_deepkernel",
-        "beta_saas",
-        "beta_pca",
-        "beta_rembo",
-        "beta_rrp",
-        "beta_hetero",
-        "beta_multitask",
-    ],
+    "beta_model_types": list(BETA_MODEL_TYPES),
     "acquisitions": [
         "EI",
         "PI",

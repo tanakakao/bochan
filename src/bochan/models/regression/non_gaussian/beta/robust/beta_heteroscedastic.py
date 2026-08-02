@@ -4,14 +4,13 @@ import copy
 from typing import Any, Optional, Sequence
 
 import torch
-from torch import Tensor
-from torch.utils.data import DataLoader, TensorDataset
-
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import MixedSingleTaskGP, SingleTaskGP
 from botorch.models.transforms.input import InputTransform
 from botorch.posteriors import Posterior
 from gpytorch.mlls import ExactMarginalLogLikelihood
+from torch import Tensor
+from torch.utils.data import DataLoader, TensorDataset
 
 from bochan.models.components.beta import (
     BetaMeanLink,
@@ -193,11 +192,6 @@ class HeteroscedasticBetaGPModel(_HeteroscedasticBetaMixin, BetaGPModel):
     ) -> None:
         train_X = torch.as_tensor(train_X)
         train_Y = prepare_beta_targets(train_Y, train_X, eps=eps, clip=clip_targets)
-        self.min_noise = float(min_noise)
-        self.aux_lr = float(aux_lr)
-        self.aux_num_epochs = int(aux_num_epochs)
-        self.aux_batch_size = aux_batch_size
-        self.aux_shuffle = bool(aux_shuffle)
         noise_tf = extract_normalize_only_transform(input_transform)
         if train_Yvar is None:
             aux_model = BetaGPModel(
@@ -216,8 +210,7 @@ class HeteroscedasticBetaGPModel(_HeteroscedasticBetaMixin, BetaGPModel):
             noise_targets = _estimate_beta_noise_targets(aux_model, train_X, train_Y, eps=eps, min_noise=min_noise)
         else:
             noise_targets = ensure_2d_col(torch.as_tensor(train_Yvar, device=train_X.device, dtype=train_X.dtype)).clamp_min(float(min_noise))
-        self.noise_model = _fit_noise_model_single(train_X=train_X, noise_targets=noise_targets, input_transform=copy.deepcopy(noise_tf))
-        self.noise_input_transform = noise_tf
+        noise_model = _fit_noise_model_single(train_X=train_X, noise_targets=noise_targets, input_transform=copy.deepcopy(noise_tf))
         super().__init__(
             train_X=train_X,
             train_Y=train_Y,
@@ -231,6 +224,13 @@ class HeteroscedasticBetaGPModel(_HeteroscedasticBetaMixin, BetaGPModel):
             min_concentration=min_concentration,
             clip_targets=clip_targets,
         )
+        self.min_noise = float(min_noise)
+        self.aux_lr = float(aux_lr)
+        self.aux_num_epochs = int(aux_num_epochs)
+        self.aux_batch_size = aux_batch_size
+        self.aux_shuffle = bool(aux_shuffle)
+        self.noise_model = noise_model
+        self.noise_input_transform = noise_tf
 
 
 class HeteroscedasticBetaMixedGPModel(_HeteroscedasticBetaMixin, BetaMixedGPModel):
@@ -260,11 +260,6 @@ class HeteroscedasticBetaMixedGPModel(_HeteroscedasticBetaMixin, BetaMixedGPMode
     ) -> None:
         train_X = torch.as_tensor(train_X)
         train_Y = prepare_beta_targets(train_Y, train_X, eps=eps, clip=clip_targets)
-        self.min_noise = float(min_noise)
-        self.aux_lr = float(aux_lr)
-        self.aux_num_epochs = int(aux_num_epochs)
-        self.aux_batch_size = aux_batch_size
-        self.aux_shuffle = bool(aux_shuffle)
         noise_tf = extract_normalize_only_transform(input_transform)
         if train_Yvar is None:
             aux_model = BetaMixedGPModel(
@@ -284,8 +279,7 @@ class HeteroscedasticBetaMixedGPModel(_HeteroscedasticBetaMixin, BetaMixedGPMode
             noise_targets = _estimate_beta_noise_targets(aux_model, train_X, train_Y, eps=eps, min_noise=min_noise)
         else:
             noise_targets = ensure_2d_col(torch.as_tensor(train_Yvar, device=train_X.device, dtype=train_X.dtype)).clamp_min(float(min_noise))
-        self.noise_model = _fit_noise_model_mixed(train_X=train_X, noise_targets=noise_targets, cat_dims=cat_dims, input_transform=copy.deepcopy(noise_tf))
-        self.noise_input_transform = noise_tf
+        noise_model = _fit_noise_model_mixed(train_X=train_X, noise_targets=noise_targets, cat_dims=cat_dims, input_transform=copy.deepcopy(noise_tf))
         super().__init__(
             train_X=train_X,
             train_Y=train_Y,
@@ -300,6 +294,13 @@ class HeteroscedasticBetaMixedGPModel(_HeteroscedasticBetaMixin, BetaMixedGPMode
             min_concentration=min_concentration,
             clip_targets=clip_targets,
         )
+        self.min_noise = float(min_noise)
+        self.aux_lr = float(aux_lr)
+        self.aux_num_epochs = int(aux_num_epochs)
+        self.aux_batch_size = aux_batch_size
+        self.aux_shuffle = bool(aux_shuffle)
+        self.noise_model = noise_model
+        self.noise_input_transform = noise_tf
 
 
 __all__ = ["HeteroscedasticBetaPosterior", "HeteroscedasticBetaGPModel", "HeteroscedasticBetaMixedGPModel"]

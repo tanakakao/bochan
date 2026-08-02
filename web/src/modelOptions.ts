@@ -31,7 +31,15 @@ export const MODEL_OPTIONS = [
   { value: "gamma_rembo", label: "Gamma REMBO", family: "high_dimensional" },
   { value: "gamma_rrp", label: "Gamma RRP", family: "robust_noise" },
   { value: "gamma_hetero", label: "Gamma Heteroskedastic", family: "robust_noise" },
-  { value: "gamma_multitask", label: "Gamma Multitask", family: "multitask" }
+  { value: "gamma_multitask", label: "Gamma Multitask", family: "multitask" },
+  { value: "beta_base", label: "Beta Base", family: "standard_gp" },
+  { value: "beta_deepgp", label: "Beta Deep GP", family: "deep_representation" },
+  { value: "beta_deepkernel", label: "Beta Deep Kernel", family: "deep_representation" },
+  { value: "beta_saas", label: "Beta SAAS", family: "high_dimensional" },
+  { value: "beta_pca", label: "Beta PCA", family: "high_dimensional" },
+  { value: "beta_rembo", label: "Beta REMBO", family: "high_dimensional" },
+  { value: "beta_rrp", label: "Beta RRP", family: "robust_noise" },
+  { value: "beta_hetero", label: "Beta Heteroskedastic", family: "robust_noise" },
 ] as const satisfies ReadonlyArray<{
   value: string;
   label: string;
@@ -58,7 +66,15 @@ export const MODEL_DESCRIPTIONS: Record<WebModelType, string> = {
   gamma_rembo: "raw入力をREMBO射影するGamma回帰です。",
   gamma_rrp: "外れ値に頑健なGamma回帰です。",
   gamma_hetero: "入力依存分散を扱うGamma回帰です。",
-  gamma_multitask: "正値の複数目的間の相関を学習する変分Gamma GPです。"
+  gamma_multitask: "正値の複数目的間の相関を学習する変分Gamma GPです。",
+  beta_base: "0〜1の連続割合をBeta分布でモデル化します。",
+  beta_deepgp: "Beta尤度を用いるDeep GP割合回帰です。",
+  beta_deepkernel: "学習特徴上でBeta割合回帰を行います。",
+  beta_saas: "高次元の割合目的変数向けBeta SAASモデルです。",
+  beta_pca: "raw入力をPCA射影してBeta回帰を行います。",
+  beta_rembo: "低次元REMBO空間でBeta回帰を行います。",
+  beta_rrp: "外れ観測に頑健なBeta割合回帰です。",
+  beta_hetero: "入力依存の追加分散を持つBeta割合回帰です。"
 };
 
 export function modelFamilyFor(modelType: string): ModelFamily {

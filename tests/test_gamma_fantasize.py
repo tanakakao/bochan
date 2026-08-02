@@ -12,7 +12,7 @@ from bochan.models.regression.non_gaussian.gamma.base import (
     GammaGPModel,
     GammaMixedGPModel,
 )
-import bochan.models.regression.non_gaussian.gamma.robust.gamma_heteroscedastic as gamma_heteroscedastic
+from bochan.models.regression.non_gaussian.gamma.robust import gamma_heteroscedastic
 from bochan.models.regression.non_gaussian.gamma.robust.gamma_heteroscedastic import (
     HeteroscedasticGammaGPModel,
     HeteroscedasticGammaMixedGPModel,
@@ -190,8 +190,17 @@ def test_heteroscedastic_gamma_registers_noise_model_after_parent_init(monkeypat
 
 def test_heteroscedastic_gamma_mixed_registers_noise_model_after_parent_init(monkeypatch) -> None:
     train_X, train_Y = _mixed_training_data()
-    train_Yvar = torch.full_like(train_Y, 0.05)
     noise_model = _StubNoiseModel(train_X)
+    monkeypatch.setattr(
+        gamma_heteroscedastic,
+        "_fit_variational_gamma_mll",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        gamma_heteroscedastic,
+        "_estimate_gamma_noise_targets",
+        lambda model, train_X, train_Y, **kwargs: torch.full_like(train_Y, 0.05),
+    )
     monkeypatch.setattr(
         gamma_heteroscedastic,
         "_fit_noise_model_mixed",
@@ -201,7 +210,6 @@ def test_heteroscedastic_gamma_mixed_registers_noise_model_after_parent_init(mon
     model = HeteroscedasticGammaMixedGPModel(
         train_X=train_X,
         train_Y=train_Y,
-        train_Yvar=train_Yvar,
         cat_dims=[1],
         num_inducing_points=3,
     )

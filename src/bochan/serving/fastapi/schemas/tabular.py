@@ -27,6 +27,7 @@ class TabularFitModelRequest(APIRequest):
     bo_model_config: ModelConfigSchema = Field(alias="model_config")
     fit_config: FitConfigSchema | None = None
     multi_output_config: MultiOutputConfigSchema | None = None
+    alpha: float | None = Field(default=None, gt=0.0)
     input_cols: list[str]
     target_cols: list[str] | str
     categorical_cols: list[str] = Field(default_factory=list)

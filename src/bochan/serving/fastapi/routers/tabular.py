@@ -168,6 +168,7 @@ def _fit_response(model_id: str, optimizer: TabularBayesianOptimizer) -> Tabular
         category_maps=to_serializable(dataset.category_maps or {}),
         target_category_maps=to_serializable(dataset.target_category_maps or {}),
         metadata=model_metadata(optimizer.bo),
+        cross_validation=to_serializable(optimizer.cross_validation_result_),
     )
 
 
@@ -180,6 +181,16 @@ def fit_tabular_model(
 
     try:
         frame = _to_dataframe(request.data)
+        cv_config = _schema_dict(request.cv_config)
+        if cv_config and cv_config.get("splitter") == "stratified_kfold":
+            cv_config["splitter"] = "stratified"
+        if cv_config and cv_config.get("splitter") != "loo" and int(cv_config["n_splits"]) > len(frame):
+            raise ValueError("n_splits must not exceed the number of data rows.")
+        task_type = str(request.bo_model_config.task_type)
+        if cv_config and cv_config.get("splitter") != "loo" and task_type in {"binary", "multiclass", "ordinal"}:
+            target = request.target_cols[0] if isinstance(request.target_cols, list) else request.target_cols
+            if int(cv_config["n_splits"]) > int(frame[target].value_counts().min()):
+                raise ValueError("n_splits must not exceed the smallest target class count.")
         direct_model_kwargs: dict[str, Any] = {}
         if request.multi_output_config is not None:
             direct_model_kwargs["multi_output_config"] = _schema_dict(
@@ -207,11 +218,15 @@ def fit_tabular_model(
             category_maps=request.category_maps,
             target_category_maps=request.target_category_maps,
             return_original_categories=request.return_original_categories,
+            cross_validation=request.cross_validation,
+            cv_config=cv_config,
             **direct_model_kwargs,
         )
         optimizer.fit(frame)
         model_id = store.add(optimizer)
         return _fit_response(model_id, optimizer)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

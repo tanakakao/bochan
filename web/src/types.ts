@@ -213,6 +213,12 @@ export interface RegressionResult {
   metadata: Record<string, unknown>;
 }
 
+export interface CrossValidationSettings {
+  enabled: boolean;
+  method: "kfold" | "loo";
+  nSplits: number;
+}
+
 export interface ModelArtifactImportResponse {
   dataset: DatasetResponse;
   result: RegressionResult;

@@ -336,6 +336,8 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         target_metadata=target_metadata,
         model_config=model_config,
         fit_config=fit_config,
+        cross_validation=request.cross_validation,
+        cv_config=request.cv_config,
     )
     dataset = tabular_optimizer.dataset
     if dataset is None or dataset.Y is None:
@@ -682,6 +684,7 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
             "internal_model_type": model_type,
             "hybrid_model": hybrid_model,
             "timings_ms": timings_ms,
+            "cross_validation": to_serializable(tabular_optimizer.cross_validation_result_),
         },
     }
 

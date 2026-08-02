@@ -8,14 +8,17 @@ unchanged.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from bochan.api import (
     AcquisitionConfig,
     BayesianOptimizer,
     CandidateRepairConfig,
+    CrossValidationConfig,
+    CrossValidationResult,
     DataContext,
     FitConfig,
     InputTransformConfig,
@@ -273,6 +276,8 @@ class TabularBayesianOptimizer:
         return_original_categories: bool | None = None,
         data_config: TabularDataConfig | None = None,
         data: Any | None = None,
+        cross_validation: bool = False,
+        cv_config: CrossValidationConfig | Mapping[str, Any] | None = None,
         **bo_kwargs: Any,
     ) -> None:
         self.model_config = make_model_config(
@@ -337,6 +342,9 @@ class TabularBayesianOptimizer:
             return_original_categories=return_original_categories,
         )
         self.data = data
+        self.cross_validation = bool(cross_validation)
+        self.cv_config = self._resolve_cv_config(cv_config)
+        self.cross_validation_result_: CrossValidationResult | None = None
         self.bo_kwargs = dict(bo_kwargs)
         self.bo = BayesianOptimizer(
             model_config=self.model_config,
@@ -344,6 +352,22 @@ class TabularBayesianOptimizer:
             **bo_kwargs,
         )
         self.dataset: TabularDataset | None = None
+
+    @staticmethod
+    def _resolve_cv_config(
+        value: CrossValidationConfig | Mapping[str, Any] | None,
+    ) -> CrossValidationConfig | None:
+        """Normalize a public cross-validation configuration.
+
+        Args:
+            value: Core configuration, mapping of constructor fields, or ``None``.
+
+        Returns:
+            A core cross-validation configuration or ``None``.
+        """
+        if value is None or isinstance(value, CrossValidationConfig):
+            return value
+        return CrossValidationConfig(**dict(value))
 
     @classmethod
     def from_csv(
@@ -496,6 +520,8 @@ class TabularBayesianOptimizer:
         batch_size: int | None | Any = UNSET,
         maxiter: int | None | Any = UNSET,
         skip_fit: bool | Any = UNSET,
+        cross_validation: bool | None = None,
+        cv_config: CrossValidationConfig | Mapping[str, Any] | None = None,
     ) -> "TabularBayesianOptimizer":
         '''Fit from a pandas DataFrame or numpy-like arrays.'''
 
@@ -556,6 +582,17 @@ class TabularBayesianOptimizer:
             raise ValueError("Target values are required for fit(). Set target_cols or pass y.")
         self.dataset = dataset
         resolved_model_config = self._model_config_with_tabular_cat_dims(dataset)
+        run_cross_validation = self.cross_validation if cross_validation is None else bool(cross_validation)
+        resolved_cv_config = self._resolve_cv_config(cv_config) if cv_config is not None else self.cv_config
+        self.cross_validation_result_ = None
+        if run_cross_validation:
+            self.cross_validation_result_ = self.bo.cross_validate(
+                dataset.X,
+                dataset.Y,
+                model_config=resolved_model_config,
+                fit_config=self.fit_config,
+                cv_config=resolved_cv_config or CrossValidationConfig(),
+            )
         self.bo.fit(
             dataset.X,
             dataset.Y,

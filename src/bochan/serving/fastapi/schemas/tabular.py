@@ -20,6 +20,21 @@ from .requests import APIRequest
 TabularPayload = list[dict[str, Any]] | dict[str, list[Any]]
 
 
+class CrossValidationRequest(APIRequest):
+    """JSON-safe subset of the core cross-validation configuration."""
+
+    splitter: Literal["auto", "kfold", "stratified", "stratified_kfold", "loo"] = "auto"
+    n_splits: int = Field(default=5, ge=2)
+    shuffle: bool = True
+    random_state: int | None = 0
+    classification_average: Literal["auto", "binary", "micro", "macro", "weighted"] = "auto"
+    classification_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    positive_class: int | str | float = 1
+    zero_division: Literal[0, 1] = 0
+    mape_zero_policy: Literal["warn_nan", "ignore", "clip"] = "warn_nan"
+    mape_epsilon: float = Field(default=1e-8, gt=0.0)
+
+
 class TabularFitModelRequest(APIRequest):
     """Fit a :class:`TabularBayesianOptimizer` from JSON tabular data."""
 
@@ -47,6 +62,8 @@ class TabularFitModelRequest(APIRequest):
     category_maps: dict[str, dict[Any, int]] | None = None
     target_category_maps: dict[str, dict[Any, int]] | None = None
     return_original_categories: bool = True
+    cross_validation: bool = False
+    cv_config: CrossValidationRequest | None = None
 
     @model_validator(mode="after")
     def attach_alpha_to_tabular_model(self):
@@ -134,6 +151,7 @@ class TabularModelFitResponse(BaseModel):
     category_maps: dict[str, Any] = Field(default_factory=dict)
     target_category_maps: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    cross_validation: dict[str, Any] | None = None
 
 
 class TabularModelLoadResponse(TabularModelFitResponse):
@@ -158,6 +176,7 @@ class TabularCandidateResponse(BaseModel):
 
 
 __all__ = [
+    "CrossValidationRequest",
     "TabularCandidateRequest",
     "TabularCandidateResponse",
     "TabularFitModelRequest",

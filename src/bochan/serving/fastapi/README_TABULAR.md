@@ -1,5 +1,24 @@
 # Tabular FastAPI
 
+## Cross-validation
+
+交差検証は既定でOFFです。学習リクエストでは次の3形式を利用できます。
+
+```json
+{"cross_validation": false, "cv_config": null}
+```
+
+```json
+{"cross_validation": true, "cv_config": {"splitter": "auto", "n_splits": 5}}
+```
+
+```json
+{"cross_validation": true, "cv_config": {"splitter": "loo"}}
+```
+
+ONの場合も最終モデルは全データで別途学習され、レスポンスの`cross_validation`には
+foldモデルを含まない指標・予測結果が返ります。
+
 `/api/v1/tabular/models` は `TabularBayesianOptimizer` を直接利用するHTTP APIです。通常の `/api/v1/models` と異なり、DataFrame相当のJSON records、列名、文字列カテゴリを受け取ります。
 
 利用にはFastAPI依存とtabular依存の両方が必要です。

@@ -11,9 +11,7 @@ from bochan.acquisition.regression.active_learning import (
     qHeteroRegressionPosteriorVariance,
     qHeteroRegressionPredictiveEntropy,
 )
-from bochan.models.regression.non_gaussian.poisson.robust import (
-    poisson_heteroscedastic as hetero_module,
-)
+from bochan.models.regression.non_gaussian.poisson.robust import poisson_heteroscedastic as hetero_module
 from bochan.models.regression.non_gaussian.poisson.robust.poisson_heteroscedastic import (
     HeteroscedasticPoissonGPModel,
     HeteroscedasticPoissonMixedGPModel,

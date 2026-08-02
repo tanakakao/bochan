@@ -14,16 +14,9 @@ from botorch.posteriors.gpytorch import GPyTorchPosterior
 from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
 from gpytorch.models.deep_gps import DeepGP
 
-from bochan.models.components.deepgp_posterior import moment_match_deepgp_distribution
-from bochan.models.components.layers.hidden_layers import (
-    DeepGPHiddenLayer,
-    DeepMixedGPHiddenLayer,
-    DeepKernelDeepGPHiddenLayer,
-    DeepKernelDeepMixedGPHiddenLayer,
-)
 from bochan.models.components.beta import (
-    BetaMeanLink,
     BetaLogLikelihood,
+    BetaMeanLink,
     BetaPosterior,
     apply_input_transform_for_eval,
     apply_input_transform_for_training,
@@ -32,6 +25,13 @@ from bochan.models.components.beta import (
     normalize_dims,
     prepare_beta_targets,
     to_device_dtype_transform,
+)
+from bochan.models.components.deepgp_posterior import moment_match_deepgp_distribution
+from bochan.models.components.layers.hidden_layers import (
+    DeepGPHiddenLayer,
+    DeepKernelDeepGPHiddenLayer,
+    DeepKernelDeepMixedGPHiddenLayer,
+    DeepMixedGPHiddenLayer,
 )
 
 
@@ -84,7 +84,29 @@ class _BaseBetaDeepGPModel(DeepGP, GPyTorchModel):
         return torch.Size()
 
     def transform_inputs(self, X: Tensor) -> Tensor:
-        return apply_input_transform_for_eval(X, self.input_transform, cat_dims=getattr(self, "cat_dims", None))
+        return apply_input_transform_for_eval(
+            X,
+            self.input_transform,
+            cat_dims=getattr(self, "cat_dims", None),
+        )
+
+    def _moment_matched_distribution(self, X: Tensor):
+        """Evaluate DeepGP layers with common random numbers for stable SAA."""
+        seed = getattr(self, "posterior_seed", 0)
+        if seed is None:
+            return moment_match_deepgp_distribution(self(X), X=X)
+
+        devices: list[int] = []
+        if X.is_cuda:
+            device_index = X.device.index
+            devices = [
+                torch.cuda.current_device()
+                if device_index is None
+                else device_index
+            ]
+        with torch.random.fork_rng(devices=devices):
+            torch.manual_seed(int(seed))
+            return moment_match_deepgp_distribution(self(X), X=X)
 
     def latent_posterior(
         self,
@@ -94,13 +116,14 @@ class _BaseBetaDeepGPModel(DeepGP, GPyTorchModel):
         **kwargs: Any,
     ) -> GPyTorchPosterior:
         if output_indices is not None:
-            raise NotImplementedError(f"{self.__class__.__name__} does not support output_indices.")
+            raise NotImplementedError(
+                f"{self.__class__.__name__} does not support output_indices."
+            )
         if isinstance(X, tuple):
             X = X[0]
         self.eval()
         X_tf = self.transform_inputs(X)
-        dist = self(X_tf)
-        dist = moment_match_deepgp_distribution(dist, X=X_tf)
+        dist = self._moment_matched_distribution(X_tf)
         posterior = GPyTorchPosterior(dist)
         if posterior_transform is not None:
             posterior = posterior_transform(posterior)
@@ -115,8 +138,16 @@ class _BaseBetaDeepGPModel(DeepGP, GPyTorchModel):
         **kwargs: Any,
     ) -> BetaPosterior:
         if torch.is_tensor(observation_noise):
-            raise NotImplementedError(f"{self.__class__.__name__} does not support tensor observation_noise.")
-        latent_post = self.latent_posterior(X, output_indices=output_indices, posterior_transform=None, **kwargs)
+            raise NotImplementedError(
+                f"{self.__class__.__name__} does not support tensor "
+                "observation_noise."
+            )
+        latent_post = self.latent_posterior(
+            X,
+            output_indices=output_indices,
+            posterior_transform=None,
+            **kwargs,
+        )
         posterior = _BetaDeepGPPosterior(
             latent_posterior=latent_post,
             likelihood=self.likelihood,
@@ -135,10 +166,17 @@ class _BaseBetaDeepGPModel(DeepGP, GPyTorchModel):
     def predict_beta_params(self, X: Tensor):
         mu = self.predict_mean(X).clamp(min=self.eps, max=1.0 - self.eps)
         phi = self.predict_concentration().to(device=mu.device, dtype=mu.dtype)
-        return (mu * phi).clamp_min(self.eps), ((1.0 - mu) * phi).clamp_min(self.eps)
+        return (
+            (mu * phi).clamp_min(self.eps),
+            ((1.0 - mu) * phi).clamp_min(self.eps),
+        )
 
     def make_mll(self) -> DeepApproximateMLL:
-        base_mll = VariationalELBO(likelihood=self.likelihood, model=self, num_data=self.train_inputs_raw[0].shape[-2])
+        base_mll = VariationalELBO(
+            likelihood=self.likelihood,
+            model=self,
+            num_data=self.train_inputs_raw[0].shape[-2],
+        )
         return DeepApproximateMLL(base_mll)
 
 
@@ -164,12 +202,25 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
         layer_type: str = "default",
         mean_type: str = "linear",
         learn_inducing_locations: bool = True,
+        posterior_seed: int | None = 0,
     ) -> None:
         super().__init__()
         train_X = torch.as_tensor(train_X)
-        train_Y = prepare_beta_targets(train_Y, train_X, eps=eps, clip=clip_targets)
-        self.input_transform = to_device_dtype_transform(clone_input_transform(input_transform), train_X)
-        train_X_tf = apply_input_transform_for_training(train_X, self.input_transform, name="BetaDeepGPModel.input_transform")
+        train_Y = prepare_beta_targets(
+            train_Y,
+            train_X,
+            eps=eps,
+            clip=clip_targets,
+        )
+        self.input_transform = to_device_dtype_transform(
+            clone_input_transform(input_transform),
+            train_X,
+        )
+        train_X_tf = apply_input_transform_for_training(
+            train_X,
+            self.input_transform,
+            name="BetaDeepGPModel.input_transform",
+        )
         d = train_X_tf.shape[-1]
         if list_hidden_dims is None:
             list_hidden_dims = [int(hidden_dim)]
@@ -196,11 +247,33 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
         current_dim = first_out
         layers = []
         for h in list_hidden_dims[1:]:
-            layers.append(DeepGPHiddenLayer(input_dims=current_dim, output_dims=int(h), num_inducing=num_inducing, mean_type=mean_type, input_data=None, learn_inducing_locations=learn_inducing_locations))
+            layers.append(
+                DeepGPHiddenLayer(
+                    input_dims=current_dim,
+                    output_dims=int(h),
+                    num_inducing=num_inducing,
+                    mean_type=mean_type,
+                    input_data=None,
+                    learn_inducing_locations=learn_inducing_locations,
+                )
+            )
             current_dim = int(h)
         self.extra_layers = torch.nn.ModuleList(layers)
-        self.last_layer = DeepGPHiddenLayer(input_dims=current_dim, output_dims=None, num_inducing=num_inducing, mean_type=mean_type, input_data=None, learn_inducing_locations=learn_inducing_locations)
-        self.likelihood = likelihood or BetaLogLikelihood(link=link, init_concentration=init_concentration, learn_concentration=learn_concentration, eps=eps, min_concentration=min_concentration)
+        self.last_layer = DeepGPHiddenLayer(
+            input_dims=current_dim,
+            output_dims=None,
+            num_inducing=num_inducing,
+            mean_type=mean_type,
+            input_data=None,
+            learn_inducing_locations=learn_inducing_locations,
+        )
+        self.likelihood = likelihood or BetaLogLikelihood(
+            link=link,
+            init_concentration=init_concentration,
+            learn_concentration=learn_concentration,
+            eps=eps,
+            min_concentration=min_concentration,
+        )
         self.train_inputs_raw = (train_X.detach().clone(),)
         self.train_inputs = (train_X,)
         self.transformed_train_inputs = (train_X_tf.detach().clone(),)
@@ -211,6 +284,9 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
         self.layer_type = str(layer_type)
         self.mean_type = str(mean_type)
         self.learn_inducing_locations = bool(learn_inducing_locations)
+        self.posterior_seed = (
+            None if posterior_seed is None else int(posterior_seed)
+        )
         self.link = link
         self.init_concentration = float(init_concentration)
         self.learn_concentration = bool(learn_concentration)
@@ -225,15 +301,32 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
             h = layer(h)
         return self.last_layer(h)
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "BetaDeepGPModel":
+    def condition_on_observations(
+        self,
+        X: Tensor,
+        Y: Tensor,
+        **kwargs: Any,
+    ) -> "BetaDeepGPModel":
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("BetaDeepGPModel does not support noise in condition_on_observations.")
+            raise NotImplementedError(
+                "BetaDeepGPModel does not support noise in "
+                "condition_on_observations."
+            )
         if isinstance(X, tuple):
             X = X[0]
-        X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
+        X = torch.as_tensor(
+            X,
+            device=self.train_inputs_raw[0].device,
+            dtype=self.train_inputs_raw[0].dtype,
+        )
         if X.ndim == 1:
             X = X.unsqueeze(0)
-        Y = prepare_beta_targets(Y, X, eps=self.eps, clip=self.clip_targets)
+        Y = prepare_beta_targets(
+            Y,
+            X,
+            eps=self.eps,
+            clip=self.clip_targets,
+        )
         new_X = torch.cat([self.train_inputs_raw[0], X], dim=-2)
         new_Y = torch.cat([self.train_targets, Y], dim=0)
         new_model = self.__class__(
@@ -245,7 +338,9 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
             input_transform=clone_input_transform(self.input_transform),
             likelihood=copy.deepcopy(self.likelihood),
             link=self.link,
-            init_concentration=float(self.likelihood.concentration.detach().cpu()),
+            init_concentration=float(
+                self.likelihood.concentration.detach().cpu()
+            ),
             learn_concentration=self.learn_concentration,
             eps=self.eps,
             min_concentration=self.min_concentration,
@@ -253,6 +348,7 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
             layer_type=self.layer_type,
             mean_type=self.mean_type,
             learn_inducing_locations=self.learn_inducing_locations,
+            posterior_seed=self.posterior_seed,
         )
         new_model.load_state_dict(copy.deepcopy(self.state_dict()), strict=False)
         new_model.eval()
@@ -282,21 +378,66 @@ class BetaMixedDeepGPModel(_BaseBetaDeepGPModel):
         layer_type: str = "default",
         mean_type: str = "linear",
         learn_inducing_locations: bool = True,
+        posterior_seed: int | None = 0,
     ) -> None:
         super().__init__()
         train_X = torch.as_tensor(train_X)
-        train_Y = prepare_beta_targets(train_Y, train_X, eps=eps, clip=clip_targets)
+        train_Y = prepare_beta_targets(
+            train_Y,
+            train_X,
+            eps=eps,
+            clip=clip_targets,
+        )
         d = train_X.shape[-1]
         self.cat_dims = normalize_dims(cat_dims, d)
         self.cont_dims = get_cont_dims(d, self.cat_dims)
-        self.input_transform = to_device_dtype_transform(clone_input_transform(input_transform), train_X)
-        train_X_tf = apply_input_transform_for_training(train_X, self.input_transform, cat_dims=self.cat_dims, name="BetaMixedDeepGPModel.input_transform")
+        self.input_transform = to_device_dtype_transform(
+            clone_input_transform(input_transform),
+            train_X,
+        )
+        train_X_tf = apply_input_transform_for_training(
+            train_X,
+            self.input_transform,
+            cat_dims=self.cat_dims,
+            name="BetaMixedDeepGPModel.input_transform",
+        )
         if str(layer_type).lower() == "deepkernel":
-            self.hidden_layer = DeepKernelDeepMixedGPHiddenLayer(input_dims=d, output_dims=int(hidden_dim), ord_dims=self.cont_dims, cat_dims=self.cat_dims, num_inducing=num_inducing, mean_type="constant", input_data=train_X_tf, learn_inducing_locations=learn_inducing_locations)
+            self.hidden_layer = DeepKernelDeepMixedGPHiddenLayer(
+                input_dims=d,
+                output_dims=int(hidden_dim),
+                ord_dims=self.cont_dims,
+                cat_dims=self.cat_dims,
+                num_inducing=num_inducing,
+                mean_type="constant",
+                input_data=train_X_tf,
+                learn_inducing_locations=learn_inducing_locations,
+            )
         else:
-            self.hidden_layer = DeepMixedGPHiddenLayer(input_dims=d, output_dims=int(hidden_dim), ord_dims=self.cont_dims, cat_dims=self.cat_dims, num_inducing=num_inducing, mean_type=mean_type, input_data=train_X_tf, learn_inducing_locations=learn_inducing_locations)
-        self.last_layer = DeepGPHiddenLayer(input_dims=int(hidden_dim), output_dims=None, num_inducing=num_inducing, mean_type=mean_type, input_data=None, learn_inducing_locations=learn_inducing_locations)
-        self.likelihood = likelihood or BetaLogLikelihood(link=link, init_concentration=init_concentration, learn_concentration=learn_concentration, eps=eps, min_concentration=min_concentration)
+            self.hidden_layer = DeepMixedGPHiddenLayer(
+                input_dims=d,
+                output_dims=int(hidden_dim),
+                ord_dims=self.cont_dims,
+                cat_dims=self.cat_dims,
+                num_inducing=num_inducing,
+                mean_type=mean_type,
+                input_data=train_X_tf,
+                learn_inducing_locations=learn_inducing_locations,
+            )
+        self.last_layer = DeepGPHiddenLayer(
+            input_dims=int(hidden_dim),
+            output_dims=None,
+            num_inducing=num_inducing,
+            mean_type=mean_type,
+            input_data=None,
+            learn_inducing_locations=learn_inducing_locations,
+        )
+        self.likelihood = likelihood or BetaLogLikelihood(
+            link=link,
+            init_concentration=init_concentration,
+            learn_concentration=learn_concentration,
+            eps=eps,
+            min_concentration=min_concentration,
+        )
         self.train_inputs_raw = (train_X.detach().clone(),)
         self.train_inputs = (train_X,)
         self.transformed_train_inputs = (train_X_tf.detach().clone(),)
@@ -306,6 +447,9 @@ class BetaMixedDeepGPModel(_BaseBetaDeepGPModel):
         self.layer_type = str(layer_type)
         self.mean_type = str(mean_type)
         self.learn_inducing_locations = bool(learn_inducing_locations)
+        self.posterior_seed = (
+            None if posterior_seed is None else int(posterior_seed)
+        )
         self.link = link
         self.init_concentration = float(init_concentration)
         self.learn_concentration = bool(learn_concentration)

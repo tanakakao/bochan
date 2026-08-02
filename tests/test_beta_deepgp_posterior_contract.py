@@ -4,9 +4,7 @@ import gpytorch
 import pytest
 import torch
 
-from bochan.acquisition.non_gaussian.active_learning import (
-    qNonGaussianResponseMeanVariance,
-)
+from bochan.acquisition.non_gaussian.active_learning import qNonGaussianResponseMeanVariance
 from bochan.acquisition.regression.active_learning import (
     qRegressionBALD,
     qRegressionPosteriorVariance,
@@ -16,7 +14,6 @@ from bochan.models.regression.non_gaussian.beta.deep.beta_deepgp import (
     BetaDeepGPModel,
     BetaMixedDeepGPModel,
 )
-
 
 DTYPE = torch.double
 

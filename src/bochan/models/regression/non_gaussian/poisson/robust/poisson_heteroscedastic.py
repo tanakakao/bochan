@@ -4,14 +4,13 @@ import copy
 from typing import Any, Optional, Sequence
 
 import torch
-from torch import Tensor
-from torch.utils.data import DataLoader, TensorDataset
-
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import MixedSingleTaskGP, SingleTaskGP
 from botorch.models.transforms.input import InputTransform
 from botorch.posteriors import Posterior
 from gpytorch.mlls import ExactMarginalLogLikelihood
+from torch import Tensor
+from torch.utils.data import DataLoader, TensorDataset
 
 from bochan.models.components.poisson import (
     PoissonLink,
@@ -119,7 +118,8 @@ def _fit_noise_model_single(train_X: Tensor, noise_targets: Tensor, input_transf
     model = SingleTaskGP(train_X=train_X, train_Y=noise_targets.log(), input_transform=input_transform)
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_mll(mll)
-    model.eval(); model.likelihood.eval()
+    model.eval()
+    model.likelihood.eval()
     return model
 
 
@@ -137,7 +137,8 @@ def _fit_noise_model_mixed(
     )
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_mll(mll)
-    model.eval(); model.likelihood.eval()
+    model.eval()
+    model.likelihood.eval()
     return model
 
 

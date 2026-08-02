@@ -47,15 +47,59 @@ def positive_concentration_from_raw(raw_concentration: Tensor, *, min_concentrat
     return torch.nn.functional.softplus(raw_concentration).clamp_min(min_concentration)
 
 
-def prepare_beta_targets(train_Y: Tensor, ref: Tensor, *, eps: float = 1e-6, clip: bool = True) -> Tensor:
-    """Beta 回帰用の target を [n] に整形する。"""
+def prepare_beta_targets(
+    train_Y: Tensor,
+    ref: Tensor,
+    *,
+    eps: float = 1e-6,
+    clip: bool | None = None,
+    boundary_policy: Literal["error", "clip"] = "error",
+    allow_nan: bool = False,
+) -> Tensor:
+    """Validate and prepare targets for Beta regression.
+
+    Args:
+        train_Y: Raw response values.
+        ref: Tensor defining the desired dtype and device.
+        eps: Fixed clipping distance used only by the explicit ``clip`` policy.
+        clip: Deprecated boolean spelling of ``boundary_policy``.
+        boundary_policy: ``error`` rejects values outside the open unit interval;
+            ``clip`` clips finite values to ``[eps, 1 - eps]``.
+        allow_nan: Whether NaN denotes an unobserved response cell.
+
+    Returns:
+        A contiguous tensor on ``ref``'s dtype and device.
+
+    Raises:
+        ValueError: If values are invalid or the policy is unsupported.
+    """
     y = torch.as_tensor(train_Y, device=ref.device, dtype=ref.dtype)
     if y.ndim > 1 and y.shape[-1] == 1:
         y = y.squeeze(-1)
-    if clip:
-        return y.clamp(min=float(eps), max=1.0 - float(eps)).contiguous()
-    if ((y <= 0) | (y >= 1)).any():
-        raise ValueError("Beta targets must satisfy 0 < y < 1. Use clip=True for automatic clipping.")
+    if clip is not None:
+        boundary_policy = "clip" if clip else "error"
+    if boundary_policy not in {"error", "clip"}:
+        raise ValueError("boundary_policy must be 'error' or 'clip'.")
+    if not 0.0 < float(eps) < 0.5:
+        raise ValueError("boundary_epsilon must satisfy 0 < epsilon < 0.5.")
+    if torch.isinf(y).any() or (torch.isnan(y).any() and not allow_nan):
+        raise ValueError("Beta regression targets must be finite; only explicit missing NaNs are supported.")
+    finite = torch.isfinite(y)
+    invalid = finite & ((y < 0) | (y > 1))
+    if invalid.any():
+        values = y[invalid].detach().cpu().tolist()[:8]
+        raise ValueError(f"Beta regression requires targets in [0, 1]; found {values}.")
+    boundary = finite & ((y == 0) | (y == 1))
+    if boundary_policy == "error" and boundary.any():
+        indices = boundary.nonzero(as_tuple=False).detach().cpu().tolist()[:8]
+        raise ValueError(
+            "Beta regression requires targets strictly inside (0, 1). "
+            f"Found boundary values at indices {indices}. Use an explicit boundary "
+            "handling policy or a zero/one-inflated model; for binary 0/1 labels, "
+            "use binary classification."
+        )
+    if boundary_policy == "clip":
+        y = torch.where(finite, y.clamp(min=float(eps), max=1.0 - float(eps)), y)
     return y.contiguous()
 
 
@@ -260,9 +304,9 @@ class BetaLogLikelihood(_OneDimensionalLikelihood):
         """latent f から Beta(alpha, beta) の parameter を返す。"""
         mu = self.mean_from_f(f)
         concentration = self.concentration.to(device=f.device, dtype=f.dtype)
-        alpha = (mu * concentration).clamp_min(self.eps)
-        beta = ((1.0 - mu) * concentration).clamp_min(self.eps)
-        return alpha, beta
+        concentration1 = (mu * concentration).clamp_min(self.eps)
+        concentration0 = ((1.0 - mu) * concentration).clamp_min(self.eps)
+        return concentration1, concentration0
 
     def forward(self, function_samples: Tensor, *args: Any, **kwargs: Any) -> TorchBeta:
         alpha, beta = self.beta_params_from_f(function_samples)

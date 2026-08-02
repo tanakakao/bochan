@@ -52,7 +52,7 @@ class SaasBetaGPModel(BetaGPModel):
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
-        clip_targets: bool = True,
+        clip_targets: bool | None = None,
     ) -> None:
         self.tau = tau
         self.saas_log_scale = bool(saas_log_scale)
@@ -102,7 +102,7 @@ class SaasBetaMixedGPModel(BetaMixedGPModel):
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
-        clip_targets: bool = True,
+        clip_targets: bool | None = None,
     ) -> None:
         self.tau = tau
         self.saas_log_scale = bool(saas_log_scale)

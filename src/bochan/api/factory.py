@@ -507,7 +507,7 @@ def _resolve_fit_func(bundle: ModelBundle, config: FitConfig, mll: Any | None) -
 
         return fit_deepkernel_mll, False
 
-    if model_type.startswith("gamma_"):
+    if model_type.startswith(("beta_", "gamma_", "poisson_", "negative_binomial_")):
         from bochan.fit import fit_non_gaussian_mll
 
         return fit_non_gaussian_mll, False

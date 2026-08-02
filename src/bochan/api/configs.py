@@ -213,6 +213,14 @@ class ModelConfig:
 
             self.outcome_transform = PositiveScaleOutcomeTransform(validate_positive=True)
 
+        if str(self.model_type).startswith("beta_"):
+            if self.outcome_transform not in (None, False, True):
+                raise ValueError(
+                    "Beta regression does not support generic outcome transforms; "
+                    "targets must remain on the open unit interval."
+                )
+            self.outcome_transform = None
+
         if str(self.model_type).startswith("poisson_"):
             if self.outcome_transform not in (None, False, True):
                 raise ValueError(

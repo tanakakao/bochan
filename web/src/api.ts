@@ -33,6 +33,7 @@ export interface WebCapabilities {
   task_types: string[];
   model_types: string[];
   gamma_model_types?: string[];
+  beta_model_types?: string[];
   acquisitions: string[];
   acquisition_families?: Partial<Record<AcquisitionFamily, string[]>>;
   optimizers: string[];

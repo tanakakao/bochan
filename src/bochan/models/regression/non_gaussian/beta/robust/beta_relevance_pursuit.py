@@ -119,7 +119,7 @@ class OutlierRelevancePursuitBetaGPModel(BetaGPModel):
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
-        clip_targets: bool = True,
+        clip_targets: bool | None = None,
     ) -> None:
         train_X = torch.as_tensor(train_X)
         train_Y_beta = prepare_beta_targets(train_Y, train_X, eps=eps, clip=clip_targets)
@@ -210,7 +210,7 @@ class OutlierRelevancePursuitBetaMixedGPModel(BetaMixedGPModel):
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
-        clip_targets: bool = True,
+        clip_targets: bool | None = None,
     ) -> None:
         train_X = torch.as_tensor(train_X)
         train_Y_beta = prepare_beta_targets(train_Y, train_X, eps=eps, clip=clip_targets)

@@ -185,6 +185,17 @@ WEB_CAPABILITIES: dict[str, Any] = {
         "gamma_hetero",
         "gamma_multitask",
     ],
+    "beta_model_types": [
+        "beta_base",
+        "beta_deepgp",
+        "beta_deepkernel",
+        "beta_saas",
+        "beta_pca",
+        "beta_rembo",
+        "beta_rrp",
+        "beta_hetero",
+        "beta_multitask",
+    ],
     "acquisitions": [
         "EI",
         "PI",

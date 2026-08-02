@@ -12,6 +12,7 @@ from botorch.models.transforms.outcome import OutcomeTransform, Standardize
 from botorch.utils.types import DEFAULT
 from gpytorch.kernels import Kernel
 from gpytorch.likelihoods import Likelihood
+from gpytorch.mlls import ExactMarginalLogLikelihood
 from torch import Tensor
 
 from bochan.models.components.mixed_kronecker import (
@@ -268,6 +269,10 @@ class WideMultiFidelityGP(SingleTaskMultiFidelityGP):
             raise ValueError(f"Expected input dimension {self.data_dim} or {self.data_dim + 1}.")
         return super().condition_on_observations(X=X, Y=Y, noise=noise, **kwargs)
 
+    def make_mll(self) -> ExactMarginalLogLikelihood:
+        """Return the exact marginal log likelihood for this model."""
+        return ExactMarginalLogLikelihood(self.likelihood, self)
+
 
 class WideMixedMultiFidelityGP(WideMultiFidelityGP):
     """Wide multi-fidelity GP for mixed continuous/categorical design inputs."""
@@ -314,6 +319,10 @@ class WideMixedMultiFidelityGP(WideMultiFidelityGP):
         )
         self.cat_dims = list(cat_dims)
         self.cont_dims = get_continuous_dims(self.data_dim, cat_dims)
+
+    def make_mll(self) -> ExactMarginalLogLikelihood:
+        """Return the exact marginal log likelihood for this mixed model."""
+        return ExactMarginalLogLikelihood(self.likelihood, self)
 
 
 WideMultiFidelityMixedGP = WideMixedMultiFidelityGP

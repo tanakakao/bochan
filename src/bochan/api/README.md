@@ -1957,3 +1957,45 @@ acq_config = AcquisitionConfig(
 ```
 
 この場合、API は `custom_objective_factory(model=..., bundle=..., data_context=..., **objective_kwargs)` を呼び、シグネチャに存在する引数だけを渡します。
+# Cross-validation
+
+The regular API can evaluate any model built by `BayesianOptimizer` without
+changing the optimizer's fitted state:
+
+```python
+from bochan.api import BayesianOptimizer, CrossValidationConfig
+
+result = optimizer.cross_validate(
+    train_X,
+    train_Y,
+    cv_config=CrossValidationConfig(n_splits=5, shuffle=True, random_state=0),
+)
+print(result.test_metric_summary["rmse"].mean)  # fold mean
+print(result.output.oof_metrics["rmse"])        # metric over all OOF rows
+```
+
+Regression outputs report RMSE, MAE, MAPE, and R2; classification outputs
+report accuracy, precision, recall, and F1. Multi-output and hybrid results are
+kept separate (for example, `result.outputs["strength"]` and
+`result.outputs["phase"]`) so metrics on different scales are never silently
+averaged. OOF rows are restored to input order. `aggregated_train_predictions`
+contains each row's mean prediction, `fold_prediction_std`, and
+`prediction_count` across the fold models that trained on it.
+
+`predictive_std` is derived from each GP posterior. It is distinct from
+`fold_prediction_std`, which measures disagreement between fitted fold models.
+For ordinary K-fold validation every OOF row is predicted once, so its latter
+value is NaN. Binary `variance_kind` is retained because Bernoulli observation
+variance is not necessarily epistemic uncertainty.
+
+Use `splitter="loo"` for leave-one-out validation or pass any sklearn-compatible
+splitter object. LOO validation-fold R2 is NaN (one row cannot define R2), while
+the combined OOF R2 remains available. The safe default MAPE policy returns NaN
+and records a warning when targets are zero; choose `ignore` or `clip` and set
+`mape_epsilon` when another policy is appropriate.
+
+Every fold receives a deep-copied model/fit configuration and a fresh optimizer.
+Models are retained only with `return_models=True`. Cross-validation therefore
+does not alter `model`, `bundle`, `mll`, training data, bounds, or history on the
+calling optimizer. It does, however, fit one new model per fold and consequently
+costs approximately the number of folds times a single fit.

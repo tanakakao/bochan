@@ -25,6 +25,16 @@ from .configs import (
     OutputConfig,
     PredictionResult,
 )
+from .cross_validation import (
+    CrossValidationConfig,
+    CrossValidationResult,
+    CVFoldResult,
+    CVPredictionResult,
+    MetricSummary,
+    OutputCrossValidationResult,
+    clone_fit_config_for_evaluation,
+    clone_model_config_for_evaluation,
+)
 from .engine_defaults import BayesianOptimizer
 from .fit_config import FitConfig
 from .optimizer_api import (
@@ -44,15 +54,9 @@ def _register_contextual_levelset_aliases() -> None:
     """
     module_name = "bochan.acquisition.ordinal.levelset_estimation"
     aliases = {
-        "qHeteroMultiOutputOrdinalLatentStraddleAcquisition": (
-            "qHeteroMultiOutputOrdinalStraddle"
-        ),
-        "qHeteroMultiOutputOrdinalBoundaryVarianceAcquisition": (
-            "qHeteroMultiOutputOrdinalBoundaryVariance"
-        ),
-        "qHeteroMultiOutputOrdinalICUAcquisition": (
-            "qHeteroMultiOutputOrdinalLevelSetUncertainty"
-        ),
+        "qHeteroMultiOutputOrdinalLatentStraddleAcquisition": ("qHeteroMultiOutputOrdinalStraddle"),
+        "qHeteroMultiOutputOrdinalBoundaryVarianceAcquisition": ("qHeteroMultiOutputOrdinalBoundaryVariance"),
+        "qHeteroMultiOutputOrdinalICUAcquisition": ("qHeteroMultiOutputOrdinalLevelSetUncertainty"),
     }
     for alias, attr_name in aliases.items():
         _acquisition_registry._register_alias(alias, module_name, attr_name)
@@ -87,9 +91,7 @@ def _uses_multi_output_sample_objective(config: AcquisitionConfig) -> bool:
     """
 
     name = _normalize_strategy_name(config.name)
-    cls_name = _normalize_strategy_name(
-        getattr(config.acqf_cls, "__name__", "")
-    )
+    cls_name = _normalize_strategy_name(getattr(config.acqf_cls, "__name__", ""))
     combined = f"{name}{cls_name}"
 
     if _is_nsgaii_strategy(config):
@@ -115,11 +117,7 @@ def _uses_internal_nparego_baseline(config: AcquisitionConfig) -> bool:
     acqf_cls = config.acqf_cls
     if acqf_cls is None:
         return False
-    normalized = "".join(
-        ch
-        for ch in f"{config.name} {getattr(acqf_cls, '__name__', '')}".lower()
-        if ch.isalnum()
-    )
+    normalized = "".join(ch for ch in f"{config.name} {getattr(acqf_cls, '__name__', '')}".lower() if ch.isalnum())
     module_name = str(getattr(acqf_cls, "__module__", ""))
     return "nparego" in normalized and module_name.startswith("bochan.acquisition.")
 
@@ -146,14 +144,10 @@ def _resolve_best_f_default_without_internal_nparego(
     return _original_resolve_best_f_default(bundle, config, context)
 
 
-_engine_defaults._resolve_best_f_default = (
-    _resolve_best_f_default_without_internal_nparego
-)
+_engine_defaults._resolve_best_f_default = _resolve_best_f_default_without_internal_nparego
 
 
-_original_resolve_default_nparego_objective = (
-    _engine_defaults._resolve_default_nparego_objective
-)
+_original_resolve_default_nparego_objective = _engine_defaults._resolve_default_nparego_objective
 
 
 def _resolve_default_nparego_objective_without_double_scalarization(
@@ -174,9 +168,7 @@ def _resolve_default_nparego_objective_without_double_scalarization(
     return _original_resolve_default_nparego_objective(bundle, config, context)
 
 
-_engine_defaults._resolve_default_nparego_objective = (
-    _resolve_default_nparego_objective_without_double_scalarization
-)
+_engine_defaults._resolve_default_nparego_objective = _resolve_default_nparego_objective_without_double_scalarization
 
 
 def _infer_bundle_multi_output(bundle) -> bool:
@@ -195,9 +187,7 @@ def _infer_bundle_multi_output(bundle) -> bool:
         return False
 
 
-_original_resolve_objective_config_n_w_from_input_transform = (
-    _engine._resolve_objective_config_n_w_from_input_transform
-)
+_original_resolve_objective_config_n_w_from_input_transform = _engine._resolve_objective_config_n_w_from_input_transform
 
 
 def _resolve_objective_config_n_w_with_default(
@@ -265,12 +255,8 @@ def _resolve_objective_config_n_w_with_default(
     )
 
 
-_engine._resolve_objective_config_n_w_from_input_transform = (
-    _resolve_objective_config_n_w_with_default
-)
-_engine_defaults._resolve_objective_config_n_w_from_input_transform = (
-    _resolve_objective_config_n_w_with_default
-)
+_engine._resolve_objective_config_n_w_from_input_transform = _resolve_objective_config_n_w_with_default
+_engine_defaults._resolve_objective_config_n_w_from_input_transform = _resolve_objective_config_n_w_with_default
 
 # Extend the same defaults to ordinal and multiclass vector objectives after
 # the binary / regression resolver above is installed.
@@ -305,9 +291,7 @@ def _resolve_acquisition_config_with_model_outputs(
 
 # Correlated multitask models are single model objects but still require the
 # multi-output acquisition family for contextual short names.
-BayesianOptimizer._resolve_acquisition_config = (
-    _resolve_acquisition_config_with_model_outputs
-)
+BayesianOptimizer._resolve_acquisition_config = _resolve_acquisition_config_with_model_outputs
 
 
 _original_build_acquisition = _factory.build_acquisition
@@ -412,6 +396,10 @@ __all__ = [
     "CandidateBatch",
     "CandidateRepairConfig",
     "CandidateResult",
+    "CrossValidationConfig",
+    "CrossValidationResult",
+    "CVFoldResult",
+    "CVPredictionResult",
     "DataContext",
     "DEFAULT_MODEL_REGISTRY",
     "EarlyStoppingConfig",
@@ -423,11 +411,13 @@ __all__ = [
     "MODEL_REGISTRY",
     "ModelBundle",
     "ModelConfig",
+    "MetricSummary",
     "MultiObjectiveConfig",
     "MultiOutputConfig",
     "ObjectiveConfig",
     "OutcomeConstraintConfig",
     "OutputConfig",
+    "OutputCrossValidationResult",
     "OptimizeConfig",
     "PredictionResult",
     "StopDecision",
@@ -438,6 +428,8 @@ __all__ = [
     "available_acqf_names",
     "build_acquisition",
     "build_model",
+    "clone_fit_config_for_evaluation",
+    "clone_model_config_for_evaluation",
     "fit_model",
     "infer_input_type",
     "optimize_candidates",

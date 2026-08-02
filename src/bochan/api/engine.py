@@ -185,6 +185,38 @@ class BayesianOptimizer:
             raise RuntimeError("No training data found. Call fit() first.")
         return self.fit(self.train_X, self.train_Y, fit_config=fit_config or self.fit_config)
 
+    def cross_validate(
+        self,
+        train_X: Any,
+        train_Y: Any,
+        *,
+        model_config: ModelConfig | None = None,
+        fit_config: FitConfig | None = None,
+        cv_config: Any | None = None,
+    ) -> Any:
+        """Evaluate fresh fold models without changing this optimizer's state.
+
+        Args:
+            train_X: Complete input data.
+            train_Y: Complete target data.
+            model_config: Optional model configuration override.
+            fit_config: Optional fitting configuration override.
+            cv_config: Cross-validation settings.
+
+        Returns:
+            A ``CrossValidationResult`` grouped by output.
+        """
+        from .cross_validation import cross_validate_optimizer
+
+        return cross_validate_optimizer(
+            self,
+            train_X,
+            train_Y,
+            model_config=model_config,
+            fit_config=fit_config,
+            cv_config=cv_config,
+        )
+
     def predict(
         self,
         X: Any,
@@ -215,11 +247,7 @@ class BayesianOptimizer:
             prediction_space = "probability"
             observation_noise = posterior_kwargs.get("observation_noise", False)
             has_observation_noise = observation_noise is not False and observation_noise is not None
-            variance_kind = (
-                "bernoulli_observation_plus_noise"
-                if has_observation_noise
-                else "bernoulli_observation"
-            )
+            variance_kind = "bernoulli_observation_plus_noise" if has_observation_noise else "bernoulli_observation"
         else:
             prediction_space = "outcome"
             variance_kind = "posterior"
@@ -241,9 +269,7 @@ class BayesianOptimizer:
             return variance
         if return_type == "mean_variance":
             return mean, variance
-        raise ValueError(
-            "Unknown return_type. Expected 'posterior', 'mean', 'variance', or 'mean_variance'."
-        )
+        raise ValueError("Unknown return_type. Expected 'posterior', 'mean', 'variance', or 'mean_variance'.")
 
     def _resolve_acquisition_config(self, acq_config: AcquisitionConfig) -> AcquisitionConfig:
         if acq_config.acqf_cls is not None or acq_config.acqf_factory is not None:
@@ -661,12 +687,7 @@ def _fixed_features_list_from_category_rows(
 ) -> list[dict[int, float]]:
     fixed_features_list: list[dict[int, float]] = []
     for row in rows:
-        fixed_features_list.append(
-            {
-                int(dim): float(value)
-                for dim, value in zip(cat_dims, row)
-            }
-        )
+        fixed_features_list.append({int(dim): float(value) for dim, value in zip(cat_dims, row)})
     return fixed_features_list
 
 
@@ -728,8 +749,7 @@ def _infer_fixed_features_list_from_train_X(
         pass
 
     raise TypeError(
-        "Could not infer fixed_features_list from train_X. "
-        "Pass OptimizeConfig.fixed_features_list explicitly."
+        "Could not infer fixed_features_list from train_X. " "Pass OptimizeConfig.fixed_features_list explicitly."
     )
 
 
@@ -803,6 +823,7 @@ def _concat_rows(x: Any, y: Any) -> Any:
     """torch.Tensor / numpy.ndarray / pandas object の行方向結合を簡易的に扱う。"""
     try:
         import torch
+
         if isinstance(x, torch.Tensor) and isinstance(y, torch.Tensor):
             return torch.cat([x, y], dim=-2)
     except Exception:
@@ -810,6 +831,7 @@ def _concat_rows(x: Any, y: Any) -> Any:
 
     try:
         import numpy as np
+
         if isinstance(x, np.ndarray) and isinstance(y, np.ndarray):
             return np.concatenate([x, y], axis=-2)
     except Exception:
@@ -817,6 +839,7 @@ def _concat_rows(x: Any, y: Any) -> Any:
 
     try:
         import pandas as pd
+
         if isinstance(x, (pd.DataFrame, pd.Series)) and isinstance(y, type(x)):
             return pd.concat([x, y], axis=0)
     except Exception:

@@ -27,6 +27,7 @@ from botorch.models.transforms.input import InputTransform
 from botorch.models.transforms.outcome import OutcomeTransform
 from botorch.utils.types import DEFAULT, _DefaultType
 from gpytorch.likelihoods import Likelihood
+from gpytorch.mlls import ExactMarginalLogLikelihood
 
 from bochan.models.components.robust import SafeDeepcopyMixin
 
@@ -121,6 +122,10 @@ class SafeRobustRelevancePursuitSingleTaskGP(
         )
         model.train(is_training)
         return model
+
+    def make_mll(self) -> ExactMarginalLogLikelihood:
+        """Return the exact marginal log likelihood for this model."""
+        return ExactMarginalLogLikelihood(self.likelihood, self)
 
 
 class SafeRobustRelevancePursuitMixedSingleTaskGP(
@@ -222,3 +227,7 @@ class SafeRobustRelevancePursuitMixedSingleTaskGP(
         )
         model.train(is_training)
         return model
+
+    def make_mll(self) -> ExactMarginalLogLikelihood:
+        """Return the exact marginal log likelihood for this mixed model."""
+        return ExactMarginalLogLikelihood(self.likelihood, self)

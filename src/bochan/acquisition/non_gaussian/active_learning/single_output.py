@@ -241,10 +241,11 @@ class qNonGaussianIntegratedResponseMeanVarianceProxy(
 
     def _output_reduction(self, reduction: Tensor) -> Tensor:
         """Reduce a ``batch x n_ref x m`` variance-reduction tensor."""
-        if self.integration_reduction == "mean":
-            value = reduction.mean(dim=-2)
-        else:
-            value = reduction.sum(dim=-2)
+        value = (
+            reduction.mean(dim=-2)
+            if self.integration_reduction == "mean"
+            else reduction.sum(dim=-2)
+        )
 
         num_outputs = value.shape[-1]
         scales = _validate_output_vector(

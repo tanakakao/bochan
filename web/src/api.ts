@@ -213,6 +213,7 @@ export interface RunRegressionInput {
   rawSamples: number;
   searchSpace: SearchVariable[];
   reuseModelRunId?: string;
+  crossValidation?: { enabled: boolean; method: "kfold" | "loo"; nSplits: number };
 }
 
 function canonicalValue(value: unknown): unknown {
@@ -267,7 +268,8 @@ export function buildModelReuseSignature(input: RunRegressionInput): string {
     nW: input.nW,
     perturbationStd: input.perturbationStd,
     searchSpace: modelSearchSpace,
-    featureMissing
+    featureMissing,
+    crossValidation: input.crossValidation ?? { enabled: false, method: "kfold", nSplits: 5 }
   }));
 }
 
@@ -462,7 +464,11 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       },
       // Target missing values still use the automatic target policy. Feature
       // missing values are controlled independently through web_feature_missing.
-      drop_missing: true
+      drop_missing: true,
+      cross_validation: input.crossValidation?.enabled ?? false,
+      cv_config: input.crossValidation?.enabled ? (input.crossValidation.method === "loo"
+        ? { splitter: "loo" }
+        : { splitter: "auto", n_splits: input.crossValidation.nSplits, shuffle: true, random_state: 0 }) : null
     })
   });
 }

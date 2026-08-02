@@ -114,6 +114,8 @@ def fit_tabular_optimizer(
     target_metadata: dict[str, dict[str, Any]],
     model_config: Any,
     fit_config: Any,
+    cross_validation: bool = False,
+    cv_config: dict[str, Any] | None = None,
 ) -> Any:
     """Fit or reuse the public pandas-friendly optimizer for the Web workflow."""
 
@@ -161,6 +163,8 @@ def fit_tabular_optimizer(
         encode_categories=True,
         return_original_categories=True,
         dropna=False,
+        cross_validation=cross_validation,
+        cv_config=cv_config,
     )
     optimizer.fit(fit_data)
     if optimizer.dataset is None:

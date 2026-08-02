@@ -47,11 +47,36 @@ export type SearchMethod =
   | "thompson_sampling"
   | "nsgaii";
 
+export interface CrossValidationSettings {
+  enabled: boolean;
+  method: "kfold" | "loo";
+  nSplits: number;
+}
+
 const CONSTRAINTS_KEY = "bochan-web-feature-constraints";
 const SELECTION_COUNT_KEY = "bochan-web-selection-count-constraint";
 const SEARCH_METHOD_KEY = "bochan-web-search-method";
 const FEATURE_MISSING_KEY = "bochan-web-feature-missing";
 const INPUT_PERTURBATION_RISK_KEY = "bochan-web-input-perturbation-risk";
+const CROSS_VALIDATION_KEY = "bochan-web-cross-validation";
+
+export function loadCrossValidationSettings(): CrossValidationSettings {
+  const fallback: CrossValidationSettings = { enabled: false, method: "kfold", nSplits: 5 };
+  const value = storage()?.getItem(CROSS_VALIDATION_KEY);
+  if (!value) return fallback;
+  try {
+    const parsed = JSON.parse(value) as Partial<CrossValidationSettings>;
+    return {
+      enabled: Boolean(parsed.enabled),
+      method: parsed.method === "loo" ? "loo" : "kfold",
+      nSplits: Math.max(2, Math.trunc(finiteNumber(parsed.nSplits, 5)))
+    };
+  } catch { return fallback; }
+}
+
+export function saveCrossValidationSettings(value: CrossValidationSettings): void {
+  storage()?.setItem(CROSS_VALIDATION_KEY, JSON.stringify(value));
+}
 
 function storage(): Storage | null {
   return typeof window === "undefined" ? null : window.localStorage;

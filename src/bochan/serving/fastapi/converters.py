@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, is_dataclass
 from typing import Any
@@ -76,8 +77,8 @@ def to_serializable(value: Any) -> Any:
         if torch.is_tensor(value):
             detached = value.detach().cpu()
             if detached.ndim == 0:
-                return detached.item()
-            return detached.tolist()
+                return to_serializable(detached.item())
+            return to_serializable(detached.tolist())
     except Exception:
         pass
 
@@ -85,9 +86,9 @@ def to_serializable(value: Any) -> Any:
         import numpy as np
 
         if isinstance(value, np.ndarray):
-            return value.tolist()
+            return to_serializable(value.tolist())
         if isinstance(value, np.generic):
-            return value.item()
+            return to_serializable(value.item())
     except Exception:
         pass
 
@@ -100,6 +101,8 @@ def to_serializable(value: Any) -> Any:
     if isinstance(value, list):
         return [to_serializable(v) for v in value]
     if isinstance(value, (str, int, float, bool)):
+        if isinstance(value, float) and not math.isfinite(value):
+            return None
         return value
     return str(value)
 

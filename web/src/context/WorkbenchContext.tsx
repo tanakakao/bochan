@@ -27,6 +27,7 @@ import type {
   TargetClassValue,
   TargetSetting
 } from "../types";
+import { loadCrossValidationSettings, saveCrossValidationSettings } from "../webRunSettings";
 
 export type WorkbenchStep = "data" | "prepare" | "settings" | "optimize" | "results" | "logs";
 export type Theme = "light" | "dark";
@@ -245,6 +246,8 @@ interface WorkbenchContextValue {
   setBeta: (beta: number) => void;
   fitMaxiter: number;
   setFitMaxiter: (fitMaxiter: number) => void;
+  crossValidation: { enabled: boolean; method: "kfold" | "loo"; nSplits: number };
+  setCrossValidation: (value: { enabled: boolean; method: "kfold" | "loo"; nSplits: number }) => void;
   q: number;
   setQ: (q: number) => void;
   numRestarts: number;
@@ -293,6 +296,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [acquisition, setAcquisition] = useState("EI");
   const [beta, setBeta] = useState(2);
   const [fitMaxiter, setFitMaxiter] = useState(128);
+  const [crossValidation, setCrossValidation] = useState(loadCrossValidationSettings);
   const [q, setQ] = useState(3);
   const [numRestarts, setNumRestarts] = useState(10);
   const [rawSamples, setRawSamples] = useState(256);
@@ -303,6 +307,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem("bochan-theme", theme);
   }, [theme]);
+  useEffect(() => saveCrossValidationSettings(crossValidation), [crossValidation]);
 
   useEffect(() => {
     let active = true;
@@ -411,7 +416,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     q,
     numRestarts,
     rawSamples,
-    searchSpace: selectedVariables
+    searchSpace: selectedVariables,
+    crossValidation
   } : null;
   const currentModelSignature = currentRunInput
     ? buildModelReuseSignature(currentRunInput)
@@ -637,6 +643,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     setBeta,
     fitMaxiter,
     setFitMaxiter,
+    crossValidation,
+    setCrossValidation,
     q,
     setQ,
     numRestarts,

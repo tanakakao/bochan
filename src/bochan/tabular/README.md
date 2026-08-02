@@ -1113,3 +1113,17 @@ bo.train_Y
 - numpy 入力で文字列カテゴリや欠損値補完を本格的に使う場合は、DataFrame に変換してから使う方が扱いやすいです。
 - `FitConfig.beta` と UCB の `acqf_kwargs["beta"]` は別物です。前者は学習時の MLL / ELBO 側、後者は acquisition 側の探索パラメータです。
 - `predict()` は既定で DataFrame を返します。`return_type="posterior"`, `return_type="mean"`, `return_type="variance"`, `return_type="mean_variance"` は低レベル互換用です。
+# Optional cross-validation
+
+Cross-validation is disabled by default. Enable it in the constructor (or override it for one
+`fit`) and inspect `cross_validation_result_`; the registered model is still fitted separately on
+all rows.
+
+```python
+optimizer = TabularBayesianOptimizer(
+    task_type="regression", input_cols=["x1", "x2"], target_cols="y",
+    cross_validation=True, cv_config={"n_splits": 5},
+)
+optimizer.fit(frame)
+print(optimizer.cross_validation_result_.test_metric_summary["rmse"].mean)
+```

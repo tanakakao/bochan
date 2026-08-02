@@ -121,6 +121,7 @@ export default function ResultsPage() {
   const backend = String(
     modelDetails?.optimizer_backend ?? completedResult.metadata?.optimizer_backend ?? "TabularBayesianOptimizer"
   );
+  const cv = completedResult.metadata?.cross_validation as Record<string, any> | undefined;
 
   return (
     <>
@@ -168,6 +169,21 @@ export default function ResultsPage() {
         <div className="alert success artifact-loaded-note">
           保存モデルから復元した結果です。学習済みモデルと設定を保持しているため、可視化の再生成や候補提案設定の変更ができます。
         </div>
+      )}
+
+      {cv?.outputs && (
+        <article className="panel compact-panel">
+          <div className="panel-title"><div><span className="panel-kicker">CROSS VALIDATION</span><h3>交差検証による精度評価</h3><p>{String(cv.splitter_name)} · {Number(cv.n_splits)} folds</p></div></div>
+          {Object.entries(cv.outputs as Record<string, any>).map(([outputName, output], outputIndex) => (
+            <details key={outputName} open={outputIndex === 0}>
+              <summary>{outputName}</summary>
+              <div className="table-wrap"><table><thead><tr><th>指標</th><th>Train</th><th>Validation</th><th>OOF</th></tr></thead><tbody>
+                {Object.keys(output.test_metric_summary ?? {}).map((metric) => <tr key={metric}><td>{metric.toUpperCase()}</td><td>{formatNumber(output.train_metric_summary?.[metric]?.mean)} ± {formatNumber(output.train_metric_summary?.[metric]?.std)}</td><td>{formatNumber(output.test_metric_summary?.[metric]?.mean)} ± {formatNumber(output.test_metric_summary?.[metric]?.std)}</td><td>{formatNumber(output.oof_metrics?.[metric])}</td></tr>)}
+              </tbody></table></div>
+            </details>
+          ))}
+          {(cv.warnings ?? []).length > 0 && <div className="alert warning">交差検証の一部指標を計算できませんでした。詳細: {(cv.warnings as string[]).join(" / ")}</div>}
+        </article>
       )}
 
       <article className="panel best-model-panel recommended-first">

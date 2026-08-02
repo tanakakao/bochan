@@ -36,6 +36,8 @@ export default function SettingsPage() {
     setModelType,
     fitMaxiter,
     setFitMaxiter,
+    crossValidation,
+    setCrossValidation,
     settingsValid,
     setStep
   } = useWorkbench();
@@ -167,6 +169,19 @@ export default function SettingsPage() {
           </p>
         </article>
       </div>
+
+      <article className="panel">
+        <div className="panel-title"><div><span className="panel-kicker">3 · ACCURACY</span><h3>精度評価</h3></div></div>
+        <label className="switch-field">
+          <input type="checkbox" checked={crossValidation.enabled} onChange={(event) => setCrossValidation({ ...crossValidation, enabled: event.target.checked })} />
+          <span>交差検証でモデル精度を評価する</span>
+        </label>
+        {crossValidation.enabled && <div className="model-settings-grid">
+          <label>検証方法<select value={crossValidation.method} onChange={(event) => setCrossValidation({ ...crossValidation, method: event.target.value as "kfold" | "loo" })}><option value="kfold">K-fold</option><option value="loo">Leave-One-Out</option></select></label>
+          {crossValidation.method === "kfold" && <label>分割数<input type="number" min={2} max={dataset.profile.n_rows} value={crossValidation.nSplits} onChange={(event) => setCrossValidation({ ...crossValidation, nSplits: Number(event.target.value) })} /></label>}
+        </div>}
+        {crossValidation.enabled && <p className="settings-note">交差検証ではデータを分割してモデルを複数回学習するため、通常より時間がかかります。最終モデルは交差検証後に全データで別途学習されます。分類ではクラス比率を保つ層化分割を使用します。</p>}
+      </article>
 
       <article className="panel">
         <div className="panel-title">

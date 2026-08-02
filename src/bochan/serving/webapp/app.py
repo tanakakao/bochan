@@ -143,6 +143,8 @@ class RegressionRunRequest(_Schema):
     acquisition: AcquisitionSettingsSchema = Field(default_factory=AcquisitionSettingsSchema)
     optimizer: OptimizerSettingsSchema = Field(default_factory=OptimizerSettingsSchema)
     drop_missing: bool = True
+    cross_validation: bool = False
+    cv_config: dict[str, Any] | None = None
 
 
 WEB_CAPABILITIES: dict[str, Any] = {

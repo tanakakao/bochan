@@ -25,7 +25,7 @@ def _data() -> tuple[torch.Tensor, torch.Tensor]:
 def test_gamma_multitask_shapes_correlation_sampling_and_gradient() -> None:
     """The public posterior preserves q/task axes and differentiability."""
     train_x, train_y = _data()
-    model = GammaMultiTaskGPModel(
+    model = WideGammaMultiTaskGPModel(
         train_x,
         train_y,
         rank=2,
@@ -75,10 +75,10 @@ def test_wide_gamma_multitask_omits_missing_cells_and_rejects_empty_task() -> No
 def test_gamma_registry_factory_and_variational_fit() -> None:
     """The high-level factory selects and fits the correlated Gamma model."""
     train_x, train_y = _data()
-    assert MODEL_REGISTRY["normal"]["regression"]["gamma_multitask"] is WideGammaMultiTaskGPModel
+    assert MODEL_REGISTRY["normal"]["regression"]["gamma_multitask"] is GammaMultiTaskGPModel
     config = ModelConfig(
         task_type="regression",
-        model_type="gamma_multitask",
+        model_type="gamma_wide_multitask",
         model_kwargs={"rank": 2, "num_latents": 2, "num_inducing_points": 8},
     )
     bundle = build_model(train_x, train_y, config)
@@ -93,11 +93,11 @@ def test_gamma_multitask_conditioning_and_state_round_trip() -> None:
     """Conditioning preserves the task structure and state restores predictions."""
     train_x, train_y = _data()
     kwargs = {"rank": 2, "num_latents": 2, "num_inducing_points": 8}
-    model = GammaMultiTaskGPModel(train_x, train_y, **kwargs).eval()
+    model = WideGammaMultiTaskGPModel(train_x, train_y, **kwargs).eval()
     candidate = torch.tensor([[0.25], [0.75]], dtype=torch.double)
     expected = model.posterior(candidate).mean.detach()
 
-    restored = GammaMultiTaskGPModel(train_x, train_y, **kwargs)
+    restored = WideGammaMultiTaskGPModel(train_x, train_y, **kwargs)
     restored.load_state_dict(model.state_dict())
     restored.eval()
     torch.testing.assert_close(restored.posterior(candidate).mean, expected)
@@ -106,6 +106,6 @@ def test_gamma_multitask_conditioning_and_state_round_trip() -> None:
         torch.tensor([[1.05]], dtype=torch.double),
         torch.tensor([[2.05, 3.1, 1.2]], dtype=torch.double),
     )
-    assert isinstance(conditioned, GammaMultiTaskGPModel)
+    assert isinstance(conditioned, WideGammaMultiTaskGPModel)
     assert conditioned.train_inputs_raw[0].shape[-2] == train_x.shape[-2] + 1
     torch.testing.assert_close(conditioned.task_covar_matrix, model.task_covar_matrix)

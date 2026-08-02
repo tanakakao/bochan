@@ -211,7 +211,7 @@ def _wide_to_long(train_X: Tensor, train_Y: Tensor) -> tuple[Tensor, Tensor, Ten
     return long_X, train_Y[rows, tasks], observed
 
 
-class NegativeBinomialMultiTaskGPModel(ApproximateGPyTorchModel):
+class _WideNegativeBinomialMultiTaskCore(ApproximateGPyTorchModel):
     """Correlated non-Gaussian multi-task GP for wide count targets.
 
     The model learns an ICM covariance ``K_x * K_task`` in a single variational
@@ -488,12 +488,121 @@ class NegativeBinomialMultiTaskGPModel(ApproximateGPyTorchModel):
         return self.condition_on_observations(X, fantasies, **kwargs)
 
 
-class WideNegativeBinomialMultiTaskGPModel(NegativeBinomialMultiTaskGPModel):
-    """NegativeBinomial multi-task model whose wide targets may contain partial NaNs."""
+class WideNegativeBinomialMultiTaskGPModel(_WideNegativeBinomialMultiTaskCore):
+    """Correlated wide Negative Binomial model that omits, rather than imputes, NaN cells."""
+
+    def __init__(self, train_X: Tensor, train_Y: Tensor, **kwargs: Any) -> None:
+        """Initialize from a shared input design and wide targets.
+
+        Args:
+            train_X: Shared inputs with shape ``[n, d]``.
+            train_Y: Wide targets with shape ``[n, m]``; partial NaNs are allowed.
+            **kwargs: Family-specific variational model options.
+        """
+        super().__init__(train_X, train_Y, **kwargs)
+        self.raw_train_X = self.train_inputs_raw[0]
+        self.raw_train_Y = self.train_targets_raw
+
+
+class NegativeBinomialMultiTaskGPModel(_WideNegativeBinomialMultiTaskCore):
+    """Correlated non-Gaussian ICM model for task-feature long data.
+
+    This is a sparse variational analogue of BoTorch's long-form ``MultiTaskGP``
+    contract, not the exact Gaussian model itself.
+    """
+
+    def __init__(
+        self,
+        train_X: Tensor,
+        train_Y: Tensor,
+        *,
+        task_feature: int = -1,
+        num_tasks: int | None = None,
+        **kwargs: Any,
+    ) -> None:
+        """Initialize from task-feature long observations.
+
+        Args:
+            train_X: Inputs ``[n_observations, d + 1]`` including task ids.
+            train_Y: Targets ``[n_observations]`` or ``[n_observations, 1]``.
+            task_feature: Column containing zero-based integer task ids.
+            num_tasks: Task count; inferred from ids when omitted.
+            **kwargs: Family-specific variational model options.
+        """
+        from bochan.models.regression.non_gaussian.multitask_utils import (
+            long_to_sparse_wide,
+            validate_long_multitask_data,
+        )
+
+        long_X, long_Y, feature, count = validate_long_multitask_data(
+            train_X, train_Y, task_feature=task_feature, num_tasks=num_tasks
+        )
+        data_X, wide_Y = long_to_sparse_wide(
+            long_X, long_Y, task_feature=feature, num_tasks=count
+        )
+        super().__init__(data_X, wide_Y, **kwargs)
+        self.task_feature = feature
+        self.long_train_X = long_X.detach().clone()
+        self.long_train_Y = long_Y.detach().clone()
+        self.raw_train_X = self.long_train_X
+        self.raw_train_Y = self.long_train_Y
+
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "NegativeBinomialMultiTaskGPModel":
+        """Return a rebuilt long-form model including new observations.
+
+        Args:
+            X: New long-form rows including the task feature.
+            Y: New scalar observations.
+            **kwargs: Reserved conditioning options.
+
+        Returns:
+            A model trained on the concatenated observations.
+        """
+        if kwargs.get("noise") is not None:
+            raise NotImplementedError("Non-Gaussian multitask conditioning does not accept noise.")
+        X = torch.as_tensor(X, device=self.long_train_X.device, dtype=self.long_train_X.dtype)
+        Y = torch.as_tensor(Y, device=X.device, dtype=X.dtype).reshape(-1)
+        return self.__class__(
+            torch.cat((self.long_train_X, X), dim=-2),
+            torch.cat((self.long_train_Y, Y), dim=-1),
+            task_feature=self.task_feature,
+            num_tasks=self.num_tasks,
+            rank=self.rank,
+            num_latents=self.num_latents,
+            num_inducing_points=self.num_inducing_points,
+            learn_inducing_locations=self.learn_inducing_locations,
+        )
+
+
+class KroneckerMultiTaskNegativeBinomialGPModel(WideNegativeBinomialMultiTaskGPModel):
+    """Separable variational Negative Binomial GP for a complete block design.
+
+    The latent covariance is ``K_x ⊗ K_task`` through the ICM product kernel.
+    Inference is sparse variational and therefore is not BoTorch's exact Gaussian
+    ``KroneckerMultiTaskGP``.
+    """
+
+    def __init__(self, train_X: Tensor, train_Y: Tensor, **kwargs: Any) -> None:
+        """Initialize the structured approximation from complete wide data.
+
+        Args:
+            train_X: Complete shared design with shape ``[n, d]``.
+            train_Y: Finite targets with shape ``[n, m]``.
+            **kwargs: Family-specific variational model options.
+        """
+        from bochan.models.regression.non_gaussian.multitask_utils import validate_complete_block
+
+        train_X = torch.as_tensor(train_X)
+        train_Y = torch.as_tensor(train_Y, device=train_X.device, dtype=train_X.dtype)
+        validate_complete_block(train_X, train_Y, family="Negative Binomial")
+        super().__init__(train_X, train_Y, **kwargs)
+        self.is_kronecker_variational_approximation = True
+        self.input_covar_module = self.model.data_covar_module
 
 
 __all__ = [
     "NegativeBinomialMultiTaskGPModel",
     "NegativeBinomialMultiTaskPosterior",
     "WideNegativeBinomialMultiTaskGPModel",
+    "KroneckerMultiTaskNegativeBinomialGPModel",
 ]

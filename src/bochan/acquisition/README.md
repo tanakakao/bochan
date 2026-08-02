@@ -544,3 +544,33 @@ When adding a new acquisition function:
 6. Avoid reimplementing BoTorch standard acquisitions unless the family requires
    probability, utility, response-scale, or heteroscedastic behavior that the
    standard class does not provide directly.
+
+## Non-Gaussian active learning and level sets
+
+Beta, Gamma, Poisson, and negative-binomial acquisitions sample the public
+`posterior(X, observation_noise=False)` with a persistent BoTorch `MCSampler`.
+Thus candidates are in raw input space and response statistics and thresholds
+remain on the raw outcome scale. `ResponseMeanVariance` is epistemic uncertainty;
+`ExpectedObservationVariance` is family variance plus explicit heteroscedastic
+noise; their sum is `TotalObservationVariance`. `PredictiveEntropyProxy` is the
+moment-matched Gaussian entropy. `BALDProxy` supports the predictive-minus-
+conditional-entropy and log variance-ratio definitions. Joint BALD retains the
+q/output sample covariance. Independent `NonGaussianModelList` outputs have no
+cross-output covariance, whereas correlated multitask posterior samples retain it.
+
+LSE distinguishes response-mean events (`ProbabilityOfExceedanceProxy`) from
+actual-observation events (`ObservationProbabilityOfExceedance`). Straddle,
+boundary variance and ICU proxy use epistemic response-mean variance only;
+JointStraddle retains q/output covariance. Gamma observation CDF is exact,
+Poisson uses the incomplete-gamma identity, and Beta/NB use a documented
+moment-matched normal CDF because PyTorch exposes no differentiable CDF.
+
+| acquisition | target space | epistemic | aleatoric | joint q correlation | recommended use |
+|---|---|---:|---:|---:|---|
+| ResponseMeanVariance | response mean | yes | no | no | standard AL |
+| ExpectedObservationVariance | observation | no | yes | no | noise diagnostics |
+| TotalObservationVariance | observation | yes | yes | no | predictive uncertainty |
+| BALDProxy | information proxy | yes | normalized by noise | optional | information acquisition |
+| Straddle | response mean boundary | yes | no | no | pointwise LSE |
+| JointStraddle | response mean boundary | yes | no | yes | batch LSE |
+| ObservationPoE | actual observation | yes | yes | no | reliability / specification |

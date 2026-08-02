@@ -670,3 +670,16 @@ src/bochan/api/acquisition_registry.py
 - output reductionはjoint eventを明示的に計算しない限りscore aggregation
 - distance penaltyはBayesian conditioningではない
 - risk score objectiveは、classがrobust latent targetを先に構成しない限りscore-level aggregation
+
+## Non-Gaussian response and observation level sets
+
+Response-mean Straddle uses $\beta\sigma_\mu-|\bar\mu-t|$ and excludes
+observation noise. JointStraddle replaces pointwise uncertainty by a covariance
+trace or log determinant. BoundaryVariance and ICUProxy are local contour
+scores; ICUProxy is not fantasy-based integrated contour reduction. Response
+PoE uses fixed MC samples (smooth MC by default), whereas ObservationPoE
+integrates a family CDF and includes heteroscedastic variance through moment
+matching where it cannot remain in the original family. For counts,
+$P(Y\ge k)=1-P(Y\le k-1)$ and $P(Y\le t)=F(\lfloor t\rfloor)$.
+LevelSetUncertainty scores Bernoulli variance, binary entropy, or margin and is
+maximal at exceedance probability one half.

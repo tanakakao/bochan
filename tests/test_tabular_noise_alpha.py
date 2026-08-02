@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 import torch
-from pydantic import ValidationError
 
 from bochan.api import ModelConfig, MultiOutputConfig, OutputConfig
 from bochan.likelihoods.regression import build_single_task_likelihood
@@ -116,7 +115,9 @@ def test_tabular_alpha_applies_only_to_hybrid_regression_outputs() -> None:
     assert multi_output is not None
     assert multi_output.output_configs is not None
     regression_config, binary_config = multi_output.output_configs
-    assert _noise_lower_bound(regression_config.model_kwargs["likelihood"]) == pytest.approx(1e-5)
+    assert _noise_lower_bound(
+        regression_config.model_kwargs["likelihood"]
+    ) == pytest.approx(1e-5)
     assert private_key not in regression_config.model_kwargs
     assert private_key not in binary_config.model_kwargs
     assert "likelihood" not in binary_config.model_kwargs
@@ -141,6 +142,8 @@ def test_tabular_alpha_rejects_unsupported_gaussian_model() -> None:
 
 def test_fastapi_tabular_schema_forwards_alpha_to_model_kwargs() -> None:
     pytest.importorskip("fastapi")
+    from pydantic import ValidationError
+
     from bochan.serving.fastapi.schemas.tabular import TabularFitModelRequest
 
     request = TabularFitModelRequest.model_validate(

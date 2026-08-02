@@ -32,9 +32,11 @@ for _suffix in [
         getattr(_single, "qNonGaussian" + _suffix),
     )
 
-qHeteroNonGaussianNegIntegratedPosteriorVariance = (
-    qHeteroNonGaussianNegIntegratedResponseMeanVariance
-)
-qHeteroNonGaussianNIPV = qHeteroNonGaussianNegIntegratedResponseMeanVariance
+qHeteroNonGaussianNegIntegratedPosteriorVariance = globals()[
+    "qHeteroNonGaussianNegIntegratedResponseMeanVariance"
+]
+qHeteroNonGaussianNIPV = globals()[
+    "qHeteroNonGaussianNegIntegratedResponseMeanVariance"
+]
 
 __all__ = [name for name in globals() if name.startswith("qHetero")]

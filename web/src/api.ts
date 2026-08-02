@@ -9,6 +9,7 @@ import type {
   ResultVisualization,
   SearchVariable,
   TargetSetting,
+  FeatureImportanceSettings,
   VisualizationRequest
 } from "./types";
 import {
@@ -214,6 +215,7 @@ export interface RunRegressionInput {
   searchSpace: SearchVariable[];
   reuseModelRunId?: string;
   crossValidation?: { enabled: boolean; method: "kfold" | "loo"; nSplits: number };
+  featureImportance?: FeatureImportanceSettings;
 }
 
 function canonicalValue(value: unknown): unknown {
@@ -468,7 +470,31 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       cross_validation: input.crossValidation?.enabled ?? false,
       cv_config: input.crossValidation?.enabled ? (input.crossValidation.method === "loo"
         ? { splitter: "loo" }
-        : { splitter: "auto", n_splits: input.crossValidation.nSplits, shuffle: true, random_state: 0 }) : null
+        : { splitter: "auto", n_splits: input.crossValidation.nSplits, shuffle: true, random_state: 0 }) : null,
+      feature_importance: input.featureImportance ? {
+        enabled: input.featureImportance.enabled,
+        source: input.featureImportance.source,
+        config: {
+          predictive_methods: ["permutation"],
+          diagnostic_methods: input.featureImportance.diagnosticAuto ? ["auto"] : [],
+          n_repeats: input.featureImportance.nRepeats,
+          random_state: input.featureImportance.randomState,
+          compute_noise_importance: input.featureImportance.computeNoiseImportance,
+          normalize_importance: input.featureImportance.normalizeImportance,
+          return_per_repeat_values: false,
+          unsupported_method_policy: "warn",
+          error_policy: "warn"
+        },
+        visualization: {
+          normalized: input.featureImportance.normalizeImportance,
+          top_k: input.featureImportance.topK,
+          rank_by: input.featureImportance.rankBy,
+          include_negative: input.featureImportance.includeNegative,
+          show_error_bars: input.featureImportance.showErrorBars,
+          include_predictive: true,
+          include_noise: input.featureImportance.computeNoiseImportance
+        }
+      } : null
     })
   });
 }

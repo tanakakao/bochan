@@ -961,3 +961,7 @@ Multiclass でよく使う `target_class`, `threshold`, `num_samples`, `output_r
 ## 14. 旧 FastAPI 実装からの移行
 
 正式な HTTP API は `bochan.serving.fastapi` に統一しました。旧 `/bochan/sessions` 系 API は削除され、同等のモデル作成・予測・候補生成・ask/tell・永続化は `/api/v1/models` 系エンドポイントで提供します。ステートレス候補生成は `/api/v1/suggest` を使用してください。
+
+## Tabular feature importance
+
+`POST /tabular/models/{model_id}/feature-importance` accepts optional evaluation records, a JSON feature-importance config, and presentation settings. With no records it evaluates stored training data and returns a warning. Responses contain the JSON-safe Core result, a long summary, diagnostics, and Plotly payloads; per-repeat values default to disabled. Cross-validation fit requests accept `cv_config.feature_importance_config`.

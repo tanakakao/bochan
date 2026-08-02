@@ -32,6 +32,53 @@ def _figure_payload(
     }
 
 
+def _build_feature_importance_visualizations(
+    result: Any,
+    *,
+    visualization_config: Any,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Adapt visualization-layer feature-importance figures for the Web API.
+
+    Args:
+        result: Existing core or cross-validated importance result.
+        visualization_config: Presentation-only request settings.
+
+    Returns:
+        Figure payloads and non-fatal per-view warnings.
+    """
+    from bochan.visualization import build_feature_importance_figures
+
+    def getter(name: str, default: Any) -> Any:
+        """Read one presentation setting from the request object."""
+        return getattr(visualization_config, name, default)
+    try:
+        figures = build_feature_importance_figures(
+            result,
+            include_predictive=getter("include_predictive", True),
+            include_noise=getter("include_noise", True),
+            include_classwise=getter("include_classwise", False),
+            normalized=getter("normalized", False),
+            top_k=getter("top_k", 15),
+            rank_by=getter("rank_by", "value"),
+        )
+    except Exception as exc:
+        return [], [f"Feature-importance visualization failed: {exc}"]
+    payloads, warnings = [], []
+    for key, figure in figures.items():
+        try:
+            payloads.append(
+                _figure_payload(
+                    figure,
+                    figure_id=f"feature-importance-{_safe_figure_id(key)}",
+                    title=str(figure.layout.title.text or "Feature importance"),
+                    description="Permutation importance; error bars are repeat standard deviation, or between-fold standard deviation for CV.",
+                )
+            )
+        except Exception as exc:
+            warnings.append(f"Feature-importance figure {key!r} failed: {exc}")
+    return payloads, warnings
+
+
 def _safe_figure_id(value: str) -> str:
     """Return a stable HTML-friendly identifier fragment."""
 
@@ -69,11 +116,7 @@ def _display_predictions(
     import torch
 
     n_rows = int(X.shape[0])
-    posterior = (
-        optimizer.model.posterior(X, output_mode="mean")
-        if hybrid_model
-        else optimizer.model.posterior(X)
-    )
+    posterior = optimizer.model.posterior(X, output_mode="mean") if hybrid_model else optimizer.model.posterior(X)
     means = _as_2d(posterior.mean, n_rows=n_rows)
     variances = _as_2d(posterior.variance, n_rows=n_rows).clamp_min(0)
 
@@ -137,11 +180,7 @@ def _setting_constraint_result(
             "violation": 0.0,
         }
 
-    threshold = (
-        float(meta["class_index"])
-        if task == "ordinal"
-        else float(meta["configured_value"])
-    )
+    threshold = float(meta["class_index"]) if task == "ordinal" else float(meta["configured_value"])
     if goal == "above":
         ok = predicted_mean >= threshold - 1e-8
         violation = max(threshold - predicted_mean, 0.0)
@@ -197,9 +236,7 @@ def _candidate_rows(
             value = float(values[feature_index])
             encoded_values[column] = value
             if column in inverse_maps:
-                decoded[column] = inverse_maps[column].get(
-                    int(round(value)), str(int(round(value)))
-                )
+                decoded[column] = inverse_maps[column].get(int(round(value)), str(int(round(value))))
             else:
                 decoded[column] = value
 
@@ -271,9 +308,7 @@ def _build_visualizations(
     for target in target_columns:
         meta = target_metadata[target]
         if meta["internal_task"] != "regression":
-            warnings.append(
-                f"{target}: 分類・順序回帰の専用可視化は未接続のため、候補テーブルで確認してください。"
-            )
+            warnings.append(f"{target}: 分類・順序回帰の専用可視化は未接続のため、候補テーブルで確認してください。")
             continue
         try:
             import plotly.graph_objects as go

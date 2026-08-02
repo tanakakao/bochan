@@ -211,6 +211,56 @@ export interface RegressionResult {
   visualization_run_id?: string;
   visualization_options?: VisualizationOptions;
   metadata: Record<string, unknown>;
+  feature_importance?: Record<string, unknown> | null;
+  feature_importance_source?: "training" | "cross_validation" | null;
+  feature_importance_summary?: FeatureImportanceSummaryRecord[];
+  feature_importance_visualizations?: ResultVisualization[];
+  feature_importance_warnings?: string[];
+  model_diagnostics?: Record<string, unknown>;
+}
+
+export interface FeatureImportanceSettings {
+  enabled: boolean;
+  source: "auto" | "training" | "cross_validation";
+  nRepeats: number;
+  randomState: number | null;
+  diagnosticAuto: boolean;
+  computeNoiseImportance: boolean;
+  normalizeImportance: boolean;
+  topK: number;
+  rankBy: "value" | "absolute";
+  includeNegative: boolean;
+  showErrorBars: boolean;
+}
+
+export interface FeatureImportanceSummaryRecord {
+  output_name: string;
+  task_type: string;
+  importance_kind: "predictive" | "noise" | "classwise";
+  method: string;
+  feature: string;
+  rank?: number | null;
+  mean?: number | null;
+  std?: number | null;
+  normalized_mean?: number | null;
+  metric_name?: string | null;
+  baseline_metric?: number | null;
+  feature_type?: string | null;
+  role?: string | null;
+  indices: number[];
+  between_fold_std?: number | null;
+  mean_rank?: number | null;
+  rank_std?: number | null;
+  valid_fold_count?: number | null;
+}
+
+export interface FeatureImportanceResultPayload {
+  source: "training" | "cross_validation";
+  result: Record<string, unknown>;
+  summary: FeatureImportanceSummaryRecord[];
+  diagnostics: Record<string, unknown>;
+  visualizations: ResultVisualization[];
+  warnings: string[];
 }
 
 export interface CrossValidationSettings {

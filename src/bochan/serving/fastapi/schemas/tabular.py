@@ -33,6 +33,89 @@ class CrossValidationRequest(APIRequest):
     zero_division: Literal[0, 1] = 0
     mape_zero_policy: Literal["warn_nan", "ignore", "clip"] = "warn_nan"
     mape_epsilon: float = Field(default=1e-8, gt=0.0)
+    feature_importance_config: FeatureImportanceConfigRequest | None = None
+
+
+class FeatureImportanceGroupRequest(APIRequest):
+    """Column-addressed permutation group."""
+
+    name: str
+    columns: list[str] = Field(min_length=1)
+    role: str = "group"
+
+
+class FeatureImportanceConfigRequest(APIRequest):
+    """HTTP defaults for core feature-importance inspection."""
+
+    predictive_methods: list[Literal["permutation"]] = Field(default_factory=lambda: ["permutation"])
+    diagnostic_methods: list[str] = Field(default_factory=lambda: ["auto"])
+    n_repeats: int = Field(default=10, ge=1, le=100)
+    random_state: int | None = 0
+    scoring: str = "auto"
+    scoring_direction: Literal["auto", "minimize", "maximize"] = "auto"
+    compute_noise_importance: bool = True
+    compute_classwise_importance: bool = False
+    normalize_importance: bool = False
+    clip_negative_importance: bool = False
+    feature_groups: list[FeatureImportanceGroupRequest] = Field(default_factory=list)
+    return_per_repeat_values: bool = False
+    batch_size: int | None = Field(default=None, ge=1)
+    unsupported_method_policy: Literal["raise", "warn", "skip"] = "warn"
+    error_policy: Literal["raise", "warn", "skip"] = "warn"
+
+
+class FeatureImportanceVisualizationRequest(APIRequest):
+    """Presentation-only feature-importance settings."""
+
+    normalized: bool = False
+    top_k: int | None = Field(default=15, ge=1, le=100)
+    rank_by: Literal["value", "absolute"] = "value"
+    include_negative: bool = True
+    show_error_bars: bool = True
+    include_predictive: bool = True
+    include_noise: bool = True
+    include_classwise: bool = False
+
+
+class TabularFeatureImportanceRequest(APIRequest):
+    """Evaluate a fitted tabular model on training or external data."""
+
+    data: TabularPayload | None = None
+    config: FeatureImportanceConfigRequest = Field(default_factory=FeatureImportanceConfigRequest)
+    visualization: FeatureImportanceVisualizationRequest | None = Field(
+        default_factory=FeatureImportanceVisualizationRequest
+    )
+
+
+class FeatureImportanceSummaryRecord(BaseModel):
+    """Compact long-form importance row."""
+
+    output_name: str
+    task_type: str
+    importance_kind: str
+    method: str
+    feature: str
+    rank: float | int | None = None
+    mean: float | None = None
+    std: float | None = None
+    normalized_mean: float | None = None
+    metric_name: str | None = None
+    baseline_metric: float | None = None
+    feature_type: str | None = None
+    role: str | None = None
+    indices: list[int] = Field(default_factory=list)
+
+
+class TabularFeatureImportanceResponse(BaseModel):
+    """JSON-safe feature-importance result and optional Plotly views."""
+
+    model_id: str
+    source: Literal["training", "external", "cross_validation"]
+    result: dict[str, Any]
+    summary: list[FeatureImportanceSummaryRecord]
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
+    visualizations: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class TabularFitModelRequest(APIRequest):
@@ -177,9 +260,15 @@ class TabularCandidateResponse(BaseModel):
 
 __all__ = [
     "CrossValidationRequest",
+    "FeatureImportanceConfigRequest",
+    "FeatureImportanceGroupRequest",
+    "FeatureImportanceSummaryRecord",
+    "FeatureImportanceVisualizationRequest",
     "TabularCandidateRequest",
     "TabularCandidateResponse",
     "TabularFitModelRequest",
+    "TabularFeatureImportanceRequest",
+    "TabularFeatureImportanceResponse",
     "TabularModelFitResponse",
     "TabularModelLoadResponse",
     "TabularPayload",

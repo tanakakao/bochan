@@ -17,6 +17,17 @@ from .data import (
 from .input_perturbation import (
     prediction_mean_std as _prediction_mean_std_with_input_perturbation,
 )
+from .feature_importance import (
+    ard_diagnostics_dataframe,
+    build_feature_importance_figures,
+    cross_validated_feature_importance_dataframe,
+    feature_importance_dataframe,
+    show_ard_diagnostics,
+    show_cross_validated_feature_importance,
+    show_feature_importance,
+    show_pca_explained_variance,
+    show_task_correlation_diagnostics,
+)
 
 # ``data.py`` imports prediction_mean_std directly. Replace both references so
 # package and direct submodule imports use perturbation-aware visualization.
@@ -122,6 +133,10 @@ __all__ = [
     "OrdinalProbabilityMode",
     "candidates_dataframe",
     "create_grid",
+    "ard_diagnostics_dataframe",
+    "build_feature_importance_figures",
+    "cross_validated_feature_importance_dataframe",
+    "feature_importance_dataframe",
     "get_const_array",
     "get_yyplot_data",
     "grid_1d_plot",
@@ -145,6 +160,11 @@ __all__ = [
     "study_pareto_dataframe",
     "tri_grid",
     "show_1dplot_from_optimizer",
+    "show_ard_diagnostics",
+    "show_cross_validated_feature_importance",
+    "show_feature_importance",
+    "show_pca_explained_variance",
+    "show_task_correlation_diagnostics",
     "show_1dplot_with_pred",
     "show_multiclass_1dplot",
     "show_multiclass_1dplot_from_optimizer",

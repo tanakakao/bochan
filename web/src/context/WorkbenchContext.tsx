@@ -22,6 +22,7 @@ import type {
   ColumnProfile,
   DatasetResponse,
   Direction,
+  FeatureImportanceSettings,
   RegressionResult,
   SearchVariable,
   TargetClassValue,
@@ -248,6 +249,8 @@ interface WorkbenchContextValue {
   setFitMaxiter: (fitMaxiter: number) => void;
   crossValidation: { enabled: boolean; method: "kfold" | "loo"; nSplits: number };
   setCrossValidation: (value: { enabled: boolean; method: "kfold" | "loo"; nSplits: number }) => void;
+  featureImportance: FeatureImportanceSettings;
+  setFeatureImportance: (value: FeatureImportanceSettings) => void;
   q: number;
   setQ: (q: number) => void;
   numRestarts: number;
@@ -297,6 +300,11 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [beta, setBeta] = useState(2);
   const [fitMaxiter, setFitMaxiter] = useState(128);
   const [crossValidation, setCrossValidation] = useState(loadCrossValidationSettings);
+  const [featureImportance, setFeatureImportance] = useState<FeatureImportanceSettings>({
+    enabled: false, source: "auto", nRepeats: 10, randomState: 0,
+    diagnosticAuto: true, computeNoiseImportance: true, normalizeImportance: false,
+    topK: 15, rankBy: "value", includeNegative: true, showErrorBars: true
+  });
   const [q, setQ] = useState(3);
   const [numRestarts, setNumRestarts] = useState(10);
   const [rawSamples, setRawSamples] = useState(256);
@@ -417,7 +425,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     numRestarts,
     rawSamples,
     searchSpace: selectedVariables,
-    crossValidation
+    crossValidation,
+    featureImportance
   } : null;
   const currentModelSignature = currentRunInput
     ? buildModelReuseSignature(currentRunInput)
@@ -564,6 +573,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 
   async function execute(mode: ModelExecutionMode = "retrain") {
     if (!currentRunInput || !candidateSettingsValid) return;
+    if (featureImportance.enabled && featureImportance.source === "cross_validation" && !crossValidation.enabled) {
+      setError("Cross-validation feature importance requires cross_validation=true.");
+      return;
+    }
     const modelSignature = currentModelSignature ?? buildModelReuseSignature(currentRunInput);
     const reusableRunId = result?.visualization_run_id;
     const canReuse = Boolean(
@@ -645,6 +658,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     setFitMaxiter,
     crossValidation,
     setCrossValidation,
+    featureImportance,
+    setFeatureImportance,
     q,
     setQ,
     numRestarts,

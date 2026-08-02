@@ -1,10 +1,10 @@
-'''Pandas / numpy friendly wrapper around :class:`bochan.api.BayesianOptimizer`.
+"""Pandas / numpy friendly wrapper around :class:`bochan.api.BayesianOptimizer`.
 
 The public API accepts model / fit / acquisition / optimization / repair
 options as direct keyword arguments. Internally those values are normalized to
 existing bochan config dataclasses, so the tensor-based core API remains
 unchanged.
-'''
+"""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ from .builders import (
     make_model_config,
     make_optimize_config,
 )
-from .config import ColumnKey, TabularDataConfig
+from .config import ColumnKey, TabularDataConfig, TabularFeatureGroup
 from .converter import (
     TabularDataset,
     dataframe_to_tensors,
@@ -69,7 +69,7 @@ def _make_tabular_data_config(
     target_category_maps: Mapping[ColumnKey, Mapping[Any, int]] | None = None,
     return_original_categories: bool | None = None,
 ) -> TabularDataConfig:
-    '''Merge direct tabular keyword arguments with an optional config object.'''
+    """Merge direct tabular keyword arguments with an optional config object."""
 
     base = data_config or TabularDataConfig()
     return replace(
@@ -86,19 +86,13 @@ def _make_tabular_data_config(
         dropna=base.dropna if dropna is None else bool(dropna),
         missing_strategy=base.missing_strategy if missing_strategy is None else missing_strategy,
         continuous_impute_strategy=(
-            base.continuous_impute_strategy
-            if continuous_impute_strategy is None
-            else continuous_impute_strategy
+            base.continuous_impute_strategy if continuous_impute_strategy is None else continuous_impute_strategy
         ),
         categorical_impute_strategy=(
-            base.categorical_impute_strategy
-            if categorical_impute_strategy is None
-            else categorical_impute_strategy
+            base.categorical_impute_strategy if categorical_impute_strategy is None else categorical_impute_strategy
         ),
         impute_targets=base.impute_targets if impute_targets is None else bool(impute_targets),
-        impute_random_state=(
-            base.impute_random_state if impute_random_state is None else impute_random_state
-        ),
+        impute_random_state=(base.impute_random_state if impute_random_state is None else impute_random_state),
         impute_max_iter=base.impute_max_iter if impute_max_iter is None else int(impute_max_iter),
         multiple_impute_sample_posterior=(
             base.multiple_impute_sample_posterior
@@ -107,19 +101,15 @@ def _make_tabular_data_config(
         ),
         encode_categories=base.encode_categories if encode_categories is None else bool(encode_categories),
         category_maps=base.category_maps if category_maps is None else category_maps,
-        target_category_maps=(
-            base.target_category_maps if target_category_maps is None else target_category_maps
-        ),
+        target_category_maps=(base.target_category_maps if target_category_maps is None else target_category_maps),
         return_original_categories=(
-            base.return_original_categories
-            if return_original_categories is None
-            else bool(return_original_categories)
+            base.return_original_categories if return_original_categories is None else bool(return_original_categories)
         ),
     )
 
 
 def _as_prediction_array(value: Any):
-    '''Convert tensor-like prediction values to a numpy array without exposing torch.'''
+    """Convert tensor-like prediction values to a numpy array without exposing torch."""
 
     if value is None:
         return None
@@ -151,7 +141,7 @@ def _prediction_column_names(
     target_names: Sequence[ColumnKey] | None,
     task_type: str | None,
 ) -> list[str]:
-    '''Build flat DataFrame column names for prediction mean / variance arrays.'''
+    """Build flat DataFrame column names for prediction mean / variance arrays."""
 
     import numpy as np
 
@@ -193,7 +183,7 @@ def _prediction_array_to_frame(
     target_names: Sequence[ColumnKey] | None,
     task_type: str | None,
 ):
-    '''Convert one prediction array, e.g. mean or variance, to a DataFrame.'''
+    """Convert one prediction array, e.g. mean or variance, to a DataFrame."""
 
     import pandas as pd
 
@@ -215,7 +205,7 @@ def _prediction_array_to_frame(
 
 
 class TabularBayesianOptimizer:
-    '''BayesianOptimizer wrapper for DataFrame / numpy / CSV workflows.'''
+    """BayesianOptimizer wrapper for DataFrame / numpy / CSV workflows."""
 
     def __init__(
         self,
@@ -352,6 +342,7 @@ class TabularBayesianOptimizer:
             **bo_kwargs,
         )
         self.dataset: TabularDataset | None = None
+        self.feature_importance_result_: Any | None = None
 
     @staticmethod
     def _resolve_cv_config(
@@ -367,7 +358,200 @@ class TabularBayesianOptimizer:
         """
         if value is None or isinstance(value, CrossValidationConfig):
             return value
-        return CrossValidationConfig(**dict(value))
+        fields = dict(value)
+        importance = fields.get("feature_importance_config")
+        if isinstance(importance, Mapping):
+            from bochan.inspection import FeatureImportanceConfig
+
+            fields["feature_importance_config"] = FeatureImportanceConfig(**dict(importance))
+        return CrossValidationConfig(**fields)
+
+    def _feature_importance_groups(
+        self,
+        groups: Sequence[TabularFeatureGroup | Mapping[str, Any]] | None,
+    ) -> list[Any] | None:
+        """Resolve column-addressed groups to core positional groups.
+
+        Args:
+            groups: Tabular group objects or equivalent mappings.
+
+        Returns:
+            Core ``FeatureGroup`` objects, or ``None``.
+        """
+        if groups is None:
+            return None
+        from bochan.inspection import FeatureGroup
+
+        from .converter import resolve_column_indices
+
+        assert self.dataset is not None
+        resolved = []
+        for value in groups:
+            group = (
+                value
+                if isinstance(value, TabularFeatureGroup)
+                else TabularFeatureGroup(
+                    name=str(value["name"]), columns=tuple(value["columns"]), role=str(value.get("role", "group"))
+                )
+            )
+            try:
+                indices = resolve_column_indices(group.columns, self.dataset.feature_names)
+            except KeyError as exc:
+                raise ValueError(str(exc)) from exc
+            resolved.append(FeatureGroup(group.name, tuple(indices or ()), group.role))
+        return resolved
+
+    def feature_importance(
+        self,
+        data: Any | None = None,
+        y: Any | None = None,
+        *,
+        config: Any | Mapping[str, Any] | None = None,
+        feature_groups: Sequence[TabularFeatureGroup | Mapping[str, Any]] | None = None,
+        feature_names: Sequence[ColumnKey] | None = None,
+        target_names: Sequence[ColumnKey] | None = None,
+        return_type: str = "result",
+    ) -> Any:
+        """Compute core importance from DataFrame or numpy evaluation data.
+
+        Args:
+            data: Evaluation table/array, or ``None`` for fitted training data.
+            y: Targets supplied separately from feature-only data.
+            config: Core configuration or a mapping of its constructor fields.
+            feature_groups: Optional groups addressed by source column names.
+            feature_names: Names for numpy evaluation features.
+            target_names: Names for numpy evaluation targets.
+            return_type: ``result``, ``dataframe``, or ``both``.
+
+        Returns:
+            The core result, a long DataFrame, or their tuple.
+
+        Raises:
+            RuntimeError: If the optimizer has not been fitted.
+            ValueError: If input data or the return type is invalid.
+        """
+        self._check_tabular_fitted()
+        assert self.dataset is not None
+        if return_type not in {"result", "dataframe", "both"}:
+            raise ValueError("return_type must be result, dataframe, or both.")
+        from bochan.inspection import FeatureImportanceConfig
+
+        if config is None:
+            resolved_config = FeatureImportanceConfig()
+        elif isinstance(config, Mapping):
+            resolved_config = FeatureImportanceConfig(**dict(config))
+        else:
+            resolved_config = config
+        groups = self._feature_importance_groups(feature_groups)
+        if groups is not None:
+            from dataclasses import replace as dataclass_replace
+
+            resolved_config = dataclass_replace(resolved_config, feature_groups=groups)
+
+        if data is None:
+            if y is not None:
+                raise ValueError("y cannot be provided when data is None.")
+            X_eval, y_eval = None, None
+        else:
+            evaluation_config = replace(
+                self.data_config,
+                input_cols=list(self.dataset.feature_names),
+                target_cols=list(self.dataset.target_names),
+                categorical_cols=[self.dataset.feature_names[i] for i in self.dataset.cat_dims],
+                category_maps=self.dataset.category_maps,
+                target_category_maps=self.dataset.target_category_maps,
+            )
+            try:
+                import pandas as pd
+            except ImportError:
+                pd = None
+            if pd is not None and isinstance(data, pd.DataFrame) and y is not None:
+                frame = data.copy()
+                values = y
+                if hasattr(values, "ndim") and values.ndim == 1 and len(self.dataset.target_names) == 1:
+                    frame[self.dataset.target_names[0]] = values
+                else:
+                    target_frame = pd.DataFrame(values, columns=self.dataset.target_names, index=frame.index)
+                    for column in self.dataset.target_names:
+                        frame[column] = target_frame[column]
+                evaluation = self._to_dataset(frame, data_config=evaluation_config)
+            else:
+                evaluation = self._to_dataset(
+                    data,
+                    y,
+                    data_config=evaluation_config,
+                    feature_names=feature_names or self.dataset.feature_names,
+                    target_names=target_names or self.dataset.target_names,
+                )
+            if evaluation.Y is None:
+                raise ValueError("Evaluation targets are required for permutation importance.")
+            X_eval, y_eval = evaluation.X, evaluation.Y
+
+        result = self.bo.feature_importance(
+            X_eval,
+            y_eval,
+            config=resolved_config,
+            feature_names=[str(name) for name in self.dataset.feature_names],
+            output_names=[str(name) for name in (target_names or self.dataset.target_names)],
+        )
+        self.feature_importance_result_ = result
+        if return_type == "result":
+            return result
+        frame = self.feature_importance_dataframe(
+            result=result, output_name=None if len(result.outputs) == 1 else "__all__"
+        )
+        return frame if return_type == "dataframe" else (result, frame)
+
+    def feature_importance_dataframe(
+        self,
+        result: Any | None = None,
+        *,
+        output_name: str | None = None,
+        method: str = "permutation",
+        importance_kind: str = "predictive",
+        class_label: Any | None = None,
+        normalized: bool = False,
+        sort: bool = True,
+        top_k: int | None = None,
+    ) -> Any:
+        """Convert a cached or supplied importance result to a DataFrame.
+
+        Args:
+            result: Result to convert; defaults to the last explicit result.
+            output_name: Optional output selection. When omitted for multiple
+                outputs, all outputs are concatenated.
+            method: Importance method.
+            importance_kind: Predictive, noise, or classwise importance.
+            class_label: Class label for classwise importance.
+            normalized: Select normalized display values.
+            sort: Sort by display value.
+            top_k: Optional rows retained per output.
+
+        Returns:
+            A long pandas DataFrame.
+        """
+        import pandas as pd
+
+        from bochan.visualization import feature_importance_dataframe
+
+        result = self.feature_importance_result_ if result is None else result
+        if result is None:
+            raise RuntimeError("No feature importance result is available. Call feature_importance() first.")
+        names = list(result.outputs) if output_name in {None, "__all__"} and len(result.outputs) > 1 else [output_name]
+        frames = [
+            feature_importance_dataframe(
+                result,
+                output_name=name,
+                method=method,
+                importance_kind=importance_kind,
+                class_label=class_label,
+                normalized=normalized,
+                sort=sort,
+                top_k=top_k,
+            )
+            for name in names
+        ]
+        return pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
 
     @classmethod
     def from_csv(
@@ -376,8 +560,8 @@ class TabularBayesianOptimizer:
         *,
         read_csv_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
-    ) -> "TabularBayesianOptimizer":
-        '''Create an optimizer with data loaded from a CSV file.'''
+    ) -> TabularBayesianOptimizer:
+        """Create an optimizer with data loaded from a CSV file."""
 
         try:
             import pandas as pd
@@ -451,7 +635,7 @@ class TabularBayesianOptimizer:
         raise ValueError(f"{name} must be specified when multiple target columns are available: {list(target_cols)!r}.")
 
     def _sync_visualization_metadata(self) -> None:
-        '''Attach tabular column names and labels to the underlying optimizer bundle.'''
+        """Attach tabular column names and labels to the underlying optimizer bundle."""
 
         if self.dataset is None or self.bo.bundle is None:
             return
@@ -522,8 +706,8 @@ class TabularBayesianOptimizer:
         skip_fit: bool | Any = UNSET,
         cross_validation: bool | None = None,
         cv_config: CrossValidationConfig | Mapping[str, Any] | None = None,
-    ) -> "TabularBayesianOptimizer":
-        '''Fit from a pandas DataFrame or numpy-like arrays.'''
+    ) -> TabularBayesianOptimizer:
+        """Fit from a pandas DataFrame or numpy-like arrays."""
 
         if data is None:
             data = self.data
@@ -672,7 +856,7 @@ class TabularBayesianOptimizer:
         return_dataframe: bool = True,
         return_result: bool = False,
     ) -> Any:
-        '''Generate candidates and optionally return them as a DataFrame.'''
+        """Generate candidates and optionally return them as a DataFrame."""
 
         if self.dataset is None:
             raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
@@ -766,7 +950,7 @@ class TabularBayesianOptimizer:
         return candidates_df, acq_value
 
     def ask(self, *args: Any, **kwargs: Any) -> Any:
-        '''Alias for candidate().'''
+        """Alias for candidate()."""
 
         return self.candidate(*args, **kwargs)
 
@@ -780,7 +964,7 @@ class TabularBayesianOptimizer:
         posterior_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> Any:
-        '''Predict from tabular input and return mean / variance as a DataFrame by default.'''
+        """Predict from tabular input and return mean / variance as a DataFrame by default."""
 
         if self.dataset is None:
             raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
@@ -831,7 +1015,7 @@ class TabularBayesianOptimizer:
         return prediction_df
 
     def prediction_to_dataframe(self, prediction: Any):
-        '''Convert a PredictionResult or posterior-like object to a pandas DataFrame.'''
+        """Convert a PredictionResult or posterior-like object to a pandas DataFrame."""
 
         import pandas as pd
 
@@ -839,7 +1023,7 @@ class TabularBayesianOptimizer:
         variance = getattr(prediction, "variance", None)
         task_type = getattr(prediction, "task_type", None)
         if mean is None and hasattr(prediction, "posterior"):
-            posterior = getattr(prediction, "posterior")
+            posterior = prediction.posterior
             mean = getattr(posterior, "mean", None)
             variance = getattr(posterior, "variance", None)
 
@@ -863,7 +1047,7 @@ class TabularBayesianOptimizer:
         return prediction_df
 
     def _prediction_input_to_dataframe(self, original_data: Any, X: Any):
-        '''Return input data as a DataFrame without exposing tensor internals.'''
+        """Return input data as a DataFrame without exposing tensor internals."""
 
         try:
             import pandas as pd
@@ -884,7 +1068,7 @@ class TabularBayesianOptimizer:
         feature_cols: Sequence[ColumnKey] | None = None,
         target_cols: Sequence[ColumnKey] | None = None,
     ) -> Any:
-        '''Return training X / Y DataFrames using bochan.visualization helpers.'''
+        """Return training X / Y DataFrames using bochan.visualization helpers."""
 
         from bochan.visualization import training_dataframe
 
@@ -902,7 +1086,7 @@ class TabularBayesianOptimizer:
         target_cols: Sequence[ColumnKey] | None = None,
         include_prediction: bool = True,
     ) -> Any:
-        '''Return the latest candidate batch as a visualization-friendly DataFrame.'''
+        """Return the latest candidate batch as a visualization-friendly DataFrame."""
 
         from bochan.visualization import candidates_dataframe
 
@@ -924,7 +1108,7 @@ class TabularBayesianOptimizer:
         cycle: str | Sequence[Any] | None = None,
         **kwargs: Any,
     ) -> Any:
-        '''Create a YY plot or multiclass correct-label probability plot.'''
+        """Create a YY plot or multiclass correct-label probability plot."""
 
         from bochan.visualization import show_yyplot_from_optimizer
 
@@ -953,7 +1137,7 @@ class TabularBayesianOptimizer:
         cycle: str | Sequence[Any] | None = None,
         **kwargs: Any,
     ) -> Any:
-        '''Create a 1D prediction curve from the fitted tabular optimizer.'''
+        """Create a 1D prediction curve from the fitted tabular optimizer."""
 
         from bochan.visualization import show_1dplot_from_optimizer
 
@@ -987,7 +1171,7 @@ class TabularBayesianOptimizer:
         cycle: str | Sequence[Any] | None = None,
         **kwargs: Any,
     ) -> Any:
-        '''Create a 2D acquisition or prediction heatmap from the fitted optimizer.'''
+        """Create a 2D acquisition or prediction heatmap from the fitted optimizer."""
 
         from bochan.visualization import show_scatter_with_acqf_from_optimizer
 
@@ -1009,12 +1193,12 @@ class TabularBayesianOptimizer:
         )
 
     def plot_heatmap(self, *args: Any, **kwargs: Any) -> Any:
-        '''Alias for plot_2d().'''
+        """Alias for plot_2d()."""
 
         return self.plot_2d(*args, **kwargs)
 
     def plot_scatter(self, *args: Any, **kwargs: Any) -> Any:
-        '''Alias for plot_2d().'''
+        """Alias for plot_2d()."""
 
         return self.plot_2d(*args, **kwargs)
 
@@ -1036,7 +1220,7 @@ class TabularBayesianOptimizer:
         ncontours: int = 25,
         **kwargs: Any,
     ) -> Any:
-        '''Create a ternary acquisition or prediction plot from the fitted optimizer.'''
+        """Create a ternary acquisition or prediction plot from the fitted optimizer."""
 
         from bochan.visualization import show_triscatter_with_acqf_from_optimizer
 
@@ -1061,7 +1245,7 @@ class TabularBayesianOptimizer:
         )
 
     def plot_ternary(self, *args: Any, **kwargs: Any) -> Any:
-        '''Alias for plot_tri().'''
+        """Alias for plot_tri()."""
 
         return self.plot_tri(*args, **kwargs)
 
@@ -1075,7 +1259,7 @@ class TabularBayesianOptimizer:
         df_cand: Any | None = None,
         cycle: str | Sequence[Any] | None = None,
     ) -> Any:
-        '''Create a two-objective scatter plot with optional candidate predictions.'''
+        """Create a two-objective scatter plot with optional candidate predictions."""
 
         from bochan.visualization import show_pareto_plot
 
@@ -1094,8 +1278,8 @@ class TabularBayesianOptimizer:
             )
         return show_pareto_plot(y_df, target1, target2, df_cand=df_cand, cycle=cycle)
 
-    def update_data(self, new_data: Any, new_y: Any | None = None) -> "TabularBayesianOptimizer":
-        '''Append new observations to the underlying tensor optimizer state.'''
+    def update_data(self, new_data: Any, new_y: Any | None = None) -> TabularBayesianOptimizer:
+        """Append new observations to the underlying tensor optimizer state."""
 
         if self.dataset is None:
             raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
@@ -1112,8 +1296,8 @@ class TabularBayesianOptimizer:
         *,
         refit: bool = True,
         fit_config: FitConfig | None = None,
-    ) -> "TabularBayesianOptimizer":
-        '''Append observations and optionally refit the model.'''
+    ) -> TabularBayesianOptimizer:
+        """Append observations and optionally refit the model."""
 
         self.update_data(new_data, new_y)
         if refit:
@@ -1122,7 +1306,7 @@ class TabularBayesianOptimizer:
         return self
 
     def candidates_to_dataframe(self, candidates: Any):
-        '''Convert candidate tensor output to a pandas DataFrame.'''
+        """Convert candidate tensor output to a pandas DataFrame."""
 
         if self.dataset is None:
             raise RuntimeError("No fitted tabular dataset found. Call fit() first.")

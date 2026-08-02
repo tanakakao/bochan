@@ -280,3 +280,12 @@ fig.show()
 
 Pareto判定済みの表は`study_pareto_dataframe()`で取得できます。
 
+
+## Feature importance
+
+```python
+from bochan.visualization import show_feature_importance
+fig = show_feature_importance(importance, output_name="strength", top_k=15)
+```
+
+`feature_importance_dataframe` and `show_feature_importance` consume an existing result and never recompute it. Raw single-fit error bars show permutation-repeat standard deviation; cross-validated figures use between-fold standard deviation. Normalized views do not reuse raw error bars. ARD, PCA, task-kernel, and RRP information are model diagnostics rather than predictive importance (PCA loadings are not ranked as importance, and RRP relevance describes observations).

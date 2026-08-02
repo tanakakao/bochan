@@ -27,7 +27,7 @@ from bochan.models.components.beta import (
     select_inducing_points,
     to_device_dtype_transform,
 )
-from bochan.models.regression.non_gaussian.beta import _BaseBetaGPModel, build_mixed_beta_kernel
+from bochan.models.regression.non_gaussian.beta.base.beta import _BaseBetaGPModel, build_mixed_beta_kernel
 
 
 def make_beta_feature_extractor(
@@ -211,7 +211,7 @@ class DeepKernelBetaGPModel(_BaseBetaGPModel):
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
-        clip_targets: bool = True,
+        clip_targets: bool | None = None,
     ) -> None:
         train_X = torch.as_tensor(train_X)
         train_Y = prepare_beta_targets(train_Y, train_X, eps=eps, clip=clip_targets)
@@ -280,7 +280,7 @@ class DeepKernelBetaMixedGPModel(_BaseBetaGPModel):
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
-        clip_targets: bool = True,
+        clip_targets: bool | None = None,
     ) -> None:
         train_X = torch.as_tensor(train_X)
         cat_dims = normalize_dims(cat_dims, train_X.shape[-1])

@@ -162,7 +162,7 @@ class _BaseBetaGPModel(ApproximateGPyTorchModel):
         self.cat_dims = None if cat_dims is None else list(cat_dims)
         self.train_inputs_raw = (train_X.detach().clone(),)
         self.train_inputs = (train_X,)
-        self.train_targets = prepare_beta_targets(train_Y, train_X, eps=eps, clip=True)
+        self.train_targets = train_Y.contiguous()
         self.num_inducing_points = int(num_inducing_points)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.link = link
@@ -220,6 +220,21 @@ class _BaseBetaGPModel(ApproximateGPyTorchModel):
         """Beta mean μ の予測値を返す。"""
         return self.posterior(X, observation_noise=True).mean
 
+    def mean_posterior(self, X: Tensor, **kwargs: Any) -> BetaPosterior:
+        """Return the conditional-mean posterior used by BO acquisitions."""
+        return self.posterior(X, observation_noise=False, **kwargs)
+
+    def predictive_posterior(self, X: Tensor, **kwargs: Any) -> BetaPosterior:
+        """Return the response posterior including Beta observation variance."""
+        return self.posterior(X, observation_noise=True, **kwargs)
+
+    def concentration(self, X: Tensor | None = None) -> Tensor:
+        """Return the scalar Beta precision, broadcast over ``X`` when supplied."""
+        value = self.likelihood.concentration
+        if X is None:
+            return value
+        return value.to(X).expand(*X.shape[:-1], 1)
+
     def predict_concentration(self) -> Tensor:
         """Beta concentration φ を返す。"""
         return self.likelihood.concentration
@@ -258,13 +273,24 @@ class BetaGPModel(_BaseBetaGPModel):
         learn_inducing_locations: bool = True,
         link: BetaMeanLink = "sigmoid",
         init_concentration: float = 20.0,
+        concentration: float | None = None,
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
-        clip_targets: bool = True,
+        clip_targets: bool | None = None,
+        boundary_policy: str = "error",
+        boundary_epsilon: float | None = None,
     ) -> None:
         train_X = torch.as_tensor(train_X)
-        train_Y = prepare_beta_targets(train_Y, train_X, eps=eps, clip=clip_targets)
+        if concentration is not None:
+            init_concentration = float(concentration)
+        if boundary_epsilon is not None:
+            eps = float(boundary_epsilon)
+        train_targets_raw = torch.as_tensor(train_Y, device=train_X.device, dtype=train_X.dtype).detach().clone()
+        train_Y = prepare_beta_targets(
+            train_Y, train_X, eps=eps, clip=clip_targets,
+            boundary_policy=boundary_policy,
+        )
         input_transform = to_device_dtype_transform(clone_input_transform(input_transform), train_X)
         train_X_tf = apply_input_transform_for_training(train_X, input_transform, name="BetaGPModel.input_transform")
         likelihood = likelihood or BetaLogLikelihood(
@@ -298,7 +324,11 @@ class BetaGPModel(_BaseBetaGPModel):
         self.init_concentration = float(init_concentration)
         self.learn_concentration = bool(learn_concentration)
         self.min_concentration = float(min_concentration)
-        self.clip_targets = bool(clip_targets)
+        self.boundary_policy = "clip" if clip_targets is True else str(boundary_policy)
+        self.boundary_epsilon = float(eps)
+        self.clip_targets = self.boundary_policy == "clip"
+        self.train_targets_raw = train_targets_raw
+        self.train_targets_model = train_Y.detach().clone()
 
     def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "BetaGPModel":
         if kwargs.get("noise") is not None:
@@ -327,6 +357,8 @@ class BetaGPModel(_BaseBetaGPModel):
             eps=self.eps,
             min_concentration=self.min_concentration,
             clip_targets=self.clip_targets,
+            boundary_policy=self.boundary_policy,
+            boundary_epsilon=self.boundary_epsilon,
         )
 
 
@@ -348,17 +380,28 @@ class BetaMixedGPModel(_BaseBetaGPModel):
         learn_inducing_locations: bool = True,
         link: BetaMeanLink = "sigmoid",
         init_concentration: float = 20.0,
+        concentration: float | None = None,
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
-        clip_targets: bool = True,
+        clip_targets: bool | None = None,
+        boundary_policy: str = "error",
+        boundary_epsilon: float | None = None,
     ) -> None:
         train_X = torch.as_tensor(train_X)
+        if concentration is not None:
+            init_concentration = float(concentration)
+        if boundary_epsilon is not None:
+            eps = float(boundary_epsilon)
         d = train_X.shape[-1]
         cat_dims = normalize_dims(cat_dims, d)
         if len(cat_dims) == 0:
             raise ValueError("cat_dims must be non-empty for BetaMixedGPModel.")
-        train_Y = prepare_beta_targets(train_Y, train_X, eps=eps, clip=clip_targets)
+        train_targets_raw = torch.as_tensor(train_Y, device=train_X.device, dtype=train_X.dtype).detach().clone()
+        train_Y = prepare_beta_targets(
+            train_Y, train_X, eps=eps, clip=clip_targets,
+            boundary_policy=boundary_policy,
+        )
         input_transform = to_device_dtype_transform(clone_input_transform(input_transform), train_X)
         train_X_tf = apply_input_transform_for_training(
             train_X,
@@ -400,7 +443,11 @@ class BetaMixedGPModel(_BaseBetaGPModel):
         self.init_concentration = float(init_concentration)
         self.learn_concentration = bool(learn_concentration)
         self.min_concentration = float(min_concentration)
-        self.clip_targets = bool(clip_targets)
+        self.boundary_policy = "clip" if clip_targets is True else str(boundary_policy)
+        self.boundary_epsilon = float(eps)
+        self.clip_targets = self.boundary_policy == "clip"
+        self.train_targets_raw = train_targets_raw
+        self.train_targets_model = train_Y.detach().clone()
 
 
 __all__ = [

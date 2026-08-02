@@ -157,7 +157,7 @@ class PCABetaGPModel(_ContinuousProjectedBetaModel):
         num_inducing_points: int = 128,
         link: BetaMeanLink = "sigmoid",
         eps: float = 1e-6,
-        clip_targets: bool = True,
+        clip_targets: bool | None = None,
     ) -> None:
         super().__init__()
         train_X = torch.as_tensor(train_X)
@@ -214,7 +214,7 @@ class REMBOBetaGPModel(_ContinuousProjectedBetaModel):
         seed: int = 42,
         link: BetaMeanLink = "sigmoid",
         eps: float = 1e-6,
-        clip_targets: bool = True,
+        clip_targets: bool | None = None,
     ) -> None:
         super().__init__()
         train_X = torch.as_tensor(train_X)
@@ -291,7 +291,7 @@ class PCABetaMixedGPModel(_MixedProjectedBetaModel):
         num_inducing_points: int = 128,
         link: BetaMeanLink = "sigmoid",
         eps: float = 1e-6,
-        clip_targets: bool = True,
+        clip_targets: bool | None = None,
     ) -> None:
         super().__init__()
         train_X = torch.as_tensor(train_X)
@@ -352,7 +352,7 @@ class REMBOBetaMixedGPModel(PCABetaMixedGPModel):
         seed: int = 42,
         link: BetaMeanLink = "sigmoid",
         eps: float = 1e-6,
-        clip_targets: bool = True,
+        clip_targets: bool | None = None,
     ) -> None:
         Model.__init__(self)
         train_X = torch.as_tensor(train_X)

@@ -4,6 +4,14 @@ import gpytorch
 import pytest
 import torch
 
+from bochan.acquisition.non_gaussian.active_learning import (
+    qNonGaussianResponseMeanVariance,
+)
+from bochan.acquisition.regression.active_learning import (
+    qRegressionBALD,
+    qRegressionPosteriorVariance,
+    qRegressionPredictiveEntropy,
+)
 from bochan.models.regression.non_gaussian.beta.deep.beta_deepgp import (
     BetaDeepGPModel,
     BetaMixedDeepGPModel,
@@ -131,3 +139,49 @@ def test_beta_mixed_deepgp_posterior_obeys_single_output_contract() -> None:
     assert torch.isfinite(posterior.variance).all()
     assert ((posterior.mean > 0) & (posterior.mean < 1)).all()
     assert (posterior.variance >= 0).all()
+
+
+@pytest.mark.parametrize(
+    "acquisition_class",
+    [
+        qRegressionPredictiveEntropy,
+        qRegressionBALD,
+        qRegressionPosteriorVariance,
+    ],
+)
+def test_regression_active_learning_accepts_beta_deepgp(
+    acquisition_class: type,
+) -> None:
+    model = _make_continuous_model()
+    candidates = torch.rand(2, 3, 2, dtype=DTYPE, requires_grad=True)
+    acquisition = acquisition_class(model=model)
+
+    with gpytorch.settings.num_likelihood_samples(5):
+        value = acquisition(candidates)
+
+    assert value.shape == torch.Size([2])
+    assert torch.isfinite(value).all()
+    value.sum().backward()
+    assert candidates.grad is not None
+    assert torch.isfinite(candidates.grad).all()
+
+
+def test_non_gaussian_active_learning_uses_fixed_beta_deepgp_samples() -> None:
+    model = _make_continuous_model()
+    candidates = torch.rand(1, 3, 2, dtype=DTYPE, requires_grad=True)
+    acquisition = qNonGaussianResponseMeanVariance(
+        model=model,
+        sample_shape=torch.Size([16]),
+        seed=123,
+    )
+
+    with gpytorch.settings.num_likelihood_samples(5):
+        first = acquisition(candidates)
+        second = acquisition(candidates)
+
+    assert first.shape == torch.Size([1])
+    assert torch.isfinite(first).all()
+    torch.testing.assert_close(first, second)
+    first.sum().backward()
+    assert candidates.grad is not None
+    assert torch.isfinite(candidates.grad).all()

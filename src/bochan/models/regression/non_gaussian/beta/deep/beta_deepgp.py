@@ -1,18 +1,17 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.gpytorch import GPyTorchModel
 from botorch.models.transforms.input import InputTransform
 from botorch.posteriors.gpytorch import GPyTorchPosterior
-
 from gpytorch.mlls import DeepApproximateMLL, VariationalELBO
 from gpytorch.models.deep_gps import DeepGP
+from torch import Tensor
 
 from bochan.models.components.beta import (
     BetaLogLikelihood,
@@ -40,8 +39,8 @@ class _BetaDeepGPPosterior(BetaPosterior):
 
     def rsample(
         self,
-        sample_shape: Optional[torch.Size] = None,
-        base_samples: Optional[Tensor] = None,
+        sample_shape: torch.Size | None = None,
+        base_samples: Tensor | None = None,
     ) -> Tensor:
         """Sample response means, optionally from fixed latent base samples."""
         if sample_shape is None:
@@ -111,8 +110,8 @@ class _BaseBetaDeepGPModel(DeepGP, GPyTorchModel):
     def latent_posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        output_indices: list[int] | None = None,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> GPyTorchPosterior:
         if output_indices is not None:
@@ -132,9 +131,9 @@ class _BaseBetaDeepGPModel(DeepGP, GPyTorchModel):
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
+        output_indices: list[int] | None = None,
         observation_noise: bool | Tensor = True,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> BetaPosterior:
         if torch.is_tensor(observation_noise):
@@ -190,9 +189,9 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
         *,
         hidden_dim: int = 4,
         num_inducing: int = 128,
-        list_hidden_dims: Optional[Sequence[int]] = None,
-        input_transform: Optional[InputTransform] = None,
-        likelihood: Optional[BetaLogLikelihood] = None,
+        list_hidden_dims: Sequence[int] | None = None,
+        input_transform: InputTransform | None = None,
+        likelihood: BetaLogLikelihood | None = None,
         link: BetaMeanLink = "sigmoid",
         init_concentration: float = 20.0,
         learn_concentration: bool = True,
@@ -306,7 +305,7 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
         X: Tensor,
         Y: Tensor,
         **kwargs: Any,
-    ) -> "BetaDeepGPModel":
+    ) -> BetaDeepGPModel:
         if kwargs.get("noise") is not None:
             raise NotImplementedError(
                 "BetaDeepGPModel does not support noise in "
@@ -367,8 +366,8 @@ class BetaMixedDeepGPModel(_BaseBetaDeepGPModel):
         cat_dims: Sequence[int],
         hidden_dim: int = 4,
         num_inducing: int = 128,
-        input_transform: Optional[InputTransform] = None,
-        likelihood: Optional[BetaLogLikelihood] = None,
+        input_transform: InputTransform | None = None,
+        likelihood: BetaLogLikelihood | None = None,
         link: BetaMeanLink = "sigmoid",
         init_concentration: float = 20.0,
         learn_concentration: bool = True,

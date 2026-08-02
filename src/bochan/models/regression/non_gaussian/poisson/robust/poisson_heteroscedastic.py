@@ -4,14 +4,13 @@ import copy
 from typing import Any, Optional, Sequence
 
 import torch
-from torch import Tensor
-from torch.utils.data import DataLoader, TensorDataset
-
 from botorch.fit import fit_gpytorch_mll
 from botorch.models import MixedSingleTaskGP, SingleTaskGP
 from botorch.models.transforms.input import InputTransform
 from botorch.posteriors import Posterior
 from gpytorch.mlls import ExactMarginalLogLikelihood
+from torch import Tensor
+from torch.utils.data import DataLoader, TensorDataset
 
 from bochan.models.components.poisson import (
     PoissonLink,
@@ -119,7 +118,8 @@ def _fit_noise_model_single(train_X: Tensor, noise_targets: Tensor, input_transf
     model = SingleTaskGP(train_X=train_X, train_Y=noise_targets.log(), input_transform=input_transform)
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_mll(mll)
-    model.eval(); model.likelihood.eval()
+    model.eval()
+    model.likelihood.eval()
     return model
 
 
@@ -137,7 +137,8 @@ def _fit_noise_model_mixed(
     )
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_mll(mll)
-    model.eval(); model.likelihood.eval()
+    model.eval()
+    model.likelihood.eval()
     return model
 
 
@@ -260,8 +261,7 @@ class HeteroscedasticPoissonGPModel(_HeteroscedasticPoissonMixin, PoissonGPModel
         else:
             noise_targets = ensure_2d_col(torch.as_tensor(train_Yvar, device=train_X.device, dtype=train_X.dtype)).clamp_min(float(min_noise))
 
-        self.noise_model = _fit_noise_model_single(train_X, noise_targets, copy.deepcopy(noise_tf))
-        self.noise_input_transform = noise_tf
+        noise_model = _fit_noise_model_single(train_X, noise_targets, copy.deepcopy(noise_tf))
 
         super().__init__(
             train_X=train_X,
@@ -273,6 +273,9 @@ class HeteroscedasticPoissonGPModel(_HeteroscedasticPoissonMixin, PoissonGPModel
             exp_clip=exp_clip,
             min_rate=min_rate,
         )
+
+        self.noise_model = noise_model
+        self.noise_input_transform = noise_tf
 
 
 class HeteroscedasticPoissonMixedGPModel(_HeteroscedasticPoissonMixin, PoissonMixedGPModel):
@@ -323,8 +326,7 @@ class HeteroscedasticPoissonMixedGPModel(_HeteroscedasticPoissonMixin, PoissonMi
         else:
             noise_targets = ensure_2d_col(torch.as_tensor(train_Yvar, device=train_X.device, dtype=train_X.dtype)).clamp_min(float(min_noise))
 
-        self.noise_model = _fit_noise_model_mixed(train_X, noise_targets, cat_dims, copy.deepcopy(noise_tf))
-        self.noise_input_transform = noise_tf
+        noise_model = _fit_noise_model_mixed(train_X, noise_targets, cat_dims, copy.deepcopy(noise_tf))
 
         super().__init__(
             train_X=train_X,
@@ -337,6 +339,9 @@ class HeteroscedasticPoissonMixedGPModel(_HeteroscedasticPoissonMixin, PoissonMi
             exp_clip=exp_clip,
             min_rate=min_rate,
         )
+
+        self.noise_model = noise_model
+        self.noise_input_transform = noise_tf
 
 
 __all__ = [

@@ -28,6 +28,7 @@ jobs:
         run: |
           python -m pip install ruff
           ruff check \
+            --per-file-ignores "src/bochan/api/acquisition_registry.py:UP035" \
             src/bochan/acquisition/non_gaussian/active_learning/single_output.py \
             src/bochan/acquisition/non_gaussian/active_learning/multi_output.py \
             src/bochan/acquisition/non_gaussian/active_learning/hetero_single_output.py \

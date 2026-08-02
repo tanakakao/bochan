@@ -1,3 +1,7 @@
+from botorch.models import SingleTaskGP
+from botorch.models.gp_regression_mixed import MixedSingleTaskGP
+from gpytorch.mlls import ExactMarginalLogLikelihood
+
 from .classification import (
     ClassificationFitResult,
     fit_binary_classifier_mll,
@@ -37,6 +41,18 @@ from .robust import (
     fit_rrp_ordinal_mll_optimizer,
 )
 from .vae import VAEFitResult, fit_vae_gp
+
+
+setattr(
+    SingleTaskGP,
+    "make_mll",
+    lambda self: ExactMarginalLogLikelihood(self.likelihood, self),
+)
+setattr(
+    MixedSingleTaskGP,
+    "make_mll",
+    lambda self: ExactMarginalLogLikelihood(self.likelihood, self),
+)
 
 
 def make_ordinal_mll(model, *, beta: float | None = None, **kwargs):

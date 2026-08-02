@@ -17,6 +17,7 @@ from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.map_saas import AdditiveMapSaasSingleTaskGP
 from botorch.models.transforms.input import InputTransform
 from botorch.models.transforms.outcome import OutcomeTransform
+from gpytorch.mlls import ExactMarginalLogLikelihood
 
 from bochan.models.components.saas import (
     OneHotEncodingMixin,
@@ -65,6 +66,10 @@ class SaasSingleTaskGP(AdditiveMapSaasSingleTaskGP):
             input_transform=input_transform,
             num_taus=num_taus,
         )
+
+    def make_mll(self) -> ExactMarginalLogLikelihood:
+        """Return the exact marginal log likelihood for this model."""
+        return ExactMarginalLogLikelihood(self.likelihood, self)
 
 
 class SaasMixedSingleTaskGP(OneHotEncodingMixin, AdditiveMapSaasSingleTaskGP):
@@ -248,6 +253,10 @@ class SaasMixedSingleTaskGP(OneHotEncodingMixin, AdditiveMapSaasSingleTaskGP):
         new_model.load_state_dict(self.state_dict(), strict=False)
         new_model.eval()
         return new_model
+
+    def make_mll(self) -> ExactMarginalLogLikelihood:
+        """Return the exact marginal log likelihood for this mixed model."""
+        return ExactMarginalLogLikelihood(self.likelihood, self)
 
 
 # 旧名を残す。

@@ -4,7 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+from botorch.models import SingleTaskGP
+from botorch.models.gp_regression_mixed import MixedSingleTaskGP
+from gpytorch.mlls import ExactMarginalLogLikelihood
 
+import bochan.fit  # noqa: F401
 from bochan.api import (
     AcquisitionConfig,
     BayesianOptimizer,
@@ -15,6 +19,25 @@ from bochan.api import (
     MultiOutputConfig,
 )
 import bochan.api.engine_defaults as engine_defaults
+from bochan.models.regression.gaussian.high_dim import (
+    SaasMixedSingleTaskGP,
+    SaasSingleTaskGP,
+)
+from bochan.models.regression.gaussian.kronecker_multitask import (
+    MixedKroneckerMultiTaskGP,
+    PerturbationSupportedKroneckerMultiTaskGP,
+)
+from bochan.models.regression.gaussian.multifidelity import (
+    WideMixedMultiFidelityGP,
+    WideMultiFidelityGP,
+)
+from bochan.models.regression.gaussian.robust import (
+    HeteroscedasticMixedSingleTaskGP,
+    HeteroscedasticSingleTaskGP,
+    SafeRobustRelevancePursuitMixedSingleTaskGP,
+    SafeRobustRelevancePursuitSingleTaskGP,
+)
+from bochan.models.wide_multitask import WideMultiTaskGP
 
 
 class _NeedsBestF:
@@ -317,3 +340,38 @@ def test_acqf_kwargs_best_f_has_priority_over_data_context(monkeypatch) -> None:
 
     assert resolved.acqf_kwargs["best_f"] is explicit
     assert context.best_f is None
+
+
+@pytest.mark.parametrize(
+    "model_cls",
+    [
+        SingleTaskGP,
+        MixedSingleTaskGP,
+        PerturbationSupportedKroneckerMultiTaskGP,
+        MixedKroneckerMultiTaskGP,
+        WideMultiTaskGP,
+        WideMultiFidelityGP,
+        WideMixedMultiFidelityGP,
+        SaasSingleTaskGP,
+        SaasMixedSingleTaskGP,
+        SafeRobustRelevancePursuitSingleTaskGP,
+        SafeRobustRelevancePursuitMixedSingleTaskGP,
+        HeteroscedasticSingleTaskGP,
+        HeteroscedasticMixedSingleTaskGP,
+    ],
+)
+def test_exact_regression_models_define_make_mll_directly(model_cls) -> None:
+    assert "make_mll" in model_cls.__dict__
+    assert callable(model_cls.__dict__["make_mll"])
+
+
+def test_single_task_make_mll_returns_exact_marginal_log_likelihood() -> None:
+    train_X = torch.linspace(0.0, 1.0, 4, dtype=torch.double).unsqueeze(-1)
+    train_Y = train_X.square()
+    model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
+
+    mll = model.make_mll()
+
+    assert isinstance(mll, ExactMarginalLogLikelihood)
+    assert mll.model is model
+    assert mll.likelihood is model.likelihood

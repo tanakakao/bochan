@@ -12,6 +12,7 @@ from botorch.models.transforms.input import InputTransform
 from gpytorch.kernels import Kernel
 from gpytorch.likelihoods import Likelihood
 from gpytorch.means import Mean
+from gpytorch.mlls import ExactMarginalLogLikelihood
 
 from bochan.models.components.heteroscedastic import (
     HeteroscedasticLatentPosteriorMixin,
@@ -138,6 +139,10 @@ class HeteroscedasticSingleTaskGP(
         self.noise_model = noise_model
         self.noise_input_transform = noise_tf
 
+    def make_mll(self) -> ExactMarginalLogLikelihood:
+        """Return the exact marginal log likelihood for this model."""
+        return ExactMarginalLogLikelihood(self.likelihood, self)
+
 
 class HeteroscedasticMixedSingleTaskGP(
     HeteroscedasticLatentPosteriorMixin,
@@ -252,3 +257,7 @@ class HeteroscedasticMixedSingleTaskGP(
         self.train_inputs_raw = (train_X_raw,)
         self.noise_model = noise_model
         self.noise_input_transform = noise_tf
+
+    def make_mll(self) -> ExactMarginalLogLikelihood:
+        """Return the exact marginal log likelihood for this mixed model."""
+        return ExactMarginalLogLikelihood(self.likelihood, self)

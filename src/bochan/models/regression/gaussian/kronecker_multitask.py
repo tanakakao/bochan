@@ -7,6 +7,7 @@ import torch
 from botorch.models.multitask import KroneckerMultiTaskGP
 from botorch.models.transforms.input import ChainedInputTransform, InputTransform
 from gpytorch.kernels import Kernel
+from gpytorch.mlls import ExactMarginalLogLikelihood
 from torch import Tensor
 
 from bochan.models.components.mixed_kronecker import (
@@ -122,6 +123,11 @@ _install_high_level_objective_defaults()
 # Public support name. This is intentionally an alias, not a subclass, so
 # code and tests comparing against BoTorch's class by identity keep working.
 PerturbationSupportedKroneckerMultiTaskGP = KroneckerMultiTaskGP
+setattr(
+    PerturbationSupportedKroneckerMultiTaskGP,
+    "make_mll",
+    lambda self: ExactMarginalLogLikelihood(self.likelihood, self),
+)
 
 
 class MixedKroneckerMultiTaskGP(KroneckerMultiTaskGP):
@@ -217,6 +223,10 @@ class MixedKroneckerMultiTaskGP(KroneckerMultiTaskGP):
             transform,
             cat_dims=self.cat_dims,
         )
+
+    def make_mll(self) -> ExactMarginalLogLikelihood:
+        """Return the exact marginal log likelihood for this model."""
+        return ExactMarginalLogLikelihood(self.likelihood, self)
 
 
 # Backward-supported alternative naming order.

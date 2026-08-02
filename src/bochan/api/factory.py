@@ -331,6 +331,10 @@ def _build_wrapper_from_submodels(
 
     task_type = next(iter(unique_task_types))
     if task_type in {"regression", "multi_objective"}:
+        if any(_is_non_gaussian_regression_model(model) for model in submodels):
+            from bochan.models.regression.non_gaussian.multioutput import NonGaussianModelList
+
+            return NonGaussianModelList(*submodels)
         from botorch.models.model_list_gp_regression import ModelListGP
 
         return ModelListGP(*submodels)
@@ -346,6 +350,20 @@ def _build_wrapper_from_submodels(
         f"No dedicated homogeneous multi-output wrapper is available for task_type={task_type!r}. "
         "Set use_hybrid=True or provide wrapper_cls."
     )
+
+
+def _is_non_gaussian_regression_model(model: Any) -> bool:
+    """Return whether a model owns a non-Gaussian response posterior.
+
+    Args:
+        model: Candidate single-output model.
+
+    Returns:
+        Whether the model belongs to the non-Gaussian regression protocol.
+    """
+    return type(model).__module__.startswith(
+        "bochan.models.regression.non_gaussian."
+    ) or bool(getattr(model, "is_non_gaussian_model", False))
 
 
 def build_multi_output_model(train_X: Any, train_Y: Any, config: ModelConfig, *, model_registry: Mapping[Any, Any] | None = None) -> ModelBundle:

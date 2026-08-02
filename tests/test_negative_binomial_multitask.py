@@ -43,7 +43,7 @@ def test_multitask_rejects_invalid_observed_counts(bad: float) -> None:
     X, Y = _data()
     Y[0, 0] = bad
     with pytest.raises(ValueError, match="targets"):
-        NegativeBinomialMultiTaskGPModel(X, Y)
+        WideNegativeBinomialMultiTaskGPModel(X, Y)
 
 
 def test_wide_multitask_posterior_sampling_and_registry() -> None:
@@ -64,4 +64,4 @@ def test_wide_multitask_posterior_sampling_and_registry() -> None:
     counts = model.sample_observations(X[:2], torch.Size([4]))
     assert torch.all(counts >= 0) and torch.equal(counts, counts.round())
     assert model.observed_mask[0, 0] and not model.observed_mask[1, 1]
-    assert resolve_model_cls(ModelConfig(model_type="negative_binomial_multitask")) is WideNegativeBinomialMultiTaskGPModel
+    assert resolve_model_cls(ModelConfig(model_type="negative_binomial_wide_multitask")) is WideNegativeBinomialMultiTaskGPModel

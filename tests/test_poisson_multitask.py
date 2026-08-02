@@ -58,18 +58,18 @@ def test_poisson_multitask_rejects_invalid_observed_counts(
     train_X, train_Y = _data()
     train_Y[0, 0] = bad_value
     with pytest.raises(ValueError, match=message):
-        PoissonMultiTaskGPModel(train_X, train_Y)
+        WidePoissonMultiTaskGPModel(train_X, train_Y)
 
 
 def test_poisson_registry_and_factory_build_correlated_model() -> None:
     """Resolve the public key directly instead of splitting outputs into ModelList."""
     train_X, train_Y = _data()
     config = ModelConfig(
-        model_type="poisson_multitask",
+        model_type="poisson_wide_multitask",
         model_kwargs={"rank": 1, "num_inducing_points": 4},
     )
     assert config.outcome_transform is None
     assert resolve_model_cls(config) is WidePoissonMultiTaskGPModel
     bundle = build_model(train_X, train_Y, config)
-    assert isinstance(bundle.model, PoissonMultiTaskGPModel)
+    assert isinstance(bundle.model, WidePoissonMultiTaskGPModel)
     assert bundle.metadata["model_cls"] == "WidePoissonMultiTaskGPModel"

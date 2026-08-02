@@ -67,14 +67,13 @@ def test_beta_multitask_wide_partial_posterior_and_sampler() -> None:
     assert get_sampler(posterior, torch.Size([4])) is not None
 
 
-def test_beta_multitask_is_not_a_public_registry_model() -> None:
-    """Beta multi-output uses independent output configurations, not native routing."""
+def test_beta_multitask_is_a_public_registry_model() -> None:
+    """Beta correlated long-form model is available from the registry."""
     config = ModelConfig(
         task_type="regression",
         model_type="beta_multitask",
     )
-    with pytest.raises(ValueError, match="Unknown model setting"):
-        resolve_model_cls(config)
+    assert resolve_model_cls(config).__name__ == "BetaMultiTaskGPModel"
 
 
 @pytest.mark.parametrize(

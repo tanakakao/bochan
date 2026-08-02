@@ -43,6 +43,7 @@ from .optimizer_api import (
     resolve_optimizer_from_cat_dims,
     uses_mixed_fixed_features,
 )
+from bochan.inspection import FeatureGroup, FeatureImportanceConfig, compute_feature_importance
 
 
 def _register_contextual_levelset_aliases() -> None:
@@ -404,6 +405,8 @@ __all__ = [
     "DEFAULT_MODEL_REGISTRY",
     "EarlyStoppingConfig",
     "FitConfig",
+    "FeatureGroup",
+    "FeatureImportanceConfig",
     "GenerationSchedule",
     "GenerationStep",
     "InputTransformConfig",
@@ -430,6 +433,7 @@ __all__ = [
     "build_model",
     "clone_fit_config_for_evaluation",
     "clone_model_config_for_evaluation",
+    "compute_feature_importance",
     "fit_model",
     "infer_input_type",
     "optimize_candidates",

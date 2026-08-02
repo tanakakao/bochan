@@ -35,6 +35,38 @@ from bochan.models.components.beta import (
 )
 
 
+class _BetaDeepGPPosterior(BetaPosterior):
+    """Beta posterior with an explicit BoTorch sampling protocol."""
+
+    def rsample(
+        self,
+        sample_shape: Optional[torch.Size] = None,
+        base_samples: Optional[Tensor] = None,
+    ) -> Tensor:
+        """Sample response means, optionally from fixed latent base samples."""
+        if sample_shape is None:
+            sample_shape = torch.Size()
+        if base_samples is None:
+            f_samples = self.latent_posterior.rsample(sample_shape=sample_shape)
+        else:
+            f_samples = self.latent_posterior.rsample_from_base_samples(
+                sample_shape=sample_shape,
+                base_samples=base_samples,
+            )
+        return self.likelihood.mean_from_f(f_samples)
+
+    def rsample_from_base_samples(
+        self,
+        sample_shape: torch.Size,
+        base_samples: Tensor,
+    ) -> Tensor:
+        """Sample response means from caller-provided latent base samples."""
+        return self.rsample(
+            sample_shape=sample_shape,
+            base_samples=base_samples,
+        )
+
+
 class _BaseBetaDeepGPModel(DeepGP, GPyTorchModel):
     """Beta DeepGP wrapper の共通基底。"""
 
@@ -85,7 +117,11 @@ class _BaseBetaDeepGPModel(DeepGP, GPyTorchModel):
         if torch.is_tensor(observation_noise):
             raise NotImplementedError(f"{self.__class__.__name__} does not support tensor observation_noise.")
         latent_post = self.latent_posterior(X, output_indices=output_indices, posterior_transform=None, **kwargs)
-        posterior = BetaPosterior(latent_posterior=latent_post, likelihood=self.likelihood, add_observation_noise=bool(observation_noise))
+        posterior = _BetaDeepGPPosterior(
+            latent_posterior=latent_post,
+            likelihood=self.likelihood,
+            add_observation_noise=bool(observation_noise),
+        )
         if posterior_transform is not None:
             posterior = posterior_transform(posterior)
         return posterior

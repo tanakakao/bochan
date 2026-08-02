@@ -3,6 +3,7 @@
 import pytest
 import torch
 from botorch.sampling import SobolQMCNormalSampler
+from torch import nn
 
 from bochan.acquisition.regression.active_learning import (
     qRegressionNegIntegratedPosteriorVariance,
@@ -10,6 +11,11 @@ from bochan.acquisition.regression.active_learning import (
 from bochan.models.regression.non_gaussian.gamma.base import (
     GammaGPModel,
     GammaMixedGPModel,
+)
+import bochan.models.regression.non_gaussian.gamma.robust.gamma_heteroscedastic as gamma_heteroscedastic
+from bochan.models.regression.non_gaussian.gamma.robust.gamma_heteroscedastic import (
+    HeteroscedasticGammaGPModel,
+    HeteroscedasticGammaMixedGPModel,
 )
 
 
@@ -43,6 +49,14 @@ def _mixed_training_data() -> tuple[torch.Tensor, torch.Tensor]:
     )
     train_Y = 0.75 + train_X[:, :1] + 0.2 * train_X[:, 1:2]
     return train_X, train_Y
+
+
+class _StubNoiseModel(nn.Module):
+    """Minimal registered module returned instead of fitting an auxiliary GP."""
+
+    def __init__(self, reference: torch.Tensor) -> None:
+        super().__init__()
+        self.weight = nn.Parameter(reference.new_ones(1))
 
 
 @pytest.mark.parametrize("is_mixed", [False, True])
@@ -150,3 +164,48 @@ def test_gamma_nipv_uses_fantasy_model_and_is_differentiable():
     value.sum().backward()
     assert candidate.grad is not None
     assert torch.isfinite(candidate.grad).all()
+
+
+def test_heteroscedastic_gamma_registers_noise_model_after_parent_init(monkeypatch) -> None:
+    train_X, train_Y = _continuous_training_data()
+    train_Yvar = torch.full_like(train_Y, 0.05)
+    noise_model = _StubNoiseModel(train_X)
+    monkeypatch.setattr(
+        gamma_heteroscedastic,
+        "_fit_noise_model_single",
+        lambda **kwargs: noise_model,
+    )
+
+    model = HeteroscedasticGammaGPModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        train_Yvar=train_Yvar,
+        num_inducing_points=3,
+    )
+
+    assert model.noise_model is noise_model
+    assert model._modules["noise_model"] is noise_model
+    assert "noise_model.weight" in model.state_dict()
+
+
+def test_heteroscedastic_gamma_mixed_registers_noise_model_after_parent_init(monkeypatch) -> None:
+    train_X, train_Y = _mixed_training_data()
+    train_Yvar = torch.full_like(train_Y, 0.05)
+    noise_model = _StubNoiseModel(train_X)
+    monkeypatch.setattr(
+        gamma_heteroscedastic,
+        "_fit_noise_model_mixed",
+        lambda **kwargs: noise_model,
+    )
+
+    model = HeteroscedasticGammaMixedGPModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        train_Yvar=train_Yvar,
+        cat_dims=[1],
+        num_inducing_points=3,
+    )
+
+    assert model.noise_model is noise_model
+    assert model._modules["noise_model"] is noise_model
+    assert "noise_model.weight" in model.state_dict()

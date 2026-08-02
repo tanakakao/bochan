@@ -20,6 +20,8 @@ from bochan.acquisition.regression.active_learning.single_output import (
 
 from .._stats import ensure_q_batch, non_gaussian_response_stats, safe_logdet
 
+_DEFAULT_SAMPLE_SHAPE = torch.Size([128])
+
 
 class _NonGaussianActiveLearningBase(_RegressionActiveLearningBase):
     """Common fixed-base-sample response-statistics acquisition base."""
@@ -29,7 +31,7 @@ class _NonGaussianActiveLearningBase(_RegressionActiveLearningBase):
         model,
         *,
         sampler: MCSampler | None = None,
-        sample_shape: torch.Size = torch.Size([128]),
+        sample_shape: torch.Size = _DEFAULT_SAMPLE_SHAPE,
         seed: int | None = None,
         num_samples: int | None = None,
         **kwargs: Any,

@@ -8,7 +8,6 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from bochan.tabular import TabularBayesianOptimizer
-from bochan.visualization import build_feature_importance_figures
 
 from ..converters import model_metadata, to_serializable
 from ..dependencies import TabularOptimizerStore, get_tabular_optimizer_store
@@ -210,6 +209,12 @@ def compute_tabular_feature_importance(
     if request.visualization is not None:
         view = request.visualization
         try:
+            # Plotly is an optional visualization dependency. Import the
+            # visualization package only when the endpoint was explicitly
+            # asked to build figures, so the complete FastAPI router remains
+            # importable in serving-only installations.
+            from bochan.visualization import build_feature_importance_figures
+
             figures = build_feature_importance_figures(
                 result,
                 include_predictive=view.include_predictive,

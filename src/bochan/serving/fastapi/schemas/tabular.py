@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .configs import (
     FitConfigSchema,
@@ -27,6 +27,7 @@ class TabularFitModelRequest(APIRequest):
     bo_model_config: ModelConfigSchema = Field(alias="model_config")
     fit_config: FitConfigSchema | None = None
     multi_output_config: MultiOutputConfigSchema | None = None
+    alpha: float | None = Field(default=None, gt=0.0)
     input_cols: list[str]
     target_cols: list[str] | str
     categorical_cols: list[str] = Field(default_factory=list)
@@ -46,6 +47,19 @@ class TabularFitModelRequest(APIRequest):
     category_maps: dict[str, dict[Any, int]] | None = None
     target_category_maps: dict[str, dict[Any, int]] | None = None
     return_original_categories: bool = True
+
+    @model_validator(mode="after")
+    def attach_alpha_to_tabular_model(self):
+        """Store the JSON-safe alpha until the tabular layer builds a likelihood."""
+
+        if self.alpha is None:
+            return self
+        model_kwargs = dict(self.bo_model_config.model_kwargs)
+        if "likelihood" in model_kwargs:
+            raise ValueError("Specify either alpha or model_config.model_kwargs.likelihood, not both.")
+        model_kwargs["_tabular_noise_alpha"] = float(self.alpha)
+        self.bo_model_config.model_kwargs = model_kwargs
+        return self
 
 
 class TabularTellRequest(APIRequest):

@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { EmptyState, SectionHeader } from "../components/Common";
 import FeatureMissingSettings from "../components/FeatureMissingSettings";
+import NoiseAlphaSettings from "../components/NoiseAlphaSettings";
 import TargetModelSettings from "../components/TargetModelSettings";
 import { useWorkbench } from "../context/WorkbenchContext";
 import {
@@ -55,6 +56,7 @@ export default function SettingsPage() {
   const preview = dataset.preview;
   const taskTypes = targetColumns.map((target) => targetSettings[target]?.task_type).filter(Boolean);
   const allRegression = taskTypes.length > 0 && taskTypes.every((task) => task === "regression");
+  const hasRegressionTargets = taskTypes.some((task) => task === "regression");
   const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
   const canUseMultitask = targetColumns.length > 1 && allRegression && !hasCategoricalFeatures;
   const projectedModel = modelType === "pca" || modelType === "rembo";
@@ -171,7 +173,7 @@ export default function SettingsPage() {
           <div>
             <span className="panel-kicker">3 · INPUT TRANSFORM</span>
             <h3>説明変数の前処理</h3>
-            <p>学習モデルへ入力する前の正規化と入力摂動を設定します。</p>
+            <p>学習モデルへ入力する前の正規化、入力摂動、観測ノイズ下限を設定します。</p>
           </div>
         </div>
         <div className="search-transform-grid">
@@ -208,6 +210,11 @@ export default function SettingsPage() {
               </div>
             )}
           </section>
+
+          <NoiseAlphaSettings
+            modelType={modelType}
+            hasRegressionTargets={hasRegressionTargets}
+          />
         </div>
       </article>
 

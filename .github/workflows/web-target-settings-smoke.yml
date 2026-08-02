@@ -6,12 +6,15 @@ on:
       - main
     paths:
       - "pyproject.toml"
+      - "src/bochan/likelihoods/regression.py"
       - "src/bochan/model_artifact.py"
+      - "src/bochan/tabular/optimizer_api.py"
       - "src/bochan/serving/fastapi/**"
       - "src/bochan/serving/webapp/**"
       - "src/bochan/visualization/plots.py"
       - "src/bochan/visualization/target_relation.py"
       - "tests/test_common_model_artifact_api.py"
+      - "tests/test_tabular_noise_alpha.py"
       - "tests/test_webapp_multiobjective_contract.py"
       - "tests/test_webapp_target_results_contract.py"
       - "tests/test_webapp_feature_constraints_optimizer_contract.py"
@@ -47,6 +50,7 @@ jobs:
           set +e
           pytest -q --maxfail=1 \
             tests/test_common_model_artifact_api.py \
+            tests/test_tabular_noise_alpha.py \
             tests/test_webapp_multiobjective_contract.py \
             tests/test_webapp_target_results_contract.py \
             tests/test_webapp_feature_constraints_optimizer_contract.py \

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import torch
 from botorch.models.utils.gpytorch_modules import MIN_INFERRED_NOISE_LEVEL
 from gpytorch.constraints import GreaterThan
@@ -81,6 +83,15 @@ def _validate_train_shapes(
         )
 
 
+def _validate_alpha(alpha: float) -> float:
+    """Validate the Gaussian noise variance floor."""
+
+    value = float(alpha)
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError(f"`alpha` must be a finite positive value. Got alpha={alpha!r}.")
+    return value
+
+
 def _num_outputs(train_Y: Tensor) -> int:
     """
     train_Y の最終次元から出力数を取得する。
@@ -116,18 +127,27 @@ def _make_noise_constraint(
 
         noise_prior:
             noise prior。
-            指定された場合は prior.mode を initial_value として使う。
+            指定された場合は prior.mode 以上かつ alpha より大きい値を
+            initial_value として使う。
 
     Returns:
         GreaterThan constraint。
     """
+    alpha = _validate_alpha(alpha)
     if noise_prior is None:
         return GreaterThan(lower_bound=alpha)
 
+    prior_mode = noise_prior.mode
+    alpha_tensor = torch.as_tensor(
+        alpha * (1.0 + 1e-6),
+        dtype=prior_mode.dtype,
+        device=prior_mode.device,
+    )
+    initial_value = torch.maximum(prior_mode, alpha_tensor)
     return GreaterThan(
         lower_bound=alpha,
         transform=None,
-        initial_value=noise_prior.mode,
+        initial_value=initial_value,
     )
 
 
@@ -154,6 +174,7 @@ def _make_noise_prior_and_constraint(
         noise_constraint:
             GreaterThan constraint。
     """
+    alpha = _validate_alpha(alpha)
     noise_prior = _default_noise_prior() if use_noise_prior else None
     noise_constraint = _make_noise_constraint(
         alpha=alpha,

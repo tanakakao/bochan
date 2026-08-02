@@ -12,6 +12,11 @@ import type {
   VisualizationRequest
 } from "./types";
 import {
+  loadNoiseAlpha,
+  saveNoiseAlpha,
+  supportsNoiseAlpha
+} from "./noiseAlphaSettings";
+import {
   loadFeatureConstraints,
   loadFeatureMissingSettings,
   loadInputPerturbationRiskSettings,
@@ -146,7 +151,12 @@ export async function uploadModelArtifact(file: File): Promise<ModelArtifactImpo
       missingWebRoute: response.status === 404
     });
   }
-  return payload as ModelArtifactImportResponse;
+  const imported = payload as ModelArtifactImportResponse;
+  const savedAlpha = Number(
+    (imported.request?.model_kwargs as Record<string, unknown> | undefined)?._tabular_noise_alpha
+  );
+  if (Number.isFinite(savedAlpha) && savedAlpha > 0) saveNoiseAlpha(savedAlpha);
+  return imported;
 }
 
 function artifactFilename(response: Response, fallback: string): string {
@@ -217,9 +227,19 @@ function canonicalValue(value: unknown): unknown {
   return value;
 }
 
+function resolvedNoiseAlpha(input: RunRegressionInput): number | null {
+  const hasRegressionTarget = input.targetSettings.some(
+    (setting) => setting.task_type === "regression"
+  );
+  return supportsNoiseAlpha(input.modelType) && hasRegressionTarget
+    ? loadNoiseAlpha()
+    : null;
+}
+
 /** Fingerprint containing only settings that affect model fitting and encoding. */
 export function buildModelReuseSignature(input: RunRegressionInput): string {
   const featureMissing = loadFeatureMissingSettings();
+  const noiseAlpha = resolvedNoiseAlpha(input);
   const targetModelSettings = input.targetSettings.map((setting) => ({
     target: setting.target,
     task_type: setting.task_type,
@@ -241,6 +261,7 @@ export function buildModelReuseSignature(input: RunRegressionInput): string {
     modelType: input.modelType,
     projectionDimensions: input.projectionDimensions,
     fitMaxiter: input.fitMaxiter,
+    alpha: noiseAlpha,
     normalize: input.normalize,
     inputPerturbation: input.inputPerturbation,
     nW: input.nW,
@@ -313,6 +334,11 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
     throw new Error("入力摂動のばらつきは0より大きくしてください。");
   }
 
+  const noiseAlpha = resolvedNoiseAlpha(input);
+  if (noiseAlpha !== null && (!Number.isFinite(noiseAlpha) || noiseAlpha <= 0)) {
+    throw new Error("観測ノイズ下限αは0より大きい有限値にしてください。");
+  }
+
   const perturbationRisk = loadInputPerturbationRiskSettings();
   if (!Number.isFinite(perturbationRisk.alpha) || perturbationRisk.alpha <= 0 || perturbationRisk.alpha > 1) {
     throw new Error("VaR/CVaRのαは0より大きく1以下にしてください。");
@@ -378,6 +404,9 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       multiple_impute_sample_posterior: featureMissing.multipleImputeSamplePosterior
     }
   };
+  if (noiseAlpha !== null) {
+    modelKwargs._tabular_noise_alpha = noiseAlpha;
+  }
   if (input.reuseModelRunId) {
     modelKwargs.web_reuse_model_run_id = input.reuseModelRunId;
   }

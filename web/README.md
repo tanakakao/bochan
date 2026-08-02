@@ -809,3 +809,7 @@ Likely next implementation steps are:
 8. binary, multiclass, and ordinal workflows;
 9. robust and heteroscedastic optimization;
 10. authentication and deployment configuration.
+
+## 特徴量重要度
+
+モデル設定で既定OFFの特徴量重要度を有効化すると、trainingまたはcross-validationを選択し、反復回数、診断、noise importance、raw/normalized表示、上位数、順位基準を設定できます。計算量は概ね `feature × repeat × fold` に比例します。結果画面では出力とimportance kindを切り替え、Plotlyグラフ、表、warning、モデル固有診断を確認できます。Permutation importanceは因果効果ではなく、training評価は楽観的になりやすいためCVを推奨します。

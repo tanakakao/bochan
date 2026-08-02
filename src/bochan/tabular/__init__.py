@@ -11,7 +11,7 @@ from .builders import (
     make_repair_config,
 )
 from .candidate_outputs import apply_tabular_candidate_outputs
-from .config import ColumnKey, TabularDataConfig
+from .config import ColumnKey, TabularDataConfig, TabularFeatureGroup
 from .converter import (
     TabularDataset,
     bounds_to_tensor,
@@ -36,6 +36,7 @@ __all__ = [
     "ColumnKey",
     "TabularBayesianOptimizer",
     "TabularDataConfig",
+    "TabularFeatureGroup",
     "TabularDataset",
     "UNSET",
     "bounds_to_tensor",

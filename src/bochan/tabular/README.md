@@ -1127,3 +1127,19 @@ optimizer = TabularBayesianOptimizer(
 optimizer.fit(frame)
 print(optimizer.cross_validation_result_.test_metric_summary["rmse"].mean)
 ```
+
+## Feature importance
+
+A fitted tabular optimizer can delegate raw-space inspection to the Core API while preserving DataFrame column and category mappings:
+
+```python
+from bochan.inspection import FeatureImportanceConfig
+
+importance = optimizer.feature_importance(
+    data=validation_df,
+    config=FeatureImportanceConfig(n_repeats=10, diagnostic_methods=["auto"]),
+)
+importance_df = optimizer.feature_importance_dataframe(importance, output_name="strength")
+```
+
+Omitting `data` evaluates the training set and emits an optimism warning. Prefer validation-fold aggregation through `cv_config.feature_importance_config`. Permutation importance is not a causal effect; correlated inputs can share importance, and categorical permutation can create unseen combinations.

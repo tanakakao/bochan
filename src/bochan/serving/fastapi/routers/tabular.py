@@ -15,6 +15,8 @@ from ..schemas import ModelDeleteResponse, ModelListResponse
 from ..schemas.tabular import (
     TabularCandidateRequest,
     TabularCandidateResponse,
+    TabularFeatureImportanceRequest,
+    TabularFeatureImportanceResponse,
     TabularFitModelRequest,
     TabularModelFitResponse,
     TabularPredictRequest,
@@ -153,9 +155,7 @@ def _fit_response(model_id: str, optimizer: TabularBayesianOptimizer) -> Tabular
         raise RuntimeError("Tabular optimizer has no fitted dataset or model bundle.")
 
     categorical_cols = [
-        dataset.feature_names[index]
-        for index in dataset.cat_dims
-        if 0 <= index < len(dataset.feature_names)
+        dataset.feature_names[index] for index in dataset.cat_dims if 0 <= index < len(dataset.feature_names)
     ]
     return TabularModelFitResponse(
         model_id=model_id,
@@ -169,6 +169,73 @@ def _fit_response(model_id: str, optimizer: TabularBayesianOptimizer) -> Tabular
         target_category_maps=to_serializable(dataset.target_category_maps or {}),
         metadata=model_metadata(optimizer.bo),
         cross_validation=to_serializable(optimizer.cross_validation_result_),
+    )
+
+
+@router.post("/{model_id}/feature-importance", response_model=TabularFeatureImportanceResponse)
+def compute_tabular_feature_importance(
+    model_id: str,
+    request: TabularFeatureImportanceRequest,
+    store: TabularOptimizerStore = TABULAR_STORE_DEP,
+) -> TabularFeatureImportanceResponse:
+    """Compute core importance for a fitted model and serialize optional views.
+
+    Args:
+        model_id: Stored tabular optimizer identifier.
+        request: Evaluation, inspection, and visualization settings.
+        store: Application-scoped optimizer store.
+
+    Returns:
+        JSON-safe core result, full summary, diagnostics, and Plotly payloads.
+    """
+    try:
+        optimizer = store.get(model_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    try:
+        frame = _to_dataframe(request.data) if request.data is not None else None
+        config = request.config.model_dump()
+        groups = config.pop("feature_groups", [])
+        result = optimizer.feature_importance(data=frame, config=config, feature_groups=groups)
+        summary = optimizer.feature_importance_dataframe(result=result).to_dict(orient="records")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    warnings = list(result.warnings)
+    diagnostics = {name: output.model_diagnostics for name, output in result.outputs.items()}
+    visualizations: list[dict[str, Any]] = []
+    if request.visualization is not None:
+        view = request.visualization
+        try:
+            # Plotly is an optional visualization dependency. Import the
+            # visualization package only when the endpoint was explicitly
+            # asked to build figures, so the complete FastAPI router remains
+            # importable in serving-only installations.
+            from bochan.visualization import build_feature_importance_figures
+
+            figures = build_feature_importance_figures(
+                result,
+                include_predictive=view.include_predictive,
+                include_noise=view.include_noise,
+                include_classwise=view.include_classwise,
+                normalized=view.normalized,
+                top_k=view.top_k,
+                rank_by=view.rank_by,
+            )
+            for figure_id, figure in figures.items():
+                visualizations.append({"id": f"feature-importance-{figure_id}", "figure": json.loads(figure.to_json())})
+        except Exception as exc:
+            warnings.append(f"Feature-importance visualization failed: {exc}")
+    return TabularFeatureImportanceResponse(
+        model_id=model_id,
+        source="training" if frame is None else "external",
+        result=to_serializable(result),
+        summary=to_serializable(summary),
+        diagnostics=to_serializable(diagnostics),
+        visualizations=to_serializable(visualizations),
+        warnings=list(dict.fromkeys(to_serializable(warnings))),
     )
 
 
@@ -193,9 +260,7 @@ def fit_tabular_model(
                 raise ValueError("n_splits must not exceed the smallest target class count.")
         direct_model_kwargs: dict[str, Any] = {}
         if request.multi_output_config is not None:
-            direct_model_kwargs["multi_output_config"] = _schema_dict(
-                request.multi_output_config
-            )
+            direct_model_kwargs["multi_output_config"] = _schema_dict(request.multi_output_config)
         optimizer = TabularBayesianOptimizer(
             model_config=_schema_dict(request.bo_model_config),
             fit_config=_schema_dict(request.fit_config),

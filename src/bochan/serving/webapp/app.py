@@ -20,6 +20,10 @@ from bochan.desktop.services import (
 )
 from bochan.serving.fastapi import create_api_router
 from bochan.serving.fastapi.converters import to_serializable
+from bochan.serving.fastapi.schemas.tabular import (
+    FeatureImportanceConfigRequest,
+    FeatureImportanceVisualizationRequest,
+)
 
 from .logging import (
     configure_logging,
@@ -73,6 +77,15 @@ class OutcomeConstraintSchema(_Schema):
     target: str
     operator: Literal["<=", ">="]
     value: float
+
+
+class WebFeatureImportanceSettingsSchema(_Schema):
+    """Optional feature-importance execution and presentation settings."""
+
+    enabled: bool = False
+    source: Literal["auto", "training", "cross_validation"] = "auto"
+    config: FeatureImportanceConfigRequest = Field(default_factory=FeatureImportanceConfigRequest)
+    visualization: FeatureImportanceVisualizationRequest = Field(default_factory=FeatureImportanceVisualizationRequest)
 
 
 class AcquisitionSettingsSchema(_Schema):
@@ -145,6 +158,7 @@ class RegressionRunRequest(_Schema):
     drop_missing: bool = True
     cross_validation: bool = False
     cv_config: dict[str, Any] | None = None
+    feature_importance: WebFeatureImportanceSettingsSchema | None = None
 
 
 WEB_CAPABILITIES: dict[str, Any] = {
@@ -240,10 +254,7 @@ def create_app(
     configured_log_path = configure_logging()
     logger = get_logger("api")
     app = FastAPI(title=title, version=version)
-    allowed_origins = list(
-        cors_origins
-        or ["http://localhost:5173", "http://127.0.0.1:5173"]
-    )
+    allowed_origins = list(cors_origins or ["http://localhost:5173", "http://127.0.0.1:5173"])
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
@@ -429,9 +440,7 @@ def create_app(
     @router.post("/regression/run")
     def run_regression(request: RegressionRunRequest) -> dict[str, Any]:
         started = perf_counter()
-        target_columns = request.target_columns or (
-            [request.target_column] if request.target_column else []
-        )
+        target_columns = request.target_columns or ([request.target_column] if request.target_column else [])
         log_event(
             logger,
             logging.INFO,

@@ -1,16 +1,41 @@
-'''Tabular configuration objects for pandas / numpy friendly APIs.'''
+"""Tabular configuration objects for pandas / numpy friendly APIs."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 ColumnKey = str | int
 
 
+@dataclass(frozen=True)
+class TabularFeatureGroup:
+    """A named raw-space feature group addressed by table columns.
+
+    Args:
+        name: Display name used in feature-importance results.
+        columns: Non-empty, unique source column names.
+        role: Semantic role attached to the group.
+    """
+
+    name: str
+    columns: tuple[ColumnKey, ...]
+    role: str = "group"
+
+    def __post_init__(self) -> None:
+        """Validate group structure before column resolution."""
+        if not self.name:
+            raise ValueError("TabularFeatureGroup.name must not be empty.")
+        if not self.columns:
+            raise ValueError(f"Feature group {self.name!r} must not be empty.")
+        if len(self.columns) != len(set(self.columns)):
+            raise ValueError(f"Feature group {self.name!r} contains duplicate columns.")
+
+
 @dataclass
 class TabularDataConfig:
-    '''Configuration for converting tabular data into bochan tensors.'''
+    """Configuration for converting tabular data into bochan tensors."""
 
     input_cols: Sequence[ColumnKey] | None = None
     target_cols: Sequence[ColumnKey] | ColumnKey | None = None

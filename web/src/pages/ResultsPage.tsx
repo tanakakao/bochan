@@ -3,6 +3,7 @@ import { EmptyState, SectionHeader } from "../components/Common";
 import InteractiveResultPlots from "../InteractiveResultPlots";
 import { downloadNamedModelArtifact } from "../modelArtifactDownload";
 import { useWorkbench } from "../context/WorkbenchContext";
+import FeatureImportancePanel from "../FeatureImportancePanel";
 
 function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
@@ -253,6 +254,8 @@ export default function ResultsPage() {
       )}
 
       <InteractiveResultPlots result={completedResult} />
+
+      <FeatureImportancePanel result={completedResult} />
 
       {(completedResult.visualization_warnings ?? []).length > 0 && (
         <div className="alert warning">

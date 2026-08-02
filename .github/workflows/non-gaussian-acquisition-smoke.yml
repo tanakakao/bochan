@@ -1,0 +1,37 @@
+name: Non-Gaussian acquisition smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[test,api]"
+      - name: Run focused acquisition tests
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_non_gaussian_acquisition_stats.py \
+            tests/test_non_gaussian_acquisition_alignment.py \
+            tests/test_gamma_fantasize.py
+      - name: Lint changed modules
+        run: |
+          python -m pip install ruff
+          ruff check \
+            --per-file-ignores "src/bochan/api/acquisition_registry.py:UP035" \
+            src/bochan/acquisition/non_gaussian/active_learning/single_output.py \
+            src/bochan/acquisition/non_gaussian/active_learning/multi_output.py \
+            src/bochan/acquisition/non_gaussian/active_learning/hetero_single_output.py \
+            src/bochan/acquisition/non_gaussian/active_learning/hetero_multi_output.py \
+            src/bochan/api/acquisition_registry.py \
+            tests/test_non_gaussian_acquisition_alignment.py

@@ -12,7 +12,6 @@ from bochan.api import (
     FitConfig,
     InputTransformConfig,
     ModelConfig,
-    MultiOutputConfig,
     OptimizeConfig,
     OutputConfig,
 )
@@ -99,12 +98,20 @@ def _extract_noise_alpha(
     embedded = kwargs.pop(_TABULAR_NOISE_ALPHA_KEY, None)
     embedded_alpha = _validate_noise_alpha(embedded)
     explicit_alpha = _validate_noise_alpha(explicit_alpha)
-    if explicit_alpha is not None and embedded_alpha is not None:
-        if not math.isclose(explicit_alpha, embedded_alpha, rel_tol=1e-12, abs_tol=0.0):
-            raise ValueError(
-                "Conflicting alpha values were supplied through the tabular API and "
-                "the Web model settings."
-            )
+    if (
+        explicit_alpha is not None
+        and embedded_alpha is not None
+        and not math.isclose(
+            explicit_alpha,
+            embedded_alpha,
+            rel_tol=1e-12,
+            abs_tol=0.0,
+        )
+    ):
+        raise ValueError(
+            "Conflicting alpha values were supplied through the tabular API and "
+            "the Web model settings."
+        )
     return explicit_alpha if explicit_alpha is not None else embedded_alpha, kwargs
 
 

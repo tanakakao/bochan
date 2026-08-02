@@ -183,13 +183,8 @@ _register("bochan.acquisition.multiclass.bayesian_optimization", [
     "qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement", "qHeteroMultiOutputMulticlassNParEGO",
     "qHeteroMultiOutputMulticlassExpectedImprovement", "qHeteroMultiOutputMulticlassProbabilityOfImprovement", "qHeteroMultiOutputMulticlassUpperConfidenceBound",
 ])
-_register("bochan.acquisition.non_gaussian.active_learning", [
-    "qNonGaussianResponseMeanVariance", "qNonGaussianPosteriorVariance", "qNonGaussianExpectedObservationVariance",
-    "qNonGaussianTotalObservationVariance", "qNonGaussianExpectedObservationEntropy", "qNonGaussianPredictiveEntropyProxy", "qNonGaussianBALDProxy",
-])
-_register("bochan.acquisition.non_gaussian.levelset_estimation", [
-    "qNonGaussianStraddle", "qNonGaussianBoundaryVariance", "qNonGaussianICU", "qNonGaussianProbabilityOfExceedance",
-])
+_register("bochan.acquisition.non_gaussian.active_learning", ['qNonGaussianResponseMeanVariance', 'qNonGaussianExpectedObservationVariance', 'qNonGaussianTotalObservationVariance', 'qNonGaussianExpectedObservationEntropy', 'qNonGaussianPredictiveEntropyProxy', 'qNonGaussianBALDProxy', 'qNonGaussianIntegratedResponseMeanVarianceProxy', 'qNonGaussianJointBALDProxy', 'qNonGaussianGreedyJointBALDProxy', 'qMultiOutputNonGaussianResponseMeanVariance', 'qMultiOutputNonGaussianExpectedObservationVariance', 'qMultiOutputNonGaussianTotalObservationVariance', 'qMultiOutputNonGaussianExpectedObservationEntropy', 'qMultiOutputNonGaussianPredictiveEntropyProxy', 'qMultiOutputNonGaussianBALDProxy', 'qMultiOutputNonGaussianIntegratedResponseMeanVarianceProxy', 'qMultiOutputNonGaussianJointBALDProxy', 'qMultiOutputNonGaussianGreedyJointBALDProxy', 'qHeteroNonGaussianResponseMeanVariance', 'qHeteroNonGaussianExpectedObservationVariance', 'qHeteroNonGaussianTotalObservationVariance', 'qHeteroNonGaussianExpectedObservationEntropy', 'qHeteroNonGaussianPredictiveEntropyProxy', 'qHeteroNonGaussianBALDProxy', 'qHeteroMultiOutputNonGaussianResponseMeanVariance', 'qHeteroMultiOutputNonGaussianExpectedObservationVariance', 'qHeteroMultiOutputNonGaussianTotalObservationVariance', 'qHeteroMultiOutputNonGaussianExpectedObservationEntropy', 'qHeteroMultiOutputNonGaussianPredictiveEntropyProxy', 'qHeteroMultiOutputNonGaussianBALDProxy', 'qNonGaussianPosteriorVariance', 'qNonGaussianVariance'])
+_register("bochan.acquisition.non_gaussian.levelset_estimation", ['qNonGaussianStraddle', 'qNonGaussianJointStraddle', 'qNonGaussianBoundaryVariance', 'qNonGaussianICUProxy', 'qNonGaussianProbabilityOfExceedanceProxy', 'qNonGaussianObservationProbabilityOfExceedance', 'qNonGaussianLevelSetUncertainty', 'qMultiOutputNonGaussianStraddle', 'qMultiOutputNonGaussianJointStraddle', 'qMultiOutputNonGaussianBoundaryVariance', 'qMultiOutputNonGaussianICUProxy', 'qMultiOutputNonGaussianProbabilityOfExceedanceProxy', 'qMultiOutputNonGaussianObservationProbabilityOfExceedance', 'qMultiOutputNonGaussianLevelSetUncertainty', 'qHeteroNonGaussianStraddle', 'qHeteroNonGaussianJointStraddle', 'qHeteroNonGaussianBoundaryVariance', 'qHeteroNonGaussianICUProxy', 'qHeteroNonGaussianProbabilityOfExceedanceProxy', 'qHeteroNonGaussianObservationProbabilityOfExceedance', 'qHeteroNonGaussianLevelSetUncertainty', 'qHeteroMultiOutputNonGaussianStraddle', 'qHeteroMultiOutputNonGaussianJointStraddle', 'qHeteroMultiOutputNonGaussianBoundaryVariance', 'qHeteroMultiOutputNonGaussianICUProxy', 'qHeteroMultiOutputNonGaussianProbabilityOfExceedanceProxy', 'qHeteroMultiOutputNonGaussianObservationProbabilityOfExceedance', 'qHeteroMultiOutputNonGaussianLevelSetUncertainty', 'qNonGaussianICU', 'qNonGaussianProbabilityOfExceedance'])
 
 _register_alias("qRegressionVariance", "bochan.acquisition.regression.active_learning", "qRegressionPosteriorVariance")
 _register_alias("qBinaryVariance", "bochan.acquisition.binary.active_learning", "qBinaryProbabilityVariance")
@@ -248,6 +243,12 @@ def _family_prefix(task_type: str, *, multi_output: bool, hetero: bool) -> str:
             return "qMultiOutputMulticlass"
         return "qMulticlass"
     if task_type == "nongaussian":
+        if hetero and multi_output:
+            return "qHeteroMultiOutputNonGaussian"
+        if hetero:
+            return "qHeteroNonGaussian"
+        if multi_output:
+            return "qMultiOutputNonGaussian"
         return "qNonGaussian"
     raise ValueError(f"Short acquisition alias is not supported for task_type={task_type!r}.")
 
@@ -350,9 +351,9 @@ def _resolve_contextual_acqf_path(normalized_name: str, *, task_type: str | None
     if normalized_name == "bald":
         suffix = "BALD" if task != "nongaussian" else "BALDProxy"
     elif normalized_name == "jointbald":
-        suffix = "JointBALD"
+        suffix = "JointBALDProxy" if task == "nongaussian" else "JointBALD"
     elif normalized_name == "greedyjointbald":
-        suffix = "GreedyJointBALD"
+        suffix = "GreedyJointBALDProxy" if task == "nongaussian" else "GreedyJointBALD"
     elif normalized_name in {"predictiveentropy", "entropy"}:
         suffix = "PredictiveEntropy" if task != "nongaussian" else "PredictiveEntropyProxy"
     elif normalized_name in {"variance", "posteriorvariance"}:
@@ -373,7 +374,7 @@ def _resolve_contextual_acqf_path(normalized_name: str, *, task_type: str | None
     elif normalized_name == "jointstraddle":
         suffix = "JointLatentStraddleAcquisition" if task in {"binary", "ordinal", "multiclass"} else "JointStraddle"
     elif normalized_name == "icu":
-        suffix = "ICUAcquisition" if task in {"binary", "ordinal", "multiclass"} else "ICU"
+        suffix = "ICUAcquisition" if task in {"binary", "ordinal", "multiclass"} else ("ICUProxy" if task == "nongaussian" else "ICU")
     elif normalized_name == "boundaryvariance":
         suffix = "BoundaryVarianceAcquisition" if task in {"binary", "ordinal", "multiclass"} else "BoundaryVariance"
     elif normalized_name == "classentropy":
@@ -381,7 +382,7 @@ def _resolve_contextual_acqf_path(normalized_name: str, *, task_type: str | None
             raise ValueError("Class entropy is only available for binary / ordinal / multiclass acquisitions.")
         suffix = "ClassEntropyAcquisition"
     elif normalized_name in {"probabilityofexceedance", "poe"}:
-        suffix = "ProbabilityOfExceedance"
+        suffix = "ProbabilityOfExceedanceProxy" if task == "nongaussian" else "ProbabilityOfExceedance"
     elif normalized_name in {"levelsetuncertainty", "levelset"}:
         suffix = "LevelSetUncertainty"
     else:

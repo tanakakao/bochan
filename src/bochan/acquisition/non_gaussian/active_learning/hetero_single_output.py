@@ -1,10 +1,11 @@
-from __future__ import annotations
+"""Explicit heteroscedastic non-Gaussian active-learning API."""
+from . import single_output as _single
 
-"""Heteroscedastic single-output non-Gaussian active-learning acquisitions.
+def _hetero(name: str, parent: type) -> type:
+    """Create a named thin class sharing the variance-aware core."""
+    return type(name, (parent,), {"__doc__": f"Heteroscedastic specialization of ``{parent.__name__}``."})
 
-Placeholder module kept to match the existing acquisition layout.  Dedicated
-heteroscedastic non-Gaussian acquisitions can be added here once the model API
-for separate aleatoric / latent uncertainty is fixed.
-"""
-
-__all__: list[str] = []
+for _suffix in ["ResponseMeanVariance", "ExpectedObservationVariance", "TotalObservationVariance",
+                "ExpectedObservationEntropy", "PredictiveEntropyProxy", "BALDProxy"]:
+    globals()["qHeteroNonGaussian" + _suffix] = _hetero("qHeteroNonGaussian" + _suffix, getattr(_single, "qNonGaussian" + _suffix))
+__all__ = [n for n in globals() if n.startswith("qHetero")]

@@ -452,3 +452,14 @@ public nameの解決は`src/bochan/api/acquisition_registry.py`で行います�
 11. stopping metric
 12. external evaluation loss
 13. approximation
+
+## Non-Gaussian response decomposition
+
+The implementation separates $\mathrm{Var}_f[\mathbb E(Y|f)]$ from
+$\mathbb E_f[\mathrm{Var}(Y|f)]$ and explicit heteroscedastic variance. Public
+response posteriors and persistent base samples preserve raw outcome transforms
+and deterministic acquisition gradients. Predictive entropy and BALD are named
+proxies when moment matching is used; joint variants retain q/output covariance.
+Model-list outputs are independent, while multitask posterior samples preserve
+task correlation. Averaging outputs with different physical units requires
+`output_scales`, weights, or an objective.

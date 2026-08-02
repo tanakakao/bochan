@@ -286,7 +286,11 @@ def _build_single_model(
         task_type=str(config.task_type),
         model_type=str(config.model_type),
         cat_dims=cat_dims,
-        metadata={"model_cls": model_cls_name, "model_factory": config.model_factory is not None},
+        metadata={"model_cls": model_cls_name, "model_factory": config.model_factory is not None,
+                  "posterior_family": "non_gaussian" if _is_non_gaussian_regression_model(model) else "gaussian",
+                  "multi_output": False,
+                  "heteroscedastic": "hetero" in type(model).__name__.lower(),
+                  "non_gaussian_families": [type(getattr(model, "likelihood", None)).__name__] if _is_non_gaussian_regression_model(model) else []},
     )
 
 
@@ -403,6 +407,9 @@ def build_multi_output_model(train_X: Any, train_Y: Any, config: ModelConfig, *,
             "sub_bundles": sub_bundles,
             "output_configs": output_configs,
             "embedded_fit_configs": embedded_fit_configs,
+            "posterior_family": "non_gaussian" if all(_is_non_gaussian_regression_model(b.model) for b in sub_bundles) else ("hybrid" if any(_is_non_gaussian_regression_model(b.model) for b in sub_bundles) else "gaussian"),
+            "heteroscedastic": any("hetero" in type(b.model).__name__.lower() for b in sub_bundles),
+            "non_gaussian_families": [type(getattr(b.model, "likelihood", None)).__name__ for b in sub_bundles if _is_non_gaussian_regression_model(b.model)],
         },
     )
 

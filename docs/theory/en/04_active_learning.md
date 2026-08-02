@@ -947,3 +947,14 @@ Document:
 - Cohn, Ghahramani, and Jordan, *Active Learning with Statistical Models*, 1996.
 - Houlsby et al., *Bayesian Active Learning for Classification and Preference Learning*, 2011.
 - Settles, *Active Learning Literature Survey*, 2009.
+
+## Non-Gaussian response decomposition
+
+The implementation separates $\mathrm{Var}_f[\mathbb E(Y|f)]$ from
+$\mathbb E_f[\mathrm{Var}(Y|f)]$ and explicit heteroscedastic variance. Public
+response posteriors and persistent base samples preserve raw outcome transforms
+and deterministic acquisition gradients. Predictive entropy and BALD are named
+proxies when moment matching is used; joint variants retain q/output covariance.
+Model-list outputs are independent, while multitask posterior samples preserve
+task correlation. Averaging outputs with different physical units requires
+`output_scales`, weights, or an objective.

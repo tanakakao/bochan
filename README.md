@@ -915,3 +915,48 @@ Current priorities:
 - keep HTTP / JSON payloads aligned with public `bochan.api` config objects;
 - prefer shared implementation over distribution-specific duplication;
 - reuse BoTorch standard functionality whenever possible.
+# Feature importance and fitted-model diagnostics
+
+Use validation data to calculate prediction-performance degradation after a
+raw input column is permuted. Here, `permutation` means permutation importance,
+not Probability of Improvement.
+
+```python
+from bochan.inspection import FeatureImportanceConfig
+
+importance = optimizer.feature_importance(
+    X=X_validation,
+    y=y_validation,
+    config=FeatureImportanceConfig(
+        predictive_methods=["permutation"],
+        diagnostic_methods=["auto"],
+        n_repeats=20,
+        random_state=0,
+    ),
+)
+method = importance.outputs["output_0"].predictive_methods["permutation"]
+for name, entry in method.entries.items():
+    print(name, entry.importance.mean, entry.importance.std)
+diagnostics = importance.outputs["output_0"].model_diagnostics
+```
+
+`diagnostic_methods=["auto"]` only reads lightweight fitted parameters and
+module structure. It never retrains, optimizes, computes input gradients, or
+runs SHAP/Sobol/Integrated Gradients. ARD, projected-model structure, latent
+lengthscales, and observation relevance remain diagnostics rather than
+predictive importance. Results can be converted with `result.to_dict()`.
+
+For cross-validation, set
+`CrossValidationConfig(feature_importance_config=FeatureImportanceConfig(...))`.
+Importance is evaluated on each validation fold using its already-fitted fold
+model; fold means, between-fold dispersion, ranks, and within-fold repeat
+dispersion are retained separately.
+
+Permutation importance is not a causal effect. Correlated features can share or
+hide importance, categorical permutation can create unrealistic combinations,
+and training-data evaluation is optimistic. Prefer held-out validation or CV.
+Joint `FeatureGroup`s preserve within-group row relationships. Runtime scales
+approximately with features/groups × repeats × folds. PCA loadings, REMBO
+projections, RRP observation relevance, and DeepKernel latent lengthscales are
+not raw-feature rankings. Future predictive methods can be added alongside
+`permutation`; gradient, SHAP, and Sobol methods are intentionally unsupported.

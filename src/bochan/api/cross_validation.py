@@ -43,6 +43,8 @@ class CrossValidationConfig:
     mape_zero_policy: str = "warn_nan"
     mape_epsilon: float = 1e-8
     error_policy: str = "raise"
+    feature_importance_config: Any | None = None
+    feature_names: list[str] | None = None
 
     def __post_init__(self) -> None:
         """Validate settings before any model is trained."""
@@ -100,6 +102,7 @@ class CVFoldResult:
     test_metrics: dict[str, float]
     train_predictions: CVPredictionResult | None
     test_predictions: CVPredictionResult | None
+    feature_importance: Any | None = None
 
 
 @dataclass
@@ -125,6 +128,7 @@ class CrossValidationResult:
     warnings: list[str]
     metadata: dict[str, Any] = field(default_factory=dict)
     models: list[Any] | None = None
+    feature_importance: Any | None = None
 
     def _single(self) -> OutputCrossValidationResult:
         """Return the sole output or reject an ambiguous convenience access."""
@@ -417,10 +421,12 @@ def cross_validate_optimizer(
     except TypeError:
         splits = list(splitter.split(X.cpu().numpy(), split_y))
     per_output: dict[str, list[CVFoldResult]] = {name: [] for name in names}
+    fold_importances: list[Any] = []
     models = [] if config.return_models else None
     for fold, (train_idx_raw, test_idx_raw) in enumerate(splits):
-        train_idx, test_idx = torch.as_tensor(train_idx_raw, dtype=torch.long), torch.as_tensor(
-            test_idx_raw, dtype=torch.long
+        train_idx, test_idx = (
+            torch.as_tensor(train_idx_raw, dtype=torch.long),
+            torch.as_tensor(test_idx_raw, dtype=torch.long),
         )
         fold_optimizer = type(optimizer)(
             model_config=clone_model_config_for_evaluation(base_model),
@@ -430,6 +436,21 @@ def cross_validate_optimizer(
             acquisition_registry=optimizer.acquisition_registry,
         )
         fold_optimizer.fit(X[train_idx], Y[train_idx])
+        fold_importance = None
+        if config.feature_importance_config is not None:
+            importance_config = copy.deepcopy(config.feature_importance_config)
+            if importance_config.random_state is not None:
+                importance_config.random_state += fold * 104729
+            fold_importance = fold_optimizer.feature_importance(
+                X=X[test_idx],
+                y=Y[test_idx],
+                config=importance_config,
+                feature_names=config.feature_names,
+                output_names=names,
+            )
+            fold_importance.metadata["cv_fold"] = fold
+            fold_importance.metadata["derived_random_state"] = importance_config.random_state
+            fold_importances.append(fold_importance)
         if models is not None:
             models.append(fold_optimizer.model)
         for output, (name, task) in enumerate(zip(names, tasks, strict=True)):
@@ -452,7 +473,16 @@ def cross_validate_optimizer(
                 else metric(test_pred.y_true, test_pred.y_pred, task, config)
             )
             per_output[name].append(
-                CVFoldResult(fold, train_idx, test_idx, train_metrics, test_metrics, train_pred, test_pred)
+                CVFoldResult(
+                    fold,
+                    train_idx,
+                    test_idx,
+                    train_metrics,
+                    test_metrics,
+                    train_pred,
+                    test_pred,
+                    fold_importance,
+                )
             )
     outputs = {}
     for output, (name, task) in enumerate(zip(names, tasks, strict=True)):
@@ -490,6 +520,7 @@ def cross_validate_optimizer(
         elif not config.return_train_predictions:
             for fold_result in folds:
                 fold_result.train_predictions = None
+    cv_importance = _aggregate_feature_importance(fold_importances) if fold_importances else None
     return CrossValidationResult(
         outputs,
         type(splitter).__name__,
@@ -497,4 +528,60 @@ def cross_validate_optimizer(
         warnings,
         {"random_state": config.random_state, "return_models": config.return_models},
         models,
+        cv_importance,
+    )
+
+
+def _aggregate_feature_importance(folds: list[Any]) -> Any:
+    """Aggregate fold means and ranks without aligning latent diagnostics.
+
+    Args:
+        folds: Validation-fold ``FeatureImportanceResult`` objects.
+
+    Returns:
+        Cross-validated output-oriented importance result.
+    """
+    from bochan.inspection.result_types import (
+        CrossValidatedFeatureImportanceResult,
+        CrossValidatedImportanceSummary,
+        CrossValidatedMethodResult,
+        CrossValidatedOutputImportance,
+    )
+
+    outputs = {}
+    for output_name, first_output in folds[0].outputs.items():
+        methods = {}
+        for method_name in first_output.predictive_methods:
+            method_folds = [fold.outputs[output_name].predictive_methods[method_name] for fold in folds]
+            entries = {}
+            for entry_name in method_folds[0].entries:
+                fold_entries = [method.entries[entry_name] for method in method_folds]
+                values = torch.tensor([entry.importance.mean for entry in fold_entries], dtype=torch.float64)
+                ranks = torch.tensor([entry.importance.rank for entry in fold_entries], dtype=torch.float64)
+                entries[entry_name] = CrossValidatedImportanceSummary(
+                    values,
+                    float(values.mean()),
+                    float(values.std(unbiased=False)),
+                    float(values.min()),
+                    float(values.max()),
+                    float(values.median()),
+                    float(ranks.mean()),
+                    float(ranks.std(unbiased=False)),
+                    len(values),
+                    [entry.importance.std for entry in fold_entries],
+                )
+            methods[method_name] = CrossValidatedMethodResult(method_name, entries, method_folds)
+        outputs[output_name] = CrossValidatedOutputImportance(
+            output_name,
+            first_output.task_type,
+            methods,
+            {},
+            [fold.outputs[output_name].model_diagnostics for fold in folds],
+            warnings=[warning for fold in folds for warning in fold.outputs[output_name].warnings],
+        )
+    return CrossValidatedFeatureImportanceResult(
+        outputs,
+        folds[0].feature_names,
+        [warning for fold in folds for warning in fold.warnings],
+        {"n_folds": len(folds), "pooled_oof_importance": False},
     )

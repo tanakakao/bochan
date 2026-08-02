@@ -217,6 +217,55 @@ class BayesianOptimizer:
             cv_config=cv_config,
         )
 
+    def feature_importance(
+        self,
+        X: Any | None = None,
+        y: Any | None = None,
+        *,
+        config: Any | None = None,
+        feature_names: Sequence[str] | None = None,
+        output_names: Sequence[str] | None = None,
+    ) -> Any:
+        """Inspect a fitted model using raw-space permutation importance.
+
+        Args:
+            X: Raw evaluation inputs. Training inputs are used when omitted.
+            y: Evaluation targets. Training targets are used when omitted.
+            config: A :class:`bochan.inspection.FeatureImportanceConfig`.
+            feature_names: Optional raw input column names.
+            output_names: Optional output names.
+
+        Returns:
+            A serializable ``FeatureImportanceResult``.
+        """
+        self._check_fitted()
+        from bochan.inspection import compute_feature_importance
+
+        use_training = X is None and y is None
+        if (X is None) != (y is None):
+            raise ValueError("X and y must either both be provided or both be omitted.")
+        X = self.train_X if X is None else X
+        y = self.train_Y if y is None else y
+        task: str | Sequence[str] = str(self.bundle.task_type)
+        multi = getattr(self.model_config, "multi_output_config", None)
+        if multi is not None:
+            specs = getattr(multi, "outputs", None) or getattr(multi, "output_configs", None)
+            if specs:
+                task = [str(getattr(spec, "task_type", self.bundle.task_type)) for spec in specs]
+                output_names = output_names or [str(getattr(spec, "name", f"output_{i}")) for i, spec in enumerate(specs)]
+        return compute_feature_importance(
+            model=self.model,
+            predictor=self,
+            X=X,
+            y=y,
+            task_type=task,
+            feature_names=feature_names,
+            output_names=output_names,
+            cat_dims=self.bundle.cat_dims,
+            config=config,
+            training_data=use_training,
+        )
+
     def predict(
         self,
         X: Any,

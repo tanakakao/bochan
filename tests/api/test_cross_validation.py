@@ -63,3 +63,28 @@ def test_cross_validation_config_validation(kwargs: dict[str, object]) -> None:
     """Invalid settings fail before model construction."""
     with pytest.raises(ValueError):
         CrossValidationConfig(**kwargs)
+
+
+def test_cross_validation_feature_importance_is_optional_and_aggregated() -> None:
+    """Validation-fold importance is opt-in and retains fold-level results."""
+    from bochan.inspection import FeatureImportanceConfig
+
+    train_X = torch.linspace(0, 1, 8, dtype=torch.double).unsqueeze(-1)
+    train_Y = 2 * train_X
+    optimizer = BayesianOptimizer(ModelConfig(outcome_transform=False), FitConfig(skip_fit=True))
+    disabled = optimizer.cross_validate(train_X, train_Y, cv_config=CrossValidationConfig(n_splits=2))
+    assert disabled.feature_importance is None
+    enabled = optimizer.cross_validate(
+        train_X,
+        train_Y,
+        cv_config=CrossValidationConfig(
+            n_splits=2,
+            feature_names=["x"],
+            feature_importance_config=FeatureImportanceConfig(n_repeats=2, diagnostic_methods=[]),
+        ),
+    )
+    assert enabled.feature_importance.outputs["output_0"].predictive_methods["permutation"]
+    assert all(fold.feature_importance is not None for fold in enabled.output.folds)
+    summary = enabled.feature_importance.outputs["output_0"].predictive_methods["permutation"].entries["x"]
+    assert summary.valid_fold_count == 2
+    assert len(summary.within_fold_repeat_std) == 2

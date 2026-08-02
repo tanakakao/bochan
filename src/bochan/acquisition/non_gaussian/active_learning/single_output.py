@@ -387,9 +387,9 @@ class qNonGaussianNegIntegratedResponseMeanVariance(AcquisitionFunction):
             None,
         )
         if explicit_capability is None:
-            module_name = type(model).__module__
             explicit_capability = (
-                ".non_gaussian.gamma." in module_name
+                type(model).__name__ in {"GammaGPModel", "GammaMixedGPModel"}
+                and ".non_gaussian.gamma.base." in type(model).__module__
                 and callable(getattr(model, "fantasize", None))
             )
         self._uses_proxy = not bool(explicit_capability)

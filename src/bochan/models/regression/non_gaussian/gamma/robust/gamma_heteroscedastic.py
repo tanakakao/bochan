@@ -276,12 +276,11 @@ class HeteroscedasticGammaGPModel(_HeteroscedasticGammaMixin, GammaGPModel):
                 torch.as_tensor(train_Yvar, device=train_X.device, dtype=train_X.dtype)
             ).clamp_min(float(min_noise))
 
-        self.noise_model = _fit_noise_model_single(
+        noise_model = _fit_noise_model_single(
             train_X=train_X,
             noise_targets=noise_targets,
             input_transform=copy.deepcopy(noise_tf),
         )
-        self.noise_input_transform = noise_tf
 
         super().__init__(
             train_X=train_X,
@@ -297,6 +296,9 @@ class HeteroscedasticGammaGPModel(_HeteroscedasticGammaMixin, GammaGPModel):
             min_mean=min_mean,
             min_concentration=min_concentration,
         )
+
+        self.noise_model = noise_model
+        self.noise_input_transform = noise_tf
 
 
 class HeteroscedasticGammaMixedGPModel(_HeteroscedasticGammaMixin, GammaMixedGPModel):
@@ -364,13 +366,12 @@ class HeteroscedasticGammaMixedGPModel(_HeteroscedasticGammaMixin, GammaMixedGPM
                 torch.as_tensor(train_Yvar, device=train_X.device, dtype=train_X.dtype)
             ).clamp_min(float(min_noise))
 
-        self.noise_model = _fit_noise_model_mixed(
+        noise_model = _fit_noise_model_mixed(
             train_X=train_X,
             noise_targets=noise_targets,
             cat_dims=cat_dims,
             input_transform=copy.deepcopy(noise_tf),
         )
-        self.noise_input_transform = noise_tf
 
         super().__init__(
             train_X=train_X,
@@ -387,6 +388,9 @@ class HeteroscedasticGammaMixedGPModel(_HeteroscedasticGammaMixin, GammaMixedGPM
             min_mean=min_mean,
             min_concentration=min_concentration,
         )
+
+        self.noise_model = noise_model
+        self.noise_input_transform = noise_tf
 
 
 __all__ = [

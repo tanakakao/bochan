@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Sequence
 
 import torch
+from botorch.acquisition.acquisition import AcquisitionFunction
 from torch import Tensor
 
 from . import single_output as _single
@@ -137,7 +138,6 @@ for _suffix in [
     "PredictiveEntropyProxy",
     "BALDProxy",
     "IntegratedResponseMeanVarianceProxy",
-    "NegIntegratedResponseMeanVariance",
     "JointBALDProxy",
     "GreedyJointBALDProxy",
 ]:
@@ -145,6 +145,80 @@ for _suffix in [
         "qMultiOutputNonGaussian" + _suffix,
         getattr(_single, "qNonGaussian" + _suffix),
     )
+
+
+class qMultiOutputNonGaussianNegIntegratedResponseMeanVariance(
+    AcquisitionFunction
+):
+    """Multi-output non-Gaussian integrated variance-reduction proxy.
+
+    Correlated multitask and model-list non-Gaussian models do not currently
+    expose a validated joint response-aware ``fantasize`` contract. This class
+    therefore uses the candidate-dependent covariance-reduction proxy and
+    applies the same output reduction controls as the other multi-output
+    acquisitions.
+    """
+
+    def __init__(
+        self,
+        model,
+        mc_points: Tensor,
+        *,
+        output_reduction: str = "mean",
+        output_weights: Tensor | Sequence[float] | None = None,
+        output_scales: Tensor | Sequence[float] | None = None,
+        X_pending: Tensor | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(model=model)
+        valid = {"mean", "sum", "max", "min", "weighted_mean"}
+        if output_reduction not in valid:
+            raise ValueError(
+                f"output_reduction must be one of {sorted(valid)}."
+            )
+        if output_reduction == "weighted_mean" and output_weights is None:
+            raise ValueError(
+                "output_weights is required for weighted_mean."
+            )
+        base_reduction = (
+            "mean" if output_reduction == "weighted_mean" else output_reduction
+        )
+        if X_pending is not None:
+            kwargs.setdefault("X_pending", X_pending)
+        self.acqf = _single.qNonGaussianIntegratedResponseMeanVarianceProxy(
+            model=model,
+            mc_points=mc_points,
+            output_reduction=base_reduction,
+            **kwargs,
+        )
+        self.acqf.multi_output_reduction = output_reduction
+        self.acqf.register_buffer(
+            "output_weights",
+            None
+            if output_weights is None
+            else torch.as_tensor(output_weights),
+        )
+        self.acqf.register_buffer(
+            "output_scales",
+            None if output_scales is None else torch.as_tensor(output_scales),
+        )
+
+    @property
+    def uses_proxy(self) -> bool:
+        """Multi-output non-Gaussian NIPV currently uses the proxy."""
+        return True
+
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
+        """Delegate pending-point updates."""
+        if hasattr(self.acqf, "set_X_pending"):
+            self.acqf.set_X_pending(X_pending)
+        else:
+            self.acqf.X_pending = X_pending
+
+    def forward(self, X: Tensor) -> Tensor:
+        """Evaluate integrated multi-output response-mean variance reduction."""
+        return self.acqf(X)
+
 
 qMultiOutputNonGaussianNegIntegratedPosteriorVariance = (
     qMultiOutputNonGaussianNegIntegratedResponseMeanVariance

@@ -46,6 +46,35 @@ class _MultiOutputMixin:
             None if output_scales is None else torch.as_tensor(output_scales),
         )
 
+    def _finish(self, score: Tensor, X: Tensor) -> Tensor:
+        """Reduce outputs before applying the common LSE finalization pipeline."""
+        Xq = _single.ensure_q_batch(X)
+        Xt = self._apply_input_transform_for_distance(Xq)
+        if self.multi_output_reduction == "weighted_mean":
+            weights = self.output_weights.to(score)
+            if (
+                weights.numel() != score.shape[-1]
+                or torch.any(weights < 0)
+                or weights.sum() <= 0
+            ):
+                raise ValueError(
+                    "output_weights must be non-negative, non-zero, and match "
+                    "num_outputs."
+                )
+            score = (score * (weights / weights.sum())).sum(dim=-1)
+        else:
+            score = self._reduce_outputs_if_needed(
+                score,
+                Xt,
+                name=type(self).__name__,
+            )
+        return self._finalize_pointwise_score(
+            score,
+            X,
+            Xt,
+            name=type(self).__name__,
+        )
+
     def _pointwise(self, X: Tensor, field: str) -> Tensor:
         """Reduce output-wise point scores before q reduction."""
         Xq = _single.ensure_q_batch(X)
@@ -58,7 +87,7 @@ class _MultiOutputMixin:
                 )
             if torch.any(scales <= 0):
                 raise ValueError("output_scales must be positive.")
-            value = value / scales.square()
+            value = value / scales
         if self.multi_output_reduction == "weighted_mean":
             weights = self.output_weights.to(value)
             if (

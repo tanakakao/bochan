@@ -5,11 +5,10 @@ import torch
 from botorch.sampling.get_sampler import get_sampler
 
 from bochan.api import ModelConfig
-from bochan.api.factory import build_model, resolve_model_cls
+from bochan.api.factory import resolve_model_cls
 from bochan.models.components.beta import BetaLogLikelihood, prepare_beta_targets
 from bochan.models.regression.non_gaussian.beta.base import (
     BetaGPModel,
-    BetaMultiTaskGPModel,
     WideBetaMultiTaskGPModel,
 )
 
@@ -68,24 +67,21 @@ def test_beta_multitask_wide_partial_posterior_and_sampler() -> None:
     assert get_sampler(posterior, torch.Size([4])) is not None
 
 
-def test_beta_multitask_registry_builds_one_correlated_model() -> None:
-    """Factory routing keeps multiple Beta responses in one multitask model."""
-    X, Y = _data()
+def test_beta_multitask_is_not_a_public_registry_model() -> None:
+    """Beta multi-output uses independent output configurations, not native routing."""
     config = ModelConfig(
         task_type="regression",
         model_type="beta_multitask",
-        model_kwargs={"rank": 2, "num_inducing_points": 5},
     )
-    bundle = build_model(X, Y, config)
-    assert isinstance(bundle.model, BetaMultiTaskGPModel)
-    assert bundle.metadata["model_cls"] == "WideBetaMultiTaskGPModel"
+    with pytest.raises(ValueError, match="Unknown model setting"):
+        resolve_model_cls(config)
 
 
 @pytest.mark.parametrize(
     "key",
     [
         "beta_base", "beta_deepgp", "beta_deepkernel", "beta_saas",
-        "beta_pca", "beta_rembo", "beta_rrp", "beta_hetero", "beta_multitask",
+        "beta_pca", "beta_rembo", "beta_rrp", "beta_hetero",
     ],
 )
 def test_all_beta_families_are_public_registry_entries(key: str) -> None:

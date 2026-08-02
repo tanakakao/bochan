@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 import copy
+import math
+import warnings
 from typing import Any, Literal, Optional, Sequence
 
 import torch
-from torch import Tensor
-from torch.distributions import Beta as TorchBeta
-
 from botorch.models.transforms.input import ChainedInputTransform, InputTransform, Normalize
 from botorch.posteriors import Posterior
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from gpytorch.distributions import MultivariateNormal
 from gpytorch.kernels import MaternKernel, ScaleKernel
 from gpytorch.likelihoods import _OneDimensionalLikelihood
+from torch import Tensor
+from torch.distributions import Beta as TorchBeta
 
 BetaMeanLink = Literal["sigmoid", "probit"]
 
@@ -99,6 +100,13 @@ def prepare_beta_targets(
             "use binary classification."
         )
     if boundary_policy == "clip":
+        if boundary.any():
+            warnings.warn(
+                "Beta regression targets contained exact 0 or 1 values. "
+                f"They were clipped to the open interval using eps={float(eps):g}.",
+                UserWarning,
+                stacklevel=2,
+            )
         y = torch.where(finite, y.clamp(min=float(eps), max=1.0 - float(eps)), y)
     return y.contiguous()
 
@@ -280,6 +288,14 @@ class BetaLogLikelihood(_OneDimensionalLikelihood):
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
     ) -> None:
+        if link not in {"sigmoid", "probit"}:
+            raise ValueError("link must be 'sigmoid' or 'probit'.")
+        if not 0.0 < float(eps) < 0.5:
+            raise ValueError("eps must satisfy 0 < eps < 0.5.")
+        if not math.isfinite(float(init_concentration)) or float(init_concentration) <= 0.0:
+            raise ValueError("init_concentration must be finite and positive.")
+        if not math.isfinite(float(min_concentration)) or float(min_concentration) <= 0.0:
+            raise ValueError("min_concentration must be finite and positive.")
         super().__init__()
         self.link = str(link)
         self.eps = float(eps)

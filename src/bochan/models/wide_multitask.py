@@ -15,6 +15,7 @@ from botorch.models.multitask import MultiTaskGP
 from botorch.posteriors.posterior import Posterior
 from botorch.sampling.base import MCSampler
 from botorch.sampling.get_sampler import GetSampler, get_sampler
+from gpytorch.mlls import ExactMarginalLogLikelihood
 from torch import Tensor
 
 from bochan.models.classification.binary.base.multitask import (
@@ -310,6 +311,10 @@ class WideMultiTaskGP(_WidePosteriorMixin, MultiTaskGP):
         self.num_tasks = num_tasks
         self.train_X_wide = torch.as_tensor(train_X)
         self.train_Y_wide = torch.as_tensor(train_Y)
+
+    def make_mll(self) -> ExactMarginalLogLikelihood:
+        """Return the exact marginal log likelihood for this model."""
+        return ExactMarginalLogLikelihood(self.likelihood, self)
 
 
 class WideMultiTaskBinaryClassificationGPModel(

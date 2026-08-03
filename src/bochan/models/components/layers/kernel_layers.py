@@ -1,14 +1,14 @@
+from collections.abc import Sequence
+
 import torch
 import torch.nn as nn
 from torch import Tensor
-from typing import Optional, Sequence
 
 from gpytorch.models import ExactGP
 from gpytorch.distributions import MultivariateNormal, MultitaskMultivariateNormal
 from gpytorch.means import ConstantMean, MultitaskMean
 from gpytorch.kernels import ScaleKernel, RBFKernel, MultitaskKernel
 from gpytorch.constraints import GreaterThan
-from gpytorch.utils.grid import ScaleToBounds
 
 from botorch.models.gpytorch import BatchedMultiOutputGPyTorchModel
 from botorch.models.kernels.categorical import CategoricalKernel
@@ -18,10 +18,73 @@ from botorch.utils.transforms import normalize_indices
 from ..layers.feature_extractor import LargeFeatureExtractor, SkipLargeFeatureExtractor
 
 
+class StableScaleToBounds(nn.Module):
+    """Scale features to fixed bounds without dividing by a zero range.
+
+    GPyTorch's ``ScaleToBounds`` uses the current batch minimum and maximum.
+    Deep-kernel feature extractors can temporarily collapse to a nearly constant
+    representation, especially in small cross-validation folds. Clamping the
+    denominator keeps the projected features finite while preserving the usual
+    min-max behavior outside the degenerate case.
+    """
+
+    def __init__(
+        self,
+        lower_bound: float,
+        upper_bound: float,
+        *,
+        min_range: float = 1e-6,
+    ) -> None:
+        super().__init__()
+        if upper_bound <= lower_bound:
+            raise ValueError("upper_bound must be greater than lower_bound.")
+        if min_range <= 0:
+            raise ValueError("min_range must be positive.")
+        self.lower_bound = float(lower_bound)
+        self.upper_bound = float(upper_bound)
+        self.min_range = float(min_range)
+        self.register_buffer("min_val", torch.tensor(lower_bound))
+        self.register_buffer("max_val", torch.tensor(upper_bound))
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Return finite min-max-scaled features within the configured bounds."""
+        if x.numel() == 0:
+            return x
+        if not torch.isfinite(x).all():
+            raise FloatingPointError(
+                "Deep Kernel feature extractor produced non-finite values. "
+                "Reduce the learning rate or inspect the input data."
+            )
+
+        if self.training:
+            min_val = x.amin()
+            max_val = x.amax()
+            self.min_val.data = min_val.detach()
+            self.max_val.data = max_val.detach()
+        else:
+            min_val = self.min_val.to(device=x.device, dtype=x.dtype)
+            max_val = self.max_val.to(device=x.device, dtype=x.dtype)
+            x = x.clamp(min=min_val, max=max_val)
+
+        min_range = torch.as_tensor(
+            self.min_range,
+            device=x.device,
+            dtype=x.dtype,
+        )
+        scale = 0.95 * (self.upper_bound - self.lower_bound)
+        safe_range = (max_val - min_val).clamp_min(min_range)
+        scaled = (x - min_val) * (scale / safe_range) + 0.95 * self.lower_bound
+        if not torch.isfinite(scaled).all():
+            raise FloatingPointError(
+                "Deep Kernel feature scaling produced non-finite values."
+            )
+        return scaled
+
+
 def _make_feature_extractor(
     input_dim: int,
     ext_type: str = "DEFAULT",
-    hidden_dims: Optional[Sequence[int]] = None,
+    hidden_dims: Sequence[int] | None = None,
 ) -> nn.Module:
     """
     特徴抽出器を返す。
@@ -29,7 +92,7 @@ def _make_feature_extractor(
     Args:
         input_dim (int): 入力次元
         ext_type (str): "DEFAULT" または "skip"
-        hidden_dims (Optional[Sequence[int]]): 隠れ層の次元数。
+        hidden_dims (Sequence[int] | None): 隠れ層の次元数。
             None の場合は従来通り [input_dim * 8, input_dim * 4, input_dim * 2] を使う。
     """
     hidden_dims = (
@@ -74,7 +137,7 @@ class DeepKernel(ExactGP):
         train_y: Tensor,
         likelihood,
         ext_type: str = "DEFAULT",
-        hidden_dims: Optional[Sequence[int]] = None,
+        hidden_dims: Sequence[int] | None = None,
     ) -> None:
         super().__init__(train_x, train_y, likelihood)
 
@@ -115,8 +178,9 @@ class DeepKernel(ExactGP):
             hidden_dims=hidden_dims,
         )
 
-        # NN の出力特徴を [-1, 1] に押し込む
-        self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
+        # NN の出力特徴を [-1, 1] に押し込む。
+        # fold内で特徴がほぼ一定になっても0除算しない。
+        self.scale_to_bounds = StableScaleToBounds(-1.0, 1.0)
 
     def forward(self, x: Tensor):
         """
@@ -158,14 +222,14 @@ class DeepKernelMixed(BatchedMultiOutputGPyTorchModel, ExactGP):
         cat_dims,
         likelihood,
         ext_type: str = "DEFAULT",
-        hidden_dims: Optional[Sequence[int]] = None,
+        hidden_dims: Sequence[int] | None = None,
     ) -> None:
         super().__init__(train_x, train_y, likelihood)
 
         if len(cat_dims) == 0:
             raise ValueError("カテゴリ次元を指定する必要があります (cat_dims)。")
 
-        d = train_x.size(-1)
+        d = train_x.shape[-1]
         self._num_outputs = (
             train_y.shape[-1]
             if (train_y.ndim > 1) and (train_y.shape[-1] != 1)
@@ -189,7 +253,7 @@ class DeepKernelMixed(BatchedMultiOutputGPyTorchModel, ExactGP):
                 ext_type=ext_type,
                 hidden_dims=hidden_dims,
             )
-            self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
+            self.scale_to_bounds = StableScaleToBounds(-1.0, 1.0)
         else:
             self.feature_extractor = nn.Identity()
             self.scale_to_bounds = nn.Identity()

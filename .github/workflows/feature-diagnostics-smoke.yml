@@ -9,6 +9,7 @@ on:
       - "src/bochan/serving/webapp/workflows.py"
       - "tests/test_feature_importance.py"
       - "tests/test_hybrid_model_diagnostics.py"
+      - "tests/test_saas_diagnostics.py"
       - "tests/test_webapp_final_model_diagnostics.py"
       - ".github/workflows/feature-diagnostics-smoke.yml"
   workflow_dispatch:
@@ -30,6 +31,7 @@ jobs:
           pytest -q --maxfail=1 \
             tests/test_feature_importance.py \
             tests/test_hybrid_model_diagnostics.py \
+            tests/test_saas_diagnostics.py \
             tests/test_webapp_final_model_diagnostics.py
       - name: Run lint
         run: |
@@ -38,4 +40,5 @@ jobs:
             src/bochan/inspection/diagnostics.py \
             src/bochan/serving/webapp/workflows.py \
             tests/test_hybrid_model_diagnostics.py \
+            tests/test_saas_diagnostics.py \
             tests/test_webapp_final_model_diagnostics.py

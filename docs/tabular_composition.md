@@ -1,99 +1,43 @@
-# Tabular composition preprocessing
+# Composition API and tabular integration
 
-`bochan.tabular.composition` は、組成式を通常の tabular モデルへ渡すための前処理層です。
-専用 GP モデルは定義せず、組成式の解析、数値特徴量化、候補の逆変換、組成制約の repair を分離します。
-
-## 対応範囲
-
-- 化学式の解析
-  - 小数係数
-  - `()` / `[]` の入れ子
-  - `CuSO4·5H2O` のような水和物
-- 原子分率、重量分率への変換
-- 組成式への canonical な逆変換
-- 元素物性の加重統計量
-  - 原子番号
-  - 原子量
-  - 任意のユーザー定義元素物性
-  - 平均、標準偏差、最小、最大、範囲
-  - 元素数、混合エントロピー
-- simplex 表現
-  - fraction
-  - CLR
-  - ALR
-  - ILR
-- 組成探索制約
-  - 合計値
-  - 元素ごとの上下限
-  - 刻み
-  - 必須元素
-  - 最小・最大有効元素数
-
-## 通常の tabular モデルへ渡す
+組成式の解析・変換・逆変換・simplex repair は通常 API の `bochan.composition` から利用できます。
+モデル固有のクラスではなく、任意の回帰・分類・active learning 処理の前後に置く汎用 API です。
 
 ```python
-import pandas as pd
-
-from bochan.tabular import (
-    CompositionColumnConfig,
-    CompositionTabularPreprocessor,
-    TabularBayesianOptimizer,
+from bochan.composition import (
+    CompositionSearchSpace,
+    CompositionTransformer,
+    SimplexTransform,
+    parse_formula,
 )
-
-
-df = pd.DataFrame(
-    {
-        "formula": [
-            "Fe0.50Ni0.30Co0.20",
-            "Fe0.40Ni0.40Co0.20",
-            "Fe0.45Ni0.25Co0.30",
-        ],
-        "temperature": [900.0, 950.0, 925.0],
-        "property": [10.0, 12.0, 11.5],
-    }
-)
-
-preprocessor = CompositionTabularPreprocessor(
-    CompositionColumnConfig(
-        column="formula",
-        elements=["Fe", "Co", "Ni"],
-        representation="ilr",
-    )
-)
-model_df = preprocessor.fit_transform(df)
-
-input_cols = [
-    "formula__ilr__1",
-    "formula__ilr__2",
-    "temperature",
-]
-
-bo = TabularBayesianOptimizer(
-    task_type="regression",
-    model_type="base",
-    input_cols=input_cols,
-    target_cols="property",
-    bounds={
-        "formula__ilr__1": [-5.0, 5.0],
-        "formula__ilr__2": [-5.0, 5.0],
-        "temperature": [850.0, 1000.0],
-    },
-)
-bo.fit(model_df)
-
-candidate_df, acq_value = bo.candidate(acq_name="EI", q=3)
-restored = preprocessor.inverse_candidates(candidate_df)
 ```
 
-ILR / ALR 空間で候補を生成すると、逆変換後の組成は自動的に非負かつ合計 1 になります。
-
-## 組成制約を適用する
+## 通常 API
 
 ```python
-from bochan.tabular import CompositionSearchSpace
+transformer = CompositionTransformer(
+    elements=["Fe", "Co", "Ni"],
+    normalization="atomic_fraction",
+    representation="ilr",
+    prefix="formula",
+)
 
+X_composition = transformer.fit_transform(df["formula"])
+formula = transformer.inverse_transform(X_composition)
+```
 
-search_space = CompositionSearchSpace(
+`CompositionTransformer` は次を扱います。
+
+- 組成式の解析と canonical 表記
+- 原子分率・重量分率
+- fraction / CLR / ALR / ILR
+- 元素物性の加重記述子
+- 数値座標から組成式への逆変換
+
+組成候補の制約と補正には `CompositionSearchSpace` を使います。
+
+```python
+space = CompositionSearchSpace(
     components=["Fe", "Co", "Ni", "Cr"],
     total=1.0,
     bounds={
@@ -102,56 +46,108 @@ search_space = CompositionSearchSpace(
         "Ni": (0.00, 0.60),
         "Cr": (0.00, 0.20),
     },
-    steps={
-        "Fe": 0.01,
-        "Co": 0.01,
-        "Ni": 0.01,
-        "Cr": 0.01,
-    },
+    steps={name: 0.01 for name in ["Fe", "Co", "Ni", "Cr"]},
     required_components=["Fe"],
     min_active_components=2,
     max_active_components=3,
 )
 
-preprocessor = CompositionTabularPreprocessor(
-    CompositionColumnConfig(
-        column="formula",
-        elements=["Fe", "Co", "Ni", "Cr"],
-        representation="ilr",
-    ),
-    search_space=search_space,
+valid_composition = space.repair(raw_composition)
+```
+
+## TabularBayesianOptimizer の直接引数
+
+Tabular API では `CompositionColumnConfig` を作る必要はありません。
+元の `input_cols` には組成式列をそのまま指定します。
+
+```python
+from bochan.tabular import TabularBayesianOptimizer
+
+bo = TabularBayesianOptimizer(
+    task_type="regression",
+    model_type="base",
+    input_cols=["formula", "temperature"],
+    target_cols="property",
+    bounds={
+        "temperature": [850.0, 1000.0],
+    },
+    composition_col="formula",
+    composition_elements=["Fe", "Co", "Ni"],
+    composition_representation="ilr",
+    composition_coordinate_bounds=[-8.0, 8.0],
+    composition_bounds={
+        "Fe": [0.20, 0.80],
+        "Co": [0.00, 0.40],
+        "Ni": [0.00, 0.60],
+    },
+    composition_steps={
+        "Fe": 0.01,
+        "Co": 0.01,
+        "Ni": 0.01,
+    },
+    composition_required_components=["Fe"],
+    composition_min_components=2,
+    composition_max_components=3,
+)
+
+bo.fit(df)
+candidates, acq_value = bo.candidate(acq_name="EI", q=3)
+```
+
+学習時には内部で次の変換が行われます。
+
+```text
+formula -> formula__ilr__1, formula__ilr__2
+```
+
+候補 DataFrame は自動的に逆変換・repair されます。
+
+```text
+formula
+formula__fraction__Fe
+formula__fraction__Co
+formula__fraction__Ni
+temperature
+```
+
+`predict()` も組成式を含む元の DataFrame をそのまま受け取ります。
+
+```python
+prediction = bo.predict(
+    pd.DataFrame(
+        {
+            "formula": ["Fe0.5Co0.2Ni0.3"],
+            "temperature": [925.0],
+        }
+    )
 )
 ```
 
-`inverse_candidates(..., repair=True)` は、逆変換した組成に上下限、刻み、有効元素数、必須元素を適用してから組成式を生成します。
+## 主な直接引数
+
+| 引数 | 内容 |
+|---|---|
+| `composition_col` | 組成式列 |
+| `composition_elements` | 探索対象元素。省略時は学習データから推定 |
+| `composition_normalization` | `atomic_fraction` / `weight_fraction` |
+| `composition_representation` | `fractions` / `clr` / `alr` / `ilr` |
+| `composition_coordinate_bounds` | CLR/ALR/ILR 座標の探索範囲 |
+| `composition_bounds` | 元素比率の上下限 |
+| `composition_steps` | 元素比率の刻み |
+| `composition_required_components` | 必須元素 |
+| `composition_min_components` | 最小有効元素数 |
+| `composition_max_components` | 最大有効元素数 |
 
 ## 組成記述子
 
-```python
-from bochan.tabular import CompositionColumnConfig, CompositionTabularPreprocessor
+通常 API では `CompositionDescriptorCalculator` または
+`CompositionTransformer(include_descriptors=True)` を使用できます。
 
+Tabular API でも `composition_include_descriptors=True` で学習と予測に使用できます。
+ただし、記述子は組成から決まる派生値であるため、現在の連続候補最適化では独立変数として最適化しません。
+候補生成時は `composition_include_descriptors=False` を使用してください。
 
-config = CompositionColumnConfig(
-    column="formula",
-    representation="ilr",
-    include_descriptors=True,
-    descriptor_properties=["atomic_number", "atomic_weight", "electronegativity"],
-    element_properties={
-        "electronegativity": {
-            "Fe": 1.83,
-            "Co": 1.88,
-            "Ni": 1.91,
-        }
-    },
-)
-```
+## 互換 API
 
-記述子は組成から一意に決まる派生特徴量です。学習・予測・active learning にはそのまま使えますが、
-通常の候補最適化で記述子列を独立した探索変数にはしないでください。候補最適化の入力列には fraction / CLR / ALR / ILR とプロセス条件だけを指定し、必要な場合は候補組成から記述子を再計算します。
-
-## 表記上の注意
-
-原子分率へ正規化すると全体のスケール情報は失われます。そのため、逆変換は元の文字列を完全復元する処理ではなく、
-正規化された canonical formula を生成する処理です。元の入力表記が必要な場合は、元の `formula` 列を別途保存してください。
-
-サイト占有は化学式だけから一意に判定できないため、A サイト / B サイトなどの情報は別の列または明示的なサイト設定として管理してください。
+既存の `CompositionColumnConfig` と `CompositionTabularPreprocessor` は互換用途として残しています。
+新規コードでは、通常 API または `TabularBayesianOptimizer` の直接引数を推奨します。

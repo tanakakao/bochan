@@ -1,3 +1,18 @@
+import { useMemo } from "react";
+import { useWorkbench } from "../context/WorkbenchContext";
+import {
+  MODEL_OPTIONS,
+  isMultitaskModelType,
+  isNonGaussianModelType,
+  modelFamilyFor
+} from "../modelOptions";
+import {
+  REGRESSION_LIKELIHOOD_OPTIONS,
+  regressionLikelihoodFor,
+  regressionModelVariantFor,
+  selectRegressionModelType,
+  type RegressionLikelihood
+} from "../regressionLikelihoodOptions";
 import { getColumnClassValues } from "../targetSettingUtils";
 import type {
   ColumnProfile,
@@ -29,7 +44,7 @@ function taskLabel(taskType: TaskType): string {
   return "回帰";
 }
 
-/** Defines target tasks and class/rank encodings used while fitting the model. */
+/** Defines target tasks and class/rank/likelihood settings used while fitting the model. */
 export default function TargetModelSettings({
   columns,
   preview,
@@ -37,9 +52,44 @@ export default function TargetModelSettings({
   targetSettings,
   patchTargetSetting
 }: Props) {
+  const { modelType, setModelType, selectedVariables } = useWorkbench();
+
+  const taskTypes = targetColumns
+    .map((target) => targetSettings[target]?.task_type)
+    .filter(Boolean);
+  const allRegression = taskTypes.length > 0 && taskTypes.every((task) => task === "regression");
+  const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
+  const canUseMultitask = targetColumns.length > 1 && allRegression && !hasCategoricalFeatures;
+  const modelLikelihood = regressionLikelihoodFor(modelType);
+  const availableModels = useMemo(
+    () => MODEL_OPTIONS.filter((option) => (
+      (!isNonGaussianModelType(option.value) || allRegression) &&
+      (!isMultitaskModelType(option.value) || canUseMultitask)
+    )),
+    [allRegression, canUseMultitask]
+  );
+  const availableLikelihoods = useMemo(
+    () => REGRESSION_LIKELIHOOD_OPTIONS.filter((likelihood) => (
+      availableModels.some(
+        (model) => regressionLikelihoodFor(model.value) === likelihood.value
+      )
+    )),
+    [availableModels]
+  );
+
   function classesFor(target: string): TargetClassValue[] {
     const column = columns.find((candidate) => candidate.name === target);
     return column ? getColumnClassValues(column, preview) : [];
+  }
+
+  function changeLikelihood(nextLikelihood: RegressionLikelihood) {
+    const nextModelType = selectRegressionModelType(
+      availableModels,
+      nextLikelihood,
+      regressionModelVariantFor(modelType),
+      modelFamilyFor(modelType)
+    );
+    if (nextModelType) setModelType(nextModelType);
   }
 
   function changeTask(target: string, nextTask: TaskType) {
@@ -77,7 +127,21 @@ export default function TargetModelSettings({
 
   function classModelControl(target: string, setting: TargetSetting, classes: TargetClassValue[]) {
     if (setting.task_type === "regression") {
-      return <span className="muted-cell">連続値</span>;
+      return (
+        <label className="table-field">
+          <span>応答分布{targetColumns.length > 1 ? "（回帰目的で共通）" : ""}</span>
+          <select
+            value={modelLikelihood}
+            disabled={!allRegression}
+            onChange={(event) => changeLikelihood(event.target.value as RegressionLikelihood)}
+          >
+            {availableLikelihoods.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          {!allRegression && <small>異なるタスクを併用する場合はGaussianを使用します。</small>}
+        </label>
+      );
     }
     if (setting.task_type === "classification") {
       if (classes.length === 2) {
@@ -140,14 +204,14 @@ export default function TargetModelSettings({
         <div>
           <span className="panel-kicker">1 · TARGET MODEL</span>
           <h3>目的変数とタスク</h3>
-          <p>モデル学習に必要なタスク種別、Binaryの1クラス、順序回帰のクラス順を定義します。</p>
+          <p>回帰の応答分布、Binaryの1クラス、順序回帰のクラス順を目的変数ごとに設定します。</p>
         </div>
         <span className="status-chip success">{targetColumns.length} targets</span>
       </div>
       <div className="table-wrap target-model-settings-wrap">
         <table className="target-model-settings-table">
           <thead>
-            <tr><th>目的変数</th><th>タスク</th><th>モデル上のクラス設定／順序</th></tr>
+            <tr><th>目的変数</th><th>タスク</th><th>モデル上の分布／クラス設定／順序</th></tr>
           </thead>
           <tbody>
             {targetColumns.map((target) => {
@@ -179,7 +243,7 @@ export default function TargetModelSettings({
         </table>
       </div>
       <p className="settings-note">
-        多値分類は自動的にMulticlassとして学習します。どのクラスを候補提案で狙うかは「候補提案」画面で設定します。
+        応答分布は回帰目的で共通です。多値分類は自動的にMulticlassとして学習します。候補提案で狙うクラスは「候補提案」画面で設定します。
       </p>
     </article>
   );

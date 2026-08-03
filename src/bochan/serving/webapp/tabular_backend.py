@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .feature_importance_outputs import relabel_feature_importance_outputs
+
 
 def _category_key_from_label(series: Any, label: Any) -> Any:
     """Recover an original category value from the Web encoder's string label."""
@@ -169,6 +171,19 @@ def fit_tabular_optimizer(
     optimizer.fit(fit_data)
     if optimizer.dataset is None:
         raise RuntimeError("TabularBayesianOptimizer did not retain its fitted dataset.")
+
+    cross_validation_result = optimizer.cross_validation_result_
+    if cross_validation_result is not None:
+        feature_importance = getattr(
+            cross_validation_result,
+            "feature_importance",
+            None,
+        )
+        if feature_importance is not None:
+            relabel_feature_importance_outputs(
+                feature_importance,
+                target_columns,
+            )
 
     from .visualization_sessions import attach_fitted_tabular_optimizer
 

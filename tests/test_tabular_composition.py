@@ -30,6 +30,11 @@ def test_formula_formatter_is_deterministic():
     assert formula == "Fe0.5Ni0.3Co0.2"
 
 
+def test_parse_formula_rejects_unmatched_closing_bracket():
+    with pytest.raises(ValueError, match="Unexpected closing bracket"):
+        parse_formula("Fe)O")
+
+
 @pytest.mark.parametrize("method", ["clr", "alr", "ilr"])
 def test_log_ratio_round_trip(method):
     values = np.asarray([[0.5, 0.3, 0.2], [0.2, 0.2, 0.6]])
@@ -111,3 +116,33 @@ def test_search_space_enforces_required_and_minimum_active_components():
     assert repaired["Co"] >= 0.01
     assert sum(value > 0 for value in repaired.values()) == 2
     assert not space.validate(repaired)
+
+
+def test_inverse_transform_converts_weight_fraction_to_atomic_formula():
+    transformer = CompositionTransformer(
+        elements=["H", "O"],
+        normalization="weight_fraction",
+        representation="fractions",
+        precision=4,
+    )
+    transformed = transformer.fit_transform(pd.Series(["H2O"]))
+    assert transformer.inverse_transform(transformed).iloc[0] == "H0.6667O0.3333"
+
+
+def test_inverse_transform_omits_pseudocount_zero_components():
+    transformer = CompositionTransformer(
+        elements=["Fe", "Co", "Ni"],
+        representation="ilr",
+        precision=6,
+    )
+    transformed = transformer.fit_transform(pd.Series(["Fe0.5Ni0.5"]))
+    assert transformer.inverse_transform(transformed).iloc[0] == "Fe0.5Ni0.5"
+
+
+def test_search_space_rejects_non_activatable_required_component():
+    with pytest.raises(ValueError, match="cannot be active"):
+        CompositionSearchSpace(
+            components=["Fe", "Ni"],
+            bounds={"Fe": (0.0, 1.0), "Ni": (0.0, 0.0)},
+            required_components=["Ni"],
+        )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from bochan.api import ModelConfig
+from bochan.api.factory import resolve_model_cls
 from bochan.models.transforms.outcome import PositiveScaleOutcomeTransform
 from bochan.serving.webapp import workflows_tabular
 
@@ -20,6 +21,7 @@ def test_gamma_multitask_direct_config_preserves_non_gaussian_family() -> None:
             model_kwargs={"rank": 1},
         )
     )
+    model_cls = resolve_model_cls(config)
 
     assert config.task_type == "multi_objective"
     assert config.model_type == "gamma_multitask"
@@ -28,3 +30,5 @@ def test_gamma_multitask_direct_config_preserves_non_gaussian_family() -> None:
     assert config.model_kwargs == {"rank": 1}
     assert isinstance(config.outcome_transform, PositiveScaleOutcomeTransform)
     assert config.pass_outcome_transform is True
+    assert model_cls.__name__ == "GammaMultiTaskGPModel"
+    assert model_cls.__module__.startswith("bochan.models.regression.non_gaussian.gamma")

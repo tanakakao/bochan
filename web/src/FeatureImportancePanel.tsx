@@ -26,6 +26,13 @@ interface DiagnosticFigure {
   layout: Record<string, unknown>;
 }
 
+interface RankedDiagnosticValue {
+  feature: string;
+  value: number;
+}
+
+const IMPORTANCE_PLOT_MARGIN = { l: 170, r: 30, t: 70, b: 60 };
+
 const DIAGNOSTIC_LABELS: Record<string, string> = {
   ard: "ARD感度",
   kernel_components: "カーネル構成",
@@ -58,6 +65,67 @@ function numericMatrix(value: unknown): number[][] {
   return value
     .map((row) => flattenNumbers(row))
     .filter((row) => row.length > 0);
+}
+
+function importancePlotHeight(featureCount: number): number {
+  return Math.min(900, Math.max(360, featureCount * 34 + 140));
+}
+
+function horizontalBarLabels(data: Data[]): string[] {
+  const labels = new Set<string>();
+  data.forEach((trace) => {
+    const record = asRecord(trace);
+    if (record?.orientation !== "h" || !Array.isArray(record.y)) return;
+    record.y.forEach((label) => labels.add(String(label)));
+  });
+  return [...labels];
+}
+
+function hasVerticalZeroLine(layout: Record<string, unknown>): boolean {
+  if (!Array.isArray(layout.shapes)) return false;
+  return layout.shapes.some((shape) => {
+    const record = asRecord(shape);
+    return record?.type === "line" && record.x0 === 0 && record.x1 === 0;
+  });
+}
+
+function importanceBarLayout(
+  layout: Record<string, unknown>,
+  featureOrder: string[] = []
+): Record<string, unknown> {
+  const xaxis = asRecord(layout.xaxis) ?? {};
+  const yaxis = asRecord(layout.yaxis) ?? {};
+  const shapes = Array.isArray(layout.shapes) ? layout.shapes : [];
+  return {
+    ...layout,
+    margin: IMPORTANCE_PLOT_MARGIN,
+    shapes: hasVerticalZeroLine(layout)
+      ? shapes
+      : [
+          ...shapes,
+          {
+            type: "line",
+            xref: "x",
+            yref: "paper",
+            x0: 0,
+            x1: 0,
+            y0: 0,
+            y1: 1,
+            line: { width: 1, color: "gray" }
+          }
+        ],
+    xaxis: {
+      ...xaxis,
+      zeroline: false
+    },
+    yaxis: {
+      ...yaxis,
+      autorange: "reversed",
+      ...(featureOrder.length
+        ? { categoryorder: "array", categoryarray: featureOrder }
+        : {})
+    }
+  };
 }
 
 function featureName(value: unknown, featureColumns: string[]): string {
@@ -152,7 +220,8 @@ function ardFigures(
   const components = Array.isArray(rawComponents)
     ? rawComponents.map(asRecord).filter((item): item is Record<string, unknown> => item !== null)
     : [];
-  const traces: Data[] = [];
+  const componentValues: Array<{ name: string; entries: RankedDiagnosticValue[] }> = [];
+  const featureScores = new Map<string, number>();
 
   components.forEach((component, componentIndex) => {
     const inverse = flattenNumbers(component.inverse_lengthscale);
@@ -160,36 +229,62 @@ function ardFigures(
     const values = inverse.length
       ? inverse
       : lengths.map((item) => item === 0 ? Number.NaN : 1 / item);
-    if (!values.length) return;
     const activeDims = flattenNumbers(component.active_dims).map((item) => Math.round(item));
-    const labels = values.map((_, index) => (
-      featureNameAt(activeDims[index] ?? index, featureColumns)
-    ));
-    traces.push({
-      type: "bar",
-      orientation: "h",
-      x: values,
-      y: labels,
+    const entries = values.flatMap((item, index) => {
+      if (!Number.isFinite(item)) return [];
+      const feature = featureNameAt(activeDims[index] ?? index, featureColumns);
+      featureScores.set(
+        feature,
+        Math.max(featureScores.get(feature) ?? 0, Math.abs(item))
+      );
+      return [{ feature, value: item }];
+    });
+    if (!entries.length) return;
+    componentValues.push({
       name: String(
         component.path ??
         component.kernel_class ??
         `カーネル ${componentIndex + 1}`
-      )
+      ),
+      entries
     });
+  });
+
+  const featureOrder = [...featureScores.entries()]
+    .sort((left, right) => (
+      right[1] - left[1] || left[0].localeCompare(right[0])
+    ))
+    .map(([feature]) => feature);
+  const orderByFeature = new Map(
+    featureOrder.map((feature, index) => [feature, index])
+  );
+  const traces: Data[] = componentValues.map((component) => {
+    const entries = [...component.entries].sort((left, right) => (
+      (orderByFeature.get(left.feature) ?? Number.MAX_SAFE_INTEGER) -
+      (orderByFeature.get(right.feature) ?? Number.MAX_SAFE_INTEGER)
+    ));
+    return {
+      type: "bar",
+      orientation: "h",
+      x: entries.map((entry) => entry.value),
+      y: entries.map((entry) => entry.feature),
+      name: component.name,
+      hovertemplate: "feature=%{y}<br>sensitivity=%{x:.6g}<extra>%{fullData.name}</extra>"
+    };
   });
 
   if (!traces.length) return [];
   return [{
     id: `${output}-${diagnosticKey}-sensitivity`,
     title: `${output}: ${diagnosticLabel(diagnosticKey)}`,
-    description: "逆長さ尺度が大きい説明変数ほど、カーネル予測がその変数の変化に敏感です。Permutation Importanceや因果効果とは異なります。",
+    description: "逆長さ尺度が大きい説明変数ほど、カーネル予測がその変数の変化に敏感です。説明変数は感度の絶対値が大きい順です。Permutation Importanceや因果効果とは異なります。",
     data: traces,
-    layout: {
+    layout: importanceBarLayout({
       barmode: "group",
+      showlegend: traces.length > 1,
       xaxis: { title: "逆長さ尺度" },
-      yaxis: { title: "説明変数", autorange: "reversed" },
-      margin: { l: 170, r: 30, t: 70, b: 60 }
-    }
+      yaxis: { title: "説明変数" }
+    }, featureOrder)
   }];
 }
 
@@ -567,14 +662,14 @@ export default function FeatureImportancePanel({ result }: { result: RegressionR
             <p>{visualization.description}</p>
             <div
               className="plot-container"
-              style={{ height: Math.min(900, Math.max(360, rows.length * 34 + 140)) }}
+              style={{ height: importancePlotHeight(rows.length) }}
             >
               <Plot
                 data={visualization.figure.data as Data[]}
-                layout={themedPlotLayout({
-                  ...visualization.figure.layout,
-                  margin: { l: 170, r: 30, t: 70, b: 60 }
-                }, theme)}
+                layout={themedPlotLayout(
+                  importanceBarLayout(visualization.figure.layout),
+                  theme
+                )}
                 config={RESULT_PLOT_CONFIG}
                 useResizeHandler
                 style={{ width: "100%", height: "100%" }}
@@ -619,20 +714,38 @@ export default function FeatureImportancePanel({ result }: { result: RegressionR
       </p>
       {selectedDiagnosticFigures.length > 0
         ? <div className="visualization-grid">
-            {selectedDiagnosticFigures.map((figure) =>
-              <article className="panel visualization-card" key={figure.id}>
+            {selectedDiagnosticFigures.map((figure) => {
+              const importanceLike = diagnosticKey === "ard" ||
+                diagnosticKey === "kernel_components";
+              const labels = importanceLike
+                ? horizontalBarLabels(figure.data)
+                : [];
+              return <article className="panel visualization-card" key={figure.id}>
                 <h3>{figure.title}</h3>
                 <p>{figure.description}</p>
-                <div className="plot-container" style={{ height: 460 }}>
+                <div
+                  className="plot-container"
+                  style={{
+                    height: importanceLike
+                      ? importancePlotHeight(labels.length)
+                      : 460
+                  }}
+                >
                   <Plot
                     data={figure.data}
-                    layout={themedPlotLayout(figure.layout, theme)}
+                    layout={themedPlotLayout(
+                      importanceLike
+                        ? importanceBarLayout(figure.layout, labels)
+                        : figure.layout,
+                      theme
+                    )}
                     config={RESULT_PLOT_CONFIG}
                     useResizeHandler
                     style={{ width: "100%", height: "100%" }}
                   />
                 </div>
-              </article>)}
+              </article>;
+            })}
           </div>
         : <div className="alert warning">
             この診断には共通形式のグラフがないため、下の診断データを表示します。

@@ -97,3 +97,17 @@ def test_preprocessor_bridges_existing_tabular_dataframe_api():
     assert "formula__alr__Fe_over_Co" in transformed.columns
     recovered = preprocessor.inverse_candidates(transformed.drop(columns=["property"]))
     assert recovered.loc[0, "formula"] == "Fe0.5Co0.2Ni0.3"
+
+
+def test_search_space_enforces_required_and_minimum_active_components():
+    space = CompositionSearchSpace(
+        components=["Fe", "Ni", "Co"],
+        steps={"Fe": 0.01, "Ni": 0.01, "Co": 0.01},
+        min_active_components=2,
+        max_active_components=2,
+        required_components=["Co"],
+    )
+    repaired = space.repair({"Fe": 1.0, "Ni": 0.0, "Co": 0.0})
+    assert repaired["Co"] >= 0.01
+    assert sum(value > 0 for value in repaired.values()) == 2
+    assert not space.validate(repaired)

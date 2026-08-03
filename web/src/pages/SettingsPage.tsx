@@ -8,6 +8,9 @@ import {
   MODEL_DESCRIPTIONS,
   MODEL_FAMILY_OPTIONS,
   MODEL_OPTIONS,
+  isMultitaskModelType,
+  isNonGaussianModelType,
+  isProjectedModelType,
   modelFamilyFor,
   type ModelFamily,
   type WebModelType
@@ -63,12 +66,15 @@ export default function SettingsPage() {
   const hasRegressionTargets = taskTypes.some((task) => task === "regression");
   const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
   const canUseMultitask = targetColumns.length > 1 && allRegression && !hasCategoricalFeatures;
-  const projectedModel = modelType === "pca" || modelType === "rembo";
+  const projectedModel = isProjectedModelType(modelType);
   const maxProjectionDimensions = Math.max(selectedVariables.length, 1);
 
   const availableModels = useMemo(
-    () => MODEL_OPTIONS.filter((option) => option.value !== "multitask" || canUseMultitask),
-    [canUseMultitask]
+    () => MODEL_OPTIONS.filter((option) => (
+      (!isNonGaussianModelType(option.value) || allRegression) &&
+      (!isMultitaskModelType(option.value) || canUseMultitask)
+    )),
+    [allRegression, canUseMultitask]
   );
   const modelFamily = modelFamilyFor(modelType);
   const availableModelFamilies = useMemo(
@@ -167,7 +173,7 @@ export default function SettingsPage() {
           </div>
           <p className="settings-note">
             {selectedModelDescription}
-            {modelType === "multitask" ? " 欠損目的値があればWideMultiTask、なければKroneckerを使用します。" : null}
+            {isMultitaskModelType(modelType) ? " 複数の回帰目的列をwide形式の相関付きモデルで学習します。" : null}
           </p>
         </article>
       </div>

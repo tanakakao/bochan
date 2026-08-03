@@ -6,7 +6,7 @@ export type ModelFamily =
   | "multitask";
 
 export const MODEL_FAMILY_OPTIONS: Array<{ value: ModelFamily; label: string }> = [
-  { value: "standard_gp", label: "標準ガウス過程" },
+  { value: "standard_gp", label: "標準GP" },
   { value: "deep_representation", label: "深層・表現学習" },
   { value: "high_dimensional", label: "高次元・次元削減" },
   { value: "robust_noise", label: "ノイズ・頑健" },

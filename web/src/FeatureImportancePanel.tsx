@@ -319,9 +319,11 @@ function figureMatches(
   outputCount: number
 ): boolean {
   const id = visualization.id.toLowerCase();
+  const safeOutput = safeFigureId(output).toLowerCase();
+  const safeIdMatch = safeOutput !== "target" && id.includes(safeOutput);
   const outputMatch = outputCount === 1 ||
     id.includes(output.toLowerCase()) ||
-    id.includes(safeFigureId(output).toLowerCase()) ||
+    safeIdMatch ||
     visualization.title.includes(output);
   return outputMatch && id.includes(kind);
 }
@@ -501,7 +503,7 @@ export default function FeatureImportancePanel({ result }: { result: RegressionR
     {view === "permutation" && <>
       <div className="visualization-grid">
         {visibleFigures.map((visualization) =>
-          <article className="panel visualization-card" key={visualization.id}>
+          <article className="panel visualization-card" key={`${visualization.id}-${visualization.title}`}>
             <h3>{visualization.title}</h3>
             <p>{visualization.description}</p>
             <div

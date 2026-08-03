@@ -186,9 +186,9 @@ def format_formula(
         if value <= zero_tolerance:
             continue
         rounded = round(value, precision)
-        if rounded <= 10 ** (-precision):
+        if rounded == 0.0:
             continue
-        if omit_one and math.isclose(rounded, 1.0, rel_tol=0.0, abs_tol=10 ** (-precision)):
+        if omit_one and rounded == 1.0:
             suffix = ""
         else:
             suffix = f"{rounded:.{precision}f}".rstrip("0").rstrip(".")

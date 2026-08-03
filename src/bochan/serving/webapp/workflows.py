@@ -122,6 +122,108 @@ def _attach_reuse_metadata(
     return metadata
 
 
+def _diagnostic_methods(request: Any) -> tuple[str, ...]:
+    """Return model-diagnostic methods requested by the Web inspection settings."""
+
+    settings = getattr(request, "feature_importance", None)
+    if settings is None or not bool(getattr(settings, "enabled", False)):
+        return ()
+    config = getattr(settings, "config", None)
+    if config is None:
+        return ()
+    methods = getattr(config, "diagnostic_methods", None)
+    if methods is None and isinstance(config, dict):
+        methods = config.get("diagnostic_methods")
+    return tuple(str(method) for method in (methods or ()))
+
+
+def _diagnostics_by_target(
+    diagnostics: dict[str, Any],
+    target_columns: list[str],
+) -> dict[str, dict[str, Any]]:
+    """Convert extractor output to the target-oriented Web response structure."""
+
+    if not diagnostics or not target_columns:
+        return {}
+    if len(target_columns) == 1:
+        return {target_columns[0]: diagnostics}
+
+    per_target: dict[str, dict[str, Any]] = {
+        target: {} for target in target_columns
+    }
+    shared: dict[str, Any] = {}
+    for key, value in diagnostics.items():
+        by_output = value.get("by_output") if isinstance(value, dict) else None
+        if isinstance(by_output, dict):
+            for target in target_columns:
+                if target in by_output:
+                    per_target[target][key] = by_output[target]
+            continue
+
+        matched_components = False
+        if isinstance(value, list):
+            for target in target_columns:
+                components = [
+                    item
+                    for item in value
+                    if isinstance(item, dict) and item.get("output_name") == target
+                ]
+                if components:
+                    per_target[target][key] = components
+                    matched_components = True
+        if not matched_components:
+            shared[key] = value
+
+    return {
+        target: {**shared, **per_target[target]}
+        for target in target_columns
+        if shared or per_target[target]
+    }
+
+
+def _attach_final_model_diagnostics(
+    result: dict[str, Any],
+    request: Any,
+    session: Any,
+) -> None:
+    """Fill diagnostics omitted by cross-validated importance aggregation.
+
+    Cross-validation aggregates predictive permutation importance across folds but
+    deliberately does not align fold-local latent diagnostics. The Web result still
+    has access to the final model fitted on all observations, so read diagnostics
+    from that model without recomputing permutation importance.
+    """
+
+    if result.get("model_diagnostics"):
+        return
+    methods = _diagnostic_methods(request)
+    if not methods:
+        return
+
+    from bochan.inspection.diagnostics import extract_model_diagnostics
+
+    dataset = getattr(session.tabular_optimizer, "dataset", None)
+    cat_dims = tuple(int(value) for value in (getattr(dataset, "cat_dims", None) or []))
+    diagnostics, warnings = extract_model_diagnostics(
+        session.optimizer.model,
+        methods=methods,
+        feature_names=tuple(session.feature_columns),
+        cat_dims=cat_dims,
+    )
+    if diagnostics:
+        result["model_diagnostics"] = _diagnostics_by_target(
+            diagnostics,
+            list(session.target_columns),
+        )
+        metadata = dict(result.get("metadata") or {})
+        metadata["model_diagnostics_source"] = "final_fitted_model"
+        result["metadata"] = metadata
+    if warnings:
+        existing = list(result.get("feature_importance_warnings") or [])
+        existing.extend(warning for warning in warnings if warning not in existing)
+        result["feature_importance_warnings"] = existing
+
+
 def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     """Run the Tabular workflow and retain objects needed by Results and Logs."""
 
@@ -155,6 +257,7 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
                 workflow_store,
             )
             session = finalize_visualization_run(run_id, result)
+            _attach_final_model_diagnostics(result, processing_request, session)
             session.request_details["request_payload"] = (
                 processing_request.model_dump(exclude_none=False)
                 if hasattr(processing_request, "model_dump")
@@ -223,6 +326,7 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
 
 
 __all__ = [
+    "_attach_final_model_diagnostics",
     "_build_outcome_constraint_config",
     "_figure_payload",
     "_resolve_target_settings",

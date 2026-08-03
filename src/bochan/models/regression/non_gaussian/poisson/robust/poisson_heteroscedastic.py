@@ -34,7 +34,11 @@ class HeteroscedasticPoissonPosterior(Posterior):
     `extra_noise_var` を足します。
     """
 
-    def __init__(self, base_posterior: PoissonPosterior, extra_noise_var: Optional[Tensor] = None) -> None:
+    def __init__(
+        self,
+        base_posterior: PoissonPosterior,
+        extra_noise_var: Optional[Tensor] = None,
+    ) -> None:
         super().__init__()
         self.base_posterior = base_posterior
         self.extra_noise_var = extra_noise_var
@@ -70,8 +74,38 @@ class HeteroscedasticPoissonPosterior(Posterior):
             return var
         return var + align_like(self.extra_noise_var, var)
 
-    def rsample(self, sample_shape: Optional[torch.Size] = None, base_samples: Optional[Tensor] = None) -> Tensor:
-        return self.base_posterior.rsample(sample_shape=sample_shape, base_samples=base_samples)
+    def rsample(
+        self,
+        sample_shape: Optional[torch.Size] = None,
+        base_samples: Optional[Tensor] = None,
+    ) -> Tensor:
+        if sample_shape is None:
+            sample_shape = torch.Size()
+        if base_samples is None:
+            return self.base_posterior.rsample(sample_shape=sample_shape)
+        return self.rsample_from_base_samples(
+            sample_shape=sample_shape,
+            base_samples=base_samples,
+        )
+
+    def rsample_from_base_samples(
+        self,
+        sample_shape: torch.Size,
+        base_samples: Tensor,
+    ) -> Tensor:
+        """Draw differentiable rate samples using fixed latent Gaussian samples.
+
+        Heteroscedastic regression acquisition functions apply the auxiliary
+        noise model separately after drawing response samples. Therefore this
+        method intentionally mirrors ``rsample`` and samples only the wrapped
+        Poisson response posterior rather than injecting ``extra_noise_var`` a
+        second time.
+        """
+        latent = self.base_posterior.latent_posterior.rsample_from_base_samples(
+            sample_shape=sample_shape,
+            base_samples=base_samples,
+        )
+        return self.base_posterior.likelihood.rate_from_f(latent)
 
     def sample_counts(self, sample_shape: Optional[torch.Size] = None) -> Tensor:
         return self.base_posterior.sample_counts(sample_shape=sample_shape)
@@ -114,8 +148,16 @@ def fit_variational_poisson_mll(
     model.likelihood.eval()
 
 
-def _fit_noise_model_single(train_X: Tensor, noise_targets: Tensor, input_transform: Optional[InputTransform]) -> SingleTaskGP:
-    model = SingleTaskGP(train_X=train_X, train_Y=noise_targets.log(), input_transform=input_transform)
+def _fit_noise_model_single(
+    train_X: Tensor,
+    noise_targets: Tensor,
+    input_transform: Optional[InputTransform],
+) -> SingleTaskGP:
+    model = SingleTaskGP(
+        train_X=train_X,
+        train_Y=noise_targets.log(),
+        input_transform=input_transform,
+    )
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_mll(mll)
     model.eval()
@@ -162,18 +204,30 @@ def _estimate_poisson_noise_targets(
 class _HeteroscedasticPoissonMixin:
     """Poisson heteroscedastic model 用 mixin。"""
 
-    def predict_noise_logvar(self, X: Tensor, ref_like: Optional[Tensor] = None) -> Tensor:
+    def predict_noise_logvar(
+        self,
+        X: Tensor,
+        ref_like: Optional[Tensor] = None,
+    ) -> Tensor:
         """追加分散の log variance を予測する。"""
         logvar = self.noise_model.posterior(X).mean
         if ref_like is not None:
             logvar = align_like(logvar, ref_like)
         return logvar
 
-    def predict_noise_var(self, X: Tensor, ref_like: Optional[Tensor] = None) -> Tensor:
+    def predict_noise_var(
+        self,
+        X: Tensor,
+        ref_like: Optional[Tensor] = None,
+    ) -> Tensor:
         """追加分散を予測する。"""
         return self.predict_noise_logvar(X, ref_like=ref_like).exp().clamp_min(1e-12)
 
-    def predict_noise_std(self, X: Tensor, ref_like: Optional[Tensor] = None) -> Tensor:
+    def predict_noise_std(
+        self,
+        X: Tensor,
+        ref_like: Optional[Tensor] = None,
+    ) -> Tensor:
         """追加分散の標準偏差を予測する。"""
         return self.predict_noise_var(X, ref_like=ref_like).sqrt()
 
@@ -205,13 +259,19 @@ class _HeteroscedasticPoissonMixin:
         elif not torch.is_tensor(observation_noise):
             extra_noise = None
 
-        posterior = HeteroscedasticPoissonPosterior(base_posterior=base_post, extra_noise_var=extra_noise)
+        posterior = HeteroscedasticPoissonPosterior(
+            base_posterior=base_post,
+            extra_noise_var=extra_noise,
+        )
         if posterior_transform is not None:
             posterior = posterior_transform(posterior)
         return posterior
 
 
-class HeteroscedasticPoissonGPModel(_HeteroscedasticPoissonMixin, PoissonGPModel):
+class HeteroscedasticPoissonGPModel(
+    _HeteroscedasticPoissonMixin,
+    PoissonGPModel,
+):
     """追加分散 GP を持つ Poisson 回帰モデル。
 
     Poisson の基本分散 `Var[y|x]=λ` に加えて、rate 残差から推定した
@@ -256,12 +316,33 @@ class HeteroscedasticPoissonGPModel(_HeteroscedasticPoissonMixin, PoissonGPModel
                 exp_clip=exp_clip,
                 min_rate=min_rate,
             )
-            fit_variational_poisson_mll(aux_model, lr=aux_lr, num_epochs=aux_num_epochs, batch_size=aux_batch_size, shuffle=aux_shuffle)
-            noise_targets = _estimate_poisson_noise_targets(aux_model, train_X, train_Y, min_noise=min_noise)
+            fit_variational_poisson_mll(
+                aux_model,
+                lr=aux_lr,
+                num_epochs=aux_num_epochs,
+                batch_size=aux_batch_size,
+                shuffle=aux_shuffle,
+            )
+            noise_targets = _estimate_poisson_noise_targets(
+                aux_model,
+                train_X,
+                train_Y,
+                min_noise=min_noise,
+            )
         else:
-            noise_targets = ensure_2d_col(torch.as_tensor(train_Yvar, device=train_X.device, dtype=train_X.dtype)).clamp_min(float(min_noise))
+            noise_targets = ensure_2d_col(
+                torch.as_tensor(
+                    train_Yvar,
+                    device=train_X.device,
+                    dtype=train_X.dtype,
+                )
+            ).clamp_min(float(min_noise))
 
-        noise_model = _fit_noise_model_single(train_X, noise_targets, copy.deepcopy(noise_tf))
+        noise_model = _fit_noise_model_single(
+            train_X,
+            noise_targets,
+            copy.deepcopy(noise_tf),
+        )
 
         super().__init__(
             train_X=train_X,
@@ -278,7 +359,10 @@ class HeteroscedasticPoissonGPModel(_HeteroscedasticPoissonMixin, PoissonGPModel
         self.noise_input_transform = noise_tf
 
 
-class HeteroscedasticPoissonMixedGPModel(_HeteroscedasticPoissonMixin, PoissonMixedGPModel):
+class HeteroscedasticPoissonMixedGPModel(
+    _HeteroscedasticPoissonMixin,
+    PoissonMixedGPModel,
+):
     """mixed 入力版の heteroscedastic Poisson 回帰モデル。"""
 
     def __init__(
@@ -321,12 +405,34 @@ class HeteroscedasticPoissonMixedGPModel(_HeteroscedasticPoissonMixin, PoissonMi
                 exp_clip=exp_clip,
                 min_rate=min_rate,
             )
-            fit_variational_poisson_mll(aux_model, lr=aux_lr, num_epochs=aux_num_epochs, batch_size=aux_batch_size, shuffle=aux_shuffle)
-            noise_targets = _estimate_poisson_noise_targets(aux_model, train_X, train_Y, min_noise=min_noise)
+            fit_variational_poisson_mll(
+                aux_model,
+                lr=aux_lr,
+                num_epochs=aux_num_epochs,
+                batch_size=aux_batch_size,
+                shuffle=aux_shuffle,
+            )
+            noise_targets = _estimate_poisson_noise_targets(
+                aux_model,
+                train_X,
+                train_Y,
+                min_noise=min_noise,
+            )
         else:
-            noise_targets = ensure_2d_col(torch.as_tensor(train_Yvar, device=train_X.device, dtype=train_X.dtype)).clamp_min(float(min_noise))
+            noise_targets = ensure_2d_col(
+                torch.as_tensor(
+                    train_Yvar,
+                    device=train_X.device,
+                    dtype=train_X.dtype,
+                )
+            ).clamp_min(float(min_noise))
 
-        noise_model = _fit_noise_model_mixed(train_X, noise_targets, cat_dims, copy.deepcopy(noise_tf))
+        noise_model = _fit_noise_model_mixed(
+            train_X,
+            noise_targets,
+            cat_dims,
+            copy.deepcopy(noise_tf),
+        )
 
         super().__init__(
             train_X=train_X,

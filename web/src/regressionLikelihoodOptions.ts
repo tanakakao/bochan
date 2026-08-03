@@ -114,9 +114,14 @@ export function selectRegressionModelType(
   );
   return (
     likelihoodOptions.find(
-      (option) => regressionModelVariantFor(option.value) === preferredVariant
+      (option) =>
+        option.family === preferredFamily &&
+        regressionModelVariantFor(option.value) === preferredVariant
     )?.value ??
     likelihoodOptions.find((option) => option.family === preferredFamily)?.value ??
+    likelihoodOptions.find(
+      (option) => regressionModelVariantFor(option.value) === preferredVariant
+    )?.value ??
     likelihoodOptions[0]?.value ??
     null
   );

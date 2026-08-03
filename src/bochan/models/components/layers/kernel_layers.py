@@ -8,7 +8,6 @@ from gpytorch.distributions import MultivariateNormal, MultitaskMultivariateNorm
 from gpytorch.means import ConstantMean, MultitaskMean
 from gpytorch.kernels import ScaleKernel, RBFKernel, MultitaskKernel
 from gpytorch.constraints import GreaterThan
-from gpytorch.utils.grid import ScaleToBounds
 
 from botorch.models.gpytorch import BatchedMultiOutputGPyTorchModel
 from botorch.models.kernels.categorical import CategoricalKernel
@@ -16,6 +15,69 @@ from botorch.models.utils.gpytorch_modules import get_covar_module_with_dim_scal
 from botorch.utils.transforms import normalize_indices
 
 from ..layers.feature_extractor import LargeFeatureExtractor, SkipLargeFeatureExtractor
+
+
+class StableScaleToBounds(nn.Module):
+    """Scale features to fixed bounds without dividing by a zero range.
+
+    GPyTorch's ``ScaleToBounds`` uses the current batch minimum and maximum.
+    Deep-kernel feature extractors can temporarily collapse to a nearly constant
+    representation, especially in small cross-validation folds.  Clamping the
+    denominator keeps the projected features finite while preserving the usual
+    min-max behavior outside the degenerate case.
+    """
+
+    def __init__(
+        self,
+        lower_bound: float,
+        upper_bound: float,
+        *,
+        min_range: float = 1e-6,
+    ) -> None:
+        super().__init__()
+        if upper_bound <= lower_bound:
+            raise ValueError("upper_bound must be greater than lower_bound.")
+        if min_range <= 0:
+            raise ValueError("min_range must be positive.")
+        self.lower_bound = float(lower_bound)
+        self.upper_bound = float(upper_bound)
+        self.min_range = float(min_range)
+        self.register_buffer("min_val", torch.tensor(lower_bound))
+        self.register_buffer("max_val", torch.tensor(upper_bound))
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Return finite min-max-scaled features within the configured bounds."""
+        if x.numel() == 0:
+            return x
+        if not torch.isfinite(x).all():
+            raise FloatingPointError(
+                "Deep Kernel feature extractor produced non-finite values. "
+                "Reduce the learning rate or inspect the input data."
+            )
+
+        if self.training:
+            min_val = x.amin()
+            max_val = x.amax()
+            self.min_val.data = min_val.detach()
+            self.max_val.data = max_val.detach()
+        else:
+            min_val = self.min_val.to(device=x.device, dtype=x.dtype)
+            max_val = self.max_val.to(device=x.device, dtype=x.dtype)
+            x = x.clamp(min=min_val, max=max_val)
+
+        min_range = torch.as_tensor(
+            self.min_range,
+            device=x.device,
+            dtype=x.dtype,
+        )
+        scale = 0.95 * (self.upper_bound - self.lower_bound)
+        safe_range = (max_val - min_val).clamp_min(min_range)
+        scaled = (x - min_val) * (scale / safe_range) + 0.95 * self.lower_bound
+        if not torch.isfinite(scaled).all():
+            raise FloatingPointError(
+                "Deep Kernel feature scaling produced non-finite values."
+            )
+        return scaled
 
 
 def _make_feature_extractor(
@@ -115,8 +177,9 @@ class DeepKernel(ExactGP):
             hidden_dims=hidden_dims,
         )
 
-        # NN の出力特徴を [-1, 1] に押し込む
-        self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
+        # NN の出力特徴を [-1, 1] に押し込む。
+        # fold内で特徴がほぼ一定になっても0除算しない。
+        self.scale_to_bounds = StableScaleToBounds(-1.0, 1.0)
 
     def forward(self, x: Tensor):
         """
@@ -189,7 +252,7 @@ class DeepKernelMixed(BatchedMultiOutputGPyTorchModel, ExactGP):
                 ext_type=ext_type,
                 hidden_dims=hidden_dims,
             )
-            self.scale_to_bounds = ScaleToBounds(-1.0, 1.0)
+            self.scale_to_bounds = StableScaleToBounds(-1.0, 1.0)
         else:
             self.feature_extractor = nn.Identity()
             self.scale_to_bounds = nn.Identity()

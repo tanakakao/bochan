@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import torch
+from botorch.models import SingleTaskGP
 from torch import nn
 
 from bochan.serving.webapp.workflows import _attach_final_model_diagnostics
@@ -39,10 +40,10 @@ def _request(*, diagnostics: bool) -> SimpleNamespace:
     )
 
 
-def _session() -> SimpleNamespace:
-    model = _HybridModel("強度", _BaseGP([2.0, 4.0]))
+def _session(model: nn.Module | None = None) -> SimpleNamespace:
+    wrapped = _HybridModel("強度", model or _BaseGP([2.0, 4.0]))
     return SimpleNamespace(
-        optimizer=SimpleNamespace(model=model),
+        optimizer=SimpleNamespace(model=wrapped),
         tabular_optimizer=SimpleNamespace(
             dataset=SimpleNamespace(cat_dims=[]),
         ),
@@ -51,13 +52,17 @@ def _session() -> SimpleNamespace:
     )
 
 
-def test_cv_result_receives_final_base_gp_ard_diagnostics() -> None:
-    result = {
+def _empty_cv_result() -> dict[str, object]:
+    return {
         "feature_importance_source": "cross_validation",
         "model_diagnostics": {},
         "feature_importance_warnings": [],
         "metadata": {},
     }
+
+
+def test_cv_result_receives_final_base_gp_ard_diagnostics() -> None:
+    result = _empty_cv_result()
 
     _attach_final_model_diagnostics(
         result,
@@ -72,12 +77,30 @@ def test_cv_result_receives_final_base_gp_ard_diagnostics() -> None:
     assert result["metadata"]["model_diagnostics_source"] == "final_fitted_model"
 
 
+def test_actual_single_task_gp_exposes_ard_for_each_feature() -> None:
+    train_x = torch.rand(8, 2, dtype=torch.double)
+    train_y = (train_x[:, :1] + 0.5 * train_x[:, 1:2]).sin()
+    model = SingleTaskGP(train_x, train_y)
+    result = _empty_cv_result()
+
+    _attach_final_model_diagnostics(
+        result,
+        _request(diagnostics=True),
+        _session(model),
+    )
+
+    diagnostics = result["model_diagnostics"]["強度"]
+    components = diagnostics["ard"]["components"]
+    inverse_lengthscale = [
+        value
+        for component in components
+        for value in torch.as_tensor(component["inverse_lengthscale"]).reshape(-1).tolist()
+    ]
+    assert len(inverse_lengthscale) >= 2
+
+
 def test_pi_only_does_not_attach_final_model_diagnostics() -> None:
-    result = {
-        "feature_importance_source": "cross_validation",
-        "model_diagnostics": {},
-        "feature_importance_warnings": [],
-    }
+    result = _empty_cv_result()
 
     _attach_final_model_diagnostics(
         result,

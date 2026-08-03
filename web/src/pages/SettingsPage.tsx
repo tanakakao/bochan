@@ -212,22 +212,34 @@ export default function SettingsPage() {
       </article>
 
       <article className="panel">
-        <div className="panel-title"><div><span className="panel-kicker">4 · INSPECTION</span><h3>特徴量重要度</h3><p>Permutation importanceとモデル固有診断を結果へ追加します。</p></div></div>
+        <div className="panel-title"><div><span className="panel-kicker">4 · INSPECTION</span><h3>特徴量重要度</h3><p>Permutation Importanceとモデル固有診断の取得内容を選択します。</p></div></div>
         <label className="switch-field"><input type="checkbox" checked={featureImportance.enabled} onChange={(event) => setFeatureImportance({ ...featureImportance, enabled: event.target.checked })} /><span>特徴量重要度を計算する</span></label>
         {featureImportance.enabled && <>
           <div className="model-settings-grid">
+            <label>
+              取得内容
+              <select
+                value={featureImportance.diagnosticAuto ? "permutation_and_model" : "permutation"}
+                onChange={(event) => setFeatureImportance({
+                  ...featureImportance,
+                  diagnosticAuto: event.target.value === "permutation_and_model"
+                })}
+              >
+                <option value="permutation">Permutation Importance（PI）のみ</option>
+                <option value="permutation_and_model">PI＋モデル固有診断</option>
+              </select>
+            </label>
             <label>評価方法<select value={featureImportance.source} onChange={(event) => setFeatureImportance({ ...featureImportance, source: event.target.value as "auto" | "training" | "cross_validation" })}><option value="auto">自動</option><option value="cross_validation">交差検証</option><option value="training">学習データ</option></select></label>
             <label>Permutation反復回数<input type="number" min={1} max={100} value={featureImportance.nRepeats} onChange={(event) => setFeatureImportance({ ...featureImportance, nRepeats: Number(event.target.value) })} /></label>
             <label>上位表示数<input type="number" min={1} max={100} value={featureImportance.topK} onChange={(event) => setFeatureImportance({ ...featureImportance, topK: Number(event.target.value) })} /></label>
             <label>順位基準<select value={featureImportance.rankBy} onChange={(event) => setFeatureImportance({ ...featureImportance, rankBy: event.target.value as "value" | "absolute" })}><option value="value">value</option><option value="absolute">absolute</option></select></label>
           </div>
-          <label className="switch-field"><input type="checkbox" checked={featureImportance.diagnosticAuto} onChange={(event) => setFeatureImportance({ ...featureImportance, diagnosticAuto: event.target.checked })} /><span>モデル固有診断を自動取得</span></label>
           <label className="switch-field"><input type="checkbox" checked={featureImportance.computeNoiseImportance} onChange={(event) => setFeatureImportance({ ...featureImportance, computeNoiseImportance: event.target.checked })} /><span>入力依存ノイズの重要度も計算</span></label>
           <label className="switch-field"><input type="checkbox" checked={featureImportance.normalizeImportance} onChange={(event) => setFeatureImportance({ ...featureImportance, normalizeImportance: event.target.checked })} /><span>正規化重要度を表示</span></label>
           <label className="switch-field"><input type="checkbox" checked={featureImportance.includeNegative} onChange={(event) => setFeatureImportance({ ...featureImportance, includeNegative: event.target.checked })} /><span>負の重要度を表示</span></label>
           <label className="switch-field"><input type="checkbox" checked={featureImportance.showErrorBars} onChange={(event) => setFeatureImportance({ ...featureImportance, showErrorBars: event.target.checked })} /><span>エラーバーを表示</span></label>
           {featureImportance.source === "cross_validation" && !crossValidation.enabled && <div className="alert warning">交差検証の特徴量重要度には、交差検証を有効にしてください。</div>}
-          <p className="settings-note">計算回数は概ね 特徴量数 × 反復回数 × fold数 に比例します。CV評価を推奨します。</p>
+          <p className="settings-note">モデル固有診断を選択すると、学習モデルが提供するARD、PCA、マルチタスク相関などを取得します。計算回数は概ね 特徴量数 × 反復回数 × fold数 に比例します。</p>
         </>}
       </article>
 

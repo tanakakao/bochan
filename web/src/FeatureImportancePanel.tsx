@@ -346,18 +346,20 @@ export default function FeatureImportancePanel({ result }: { result: RegressionR
     [summary]
   );
   const diagnosticOutputs = useMemo(() => Object.keys(diagnostics), [diagnostics]);
-  const availableViews = useMemo<InspectionView[]>(() => {
-    const values: InspectionView[] = [];
-    if (summary.length || figures.length) values.push("permutation");
-    if (diagnosticOutputs.length) values.push("model_diagnostic");
-    return values;
-  }, [summary.length, figures.length, diagnosticOutputs.length]);
+  const permutationAvailable = summary.length > 0 || figures.length > 0;
+  const diagnosticAvailable = diagnosticOutputs.length > 0;
   const [view, setView] = useState<InspectionView>(
-    availableViews[0] ?? "permutation"
+    permutationAvailable ? "permutation" : "model_diagnostic"
   );
-  const viewOutputs = view === "model_diagnostic"
-    ? diagnosticOutputs
-    : permutationOutputs;
+  const viewOutputs = useMemo(() => {
+    const selected = view === "model_diagnostic"
+      ? diagnosticOutputs
+      : permutationOutputs;
+    if (selected.length) return selected;
+    return result.target_columns.length
+      ? result.target_columns
+      : [result.target_column].filter(Boolean);
+  }, [diagnosticOutputs, permutationOutputs, result.target_column, result.target_columns, view]);
   const [output, setOutput] = useState(
     viewOutputs[0] ?? result.target_column ?? ""
   );
@@ -373,12 +375,11 @@ export default function FeatureImportancePanel({ result }: { result: RegressionR
     kinds[0] ?? "predictive"
   );
   const outputDiagnostics = diagnostics[output] ?? {};
-  const diagnosticKeys = Object.keys(outputDiagnostics);
+  const diagnosticKeys = useMemo(
+    () => Object.keys(outputDiagnostics),
+    [outputDiagnostics]
+  );
   const [diagnosticKey, setDiagnosticKey] = useState(diagnosticKeys[0] ?? "");
-
-  useEffect(() => {
-    if (!availableViews.includes(view)) setView(availableViews[0] ?? "permutation");
-  }, [availableViews, view]);
 
   useEffect(() => {
     if (!viewOutputs.includes(output)) {
@@ -454,19 +455,20 @@ export default function FeatureImportancePanel({ result }: { result: RegressionR
       </div>}
 
     <div className="model-settings-grid">
-      {availableViews.length > 1 &&
-        <label>
-          表示内容
-          <select
-            value={view}
-            onChange={(event) => setView(event.target.value as InspectionView)}
-          >
-            {availableViews.includes("permutation") &&
-              <option value="permutation">Permutation Importance（PI）</option>}
-            {availableViews.includes("model_diagnostic") &&
-              <option value="model_diagnostic">モデル固有診断</option>}
-          </select>
-        </label>}
+      <label>
+        表示内容
+        <select
+          value={view}
+          onChange={(event) => setView(event.target.value as InspectionView)}
+        >
+          <option value="permutation">
+            Permutation Importance（PI）{permutationAvailable ? "" : "（未計算）"}
+          </option>
+          <option value="model_diagnostic">
+            モデル固有診断{diagnosticAvailable ? "" : "（未取得）"}
+          </option>
+        </select>
+      </label>
       {viewOutputs.length > 1 &&
         <label>
           出力
@@ -474,33 +476,50 @@ export default function FeatureImportancePanel({ result }: { result: RegressionR
             {viewOutputs.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
         </label>}
-      {view === "permutation" && kinds.length > 1 &&
+      {view === "permutation" &&
         <label>
           重要度種別
           <select
             value={kind}
+            disabled={kinds.length === 0}
             onChange={(event) => setKind(
               event.target.value as FeatureImportanceSummaryRecord["importance_kind"]
             )}
           >
-            {kinds.map((name) =>
-              <option key={name} value={name}>{importanceKindLabel(name)}</option>)}
+            {kinds.length === 0
+              ? <option value="predictive">重要度データなし</option>
+              : kinds.map((name) =>
+                <option key={name} value={name}>{importanceKindLabel(name)}</option>)}
           </select>
         </label>}
-      {view === "model_diagnostic" && diagnosticKeys.length > 1 &&
+      {view === "model_diagnostic" &&
         <label>
           診断種類
           <select
             value={diagnosticKey}
+            disabled={diagnosticKeys.length === 0}
             onChange={(event) => setDiagnosticKey(event.target.value)}
           >
-            {diagnosticKeys.map((name) =>
-              <option key={name} value={name}>{diagnosticLabel(name)}</option>)}
+            {diagnosticKeys.length === 0
+              ? <option value="">診断データなし</option>
+              : diagnosticKeys.map((name) =>
+                <option key={name} value={name}>{diagnosticLabel(name)}</option>)}
           </select>
         </label>}
     </div>
 
-    {view === "permutation" && <>
+    {view === "permutation" && !permutationAvailable &&
+      <div className="alert warning">
+        この結果にはPermutation Importanceがありません。モデル設定の「特徴量重要度を計算する」を有効にして再実行してください。
+      </div>}
+
+    {view === "model_diagnostic" && !diagnosticAvailable &&
+      <div className="alert warning">
+        この結果にはモデル固有診断がありません。モデル設定で「特徴量重要度を計算する」と
+        「モデル固有診断を自動取得」を有効にして再実行してください。既存の結果には診断が後から追加されません。
+      </div>}
+
+    {view === "permutation" && permutationAvailable && <>
       <div className="visualization-grid">
         {visibleFigures.map((visualization) =>
           <article className="panel visualization-card" key={`${visualization.id}-${visualization.title}`}>
@@ -550,7 +569,7 @@ export default function FeatureImportancePanel({ result }: { result: RegressionR
         </div>}
     </>}
 
-    {view === "model_diagnostic" && <>
+    {view === "model_diagnostic" && diagnosticAvailable && <>
       <p className="settings-note">
         {diagnosticKey === "ard"
           ? "ARDはカーネルの感度を表します。値が大きいほど、その説明変数に対して予測が敏感です。"

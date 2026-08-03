@@ -118,8 +118,11 @@ class CompositionSearchSpace:
                 break
             if raw[index] > self.tolerance or len(active) < self.min_active_components:
                 active.add(index)
-        while len(active) < self.min_active_components:
-            active.add(ranked[len(active)])
+        if len(active) < self.min_active_components:
+            for index in ranked:
+                active.add(index)
+                if len(active) >= self.min_active_components:
+                    break
         mask = np.zeros(len(self.components), dtype=bool)
         mask[list(active)] = True
         return mask
@@ -178,6 +181,10 @@ class CompositionSearchSpace:
         active_upper = upper.copy()
         active_lower[inactive] = 0.0
         active_upper[inactive] = 0.0
+        for index in np.flatnonzero(active):
+            component = self.components[index]
+            positive_floor = float(self.steps.get(component, self.tolerance))
+            active_lower[index] = max(active_lower[index], positive_floor)
         projected = _project_bounded_simplex(raw, active_lower, active_upper, self.total)
         repaired = self._quantize(projected, active_lower, active_upper, active)
         return {component: float(repaired[index]) for index, component in enumerate(self.components)}

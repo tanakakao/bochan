@@ -7,9 +7,11 @@ on:
     paths:
       - "src/bochan/fit/deep/common.py"
       - "src/bochan/fit/deep/deepkernel.py"
+      - "src/bochan/likelihoods/regression.py"
       - "src/bochan/models/components/layers/kernel_layers.py"
       - "src/bochan/models/regression/gaussian/deep/deepkernel.py"
       - "tests/test_deepkernel_stability.py"
+      - "tests/test_tabular_noise_alpha.py"
       - ".github/workflows/deepkernel-stability-smoke.yml"
   workflow_dispatch:
 
@@ -26,12 +28,17 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[test]"
       - name: Run Deep Kernel stability tests
-        run: pytest -q --maxfail=1 tests/test_deepkernel_stability.py
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_deepkernel_stability.py \
+            tests/test_tabular_noise_alpha.py
       - name: Run lint
         run: |
           python -m pip install ruff
           ruff check --ignore I001 \
             src/bochan/fit/deep/common.py \
             src/bochan/fit/deep/deepkernel.py \
+            src/bochan/likelihoods/regression.py \
             src/bochan/models/components/layers/kernel_layers.py \
-            tests/test_deepkernel_stability.py
+            tests/test_deepkernel_stability.py \
+            tests/test_tabular_noise_alpha.py

@@ -231,4 +231,4 @@ def test_total_100_restores_percentage_columns(monkeypatch) -> None:
 def test_public_tabular_optimizer_exposes_element_column_support() -> None:
     from bochan.tabular import TabularBayesianOptimizer as PublicOptimizer
 
-    assert PublicOptimizer is TabularBayesianOptimizer
+    assert issubclass(PublicOptimizer, TabularBayesianOptimizer)

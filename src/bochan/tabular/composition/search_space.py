@@ -203,7 +203,7 @@ class CompositionSearchSpace:
         active_upper[inactive] = 0.0
         for index in np.flatnonzero(active):
             component = self.components[index]
-            positive_floor = float(self.steps.get(component, 10.0 * self.tolerance))
+            positive_floor = float(self.steps.get(component, min(10.0 * self.tolerance, active_upper[index])))
             active_lower[index] = max(active_lower[index], positive_floor)
         projected = _project_bounded_simplex(raw, active_lower, active_upper, self.total)
         repaired = self._quantize(projected, active_lower, active_upper, active)

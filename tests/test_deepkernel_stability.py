@@ -7,6 +7,7 @@ from torch import nn
 
 from bochan.fit.deep.common import fit_deep_full_batch_mll
 from bochan.fit.deep.deepkernel import fit_deepkernel_mll
+from bochan.likelihoods.regression import build_single_task_likelihood
 from bochan.models.components.layers.kernel_layers import StableScaleToBounds
 from bochan.models.regression.gaussian.deep.deepkernel import DeepKernelGPModel
 
@@ -89,6 +90,36 @@ def test_deepkernel_fit_handles_collapsed_fold_representation() -> None:
     posterior = model.posterior(train_X[:3])
     assert torch.isfinite(posterior.mean).all()
     assert torch.isfinite(posterior.variance).all()
+
+
+def test_deepkernel_fit_keeps_log_normal_noise_prior_in_support() -> None:
+    train_X = torch.linspace(0.0, 1.0, 8, dtype=torch.double).unsqueeze(-1)
+    train_Y = torch.sin(train_X * 3.0)
+    alpha = 1e-6
+    likelihood = build_single_task_likelihood(
+        train_X=train_X,
+        train_Y=train_Y,
+        alpha=alpha,
+    ).to(train_X)
+
+    with torch.no_grad():
+        likelihood.noise_covar.raw_noise.fill_(-20.0)
+
+    model = DeepKernelGPModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        likelihood=likelihood,
+        input_transform=None,
+        outcome_transform=None,
+    )
+    mll = model.make_mll()
+
+    fitted_mll = fit_deepkernel_mll(mll, num_epochs=2)
+
+    assert fitted_mll is mll
+    assert torch.all(likelihood.noise > alpha)
+    prior_log_prob = likelihood.noise_covar.noise_prior.log_prob(likelihood.noise)
+    assert torch.isfinite(prior_log_prob).all()
 
 
 def test_deepkernel_stability_defaults_allow_custom_override() -> None:

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+from botorch.sampling.normal import SobolQMCNormalSampler
 from torch import Tensor, nn
 
 from bochan.acquisition.regression.active_learning import (
@@ -11,7 +12,12 @@ from bochan.acquisition.regression.active_learning import (
     qHeteroRegressionPosteriorVariance,
     qHeteroRegressionPredictiveEntropy,
 )
-from bochan.models.regression.non_gaussian.poisson.robust import poisson_heteroscedastic as hetero_module
+from bochan.acquisition.regression.bayesian_optimization import (
+    qHeteroRegressionUpperConfidenceBound,
+)
+from bochan.models.regression.non_gaussian.poisson.robust import (
+    poisson_heteroscedastic as hetero_module,
+)
 from bochan.models.regression.non_gaussian.poisson.robust.poisson_heteroscedastic import (
     HeteroscedasticPoissonGPModel,
     HeteroscedasticPoissonMixedGPModel,
@@ -59,6 +65,26 @@ def _make_count_data(n: int = 8) -> tuple[Tensor, Tensor, Tensor]:
     train_y = rate.round().clamp_min(0)
     train_yvar = (0.2 + 0.1 * train_x[:, :1]).clamp_min(1e-4)
     return train_x, train_y, train_yvar
+
+
+def _make_explicit_noise_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[HeteroscedasticPoissonGPModel, Tensor]:
+    train_x, train_y, train_yvar = _make_count_data()
+    monkeypatch.setattr(
+        hetero_module,
+        "_fit_noise_model_single",
+        _fake_noise_model_single,
+    )
+    model = HeteroscedasticPoissonGPModel(
+        train_X=train_x,
+        train_Y=train_y,
+        train_Yvar=train_yvar,
+        num_inducing_points=4,
+    )
+    model.eval()
+    model.likelihood.eval()
+    return model, train_x
 
 
 def test_poisson_heteroscedastic_default_noise_target_path_initializes(
@@ -110,21 +136,7 @@ def test_poisson_heteroscedastic_acquisitions_are_finite_and_differentiable(
     acquisition_class: type,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    train_x, train_y, train_yvar = _make_count_data()
-    monkeypatch.setattr(
-        hetero_module,
-        "_fit_noise_model_single",
-        _fake_noise_model_single,
-    )
-
-    model = HeteroscedasticPoissonGPModel(
-        train_X=train_x,
-        train_Y=train_y,
-        train_Yvar=train_yvar,
-        num_inducing_points=4,
-    )
-    model.eval()
-    model.likelihood.eval()
+    model, train_x = _make_explicit_noise_model(monkeypatch)
 
     candidates = torch.rand(2, 3, 2, dtype=DTYPE, requires_grad=True)
     acquisition = acquisition_class(
@@ -132,6 +144,46 @@ def test_poisson_heteroscedastic_acquisitions_are_finite_and_differentiable(
         pending_penalty_weight=0.1,
         X_pending=train_x[:2],
     )
+    value = acquisition(candidates)
+
+    assert value.shape == torch.Size([2])
+    assert torch.isfinite(value).all()
+    value.sum().backward()
+    assert candidates.grad is not None
+    assert torch.isfinite(candidates.grad).all()
+
+
+def test_poisson_heteroscedastic_posterior_supports_fixed_base_samples(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model, _ = _make_explicit_noise_model(monkeypatch)
+    candidates = torch.rand(2, 3, 2, dtype=DTYPE, requires_grad=True)
+    posterior = model.posterior(candidates)
+    sampler = SobolQMCNormalSampler(sample_shape=torch.Size([16]), seed=123)
+
+    first = sampler(posterior)
+    second = sampler(posterior)
+
+    assert first.shape == torch.Size([16, 2, 3, 1])
+    assert torch.isfinite(first).all()
+    torch.testing.assert_close(first, second)
+    first.sum().backward()
+    assert candidates.grad is not None
+    assert torch.isfinite(candidates.grad).all()
+
+
+def test_poisson_heteroscedastic_qucb_uses_default_qmc_sampler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model, train_x = _make_explicit_noise_model(monkeypatch)
+    candidates = torch.rand(2, 3, 2, dtype=DTYPE, requires_grad=True)
+    acquisition = qHeteroRegressionUpperConfidenceBound(
+        model=model,
+        beta=1.0,
+        noise_penalty=0.1,
+        X_pending=train_x[:2],
+    )
+
     value = acquisition(candidates)
 
     assert value.shape == torch.Size([2])

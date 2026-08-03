@@ -55,6 +55,7 @@ from .target_settings import (
 )
 
 LOGGER = get_logger("workflow")
+_NATIVE_MULTITASK_MODEL_TYPES = frozenset({"multitask", "gamma_multitask"})
 
 
 def _acquisition_family(acqf_kwargs: dict[str, Any]) -> str:
@@ -86,6 +87,31 @@ def _resolve_optimizer_value(name: str) -> Any:
     from bochan.optim import optimize_thompson_sampling
 
     return optimize_thompson_sampling
+
+
+def _is_direct_multitask_model(model_type: str) -> bool:
+    """Return whether Web should fit one native correlated multitask model."""
+
+    return str(model_type) in _NATIVE_MULTITASK_MODEL_TYPES
+
+
+def _direct_multitask_model_config_kwargs(
+    *,
+    model_type: str,
+    input_transform_config: Any,
+    outcome_transform: Any,
+    model_kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    """Build kwargs for a native multi-output model without losing its family key."""
+
+    return {
+        "task_type": "multi_objective",
+        "model_type": str(model_type),
+        "cat_dims": None,
+        "input_transform_config": input_transform_config,
+        "outcome_transform": outcome_transform,
+        "model_kwargs": model_kwargs,
+    }
 
 
 def _multi_objective_config(
@@ -236,7 +262,7 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     )
 
     internal_tasks = [target_metadata[target]["internal_task"] for target in target_columns]
-    direct_multitask = model_type == "multitask"
+    direct_multitask = _is_direct_multitask_model(model_type)
     if direct_multitask:
         if acquisition_family != "bayesian_optimization":
             raise ValueError("multitask is currently available only with Bayesian optimization in the Web workbench.")
@@ -278,16 +304,16 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
 
     if direct_multitask:
         model_config = ModelConfig(
-            task_type="multi_objective",
-            model_type="multitask",
-            cat_dims=None,
-            input_transform_config=input_transform_config,
-            outcome_transform=request.outcome_transform,
-            model_kwargs=_model_kwargs(
-                user_model_kwargs,
+            **_direct_multitask_model_config_kwargs(
                 model_type=model_type,
-                n_features=int(provisional_train_x.shape[1]),
-            ),
+                input_transform_config=input_transform_config,
+                outcome_transform=request.outcome_transform,
+                model_kwargs=_model_kwargs(
+                    user_model_kwargs,
+                    model_type=model_type,
+                    n_features=int(provisional_train_x.shape[1]),
+                ),
+            )
         )
         hybrid_model = False
     else:

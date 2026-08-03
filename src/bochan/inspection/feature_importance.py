@@ -19,8 +19,97 @@ from .result_types import (
 )
 
 
-def _predict(source: Any, X: Tensor) -> Tensor:
-    """Obtain an evaluation prediction through a public raw-input interface."""
+def _as_prediction(value: Any) -> Tensor:
+    """Convert a public prediction value to a detached two-dimensional tensor."""
+
+    value = torch.as_tensor(value).detach()
+    return value.unsqueeze(-1) if value.ndim == 1 else value
+
+
+def _select_class_probability_output(
+    value: Any,
+    X: Tensor,
+    *,
+    output: int,
+) -> Tensor:
+    """Normalize class probabilities to ``[n, num_classes]`` for one output."""
+
+    probability = torch.as_tensor(value).detach()
+    if probability.ndim >= X.ndim + 1:
+        if probability.shape[-2] == 1:
+            probability = probability.squeeze(-2)
+        else:
+            if output >= probability.shape[-2]:
+                raise IndexError(
+                    f"output={output} is out of range for class probabilities "
+                    f"with shape={tuple(probability.shape)}."
+                )
+            probability = probability[..., output, :]
+    if probability.ndim != 2 or probability.shape[0] != X.shape[0]:
+        raise ValueError(
+            "Class probabilities must have shape [n, num_classes] for feature "
+            f"importance. Got X.shape={tuple(X.shape)}, "
+            f"probability.shape={tuple(probability.shape)}."
+        )
+    if probability.shape[-1] < 2:
+        raise ValueError(
+            "Multiclass feature importance requires one probability column per "
+            f"class. Got shape={tuple(probability.shape)}."
+        )
+    return probability
+
+
+def _class_probability_prediction(
+    source: Any,
+    X: Tensor,
+    *,
+    task: str,
+    output: int,
+) -> Tensor | None:
+    """Return output-specific class probabilities when the model exposes them."""
+
+    if task not in {"multiclass", "ordinal"}:
+        return None
+    model = getattr(source, "model", None) or source
+
+    class_probs_list = getattr(model, "class_probs_list", None)
+    if callable(class_probs_list):
+        try:
+            values = class_probs_list(X, output_indices=[output])
+        except TypeError:
+            try:
+                values = class_probs_list(X=X, output_indices=[output])
+            except TypeError:
+                values = class_probs_list(X)
+        if not isinstance(values, (list, tuple)) or not values:
+            raise TypeError(
+                "class_probs_list must return a non-empty list or tuple of tensors."
+            )
+        selected = values[0] if len(values) == 1 else values[output]
+        return _select_class_probability_output(selected, X, output=0)
+
+    class_probs = getattr(model, "class_probs", None)
+    if callable(class_probs):
+        try:
+            value = class_probs(X=X)
+        except TypeError:
+            value = class_probs(X)
+        return _select_class_probability_output(value, X, output=output)
+    return None
+
+
+def _predict(source: Any, X: Tensor, *, task: str, output: int) -> Tensor:
+    """Obtain an output-appropriate prediction through public raw-input APIs."""
+
+    class_probability = _class_probability_prediction(
+        source,
+        X,
+        task=task,
+        output=output,
+    )
+    if class_probability is not None:
+        return class_probability
+
     if hasattr(source, "predict"):
         try:
             result = source.predict(X, return_result=True)
@@ -34,8 +123,26 @@ def _predict(source: Any, X: Tensor) -> Tensor:
         else:
             posterior = source.posterior(X)
             value = posterior.mean
-    value = torch.as_tensor(value).detach()
-    return value.unsqueeze(-1) if value.ndim == 1 else value
+    return _as_prediction(value)
+
+
+def _multiclass_target_indices(target: Tensor, num_classes: int) -> Tensor:
+    """Validate encoded class labels before indexing a probability matrix."""
+
+    indices = target.long()
+    if not torch.equal(target, indices.to(dtype=target.dtype)):
+        raise ValueError("Multiclass targets must be integer-encoded class indices.")
+    if indices.numel() and (
+        int(indices.min().item()) < 0 or int(indices.max().item()) >= num_classes
+    ):
+        minimum = int(indices.min().item())
+        maximum = int(indices.max().item())
+        raise ValueError(
+            "Multiclass prediction and target class counts do not match: "
+            f"prediction has {num_classes} probability columns, while target "
+            f"indices range from {minimum} to {maximum}."
+        )
+    return indices
 
 
 def _score(
@@ -80,9 +187,15 @@ def _score(
     elif task == "multiclass" or (classification and pred.shape[-1] > 1):
         probability = pred.clamp_min(1e-7)
         probability = probability / probability.sum(-1, keepdim=True)
+        class_indices = _multiclass_target_indices(target, probability.shape[-1])
         if name in {"auto", "log_loss", "multiclass_log_loss", "ordinal_log_loss"}:
             return (
-                float(-probability[torch.arange(len(target), device=target.device), target.long()].log().mean()),
+                float(
+                    -probability[
+                        torch.arange(len(target), device=target.device),
+                        class_indices,
+                    ].log().mean()
+                ),
                 "multiclass_log_loss",
                 "minimize",
             )
@@ -167,8 +280,6 @@ def compute_feature_importance(
         raise ValueError("output_names length must match the number of y columns.")
     groups = _groups(X_tensor.shape[1], names, config)
     warning_list = ["Feature importance was evaluated on training data and may be optimistic."] if training_data else []
-    with torch.no_grad():
-        baseline_prediction = _predict(source, X_tensor)
     diagnostic_model = model or getattr(predictor, "model", None)
     diagnostics, diagnostic_warnings = (
         extract_model_diagnostics(
@@ -187,7 +298,21 @@ def compute_feature_importance(
     warning_list.extend(diagnostic_warnings)
     outputs: dict[str, OutputFeatureImportanceResult] = {}
     for output, (output_name, task) in enumerate(zip(out_names, tasks, strict=True)):
-        baseline, metric_name, direction = _score(y_tensor, baseline_prediction, str(task), config.scoring, output)
+        task_name = str(task)
+        with torch.no_grad():
+            baseline_prediction = _predict(
+                source,
+                X_tensor,
+                task=task_name,
+                output=output,
+            )
+        baseline, metric_name, direction = _score(
+            y_tensor,
+            baseline_prediction,
+            task_name,
+            config.scoring,
+            output,
+        )
         if config.scoring_direction != "auto":
             direction = config.scoring_direction
         entries: dict[str, FeatureImportanceEntry] = {}
@@ -202,8 +327,19 @@ def compute_feature_importance(
                 idx = list(group.indices)
                 permuted[:, idx] = X_tensor[permutation][:, idx]
                 with torch.no_grad():
-                    prediction = _predict(source, permuted)
-                score, _, _ = _score(y_tensor, prediction, str(task), config.scoring, output)
+                    prediction = _predict(
+                        source,
+                        permuted,
+                        task=task_name,
+                        output=output,
+                    )
+                score, _, _ = _score(
+                    y_tensor,
+                    prediction,
+                    task_name,
+                    config.scoring,
+                    output,
+                )
                 values.append(score - baseline if direction == "minimize" else baseline - score)
             tensor = torch.tensor(values, dtype=torch.float64)
             summary = ImportanceSummary(
@@ -254,7 +390,7 @@ def compute_feature_importance(
         )
         outputs[output_name] = OutputFeatureImportanceResult(
             output_name,
-            str(task),
+            task_name,
             {"permutation": method},
             model_diagnostics=diagnostics.copy(),
             warnings=diagnostic_warnings.copy(),

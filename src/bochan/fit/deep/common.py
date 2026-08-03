@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from contextlib import nullcontext
 
 import torch
-from gpytorch.settings import cholesky_jitter
+from gpytorch.settings import cholesky_jitter, cholesky_max_tries
 from linear_operator.utils.errors import NotPSDError
 from torch import Tensor
 
@@ -67,12 +66,14 @@ def _deep_full_batch_loss(
     last_error: NotPSDError | None = None
     for jitter in jitter_values:
         try:
-            context = cholesky_jitter(
-                float_value=jitter,
-                double_value=jitter,
-                half_value=max(jitter, 1e-4),
-            )
-            with context:
+            with (
+                cholesky_jitter(
+                    float_value=jitter,
+                    double_value=jitter,
+                    half_value=max(jitter, 1e-4),
+                ),
+                cholesky_max_tries(1),
+            ):
                 output = model(train_X)
                 return -mll(output, target), jitter
         except NotPSDError as error:

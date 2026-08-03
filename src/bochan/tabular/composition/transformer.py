@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 
 from .descriptors import CompositionDescriptorCalculator
-from .formula import ATOMIC_NUMBERS, format_formula, normalize_composition, parse_formula
+from .formula import ATOMIC_NUMBERS, ATOMIC_WEIGHTS, format_formula, normalize_composition, parse_formula
 from .search_space import CompositionSearchSpace
 from .simplex import SimplexTransform, close_compositions
 
@@ -175,6 +175,16 @@ class CompositionTransformer:
             normalized_rows.append([float(normalized.get(element, 0.0)) for element in elements])
         return np.asarray(raw_rows), np.asarray(normalized_rows), index
 
+    def _to_atomic_fractions(self, fractions: np.ndarray) -> np.ndarray:
+        """Convert the configured composition basis to atomic fractions."""
+
+        elements = self._require_fitted()
+        mode = self.normalization.lower()
+        if mode in {"weight_fraction", "weight", "mass_fraction"}:
+            weights = np.asarray([ATOMIC_WEIGHTS[element] for element in elements], dtype=float)
+            return close_compositions(fractions / weights)
+        return close_compositions(fractions)
+
     def transform(self, formulas: Any) -> Any:
         """Transform formula values into a numeric pandas DataFrame."""
 
@@ -218,9 +228,10 @@ class CompositionTransformer:
             array = array.reshape(1, -1)
         assert self.simplex_transform_ is not None
         fractions = self.simplex_transform_.inverse_transform(array, n_components=len(elements))
+        atomic_fractions = self._to_atomic_fractions(fractions)
         formulas = [
             format_formula(dict(zip(elements, row, strict=True)), order=elements, precision=self.precision)
-            for row in fractions
+            for row in atomic_fractions
         ]
         return pd.Series(formulas, index=index, name=f"{self.prefix}__formula")
 
@@ -297,8 +308,17 @@ class CompositionTabularPreprocessor:
                 composition = self.search_space.repair(composition)
             fraction_rows.append(composition)
         fraction_frame = pd.DataFrame(fraction_rows, index=candidates.index)
+        fraction_array = np.asarray([[row[element] for element in elements] for row in fraction_rows], dtype=float)
+        atomic_fractions = self.transformer._to_atomic_fractions(fraction_array)
         formula_series = pd.Series(
-            [format_formula(row, order=elements, precision=self.config.precision) for row in fraction_rows],
+            [
+                format_formula(
+                    dict(zip(elements, row, strict=True)),
+                    order=elements,
+                    precision=self.config.precision,
+                )
+                for row in atomic_fractions
+            ],
             index=candidates.index,
             name=self.config.column,
         )

@@ -72,6 +72,16 @@ class CompositionSearchSpace:
         positive_lower = int(np.count_nonzero(lower > self.tolerance))
         if positive_lower > maximum:
             raise ValueError("Positive lower bounds require more active components than allowed.")
+        activatable = upper > self.tolerance
+        for index, component in enumerate(components):
+            step = self.steps.get(component)
+            if step is not None and lower[index] <= self.tolerance:
+                activatable[index] = upper[index] + self.tolerance >= float(step)
+        if int(np.count_nonzero(activatable)) < self.min_active_components:
+            raise ValueError("Bounds and steps do not allow the requested minimum active-component count.")
+        for component in self.required_components:
+            if not activatable[components.index(component)]:
+                raise ValueError(f"Required component {component!r} cannot be active within its bounds and step.")
         for component, step in self.steps.items():
             if component not in components:
                 raise KeyError(f"Unknown step component {component!r}.")
@@ -107,11 +117,18 @@ class CompositionSearchSpace:
             raise ValueError("Candidate values must be finite.")
         return values
 
-    def _active_mask(self, raw: np.ndarray, lower: np.ndarray) -> np.ndarray:
+    def _active_mask(self, raw: np.ndarray, lower: np.ndarray, upper: np.ndarray) -> np.ndarray:
         maximum = len(self.components) if self.max_active_components is None else int(self.max_active_components)
-        required = {self.component_names.index(component) for component in self.required_components}
+        required = {self.components.index(component) for component in self.required_components}
         required.update(np.flatnonzero(lower > self.tolerance).tolist())
-        ranked = [int(index) for index in np.argsort(-raw)]
+
+        activatable = upper > self.tolerance
+        for index, component in enumerate(self.components):
+            step = self.steps.get(component)
+            if step is not None and lower[index] <= self.tolerance:
+                activatable[index] = upper[index] + self.tolerance >= float(step)
+        ranked = [int(index) for index in np.argsort(-raw) if activatable[index]]
+
         active = set(required)
         for index in ranked:
             if len(active) >= maximum:
@@ -123,6 +140,9 @@ class CompositionSearchSpace:
                 active.add(index)
                 if len(active) >= self.min_active_components:
                     break
+        if len(active) < self.min_active_components:
+            raise ValueError("Candidate cannot satisfy the minimum active-component count.")
+
         mask = np.zeros(len(self.components), dtype=bool)
         mask[list(active)] = True
         return mask
@@ -173,7 +193,7 @@ class CompositionSearchSpace:
 
         raw = np.maximum(self._as_array(candidate), 0.0)
         lower, upper = self._bounds_arrays()
-        active = self._active_mask(raw, lower)
+        active = self._active_mask(raw, lower, upper)
         inactive = ~active
         if np.any(lower[inactive] > self.tolerance):
             raise ValueError("An inactive component has a positive lower bound.")
@@ -183,7 +203,7 @@ class CompositionSearchSpace:
         active_upper[inactive] = 0.0
         for index in np.flatnonzero(active):
             component = self.components[index]
-            positive_floor = float(self.steps.get(component, self.tolerance))
+            positive_floor = float(self.steps.get(component, 10.0 * self.tolerance))
             active_lower[index] = max(active_lower[index], positive_floor)
         projected = _project_bounded_simplex(raw, active_lower, active_upper, self.total)
         repaired = self._quantize(projected, active_lower, active_upper, active)
@@ -204,7 +224,7 @@ class CompositionSearchSpace:
         if not self.min_active_components <= active_count <= maximum:
             errors.append(f"Active component count must be between {self.min_active_components} and {maximum}.")
         for component in self.required_components:
-            if values[self.component_names.index(component)] <= self.tolerance:
+            if values[self.components.index(component)] <= self.tolerance:
                 errors.append(f"Required component {component!r} is inactive.")
         for index, component in enumerate(self.components):
             step = self.steps.get(component)

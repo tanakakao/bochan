@@ -24,6 +24,7 @@ on:
       - "tests/test_webapp_model_reuse.py"
       - "tests/test_webapp_reuse_dataset_and_pareto.py"
       - "tests/test_webapp_model_artifacts.py"
+      - "tests/test_web_non_gaussian_validation.py"
       - "tests/test_web_experiment_history.py"
       - "tests/test_web_experiment_project_archive.py"
       - "tests/test_web_experiment_page.py"
@@ -60,6 +61,7 @@ jobs:
             tests/test_webapp_model_reuse.py \
             tests/test_webapp_reuse_dataset_and_pareto.py \
             tests/test_webapp_model_artifacts.py \
+            tests/test_web_non_gaussian_validation.py \
             tests/test_web_experiment_history.py \
             tests/test_web_experiment_project_archive.py \
             tests/test_web_experiment_page.py \
@@ -89,6 +91,7 @@ jobs:
             src/bochan/serving/webapp/model_artifacts.py \
             src/bochan/serving/webapp/model_artifact_routes.py \
             src/bochan/serving/webapp/model_reuse.py \
+            src/bochan/serving/webapp/non_gaussian_validation.py \
             src/bochan/serving/webapp/reuse_dataset.py \
             src/bochan/serving/webapp/target_settings.py \
             src/bochan/serving/webapp/target_roles.py \
@@ -111,6 +114,7 @@ jobs:
             tests/test_webapp_model_reuse.py \
             tests/test_webapp_reuse_dataset_and_pareto.py \
             tests/test_webapp_model_artifacts.py \
+            tests/test_web_non_gaussian_validation.py \
             tests/test_web_experiment_history.py \
             tests/test_web_experiment_project_archive.py \
             tests/test_web_experiment_page.py \

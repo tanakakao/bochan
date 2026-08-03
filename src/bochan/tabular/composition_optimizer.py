@@ -111,7 +111,7 @@ class TabularBayesianOptimizer(_TabularBayesianOptimizer):
 
     @property
     def composition_enabled(self) -> bool:
-        return self.composition_col is not None
+        return getattr(self, "composition_col", None) is not None
 
     def _make_composition_transformer(self, formulas: Any) -> CompositionTransformer:
         calculator = CompositionDescriptorCalculator(

@@ -34,6 +34,27 @@ def test_likelihood_builder_accepts_alpha_and_uses_valid_initial_value() -> None
     assert float(constraint.initial_value.detach().cpu()) > 0.1
 
 
+def test_noise_prior_constraint_stays_positive_for_gradient_optimizers() -> None:
+    train_X, train_Y = _training_data()
+    alpha = 1e-6
+    likelihood = build_single_task_likelihood(
+        train_X=train_X,
+        train_Y=train_Y,
+        alpha=alpha,
+    ).to(train_X)
+
+    constraint = likelihood.noise_covar.raw_noise_constraint
+    assert constraint._transform is not None
+
+    with torch.no_grad():
+        likelihood.noise_covar.raw_noise.fill_(-20.0)
+
+    noise = likelihood.noise
+    prior_log_prob = likelihood.noise_covar.noise_prior.log_prob(noise)
+    assert torch.all(noise > alpha)
+    assert torch.isfinite(prior_log_prob).all()
+
+
 @pytest.mark.parametrize("alpha", [0.0, -1e-4, float("inf"), float("nan")])
 def test_likelihood_builder_rejects_invalid_alpha(alpha: float) -> None:
     train_X, train_Y = _training_data()

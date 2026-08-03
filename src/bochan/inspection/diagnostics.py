@@ -209,10 +209,19 @@ def _kernel_components(model: Any) -> list[dict[str, Any]]:
                 value = getattr(module, name)
             except (AttributeError, RuntimeError):
                 continue
-            item[name] = _value(value)
+            if value is None:
+                continue
+            converted = _value(value)
+            if converted is not None:
+                item[name] = converted
         if "lengthscale" in item:
-            lengthscale = torch.as_tensor(item["lengthscale"])
-            item["inverse_lengthscale"] = torch.reciprocal(lengthscale).tolist()
+            try:
+                lengthscale = torch.as_tensor(item["lengthscale"])
+            except (RuntimeError, TypeError, ValueError):
+                item.pop("lengthscale", None)
+            else:
+                if lengthscale.numel() > 0:
+                    item["inverse_lengthscale"] = torch.reciprocal(lengthscale).tolist()
         if len(item) > 2:
             item.update(source_space="raw", is_predictive_importance=False)
             components.append(item)

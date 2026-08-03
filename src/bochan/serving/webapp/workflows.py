@@ -11,6 +11,7 @@ from . import target_results as _target_results
 from . import target_settings as _target_settings
 from .logging import current_request_id, get_logger, log_event
 from .model_reuse import model_reuse_run, prepare_model_reuse_request
+from .non_gaussian_validation import validate_non_gaussian_target_frame
 from .prediction_shapes import normalize_prediction_rows
 from .reuse_dataset import store_for_model_reuse
 from .risk_settings import (
@@ -48,6 +49,18 @@ _resolve_targets = _workflows_tabular._resolve_targets
 _run_regression_web_workflow = _workflows_tabular.run_regression_web_workflow
 
 LOGGER = get_logger("workflow.details")
+
+
+def _validate_non_gaussian_web_targets(request: Any, store: Any) -> None:
+    """Reject incompatible observed target values before model construction."""
+
+    target_columns, _ = _resolve_targets(request)
+    record = store.get(request.dataset_id)
+    validate_non_gaussian_target_frame(
+        record.data,
+        target_columns,
+        str(request.model_type),
+    )
 
 
 def _attach_missing_metadata(
@@ -112,6 +125,7 @@ def _attach_reuse_metadata(
 def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     """Run the Tabular workflow and retain objects needed by Results and Logs."""
 
+    _validate_non_gaussian_web_targets(request, store)
     processing_request, source_run_id = prepare_model_reuse_request(request)
     workflow_store = store_for_model_reuse(
         store,
@@ -213,5 +227,6 @@ __all__ = [
     "_figure_payload",
     "_resolve_target_settings",
     "_resolve_targets",
+    "_validate_non_gaussian_web_targets",
     "run_regression_web_workflow",
 ]

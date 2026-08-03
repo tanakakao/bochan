@@ -30,6 +30,11 @@ def test_formula_formatter_is_deterministic():
     assert formula == "Fe0.5Ni0.3Co0.2"
 
 
+def test_formula_formatter_preserves_small_nonzero_components_at_precision():
+    formula = format_formula({"Fe": 0.999999, "Co": 0.000001}, order=["Fe", "Co"], precision=6)
+    assert formula == "Fe0.999999Co0.000001"
+
+
 def test_parse_formula_rejects_unmatched_closing_bracket():
     with pytest.raises(ValueError, match="Unexpected closing bracket"):
         parse_formula("Fe)O")
@@ -146,3 +151,15 @@ def test_search_space_rejects_non_activatable_required_component():
             bounds={"Fe": (0.0, 1.0), "Ni": (0.0, 0.0)},
             required_components=["Ni"],
         )
+
+
+def test_search_space_handles_small_positive_upper_without_step():
+    space = CompositionSearchSpace(
+        components=["Fe", "Ni"],
+        bounds={"Fe": (0.0, 1.0), "Ni": (0.0, 5e-8)},
+        required_components=["Ni"],
+        tolerance=1e-8,
+    )
+    repaired = space.repair({"Fe": 1.0, "Ni": 0.0})
+    assert repaired["Ni"] > space.tolerance
+    assert not space.validate(repaired)

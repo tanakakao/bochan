@@ -40,10 +40,11 @@ def get_batch_dimensions(
     input_batch_shape = train_X.shape[:-2]
     num_outputs = train_Y.shape[-1]
 
-    if num_outputs > 1:
-        aug_batch_shape = input_batch_shape + torch.Size([num_outputs])
-    else:
-        aug_batch_shape = input_batch_shape
+    aug_batch_shape = (
+        input_batch_shape + torch.Size([num_outputs])
+        if num_outputs > 1
+        else input_batch_shape
+    )
 
     return input_batch_shape, aug_batch_shape
 
@@ -306,7 +307,6 @@ def build_multitask_likelihood(
 # ---------------------------------------------------------------------
 # Backward-supported aliases
 # ---------------------------------------------------------------------
-
 def singletasklikelihood(
     train_X: Tensor,
     train_Y: Tensor,

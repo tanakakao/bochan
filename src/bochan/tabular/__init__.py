@@ -27,7 +27,7 @@ from .composition import (
     normalize_composition,
     parse_formula,
 )
-from .composition_optimizer import TabularBayesianOptimizer
+from .multi_site_composition_optimizer import TabularBayesianOptimizer
 from .config import ColumnKey, TabularDataConfig, TabularFeatureGroup
 from .converter import (
     TabularDataset,

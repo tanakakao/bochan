@@ -29,9 +29,8 @@ def test_likelihood_builder_accepts_alpha_and_uses_valid_initial_value() -> None
         alpha=0.1,
     )
 
-    constraint = likelihood.noise_covar.raw_noise_constraint
     assert _noise_lower_bound(likelihood) == pytest.approx(0.1)
-    assert float(constraint.initial_value.detach().cpu()) > 0.1
+    assert float(likelihood.noise.detach().cpu()) > 0.1
 
 
 def test_noise_prior_constraint_stays_positive_for_gradient_optimizers() -> None:

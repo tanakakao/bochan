@@ -125,10 +125,9 @@ def fit_deep_full_batch_mll(
     Returns:
         The input ``mll``.
     """
-    if num_epochs is None:
-        num_epochs = 100 if epoch is None else int(epoch)
-    else:
-        num_epochs = int(num_epochs)
+    num_epochs = (
+        100 if epoch is None else int(epoch)
+    ) if num_epochs is None else int(num_epochs)
 
     model = mll.model
     likelihood = get_likelihood_from_mll_or_model(mll, model)

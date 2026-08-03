@@ -22,13 +22,20 @@ from bochan.models.components.negative_binomial import (
     extract_normalize_only_transform,
     prepare_count_targets,
 )
-from bochan.models.regression.non_gaussian.negative_binomial import NegativeBinomialGPModel, NegativeBinomialMixedGPModel
+from bochan.models.regression.non_gaussian.negative_binomial import (
+    NegativeBinomialGPModel,
+    NegativeBinomialMixedGPModel,
+)
 
 
 class HeteroscedasticNegativeBinomialPosterior(Posterior):
     """NegativeBinomialPosterior に追加の heteroscedastic variance を加える wrapper。"""
 
-    def __init__(self, base_posterior: NegativeBinomialPosterior, extra_noise_var: Optional[Tensor] = None) -> None:
+    def __init__(
+        self,
+        base_posterior: NegativeBinomialPosterior,
+        extra_noise_var: Optional[Tensor] = None,
+    ) -> None:
         super().__init__()
         self.base_posterior = base_posterior
         self.extra_noise_var = extra_noise_var
@@ -64,8 +71,36 @@ class HeteroscedasticNegativeBinomialPosterior(Posterior):
             return var
         return var + align_like(self.extra_noise_var, var)
 
-    def rsample(self, sample_shape: Optional[torch.Size] = None, base_samples: Optional[Tensor] = None) -> Tensor:
-        return self.base_posterior.rsample(sample_shape=sample_shape, base_samples=base_samples)
+    def rsample(
+        self,
+        sample_shape: Optional[torch.Size] = None,
+        base_samples: Optional[Tensor] = None,
+    ) -> Tensor:
+        if sample_shape is None:
+            sample_shape = torch.Size()
+        if base_samples is None:
+            return self.base_posterior.rsample(sample_shape=sample_shape)
+        return self.rsample_from_base_samples(
+            sample_shape=sample_shape,
+            base_samples=base_samples,
+        )
+
+    def rsample_from_base_samples(
+        self,
+        sample_shape: torch.Size,
+        base_samples: Tensor,
+    ) -> Tensor:
+        """固定 latent Gaussian sample から平均スケールのsampleを返す。
+
+        heteroscedastic acquisition側で補助noise modelを別途適用するため、
+        ここでは追加分散を二重に注入せず、wrapped response posteriorと
+        同じNegative Binomial mean sampleだけを返す。
+        """
+        latent = self.base_posterior.latent_posterior.rsample_from_base_samples(
+            sample_shape=sample_shape,
+            base_samples=base_samples,
+        )
+        return self.base_posterior.likelihood.mean_from_f(latent)
 
     def sample_counts(self, sample_shape: Optional[torch.Size] = None) -> Tensor:
         return self.base_posterior.sample_counts(sample_shape=sample_shape)
@@ -88,7 +123,11 @@ def _fit_variational_nb_mll(
         y_tensor = y_tensor.squeeze(-1)
     if batch_size is None:
         batch_size = x_tensor.shape[-2]
-    loader = DataLoader(TensorDataset(x_tensor, y_tensor), batch_size=batch_size, shuffle=shuffle)
+    loader = DataLoader(
+        TensorDataset(x_tensor, y_tensor),
+        batch_size=batch_size,
+        shuffle=shuffle,
+    )
     optimizer = torch.optim.Adam(mll.parameters(), lr=float(lr))
     for _ in range(int(num_epochs)):
         for xb, yb in loader:
@@ -102,8 +141,16 @@ def _fit_variational_nb_mll(
     model.likelihood.eval()
 
 
-def _fit_noise_model_single(train_X: Tensor, noise_targets: Tensor, input_transform: Optional[InputTransform]) -> SingleTaskGP:
-    model = SingleTaskGP(train_X=train_X, train_Y=noise_targets.log(), input_transform=input_transform)
+def _fit_noise_model_single(
+    train_X: Tensor,
+    noise_targets: Tensor,
+    input_transform: Optional[InputTransform],
+) -> SingleTaskGP:
+    model = SingleTaskGP(
+        train_X=train_X,
+        train_Y=noise_targets.log(),
+        input_transform=input_transform,
+    )
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_mll(mll)
     model.eval()
@@ -117,7 +164,12 @@ def _fit_noise_model_mixed(
     cat_dims: Sequence[int],
     input_transform: Optional[InputTransform],
 ) -> MixedSingleTaskGP:
-    model = MixedSingleTaskGP(train_X=train_X, train_Y=noise_targets.log(), cat_dims=list(cat_dims), input_transform=input_transform)
+    model = MixedSingleTaskGP(
+        train_X=train_X,
+        train_Y=noise_targets.log(),
+        cat_dims=list(cat_dims),
+        input_transform=input_transform,
+    )
     mll = ExactMarginalLogLikelihood(model.likelihood, model)
     fit_gpytorch_mll(mll)
     model.eval()
@@ -145,16 +197,28 @@ def _estimate_nb_noise_targets(
 class _HeteroscedasticNBMixin:
     """Negative Binomial heteroscedastic model 用 mixin。"""
 
-    def predict_noise_logvar(self, X: Tensor, ref_like: Optional[Tensor] = None) -> Tensor:
+    def predict_noise_logvar(
+        self,
+        X: Tensor,
+        ref_like: Optional[Tensor] = None,
+    ) -> Tensor:
         logvar = self.noise_model.posterior(X).mean
         if ref_like is not None:
             logvar = align_like(logvar, ref_like)
         return logvar
 
-    def predict_noise_var(self, X: Tensor, ref_like: Optional[Tensor] = None) -> Tensor:
+    def predict_noise_var(
+        self,
+        X: Tensor,
+        ref_like: Optional[Tensor] = None,
+    ) -> Tensor:
         return self.predict_noise_logvar(X, ref_like=ref_like).exp().clamp_min(1e-12)
 
-    def predict_noise_std(self, X: Tensor, ref_like: Optional[Tensor] = None) -> Tensor:
+    def predict_noise_std(
+        self,
+        X: Tensor,
+        ref_like: Optional[Tensor] = None,
+    ) -> Tensor:
         return self.predict_noise_var(X, ref_like=ref_like).sqrt()
 
     def posterior(
@@ -165,19 +229,34 @@ class _HeteroscedasticNBMixin:
         posterior_transform=None,
         **kwargs: Any,
     ) -> HeteroscedasticNegativeBinomialPosterior:
+        base_post = super().posterior(
+            X,
+            output_indices=output_indices,
+            observation_noise=True,
+            posterior_transform=None,
+            **kwargs,
+        )
         if torch.is_tensor(observation_noise):
             extra_noise = observation_noise
-            base_post = super().posterior(X, output_indices=output_indices, observation_noise=True, posterior_transform=None, **kwargs)
         else:
-            base_post = super().posterior(X, output_indices=output_indices, observation_noise=True, posterior_transform=None, **kwargs)
-            extra_noise = self.predict_noise_var(X, ref_like=base_post.mean) if observation_noise else None
-        posterior = HeteroscedasticNegativeBinomialPosterior(base_posterior=base_post, extra_noise_var=extra_noise)
+            extra_noise = (
+                self.predict_noise_var(X, ref_like=base_post.mean)
+                if observation_noise
+                else None
+            )
+        posterior = HeteroscedasticNegativeBinomialPosterior(
+            base_posterior=base_post,
+            extra_noise_var=extra_noise,
+        )
         if posterior_transform is not None:
             posterior = posterior_transform(posterior)
         return posterior
 
 
-class HeteroscedasticNegativeBinomialGPModel(_HeteroscedasticNBMixin, NegativeBinomialGPModel):
+class HeteroscedasticNegativeBinomialGPModel(
+    _HeteroscedasticNBMixin,
+    NegativeBinomialGPModel,
+):
     """追加分散 GP を持つ Negative Binomial 回帰モデル。"""
 
     def __init__(
@@ -209,6 +288,7 @@ class HeteroscedasticNegativeBinomialGPModel(_HeteroscedasticNBMixin, NegativeBi
         self.aux_batch_size = aux_batch_size
         self.aux_shuffle = bool(aux_shuffle)
         noise_tf = extract_normalize_only_transform(input_transform)
+
         if train_Yvar is None:
             aux_model = NegativeBinomialGPModel(
                 train_X=train_X,
@@ -222,12 +302,34 @@ class HeteroscedasticNegativeBinomialGPModel(_HeteroscedasticNBMixin, NegativeBi
                 min_mean=min_mean,
                 min_total_count=min_total_count,
             )
-            _fit_variational_nb_mll(aux_model, lr=aux_lr, num_epochs=aux_num_epochs, batch_size=aux_batch_size, shuffle=aux_shuffle)
-            noise_targets = _estimate_nb_noise_targets(aux_model, train_X, train_Y, min_noise=min_noise)
+            _fit_variational_nb_mll(
+                aux_model,
+                lr=aux_lr,
+                num_epochs=aux_num_epochs,
+                batch_size=aux_batch_size,
+                shuffle=aux_shuffle,
+            )
+            noise_targets = _estimate_nb_noise_targets(
+                aux_model,
+                train_X,
+                train_Y,
+                min_noise=min_noise,
+            )
         else:
-            noise_targets = ensure_2d_col(torch.as_tensor(train_Yvar, device=train_X.device, dtype=train_X.dtype)).clamp_min(float(min_noise))
-        self.noise_model = _fit_noise_model_single(train_X=train_X, noise_targets=noise_targets, input_transform=copy.deepcopy(noise_tf))
-        self.noise_input_transform = noise_tf
+            noise_targets = ensure_2d_col(
+                torch.as_tensor(
+                    train_Yvar,
+                    device=train_X.device,
+                    dtype=train_X.dtype,
+                )
+            ).clamp_min(float(min_noise))
+
+        noise_model = _fit_noise_model_single(
+            train_X=train_X,
+            noise_targets=noise_targets,
+            input_transform=copy.deepcopy(noise_tf),
+        )
+
         super().__init__(
             train_X=train_X,
             train_Y=train_Y,
@@ -242,8 +344,14 @@ class HeteroscedasticNegativeBinomialGPModel(_HeteroscedasticNBMixin, NegativeBi
             min_total_count=min_total_count,
         )
 
+        self.noise_model = noise_model
+        self.noise_input_transform = noise_tf
 
-class HeteroscedasticNegativeBinomialMixedGPModel(_HeteroscedasticNBMixin, NegativeBinomialMixedGPModel):
+
+class HeteroscedasticNegativeBinomialMixedGPModel(
+    _HeteroscedasticNBMixin,
+    NegativeBinomialMixedGPModel,
+):
     """mixed 入力版の heteroscedastic Negative Binomial 回帰モデル。"""
 
     def __init__(
@@ -276,6 +384,7 @@ class HeteroscedasticNegativeBinomialMixedGPModel(_HeteroscedasticNBMixin, Negat
         self.aux_batch_size = aux_batch_size
         self.aux_shuffle = bool(aux_shuffle)
         noise_tf = extract_normalize_only_transform(input_transform)
+
         if train_Yvar is None:
             aux_model = NegativeBinomialMixedGPModel(
                 train_X=train_X,
@@ -290,12 +399,35 @@ class HeteroscedasticNegativeBinomialMixedGPModel(_HeteroscedasticNBMixin, Negat
                 min_mean=min_mean,
                 min_total_count=min_total_count,
             )
-            _fit_variational_nb_mll(aux_model, lr=aux_lr, num_epochs=aux_num_epochs, batch_size=aux_batch_size, shuffle=aux_shuffle)
-            noise_targets = _estimate_nb_noise_targets(aux_model, train_X, train_Y, min_noise=min_noise)
+            _fit_variational_nb_mll(
+                aux_model,
+                lr=aux_lr,
+                num_epochs=aux_num_epochs,
+                batch_size=aux_batch_size,
+                shuffle=aux_shuffle,
+            )
+            noise_targets = _estimate_nb_noise_targets(
+                aux_model,
+                train_X,
+                train_Y,
+                min_noise=min_noise,
+            )
         else:
-            noise_targets = ensure_2d_col(torch.as_tensor(train_Yvar, device=train_X.device, dtype=train_X.dtype)).clamp_min(float(min_noise))
-        self.noise_model = _fit_noise_model_mixed(train_X=train_X, noise_targets=noise_targets, cat_dims=cat_dims, input_transform=copy.deepcopy(noise_tf))
-        self.noise_input_transform = noise_tf
+            noise_targets = ensure_2d_col(
+                torch.as_tensor(
+                    train_Yvar,
+                    device=train_X.device,
+                    dtype=train_X.dtype,
+                )
+            ).clamp_min(float(min_noise))
+
+        noise_model = _fit_noise_model_mixed(
+            train_X=train_X,
+            noise_targets=noise_targets,
+            cat_dims=cat_dims,
+            input_transform=copy.deepcopy(noise_tf),
+        )
+
         super().__init__(
             train_X=train_X,
             train_Y=train_Y,
@@ -310,6 +442,9 @@ class HeteroscedasticNegativeBinomialMixedGPModel(_HeteroscedasticNBMixin, Negat
             min_mean=min_mean,
             min_total_count=min_total_count,
         )
+
+        self.noise_model = noise_model
+        self.noise_input_transform = noise_tf
 
 
 __all__ = [

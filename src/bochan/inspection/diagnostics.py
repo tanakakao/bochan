@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 import torch
@@ -38,24 +39,86 @@ def _kernel_components(model: Any) -> list[dict[str, Any]]:
     return components
 
 
-def extract_model_diagnostics(
+def _output_models(model: Any) -> list[tuple[str, Any]]:
+    """Return named submodels from a hybrid multi-output wrapper when available."""
+    models = getattr(model, "models", None)
+    if models is None or isinstance(models, (str, bytes)):
+        return []
+    try:
+        children = list(models)
+    except TypeError:
+        return []
+    if not children:
+        return []
+    raw_names = getattr(model, "output_names", None)
+    names = list(raw_names) if isinstance(raw_names, Sequence) and not isinstance(raw_names, (str, bytes)) else []
+    return [
+        (str(names[index]) if index < len(names) else f"output_{index}", child)
+        for index, child in enumerate(children)
+    ]
+
+
+def _merge_output_diagnostics(
+    values: list[tuple[str, dict[str, Any]]],
+) -> dict[str, Any]:
+    """Merge per-output diagnostics while preserving the original output names."""
+    keys = list(dict.fromkeys(key for _, diagnostics in values for key in diagnostics))
+    merged: dict[str, Any] = {}
+    for key in keys:
+        by_output = {
+            output_name: diagnostics[key]
+            for output_name, diagnostics in values
+            if key in diagnostics
+        }
+        if len(by_output) == 1:
+            merged[key] = next(iter(by_output.values()))
+            continue
+        if key == "kernel_components":
+            components = []
+            for output_name, items in by_output.items():
+                for item in items if isinstance(items, list) else []:
+                    component = dict(item)
+                    component["output_name"] = output_name
+                    components.append(component)
+            merged[key] = components
+            continue
+        if key == "ard":
+            components = []
+            template: dict[str, Any] = {}
+            for output_name, diagnostic in by_output.items():
+                record = diagnostic if isinstance(diagnostic, dict) else {}
+                if not template:
+                    template = {
+                        name: item
+                        for name, item in record.items()
+                        if name != "components"
+                    }
+                for item in record.get("components", []):
+                    component = dict(item)
+                    component["output_name"] = output_name
+                    components.append(component)
+            merged[key] = {
+                **template,
+                "components": components,
+                "by_output": by_output,
+            }
+            continue
+        merged[key] = {
+            "by_output": by_output,
+            "output_names": list(by_output),
+            "is_predictive_importance": False,
+        }
+    return merged
+
+
+def _extract_direct_model_diagnostics(
     model: Any,
     *,
     methods: tuple[str, ...],
     feature_names: tuple[str, ...],
     cat_dims: tuple[int, ...],
 ) -> tuple[dict[str, Any], list[str]]:
-    """Extract lightweight diagnostics through interface capabilities.
-
-    Args:
-        model: Fitted model inspected without mutation.
-        methods: Requested names; ``auto`` enables all supported extractors.
-        feature_names: Raw input names used only for provenance.
-        cat_dims: Raw categorical dimensions.
-
-    Returns:
-        Diagnostic mapping and non-fatal warnings.
-    """
+    """Extract diagnostics from one concrete fitted model."""
     if not methods:
         return {}, []
     auto = "auto" in methods
@@ -105,3 +168,55 @@ def extract_model_diagnostics(
         elif not auto and name in requested:
             warnings.append(f"Diagnostic {name!r} is not supported by this model interface.")
     return diagnostics, warnings
+
+
+def extract_model_diagnostics(
+    model: Any,
+    *,
+    methods: tuple[str, ...],
+    feature_names: tuple[str, ...],
+    cat_dims: tuple[int, ...],
+) -> tuple[dict[str, Any], list[str]]:
+    """Extract lightweight diagnostics through interface capabilities.
+
+    Hybrid Web models expose their concrete fitted models through ``models``.
+    A single child is unwrapped transparently. Multiple children are inspected
+    independently and merged under their original output-column names.
+
+    Args:
+        model: Fitted model inspected without mutation.
+        methods: Requested names; ``auto`` enables all supported extractors.
+        feature_names: Raw input names used only for provenance.
+        cat_dims: Raw categorical dimensions.
+
+    Returns:
+        Diagnostic mapping and non-fatal warnings.
+    """
+    output_models = _output_models(model)
+    if len(output_models) == 1:
+        return _extract_direct_model_diagnostics(
+            output_models[0][1],
+            methods=methods,
+            feature_names=feature_names,
+            cat_dims=cat_dims,
+        )
+    if len(output_models) > 1:
+        extracted: list[tuple[str, dict[str, Any]]] = []
+        warnings: list[str] = []
+        for output_name, child in output_models:
+            diagnostics, child_warnings = _extract_direct_model_diagnostics(
+                child,
+                methods=methods,
+                feature_names=feature_names,
+                cat_dims=cat_dims,
+            )
+            if diagnostics:
+                extracted.append((output_name, diagnostics))
+            warnings.extend(f"{output_name}: {warning}" for warning in child_warnings)
+        return _merge_output_diagnostics(extracted), warnings
+    return _extract_direct_model_diagnostics(
+        model,
+        methods=methods,
+        feature_names=feature_names,
+        cat_dims=cat_dims,
+    )

@@ -16,12 +16,10 @@ import {
   type WebModelType
 } from "../modelOptions";
 import {
-  REGRESSION_LIKELIHOOD_OPTIONS,
   regressionLikelihoodFor,
   regressionModelVariantFor,
   regressionModelVariantLabel,
-  selectRegressionModelType,
-  type RegressionLikelihood
+  selectRegressionModelType
 } from "../regressionLikelihoodOptions";
 
 /** Configures only settings that define the fitted surrogate model. */
@@ -86,14 +84,6 @@ export default function SettingsPage() {
   );
   const modelLikelihood = regressionLikelihoodFor(modelType);
   const modelFamily = modelFamilyFor(modelType);
-  const availableLikelihoods = useMemo(
-    () => REGRESSION_LIKELIHOOD_OPTIONS.filter((likelihood) => (
-      availableModels.some(
-        (model) => regressionLikelihoodFor(model.value) === likelihood.value
-      )
-    )),
-    [availableModels]
-  );
   const likelihoodModels = useMemo(
     () => availableModels.filter(
       (option) => regressionLikelihoodFor(option.value) === modelLikelihood
@@ -121,16 +111,6 @@ export default function SettingsPage() {
     }
   }, [maxProjectionDimensions, projectionDimensions, setProjectionDimensions]);
 
-  function changeLikelihood(nextLikelihood: RegressionLikelihood) {
-    const nextModelType = selectRegressionModelType(
-      availableModels,
-      nextLikelihood,
-      regressionModelVariantFor(modelType),
-      modelFamily
-    );
-    if (nextModelType) setModelType(nextModelType);
-  }
-
   function changeModelFamily(nextFamily: ModelFamily) {
     const nextModelType = selectRegressionModelType(
       availableModels,
@@ -141,9 +121,6 @@ export default function SettingsPage() {
     if (nextModelType) setModelType(nextModelType);
   }
 
-  const selectedLikelihoodDescription = REGRESSION_LIKELIHOOD_OPTIONS.find(
-    (option) => option.value === modelLikelihood
-  )?.description ?? "";
   const selectedModelDescription = MODEL_DESCRIPTIONS[modelType as WebModelType] ?? "";
 
   return (
@@ -173,24 +150,11 @@ export default function SettingsPage() {
             <div>
               <span className="panel-kicker">2 · SURROGATE MODEL</span>
               <h3>学習モデル</h3>
-              <p>回帰では応答分布を選び、その後にモデルの大分類と種類を設定します。</p>
+              <p>目的変数側で選択した応答分布に対して、モデルの大分類と種類を設定します。</p>
             </div>
             <span className="status-chip success">{modelType}</span>
           </div>
           <div className="model-settings-grid">
-            {allRegression && (
-              <label>
-                応答分布
-                <select
-                  value={modelLikelihood}
-                  onChange={(event) => changeLikelihood(event.target.value as RegressionLikelihood)}
-                >
-                  {availableLikelihoods.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-            )}
             <label>
               大分類
               <select value={modelFamily} onChange={(event) => changeModelFamily(event.target.value as ModelFamily)}>
@@ -228,7 +192,6 @@ export default function SettingsPage() {
             </label>
           </div>
           <p className="settings-note">
-            {allRegression ? `${selectedLikelihoodDescription} ` : null}
             {selectedModelDescription}
             {isMultitaskModelType(modelType) ? " 複数の回帰目的列をwide形式の相関付きモデルで学習します。" : null}
           </p>

@@ -1,7 +1,8 @@
+from collections.abc import Sequence
+
 import torch
 import torch.nn as nn
 from torch import Tensor
-from typing import Optional, Sequence
 
 from gpytorch.models import ExactGP
 from gpytorch.distributions import MultivariateNormal, MultitaskMultivariateNormal
@@ -22,7 +23,7 @@ class StableScaleToBounds(nn.Module):
 
     GPyTorch's ``ScaleToBounds`` uses the current batch minimum and maximum.
     Deep-kernel feature extractors can temporarily collapse to a nearly constant
-    representation, especially in small cross-validation folds.  Clamping the
+    representation, especially in small cross-validation folds. Clamping the
     denominator keeps the projected features finite while preserving the usual
     min-max behavior outside the degenerate case.
     """
@@ -83,7 +84,7 @@ class StableScaleToBounds(nn.Module):
 def _make_feature_extractor(
     input_dim: int,
     ext_type: str = "DEFAULT",
-    hidden_dims: Optional[Sequence[int]] = None,
+    hidden_dims: Sequence[int] | None = None,
 ) -> nn.Module:
     """
     特徴抽出器を返す。
@@ -91,7 +92,7 @@ def _make_feature_extractor(
     Args:
         input_dim (int): 入力次元
         ext_type (str): "DEFAULT" または "skip"
-        hidden_dims (Optional[Sequence[int]]): 隠れ層の次元数。
+        hidden_dims (Sequence[int] | None): 隠れ層の次元数。
             None の場合は従来通り [input_dim * 8, input_dim * 4, input_dim * 2] を使う。
     """
     hidden_dims = (
@@ -136,7 +137,7 @@ class DeepKernel(ExactGP):
         train_y: Tensor,
         likelihood,
         ext_type: str = "DEFAULT",
-        hidden_dims: Optional[Sequence[int]] = None,
+        hidden_dims: Sequence[int] | None = None,
     ) -> None:
         super().__init__(train_x, train_y, likelihood)
 
@@ -221,14 +222,14 @@ class DeepKernelMixed(BatchedMultiOutputGPyTorchModel, ExactGP):
         cat_dims,
         likelihood,
         ext_type: str = "DEFAULT",
-        hidden_dims: Optional[Sequence[int]] = None,
+        hidden_dims: Sequence[int] | None = None,
     ) -> None:
         super().__init__(train_x, train_y, likelihood)
 
         if len(cat_dims) == 0:
             raise ValueError("カテゴリ次元を指定する必要があります (cat_dims)。")
 
-        d = train_x.size(-1)
+        d = train_x.shape[-1]
         self._num_outputs = (
             train_y.shape[-1]
             if (train_y.ndim > 1) and (train_y.shape[-1] != 1)

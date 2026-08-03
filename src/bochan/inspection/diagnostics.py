@@ -2,17 +2,94 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import torch
 
 
+def _class_path(value: Any) -> str:
+    """Return a stable fully qualified class name for diagnostic metadata."""
+
+    return f"{type(value).__module__}.{type(value).__name__}"
+
+
+def _module_summary(module: torch.nn.Module) -> dict[str, Any]:
+    """Describe a torch module without returning the live Python object."""
+
+    parameter_count = 0
+    trainable_parameter_count = 0
+    try:
+        for parameter in module.parameters():
+            count = int(parameter.numel())
+            parameter_count += count
+            if parameter.requires_grad:
+                trainable_parameter_count += count
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        parameter_count = 0
+        trainable_parameter_count = 0
+
+    children: list[dict[str, str]] = []
+    try:
+        children = [
+            {"name": str(name), "class": _class_path(child)}
+            for name, child in module.named_children()
+        ]
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        children = []
+
+    return {
+        "kind": "module",
+        "class": _class_path(module),
+        "parameter_count": parameter_count,
+        "trainable_parameter_count": trainable_parameter_count,
+        "children": children,
+    }
+
+
+def _callable_summary(value: Any) -> dict[str, Any]:
+    """Describe an available callable without returning a bound method."""
+
+    return {
+        "kind": "callable",
+        "name": str(getattr(value, "__name__", type(value).__name__)),
+        "available": True,
+    }
+
+
 def _value(value: Any) -> Any:
-    """Detach a parameter without changing its device or dtype."""
+    """Convert a diagnostic attribute to a compact JSON-safe value."""
+
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
     if torch.is_tensor(value):
         return value.detach().cpu().tolist()
-    return value
+    if isinstance(value, torch.Size):
+        return list(value)
+    if isinstance(value, Mapping):
+        return {str(key): _value(item) for key, item in value.items()}
+    if isinstance(value, torch.nn.Module):
+        return _module_summary(value)
+    if callable(value):
+        return _callable_summary(value)
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return [_value(item) for item in value]
+    if isinstance(value, (set, frozenset)):
+        return [_value(item) for item in value]
+
+    to_list = getattr(value, "tolist", None)
+    if callable(to_list):
+        try:
+            return _value(to_list())
+        except (RuntimeError, TypeError, ValueError):
+            pass
+    item = getattr(value, "item", None)
+    if callable(item):
+        try:
+            return _value(item())
+        except (RuntimeError, TypeError, ValueError):
+            pass
+    return {"kind": "object", "class": _class_path(value)}
 
 
 def _kernel_components(model: Any) -> list[dict[str, Any]]:

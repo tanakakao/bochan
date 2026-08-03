@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import torch
+from gpytorch.settings import cholesky_jitter
+from linear_operator.utils.errors import NotPSDError
 from torch import nn
 
+from bochan.fit.deep.common import fit_deep_full_batch_mll
 from bochan.fit.deep.deepkernel import fit_deepkernel_mll
 from bochan.models.components.layers.kernel_layers import StableScaleToBounds
 from bochan.models.regression.gaussian.deep.deepkernel import DeepKernelGPModel
@@ -22,6 +25,37 @@ class ConstantFeatureExtractor(nn.Module):
             dtype=X.dtype,
             device=X.device,
         )
+
+
+class LinearTrainingModel(nn.Module):
+    """Small trainable model used to exercise the generic fitting loop."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        train_X = torch.arange(1, 5, dtype=torch.double).unsqueeze(-1)
+        self.train_inputs = (train_X,)
+        self.train_targets = 2.0 * train_X.squeeze(-1)
+        self.weight = nn.Parameter(torch.tensor(0.5, dtype=torch.double))
+
+    def forward(self, X: torch.Tensor) -> torch.Tensor:
+        return X.squeeze(-1) * self.weight
+
+
+class JitterSensitiveMll(nn.Module):
+    """Fail until the configured Cholesky jitter reaches a threshold."""
+
+    def __init__(self, model: nn.Module, threshold: float) -> None:
+        super().__init__()
+        self.model = model
+        self.threshold = float(threshold)
+        self.seen_jitters: list[float] = []
+
+    def forward(self, output: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        jitter = float(cholesky_jitter.value(dtype=target.dtype))
+        self.seen_jitters.append(jitter)
+        if jitter < self.threshold:
+            raise NotPSDError(f"jitter {jitter} is below {self.threshold}")
+        return -torch.mean((output - target).square())
 
 
 def test_stable_scale_to_bounds_keeps_constant_features_finite() -> None:
@@ -76,3 +110,19 @@ def test_deepkernel_stability_defaults_allow_custom_override() -> None:
     )
 
     assert fitted_mll is mll
+
+
+def test_full_batch_fit_retries_not_psd_with_ascending_bounded_jitter() -> None:
+    model = LinearTrainingModel()
+    mll = JitterSensitiveMll(model, threshold=1e-3)
+    initial_weight = model.weight.detach().clone()
+
+    fitted_mll = fit_deep_full_batch_mll(
+        mll,
+        num_epochs=1,
+        psd_jitter_values=(1e-6, 1e-4, 1e-2),
+    )
+
+    assert fitted_mll is mll
+    assert mll.seen_jitters == [1e-6, 1e-4, 1e-2]
+    assert not torch.equal(model.weight.detach(), initial_weight)

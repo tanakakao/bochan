@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from bochan.composition import CompositionTransformer
+from bochan.api.composition import CompositionTransformer
 from bochan.tabular.composition_optimizer import (
     TabularBayesianOptimizer,
     _TabularBayesianOptimizer,

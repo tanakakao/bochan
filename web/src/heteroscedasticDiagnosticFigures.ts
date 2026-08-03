@@ -101,7 +101,7 @@ export function heteroscedasticFigures(
     }
     if (!x.length) return;
     figures.push({
-      id: `${output}-heteroscedastic-${safeId(name)}`,
+      id: `${output}-heteroscedastic-${featureIndex}-${safeId(name)}`,
       title: `${output}: ${name}と予測ノイズ`,
       description: `横軸には元データのカラム「${name}」を使用しています。値が大きい点ほど、その入力領域で観測ノイズが大きいとモデルが推定しています。`,
       data: [{

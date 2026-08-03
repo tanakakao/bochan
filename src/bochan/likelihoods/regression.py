@@ -146,7 +146,6 @@ def _make_noise_constraint(
     initial_value = torch.maximum(prior_mode, alpha_tensor)
     return GreaterThan(
         lower_bound=alpha,
-        transform=None,
         initial_value=initial_value,
     )
 

@@ -129,7 +129,6 @@ export default function TargetModelSettings({
     if (setting.task_type === "regression") {
       return (
         <label className="table-field">
-          <span>応答分布{targetColumns.length > 1 ? "（回帰目的で共通）" : ""}</span>
           <select
             value={modelLikelihood}
             disabled={!allRegression}
@@ -139,6 +138,7 @@ export default function TargetModelSettings({
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
+          <span>応答分布{targetColumns.length > 1 ? "（回帰目的で共通）" : ""}</span>
           {!allRegression && <small>異なるタスクを併用する場合はGaussianを使用します。</small>}
         </label>
       );

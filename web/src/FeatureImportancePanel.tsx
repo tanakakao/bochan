@@ -3,6 +3,11 @@ import Plot from "react-plotly.js";
 import type { Data } from "plotly.js";
 import { useWorkbench } from "./context/WorkbenchContext";
 import { heteroscedasticFigures } from "./heteroscedasticDiagnosticFigures";
+import {
+  filterHeteroscedasticFigures,
+  HETEROSCEDASTIC_SCOPE_ALL,
+  heteroscedasticScopeOptions
+} from "./heteroscedasticDiagnosticSelector";
 import { RESULT_PLOT_CONFIG } from "./plotConfig";
 import { themedPlotLayout } from "./plotLayout";
 import type {
@@ -384,6 +389,14 @@ export default function FeatureImportancePanel({ result }: { result: RegressionR
     [outputDiagnostics]
   );
   const [diagnosticKey, setDiagnosticKey] = useState(diagnosticKeys[0] ?? "");
+  const selectedDiagnostic = outputDiagnostics[diagnosticKey];
+  const heteroscedasticScopes = useMemo(
+    () => heteroscedasticScopeOptions(selectedDiagnostic, result.feature_columns),
+    [selectedDiagnostic, result.feature_columns]
+  );
+  const [heteroscedasticScope, setHeteroscedasticScope] = useState(
+    HETEROSCEDASTIC_SCOPE_ALL
+  );
 
   useEffect(() => {
     if (!viewOutputs.includes(output)) {
@@ -402,6 +415,10 @@ export default function FeatureImportancePanel({ result }: { result: RegressionR
       setDiagnosticKey(diagnosticKeys[0] ?? "");
     }
   }, [diagnosticKey, diagnosticKeys]);
+
+  useEffect(() => {
+    setHeteroscedasticScope(HETEROSCEDASTIC_SCOPE_ALL);
+  }, [diagnosticKey, output]);
 
   const rows = useMemo(() => summary
     .filter((row) => row.output_name === output && row.importance_kind === kind)
@@ -425,10 +442,18 @@ export default function FeatureImportancePanel({ result }: { result: RegressionR
     [figures, output, kind, permutationOutputs.length, result.feature_columns]
   );
 
-  const selectedDiagnostic = outputDiagnostics[diagnosticKey];
-  const selectedDiagnosticFigures = useMemo(
+  const diagnosticFigureCandidates = useMemo(
     () => diagnosticFigures(diagnosticKey, selectedDiagnostic, output, result),
     [diagnosticKey, selectedDiagnostic, output, result]
+  );
+  const selectedDiagnosticFigures = useMemo(
+    () => diagnosticKey === "heteroscedastic"
+      ? filterHeteroscedasticFigures(
+          diagnosticFigureCandidates,
+          heteroscedasticScope
+        )
+      : diagnosticFigureCandidates,
+    [diagnosticFigureCandidates, diagnosticKey, heteroscedasticScope]
   );
 
   if (!summary.length && !figures.length && !warnings.length && !diagnosticOutputs.length) {
@@ -510,6 +535,17 @@ export default function FeatureImportancePanel({ result }: { result: RegressionR
                 <option key={name} value={name}>{diagnosticLabel(name)}</option>)}
           </select>
         </label>}
+      {view === "model_diagnostic" && diagnosticKey === "heteroscedastic" &&
+        <label>
+          表示対象
+          <select
+            value={heteroscedasticScope}
+            onChange={(event) => setHeteroscedasticScope(event.target.value)}
+          >
+            {heteroscedasticScopes.map((scope) =>
+              <option key={scope.value} value={scope.value}>{scope.label}</option>)}
+          </select>
+        </label>}
     </div>
 
     {view === "permutation" && !permutationAvailable &&
@@ -577,7 +613,9 @@ export default function FeatureImportancePanel({ result }: { result: RegressionR
       <p className="settings-note">
         {diagnosticKey === "ard"
           ? "ARDはカーネルの感度を表します。値が大きいほど、その説明変数に対して予測が敏感です。"
-          : `${diagnosticLabel(diagnosticKey)}を表示しています。`}
+          : diagnosticKey === "heteroscedastic"
+            ? "入力依存ノイズ診断は特徴量重要度ではありません。選択した入力条件と、モデルが推定した観測ノイズ標準偏差の関係を表示します。"
+            : `${diagnosticLabel(diagnosticKey)}を表示しています。`}
       </p>
       {selectedDiagnosticFigures.length > 0
         ? <div className="visualization-grid">

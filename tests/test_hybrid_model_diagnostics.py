@@ -32,12 +32,22 @@ class HybridDiagnosticModel(nn.Module):
 class HeteroscedasticDiagnosticModel(DiagnosticModel):
     def __init__(self) -> None:
         super().__init__([1.0, 2.0])
-        train_x = torch.rand(6, 2, dtype=torch.double)
+        train_x = torch.tensor(
+            [
+                [0.0, 1.0],
+                [0.2, 0.8],
+                [0.4, 0.6],
+                [0.6, 0.4],
+                [0.8, 0.2],
+                [1.0, 0.0],
+            ],
+            dtype=torch.double,
+        )
         train_y = (train_x[:, :1] - train_x[:, 1:2]).square()
         self.noise_model = SingleTaskGP(train_x, train_y)
 
     def predict_noise_var(self, X: torch.Tensor) -> torch.Tensor:
-        return torch.ones(X.shape[:-1], dtype=X.dtype, device=X.device)
+        return (0.1 + X[:, :1].square()).to(dtype=X.dtype, device=X.device)
 
 
 def test_single_output_hybrid_model_unwraps_concrete_gp() -> None:
@@ -99,7 +109,7 @@ def test_explicit_unsupported_diagnostic_warning_keeps_output_name() -> None:
     ]
 
 
-def test_heteroscedastic_diagnostics_are_json_serializable() -> None:
+def test_heteroscedastic_diagnostics_include_plot_ready_noise_profile() -> None:
     diagnostics, warnings = extract_model_diagnostics(
         HeteroscedasticDiagnosticModel(),
         methods=("heteroscedastic",),
@@ -116,4 +126,14 @@ def test_heteroscedastic_diagnostics_are_json_serializable() -> None:
         "name": "predict_noise_var",
         "available": True,
     }
+
+    profile = heteroscedastic["noise_profile"]
+    assert profile["feature_names"] == ["温度", "時間"]
+    assert profile["sample_index"] == [1, 2, 3, 4, 5, 6]
+    assert profile["feature_values"][0] == [0.0, 1.0]
+    assert profile["noise_variance"] == [0.1, 0.14, 0.26, 0.45999999999999996, 0.7400000000000001, 1.1]
+    assert len(profile["noise_std"]) == 6
+    assert profile["total_count"] == 6
+    assert profile["displayed_count"] == 6
+    assert profile["sampling"] == "all"
     json.dumps(diagnostics)

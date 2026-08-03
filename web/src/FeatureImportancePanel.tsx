@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import Plot from "react-plotly.js";
 import type { Data } from "plotly.js";
 import { useWorkbench } from "./context/WorkbenchContext";
+import { heteroscedasticFigures } from "./heteroscedasticDiagnosticFigures";
 import { RESULT_PLOT_CONFIG } from "./plotConfig";
 import { themedPlotLayout } from "./plotLayout";
 import type {
@@ -305,6 +306,9 @@ function diagnosticFigures(
   }
   if (key === "pca") {
     return pcaFigures(value, output, result.feature_columns);
+  }
+  if (key === "heteroscedastic") {
+    return heteroscedasticFigures(value, output, result.feature_columns);
   }
   if (key === "multitask") {
     return multitaskFigures(value, output, result.target_columns);

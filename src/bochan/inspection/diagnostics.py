@@ -7,6 +7,8 @@ from typing import Any
 
 import torch
 
+_MAX_DIAGNOSTIC_POINTS = 500
+
 
 def _class_path(value: Any) -> str:
     """Return a stable fully qualified class name for diagnostic metadata."""
@@ -90,6 +92,107 @@ def _value(value: Any) -> Any:
         except (RuntimeError, TypeError, ValueError):
             pass
     return {"kind": "object", "class": _class_path(value)}
+
+
+def _first_tensor(value: Any) -> torch.Tensor | None:
+    """Return the first tensor from a tensor or train-input container."""
+
+    if torch.is_tensor(value):
+        return value
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        for item in value:
+            if torch.is_tensor(item):
+                return item
+    return None
+
+
+def _training_inputs(model: Any) -> torch.Tensor | None:
+    """Locate raw-space training inputs used by a heteroscedastic model."""
+
+    candidates = [
+        model,
+        getattr(model, "noise_model", None),
+        getattr(model, "model", None),
+    ]
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        for attribute in ("train_inputs_raw", "train_inputs"):
+            tensor = _first_tensor(getattr(candidate, attribute, None))
+            if tensor is not None:
+                return tensor
+    return None
+
+
+def _sample_training_rows(
+    X: torch.Tensor,
+    *,
+    max_points: int = _MAX_DIAGNOSTIC_POINTS,
+) -> tuple[torch.Tensor, torch.Tensor, int]:
+    """Select deterministic, order-preserving rows for diagnostic plots."""
+
+    if X.ndim < 2 or X.shape[-1] == 0:
+        raise ValueError("Training inputs must have shape [..., n, d] with d > 0.")
+    flat = X.detach().reshape(-1, X.shape[-1])
+    total = int(flat.shape[0])
+    if total <= max_points:
+        indices = torch.arange(total, device=flat.device)
+    else:
+        indices = torch.linspace(
+            0,
+            total - 1,
+            steps=max_points,
+            device=flat.device,
+        ).round().to(dtype=torch.long).unique(sorted=True)
+    return flat.index_select(0, indices), indices, total
+
+
+def _heteroscedastic_noise_profile(
+    model: Any,
+    *,
+    feature_names: tuple[str, ...],
+) -> dict[str, Any]:
+    """Evaluate input-dependent noise on representative raw training rows."""
+
+    predictor = getattr(model, "predict_noise_var", None)
+    X = _training_inputs(model)
+    if not callable(predictor) or X is None:
+        return {}
+
+    try:
+        X_display, indices, total = _sample_training_rows(X)
+        with torch.no_grad():
+            variance = torch.as_tensor(predictor(X_display)).detach()
+        displayed = int(X_display.shape[0])
+        if displayed == 0 or variance.numel() % displayed != 0:
+            return {}
+        variance = variance.reshape(displayed, -1).mean(dim=-1).clamp_min(0)
+        std = variance.sqrt()
+        log_variance = variance.clamp_min(1e-30).log()
+    except (AttributeError, IndexError, RuntimeError, TypeError, ValueError):
+        return {}
+
+    dimension = int(X_display.shape[-1])
+    names = [
+        feature_names[index] if index < len(feature_names) else f"feature_{index}"
+        for index in range(dimension)
+    ]
+    return {
+        "sample_index": (indices.detach().cpu() + 1).tolist(),
+        "feature_names": names,
+        "feature_values": X_display.detach().cpu().tolist(),
+        "noise_variance": variance.cpu().tolist(),
+        "noise_std": std.cpu().tolist(),
+        "noise_log_variance": log_variance.cpu().tolist(),
+        "total_count": total,
+        "displayed_count": displayed,
+        "sampling": "all" if displayed == total else "evenly_spaced",
+        "source_space": "raw",
+        "interpretation": (
+            "Predicted observation-noise variance and standard deviation on raw "
+            "training inputs; larger values indicate noisier input regions."
+        ),
+    }
 
 
 def _kernel_components(model: Any) -> list[dict[str, Any]]:
@@ -232,6 +335,13 @@ def _extract_direct_model_diagnostics(
         if not (auto or name in requested):
             continue
         found = {attr: _value(getattr(model, attr)) for attr in attrs if hasattr(model, attr)}
+        if name == "heteroscedastic" and found:
+            profile = _heteroscedastic_noise_profile(
+                model,
+                feature_names=feature_names,
+            )
+            if profile:
+                found["noise_profile"] = profile
         if found:
             found.update(
                 source_space="latent" if name in {"pca", "rembo", "vae", "deepkernel", "deepgp"} else "raw",

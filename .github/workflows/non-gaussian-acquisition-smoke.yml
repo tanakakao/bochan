@@ -24,7 +24,8 @@ jobs:
             tests/test_non_gaussian_acquisition_stats.py \
             tests/test_non_gaussian_acquisition_alignment.py \
             tests/test_gamma_fantasize.py \
-            tests/test_poisson_heteroscedastic_init.py
+            tests/test_poisson_heteroscedastic_init.py \
+            tests/test_negative_binomial_heteroscedastic_init.py
       - name: Lint changed modules
         run: |
           python -m pip install ruff
@@ -32,11 +33,16 @@ jobs:
             --per-file-ignores "src/bochan/api/acquisition_registry.py:UP035" \
             --per-file-ignores "src/bochan/models/regression/non_gaussian/poisson/robust/poisson_heteroscedastic.py:UP035" \
             --per-file-ignores "src/bochan/models/regression/non_gaussian/poisson/robust/poisson_heteroscedastic.py:UP045" \
+            --per-file-ignores "src/bochan/models/regression/non_gaussian/negative_binomial/robust/negative_binomial_heteroscedastic.py:I001" \
+            --per-file-ignores "src/bochan/models/regression/non_gaussian/negative_binomial/robust/negative_binomial_heteroscedastic.py:UP035" \
+            --per-file-ignores "src/bochan/models/regression/non_gaussian/negative_binomial/robust/negative_binomial_heteroscedastic.py:UP045" \
             src/bochan/acquisition/non_gaussian/active_learning/single_output.py \
             src/bochan/acquisition/non_gaussian/active_learning/multi_output.py \
             src/bochan/acquisition/non_gaussian/active_learning/hetero_single_output.py \
             src/bochan/acquisition/non_gaussian/active_learning/hetero_multi_output.py \
             src/bochan/models/regression/non_gaussian/poisson/robust/poisson_heteroscedastic.py \
+            src/bochan/models/regression/non_gaussian/negative_binomial/robust/negative_binomial_heteroscedastic.py \
             src/bochan/api/acquisition_registry.py \
             tests/test_non_gaussian_acquisition_alignment.py \
-            tests/test_poisson_heteroscedastic_init.py
+            tests/test_poisson_heteroscedastic_init.py \
+            tests/test_negative_binomial_heteroscedastic_init.py

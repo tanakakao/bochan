@@ -15,6 +15,14 @@
   background: color-mix(in srgb, var(--surface-subtle, #f8fafc) 82%, transparent);
 }
 
+.composition-kind-control[hidden] {
+  display: none !important;
+}
+
+.composition-kind-control > span {
+  display: none;
+}
+
 .composition-kind-native-select {
   position: absolute;
   width: 1px;

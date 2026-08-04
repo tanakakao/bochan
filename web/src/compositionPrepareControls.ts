@@ -1,16 +1,44 @@
 const COMPOSITION_CHANGE_EVENT = "bochan-composition-settings-change";
-const OWNED_MUTATION_SELECTOR = ".composition-settings-host, .composition-kind-control";
+const CONTROL_SELECTOR = ".composition-kind-control";
+const OWNED_MUTATION_SELECTOR = [
+  CONTROL_SELECTOR,
+  ".composition-model-settings-host",
+  ".composition-constraint-settings-host",
+  ".composition-settings-panel"
+].join(", ");
 
 type InstallExtension = () => void;
+
+let synchronizeScheduled = false;
 
 function mutationTargetElement(target: Node): Element | null {
   if (target instanceof Element) return target;
   return target.parentElement;
 }
 
+function nodeIsCompositionOwned(node: Node): boolean {
+  if (node instanceof Element) {
+    return node.matches(OWNED_MUTATION_SELECTOR) || Boolean(node.closest(OWNED_MUTATION_SELECTOR));
+  }
+  return Boolean(node.parentElement?.closest(OWNED_MUTATION_SELECTOR));
+}
+
+function mutationAddsCompositionControl(record: MutationRecord): boolean {
+  return Array.from(record.addedNodes).some((node) => {
+    if (!(node instanceof Element)) return false;
+    return node.matches(CONTROL_SELECTOR) || Boolean(node.querySelector(CONTROL_SELECTOR));
+  });
+}
+
 function isCompositionOwnedMutation(record: MutationRecord): boolean {
   const target = mutationTargetElement(record.target);
-  return Boolean(target?.closest(OWNED_MUTATION_SELECTOR));
+  if (target?.closest(OWNED_MUTATION_SELECTOR)) return true;
+
+  const changedNodes = [
+    ...Array.from(record.addedNodes),
+    ...Array.from(record.removedNodes)
+  ];
+  return changedNodes.length > 0 && changedNodes.every(nodeIsCompositionOwned);
 }
 
 function withCompositionMutationGuard(installExtension: InstallExtension): void {
@@ -56,77 +84,120 @@ function withCompositionMutationGuard(installExtension: InstallExtension): void 
   }
 }
 
+function categoryEnabled(control: HTMLElement): boolean {
+  const card = control.closest<HTMLElement>(".feature-variable-choice");
+  const checkbox = card?.querySelector<HTMLInputElement>(".feature-type-toggle input");
+  return checkbox?.checked === true;
+}
+
 function refreshSegmentedControl(control: HTMLElement): void {
   const select = control.querySelector<HTMLSelectElement>("select");
   if (!select) return;
+
+  const visible = categoryEnabled(control);
+  control.hidden = !visible;
+  control.setAttribute("aria-hidden", String(!visible));
+
   control.querySelectorAll<HTMLButtonElement>("button[data-composition-kind]").forEach((button) => {
-    const active = button.dataset.compositionKind === select.value;
+    const active = visible && button.dataset.compositionKind === select.value;
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   });
 }
 
 function upgradeControl(control: HTMLElement): void {
-  if (control.dataset.segmented === "true") {
-    refreshSegmentedControl(control);
-    return;
-  }
-
   const select = control.querySelector<HTMLSelectElement>("select");
   if (!select) return;
 
-  const replacement = document.createElement("div");
-  replacement.className = `${control.className} composition-kind-control-segmented`;
-  replacement.dataset.segmented = "true";
+  if (control.dataset.segmented !== "true") {
+    control.dataset.segmented = "true";
+    control.classList.add("composition-kind-control-segmented");
+    select.classList.add("composition-kind-native-select");
 
-  select.classList.add("composition-kind-native-select");
-  replacement.appendChild(select);
+    const group = document.createElement("div");
+    group.className = "composition-kind-segment";
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-label", select.getAttribute("aria-label") ?? "入力表記");
 
-  const group = document.createElement("div");
-  group.className = "composition-kind-segment";
-  group.setAttribute("role", "group");
-  group.setAttribute("aria-label", select.getAttribute("aria-label") ?? "入力表記");
-
-  ([
-    ["normal", "通常"],
-    ["composition", "組成式"]
-  ] as const).forEach(([value, label]) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "composition-kind-option";
-    button.dataset.compositionKind = value;
-    button.textContent = label;
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (select.value === value) return;
-      select.value = value;
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-      refreshSegmentedControl(replacement);
+    ([
+      ["normal", "通常"],
+      ["composition", "組成式"]
+    ] as const).forEach(([value, label]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "composition-kind-option";
+      button.dataset.compositionKind = value;
+      button.textContent = label;
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (select.value === value) return;
+        select.value = value;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        refreshSegmentedControl(control);
+      });
+      group.appendChild(button);
     });
-    group.appendChild(button);
-  });
 
-  replacement.appendChild(group);
-  control.replaceWith(replacement);
-  refreshSegmentedControl(replacement);
+    control.appendChild(group);
+  }
+
+  refreshSegmentedControl(control);
 }
 
 function synchronizeSegmentedControls(): void {
-  document.querySelectorAll<HTMLElement>(".composition-kind-control").forEach(upgradeControl);
+  document.querySelectorAll<HTMLElement>(CONTROL_SELECTOR).forEach(upgradeControl);
+}
+
+function scheduleSynchronizeSegmentedControls(): void {
+  if (synchronizeScheduled) return;
+  synchronizeScheduled = true;
+  queueMicrotask(() => {
+    synchronizeScheduled = false;
+    synchronizeSegmentedControls();
+  });
+}
+
+function turnOffCompositionWhenCategoryIsDisabled(input: HTMLInputElement): void {
+  if (input.checked) return;
+  const card = input.closest<HTMLElement>(".feature-variable-choice");
+  const control = card?.querySelector<HTMLElement>(CONTROL_SELECTOR);
+  const select = control?.querySelector<HTMLSelectElement>("select");
+  if (!select || select.value !== "composition") return;
+
+  select.value = "normal";
+  select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function installSegmentedControlObserver(): void {
-  const observer = new MutationObserver(() => synchronizeSegmentedControls());
-  observer.observe(document.documentElement, { subtree: true, childList: true });
-  document.addEventListener("change", (event) => {
-    const select = (event.target as Element | null)?.closest<HTMLSelectElement>(
-      ".composition-kind-control select"
-    );
-    if (select) refreshSegmentedControl(select.closest<HTMLElement>(".composition-kind-control")!);
+  const observer = new MutationObserver((records) => {
+    const shouldSynchronize = records.some((record) => (
+      mutationAddsCompositionControl(record) || !isCompositionOwnedMutation(record)
+    ));
+    if (shouldSynchronize) scheduleSynchronizeSegmentedControls();
   });
-  window.addEventListener(COMPOSITION_CHANGE_EVENT, synchronizeSegmentedControls);
-  synchronizeSegmentedControls();
+  observer.observe(document.documentElement, { subtree: true, childList: true });
+
+  document.addEventListener("change", (event) => {
+    const target = event.target as Element | null;
+    const categoryInput = target?.closest<HTMLInputElement>(".feature-type-toggle input");
+    if (categoryInput) {
+      queueMicrotask(() => {
+        turnOffCompositionWhenCategoryIsDisabled(categoryInput);
+        scheduleSynchronizeSegmentedControls();
+      });
+      return;
+    }
+
+    const select = target?.closest<HTMLSelectElement>(`${CONTROL_SELECTOR} select`);
+    if (select) {
+      const control = select.closest<HTMLElement>(CONTROL_SELECTOR);
+      if (control) refreshSegmentedControl(control);
+    }
+  });
+
+  window.addEventListener(COMPOSITION_CHANGE_EVENT, scheduleSynchronizeSegmentedControls);
+  scheduleSynchronizeSegmentedControls();
 }
 
 export function installCompositionPrepareControls(installExtension: InstallExtension): void {

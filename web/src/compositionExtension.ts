@@ -439,10 +439,10 @@ function renderConstraint(settings: CompositionSettings, constraint: ElementCons
   </div>`;
 }
 
-function panelHtml(settings: CompositionSettings): string {
+function modelPanelHtml(settings: CompositionSettings): string {
   if (!settings.enabled || !settings.column) {
-    return `<article class="panel composition-settings-panel">
-      <div class="panel-title"><div><span class="panel-kicker">COMPOSITION</span><h3>組成比設定</h3><p>Select画面で説明変数の入力表記を「組成式」にすると設定できます。</p></div><span class="status-chip">Off</span></div>
+    return `<article class="panel composition-settings-panel composition-model-settings-panel">
+      <div class="panel-title"><div><span class="panel-kicker">COMPOSITION MODEL</span><h3>組成式のモデル変換</h3><p>Select画面で説明変数の入力表記を「組成式」にすると設定できます。</p></div><span class="status-chip">Off</span></div>
     </article>`;
   }
   const reference = settings.representation === "alr"
@@ -452,12 +452,9 @@ function panelHtml(settings: CompositionSettings): string {
     ? `<label><span>変換座標の下限</span><input id="composition-coordinate-lower" type="number" step="any" value="${settings.coordinateLower}"></label>
        <label><span>変換座標の上限</span><input id="composition-coordinate-upper" type="number" step="any" value="${settings.coordinateUpper}"></label>`
     : "";
-  const constraints = settings.constraints.length
-    ? `<div class="constraint-list">${settings.constraints.map((constraint, index) => renderConstraint(settings, constraint, index)).join("")}</div>`
-    : `<div class="constraint-empty">元素間制約は設定されていません。</div>`;
-  return `<article class="panel composition-settings-panel">
+  return `<article class="panel composition-settings-panel composition-model-settings-panel">
     <div class="panel-title">
-      <div><span class="panel-kicker">COMPOSITION</span><h3>単一組成式の比率探索</h3><p>${escapeHtml(settings.column)}を合計1の組成比として変換し、候補を組成式へ戻します。</p></div>
+      <div><span class="panel-kicker">COMPOSITION MODEL</span><h3>組成式のモデル変換</h3><p>${escapeHtml(settings.column)}を合計1の組成比へ変換し、学習モデルの入力座標を作成します。</p></div>
       <span class="status-chip ${settings.elements.length >= 2 ? "success" : "warning"}">${settings.elements.length} elements</span>
     </div>
     <div class="composition-basic-grid">
@@ -475,17 +472,32 @@ function panelHtml(settings: CompositionSettings): string {
       <label><span>候補元素</span><input id="composition-elements" value="${escapeHtml(settings.elements.join(", "))}" placeholder="Fe, Co, Ni"></label>
       ${reference}
       <label><span>表示桁数</span><input id="composition-precision" type="number" min="1" max="12" value="${settings.precision}"></label>
-      <label><span>最小使用元素数</span><input id="composition-min-components" type="number" min="1" max="${Math.max(settings.elements.length, 1)}" value="${settings.minComponents}"></label>
-      <label><span>最大使用元素数</span><input id="composition-max-components" type="number" min="${settings.minComponents}" max="${Math.max(settings.elements.length, 1)}" value="${settings.maxComponents ?? settings.elements.length}"></label>
       ${coordinate}
     </div>
     ${settings.elements.length < 2 ? '<p class="settings-note warning-text">候補元素を2種類以上指定してください。</p>' : ""}
+    <p class="settings-note">元素比率の上下限、刻み、必須元素、使用元素数、元素間制約は候補提案画面の「組成候補の元素制約」で設定します。</p>
+  </article>`;
+}
+
+function constraintPanelHtml(settings: CompositionSettings): string {
+  const constraints = settings.constraints.length
+    ? `<div class="constraint-list">${settings.constraints.map((constraint, index) => renderConstraint(settings, constraint, index)).join("")}</div>`
+    : `<div class="constraint-empty">元素間制約は設定されていません。</div>`;
+  return `<article class="panel composition-settings-panel composition-constraint-settings-panel">
+    <div class="panel-title">
+      <div><span class="panel-kicker">COMPOSITION CONSTRAINTS</span><h3>組成候補の元素制約</h3><p>${escapeHtml(settings.column)}の候補生成時に、使用元素数と各元素の比率制約を適用します。</p></div>
+      <span class="status-chip ${settings.elements.length >= 2 ? "success" : "warning"}">${settings.constraints.length} constraints</span>
+    </div>
+    <div class="composition-basic-grid">
+      <label><span>最小使用元素数</span><input id="composition-min-components" type="number" min="1" max="${Math.max(settings.elements.length, 1)}" value="${settings.minComponents}"></label>
+      <label><span>最大使用元素数</span><input id="composition-max-components" type="number" min="${settings.minComponents}" max="${Math.max(settings.elements.length, 1)}" value="${settings.maxComponents ?? settings.elements.length}"></label>
+    </div>
     ${renderElementTable(settings)}
     <section class="composition-element-section">
       <div class="constraint-section-heading"><div><h4>元素間の線形制約</h4><p>例: Sr − 0.5 × La = 0 とすると、SrをLaの半分に固定できます。</p></div><button id="composition-add-constraint" type="button" class="secondary"${settings.elements.length ? "" : " disabled"}>制約を追加</button></div>
       ${constraints}
     </section>
-    <p class="settings-note">A/Bサイト分離、複数組成式列、組成記述子の候補生成は今回の対象外です。</p>
+    <p class="settings-note">比率は合計1を維持してrepairされます。A/Bサイト分離と複数組成式列は今回の対象外です。</p>
   </article>`;
 }
 
@@ -642,21 +654,47 @@ function bindPanel(host: HTMLElement): void {
   });
 }
 
-function synchronizeOptimizePanel(): void {
-  const featurePanel = document.querySelector<HTMLElement>(".feature-constraint-panel");
-  if (!featurePanel) {
-    document.querySelector(".composition-settings-host")?.remove();
+function renderPanel(host: HTMLElement, html: string): void {
+  if (host.innerHTML === html) return;
+  const replacement = host.cloneNode(false) as HTMLElement;
+  replacement.innerHTML = html;
+  host.replaceWith(replacement);
+  bindPanel(replacement);
+}
+
+function synchronizeModelPanel(): void {
+  const modelGrid = document.querySelector<HTMLElement>(".model-primary-grid");
+  if (!modelGrid || !modelGrid.parentElement) {
+    document.querySelector(".composition-model-settings-host")?.remove();
     return;
   }
-  let host = featurePanel.parentElement?.querySelector<HTMLElement>(":scope > .composition-settings-host") ?? null;
+  let host = modelGrid.parentElement.querySelector<HTMLElement>(":scope > .composition-model-settings-host");
   if (!host) {
     host = document.createElement("div");
-    host.className = "composition-settings-host";
-    featurePanel.parentElement?.insertBefore(host, featurePanel);
+    host.className = "composition-model-settings-host";
+    modelGrid.insertAdjacentElement("afterend", host);
+  } else if (modelGrid.nextElementSibling !== host) {
+    modelGrid.insertAdjacentElement("afterend", host);
   }
+  renderPanel(host, modelPanelHtml(loadCompositionSettings()));
+}
+
+function synchronizeConstraintPanel(): void {
+  const featurePanel = document.querySelector<HTMLElement>(".feature-constraint-panel");
   const settings = loadCompositionSettings();
-  host.innerHTML = panelHtml(settings);
-  bindPanel(host);
+  if (!featurePanel || !featurePanel.parentElement || !settings.enabled || !settings.column) {
+    document.querySelector(".composition-constraint-settings-host")?.remove();
+    return;
+  }
+  let host = featurePanel.parentElement.querySelector<HTMLElement>(":scope > .composition-constraint-settings-host");
+  if (!host) {
+    host = document.createElement("div");
+    host.className = "composition-constraint-settings-host";
+    featurePanel.parentElement.insertBefore(host, featurePanel);
+  } else if (host.nextElementSibling !== featurePanel) {
+    featurePanel.parentElement.insertBefore(host, featurePanel);
+  }
+  renderPanel(host, constraintPanelHtml(settings));
 }
 
 function synchronize(): void {
@@ -665,7 +703,8 @@ function synchronize(): void {
   queueMicrotask(() => {
     renderScheduled = false;
     synchronizePrepareControls();
-    synchronizeOptimizePanel();
+    synchronizeModelPanel();
+    synchronizeConstraintPanel();
   });
 }
 

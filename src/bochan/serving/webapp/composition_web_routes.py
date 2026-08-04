@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .app import RegressionRunRequest
 from .composition_web_support import (
     _composition_transformer,
     normalize_web_composition_settings,
@@ -67,7 +68,7 @@ class CompositionValidationRequest(_CompositionSchema):
 class CompositionRegressionRunRequest(_CompositionSchema):
     """Existing Web regression payload plus one typed composition configuration."""
 
-    run: dict[str, Any]
+    run: RegressionRunRequest
     composition: CompositionSettingsSchema
 
 
@@ -146,15 +147,13 @@ def register_composition_routes(app: Any, *, api_prefix: str = "/api/v1") -> Non
         def run_composition_regression(
             request: CompositionRegressionRunRequest,
         ) -> dict[str, Any]:
-            from .app import RegressionRunRequest
-
-            payload = dict(request.run)
-            model_kwargs = dict(payload.get("model_kwargs") or {})
+            model_kwargs = dict(request.run.model_kwargs or {})
             model_kwargs["web_composition"] = request.composition.model_dump(
                 exclude_none=True
             )
-            payload["model_kwargs"] = model_kwargs
-            validated = RegressionRunRequest.model_validate(payload)
+            validated = request.run.model_copy(
+                update={"model_kwargs": model_kwargs}
+            )
             base_run = _route_endpoint(
                 app,
                 f"{prefix}/regression/run",

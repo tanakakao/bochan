@@ -13,6 +13,9 @@ from .composition_feature_importance_views import (
 from .composition_importance_output_compat import (
     install_composition_importance_output_compat,
 )
+from .composition_importance_records_compat import (
+    install_composition_importance_records_compat,
+)
 from .composition_visualization import install_composition_visualization
 from .composition_web_support import install_composition_web_support
 from .pandas_compat import install_pandas_string_category_compat
@@ -36,9 +39,10 @@ from . import workflows_tabular as _workflows_tabular  # noqa: E402
 _workflows_tabular.run_regression_web_workflow.__module__ = _workflows_tabular.__name__
 
 # Composition feature importance requires the completed visualization session.
-# Attach the raw importance payload, replace coordinate-level PI by the joint
-# ``組成全体`` entry for supported regression outputs, preserve other outputs,
-# then add the element-wise composition card.
+# Serialize numerical results without visualization extras, attach the payload,
+# replace coordinate-level PI by the joint ``組成全体`` entry for supported
+# regression outputs, preserve other outputs, then add the element-wise card.
+install_composition_importance_records_compat()
 install_composition_feature_importance()
 install_composition_feature_importance_views()
 install_composition_importance_output_compat()

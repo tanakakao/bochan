@@ -11,6 +11,10 @@ from bochan.serving.webapp.composition_visualization import (
     _extend_visualization_options,
     _resolve_fraction_matrix,
 )
+from bochan.serving.webapp.composition_visualization_compat import (
+    _constant_composition_grid,
+    _object_backed_string_columns,
+)
 
 
 def _context() -> _CompositionContext:
@@ -69,6 +73,32 @@ def test_balance_element_absorbs_remaining_fraction() -> None:
 
     assert valid.tolist() == [True]
     assert np.allclose(fractions[0], [0.4, 0.3, 0.3])
+
+
+def test_constant_composition_grid_preserves_baseline_for_ordinary_axes() -> None:
+    baseline = np.asarray([0.2, 0.3, 0.5])
+
+    fractions, valid = _constant_composition_grid(_context(), baseline, 4)
+
+    assert valid.tolist() == [True, True, True, True]
+    assert np.allclose(fractions, np.tile(baseline, (4, 1)))
+
+
+def test_generated_string_categories_are_object_backed_for_pandas3() -> None:
+    source = pd.DataFrame(
+        {
+            "formula": pd.Series(["Fe2O3", "Al2O3"], dtype="string"),
+            "category": pd.Series(["A", "B"], dtype="string"),
+            "temperature": [900.0, 1000.0],
+        }
+    )
+
+    converted = _object_backed_string_columns(source)
+
+    assert converted["formula"].dtype == object
+    assert converted["category"].dtype == object
+    assert pd.api.types.is_float_dtype(converted["temperature"].dtype)
+    assert converted.to_dict("list") == source.to_dict("list")
 
 
 def test_visualization_options_add_element_fraction_axes() -> None:
@@ -161,3 +191,22 @@ def test_web_source_exposes_composition_axis_controls() -> None:
     assert "compositionFeatures" in source
     assert "feature_labels" in type_source
     assert "fraction_features" in type_source
+
+
+def test_visualization_compat_routes_ordinary_axes_and_guards_ternary() -> None:
+    backend = Path(
+        "src/bochan/serving/webapp/composition_visualization_compat.py"
+    ).read_text(encoding="utf-8")
+    frontend = Path("web/src/compositionVisualizationGuard.ts").read_text(
+        encoding="utf-8"
+    )
+    main = Path("web/src/main.tsx").read_text(encoding="utf-8")
+
+    assert 'kind in {"1d", "2d"} and not composition_axes' in backend
+    assert "_build_ordinary_axis_composition_visualization" in backend
+    assert "_object_backed_string_columns(source)" in backend
+    assert 'kind == "ternary"' in backend
+    assert "len(context.elements) != 3" in backend
+    assert "fractionOptions.size === 3" in frontend
+    assert 'kindSelect.value = "1d"' in frontend
+    assert "installCompositionVisualizationGuard" in main

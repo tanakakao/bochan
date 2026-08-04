@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { installCompositionExtension } from "./compositionExtension";
 import { installCompositionPrepareControls } from "./compositionPrepareControls";
+import { installCompositionVisualizationGuard } from "./compositionVisualizationGuard";
 import { installDynamicNumberInputSteps } from "./numericInputUtils";
 import "./styles.css";
 import "./target-settings.css";
@@ -22,6 +23,7 @@ import "./red-theme.css";
 
 installDynamicNumberInputSteps();
 installCompositionPrepareControls(installCompositionExtension);
+installCompositionVisualizationGuard();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

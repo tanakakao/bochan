@@ -27,6 +27,8 @@ def test_muted_red_theme_defines_red_selection_and_orange_categories() -> None:
         'button.composition-kind-option[data-composition-kind="composition"].active'
         in source
     )
+    assert ".feature-type-toggle input" in source
+    assert "accent-color: var(--category)" in source
 
 
 def test_select_page_explains_the_red_and_orange_states() -> None:

@@ -142,13 +142,12 @@ def register_composition_routes(app: Any, *, api_prefix: str = "/api/v1") -> Non
         app.post(validation_path)(validate_composition)
 
     if optimization_path not in existing_paths:
-        from .app import RegressionRunRequest
-
-        base_run = _route_endpoint(app, f"{prefix}/regression/run", "POST")
 
         def run_composition_regression(
             request: CompositionRegressionRunRequest,
         ) -> dict[str, Any]:
+            from .app import RegressionRunRequest
+
             payload = dict(request.run)
             model_kwargs = dict(payload.get("model_kwargs") or {})
             model_kwargs["web_composition"] = request.composition.model_dump(
@@ -156,6 +155,11 @@ def register_composition_routes(app: Any, *, api_prefix: str = "/api/v1") -> Non
             )
             payload["model_kwargs"] = model_kwargs
             validated = RegressionRunRequest.model_validate(payload)
+            base_run = _route_endpoint(
+                app,
+                f"{prefix}/regression/run",
+                "POST",
+            )
             return base_run(validated)
 
         app.post(optimization_path)(run_composition_regression)

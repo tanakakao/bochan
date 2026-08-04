@@ -10,6 +10,12 @@ from .composition_web_support import install_composition_web_support
 install_composition_web_support()
 install_composition_constraint_adapter()
 
+from . import workflows_tabular as _workflows_tabular  # noqa: E402
+
+# Keep the established internal contract used by the Web workflow wrapper and
+# artifact tests even though the callable is composition-aware.
+_workflows_tabular.run_regression_web_workflow.__module__ = _workflows_tabular.__name__
+
 from .app import WEB_CAPABILITIES, app, create_app as _create_app  # noqa: E402
 from .composition_web_routes import register_composition_routes  # noqa: E402
 

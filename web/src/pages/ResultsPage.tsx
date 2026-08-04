@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { EmptyState, SectionHeader } from "../components/Common";
 import InteractiveResultPlots from "../InteractiveResultPlots";
+import { withImportanceFeatureLabels } from "../importanceFeatureLabels";
 import { downloadNamedModelArtifact } from "../modelArtifactDownload";
 import { useWorkbench } from "../context/WorkbenchContext";
 import FeatureImportancePanel from "../FeatureImportancePanel";
@@ -56,6 +57,7 @@ export default function ResultsPage() {
   }
 
   const completedResult = result;
+  const importanceResult = withImportanceFeatureLabels(completedResult);
   const staleAfterAppend = Boolean(completedResult.metadata?.stale_after_data_append);
   const targetColumns = completedResult.target_columns?.length
     ? completedResult.target_columns
@@ -255,7 +257,7 @@ export default function ResultsPage() {
 
       <InteractiveResultPlots result={completedResult} />
 
-      <FeatureImportancePanel result={completedResult} />
+      <FeatureImportancePanel result={importanceResult} />
 
       {(completedResult.visualization_warnings ?? []).length > 0 && (
         <div className="alert warning">

@@ -23,4 +23,14 @@ def test_muted_red_theme_defines_red_selection_and_orange_categories() -> None:
     assert "--category-soft: #fff0e3" in source
     assert ".variable-choice.selected:not(.selected-categorical)" in source
     assert ".feature-variable-choice.selected-categorical" in source
-    assert 'button.composition-kind-option[data-composition-kind="composition"].active' in source
+    assert (
+        'button.composition-kind-option[data-composition-kind="composition"].active'
+        in source
+    )
+
+
+def test_select_page_explains_the_red_and_orange_states() -> None:
+    source = Path("web/src/pages/PreparePage.tsx").read_text(encoding="utf-8")
+
+    assert "淡い赤は数値、オレンジはカテゴリ扱いです。" in source
+    assert "青は数値、紫はカテゴリ扱いです。" not in source

@@ -2,6 +2,12 @@
 
 from typing import Any
 
+from .pandas_compat import install_pandas_string_category_compat
+
+# Install before importing workflow modules so runtime DataFrame conversions use
+# the Pandas StringDtype compatibility wrapper.
+install_pandas_string_category_compat()
+
 from .composition_constraint_adapter import install_composition_constraint_adapter
 from .composition_web_support import install_composition_web_support
 

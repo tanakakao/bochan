@@ -18,6 +18,7 @@ import "./experiment-history.css";
 import "./styles/workbench-design.css";
 import "./data-dropzone.css";
 import "./composition-extension.css";
+import "./red-theme.css";
 
 installDynamicNumberInputSteps();
 installCompositionPrepareControls(installCompositionExtension);

@@ -7,8 +7,10 @@ from typing import Any
 
 import numpy as np
 
-from .element_constraint_composition_optimizer import (
-    TabularBayesianOptimizer as _ElementConstraintTabularBayesianOptimizer,
+from . import element_constraint_composition_optimizer as _element_constraint_module
+
+_ElementConstraintTabularBayesianOptimizer = (
+    _element_constraint_module.TabularBayesianOptimizer
 )
 
 
@@ -73,5 +75,7 @@ class TabularBayesianOptimizer(_ElementConstraintTabularBayesianOptimizer):
         expanded = super()._expanded_multi_site_bounds(bounds, transformed)
         return self._complete_transformed_bounds(expanded, transformed)
 
+
+_element_constraint_module.TabularBayesianOptimizer = TabularBayesianOptimizer
 
 __all__ = ["TabularBayesianOptimizer"]

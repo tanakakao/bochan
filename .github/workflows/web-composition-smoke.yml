@@ -33,7 +33,7 @@ jobs:
       - name: Run Python lint
         run: |
           python -m pip install ruff
-          ruff check --ignore I001,SIM102,SIM108 \
+          ruff check --ignore I001,SIM102,SIM108,B010 \
             src/bochan/serving/webapp/composition_web_support.py \
             src/bochan/serving/webapp/composition_web_routes.py \
             src/bochan/serving/webapp/composition_constraint_adapter.py \

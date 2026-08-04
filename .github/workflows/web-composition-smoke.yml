@@ -9,6 +9,7 @@ on:
       - "src/bochan/serving/webapp/composition_web_routes.py"
       - "src/bochan/serving/webapp/composition_constraint_adapter.py"
       - "src/bochan/serving/webapp/composition_visualization.py"
+      - "src/bochan/serving/webapp/composition_visualization_compat.py"
       - "src/bochan/serving/webapp/composition_feature_importance.py"
       - "src/bochan/serving/webapp/composition_feature_importance_views.py"
       - "src/bochan/serving/webapp/composition_importance_records_compat.py"
@@ -19,6 +20,7 @@ on:
       - "web/src/compositionExtension.ts"
       - "web/src/composition-extension.css"
       - "web/src/compositionVisualizationTypes.ts"
+      - "web/src/compositionVisualizationGuard.ts"
       - "web/src/InteractiveResultPlots.tsx"
       - "web/src/red-theme.css"
       - "web/src/main.tsx"
@@ -60,6 +62,7 @@ jobs:
             src/bochan/serving/webapp/composition_web_routes.py \
             src/bochan/serving/webapp/composition_constraint_adapter.py \
             src/bochan/serving/webapp/composition_visualization.py \
+            src/bochan/serving/webapp/composition_visualization_compat.py \
             src/bochan/serving/webapp/composition_feature_importance.py \
             src/bochan/serving/webapp/composition_feature_importance_views.py \
             src/bochan/serving/webapp/composition_importance_records_compat.py \

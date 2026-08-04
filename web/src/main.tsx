@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { installCompositionExtension } from "./compositionExtension";
+import { installCompositionPrepareControls } from "./compositionPrepareControls";
 import { installDynamicNumberInputSteps } from "./numericInputUtils";
 import "./styles.css";
 import "./target-settings.css";
@@ -19,7 +20,7 @@ import "./data-dropzone.css";
 import "./composition-extension.css";
 
 installDynamicNumberInputSteps();
-installCompositionExtension();
+installCompositionPrepareControls(installCompositionExtension);
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

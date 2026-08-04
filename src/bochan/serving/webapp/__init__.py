@@ -10,9 +10,20 @@ from .composition_web_support import install_composition_web_support
 install_composition_web_support()
 install_composition_constraint_adapter()
 
-from .app import app, create_app as _create_app  # noqa: E402
+from .app import WEB_CAPABILITIES, app, create_app as _create_app  # noqa: E402
 from .composition_web_routes import register_composition_routes  # noqa: E402
 
+WEB_CAPABILITIES["composition"] = {
+    "enabled": True,
+    "max_formula_columns": 1,
+    "sites": False,
+    "ratio_total": 1.0,
+    "representations": ["fractions", "clr", "alr", "ilr"],
+    "normalizations": ["atomic_fraction", "weight_fraction"],
+    "element_constraints": ["=", "<=", ">="],
+    "validation_endpoint": "/api/v1/composition/validate",
+    "optimization_endpoint": "/api/v1/composition/regression/run",
+}
 register_composition_routes(app)
 
 

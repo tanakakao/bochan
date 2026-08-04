@@ -98,7 +98,18 @@ def append_element_importance_figures(result: dict[str, Any]) -> None:
     payload = result.get("composition_feature_importance")
     if not isinstance(payload, dict):
         return
-    generated = _element_figures(payload)
+    try:
+        generated = _element_figures(payload)
+    except ImportError as exc:
+        warning = (
+            "Composition element-importance visualization requires the Web or "
+            f"visualization extra: {exc}"
+        )
+        warnings = list(result.get("feature_importance_warnings") or ())
+        if warning not in warnings:
+            warnings.append(warning)
+        result["feature_importance_warnings"] = warnings
+        return
     if not generated:
         return
     generated_ids = {str(figure.get("id")) for figure in generated}

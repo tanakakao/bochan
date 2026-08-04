@@ -79,7 +79,9 @@ button.composition-kind-option.active:hover:not(:disabled) {
   font-weight: 700;
 }
 
-.composition-settings-host {
+.composition-settings-host,
+.composition-model-settings-host,
+.composition-constraint-settings-host {
   display: contents;
 }
 

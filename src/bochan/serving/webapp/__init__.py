@@ -16,6 +16,7 @@ from .composition_importance_output_compat import (
 from .composition_importance_records_compat import (
     install_composition_importance_records_compat,
 )
+from .composition_pd_compat import install_composition_pd_compat
 from .composition_visualization import install_composition_visualization
 from .composition_visualization_compat import (
     install_composition_visualization_compat,
@@ -30,6 +31,7 @@ install_pandas_string_category_compat()
 install_visualization_feature_type_compat()
 install_composition_visualization()
 install_composition_visualization_compat()
+install_composition_pd_compat()
 
 # The adapters must be installed before app.py imports workflows.py and binds the
 # composition-unaware workflow function. Keep these imports intentionally delayed.

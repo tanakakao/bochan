@@ -1,7 +1,7 @@
 """Composition-aware permutation importance for Web optimization results.
 
 The fitted model consumes CLR / ALR / ILR coordinates, but those coordinates are
-not individually interpretable as elemental effects.  This adapter evaluates a
+not individually interpretable as elemental effects. This adapter evaluates a
 second raw-composition importance view after the normal Web workflow finishes:
 
 * all composition coordinates are permuted jointly and reported as ``組成全体``;
@@ -14,6 +14,7 @@ second raw-composition importance view after the normal Web workflow finishes:
 from __future__ import annotations
 
 import copy
+from contextlib import suppress
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
@@ -87,23 +88,17 @@ def _resolve_perturbed_fractions(
 ) -> tuple[np.ndarray, bool]:
     """Close element-wise perturbations while preserving their intended axis.
 
-    Args:
-        baseline: Observed closed compositions with shape ``[n, d]``.
-        proposed: Matrix supplied by the permutation-importance engine.
-        mode: ``proportional`` preserves the ratios among all non-selected
-            elements. ``balance`` keeps the other elements fixed and assigns the
-            residual to ``balance_index``.
-        balance_index: Element receiving the residual in balance mode.
-
-    Returns:
-        The closed composition matrix and whether the proposal was a joint
-        permutation of complete observed composition rows.
+    ``proportional`` preserves the ratios among all non-selected elements.
+    ``balance`` keeps the other elements fixed and assigns the residual to the
+    selected balance element.
     """
 
     base = np.asarray(baseline, dtype=float)
     values = np.asarray(proposed, dtype=float)
     if base.shape != values.shape or base.ndim != 2:
-        raise ValueError("baseline and proposed must be two-dimensional arrays with equal shape.")
+        raise ValueError(
+            "baseline and proposed must be two-dimensional arrays with equal shape."
+        )
 
     joint = _observed_row_permutation(base, values)
     if joint:
@@ -112,9 +107,6 @@ def _resolve_perturbed_fractions(
     changed = np.any(np.abs(values - base) > 1e-10, axis=0)
     changed_indices = np.flatnonzero(changed)
     if len(changed_indices) != 1:
-        # The core permutation engine calls this path only for one element or
-        # the complete group. Keep an explicit, safe fallback for unexpected
-        # custom calls instead of sending an open composition to the model.
         clipped = np.clip(values, 0.0, None)
         totals = clipped.sum(axis=1)
         valid = totals > 0.0
@@ -204,8 +196,7 @@ class _CompositionFractionPredictor:
                     except (KeyError, RuntimeError, TypeError, ValueError):
                         repaired[row_index] = self.baseline[row_index]
 
-        closed = _is_closed(repaired)
-        valid = closed & _composition_validity(
+        valid = _is_closed(repaired) & _composition_validity(
             self.session,
             self.context,
             repaired,
@@ -250,7 +241,7 @@ class _CompositionFractionPredictor:
                 f"missing columns: {missing!r}."
             )
         mean = torch.as_tensor(
-            prediction.loc[:, columns].to_numpy(dtype=float),
+            prediction.loc[:, columns].to_numpy(dtype=float, copy=True),
             dtype=torch.double,
         )
         result = SimpleNamespace(mean=mean)
@@ -289,45 +280,73 @@ def _importance_config(request: Any, n_elements: int) -> Any:
                 "composition",
             ),
         ),
-        feature_roles={index: "composition_element" for index in range(n_elements)},
+        feature_roles={
+            index: "composition_element" for index in range(n_elements)
+        },
         **values,
     )
 
 
-def _records_by_scope(importance: Any, targets: tuple[str, ...]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Convert the core result and normalize elemental importance internally."""
-
-    from bochan.visualization import feature_importance_dataframe
+def _records_by_scope(
+    importance: Any,
+    targets: tuple[str, ...],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Serialize core PI objects and normalize elemental rows internally."""
 
     overall: list[dict[str, Any]] = []
     elements: list[dict[str, Any]] = []
     for target in targets:
-        frame = feature_importance_dataframe(
-            importance,
-            output_name=target,
-            normalized=False,
-            sort=False,
-            include_negative=True,
-        )
-        records = frame.drop(columns=["display_value"], errors="ignore").to_dict(
-            orient="records"
-        )
+        output = importance.outputs[target]
+        method = output.predictive_methods["permutation"]
+        records: list[dict[str, Any]] = []
+        for entry in method.entries.values():
+            summary = entry.importance
+            records.append(
+                {
+                    "output_name": target,
+                    "task_type": output.task_type,
+                    "importance_kind": "predictive",
+                    "method": "permutation",
+                    "class_label": None,
+                    "feature": entry.name,
+                    "rank": summary.rank,
+                    "indices": list(entry.indices),
+                    "feature_type": entry.feature_type,
+                    "role": entry.role,
+                    "mean": summary.mean,
+                    "std": summary.std,
+                    "minimum": summary.minimum,
+                    "maximum": summary.maximum,
+                    "median": summary.median,
+                    "normalized_mean": summary.normalized_mean,
+                    "normalized_std": entry.metadata.get("normalized_std"),
+                    "baseline_metric": entry.baseline_metric,
+                    "metric_name": entry.metric_name,
+                    "metric_direction": entry.metric_direction,
+                    "n_repeats": importance.n_repeats,
+                    "evaluation_source": "training",
+                }
+            )
+
         element_records = [
-            record for record in records if str(record.get("feature")) != _GROUP_NAME
+            record
+            for record in records
+            if str(record.get("feature")) != _GROUP_NAME
         ]
         positive_total = sum(
             max(float(record.get("mean") or 0.0), 0.0)
             for record in element_records
         )
         for record in records:
-            record["evaluation_source"] = "training"
             if str(record.get("feature")) == _GROUP_NAME:
                 record["normalized_mean"] = None
                 overall.append(record)
                 continue
             mean = float(record.get("mean") or 0.0)
             record["normalized_mean"] = (
-                max(mean, 0.0) / positive_total if positive_total > 0.0 else 0.0
+                max(mean, 0.0) / positive_total
+                if positive_total > 0.0
+                else 0.0
             )
             record["label"] = f"{record['feature']} 比率"
             elements.append(record)
@@ -372,9 +391,11 @@ def attach_composition_feature_importance(
         observed = _observed_composition_frame(session)
         baseline = observed.loc[
             :, list(context.fraction_features)
-        ].to_numpy(dtype=float)
+        ].to_numpy(dtype=float, copy=True)
         if baseline.shape[0] < 2:
-            raise ValueError("At least two observations are required for permutation importance.")
+            raise ValueError(
+                "At least two observations are required for permutation importance."
+            )
 
         mode = _DEFAULT_MODE
         balance_element = None
@@ -389,12 +410,12 @@ def attach_composition_feature_importance(
         target_values = torch.as_tensor(
             session.encoded_targets.loc[
                 :, list(regression_targets)
-            ].to_numpy(dtype=float),
+            ].to_numpy(dtype=float, copy=True),
             dtype=torch.double,
         )
         importance = compute_feature_importance(
             predictor=predictor,
-            X=torch.as_tensor(baseline, dtype=torch.double),
+            X=torch.as_tensor(baseline.copy(), dtype=torch.double),
             y=target_values,
             task_type=("regression",) * len(regression_targets),
             feature_names=context.elements,
@@ -402,27 +423,29 @@ def attach_composition_feature_importance(
             config=_importance_config(request, len(context.elements)),
             training_data=True,
         )
-        overall, elements = _records_by_scope(importance, regression_targets)
+        overall, element_records = _records_by_scope(
+            importance,
+            regression_targets,
+        )
         requested_source = result.get("feature_importance_source")
         if requested_source == "cross_validation":
             warnings.append(
                 "組成全体・元素別重要度は、制約付き組成摂動を行うため、"
-                "最終モデルの学習データ上で評価しています。通常PIはcross-validation集約です。"
+                "最終モデルの学習データ上で評価しています。"
+                "通常PIはcross-validation集約です。"
             )
-        coordinate_features = list(
-            dict(
-                getattr(
-                    session.tabular_optimizer,
-                    "composition_transformers_",
-                    None,
-                )
-                or {}
-            )[context.site_name].feature_names_
-            or ()
-        )
+        transformer = dict(
+            getattr(
+                session.tabular_optimizer,
+                "composition_transformers_",
+                None,
+            )
+            or {}
+        )[context.site_name]
+        coordinate_features = list(transformer.feature_names_ or ())
         payload = {
             "column": context.column,
-            "elements": list(context.elements),
+            "element_names": list(context.elements),
             "coordinate_features": coordinate_features,
             "mode": mode,
             "mode_label": _MODE_LABELS[mode],
@@ -431,7 +454,7 @@ def attach_composition_feature_importance(
             "requested_source": requested_source,
             "n_repeats": int(config_mapping.get("n_repeats", 10)),
             "overall": overall,
-            "elements": elements,
+            "elements": element_records,
             "warnings": warnings,
         }
         result["composition_feature_importance"] = payload
@@ -454,7 +477,9 @@ def attach_composition_feature_importance(
 
     if warnings:
         existing = list(result.get("feature_importance_warnings") or [])
-        existing.extend(warning for warning in warnings if warning not in existing)
+        existing.extend(
+            warning for warning in warnings if warning not in existing
+        )
         result["feature_importance_warnings"] = existing
 
 
@@ -475,12 +500,10 @@ def install_composition_feature_importance() -> None:
         run_id = current_request_id()
         if not run_id:
             return result
-        try:
+        with suppress(KeyError):
             session = get_visualization_session(run_id)
             attach_composition_feature_importance(result, request, session)
             session.result = copy.deepcopy(result)
-        except KeyError:
-            pass
         return result
 
     workflows.run_regression_web_workflow = workflow_adapter

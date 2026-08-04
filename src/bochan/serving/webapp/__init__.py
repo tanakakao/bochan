@@ -2,9 +2,11 @@
 
 from typing import Any
 
+from .composition_constraint_adapter import install_composition_constraint_adapter
 from .composition_web_support import install_composition_web_support
 
 install_composition_web_support()
+install_composition_constraint_adapter()
 
 from .app import app, create_app as _create_app
 from .composition_web_routes import register_composition_routes

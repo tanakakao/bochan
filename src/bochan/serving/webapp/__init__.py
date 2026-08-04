@@ -3,6 +3,7 @@
 from typing import Any
 
 from .composition_constraint_adapter import install_composition_constraint_adapter
+from .composition_visualization import install_composition_visualization
 from .composition_web_support import install_composition_web_support
 from .pandas_compat import install_pandas_string_category_compat
 from .visualization_feature_types import install_visualization_feature_type_compat
@@ -11,6 +12,7 @@ from .visualization_feature_types import install_visualization_feature_type_comp
 # conversions use the Pandas StringDtype compatibility wrapper.
 install_pandas_string_category_compat()
 install_visualization_feature_type_compat()
+install_composition_visualization()
 
 # The adapters must be installed before app.py imports workflows.py and binds the
 # composition-unaware workflow function. Keep these imports intentionally delayed.
@@ -34,6 +36,7 @@ WEB_CAPABILITIES["composition"] = {
     "representations": ["fractions", "clr", "alr", "ilr"],
     "normalizations": ["atomic_fraction", "weight_fraction"],
     "element_constraints": ["=", "<=", ">="],
+    "visualization_axes": ["element_fraction_1d", "element_fraction_2d", "ternary"],
     "validation_endpoint": "/api/v1/composition/validate",
     "optimization_endpoint": "/api/v1/composition/regression/run",
 }

@@ -32,6 +32,7 @@ install_composition_visualization()
 install_composition_web_support()
 install_composition_constraint_adapter()
 
+from . import workflows as _workflows  # noqa: E402
 from . import workflows_tabular as _workflows_tabular  # noqa: E402
 
 # Keep the established internal contract used by the Web workflow wrapper and
@@ -47,6 +48,10 @@ install_composition_feature_importance()
 install_composition_feature_importance_views()
 install_composition_importance_output_compat()
 install_composition_element_importance_figures()
+
+# The public workflow callable remains logically owned by workflows.py even
+# though optional composition adapters wrap it at import time.
+_workflows.run_regression_web_workflow.__module__ = _workflows.__name__
 
 from .app import WEB_CAPABILITIES, app, create_app as _create_app  # noqa: E402
 from .composition_web_routes import register_composition_routes  # noqa: E402

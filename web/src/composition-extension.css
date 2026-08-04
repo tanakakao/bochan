@@ -1,14 +1,73 @@
-.composition-kind-control {
+.feature-variable-choice {
   display: grid;
-  gap: 0.25rem;
-  margin: 0.55rem 0.75rem 0.75rem;
-  padding-top: 0.55rem;
-  border-top: 1px solid var(--border, rgba(148, 163, 184, 0.25));
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: stretch;
 }
 
-.composition-kind-control > span {
-  font-size: 0.72rem;
-  color: var(--muted, #64748b);
+.composition-kind-control {
+  min-width: 132px;
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
+  margin: 0;
+  padding: 5px;
+  border-left: 1px solid var(--line, rgba(15, 23, 42, 0.09));
+  background: color-mix(in srgb, var(--surface-subtle, #f8fafc) 82%, transparent);
+}
+
+.composition-kind-native-select {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.composition-kind-segment {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line, rgba(15, 23, 42, 0.09));
+  border-radius: 10px;
+  background: var(--surface-strong, #eef2f6);
+}
+
+button.composition-kind-option {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--muted, #667085);
+  background: transparent;
+  box-shadow: none;
+  font-size: 10px;
+  font-weight: 760;
+  white-space: nowrap;
+}
+
+button.composition-kind-option:hover:not(:disabled) {
+  color: var(--text, #101828);
+  background: var(--surface-raised, #ffffff);
+  box-shadow: none;
+  transform: none;
+}
+
+button.composition-kind-option.active {
+  color: #ffffff;
+  background: var(--primary, #2563eb);
+  box-shadow: var(--shadow-xs, 0 1px 2px rgba(16, 24, 40, 0.03));
+}
+
+button.composition-kind-option.active:hover:not(:disabled) {
+  color: #ffffff;
+  background: var(--primary-hover, #1d4ed8);
 }
 
 .feature-variable-choice.selected-composition {
@@ -93,6 +152,17 @@ button.compact {
 }
 
 @media (max-width: 720px) {
+  .feature-variable-choice {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .composition-kind-control {
+    grid-column: 1 / -1;
+    min-width: 0;
+    border-top: 1px solid var(--line, rgba(15, 23, 42, 0.09));
+    border-left: 0;
+  }
+
   .composition-term-row,
   .composition-constraint-relation {
     grid-template-columns: 1fr;

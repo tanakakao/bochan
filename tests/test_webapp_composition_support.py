@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pandas as pd
 import torch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -17,6 +18,8 @@ from bochan.serving.webapp.composition_web_support import (
     _ACTIVE_CONFIG,
     normalize_web_composition_settings,
 )
+from bochan.tabular.config import TabularDataConfig
+from bochan.tabular.converter import dataframe_to_tensors
 
 
 def test_normalize_web_composition_settings_supports_element_constraints() -> None:
@@ -157,6 +160,29 @@ def test_ordinary_constraint_uses_shifted_index_after_ilr_expansion() -> None:
     assert torch.equal(indices, torch.tensor([2]))
     assert torch.equal(coefficients, torch.tensor([-1.0], dtype=torch.double))
     assert rhs == -1000.0
+
+
+def test_web_converter_accepts_pandas_string_dtype_categories() -> None:
+    frame = pd.DataFrame(
+        {
+            "formula__ilr__1": [0.1, 0.2, 0.3],
+            "phase": pd.Series(["beta", "beta", "beta"], dtype="string"),
+        }
+    )
+    config = TabularDataConfig(
+        input_cols=["formula__ilr__1", "phase"],
+        categorical_cols=["phase"],
+        category_maps={"phase": {"alpha": 0, "beta": 1}},
+        bounds={
+            "formula__ilr__1": [-8.0, 8.0],
+            "phase": [0.0, 1.0],
+        },
+    )
+
+    dataset = dataframe_to_tensors(frame, config)
+
+    assert dataset.X[:, 1].tolist() == [1.0, 1.0, 1.0]
+    assert dataset.category_maps == {"phase": {"alpha": 0, "beta": 1}}
 
 
 def test_web_source_exposes_single_composition_and_linear_constraint_controls() -> None:

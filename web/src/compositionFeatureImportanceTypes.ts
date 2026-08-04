@@ -4,6 +4,7 @@ import type { FeatureImportanceSummaryRecord } from "./types";
 export interface CompositionImportanceRecord extends FeatureImportanceSummaryRecord {
   evaluation_source?: "training" | "cross_validation";
   label?: string;
+  n_repeats?: number | null;
 }
 
 export interface CompositionFeatureImportancePayload {

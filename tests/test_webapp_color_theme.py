@@ -34,8 +34,12 @@ def test_theme_defines_red_selection_orange_categories_and_yellow_compositions()
         'button.composition-kind-option[data-composition-kind="composition"].active'
         in source
     )
+    assert ".feature-type-toggle input:checked + span::after" in source
+    assert "background: var(--category)" in source
+    assert "border-color: var(--category)" in source
     assert ".feature-type-toggle input" in source
     assert "accent-color: var(--category)" in source
+    assert ".feature-missing-panel" in source
 
 
 def test_composition_selector_is_in_place_and_only_visible_for_categories() -> None:

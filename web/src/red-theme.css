@@ -71,6 +71,11 @@ body {
     linear-gradient(180deg, var(--bg), var(--bg-deep));
 }
 
+.feature-missing-panel {
+  display: grid;
+  gap: 16px;
+}
+
 /* Selected navigation and segmented controls use a pale red surface. */
 .workflow-step.active,
 .tab.active,
@@ -106,6 +111,12 @@ body {
   color: var(--category);
   background: color-mix(in srgb, var(--category-soft-strong) 58%, var(--surface));
   border-color: color-mix(in srgb, var(--category) 38%, var(--line));
+}
+
+.feature-type-toggle input:checked + span::after {
+  color: #ffffff;
+  background: var(--category);
+  border-color: var(--category);
 }
 
 .feature-variable-choice.selected-categorical .variable-choice-main small,

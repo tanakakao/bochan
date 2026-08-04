@@ -51,7 +51,10 @@ def test_legacy_composition_infers_passthrough_bounds_with_descriptors(
     assert bo.fit(_frame()) is bo
     assert captured["kwargs"]["bounds"]["temperature"] == [900.0, 1000.0]
     assert "formula__ilr__1" in captured["kwargs"]["bounds"]
-    assert "formula__atomic_number__mean" in captured["kwargs"]["bounds"]
+    assert (
+        "formula__descriptor__atomic_number__mean"
+        in captured["kwargs"]["bounds"]
+    )
 
 
 def test_explicit_passthrough_bound_is_preserved(monkeypatch) -> None:

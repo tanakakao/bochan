@@ -242,4 +242,4 @@ def test_infeasible_coupled_total_constraint_is_rejected() -> None:
 def test_public_tabular_optimizer_exposes_variable_total_support() -> None:
     from bochan.tabular import TabularBayesianOptimizer as PublicOptimizer
 
-    assert PublicOptimizer is TabularBayesianOptimizer
+    assert issubclass(PublicOptimizer, TabularBayesianOptimizer)

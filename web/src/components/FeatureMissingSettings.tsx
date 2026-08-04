@@ -17,7 +17,7 @@ export default function FeatureMissingSettings() {
   }
 
   return (
-    <article className="panel feature-constraint-panel">
+    <article className="panel feature-missing-panel">
       <div className="panel-title">
         <div>
           <span className="panel-kicker">4 · MISSING VALUES</span>

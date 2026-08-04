@@ -20,12 +20,14 @@ on:
       - "web/src/composition-extension.css"
       - "web/src/compositionVisualizationTypes.ts"
       - "web/src/InteractiveResultPlots.tsx"
+      - "web/src/red-theme.css"
       - "web/src/main.tsx"
       - "tests/test_webapp_composition_support.py"
       - "tests/test_webapp_composition_visualization.py"
       - "tests/test_webapp_composition_feature_importance.py"
       - "tests/test_webapp_composition_feature_importance_integration.py"
       - "tests/test_webapp_composition_settings_placement.py"
+      - "tests/test_webapp_color_theme.py"
       - ".github/workflows/web-composition-smoke.yml"
   workflow_dispatch:
 
@@ -49,6 +51,7 @@ jobs:
           tests/test_webapp_composition_feature_importance.py
           tests/test_webapp_composition_feature_importance_integration.py
           tests/test_webapp_composition_settings_placement.py
+          tests/test_webapp_color_theme.py
       - name: Run Python lint
         run: |
           python -m pip install ruff
@@ -68,7 +71,8 @@ jobs:
             tests/test_webapp_composition_visualization.py \
             tests/test_webapp_composition_feature_importance.py \
             tests/test_webapp_composition_feature_importance_integration.py \
-            tests/test_webapp_composition_settings_placement.py
+            tests/test_webapp_composition_settings_placement.py \
+            tests/test_webapp_color_theme.py
       - uses: actions/setup-node@v4
         with:
           node-version: "24"

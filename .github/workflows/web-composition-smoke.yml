@@ -7,6 +7,7 @@ on:
     paths:
       - "src/bochan/serving/webapp/composition_web_support.py"
       - "src/bochan/serving/webapp/composition_web_routes.py"
+      - "src/bochan/serving/webapp/composition_constraint_adapter.py"
       - "src/bochan/serving/webapp/__init__.py"
       - "web/src/compositionExtension.ts"
       - "web/src/composition-extension.css"
@@ -35,6 +36,7 @@ jobs:
           ruff check --ignore I001,SIM102,SIM108 \
             src/bochan/serving/webapp/composition_web_support.py \
             src/bochan/serving/webapp/composition_web_routes.py \
+            src/bochan/serving/webapp/composition_constraint_adapter.py \
             src/bochan/serving/webapp/__init__.py \
             tests/test_webapp_composition_support.py
       - uses: actions/setup-node@v4

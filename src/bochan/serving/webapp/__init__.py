@@ -3,6 +3,9 @@
 from typing import Any
 
 from .composition_constraint_adapter import install_composition_constraint_adapter
+from .composition_element_importance_figures import (
+    install_composition_element_importance_figures,
+)
 from .composition_feature_importance import install_composition_feature_importance
 from .composition_feature_importance_views import (
     install_composition_feature_importance_views,
@@ -30,10 +33,11 @@ from . import workflows_tabular as _workflows_tabular  # noqa: E402
 _workflows_tabular.run_regression_web_workflow.__module__ = _workflows_tabular.__name__
 
 # Composition feature importance requires the completed visualization session.
-# Attach the raw importance payload first, then replace coordinate-level PI in
-# the Web response by the joint ``組成全体`` entry.
+# Attach the raw importance payload, replace coordinate-level PI by the joint
+# ``組成全体`` entry, then add the element-wise composition card.
 install_composition_feature_importance()
 install_composition_feature_importance_views()
+install_composition_element_importance_figures()
 
 from .app import WEB_CAPABILITIES, app, create_app as _create_app  # noqa: E402
 from .composition_web_routes import register_composition_routes  # noqa: E402

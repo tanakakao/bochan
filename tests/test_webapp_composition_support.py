@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -159,8 +160,8 @@ def test_ordinary_constraint_uses_shifted_index_after_ilr_expansion() -> None:
 
 
 def test_web_source_exposes_single_composition_and_linear_constraint_controls() -> None:
-    source = open("web/src/compositionExtension.ts", encoding="utf-8").read()
-    main_source = open("web/src/main.tsx", encoding="utf-8").read()
+    source = Path("web/src/compositionExtension.ts").read_text(encoding="utf-8")
+    main_source = Path("web/src/main.tsx").read_text(encoding="utf-8")
 
     assert "通常カテゴリ" in source
     assert "組成式" in source

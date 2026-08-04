@@ -347,7 +347,7 @@ export default function PreparePage() {
             <div>
               <span className="panel-kicker">FEATURE COLUMNS</span>
               <h3>説明変数</h3>
-              <p>青は数値、紫はカテゴリ扱いです。カテゴリ設定を変更すると、その列も選択されます。</p>
+              <p>淡い赤は数値、オレンジはカテゴリ扱いです。カテゴリ設定を変更すると、その列も選択されます。</p>
             </div>
             <span className={`status-chip ${featureColumns.length ? "success" : "warning"}`}>
               {featureColumns.length ? `${featureColumns.length} selected` : "Required"}

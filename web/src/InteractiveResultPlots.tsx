@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import Plot from "react-plotly.js";
 import type { Data } from "plotly.js";
 import { fetchResultVisualization } from "./api";
+import "./compositionVisualizationTypes";
 import { useWorkbench } from "./context/WorkbenchContext";
 import { RESULT_PLOT_CONFIG } from "./plotConfig";
 import { themedPlotLayout } from "./plotLayout";
@@ -17,6 +18,7 @@ interface Props {
 }
 
 type LeftVisualizationKind = "yyplot" | "pareto";
+type CompositionMode = "proportional" | "balance";
 
 function PlotCard({
   visualization,
@@ -57,9 +59,15 @@ function defaults(result: RegressionResult): VisualizationOptions {
   };
 }
 
+function featureLabel(options: VisualizationOptions, feature: string): string {
+  return options.feature_labels?.[feature] ?? feature;
+}
+
 /** Two-column interactive Plotly area using fitted FastAPI visualization sessions. */
 export default function InteractiveResultPlots({ result }: Props) {
   const options = useMemo(() => defaults(result), [result]);
+  const composition = options.composition;
+  const compositionFeatures = composition?.fraction_features ?? [];
   const runId = result.visualization_run_id;
   const [leftKind, setLeftKind] = useState<LeftVisualizationKind>(
     result.visualization_run_id && options.regression_targets.length >= 2 ? "pareto" : "yyplot"
@@ -72,16 +80,24 @@ export default function InteractiveResultPlots({ result }: Props) {
   const [showParetoFront, setShowParetoFront] = useState(false);
   const [rightKind, setRightKind] = useState<"1d" | "2d" | "ternary">("1d");
   const [rightTarget, setRightTarget] = useState(options.target_columns[0] ?? "");
-  const [featureA, setFeatureA] = useState(options.feature_columns[0] ?? "");
+  const [featureA, setFeatureA] = useState(
+    compositionFeatures[0] ?? options.feature_columns[0] ?? ""
+  );
   const [featureB, setFeatureB] = useState(
-    options.numeric_features[1] ?? options.numeric_features[0] ?? ""
+    compositionFeatures[1] ?? options.numeric_features[1] ?? options.numeric_features[0] ?? ""
   );
   const [featureC, setFeatureC] = useState(
-    options.numeric_features[2] ?? options.numeric_features[0] ?? ""
+    compositionFeatures[2] ?? options.numeric_features[2] ?? options.numeric_features[0] ?? ""
   );
   const [showType, setShowType] = useState<"pred" | "acqf">("pred");
   const initialGroup = options.ternary_groups?.[0];
   const [sumValue, setSumValue] = useState(initialGroup?.sum_value ?? 1);
+  const [compositionMode, setCompositionMode] = useState<CompositionMode>(
+    composition?.default_mode ?? "proportional"
+  );
+  const [balanceElement, setBalanceElement] = useState(
+    composition?.elements.at(-1) ?? ""
+  );
   const [fixedValues, setFixedValues] = useState<Record<string, string | number>>(() =>
     Object.fromEntries(
       Object.entries(options.feature_controls ?? {}).map(([name, control]) => [name, control.default])
@@ -94,11 +110,37 @@ export default function InteractiveResultPlots({ result }: Props) {
   const [leftError, setLeftError] = useState<string | null>(null);
   const [rightError, setRightError] = useState<string | null>(null);
 
+  const selectedRightFeatures = rightKind === "1d"
+    ? [featureA]
+    : rightKind === "2d"
+      ? [featureA, featureB]
+      : [featureA, featureB, featureC];
+  const plottedFeatures = new Set(selectedRightFeatures);
+  const usesCompositionAxis = selectedRightFeatures.some((feature) =>
+    compositionFeatures.includes(feature)
+  );
+  const isCompositionTernary = rightKind === "ternary"
+    && compositionFeatures.length === 3
+    && selectedRightFeatures.every((feature) => compositionFeatures.includes(feature));
+  const balanceCandidates = composition?.features
+    .filter((feature) => !plottedFeatures.has(feature.name)) ?? [];
+
   useEffect(() => {
     if (leftKind === "pareto" && options.regression_targets.length < 2) {
       setLeftKind("yyplot");
     }
   }, [leftKind, options.regression_targets]);
+
+  useEffect(() => {
+    if (
+      compositionMode === "balance"
+      && usesCompositionAxis
+      && balanceCandidates.length > 0
+      && !balanceCandidates.some((feature) => feature.element === balanceElement)
+    ) {
+      setBalanceElement(balanceCandidates[0].element);
+    }
+  }, [balanceCandidates, balanceElement, compositionMode, usesCompositionAxis]);
 
   useEffect(() => {
     if (!runId) {
@@ -158,7 +200,13 @@ export default function InteractiveResultPlots({ result }: Props) {
       target: rightTarget,
       features,
       show_type: showType,
-      fixed_values: fixedValues,
+      fixed_values: {
+        ...fixedValues,
+        ...(usesCompositionAxis ? {
+          __composition_mode__: compositionMode,
+          __composition_balance_element__: balanceElement
+        } : {})
+      },
       sum_value: rightKind === "ternary" ? sumValue : undefined,
       n: rightKind === "2d" ? 30 : 50
     })
@@ -168,7 +216,20 @@ export default function InteractiveResultPlots({ result }: Props) {
       })
       .finally(() => { if (active) setRightLoading(false); });
     return () => { active = false; };
-  }, [featureA, featureB, featureC, fixedValues, rightKind, rightTarget, runId, showType, sumValue]);
+  }, [
+    balanceElement,
+    compositionMode,
+    featureA,
+    featureB,
+    featureC,
+    fixedValues,
+    rightKind,
+    rightTarget,
+    runId,
+    showType,
+    sumValue,
+    usesCompositionAxis
+  ]);
 
   function changeLeftKind(value: LeftVisualizationKind) {
     setLeftKind(value);
@@ -183,7 +244,12 @@ export default function InteractiveResultPlots({ result }: Props) {
     if (value !== "1d" && !options.numeric_features.includes(featureA)) {
       setFeatureA(options.numeric_features[0] ?? "");
     }
-    if (value === "ternary" && initialGroup) {
+    if (value === "ternary" && compositionFeatures.length === 3) {
+      setFeatureA(compositionFeatures[0]);
+      setFeatureB(compositionFeatures[1]);
+      setFeatureC(compositionFeatures[2]);
+      setSumValue(1);
+    } else if (value === "ternary" && initialGroup) {
       setFeatureA(initialGroup.features[0] ?? "");
       setFeatureB(initialGroup.features[1] ?? "");
       setFeatureC(initialGroup.features[2] ?? "");
@@ -192,8 +258,6 @@ export default function InteractiveResultPlots({ result }: Props) {
   }
 
   const rightFeatures = rightKind === "1d" ? options.feature_columns : options.numeric_features;
-  const plottedFeatures = new Set(rightKind === "1d" ? [featureA] : rightKind === "2d"
-    ? [featureA, featureB] : [featureA, featureB, featureC]);
 
   return (
     <section className="interactive-visualization-section">
@@ -201,7 +265,7 @@ export default function InteractiveResultPlots({ result }: Props) {
         <div>
           <span className="eyebrow">Visualization</span>
           <h3>結果の可視化</h3>
-          <p>左にモデル評価／パレート図、右に説明変数空間の既存Plotly図を表示します。</p>
+          <p>左にモデル評価／パレート図、右に通常変数または元素比率を軸とした既存Plotly図を表示します。</p>
         </div>
       </div>
 
@@ -268,21 +332,46 @@ export default function InteractiveResultPlots({ result }: Props) {
               <option value="acqf">獲得関数</option>
             </select></label>
             <label>変数1<select value={featureA} onChange={(event) => setFeatureA(event.target.value)}>
-              {rightFeatures.map((feature) => <option key={feature} value={feature}>{feature}</option>)}
+              {rightFeatures.map((feature) => (
+                <option key={feature} value={feature}>{featureLabel(options, feature)}</option>
+              ))}
             </select></label>
             {rightKind !== "1d" && <label>変数2<select value={featureB} onChange={(event) => setFeatureB(event.target.value)}>
-              {options.numeric_features.map((feature) => <option key={feature} value={feature}>{feature}</option>)}
+              {options.numeric_features.map((feature) => (
+                <option key={feature} value={feature}>{featureLabel(options, feature)}</option>
+              ))}
             </select></label>}
             {rightKind === "ternary" && <>
               <label>変数3<select value={featureC} onChange={(event) => setFeatureC(event.target.value)}>
-                {options.numeric_features.map((feature) => <option key={feature} value={feature}>{feature}</option>)}
+                {options.numeric_features.map((feature) => (
+                  <option key={feature} value={feature}>{featureLabel(options, feature)}</option>
+                ))}
               </select></label>
-              <label>合計値<input
+              {!isCompositionTernary && <label>合計値<input
                 type="number"
                 step="any"
                 value={sumValue}
                 onChange={(event) => setSumValue(Number(event.target.value))}
-              /></label>
+              /></label>}
+            </>}
+            {usesCompositionAxis && !isCompositionTernary && <>
+              <label>組成変化<select
+                value={compositionMode}
+                onChange={(event) => setCompositionMode(event.target.value as CompositionMode)}
+              >
+                <option value="proportional">残りの元素比を維持</option>
+                <option value="balance" disabled={balanceCandidates.length === 0}>バランス元素で調整</option>
+              </select></label>
+              {compositionMode === "balance" && balanceCandidates.length > 0 && (
+                <label>バランス元素<select
+                  value={balanceElement}
+                  onChange={(event) => setBalanceElement(event.target.value)}
+                >
+                  {balanceCandidates.map((feature) => (
+                    <option key={feature.element} value={feature.element}>{feature.element}</option>
+                  ))}
+                </select></label>
+              )}
             </>}
           </div>
           <PlotCard visualization={rightPlot} loading={rightLoading} error={rightError} />
@@ -290,15 +379,16 @@ export default function InteractiveResultPlots({ result }: Props) {
             <div className="plot-slice-controls">
               <div>
                 <strong>表示外の変数値</strong>
-                <p>図に使わない説明変数を固定します。表示中の変数は編集できません。</p>
+                <p>図に使わない通常変数と、組成変化の基準比率を設定します。</p>
               </div>
               <div className="plot-slice-control-grid">
                 {options.feature_columns.map((feature) => {
+                  if (composition && feature === composition.column) return null;
                   const control = options.feature_controls?.[feature];
                   if (!control) return null;
                   const disabled = plottedFeatures.has(feature);
                   return <label key={feature} className={disabled ? "plot-slice-disabled" : ""}>
-                    <span>{feature}{disabled && "（図で使用中）"}</span>
+                    <span>{featureLabel(options, feature)}{disabled && "（図で使用中）"}</span>
                     {control.kind === "numeric" ? <>
                       <input
                         type="range"

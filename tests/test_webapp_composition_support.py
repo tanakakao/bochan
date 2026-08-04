@@ -18,6 +18,10 @@ from bochan.serving.webapp.composition_web_support import (
     _ACTIVE_CONFIG,
     normalize_web_composition_settings,
 )
+from bochan.serving.webapp.visualization_sessions import (
+    VisualizationSession,
+    visualization_options,
+)
 from bochan.tabular.config import TabularDataConfig
 from bochan.tabular.converter import dataframe_to_tensors
 
@@ -185,6 +189,41 @@ def test_web_converter_accepts_pandas_string_dtype_categories() -> None:
     assert dataset.category_maps == {"phase": {"alpha": 0, "beta": 1}}
 
 
+def test_composition_formula_is_categorical_visualization_control() -> None:
+    session = VisualizationSession(
+        optimizer=SimpleNamespace(model=SimpleNamespace()),
+        tabular_optimizer=SimpleNamespace(
+            dataset=SimpleNamespace(cat_dims=[], category_maps={})
+        ),
+        data=pd.DataFrame(
+            {
+                "formula": pd.Series(["Al2O3", "Fe2O3"], dtype="string"),
+                "temperature": [900.0, 1000.0],
+            }
+        ),
+        encoded_targets=pd.DataFrame(),
+        feature_columns=["formula", "temperature"],
+        target_columns=["property"],
+        target_metadata={"property": {"internal_task": "regression"}},
+        hybrid_model=False,
+    )
+
+    options = visualization_options(session)
+
+    assert options["numeric_features"] == ["temperature"]
+    assert options["feature_controls"]["formula"] == {
+        "kind": "categorical",
+        "values": ["Al2O3", "Fe2O3"],
+        "default": "Al2O3",
+    }
+    assert options["feature_controls"]["temperature"] == {
+        "kind": "numeric",
+        "min": 900.0,
+        "max": 1000.0,
+        "default": 950.0,
+    }
+
+
 def test_web_source_exposes_single_composition_and_linear_constraint_controls() -> None:
     source = Path("web/src/compositionExtension.ts").read_text(encoding="utf-8")
     main_source = Path("web/src/main.tsx").read_text(encoding="utf-8")
@@ -196,5 +235,6 @@ def test_web_source_exposes_single_composition_and_linear_constraint_controls() 
     assert 'value="alr"' in source
     assert "元素間の線形制約" in source
     assert "web_composition" in source
-    assert "単一組成式" in source
+    assert "組成式のモデル変換" in source
+    assert "組成候補の元素制約" in source
     assert "installCompositionExtension" in main_source

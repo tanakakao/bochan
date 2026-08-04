@@ -1,0 +1,148 @@
+:root {
+  --bg: #fcfbfb;
+  --bg-deep: #f4eeee;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-subtle: #faf6f6;
+  --surface-strong: #f1eaea;
+  --line: rgba(53, 43, 43, 0.10);
+  --line-strong: rgba(53, 43, 43, 0.18);
+  --text: #302929;
+  --muted: #716565;
+  --subtle: #9b8e8e;
+  --primary: #b94f57;
+  --primary-hover: #a64249;
+  --primary-soft: #fbecee;
+  --primary-soft-strong: #f5d9dc;
+  --success: #9f4b51;
+  --success-soft: #f8e9ea;
+  --warning: #bf672d;
+  --warning-soft: #fff0e4;
+  --danger: #b53e47;
+  --danger-soft: #fbe6e8;
+  --category: #c36a2d;
+  --category-hover: #a95622;
+  --category-soft: #fff0e3;
+  --category-soft-strong: #f9d8bd;
+  --shadow-xs: 0 1px 2px rgba(52, 43, 43, 0.035);
+  --shadow-sm: 0 1px 3px rgba(52, 43, 43, 0.055), 0 7px 20px rgba(52, 43, 43, 0.04);
+  --shadow: 0 18px 48px rgba(52, 43, 43, 0.13);
+}
+
+html[data-theme="dark"] {
+  --bg: #201a1a;
+  --bg-deep: #171313;
+  --surface: #292222;
+  --surface-raised: #302828;
+  --surface-subtle: #332b2b;
+  --surface-strong: #3c3232;
+  --line: rgba(255, 242, 242, 0.09);
+  --line-strong: rgba(255, 242, 242, 0.17);
+  --text: #faf4f4;
+  --muted: #c9bbbb;
+  --subtle: #9f9090;
+  --primary: #e3949a;
+  --primary-hover: #efabb0;
+  --primary-soft: rgba(213, 82, 92, 0.16);
+  --primary-soft-strong: rgba(213, 82, 92, 0.27);
+  --success: #df8e94;
+  --success-soft: rgba(205, 79, 89, 0.16);
+  --warning: #eda160;
+  --warning-soft: rgba(218, 124, 48, 0.16);
+  --danger: #f08b93;
+  --danger-soft: rgba(211, 63, 75, 0.18);
+  --category: #f0a05e;
+  --category-hover: #f4b27b;
+  --category-soft: rgba(218, 124, 48, 0.16);
+  --category-soft-strong: rgba(218, 124, 48, 0.27);
+}
+
+body {
+  background:
+    radial-gradient(circle at 42% -10%, color-mix(in srgb, var(--primary) 8%, transparent), transparent 34rem),
+    linear-gradient(180deg, var(--bg), var(--bg-deep));
+}
+
+/* Selected navigation and segmented controls use a pale red surface. */
+.workflow-step.active,
+.tab.active,
+.workbench-mode-switch button.active {
+  color: var(--primary);
+  background: var(--primary-soft-strong);
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--line));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 8%, transparent), var(--shadow-xs);
+}
+
+.workflow-step.active span,
+.tab.active em {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary-soft-strong) 82%, var(--surface));
+  border-color: color-mix(in srgb, var(--primary) 34%, var(--line));
+}
+
+.tab.active::before {
+  background: var(--primary);
+}
+
+button.composition-kind-option.active,
+button.composition-kind-option.active:hover:not(:disabled) {
+  color: var(--primary);
+  background: var(--primary-soft-strong);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+/* Categorical and composition-specific states use orange instead of red. */
+.feature-variable-choice.selected-categorical,
+.feature-variable-choice.selected-categorical:hover,
+.feature-variable-choice.selected-composition,
+.feature-variable-choice.selected-composition:hover {
+  color: var(--category);
+  background: var(--category-soft);
+  border-color: color-mix(in srgb, var(--category) 48%, var(--line));
+  box-shadow: inset 4px 0 0 var(--category), var(--shadow-xs);
+}
+
+.feature-variable-choice.selected-categorical .feature-type-toggle,
+.feature-type-toggle:has(input:checked),
+.feature-variable-choice.selected-composition .composition-kind-control {
+  color: var(--category);
+  background: color-mix(in srgb, var(--category-soft-strong) 58%, var(--surface));
+  border-color: color-mix(in srgb, var(--category) 38%, var(--line));
+}
+
+.feature-variable-choice.selected-categorical .variable-choice-main small,
+.feature-variable-choice.selected-composition .variable-choice-main small,
+.categorical-chip {
+  color: var(--category);
+}
+
+.categorical-chip {
+  background: var(--category-soft);
+  border-color: color-mix(in srgb, var(--category) 40%, var(--line));
+}
+
+button.composition-kind-option[data-composition-kind="composition"].active,
+button.composition-kind-option[data-composition-kind="composition"].active:hover:not(:disabled) {
+  color: var(--category);
+  background: var(--category-soft-strong);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--category) 20%, transparent);
+}
+
+/* Keep ordinary selected cards consistently pale red. */
+.variable-choice.selected:not(.selected-categorical):not(.selected-composition),
+.variable-choice.selected:not(.selected-categorical):not(.selected-composition):hover:not(:disabled),
+.constraint-variable-picker button.selected,
+.constraint-variable-picker button[aria-pressed="true"] {
+  color: var(--primary);
+  background: var(--primary-soft-strong);
+  border-color: color-mix(in srgb, var(--primary) 46%, var(--line));
+}
+
+input[type="checkbox"],
+.table-checkbox {
+  accent-color: var(--primary);
+}
+
+.feature-type-toggle input {
+  accent-color: var(--category);
+}

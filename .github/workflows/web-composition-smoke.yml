@@ -8,11 +8,26 @@ on:
       - "src/bochan/serving/webapp/composition_web_support.py"
       - "src/bochan/serving/webapp/composition_web_routes.py"
       - "src/bochan/serving/webapp/composition_constraint_adapter.py"
+      - "src/bochan/serving/webapp/composition_visualization.py"
+      - "src/bochan/serving/webapp/composition_feature_importance.py"
+      - "src/bochan/serving/webapp/composition_feature_importance_views.py"
+      - "src/bochan/serving/webapp/composition_importance_records_compat.py"
+      - "src/bochan/serving/webapp/composition_importance_output_compat.py"
+      - "src/bochan/serving/webapp/composition_element_importance_figures.py"
+      - "src/bochan/serving/webapp/visualization_feature_types.py"
       - "src/bochan/serving/webapp/__init__.py"
       - "web/src/compositionExtension.ts"
       - "web/src/composition-extension.css"
+      - "web/src/compositionVisualizationTypes.ts"
+      - "web/src/InteractiveResultPlots.tsx"
+      - "web/src/red-theme.css"
       - "web/src/main.tsx"
       - "tests/test_webapp_composition_support.py"
+      - "tests/test_webapp_composition_visualization.py"
+      - "tests/test_webapp_composition_feature_importance.py"
+      - "tests/test_webapp_composition_feature_importance_integration.py"
+      - "tests/test_webapp_composition_settings_placement.py"
+      - "tests/test_webapp_color_theme.py"
       - ".github/workflows/web-composition-smoke.yml"
   workflow_dispatch:
 
@@ -27,18 +42,37 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install Python package
-        run: python -m pip install -e ".[test,api]" pandas
+        run: python -m pip install -e ".[test,api]" pandas plotly
       - name: Run composition API tests
-        run: pytest -q tests/test_webapp_composition_support.py
+        run: >-
+          pytest -q
+          tests/test_webapp_composition_support.py
+          tests/test_webapp_composition_visualization.py
+          tests/test_webapp_composition_feature_importance.py
+          tests/test_webapp_composition_feature_importance_integration.py
+          tests/test_webapp_composition_settings_placement.py
+          tests/test_webapp_color_theme.py
       - name: Run Python lint
         run: |
           python -m pip install ruff
-          ruff check --ignore I001,SIM102,SIM108,B010 \
+          ruff check --ignore I001,SIM102,SIM105,SIM108,B010 \
             src/bochan/serving/webapp/composition_web_support.py \
             src/bochan/serving/webapp/composition_web_routes.py \
             src/bochan/serving/webapp/composition_constraint_adapter.py \
+            src/bochan/serving/webapp/composition_visualization.py \
+            src/bochan/serving/webapp/composition_feature_importance.py \
+            src/bochan/serving/webapp/composition_feature_importance_views.py \
+            src/bochan/serving/webapp/composition_importance_records_compat.py \
+            src/bochan/serving/webapp/composition_importance_output_compat.py \
+            src/bochan/serving/webapp/composition_element_importance_figures.py \
+            src/bochan/serving/webapp/visualization_feature_types.py \
             src/bochan/serving/webapp/__init__.py \
-            tests/test_webapp_composition_support.py
+            tests/test_webapp_composition_support.py \
+            tests/test_webapp_composition_visualization.py \
+            tests/test_webapp_composition_feature_importance.py \
+            tests/test_webapp_composition_feature_importance_integration.py \
+            tests/test_webapp_composition_settings_placement.py \
+            tests/test_webapp_color_theme.py
       - uses: actions/setup-node@v4
         with:
           node-version: "24"

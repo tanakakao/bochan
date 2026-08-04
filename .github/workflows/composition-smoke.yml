@@ -25,7 +25,8 @@ jobs:
             tests/test_tabular_composition_sites_public.py \
             tests/test_tabular_composition_element_columns.py \
             tests/test_tabular_composition_variable_totals.py \
-            tests/test_tabular_composition_element_constraints.py
+            tests/test_tabular_composition_element_constraints.py \
+            tests/test_tabular_composition_passthrough_bounds.py
       - name: Lint composition APIs
         run: |
           python -m pip install ruff
@@ -39,8 +40,10 @@ jobs:
             src/bochan/tabular/element_column_composition_optimizer.py \
             src/bochan/tabular/variable_total_composition_optimizer.py \
             src/bochan/tabular/element_constraint_composition_optimizer.py \
+            src/bochan/tabular/composition_bounds_optimizer.py \
             tests/test_tabular_composition_sites.py \
             tests/test_tabular_composition_sites_public.py \
             tests/test_tabular_composition_element_columns.py \
             tests/test_tabular_composition_variable_totals.py \
-            tests/test_tabular_composition_element_constraints.py
+            tests/test_tabular_composition_element_constraints.py \
+            tests/test_tabular_composition_passthrough_bounds.py

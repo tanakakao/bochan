@@ -235,5 +235,6 @@ def test_web_source_exposes_single_composition_and_linear_constraint_controls() 
     assert 'value="alr"' in source
     assert "元素間の線形制約" in source
     assert "web_composition" in source
-    assert "単一組成式" in source
+    assert "組成式のモデル変換" in source
+    assert "組成候補の元素制約" in source
     assert "installCompositionExtension" in main_source

@@ -4,6 +4,9 @@ from typing import Any
 
 from .composition_constraint_adapter import install_composition_constraint_adapter
 from .composition_feature_importance import install_composition_feature_importance
+from .composition_feature_importance_views import (
+    install_composition_feature_importance_views,
+)
 from .composition_visualization import install_composition_visualization
 from .composition_web_support import install_composition_web_support
 from .pandas_compat import install_pandas_string_category_compat
@@ -26,10 +29,11 @@ from . import workflows_tabular as _workflows_tabular  # noqa: E402
 # artifact tests even though the callable is composition-aware.
 _workflows_tabular.run_regression_web_workflow.__module__ = _workflows_tabular.__name__
 
-# The feature-importance adapter needs the completed visualization session, so it
-# wraps the lifecycle workflow after the tabular composition adapters are active
-# but before app.py binds the route callable.
+# Composition feature importance requires the completed visualization session.
+# Attach the raw importance payload first, then replace coordinate-level PI in
+# the Web response by the joint ``組成全体`` entry.
 install_composition_feature_importance()
+install_composition_feature_importance_views()
 
 from .app import WEB_CAPABILITIES, app, create_app as _create_app  # noqa: E402
 from .composition_web_routes import register_composition_routes  # noqa: E402

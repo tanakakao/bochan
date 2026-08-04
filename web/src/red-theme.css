@@ -110,6 +110,10 @@ button.composition-kind-option.active:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--category) 38%, var(--line));
 }
 
+.feature-type-toggle input {
+  accent-color: var(--category);
+}
+
 .feature-variable-choice.selected-categorical .variable-choice-main small,
 .feature-variable-choice.selected-composition .variable-choice-main small,
 .categorical-chip {
@@ -141,4 +145,8 @@ button.composition-kind-option[data-composition-kind="composition"].active:hover
 input[type="checkbox"],
 .table-checkbox {
   accent-color: var(--primary);
+}
+
+.feature-type-toggle input {
+  accent-color: var(--category);
 }

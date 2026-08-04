@@ -70,7 +70,7 @@ def test_composition_validate_endpoint_infers_elements_and_normalizes_ratios() -
 
 
 def test_web_source_exposes_single_composition_and_linear_constraint_controls() -> None:
-    source = open("web/src/compositionExtension.tsx", encoding="utf-8").read()
+    source = open("web/src/compositionExtension.ts", encoding="utf-8").read()
     main_source = open("web/src/main.tsx", encoding="utf-8").read()
 
     assert "通常カテゴリ" in source
@@ -80,5 +80,5 @@ def test_web_source_exposes_single_composition_and_linear_constraint_controls() 
     assert 'value="alr"' in source
     assert "元素間の線形制約" in source
     assert "web_composition" in source
-    assert "一列" not in source or "単一" in source
+    assert "単一組成式" in source
     assert "installCompositionExtension" in main_source

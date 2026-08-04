@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import torch
 from fastapi.testclient import TestClient
 
 from bochan.serving.webapp import app
+from bochan.serving.webapp import workflows_tabular
 from bochan.serving.webapp.composition_web_support import (
+    _ACTIVE_CONFIG,
     normalize_web_composition_settings,
 )
 
@@ -67,6 +72,34 @@ def test_composition_validate_endpoint_infers_elements_and_normalizes_ratios() -
     assert first == second
     assert abs(sum(first.values()) - 1.0) < 1e-12
     assert abs(first["Fe"] - 2.0 / 11.0) < 1e-12
+
+
+def test_ordinary_constraint_uses_shifted_index_after_ilr_expansion() -> None:
+    constraint = SimpleNamespace(
+        enabled=True,
+        sense="le",
+        rhs=1000.0,
+        terms=[SimpleNamespace(column="temperature", coefficient=1.0)],
+    )
+    token = _ACTIVE_CONFIG.set(
+        {
+            "column": "formula",
+            "feature_names": ["formula__ilr__1", "formula__ilr__2"],
+        }
+    )
+    try:
+        equality, inequality = workflows_tabular.botorch_linear_constraints(
+            [constraint],
+            feature_columns=["formula", "temperature"],
+        )
+    finally:
+        _ACTIVE_CONFIG.reset(token)
+
+    assert equality == []
+    indices, coefficients, rhs = inequality[0]
+    assert torch.equal(indices, torch.tensor([2]))
+    assert torch.equal(coefficients, torch.tensor([-1.0], dtype=torch.double))
+    assert rhs == -1000.0
 
 
 def test_web_source_exposes_single_composition_and_linear_constraint_controls() -> None:

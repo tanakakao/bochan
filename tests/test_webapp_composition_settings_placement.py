@@ -3,6 +3,12 @@ from pathlib import Path
 
 def test_composition_settings_are_split_between_model_and_constraint_pages() -> None:
     source = Path("web/src/compositionExtension.ts").read_text(encoding="utf-8")
+    feature_constraints = Path("web/src/components/FeatureConstraints.tsx").read_text(
+        encoding="utf-8"
+    )
+    feature_missing = Path("web/src/components/FeatureMissingSettings.tsx").read_text(
+        encoding="utf-8"
+    )
 
     model_start = source.index("function modelPanelHtml")
     constraint_start = source.index("function constraintPanelHtml")
@@ -15,6 +21,9 @@ def test_composition_settings_are_split_between_model_and_constraint_pages() -> 
     assert 'modelGrid.insertAdjacentElement("afterend", host)' in source
     assert 'document.querySelector<HTMLElement>(".feature-constraint-panel")' in source
     assert 'host.className = "composition-constraint-settings-host"' in source
+    assert 'className="panel feature-constraint-panel"' in feature_constraints
+    assert 'className="panel feature-missing-panel"' in feature_missing
+    assert 'feature-constraint-panel' not in feature_missing
     assert "組成式のモデル変換" in model_source
     assert "変換方法" in model_source
     assert "組成基準" in model_source

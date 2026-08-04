@@ -8,7 +8,7 @@ on:
       - "src/bochan/serving/webapp/composition_web_support.py"
       - "src/bochan/serving/webapp/composition_web_routes.py"
       - "src/bochan/serving/webapp/__init__.py"
-      - "web/src/compositionExtension.tsx"
+      - "web/src/compositionExtension.ts"
       - "web/src/composition-extension.css"
       - "web/src/main.tsx"
       - "tests/test_webapp_composition_support.py"

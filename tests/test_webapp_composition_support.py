@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any
 
 import torch
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from bochan.serving.webapp import app
 from bochan.serving.webapp import workflows_tabular
+from bochan.serving.webapp.composition_web_routes import (
+    register_composition_routes,
+)
 from bochan.serving.webapp.composition_web_support import (
     _ACTIVE_CONFIG,
     normalize_web_composition_settings,
@@ -72,6 +77,57 @@ def test_composition_validate_endpoint_infers_elements_and_normalizes_ratios() -
     assert first == second
     assert abs(sum(first.values()) - 1.0) < 1e-12
     assert abs(first["Fe"] - 2.0 / 11.0) < 1e-12
+
+
+def test_typed_composition_regression_endpoint_injects_settings() -> None:
+    test_app = FastAPI()
+
+    @test_app.post("/api/v1/regression/run")
+    def base_run(request: Any) -> dict[str, Any]:
+        return request.model_dump()
+
+    register_composition_routes(test_app)
+    response = TestClient(test_app).post(
+        "/api/v1/composition/regression/run",
+        json={
+            "run": {
+                "dataset_id": "dataset-1",
+                "feature_columns": ["formula", "temperature"],
+                "target_column": "property",
+                "search_space": [
+                    {"name": "formula", "type": "auto"},
+                    {
+                        "name": "temperature",
+                        "type": "numeric",
+                        "lower": 800.0,
+                        "upper": 1200.0,
+                    },
+                ],
+            },
+            "composition": {
+                "column": "formula",
+                "elements": ["Fe", "Co", "Ni"],
+                "representation": "ilr",
+                "element_constraints": [
+                    {
+                        "terms": [
+                            {"element": "Co", "coefficient": 1.0},
+                            {"element": "Fe", "coefficient": -0.5},
+                        ],
+                        "operator": "=",
+                        "rhs": 0.0,
+                    }
+                ],
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    composition = payload["model_kwargs"]["web_composition"]
+    assert composition["column"] == "formula"
+    assert composition["representation"] == "ilr"
+    assert composition["element_constraints"][0]["operator"] == "="
 
 
 def test_ordinary_constraint_uses_shifted_index_after_ilr_expansion() -> None:

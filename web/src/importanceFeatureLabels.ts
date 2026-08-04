@@ -39,6 +39,13 @@ function compositionInfo(result: RegressionResult): {
   };
 }
 
+function ilrContrastLabel(index: number, elements: string[]): string {
+  if (index < 1 || index >= elements.length) return `組成 ILR ${index}`;
+  const numerator = elements.slice(0, index);
+  const denominator = elements[index];
+  return `組成 ILR ${index}: GM(${numerator.join("・")}) / ${denominator}`;
+}
+
 function coordinateLabel(value: string, elements: string[]): string | null {
   const coordinate = value.match(/__(fraction|clr|alr)__([^_]+)$/i);
   if (coordinate) {
@@ -52,8 +59,7 @@ function coordinateLabel(value: string, elements: string[]): string | null {
   if (!ilr) return null;
   const rawIndex = Number(ilr[1]);
   const displayIndex = rawIndex >= 1 ? rawIndex : rawIndex + 1;
-  const suffix = elements.length ? `（${elements.join("・")}）` : "";
-  return `組成 ILR ${displayIndex}${suffix}`;
+  return ilrContrastLabel(displayIndex, elements);
 }
 
 function labelResolver(result: RegressionResult): {

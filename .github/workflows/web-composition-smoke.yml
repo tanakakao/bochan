@@ -11,6 +11,7 @@ on:
       - "src/bochan/serving/webapp/composition_visualization.py"
       - "src/bochan/serving/webapp/composition_feature_importance.py"
       - "src/bochan/serving/webapp/composition_feature_importance_views.py"
+      - "src/bochan/serving/webapp/composition_importance_records_compat.py"
       - "src/bochan/serving/webapp/composition_importance_output_compat.py"
       - "src/bochan/serving/webapp/composition_element_importance_figures.py"
       - "src/bochan/serving/webapp/visualization_feature_types.py"
@@ -38,7 +39,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install Python package
-        run: python -m pip install -e ".[test,api]" pandas
+        run: python -m pip install -e ".[test,api]" pandas plotly
       - name: Run composition API tests
         run: >-
           pytest -q
@@ -56,6 +57,7 @@ jobs:
             src/bochan/serving/webapp/composition_visualization.py \
             src/bochan/serving/webapp/composition_feature_importance.py \
             src/bochan/serving/webapp/composition_feature_importance_views.py \
+            src/bochan/serving/webapp/composition_importance_records_compat.py \
             src/bochan/serving/webapp/composition_importance_output_compat.py \
             src/bochan/serving/webapp/composition_element_importance_figures.py \
             src/bochan/serving/webapp/visualization_feature_types.py \

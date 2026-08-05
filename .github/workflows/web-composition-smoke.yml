@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "src/bochan/serving/webapp/composition_web_support.py"
+      - "src/bochan/serving/webapp/composition_candidate_repair_compat.py"
       - "src/bochan/serving/webapp/composition_web_routes.py"
       - "src/bochan/serving/webapp/composition_constraint_adapter.py"
       - "src/bochan/serving/webapp/composition_visualization.py"
@@ -30,6 +31,7 @@ on:
       - "web/test/importanceFeatureLabels.test.ts"
       - "web/package.json"
       - "tests/test_webapp_composition_support.py"
+      - "tests/test_webapp_composition_candidate_repair.py"
       - "tests/test_webapp_composition_visualization.py"
       - "tests/test_webapp_composition_state_pd.py"
       - "tests/test_webapp_composition_feature_importance.py"
@@ -55,6 +57,7 @@ jobs:
         run: >-
           pytest -q
           tests/test_webapp_composition_support.py
+          tests/test_webapp_composition_candidate_repair.py
           tests/test_webapp_composition_visualization.py
           tests/test_webapp_composition_state_pd.py
           tests/test_webapp_composition_feature_importance.py
@@ -66,6 +69,7 @@ jobs:
           python -m pip install ruff
           ruff check --ignore I001,SIM102,SIM105,SIM108,B010 \
             src/bochan/serving/webapp/composition_web_support.py \
+            src/bochan/serving/webapp/composition_candidate_repair_compat.py \
             src/bochan/serving/webapp/composition_web_routes.py \
             src/bochan/serving/webapp/composition_constraint_adapter.py \
             src/bochan/serving/webapp/composition_visualization.py \
@@ -79,6 +83,7 @@ jobs:
             src/bochan/serving/webapp/visualization_feature_types.py \
             src/bochan/serving/webapp/__init__.py \
             tests/test_webapp_composition_support.py \
+            tests/test_webapp_composition_candidate_repair.py \
             tests/test_webapp_composition_visualization.py \
             tests/test_webapp_composition_state_pd.py \
             tests/test_webapp_composition_feature_importance.py \

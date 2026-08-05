@@ -57,6 +57,18 @@ def _object_backed_categories(data: Any, config: Any, pd: Any) -> Any:
     return converted
 
 
+def _patch_loaded_converter_aliases(original: Any, replacement: Any) -> None:
+    """Replace converter references cached by already imported bochan modules."""
+
+    import sys
+
+    for module_name, module in tuple(sys.modules.items()):
+        if module is None or not module_name.startswith("bochan."):
+            continue
+        if getattr(module, "dataframe_to_tensors", None) is original:
+            setattr(module, "dataframe_to_tensors", replacement)
+
+
 def install_pandas_string_category_compat() -> None:
     """Install a Web-scoped compatibility wrapper around DataFrame conversion."""
 
@@ -76,6 +88,7 @@ def install_pandas_string_category_compat() -> None:
         return original(compatible, config)
 
     converter.dataframe_to_tensors = dataframe_to_tensors_compat
+    _patch_loaded_converter_aliases(original, dataframe_to_tensors_compat)
     _INSTALLED = True
 
 

@@ -15,8 +15,12 @@ def _ternary_coordinates(grid: Any) -> np.ndarray:
 
         if isinstance(grid, pd.DataFrame):
             coordinates = grid.to_numpy(dtype=float)
-        else:
-            coordinates = np.asarray(grid, dtype=float)
+            if coordinates.ndim != 2 or coordinates.shape[1] not in {2, 3}:
+                raise ValueError(
+                    "Ternary grid DataFrame must contain two or three columns."
+                )
+            return coordinates.T
+        coordinates = np.asarray(grid, dtype=float)
     except (TypeError, ValueError) as exc:
         raise ValueError("Ternary grid values must be numeric.") from exc
 

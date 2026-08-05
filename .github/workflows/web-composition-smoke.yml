@@ -30,6 +30,7 @@ on:
       - "web/src/compositionVisualizationGuard.ts"
       - "web/src/components/CompositionModelSettings.tsx"
       - "web/src/components/CompositionCandidateConstraints.tsx"
+      - "web/src/components/WorkbenchPageErrorBoundary.tsx"
       - "web/src/components/SearchVariableSettings.tsx"
       - "web/src/components/FeatureConstraints.tsx"
       - "web/src/pages/SettingsPage.tsx"
@@ -52,6 +53,8 @@ on:
       - "tests/test_webapp_pandas_compat.py"
       - "tests/test_webapp_composition_settings_placement.py"
       - "tests/test_webapp_composition_navigation_architecture.py"
+      - "tests/test_webapp_composition_runtime_transport.py"
+      - "tests/test_webapp_model_suggest_react_ownership.py"
       - "tests/test_webapp_workflow_layout.py"
       - "tests/test_webapp_color_theme.py"
       - ".github/workflows/web-composition-smoke.yml"
@@ -82,6 +85,8 @@ jobs:
           tests/test_webapp_pandas_compat.py
           tests/test_webapp_composition_settings_placement.py
           tests/test_webapp_composition_navigation_architecture.py
+          tests/test_webapp_composition_runtime_transport.py
+          tests/test_webapp_model_suggest_react_ownership.py
           tests/test_webapp_workflow_layout.py
           tests/test_webapp_color_theme.py
       - name: Run Python lint
@@ -115,6 +120,8 @@ jobs:
             tests/test_webapp_pandas_compat.py \
             tests/test_webapp_composition_settings_placement.py \
             tests/test_webapp_composition_navigation_architecture.py \
+            tests/test_webapp_composition_runtime_transport.py \
+            tests/test_webapp_model_suggest_react_ownership.py \
             tests/test_webapp_workflow_layout.py \
             tests/test_webapp_color_theme.py
       - uses: actions/setup-node@v4

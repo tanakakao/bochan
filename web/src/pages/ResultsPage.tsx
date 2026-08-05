@@ -32,7 +32,27 @@ function normalizedModelFilename(value: string, fallback: string): string {
   return `${filename || "bochan_model"}.bochan.pt`;
 }
 
-/** Renders recommended candidates first, followed by selectable existing Plotly figures. */
+function ResultsPlaceholder({ kind }: { kind: "accuracy" | "importance" }) {
+  const accuracy = kind === "accuracy";
+  return (
+    <article className={`panel compact-panel results-${kind}-placeholder ${accuracy ? "results-accuracy-slot" : ""}`}>
+      <div className="panel-title">
+        <div>
+          <span className="panel-kicker">{accuracy ? "ACCURACY" : "MODEL INSPECTION"}</span>
+          <h3>{accuracy ? "精度評価の結果" : "特徴量重要度"}</h3>
+          <p>
+            {accuracy
+              ? "交差検証を有効にして再実行すると、Train・Validation・OOF指標を表示します。"
+              : "モデル設定で特徴量重要度を有効にして再実行すると表示します。"}
+          </p>
+        </div>
+        <span className="status-chip">{accuracy ? "Not evaluated" : "Not calculated"}</span>
+      </div>
+    </article>
+  );
+}
+
+/** Renders recommended candidates and result diagnostics in a React-owned dashboard. */
 export default function ResultsPage() {
   const { result, setError, setStep } = useWorkbench();
   const suggestedFilename = defaultModelFilename(result?.dataset_name);
@@ -58,6 +78,12 @@ export default function ResultsPage() {
 
   const completedResult = result;
   const importanceResult = withImportanceFeatureLabels(completedResult);
+  const importanceAvailable = Boolean(
+    (importanceResult.feature_importance_summary?.length ?? 0) > 0
+    || (importanceResult.feature_importance_visualizations?.length ?? 0) > 0
+    || (importanceResult.feature_importance_warnings?.length ?? 0) > 0
+    || Object.keys(importanceResult.model_diagnostics ?? {}).length > 0
+  );
   const staleAfterAppend = Boolean(completedResult.metadata?.stale_after_data_append);
   const targetColumns = completedResult.target_columns?.length
     ? completedResult.target_columns
@@ -174,73 +200,85 @@ export default function ResultsPage() {
         </div>
       )}
 
-      {cv?.outputs && (
-        <article className="panel compact-panel">
-          <div className="panel-title"><div><span className="panel-kicker">CROSS VALIDATION</span><h3>交差検証による精度評価</h3><p>{String(cv.splitter_name)} · {Number(cv.n_splits)} folds</p></div></div>
-          {Object.entries(cv.outputs as Record<string, any>).map(([outputName, output], outputIndex) => (
-            <details key={outputName} open={outputIndex === 0}>
-              <summary>{outputName}</summary>
-              <div className="table-wrap"><table><thead><tr><th>指標</th><th>Train</th><th>Validation</th><th>OOF</th></tr></thead><tbody>
-                {Object.keys(output.test_metric_summary ?? {}).map((metric) => <tr key={metric}><td>{metric.toUpperCase()}</td><td>{formatNumber(output.train_metric_summary?.[metric]?.mean)} ± {formatNumber(output.train_metric_summary?.[metric]?.std)}</td><td>{formatNumber(output.test_metric_summary?.[metric]?.mean)} ± {formatNumber(output.test_metric_summary?.[metric]?.std)}</td><td>{formatNumber(output.oof_metrics?.[metric])}</td></tr>)}
-              </tbody></table></div>
-            </details>
-          ))}
-          {(cv.warnings ?? []).length > 0 && <div className="alert warning">交差検証の一部指標を計算できませんでした。詳細: {(cv.warnings as string[]).join(" / ")}</div>}
-        </article>
-      )}
-
-      <article className="panel best-model-panel recommended-first">
-        <div className="panel-title">
-          <div>
-            <span className="panel-kicker">RECOMMENDED CANDIDATES</span>
-            <h3>推奨候補</h3>
-            <p>順位1を先頭に、各目的の予測値・標準偏差、獲得関数値、制約判定を表示します。</p>
+      <div className="results-dashboard-layout">
+        <article className="panel best-model-panel recommended-first results-candidates-panel">
+          <div className="panel-title">
+            <div>
+              <span className="panel-kicker">RECOMMENDED CANDIDATES</span>
+              <h3>推奨候補</h3>
+              <p>順位1を先頭に、各目的の予測値・標準偏差、獲得関数値、制約判定を表示します。</p>
+            </div>
+            <span className={`status-chip ${staleAfterAppend ? "warning" : "success"}`}>
+              {candidates.length} candidates{staleAfterAppend ? " · stale" : ""}
+            </span>
           </div>
-          <span className={`status-chip ${staleAfterAppend ? "warning" : "success"}`}>
-            {candidates.length} candidates{staleAfterAppend ? " · stale" : ""}
-          </span>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>順位</th>
-                {completedResult.feature_columns.map((column) => <th key={column}>{column}</th>)}
-                {targetColumns.flatMap((target) => [
-                  <th key={`${target}-mean`}>{target}<br />予測値</th>,
-                  <th key={`${target}-std`}>{target}<br />予測標準偏差</th>
-                ])}
-                <th>獲得値</th>
-                <th>条件</th>
-              </tr>
-            </thead>
-            <tbody>
-              {candidates.map((candidate) => (
-                <tr key={candidate.rank} className={candidate.rank === 1 ? "candidate-best" : ""}>
-                  <td><span className="rank">{candidate.rank}</span></td>
-                  {completedResult.feature_columns.map((column) => (
-                    <td key={column}>
-                      {typeof candidate.values[column] === "number"
-                        ? formatNumber(candidate.values[column] as number)
-                        : String(candidate.values[column])}
-                    </td>
-                  ))}
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>順位</th>
+                  {completedResult.feature_columns.map((column) => <th key={column}>{column}</th>)}
                   {targetColumns.flatMap((target) => [
-                    <td key={`${target}-mean`}>{formatNumber(candidate.predictions?.[target]?.mean)}</td>,
-                    <td key={`${target}-std`}>{formatNumber(candidate.predictions?.[target]?.std)}</td>
+                    <th key={`${target}-mean`}>{target}<br />予測値</th>,
+                    <th key={`${target}-std`}>{target}<br />予測標準偏差</th>
                   ])}
-                  <td>{formatNumber(candidate.acq_value)}</td>
-                  <td>
-                    <span className={`status-chip ${candidate.constraints_ok ? "success" : "warning"}`}>
-                      {candidate.constraints_ok ? "OK" : "NG"}
-                    </span>
-                  </td>
+                  <th>獲得値</th>
+                  <th>条件</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {candidates.map((candidate) => (
+                  <tr key={candidate.rank} className={candidate.rank === 1 ? "candidate-best" : ""}>
+                    <td><span className="rank">{candidate.rank}</span></td>
+                    {completedResult.feature_columns.map((column) => (
+                      <td key={column}>
+                        {typeof candidate.values[column] === "number"
+                          ? formatNumber(candidate.values[column] as number)
+                          : String(candidate.values[column])}
+                      </td>
+                    ))}
+                    {targetColumns.flatMap((target) => [
+                      <td key={`${target}-mean`}>{formatNumber(candidate.predictions?.[target]?.mean)}</td>,
+                      <td key={`${target}-std`}>{formatNumber(candidate.predictions?.[target]?.std)}</td>
+                    ])}
+                    <td>{formatNumber(candidate.acq_value)}</td>
+                    <td>
+                      <span className={`status-chip ${candidate.constraints_ok ? "success" : "warning"}`}>
+                        {candidate.constraints_ok ? "OK" : "NG"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <InteractiveResultPlots result={completedResult} />
+
+        {cv?.outputs ? (
+          <article className="panel compact-panel results-accuracy-slot">
+            <div className="panel-title"><div><span className="panel-kicker">CROSS VALIDATION</span><h3>交差検証による精度評価</h3><p>{String(cv.splitter_name)} · {Number(cv.n_splits)} folds</p></div></div>
+            {Object.entries(cv.outputs as Record<string, any>).map(([outputName, output], outputIndex) => (
+              <details key={outputName} open={outputIndex === 0}>
+                <summary>{outputName}</summary>
+                <div className="table-wrap"><table><thead><tr><th>指標</th><th>Train</th><th>Validation</th><th>OOF</th></tr></thead><tbody>
+                  {Object.keys(output.test_metric_summary ?? {}).map((metric) => <tr key={metric}><td>{metric.toUpperCase()}</td><td>{formatNumber(output.train_metric_summary?.[metric]?.mean)} ± {formatNumber(output.train_metric_summary?.[metric]?.std)}</td><td>{formatNumber(output.test_metric_summary?.[metric]?.mean)} ± {formatNumber(output.test_metric_summary?.[metric]?.std)}</td><td>{formatNumber(output.oof_metrics?.[metric])}</td></tr>)}
+                </tbody></table></div>
+              </details>
+            ))}
+            {(cv.warnings ?? []).length > 0 && <div className="alert warning">交差検証の一部指標を計算できませんでした。詳細: {(cv.warnings as string[]).join(" / ")}</div>}
+          </article>
+        ) : (
+          <ResultsPlaceholder kind="accuracy" />
+        )}
+
+        <div className="results-importance-slot">
+          {importanceAvailable
+            ? <FeatureImportancePanel result={importanceResult} />
+            : <ResultsPlaceholder kind="importance" />}
         </div>
-      </article>
+      </div>
 
       {droppedRows > 0 && (
         <article className="panel compact-panel">
@@ -254,10 +292,6 @@ export default function ResultsPage() {
           </div>
         </article>
       )}
-
-      <InteractiveResultPlots result={completedResult} />
-
-      <FeatureImportancePanel result={importanceResult} />
 
       {(completedResult.visualization_warnings ?? []).length > 0 && (
         <div className="alert warning">

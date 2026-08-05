@@ -9,7 +9,32 @@ function asRecord(value: unknown): UnknownRecord | null {
 }
 
 function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.map(String) : [];
+  return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+}
+
+function firstStringArray(...values: unknown[]): string[] {
+  for (const value of values) {
+    const resolved = stringArray(value);
+    if (resolved.length) return resolved;
+  }
+  return [];
+}
+
+function elementNamesFromFeatures(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const record = asRecord(item);
+    return typeof record?.element === "string" && record.element
+      ? [record.element]
+      : [];
+  });
+}
+
+function elementNamesFromFractionFeatures(value: unknown): string[] {
+  return stringArray(value).flatMap((feature) => {
+    const match = feature.match(/__fraction__([^_]+)$/i);
+    return match ? [match[1]] : [];
+  });
 }
 
 function modelFeatureNames(result: RegressionResult): string[] {
@@ -32,11 +57,22 @@ function compositionInfo(result: RegressionResult): {
   const payload = asRecord((result as RegressionResult & {
     composition_feature_importance?: unknown;
   }).composition_feature_importance) ?? {};
-  return {
-    column: typeof payload.column === "string" ? payload.column : "",
-    elements: stringArray(payload.element_names),
-    coordinates: new Set(stringArray(payload.coordinate_features))
-  };
+  const options = asRecord(result.visualization_options?.composition) ?? {};
+  const metadata = asRecord(result.metadata?.composition_feature_importance) ?? {};
+  const elements = firstStringArray(
+    payload.element_names,
+    options.elements,
+    metadata.element_names,
+    elementNamesFromFeatures(options.features),
+    elementNamesFromFractionFeatures(options.fraction_features)
+  );
+  const coordinates = new Set([
+    ...stringArray(payload.coordinate_features),
+    ...stringArray(metadata.coordinate_features)
+  ]);
+  const column = [payload.column, options.column, metadata.column]
+    .find((value): value is string => typeof value === "string" && value.length > 0) ?? "";
+  return { column, elements, coordinates };
 }
 
 function ilrContrastLabel(index: number, elements: string[]): string {

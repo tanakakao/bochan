@@ -1,3 +1,8 @@
+.model-primary-grid > .feature-preprocessing-panel {
+  grid-column: 1 / -1;
+  height: auto;
+}
+
 .feature-preprocessing-panel .search-transform-grid {
   align-items: stretch;
 }

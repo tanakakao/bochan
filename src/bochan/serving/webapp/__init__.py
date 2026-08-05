@@ -2,6 +2,9 @@
 
 from typing import Any
 
+from .composition_candidate_repair_compat import (
+    install_composition_candidate_repair_compat,
+)
 from .composition_constraint_adapter import install_composition_constraint_adapter
 from .composition_element_importance_figures import (
     install_composition_element_importance_figures,
@@ -36,6 +39,7 @@ install_composition_pd_compat()
 # The adapters must be installed before app.py imports workflows.py and binds the
 # composition-unaware workflow function. Keep these imports intentionally delayed.
 install_composition_web_support()
+install_composition_candidate_repair_compat()
 install_composition_constraint_adapter()
 
 from . import workflows as _workflows  # noqa: E402

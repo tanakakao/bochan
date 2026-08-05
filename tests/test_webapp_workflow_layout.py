@@ -1,65 +1,71 @@
 from pathlib import Path
 
 
-LAYOUT_SOURCE = Path("web/src/workflowLayoutExtension.ts")
+RESULTS_LAYOUT_SOURCE = Path("web/src/resultsLayoutExtension.ts")
 LAYOUT_CSS = Path("web/src/workflow-layout-extension.css")
 MAIN_SOURCE = Path("web/src/main.tsx")
+SETTINGS_SOURCE = Path("web/src/pages/SettingsPage.tsx")
 
 
-def test_model_settings_cards_follow_requested_order_without_reorder_loop() -> None:
-    source = LAYOUT_SOURCE.read_text(encoding="utf-8")
-    css = LAYOUT_CSS.read_text(encoding="utf-8")
+def test_model_settings_cards_follow_requested_react_order() -> None:
+    source = SETTINGS_SOURCE.read_text(encoding="utf-8")
 
-    assert 'panelByHeading("説明変数の前処理")' in source
-    assert 'panelByHeading("精度評価")' in source
-    assert 'panelByHeading("特徴量重要度")' in source
-    assert "preprocessingGrid.appendChild(missingPanel)" in source
-    assert "modelGrid.appendChild(preprocessingPanel)" in source
-    assert "placeAfter(preprocessingPanel, modelGrid)" not in source
-    assert "placeAfter(compositionHost, preprocessingPanel)" not in source
-    assert "const accuracyAnchor = compositionHost ?? modelGrid" in source
-    assert "placeAfter(accuracyPanel, accuracyAnchor)" in source
-    assert "placeAfter(importancePanel, accuracyPanel)" in source
-    assert "compositionHost.hidden = !compositionEnabled" in source
-    assert 'missingKicker.textContent !== "MISSING VALUES"' in source
-    assert ".model-primary-grid > .feature-preprocessing-panel" in css
-    assert "grid-column: 1 / -1;" in css
+    preprocessing_index = source.index("feature-preprocessing-panel")
+    composition_index = source.index("<CompositionModelSettings />")
+    accuracy_index = source.index("<h3>精度評価</h3>")
+    importance_index = source.index("<h3>特徴量重要度</h3>")
+
+    assert preprocessing_index < composition_index < accuracy_index < importance_index
+    assert "<FeatureMissingSettings />" in source
+    preprocessing_start = source.index('className="panel feature-preprocessing-panel"')
+    preprocessing_end = source.index("<CompositionModelSettings />", preprocessing_start)
+    assert preprocessing_start < source.index("<FeatureMissingSettings />") < preprocessing_end
 
 
-def test_layout_observer_does_not_observe_its_own_dom_reordering() -> None:
-    source = LAYOUT_SOURCE.read_text(encoding="utf-8")
+def test_model_and_suggest_pages_do_not_use_layout_dom_reordering() -> None:
+    main = MAIN_SOURCE.read_text(encoding="utf-8")
+    composition_runtime = Path("web/src/compositionRuntime.ts").read_text(encoding="utf-8")
+    candidate_controls = Path(
+        "web/src/components/CompositionCandidateConstraints.tsx"
+    ).read_text(encoding="utf-8")
+    model_controls = Path(
+        "web/src/components/CompositionModelSettings.tsx"
+    ).read_text(encoding="utf-8")
 
-    assert "let layoutObserver: MutationObserver | null = null" in source
-    assert "function runSynchronization(): void" in source
-    assert "layoutObserver?.disconnect();" in source
-    assert "finally {\n    observeLayoutMutations();\n  }" in source
-    assert "records.some(mutationAffectsLayout)" in source
-    assert "nodeContainsLayoutAnchor" in source
-    assert "new MutationObserver(synchronize)" not in source
+    assert 'from "./workflowLayoutExtension"' not in main
+    assert "installWorkflowLayoutExtension" not in main
+    assert 'from "./resultsLayoutExtension"' in main
+    assert "installResultsLayoutExtension();" in main
 
-    disconnect_index = source.index("layoutObserver?.disconnect();")
-    settings_index = source.index("synchronizeSettingsLayout();", disconnect_index)
-    reconnect_index = source.index("observeLayoutMutations();", settings_index)
-    assert disconnect_index < settings_index < reconnect_index
+    for source in (composition_runtime, candidate_controls, model_controls):
+        assert "composition-model-settings-host" not in source
+        assert "composition-constraint-settings-host" not in source
+        assert "composition-search-space-constraints-proxy" not in source
+        assert "composition-linear-constraints-proxy" not in source
+
+    for source in (candidate_controls, model_controls):
+        assert "MutationObserver" not in source
+        assert "appendChild" not in source
+        assert "replaceWith" not in source
 
 
-def test_composition_constraints_are_embedded_in_matching_feature_cards() -> None:
-    source = LAYOUT_SOURCE.read_text(encoding="utf-8")
-    css = LAYOUT_CSS.read_text(encoding="utf-8")
+def test_results_observer_is_isolated_from_model_and_suggest_pages() -> None:
+    source = RESULTS_LAYOUT_SOURCE.read_text(encoding="utf-8")
 
-    assert 'panelByHeading("説明変数の探索範囲")' in source
-    assert 'document.querySelector<HTMLElement>(\n    ".feature-constraint-panel"' in source
-    assert "composition-search-space-constraints-proxy" in source
-    assert "組成候補の元素制約" in source
-    assert "元素数の制約" in source
-    assert "composition-ratio-constraints-proxy" in source
-    assert "composition-linear-constraints-proxy" in source
-    assert "bindCompositionProxy(proxy)" in source
-    assert ".composition-constraint-settings-source[hidden]" in css
+    assert "RESULTS_ANCHOR_SELECTOR" in source
+    assert "article.recommended-first" in source
+    assert ".interactive-visualization-section" in source
+    assert ".feature-importance-panel" in source
+    assert ".model-primary-grid" not in source
+    assert ".feature-constraint-panel" not in source
+    assert "composition-model-settings-host" not in source
+    assert "composition-constraint-settings-host" not in source
+    assert "resultsObserver?.disconnect();" in source
+    assert "observeResultsMutations();" in source
 
 
 def test_results_dashboard_uses_requested_grid_areas() -> None:
-    source = LAYOUT_SOURCE.read_text(encoding="utf-8")
+    source = RESULTS_LAYOUT_SOURCE.read_text(encoding="utf-8")
     css = LAYOUT_CSS.read_text(encoding="utf-8")
 
     assert "results-candidates-panel" in source
@@ -71,11 +77,3 @@ def test_results_dashboard_uses_requested_grid_areas() -> None:
     assert '"yy accuracy"' in css
     assert '"importance relationship"' in css
     assert '"candidates"\n      "yy"\n      "accuracy"' in css
-
-
-def test_workflow_layout_extension_is_installed() -> None:
-    main = MAIN_SOURCE.read_text(encoding="utf-8")
-
-    assert 'from "./workflowLayoutExtension"' in main
-    assert 'import "./workflow-layout-extension.css";' in main
-    assert "installWorkflowLayoutExtension();" in main

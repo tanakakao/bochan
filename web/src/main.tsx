@@ -6,6 +6,7 @@ import { installCompositionExtension } from "./compositionExtension";
 import { installCompositionPrepareControls } from "./compositionPrepareControls";
 import { installCompositionVisualizationGuard } from "./compositionVisualizationGuard";
 import { installDynamicNumberInputSteps } from "./numericInputUtils";
+import { installWorkflowLayoutExtension } from "./workflowLayoutExtension";
 import "./styles.css";
 import "./target-settings.css";
 import "./constraint-settings.css";
@@ -20,12 +21,14 @@ import "./experiment-history.css";
 import "./styles/workbench-design.css";
 import "./data-dropzone.css";
 import "./composition-extension.css";
+import "./workflow-layout-extension.css";
 import "./red-theme.css";
 
 installDynamicNumberInputSteps();
 installCompositionPrepareControls(installCompositionExtension);
 installCompositionDatasetState();
 installCompositionVisualizationGuard();
+installWorkflowLayoutExtension();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

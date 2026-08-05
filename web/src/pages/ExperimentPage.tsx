@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { EmptyState, SectionHeader } from "../components/Common";
 import ExperimentHistoryPanel from "../components/ExperimentHistoryPanel";
+import { loadCompositionSettings } from "../compositionExtension";
 import { useWorkbench } from "../context/WorkbenchContext";
 import {
   appendExperimentFile,
@@ -180,6 +181,11 @@ export default function ExperimentPage() {
     ? activeResult.target_settings
     : sourceConfiguration.targetSettings;
 
+  function isCompositionFormulaColumn(column: string): boolean {
+    const settings = loadCompositionSettings();
+    return settings.enabled && settings.column === column;
+  }
+
   function isCategoricalColumn(column: string): boolean {
     const targetSetting = targetSettings.find((setting) => setting.target === column);
     const internalTask = activeResult.target_metadata?.[column]?.internal_task;
@@ -215,7 +221,9 @@ export default function ExperimentPage() {
     column: string,
     role: "condition" | "result"
   ) {
-    const categorical = isCategoricalColumn(column);
+    const compositionFormula = role === "condition" && isCompositionFormulaColumn(column);
+    const categorical = !compositionFormula && isCategoricalColumn(column);
+    const numeric = !compositionFormula && columnsByName[column]?.kind === "numeric";
     const disabled = saving || Boolean(completedMessage);
     const label = `${row.source} ${column} ${role === "condition" ? "実験条件" : "実験結果"}`;
     const className = `experiment-cell-input${role === "result" ? " result-input" : ""}`;
@@ -238,12 +246,16 @@ export default function ExperimentPage() {
     return (
       <input
         className={className}
-        type={columnsByName[column]?.kind === "numeric" ? "number" : "text"}
-        step={role === "condition" ? variables[column]?.step ?? "any" : "any"}
+        type={numeric ? "number" : "text"}
+        step={numeric ? (role === "condition" ? variables[column]?.step ?? "any" : "any") : undefined}
         value={row.values[column] ?? ""}
         onChange={(event) => patchRow(row.id, column, event.target.value)}
         disabled={disabled}
-        placeholder={role === "result" ? "実測値" : undefined}
+        placeholder={role === "result"
+          ? "実測値"
+          : compositionFormula
+            ? "実際に使用した組成式"
+            : undefined}
         aria-label={label}
       />
     );

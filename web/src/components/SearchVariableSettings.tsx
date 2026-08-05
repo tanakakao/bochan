@@ -1,3 +1,4 @@
+import { CompositionSearchSpaceConstraints } from "./CompositionCandidateConstraints";
 import { getColumnClassValues } from "../targetSettingUtils";
 import type { ColumnProfile, SearchVariable, TargetClassValue } from "../types";
 
@@ -111,6 +112,8 @@ export default function SearchVariableSettings({
           </tbody>
         </table>
       </div>
+
+      <CompositionSearchSpaceConstraints />
     </article>
   );
 }

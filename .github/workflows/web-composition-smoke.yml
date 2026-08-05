@@ -23,13 +23,20 @@ on:
       - "src/bochan/serving/webapp/visualization_feature_types.py"
       - "src/bochan/serving/webapp/__init__.py"
       - "web/src/compositionExtension.ts"
+      - "web/src/compositionRuntime.ts"
       - "web/src/compositionDatasetState.ts"
       - "web/src/composition-extension.css"
       - "web/src/compositionVisualizationTypes.ts"
       - "web/src/compositionVisualizationGuard.ts"
+      - "web/src/components/CompositionModelSettings.tsx"
+      - "web/src/components/CompositionCandidateConstraints.tsx"
+      - "web/src/components/SearchVariableSettings.tsx"
+      - "web/src/components/FeatureConstraints.tsx"
+      - "web/src/pages/SettingsPage.tsx"
       - "web/src/importanceFeatureLabels.ts"
       - "web/src/InteractiveResultPlots.tsx"
       - "web/src/workflowLayoutExtension.ts"
+      - "web/src/resultsLayoutExtension.ts"
       - "web/src/workflow-layout-extension.css"
       - "web/src/red-theme.css"
       - "web/src/main.tsx"
@@ -44,6 +51,7 @@ on:
       - "tests/test_webapp_composition_feature_importance_integration.py"
       - "tests/test_webapp_pandas_compat.py"
       - "tests/test_webapp_composition_settings_placement.py"
+      - "tests/test_webapp_composition_navigation_architecture.py"
       - "tests/test_webapp_workflow_layout.py"
       - "tests/test_webapp_color_theme.py"
       - ".github/workflows/web-composition-smoke.yml"
@@ -73,6 +81,7 @@ jobs:
           tests/test_webapp_composition_feature_importance_integration.py
           tests/test_webapp_pandas_compat.py
           tests/test_webapp_composition_settings_placement.py
+          tests/test_webapp_composition_navigation_architecture.py
           tests/test_webapp_workflow_layout.py
           tests/test_webapp_color_theme.py
       - name: Run Python lint
@@ -105,6 +114,7 @@ jobs:
             tests/test_webapp_composition_feature_importance_integration.py \
             tests/test_webapp_pandas_compat.py \
             tests/test_webapp_composition_settings_placement.py \
+            tests/test_webapp_composition_navigation_architecture.py \
             tests/test_webapp_workflow_layout.py \
             tests/test_webapp_color_theme.py
       - uses: actions/setup-node@v4

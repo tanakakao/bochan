@@ -42,17 +42,21 @@ def test_theme_defines_red_selection_orange_categories_and_yellow_compositions()
     assert ".feature-missing-panel" in source
 
 
-def test_composition_selector_is_in_place_and_only_visible_for_categories() -> None:
+def test_composition_selector_observer_is_narrow_and_does_not_replace_global_observer() -> None:
     source = Path("web/src/compositionPrepareControls.ts").read_text(encoding="utf-8")
     css = Path("web/src/composition-extension.css").read_text(encoding="utf-8")
 
+    assert "withCompositionMutationGuard" not in source
+    assert 'Object.defineProperty(window, "MutationObserver"' not in source
+    assert "mutationAddsCompositionControl" not in source
+    assert "addedCompositionControls(record)" in source
+    assert "controls.forEach(upgradeControl)" in source
     assert "control.replaceWith" not in source
     assert "control.appendChild(group)" in source
     assert "checkbox?.checked === true" in source
     assert "control.hidden = !visible" in source
     assert "turnOffCompositionWhenCategoryIsDisabled" in source
-    assert ".composition-model-settings-host" in source
-    assert ".composition-constraint-settings-host" in source
+    assert "observer.observe(document.documentElement, { subtree: true, childList: true })" in source
     assert ".composition-kind-control[hidden]" in css
     assert "display: none !important" in css
 

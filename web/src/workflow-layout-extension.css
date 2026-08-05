@@ -44,7 +44,13 @@
   display: none !important;
 }
 
-.composition-search-space-constraints-proxy {
+.candidate-feature-constraint-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.composition-search-space-constraints-proxy,
+.composition-search-space-constraints-react {
   display: grid;
   gap: 16px;
   margin-top: 22px;
@@ -72,8 +78,11 @@
 }
 
 .composition-count-constraints-proxy,
+.composition-count-constraints-react,
 .composition-ratio-constraints-proxy,
-.composition-linear-constraints-proxy {
+.composition-ratio-constraints-react,
+.composition-linear-constraints-proxy,
+.composition-linear-constraints-react {
   margin: 0;
 }
 
@@ -81,12 +90,14 @@
   margin-top: 14px;
 }
 
-.composition-ratio-constraints-proxy {
+.composition-ratio-constraints-proxy,
+.composition-ratio-constraints-react {
   padding-top: 18px;
   border-top: 1px solid var(--line);
 }
 
-.feature-constraint-panel > .composition-linear-constraints-proxy {
+.feature-constraint-panel > .composition-linear-constraints-proxy,
+.candidate-feature-constraint-panel > .composition-linear-constraints-react {
   border-color: color-mix(in srgb, #0f9f8f 25%, var(--line));
 }
 

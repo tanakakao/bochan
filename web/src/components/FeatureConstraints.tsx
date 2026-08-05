@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { CompositionLinearConstraints } from "./CompositionCandidateConstraints";
 import type { SearchVariable } from "../types";
 import {
   loadFeatureConstraints,
@@ -122,7 +123,7 @@ export default function FeatureConstraints({ variables }: Props) {
   }
 
   return (
-    <article className="panel feature-constraint-panel">
+    <article className="panel candidate-feature-constraint-panel">
       <div className="panel-title">
         <div>
           <span className="panel-kicker">3 · FEATURE CONSTRAINTS</span>
@@ -294,6 +295,8 @@ export default function FeatureConstraints({ variables }: Props) {
           </div>
         )}
       </section>
+
+      <CompositionLinearConstraints />
 
       <p className="settings-note">
         「&gt;」「&lt;」は数値最適化上、それぞれ「以上」「以下」として扱います。有効変数数制約では0を未採用として扱います。

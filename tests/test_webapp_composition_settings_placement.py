@@ -34,3 +34,17 @@ def test_composition_settings_are_split_between_model_and_constraint_pages() -> 
     assert "composition-max-components" in constraint_source
     assert "renderElementTable(settings)" in constraint_source
     assert "composition-add-constraint" in constraint_source
+
+
+def test_search_and_composition_tables_share_compact_aligned_columns() -> None:
+    css = Path("web/src/composition-extension.css").read_text(encoding="utf-8")
+
+    assert ".table-wrap:has(> .search-variable-table)" in css
+    assert ".table-wrap:has(> .composition-element-table)" in css
+    assert "width: fit-content;" in css
+    assert ".search-variable-table {\n  width: 1020px;" in css
+    assert ".composition-element-table {\n  width: 720px;" in css
+    assert ".search-variable-table th:nth-child(1),\n.composition-element-table th:nth-child(1)" in css
+    assert ".search-variable-table th:nth-child(3)," in css
+    assert ".composition-element-table th:nth-child(2)," in css
+    assert ".search-variable-table th:nth-child(6),\n.composition-element-table th:nth-child(5)" in css

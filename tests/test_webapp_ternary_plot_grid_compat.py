@@ -7,6 +7,7 @@ from bochan.serving.webapp.composition_multielement_ternary import (
     _ternary_slice_grid,
 )
 from bochan.serving.webapp.ternary_plot_grid_compat import (
+    _normalized_ternary_coordinates,
     _ternary_coordinates,
     install_ternary_plot_grid_compat,
 )
@@ -25,6 +26,16 @@ def test_ternary_coordinates_transpose_row_major_dataframe() -> None:
 
     assert coordinates.shape == (3, 3)
     assert np.allclose(coordinates[:, 0], [0.0, 0.4, 0.4])
+
+
+def test_ternary_slice_coordinates_are_normalized_for_plotly() -> None:
+    coordinates = _ternary_slice_grid(0.8, divisions=5).T
+
+    normalized, total = _normalized_ternary_coordinates(coordinates)
+
+    assert total == 0.8
+    assert np.allclose(normalized.sum(axis=0), 1.0)
+    assert np.allclose(normalized * total, coordinates, atol=1e-12)
 
 
 def test_ternary_plot_accepts_dataframe_grid_for_multielement_slice() -> None:
@@ -50,5 +61,18 @@ def test_ternary_plot_accepts_dataframe_grid_for_multielement_slice() -> None:
         show_type="pred",
     )
 
-    assert len(figure.data) > 0
-    assert any(getattr(trace, "type", "") == "scatterternary" for trace in figure.data)
+    ternary_traces = [
+        trace
+        for trace in figure.data
+        if getattr(trace, "type", "") == "scatterternary"
+    ]
+    assert ternary_traces
+    for trace in ternary_traces:
+        if trace.a is None or trace.b is None or trace.c is None:
+            continue
+        totals = (
+            np.asarray(trace.a, dtype=float)
+            + np.asarray(trace.b, dtype=float)
+            + np.asarray(trace.c, dtype=float)
+        )
+        assert np.allclose(totals, 0.8, atol=1e-8)

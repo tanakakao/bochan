@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import WorkbenchPageErrorBoundary from "./components/WorkbenchPageErrorBoundary";
 import { installCompositionDatasetState } from "./compositionDatasetState";
 import { installCompositionPrepareControls } from "./compositionPrepareControls";
 import { installCompositionRuntime } from "./compositionRuntime";
@@ -32,6 +33,8 @@ installResultsLayoutExtension();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <WorkbenchPageErrorBoundary resetKey="workbench-root">
+      <App />
+    </WorkbenchPageErrorBoundary>
   </React.StrictMode>
 );

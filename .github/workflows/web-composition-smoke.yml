@@ -57,7 +57,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install Python package
-        run: python -m pip install -e ".[test,api]" pandas plotly
+        run: python -m pip install -e ".[test,api]" pandas plotly scikit-image
       - name: Run composition API tests
         run: >-
           pytest -q

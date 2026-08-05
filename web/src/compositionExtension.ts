@@ -1,5 +1,13 @@
 const STORAGE_KEY = "bochan-web-composition-settings";
 const CHANGE_EVENT = "bochan-composition-settings-change";
+const OBSERVER_OPTIONS: MutationObserverInit = { subtree: true, childList: true };
+const COMPOSITION_ANCHOR_SELECTOR = [
+  ".feature-variable-choice",
+  ".model-primary-grid",
+  ".feature-constraint-panel",
+  ".composition-model-settings-host",
+  ".composition-constraint-settings-host"
+].join(", ");
 
 type Representation = "fractions" | "clr" | "alr" | "ilr";
 type Normalization = "atomic_fraction" | "weight_fraction";
@@ -66,6 +74,8 @@ let latestDataset: DatasetPayload | null = null;
 let installed = false;
 let originalFetch: typeof window.fetch | null = null;
 let renderScheduled = false;
+let compositionObserver: MutationObserver | null = null;
+const panelRenderSignatures = new WeakMap<HTMLElement, string>();
 
 function newId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -654,12 +664,14 @@ function bindPanel(host: HTMLElement): void {
   });
 }
 
-function renderPanel(host: HTMLElement, html: string): void {
-  if (host.innerHTML === html) return;
+function renderPanel(host: HTMLElement, html: string): HTMLElement {
+  if (panelRenderSignatures.get(host) === html) return host;
   const replacement = host.cloneNode(false) as HTMLElement;
   replacement.innerHTML = html;
+  panelRenderSignatures.set(replacement, html);
   host.replaceWith(replacement);
   bindPanel(replacement);
+  return replacement;
 }
 
 function synchronizeModelPanel(): void {
@@ -697,14 +709,38 @@ function synchronizeConstraintPanel(): void {
   renderPanel(host, constraintPanelHtml(settings));
 }
 
+function nodeContainsCompositionAnchor(node: Node): boolean {
+  if (!(node instanceof Element)) return false;
+  return node.matches(COMPOSITION_ANCHOR_SELECTOR)
+    || Boolean(node.querySelector(COMPOSITION_ANCHOR_SELECTOR));
+}
+
+function mutationAffectsComposition(record: MutationRecord): boolean {
+  return [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)]
+    .some(nodeContainsCompositionAnchor);
+}
+
+function observeCompositionMutations(): void {
+  compositionObserver?.observe(document.documentElement, OBSERVER_OPTIONS);
+}
+
+function runSynchronization(): void {
+  compositionObserver?.disconnect();
+  try {
+    synchronizePrepareControls();
+    synchronizeModelPanel();
+    synchronizeConstraintPanel();
+  } finally {
+    observeCompositionMutations();
+  }
+}
+
 function synchronize(): void {
   if (renderScheduled) return;
   renderScheduled = true;
   queueMicrotask(() => {
     renderScheduled = false;
-    synchronizePrepareControls();
-    synchronizeModelPanel();
-    synchronizeConstraintPanel();
+    runSynchronization();
   });
 }
 
@@ -712,8 +748,10 @@ export function installCompositionExtension(): void {
   if (installed) return;
   installed = true;
   installFetchAdapter();
-  const observer = new MutationObserver(synchronize);
-  observer.observe(document.documentElement, { subtree: true, childList: true });
+  compositionObserver = new MutationObserver((records) => {
+    if (records.some(mutationAffectsComposition)) synchronize();
+  });
+  observeCompositionMutations();
   window.addEventListener(CHANGE_EVENT, synchronize);
   synchronize();
 }

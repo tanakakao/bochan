@@ -21,8 +21,26 @@ def test_model_settings_cards_follow_requested_order_without_reorder_loop() -> N
     assert "placeAfter(accuracyPanel, accuracyAnchor)" in source
     assert "placeAfter(importancePanel, accuracyPanel)" in source
     assert "compositionHost.hidden = !compositionEnabled" in source
+    assert 'missingKicker.textContent !== "MISSING VALUES"' in source
     assert ".model-primary-grid > .feature-preprocessing-panel" in css
     assert "grid-column: 1 / -1;" in css
+
+
+def test_layout_observer_does_not_observe_its_own_dom_reordering() -> None:
+    source = LAYOUT_SOURCE.read_text(encoding="utf-8")
+
+    assert "let layoutObserver: MutationObserver | null = null" in source
+    assert "function runSynchronization(): void" in source
+    assert "layoutObserver?.disconnect();" in source
+    assert "finally {\n    observeLayoutMutations();\n  }" in source
+    assert "records.some(mutationAffectsLayout)" in source
+    assert "nodeContainsLayoutAnchor" in source
+    assert "new MutationObserver(synchronize)" not in source
+
+    disconnect_index = source.index("layoutObserver?.disconnect();")
+    settings_index = source.index("synchronizeSettingsLayout();", disconnect_index)
+    reconnect_index = source.index("observeLayoutMutations();", settings_index)
+    assert disconnect_index < settings_index < reconnect_index
 
 
 def test_composition_constraints_are_embedded_in_matching_feature_cards() -> None:

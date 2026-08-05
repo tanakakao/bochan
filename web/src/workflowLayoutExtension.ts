@@ -2,9 +2,22 @@ import { loadCompositionSettings } from "./compositionExtension";
 
 const COMPOSITION_CHANGE_EVENT = "bochan-composition-settings-change";
 const PROXY_KEY = "workflowProxyKey";
+const OBSERVER_OPTIONS: MutationObserverInit = { subtree: true, childList: true };
+const LAYOUT_ANCHOR_SELECTOR = [
+  ".model-primary-grid",
+  ".feature-missing-panel",
+  ".feature-constraint-panel",
+  ".composition-model-settings-host",
+  ".composition-constraint-settings-host",
+  "article.recommended-first",
+  ".interactive-visualization-section",
+  ".feature-importance-panel",
+  "article.panel"
+].join(", ");
 
 let installed = false;
 let renderScheduled = false;
+let layoutObserver: MutationObserver | null = null;
 
 function panelByHeading(title: string): HTMLElement | null {
   return Array.from(document.querySelectorAll<HTMLElement>("article.panel"))
@@ -36,7 +49,9 @@ function synchronizeSettingsLayout(): void {
       preprocessingGrid.appendChild(missingPanel);
     }
     const missingKicker = missingPanel?.querySelector<HTMLElement>(".panel-kicker");
-    if (missingKicker) missingKicker.textContent = "MISSING VALUES";
+    if (missingKicker && missingKicker.textContent !== "MISSING VALUES") {
+      missingKicker.textContent = "MISSING VALUES";
+    }
   }
 
   if (
@@ -53,9 +68,6 @@ function synchronizeSettingsLayout(): void {
     compositionHost.hidden = !compositionEnabled;
   }
 
-  // The composition extension owns the host position immediately after modelGrid.
-  // Keeping that single owner prevents two MutationObservers from moving the same
-  // node back and forth when composition input is enabled.
   const accuracyAnchor = compositionHost ?? modelGrid;
   if (accuracyPanel) placeAfter(accuracyPanel, accuracyAnchor);
   if (importancePanel) placeAfter(importancePanel, accuracyPanel);
@@ -162,7 +174,9 @@ function synchronizeCompositionConstraintLayout(): void {
   );
   const countGrid = sourcePanel?.querySelector<HTMLElement>(".composition-basic-grid");
   const sections = sourcePanel
-    ? Array.from(sourcePanel.querySelectorAll<HTMLElement>(":scope > .composition-element-section"))
+    ? Array.from(sourcePanel.querySelectorAll<HTMLElement>(
+        ":scope > .composition-element-section"
+      ))
     : [];
   const ratioSection = sections[0];
   const linearSection = sections[1];
@@ -302,22 +316,48 @@ function synchronizeResultsLayout(): void {
   if (!alreadyOrdered) layout.append(...desired);
 }
 
+function nodeContainsLayoutAnchor(node: Node): boolean {
+  if (!(node instanceof Element)) return false;
+  return node.matches(LAYOUT_ANCHOR_SELECTOR)
+    || Boolean(node.querySelector(LAYOUT_ANCHOR_SELECTOR));
+}
+
+function mutationAffectsLayout(record: MutationRecord): boolean {
+  return [...Array.from(record.addedNodes), ...Array.from(record.removedNodes)]
+    .some(nodeContainsLayoutAnchor);
+}
+
+function observeLayoutMutations(): void {
+  layoutObserver?.observe(document.documentElement, OBSERVER_OPTIONS);
+}
+
+function runSynchronization(): void {
+  layoutObserver?.disconnect();
+  try {
+    synchronizeSettingsLayout();
+    synchronizeCompositionConstraintLayout();
+    synchronizeResultsLayout();
+  } finally {
+    observeLayoutMutations();
+  }
+}
+
 function synchronize(): void {
   if (renderScheduled) return;
   renderScheduled = true;
   queueMicrotask(() => {
     renderScheduled = false;
-    synchronizeSettingsLayout();
-    synchronizeCompositionConstraintLayout();
-    synchronizeResultsLayout();
+    runSynchronization();
   });
 }
 
 export function installWorkflowLayoutExtension(): void {
   if (installed) return;
   installed = true;
-  const observer = new MutationObserver(synchronize);
-  observer.observe(document.documentElement, { subtree: true, childList: true });
+  layoutObserver = new MutationObserver((records) => {
+    if (records.some(mutationAffectsLayout)) synchronize();
+  });
+  observeLayoutMutations();
   window.addEventListener(COMPOSITION_CHANGE_EVENT, synchronize);
   window.addEventListener("hashchange", synchronize);
   synchronize();

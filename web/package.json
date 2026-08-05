@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test:importance-labels": "node --experimental-strip-types test/importanceFeatureLabels.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {

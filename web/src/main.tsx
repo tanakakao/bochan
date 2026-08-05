@@ -23,6 +23,7 @@ import "./data-dropzone.css";
 import "./composition-extension.css";
 import "./workflow-layout-extension.css";
 import "./red-theme.css";
+import "./readability.css";
 
 installDynamicNumberInputSteps();
 installCompositionRuntime();

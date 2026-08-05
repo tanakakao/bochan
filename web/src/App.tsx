@@ -5,6 +5,7 @@ import {
   type WorkbenchStep,
   useWorkbench
 } from "./context/WorkbenchContext";
+import ConversationPage from "./pages/ConversationPage";
 import DataPage from "./pages/DataPage";
 import ExperimentPage from "./pages/ExperimentPage";
 import LogsPage from "./pages/LogsPage";
@@ -52,10 +53,12 @@ function resolvePortalUrl(): string {
   }
 }
 
-type AuxiliaryPage = "experiment";
+type AuxiliaryPage = "conversation" | "experiment";
 
 function currentAuxiliaryPage(): AuxiliaryPage | null {
-  return window.location.hash === "#experiment" ? "experiment" : null;
+  if (window.location.hash === "#conversation") return "conversation";
+  if (window.location.hash === "#experiment") return "experiment";
+  return null;
 }
 
 function clearAuxiliaryHash(): void {
@@ -132,10 +135,16 @@ function WorkbenchLayout() {
     : workflowSteps;
   const index = visibleSteps.findIndex(([id]) => id === step);
   const experimentAvailable = Boolean(dataset && result);
-  const activeAuxiliaryPage = auxiliaryPage === "experiment" && experimentAvailable
-    ? "experiment"
-    : null;
-  const Page = activeAuxiliaryPage === "experiment" ? ExperimentPage : PAGES[step];
+  const activeAuxiliaryPage = auxiliaryPage === "conversation"
+    ? "conversation"
+    : auxiliaryPage === "experiment" && experimentAvailable
+      ? "experiment"
+      : null;
+  const Page = activeAuxiliaryPage === "conversation"
+    ? ConversationPage
+    : activeAuxiliaryPage === "experiment"
+      ? ExperimentPage
+      : PAGES[step];
   const targetSummary = selectedTargetSettings.length
     ? selectedTargetSettings.map(summarizeTargetSetting).join(" / ")
     : "—";
@@ -166,7 +175,7 @@ function WorkbenchLayout() {
   }, [dataset, mode, result, setStep, step]);
 
   function isComplete(id: WorkbenchStep, stepIndex: number): boolean {
-    if (activeAuxiliaryPage === "experiment") {
+    if (activeAuxiliaryPage) {
       return stepIndex <= index && canOpenStep(id);
     }
     return stepIndex < index && canOpenStep(id);
@@ -175,6 +184,10 @@ function WorkbenchLayout() {
   function openStep(id: WorkbenchStep) {
     if (auxiliaryPage) clearAuxiliaryHash();
     setStep(id);
+  }
+
+  function openConversation() {
+    window.location.hash = "conversation";
   }
 
   function openExperiment() {
@@ -251,6 +264,20 @@ function WorkbenchLayout() {
 
       <main className="app-shell">
         <aside className="left-rail">
+          <button
+            type="button"
+            className={`conversation-launcher ${activeAuxiliaryPage === "conversation" ? "active" : ""}`}
+            onClick={openConversation}
+            aria-current={activeAuxiliaryPage === "conversation" ? "page" : undefined}
+          >
+            <span className="conversation-launcher-icon" aria-hidden="true">✦</span>
+            <span className="conversation-launcher-copy">
+              <strong>対話モード</strong>
+              <small>質問に答えて候補を提案</small>
+            </span>
+            <span className="conversation-launcher-arrow" aria-hidden="true">›</span>
+          </button>
+
           <div className="rail-section-label">Mode</div>
           <div className="workbench-mode-switch" role="group" aria-label="実行モード" data-tutorial="mode">
             <button
@@ -352,7 +379,7 @@ function WorkbenchLayout() {
               <strong>現在のデータ</strong>
             </div>
             <div className="context-list">
-              <div><span>Mode</span><strong>{mode === "simple" ? "簡易" : "詳細"}</strong></div>
+              <div><span>Mode</span><strong>{activeAuxiliaryPage === "conversation" ? "対話" : mode === "simple" ? "簡易" : "詳細"}</strong></div>
               <div><span>File</span><strong title={dataset?.name || undefined}>{dataset?.name || "—"}</strong></div>
               <div><span>Rows</span><strong>{dataset?.profile.n_rows ?? "—"}</strong></div>
               <div><span>Targets</span><strong title={targetColumns.join(", ") || undefined}>{targetColumns.length ? targetColumns.join(", ") : "—"}</strong></div>
@@ -399,7 +426,7 @@ function WorkbenchLayout() {
 
       <footer className="statusbar" data-tutorial="status">
         <span><span className={`dot ${health.status}`} /> API接続 {apiStatusLabel}</span>
-        <span>{mode === "simple" ? "Simple mode" : "Advanced mode"}</span>
+        <span>{activeAuxiliaryPage === "conversation" ? "Conversation mode" : mode === "simple" ? "Simple mode" : "Advanced mode"}</span>
         <span>{dataset ? `${dataset.profile.n_rows} rows` : "No data"}</span>
         <span>{result ? `${result.candidates.length} candidates${resultStale ? " · stale" : ""}` : "No result"}</span>
         <span className="privacy-status">React · FastAPI · BoTorch</span>

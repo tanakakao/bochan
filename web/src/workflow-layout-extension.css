@@ -1,0 +1,166 @@
+.feature-preprocessing-panel .search-transform-grid {
+  align-items: stretch;
+}
+
+.feature-preprocessing-panel .feature-missing-panel {
+  min-width: 0;
+  margin: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface-subtle);
+  box-shadow: none;
+}
+
+.feature-preprocessing-panel .feature-missing-panel .panel-title {
+  margin-bottom: 12px;
+}
+
+.feature-preprocessing-panel .feature-missing-panel .panel-title h3 {
+  margin: 4px 0;
+  font-size: 16px;
+}
+
+.feature-preprocessing-panel .feature-missing-panel .panel-title p {
+  margin: 5px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.feature-preprocessing-panel .feature-missing-panel .feature-missing-section {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.composition-model-settings-host[hidden],
+.composition-constraint-settings-source[hidden] {
+  display: none !important;
+}
+
+.composition-search-space-constraints-proxy {
+  display: grid;
+  gap: 16px;
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.composition-inline-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.composition-inline-heading h4 {
+  margin: 4px 0;
+  font-size: 18px;
+}
+
+.composition-inline-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.composition-count-constraints-proxy,
+.composition-ratio-constraints-proxy,
+.composition-linear-constraints-proxy {
+  margin: 0;
+}
+
+.composition-count-grid {
+  margin-top: 14px;
+}
+
+.composition-ratio-constraints-proxy {
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.feature-constraint-panel > .composition-linear-constraints-proxy {
+  border-color: color-mix(in srgb, #0f9f8f 25%, var(--line));
+}
+
+.results-dashboard-layout {
+  display: grid;
+  grid-template-columns: minmax(340px, 0.9fr) minmax(0, 1.1fr);
+  grid-template-areas:
+    "candidates candidates"
+    "yy accuracy"
+    "importance relationship";
+  gap: 18px;
+  align-items: start;
+  margin-top: 0;
+}
+
+.results-dashboard-layout > .results-candidates-panel {
+  grid-area: candidates;
+  min-width: 0;
+  margin: 0;
+}
+
+.results-dashboard-layout > .results-interactive-section,
+.results-dashboard-layout > .results-interactive-section > .interactive-plot-grid {
+  display: contents;
+}
+
+.results-dashboard-layout .results-interactive-section > .result-subheading {
+  display: none;
+}
+
+.results-dashboard-layout .results-yy-card {
+  grid-area: yy;
+}
+
+.results-dashboard-layout .results-relationship-card {
+  grid-area: relationship;
+}
+
+.results-dashboard-layout > .results-accuracy-slot {
+  grid-area: accuracy;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+}
+
+.results-dashboard-layout > .results-importance-slot {
+  grid-area: importance;
+  min-width: 0;
+  margin: 0;
+}
+
+.results-dashboard-layout > .feature-importance-panel .visualization-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.results-dashboard-layout .interactive-plot-card {
+  min-width: 0;
+  height: 100%;
+}
+
+.results-dashboard-layout .results-accuracy-placeholder,
+.results-dashboard-layout .results-importance-placeholder {
+  min-height: 220px;
+}
+
+@media (max-width: 1180px) {
+  .results-dashboard-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "candidates"
+      "yy"
+      "accuracy"
+      "importance"
+      "relationship";
+  }
+}
+
+@media (max-width: 760px) {
+  .composition-inline-heading {
+    flex-direction: column;
+  }
+}

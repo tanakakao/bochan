@@ -12,6 +12,7 @@ on:
       - "src/bochan/serving/webapp/composition_visualization.py"
       - "src/bochan/serving/webapp/composition_visualization_compat.py"
       - "src/bochan/serving/webapp/composition_multielement_ternary.py"
+      - "src/bochan/serving/webapp/ternary_plot_grid_compat.py"
       - "src/bochan/serving/webapp/composition_pd_compat.py"
       - "src/bochan/serving/webapp/composition_feature_importance.py"
       - "src/bochan/serving/webapp/composition_feature_importance_views.py"
@@ -35,6 +36,7 @@ on:
       - "tests/test_webapp_composition_support.py"
       - "tests/test_webapp_composition_candidate_repair.py"
       - "tests/test_webapp_composition_visualization.py"
+      - "tests/test_webapp_ternary_plot_grid_compat.py"
       - "tests/test_webapp_composition_state_pd.py"
       - "tests/test_webapp_composition_feature_importance.py"
       - "tests/test_webapp_composition_feature_importance_integration.py"
@@ -55,13 +57,14 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install Python package
-        run: python -m pip install -e ".[test,api]" pandas plotly
+        run: python -m pip install -e ".[test,api]" pandas plotly scikit-image
       - name: Run composition API tests
         run: >-
           pytest -q
           tests/test_webapp_composition_support.py
           tests/test_webapp_composition_candidate_repair.py
           tests/test_webapp_composition_visualization.py
+          tests/test_webapp_ternary_plot_grid_compat.py
           tests/test_webapp_composition_state_pd.py
           tests/test_webapp_composition_feature_importance.py
           tests/test_webapp_composition_feature_importance_integration.py
@@ -79,6 +82,7 @@ jobs:
             src/bochan/serving/webapp/composition_visualization.py \
             src/bochan/serving/webapp/composition_visualization_compat.py \
             src/bochan/serving/webapp/composition_multielement_ternary.py \
+            src/bochan/serving/webapp/ternary_plot_grid_compat.py \
             src/bochan/serving/webapp/composition_pd_compat.py \
             src/bochan/serving/webapp/composition_feature_importance.py \
             src/bochan/serving/webapp/composition_feature_importance_views.py \
@@ -91,6 +95,7 @@ jobs:
             tests/test_webapp_composition_support.py \
             tests/test_webapp_composition_candidate_repair.py \
             tests/test_webapp_composition_visualization.py \
+            tests/test_webapp_ternary_plot_grid_compat.py \
             tests/test_webapp_composition_state_pd.py \
             tests/test_webapp_composition_feature_importance.py \
             tests/test_webapp_composition_feature_importance_integration.py \

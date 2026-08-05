@@ -70,7 +70,7 @@ export function CompositionSearchSpaceConstraints() {
   if (!settings.enabled || !settings.column) return null;
 
   const elementCount = Math.max(settings.elements.length, 1);
-  const maximum = settings.maxComponents ?? settings.elements.length || 1;
+  const maximum = settings.maxComponents ?? (settings.elements.length || 1);
 
   return (
     <section className="composition-search-space-constraints-react">
@@ -103,7 +103,10 @@ export function CompositionSearchSpaceConstraints() {
                 update((current) => ({
                   ...current,
                   minComponents: value,
-                  maxComponents: Math.max(value, current.maxComponents ?? current.elements.length || value)
+                  maxComponents: Math.max(
+                    value,
+                    current.maxComponents ?? (current.elements.length || value)
+                  )
                 }));
               }}
             />

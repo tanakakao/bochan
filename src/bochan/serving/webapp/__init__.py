@@ -29,12 +29,14 @@ from .composition_visualization_compat import (
 )
 from .composition_web_support import install_composition_web_support
 from .pandas_compat import install_pandas_string_category_compat
+from .ternary_plot_grid_compat import install_ternary_plot_grid_compat
 from .visualization_feature_types import install_visualization_feature_type_compat
 
 # Install before importing app.py and workflow modules so runtime DataFrame
 # conversions use the Pandas StringDtype compatibility wrapper.
 install_pandas_string_category_compat()
 install_visualization_feature_type_compat()
+install_ternary_plot_grid_compat()
 install_composition_visualization()
 install_composition_visualization_compat()
 install_composition_multielement_ternary()

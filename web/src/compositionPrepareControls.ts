@@ -1,88 +1,9 @@
 const COMPOSITION_CHANGE_EVENT = "bochan-composition-settings-change";
 const CONTROL_SELECTOR = ".composition-kind-control";
-const OWNED_MUTATION_SELECTOR = [
-  CONTROL_SELECTOR,
-  ".composition-model-settings-host",
-  ".composition-constraint-settings-host",
-  ".composition-settings-panel"
-].join(", ");
 
 type InstallExtension = () => void;
 
-let synchronizeScheduled = false;
-
-function mutationTargetElement(target: Node): Element | null {
-  if (target instanceof Element) return target;
-  return target.parentElement;
-}
-
-function nodeIsCompositionOwned(node: Node): boolean {
-  if (node instanceof Element) {
-    return node.matches(OWNED_MUTATION_SELECTOR) || Boolean(node.closest(OWNED_MUTATION_SELECTOR));
-  }
-  return Boolean(node.parentElement?.closest(OWNED_MUTATION_SELECTOR));
-}
-
-function mutationAddsCompositionControl(record: MutationRecord): boolean {
-  return Array.from(record.addedNodes).some((node) => {
-    if (!(node instanceof Element)) return false;
-    return node.matches(CONTROL_SELECTOR) || Boolean(node.querySelector(CONTROL_SELECTOR));
-  });
-}
-
-function isCompositionOwnedMutation(record: MutationRecord): boolean {
-  const target = mutationTargetElement(record.target);
-  if (target?.closest(OWNED_MUTATION_SELECTOR)) return true;
-
-  const changedNodes = [
-    ...Array.from(record.addedNodes),
-    ...Array.from(record.removedNodes)
-  ];
-  return changedNodes.length > 0 && changedNodes.every(nodeIsCompositionOwned);
-}
-
-function withCompositionMutationGuard(installExtension: InstallExtension): void {
-  const NativeMutationObserver = window.MutationObserver;
-
-  class GuardedMutationObserver {
-    private readonly observer: MutationObserver;
-
-    constructor(callback: MutationCallback) {
-      this.observer = new NativeMutationObserver((records, observer) => {
-        const externalRecords = records.filter((record) => !isCompositionOwnedMutation(record));
-        if (externalRecords.length) callback(externalRecords, observer);
-      });
-    }
-
-    observe(target: Node, options?: MutationObserverInit): void {
-      this.observer.observe(target, options);
-    }
-
-    disconnect(): void {
-      this.observer.disconnect();
-    }
-
-    takeRecords(): MutationRecord[] {
-      return this.observer.takeRecords();
-    }
-  }
-
-  Object.defineProperty(window, "MutationObserver", {
-    configurable: true,
-    writable: true,
-    value: GuardedMutationObserver as unknown as typeof MutationObserver
-  });
-
-  try {
-    installExtension();
-  } finally {
-    Object.defineProperty(window, "MutationObserver", {
-      configurable: true,
-      writable: true,
-      value: NativeMutationObserver
-    });
-  }
-}
+let installed = false;
 
 function categoryEnabled(control: HTMLElement): boolean {
   const card = control.closest<HTMLElement>(".feature-variable-choice");
@@ -145,16 +66,22 @@ function upgradeControl(control: HTMLElement): void {
   refreshSegmentedControl(control);
 }
 
-function synchronizeSegmentedControls(): void {
-  document.querySelectorAll<HTMLElement>(CONTROL_SELECTOR).forEach(upgradeControl);
+function addedCompositionControls(record: MutationRecord): HTMLElement[] {
+  const controls = new Set<HTMLElement>();
+  record.addedNodes.forEach((node) => {
+    if (!(node instanceof Element)) return;
+    if (node.matches(CONTROL_SELECTOR)) controls.add(node as HTMLElement);
+    node.querySelectorAll<HTMLElement>(CONTROL_SELECTOR).forEach((control) => {
+      controls.add(control);
+    });
+  });
+  return [...controls];
 }
 
-function scheduleSynchronizeSegmentedControls(): void {
-  if (synchronizeScheduled) return;
-  synchronizeScheduled = true;
-  queueMicrotask(() => {
-    synchronizeScheduled = false;
-    synchronizeSegmentedControls();
+function refreshSegmentedControls(): void {
+  document.querySelectorAll<HTMLElement>(CONTROL_SELECTOR).forEach((control) => {
+    if (control.dataset.segmented === "true") refreshSegmentedControl(control);
+    else upgradeControl(control);
   });
 }
 
@@ -169,12 +96,25 @@ function turnOffCompositionWhenCategoryIsDisabled(input: HTMLInputElement): void
   select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-function installSegmentedControlObserver(): void {
+/**
+ * Installs the composition extension and upgrades only newly inserted selector controls.
+ *
+ * The observer deliberately ignores unrelated page mutations and never replaces the global
+ * MutationObserver constructor. This prevents observer feedback loops when composition state
+ * changes while preserving the segmented selector UI.
+ */
+export function installCompositionPrepareControls(installExtension: InstallExtension): void {
+  if (installed) return;
+  installed = true;
+
+  installExtension();
+
   const observer = new MutationObserver((records) => {
-    const shouldSynchronize = records.some((record) => (
-      mutationAddsCompositionControl(record) || !isCompositionOwnedMutation(record)
-    ));
-    if (shouldSynchronize) scheduleSynchronizeSegmentedControls();
+    const controls = new Set<HTMLElement>();
+    records.forEach((record) => {
+      addedCompositionControls(record).forEach((control) => controls.add(control));
+    });
+    controls.forEach(upgradeControl);
   });
   observer.observe(document.documentElement, { subtree: true, childList: true });
 
@@ -184,7 +124,7 @@ function installSegmentedControlObserver(): void {
     if (categoryInput) {
       queueMicrotask(() => {
         turnOffCompositionWhenCategoryIsDisabled(categoryInput);
-        scheduleSynchronizeSegmentedControls();
+        refreshSegmentedControls();
       });
       return;
     }
@@ -196,11 +136,6 @@ function installSegmentedControlObserver(): void {
     }
   });
 
-  window.addEventListener(COMPOSITION_CHANGE_EVENT, scheduleSynchronizeSegmentedControls);
-  scheduleSynchronizeSegmentedControls();
-}
-
-export function installCompositionPrepareControls(installExtension: InstallExtension): void {
-  withCompositionMutationGuard(installExtension);
-  installSegmentedControlObserver();
+  window.addEventListener(COMPOSITION_CHANGE_EVENT, refreshSegmentedControls);
+  queueMicrotask(refreshSegmentedControls);
 }

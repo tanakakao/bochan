@@ -9,6 +9,7 @@ def test_composition_runtime_preserves_dataset_and_regression_adapters() -> None
     assert "web_composition: backendSettings(settings)" in source
     assert "payload.search_space" in source
     assert "formulaLikeColumn" in source
-    assert "latestDataset = payload" in source
-    assert "synchronizePrepareControls" in source
-    assert ".feature-variable-choice" in source
+    assert "responseWithJson" in source
+    assert "MutationObserver" not in source
+    assert "document.querySelector" not in source
+    assert "appendChild" not in source

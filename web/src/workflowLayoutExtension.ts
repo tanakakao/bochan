@@ -39,20 +39,24 @@ function synchronizeSettingsLayout(): void {
     if (missingKicker) missingKicker.textContent = "MISSING VALUES";
   }
 
-  if (modelGrid && preprocessingPanel) {
-    placeAfter(preprocessingPanel, modelGrid);
+  if (
+    modelGrid
+    && preprocessingPanel
+    && preprocessingPanel.parentElement !== modelGrid
+  ) {
+    modelGrid.appendChild(preprocessingPanel);
   }
 
   const composition = loadCompositionSettings();
   const compositionEnabled = Boolean(composition.enabled && composition.column);
   if (compositionHost) {
     compositionHost.hidden = !compositionEnabled;
-    if (preprocessingPanel) placeAfter(compositionHost, preprocessingPanel);
   }
 
-  const accuracyAnchor = compositionEnabled && compositionHost
-    ? compositionHost
-    : preprocessingPanel ?? modelGrid;
+  // The composition extension owns the host position immediately after modelGrid.
+  // Keeping that single owner prevents two MutationObservers from moving the same
+  // node back and forth when composition input is enabled.
+  const accuracyAnchor = compositionHost ?? modelGrid;
   if (accuracyPanel) placeAfter(accuracyPanel, accuracyAnchor);
   if (importancePanel) placeAfter(importancePanel, accuracyPanel);
 }

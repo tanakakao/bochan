@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { EmptyState, SectionHeader } from "../components/Common";
+import CompositionKindControl from "../components/CompositionKindControl";
 import { useWorkbench } from "../context/WorkbenchContext";
 import { getColumnClassValues } from "../targetSettingUtils";
 import type { ColumnProfile, SearchVariable, TargetSetting } from "../types";
@@ -402,6 +403,11 @@ export default function PreparePage() {
                     />
                     <span>カテゴリ</span>
                   </label>
+                  <CompositionKindControl
+                    column={column.name}
+                    preview={preview}
+                    categorical={categorical}
+                  />
                 </div>
               );
             })}

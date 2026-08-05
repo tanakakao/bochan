@@ -1,0 +1,165 @@
+/* Readability overrides loaded after the feature-specific stylesheets. */
+:root {
+  --ui-control-font-size: 15px;
+  --ui-label-font-size: 14px;
+  --ui-secondary-font-size: 13px;
+}
+
+body {
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+button:not(.icon-button),
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea {
+  font-size: var(--ui-control-font-size) !important;
+  line-height: 1.4;
+}
+
+button:not(.icon-button) {
+  min-height: 40px;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea {
+  min-height: 40px;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  width: 18px;
+  height: 18px;
+}
+
+label,
+dt,
+th,
+.field-label,
+.form-label,
+.setting-label,
+.control-label,
+.variable-label,
+.constraint-label {
+  font-size: var(--ui-label-font-size) !important;
+  line-height: 1.45;
+}
+
+p,
+li,
+dd,
+td,
+.conversation-bubble,
+.inline-alert-copy p,
+.panel-title p,
+.section-header p,
+.empty-state,
+.alert {
+  font-size: 15px !important;
+  line-height: 1.6;
+}
+
+small,
+.helper-text,
+.help-text,
+.field-help,
+.setting-help,
+.form-help,
+.muted,
+.caption,
+.description,
+.variable-description,
+.constraint-description {
+  font-size: var(--ui-secondary-font-size) !important;
+  line-height: 1.5;
+}
+
+.workflow-step strong,
+.tab strong,
+.workbench-mode-switch button,
+.portal-button,
+.conversation-launcher-copy strong,
+.conversation-choice-grid button strong,
+.conversation-feature strong,
+.conversation-action-card > strong,
+.conversation-count-options button,
+.conversation-result-values strong,
+.panel-title h3,
+.side-card-title strong {
+  font-size: 15px !important;
+}
+
+.workflow-step,
+.tab small,
+.conversation-launcher-copy small,
+.conversation-choice-grid button small,
+.conversation-feature small,
+.context-list,
+.context-list span,
+.context-list strong,
+.statusbar,
+.runtime-copy,
+.side-card-title span,
+.rail-note,
+.rail-note p {
+  font-size: var(--ui-secondary-font-size) !important;
+}
+
+.rail-section-label,
+.panel-kicker,
+.eyebrow,
+.status-chip,
+.viz-badge,
+.conversation-kicker,
+.conversation-result-label {
+  font-size: 12px !important;
+  letter-spacing: 0.08em;
+}
+
+.tabs .tab {
+  min-height: 58px;
+}
+
+.conversation-launcher {
+  min-height: 64px;
+}
+
+.conversation-action-card button,
+.conversation-composer button,
+.conversation-file-button,
+.experiment-save-row button,
+.experiment-import-controls button {
+  font-weight: 700;
+}
+
+.conversation-composer input {
+  font-size: 16px !important;
+}
+
+.table-wrap th,
+.table-wrap td,
+.experiment-table th,
+.experiment-table td {
+  font-size: 14px !important;
+}
+
+.compact-button,
+button.compact-button {
+  min-height: 36px;
+  font-size: 14px !important;
+}
+
+@media (max-width: 720px) {
+  body {
+    font-size: 15px;
+  }
+
+  .workflow-step strong,
+  .tab strong,
+  .conversation-action-card > strong,
+  .panel-title h3 {
+    font-size: 15px !important;
+  }
+}

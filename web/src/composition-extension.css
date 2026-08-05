@@ -136,6 +136,56 @@ button.composition-kind-option.active:hover:not(:disabled) {
   min-width: 90px;
 }
 
+/* Keep the frame on the painted table area instead of stretching across the panel. */
+.table-wrap:has(> .search-variable-table),
+.table-wrap:has(> .composition-element-table) {
+  width: fit-content;
+  max-width: 100%;
+}
+
+/* Search variables and composition elements use the same widths for equivalent fields. */
+.search-variable-table,
+.composition-element-table {
+  table-layout: fixed;
+  width: auto;
+  min-width: 0;
+}
+
+.search-variable-table {
+  width: 1020px;
+}
+
+.composition-element-table {
+  width: 720px;
+}
+
+.search-variable-table th:nth-child(1),
+.composition-element-table th:nth-child(1) {
+  width: 180px;
+}
+
+.search-variable-table th:nth-child(2) {
+  width: 120px;
+}
+
+.search-variable-table th:nth-child(3),
+.search-variable-table th:nth-child(4),
+.search-variable-table th:nth-child(5),
+.composition-element-table th:nth-child(2),
+.composition-element-table th:nth-child(3),
+.composition-element-table th:nth-child(4) {
+  width: 150px;
+}
+
+.search-variable-table th:nth-child(6),
+.composition-element-table th:nth-child(5) {
+  width: 90px;
+}
+
+.search-variable-table th:nth-child(7) {
+  width: 180px;
+}
+
 .composition-term-list {
   display: grid;
   gap: 0.55rem;

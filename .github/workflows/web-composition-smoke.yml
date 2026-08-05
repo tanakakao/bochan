@@ -17,6 +17,7 @@ on:
       - "src/bochan/serving/webapp/composition_importance_records_compat.py"
       - "src/bochan/serving/webapp/composition_importance_output_compat.py"
       - "src/bochan/serving/webapp/composition_element_importance_figures.py"
+      - "src/bochan/serving/webapp/pandas_compat.py"
       - "src/bochan/serving/webapp/visualization_feature_types.py"
       - "src/bochan/serving/webapp/__init__.py"
       - "web/src/compositionExtension.ts"
@@ -36,6 +37,7 @@ on:
       - "tests/test_webapp_composition_state_pd.py"
       - "tests/test_webapp_composition_feature_importance.py"
       - "tests/test_webapp_composition_feature_importance_integration.py"
+      - "tests/test_webapp_pandas_compat.py"
       - "tests/test_webapp_composition_settings_placement.py"
       - "tests/test_webapp_color_theme.py"
       - ".github/workflows/web-composition-smoke.yml"
@@ -62,6 +64,7 @@ jobs:
           tests/test_webapp_composition_state_pd.py
           tests/test_webapp_composition_feature_importance.py
           tests/test_webapp_composition_feature_importance_integration.py
+          tests/test_webapp_pandas_compat.py
           tests/test_webapp_composition_settings_placement.py
           tests/test_webapp_color_theme.py
       - name: Run Python lint
@@ -80,6 +83,7 @@ jobs:
             src/bochan/serving/webapp/composition_importance_records_compat.py \
             src/bochan/serving/webapp/composition_importance_output_compat.py \
             src/bochan/serving/webapp/composition_element_importance_figures.py \
+            src/bochan/serving/webapp/pandas_compat.py \
             src/bochan/serving/webapp/visualization_feature_types.py \
             src/bochan/serving/webapp/__init__.py \
             tests/test_webapp_composition_support.py \
@@ -88,6 +92,7 @@ jobs:
             tests/test_webapp_composition_state_pd.py \
             tests/test_webapp_composition_feature_importance.py \
             tests/test_webapp_composition_feature_importance_integration.py \
+            tests/test_webapp_pandas_compat.py \
             tests/test_webapp_composition_settings_placement.py \
             tests/test_webapp_color_theme.py
       - uses: actions/setup-node@v4

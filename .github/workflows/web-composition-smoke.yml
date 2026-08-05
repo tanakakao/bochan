@@ -23,9 +23,12 @@ on:
       - "web/src/composition-extension.css"
       - "web/src/compositionVisualizationTypes.ts"
       - "web/src/compositionVisualizationGuard.ts"
+      - "web/src/importanceFeatureLabels.ts"
       - "web/src/InteractiveResultPlots.tsx"
       - "web/src/red-theme.css"
       - "web/src/main.tsx"
+      - "web/test/importanceFeatureLabels.test.ts"
+      - "web/package.json"
       - "tests/test_webapp_composition_support.py"
       - "tests/test_webapp_composition_visualization.py"
       - "tests/test_webapp_composition_state_pd.py"
@@ -88,6 +91,9 @@ jobs:
       - name: Install React dependencies
         working-directory: web
         run: npm install --no-audit --no-fund
+      - name: Test importance labels
+        working-directory: web
+        run: npm run test:importance-labels
       - name: Build React workbench
         working-directory: web
         run: npm run build

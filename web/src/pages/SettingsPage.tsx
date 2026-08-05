@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { EmptyState, SectionHeader } from "../components/Common";
+import CompositionModelSettings from "../components/CompositionModelSettings";
 import FeatureMissingSettings from "../components/FeatureMissingSettings";
 import NoiseAlphaSettings from "../components/NoiseAlphaSettings";
 import TargetModelSettings from "../components/TargetModelSettings";
@@ -188,67 +189,30 @@ export default function SettingsPage() {
             )}
             <label>
               Fit maxiter
-              <input type="number" min={1} step={1} value={fitMaxiter} onChange={(event) => setFitMaxiter(Number(event.target.value))} />
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={fitMaxiter}
+                onChange={(event) => setFitMaxiter(Number(event.target.value))}
+              />
             </label>
           </div>
           <p className="settings-note">
             {selectedModelDescription}
-            {isMultitaskModelType(modelType) ? " 複数の回帰目的列をwide形式の相関付きモデルで学習します。" : null}
+            {isMultitaskModelType(modelType)
+              ? " 複数の回帰目的列をwide形式の相関付きモデルで学習します。"
+              : null}
           </p>
         </article>
       </div>
 
-      <article className="panel">
-        <div className="panel-title"><div><span className="panel-kicker">3 · ACCURACY</span><h3>精度評価</h3></div></div>
-        <label className="switch-field">
-          <input type="checkbox" checked={crossValidation.enabled} onChange={(event) => setCrossValidation({ ...crossValidation, enabled: event.target.checked })} />
-          <span>交差検証でモデル精度を評価する</span>
-        </label>
-        {crossValidation.enabled && <div className="model-settings-grid">
-          <label>検証方法<select value={crossValidation.method} onChange={(event) => setCrossValidation({ ...crossValidation, method: event.target.value as "kfold" | "loo" })}><option value="kfold">K-fold</option><option value="loo">Leave-One-Out</option></select></label>
-          {crossValidation.method === "kfold" && <label>分割数<input type="number" min={2} max={dataset.profile.n_rows} value={crossValidation.nSplits} onChange={(event) => setCrossValidation({ ...crossValidation, nSplits: Number(event.target.value) })} /></label>}
-        </div>}
-        {crossValidation.enabled && <p className="settings-note">交差検証ではデータを分割してモデルを複数回学習するため、通常より時間がかかります。最終モデルは交差検証後に全データで別途学習されます。分類ではクラス比率を保つ層化分割を使用します。</p>}
-      </article>
-
-      <article className="panel">
-        <div className="panel-title"><div><span className="panel-kicker">4 · INSPECTION</span><h3>特徴量重要度</h3><p>Permutation Importanceとモデル固有診断の取得内容を選択します。</p></div></div>
-        <label className="switch-field"><input type="checkbox" checked={featureImportance.enabled} onChange={(event) => setFeatureImportance({ ...featureImportance, enabled: event.target.checked })} /><span>特徴量重要度を計算する</span></label>
-        {featureImportance.enabled && <>
-          <div className="model-settings-grid">
-            <label>
-              取得内容
-              <select
-                value={featureImportance.diagnosticAuto ? "permutation_and_model" : "permutation"}
-                onChange={(event) => setFeatureImportance({
-                  ...featureImportance,
-                  diagnosticAuto: event.target.value === "permutation_and_model"
-                })}
-              >
-                <option value="permutation">Permutation Importance（PI）のみ</option>
-                <option value="permutation_and_model">PI＋モデル固有診断</option>
-              </select>
-            </label>
-            <label>評価方法<select value={featureImportance.source} onChange={(event) => setFeatureImportance({ ...featureImportance, source: event.target.value as "auto" | "training" | "cross_validation" })}><option value="auto">自動</option><option value="cross_validation">交差検証</option><option value="training">学習データ</option></select></label>
-            <label>Permutation反復回数<input type="number" min={1} max={100} value={featureImportance.nRepeats} onChange={(event) => setFeatureImportance({ ...featureImportance, nRepeats: Number(event.target.value) })} /></label>
-            <label>上位表示数<input type="number" min={1} max={100} value={featureImportance.topK} onChange={(event) => setFeatureImportance({ ...featureImportance, topK: Number(event.target.value) })} /></label>
-            <label>順位基準<select value={featureImportance.rankBy} onChange={(event) => setFeatureImportance({ ...featureImportance, rankBy: event.target.value as "value" | "absolute" })}><option value="value">value</option><option value="absolute">absolute</option></select></label>
-          </div>
-          <label className="switch-field"><input type="checkbox" checked={featureImportance.computeNoiseImportance} onChange={(event) => setFeatureImportance({ ...featureImportance, computeNoiseImportance: event.target.checked })} /><span>入力依存ノイズの重要度も計算</span></label>
-          <label className="switch-field"><input type="checkbox" checked={featureImportance.normalizeImportance} onChange={(event) => setFeatureImportance({ ...featureImportance, normalizeImportance: event.target.checked })} /><span>正規化重要度を表示</span></label>
-          <label className="switch-field"><input type="checkbox" checked={featureImportance.includeNegative} onChange={(event) => setFeatureImportance({ ...featureImportance, includeNegative: event.target.checked })} /><span>負の重要度を表示</span></label>
-          <label className="switch-field"><input type="checkbox" checked={featureImportance.showErrorBars} onChange={(event) => setFeatureImportance({ ...featureImportance, showErrorBars: event.target.checked })} /><span>エラーバーを表示</span></label>
-          {featureImportance.source === "cross_validation" && !crossValidation.enabled && <div className="alert warning">交差検証の特徴量重要度には、交差検証を有効にしてください。</div>}
-          <p className="settings-note">モデル固有診断を選択すると、学習モデルが提供するARD、PCA、マルチタスク相関などを取得します。計算回数は概ね 特徴量数 × 反復回数 × fold数 に比例します。</p>
-        </>}
-      </article>
-
-      <article className="panel">
+      <article className="panel feature-preprocessing-panel">
         <div className="panel-title">
           <div>
             <span className="panel-kicker">3 · INPUT TRANSFORM</span>
             <h3>説明変数の前処理</h3>
-            <p>学習モデルへ入力する前の正規化、入力摂動、観測ノイズ下限を設定します。</p>
+            <p>学習モデルへ入力する前の正規化、入力摂動、観測ノイズ下限、欠損値処理を設定します。</p>
           </div>
         </div>
         <div className="search-transform-grid">
@@ -256,7 +220,11 @@ export default function SettingsPage() {
             <div className="transform-card-heading">
               <div><span className="panel-kicker">NORMALIZATION</span><h4>正規化</h4></div>
               <label className="switch-field">
-                <input type="checkbox" checked={normalize} onChange={(event) => setNormalize(event.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={normalize}
+                  onChange={(event) => setNormalize(event.target.checked)}
+                />
                 <span>使用する</span>
               </label>
             </div>
@@ -267,7 +235,11 @@ export default function SettingsPage() {
             <div className="transform-card-heading">
               <div><span className="panel-kicker">INPUT PERTURBATION</span><h4>入力摂動</h4></div>
               <label className="switch-field">
-                <input type="checkbox" checked={inputPerturbation} onChange={(event) => setInputPerturbation(event.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={inputPerturbation}
+                  onChange={(event) => setInputPerturbation(event.target.checked)}
+                />
                 <span>使用する</span>
               </label>
             </div>
@@ -276,11 +248,23 @@ export default function SettingsPage() {
               <div className="transform-fields">
                 <label>
                   摂動サンプル数 n
-                  <input type="number" min={1} step={1} value={nW} onChange={(event) => setNW(Number(event.target.value))} />
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={nW}
+                    onChange={(event) => setNW(Number(event.target.value))}
+                  />
                 </label>
                 <label>
                   ばらつき（標準偏差）
-                  <input type="number" min={0.000001} step="any" value={perturbationStd} onChange={(event) => setPerturbationStd(Number(event.target.value))} />
+                  <input
+                    type="number"
+                    min={0.000001}
+                    step="any"
+                    value={perturbationStd}
+                    onChange={(event) => setPerturbationStd(Number(event.target.value))}
+                  />
                 </label>
               </div>
             )}
@@ -290,10 +274,211 @@ export default function SettingsPage() {
             modelType={modelType}
             hasRegressionTargets={hasRegressionTargets}
           />
+
+          <FeatureMissingSettings />
         </div>
       </article>
 
-      <FeatureMissingSettings />
+      <CompositionModelSettings />
+
+      <article className="panel">
+        <div className="panel-title">
+          <div><span className="panel-kicker">4 · ACCURACY</span><h3>精度評価</h3></div>
+        </div>
+        <label className="switch-field">
+          <input
+            type="checkbox"
+            checked={crossValidation.enabled}
+            onChange={(event) => setCrossValidation({
+              ...crossValidation,
+              enabled: event.target.checked
+            })}
+          />
+          <span>交差検証でモデル精度を評価する</span>
+        </label>
+        {crossValidation.enabled && (
+          <div className="model-settings-grid">
+            <label>
+              検証方法
+              <select
+                value={crossValidation.method}
+                onChange={(event) => setCrossValidation({
+                  ...crossValidation,
+                  method: event.target.value as "kfold" | "loo"
+                })}
+              >
+                <option value="kfold">K-fold</option>
+                <option value="loo">Leave-One-Out</option>
+              </select>
+            </label>
+            {crossValidation.method === "kfold" && (
+              <label>
+                分割数
+                <input
+                  type="number"
+                  min={2}
+                  max={dataset.profile.n_rows}
+                  value={crossValidation.nSplits}
+                  onChange={(event) => setCrossValidation({
+                    ...crossValidation,
+                    nSplits: Number(event.target.value)
+                  })}
+                />
+              </label>
+            )}
+          </div>
+        )}
+        {crossValidation.enabled && (
+          <p className="settings-note">
+            交差検証ではデータを分割してモデルを複数回学習するため、通常より時間がかかります。最終モデルは交差検証後に全データで別途学習されます。分類ではクラス比率を保つ層化分割を使用します。
+          </p>
+        )}
+      </article>
+
+      <article className="panel">
+        <div className="panel-title">
+          <div>
+            <span className="panel-kicker">5 · INSPECTION</span>
+            <h3>特徴量重要度</h3>
+            <p>Permutation Importanceとモデル固有診断の取得内容を選択します。</p>
+          </div>
+        </div>
+        <label className="switch-field">
+          <input
+            type="checkbox"
+            checked={featureImportance.enabled}
+            onChange={(event) => setFeatureImportance({
+              ...featureImportance,
+              enabled: event.target.checked
+            })}
+          />
+          <span>特徴量重要度を計算する</span>
+        </label>
+        {featureImportance.enabled && (
+          <>
+            <div className="model-settings-grid">
+              <label>
+                取得内容
+                <select
+                  value={featureImportance.diagnosticAuto ? "permutation_and_model" : "permutation"}
+                  onChange={(event) => setFeatureImportance({
+                    ...featureImportance,
+                    diagnosticAuto: event.target.value === "permutation_and_model"
+                  })}
+                >
+                  <option value="permutation">Permutation Importance（PI）のみ</option>
+                  <option value="permutation_and_model">PI＋モデル固有診断</option>
+                </select>
+              </label>
+              <label>
+                評価方法
+                <select
+                  value={featureImportance.source}
+                  onChange={(event) => setFeatureImportance({
+                    ...featureImportance,
+                    source: event.target.value as "auto" | "training" | "cross_validation"
+                  })}
+                >
+                  <option value="auto">自動</option>
+                  <option value="cross_validation">交差検証</option>
+                  <option value="training">学習データ</option>
+                </select>
+              </label>
+              <label>
+                Permutation反復回数
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={featureImportance.nRepeats}
+                  onChange={(event) => setFeatureImportance({
+                    ...featureImportance,
+                    nRepeats: Number(event.target.value)
+                  })}
+                />
+              </label>
+              <label>
+                上位表示数
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={featureImportance.topK}
+                  onChange={(event) => setFeatureImportance({
+                    ...featureImportance,
+                    topK: Number(event.target.value)
+                  })}
+                />
+              </label>
+              <label>
+                順位基準
+                <select
+                  value={featureImportance.rankBy}
+                  onChange={(event) => setFeatureImportance({
+                    ...featureImportance,
+                    rankBy: event.target.value as "value" | "absolute"
+                  })}
+                >
+                  <option value="value">value</option>
+                  <option value="absolute">absolute</option>
+                </select>
+              </label>
+            </div>
+            <label className="switch-field">
+              <input
+                type="checkbox"
+                checked={featureImportance.computeNoiseImportance}
+                onChange={(event) => setFeatureImportance({
+                  ...featureImportance,
+                  computeNoiseImportance: event.target.checked
+                })}
+              />
+              <span>入力依存ノイズの重要度も計算</span>
+            </label>
+            <label className="switch-field">
+              <input
+                type="checkbox"
+                checked={featureImportance.normalizeImportance}
+                onChange={(event) => setFeatureImportance({
+                  ...featureImportance,
+                  normalizeImportance: event.target.checked
+                })}
+              />
+              <span>正規化重要度を表示</span>
+            </label>
+            <label className="switch-field">
+              <input
+                type="checkbox"
+                checked={featureImportance.includeNegative}
+                onChange={(event) => setFeatureImportance({
+                  ...featureImportance,
+                  includeNegative: event.target.checked
+                })}
+              />
+              <span>負の重要度を表示</span>
+            </label>
+            <label className="switch-field">
+              <input
+                type="checkbox"
+                checked={featureImportance.showErrorBars}
+                onChange={(event) => setFeatureImportance({
+                  ...featureImportance,
+                  showErrorBars: event.target.checked
+                })}
+              />
+              <span>エラーバーを表示</span>
+            </label>
+            {featureImportance.source === "cross_validation" && !crossValidation.enabled && (
+              <div className="alert warning">
+                交差検証の特徴量重要度には、交差検証を有効にしてください。
+              </div>
+            )}
+            <p className="settings-note">
+              モデル固有診断を選択すると、学習モデルが提供するARD、PCA、マルチタスク相関などを取得します。計算回数は概ね 特徴量数 × 反復回数 × fold数 に比例します。
+            </p>
+          </>
+        )}
+      </article>
 
       {!settingsValid && (
         <article className="panel compact-panel validation-panel">

@@ -224,17 +224,28 @@ def test_composition_formula_is_categorical_visualization_control() -> None:
     }
 
 
-def test_web_source_exposes_single_composition_and_linear_constraint_controls() -> None:
-    source = Path("web/src/compositionExtension.ts").read_text(encoding="utf-8")
+def test_web_source_exposes_react_owned_composition_controls() -> None:
+    runtime = Path("web/src/compositionRuntime.ts").read_text(encoding="utf-8")
+    kind = Path("web/src/components/CompositionKindControl.tsx").read_text(
+        encoding="utf-8"
+    )
+    model = Path("web/src/components/CompositionModelSettings.tsx").read_text(
+        encoding="utf-8"
+    )
+    candidate = Path(
+        "web/src/components/CompositionCandidateConstraints.tsx"
+    ).read_text(encoding="utf-8")
     main_source = Path("web/src/main.tsx").read_text(encoding="utf-8")
 
-    assert "通常カテゴリ" in source
-    assert "組成式" in source
-    assert 'value="ilr"' in source
-    assert 'value="clr"' in source
-    assert 'value="alr"' in source
-    assert "元素間の線形制約" in source
-    assert "web_composition" in source
-    assert "組成式のモデル変換" in source
-    assert "組成候補の元素制約" in source
-    assert "installCompositionExtension" in main_source
+    assert "通常" in kind
+    assert "組成式" in kind
+    assert "web_composition" in runtime
+    assert 'value="ilr"' in model
+    assert 'value="clr"' in model
+    assert 'value="alr"' in model
+    assert "組成式のモデル変換" in model
+    assert "元素間の線形制約" in candidate
+    assert "組成候補の元素制約" in candidate
+    assert "installCompositionRuntime" in main_source
+    assert "installCompositionPrepareControls" not in main_source
+    assert "installCompositionExtension" not in main_source

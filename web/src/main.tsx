@@ -1,12 +1,12 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import WorkbenchPageErrorBoundary from "./components/WorkbenchPageErrorBoundary";
 import { installCompositionDatasetState } from "./compositionDatasetState";
-import { installCompositionExtension } from "./compositionExtension";
-import { installCompositionPrepareControls } from "./compositionPrepareControls";
+import { installCompositionRuntime } from "./compositionRuntime";
 import { installCompositionVisualizationGuard } from "./compositionVisualizationGuard";
 import { installDynamicNumberInputSteps } from "./numericInputUtils";
-import { installWorkflowLayoutExtension } from "./workflowLayoutExtension";
+import { installResultsLayoutExtension } from "./resultsLayoutExtension";
 import "./styles.css";
 import "./target-settings.css";
 import "./constraint-settings.css";
@@ -25,13 +25,15 @@ import "./workflow-layout-extension.css";
 import "./red-theme.css";
 
 installDynamicNumberInputSteps();
-installCompositionPrepareControls(installCompositionExtension);
+installCompositionRuntime();
 installCompositionDatasetState();
 installCompositionVisualizationGuard();
-installWorkflowLayoutExtension();
+installResultsLayoutExtension();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <WorkbenchPageErrorBoundary resetKey="workbench-root">
+      <App />
+    </WorkbenchPageErrorBoundary>
   </React.StrictMode>
 );

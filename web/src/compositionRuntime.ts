@@ -1,9 +1,5 @@
 import { loadCompositionSettings } from "./compositionExtension";
 
-const STORAGE_KEY = "bochan-web-composition-settings";
-const CHANGE_EVENT = "bochan-composition-settings-change";
-const FEATURE_CARD_SELECTOR = ".feature-variable-choice";
-
 type CompositionSettings = ReturnType<typeof loadCompositionSettings>;
 
 interface DatasetPayload {
@@ -13,13 +9,6 @@ interface DatasetPayload {
 
 let installed = false;
 let originalFetch: typeof window.fetch | null = null;
-let latestDataset: DatasetPayload | null = null;
-let synchronizationScheduled = false;
-
-function saveCompositionSettings(settings: CompositionSettings): void {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
-}
 
 function elementSymbols(formula: unknown): string[] {
   if (typeof formula !== "string") return [];
@@ -32,15 +21,13 @@ function looksLikeFormula(value: unknown): boolean {
   return typeof value === "string" && elementSymbols(value).length > 0;
 }
 
-function inferElements(column: string): string[] {
-  const values = latestDataset?.preview?.map((row) => row[column]).filter(looksLikeFormula) ?? [];
-  return [...new Set(values.flatMap(elementSymbols))];
-}
-
-function formulaLikeColumn(column: string): boolean {
-  const values = latestDataset?.preview
-    ?.map((row) => row[column])
-    .filter((value) => value !== null && value !== undefined) ?? [];
+function formulaLikeColumn(
+  column: string,
+  preview: Record<string, unknown>[]
+): boolean {
+  const values = preview
+    .map((row) => row[column])
+    .filter((value) => value !== null && value !== undefined);
   return values.length > 0 && values.filter(looksLikeFormula).length / values.length >= 0.7;
 }
 
@@ -137,9 +124,13 @@ function installFetchAdapter(): void {
     if (url.pathname.endsWith("/datasets") && method === "POST" && response.ok) {
       try {
         const payload = await response.clone().json() as DatasetPayload;
-        latestDataset = payload;
+        const preview = payload.preview ?? [];
         for (const column of payload.profile?.columns ?? []) {
-          if (column.kind === "string" && column.name && formulaLikeColumn(column.name)) {
+          if (
+            column.kind === "string" &&
+            column.name &&
+            formulaLikeColumn(column.name, preview)
+          ) {
             column.kind = "categorical";
           }
         }
@@ -152,94 +143,9 @@ function installFetchAdapter(): void {
   };
 }
 
-function escapeHtml(value: unknown): string {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function cardColumn(card: Element): string {
-  return card.querySelector(".variable-choice-main span")?.textContent?.trim() ?? "";
-}
-
-function synchronizePrepareControls(): void {
-  const settings = loadCompositionSettings();
-  document.querySelectorAll<HTMLElement>(FEATURE_CARD_SELECTOR).forEach((card) => {
-    const column = cardColumn(card);
-    if (!column) return;
-    card.classList.toggle("selected-composition", settings.enabled && settings.column === column);
-
-    let control = card.querySelector<HTMLElement>(":scope > .composition-kind-control");
-    if (!control) {
-      control = document.createElement("label");
-      control.className = "composition-kind-control";
-      control.innerHTML = `<span>入力表記</span><select aria-label="${escapeHtml(column)}の入力表記"><option value="normal">通常カテゴリ</option><option value="composition">組成式</option></select>`;
-      card.appendChild(control);
-      control.querySelector("select")?.addEventListener("change", (event) => {
-        const select = event.currentTarget as HTMLSelectElement;
-        const current = loadCompositionSettings();
-        if (select.value === "composition") {
-          const elements = current.column === column && current.elements.length
-            ? current.elements
-            : inferElements(column);
-          saveCompositionSettings({
-            ...current,
-            enabled: true,
-            column,
-            elements,
-            bounds: Object.fromEntries(elements.map((element) => [
-              element,
-              current.bounds[element] ?? [0, 1]
-            ])),
-            steps: Object.fromEntries(elements.map((element) => [
-              element,
-              current.steps[element] ?? null
-            ])),
-            maxComponents: elements.length || null
-          });
-        } else if (current.column === column) {
-          saveCompositionSettings({ ...current, enabled: false, column: "" });
-        }
-      });
-    }
-
-    const select = control.querySelector<HTMLSelectElement>("select");
-    if (select) {
-      select.value = settings.enabled && settings.column === column ? "composition" : "normal";
-    }
-  });
-}
-
-function nodeContainsFeatureCard(node: Node): boolean {
-  if (!(node instanceof Element)) return false;
-  return node.matches(FEATURE_CARD_SELECTOR) || Boolean(node.querySelector(FEATURE_CARD_SELECTOR));
-}
-
-function scheduleSynchronization(): void {
-  if (synchronizationScheduled) return;
-  synchronizationScheduled = true;
-  queueMicrotask(() => {
-    synchronizationScheduled = false;
-    synchronizePrepareControls();
-  });
-}
-
-/** Installs composition data transport and Select-page controls only. */
+/** Installs composition-aware dataset and regression API transport without DOM mutation. */
 export function installCompositionRuntime(): void {
   if (installed) return;
   installed = true;
   installFetchAdapter();
-
-  const observer = new MutationObserver((records) => {
-    if (records.some((record) => Array.from(record.addedNodes).some(nodeContainsFeatureCard))) {
-      scheduleSynchronization();
-    }
-  });
-  observer.observe(document.documentElement, { subtree: true, childList: true });
-
-  window.addEventListener(CHANGE_EVENT, scheduleSynchronization);
-  scheduleSynchronization();
 }

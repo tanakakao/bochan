@@ -5,6 +5,7 @@ import WorkbenchPageErrorBoundary from "./components/WorkbenchPageErrorBoundary"
 import { installCompositionDatasetState } from "./compositionDatasetState";
 import { installCompositionRuntime } from "./compositionRuntime";
 import { installCompositionVisualizationGuard } from "./compositionVisualizationGuard";
+import { installConversationIconRuntime } from "./conversationIconRuntime";
 import { installDynamicNumberInputSteps } from "./numericInputUtils";
 import "./styles.css";
 import "./target-settings.css";
@@ -27,6 +28,7 @@ installDynamicNumberInputSteps();
 installCompositionRuntime();
 installCompositionDatasetState();
 installCompositionVisualizationGuard();
+installConversationIconRuntime();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

@@ -6,18 +6,23 @@ LAYOUT_CSS = Path("web/src/workflow-layout-extension.css")
 MAIN_SOURCE = Path("web/src/main.tsx")
 
 
-def test_model_settings_cards_follow_requested_order() -> None:
+def test_model_settings_cards_follow_requested_order_without_reorder_loop() -> None:
     source = LAYOUT_SOURCE.read_text(encoding="utf-8")
+    css = LAYOUT_CSS.read_text(encoding="utf-8")
 
     assert 'panelByHeading("説明変数の前処理")' in source
     assert 'panelByHeading("精度評価")' in source
     assert 'panelByHeading("特徴量重要度")' in source
     assert "preprocessingGrid.appendChild(missingPanel)" in source
-    assert "placeAfter(preprocessingPanel, modelGrid)" in source
-    assert "placeAfter(compositionHost, preprocessingPanel)" in source
+    assert "modelGrid.appendChild(preprocessingPanel)" in source
+    assert "placeAfter(preprocessingPanel, modelGrid)" not in source
+    assert "placeAfter(compositionHost, preprocessingPanel)" not in source
+    assert "const accuracyAnchor = compositionHost ?? modelGrid" in source
     assert "placeAfter(accuracyPanel, accuracyAnchor)" in source
     assert "placeAfter(importancePanel, accuracyPanel)" in source
     assert "compositionHost.hidden = !compositionEnabled" in source
+    assert ".model-primary-grid > .feature-preprocessing-panel" in css
+    assert "grid-column: 1 / -1;" in css
 
 
 def test_composition_constraints_are_embedded_in_matching_feature_cards() -> None:

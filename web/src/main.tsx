@@ -3,7 +3,6 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import WorkbenchPageErrorBoundary from "./components/WorkbenchPageErrorBoundary";
 import { installCompositionDatasetState } from "./compositionDatasetState";
-import { installCompositionPrepareControls } from "./compositionPrepareControls";
 import { installCompositionRuntime } from "./compositionRuntime";
 import { installCompositionVisualizationGuard } from "./compositionVisualizationGuard";
 import { installDynamicNumberInputSteps } from "./numericInputUtils";
@@ -26,7 +25,7 @@ import "./workflow-layout-extension.css";
 import "./red-theme.css";
 
 installDynamicNumberInputSteps();
-installCompositionPrepareControls(installCompositionRuntime);
+installCompositionRuntime();
 installCompositionDatasetState();
 installCompositionVisualizationGuard();
 installResultsLayoutExtension();

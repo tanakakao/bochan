@@ -1,4 +1,7 @@
-const ICON_SELECTOR = ".conversation-launcher-icon";
+const ICON_SELECTORS = [
+  ".conversation-launcher-icon",
+  ".conversation-message.assistant .conversation-avatar"
+] as const;
 const ICON_DIRECTORY = `${import.meta.env.BASE_URL}conversation-mode/`;
 const ICON_FILENAMES = ["icon.png", "icon.svg", "icon.webp", "icon.jpg", "icon.jpeg"] as const;
 
@@ -23,7 +26,7 @@ function loadOptionalIcon(container: HTMLElement): void {
     image.alt = "";
     image.decoding = "async";
     image.addEventListener("load", () => {
-      image.className = "conversation-launcher-icon-image";
+      image.className = "conversation-icon-image";
       image.style.width = "100%";
       image.style.height = "100%";
       image.style.display = "block";
@@ -39,18 +42,20 @@ function loadOptionalIcon(container: HTMLElement): void {
   tryFilename(0);
 }
 
-function applyConversationIcon(): void {
-  document.querySelectorAll<HTMLElement>(ICON_SELECTOR).forEach(loadOptionalIcon);
+function applyConversationIcons(): void {
+  ICON_SELECTORS.forEach((selector) => {
+    document.querySelectorAll<HTMLElement>(selector).forEach(loadOptionalIcon);
+  });
 }
 
-/** Loads an optional public icon while preserving the built-in symbol as fallback. */
+/** Loads optional public icons while preserving built-in symbols as fallbacks. */
 export function installConversationIconRuntime(): void {
   if (installed) return;
   installed = true;
 
   const start = () => {
-    applyConversationIcon();
-    observer = new MutationObserver(applyConversationIcon);
+    applyConversationIcons();
+    observer = new MutationObserver(applyConversationIcons);
     observer.observe(document.documentElement, { childList: true, subtree: true });
   };
 

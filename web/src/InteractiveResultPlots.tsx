@@ -260,7 +260,7 @@ export default function InteractiveResultPlots({ result }: Props) {
   const rightFeatures = rightKind === "1d" ? options.feature_columns : options.numeric_features;
 
   return (
-    <section className="interactive-visualization-section">
+    <section className="interactive-visualization-section results-interactive-section">
       <div className="result-subheading">
         <div>
           <span className="eyebrow">Visualization</span>
@@ -270,7 +270,7 @@ export default function InteractiveResultPlots({ result }: Props) {
       </div>
 
       <div className="interactive-plot-grid">
-        <article className="panel interactive-plot-card">
+        <article className="panel interactive-plot-card results-yy-card">
           <div className="plot-controls">
             <label>図<select
               value={leftKind}
@@ -314,7 +314,7 @@ export default function InteractiveResultPlots({ result }: Props) {
           <PlotCard visualization={leftPlot} loading={leftLoading} error={leftError} />
         </article>
 
-        <article className="panel interactive-plot-card">
+        <article className="panel interactive-plot-card results-relationship-card">
           <div className="plot-controls">
             <label>図<select
               value={rightKind}

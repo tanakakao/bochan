@@ -6,7 +6,6 @@ import { installCompositionDatasetState } from "./compositionDatasetState";
 import { installCompositionRuntime } from "./compositionRuntime";
 import { installCompositionVisualizationGuard } from "./compositionVisualizationGuard";
 import { installDynamicNumberInputSteps } from "./numericInputUtils";
-import { installResultsLayoutExtension } from "./resultsLayoutExtension";
 import "./styles.css";
 import "./target-settings.css";
 import "./constraint-settings.css";
@@ -28,7 +27,6 @@ installDynamicNumberInputSteps();
 installCompositionRuntime();
 installCompositionDatasetState();
 installCompositionVisualizationGuard();
-installResultsLayoutExtension();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

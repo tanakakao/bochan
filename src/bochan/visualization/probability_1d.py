@@ -106,8 +106,10 @@ def _selected_train_y(obj: Any, index: int) -> Any:
     train_y = getattr(obj, "train_Y", None)
     if train_y is None:
         return None
-    ndim = int(getattr(train_y, "ndim", np.asarray(train_y).ndim))
-    if ndim <= 1:
+    ndim = getattr(train_y, "ndim", None)
+    if ndim is None:
+        ndim = np.asarray(train_y).ndim
+    if int(ndim) <= 1:
         try:
             return train_y.reshape(-1, 1)
         except AttributeError:

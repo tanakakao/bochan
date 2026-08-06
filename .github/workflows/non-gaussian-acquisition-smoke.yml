@@ -25,7 +25,9 @@ jobs:
             tests/test_non_gaussian_acquisition_alignment.py \
             tests/test_gamma_fantasize.py \
             tests/test_poisson_heteroscedastic_init.py \
-            tests/test_negative_binomial_heteroscedastic_init.py
+            tests/test_negative_binomial_heteroscedastic_init.py \
+            tests/test_api_candidate_uniqueness.py \
+            tests/test_regression_active_learning_duplicate_exclusion.py
       - name: Lint changed modules
         run: |
           python -m pip install ruff
@@ -40,9 +42,24 @@ jobs:
             src/bochan/acquisition/non_gaussian/active_learning/multi_output.py \
             src/bochan/acquisition/non_gaussian/active_learning/hetero_single_output.py \
             src/bochan/acquisition/non_gaussian/active_learning/hetero_multi_output.py \
+            src/bochan/acquisition/regression/active_learning/_base.py \
+            src/bochan/acquisition/regression/active_learning/_base_common.py \
+            src/bochan/acquisition/regression/active_learning/_base_objective.py \
+            src/bochan/acquisition/regression/active_learning/_base_reference.py \
+            src/bochan/acquisition/regression/active_learning/_base_scoring.py \
+            src/bochan/acquisition/regression/active_learning/_integrated.py \
+            src/bochan/acquisition/regression/active_learning/_pointwise.py \
+            src/bochan/acquisition/regression/active_learning/single_output.py \
+            src/bochan/api/candidate_uniqueness.py \
+            src/bochan/api/optimizer_api.py \
+            src/bochan/api/optimizer_config.py \
+            src/bochan/api/optimizer_dispatch.py \
+            src/bochan/api/optimizer_support.py \
             src/bochan/models/regression/non_gaussian/poisson/robust/poisson_heteroscedastic.py \
             src/bochan/models/regression/non_gaussian/negative_binomial/robust/negative_binomial_heteroscedastic.py \
             src/bochan/api/acquisition_registry.py \
             tests/test_non_gaussian_acquisition_alignment.py \
             tests/test_poisson_heteroscedastic_init.py \
-            tests/test_negative_binomial_heteroscedastic_init.py
+            tests/test_negative_binomial_heteroscedastic_init.py \
+            tests/test_api_candidate_uniqueness.py \
+            tests/test_regression_active_learning_duplicate_exclusion.py

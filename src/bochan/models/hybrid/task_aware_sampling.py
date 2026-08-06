@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Optional, Sequence, Union
+from collections.abc import Callable, Sequence
+from typing import Any
 
 import torch
 from botorch.acquisition.objective import PosteriorTransform
@@ -13,7 +14,7 @@ from .task_aware_posterior import (
     TaskAwareHybridPosterior,
 )
 
-OutputIndex = Union[int, str]
+OutputIndex = int | str
 
 
 _GH_NODES = (
@@ -54,7 +55,7 @@ def _call_accessor(
     if inner is not None and inner is not model:
         candidates.append(inner)
 
-    last_error: Optional[Exception] = None
+    last_error: Exception | None = None
     for candidate in candidates:
         try:
             return owner._call_accessor(candidate, names, X, **kwargs)
@@ -90,7 +91,11 @@ def _select_scalar_samples(
     """Select one scalar output while preserving acquisition sample axes."""
 
     out = samples
-    if out.ndim >= 1 and out.shape[-1] == 1:
+
+    # A scalar posterior normally adds a final output dimension to X. Require
+    # that extra rank before squeezing it: when q == 1, a transformed sample
+    # may legitimately end in a singleton candidate axis with no output axis.
+    if out.ndim >= X.ndim + 1 and out.shape[-1] == 1:
         return out.squeeze(-1)
 
     if out.ndim >= 2 and out.shape[-2] == X.shape[-2]:
@@ -469,9 +474,9 @@ def _build_component(
 def _task_aware_posterior(
     self: Any,
     X: Tensor,
-    output_indices: Optional[Union[OutputIndex, Sequence[OutputIndex], Tensor]] = None,
-    observation_noise: Union[bool, Tensor] = False,
-    posterior_transform: Optional[PosteriorTransform] = None,
+    output_indices: OutputIndex | Sequence[OutputIndex] | Tensor | None = None,
+    observation_noise: bool | Tensor = False,
+    posterior_transform: PosteriorTransform | None = None,
     *,
     output_mode: PosteriorMode = "objective",
     **kwargs: Any,

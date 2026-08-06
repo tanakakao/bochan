@@ -1,3 +1,4 @@
+# Retry after transient GitHub Actions service interruption.
 name: Fix classification duplicate controls
 
 on:

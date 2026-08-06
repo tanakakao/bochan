@@ -1,8 +1,9 @@
-"""Bound probability uncertainty shown in one-dimensional classification plots."""
+"""Bounded probability views for one-dimensional discrete-output plots."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -11,6 +12,8 @@ from .heteroscedastic_1d import (
     show_1dplot_from_optimizer as _show_1dplot_from_optimizer,
 )
 from .utils import get_model
+
+_DISCRETE_TASKS = {"binary", "multiclass", "ordinal"}
 
 
 def _target_index(
@@ -31,6 +34,16 @@ def _target_index(
     return 0
 
 
+def _sub_bundles(obj: Any) -> list[Any]:
+    """Return target-specific bundles stored by a hybrid model build."""
+
+    bundle = getattr(obj, "bundle", None)
+    metadata = getattr(bundle, "metadata", None)
+    if not isinstance(metadata, dict):
+        return []
+    return list(metadata.get("sub_bundles", []) or [])
+
+
 def _target_task_type(
     obj: Any,
     target: str,
@@ -47,26 +60,19 @@ def _target_task_type(
         if task_type:
             return task_type
 
-    bundle = getattr(obj, "bundle", None)
-    metadata = getattr(bundle, "metadata", None)
-    if isinstance(metadata, dict):
-        sub_bundles = list(metadata.get("sub_bundles", []) or [])
-        if index < len(sub_bundles):
-            task_type = str(
-                getattr(sub_bundles[index], "task_type", "")
-            ).lower()
-            if task_type:
-                return task_type
+    sub_bundles = _sub_bundles(obj)
+    if index < len(sub_bundles):
+        task_type = str(getattr(sub_bundles[index], "task_type", "")).lower()
+        if task_type:
+            return task_type
 
+    bundle = getattr(obj, "bundle", None)
     for candidate in (bundle, getattr(obj, "model_config", None)):
         task_type = str(getattr(candidate, "task_type", "")).lower()
         if task_type and task_type != "hybrid":
             return task_type
 
-    selected_model = model
-    models = list(getattr(model, "models", []) or [])
-    if index < len(models):
-        selected_model = models[index]
+    selected_model = _selected_model(model, index)
     qualified_name = (
         f"{type(selected_model).__module__}.{type(selected_model).__name__}"
         .lower()
@@ -80,9 +86,106 @@ def _target_task_type(
     return ""
 
 
+def _selected_model(model: Any, index: int) -> Any:
+    """Return one target model from a hybrid wrapper."""
+
+    specs = list(getattr(model, "specs", []) or [])
+    if index < len(specs):
+        selected = getattr(specs[index], "model", None)
+        if selected is not None:
+            return selected
+    models = list(getattr(model, "models", []) or [])
+    if index < len(models):
+        return models[index]
+    return model
+
+
+def _selected_train_y(obj: Any, index: int) -> Any:
+    """Select one target column while preserving a two-dimensional output shape."""
+
+    train_y = getattr(obj, "train_Y", None)
+    if train_y is None:
+        return None
+    ndim = int(getattr(train_y, "ndim", np.asarray(train_y).ndim))
+    if ndim <= 1:
+        try:
+            return train_y.reshape(-1, 1)
+        except AttributeError:
+            return np.asarray(train_y).reshape(-1, 1)
+    return train_y[..., index : index + 1]
+
+
+def _discrete_target_proxy(
+    obj: Any,
+    *,
+    target: str,
+    target_cols: Sequence[str] | None,
+    task_type: str,
+) -> Any:
+    """Expose one hybrid discrete output as a regular single-output optimizer."""
+
+    model = get_model(obj)
+    index = _target_index(target, target_cols, model)
+    selected_model = _selected_model(model, index)
+    sub_bundles = _sub_bundles(obj)
+    selected_bundle = sub_bundles[index] if index < len(sub_bundles) else None
+
+    original_bundle = getattr(obj, "bundle", None)
+    metadata: dict[str, Any] = {}
+    original_metadata = getattr(original_bundle, "metadata", None)
+    if isinstance(original_metadata, dict):
+        metadata.update(original_metadata)
+    selected_metadata = getattr(selected_bundle, "metadata", None)
+    if isinstance(selected_metadata, dict):
+        metadata.update(selected_metadata)
+    metadata["target_cols"] = [target]
+
+    cat_dims = getattr(selected_bundle, "cat_dims", None)
+    if cat_dims is None:
+        cat_dims = getattr(original_bundle, "cat_dims", [])
+    model_config = getattr(selected_bundle, "model_config", None)
+    if model_config is None:
+        model_config = SimpleNamespace(task_type=task_type)
+
+    bundle = SimpleNamespace(
+        model=selected_model,
+        task_type=task_type,
+        metadata=metadata,
+        cat_dims=list(cat_dims or []),
+        model_config=model_config,
+    )
+    return SimpleNamespace(
+        model=selected_model,
+        bundle=bundle,
+        model_config=model_config,
+        train_X=getattr(obj, "train_X", None),
+        train_Y=_selected_train_y(obj, index),
+        bounds=getattr(obj, "bounds", None),
+        data_context=getattr(obj, "data_context", None),
+        labels=getattr(obj, "labels", None),
+    )
+
+
+def _is_hybrid_discrete_target(
+    obj: Any,
+    task_type: str,
+) -> bool:
+    """Return whether a discrete target is wrapped in a hybrid output model."""
+
+    if task_type not in _DISCRETE_TASKS:
+        return False
+    model = get_model(obj)
+    if list(getattr(model, "specs", []) or []):
+        return True
+    bundle_task = str(getattr(getattr(obj, "bundle", None), "task_type", "")).lower()
+    return bundle_task == "hybrid"
+
+
 def _numeric_y(values: Any) -> np.ndarray | None:
     """Convert one Plotly y array to float while tolerating non-numeric traces."""
 
+    if values is None:
+        return None
     try:
         array = np.asarray(values, dtype=float)
     except (TypeError, ValueError):
@@ -134,21 +237,33 @@ def show_1dplot_from_optimizer(
     cycle: Any | None = None,
     **kwargs: Any,
 ) -> Any:
-    """Render a 1D plot and keep binary uncertainty inside probability bounds."""
+    """Render discrete targets in probability space with bounded uncertainty."""
+
+    task_type = _target_task_type(obj, target, target_cols)
+    plot_obj = obj
+    plot_target_cols = target_cols
+    if _is_hybrid_discrete_target(obj, task_type):
+        plot_obj = _discrete_target_proxy(
+            obj,
+            target=target,
+            target_cols=target_cols,
+            task_type=task_type,
+        )
+        plot_target_cols = [target]
 
     figure = _show_1dplot_from_optimizer(
-        obj,
+        plot_obj,
         feature,
         target,
         feature_cols=feature_cols,
-        target_cols=target_cols,
+        target_cols=plot_target_cols,
         value_dict=value_dict,
         candidate_result=candidate_result,
         n=n,
         cycle=cycle,
         **kwargs,
     )
-    if _target_task_type(obj, target, target_cols) == "binary":
+    if task_type == "binary":
         return _bound_probability_figure(figure)
     return figure
 

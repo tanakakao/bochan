@@ -1,0 +1,73 @@
+name: Apply classification duplicate exclusion
+
+on:
+  push:
+    branches:
+      - agent/exclude-classification-duplicates
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/exclude-classification-duplicates
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Reconstruct and apply codemod
+        run: |
+          cat .github/scripts/classification-duplicate-exclusion/part*.b64 \
+            | base64 --decode \
+            > .github/scripts/apply_classification_duplicate_exclusion.py
+          python -m py_compile .github/scripts/apply_classification_duplicate_exclusion.py
+          python .github/scripts/apply_classification_duplicate_exclusion.py
+          git diff --check
+
+      - name: Install test dependencies
+        run: python -m pip install -e '.[test,tabular,api]'
+
+      - name: Run focused classification tests
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_classification_duplicate_exclusion.py \
+            tests/test_wide_multitask_classification_acquisitions.py \
+            tests/test_api_candidate_uniqueness.py
+
+      - name: Run Ruff
+        run: |
+          python -m pip install ruff
+          ruff check \
+            src/bochan/acquisition/_duplicate_exclusion.py \
+            src/bochan/acquisition/binary/base.py \
+            src/bochan/acquisition/binary/active_learning \
+            src/bochan/acquisition/binary/bayesian_optimization \
+            src/bochan/acquisition/binary/levelset_estimation \
+            src/bochan/acquisition/ordinal/active_learning/single_output.py \
+            src/bochan/acquisition/ordinal/active_learning/multi_output.py \
+            src/bochan/acquisition/ordinal/active_learning/hetero_single_output.py \
+            src/bochan/acquisition/ordinal/active_learning/hetero_multi_output.py \
+            src/bochan/acquisition/multiclass/bayesian_optimization/single_output.py \
+            src/bochan/acquisition/multiclass/active_learning/multi_output.py \
+            tests/test_classification_duplicate_exclusion.py
+
+      - name: Commit validated source changes
+        run: |
+          rm -rf .github/scripts/classification-duplicate-exclusion
+          rm .github/scripts/apply_classification_duplicate_exclusion.py
+          rm .github/workflows/apply-classification-duplicate-exclusion.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Hard-exclude classification candidate duplicates'
+          git push origin HEAD:agent/exclude-classification-duplicates

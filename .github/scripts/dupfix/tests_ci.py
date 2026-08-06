@@ -129,14 +129,7 @@ def add_tests_and_ci() -> None:
         lint,
         "            src/bochan/acquisition/classification_constraints.py \\\n",
         "            src/bochan/acquisition/classification_constraints.py \\\n"
-        "            src/bochan/acquisition/_duplicate_exclusion.py \\\n"
-        "            src/bochan/acquisition/binary/base.py \\\n"
-        "            src/bochan/acquisition/ordinal/active_learning/single_output.py \\\n"
-        "            src/bochan/acquisition/ordinal/active_learning/multi_output.py \\\n"
-        "            src/bochan/acquisition/ordinal/active_learning/hetero_single_output.py \\\n"
-        "            src/bochan/acquisition/ordinal/active_learning/hetero_multi_output.py \\\n"
-        "            src/bochan/acquisition/multiclass/bayesian_optimization/single_output.py \\\n"
-        "            src/bochan/acquisition/multiclass/active_learning/multi_output.py \\\n",
+        "            src/bochan/acquisition/_duplicate_exclusion.py \\\n",
         label="wide ruff source list",
     )
     lint = replace_once(

@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: classification-duplicate-controls-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   patch-and-test:
     if: >-

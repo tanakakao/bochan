@@ -33,6 +33,57 @@ class _BinaryOptimizer:
         )
 
 
+class _HybridBinaryOptimizer:
+    def __init__(self) -> None:
+        binary_model = _EpistemicBinaryModel(default_std=0.02)
+        regression_model = SimpleNamespace()
+        specs = [
+            SimpleNamespace(name="score", task_type="regression", model=regression_model),
+            SimpleNamespace(name="class", task_type="binary", model=binary_model),
+        ]
+        self.model = SimpleNamespace(
+            specs=specs,
+            models=[regression_model, binary_model],
+        )
+        self.train_X = torch.tensor(
+            [[0.10, 0.02], [0.90, 0.02]],
+            dtype=torch.double,
+        )
+        self.train_Y = torch.tensor(
+            [[1.0, 0.0], [2.0, 1.0]],
+            dtype=torch.double,
+        )
+        self.bounds = torch.tensor(
+            [[0.10, 0.02], [0.90, 0.02]],
+            dtype=torch.double,
+        )
+        binary_bundle = SimpleNamespace(
+            model=binary_model,
+            model_config=SimpleNamespace(task_type="binary"),
+            task_type="binary",
+            metadata={"target_cols": ["class"]},
+            cat_dims=[],
+        )
+        regression_bundle = SimpleNamespace(
+            model=regression_model,
+            model_config=SimpleNamespace(task_type="regression"),
+            task_type="regression",
+            metadata={"target_cols": ["score"]},
+            cat_dims=[],
+        )
+        self.model_config = SimpleNamespace(task_type="hybrid")
+        self.bundle = SimpleNamespace(
+            model=self.model,
+            task_type="hybrid",
+            metadata={
+                "feature_cols": ["probability", "spread"],
+                "target_cols": ["score", "class"],
+                "sub_bundles": [regression_bundle, binary_bundle],
+            },
+            cat_dims=[],
+        )
+
+
 def test_binary_1d_uncertainty_is_bounded_to_probability_domain() -> None:
     optimizer = _BinaryOptimizer()
     candidate_result = SimpleNamespace(
@@ -77,3 +128,30 @@ def test_binary_1d_uncertainty_is_bounded_to_probability_domain() -> None:
     assert candidate_trace.error_y.symmetric is False
     assert np.all(candidate_mean + plus <= 1.0 + 1e-12)
     assert np.all(candidate_mean - minus >= -1e-12)
+
+
+def test_hybrid_binary_1d_uses_submodel_epistemic_uncertainty() -> None:
+    optimizer = _HybridBinaryOptimizer()
+
+    figure = show_1dplot_from_optimizer(
+        optimizer,
+        "probability",
+        "class",
+        feature_cols=["probability", "spread"],
+        target_cols=["score", "class"],
+        value_dict={"spread": 0.02},
+        n=25,
+    )
+
+    lower_index = next(
+        index
+        for index, trace in enumerate(figure.data)
+        if trace.name == "モデル不確実性 ±1σ（確率範囲内）"
+    )
+    upper = np.asarray(figure.data[lower_index - 1].y, dtype=float)
+    lower = np.asarray(figure.data[lower_index].y, dtype=float)
+
+    # The selected binary submodel has about 0.02 probability epistemic sigma.
+    # Using hybrid Bernoulli label variance would make the band nearly [0, 1].
+    assert np.nanmax(upper - lower) < 0.10
+    assert list(figure.layout.yaxis.range) == [0.0, 1.0]

@@ -805,7 +805,7 @@ class _MultiOutputLatentStraddleAcquisition(_MultiOutputLatentStraddleBase):
             output_weights=self.output_weights,
         )  # (*batch, q)
 
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
 
         score = self._apply_objective_to_pointwise_score(
             score,
@@ -1570,7 +1570,7 @@ class _HeteroLatentStraddleMultiOutputAcquisition(_MultiOutputLatentStraddleBase
             score = self._apply_noise_weight(score, event_noise_weight)
 
         # pending penalty
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
 
         score = self._apply_objective_to_pointwise_score(
             score,
@@ -1771,7 +1771,7 @@ class qHeteroMultiOutputBinaryClassEntropyAcquisition(_HeteroLatentStraddleMulti
             event_noise_weight = self._aggregate_noise_weight_for_region(noise_weight)
             score = self._apply_noise_weight(score, event_noise_weight)
 
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
 
         score = self._apply_objective_to_pointwise_score(
             score,
@@ -1955,7 +1955,7 @@ class qHeteroMultiOutputBinaryICUAcquisition(_HeteroLatentStraddleMultiOutputAcq
             event_noise_weight = self._aggregate_noise_weight_for_region(noise_weight)
             score = self._apply_noise_weight(score, event_noise_weight)
 
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
 
         score = self._apply_objective_to_pointwise_score(
             score,
@@ -2163,7 +2163,7 @@ class qHeteroMultiOutputBinaryBoundaryVarianceAcquisition(_HeteroLatentStraddleM
             event_noise_weight = self._aggregate_noise_weight_for_region(noise_weight)
             score = self._apply_noise_weight(score, event_noise_weight)
 
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
 
         score = self._apply_objective_to_pointwise_score(
             score,

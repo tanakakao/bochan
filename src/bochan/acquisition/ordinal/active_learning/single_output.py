@@ -14,6 +14,10 @@ from botorch.sampling.base import MCSampler
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.transforms import average_over_ensemble_models, t_batch_mode_transform
 
+from bochan.acquisition._duplicate_exclusion import (
+    hard_reference_duplicate_penalty_per_point,
+    hard_same_batch_duplicate_penalty_per_point,
+)
 from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
 
 
@@ -557,6 +561,10 @@ class _qOrdinalActiveLearningBase(MCAcquisitionFunction):
         pending_penalty_beta: float = 10.0,
         observed_penalty_weight: float = 0.0,
         observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = False,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
         eps: float = 1e-6,
@@ -577,6 +585,12 @@ class _qOrdinalActiveLearningBase(MCAcquisitionFunction):
         self.pending_penalty_beta = float(pending_penalty_beta)
         self.observed_penalty_weight = float(observed_penalty_weight)
         self.observed_penalty_beta = float(observed_penalty_beta)
+        self.hard_duplicate_tol = float(hard_duplicate_tol)
+        self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
+        self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        self.exclude_observed_duplicates = bool(exclude_observed_duplicates)
+        if self.hard_duplicate_tol < 0.0:
+            raise ValueError("hard_duplicate_tol must be non-negative.")
         self.eps = float(eps)
         self.objective = objective
 
@@ -631,24 +645,39 @@ class _qOrdinalActiveLearningBase(MCAcquisitionFunction):
             )
 
     def _pointwise_reference_penalty(self, Xt: Tensor) -> Tensor:
-        penalty = torch.zeros(Xt.shape[:-1], device=Xt.device, dtype=Xt.dtype)
+        penalty = hard_same_batch_duplicate_penalty_per_point(
+            Xt,
+            enabled=self.exclude_same_batch_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
 
+        Xp_t = _transform_reference_like_candidate(self.model, self.X_pending, ref=Xt)
         if self.pending_penalty_weight > 0.0:
-            Xp_t = _transform_reference_like_candidate(self.model, self.X_pending, ref=Xt)
             penalty = penalty + self.pending_penalty_weight * _rbf_reference_penalty_per_point(
                 X=Xt,
                 X_ref=Xp_t,
                 beta=self.pending_penalty_beta,
             )
+        penalty = penalty + hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xp_t,
+            enabled=self.exclude_pending_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
 
+        Xobs_t = _transform_reference_like_candidate(self.model, self.X_observed, ref=Xt)
         if self.observed_penalty_weight > 0.0:
-            Xobs_t = _transform_reference_like_candidate(self.model, self.X_observed, ref=Xt)
             penalty = penalty + self.observed_penalty_weight * _rbf_reference_penalty_per_point(
                 X=Xt,
                 X_ref=Xobs_t,
                 beta=self.observed_penalty_beta,
             )
-
+        penalty = penalty + hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xobs_t,
+            enabled=self.exclude_observed_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
         return penalty
 
     def _finalize_pointwise_score(

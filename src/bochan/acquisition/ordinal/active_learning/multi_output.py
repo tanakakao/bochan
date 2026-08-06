@@ -14,6 +14,10 @@ from botorch.sampling.base import MCSampler
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.transforms import t_batch_mode_transform
 
+from bochan.acquisition._duplicate_exclusion import (
+    hard_reference_duplicate_penalty_per_point,
+    hard_same_batch_duplicate_penalty_per_point,
+)
 from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
 
 
@@ -689,6 +693,9 @@ class _qMultiOutputOrdinalActiveLearningBase(AcquisitionFunction):
         observed_penalty_beta: float = 10.0,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
@@ -716,6 +723,11 @@ class _qMultiOutputOrdinalActiveLearningBase(AcquisitionFunction):
         self.observed_penalty_beta = float(observed_penalty_beta)
         self.same_batch_penalty_weight = float(same_batch_penalty_weight)
         self.same_batch_penalty_beta = float(same_batch_penalty_beta)
+        self.hard_duplicate_tol = float(hard_duplicate_tol)
+        self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
+        self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        if self.hard_duplicate_tol < 0.0:
+            raise ValueError("hard_duplicate_tol must be non-negative.")
         self.cat_dims = _resolve_cat_dims(model)
         self.objective = objective
         self.X_pending: Optional[Tensor] = None
@@ -783,13 +795,20 @@ class _qMultiOutputOrdinalActiveLearningBase(AcquisitionFunction):
 
     def _pending_penalty_per_point(self, Xt: Tensor) -> Tensor:
         Xp_t = _transform_reference_like_candidate(self.model, self.X_pending, ref=Xt)
-        return _reference_penalty_per_point(
+        soft = _reference_penalty_per_point(
             Xt,
             Xp_t,
             beta=self.pending_penalty_beta,
             weight=self.pending_penalty_weight,
             cat_dims=self.cat_dims,
         )
+        hard = hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xp_t,
+            enabled=self.exclude_pending_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
+        return soft + hard
 
     def _observed_penalty_per_point(self, Xt: Tensor) -> Tensor:
         Xobs_t = _transform_reference_like_candidate(self.model, self.X_observed, ref=Xt)
@@ -802,12 +821,18 @@ class _qMultiOutputOrdinalActiveLearningBase(AcquisitionFunction):
         )
 
     def _same_batch_penalty_per_point(self, Xt: Tensor) -> Tensor:
-        return _same_batch_penalty_per_point(
+        soft = _same_batch_penalty_per_point(
             Xt,
             beta=self.same_batch_penalty_beta,
             weight=self.same_batch_penalty_weight,
             cat_dims=self.cat_dims,
         )
+        hard = hard_same_batch_duplicate_penalty_per_point(
+            Xt,
+            enabled=self.exclude_same_batch_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
+        return soft + hard
 
     def _pointwise_repulsion_penalty(self, Xt: Tensor) -> Tensor:
         return (

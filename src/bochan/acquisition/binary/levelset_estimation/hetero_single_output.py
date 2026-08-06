@@ -152,7 +152,7 @@ class _BaseHeteroBinaryLevelSetAcquisition(_BinaryClassificationAcqBase):
         score = self._apply_roi_weight_per_point(score, mean_prob, Xt)
         score = self._apply_noise_weight_per_point(score, Xt)
 
-        pending = self._pending_penalty_per_point(Xt)
+        pending = self._candidate_penalty_per_point(Xt)
         if pending.shape == score.shape:
             score = score - pending
         elif pending.numel() == score.numel():

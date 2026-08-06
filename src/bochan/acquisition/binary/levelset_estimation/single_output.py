@@ -75,7 +75,7 @@ class qBinaryLatentStraddleAcquisition(_BinaryClassificationAcqBase):
         sigma = var.sqrt()
 
         score = self.beta * sigma - torch.sqrt((mu - self.threshold).pow(2) + 1e-8)
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
 
         score = align_pointwise_score_to_X(
             score,
@@ -383,7 +383,7 @@ class qBinaryICUAcquisition(_BinaryClassificationAcqBase):
             prob = latent_samples_to_binary_probabilities(self.model, prob, eps=self.eps, name="prob via binary likelihood")
         prob = prob.clamp(self.eps, 1.0 - self.eps)
         score = 4.0 * prob * (1.0 - prob)
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
         score = align_pointwise_score_to_X(score, Xt, name="qBinaryICU score before objective")
         score = apply_classification_objective_to_score(self, score, X=X, name="qBinaryICU")
         out = self._reduce_q(score)
@@ -440,7 +440,7 @@ class qBinaryBoundaryVarianceAcquisition(_BinaryClassificationAcqBase):
         mu = self._reshape_pointwise_tensor(latent_dist.mean, orig)
         var = self._reshape_pointwise_tensor(latent_dist.variance, orig).clamp_min(self.eps)
         score = var * boundary_kernel_weight(mu, self.threshold, tau=self.tau)
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
         score = align_pointwise_score_to_X(score, Xt, name="qBinaryBoundaryVariance score before objective")
         score = apply_classification_objective_to_score(self, score, X=X, name="qBinaryBoundaryVariance")
         out = self._reduce_q(score)
@@ -494,7 +494,7 @@ class qBinaryClassEntropyAcquisition(_BinaryClassificationAcqBase):
         if not (0.0 <= prob.min().item() and prob.max().item() <= 1.0):
             prob = latent_samples_to_binary_probabilities(self.model, prob, eps=self.eps, name="prob via binary likelihood")
         score = bernoulli_entropy(prob, eps=self.eps)
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
         score = align_pointwise_score_to_X(score, Xt, name="qBinaryClassEntropy score before objective")
         score = apply_classification_objective_to_score(self, score, X=X, name="qBinaryClassEntropy")
         out = self._reduce_q(score)

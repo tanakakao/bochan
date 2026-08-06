@@ -218,7 +218,7 @@ class qBinaryProbabilityOfFeasibility(_BinaryClassificationAcqBase):
         latent_dist, orig, Xt = self._get_latent_dist_and_orig(X)
         score = self._pointwise_pof_from_latent_dist(latent_dist, orig)
 
-        penalty = self._pending_penalty_per_point(Xt)
+        penalty = self._candidate_penalty_per_point(Xt)
         if penalty.shape == score.shape:
             score = score - penalty
         elif penalty.numel() == score.numel():
@@ -500,7 +500,7 @@ class _BinaryProbabilityBOBase(MCAcquisitionFunction):
         Xt = self._apply_penalty_input_transform(raw_X)
 
         if self.pending_penalty_weight > 0.0:
-            score = score - self._pending_penalty_per_point(Xt)
+            score = score - self._candidate_penalty_per_point(Xt)
         if self.observed_penalty_weight > 0.0:
             score = score - self._observed_penalty_per_point(Xt)
 

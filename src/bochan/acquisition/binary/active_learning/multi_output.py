@@ -714,7 +714,7 @@ class _MultiOutputUncertaintySamplingClassifierAcquisition(_MultiOutputBinaryCla
                 score_type_for_all_positive=self.score_type,
             )
 
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
 
         score = self._apply_objective_to_pointwise_score(
             score,
@@ -812,7 +812,7 @@ class _BALDMultiOutputAcquisition(_MultiOutputBinaryClassificationAcqBase):
                 output_weights=self.output_weights,
             )  # (*batch, q_like)
 
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
 
         score = self._apply_objective_to_pointwise_score(
             score,

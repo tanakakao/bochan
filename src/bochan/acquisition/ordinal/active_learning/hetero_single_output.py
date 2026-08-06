@@ -11,6 +11,10 @@ from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 
+from bochan.acquisition._duplicate_exclusion import (
+    hard_reference_duplicate_penalty_per_point,
+    hard_same_batch_duplicate_penalty_per_point,
+)
 from ..hetero_utils import get_hetero_ordinal_summary, get_noise_sigma
 
 RiskType = Optional[Literal["var", "cvar"]]
@@ -405,6 +409,9 @@ class _BaseHeteroOrdinalActiveLearningAcquisition(MCAcquisitionFunction):
         # pending penalty
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
         X_pending: Tensor | None = None,
         # ROI weighting based on expected utility if available in summary
         roi_mode: ROIWeightMode = "none",
@@ -453,6 +460,11 @@ class _BaseHeteroOrdinalActiveLearningAcquisition(MCAcquisitionFunction):
 
         self.pending_penalty_weight = float(pending_penalty_weight)
         self.pending_penalty_beta = float(pending_penalty_beta)
+        self.hard_duplicate_tol = float(hard_duplicate_tol)
+        self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
+        self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        if self.hard_duplicate_tol < 0.0:
+            raise ValueError("hard_duplicate_tol must be non-negative.")
 
         self.roi_mode = roi_mode
         self.roi_combine = roi_combine
@@ -514,24 +526,37 @@ class _BaseHeteroOrdinalActiveLearningAcquisition(MCAcquisitionFunction):
 
     def _pending_penalty_per_point(self, Xt: Tensor) -> Tensor:
         Xt = _ensure_q_batch(Xt)
-        if self.pending_penalty_weight <= 0.0:
-            return Xt.new_zeros(Xt.shape[:-1])
-
         Xp_t = self._transform_reference_like_candidate(self.X_pending, ref=Xt)
+        zeros = Xt.new_zeros(Xt.shape[:-1])
         if Xp_t is None or Xp_t.numel() == 0:
-            return Xt.new_zeros(Xt.shape[:-1])
-
-        d = Xt.shape[-1]
-        X2d = Xt.reshape(-1, d)
-        Xp2d = Xp_t.reshape(-1, Xp_t.shape[-1])
-        if Xp2d.shape[-1] != d:
-            raise RuntimeError(
-                "X_pending feature dimension mismatch after transform: "
-                f"Xt.shape={tuple(Xt.shape)}, X_pending_transformed.shape={tuple(Xp_t.shape)}."
+            pending = zeros
+        else:
+            d = Xt.shape[-1]
+            X2d = Xt.reshape(-1, d)
+            Xp2d = Xp_t.reshape(-1, Xp_t.shape[-1])
+            if Xp2d.shape[-1] != d:
+                raise RuntimeError(
+                    "X_pending feature dimension mismatch after transform: "
+                    f"Xt.shape={tuple(Xt.shape)}, X_pending_transformed.shape={tuple(Xp_t.shape)}."
+                )
+            dist = torch.cdist(X2d, Xp2d).min(dim=-1).values.reshape(*Xt.shape[:-1])
+            pending = (
+                self.pending_penalty_weight
+                * torch.exp(-self.pending_penalty_beta * dist)
+                if self.pending_penalty_weight > 0.0
+                else zeros
             )
-
-        dist = torch.cdist(X2d, Xp2d).min(dim=-1).values.reshape(*Xt.shape[:-1])
-        return self.pending_penalty_weight * torch.exp(-self.pending_penalty_beta * dist)
+            pending = pending + hard_reference_duplicate_penalty_per_point(
+                Xt,
+                Xp_t,
+                enabled=self.exclude_pending_duplicates,
+                tolerance=self.hard_duplicate_tol,
+            )
+        return pending + hard_same_batch_duplicate_penalty_per_point(
+            Xt,
+            enabled=self.exclude_same_batch_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
 
     def _summary(self, X: Tensor) -> dict[str, Tensor]:
         return get_hetero_ordinal_summary(

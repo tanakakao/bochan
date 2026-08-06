@@ -11,6 +11,11 @@ from botorch.models.gpytorch import ModelListGPyTorchModel
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 
+from bochan.acquisition._duplicate_exclusion import (
+    hard_reference_duplicate_penalty_per_point,
+    hard_same_batch_duplicate_penalty_per_point,
+)
+
 ReductionType = Literal["mean", "sum", "max"]
 OutputReductionType = Literal["mean", "sum", "max", "min", "weighted_mean"]
 OutputModeType = OutputReductionType
@@ -151,6 +156,9 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
         observed_penalty_beta: float = 10.0,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
         X_observed: Tensor | None = None,
         apply_softmax_if_needed: bool = True,
         eps: float = 1e-8,
@@ -167,6 +175,11 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
         self.observed_penalty_beta = float(observed_penalty_beta)
         self.same_batch_penalty_weight = float(same_batch_penalty_weight)
         self.same_batch_penalty_beta = float(same_batch_penalty_beta)
+        self.hard_duplicate_tol = float(hard_duplicate_tol)
+        self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
+        self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        if self.hard_duplicate_tol < 0.0:
+            raise ValueError("hard_duplicate_tol must be non-negative.")
         self.X_observed = None if X_observed is None else torch.as_tensor(X_observed).detach()
         self.apply_softmax_if_needed = bool(apply_softmax_if_needed)
         self.eps = float(eps)
@@ -467,13 +480,24 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
 
     def _pending_penalty_per_point(self, Xt: Tensor) -> Tensor:
         Xt = self._ensure_q_batch(Xt)
-        if self.pending_penalty_weight <= 0:
-            return Xt.new_zeros(Xt.shape[:-1])
+        zeros = Xt.new_zeros(Xt.shape[:-1])
         Xp = self._reference_points_transformed(getattr(self, "X_pending", None), ref=Xt)
         if Xp is None:
-            return Xt.new_zeros(Xt.shape[:-1])
+            return zeros
         dist = torch.cdist(Xt.reshape(-1, Xt.shape[-1]), Xp).min(dim=-1).values
-        return self.pending_penalty_weight * torch.exp(-self.pending_penalty_beta * dist.reshape(Xt.shape[:-1]))
+        soft = (
+            self.pending_penalty_weight
+            * torch.exp(-self.pending_penalty_beta * dist.reshape(Xt.shape[:-1]))
+            if self.pending_penalty_weight > 0.0
+            else zeros
+        )
+        hard = hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xp,
+            enabled=self.exclude_pending_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
+        return soft + hard
 
     def _observed_penalty_per_point(self, Xt: Tensor) -> Tensor:
         Xt = self._ensure_q_batch(Xt)
@@ -487,15 +511,24 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
 
     def _same_batch_penalty(self, Xt: Tensor) -> Tensor:
         Xt = self._ensure_q_batch(Xt)
-        if self.same_batch_penalty_weight <= 0 or Xt.shape[-2] <= 1:
-            return Xt.new_zeros(Xt.shape[:-2])
-        Xb = Xt.reshape(-1, Xt.shape[-2], Xt.shape[-1])
-        d = torch.cdist(Xb, Xb)
-        q = Xt.shape[-2]
-        eye = torch.eye(q, device=Xt.device, dtype=torch.bool).unsqueeze(0)
-        d = d.masked_fill(eye, float("inf"))
-        penalty = 0.5 * self.same_batch_penalty_weight * torch.exp(-self.same_batch_penalty_beta * d).sum(dim=(-1, -2))
-        return penalty.reshape(*Xt.shape[:-2])
+        if self.same_batch_penalty_weight > 0 and Xt.shape[-2] > 1:
+            Xb = Xt.reshape(-1, Xt.shape[-2], Xt.shape[-1])
+            d = torch.cdist(Xb, Xb)
+            q = Xt.shape[-2]
+            eye = torch.eye(q, device=Xt.device, dtype=torch.bool).unsqueeze(0)
+            d = d.masked_fill(eye, float("inf"))
+            soft = 0.5 * self.same_batch_penalty_weight * torch.exp(
+                -self.same_batch_penalty_beta * d
+            ).sum(dim=(-1, -2))
+            soft = soft.reshape(*Xt.shape[:-2])
+        else:
+            soft = Xt.new_zeros(Xt.shape[:-2])
+        hard = hard_same_batch_duplicate_penalty_per_point(
+            Xt,
+            enabled=self.exclude_same_batch_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        ).amax(dim=-1)
+        return soft + hard
 
     def _apply_objective(self, score: Tensor, *, raw_X: Tensor, expanded_X: Tensor) -> Tensor:
         if self.objective is None:

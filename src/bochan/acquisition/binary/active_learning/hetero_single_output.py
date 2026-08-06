@@ -108,7 +108,7 @@ class _HeteroBALDAcquisitionBinary(BinaryClassificationScoreObjectiveMixin, _Bin
 
         score = self._apply_roi_weight_per_point(score, mean_prob, Xt)
         score = self._apply_noise_weight_per_point(score, Xt)
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
         score = _align_pointwise_score_to_X(
             score,
             Xt,
@@ -213,7 +213,7 @@ class _HeteroProbabilityVarianceBinary(BinaryClassificationScoreObjectiveMixin, 
 
         score = self._apply_roi_weight_per_point(score, p, Xt)
         score = self._apply_noise_weight_per_point(score, Xt)
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
         score = _align_pointwise_score_to_X(
             score,
             Xt,
@@ -352,7 +352,7 @@ class _HeteroUncertaintySamplingBinary(BinaryClassificationScoreObjectiveMixin, 
         )
         score = self._apply_roi_weight_per_point(score, p, Xt)
         score = self._apply_noise_weight_per_point(score, Xt)
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
         score = _align_pointwise_score_to_X(
             score,
             Xt,

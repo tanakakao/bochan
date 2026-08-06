@@ -127,7 +127,7 @@ class qBinaryIntegratedPosteriorVarianceProxy(qBinaryProbabilityVariance):
             integrated_score = integrated_score.reshape_as(local_score)
 
         score = self.local_weight * local_score + self.integrated_weight * integrated_score
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
         score = _apply_objective_to_pointwise_score(
             self,
             score,

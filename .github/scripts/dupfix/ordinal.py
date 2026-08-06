@@ -3,6 +3,12 @@ from __future__ import annotations
 from .common import read, replace_once, replace_regex_once, write
 
 
+def _replace_first(text: str, old: str, new: str, *, label: str) -> str:
+    if old not in text:
+        raise RuntimeError(f"{label}: expected at least one match")
+    return text.replace(old, new, 1)
+
+
 def patch_ordinal_single() -> None:
     path = "src/bochan/acquisition/ordinal/active_learning/single_output.py"
     text = read(path)
@@ -16,7 +22,7 @@ def patch_ordinal_single() -> None:
         "from bochan.likelihoods.ordinal import OrdinalLogitLikelihood\n",
         label="ordinal single imports",
     )
-    text = replace_once(
+    text = _replace_first(
         text,
         "        observed_penalty_weight: float = 0.0,\n"
         "        observed_penalty_beta: float = 10.0,\n"
@@ -30,7 +36,7 @@ def patch_ordinal_single() -> None:
         "        X_pending: Optional[Tensor] = None,\n",
         label="ordinal single signature",
     )
-    text = replace_once(
+    text = _replace_first(
         text,
         "        self.observed_penalty_weight = float(observed_penalty_weight)\n"
         "        self.observed_penalty_beta = float(observed_penalty_beta)\n"
@@ -105,7 +111,7 @@ def patch_ordinal_multi() -> None:
         "from bochan.likelihoods.ordinal import OrdinalLogitLikelihood\n",
         label="ordinal multi imports",
     )
-    text = replace_once(
+    text = _replace_first(
         text,
         "        same_batch_penalty_weight: float = 0.0,\n"
         "        same_batch_penalty_beta: float = 10.0,\n"
@@ -118,7 +124,7 @@ def patch_ordinal_multi() -> None:
         "        X_pending: Optional[Tensor] = None,\n",
         label="ordinal multi signature",
     )
-    text = replace_once(
+    text = _replace_first(
         text,
         "        self.same_batch_penalty_weight = float(same_batch_penalty_weight)\n"
         "        self.same_batch_penalty_beta = float(same_batch_penalty_beta)\n"
@@ -213,7 +219,7 @@ def patch_ordinal_hetero(path: str, *, multi_output: bool) -> None:
             + import_anchor,
             label=f"{path} imports",
         )
-    text = replace_once(
+    text = _replace_first(
         text,
         "        pending_penalty_weight: float = 0.0,\n"
         "        pending_penalty_beta: float = 10.0,\n"
@@ -226,7 +232,7 @@ def patch_ordinal_hetero(path: str, *, multi_output: bool) -> None:
         "        X_pending: Tensor | None = None,\n",
         label=f"{path} signature",
     )
-    text = replace_once(
+    text = _replace_first(
         text,
         "        self.pending_penalty_weight = float(pending_penalty_weight)\n"
         "        self.pending_penalty_beta = float(pending_penalty_beta)\n",

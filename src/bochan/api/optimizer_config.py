@@ -8,15 +8,16 @@ from typing import Any
 
 from .configs import OptimizeConfig as _BaseOptimizeConfig
 from .optimizer_support import (
-    EvolutionaryMethod,
-    OptimizerName,
     _ALIASES,
     _CANONICAL_OPTIMIZERS,
     _EVOLUTIONARY_METHODS,
-    _InternalMixedOptimizerName,
     _MIXED_OPTIMIZERS,
+    EvolutionaryMethod,
+    OptimizerName,
+    _InternalMixedOptimizerName,
     _optimizer_name,
 )
+
 
 @dataclass
 class OptimizeConfig(_BaseOptimizeConfig):
@@ -65,7 +66,9 @@ class OptimizeConfig(_BaseOptimizeConfig):
         valid_names = _MIXED_OPTIMIZERS if preserve_mixed else _CANONICAL_OPTIMIZERS
         if name not in valid_names:
             valid = sorted(_CANONICAL_OPTIMIZERS | _EVOLUTIONARY_METHODS)
-            raise ValueError(f"Unknown optimizer: {self.optimizer!r}. Expected one of {valid}.")
+            raise ValueError(
+                f"Unknown optimizer: {self.optimizer!r}. Expected one of {valid}."
+            )
 
         self.optimizer = _InternalMixedOptimizerName(name) if preserve_mixed else name
         self.optimizer_kwargs = dict(self.optimizer_kwargs)
@@ -115,5 +118,3 @@ def uses_mixed_fixed_features(optimizer: Any) -> bool:
     if callable(optimizer) and not isinstance(optimizer, str):
         return False
     return _optimizer_name(str(optimizer)) in _MIXED_OPTIMIZERS
-
-

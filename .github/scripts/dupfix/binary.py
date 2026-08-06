@@ -3,6 +3,31 @@ from __future__ import annotations
 from .common import BINARY_PENDING_SECTION, ROOT, read, replace_once, replace_regex_once, write
 
 
+def _insert_joint_duplicate_penalties(source: str) -> str:
+    """Insert hard same-batch penalties while preserving each line's indentation."""
+
+    marker = "out = self._apply_roi_weight_aggregated(out, mean_prob_x, Xt)"
+    penalty = "out = out - self._same_batch_duplicate_penalty_per_point(Xt).sum(dim=-1)"
+    lines = source.splitlines(keepends=True)
+    updated: list[str] = []
+
+    for index, line in enumerate(lines):
+        updated.append(line)
+        stripped = line.lstrip()
+        if stripped.rstrip("\r\n") != marker:
+            continue
+
+        indent = line[: len(line) - len(stripped)]
+        expected = f"{indent}{penalty}"
+        if index + 1 < len(lines) and lines[index + 1].rstrip("\r\n") == expected:
+            continue
+
+        newline = "\r\n" if line.endswith("\r\n") else "\n"
+        updated.append(f"{expected}{newline}")
+
+    return "".join(updated)
+
+
 def patch_binary() -> None:
     path = "src/bochan/acquisition/binary/base.py"
     text = read(path)
@@ -65,11 +90,5 @@ def patch_binary() -> None:
             "self._candidate_penalty_aggregated(",
         )
         if target.name == "single_output.py" and "active_learning" in target.parts:
-            marker = "out = self._apply_roi_weight_aggregated(out, mean_prob_x, Xt)\n"
-            if marker in source and "_same_batch_duplicate_penalty_per_point(Xt).sum" not in source:
-                source = source.replace(
-                    marker,
-                    marker
-                    + "            out = out - self._same_batch_duplicate_penalty_per_point(Xt).sum(dim=-1)\n",
-                )
+            source = _insert_joint_duplicate_penalties(source)
         target.write_text(source, encoding="utf-8")

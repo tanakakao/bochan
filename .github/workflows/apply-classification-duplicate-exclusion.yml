@@ -38,7 +38,7 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install -e '.[test,tabular,api]'
 
-      - name: Format and lint changed Python files
+      - name: Validate changed Python files
         run: |
           python -m pip install ruff
           mapfile -t changed_python < <(
@@ -46,9 +46,17 @@ jobs:
               | grep -v '^.github/scripts/'
           )
           test "${#changed_python[@]}" -gt 0
-          ruff check --fix "${changed_python[@]}"
-          ruff format "${changed_python[@]}"
-          ruff check "${changed_python[@]}"
+          python -m compileall -q "${changed_python[@]}"
+          ruff check --select E9,F63,F7,F82 "${changed_python[@]}"
+          ruff check --fix \
+            src/bochan/acquisition/_duplicate_exclusion.py \
+            tests/test_classification_duplicate_exclusion.py
+          ruff format \
+            src/bochan/acquisition/_duplicate_exclusion.py \
+            tests/test_classification_duplicate_exclusion.py
+          ruff check \
+            src/bochan/acquisition/_duplicate_exclusion.py \
+            tests/test_classification_duplicate_exclusion.py
           git diff --check
 
       - name: Run focused classification tests

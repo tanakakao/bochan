@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .common import read, replace_once, write
+from .common import write
 
 TEST_FILE = '''from __future__ import annotations
 
@@ -101,46 +101,7 @@ def test_hard_duplicate_exclusion_can_be_disabled() -> None:
 '''
 
 
-def _replace_first(text: str, old: str, new: str, *, label: str) -> str:
-    if old not in text:
-        raise RuntimeError(f"{label}: expected at least one match")
-    return text.replace(old, new, 1)
-
-
 def add_tests_and_ci() -> None:
-    write("tests/test_classification_duplicate_exclusion.py", TEST_FILE)
-    workflow = ".github/workflows/wide-multitask-smoke.yml"
-    text = read(workflow)
-    text = _replace_first(
-        text,
-        "            tests/test_wide_multitask_acquisition_consistency.py \\\n"
-        "            tests/test_wide_multitask_classification_acquisitions.py \\\n",
-        "            tests/test_wide_multitask_acquisition_consistency.py \\\n"
-        "            tests/test_wide_multitask_classification_acquisitions.py \\\n"
-        "            tests/test_classification_duplicate_exclusion.py \\\n",
-        label="wide pytest list",
-    )
+    """Add focused tests without modifying repository workflow files."""
 
-    lint_marker = "      - name: Run lint on changed modules\n"
-    if text.count(lint_marker) != 1:
-        raise RuntimeError("wide lint marker must occur exactly once")
-    before_lint, lint = text.split(lint_marker, 1)
-    lint = replace_once(
-        lint,
-        "            src/bochan/acquisition/classification_constraints.py \\\n",
-        "            src/bochan/acquisition/classification_constraints.py \\\n"
-        "            src/bochan/acquisition/_duplicate_exclusion.py \\\n",
-        label="wide ruff source list",
-    )
-    lint = replace_once(
-        lint,
-        "            tests/test_wide_multitask_public_transform.py \\\n"
-        "            tests/test_wide_multitask_acquisition_consistency.py \\\n"
-        "            tests/test_wide_multitask_classification_acquisitions.py \\\n",
-        "            tests/test_wide_multitask_public_transform.py \\\n"
-        "            tests/test_wide_multitask_acquisition_consistency.py \\\n"
-        "            tests/test_wide_multitask_classification_acquisitions.py \\\n"
-        "            tests/test_classification_duplicate_exclusion.py \\\n",
-        label="wide ruff test list",
-    )
-    write(workflow, before_lint + lint_marker + lint)
+    write("tests/test_classification_duplicate_exclusion.py", TEST_FILE)

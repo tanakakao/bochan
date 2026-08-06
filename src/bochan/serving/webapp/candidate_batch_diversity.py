@@ -2,17 +2,27 @@
 
 The Web defaults deliberately use joint q-batch optimization for ordinary
 continuous searches and sequential optimization for mixed categorical searches.
-Keep that policy unchanged.  If repair, grid rounding, or category decoding makes
+Keep that policy unchanged. If repair, grid rounding, or category decoding makes
 final tensor candidates identical, refill only the duplicate slots with q=1
-searches conditioned on the unique candidates through ``X_pending``.
+searches.
+
+Native ``X_pending`` semantics are used when the acquisition supports them, but
+``X_pending`` is not a universal duplicate constraint. A normalized-distance
+exclusion wrapper is therefore applied around every scalar refill acquisition so
+custom active-learning and level-set acquisitions are handled consistently too.
 """
 
 from __future__ import annotations
 
+import warnings
 from contextvars import ContextVar
 from dataclasses import replace
 from functools import wraps
 from typing import Any
+
+import torch
+from botorch.acquisition.acquisition import AcquisitionFunction
+from torch import Tensor
 
 _NATIVE_BATCH_METHODS = {
     "nsgaii",
@@ -39,8 +49,8 @@ def resolve_web_candidate_sequential(
     """Report the requested Web batch policy without overriding it.
 
     Ordinary continuous searches intentionally keep ``sequential=False`` so the
-    acquisition optimizes the requested q-batch jointly.  Mixed searches and
-    CMA-ES are already sent with ``True`` by the Web client.  Native population or
+    acquisition optimizes the requested q-batch jointly. Mixed searches and
+    CMA-ES are already sent with ``True`` by the Web client. Native population or
     posterior-sampling methods own their batch semantics and remain non-sequential.
     """
 
@@ -121,8 +131,6 @@ def _as_candidate_matrix(candidates: Any) -> Any:
 
 
 def _pending_with_selected(base_pending: Any, selected: list[Any]) -> Any:
-    import torch
-
     selected_tensor = torch.stack(selected, dim=0)
     if base_pending is None:
         return selected_tensor
@@ -136,11 +144,107 @@ def _pending_with_selected(base_pending: Any, selected: list[Any]) -> Any:
     return torch.cat([pending, selected_tensor], dim=-2)
 
 
-def _refill_duplicate_candidate_result(
-    tabular_optimizer: Any,
-    initial_result: Any,
-    original_candidate: Any,
-) -> Any:
+def _set_pending_if_supported(acqf: Any, X_pending: Any) -> bool:
+    """Set native pending points when supported, without relying on them."""
+
+    setter = getattr(acqf, "set_X_pending", None)
+    if not callable(setter):
+        return False
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            setter(X_pending)
+    except (TypeError, NotImplementedError, RuntimeError):
+        return False
+    return True
+
+
+def _coerce_bounds(bounds: Any, *, like: Tensor) -> Tensor:
+    bounds_tensor = torch.as_tensor(bounds, device=like.device, dtype=like.dtype)
+    if bounds_tensor.ndim != 2 or bounds_tensor.shape[0] != 2:
+        raise ValueError(
+            "Candidate refill requires bounds with shape (2, d), got "
+            f"{tuple(bounds_tensor.shape)}."
+        )
+    return bounds_tensor
+
+
+class _ExcludedCandidateAcquisition(AcquisitionFunction):
+    """Subtract a smooth exclusion penalty from any scalar acquisition."""
+
+    def __init__(
+        self,
+        base_acqf: Any,
+        *,
+        excluded: Tensor,
+        bounds: Tensor,
+        radius: float,
+        penalty_weight: float,
+    ) -> None:
+        super().__init__(model=getattr(base_acqf, "model", None))
+        self.base_acqf = base_acqf
+        self.register_buffer("excluded", excluded.detach().clone())
+        self.register_buffer("exclusion_bounds", bounds.detach().clone())
+        self.radius = max(float(radius), 1e-12)
+        self.penalty_weight = max(float(penalty_weight), 1.0)
+
+    def forward(self, X: Tensor) -> Tensor:
+        base_value = self.base_acqf(X)
+        lower = self.exclusion_bounds[0]
+        span = (self.exclusion_bounds[1] - lower).abs().clamp_min(1e-12)
+        normalized_X = (X - lower) / span
+        normalized_excluded = (self.excluded - lower) / span
+
+        distances = torch.cdist(
+            normalized_X.reshape(-1, normalized_X.shape[-1]),
+            normalized_excluded.reshape(-1, normalized_excluded.shape[-1]),
+        )
+        min_distance = distances.min(dim=-1).values.reshape(*X.shape[:-1])
+        penalty_per_point = self.penalty_weight * torch.exp(
+            -0.5 * (min_distance / self.radius).pow(2)
+        )
+        penalty = penalty_per_point.max(dim=-1).values
+
+        while penalty.ndim > base_value.ndim:
+            penalty = penalty.max(dim=0).values
+        return base_value - penalty
+
+
+def _acquisition_scale(acqf: Any, selected: list[Any]) -> float:
+    """Estimate a stable penalty scale from q=1 acquisition values."""
+
+    if not selected:
+        return 1.0
+    X = torch.stack(selected, dim=0).unsqueeze(-2)
+    try:
+        with torch.no_grad():
+            values = torch.as_tensor(acqf(X))
+        finite = values[torch.isfinite(values)]
+        if finite.numel() == 0:
+            return 1.0
+        return max(float(finite.abs().max().item()), 1.0)
+    except Exception:
+        return 1.0
+
+
+def _refill_radius(attempt: int) -> float:
+    """Increase normalized exclusion radius only after repeated collisions."""
+
+    return min(0.25, 0.002 * (1.8 ** max(int(attempt) - 1, 0)))
+
+
+def _optimize_refill_candidate(
+    *,
+    acqf: Any,
+    bounds: Any,
+    opt_config: Any,
+) -> tuple[Any, Any]:
+    from bochan.api.optimizer_api import optimize_candidates
+
+    return optimize_candidates(acqf=acqf, bounds=bounds, config=opt_config)
+
+
+def _refill_duplicate_candidate_result(initial_result: Any) -> Any:
     """Replace duplicate repaired candidates without changing the initial q policy."""
 
     state = _WEB_CANDIDATE_CONTEXT.get()
@@ -170,60 +274,77 @@ def _refill_duplicate_candidate_result(
     if missing <= 0:
         return initial_result
 
-    max_attempts = max(8, missing * 6)
+    bounds = getattr(initial_result.data_context, "bounds", None)
+    if bounds is None:
+        state["candidate_refill_error"] = "Candidate refill requires optimization bounds."
+        return initial_result
+    bounds_tensor = _coerce_bounds(bounds, like=candidates)
+
+    max_attempts = max(10, missing * 8)
     attempts = 0
     refilled = 0
-    base_context = initial_result.data_context
+    base_acqf = initial_result.acqf
+    base_pending = getattr(initial_result.data_context, "X_pending", None)
+    original_pending = getattr(base_acqf, "X_pending", None)
+    penalty_scale = _acquisition_scale(base_acqf, selected)
     refill_opt_config = replace(
         initial_result.opt_config,
         q=1,
         sequential=False,
     )
 
-    while len(selected) < requested_q and attempts < max_attempts:
-        attempts += 1
-        pending = _pending_with_selected(
-            getattr(base_context, "X_pending", None),
-            selected,
-        )
-        refill_context = replace(base_context, X_pending=pending)
-        try:
-            refill_result = original_candidate(
-                tabular_optimizer,
-                initial_result.acq_config,
-                refill_opt_config,
-                data_context=refill_context,
-                return_result=True,
+    try:
+        while len(selected) < requested_q and attempts < max_attempts:
+            attempts += 1
+            pending = _pending_with_selected(base_pending, selected)
+            native_pending = _set_pending_if_supported(base_acqf, pending)
+            excluded = torch.stack(selected, dim=0)
+            refill_acqf = _ExcludedCandidateAcquisition(
+                base_acqf,
+                excluded=excluded,
+                bounds=bounds_tensor,
+                radius=_refill_radius(attempts),
+                penalty_weight=penalty_scale * 1_000_000.0,
             )
-        except Exception as exc:  # keep the original q-batch if refill is unsupported
-            state["candidate_refill_error"] = str(exc)
-            break
+            try:
+                refill_candidates, _ = _optimize_refill_candidate(
+                    acqf=refill_acqf,
+                    bounds=bounds_tensor,
+                    opt_config=refill_opt_config,
+                )
+            except Exception as exc:
+                state["candidate_refill_error"] = str(exc)
+                break
 
-        refill_candidates = _as_candidate_matrix(refill_result.candidates)
-        if refill_candidates.shape[0] == 0:
-            continue
-        row = refill_candidates[0].detach().clone()
-        key = _tensor_candidate_key(row)
-        if key in seen:
-            continue
-        seen.add(key)
-        selected.append(row)
-        refilled += 1
+            refill_matrix = _as_candidate_matrix(refill_candidates)
+            if refill_matrix.shape[0] == 0:
+                continue
+            row = refill_matrix[0].detach().clone()
+            key = _tensor_candidate_key(row)
+            if key in seen:
+                continue
+            seen.add(key)
+            selected.append(row)
+            refilled += 1
+            state["candidate_native_pending_used"] = bool(native_pending)
+    finally:
+        _set_pending_if_supported(base_acqf, original_pending)
 
     state["candidate_refill_attempts"] = attempts
     state["candidate_refill_count"] = refilled
+    state["candidate_exclusion_penalty_used"] = True
 
-    # Preserve the requested candidate count even when an acquisition does not
-    # implement pending-point semantics.  Unresolved duplicates remain visible in
-    # the final metadata instead of silently dropping rows.
+    # Preserve the requested candidate count when the feasible repaired space has
+    # fewer than q distinct points. Residual duplicates remain explicit in the
+    # final metadata instead of silently dropping rows.
     fallback_rows = iter(duplicates)
     while len(selected) < requested_q:
         try:
             selected.append(next(fallback_rows))
         except StopIteration:
-            selected.append(candidates[len(selected) % candidates.shape[0]].detach().clone())
-
-    import torch
+            selected.append(
+                candidates[len(selected) % candidates.shape[0]].detach().clone()
+            )
 
     return replace(
         initial_result,
@@ -244,11 +365,7 @@ def _install_tabular_candidate_refill() -> None:
         result = original_candidate(self, *args, **kwargs)
         if not bool(kwargs.get("return_result", False)):
             return result
-        return _refill_duplicate_candidate_result(
-            self,
-            result,
-            original_candidate,
-        )
+        return _refill_duplicate_candidate_result(result)
 
     TabularBayesianOptimizer.candidate = candidate_with_duplicate_refill
     TabularBayesianOptimizer._web_candidate_refill_installed = True
@@ -275,6 +392,8 @@ def install_web_candidate_batch_diversity(
             "candidate_refill_attempts": 0,
             "candidate_refill_count": 0,
             "candidate_initial_duplicate_count": 0,
+            "candidate_native_pending_used": False,
+            "candidate_exclusion_penalty_used": False,
         }
         token = _WEB_CANDIDATE_CONTEXT.set(state)
         try:
@@ -295,6 +414,12 @@ def install_web_candidate_batch_diversity(
                 ),
                 "candidate_refill_count": int(
                     state.get("candidate_refill_count", 0)
+                ),
+                "candidate_native_pending_used": bool(
+                    state.get("candidate_native_pending_used", False)
+                ),
+                "candidate_exclusion_penalty_used": bool(
+                    state.get("candidate_exclusion_penalty_used", False)
                 ),
             }
         )

@@ -36,7 +36,7 @@ jobs:
 
           python3 -m pip install --upgrade pip
           python3 -m pip install -e ".[test]" ruff
-          python3 scripts/fix_classification_duplicate_controls.py
+          python3 scripts/run_fix_classification_duplicate_controls.py
 
           python3 -m ruff format \
             src/bochan/acquisition/_duplicate_exclusion.py \

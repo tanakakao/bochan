@@ -38,29 +38,25 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install -e '.[test,tabular,api]'
 
+      - name: Format and lint changed Python files
+        run: |
+          python -m pip install ruff
+          mapfile -t changed_python < <(
+            git diff --name-only -- '*.py' \
+              | grep -v '^.github/scripts/'
+          )
+          test "${#changed_python[@]}" -gt 0
+          ruff check --fix "${changed_python[@]}"
+          ruff format "${changed_python[@]}"
+          ruff check "${changed_python[@]}"
+          git diff --check
+
       - name: Run focused classification tests
         run: |
           pytest -q --maxfail=1 \
             tests/test_classification_duplicate_exclusion.py \
             tests/test_wide_multitask_classification_acquisitions.py \
             tests/test_api_candidate_uniqueness.py
-
-      - name: Run Ruff
-        run: |
-          python -m pip install ruff
-          ruff check \
-            src/bochan/acquisition/_duplicate_exclusion.py \
-            src/bochan/acquisition/binary/base.py \
-            src/bochan/acquisition/binary/active_learning \
-            src/bochan/acquisition/binary/bayesian_optimization \
-            src/bochan/acquisition/binary/levelset_estimation \
-            src/bochan/acquisition/ordinal/active_learning/single_output.py \
-            src/bochan/acquisition/ordinal/active_learning/multi_output.py \
-            src/bochan/acquisition/ordinal/active_learning/hetero_single_output.py \
-            src/bochan/acquisition/ordinal/active_learning/hetero_multi_output.py \
-            src/bochan/acquisition/multiclass/bayesian_optimization/single_output.py \
-            src/bochan/acquisition/multiclass/active_learning/multi_output.py \
-            tests/test_classification_duplicate_exclusion.py
 
       - name: Commit validated source changes
         run: |

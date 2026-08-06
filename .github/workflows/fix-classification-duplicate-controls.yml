@@ -1,24 +1,29 @@
 name: Fix classification duplicate controls
 
 on:
-  push:
+  pull_request:
+    types: [opened, synchronize, reopened]
     branches:
-      - agent/fix-classification-duplicate-controls
-    paths:
-      - scripts/fix_classification_duplicate_controls.py
-      - .github/workflows/fix-classification-duplicate-controls.yml
+      - main
 
 permissions:
   contents: write
 
 jobs:
   patch-and-test:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/fix-classification-duplicate-controls' &&
+      github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-python@v5
         with:
@@ -78,9 +83,9 @@ jobs:
       - name: Commit successful implementation
         if: steps.validate.outcome == 'success'
         run: |
-          rm -f classification_duplicate_validation_failure.log
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f --ignore-unmatch classification_duplicate_validation_failure.log
           git add \
             src/bochan/acquisition/_duplicate_exclusion.py \
             src/bochan/acquisition/binary/base.py \
@@ -93,14 +98,13 @@ jobs:
             src/bochan/acquisition/ordinal/active_learning/hetero_multi_output.py \
             src/bochan/acquisition/multiclass/bayesian_optimization/single_output.py \
             src/bochan/acquisition/multiclass/active_learning/multi_output.py \
-            tests/test_classification_duplicate_controls_e2e.py \
-            classification_duplicate_validation_failure.log
+            tests/test_classification_duplicate_controls_e2e.py
           if git diff --cached --quiet; then
             echo "No source changes to commit."
             exit 0
           fi
           git commit -m "Unify classification duplicate controls"
-          git push origin HEAD
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
 
       - name: Commit failure diagnostics
         if: steps.validate.outcome != 'success'
@@ -110,5 +114,5 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add classification_duplicate_validation_failure.log
           git commit -m "Record duplicate control validation failure" || true
-          git push origin HEAD
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
           exit 1

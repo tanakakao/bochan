@@ -5,6 +5,8 @@ from .multi_output import HybridMultiOutputModel
 from .posterior import HybridPosterior
 from .prediction import attach_prediction_methods
 from .specs import OutputSpec, PosteriorMode, TaskType
+from .task_aware_posterior import TaskAwareHybridPosterior
+from .task_aware_sampling import apply_task_aware_hybrid_posterior
 
 
 def _hybrid_set_transformed_inputs(self: HybridMultiOutputModel) -> None:
@@ -40,6 +42,7 @@ def _hybrid_eval(self: HybridMultiOutputModel) -> HybridMultiOutputModel:
 # package has been initialized.
 HybridMultiOutputModel._set_transformed_inputs = _hybrid_set_transformed_inputs
 HybridMultiOutputModel.eval = _hybrid_eval
+apply_task_aware_hybrid_posterior(HybridMultiOutputModel)
 apply_hybrid_class_probability_shapes(HybridMultiOutputModel)
 
 attach_prediction_methods(HybridMultiOutputModel)
@@ -47,6 +50,7 @@ attach_prediction_methods(HybridMultiOutputModel)
 __all__ = [
     "HybridMultiOutputModel",
     "HybridPosterior",
+    "TaskAwareHybridPosterior",
     "OutputSpec",
     "PosteriorMode",
     "TaskType",

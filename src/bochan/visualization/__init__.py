@@ -101,9 +101,6 @@ from .ordinal_display import (
     show_scatter_with_acqf_from_optimizer,
     show_triscatter_with_acqf_from_optimizer,
 )
-from .heteroscedastic_1d import (
-    show_1dplot_from_optimizer as _show_heteroscedastic_1dplot_from_optimizer,
-)
 from .probability_1d import (
     show_1dplot_from_optimizer as _show_probability_1dplot_from_optimizer,
 )

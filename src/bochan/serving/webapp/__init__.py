@@ -72,7 +72,8 @@ install_composition_element_importance_figures()
 # though optional composition adapters wrap it at import time.
 _workflows.run_regression_web_workflow.__module__ = _workflows.__name__
 
-from .app import WEB_CAPABILITIES, app, create_app as _create_app  # noqa: E402
+from .app import WEB_CAPABILITIES, app  # noqa: E402
+from .app import create_app as _create_app  # noqa: E402
 from .composition_web_routes import register_composition_routes  # noqa: E402
 
 WEB_CAPABILITIES["composition"] = {

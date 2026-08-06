@@ -1,20 +1,21 @@
+# ruff: noqa: F401, I001
 """Canonical optimizer configuration and high-level dispatch helpers."""
 
 from __future__ import annotations
 
-# ruff: noqa: F401
+from typing import Any
 
 from .candidate_uniqueness import ensure_unique_candidates
+from .configs import OptimizeConfig as _BaseOptimizeConfig
 from .optimizer_config import (
     OptimizeConfig,
     resolve_optimizer_from_cat_dims,
     uses_mixed_fixed_features,
 )
+from . import optimizer_dispatch as _optimizer_dispatch
 from .optimizer_dispatch import (
-    _BASE_OPTIMIZE_CANDIDATES,
     _common_kwargs,
     _optimize_candidates_once,
-    optimize_candidates,
 )
 from .optimizer_support import (
     EvolutionaryMethod,
@@ -33,6 +34,26 @@ from .optimizer_support import (
     _resolve_thompson_sampling_target,
     _uses_kronecker_model,
 )
+
+# Preserve the existing test/customization seam without mutating a different
+# module at runtime.  The value is passed explicitly to the shared dispatcher.
+_BASE_OPTIMIZE_CANDIDATES = _optimizer_dispatch._BASE_OPTIMIZE_CANDIDATES
+
+
+def optimize_candidates(
+    acqf: Any,
+    bounds: Any,
+    config: _BaseOptimizeConfig,
+) -> tuple[Any, Any]:
+    """Dispatch using the explicitly configured base optimizer dependency."""
+
+    return _optimizer_dispatch.optimize_candidates(
+        acqf=acqf,
+        bounds=bounds,
+        config=config,
+        base_optimize_candidates=_BASE_OPTIMIZE_CANDIDATES,
+    )
+
 
 __all__ = [
     "EvolutionaryMethod",

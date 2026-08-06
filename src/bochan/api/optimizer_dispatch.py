@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
@@ -15,7 +16,9 @@ from .optimizer_support import (
     _resolve_thompson_sampling_target,
 )
 
+OptimizeBackend = Callable[..., tuple[Any, Any]]
 _BASE_OPTIMIZE_CANDIDATES = _factory.optimize_candidates
+
 
 def _common_kwargs(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> dict[str, Any]:
     kwargs: dict[str, Any] = {
@@ -44,15 +47,23 @@ def _optimize_candidates_once(
     acqf: Any,
     bounds: Any,
     config: _BaseOptimizeConfig,
+    *,
+    base_optimize_candidates: OptimizeBackend | None = None,
 ) -> tuple[Any, Any]:
-    """Dispatch one optimizer call without final duplicate refill."""
+    """Dispatch one optimizer call without final duplicate refill.
+
+    ``base_optimize_candidates`` is an explicit dependency-injection hook used
+    by compatibility tests and custom callers.  It avoids runtime mutation of
+    module or class methods.
+    """
 
     if bounds is None:
         raise ValueError("bounds must be provided.")
+    backend = base_optimize_candidates or _BASE_OPTIMIZE_CANDIDATES
     config = _force_sequential_for_kronecker(acqf, config)
     optimizer = config.optimizer
     if callable(optimizer) and not isinstance(optimizer, str):
-        return _BASE_OPTIMIZE_CANDIDATES(acqf=acqf, bounds=bounds, config=config)
+        return backend(acqf=acqf, bounds=bounds, config=config)
 
     name = _optimizer_name(str(optimizer))
     is_mixed = config.fixed_features_list is not None
@@ -63,7 +74,7 @@ def _optimize_candidates_once(
             "evo": "evo_mixed",
             "torch": "torch_mixed",
         }[name]
-        return _BASE_OPTIMIZE_CANDIDATES(
+        return backend(
             acqf=acqf,
             bounds=bounds,
             config=replace(
@@ -84,7 +95,7 @@ def _optimize_candidates_once(
         "optimize_acqf_llm_candidate_set",
     }
     if name not in special:
-        return _BASE_OPTIMIZE_CANDIDATES(acqf=acqf, bounds=bounds, config=config)
+        return backend(acqf=acqf, bounds=bounds, config=config)
 
     kwargs = _common_kwargs(acqf, bounds, config)
     if name in {"nsgaii", "optimize_acqf_nsgaii"}:
@@ -93,17 +104,27 @@ def _optimize_candidates_once(
         kwargs = _factory._filter_kwargs_for_callable(optimize_acqf_nsgaii, kwargs)
         return optimize_acqf_nsgaii(**kwargs)
 
-    if name in {"llm_candidate_set", "optimize_acqf_llm", "optimize_acqf_llm_candidate_set"}:
+    if name in {
+        "llm_candidate_set",
+        "optimize_acqf_llm",
+        "optimize_acqf_llm_candidate_set",
+    }:
         from bochan.optim import optimize_acqf_llm_candidate_set
 
-        kwargs = _factory._filter_kwargs_for_callable(optimize_acqf_llm_candidate_set, kwargs)
+        kwargs = _factory._filter_kwargs_for_callable(
+            optimize_acqf_llm_candidate_set,
+            kwargs,
+        )
         return optimize_acqf_llm_candidate_set(**kwargs)
 
     kwargs["acq_function"] = _resolve_thompson_sampling_target(acqf)
     use_mixed = name in {
         "thompson_sampling_mixed",
         "optimize_thompson_sampling_mixed",
-    } or (name in {"thompson_sampling", "optimize_thompson_sampling"} and is_mixed)
+    } or (
+        name in {"thompson_sampling", "optimize_thompson_sampling"}
+        and is_mixed
+    )
     if use_mixed:
         from bochan.optim import optimize_thompson_sampling_mixed
 
@@ -112,22 +133,49 @@ def _optimize_candidates_once(
             config.fixed_features_list,
         )
         if fixed_features_list is None:
-            raise ValueError("fixed_features_list is required for mixed Thompson sampling.")
+            raise ValueError(
+                "fixed_features_list is required for mixed Thompson sampling."
+            )
         kwargs.pop("fixed_features", None)
         kwargs["fixed_features_list"] = fixed_features_list
-        kwargs = _factory._filter_kwargs_for_callable(optimize_thompson_sampling_mixed, kwargs)
+        kwargs = _factory._filter_kwargs_for_callable(
+            optimize_thompson_sampling_mixed,
+            kwargs,
+        )
         return optimize_thompson_sampling_mixed(**kwargs)
 
     from bochan.optim import optimize_thompson_sampling
 
-    kwargs = _factory._filter_kwargs_for_callable(optimize_thompson_sampling, kwargs)
+    kwargs = _factory._filter_kwargs_for_callable(
+        optimize_thompson_sampling,
+        kwargs,
+    )
     return optimize_thompson_sampling(**kwargs)
 
 
-def optimize_candidates(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> tuple[Any, Any]:
+def optimize_candidates(
+    acqf: Any,
+    bounds: Any,
+    config: _BaseOptimizeConfig,
+    *,
+    base_optimize_candidates: OptimizeBackend | None = None,
+) -> tuple[Any, Any]:
     """Dispatch an optimizer and enforce uniqueness on its final q-batch."""
 
-    candidates, acq_value = _optimize_candidates_once(
+    def optimize_once(
+        *,
+        acqf: Any,
+        bounds: Any,
+        config: _BaseOptimizeConfig,
+    ) -> tuple[Any, Any]:
+        return _optimize_candidates_once(
+            acqf=acqf,
+            bounds=bounds,
+            config=config,
+            base_optimize_candidates=base_optimize_candidates,
+        )
+
+    candidates, acq_value = optimize_once(
         acqf=acqf,
         bounds=bounds,
         config=config,
@@ -138,7 +186,5 @@ def optimize_candidates(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> 
         config=config,
         candidates=candidates,
         acq_value=acq_value,
-        optimize_once=_optimize_candidates_once,
+        optimize_once=optimize_once,
     )
-
-

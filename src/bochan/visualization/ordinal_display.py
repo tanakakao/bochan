@@ -1,8 +1,8 @@
 """Public ordinal display selectors aligned with multiclass terminology.
 
-Multiclass prediction plots are probability-based by design. Ordinal models also
-have a useful latent-score view, so their public plotting API exposes an explicit
-``ordinal_display`` selector with ``"latent"`` and ``"probability"`` values.
+Ordinal plots default to ordered-category probabilities because they stay on a
+bounded and directly interpretable scale.  The latent-score view remains
+available with ``ordinal_display="latent"`` for model diagnostics.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ def show_1dplot_from_optimizer(
     feature: str,
     target: str,
     *,
-    ordinal_display: OrdinalDisplayMode = "latent",
+    ordinal_display: OrdinalDisplayMode = "probability",
     **kwargs: Any,
 ) -> Any:
     """Plot a 1D response using original labels for categorical feature axes."""
@@ -65,7 +65,7 @@ def show_scatter_with_acqf_from_optimizer(
     feature_col2: str,
     target_col: str,
     *,
-    ordinal_display: OrdinalDisplayMode = "latent",
+    ordinal_display: OrdinalDisplayMode = "probability",
     ordinal_mode: OrdinalProbabilityMode = "class_confidence",
     **kwargs: Any,
 ) -> Any:
@@ -96,7 +96,7 @@ def show_triscatter_with_acqf_from_optimizer(
     feature_col3: str,
     target_col: str,
     *,
-    ordinal_display: OrdinalDisplayMode = "latent",
+    ordinal_display: OrdinalDisplayMode = "probability",
     ordinal_mode: OrdinalProbabilityMode = "class_confidence",
     **kwargs: Any,
 ) -> Any:

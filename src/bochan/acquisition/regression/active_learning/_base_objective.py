@@ -6,7 +6,6 @@ import torch
 from torch import Tensor
 
 from ._base_common import (
-    ReductionType,
     _ensure_q_batch,
     _is_mc_multi_output_objective,
     _looks_like_score_objective,
@@ -152,4 +151,3 @@ class _RegressionObjectiveMixin:
 # Keep this file focused on active learning / uncertainty reduction.
 # Boundary / contour / straddle acquisitions are implemented in
 # regression_levelset_estimation_aligned.py.
-

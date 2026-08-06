@@ -154,7 +154,9 @@ def _set_pending_if_supported(acqf: Any, X_pending: Any) -> bool:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             setter(X_pending)
-    except (TypeError, NotImplementedError, RuntimeError):
+    except Exception:
+        # BoTorch analytic acquisitions raise UnsupportedError, while custom
+        # acquisitions may reject pending tensors with their own exception type.
         return False
     return True
 

@@ -59,26 +59,42 @@ class TaskAwareHybridPosterior(HybridPosterior):
                 f"Got {len(components)} components for mean.shape={tuple(mean.shape)}."
             )
 
-        self.components = tuple(components)
-        self._layouts = tuple(self._make_layout(component) for component in components)
+        expected_shape = self.batch_shape + torch.Size([self._mean.shape[-2]])
+        self.components = tuple(
+            self._broadcast_component(component, expected_shape)
+            for component in components
+        )
+        self._layouts = tuple(
+            self._make_layout(component) for component in self.components
+        )
         total_event_size = sum(layout.event_size for layout in self._layouts)
         if total_event_size <= 0:
             raise ValueError("TaskAwareHybridPosterior requires at least one base event.")
         self._base_sample_shape = self.batch_shape + torch.Size([total_event_size])
 
-    def _make_layout(self, component: HybridPosteriorComponent) -> _ComponentLayout:
-        expected_shape = self.batch_shape + torch.Size([self._mean.shape[-2]])
-        if component.mean.shape != expected_shape:
-            try:
-                component.mean.expand(expected_shape)
-                component.variance.expand(expected_shape)
-            except RuntimeError as exc:
-                raise ValueError(
-                    f"{component.name}: component moments must be broadcastable to "
-                    f"{tuple(expected_shape)}, got mean={tuple(component.mean.shape)}, "
-                    f"variance={tuple(component.variance.shape)}."
-                ) from exc
+    @staticmethod
+    def _broadcast_component(
+        component: HybridPosteriorComponent,
+        expected_shape: torch.Size,
+    ) -> HybridPosteriorComponent:
+        try:
+            mean = component.mean.expand(expected_shape)
+            variance = component.variance.expand(expected_shape)
+        except RuntimeError as exc:
+            raise ValueError(
+                f"{component.name}: component moments must be broadcastable to "
+                f"{tuple(expected_shape)}, got mean={tuple(component.mean.shape)}, "
+                f"variance={tuple(component.variance.shape)}."
+            ) from exc
+        return HybridPosteriorComponent(
+            mean=mean,
+            variance=variance,
+            posterior=component.posterior,
+            sample_transform=component.sample_transform,
+            name=component.name,
+        )
 
+    def _make_layout(self, component: HybridPosteriorComponent) -> _ComponentLayout:
         posterior = component.posterior
         use_source = False
         source_shape = torch.Size()

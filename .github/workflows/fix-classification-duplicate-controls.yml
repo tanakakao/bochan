@@ -19,7 +19,7 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.head.ref == 'agent/fix-classification-duplicate-controls' &&
       github.actor != 'github-actions[bot]'
-    runs-on: macos-latest
+    runs-on: windows-latest
     timeout-minutes: 45
     steps:
       - name: Clone, patch, validate, and publish
@@ -34,11 +34,11 @@ jobs:
           git clone --branch "${HEAD_REF}" --single-branch "https://github.com/${HEAD_REPO}.git" repo
           cd repo
 
-          python3 -m pip install --upgrade pip
-          python3 -m pip install -e ".[test]" ruff
-          python3 scripts/run_fix_classification_duplicate_controls.py
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[test]" ruff
+          python scripts/run_fix_classification_duplicate_controls.py
 
-          python3 -m ruff format \
+          python -m ruff format \
             src/bochan/acquisition/_duplicate_exclusion.py \
             src/bochan/acquisition/binary/base.py \
             src/bochan/acquisition/binary/active_learning/single_output.py \
@@ -54,7 +54,7 @@ jobs:
 
           set +e
           {
-            python3 -m ruff check \
+            python -m ruff check \
               src/bochan/acquisition/_duplicate_exclusion.py \
               src/bochan/acquisition/binary/base.py \
               src/bochan/acquisition/binary/active_learning/single_output.py \
@@ -68,10 +68,10 @@ jobs:
               src/bochan/acquisition/multiclass/active_learning/multi_output.py \
               tests/test_classification_duplicate_exclusion.py \
               tests/test_classification_duplicate_controls_e2e.py
-            python3 -m pytest -q \
+            python -m pytest -q \
               tests/test_classification_duplicate_exclusion.py \
               tests/test_classification_duplicate_controls_e2e.py
-          } 2>&1 | tee /tmp/classification-duplicate-validation.log
+          } 2>&1 | tee classification-duplicate-validation.log
           validation_status=${PIPESTATUS[0]}
           set -e
 
@@ -100,7 +100,7 @@ jobs:
             exit 0
           fi
 
-          cp /tmp/classification-duplicate-validation.log classification_duplicate_validation_failure.log
+          cp classification-duplicate-validation.log classification_duplicate_validation_failure.log
           git add classification_duplicate_validation_failure.log
           git commit -m "Record duplicate control validation failure" || true
           git push origin "HEAD:${HEAD_REF}"

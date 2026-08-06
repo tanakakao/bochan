@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from typing import Callable, Literal, Optional, Union
@@ -25,6 +24,12 @@ from botorch.utils.multi_objective.box_decompositions.non_dominated import (
 )
 from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
 
+from bochan.acquisition._duplicate_exclusion import (
+    hard_reference_duplicate_penalty_per_point,
+    hard_same_batch_duplicate_penalty_per_point,
+    resolve_observed_X,
+)
+
 from bochan.acquisition.binary.epistemic import (
     as_epistemic_probability_model,
     get_binary_latent_posterior,
@@ -44,7 +49,6 @@ from ._utils import (
     shape_X_for_model,
     to_probability,
 )
-
 
 
 def _get_binary_mc_posterior_for_probability_samples(
@@ -81,7 +85,7 @@ def _detach_optional_tensor(X):
 
 class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
     """multi-output binary classification 用 probability of feasibility acquisition。実現可能確率を最大化します。
-    
+
     Args:
         model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
         num_samples: classification probability や BALD などを MC 近似する sample 数。
@@ -97,10 +101,10 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
         apply_sigmoid_if_needed: posterior mean / samples が [0, 1] にない場合に likelihood link で変換するかどうか。
         eps: 数値安定化用の微小値。
         objective: posterior samples または計算済み score に作用する objective。InputPerturbation の q*n_w -> q 集約にも使えます。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
     """
@@ -116,6 +120,14 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
         output_weights: Optional[Tensor] = None,
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
+        X_pending: Optional[Tensor] = None,
+        X_observed: Optional[Tensor] = None,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         samples_are_probs: bool = False,
         mean_is_latent: bool = False,
         apply_sigmoid_if_needed: bool = True,
@@ -131,12 +143,21 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
         self.output_weights = output_weights
         self.pending_penalty_weight = float(pending_penalty_weight)
         self.pending_penalty_beta = float(pending_penalty_beta)
+        self.observed_penalty_weight = float(observed_penalty_weight)
+        self.observed_penalty_beta = float(observed_penalty_beta)
+        self.hard_duplicate_tol = float(hard_duplicate_tol)
+        self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
+        self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        self.exclude_observed_duplicates = bool(exclude_observed_duplicates)
+        if self.hard_duplicate_tol < 0.0:
+            raise ValueError("hard_duplicate_tol must be non-negative.")
         self.samples_are_probs = bool(samples_are_probs)
         self.mean_is_latent = bool(mean_is_latent)
         self.apply_sigmoid_if_needed = bool(apply_sigmoid_if_needed)
         self.eps = float(eps)
         self.objective = objective
-        self.set_X_pending(None)
+        self.set_X_pending(X_pending)
+        self.set_X_observed(X_observed)
 
     def _coerce_pending_to_tensor(
         self,
@@ -167,10 +188,7 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
                 except RuntimeError:
                     out = torch.cat([t.reshape(-1, t.shape[-1]) for t in tensors], dim=-2)
         else:
-            raise TypeError(
-                "X_pending must be None, Tensor, list, or tuple. "
-                f"Got {type(X_pending)}."
-            )
+            raise TypeError(f"X_pending must be None, Tensor, list, or tuple. Got {type(X_pending)}.")
         if ref is not None:
             out = out.to(device=ref.device, dtype=ref.dtype)
 
@@ -180,6 +198,10 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
         """pending points を raw input space の値として保持する。"""
         self.X_pending = self._coerce_pending_to_tensor(X_pending)
+
+    def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+        """observed points を raw input space の値として保持する。"""
+        self.X_observed = self._coerce_pending_to_tensor(resolve_observed_X(self.model, X_observed))
 
     def _transform_pending_like_candidate(
         self,
@@ -194,43 +216,81 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
         Xp_t = shape_X_for_model(self.model, ensure_q_batch(Xp))
         return Xp_t.to(device=ref.device, dtype=ref.dtype)
 
-    def _pending_penalty_per_point(self, expanded_X: Tensor) -> Tensor:
-        """
-        pending points に近い候補点へ pointwise penalty を与える。
+    def _transform_reference_like_candidate(
+        self,
+        X_ref,
+        *,
+        ref: Tensor,
+    ) -> Optional[Tensor]:
+        Xr = self._coerce_pending_to_tensor(X_ref, ref=ref)
+        if Xr is None or Xr.numel() == 0:
+            return None
+        Xr_t = shape_X_for_model(self.model, ensure_q_batch(Xr))
+        return Xr_t.to(device=ref.device, dtype=ref.dtype)
 
-        Args:
-            expanded_X:
-                候補点。すでに `shape_X_for_model(model, raw_X)` を通した
-                距離計算用 Tensor。shape は `(*batch, q_like, d)`。
-
-        Returns:
-            Tensor:
-                pending penalty。shape は `(*batch, q_like)`。
-        """
-        expanded_X = ensure_q_batch(expanded_X)
-
-        if self.pending_penalty_weight <= 0.0:
-            return torch.zeros(expanded_X.shape[:-1], device=expanded_X.device, dtype=expanded_X.dtype)
-
-        Xp_t = self._transform_pending_like_candidate(
-            getattr(self, "X_pending", None),
-            ref=expanded_X,
+    def _same_batch_duplicate_penalty_per_point(self, expanded_X: Tensor) -> Tensor:
+        return hard_same_batch_duplicate_penalty_per_point(
+            ensure_q_batch(expanded_X),
+            enabled=self.exclude_same_batch_duplicates,
+            tolerance=self.hard_duplicate_tol,
         )
-        if Xp_t is None or Xp_t.numel() == 0:
-            return torch.zeros(expanded_X.shape[:-1], device=expanded_X.device, dtype=expanded_X.dtype)
 
-        d = expanded_X.shape[-1]
-        X2d = expanded_X.reshape(-1, d)
-        Xp2d = Xp_t.reshape(-1, Xp_t.shape[-1])
-
-        if Xp2d.shape[-1] != d:
-            raise RuntimeError(
-                "X_pending feature dimension mismatch in pending penalty after transform: "
-                f"expanded_X.shape={tuple(expanded_X.shape)}, X_pending_transformed.shape={tuple(Xp_t.shape)}."
+    def _reference_penalty_per_point(
+        self,
+        expanded_X: Tensor,
+        X_ref,
+        *,
+        weight: float,
+        beta: float,
+        hard_enabled: bool,
+    ) -> Tensor:
+        expanded_X = ensure_q_batch(expanded_X)
+        zeros = expanded_X.new_zeros(expanded_X.shape[:-1])
+        Xr = self._transform_reference_like_candidate(X_ref, ref=expanded_X)
+        if Xr is None or Xr.numel() == 0:
+            return zeros
+        Xr2d = Xr.reshape(-1, Xr.shape[-1])
+        min_dist = (
+            torch.cdist(
+                expanded_X.reshape(-1, expanded_X.shape[-1]),
+                Xr2d,
             )
+            .min(dim=-1)
+            .values.reshape(*expanded_X.shape[:-1])
+        )
+        soft = weight * torch.exp(-beta * min_dist) if weight > 0.0 else zeros
+        hard = hard_reference_duplicate_penalty_per_point(
+            expanded_X,
+            Xr2d,
+            enabled=hard_enabled,
+            tolerance=self.hard_duplicate_tol,
+        )
+        return soft + hard
 
-        dist = torch.cdist(X2d, Xp2d).min(dim=-1).values.reshape(*expanded_X.shape[:-1])
-        return self.pending_penalty_weight * torch.exp(-self.pending_penalty_beta * dist)
+    def _pending_penalty_per_point(self, expanded_X: Tensor) -> Tensor:
+        return self._reference_penalty_per_point(
+            expanded_X,
+            getattr(self, "X_pending", None),
+            weight=self.pending_penalty_weight,
+            beta=self.pending_penalty_beta,
+            hard_enabled=self.exclude_pending_duplicates,
+        )
+
+    def _observed_penalty_per_point(self, expanded_X: Tensor) -> Tensor:
+        return self._reference_penalty_per_point(
+            expanded_X,
+            getattr(self, "X_observed", None),
+            weight=self.observed_penalty_weight,
+            beta=self.observed_penalty_beta,
+            hard_enabled=self.exclude_observed_duplicates,
+        )
+
+    def _candidate_penalty_per_point(self, expanded_X: Tensor) -> Tensor:
+        return (
+            self._pending_penalty_per_point(expanded_X)
+            + self._observed_penalty_per_point(expanded_X)
+            + self._same_batch_duplicate_penalty_per_point(expanded_X)
+        )
 
     def _pointwise_pof(self, raw_X: Tensor, expanded_X: Tensor) -> Tensor:
         if self.mode in {"mc_likelihood", "mc_sigmoid"}:
@@ -244,9 +304,7 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
             samples = reshape_samples(samples, expanded_X, torch.Size([self.num_samples]))
             probs = to_probability(
                 samples,
-                apply_sigmoid_if_needed=(
-                    not self.samples_are_probs or self.apply_sigmoid_if_needed
-                ),
+                apply_sigmoid_if_needed=(not self.samples_are_probs or self.apply_sigmoid_if_needed),
                 eps=self.eps,
                 name="posterior.rsample()",
                 model=self.model,
@@ -294,16 +352,17 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
 
 class qMultiOutputBinaryExpectedHypervolumeImprovement(qExpectedHypervolumeImprovement):
     """multi-output classification 用 qEHVI acquisition。Pareto hypervolume の期待改善量を評価します。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
+
     Notes:
         全目的は最大化方向に揃えてください。classification / ordinal では probability または utility objective を通して目的空間に変換します。
     """
+
     def __init__(self, model: Model, *args, **kwargs) -> None:
         super().__init__(
             as_epistemic_probability_model(model),
@@ -314,22 +373,24 @@ class qMultiOutputBinaryExpectedHypervolumeImprovement(qExpectedHypervolumeImpro
 
 class qMultiOutputBinaryNoisyExpectedHypervolumeImprovement(qNoisyExpectedHypervolumeImprovement):
     """multi-output classification 用 qEHVI acquisition。Pareto hypervolume の期待改善量を評価します。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
+
     Notes:
         全目的は最大化方向に揃えてください。classification / ordinal では probability または utility objective を通して目的空間に変換します。
     """
+
     def __init__(self, model: Model, *args, **kwargs) -> None:
         super().__init__(
             as_epistemic_probability_model(model),
             *args,
             **kwargs,
         )
+
 
 def _prod(shape: torch.Size | tuple[int, ...]) -> int:
     out = 1
@@ -452,9 +513,10 @@ class _IdentityMCMultiOutputObjective(MCMultiOutputObjective):
     def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
         return samples
 
+
 class qMultiOutputBinaryNParEGO(MCAcquisitionFunction):
     """multi-output classification 用 qNParEGO acquisition。多目的を scalarization して qEI 的に評価します。
-    
+
     Args:
         model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
         X_baseline: noisy acquisition や NParEGO の baseline 点。通常は既存観測点を渡します。
@@ -462,13 +524,13 @@ class qMultiOutputBinaryNParEGO(MCAcquisitionFunction):
         weights: NParEGO や weighted objective で使う scalarization weight。
         sampler: posterior samples を生成する BoTorch sampler。省略時は SobolQMCNormalSampler を使います。
         objective: posterior samples または計算済み score に作用する objective。InputPerturbation の q*n_w -> q 集約にも使えます。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
+
     Notes:
         目的数が多い場合や qEHVI / qNEHVI が重い場合の実用的な代替です。
     """
@@ -526,7 +588,13 @@ class qMultiOutputBinaryNParEGO(MCAcquisitionFunction):
             prob_fn = getattr(model, "probability_posterior", None)
             post = prob_fn(X_baseline) if callable(prob_fn) else model.posterior(X_baseline)
             y = normalize_mean_shape(post.mean, Xb)
-            y = to_probability(y, apply_sigmoid_if_needed=self.apply_sigmoid_if_needed, eps=self.eps, name='NParEGO baseline posterior.mean', model=self.model).reshape(-1, m)
+            y = to_probability(
+                y,
+                apply_sigmoid_if_needed=self.apply_sigmoid_if_needed,
+                eps=self.eps,
+                name="NParEGO baseline posterior.mean",
+                model=self.model,
+            ).reshape(-1, m)
 
             if X_baseline.ndim == 2:
                 X_obj = X_baseline.unsqueeze(0)  # [1, N, d]
@@ -602,9 +670,7 @@ class qMultiOutputBinaryNParEGO(MCAcquisitionFunction):
 
         values = to_probability(
             samples,
-            apply_sigmoid_if_needed=(
-                not self.samples_are_probs or self.apply_sigmoid_if_needed
-            ),
+            apply_sigmoid_if_needed=(not self.samples_are_probs or self.apply_sigmoid_if_needed),
             eps=self.eps,
             name="NParEGO posterior samples",
             model=self.model,
@@ -617,6 +683,7 @@ class qMultiOutputBinaryNParEGO(MCAcquisitionFunction):
         improvement = (scalarized - self.best_value.to(scalarized)).clamp_min(0.0)
 
         return _reduce_sample_and_q_to_tbatch(improvement, Xq)
+
 
 class _qMultiOutputBinaryFeasibilityWeightedAcquisition(AcquisitionFunction):
     """任意の multi-objective acquisition を multi-output PoF で重み付けする wrapper。"""
@@ -656,6 +723,7 @@ class _qMultiOutputBinaryFeasibilityWeightedAcquisition(AcquisitionFunction):
         if self.combine_mode == "penalty":
             return base - self.penalty_weight * (1.0 - feas)
         raise ValueError(f"Unknown combine_mode: {self.combine_mode}")
+
 
 __all__ = [
     "qMultiOutputBinaryProbabilityOfFeasibility",

@@ -14,6 +14,7 @@ from torch import Tensor
 from bochan.acquisition._duplicate_exclusion import (
     hard_reference_duplicate_penalty_per_point,
     hard_same_batch_duplicate_penalty_per_point,
+    resolve_observed_X,
 )
 
 ReductionType = Literal["mean", "sum", "max"]
@@ -159,6 +160,8 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
         hard_duplicate_tol: float = 1e-8,
         exclude_same_batch_duplicates: bool = True,
         exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
+        X_pending: Tensor | None = None,
         X_observed: Tensor | None = None,
         apply_softmax_if_needed: bool = True,
         eps: float = 1e-8,
@@ -178,20 +181,23 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
         self.hard_duplicate_tol = float(hard_duplicate_tol)
         self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
         self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        self.exclude_observed_duplicates = bool(exclude_observed_duplicates)
         if self.hard_duplicate_tol < 0.0:
             raise ValueError("hard_duplicate_tol must be non-negative.")
-        self.X_observed = None if X_observed is None else torch.as_tensor(X_observed).detach()
+        self.X_observed = None
         self.apply_softmax_if_needed = bool(apply_softmax_if_needed)
         self.eps = float(eps)
         self.objective = objective
         self._current_batch_shape = torch.Size()
-        self.set_X_pending(None)
+        self.set_X_pending(X_pending)
+        self.set_X_observed(X_observed)
 
     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         self.X_pending = None if X_pending is None else torch.as_tensor(X_pending).detach()
 
     def set_X_observed(self, X_observed: Tensor | None = None) -> None:
-        self.X_observed = None if X_observed is None else torch.as_tensor(X_observed).detach()
+        resolved = resolve_observed_X(self.model, X_observed)
+        self.X_observed = None if resolved is None else torch.as_tensor(resolved).detach()
 
     def _ensure_q_batch(self, X: Tensor) -> Tensor:
         if X.ndim == 1:
@@ -432,7 +438,9 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
         if batch_start is None:
             if score.shape == batch_shape:
                 return score.unsqueeze(-1)
-            raise RuntimeError(f"{name}: could not locate batch_shape={batch_shape} in score.shape={tuple(score.shape)}.")
+            raise RuntimeError(
+                f"{name}: could not locate batch_shape={batch_shape} in score.shape={tuple(score.shape)}."
+            )
         leading = pre[:batch_start]
         after_batch = pre[batch_start + len(batch_shape) :]
         out = score.reshape(*leading, *batch_shape, *after_batch)
@@ -458,7 +466,9 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
                 raise ValueError("output_weights must be provided when output_mode='weighted_mean'.")
             weights = self.output_weights.to(device=score_per_output.device, dtype=score_per_output.dtype)
             if weights.ndim != 1 or weights.numel() != score_per_output.shape[-1]:
-                raise ValueError(f"output_weights must have shape ({score_per_output.shape[-1]},), got {tuple(weights.shape)}.")
+                raise ValueError(
+                    f"output_weights must have shape ({score_per_output.shape[-1]},), got {tuple(weights.shape)}."
+                )
             if self.normalize_output_weights:
                 weights = weights / weights.abs().sum().clamp_min(self.eps)
             view_shape = (1,) * (score_per_output.ndim - 1) + (weights.numel(),)
@@ -486,8 +496,7 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
             return zeros
         dist = torch.cdist(Xt.reshape(-1, Xt.shape[-1]), Xp).min(dim=-1).values
         soft = (
-            self.pending_penalty_weight
-            * torch.exp(-self.pending_penalty_beta * dist.reshape(Xt.shape[:-1]))
+            self.pending_penalty_weight * torch.exp(-self.pending_penalty_beta * dist.reshape(Xt.shape[:-1]))
             if self.pending_penalty_weight > 0.0
             else zeros
         )
@@ -501,13 +510,23 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
 
     def _observed_penalty_per_point(self, Xt: Tensor) -> Tensor:
         Xt = self._ensure_q_batch(Xt)
-        if self.observed_penalty_weight <= 0:
-            return Xt.new_zeros(Xt.shape[:-1])
+        zeros = Xt.new_zeros(Xt.shape[:-1])
         Xobs = self._reference_points_transformed(self.X_observed, ref=Xt)
         if Xobs is None:
-            return Xt.new_zeros(Xt.shape[:-1])
+            return zeros
         dist = torch.cdist(Xt.reshape(-1, Xt.shape[-1]), Xobs).min(dim=-1).values
-        return self.observed_penalty_weight * torch.exp(-self.observed_penalty_beta * dist.reshape(Xt.shape[:-1]))
+        soft = (
+            self.observed_penalty_weight * torch.exp(-self.observed_penalty_beta * dist.reshape(Xt.shape[:-1]))
+            if self.observed_penalty_weight > 0.0
+            else zeros
+        )
+        hard = hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xobs,
+            enabled=self.exclude_observed_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
+        return soft + hard
 
     def _same_batch_penalty(self, Xt: Tensor) -> Tensor:
         Xt = self._ensure_q_batch(Xt)
@@ -517,9 +536,7 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
             q = Xt.shape[-2]
             eye = torch.eye(q, device=Xt.device, dtype=torch.bool).unsqueeze(0)
             d = d.masked_fill(eye, float("inf"))
-            soft = 0.5 * self.same_batch_penalty_weight * torch.exp(
-                -self.same_batch_penalty_beta * d
-            ).sum(dim=(-1, -2))
+            soft = 0.5 * self.same_batch_penalty_weight * torch.exp(-self.same_batch_penalty_beta * d).sum(dim=(-1, -2))
             soft = soft.reshape(*Xt.shape[:-2])
         else:
             soft = Xt.new_zeros(Xt.shape[:-2])
@@ -568,7 +585,9 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
                 return value
         if value.numel() == _prod(target_shape):
             return value.reshape(target_shape)
-        raise RuntimeError(f"{name}: could not align output to t-batch shape. value={tuple(value.shape)}, target={target_shape}.")
+        raise RuntimeError(
+            f"{name}: could not align output to t-batch shape. value={tuple(value.shape)}, target={target_shape}."
+        )
 
     def _pointwise_score_to_value(self, score_per_output: Tensor, raw_X: Tensor, Xt: Tensor) -> Tensor:
         score_per_output = self._align_score_per_output_to_raw_X(
@@ -577,8 +596,12 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
             name=f"{self.__class__.__name__}.score_per_output",
         )
         score = self._aggregate_outputs(score_per_output)
-        pending = _align_pointwise_to_reference(self._pending_penalty_per_point(Xt), score, name=f"{self.__class__.__name__}.pending")
-        observed = _align_pointwise_to_reference(self._observed_penalty_per_point(Xt), score, name=f"{self.__class__.__name__}.observed")
+        pending = _align_pointwise_to_reference(
+            self._pending_penalty_per_point(Xt), score, name=f"{self.__class__.__name__}.pending"
+        )
+        observed = _align_pointwise_to_reference(
+            self._observed_penalty_per_point(Xt), score, name=f"{self.__class__.__name__}.observed"
+        )
         score = score - pending - observed
         score = self._apply_objective(score, raw_X=raw_X, expanded_X=Xt)
         value = score if score.shape == raw_X.shape[:-2] else self._reduce_q(score)
@@ -808,7 +831,9 @@ class qMultiOutputMulticlassIntegratedPosteriorVarianceProxy(_DirectMultiOutputM
         prob_post = getattr(model, "probability_posterior", None)
         if callable(prob_post):
             return _MaybeProbabilityPosterior(prob_post(X), eps=self.eps, apply_softmax_if_needed=False).mean
-        return _MaybeProbabilityPosterior(model.posterior(X), eps=self.eps, apply_softmax_if_needed=self.apply_softmax_if_needed).mean
+        return _MaybeProbabilityPosterior(
+            model.posterior(X), eps=self.eps, apply_softmax_if_needed=self.apply_softmax_if_needed
+        ).mean
 
     def _integrated_variance_per_output(self, raw_X: Tensor, Xt: Tensor | None = None) -> Tensor:
         raw_X = self._ensure_q_batch(raw_X)
@@ -826,7 +851,9 @@ class qMultiOutputMulticlassIntegratedPosteriorVarianceProxy(_DirectMultiOutputM
             mc_t = self._apply_input_transform(mc_raw).reshape(-1, Xt.shape[-1])
             d2 = torch.cdist(Xt.reshape(-1, Xt.shape[-1]), mc_t).pow(2)
             weights = torch.exp(-self.integration_beta * d2)
-            score = (weights.unsqueeze(-1) * mc_var.unsqueeze(0)).sum(dim=1) / weights.sum(dim=1, keepdim=True).clamp_min(self.eps)
+            score = (weights.unsqueeze(-1) * mc_var.unsqueeze(0)).sum(dim=1) / weights.sum(
+                dim=1, keepdim=True
+            ).clamp_min(self.eps)
             return score.reshape(*Xt.shape[:-1], mc_var.shape[-1])
 
         if isinstance(self.mc_points, Sequence):
@@ -862,7 +889,9 @@ class qMultiOutputMulticlassIntegratedPosteriorVarianceProxy(_DirectMultiOutputM
         probs = self._mean_probs(raw_X)
         local_score = self._class_probability_variance(probs)
         integrated_score = self._integrated_variance_per_output(raw_X, Xt)
-        integrated_score = _align_pointwise_to_reference(integrated_score, local_score, name=f"{self.__class__.__name__}.integrated")
+        integrated_score = _align_pointwise_to_reference(
+            integrated_score, local_score, name=f"{self.__class__.__name__}.integrated"
+        )
         score_per_output = self.local_weight * local_score + self.integrated_weight * integrated_score
         value = self._pointwise_score_to_value(score_per_output, raw_X, Xt)
         return self._finalize(value, raw_X, name=self.__class__.__name__)

@@ -1,0 +1,4872 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> src\bochan\acquisition\binary\active_learning\multi_output.py:1:1
+   |
+ 1 | / from __future__ import annotations
+ 2 | |
+ 3 | | import math
+ 4 | | from typing import Callable, Literal, Optional
+ 5 | |
+ 6 | | import torch
+ 7 | | from torch import Tensor
+ 8 | | from bochan.acquisition._duplicate_exclusion import (
+ 9 | |     hard_reference_duplicate_penalty_per_point,
+10 | |     hard_same_batch_duplicate_penalty_per_point,
+11 | |     resolve_observed_X,
+12 | | )
+13 | | from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
+14 | | from botorch.acquisition import AcquisitionFunction
+15 | | from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
+16 | | from botorch.utils.transforms import t_batch_mode_transform
+   | |___________________________________________________________^
+help: Organize imports
+   |
+6  | import torch
+7  + from botorch.acquisition import AcquisitionFunction
+8  + from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
+9  + from botorch.utils.transforms import t_batch_mode_transform
+10 | from torch import Tensor
+11 +
+12 | from bochan.acquisition._duplicate_exclusion import (
+--------------------------------------------------------------------------------
+17 | from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
+   - from botorch.acquisition import AcquisitionFunction
+   - from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
+   - from botorch.utils.transforms import t_batch_mode_transform
+   -
+18 |
+   |
+
+UP035 [*] Import from `collections.abc` instead: `Callable`
+ --> src\bochan\acquisition\binary\active_learning\multi_output.py:4:1
+  |
+3 | import math
+4 | from typing import Callable, Literal, Optional
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+5 |
+6 | import torch
+  |
+help: Import from `collections.abc`
+  |
+3 | import math
+  - from typing import Callable, Literal, Optional
+4 + from typing import Literal, Optional
+5 + from collections.abc import Callable
+6 |
+  |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:107:20
+    |
+105 |         exclude_pending_duplicates: bool = True,
+106 |         exclude_observed_duplicates: bool = True,
+107 |         X_pending: Optional[Tensor] = None,
+    |                    ^^^^^^^^^^^^^^^^
+108 |         X_observed: Optional[Tensor] = None,
+109 |         eps: float = 1e-6,
+    |
+help: Convert to `X | None`
+    |
+106 |         exclude_observed_duplicates: bool = True,
+    -         X_pending: Optional[Tensor] = None,
+107 +         X_pending: Tensor | None = None,
+108 |         X_observed: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:108:21
+    |
+106 |         exclude_observed_duplicates: bool = True,
+107 |         X_pending: Optional[Tensor] = None,
+108 |         X_observed: Optional[Tensor] = None,
+    |                     ^^^^^^^^^^^^^^^^
+109 |         eps: float = 1e-6,
+110 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+107 |         X_pending: Optional[Tensor] = None,
+    -         X_observed: Optional[Tensor] = None,
+108 +         X_observed: Tensor | None = None,
+109 |         eps: float = 1e-6,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:124:25
+    |
+122 |             raise ValueError("hard_duplicate_tol must be non-negative.")
+123 |         self.eps = float(eps)
+124 |         self.objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+125 |         self.set_X_pending(X_pending)
+126 |         self.set_X_observed(X_observed)
+    |
+help: Convert to `X | None`
+    |
+123 |         self.eps = float(eps)
+    -         self.objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None
+124 +         self.objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None
+125 |         self.set_X_pending(X_pending)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:124:52
+    |
+122 |             raise ValueError("hard_duplicate_tol must be non-negative.")
+123 |         self.eps = float(eps)
+124 |         self.objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None
+    |                                                    ^^^^^^^^^^^^^^^^
+125 |         self.set_X_pending(X_pending)
+126 |         self.set_X_observed(X_observed)
+    |
+help: Convert to `X | None`
+    |
+123 |         self.eps = float(eps)
+    -         self.objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None
+124 +         self.objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None
+125 |         self.set_X_pending(X_pending)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:136:14
+    |
+134 |         X_pending,
+135 |         *,
+136 |         ref: Optional[Tensor] = None,
+    |              ^^^^^^^^^^^^^^^^
+137 |     ) -> Optional[Tensor]:
+138 |         """X_pending を Tensor または None に正規化する。"""
+    |
+help: Convert to `X | None`
+    |
+135 |         *,
+    -         ref: Optional[Tensor] = None,
+136 +         ref: Tensor | None = None,
+137 |     ) -> Optional[Tensor]:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:137:10
+    |
+135 |         *,
+136 |         ref: Optional[Tensor] = None,
+137 |     ) -> Optional[Tensor]:
+    |          ^^^^^^^^^^^^^^^^
+138 |         """X_pending を Tensor または None に正規化する。"""
+139 |         if X_pending is None:
+    |
+help: Convert to `X | None`
+    |
+136 |         ref: Optional[Tensor] = None,
+    -     ) -> Optional[Tensor]:
+137 +     ) -> Tensor | None:
+138 |         """X_pending を Tensor または None に正規化する。"""
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:168:40
+    |
+166 |         return out.detach()
+167 |
+168 |     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    |                                        ^^^^^^^^^^^^^^^^
+169 |         """pending points を raw input space の値として保持する。"""
+170 |         self.X_pending = self._coerce_pending_to_tensor(X_pending)
+    |
+help: Convert to `X | None`
+    |
+167 |
+    -     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+168 +     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
+169 |         """pending points を raw input space の値として保持する。"""
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:172:42
+    |
+170 |         self.X_pending = self._coerce_pending_to_tensor(X_pending)
+171 |
+172 |     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+    |                                          ^^^^^^^^^^^^^^^^
+173 |         """observed points を raw input space の値として保持する。"""
+174 |         self.X_observed = self._coerce_pending_to_tensor(resolve_observed_X(self.model, X_observed))
+    |
+help: Convert to `X | None`
+    |
+171 |
+    -     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+172 +     def set_X_observed(self, X_observed: Tensor | None = None) -> None:
+173 |         """observed points を raw input space の値として保持する。"""
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:181:10
+    |
+179 |         *,
+180 |         ref: Tensor,
+181 |     ) -> Optional[Tensor]:
+    |          ^^^^^^^^^^^^^^^^
+182 |         Xr = self._coerce_pending_to_tensor(X_ref, ref=ref)
+183 |         if Xr is None or Xr.numel() == 0:
+    |
+help: Convert to `X | None`
+    |
+180 |         ref: Tensor,
+    -     ) -> Optional[Tensor]:
+181 +     ) -> Tensor | None:
+182 |         Xr = self._coerce_pending_to_tensor(X_ref, ref=ref)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:194:10
+    |
+192 |         *,
+193 |         ref: Tensor,
+194 |     ) -> Optional[Tensor]:
+    |          ^^^^^^^^^^^^^^^^
+195 |         return self._transform_reference_like_candidate(X_pending, ref=ref)
+    |
+help: Convert to `X | None`
+    |
+193 |         ref: Tensor,
+    -     ) -> Optional[Tensor]:
+194 +     ) -> Tensor | None:
+195 |         return self._transform_reference_like_candidate(X_pending, ref=ref)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:202:20
+    |
+200 |     def _set_multioutput_classification_objective(
+201 |         self,
+202 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+203 |     ) -> None:
+204 |         self.objective = objective
+    |
+help: Convert to `X | None`
+    |
+201 |         self,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+202 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+203 |     ) -> None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:202:47
+    |
+200 |     def _set_multioutput_classification_objective(
+201 |         self,
+202 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+203 |     ) -> None:
+204 |         self.objective = objective
+    |
+help: Convert to `X | None`
+    |
+201 |         self,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+202 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+203 |     ) -> None:
+    |
+
+SIM300 [*] Yoda condition detected
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:470:12
+    |
+468 |         xmax = x.max().item()
+469 |
+470 |         if 0.0 <= xmin and xmax <= 1.0:
+    |            ^^^^^^^^^^^
+471 |             return x.clamp(self.eps, 1.0 - self.eps)
+    |
+help: Rewrite as `xmin >= 0.0`
+    |
+469 |
+    -         if 0.0 <= xmin and xmax <= 1.0:
+470 +         if xmin >= 0.0 and xmax <= 1.0:
+471 |             return x.clamp(self.eps, 1.0 - self.eps)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:601:25
+    |
+599 |         *,
+600 |         output_mode: MultiOutputMode,
+601 |         output_weights: Optional[Tensor] = None,
+    |                         ^^^^^^^^^^^^^^^^
+602 |         probs_for_all_positive: Optional[Tensor] = None,
+603 |         score_type_for_all_positive: Optional[UncertaintyScoreType] = None,
+    |
+help: Convert to `X | None`
+    |
+600 |         output_mode: MultiOutputMode,
+    -         output_weights: Optional[Tensor] = None,
+601 +         output_weights: Tensor | None = None,
+602 |         probs_for_all_positive: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:602:33
+    |
+600 |         output_mode: MultiOutputMode,
+601 |         output_weights: Optional[Tensor] = None,
+602 |         probs_for_all_positive: Optional[Tensor] = None,
+    |                                 ^^^^^^^^^^^^^^^^
+603 |         score_type_for_all_positive: Optional[UncertaintyScoreType] = None,
+604 |     ) -> Tensor:
+    |
+help: Convert to `X | None`
+    |
+601 |         output_weights: Optional[Tensor] = None,
+    -         probs_for_all_positive: Optional[Tensor] = None,
+602 +         probs_for_all_positive: Tensor | None = None,
+603 |         score_type_for_all_positive: Optional[UncertaintyScoreType] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:603:38
+    |
+601 |         output_weights: Optional[Tensor] = None,
+602 |         probs_for_all_positive: Optional[Tensor] = None,
+603 |         score_type_for_all_positive: Optional[UncertaintyScoreType] = None,
+    |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+604 |     ) -> Tensor:
+605 |         """
+    |
+help: Convert to `X | None`
+    |
+602 |         probs_for_all_positive: Optional[Tensor] = None,
+    -         score_type_for_all_positive: Optional[UncertaintyScoreType] = None,
+603 +         score_type_for_all_positive: UncertaintyScoreType | None = None,
+604 |     ) -> Tensor:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:678:25
+    |
+676 |         num_samples: int = 128,
+677 |         output_mode: MultiOutputMode = "mean",
+678 |         output_weights: Optional[Tensor] = None,
+    |                         ^^^^^^^^^^^^^^^^
+679 |         pending_penalty_weight: float = 0.0,
+680 |         pending_penalty_beta: float = 10.0,
+    |
+help: Convert to `X | None`
+    |
+677 |         output_mode: MultiOutputMode = "mean",
+    -         output_weights: Optional[Tensor] = None,
+678 +         output_weights: Tensor | None = None,
+679 |         pending_penalty_weight: float = 0.0,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:681:20
+    |
+679 |         pending_penalty_weight: float = 0.0,
+680 |         pending_penalty_beta: float = 10.0,
+681 |         X_pending: Optional[Tensor] = None,
+    |                    ^^^^^^^^^^^^^^^^
+682 |         X_observed: Optional[Tensor] = None,
+683 |         observed_penalty_weight: float = 0.0,
+    |
+help: Convert to `X | None`
+    |
+680 |         pending_penalty_beta: float = 10.0,
+    -         X_pending: Optional[Tensor] = None,
+681 +         X_pending: Tensor | None = None,
+682 |         X_observed: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:682:21
+    |
+680 |         pending_penalty_beta: float = 10.0,
+681 |         X_pending: Optional[Tensor] = None,
+682 |         X_observed: Optional[Tensor] = None,
+    |                     ^^^^^^^^^^^^^^^^
+683 |         observed_penalty_weight: float = 0.0,
+684 |         observed_penalty_beta: float = 10.0,
+    |
+help: Convert to `X | None`
+    |
+681 |         X_pending: Optional[Tensor] = None,
+    -         X_observed: Optional[Tensor] = None,
+682 +         X_observed: Tensor | None = None,
+683 |         observed_penalty_weight: float = 0.0,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:691:20
+    |
+689 |         apply_sigmoid_if_needed: bool = False,
+690 |         eps: float = 1e-6,
+691 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+692 |     ) -> None:
+693 |         super().__init__(
+    |
+help: Convert to `X | None`
+    |
+690 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+691 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+692 |     ) -> None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:691:47
+    |
+689 |         apply_sigmoid_if_needed: bool = False,
+690 |         eps: float = 1e-6,
+691 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+692 |     ) -> None:
+693 |         super().__init__(
+    |
+help: Convert to `X | None`
+    |
+690 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+691 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+692 |     ) -> None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:804:25
+    |
+802 |         reduction: ReductionType = "mean",
+803 |         output_mode: MultiOutputMode = "all_positive",
+804 |         output_weights: Optional[Tensor] = None,
+    |                         ^^^^^^^^^^^^^^^^
+805 |         pending_penalty_weight: float = 0.0,
+806 |         pending_penalty_beta: float = 10.0,
+    |
+help: Convert to `X | None`
+    |
+803 |         output_mode: MultiOutputMode = "all_positive",
+    -         output_weights: Optional[Tensor] = None,
+804 +         output_weights: Tensor | None = None,
+805 |         pending_penalty_weight: float = 0.0,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:807:20
+    |
+805 |         pending_penalty_weight: float = 0.0,
+806 |         pending_penalty_beta: float = 10.0,
+807 |         X_pending: Optional[Tensor] = None,
+    |                    ^^^^^^^^^^^^^^^^
+808 |         X_observed: Optional[Tensor] = None,
+809 |         observed_penalty_weight: float = 0.0,
+    |
+help: Convert to `X | None`
+    |
+806 |         pending_penalty_beta: float = 10.0,
+    -         X_pending: Optional[Tensor] = None,
+807 +         X_pending: Tensor | None = None,
+808 |         X_observed: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:808:21
+    |
+806 |         pending_penalty_beta: float = 10.0,
+807 |         X_pending: Optional[Tensor] = None,
+808 |         X_observed: Optional[Tensor] = None,
+    |                     ^^^^^^^^^^^^^^^^
+809 |         observed_penalty_weight: float = 0.0,
+810 |         observed_penalty_beta: float = 10.0,
+    |
+help: Convert to `X | None`
+    |
+807 |         X_pending: Optional[Tensor] = None,
+    -         X_observed: Optional[Tensor] = None,
+808 +         X_observed: Tensor | None = None,
+809 |         observed_penalty_weight: float = 0.0,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:818:20
+    |
+816 |         apply_sigmoid_if_needed: bool = True,
+817 |         eps: float = 1e-6,
+818 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+819 |     ) -> None:
+820 |         super().__init__(
+    |
+help: Convert to `X | None`
+    |
+817 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+818 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+819 |     ) -> None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\multi_output.py:818:47
+    |
+816 |         apply_sigmoid_if_needed: bool = True,
+817 |         eps: float = 1e-6,
+818 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+819 |     ) -> None:
+820 |         super().__init__(
+    |
+help: Convert to `X | None`
+    |
+817 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+818 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+819 |     ) -> None:
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src\bochan\acquisition\binary\active_learning\single_output.py:1:1
+   |
+ 1 | / from __future__ import annotations
+ 2 | |
+ 3 | | import math
+ 4 | | from typing import Callable, Literal, Optional
+ 5 | |
+ 6 | | import torch
+ 7 | | from botorch.acquisition.acquisition import AcquisitionFunction
+ 8 | | from botorch.models.model import Model
+ 9 | | from botorch.utils.transforms import t_batch_mode_transform
+10 | | from torch import Tensor
+11 | | from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
+12 | | from bochan.acquisition.binary.epistemic import binary_probability_moments
+13 | |
+14 | | from bochan.acquisition.binary.base import (
+15 | |     LargeQStrategy,
+16 | |     ReductionType,
+17 | |     UncertaintyScoreType,
+18 | |     _BinaryClassificationAcqBase,
+19 | | )
+   | |_^
+20 |
+21 |   try:
+   |
+help: Organize imports
+   |
+10 | from torch import Tensor
+11 +
+12 | from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
+   - from bochan.acquisition.binary.epistemic import binary_probability_moments
+   -
+13 | from bochan.acquisition.binary.base import (
+--------------------------------------------------------------------------------
+18 | )
+19 + from bochan.acquisition.binary.epistemic import binary_probability_moments
+20 |
+   |
+
+UP035 [*] Import from `collections.abc` instead: `Callable`
+ --> src\bochan\acquisition\binary\active_learning\single_output.py:4:1
+  |
+3 | import math
+4 | from typing import Callable, Literal, Optional
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+5 |
+6 | import torch
+  |
+help: Import from `collections.abc`
+  |
+3 | import math
+  - from typing import Callable, Literal, Optional
+4 + from typing import Literal, Optional
+5 + from collections.abc import Callable
+6 |
+  |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src\bochan\acquisition\binary\active_learning\single_output.py:22:5
+   |
+21 |   try:
+22 | /     from bochan.acquisition.binary.base import (
+23 | |         ROIWeightMode,
+24 | |         ROICombineType,
+25 | |     )
+   | |_____^
+26 |   except ImportError:  # fallback for older base.py
+27 |       ROIWeightMode = Literal["none", "prob_above", "prob_below", "prob_interval", "custom"]
+   |
+help: Organize imports
+   |
+22 |     from bochan.acquisition.binary.base import (
+23 +         ROICombineType,
+24 |         ROIWeightMode,
+   -         ROICombineType,
+25 |     )
+   |
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\binary\active_learning\single_output.py:61:23
+   |
+59 |         roi_threshold: float = 0.5,
+60 |         roi_target_prob: float = 0.8,
+61 |         roi_interval: Optional[tuple[float, float]] = None,
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+62 |         roi_beta: float = 20.0,
+63 |         roi_bandwidth: float = 0.15,
+   |
+help: Convert to `X | None`
+   |
+60 |         roi_target_prob: float = 0.8,
+   -         roi_interval: Optional[tuple[float, float]] = None,
+61 +         roi_interval: tuple[float, float] | None = None,
+62 |         roi_beta: float = 20.0,
+   |
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\binary\active_learning\single_output.py:67:24
+   |
+65 |         roi_weight_scale: float = 1.0,
+66 |         roi_aggregate_reduction: ReductionType = "mean",
+67 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+68 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+69 |         X_pending: Optional[Tensor] = None,
+   |
+help: Convert to `X | None`
+   |
+66 |         roi_aggregate_reduction: ReductionType = "mean",
+   -         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+67 +         roi_weight_fn: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+68 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   |
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\binary\active_learning\single_output.py:67:51
+   |
+65 |         roi_weight_scale: float = 1.0,
+66 |         roi_aggregate_reduction: ReductionType = "mean",
+67 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   |                                                   ^^^^^^^^^^^^^^^^
+68 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+69 |         X_pending: Optional[Tensor] = None,
+   |
+help: Convert to `X | None`
+   |
+66 |         roi_aggregate_reduction: ReductionType = "mean",
+   -         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+67 +         roi_weight_fn: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+68 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   |
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\binary\active_learning\single_output.py:68:20
+   |
+66 |         roi_aggregate_reduction: ReductionType = "mean",
+67 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+68 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+69 |         X_pending: Optional[Tensor] = None,
+70 |         X_observed: Optional[Tensor] = None,
+   |
+help: Convert to `X | None`
+   |
+67 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+68 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+69 |         X_pending: Optional[Tensor] = None,
+   |
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\binary\active_learning\single_output.py:68:47
+   |
+66 |         roi_aggregate_reduction: ReductionType = "mean",
+67 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+68 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   |                                               ^^^^^^^^^^^^^^^^
+69 |         X_pending: Optional[Tensor] = None,
+70 |         X_observed: Optional[Tensor] = None,
+   |
+help: Convert to `X | None`
+   |
+67 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+68 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+69 |         X_pending: Optional[Tensor] = None,
+   |
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\binary\active_learning\single_output.py:69:20
+   |
+67 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+68 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+69 |         X_pending: Optional[Tensor] = None,
+   |                    ^^^^^^^^^^^^^^^^
+70 |         X_observed: Optional[Tensor] = None,
+71 |         observed_penalty_weight: float = 0.0,
+   |
+help: Convert to `X | None`
+   |
+68 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   -         X_pending: Optional[Tensor] = None,
+69 +         X_pending: Tensor | None = None,
+70 |         X_observed: Optional[Tensor] = None,
+   |
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\binary\active_learning\single_output.py:70:21
+   |
+68 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+69 |         X_pending: Optional[Tensor] = None,
+70 |         X_observed: Optional[Tensor] = None,
+   |                     ^^^^^^^^^^^^^^^^
+71 |         observed_penalty_weight: float = 0.0,
+72 |         observed_penalty_beta: float = 10.0,
+   |
+help: Convert to `X | None`
+   |
+69 |         X_pending: Optional[Tensor] = None,
+   -         X_observed: Optional[Tensor] = None,
+70 +         X_observed: Tensor | None = None,
+71 |         observed_penalty_weight: float = 0.0,
+   |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:162:23
+    |
+160 |         roi_threshold: float = 0.5,
+161 |         roi_target_prob: float = 0.8,
+162 |         roi_interval: Optional[tuple[float, float]] = None,
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+163 |         roi_beta: float = 20.0,
+164 |         roi_bandwidth: float = 0.15,
+    |
+help: Convert to `X | None`
+    |
+161 |         roi_target_prob: float = 0.8,
+    -         roi_interval: Optional[tuple[float, float]] = None,
+162 +         roi_interval: tuple[float, float] | None = None,
+163 |         roi_beta: float = 20.0,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:168:24
+    |
+166 |         roi_weight_scale: float = 1.0,
+167 |         roi_aggregate_reduction: ReductionType = "mean",
+168 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+169 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+170 |         X_pending: Optional[Tensor] = None,
+    |
+help: Convert to `X | None`
+    |
+167 |         roi_aggregate_reduction: ReductionType = "mean",
+    -         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+168 +         roi_weight_fn: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+169 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:168:51
+    |
+166 |         roi_weight_scale: float = 1.0,
+167 |         roi_aggregate_reduction: ReductionType = "mean",
+168 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                                   ^^^^^^^^^^^^^^^^
+169 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+170 |         X_pending: Optional[Tensor] = None,
+    |
+help: Convert to `X | None`
+    |
+167 |         roi_aggregate_reduction: ReductionType = "mean",
+    -         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+168 +         roi_weight_fn: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+169 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:169:20
+    |
+167 |         roi_aggregate_reduction: ReductionType = "mean",
+168 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+169 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+170 |         X_pending: Optional[Tensor] = None,
+171 |         X_observed: Optional[Tensor] = None,
+    |
+help: Convert to `X | None`
+    |
+168 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+169 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+170 |         X_pending: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:169:47
+    |
+167 |         roi_aggregate_reduction: ReductionType = "mean",
+168 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+169 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+170 |         X_pending: Optional[Tensor] = None,
+171 |         X_observed: Optional[Tensor] = None,
+    |
+help: Convert to `X | None`
+    |
+168 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+169 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+170 |         X_pending: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:170:20
+    |
+168 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+169 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+170 |         X_pending: Optional[Tensor] = None,
+    |                    ^^^^^^^^^^^^^^^^
+171 |         X_observed: Optional[Tensor] = None,
+172 |         observed_penalty_weight: float = 0.0,
+    |
+help: Convert to `X | None`
+    |
+169 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    -         X_pending: Optional[Tensor] = None,
+170 +         X_pending: Tensor | None = None,
+171 |         X_observed: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:171:21
+    |
+169 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+170 |         X_pending: Optional[Tensor] = None,
+171 |         X_observed: Optional[Tensor] = None,
+    |                     ^^^^^^^^^^^^^^^^
+172 |         observed_penalty_weight: float = 0.0,
+173 |         observed_penalty_beta: float = 10.0,
+    |
+help: Convert to `X | None`
+    |
+170 |         X_pending: Optional[Tensor] = None,
+    -         X_observed: Optional[Tensor] = None,
+171 +         X_observed: Tensor | None = None,
+172 |         observed_penalty_weight: float = 0.0,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:246:23
+    |
+244 |         roi_threshold: float = 0.5,
+245 |         roi_target_prob: float = 0.8,
+246 |         roi_interval: Optional[tuple[float, float]] = None,
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+247 |         roi_beta: float = 20.0,
+248 |         roi_bandwidth: float = 0.15,
+    |
+help: Convert to `X | None`
+    |
+245 |         roi_target_prob: float = 0.8,
+    -         roi_interval: Optional[tuple[float, float]] = None,
+246 +         roi_interval: tuple[float, float] | None = None,
+247 |         roi_beta: float = 20.0,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:252:24
+    |
+250 |         roi_weight_scale: float = 1.0,
+251 |         roi_aggregate_reduction: ReductionType = "mean",
+252 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+253 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+254 |         X_pending: Optional[Tensor] = None,
+    |
+help: Convert to `X | None`
+    |
+251 |         roi_aggregate_reduction: ReductionType = "mean",
+    -         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+252 +         roi_weight_fn: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+253 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:252:51
+    |
+250 |         roi_weight_scale: float = 1.0,
+251 |         roi_aggregate_reduction: ReductionType = "mean",
+252 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                                   ^^^^^^^^^^^^^^^^
+253 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+254 |         X_pending: Optional[Tensor] = None,
+    |
+help: Convert to `X | None`
+    |
+251 |         roi_aggregate_reduction: ReductionType = "mean",
+    -         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+252 +         roi_weight_fn: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+253 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:253:20
+    |
+251 |         roi_aggregate_reduction: ReductionType = "mean",
+252 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+253 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+254 |         X_pending: Optional[Tensor] = None,
+255 |         X_observed: Optional[Tensor] = None,
+    |
+help: Convert to `X | None`
+    |
+252 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+253 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+254 |         X_pending: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:253:47
+    |
+251 |         roi_aggregate_reduction: ReductionType = "mean",
+252 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+253 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+254 |         X_pending: Optional[Tensor] = None,
+255 |         X_observed: Optional[Tensor] = None,
+    |
+help: Convert to `X | None`
+    |
+252 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+253 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+254 |         X_pending: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:254:20
+    |
+252 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+253 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+254 |         X_pending: Optional[Tensor] = None,
+    |                    ^^^^^^^^^^^^^^^^
+255 |         X_observed: Optional[Tensor] = None,
+256 |         observed_penalty_weight: float = 0.0,
+    |
+help: Convert to `X | None`
+    |
+253 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    -         X_pending: Optional[Tensor] = None,
+254 +         X_pending: Tensor | None = None,
+255 |         X_observed: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:255:21
+    |
+253 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+254 |         X_pending: Optional[Tensor] = None,
+255 |         X_observed: Optional[Tensor] = None,
+    |                     ^^^^^^^^^^^^^^^^
+256 |         observed_penalty_weight: float = 0.0,
+257 |         observed_penalty_beta: float = 10.0,
+    |
+help: Convert to `X | None`
+    |
+254 |         X_pending: Optional[Tensor] = None,
+    -         X_observed: Optional[Tensor] = None,
+255 +         X_observed: Tensor | None = None,
+256 |         observed_penalty_weight: float = 0.0,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:364:20
+    |
+362 |         apply_sigmoid_if_needed: bool = False,
+363 |         eps: float = 1e-6,
+364 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+365 |         X_pending: Optional[Tensor] = None,
+366 |         X_observed: Optional[Tensor] = None,
+    |
+help: Convert to `X | None`
+    |
+363 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+364 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+365 |         X_pending: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:364:47
+    |
+362 |         apply_sigmoid_if_needed: bool = False,
+363 |         eps: float = 1e-6,
+364 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+365 |         X_pending: Optional[Tensor] = None,
+366 |         X_observed: Optional[Tensor] = None,
+    |
+help: Convert to `X | None`
+    |
+363 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+364 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+365 |         X_pending: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:365:20
+    |
+363 |         eps: float = 1e-6,
+364 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+365 |         X_pending: Optional[Tensor] = None,
+    |                    ^^^^^^^^^^^^^^^^
+366 |         X_observed: Optional[Tensor] = None,
+367 |         observed_penalty_weight: float = 0.0,
+    |
+help: Convert to `X | None`
+    |
+364 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    -         X_pending: Optional[Tensor] = None,
+365 +         X_pending: Tensor | None = None,
+366 |         X_observed: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:366:21
+    |
+364 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+365 |         X_pending: Optional[Tensor] = None,
+366 |         X_observed: Optional[Tensor] = None,
+    |                     ^^^^^^^^^^^^^^^^
+367 |         observed_penalty_weight: float = 0.0,
+368 |         observed_penalty_beta: float = 10.0,
+    |
+help: Convert to `X | None`
+    |
+365 |         X_pending: Optional[Tensor] = None,
+    -         X_observed: Optional[Tensor] = None,
+366 +         X_observed: Tensor | None = None,
+367 |         observed_penalty_weight: float = 0.0,
+    |
+
+SIM300 [*] Yoda condition detected
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:438:12
+    |
+436 |         pmin = p.min().item()
+437 |         pmax = p.max().item()
+438 |         if 0.0 <= pmin and pmax <= 1.0:
+    |            ^^^^^^^^^^^
+439 |             return p.clamp(self.eps, 1.0 - self.eps)
+440 |         if self.apply_sigmoid_if_needed:
+    |
+help: Rewrite as `pmin >= 0.0`
+    |
+437 |         pmax = p.max().item()
+    -         if 0.0 <= pmin and pmax <= 1.0:
+438 +         if pmin >= 0.0 and pmax <= 1.0:
+439 |             return p.clamp(self.eps, 1.0 - self.eps)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:652:10
+    |
+650 |     X_ref,
+651 |     *,
+652 |     ref: Optional[Tensor] = None,
+    |          ^^^^^^^^^^^^^^^^
+653 | ) -> Optional[Tensor]:
+654 |     """X_pending / X_observed を Tensor または None に正規化する。"""
+    |
+help: Convert to `X | None`
+    |
+651 |     *,
+    -     ref: Optional[Tensor] = None,
+652 +     ref: Tensor | None = None,
+653 | ) -> Optional[Tensor]:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:653:6
+    |
+651 |     *,
+652 |     ref: Optional[Tensor] = None,
+653 | ) -> Optional[Tensor]:
+    |      ^^^^^^^^^^^^^^^^
+654 |     """X_pending / X_observed を Tensor または None に正規化する。"""
+655 |     if X_ref is None:
+    |
+help: Convert to `X | None`
+    |
+652 |     ref: Optional[Tensor] = None,
+    - ) -> Optional[Tensor]:
+653 + ) -> Tensor | None:
+654 |     """X_pending / X_observed を Tensor または None に正規化する。"""
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:716:6
+    |
+714 |     *,
+715 |     ref: Tensor,
+716 | ) -> Optional[Tensor]:
+    |      ^^^^^^^^^^^^^^^^
+717 |     Xr = _coerce_reference_to_tensor_for_ipv(X_ref, ref=ref)
+718 |     if Xr is None or Xr.numel() == 0:
+    |
+help: Convert to `X | None`
+    |
+715 |     ref: Tensor,
+    - ) -> Optional[Tensor]:
+716 + ) -> Tensor | None:
+717 |     Xr = _coerce_reference_to_tensor_for_ipv(X_ref, ref=ref)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:743:12
+    |
+741 | def _rbf_reference_penalty_aggregated_for_ipv(
+742 |     X: Tensor,
+743 |     X_ref: Optional[Tensor],
+    |            ^^^^^^^^^^^^^^^^
+744 |     beta: float,
+745 | ) -> Tensor:
+    |
+help: Convert to `X | None`
+    |
+742 |     X: Tensor,
+    -     X_ref: Optional[Tensor],
+743 +     X_ref: Tensor | None,
+744 |     beta: float,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:764:17
+    |
+762 | def _resolve_observed_X_for_ipv(
+763 |     model: Model,
+764 |     X_observed: Optional[Tensor] = None,
+    |                 ^^^^^^^^^^^^^^^^
+765 | ) -> Optional[Tensor]:
+766 |     if X_observed is not None:
+    |
+help: Convert to `X | None`
+    |
+763 |     model: Model,
+    -     X_observed: Optional[Tensor] = None,
+764 +     X_observed: Tensor | None = None,
+765 | ) -> Optional[Tensor]:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:765:6
+    |
+763 |     model: Model,
+764 |     X_observed: Optional[Tensor] = None,
+765 | ) -> Optional[Tensor]:
+    |      ^^^^^^^^^^^^^^^^
+766 |     if X_observed is not None:
+767 |         return X_observed
+    |
+help: Convert to `X | None`
+    |
+764 |     X_observed: Optional[Tensor] = None,
+    - ) -> Optional[Tensor]:
+765 + ) -> Tensor | None:
+766 |     if X_observed is not None:
+    |
+
+SIM300 [*] Yoda condition detected
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:796:8
+    |
+794 |     vmax = values.detach().max().item()
+795 |
+796 |     if 0.0 <= vmin and vmax <= 1.0:
+    |        ^^^^^^^^^^^
+797 |         return values.clamp(eps, 1.0 - eps)
+    |
+help: Rewrite as `vmin >= 0.0`
+    |
+795 |
+    -     if 0.0 <= vmin and vmax <= 1.0:
+796 +     if vmin >= 0.0 and vmax <= 1.0:
+797 |         return values.clamp(eps, 1.0 - eps)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:854:20
+    |
+852 |         observed_penalty_weight: float = 0.0,
+853 |         observed_penalty_beta: float = 10.0,
+854 |         X_pending: Optional[Tensor] = None,
+    |                    ^^^^^^^^^^^^^^^^
+855 |         X_observed: Optional[Tensor] = None,
+856 |         eps: float = 1e-6,
+    |
+help: Convert to `X | None`
+    |
+853 |         observed_penalty_beta: float = 10.0,
+    -         X_pending: Optional[Tensor] = None,
+854 +         X_pending: Tensor | None = None,
+855 |         X_observed: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:855:21
+    |
+853 |         observed_penalty_beta: float = 10.0,
+854 |         X_pending: Optional[Tensor] = None,
+855 |         X_observed: Optional[Tensor] = None,
+    |                     ^^^^^^^^^^^^^^^^
+856 |         eps: float = 1e-6,
+857 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+854 |         X_pending: Optional[Tensor] = None,
+    -         X_observed: Optional[Tensor] = None,
+855 +         X_observed: Tensor | None = None,
+856 |         eps: float = 1e-6,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:885:25
+    |
+883 |         self.eps = float(eps)
+884 |
+885 |         self.X_pending: Optional[Tensor] = None
+    |                         ^^^^^^^^^^^^^^^^
+886 |         self.set_X_pending(X_pending)
+    |
+help: Convert to `X | None`
+    |
+884 |
+    -         self.X_pending: Optional[Tensor] = None
+885 +         self.X_pending: Tensor | None = None
+886 |         self.set_X_pending(X_pending)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:888:26
+    |
+886 |         self.set_X_pending(X_pending)
+887 |
+888 |         self.X_observed: Optional[Tensor] = None
+    |                          ^^^^^^^^^^^^^^^^
+889 |         self.set_X_observed(X_observed)
+    |
+help: Convert to `X | None`
+    |
+887 |
+    -         self.X_observed: Optional[Tensor] = None
+888 +         self.X_observed: Tensor | None = None
+889 |         self.set_X_observed(X_observed)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:891:40
+    |
+889 |         self.set_X_observed(X_observed)
+890 |
+891 |     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    |                                        ^^^^^^^^^^^^^^^^
+892 |         self.X_pending = _coerce_reference_to_tensor_for_ipv(X_pending)
+    |
+help: Convert to `X | None`
+    |
+890 |
+    -     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+891 +     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
+892 |         self.X_pending = _coerce_reference_to_tensor_for_ipv(X_pending)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\active_learning\single_output.py:894:42
+    |
+892 |         self.X_pending = _coerce_reference_to_tensor_for_ipv(X_pending)
+893 |
+894 |     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+    |                                          ^^^^^^^^^^^^^^^^
+895 |         self.X_observed = _coerce_reference_to_tensor_for_ipv(_resolve_observed_X_for_ipv(self.model, X_observed))
+    |
+help: Convert to `X | None`
+    |
+893 |
+    -     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+894 +     def set_X_observed(self, X_observed: Tensor | None = None) -> None:
+895 |         self.X_observed = _coerce_reference_to_tensor_for_ipv(_resolve_observed_X_for_ipv(self.model, X_observed))
+    |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src\bochan\acquisition\binary\base.py:1:1
+   |
+ 1 | / from __future__ import annotations
+ 2 | |
+ 3 | | import inspect
+ 4 | | import math
+ 5 | | from typing import Callable, Literal, Optional
+ 6 | |
+ 7 | | import torch
+ 8 | | from botorch.acquisition import AcquisitionFunction
+ 9 | | from botorch.models.model import Model
+10 | | from botorch.models import ModelListGP
+11 | | from botorch.models.gpytorch import ModelListGPyTorchModel
+12 | | from torch import Tensor
+13 | | from bochan.acquisition._duplicate_exclusion import (
+14 | |     hard_reference_duplicate_penalty_per_point,
+15 | |     hard_same_batch_duplicate_penalty_per_point,
+16 | |     resolve_observed_X,
+17 | | )
+18 | | from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
+   | |________________________________________________________________________________________^
+help: Organize imports
+   |
+8  | from botorch.acquisition import AcquisitionFunction
+   - from botorch.models.model import Model
+9  | from botorch.models import ModelListGP
+10 | from botorch.models.gpytorch import ModelListGPyTorchModel
+11 + from botorch.models.model import Model
+12 | from torch import Tensor
+13 +
+14 | from bochan.acquisition._duplicate_exclusion import (
+--------------------------------------------------------------------------------
+19 | from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
+   -
+20 |
+   |
+
+UP035 [*] Import from `collections.abc` instead: `Callable`
+ --> src\bochan\acquisition\binary\base.py:5:1
+  |
+3 | import inspect
+4 | import math
+5 | from typing import Callable, Literal, Optional
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+6 |
+7 | import torch
+  |
+help: Import from `collections.abc`
+  |
+4 | import math
+  - from typing import Callable, Literal, Optional
+5 + from typing import Literal, Optional
+6 + from collections.abc import Callable
+7 |
+  |
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\binary\base.py:82:23
+   |
+80 |         roi_threshold: float = 0.5,
+81 |         roi_target_prob: float = 0.8,
+82 |         roi_interval: Optional[tuple[float, float]] = None,
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+83 |         roi_beta: float = 20.0,
+84 |         roi_bandwidth: float = 0.15,
+   |
+help: Convert to `X | None`
+   |
+81 |         roi_target_prob: float = 0.8,
+   -         roi_interval: Optional[tuple[float, float]] = None,
+82 +         roi_interval: tuple[float, float] | None = None,
+83 |         roi_beta: float = 20.0,
+   |
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\binary\base.py:88:24
+   |
+86 |         roi_weight_scale: float = 1.0,
+87 |         roi_aggregate_reduction: ReductionType = "mean",
+88 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+89 |         # hetero noise
+90 |         noise_mode: NoiseWeightMode = "inverse_linear",
+   |
+help: Convert to `X | None`
+   |
+87 |         roi_aggregate_reduction: ReductionType = "mean",
+   -         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+88 +         roi_weight_fn: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+89 |         # hetero noise
+   |
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\binary\base.py:88:51
+   |
+86 |         roi_weight_scale: float = 1.0,
+87 |         roi_aggregate_reduction: ReductionType = "mean",
+88 |         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   |                                                   ^^^^^^^^^^^^^^^^
+89 |         # hetero noise
+90 |         noise_mode: NoiseWeightMode = "inverse_linear",
+   |
+help: Convert to `X | None`
+   |
+87 |         roi_aggregate_reduction: ReductionType = "mean",
+   -         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+88 +         roi_weight_fn: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+89 |         # hetero noise
+   |
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\binary\base.py:96:26
+   |
+94 |         noise_weight_scale: float = 1.0,
+95 |         noise_model_outputs_log_var: bool = True,
+96 |         noise_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+97 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+98 |         X_pending: Optional[Tensor] = None,
+   |
+help: Convert to `X | None`
+   |
+95 |         noise_model_outputs_log_var: bool = True,
+   -         noise_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+96 +         noise_weight_fn: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+97 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   |
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\binary\base.py:96:53
+   |
+94 |         noise_weight_scale: float = 1.0,
+95 |         noise_model_outputs_log_var: bool = True,
+96 |         noise_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   |                                                     ^^^^^^^^^^^^^^^^
+97 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+98 |         X_pending: Optional[Tensor] = None,
+   |
+help: Convert to `X | None`
+   |
+95 |         noise_model_outputs_log_var: bool = True,
+   -         noise_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+96 +         noise_weight_fn: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+97 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   |
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\binary\base.py:97:20
+   |
+95 |         noise_model_outputs_log_var: bool = True,
+96 |         noise_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+97 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+98 |         X_pending: Optional[Tensor] = None,
+99 |         X_observed: Optional[Tensor] = None,
+   |
+help: Convert to `X | None`
+   |
+96 |         noise_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+97 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+98 |         X_pending: Optional[Tensor] = None,
+   |
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\binary\base.py:97:47
+   |
+95 |         noise_model_outputs_log_var: bool = True,
+96 |         noise_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+97 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   |                                               ^^^^^^^^^^^^^^^^
+98 |         X_pending: Optional[Tensor] = None,
+99 |         X_observed: Optional[Tensor] = None,
+   |
+help: Convert to `X | None`
+   |
+96 |         noise_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+97 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+98 |         X_pending: Optional[Tensor] = None,
+   |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:98:20
+    |
+ 96 |         noise_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+ 97 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+ 98 |         X_pending: Optional[Tensor] = None,
+    |                    ^^^^^^^^^^^^^^^^
+ 99 |         X_observed: Optional[Tensor] = None,
+100 |         observed_penalty_weight: float = 0.0,
+    |
+help: Convert to `X | None`
+   |
+97 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+   -         X_pending: Optional[Tensor] = None,
+98 +         X_pending: Tensor | None = None,
+99 |         X_observed: Optional[Tensor] = None,
+   |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:99:21
+    |
+ 97 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+ 98 |         X_pending: Optional[Tensor] = None,
+ 99 |         X_observed: Optional[Tensor] = None,
+    |                     ^^^^^^^^^^^^^^^^
+100 |         observed_penalty_weight: float = 0.0,
+101 |         observed_penalty_beta: float = 10.0,
+    |
+help: Convert to `X | None`
+    |
+98  |         X_pending: Optional[Tensor] = None,
+    -         X_observed: Optional[Tensor] = None,
+99  +         X_observed: Tensor | None = None,
+100 |         observed_penalty_weight: float = 0.0,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:170:14
+    |
+168 |         X_ref,
+169 |         *,
+170 |         ref: Optional[Tensor] = None,
+    |              ^^^^^^^^^^^^^^^^
+171 |     ) -> Optional[Tensor]:
+172 |         if X_ref is None:
+    |
+help: Convert to `X | None`
+    |
+169 |         *,
+    -         ref: Optional[Tensor] = None,
+170 +         ref: Tensor | None = None,
+171 |     ) -> Optional[Tensor]:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:171:10
+    |
+169 |         *,
+170 |         ref: Optional[Tensor] = None,
+171 |     ) -> Optional[Tensor]:
+    |          ^^^^^^^^^^^^^^^^
+172 |         if X_ref is None:
+173 |             return None
+    |
+help: Convert to `X | None`
+    |
+170 |         ref: Optional[Tensor] = None,
+    -     ) -> Optional[Tensor]:
+171 +     ) -> Tensor | None:
+172 |         if X_ref is None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:194:40
+    |
+192 |         return out.detach()
+193 |
+194 |     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    |                                        ^^^^^^^^^^^^^^^^
+195 |         self.X_pending = self._coerce_reference_to_tensor(X_pending)
+    |
+help: Convert to `X | None`
+    |
+193 |
+    -     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+194 +     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
+195 |         self.X_pending = self._coerce_reference_to_tensor(X_pending)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:197:42
+    |
+195 |         self.X_pending = self._coerce_reference_to_tensor(X_pending)
+196 |
+197 |     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+    |                                          ^^^^^^^^^^^^^^^^
+198 |         self.X_observed = self._coerce_reference_to_tensor(resolve_observed_X(self.model, X_observed))
+    |
+help: Convert to `X | None`
+    |
+196 |
+    -     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+197 +     def set_X_observed(self, X_observed: Tensor | None = None) -> None:
+198 |         self.X_observed = self._coerce_reference_to_tensor(resolve_observed_X(self.model, X_observed))
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:479:20
+    |
+477 |         self,
+478 |         score_per_point: Tensor,
+479 |         reduction: Optional[ReductionType] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^
+480 |     ) -> Tensor:
+481 |         """
+    |
+help: Convert to `X | None`
+    |
+478 |         score_per_point: Tensor,
+    -         reduction: Optional[ReductionType] = None,
+479 +         reduction: ReductionType | None = None,
+480 |     ) -> Tensor:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:583:57
+    |
+581 |     # pending / duplicate penalty
+582 |     # =========================================================
+583 |     def _get_reference_in_feature_space(self, X_ref) -> Optional[Tensor]:
+    |                                                         ^^^^^^^^^^^^^^^^
+584 |         X_ref = self._coerce_reference_to_tensor(X_ref)
+585 |         if X_ref is None or X_ref.numel() == 0:
+    |
+help: Convert to `X | None`
+    |
+582 |     # =========================================================
+    -     def _get_reference_in_feature_space(self, X_ref) -> Optional[Tensor]:
+583 +     def _get_reference_in_feature_space(self, X_ref) -> Tensor | None:
+584 |         X_ref = self._coerce_reference_to_tensor(X_ref)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:592:48
+    |
+590 |         return self._ensure_q_batch(transformed)
+591 |
+592 |     def _get_pending_in_feature_space(self) -> Optional[Tensor]:
+    |                                                ^^^^^^^^^^^^^^^^
+593 |         """X_pending を現在の candidate と同じ feature space に写す。"""
+594 |         return self._get_reference_in_feature_space(getattr(self, "X_pending", None))
+    |
+help: Convert to `X | None`
+    |
+591 |
+    -     def _get_pending_in_feature_space(self) -> Optional[Tensor]:
+592 +     def _get_pending_in_feature_space(self) -> Tensor | None:
+593 |         """X_pending を現在の candidate と同じ feature space に写す。"""
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:596:49
+    |
+594 |         return self._get_reference_in_feature_space(getattr(self, "X_pending", None))
+595 |
+596 |     def _get_observed_in_feature_space(self) -> Optional[Tensor]:
+    |                                                 ^^^^^^^^^^^^^^^^
+597 |         """X_observed を現在の candidate と同じ feature space に写す。"""
+598 |         return self._get_reference_in_feature_space(getattr(self, "X_observed", None))
+    |
+help: Convert to `X | None`
+    |
+595 |
+    -     def _get_observed_in_feature_space(self) -> Optional[Tensor]:
+596 +     def _get_observed_in_feature_space(self) -> Tensor | None:
+597 |         """X_observed を現在の candidate と同じ feature space に写す。"""
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:672:20
+    |
+670 |         self,
+671 |         X: Tensor,
+672 |         reduction: Optional[ReductionType] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^
+673 |     ) -> Tensor:
+674 |         return self._reduce_q(self._pending_penalty_per_point(X), reduction=reduction)
+    |
+help: Convert to `X | None`
+    |
+671 |         X: Tensor,
+    -         reduction: Optional[ReductionType] = None,
+672 +         reduction: ReductionType | None = None,
+673 |     ) -> Tensor:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:679:20
+    |
+677 |         self,
+678 |         X: Tensor,
+679 |         reduction: Optional[ReductionType] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^
+680 |     ) -> Tensor:
+681 |         return self._reduce_q(self._candidate_penalty_per_point(X), reduction=reduction)
+    |
+help: Convert to `X | None`
+    |
+678 |         X: Tensor,
+    -         reduction: Optional[ReductionType] = None,
+679 +         reduction: ReductionType | None = None,
+680 |     ) -> Tensor:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:689:12
+    |
+687 |         self,
+688 |         mean_prob: Tensor,
+689 |         X: Optional[Tensor] = None,
+    |            ^^^^^^^^^^^^^^^^
+690 |     ) -> Tensor:
+691 |         """
+    |
+help: Convert to `X | None`
+    |
+688 |         mean_prob: Tensor,
+    -         X: Optional[Tensor] = None,
+689 +         X: Tensor | None = None,
+690 |     ) -> Tensor:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:732:12
+    |
+730 |         score: Tensor,
+731 |         mean_prob: Tensor,
+732 |         X: Optional[Tensor] = None,
+    |            ^^^^^^^^^^^^^^^^
+733 |     ) -> Tensor:
+734 |         """
+    |
+help: Convert to `X | None`
+    |
+731 |         mean_prob: Tensor,
+    -         X: Optional[Tensor] = None,
+732 +         X: Tensor | None = None,
+733 |     ) -> Tensor:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:750:12
+    |
+748 |         self,
+749 |         mean_prob: Tensor,
+750 |         X: Optional[Tensor] = None,
+    |            ^^^^^^^^^^^^^^^^
+751 |     ) -> Tensor:
+752 |         """
+    |
+help: Convert to `X | None`
+    |
+749 |         mean_prob: Tensor,
+    -         X: Optional[Tensor] = None,
+750 +         X: Tensor | None = None,
+751 |     ) -> Tensor:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:763:12
+    |
+761 |         score: Tensor,
+762 |         mean_prob: Tensor,
+763 |         X: Optional[Tensor] = None,
+    |            ^^^^^^^^^^^^^^^^
+764 |     ) -> Tensor:
+765 |         """
+    |
+help: Convert to `X | None`
+    |
+762 |         mean_prob: Tensor,
+    -         X: Optional[Tensor] = None,
+763 +         X: Tensor | None = None,
+764 |     ) -> Tensor:
+    |
+
+SIM108 Use ternary operator `noise_var = noise_pred.exp() if self.noise_model_outputs_log_var else noise_pred` instead of `if`-`else`-block
+   --> src\bochan\acquisition\binary\base.py:817:9
+    |
+815 |           noise_pred = self._squeeze_last_output_dim(noise_post.mean)
+816 |
+817 | /         if self.noise_model_outputs_log_var:
+818 | |             noise_var = noise_pred.exp()
+819 | |         else:
+820 | |             noise_var = noise_pred
+    | |__________________________________^
+821 |
+822 |           return noise_var.clamp_min(self.eps)
+    |
+help: Replace `if`-`else`-block with `noise_var = noise_pred.exp() if self.noise_model_outputs_log_var else noise_pred`
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\base.py:827:12
+    |
+825 |         self,
+826 |         noise_var: Tensor,
+827 |         X: Optional[Tensor] = None,
+    |            ^^^^^^^^^^^^^^^^
+828 |     ) -> Tensor:
+829 |         """
+    |
+help: Convert to `X | None`
+    |
+826 |         noise_var: Tensor,
+    -         X: Optional[Tensor] = None,
+827 +         X: Tensor | None = None,
+828 |     ) -> Tensor:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\binary\base.py:1048:12
+     |
+1046 |         self,
+1047 |         score: Tensor,
+1048 |         X: Optional[Tensor] = None,
+     |            ^^^^^^^^^^^^^^^^
+1049 |         name: str = "ClassificationAcquisition",
+1050 |     ) -> Tensor:
+     |
+help: Convert to `X | None`
+     |
+1047 |         score: Tensor,
+     -         X: Optional[Tensor] = None,
+1048 +         X: Tensor | None = None,
+1049 |         name: str = "ClassificationAcquisition",
+     |
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:1:1
+   |
+ 1 | / from __future__ import annotations
+ 2 | |
+ 3 | | from typing import Callable, Literal, Optional, Union
+ 4 | |
+ 5 | | import torch
+ 6 | | from torch import Tensor
+ 7 | | from torch.distributions import Normal
+ 8 | |
+ 9 | | from botorch.acquisition import AcquisitionFunction
+10 | | from botorch.acquisition.monte_carlo import MCAcquisitionFunction
+11 | | from botorch.acquisition.multi_objective.monte_carlo import (
+12 | |     qExpectedHypervolumeImprovement,
+13 | |     qNoisyExpectedHypervolumeImprovement,
+14 | | )
+15 | | from botorch.acquisition.multi_objective.objective import (
+16 | |     IdentityMCMultiOutputObjective,
+17 | |     MCMultiOutputObjective,
+18 | |     WeightedMCMultiOutputObjective,
+19 | | )
+20 | | from botorch.models.model import Model
+21 | | from botorch.sampling.normal import SobolQMCNormalSampler
+22 | | from botorch.utils.multi_objective.box_decompositions.non_dominated import (
+23 | |     FastNondominatedPartitioning,
+24 | | )
+25 | | from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
+26 | |
+27 | | from bochan.acquisition._duplicate_exclusion import (
+28 | |     hard_reference_duplicate_penalty_per_point,
+29 | |     hard_same_batch_duplicate_penalty_per_point,
+30 | |     resolve_observed_X,
+31 | | )
+32 | |
+33 | | from bochan.acquisition.binary.epistemic import (
+34 | |     as_epistemic_probability_model,
+35 | |     get_binary_latent_posterior,
+36 | | )
+37 | |
+38 | | from ._utils import (
+39 | |     MultiOutputMode,
+40 | |     PoFMode,
+41 | |     ReductionType,
+42 | |     aggregate_outputs,
+43 | |     apply_pointwise_score_objective,
+44 | |     ensure_q_batch,
+45 | |     get_model_posterior,
+46 | |     normalize_mean_shape,
+47 | |     reduce_q,
+48 | |     reshape_samples,
+49 | |     shape_X_for_model,
+50 | |     to_probability,
+51 | | )
+   | |_^
+help: Organize imports
+   |
+5  | import torch
+   - from torch import Tensor
+   - from torch.distributions import Normal
+   -
+6  | from botorch.acquisition import AcquisitionFunction
+--------------------------------------------------------------------------------
+22 | from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
+23 + from torch import Tensor
+24 + from torch.distributions import Normal
+25 |
+--------------------------------------------------------------------------------
+30 | )
+   -
+31 | from bochan.acquisition.binary.epistemic import (
+   |
+
+UP035 [*] Import from `collections.abc` instead: `Callable`
+ --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:3:1
+  |
+1 | from __future__ import annotations
+2 |
+3 | from typing import Callable, Literal, Optional, Union
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+4 |
+5 | import torch
+  |
+help: Import from `collections.abc`
+  |
+2 |
+  - from typing import Callable, Literal, Optional, Union
+3 + from typing import Literal, Optional, Union
+4 + from collections.abc import Callable
+5 |
+  |
+
+F401 [*] `typing.Union` imported but unused
+ --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:3:49
+  |
+1 | from __future__ import annotations
+2 |
+3 | from typing import Callable, Literal, Optional, Union
+  |                                                 ^^^^^
+4 |
+5 | import torch
+  |
+help: Remove unused import: `typing.Union`
+  |
+2 |
+  - from typing import Callable, Literal, Optional, Union
+3 + from typing import Callable, Literal, Optional
+4 |
+  |
+
+F401 [*] `botorch.acquisition.multi_objective.objective.IdentityMCMultiOutputObjective` imported but unused
+  --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:16:5
+   |
+14 | )
+15 | from botorch.acquisition.multi_objective.objective import (
+16 |     IdentityMCMultiOutputObjective,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+17 |     MCMultiOutputObjective,
+18 |     WeightedMCMultiOutputObjective,
+   |
+help: Remove unused import
+   |
+15 | from botorch.acquisition.multi_objective.objective import (
+   -     IdentityMCMultiOutputObjective,
+16 |     MCMultiOutputObjective,
+   -     WeightedMCMultiOutputObjective,
+17 | )
+   |
+
+F401 [*] `botorch.acquisition.multi_objective.objective.WeightedMCMultiOutputObjective` imported but unused
+  --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:18:5
+   |
+16 |     IdentityMCMultiOutputObjective,
+17 |     MCMultiOutputObjective,
+18 |     WeightedMCMultiOutputObjective,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+19 | )
+20 | from botorch.models.model import Model
+   |
+help: Remove unused import
+   |
+15 | from botorch.acquisition.multi_objective.objective import (
+   -     IdentityMCMultiOutputObjective,
+16 |     MCMultiOutputObjective,
+   -     WeightedMCMultiOutputObjective,
+17 | )
+   |
+
+F401 [*] `botorch.utils.multi_objective.box_decompositions.non_dominated.FastNondominatedPartitioning` imported but unused
+  --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:23:5
+   |
+21 | from botorch.sampling.normal import SobolQMCNormalSampler
+22 | from botorch.utils.multi_objective.box_decompositions.non_dominated import (
+23 |     FastNondominatedPartitioning,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+24 | )
+25 | from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
+   |
+help: Remove unused import: `botorch.utils.multi_objective.box_decompositions.non_dominated.FastNondominatedPartitioning`
+   |
+21 | from botorch.sampling.normal import SobolQMCNormalSampler
+   - from botorch.utils.multi_objective.box_decompositions.non_dominated import (
+   -     FastNondominatedPartitioning,
+   - )
+22 | from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
+   |
+
+F401 [*] `botorch.utils.transforms.concatenate_pending_points` imported but unused
+  --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:25:38
+   |
+23 |     FastNondominatedPartitioning,
+24 | )
+25 | from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+26 |
+27 | from bochan.acquisition._duplicate_exclusion import (
+   |
+help: Remove unused import: `botorch.utils.transforms.concatenate_pending_points`
+   |
+24 | )
+   - from botorch.utils.transforms import concatenate_pending_points, t_batch_mode_transform
+25 + from botorch.utils.transforms import t_batch_mode_transform
+26 |
+   |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:120:25
+    |
+118 |         reduction: ReductionType = "mean",
+119 |         output_mode: MultiOutputMode = "all_positive",
+120 |         output_weights: Optional[Tensor] = None,
+    |                         ^^^^^^^^^^^^^^^^
+121 |         pending_penalty_weight: float = 0.0,
+122 |         pending_penalty_beta: float = 10.0,
+    |
+help: Convert to `X | None`
+    |
+119 |         output_mode: MultiOutputMode = "all_positive",
+    -         output_weights: Optional[Tensor] = None,
+120 +         output_weights: Tensor | None = None,
+121 |         pending_penalty_weight: float = 0.0,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:123:20
+    |
+121 |         pending_penalty_weight: float = 0.0,
+122 |         pending_penalty_beta: float = 10.0,
+123 |         X_pending: Optional[Tensor] = None,
+    |                    ^^^^^^^^^^^^^^^^
+124 |         X_observed: Optional[Tensor] = None,
+125 |         observed_penalty_weight: float = 0.0,
+    |
+help: Convert to `X | None`
+    |
+122 |         pending_penalty_beta: float = 10.0,
+    -         X_pending: Optional[Tensor] = None,
+123 +         X_pending: Tensor | None = None,
+124 |         X_observed: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:124:21
+    |
+122 |         pending_penalty_beta: float = 10.0,
+123 |         X_pending: Optional[Tensor] = None,
+124 |         X_observed: Optional[Tensor] = None,
+    |                     ^^^^^^^^^^^^^^^^
+125 |         observed_penalty_weight: float = 0.0,
+126 |         observed_penalty_beta: float = 10.0,
+    |
+help: Convert to `X | None`
+    |
+123 |         X_pending: Optional[Tensor] = None,
+    -         X_observed: Optional[Tensor] = None,
+124 +         X_observed: Tensor | None = None,
+125 |         observed_penalty_weight: float = 0.0,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:135:20
+    |
+133 |         apply_sigmoid_if_needed: bool = True,
+134 |         eps: float = 1e-6,
+135 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+136 |     ) -> None:
+137 |         super().__init__(model=model)
+    |
+help: Convert to `X | None`
+    |
+134 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+135 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+136 |     ) -> None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:135:47
+    |
+133 |         apply_sigmoid_if_needed: bool = True,
+134 |         eps: float = 1e-6,
+135 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+136 |     ) -> None:
+137 |         super().__init__(model=model)
+    |
+help: Convert to `X | None`
+    |
+134 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+135 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+136 |     ) -> None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:166:14
+    |
+164 |         X_pending,
+165 |         *,
+166 |         ref: Optional[Tensor] = None,
+    |              ^^^^^^^^^^^^^^^^
+167 |     ) -> Optional[Tensor]:
+168 |         """X_pending を Tensor または None に正規化する。"""
+    |
+help: Convert to `X | None`
+    |
+165 |         *,
+    -         ref: Optional[Tensor] = None,
+166 +         ref: Tensor | None = None,
+167 |     ) -> Optional[Tensor]:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:167:10
+    |
+165 |         *,
+166 |         ref: Optional[Tensor] = None,
+167 |     ) -> Optional[Tensor]:
+    |          ^^^^^^^^^^^^^^^^
+168 |         """X_pending を Tensor または None に正規化する。"""
+169 |         if X_pending is None:
+    |
+help: Convert to `X | None`
+    |
+166 |         ref: Optional[Tensor] = None,
+    -     ) -> Optional[Tensor]:
+167 +     ) -> Tensor | None:
+168 |         """X_pending を Tensor または None に正規化する。"""
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:198:40
+    |
+196 |         return out.detach()
+197 |
+198 |     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    |                                        ^^^^^^^^^^^^^^^^
+199 |         """pending points を raw input space の値として保持する。"""
+200 |         self.X_pending = self._coerce_pending_to_tensor(X_pending)
+    |
+help: Convert to `X | None`
+    |
+197 |
+    -     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+198 +     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
+199 |         """pending points を raw input space の値として保持する。"""
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:202:42
+    |
+200 |         self.X_pending = self._coerce_pending_to_tensor(X_pending)
+201 |
+202 |     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+    |                                          ^^^^^^^^^^^^^^^^
+203 |         """observed points を raw input space の値として保持する。"""
+204 |         self.X_observed = self._coerce_pending_to_tensor(resolve_observed_X(self.model, X_observed))
+    |
+help: Convert to `X | None`
+    |
+201 |
+    -     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+202 +     def set_X_observed(self, X_observed: Tensor | None = None) -> None:
+203 |         """observed points を raw input space の値として保持する。"""
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:211:10
+    |
+209 |         *,
+210 |         ref: Tensor,
+211 |     ) -> Optional[Tensor]:
+    |          ^^^^^^^^^^^^^^^^
+212 |         """X_pending を expanded_X と同じ距離計算空間へ写す。"""
+213 |         Xp = self._coerce_pending_to_tensor(X_pending, ref=ref)
+    |
+help: Convert to `X | None`
+    |
+210 |         ref: Tensor,
+    -     ) -> Optional[Tensor]:
+211 +     ) -> Tensor | None:
+212 |         """X_pending を expanded_X と同じ距離計算空間へ写す。"""
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:224:10
+    |
+222 |         *,
+223 |         ref: Tensor,
+224 |     ) -> Optional[Tensor]:
+    |          ^^^^^^^^^^^^^^^^
+225 |         Xr = self._coerce_pending_to_tensor(X_ref, ref=ref)
+226 |         if Xr is None or Xr.numel() == 0:
+    |
+help: Convert to `X | None`
+    |
+223 |         ref: Tensor,
+    -     ) -> Optional[Tensor]:
+224 +     ) -> Tensor | None:
+225 |         Xr = self._coerce_pending_to_tensor(X_ref, ref=ref)
+    |
+
+SIM102 Use a single `if` statement instead of nested `if` statements
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:422:5
+    |
+421 |       # value が [..., q, 1] のときだけ最後の 1 を output dim とみなして落とす。
+422 | /     if value.ndim >= min_ndim_with_q + 1 and value.shape[-1] == 1:
+423 | |         if value.shape[-2] == q:
+    | |________________________________^
+424 |               return value.squeeze(-1)
+    |
+help: Combine `if` statements using `and`
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:513:43
+    |
+511 |     """
+512 |
+513 |     def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    |                                           ^^^^^^^^^^^^^^^^
+514 |         return samples
+    |
+help: Convert to `X | None`
+    |
+512 |
+    -     def forward(self, samples: Tensor, X: Optional[Tensor] = None) -> Tensor:
+513 +     def forward(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
+514 |         return samples
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:544:18
+    |
+542 |         ref_point: Tensor,
+543 |         *,
+544 |         weights: Optional[Tensor] = None,
+    |                  ^^^^^^^^^^^^^^^^
+545 |         sampler: Optional[SobolQMCNormalSampler] = None,
+546 |         objective: Optional[MCMultiOutputObjective] = None,
+    |
+help: Convert to `X | None`
+    |
+543 |         *,
+    -         weights: Optional[Tensor] = None,
+544 +         weights: Tensor | None = None,
+545 |         sampler: Optional[SobolQMCNormalSampler] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:545:18
+    |
+543 |         *,
+544 |         weights: Optional[Tensor] = None,
+545 |         sampler: Optional[SobolQMCNormalSampler] = None,
+    |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+546 |         objective: Optional[MCMultiOutputObjective] = None,
+547 |         rho: float = 0.05,
+    |
+help: Convert to `X | None`
+    |
+544 |         weights: Optional[Tensor] = None,
+    -         sampler: Optional[SobolQMCNormalSampler] = None,
+545 +         sampler: SobolQMCNormalSampler | None = None,
+546 |         objective: Optional[MCMultiOutputObjective] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:546:20
+    |
+544 |         weights: Optional[Tensor] = None,
+545 |         sampler: Optional[SobolQMCNormalSampler] = None,
+546 |         objective: Optional[MCMultiOutputObjective] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+547 |         rho: float = 0.05,
+548 |         samples_are_probs: bool = False,
+    |
+help: Convert to `X | None`
+    |
+545 |         sampler: Optional[SobolQMCNormalSampler] = None,
+    -         objective: Optional[MCMultiOutputObjective] = None,
+546 +         objective: MCMultiOutputObjective | None = None,
+547 |         rho: float = 0.05,
+    |
+
+SIM108 Use ternary operator `X_obj = X_baseline.unsqueeze(0) if X_baseline.ndim == 2 else X_baseline` instead of `if`-`else`-block
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:599:13
+    |
+597 |               ).reshape(-1, m)
+598 |
+599 | /             if X_baseline.ndim == 2:
+600 | |                 X_obj = X_baseline.unsqueeze(0)  # [1, N, d]
+601 | |             else:
+602 | |                 X_obj = X_baseline
+    | |__________________________________^
+603 |
+604 |               values = y.unsqueeze(0).unsqueeze(0)  # [1, 1, N, m]
+    |
+help: Replace `if`-`else`-block with `X_obj = X_baseline.unsqueeze(0) if X_baseline.ndim == 2 else X_baseline`
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\binary\bayesian_optimization\multi_output.py:708:40
+    |
+706 |         self.eps = float(eps)
+707 |
+708 |     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    |                                        ^^^^^^^^^^^^^^^^
+709 |         X_pending = _detach_optional_tensor(X_pending)
+710 |         if hasattr(self.objective_acqf, "set_X_pending"):
+    |
+help: Convert to `X | None`
+    |
+707 |
+    -     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+708 +     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
+709 |         X_pending = _detach_optional_tensor(X_pending)
+    |
+
+SIM108 Use ternary operator `value = value.squeeze(-1) if value.shape[-1] == 1 else value.mean(dim=-1)` instead of `if`-`else`-block
+  --> src\bochan\acquisition\multiclass\active_learning\multi_output.py:48:9
+   |
+46 |           value = value.squeeze(-1)
+47 |       while value.ndim > reference.ndim:
+48 | /         if value.shape[-1] == 1:
+49 | |             value = value.squeeze(-1)
+50 | |         else:
+51 | |             value = value.mean(dim=-1)
+   | |______________________________________^
+52 |       if value.shape == reference.shape:
+53 |           return value.to(reference)
+   |
+help: Replace `if`-`else`-block with `value = value.squeeze(-1) if value.shape[-1] == 1 else value.mean(dim=-1)`
+
+F841 Local variable `q_like` is assigned to but never used
+   --> src\bochan\acquisition\multiclass\active_learning\multi_output.py:312:9
+    |
+310 |             )
+311 |
+312 |         q_like = int(after_batch[q_pos])
+    |         ^^^^^^
+313 |         out = probs.reshape(*leading, *batch_shape, *after_batch, c)
+314 |         # Average singleton / class-batch / latent-batch axes before q_like.
+    |
+help: Remove assignment to unused variable `q_like`
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\multiclass\bayesian_optimization\single_output.py:237:40
+    |
+237 | def _sample_ndim_from_sampler(sampler: Optional[MCSampler]) -> int:
+    |                                        ^^^^^^^^^^^^^^^^^^^
+238 |     sample_shape = getattr(sampler, "sample_shape", torch.Size([1]))
+239 |     return len(sample_shape)
+    |
+help: Convert to `X | None`
+    |
+236 |
+    - def _sample_ndim_from_sampler(sampler: Optional[MCSampler]) -> int:
+237 + def _sample_ndim_from_sampler(sampler: MCSampler | None) -> int:
+238 |     sample_shape = getattr(sampler, "sample_shape", torch.Size([1]))
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\multiclass\bayesian_optimization\single_output.py:242:53
+    |
+242 | def _mean_over_sample_dims(values: Tensor, sampler: Optional[MCSampler]) -> Tensor:
+    |                                                     ^^^^^^^^^^^^^^^^^^^
+243 |     sample_ndim = _sample_ndim_from_sampler(sampler)
+244 |     if sample_ndim <= 0:
+    |
+help: Convert to `X | None`
+    |
+241 |
+    - def _mean_over_sample_dims(values: Tensor, sampler: Optional[MCSampler]) -> Tensor:
+242 + def _mean_over_sample_dims(values: Tensor, sampler: MCSampler | None) -> Tensor:
+243 |     sample_ndim = _sample_ndim_from_sampler(sampler)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\multiclass\bayesian_optimization\single_output.py:249:52
+    |
+249 | def _std_over_sample_dims(values: Tensor, sampler: Optional[MCSampler], *, eps: float) -> Tensor:
+    |                                                    ^^^^^^^^^^^^^^^^^^^
+250 |     sample_ndim = _sample_ndim_from_sampler(sampler)
+251 |     if sample_ndim <= 0:
+    |
+help: Convert to `X | None`
+    |
+248 |
+    - def _std_over_sample_dims(values: Tensor, sampler: Optional[MCSampler], *, eps: float) -> Tensor:
+249 + def _std_over_sample_dims(values: Tensor, sampler: MCSampler | None, *, eps: float) -> Tensor:
+250 |     sample_ndim = _sample_ndim_from_sampler(sampler)
+    |
+
+SIM108 Use ternary operator `out = tensors[0] if len(tensors) == 1 else torch.cat([x.reshape(-1, x.shape[-1]) for x in tensors], dim=-2)` instead of `if`-`else`-block
+   --> src\bochan\acquisition\multiclass\bayesian_optimization\single_output.py:266:9
+    |
+264 |           if len(tensors) == 0:
+265 |               return None
+266 | /         if len(tensors) == 1:
+267 | |             out = tensors[0]
+268 | |         else:
+269 | |             out = torch.cat([x.reshape(-1, x.shape[-1]) for x in tensors], dim=-2)
+    | |__________________________________________________________________________________^
+270 |       else:
+271 |           raise TypeError(f"Reference points must be Tensor, sequence of Tensors, or None. Got {type(X_ref)}.")
+    |
+help: Replace `if`-`else`-block with `out = tensors[0] if len(tensors) == 1 else torch.cat([x.reshape(-1, x.shape[-1]) for x in tensors], dim=-2)`
+
+B009 [*] Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.
+   --> src\bochan\acquisition\multiclass\bayesian_optimization\single_output.py:315:57
+    |
+313 |             logits = _align_class_probs_to_X(logits, Xq, num_classes=num_classes, name="latent posterior mean")
+314 |             probs = torch.softmax(logits, dim=-1)
+315 |         elif hasattr(model, "class_probs") and callable(getattr(model, "class_probs")):
+    |                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+316 |             probs = model.class_probs(Xq)
+317 |             probs = _align_class_probs_to_X(probs, Xq, num_classes=num_classes, name="class_probs")
+    |
+help: Replace `getattr` with attribute access
+    |
+314 |             probs = torch.softmax(logits, dim=-1)
+    -         elif hasattr(model, "class_probs") and callable(getattr(model, "class_probs")):
+315 +         elif hasattr(model, "class_probs") and callable(model.class_probs):
+316 |             probs = model.class_probs(Xq)
+    |
+
+B009 [*] Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.
+   --> src\bochan\acquisition\multiclass\bayesian_optimization\single_output.py:318:67
+    |
+316 |             probs = model.class_probs(Xq)
+317 |             probs = _align_class_probs_to_X(probs, Xq, num_classes=num_classes, name="class_probs")
+318 |         elif hasattr(model, "probability_posterior") and callable(getattr(model, "probability_posterior")):
+    |                                                                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+319 |             probs = model.probability_posterior(Xq).mean
+320 |             probs = _align_class_probs_to_X(probs, Xq, num_classes=num_classes, name="probability_posterior.mean")
+    |
+help: Replace `getattr` with attribute access
+    |
+317 |             probs = _align_class_probs_to_X(probs, Xq, num_classes=num_classes, name="class_probs")
+    -         elif hasattr(model, "probability_posterior") and callable(getattr(model, "probability_posterior")):
+318 +         elif hasattr(model, "probability_posterior") and callable(model.probability_posterior):
+319 |             probs = model.probability_posterior(Xq).mean
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\multiclass\bayesian_optimization\single_output.py:374:18
+    |
+372 |         model: Model,
+373 |         *,
+374 |         sampler: Optional[MCSampler] = None,
+    |                  ^^^^^^^^^^^^^^^^^^^
+375 |         target_class: int | Sequence[int] | None = None,
+376 |         class_reduction: ClassReductionType = "mean",
+    |
+help: Convert to `X | None`
+    |
+373 |         *,
+    -         sampler: Optional[MCSampler] = None,
+374 +         sampler: MCSampler | None = None,
+375 |         target_class: int | Sequence[int] | None = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\multiclass\bayesian_optimization\single_output.py:392:20
+    |
+390 |         X_observed: Tensor | None = None,
+391 |         eps: float = 1e-8,
+392 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+393 |         **kwargs,
+394 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+391 |         eps: float = 1e-8,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+392 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+393 |         **kwargs,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\multiclass\bayesian_optimization\single_output.py:392:47
+    |
+390 |         X_observed: Tensor | None = None,
+391 |         eps: float = 1e-8,
+392 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+393 |         **kwargs,
+394 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+391 |         eps: float = 1e-8,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+392 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+393 |         **kwargs,
+    |
+
+B009 [*] Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.
+   --> src\bochan\acquisition\multiclass\bayesian_optimization\single_output.py:466:72
+    |
+464 |             logits = self._align_class_tensor(logits, Xq, sample_ndim=sample_ndim, name="latent posterior samples")
+465 |             probs = torch.softmax(logits, dim=-1)
+466 |         elif hasattr(self.model, "probability_posterior") and callable(getattr(self.model, "probability_posterior")):
+    |                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+467 |             post = self.model.probability_posterior(Xq)
+468 |             probs = self.get_posterior_samples(post)
+    |
+help: Replace `getattr` with attribute access
+    |
+465 |             probs = torch.softmax(logits, dim=-1)
+    -         elif hasattr(self.model, "probability_posterior") and callable(getattr(self.model, "probability_posterior")):
+466 +         elif hasattr(self.model, "probability_posterior") and callable(self.model.probability_posterior):
+467 |             post = self.model.probability_posterior(Xq)
+    |
+
+B009 [*] Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.
+   --> src\bochan\acquisition\multiclass\bayesian_optimization\single_output.py:470:62
+    |
+468 |             probs = self.get_posterior_samples(post)
+469 |             probs = self._align_class_tensor(probs, Xq, sample_ndim=sample_ndim, name="probability posterior samples")
+470 |         elif hasattr(self.model, "class_probs") and callable(getattr(self.model, "class_probs")):
+    |                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+471 |             mean_probs = self.model.class_probs(Xq)
+472 |             mean_probs = self._align_class_tensor(mean_probs, Xq, name="class_probs")
+    |
+help: Replace `getattr` with attribute access
+    |
+469 |             probs = self._align_class_tensor(probs, Xq, sample_ndim=sample_ndim, name="probability posterior samples")
+    -         elif hasattr(self.model, "class_probs") and callable(getattr(self.model, "class_probs")):
+470 +         elif hasattr(self.model, "class_probs") and callable(self.model.class_probs):
+471 |             mean_probs = self.model.class_probs(Xq)
+    |
+
+B009 [*] Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.
+   --> src\bochan\acquisition\multiclass\bayesian_optimization\single_output.py:491:62
+    |
+489 |             logits = self._align_class_tensor(logits, Xq, name="latent posterior mean")
+490 |             probs = torch.softmax(logits, dim=-1)
+491 |         elif hasattr(self.model, "class_probs") and callable(getattr(self.model, "class_probs")):
+    |                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+492 |             probs = self.model.class_probs(Xq)
+493 |             probs = self._align_class_tensor(probs, Xq, name="class_probs")
+    |
+help: Replace `getattr` with attribute access
+    |
+490 |             probs = torch.softmax(logits, dim=-1)
+    -         elif hasattr(self.model, "class_probs") and callable(getattr(self.model, "class_probs")):
+491 +         elif hasattr(self.model, "class_probs") and callable(self.model.class_probs):
+492 |             probs = self.model.class_probs(Xq)
+    |
+
+B009 [*] Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.
+   --> src\bochan\acquisition\multiclass\bayesian_optimization\single_output.py:494:72
+    |
+492 |             probs = self.model.class_probs(Xq)
+493 |             probs = self._align_class_tensor(probs, Xq, name="class_probs")
+494 |         elif hasattr(self.model, "probability_posterior") and callable(getattr(self.model, "probability_posterior")):
+    |                                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+495 |             probs = self.model.probability_posterior(Xq).mean
+496 |             probs = self._align_class_tensor(probs, Xq, name="probability_posterior.mean")
+    |
+help: Replace `getattr` with attribute access
+    |
+493 |             probs = self._align_class_tensor(probs, Xq, name="class_probs")
+    -         elif hasattr(self.model, "probability_posterior") and callable(getattr(self.model, "probability_posterior")):
+494 +         elif hasattr(self.model, "probability_posterior") and callable(self.model.probability_posterior):
+495 |             probs = self.model.probability_posterior(Xq).mean
+    |
+
+UP045 Use `X | None` for type annotations
+  --> src\bochan\acquisition\ordinal\active_learning\hetero_multi_output.py:26:12
+   |
+24 | )
+25 |
+26 | RiskType = Optional[Literal["var", "cvar"]]
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+27 | ReductionType = Literal["mean", "sum", "max"]
+28 | OutputMode = Literal["mean", "sum", "max", "min", "weighted_mean"]
+   |
+help: Convert to `X | None`
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src\bochan\acquisition\ordinal\active_learning\hetero_single_output.py:1:1
+   |
+ 1 | / from __future__ import annotations
+ 2 | |
+ 3 | | import math
+ 4 | | from collections.abc import Callable, Sequence
+ 5 | | from typing import Literal, Optional
+ 6 | |
+ 7 | | import torch
+ 8 | | from botorch.acquisition.monte_carlo import MCAcquisitionFunction
+ 9 | | from botorch.models.model import Model
+10 | | from botorch.sampling.normal import SobolQMCNormalSampler
+11 | | from botorch.utils.transforms import t_batch_mode_transform
+12 | | from torch import Tensor
+13 | |
+14 | | from bochan.acquisition._duplicate_exclusion import (
+15 | |     hard_reference_duplicate_penalty_per_point,
+16 | |     hard_same_batch_duplicate_penalty_per_point,
+17 | | )
+18 | | from ..hetero_utils import get_hetero_ordinal_summary, get_noise_sigma
+   | |______________________________________________________________________^
+19 |
+20 |   RiskType = Optional[Literal["var", "cvar"]]
+   |
+help: Organize imports
+   |
+17 | )
+18 +
+19 | from ..hetero_utils import get_hetero_ordinal_summary, get_noise_sigma
+   |
+
+UP045 Use `X | None` for type annotations
+  --> src\bochan\acquisition\ordinal\active_learning\hetero_single_output.py:20:12
+   |
+18 | from ..hetero_utils import get_hetero_ordinal_summary, get_noise_sigma
+19 |
+20 | RiskType = Optional[Literal["var", "cvar"]]
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+21 | ReductionType = Literal["mean", "sum", "max"]
+22 | NoiseWeightMode = Literal["none", "inverse_linear", "inverse_exp", "custom"]
+   |
+help: Convert to `X | None`
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1:1
+   |
+ 1 | / from __future__ import annotations
+ 2 | |
+ 3 | | import math
+ 4 | | from typing import Callable, Literal, Optional, Sequence
+ 5 | |
+ 6 | | import torch
+ 7 | | from torch import Tensor
+ 8 | | from torch.distributions import Categorical
+ 9 | |
+10 | | from botorch.acquisition.acquisition import AcquisitionFunction
+11 | | from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
+12 | | from botorch.models.model import Model
+13 | | from botorch.sampling.base import MCSampler
+14 | | from botorch.sampling.normal import SobolQMCNormalSampler
+15 | | from botorch.utils.transforms import t_batch_mode_transform
+16 | |
+17 | | from bochan.acquisition._duplicate_exclusion import (
+18 | |     hard_reference_duplicate_penalty_per_point,
+19 | |     hard_same_batch_duplicate_penalty_per_point,
+20 | | )
+21 | | from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+   | |_____________________________________________________________^
+help: Organize imports
+   |
+6  | import torch
+   - from torch import Tensor
+   - from torch.distributions import Categorical
+   -
+7  | from botorch.acquisition.acquisition import AcquisitionFunction
+--------------------------------------------------------------------------------
+12 | from botorch.utils.transforms import t_batch_mode_transform
+13 + from torch import Tensor
+14 + from torch.distributions import Categorical
+15 |
+--------------------------------------------------------------------------------
+20 | from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+   -
+21 |
+   |
+
+UP035 [*] Import from `collections.abc` instead: `Callable`, `Sequence`
+ --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:4:1
+  |
+3 | import math
+4 | from typing import Callable, Literal, Optional, Sequence
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+5 |
+6 | import torch
+  |
+help: Import from `collections.abc`
+  |
+3 | import math
+  - from typing import Callable, Literal, Optional, Sequence
+4 + from typing import Literal, Optional
+5 + from collections.abc import Callable, Sequence
+6 |
+  |
+
+UP045 Use `X | None` for type annotations
+  --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:24:12
+   |
+24 | RiskType = Optional[Literal["var", "cvar"]]
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+25 | ReductionType = Literal["mean", "sum"]
+26 | MultiOutputMode = Literal["mean", "sum", "max", "min", "weighted_mean"]
+   |
+help: Convert to `X | None`
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:36:32
+   |
+36 | def _validate_n_w_risk(*, n_w: Optional[int], risk_type: RiskType, alpha: float) -> None:
+   |                                ^^^^^^^^^^^^^
+37 |     if n_w is not None and int(n_w) <= 0:
+38 |         raise ValueError("n_w must be a positive integer or None.")
+   |
+help: Convert to `X | None`
+   |
+35 |
+   - def _validate_n_w_risk(*, n_w: Optional[int], risk_type: RiskType, alpha: float) -> None:
+36 + def _validate_n_w_risk(*, n_w: int | None, risk_type: RiskType, alpha: float) -> None:
+37 |     if n_w is not None and int(n_w) <= 0:
+   |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:109:14
+    |
+107 |     def __init__(
+108 |         self,
+109 |         n_w: Optional[int] = None,
+    |              ^^^^^^^^^^^^^
+110 |         risk_type: RiskType = None,
+111 |         alpha: float = 0.5,
+    |
+help: Convert to `X | None`
+    |
+108 |         self,
+    -         n_w: Optional[int] = None,
+109 +         n_w: int | None = None,
+110 |         risk_type: RiskType = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:143:38
+    |
+141 |         return X if X.dim() > 2 else X.unsqueeze(0)
+142 |
+143 |     def _batch_shape_from_X(self, X: Optional[Tensor]) -> Optional[torch.Size]:
+    |                                      ^^^^^^^^^^^^^^^^
+144 |         if X is None:
+145 |             return None
+    |
+help: Convert to `X | None`
+    |
+142 |
+    -     def _batch_shape_from_X(self, X: Optional[Tensor]) -> Optional[torch.Size]:
+143 +     def _batch_shape_from_X(self, X: Tensor | None) -> Optional[torch.Size]:
+144 |         if X is None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:143:59
+    |
+141 |         return X if X.dim() > 2 else X.unsqueeze(0)
+142 |
+143 |     def _batch_shape_from_X(self, X: Optional[Tensor]) -> Optional[torch.Size]:
+    |                                                           ^^^^^^^^^^^^^^^^^^^^
+144 |         if X is None:
+145 |             return None
+    |
+help: Convert to `X | None`
+    |
+142 |
+    -     def _batch_shape_from_X(self, X: Optional[Tensor]) -> Optional[torch.Size]:
+143 +     def _batch_shape_from_X(self, X: Optional[Tensor]) -> torch.Size | None:
+144 |         if X is None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:149:28
+    |
+147 |         return Xq.shape[:-2]
+148 |
+149 |     def _q_from_X(self, X: Optional[Tensor]) -> Optional[int]:
+    |                            ^^^^^^^^^^^^^^^^
+150 |         if X is None:
+151 |             return None
+    |
+help: Convert to `X | None`
+    |
+148 |
+    -     def _q_from_X(self, X: Optional[Tensor]) -> Optional[int]:
+149 +     def _q_from_X(self, X: Tensor | None) -> Optional[int]:
+150 |         if X is None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:149:49
+    |
+147 |         return Xq.shape[:-2]
+148 |
+149 |     def _q_from_X(self, X: Optional[Tensor]) -> Optional[int]:
+    |                                                 ^^^^^^^^^^^^^
+150 |         if X is None:
+151 |             return None
+    |
+help: Convert to `X | None`
+    |
+148 |
+    -     def _q_from_X(self, X: Optional[Tensor]) -> Optional[int]:
+149 +     def _q_from_X(self, X: Optional[Tensor]) -> int | None:
+150 |         if X is None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:155:57
+    |
+153 |         return int(Xq.shape[-2])
+154 |
+155 |     def _infer_score_shape_mode(self, score: Tensor, X: Optional[Tensor]) -> OrdinalScoreShapeMode:
+    |                                                         ^^^^^^^^^^^^^^^^
+156 |         if self.score_shape_mode != "auto":
+157 |             return self.score_shape_mode
+    |
+help: Convert to `X | None`
+    |
+154 |
+    -     def _infer_score_shape_mode(self, score: Tensor, X: Optional[Tensor]) -> OrdinalScoreShapeMode:
+155 +     def _infer_score_shape_mode(self, score: Tensor, X: Tensor | None) -> OrdinalScoreShapeMode:
+156 |         if self.score_shape_mode != "auto":
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:258:41
+    |
+256 |         return score_mq.transpose(-1, -2)
+257 |
+258 |     def forward(self, score: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    |                                         ^^^^^^^^^^^^^^^^
+259 |         if not torch.is_tensor(score):
+260 |             raise TypeError(f"score must be a Tensor. Got {type(score)}.")
+    |
+help: Convert to `X | None`
+    |
+257 |
+    -     def forward(self, score: Tensor, X: Optional[Tensor] = None) -> Tensor:
+258 +     def forward(self, score: Tensor, X: Tensor | None = None) -> Tensor:
+259 |         if not torch.is_tensor(score):
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:280:8
+    |
+278 |     owner,
+279 |     score: Tensor,
+280 |     X: Optional[Tensor] = None,
+    |        ^^^^^^^^^^^^^^^^
+281 |     name: str = "MultiOutputOrdinalAcquisition",
+282 | ) -> Tensor:
+    |
+help: Convert to `X | None`
+    |
+279 |     score: Tensor,
+    -     X: Optional[Tensor] = None,
+280 +     X: Tensor | None = None,
+281 |     name: str = "MultiOutputOrdinalAcquisition",
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:322:26
+    |
+320 | def _resolve_ordinal_likelihoods(
+321 |     model: Model,
+322 |     ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]],
+    |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+323 | ) -> list[OrdinalLogitLikelihood]:
+324 |     submodels = _resolve_submodels(model)
+    |
+help: Convert to `X | None`
+    |
+321 |     model: Model,
+    -     ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]],
+322 +     ordinal_likelihoods: Sequence[OrdinalLogitLikelihood] | None,
+323 | ) -> list[OrdinalLogitLikelihood]:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:368:21
+    |
+366 | def _resolve_output_weights(
+367 |     model: Model,
+368 |     output_weights: Optional[Sequence[float] | Tensor],
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+369 |     *,
+370 |     dtype: torch.dtype,
+    |
+help: Convert to `X | None`
+    |
+367 |     model: Model,
+    -     output_weights: Optional[Sequence[float] | Tensor],
+368 +     output_weights: Sequence[float] | Tensor | None,
+369 |     *,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:397:66
+    |
+397 | def _split_cont_cat(X: Tensor, cat_dims: Sequence[int]) -> tuple[Optional[Tensor], Optional[Tensor]]:
+    |                                                                  ^^^^^^^^^^^^^^^^
+398 |     d = X.shape[-1]
+399 |     cat_dims = [i for i in cat_dims if 0 <= i < d]
+    |
+help: Convert to `X | None`
+    |
+396 |
+    - def _split_cont_cat(X: Tensor, cat_dims: Sequence[int]) -> tuple[Optional[Tensor], Optional[Tensor]]:
+397 + def _split_cont_cat(X: Tensor, cat_dims: Sequence[int]) -> tuple[Tensor | None, Optional[Tensor]]:
+398 |     d = X.shape[-1]
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:397:84
+    |
+397 | def _split_cont_cat(X: Tensor, cat_dims: Sequence[int]) -> tuple[Optional[Tensor], Optional[Tensor]]:
+    |                                                                                    ^^^^^^^^^^^^^^^^
+398 |     d = X.shape[-1]
+399 |     cat_dims = [i for i in cat_dims if 0 <= i < d]
+    |
+help: Convert to `X | None`
+    |
+396 |
+    - def _split_cont_cat(X: Tensor, cat_dims: Sequence[int]) -> tuple[Optional[Tensor], Optional[Tensor]]:
+397 + def _split_cont_cat(X: Tensor, cat_dims: Sequence[int]) -> tuple[Optional[Tensor], Tensor | None]:
+398 |     d = X.shape[-1]
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:435:48
+    |
+435 | def _coerce_reference_to_tensor(X_ref, *, ref: Optional[Tensor] = None) -> Optional[Tensor]:
+    |                                                ^^^^^^^^^^^^^^^^
+436 |     if X_ref is None:
+437 |         return None
+    |
+help: Convert to `X | None`
+    |
+434 |
+    - def _coerce_reference_to_tensor(X_ref, *, ref: Optional[Tensor] = None) -> Optional[Tensor]:
+435 + def _coerce_reference_to_tensor(X_ref, *, ref: Tensor | None = None) -> Optional[Tensor]:
+436 |     if X_ref is None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:435:76
+    |
+435 | def _coerce_reference_to_tensor(X_ref, *, ref: Optional[Tensor] = None) -> Optional[Tensor]:
+    |                                                                            ^^^^^^^^^^^^^^^^
+436 |     if X_ref is None:
+437 |         return None
+    |
+help: Convert to `X | None`
+    |
+434 |
+    - def _coerce_reference_to_tensor(X_ref, *, ref: Optional[Tensor] = None) -> Optional[Tensor]:
+435 + def _coerce_reference_to_tensor(X_ref, *, ref: Optional[Tensor] = None) -> Tensor | None:
+436 |     if X_ref is None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:490:81
+    |
+490 | def _transform_reference_like_candidate(model: Model, X_ref, *, ref: Tensor) -> Optional[Tensor]:
+    |                                                                                 ^^^^^^^^^^^^^^^^
+491 |     Xr = _coerce_reference_to_tensor(X_ref, ref=ref)
+492 |     if Xr is None or Xr.numel() == 0:
+    |
+help: Convert to `X | None`
+    |
+489 |
+    - def _transform_reference_like_candidate(model: Model, X_ref, *, ref: Tensor) -> Optional[Tensor]:
+490 + def _transform_reference_like_candidate(model: Model, X_ref, *, ref: Tensor) -> Tensor | None:
+491 |     Xr = _coerce_reference_to_tensor(X_ref, ref=ref)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:501:51
+    |
+501 | def _resolve_observed_X(model: Model, X_observed: Optional[Tensor] = None) -> Optional[Tensor]:
+    |                                                   ^^^^^^^^^^^^^^^^
+502 |     if X_observed is not None:
+503 |         return X_observed
+    |
+help: Convert to `X | None`
+    |
+500 |
+    - def _resolve_observed_X(model: Model, X_observed: Optional[Tensor] = None) -> Optional[Tensor]:
+501 + def _resolve_observed_X(model: Model, X_observed: Tensor | None = None) -> Optional[Tensor]:
+502 |     if X_observed is not None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:501:79
+    |
+501 | def _resolve_observed_X(model: Model, X_observed: Optional[Tensor] = None) -> Optional[Tensor]:
+    |                                                                               ^^^^^^^^^^^^^^^^
+502 |     if X_observed is not None:
+503 |         return X_observed
+    |
+help: Convert to `X | None`
+    |
+500 |
+    - def _resolve_observed_X(model: Model, X_observed: Optional[Tensor] = None) -> Optional[Tensor]:
+501 + def _resolve_observed_X(model: Model, X_observed: Optional[Tensor] = None) -> Tensor | None:
+502 |     if X_observed is not None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:541:12
+    |
+539 | def _reference_penalty_per_point(
+540 |     X: Tensor,
+541 |     X_ref: Optional[Tensor],
+    |            ^^^^^^^^^^^^^^^^
+542 |     *,
+543 |     beta: float,
+    |
+help: Convert to `X | None`
+    |
+540 |     X: Tensor,
+    -     X_ref: Optional[Tensor],
+541 +     X_ref: Tensor | None,
+542 |     *,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:558:12
+    |
+556 | def _reference_penalty_aggregated(
+557 |     X: Tensor,
+558 |     X_ref: Optional[Tensor],
+    |            ^^^^^^^^^^^^^^^^
+559 |     *,
+560 |     beta: float,
+    |
+help: Convert to `X | None`
+    |
+557 |     X: Tensor,
+    -     X_ref: Optional[Tensor],
+558 +     X_ref: Tensor | None,
+559 |     *,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:573:44
+    |
+573 | def _pending_penalty(X: Tensor, X_pending: Optional[Tensor], beta: float, cat_dims: Sequence[int]) -> Tensor:
+    |                                            ^^^^^^^^^^^^^^^^
+574 |     return _reference_penalty_aggregated(
+575 |         X=X,
+    |
+help: Convert to `X | None`
+    |
+572 |
+    - def _pending_penalty(X: Tensor, X_pending: Optional[Tensor], beta: float, cat_dims: Sequence[int]) -> Tensor:
+573 + def _pending_penalty(X: Tensor, X_pending: Tensor | None, beta: float, cat_dims: Sequence[int]) -> Tensor:
+574 |     return _reference_penalty_aggregated(
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:636:30
+    |
+634 |         self,
+635 |         model: Model,
+636 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+637 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+638 |         eps: float = 1e-12,
+    |
+help: Convert to `X | None`
+    |
+635 |         model: Model,
+    -         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+636 +         ordinal_likelihoods: Sequence[OrdinalLogitLikelihood] | None = None,
+637 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:637:25
+    |
+635 |         model: Model,
+636 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+637 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+638 |         eps: float = 1e-12,
+639 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |
+help: Convert to `X | None`
+    |
+636 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+    -         output_weights: Optional[Sequence[float] | Tensor] = None,
+637 +         output_weights: Sequence[float] | Tensor | None = None,
+638 |         eps: float = 1e-12,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:639:20
+    |
+637 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+638 |         eps: float = 1e-12,
+639 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+640 |         **kwargs,
+641 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+638 |         eps: float = 1e-12,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+639 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+640 |         **kwargs,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:639:47
+    |
+637 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+638 |         eps: float = 1e-12,
+639 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+640 |         **kwargs,
+641 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+638 |         eps: float = 1e-12,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+639 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+640 |         **kwargs,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:676:30
+    |
+674 |         self,
+675 |         model: Model,
+676 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+677 |         reduction: ReductionType = "mean",
+678 |         output_mode: MultiOutputMode = "mean",
+    |
+help: Convert to `X | None`
+    |
+675 |         model: Model,
+    -         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+676 +         ordinal_likelihoods: Sequence[OrdinalLogitLikelihood] | None = None,
+677 |         reduction: ReductionType = "mean",
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:679:25
+    |
+677 |         reduction: ReductionType = "mean",
+678 |         output_mode: MultiOutputMode = "mean",
+679 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+680 |         sampler: Optional[MCSampler] = None,
+681 |         eps: float = 1e-6,
+    |
+help: Convert to `X | None`
+    |
+678 |         output_mode: MultiOutputMode = "mean",
+    -         output_weights: Optional[Sequence[float] | Tensor] = None,
+679 +         output_weights: Sequence[float] | Tensor | None = None,
+680 |         sampler: Optional[MCSampler] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:680:18
+    |
+678 |         output_mode: MultiOutputMode = "mean",
+679 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+680 |         sampler: Optional[MCSampler] = None,
+    |                  ^^^^^^^^^^^^^^^^^^^
+681 |         eps: float = 1e-6,
+682 |         pending_penalty_weight: float = 0.0,
+    |
+help: Convert to `X | None`
+    |
+679 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+    -         sampler: Optional[MCSampler] = None,
+680 +         sampler: MCSampler | None = None,
+681 |         eps: float = 1e-6,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:691:20
+    |
+689 |         exclude_same_batch_duplicates: bool = True,
+690 |         exclude_pending_duplicates: bool = True,
+691 |         X_pending: Optional[Tensor] = None,
+    |                    ^^^^^^^^^^^^^^^^
+692 |         X_observed: Optional[Tensor] = None,
+693 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |
+help: Convert to `X | None`
+    |
+690 |         exclude_pending_duplicates: bool = True,
+    -         X_pending: Optional[Tensor] = None,
+691 +         X_pending: Tensor | None = None,
+692 |         X_observed: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:692:21
+    |
+690 |         exclude_pending_duplicates: bool = True,
+691 |         X_pending: Optional[Tensor] = None,
+692 |         X_observed: Optional[Tensor] = None,
+    |                     ^^^^^^^^^^^^^^^^
+693 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+694 |         **kwargs,
+    |
+help: Convert to `X | None`
+    |
+691 |         X_pending: Optional[Tensor] = None,
+    -         X_observed: Optional[Tensor] = None,
+692 +         X_observed: Tensor | None = None,
+693 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:693:20
+    |
+691 |         X_pending: Optional[Tensor] = None,
+692 |         X_observed: Optional[Tensor] = None,
+693 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+694 |         **kwargs,
+695 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+692 |         X_observed: Optional[Tensor] = None,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+693 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+694 |         **kwargs,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:693:47
+    |
+691 |         X_pending: Optional[Tensor] = None,
+692 |         X_observed: Optional[Tensor] = None,
+693 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+694 |         **kwargs,
+695 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+692 |         X_observed: Optional[Tensor] = None,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+693 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+694 |         **kwargs,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:726:25
+    |
+724 |         self.cat_dims = _resolve_cat_dims(model)
+725 |         self.objective = objective
+726 |         self.X_pending: Optional[Tensor] = None
+    |                         ^^^^^^^^^^^^^^^^
+727 |         self.X_observed: Optional[Tensor] = None
+728 |         self.set_X_pending(X_pending)
+    |
+help: Convert to `X | None`
+    |
+725 |         self.objective = objective
+    -         self.X_pending: Optional[Tensor] = None
+726 +         self.X_pending: Tensor | None = None
+727 |         self.X_observed: Optional[Tensor] = None
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:727:26
+    |
+725 |         self.objective = objective
+726 |         self.X_pending: Optional[Tensor] = None
+727 |         self.X_observed: Optional[Tensor] = None
+    |                          ^^^^^^^^^^^^^^^^
+728 |         self.set_X_pending(X_pending)
+729 |         self.set_X_observed(X_observed)
+    |
+help: Convert to `X | None`
+    |
+726 |         self.X_pending: Optional[Tensor] = None
+    -         self.X_observed: Optional[Tensor] = None
+727 +         self.X_observed: Tensor | None = None
+728 |         self.set_X_pending(X_pending)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:734:40
+    |
+732 |         return self.output_weights.to(device=X.device, dtype=X.dtype)
+733 |
+734 |     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    |                                        ^^^^^^^^^^^^^^^^
+735 |         self.X_pending = _coerce_reference_to_tensor(X_pending)
+    |
+help: Convert to `X | None`
+    |
+733 |
+    -     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+734 +     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
+735 |         self.X_pending = _coerce_reference_to_tensor(X_pending)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:737:42
+    |
+735 |         self.X_pending = _coerce_reference_to_tensor(X_pending)
+736 |
+737 |     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+    |                                          ^^^^^^^^^^^^^^^^
+738 |         self.X_observed = _coerce_reference_to_tensor(_resolve_observed_X(self.model, X_observed))
+    |
+help: Convert to `X | None`
+    |
+736 |
+    -     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+737 +     def set_X_observed(self, X_observed: Tensor | None = None) -> None:
+738 |         self.X_observed = _coerce_reference_to_tensor(_resolve_observed_X(self.model, X_observed))
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:897:16
+    |
+895 |     def forward(self, X: Tensor) -> Tensor:
+896 |         weights = self._weights_like(X)
+897 |         total: Optional[Tensor] = None
+    |                ^^^^^^^^^^^^^^^^
+898 |         for i, (sm, lik) in enumerate(zip(self.submodels, self.ordinal_likelihoods)):
+899 |             posterior = sm.posterior(X)
+    |
+help: Convert to `X | None`
+    |
+896 |         weights = self._weights_like(X)
+    -         total: Optional[Tensor] = None
+897 +         total: Tensor | None = None
+898 |         for i, (sm, lik) in enumerate(zip(self.submodels, self.ordinal_likelihoods)):
+    |
+
+B905 `zip()` without an explicit `strict=` parameter
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:898:39
+    |
+896 |         weights = self._weights_like(X)
+897 |         total: Optional[Tensor] = None
+898 |         for i, (sm, lik) in enumerate(zip(self.submodels, self.ordinal_likelihoods)):
+    |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+899 |             posterior = sm.posterior(X)
+900 |             probs = lik.marginal_class_probs(posterior.distribution)
+    |
+help: Add explicit value for parameter `strict=`
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:922:30
+    |
+920 |         self,
+921 |         model: Model,
+922 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+923 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+924 |         sampler: Optional[MCSampler] = None,
+    |
+help: Convert to `X | None`
+    |
+921 |         model: Model,
+    -         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+922 +         ordinal_likelihoods: Sequence[OrdinalLogitLikelihood] | None = None,
+923 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:923:25
+    |
+921 |         model: Model,
+922 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+923 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+924 |         sampler: Optional[MCSampler] = None,
+925 |         eps: float = 1e-12,
+    |
+help: Convert to `X | None`
+    |
+922 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+    -         output_weights: Optional[Sequence[float] | Tensor] = None,
+923 +         output_weights: Sequence[float] | Tensor | None = None,
+924 |         sampler: Optional[MCSampler] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:924:18
+    |
+922 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+923 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+924 |         sampler: Optional[MCSampler] = None,
+    |                  ^^^^^^^^^^^^^^^^^^^
+925 |         eps: float = 1e-12,
+926 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |
+help: Convert to `X | None`
+    |
+923 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+    -         sampler: Optional[MCSampler] = None,
+924 +         sampler: MCSampler | None = None,
+925 |         eps: float = 1e-12,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:926:20
+    |
+924 |         sampler: Optional[MCSampler] = None,
+925 |         eps: float = 1e-12,
+926 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+927 |         **kwargs,
+928 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+925 |         eps: float = 1e-12,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+926 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+927 |         **kwargs,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:926:47
+    |
+924 |         sampler: Optional[MCSampler] = None,
+925 |         eps: float = 1e-12,
+926 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+927 |         **kwargs,
+928 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+925 |         eps: float = 1e-12,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+926 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+927 |         **kwargs,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:942:16
+    |
+940 |     def forward(self, X: Tensor) -> Tensor:
+941 |         weights = self._weights_like(X)
+942 |         total: Optional[Tensor] = None
+    |                ^^^^^^^^^^^^^^^^
+943 |         for i, (sm, lik) in enumerate(zip(self.submodels, self.ordinal_likelihoods)):
+944 |             posterior = sm.posterior(X)
+    |
+help: Convert to `X | None`
+    |
+941 |         weights = self._weights_like(X)
+    -         total: Optional[Tensor] = None
+942 +         total: Tensor | None = None
+943 |         for i, (sm, lik) in enumerate(zip(self.submodels, self.ordinal_likelihoods)):
+    |
+
+B905 `zip()` without an explicit `strict=` parameter
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:943:39
+    |
+941 |         weights = self._weights_like(X)
+942 |         total: Optional[Tensor] = None
+943 |         for i, (sm, lik) in enumerate(zip(self.submodels, self.ordinal_likelihoods)):
+    |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+944 |             posterior = sm.posterior(X)
+945 |             probs = lik.marginal_class_probs(posterior.distribution)
+    |
+help: Add explicit value for parameter `strict=`
+
+B905 `zip()` without an explicit `strict=` parameter
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:973:24
+    |
+971 |         X = _ensure_q_batch(X)
+972 |         scores: list[Tensor] = []
+973 |         for sm, lik in zip(self.submodels, self.ordinal_likelihoods):
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+974 |             posterior = sm.posterior(X)
+975 |             probs = lik.marginal_class_probs(posterior.distribution)
+    |
+help: Add explicit value for parameter `strict=`
+
+B905 `zip()` without an explicit `strict=` parameter
+   --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:994:24
+    |
+992 |         X = _ensure_q_batch(X)
+993 |         scores: list[Tensor] = []
+994 |         for sm, lik in zip(self.submodels, self.ordinal_likelihoods):
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+995 |             posterior = sm.posterior(X)
+996 |             probs = lik.marginal_class_probs(posterior.distribution)
+    |
+help: Add explicit value for parameter `strict=`
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1016:30
+     |
+1014 |         self,
+1015 |         model: Model,
+1016 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+     |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1017 |         utility_values_list: Optional[Sequence[Optional[Sequence[float] | Tensor]]] = None,
+1018 |         reduction: ReductionType = "mean",
+     |
+help: Convert to `X | None`
+     |
+1015 |         model: Model,
+     -         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+1016 +         ordinal_likelihoods: Sequence[OrdinalLogitLikelihood] | None = None,
+1017 |         utility_values_list: Optional[Sequence[Optional[Sequence[float] | Tensor]]] = None,
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1017:30
+     |
+1015 |         model: Model,
+1016 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+1017 |         utility_values_list: Optional[Sequence[Optional[Sequence[float] | Tensor]]] = None,
+     |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1018 |         reduction: ReductionType = "mean",
+1019 |         output_mode: MultiOutputMode = "mean",
+     |
+help: Convert to `X | None`
+     |
+1016 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+     -         utility_values_list: Optional[Sequence[Optional[Sequence[float] | Tensor]]] = None,
+1017 +         utility_values_list: Sequence[Optional[Sequence[float] | Tensor]] | None = None,
+1018 |         reduction: ReductionType = "mean",
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1017:48
+     |
+1015 |         model: Model,
+1016 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+1017 |         utility_values_list: Optional[Sequence[Optional[Sequence[float] | Tensor]]] = None,
+     |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1018 |         reduction: ReductionType = "mean",
+1019 |         output_mode: MultiOutputMode = "mean",
+     |
+help: Convert to `X | None`
+     |
+1016 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+     -         utility_values_list: Optional[Sequence[Optional[Sequence[float] | Tensor]]] = None,
+1017 +         utility_values_list: Optional[Sequence[Sequence[float] | Tensor | None]] = None,
+1018 |         reduction: ReductionType = "mean",
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1020:25
+     |
+1018 |         reduction: ReductionType = "mean",
+1019 |         output_mode: MultiOutputMode = "mean",
+1020 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1021 |         sampler: Optional[MCSampler] = None,
+1022 |         eps: float = 1e-6,
+     |
+help: Convert to `X | None`
+     |
+1019 |         output_mode: MultiOutputMode = "mean",
+     -         output_weights: Optional[Sequence[float] | Tensor] = None,
+1020 +         output_weights: Sequence[float] | Tensor | None = None,
+1021 |         sampler: Optional[MCSampler] = None,
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1021:18
+     |
+1019 |         output_mode: MultiOutputMode = "mean",
+1020 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+1021 |         sampler: Optional[MCSampler] = None,
+     |                  ^^^^^^^^^^^^^^^^^^^
+1022 |         eps: float = 1e-6,
+1023 |         pending_penalty_weight: float = 0.0,
+     |
+help: Convert to `X | None`
+     |
+1020 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+     -         sampler: Optional[MCSampler] = None,
+1021 +         sampler: MCSampler | None = None,
+1022 |         eps: float = 1e-6,
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1029:20
+     |
+1027 |         same_batch_penalty_weight: float = 0.0,
+1028 |         same_batch_penalty_beta: float = 10.0,
+1029 |         X_pending: Optional[Tensor] = None,
+     |                    ^^^^^^^^^^^^^^^^
+1030 |         X_observed: Optional[Tensor] = None,
+1031 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+     |
+help: Convert to `X | None`
+     |
+1028 |         same_batch_penalty_beta: float = 10.0,
+     -         X_pending: Optional[Tensor] = None,
+1029 +         X_pending: Tensor | None = None,
+1030 |         X_observed: Optional[Tensor] = None,
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1030:21
+     |
+1028 |         same_batch_penalty_beta: float = 10.0,
+1029 |         X_pending: Optional[Tensor] = None,
+1030 |         X_observed: Optional[Tensor] = None,
+     |                     ^^^^^^^^^^^^^^^^
+1031 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+1032 |         **kwargs,
+     |
+help: Convert to `X | None`
+     |
+1029 |         X_pending: Optional[Tensor] = None,
+     -         X_observed: Optional[Tensor] = None,
+1030 +         X_observed: Tensor | None = None,
+1031 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1031:20
+     |
+1029 |         X_pending: Optional[Tensor] = None,
+1030 |         X_observed: Optional[Tensor] = None,
+1031 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+     |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1032 |         **kwargs,
+1033 |     ) -> None:
+     |
+help: Convert to `X | None`
+     |
+1030 |         X_observed: Optional[Tensor] = None,
+     -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+1031 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+1032 |         **kwargs,
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1031:47
+     |
+1029 |         X_pending: Optional[Tensor] = None,
+1030 |         X_observed: Optional[Tensor] = None,
+1031 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+     |                                               ^^^^^^^^^^^^^^^^
+1032 |         **kwargs,
+1033 |     ) -> None:
+     |
+help: Convert to `X | None`
+     |
+1030 |         X_observed: Optional[Tensor] = None,
+     -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+1031 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+1032 |         **kwargs,
+     |
+
+B905 `zip()` without an explicit `strict=` parameter
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1068:39
+     |
+1066 |         X = _ensure_q_batch(X)
+1067 |         scores: list[Tensor] = []
+1068 |         for i, (sm, lik) in enumerate(zip(self.submodels, self.ordinal_likelihoods)):
+     |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1069 |             posterior = sm.posterior(X)
+1070 |             probs = lik.marginal_class_probs(posterior.distribution)
+     |
+help: Add explicit value for parameter `strict=`
+
+B905 `zip()` without an explicit `strict=` parameter
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1094:24
+     |
+1092 |         X = _ensure_q_batch(X)
+1093 |         scores: list[Tensor] = []
+1094 |         for sm, lik in zip(self.submodels, self.ordinal_likelihoods):
+     |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1095 |             posterior = sm.posterior(X)
+1096 |             probs = lik.marginal_class_probs(posterior.distribution)
+     |
+help: Add explicit value for parameter `strict=`
+
+SIM108 Use ternary operator `margin_unc = torch.zeros_like(top2[..., 0]) if top2.shape[-1] == 1 else 1.0 - (top2[..., 0] - top2[..., 1])` instead of `if`-`else`-block
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1101:13
+     |
+1099 |               probs = probs / probs.sum(dim=-1, keepdim=True).clamp_min(self.eps)
+1100 |               top2 = torch.topk(probs, k=min(2, probs.shape[-1]), dim=-1).values
+1101 | /             if top2.shape[-1] == 1:
+1102 | |                 margin_unc = torch.zeros_like(top2[..., 0])
+1103 | |             else:
+1104 | |                 margin_unc = 1.0 - (top2[..., 0] - top2[..., 1])
+     | |________________________________________________________________^
+1105 |               scores.append(margin_unc)
+1106 |           if len(scores) == 0:
+     |
+help: Replace `if`-`else`-block with `margin_unc = torch.zeros_like(top2[..., 0]) if top2.shape[-1] == 1 else 1.0 - (top2[..., 0] - top2[..., 1])`
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1129:30
+     |
+1127 |         model: Model,
+1128 |         mc_points: Tensor,
+1129 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+     |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1130 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+1131 |         num_fantasies: int = 8,
+     |
+help: Convert to `X | None`
+     |
+1128 |         mc_points: Tensor,
+     -         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+1129 +         ordinal_likelihoods: Sequence[OrdinalLogitLikelihood] | None = None,
+1130 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1130:25
+     |
+1128 |         mc_points: Tensor,
+1129 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+1130 |         output_weights: Optional[Sequence[float] | Tensor] = None,
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1131 |         num_fantasies: int = 8,
+1132 |         conditioning_steps: int = 10,
+     |
+help: Convert to `X | None`
+     |
+1129 |         ordinal_likelihoods: Optional[Sequence[OrdinalLogitLikelihood]] = None,
+     -         output_weights: Optional[Sequence[float] | Tensor] = None,
+1130 +         output_weights: Sequence[float] | Tensor | None = None,
+1131 |         num_fantasies: int = 8,
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1141:20
+     |
+1139 |         same_batch_penalty_weight: float = 0.0,
+1140 |         same_batch_penalty_beta: float = 10.0,
+1141 |         X_pending: Optional[Tensor] = None,
+     |                    ^^^^^^^^^^^^^^^^
+1142 |         X_observed: Optional[Tensor] = None,
+1143 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+     |
+help: Convert to `X | None`
+     |
+1140 |         same_batch_penalty_beta: float = 10.0,
+     -         X_pending: Optional[Tensor] = None,
+1141 +         X_pending: Tensor | None = None,
+1142 |         X_observed: Optional[Tensor] = None,
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1142:21
+     |
+1140 |         same_batch_penalty_beta: float = 10.0,
+1141 |         X_pending: Optional[Tensor] = None,
+1142 |         X_observed: Optional[Tensor] = None,
+     |                     ^^^^^^^^^^^^^^^^
+1143 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+1144 |         **kwargs,
+     |
+help: Convert to `X | None`
+     |
+1141 |         X_pending: Optional[Tensor] = None,
+     -         X_observed: Optional[Tensor] = None,
+1142 +         X_observed: Tensor | None = None,
+1143 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1143:20
+     |
+1141 |         X_pending: Optional[Tensor] = None,
+1142 |         X_observed: Optional[Tensor] = None,
+1143 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+     |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1144 |         **kwargs,
+1145 |     ) -> None:
+     |
+help: Convert to `X | None`
+     |
+1142 |         X_observed: Optional[Tensor] = None,
+     -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+1143 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+1144 |         **kwargs,
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1143:47
+     |
+1141 |         X_pending: Optional[Tensor] = None,
+1142 |         X_observed: Optional[Tensor] = None,
+1143 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+     |                                               ^^^^^^^^^^^^^^^^
+1144 |         **kwargs,
+1145 |     ) -> None:
+     |
+help: Convert to `X | None`
+     |
+1142 |         X_observed: Optional[Tensor] = None,
+     -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+1143 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+1144 |         **kwargs,
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1169:25
+     |
+1167 |         self.cat_dims = _resolve_cat_dims(model)
+1168 |         self.objective = objective
+1169 |         self.X_pending: Optional[Tensor] = None
+     |                         ^^^^^^^^^^^^^^^^
+1170 |         self.X_observed: Optional[Tensor] = None
+1171 |         self.set_X_pending(X_pending)
+     |
+help: Convert to `X | None`
+     |
+1168 |         self.objective = objective
+     -         self.X_pending: Optional[Tensor] = None
+1169 +         self.X_pending: Tensor | None = None
+1170 |         self.X_observed: Optional[Tensor] = None
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1170:26
+     |
+1168 |         self.objective = objective
+1169 |         self.X_pending: Optional[Tensor] = None
+1170 |         self.X_observed: Optional[Tensor] = None
+     |                          ^^^^^^^^^^^^^^^^
+1171 |         self.set_X_pending(X_pending)
+1172 |         self.set_X_observed(X_observed)
+     |
+help: Convert to `X | None`
+     |
+1169 |         self.X_pending: Optional[Tensor] = None
+     -         self.X_observed: Optional[Tensor] = None
+1170 +         self.X_observed: Tensor | None = None
+1171 |         self.set_X_pending(X_pending)
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1177:40
+     |
+1175 |         return self.output_weights.to(device=X.device, dtype=X.dtype)
+1176 |
+1177 |     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+     |                                        ^^^^^^^^^^^^^^^^
+1178 |         self.X_pending = _coerce_reference_to_tensor(X_pending)
+     |
+help: Convert to `X | None`
+     |
+1176 |
+     -     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+1177 +     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
+1178 |         self.X_pending = _coerce_reference_to_tensor(X_pending)
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1180:42
+     |
+1178 |         self.X_pending = _coerce_reference_to_tensor(X_pending)
+1179 |
+1180 |     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+     |                                          ^^^^^^^^^^^^^^^^
+1181 |         self.X_observed = _coerce_reference_to_tensor(_resolve_observed_X(self.model, X_observed))
+     |
+help: Convert to `X | None`
+     |
+1179 |
+     -     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+1180 +     def set_X_observed(self, X_observed: Tensor | None = None) -> None:
+1181 |         self.X_observed = _coerce_reference_to_tensor(_resolve_observed_X(self.model, X_observed))
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1192:81
+     |
+1190 |         return 0.03
+1191 |
+1192 |     def _resolve_conditioning_batch_size_for_submodel(self, submodel: Model) -> Optional[int]:
+     |                                                                                 ^^^^^^^^^^^^^
+1193 |         if self.conditioning_batch_size is not None:
+1194 |             return int(self.conditioning_batch_size)
+     |
+help: Convert to `X | None`
+     |
+1191 |
+     -     def _resolve_conditioning_batch_size_for_submodel(self, submodel: Model) -> Optional[int]:
+1192 +     def _resolve_conditioning_batch_size_for_submodel(self, submodel: Model) -> int | None:
+1193 |         if self.conditioning_batch_size is not None:
+     |
+
+B905 `zip()` without an explicit `strict=` parameter
+    --> src\bochan\acquisition\ordinal\active_learning\multi_output.py:1204:30
+     |
+1202 |     def _sample_fantasy_labels_per_output(self, X: Tensor) -> list[Tensor]:
+1203 |         fantasies: list[Tensor] = []
+1204 |         for submodel, lik in zip(self.submodels, self.ordinal_likelihoods):
+     |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+1205 |             posterior = submodel.posterior(X)
+1206 |             latent_samples = posterior.rsample(torch.Size([self.num_fantasies]))
+     |
+help: Add explicit value for parameter `strict=`
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> src\bochan\acquisition\ordinal\active_learning\single_output.py:1:1
+   |
+ 1 | / from __future__ import annotations
+ 2 | |
+ 3 | | import math
+ 4 | | from typing import Callable, Literal, Optional
+ 5 | |
+ 6 | | import torch
+ 7 | | from torch import Tensor
+ 8 | | from torch.distributions import Categorical
+ 9 | |
+10 | | from botorch.acquisition.acquisition import AcquisitionFunction
+11 | | from botorch.acquisition.monte_carlo import MCAcquisitionFunction
+12 | | from botorch.models.model import Model
+13 | | from botorch.sampling.base import MCSampler
+14 | | from botorch.sampling.normal import SobolQMCNormalSampler
+15 | | from botorch.utils.transforms import average_over_ensemble_models, t_batch_mode_transform
+16 | |
+17 | | from bochan.acquisition._duplicate_exclusion import (
+18 | |     hard_reference_duplicate_penalty_per_point,
+19 | |     hard_same_batch_duplicate_penalty_per_point,
+20 | | )
+21 | | from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+   | |_____________________________________________________________^
+help: Organize imports
+   |
+6  | import torch
+   - from torch import Tensor
+   - from torch.distributions import Categorical
+   -
+7  | from botorch.acquisition.acquisition import AcquisitionFunction
+--------------------------------------------------------------------------------
+12 | from botorch.utils.transforms import average_over_ensemble_models, t_batch_mode_transform
+13 + from torch import Tensor
+14 + from torch.distributions import Categorical
+15 |
+--------------------------------------------------------------------------------
+20 | from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+   -
+21 |
+   |
+
+UP035 [*] Import from `collections.abc` instead: `Callable`
+ --> src\bochan\acquisition\ordinal\active_learning\single_output.py:4:1
+  |
+3 | import math
+4 | from typing import Callable, Literal, Optional
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+5 |
+6 | import torch
+  |
+help: Import from `collections.abc`
+  |
+3 | import math
+  - from typing import Callable, Literal, Optional
+4 + from typing import Literal, Optional
+5 + from collections.abc import Callable
+6 |
+  |
+
+UP045 Use `X | None` for type annotations
+  --> src\bochan\acquisition\ordinal\active_learning\single_output.py:24:12
+   |
+24 | RiskType = Optional[Literal["var", "cvar"]]
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+25 | ReductionType = Literal["mean", "sum"]
+   |
+help: Convert to `X | None`
+
+UP045 [*] Use `X | None` for type annotations
+  --> src\bochan\acquisition\ordinal\active_learning\single_output.py:37:25
+   |
+35 | def _resolve_ordinal_likelihood(
+36 |     model: Model,
+37 |     ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+38 | ) -> OrdinalLogitLikelihood:
+39 |     """
+   |
+help: Convert to `X | None`
+   |
+36 |     model: Model,
+   -     ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+37 +     ordinal_likelihood: OrdinalLogitLikelihood | None = None,
+38 | ) -> OrdinalLogitLikelihood:
+   |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:120:14
+    |
+118 |     def __init__(
+119 |         self,
+120 |         n_w: Optional[int] = None,
+    |              ^^^^^^^^^^^^^
+121 |         risk_type: RiskType = None,
+122 |         alpha: float = 0.5,
+    |
+help: Convert to `X | None`
+    |
+119 |         self,
+    -         n_w: Optional[int] = None,
+120 +         n_w: int | None = None,
+121 |         risk_type: RiskType = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:143:41
+    |
+141 |             raise ValueError("alpha must be in (0, 1].")
+142 |
+143 |     def forward(self, score: Tensor, X: Optional[Tensor] = None) -> Tensor:
+    |                                         ^^^^^^^^^^^^^^^^
+144 |         score = score * self.sign * self.weight
+    |
+help: Convert to `X | None`
+    |
+142 |
+    -     def forward(self, score: Tensor, X: Optional[Tensor] = None) -> Tensor:
+143 +     def forward(self, score: Tensor, X: Tensor | None = None) -> Tensor:
+144 |         score = score * self.sign * self.weight
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:187:12
+    |
+185 |     owner,
+186 |     score: Tensor,
+187 |     raw_X: Optional[Tensor] = None,
+    |            ^^^^^^^^^^^^^^^^
+188 |     name: str = "OrdinalAcquisition",
+189 | ) -> Tensor:
+    |
+help: Convert to `X | None`
+    |
+186 |     score: Tensor,
+    -     raw_X: Optional[Tensor] = None,
+187 +     raw_X: Tensor | None = None,
+188 |     name: str = "OrdinalAcquisition",
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:364:10
+    |
+362 |     X_ref,
+363 |     *,
+364 |     ref: Optional[Tensor] = None,
+    |          ^^^^^^^^^^^^^^^^
+365 | ) -> Optional[Tensor]:
+366 |     if X_ref is None:
+    |
+help: Convert to `X | None`
+    |
+363 |     *,
+    -     ref: Optional[Tensor] = None,
+364 +     ref: Tensor | None = None,
+365 | ) -> Optional[Tensor]:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:365:6
+    |
+363 |     *,
+364 |     ref: Optional[Tensor] = None,
+365 | ) -> Optional[Tensor]:
+    |      ^^^^^^^^^^^^^^^^
+366 |     if X_ref is None:
+367 |         return None
+    |
+help: Convert to `X | None`
+    |
+364 |     ref: Optional[Tensor] = None,
+    - ) -> Optional[Tensor]:
+365 + ) -> Tensor | None:
+366 |     if X_ref is None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:437:6
+    |
+435 |     *,
+436 |     ref: Tensor,
+437 | ) -> Optional[Tensor]:
+    |      ^^^^^^^^^^^^^^^^
+438 |     Xr = _coerce_reference_to_tensor(X_ref, ref=ref)
+439 |     if Xr is None or Xr.numel() == 0:
+    |
+help: Convert to `X | None`
+    |
+436 |     ref: Tensor,
+    - ) -> Optional[Tensor]:
+437 + ) -> Tensor | None:
+438 |     Xr = _coerce_reference_to_tensor(X_ref, ref=ref)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:469:12
+    |
+467 | def _rbf_reference_penalty_per_point(
+468 |     X: Tensor,
+469 |     X_ref: Optional[Tensor],
+    |            ^^^^^^^^^^^^^^^^
+470 |     beta: float,
+471 | ) -> Tensor:
+    |
+help: Convert to `X | None`
+    |
+468 |     X: Tensor,
+    -     X_ref: Optional[Tensor],
+469 +     X_ref: Tensor | None,
+470 |     beta: float,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:498:12
+    |
+496 | def _rbf_reference_penalty_aggregated(
+497 |     X: Tensor,
+498 |     X_ref: Optional[Tensor],
+    |            ^^^^^^^^^^^^^^^^
+499 |     beta: float,
+500 |     reduction: ReductionType = "sum",
+    |
+help: Convert to `X | None`
+    |
+497 |     X: Tensor,
+    -     X_ref: Optional[Tensor],
+498 +     X_ref: Tensor | None,
+499 |     beta: float,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:515:17
+    |
+513 | def _resolve_observed_X(
+514 |     model: Model,
+515 |     X_observed: Optional[Tensor] = None,
+    |                 ^^^^^^^^^^^^^^^^
+516 | ) -> Optional[Tensor]:
+517 |     if X_observed is not None:
+    |
+help: Convert to `X | None`
+    |
+514 |     model: Model,
+    -     X_observed: Optional[Tensor] = None,
+515 +     X_observed: Tensor | None = None,
+516 | ) -> Optional[Tensor]:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:516:6
+    |
+514 |     model: Model,
+515 |     X_observed: Optional[Tensor] = None,
+516 | ) -> Optional[Tensor]:
+    |      ^^^^^^^^^^^^^^^^
+517 |     if X_observed is not None:
+518 |         return X_observed
+    |
+help: Convert to `X | None`
+    |
+515 |     X_observed: Optional[Tensor] = None,
+    - ) -> Optional[Tensor]:
+516 + ) -> Tensor | None:
+517 |     if X_observed is not None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:550:29
+    |
+548 |         self,
+549 |         model: Model,
+550 |         ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+551 |         sampler: Optional[MCSampler] = None,
+552 |         reduction: ReductionType = "mean",
+    |
+help: Convert to `X | None`
+    |
+549 |         model: Model,
+    -         ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+550 +         ordinal_likelihood: OrdinalLogitLikelihood | None = None,
+551 |         sampler: Optional[MCSampler] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:551:18
+    |
+549 |         model: Model,
+550 |         ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+551 |         sampler: Optional[MCSampler] = None,
+    |                  ^^^^^^^^^^^^^^^^^^^
+552 |         reduction: ReductionType = "mean",
+553 |         pending_penalty_weight: float = 0.0,
+    |
+help: Convert to `X | None`
+    |
+550 |         ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+    -         sampler: Optional[MCSampler] = None,
+551 +         sampler: MCSampler | None = None,
+552 |         reduction: ReductionType = "mean",
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:561:20
+    |
+559 |         exclude_pending_duplicates: bool = True,
+560 |         exclude_observed_duplicates: bool = True,
+561 |         X_pending: Optional[Tensor] = None,
+    |                    ^^^^^^^^^^^^^^^^
+562 |         X_observed: Optional[Tensor] = None,
+563 |         eps: float = 1e-6,
+    |
+help: Convert to `X | None`
+    |
+560 |         exclude_observed_duplicates: bool = True,
+    -         X_pending: Optional[Tensor] = None,
+561 +         X_pending: Tensor | None = None,
+562 |         X_observed: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:562:21
+    |
+560 |         exclude_observed_duplicates: bool = True,
+561 |         X_pending: Optional[Tensor] = None,
+562 |         X_observed: Optional[Tensor] = None,
+    |                     ^^^^^^^^^^^^^^^^
+563 |         eps: float = 1e-6,
+564 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |
+help: Convert to `X | None`
+    |
+561 |         X_pending: Optional[Tensor] = None,
+    -         X_observed: Optional[Tensor] = None,
+562 +         X_observed: Tensor | None = None,
+563 |         eps: float = 1e-6,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:564:20
+    |
+562 |         X_observed: Optional[Tensor] = None,
+563 |         eps: float = 1e-6,
+564 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+565 |     ) -> None:
+566 |         super().__init__(model=model)
+    |
+help: Convert to `X | None`
+    |
+563 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+564 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+565 |     ) -> None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:564:47
+    |
+562 |         X_observed: Optional[Tensor] = None,
+563 |         eps: float = 1e-6,
+564 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+565 |     ) -> None:
+566 |         super().__init__(model=model)
+    |
+help: Convert to `X | None`
+    |
+563 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+564 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+565 |     ) -> None:
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:590:25
+    |
+588 |         self.objective = objective
+589 |
+590 |         self.X_pending: Optional[Tensor] = None
+    |                         ^^^^^^^^^^^^^^^^
+591 |         self.set_X_pending(X_pending)
+    |
+help: Convert to `X | None`
+    |
+589 |
+    -         self.X_pending: Optional[Tensor] = None
+590 +         self.X_pending: Tensor | None = None
+591 |         self.set_X_pending(X_pending)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:593:26
+    |
+591 |         self.set_X_pending(X_pending)
+592 |
+593 |         self.X_observed: Optional[Tensor] = None
+    |                          ^^^^^^^^^^^^^^^^
+594 |         self.set_X_observed(X_observed)
+    |
+help: Convert to `X | None`
+    |
+592 |
+    -         self.X_observed: Optional[Tensor] = None
+593 +         self.X_observed: Tensor | None = None
+594 |         self.set_X_observed(X_observed)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:596:40
+    |
+594 |         self.set_X_observed(X_observed)
+595 |
+596 |     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    |                                        ^^^^^^^^^^^^^^^^
+597 |         self.X_pending = _coerce_reference_to_tensor(X_pending)
+    |
+help: Convert to `X | None`
+    |
+595 |
+    -     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+596 +     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
+597 |         self.X_pending = _coerce_reference_to_tensor(X_pending)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:599:42
+    |
+597 |         self.X_pending = _coerce_reference_to_tensor(X_pending)
+598 |
+599 |     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+    |                                          ^^^^^^^^^^^^^^^^
+600 |         self.X_observed = _coerce_reference_to_tensor(_resolve_observed_X(self.model, X_observed))
+    |
+help: Convert to `X | None`
+    |
+598 |
+    -     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+599 +     def set_X_observed(self, X_observed: Tensor | None = None) -> None:
+600 |         self.X_observed = _coerce_reference_to_tensor(_resolve_observed_X(self.model, X_observed))
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:765:29
+    |
+763 |         self,
+764 |         model: Model,
+765 |         ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+766 |         num_samples: int = 16,
+767 |         sampler: Optional[MCSampler] = None,
+    |
+help: Convert to `X | None`
+    |
+764 |         model: Model,
+    -         ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+765 +         ordinal_likelihood: OrdinalLogitLikelihood | None = None,
+766 |         num_samples: int = 16,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:767:18
+    |
+765 |         ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+766 |         num_samples: int = 16,
+767 |         sampler: Optional[MCSampler] = None,
+    |                  ^^^^^^^^^^^^^^^^^^^
+768 |         reduction: ReductionType = "mean",
+769 |         pending_penalty_weight: float = 0.0,
+    |
+help: Convert to `X | None`
+    |
+766 |         num_samples: int = 16,
+    -         sampler: Optional[MCSampler] = None,
+767 +         sampler: MCSampler | None = None,
+768 |         reduction: ReductionType = "mean",
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:773:20
+    |
+771 |         observed_penalty_weight: float = 0.0,
+772 |         observed_penalty_beta: float = 10.0,
+773 |         X_pending: Optional[Tensor] = None,
+    |                    ^^^^^^^^^^^^^^^^
+774 |         X_observed: Optional[Tensor] = None,
+775 |         eps: float = 1e-6,
+    |
+help: Convert to `X | None`
+    |
+772 |         observed_penalty_beta: float = 10.0,
+    -         X_pending: Optional[Tensor] = None,
+773 +         X_pending: Tensor | None = None,
+774 |         X_observed: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:774:21
+    |
+772 |         observed_penalty_beta: float = 10.0,
+773 |         X_pending: Optional[Tensor] = None,
+774 |         X_observed: Optional[Tensor] = None,
+    |                     ^^^^^^^^^^^^^^^^
+775 |         eps: float = 1e-6,
+776 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |
+help: Convert to `X | None`
+    |
+773 |         X_pending: Optional[Tensor] = None,
+    -         X_observed: Optional[Tensor] = None,
+774 +         X_observed: Tensor | None = None,
+775 |         eps: float = 1e-6,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:776:20
+    |
+774 |         X_observed: Optional[Tensor] = None,
+775 |         eps: float = 1e-6,
+776 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+777 |         **kwargs,
+778 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+775 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+776 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+777 |         **kwargs,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:776:47
+    |
+774 |         X_observed: Optional[Tensor] = None,
+775 |         eps: float = 1e-6,
+776 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+777 |         **kwargs,
+778 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+775 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+776 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+777 |         **kwargs,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:826:21
+    |
+825 | def _utility_values_tensor(
+826 |     utility_values: Optional[Tensor],
+    |                     ^^^^^^^^^^^^^^^^
+827 |     num_classes: int,
+828 |     *,
+    |
+help: Convert to `X | None`
+    |
+825 | def _utility_values_tensor(
+    -     utility_values: Optional[Tensor],
+826 +     utility_values: Tensor | None,
+827 |     num_classes: int,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:851:29
+    |
+849 |         self,
+850 |         model: Model,
+851 |         ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+852 |         utility_values: Optional[Tensor] = None,
+853 |         sampler: Optional[MCSampler] = None,
+    |
+help: Convert to `X | None`
+    |
+850 |         model: Model,
+    -         ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+851 +         ordinal_likelihood: OrdinalLogitLikelihood | None = None,
+852 |         utility_values: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:852:25
+    |
+850 |         model: Model,
+851 |         ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+852 |         utility_values: Optional[Tensor] = None,
+    |                         ^^^^^^^^^^^^^^^^
+853 |         sampler: Optional[MCSampler] = None,
+854 |         reduction: ReductionType = "mean",
+    |
+help: Convert to `X | None`
+    |
+851 |         ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+    -         utility_values: Optional[Tensor] = None,
+852 +         utility_values: Tensor | None = None,
+853 |         sampler: Optional[MCSampler] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:853:18
+    |
+851 |         ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+852 |         utility_values: Optional[Tensor] = None,
+853 |         sampler: Optional[MCSampler] = None,
+    |                  ^^^^^^^^^^^^^^^^^^^
+854 |         reduction: ReductionType = "mean",
+855 |         pending_penalty_weight: float = 0.0,
+    |
+help: Convert to `X | None`
+    |
+852 |         utility_values: Optional[Tensor] = None,
+    -         sampler: Optional[MCSampler] = None,
+853 +         sampler: MCSampler | None = None,
+854 |         reduction: ReductionType = "mean",
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:859:20
+    |
+857 |         observed_penalty_weight: float = 0.0,
+858 |         observed_penalty_beta: float = 10.0,
+859 |         X_pending: Optional[Tensor] = None,
+    |                    ^^^^^^^^^^^^^^^^
+860 |         X_observed: Optional[Tensor] = None,
+861 |         eps: float = 1e-6,
+    |
+help: Convert to `X | None`
+    |
+858 |         observed_penalty_beta: float = 10.0,
+    -         X_pending: Optional[Tensor] = None,
+859 +         X_pending: Tensor | None = None,
+860 |         X_observed: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:860:21
+    |
+858 |         observed_penalty_beta: float = 10.0,
+859 |         X_pending: Optional[Tensor] = None,
+860 |         X_observed: Optional[Tensor] = None,
+    |                     ^^^^^^^^^^^^^^^^
+861 |         eps: float = 1e-6,
+862 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |
+help: Convert to `X | None`
+    |
+859 |         X_pending: Optional[Tensor] = None,
+    -         X_observed: Optional[Tensor] = None,
+860 +         X_observed: Tensor | None = None,
+861 |         eps: float = 1e-6,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:862:20
+    |
+860 |         X_observed: Optional[Tensor] = None,
+861 |         eps: float = 1e-6,
+862 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+863 |         **kwargs,
+864 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+861 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+862 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+863 |         **kwargs,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:862:47
+    |
+860 |         X_observed: Optional[Tensor] = None,
+861 |         eps: float = 1e-6,
+862 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+863 |         **kwargs,
+864 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+861 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+862 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+863 |         **kwargs,
+    |
+
+SIM108 Use ternary operator `score = torch.zeros_like(top2[..., 0]) if top2.shape[-1] == 1 else 1.0 - (top2[..., 0] - top2[..., 1])` instead of `if`-`else`-block
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:919:9
+    |
+918 |           top2 = torch.topk(probs, k=min(2, probs.shape[-1]), dim=-1).values
+919 | /         if top2.shape[-1] == 1:
+920 | |             score = torch.zeros_like(top2[..., 0])
+921 | |         else:
+922 | |             score = 1.0 - (top2[..., 0] - top2[..., 1])
+    | |_______________________________________________________^
+923 |
+924 |           return self._finalize_pointwise_score(
+    |
+help: Replace `if`-`else`-block with `score = torch.zeros_like(top2[..., 0]) if top2.shape[-1] == 1 else 1.0 - (top2[..., 0] - top2[..., 1])`
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:950:29
+    |
+948 |         model: Model,
+949 |         mc_points: Tensor,
+950 |         ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+951 |         num_fantasies: int = 8,
+952 |         conditioning_steps: int = 10,
+    |
+help: Convert to `X | None`
+    |
+949 |         mc_points: Tensor,
+    -         ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
+950 +         ordinal_likelihood: OrdinalLogitLikelihood | None = None,
+951 |         num_fantasies: int = 8,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:959:20
+    |
+957 |         observed_penalty_weight: float = 0.0,
+958 |         observed_penalty_beta: float = 10.0,
+959 |         X_pending: Optional[Tensor] = None,
+    |                    ^^^^^^^^^^^^^^^^
+960 |         X_observed: Optional[Tensor] = None,
+961 |         eps: float = 1e-6,
+    |
+help: Convert to `X | None`
+    |
+958 |         observed_penalty_beta: float = 10.0,
+    -         X_pending: Optional[Tensor] = None,
+959 +         X_pending: Tensor | None = None,
+960 |         X_observed: Optional[Tensor] = None,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:960:21
+    |
+958 |         observed_penalty_beta: float = 10.0,
+959 |         X_pending: Optional[Tensor] = None,
+960 |         X_observed: Optional[Tensor] = None,
+    |                     ^^^^^^^^^^^^^^^^
+961 |         eps: float = 1e-6,
+962 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |
+help: Convert to `X | None`
+    |
+959 |         X_pending: Optional[Tensor] = None,
+    -         X_observed: Optional[Tensor] = None,
+960 +         X_observed: Tensor | None = None,
+961 |         eps: float = 1e-6,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:962:20
+    |
+960 |         X_observed: Optional[Tensor] = None,
+961 |         eps: float = 1e-6,
+962 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+963 |         **kwargs,
+964 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+961 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+962 +         objective: Callable[[Tensor, Optional[Tensor]], Tensor] | None = None,
+963 |         **kwargs,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:962:47
+    |
+960 |         X_observed: Optional[Tensor] = None,
+961 |         eps: float = 1e-6,
+962 |         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+    |                                               ^^^^^^^^^^^^^^^^
+963 |         **kwargs,
+964 |     ) -> None:
+    |
+help: Convert to `X | None`
+    |
+961 |         eps: float = 1e-6,
+    -         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+962 +         objective: Optional[Callable[[Tensor, Tensor | None], Tensor]] = None,
+963 |         **kwargs,
+    |
+
+UP045 [*] Use `X | None` for type annotations
+   --> src\bochan\acquisition\ordinal\active_learning\single_output.py:997:25
+    |
+995 |         self.objective = objective
+996 |
+997 |         self.X_pending: Optional[Tensor] = None
+    |                         ^^^^^^^^^^^^^^^^
+998 |         self.set_X_pending(X_pending)
+    |
+help: Convert to `X | None`
+    |
+996 |
+    -         self.X_pending: Optional[Tensor] = None
+997 +         self.X_pending: Tensor | None = None
+998 |         self.set_X_pending(X_pending)
+    |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\single_output.py:1000:26
+     |
+ 998 |         self.set_X_pending(X_pending)
+ 999 |
+1000 |         self.X_observed: Optional[Tensor] = None
+     |                          ^^^^^^^^^^^^^^^^
+1001 |         self.set_X_observed(X_observed)
+     |
+help: Convert to `X | None`
+     |
+999  |
+     -         self.X_observed: Optional[Tensor] = None
+1000 +         self.X_observed: Tensor | None = None
+1001 |         self.set_X_observed(X_observed)
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\single_output.py:1003:40
+     |
+1001 |         self.set_X_observed(X_observed)
+1002 |
+1003 |     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+     |                                        ^^^^^^^^^^^^^^^^
+1004 |         self.X_pending = _coerce_reference_to_tensor(X_pending)
+     |
+help: Convert to `X | None`
+     |
+1002 |
+     -     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+1003 +     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
+1004 |         self.X_pending = _coerce_reference_to_tensor(X_pending)
+     |
+
+UP045 [*] Use `X | None` for type annotations
+    --> src\bochan\acquisition\ordinal\active_learning\single_output.py:1006:42
+     |
+1004 |         self.X_pending = _coerce_reference_to_tensor(X_pending)
+1005 |
+1006 |     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+     |                                          ^^^^^^^^^^^^^^^^
+1007 |         self.X_observed = _coerce_reference_to_tensor(_resolve_observed_X(self.model, X_observed))
+     |
+help: Convert to `X | None`
+     |
+1005 |
+     -     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+1006 +     def set_X_observed(self, X_observed: Tensor | None = None) -> None:
+1007 |         self.X_observed = _coerce_reference_to_tensor(_resolve_observed_X(self.model, X_observed))
+     |
+
+Found 263 errors.
+[*] 244 fixable with the `--fix` option (14 hidden fixes can be enabled with the `--unsafe-fixes` option).
+.....F..F                                                                [100%]
+================================== FAILURES ===================================
+______ test_binary_ordinal_and_multiclass_resolve_observed_consistently _______
+
+    def test_binary_ordinal_and_multiclass_resolve_observed_consistently() -> None:
+        binary_model = _DummyMultiOutputBinaryModel()
+        binary = qMultiOutputBinaryPredictiveEntropy(binary_model)
+        assert torch.equal(binary.X_observed, binary_model.train_X)
+        assert torch.isinf(binary._observed_penalty_per_point(binary_model.train_X[:1].view(1, 1, 1))).all()
+    
+        ordinal_model = _DummyOrdinalModel()
+>       ordinal = qOrdinalPredictiveEntropy(
+            ordinal_model,
+            ordinal_likelihood=_DummyOrdinalLikelihood(),
+        )
+
+tests\test_classification_duplicate_controls_e2e.py:107: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\bochan\acquisition\ordinal\active_learning\single_output.py:566: in __init__
+    super().__init__(model=model)
+C:\hostedtoolcache\windows\Python\3.12.10\x64\Lib\site-packages\botorch\acquisition\monte_carlo.py:92: in __init__
+    if objective is None and model.num_outputs != 1:
+                             ^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = _DummyOrdinalModel(), name = 'num_outputs'
+
+    def __getattr__(self, name: str) -> Union[Tensor, "Module"]:
+        if "_parameters" in self.__dict__:
+            _parameters = self.__dict__["_parameters"]
+            if name in _parameters:
+                return _parameters[name]
+        if "_buffers" in self.__dict__:
+            _buffers = self.__dict__["_buffers"]
+            if name in _buffers:
+                return _buffers[name]
+        if "_modules" in self.__dict__:
+            modules = self.__dict__["_modules"]
+            if name in modules:
+                return modules[name]
+>       raise AttributeError(
+            f"'{type(self).__name__}' object has no attribute '{name}'"
+        )
+E       AttributeError: '_DummyOrdinalModel' object has no attribute 'num_outputs'
+
+C:\hostedtoolcache\windows\Python\3.12.10\x64\Lib\site-packages\torch\nn\modules\module.py:1967: AttributeError
+_____________ test_optimize_acqf_ordinal_avoids_exact_duplicates ______________
+
+    def test_optimize_acqf_ordinal_avoids_exact_duplicates() -> None:
+        torch.manual_seed(1)
+>       acquisition = qOrdinalPredictiveEntropy(
+            _DummyOrdinalModel(),
+            ordinal_likelihood=_DummyOrdinalLikelihood(),
+            X_observed=torch.tensor([[0.5]], dtype=torch.double),
+            hard_duplicate_tol=1e-6,
+        )
+
+tests\test_classification_duplicate_controls_e2e.py:162: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\bochan\acquisition\ordinal\active_learning\single_output.py:566: in __init__
+    super().__init__(model=model)
+C:\hostedtoolcache\windows\Python\3.12.10\x64\Lib\site-packages\botorch\acquisition\monte_carlo.py:92: in __init__
+    if objective is None and model.num_outputs != 1:
+                             ^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = _DummyOrdinalModel(), name = 'num_outputs'
+
+    def __getattr__(self, name: str) -> Union[Tensor, "Module"]:
+        if "_parameters" in self.__dict__:
+            _parameters = self.__dict__["_parameters"]
+            if name in _parameters:
+                return _parameters[name]
+        if "_buffers" in self.__dict__:
+            _buffers = self.__dict__["_buffers"]
+            if name in _buffers:
+                return _buffers[name]
+        if "_modules" in self.__dict__:
+            modules = self.__dict__["_modules"]
+            if name in modules:
+                return modules[name]
+>       raise AttributeError(
+            f"'{type(self).__name__}' object has no attribute '{name}'"
+        )
+E       AttributeError: '_DummyOrdinalModel' object has no attribute 'num_outputs'
+
+C:\hostedtoolcache\windows\Python\3.12.10\x64\Lib\site-packages\torch\nn\modules\module.py:1967: AttributeError
+============================== warnings summary ===============================
+C:\hostedtoolcache\windows\Python\3.12.10\x64\Lib\site-packages\torch\jit\_script.py:1488
+C:\hostedtoolcache\windows\Python\3.12.10\x64\Lib\site-packages\torch\jit\_script.py:1488
+  C:\hostedtoolcache\windows\Python\3.12.10\x64\Lib\site-packages\torch\jit\_script.py:1488: DeprecationWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_classification_duplicate_controls_e2e.py::test_binary_ordinal_and_multiclass_resolve_observed_consistently - AttributeError: '_DummyOrdinalModel' object has no attribute 'num_outputs'
+FAILED tests/test_classification_duplicate_controls_e2e.py::test_optimize_acqf_ordinal_avoids_exact_duplicates - AttributeError: '_DummyOrdinalModel' object has no attribute 'num_outputs'
+2 failed, 7 passed, 2 warnings in 3.92s

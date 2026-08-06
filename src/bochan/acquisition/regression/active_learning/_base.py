@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any
 
 from botorch.acquisition.acquisition import AcquisitionFunction
 from torch import Tensor

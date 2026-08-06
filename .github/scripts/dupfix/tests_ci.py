@@ -120,8 +120,13 @@ def add_tests_and_ci() -> None:
         "            tests/test_classification_duplicate_exclusion.py \\\n",
         label="wide pytest list",
     )
-    text = replace_once(
-        text,
+
+    lint_marker = "      - name: Run lint on changed modules\n"
+    if text.count(lint_marker) != 1:
+        raise RuntimeError("wide lint marker must occur exactly once")
+    before_lint, lint = text.split(lint_marker, 1)
+    lint = replace_once(
+        lint,
         "            src/bochan/acquisition/classification_constraints.py \\\n",
         "            src/bochan/acquisition/classification_constraints.py \\\n"
         "            src/bochan/acquisition/_duplicate_exclusion.py \\\n"
@@ -134,8 +139,8 @@ def add_tests_and_ci() -> None:
         "            src/bochan/acquisition/multiclass/active_learning/multi_output.py \\\n",
         label="wide ruff source list",
     )
-    text = replace_once(
-        text,
+    lint = replace_once(
+        lint,
         "            tests/test_wide_multitask_public_transform.py \\\n"
         "            tests/test_wide_multitask_acquisition_consistency.py \\\n"
         "            tests/test_wide_multitask_classification_acquisitions.py \\\n",
@@ -145,4 +150,4 @@ def add_tests_and_ci() -> None:
         "            tests/test_classification_duplicate_exclusion.py \\\n",
         label="wide ruff test list",
     )
-    write(workflow, text)
+    write(workflow, before_lint + lint_marker + lint)

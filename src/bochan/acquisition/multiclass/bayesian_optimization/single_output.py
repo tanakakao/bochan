@@ -171,11 +171,7 @@ def _reduce_extra_leading_dims_to_raw_X(
     if tuple(value.shape[sample_ndim:]) == batch_shape:
         return value
 
-    if (
-        value.ndim >= sample_ndim + 1
-        and tuple(value.shape[sample_ndim:-1]) == batch_shape
-        and value.shape[-1] == q
-    ):
+    if value.ndim >= sample_ndim + 1 and tuple(value.shape[sample_ndim:-1]) == batch_shape and value.shape[-1] == q:
         return value
 
     reduce_start = sample_ndim
@@ -206,7 +202,9 @@ def _reduce_extra_leading_dims_to_raw_X(
 
 def _normalize_class_probs(probs: Tensor, *, eps: float, name: str) -> Tensor:
     if probs.ndim < 1 or probs.shape[-1] <= 1:
-        raise RuntimeError(f"{name}: multiclass probability tensor must have class dim C >= 2. Got {tuple(probs.shape)}.")
+        raise RuntimeError(
+            f"{name}: multiclass probability tensor must have class dim C >= 2. Got {tuple(probs.shape)}."
+        )
     probs = probs.clamp_min(eps)
     return probs / probs.sum(dim=-1, keepdim=True).clamp_min(eps)
 
@@ -385,8 +383,10 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
         hard_duplicate_tol: float = 1e-8,
         exclude_same_batch_duplicates: bool = True,
         exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         observed_penalty_weight: float = 0.0,
         observed_penalty_beta: float = 10.0,
+        X_pending: Tensor | None = None,
         X_observed: Tensor | None = None,
         eps: float = 1e-8,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
@@ -413,6 +413,7 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
         self.hard_duplicate_tol = float(hard_duplicate_tol)
         self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
         self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        self.exclude_observed_duplicates = bool(exclude_observed_duplicates)
         if self.hard_duplicate_tol < 0.0:
             raise ValueError("hard_duplicate_tol must be non-negative.")
         self.observed_penalty_weight = float(observed_penalty_weight)
@@ -420,11 +421,16 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
         self.eps = float(eps)
         self.score_objective = objective
         self.num_classes = _model_num_classes(model)
-        self.X_observed = _resolve_observed_X(model, X_observed)
-        self.set_X_pending(None)
+        self.X_observed = None
+        self.set_X_pending(X_pending)
+        self.set_X_observed(X_observed)
 
     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         self.X_pending = None if X_pending is None else torch.as_tensor(X_pending).detach()
+
+    def set_X_observed(self, X_observed: Tensor | None = None) -> None:
+        resolved = _resolve_observed_X(self.model, X_observed)
+        self.X_observed = None if resolved is None else torch.as_tensor(resolved).detach()
 
     def _prepare_eval(self) -> None:
         self.model.eval()
@@ -575,8 +581,7 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
             return zeros
         dist = torch.cdist(Xt.reshape(-1, Xt.shape[-1]), Xp).min(dim=-1).values
         soft = (
-            self.pending_penalty_weight
-            * torch.exp(-self.pending_penalty_beta * dist.reshape(Xt.shape[:-1]))
+            self.pending_penalty_weight * torch.exp(-self.pending_penalty_beta * dist.reshape(Xt.shape[:-1]))
             if self.pending_penalty_weight > 0.0
             else zeros
         )
@@ -590,13 +595,23 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
 
     def _observed_penalty_per_point(self, Xt: Tensor) -> Tensor:
         Xt = ensure_q_batch(Xt)
-        if self.observed_penalty_weight <= 0:
-            return Xt.new_zeros(Xt.shape[:-1])
+        zeros = Xt.new_zeros(Xt.shape[:-1])
         Xobs = self._reference_points_transformed(self.X_observed, ref=Xt)
         if Xobs is None:
-            return Xt.new_zeros(Xt.shape[:-1])
+            return zeros
         dist = torch.cdist(Xt.reshape(-1, Xt.shape[-1]), Xobs).min(dim=-1).values
-        return self.observed_penalty_weight * torch.exp(-self.observed_penalty_beta * dist.reshape(Xt.shape[:-1]))
+        soft = (
+            self.observed_penalty_weight * torch.exp(-self.observed_penalty_beta * dist.reshape(Xt.shape[:-1]))
+            if self.observed_penalty_weight > 0.0
+            else zeros
+        )
+        hard = hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xobs,
+            enabled=self.exclude_observed_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
+        return soft + hard
 
     def _same_batch_penalty(self, Xt: Tensor) -> Tensor:
         Xt = ensure_q_batch(Xt)
@@ -607,9 +622,7 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
             d = torch.cdist(Xb, Xb)
             eye = torch.eye(q, device=Xt.device, dtype=torch.bool).unsqueeze(0)
             d = d.masked_fill(eye, float("inf"))
-            soft = 0.5 * self.same_batch_penalty_weight * torch.exp(
-                -self.same_batch_penalty_beta * d
-            ).sum(dim=(-1, -2))
+            soft = 0.5 * self.same_batch_penalty_weight * torch.exp(-self.same_batch_penalty_beta * d).sum(dim=(-1, -2))
             soft = soft.reshape(*batch_shape)
         else:
             soft = Xt.new_zeros(batch_shape)
@@ -621,11 +634,15 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
         return soft + hard
 
     def _pointwise_score_to_value(self, score: Tensor, raw_X: Tensor, Xt: Tensor) -> Tensor:
-        score = _reduce_extra_leading_dims_to_raw_X(score, raw_X, sample_ndim=0, name=f"{self.__class__.__name__}.score")
+        score = _reduce_extra_leading_dims_to_raw_X(
+            score, raw_X, sample_ndim=0, name=f"{self.__class__.__name__}.score"
+        )
         score = score - self._pending_penalty_per_point(Xt)
         score = score - self._observed_penalty_per_point(Xt)
         value = self._reduce_q(score)
-        value = _reduce_extra_leading_dims_to_raw_X(value, raw_X, sample_ndim=0, name=f"{self.__class__.__name__}.value")
+        value = _reduce_extra_leading_dims_to_raw_X(
+            value, raw_X, sample_ndim=0, name=f"{self.__class__.__name__}.value"
+        )
         value = value - self._same_batch_penalty(Xt)
         return _finalize_multiclass_acq_output_to_batch(value, raw_X, name=self.__class__.__name__)
 
@@ -680,11 +697,15 @@ class qMulticlassProbabilityOfFeasibility(_MulticlassProbabilityBOBase):
         Xt = self._apply_input_transform(raw_X)
         p = self._target_prob_mean(raw_X)
         score = p if self.threshold is None else torch.sigmoid((p - self.threshold) / max(self.tau, self.eps))
-        score = _reduce_extra_leading_dims_to_raw_X(score, raw_X, sample_ndim=0, name=f"{self.__class__.__name__}.score")
+        score = _reduce_extra_leading_dims_to_raw_X(
+            score, raw_X, sample_ndim=0, name=f"{self.__class__.__name__}.score"
+        )
         score = score - self._pending_penalty_per_point(Xt)
         score = score - self._observed_penalty_per_point(Xt)
         value = self._reduce_q_feas(score)
-        value = _reduce_extra_leading_dims_to_raw_X(value, raw_X, sample_ndim=0, name=f"{self.__class__.__name__}.value")
+        value = _reduce_extra_leading_dims_to_raw_X(
+            value, raw_X, sample_ndim=0, name=f"{self.__class__.__name__}.value"
+        )
         value = value - self._same_batch_penalty(Xt)
         return _finalize_multiclass_acq_output_to_batch(value, raw_X, name=self.__class__.__name__)
 
@@ -692,7 +713,9 @@ class qMulticlassProbabilityOfFeasibility(_MulticlassProbabilityBOBase):
 class qMulticlassExpectedImprovement(_MulticlassProbabilityBOBase):
     """Expected improvement for target-class probability."""
 
-    def __init__(self, model: Model, *, target_class: int | Sequence[int] | None, best_f: float | Tensor, **kwargs) -> None:
+    def __init__(
+        self, model: Model, *, target_class: int | Sequence[int] | None, best_f: float | Tensor, **kwargs
+    ) -> None:
         super().__init__(model=model, target_class=target_class, **kwargs)
         self.register_buffer("best_f", torch.as_tensor(best_f))
 
@@ -706,7 +729,9 @@ class qMulticlassExpectedImprovement(_MulticlassProbabilityBOBase):
         best_f = self.best_f.to(best_q)
         value = (best_q - best_f).clamp_min(0.0)
         value = _mean_over_sample_dims(value, self.sampler)
-        value = _reduce_extra_leading_dims_to_raw_X(value, raw_X, sample_ndim=0, name=f"{self.__class__.__name__}.value")
+        value = _reduce_extra_leading_dims_to_raw_X(
+            value, raw_X, sample_ndim=0, name=f"{self.__class__.__name__}.value"
+        )
         value = value - self._q_penalty(Xt)
         return _finalize_multiclass_acq_output_to_batch(value, raw_X, name=self.__class__.__name__)
 
@@ -738,7 +763,9 @@ class qMulticlassProbabilityOfImprovement(_MulticlassProbabilityBOBase):
         tau = self.tau.to(best_q).clamp_min(self.eps)
         value = torch.sigmoid((best_q - best_f) / tau)
         value = _mean_over_sample_dims(value, self.sampler)
-        value = _reduce_extra_leading_dims_to_raw_X(value, raw_X, sample_ndim=0, name=f"{self.__class__.__name__}.value")
+        value = _reduce_extra_leading_dims_to_raw_X(
+            value, raw_X, sample_ndim=0, name=f"{self.__class__.__name__}.value"
+        )
         value = value - self._q_penalty(Xt)
         return _finalize_multiclass_acq_output_to_batch(value, raw_X, name=self.__class__.__name__)
 
@@ -746,7 +773,9 @@ class qMulticlassProbabilityOfImprovement(_MulticlassProbabilityBOBase):
 class qMulticlassUpperConfidenceBound(_MulticlassProbabilityBOBase):
     """Upper confidence bound for target-class probability."""
 
-    def __init__(self, model: Model, *, target_class: int | Sequence[int] | None, beta: float | Tensor = 2.0, **kwargs) -> None:
+    def __init__(
+        self, model: Model, *, target_class: int | Sequence[int] | None, beta: float | Tensor = 2.0, **kwargs
+    ) -> None:
         kwargs.setdefault("reduction", "max")
         super().__init__(model=model, target_class=target_class, **kwargs)
         self.register_buffer("beta", torch.as_tensor(beta))

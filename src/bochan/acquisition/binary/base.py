@@ -13,6 +13,7 @@ from torch import Tensor
 from bochan.acquisition._duplicate_exclusion import (
     hard_reference_duplicate_penalty_per_point,
     hard_same_batch_duplicate_penalty_per_point,
+    resolve_observed_X,
 )
 from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 
@@ -94,6 +95,11 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
         noise_model_outputs_log_var: bool = True,
         noise_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        X_pending: Optional[Tensor] = None,
+        X_observed: Optional[Tensor] = None,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        exclude_observed_duplicates: bool = True,
     ):
         if isinstance(model, (ModelListGP, ModelListGPyTorchModel)):
             model = model.models[0]
@@ -105,6 +111,9 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
         self.hard_duplicate_tol = float(hard_duplicate_tol)
         self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
         self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        self.exclude_observed_duplicates = bool(exclude_observed_duplicates)
+        self.observed_penalty_weight = float(observed_penalty_weight)
+        self.observed_penalty_beta = float(observed_penalty_beta)
         if self.hard_duplicate_tol < 0.0:
             raise ValueError("hard_duplicate_tol must be non-negative.")
         self.eps = float(eps)
@@ -133,7 +142,8 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
 
         self.objective = objective
 
-        self.set_X_pending(None)
+        self.set_X_pending(X_pending)
+        self.set_X_observed(X_observed)
 
     # =========================================================
     # 基本ユーティリティ
@@ -152,6 +162,40 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
         if X.ndim == 2:
             X = X.unsqueeze(-2)
         return X
+
+    def _coerce_reference_to_tensor(
+        self,
+        X_ref,
+        *,
+        ref: Optional[Tensor] = None,
+    ) -> Optional[Tensor]:
+        if X_ref is None:
+            return None
+        if torch.is_tensor(X_ref):
+            out = X_ref
+        elif isinstance(X_ref, (list, tuple)):
+            tensors = [
+                tensor
+                for item in X_ref
+                if (tensor := self._coerce_reference_to_tensor(item, ref=ref)) is not None and tensor.numel() > 0
+            ]
+            if not tensors:
+                return None
+            out = torch.cat(
+                [tensor.reshape(-1, tensor.shape[-1]) for tensor in tensors],
+                dim=-2,
+            )
+        else:
+            raise TypeError(f"Reference points must be None, Tensor, list, or tuple. Got {type(X_ref)}.")
+        if ref is not None:
+            out = out.to(device=ref.device, dtype=ref.dtype)
+        return out.detach()
+
+    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+        self.X_pending = self._coerce_reference_to_tensor(X_pending)
+
+    def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+        self.X_observed = self._coerce_reference_to_tensor(resolve_observed_X(self.model, X_observed))
 
     def _map_to_training_feature_space(self, X: Tensor) -> Tensor:
         """
@@ -179,42 +223,37 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
         decomposition wrapper を優先し、なければ通常の input_transform を使う。
         """
         Xt = X[0] if isinstance(X, tuple) else X
-    
+
         if hasattr(model, "_to_internal"):
             return model._to_internal(Xt)
-    
+
         if hasattr(model, "_to_latent"):
             return model._to_latent(Xt)
-    
+
         cls_transform_inputs = getattr(type(model), "transform_inputs", None)
         has_custom_transform_inputs = (
-            cls_transform_inputs is not None
-            and cls_transform_inputs is not Model.transform_inputs
+            cls_transform_inputs is not None and cls_transform_inputs is not Model.transform_inputs
         )
         if has_custom_transform_inputs:
             return model.transform_inputs(Xt)
-    
+
         it = getattr(model, "input_transform", None)
         if callable(it):
             return it(Xt)
-    
+
         return Xt
-    
-    
+
     def _apply_input_transform(self, X):
         """
         単一モデルなら Tensor を返す。
         ModelList なら各 submodel 用に変換した Tensor の list を返す。
         """
         Xt = X[0] if isinstance(X, tuple) else X
-    
+
         submodels = getattr(self.model, "models", None)
         if submodels is not None:
-            return [
-                self._apply_input_transform_single_model(submodel, Xt)
-                for submodel in submodels
-            ]
-    
+            return [self._apply_input_transform_single_model(submodel, Xt) for submodel in submodels]
+
         return self._apply_input_transform_single_model(self.model, Xt)
 
     def _get_latent_gp(self):
@@ -456,9 +495,7 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
     def _check_output_shape(self, out: Tensor, expected: torch.Size, name: str) -> None:
         """獲得関数の出力 shape を検証する。"""
         if out.shape != expected:
-            raise RuntimeError(
-                f"{name} output shape mismatch: expected {tuple(expected)}, got {tuple(out.shape)}"
-            )
+            raise RuntimeError(f"{name} output shape mismatch: expected {tuple(expected)}, got {tuple(out.shape)}")
 
     def _squeeze_last_output_dim(self, x: Tensor) -> Tensor:
         if x.ndim >= 1 and x.shape[-1] == 1:
@@ -516,9 +553,9 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
         # DeepGP sample dimension 付き: (S, *batch, q_like), (S, *batch, q_like, q_like)
         if (
             mu_raw.ndim >= len(expected_mean) + 1
-            and tuple(mu_raw.shape[-len(expected_mean):]) == tuple(expected_mean)
+            and tuple(mu_raw.shape[-len(expected_mean) :]) == tuple(expected_mean)
             and cov_raw.ndim >= len(expected_cov) + 1
-            and tuple(cov_raw.shape[-len(expected_cov):]) == tuple(expected_cov)
+            and tuple(cov_raw.shape[-len(expected_cov) :]) == tuple(expected_cov)
             and tuple(mu_raw.shape) != tuple(expected_mean)
         ):
             mu = mu_raw.mean(dim=0)
@@ -543,12 +580,22 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
     # =========================================================
     # pending / duplicate penalty
     # =========================================================
+    def _get_reference_in_feature_space(self, X_ref) -> Optional[Tensor]:
+        X_ref = self._coerce_reference_to_tensor(X_ref)
+        if X_ref is None or X_ref.numel() == 0:
+            return None
+        transformed = self._apply_input_transform(X_ref)
+        if isinstance(transformed, list):
+            transformed = transformed[0]
+        return self._ensure_q_batch(transformed)
+
     def _get_pending_in_feature_space(self) -> Optional[Tensor]:
         """X_pending を現在の candidate と同じ feature space に写す。"""
-        Xp = getattr(self, "X_pending", None)
-        if Xp is None or Xp.numel() == 0:
-            return None
-        return self._apply_input_transform(Xp)
+        return self._get_reference_in_feature_space(getattr(self, "X_pending", None))
+
+    def _get_observed_in_feature_space(self) -> Optional[Tensor]:
+        """X_observed を現在の candidate と同じ feature space に写す。"""
+        return self._get_reference_in_feature_space(getattr(self, "X_observed", None))
 
     def _same_batch_duplicate_penalty_per_point(self, X: Tensor) -> Tensor:
         return hard_same_batch_duplicate_penalty_per_point(
@@ -570,8 +617,7 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
         Xp2d = Xp.reshape(-1, d)
         min_dist = torch.cdist(X2d, Xp2d).min(dim=-1).values.reshape(*X.shape[:-1])
         soft = (
-            self.pending_penalty_weight
-            * torch.exp(-self.pending_penalty_beta * min_dist)
+            self.pending_penalty_weight * torch.exp(-self.pending_penalty_beta * min_dist)
             if self.pending_penalty_weight > 0.0
             else zeros
         )
@@ -583,9 +629,40 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
         )
         return soft + hard
 
+    def _observed_penalty_per_point(self, X: Tensor) -> Tensor:
+        """Return soft observed repulsion plus scale-independent hard exclusion."""
+        X = self._ensure_q_batch(X)
+        zeros = X.new_zeros(X.shape[:-1])
+        Xobs = self._get_observed_in_feature_space()
+        if Xobs is None or Xobs.numel() == 0:
+            return zeros
+
+        Xobs2d = Xobs.reshape(-1, Xobs.shape[-1])
+        min_dist = (
+            torch.cdist(
+                X.reshape(-1, X.shape[-1]),
+                Xobs2d,
+            )
+            .min(dim=-1)
+            .values.reshape(*X.shape[:-1])
+        )
+        soft = (
+            self.observed_penalty_weight * torch.exp(-self.observed_penalty_beta * min_dist)
+            if self.observed_penalty_weight > 0.0
+            else zeros
+        )
+        hard = hard_reference_duplicate_penalty_per_point(
+            X,
+            Xobs2d,
+            enabled=self.exclude_observed_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
+        return soft + hard
+
     def _candidate_penalty_per_point(self, X: Tensor) -> Tensor:
         return (
             self._pending_penalty_per_point(X)
+            + self._observed_penalty_per_point(X)
             + self._same_batch_duplicate_penalty_per_point(X)
         )
 
@@ -634,10 +711,7 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
             low, high = self.roi_interval
             if low > high:
                 raise ValueError(f"roi_interval must satisfy low <= high, got {(low, high)}.")
-            raw = (
-                torch.sigmoid(self.roi_beta * (mean_prob - low))
-                * torch.sigmoid(self.roi_beta * (high - mean_prob))
-            )
+            raw = torch.sigmoid(self.roi_beta * (mean_prob - low)) * torch.sigmoid(self.roi_beta * (high - mean_prob))
 
         elif self.roi_mode == "custom":
             if self.roi_weight_fn is None:
@@ -842,7 +916,9 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
             )
 
         f_samples = f_samples.reshape(num_samples, *orig)
-        probs = latent_samples_to_binary_probabilities(self.model, f_samples, eps=self.eps, name="f_samples via binary likelihood").clamp(self.eps, 1.0 - self.eps)
+        probs = latent_samples_to_binary_probabilities(
+            self.model, f_samples, eps=self.eps, name="f_samples via binary likelihood"
+        ).clamp(self.eps, 1.0 - self.eps)
         return probs, orig, Xt
 
     def _get_joint_latent_dist(self, X: Tensor):
@@ -910,7 +986,9 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
             q=q,
             num_samples=num_samples,
         )
-        probs = latent_samples_to_binary_probabilities(self.model, f_samples, eps=self.eps, name="f_samples via binary likelihood").clamp(self.eps, 1.0 - self.eps)
+        probs = latent_samples_to_binary_probabilities(
+            self.model, f_samples, eps=self.eps, name="f_samples via binary likelihood"
+        ).clamp(self.eps, 1.0 - self.eps)
         return probs, batch_shape, q, Xt
 
     def _joint_predictive_entropy_binary(
@@ -932,10 +1010,7 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
                 mean_prob = probs.mean(dim=0)  # (*batch, q)
                 return self._binary_entropy(mean_prob, self.eps).sum(dim=-1)
 
-            raise ValueError(
-                f"q={q} is too large for exact joint enumeration "
-                f"(max_joint_q={max_joint_q})."
-            )
+            raise ValueError(f"q={q} is too large for exact joint enumeration (max_joint_q={max_joint_q}).")
 
         num_samples = probs.shape[0]
         patterns = self._make_binary_patterns(q, probs.device, probs.dtype)  # (M, q)
@@ -946,10 +1021,9 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
 
         pattern_view = patterns.view(*([1] * (probs.ndim - 1)), num_patterns, q)
 
-        log_comp = (
-            log_p.unsqueeze(-2) * pattern_view
-            + log_1mp.unsqueeze(-2) * (1.0 - pattern_view)
-        ).sum(dim=-1)  # (S, *batch, M)
+        log_comp = (log_p.unsqueeze(-2) * pattern_view + log_1mp.unsqueeze(-2) * (1.0 - pattern_view)).sum(
+            dim=-1
+        )  # (S, *batch, M)
 
         log_mix = torch.logsumexp(log_comp, dim=0) - math.log(num_samples)  # (*batch, M)
         mix = log_mix.exp().clamp_min(self.eps)
@@ -991,8 +1065,6 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
             out = objective(score)
 
         if not torch.is_tensor(out):
-            raise RuntimeError(
-                f"{name}: objective must return a Tensor. Got {type(out)}."
-            )
+            raise RuntimeError(f"{name}: objective must return a Tensor. Got {type(out)}.")
 
         return out

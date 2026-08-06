@@ -46,7 +46,7 @@ def hard_same_batch_duplicate_penalty_per_point(
     eye = torch.eye(q, dtype=torch.bool, device=X.device)
     while eye.ndim < d2.ndim:
         eye = eye.unsqueeze(0)
-    duplicate_pairs = (~eye) & (d2 <= tolerance)
+    duplicate_pairs = (~eye) & (d2 <= tolerance**2)
     duplicate_batch = duplicate_pairs.any(dim=-1).any(dim=-1, keepdim=True)
     return torch.where(
         duplicate_batch.expand_as(zeros),
@@ -81,7 +81,7 @@ def hard_reference_duplicate_penalty_per_point(
 
     d2 = torch.cdist(X.reshape(-1, X.shape[-1]), X_ref).pow(2)
     d2 = d2.reshape(*X.shape[:-1], X_ref.shape[-2])
-    duplicate_batch = (d2 <= tolerance).any(dim=-1).any(dim=-1, keepdim=True)
+    duplicate_batch = (d2 <= tolerance**2).any(dim=-1).any(dim=-1, keepdim=True)
     return torch.where(
         duplicate_batch.expand_as(zeros),
         torch.full_like(zeros, torch.inf),
@@ -89,7 +89,29 @@ def hard_reference_duplicate_penalty_per_point(
     )
 
 
+def resolve_observed_X(model, X_observed: Tensor | None = None) -> Tensor | None:
+    """Resolve observed inputs consistently across classification acquisitions."""
+
+    if X_observed is not None:
+        return X_observed
+
+    for attr in ("train_X_original", "train_X", "train_inputs_raw"):
+        value = getattr(model, attr, None)
+        if value is not None:
+            return value
+
+    train_inputs = getattr(model, "train_inputs", None)
+    if isinstance(train_inputs, tuple) and len(train_inputs) > 0:
+        return train_inputs[0]
+
+    submodels = getattr(model, "models", None) or getattr(model, "submodels", None)
+    if submodels is not None and len(submodels) > 0:
+        return resolve_observed_X(submodels[0], None)
+    return None
+
+
 __all__ = [
     "hard_reference_duplicate_penalty_per_point",
     "hard_same_batch_duplicate_penalty_per_point",
+    "resolve_observed_X",
 ]

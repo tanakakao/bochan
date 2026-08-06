@@ -66,6 +66,14 @@ class _BALDAcquisition(BinaryClassificationScoreObjectiveMixin, _BinaryClassific
         roi_aggregate_reduction: ReductionType = "mean",
         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        X_pending: Optional[Tensor] = None,
+        X_observed: Optional[Tensor] = None,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
     ):
         super().__init__(
             model=model,
@@ -73,6 +81,14 @@ class _BALDAcquisition(BinaryClassificationScoreObjectiveMixin, _BinaryClassific
             pending_penalty_weight=pending_penalty_weight,
             pending_penalty_beta=pending_penalty_beta,
             eps=eps,
+            X_pending=X_pending,
+            X_observed=X_observed,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
             roi_mode=roi_mode,
             roi_combine=roi_combine,
             roi_threshold=roi_threshold,
@@ -151,6 +167,14 @@ class _JointQBALDAcquisitionBinary(BinaryClassificationScoreObjectiveMixin, _Bin
         roi_aggregate_reduction: ReductionType = "mean",
         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        X_pending: Optional[Tensor] = None,
+        X_observed: Optional[Tensor] = None,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
     ):
         super().__init__(
             model=model,
@@ -158,6 +182,14 @@ class _JointQBALDAcquisitionBinary(BinaryClassificationScoreObjectiveMixin, _Bin
             pending_penalty_weight=pending_penalty_weight,
             pending_penalty_beta=pending_penalty_beta,
             eps=eps,
+            X_pending=X_pending,
+            X_observed=X_observed,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
             roi_mode=roi_mode,
             roi_combine=roi_combine,
             roi_threshold=roi_threshold,
@@ -219,6 +251,14 @@ class _GreedyJointQBALDAcquisitionBinary(BinaryClassificationScoreObjectiveMixin
         roi_aggregate_reduction: ReductionType = "mean",
         roi_weight_fn: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        X_pending: Optional[Tensor] = None,
+        X_observed: Optional[Tensor] = None,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
     ):
         super().__init__(
             model=model,
@@ -226,6 +266,14 @@ class _GreedyJointQBALDAcquisitionBinary(BinaryClassificationScoreObjectiveMixin
             pending_penalty_weight=0.0,
             pending_penalty_beta=10.0,
             eps=eps,
+            X_pending=X_pending,
+            X_observed=X_observed,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
             roi_mode=roi_mode,
             roi_combine=roi_combine,
             roi_threshold=roi_threshold,
@@ -257,7 +305,9 @@ class _GreedyJointQBALDAcquisitionBinary(BinaryClassificationScoreObjectiveMixin
     def _joint_bald_score(self, X: Tensor) -> Tensor:
         probs, batch_shape, _, _ = self._joint_latent_probs(X, num_samples=self.num_samples)
         joint_entropy = self._joint_predictive_entropy_binary(
-            probs, max_joint_q=self.max_joint_points, large_q_strategy=self.large_q_strategy,
+            probs,
+            max_joint_q=self.max_joint_points,
+            large_q_strategy=self.large_q_strategy,
         )
         cond_entropy = self._conditional_entropy_given_w(probs)
         out = joint_entropy - cond_entropy
@@ -312,6 +362,14 @@ class _UncertaintySamplingClassifierAcquisition(BinaryClassificationScoreObjecti
         apply_sigmoid_if_needed: bool = False,
         eps: float = 1e-6,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
+        X_pending: Optional[Tensor] = None,
+        X_observed: Optional[Tensor] = None,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
     ):
         super().__init__(
             model=model,
@@ -319,6 +377,14 @@ class _UncertaintySamplingClassifierAcquisition(BinaryClassificationScoreObjecti
             pending_penalty_weight=pending_penalty_weight,
             pending_penalty_beta=pending_penalty_beta,
             eps=eps,
+            X_pending=X_pending,
+            X_observed=X_observed,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
         )
         self.score_type = score_type
         self.num_samples = int(num_samples)
@@ -372,7 +438,9 @@ class _UncertaintySamplingClassifierAcquisition(BinaryClassificationScoreObjecti
         if 0.0 <= pmin and pmax <= 1.0:
             return p.clamp(self.eps, 1.0 - self.eps)
         if self.apply_sigmoid_if_needed:
-            return latent_samples_to_binary_probabilities(self.model, p, eps=self.eps, name="p via binary likelihood").clamp(self.eps, 1.0 - self.eps)
+            return latent_samples_to_binary_probabilities(
+                self.model, p, eps=self.eps, name="p via binary likelihood"
+            ).clamp(self.eps, 1.0 - self.eps)
         raise RuntimeError(
             f"posterior.mean is not in [0,1] (min={pmin:.4g}, max={pmax:.4g}). "
             "This acquisition assumes probability output. "
@@ -442,7 +510,6 @@ class _UncertaintySamplingClassifierAcquisition(BinaryClassificationScoreObjecti
         return out
 
 
-
 # =========================================================
 # Unified active-learning family names
 # =========================================================
@@ -470,71 +537,70 @@ class _qBinaryMarginUncertaintyAcquisition(_UncertaintySamplingClassifierAcquisi
         super().__init__(model=model, score_type="least_confidence", **kwargs)
 
 
-
 # Canonical unified names
-
-
-
-
 
 
 class qBinaryPredictiveEntropy(_qBinaryPredictiveEntropyAcquisition):
     """classification 用 predictive entropy acquisition。予測分布の曖昧さが大きい点を選びます。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
+
     Notes:
         予測が曖昧な点を探索したい場合の基本的な active learning acquisition です。
     """
+
     pass
 
 
 class qBinaryBALD(_BALDAcquisition):
     """classification 用 BALD / mutual-information acquisition。モデル不確実性を減らす情報量の大きい点を選びます。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
+
     Notes:
         BALD は predictive entropy から条件付き entropy を引いた情報利得として解釈できます。
     """
+
     pass
 
 
 class qBinaryJointBALD(_JointQBALDAcquisitionBinary):
     """classification 用 BALD / mutual-information acquisition。モデル不確実性を減らす情報量の大きい点を選びます。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
+
     Notes:
         BALD は predictive entropy から条件付き entropy を引いた情報利得として解釈できます。
     """
+
     pass
 
 
 class qBinaryGreedyJointBALD(_GreedyJointQBALDAcquisitionBinary):
     """classification 用 BALD / mutual-information acquisition。モデル不確実性を減らす情報量の大きい点を選びます。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
+
     Notes:
         BALD は predictive entropy から条件付き entropy を引いた情報利得として解釈できます。
     """
+
     pass
 
 
@@ -542,27 +608,28 @@ class qBinaryProbabilityVariance(_qBinaryProbabilityVarianceAcquisition):
     """classification 用の軽量 probability variance acquisition。
 
     候補点上の `Var_f[p(y=1|f)]` を使い、mc_points は不要です。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
     """
+
     pass
 
 
 class qBinaryMarginUncertainty(_qBinaryMarginUncertaintyAcquisition):
     """classification 用 margin uncertainty acquisition。決定境界または class 境界に近い点を選びます。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
     """
-    pass
 
+    pass
 
 
 # =========================================================
@@ -609,10 +676,7 @@ def _coerce_reference_to_tensor_for_ipv(
             except RuntimeError:
                 out = torch.cat([t.reshape(-1, t.shape[-1]) for t in tensors], dim=-2)
     else:
-        raise TypeError(
-            "X_pending / X_observed must be None, Tensor, list, or tuple. "
-            f"Got {type(X_ref)}."
-        )
+        raise TypeError(f"X_pending / X_observed must be None, Tensor, list, or tuple. Got {type(X_ref)}.")
 
     if ref is not None:
         out = out.to(device=ref.device, dtype=ref.dtype)
@@ -733,7 +797,9 @@ def _binary_values_to_probability_for_ipv(
         return values.clamp(eps, 1.0 - eps)
 
     if apply_sigmoid_if_needed:
-        return latent_samples_to_binary_probabilities(model, values, eps=eps, name="values via binary likelihood").clamp(eps, 1.0 - eps)
+        return latent_samples_to_binary_probabilities(
+            model, values, eps=eps, name="values via binary likelihood"
+        ).clamp(eps, 1.0 - eps)
 
     raise RuntimeError(
         f"{name} is not in [0, 1] (min={vmin:.4g}, max={vmax:.4g}). "
@@ -792,9 +858,7 @@ class qBinaryFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
         super().__init__(model=model)
 
         if mc_points.ndim != 2:
-            raise ValueError(
-                f"mc_points must be [N_mc, d], got shape={tuple(mc_points.shape)}."
-            )
+            raise ValueError(f"mc_points must be [N_mc, d], got shape={tuple(mc_points.shape)}.")
 
         ref_X = getattr(model, "train_X", None)
         if ref_X is None:
@@ -828,9 +892,7 @@ class qBinaryFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
         self.X_pending = _coerce_reference_to_tensor_for_ipv(X_pending)
 
     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
-        self.X_observed = _coerce_reference_to_tensor_for_ipv(
-            _resolve_observed_X_for_ipv(self.model, X_observed)
-        )
+        self.X_observed = _coerce_reference_to_tensor_for_ipv(_resolve_observed_X_for_ipv(self.model, X_observed))
 
     def _prepare_eval(self) -> None:
         self.model.eval()

@@ -124,7 +124,7 @@ def _align_probs_to_raw_q(probs: Tensor, raw_X: Tensor, *, name: str) -> Tensor:
     if tuple(out.shape) == target:
         return out
 
-    if len(target) > 0 and out.ndim >= len(target) and tuple(out.shape[-len(target):]) == target:
+    if len(target) > 0 and out.ndim >= len(target) and tuple(out.shape[-len(target) :]) == target:
         extra_ndim = out.ndim - len(target)
         if extra_ndim > 0:
             return out.mean(dim=tuple(range(extra_ndim)))
@@ -163,7 +163,7 @@ def _align_pointwise_to_reference(value: Tensor, reference: Tensor, *, name: str
     if value.shape == reference.shape[:-1]:
         return value.unsqueeze(-1).expand_as(reference).to(reference)
     if value.ndim < reference.ndim and value.ndim > 0:
-        tail_shape = tuple(reference.shape[-value.ndim:])
+        tail_shape = tuple(reference.shape[-value.ndim :])
         if tuple(value.shape) == tail_shape:
             view_shape = (1,) * (reference.ndim - value.ndim) + tuple(value.shape)
             return value.reshape(view_shape).expand_as(reference).to(reference)
@@ -207,6 +207,11 @@ class _MulticlassActiveLearningBase(_MulticlassProbabilityBOBase):
         observed_penalty_beta: float = 10.0,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
+        X_pending: Tensor | None = None,
         X_observed: Tensor | None = None,
         eps: float = 1e-8,
         objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
@@ -226,6 +231,11 @@ class _MulticlassActiveLearningBase(_MulticlassProbabilityBOBase):
             observed_penalty_beta=observed_penalty_beta,
             same_batch_penalty_weight=same_batch_penalty_weight,
             same_batch_penalty_beta=same_batch_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
+            X_pending=X_pending,
             X_observed=X_observed,
             eps=eps,
             objective=None,

@@ -5,6 +5,11 @@ from typing import Callable, Literal, Optional
 
 import torch
 from torch import Tensor
+from bochan.acquisition._duplicate_exclusion import (
+    hard_reference_duplicate_penalty_per_point,
+    hard_same_batch_duplicate_penalty_per_point,
+    resolve_observed_X,
+)
 from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 from botorch.acquisition import AcquisitionFunction
 from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
@@ -93,15 +98,32 @@ class _MultiOutputBinaryClassificationAcqBase(AcquisitionFunction):
         reduction: ReductionType = "mean",
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
+        X_pending: Optional[Tensor] = None,
+        X_observed: Optional[Tensor] = None,
         eps: float = 1e-6,
     ) -> None:
         super().__init__(model)
         self.reduction = reduction
         self.pending_penalty_weight = float(pending_penalty_weight)
         self.pending_penalty_beta = float(pending_penalty_beta)
+        self.observed_penalty_weight = float(observed_penalty_weight)
+        self.observed_penalty_beta = float(observed_penalty_beta)
+        self.hard_duplicate_tol = float(hard_duplicate_tol)
+        self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
+        self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        self.exclude_observed_duplicates = bool(exclude_observed_duplicates)
+        if self.hard_duplicate_tol < 0.0:
+            raise ValueError("hard_duplicate_tol must be non-negative.")
         self.eps = float(eps)
         self.objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None
-        self.set_X_pending(None)
+        self.set_X_pending(X_pending)
+        self.set_X_observed(X_observed)
 
     # =========================================================
     # pending utilities
@@ -136,10 +158,7 @@ class _MultiOutputBinaryClassificationAcqBase(AcquisitionFunction):
                 except RuntimeError:
                     out = torch.cat([t.reshape(-1, t.shape[-1]) for t in tensors], dim=-2)
         else:
-            raise TypeError(
-                "X_pending must be None, Tensor, list, or tuple. "
-                f"Got {type(X_pending)}."
-            )
+            raise TypeError(f"X_pending must be None, Tensor, list, or tuple. Got {type(X_pending)}.")
         if ref is not None:
             out = out.to(device=ref.device, dtype=ref.dtype)
 
@@ -150,20 +169,30 @@ class _MultiOutputBinaryClassificationAcqBase(AcquisitionFunction):
         """pending points を raw input space の値として保持する。"""
         self.X_pending = self._coerce_pending_to_tensor(X_pending)
 
+    def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+        """observed points を raw input space の値として保持する。"""
+        self.X_observed = self._coerce_pending_to_tensor(resolve_observed_X(self.model, X_observed))
+
+    def _transform_reference_like_candidate(
+        self,
+        X_ref,
+        *,
+        ref: Tensor,
+    ) -> Optional[Tensor]:
+        Xr = self._coerce_pending_to_tensor(X_ref, ref=ref)
+        if Xr is None or Xr.numel() == 0:
+            return None
+        Xr_t = self._apply_input_transform(Xr)
+        Xr_t = self._ensure_q_batch(Xr_t)
+        return Xr_t.to(device=ref.device, dtype=ref.dtype)
+
     def _transform_pending_like_candidate(
         self,
         X_pending,
         *,
         ref: Tensor,
     ) -> Optional[Tensor]:
-        """X_pending を candidate と同じ距離計算空間へ写す。"""
-        Xp = self._coerce_pending_to_tensor(X_pending, ref=ref)
-        if Xp is None or Xp.numel() == 0:
-            return None
-        Xp_t = self._apply_input_transform(Xp)
-        Xp_t = self._ensure_q_batch(Xp_t)
-        return Xp_t.to(device=ref.device, dtype=ref.dtype)
-
+        return self._transform_reference_like_candidate(X_pending, ref=ref)
 
     # =========================================================
     # objective
@@ -191,17 +220,10 @@ class _MultiOutputBinaryClassificationAcqBase(AcquisitionFunction):
 
         cls_name = objective.__class__.__name__
         module_name = objective.__class__.__module__
-        return (
-            cls_name in {
-                "ClassificationScoreObjective",
-                "MultiOutputClassificationScoreObjective",
-            }
-            or (
-                "classification" in module_name
-                and hasattr(objective, "n_w")
-                and hasattr(objective, "risk_type")
-            )
-        )
+        return cls_name in {
+            "ClassificationScoreObjective",
+            "MultiOutputClassificationScoreObjective",
+        } or ("classification" in module_name and hasattr(objective, "n_w") and hasattr(objective, "risk_type"))
 
     def _apply_objective_to_pointwise_score(
         self,
@@ -341,9 +363,7 @@ class _MultiOutputBinaryClassificationAcqBase(AcquisitionFunction):
 
     def _check_output_shape(self, out: Tensor, expected: torch.Size, name: str) -> None:
         if out.shape != expected:
-            raise RuntimeError(
-                f"{name} output shape mismatch: expected {tuple(expected)}, got {tuple(out.shape)}"
-            )
+            raise RuntimeError(f"{name} output shape mismatch: expected {tuple(expected)}, got {tuple(out.shape)}")
 
     # =========================================================
     # posterior helpers
@@ -429,9 +449,7 @@ class _MultiOutputBinaryClassificationAcqBase(AcquisitionFunction):
         if mean.numel() % n_points == 0:
             m = mean.numel() // n_points
             if m <= 0:
-                raise RuntimeError(
-                    f"Invalid inferred output dimension m={m} from mean shape {tuple(mean.shape)}."
-                )
+                raise RuntimeError(f"Invalid inferred output dimension m={m} from mean shape {tuple(mean.shape)}.")
             return mean.reshape(*expected_prefix, m)
 
         raise RuntimeError(
@@ -453,7 +471,9 @@ class _MultiOutputBinaryClassificationAcqBase(AcquisitionFunction):
             return x.clamp(self.eps, 1.0 - self.eps)
 
         if apply_sigmoid_if_needed:
-            return latent_samples_to_binary_probabilities(self.model, x, eps=self.eps, name="x via binary likelihood").clamp(self.eps, 1.0 - self.eps)
+            return latent_samples_to_binary_probabilities(
+                self.model, x, eps=self.eps, name="x via binary likelihood"
+            ).clamp(self.eps, 1.0 - self.eps)
 
         raise RuntimeError(
             f"{name} is not in [0,1] (min={xmin:.4g}, max={xmax:.4g}). "
@@ -495,46 +515,68 @@ class _MultiOutputBinaryClassificationAcqBase(AcquisitionFunction):
     # pending penalty / q reduction
     # =========================================================
 
-    def _pending_penalty_per_point(self, Xt: Tensor) -> Tensor:
-        """
-        pending points に近い候補点へ pointwise penalty を与える。
-
-        Args:
-            Xt:
-                候補点。すでに `_apply_input_transform(raw_X)` を通した
-                距離計算用 Tensor。shape は `(*batch, q_like, d)`。
-
-        Returns:
-            Tensor:
-                pending penalty。shape は `(*batch, q_like)`。
-        """
-        Xt = self._ensure_q_batch(Xt)
-
-        if self.pending_penalty_weight <= 0.0:
-            return torch.zeros(Xt.shape[:-1], device=Xt.device, dtype=Xt.dtype)
-
-        Xp_t = self._transform_pending_like_candidate(
-            getattr(self, "X_pending", None),
-            ref=Xt,
+    def _same_batch_duplicate_penalty_per_point(self, Xt: Tensor) -> Tensor:
+        return hard_same_batch_duplicate_penalty_per_point(
+            self._ensure_q_batch(Xt),
+            enabled=self.exclude_same_batch_duplicates,
+            tolerance=self.hard_duplicate_tol,
         )
-        if Xp_t is None or Xp_t.numel() == 0:
-            return torch.zeros(Xt.shape[:-1], device=Xt.device, dtype=Xt.dtype)
 
-        d = Xt.shape[-1]
-        X2d = Xt.reshape(-1, d)
-        Xp2d = Xp_t.reshape(-1, Xp_t.shape[-1])
-
-        if Xp2d.shape[-1] != d:
-            raise RuntimeError(
-                "X_pending feature dimension mismatch in pending penalty after transform: "
-                f"Xt.shape={tuple(Xt.shape)}, X_pending_transformed.shape={tuple(Xp_t.shape)}."
+    def _reference_penalty_per_point(
+        self,
+        Xt: Tensor,
+        X_ref,
+        *,
+        weight: float,
+        beta: float,
+        hard_enabled: bool,
+    ) -> Tensor:
+        Xt = self._ensure_q_batch(Xt)
+        zeros = Xt.new_zeros(Xt.shape[:-1])
+        Xr = self._transform_reference_like_candidate(X_ref, ref=Xt)
+        if Xr is None or Xr.numel() == 0:
+            return zeros
+        Xr2d = Xr.reshape(-1, Xr.shape[-1])
+        min_dist = (
+            torch.cdist(
+                Xt.reshape(-1, Xt.shape[-1]),
+                Xr2d,
             )
+            .min(dim=-1)
+            .values.reshape(*Xt.shape[:-1])
+        )
+        soft = weight * torch.exp(-beta * min_dist) if weight > 0.0 else zeros
+        hard = hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xr2d,
+            enabled=hard_enabled,
+            tolerance=self.hard_duplicate_tol,
+        )
+        return soft + hard
 
-        dists = torch.cdist(X2d, Xp2d)
-        min_dist = dists.min(dim=-1).values.reshape(*Xt.shape[:-1])
+    def _pending_penalty_per_point(self, Xt: Tensor) -> Tensor:
+        return self._reference_penalty_per_point(
+            Xt,
+            getattr(self, "X_pending", None),
+            weight=self.pending_penalty_weight,
+            beta=self.pending_penalty_beta,
+            hard_enabled=self.exclude_pending_duplicates,
+        )
 
-        return self.pending_penalty_weight * torch.exp(
-            -self.pending_penalty_beta * min_dist
+    def _observed_penalty_per_point(self, Xt: Tensor) -> Tensor:
+        return self._reference_penalty_per_point(
+            Xt,
+            getattr(self, "X_observed", None),
+            weight=self.observed_penalty_weight,
+            beta=self.observed_penalty_beta,
+            hard_enabled=self.exclude_observed_duplicates,
+        )
+
+    def _candidate_penalty_per_point(self, Xt: Tensor) -> Tensor:
+        return (
+            self._pending_penalty_per_point(Xt)
+            + self._observed_penalty_per_point(Xt)
+            + self._same_batch_duplicate_penalty_per_point(Xt)
         )
 
     def _reduce_q(self, score: Tensor) -> Tensor:
@@ -636,6 +678,14 @@ class _MultiOutputUncertaintySamplingClassifierAcquisition(_MultiOutputBinaryCla
         output_weights: Optional[Tensor] = None,
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
+        X_pending: Optional[Tensor] = None,
+        X_observed: Optional[Tensor] = None,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         apply_sigmoid_if_needed: bool = False,
         eps: float = 1e-6,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
@@ -645,6 +695,14 @@ class _MultiOutputUncertaintySamplingClassifierAcquisition(_MultiOutputBinaryCla
             reduction=reduction,
             pending_penalty_weight=pending_penalty_weight,
             pending_penalty_beta=pending_penalty_beta,
+            X_pending=X_pending,
+            X_observed=X_observed,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
             eps=eps,
         )
         self.score_type = score_type
@@ -746,6 +804,14 @@ class _BALDMultiOutputAcquisition(_MultiOutputBinaryClassificationAcqBase):
         output_weights: Optional[Tensor] = None,
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
+        X_pending: Optional[Tensor] = None,
+        X_observed: Optional[Tensor] = None,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         samples_are_probs: bool = False,
         apply_sigmoid_if_needed: bool = True,
         eps: float = 1e-6,
@@ -756,6 +822,14 @@ class _BALDMultiOutputAcquisition(_MultiOutputBinaryClassificationAcqBase):
             reduction=reduction,
             pending_penalty_weight=pending_penalty_weight,
             pending_penalty_beta=pending_penalty_beta,
+            X_pending=X_pending,
+            X_observed=X_observed,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
             eps=eps,
         )
         self.num_samples = int(num_samples)
@@ -798,7 +872,9 @@ class _BALDMultiOutputAcquisition(_MultiOutputBinaryClassificationAcqBase):
             posterior = self._get_latent_posterior(raw_X)
             latent_samples = posterior.rsample(torch.Size([self.num_samples]))
             latent_samples = self._reshape_samples(latent_samples, Xt, self.num_samples)
-            probs = latent_samples_to_binary_probabilities(self.model, latent_samples, eps=self.eps, name="latent_samples via binary likelihood").clamp(self.eps, 1.0 - self.eps)
+            probs = latent_samples_to_binary_probabilities(
+                self.model, latent_samples, eps=self.eps, name="latent_samples via binary likelihood"
+            ).clamp(self.eps, 1.0 - self.eps)
 
         if self.output_mode == "all_positive":
             log_p_all = probs.log().sum(dim=-1)  # (S, *batch, q_like)
@@ -826,23 +902,20 @@ class _BALDMultiOutputAcquisition(_MultiOutputBinaryClassificationAcqBase):
         return out
 
 
-
-
-
 class qMultiOutputBinaryPredictiveEntropy(_MultiOutputUncertaintySamplingClassifierAcquisition):
     """multi-output classification 用 predictive entropy acquisition。予測分布の曖昧さが大きい点を選びます。
-    
+
     Args:
         model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
         *args: 追加 positional arguments。通常は明示的に指定しません。
         **kwargs: 親クラスまたは BoTorch acquisition に渡す追加 keyword arguments。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
+
     Notes:
         予測が曖昧な点を探索したい場合の基本的な active learning acquisition です。
     """
@@ -854,15 +927,15 @@ class qMultiOutputBinaryPredictiveEntropy(_MultiOutputUncertaintySamplingClassif
 
 class qMultiOutputBinaryProbabilityVariance(_MultiOutputUncertaintySamplingClassifierAcquisition):
     """multi-output classification 用 variance-based acquisition。latent posterior が誘導する確率の epistemic variance が大きい点を選びます。
-    
+
     Args:
         model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
         *args: 追加 positional arguments。通常は明示的に指定しません。
         **kwargs: 親クラスまたは BoTorch acquisition に渡す追加 keyword arguments。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
     """
@@ -874,15 +947,15 @@ class qMultiOutputBinaryProbabilityVariance(_MultiOutputUncertaintySamplingClass
 
 class qMultiOutputBinaryMarginUncertainty(_MultiOutputUncertaintySamplingClassifierAcquisition):
     """multi-output classification 用 margin uncertainty acquisition。決定境界または class 境界に近い点を選びます。
-    
+
     Args:
         model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
         *args: 追加 positional arguments。通常は明示的に指定しません。
         **kwargs: 親クラスまたは BoTorch acquisition に渡す追加 keyword arguments。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
     """
@@ -894,13 +967,13 @@ class qMultiOutputBinaryMarginUncertainty(_MultiOutputUncertaintySamplingClassif
 
 class qMultiOutputBinaryBALD(_BALDMultiOutputAcquisition):
     """multi-output classification 用 BALD / mutual-information acquisition。モデル不確実性を減らす情報量の大きい点を選びます。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
+
     Notes:
         BALD は predictive entropy から条件付き entropy を引いた情報利得として解釈できます。
     """
@@ -910,15 +983,16 @@ class qMultiOutputBinaryBALD(_BALDMultiOutputAcquisition):
 
 class qMultiOutputBinaryIntegratedPosteriorVarianceProxy(qMultiOutputBinaryProbabilityVariance):
     """multi-output classification 用 variance-based acquisition。latent posterior が誘導する確率の epistemic variance が大きい点を選びます。
-    
+
     Forward Args:
         X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
+
     Returns:
         Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
     """
 
     pass
+
 
 __all__ = [
     "qMultiOutputBinaryPredictiveEntropy",

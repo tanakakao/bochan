@@ -1,8 +1,8 @@
 """Canonical optimizer configuration and high-level dispatch helpers."""
 
-# ruff: noqa: F401
-
 from __future__ import annotations
+
+# ruff: noqa: F401
 
 from .candidate_uniqueness import ensure_unique_candidates
 from .optimizer_config import (

@@ -1,8 +1,8 @@
 """Public ordinal display selectors aligned with multiclass terminology.
 
-Ordinal plots default to ordered-category probabilities because they stay on a
-bounded and directly interpretable scale.  The latent-score view remains
-available with ``ordinal_display="latent"`` for model diagnostics.
+One-dimensional ordinal plots default to ordered-category probabilities because
+they stay on a bounded and directly interpretable scale.  The latent-score view
+remains available with ``ordinal_display="latent"`` for model diagnostics.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ def show_scatter_with_acqf_from_optimizer(
     feature_col2: str,
     target_col: str,
     *,
-    ordinal_display: OrdinalDisplayMode = "probability",
+    ordinal_display: OrdinalDisplayMode = "latent",
     ordinal_mode: OrdinalProbabilityMode = "class_confidence",
     **kwargs: Any,
 ) -> Any:
@@ -96,7 +96,7 @@ def show_triscatter_with_acqf_from_optimizer(
     feature_col3: str,
     target_col: str,
     *,
-    ordinal_display: OrdinalDisplayMode = "probability",
+    ordinal_display: OrdinalDisplayMode = "latent",
     ordinal_mode: OrdinalProbabilityMode = "class_confidence",
     **kwargs: Any,
 ) -> Any:

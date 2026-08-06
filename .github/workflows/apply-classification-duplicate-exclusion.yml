@@ -28,11 +28,15 @@ jobs:
           python-version: '3.11'
           cache: pip
 
-      - name: Reconstruct and apply codemod
+      - name: Verify and apply codemod
         run: |
-          cat .github/scripts/classification-duplicate-exclusion/part*.b64 \
-            | base64 --decode \
+          SOURCE=.github/scripts/classification-duplicate-exclusion-v2/script.py.gz.b64
+          echo 'e16c8e3b7a30362a404b72b58c9be0edcba8e520f961c125a042d127adb19f6c  '"$SOURCE" | sha256sum -c -
+          base64 --decode "$SOURCE" > /tmp/apply_classification_duplicate_exclusion.py.gz
+          echo 'a08141994eb2af12081b2f37b971d7ccb95a908246243ca9063648d8e8cd1267  /tmp/apply_classification_duplicate_exclusion.py.gz' | sha256sum -c -
+          gzip --decompress --stdout /tmp/apply_classification_duplicate_exclusion.py.gz \
             > .github/scripts/apply_classification_duplicate_exclusion.py
+          echo '99154a14521ebf2d97dad1a37c83d07e7169281689cc3e0b45ab32a9c65a3e2e  .github/scripts/apply_classification_duplicate_exclusion.py' | sha256sum -c -
           python -m py_compile .github/scripts/apply_classification_duplicate_exclusion.py
           python .github/scripts/apply_classification_duplicate_exclusion.py
           git diff --check
@@ -67,6 +71,7 @@ jobs:
       - name: Commit validated source changes
         run: |
           rm -rf .github/scripts/classification-duplicate-exclusion
+          rm -rf .github/scripts/classification-duplicate-exclusion-v2
           rm .github/scripts/apply_classification_duplicate_exclusion.py
           rm .github/workflows/apply-classification-duplicate-exclusion.yml
           git config user.name 'github-actions[bot]'

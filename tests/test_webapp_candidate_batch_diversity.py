@@ -167,15 +167,16 @@ def test_duplicate_slots_are_refilled_after_joint_q_optimization() -> None:
         assert alternative_score.item() > duplicate_score.item()
         return torch.tensor([[0.3]], dtype=torch.double), torch.tensor(1.0)
 
-    original_optimizer = _MODULE["_optimize_refill_candidate"]
-    _MODULE["_optimize_refill_candidate"] = fake_optimize_refill_candidate
+    function_globals = refill_duplicate_candidate_result.__globals__
+    original_optimizer = function_globals["_optimize_refill_candidate"]
+    function_globals["_optimize_refill_candidate"] = fake_optimize_refill_candidate
     state = {"search_method": "normal"}
     token = web_candidate_context.set(state)
     try:
         result = refill_duplicate_candidate_result(initial)
     finally:
         web_candidate_context.reset(token)
-        _MODULE["_optimize_refill_candidate"] = original_optimizer
+        function_globals["_optimize_refill_candidate"] = original_optimizer
 
     assert initial.opt_config.sequential is False
     assert calls[0][0:2] == (1, False)
@@ -228,12 +229,13 @@ def test_installed_adapter_preserves_false_and_reports_diagnostics() -> None:
 
     workflows = SimpleNamespace(_run_regression_web_workflow=original)
     workflows_tabular = SimpleNamespace(run_regression_web_workflow=original)
-    original_installer = _MODULE["_install_tabular_candidate_refill"]
-    _MODULE["_install_tabular_candidate_refill"] = lambda: None
+    function_globals = install_web_candidate_batch_diversity.__globals__
+    original_installer = function_globals["_install_tabular_candidate_refill"]
+    function_globals["_install_tabular_candidate_refill"] = lambda: None
     try:
         install_web_candidate_batch_diversity(workflows, workflows_tabular)
     finally:
-        _MODULE["_install_tabular_candidate_refill"] = original_installer
+        function_globals["_install_tabular_candidate_refill"] = original_installer
 
     request = SimpleNamespace(
         optimizer=SimpleNamespace(name="normal", q=3, sequential=False)

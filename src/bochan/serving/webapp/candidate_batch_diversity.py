@@ -1,15 +1,16 @@
-"""Candidate-batch diversity policy for the React Web workflow.
+"""Candidate-batch duplicate handling for the React Web workflow.
 
-The Web workbench presents a small set of experiments that should normally be
-meaningfully distinct.  Joint q-batch optimization can converge multiple rows
-to the same optimum, and grid / categorical post-processing can make nearly
-equal continuous solutions exactly equal.  For optimizers that support pending
-points, use greedy sequential selection so each new candidate is conditioned on
-those already selected.
+The Web defaults deliberately use joint q-batch optimization for ordinary
+continuous searches and sequential optimization for mixed categorical searches.
+Keep that policy unchanged.  If repair, grid rounding, or category decoding makes
+final tensor candidates identical, refill only the duplicate slots with q=1
+searches conditioned on the unique candidates through ``X_pending``.
 """
 
 from __future__ import annotations
 
+from contextvars import ContextVar
+from dataclasses import replace
 from functools import wraps
 from typing import Any
 
@@ -19,6 +20,10 @@ _NATIVE_BATCH_METHODS = {
     "thompson_sampling",
     "optimize_thompson_sampling",
 }
+_WEB_CANDIDATE_CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar(
+    "bochan_web_candidate_context",
+    default=None,
+)
 
 
 def _normalized_method(name: Any) -> str:
@@ -31,37 +36,28 @@ def resolve_web_candidate_sequential(
     search_method: str,
     requested: bool,
 ) -> tuple[bool, str]:
-    """Resolve the effective Web batch strategy.
+    """Report the requested Web batch policy without overriding it.
 
-    The Web UI does not expose joint-versus-sequential optimization as an
-    advanced control.  For ``q > 1``, gradient and evolutionary acquisition
-    optimizers therefore use greedy pending-point selection by default.  Native
-    batch selectors already enforce their own diversity and remain unchanged.
-
-    Args:
-        q: Number of requested candidates.
-        search_method: Web search-method name.
-        requested: Sequential flag received from the client.  This is retained
-            in diagnostics, but Web defaults are made robust to older clients
-            that sent ``False`` for continuous search spaces.
-
-    Returns:
-        Effective sequential flag and a diagnostic strategy name.
+    Ordinary continuous searches intentionally keep ``sequential=False`` so the
+    acquisition optimizes the requested q-batch jointly.  Mixed searches and
+    CMA-ES are already sent with ``True`` by the Web client.  Native population or
+    posterior-sampling methods own their batch semantics and remain non-sequential.
     """
 
-    del requested
     q = int(q)
     if q <= 1:
-        return False, "single"
+        return bool(requested), "single"
 
     method = _normalized_method(search_method)
     if method in _NATIVE_BATCH_METHODS:
         return False, "native_batch"
-    return True, "sequential_pending"
+    return bool(requested), (
+        "sequential_pending" if requested else "joint_batch"
+    )
 
 
 def prepare_web_candidate_request(request: Any) -> tuple[Any, dict[str, Any]]:
-    """Return a request whose optimizer uses the effective diversity policy."""
+    """Return the original request and diagnostics for its batch policy."""
 
     optimizer = getattr(request, "optimizer", None)
     if optimizer is None:
@@ -72,30 +68,12 @@ def prepare_web_candidate_request(request: Any) -> tuple[Any, dict[str, Any]]:
         }
 
     requested = bool(getattr(optimizer, "sequential", False))
-    q = int(getattr(optimizer, "q", 1))
-    search_method = str(getattr(optimizer, "name", "normal"))
     effective, strategy = resolve_web_candidate_sequential(
-        q=q,
-        search_method=search_method,
+        q=int(getattr(optimizer, "q", 1)),
+        search_method=str(getattr(optimizer, "name", "normal")),
         requested=requested,
     )
-
-    if effective == requested:
-        prepared = request
-    elif hasattr(optimizer, "model_copy") and hasattr(request, "model_copy"):
-        prepared_optimizer = optimizer.model_copy(update={"sequential": effective})
-        prepared = request.model_copy(update={"optimizer": prepared_optimizer})
-    else:
-        # Lightweight namespace / test compatibility.  Avoid mutating the
-        # caller's request when a normal object can be copied safely.
-        from copy import copy
-
-        prepared = copy(request)
-        prepared_optimizer = copy(optimizer)
-        prepared_optimizer.sequential = effective
-        prepared.optimizer = prepared_optimizer
-
-    return prepared, {
+    return request, {
         "candidate_batch_strategy": strategy,
         "candidate_sequential_requested": requested,
         "candidate_sequential_effective": effective,
@@ -106,9 +84,6 @@ def _canonical_candidate_value(value: Any) -> Any:
     if isinstance(value, bool) or value is None:
         return value
     if isinstance(value, (int, float)):
-        # Candidate serialization can introduce insignificant floating-point
-        # noise.  Twelve decimals is strict enough to identify only effectively
-        # identical experimental settings.
         return round(float(value), 12)
     return str(value)
 
@@ -134,30 +109,201 @@ def candidate_uniqueness_metadata(result: dict[str, Any]) -> dict[str, int]:
     }
 
 
+def _tensor_candidate_key(row: Any) -> tuple[float, ...]:
+    values = row.detach().cpu().reshape(-1).tolist()
+    return tuple(round(float(value), 12) for value in values)
+
+
+def _as_candidate_matrix(candidates: Any) -> Any:
+    if candidates.ndim == 1:
+        return candidates.unsqueeze(0)
+    return candidates.reshape(-1, candidates.shape[-1])
+
+
+def _pending_with_selected(base_pending: Any, selected: list[Any]) -> Any:
+    import torch
+
+    selected_tensor = torch.stack(selected, dim=0)
+    if base_pending is None:
+        return selected_tensor
+    pending = base_pending
+    if pending.ndim == 1:
+        pending = pending.unsqueeze(0)
+    pending = pending.reshape(-1, pending.shape[-1]).to(
+        device=selected_tensor.device,
+        dtype=selected_tensor.dtype,
+    )
+    return torch.cat([pending, selected_tensor], dim=-2)
+
+
+def _refill_duplicate_candidate_result(
+    tabular_optimizer: Any,
+    initial_result: Any,
+    original_candidate: Any,
+) -> Any:
+    """Replace duplicate repaired candidates without changing the initial q policy."""
+
+    state = _WEB_CANDIDATE_CONTEXT.get()
+    if state is None:
+        return initial_result
+    if _normalized_method(state.get("search_method")) in _NATIVE_BATCH_METHODS:
+        return initial_result
+
+    candidates = _as_candidate_matrix(initial_result.candidates)
+    requested_q = int(getattr(initial_result.opt_config, "q", candidates.shape[0]))
+    if requested_q <= 1 or candidates.shape[0] <= 1:
+        return initial_result
+
+    selected: list[Any] = []
+    seen: set[tuple[float, ...]] = set()
+    duplicates: list[Any] = []
+    for row in candidates:
+        key = _tensor_candidate_key(row)
+        if key in seen:
+            duplicates.append(row.detach().clone())
+            continue
+        seen.add(key)
+        selected.append(row.detach().clone())
+
+    missing = requested_q - len(selected)
+    state["candidate_initial_duplicate_count"] = max(missing, 0)
+    if missing <= 0:
+        return initial_result
+
+    max_attempts = max(8, missing * 6)
+    attempts = 0
+    refilled = 0
+    base_context = initial_result.data_context
+    refill_opt_config = replace(
+        initial_result.opt_config,
+        q=1,
+        sequential=False,
+    )
+
+    while len(selected) < requested_q and attempts < max_attempts:
+        attempts += 1
+        pending = _pending_with_selected(
+            getattr(base_context, "X_pending", None),
+            selected,
+        )
+        refill_context = replace(base_context, X_pending=pending)
+        try:
+            refill_result = original_candidate(
+                tabular_optimizer,
+                initial_result.acq_config,
+                refill_opt_config,
+                data_context=refill_context,
+                return_result=True,
+            )
+        except Exception as exc:  # keep the original q-batch if refill is unsupported
+            state["candidate_refill_error"] = str(exc)
+            break
+
+        refill_candidates = _as_candidate_matrix(refill_result.candidates)
+        if refill_candidates.shape[0] == 0:
+            continue
+        row = refill_candidates[0].detach().clone()
+        key = _tensor_candidate_key(row)
+        if key in seen:
+            continue
+        seen.add(key)
+        selected.append(row)
+        refilled += 1
+
+    state["candidate_refill_attempts"] = attempts
+    state["candidate_refill_count"] = refilled
+
+    # Preserve the requested candidate count even when an acquisition does not
+    # implement pending-point semantics.  Unresolved duplicates remain visible in
+    # the final metadata instead of silently dropping rows.
+    fallback_rows = iter(duplicates)
+    while len(selected) < requested_q:
+        try:
+            selected.append(next(fallback_rows))
+        except StopIteration:
+            selected.append(candidates[len(selected) % candidates.shape[0]].detach().clone())
+
+    import torch
+
+    return replace(
+        initial_result,
+        candidates=torch.stack(selected[:requested_q], dim=0),
+    )
+
+
+def _install_tabular_candidate_refill() -> None:
+    from bochan.tabular.optimizer import TabularBayesianOptimizer
+
+    if getattr(TabularBayesianOptimizer, "_web_candidate_refill_installed", False):
+        return
+
+    original_candidate = TabularBayesianOptimizer.candidate
+
+    @wraps(original_candidate)
+    def candidate_with_duplicate_refill(self: Any, *args: Any, **kwargs: Any) -> Any:
+        result = original_candidate(self, *args, **kwargs)
+        if not bool(kwargs.get("return_result", False)):
+            return result
+        return _refill_duplicate_candidate_result(
+            self,
+            result,
+            original_candidate,
+        )
+
+    TabularBayesianOptimizer.candidate = candidate_with_duplicate_refill
+    TabularBayesianOptimizer._web_candidate_refill_installed = True
+
+
 def install_web_candidate_batch_diversity(
     workflows_module: Any,
     workflows_tabular_module: Any,
 ) -> None:
-    """Install the Web candidate diversity adapter once."""
+    """Install duplicate refill and Web result diagnostics once."""
 
     if getattr(workflows_tabular_module, "_candidate_batch_diversity_installed", False):
         return
 
+    _install_tabular_candidate_refill()
     original = workflows_tabular_module.run_regression_web_workflow
 
     @wraps(original)
     def wrapped(request: Any, store: Any) -> dict[str, Any]:
         prepared_request, strategy_metadata = prepare_web_candidate_request(request)
-        result = original(prepared_request, store)
+        optimizer = getattr(prepared_request, "optimizer", None)
+        state: dict[str, Any] = {
+            "search_method": getattr(optimizer, "name", "normal"),
+            "candidate_refill_attempts": 0,
+            "candidate_refill_count": 0,
+            "candidate_initial_duplicate_count": 0,
+        }
+        token = _WEB_CANDIDATE_CONTEXT.set(state)
+        try:
+            result = original(prepared_request, store)
+        finally:
+            _WEB_CANDIDATE_CONTEXT.reset(token)
+
         metadata = dict(result.get("metadata") or {})
         metadata.update(strategy_metadata)
         metadata.update(candidate_uniqueness_metadata(result))
+        metadata.update(
+            {
+                "candidate_initial_duplicate_count": int(
+                    state.get("candidate_initial_duplicate_count", 0)
+                ),
+                "candidate_refill_attempts": int(
+                    state.get("candidate_refill_attempts", 0)
+                ),
+                "candidate_refill_count": int(
+                    state.get("candidate_refill_count", 0)
+                ),
+            }
+        )
+        if state.get("candidate_refill_error"):
+            metadata["candidate_refill_error"] = state["candidate_refill_error"]
         result["metadata"] = metadata
         return result
 
     workflows_tabular_module.run_regression_web_workflow = wrapped
-    # workflows.py binds the internal callable at import time.  Update that
-    # binding as well so both package and direct app imports use the adapter.
     workflows_module._run_regression_web_workflow = wrapped
     workflows_tabular_module._candidate_batch_diversity_installed = True
 

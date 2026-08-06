@@ -4,16 +4,16 @@ import pytest
 import torch
 
 from bochan.acquisition.regression.active_learning.single_output import (
-    _RegressionActiveLearningBase,
+    qRegressionPosteriorVariance,
 )
 
 
-def _base(**kwargs) -> _RegressionActiveLearningBase:
-    return _RegressionActiveLearningBase(model=torch.nn.Identity(), **kwargs)
+def _acquisition(**kwargs) -> qRegressionPosteriorVariance:
+    return qRegressionPosteriorVariance(model=torch.nn.Identity(), **kwargs)
 
 
 def test_same_batch_duplicates_are_hard_excluded_by_default() -> None:
-    acquisition = _base()
+    acquisition = _acquisition()
     duplicate_batch = torch.tensor(
         [[[0.2], [0.2], [0.4]]],
         dtype=torch.double,
@@ -31,7 +31,7 @@ def test_same_batch_duplicates_are_hard_excluded_by_default() -> None:
 
 
 def test_pending_duplicate_is_hard_excluded_without_soft_weight() -> None:
-    acquisition = _base(X_pending=torch.tensor([[0.2]], dtype=torch.double))
+    acquisition = _acquisition(X_pending=torch.tensor([[0.2]], dtype=torch.double))
     duplicate = torch.tensor([[[0.2]]], dtype=torch.double)
     nearby_distinct = torch.tensor([[[0.2002]]], dtype=torch.double)
 
@@ -55,7 +55,7 @@ def test_pending_duplicate_is_hard_excluded_without_soft_weight() -> None:
 
 
 def test_hard_exclusion_can_be_disabled_without_enabling_soft_penalty() -> None:
-    acquisition = _base(
+    acquisition = _acquisition(
         X_pending=torch.tensor([[0.2]], dtype=torch.double),
         exclude_same_batch_duplicates=False,
         exclude_pending_duplicates=False,
@@ -77,7 +77,7 @@ def test_hard_exclusion_can_be_disabled_without_enabling_soft_penalty() -> None:
 
 
 def test_finite_hard_duplicate_penalty_is_independent_of_soft_weight() -> None:
-    acquisition = _base(
+    acquisition = _acquisition(
         hard_duplicate_penalty=7.0,
         same_batch_penalty_weight=0.0,
         exclude_same_batch_duplicates=False,
@@ -92,4 +92,4 @@ def test_finite_hard_duplicate_penalty_is_independent_of_soft_weight() -> None:
 
 def test_duplicate_tolerance_must_be_non_negative() -> None:
     with pytest.raises(ValueError, match="hard_duplicate_tol"):
-        _base(hard_duplicate_tol=-1.0)
+        _acquisition(hard_duplicate_tol=-1.0)

@@ -104,6 +104,9 @@ from .ordinal_display import (
 from .heteroscedastic_1d import (
     show_1dplot_from_optimizer as _show_heteroscedastic_1dplot_from_optimizer,
 )
+from .probability_1d import (
+    show_1dplot_from_optimizer as _show_probability_1dplot_from_optimizer,
+)
 from .study import (
     show_optimization_history_study,
     show_pareto_front_study,
@@ -121,7 +124,7 @@ from .plots import (
 )
 from .utils import CYCLE_COLORS
 
-show_1dplot_from_optimizer = _show_heteroscedastic_1dplot_from_optimizer
+show_1dplot_from_optimizer = _show_probability_1dplot_from_optimizer
 
 # Keep direct imports from ``bochan.visualization.plots`` consistent with the
 # package-level API. The wrappers delegate to the existing implementations when

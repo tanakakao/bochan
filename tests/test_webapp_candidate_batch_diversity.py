@@ -1,16 +1,27 @@
 from __future__ import annotations
 
+import runpy
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from bochan.serving.webapp.app import RegressionRunRequest
-from bochan.serving.webapp.candidate_batch_diversity import (
-    candidate_uniqueness_metadata,
-    install_web_candidate_batch_diversity,
-    prepare_web_candidate_request,
-    resolve_web_candidate_sequential,
+_MODULE = runpy.run_path(
+    str(
+        Path(__file__).parents[1]
+        / "src"
+        / "bochan"
+        / "serving"
+        / "webapp"
+        / "candidate_batch_diversity.py"
+    )
 )
+candidate_uniqueness_metadata = _MODULE["candidate_uniqueness_metadata"]
+install_web_candidate_batch_diversity = _MODULE[
+    "install_web_candidate_batch_diversity"
+]
+prepare_web_candidate_request = _MODULE["prepare_web_candidate_request"]
+resolve_web_candidate_sequential = _MODULE["resolve_web_candidate_sequential"]
 
 
 def test_web_q3_normal_search_forces_sequential_pending_selection() -> None:
@@ -42,18 +53,14 @@ def test_native_batch_search_methods_keep_their_own_batch_selection(
 
 
 def test_prepare_web_candidate_request_does_not_mutate_original_request() -> None:
-    request = RegressionRunRequest(
-        dataset_id="dataset",
-        feature_columns=["x"],
-        target_column="y",
-        target_columns=["y"],
-        optimizer={
-            "name": "normal",
-            "q": 3,
-            "num_restarts": 4,
-            "raw_samples": 16,
-            "sequential": False,
-        },
+    request = SimpleNamespace(
+        optimizer=SimpleNamespace(
+            name="normal",
+            q=3,
+            num_restarts=4,
+            raw_samples=16,
+            sequential=False,
+        )
     )
 
     prepared, metadata = prepare_web_candidate_request(request)

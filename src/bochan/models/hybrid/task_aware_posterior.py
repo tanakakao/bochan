@@ -66,12 +66,6 @@ class TaskAwareHybridPosterior(HybridPosterior):
             raise ValueError("TaskAwareHybridPosterior requires at least one base event.")
         self._base_sample_shape = self.batch_shape + torch.Size([total_event_size])
 
-    @staticmethod
-    def _broadcastable_prefix(actual: torch.Size, expected: torch.Size) -> bool:
-        if len(actual) != len(expected):
-            return False
-        return all(a == b or a == 1 or b == 1 for a, b in zip(actual, expected))
-
     def _make_layout(self, component: HybridPosteriorComponent) -> _ComponentLayout:
         expected_shape = self.batch_shape + torch.Size([self._mean.shape[-2]])
         if component.mean.shape != expected_shape:
@@ -86,8 +80,9 @@ class TaskAwareHybridPosterior(HybridPosterior):
                 ) from exc
 
         posterior = component.posterior
-        source_shape = torch.Size()
         use_source = False
+        source_shape = torch.Size()
+        event_shape = torch.Size()
         if posterior is not None:
             raw_shape = getattr(posterior, "base_sample_shape", None)
             has_base_sampler = callable(
@@ -97,18 +92,25 @@ class TaskAwareHybridPosterior(HybridPosterior):
                 raw_shape = torch.Size(raw_shape)
                 batch_ndim = len(self.batch_shape)
                 source_batch = raw_shape[:batch_ndim]
-                event_shape = raw_shape[batch_ndim:]
+                source_event = raw_shape[batch_ndim:]
+                public_q = int(self._mean.shape[-2])
+
+                # InputPerturbation can expose q*n_w latent events while the
+                # public Hybrid posterior has already aggregated them to q.
+                # Such a source posterior cannot share one base-sample layout
+                # with the public posterior; use the transformed moments proxy
+                # instead. This also avoids silently treating perturbation
+                # replicas as additional candidates.
                 if (
-                    self._broadcastable_prefix(source_batch, self.batch_shape)
-                    and len(event_shape) > 0
-                    and math.prod(event_shape) > 0
+                    source_batch == self.batch_shape
+                    and len(source_event) > 0
+                    and int(math.prod(source_event)) == public_q
                 ):
                     source_shape = raw_shape
+                    event_shape = source_event
                     use_source = True
 
-        if use_source:
-            event_shape = source_shape[len(self.batch_shape) :]
-        else:
+        if not use_source:
             event_shape = torch.Size([self._mean.shape[-2]])
             source_shape = self.batch_shape + event_shape
 
@@ -186,7 +188,8 @@ class TaskAwareHybridPosterior(HybridPosterior):
             )
         else:
             target = sample_shape + component.mean.shape
-            standard_normal = base_samples.reshape(target)
+            public_events = int(component.mean.shape[-1])
+            standard_normal = base_samples[..., :public_events].reshape(target)
             raw_samples = (
                 component.mean.expand(target)
                 + component.variance.clamp_min(0.0).sqrt().expand(target)

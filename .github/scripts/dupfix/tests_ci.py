@@ -101,11 +101,17 @@ def test_hard_duplicate_exclusion_can_be_disabled() -> None:
 '''
 
 
+def _replace_first(text: str, old: str, new: str, *, label: str) -> str:
+    if old not in text:
+        raise RuntimeError(f"{label}: expected at least one match")
+    return text.replace(old, new, 1)
+
+
 def add_tests_and_ci() -> None:
     write("tests/test_classification_duplicate_exclusion.py", TEST_FILE)
     workflow = ".github/workflows/wide-multitask-smoke.yml"
     text = read(workflow)
-    text = replace_once(
+    text = _replace_first(
         text,
         "            tests/test_wide_multitask_acquisition_consistency.py \\\n"
         "            tests/test_wide_multitask_classification_acquisitions.py \\\n",

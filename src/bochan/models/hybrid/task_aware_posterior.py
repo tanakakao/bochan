@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Callable, Optional, Sequence
 
 import torch
 from botorch.posteriors.posterior import Posterior
@@ -19,8 +19,8 @@ class HybridPosteriorComponent:
 
     mean: Tensor
     variance: Tensor
-    posterior: Optional[Posterior] = None
-    sample_transform: Optional[Callable[[Tensor], Tensor]] = None
+    posterior: Posterior | None = None
+    sample_transform: Callable[[Tensor], Tensor] | None = None
     name: str = "output"
 
 
@@ -132,7 +132,7 @@ class TaskAwareHybridPosterior(HybridPosterior):
 
     def _extended_shape(
         self,
-        sample_shape: Optional[torch.Size] = None,
+        sample_shape: torch.Size | None = None,
     ) -> torch.Size:
         sample_shape = torch.Size() if sample_shape is None else torch.Size(sample_shape)
         return sample_shape + self._mean.shape
@@ -210,8 +210,8 @@ class TaskAwareHybridPosterior(HybridPosterior):
 
     def rsample(
         self,
-        sample_shape: Optional[torch.Size] = None,
-        base_samples: Optional[Tensor] = None,
+        sample_shape: torch.Size | None = None,
+        base_samples: Tensor | None = None,
     ) -> Tensor:
         sample_shape = torch.Size() if sample_shape is None else torch.Size(sample_shape)
         target = sample_shape + self.base_sample_shape
@@ -258,7 +258,7 @@ class TaskAwareHybridPosterior(HybridPosterior):
             offset = next_offset
         return torch.stack(outputs, dim=-1)
 
-    def sample(self, sample_shape: Optional[torch.Size] = None) -> Tensor:
+    def sample(self, sample_shape: torch.Size | None = None) -> Tensor:
         with torch.no_grad():
             return self.rsample(sample_shape=sample_shape)
 

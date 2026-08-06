@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 import torch
+from botorch.acquisition.acquisition import AcquisitionFunction
 
 _MODULE = runpy.run_path(
     str(
@@ -19,6 +20,7 @@ _MODULE = runpy.run_path(
         / "candidate_batch_diversity.py"
     )
 )
+ExcludedCandidateAcquisition = _MODULE["_ExcludedCandidateAcquisition"]
 candidate_uniqueness_metadata = _MODULE["candidate_uniqueness_metadata"]
 install_web_candidate_batch_diversity = _MODULE[
     "install_web_candidate_batch_diversity"
@@ -39,16 +41,32 @@ class _OptConfig:
 
 @dataclass
 class _DataContext:
+    bounds: Any
     X_pending: Any = None
 
 
 @dataclass
 class _CandidateResult:
     candidates: Any
+    acqf: Any
     acq_config: Any
     opt_config: _OptConfig
     data_context: _DataContext
     acq_value: Any = None
+
+
+class _ConstantAcquisition(AcquisitionFunction):
+    def __init__(self) -> None:
+        super().__init__(model=torch.nn.Identity())
+        self.pending_calls: list[Any] = []
+        self.X_pending = None
+
+    def set_X_pending(self, X_pending=None) -> None:
+        self.X_pending = X_pending
+        self.pending_calls.append(X_pending)
+
+    def forward(self, X):
+        return torch.ones(X.shape[:-2], dtype=X.dtype, device=X.device)
 
 
 def test_web_q3_normal_search_preserves_joint_batch_selection() -> None:
@@ -112,56 +130,68 @@ def test_prepare_web_candidate_request_keeps_original_false_setting() -> None:
     }
 
 
+def test_generic_exclusion_penalty_does_not_require_native_pending_support() -> None:
+    base = _ConstantAcquisition()
+    wrapped = ExcludedCandidateAcquisition(
+        base,
+        excluded=torch.tensor([[0.5]], dtype=torch.double),
+        bounds=torch.tensor([[0.0], [1.0]], dtype=torch.double),
+        radius=0.05,
+        penalty_weight=1_000.0,
+    )
+
+    duplicate_score = wrapped(torch.tensor([[[0.5]]], dtype=torch.double))
+    distant_score = wrapped(torch.tensor([[[0.9]]], dtype=torch.double))
+
+    assert duplicate_score.item() < -900.0
+    assert distant_score.item() == pytest.approx(1.0, abs=1e-8)
+
+
 def test_duplicate_slots_are_refilled_after_joint_q_optimization() -> None:
+    base_acqf = _ConstantAcquisition()
     initial = _CandidateResult(
         candidates=torch.tensor([[0.1], [0.1], [0.2]], dtype=torch.double),
+        acqf=base_acqf,
         acq_config=SimpleNamespace(name="EI"),
         opt_config=_OptConfig(q=3, sequential=False),
-        data_context=_DataContext(),
+        data_context=_DataContext(
+            bounds=torch.tensor([[0.0], [1.0]], dtype=torch.double)
+        ),
     )
     calls: list[tuple[int, bool, Any]] = []
 
-    def original_candidate(
-        tabular_optimizer,
-        acq_config,
-        opt_config,
-        *,
-        data_context,
-        return_result,
-    ):
-        del tabular_optimizer, acq_config
-        calls.append((opt_config.q, opt_config.sequential, data_context.X_pending))
-        assert return_result is True
-        return _CandidateResult(
-            candidates=torch.tensor([[0.3]], dtype=torch.double),
-            acq_config=initial.acq_config,
-            opt_config=opt_config,
-            data_context=data_context,
-        )
+    def fake_optimize_refill_candidate(*, acqf, bounds, opt_config):
+        calls.append((opt_config.q, opt_config.sequential, bounds))
+        duplicate_score = acqf(torch.tensor([[[0.1]]], dtype=torch.double))
+        alternative_score = acqf(torch.tensor([[[0.3]]], dtype=torch.double))
+        assert alternative_score.item() > duplicate_score.item()
+        return torch.tensor([[0.3]], dtype=torch.double), torch.tensor(1.0)
 
+    original_optimizer = _MODULE["_optimize_refill_candidate"]
+    _MODULE["_optimize_refill_candidate"] = fake_optimize_refill_candidate
     state = {"search_method": "normal"}
     token = web_candidate_context.set(state)
     try:
-        result = refill_duplicate_candidate_result(
-            SimpleNamespace(),
-            initial,
-            original_candidate,
-        )
+        result = refill_duplicate_candidate_result(initial)
     finally:
         web_candidate_context.reset(token)
+        _MODULE["_optimize_refill_candidate"] = original_optimizer
 
     assert initial.opt_config.sequential is False
     assert calls[0][0:2] == (1, False)
-    assert torch.equal(
-        calls[0][2],
-        torch.tensor([[0.1], [0.2]], dtype=torch.double),
-    )
     assert torch.equal(
         result.candidates,
         torch.tensor([[0.1], [0.2], [0.3]], dtype=torch.double),
     )
     assert state["candidate_initial_duplicate_count"] == 1
     assert state["candidate_refill_count"] == 1
+    assert state["candidate_native_pending_used"] is True
+    assert state["candidate_exclusion_penalty_used"] is True
+    assert torch.equal(
+        base_acqf.pending_calls[0],
+        torch.tensor([[0.1], [0.2]], dtype=torch.double),
+    )
+    assert base_acqf.X_pending is None
 
 
 def test_candidate_uniqueness_metadata_uses_final_encoded_values() -> None:
@@ -214,3 +244,5 @@ def test_installed_adapter_preserves_false_and_reports_diagnostics() -> None:
     assert result["metadata"]["candidate_batch_strategy"] == "joint_batch"
     assert result["metadata"]["candidate_duplicate_count"] == 0
     assert result["metadata"]["candidate_refill_count"] == 0
+    assert result["metadata"]["candidate_native_pending_used"] is False
+    assert result["metadata"]["candidate_exclusion_penalty_used"] is False

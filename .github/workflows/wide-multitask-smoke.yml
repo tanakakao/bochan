@@ -55,6 +55,7 @@ jobs:
             tests/test_fastapi_tabular_endpoints.py \
             tests/test_fastapi_tabular_direct_candidate_config.py \
             tests/test_fastapi_tabular_fit_candidate_constraints.py \
+            tests/test_hybrid_task_aware_posterior.py \
             tests/test_hybrid_deepgp_probability_shapes.py \
             tests/test_hybrid_input_perturbation_probability_shapes.py \
             2>&1 | tee pytest.log
@@ -96,6 +97,8 @@ jobs:
             src/bochan/api/repair_constraint_defaults.py \
             src/bochan/models/hybrid/__init__.py \
             src/bochan/models/hybrid/class_probability_shapes.py \
+            src/bochan/models/hybrid/task_aware_posterior.py \
+            src/bochan/models/hybrid/task_aware_sampling.py \
             src/bochan/models/projected_input_perturbation.py \
             src/bochan/models/regression/non_gaussian/gamma/base/aligned.py \
             src/bochan/models/wide_multitask.py \
@@ -145,6 +148,7 @@ jobs:
             tests/test_fastapi_tabular_endpoints.py \
             tests/test_fastapi_tabular_direct_candidate_config.py \
             tests/test_fastapi_tabular_fit_candidate_constraints.py \
+            tests/test_hybrid_task_aware_posterior.py \
             tests/test_hybrid_deepgp_probability_shapes.py \
             tests/test_hybrid_input_perturbation_probability_shapes.py \
             2>&1 | tee ruff.log

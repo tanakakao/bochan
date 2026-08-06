@@ -815,7 +815,7 @@ class _MultiOutputLatentStraddleAcquisition(_MultiOutputLatentStraddleBase):
             output_weights=self.output_weights,
         )  # (*batch, q)
 
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
 
         score = self._apply_objective_to_pointwise_score(
             score,
@@ -1215,7 +1215,7 @@ class qMultiOutputBinaryClassEntropyAcquisition(_MultiOutputLatentStraddleBase):
             output_weights=self.output_weights,
         )
 
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
 
         score = self._apply_objective_to_pointwise_score(
             score,
@@ -1330,7 +1330,7 @@ class qMultiOutputBinaryICUAcquisition(_MultiOutputLatentStraddleBase):
             output_weights=self.output_weights,
         )
 
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
 
         score = self._apply_objective_to_pointwise_score(
             score,
@@ -1462,7 +1462,7 @@ class qMultiOutputBinaryBoundaryVarianceAcquisition(_MultiOutputLatentStraddleBa
             output_weights=self.output_weights,
         )
 
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
 
         score = self._apply_objective_to_pointwise_score(
             score,

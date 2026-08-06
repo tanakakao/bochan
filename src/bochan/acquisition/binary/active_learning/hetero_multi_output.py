@@ -310,7 +310,7 @@ class _HeteroMultiOutputBinaryBALDBase(
                 output_weights=self.output_weights,
             )
 
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
 
         score = self._apply_objective_to_pointwise_score(
             score,
@@ -426,7 +426,7 @@ class _HeteroMultiOutputBinaryProbabilityVarianceBase(
                 output_weights=self.output_weights,
             )
 
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
 
         score = self._apply_objective_to_pointwise_score(
             score,
@@ -570,7 +570,7 @@ class _HeteroMultiOutputUncertaintySamplingClassifierAcquisition(
                 score_type_for_all_positive=self.score_type,
             )
 
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
         score = self._apply_objective_to_pointwise_score(
             score,
             raw_X=raw_X,

@@ -281,7 +281,7 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
         raw_X = ensure_q_batch(X)
         expanded_X = shape_X_for_model(self.model, raw_X)
         score = self._pointwise_pof(raw_X, expanded_X)
-        score = score - self._pending_penalty_per_point(expanded_X)
+        score = score - self._candidate_penalty_per_point(expanded_X)
         score = apply_pointwise_score_objective(
             self,
             score,

@@ -101,7 +101,7 @@ class _BALDAcquisition(BinaryClassificationScoreObjectiveMixin, _BinaryClassific
         score = mean_entropy - entropy_conditional
 
         score = self._apply_roi_weight_per_point(score, mean_prob, Xt)
-        score = score - self._pending_penalty_per_point(Xt)
+        score = score - self._candidate_penalty_per_point(Xt)
         score = _align_pointwise_score_to_X(
             score,
             Xt,
@@ -188,7 +188,7 @@ class _JointQBALDAcquisitionBinary(BinaryClassificationScoreObjectiveMixin, _Bin
         out = joint_entropy - cond_entropy
 
         out = self._apply_roi_weight_aggregated(out, mean_prob, Xt)
-        out = out - self._pending_penalty_aggregated(Xt, reduction="sum")
+        out = out - self._candidate_penalty_aggregated(Xt, reduction="sum")
         # Do not apply q*n_w -> q risk objective here. This score is already
         # joint/aggregated, not pointwise over q*n_w.
 
@@ -278,6 +278,7 @@ class _GreedyJointQBALDAcquisitionBinary(BinaryClassificationScoreObjectiveMixin
         if Xp is None or Xp.numel() == 0:
             out = self._joint_bald_score(X)
             out = self._apply_roi_weight_aggregated(out, mean_prob_x, Xt)
+            out = out - self._same_batch_duplicate_penalty_per_point(Xt).sum(dim=-1)
             # Do not apply q*n_w -> q risk objective to an already aggregated
             # greedy joint score.
             self._check_output_shape(out, batch_shape, "GreedyJointQBALD")
@@ -290,6 +291,7 @@ class _GreedyJointQBALDAcquisitionBinary(BinaryClassificationScoreObjectiveMixin
 
         out = score_all - score_pending
         out = self._apply_roi_weight_aggregated(out, mean_prob_x, Xt)
+        out = out - self._same_batch_duplicate_penalty_per_point(Xt).sum(dim=-1)
         # Do not apply q*n_w -> q risk objective to an already aggregated
         # greedy joint score.
         self._check_output_shape(out, batch_shape, "GreedyJointQBALD")
@@ -417,7 +419,7 @@ class _UncertaintySamplingClassifierAcquisition(BinaryClassificationScoreObjecti
             reduce_extra="sum",
         )
 
-        penalty = self._pending_penalty_per_point(Xt)
+        penalty = self._candidate_penalty_per_point(Xt)
         if penalty.shape == score.shape:
             score = score - penalty
 

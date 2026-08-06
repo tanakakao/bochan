@@ -10,6 +10,10 @@ from botorch.models.model import Model
 from botorch.models import ModelListGP
 from botorch.models.gpytorch import ModelListGPyTorchModel
 from torch import Tensor
+from bochan.acquisition._duplicate_exclusion import (
+    hard_reference_duplicate_penalty_per_point,
+    hard_same_batch_duplicate_penalty_per_point,
+)
 from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 
 
@@ -65,6 +69,9 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
         reduction: ReductionType = "mean",
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
         eps: float = 1e-6,
         # ROI
         roi_mode: ROIWeightMode = "none",
@@ -95,6 +102,11 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
         self.reduction = reduction
         self.pending_penalty_weight = float(pending_penalty_weight)
         self.pending_penalty_beta = float(pending_penalty_beta)
+        self.hard_duplicate_tol = float(hard_duplicate_tol)
+        self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
+        self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        if self.hard_duplicate_tol < 0.0:
+            raise ValueError("hard_duplicate_tol must be non-negative.")
         self.eps = float(eps)
 
         # ROI
@@ -529,59 +541,67 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
         )
 
     # =========================================================
-    # pending penalty
+    # pending / duplicate penalty
     # =========================================================
     def _get_pending_in_feature_space(self) -> Optional[Tensor]:
-        """
-        X_pending を現在の X と同じ feature space に写す。
-        """
+        """X_pending を現在の candidate と同じ feature space に写す。"""
         Xp = getattr(self, "X_pending", None)
         if Xp is None or Xp.numel() == 0:
             return None
         return self._apply_input_transform(Xp)
 
-    def _pending_penalty_per_point(self, X: Tensor) -> Tensor:
-        """
-        X: (*batch, q, d)  ※ feature space 済みを想定
-        return: (*batch, q)
-        """
-        if self.pending_penalty_weight <= 0:
-            return torch.zeros(X.shape[:-1], device=X.device, dtype=X.dtype)
+    def _same_batch_duplicate_penalty_per_point(self, X: Tensor) -> Tensor:
+        return hard_same_batch_duplicate_penalty_per_point(
+            X,
+            enabled=self.exclude_same_batch_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
 
+    def _pending_penalty_per_point(self, X: Tensor) -> Tensor:
+        """Return soft pending repulsion plus scale-independent hard exclusion."""
+        X = self._ensure_q_batch(X)
+        zeros = X.new_zeros(X.shape[:-1])
         Xp = self._get_pending_in_feature_space()
         if Xp is None or Xp.numel() == 0:
-            return torch.zeros(X.shape[:-1], device=X.device, dtype=X.dtype)
+            return zeros
 
         d = X.shape[-1]
-        X2d = X.reshape(-1, d)           # (B_total*q, d)
-        Xp2d = Xp.reshape(-1, d)         # (N_pending, d)
-
-        dists = torch.cdist(X2d, Xp2d)   # (B_total*q, N_pending)
-        min_dist = dists.min(dim=-1).values.reshape(*X.shape[:-1])  # (*batch, q)
-
-        penalty = self.pending_penalty_weight * torch.exp(
-            -self.pending_penalty_beta * min_dist
+        X2d = X.reshape(-1, d)
+        Xp2d = Xp.reshape(-1, d)
+        min_dist = torch.cdist(X2d, Xp2d).min(dim=-1).values.reshape(*X.shape[:-1])
+        soft = (
+            self.pending_penalty_weight
+            * torch.exp(-self.pending_penalty_beta * min_dist)
+            if self.pending_penalty_weight > 0.0
+            else zeros
         )
-        return penalty
+        hard = hard_reference_duplicate_penalty_per_point(
+            X,
+            Xp,
+            enabled=self.exclude_pending_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
+        return soft + hard
+
+    def _candidate_penalty_per_point(self, X: Tensor) -> Tensor:
+        return (
+            self._pending_penalty_per_point(X)
+            + self._same_batch_duplicate_penalty_per_point(X)
+        )
 
     def _pending_penalty_aggregated(
         self,
         X: Tensor,
         reduction: Optional[ReductionType] = None,
     ) -> Tensor:
-        """
-        pending penalty を q 方向に集約して返す。
+        return self._reduce_q(self._pending_penalty_per_point(X), reduction=reduction)
 
-        Args:
-            X: (*batch, q, d)  ※ feature space 済みを想定
-            reduction: "mean" / "sum" / "max"
-                None の場合は self.reduction を使う
-
-        Returns:
-            (*batch,)
-        """
-        penalty_per_point = self._pending_penalty_per_point(X)
-        return self._reduce_q(penalty_per_point, reduction=reduction)
+    def _candidate_penalty_aggregated(
+        self,
+        X: Tensor,
+        reduction: Optional[ReductionType] = None,
+    ) -> Tensor:
+        return self._reduce_q(self._candidate_penalty_per_point(X), reduction=reduction)
 
     # =========================================================
     # ROI helpers

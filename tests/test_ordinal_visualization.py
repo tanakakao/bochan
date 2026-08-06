@@ -114,7 +114,7 @@ def test_ordinal_probabilities_are_ordered_category_probabilities() -> None:
     assert probabilities[0].argmax() < probabilities[-1].argmax()
 
 
-def test_ordinal_1d_current_display_remains_default() -> None:
+def test_ordinal_1d_probability_display_is_default() -> None:
     optimizer = _OrdinalOptimizer()
 
     figure = show_1dplot_from_optimizer(
@@ -125,6 +125,25 @@ def test_ordinal_1d_current_display_remains_default() -> None:
         target_cols=["level"],
         value_dict={"x1": 0.5},
         n=15,
+    )
+
+    assert sum(str(trace.name).startswith("P(level=") for trace in figure.data) == 4
+    assert not any(trace.name == "level 予測平均" for trace in figure.data)
+    assert list(figure.layout.yaxis.range) == [0.0, 1.0]
+
+
+def test_ordinal_1d_latent_display_remains_available() -> None:
+    optimizer = _OrdinalOptimizer()
+
+    figure = show_1dplot_from_optimizer(
+        optimizer,
+        "x0",
+        "level",
+        feature_cols=["x0", "x1"],
+        target_cols=["level"],
+        value_dict={"x1": 0.5},
+        n=15,
+        ordinal_display="latent",
     )
 
     assert any(trace.name == "level 予測平均" for trace in figure.data)

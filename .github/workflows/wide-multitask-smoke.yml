@@ -58,7 +58,6 @@ jobs:
             tests/test_hybrid_task_aware_posterior.py \
             tests/test_hybrid_deepgp_probability_shapes.py \
             tests/test_hybrid_input_perturbation_probability_shapes.py \
-            tests/test_webapp_candidate_batch_diversity.py \
             2>&1 | tee pytest.log
           status=${PIPESTATUS[0]}
           echo "$status" > pytest.status
@@ -120,8 +119,6 @@ jobs:
             src/bochan/serving/fastapi/schemas/tabular.py \
             src/bochan/serving/fastapi/stores/__init__.py \
             src/bochan/serving/fastapi/stores/tabular.py \
-            src/bochan/serving/webapp/__init__.py \
-            src/bochan/serving/webapp/candidate_batch_diversity.py \
             tests/test_gamma_fantasize.py \
             tests/test_wide_multitask_models.py \
             tests/test_wide_multitask_public_transform.py \
@@ -154,7 +151,6 @@ jobs:
             tests/test_hybrid_task_aware_posterior.py \
             tests/test_hybrid_deepgp_probability_shapes.py \
             tests/test_hybrid_input_perturbation_probability_shapes.py \
-            tests/test_webapp_candidate_batch_diversity.py \
             2>&1 | tee ruff.log
           status=${PIPESTATUS[0]}
           echo "$status" > ruff.status

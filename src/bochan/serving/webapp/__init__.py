@@ -2,7 +2,6 @@
 
 from typing import Any
 
-from .candidate_batch_diversity import install_web_candidate_batch_diversity
 from .composition_candidate_repair_compat import (
     install_composition_candidate_repair_compat,
 )
@@ -52,8 +51,6 @@ install_composition_constraint_adapter()
 from . import workflows as _workflows  # noqa: E402
 from . import workflows_tabular as _workflows_tabular  # noqa: E402
 
-install_web_candidate_batch_diversity(_workflows, _workflows_tabular)
-
 # Keep the established internal contract used by the Web workflow wrapper and
 # artifact tests even though the callable is composition-aware.
 _workflows_tabular.run_regression_web_workflow.__module__ = _workflows_tabular.__name__
@@ -72,8 +69,7 @@ install_composition_element_importance_figures()
 # though optional composition adapters wrap it at import time.
 _workflows.run_regression_web_workflow.__module__ = _workflows.__name__
 
-from .app import WEB_CAPABILITIES, app  # noqa: E402
-from .app import create_app as _create_app  # noqa: E402
+from .app import WEB_CAPABILITIES, app, create_app as _create_app  # noqa: E402
 from .composition_web_routes import register_composition_routes  # noqa: E402
 
 WEB_CAPABILITIES["composition"] = {

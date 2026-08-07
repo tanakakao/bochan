@@ -280,12 +280,15 @@ def _resolve_acquisition_config_with_model_outputs(
 
         return replace(acq_config, acqf_factory=build_nsgaii_strategy)
     self._check_fitted()
+    task_type, model_type, multi_output = self._acquisition_routing_context()
+    if task_type == str(self.bundle.task_type):
+        multi_output = _infer_bundle_multi_output(self.bundle)
     acqf_cls = resolve_acqf_cls(
         acq_config.name,
         self.acquisition_registry,
-        task_type=self.bundle.task_type,
-        model_type=self.bundle.model_type,
-        multi_output=_infer_bundle_multi_output(self.bundle),
+        task_type=task_type,
+        model_type=model_type,
+        multi_output=multi_output,
     )
     return replace(acq_config, acqf_cls=acqf_cls)
 

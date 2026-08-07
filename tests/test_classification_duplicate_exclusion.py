@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import torch
 
 from bochan.acquisition._duplicate_exclusion import (
     hard_reference_duplicate_penalty_per_point,
     hard_same_batch_duplicate_penalty_per_point,
+    resolve_observed_X,
 )
 from bochan.acquisition.binary.base import _BinaryClassificationAcqBase
 from bochan.acquisition.multiclass.bayesian_optimization.single_output import (
@@ -37,6 +40,24 @@ def test_shared_hard_duplicate_helpers_only_reject_duplicates() -> None:
         hard_reference_duplicate_penalty_per_point(distinct[..., 1:2, :], pending),
         torch.zeros(1, 1, dtype=torch.double),
     )
+
+
+def test_resolve_observed_x_prefers_public_wide_inputs() -> None:
+    wide = torch.tensor([[0.1, 0.2], [0.3, 0.4]], dtype=torch.double)
+    long = torch.tensor(
+        [[0.1, 0.2, 0.0], [0.1, 0.2, 1.0], [0.3, 0.4, 0.0]],
+        dtype=torch.double,
+    )
+    model = SimpleNamespace(
+        train_X_wide=wide,
+        train_inputs_raw=(long,),
+        train_inputs=(long,),
+    )
+
+    resolved = resolve_observed_X(model)
+
+    assert resolved is wide
+    assert resolved.shape[-1] == 2
 
 
 def test_binary_defaults_hard_exclude_same_batch_and_pending() -> None:

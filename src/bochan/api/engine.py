@@ -320,16 +320,49 @@ class BayesianOptimizer:
             return mean, variance
         raise ValueError("Unknown return_type. Expected 'posterior', 'mean', 'variance', or 'mean_variance'.")
 
+    def _acquisition_routing_context(self) -> tuple[str, str, bool]:
+        """Resolve task/model/output shape used only for acquisition lookup.
+
+        A one-output ``HybridMultiOutputModel`` is still useful as a Web/API
+        compatibility wrapper, but it must not force acquisition lookup into
+        the multi-output family.  In that case the sole submodel defines the
+        task and model family while the acquisition is resolved as
+        single-output.
+        """
+        self._check_fitted()
+        bundle = self.bundle
+        task_type = str(bundle.task_type)
+        model_type = str(bundle.model_type)
+        multi_output = bool(bundle.metadata.get("multi_output", False))
+
+        if task_type != "hybrid":
+            return task_type, model_type, multi_output
+
+        sub_bundles = list(bundle.metadata.get("sub_bundles") or [])
+        if len(sub_bundles) == 1:
+            sub_bundle = sub_bundles[0]
+            return (
+                str(sub_bundle.task_type),
+                str(sub_bundle.model_type),
+                False,
+            )
+
+        specs = list(getattr(bundle.model, "specs", None) or [])
+        if len(specs) == 1:
+            return str(specs[0].task_type), model_type, False
+
+        return task_type, model_type, multi_output
+
     def _resolve_acquisition_config(self, acq_config: AcquisitionConfig) -> AcquisitionConfig:
         if acq_config.acqf_cls is not None or acq_config.acqf_factory is not None:
             return acq_config
-        self._check_fitted()
+        task_type, model_type, multi_output = self._acquisition_routing_context()
         acqf_cls = resolve_acqf_cls(
             acq_config.name,
             self.acquisition_registry,
-            task_type=self.bundle.task_type,
-            model_type=self.bundle.model_type,
-            multi_output=bool(self.bundle.metadata.get("multi_output", False)),
+            task_type=task_type,
+            model_type=model_type,
+            multi_output=multi_output,
         )
         return replace(acq_config, acqf_cls=acqf_cls)
 

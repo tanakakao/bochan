@@ -54,7 +54,7 @@ jobs:
         shell: pwsh
         working-directory: repo/web
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run build
 
       - name: Commit validated source changes

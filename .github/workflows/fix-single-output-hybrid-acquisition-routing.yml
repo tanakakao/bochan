@@ -38,11 +38,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e . pytest ruff
-      - name: Ruff new test
+      - name: Ruff new and updated tests
         run: |
-          python -m ruff format --check tests/test_single_output_hybrid_acquisition_routing.py
-          python -m ruff check tests/test_single_output_hybrid_acquisition_routing.py
+          python -m ruff format --check tests/test_single_output_hybrid_acquisition_routing.py tests/test_webapp_single_objective_nipv.py
+          python -m ruff check tests/test_single_output_hybrid_acquisition_routing.py tests/test_webapp_single_objective_nipv.py
       - name: Compile routing source
         run: python -m py_compile src/bochan/api/engine.py
       - name: Focused routing tests
-        run: python -m pytest -q tests/test_single_output_hybrid_acquisition_routing.py
+        run: |
+          python -m pytest -q tests/test_single_output_hybrid_acquisition_routing.py tests/test_webapp_single_objective_nipv.py

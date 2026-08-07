@@ -1,0 +1,70 @@
+name: Agent classification AL validation
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-check:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'agent/align-classification-ordinal-active-learning'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/align-classification-ordinal-active-learning
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Apply source patch
+        run: |
+          python .github/agent_align_classification_al.py
+          python .github/agent_align_classification_al_followup.py
+      - name: Install
+        run: python -m pip install -e '.[test,tabular,api]'
+      - name: Syntax and focused regression checks
+        run: |
+          python -m py_compile \
+            src/bochan/acquisition/_duplicate_exclusion.py \
+            src/bochan/acquisition/binary/base.py \
+            src/bochan/acquisition/binary/active_learning/integrated_posterior_variance.py \
+            src/bochan/acquisition/multiclass/bayesian_optimization/single_output.py \
+            src/bochan/acquisition/multiclass/active_learning/single_output.py \
+            src/bochan/acquisition/ordinal/active_learning/single_output.py \
+            src/bochan/acquisition/ordinal/active_learning/multi_output.py \
+            src/bochan/api/engine.py \
+            src/bochan/serving/webapp/workflows_tabular.py
+          pytest -q --maxfail=1 \
+            tests/test_single_output_hybrid_acquisition_routing.py \
+            tests/test_webapp_single_objective_nipv.py \
+            tests/test_classification_duplicate_exclusion.py \
+            tests/test_binary_multiclass_duplicate_controls_e2e.py \
+            tests/test_ordinal_base_single_output.py
+      - name: Ruff changed source
+        run: |
+          python -m pip install ruff
+          ruff check \
+            src/bochan/acquisition/_duplicate_exclusion.py \
+            src/bochan/acquisition/binary/base.py \
+            src/bochan/acquisition/binary/active_learning/integrated_posterior_variance.py \
+            src/bochan/acquisition/multiclass/bayesian_optimization/single_output.py \
+            src/bochan/acquisition/multiclass/active_learning/single_output.py \
+            src/bochan/acquisition/ordinal/active_learning/single_output.py \
+            src/bochan/acquisition/ordinal/active_learning/multi_output.py \
+            src/bochan/api/engine.py \
+            src/bochan/serving/webapp/workflows_tabular.py
+      - name: Commit source patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/bochan
+          if ! git diff --cached --quiet; then
+            git commit -m 'Align classification and ordinal active learning'
+            git push origin HEAD:agent/align-classification-ordinal-active-learning
+          fi

@@ -256,11 +256,11 @@
 }
 
 .interactive-plot-stage {
-  min-height: 500px;
+  min-height: 550px;
 }
 
 .interactive-plot-stage .plot-container {
-  height: 510px;
+  height: 560px;
 }
 
 .plot-slice-controls {
@@ -402,10 +402,10 @@
 
   .interactive-plot-stage,
   .plot-loading {
-    min-height: 420px;
+    min-height: 470px;
   }
 
   .interactive-plot-stage .plot-container {
-    height: 420px;
+    height: 470px;
   }
 }

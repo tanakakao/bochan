@@ -1,6 +1,6 @@
 import type { Layout } from "plotly.js";
 
-/** Apply the shared Web theme and keep Plotly legends below the plotting area. */
+/** Apply the shared Web theme and keep Plotly labels and legends inside cards. */
 export function themedPlotLayout(
   layout: Record<string, unknown>,
   theme: "light" | "dark"
@@ -21,7 +21,7 @@ export function themedPlotLayout(
     margin: {
       ...source.margin,
       t: Math.min(sourceTopMargin, 40),
-      b: Math.max(sourceBottomMargin, 130)
+      b: Math.max(sourceBottomMargin, 160)
     },
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
@@ -32,6 +32,7 @@ export function themedPlotLayout(
     },
     xaxis: {
       ...source.xaxis,
+      automargin: true,
       color: text,
       gridcolor: grid,
       linecolor: grid,
@@ -40,6 +41,7 @@ export function themedPlotLayout(
     },
     yaxis: {
       ...source.yaxis,
+      automargin: true,
       color: text,
       gridcolor: grid,
       linecolor: grid,
@@ -51,7 +53,7 @@ export function themedPlotLayout(
       orientation: "h",
       x: 0.5,
       xanchor: "center",
-      y: -0.18,
+      y: -0.12,
       yanchor: "top",
       traceorder: "normal",
       font: { ...source.legend?.font, color: text }

@@ -16,6 +16,8 @@ jobs:
   apply-and-validate:
     if: github.actor != 'github-actions[bot]'
     runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
     steps:
       - name: Clone pull request branch
         shell: pwsh

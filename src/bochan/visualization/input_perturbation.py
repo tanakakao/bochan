@@ -12,6 +12,7 @@ from .utils import (
     get_model,
     prediction_mean_std as _base_prediction_mean_std,
     to_numpy,
+    to_tensor_like,
 )
 
 
@@ -91,6 +92,71 @@ def _num_input_points(X: Any) -> int:
     if arr.ndim <= 1:
         return 1
     return int(np.prod(arr.shape[:-1]))
+
+
+def _hybrid_display_prediction_mean_std(
+    obj: Any,
+    X: Any,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Return Hybrid model predictions on the human-facing display scale.
+
+    ``HybridMultiOutputModel.posterior()`` defaults to ``output_mode='objective'``.
+    That scale is correct for acquisition optimization, but it is not suitable for
+    prediction plots: a target-value regression becomes ``-abs(y - target)`` and a
+    minimized regression is sign-flipped.  Visualization must instead use the raw
+    prediction scale.  Ordinal outputs are displayed as expected rank, matching
+    the Web candidate table.
+    """
+
+    model = get_model(obj)
+    specs = list(getattr(model, "specs", []) or [])
+    posterior_fn = getattr(model, "posterior", None)
+    if not specs or not callable(posterior_fn):
+        return None
+
+    X_t = to_tensor_like(X, obj)
+    try:
+        posterior = posterior_fn(X_t, output_mode="mean")
+    except TypeError:
+        return None
+
+    mean = getattr(posterior, "mean", None)
+    variance = getattr(posterior, "variance", None)
+    if mean is None or variance is None:
+        return None
+
+    ordinal_indices = [
+        index
+        for index, spec in enumerate(specs)
+        if str(getattr(spec, "task_type", "")) == "ordinal"
+    ]
+    class_probs_list = getattr(model, "class_probs_list", None)
+    if ordinal_indices and callable(class_probs_list):
+        import torch
+
+        if torch.is_tensor(mean) and torch.is_tensor(variance):
+            mean = mean.clone()
+            variance = variance.clone()
+            for index in ordinal_indices:
+                probs = class_probs_list(X_t, output_indices=[index])[0]
+                ranks = torch.arange(
+                    probs.shape[-1],
+                    device=probs.device,
+                    dtype=probs.dtype,
+                )
+                ordinal_mean = (probs * ranks).sum(dim=-1)
+                ordinal_variance = (
+                    probs * (ranks - ordinal_mean.unsqueeze(-1)).pow(2)
+                ).sum(dim=-1)
+                if ordinal_mean.ndim == mean.ndim and ordinal_mean.shape[-1] == 1:
+                    ordinal_mean = ordinal_mean.squeeze(-1)
+                    ordinal_variance = ordinal_variance.squeeze(-1)
+                mean[..., index] = ordinal_mean
+                variance[..., index] = ordinal_variance
+
+    mean_arr = ensure_2d(mean)
+    std_arr = np.sqrt(np.clip(ensure_2d(variance), 0.0, None))
+    return mean_arr, std_arr
 
 
 def aggregate_input_perturbation_moments(
@@ -179,14 +245,18 @@ def prediction_mean_std(
     uncertainty_kind: str = "epistemic",
     num_uncertainty_samples: int = 256,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return visualization moments with input perturbations aggregated."""
+    """Return display-scale visualization moments with perturbations aggregated."""
 
-    mean, std = _base_prediction_mean_std(
-        obj,
-        X,
-        uncertainty_kind=uncertainty_kind,
-        num_uncertainty_samples=num_uncertainty_samples,
-    )
+    hybrid_display = _hybrid_display_prediction_mean_std(obj, X)
+    if hybrid_display is None:
+        mean, std = _base_prediction_mean_std(
+            obj,
+            X,
+            uncertainty_kind=uncertainty_kind,
+            num_uncertainty_samples=num_uncertainty_samples,
+        )
+    else:
+        mean, std = hybrid_display
     return aggregate_input_perturbation_moments(
         mean,
         std,

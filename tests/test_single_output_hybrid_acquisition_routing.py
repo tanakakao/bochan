@@ -62,7 +62,7 @@ def test_single_regression_hybrid_routes_to_single_output_acquisition(
     [
         ("binary", "BALD", "qBinaryBALD"),
         ("binary", "variance", "qBinaryProbabilityVariance"),
-        ("binary", "NIPV", "qBinaryFantasyNegIntegratedPosteriorVariance"),
+        ("binary", "NIPV", "qBinaryIntegratedPosteriorVarianceProxy"),
         ("ordinal", "BALD", "qOrdinalBALD"),
         ("ordinal", "variance", "qOrdinalUtilityVariance"),
         ("ordinal", "NIPV", "qOrdinalFantasyNegIntegratedPosteriorVariance"),

@@ -24,6 +24,16 @@ jobs:
           cache: pip
       - name: Apply source patch
         run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('.github/agent_align_classification_al.py')
+          text = p.read_text(encoding='utf-8')
+          text = text.replace(
+              '    if text.count(old) != 1:\n        raise RuntimeError(f"pattern not unique in {path}: count={text.count(old)}")\n    p.write_text(text.replace(old, new), encoding="utf-8")',
+              '    p.write_text(text.replace(old, new, 1), encoding="utf-8")',
+          )
+          p.write_text(text, encoding='utf-8')
+          PY
           python .github/agent_align_classification_al.py
           python .github/agent_align_classification_al_followup.py
       - name: Install

@@ -111,8 +111,23 @@ export default function TargetProposalSettings({
     });
   }
 
+  function changeConstraintGoal(target: string, nextGoal: TargetGoal) {
+    if (nextGoal === "target") {
+      changeDirection(target, "target");
+      return;
+    }
+    changeGoal(target, nextGoal);
+  }
+
   function directionControl(target: string, setting: TargetSetting) {
     if (!setting.optimize) return <span className="muted-cell">対象外</span>;
+    if (isLevelSet) {
+      return (
+        <span className="muted-cell" title="レベルセット推定では最大化・最小化方向を使用しません。">
+          境界推定
+        </span>
+      );
+    }
     const directionValue: OptimizationDirection = setting.goal === "target"
       ? "target"
       : setting.direction;
@@ -231,7 +246,7 @@ export default function TargetProposalSettings({
           <h3>{isLevelSet ? "目的変数のレベルセット条件" : "目的変数の候補提案条件"}</h3>
           <p>
             {isLevelSet
-              ? "各最適化対象に境界を設定します。分類は対象クラス確率、順序回帰は設定済みのクラス順を目的尺度として扱います。"
+              ? "各最適化対象に境界を設定します。最大化・最小化方向は使用せず、分類は対象クラス確率、順序回帰は設定済みのクラス順を目的尺度として扱います。"
               : "最適化対象、方向、目標値、実行可能性制約、狙うクラスを設定します。"}
           </p>
         </div>
@@ -241,7 +256,7 @@ export default function TargetProposalSettings({
         <table className="target-settings-table proposal-target-table">
           <thead>
             <tr>
-              <th>目的変数</th><th>最適化対象</th><th>方向</th><th>制約</th>
+              <th>目的変数</th><th>最適化対象</th><th>{isLevelSet ? "探索" : "方向"}</th><th>制約</th>
               <th>{isLevelSet ? "境界しきい値／目標値" : "しきい値／目標値"}</th><th>対象クラス</th>
             </tr>
           </thead>
@@ -251,6 +266,11 @@ export default function TargetProposalSettings({
               if (!setting) return null;
               const classes = setting.class_order?.length ? setting.class_order : classesFor(target);
               const targetMode = setting.goal === "target";
+              const constraintValue = isLevelSet
+                ? setting.goal
+                : targetMode
+                  ? "none"
+                  : setting.goal;
               return (
                 <tr key={target} className={setting.optimize ? "objective-row" : "constraint-only-row"}>
                   <td className="target-name-cell"><strong>{target}</strong><span>{setting.task_type}</span></td>
@@ -267,17 +287,20 @@ export default function TargetProposalSettings({
                   <td>{directionControl(target, setting)}</td>
                   <td>
                     <select
-                      value={targetMode ? "none" : setting.goal}
-                      disabled={targetMode}
-                      title={targetMode ? "目標値は方向で設定されています。" : undefined}
-                      onChange={(event) => changeGoal(
+                      value={constraintValue}
+                      disabled={!isLevelSet && targetMode}
+                      title={!isLevelSet && targetMode ? "目標値は方向で設定されています。" : undefined}
+                      onChange={(event) => changeConstraintGoal(
                         target,
-                        event.target.value as Exclude<TargetGoal, "target">
+                        event.target.value as TargetGoal
                       )}
                     >
                       <option value="none">なし</option>
                       <option value="above">以上</option>
                       <option value="below">以下</option>
+                      {isLevelSet && setting.task_type !== "classification" && (
+                        <option value="target">目標値</option>
+                      )}
                     </select>
                   </td>
                   <td>{targetValueControl(target, setting, classes)}</td>
@@ -290,7 +313,7 @@ export default function TargetProposalSettings({
       </div>
       <p className="settings-note">
         {isLevelSet
-          ? "Multiclass は選択したクラス群の合計確率をしきい値と比較します。順序回帰の「以上／以下」はクラス順の順位を境界として扱い、「目標値」は選択順位への距離 0 の等高線を推定します。"
+          ? "レベルセット推定では最大化・最小化方向を設定しません。回帰・順序回帰の「目標値」は制約欄から選択できます。Multiclass は選択したクラス群の合計確率をしきい値と比較し、順序回帰の「以上／以下」はクラス順の順位を境界として扱います。"
           : "方向・制約・対象クラスは候補提案時にのみ使用します。ここを変更しても、互換性のある学習済みモデルは再利用できます。"}
       </p>
     </article>

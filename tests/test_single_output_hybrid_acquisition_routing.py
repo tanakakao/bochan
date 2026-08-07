@@ -62,6 +62,8 @@ def test_single_regression_hybrid_routes_to_single_output_acquisition(
     [
         ("binary", "BALD", "qBinaryBALD"),
         ("binary", "variance", "qBinaryProbabilityVariance"),
+        # The public binary NIPV name intentionally resolves to its differentiable
+        # single-output proxy for standard optimize_acqf compatibility.
         ("binary", "NIPV", "qBinaryIntegratedPosteriorVarianceProxy"),
         ("ordinal", "BALD", "qOrdinalBALD"),
         ("ordinal", "variance", "qOrdinalUtilityVariance"),

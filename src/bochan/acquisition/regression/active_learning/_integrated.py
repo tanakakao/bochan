@@ -77,6 +77,11 @@ class qRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
             else:
                 raise
 
+        # Keep the wrapper contract independent of the exact BoTorch constructor
+        # signature.  Some versions may not accept X_pending at construction time
+        # but still expose set_X_pending afterwards.
+        self.set_X_pending(X_pending)
+
     @property
     def X_pending(self) -> Tensor | None:
         """Return pending points from the delegated acquisition."""

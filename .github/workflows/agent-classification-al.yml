@@ -30,6 +30,7 @@ jobs:
             tests/test_classification_ordinal_single_output_hybrid_al_e2e.py \
             tests/test_classification_ordinal_input_perturbation_distance_contract.py \
             tests/test_webapp_active_learning_task_kwargs.py \
+            tests/test_ordinal_duplicate_controls_e2e.py \
             tests/test_single_output_hybrid_acquisition_routing.py \
             tests/test_webapp_single_objective_nipv.py \
             tests/test_classification_duplicate_exclusion.py \

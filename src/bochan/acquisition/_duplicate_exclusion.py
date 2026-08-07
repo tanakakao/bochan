@@ -103,7 +103,13 @@ def _first_tensor_input(value) -> Tensor | None:
 
 
 def resolve_observed_X(model, X_observed: Tensor | None = None) -> Tensor | None:
-    """Resolve observed inputs consistently across classification acquisitions."""
+    """Resolve observed inputs consistently across classification acquisitions.
+
+    Wide multitask adapters expose public candidates without the internal task-id
+    feature via ``train_X_wide``. Prefer that representation over long-format
+    training inputs so duplicate distances are evaluated in the same feature
+    space as acquisition candidates.
+    """
 
     if X_observed is not None:
         resolved = _first_tensor_input(X_observed)
@@ -113,7 +119,13 @@ def resolve_observed_X(model, X_observed: Tensor | None = None) -> Tensor | None
             )
         return resolved
 
-    for attr in ("train_X_original", "train_X", "train_inputs_raw", "train_inputs"):
+    for attr in (
+        "train_X_original",
+        "train_X_wide",
+        "train_X",
+        "train_inputs_raw",
+        "train_inputs",
+    ):
         resolved = _first_tensor_input(getattr(model, attr, None))
         if resolved is not None:
             return resolved

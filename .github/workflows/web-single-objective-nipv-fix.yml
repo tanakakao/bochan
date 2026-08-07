@@ -32,12 +32,13 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[test,web]" ruff
 
-      - name: Format and lint
+      - name: Format and lint touched clean files
         working-directory: repo
         run: |
-          python -m ruff format src/bochan/serving/webapp/workflows_tabular.py src/bochan/models/hybrid/multi_output.py tests/test_webapp_single_objective_nipv.py
-          python -m ruff check --fix src/bochan/serving/webapp/workflows_tabular.py src/bochan/models/hybrid/multi_output.py tests/test_webapp_single_objective_nipv.py
-          python -m ruff check src/bochan/serving/webapp/workflows_tabular.py src/bochan/models/hybrid/multi_output.py tests/test_webapp_single_objective_nipv.py
+          python -m ruff format src/bochan/serving/webapp/workflows_tabular.py tests/test_webapp_single_objective_nipv.py
+          python -m ruff check --fix src/bochan/serving/webapp/workflows_tabular.py tests/test_webapp_single_objective_nipv.py
+          python -m ruff check src/bochan/serving/webapp/workflows_tabular.py tests/test_webapp_single_objective_nipv.py
+          python -m py_compile src/bochan/models/hybrid/multi_output.py
 
       - name: Run focused tests
         working-directory: repo

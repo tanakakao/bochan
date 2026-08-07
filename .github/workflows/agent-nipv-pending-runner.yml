@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   focused:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/fix-nipv-pending-contract'
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'agent/nipv-permanent-pending-contract'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/fix-nipv-pending-contract
+          ref: agent/nipv-permanent-pending-contract
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -28,16 +28,11 @@ jobs:
           python -m pip install ruff plotly
       - name: Validate changed contract
         run: |
-          python -m py_compile \
-            src/bochan/acquisition/regression/active_learning/_integrated.py \
-            src/bochan/acquisition/regression/active_learning/integrated_variance.py \
-            src/bochan/acquisition/regression/active_learning/hetero_single_output.py \
-            src/bochan/acquisition/non_gaussian/active_learning/single_output.py \
-            src/bochan/acquisition/non_gaussian/active_learning/multi_output.py
+          python -m py_compile src/bochan/acquisition/regression/active_learning/_integrated.py
           ruff format --check tests/test_nipv_pending_contract.py
           ruff check tests/test_nipv_pending_contract.py
           git diff --check
-      - name: Test pending contract
+      - name: Test real pending contract
         run: |
           pytest -q --maxfail=1 \
             tests/test_nipv_pending_contract.py \

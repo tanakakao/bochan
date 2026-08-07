@@ -40,6 +40,7 @@ jobs:
         working-directory: repo
         run: |
           py -3.12 -m ruff format src/bochan/api/optimizer_config.py src/bochan/api/candidate_uniqueness.py src/bochan/serving/webapp/target_results.py src/bochan/serving/webapp/app.py src/bochan/serving/webapp/workflows_tabular.py tests/test_regression_final_candidate_uniqueness_e2e.py
+          py -3.12 -m ruff check --fix src/bochan/api/optimizer_config.py src/bochan/api/candidate_uniqueness.py src/bochan/serving/webapp/target_results.py src/bochan/serving/webapp/app.py src/bochan/serving/webapp/workflows_tabular.py tests/test_regression_final_candidate_uniqueness_e2e.py
           py -3.12 -m ruff check src/bochan/api/optimizer_config.py src/bochan/api/candidate_uniqueness.py src/bochan/serving/webapp/target_results.py src/bochan/serving/webapp/app.py src/bochan/serving/webapp/workflows_tabular.py tests/test_regression_final_candidate_uniqueness_e2e.py
 
       - name: Run candidate uniqueness tests

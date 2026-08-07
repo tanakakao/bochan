@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
@@ -42,12 +43,21 @@ class OptimizeConfig(_BaseOptimizeConfig):
     evo_method: EvolutionaryMethod = "ga"
     ensure_unique_candidates: bool = True
     duplicate_tolerance: float = 1e-10
+    duplicate_tolerances: Sequence[float] | None = None
+    final_candidate_postprocess: Callable[[Any], Any] | None = None
     duplicate_refill_attempts: int = 4
     duplicate_pool_restarts: int = 16
 
     def __post_init__(self) -> None:
         if self.duplicate_tolerance < 0:
             raise ValueError("duplicate_tolerance must be non-negative.")
+        if self.duplicate_tolerances is not None:
+            tolerances = tuple(float(value) for value in self.duplicate_tolerances)
+            if any(not math.isfinite(value) or value < 0 for value in tolerances):
+                raise ValueError("duplicate_tolerances must contain finite non-negative values.")
+            self.duplicate_tolerances = tolerances
+        if self.final_candidate_postprocess is not None and not callable(self.final_candidate_postprocess):
+            raise ValueError("final_candidate_postprocess must be callable.")
         if self.duplicate_refill_attempts < 1:
             raise ValueError("duplicate_refill_attempts must be at least 1.")
         if self.duplicate_pool_restarts < 1:
@@ -66,16 +76,12 @@ class OptimizeConfig(_BaseOptimizeConfig):
         valid_names = _MIXED_OPTIMIZERS if preserve_mixed else _CANONICAL_OPTIMIZERS
         if name not in valid_names:
             valid = sorted(_CANONICAL_OPTIMIZERS | _EVOLUTIONARY_METHODS)
-            raise ValueError(
-                f"Unknown optimizer: {self.optimizer!r}. Expected one of {valid}."
-            )
+            raise ValueError(f"Unknown optimizer: {self.optimizer!r}. Expected one of {valid}.")
 
         self.optimizer = _InternalMixedOptimizerName(name) if preserve_mixed else name
         self.optimizer_kwargs = dict(self.optimizer_kwargs)
         if name in {"evo", "evo_mixed", "optimize_acqf_evo_mixed"}:
-            effective_method = _optimizer_name(
-                str(self.optimizer_kwargs.setdefault("method", self.evo_method))
-            )
+            effective_method = _optimizer_name(str(self.optimizer_kwargs.setdefault("method", self.evo_method)))
             if effective_method not in _EVOLUTIONARY_METHODS:
                 raise ValueError(
                     f"Unknown evolutionary method: {effective_method!r}. "
@@ -105,11 +111,7 @@ def resolve_optimizer_from_cat_dims(
         "torch": "torch_mixed",
         "thompson_sampling": "thompson_sampling_mixed",
     }.get(_optimizer_name(str(optimizer)))
-    return (
-        opt_config
-        if mixed_name is None
-        else replace(opt_config, optimizer=_InternalMixedOptimizerName(mixed_name))
-    )
+    return opt_config if mixed_name is None else replace(opt_config, optimizer=_InternalMixedOptimizerName(mixed_name))
 
 
 def uses_mixed_fixed_features(optimizer: Any) -> bool:

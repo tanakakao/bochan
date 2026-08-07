@@ -1,10 +1,10 @@
 """Shared final-candidate uniqueness handling for optimizer backends.
 
-The initial optimizer call keeps its native joint or sequential semantics.  This
-module only acts when the final, post-processed q-batch contains duplicates.  It
-refills duplicate slots from additional q=1 restart results produced by the same
-acquisition function and optimizer backend.  No acquisition wrapper or runtime
-method replacement is used.
+The initial optimizer call keeps its native joint or sequential semantics. This
+module acts on the final experiment-space representation when configured, then
+refills duplicate slots from additional q=1 restart optima of the same
+acquisition and backend. No acquisition wrapper or runtime method replacement
+is used.
 """
 
 from __future__ import annotations
@@ -54,9 +54,59 @@ def _candidate_matrix(candidates: Any) -> Tensor | None:
     return None
 
 
-def _is_duplicate(row: Tensor, selected: Sequence[Tensor], tolerance: float) -> bool:
+def _coerce_tolerances(
+    values: Sequence[float] | Tensor | None,
+    *,
+    like: Tensor,
+) -> Tensor | None:
+    if values is None:
+        return None
+    tolerances = torch.as_tensor(values, device=like.device, dtype=like.dtype)
+    if tolerances.ndim != 1 or tolerances.numel() != like.shape[-1]:
+        raise ValueError(
+            "duplicate_tolerances must contain exactly one value per feature; "
+            f"got {tuple(tolerances.shape)} for d={like.shape[-1]}."
+        )
+    if not torch.isfinite(tolerances).all() or (tolerances < 0).any():
+        raise ValueError("duplicate_tolerances must contain finite non-negative values.")
+    return tolerances
+
+
+def _rows_are_duplicate(
+    row: Tensor,
+    reference: Tensor,
+    *,
+    tolerance: float,
+    tolerances: Tensor | None,
+) -> bool:
+    if tolerances is None:
+        return torch.allclose(row, reference, rtol=0.0, atol=tolerance)
+
+    delta = (row - reference).abs()
+    exact_dimensions = tolerances <= 0
+    if exact_dimensions.any() and not torch.all(delta[exact_dimensions] <= tolerance):
+        return False
+
+    scaled_dimensions = ~exact_dimensions
+    if not scaled_dimensions.any():
+        return True
+    normalized_distance = torch.linalg.vector_norm(delta[scaled_dimensions] / tolerances[scaled_dimensions])
+    return bool(normalized_distance < 1.0)
+
+
+def _is_duplicate(
+    row: Tensor,
+    selected: Sequence[Tensor],
+    tolerance: float,
+    tolerances: Tensor | None,
+) -> bool:
     return any(
-        torch.allclose(row, reference, rtol=0.0, atol=tolerance)
+        _rows_are_duplicate(
+            row,
+            reference,
+            tolerance=tolerance,
+            tolerances=tolerances,
+        )
         for reference in selected
     )
 
@@ -65,16 +115,37 @@ def _split_unique_rows(
     candidates: Tensor,
     *,
     tolerance: float,
+    tolerances: Tensor | None,
 ) -> tuple[list[Tensor], list[Tensor]]:
     selected: list[Tensor] = []
     duplicates: list[Tensor] = []
     for row in candidates:
         detached = row.detach().clone()
-        if _is_duplicate(detached, selected, tolerance):
+        if _is_duplicate(detached, selected, tolerance, tolerances):
             duplicates.append(detached)
         else:
             selected.append(detached)
     return selected, duplicates
+
+
+def count_unique_candidate_rows(
+    candidates: Tensor,
+    *,
+    tolerance: float = 1e-10,
+    tolerances: Sequence[float] | Tensor | None = None,
+) -> int:
+    """Count unique rows using the same final-space rule as candidate refill."""
+
+    matrix = _candidate_matrix(candidates)
+    if matrix is None:
+        raise ValueError("candidates must be a one-, two-, or singleton-batch three-dimensional tensor.")
+    resolved = _coerce_tolerances(tolerances, like=matrix)
+    selected, _ = _split_unique_rows(
+        matrix,
+        tolerance=float(tolerance),
+        tolerances=resolved,
+    )
+    return len(selected)
 
 
 def _pool_rows(candidates: Any, acq_values: Any) -> list[Tensor]:
@@ -112,11 +183,7 @@ def _coerce_pending_tensor(value: Any, *, like: Tensor) -> Tensor | None:
     if torch.is_tensor(value):
         pending = value
     elif isinstance(value, (list, tuple)):
-        tensors = [
-            item
-            for item in value
-            if torch.is_tensor(item) and item.numel() > 0
-        ]
+        tensors = [item for item in value if torch.is_tensor(item) and item.numel() > 0]
         if not tensors:
             return None
         pending = torch.cat(
@@ -163,6 +230,20 @@ def _evaluate_final_batch(acqf: Any, candidates: Tensor, fallback: Any) -> Any:
         return fallback
 
 
+def _apply_final_postprocess(candidates: Any, function: Any) -> Any:
+    if function is None:
+        return candidates
+    processed = function(candidates)
+    if not torch.is_tensor(processed):
+        raise TypeError("final_candidate_postprocess must return a Tensor.")
+    if torch.is_tensor(candidates) and processed.shape != candidates.shape:
+        raise RuntimeError(
+            "final_candidate_postprocess must preserve candidate shape; "
+            f"got {tuple(candidates.shape)} -> {tuple(processed.shape)}."
+        )
+    return processed
+
+
 def ensure_unique_candidates(
     *,
     acqf: Any,
@@ -174,33 +255,54 @@ def ensure_unique_candidates(
 ) -> tuple[Any, Any]:
     """Refill duplicate final candidates without altering initial batch semantics.
 
-    The first occurrences from the original result are retained.  Duplicate slots
-    are filled from additional q=1 optimization restarts.  Native ``X_pending``
-    semantics are used when available, but unsupported acquisitions still benefit
-    from selecting the best distinct result among multiple restart optima.
+    The first occurrences from the final experiment-space result are retained.
+    Duplicate slots are filled from additional q=1 optimization restarts. Each
+    refill candidate is transformed by ``final_candidate_postprocess`` before
+    duplicate comparison, so rounding, categorical decoding, fixed values, and
+    constraint repair are reflected in the decision.
     """
 
     if not bool(getattr(config, "ensure_unique_candidates", True)):
-        return candidates, acq_value
-    if int(getattr(config, "q", 1)) <= 1:
         return candidates, acq_value
     if not bool(getattr(config, "return_best_only", True)):
         return candidates, acq_value
     if _optimizer_name(config) in _NATIVE_BATCH_OPTIMIZERS:
         return candidates, acq_value
 
-    matrix = _candidate_matrix(candidates)
+    final_postprocess = getattr(config, "final_candidate_postprocess", None)
+    processed_candidates = _apply_final_postprocess(candidates, final_postprocess)
     requested_q = int(getattr(config, "q", 1))
+    if requested_q <= 1:
+        if processed_candidates is candidates:
+            return candidates, acq_value
+        return processed_candidates, _evaluate_final_batch(
+            acqf,
+            processed_candidates,
+            acq_value,
+        )
+
+    matrix = _candidate_matrix(processed_candidates)
     if matrix is None or matrix.shape[0] != requested_q:
-        return candidates, acq_value
+        return processed_candidates, acq_value
 
     tolerance = float(getattr(config, "duplicate_tolerance", 1e-10))
+    tolerances = _coerce_tolerances(
+        getattr(config, "duplicate_tolerances", None),
+        like=matrix,
+    )
     selected, original_duplicates = _split_unique_rows(
         matrix,
         tolerance=tolerance,
+        tolerances=tolerances,
     )
     if len(selected) == requested_q:
-        return candidates, acq_value
+        if processed_candidates is candidates:
+            return candidates, acq_value
+        return processed_candidates, _evaluate_final_batch(
+            acqf,
+            matrix,
+            acq_value,
+        )
 
     max_attempts = int(getattr(config, "duplicate_refill_attempts", 4))
     minimum_restarts = int(getattr(config, "duplicate_pool_restarts", 16))
@@ -221,11 +323,7 @@ def ensure_unique_candidates(
             _set_pending_if_supported(acqf, pending)
 
             scale = 2**attempt
-            refill_optimizer_kwargs = dict(
-                getattr(config, "optimizer_kwargs", {}) or {}
-            )
-            # q-specific initial conditions / look-ahead sequences from the
-            # original batch are incompatible with a scalar refill search.
+            refill_optimizer_kwargs = dict(getattr(config, "optimizer_kwargs", {}) or {})
             for key in (
                 "batch_initial_conditions",
                 "acq_function_sequence",
@@ -248,12 +346,16 @@ def ensure_unique_candidates(
                     bounds=bounds,
                     config=refill_config,
                 )
+                pool_candidates = _apply_final_postprocess(
+                    pool_candidates,
+                    final_postprocess,
+                )
             except Exception as exc:
                 last_error = exc
                 continue
 
             for row in _pool_rows(pool_candidates, pool_values):
-                if _is_duplicate(row, selected, tolerance):
+                if _is_duplicate(row, selected, tolerance, tolerances):
                     continue
                 selected.append(row)
                 if len(selected) >= requested_q:
@@ -284,4 +386,4 @@ def ensure_unique_candidates(
     return final_candidates, final_acq_value
 
 
-__all__ = ["ensure_unique_candidates"]
+__all__ = ["count_unique_candidate_rows", "ensure_unique_candidates"]

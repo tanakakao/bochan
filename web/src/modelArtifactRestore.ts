@@ -35,6 +35,8 @@ interface RestoredWorkbenchState {
   beta: number;
   fitMaxiter: number;
   q: number;
+  sequential: boolean;
+  minimumCandidateDistanceRatio: number;
   numRestarts: number;
   rawSamples: number;
   modelSignature: string;
@@ -255,6 +257,13 @@ export function restoreWorkbenchFromArtifact(
   const acquisition = String(acquisitionSettings.name ?? "EI");
   const beta = finiteNumber(acquisitionSettings.beta, 2);
   const q = Math.max(1, Math.trunc(finiteNumber(optimizerSettings.q, 3)));
+  const sequential = optimizerSettings.sequential === undefined
+    ? true
+    : Boolean(optimizerSettings.sequential);
+  const minimumCandidateDistanceRatio = Math.min(1, Math.max(
+    0,
+    finiteNumber(optimizerSettings.minimum_candidate_distance_ratio, 1e-3)
+  ));
   const numRestarts = Math.max(1, Math.trunc(finiteNumber(optimizerSettings.num_restarts, 10)));
   const rawSamples = Math.max(1, Math.trunc(finiteNumber(optimizerSettings.raw_samples, 256)));
   const selectedSettings = targetColumns.map((name) => targetSettings[name]);
@@ -284,6 +293,8 @@ export function restoreWorkbenchFromArtifact(
     acquisition,
     beta,
     q,
+    sequential,
+    minimumCandidateDistanceRatio,
     numRestarts,
     rawSamples,
     searchSpace: featureColumns.map((name) => variables[name]).filter(Boolean)
@@ -305,6 +316,8 @@ export function restoreWorkbenchFromArtifact(
     beta,
     fitMaxiter,
     q,
+    sequential,
+    minimumCandidateDistanceRatio,
     numRestarts,
     rawSamples,
     modelSignature: buildModelReuseSignature(signatureInput)

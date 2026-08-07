@@ -211,6 +211,8 @@ export interface RunRegressionInput {
   acquisition: string;
   beta: number;
   q: number;
+  sequential?: boolean;
+  minimumCandidateDistanceRatio?: number;
   numRestarts: number;
   rawSamples: number;
   searchSpace: SearchVariable[];
@@ -338,6 +340,14 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
   if (!Number.isFinite(input.perturbationStd) || input.perturbationStd <= 0) {
     throw new Error("入力摂動のばらつきは0より大きくしてください。");
   }
+  const minimumCandidateDistanceRatio = input.minimumCandidateDistanceRatio ?? 1e-3;
+  if (
+    !Number.isFinite(minimumCandidateDistanceRatio)
+    || minimumCandidateDistanceRatio < 0
+    || minimumCandidateDistanceRatio > 1
+  ) {
+    throw new Error("最小候補間距離は探索範囲比0〜100%で指定してください。");
+  }
 
   const noiseAlpha = resolvedNoiseAlpha(input);
   if (noiseAlpha !== null && (!Number.isFinite(noiseAlpha) || noiseAlpha <= 0)) {
@@ -462,8 +472,10 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
         num_restarts: input.numRestarts,
         raw_samples: input.rawSamples,
         sequential:
+          Boolean(input.sequential ?? true) ||
           input.searchSpace.some((variable) => variable.type === "categorical") ||
-          searchMethod === "cmaes"
+          searchMethod === "cmaes",
+        minimum_candidate_distance_ratio: minimumCandidateDistanceRatio
       },
       // Target missing values still use the automatic target policy. Feature
       // missing values are controlled independently through web_feature_missing.

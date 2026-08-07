@@ -115,3 +115,20 @@ __all__ = [
     "hard_same_batch_duplicate_penalty_per_point",
     "resolve_observed_X",
 ]
+
+
+def unwrap_single_output_model(model):
+    """Return the sole submodel from a one-output wrapper.
+
+    One-output ``HybridMultiOutputModel`` instances are retained as model
+    containers by the Web/API layer, while acquisition routing intentionally
+    resolves them to single-output acquisition classes.  Classification and
+    ordinal single-output acquisitions need the task-native submodel (likelihood,
+    class probabilities, latent posterior), not the wrapper's scalar objective
+    posterior.
+    """
+    specs = getattr(model, "specs", None)
+    models = getattr(model, "models", None)
+    if specs is not None and models is not None and len(specs) == 1 and len(models) == 1:
+        return models[0]
+    return model

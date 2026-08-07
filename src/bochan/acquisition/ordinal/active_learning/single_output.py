@@ -17,6 +17,8 @@ from botorch.utils.transforms import average_over_ensemble_models, t_batch_mode_
 from bochan.acquisition._duplicate_exclusion import (
     hard_reference_duplicate_penalty_per_point,
     hard_same_batch_duplicate_penalty_per_point,
+    resolve_observed_X,
+    unwrap_single_output_model,
 )
 from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
 
@@ -517,25 +519,6 @@ def _rbf_reference_penalty_aggregated(
 _rbf_pending_penalty = _rbf_reference_penalty_aggregated
 
 
-def _resolve_observed_X(
-    model: Model,
-    X_observed: Optional[Tensor] = None,
-) -> Optional[Tensor]:
-    if X_observed is not None:
-        return X_observed
-
-    for attr in ("train_X_original", "train_X", "train_inputs_raw"):
-        x = getattr(model, attr, None)
-        if x is not None:
-            return x
-
-    x = getattr(model, "train_inputs", None)
-    if isinstance(x, tuple) and len(x) > 0:
-        return x[0]
-
-    return None
-
-
 # =========================================================
 # Base class
 # =========================================================
@@ -564,12 +547,13 @@ class _qOrdinalActiveLearningBase(MCAcquisitionFunction):
         hard_duplicate_tol: float = 1e-8,
         exclude_same_batch_duplicates: bool = True,
         exclude_pending_duplicates: bool = True,
-        exclude_observed_duplicates: bool = False,
+        exclude_observed_duplicates: bool = True,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
         eps: float = 1e-6,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
     ) -> None:
+        model = unwrap_single_output_model(model)
         super().__init__(model=model)
 
         if reduction not in ("mean", "sum"):
@@ -605,7 +589,7 @@ class _qOrdinalActiveLearningBase(MCAcquisitionFunction):
 
     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
         self.X_observed = _coerce_reference_to_tensor(
-            _resolve_observed_X(self.model, X_observed)
+            resolve_observed_X(self.model, X_observed)
         )
 
     def _prepare_eval(self) -> None:
@@ -615,6 +599,9 @@ class _qOrdinalActiveLearningBase(MCAcquisitionFunction):
             likelihood.eval()
 
     def _posterior(self, X: Tensor):
+        latent_posterior = getattr(self.model, "latent_posterior", None)
+        if callable(latent_posterior):
+            return latent_posterior(X)
         return self.model.posterior(X)
 
     def _class_probs_from_posterior(self, X: Tensor) -> Tensor:
@@ -780,6 +767,10 @@ class qOrdinalBALD(_qOrdinalActiveLearningBase):
         pending_penalty_beta: float = 10.0,
         observed_penalty_weight: float = 0.0,
         observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
         eps: float = 1e-6,
@@ -796,6 +787,10 @@ class qOrdinalBALD(_qOrdinalActiveLearningBase):
             pending_penalty_beta=pending_penalty_beta,
             observed_penalty_weight=observed_penalty_weight,
             observed_penalty_beta=observed_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
             X_pending=X_pending,
             X_observed=X_observed,
             eps=eps,
@@ -866,6 +861,10 @@ class qOrdinalUtilityVariance(_qOrdinalActiveLearningBase):
         pending_penalty_beta: float = 10.0,
         observed_penalty_weight: float = 0.0,
         observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
         eps: float = 1e-6,
@@ -880,6 +879,10 @@ class qOrdinalUtilityVariance(_qOrdinalActiveLearningBase):
             pending_penalty_beta=pending_penalty_beta,
             observed_penalty_weight=observed_penalty_weight,
             observed_penalty_beta=observed_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
             X_pending=X_pending,
             X_observed=X_observed,
             eps=eps,
@@ -965,11 +968,16 @@ class qOrdinalFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
         pending_penalty_beta: float = 10.0,
         observed_penalty_weight: float = 0.0,
         observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
         eps: float = 1e-6,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
     ) -> None:
+        model = unwrap_single_output_model(model)
         super().__init__(model=model)
 
         if mc_points.ndim != 2:
@@ -1001,6 +1009,12 @@ class qOrdinalFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
         self.pending_penalty_beta = float(pending_penalty_beta)
         self.observed_penalty_weight = float(observed_penalty_weight)
         self.observed_penalty_beta = float(observed_penalty_beta)
+        self.hard_duplicate_tol = float(hard_duplicate_tol)
+        self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
+        self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        self.exclude_observed_duplicates = bool(exclude_observed_duplicates)
+        if self.hard_duplicate_tol < 0.0:
+            raise ValueError("hard_duplicate_tol must be non-negative.")
         self.eps = float(eps)
         self.objective = objective
 
@@ -1015,7 +1029,7 @@ class qOrdinalFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
 
     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
         self.X_observed = _coerce_reference_to_tensor(
-            _resolve_observed_X(self.model, X_observed)
+            resolve_observed_X(self.model, X_observed)
         )
 
     def _prepare_eval(self) -> None:
@@ -1026,7 +1040,8 @@ class qOrdinalFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
 
     @torch.no_grad()
     def _sample_fantasy_labels(self, X: Tensor) -> Tensor:
-        posterior = self.model.posterior(X)
+        latent_posterior = getattr(self.model, "latent_posterior", None)
+        posterior = latent_posterior(X) if callable(latent_posterior) else self.model.posterior(X)
         latent_samples = posterior.rsample(torch.Size([self.num_fantasies]))
         f = latent_samples.squeeze(-1)
 
@@ -1043,31 +1058,51 @@ class qOrdinalFantasyNegIntegratedPosteriorVariance(AcquisitionFunction):
 
     @torch.no_grad()
     def _integrated_latent_variance(self, fantasy_model: Model) -> Tensor:
-        posterior = fantasy_model.posterior(self.mc_points)
+        latent_posterior = getattr(fantasy_model, "latent_posterior", None)
+        posterior = (
+            latent_posterior(self.mc_points)
+            if callable(latent_posterior)
+            else fantasy_model.posterior(self.mc_points)
+        )
         return posterior.variance.mean()
 
     def _aggregated_reference_penalty(self, X: Tensor) -> Tensor:
         Xt = _apply_input_transform_for_reference(self.model, X)
-        penalty = torch.zeros(Xt.shape[:-2], device=Xt.device, dtype=Xt.dtype)
+        penalty = hard_same_batch_duplicate_penalty_per_point(
+            Xt,
+            enabled=self.exclude_same_batch_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        ).sum(dim=-1)
 
+        Xp_t = _transform_reference_like_candidate(self.model, self.X_pending, ref=Xt)
         if self.pending_penalty_weight > 0.0:
-            Xp_t = _transform_reference_like_candidate(self.model, self.X_pending, ref=Xt)
             penalty = penalty + self.pending_penalty_weight * _rbf_reference_penalty_aggregated(
                 X=Xt,
                 X_ref=Xp_t,
                 beta=self.pending_penalty_beta,
                 reduction="sum",
             )
+        penalty = penalty + hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xp_t,
+            enabled=self.exclude_pending_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        ).sum(dim=-1)
 
+        Xobs_t = _transform_reference_like_candidate(self.model, self.X_observed, ref=Xt)
         if self.observed_penalty_weight > 0.0:
-            Xobs_t = _transform_reference_like_candidate(self.model, self.X_observed, ref=Xt)
             penalty = penalty + self.observed_penalty_weight * _rbf_reference_penalty_aggregated(
                 X=Xt,
                 X_ref=Xobs_t,
                 beta=self.observed_penalty_beta,
                 reduction="sum",
             )
-
+        penalty = penalty + hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xobs_t,
+            enabled=self.exclude_observed_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        ).sum(dim=-1)
         return penalty
 
     def _apply_objective_to_scalar_score(self, score: Tensor, X: Tensor) -> Tensor:

@@ -346,10 +346,20 @@ class BayesianOptimizer:
                 str(sub_bundle.model_type),
                 False,
             )
+        if len(sub_bundles) > 1:
+            tasks = {str(sub_bundle.task_type) for sub_bundle in sub_bundles}
+            model_types = {str(sub_bundle.model_type) for sub_bundle in sub_bundles}
+            if len(tasks) == 1:
+                resolved_model_type = next(iter(model_types)) if len(model_types) == 1 else model_type
+                return next(iter(tasks)), resolved_model_type, True
 
         specs = list(getattr(bundle.model, "specs", None) or [])
         if len(specs) == 1:
             return str(specs[0].task_type), model_type, False
+        if len(specs) > 1:
+            tasks = {str(spec.task_type) for spec in specs}
+            if len(tasks) == 1:
+                return next(iter(tasks)), model_type, True
 
         return task_type, model_type, multi_output
 

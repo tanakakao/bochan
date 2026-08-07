@@ -17,6 +17,7 @@ from botorch.utils.transforms import t_batch_mode_transform
 from bochan.acquisition._duplicate_exclusion import (
     hard_reference_duplicate_penalty_per_point,
     hard_same_batch_duplicate_penalty_per_point,
+    resolve_observed_X,
 )
 from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
 
@@ -507,29 +508,6 @@ def _transform_reference_like_candidate(model: Model, X_ref, *, ref: Tensor) -> 
 _transform_pending_like_candidate = _transform_reference_like_candidate
 
 
-def _resolve_observed_X(model: Model, X_observed: Optional[Tensor] = None) -> Optional[Tensor]:
-    if X_observed is not None:
-        return X_observed
-    for attr in ("train_X_original", "train_X", "train_inputs_raw"):
-        x = getattr(model, attr, None)
-        if x is not None:
-            return x
-    train_inputs = getattr(model, "train_inputs", None)
-    if isinstance(train_inputs, tuple) and len(train_inputs) > 0:
-        return train_inputs[0]
-    models = getattr(model, "models", None)
-    if models is not None and len(models) > 0:
-        sm = models[0]
-        for attr in ("train_X_original", "train_X", "train_inputs_raw"):
-            x = getattr(sm, attr, None)
-            if x is not None:
-                return x
-        train_inputs = getattr(sm, "train_inputs", None)
-        if isinstance(train_inputs, tuple) and len(train_inputs) > 0:
-            return train_inputs[0]
-    return None
-
-
 def _broadcast_reference_to_batch(X_ref: Tensor, batch_shape: torch.Size) -> Tensor:
     X_ref = _ensure_q_batch(X_ref)
     if X_ref.shape[:-2] == batch_shape:
@@ -696,6 +674,7 @@ class _qMultiOutputOrdinalActiveLearningBase(AcquisitionFunction):
         hard_duplicate_tol: float = 1e-8,
         exclude_same_batch_duplicates: bool = True,
         exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
@@ -726,6 +705,7 @@ class _qMultiOutputOrdinalActiveLearningBase(AcquisitionFunction):
         self.hard_duplicate_tol = float(hard_duplicate_tol)
         self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
         self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        self.exclude_observed_duplicates = bool(exclude_observed_duplicates)
         if self.hard_duplicate_tol < 0.0:
             raise ValueError("hard_duplicate_tol must be non-negative.")
         self.cat_dims = _resolve_cat_dims(model)
@@ -742,7 +722,7 @@ class _qMultiOutputOrdinalActiveLearningBase(AcquisitionFunction):
         self.X_pending = _coerce_reference_to_tensor(X_pending)
 
     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
-        self.X_observed = _coerce_reference_to_tensor(_resolve_observed_X(self.model, X_observed))
+        self.X_observed = _coerce_reference_to_tensor(resolve_observed_X(self.model, X_observed))
 
     def _set_eval_mode(self) -> None:
         self.model.eval()
@@ -812,13 +792,20 @@ class _qMultiOutputOrdinalActiveLearningBase(AcquisitionFunction):
 
     def _observed_penalty_per_point(self, Xt: Tensor) -> Tensor:
         Xobs_t = _transform_reference_like_candidate(self.model, self.X_observed, ref=Xt)
-        return _reference_penalty_per_point(
+        soft = _reference_penalty_per_point(
             Xt,
             Xobs_t,
             beta=self.observed_penalty_beta,
             weight=self.observed_penalty_weight,
             cat_dims=self.cat_dims,
         )
+        hard = hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xobs_t,
+            enabled=self.exclude_observed_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
+        return soft + hard
 
     def _same_batch_penalty_per_point(self, Xt: Tensor) -> Tensor:
         soft = _same_batch_penalty_per_point(
@@ -1031,6 +1018,10 @@ class qMultiOutputOrdinalUtilityVariance(_qMultiOutputOrdinalActiveLearningBase)
         observed_penalty_beta: float = 10.0,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
@@ -1049,6 +1040,10 @@ class qMultiOutputOrdinalUtilityVariance(_qMultiOutputOrdinalActiveLearningBase)
             observed_penalty_beta=observed_penalty_beta,
             same_batch_penalty_weight=same_batch_penalty_weight,
             same_batch_penalty_beta=same_batch_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
             X_pending=X_pending,
             X_observed=X_observed,
             objective=objective,
@@ -1141,6 +1136,10 @@ class qMultiOutputOrdinalFantasyNegIntegratedPosteriorVariance(AcquisitionFuncti
         observed_penalty_beta: float = 10.0,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
@@ -1166,6 +1165,12 @@ class qMultiOutputOrdinalFantasyNegIntegratedPosteriorVariance(AcquisitionFuncti
         self.observed_penalty_beta = float(observed_penalty_beta)
         self.same_batch_penalty_weight = float(same_batch_penalty_weight)
         self.same_batch_penalty_beta = float(same_batch_penalty_beta)
+        self.hard_duplicate_tol = float(hard_duplicate_tol)
+        self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
+        self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        self.exclude_observed_duplicates = bool(exclude_observed_duplicates)
+        if self.hard_duplicate_tol < 0.0:
+            raise ValueError("hard_duplicate_tol must be non-negative.")
         self.cat_dims = _resolve_cat_dims(model)
         self.objective = objective
         self.X_pending: Optional[Tensor] = None
@@ -1180,7 +1185,7 @@ class qMultiOutputOrdinalFantasyNegIntegratedPosteriorVariance(AcquisitionFuncti
         self.X_pending = _coerce_reference_to_tensor(X_pending)
 
     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
-        self.X_observed = _coerce_reference_to_tensor(_resolve_observed_X(self.model, X_observed))
+        self.X_observed = _coerce_reference_to_tensor(resolve_observed_X(self.model, X_observed))
 
     def _resolve_conditioning_lr_for_submodel(self, submodel: Model) -> float:
         if self.conditioning_lr is not None:
@@ -1235,6 +1240,12 @@ class qMultiOutputOrdinalFantasyNegIntegratedPosteriorVariance(AcquisitionFuncti
             weight=self.same_batch_penalty_weight,
             cat_dims=self.cat_dims,
         )
+        penalty = penalty + hard_same_batch_duplicate_penalty_per_point(
+            Xt,
+            enabled=self.exclude_same_batch_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        ).sum(dim=-1)
+
         Xp_t = _transform_reference_like_candidate(self.model, self.X_pending, ref=Xt)
         penalty = penalty + _reference_penalty_aggregated(
             Xt,
@@ -1244,6 +1255,13 @@ class qMultiOutputOrdinalFantasyNegIntegratedPosteriorVariance(AcquisitionFuncti
             cat_dims=self.cat_dims,
             reduction="sum",
         )
+        penalty = penalty + hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xp_t,
+            enabled=self.exclude_pending_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        ).sum(dim=-1)
+
         Xobs_t = _transform_reference_like_candidate(self.model, self.X_observed, ref=Xt)
         penalty = penalty + _reference_penalty_aggregated(
             Xt,
@@ -1253,6 +1271,12 @@ class qMultiOutputOrdinalFantasyNegIntegratedPosteriorVariance(AcquisitionFuncti
             cat_dims=self.cat_dims,
             reduction="sum",
         )
+        penalty = penalty + hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xobs_t,
+            enabled=self.exclude_observed_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        ).sum(dim=-1)
         return penalty
 
     def _apply_objective_to_scalar_score(self, score: Tensor, X: Tensor) -> Tensor:

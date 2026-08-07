@@ -17,6 +17,8 @@ from torch import Tensor
 from bochan.acquisition._duplicate_exclusion import (
     hard_reference_duplicate_penalty_per_point,
     hard_same_batch_duplicate_penalty_per_point,
+    resolve_observed_X,
+    unwrap_single_output_model,
 )
 from bochan.acquisition.multiclass.base import ClassReductionType, ReductionType
 
@@ -274,19 +276,6 @@ def _coerce_reference_tensor(X_ref, *, ref: Tensor | None = None) -> Tensor | No
     return out
 
 
-def _resolve_observed_X(model: Model, X_observed: Tensor | None = None) -> Tensor | None:
-    if X_observed is not None:
-        return X_observed
-    for attr in ("train_X_original", "train_X", "train_inputs_raw"):
-        x = getattr(model, attr, None)
-        if x is not None:
-            return x[0] if isinstance(x, tuple) else x
-    x = getattr(model, "train_inputs", None)
-    if isinstance(x, tuple) and len(x) > 0:
-        return x[0]
-    return None
-
-
 def compute_multiclass_target_probability_values(
     model: Model,
     X: Tensor,
@@ -392,6 +381,7 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
         **kwargs,
     ) -> None:
+        model = unwrap_single_output_model(model)
         if isinstance(model, (ModelListGP, ModelListGPyTorchModel)):
             model = model.models[0]
         if sampler is None:
@@ -429,7 +419,7 @@ class _MulticlassProbabilityBOBase(MCAcquisitionFunction):
         self.X_pending = None if X_pending is None else torch.as_tensor(X_pending).detach()
 
     def set_X_observed(self, X_observed: Tensor | None = None) -> None:
-        resolved = _resolve_observed_X(self.model, X_observed)
+        resolved = resolve_observed_X(self.model, X_observed)
         self.X_observed = None if resolved is None else torch.as_tensor(resolved).detach()
 
     def _prepare_eval(self) -> None:

@@ -7,6 +7,73 @@ from typing import Any
 _WEB_TARGET_ROLES_KEY = "web_target_roles"
 
 
+class _WebLevelSetThresholds(list[float]):
+    """Thresholds that keep the Web app on the hybrid objective scale.
+
+    The Web workflow fits ``HybridMultiOutputModel`` even for a single target so
+    classification / ordinal settings can be expressed as scalar objective
+    channels.  Contextual short-name resolution otherwise unwraps that model and
+    selects task-specific level-set acquisitions, whose keyword contracts differ
+    from the Web workflow (``threshold`` vs ``thresholds``, target classes,
+    ordinal boundary indices, and so on).
+
+    ``AcquisitionConfig`` recognizes the private resolver hook below and pins the
+    regression level-set acquisition that operates directly on the Hybrid
+    objective posterior.  This keeps multiclass class utilities and ordinal rank
+    utilities defined by ``OutputSpec`` effective during level-set estimation.
+    """
+
+    _CLASS_NAMES = {
+        "straddle": ("qRegressionStraddle", "qMultiOutputRegressionStraddle"),
+        "boundaryvariance": (
+            "qRegressionBoundaryVariance",
+            "qMultiOutputRegressionBoundaryVariance",
+        ),
+        "icu": ("qRegressionICU", "qMultiOutputRegressionICU"),
+    }
+
+    @staticmethod
+    def _normalize_name(name: str) -> str:
+        return (
+            str(name)
+            .replace("_", "")
+            .replace("-", "")
+            .replace(" ", "")
+            .lower()
+        )
+
+    def _resolve_acqf_kwargs(
+        self,
+        *,
+        name: str,
+        kwargs: dict[str, Any],
+    ) -> tuple[dict[str, Any], Any | None]:
+        normalized = self._normalize_name(name)
+        class_names = self._CLASS_NAMES.get(normalized)
+        if class_names is None:
+            return kwargs, None
+
+        from bochan.acquisition.regression import levelset_estimation
+
+        multi_output = len(self) > 1
+        class_name = class_names[1 if multi_output else 0]
+        acqf_cls = getattr(levelset_estimation, class_name)
+
+        resolved = dict(kwargs)
+        if multi_output:
+            # Strip the list subclass after it has carried the resolver metadata.
+            resolved["thresholds"] = [float(value) for value in self]
+            return resolved, acqf_cls
+
+        resolved["threshold"] = float(self[0])
+        resolved.pop("thresholds", None)
+        # These are multi-output-only settings.  In particular,
+        # ``weighted_mean`` is not a valid single-output output_reduction value.
+        resolved.pop("output_weights", None)
+        resolved.pop("output_reduction", None)
+        return resolved, acqf_cls
+
+
 def _mapping(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return dict(value)
@@ -174,7 +241,14 @@ def level_set_thresholds(
     target_metadata: dict[str, dict[str, Any]],
     objective_targets: list[str],
 ) -> list[float]:
-    """Return full-output thresholds in the hybrid model's objective space."""
+    """Return full-output thresholds in the hybrid model's objective space.
+
+    Classification outputs are represented as the probability / expected utility
+    of the class set selected in the Web UI.  Ordinal outputs use expected rank,
+    or negative distance to selected target ranks for ``goal='target'``.  The
+    returned structured list preserves that objective-space contract when
+    ``AcquisitionConfig`` resolves the level-set acquisition class.
+    """
 
     selected = set(objective_targets)
     thresholds: list[float] = []
@@ -199,7 +273,7 @@ def level_set_thresholds(
         )
         sign = -1.0 if meta.get("direction") == "minimize" else 1.0
         thresholds.append(sign * raw_threshold)
-    return thresholds
+    return _WebLevelSetThresholds(thresholds)
 
 
 def build_target_constraint_config(

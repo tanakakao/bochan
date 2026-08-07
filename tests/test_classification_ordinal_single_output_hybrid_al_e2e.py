@@ -37,11 +37,7 @@ MC_POINTS = torch.linspace(0.1, 0.9, 5, dtype=DTYPE).unsqueeze(-1)
 def _binary_model() -> BinaryClassificationGPModel:
     train_x = torch.linspace(0.05, 0.95, 8, dtype=DTYPE).unsqueeze(-1)
     train_y = torch.tensor([0, 0, 0, 0, 1, 1, 1, 1], dtype=DTYPE).unsqueeze(-1)
-    model = BinaryClassificationGPModel(
-        train_X=train_x,
-        train_Y=train_y,
-        num_inducing_points=6,
-    )
+    model = BinaryClassificationGPModel(train_X=train_x, train_Y=train_y, num_inducing_points=6)
     model.eval()
     model.likelihood.eval()
     return model
@@ -103,7 +99,6 @@ def _make_acquisition(task_type: str, name: str):
             "NIPV": lambda: qBinaryIntegratedPosteriorVarianceProxy(
                 model=hybrid,
                 mc_points=MC_POINTS,
-                num_samples=8,
             ),
         }
     elif task_type == "multiclass":
@@ -150,9 +145,6 @@ def test_one_output_hybrid_single_output_acquisition_optimizes(
     """One-output Hybrid wrappers must reach native single-output AL acquisitions."""
     torch.manual_seed(0)
     native, acquisition = _make_acquisition(task_type, name)
-
-    # The public acquisition accepts the Web/API Hybrid wrapper, but its internal
-    # task-specific implementation must operate on the sole native submodel.
     assert acquisition.model is native
 
     options: dict[str, object] = {"maxiter": 8, "batch_limit": 1}

@@ -99,6 +99,10 @@ export default function OptimizePage() {
     fitMaxiter,
     q,
     setQ,
+    sequential,
+    setSequential,
+    minimumCandidateDistanceRatio,
+    setMinimumCandidateDistanceRatio,
     numRestarts,
     setNumRestarts,
     rawSamples,
@@ -113,6 +117,10 @@ export default function OptimizePage() {
   const taskTypes = optimizedTargetSettings.map((setting) => setting.task_type);
   const homogeneousTask = taskTypes.length > 0 && taskTypes.every((task) => task === taskTypes[0]);
   const projectedModel = modelType === "pca" || modelType === "rembo";
+  const sequentialForced = q > 1 && (
+    selectedVariables.some((variable) => variable.type === "categorical")
+    || searchMethod === "cmaes"
+  );
 
   const acquisitionOptions = useMemo(() => {
     if (acquisitionFamily === "bayesian_optimization") {
@@ -195,10 +203,18 @@ export default function OptimizePage() {
     if (q < 1 || q > 20) errors.push("候補点数qは1〜20にしてください。");
     if (numRestarts < 1) errors.push("num_restartsは1以上にしてください。");
     if (rawSamples < 1) errors.push("raw_samplesは1以上にしてください。");
+    if (
+      !Number.isFinite(minimumCandidateDistanceRatio)
+      || minimumCandidateDistanceRatio < 0
+      || minimumCandidateDistanceRatio > 1
+    ) {
+      errors.push("最小候補間距離は探索範囲比0〜100%で指定してください。");
+    }
     return errors;
   }, [
     acquisitionFamily,
     candidateSettingsValid,
+    minimumCandidateDistanceRatio,
     modelType,
     multiObjective,
     numRestarts,
@@ -329,6 +345,33 @@ export default function OptimizePage() {
         <article className="panel compact-panel">
           <div className="panel-title"><div><span className="panel-kicker">CANDIDATES</span><h3>候補生成</h3></div></div>
           <label>q<input type="number" min={1} max={20} step={1} value={q} onChange={(event) => setQ(Number(event.target.value))} /></label>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={q > 1 && (sequential || sequentialForced)}
+              disabled={q <= 1 || sequentialForced}
+              onChange={(event) => setSequential(event.target.checked)}
+            />
+            逐次候補生成
+          </label>
+          <p className="settings-note">
+            q &gt; 1で有効にすると、選択済み候補をpendingとして次候補を順番に探索します。
+            カテゴリ変数とCMA-ESでは自動的に有効になります。
+          </p>
+          <label>
+            最小候補間距離（探索範囲比 %）
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.01}
+              value={minimumCandidateDistanceRatio * 100}
+              onChange={(event) => setMinimumCandidateDistanceRatio(Number(event.target.value) / 100)}
+            />
+          </label>
+          <p className="settings-note">
+            連続変数は探索範囲比、step指定変数は実験分解能、カテゴリ変数はカテゴリ一致で重複を判定します。
+          </p>
           <label>num_restarts<input type="number" min={1} step={1} value={numRestarts} onChange={(event) => setNumRestarts(Number(event.target.value))} /></label>
           <label>raw_samples<input type="number" min={1} step={1} value={rawSamples} onChange={(event) => setRawSamples(Number(event.target.value))} /></label>
         </article>

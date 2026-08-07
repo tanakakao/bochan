@@ -51,6 +51,7 @@ def _build_feature_importance_visualizations(
     def getter(name: str, default: Any) -> Any:
         """Read one presentation setting from the request object."""
         return getattr(visualization_config, name, default)
+
     try:
         figures = build_feature_importance_figures(
             result,
@@ -86,21 +87,32 @@ def _safe_figure_id(value: str) -> str:
     return normalized or "target"
 
 
-def _broadcast_acq_values(acq_value: Any, n: int) -> list[float | None]:
-    """Broadcast scalar acquisition values to candidate rows."""
+def _flatten_acq_values(acq_value: Any) -> list[float]:
+    """Return acquisition values as a flat Python list."""
 
     try:
         values = acq_value.detach().cpu().reshape(-1).tolist()
     except Exception:
         values = [acq_value]
-    values = [float(value) for value in values if value is not None]
-    if not values:
-        return [None for _ in range(n)]
-    if len(values) == 1:
-        return values * n
-    if len(values) < n:
-        return values + [values[-1]] * (n - len(values))
-    return values[:n]
+    return [float(value) for value in values if value is not None]
+
+
+def _batch_acq_value(acq_value: Any, n: int) -> float | None:
+    """Return a scalar value only when it represents the complete q-batch."""
+
+    values = _flatten_acq_values(acq_value)
+    return values[0] if n > 1 and len(values) == 1 else None
+
+
+def _broadcast_acq_values(acq_value: Any, n: int) -> list[float | None]:
+    """Return only genuine per-candidate acquisition values."""
+
+    values = _flatten_acq_values(acq_value)
+    if len(values) == n:
+        return values
+    if n == 1 and values:
+        return [values[0]]
+    return [None for _ in range(n)]
 
 
 def _display_predictions(

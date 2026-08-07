@@ -8,9 +8,9 @@ import FeatureImportancePanel from "../FeatureImportancePanel";
 
 function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
-  return Math.abs(value) >= 1000 || (Math.abs(value) > 0 && Math.abs(value) < 0.001)
-    ? value.toExponential(4)
-    : value.toFixed(4).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+  return Math.abs(value) >= 1000 || (Math.abs(value) > 0 && Math.abs(value) < 0.000001)
+    ? value.toExponential(6)
+    : value.toFixed(6).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
 }
 
 function csvCell(value: unknown): string {
@@ -91,6 +91,14 @@ export default function ResultsPage() {
       ? [completedResult.target_column]
       : [];
   const candidates = [...completedResult.candidates].sort((left, right) => left.rank - right.rank);
+  const batchAcqValue = completedResult.batch_acq_value;
+  const showPerCandidateAcq = candidates.some((candidate) => candidate.acq_value !== null);
+  const candidateUniqueness = completedResult.metadata?.candidate_uniqueness as
+    | Record<string, unknown>
+    | undefined;
+  const candidateUniquenessWarning = typeof candidateUniqueness?.warning === "string"
+    ? candidateUniqueness.warning
+    : null;
 
   function downloadCandidates() {
     const header = [
@@ -208,10 +216,20 @@ export default function ResultsPage() {
               <h3>推奨候補</h3>
               <p>順位1を先頭に、各目的の予測値・標準偏差、獲得関数値、制約判定を表示します。</p>
             </div>
-            <span className={`status-chip ${staleAfterAppend ? "warning" : "success"}`}>
-              {candidates.length} candidates{staleAfterAppend ? " · stale" : ""}
-            </span>
+            <div>
+              <span className={`status-chip ${staleAfterAppend ? "warning" : "success"}`}>
+                {candidates.length} candidates{staleAfterAppend ? " · stale" : ""}
+              </span>
+              {batchAcqValue !== null && batchAcqValue !== undefined && (
+                <span className="status-chip">
+                  {candidates.length}候補全体の獲得値 {formatNumber(batchAcqValue)}
+                </span>
+              )}
+            </div>
           </div>
+          {candidateUniquenessWarning && (
+            <div className="alert warning">{candidateUniquenessWarning}</div>
+          )}
           <div className="table-wrap">
             <table>
               <thead>
@@ -222,7 +240,7 @@ export default function ResultsPage() {
                     <th key={`${target}-mean`}>{target}<br />予測値</th>,
                     <th key={`${target}-std`}>{target}<br />予測標準偏差</th>
                   ])}
-                  <th>獲得値</th>
+                  {showPerCandidateAcq && <th>候補別獲得値</th>}
                   <th>条件</th>
                 </tr>
               </thead>
@@ -241,7 +259,7 @@ export default function ResultsPage() {
                       <td key={`${target}-mean`}>{formatNumber(candidate.predictions?.[target]?.mean)}</td>,
                       <td key={`${target}-std`}>{formatNumber(candidate.predictions?.[target]?.std)}</td>
                     ])}
-                    <td>{formatNumber(candidate.acq_value)}</td>
+                    {showPerCandidateAcq && <td>{formatNumber(candidate.acq_value)}</td>}
                     <td>
                       <span className={`status-chip ${candidate.constraints_ok ? "success" : "warning"}`}>
                         {candidate.constraints_ok ? "OK" : "NG"}

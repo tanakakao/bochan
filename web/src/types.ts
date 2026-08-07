@@ -206,6 +206,8 @@ export interface RegressionResult {
   best_observed: number | Record<string, number>;
   outcome_constraints?: OutcomeConstraint[];
   candidates: CandidateRow[];
+  /** Scalar acquisition value for the complete joint q-batch. */
+  batch_acq_value?: number | null;
   visualizations: ResultVisualization[];
   visualization_warnings: string[];
   visualization_run_id?: string;

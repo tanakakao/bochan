@@ -105,6 +105,7 @@ class OptimizerSettingsSchema(_Schema):
     num_restarts: int = Field(default=10, ge=1)
     raw_samples: int = Field(default=256, ge=1)
     sequential: bool = True
+    minimum_candidate_distance_ratio: float = Field(default=1e-3, ge=0.0, le=1.0)
 
 
 class KSparseSettingsSchema(_Schema):

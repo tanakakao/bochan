@@ -16,10 +16,7 @@ def _resolve_hybrid_acquisition(
     n_outputs: int = 1,
 ) -> str:
     optimizer = BayesianOptimizer.__new__(BayesianOptimizer)
-    sub_bundles = [
-        SimpleNamespace(task_type=task_type, model_type=model_type)
-        for _ in range(n_outputs)
-    ]
+    sub_bundles = [SimpleNamespace(task_type=task_type, model_type=model_type) for _ in range(n_outputs)]
     optimizer.bundle = SimpleNamespace(
         task_type="hybrid",
         model_type=model_type,
@@ -29,9 +26,7 @@ def _resolve_hybrid_acquisition(
     optimizer.model = object()
     optimizer.acquisition_registry = None
 
-    resolved = optimizer._resolve_acquisition_config(
-        AcquisitionConfig(name=acquisition)
-    )
+    resolved = optimizer._resolve_acquisition_config(AcquisitionConfig(name=acquisition))
     assert resolved.acqf_cls is not None
     return resolved.acqf_cls.__name__
 
@@ -146,9 +141,7 @@ def test_single_output_hybrid_can_fall_back_to_model_spec() -> None:
         task_type="hybrid",
         model_type="base",
         metadata={"multi_output": True, "sub_bundles": []},
-        model=SimpleNamespace(
-            specs=[SimpleNamespace(task_type="binary", model=object())]
-        ),
+        model=SimpleNamespace(specs=[SimpleNamespace(task_type="binary", model=object())]),
     )
     optimizer.model = object()
     optimizer.acquisition_registry = None

@@ -12,10 +12,12 @@ on:
       - "src/bochan/tabular/optimizer_api.py"
       - "src/bochan/serving/fastapi/**"
       - "src/bochan/serving/webapp/**"
+      - "src/bochan/visualization/input_perturbation.py"
       - "src/bochan/visualization/plots.py"
       - "src/bochan/visualization/target_relation.py"
       - "tests/test_common_model_artifact_api.py"
       - "tests/test_tabular_noise_alpha.py"
+      - "tests/test_visualization_display_scale.py"
       - "tests/test_webapp_multiobjective_contract.py"
       - "tests/test_webapp_level_set_settings.py"
       - "tests/test_webapp_target_results_contract.py"
@@ -54,6 +56,7 @@ jobs:
           pytest -q --maxfail=1 \
             tests/test_common_model_artifact_api.py \
             tests/test_tabular_noise_alpha.py \
+            tests/test_visualization_display_scale.py \
             tests/test_webapp_multiobjective_contract.py \
             tests/test_webapp_level_set_settings.py \
             tests/test_webapp_target_results_contract.py \
@@ -106,9 +109,11 @@ jobs:
             src/bochan/serving/webapp/workflows.py \
             src/bochan/serving/webapp/workflows_extended.py \
             src/bochan/serving/webapp/workflows_tabular.py \
+            src/bochan/visualization/input_perturbation.py \
             src/bochan/visualization/plots.py \
             src/bochan/visualization/target_relation.py \
             tests/test_common_model_artifact_api.py \
+            tests/test_visualization_display_scale.py \
             tests/test_webapp_multiobjective_contract.py \
             tests/test_webapp_level_set_settings.py \
             tests/test_webapp_target_results_contract.py \

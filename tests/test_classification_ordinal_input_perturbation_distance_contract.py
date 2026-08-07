@@ -16,13 +16,14 @@ BOUNDS = torch.tensor([[0.0], [1.0]], dtype=DTYPE)
 N_W = 3
 
 
-class _RecordingScoreObjective:
+class _RecordingScoreObjective(torch.nn.Module):
     """Record raw X and collapse a perturbation-expanded pointwise score."""
 
     def __init__(self) -> None:
+        super().__init__()
         self.X: torch.Tensor | None = None
 
-    def __call__(
+    def forward(
         self,
         score: torch.Tensor,
         X: torch.Tensor | None = None,

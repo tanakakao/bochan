@@ -46,9 +46,7 @@ def _single_regression_hybrid() -> tuple[torch.Tensor, HybridMultiOutputModel]:
     train_x = torch.tensor([[0.0], [0.25], [0.5], [0.75], [1.0]], dtype=torch.double)
     train_y = (train_x - 0.35).square()
     submodel = SingleTaskGP(train_x, train_y)
-    model = HybridMultiOutputModel(
-        [OutputSpec(name="y", task_type="regression", model=submodel)]
-    )
+    model = HybridMultiOutputModel([OutputSpec(name="y", task_type="regression", model=submodel)])
     return train_x, model
 
 

@@ -30,11 +30,11 @@ class qRegressionPosteriorVariance(_RegressionActiveLearningBase):
 
 
 class qRegressionPredictiveEntropy(_RegressionActiveLearningBase):
-    """Regression predictive-entropy acquisition for Gaussian predictive marginals."""
+    """Regression predictive entropy of the noisy Gaussian observation."""
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
-        var, Xt = self._posterior_variance_score(X)
+        _, var, Xt = self._posterior_mean_variance(X, observation_noise=True)
         entropy = 0.5 * torch.log(
             torch.as_tensor(
                 2.0 * torch.pi * torch.e,

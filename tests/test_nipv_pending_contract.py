@@ -1,44 +1,4 @@
-from pathlib import Path
-
-
-def add_pending_property(path: str, class_name: str) -> None:
-    file_path = Path(path)
-    text = file_path.read_text(encoding="utf-8")
-    marker = f"class {class_name}"
-    class_start = text.index(marker)
-    setter = text.index("    def set_X_pending(", class_start)
-    class_tail = text[class_start:setter]
-    if "    def X_pending(self)" in class_tail:
-        return
-    property_block = '''    @property\n    def X_pending(self) -> Tensor | None:\n        """Return pending points from the delegated acquisition."""\n        return getattr(self.acqf, "X_pending", None)\n\n'''
-    text = text[:setter] + property_block + text[setter:]
-    file_path.write_text(text, encoding="utf-8")
-
-
-add_pending_property(
-    "src/bochan/acquisition/regression/active_learning/_integrated.py",
-    "qRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):",
-)
-add_pending_property(
-    "src/bochan/acquisition/regression/active_learning/integrated_variance.py",
-    "qRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):",
-)
-add_pending_property(
-    "src/bochan/acquisition/regression/active_learning/hetero_single_output.py",
-    "qHeteroRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):",
-)
-add_pending_property(
-    "src/bochan/acquisition/non_gaussian/active_learning/single_output.py",
-    "qNonGaussianNegIntegratedResponseMeanVariance(AcquisitionFunction):",
-)
-add_pending_property(
-    "src/bochan/acquisition/non_gaussian/active_learning/multi_output.py",
-    "qMultiOutputNonGaussianNegIntegratedResponseMeanVariance(",
-)
-
-
-test_path = Path("tests/test_nipv_pending_contract.py")
-test_path.write_text(r'''from __future__ import annotations
+from __future__ import annotations
 
 import pytest
 import torch
@@ -114,16 +74,12 @@ def test_public_regression_nipv_supports_sequential_optimize_acqf() -> None:
         (
             reg_inner,
             "_BoTorchQNegIntegratedPosteriorVariance",
-            lambda: reg_inner.qRegressionNegIntegratedPosteriorVariance(
-                model=_DummyModel(), mc_points=MC_POINTS
-            ),
+            lambda: reg_inner.qRegressionNegIntegratedPosteriorVariance(model=_DummyModel(), mc_points=MC_POINTS),
         ),
         (
             reg_outer,
             "_BoTorchNegIntegratedPosteriorVariance",
-            lambda: reg_outer.qRegressionNegIntegratedPosteriorVariance(
-                model=_DummyModel(), mc_points=MC_POINTS
-            ),
+            lambda: reg_outer.qRegressionNegIntegratedPosteriorVariance(model=_DummyModel(), mc_points=MC_POINTS),
         ),
         (
             hetero_reg,
@@ -135,9 +91,7 @@ def test_public_regression_nipv_supports_sequential_optimize_acqf() -> None:
         (
             ng_single,
             "qRegressionNegIntegratedPosteriorVariance",
-            lambda: ng_single.qNonGaussianNegIntegratedResponseMeanVariance(
-                model=_DummyModel(), mc_points=MC_POINTS
-            ),
+            lambda: ng_single.qNonGaussianNegIntegratedResponseMeanVariance(model=_DummyModel(), mc_points=MC_POINTS),
         ),
     ],
 )
@@ -187,10 +141,5 @@ def test_direct_nipv_implementations_already_own_pending_state() -> None:
         qMultiOutputRegressionNegIntegratedPosteriorVariance,
     )
 
-    assert "self.X_pending" in __import__(
-        "inspect"
-    ).getsource(qMultiOutputRegressionNegIntegratedPosteriorVariance)
-    assert "self.X_pending" in __import__(
-        "inspect"
-    ).getsource(qOrdinalFantasyNegIntegratedPosteriorVariance)
-''', encoding="utf-8")
+    assert "self.X_pending" in __import__("inspect").getsource(qMultiOutputRegressionNegIntegratedPosteriorVariance)
+    assert "self.X_pending" in __import__("inspect").getsource(qOrdinalFantasyNegIntegratedPosteriorVariance)

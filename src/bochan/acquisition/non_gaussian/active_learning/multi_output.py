@@ -209,6 +209,11 @@ class qMultiOutputNonGaussianNegIntegratedResponseMeanVariance(
         """Multi-output non-Gaussian NIPV currently uses the proxy."""
         return True
 
+    @property
+    def X_pending(self) -> Tensor | None:
+        """Return pending points from the delegated acquisition."""
+        return getattr(self.acqf, "X_pending", None)
+
     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         """Delegate pending-point updates."""
         if hasattr(self.acqf, "set_X_pending"):

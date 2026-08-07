@@ -136,6 +136,11 @@ class qRegressionNegIntegratedPosteriorVariance(AcquisitionFunction):
         """proxy 実装を使用している場合 True を返す。"""
         return self._uses_proxy
 
+    @property
+    def X_pending(self) -> Tensor | None:
+        """Return pending points from the delegated acquisition."""
+        return getattr(self.acqf, "X_pending", None)
+
     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         """評価待ち点を委譲先へ設定する。"""
         if hasattr(self.acqf, "set_X_pending"):

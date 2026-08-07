@@ -446,6 +446,11 @@ class qNonGaussianNegIntegratedResponseMeanVariance(AcquisitionFunction):
         """Return whether the covariance-reduction proxy is active."""
         return self._uses_proxy
 
+    @property
+    def X_pending(self) -> Tensor | None:
+        """Return pending points from the delegated acquisition."""
+        return getattr(self.acqf, "X_pending", None)
+
     def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         """Delegate pending-point updates."""
         if hasattr(self.acqf, "set_X_pending"):

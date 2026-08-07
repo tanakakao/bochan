@@ -1,6 +1,6 @@
 """Scale-independent hard duplicate exclusion for acquisition functions.
 
-The helpers return additive penalties.  They only invalidate exact / tolerance
+The helpers return additive penalties. They only invalidate exact / tolerance
 matches and do not alter scores for nearby distinct candidates.
 """
 
@@ -76,7 +76,8 @@ def hard_reference_duplicate_penalty_per_point(
     X_ref = X_ref.reshape(-1, X_ref.shape[-1])
     if X_ref.shape[-1] != X.shape[-1]:
         raise RuntimeError(
-            f"Reference feature dimension mismatch: X.shape={tuple(X.shape)}, X_ref.shape={tuple(X_ref.shape)}."
+            f"Reference feature dimension mismatch: X.shape={tuple(X.shape)}, "
+            f"X_ref.shape={tuple(X_ref.shape)}."
         )
 
     d2 = torch.cdist(X.reshape(-1, X.shape[-1]), X_ref).pow(2)
@@ -89,20 +90,45 @@ def hard_reference_duplicate_penalty_per_point(
     )
 
 
+def _first_tensor_input(value) -> Tensor | None:
+    """Normalize common train-input containers to their first Tensor."""
+
+    if torch.is_tensor(value):
+        return value
+    if isinstance(value, (tuple, list)) and value:
+        first = value[0]
+        if torch.is_tensor(first):
+            return first
+    return None
+
+
 def resolve_observed_X(model, X_observed: Tensor | None = None) -> Tensor | None:
-    """Resolve observed inputs consistently across classification acquisitions."""
+    """Resolve observed inputs consistently across classification acquisitions.
+
+    Wide multitask adapters expose public candidates without the internal task-id
+    feature via ``train_X_wide``. Prefer that representation over long-format
+    training inputs so duplicate distances are evaluated in the same feature
+    space as acquisition candidates.
+    """
 
     if X_observed is not None:
-        return X_observed
+        resolved = _first_tensor_input(X_observed)
+        if resolved is None:
+            raise TypeError(
+                "X_observed must be a Tensor or a non-empty tuple/list whose first item is a Tensor."
+            )
+        return resolved
 
-    for attr in ("train_X_original", "train_X", "train_inputs_raw"):
-        value = getattr(model, attr, None)
-        if value is not None:
-            return value
-
-    train_inputs = getattr(model, "train_inputs", None)
-    if isinstance(train_inputs, tuple) and len(train_inputs) > 0:
-        return train_inputs[0]
+    for attr in (
+        "train_X_original",
+        "train_X_wide",
+        "train_X",
+        "train_inputs_raw",
+        "train_inputs",
+    ):
+        resolved = _first_tensor_input(getattr(model, attr, None))
+        if resolved is not None:
+            return resolved
 
     submodels = getattr(model, "models", None) or getattr(model, "submodels", None)
     if submodels is not None and len(submodels) > 0:
@@ -110,8 +136,27 @@ def resolve_observed_X(model, X_observed: Tensor | None = None) -> Tensor | None
     return None
 
 
+def unwrap_single_output_model(model):
+    """Return the sole submodel from a one-output wrapper.
+
+    One-output ``HybridMultiOutputModel`` instances are retained as model
+    containers by the Web/API layer, while acquisition routing intentionally
+    resolves them to single-output acquisition classes. Classification and
+    ordinal single-output acquisitions need the task-native submodel (likelihood,
+    class probabilities, latent posterior), not the wrapper's scalar objective
+    posterior.
+    """
+
+    specs = getattr(model, "specs", None)
+    models = getattr(model, "models", None)
+    if specs is not None and models is not None and len(specs) == 1 and len(models) == 1:
+        return models[0]
+    return model
+
+
 __all__ = [
     "hard_reference_duplicate_penalty_per_point",
     "hard_same_batch_duplicate_penalty_per_point",
     "resolve_observed_X",
+    "unwrap_single_output_model",
 ]

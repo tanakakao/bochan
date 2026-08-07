@@ -14,6 +14,7 @@ from bochan.acquisition._duplicate_exclusion import (
     hard_reference_duplicate_penalty_per_point,
     hard_same_batch_duplicate_penalty_per_point,
     resolve_observed_X,
+    unwrap_single_output_model,
 )
 from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 
@@ -101,6 +102,7 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
         observed_penalty_beta: float = 10.0,
         exclude_observed_duplicates: bool = True,
     ):
+        model = unwrap_single_output_model(model)
         if isinstance(model, (ModelListGP, ModelListGPyTorchModel)):
             model = model.models[0]
 

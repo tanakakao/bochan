@@ -81,22 +81,50 @@ def _normalized_acquisition_name(name: str) -> str:
     return "".join(character for character in str(name).lower() if character.isalnum())
 
 
-def _set_active_learning_reference_kwargs(
+def _set_active_learning_kwargs(
     acqf_kwargs: dict[str, Any],
     *,
     acq_key: str,
     train_x: Any,
+    task_type: str,
+    multi_output: bool,
+    output_weights: Any | None = None,
 ) -> None:
-    """Attach only the reference inputs supported by the selected AL acquisition.
+    """Attach task/output-aware Active Learning constructor arguments."""
+    task = str(task_type).lower()
+    if multi_output:
+        if output_weights is not None:
+            acqf_kwargs.setdefault("output_weights", output_weights)
+        if task == "regression":
+            acqf_kwargs.setdefault("output_reduction", "weighted_mean")
+        else:
+            acqf_kwargs.setdefault("output_mode", "weighted_mean")
 
-    True NIPV consumes ``mc_points`` as its integration set and has no
-    ``X_observed`` argument. Pointwise uncertainty acquisitions use
-    ``X_observed`` for optional observed-point penalties / exclusion.
-    """
     if acq_key in {"nipv", "qnipv"}:
         acqf_kwargs.setdefault("mc_points", train_x)
+        # Classification / ordinal NIPV implementations also expose observed
+        # exclusion. True Gaussian regression NIPV does not accept X_observed.
+        if task != "regression":
+            acqf_kwargs.setdefault("X_observed", train_x)
         return
+
     acqf_kwargs.setdefault("X_observed", train_x)
+
+
+def _set_active_learning_reference_kwargs(
+    acqf_kwargs: dict[str, object],
+    *,
+    acq_key: str,
+    train_x: object,
+) -> None:
+    """Backward-compatible Regression single-output AL reference helper."""
+    _set_active_learning_kwargs(
+        acqf_kwargs,
+        acq_key=acq_key,
+        train_x=train_x,
+        task_type="regression",
+        multi_output=False,
+    )
 
 
 def _request_with_constraints(request: Any, constraints: list[Any]) -> Any:
@@ -610,18 +638,21 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         }:
             raise ValueError(f"Active learning supports variance, predictive_entropy, BALD, or NIPV, got {acq_name}.")
         objective_config = None
-        acqf_kwargs.setdefault(
-            "output_weights",
-            objective_weights(
-                target_columns=target_columns,
-                objective_targets=objective_targets,
-            ),
+        homogeneous_task = (
+            internal_tasks[0]
+            if internal_tasks and all(task == internal_tasks[0] for task in internal_tasks)
+            else "hybrid"
         )
-        acqf_kwargs.setdefault("output_reduction", "weighted_mean")
-        _set_active_learning_reference_kwargs(
+        _set_active_learning_kwargs(
             acqf_kwargs,
             acq_key=acq_key,
             train_x=train_x,
+            task_type=homogeneous_task,
+            multi_output=len(target_columns) > 1,
+            output_weights=objective_weights(
+                target_columns=target_columns,
+                objective_targets=objective_targets,
+            ),
         )
         data_context = DataContext(
             X_baseline=train_x,

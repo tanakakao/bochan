@@ -363,9 +363,36 @@ class qMulticlassIntegratedPosteriorVarianceProxy(_MulticlassActiveLearningBase)
         integration_beta: float = 25.0,
         local_weight: float | None = None,
         integrated_weight: float = 1.0,
+        pending_penalty_weight: float = 0.0,
+        pending_penalty_beta: float = 10.0,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        same_batch_penalty_weight: float = 0.0,
+        same_batch_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
         **kwargs,
     ) -> None:
-        super().__init__(model=model, **kwargs)
+        super().__init__(
+            model=model,
+            pending_penalty_weight=pending_penalty_weight,
+            pending_penalty_beta=pending_penalty_beta,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            same_batch_penalty_weight=same_batch_penalty_weight,
+            same_batch_penalty_beta=same_batch_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
+            X_pending=X_pending,
+            X_observed=X_observed,
+            **kwargs,
+        )
         self.mc_points = mc_points
         self.integration_beta = float(integration_beta)
         self.local_weight = 1.0 if local_weight is None and mc_points is None else float(local_weight or 0.0)

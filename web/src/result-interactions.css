@@ -8,6 +8,14 @@
   height: 100% !important;
 }
 
+.results-interactive-section .interactive-plot-stage {
+  min-height: 560px;
+}
+
+.results-interactive-section .interactive-plot-stage .plot-container {
+  height: 560px;
+}
+
 .plot-container .modebar-container {
   top: -34px !important;
   right: 8px !important;

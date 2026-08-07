@@ -33,7 +33,7 @@ jobs:
         working-directory: repo
         run: |
           py -3.12 -m pip install --upgrade pip
-          py -3.12 -m pip install -e ".[test]" ruff
+          py -3.12 -m pip install -e ".[test,web]" ruff
 
       - name: Format and lint Python changes
         shell: pwsh

@@ -1,0 +1,47 @@
+name: Validate classification AL alignment
+
+on:
+  pull_request:
+    branches:
+      - agent/align-classification-al-validation-base
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[web]" pytest ruff
+      - name: Apply alignment codemod
+        run: python .github/scripts/apply_classification_al_alignment.py
+      - name: Format and lint
+        run: |
+          ruff format src/bochan/serving/webapp/workflows_tabular.py src/bochan/acquisition/binary/active_learning/integrated_posterior_variance.py src/bochan/acquisition/multiclass/bayesian_optimization/single_output.py src/bochan/acquisition/ordinal/active_learning/single_output.py src/bochan/acquisition/ordinal/active_learning/__init__.py src/bochan/api/acquisition_registry.py tests/test_classification_active_learning_web_kwargs.py tests/test_classification_active_learning_hybrid_e2e.py tests/test_classification_active_learning_input_perturbation_contract.py
+          ruff check src/bochan/serving/webapp/workflows_tabular.py src/bochan/acquisition/binary/active_learning/integrated_posterior_variance.py src/bochan/acquisition/multiclass/bayesian_optimization/single_output.py src/bochan/acquisition/ordinal/active_learning/single_output.py src/bochan/acquisition/ordinal/active_learning/__init__.py src/bochan/api/acquisition_registry.py tests/test_classification_active_learning_web_kwargs.py tests/test_classification_active_learning_hybrid_e2e.py tests/test_classification_active_learning_input_perturbation_contract.py
+      - name: Focused tests
+        run: |
+          pytest -q tests/test_classification_active_learning_web_kwargs.py tests/test_classification_active_learning_hybrid_e2e.py tests/test_classification_active_learning_input_perturbation_contract.py tests/test_classification_duplicate_exclusion.py tests/test_binary_multiclass_duplicate_controls_e2e.py tests/test_single_output_hybrid_acquisition_routing.py
+      - name: Commit generated changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src tests
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit."
+            exit 0
+          fi
+          git commit -m "Align classification active learning"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}

@@ -530,6 +530,48 @@ class HybridMultiOutputModel(Model):
             return self.models[indices[0]]
         return self.__class__([self.specs[i] for i in indices])
 
+    def fantasize(
+        self,
+        X: Tensor,
+        sampler: Any,
+        observation_noise: bool | Tensor | None = None,
+        **kwargs: Any,
+    ) -> "HybridMultiOutputModel":
+        """Fantasize each independent submodel and rebuild the hybrid wrapper.
+
+        This enables fantasy-based acquisitions such as true regression NIPV
+        when the Web workbench represents even one target through the hybrid
+        multi-output wrapper.
+        """
+        X_tensor = self._unwrap_X(X)
+        new_specs = []
+        for i, spec in enumerate(self.specs):
+            fn = getattr(spec.model, "fantasize", None)
+            if not callable(fn):
+                raise NotImplementedError(
+                    f"Submodel {i} ({spec.name!r}) has no fantasize()."
+                )
+
+            call_kwargs = dict(kwargs)
+            if observation_noise is not None:
+                noise_i = observation_noise
+                if (
+                    torch.is_tensor(observation_noise)
+                    and observation_noise.ndim > 0
+                    and observation_noise.shape[-1] == self.num_outputs
+                ):
+                    noise_i = observation_noise[..., i : i + 1]
+                call_kwargs["observation_noise"] = noise_i
+
+            model_i = fn(
+                X=X_tensor,
+                sampler=sampler,
+                **call_kwargs,
+            )
+            new_specs.append(replace(spec, model=model_i))
+
+        return self.__class__(new_specs)
+
     def condition_on_observations(
         self,
         X: Tensor,

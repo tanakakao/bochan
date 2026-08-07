@@ -29,6 +29,37 @@ def _normalize_acquisition_name(name: str) -> str:
     return str(name).replace("_", "").replace("-", "").replace(" ", "").lower()
 
 
+def _resolve_structured_acqf_kwargs(
+    name: str,
+    kwargs: dict[str, Any],
+) -> tuple[dict[str, Any], Any | None]:
+    """Resolve task-aware acquisition kwargs carried by a structured value.
+
+    Serving layers sometimes know more about the semantic output space than the
+    contextual acquisition-name resolver.  A structured ``thresholds`` value can
+    expose ``_resolve_acqf_kwargs`` to translate that metadata into concrete
+    acquisition kwargs and, when necessary, pin an acquisition class.
+
+    Ordinary lists / tensors are returned unchanged, so the public API keeps its
+    existing behavior outside integrations that explicitly opt in to the hook.
+    """
+
+    resolver = getattr(kwargs.get("thresholds"), "_resolve_acqf_kwargs", None)
+    if not callable(resolver):
+        return kwargs, None
+
+    resolved = resolver(name=name, kwargs=dict(kwargs))
+    if not isinstance(resolved, tuple) or len(resolved) != 2:
+        raise TypeError(
+            "Structured acquisition kwarg resolver must return "
+            "(kwargs, acqf_cls_or_none)."
+        )
+    resolved_kwargs, acqf_cls = resolved
+    if not isinstance(resolved_kwargs, dict):
+        raise TypeError("Structured acquisition kwarg resolver must return a dict.")
+    return resolved_kwargs, acqf_cls
+
+
 def _install_llm_selected_runtime_if_needed(name: str) -> None:
     """Install execution-time LLM acquisition resolution for selector names."""
 
@@ -219,6 +250,9 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
 
     def __post_init__(self) -> None:
         kwargs = dict(self.acqf_kwargs)
+        kwargs, resolved_acqf_cls = _resolve_structured_acqf_kwargs(self.name, kwargs)
+        if self.acqf_cls is None and resolved_acqf_cls is not None:
+            self.acqf_cls = resolved_acqf_cls
 
         kwargs_constraints = kwargs.pop("constraints", _MISSING)
         replaying_internal_constraints = (

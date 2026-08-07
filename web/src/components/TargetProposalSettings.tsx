@@ -1,3 +1,4 @@
+import { useWorkbench } from "../context/WorkbenchContext";
 import { getColumnClassValues } from "../targetSettingUtils";
 import type {
   ColumnProfile,
@@ -31,6 +32,9 @@ export default function TargetProposalSettings({
   patchTargetSetting,
   numberOrUndefined
 }: Props) {
+  const { acquisitionFamily } = useWorkbench();
+  const isLevelSet = acquisitionFamily === "level_set_estimation";
+
   function classesFor(target: string): TargetClassValue[] {
     const column = columns.find((candidate) => candidate.name === target);
     return column ? getColumnClassValues(column, preview) : [];
@@ -146,6 +150,7 @@ export default function TargetProposalSettings({
           max={1}
           step={0.01}
           value={setting.value ?? ""}
+          aria-label={isLevelSet ? "対象クラス確率のレベルセットしきい値" : undefined}
           onChange={(event) => patchTargetSetting(target, {
             value: numberOrUndefined(event.target.value) ?? null
           })}
@@ -171,6 +176,7 @@ export default function TargetProposalSettings({
     return (
       <select
         value={String(setting.value ?? "")}
+        aria-label={isLevelSet ? "順序回帰のレベルセット境界クラス" : undefined}
         onChange={(event) => patchTargetSetting(target, { value: event.target.value })}
       >
         {classes.map((value) => (
@@ -182,18 +188,24 @@ export default function TargetProposalSettings({
 
   function desiredClassControl(target: string, setting: TargetSetting, classes: TargetClassValue[]) {
     if (setting.task_type === "regression") return <span className="muted-cell">—</span>;
-    if (setting.task_type === "ordinal") return <span className="muted-cell">モデル設定の順序を使用</span>;
+    if (setting.task_type === "ordinal") {
+      return (
+        <span className="muted-cell">
+          {isLevelSet ? "モデル設定のクラス順を境界尺度として使用" : "モデル設定の順序を使用"}
+        </span>
+      );
+    }
     if (classes.length === 2) {
       return (
         <div className="binary-target-summary">
-          <span>1として扱うクラス</span>
+          <span>{isLevelSet ? "境界判定の対象クラス" : "1として扱うクラス"}</span>
           <strong>{String(setting.target_class ?? "—")}</strong>
         </div>
       );
     }
     return (
       <label className="table-field">
-        <span>候補提案で狙うクラス（複数可）</span>
+        <span>{isLevelSet ? "境界を推定する対象クラス（複数可）" : "候補提案で狙うクラス（複数可）"}</span>
         <select
           multiple
           size={Math.min(Math.max(classes.length, 2), 6)}
@@ -216,8 +228,12 @@ export default function TargetProposalSettings({
       <div className="panel-title">
         <div>
           <span className="panel-kicker">1 · TARGET PROPOSAL</span>
-          <h3>目的変数の候補提案条件</h3>
-          <p>最適化対象、方向、目標値、実行可能性制約、狙うクラスを設定します。</p>
+          <h3>{isLevelSet ? "目的変数のレベルセット条件" : "目的変数の候補提案条件"}</h3>
+          <p>
+            {isLevelSet
+              ? "各最適化対象に境界を設定します。分類は対象クラス確率、順序回帰は設定済みのクラス順を目的尺度として扱います。"
+              : "最適化対象、方向、目標値、実行可能性制約、狙うクラスを設定します。"}
+          </p>
         </div>
         <span className="status-chip success">{targetColumns.length} targets</span>
       </div>
@@ -226,7 +242,7 @@ export default function TargetProposalSettings({
           <thead>
             <tr>
               <th>目的変数</th><th>最適化対象</th><th>方向</th><th>制約</th>
-              <th>しきい値／目標値</th><th>対象クラス</th>
+              <th>{isLevelSet ? "境界しきい値／目標値" : "しきい値／目標値"}</th><th>対象クラス</th>
             </tr>
           </thead>
           <tbody>
@@ -273,7 +289,9 @@ export default function TargetProposalSettings({
         </table>
       </div>
       <p className="settings-note">
-        方向・制約・対象クラスは候補提案時にのみ使用します。ここを変更しても、互換性のある学習済みモデルは再利用できます。
+        {isLevelSet
+          ? "Multiclass は選択したクラス群の合計確率をしきい値と比較します。順序回帰の「以上／以下」はクラス順の順位を境界として扱い、「目標値」は選択順位への距離 0 の等高線を推定します。"
+          : "方向・制約・対象クラスは候補提案時にのみ使用します。ここを変更しても、互換性のある学習済みモデルは再利用できます。"}
       </p>
     </article>
   );

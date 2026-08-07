@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "pyproject.toml"
+      - "src/bochan/api/acquisition_config.py"
       - "src/bochan/likelihoods/regression.py"
       - "src/bochan/model_artifact.py"
       - "src/bochan/tabular/optimizer_api.py"
@@ -16,6 +17,7 @@ on:
       - "tests/test_common_model_artifact_api.py"
       - "tests/test_tabular_noise_alpha.py"
       - "tests/test_webapp_multiobjective_contract.py"
+      - "tests/test_webapp_level_set_settings.py"
       - "tests/test_webapp_target_results_contract.py"
       - "tests/test_webapp_feature_constraints_optimizer_contract.py"
       - "tests/test_webapp_tabular_backend.py"
@@ -53,6 +55,7 @@ jobs:
             tests/test_common_model_artifact_api.py \
             tests/test_tabular_noise_alpha.py \
             tests/test_webapp_multiobjective_contract.py \
+            tests/test_webapp_level_set_settings.py \
             tests/test_webapp_target_results_contract.py \
             tests/test_webapp_feature_constraints_optimizer_contract.py \
             tests/test_webapp_tabular_backend.py \
@@ -77,6 +80,7 @@ jobs:
           python -m pip install ruff
           set +e
           ruff check --ignore I001,SIM102,SIM108 \
+            src/bochan/api/acquisition_config.py \
             src/bochan/model_artifact.py \
             src/bochan/serving/fastapi/router.py \
             src/bochan/serving/fastapi/routers/artifacts.py \
@@ -106,6 +110,7 @@ jobs:
             src/bochan/visualization/target_relation.py \
             tests/test_common_model_artifact_api.py \
             tests/test_webapp_multiobjective_contract.py \
+            tests/test_webapp_level_set_settings.py \
             tests/test_webapp_target_results_contract.py \
             tests/test_webapp_feature_constraints_optimizer_contract.py \
             tests/test_webapp_tabular_backend.py \

@@ -117,6 +117,12 @@ export default function OptimizePage() {
   const taskTypes = optimizedTargetSettings.map((setting) => setting.task_type);
   const homogeneousTask = taskTypes.length > 0 && taskTypes.every((task) => task === taskTypes[0]);
   const projectedModel = modelType === "pca" || modelType === "rembo";
+  const regressionLocalUncertaintyEquivalent = (
+    acquisitionFamily === "active_learning"
+    && homogeneousTask
+    && taskTypes[0] === "regression"
+    && ["variance", "predictive_entropy", "bald"].includes(acquisition.toLowerCase())
+  );
   const sequentialForced = q > 1 && (
     selectedVariables.some((variable) => variable.type === "categorical")
     || searchMethod === "cmaes"
@@ -319,6 +325,12 @@ export default function OptimizePage() {
             {acquisitionFamily === "active_learning" && "予測不確実性を減らすために情報量の高い候補を選びます。"}
             {acquisitionFamily === "level_set_estimation" && "設定した境界や目標付近を重点的に探索します。"}
           </p>
+          {regressionLocalUncertaintyEquivalent && (
+            <p className="settings-note">
+              標準の等分散Gaussian回帰では、Variance・Predictive Entropy・BALDはposterior varianceの単調変換になるため、
+              同じ候補順位になるのが正常です。異なる観点で実験点を選びたい場合は、領域全体の不確実性低減を評価するNIPVを使用してください。
+            </p>
+          )}
         </article>
 
         <article className="panel compact-panel">

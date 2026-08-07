@@ -19,7 +19,7 @@ jobs:
           git config --global core.autocrlf false
           git clone --branch "${{ github.head_ref }}" "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" repo
 
-      - name: Restore repository CRLF line endings
+      - name: Restore repository LF line endings
         shell: pwsh
         working-directory: repo
         run: |
@@ -42,7 +42,7 @@ jobs:
           for value in paths:
               path = Path(value)
               text = path.read_bytes().decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
-              path.write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
+              path.write_bytes(text.encode("utf-8"))
           '@ | py -3.12 -
 
       - name: Commit normalized files

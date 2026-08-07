@@ -25,12 +25,12 @@ jobs:
       - name: Commit patched source
         shell: bash
         run: |
-          if git diff --quiet -- src/bochan/api/engine.py; then
+          if git diff --quiet -- src/bochan/api/engine.py src/bochan/api/__init__.py; then
             echo "No source changes to commit"
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add src/bochan/api/engine.py
+            git add src/bochan/api/engine.py src/bochan/api/__init__.py
             git commit -m "Fix single-output hybrid acquisition routing"
             git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
@@ -43,7 +43,7 @@ jobs:
           python -m ruff format --check tests/test_single_output_hybrid_acquisition_routing.py tests/test_webapp_single_objective_nipv.py
           python -m ruff check tests/test_single_output_hybrid_acquisition_routing.py tests/test_webapp_single_objective_nipv.py
       - name: Compile routing source
-        run: python -m py_compile src/bochan/api/engine.py
+        run: python -m py_compile src/bochan/api/engine.py src/bochan/api/__init__.py
       - name: Focused routing tests
         run: |
           python -m pytest -q tests/test_single_output_hybrid_acquisition_routing.py tests/test_webapp_single_objective_nipv.py

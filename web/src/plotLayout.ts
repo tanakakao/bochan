@@ -21,7 +21,7 @@ export function themedPlotLayout(
     margin: {
       ...source.margin,
       t: Math.min(sourceTopMargin, 40),
-      b: Math.max(sourceBottomMargin, 160)
+      b: Math.max(sourceBottomMargin, 190)
     },
     paper_bgcolor: "rgba(0,0,0,0)",
     plot_bgcolor: "rgba(0,0,0,0)",
@@ -53,7 +53,7 @@ export function themedPlotLayout(
       orientation: "h",
       x: 0.5,
       xanchor: "center",
-      y: -0.12,
+      y: -0.28,
       yanchor: "top",
       traceorder: "normal",
       font: { ...source.legend?.font, color: text }

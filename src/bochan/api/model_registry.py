@@ -73,6 +73,8 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "vae": ("bochan.models.regression.gaussian.high_dim", "VAESingleTaskGP"),
             "rrp": ("bochan.models.regression.gaussian.robust", "SafeRobustRelevancePursuitSingleTaskGP"),
             "hetero": ("bochan.models.regression.gaussian.robust", "HeteroscedasticSingleTaskGP"),
+            "ngboost": ("bochan.models.regression.boosting", "NGBoostRegressorModel"),
+            "ngboost_ensemble": ("bochan.models.regression.boosting", "NGBoostEnsembleModel"),
             "beta_base": ("bochan.models.regression.non_gaussian.beta.base", "BetaGPModel"),
             "beta_deepgp": ("bochan.models.regression.non_gaussian.beta.deep", "BetaDeepGPModel"),
             "beta_deepkernel": ("bochan.models.regression.non_gaussian.beta.deep", "DeepKernelBetaGPModel"),

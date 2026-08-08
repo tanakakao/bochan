@@ -27,7 +27,11 @@ from botorch.models.model import Model
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 
-from bochan.acquisition._duplicate_exclusion import resolve_observed_X
+from bochan.acquisition._duplicate_exclusion import (
+    hard_reference_duplicate_penalty_per_point,
+    hard_same_batch_duplicate_penalty_per_point,
+    resolve_observed_X,
+)
 
 ReductionType = Literal["mean", "sum", "max", "min"]
 OutputReductionType = Literal["mean", "sum", "max", "min"]
@@ -76,7 +80,15 @@ def _objective_call(objective: Callable, score: Tensor, X: Tensor | None):
 
 
 def _safe_normal_cdf(z: Tensor) -> Tensor:
-    return 0.5 * (1.0 + torch.erf(z / torch.sqrt(torch.as_tensor(2.0, device=z.device, dtype=z.dtype))))
+    return 0.5 * (
+        1.0
+        + torch.erf(
+            z
+            / torch.sqrt(
+                torch.as_tensor(2.0, device=z.device, dtype=z.dtype)
+            )
+        )
+    )
 
 
 def _safe_logdet(covar: Tensor, jitter: float = 1e-6) -> Tensor:
@@ -185,17 +197,7 @@ class RegressionLevelSetScoreObjective(torch.nn.Module):
 
 
 def _objective_X_for_score(score: Tensor, X: Tensor | None) -> Tensor | None:
-    """Return an ``X`` argument compatible with a pointwise score objective.
-
-    Args:
-        score: Pointwise score tensor passed to an optional objective.
-        X: Raw candidate tensor originally passed to the acquisition function.
-
-    Returns:
-        The original ``X`` when its q dimension already matches ``score``;
-        otherwise ``None`` so BoTorch objectives skip q-shape validation for
-        internally transformed pointwise scores.
-    """
+    """Return an ``X`` argument compatible with a pointwise score objective."""
     if X is None or X.ndim < 3 or score.ndim == 0:
         return X
 
@@ -205,20 +207,77 @@ def _objective_X_for_score(score: Tensor, X: Tensor | None) -> Tensor | None:
     return None
 
 
+def _is_joint_score(score: Tensor, X: Tensor | None) -> bool:
+    """Return whether ``score`` already contains one value per t-batch."""
+    if X is None:
+        return False
+    raw_X = _ensure_q_batch(X)
+    return tuple(score.shape) == tuple(raw_X.shape[:-2])
+
+
+def _objective_X_for_perturbed_score(
+    score: Tensor,
+    X: Tensor | None,
+    objective: object,
+) -> Tensor | None:
+    """Return raw ``X`` when the objective can aggregate a ``q * n_w`` score."""
+    X_for_objective = _objective_X_for_score(score, X)
+    if X_for_objective is not None or X is None or score.ndim == 0:
+        return X_for_objective
+
+    raw_X = _ensure_q_batch(X)
+    n_w = getattr(objective, "n_w", None)
+    try:
+        n_w = None if n_w is None else int(n_w)
+    except (TypeError, ValueError):
+        n_w = None
+
+    if (
+        n_w is not None
+        and n_w > 0
+        and int(score.shape[-1]) == int(raw_X.shape[-2]) * n_w
+    ):
+        return raw_X
+    return None
+
+
+def _objective_forward_call(
+    objective: object,
+    score: Tensor,
+    X: Tensor,
+) -> Tensor:
+    """Apply a joint score objective without BoTorch's q-output verification."""
+    forward = getattr(objective, "forward", None)
+    if callable(forward):
+        try:
+            return forward(score, X=X)
+        except TypeError:
+            return forward(score)
+    return _objective_call(objective, score, None)
+
+
 def _apply_regression_levelset_objective_to_score(
     owner,
     score: Tensor,
     X: Tensor | None = None,
     name: str = "RegressionLevelSetAcquisition",
 ) -> Tensor:
+    """Apply a score objective while preserving perturbation and joint shapes."""
     objective = getattr(owner, "objective", None)
     if objective is None:
         return score
-    X_for_objective = _objective_X_for_score(score, X)
-    try:
-        out = objective(score, X=X_for_objective)
-    except TypeError:
-        out = objective(score)
+
+    raw_X = None if X is None else _ensure_q_batch(X)
+    if raw_X is not None and _is_joint_score(score, raw_X):
+        out = _objective_forward_call(objective, score, raw_X)
+    else:
+        X_for_objective = _objective_X_for_perturbed_score(
+            score,
+            raw_X,
+            objective,
+        )
+        out = _objective_call(objective, score, X_for_objective)
+
     if not torch.is_tensor(out):
         raise RuntimeError(f"{name}: objective must return a Tensor. Got {type(out)}.")
     return out
@@ -324,7 +383,10 @@ class _RegressionLevelSetBase(AcquisitionFunction):
                 try:
                     out = torch.cat(tensors, dim=-2)
                 except RuntimeError:
-                    out = torch.cat([t.reshape(-1, t.shape[-1]) for t in tensors], dim=-2)
+                    out = torch.cat(
+                        [t.reshape(-1, t.shape[-1]) for t in tensors],
+                        dim=-2,
+                    )
         else:
             raise TypeError(
                 "Reference points must be None, Tensor, list, or tuple. "
@@ -357,13 +419,7 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         return Xt
 
     def _apply_input_transform_for_distance(self, X: Tensor) -> Tensor:
-        """Apply the model's own raw -> internal transform for distance penalties.
-
-        Wrapper models such as SaasMixedSingleTaskGP use raw-space candidates but
-        encoded-space input transforms.  Directly applying ``model.input_transform``
-        to raw X can therefore mismatch raw_dim and encoded_dim.  Prefer the
-        public ``transform_inputs`` path used by the model posterior.
-        """
+        """Apply the model's own raw -> internal transform for distance penalties."""
         X = _ensure_q_batch(X)
 
         transform_inputs = getattr(self.model, "transform_inputs", None)
@@ -397,7 +453,12 @@ class _RegressionLevelSetBase(AcquisitionFunction):
 
         return X
 
-    def _reference_to_distance_space(self, ref, *, like: Tensor) -> Tensor | None:
+    def _reference_to_distance_space(
+        self,
+        ref,
+        *,
+        like: Tensor,
+    ) -> Tensor | None:
         ref = self._coerce_reference_to_tensor(ref, like=like)
         if ref is None or ref.numel() == 0:
             return None
@@ -441,10 +502,17 @@ class _RegressionLevelSetBase(AcquisitionFunction):
 
         raise RuntimeError(
             f"{name}: score shape mismatch. "
-            f"score.shape={tuple(score.shape)}, expected={tuple(target)}, Xt.shape={tuple(Xt.shape)}."
+            f"score.shape={tuple(score.shape)}, expected={tuple(target)}, "
+            f"Xt.shape={tuple(Xt.shape)}."
         )
 
-    def _reduce_outputs_if_needed(self, value: Tensor, Xt: Tensor, *, name: str) -> Tensor:
+    def _reduce_outputs_if_needed(
+        self,
+        value: Tensor,
+        Xt: Tensor,
+        *,
+        name: str,
+    ) -> Tensor:
         Xt = _ensure_q_batch(Xt)
         target_prefix = torch.Size(Xt.shape[:-1])
         out = value
@@ -457,7 +525,10 @@ class _RegressionLevelSetBase(AcquisitionFunction):
             if out.shape == target_prefix:
                 return out
 
-        if out.ndim == len(target_prefix) + 1 and out.shape[:-1] == target_prefix:
+        if (
+            out.ndim == len(target_prefix) + 1
+            and out.shape[:-1] == target_prefix
+        ):
             if out.shape[-1] == 1:
                 return out.squeeze(-1)
             return _reduce(out, dim=-1, mode=self.output_reduction)
@@ -484,8 +555,16 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         posterior = self.model.posterior(Xq, observation_noise=False)
         Xt = self._apply_input_transform_for_distance(Xq)
 
-        mean = self._reduce_outputs_if_needed(posterior.mean, Xt, name="posterior.mean")
-        var = self._reduce_outputs_if_needed(posterior.variance, Xt, name="posterior.variance")
+        mean = self._reduce_outputs_if_needed(
+            posterior.mean,
+            Xt,
+            name="posterior.mean",
+        )
+        var = self._reduce_outputs_if_needed(
+            posterior.variance,
+            Xt,
+            name="posterior.variance",
+        )
         var = var.clamp_min(self.eps)
 
         mean = self._align_pointwise_score_to_X(mean, Xt, name="posterior.mean")
@@ -499,24 +578,41 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         posterior = self.model.posterior(Xq, observation_noise=False)
         Xt = self._apply_input_transform_for_distance(Xq)
 
-        mean = self._reduce_outputs_if_needed(posterior.mean, Xt, name="posterior.mean")
+        mean = self._reduce_outputs_if_needed(
+            posterior.mean,
+            Xt,
+            name="posterior.mean",
+        )
         mean = self._align_pointwise_score_to_X(mean, Xt, name="posterior.mean")
 
         covar = None
         mvn = getattr(posterior, "mvn", None)
         if mvn is not None and hasattr(mvn, "covariance_matrix"):
             covar = mvn.covariance_matrix
-        elif hasattr(posterior, "distribution") and hasattr(posterior.distribution, "covariance_matrix"):
+        elif hasattr(posterior, "distribution") and hasattr(
+            posterior.distribution,
+            "covariance_matrix",
+        ):
             covar = posterior.distribution.covariance_matrix
 
         if covar is None:
-            var = self._reduce_outputs_if_needed(posterior.variance, Xt, name="posterior.variance")
-            var = self._align_pointwise_score_to_X(var, Xt, name="posterior.variance")
+            var = self._reduce_outputs_if_needed(
+                posterior.variance,
+                Xt,
+                name="posterior.variance",
+            )
+            var = self._align_pointwise_score_to_X(
+                var,
+                Xt,
+                name="posterior.variance",
+            )
             covar = torch.diag_embed(var)
             return mean, covar, Xt
 
         q_like = int(Xt.shape[-2])
-        target_covar_shape = torch.Size(Xt.shape[:-2]) + torch.Size([q_like, q_like])
+        target_covar_shape = torch.Size(Xt.shape[:-2]) + torch.Size(
+            [q_like, q_like]
+        )
 
         while covar.ndim > len(target_covar_shape):
             covar = covar.mean(dim=0)
@@ -527,14 +623,23 @@ class _RegressionLevelSetBase(AcquisitionFunction):
             if covar.numel() == _safe_prod(target_covar_shape):
                 covar = covar.reshape(target_covar_shape)
             else:
-                var = self._reduce_outputs_if_needed(posterior.variance, Xt, name="posterior.variance")
-                var = self._align_pointwise_score_to_X(var, Xt, name="posterior.variance")
+                var = self._reduce_outputs_if_needed(
+                    posterior.variance,
+                    Xt,
+                    name="posterior.variance",
+                )
+                var = self._align_pointwise_score_to_X(
+                    var,
+                    Xt,
+                    name="posterior.variance",
+                )
                 covar = torch.diag_embed(var)
 
         covar = 0.5 * (covar + covar.transpose(-1, -2))
         return mean, covar, Xt
 
     def _same_batch_penalty_per_point(self, Xt: Tensor) -> Tensor:
+        """Return transformed-space soft / legacy finite diversity penalties."""
         Xt = _ensure_q_batch(Xt)
         q = int(Xt.shape[-2])
         zeros = Xt.new_zeros(Xt.shape[:-1])
@@ -543,7 +648,6 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         if (
             self.same_batch_penalty_weight <= 0.0
             and self.hard_duplicate_penalty <= 0.0
-            and not self.exclude_same_batch_duplicates
         ):
             return zeros
 
@@ -559,19 +663,12 @@ class _RegressionLevelSetBase(AcquisitionFunction):
             soft = torch.where(valid, soft, torch.zeros_like(soft))
             penalty = self.same_batch_penalty_weight * soft.sum(dim=-1)
 
-        duplicate_pairs = valid & (d2 <= self.hard_duplicate_tol**2)
         if self.hard_duplicate_penalty > 0.0:
+            duplicate_pairs = valid & (d2 <= self.hard_duplicate_tol**2)
             penalty = penalty + self.hard_duplicate_penalty * duplicate_pairs.to(
                 dtype=Xt.dtype
             ).sum(dim=-1)
 
-        if self.exclude_same_batch_duplicates:
-            duplicate_batch = duplicate_pairs.any(dim=-1).any(dim=-1, keepdim=True)
-            penalty = torch.where(
-                duplicate_batch.expand_as(penalty),
-                torch.full_like(penalty, torch.inf),
-                penalty,
-            )
         return penalty
 
     def _reference_penalty_per_point(
@@ -581,11 +678,11 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         *,
         weight: float,
         beta: float,
-        exclude_duplicates: bool = False,
     ) -> Tensor:
+        """Return transformed-space soft distance penalty to a reference set."""
         Xt = _ensure_q_batch(Xt)
         zeros = Xt.new_zeros(Xt.shape[:-1])
-        if weight <= 0.0 and not exclude_duplicates:
+        if weight <= 0.0:
             return zeros
 
         ref_t = self._reference_to_distance_space(ref, like=Xt)
@@ -596,29 +693,71 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         if ref2d.shape[-1] != Xt.shape[-1]:
             raise RuntimeError(
                 "Reference feature dimension mismatch after transform: "
-                f"Xt.shape={tuple(Xt.shape)}, ref_transformed.shape={tuple(ref_t.shape)}."
+                f"Xt.shape={tuple(Xt.shape)}, "
+                f"ref_transformed.shape={tuple(ref_t.shape)}."
             )
 
         dist = torch.cdist(Xt.reshape(-1, Xt.shape[-1]), ref2d)
         min_dist = dist.min(dim=-1).values.reshape(*Xt.shape[:-1])
-        penalty = (
-            weight * torch.exp(-beta * min_dist)
-            if weight > 0.0
-            else zeros
-        )
-        if exclude_duplicates:
-            duplicate_batch = (min_dist <= self.hard_duplicate_tol).any(
-                dim=-1,
-                keepdim=True,
-            )
-            penalty = torch.where(
-                duplicate_batch.expand_as(penalty),
-                torch.full_like(penalty, torch.inf),
-                penalty,
-            )
-        return penalty
+        return weight * torch.exp(-beta * min_dist)
 
-    def _total_penalty_per_point(self, Xt: Tensor) -> Tensor:
+    def _hard_duplicate_penalty_per_point(
+        self,
+        X: Tensor,
+        Xt: Tensor,
+    ) -> Tensor:
+        """Hard-exclude duplicate raw candidates, not perturbation-expanded points."""
+        Xt = _ensure_q_batch(Xt)
+        raw_X = _ensure_q_batch(X).to(device=Xt.device, dtype=Xt.dtype)
+        zeros = Xt.new_zeros(Xt.shape[:-1])
+        raw_batch_shape = torch.Size(raw_X.shape[:-2])
+        transformed_batch_shape = torch.Size(Xt.shape[:-2])
+
+        if raw_batch_shape != transformed_batch_shape:
+            raise RuntimeError(
+                "Raw and transformed t-batch shapes must match for duplicate "
+                "exclusion. "
+                f"raw_X.shape={tuple(raw_X.shape)}, Xt.shape={tuple(Xt.shape)}."
+            )
+
+        invalid_batch = torch.zeros(
+            raw_batch_shape,
+            dtype=torch.bool,
+            device=Xt.device,
+        )
+
+        if self.exclude_same_batch_duplicates:
+            penalty = hard_same_batch_duplicate_penalty_per_point(
+                raw_X,
+                enabled=True,
+                tolerance=self.hard_duplicate_tol,
+            )
+            invalid_batch = invalid_batch | torch.isinf(penalty).any(dim=-1)
+
+        if self.exclude_pending_duplicates:
+            pending = self._coerce_reference_to_tensor(self.X_pending, like=raw_X)
+            penalty = hard_reference_duplicate_penalty_per_point(
+                raw_X,
+                pending,
+                enabled=True,
+                tolerance=self.hard_duplicate_tol,
+            )
+            invalid_batch = invalid_batch | torch.isinf(penalty).any(dim=-1)
+
+        if self.exclude_observed_duplicates:
+            observed = self._coerce_reference_to_tensor(self.X_observed, like=raw_X)
+            penalty = hard_reference_duplicate_penalty_per_point(
+                raw_X,
+                observed,
+                enabled=True,
+                tolerance=self.hard_duplicate_tol,
+            )
+            invalid_batch = invalid_batch | torch.isinf(penalty).any(dim=-1)
+
+        mask = invalid_batch.unsqueeze(-1).expand_as(zeros)
+        return torch.where(mask, torch.full_like(zeros, torch.inf), zeros)
+
+    def _total_penalty_per_point(self, Xt: Tensor, X: Tensor) -> Tensor:
         return (
             self._same_batch_penalty_per_point(Xt)
             + self._reference_penalty_per_point(
@@ -626,42 +765,53 @@ class _RegressionLevelSetBase(AcquisitionFunction):
                 self.X_pending,
                 weight=self.pending_penalty_weight,
                 beta=self.pending_penalty_beta,
-                exclude_duplicates=self.exclude_pending_duplicates,
             )
             + self._reference_penalty_per_point(
                 Xt,
                 self.X_observed,
                 weight=self.observed_penalty_weight,
                 beta=self.observed_penalty_beta,
-                exclude_duplicates=self.exclude_observed_duplicates,
             )
+            + self._hard_duplicate_penalty_per_point(X, Xt)
         )
 
-    def _apply_objective_to_score(self, score: Tensor, X: Tensor, name: str) -> Tensor:
+    def _apply_objective_to_score(
+        self,
+        score: Tensor,
+        X: Tensor,
+        name: str,
+    ) -> Tensor:
+        """Apply objectives without losing q or re-aggregating joint scores."""
         if self.objective is None:
             return score
 
-        X_for_objective = _objective_X_for_score(score, X)
-        out = _objective_call(self.objective, score, X_for_objective)
+        raw_X = _ensure_q_batch(X)
+        if _is_joint_score(score, raw_X):
+            out = _objective_forward_call(self.objective, score, raw_X)
+        else:
+            X_for_objective = _objective_X_for_perturbed_score(
+                score,
+                raw_X,
+                self.objective,
+            )
+            out = _objective_call(
+                self.objective,
+                score,
+                X_for_objective,
+            )
+
         if not torch.is_tensor(out):
             raise RuntimeError(f"{name}: objective must return Tensor. Got {type(out)}.")
         return out
 
-    def _aggregate_n_w_if_needed(self, score: Tensor, *, q: int, context: str) -> Tensor:
-        """Aggregate one-to-many perturbation scores back to raw q points.
-
-        Args:
-            score: Pointwise acquisition scores with the candidate dimension last.
-            q: Number of raw candidate points passed to the acquisition function.
-            context: Human-readable acquisition name used in error messages.
-
-        Returns:
-            A score tensor whose last dimension is the raw candidate dimension.
-
-        Raises:
-            RuntimeError: If the score shape is incompatible with the raw q size,
-                the configured perturbation count, and known sequential q behavior.
-        """
+    def _aggregate_n_w_if_needed(
+        self,
+        score: Tensor,
+        *,
+        q: int,
+        context: str,
+    ) -> Tensor:
+        """Aggregate one-to-many perturbation scores back to raw q points."""
         if self.n_w is None:
             return score
 
@@ -670,15 +820,12 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         if actual == q:
             return score
         if actual == expected:
-            return score.reshape(*score.shape[:-1], q, int(self.n_w)).mean(dim=-1)
+            return score.reshape(
+                *score.shape[:-1],
+                q,
+                int(self.n_w),
+            ).mean(dim=-1)
 
-        # BoTorch sequential q optimization evaluates a one-point acquisition
-        # while keeping already selected points in X_pending. Some one-to-many
-        # input transforms can expose those pending points in the transformed
-        # q-like dimension, so the internal score has more points than raw X.
-        # Only the leading raw q points correspond to the candidate currently
-        # optimized; pending-point interactions are still handled by the pending
-        # penalty path.
         if q == 1 and actual > q:
             return score[..., :q]
 
@@ -690,15 +837,30 @@ class _RegressionLevelSetBase(AcquisitionFunction):
     def _reduce_q(self, score: Tensor) -> Tensor:
         return _reduce(score, dim=-1, mode=self.reduction)
 
-    def _finalize_pointwise_score(self, score: Tensor, X: Tensor, Xt: Tensor, *, name: str) -> Tensor:
+    def _finalize_pointwise_score(
+        self,
+        score: Tensor,
+        X: Tensor,
+        Xt: Tensor,
+        *,
+        name: str,
+    ) -> Tensor:
         raw_X = _ensure_q_batch(X)
         original_batch_shape = torch.Size(raw_X.shape[:-2])
         q = int(raw_X.shape[-2])
 
-        score = self._align_pointwise_score_to_X(score, Xt, name=f"{name} score before penalty")
-        score = score - self._total_penalty_per_point(Xt)
+        score = self._align_pointwise_score_to_X(
+            score,
+            Xt,
+            name=f"{name} score before penalty",
+        )
+        score = score - self._total_penalty_per_point(Xt, raw_X)
 
-        score = self._align_pointwise_score_to_X(score, Xt, name=f"{name} score before objective")
+        score = self._align_pointwise_score_to_X(
+            score,
+            Xt,
+            name=f"{name} score before objective",
+        )
         score = self._apply_objective_to_score(score, raw_X, name=name)
 
         score = self._aggregate_n_w_if_needed(score, q=q, context=name)
@@ -724,25 +886,37 @@ class _RegressionLevelSetBase(AcquisitionFunction):
             return out.reshape(original_batch_shape)
 
         raise RuntimeError(
-            f"{name}: output shape mismatch. Expected {tuple(original_batch_shape)}, got {tuple(out.shape)}."
+            f"{name}: output shape mismatch. Expected "
+            f"{tuple(original_batch_shape)}, got {tuple(out.shape)}."
         )
 
-    def _finalize_joint_score(self, score: Tensor, X: Tensor, Xt: Tensor, *, name: str) -> Tensor:
+    def _finalize_joint_score(
+        self,
+        score: Tensor,
+        X: Tensor,
+        Xt: Tensor,
+        *,
+        name: str,
+    ) -> Tensor:
         raw_X = _ensure_q_batch(X)
         original_batch_shape = torch.Size(raw_X.shape[:-2])
 
         if score.shape != Xt.shape[:-2]:
             while score.ndim > len(Xt.shape[:-2]):
                 score = score.mean(dim=0)
-            if score.shape != Xt.shape[:-2] and score.numel() == _safe_prod(Xt.shape[:-2]):
+            if (
+                score.shape != Xt.shape[:-2]
+                and score.numel() == _safe_prod(Xt.shape[:-2])
+            ):
                 score = score.reshape(Xt.shape[:-2])
             if score.shape != Xt.shape[:-2]:
                 raise RuntimeError(
                     f"{name}: joint score shape mismatch. "
-                    f"score.shape={tuple(score.shape)}, expected={tuple(Xt.shape[:-2])}."
+                    f"score.shape={tuple(score.shape)}, "
+                    f"expected={tuple(Xt.shape[:-2])}."
                 )
 
-        penalty = self._total_penalty_per_point(Xt)
+        penalty = self._total_penalty_per_point(Xt, raw_X)
         penalty = self._reduce_q(penalty)
         score = score - penalty
 
@@ -761,14 +935,21 @@ class _RegressionLevelSetBase(AcquisitionFunction):
             return score.reshape(original_batch_shape)
 
         raise RuntimeError(
-            f"{name}: output shape mismatch. Expected {tuple(original_batch_shape)}, got {tuple(score.shape)}."
+            f"{name}: output shape mismatch. Expected "
+            f"{tuple(original_batch_shape)}, got {tuple(score.shape)}."
         )
 
 
 class qRegressionStraddle(_RegressionLevelSetBase):
     """Regression straddle acquisition."""
 
-    def __init__(self, model: Model, *, beta: float | Tensor = 1.96, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        model: Model,
+        *,
+        beta: float | Tensor = 1.96,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(model=model, **kwargs)
         self.register_buffer("beta", torch.as_tensor(beta))
 
@@ -779,7 +960,12 @@ class qRegressionStraddle(_RegressionLevelSetBase):
         threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
         beta = self.beta.to(device=mean.device, dtype=mean.dtype)
         score = beta * std - (mean - threshold).abs()
-        return self._finalize_pointwise_score(score, X, Xt, name="qRegressionStraddle")
+        return self._finalize_pointwise_score(
+            score,
+            X,
+            Xt,
+            name="qRegressionStraddle",
+        )
 
 
 class qRegressionJointStraddle(_RegressionLevelSetBase):
@@ -796,7 +982,9 @@ class qRegressionJointStraddle(_RegressionLevelSetBase):
     ) -> None:
         super().__init__(model=model, **kwargs)
         if uncertainty_measure not in ("logdet", "logdet1p", "trace"):
-            raise ValueError("uncertainty_measure must be 'logdet', 'logdet1p', or 'trace'.")
+            raise ValueError(
+                "uncertainty_measure must be 'logdet', 'logdet1p', or 'trace'."
+            )
         self.register_buffer("beta", torch.as_tensor(beta))
         self.uncertainty_measure = uncertainty_measure
         self.covariance_jitter = float(covariance_jitter)
@@ -811,7 +999,10 @@ class qRegressionJointStraddle(_RegressionLevelSetBase):
         eye = torch.eye(q, device=covar.device, dtype=covar.dtype)
         while eye.ndim < covar.ndim:
             eye = eye.unsqueeze(0)
-        return _safe_logdet(eye + covar, jitter=self.covariance_jitter)
+        return _safe_logdet(
+            eye + covar,
+            jitter=self.covariance_jitter,
+        )
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
@@ -821,13 +1012,24 @@ class qRegressionJointStraddle(_RegressionLevelSetBase):
         proximity = -(mean - threshold).abs().mean(dim=-1)
         uncertainty = self._uncertainty_score(covar)
         score = proximity + beta * uncertainty
-        return self._finalize_joint_score(score, X, Xt, name="qRegressionJointStraddle")
+        return self._finalize_joint_score(
+            score,
+            X,
+            Xt,
+            name="qRegressionJointStraddle",
+        )
 
 
 class qRegressionICU(_RegressionLevelSetBase):
     """Integrated contour uncertainty style acquisition."""
 
-    def __init__(self, model: Model, *, bandwidth: float | Tensor | None = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        model: Model,
+        *,
+        bandwidth: float | Tensor | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(model=model, **kwargs)
         self.bandwidth = None if bandwidth is None else torch.as_tensor(bandwidth)
 
@@ -839,16 +1041,30 @@ class qRegressionICU(_RegressionLevelSetBase):
         if self.bandwidth is None:
             bw = std
         else:
-            bw = self.bandwidth.to(device=mean.device, dtype=mean.dtype).clamp_min(self.eps)
+            bw = self.bandwidth.to(
+                device=mean.device,
+                dtype=mean.dtype,
+            ).clamp_min(self.eps)
         z = (mean - threshold) / bw
         score = torch.exp(-0.5 * z.pow(2)) * std
-        return self._finalize_pointwise_score(score, X, Xt, name="qRegressionICU")
+        return self._finalize_pointwise_score(
+            score,
+            X,
+            Xt,
+            name="qRegressionICU",
+        )
 
 
 class qRegressionBoundaryVariance(_RegressionLevelSetBase):
     """Boundary-weighted posterior variance acquisition."""
 
-    def __init__(self, model: Model, *, tau: float | Tensor = 1.0, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        model: Model,
+        *,
+        tau: float | Tensor = 1.0,
+        **kwargs: Any,
+    ) -> None:
         super().__init__(model=model, **kwargs)
         self.register_buffer("tau", torch.as_tensor(tau))
 
@@ -856,10 +1072,20 @@ class qRegressionBoundaryVariance(_RegressionLevelSetBase):
     def forward(self, X: Tensor) -> Tensor:
         mean, var, Xt = self._posterior_mean_variance(X)
         threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
-        tau = self.tau.to(device=mean.device, dtype=mean.dtype).clamp_min(self.eps)
-        boundary_weight = torch.exp(-0.5 * ((mean - threshold) / tau).pow(2))
+        tau = self.tau.to(
+            device=mean.device,
+            dtype=mean.dtype,
+        ).clamp_min(self.eps)
+        boundary_weight = torch.exp(
+            -0.5 * ((mean - threshold) / tau).pow(2)
+        )
         score = var * boundary_weight
-        return self._finalize_pointwise_score(score, X, Xt, name="qRegressionBoundaryVariance")
+        return self._finalize_pointwise_score(
+            score,
+            X,
+            Xt,
+            name="qRegressionBoundaryVariance",
+        )
 
 
 class qRegressionProbabilityOfExceedance(_RegressionLevelSetBase):
@@ -881,7 +1107,9 @@ class qRegressionProbabilityOfExceedance(_RegressionLevelSetBase):
         self.mode = mode
         self.lower = None if lower is None else torch.as_tensor(lower)
         self.upper = None if upper is None else torch.as_tensor(upper)
-        self.temperature = None if temperature is None else torch.as_tensor(temperature)
+        self.temperature = (
+            None if temperature is None else torch.as_tensor(temperature)
+        )
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
@@ -889,16 +1117,29 @@ class qRegressionProbabilityOfExceedance(_RegressionLevelSetBase):
         std = var.sqrt().clamp_min(self.eps)
 
         if self.temperature is not None:
-            temp = self.temperature.to(device=mean.device, dtype=mean.dtype).clamp_min(self.eps)
+            temp = self.temperature.to(
+                device=mean.device,
+                dtype=mean.dtype,
+            ).clamp_min(self.eps)
             threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
             if self.mode == "above":
                 score = torch.sigmoid((mean - threshold) / temp)
             elif self.mode == "below":
                 score = torch.sigmoid((threshold - mean) / temp)
             else:
-                lo = self.lower.to(device=mean.device, dtype=mean.dtype) if self.lower is not None else threshold
-                hi = self.upper.to(device=mean.device, dtype=mean.dtype) if self.upper is not None else threshold
-                score = torch.sigmoid((mean - lo) / temp) * torch.sigmoid((hi - mean) / temp)
+                lo = (
+                    self.lower.to(device=mean.device, dtype=mean.dtype)
+                    if self.lower is not None
+                    else threshold
+                )
+                hi = (
+                    self.upper.to(device=mean.device, dtype=mean.dtype)
+                    if self.upper is not None
+                    else threshold
+                )
+                score = torch.sigmoid((mean - lo) / temp) * torch.sigmoid(
+                    (hi - mean) / temp
+                )
         else:
             threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
             if self.mode == "above":
@@ -907,10 +1148,14 @@ class qRegressionProbabilityOfExceedance(_RegressionLevelSetBase):
                 score = _safe_normal_cdf((threshold - mean) / std)
             else:
                 if self.lower is None or self.upper is None:
-                    raise ValueError("lower and upper must be provided when mode='interval'.")
+                    raise ValueError(
+                        "lower and upper must be provided when mode='interval'."
+                    )
                 lo = self.lower.to(device=mean.device, dtype=mean.dtype)
                 hi = self.upper.to(device=mean.device, dtype=mean.dtype)
-                score = _safe_normal_cdf((hi - mean) / std) - _safe_normal_cdf((lo - mean) / std)
+                score = _safe_normal_cdf((hi - mean) / std) - _safe_normal_cdf(
+                    (lo - mean) / std
+                )
 
         return self._finalize_pointwise_score(
             score.clamp_min(0.0),

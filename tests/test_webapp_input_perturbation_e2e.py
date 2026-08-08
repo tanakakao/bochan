@@ -25,7 +25,7 @@ def _store_with_regression_data() -> tuple[DatasetStore, str]:
 
 
 def test_web_regression_runs_end_to_end_with_input_perturbation() -> None:
-    """The browser's normal BO path must accept InputPerturbation end to end."""
+    """The browser defaults must accept InputPerturbation end to end."""
 
     torch.manual_seed(0)
     store, dataset_id = _store_with_regression_data()
@@ -51,8 +51,8 @@ def test_web_regression_runs_end_to_end_with_input_perturbation() -> None:
         normalize=True,
         outcome_transform=True,
         input_perturbation=True,
-        n_w=4,
-        perturbation_std=0.05,
+        n_w=16,
+        perturbation_std=0.1,
         search_space=[
             {
                 "name": "x",
@@ -73,7 +73,7 @@ def test_web_regression_runs_end_to_end_with_input_perturbation() -> None:
         },
         optimizer={
             "name": "optimize_acqf",
-            "q": 1,
+            "q": 3,
             "num_restarts": 2,
             "raw_samples": 32,
             "sequential": True,
@@ -83,6 +83,6 @@ def test_web_regression_runs_end_to_end_with_input_perturbation() -> None:
     result = run_regression_web_workflow(request, store)
 
     assert result["candidates"]
-    assert len(result["candidates"]) == 1
+    assert len(result["candidates"]) == 3
     assert result["metadata"]["input_perturbation_risk_type"] == "none"
     assert result["metadata"]["input_perturbation_risk_enabled"] is False

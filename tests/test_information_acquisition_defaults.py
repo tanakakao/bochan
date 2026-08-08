@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 import torch
 from botorch.acquisition.joint_entropy_search import qJointEntropySearch
+from botorch.acquisition.knowledge_gradient import qKnowledgeGradient
 from botorch.acquisition.max_value_entropy_search import qMaxValueEntropy
 from botorch.acquisition.multi_objective.hypervolume_knowledge_gradient import (
     qHypervolumeKnowledgeGradient,
@@ -52,6 +53,8 @@ def _make_bundle(
 @pytest.mark.parametrize(
     ("name", "expected", "multi_output"),
     [
+        ("kg", qKnowledgeGradient, False),
+        ("qkg", qKnowledgeGradient, False),
         ("mes", qMaxValueEntropy, False),
         ("qmes", qMaxValueEntropy, False),
         ("jes", qJointEntropySearch, False),
@@ -69,7 +72,7 @@ def test_information_aliases_resolve(name, expected, multi_output) -> None:
     assert resolved is expected
 
 
-@pytest.mark.parametrize("name", ["mes", "jes", "hvkg"])
+@pytest.mark.parametrize("name", ["kg", "mes", "jes", "hvkg"])
 def test_information_short_aliases_reject_classification(name: str) -> None:
     with pytest.raises(ValueError, match="regression / hybrid"):
         resolve_acqf_cls(
@@ -89,6 +92,7 @@ def test_hvkg_short_alias_requires_multi_output() -> None:
 
 
 def test_information_canonical_names_resolve_directly() -> None:
+    assert resolve_acqf_cls("qKnowledgeGradient") is qKnowledgeGradient
     assert resolve_acqf_cls("qMaxValueEntropy") is qMaxValueEntropy
     assert resolve_acqf_cls("qJointEntropySearch") is qJointEntropySearch
     assert (
@@ -99,7 +103,16 @@ def test_information_canonical_names_resolve_directly() -> None:
 
 def test_information_aliases_are_listed() -> None:
     names = set(available_acqf_names())
-    assert {"mes", "qmes", "jes", "qjes", "hvkg", "qhvkg"} <= names
+    assert {
+        "kg",
+        "qkg",
+        "mes",
+        "qmes",
+        "jes",
+        "qjes",
+        "hvkg",
+        "qhvkg",
+    } <= names
 
 
 def test_mes_generates_candidate_set_from_bounds(monkeypatch) -> None:
@@ -371,6 +384,14 @@ def test_mes_q_greater_than_one_uses_sequential_optimization() -> None:
         OptimizeConfig(q=3, sequential=False),
     )
     assert resolved.sequential is True
+
+
+def test_kg_one_shot_optimization_remains_joint() -> None:
+    resolved = info_defaults.resolve_information_optimizer_defaults(
+        AcquisitionConfig(name="kg", acqf_cls=qKnowledgeGradient),
+        OptimizeConfig(q=2, sequential=True),
+    )
+    assert resolved.sequential is False
 
 
 def test_hvkg_one_shot_optimization_remains_joint() -> None:

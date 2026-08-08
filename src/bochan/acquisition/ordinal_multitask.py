@@ -93,6 +93,10 @@ def apply_ordinal_multitask() -> None:
     ``model.models`` collection. Fixed-task proxies preserve the correlated
     parent posterior and expose one scalar task to those acquisitions without
     copying model or likelihood parameters.
+
+    Level-set estimation now inherits the ordinal active-learning multi-output
+    base directly, so it uses the active-learning submodel resolver and no longer
+    needs a separate level-set runtime patch.
     """
 
     from bochan.acquisition.wide_posterior_events import (
@@ -107,7 +111,6 @@ def apply_ordinal_multitask() -> None:
 
     from bochan.acquisition.ordinal.active_learning import multi_output as active
     from bochan.acquisition.ordinal.bayesian_optimization import multi_output as bo
-    from bochan.acquisition.ordinal.levelset_estimation import multi_output as levelset
 
     original_extract = bo._extract_ordinal_likelihoods
 
@@ -135,14 +138,6 @@ def apply_ordinal_multitask() -> None:
         return proxies if proxies is not None else list(original_active_resolve(model))
 
     active._resolve_submodels = supported_active_resolve
-
-    original_levelset_resolve = levelset._get_submodels
-
-    def supported_levelset_resolve(model: Any) -> list[Any]:
-        proxies = _wide_task_proxies(model)
-        return proxies if proxies is not None else list(original_levelset_resolve(model))
-
-    levelset._get_submodels = supported_levelset_resolve
     _APPLIED = True
 
 

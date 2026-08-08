@@ -1,8 +1,8 @@
 # 03b. 情報理論・look-ahead型の獲得関数
 
-本章では `bochan` の高位APIから利用できる MES、JES、HVKG を整理します。これらは EI / UCB のように候補点そのものの改善量だけを見るのではなく、最適値・最適点・将来のPareto frontに関する情報価値を評価します。
+本章では `bochan` の高位APIから利用できる KG、MES、JES、MO-MES、MO-JES、HVKG を整理します。これらは EI / UCB のように候補点そのものの改善量だけを見るのではなく、最適値・最適点・Pareto front・将来の意思決定価値に関する情報価値を評価します。
 
-Knowledge Gradient (KG) も同じlook-ahead系として高位API統合されています。KGの `current_value`、multi-output scalarization、pending point、one-shot optimizationの詳細は `03c_knowledge_gradient.md` を参照してください。
+KGの `current_value`、multi-output scalarization、pending point、one-shot optimizationの詳細は `03c_knowledge_gradient.md`、Pareto多目的Entropy Searchの詳細は `03d_multiobjective_entropy_search.md` を参照してください。
 
 ## 1. Max-value Entropy Search (MES)
 
@@ -12,31 +12,22 @@ MESは、未知の最大値 `f*` に関して候補点の観測がどれだけ�
 \alpha_{MES}(x)=I(y_x; f^*\mid \mathcal D)
 ```
 
-`bochan` では次のaliasを使います。
-
 ```python
 AcquisitionConfig(name="mes")
 AcquisitionConfig(name="qmes")
 ```
 
-これらはBoTorchの `qMaxValueEntropy` に解決されます。
+はBoTorchの `qMaxValueEntropy` に解決されます。
 
-### 自動設定
-
-`candidate_set` を明示しなければ、`DataContext.bounds` からBoTorchのinput constructorを使って候補集合を自動生成します。候補数は次で変更できます。
+`candidate_set` を明示しなければ、`DataContext.bounds` からBoTorchのinput constructorを使って候補集合を自動生成します。
 
 ```python
-DataContext(
-    bounds=bounds,
-    extra={"mes_candidate_size": 2000},
-)
+DataContext(bounds=bounds, extra={"mes_candidate_size": 2000})
 ```
 
-既定値は1000です。
+既定値は1000です。`q > 1` では高位APIが `OptimizeConfig.sequential=True` を自動設定します。
 
-`q > 1` ではMESは逐次的なbatch構築が必要になるため、高位APIは `OptimizeConfig.sequential=True` を自動設定します。
-
-multi-output modelへMESを適用する場合は、何を最大化するscalar posteriorとするかを曖昧にしないため、明示的な `posterior_transform` が必要です。
+multi-output modelへMESを適用する場合は、何を最大化するscalar posteriorとするかを曖昧にしないため、明示的な `posterior_transform` が必要です。これはPareto多目的MESではなく、複数出力を1つのscalar utilityに落としたMESです。
 
 ## 2. Joint Entropy Search (JES)
 
@@ -53,32 +44,54 @@ AcquisitionConfig(name="qjes")
 
 はBoTorchの `qJointEntropySearch` に解決されます。
 
-### optimal sampleの自動生成
-
 `optimal_inputs` / `optimal_outputs` を指定しない場合、BoTorchのinput constructorを使ってposteriorから最適点・最適値sampleを生成します。
+
+```python
+DataContext(bounds=bounds, extra={"jes_num_optima": 64})
+```
+
+明示する場合は `optimal_inputs` と `optimal_outputs` を必ず組で指定します。multi-output modelではMESと同様に明示的な `posterior_transform` が必要です。
+
+## 3. Pareto多目的 Entropy Search
+
+### MO-MES / MESMO
+
+```python
+AcquisitionConfig(name="mo_mes")
+AcquisitionConfig(name="mesmo")
+```
+
+はBoTorchの `qLowerBoundMultiObjectiveMaxValueEntropySearch` に解決されます。候補観測がPareto optimal outputsについて与える情報量を評価します。
+
+### MO-JES
+
+```python
+AcquisitionConfig(name="mo_jes")
+```
+
+はBoTorchの `qLowerBoundMultiObjectiveJointEntropySearch` に解決されます。Pareto optimal input-output pairsについての情報量を評価します。
+
+MO-MES / MO-JESはscalarizationを行わず、モデルの複数出力をPareto objectivesとして保持します。補助量を省略するとBoTorchの `sample_optimal_points` と `compute_sample_box_decomposition` からPareto samples / hypercell boundsを生成します。
+
+既定の補助設定は次です。
 
 ```python
 DataContext(
     bounds=bounds,
-    extra={"jes_num_optima": 64},
-)
-```
-
-明示する場合は `optimal_inputs` と `optimal_outputs` を必ず組で指定します。
-
-```python
-AcquisitionConfig(
-    name="jes",
-    acqf_kwargs={
-        "optimal_inputs": optimal_inputs,
-        "optimal_outputs": optimal_outputs,
+    extra={
+        "mo_entropy_num_pareto_samples": 8,
+        "mo_entropy_num_pareto_points": 8,
+        "mo_entropy_num_samples": 64,
+        "mo_entropy_estimation_type": "LB",
     },
 )
 ```
 
-multi-output modelではMESと同様に明示的な `posterior_transform` が必要です。
+`q > 1` ではBoTorch公式tutorialに合わせてsequential greedy candidate generationを自動使用します。正式な自動生成範囲は、連続入力・Gaussian GP compatible model・2目的以上・制約なしです。mixed/categorical inputでは補助量を明示してください。
 
-## 3. Hypervolume Knowledge Gradient (HVKG)
+詳細は `03d_multiobjective_entropy_search.md` を参照してください。
+
+## 4. Hypervolume Knowledge Gradient (HVKG)
 
 HVKGはmulti-objective BOにおいて、観測後に得られるPareto front / hypervolumeの将来価値を評価するKnowledge Gradientです。
 
@@ -87,127 +100,124 @@ AcquisitionConfig(name="hvkg")
 AcquisitionConfig(name="qhvkg")
 ```
 
-はBoTorchの `qHypervolumeKnowledgeGradient` に解決されます。
+はBoTorchの `qHypervolumeKnowledgeGradient` に解決され、最低2出力を必要とします。
 
-HVKGは最低2出力を持つmulti-output regression-like modelを必要とします。
-
-### ref point
-
-優先順位は次です。
+ref pointの優先順位は次です。
 
 1. `AcquisitionConfig.acqf_kwargs["ref_point"]`
 2. `DataContext.ref_point`
 3. 観測済みmulti-objective値から自動生成
 
-明示値が自動値やcontext値で上書きされることはありません。
-
-### current value
-
-`current_value` を指定しない場合は、BoTorchのinput constructorを利用して現在の最適hypervolume valueを計算します。
-
-```python
-AcquisitionConfig(
-    name="hvkg",
-    acqf_kwargs={
-        "num_fantasies": 8,
-        "num_pareto": 10,
-    },
-)
-```
-
-`current_value` を明示した場合は再計算しません。
+`current_value` を指定しない場合はBoTorchのinput constructorで計算します。明示値は再計算しません。
 
 HVKGはone-shot acquisitionなので、高位APIはsequential optimizationへ変換せずjoint optimizationを維持します。
 
-## 4. Objectiveとの関係
+## 5. Objectiveとの関係
 
-MES/JESはposteriorの最適値・最適点に対する情報量を扱うため、通常のMC `objective` を暗黙に適用しません。multi-outputをscalar化する場合は `posterior_transform` を明示します。
+- **MES / JES**: scalar posteriorを対象とします。multi-outputでは `posterior_transform` を明示します。
+- **KG**: scalar terminal objectiveを扱います。multi-outputでは `objective` / `objective_config` / `objective_factory` または `posterior_transform` を明示します。
+- **MO-MES / MO-JES**: モデルの複数出力そのものをPareto objectivesとして使います。scalar `objective` / `posterior_transform` は使いません。
+- **HVKG**: multi-objective objectiveを保持し、hypervolumeの将来価値を評価します。
 
-KGはscalar terminal objectiveを扱います。単出力ではposterior meanをそのまま利用でき、multi-outputでは `objective` / `objective_config` / `objective_factory` または `posterior_transform` の明示が必要です。
+したがって、multi-outputだから自動的にMO-MES / MO-JESになるわけではありません。
 
-HVKGはmulti-objective objectiveを保持します。`MultiObjectiveConfig.scalarization_weights`によるgeneric scalarizationはHVKGでは無効化され、目的次元を保ったままhypervolumeを評価します。
+```text
+multi-output → scalar utility → MES / JES / KG
+multi-output → Pareto objectives → MO-MES / MO-JES / HVKG
+```
 
-## 5. Task routing
+## 6. Task routing
 
-short alias `kg` / `mes` / `jes` / `hvkg` はregression系posteriorに限定します。binary / multiclass / ordinalへBoTorch標準実装を暗黙転送すると、確率空間・utility空間の意味が変わるためです。
+short alias `kg` / `mes` / `jes` / `mo_mes` / `mo_jes` / `hvkg` はGaussian regression系posteriorを中心に扱います。binary / multiclass / ordinalへBoTorch標準実装を暗黙転送しません。
 
 classification向け情報理論acquisitionはBALD、predictive entropyなど既存のtask-specific実装を利用します。
 
-## 6. 利用例
+MO-MES / MO-JESの自動Pareto samplingはhomogeneous regression objectiveを前提とし、hybridやmixed categoricalの補助量自動生成は正式サポート外です。
+
+## 7. 利用例
 
 ### KG
 
 ```python
-acq = AcquisitionConfig(name="kg")
-opt = OptimizeConfig(q=1)
-
 X_next, value = optimizer.candidate(
-    acq,
-    opt,
+    AcquisitionConfig(name="kg"),
+    OptimizeConfig(q=1),
     data_context=DataContext(bounds=bounds),
 )
 ```
-
-`current_value` はboundsから自動計算されます。詳細は `03c_knowledge_gradient.md` を参照してください。
 
 ### MES
 
 ```python
-acq = AcquisitionConfig(name="mes")
-opt = OptimizeConfig(q=3)
-
 X_next, value = optimizer.candidate(
-    acq,
-    opt,
+    AcquisitionConfig(name="mes"),
+    OptimizeConfig(q=3),
     data_context=DataContext(bounds=bounds),
 )
 ```
 
-`q=3`ではsequentialが自動適用されます。
-
 ### JES
 
 ```python
-acq = AcquisitionConfig(name="jes")
-opt = OptimizeConfig(q=1)
-
 X_next, value = optimizer.candidate(
-    acq,
-    opt,
-    data_context=DataContext(
-        bounds=bounds,
-        extra={"jes_num_optima": 64},
-    ),
+    AcquisitionConfig(name="jes"),
+    OptimizeConfig(q=1),
+    data_context=DataContext(bounds=bounds),
+)
+```
+
+### MO-MES
+
+```python
+X_next, value = optimizer.candidate(
+    AcquisitionConfig(name="mo_mes"),
+    OptimizeConfig(q=1),
+    data_context=DataContext(bounds=bounds),
+)
+```
+
+### MO-JES
+
+```python
+X_next, value = optimizer.candidate(
+    AcquisitionConfig(name="mo_jes"),
+    OptimizeConfig(q=1),
+    data_context=DataContext(bounds=bounds),
 )
 ```
 
 ### HVKG
 
 ```python
-acq = AcquisitionConfig(name="hvkg")
 context = DataContext(
     bounds=bounds,
-    multi_objective=MultiObjectiveConfig(
-        ref_point=ref_point,
-    ),
+    multi_objective=MultiObjectiveConfig(ref_point=ref_point),
 )
 
 X_next, value = optimizer.candidate(
-    acq,
+    AcquisitionConfig(name="hvkg"),
     OptimizeConfig(q=1),
     data_context=context,
 )
 ```
 
-## 7. 選択の目安
+## 8. 選択の目安
+
+| 問題 | 情報獲得 / look-ahead | 改善量ベース |
+|---|---|---|
+| 単目的・scalar utility | KG / MES / JES | LogEI / LogNEI |
+| Pareto多目的 | MO-MES / MO-JES / HVKG | LogEHVI / LogNEHVI |
+| scalar化多目的 | KG / MES / JES | LogNParEGO |
+
+目的別には次のように整理できます。
 
 | 目的 | 手法 |
 |---|---|
 | 観測後の最終意思決定価値を高める | KG |
-| 最適値そのものの不確実性を減らす | MES |
-| 最適点と最適値を同時に特定する | JES |
-| multi-objectiveの将来Pareto frontを改善する | HVKG |
-| 直接的な改善量を重視する | LogEI / LogNEI |
-| Pareto hypervolumeの即時改善を重視する | LogEHVI / LogNEHVI |
+| scalar最適値の不確実性を減らす | MES |
+| scalar最適点と最適値を同時に特定する | JES |
+| Pareto optimal outputsについて学ぶ | MO-MES / MESMO |
+| Pareto optimal inputs + outputsについて学ぶ | MO-JES |
+| 将来のPareto hypervolumeを改善する | HVKG |
 
-KG/MES/JES/HVKGは一般にEI系より計算コストが高いため、1回の実験コストが高く情報価値を重視する材料探索で特に有効な候補です。
+これらの情報獲得・look-ahead acquisitionは一般にimprovement系より計算コストが高いため、1回の物理実験コストが高く、次の実験から得られる情報価値を重視する材料探索で特に有力です。

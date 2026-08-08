@@ -169,6 +169,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "ngboost": ("bochan.models.classification.external", "NGBoostBinaryClassificationModel"),
             "ngboost_ensemble": ("bochan.models.classification.external", "NGBoostBinaryEnsembleModel"),
             "random_forest": ("bochan.models.classification.external", "RandomForestBinaryClassificationModel"),
+            "deep_ensemble": ("bochan.models.classification.neural", "DeepEnsembleBinaryClassificationModel"),
         },
         "ordinal": {
             "base": ("bochan.models.ordinal.base", "OrdinalGPModel"),
@@ -182,6 +183,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "rembo": ("bochan.models.ordinal.high_dim", "REMBOOrdinalGPModel"),
             "rrp": ("bochan.models.ordinal.robust", "OutlierRelevancePursuitOrdinalGPModel"),
             "hetero": ("bochan.models.ordinal.robust", "HeteroscedasticOrdinalGPModel"),
+            "deep_ensemble": ("bochan.models.ordinal.neural", "DeepEnsembleOrdinalModel"),
         },
         "multiclass": {
             "base": ("bochan.models.classification.multiclass.base", "MulticlassClassificationGPModel"),
@@ -197,6 +199,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "ngboost": ("bochan.models.classification.external", "NGBoostMulticlassClassificationModel"),
             "ngboost_ensemble": ("bochan.models.classification.external", "NGBoostMulticlassEnsembleModel"),
             "random_forest": ("bochan.models.classification.external", "RandomForestMulticlassClassificationModel"),
+            "deep_ensemble": ("bochan.models.classification.neural", "DeepEnsembleMulticlassClassificationModel"),
         },
     },
     "mixed": {
@@ -284,6 +287,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "ngboost": ("bochan.models.classification.external", "NGBoostMixedBinaryClassificationModel"),
             "ngboost_ensemble": ("bochan.models.classification.external", "NGBoostMixedBinaryEnsembleModel"),
             "random_forest": ("bochan.models.classification.external", "RandomForestMixedBinaryClassificationModel"),
+            "deep_ensemble": ("bochan.models.classification.neural", "DeepEnsembleMixedBinaryClassificationModel"),
         },
         "ordinal": {
             "base": ("bochan.models.ordinal.base", "OrdinalMixedGPModel"),
@@ -297,6 +301,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "rembo": ("bochan.models.ordinal.high_dim", "REMBOOrdinalMixedGPModel"),
             "rrp": ("bochan.models.ordinal.robust", "OutlierRelevancePursuitOrdinalMixedGPModel"),
             "hetero": ("bochan.models.ordinal.robust", "HeteroscedasticOrdinalMixedGPModel"),
+            "deep_ensemble": ("bochan.models.ordinal.neural", "DeepEnsembleMixedOrdinalModel"),
         },
         "multiclass": {
             "base": ("bochan.models.classification.multiclass.base", "MulticlassClassificationMixedGPModel"),
@@ -312,6 +317,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "ngboost": ("bochan.models.classification.external", "NGBoostMixedMulticlassClassificationModel"),
             "ngboost_ensemble": ("bochan.models.classification.external", "NGBoostMixedMulticlassEnsembleModel"),
             "random_forest": ("bochan.models.classification.external", "RandomForestMixedMulticlassClassificationModel"),
+            "deep_ensemble": ("bochan.models.classification.neural", "DeepEnsembleMixedMulticlassClassificationModel"),
         },
     },
 }

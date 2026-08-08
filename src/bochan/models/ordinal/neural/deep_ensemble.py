@@ -13,9 +13,6 @@ from torch import Tensor, nn
 
 from bochan.fit.ordinal import fit_ordinal_mll
 from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
-from bochan.models.classification.neural.deep_ensemble import (
-    _bootstrap_classification_indices,
-)
 from bochan.models.regression.neural.deep_ensemble import (
     _DenseRegressor,
     _MixedCategoricalEncoder,
@@ -69,6 +66,18 @@ def _require_ordinal_targets(
     return labels.unsqueeze(-1), resolved
 
 
+def _make_generator(
+    *,
+    device: torch.device,
+    seed: int | None,
+) -> torch.Generator | None:
+    if seed is None:
+        return None
+    generator = torch.Generator(device=device)
+    generator.manual_seed(int(seed))
+    return generator
+
+
 class _DeepEnsembleOrdinalObjective(nn.Module):
     """Log-likelihood adapter consumed by bochan's standard ordinal fit helper."""
 
@@ -76,15 +85,52 @@ class _DeepEnsembleOrdinalObjective(nn.Module):
         super().__init__()
         self.model = model
         self.likelihood = model.likelihood
+        self._calls = 0
 
     def forward(self, latent_values: Tensor, target: Tensor) -> Tensor:
         labels = target.squeeze(-1).long()
         latent = latent_values.squeeze(-1)
-        probs = self.likelihood.class_probs_from_f(latent).clamp_min(self.likelihood.eps)
-        index = labels.view(*([1] * (probs.ndim - 2)), labels.shape[-1], 1)
-        index = index.expand(*probs.shape[:-1], 1)
-        selected = probs.gather(dim=-1, index=index).squeeze(-1)
-        return selected.log().mean()
+        if latent.ndim != 2:
+            raise RuntimeError(
+                "Ordinal Deep Ensemble training expects latent values with shape [ensemble, batch]."
+            )
+
+        member_log_likelihoods = []
+        batch_size = int(labels.shape[0])
+        for member_index in range(int(latent.shape[0])):
+            if self.model.bootstrap:
+                seed = (
+                    None
+                    if self.model.random_state is None
+                    else int(self.model.random_state)
+                    + 10_000 * member_index
+                    + self._calls
+                )
+                generator = _make_generator(device=labels.device, seed=seed)
+                indices = torch.randint(
+                    batch_size,
+                    size=(batch_size,),
+                    generator=generator,
+                    device=labels.device,
+                )
+                member_latent = latent[member_index].index_select(0, indices)
+                member_labels = labels.index_select(0, indices)
+            else:
+                member_latent = latent[member_index]
+                member_labels = labels
+
+            probs = self.likelihood.class_probs_from_f(member_latent).clamp_min(
+                self.likelihood.eps
+            )
+            selected = probs.gather(
+                dim=-1,
+                index=member_labels.unsqueeze(-1),
+            ).squeeze(-1)
+            member_log_likelihoods.append(selected.log().mean())
+
+        self._calls += 1
+        self.model._is_fitted = True
+        return torch.stack(member_log_likelihoods).mean()
 
 
 class DeepEnsembleOrdinalModel(EnsembleModel):
@@ -94,6 +140,12 @@ class DeepEnsembleOrdinalModel(EnsembleModel):
     predictions are exposed through :class:`OrdinalEnsemblePosterior`. A shared
     ``OrdinalLogitLikelihood`` maps latent scores to ordered class probabilities,
     matching bochan's existing ordinal GP API.
+
+    Existing ordinal acquisition functions already marginalize the posterior
+    internally before their ``average_over_ensemble_models`` decorator runs.
+    Therefore this wrapper disables BoTorch's outer ensemble marker while still
+    returning a finite ``EnsemblePosterior``. This prevents a second reduction
+    over the acquisition output's last dimension.
     """
 
     def __init__(
@@ -128,6 +180,7 @@ class DeepEnsembleOrdinalModel(EnsembleModel):
         if weights is not None:
             weights = weights.to(dtype=train_X.dtype, device=train_X.device)
         super().__init__(weights=weights)
+        self._is_ensemble = False
 
         self.register_buffer("train_X", train_X.detach().clone())
         self.register_buffer("train_Y", train_Y.detach().clone())

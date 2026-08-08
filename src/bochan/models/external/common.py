@@ -136,6 +136,7 @@ def _check_one_to_one_input_transform(
 class _ExternalEstimatorMixin:
     """Shared input preprocessing at the Tensor-to-NumPy estimator boundary."""
 
+    _uses_external_fit = True
     train_X: Tensor
     train_Y: Tensor
     input_transform: Module

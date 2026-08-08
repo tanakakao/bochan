@@ -168,6 +168,26 @@ def test_mixed_ensemble_uses_encoded_features_and_member_means() -> None:
     )
 
 
+def test_mixed_ensemble_works_with_standard_qlogei_sampler() -> None:
+    train_X, train_Y = _mixed_training_data()
+    model = NGBoostMixedEnsembleModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        cat_dims=[1],
+        estimators=[
+            _FakeNGBoost(bias=0.5),
+            _FakeNGBoost(bias=1.0),
+            _FakeNGBoost(bias=1.5),
+        ],
+        bootstrap=False,
+    ).fit()
+    acqf = qLogExpectedImprovement(model=model, best_f=train_Y.max())
+
+    value = acqf(torch.tensor([[[0.8, 2.0]]], dtype=torch.double))
+
+    assert torch.isfinite(value).all()
+
+
 def test_mixed_models_are_selected_by_cat_dims_from_default_registry() -> None:
     single_cls = resolve_model_cls(
         ModelConfig(

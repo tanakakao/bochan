@@ -327,10 +327,11 @@ def test_high_level_fit_path_uses_external_ordinal_fit() -> None:
 )
 def test_mixed_ordinal_one_hot_encodes_only_at_estimator_boundary(model_cls) -> None:
     train_X, train_Y = _mixed_training_data()
-    if model_cls is RandomForestMixedOrdinalModel:
-        estimators = _rf_estimators()
-    else:
-        estimators = _ng_estimators()
+    estimators = (
+        _rf_estimators()
+        if model_cls is RandomForestMixedOrdinalModel
+        else _ng_estimators()
+    )
 
     model = model_cls(
         train_X=train_X,

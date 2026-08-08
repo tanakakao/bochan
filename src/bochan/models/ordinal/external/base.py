@@ -299,11 +299,10 @@ class _ExternalCumulativeOrdinalMixin(_ExternalClassifierMixin):
     ) -> GPyTorchPosterior:
         """Return a scalar latent posterior compatible with existing ordinal BO."""
         del kwargs
-        if output_indices is not None:
-            if list(output_indices) != [0]:
-                raise UnsupportedError(
-                    f"{type(self).__name__} exposes only ordinal output index 0."
-                )
+        if output_indices is not None and list(output_indices) != [0]:
+            raise UnsupportedError(
+                f"{type(self).__name__} exposes only ordinal output index 0."
+            )
         if torch.is_tensor(observation_noise) or observation_noise is not False:
             raise UnsupportedError(
                 f"{type(self).__name__} does not support observation_noise."

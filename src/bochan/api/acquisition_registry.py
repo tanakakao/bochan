@@ -1002,7 +1002,7 @@ def _resolve_contextual_bo_path(
         return _fallback_builtin_path("qnehvi")
     if normalized_name in {"nparego", "qnparego"}:
         if not multi_output:
-            return None
+            _raise_multi_output_only(normalized_name, task)
         if task in {"binary", "ordinal", "multiclass"} or prefix.startswith(
             "qHeteroMultiOutputRegression"
         ):

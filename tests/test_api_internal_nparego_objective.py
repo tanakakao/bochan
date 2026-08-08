@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
+import torch
+from botorch.acquisition.multi_objective.parego import qLogNParEGO
 
-import bochan.api as api
 import bochan.api.engine_defaults as engine_defaults
 from bochan.acquisition.binary.bayesian_optimization import (
     qHeteroMultiOutputBinaryNParEGO,
@@ -37,6 +37,7 @@ from bochan.api import AcquisitionConfig, DataContext
         qHeteroMultiOutputOrdinalNParEGO,
         qMultiOutputMulticlassNParEGO,
         qHeteroMultiOutputMulticlassNParEGO,
+        qLogNParEGO,
     ],
 )
 def test_internal_nparego_skips_generic_scalarization_objective(acqf_cls) -> None:
@@ -75,16 +76,14 @@ class _ExternalNParEGO:
 
 
 def test_external_nparego_keeps_generic_objective_resolution(monkeypatch) -> None:
-    sentinel = object()
-
-    def _fake_original(bundle, config, context):
-        del bundle, context
-        return replace(config, objective=sentinel)
-
+    values = torch.tensor(
+        [[0.0, 1.0], [1.0, 0.0], [0.5, 0.5]],
+        dtype=torch.double,
+    )
     monkeypatch.setattr(
-        api,
-        "_original_resolve_default_nparego_objective",
-        _fake_original,
+        engine_defaults,
+        "observed_multiobjective_values",
+        lambda *args, **kwargs: values,
     )
     config = AcquisitionConfig(name="nparego", acqf_cls=_ExternalNParEGO)
 
@@ -94,4 +93,4 @@ def test_external_nparego_keeps_generic_objective_resolution(monkeypatch) -> Non
         DataContext(),
     )
 
-    assert resolved.objective is sentinel
+    assert resolved.objective is not None

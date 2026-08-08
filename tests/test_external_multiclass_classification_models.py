@@ -173,7 +173,9 @@ def test_multiclass_external_model_has_gaussian_log_probability_acquisition_brid
         train_Y=train_Y,
         estimator=_FakeForestMulticlass(),
     ).fit()
-    X = torch.tensor([[[0.35]], [[0.65]]], dtype=torch.double)
+    # Keep acquisition points distinct from train_X because active-learning
+    # acquisitions intentionally return -inf for exact observed duplicates.
+    X = torch.tensor([[[0.32]], [[0.66]]], dtype=torch.double)
 
     latent = model.latent_posterior(X)
     latent_samples = latent.rsample(torch.Size([8]))

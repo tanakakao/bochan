@@ -77,6 +77,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "ngboost_ensemble": ("bochan.models.regression.boosting", "NGBoostEnsembleModel"),
             "random_forest": ("bochan.models.regression.boosting", "RandomForestRegressorModel"),
             "deep_ensemble": ("bochan.models.regression.neural", "DeepEnsembleRegressorModel"),
+            "pfn": ("bochan.models.regression.foundation", "PFNRegressorModel"),
             "beta_base": ("bochan.models.regression.non_gaussian.beta.base", "BetaGPModel"),
             "beta_deepgp": ("bochan.models.regression.non_gaussian.beta.deep", "BetaDeepGPModel"),
             "beta_deepkernel": ("bochan.models.regression.non_gaussian.beta.deep", "DeepKernelBetaGPModel"),

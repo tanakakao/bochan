@@ -1,0 +1,75 @@
+name: PFN surrogate smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/bochan/models/regression/foundation/**"
+      - "src/bochan/acquisition/regression/pfn.py"
+      - "src/bochan/acquisition/regression/__init__.py"
+      - "src/bochan/api/model_registry.py"
+      - "tests/test_pfn_models.py"
+      - ".github/workflows/pfn-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  pfn-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install bochan test dependencies
+        run: python -m pip install -e ".[test]"
+      - name: Run focused PFN tests
+        run: pytest -q --maxfail=1 tests/test_pfn_models.py
+      - name: Lint PFN changes
+        run: |
+          python -m pip install ruff
+          ruff check --ignore I001,SIM117 \
+            src/bochan/models/regression/foundation \
+            src/bochan/acquisition/regression/pfn.py \
+            src/bochan/acquisition/regression/__init__.py \
+            tests/test_pfn_models.py
+      - name: Install public PFNs4BO checkpoint compatibility dependencies
+        run: |
+          python -m pip install --no-deps pfns4bo==0.1.5
+          python -m pip install pyyaml requests configspace tqdm
+      - name: Smoke official PFNs4BO HEBO+ checkpoint
+        run: |
+          python - <<'PY'
+          import tempfile
+
+          import torch
+
+          from bochan.acquisition.regression.pfn import PFNExpectedImprovement
+          from bochan.models.regression.foundation import PFNRegressorModel
+
+          train_X = torch.tensor([[0.0], [0.25], [0.75], [1.0]], dtype=torch.float32)
+          train_Y = torch.tensor([[0.1], [0.4], [0.8], [1.0]], dtype=torch.float32)
+          bounds = torch.tensor([[0.0], [1.0]], dtype=torch.float32)
+
+          with tempfile.TemporaryDirectory() as cache_dir:
+              model = PFNRegressorModel(
+                  train_X,
+                  train_Y,
+                  bounds=bounds,
+                  model_name="hebo_plus",
+                  cache_dir=cache_dir,
+              ).fit()
+              X = torch.tensor([[[0.35]], [[0.65]]], dtype=torch.float32, requires_grad=True)
+              posterior = model.posterior(X)
+              assert posterior.mean.shape == torch.Size([2, 1, 1])
+              assert posterior.variance.shape == torch.Size([2, 1, 1])
+              assert torch.isfinite(posterior.mean).all()
+              assert torch.isfinite(posterior.variance).all()
+
+              values = PFNExpectedImprovement(model)(X)
+              assert values.shape == torch.Size([2])
+              assert torch.isfinite(values).all()
+              values.sum().backward()
+              assert X.grad is not None
+              assert torch.isfinite(X.grad).all()
+          PY

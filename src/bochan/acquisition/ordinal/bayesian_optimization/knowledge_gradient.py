@@ -196,7 +196,7 @@ class qOrdinalKnowledgeGradient(AcquisitionFunction):
     Hypothetical ordinal labels reweight coherent latent function samples using
     ``ordinal_likelihood.class_probs_from_f``. For each possible observed class,
     the acquisition computes the best updated posterior mean expected utility on
-    the finite terminal decision set and averages these terminal values under the
+    the fixed terminal decision set and averages these terminal values under the
     predictive class probabilities.
 
     ``q=1`` is intentional in this first implementation. Pending labels are not
@@ -297,10 +297,11 @@ class qOrdinalKnowledgeGradient(AcquisitionFunction):
             utility_values=self.utility_values,
             objective=self.objective,
         )
-        decision_samples = (class_probs * utilities).sum(dim=-1)
+        candidate_weights = class_probs[..., 0, :]
+        terminal_class_probs = class_probs[..., 1:, :]
+        decision_samples = (terminal_class_probs * utilities).sum(dim=-1)
         current_value = decision_samples.mean(dim=0).max(dim=-1).values
 
-        candidate_weights = class_probs[..., 0, :]
         denominator = candidate_weights.sum(dim=0).clamp_min(self.eps)
         weighted_terminal = (
             candidate_weights.unsqueeze(-1) * decision_samples.unsqueeze(-2)

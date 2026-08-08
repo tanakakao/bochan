@@ -14,6 +14,8 @@ Design policy:
         -> optional score objective / input-perturbation aggregation
         -> q reduction
 
+    - ICU and BoundaryVariance retain their covariance-aware q-batch behavior
+      directly in the implementation rather than installing runtime patches.
     - Old ``...Acquisition`` public names are intentionally not kept.
       This file is for the development-stage aligned API.
 """
@@ -101,6 +103,74 @@ def _safe_logdet(covar: Tensor, jitter: float = 1e-6) -> Tensor:
     return torch.linalg.slogdet(covar + jitter * eye).logabsdet
 
 
+def _maybe_covariance_matrix(obj: Any) -> Tensor | None:
+    """Return a covariance matrix exposed directly by a posterior-like object."""
+    if obj is None:
+        return None
+
+    covar = getattr(obj, "covariance_matrix", None)
+    if torch.is_tensor(covar):
+        return covar
+
+    mvn = getattr(obj, "mvn", None)
+    if mvn is not None:
+        covar = getattr(mvn, "covariance_matrix", None)
+        if torch.is_tensor(covar):
+            return covar
+
+    distribution = getattr(obj, "distribution", None)
+    if distribution is not None:
+        covar = getattr(distribution, "covariance_matrix", None)
+        if torch.is_tensor(covar):
+            return covar
+
+    return None
+
+
+def _iter_inner_posteriors(obj: Any) -> list[Any]:
+    """Return likely wrapped posterior objects without invoking methods."""
+    inner_objects: list[Any] = []
+    for attr in (
+        "latent_posterior",
+        "base_posterior",
+        "_posterior",
+        "posterior",
+    ):
+        try:
+            inner = getattr(obj, attr, None)
+        except Exception:
+            inner = None
+        if inner is not None and not callable(inner):
+            inner_objects.append(inner)
+    return inner_objects
+
+
+def _extract_covariance_matrix(
+    obj: Any,
+    visited: set[int] | None = None,
+) -> Tensor | None:
+    """Recursively recover covariance from transformed / non-Gaussian posteriors."""
+    if obj is None:
+        return None
+    if visited is None:
+        visited = set()
+
+    object_id = id(obj)
+    if object_id in visited:
+        return None
+    visited.add(object_id)
+
+    covar = _maybe_covariance_matrix(obj)
+    if covar is not None:
+        return covar
+
+    for inner in _iter_inner_posteriors(obj):
+        covar = _extract_covariance_matrix(inner, visited=visited)
+        if covar is not None:
+            return covar
+    return None
+
+
 # ============================================================
 # Score objective
 # ============================================================
@@ -109,7 +179,7 @@ def _safe_logdet(covar: Tensor, jitter: float = 1e-6) -> Tensor:
 class RegressionLevelSetScoreObjective(torch.nn.Module):
     """Objective applied to pointwise regression level-set scores.
 
-    This mirrors the classification / ordinal score-objective pattern.  It is
+    This mirrors the classification / ordinal score-objective pattern. It is
     mainly used to aggregate InputPerturbation-expanded scores from ``q * n_w``
     back to ``q``.
     """
@@ -572,6 +642,7 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         return mean, var, Xt
 
     def _posterior_covariance(self, X: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        """Return mean and wrapper-aware q-batch posterior covariance."""
         Xq = _ensure_q_batch(X)
         self._prepare_eval()
 
@@ -585,15 +656,23 @@ class _RegressionLevelSetBase(AcquisitionFunction):
         )
         mean = self._align_pointwise_score_to_X(mean, Xt, name="posterior.mean")
 
-        covar = None
-        mvn = getattr(posterior, "mvn", None)
-        if mvn is not None and hasattr(mvn, "covariance_matrix"):
-            covar = mvn.covariance_matrix
-        elif hasattr(posterior, "distribution") and hasattr(
-            posterior.distribution,
-            "covariance_matrix",
-        ):
-            covar = posterior.distribution.covariance_matrix
+        q_like = int(Xt.shape[-2])
+        target_covar_shape = torch.Size(Xt.shape[:-2]) + torch.Size(
+            [q_like, q_like]
+        )
+        covar = _extract_covariance_matrix(posterior)
+
+        if covar is not None:
+            while covar.ndim > len(target_covar_shape):
+                covar = covar.mean(dim=0)
+                if covar.shape == target_covar_shape:
+                    break
+
+            if covar.shape != target_covar_shape:
+                if covar.numel() == _safe_prod(target_covar_shape):
+                    covar = covar.reshape(target_covar_shape)
+                else:
+                    covar = None
 
         if covar is None:
             var = self._reduce_outputs_if_needed(
@@ -606,34 +685,7 @@ class _RegressionLevelSetBase(AcquisitionFunction):
                 Xt,
                 name="posterior.variance",
             )
-            covar = torch.diag_embed(var)
-            return mean, covar, Xt
-
-        q_like = int(Xt.shape[-2])
-        target_covar_shape = torch.Size(Xt.shape[:-2]) + torch.Size(
-            [q_like, q_like]
-        )
-
-        while covar.ndim > len(target_covar_shape):
-            covar = covar.mean(dim=0)
-            if covar.shape == target_covar_shape:
-                break
-
-        if covar.shape != target_covar_shape:
-            if covar.numel() == _safe_prod(target_covar_shape):
-                covar = covar.reshape(target_covar_shape)
-            else:
-                var = self._reduce_outputs_if_needed(
-                    posterior.variance,
-                    Xt,
-                    name="posterior.variance",
-                )
-                var = self._align_pointwise_score_to_X(
-                    var,
-                    Xt,
-                    name="posterior.variance",
-                )
-                covar = torch.diag_embed(var)
+            covar = torch.diag_embed(var.clamp_min(self.eps))
 
         covar = 0.5 * (covar + covar.transpose(-1, -2))
         return mean, covar, Xt
@@ -659,7 +711,21 @@ class _RegressionLevelSetBase(AcquisitionFunction):
 
         penalty = zeros
         if self.same_batch_penalty_weight > 0.0:
-            soft = torch.exp(-self.same_batch_penalty_beta * d2)
+            beta = torch.as_tensor(
+                self.same_batch_penalty_beta,
+                dtype=Xt.dtype,
+                device=Xt.device,
+            ).clamp_min(
+                torch.as_tensor(1e-12, dtype=Xt.dtype, device=Xt.device)
+            )
+            rbf = torch.exp(-beta * d2)
+            eps = torch.as_tensor(
+                max(self.hard_duplicate_tol, 1e-12),
+                dtype=Xt.dtype,
+                device=Xt.device,
+            )
+            dist = torch.sqrt(d2 + eps.pow(2))
+            soft = rbf + rbf / dist
             soft = torch.where(valid, soft, torch.zeros_like(soft))
             penalty = self.same_batch_penalty_weight * soft.sum(dim=-1)
 
@@ -939,6 +1005,55 @@ class _RegressionLevelSetBase(AcquisitionFunction):
             f"{tuple(original_batch_shape)}, got {tuple(score.shape)}."
         )
 
+    def _weighted_logdet_joint_score(
+        self,
+        *,
+        covar: Tensor,
+        weight: Tensor,
+        X: Tensor,
+        Xt: Tensor,
+        name: str,
+    ) -> Tensor:
+        """Return covariance-aware q-batch information weighted near the level set."""
+        Xt = _ensure_q_batch(Xt)
+        q_like = int(Xt.shape[-2])
+
+        weight = self._align_pointwise_score_to_X(
+            weight,
+            Xt,
+            name=f"{name} weight",
+        ).clamp_min(self.eps)
+
+        if q_like <= 1:
+            diag = covar.diagonal(dim1=-2, dim2=-1).clamp_min(self.eps)
+            point_score = diag * weight
+            return self._finalize_pointwise_score(
+                point_score,
+                X,
+                Xt,
+                name=name,
+            )
+
+        sqrt_weight = weight.sqrt()
+        weighted_covar = (
+            covar
+            * sqrt_weight.unsqueeze(-1)
+            * sqrt_weight.unsqueeze(-2)
+        )
+        eye = torch.eye(
+            q_like,
+            device=weighted_covar.device,
+            dtype=weighted_covar.dtype,
+        )
+        while eye.ndim < weighted_covar.ndim:
+            eye = eye.unsqueeze(0)
+
+        score = _safe_logdet(
+            eye + weighted_covar,
+            jitter=self.eps,
+        )
+        return self._finalize_joint_score(score, X, Xt, name=name)
+
 
 class qRegressionStraddle(_RegressionLevelSetBase):
     """Regression straddle acquisition."""
@@ -1021,7 +1136,14 @@ class qRegressionJointStraddle(_RegressionLevelSetBase):
 
 
 class qRegressionICU(_RegressionLevelSetBase):
-    """Integrated contour uncertainty style acquisition."""
+    """Integrated contour uncertainty style acquisition.
+
+    For a raw one-point candidate this uses the local contour-weighted standard
+    deviation score. For ``q > 1`` it uses the historical covariance-aware
+    weighted ``logdet(I + W^(1/2) Sigma W^(1/2))`` batch score directly in this
+    class, so correlated / duplicate q candidates contribute little additional
+    information without relying on runtime monkey patches.
+    """
 
     def __init__(
         self,
@@ -1035,28 +1157,57 @@ class qRegressionICU(_RegressionLevelSetBase):
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
-        mean, var, Xt = self._posterior_mean_variance(X)
+        raw_X = _ensure_q_batch(X)
+        if int(raw_X.shape[-2]) <= 1:
+            mean, var, Xt = self._posterior_mean_variance(raw_X)
+            std = var.sqrt().clamp_min(self.eps)
+            threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
+            if self.bandwidth is None:
+                bandwidth = std
+            else:
+                bandwidth = self.bandwidth.to(
+                    device=mean.device,
+                    dtype=mean.dtype,
+                ).clamp_min(self.eps)
+            z = (mean - threshold) / bandwidth
+            score = torch.exp(-0.5 * z.pow(2)) * std
+            return self._finalize_pointwise_score(
+                score,
+                raw_X,
+                Xt,
+                name="qRegressionICU",
+            )
+
+        mean, covar, Xt = self._posterior_covariance(raw_X)
+        var = covar.diagonal(dim1=-2, dim2=-1).clamp_min(self.eps)
         std = var.sqrt().clamp_min(self.eps)
         threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
         if self.bandwidth is None:
-            bw = std
+            bandwidth = std
         else:
-            bw = self.bandwidth.to(
+            bandwidth = self.bandwidth.to(
                 device=mean.device,
                 dtype=mean.dtype,
             ).clamp_min(self.eps)
-        z = (mean - threshold) / bw
-        score = torch.exp(-0.5 * z.pow(2)) * std
-        return self._finalize_pointwise_score(
-            score,
-            X,
-            Xt,
+        z = (mean - threshold) / bandwidth
+        contour_weight = torch.exp(-0.5 * z.pow(2))
+        return self._weighted_logdet_joint_score(
+            covar=covar,
+            weight=contour_weight,
+            X=raw_X,
+            Xt=Xt,
             name="qRegressionICU",
         )
 
 
 class qRegressionBoundaryVariance(_RegressionLevelSetBase):
-    """Boundary-weighted posterior variance acquisition."""
+    """Boundary-weighted posterior variance acquisition.
+
+    The one-point path uses ``variance * boundary_weight``. For ``q > 1`` the
+    same weights are applied to the joint posterior covariance and scored with
+    a log determinant, preserving the previous duplicate-aware q-batch behavior
+    as a normal class implementation.
+    """
 
     def __init__(
         self,
@@ -1070,7 +1221,26 @@ class qRegressionBoundaryVariance(_RegressionLevelSetBase):
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
-        mean, var, Xt = self._posterior_mean_variance(X)
+        raw_X = _ensure_q_batch(X)
+        if int(raw_X.shape[-2]) <= 1:
+            mean, var, Xt = self._posterior_mean_variance(raw_X)
+            threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
+            tau = self.tau.to(
+                device=mean.device,
+                dtype=mean.dtype,
+            ).clamp_min(self.eps)
+            boundary_weight = torch.exp(
+                -0.5 * ((mean - threshold) / tau).pow(2)
+            )
+            score = var * boundary_weight
+            return self._finalize_pointwise_score(
+                score,
+                raw_X,
+                Xt,
+                name="qRegressionBoundaryVariance",
+            )
+
+        mean, covar, Xt = self._posterior_covariance(raw_X)
         threshold = self.threshold.to(device=mean.device, dtype=mean.dtype)
         tau = self.tau.to(
             device=mean.device,
@@ -1079,11 +1249,11 @@ class qRegressionBoundaryVariance(_RegressionLevelSetBase):
         boundary_weight = torch.exp(
             -0.5 * ((mean - threshold) / tau).pow(2)
         )
-        score = var * boundary_weight
-        return self._finalize_pointwise_score(
-            score,
-            X,
-            Xt,
+        return self._weighted_logdet_joint_score(
+            covar=covar,
+            weight=boundary_weight,
+            X=raw_X,
+            Xt=Xt,
             name="qRegressionBoundaryVariance",
         )
 

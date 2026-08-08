@@ -1,4 +1,5 @@
 const progressFallbackStarted = new WeakMap<HTMLElement, number>();
+const lastFallbackProgress = new WeakMap<HTMLElement, number>();
 let progressFallbackTimer: number | null = null;
 
 function numericProgress(panel: HTMLElement): number {
@@ -26,8 +27,13 @@ function estimatedProgress(elapsedMs: number): { percent: number; stage: number;
 
 function applyEstimatedProgress(panel: HTMLElement): void {
   const current = numericProgress(panel);
-  if (current > 5.5 || panel.classList.contains("failed")) {
+  const previousFallback = lastFallbackProgress.get(panel);
+  const backendAdvanced = previousFallback === undefined
+    ? current > 5.5
+    : current > previousFallback + 3;
+  if (backendAdvanced || panel.classList.contains("failed")) {
     panel.classList.remove("estimated-fallback");
+    lastFallbackProgress.delete(panel);
     return;
   }
 
@@ -43,6 +49,7 @@ function applyEstimatedProgress(panel: HTMLElement): void {
   if (label) label.textContent = estimate.label;
   if (percentLabel) percentLabel.textContent = `約${Math.round(percent)}%`;
   if (bar) bar.style.width = `${percent}%`;
+  lastFallbackProgress.set(panel, percent);
 
   panel.querySelectorAll<HTMLElement>(".execution-stage-list li").forEach((item) => {
     const stage = Number(item.dataset.stage ?? 0);

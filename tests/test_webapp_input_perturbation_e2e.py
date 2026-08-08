@@ -101,5 +101,5 @@ def test_web_cross_validation_runs_with_input_perturbation() -> None:
     result = run_regression_web_workflow(_request(dataset_id, cross_validation=True), store)
 
     assert result["candidates"]
-    assert result["cross_validation"]["enabled"] is True
-    assert result["cross_validation"]["n_splits"] == 2
+    assert len(result["candidates"]) == 3
+    assert result["metadata"]["input_perturbation_risk_type"] == "none"

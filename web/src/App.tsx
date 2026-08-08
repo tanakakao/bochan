@@ -150,6 +150,22 @@ function WorkbenchLayout() {
     : "—";
   const resultStale = Boolean(result?.metadata?.stale_after_data_append);
   const apiStatusLabel = API_STATUS_LABELS[health.status];
+  const progressStepIndex = activeAuxiliaryPage === "experiment"
+    ? visibleSteps.length - 1
+    : Math.max(index, 0);
+  const progressLabel = activeAuxiliaryPage === "conversation"
+    ? "対話モード"
+    : activeAuxiliaryPage === "experiment"
+      ? "実験結果追加"
+      : visibleSteps[progressStepIndex]?.[1] ?? "データ";
+  const progressMeta = activeAuxiliaryPage === "conversation"
+    ? "GUIDED FLOW"
+    : activeAuxiliaryPage === "experiment"
+      ? "EXPERIMENT"
+      : `STEP ${progressStepIndex + 1} / ${visibleSteps.length}`;
+  const progressPercent = visibleSteps.length
+    ? Math.min(100, Math.max(0, ((progressStepIndex + 1) / visibleSteps.length) * 100))
+    : 0;
 
   useEffect(() => {
     const handleHashChange = () => setAuxiliaryPage(currentAuxiliaryPage());
@@ -206,21 +222,14 @@ function WorkbenchLayout() {
           </div>
         </div>
 
-        <div className="workflow-strip" aria-label="ワークフロー" data-tutorial="workflow">
-          {visibleSteps.map(([id, label], stepIndex) => (
-            <div className="workflow-item" key={id}>
-              <button
-                className={`workflow-step ${!activeAuxiliaryPage && id === step ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
-                onClick={() => openStep(id)}
-                disabled={!canOpenStep(id)}
-                aria-current={!activeAuxiliaryPage && id === step ? "step" : undefined}
-              >
-                <span>{stepIndex + 1}</span>
-                <strong>{label}</strong>
-              </button>
-              {stepIndex < visibleSteps.length - 1 && <i />}
-            </div>
-          ))}
+        <div className="workflow-progress" aria-label="現在の進捗" data-tutorial="workflow">
+          <div className="workflow-progress-copy">
+            <span>{progressMeta}</span>
+            <strong>{progressLabel}</strong>
+          </div>
+          <div className="workflow-progress-track" aria-hidden="true">
+            <span style={{ width: `${progressPercent}%` }} />
+          </div>
         </div>
 
         <div className="header-actions tutorial-enabled">

@@ -189,26 +189,38 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
     def _multiclass_log_probability_posterior(self, X: Tensor) -> GPyTorchPosterior:
         """Gaussian approximation to ensemble log-probabilities for legacy MC samplers."""
         probability_posterior = self.posterior(X)
-        values = probability_posterior.values.clamp_min(1e-9).log()
-        flat_values = values.flatten(start_dim=-2)
-        weights = probability_posterior.weights.to(device=values.device, dtype=values.dtype)
-        shape = [1] * flat_values.ndim
+        probability_values = probability_posterior.values.clamp_min(1e-9)
+        log_values = probability_values.log()
+        flat_log_values = log_values.flatten(start_dim=-2)
+        weights = probability_posterior.weights.to(
+            device=log_values.device,
+            dtype=log_values.dtype,
+        )
+        shape = [1] * flat_log_values.ndim
         shape[-2] = int(weights.numel())
         weights = weights.view(*shape)
-        flat_mean = (weights * flat_values).sum(dim=-2)
-        centered = flat_values - flat_mean.unsqueeze(-2)
+
+        empirical_log_mean = (weights * flat_log_values).sum(dim=-2)
+        centered = flat_log_values - empirical_log_mean.unsqueeze(-2)
         covariance = (
             weights.unsqueeze(-1)
             * centered.unsqueeze(-1)
             * centered.unsqueeze(-2)
         ).sum(dim=-3)
-        event_size = int(flat_values.shape[-1])
-        jitter = torch.eye(event_size, dtype=values.dtype, device=values.device) * 1e-8
+
+        event_size = int(flat_log_values.shape[-1])
+        jitter = torch.eye(
+            event_size,
+            dtype=log_values.dtype,
+            device=log_values.device,
+        ) * 1e-8
         covariance = covariance + jitter
-        mean = flat_mean.reshape(*values.shape[:-3], values.shape[-2], values.shape[-1])
+
+        mean_probs = probability_posterior.mean.clamp_min(1e-9)
+        mean_log_probs = mean_probs.log()
         return GPyTorchPosterior(
             MultitaskMultivariateNormal(
-                mean=mean,
+                mean=mean_log_probs,
                 covariance_matrix=covariance,
                 interleaved=True,
             )

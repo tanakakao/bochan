@@ -18,10 +18,17 @@ def test_obsolete_model_packages_are_removed() -> None:
         assert importlib.util.find_spec(module_name) is None
 
 
-def test_source_tree_has_no_obsolete_model_imports() -> None:
-    root = Path("src/bochan")
+def test_repository_has_no_obsolete_model_imports() -> None:
+    paths = list(Path("src/bochan").rglob("*.py"))
+    paths.extend(
+        path
+        for path in Path("tests").rglob("*.py")
+        if path.name != "test_model_package_layout.py"
+    )
+    paths.extend(Path(".github/workflows").glob("*.yml"))
+
     offenders: list[str] = []
-    for path in root.rglob("*.py"):
+    for path in paths:
         text = path.read_text(encoding="utf-8")
         for module_name in OLD_PUBLIC_PACKAGES:
             if module_name in text:

@@ -24,6 +24,7 @@ import "./composition-extension.css";
 import "./workflow-layout-extension.css";
 import "./red-theme.css";
 import "./readability.css";
+import "./ux-simplification.css";
 
 installDynamicNumberInputSteps();
 installCompositionRuntime();

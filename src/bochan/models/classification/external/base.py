@@ -10,9 +10,17 @@ from botorch.acquisition.objective import PosteriorTransform
 from botorch.exceptions.errors import UnsupportedError
 from botorch.models.ensemble import EnsembleModel
 from torch import Tensor
+from torch.nn import Module
 
 from bochan.models.external.common import _ExternalClassifierMixin
 from bochan.posteriors.classification_ensemble import ClassificationEnsemblePosterior
+
+
+class _ProbabilityPassthroughLikelihood(Module):
+    """Treat probability-space compatibility samples as Bernoulli probabilities."""
+
+    def forward(self, values: Tensor):
+        return torch.distributions.Bernoulli(probs=values.clamp(1e-9, 1.0 - 1e-9))
 
 
 def _align_probability_columns(
@@ -91,6 +99,11 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
     num_classes: int
     binary: bool
     _is_fitted: bool
+
+    def _configure_probability_acquisition_bridge(self) -> None:
+        """Install the probability-space compatibility likelihood for binary AL."""
+        if self.binary:
+            self.likelihood = _ProbabilityPassthroughLikelihood()
 
     @property
     def num_outputs(self) -> int:
@@ -172,6 +185,36 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
         """Return member probability samples for epistemic active learning."""
         return self.posterior(X, **kwargs)
 
+    def latent_posterior(
+        self,
+        X: Tensor,
+        output_indices: list[int] | None = None,
+        posterior_transform: PosteriorTransform | None = None,
+        **kwargs: Any,
+    ) -> ClassificationEnsemblePosterior:
+        """Compatibility bridge for existing binary acquisition implementations.
+
+        External classifiers do not have a GP latent function. For binary models
+        this method therefore exposes the finite ensemble of class-1 probability
+        predictions in the slot used by legacy binary acquisitions. The installed
+        passthrough likelihood maps those values to themselves. This preserves
+        member-level epistemic sampling (including joint q member correlation)
+        without pretending that the values are Gaussian latent logits.
+        """
+        if not self.binary:
+            raise UnsupportedError(
+                f"{type(self).__name__}.latent_posterior is only a binary compatibility bridge."
+            )
+        posterior = self.posterior(
+            X,
+            output_indices=output_indices,
+            posterior_transform=None,
+            **kwargs,
+        )
+        if posterior_transform is not None:
+            posterior = posterior_transform(posterior)
+        return posterior
+
     def class_probs(self, X: Tensor) -> Tensor:
         mean = self.posterior(X).mean
         if self.binary:
@@ -189,6 +232,7 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
 
 __all__ = [
     "_ExternalProbabilityClassifierMixin",
+    "_ProbabilityPassthroughLikelihood",
     "_align_probability_columns",
     "_classification_bootstrap_indices",
 ]

@@ -51,6 +51,14 @@ class qBinaryLatentStraddleAcquisition(_BinaryClassificationAcqBase):
         reduction: ReductionType = "mean",
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 5.0,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
+        X_pending: Optional[Tensor] = None,
+        X_observed: Optional[Tensor] = None,
         eps: float = 1e-6,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
     ):
@@ -59,6 +67,14 @@ class qBinaryLatentStraddleAcquisition(_BinaryClassificationAcqBase):
             reduction=reduction,
             pending_penalty_weight=pending_penalty_weight,
             pending_penalty_beta=pending_penalty_beta,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
+            X_pending=X_pending,
+            X_observed=X_observed,
             eps=eps,
         )
         self.beta = float(beta)
@@ -112,7 +128,7 @@ class qBinaryJointLatentStraddleAcquisition(_BinaryClassificationAcqBase):
         pending_penalty_weight: X_pending 近傍を避ける penalty の強さ。
         observed_penalty_weight: 観測済み点近傍を避ける penalty の強さ。
         distance_beta: この acquisition / objective の動作を制御するパラメータ。
-        duplicate_tol: この acquisition / objective の動作を制御するパラメータ。
+        duplicate_tol: 従来の joint 専用 duplicate tolerance。hard_duplicate_tol 未指定時のみ使用します。
         hard_duplicate_penalty: 完全重複またはほぼ重複する候補に対する追加 penalty。
         X_observed: 既に観測済みの点。重複候補の抑制や参照点として使います。
         deepgp_num_samples: この acquisition / objective の動作を制御するパラメータ。
@@ -142,15 +158,31 @@ class qBinaryJointLatentStraddleAcquisition(_BinaryClassificationAcqBase):
         distance_beta: float = 20.0,
         duplicate_tol: float = 1e-6,
         hard_duplicate_penalty: float = 1e6,
+        hard_duplicate_tol: Optional[float] = None,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
+        X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
         deepgp_num_samples: int = 10,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
     ):
+        resolved_duplicate_tol = float(
+            duplicate_tol if hard_duplicate_tol is None else hard_duplicate_tol
+        )
         super().__init__(
             model=model,
             reduction="sum",
             pending_penalty_weight=pending_penalty_weight,
             pending_penalty_beta=distance_beta,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=distance_beta,
+            hard_duplicate_tol=resolved_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
+            X_pending=X_pending,
+            X_observed=X_observed,
             eps=eps,
         )
         self.beta = float(beta)
@@ -163,21 +195,16 @@ class qBinaryJointLatentStraddleAcquisition(_BinaryClassificationAcqBase):
         self.same_batch_penalty_weight = float(same_batch_penalty_weight)
         self.observed_penalty_weight = float(observed_penalty_weight)
         self.distance_beta = float(distance_beta)
-        self.duplicate_tol = float(duplicate_tol)
+        self.duplicate_tol = resolved_duplicate_tol
         self.hard_duplicate_penalty = float(hard_duplicate_penalty)
-        self.X_observed = None
-        self.set_X_observed(X_observed)
         self.deepgp_num_samples = int(deepgp_num_samples)
         self.objective = objective
 
-    def set_X_observed(self, X_observed: Optional[Tensor]) -> None:
-        # observed points are constants during acquisition optimization
-        self.X_observed = None if X_observed is None else X_observed.detach()
+    def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
+        super().set_X_observed(X_observed)
 
     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
-        # sequential optimize_acqf passes previous candidates as X_pending.
-        # They should be treated as constants, not as part of the current graph.
-        self.X_pending = None if X_pending is None else X_pending.detach()
+        super().set_X_pending(X_pending)
 
     @staticmethod
     def _flatten_points(X: Tensor) -> Tensor:
@@ -248,7 +275,7 @@ class qBinaryJointLatentStraddleAcquisition(_BinaryClassificationAcqBase):
         q = Xt.shape[-2]
         d = Xt.shape[-1]
 
-        if q <= 1 or self.same_batch_penalty_weight <= 0.0:
+        if q <= 1:
             return torch.zeros(batch_shape, device=Xt.device, dtype=Xt.dtype)
 
         Xb = Xt.reshape(-1, q, d)
@@ -257,9 +284,13 @@ class qBinaryJointLatentStraddleAcquisition(_BinaryClassificationAcqBase):
         dmat = dmat.masked_fill(eye_mask, float("inf"))
         nearest = dmat.min(dim=-1).values
 
-        soft_pen = torch.exp(-self.distance_beta * nearest).sum(dim=-1)
-        hard_hits = (nearest <= self.duplicate_tol).to(Xt.dtype).sum(dim=-1)
-        total = self.same_batch_penalty_weight * soft_pen + self.hard_duplicate_penalty * hard_hits
+        total = torch.zeros(Xb.shape[0], device=Xt.device, dtype=Xt.dtype)
+        if self.same_batch_penalty_weight > 0.0:
+            soft_pen = torch.exp(-self.distance_beta * nearest).sum(dim=-1)
+            total = total + self.same_batch_penalty_weight * soft_pen
+        if self.hard_duplicate_penalty > 0.0:
+            hard_hits = (nearest <= self.duplicate_tol).to(Xt.dtype).sum(dim=-1)
+            total = total + self.hard_duplicate_penalty * hard_hits
         return total.reshape(*batch_shape)
 
     def _reference_repulsion(self, Xt: Tensor, Xref: Optional[Tensor], weight: float) -> Tensor:
@@ -292,6 +323,10 @@ class qBinaryJointLatentStraddleAcquisition(_BinaryClassificationAcqBase):
         penalty = penalty + self._reference_repulsion(
             Xt, self.X_observed, self.observed_penalty_weight
         )
+        # Common hard exclusion remains active even when all soft weights are 0.
+        penalty = penalty + self._same_batch_duplicate_penalty_per_point(Xt).sum(dim=-1)
+        penalty = penalty + self._pending_penalty_per_point(Xt).sum(dim=-1)
+        penalty = penalty + self._observed_penalty_per_point(Xt).sum(dim=-1)
         return penalty
 
     @staticmethod
@@ -360,6 +395,14 @@ class qBinaryICUAcquisition(_BinaryClassificationAcqBase):
         reduction: ReductionType = "mean",
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 5.0,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
+        X_pending: Optional[Tensor] = None,
+        X_observed: Optional[Tensor] = None,
         eps: float = 1e-6,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
     ):
@@ -368,6 +411,14 @@ class qBinaryICUAcquisition(_BinaryClassificationAcqBase):
             reduction=reduction,
             pending_penalty_weight=pending_penalty_weight,
             pending_penalty_beta=pending_penalty_beta,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
+            X_pending=X_pending,
+            X_observed=X_observed,
             eps=eps,
         )
         self.objective = objective
@@ -419,6 +470,14 @@ class qBinaryBoundaryVarianceAcquisition(_BinaryClassificationAcqBase):
         reduction: ReductionType = "mean",
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 5.0,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
+        X_pending: Optional[Tensor] = None,
+        X_observed: Optional[Tensor] = None,
         eps: float = 1e-6,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
     ):
@@ -427,6 +486,14 @@ class qBinaryBoundaryVarianceAcquisition(_BinaryClassificationAcqBase):
             reduction=reduction,
             pending_penalty_weight=pending_penalty_weight,
             pending_penalty_beta=pending_penalty_beta,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
+            X_pending=X_pending,
+            X_observed=X_observed,
             eps=eps,
         )
         self.threshold = float(threshold)
@@ -472,6 +539,14 @@ class qBinaryClassEntropyAcquisition(_BinaryClassificationAcqBase):
         reduction: ReductionType = "mean",
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 5.0,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
+        X_pending: Optional[Tensor] = None,
+        X_observed: Optional[Tensor] = None,
         eps: float = 1e-6,
         objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
     ):
@@ -480,6 +555,14 @@ class qBinaryClassEntropyAcquisition(_BinaryClassificationAcqBase):
             reduction=reduction,
             pending_penalty_weight=pending_penalty_weight,
             pending_penalty_beta=pending_penalty_beta,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
+            X_pending=X_pending,
+            X_observed=X_observed,
             eps=eps,
         )
         self.objective = objective

@@ -34,6 +34,7 @@ jobs:
           python tools/codemod_web_lse_followup.py
           python tools/codemod_web_lse_test_followup.py
           python tools/codemod_web_lse_lint_followup.py
+          python tools/codemod_web_lse_sequential_followup.py
           git diff --check
 
       - name: Install Python dependencies
@@ -80,6 +81,7 @@ jobs:
           rm -f tools/codemod_web_lse_followup.py
           rm -f tools/codemod_web_lse_test_followup.py
           rm -f tools/codemod_web_lse_lint_followup.py
+          rm -f tools/codemod_web_lse_sequential_followup.py
           rm -f .github/workflows/apply-web-lse-codemod.yml
           git diff --check
           git config user.name "github-actions[bot]"

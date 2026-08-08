@@ -13,6 +13,7 @@ on:
       - "web/src/api.ts"
       - "web/src/context/WorkbenchContext.tsx"
       - "web/src/pages/SettingsPage.tsx"
+      - "tests/api/test_cross_validation_prediction_aggregation.py"
       - "tests/test_webapp_input_perturbation_e2e.py"
       - ".github/workflows/web-input-perturbation-smoke.yml"
   workflow_dispatch:
@@ -29,11 +30,15 @@ jobs:
           cache: pip
       - name: Install Python dependencies
         run: python -m pip install -e ".[test,api,visualization]"
-      - name: Run Web input perturbation regression test
-        run: pytest -q --maxfail=1 tests/test_webapp_input_perturbation_e2e.py
+      - name: Run InputPerturbation regression tests
+        run: |
+          pytest -q --maxfail=1 \
+            tests/api/test_cross_validation_prediction_aggregation.py \
+            tests/test_webapp_input_perturbation_e2e.py
       - name: Run Ruff
         run: |
           python -m pip install ruff
           ruff check --ignore I001,SIM102,SIM108 \
             src/bochan/api/cross_validation.py \
+            tests/api/test_cross_validation_prediction_aggregation.py \
             tests/test_webapp_input_perturbation_e2e.py

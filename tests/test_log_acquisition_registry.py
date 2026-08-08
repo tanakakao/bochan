@@ -65,6 +65,15 @@ def test_regular_regression_nparego_short_name_resolves_to_native_class() -> Non
     assert resolved is qMultiOutputRegressionNParEGO
 
 
+def test_regular_nparego_requires_multi_output() -> None:
+    with pytest.raises(ValueError, match="multi-output"):
+        resolve_acqf_cls(
+            "nparego",
+            task_type="regression",
+            multi_output=False,
+        )
+
+
 @pytest.mark.parametrize(
     "name",
     ["logehvi", "lognehvi", "lognparego"],

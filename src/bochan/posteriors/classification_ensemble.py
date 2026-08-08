@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import torch
 from botorch.posteriors.ensemble import EnsemblePosterior
 from torch import Tensor
 

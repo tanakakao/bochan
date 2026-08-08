@@ -18,7 +18,10 @@ class _CorrelatedBinaryLatentModel(Model):
     def __init__(self) -> None:
         super().__init__()
         self.likelihood = BernoulliLikelihood()
-        self.num_outputs = 1
+
+    @property
+    def num_outputs(self) -> int:
+        return 1
 
     @property
     def batch_shape(self) -> torch.Size:

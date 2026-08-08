@@ -5,11 +5,14 @@ on:
     branches:
       - main
     paths:
-      - "src/bochan/models/classification/neural/**"
+      - "src/bochan/models/classification/common/**"
+      - "src/bochan/models/classification/binary/neural/**"
+      - "src/bochan/models/classification/multiclass/neural/**"
       - "src/bochan/models/ordinal/neural/**"
       - "src/bochan/posteriors/ordinal_ensemble.py"
       - "src/bochan/api/model_registry.py"
       - "tests/test_deep_ensemble_classification_ordinal.py"
+      - "tests/test_model_package_layout.py"
       - ".github/workflows/deep-ensemble-classification-ordinal-smoke.yml"
   workflow_dispatch:
 
@@ -26,12 +29,18 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[test]"
       - name: Run focused tests
-        run: pytest -q --maxfail=1 tests/test_deep_ensemble_classification_ordinal.py
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_deep_ensemble_classification_ordinal.py \
+            tests/test_model_package_layout.py
       - name: Lint
         run: |
           python -m pip install ruff
           ruff check --ignore I001 \
-            src/bochan/models/classification/neural \
+            src/bochan/models/classification/common \
+            src/bochan/models/classification/binary/neural \
+            src/bochan/models/classification/multiclass/neural \
             src/bochan/models/ordinal/neural \
             src/bochan/posteriors/ordinal_ensemble.py \
-            tests/test_deep_ensemble_classification_ordinal.py
+            tests/test_deep_ensemble_classification_ordinal.py \
+            tests/test_model_package_layout.py

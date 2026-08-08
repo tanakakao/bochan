@@ -22,35 +22,48 @@
   padding-top: 0.75rem;
 }
 
-/* Dense feature chips need smaller secondary labels to avoid clipping. */
+/* Dense feature chips need compact secondary labels to avoid clipping. */
 .feature-variable-choice .variable-choice-main small {
-  font-size: 0.66rem !important;
-  line-height: 1.1;
-  letter-spacing: 0.01em;
+  font-size: 9px !important;
+  line-height: 1;
+  letter-spacing: 0.015em;
+}
+
+.feature-type-toggle {
+  gap: 5px !important;
+  padding: 5px 7px !important;
 }
 
 .feature-type-toggle span {
-  font-size: 0.68rem !important;
+  font-size: 10px !important;
+  line-height: 1;
 }
 
+/* Keep the normal/composition segmented control inside narrow Select cards. */
 .composition-kind-control {
-  gap: 0.3rem !important;
+  min-width: 112px !important;
+  gap: 0.2rem !important;
+  padding: 3px !important;
 }
 
 .composition-kind-control > span {
-  font-size: 0.64rem !important;
+  font-size: 9px !important;
   white-space: nowrap;
 }
 
 .composition-kind-segment {
   min-width: 0;
+  gap: 1px !important;
+  padding: 1px !important;
 }
 
+button.composition-kind-option,
 .composition-kind-option {
   min-width: 0 !important;
-  padding: 0.24rem 0.36rem !important;
-  font-size: 0.64rem !important;
-  line-height: 1.05 !important;
+  min-height: 26px !important;
+  padding: 2px 4px !important;
+  font-size: 9px !important;
+  line-height: 1 !important;
   white-space: nowrap;
 }
 
@@ -61,9 +74,20 @@
 }
 
 @media (max-width: 1120px) {
-  .feature-variable-choice .variable-choice-main small,
-  .feature-type-toggle span,
+  .feature-variable-choice .variable-choice-main small {
+    font-size: 8px !important;
+  }
+
+  .feature-type-toggle span {
+    font-size: 9px !important;
+  }
+
+  button.composition-kind-option,
   .composition-kind-option {
-    font-size: 0.61rem !important;
+    font-size: 8px !important;
+  }
+
+  .composition-kind-control {
+    min-width: 104px !important;
   }
 }

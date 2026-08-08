@@ -330,6 +330,64 @@ def _uses_internal_nparego_baseline(config: AcquisitionConfig) -> bool:
     )
 
 
+def _nparego_weight_keyword(config: AcquisitionConfig) -> str | None:
+    """Return the constructor keyword used for NParEGO scalarization weights."""
+
+    if not _uses_internal_nparego_baseline(config):
+        return None
+
+    acqf_cls = config.acqf_cls
+    module_name = str(getattr(acqf_cls, "__module__", ""))
+    class_name = str(getattr(acqf_cls, "__name__", ""))
+    if (
+        module_name == "botorch.acquisition.multi_objective.parego"
+        and class_name == "qLogNParEGO"
+    ):
+        return "scalarization_weights"
+    if module_name.startswith("bochan.acquisition."):
+        return "weights"
+    return None
+
+
+def _resolve_internal_nparego_scalarization_weights(
+    config: AcquisitionConfig,
+    context: DataContext,
+) -> tuple[AcquisitionConfig, DataContext]:
+    """Route multi-objective scalarization weights into NParEGO itself.
+
+    ``prepare_multi_objective_context`` historically turns
+    ``MultiObjectiveConfig.scalarization_weights`` into a scalar
+    ``GenericMCObjective``. Self-scalarizing NParEGO classes must instead receive
+    those weights through their constructor; otherwise the objective dimension
+    is collapsed before NParEGO applies Chebyshev scalarization a second time.
+
+    The returned context contains a cloned ``MultiObjectiveConfig`` with generic
+    auto-scalarization disabled only for this internal NParEGO path. The caller's
+    original configuration is not mutated.
+    """
+
+    weight_keyword = _nparego_weight_keyword(config)
+    mo_config = context.multi_objective
+    if (
+        weight_keyword is None
+        or mo_config is None
+        or not mo_config.auto_scalarization
+        or mo_config.scalarization_weights is None
+    ):
+        return config, context
+
+    kwargs = dict(config.acqf_kwargs)
+    if kwargs.get(weight_keyword) is None:
+        kwargs[weight_keyword] = mo_config.scalarization_weights
+        config = replace(config, acqf_kwargs=kwargs)
+
+    context = replace(
+        context,
+        multi_objective=replace(mo_config, auto_scalarization=False),
+    )
+    return config, context
+
+
 def _explicit_acqf_value(config: AcquisitionConfig, name: str) -> Any:
     """Return a non-None value explicitly supplied in ``acqf_kwargs``."""
 
@@ -508,6 +566,7 @@ def resolve_acquisition_defaults(
     from .factory import prepare_multi_objective_context
 
     config = _resolve_default_regression_nparego_class(bundle, config)
+    config, context = _resolve_internal_nparego_scalarization_weights(config, context)
     context = prepare_multi_objective_context(bundle, context, config)
     config = _resolve_default_ordinal_objective(bundle, config)
     kind = _acquisition_kind(config)

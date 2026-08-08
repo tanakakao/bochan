@@ -92,7 +92,10 @@ def test_hvkg_short_alias_requires_multi_output() -> None:
 
 
 def test_information_canonical_names_resolve_directly() -> None:
-    assert resolve_acqf_cls("qKnowledgeGradient") is qKnowledgeGradient
+    assert (
+        resolve_acqf_cls("qKnowledgeGradient", task_type="regression")
+        is qKnowledgeGradient
+    )
     assert resolve_acqf_cls("qMaxValueEntropy") is qMaxValueEntropy
     assert resolve_acqf_cls("qJointEntropySearch") is qJointEntropySearch
     assert (

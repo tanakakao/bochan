@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 import torch
 from gpytorch.mlls import MarginalLogLikelihood, PredictiveLogLikelihood, VariationalELBO
 
@@ -37,6 +39,24 @@ def _get_mll_model_for_ordinal(model):
     return getattr(model, "model", model)
 
 
+def _fit_external_ordinal(model, **kwargs):
+    """Call an external ordinal model's bound ``fit`` with supported kwargs only."""
+    fit_func = getattr(model, "fit", None)
+    if not callable(fit_func):
+        raise AttributeError(f"{type(model).__name__} does not expose a callable fit().")
+    try:
+        signature = inspect.signature(fit_func)
+    except (TypeError, ValueError):
+        return fit_func()
+    if any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    ):
+        return fit_func(**kwargs)
+    allowed = set(signature.parameters)
+    return fit_func(**{key: value for key, value in kwargs.items() if key in allowed})
+
+
 def make_ordinal_mll(
     model,
     *,
@@ -54,6 +74,9 @@ def make_ordinal_mll(
         mll = make_ordinal_mll(model)
         fit_ordinal_mll(mll)
     """
+    if bool(getattr(model, "_uses_external_fit", False)):
+        return None
+
     train_X = get_fit_train_X(model)
     if num_data is None:
         num_data = int(train_X.shape[-2])
@@ -119,20 +142,23 @@ def fit_ordinal_mll(
     Returns:
         The input `mll`.
     """
-    if num_epochs is None:
-        num_epochs = 300
-    else:
-        num_epochs = int(num_epochs)
+    external_model = fit_model if fit_model is not None else mll
+    if bool(getattr(external_model, "_uses_external_fit", False)):
+        external_kwargs = {
+            "lr": lr,
+            "num_epochs": num_epochs,
+            "batch_size": batch_size,
+            "shuffle": shuffle,
+            "optimizer_cls": optimizer_cls,
+            "clip_grad_norm": clip_grad_norm,
+            "verbose": verbose,
+            **ignore,
+        }
+        return _fit_external_ordinal(external_model, **external_kwargs)
 
-    if lr is None:
-        lr = 0.03
-    else:
-        lr = float(lr)
-
-    if verbose is None:
-        verbose = False
-    else:
-        verbose = bool(verbose)
+    num_epochs = 300 if num_epochs is None else int(num_epochs)
+    lr = 0.03 if lr is None else float(lr)
+    verbose = False if verbose is None else bool(verbose)
 
     model = mll.model if fit_model is None else fit_model
     likelihood = get_likelihood_from_mll_or_model(mll, model)
@@ -222,6 +248,17 @@ def fit_ordinal_gp(
     If `model_or_mll` is a model/wrapper, this function builds the MLL and returns the model,
     preserving the previous helper's return style.
     """
+    if bool(getattr(model_or_mll, "_uses_external_fit", False)):
+        fit_ordinal_mll(
+            model_or_mll,
+            num_epochs=num_epochs,
+            lr=lr,
+            batch_size=batch_size,
+            verbose=verbose,
+            **kwargs,
+        )
+        return model_or_mll
+
     if use_predictive_log_likelihood is None:
         use_predictive_log_likelihood = False
     else:

@@ -382,7 +382,11 @@ from .factory import (
     prepare_multi_objective_context,
     resolve_model_cls,
 )
+from .external_ordinal_registry import register_external_ordinal_models
 from .model_registry import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
+
+register_external_ordinal_models(DEFAULT_MODEL_REGISTRY)
+
 from .study import CandidateBatch, StudySnapshot, StudySuggestion, Trial, TrialState
 from .study_controls import (
     BochanStudy,

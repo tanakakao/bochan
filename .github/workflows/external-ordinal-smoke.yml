@@ -1,0 +1,47 @@
+name: External ordinal smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+      - agent/add-random-forest-models
+    paths:
+      - "src/bochan/models/ordinal/external/**"
+      - "src/bochan/models/ordinal/__init__.py"
+      - "src/bochan/posteriors/ordinal_ensemble.py"
+      - "src/bochan/api/external_ordinal_registry.py"
+      - "src/bochan/api/__init__.py"
+      - "src/bochan/fit/ordinal.py"
+      - "tests/test_external_ordinal_models.py"
+      - "tests/test_external_ordinal_optional_smoke.py"
+      - ".github/workflows/external-ordinal-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[test,api,ngboost,tabular]"
+      - name: Run external ordinal tests
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_external_ordinal_models.py \
+            tests/test_external_ordinal_optional_smoke.py
+      - name: Lint external ordinal modules
+        run: |
+          python -m pip install ruff
+          ruff check --ignore I001 \
+            src/bochan/models/ordinal/external \
+            src/bochan/models/ordinal/__init__.py \
+            src/bochan/posteriors/ordinal_ensemble.py \
+            src/bochan/api/external_ordinal_registry.py \
+            src/bochan/fit/ordinal.py \
+            tests/test_external_ordinal_models.py \
+            tests/test_external_ordinal_optional_smoke.py

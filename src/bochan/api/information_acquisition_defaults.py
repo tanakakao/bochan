@@ -1,6 +1,6 @@
-"""Automatic defaults for information-theoretic Bayesian optimization.
+"""Automatic defaults for information-theoretic and look-ahead BO.
 
-This module connects BoTorch MES, JES, and HVKG to bochan's high-level API
+This module connects BoTorch KG, MES, JES, and HVKG to bochan's high-level API
 without duplicating the acquisition algorithms themselves. Required auxiliary
 inputs are generated through BoTorch's registered acquisition input
 constructors so the high-level API follows the same contracts as BoTorch.
@@ -24,13 +24,18 @@ def _normalize_name(value: Any) -> str:
 
 
 def information_acquisition_kind(config: AcquisitionConfig) -> str | None:
-    """Return ``mes``, ``jes``, or ``hvkg`` for supported information acquisitions."""
+    """Return ``kg``, ``mes``, ``jes``, or ``hvkg`` for supported acquisitions."""
 
     name = _normalize_name(config.name)
     cls_name = _normalize_name(getattr(config.acqf_cls, "__name__", ""))
     combined = f"{name} {cls_name}"
     if "hypervolumeknowledgegradient" in combined or name in {"hvkg", "qhvkg"}:
         return "hvkg"
+    if (
+        "knowledgegradient" in combined
+        or name in {"kg", "qkg", "knowledgegradient", "qknowledgegradient"}
+    ):
+        return "kg"
     if "jointentropysearch" in combined or name in {"jes", "qjes"}:
         return "jes"
     if "maxvalueentropy" in combined or name in {"mes", "qmes"}:
@@ -39,7 +44,7 @@ def information_acquisition_kind(config: AcquisitionConfig) -> str | None:
 
 
 def is_information_acquisition(config: AcquisitionConfig) -> bool:
-    """Return whether ``config`` selects MES, JES, or HVKG."""
+    """Return whether ``config`` selects KG, MES, JES, or HVKG."""
 
     return information_acquisition_kind(config) is not None
 
@@ -72,6 +77,24 @@ def _require_posterior_transform_for_multi_output(
         raise ValueError(
             f"{kind.upper()} requires a scalar posterior. For a multi-output model, "
             "pass an explicit posterior_transform in AcquisitionConfig.acqf_kwargs."
+        )
+
+
+def _require_scalar_kg_objective(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    objective: Any,
+) -> None:
+    """Require an explicit scalarization route for multi-output KG."""
+
+    if _num_outputs(bundle.train_Y) < 2:
+        return
+    posterior_transform = config.acqf_kwargs.get("posterior_transform")
+    if objective is None and posterior_transform is None:
+        raise ValueError(
+            "KG requires a scalar terminal objective. For a multi-output model, "
+            "configure AcquisitionConfig.objective/objective_config or pass an "
+            "explicit posterior_transform in AcquisitionConfig.acqf_kwargs."
         )
 
 
@@ -128,6 +151,55 @@ def _merge_generated_inputs(
     kwargs = {key: value for key, value in generated.items() if key != "model"}
     kwargs.update(config.acqf_kwargs)
     return replace(config, acqf_kwargs=kwargs)
+
+
+def _resolve_kg(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    context: DataContext,
+) -> tuple[AcquisitionConfig, DataContext]:
+    """Resolve qKnowledgeGradient terminal value and scalar objective semantics."""
+
+    _require_supported_task(bundle, "kg")
+
+    from .factory import build_objective
+
+    objective = build_objective(bundle=bundle, config=config, data_context=context)
+    _require_scalar_kg_objective(bundle, config, objective)
+    if objective is not None and config.objective is None:
+        config = replace(config, objective=objective)
+
+    kwargs = dict(config.acqf_kwargs)
+    kwargs.setdefault(
+        "num_fantasies",
+        int(context.extra.get("kg_num_fantasies", 64)),
+    )
+    config = replace(config, acqf_kwargs=kwargs)
+
+    if config.acqf_kwargs.get("current_value") is not None:
+        return config, context
+    if context.bounds is None:
+        raise ValueError(
+            "KG requires bounds when current_value is not supplied explicitly."
+        )
+    if context.X_pending is not None:
+        raise ValueError(
+            "Automatic KG current_value does not condition on X_pending. When pending "
+            "points are present, supply AcquisitionConfig.acqf_kwargs['current_value'] "
+            "explicitly using the pending-conditioned terminal value."
+        )
+
+    constructor = _get_botorch_input_constructor(config.acqf_cls)
+    generated = constructor(
+        model=bundle.model,
+        training_data=_training_dataset(bundle),
+        bounds=_bounds_as_pairs(context.bounds),
+        objective=objective,
+        posterior_transform=config.acqf_kwargs.get("posterior_transform"),
+        num_fantasies=int(config.acqf_kwargs["num_fantasies"]),
+        with_current_value=True,
+    )
+    return _merge_generated_inputs(config, generated), context
 
 
 def _resolve_mes(
@@ -289,9 +361,11 @@ def resolve_information_acquisition_defaults(
     config: AcquisitionConfig,
     context: DataContext,
 ) -> tuple[AcquisitionConfig, DataContext]:
-    """Resolve auxiliary inputs for MES, JES, and HVKG."""
+    """Resolve auxiliary inputs for KG, MES, JES, and HVKG."""
 
     kind = information_acquisition_kind(config)
+    if kind == "kg":
+        return _resolve_kg(bundle, config, context)
     if kind == "mes":
         return _resolve_mes(bundle, config, context)
     if kind == "jes":
@@ -305,18 +379,20 @@ def resolve_information_optimizer_defaults(
     config: AcquisitionConfig,
     opt_config: OptimizeConfig,
 ) -> OptimizeConfig:
-    """Apply optimizer settings required by MES and one-shot HVKG.
+    """Apply optimizer settings required by MES and one-shot KG/HVKG.
 
     BoTorch qMES uses sequential or cyclic optimization for q > 1. The bochan
     high-level API uses sequential optimization automatically in that case.
-    HVKG is a one-shot acquisition and therefore must remain joint; an explicit
-    sequential setting is normalized back to ``False``.
+    KG and HVKG are one-shot acquisitions and therefore must remain joint;
+    an explicit sequential setting is normalized back to ``False``.
+    BoTorch's ``optimize_acqf`` automatically selects the specialized one-shot
+    initializer for these acquisition classes.
     """
 
     kind = information_acquisition_kind(config)
     if kind == "mes" and opt_config.q > 1 and not opt_config.sequential:
         return replace(opt_config, sequential=True)
-    if kind == "hvkg" and opt_config.sequential:
+    if kind in {"kg", "hvkg"} and opt_config.sequential:
         return replace(opt_config, sequential=False)
     return opt_config
 

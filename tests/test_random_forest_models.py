@@ -60,9 +60,11 @@ def test_random_forest_is_botorch_ensemble_and_uses_tree_predictions() -> None:
         posterior.mean,
         torch.tensor([[1.25], [1.75]], dtype=torch.double),
     )
+    # BoTorch EnsemblePosterior follows torch.var's unbiased sample-variance
+    # convention for equally weighted finite ensembles.
     torch.testing.assert_close(
         posterior.variance,
-        torch.full((2, 1), 2.0 / 3.0, dtype=torch.double),
+        torch.full((2, 1), 1.0, dtype=torch.double),
     )
 
 

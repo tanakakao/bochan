@@ -86,8 +86,9 @@ class SimpleBernoulliPosterior(Posterior):
 
     def _extended_shape(
         self,
-        sample_shape: torch.Size = torch.Size(),
+        sample_shape: torch.Size | None = None,
     ) -> torch.Size:
+        sample_shape = torch.Size() if sample_shape is None else torch.Size(sample_shape)
         return sample_shape + self._mean.shape
 
     @property

@@ -15,6 +15,14 @@ from .deep import (
     OrdinalDeepGPModel,
     OrdinalMixedDeepGPModel,
 )
+from .external import (
+    NGBoostMixedOrdinalEnsembleModel,
+    NGBoostMixedOrdinalModel,
+    NGBoostOrdinalEnsembleModel,
+    NGBoostOrdinalModel,
+    RandomForestMixedOrdinalModel,
+    RandomForestOrdinalModel,
+)
 from .high_dim import (
     PCAOrdinalGPModel,
     PCAOrdinalMixedGPModel,
@@ -54,4 +62,10 @@ __all__ = [
     "OutlierRelevancePursuitOrdinalMixedGPModel",
     "HeteroscedasticOrdinalGPModel",
     "HeteroscedasticOrdinalMixedGPModel",
+    "NGBoostOrdinalModel",
+    "NGBoostOrdinalEnsembleModel",
+    "NGBoostMixedOrdinalModel",
+    "NGBoostMixedOrdinalEnsembleModel",
+    "RandomForestOrdinalModel",
+    "RandomForestMixedOrdinalModel",
 ]

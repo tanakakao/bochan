@@ -165,7 +165,8 @@ class qBinaryKnowledgeGradient(AcquisitionFunction):
     For every candidate ``x`` it draws coherent latent function samples jointly
     at ``x`` and the terminal decision set. Hypothetical Bernoulli labels reweight
     those samples by their exact likelihood. The terminal value is the maximum
-    updated posterior mean probability of ``target_class``.
+    updated posterior mean probability of ``target_class`` on the fixed terminal
+    decision set.
 
     This initial implementation intentionally supports ``q=1``. Non-empty
     ``X_pending`` is rejected because exact pending-aware KG requires nested
@@ -275,11 +276,13 @@ class qBinaryKnowledgeGradient(AcquisitionFunction):
     def forward(self, X: Tensor) -> Tensor:
         joint_X = self._joint_inputs(X)
         p_one = self._probability_samples(joint_X)
-        decision_samples = p_one if self.target_class == 1 else 1.0 - p_one
+        p_at_candidate = p_one[..., 0]
+        terminal_p_one = p_one[..., 1:]
+        decision_samples = (
+            terminal_p_one if self.target_class == 1 else 1.0 - terminal_p_one
+        )
 
         current_value = decision_samples.mean(dim=0).max(dim=-1).values
-        p_at_candidate = p_one[..., 0]
-
         weight_one = p_at_candidate.clamp(self.eps, 1.0 - self.eps)
         weight_zero = (1.0 - p_at_candidate).clamp(self.eps, 1.0 - self.eps)
         value_one = self._terminal_value_after_outcome(

@@ -127,6 +127,8 @@ def _display_predictions(
 
     import torch
 
+    from bochan.acquisition.binary.epistemic import binary_probability_moments
+
     n_rows = int(X.shape[0])
     posterior = optimizer.model.posterior(X, output_mode="mean") if hybrid_model else optimizer.model.posterior(X)
     means = _as_2d(posterior.mean, n_rows=n_rows)
@@ -137,7 +139,39 @@ def _display_predictions(
     for index, target in enumerate(target_columns):
         meta = target_metadata[target]
         task = str(meta["internal_task"])
-        if task == "ordinal" and hybrid_model:
+        if task == "binary":
+            if hybrid_model:
+                probability_posterior = optimizer.model.posterior(
+                    X,
+                    output_indices=[index],
+                    output_mode="probability",
+                )
+                probability_mean = _as_2d(
+                    probability_posterior.mean,
+                    n_rows=n_rows,
+                )
+                epistemic_variance = _as_2d(
+                    probability_posterior.variance,
+                    n_rows=n_rows,
+                ).clamp_min(0)
+                mean = probability_mean[:, 0]
+                variance = epistemic_variance[:, 0]
+                class_probabilities[target] = optimizer.model.class_probs_list(
+                    X,
+                    output_indices=[target],
+                )[0]
+            else:
+                probability_mean, epistemic_variance, _, _ = binary_probability_moments(
+                    optimizer.model,
+                    X,
+                )
+                mean = _as_2d(probability_mean, n_rows=n_rows)[:, 0]
+                variance = _as_2d(
+                    epistemic_variance,
+                    n_rows=n_rows,
+                ).clamp_min(0)[:, 0]
+            prediction_space = "probability"
+        elif task == "ordinal" and hybrid_model:
             probs = optimizer.model.class_probs_list(
                 X,
                 output_indices=[target],

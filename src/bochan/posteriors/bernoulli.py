@@ -1,13 +1,7 @@
 import torch
-from gpytorch.distributions import MultivariateNormal
-from botorch.posteriors import Posterior, GPyTorchPosterior
-from botorch.sampling.get_sampler import GetSampler
-from botorch.sampling.base import MCSampler
-
-
-import torch
-from torch import Tensor
 from botorch.posteriors.posterior import Posterior
+from botorch.sampling.get_sampler import GetSampler
+from torch import Tensor
 
 
 class SimpleBernoulliPosterior(Posterior):
@@ -92,8 +86,9 @@ class SimpleBernoulliPosterior(Posterior):
 
     def _extended_shape(
         self,
-        sample_shape: torch.Size = torch.Size(),
+        sample_shape: torch.Size | None = None,
     ) -> torch.Size:
+        sample_shape = torch.Size() if sample_shape is None else torch.Size(sample_shape)
         return sample_shape + self._mean.shape
 
     @property
@@ -139,7 +134,7 @@ class SimpleBernoulliPosterior(Posterior):
 
         mean = self._mean.expand(target_shape)
         std = self._variance.sqrt().expand(target_shape)
-        return mean + std * base_samples
+        return (mean + std * base_samples).clamp(1e-9, 1.0 - 1e-9)
 
 
 @GetSampler.register(SimpleBernoulliPosterior)

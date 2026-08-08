@@ -9,12 +9,14 @@ on:
       - "src/bochan/api/acquisition_config.py"
       - "src/bochan/likelihoods/regression.py"
       - "src/bochan/model_artifact.py"
+      - "src/bochan/posteriors/bernoulli.py"
       - "src/bochan/tabular/optimizer_api.py"
       - "src/bochan/serving/fastapi/**"
       - "src/bochan/serving/webapp/**"
       - "src/bochan/visualization/input_perturbation.py"
       - "src/bochan/visualization/plots.py"
       - "src/bochan/visualization/target_relation.py"
+      - "tests/test_binary_uncertainty_display_integration.py"
       - "tests/test_common_model_artifact_api.py"
       - "tests/test_tabular_noise_alpha.py"
       - "tests/test_visualization_display_scale.py"
@@ -54,6 +56,7 @@ jobs:
         run: |
           set +e
           pytest -q --maxfail=1 \
+            tests/test_binary_uncertainty_display_integration.py \
             tests/test_common_model_artifact_api.py \
             tests/test_tabular_noise_alpha.py \
             tests/test_visualization_display_scale.py \
@@ -85,6 +88,7 @@ jobs:
           ruff check --ignore I001,SIM102,SIM108 \
             src/bochan/api/acquisition_config.py \
             src/bochan/model_artifact.py \
+            src/bochan/posteriors/bernoulli.py \
             src/bochan/serving/fastapi/router.py \
             src/bochan/serving/fastapi/routers/artifacts.py \
             src/bochan/serving/fastapi/routers/tabular.py \
@@ -112,6 +116,7 @@ jobs:
             src/bochan/visualization/input_perturbation.py \
             src/bochan/visualization/plots.py \
             src/bochan/visualization/target_relation.py \
+            tests/test_binary_uncertainty_display_integration.py \
             tests/test_common_model_artifact_api.py \
             tests/test_visualization_display_scale.py \
             tests/test_webapp_multiobjective_contract.py \

@@ -3,7 +3,7 @@ import { EmptyState, SectionHeader } from "../components/Common";
 import CompositionKindControl from "../components/CompositionKindControl";
 import { useWorkbench } from "../context/WorkbenchContext";
 import { getColumnClassValues } from "../targetSettingUtils";
-import type { ColumnProfile, SearchVariable, TargetSetting } from "../types";
+import type { ColumnProfile, Direction, SearchVariable, TargetSetting } from "../types";
 import {
   loadFeatureConstraints,
   loadFeatureMissingSettings,
@@ -25,11 +25,12 @@ interface StoredRunSettingsSnapshot {
 
 function simpleTargetPatch(
   column: ColumnProfile,
-  preview: Record<string, unknown>[]
+  preview: Record<string, unknown>[],
+  direction: Direction
 ): Partial<TargetSetting> {
   const common: Partial<TargetSetting> = {
     optimize: true,
-    direction: "maximize",
+    direction,
     goal: "none",
     value: null,
     target_class: null,
@@ -51,10 +52,9 @@ function simpleTargetPatch(
 
 function simpleVariablePatch(
   column: ColumnProfile,
-  preview: Record<string, unknown>[],
-  current: SearchVariable | undefined
+  preview: Record<string, unknown>[]
 ): Partial<SearchVariable> {
-  const categorical = column.kind === "categorical" || current?.type === "categorical";
+  const categorical = column.kind === "categorical";
   if (categorical) {
     return {
       type: "categorical",
@@ -116,6 +116,7 @@ export default function PreparePage() {
     targetCandidates,
     selectableColumns,
     targetColumns,
+    targetSettings,
     featureColumns,
     variables,
     patchVariable,
@@ -220,6 +221,10 @@ export default function PreparePage() {
     setQ(Math.min(20, Math.max(1, Math.trunc(parsed))));
   }
 
+  function changeSimpleDirection(name: string, direction: Direction) {
+    patchTargetSetting(name, { direction });
+  }
+
   function executeSimpleMode() {
     if (!canConfigure || simpleExecutionPending) return;
     setError(null);
@@ -229,11 +234,16 @@ export default function PreparePage() {
 
     targetColumns.forEach((name) => {
       const column = selectableColumns.find((candidate) => candidate.name === name);
-      if (column) patchTargetSetting(name, simpleTargetPatch(column, preview));
+      if (column) {
+        patchTargetSetting(
+          name,
+          simpleTargetPatch(column, preview, targetSettings[name]?.direction ?? "maximize")
+        );
+      }
     });
     featureColumns.forEach((name) => {
       const column = selectableColumns.find((candidate) => candidate.name === name);
-      if (column) patchVariable(name, simpleVariablePatch(column, preview, variables[name]));
+      if (column) patchVariable(name, simpleVariablePatch(column, preview));
     });
 
     setNormalize(true);
@@ -255,16 +265,16 @@ export default function PreparePage() {
     <>
       <SectionHeader
         step="2 · SELECT"
-        title="変数と説明変数の型を設定する"
+        title={mode === "simple" ? "目的と変更できる条件を選択する" : "変数と説明変数の型を設定する"}
         text={mode === "simple"
-          ? "目的変数と説明変数、提案点数を指定すると、既定値でモデル学習と候補生成を直接実行できます。"
+          ? "目的変数、最大化・最小化、変更できる条件、提案件数だけ指定します。モデルや探索方法はbochanが自動設定します。"
           : "列名をクリックして選択します。説明変数は同じ枠内で数値／カテゴリ扱いを設定できます。"}
         action={mode === "simple" ? (
           <button
             disabled={!canConfigure || simpleExecutionPending}
             onClick={executeSimpleMode}
           >
-            {simpleExecutionPending ? "既定値を適用中" : "既定値で実行"}
+            {simpleExecutionPending ? "設定を準備中" : "候補を提案"}
           </button>
         ) : (
           <button disabled={!canConfigure} onClick={() => setStep("settings")}>
@@ -277,34 +287,81 @@ export default function PreparePage() {
         <article className="panel compact-panel simple-mode-summary">
           <div className="panel-title">
             <div>
-              <span className="panel-kicker">SIMPLE MODE</span>
-              <h3>変数選択だけで候補を生成</h3>
-              <p>提案点数を指定し、結果は通常モードと同じResults画面で確認します。</p>
+              <span className="panel-kicker">QUICK SETUP</span>
+              <h3>必要な項目だけ設定</h3>
+              <p>目的の方向と提案件数を決め、下で目的変数と変更できる条件を選択してください。</p>
             </div>
-            <span className="status-chip success">Default</span>
+            <span className="status-chip success">自動設定</span>
           </div>
-          <div className="simple-default-grid">
-            <span><strong>Task</strong> 数値=回帰 / 文字=分類</span>
-            <span><strong>Model</strong> Base GP</span>
-            <span><strong>Direction</strong> 最大化</span>
-            <span><strong>Acquisition</strong> EI / EHVI</span>
-            <span><strong>Search</strong> BoTorch</span>
-            <span className="simple-candidate-count" data-tutorial="simple-candidate-count">
-              <strong>提案点数 q</strong>
-              <input
-                type="number"
-                min={1}
-                max={20}
-                step={1}
-                value={q}
-                aria-label="簡易モードの提案点数"
-                onChange={(event) => changeSimpleCandidateCount(event.target.value)}
-              />
-              <small>1〜20点</small>
-            </span>
-            <span><strong>Missing</strong> 欠損行削除</span>
-            <span><strong>Constraints</strong> なし</span>
+
+          <div className="simple-primary-controls">
+            <section className="simple-direction-control">
+              <span className="simple-control-label">目的の方向</span>
+              {targetColumns.length === 0 ? (
+                <p className="simple-control-empty">下の「目的変数」から対象を選択してください。</p>
+              ) : (
+                <div className="simple-direction-list">
+                  {targetColumns.map((name) => {
+                    const column = targetCandidates.find((candidate) => candidate.name === name);
+                    if (column?.kind !== "numeric") {
+                      return (
+                        <div className="simple-direction-row" key={name}>
+                          <strong>{name}</strong>
+                          <span className="simple-auto-note">分類対象を自動設定</span>
+                        </div>
+                      );
+                    }
+                    const direction = targetSettings[name]?.direction ?? "maximize";
+                    return (
+                      <div className="simple-direction-row" key={name}>
+                        <strong>{name}</strong>
+                        <div className="simple-direction-toggle" role="group" aria-label={`${name}の最適化方向`}>
+                          <button
+                            type="button"
+                            className={direction === "maximize" ? "active" : ""}
+                            aria-pressed={direction === "maximize"}
+                            onClick={() => changeSimpleDirection(name, "maximize")}
+                          >
+                            最大化
+                          </button>
+                          <button
+                            type="button"
+                            className={direction === "minimize" ? "active" : ""}
+                            aria-pressed={direction === "minimize"}
+                            onClick={() => changeSimpleDirection(name, "minimize")}
+                          >
+                            最小化
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <label className="simple-candidate-count" data-tutorial="simple-candidate-count">
+              <span className="simple-control-label">次に試す条件</span>
+              <div className="simple-candidate-input-row">
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  step={1}
+                  value={q}
+                  aria-label="簡易モードの提案点数"
+                  onChange={(event) => changeSimpleCandidateCount(event.target.value)}
+                />
+                <span>件</span>
+              </div>
+              <small>1〜20件</small>
+            </label>
           </div>
+
+          <details className="simple-auto-settings">
+            <summary>自動設定の内容を見る</summary>
+            <p>Base GP、EI（多目的ではEHVI）、入力正規化、BoTorch探索を使用します。欠損行は既定設定で処理し、制約は追加しません。</p>
+          </details>
         </article>
       )}
 
@@ -314,7 +371,9 @@ export default function PreparePage() {
             <div>
               <span className="panel-kicker">TARGET COLUMNS</span>
               <h3>目的変数</h3>
-              <p>モデル化、候補提案、制約判定に使用する出力列を選択します。</p>
+              <p>{mode === "simple"
+                ? "良くしたい値を選択します。"
+                : "モデル化、候補提案、制約判定に使用する出力列を選択します。"}</p>
             </div>
             <span className={`status-chip ${targetColumns.length ? "success" : "warning"}`}>
               {targetColumns.length ? `${targetColumns.length} selected` : "Required"}
@@ -348,7 +407,9 @@ export default function PreparePage() {
             <div>
               <span className="panel-kicker">FEATURE COLUMNS</span>
               <h3>説明変数</h3>
-              <p>淡い赤は数値、オレンジはカテゴリ扱いです。カテゴリ設定を変更すると、その列も選択されます。</p>
+              <p>{mode === "simple"
+                ? "実験で変更できる条件を選択します。数値／カテゴリはデータから自動判定します。"
+                : "淡い赤は数値、オレンジはカテゴリ扱いです。カテゴリ設定を変更すると、その列も選択されます。"}</p>
             </div>
             <span className={`status-chip ${featureColumns.length ? "success" : "warning"}`}>
               {featureColumns.length ? `${featureColumns.length} selected` : "Required"}
@@ -362,14 +423,16 @@ export default function PreparePage() {
             >
               全選択
             </button>
-            <button
-              className="secondary"
-              onClick={() => replaceFeatureSelection(
-                featureCandidates.filter((column) => column.kind === "numeric").map((column) => column.name)
-              )}
-            >
-              数値列のみ
-            </button>
+            {mode !== "simple" && (
+              <button
+                className="secondary"
+                onClick={() => replaceFeatureSelection(
+                  featureCandidates.filter((column) => column.kind === "numeric").map((column) => column.name)
+                )}
+              >
+                数値列のみ
+              </button>
+            )}
             <button className="secondary" onClick={() => replaceFeatureSelection([])}>
               解除
             </button>
@@ -380,6 +443,22 @@ export default function PreparePage() {
               const selected = featureColumns.includes(column.name);
               const variable = variables[column.name];
               const categorical = variable?.type === "categorical" || column.kind === "categorical";
+
+              if (mode === "simple") {
+                return (
+                  <button
+                    type="button"
+                    key={column.name}
+                    className={`variable-choice simple-feature-choice ${selected ? "selected" : ""}`}
+                    aria-pressed={selected}
+                    onClick={() => toggleFeature(column.name)}
+                  >
+                    <span>{column.name}</span>
+                    <small>{categorical ? "カテゴリ" : "数値"}</small>
+                  </button>
+                );
+              }
+
               return (
                 <div
                   key={column.name}

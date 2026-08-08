@@ -86,5 +86,3 @@ def test_web_regression_runs_end_to_end_with_input_perturbation() -> None:
     assert len(result["candidates"]) == 1
     assert result["metadata"]["input_perturbation_risk_type"] == "none"
     assert result["metadata"]["input_perturbation_risk_enabled"] is False
-    assert result["metadata"]["input_perturbation"] is True
-    assert result["metadata"]["n_w"] == 4

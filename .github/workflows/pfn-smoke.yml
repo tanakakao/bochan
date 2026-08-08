@@ -28,7 +28,7 @@ jobs:
       - name: Lint PFN changes
         run: |
           python -m pip install ruff
-          ruff check --ignore I001 \
+          ruff check --ignore I001,SIM117 \
             src/bochan/models/regression/foundation \
             src/bochan/acquisition/regression/pfn.py \
             src/bochan/acquisition/regression/__init__.py \

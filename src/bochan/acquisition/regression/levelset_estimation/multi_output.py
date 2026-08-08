@@ -28,6 +28,8 @@ from botorch.models.model import Model
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 
+from bochan.acquisition._duplicate_exclusion import resolve_observed_X
+
 ReductionType = Literal["mean", "sum", "max", "min"]
 OutputReductionType = Literal[
     "mean",
@@ -266,6 +268,9 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         observed_penalty_beta: float = 10.0,
         hard_duplicate_penalty: float = 0.0,
         hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
         n_w: int | None = None,
         eps: float = 1e-12,
@@ -291,6 +296,8 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
                 "output_reduction must be one of "
                 "'mean', 'sum', 'max', 'min', 'weighted_sum', 'weighted_mean'."
             )
+        if float(hard_duplicate_tol) < 0.0:
+            raise ValueError("hard_duplicate_tol must be non-negative.")
 
         self.register_buffer("thresholds", torch.as_tensor(thresholds).reshape(-1))
         self.reduction = reduction
@@ -313,6 +320,9 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         self.observed_penalty_beta = float(observed_penalty_beta)
         self.hard_duplicate_penalty = float(hard_duplicate_penalty)
         self.hard_duplicate_tol = float(hard_duplicate_tol)
+        self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
+        self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        self.exclude_observed_duplicates = bool(exclude_observed_duplicates)
         self.objective = objective
         self.eps = float(eps)
 
@@ -373,7 +383,9 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         self.X_pending = self._coerce_reference_to_tensor(X_pending)
 
     def set_X_observed(self, X_observed: Tensor | None = None) -> None:
-        self.X_observed = self._coerce_reference_to_tensor(X_observed)
+        self.X_observed = self._coerce_reference_to_tensor(
+            resolve_observed_X(self.model, X_observed)
+        )
 
     # ------------------------------------------------------------
     # Shape / transform helpers
@@ -605,25 +617,42 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
     def _same_batch_penalty_per_point(self, Xt: Tensor) -> Tensor:
         Xt = _ensure_q_batch(Xt)
         q = int(Xt.shape[-2])
-        if self.same_batch_penalty_weight <= 0.0 or q <= 1:
-            return Xt.new_zeros(Xt.shape[:-1])
+        zeros = Xt.new_zeros(Xt.shape[:-1])
+        if q <= 1:
+            return zeros
+        if (
+            self.same_batch_penalty_weight <= 0.0
+            and self.hard_duplicate_penalty <= 0.0
+            and not self.exclude_same_batch_duplicates
+        ):
+            return zeros
 
         d2 = (Xt.unsqueeze(-2) - Xt.unsqueeze(-3)).pow(2).sum(dim=-1)
         eye = torch.eye(q, dtype=torch.bool, device=Xt.device)
         while eye.ndim < d2.ndim:
             eye = eye.unsqueeze(0)
-
         valid = ~eye
-        soft = torch.exp(-self.same_batch_penalty_beta * d2)
-        soft = torch.where(valid, soft, torch.zeros_like(soft))
-        per_point = soft.sum(dim=-1)
 
+        penalty = zeros
+        if self.same_batch_penalty_weight > 0.0:
+            soft = torch.exp(-self.same_batch_penalty_beta * d2)
+            soft = torch.where(valid, soft, torch.zeros_like(soft))
+            penalty = self.same_batch_penalty_weight * soft.sum(dim=-1)
+
+        duplicate_pairs = valid & (d2 <= self.hard_duplicate_tol**2)
         if self.hard_duplicate_penalty > 0.0:
-            dup = (d2 <= self.hard_duplicate_tol).to(dtype=Xt.dtype)
-            dup = torch.where(valid, dup, torch.zeros_like(dup))
-            per_point = per_point + self.hard_duplicate_penalty * dup.sum(dim=-1)
+            penalty = penalty + self.hard_duplicate_penalty * duplicate_pairs.to(
+                dtype=Xt.dtype
+            ).sum(dim=-1)
 
-        return self.same_batch_penalty_weight * per_point
+        if self.exclude_same_batch_duplicates:
+            duplicate_batch = duplicate_pairs.any(dim=-1).any(dim=-1, keepdim=True)
+            penalty = torch.where(
+                duplicate_batch.expand_as(penalty),
+                torch.full_like(penalty, torch.inf),
+                penalty,
+            )
+        return penalty
 
     def _reference_penalty_per_point(
         self,
@@ -632,14 +661,16 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
         *,
         weight: float,
         beta: float,
+        exclude_duplicates: bool = False,
     ) -> Tensor:
         Xt = _ensure_q_batch(Xt)
-        if weight <= 0.0:
-            return Xt.new_zeros(Xt.shape[:-1])
+        zeros = Xt.new_zeros(Xt.shape[:-1])
+        if weight <= 0.0 and not exclude_duplicates:
+            return zeros
 
         ref_t = self._reference_to_distance_space(ref, like=Xt)
         if ref_t is None or ref_t.numel() == 0:
-            return Xt.new_zeros(Xt.shape[:-1])
+            return zeros
 
         ref2d = ref_t.reshape(-1, ref_t.shape[-1])
         if ref2d.shape[-1] != Xt.shape[-1]:
@@ -650,7 +681,22 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
 
         dist = torch.cdist(Xt.reshape(-1, Xt.shape[-1]), ref2d)
         min_dist = dist.min(dim=-1).values.reshape(*Xt.shape[:-1])
-        return weight * torch.exp(-beta * min_dist)
+        penalty = (
+            weight * torch.exp(-beta * min_dist)
+            if weight > 0.0
+            else zeros
+        )
+        if exclude_duplicates:
+            duplicate_batch = (min_dist <= self.hard_duplicate_tol).any(
+                dim=-1,
+                keepdim=True,
+            )
+            penalty = torch.where(
+                duplicate_batch.expand_as(penalty),
+                torch.full_like(penalty, torch.inf),
+                penalty,
+            )
+        return penalty
 
     def _total_penalty_per_point(self, Xt: Tensor) -> Tensor:
         return (
@@ -660,12 +706,14 @@ class _MultiOutputRegressionLevelSetBase(AcquisitionFunction):
                 self.X_pending,
                 weight=self.pending_penalty_weight,
                 beta=self.pending_penalty_beta,
+                exclude_duplicates=self.exclude_pending_duplicates,
             )
             + self._reference_penalty_per_point(
                 Xt,
                 self.X_observed,
                 weight=self.observed_penalty_weight,
                 beta=self.observed_penalty_beta,
+                exclude_duplicates=self.exclude_observed_duplicates,
             )
         )
 

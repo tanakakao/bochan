@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Callable, Literal, Optional
 
 import torch
@@ -11,7 +12,6 @@ from bochan.acquisition.binary.active_learning.multi_output import (
     ReductionType,
     _MultiOutputBinaryClassificationAcqBase,
 )
-from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
 
 
 JointUncertaintyMode = Literal["logdet1p", "logdet", "sqrt_trace"]

@@ -75,20 +75,27 @@ jobs:
 
       - name: Commit validated source changes
         run: |
-          rm -f tools/codemod_web_lse_settings.py
-          rm -f tools/codemod_web_lse_marker_fix.py
-          rm -f tools/codemod_web_lse_followup.py
-          rm -f tools/codemod_web_lse_test_followup.py
-          rm -f tools/codemod_web_lse_lint_followup.py
-          rm -f tools/codemod_web_lse_sequential_followup.py
-          rm -f tools/codemod_web_lse_ci_followup.py
-          rm -f .github/workflows/apply-web-lse-codemod.yml
-          git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add \
+            docs/web_target_roles.md \
+            src/bochan/serving/webapp/level_set_settings.py \
+            src/bochan/serving/webapp/risk_settings.py \
+            src/bochan/serving/webapp/search_settings.py \
+            src/bochan/serving/webapp/target_settings.py \
+            src/bochan/serving/webapp/workflows.py \
+            src/bochan/serving/webapp/workflows_tabular.py \
+            tests/test_webapp_input_perturbation_prediction_shape.py \
+            tests/test_webapp_input_perturbation_risk.py \
+            tests/test_webapp_lse_web_contract.py \
+            web/src/api.ts \
+            web/src/components/InputPerturbationRiskSettings.tsx \
+            web/src/components/TargetProposalSettings.tsx \
+            web/src/modelArtifactRestore.ts \
+            web/src/pages/OptimizePage.tsx \
+            web/src/types.ts
           if git diff --cached --quiet; then
-            echo "No validated changes to commit"
+            echo "No validated source changes to commit"
             exit 0
           fi
           git commit -m "Complete Web level-set estimation settings"

@@ -31,6 +31,7 @@ jobs:
         run: |
           python tools/codemod_web_lse_settings.py
           python tools/codemod_web_lse_marker_fix.py
+          python tools/codemod_web_lse_followup.py
           git diff --check
 
       - name: Install Python dependencies
@@ -41,7 +42,8 @@ jobs:
           pytest -q --maxfail=1 \
             tests/test_webapp_level_set_settings.py \
             tests/test_webapp_lse_web_contract.py \
-            tests/test_webapp_input_perturbation_risk.py
+            tests/test_webapp_input_perturbation_risk.py \
+            tests/test_webapp_input_perturbation_prediction_shape.py
 
       - name: Run Ruff
         run: |
@@ -72,6 +74,7 @@ jobs:
         run: |
           rm -f tools/codemod_web_lse_settings.py
           rm -f tools/codemod_web_lse_marker_fix.py
+          rm -f tools/codemod_web_lse_followup.py
           rm -f .github/workflows/apply-web-lse-codemod.yml
           git diff --check
           git config user.name "github-actions[bot]"

@@ -1,0 +1,33 @@
+name: Deep Ensemble smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/bochan/models/regression/neural/**"
+      - "src/bochan/api/model_registry.py"
+      - "tests/test_deep_ensemble_models.py"
+      - ".github/workflows/deep-ensemble-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[test]"
+      - name: Run Deep Ensemble tests
+        run: pytest -q --maxfail=1 tests/test_deep_ensemble_models.py
+      - name: Lint Deep Ensemble modules
+        run: |
+          python -m pip install ruff
+          ruff check \
+            src/bochan/models/regression/neural \
+            tests/test_deep_ensemble_models.py

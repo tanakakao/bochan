@@ -1,9 +1,12 @@
 """Automatic defaults for information-theoretic and look-ahead BO.
 
-This module connects BoTorch KG, MES, JES, and HVKG to bochan's high-level API
-without duplicating the acquisition algorithms themselves. Required auxiliary
-inputs are generated through BoTorch's registered acquisition input
-constructors so the high-level API follows the same contracts as BoTorch.
+This module connects BoTorch KG, MES, JES, MO-MES, MO-JES, and HVKG to
+bochan's high-level API without duplicating the acquisition algorithms
+ themselves. Where BoTorch exposes a registered acquisition input constructor,
+bochan delegates auxiliary-input construction to it. Multi-objective entropy
+search uses BoTorch's public ``sample_optimal_points`` and
+``compute_sample_box_decomposition`` utilities because these acquisitions do
+not currently have registered input constructors.
 """
 
 from __future__ import annotations
@@ -24,10 +27,26 @@ def _normalize_name(value: Any) -> str:
 
 
 def information_acquisition_kind(config: AcquisitionConfig) -> str | None:
-    """Return ``kg``, ``mes``, ``jes``, or ``hvkg`` for supported acquisitions."""
+    """Return the supported information / look-ahead acquisition family."""
 
     name = _normalize_name(config.name)
     cls_name = _normalize_name(getattr(config.acqf_cls, "__name__", ""))
+    if cls_name == "qlowerboundmultiobjectivemaxvalueentropysearch" or name in {
+        "momes",
+        "qmomes",
+        "mesmo",
+        "qmesmo",
+        "multiobjectivemes",
+        "qmultiobjectivemes",
+    }:
+        return "mo_mes"
+    if cls_name == "qlowerboundmultiobjectivejointentropysearch" or name in {
+        "mojes",
+        "qmojes",
+        "multiobjectivejes",
+        "qmultiobjectivejes",
+    }:
+        return "mo_jes"
     if cls_name == "qhypervolumeknowledgegradient" or name in {"hvkg", "qhvkg"}:
         return "hvkg"
     if cls_name == "qknowledgegradient" or name in {
@@ -45,7 +64,7 @@ def information_acquisition_kind(config: AcquisitionConfig) -> str | None:
 
 
 def is_information_acquisition(config: AcquisitionConfig) -> bool:
-    """Return whether ``config`` selects KG, MES, JES, or HVKG."""
+    """Return whether ``config`` selects a supported information acquisition."""
 
     return information_acquisition_kind(config) is not None
 
@@ -56,6 +75,19 @@ def _require_supported_task(bundle: ModelBundle, kind: str) -> None:
         raise ValueError(
             f"{kind.upper()} is exposed by the high-level API only for regression / "
             f"multi-objective / hybrid models. Current task_type={task!r}."
+        )
+
+
+def _require_native_multiobjective_task(bundle: ModelBundle, kind: str) -> None:
+    task = str(bundle.task_type)
+    if task not in {"regression", "multi_objective"}:
+        raise ValueError(
+            f"{kind.upper()} requires homogeneous Gaussian regression objectives. "
+            f"Current task_type={task!r}."
+        )
+    if _num_outputs(bundle.train_Y) < 2:
+        raise ValueError(
+            f"{kind.upper()} requires a multi-output model with at least two objectives."
         )
 
 
@@ -119,6 +151,28 @@ def _bounds_as_pairs(bounds: Any) -> list[tuple[float, float]]:
     return [(float(row[0]), float(row[1])) for row in value]
 
 
+def _bounds_as_tensor(bounds: Any, reference: Any) -> Any:
+    """Convert bounds to BoTorch's ``2 x d`` tensor on the model data device."""
+
+    import torch
+
+    dtype = getattr(reference, "dtype", None)
+    device = getattr(reference, "device", None)
+    value = torch.as_tensor(bounds, dtype=dtype, device=device)
+    if value.ndim != 2:
+        raise ValueError(
+            f"bounds must be a 2D array/tensor. Got shape={tuple(value.shape)}."
+        )
+    if value.shape[0] == 2:
+        return value
+    if value.shape[1] == 2:
+        return value.transpose(0, 1)
+    raise ValueError(
+        "bounds must have shape [2, d] or [d, 2]. "
+        f"Got shape={tuple(value.shape)}."
+    )
+
+
 def _training_dataset(bundle: ModelBundle) -> Any:
     """Adapt bochan training tensors to BoTorch's metadata-aware dataset API."""
 
@@ -141,6 +195,51 @@ def _get_botorch_input_constructor(acqf_cls: type) -> Any:
     from botorch.acquisition.input_constructors import get_acqf_input_constructor
 
     return get_acqf_input_constructor(acqf_cls)
+
+
+def _sample_multiobjective_optimal_points(
+    *,
+    model: Any,
+    bounds: Any,
+    num_samples: int,
+    num_points: int,
+    maximize: bool,
+    optimizer: Any = None,
+    optimizer_kwargs: dict[str, Any] | None = None,
+) -> tuple[Any, Any]:
+    """Sample Pareto sets/fronts through BoTorch's public RFF utility."""
+
+    from botorch.acquisition.multi_objective.utils import (
+        random_search_optimizer,
+        sample_optimal_points,
+    )
+
+    return sample_optimal_points(
+        model=model,
+        bounds=bounds,
+        num_samples=num_samples,
+        num_points=num_points,
+        optimizer=random_search_optimizer if optimizer is None else optimizer,
+        maximize=maximize,
+        optimizer_kwargs=dict(optimizer_kwargs or {}),
+    )
+
+
+def _compute_multiobjective_hypercell_bounds(
+    pareto_fronts: Any,
+    *,
+    maximize: bool,
+) -> Any:
+    """Compute entropy-search integration boxes with BoTorch's public utility."""
+
+    from botorch.acquisition.multi_objective.utils import (
+        compute_sample_box_decomposition,
+    )
+
+    return compute_sample_box_decomposition(
+        pareto_fronts=pareto_fronts,
+        maximize=maximize,
+    )
 
 
 def _merge_generated_inputs(
@@ -277,6 +376,243 @@ def _resolve_jes(
     return _merge_generated_inputs(config, generated), context
 
 
+def _prepare_native_multiobjective_entropy_context(
+    config: AcquisitionConfig,
+    context: DataContext,
+    kind: str,
+) -> DataContext:
+    """Keep MO entropy search in native Pareto space without scalarization."""
+
+    if _has_configured_objective(config):
+        raise ValueError(
+            f"{kind.upper()} operates directly on all model outputs as Pareto "
+            "objectives and does not accept AcquisitionConfig.objective/objective_config."
+        )
+    if config.acqf_kwargs.get("posterior_transform") is not None:
+        raise ValueError(
+            f"{kind.upper()} does not accept posterior_transform. Use native model "
+            "outputs as objectives, or use scalar MES/JES after explicit scalarization."
+        )
+    if config.sampler is not None:
+        raise ValueError(
+            f"{kind.upper()} manages its entropy Monte Carlo samples internally via "
+            "num_samples and does not accept AcquisitionConfig.sampler."
+        )
+
+    mo_config = context.multi_objective
+    if mo_config is not None:
+        if mo_config.objective is not None:
+            raise ValueError(
+                f"{kind.upper()} does not consume MultiObjectiveConfig.objective. "
+                "The model outputs themselves define the Pareto objectives."
+            )
+        if mo_config.auto_scalarization and mo_config.scalarization_weights is not None:
+            raise ValueError(
+                f"{kind.upper()} must not use MultiObjectiveConfig scalarization. "
+                "Disable scalarization or use scalar MES/JES instead."
+            )
+        if mo_config.constraints is not None:
+            raise ValueError(
+                f"Automatic constrained {kind.upper()} is not implemented in this "
+                "high-level path. Supply an unconstrained objective model."
+            )
+        if mo_config.auto_scalarization:
+            context = replace(
+                context,
+                multi_objective=replace(mo_config, auto_scalarization=False),
+            )
+
+    if context.constraints is not None:
+        raise ValueError(
+            f"Automatic constrained {kind.upper()} is not implemented in this "
+            "high-level path."
+        )
+    return context
+
+
+def _mo_entropy_settings(
+    config: AcquisitionConfig,
+    context: DataContext,
+) -> tuple[AcquisitionConfig, bool, int, int, Any, dict[str, Any]]:
+    """Resolve shared BoTorch Pareto-sampling and entropy-estimator settings."""
+
+    kwargs = dict(config.acqf_kwargs)
+    estimation_type = str(
+        kwargs.get(
+            "estimation_type",
+            context.extra.get("mo_entropy_estimation_type", "LB"),
+        )
+    )
+    if estimation_type not in {"0", "LB", "LB2", "MC"}:
+        raise ValueError(
+            "MO entropy estimation_type must be one of '0', 'LB', 'LB2', or 'MC'."
+        )
+    num_samples = int(
+        kwargs.get("num_samples", context.extra.get("mo_entropy_num_samples", 64))
+    )
+    if num_samples <= 0:
+        raise ValueError("MO entropy num_samples must be positive.")
+    kwargs.setdefault("estimation_type", estimation_type)
+    kwargs.setdefault("num_samples", num_samples)
+
+    num_pareto_samples = int(context.extra.get("mo_entropy_num_pareto_samples", 8))
+    num_pareto_points = int(context.extra.get("mo_entropy_num_pareto_points", 8))
+    if num_pareto_samples <= 0 or num_pareto_points <= 0:
+        raise ValueError(
+            "mo_entropy_num_pareto_samples and mo_entropy_num_pareto_points must "
+            "both be positive."
+        )
+    maximize = bool(context.extra.get("mo_entropy_maximize", True))
+    optimizer = context.extra.get("mo_entropy_optimizer")
+    optimizer_kwargs = dict(context.extra.get("mo_entropy_optimizer_kwargs", {}) or {})
+    return (
+        replace(config, acqf_kwargs=kwargs),
+        maximize,
+        num_pareto_samples,
+        num_pareto_points,
+        optimizer,
+        optimizer_kwargs,
+    )
+
+
+def _require_continuous_auto_pareto_sampling(
+    bundle: ModelBundle,
+    kind: str,
+) -> None:
+    if bundle.cat_dims or str(bundle.input_type) == "mixed":
+        raise ValueError(
+            f"Automatic {kind.upper()} Pareto sampling uses BoTorch "
+            "sample_optimal_points over continuous bounds. For mixed/categorical "
+            "inputs, supply the required Pareto samples / hypercell bounds explicitly."
+        )
+
+
+def _generate_multiobjective_pareto_samples(
+    bundle: ModelBundle,
+    context: DataContext,
+    *,
+    kind: str,
+    maximize: bool,
+    num_pareto_samples: int,
+    num_pareto_points: int,
+    optimizer: Any,
+    optimizer_kwargs: dict[str, Any],
+) -> tuple[Any, Any]:
+    if context.bounds is None:
+        raise ValueError(
+            f"{kind.upper()} requires bounds when Pareto samples are not supplied "
+            "explicitly."
+        )
+    _require_continuous_auto_pareto_sampling(bundle, kind)
+    bounds = _bounds_as_tensor(context.bounds, bundle.train_X)
+    return _sample_multiobjective_optimal_points(
+        model=bundle.model,
+        bounds=bounds,
+        num_samples=num_pareto_samples,
+        num_points=num_pareto_points,
+        maximize=maximize,
+        optimizer=optimizer,
+        optimizer_kwargs=optimizer_kwargs,
+    )
+
+
+def _resolve_mo_mes(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    context: DataContext,
+) -> tuple[AcquisitionConfig, DataContext]:
+    """Resolve native Pareto multi-objective Max-value Entropy Search."""
+
+    _require_native_multiobjective_task(bundle, "mo-mes")
+    context = _prepare_native_multiobjective_entropy_context(config, context, "mo-mes")
+    (
+        config,
+        maximize,
+        num_pareto_samples,
+        num_pareto_points,
+        optimizer,
+        optimizer_kwargs,
+    ) = _mo_entropy_settings(config, context)
+
+    if config.acqf_kwargs.get("hypercell_bounds") is not None:
+        return config, context
+
+    _, pareto_fronts = _generate_multiobjective_pareto_samples(
+        bundle,
+        context,
+        kind="mo-mes",
+        maximize=maximize,
+        num_pareto_samples=num_pareto_samples,
+        num_pareto_points=num_pareto_points,
+        optimizer=optimizer,
+        optimizer_kwargs=optimizer_kwargs,
+    )
+    hypercell_bounds = _compute_multiobjective_hypercell_bounds(
+        pareto_fronts,
+        maximize=maximize,
+    )
+    kwargs = dict(config.acqf_kwargs)
+    kwargs["hypercell_bounds"] = hypercell_bounds
+    return replace(config, acqf_kwargs=kwargs), context
+
+
+def _resolve_mo_jes(
+    bundle: ModelBundle,
+    config: AcquisitionConfig,
+    context: DataContext,
+) -> tuple[AcquisitionConfig, DataContext]:
+    """Resolve native Pareto multi-objective Joint Entropy Search."""
+
+    _require_native_multiobjective_task(bundle, "mo-jes")
+    context = _prepare_native_multiobjective_entropy_context(config, context, "mo-jes")
+    (
+        config,
+        maximize,
+        num_pareto_samples,
+        num_pareto_points,
+        optimizer,
+        optimizer_kwargs,
+    ) = _mo_entropy_settings(config, context)
+
+    kwargs = dict(config.acqf_kwargs)
+    pareto_sets = kwargs.get("pareto_sets")
+    pareto_fronts = kwargs.get("pareto_fronts")
+    hypercell_bounds = kwargs.get("hypercell_bounds")
+
+    if (pareto_sets is None) != (pareto_fronts is None):
+        raise ValueError(
+            "MO-JES requires pareto_sets and pareto_fronts to be supplied together."
+        )
+    if pareto_sets is None and hypercell_bounds is not None:
+        raise ValueError(
+            "MO-JES hypercell_bounds cannot be supplied without the matching "
+            "pareto_sets and pareto_fronts."
+        )
+
+    if pareto_sets is None:
+        pareto_sets, pareto_fronts = _generate_multiobjective_pareto_samples(
+            bundle,
+            context,
+            kind="mo-jes",
+            maximize=maximize,
+            num_pareto_samples=num_pareto_samples,
+            num_pareto_points=num_pareto_points,
+            optimizer=optimizer,
+            optimizer_kwargs=optimizer_kwargs,
+        )
+        kwargs["pareto_sets"] = pareto_sets
+        kwargs["pareto_fronts"] = pareto_fronts
+
+    if hypercell_bounds is None:
+        hypercell_bounds = _compute_multiobjective_hypercell_bounds(
+            pareto_fronts,
+            maximize=maximize,
+        )
+        kwargs["hypercell_bounds"] = hypercell_bounds
+
+    return replace(config, acqf_kwargs=kwargs), context
+
+
 def _prepare_hvkg_multiobjective_context(
     bundle: ModelBundle,
     config: AcquisitionConfig,
@@ -362,7 +698,7 @@ def resolve_information_acquisition_defaults(
     config: AcquisitionConfig,
     context: DataContext,
 ) -> tuple[AcquisitionConfig, DataContext]:
-    """Resolve auxiliary inputs for KG, MES, JES, and HVKG."""
+    """Resolve auxiliary inputs for KG/MES/JES/MO-MES/MO-JES/HVKG."""
 
     kind = information_acquisition_kind(config)
     if kind == "kg":
@@ -371,6 +707,10 @@ def resolve_information_acquisition_defaults(
         return _resolve_mes(bundle, config, context)
     if kind == "jes":
         return _resolve_jes(bundle, config, context)
+    if kind == "mo_mes":
+        return _resolve_mo_mes(bundle, config, context)
+    if kind == "mo_jes":
+        return _resolve_mo_jes(bundle, config, context)
     if kind == "hvkg":
         return _resolve_hvkg(bundle, config, context)
     return config, context
@@ -380,18 +720,22 @@ def resolve_information_optimizer_defaults(
     config: AcquisitionConfig,
     opt_config: OptimizeConfig,
 ) -> OptimizeConfig:
-    """Apply optimizer settings required by MES and one-shot KG/HVKG.
+    """Apply optimizer settings required by entropy search and one-shot KG/HVKG.
 
-    BoTorch qMES uses sequential or cyclic optimization for q > 1. The bochan
-    high-level API uses sequential optimization automatically in that case.
-    KG and HVKG are one-shot acquisitions and therefore must remain joint;
-    an explicit sequential setting is normalized back to ``False``.
-    BoTorch's ``optimize_acqf`` automatically selects the specialized one-shot
-    initializer for these acquisition classes.
+    BoTorch qMES uses sequential or cyclic optimization for q > 1. BoTorch's
+    multi-objective entropy-search tutorial likewise uses sequential greedy
+    optimization for q > 1 because the lower-bound batch criterion need not be
+    monotone. The bochan high-level API therefore enables sequential
+    optimization for these cases. KG and HVKG are one-shot acquisitions and
+    must remain joint; an explicit sequential setting is normalized to False.
     """
 
     kind = information_acquisition_kind(config)
-    if kind == "mes" and opt_config.q > 1 and not opt_config.sequential:
+    if (
+        kind in {"mes", "mo_mes", "mo_jes"}
+        and opt_config.q > 1
+        and not opt_config.sequential
+    ):
         return replace(opt_config, sequential=True)
     if kind in {"kg", "hvkg"} and opt_config.sequential:
         return replace(opt_config, sequential=False)

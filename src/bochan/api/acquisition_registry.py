@@ -21,6 +21,14 @@ _ACQF_ALIASES: dict[str, AcqPath] = {
     ),
     "qlogei": ("botorch.acquisition.logei", "qLogExpectedImprovement"),
     "logei": ("botorch.acquisition.logei", "qLogExpectedImprovement"),
+    "qlogexpectedimprovement": (
+        "botorch.acquisition.logei",
+        "qLogExpectedImprovement",
+    ),
+    "logexpectedimprovement": (
+        "botorch.acquisition.logei",
+        "qLogExpectedImprovement",
+    ),
     "qnei": (
         "botorch.acquisition.monte_carlo",
         "qNoisyExpectedImprovement",
@@ -28,6 +36,46 @@ _ACQF_ALIASES: dict[str, AcqPath] = {
     "nei": (
         "botorch.acquisition.monte_carlo",
         "qNoisyExpectedImprovement",
+    ),
+    "qlognei": (
+        "botorch.acquisition.logei",
+        "qLogNoisyExpectedImprovement",
+    ),
+    "lognei": (
+        "botorch.acquisition.logei",
+        "qLogNoisyExpectedImprovement",
+    ),
+    "qlognoisyexpectedimprovement": (
+        "botorch.acquisition.logei",
+        "qLogNoisyExpectedImprovement",
+    ),
+    "lognoisyexpectedimprovement": (
+        "botorch.acquisition.logei",
+        "qLogNoisyExpectedImprovement",
+    ),
+    "qlogpof": (
+        "botorch.acquisition.logei",
+        "qLogProbabilityOfFeasibility",
+    ),
+    "logpof": (
+        "botorch.acquisition.logei",
+        "qLogProbabilityOfFeasibility",
+    ),
+    "qlogpf": (
+        "botorch.acquisition.logei",
+        "qLogProbabilityOfFeasibility",
+    ),
+    "logpf": (
+        "botorch.acquisition.logei",
+        "qLogProbabilityOfFeasibility",
+    ),
+    "qlogprobabilityoffeasibility": (
+        "botorch.acquisition.logei",
+        "qLogProbabilityOfFeasibility",
+    ),
+    "logprobabilityoffeasibility": (
+        "botorch.acquisition.logei",
+        "qLogProbabilityOfFeasibility",
     ),
     "qucb": ("botorch.acquisition.monte_carlo", "qUpperConfidenceBound"),
     "ucb": ("botorch.acquisition.monte_carlo", "qUpperConfidenceBound"),
@@ -65,6 +113,22 @@ _ACQF_ALIASES: dict[str, AcqPath] = {
         "botorch.acquisition.multi_objective.monte_carlo",
         "qExpectedHypervolumeImprovement",
     ),
+    "qlogehvi": (
+        "botorch.acquisition.multi_objective.logei",
+        "qLogExpectedHypervolumeImprovement",
+    ),
+    "logehvi": (
+        "botorch.acquisition.multi_objective.logei",
+        "qLogExpectedHypervolumeImprovement",
+    ),
+    "qlogexpectedhypervolumeimprovement": (
+        "botorch.acquisition.multi_objective.logei",
+        "qLogExpectedHypervolumeImprovement",
+    ),
+    "logexpectedhypervolumeimprovement": (
+        "botorch.acquisition.multi_objective.logei",
+        "qLogExpectedHypervolumeImprovement",
+    ),
     "qnehvi": (
         "botorch.acquisition.multi_objective.monte_carlo",
         "qNoisyExpectedHypervolumeImprovement",
@@ -73,6 +137,22 @@ _ACQF_ALIASES: dict[str, AcqPath] = {
         "botorch.acquisition.multi_objective.monte_carlo",
         "qNoisyExpectedHypervolumeImprovement",
     ),
+    "qlognehvi": (
+        "botorch.acquisition.multi_objective.logei",
+        "qLogNoisyExpectedHypervolumeImprovement",
+    ),
+    "lognehvi": (
+        "botorch.acquisition.multi_objective.logei",
+        "qLogNoisyExpectedHypervolumeImprovement",
+    ),
+    "qlognoisyexpectedhypervolumeimprovement": (
+        "botorch.acquisition.multi_objective.logei",
+        "qLogNoisyExpectedHypervolumeImprovement",
+    ),
+    "lognoisyexpectedhypervolumeimprovement": (
+        "botorch.acquisition.multi_objective.logei",
+        "qLogNoisyExpectedHypervolumeImprovement",
+    ),
     "qnparego": (
         "botorch.acquisition.monte_carlo",
         "qExpectedImprovement",
@@ -80,6 +160,14 @@ _ACQF_ALIASES: dict[str, AcqPath] = {
     "nparego": (
         "botorch.acquisition.monte_carlo",
         "qExpectedImprovement",
+    ),
+    "qlognparego": (
+        "botorch.acquisition.multi_objective.parego",
+        "qLogNParEGO",
+    ),
+    "lognparego": (
+        "botorch.acquisition.multi_objective.parego",
+        "qLogNParEGO",
     ),
 }
 
@@ -220,6 +308,11 @@ _register(
 _register(
     "bochan.acquisition.regression.bayesian_optimization",
     [
+        "qMultiOutputRegressionExpectedHypervolumeImprovement",
+        "qMultiOutputRegressionNoisyExpectedHypervolumeImprovement",
+        "qMultiOutputRegressionLogExpectedHypervolumeImprovement",
+        "qMultiOutputRegressionLogNoisyExpectedHypervolumeImprovement",
+        "qMultiOutputRegressionNParEGO",
         "qHeteroRegressionUpperConfidenceBound",
         "qHeteroRegressionExpectedImprovement",
         "qHeteroRegressionProbabilityOfImprovement",
@@ -577,6 +670,11 @@ _NIPV_SHORT_NAMES = {
     "negintegratedresponsemeanvariance",
     "qnegintegratedresponsemeanvariance",
 }
+_LOG_NEI_SHORT_NAMES = {"lognei", "qlognei"}
+_LOG_POF_SHORT_NAMES = {"logpof", "qlogpof", "logpf", "qlogpf"}
+_LOG_EHVI_SHORT_NAMES = {"logehvi", "qlogehvi"}
+_LOG_NEHVI_SHORT_NAMES = {"lognehvi", "qlognehvi"}
+_LOG_NPAREGO_SHORT_NAMES = {"lognparego", "qlognparego"}
 _CONTEXTUAL_SHORT_NAMES = {
     "bald",
     "jointbald",
@@ -611,18 +709,23 @@ _CONTEXTUAL_SHORT_NAMES = {
     "qupperconfidencebound",
     "pof",
     "probabilityoffeasibility",
+    *_LOG_NEI_SHORT_NAMES,
+    *_LOG_POF_SHORT_NAMES,
     "ehi",
     "qehi",
     "ehvi",
     "qehvi",
     "expectedhypervolumeimprovement",
     "qexpectedhypervolumeimprovement",
+    *_LOG_EHVI_SHORT_NAMES,
     "nehvi",
     "qnehvi",
     "noisyexpectedhypervolumeimprovement",
     "qnoisyexpectedhypervolumeimprovement",
+    *_LOG_NEHVI_SHORT_NAMES,
     "nparego",
     "qnparego",
+    *_LOG_NPAREGO_SHORT_NAMES,
     "kg",
     "qkg",
     "knowledgegradient",
@@ -697,6 +800,13 @@ def _raise_regression_only(name: str, task: str) -> None:
     )
 
 
+def _raise_multi_output_only(name: str, task: str) -> None:
+    raise ValueError(
+        f"Acquisition alias {name!r} requires a multi-output model. "
+        f"Current task_type={task!r}."
+    )
+
+
 def _resolve_contextual_nipv_path(*, task: str, prefix: str) -> AcqPath:
     """Resolve NIPV to a task-appropriate true or proxy implementation."""
     canonical_by_prefix = {
@@ -766,6 +876,32 @@ def _resolve_contextual_bo_path(
     """Resolve BO / integrated-variance names before AL / LSE names."""
     if normalized_name in _NIPV_SHORT_NAMES:
         return _resolve_contextual_nipv_path(task=task, prefix=prefix)
+    if normalized_name in _LOG_NEI_SHORT_NAMES:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        return _fallback_builtin_path("qlognei")
+    if normalized_name in _LOG_POF_SHORT_NAMES:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        return _fallback_builtin_path("qlogpof")
+    if normalized_name in _LOG_EHVI_SHORT_NAMES:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        if not multi_output:
+            _raise_multi_output_only(normalized_name, task)
+        return _fallback_builtin_path("qlogehvi")
+    if normalized_name in _LOG_NEHVI_SHORT_NAMES:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        if not multi_output:
+            _raise_multi_output_only(normalized_name, task)
+        return _fallback_builtin_path("qlognehvi")
+    if normalized_name in _LOG_NPAREGO_SHORT_NAMES:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        if not multi_output:
+            _raise_multi_output_only(normalized_name, task)
+        return _fallback_builtin_path("qlognparego")
     if normalized_name in {
         "kg",
         "qkg",
@@ -865,13 +1001,17 @@ def _resolve_contextual_bo_path(
             )
         return _fallback_builtin_path("qnehvi")
     if normalized_name in {"nparego", "qnparego"}:
+        if not multi_output:
+            return None
         if task in {"binary", "ordinal", "multiclass"} or prefix.startswith(
             "qHeteroMultiOutputRegression"
         ):
-            if not multi_output:
-                return None
             return _ACQF_ALIASES.get(
                 _normalize_acqf_name(f"{prefix}NParEGO")
+            )
+        if task == "regression":
+            return _ACQF_ALIASES.get(
+                _normalize_acqf_name("qMultiOutputRegressionNParEGO")
             )
         return _fallback_builtin_path("qnparego")
     return None

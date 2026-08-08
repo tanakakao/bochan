@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from typing import Optional
 
 import torch
@@ -31,6 +32,24 @@ def _is_deep_classification_mll(mll) -> bool:
     )
 
 
+def _fit_external_classifier(model, **kwargs):
+    """Call an external estimator model's bound ``fit`` with supported kwargs only."""
+    fit_func = getattr(model, "fit", None)
+    if not callable(fit_func):
+        raise AttributeError(f"{type(model).__name__} does not expose a callable fit().")
+    try:
+        signature = inspect.signature(fit_func)
+    except (TypeError, ValueError):
+        return fit_func()
+    if any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    ):
+        return fit_func(**kwargs)
+    allowed = set(signature.parameters)
+    return fit_func(**{key: value for key, value in kwargs.items() if key in allowed})
+
+
 def fit_binary_classifier_mll(
     mll,
     *,
@@ -44,23 +63,30 @@ def fit_binary_classifier_mll(
     **ignore,
 ):
     """
-    Fit a variational binary / multi-output classification model from an MLL.
+    Fit a variational binary classifier or an external probability classifier.
 
     Intended MLLs:
         - gpytorch.mlls.VariationalELBO
         - gpytorch.mlls.PredictiveLogLikelihood
         - gpytorch.mlls.DeepApproximateMLL
 
-    Notes:
-        - Standard variational classifiers keep the existing mini-batch behavior.
-        - DeepGP / DeepKernel classifiers use the dedicated full-batch loop so
-          their wrapper-specific transformed training inputs and MLL structure
-          are handled consistently.
-        - `mll.model.train_inputs` is used as X.
-        - `mll.model.train_targets` is used as y.
-        - Single-output targets shaped [n, 1] are squeezed to [n].
-        - Returns the input `mll`, following BoTorch-style fit helpers.
+    External models marked with ``_uses_external_fit`` are fitted through their
+    bound ``fit`` method. This keeps the high-level API shared between GP and
+    sklearn-style probability classifiers without constructing a fake MLL.
     """
+    if bool(getattr(mll, "_uses_external_fit", False)):
+        external_kwargs = {
+            "lr": lr,
+            "num_epochs": num_epochs,
+            "batch_size": batch_size,
+            "shuffle": shuffle,
+            "optimizer_cls": optimizer_cls,
+            "clip_grad_norm": clip_grad_norm,
+            "verbose": verbose,
+            **ignore,
+        }
+        return _fit_external_classifier(mll, **external_kwargs)
+
     if _is_deep_classification_mll(mll):
         from ..deep.common import fit_deep_full_batch_mll
 

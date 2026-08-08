@@ -2,6 +2,8 @@
 
 This chapter describes MES, JES, and HVKG in bochan's high-level API. Unlike EI-style criteria that focus on immediate improvement, these acquisitions value information about the optimum or the future Pareto frontier.
 
+Knowledge Gradient (KG) is also integrated as a look-ahead acquisition. See `03c_knowledge_gradient.md` for its automatic `current_value`, multi-output scalarization, pending-point, and one-shot optimization semantics.
+
 ## 1. Max-value Entropy Search (MES)
 
 MES measures information gained about the unknown optimum value `f*`:
@@ -92,15 +94,29 @@ HVKG is a one-shot acquisition, so the high-level API keeps joint optimization r
 
 MES and JES do not silently consume bochan MC objectives. If a multi-output posterior needs scalarization, use an explicit `posterior_transform`.
 
+KG uses a scalar terminal objective. Single-output KG can use the posterior mean directly; multi-output KG requires an explicit `objective`, `objective_config`, `objective_factory`, or `posterior_transform`.
+
 HVKG preserves the objective dimension. Generic scalarization through `MultiObjectiveConfig.scalarization_weights` is disabled on the cloned HVKG context so hypervolume is computed in multi-objective space.
 
 ## 5. Task routing
 
-The short aliases `mes`, `jes`, and `hvkg` are restricted to regression-like posterior semantics. They are not silently redirected to binary, multiclass, or ordinal models because probability and utility spaces require task-specific information criteria.
+The short aliases `kg`, `mes`, `jes`, and `hvkg` are restricted to regression-like posterior semantics. They are not silently redirected to binary, multiclass, or ordinal models because probability and utility spaces require task-specific information criteria.
 
 For classification-oriented information acquisition, use bochan's task-specific BALD and predictive-entropy acquisitions.
 
 ## 6. Examples
+
+### KG
+
+```python
+X_next, value = optimizer.candidate(
+    AcquisitionConfig(name="kg"),
+    OptimizeConfig(q=1),
+    data_context=DataContext(bounds=bounds),
+)
+```
+
+`current_value` is inferred automatically from the bounds. See `03c_knowledge_gradient.md` for details.
 
 ### MES
 
@@ -146,10 +162,11 @@ X_next, value = optimizer.candidate(
 
 | Goal | Acquisition |
 |---|---|
+| Improve expected terminal decision value | KG |
 | Reduce uncertainty about the optimum value | MES |
 | Identify optimum location and value jointly | JES |
 | Improve the future multi-objective Pareto frontier | HVKG |
 | Optimize immediate scalar improvement | LogEI / LogNEI |
 | Optimize immediate hypervolume improvement | LogEHVI / LogNEHVI |
 
-MES, JES, and HVKG are typically more computationally demanding than improvement-based acquisitions, but can be attractive when each physical experiment is expensive and information value matters.
+KG, MES, JES, and HVKG are typically more computationally demanding than improvement-based acquisitions, but can be attractive when each physical experiment is expensive and information value matters.

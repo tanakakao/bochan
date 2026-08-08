@@ -165,6 +165,9 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "rembo": ("bochan.models.classification.binary.high_dim", "REMBOBinaryClassificationGPModel"),
             "rrp": ("bochan.models.classification.binary.robust", "OutlierRelevancePursuitBinaryClassificationGPModel"),
             "hetero": ("bochan.models.classification.binary.robust", "HeteroscedasticBinaryClassificationGPModel"),
+            "ngboost": ("bochan.models.classification.external", "NGBoostBinaryClassificationModel"),
+            "ngboost_ensemble": ("bochan.models.classification.external", "NGBoostBinaryEnsembleModel"),
+            "random_forest": ("bochan.models.classification.external", "RandomForestBinaryClassificationModel"),
         },
         "ordinal": {
             "base": ("bochan.models.ordinal.base", "OrdinalGPModel"),
@@ -190,6 +193,9 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "rembo": ("bochan.models.classification.multiclass.high_dim", "REMBOMulticlassClassificationGPModel"),
             "rrp": ("bochan.models.classification.multiclass.robust", "OutlierRelevancePursuitMulticlassClassificationGPModel"),
             "hetero": ("bochan.models.classification.multiclass.robust", "HeteroscedasticMulticlassClassificationGPModel"),
+            "ngboost": ("bochan.models.classification.external", "NGBoostMulticlassClassificationModel"),
+            "ngboost_ensemble": ("bochan.models.classification.external", "NGBoostMulticlassEnsembleModel"),
+            "random_forest": ("bochan.models.classification.external", "RandomForestMulticlassClassificationModel"),
         },
     },
     "mixed": {
@@ -273,6 +279,9 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "rembo": ("bochan.models.classification.binary.high_dim", "REMBOBinaryClassificationMixedGPModel"),
             "rrp": ("bochan.models.classification.binary.robust", "OutlierRelevancePursuitBinaryClassificationMixedGPModel"),
             "hetero": ("bochan.models.classification.binary.robust", "HeteroscedasticBinaryClassificationMixedGPModel"),
+            "ngboost": ("bochan.models.classification.external", "NGBoostMixedBinaryClassificationModel"),
+            "ngboost_ensemble": ("bochan.models.classification.external", "NGBoostMixedBinaryEnsembleModel"),
+            "random_forest": ("bochan.models.classification.external", "RandomForestMixedBinaryClassificationModel"),
         },
         "ordinal": {
             "base": ("bochan.models.ordinal.base", "OrdinalMixedGPModel"),
@@ -298,6 +307,9 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "rembo": ("bochan.models.classification.multiclass.high_dim", "REMBOMulticlassClassificationMixedGPModel"),
             "rrp": ("bochan.models.classification.multiclass.robust", "OutlierRelevancePursuitMulticlassClassificationMixedGPModel"),
             "hetero": ("bochan.models.classification.multiclass.robust", "HeteroscedasticMulticlassClassificationMixedGPModel"),
+            "ngboost": ("bochan.models.classification.external", "NGBoostMixedMulticlassClassificationModel"),
+            "ngboost_ensemble": ("bochan.models.classification.external", "NGBoostMixedMulticlassEnsembleModel"),
+            "random_forest": ("bochan.models.classification.external", "RandomForestMixedMulticlassClassificationModel"),
         },
     },
 }

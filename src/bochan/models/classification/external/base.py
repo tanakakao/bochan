@@ -101,6 +101,11 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
     binary: bool
     _is_fitted: bool
 
+    def make_mll(self, **kwargs: Any) -> None:
+        """Signal that external classifiers are fitted directly without a GP MLL."""
+        del kwargs
+        return None
+
     def _configure_probability_acquisition_bridge(self) -> None:
         """Install the probability-space compatibility likelihood for binary AL."""
         if self.binary:

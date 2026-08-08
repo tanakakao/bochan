@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from .single_output import (
     _apply_regression_levelset_objective_to_score as _apply_objective_to_score,
+)
+from .single_output import (
     _is_joint_score,
     _objective_X_for_perturbed_score,
 )

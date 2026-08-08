@@ -2,6 +2,8 @@
 
 本章では `bochan` の高位APIから利用できる MES、JES、HVKG を整理します。これらは EI / UCB のように候補点そのものの改善量だけを見るのではなく、最適値・最適点・将来のPareto frontに関する情報価値を評価します。
 
+Knowledge Gradient (KG) も同じlook-ahead系として高位API統合されています。KGの `current_value`、multi-output scalarization、pending point、one-shot optimizationの詳細は `03c_knowledge_gradient.md` を参照してください。
+
 ## 1. Max-value Entropy Search (MES)
 
 MESは、未知の最大値 `f*` に関して候補点の観測がどれだけ情報を与えるかを評価します。
@@ -121,15 +123,32 @@ HVKGはone-shot acquisitionなので、高位APIはsequential optimizationへ変
 
 MES/JESはposteriorの最適値・最適点に対する情報量を扱うため、通常のMC `objective` を暗黙に適用しません。multi-outputをscalar化する場合は `posterior_transform` を明示します。
 
+KGはscalar terminal objectiveを扱います。単出力ではposterior meanをそのまま利用でき、multi-outputでは `objective` / `objective_config` / `objective_factory` または `posterior_transform` の明示が必要です。
+
 HVKGはmulti-objective objectiveを保持します。`MultiObjectiveConfig.scalarization_weights`によるgeneric scalarizationはHVKGでは無効化され、目的次元を保ったままhypervolumeを評価します。
 
 ## 5. Task routing
 
-short alias `mes` / `jes` / `hvkg` はregression系posteriorに限定します。binary / multiclass / ordinalへBoTorch標準実装を暗黙転送すると、確率空間・utility空間の意味が変わるためです。
+short alias `kg` / `mes` / `jes` / `hvkg` はregression系posteriorに限定します。binary / multiclass / ordinalへBoTorch標準実装を暗黙転送すると、確率空間・utility空間の意味が変わるためです。
 
 classification向け情報理論acquisitionはBALD、predictive entropyなど既存のtask-specific実装を利用します。
 
 ## 6. 利用例
+
+### KG
+
+```python
+acq = AcquisitionConfig(name="kg")
+opt = OptimizeConfig(q=1)
+
+X_next, value = optimizer.candidate(
+    acq,
+    opt,
+    data_context=DataContext(bounds=bounds),
+)
+```
+
+`current_value` はboundsから自動計算されます。詳細は `03c_knowledge_gradient.md` を参照してください。
 
 ### MES
 
@@ -184,10 +203,11 @@ X_next, value = optimizer.candidate(
 
 | 目的 | 手法 |
 |---|---|
+| 観測後の最終意思決定価値を高める | KG |
 | 最適値そのものの不確実性を減らす | MES |
 | 最適点と最適値を同時に特定する | JES |
 | multi-objectiveの将来Pareto frontを改善する | HVKG |
 | 直接的な改善量を重視する | LogEI / LogNEI |
 | Pareto hypervolumeの即時改善を重視する | LogEHVI / LogNEHVI |
 
-MES/JES/HVKGは一般にEI系より計算コストが高いため、1回の実験コストが高く情報価値を重視する材料探索で特に有効な候補です。
+KG/MES/JES/HVKGは一般にEI系より計算コストが高いため、1回の実験コストが高く情報価値を重視する材料探索で特に有効な候補です。

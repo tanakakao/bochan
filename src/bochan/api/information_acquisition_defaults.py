@@ -96,9 +96,19 @@ def _bounds_as_pairs(bounds: Any) -> list[tuple[float, float]]:
 
 
 def _training_dataset(bundle: ModelBundle) -> Any:
+    """Adapt bochan training tensors to BoTorch's metadata-aware dataset API."""
+
     from botorch.utils.datasets import SupervisedDataset
 
-    return SupervisedDataset(X=bundle.train_X, Y=bundle.train_Y)
+    n_features = int(bundle.train_X.shape[-1])
+    train_y = bundle.train_Y
+    n_outputs = int(train_y.shape[-1]) if train_y.ndim > 1 else 1
+    return SupervisedDataset(
+        X=bundle.train_X,
+        Y=train_y,
+        feature_names=[f"x_{idx}" for idx in range(n_features)],
+        outcome_names=[f"y_{idx}" for idx in range(n_outputs)],
+    )
 
 
 def _get_botorch_input_constructor(acqf_cls: type) -> Any:

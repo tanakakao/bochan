@@ -91,7 +91,14 @@ def test_normalizer_rejects_non_divisible_expansion() -> None:
         normalize_prediction_rows(torch.ones(5, 1), n_rows=2)
 
 
-def test_web_workflow_keeps_display_mean_and_installs_risk_baseline_adapter() -> None:
-    assert target_settings._as_2d is normalize_prediction_rows
-    assert target_results._as_2d is normalize_prediction_rows
-    assert web_workflows._workflows_tabular._as_2d is not normalize_prediction_rows
+def test_web_workflow_uses_source_level_prediction_row_normalization() -> None:
+    values = torch.tensor(
+        [[1.0], [3.0], [10.0], [14.0]],
+        dtype=torch.double,
+    )
+    expected = torch.tensor([[2.0], [12.0]], dtype=torch.double)
+
+    torch.testing.assert_close(target_settings._as_2d(values, n_rows=2), expected)
+    torch.testing.assert_close(target_results._as_2d(values, n_rows=2), expected)
+    assert target_results._as_2d is target_settings._as_2d
+    assert not hasattr(web_workflows._workflows_tabular, "_as_2d")

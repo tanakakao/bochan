@@ -73,6 +73,41 @@ function searchMethodFamilyFor(searchMethod: SearchMethod): SearchMethodFamily {
   return SEARCH_METHOD_OPTIONS.find((option) => option.value === searchMethod)?.family ?? "gradient";
 }
 
+function compactAcquisitionName(value: string): string {
+  return value.replace(/[_\-\s]/g, "").toLowerCase();
+}
+
+function levelSetParameter(name: string): {
+  label: string;
+  min: number;
+  defaultValue: number;
+  help: string;
+} {
+  const key = compactAcquisitionName(name);
+  if (key === "boundaryvariance") {
+    return {
+      label: "境界幅 τ",
+      min: 1e-12,
+      defaultValue: 1,
+      help: "小さいほど境界しきい値の近傍を強く重視します。"
+    };
+  }
+  if (key === "icu") {
+    return {
+      label: "Bandwidth",
+      min: 0,
+      defaultValue: 0,
+      help: "0では予測標準偏差を自動的に帯域幅として使用します。"
+    };
+  }
+  return {
+    label: "Straddle β",
+    min: 0,
+    defaultValue: 1.96,
+    help: "大きいほど不確実性を強く評価し、境界近傍から広めに探索します。"
+  };
+}
+
 /** Configures objectives, search space, constraints, acquisition, and candidate search. */
 export default function OptimizePage() {
   const {
@@ -126,6 +161,7 @@ export default function OptimizePage() {
   const sequentialForced = q > 1 && (
     selectedVariables.some((variable) => variable.type === "categorical")
     || searchMethod === "cmaes"
+    || (acquisitionFamily === "level_set_estimation" && inputPerturbation)
   );
 
   const acquisitionOptions = useMemo(() => {
@@ -146,6 +182,7 @@ export default function OptimizePage() {
     [acquisitionFamily, multiObjective]
   );
   const searchMethodFamily = searchMethodFamilyFor(searchMethod);
+  const lseParameter = levelSetParameter(acquisition);
   const availableSearchMethodFamilies = useMemo(
     () => SEARCH_METHOD_FAMILY_OPTIONS.filter((family) => (
       searchMethodOptions.some((method) => method.family === family.value)
@@ -176,6 +213,14 @@ export default function OptimizePage() {
       setAcquisition("variance");
     } else {
       setAcquisition("straddle");
+      setBeta(levelSetParameter("straddle").defaultValue);
+    }
+  }
+
+  function changeAcquisition(nextAcquisition: string) {
+    setAcquisition(nextAcquisition);
+    if (acquisitionFamily === "level_set_estimation") {
+      setBeta(levelSetParameter(nextAcquisition).defaultValue);
     }
   }
 
@@ -203,6 +248,22 @@ export default function OptimizePage() {
     ) {
       errors.push("レベルセット推定では、最適化対象ごとに以上・以下・目標値のいずれかを設定してください。");
     }
+    if (acquisitionFamily === "level_set_estimation") {
+      const key = compactAcquisitionName(acquisition);
+      if (!Number.isFinite(beta) || beta < 0) {
+        errors.push("LSEの獲得関数パラメータは0以上の有限値にしてください。");
+      } else if (key === "boundaryvariance" && beta <= 0) {
+        errors.push("Boundary Varianceのτは0より大きくしてください。");
+      }
+      const levelSetWeights = optimizedTargetSettings.map(
+        (setting) => Number(setting.level_set_weight ?? 1)
+      );
+      if (levelSetWeights.some((weight) => !Number.isFinite(weight) || weight < 0)) {
+        errors.push("LSEの境界重みは0以上の有限値にしてください。");
+      } else if (levelSetWeights.reduce((sum, weight) => sum + weight, 0) <= 0) {
+        errors.push("LSEの境界重みは少なくとも1つを0より大きくしてください。");
+      }
+    }
     if (searchMethod === "nsgaii" && (!multiObjective || acquisitionFamily !== "bayesian_optimization")) {
       errors.push("NSGA-IIは多目的ベイズ最適化の場合にのみ選択できます。");
     }
@@ -218,7 +279,9 @@ export default function OptimizePage() {
     }
     return errors;
   }, [
+    acquisition,
     acquisitionFamily,
+    beta,
     candidateSettingsValid,
     minimumCandidateDistanceRatio,
     modelType,
@@ -312,12 +375,27 @@ export default function OptimizePage() {
           </label>
           <label>
             獲得関数
-            <select value={acquisition} onChange={(event) => setAcquisition(event.target.value)} disabled={searchMethod === "nsgaii"}>
+            <select value={acquisition} onChange={(event) => changeAcquisition(event.target.value)} disabled={searchMethod === "nsgaii"}>
               {acquisitionOptions.map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
           </label>
           {acquisition.toUpperCase().includes("UCB") && searchMethod !== "nsgaii" && (
             <label>Beta<input type="number" min={0} step="any" value={beta} onChange={(event) => setBeta(Number(event.target.value))} /></label>
+          )}
+          {acquisitionFamily === "level_set_estimation" && (
+            <>
+              <label>
+                {lseParameter.label}
+                <input
+                  type="number"
+                  min={lseParameter.min}
+                  step="any"
+                  value={beta}
+                  onChange={(event) => setBeta(Number(event.target.value))}
+                />
+              </label>
+              <small className="settings-note">{lseParameter.help}</small>
+            </>
           )}
           <p className="settings-note">
             {searchMethod === "nsgaii" && "NSGA-II選択時は、内部的にNSGA-II用のベクトル獲得戦略へ切り替えます。"}
@@ -368,7 +446,7 @@ export default function OptimizePage() {
           </label>
           <p className="settings-note">
             q &gt; 1で有効にすると、選択済み候補をpendingとして次候補を順番に探索します。
-            カテゴリ変数とCMA-ESでは自動的に有効になります。
+            カテゴリ変数、CMA-ES、LSE + 入力摂動では自動的に有効になります。
           </p>
           <label>
             最小候補間距離（探索範囲比 %）
@@ -400,7 +478,8 @@ export default function OptimizePage() {
           </div>
           <div className="transform-fields">
             <InputPerturbationRiskSettingsControl
-              disabled={acquisitionFamily !== "bayesian_optimization"}
+              acquisitionFamily={acquisitionFamily}
+              disabled={acquisitionFamily === "active_learning"}
             />
           </div>
         </article>

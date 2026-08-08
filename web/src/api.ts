@@ -286,6 +286,12 @@ function validateTargetSetting(setting: TargetSetting): string | null {
   if (setting.direction !== "maximize" && setting.direction !== "minimize") {
     return `${setting.target}: 最大化または最小化を選択してください。`;
   }
+  if (
+    setting.level_set_weight !== undefined &&
+    (!Number.isFinite(Number(setting.level_set_weight)) || Number(setting.level_set_weight) < 0)
+  ) {
+    return `${setting.target}: LSEの境界重みは0以上の有限値にしてください。`;
+  }
   if (setting.task_type === "regression") {
     if (setting.goal !== "none" && !Number.isFinite(Number(setting.value))) {
       return `${setting.target}: 回帰のしきい値または目標値を数値で指定してください。`;
@@ -358,7 +364,10 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
   if (!Number.isFinite(perturbationRisk.alpha) || perturbationRisk.alpha <= 0 || perturbationRisk.alpha > 1) {
     throw new Error("VaR/CVaRのαは0より大きく1以下にしてください。");
   }
-  const riskSupported = input.inputPerturbation && input.acquisitionFamily === "bayesian_optimization";
+  const riskSupported = input.inputPerturbation && (
+    input.acquisitionFamily === "bayesian_optimization" ||
+    input.acquisitionFamily === "level_set_estimation"
+  );
   const effectiveRiskType = riskSupported ? perturbationRisk.riskType : "none";
 
   const featureMissing = loadFeatureMissingSettings();
@@ -462,6 +471,9 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
         beta: input.beta,
         acqf_kwargs: {
           web_family: input.acquisitionFamily,
+          ...(input.acquisitionFamily === "level_set_estimation"
+            ? { web_level_set_parameter: input.beta }
+            : {}),
           web_risk_type: effectiveRiskType,
           web_risk_alpha: perturbationRisk.alpha
         }
@@ -474,7 +486,8 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
         sequential:
           Boolean(input.sequential ?? true) ||
           input.searchSpace.some((variable) => variable.type === "categorical") ||
-          searchMethod === "cmaes",
+          searchMethod === "cmaes" ||
+          (input.acquisitionFamily === "level_set_estimation" && input.inputPerturbation),
         minimum_candidate_distance_ratio: minimumCandidateDistanceRatio
       },
       // Target missing values still use the automatic target policy. Feature

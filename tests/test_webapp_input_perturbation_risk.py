@@ -5,20 +5,16 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-import bochan.api.engine as engine
-from bochan.api import (
-    AcquisitionConfig,
-    InputTransformConfig,
-    ModelBundle,
-    ModelConfig,
-    ObjectiveConfig,
-)
-from bochan.serving.webapp import workflows as web_workflows
+from bochan.api import ObjectiveConfig
 from bochan.serving.webapp.risk_settings import (
+    apply_web_risk_to_objective_config,
     attach_web_risk_metadata,
     current_web_risk_report,
+    normalize_web_prediction_rows,
+    resolve_web_risk_settings,
     web_risk_run,
 )
+from bochan.serving.webapp.workflows_tabular import _acquisition_family
 
 
 def _request(
@@ -40,29 +36,6 @@ def _request(
     )
 
 
-def _bundle(*, n_w: int = 4) -> ModelBundle:
-    train_x = torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.double)
-    train_y = torch.zeros(3, 1, dtype=torch.double)
-    model_config = ModelConfig(
-        task_type="regression",
-        model_type="base",
-        input_transform_config=InputTransformConfig(
-            normalize=True,
-            perturbation=True,
-            n_w=n_w,
-        ),
-        outcome_transform=False,
-    )
-    return ModelBundle(
-        model=SimpleNamespace(num_outputs=1),
-        train_X=train_x,
-        train_Y=train_y,
-        model_config=model_config,
-        task_type="regression",
-        model_type="base",
-    )
-
-
 def test_web_risk_context_normalizes_request_settings() -> None:
     with web_risk_run(_request(risk_type="var", alpha=0.4)) as report:
         assert report == {
@@ -77,54 +50,53 @@ def test_web_risk_context_normalizes_request_settings() -> None:
     assert current_web_risk_report() == {}
 
 
+def test_web_risk_allows_level_set_estimation() -> None:
+    report = resolve_web_risk_settings(
+        _request(family="level_set_estimation", risk_type="cvar")
+    )
+    assert report["risk_enabled"] is True
+    assert report["acquisition_family"] == "level_set_estimation"
+
+
 def test_web_risk_requires_input_perturbation() -> None:
     with pytest.raises(ValueError, match="requires input_perturbation"):
-        with web_risk_run(_request(perturbation=False)):
-            pass
+        resolve_web_risk_settings(_request(perturbation=False))
 
 
-def test_web_risk_rejects_unsupported_acquisition_family() -> None:
-    with pytest.raises(ValueError, match="only for Bayesian optimization"):
-        with web_risk_run(_request(family="active_learning")):
-            pass
+def test_web_risk_rejects_active_learning() -> None:
+    with pytest.raises(ValueError, match="Bayesian optimization or level-set estimation"):
+        resolve_web_risk_settings(_request(family="active_learning"))
 
 
 def test_web_risk_keys_are_removed_before_acquisition_construction() -> None:
     kwargs = {
-        "web_family": "bayesian_optimization",
+        "web_family": "level_set_estimation",
         "web_risk_type": "cvar",
         "web_risk_alpha": 0.25,
     }
 
-    family = web_workflows._workflows_tabular._acquisition_family(kwargs)
+    family = _acquisition_family(kwargs)
 
-    assert family == "bayesian_optimization"
+    assert family == "level_set_estimation"
     assert kwargs == {}
 
 
-def test_web_risk_is_applied_to_objective_config() -> None:
-    config = AcquisitionConfig(
-        name="EI",
-        objective_config=ObjectiveConfig(mode="scalar", output=0),
-    )
+def test_web_risk_is_applied_to_objective_config_without_engine_patch() -> None:
+    config = ObjectiveConfig(mode="scalar", output=0)
+    report = resolve_web_risk_settings(_request(risk_type="cvar", alpha=0.25))
 
-    with web_risk_run(_request(risk_type="cvar", alpha=0.25)):
-        resolved = engine._resolve_objective_config_n_w_from_input_transform(
-            acq_config=config,
-            bundle=_bundle(n_w=8),
-        )
+    resolved = apply_web_risk_to_objective_config(config, report)
 
-    assert resolved.objective_config is not None
-    assert resolved.objective_config.n_w == 8
-    assert resolved.objective_config.risk_type == "cvar"
-    assert resolved.objective_config.alpha == 0.25
+    assert resolved is not config
+    assert resolved.risk_type == "cvar"
+    assert resolved.alpha == 0.25
 
 
 def test_workflow_baseline_uses_same_cvar_aggregation() -> None:
     values = torch.tensor([[1.0], [2.0], [8.0], [9.0]], dtype=torch.double)
+    report = resolve_web_risk_settings(_request(risk_type="cvar", alpha=0.5))
 
-    with web_risk_run(_request(risk_type="cvar", alpha=0.5)):
-        actual = web_workflows._workflows_tabular._as_2d(values, n_rows=1)
+    actual = normalize_web_prediction_rows(values, n_rows=1, report=report)
 
     torch.testing.assert_close(
         actual,

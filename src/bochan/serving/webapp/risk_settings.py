@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import replace
-from typing import Any, Iterator
+from typing import Any
 
 from .prediction_shapes import normalize_prediction_rows
 
@@ -15,9 +16,6 @@ _STATE: ContextVar[dict[str, Any] | None] = ContextVar(
     "bochan_web_input_perturbation_risk",
     default=None,
 )
-_ORIGINAL_ACQUISITION_FAMILY: Any | None = None
-_ORIGINAL_OBJECTIVE_RESOLVER: Any | None = None
-_INSTALLED = False
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -32,7 +30,9 @@ def _mapping(value: Any) -> dict[str, Any]:
     return dict(vars(value))
 
 
-def _request_settings(request: Any) -> dict[str, Any]:
+def resolve_web_risk_settings(request: Any) -> dict[str, Any]:
+    """Normalize Web risk markers without modifying API or workflow functions."""
+
     acquisition = _mapping(getattr(request, "acquisition", None))
     kwargs = _mapping(acquisition.get("acqf_kwargs"))
     risk_type = str(kwargs.get(_WEB_RISK_TYPE_KEY, "none")).lower()
@@ -51,10 +51,10 @@ def _request_settings(request: Any) -> dict[str, Any]:
     enabled = input_perturbation and risk_type in {"var", "cvar"}
     if not input_perturbation and risk_type != "none":
         raise ValueError("VaR/CVaR requires input_perturbation=true.")
-    if enabled and family != "bayesian_optimization":
+    if enabled and family not in {"bayesian_optimization", "level_set_estimation"}:
         raise ValueError(
-            "VaR/CVaR input perturbation risk is currently available only for "
-            "Bayesian optimization in the Web workbench."
+            "VaR/CVaR input perturbation risk is available for Bayesian optimization "
+            "or level-set estimation in the Web workbench."
         )
 
     return {
@@ -68,9 +68,9 @@ def _request_settings(request: Any) -> dict[str, Any]:
 
 @contextmanager
 def web_risk_run(request: Any) -> Iterator[dict[str, Any]]:
-    """Activate one request's Web-only input-perturbation risk settings."""
+    """Activate one request's Web input-perturbation risk metadata."""
 
-    state = _request_settings(request)
+    state = resolve_web_risk_settings(request)
     token = _STATE.set(state)
     try:
         yield state
@@ -84,83 +84,36 @@ def current_web_risk_report() -> dict[str, Any]:
     return dict(_STATE.get() or {})
 
 
-def _risk_aware_objective_rows(value: Any, *, n_rows: int) -> Any:
-    """Aggregate objective-space baseline predictions with the active risk rule."""
+def apply_web_risk_to_objective_config(
+    objective_config: Any,
+    report: dict[str, Any],
+) -> Any:
+    """Return a BO ObjectiveConfig carrying explicit Web VaR/CVaR settings."""
 
-    state = _STATE.get() or {}
-    risk_type = state.get("risk_type") if state.get("risk_enabled") else None
+    if objective_config is None or not report.get("risk_enabled"):
+        return objective_config
+    return replace(
+        objective_config,
+        risk_type=str(report["risk_type"]),
+        alpha=float(report["risk_alpha"]),
+    )
+
+
+def normalize_web_prediction_rows(
+    value: Any,
+    *,
+    n_rows: int,
+    report: dict[str, Any],
+) -> Any:
+    """Aggregate InputPerturbation-expanded baseline values explicitly."""
+
+    risk_type = str(report.get("risk_type")) if report.get("risk_enabled") else None
     return normalize_prediction_rows(
         value,
         n_rows=n_rows,
         risk_type=risk_type,
-        alpha=float(state.get("risk_alpha", 0.2)),
+        alpha=float(report.get("risk_alpha", 0.2)),
     )
-
-
-def _install_acquisition_kwargs_adapter(workflows_module: Any) -> None:
-    global _ORIGINAL_ACQUISITION_FAMILY
-
-    if _ORIGINAL_ACQUISITION_FAMILY is not None:
-        return
-    _ORIGINAL_ACQUISITION_FAMILY = workflows_module._acquisition_family
-
-    def acquisition_family(acqf_kwargs: dict[str, Any]) -> str:
-        acqf_kwargs.pop(_WEB_RISK_TYPE_KEY, None)
-        acqf_kwargs.pop(_WEB_RISK_ALPHA_KEY, None)
-        return _ORIGINAL_ACQUISITION_FAMILY(acqf_kwargs)
-
-    workflows_module._acquisition_family = acquisition_family
-
-
-def _install_objective_adapter() -> None:
-    global _ORIGINAL_OBJECTIVE_RESOLVER
-
-    if _ORIGINAL_OBJECTIVE_RESOLVER is not None:
-        return
-
-    import bochan.api.engine as engine
-
-    _ORIGINAL_OBJECTIVE_RESOLVER = (
-        engine._resolve_objective_config_n_w_from_input_transform
-    )
-
-    def resolve_objective_config(*, acq_config: Any, bundle: Any) -> Any:
-        resolved = _ORIGINAL_OBJECTIVE_RESOLVER(
-            acq_config=acq_config,
-            bundle=bundle,
-        )
-        state = _STATE.get() or {}
-        if not state.get("risk_enabled"):
-            return resolved
-        objective_config = resolved.objective_config
-        if objective_config is None:
-            raise RuntimeError(
-                "The selected acquisition does not expose a risk-aware objective."
-            )
-        return replace(
-            resolved,
-            objective_config=replace(
-                objective_config,
-                risk_type=str(state["risk_type"]),
-                alpha=float(state["risk_alpha"]),
-            ),
-        )
-
-    engine._resolve_objective_config_n_w_from_input_transform = resolve_objective_config
-
-
-def install_web_risk_adapters(workflows_module: Any) -> None:
-    """Install request-local Web adapters without changing the public API schema."""
-
-    global _INSTALLED
-
-    if _INSTALLED:
-        workflows_module._as_2d = _risk_aware_objective_rows
-        return
-    _install_acquisition_kwargs_adapter(workflows_module)
-    _install_objective_adapter()
-    workflows_module._as_2d = _risk_aware_objective_rows
-    _INSTALLED = True
 
 
 def attach_web_risk_metadata(
@@ -182,8 +135,10 @@ def attach_web_risk_metadata(
 
 
 __all__ = [
+    "apply_web_risk_to_objective_config",
     "attach_web_risk_metadata",
     "current_web_risk_report",
-    "install_web_risk_adapters",
+    "normalize_web_prediction_rows",
+    "resolve_web_risk_settings",
     "web_risk_run",
 ]

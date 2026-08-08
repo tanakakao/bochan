@@ -318,17 +318,81 @@ def _observed_multiobjective_values(
 
 
 def _make_default_ref_point(values: Any, margin: float = 0.1) -> Any:
-    """Create a maximization-space reference point below all observed values."""
+    """Create a reference point from finite observations per objective.
 
-    return (values.min(dim=-2).values - float(margin)).detach()
+    Wide multi-task targets may contain cell-wise NaNs for unobserved tasks.
+    A reference point only needs an observed lower bound for each objective,
+    so missing cells are ignored independently for every output.
+    """
+
+    import torch
+
+    tensor = values if torch.is_tensor(values) else torch.as_tensor(values)
+    if tensor.ndim != 2:
+        raise ValueError(
+            "Observed multi-objective values must have shape [n, m]. "
+            f"Got shape={tuple(tensor.shape)}."
+        )
+    if not torch.is_floating_point(tensor):
+        tensor = tensor.to(dtype=torch.get_default_dtype())
+
+    finite = torch.isfinite(tensor)
+    observed_outputs = finite.any(dim=-2)
+    if not bool(observed_outputs.all()):
+        missing_outputs = torch.where(~observed_outputs)[0].detach().cpu().tolist()
+        raise ValueError(
+            "Cannot infer a multi-objective reference point because some "
+            "objectives have no finite observations. Missing output indices: "
+            f"{missing_outputs}."
+        )
+
+    safe_values = torch.where(
+        finite,
+        tensor,
+        torch.full_like(tensor, float("inf")),
+    )
+    return (safe_values.min(dim=-2).values - float(margin)).detach()
 
 
 def _make_partitioning(ref_point: Any, values: Any) -> Any:
+    """Build EHVI partitioning from jointly observed objective vectors.
+
+    Cell-wise NaNs are valid training inputs for wide multi-task models, but an
+    EHVI Pareto point must contain every objective at the same input. Incomplete
+    rows are therefore excluded rather than imputed silently.
+    """
+
+    import torch
     from botorch.utils.multi_objective.box_decompositions.non_dominated import (
         FastNondominatedPartitioning,
     )
 
-    return FastNondominatedPartitioning(ref_point=ref_point, Y=values)
+    tensor = values if torch.is_tensor(values) else torch.as_tensor(values)
+    if tensor.ndim != 2:
+        raise ValueError(
+            "Observed multi-objective values must have shape [n, m]. "
+            f"Got shape={tuple(tensor.shape)}."
+        )
+
+    finite = torch.isfinite(tensor)
+    complete_rows = finite.all(dim=-1)
+    if not bool(complete_rows.any()):
+        observed_counts = finite.sum(dim=0).detach().cpu().tolist()
+        raise ValueError(
+            "EHVI requires at least one training row with finite values for every "
+            "objective. Wide multi-task fitting accepts cell-wise NaN targets and "
+            "omits those individual observations, but Pareto partitioning cannot "
+            "use an incomplete objective vector. "
+            f"Finite observation counts by output: {observed_counts}. "
+            "Add at least one jointly observed row, use qNEHVI with the model "
+            "baseline, or provide an explicit partitioning."
+        )
+
+    complete_values = tensor[complete_rows]
+    return FastNondominatedPartitioning(
+        ref_point=ref_point,
+        Y=complete_values,
+    )
 
 
 def observed_multiobjective_values(

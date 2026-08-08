@@ -193,7 +193,8 @@ function applyContextRailState(
   button.setAttribute("aria-expanded", String(!collapsed));
   button.setAttribute("aria-label", collapsed ? "右サイドバーを開く" : "右サイドバーを折り畳む");
   button.title = collapsed ? "設定サマリーを開く" : "設定サマリーを折り畳む";
-  button.textContent = collapsed ? "‹" : "›";
+  const icon = collapsed ? "‹" : "›";
+  if (button.textContent !== icon) button.textContent = icon;
 }
 
 function syncBusyProgress(): void {
@@ -348,7 +349,7 @@ function stopProgressPolling(): void {
 
 function installInlineValidation(): void {
   document.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select").forEach((control) => {
-    validateControl(control);
+    if (!control.closest(".search-variable-table")) validateControl(control);
   });
   validateSearchSpaceRows();
   validateSelectionPanels();
@@ -403,30 +404,35 @@ function validateSearchSpaceRows(): void {
 
     const lowerValue = lower && lower.value !== "" ? Number(lower.value) : null;
     const upperValue = upper && upper.value !== "" ? Number(upper.value) : null;
-    if (lower && upper && lowerValue !== null && upperValue !== null && lowerValue >= upperValue) {
-      setFieldError(lower, "下限は上限より小さくしてください。");
-      setFieldError(upper, "上限は下限より大きくしてください。");
+    const invalidBounds = lowerValue !== null && upperValue !== null && lowerValue >= upperValue;
+    if (lower) setFieldError(lower, invalidBounds ? "下限は上限より小さくしてください。" : null);
+    if (upper) setFieldError(upper, invalidBounds ? "上限は下限より大きくしてください。" : null);
+
+    if (step) {
+      const invalidStep = step.value !== "" && Number(step.value) <= 0;
+      setFieldError(step, invalidStep ? "刻みは0より大きくしてください。" : null);
     }
 
-    if (step && step.value !== "" && Number(step.value) <= 0) {
-      setFieldError(step, "刻みは0より大きくしてください。");
-    }
-
-    if (fixedToggle?.checked) {
-      if (fixedNumber) {
+    if (fixedNumber) {
+      let fixedError: string | null = null;
+      if (fixedToggle?.checked) {
         const fixed = fixedNumber.value !== "" ? Number(fixedNumber.value) : null;
         if (fixed === null || !Number.isFinite(fixed)) {
-          setFieldError(fixedNumber, "固定値を入力してください。");
+          fixedError = "固定値を入力してください。";
         } else if (
           lowerValue !== null && upperValue !== null &&
           (fixed < lowerValue || fixed > upperValue)
         ) {
-          setFieldError(fixedNumber, "固定値は探索範囲内にしてください。");
+          fixedError = "固定値は探索範囲内にしてください。";
         }
       }
-      if (fixedCategory && fixedCategory.value === "") {
-        setFieldError(fixedCategory, "固定するカテゴリを選択してください。");
-      }
+      setFieldError(fixedNumber, fixedError);
+    }
+    if (fixedCategory) {
+      const fixedCategoryError = fixedToggle?.checked && fixedCategory.value === ""
+        ? "固定するカテゴリを選択してください。"
+        : null;
+      setFieldError(fixedCategory, fixedCategoryError);
     }
   });
 }
@@ -445,9 +451,10 @@ function validateSelectionPanels(): void {
       message.className = "panel-inline-validation";
       panel.append(message);
     }
-    message.textContent = heading.includes("目的")
+    const text = heading.includes("目的")
       ? "目的変数を1つ以上選択してください。"
       : "説明変数を1つ以上選択してください。";
+    if (message.textContent !== text) message.textContent = text;
   });
 }
 
@@ -511,14 +518,14 @@ export function installUxEnhancementsRuntime(): void {
   document.addEventListener("input", (event) => {
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) {
-      validateControl(target);
+      if (!target.closest(".search-variable-table")) validateControl(target);
       validateSearchSpaceRows();
     }
   }, true);
   document.addEventListener("change", (event) => {
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) {
-      validateControl(target);
+      if (!target.closest(".search-variable-table")) validateControl(target);
       validateSearchSpaceRows();
       scheduleSync();
     }
@@ -526,7 +533,7 @@ export function installUxEnhancementsRuntime(): void {
   document.addEventListener("blur", (event) => {
     const target = event.target;
     if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement) {
-      validateControl(target);
+      if (!target.closest(".search-variable-table")) validateControl(target);
       validateSearchSpaceRows();
     }
   }, true);

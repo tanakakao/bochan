@@ -28,6 +28,7 @@ from .hetero_single_output import (
     qHeteroOrdinalExpectedUtilityUpperConfidenceBound,
     qHeteroOrdinalProbabilityOfImprovement,
 )
+from .knowledge_gradient import qOrdinalKnowledgeGradient
 
 # Keep q=1 sequential optimization shape handling aligned across classification
 # and ordinal NParEGO implementations.
@@ -351,6 +352,7 @@ __all__ = [
     "qOrdinalExpectedImprovement",
     "qOrdinalProbabilityOfImprovement",
     "qOrdinalUpperConfidenceBound",
+    "qOrdinalKnowledgeGradient",
     "qOrdinalProbabilityOfFeasibility",
     "compute_ordinal_expected_utility_best_f",
 ]

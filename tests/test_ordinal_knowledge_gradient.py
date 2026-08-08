@@ -17,7 +17,10 @@ class _CorrelatedOrdinalLatentModel(Model):
         super().__init__()
         self.ordinal_likelihood = OrdinalLogitLikelihood(num_classes=num_classes)
         self.likelihood = self.ordinal_likelihood
-        self.num_outputs = 1
+
+    @property
+    def num_outputs(self) -> int:
+        return 1
 
     @property
     def batch_shape(self) -> torch.Size:

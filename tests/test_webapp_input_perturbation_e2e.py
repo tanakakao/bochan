@@ -24,8 +24,9 @@ def _store_with_regression_data() -> tuple[DatasetStore, str]:
     return store, record.dataset_id
 
 
-def test_web_regression_runs_end_to_end_with_input_perturbation() -> None:
-    """The browser defaults must accept InputPerturbation end to end."""
+@pytest.mark.parametrize("risk_type", ["none", "var", "cvar"])
+def test_web_regression_runs_end_to_end_with_input_perturbation(risk_type: str) -> None:
+    """Browser-default BO must support every Web InputPerturbation risk mode."""
 
     torch.manual_seed(0)
     store, dataset_id = _store_with_regression_data()
@@ -67,7 +68,7 @@ def test_web_regression_runs_end_to_end_with_input_perturbation() -> None:
             "beta": 2.0,
             "acqf_kwargs": {
                 "web_family": "bayesian_optimization",
-                "web_risk_type": "none",
+                "web_risk_type": risk_type,
                 "web_risk_alpha": 0.2,
             },
         },
@@ -84,5 +85,5 @@ def test_web_regression_runs_end_to_end_with_input_perturbation() -> None:
 
     assert result["candidates"]
     assert len(result["candidates"]) == 3
-    assert result["metadata"]["input_perturbation_risk_type"] == "none"
-    assert result["metadata"]["input_perturbation_risk_enabled"] is False
+    assert result["metadata"]["input_perturbation_risk_type"] == risk_type
+    assert result["metadata"]["input_perturbation_risk_enabled"] is (risk_type != "none")

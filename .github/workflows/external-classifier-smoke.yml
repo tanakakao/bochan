@@ -1,0 +1,47 @@
+name: External classifier smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/bochan/models/external/**"
+      - "src/bochan/models/classification/external/**"
+      - "src/bochan/posteriors/classification_ensemble.py"
+      - "src/bochan/api/model_registry.py"
+      - "tests/test_external_binary_classification_models.py"
+      - "tests/test_external_multiclass_classification_models.py"
+      - ".github/workflows/external-classifier-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[test,api]"
+      - name: Run external classifier tests
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_external_binary_classification_models.py \
+            tests/test_external_multiclass_classification_models.py \
+            tests/test_ngboost_models.py \
+            tests/test_ngboost_mixed_models.py \
+            tests/test_random_forest_models.py \
+            tests/test_random_forest_mixed_models.py
+      - name: Lint external classifier modules
+        run: |
+          python -m pip install ruff
+          ruff check \
+            src/bochan/models/external \
+            src/bochan/models/classification/external \
+            src/bochan/models/regression/boosting/common.py \
+            src/bochan/posteriors/classification_ensemble.py \
+            tests/test_external_binary_classification_models.py \
+            tests/test_external_multiclass_classification_models.py

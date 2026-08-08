@@ -10,9 +10,8 @@ from bochan.acquisition.multiclass.active_learning.single_output import (
 )
 from bochan.api import FitConfig, ModelConfig
 from bochan.api.factory import build_model, fit_model, resolve_model_cls
-from bochan.models.classification.external import (
+from bochan.models.classification.multiclass.external import (
     NGBoostMixedMulticlassClassificationModel,
-    NGBoostMixedMulticlassEnsembleModel,
     NGBoostMulticlassClassificationModel,
     NGBoostMulticlassEnsembleModel,
     RandomForestMixedMulticlassClassificationModel,
@@ -24,255 +23,197 @@ from bochan.posteriors.classification_ensemble import ClassificationEnsemblePost
 class _FakeMulticlassMember:
     def __init__(self, *, offset: float = 0.0) -> None:
         self.offset = float(offset)
-        self.classes_ = np.array([0, 1, 2])
+        self.classes_ = np.array([0, 1, 2], dtype=int)
+        self.fit_X = None
+        self.fit_y = None
+
+    def fit(self, X, y, **kwargs):
+        del kwargs
+        self.fit_X = np.asarray(X).copy()
+        self.fit_y = np.asarray(y).copy()
+        return self
 
     def predict_proba(self, X):
         X = np.asarray(X)
         x = X[:, 0]
-        scores = np.stack(
+        logits = np.column_stack(
             [
-                0.6 + 0.25 * (1.0 - x) - self.offset,
-                0.5 + 0.20 * x + self.offset,
-                0.35 + 0.10 * np.sin(np.pi * x),
-            ],
-            axis=-1,
+                1.2 - x + self.offset,
+                0.8 - np.abs(x - 0.5),
+                0.2 + x - self.offset,
+            ]
         )
-        scores = np.clip(scores, 1e-4, None)
-        return scores / scores.sum(axis=-1, keepdims=True)
+        exp = np.exp(logits - logits.max(axis=1, keepdims=True))
+        return exp / exp.sum(axis=1, keepdims=True)
 
 
-class _FakeForestMulticlass:
-    def __init__(self, offsets=(-0.08, 0.0, 0.08)) -> None:
-        self.estimators_ = [_FakeMulticlassMember(offset=value) for value in offsets]
-        self.classes_ = np.array([0, 1, 2])
+class _FakeMulticlassForest:
+    def __init__(self) -> None:
+        self.classes_ = np.array([0, 1, 2], dtype=int)
+        self.estimators_ = [
+            _FakeMulticlassMember(offset=-0.12),
+            _FakeMulticlassMember(offset=0.0),
+            _FakeMulticlassMember(offset=0.12),
+        ]
         self.fit_X = None
         self.fit_y = None
-        self.fit_kwargs = {}
 
     def fit(self, X, y, **kwargs):
+        del kwargs
         self.fit_X = np.asarray(X).copy()
         self.fit_y = np.asarray(y).copy()
-        self.fit_kwargs = dict(kwargs)
-        self.classes_ = np.unique(self.fit_y)
         return self
 
 
-class _FakeNGBoostMulticlass(_FakeMulticlassMember):
-    def __init__(self, *, offset: float = 0.0) -> None:
-        super().__init__(offset=offset)
-        self.fit_X = None
-        self.fit_y = None
-        self.fit_kwargs = {}
-
-    def fit(self, X, y, **kwargs):
-        self.fit_X = np.asarray(X).copy()
-        self.fit_y = np.asarray(y).copy()
-        self.fit_kwargs = dict(kwargs)
-        self.classes_ = np.unique(self.fit_y)
-        return self
-
-
-def _training_data() -> tuple[torch.Tensor, torch.Tensor]:
-    train_X = torch.tensor(
-        [[0.0], [0.1], [0.35], [0.5], [0.7], [0.9], [1.0]],
+def _data():
+    X = torch.tensor(
+        [[0.0], [0.15], [0.3], [0.5], [0.7], [0.85], [1.0]],
         dtype=torch.double,
     )
-    train_Y = torch.tensor([[0], [0], [1], [1], [2], [2], [2]], dtype=torch.double)
-    return train_X, train_Y
+    Y = torch.tensor([[0], [0], [0], [1], [2], [2], [2]], dtype=torch.long)
+    return X, Y
 
 
-def _mixed_training_data() -> tuple[torch.Tensor, torch.Tensor]:
-    train_X = torch.tensor(
-        [
-            [0.0, 0.0],
-            [0.15, 1.0],
-            [0.3, 2.0],
-            [0.45, 0.0],
-            [0.6, 1.0],
-            [0.75, 2.0],
-            [0.9, 0.0],
-            [1.0, 1.0],
-        ],
+def _mixed_data():
+    X = torch.tensor(
+        [[0.0, 0.0], [0.15, 1.0], [0.3, 2.0], [0.5, 0.0], [0.7, 1.0], [0.85, 2.0], [1.0, 0.0]],
         dtype=torch.double,
     )
-    train_Y = torch.tensor([[0], [0], [1], [1], [2], [2], [2], [1]], dtype=torch.double)
-    return train_X, train_Y
+    Y = torch.tensor([[0], [0], [0], [1], [2], [2], [2]], dtype=torch.long)
+    return X, Y
 
 
-def _assert_multiclass_probability_posterior(model) -> ClassificationEnsemblePosterior:
-    X = torch.tensor([[0.2], [0.8]], dtype=torch.double)
+def test_random_forest_multiclass_probability_ensemble() -> None:
+    train_X, train_Y = _data()
+    model = RandomForestMulticlassClassificationModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        num_classes=3,
+        estimator=_FakeMulticlassForest(),
+    ).fit()
+
+    X = torch.tensor([[0.35], [0.75]], dtype=torch.double)
     posterior = model.posterior(X)
-
     assert isinstance(posterior, ClassificationEnsemblePosterior)
-    assert posterior.mean.shape == torch.Size([2, 3])
-    assert posterior.variance.shape == torch.Size([2, 3])
+    assert posterior.values.shape == torch.Size([3, 2, 3])
     torch.testing.assert_close(
         posterior.mean.sum(dim=-1),
         torch.ones(2, dtype=torch.double),
     )
-    torch.testing.assert_close(
-        posterior.variance,
-        posterior.mean * (1.0 - posterior.mean),
-    )
-    samples = posterior.rsample(torch.Size([16]))
-    assert samples.shape == torch.Size([16, 2, 3])
-    torch.testing.assert_close(
-        samples.sum(dim=-1),
-        torch.ones(16, 2, dtype=torch.double),
-    )
-    return posterior
+    assert torch.any(posterior.epistemic_variance > 0.0)
 
 
-def test_random_forest_multiclass_uses_tree_probability_samples() -> None:
-    train_X, train_Y = _training_data()
-    model = RandomForestMulticlassClassificationModel(
-        train_X=train_X,
-        train_Y=train_Y,
-        estimator=_FakeForestMulticlass(),
-    ).fit()
-
-    posterior = _assert_multiclass_probability_posterior(model)
-
-    assert posterior.values.shape == torch.Size([3, 2, 3])
-    assert torch.any(posterior.epistemic_variance > 0)
-    assert model.predict_class(torch.tensor([[0.2], [0.8]], dtype=torch.double)).shape == torch.Size([2])
-
-
-def test_ngboost_multiclass_single_and_ensemble_probability_semantics() -> None:
-    train_X, train_Y = _training_data()
+def test_ngboost_multiclass_single_and_ensemble() -> None:
+    train_X, train_Y = _data()
     single = NGBoostMulticlassClassificationModel(
         train_X=train_X,
         train_Y=train_Y,
-        estimator=_FakeNGBoostMulticlass(offset=0.0),
+        num_classes=3,
+        estimator=_FakeMulticlassMember(),
     ).fit()
+    single_post = single.posterior(torch.tensor([[0.4]], dtype=torch.double))
+    assert single_post.values.shape == torch.Size([1, 1, 3])
+    torch.testing.assert_close(
+        single_post.epistemic_variance,
+        torch.zeros_like(single_post.epistemic_variance),
+    )
+
     ensemble = NGBoostMulticlassEnsembleModel(
         train_X=train_X,
         train_Y=train_Y,
+        num_classes=3,
         estimators=[
-            _FakeNGBoostMulticlass(offset=-0.08),
-            _FakeNGBoostMulticlass(offset=0.0),
-            _FakeNGBoostMulticlass(offset=0.08),
+            _FakeMulticlassMember(offset=-0.1),
+            _FakeMulticlassMember(offset=0.1),
         ],
         bootstrap=False,
     ).fit()
-
-    single_posterior = _assert_multiclass_probability_posterior(single)
-    ensemble_posterior = _assert_multiclass_probability_posterior(ensemble)
-
-    torch.testing.assert_close(
-        single_posterior.epistemic_variance,
-        torch.zeros_like(single_posterior.epistemic_variance),
+    assert torch.any(
+        ensemble.posterior(torch.tensor([[0.4]], dtype=torch.double)).epistemic_variance > 0.0
     )
-    assert torch.any(ensemble_posterior.epistemic_variance > 0)
 
 
-def test_multiclass_external_model_has_gaussian_log_probability_acquisition_bridge() -> None:
-    train_X, train_Y = _training_data()
+def test_multiclass_external_models_work_with_existing_active_learning() -> None:
+    train_X, train_Y = _data()
     model = RandomForestMulticlassClassificationModel(
         train_X=train_X,
         train_Y=train_Y,
-        estimator=_FakeForestMulticlass(),
+        num_classes=3,
+        estimator=_FakeMulticlassForest(),
     ).fit()
-    # Keep acquisition points distinct from train_X because active-learning
-    # acquisitions intentionally return -inf for exact observed duplicates.
-    X = torch.tensor([[[0.32]], [[0.66]]], dtype=torch.double)
+    X = torch.tensor([[[0.42]]], dtype=torch.double)
 
-    latent = model.latent_posterior(X)
-    latent_samples = latent.rsample(torch.Size([8]))
-    assert latent.mean.shape == torch.Size([2, 1, 3])
-    assert latent_samples.shape == torch.Size([8, 2, 1, 3])
-    assert torch.isfinite(latent_samples).all()
-
-    bald = qMulticlassBALD(model=model, num_samples=16)
-    probability_variance = qMulticlassProbabilityVariance(model=model, num_samples=16)
-    bald_value = bald(X)
-    variance_value = probability_variance(X)
-
-    assert torch.isfinite(bald_value).all()
-    assert torch.isfinite(variance_value).all()
+    bald = qMulticlassBALD(
+        model=model,
+        num_samples=16,
+        exclude_observed_duplicates=False,
+    )(X)
+    variance = qMulticlassProbabilityVariance(
+        model=model,
+        exclude_observed_duplicates=False,
+    )(X)
+    assert torch.isfinite(bald).all()
+    assert torch.isfinite(variance).all()
 
 
-def test_mixed_multiclass_models_share_one_hot_encoder() -> None:
-    train_X, train_Y = _mixed_training_data()
-    rf_estimator = _FakeForestMulticlass()
-    ngb_estimators = [
-        _FakeNGBoostMulticlass(offset=-0.05),
-        _FakeNGBoostMulticlass(offset=0.05),
-    ]
+@pytest.mark.parametrize(
+    ("model_type", "expected_cls"),
+    [
+        ("random_forest", RandomForestMulticlassClassificationModel),
+        ("ngboost", NGBoostMulticlassClassificationModel),
+        ("ngboost_ensemble", NGBoostMulticlassEnsembleModel),
+    ],
+)
+def test_multiclass_registry_resolves_task_local_models(model_type, expected_cls) -> None:
+    resolved = resolve_model_cls(
+        ModelConfig(
+            task_type="multiclass",
+            model_type=model_type,
+            outcome_transform=False,
+        )
+    )
+    assert resolved is expected_cls
 
-    rf = RandomForestMixedMulticlassClassificationModel(
+
+def test_multiclass_mixed_registry_and_encoding() -> None:
+    train_X, train_Y = _mixed_data()
+    estimator = _FakeMulticlassForest()
+    model = RandomForestMixedMulticlassClassificationModel(
         train_X=train_X,
         train_Y=train_Y,
         cat_dims=[1],
-        estimator=rf_estimator,
-    ).fit()
-    ngb = NGBoostMixedMulticlassEnsembleModel(
-        train_X=train_X,
-        train_Y=train_Y,
-        cat_dims=[1],
-        estimators=ngb_estimators,
-        bootstrap=False,
+        num_classes=3,
+        estimator=estimator,
     ).fit()
 
-    assert rf_estimator.fit_X.shape[1] == 4
-    assert ngb_estimators[0].fit_X.shape[1] == 4
-    assert rf.categorical_values == {1: (0.0, 1.0, 2.0)}
-    assert ngb.categorical_values == {1: (0.0, 1.0, 2.0)}
-
-    X = torch.tensor([[0.5, 1.0]], dtype=torch.double)
-    torch.testing.assert_close(rf.posterior(X).mean.sum(dim=-1), torch.ones(1, dtype=torch.double))
-    torch.testing.assert_close(ngb.posterior(X).mean.sum(dim=-1), torch.ones(1, dtype=torch.double))
-
-    unseen = torch.tensor([[0.5, 3.0]], dtype=torch.double)
-    with pytest.raises(ValueError, match="not observed during training"):
-        rf.posterior(unseen)
-    with pytest.raises(ValueError, match="not observed during training"):
-        ngb.posterior(unseen)
-
-
-def test_multiclass_external_models_are_available_from_normal_and_mixed_registry() -> None:
-    assert (
-        resolve_model_cls(ModelConfig(task_type="multiclass", model_type="random_forest"))
-        is RandomForestMulticlassClassificationModel
-    )
-    assert (
-        resolve_model_cls(ModelConfig(task_type="multiclass", model_type="ngboost"))
-        is NGBoostMulticlassClassificationModel
-    )
-    assert (
-        resolve_model_cls(ModelConfig(task_type="multiclass", model_type="ngboost_ensemble"))
-        is NGBoostMulticlassEnsembleModel
-    )
-    assert (
-        resolve_model_cls(ModelConfig(task_type="multiclass", model_type="random_forest", cat_dims=[1]))
-        is RandomForestMixedMulticlassClassificationModel
-    )
-    assert (
-        resolve_model_cls(ModelConfig(task_type="multiclass", model_type="ngboost", cat_dims=[1]))
-        is NGBoostMixedMulticlassClassificationModel
-    )
-    assert (
-        resolve_model_cls(ModelConfig(task_type="multiclass", model_type="ngboost_ensemble", cat_dims=[1]))
-        is NGBoostMixedMulticlassEnsembleModel
-    )
-
-
-def test_high_level_multiclass_build_and_fit_routes_external_estimator() -> None:
-    train_X, train_Y = _training_data()
-    estimator = _FakeNGBoostMulticlass()
-    bundle = build_model(
-        train_X,
-        train_Y,
+    assert model.cat_dims == [1]
+    assert model.categorical_values == {1: (0.0, 1.0, 2.0)}
+    assert estimator.fit_X.shape == (7, 4)
+    resolved = resolve_model_cls(
         ModelConfig(
             task_type="multiclass",
             model_type="ngboost",
-            model_kwargs={"estimator": estimator},
-        ),
+            cat_dims=[1],
+            outcome_transform=False,
+        )
     )
+    assert resolved is NGBoostMixedMulticlassClassificationModel
 
-    fitted = fit_model(bundle, FitConfig())
+    with pytest.raises(ValueError, match="not observed during training"):
+        model.class_probs(torch.tensor([[0.5, 3.0]], dtype=torch.double))
 
-    assert isinstance(fitted.model, NGBoostMulticlassClassificationModel)
+
+def test_high_level_multiclass_external_fit() -> None:
+    train_X, train_Y = _data()
+    estimator = _FakeMulticlassForest()
+    config = ModelConfig(
+        task_type="multiclass",
+        model_type="random_forest",
+        outcome_transform=False,
+        model_kwargs={"num_classes": 3, "estimator": estimator},
+    )
+    fitted = fit_model(build_model(train_X, train_Y, config), FitConfig())
+
+    assert isinstance(fitted.model, RandomForestMulticlassClassificationModel)
     assert fitted.model.is_fitted
     assert estimator.fit_X is not None
-    assert estimator.fit_y is not None

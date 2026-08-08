@@ -139,7 +139,7 @@ class SimpleBernoulliPosterior(Posterior):
 
         mean = self._mean.expand(target_shape)
         std = self._variance.sqrt().expand(target_shape)
-        return mean + std * base_samples
+        return (mean + std * base_samples).clamp(1e-9, 1.0 - 1e-9)
 
 
 @GetSampler.register(SimpleBernoulliPosterior)

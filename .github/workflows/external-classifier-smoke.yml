@@ -11,6 +11,7 @@ on:
       - "src/bochan/api/model_registry.py"
       - "tests/test_external_binary_classification_models.py"
       - "tests/test_external_multiclass_classification_models.py"
+      - "tests/test_external_classifier_optional_smoke.py"
       - ".github/workflows/external-classifier-smoke.yml"
   workflow_dispatch:
 
@@ -25,12 +26,13 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install
-        run: python -m pip install -e ".[test,api]"
+        run: python -m pip install -e ".[test,api,ngboost,tabular]"
       - name: Run external classifier tests
         run: |
           pytest -q --maxfail=1 \
             tests/test_external_binary_classification_models.py \
             tests/test_external_multiclass_classification_models.py \
+            tests/test_external_classifier_optional_smoke.py \
             tests/test_ngboost_models.py \
             tests/test_ngboost_mixed_models.py \
             tests/test_random_forest_models.py \
@@ -44,4 +46,5 @@ jobs:
             src/bochan/models/regression/boosting/common.py \
             src/bochan/posteriors/classification_ensemble.py \
             tests/test_external_binary_classification_models.py \
-            tests/test_external_multiclass_classification_models.py
+            tests/test_external_multiclass_classification_models.py \
+            tests/test_external_classifier_optional_smoke.py

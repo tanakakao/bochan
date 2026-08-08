@@ -11,7 +11,6 @@ from .multi_output import (
     BoundaryMode,
     MultiOutputRegressionLevelSetScoreObjective,
     ProbabilityMode,
-    VarianceError if False else MultiOutputRegressionLevelSetScoreObjective,
     _MultiOutputRegressionLevelSetBase,
     _ensure_q_batch,
     _safe_logdet,

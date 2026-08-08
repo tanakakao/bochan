@@ -32,6 +32,7 @@ jobs:
           python tools/codemod_web_lse_settings.py
           python tools/codemod_web_lse_marker_fix.py
           python tools/codemod_web_lse_followup.py
+          python tools/codemod_web_lse_test_followup.py
           git diff --check
 
       - name: Install Python dependencies
@@ -56,6 +57,7 @@ jobs:
             src/bochan/serving/webapp/workflows.py \
             src/bochan/serving/webapp/workflows_tabular.py \
             tests/test_webapp_input_perturbation_risk.py \
+            tests/test_webapp_input_perturbation_prediction_shape.py \
             tests/test_webapp_lse_web_contract.py
 
       - uses: actions/setup-node@v4
@@ -75,6 +77,7 @@ jobs:
           rm -f tools/codemod_web_lse_settings.py
           rm -f tools/codemod_web_lse_marker_fix.py
           rm -f tools/codemod_web_lse_followup.py
+          rm -f tools/codemod_web_lse_test_followup.py
           rm -f .github/workflows/apply-web-lse-codemod.yml
           git diff --check
           git config user.name "github-actions[bot]"

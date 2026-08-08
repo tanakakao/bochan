@@ -4,15 +4,17 @@ from dataclasses import dataclass
 from typing import Any, Optional, Sequence
 
 import torch
+from gpytorch.mlls import MarginalLogLikelihood
 from torch import Tensor
 from torch.utils.data import DataLoader, TensorDataset
 
-from gpytorch.mlls import MarginalLogLikelihood
+from .binary import _fit_external_classifier
 
 
 @dataclass
 class ClassificationFitResult:
     """分類 GP 用 fit 結果。"""
+
     model: Any
     mll: MarginalLogLikelihood
     losses: list[float]
@@ -53,8 +55,23 @@ def fit_classification_mll(
     shuffle: bool = True,
     clip_grad_norm: Optional[float] = None,
     verbose: bool = False,
-) -> list[float]:
-    """VariationalELBO / DeepApproximateMLL 用の分類 GP fit helper。"""
+    **ignore: Any,
+):
+    """Fit a variational multiclass GP or an external probability classifier."""
+    if bool(getattr(mll, "_uses_external_fit", False)):
+        external_kwargs = {
+            "train_inputs": train_inputs,
+            "train_targets": train_targets,
+            "lr": lr,
+            "num_epochs": num_epochs,
+            "batch_size": batch_size,
+            "shuffle": shuffle,
+            "clip_grad_norm": clip_grad_norm,
+            "verbose": verbose,
+            **ignore,
+        }
+        return _fit_external_classifier(mll, **external_kwargs)
+
     base_mll = getattr(mll, "base_mll", mll)
     model = base_mll.model
     likelihood = base_mll.likelihood

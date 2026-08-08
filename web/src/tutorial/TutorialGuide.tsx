@@ -75,8 +75,8 @@ function buildOverviewSteps(
   hasResult: boolean
 ): TutorialStep[] {
   const workflowDescription = mode === "simple"
-    ? "簡易モードでは、Data → Select → Results の順に進みます。モデル設定と候補提案は、選択内容から自動構成されます。"
-    : "詳細モードでは、Data → Select → Model → Suggest → Results の順に、モデルと獲得関数を明示的に設定します。";
+    ? "簡易モードでは、Data → Select → Results の順に進みます。モデル設定と候補提案は選択内容から自動構成され、上部には現在位置だけを表示します。"
+    : "詳細モードでは、Data → Select → Model → Suggest → Results の順に進みます。上部には現在位置を表示し、工程間の移動は左側のナビゲーションから行います。";
 
   const workspaceDescription = !hasDataset
     ? "最初にData画面でCSVまたはExcelを読み込みます。読込後は、この領域で変数選択、モデル設定、候補確認を進めます。"
@@ -93,11 +93,11 @@ function buildOverviewSteps(
       id: "workflow",
       selector: '[data-tutorial="workflow"]',
       label: "Workflow",
-      title: "最適化の進行状況",
+      title: "現在の工程を確認",
       description: workflowDescription,
       notes: [
-        "完了した工程は状態表示が変わります。",
-        "未準備の工程は無効化され、必要な設定が揃うと開けます。"
+        "上部のバーは進捗確認専用です。工程の移動には左側のナビゲーションを使います。",
+        "左側では、現在の工程・完了済みの工程・まだ開けない工程を確認できます。"
       ]
     },
     {
@@ -118,7 +118,7 @@ function buildOverviewSteps(
       title: "工程間の移動",
       description: experimentDescription,
       notes: [
-        "Dataで読込後、Selectで目的変数と探索変数を指定します。",
+        "Dataで読込後、Selectで目的変数と探索変数を指定します。工程間の移動はこの左ナビゲーションから行います。",
         mode === "advanced"
           ? "ModelとSuggestでモデル・獲得関数・候補数を設定します。"
           : "簡易モードではModelとSuggestの設定を自動化します。"
@@ -187,8 +187,8 @@ function buildSampleSteps(
       id: "confirm-target",
       selector: '[aria-label="目的変数"]',
       label: "2 · Target",
-      title: "最大化する目的変数を確認",
-      description: "CSVの最後の列であるstrengthが、目的変数として自動選択されています。簡易モードでは数値目的を最大化として扱います。",
+      title: "目的変数と方向を確認",
+      description: "CSVの最後の列であるstrengthが目的変数として自動選択されています。簡易モードでは最大化・最小化を切り替えられ、このサンプルでは最大化のまま進めます。",
       notes: [
         targetReady ? "strengthが選択済みです。" : "strengthが選択されていることを確認してください。",
         "目的変数はモデルが予測し、候補提案で改善を目指す値です。"
@@ -199,8 +199,8 @@ function buildSampleSteps(
       id: "confirm-features",
       selector: '[aria-label="説明変数"]',
       label: "3 · Features",
-      title: "探索する説明変数を確認",
-      description: "temperature、hold_time、additive_ratioが説明変数として選択され、観測データの最小値から最大値までが探索範囲になります。",
+      title: "変更できる条件を確認",
+      description: "temperature、hold_time、additive_ratioが説明変数として選択され、観測データの最小値から最大値までが探索範囲になります。簡易モードでは数値／カテゴリをデータから自動判定します。",
       notes: [
         `${selectedFeatures.length}/3列が選択済みです。`,
         "このチュートリアルではすべて数値変数として扱います。"
@@ -211,15 +211,15 @@ function buildSampleSteps(
       id: "run-optimization",
       selector: ".section-actions button",
       label: "4 · Optimize",
-      title: "モデル学習と候補生成を実行",
-      description: "「既定値で実行」を押すと、Base GPを学習し、EIによって次に試す3条件を提案します。",
+      title: "候補を提案",
+      description: "「候補を提案」を押すと、bochanがBase GP、EI、入力正規化、BoTorch探索を自動設定し、次に試す3条件を提案します。",
       notes: [
         "通常のFastAPI・BoTorch処理をそのまま実行します。",
         "処理中は画面全体に進行表示が出て、完了後にResultsへ移動します。"
       ],
       page: "prepare",
       advance: "result_ready",
-      waitingText: "ハイライトされた「既定値で実行」を押してください。"
+      waitingText: "ハイライトされた「候補を提案」を押してください。"
     },
     {
       id: "review-candidates",
@@ -688,7 +688,7 @@ export default function TutorialGuide({
             >
               <span className="tutorial-choice-icon" aria-hidden="true">↗</span>
               <strong>簡易モードで最適化を体験</strong>
-              <small>データ読込 → 変数確認 → 既定値で実行 → 結果確認</small>
+              <small>データ読込 → 目的・条件を選択 → 候補を提案 → 結果確認</small>
               <em>入門 · 6ステップ</em>
             </button>
             <button

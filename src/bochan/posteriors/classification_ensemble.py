@@ -68,7 +68,7 @@ class ClassificationEnsemblePosterior(EnsemblePosterior):
             weights.unsqueeze(-1)
             * centered.unsqueeze(-1)
             * centered.unsqueeze(-2)
-        ).sum(dim=-3).clamp_min(0.0)
+        ).sum(dim=-3)
 
     def class_probs(self) -> Tensor:
         return self.mean

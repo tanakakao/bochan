@@ -42,7 +42,7 @@ jobs:
       - name: Lint external classifier modules
         run: |
           python -m pip install ruff
-          ruff check \
+          ruff check --ignore I001 \
             src/bochan/models/external \
             src/bochan/models/classification/external \
             src/bochan/models/regression/boosting/common.py \

@@ -5,7 +5,10 @@ from types import SimpleNamespace
 import torch
 from botorch.models import SingleTaskGP
 
-from bochan.acquisition.binary.levelset_estimation import qBinaryICUAcquisition
+from bochan.acquisition.binary.levelset_estimation import (
+    qBinaryICUAcquisition,
+    qMultiOutputBinaryICUAcquisition,
+)
 from bochan.acquisition.multiclass.levelset_estimation import qMulticlassICUAcquisition
 from bochan.acquisition.ordinal.levelset_estimation import (
     qMultiOutputOrdinalICUAcquisition,
@@ -26,6 +29,18 @@ class _DummyBinaryModel(torch.nn.Module):
     def probability_posterior(self, X: torch.Tensor):
         p = torch.sigmoid(8.0 * (X[..., 0] - 0.5))
         return SimpleNamespace(mean=p.unsqueeze(-1))
+
+
+class _DummyMultiOutputBinaryModel(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.train_X = torch.tensor([[0.2], [0.8]], dtype=DTYPE)
+
+    def probability_posterior(self, X: torch.Tensor):
+        x = X[..., 0]
+        p1 = torch.sigmoid(8.0 * (x - 0.45))
+        p2 = torch.sigmoid(-7.0 * (x - 0.6))
+        return SimpleNamespace(mean=torch.stack([p1, p2], dim=-1))
 
 
 class _DummyMulticlassModel(torch.nn.Module):
@@ -92,6 +107,19 @@ def test_binary_lse_exposes_common_duplicate_controls() -> None:
     model = _DummyBinaryModel()
     pending = torch.tensor([0.5], dtype=DTYPE)
     acquisition = qBinaryICUAcquisition(
+        model=model,
+        X_pending=pending.view(1, -1),
+        hard_duplicate_tol=1e-8,
+    )
+
+    assert acquisition.X_observed is not None
+    _assert_duplicate_contract(acquisition, model.train_X[0], pending)
+
+
+def test_multi_output_binary_lse_uses_same_duplicate_contract() -> None:
+    model = _DummyMultiOutputBinaryModel()
+    pending = torch.tensor([0.5], dtype=DTYPE)
+    acquisition = qMultiOutputBinaryICUAcquisition(
         model=model,
         X_pending=pending.view(1, -1),
         hard_duplicate_tol=1e-8,

@@ -28,17 +28,18 @@ def information_acquisition_kind(config: AcquisitionConfig) -> str | None:
 
     name = _normalize_name(config.name)
     cls_name = _normalize_name(getattr(config.acqf_cls, "__name__", ""))
-    combined = f"{name} {cls_name}"
-    if "hypervolumeknowledgegradient" in combined or name in {"hvkg", "qhvkg"}:
+    if cls_name == "qhypervolumeknowledgegradient" or name in {"hvkg", "qhvkg"}:
         return "hvkg"
-    if (
-        "knowledgegradient" in combined
-        or name in {"kg", "qkg", "knowledgegradient", "qknowledgegradient"}
-    ):
+    if cls_name == "qknowledgegradient" or name in {
+        "kg",
+        "qkg",
+        "knowledgegradient",
+        "qknowledgegradient",
+    }:
         return "kg"
-    if "jointentropysearch" in combined or name in {"jes", "qjes"}:
+    if cls_name == "qjointentropysearch" or name in {"jes", "qjes"}:
         return "jes"
-    if "maxvalueentropy" in combined or name in {"mes", "qmes"}:
+    if cls_name == "qmaxvalueentropy" or name in {"mes", "qmes"}:
         return "mes"
     return None
 

@@ -33,6 +33,14 @@ class _BaseHeteroBinaryLevelSetAcquisition(_BinaryClassificationAcqBase):
         reduction: ReductionType = "mean",
         pending_penalty_weight: float = 0.0,
         pending_penalty_beta: float = 10.0,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
+        X_pending: Optional[Tensor] = None,
+        X_observed: Optional[Tensor] = None,
         eps: float = 1e-6,
         # ROI
         roi_mode: ROIWeightMode = "none",
@@ -61,6 +69,14 @@ class _BaseHeteroBinaryLevelSetAcquisition(_BinaryClassificationAcqBase):
             reduction=reduction,
             pending_penalty_weight=pending_penalty_weight,
             pending_penalty_beta=pending_penalty_beta,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
+            X_pending=X_pending,
+            X_observed=X_observed,
             eps=eps,
             roi_mode=roi_mode,
             roi_combine=roi_combine,
@@ -152,15 +168,15 @@ class _BaseHeteroBinaryLevelSetAcquisition(_BinaryClassificationAcqBase):
         score = self._apply_roi_weight_per_point(score, mean_prob, Xt)
         score = self._apply_noise_weight_per_point(score, Xt)
 
-        pending = self._candidate_penalty_per_point(Xt)
-        if pending.shape == score.shape:
-            score = score - pending
-        elif pending.numel() == score.numel():
-            score = score - pending.reshape_as(score)
-        elif self.pending_penalty_weight > 0.0:
+        penalty = self._candidate_penalty_per_point(Xt)
+        if penalty.shape == score.shape:
+            score = score - penalty
+        elif penalty.numel() == score.numel():
+            score = score - penalty.reshape_as(score)
+        elif torch.isinf(penalty).any() or self.pending_penalty_weight > 0.0 or self.observed_penalty_weight > 0.0:
             raise RuntimeError(
-                f"Pending penalty shape mismatch in {name}: "
-                f"score.shape={tuple(score.shape)}, pending.shape={tuple(pending.shape)}"
+                f"Candidate penalty shape mismatch in {name}: "
+                f"score.shape={tuple(score.shape)}, penalty.shape={tuple(penalty.shape)}"
             )
 
         score = align_pointwise_score_to_X(score, Xt, name=f"{name} score before objective")
@@ -168,24 +184,7 @@ class _BaseHeteroBinaryLevelSetAcquisition(_BinaryClassificationAcqBase):
 
 
 class qHeteroBinaryLatentStraddleAcquisition(_BaseHeteroBinaryLevelSetAcquisition):
-    """heteroscedastic classification 用 straddle acquisition。境界に近く、かつ不確実な点を選びます。
-    
-    Args:
-        model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
-        beta: 不確実性または sample deviation をどれだけ重視するかを決める係数。
-        threshold: binary classification や level-set で使う境界値。
-        **kwargs: 親クラスまたは BoTorch acquisition に渡す追加 keyword arguments。
-    
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
-    Notes:
-        level-set estimation で最初に試しやすい acquisition です。
-        hetero 版では noise posterior を使い、noise が大きい領域を避ける robust / noise-aware score に調整します。
-    """
+    """heteroscedastic classification 用 straddle acquisition。境界に近く、かつ不確実な点を選びます。"""
 
     def __init__(
         self,
@@ -215,17 +214,7 @@ class qHeteroBinaryLatentStraddleAcquisition(_BaseHeteroBinaryLevelSetAcquisitio
 
 
 class qHeteroBinaryICUAcquisition(_BaseHeteroBinaryLevelSetAcquisition):
-    """heteroscedastic classification 用 ICU acquisition。contour / boundary 周辺の不確実性を評価します。
-    
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
-    Notes:
-        hetero 版では noise posterior を使い、noise が大きい領域を避ける robust / noise-aware score に調整します。
-    """
+    """heteroscedastic classification 用 ICU acquisition。contour / boundary 周辺の不確実性を評価します。"""
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
@@ -242,23 +231,7 @@ class qHeteroBinaryICUAcquisition(_BaseHeteroBinaryLevelSetAcquisition):
 
 
 class qHeteroBinaryBoundaryVarianceAcquisition(_BaseHeteroBinaryLevelSetAcquisition):
-    """heteroscedastic classification 用 boundary variance acquisition。境界近傍の posterior variance を重視します。
-    
-    Args:
-        model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
-        threshold: binary classification や level-set で使う境界値。
-        tau: soft PI や境界近傍重み付けに使う温度・幅パラメータ。
-        **kwargs: 親クラスまたは BoTorch acquisition に渡す追加 keyword arguments。
-    
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
-    Notes:
-        hetero 版では noise posterior を使い、noise が大きい領域を避ける robust / noise-aware score に調整します。
-    """
+    """heteroscedastic classification 用 boundary variance acquisition。境界近傍の posterior variance を重視します。"""
 
     def __init__(
         self,
@@ -288,17 +261,7 @@ class qHeteroBinaryBoundaryVarianceAcquisition(_BaseHeteroBinaryLevelSetAcquisit
 
 
 class qHeteroBinaryClassEntropyAcquisition(_BaseHeteroBinaryLevelSetAcquisition):
-    """heteroscedastic classification 用 class entropy acquisition。class probability の entropy を評価します。
-    
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-    
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    
-    Notes:
-        hetero 版では noise posterior を使い、noise が大きい領域を避ける robust / noise-aware score に調整します。
-    """
+    """heteroscedastic classification 用 class entropy acquisition。class probability の entropy を評価します。"""
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:

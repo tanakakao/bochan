@@ -13,7 +13,7 @@ from typing import Any
 
 from .automatic_default_utils import _num_outputs
 from .automatic_multiobjective import make_default_ref_point, observed_multiobjective_values
-from .configs import AcquisitionConfig, DataContext, ModelBundle
+from .configs import AcquisitionConfig, DataContext, ModelBundle, OptimizeConfig
 
 
 def _normalize_name(value: Any) -> str:
@@ -270,8 +270,29 @@ def resolve_information_acquisition_defaults(
     return config, context
 
 
+def resolve_information_optimizer_defaults(
+    config: AcquisitionConfig,
+    opt_config: OptimizeConfig,
+) -> OptimizeConfig:
+    """Apply optimizer settings required by MES and one-shot HVKG.
+
+    BoTorch qMES uses sequential or cyclic optimization for q > 1. The bochan
+    high-level API uses sequential optimization automatically in that case.
+    HVKG is a one-shot acquisition and therefore must remain joint; an explicit
+    sequential setting is normalized back to ``False``.
+    """
+
+    kind = information_acquisition_kind(config)
+    if kind == "mes" and opt_config.q > 1 and not opt_config.sequential:
+        return replace(opt_config, sequential=True)
+    if kind == "hvkg" and opt_config.sequential:
+        return replace(opt_config, sequential=False)
+    return opt_config
+
+
 __all__ = [
     "information_acquisition_kind",
     "is_information_acquisition",
     "resolve_information_acquisition_defaults",
+    "resolve_information_optimizer_defaults",
 ]

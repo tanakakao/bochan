@@ -66,6 +66,7 @@ class _RandomForestClassificationModel(_ExternalProbabilityClassifierMixin, Ense
 
         self.binary = bool(binary)
         self.num_classes = int(inferred_classes)
+        self._configure_probability_acquisition_bridge()
         self.estimator = (
             estimator
             if estimator is not None

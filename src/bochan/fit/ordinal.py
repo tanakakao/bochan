@@ -156,20 +156,9 @@ def fit_ordinal_mll(
         }
         return _fit_external_ordinal(external_model, **external_kwargs)
 
-    if num_epochs is None:
-        num_epochs = 300
-    else:
-        num_epochs = int(num_epochs)
-
-    if lr is None:
-        lr = 0.03
-    else:
-        lr = float(lr)
-
-    if verbose is None:
-        verbose = False
-    else:
-        verbose = bool(verbose)
+    num_epochs = 300 if num_epochs is None else int(num_epochs)
+    lr = 0.03 if lr is None else float(lr)
+    verbose = False if verbose is None else bool(verbose)
 
     model = mll.model if fit_model is None else fit_model
     likelihood = get_likelihood_from_mll_or_model(mll, model)

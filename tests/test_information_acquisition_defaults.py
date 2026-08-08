@@ -18,6 +18,7 @@ from bochan.api import (
     ModelBundle,
     ModelConfig,
     MultiObjectiveConfig,
+    OptimizeConfig,
 )
 from bochan.api.acquisition_registry import available_acqf_names, resolve_acqf_cls
 
@@ -362,3 +363,28 @@ def test_hvkg_requires_multi_output() -> None:
             AcquisitionConfig(name="hvkg", acqf_cls=qHypervolumeKnowledgeGradient),
             DataContext(),
         )
+
+
+def test_mes_q_greater_than_one_uses_sequential_optimization() -> None:
+    resolved = info_defaults.resolve_information_optimizer_defaults(
+        AcquisitionConfig(name="mes", acqf_cls=qMaxValueEntropy),
+        OptimizeConfig(q=3, sequential=False),
+    )
+    assert resolved.sequential is True
+
+
+def test_hvkg_one_shot_optimization_remains_joint() -> None:
+    resolved = info_defaults.resolve_information_optimizer_defaults(
+        AcquisitionConfig(name="hvkg", acqf_cls=qHypervolumeKnowledgeGradient),
+        OptimizeConfig(q=2, sequential=True),
+    )
+    assert resolved.sequential is False
+
+
+def test_jes_optimizer_configuration_is_preserved() -> None:
+    original = OptimizeConfig(q=2, sequential=False)
+    resolved = info_defaults.resolve_information_optimizer_defaults(
+        AcquisitionConfig(name="jes", acqf_cls=qJointEntropySearch),
+        original,
+    )
+    assert resolved is original

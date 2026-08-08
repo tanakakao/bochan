@@ -1,13 +1,7 @@
 import torch
-from gpytorch.distributions import MultivariateNormal
-from botorch.posteriors import Posterior, GPyTorchPosterior
-from botorch.sampling.get_sampler import GetSampler
-from botorch.sampling.base import MCSampler
-
-
-import torch
-from torch import Tensor
 from botorch.posteriors.posterior import Posterior
+from botorch.sampling.get_sampler import GetSampler
+from torch import Tensor
 
 
 class SimpleBernoulliPosterior(Posterior):

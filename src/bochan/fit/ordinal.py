@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 import torch
 from gpytorch.mlls import MarginalLogLikelihood, PredictiveLogLikelihood, VariationalELBO
 
@@ -37,23 +39,34 @@ def _get_mll_model_for_ordinal(model):
     return getattr(model, "model", model)
 
 
+def _fit_external_ordinal(model, **kwargs):
+    """Call an external ordinal model's bound ``fit`` with supported kwargs only."""
+    fit_func = getattr(model, "fit", None)
+    if not callable(fit_func):
+        raise AttributeError(f"{type(model).__name__} does not expose a callable fit().")
+    try:
+        signature = inspect.signature(fit_func)
+    except (TypeError, ValueError):
+        return fit_func()
+    if any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    ):
+        return fit_func(**kwargs)
+    allowed = set(signature.parameters)
+    return fit_func(**{key: value for key, value in kwargs.items() if key in allowed})
+
+
 def make_ordinal_mll(
     model,
     *,
     use_predictive_log_likelihood: bool = False,
     num_data: int | None = None,
 ):
-    """
-    Build an ordinal approximate MLL from a model or wrapper.
+    """Build an ordinal approximate MLL from a model or wrapper."""
+    if bool(getattr(model, "_uses_external_fit", False)):
+        return None
 
-    For PCA / random-projection wrappers:
-        mll = make_ordinal_mll(wrapper)
-        fit_ordinal_mll(mll, fit_model=wrapper)
-
-    For ordinary ordinal models:
-        mll = make_ordinal_mll(model)
-        fit_ordinal_mll(mll)
-    """
     train_X = get_fit_train_X(model)
     if num_data is None:
         num_data = int(train_X.shape[-2])
@@ -83,42 +96,25 @@ def fit_ordinal_mll(
     batch_size: int | None = None,
     shuffle: bool = True,
     verbose: bool | None = None,
-    optimizer_cls= torch.optim.Adam,
+    optimizer_cls=torch.optim.Adam,
     clip_grad_norm: float | None = None,
     **ignore,
 ):
-    """
-    Fit an ordinal variational GP from an MLL.
+    """Fit an ordinal variational GP or external cumulative ordinal model."""
+    external_model = fit_model if fit_model is not None else mll
+    if bool(getattr(external_model, "_uses_external_fit", False)):
+        external_kwargs = {
+            "lr": lr,
+            "num_epochs": num_epochs,
+            "batch_size": batch_size,
+            "shuffle": shuffle,
+            "optimizer_cls": optimizer_cls,
+            "clip_grad_norm": clip_grad_norm,
+            "verbose": verbose,
+            **ignore,
+        }
+        return _fit_external_ordinal(external_model, **external_kwargs)
 
-    Important:
-        `mll.model` may be the underlying ApproximateGP, while `fit_model` may be
-        the wrapper that accepts raw X.  This is useful for PCA / random-projection
-        ordinal wrappers.
-
-    Args:
-        mll:
-            VariationalELBO / PredictiveLogLikelihood.
-        fit_model:
-            Optional wrapper/model to call in the training loop.
-            If omitted, `mll.model` is used.
-        lr:
-            Learning rate. Default is 0.03 to preserve the existing ordinal helper.
-        num_epochs:
-            Number of epochs. Default is 300 to preserve the existing ordinal helper.
-        batch_size:
-            Mini-batch size. Defaults to full-batch.
-        shuffle:
-            Whether to shuffle the TensorDataset.
-        verbose:
-            If True, prints loss and cutpoints.
-        optimizer_cls:
-            Optimizer class. Defaults to Adam.
-        clip_grad_norm:
-            Optional gradient clipping value.
-
-    Returns:
-        The input `mll`.
-    """
     if num_epochs is None:
         num_epochs = 300
     else:
@@ -157,7 +153,6 @@ def fit_ordinal_mll(
     if hasattr(mll, "train"):
         mll.train()
 
-    # optimizer = optimizer_cls(model.parameters(), lr=lr)
     optimizer = optimizer_cls(mll.parameters(), lr=lr)
     num_data = int(train_X.shape[-2])
 
@@ -168,10 +163,7 @@ def fit_ordinal_mll(
             xb, yb = move_batch_like(xb, yb, train_X=train_X, train_Y=train_Y)
 
             optimizer.zero_grad()
-
-            # Wrapper models should receive raw X here.
             latent_dist = model(xb)
-
             loss = -mll(latent_dist, yb)
             if loss.ndim > 0:
                 loss = loss.sum()
@@ -179,7 +171,6 @@ def fit_ordinal_mll(
             loss.backward()
             maybe_clip_grad_norm(model.parameters(), clip_grad_norm)
             optimizer.step()
-
             total_loss += float(loss.detach().item()) * xb.shape[0]
 
         if verbose and ((epoch + 1) % 20 == 0 or epoch == 0 or epoch == num_epochs - 1):
@@ -208,20 +199,18 @@ def fit_ordinal_gp(
     use_predictive_log_likelihood: bool | None = None,
     **kwargs,
 ):
-    """
-    Backward-supported ordinal fitting helper.
+    """Backward-supported ordinal fitting helper."""
+    if bool(getattr(model_or_mll, "_uses_external_fit", False)):
+        fit_ordinal_mll(
+            model_or_mll,
+            num_epochs=num_epochs,
+            lr=lr,
+            batch_size=batch_size,
+            verbose=verbose,
+            **kwargs,
+        )
+        return model_or_mll
 
-    New recommended usage:
-        mll = make_ordinal_mll(model)
-        fit_ordinal_mll(mll, fit_model=model)  # fit_model is needed for PCA/RP wrappers
-
-    Old usage still works:
-        fit_ordinal_gp(model)
-
-    If `model_or_mll` is an MLL, this function delegates to `fit_ordinal_mll`.
-    If `model_or_mll` is a model/wrapper, this function builds the MLL and returns the model,
-    preserving the previous helper's return style.
-    """
     if use_predictive_log_likelihood is None:
         use_predictive_log_likelihood = False
     else:

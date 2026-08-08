@@ -205,6 +205,8 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
             raise UnsupportedError(
                 f"{type(self).__name__}.latent_posterior is only a binary compatibility bridge."
             )
+        if getattr(self, "likelihood", None) is None:
+            self._configure_probability_acquisition_bridge()
         posterior = self.posterior(
             X,
             output_indices=output_indices,

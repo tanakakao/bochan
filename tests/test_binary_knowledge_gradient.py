@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 from botorch.models.model import Model
+from botorch.optim.optimize import optimize_acqf
 from gpytorch.distributions import MultivariateNormal
 from gpytorch.likelihoods import BernoulliLikelihood
 from torch import Tensor
@@ -169,3 +170,30 @@ def test_binary_kg_can_use_mc_points_as_explicit_terminal_grid() -> None:
     grid = torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.double)
     acq = qBinaryKnowledgeGradient(model, mc_points=grid, num_samples=16)
     assert torch.equal(acq.terminal_set, grid)
+
+
+def test_binary_kg_runs_optimize_acqf_q1() -> None:
+    model = _CorrelatedBinaryLatentModel()
+    bounds = torch.tensor([[0.0], [1.0]], dtype=torch.double)
+    acq = qBinaryKnowledgeGradient(
+        model,
+        terminal_set=torch.linspace(0.0, 1.0, 9, dtype=torch.double).unsqueeze(-1),
+        num_samples=32,
+        seed=23,
+    )
+
+    candidate, value = optimize_acqf(
+        acq_function=acq,
+        bounds=bounds,
+        q=1,
+        num_restarts=2,
+        raw_samples=16,
+        options={"maxiter": 40},
+    )
+
+    assert candidate.shape == torch.Size([1, 1])
+    assert value.numel() == 1
+    assert torch.isfinite(candidate).all()
+    assert torch.isfinite(value).all()
+    assert torch.all(candidate >= bounds[0])
+    assert torch.all(candidate <= bounds[1])

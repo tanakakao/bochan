@@ -158,11 +158,10 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
         posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> ClassificationEnsemblePosterior:
-        if output_indices is not None:
-            if not self.binary or list(output_indices) != [0]:
-                raise UnsupportedError(
-                    f"{type(self).__name__} does not support output_indices={output_indices}."
-                )
+        if output_indices is not None and (not self.binary or list(output_indices) != [0]):
+            raise UnsupportedError(
+                f"{type(self).__name__} does not support output_indices={output_indices}."
+            )
         if torch.is_tensor(observation_noise):
             raise UnsupportedError(
                 f"{type(self).__name__} does not support tensor-valued observation_noise."
@@ -245,11 +244,10 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
         approximation in log-probability space; the existing multiclass
         acquisition softmax then maps those samples back to the simplex.
         """
-        if output_indices is not None:
-            if not self.binary or list(output_indices) != [0]:
-                raise UnsupportedError(
-                    f"{type(self).__name__} does not support output_indices={output_indices}."
-                )
+        if output_indices is not None and (not self.binary or list(output_indices) != [0]):
+            raise UnsupportedError(
+                f"{type(self).__name__} does not support output_indices={output_indices}."
+            )
         if self.binary:
             if getattr(self, "likelihood", None) is None:
                 self._configure_probability_acquisition_bridge()

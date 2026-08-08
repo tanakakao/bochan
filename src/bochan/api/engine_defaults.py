@@ -29,6 +29,7 @@ from .engine import _resolve_objective_config_n_w_from_input_transform
 from .information_acquisition_defaults import (
     is_information_acquisition,
     resolve_information_acquisition_defaults,
+    resolve_information_optimizer_defaults,
 )
 
 
@@ -733,6 +734,7 @@ class BayesianOptimizer(_BaseBayesianOptimizer):
             acq_config,
             data_context,
         )
+        opt_config = resolve_information_optimizer_defaults(resolved_config, opt_config)
         return super().candidate(
             resolved_config,
             opt_config,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+from pathlib import Path
 
 from bochan.api.model_registry import DEFAULT_MODEL_REGISTRY
 
@@ -15,6 +16,17 @@ OLD_PUBLIC_PACKAGES = (
 def test_obsolete_model_packages_are_removed() -> None:
     for module_name in OLD_PUBLIC_PACKAGES:
         assert importlib.util.find_spec(module_name) is None
+
+
+def test_source_tree_has_no_obsolete_model_imports() -> None:
+    root = Path("src/bochan")
+    offenders: list[str] = []
+    for path in root.rglob("*.py"):
+        text = path.read_text(encoding="utf-8")
+        for module_name in OLD_PUBLIC_PACKAGES:
+            if module_name in text:
+                offenders.append(f"{path}: {module_name}")
+    assert offenders == []
 
 
 def test_external_regression_registry_uses_external_package() -> None:

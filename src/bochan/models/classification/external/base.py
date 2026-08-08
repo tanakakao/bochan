@@ -8,7 +8,8 @@ import numpy as np
 import torch
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.exceptions.errors import UnsupportedError
-from botorch.models.ensemble import EnsembleModel
+from botorch.posteriors.gpytorch import GPyTorchPosterior
+from gpytorch.distributions import MultitaskMultivariateNormal
 from torch import Tensor
 from torch.nn import Module
 
@@ -185,34 +186,59 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
         """Return member probability samples for epistemic active learning."""
         return self.posterior(X, **kwargs)
 
+    def _multiclass_log_probability_posterior(self, X: Tensor) -> GPyTorchPosterior:
+        """Gaussian approximation to ensemble log-probabilities for legacy MC samplers."""
+        probability_posterior = self.posterior(X)
+        values = probability_posterior.values.clamp_min(1e-9).log()
+        flat_values = values.flatten(start_dim=-2)
+        weights = probability_posterior.weights.to(device=values.device, dtype=values.dtype)
+        shape = [1] * flat_values.ndim
+        shape[-2] = int(weights.numel())
+        weights = weights.view(*shape)
+        flat_mean = (weights * flat_values).sum(dim=-2)
+        centered = flat_values - flat_mean.unsqueeze(-2)
+        covariance = (
+            weights.unsqueeze(-1)
+            * centered.unsqueeze(-1)
+            * centered.unsqueeze(-2)
+        ).sum(dim=-3)
+        event_size = int(flat_values.shape[-1])
+        jitter = torch.eye(event_size, dtype=values.dtype, device=values.device) * 1e-8
+        covariance = covariance + jitter
+        mean = flat_mean.reshape(*values.shape[:-3], values.shape[-2], values.shape[-1])
+        return GPyTorchPosterior(
+            MultitaskMultivariateNormal(
+                mean=mean,
+                covariance_matrix=covariance,
+                interleaved=True,
+            )
+        )
+
     def latent_posterior(
         self,
         X: Tensor,
         output_indices: list[int] | None = None,
         posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
-    ) -> ClassificationEnsemblePosterior:
-        """Compatibility bridge for existing binary acquisition implementations.
+    ):
+        """Compatibility posterior used by existing classification acquisitions.
 
-        External classifiers do not have a GP latent function. For binary models
-        this method therefore exposes the finite ensemble of class-1 probability
-        predictions in the slot used by legacy binary acquisitions. The installed
-        passthrough likelihood maps those values to themselves. This preserves
-        member-level epistemic sampling (including joint q member correlation)
-        without pretending that the values are Gaussian latent logits.
+        Binary models expose finite member probabilities directly and install a
+        passthrough Bernoulli likelihood. Multiclass models expose a Gaussian
+        approximation in log-probability space; the existing multiclass
+        acquisition softmax then maps those samples back to the simplex.
         """
-        if not self.binary:
-            raise UnsupportedError(
-                f"{type(self).__name__}.latent_posterior is only a binary compatibility bridge."
-            )
-        if getattr(self, "likelihood", None) is None:
-            self._configure_probability_acquisition_bridge()
-        posterior = self.posterior(
-            X,
-            output_indices=output_indices,
-            posterior_transform=None,
-            **kwargs,
-        )
+        if output_indices is not None:
+            if not self.binary or list(output_indices) != [0]:
+                raise UnsupportedError(
+                    f"{type(self).__name__} does not support output_indices={output_indices}."
+                )
+        if self.binary:
+            if getattr(self, "likelihood", None) is None:
+                self._configure_probability_acquisition_bridge()
+            posterior = self.posterior(X, output_indices=output_indices)
+        else:
+            posterior = self._multiclass_log_probability_posterior(X)
         if posterior_transform is not None:
             posterior = posterior_transform(posterior)
         return posterior

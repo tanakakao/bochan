@@ -97,7 +97,7 @@ def test_pfn_posterior_exposes_marginal_bar_moments_and_gradients():
     assert X.grad is not None
     assert torch.any(X.grad != 0)
 
-    with pytest.raises(NotImplementedError, match="native"):
+    with pytest.raises(NotImplementedError, match="reparameterized joint samples"):
         posterior.rsample()
 
 

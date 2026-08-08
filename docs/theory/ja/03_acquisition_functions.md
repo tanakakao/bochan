@@ -154,6 +154,12 @@ noisy observationではbaseline latent valueも不確かです。
 
 重要なargumentは`X_baseline`、objective、constraint、sampler、`X_pending`、baseline pruningです。
 
+### Log Noisy Expected Improvement
+
+`qLogNoisyExpectedImprovement`はnoisy improvementをlog-domainで数値安定に評価します。`best_f`ではなく`X_baseline`を基準として使い、objective、constraint、sampler、`X_pending`などはqNEI系と同じ考え方で扱います。
+
+bochanではstandard Gaussian regressionに対して`lognei` / `qlognei`で利用できます。通常のqNEIと探索戦略が別物なのではなく、同じnoisy-improvement criterionを安定に最適化するための実装として扱います。
+
 ---
 
 ## 6. UCB
@@ -266,6 +272,8 @@ posterior transformはdistributionそのものを変換し、MC objectiveはsamp
 T(\mathbb E[Y])\ne\mathbb E[T(Y)].
 ```
 
+bochanのtask-specific NParEGOとBoTorchの`qLogNParEGO`では、augmented Chebyshev scalarizationとbaseline比較を獲得関数内部で行います。この場合の`objective`はscalarizationではなく、raw posterior sampleを`[..., q, m]`の目的空間へ写す**multi-output preprocessing objective**です。したがって外側から二重scalarizationしてはいけません。またこれらは`X_baseline`を使い、`best_f`を必要としません。
+
 ---
 
 ## 12. Sample-level constraint
@@ -286,6 +294,8 @@ I(Y)
 ```
 
 というfactorizationは簡単ですが、joint objective-constraint dependenceを正確に扱うとは限りません。
+
+`qLogProbabilityOfFeasibility`はposterior sampleに対するMonte Carlo feasibility probabilityをlog-domainで評価します。bochanではstandard regressionのsample constraintに対して`logpof` / `qlogpof`を公開します。これはbinary / multiclass / ordinalでclass probabilityやutilityを意味するtask-specific PoFとは区別します。
 
 ---
 
@@ -322,10 +332,12 @@ repair後はacquisition value、constraint、category validity、duplicateを再
 ## 15. 数値上の注意
 
 - local optimization中はbase sampleを固定し、sample-average approximationを安定化する
-- tiny improvementではLogEIを検討する
+- tiny improvementやfeasibility probabilityではLog系criterionを検討する
 - `best_f`、beta、temperature、reference pointのscaleを確認する
 - variance clampが頻発するならcovariance実装を疑う
 - replicateが不要ならduplicateを抑制する
+
+bochanではstandard regression向けにLogEI、LogNEI、LogPoF、LogEHVI、LogNEHVI、LogNParEGOへのregistry経路を揃えます。Log版は別のexploration heuristicではなく、対応するcriterionを数値安定に扱う実装として選択します。
 
 ---
 
@@ -334,13 +346,15 @@ repair後はacquisition value、constraint、category validity、duplicateを再
 | 状況 | 初期候補 |
 |---|---|
 | low-noise single-objective | LogEI / qLogEI |
-| noisy experiment | qNEI系 |
+| noisy experiment | qLogNEI（非log baselineとしてqNEI） |
+| MC feasibility constraint | qLogPoF |
 | simple exploration baseline | qUCB |
 | probability target | task-specific EI / PI / UCB |
 | future decision価値 | qKG |
 | explicit multi-step | qMultiStepLookahead |
-| multi-objective low-noise | qEHVI |
-| multi-objective noisy | qNEHVI |
+| multi-objective low-noise | qLogEHVI / qEHVI |
+| multi-objective noisy | qLogNEHVI / qNEHVI |
+| scalarized multi-objective | qLogNParEGO / task-specific NParEGO |
 
 model、objective、posterior contractを確認してから適用します。
 
@@ -355,12 +369,19 @@ model、objective、posterior contractを確認してから適用します。
 | `qei`, `ei` | `qExpectedImprovement` |
 | `qlogei`, `logei` | `qLogExpectedImprovement` |
 | `qnei`, `nei` | `qNoisyExpectedImprovement` |
+| `qlognei`, `lognei` | `qLogNoisyExpectedImprovement` |
+| `qlogpof`, `logpof` | `qLogProbabilityOfFeasibility` |
 | `qucb`, `ucb` | `qUpperConfidenceBound` |
 | `qpi`, `pi` | `qProbabilityOfImprovement` |
 | `qkg`, `kg` | `qKnowledgeGradient` |
 | `lookahead` | `qMultiStepLookahead` |
 | `qehvi`, `ehvi` | `qExpectedHypervolumeImprovement` |
+| `qlogehvi`, `logehvi` | `qLogExpectedHypervolumeImprovement` |
 | `qnehvi`, `nehvi` | `qNoisyExpectedHypervolumeImprovement` |
+| `qlognehvi`, `lognehvi` | `qLogNoisyExpectedHypervolumeImprovement` |
+| `qlognparego`, `lognparego` | `qLogNParEGO` |
+
+multi-output regressionで`nparego` / `qnparego`を指定した場合は、qEIへのfallbackではなくbochanの`qMultiOutputRegressionNParEGO`へcontextual routingします。このclassはaugmented Chebyshev scalarizationを内部で実行します。
 
 custom acquisitionはtask別に配置されます。
 
@@ -371,6 +392,8 @@ src/bochan/acquisition/multiclass/bayesian_optimization/
 src/bochan/acquisition/ordinal/bayesian_optimization/
 src/bochan/acquisition/non_gaussian/bayesian_optimization/
 ```
+
+今回のLog short aliasはstandard regression / hybrid posteriorの意味論に限定します。classification / ordinalへ暗黙に転送するとclass probabilityやutility spaceの定義が変わるため、task-specific acquisitionとは明示的に分けます。
 
 optimizer backendとrepairは`src/bochan/optim/`にあります。
 

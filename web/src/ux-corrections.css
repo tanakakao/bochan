@@ -1,0 +1,69 @@
+/* Follow-up visual refinements for PR #506. */
+
+/* The subtitle competes with the workflow progress area on narrower desktop widths. */
+.brand-wordmark p {
+  display: none !important;
+}
+
+.brand-wordmark h1 {
+  margin-bottom: 0 !important;
+}
+
+/* Keep model-inspection cards focused on the controls, plot, and numeric table. */
+.feature-importance-panel .result-subheading p,
+.feature-importance-panel > p,
+.feature-importance-panel .visualization-card > h3,
+.feature-importance-panel .visualization-card > p,
+.feature-importance-panel .gtitle {
+  display: none !important;
+}
+
+.feature-importance-panel .visualization-card {
+  padding-top: 0.75rem;
+}
+
+/* Dense feature chips need smaller secondary labels to avoid clipping. */
+.feature-variable-choice .variable-choice-main small {
+  font-size: 0.66rem !important;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+}
+
+.feature-type-toggle span {
+  font-size: 0.68rem !important;
+}
+
+.composition-kind-control {
+  gap: 0.3rem !important;
+}
+
+.composition-kind-control > span {
+  font-size: 0.64rem !important;
+  white-space: nowrap;
+}
+
+.composition-kind-segment {
+  min-width: 0;
+}
+
+.composition-kind-option {
+  min-width: 0 !important;
+  padding: 0.24rem 0.36rem !important;
+  font-size: 0.64rem !important;
+  line-height: 1.05 !important;
+  white-space: nowrap;
+}
+
+.execution-progress-panel.estimated-fallback .execution-progress-percent::after {
+  content: " 推定";
+  font-size: 0.65em;
+  opacity: 0.72;
+}
+
+@media (max-width: 1120px) {
+  .feature-variable-choice .variable-choice-main small,
+  .feature-type-toggle span,
+  .composition-kind-option {
+    font-size: 0.61rem !important;
+  }
+}

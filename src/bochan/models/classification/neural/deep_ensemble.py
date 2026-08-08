@@ -55,6 +55,18 @@ class _DenseClassifier(nn.Module):
         return self.network(X)
 
 
+def _make_generator(
+    *,
+    device: torch.device,
+    seed: int | None,
+) -> torch.Generator | None:
+    if seed is None:
+        return None
+    generator = torch.Generator(device=device)
+    generator.manual_seed(int(seed))
+    return generator
+
+
 def _bootstrap_classification_indices(
     labels: Tensor,
     *,
@@ -69,9 +81,8 @@ def _bootstrap_classification_indices(
     if not bootstrap:
         return torch.arange(n, device=device)
 
-    generator = torch.Generator(device=device)
-    if random_state is not None:
-        generator.manual_seed(int(random_state) + 10_000 + int(member_index))
+    seed = None if random_state is None else int(random_state) + 10_000 + int(member_index)
+    generator = _make_generator(device=device, seed=seed)
     indices = torch.randint(n, size=(n,), generator=generator, device=device)
     sampled = labels.index_select(0, indices).clone()
 
@@ -244,9 +255,12 @@ class _DeepEnsembleClassificationModel(
         return encoded_X, labels
 
     def _epoch_order(self, n: int, member_index: int, epoch: int, device: torch.device) -> Tensor:
-        generator = torch.Generator(device=device)
-        if self.random_state is not None:
-            generator.manual_seed(int(self.random_state) + 100_000 + member_index * 10_000 + epoch)
+        seed = (
+            None
+            if self.random_state is None
+            else int(self.random_state) + 100_000 + member_index * 10_000 + epoch
+        )
+        generator = _make_generator(device=device, seed=seed)
         return torch.randperm(n, generator=generator, device=device)
 
     def fit(

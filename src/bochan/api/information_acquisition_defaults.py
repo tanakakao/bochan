@@ -12,7 +12,10 @@ from dataclasses import replace
 from typing import Any
 
 from .automatic_default_utils import _num_outputs
-from .automatic_multiobjective import make_default_ref_point, observed_multiobjective_values
+from .automatic_multiobjective import (
+    make_default_ref_point,
+    observed_multiobjective_values,
+)
 from .configs import AcquisitionConfig, DataContext, ModelBundle, OptimizeConfig
 
 
@@ -79,7 +82,9 @@ def _bounds_as_pairs(bounds: Any) -> list[tuple[float, float]]:
 
     value = torch.as_tensor(bounds).detach().cpu()
     if value.ndim != 2:
-        raise ValueError(f"bounds must be a 2D array/tensor. Got shape={tuple(value.shape)}.")
+        raise ValueError(
+            f"bounds must be a 2D array/tensor. Got shape={tuple(value.shape)}."
+        )
     if value.shape[0] == 2:
         value = value.transpose(0, 1)
     elif value.shape[1] != 2:
@@ -131,7 +136,9 @@ def _resolve_mes(
     if config.acqf_kwargs.get("candidate_set") is not None:
         return config, context
     if context.bounds is None:
-        raise ValueError("MES requires bounds when candidate_set is not supplied explicitly.")
+        raise ValueError(
+            "MES requires bounds when candidate_set is not supplied explicitly."
+        )
 
     constructor = _get_botorch_input_constructor(config.acqf_cls)
     generated = constructor(
@@ -161,18 +168,24 @@ def _resolve_jes(
     optimal_inputs = config.acqf_kwargs.get("optimal_inputs")
     optimal_outputs = config.acqf_kwargs.get("optimal_outputs")
     if (optimal_inputs is None) != (optimal_outputs is None):
-        raise ValueError("JES requires optimal_inputs and optimal_outputs to be supplied together.")
+        raise ValueError(
+            "JES requires optimal_inputs and optimal_outputs to be supplied together."
+        )
     if optimal_inputs is not None:
         return config, context
     if context.bounds is None:
-        raise ValueError("JES requires bounds when optimal samples are not supplied explicitly.")
+        raise ValueError(
+            "JES requires bounds when optimal samples are not supplied explicitly."
+        )
 
     constructor = _get_botorch_input_constructor(config.acqf_cls)
     generated = constructor(
         model=bundle.model,
         bounds=_bounds_as_pairs(context.bounds),
         num_optima=int(context.extra.get("jes_num_optima", 64)),
-        condition_noiseless=bool(config.acqf_kwargs.get("condition_noiseless", True)),
+        condition_noiseless=bool(
+            config.acqf_kwargs.get("condition_noiseless", True)
+        ),
         posterior_transform=config.acqf_kwargs.get("posterior_transform"),
         X_pending=context.X_pending,
         estimation_type=str(config.acqf_kwargs.get("estimation_type", "LB")),
@@ -206,7 +219,11 @@ def _resolve_hvkg_ref_point(
     context: DataContext,
 ) -> tuple[AcquisitionConfig, DataContext, Any]:
     explicit = config.acqf_kwargs.get("ref_point")
-    ref_point = explicit if explicit is not None else context.ref_point
+    if explicit is not None:
+        context.ref_point = None
+        return config, context, explicit
+
+    ref_point = context.ref_point
     if ref_point is None:
         values = observed_multiobjective_values(bundle, config, context)
         margin = float(context.extra.get("ref_point_margin", 0.1))
@@ -222,7 +239,9 @@ def _resolve_hvkg(
 ) -> tuple[AcquisitionConfig, DataContext]:
     _require_supported_task(bundle, "hvkg")
     if _num_outputs(bundle.train_Y) < 2:
-        raise ValueError("HVKG requires a multi-output model with at least two objectives.")
+        raise ValueError(
+            "HVKG requires a multi-output model with at least two objectives."
+        )
 
     config, context = _prepare_hvkg_multiobjective_context(bundle, config, context)
     config, context, ref_point = _resolve_hvkg_ref_point(bundle, config, context)
@@ -230,7 +249,9 @@ def _resolve_hvkg(
     if config.acqf_kwargs.get("current_value") is not None:
         return config, context
     if context.bounds is None:
-        raise ValueError("HVKG requires bounds when current_value is not supplied explicitly.")
+        raise ValueError(
+            "HVKG requires bounds when current_value is not supplied explicitly."
+        )
 
     from .factory import build_objective
 

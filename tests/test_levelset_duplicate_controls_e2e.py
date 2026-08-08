@@ -7,9 +7,12 @@ from botorch.models import SingleTaskGP
 
 from bochan.acquisition.binary.levelset_estimation import qBinaryICUAcquisition
 from bochan.acquisition.multiclass.levelset_estimation import qMulticlassICUAcquisition
-from bochan.acquisition.ordinal.levelset_estimation import qOrdinalICUAcquisition
+from bochan.acquisition.ordinal.levelset_estimation import (
+    qMultiOutputOrdinalICUAcquisition,
+    qOrdinalICUAcquisition,
+)
 from bochan.acquisition.regression.levelset_estimation import qRegressionStraddle
-from bochan.models.ordinal.base import OrdinalGPModel
+from bochan.models.ordinal.base import MultiOutputOrdinalModel, OrdinalGPModel
 
 
 DTYPE = torch.double
@@ -40,9 +43,10 @@ class _DummyMulticlassModel(torch.nn.Module):
         return torch.softmax(logits, dim=-1)
 
 
-def _ordinal_model() -> OrdinalGPModel:
+def _ordinal_model(train_y: torch.Tensor | None = None) -> OrdinalGPModel:
     train_x = torch.tensor([[0.1], [0.3], [0.5], [0.7], [0.9]], dtype=DTYPE)
-    train_y = torch.tensor([0, 0, 1, 2, 2], dtype=torch.long)
+    if train_y is None:
+        train_y = torch.tensor([0, 0, 1, 2, 2], dtype=torch.long)
     model = OrdinalGPModel(
         train_X=train_x,
         train_Y=train_y,
@@ -122,6 +126,23 @@ def test_ordinal_lse_avoids_observed_pending_and_same_batch_duplicates() -> None
 
     assert acquisition.X_observed is not None
     _assert_duplicate_contract(acquisition, model.train_X[0], pending)
+
+
+def test_multi_output_ordinal_lse_uses_same_duplicate_contract() -> None:
+    model_a = _ordinal_model(torch.tensor([0, 0, 1, 2, 2], dtype=torch.long))
+    model_b = _ordinal_model(torch.tensor([0, 1, 1, 1, 2], dtype=torch.long))
+    model = MultiOutputOrdinalModel(model_a, model_b)
+    model.eval()
+
+    pending = torch.tensor([0.6], dtype=DTYPE)
+    acquisition = qMultiOutputOrdinalICUAcquisition(
+        model=model,
+        X_pending=pending.view(1, -1),
+        hard_duplicate_tol=1e-8,
+    )
+
+    assert acquisition.X_observed is not None
+    _assert_duplicate_contract(acquisition, model_a.train_X[0], pending)
 
 
 def test_lse_duplicate_controls_can_be_disabled() -> None:

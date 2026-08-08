@@ -17,7 +17,7 @@ from bochan.models.regression.foundation import PFNPosterior, PFNRegressorModel
 class _FakeCriterion(nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        self.register_buffer("centers", torch.tensor([-1.0, 0.0, 1.0]))
+        self.register_buffer("centers", torch.tensor([-2.0, 0.0, 2.0]))
 
     def mean(self, logits: Tensor) -> Tensor:
         return logits.softmax(-1) @ self.centers.to(logits)

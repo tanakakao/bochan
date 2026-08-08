@@ -302,6 +302,92 @@ def _resolve_default_regression_nparego_class(
     return replace(config, acqf_cls=qMultiOutputRegressionNParEGO)
 
 
+def _uses_internal_nparego_baseline(config: AcquisitionConfig) -> bool:
+    """Return whether NParEGO owns baseline comparison and scalarization.
+
+    bochan's task-specific NParEGO implementations and BoTorch ``qLogNParEGO``
+    both consume ``X_baseline`` and perform Chebyshev scalarization internally.
+    Their ``objective`` argument is therefore a multi-output preprocessing
+    objective, not a scalarized EI objective, and they do not use ``best_f``.
+    """
+
+    acqf_cls = config.acqf_cls
+    if acqf_cls is None:
+        return False
+    normalized = _normalize_name(
+        f"{config.name} {getattr(acqf_cls, '__name__', '')}"
+    )
+    if "nparego" not in normalized:
+        return False
+
+    module_name = str(getattr(acqf_cls, "__module__", ""))
+    class_name = str(getattr(acqf_cls, "__name__", ""))
+    if module_name.startswith("bochan.acquisition."):
+        return True
+    return (
+        module_name == "botorch.acquisition.multi_objective.parego"
+        and class_name == "qLogNParEGO"
+    )
+
+
+def _nparego_weight_keyword(config: AcquisitionConfig) -> str | None:
+    """Return the constructor keyword used for NParEGO scalarization weights."""
+
+    if not _uses_internal_nparego_baseline(config):
+        return None
+
+    acqf_cls = config.acqf_cls
+    module_name = str(getattr(acqf_cls, "__module__", ""))
+    class_name = str(getattr(acqf_cls, "__name__", ""))
+    if (
+        module_name == "botorch.acquisition.multi_objective.parego"
+        and class_name == "qLogNParEGO"
+    ):
+        return "scalarization_weights"
+    if module_name.startswith("bochan.acquisition."):
+        return "weights"
+    return None
+
+
+def _resolve_internal_nparego_scalarization_weights(
+    config: AcquisitionConfig,
+    context: DataContext,
+) -> tuple[AcquisitionConfig, DataContext]:
+    """Route multi-objective scalarization weights into NParEGO itself.
+
+    ``prepare_multi_objective_context`` historically turns
+    ``MultiObjectiveConfig.scalarization_weights`` into a scalar
+    ``GenericMCObjective``. Self-scalarizing NParEGO classes must instead receive
+    those weights through their constructor; otherwise the objective dimension
+    is collapsed before NParEGO applies Chebyshev scalarization a second time.
+
+    The returned context contains a cloned ``MultiObjectiveConfig`` with generic
+    auto-scalarization disabled only for this internal NParEGO path. The caller's
+    original configuration is not mutated.
+    """
+
+    weight_keyword = _nparego_weight_keyword(config)
+    mo_config = context.multi_objective
+    if (
+        weight_keyword is None
+        or mo_config is None
+        or not mo_config.auto_scalarization
+        or mo_config.scalarization_weights is None
+    ):
+        return config, context
+
+    kwargs = dict(config.acqf_kwargs)
+    if kwargs.get(weight_keyword) is None:
+        kwargs[weight_keyword] = mo_config.scalarization_weights
+        config = replace(config, acqf_kwargs=kwargs)
+
+    context = replace(
+        context,
+        multi_objective=replace(mo_config, auto_scalarization=False),
+    )
+    return config, context
+
+
 def _explicit_acqf_value(config: AcquisitionConfig, name: str) -> Any:
     """Return a non-None value explicitly supplied in ``acqf_kwargs``."""
 
@@ -406,14 +492,17 @@ def _resolve_default_nparego_objective(
     config: AcquisitionConfig,
     context: DataContext,
 ) -> AcquisitionConfig:
-    """Create a random Chebyshev scalarization for default NParEGO use.
+    """Resolve the objective contract for NParEGO acquisitions.
 
-    Explicit objective settings always take precedence. The scalarization is
-    built from observed objective values and a random simplex weight vector, as
-    in the standard NParEGO construction. The same objective is subsequently
-    used when inferring ``best_f``.
+    Self-baselining NParEGO implementations perform Chebyshev scalarization
+    internally. For those classes, an explicit objective is preserved as a
+    multi-output preprocessing objective and no generic scalar objective is
+    injected. External legacy NParEGO classes keep the historical fallback that
+    constructs a random Chebyshev ``GenericMCObjective``.
     """
 
+    if _uses_internal_nparego_baseline(config):
+        return config
     if (
         config.objective is not None
         or config.objective_factory is not None
@@ -455,6 +544,9 @@ def _resolve_best_f_default(
     if explicit is not None:
         context.best_f = None
         return config, context
+    if _uses_internal_nparego_baseline(config):
+        context.best_f = None
+        return config, context
 
     value = context.best_f
     if value is None and _callable_accepts_keyword(config.acqf_cls, "best_f"):
@@ -474,6 +566,7 @@ def resolve_acquisition_defaults(
     from .factory import prepare_multi_objective_context
 
     config = _resolve_default_regression_nparego_class(bundle, config)
+    config, context = _resolve_internal_nparego_scalarization_weights(config, context)
     context = prepare_multi_objective_context(bundle, context, config)
     config = _resolve_default_ordinal_objective(bundle, config)
     kind = _acquisition_kind(config)

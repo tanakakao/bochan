@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 import torch
+from botorch.acquisition.multi_objective.parego import qLogNParEGO
 
 import bochan.api.engine_defaults as engine_defaults
 from bochan.acquisition.binary.bayesian_optimization import (
@@ -37,6 +38,7 @@ from bochan.api import _uses_internal_nparego_baseline
         qHeteroMultiOutputOrdinalNParEGO,
         qMultiOutputMulticlassNParEGO,
         qHeteroMultiOutputMulticlassNParEGO,
+        qLogNParEGO,
     ],
 )
 def test_builtin_nparego_uses_internal_baseline(acqf_cls) -> None:
@@ -54,6 +56,29 @@ def test_internal_ordinal_nparego_skips_automatic_best_f(monkeypatch) -> None:
     config = AcquisitionConfig(
         name="nparego",
         acqf_cls=qMultiOutputOrdinalNParEGO,
+    )
+    context = DataContext(best_f=torch.tensor(5.0, dtype=torch.double))
+
+    resolved, resolved_context = engine_defaults._resolve_best_f_default(
+        SimpleNamespace(),
+        config,
+        context,
+    )
+
+    assert resolved is config
+    assert resolved_context.best_f is None
+    assert "best_f" not in resolved.acqf_kwargs
+
+
+def test_log_nparego_skips_automatic_best_f(monkeypatch) -> None:
+    monkeypatch.setattr(
+        engine_defaults,
+        "compute_best_f",
+        lambda *args, **kwargs: pytest.fail("qLogNParEGO must not compute best_f"),
+    )
+    config = AcquisitionConfig(
+        name="lognparego",
+        acqf_cls=qLogNParEGO,
     )
     context = DataContext(best_f=torch.tensor(5.0, dtype=torch.double))
 

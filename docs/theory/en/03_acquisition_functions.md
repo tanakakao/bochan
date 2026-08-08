@@ -167,7 +167,7 @@ Expected Improvement is
 For Gaussian posterior and
 
 ```math
-z=rac{\mu-f_{\mathrm{best}}}{\sigma},
+z=\frac{\mu-f_{\mathrm{best}}}{\sigma},
 ```
 
 ```math
@@ -243,6 +243,15 @@ Important arguments include:
 
 NEI is not simply EI with a larger variance.  It changes the reference value
 from fixed best observation to a posterior-distributed latent baseline.
+
+### Log Noisy Expected Improvement
+
+`qLogNoisyExpectedImprovement` evaluates the noisy-improvement criterion in a
+numerically stable log formulation.  It uses `X_baseline` rather than `best_f`
+and supports the same objective, constraint, sampler, and pending-point concepts
+as the corresponding noisy-improvement workflow.  For standard Gaussian
+regression, `lognei` / `qlognei` are the preferred bochan aliases when numerical
+stability matters.
 
 ---
 
@@ -458,9 +467,15 @@ evaluation.  An MC objective changes samples after sampling.  They are related
 but not interchangeable, especially for nonlinear transformations because
 
 ```math
-T(\mathbb E[Y])
-e\mathbb E[T(Y)].
+T(\mathbb E[Y])\ne\mathbb E[T(Y)].
 ```
+
+For bochan's task-specific NParEGO classes and BoTorch `qLogNParEGO`, the
+acquisition performs augmented Chebyshev scalarization and baseline comparison
+internally.  In this case the `objective` argument remains a **multi-output
+preprocessing objective** that must return an explicit final objective dimension;
+it must not be replaced by a second scalarization.  These acquisitions use
+`X_baseline` and do not require `best_f`.
 
 ---
 
@@ -496,6 +511,12 @@ Probability-of-feasibility weighting is
 This factorization is exact only under particular independence and value
 assumptions.  MC constrained acquisitions can represent joint samples more
 directly.
+
+`qLogProbabilityOfFeasibility` evaluates the Monte Carlo feasibility probability
+in log space.  bochan exposes `logpof` / `qlogpof` for standard regression
+posterior-sample constraints.  This is distinct from task-specific binary,
+multiclass, or ordinal probability-of-feasibility acquisitions, where the
+probability/utility semantics are defined by the classification model.
 
 ---
 
@@ -602,8 +623,11 @@ objective noisy and gradients unreliable.
 
 ### 16.2 Log acquisitions
 
-LogEI and related variants reduce underflow and improve gradients when
-improvement probabilities are tiny.
+LogEI-family acquisitions reduce underflow and improve gradients when
+improvement or feasibility probabilities are tiny.  bochan exposes stable
+standard-regression routes for LogEI, LogNEI, LogPoF, LogEHVI, LogNEHVI, and
+LogNParEGO.  Prefer the log variants where their mathematical assumptions match
+the problem rather than treating them as different exploration heuristics.
 
 ### 16.3 Standardization
 
@@ -628,13 +652,15 @@ scientifically useful.
 | Situation | Useful starting acquisition |
 |---|---|
 | Low-noise single-objective regression | LogEI / qLogEI |
-| Noisy experimental response | qNEI / log noisy improvement variant |
+| Noisy experimental response | qLogNEI (qNEI as the non-log baseline) |
+| Constrained MC feasibility | qLogPoF |
 | Simple exploration baseline | qUCB |
 | Direct probability target | task-specific probability EI, PI, or UCB |
 | Valuable look-ahead information | qKG |
 | Explicit multistep planning | qMultiStepLookahead |
-| Multi-objective, low noise | qEHVI |
-| Multi-objective, noisy baseline | qNEHVI |
+| Multi-objective, low noise | qLogEHVI / qEHVI |
+| Multi-objective, noisy baseline | qLogNEHVI / qNEHVI |
+| Scalarized multi-objective search | qLogNParEGO / bochan task-specific NParEGO |
 | Expensive mixed domain | mixed optimizer with an appropriate acquisition |
 
 The model, objective, and posterior contract must be checked before applying the
@@ -654,12 +680,21 @@ Representative mappings include:
 | `qei`, `ei` | `qExpectedImprovement` |
 | `qlogei`, `logei` | `qLogExpectedImprovement` |
 | `qnei`, `nei` | `qNoisyExpectedImprovement` |
+| `qlognei`, `lognei` | `qLogNoisyExpectedImprovement` |
+| `qlogpof`, `logpof` | `qLogProbabilityOfFeasibility` |
 | `qucb`, `ucb` | `qUpperConfidenceBound` |
 | `qpi`, `pi` | `qProbabilityOfImprovement` |
 | `qkg`, `kg` | `qKnowledgeGradient` |
 | `lookahead` | `qMultiStepLookahead` |
 | `qehvi`, `ehvi` | `qExpectedHypervolumeImprovement` |
+| `qlogehvi`, `logehvi` | `qLogExpectedHypervolumeImprovement` |
 | `qnehvi`, `nehvi` | `qNoisyExpectedHypervolumeImprovement` |
+| `qlognehvi`, `lognehvi` | `qLogNoisyExpectedHypervolumeImprovement` |
+| `qlognparego`, `lognparego` | `qLogNParEGO` |
+
+For contextual multi-output regression, `nparego` / `qnparego` resolve to
+bochan's `qMultiOutputRegressionNParEGO`, which performs its own augmented
+Chebyshev scalarization rather than falling back to qEI.
 
 ### 18.2 Task-specific acquisitions
 
@@ -683,6 +718,11 @@ Examples registered in the current API include:
 - `qOrdinalUpperConfidenceBound`;
 - heteroscedastic regression and ordinal variants;
 - task-specific multi-output EHVI, NEHVI, and NParEGO wrappers.
+
+Log short aliases in this phase intentionally target standard regression / hybrid
+posterior semantics.  They are not silently redirected to classification or
+ordinal acquisitions because probability and utility spaces require different
+criterion definitions.
 
 ### 18.3 Optimizers
 

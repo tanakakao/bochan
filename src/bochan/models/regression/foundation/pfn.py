@@ -210,6 +210,7 @@ class PFNRegressorModel(Model):
         cache_dir: str | os.PathLike[str] | None = None,
         download_if_missing: bool = True,
         target_standardize: bool = True,
+        outcome_transform: Any | None = None,
         inference_dtype: torch.dtype = torch.float32,
         max_eval_points: int = 4096,
         strict_bounds: bool = True,
@@ -223,6 +224,15 @@ class PFNRegressorModel(Model):
             raise ValueError("max_eval_points must be positive.")
         if bounds_atol < 0:
             raise ValueError("bounds_atol must be non-negative.")
+        if outcome_transform is not None:
+            if type(outcome_transform).__name__ != "AutoStandardizeOutcomeTransform":
+                raise NotImplementedError(
+                    "PFN v1 owns its target preprocessing and only accepts bochan's "
+                    "default AutoStandardizeOutcomeTransform for high-level API compatibility. "
+                    "Set ModelConfig(outcome_transform=False) when configuring PFN-specific "
+                    "target preprocessing directly."
+                )
+            target_standardize = True
 
         self.register_buffer("train_X", train_X.detach().clone())
         self.register_buffer("train_Y", train_Y.detach().clone())

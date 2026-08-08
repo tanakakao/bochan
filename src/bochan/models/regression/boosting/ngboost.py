@@ -17,25 +17,12 @@ from linear_operator.operators import DiagLinearOperator
 from torch import Tensor
 from torch.nn import Module
 
-
-def _require_single_output(train_X: Tensor, train_Y: Tensor) -> Tensor:
-    """Validate NGBoost training tensors and return ``train_Y`` as ``n x 1``."""
-    if train_X.ndim != 2:
-        raise ValueError("train_X must be a 2D tensor with shape [n, d].")
-    if train_Y.ndim == 1:
-        train_Y = train_Y.unsqueeze(-1)
-    if train_Y.ndim != 2 or train_Y.shape[-1] != 1:
-        raise ValueError("NGBoost models currently support single-output regression only.")
-    if train_X.shape[0] != train_Y.shape[0]:
-        raise ValueError("train_X and train_Y must contain the same number of observations.")
-    if not train_X.is_floating_point() or not train_Y.is_floating_point():
-        raise TypeError("train_X and train_Y must be floating-point tensors.")
-    return train_Y
-
-
-def _to_numpy(value: Tensor) -> np.ndarray:
-    """Detach a tensor and move it to a NumPy array for scikit-learn style models."""
-    return value.detach().cpu().numpy()
+from .common import (
+    _ExternalRegressorMixin,
+    _check_one_to_one_input_transform,
+    _require_single_output,
+    _validate_output_indices,
+)
 
 
 def _new_ngboost_regressor(kwargs: Mapping[str, Any]) -> Any:
@@ -50,81 +37,8 @@ def _new_ngboost_regressor(kwargs: Mapping[str, Any]) -> Any:
     return NGBRegressor(**dict(kwargs))
 
 
-def _validate_output_indices(output_indices: list[int] | None) -> None:
-    if output_indices is None:
-        return
-    if list(output_indices) != [0]:
-        raise UnsupportedError("NGBoost models currently expose only output index 0.")
-
-
-def _check_one_to_one_input_transform(input_transform: Module | None) -> None:
-    if input_transform is not None and bool(getattr(input_transform, "is_one_to_many", False)):
-        raise UnsupportedError(
-            "NGBoost models currently require one-to-one input transforms; "
-            "one-to-many perturbation transforms are not supported."
-        )
-
-
-class _NGBoostModelMixin:
-    """Shared data-transform and fitting helpers for external NGBoost estimators."""
-
-    train_X: Tensor
-    train_Y: Tensor
-    input_transform: Module
-    outcome_transform: Module
-
-    def _set_transformed_inputs(self) -> None:
-        """Disable GP-specific training-input mutation from ``Model.eval``."""
-
-    def _revert_to_original_inputs(self) -> None:
-        """Disable GP-specific training-input mutation from ``Model.train``."""
-
-    @property
-    def train_inputs(self) -> tuple[Tensor]:
-        return (self.train_X,)
-
-    @property
-    def train_targets(self) -> Tensor:
-        return self.train_Y.squeeze(-1)
-
-    def _prepare_training_arrays(self) -> tuple[np.ndarray, np.ndarray]:
-        self.train()
-        input_transform = getattr(self, "input_transform", None)
-        _check_one_to_one_input_transform(input_transform)
-        transformed_X = self.transform_inputs(self.train_X)
-
-        transformed_Y = self.train_Y
-        outcome_transform = getattr(self, "outcome_transform", None)
-        if outcome_transform is not None:
-            transformed_Y, _ = outcome_transform(transformed_Y, X=self.train_X)
-
-        return _to_numpy(transformed_X), _to_numpy(transformed_Y.squeeze(-1))
-
-    def _prepare_validation_arrays(
-        self,
-        X_val: Any | None,
-        Y_val: Any | None,
-    ) -> tuple[np.ndarray | None, np.ndarray | None]:
-        if X_val is None and Y_val is None:
-            return None, None
-        if X_val is None or Y_val is None:
-            raise ValueError("X_val and Y_val must be provided together.")
-
-        X_tensor = torch.as_tensor(X_val, dtype=self.train_X.dtype, device=self.train_X.device)
-        Y_tensor = torch.as_tensor(Y_val, dtype=self.train_Y.dtype, device=self.train_Y.device)
-        if Y_tensor.ndim == 1:
-            Y_tensor = Y_tensor.unsqueeze(-1)
-        if X_tensor.ndim != 2 or Y_tensor.ndim != 2 or Y_tensor.shape[-1] != 1:
-            raise ValueError("Validation data must have shapes [n, d] and [n, 1].")
-
-        input_transform = getattr(self, "input_transform", None)
-        _check_one_to_one_input_transform(input_transform)
-        transformed_X = self.transform_inputs(X_tensor)
-        transformed_Y = Y_tensor
-        outcome_transform = getattr(self, "outcome_transform", None)
-        if outcome_transform is not None:
-            transformed_Y, _ = outcome_transform(transformed_Y, X=X_tensor)
-        return _to_numpy(transformed_X), _to_numpy(transformed_Y.squeeze(-1))
+class _NGBoostModelMixin(_ExternalRegressorMixin):
+    """NGBoost-specific fitting helpers on top of the external estimator bridge."""
 
     @staticmethod
     def _fit_kwargs(
@@ -155,19 +69,7 @@ class _NGBoostModelMixin:
 
 
 class NGBoostRegressorModel(_NGBoostModelMixin, Model):
-    """Wrap ``NGBRegressor`` behind the standard BoTorch ``Model`` interface.
-
-    The NGBoost predictive Normal distribution is represented as a diagonal
-    ``MultivariateNormal`` across query points. This yields a standard
-    ``GPyTorchPosterior`` and therefore works with BoTorch's normal MC samplers
-    without a custom sampler registration.
-
-    Notes:
-        ``posterior(..., observation_noise=...)`` always represents NGBoost's
-        predictive outcome distribution. A boolean ``observation_noise`` argument
-        is accepted for BoTorch API compatibility but does not change the result.
-        Tensor-valued observation noise is unsupported.
-    """
+    """Wrap ``NGBRegressor`` behind the standard BoTorch ``Model`` interface."""
 
     def __init__(
         self,
@@ -181,8 +83,8 @@ class NGBoostRegressorModel(_NGBoostModelMixin, Model):
         **ngboost_kwargs: Any,
     ) -> None:
         super().__init__()
-        train_Y = _require_single_output(train_X, train_Y)
-        _check_one_to_one_input_transform(input_transform)
+        train_Y = _require_single_output(train_X, train_Y, model_name="NGBoost")
+        _check_one_to_one_input_transform(input_transform, model_name="NGBoost")
         if min_scale <= 0:
             raise ValueError("min_scale must be positive.")
 
@@ -245,24 +147,23 @@ class NGBoostRegressorModel(_NGBoostModelMixin, Model):
 
     def _normal_parameters(self, X: Tensor) -> tuple[Tensor, Tensor]:
         if not self._is_fitted:
-            raise RuntimeError("NGBoostRegressorModel is not fitted. Call fit() first.")
+            raise RuntimeError(f"{type(self).__name__} is not fitted. Call fit() first.")
         if X.ndim < 2:
             raise ValueError("X must have shape [..., q, d].")
 
         flat_X = X.reshape(-1, X.shape[-1])
-        distribution = self.estimator.pred_dist(_to_numpy(flat_X))
+        distribution = self.estimator.pred_dist(self._estimator_features(flat_X))
         params = getattr(distribution, "params", None)
         if not isinstance(params, Mapping) or "loc" not in params or "scale" not in params:
             raise NotImplementedError(
-                "NGBoostRegressorModel currently requires a Normal-compatible "
+                f"{type(self).__name__} currently requires a Normal-compatible "
                 "predictive distribution exposing `params['loc']` and `params['scale']`."
             )
 
         leading_shape = X.shape[:-1]
         loc = torch.as_tensor(params["loc"], dtype=X.dtype, device=X.device).reshape(leading_shape)
         scale = torch.as_tensor(params["scale"], dtype=X.dtype, device=X.device).reshape(leading_shape)
-        scale = scale.clamp_min(self.min_scale)
-        return loc, scale
+        return loc, scale.clamp_min(self.min_scale)
 
     def posterior(
         self,
@@ -271,7 +172,7 @@ class NGBoostRegressorModel(_NGBoostModelMixin, Model):
         observation_noise: bool | Tensor = False,
         posterior_transform: PosteriorTransform | None = None,
     ) -> GPyTorchPosterior:
-        _validate_output_indices(output_indices)
+        _validate_output_indices(output_indices, model_name="NGBoost")
         if isinstance(observation_noise, Tensor):
             raise UnsupportedError("Tensor-valued observation noise is not supported by NGBoostRegressorModel.")
 
@@ -294,13 +195,7 @@ class NGBoostRegressorModel(_NGBoostModelMixin, Model):
 
 
 class NGBoostEnsembleModel(_NGBoostModelMixin, EnsembleModel):
-    """Bootstrap NGBoost ensemble exposed through BoTorch ``EnsembleModel``.
-
-    Each ensemble member contributes its predictive mean. Consequently the
-    ``EnsemblePosterior`` variance represents disagreement between bootstrap
-    models (an epistemic uncertainty estimate), rather than the per-member
-    NGBoost predictive scale.
-    """
+    """Bootstrap NGBoost ensemble exposed through BoTorch ``EnsembleModel``."""
 
     def __init__(
         self,
@@ -318,8 +213,8 @@ class NGBoostEnsembleModel(_NGBoostModelMixin, EnsembleModel):
         **ngboost_kwargs: Any,
     ) -> None:
         super().__init__(weights=weights)
-        train_Y = _require_single_output(train_X, train_Y)
-        _check_one_to_one_input_transform(input_transform)
+        train_Y = _require_single_output(train_X, train_Y, model_name="NGBoost")
+        _check_one_to_one_input_transform(input_transform, model_name="NGBoost")
 
         self.register_buffer("train_X", train_X.detach().clone())
         self.register_buffer("train_Y", train_Y.detach().clone())
@@ -415,15 +310,16 @@ class NGBoostEnsembleModel(_NGBoostModelMixin, EnsembleModel):
 
     def forward(self, X: Tensor) -> Tensor:
         if not self._is_fitted:
-            raise RuntimeError("NGBoostEnsembleModel is not fitted. Call fit() first.")
+            raise RuntimeError(f"{type(self).__name__} is not fitted. Call fit() first.")
         if X.ndim < 2:
             raise ValueError("X must have shape [..., q, d].")
 
-        flat_X = _to_numpy(X.reshape(-1, X.shape[-1]))
+        flat_X = X.reshape(-1, X.shape[-1])
+        estimator_X = self._estimator_features(flat_X)
         leading_shape = X.shape[:-1]
         member_values = []
         for estimator in self.estimators:
-            prediction = estimator.predict(flat_X)
+            prediction = estimator.predict(estimator_X)
             value = torch.as_tensor(prediction, dtype=X.dtype, device=X.device).reshape(*leading_shape, 1)
             member_values.append(value)
         return torch.stack(member_values, dim=-3)

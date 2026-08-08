@@ -89,6 +89,54 @@ _ACQF_ALIASES: dict[str, AcqPath] = {
     ),
     "qkg": ("botorch.acquisition.knowledge_gradient", "qKnowledgeGradient"),
     "kg": ("botorch.acquisition.knowledge_gradient", "qKnowledgeGradient"),
+    "qmes": (
+        "botorch.acquisition.max_value_entropy_search",
+        "qMaxValueEntropy",
+    ),
+    "mes": (
+        "botorch.acquisition.max_value_entropy_search",
+        "qMaxValueEntropy",
+    ),
+    "qmaxvalueentropy": (
+        "botorch.acquisition.max_value_entropy_search",
+        "qMaxValueEntropy",
+    ),
+    "maxvalueentropy": (
+        "botorch.acquisition.max_value_entropy_search",
+        "qMaxValueEntropy",
+    ),
+    "qjes": (
+        "botorch.acquisition.joint_entropy_search",
+        "qJointEntropySearch",
+    ),
+    "jes": (
+        "botorch.acquisition.joint_entropy_search",
+        "qJointEntropySearch",
+    ),
+    "qjointentropysearch": (
+        "botorch.acquisition.joint_entropy_search",
+        "qJointEntropySearch",
+    ),
+    "jointentropysearch": (
+        "botorch.acquisition.joint_entropy_search",
+        "qJointEntropySearch",
+    ),
+    "qhvkg": (
+        "botorch.acquisition.multi_objective.hypervolume_knowledge_gradient",
+        "qHypervolumeKnowledgeGradient",
+    ),
+    "hvkg": (
+        "botorch.acquisition.multi_objective.hypervolume_knowledge_gradient",
+        "qHypervolumeKnowledgeGradient",
+    ),
+    "qhypervolumeknowledgegradient": (
+        "botorch.acquisition.multi_objective.hypervolume_knowledge_gradient",
+        "qHypervolumeKnowledgeGradient",
+    ),
+    "hypervolumeknowledgegradient": (
+        "botorch.acquisition.multi_objective.hypervolume_knowledge_gradient",
+        "qHypervolumeKnowledgeGradient",
+    ),
     "qmultisteplookahead": (
         "botorch.acquisition.multi_step_lookahead",
         "qMultiStepLookahead",
@@ -675,6 +723,9 @@ _LOG_POF_SHORT_NAMES = {"logpof", "qlogpof", "logpf", "qlogpf"}
 _LOG_EHVI_SHORT_NAMES = {"logehvi", "qlogehvi"}
 _LOG_NEHVI_SHORT_NAMES = {"lognehvi", "qlognehvi"}
 _LOG_NPAREGO_SHORT_NAMES = {"lognparego", "qlognparego"}
+_MES_SHORT_NAMES = {"mes", "qmes"}
+_JES_SHORT_NAMES = {"jes", "qjes"}
+_HVKG_SHORT_NAMES = {"hvkg", "qhvkg"}
 _CONTEXTUAL_SHORT_NAMES = {
     "bald",
     "jointbald",
@@ -711,6 +762,9 @@ _CONTEXTUAL_SHORT_NAMES = {
     "probabilityoffeasibility",
     *_LOG_NEI_SHORT_NAMES,
     *_LOG_POF_SHORT_NAMES,
+    *_MES_SHORT_NAMES,
+    *_JES_SHORT_NAMES,
+    *_HVKG_SHORT_NAMES,
     "ehi",
     "qehi",
     "ehvi",
@@ -884,6 +938,20 @@ def _resolve_contextual_bo_path(
         if task != "regression":
             _raise_regression_only(normalized_name, task)
         return _fallback_builtin_path("qlogpof")
+    if normalized_name in _MES_SHORT_NAMES:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        return _fallback_builtin_path("qmes")
+    if normalized_name in _JES_SHORT_NAMES:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        return _fallback_builtin_path("qjes")
+    if normalized_name in _HVKG_SHORT_NAMES:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        if not multi_output:
+            _raise_multi_output_only(normalized_name, task)
+        return _fallback_builtin_path("qhvkg")
     if normalized_name in _LOG_EHVI_SHORT_NAMES:
         if task != "regression":
             _raise_regression_only(normalized_name, task)
@@ -1050,6 +1118,7 @@ def _resolve_contextual_acqf_path(
     if bo_path is not None:
         return bo_path
     if normalized_name == "bald":
+        suffix = "BALD" if task != "nongaussian" else "JointBALDProxy"
         suffix = "BALD" if task != "nongaussian" else "BALDProxy"
     elif normalized_name == "jointbald":
         suffix = "JointBALDProxy" if task == "nongaussian" else "JointBALD"

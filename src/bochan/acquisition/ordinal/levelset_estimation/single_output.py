@@ -6,12 +6,18 @@ from typing import Callable, Literal, Optional, Sequence
 import torch
 from torch import Tensor
 
-from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.acquisition.monte_carlo import MCAcquisitionFunction
 from botorch.models.model import Model
 from botorch.sampling.base import MCSampler
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.transforms import average_over_ensemble_models, t_batch_mode_transform
+
+from bochan.acquisition._duplicate_exclusion import (
+    hard_reference_duplicate_penalty_per_point,
+    hard_same_batch_duplicate_penalty_per_point,
+    resolve_observed_X,
+    unwrap_single_output_model,
+)
 
 
 RiskType = Optional[Literal["var", "cvar"]]
@@ -21,7 +27,7 @@ BoundaryReduction = Literal["sum", "mean", "max", "min"]
 
 
 class _OrdinalLevelSetScoreObjective(torch.nn.Module):
-    """ordinal level-set acquisition の score に作用する objective。"""
+    """ordinal level-set acquisition の pointwise score に作用する objective。"""
 
     def __init__(
         self,
@@ -132,12 +138,11 @@ def _get_cutpoints_from_likelihood(ordinal_likelihood) -> Tensor:
             return torch.as_tensor(cutpoints).detach().clone().reshape(-1)
 
     if hasattr(ordinal_likelihood, "raw_cutpoints"):
-        raw = _try_call_zero_arg(getattr(ordinal_likelihood, "raw_cutpoints"))
-        raw = torch.as_tensor(raw).detach().clone()
+        raw = torch.as_tensor(_try_call_zero_arg(getattr(ordinal_likelihood, "raw_cutpoints"))).detach().clone()
         if hasattr(ordinal_likelihood, "transform_cutpoints"):
             cutpoints = ordinal_likelihood.transform_cutpoints(raw)
             return torch.as_tensor(cutpoints).detach().clone().reshape(-1)
-        return raw.detach().clone().reshape(-1)
+        return raw.reshape(-1)
 
     raise ValueError(
         "Could not find cutpoints on ordinal likelihood. "
@@ -276,10 +281,6 @@ def _reduce_input_perturbation_mean_cov(
     return mean_q, cov_q + jitter * eye
 
 
-def _sigmoid(x: Tensor) -> Tensor:
-    return torch.sigmoid(x)
-
-
 def ordinal_class_probs_from_f(f: Tensor, ordinal_likelihood) -> Tensor:
     for name in (
         "class_probs_from_f",
@@ -287,6 +288,7 @@ def ordinal_class_probs_from_f(f: Tensor, ordinal_likelihood) -> Tensor:
         "predict_proba_from_f",
         "class_probabilities_from_f",
         "marginal_probs_from_f",
+        "latent_to_probs",
     ):
         if hasattr(ordinal_likelihood, name):
             probs = getattr(ordinal_likelihood, name)(f)
@@ -296,9 +298,9 @@ def ordinal_class_probs_from_f(f: Tensor, ordinal_likelihood) -> Tensor:
             probs = probs.clamp_min(1e-12)
             return probs / probs.sum(dim=-1, keepdim=True).clamp_min(1e-12)
 
-    cutpoints = _get_cutpoints_from_likelihood(ordinal_likelihood).detach().to(device=f.device, dtype=f.dtype)
+    cutpoints = _get_cutpoints_from_likelihood(ordinal_likelihood).to(device=f.device, dtype=f.dtype)
     z = cutpoints.view(*([1] * f.ndim), -1) - f.unsqueeze(-1)
-    cdf = _sigmoid(z)
+    cdf = torch.sigmoid(z)
     p0 = cdf[..., :1]
     if cutpoints.numel() > 1:
         pmid = cdf[..., 1:] - cdf[..., :-1]
@@ -312,7 +314,10 @@ def ordinal_class_probs_from_f(f: Tensor, ordinal_likelihood) -> Tensor:
 
 
 def ordinal_cumulative_ge_probs_from_class_probs(class_probs: Tensor) -> Tensor:
-    rev_cumsum = torch.flip(torch.cumsum(torch.flip(class_probs, dims=[-1]), dim=-1), dims=[-1])
+    rev_cumsum = torch.flip(
+        torch.cumsum(torch.flip(class_probs, dims=[-1]), dim=-1),
+        dims=[-1],
+    )
     return rev_cumsum[..., 1:]
 
 
@@ -320,23 +325,13 @@ def ordinal_boundary_uncertainty(ge_probs: Tensor) -> Tensor:
     return 4.0 * ge_probs * (1.0 - ge_probs)
 
 
-def _nearest_cutpoint_distance(values: Tensor, cutpoints: Tensor) -> Tensor:
-    cp = cutpoints.detach().to(device=values.device, dtype=values.dtype)
-    dist = (values.unsqueeze(-1) - cp.view(*([1] * values.ndim), -1)).abs()
-    return dist.min(dim=-1).values
-
-
-def _boundary_kernel_weight(values: Tensor, cutpoints: Tensor, tau: float, reduce: Literal["sum", "max"] = "sum") -> Tensor:
-    cp = cutpoints.detach().to(device=values.device, dtype=values.dtype)
-    tau_t = torch.as_tensor(tau, device=values.device, dtype=values.dtype).clamp_min(1e-8)
-    z2 = ((values.unsqueeze(-1) - cp.view(*([1] * values.ndim), -1)) / tau_t) ** 2
-    w = torch.exp(-0.5 * z2)
-    if reduce == "max":
-        return w.max(dim=-1).values
-    return w.sum(dim=-1)
-
-
-def _prepare_boundary_weights(boundary_weights: Optional[Tensor | Sequence[float]], n_boundaries: int, *, device, dtype) -> Tensor:
+def _prepare_boundary_weights(
+    boundary_weights: Optional[Tensor | Sequence[float]],
+    n_boundaries: int,
+    *,
+    device,
+    dtype,
+) -> Tensor:
     if boundary_weights is None:
         return torch.ones(n_boundaries, device=device, dtype=dtype)
     w = torch.as_tensor(boundary_weights, device=device, dtype=dtype).detach().reshape(-1)
@@ -358,30 +353,11 @@ def _validate_target_boundary_idx(target_boundary_idx: Optional[int], n_boundari
 
 
 def _cutpoint_distances_by_boundary(values: Tensor, cutpoints: Tensor) -> Tensor:
-    """Return distance from latent values to each ordinal cutpoint.
-
-    Args:
-        values: latent mean values. shape = batch_shape x q_like.
-        cutpoints: ordinal cutpoints. shape = n_boundaries.
-
-    Returns:
-        Tensor: shape = batch_shape x q_like x n_boundaries.
-    """
     cp = cutpoints.detach().to(device=values.device, dtype=values.dtype).reshape(-1)
     return (values.unsqueeze(-1) - cp.view(*([1] * values.ndim), -1)).abs()
 
 
 def _boundary_kernel_weights_by_boundary(values: Tensor, cutpoints: Tensor, tau: float) -> Tensor:
-    """Return Gaussian boundary weights for each ordinal cutpoint.
-
-    Args:
-        values: latent mean values. shape = batch_shape x q_like.
-        cutpoints: ordinal cutpoints. shape = n_boundaries.
-        tau: boundary width.
-
-    Returns:
-        Tensor: shape = batch_shape x q_like x n_boundaries.
-    """
     cp = cutpoints.detach().to(device=values.device, dtype=values.dtype).reshape(-1)
     tau_t = torch.as_tensor(tau, device=values.device, dtype=values.dtype).clamp_min(1e-8)
     z2 = ((values.unsqueeze(-1) - cp.view(*([1] * values.ndim), -1)) / tau_t) ** 2
@@ -395,22 +371,6 @@ def _aggregate_boundary_scores(
     boundary_weights: Optional[Tensor | Sequence[float]] = None,
     boundary_reduction: BoundaryReduction = "sum",
 ) -> Tensor:
-    """Aggregate boundary-wise scores into a pointwise score.
-
-    ``target_boundary_idx=k`` corresponds to the boundary between class ``k`` and
-    class ``k + 1``. For example, in classes 0/1/2, idx=0 is the 0/1 boundary
-    and idx=1 is the 1/2 boundary.
-
-    Args:
-        boundary_scores: shape = batch_shape x q_like x n_boundaries.
-        target_boundary_idx: specific boundary to target. If specified,
-            ``boundary_weights`` and ``boundary_reduction`` are ignored.
-        boundary_weights: optional weights for each boundary.
-        boundary_reduction: aggregation over boundaries when target is not specified.
-
-    Returns:
-        Tensor: shape = batch_shape x q_like.
-    """
     if boundary_scores.ndim < 1:
         raise RuntimeError("boundary_scores must have a boundary dimension.")
 
@@ -457,26 +417,11 @@ def _same_batch_penalty(X: Tensor, lengthscale: float) -> Tensor:
     return torch.exp(-0.5 * d2 / ls2).sum(dim=(-1, -2))
 
 
-
 def _pointwise_same_batch_penalty(
     X: Tensor,
     lengthscale: float,
     n_w: Optional[int] = None,
 ) -> Tensor:
-    """q-batch 内の近接 candidate を各点ごとに penalty する。
-
-    InputPerturbation により ``q * n_w`` に展開されている場合は、同じ
-    元 candidate に由来する摂動 replica 同士を penalty しない。
-
-    Args:
-        X: candidate points. shape は ``batch_shape x q x d`` または
-            ``batch_shape x (q * n_w) x d``。
-        lengthscale: RBF 型距離 penalty の lengthscale。
-        n_w: 1 candidate あたりの摂動 replica 数。None の場合は通常の q として扱う。
-
-    Returns:
-        Tensor: ``batch_shape x q`` または ``batch_shape x (q * n_w)`` の penalty。
-    """
     q_expanded = X.shape[-2]
     if q_expanded <= 1:
         return torch.zeros(X.shape[:-1], device=X.device, dtype=X.dtype)
@@ -484,15 +429,12 @@ def _pointwise_same_batch_penalty(
     ls2 = float(lengthscale) ** 2 + 1e-12
     diff = X.unsqueeze(-2) - X.unsqueeze(-3)
     d2 = diff.pow(2).sum(dim=-1)
-
     eye = torch.eye(q_expanded, device=X.device, dtype=torch.bool)
     mask = eye
 
     if n_w is not None and n_w > 1 and q_expanded % n_w == 0:
-        q = q_expanded // n_w
         group = torch.arange(q_expanded, device=X.device) // int(n_w)
-        same_group = group.unsqueeze(0) == group.unsqueeze(1)
-        mask = mask | same_group
+        mask = mask | (group.unsqueeze(0) == group.unsqueeze(1))
 
     d2 = d2.masked_fill(mask, float("inf"))
     return torch.exp(-0.5 * d2 / ls2).sum(dim=-1)
@@ -503,17 +445,6 @@ def _pointwise_ref_penalty(
     X_ref: Optional[Tensor],
     lengthscale: float,
 ) -> Tensor:
-    """各 candidate 点ごとの reference penalty を計算する。
-
-    Args:
-        X: candidate points. shape は ``batch_shape x q x d``。
-        X_ref: pending / observed points. shape は ``m x d`` または
-            ``batch_shape x m x d``。
-        lengthscale: RBF 型距離 penalty の lengthscale。
-
-    Returns:
-        Tensor: ``batch_shape x q`` の penalty。
-    """
     X_ref = _flatten_ref_points(X_ref, device=X.device, dtype=X.dtype)
     if X_ref is None:
         return torch.zeros(X.shape[:-1], device=X.device, dtype=X.dtype)
@@ -525,10 +456,7 @@ def _pointwise_ref_penalty(
     return torch.exp(-0.5 * d2 / ls2).sum(dim=-1)
 
 
-
-
 def _ensure_q_batch_for_pending(X: Tensor) -> Tensor:
-    """pending penalty 用に X を `(..., q, d)` へ揃える。"""
     return X.unsqueeze(-2) if torch.is_tensor(X) and X.ndim == 2 else X
 
 
@@ -537,7 +465,6 @@ def _coerce_pending_to_tensor(
     *,
     ref: Optional[Tensor] = None,
 ) -> Optional[Tensor]:
-    """X_pending を Tensor または None に正規化する。"""
     if X_pending is None:
         return None
     if torch.is_tensor(X_pending):
@@ -570,7 +497,6 @@ def _coerce_pending_to_tensor(
 
 
 def _apply_input_transform_for_pending(model: Model, X: Tensor) -> Tensor:
-    """candidate / pending を同じ距離計算空間へ写す。"""
     X = _ensure_q_batch_for_pending(X)
 
     it = getattr(model, "input_transform", None)
@@ -598,12 +524,12 @@ def _transform_pending_like_candidate(
     *,
     ref: Tensor,
 ) -> Optional[Tensor]:
-    """raw-space の X_pending を candidate と同じ transformed space へ写す。"""
     Xp = _coerce_pending_to_tensor(X_pending, ref=ref)
     if Xp is None or Xp.numel() == 0:
         return None
     Xp_t = _apply_input_transform_for_pending(model, Xp)
     return Xp_t.to(device=ref.device, dtype=ref.dtype)
+
 
 def _ref_penalty(X: Tensor, X_ref: Optional[Tensor], lengthscale: float) -> Tensor:
     X_ref = _flatten_ref_points(X_ref, device=X.device, dtype=X.dtype)
@@ -616,44 +542,9 @@ def _ref_penalty(X: Tensor, X_ref: Optional[Tensor], lengthscale: float) -> Tens
     return torch.exp(-0.5 * d2 / ls2).sum(dim=(-1, -2))
 
 
-class _OrdinalBoundaryBase(AcquisitionFunction):
-    def __init__(
-        self,
-        model: Model,
-        sampler: Optional[MCSampler] = None,
-        objective: Optional[Callable[[Tensor, Optional[Tensor]], Tensor]] = None,
-    ) -> None:
-        super().__init__(model=model)
-        self.ordinal_likelihood = _get_ordinal_likelihood(model)
-        # cutpoints は ordinal likelihood の parameter 変換から得られるため、
-        # grad_fn を持つ Tensor になり得る。acquisition 最適化では X のみを
-        # 最適化対象にするので、cutpoints は定数として detach して保持する。
-        # cutpoints は ordinal likelihood の parameter 変換から得られるため、
-        # grad_fn を持つ Tensor になり得る。acquisition 最適化では X のみを
-        # 最適化対象にするので、cutpoints は定数として detach して保持する。
-        cutpoints = _get_cutpoints_from_likelihood(self.ordinal_likelihood)
-        self.register_buffer("cutpoints", torch.as_tensor(cutpoints).detach().clone())
-        self.sampler = sampler or SobolQMCNormalSampler(sample_shape=torch.Size([256]))
-        self.objective = objective
-
-    def _apply_objective_to_score(self, score: Tensor, X: Tensor, name: str) -> Tensor:
-        return _apply_ordinal_levelset_objective_to_score(self, score, X=X, name=name)
-
-    def _latent_mean_var(self, X: Tensor) -> tuple[Tensor, Tensor]:
-        posterior = self.model.posterior(X)
-        return _posterior_mean_var(posterior, X)
-
-    def _latent_samples(self, X: Tensor) -> Tensor:
-        posterior = self.model.posterior(X)
-        return self.sampler(posterior).squeeze(-1)
-
-    def _predictive_class_probs(self, X: Tensor) -> Tensor:
-        f_samples = self._latent_samples(X)
-        probs = ordinal_class_probs_from_f(f_samples, self.ordinal_likelihood)
-        return _reduce_probs_to_match_X(probs, X)
-
-
 class _qOrdinalBoundaryBase(MCAcquisitionFunction):
+    """Common ordinal LSE base with Active-Learning-compatible duplicate controls."""
+
     def __init__(
         self,
         model: Model,
@@ -664,9 +555,14 @@ class _qOrdinalBoundaryBase(MCAcquisitionFunction):
         pending_penalty_weight: float = 0.0,
         observed_penalty_weight: float = 0.0,
         penalty_lengthscale: float = 0.1,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
     ) -> None:
+        model = unwrap_single_output_model(model)
         super().__init__(model=model)
         self.ordinal_likelihood = _get_ordinal_likelihood(model)
         cutpoints = _get_cutpoints_from_likelihood(self.ordinal_likelihood)
@@ -676,28 +572,35 @@ class _qOrdinalBoundaryBase(MCAcquisitionFunction):
 
         if reduction not in ("sum", "mean"):
             raise ValueError(f"Unknown reduction: {reduction}")
+        if float(hard_duplicate_tol) < 0.0:
+            raise ValueError("hard_duplicate_tol must be non-negative.")
         self.reduction = reduction
 
         self.same_batch_penalty_weight = float(same_batch_penalty_weight)
         self.pending_penalty_weight = float(pending_penalty_weight)
         self.observed_penalty_weight = float(observed_penalty_weight)
         self.penalty_lengthscale = float(penalty_lengthscale)
-        self.X_pending = _coerce_pending_to_tensor(X_pending)
-        self.X_observed = _coerce_pending_to_tensor(X_observed)
+        self.hard_duplicate_tol = float(hard_duplicate_tol)
+        self.exclude_same_batch_duplicates = bool(exclude_same_batch_duplicates)
+        self.exclude_pending_duplicates = bool(exclude_pending_duplicates)
+        self.exclude_observed_duplicates = bool(exclude_observed_duplicates)
+        self.X_pending = None
+        self.X_observed = None
+        self.set_X_pending(X_pending)
+        self.set_X_observed(X_observed)
 
     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
-        """BoTorch の sequential optimization などから X_pending を更新する。"""
         self.X_pending = _coerce_pending_to_tensor(X_pending)
 
     def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
-        """観測済み点を更新する。"""
-        self.X_observed = _coerce_pending_to_tensor(X_observed)
+        self.X_observed = _coerce_pending_to_tensor(
+            resolve_observed_X(self.model, X_observed)
+        )
 
     def _apply_objective_to_score(self, score: Tensor, X: Tensor, name: str) -> Tensor:
         return _apply_ordinal_levelset_objective_to_score(self, score, X=X, name=name)
 
     def _reduce_q(self, score: Tensor) -> Tensor:
-        """pointwise score を q-batch 方向に集約する。"""
         if score.ndim == 0:
             return score
         if score.shape[-1] == 1:
@@ -708,13 +611,15 @@ class _qOrdinalBoundaryBase(MCAcquisitionFunction):
             return score.sum(dim=-1)
         raise ValueError(f"Unknown reduction: {self.reduction}")
 
-    def _pointwise_repulsion_penalty(self, X: Tensor) -> Tensor:
-        """pointwise acquisition 用の重複回避 penalty を返す。
+    def _reference_points_in_distance_space(
+        self,
+        X_ref: Optional[Tensor],
+        *,
+        Xt: Tensor,
+    ) -> Optional[Tensor]:
+        return _transform_pending_like_candidate(self.model, X_ref, ref=Xt)
 
-        candidate / pending / observed は input_transform 後の同じ距離計算空間へ
-        写してから比較する。InputPerturbation が含まれる場合は、score と同じ
-        ``q * n_w`` の形に揃え、objective 側で ``q`` に戻す。
-        """
+    def _pointwise_repulsion_penalty(self, X: Tensor) -> Tensor:
         Xt = _apply_input_transform_for_pending(self.model, X)
         penalty = torch.zeros(Xt.shape[:-1], device=Xt.device, dtype=Xt.dtype)
         n_w = _infer_n_w_from_objective_or_owner(self)
@@ -726,23 +631,83 @@ class _qOrdinalBoundaryBase(MCAcquisitionFunction):
                 n_w=n_w,
             )
 
+        Xp_t = self._reference_points_in_distance_space(self.X_pending, Xt=Xt)
         if self.pending_penalty_weight > 0.0:
-            Xp_t = _transform_pending_like_candidate(self.model, self.X_pending, ref=Xt)
             penalty = penalty + self.pending_penalty_weight * _pointwise_ref_penalty(
                 Xt,
                 Xp_t,
                 self.penalty_lengthscale,
             )
 
+        Xobs_t = self._reference_points_in_distance_space(self.X_observed, Xt=Xt)
         if self.observed_penalty_weight > 0.0:
-            Xobs_t = _transform_pending_like_candidate(self.model, self.X_observed, ref=Xt)
             penalty = penalty + self.observed_penalty_weight * _pointwise_ref_penalty(
                 Xt,
                 Xobs_t,
                 self.penalty_lengthscale,
             )
 
+        penalty = penalty + hard_same_batch_duplicate_penalty_per_point(
+            Xt,
+            enabled=self.exclude_same_batch_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
+        penalty = penalty + hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xp_t,
+            enabled=self.exclude_pending_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
+        penalty = penalty + hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xobs_t,
+            enabled=self.exclude_observed_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
         return penalty
+
+    def _joint_repulsion_penalty(self, X: Tensor) -> Tensor:
+        Xt = _apply_input_transform_for_pending(self.model, X)
+        Xp_t = self._reference_points_in_distance_space(self.X_pending, Xt=Xt)
+        Xobs_t = self._reference_points_in_distance_space(self.X_observed, Xt=Xt)
+        penalty = torch.zeros(Xt.shape[:-2], device=Xt.device, dtype=Xt.dtype)
+
+        if self.same_batch_penalty_weight > 0.0:
+            penalty = penalty + self.same_batch_penalty_weight * _same_batch_penalty(
+                Xt,
+                self.penalty_lengthscale,
+            )
+        if self.pending_penalty_weight > 0.0:
+            penalty = penalty + self.pending_penalty_weight * _ref_penalty(
+                Xt,
+                Xp_t,
+                self.penalty_lengthscale,
+            )
+        if self.observed_penalty_weight > 0.0:
+            penalty = penalty + self.observed_penalty_weight * _ref_penalty(
+                Xt,
+                Xobs_t,
+                self.penalty_lengthscale,
+            )
+
+        hard = hard_same_batch_duplicate_penalty_per_point(
+            Xt,
+            enabled=self.exclude_same_batch_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
+        hard = hard + hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xp_t,
+            enabled=self.exclude_pending_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
+        hard = hard + hard_reference_duplicate_penalty_per_point(
+            Xt,
+            Xobs_t,
+            enabled=self.exclude_observed_duplicates,
+            tolerance=self.hard_duplicate_tol,
+        )
+        return penalty + hard.sum(dim=-1)
 
     def _latent_mean_var(self, X: Tensor) -> tuple[Tensor, Tensor]:
         posterior = self.model.posterior(X)
@@ -762,31 +727,8 @@ class _qOrdinalBoundaryBase(MCAcquisitionFunction):
         return _reduce_probs_to_match_X(probs, X)
 
 
-class _OrdinalLatentStraddleAcquisition(_OrdinalBoundaryBase):
-    def __init__(self, model: Model, beta: float = 1.0, sampler: Optional[MCSampler] = None, objective=None) -> None:
-        super().__init__(model=model, sampler=sampler, objective=objective)
-        self.beta = float(beta)
-
-    @t_batch_mode_transform(expected_q=1)
-    @average_over_ensemble_models
-    def forward(self, X: Tensor) -> Tensor:
-        mean_f, var_f = self._latent_mean_var(X)
-        score = self.beta * var_f.sqrt() - _nearest_cutpoint_distance(mean_f, self.cutpoints)
-        score = self._apply_objective_to_score(score, X=X, name="OrdinalLatentStraddle")
-        expected = X.shape[:-2]
-        if score.shape == expected:
-            return score
-        if score.shape[-1] == 1:
-            return score.squeeze(-1)
-        return score.mean(dim=-1)
-
-
 class qOrdinalLatentStraddleAcquisition(_qOrdinalBoundaryBase):
-    """ordinal 用 straddle acquisition。境界に近く、かつ不確実な点を選びます。
-
-    target_boundary_idx は class k / class k+1 境界を直接指定するための引数です。
-    例: 3 クラス 0/1/2 では 0 が 0/1 境界、1 が 1/2 境界です。
-    """
+    """ordinal 用 straddle acquisition。境界に近く、かつ不確実な点を選びます。"""
 
     def __init__(
         self,
@@ -802,6 +744,10 @@ class qOrdinalLatentStraddleAcquisition(_qOrdinalBoundaryBase):
         pending_penalty_weight: float = 0.0,
         observed_penalty_weight: float = 0.0,
         penalty_lengthscale: float = 0.1,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
     ) -> None:
@@ -814,6 +760,10 @@ class qOrdinalLatentStraddleAcquisition(_qOrdinalBoundaryBase):
             pending_penalty_weight=pending_penalty_weight,
             observed_penalty_weight=observed_penalty_weight,
             penalty_lengthscale=penalty_lengthscale,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
             X_pending=X_pending,
             X_observed=X_observed,
         )
@@ -840,13 +790,8 @@ class qOrdinalLatentStraddleAcquisition(_qOrdinalBoundaryBase):
         return self._reduce_q(score)
 
 
-
 class qOrdinalJointLatentStraddleAcquisition(_qOrdinalBoundaryBase):
-    """ordinal 用 joint straddle acquisition。q-batch 全体の境界不確実性を評価します。
-
-    target_boundary_idx は class k / class k+1 境界を直接指定します。
-    デフォルトの boundary_reduction="max" は従来の nearest cutpoint に近い挙動です。
-    """
+    """ordinal 用 joint straddle acquisition。q-batch 全体の境界不確実性を評価します。"""
 
     def __init__(
         self,
@@ -861,6 +806,10 @@ class qOrdinalJointLatentStraddleAcquisition(_qOrdinalBoundaryBase):
         pending_penalty_weight: float = 0.0,
         observed_penalty_weight: float = 0.0,
         penalty_lengthscale: float = 0.1,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
         sampler: Optional[MCSampler] = None,
@@ -869,28 +818,31 @@ class qOrdinalJointLatentStraddleAcquisition(_qOrdinalBoundaryBase):
         perturbation_joint_reduction: PerturbationJointReduction = "block_mean",
         jitter: float = 1e-6,
     ) -> None:
-        super().__init__(model=model, sampler=sampler, objective=objective)
+        super().__init__(
+            model=model,
+            sampler=sampler,
+            objective=objective,
+            reduction="sum",
+            same_batch_penalty_weight=same_batch_penalty_weight,
+            pending_penalty_weight=pending_penalty_weight,
+            observed_penalty_weight=observed_penalty_weight,
+            penalty_lengthscale=penalty_lengthscale,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
+            X_pending=X_pending,
+            X_observed=X_observed,
+        )
         self.beta = float(beta)
         self.tau = float(tau)
         self.uncertainty_measure = uncertainty_measure
         self.target_boundary_idx = target_boundary_idx
         self.boundary_weights = boundary_weights
         self.boundary_reduction = boundary_reduction
-        self.same_batch_penalty_weight = float(same_batch_penalty_weight)
-        self.pending_penalty_weight = float(pending_penalty_weight)
-        self.observed_penalty_weight = float(observed_penalty_weight)
-        self.penalty_lengthscale = float(penalty_lengthscale)
-        self.X_pending = _coerce_pending_to_tensor(X_pending)
-        self.X_observed = _coerce_pending_to_tensor(X_observed)
         self.input_perturbation_n_w = None if input_perturbation_n_w is None else int(input_perturbation_n_w)
         self.perturbation_joint_reduction = perturbation_joint_reduction
         self.jitter = float(jitter)
-
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
-        self.X_pending = _coerce_pending_to_tensor(X_pending)
-
-    def set_X_observed(self, X_observed: Optional[Tensor] = None) -> None:
-        self.X_observed = _coerce_pending_to_tensor(X_observed)
 
     def _uncertainty_score(self, cov: Tensor) -> Tensor:
         if self.uncertainty_measure == "trace":
@@ -899,6 +851,8 @@ class qOrdinalJointLatentStraddleAcquisition(_qOrdinalBoundaryBase):
         eye = torch.eye(q, device=cov.device, dtype=cov.dtype)
         mat = eye + cov / (self.tau ** 2 + 1e-12)
         sign, logabsdet = torch.linalg.slogdet(mat)
+        if not torch.all(sign > 0):
+            raise RuntimeError("Non-positive definite covariance encountered in ordinal joint straddle.")
         return 0.5 * logabsdet
 
     @t_batch_mode_transform()
@@ -918,59 +872,19 @@ class qOrdinalJointLatentStraddleAcquisition(_qOrdinalBoundaryBase):
         uncertainty = self._uncertainty_score(cov_f)
 
         dist_b = _cutpoint_distances_by_boundary(mean_f, self.cutpoints)
-        boundary_score_b = -dist_b
         boundary_score = _aggregate_boundary_scores(
-            boundary_score_b,
+            -dist_b,
             target_boundary_idx=self.target_boundary_idx,
             boundary_weights=self.boundary_weights,
             boundary_reduction=self.boundary_reduction,
         ).mean(dim=-1)
 
-        Xt = _apply_input_transform_for_pending(self.model, X)
-        Xp_t = _transform_pending_like_candidate(self.model, self.X_pending, ref=Xt)
-        Xobs_t = _transform_pending_like_candidate(self.model, self.X_observed, ref=Xt)
-
-        penalty = torch.zeros_like(uncertainty)
-        if self.same_batch_penalty_weight > 0:
-            penalty = penalty + self.same_batch_penalty_weight * _same_batch_penalty(Xt, self.penalty_lengthscale)
-        if self.pending_penalty_weight > 0:
-            penalty = penalty + self.pending_penalty_weight * _ref_penalty(Xt, Xp_t, self.penalty_lengthscale)
-        if self.observed_penalty_weight > 0:
-            penalty = penalty + self.observed_penalty_weight * _ref_penalty(Xt, Xobs_t, self.penalty_lengthscale)
-
-        score = self.beta * uncertainty + boundary_score - penalty
+        score = self.beta * uncertainty + boundary_score - self._joint_repulsion_penalty(X)
         return self._apply_objective_to_score(score, X=X, name="qOrdinalJointLatentStraddle")
 
 
-
-class _OrdinalICUAcquisition(_OrdinalBoundaryBase):
-    def __init__(self, model: Model, boundary_weights: Optional[Tensor | Sequence[float]] = None, sampler: Optional[MCSampler] = None, objective=None) -> None:
-        super().__init__(model=model, sampler=sampler, objective=objective)
-        self.boundary_weights = boundary_weights
-
-    @t_batch_mode_transform(expected_q=1)
-    @average_over_ensemble_models
-    def forward(self, X: Tensor) -> Tensor:
-        probs = self._predictive_class_probs(X)
-        ge_probs = ordinal_cumulative_ge_probs_from_class_probs(probs)
-        u = ordinal_boundary_uncertainty(ge_probs)
-        w = _prepare_boundary_weights(self.boundary_weights, n_boundaries=u.shape[-1], device=u.device, dtype=u.dtype)
-        score = (u * w).sum(dim=-1)
-        score = self._apply_objective_to_score(score, X=X, name="OrdinalICU")
-        expected = X.shape[:-2]
-        if score.shape == expected:
-            return score
-        if score.shape[-1] == 1:
-            return score.squeeze(-1)
-        return score.mean(dim=-1)
-
-
 class qOrdinalICUAcquisition(_qOrdinalBoundaryBase):
-    """ordinal 用 ICU acquisition。contour / boundary 周辺の不確実性を評価します。
-
-    target_boundary_idx は class k / class k+1 境界を直接指定します。
-    例: 3 クラス 0/1/2 では 0 が 0/1 境界、1 が 1/2 境界です。
-    """
+    """ordinal 用 ICU acquisition。contour / boundary 周辺の不確実性を評価します。"""
 
     def __init__(
         self,
@@ -985,6 +899,10 @@ class qOrdinalICUAcquisition(_qOrdinalBoundaryBase):
         pending_penalty_weight: float = 0.0,
         observed_penalty_weight: float = 0.0,
         penalty_lengthscale: float = 0.1,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
     ) -> None:
@@ -997,6 +915,10 @@ class qOrdinalICUAcquisition(_qOrdinalBoundaryBase):
             pending_penalty_weight=pending_penalty_weight,
             observed_penalty_weight=observed_penalty_weight,
             penalty_lengthscale=penalty_lengthscale,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
             X_pending=X_pending,
             X_observed=X_observed,
         )
@@ -1021,34 +943,8 @@ class qOrdinalICUAcquisition(_qOrdinalBoundaryBase):
         return self._reduce_q(score)
 
 
-
-class _OrdinalBoundaryVarianceAcquisition(_OrdinalBoundaryBase):
-    def __init__(self, model: Model, tau: float = 1.0, reduce: Literal["sum", "max"] = "sum", sampler: Optional[MCSampler] = None, objective=None) -> None:
-        super().__init__(model=model, sampler=sampler, objective=objective)
-        self.tau = float(tau)
-        self.reduce = reduce
-
-    @t_batch_mode_transform(expected_q=1)
-    @average_over_ensemble_models
-    def forward(self, X: Tensor) -> Tensor:
-        mean_f, var_f = self._latent_mean_var(X)
-        w = _boundary_kernel_weight(mean_f, self.cutpoints, tau=self.tau, reduce=self.reduce)
-        score = var_f * w
-        score = self._apply_objective_to_score(score, X=X, name="OrdinalBoundaryVariance")
-        expected = X.shape[:-2]
-        if score.shape == expected:
-            return score
-        if score.shape[-1] == 1:
-            return score.squeeze(-1)
-        return score.mean(dim=-1)
-
-
 class qOrdinalBoundaryVarianceAcquisition(_qOrdinalBoundaryBase):
-    """ordinal 用 boundary variance acquisition。境界近傍の posterior variance を重視します。
-
-    target_boundary_idx は class k / class k+1 境界を直接指定します。
-    boundary_reduction は target_boundary_idx 未指定時の boundary score 集約方法です。
-    """
+    """ordinal 用 boundary variance acquisition。境界近傍の posterior variance を重視します。"""
 
     def __init__(
         self,
@@ -1065,6 +961,10 @@ class qOrdinalBoundaryVarianceAcquisition(_qOrdinalBoundaryBase):
         pending_penalty_weight: float = 0.0,
         observed_penalty_weight: float = 0.0,
         penalty_lengthscale: float = 0.1,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
     ) -> None:
@@ -1077,6 +977,10 @@ class qOrdinalBoundaryVarianceAcquisition(_qOrdinalBoundaryBase):
             pending_penalty_weight=pending_penalty_weight,
             observed_penalty_weight=observed_penalty_weight,
             penalty_lengthscale=penalty_lengthscale,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
             X_pending=X_pending,
             X_observed=X_observed,
         )
@@ -1104,43 +1008,8 @@ class qOrdinalBoundaryVarianceAcquisition(_qOrdinalBoundaryBase):
         return self._reduce_q(score)
 
 
-
-class _OrdinalClassEntropyAcquisition(_OrdinalBoundaryBase):
-    @t_batch_mode_transform(expected_q=1)
-    @average_over_ensemble_models
-    def forward(self, X: Tensor) -> Tensor:
-        probs = self._predictive_class_probs(X)
-        score = -(probs * probs.clamp_min(1e-12).log()).sum(dim=-1)
-        score = self._apply_objective_to_score(score, X=X, name="OrdinalClassEntropy")
-        expected = X.shape[:-2]
-        if score.shape == expected:
-            return score
-        if score.shape[-1] == 1:
-            return score.squeeze(-1)
-        return score.mean(dim=-1)
-
-
 class qOrdinalClassEntropyAcquisition(_qOrdinalBoundaryBase):
-    """ordinal 用 class entropy acquisition。class probability の entropy を評価します。
-
-    Args:
-        model: BoTorch 互換の surrogate model。`posterior(X)` を実装していることを想定します。
-        sampler: posterior samples を生成する BoTorch sampler。省略時は SobolQMCNormalSampler を使います。
-        objective: 計算済み score に作用する objective。InputPerturbation の q*n_w -> q 集約にも使えます。
-        reduction: q-batch 方向の集約方法。`sum` または `mean`。
-        same_batch_penalty_weight: 同一 q-batch 内の候補点同士が近すぎる場合の penalty の強さ。
-        pending_penalty_weight: X_pending 近傍を避ける penalty の強さ。
-        observed_penalty_weight: X_observed 近傍を避ける penalty の強さ。
-        penalty_lengthscale: RBF 型距離 penalty の lengthscale。
-        X_pending: 評価中で、まだ結果が返っていない候補点。
-        X_observed: 既に観測済みの点。
-
-    Forward Args:
-        X: 候補点。shape は通常 `batch_shape x q x d` です。
-
-    Returns:
-        Tensor: `batch_shape` の acquisition value。`optimize_acqf` はこの値を最大化します。
-    """
+    """ordinal 用 class entropy acquisition。class probability の entropy を評価します。"""
 
     def __init__(
         self,
@@ -1152,6 +1021,10 @@ class qOrdinalClassEntropyAcquisition(_qOrdinalBoundaryBase):
         pending_penalty_weight: float = 0.0,
         observed_penalty_weight: float = 0.0,
         penalty_lengthscale: float = 0.1,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,
     ) -> None:
@@ -1164,6 +1037,10 @@ class qOrdinalClassEntropyAcquisition(_qOrdinalBoundaryBase):
             pending_penalty_weight=pending_penalty_weight,
             observed_penalty_weight=observed_penalty_weight,
             penalty_lengthscale=penalty_lengthscale,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
             X_pending=X_pending,
             X_observed=X_observed,
         )

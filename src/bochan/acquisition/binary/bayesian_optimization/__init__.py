@@ -32,6 +32,7 @@ from .hetero_single_output import (
     qHeteroBinaryProbabilityOfImprovement,
     qHeteroBinaryUpperConfidenceBound,
 )
+from .knowledge_gradient import qBinaryKnowledgeGradient
 
 # Keep q=1 sequential optimization shape handling aligned across classification
 # and ordinal NParEGO implementations.
@@ -130,7 +131,10 @@ class _OneToManyObjectiveAdapter(MCMultiOutputObjective):
     needs the raw ``X`` so it can aggregate ``q * n_w`` samples back to ``q``.
     """
 
-    def __init__(self, objective: MCMultiOutputObjective) -> None:
+    def __init__(
+        self,
+        objective: MCMultiOutputObjective,
+    ) -> None:
         super().__init__()
         self.objective = objective
         self._verify_output_shape = False
@@ -338,6 +342,7 @@ __all__ = [
     "qBinaryExpectedImprovement",
     "qBinaryProbabilityOfImprovement",
     "qBinaryUpperConfidenceBound",
+    "qBinaryKnowledgeGradient",
     "compute_binary_best_f",
     "compute_hetero_binary_classification_best_f",
 ]

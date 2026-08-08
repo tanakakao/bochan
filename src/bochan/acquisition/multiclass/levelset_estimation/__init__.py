@@ -28,7 +28,6 @@ from .multi_output import (
     qMultiOutputMulticlassLevelSetUncertainty,
     qMultiOutputMulticlassProbabilityOfExceedance,
 )
-from .sampling import configure_levelset_sampling
 from .single_output import (
     qMulticlassBoundaryVarianceAcquisition,
     qMulticlassClassEntropyAcquisition,
@@ -39,15 +38,10 @@ from .single_output import (
     qMulticlassProbabilityOfExceedance,
 )
 
-# Heteroscedastic / wrapper multiclass models may return q_like=1 for
-# pending+candidate q-batches. Apply a joint level-set q_like alignment patch.
-configure_levelset_sampling()
-
 __all__ = [
     "NoiseCombineType",
     "NoiseWeightMode",
     "OutputReductionType",
-    "configure_levelset_sampling",
     "qMulticlassLatentStraddleAcquisition",
     "qMulticlassJointLatentStraddleAcquisition",
     "qMulticlassICUAcquisition",

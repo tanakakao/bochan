@@ -26,6 +26,11 @@ from .configs import (
 )
 from .engine import BayesianOptimizer as _BaseBayesianOptimizer
 from .engine import _resolve_objective_config_n_w_from_input_transform
+from .information_acquisition_defaults import (
+    is_information_acquisition,
+    resolve_information_acquisition_defaults,
+    resolve_information_optimizer_defaults,
+)
 
 
 def _normalize_name(value: Any) -> str:
@@ -567,6 +572,9 @@ def resolve_acquisition_defaults(
 
     config = _resolve_default_regression_nparego_class(bundle, config)
     config, context = _resolve_internal_nparego_scalarization_weights(config, context)
+    if is_information_acquisition(config):
+        return resolve_information_acquisition_defaults(bundle, config, context)
+
     context = prepare_multi_objective_context(bundle, context, config)
     config = _resolve_default_ordinal_objective(bundle, config)
     kind = _acquisition_kind(config)
@@ -726,6 +734,7 @@ class BayesianOptimizer(_BaseBayesianOptimizer):
             acq_config,
             data_context,
         )
+        opt_config = resolve_information_optimizer_defaults(resolved_config, opt_config)
         return super().candidate(
             resolved_config,
             opt_config,

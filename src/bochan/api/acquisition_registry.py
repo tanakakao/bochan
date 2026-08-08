@@ -89,6 +89,110 @@ _ACQF_ALIASES: dict[str, AcqPath] = {
     ),
     "qkg": ("botorch.acquisition.knowledge_gradient", "qKnowledgeGradient"),
     "kg": ("botorch.acquisition.knowledge_gradient", "qKnowledgeGradient"),
+    "qmes": (
+        "botorch.acquisition.max_value_entropy_search",
+        "qMaxValueEntropy",
+    ),
+    "mes": (
+        "botorch.acquisition.max_value_entropy_search",
+        "qMaxValueEntropy",
+    ),
+    "qmaxvalueentropy": (
+        "botorch.acquisition.max_value_entropy_search",
+        "qMaxValueEntropy",
+    ),
+    "maxvalueentropy": (
+        "botorch.acquisition.max_value_entropy_search",
+        "qMaxValueEntropy",
+    ),
+    "qmomes": (
+        "botorch.acquisition.multi_objective.max_value_entropy_search",
+        "qLowerBoundMultiObjectiveMaxValueEntropySearch",
+    ),
+    "momes": (
+        "botorch.acquisition.multi_objective.max_value_entropy_search",
+        "qLowerBoundMultiObjectiveMaxValueEntropySearch",
+    ),
+    "qmesmo": (
+        "botorch.acquisition.multi_objective.max_value_entropy_search",
+        "qLowerBoundMultiObjectiveMaxValueEntropySearch",
+    ),
+    "mesmo": (
+        "botorch.acquisition.multi_objective.max_value_entropy_search",
+        "qLowerBoundMultiObjectiveMaxValueEntropySearch",
+    ),
+    "qmultiobjectivemes": (
+        "botorch.acquisition.multi_objective.max_value_entropy_search",
+        "qLowerBoundMultiObjectiveMaxValueEntropySearch",
+    ),
+    "multiobjectivemes": (
+        "botorch.acquisition.multi_objective.max_value_entropy_search",
+        "qLowerBoundMultiObjectiveMaxValueEntropySearch",
+    ),
+    "qlowerboundmultiobjectivemaxvalueentropysearch": (
+        "botorch.acquisition.multi_objective.max_value_entropy_search",
+        "qLowerBoundMultiObjectiveMaxValueEntropySearch",
+    ),
+    "lowerboundmultiobjectivemaxvalueentropysearch": (
+        "botorch.acquisition.multi_objective.max_value_entropy_search",
+        "qLowerBoundMultiObjectiveMaxValueEntropySearch",
+    ),
+    "qjes": (
+        "botorch.acquisition.joint_entropy_search",
+        "qJointEntropySearch",
+    ),
+    "jes": (
+        "botorch.acquisition.joint_entropy_search",
+        "qJointEntropySearch",
+    ),
+    "qjointentropysearch": (
+        "botorch.acquisition.joint_entropy_search",
+        "qJointEntropySearch",
+    ),
+    "jointentropysearch": (
+        "botorch.acquisition.joint_entropy_search",
+        "qJointEntropySearch",
+    ),
+    "qmojes": (
+        "botorch.acquisition.multi_objective.joint_entropy_search",
+        "qLowerBoundMultiObjectiveJointEntropySearch",
+    ),
+    "mojes": (
+        "botorch.acquisition.multi_objective.joint_entropy_search",
+        "qLowerBoundMultiObjectiveJointEntropySearch",
+    ),
+    "qmultiobjectivejes": (
+        "botorch.acquisition.multi_objective.joint_entropy_search",
+        "qLowerBoundMultiObjectiveJointEntropySearch",
+    ),
+    "multiobjectivejes": (
+        "botorch.acquisition.multi_objective.joint_entropy_search",
+        "qLowerBoundMultiObjectiveJointEntropySearch",
+    ),
+    "qlowerboundmultiobjectivejointentropysearch": (
+        "botorch.acquisition.multi_objective.joint_entropy_search",
+        "qLowerBoundMultiObjectiveJointEntropySearch",
+    ),
+    "lowerboundmultiobjectivejointentropysearch": (
+        "botorch.acquisition.multi_objective.joint_entropy_search",
+        "qLowerBoundMultiObjectiveJointEntropySearch",
+    ),
+    "qhvkg": (
+        "botorch.acquisition.multi_objective.hypervolume_knowledge_gradient",
+        "qHypervolumeKnowledgeGradient",
+    ),
+    "hvkg": (
+        "botorch.acquisition.multi_objective.hypervolume_knowledge_gradient",
+        "qHypervolumeKnowledgeGradient",
+    ),
+    "qhypervolumeknowledgegradient": (
+        "botorch.acquisition.multi_objective.hypervolume_knowledge_gradient",
+        "qHypervolumeKnowledgeGradient",
+    ),
+    "hypervolumeknowledgegradient": (
+        "botorch.acquisition.multi_objective.hypervolume_knowledge_gradient",
+        "qHypervolumeKnowledgeGradient",
+    ),
     "qmultisteplookahead": (
         "botorch.acquisition.multi_step_lookahead",
         "qMultiStepLookahead",
@@ -675,6 +779,23 @@ _LOG_POF_SHORT_NAMES = {"logpof", "qlogpof", "logpf", "qlogpf"}
 _LOG_EHVI_SHORT_NAMES = {"logehvi", "qlogehvi"}
 _LOG_NEHVI_SHORT_NAMES = {"lognehvi", "qlognehvi"}
 _LOG_NPAREGO_SHORT_NAMES = {"lognparego", "qlognparego"}
+_MES_SHORT_NAMES = {"mes", "qmes"}
+_JES_SHORT_NAMES = {"jes", "qjes"}
+_MO_MES_SHORT_NAMES = {
+    "momes",
+    "qmomes",
+    "mesmo",
+    "qmesmo",
+    "multiobjectivemes",
+    "qmultiobjectivemes",
+}
+_MO_JES_SHORT_NAMES = {
+    "mojes",
+    "qmojes",
+    "multiobjectivejes",
+    "qmultiobjectivejes",
+}
+_HVKG_SHORT_NAMES = {"hvkg", "qhvkg"}
 _CONTEXTUAL_SHORT_NAMES = {
     "bald",
     "jointbald",
@@ -711,6 +832,11 @@ _CONTEXTUAL_SHORT_NAMES = {
     "probabilityoffeasibility",
     *_LOG_NEI_SHORT_NAMES,
     *_LOG_POF_SHORT_NAMES,
+    *_MES_SHORT_NAMES,
+    *_JES_SHORT_NAMES,
+    *_MO_MES_SHORT_NAMES,
+    *_MO_JES_SHORT_NAMES,
+    *_HVKG_SHORT_NAMES,
     "ehi",
     "qehi",
     "ehvi",
@@ -884,6 +1010,36 @@ def _resolve_contextual_bo_path(
         if task != "regression":
             _raise_regression_only(normalized_name, task)
         return _fallback_builtin_path("qlogpof")
+    if normalized_name in _MES_SHORT_NAMES:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        return _fallback_builtin_path("qmes")
+    if normalized_name in _JES_SHORT_NAMES:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        return _fallback_builtin_path("qjes")
+    if normalized_name in _MO_MES_SHORT_NAMES:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        if not multi_output:
+            _raise_multi_output_only(normalized_name, task)
+        return _fallback_builtin_path(
+            "qlowerboundmultiobjectivemaxvalueentropysearch"
+        )
+    if normalized_name in _MO_JES_SHORT_NAMES:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        if not multi_output:
+            _raise_multi_output_only(normalized_name, task)
+        return _fallback_builtin_path(
+            "qlowerboundmultiobjectivejointentropysearch"
+        )
+    if normalized_name in _HVKG_SHORT_NAMES:
+        if task != "regression":
+            _raise_regression_only(normalized_name, task)
+        if not multi_output:
+            _raise_multi_output_only(normalized_name, task)
+        return _fallback_builtin_path("qhvkg")
     if normalized_name in _LOG_EHVI_SHORT_NAMES:
         if task != "regression":
             _raise_regression_only(normalized_name, task)

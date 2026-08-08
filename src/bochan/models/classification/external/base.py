@@ -168,7 +168,7 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
         values = self.forward(transformed_X)
         posterior = ClassificationEnsemblePosterior(
             values=values,
-            weights=getattr(self, "weights", None),
+            weights=getattr(self, "ensemble_weights", None),
         )
         if posterior_transform is not None:
             posterior = posterior_transform(posterior)

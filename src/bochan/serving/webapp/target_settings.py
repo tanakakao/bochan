@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 _WEB_TARGET_SETTINGS_KEY = "web_target_settings"
@@ -79,6 +80,7 @@ def _resolve_target_settings(
                 "target_classes": [],
                 "class_order": [],
                 "target_values": [],
+                "level_set_weight": 1.0,
                 "legacy": True,
             }
             for target in target_columns
@@ -120,6 +122,16 @@ def _resolve_target_settings(
         target_classes = _list_values(setting.get("target_classes"))
         class_order = _list_values(setting.get("class_order"))
         target_values = _list_values(setting.get("target_values"))
+        try:
+            level_set_weight = float(setting.get("level_set_weight", 1.0))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{target}: level_set_weight must be a non-negative finite number."
+            ) from exc
+        if not math.isfinite(level_set_weight) or level_set_weight < 0.0:
+            raise ValueError(
+                f"{target}: level_set_weight must be a non-negative finite number."
+            )
 
         # Compatibility with the previous `goal=target, value=<class>` contract.
         if task_type == "classification" and target_class is None and not target_classes:
@@ -140,6 +152,7 @@ def _resolve_target_settings(
                 "target_classes": target_classes,
                 "class_order": class_order,
                 "target_values": target_values,
+                "level_set_weight": level_set_weight,
                 "legacy": False,
             }
         )
@@ -564,22 +577,11 @@ def _reference_point(values: Any) -> Any:
 
 
 def _as_2d(value: Any, *, n_rows: int) -> Any:
-    """Normalize posterior mean/variance to shape ``[n, m]``."""
+    """Normalize prediction rows, including InputPerturbation expansion."""
 
-    import torch
+    from .prediction_shapes import normalize_prediction_rows
 
-    tensor = value if torch.is_tensor(value) else torch.as_tensor(value)
-    while tensor.ndim > 2 and tensor.shape[0] == 1:
-        tensor = tensor.squeeze(0)
-    if tensor.ndim == 1:
-        tensor = tensor.unsqueeze(-1)
-    if tensor.ndim > 2:
-        tensor = tensor.reshape(n_rows, -1)
-    if tensor.ndim != 2 or tensor.shape[0] != n_rows:
-        raise RuntimeError(
-            f"Could not normalize prediction to [n, m]. shape={tuple(tensor.shape)}"
-        )
-    return tensor
+    return normalize_prediction_rows(value, n_rows=n_rows)
 
 
 def _objective_values_direct(train_y: Any, target_settings: list[dict[str, Any]]) -> Any:

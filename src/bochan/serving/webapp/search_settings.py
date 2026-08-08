@@ -157,14 +157,19 @@ def build_target_constraint_config(
     target_columns: list[str],
     directions: dict[str, str],
     hybrid_model: bool,
+    exclude_optimized_boundaries: bool = False,
 ) -> Any | None:
     """Build target constraints, using class probabilities for classification.
 
-    Classification constraints are model-dependent so above/below is applied to
-    the selected class probability for BO, active learning, and level-set methods.
+    For level-set estimation, optimized above/below settings define the contour
+    itself and must not also become feasibility constraints. Setting
+    ``exclude_optimized_boundaries=True`` keeps constraint-only targets active
+    while leaving optimized targets free to sample both sides of the boundary.
     """
 
     if all(bool(setting.get("legacy")) for setting in target_settings):
+        if exclude_optimized_boundaries:
+            return None
         from .target_settings import _build_outcome_constraint_config
 
         return _build_outcome_constraint_config(
@@ -178,6 +183,8 @@ def build_target_constraint_config(
 
     specs: list[Any] = []
     for setting in target_settings:
+        if exclude_optimized_boundaries and bool(setting.get("optimize", True)):
+            continue
         goal = str(setting["goal"])
         if goal not in {"above", "below"}:
             continue

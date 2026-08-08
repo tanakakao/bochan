@@ -72,6 +72,8 @@ export interface TargetSetting {
   class_order?: TargetClassValue[];
   /** One or more desired ordinal classes when goal is `target`. */
   target_values?: TargetClassValue[];
+  /** Relative contribution to a multi-output level-set acquisition. */
+  level_set_weight?: number;
 }
 
 export interface TargetMetadata extends Partial<TargetSetting> {

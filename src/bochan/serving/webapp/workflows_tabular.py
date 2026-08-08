@@ -16,7 +16,13 @@ from bochan.desktop.services import (
     _requires_beta,
 )
 
+from .level_set_settings import configure_level_set_acqf_kwargs
 from .logging import current_request_id, get_logger, log_event
+from .risk_settings import (
+    apply_web_risk_to_objective_config,
+    normalize_web_prediction_rows,
+    resolve_web_risk_settings,
+)
 from .search_settings import (
     botorch_linear_constraints,
     build_target_constraint_config,
@@ -35,7 +41,6 @@ from .target_results import (
 from .target_roles import (
     apply_target_roles,
     best_observed,
-    level_set_thresholds,
     objective_values_direct,
     objective_weights,
     optimized_settings,
@@ -45,7 +50,6 @@ from .target_roles import (
     target_directions,
 )
 from .target_settings import (
-    _as_2d,
     _build_outcome_constraint_config,
     _clean_rows,
     _encode_targets,
@@ -68,6 +72,10 @@ _NATIVE_MULTITASK_MODEL_TYPE_ALIASES = {
 
 def _acquisition_family(acqf_kwargs: dict[str, Any]) -> str:
     family = str(acqf_kwargs.pop("web_family", "bayesian_optimization")).lower()
+    acqf_kwargs.pop("web_risk_type", None)
+    acqf_kwargs.pop("web_risk_alpha", None)
+    if family != "level_set_estimation":
+        acqf_kwargs.pop("web_level_set_parameter", None)
     if family not in {
         "bayesian_optimization",
         "active_learning",
@@ -216,6 +224,7 @@ def _serializable_target_settings(
             "target_classes": setting.get("target_classes", []),
             "class_order": setting.get("class_order", []),
             "target_values": setting.get("target_values", []),
+            "level_set_weight": float(setting.get("level_set_weight", 1.0)),
         }
         for setting in target_settings
     ]
@@ -298,6 +307,7 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     directions = target_directions(target_settings)
     multi_objective = len(objective_targets) > 1
 
+    risk_settings = resolve_web_risk_settings(request)
     acqf_kwargs = dict(request.acquisition.acqf_kwargs or {})
     acquisition_family = _acquisition_family(acqf_kwargs)
     requested_acq_name = str(request.acquisition.name)
@@ -531,9 +541,10 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
             )
 
     if hybrid_model:
-        objective_values_full = _as_2d(
+        objective_values_full = normalize_web_prediction_rows(
             optimizer.model.posterior(train_x, output_mode="objective").mean,
             n_rows=int(train_x.shape[0]),
+            report=risk_settings,
         ).detach()
     else:
         objective_values_full = objective_values_direct(
@@ -553,6 +564,7 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         target_columns=target_columns,
         directions=directions,
         hybrid_model=hybrid_model,
+        exclude_optimized_boundaries=acquisition_family == "level_set_estimation",
     )
 
     objective_config: Any | None
@@ -662,26 +674,28 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         if acq_key not in {"straddle", "boundaryvariance", "icu"}:
             raise ValueError(f"Level-set estimation supports straddle, boundary_variance, or ICU, got {acq_name}.")
         objective_config = None
-        acqf_kwargs.setdefault(
-            "thresholds",
-            level_set_thresholds(
-                target_columns=target_columns,
-                target_metadata=target_metadata,
-                objective_targets=objective_targets,
-            ),
+        configure_level_set_acqf_kwargs(
+            acqf_kwargs,
+            acq_key=acq_key,
+            train_x=train_x,
+            target_columns=target_columns,
+            target_settings=target_settings,
+            target_metadata=target_metadata,
+            objective_targets=objective_targets,
+            input_perturbation=bool(request.input_perturbation),
+            n_w=int(request.n_w),
+            risk_type=str(risk_settings["risk_type"]),
+            risk_alpha=float(risk_settings["risk_alpha"]),
         )
-        acqf_kwargs.setdefault(
-            "output_weights",
-            objective_weights(
-                target_columns=target_columns,
-                objective_targets=objective_targets,
-            ),
-        )
-        acqf_kwargs.setdefault("output_reduction", "weighted_mean")
-        acqf_kwargs.setdefault("X_observed", train_x)
         data_context = DataContext(
             X_baseline=train_x,
             Y_baseline=objective_values,
+        )
+
+    if acquisition_family == "bayesian_optimization":
+        objective_config = apply_web_risk_to_objective_config(
+            objective_config,
+            risk_settings,
         )
 
     acq_config = AcquisitionConfig(

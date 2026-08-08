@@ -7,18 +7,11 @@ import logging
 from importlib import import_module
 from typing import Any
 
-from . import target_results as _target_results
-from . import target_settings as _target_settings
 from .logging import current_request_id, get_logger, log_event
 from .model_reuse import model_reuse_run, prepare_model_reuse_request
 from .non_gaussian_validation import validate_non_gaussian_target_frame
-from .prediction_shapes import normalize_prediction_rows
 from .reuse_dataset import store_for_model_reuse
-from .risk_settings import (
-    attach_web_risk_metadata,
-    install_web_risk_adapters,
-    web_risk_run,
-)
+from .risk_settings import attach_web_risk_metadata, web_risk_run
 from .target_missing_policy import (
     install_workflow_adapters,
     model_variant,
@@ -32,15 +25,9 @@ from .visualization_sessions import (
     visualization_options,
 )
 
-# ``app.py`` imports visualization helpers before this compatibility module, so
-# replace both already-bound helper references before loading the tabular workflow.
-_target_settings._as_2d = normalize_prediction_rows
-_target_results._as_2d = normalize_prediction_rows
 _workflows_tabular = import_module(".workflows_tabular", package=__package__)
-_workflows_tabular._as_2d = normalize_prediction_rows
 
 install_workflow_adapters(_workflows_tabular)
-install_web_risk_adapters(_workflows_tabular)
 
 _build_outcome_constraint_config = _workflows_tabular._build_outcome_constraint_config
 _figure_payload = _workflows_tabular._figure_payload

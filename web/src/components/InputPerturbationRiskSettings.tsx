@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { AcquisitionFamily } from "../types";
 import {
   loadInputPerturbationRiskSettings,
   saveInputPerturbationRiskSettings,
@@ -8,17 +9,27 @@ import {
 
 interface InputPerturbationRiskSettingsProps {
   disabled?: boolean;
+  acquisitionFamily?: AcquisitionFamily;
 }
 
-function riskDescription(riskType: InputPerturbationRiskType): string {
+function riskDescription(
+  riskType: InputPerturbationRiskType,
+  acquisitionFamily: AcquisitionFamily | undefined
+): string {
+  if (acquisitionFamily === "level_set_estimation") {
+    if (riskType === "var") return "各入力摂動で計算した境界探索スコアの悪い側α割合の境界値で候補を評価します。";
+    if (riskType === "cvar") return "各入力摂動で計算した境界探索スコアの悪い側α割合の平均値で候補を評価します。";
+    return "各入力摂動で計算した境界探索スコアを平均して候補を評価します。";
+  }
   if (riskType === "var") return "悪い側α割合の境界値で候補を評価します。";
   if (riskType === "cvar") return "悪い側α割合の平均値で候補を評価します。";
   return "すべての摂動サンプルの平均値で候補を評価します。";
 }
 
-/** Web-only controls for aggregating objective values expanded by InputPerturbation. */
+/** Web controls for aggregating values expanded by InputPerturbation. */
 export default function InputPerturbationRiskSettingsControl({
-  disabled = false
+  disabled = false,
+  acquisitionFamily
 }: InputPerturbationRiskSettingsProps) {
   const [settings, setSettings] = useState<InputPerturbationRiskSettings>(
     loadInputPerturbationRiskSettings
@@ -60,8 +71,8 @@ export default function InputPerturbationRiskSettingsControl({
       )}
       <small className="settings-note">
         {disabled
-          ? "VaR/CVaRは現在、ベイズ最適化でのみ使用できます。"
-          : riskDescription(settings.riskType)}
+          ? "VaR/CVaRは現在、ベイズ最適化とレベルセット推定で使用できます。"
+          : riskDescription(settings.riskType, acquisitionFamily)}
       </small>
     </>
   );

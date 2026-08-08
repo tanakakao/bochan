@@ -123,9 +123,26 @@ export default function TargetProposalSettings({
     if (!setting.optimize) return <span className="muted-cell">対象外</span>;
     if (isLevelSet) {
       return (
-        <span className="muted-cell" title="レベルセット推定では最大化・最小化方向を使用しません。">
-          境界推定
-        </span>
+        <div className="table-field">
+          <span className="muted-cell" title="レベルセット推定では最大化・最小化方向を使用しません。">
+            境界推定
+          </span>
+          {targetColumns.length > 1 && (
+            <label className="table-field">
+              <span>境界重み</span>
+              <input
+                type="number"
+                min={0}
+                step={0.1}
+                value={setting.level_set_weight ?? 1}
+                aria-label={`${target}のレベルセット重み`}
+                onChange={(event) => patchTargetSetting(target, {
+                  level_set_weight: numberOrUndefined(event.target.value) ?? 0
+                })}
+              />
+            </label>
+          )}
+        </div>
       );
     }
     const directionValue: OptimizationDirection = setting.goal === "target"
@@ -256,7 +273,8 @@ export default function TargetProposalSettings({
         <table className="target-settings-table proposal-target-table">
           <thead>
             <tr>
-              <th>目的変数</th><th>最適化対象</th><th>{isLevelSet ? "探索" : "方向"}</th><th>制約</th>
+              <th>目的変数</th><th>最適化対象</th><th>{isLevelSet ? "探索" : "方向"}</th>
+              <th>{isLevelSet ? "境界条件 / 制約" : "制約"}</th>
               <th>{isLevelSet ? "境界しきい値／目標値" : "しきい値／目標値"}</th><th>対象クラス</th>
             </tr>
           </thead>
@@ -289,7 +307,13 @@ export default function TargetProposalSettings({
                     <select
                       value={constraintValue}
                       disabled={!isLevelSet && targetMode}
-                      title={!isLevelSet && targetMode ? "目標値は方向で設定されています。" : undefined}
+                      title={isLevelSet
+                        ? setting.optimize
+                          ? "最適化対象ではLSEの境界条件として使用し、候補のhard constraintにはしません。"
+                          : "最適化対象外では候補の実行可能性制約として使用します。"
+                        : targetMode
+                          ? "目標値は方向で設定されています。"
+                          : undefined}
                       onChange={(event) => changeConstraintGoal(
                         target,
                         event.target.value as TargetGoal
@@ -313,7 +337,7 @@ export default function TargetProposalSettings({
       </div>
       <p className="settings-note">
         {isLevelSet
-          ? "レベルセット推定では最大化・最小化方向を設定しません。回帰・順序回帰の「目標値」は制約欄から選択できます。Multiclass は選択したクラス群の合計確率をしきい値と比較し、順序回帰の「以上／以下」はクラス順の順位を境界として扱います。"
+          ? "レベルセット推定では最大化・最小化方向を設定しません。最適化対象行の「以上／以下／目標値」は探索する境界を定義し、hard constraintにはしません。チェックを外した行の「以上／以下」は実行可能性制約として使用します。Multiclass は選択クラス群の合計確率、順序回帰は設定済みクラス順を境界尺度として扱います。複数出力の境界重みは相対値として正規化されます。"
           : "方向・制約・対象クラスは候補提案時にのみ使用します。ここを変更しても、互換性のある学習済みモデルは再利用できます。"}
       </p>
     </article>

@@ -255,7 +255,18 @@ export function restoreWorkbenchFromArtifact(
     ? String(acquisitionKwargs.web_family) as AcquisitionFamily
     : "bayesian_optimization";
   const acquisition = String(acquisitionSettings.name ?? "EI");
-  const beta = finiteNumber(acquisitionSettings.beta, 2);
+  const acquisitionKey = acquisition.replace(/[_\-\s]/g, "").toLowerCase();
+  const defaultLevelSetParameter = acquisitionKey === "boundaryvariance"
+    ? 1
+    : acquisitionKey === "icu"
+      ? 0
+      : 1.96;
+  const savedLevelSetParameter = acquisitionKwargs.web_level_set_parameter;
+  const beta = acquisitionFamily === "level_set_estimation"
+    ? savedLevelSetParameter === null || savedLevelSetParameter === undefined
+      ? defaultLevelSetParameter
+      : finiteNumber(savedLevelSetParameter, defaultLevelSetParameter)
+    : finiteNumber(acquisitionSettings.beta, 2);
   const q = Math.max(1, Math.trunc(finiteNumber(optimizerSettings.q, 3)));
   const sequential = optimizerSettings.sequential === undefined
     ? true

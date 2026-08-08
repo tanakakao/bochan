@@ -107,7 +107,7 @@ class _RandomForestClassificationModel(_ExternalProbabilityClassifierMixin, Ense
             raise RuntimeError(
                 "The fitted Random Forest classifier does not expose any `estimators_`."
             )
-        if getattr(self, "weights", None) is not None and self.weights.numel() != len(estimators):
+        if self.ensemble_weights is not None and self.ensemble_weights.numel() != len(estimators):
             raise ValueError("weights must contain one value per fitted tree.")
 
         self._is_fitted = True

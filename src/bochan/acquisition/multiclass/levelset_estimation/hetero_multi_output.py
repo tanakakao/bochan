@@ -17,10 +17,10 @@ from .multi_output import (
     qMultiOutputMulticlassLatentStraddleAcquisition,
     qMultiOutputMulticlassProbabilityOfExceedance,
 )
-from .sampling import configure_levelset_sampling
 
-# Direct imports from this module should also get support patches.
-configure_levelset_sampling()
+# Keep the existing Active Learning heteroscedastic noise-alignment support.
+# Level-set q-like sampling alignment itself is implemented natively in the
+# joint multiclass LSE base and requires no runtime patch.
 apply_hetero_noise_alignment()
 
 

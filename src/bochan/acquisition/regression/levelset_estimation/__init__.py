@@ -33,18 +33,6 @@ from .single_output import (
     qRegressionProbabilityOfExceedance,
 )
 
-# Apply stronger q-batch diversity behavior for pointwise regression level-set
-# acquisitions imported through this package.
-from . import diversity as _diversity  # noqa: F401
-
-# Preserve the raw q-batch while score objectives aggregate InputPerturbation's
-# expanded q * n_w dimension.
-from . import objective_compat as _objective_compat  # noqa: F401
-
-# Apply the same compatibility behavior to heteroscedastic regression level-set
-# acquisitions, which use a separate base implementation.
-from . import hetero_objective_compat as _hetero_objective_compat  # noqa: F401
-
 __all__ = [
     "HeteroMultiOutputRegressionLevelSetScoreObjective",
     "qHeteroMultiOutputRegressionStraddle",

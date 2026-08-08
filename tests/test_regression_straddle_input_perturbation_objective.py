@@ -62,6 +62,9 @@ def test_regression_straddle_preserves_batch_shape_with_perturbation_objective()
         beta=1.0,
         threshold=0.0,
         reduction="mean",
+        exclude_same_batch_duplicates=False,
+        exclude_pending_duplicates=False,
+        exclude_observed_duplicates=False,
     )
     X = _candidate_batch()
 
@@ -79,6 +82,9 @@ def test_regression_icu_does_not_reaggregate_joint_score_by_n_w() -> None:
         model=model,
         objective=objective,
         threshold=0.0,
+        exclude_same_batch_duplicates=False,
+        exclude_pending_duplicates=False,
+        exclude_observed_duplicates=False,
     )
     X = _candidate_batch()
 
@@ -93,3 +99,30 @@ def test_regression_icu_does_not_reaggregate_joint_score_by_n_w() -> None:
     assert value.shape == torch.Size([4])
     assert torch.isfinite(value).all()
     assert torch.allclose(value, expected)
+
+
+def test_regression_lse_duplicate_exclusion_uses_raw_candidates_with_perturbation() -> None:
+    model = _PerturbedRegressionModel(n_w=2).double()
+    objective = RegressionScalarObjective(n_w=2, risk_type=None)
+    acquisition = qRegressionStraddle(
+        model=model,
+        objective=objective,
+        beta=1.0,
+        threshold=0.0,
+        reduction="mean",
+        exclude_pending_duplicates=False,
+        exclude_observed_duplicates=False,
+    )
+    X = torch.tensor(
+        [
+            [[0.1], [0.2], [0.3]],
+            [[0.3], [0.3], [0.6]],
+        ],
+        dtype=torch.double,
+    )
+
+    value = acquisition(X)
+
+    assert value.shape == torch.Size([2])
+    assert torch.isfinite(value[0])
+    assert torch.isneginf(value[1])

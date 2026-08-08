@@ -1,28 +1,40 @@
 from __future__ import annotations
 
+"""Pure q-like alignment helpers for multiclass level-set sampling.
+
+The joint multiclass LSE acquisition now calls :func:`align_levelset_q_like`
+directly from its normal implementation.  This module deliberately performs no
+runtime class mutation and is kept for private compatibility only.
+"""
+
 from torch import Tensor
 
-from . import multi_output as _multi_output
 
-_ORIGINAL_SAMPLE_TARGET_ATTR = "_bochan_original_sample_target_probs_before_q_like_support"
+def align_levelset_q_like(
+    target: Tensor,
+    *,
+    raw_q: int,
+    name: str,
+) -> Tensor:
+    """Align sampled target probabilities from ``q_like`` to the raw q axis.
 
+    Wrapper / heteroscedastic models may collapse the q axis to one value, while
+    InputPerturbation-like transforms may expand it.  The alignment contract is:
 
-def _sample_target_probs(self, X: Tensor) -> Tensor:
-    """Sample target probabilities with robust q_like -> raw q alignment.
-
-    Some heteroscedastic / wrapper multiclass models collapse a concatenated
-    pending+candidate q-batch and return ``q_like=1`` even when raw ``q > 1``.
-    For joint level-set acquisition we need a ``... x q x m`` tensor. If the
-    returned q_like is 1, broadcast it across raw q. If q_like is a multiple of
-    q, average perturbation-like repeats. If raw q is a multiple of q_like,
-    repeat-interleave the available values.
+    - identical q: return unchanged;
+    - ``q_like == 1``: broadcast across raw q;
+    - ``q_like`` is a multiple of raw q: average repeated perturbation slots;
+    - raw q is a multiple of ``q_like``: repeat-interleave the available slots.
     """
-    Xq = self._ensure_q_batch(X)
-    posterior = self._get_multiclass_probability_posterior(Xq)
-    samples = posterior.rsample(self.sampler.sample_shape)
-    target = self._target_prob_per_output(samples)
+    q = int(raw_q)
+    if q <= 0:
+        raise ValueError(f"raw_q must be positive. Got {raw_q}.")
+    if target.ndim < 2:
+        raise RuntimeError(
+            f"{name}: target probabilities must contain q and output axes. "
+            f"Got target.shape={tuple(target.shape)}."
+        )
 
-    q = int(Xq.shape[-2])
     q_like = int(target.shape[-2])
     if q_like == q:
         return target
@@ -32,26 +44,29 @@ def _sample_target_probs(self, X: Tensor) -> Tensor:
         return target.expand(*target.shape[:-2], q, m)
 
     if q_like > q and q_like % q == 0:
-        return target.reshape(*target.shape[:-2], q, q_like // q, m).mean(dim=-2)
+        return target.reshape(
+            *target.shape[:-2],
+            q,
+            q_like // q,
+            m,
+        ).mean(dim=-2)
 
     if q > q_like and q % q_like == 0:
         return target.repeat_interleave(q // q_like, dim=-2)
 
     raise RuntimeError(
-        f"{self.__class__.__name__}: cannot align q_like={q_like} to raw q={q}. "
+        f"{name}: cannot align q_like={q_like} to raw q={q}. "
         f"target.shape={tuple(target.shape)}."
     )
 
 
 def configure_levelset_sampling() -> None:
-    """Patch joint multiclass level-set q_like alignment in-place."""
-    cls = _multi_output.qMultiOutputMulticlassJointLatentStraddleAcquisition
-    if not hasattr(cls, _ORIGINAL_SAMPLE_TARGET_ATTR):
-        setattr(cls, _ORIGINAL_SAMPLE_TARGET_ATTR, cls._sample_target_probs)
-    cls._sample_target_probs = _sample_target_probs
+    """Deprecated no-op retained for private import compatibility.
+
+    q-like alignment is integrated directly into the joint multiclass LSE
+    acquisition.  Calling this function intentionally has no side effects.
+    """
+    return None
 
 
-configure_levelset_sampling()
-
-
-__all__ = ["configure_levelset_sampling"]
+__all__ = ["align_levelset_q_like", "configure_levelset_sampling"]

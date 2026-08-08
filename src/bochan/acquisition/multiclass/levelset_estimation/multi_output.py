@@ -17,6 +17,8 @@ from bochan.acquisition.multiclass.active_learning.multi_output import (
 )
 from bochan.acquisition.multiclass.base import ClassReductionType
 
+from .sampling import align_levelset_q_like
+
 UncertaintyMode = Literal["bernoulli", "posterior", "combined"]
 JointUncertaintyMode = Literal["logdet1p", "logdet", "sqrt_trace", "trace"]
 JointBoundaryMode = Literal["mean_abs", "l2_mean", "max_abs"]
@@ -89,6 +91,11 @@ class _MultiOutputMulticlassTargetProbabilityBase(_DirectMultiOutputMulticlassAc
         observed_penalty_beta: float = 10.0,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
+        X_pending: Tensor | None = None,
         X_observed: Tensor | None = None,
         num_samples: int = 128,
         eps: float = 1e-8,
@@ -107,6 +114,11 @@ class _MultiOutputMulticlassTargetProbabilityBase(_DirectMultiOutputMulticlassAc
             observed_penalty_beta=observed_penalty_beta,
             same_batch_penalty_weight=same_batch_penalty_weight,
             same_batch_penalty_beta=same_batch_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
+            X_pending=X_pending,
             X_observed=X_observed,
             eps=eps,
             objective=None,
@@ -334,18 +346,16 @@ class qMultiOutputMulticlassJointLatentStraddleAcquisition(_MultiOutputMulticlas
         raise ValueError(f"Unexpected X_pending shape: {tuple(X_pending.shape)}")
 
     def _sample_target_probs(self, X: Tensor) -> Tensor:
+        """Sample target probabilities and align wrapper q-like axes natively."""
         Xq = self._ensure_q_batch(X)
         posterior = self._get_multiclass_probability_posterior(Xq)
         samples = posterior.rsample(self.sampler.sample_shape)
         target = self._target_prob_per_output(samples)
-        q = int(Xq.shape[-2])
-        if target.shape[-2] != q:
-            if target.shape[-2] % q != 0:
-                raise RuntimeError(
-                    f"{self.__class__.__name__}: q_like={target.shape[-2]} is not divisible by raw q={q}."
-                )
-            target = target.reshape(*target.shape[:-2], q, target.shape[-2] // q, target.shape[-1]).mean(dim=-2)
-        return target
+        return align_levelset_q_like(
+            target,
+            raw_q=int(Xq.shape[-2]),
+            name=self.__class__.__name__,
+        )
 
     def _flatten_samples(self, target_samples: Tensor) -> Tensor:
         sample_ndim = len(getattr(self.sampler, "sample_shape", torch.Size([1])))

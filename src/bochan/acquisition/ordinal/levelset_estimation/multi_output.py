@@ -5,18 +5,22 @@ from collections.abc import Callable, Sequence
 from typing import Literal, Optional
 
 import torch
-from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.models.model import Model
 from botorch.sampling.base import MCSampler
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 
-from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.acquisition.ordinal.active_learning.multi_output import (
+    MultiOutputMode,
+    ReductionType,
+    _apply_input_transform_for_reference,
+    _ensure_q_batch,
+    _qMultiOutputOrdinalActiveLearningBase,
+    ordinal_entropy_from_probs,
+)
 
 RiskType = Optional[Literal["var", "cvar"]]
-ReductionType = Literal["mean", "sum"]
-MultiOutputMode = Literal["mean", "sum", "max", "min", "weighted_mean"]
 BoundaryReduction = Literal["sum", "mean", "max", "min"]
 PerturbationJointReduction = Literal["block_mean", "diagonal_mean"]
 
@@ -65,11 +69,11 @@ def _aggregate_scalar_axis(
 
 
 class MultiOutputOrdinalLevelSetScoreObjective(torch.nn.Module):
-    """
-    multi-output ordinal level-set acquisition の計算済み score に作用する objective。
+    """multi-output ordinal LSE の pointwise score objective。
 
-    InputPerturbation 使用時は、pointwise score の q * n_w を q に戻します。
-    joint scalar score に対しては、デフォルトでは何もせずそのまま返します。
+    InputPerturbation で ``q * n_w`` に展開された pointwise score を ``q`` に
+    戻します。joint acquisition のように既に batch-level scalar へ集約済みの
+    score はデフォルトでそのまま返します。
     """
 
     def __init__(
@@ -110,7 +114,6 @@ class MultiOutputOrdinalLevelSetScoreObjective(torch.nn.Module):
             raise TypeError(f"score must be Tensor. Got {type(score)}.")
 
         score = score * self.sign * self.weight
-
         if score.ndim == 0 or self.n_w is None or self.n_w <= 1:
             return score
 
@@ -122,7 +125,7 @@ class MultiOutputOrdinalLevelSetScoreObjective(torch.nn.Module):
                 )
             return score
 
-        q_expanded = score.shape[-1]
+        q_expanded = int(score.shape[-1])
         if q_expanded % int(self.n_w) != 0:
             raise RuntimeError(
                 "score.shape[-1] must be divisible by n_w. "
@@ -141,29 +144,8 @@ class MultiOutputOrdinalLevelSetScoreObjective(torch.nn.Module):
         )
 
 
-# Backward supported internal name.
+# Backward-supported internal name.
 _MultiOutputOrdinalLevelSetScoreObjective = MultiOutputOrdinalLevelSetScoreObjective
-
-
-def _apply_score_objective(
-    owner,
-    score: Tensor,
-    X: Tensor | None,
-    *,
-    name: str,
-) -> Tensor:
-    objective = getattr(owner, "objective", None)
-    if objective is None:
-        return score
-
-    try:
-        out = objective(score, X=X)
-    except TypeError:
-        out = objective(score)
-
-    if not torch.is_tensor(out):
-        raise TypeError(f"{name}: objective must return Tensor. Got {type(out)}.")
-    return out
 
 
 # =========================================================
@@ -173,48 +155,21 @@ def _try_call_zero_arg(obj):
     return obj() if callable(obj) else obj
 
 
-def _get_submodels(model: Model) -> list[Model]:
-    if isinstance(model, (list, tuple)):
-        submodels = list(model)
-    elif hasattr(model, "models"):
-        submodels = list(model.models)
-    else:
-        raise ValueError(
-            "This multi-output acquisition expects model.models or a list/tuple of ordinal models."
-        )
-    if len(submodels) == 0:
-        raise ValueError("No submodels found.")
-    return submodels
-
-
-def _is_ordinal_likelihood(obj) -> bool:
-    return obj is not None and (
-        hasattr(obj, "marginal_class_probs") or hasattr(obj, "class_probs_from_f")
-    )
-
-
-def _get_ordinal_likelihood(model: Model) -> OrdinalLogitLikelihood:
-    for cand in (getattr(model, "ordinal_likelihood", None), getattr(model, "likelihood", None)):
-        if _is_ordinal_likelihood(cand):
-            return cand
-    raise ValueError("Each submodel must expose ordinal_likelihood or likelihood.")
-
-
 def _get_cutpoints_from_likelihood(ordinal_likelihood) -> Tensor:
     if hasattr(ordinal_likelihood, "get_cutpoints"):
         cutpoints = _try_call_zero_arg(ordinal_likelihood.get_cutpoints)
-        return torch.as_tensor(cutpoints).reshape(-1)
+        return torch.as_tensor(cutpoints).detach().clone().reshape(-1)
 
     for name in ("transformed_cutpoints", "cutpoints", "thresholds", "cuts", "cutoffs"):
         if hasattr(ordinal_likelihood, name):
             cutpoints = _try_call_zero_arg(getattr(ordinal_likelihood, name))
-            return torch.as_tensor(cutpoints).reshape(-1)
+            return torch.as_tensor(cutpoints).detach().clone().reshape(-1)
 
     if hasattr(ordinal_likelihood, "raw_cutpoints"):
-        raw = torch.as_tensor(_try_call_zero_arg(ordinal_likelihood.raw_cutpoints))
+        raw = torch.as_tensor(_try_call_zero_arg(ordinal_likelihood.raw_cutpoints)).detach().clone()
         if hasattr(ordinal_likelihood, "transform_cutpoints"):
             cutpoints = ordinal_likelihood.transform_cutpoints(raw)
-            return torch.as_tensor(cutpoints).reshape(-1)
+            return torch.as_tensor(cutpoints).detach().clone().reshape(-1)
         return raw.reshape(-1)
 
     raise ValueError(
@@ -288,7 +243,6 @@ def ordinal_class_probs_from_f(f: Tensor, ordinal_likelihood) -> Tensor:
     cutpoints = _get_cutpoints_from_likelihood(ordinal_likelihood).to(device=f.device, dtype=f.dtype)
     z = cutpoints.view(*([1] * f.ndim), -1) - f.unsqueeze(-1)
     cdf = torch.sigmoid(z)
-
     p0 = cdf[..., :1]
     if cutpoints.numel() > 1:
         pmid = cdf[..., 1:] - cdf[..., :-1]
@@ -297,7 +251,6 @@ def ordinal_class_probs_from_f(f: Tensor, ordinal_likelihood) -> Tensor:
     else:
         plast = 1.0 - cdf[..., -1:]
         probs = torch.cat([p0, plast], dim=-1)
-
     probs = probs.clamp_min(1e-12)
     return probs / probs.sum(dim=-1, keepdim=True).clamp_min(1e-12)
 
@@ -314,75 +267,36 @@ def ordinal_boundary_uncertainty(ge_probs: Tensor) -> Tensor:
     return 4.0 * ge_probs * (1.0 - ge_probs)
 
 
-def ordinal_entropy_from_probs(probs: Tensor, eps: float = 1e-12) -> Tensor:
-    probs = probs.clamp_min(eps)
-    probs = probs / probs.sum(dim=-1, keepdim=True).clamp_min(eps)
-    return -(probs * probs.log()).sum(dim=-1)
-
-
 def _reduce_extra_batch_dims(
     tensor: Tensor,
     X_like: Tensor,
     n_trailing_keep: int,
-    *,
-    reduce_extra: Literal["mean", "sum"] = "mean",
 ) -> Tensor:
     out = tensor
     X_like = _ensure_q_batch(X_like)
-    x_batch_shape = tuple(X_like.shape[:-2])
-    target_ndim = len(x_batch_shape) + n_trailing_keep
-
+    target_ndim = len(X_like.shape[:-2]) + n_trailing_keep
     while out.ndim > target_ndim:
-        prefix = tuple(out.shape[:-n_trailing_keep]) if n_trailing_keep > 0 else tuple(out.shape)
-
-        if len(x_batch_shape) == 0:
-            reduce_dim = 0
-        else:
-            match_start = None
-            max_start = len(prefix) - len(x_batch_shape)
-            for s in range(max_start + 1):
-                if tuple(prefix[s : s + len(x_batch_shape)]) == x_batch_shape:
-                    match_start = s
-                    break
-
-            if match_start is None:
-                reduce_dim = max(out.ndim - n_trailing_keep - 1, 0)
-            else:
-                protected = set(range(match_start, match_start + len(x_batch_shape)))
-                extra_dims = [i for i in range(len(prefix)) if i not in protected]
-                if not extra_dims:
-                    break
-                reduce_dim = extra_dims[0]
-
-        if reduce_extra == "mean":
-            out = out.mean(dim=reduce_dim)
-        elif reduce_extra == "sum":
-            out = out.sum(dim=reduce_dim)
-        else:
-            raise ValueError(f"Unknown reduce_extra: {reduce_extra}")
-
+        out = out.mean(dim=0)
     return out
 
 
 def _align_pointwise_score_to_X(score: Tensor, X_like: Tensor, *, name: str) -> Tensor:
     X_like = _ensure_q_batch(X_like)
     expected = X_like.shape[:-1]
+    out = score
 
-    if score.shape == expected:
-        return score
+    if out.shape == expected:
+        return out
+    if out.ndim == len(expected) + 1 and out.shape[-1] == 1:
+        out = out.squeeze(-1)
+        if out.shape == expected:
+            return out
 
-    if score.ndim == len(expected) + 1 and score.shape[-1] == 1:
-        squeezed = score.squeeze(-1)
-        if squeezed.shape == expected:
-            return squeezed
-
-    score = _reduce_extra_batch_dims(score, X_like, n_trailing_keep=1, reduce_extra="mean")
-    if score.shape == expected:
-        return score
-
-    if score.numel() == math.prod(expected):
-        return score.reshape(*expected)
-
+    out = _reduce_extra_batch_dims(out, X_like, n_trailing_keep=1)
+    if out.shape == expected:
+        return out
+    if out.numel() == math.prod(expected):
+        return out.reshape(*expected)
     raise RuntimeError(
         f"{name}: failed to align score to X_like. "
         f"score.shape={tuple(score.shape)}, X_like.shape={tuple(X_like.shape)}."
@@ -390,23 +304,29 @@ def _align_pointwise_score_to_X(score: Tensor, X_like: Tensor, *, name: str) -> 
 
 
 def _align_probs_to_X(probs: Tensor, X_like: Tensor, *, eps: float) -> Tensor:
-    out = _reduce_extra_batch_dims(probs, X_like, n_trailing_keep=2, reduce_extra="mean")
+    out = _reduce_extra_batch_dims(probs, X_like, n_trailing_keep=2)
+    expected_prefix = _ensure_q_batch(X_like).shape[:-1]
+    if out.shape[:-1] != expected_prefix:
+        c = int(out.shape[-1])
+        expected_numel = math.prod(expected_prefix) * c
+        if out.numel() == expected_numel:
+            out = out.reshape(*expected_prefix, c)
+        else:
+            raise RuntimeError(
+                "Could not align ordinal class probabilities to candidates. "
+                f"probs.shape={tuple(probs.shape)}, X_like.shape={tuple(X_like.shape)}."
+            )
     out = out.clamp_min(eps)
     return out / out.sum(dim=-1, keepdim=True).clamp_min(eps)
 
 
-# =========================================================
-# Boundary aggregation
-# =========================================================
 def _to_optional_list(value, n: int, *, name: str) -> list:
     if value is None:
         return [None] * n
-
     if isinstance(value, (list, tuple)):
         if len(value) != n:
             raise ValueError(f"{name} length must match number of outputs. Expected {n}, got {len(value)}.")
         return list(value)
-
     return [value] * n
 
 
@@ -419,7 +339,6 @@ def _prepare_boundary_weights(
 ) -> Tensor | None:
     if boundary_weights is None:
         return None
-
     w = torch.as_tensor(boundary_weights, device=device, dtype=dtype).reshape(-1)
     if w.numel() != n_boundaries:
         raise ValueError(f"boundary_weights must have length {n_boundaries}, got {w.numel()}.")
@@ -433,15 +352,7 @@ def _aggregate_boundary_scores(
     boundary_weights: Tensor | Sequence[float] | None = None,
     boundary_reduction: BoundaryReduction = "sum",
 ) -> Tensor:
-    """
-    Args:
-        boundary_scores: shape = (..., n_boundaries)
-
-    Returns:
-        Tensor: shape = (...)
-    """
-    n_boundaries = boundary_scores.shape[-1]
-
+    n_boundaries = int(boundary_scores.shape[-1])
     if target_boundary_idx is not None:
         idx = int(target_boundary_idx)
         if not (0 <= idx < n_boundaries):
@@ -467,7 +378,6 @@ def _aggregate_boundary_scores(
         return boundary_scores.max(dim=-1).values
     if boundary_reduction == "min":
         return boundary_scores.min(dim=-1).values
-
     raise ValueError(f"Unknown boundary_reduction: {boundary_reduction}.")
 
 
@@ -476,631 +386,6 @@ def _boundary_kernel_scores(values: Tensor, cutpoints: Tensor, tau: float) -> Te
     tau_t = torch.as_tensor(tau, device=values.device, dtype=values.dtype).clamp_min(1e-8)
     z2 = ((values.unsqueeze(-1) - cp.view(*([1] * values.ndim), -1)) / tau_t) ** 2
     return torch.exp(-0.5 * z2)
-
-
-# =========================================================
-# Distance / transform / penalty utilities
-# =========================================================
-def _ensure_q_batch(X: Tensor) -> Tensor:
-    if not torch.is_tensor(X):
-        raise TypeError(f"X must be Tensor. Got {type(X)}.")
-    if X.ndim == 1:
-        return X.view(1, 1, -1)
-    if X.ndim == 2:
-        return X.unsqueeze(0)
-    return X
-
-
-def _coerce_reference_to_tensor(
-    X_ref,
-    *,
-    ref: Tensor | None = None,
-) -> Tensor | None:
-    if X_ref is None:
-        return None
-
-    if torch.is_tensor(X_ref):
-        out = X_ref
-    elif isinstance(X_ref, (list, tuple)):
-        tensors = []
-        for item in X_ref:
-            if item is None:
-                continue
-            t = _coerce_reference_to_tensor(item, ref=ref)
-            if t is not None and t.numel() > 0:
-                tensors.append(t)
-        if len(tensors) == 0:
-            return None
-        if len(tensors) == 1:
-            out = tensors[0]
-        else:
-            try:
-                out = torch.cat(tensors, dim=-2)
-            except RuntimeError:
-                out = torch.cat([t.reshape(-1, t.shape[-1]) for t in tensors], dim=-2)
-    else:
-        raise TypeError(
-            "X_pending / X_observed must be None, Tensor, list, or tuple. "
-            f"Got {type(X_ref)}."
-        )
-
-    if ref is not None:
-        out = out.to(device=ref.device, dtype=ref.dtype)
-    return out
-
-
-# Backward-supported helper name.
-_coerce_pending_to_tensor = _coerce_reference_to_tensor
-
-
-def _apply_input_transform_for_reference(model: Model, X: Tensor) -> Tensor:
-    X = _ensure_q_batch(X)
-
-    it = getattr(model, "input_transform", None)
-    if it is not None:
-        Xt = it(X)
-        if isinstance(Xt, tuple):
-            Xt = Xt[0]
-        return _ensure_q_batch(Xt)
-
-    models = getattr(model, "models", None)
-    if models is not None and len(models) > 0:
-        it = getattr(models[0], "input_transform", None)
-        if it is not None:
-            Xt = it(X)
-            if isinstance(Xt, tuple):
-                Xt = Xt[0]
-            return _ensure_q_batch(Xt)
-
-    return X
-
-
-_apply_input_transform_for_pending = _apply_input_transform_for_reference
-
-
-def _transform_reference_like_candidate(
-    model: Model,
-    X_ref,
-    *,
-    ref: Tensor,
-) -> Tensor | None:
-    Xr = _coerce_reference_to_tensor(X_ref, ref=ref)
-    if Xr is None or Xr.numel() == 0:
-        return None
-
-    Xr_t = _apply_input_transform_for_reference(model, Xr)
-    return Xr_t.to(device=ref.device, dtype=ref.dtype)
-
-
-_transform_pending_like_candidate = _transform_reference_like_candidate
-
-
-def _resolve_observed_X(model: Model, X_observed: Tensor | None = None) -> Tensor | None:
-    if X_observed is not None:
-        return X_observed
-
-    for attr in ("train_X_original", "train_X", "train_inputs_raw"):
-        x = getattr(model, attr, None)
-        if x is not None:
-            return x
-
-    train_inputs = getattr(model, "train_inputs", None)
-    if isinstance(train_inputs, tuple) and len(train_inputs) > 0:
-        return train_inputs[0]
-
-    models = getattr(model, "models", None)
-    if models is not None and len(models) > 0:
-        sm = models[0]
-        for attr in ("train_X_original", "train_X", "train_inputs_raw"):
-            x = getattr(sm, attr, None)
-            if x is not None:
-                return x
-        train_inputs = getattr(sm, "train_inputs", None)
-        if isinstance(train_inputs, tuple) and len(train_inputs) > 0:
-            return train_inputs[0]
-
-    return None
-
-
-def _resolve_cat_dims(model: Model) -> list[int]:
-    cat_dims = getattr(model, "cat_dims", None)
-    if cat_dims is not None:
-        return [int(i) for i in cat_dims]
-
-    models = getattr(model, "models", None)
-    if models is not None and len(models) > 0:
-        cat_dims = getattr(models[0], "cat_dims", None)
-        if cat_dims is not None:
-            return [int(i) for i in cat_dims]
-    return []
-
-
-def _split_cont_cat(X: Tensor, cat_dims: Sequence[int]) -> tuple[Tensor | None, Tensor | None]:
-    d = X.shape[-1]
-    cat_dims = [i for i in cat_dims if 0 <= i < d]
-    cont_dims = [i for i in range(d) if i not in cat_dims]
-
-    X_cont = X[..., cont_dims] if len(cont_dims) > 0 else None
-    X_cat = X[..., cat_dims] if len(cat_dims) > 0 else None
-    return X_cont, X_cat
-
-
-def _pairwise_distance_proxy(A: Tensor, B: Tensor, cat_dims: Sequence[int]) -> Tensor:
-    A_cont, A_cat = _split_cont_cat(A, cat_dims)
-    B_cont, B_cat = _split_cont_cat(B, cat_dims)
-
-    dist2: Tensor | float = 0.0
-
-    if A_cont is not None:
-        diff = A_cont.unsqueeze(-2) - B_cont.unsqueeze(-3)
-        dist2 = dist2 + (diff**2).sum(dim=-1)
-
-    if A_cat is not None:
-        mismatch = (A_cat.unsqueeze(-2) != B_cat.unsqueeze(-3)).to(A.dtype)
-        dist2 = dist2 + mismatch.sum(dim=-1)
-
-    if isinstance(dist2, float):
-        raise RuntimeError("No valid dimensions found for distance computation.")
-    return dist2
-
-
-def _broadcast_reference_to_batch(X_ref: Tensor, batch_shape: torch.Size) -> Tensor:
-    X_ref = _ensure_q_batch(X_ref)
-
-    if X_ref.shape[:-2] == batch_shape:
-        return X_ref
-
-    try:
-        return X_ref.expand(*batch_shape, X_ref.shape[-2], X_ref.shape[-1])
-    except RuntimeError:
-        X2d = X_ref.reshape(-1, X_ref.shape[-1])
-        return X2d.view(*([1] * len(batch_shape)), X2d.shape[-2], X2d.shape[-1]).expand(
-            *batch_shape,
-            X2d.shape[-2],
-            X2d.shape[-1],
-        )
-
-
-def _reference_penalty_per_point(
-    X: Tensor,
-    X_ref: Tensor | None,
-    *,
-    beta: float,
-    weight: float,
-    cat_dims: Sequence[int],
-) -> Tensor:
-    X = _ensure_q_batch(X)
-    if weight <= 0.0 or X_ref is None or X_ref.numel() == 0:
-        return X.new_zeros(X.shape[:-1])
-
-    X_ref = _broadcast_reference_to_batch(
-        X_ref.to(device=X.device, dtype=X.dtype),
-        X.shape[:-2],
-    )
-
-    dist2 = _pairwise_distance_proxy(X, X_ref, cat_dims)
-    nearest = dist2.min(dim=-1).values
-    return weight * torch.exp(-float(beta) * nearest)
-
-
-def _same_batch_penalty_per_point(
-    X: Tensor,
-    *,
-    beta: float,
-    weight: float,
-    cat_dims: Sequence[int],
-) -> Tensor:
-    X = _ensure_q_batch(X)
-    batch_shape = X.shape[:-2]
-    q = X.shape[-2]
-
-    if q <= 1 or weight <= 0.0:
-        return X.new_zeros(X.shape[:-1])
-
-    d2 = _pairwise_distance_proxy(X, X, cat_dims)
-    eye = torch.eye(q, device=X.device, dtype=torch.bool)
-    d2 = d2.masked_fill(eye, float("inf"))
-
-    return weight * torch.exp(-float(beta) * d2).sum(dim=-1).reshape(*batch_shape, q)
-
-
-def _reference_penalty_aggregated(
-    X: Tensor,
-    X_ref: Tensor | None,
-    *,
-    beta: float,
-    weight: float,
-    cat_dims: Sequence[int],
-) -> Tensor:
-    per_point = _reference_penalty_per_point(
-        X=X,
-        X_ref=X_ref,
-        beta=beta,
-        weight=weight,
-        cat_dims=cat_dims,
-    )
-    return per_point.sum(dim=-1)
-
-
-def _same_batch_penalty_aggregated(
-    X: Tensor,
-    *,
-    beta: float,
-    weight: float,
-    cat_dims: Sequence[int],
-) -> Tensor:
-    per_point = _same_batch_penalty_per_point(X, beta=beta, weight=weight, cat_dims=cat_dims)
-    if per_point.shape[-1] <= 1:
-        return per_point.new_zeros(per_point.shape[:-1])
-    return 0.5 * per_point.sum(dim=-1)
-
-
-# =========================================================
-# InputPerturbation joint reduction
-# =========================================================
-def _infer_n_w_from_objective_or_owner(owner) -> int | None:
-    n_w = getattr(owner, "input_perturbation_n_w", None)
-    if n_w is not None:
-        return int(n_w)
-
-    objective = getattr(owner, "objective", None)
-    if objective is not None and getattr(objective, "n_w", None) is not None:
-        return int(objective.n_w)
-
-    return None
-
-
-def _reduce_input_perturbation_mean_cov(
-    mean: Tensor,
-    cov: Tensor,
-    X: Tensor,
-    n_w: int | None,
-    *,
-    mode: PerturbationJointReduction = "block_mean",
-    jitter: float = 1e-6,
-) -> tuple[Tensor, Tensor]:
-    if n_w is None or n_w <= 1:
-        return mean, cov
-
-    X_in = _ensure_q_batch(X)
-    batch_shape = X_in.shape[:-2]
-    q = X_in.shape[-2]
-
-    expected_mean = batch_shape + torch.Size([q])
-    expected_cov = batch_shape + torch.Size([q, q])
-    if mean.shape == expected_mean and cov.shape == expected_cov:
-        eye = torch.eye(q, dtype=cov.dtype, device=cov.device)
-        return mean, cov + jitter * eye
-
-    q_expanded = q * n_w
-    expanded_mean = batch_shape + torch.Size([q_expanded])
-    expanded_cov = batch_shape + torch.Size([q_expanded, q_expanded])
-    if mean.shape != expanded_mean or cov.shape != expanded_cov:
-        return mean, cov
-
-    mean_q = mean.reshape(*batch_shape, q, n_w).mean(dim=-1)
-    cov_blocks = cov.reshape(*batch_shape, q, n_w, q, n_w)
-
-    if mode == "block_mean":
-        cov_q = cov_blocks.mean(dim=(-3, -1))
-    elif mode == "diagonal_mean":
-        diag = torch.diagonal(cov, dim1=-2, dim2=-1)
-        var_q = diag.reshape(*batch_shape, q, n_w).mean(dim=-1).clamp_min(0.0)
-        cov_q = torch.diag_embed(var_q)
-    else:
-        raise ValueError(f"Unknown perturbation_joint_reduction: {mode}")
-
-    cov_q = 0.5 * (cov_q + cov_q.transpose(-1, -2))
-    eye = torch.eye(q, dtype=cov_q.dtype, device=cov_q.device)
-    return mean_q, cov_q + jitter * eye
-
-
-# =========================================================
-# Base classes
-# =========================================================
-class _qMultiOutputOrdinalBoundaryBase(AcquisitionFunction):
-    """
-    classification multi-output level-set API に寄せた ordinal multi-output base。
-
-    Pointwise acquisition の標準順序:
-        boundary/output score -> output_mode -> pointwise penalty -> objective -> reduction
-    """
-
-    def __init__(
-        self,
-        model: Model,
-        output_weights: Tensor | Sequence[float] | None = None,
-        reduction: ReductionType = "mean",
-        output_mode: MultiOutputMode = "mean",
-        sampler: MCSampler | None = None,
-        eps: float = 1e-6,
-        pending_penalty_weight: float = 0.0,
-        pending_penalty_beta: float = 10.0,
-        observed_penalty_weight: float = 0.0,
-        observed_penalty_beta: float = 10.0,
-        same_batch_penalty_weight: float = 0.0,
-        same_batch_penalty_beta: float = 10.0,
-        X_pending: Tensor | None = None,
-        X_observed: Tensor | None = None,
-        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
-    ) -> None:
-        super().__init__(model=model)
-
-        if reduction not in ("mean", "sum"):
-            raise ValueError("reduction must be 'mean' or 'sum'.")
-        if output_mode not in ("mean", "sum", "max", "min", "weighted_mean"):
-            raise ValueError(
-                "output_mode must be one of 'mean', 'sum', 'max', 'min', 'weighted_mean'."
-            )
-
-        self.submodels = _get_submodels(model)
-        self.n_outputs = len(self.submodels)
-        self.ordinal_likelihoods = [_get_ordinal_likelihood(m) for m in self.submodels]
-        # cutpoints は likelihood parameter から計算されることがあり、
-        # transformed_cutpoints / transform_cutpoints が grad_fn を持つ Tensor を返す場合がある。
-        # acquisition 最適化では X だけを最適化対象にしたいので、cutpoints は定数として detach する。
-        # これをしないと torch optimizer の複数 step backward で
-        # "Trying to backward through the graph a second time" が起きやすい。
-        self.cutpoints_list = [
-            torch.as_tensor(_get_cutpoints_from_likelihood(lik)).detach().clone()
-            for lik in self.ordinal_likelihoods
-        ]
-
-        ref_train_X = getattr(self.submodels[0], "train_X", None)
-        ref_device = ref_train_X.device if torch.is_tensor(ref_train_X) else self.cutpoints_list[0].device
-        ref_dtype = ref_train_X.dtype if torch.is_tensor(ref_train_X) else self.cutpoints_list[0].dtype
-
-        self.register_buffer(
-            "output_weights",
-            _to_1d_float_tensor(
-                output_weights,
-                self.n_outputs,
-                device=ref_device,
-                dtype=ref_dtype,
-                default=1.0,
-            ),
-        )
-
-        self.reduction = reduction
-        self.output_mode = output_mode
-        self.sampler = sampler or SobolQMCNormalSampler(sample_shape=torch.Size([256]))
-        self.eps = float(eps)
-
-        self.pending_penalty_weight = float(pending_penalty_weight)
-        self.pending_penalty_beta = float(pending_penalty_beta)
-        self.observed_penalty_weight = float(observed_penalty_weight)
-        self.observed_penalty_beta = float(observed_penalty_beta)
-        self.same_batch_penalty_weight = float(same_batch_penalty_weight)
-        self.same_batch_penalty_beta = float(same_batch_penalty_beta)
-
-        self.cat_dims = _resolve_cat_dims(model)
-        self.objective = objective
-
-        self.X_pending: Tensor | None = None
-        self.X_observed: Tensor | None = None
-        self.set_X_pending(X_pending)
-        self.set_X_observed(X_observed)
-
-    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
-        self.X_pending = _coerce_reference_to_tensor(X_pending)
-
-    def set_X_observed(self, X_observed: Tensor | None = None) -> None:
-        self.X_observed = _coerce_reference_to_tensor(_resolve_observed_X(self.model, X_observed))
-
-    def _set_eval_mode(self) -> None:
-        self.model.eval()
-        for sm in self.submodels:
-            sm.eval()
-            for attr in ("likelihood", "ordinal_likelihood"):
-                lik = getattr(sm, attr, None)
-                if lik is not None and hasattr(lik, "eval"):
-                    lik.eval()
-
-    def _weights_like(self, X: Tensor) -> Tensor:
-        return self.output_weights.to(device=X.device, dtype=X.dtype)
-
-    def _aggregate_outputs(self, score_per_output: Tensor) -> Tensor:
-        """
-        Args:
-            score_per_output: shape = (*batch, q_like, m)
-
-        Returns:
-            Tensor: shape = (*batch, q_like)
-        """
-        if self.output_mode == "mean":
-            return score_per_output.mean(dim=-1)
-        if self.output_mode == "sum":
-            return score_per_output.sum(dim=-1)
-        if self.output_mode == "max":
-            return score_per_output.max(dim=-1).values
-        if self.output_mode == "min":
-            return score_per_output.min(dim=-1).values
-        if self.output_mode == "weighted_mean":
-            w = self.output_weights.to(device=score_per_output.device, dtype=score_per_output.dtype)
-            if w.ndim != 1 or w.numel() != score_per_output.shape[-1]:
-                raise ValueError(
-                    f"output_weights must have shape ({score_per_output.shape[-1]},), got {tuple(w.shape)}."
-                )
-            w = w / w.sum().clamp_min(self.eps)
-            view_shape = (1,) * (score_per_output.ndim - 1) + (w.numel(),)
-            return (score_per_output * w.view(*view_shape)).sum(dim=-1)
-        raise ValueError(f"Unknown output_mode: {self.output_mode}.")
-
-    def _aggregate_output_scalars(self, score_per_output: Tensor) -> Tensor:
-        """
-        Args:
-            score_per_output: shape = (*batch, m)
-
-        Returns:
-            Tensor: shape = (*batch,)
-        """
-        if self.output_mode == "mean":
-            return score_per_output.mean(dim=-1)
-        if self.output_mode == "sum":
-            return score_per_output.sum(dim=-1)
-        if self.output_mode == "max":
-            return score_per_output.max(dim=-1).values
-        if self.output_mode == "min":
-            return score_per_output.min(dim=-1).values
-        if self.output_mode == "weighted_mean":
-            w = self.output_weights.to(device=score_per_output.device, dtype=score_per_output.dtype)
-            if w.ndim != 1 or w.numel() != score_per_output.shape[-1]:
-                raise ValueError(
-                    f"output_weights must have shape ({score_per_output.shape[-1]},), got {tuple(w.shape)}."
-                )
-            w = w / w.sum().clamp_min(self.eps)
-            view_shape = (1,) * (score_per_output.ndim - 1) + (w.numel(),)
-            return (score_per_output * w.view(*view_shape)).sum(dim=-1)
-        raise ValueError(f"Unknown output_mode: {self.output_mode}.")
-
-    def _reduce_q(self, score: Tensor) -> Tensor:
-        if score.ndim == 0:
-            return score
-        if score.shape[-1] == 1:
-            return score.squeeze(-1)
-        if self.reduction == "mean":
-            return score.mean(dim=-1)
-        if self.reduction == "sum":
-            return score.sum(dim=-1)
-        raise ValueError(f"Unknown reduction: {self.reduction}.")
-
-    def _check_output_shape(self, out: Tensor, expected: torch.Size, name: str) -> None:
-        if out.shape != expected:
-            raise RuntimeError(
-                f"{name}: output shape mismatch. Expected {tuple(expected)}, got {tuple(out.shape)}."
-            )
-
-    def _latent_mean_var_list(self, X: Tensor, X_like: Tensor | None = None) -> list[tuple[Tensor, Tensor]]:
-        if X_like is None:
-            X_like = _apply_input_transform_for_reference(self.model, X)
-
-        outs: list[tuple[Tensor, Tensor]] = []
-        for m in self.submodels:
-            mean, var = _posterior_mean_var(m.posterior(X))
-            mean = _align_pointwise_score_to_X(mean, X_like, name="latent mean")
-            var = _align_pointwise_score_to_X(var, X_like, name="latent variance").clamp_min(self.eps)
-            outs.append((mean, var))
-        return outs
-
-    def _latent_covariance_list(self, X: Tensor) -> list[Tensor]:
-        return [_posterior_covariance(m.posterior(X)) for m in self.submodels]
-
-    def _predictive_class_probs_list(self, X: Tensor, X_like: Tensor | None = None) -> list[Tensor]:
-        if X_like is None:
-            X_like = _apply_input_transform_for_reference(self.model, X)
-
-        outs: list[Tensor] = []
-        for m, lik in zip(self.submodels, self.ordinal_likelihoods):
-            posterior = m.posterior(X)
-            if hasattr(lik, "marginal_class_probs"):
-                probs = lik.marginal_class_probs(posterior.distribution)
-            else:
-                f_samples = self.sampler(posterior)
-                if f_samples.ndim >= 1 and f_samples.shape[-1] == 1:
-                    f_samples = f_samples.squeeze(-1)
-                probs = ordinal_class_probs_from_f(f_samples, lik).mean(dim=0)
-            outs.append(_align_probs_to_X(probs, X_like, eps=self.eps))
-        return outs
-
-    def _pointwise_repulsion_penalty(self, Xt: Tensor) -> Tensor:
-        Xt = _ensure_q_batch(Xt)
-        penalty = torch.zeros(Xt.shape[:-1], device=Xt.device, dtype=Xt.dtype)
-
-        if self.pending_penalty_weight > 0.0:
-            Xp_t = _transform_reference_like_candidate(self.model, self.X_pending, ref=Xt)
-            penalty = penalty + _reference_penalty_per_point(
-                Xt,
-                Xp_t,
-                beta=self.pending_penalty_beta,
-                weight=self.pending_penalty_weight,
-                cat_dims=self.cat_dims,
-            )
-
-        if self.observed_penalty_weight > 0.0:
-            Xobs_t = _transform_reference_like_candidate(self.model, self.X_observed, ref=Xt)
-            penalty = penalty + _reference_penalty_per_point(
-                Xt,
-                Xobs_t,
-                beta=self.observed_penalty_beta,
-                weight=self.observed_penalty_weight,
-                cat_dims=self.cat_dims,
-            )
-
-        if self.same_batch_penalty_weight > 0.0:
-            penalty = penalty + _same_batch_penalty_per_point(
-                Xt,
-                beta=self.same_batch_penalty_beta,
-                weight=self.same_batch_penalty_weight,
-                cat_dims=self.cat_dims,
-            )
-
-        return penalty
-
-    def _aggregated_repulsion_penalty(self, Xt: Tensor) -> Tensor:
-        Xt = _ensure_q_batch(Xt)
-        penalty = torch.zeros(Xt.shape[:-2], device=Xt.device, dtype=Xt.dtype)
-
-        if self.same_batch_penalty_weight > 0.0:
-            penalty = penalty + _same_batch_penalty_aggregated(
-                Xt,
-                beta=self.same_batch_penalty_beta,
-                weight=self.same_batch_penalty_weight,
-                cat_dims=self.cat_dims,
-            )
-
-        if self.pending_penalty_weight > 0.0:
-            Xp_t = _transform_reference_like_candidate(self.model, self.X_pending, ref=Xt)
-            penalty = penalty + _reference_penalty_aggregated(
-                Xt,
-                Xp_t,
-                beta=self.pending_penalty_beta,
-                weight=self.pending_penalty_weight,
-                cat_dims=self.cat_dims,
-            )
-
-        if self.observed_penalty_weight > 0.0:
-            Xobs_t = _transform_reference_like_candidate(self.model, self.X_observed, ref=Xt)
-            penalty = penalty + _reference_penalty_aggregated(
-                Xt,
-                Xobs_t,
-                beta=self.observed_penalty_beta,
-                weight=self.observed_penalty_weight,
-                cat_dims=self.cat_dims,
-            )
-
-        return penalty
-
-    def _finalize_pointwise_scores(
-        self,
-        score_per_output: Tensor,
-        X: Tensor,
-        *,
-        name: str,
-    ) -> Tensor:
-        raw_X = _ensure_q_batch(X)
-        original_batch_shape = raw_X.shape[:-2]
-        Xt = _apply_input_transform_for_reference(self.model, raw_X)
-
-        if score_per_output.shape[:-1] != Xt.shape[:-1]:
-            expected = Xt.shape[:-1] + torch.Size([score_per_output.shape[-1]])
-            if score_per_output.numel() == math.prod(expected):
-                score_per_output = score_per_output.reshape(*expected)
-            else:
-                raise RuntimeError(
-                    f"{name}: score_per_output shape mismatch. "
-                    f"score_per_output.shape={tuple(score_per_output.shape)}, Xt.shape={tuple(Xt.shape)}."
-                )
-
-        score = self._aggregate_outputs(score_per_output)
-        score = score - self._pointwise_repulsion_penalty(Xt)
-        score = _apply_score_objective(self, score, raw_X, name=name)
-        out = self._reduce_q(score)
-        self._check_output_shape(out, original_batch_shape, name)
-        return out
-
-
-# Backward-supported non-q base name.
-_MultiOutputOrdinalBoundaryBase = _qMultiOutputOrdinalBoundaryBase
 
 
 def _to_1d_float_tensor(
@@ -1119,6 +404,158 @@ def _to_1d_float_tensor(
     if out.numel() != length:
         raise ValueError(f"Expected length {length}, got {out.numel()}.")
     return out
+
+
+def _infer_n_w_from_objective_or_owner(owner) -> int | None:
+    n_w = getattr(owner, "input_perturbation_n_w", None)
+    if n_w is not None:
+        return int(n_w)
+    objective = getattr(owner, "objective", None)
+    if objective is not None and getattr(objective, "n_w", None) is not None:
+        return int(objective.n_w)
+    return None
+
+
+def _reduce_input_perturbation_mean_cov(
+    mean: Tensor,
+    cov: Tensor,
+    X: Tensor,
+    n_w: int | None,
+    *,
+    mode: PerturbationJointReduction = "block_mean",
+    jitter: float = 1e-6,
+) -> tuple[Tensor, Tensor]:
+    if n_w is None or n_w <= 1:
+        return mean, cov
+
+    X_in = _ensure_q_batch(X)
+    batch_shape = X_in.shape[:-2]
+    q = int(X_in.shape[-2])
+    if mean.shape == batch_shape + torch.Size([q]) and cov.shape == batch_shape + torch.Size([q, q]):
+        eye = torch.eye(q, dtype=cov.dtype, device=cov.device)
+        return mean, cov + jitter * eye
+
+    q_expanded = q * int(n_w)
+    if mean.shape != batch_shape + torch.Size([q_expanded]) or cov.shape != batch_shape + torch.Size([q_expanded, q_expanded]):
+        return mean, cov
+
+    mean_q = mean.reshape(*batch_shape, q, int(n_w)).mean(dim=-1)
+    cov_blocks = cov.reshape(*batch_shape, q, int(n_w), q, int(n_w))
+    if mode == "block_mean":
+        cov_q = cov_blocks.mean(dim=(-3, -1))
+    elif mode == "diagonal_mean":
+        diag = torch.diagonal(cov, dim1=-2, dim2=-1)
+        var_q = diag.reshape(*batch_shape, q, int(n_w)).mean(dim=-1).clamp_min(0.0)
+        cov_q = torch.diag_embed(var_q)
+    else:
+        raise ValueError(f"Unknown perturbation_joint_reduction: {mode}")
+
+    cov_q = 0.5 * (cov_q + cov_q.transpose(-1, -2))
+    eye = torch.eye(q, dtype=cov_q.dtype, device=cov_q.device)
+    return mean_q, cov_q + jitter * eye
+
+
+# =========================================================
+# Shared LSE base
+# =========================================================
+class _qMultiOutputOrdinalBoundaryBase(_qMultiOutputOrdinalActiveLearningBase):
+    """Ordinal multi-output LSE base sharing AL duplicate controls permanently.
+
+    Duplicate exclusion, observed-X resolution, mixed continuous/categorical
+    distance handling, X_pending updates, and objective/q reduction are inherited
+    from ``_qMultiOutputOrdinalActiveLearningBase``.  This class adds only the
+    ordinal level-set specific posterior/boundary helpers.
+    """
+
+    def __init__(
+        self,
+        model: Model,
+        output_weights: Tensor | Sequence[float] | None = None,
+        reduction: ReductionType = "mean",
+        output_mode: MultiOutputMode = "mean",
+        sampler: MCSampler | None = None,
+        eps: float = 1e-6,
+        pending_penalty_weight: float = 0.0,
+        pending_penalty_beta: float = 10.0,
+        observed_penalty_weight: float = 0.0,
+        observed_penalty_beta: float = 10.0,
+        same_batch_penalty_weight: float = 0.0,
+        same_batch_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
+        X_pending: Tensor | None = None,
+        X_observed: Tensor | None = None,
+        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
+    ) -> None:
+        super().__init__(
+            model=model,
+            reduction=reduction,
+            output_mode=output_mode,
+            output_weights=output_weights,
+            sampler=sampler,
+            eps=eps,
+            pending_penalty_weight=pending_penalty_weight,
+            pending_penalty_beta=pending_penalty_beta,
+            observed_penalty_weight=observed_penalty_weight,
+            observed_penalty_beta=observed_penalty_beta,
+            same_batch_penalty_weight=same_batch_penalty_weight,
+            same_batch_penalty_beta=same_batch_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
+            X_pending=X_pending,
+            X_observed=X_observed,
+            objective=objective,
+        )
+        self.n_outputs = len(self.submodels)
+        self.cutpoints_list = [
+            _get_cutpoints_from_likelihood(lik).detach().clone()
+            for lik in self.ordinal_likelihoods
+        ]
+
+    def _latent_mean_var_list(self, X: Tensor, *, X_like: Tensor) -> list[tuple[Tensor, Tensor]]:
+        outs: list[tuple[Tensor, Tensor]] = []
+        for submodel in self.submodels:
+            mean, var = _posterior_mean_var(submodel.posterior(X))
+            mean = _align_pointwise_score_to_X(mean, X_like, name="ordinal LSE latent mean")
+            var = _align_pointwise_score_to_X(var, X_like, name="ordinal LSE latent variance").clamp_min(self.eps)
+            outs.append((mean, var))
+        return outs
+
+    def _predictive_class_probs_list(self, X: Tensor, *, X_like: Tensor) -> list[Tensor]:
+        outs: list[Tensor] = []
+        for submodel, likelihood in zip(self.submodels, self.ordinal_likelihoods):
+            posterior = submodel.posterior(X)
+            if hasattr(likelihood, "marginal_class_probs"):
+                probs = likelihood.marginal_class_probs(posterior.distribution)
+            else:
+                samples = self.sampler(posterior)
+                if samples.ndim >= 1 and samples.shape[-1] == 1:
+                    samples = samples.squeeze(-1)
+                probs = ordinal_class_probs_from_f(samples, likelihood).mean(dim=0)
+            outs.append(_align_probs_to_X(probs, X_like, eps=self.eps))
+        return outs
+
+    def _aggregate_output_scalars(self, score_per_output: Tensor) -> Tensor:
+        return self._aggregate_outputs(score_per_output.unsqueeze(-2)).squeeze(-1)
+
+    def _finalize_pointwise_scores(self, score_per_output: Tensor, X: Tensor, *, name: str) -> Tensor:
+        score = self._aggregate_outputs(score_per_output)
+        return self._finalize_pointwise_score(score, X, name=name)
+
+    def _aggregated_repulsion_penalty(self, Xt: Tensor) -> Tensor:
+        """Aggregate shared pointwise penalties for a joint q-batch score."""
+        pending = self._pending_penalty_per_point(Xt).sum(dim=-1)
+        observed = self._observed_penalty_per_point(Xt).sum(dim=-1)
+        same_batch = 0.5 * self._same_batch_penalty_per_point(Xt).sum(dim=-1)
+        return pending + observed + same_batch
+
+
+# Backward-supported non-q base name.
+_MultiOutputOrdinalBoundaryBase = _qMultiOutputOrdinalBoundaryBase
 
 
 # =========================================================
@@ -1145,6 +582,10 @@ class qMultiOutputOrdinalLatentStraddleAcquisition(_qMultiOutputOrdinalBoundaryB
         observed_penalty_beta: float = 10.0,
         same_batch_penalty_weight: float = 0.0,
         same_batch_penalty_beta: float = 10.0,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         X_pending: Tensor | None = None,
         X_observed: Tensor | None = None,
         objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
@@ -1162,6 +603,10 @@ class qMultiOutputOrdinalLatentStraddleAcquisition(_qMultiOutputOrdinalBoundaryB
             observed_penalty_beta=observed_penalty_beta,
             same_batch_penalty_weight=same_batch_penalty_weight,
             same_batch_penalty_beta=same_batch_penalty_beta,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
             X_pending=X_pending,
             X_observed=X_observed,
             objective=objective,
@@ -1193,25 +638,24 @@ class qMultiOutputOrdinalLatentStraddleAcquisition(_qMultiOutputOrdinalBoundaryB
         self._set_eval_mode()
         X = _ensure_q_batch(X)
         Xt = _apply_input_transform_for_reference(self.model, X)
-
         scores: list[Tensor] = []
-        for o, ((mean_f, var_f), cp) in enumerate(zip(self._latent_mean_var_list(X, X_like=Xt), self.cutpoints_list)):
+        for o, ((mean_f, var_f), cp) in enumerate(
+            zip(self._latent_mean_var_list(X, X_like=Xt), self.cutpoints_list)
+        ):
             std_f = var_f.sqrt()
-            cp = cp.detach().to(device=mean_f.device, dtype=mean_f.dtype)
+            cp = cp.to(device=mean_f.device, dtype=mean_f.dtype)
             dist_b = (mean_f.unsqueeze(-1) - cp.view(*([1] * mean_f.ndim), -1)).abs()
             score_b = self.beta_vec[o].to(mean_f) * std_f.unsqueeze(-1) - dist_b
-
-            score_o = _aggregate_boundary_scores(
-                score_b,
-                target_boundary_idx=self.target_boundary_idx_list[o],
-                boundary_weights=self.boundary_weights_list[o],
-                boundary_reduction=self.boundary_reduction,
+            scores.append(
+                _aggregate_boundary_scores(
+                    score_b,
+                    target_boundary_idx=self.target_boundary_idx_list[o],
+                    boundary_weights=self.boundary_weights_list[o],
+                    boundary_reduction=self.boundary_reduction,
+                )
             )
-            scores.append(score_o)
-
-        score_per_output = torch.stack(scores, dim=-1)
         return self._finalize_pointwise_scores(
-            score_per_output,
+            torch.stack(scores, dim=-1),
             X,
             name="qMultiOutputOrdinalLatentStraddle",
         )
@@ -1226,38 +670,9 @@ class qMultiOutputOrdinalICUAcquisition(_qMultiOutputOrdinalBoundaryBase):
         boundary_weights_list: Sequence[Tensor | Sequence[float] | None] | None = None,
         target_boundary_idx_list: Sequence[int | None] | int | None = None,
         boundary_reduction: BoundaryReduction = "sum",
-        output_weights: Tensor | Sequence[float] | None = None,
-        reduction: ReductionType = "mean",
-        output_mode: MultiOutputMode = "mean",
-        sampler: MCSampler | None = None,
-        eps: float = 1e-6,
-        pending_penalty_weight: float = 0.0,
-        pending_penalty_beta: float = 10.0,
-        observed_penalty_weight: float = 0.0,
-        observed_penalty_beta: float = 10.0,
-        same_batch_penalty_weight: float = 0.0,
-        same_batch_penalty_beta: float = 10.0,
-        X_pending: Tensor | None = None,
-        X_observed: Tensor | None = None,
-        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
+        **kwargs,
     ) -> None:
-        super().__init__(
-            model=model,
-            output_weights=output_weights,
-            reduction=reduction,
-            output_mode=output_mode,
-            sampler=sampler,
-            eps=eps,
-            pending_penalty_weight=pending_penalty_weight,
-            pending_penalty_beta=pending_penalty_beta,
-            observed_penalty_weight=observed_penalty_weight,
-            observed_penalty_beta=observed_penalty_beta,
-            same_batch_penalty_weight=same_batch_penalty_weight,
-            same_batch_penalty_beta=same_batch_penalty_beta,
-            X_pending=X_pending,
-            X_observed=X_observed,
-            objective=objective,
-        )
+        super().__init__(model=model, **kwargs)
         self.boundary_weights_list = _to_optional_list(
             boundary_weights_list,
             self.n_outputs,
@@ -1275,22 +690,24 @@ class qMultiOutputOrdinalICUAcquisition(_qMultiOutputOrdinalBoundaryBase):
         self._set_eval_mode()
         X = _ensure_q_batch(X)
         Xt = _apply_input_transform_for_reference(self.model, X)
-
         scores: list[Tensor] = []
         for o, probs in enumerate(self._predictive_class_probs_list(X, X_like=Xt)):
-            ge_probs = ordinal_cumulative_ge_probs_from_class_probs(probs)
-            u = ordinal_boundary_uncertainty(ge_probs)
-
-            score_o = _aggregate_boundary_scores(
-                u,
-                target_boundary_idx=self.target_boundary_idx_list[o],
-                boundary_weights=self.boundary_weights_list[o],
-                boundary_reduction=self.boundary_reduction,
+            u = ordinal_boundary_uncertainty(
+                ordinal_cumulative_ge_probs_from_class_probs(probs)
             )
-            scores.append(score_o)
-
-        score_per_output = torch.stack(scores, dim=-1)
-        return self._finalize_pointwise_scores(score_per_output, X, name="qMultiOutputOrdinalICU")
+            scores.append(
+                _aggregate_boundary_scores(
+                    u,
+                    target_boundary_idx=self.target_boundary_idx_list[o],
+                    boundary_weights=self.boundary_weights_list[o],
+                    boundary_reduction=self.boundary_reduction,
+                )
+            )
+        return self._finalize_pointwise_scores(
+            torch.stack(scores, dim=-1),
+            X,
+            name="qMultiOutputOrdinalICU",
+        )
 
 
 class qMultiOutputOrdinalBoundaryVarianceAcquisition(_qMultiOutputOrdinalBoundaryBase):
@@ -1303,44 +720,12 @@ class qMultiOutputOrdinalBoundaryVarianceAcquisition(_qMultiOutputOrdinalBoundar
         boundary_weights_list: Sequence[Tensor | Sequence[float] | None] | None = None,
         target_boundary_idx_list: Sequence[int | None] | int | None = None,
         boundary_reduction: BoundaryReduction = "sum",
-        output_weights: Tensor | Sequence[float] | None = None,
-        reduction: ReductionType = "mean",
-        output_mode: MultiOutputMode = "mean",
-        sampler: MCSampler | None = None,
-        eps: float = 1e-6,
-        pending_penalty_weight: float = 0.0,
-        pending_penalty_beta: float = 10.0,
-        observed_penalty_weight: float = 0.0,
-        observed_penalty_beta: float = 10.0,
-        same_batch_penalty_weight: float = 0.0,
-        same_batch_penalty_beta: float = 10.0,
-        X_pending: Tensor | None = None,
-        X_observed: Tensor | None = None,
-        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
-        # Support with older API. If provided, it overrides boundary_reduction
-        # for boundary aggregation with "sum" or "max".
         reduce: Literal["sum", "max"] | None = None,
+        **kwargs,
     ) -> None:
         if reduce is not None:
             boundary_reduction = reduce
-
-        super().__init__(
-            model=model,
-            output_weights=output_weights,
-            reduction=reduction,
-            output_mode=output_mode,
-            sampler=sampler,
-            eps=eps,
-            pending_penalty_weight=pending_penalty_weight,
-            pending_penalty_beta=pending_penalty_beta,
-            observed_penalty_weight=observed_penalty_weight,
-            observed_penalty_beta=observed_penalty_beta,
-            same_batch_penalty_weight=same_batch_penalty_weight,
-            same_batch_penalty_beta=same_batch_penalty_beta,
-            X_pending=X_pending,
-            X_observed=X_observed,
-            objective=objective,
-        )
+        super().__init__(model=model, **kwargs)
         self.tau = float(tau)
         self.boundary_weights_list = _to_optional_list(
             boundary_weights_list,
@@ -1359,35 +744,33 @@ class qMultiOutputOrdinalBoundaryVarianceAcquisition(_qMultiOutputOrdinalBoundar
         self._set_eval_mode()
         X = _ensure_q_batch(X)
         Xt = _apply_input_transform_for_reference(self.model, X)
-
         scores: list[Tensor] = []
-        for o, ((mean_f, var_f), cp) in enumerate(zip(self._latent_mean_var_list(X, X_like=Xt), self.cutpoints_list)):
+        for o, ((mean_f, var_f), cp) in enumerate(
+            zip(self._latent_mean_var_list(X, X_like=Xt), self.cutpoints_list)
+        ):
             cp = cp.to(device=mean_f.device, dtype=mean_f.dtype)
-            w_b = _boundary_kernel_scores(mean_f, cp, tau=self.tau)
-            score_b = var_f.unsqueeze(-1) * w_b
-
-            score_o = _aggregate_boundary_scores(
-                score_b,
-                target_boundary_idx=self.target_boundary_idx_list[o],
-                boundary_weights=self.boundary_weights_list[o],
-                boundary_reduction=self.boundary_reduction,
+            score_b = var_f.unsqueeze(-1) * _boundary_kernel_scores(
+                mean_f,
+                cp,
+                tau=self.tau,
             )
-            scores.append(score_o)
-
-        score_per_output = torch.stack(scores, dim=-1)
+            scores.append(
+                _aggregate_boundary_scores(
+                    score_b,
+                    target_boundary_idx=self.target_boundary_idx_list[o],
+                    boundary_weights=self.boundary_weights_list[o],
+                    boundary_reduction=self.boundary_reduction,
+                )
+            )
         return self._finalize_pointwise_scores(
-            score_per_output,
+            torch.stack(scores, dim=-1),
             X,
             name="qMultiOutputOrdinalBoundaryVariance",
         )
 
 
 class qMultiOutputOrdinalBoundaryEntropyAcquisition(_qMultiOutputOrdinalBoundaryBase):
-    """multi-output ordinal boundary entropy acquisition.
-
-    Class entropy ではなく、各 boundary の binary entropy
-    H[1(y >= k)] を使うため、target_boundary_idx_list による境界指定が可能。
-    """
+    """各 ordinal boundary の binary entropy を使う multi-output LSE。"""
 
     def __init__(
         self,
@@ -1395,38 +778,9 @@ class qMultiOutputOrdinalBoundaryEntropyAcquisition(_qMultiOutputOrdinalBoundary
         boundary_weights_list: Sequence[Tensor | Sequence[float] | None] | None = None,
         target_boundary_idx_list: Sequence[int | None] | int | None = None,
         boundary_reduction: BoundaryReduction = "sum",
-        output_weights: Tensor | Sequence[float] | None = None,
-        reduction: ReductionType = "mean",
-        output_mode: MultiOutputMode = "mean",
-        sampler: MCSampler | None = None,
-        eps: float = 1e-6,
-        pending_penalty_weight: float = 0.0,
-        pending_penalty_beta: float = 10.0,
-        observed_penalty_weight: float = 0.0,
-        observed_penalty_beta: float = 10.0,
-        same_batch_penalty_weight: float = 0.0,
-        same_batch_penalty_beta: float = 10.0,
-        X_pending: Tensor | None = None,
-        X_observed: Tensor | None = None,
-        objective: Callable[[Tensor, Tensor | None], Tensor] | None = None,
+        **kwargs,
     ) -> None:
-        super().__init__(
-            model=model,
-            output_weights=output_weights,
-            reduction=reduction,
-            output_mode=output_mode,
-            sampler=sampler,
-            eps=eps,
-            pending_penalty_weight=pending_penalty_weight,
-            pending_penalty_beta=pending_penalty_beta,
-            observed_penalty_weight=observed_penalty_weight,
-            observed_penalty_beta=observed_penalty_beta,
-            same_batch_penalty_weight=same_batch_penalty_weight,
-            same_batch_penalty_beta=same_batch_penalty_beta,
-            X_pending=X_pending,
-            X_observed=X_observed,
-            objective=objective,
-        )
+        super().__init__(model=model, **kwargs)
         self.boundary_weights_list = _to_optional_list(
             boundary_weights_list,
             self.n_outputs,
@@ -1444,55 +798,45 @@ class qMultiOutputOrdinalBoundaryEntropyAcquisition(_qMultiOutputOrdinalBoundary
         self._set_eval_mode()
         X = _ensure_q_batch(X)
         Xt = _apply_input_transform_for_reference(self.model, X)
-
         scores: list[Tensor] = []
         for o, probs in enumerate(self._predictive_class_probs_list(X, X_like=Xt)):
             ge_probs = ordinal_cumulative_ge_probs_from_class_probs(probs).clamp(
                 self.eps,
                 1.0 - self.eps,
             )
-            boundary_entropy = -(
+            entropy_b = -(
                 ge_probs * ge_probs.log()
                 + (1.0 - ge_probs) * (1.0 - ge_probs).log()
             )
-
-            score_o = _aggregate_boundary_scores(
-                boundary_entropy,
-                target_boundary_idx=self.target_boundary_idx_list[o],
-                boundary_weights=self.boundary_weights_list[o],
-                boundary_reduction=self.boundary_reduction,
+            scores.append(
+                _aggregate_boundary_scores(
+                    entropy_b,
+                    target_boundary_idx=self.target_boundary_idx_list[o],
+                    boundary_weights=self.boundary_weights_list[o],
+                    boundary_reduction=self.boundary_reduction,
+                )
             )
-            scores.append(score_o)
-
-        score_per_output = torch.stack(scores, dim=-1)
         return self._finalize_pointwise_scores(
-            score_per_output,
+            torch.stack(scores, dim=-1),
             X,
             name="qMultiOutputOrdinalBoundaryEntropy",
         )
 
 
 class qMultiOutputOrdinalClassEntropyAcquisition(_qMultiOutputOrdinalBoundaryBase):
-    """multi-output ordinal class entropy acquisition.
-
-    This acquisition measures entropy of the whole class distribution H[y].
-    It does not use target_boundary_idx_list; use qMultiOutputOrdinalBoundaryEntropyAcquisition
-    if you need boundary-wise entropy.
-    """
+    """whole-class entropy を使う multi-output ordinal LSE。"""
 
     @t_batch_mode_transform()
     def forward(self, X: Tensor) -> Tensor:
         self._set_eval_mode()
         X = _ensure_q_batch(X)
         Xt = _apply_input_transform_for_reference(self.model, X)
-
-        scores: list[Tensor] = []
-        for probs in self._predictive_class_probs_list(X, X_like=Xt):
-            scores.append(ordinal_entropy_from_probs(probs, eps=self.eps))
-
-        score_per_output = torch.stack(scores, dim=-1)
+        scores = [
+            ordinal_entropy_from_probs(probs, eps=self.eps)
+            for probs in self._predictive_class_probs_list(X, X_like=Xt)
+        ]
         return self._finalize_pointwise_scores(
-            score_per_output,
+            torch.stack(scores, dim=-1),
             X,
             name="qMultiOutputOrdinalClassEntropy",
         )
@@ -1502,11 +846,7 @@ class qMultiOutputOrdinalClassEntropyAcquisition(_qMultiOutputOrdinalBoundaryBas
 # Joint multi-output acquisition
 # =========================================================
 class qMultiOutputOrdinalJointLatentStraddleAcquisition(_qMultiOutputOrdinalBoundaryBase):
-    """multi-output ordinal joint latent straddle acquisition.
-
-    The score is already batch-level, so InputPerturbation risk objective should
-    usually not be used to perform q*n_w -> q aggregation here.
-    """
+    """multi-output ordinal joint latent straddle acquisition。"""
 
     def __init__(
         self,
@@ -1521,6 +861,10 @@ class qMultiOutputOrdinalJointLatentStraddleAcquisition(_qMultiOutputOrdinalBoun
         observed_penalty_weight: float = 0.0,
         penalty_lengthscale: float | None = None,
         distance_beta: float | None = None,
+        hard_duplicate_tol: float = 1e-8,
+        exclude_same_batch_duplicates: bool = True,
+        exclude_pending_duplicates: bool = True,
+        exclude_observed_duplicates: bool = True,
         X_pending: Tensor | None = None,
         X_observed: Tensor | None = None,
         sampler: MCSampler | None = None,
@@ -1549,6 +893,10 @@ class qMultiOutputOrdinalJointLatentStraddleAcquisition(_qMultiOutputOrdinalBoun
             observed_penalty_beta=beta_for_penalty,
             same_batch_penalty_weight=same_batch_penalty_weight,
             same_batch_penalty_beta=beta_for_penalty,
+            hard_duplicate_tol=hard_duplicate_tol,
+            exclude_same_batch_duplicates=exclude_same_batch_duplicates,
+            exclude_pending_duplicates=exclude_pending_duplicates,
+            exclude_observed_duplicates=exclude_observed_duplicates,
             X_pending=X_pending,
             X_observed=X_observed,
             objective=objective,
@@ -1583,21 +931,17 @@ class qMultiOutputOrdinalJointLatentStraddleAcquisition(_qMultiOutputOrdinalBoun
         self.boundary_reduction = boundary_reduction
 
     def _uncertainty_score(self, cov: Tensor) -> Tensor:
-        q = cov.shape[-1]
+        q = int(cov.shape[-1])
         eye = torch.eye(q, device=cov.device, dtype=cov.dtype)
-
         if self.uncertainty_measure == "logdet":
-            mat = cov + self.jitter * eye
+            mat = 0.5 * (cov + cov.transpose(-1, -2)) + self.jitter * eye
             sign, logdet = torch.linalg.slogdet(mat)
             if not torch.all(sign > 0):
-                # Fall back to numerically safer logdet1p-like score.
                 tau2 = max(self.tau**2, self.jitter)
                 sign, logdet = torch.linalg.slogdet(eye + cov / tau2)
             return logdet.clamp_min(-50.0)
-
         if self.uncertainty_measure == "trace":
             return torch.diagonal(cov, dim1=-2, dim2=-1).sum(dim=-1).clamp_min(0.0).sqrt()
-
         raise ValueError(f"Unknown uncertainty_measure: {self.uncertainty_measure}.")
 
     @t_batch_mode_transform()
@@ -1606,15 +950,17 @@ class qMultiOutputOrdinalJointLatentStraddleAcquisition(_qMultiOutputOrdinalBoun
         X = _ensure_q_batch(X)
         Xt = _apply_input_transform_for_reference(self.model, X)
         n_w = _infer_n_w_from_objective_or_owner(self)
-
         scores: list[Tensor] = []
-        for o, (m, cp) in enumerate(zip(self.submodels, self.cutpoints_list)):
-            posterior = m.posterior(X)
-            mean_f, var_f = _posterior_mean_var(posterior)
-            cov_f = _posterior_covariance(posterior)
 
-            mean_f = _align_pointwise_score_to_X(mean_f, Xt, name="joint latent mean")
-            # cov_f may already be expanded to q_like x q_like.
+        for o, (submodel, cp) in enumerate(zip(self.submodels, self.cutpoints_list)):
+            posterior = submodel.posterior(X)
+            mean_f, _ = _posterior_mean_var(posterior)
+            mean_f = _align_pointwise_score_to_X(
+                mean_f,
+                Xt,
+                name="ordinal joint latent mean",
+            )
+            cov_f = _posterior_covariance(posterior)
             mean_f, cov_f = _reduce_input_perturbation_mean_cov(
                 mean_f,
                 cov_f,
@@ -1625,25 +971,33 @@ class qMultiOutputOrdinalJointLatentStraddleAcquisition(_qMultiOutputOrdinalBoun
             )
 
             uncertainty = self._uncertainty_score(cov_f)
-            cp = cp.detach().to(device=mean_f.device, dtype=mean_f.dtype)
+            cp = cp.to(device=mean_f.device, dtype=mean_f.dtype)
             dist_b = (mean_f.unsqueeze(-1) - cp.view(*([1] * mean_f.ndim), -1)).abs()
-            boundary_distance_score = -dist_b.mean(dim=-2)  # (*batch, n_boundaries)
-
-            boundary_score = self.beta_vec[o].to(mean_f) * uncertainty.unsqueeze(-1) + boundary_distance_score
-            score_o = _aggregate_boundary_scores(
-                boundary_score,
-                target_boundary_idx=self.target_boundary_idx_list[o],
-                boundary_weights=self.boundary_weights_list[o],
-                boundary_reduction=self.boundary_reduction,
+            boundary_distance_score = -dist_b.mean(dim=-2)
+            boundary_score = (
+                self.beta_vec[o].to(mean_f) * uncertainty.unsqueeze(-1)
+                + boundary_distance_score
             )
-            scores.append(score_o)
+            scores.append(
+                _aggregate_boundary_scores(
+                    boundary_score,
+                    target_boundary_idx=self.target_boundary_idx_list[o],
+                    boundary_weights=self.boundary_weights_list[o],
+                    boundary_reduction=self.boundary_reduction,
+                )
+            )
 
-        score_per_output = torch.stack(scores, dim=-1)  # (*batch, m)
-        score = self._aggregate_output_scalars(score_per_output)
-
-        # Joint score is scalar over q, so use aggregated penalty.
+        score = self._aggregate_output_scalars(torch.stack(scores, dim=-1))
         score = score - self._aggregated_repulsion_penalty(Xt)
-        score = _apply_score_objective(self, score, X, name="qMultiOutputOrdinalJointLatentStraddle")
+        if self.objective is not None:
+            try:
+                score = self.objective(score, X=X)
+            except TypeError:
+                score = self.objective(score)
+            if not torch.is_tensor(score):
+                raise TypeError(
+                    "qMultiOutputOrdinalJointLatentStraddle objective must return Tensor."
+                )
         return score
 
 

@@ -175,6 +175,68 @@ def _as_2d(value: Any) -> Tensor:
     return tensor.unsqueeze(-1) if tensor.ndim == 1 else tensor
 
 
+def _aggregate_expanded_moments(
+    mean: Any,
+    variance: Any | None,
+    *,
+    n_rows: int,
+) -> tuple[Tensor, Tensor | None]:
+    """Reduce one-to-many evaluation transforms back to nominal CV rows.
+
+    Input transforms such as BoTorch ``InputPerturbation`` expand each nominal
+    input row into multiple evaluation points. Cross-validation metrics are
+    defined on the nominal observations, so the expanded posterior moments must
+    be aggregated before comparing predictions with ``y_true``.
+    """
+
+    mean_tensor = _as_2d(mean)
+    variance_tensor = _as_2d(variance) if variance is not None else None
+    if n_rows <= 0 or mean_tensor.shape[0] == n_rows:
+        return mean_tensor, variance_tensor
+    if mean_tensor.shape[0] % n_rows != 0:
+        raise RuntimeError(
+            "Cross-validation prediction rows must match nominal inputs or be an "
+            "integer one-to-many expansion; "
+            f"got predictions={mean_tensor.shape[0]}, inputs={n_rows}."
+        )
+
+    expansion = mean_tensor.shape[0] // n_rows
+    grouped_mean = mean_tensor.reshape(n_rows, expansion, *mean_tensor.shape[1:])
+    aggregated_mean = grouped_mean.mean(dim=1)
+    if variance_tensor is None:
+        return aggregated_mean, None
+    if variance_tensor.shape != mean_tensor.shape:
+        raise RuntimeError(
+            "Cross-validation predictive mean and variance must have matching "
+            "shapes before one-to-many aggregation."
+        )
+
+    grouped_variance = variance_tensor.reshape(
+        n_rows, expansion, *variance_tensor.shape[1:]
+    )
+    second_moment = (grouped_variance + grouped_mean.square()).mean(dim=1)
+    aggregated_variance = (second_moment - aggregated_mean.square()).clamp_min(0)
+    return aggregated_mean, aggregated_variance
+
+
+def _aggregate_expanded_probabilities(values: Any, *, n_rows: int) -> Tensor:
+    """Average one-to-many class probabilities back to nominal CV rows."""
+
+    probabilities = _as_2d(values)
+    if n_rows <= 0 or probabilities.shape[0] == n_rows:
+        return probabilities
+    if probabilities.shape[0] % n_rows != 0:
+        raise RuntimeError(
+            "Cross-validation probability rows must match nominal inputs or be "
+            "an integer one-to-many expansion; "
+            f"got probabilities={probabilities.shape[0]}, inputs={n_rows}."
+        )
+    expansion = probabilities.shape[0] // n_rows
+    return probabilities.reshape(
+        n_rows, expansion, *probabilities.shape[1:]
+    ).mean(dim=1)
+
+
 def _output_layout(config: ModelConfig, train_Y: Tensor) -> tuple[list[str], list[str]]:
     n = _as_2d(train_Y).shape[-1]
     mo = config.multi_output_config
@@ -293,7 +355,11 @@ def _prediction_for_output(
     optimizer: Any, X: Tensor, output: int, task: str, config: CrossValidationConfig
 ) -> CVPredictionResult:
     result: PredictionResult = optimizer.predict(X, return_result=True)
-    mean, variance = _as_2d(result.mean), _as_2d(result.variance) if result.variance is not None else None
+    mean, variance = _aggregate_expanded_moments(
+        result.mean,
+        result.variance,
+        n_rows=len(X),
+    )
     model = optimizer.model
     if hasattr(model, "models") and output < len(model.models):
         model = model.models[output]
@@ -303,7 +369,10 @@ def _prediction_for_output(
         probabilities = predict_proba(X)
         if isinstance(probabilities, tuple):
             probabilities = probabilities[0]
-        probabilities = _as_2d(probabilities)
+        probabilities = _aggregate_expanded_probabilities(
+            probabilities,
+            n_rows=len(X),
+        )
         pred = probabilities.argmax(dim=-1)
         predictive_mean = pred.to(probabilities.dtype)
         predictive_std = None

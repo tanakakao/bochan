@@ -81,7 +81,7 @@ def apply_web_candidate_runtime_defaults(request: Any) -> Any:
         resolved_optimizer["sequential"] = False
     else:
         resolved_optimizer = copy.copy(optimizer)
-        setattr(resolved_optimizer, "sequential", False)
+        resolved_optimizer.sequential = False
 
     if hasattr(request, "model_copy"):
         return request.model_copy(update={"optimizer": resolved_optimizer})
@@ -91,7 +91,7 @@ def apply_web_candidate_runtime_defaults(request: Any) -> Any:
         return resolved
 
     resolved = copy.copy(request)
-    setattr(resolved, "optimizer", resolved_optimizer)
+    resolved.optimizer = resolved_optimizer
     return resolved
 
 

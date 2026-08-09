@@ -10,9 +10,9 @@ from . import engine_defaults as _engine_defaults
 from . import factory as _factory
 from .automatic_default_utils import _num_outputs as _bundle_num_outputs
 from .configs import AcquisitionConfig, ModelBundle, ObjectiveConfig
+from .feasibility_defaults import resolve_outcome_constraint_config
 
 _APPLIED = False
-_BASE_BUILD_ACQUISITION = _factory.build_acquisition
 _BASE_BUILD_OBJECTIVE = _factory.build_objective
 _BASE_BUILD_ORDINAL = _factory._build_ordinal_objective
 _BASE_RESOLVE_OBJECTIVE = _engine._resolve_objective_config_n_w_from_input_transform
@@ -64,48 +64,14 @@ def _num_outputs(bundle: ModelBundle) -> int:
         return 1 if shape is None or len(shape) <= 1 else int(shape[-1])
 
 
-def _output_names(bundle: ModelBundle | None) -> list[str] | None:
-    if bundle is None:
-        return None
-    names = getattr(bundle.model, "output_names", None)
-    if callable(names):
-        names = names()
-    return None if names is None else list(names)
-
-
 def _resolve_outcome_constraint_config(
     *,
     bundle: ModelBundle | None,
     config: AcquisitionConfig,
 ) -> AcquisitionConfig:
-    """Resolve deferred high-level outcome constraints once model outputs exist."""
+    """Resolve deferred high-level outcome constraints through the core helper."""
 
-    constraint_config = getattr(config, "outcome_constraint_config", None)
-    if constraint_config is None:
-        return config
-    if isinstance(constraint_config, dict):
-        from .acquisition_config import OutcomeConstraintConfig
-
-        constraint_config = OutcomeConstraintConfig(**constraint_config)
-        config.outcome_constraint_config = constraint_config
-
-    # Model-dependent class / rank constraints are applied by wrapping the base
-    # acquisition, not by BoTorch's sample-only constraints argument.
-    if constraint_config.wrapper_constraints():
-        kwargs = dict(config.acqf_kwargs)
-        kwargs.pop("constraints", None)
-        config.constraints = None
-        config.acqf_kwargs = kwargs
-        return config
-
-    if config.constraints is None:
-        built_constraints = constraint_config.build(output_names=_output_names(bundle))
-        if built_constraints:
-            kwargs = dict(config.acqf_kwargs)
-            kwargs["constraints"] = built_constraints
-            config.constraints = built_constraints
-            config.acqf_kwargs = kwargs
-    return config
+    return resolve_outcome_constraint_config(bundle=bundle, config=config)
 
 
 def _resolve_hybrid_nparego_class(
@@ -280,48 +246,6 @@ def _build_objective(
     return _build_multiclass(bundle, config)
 
 
-def _build_acquisition(
-    bundle: ModelBundle,
-    config: AcquisitionConfig,
-    data_context: Any | None = None,
-) -> Any:
-    """Build acquisition and wrap model-dependent outcome constraints."""
-
-    config = _resolve_outcome_constraint_config(bundle=bundle, config=config)
-    constraint_config = getattr(config, "outcome_constraint_config", None)
-    wrapper_constraints = [] if constraint_config is None else constraint_config.wrapper_constraints()
-    if not wrapper_constraints:
-        return _BASE_BUILD_ACQUISITION(bundle=bundle, config=config, data_context=data_context)
-
-    base_kwargs = dict(config.acqf_kwargs)
-    base_kwargs.pop("constraints", None)
-    base_config = replace(
-        config,
-        constraints=None,
-        outcome_constraint_config=None,
-        acqf_kwargs=base_kwargs,
-    )
-    base_acqf = _BASE_BUILD_ACQUISITION(
-        bundle=bundle,
-        config=base_config,
-        data_context=data_context,
-    )
-
-    from bochan.acquisition.feasible import FeasibilityWeightedAcquisition
-
-    return FeasibilityWeightedAcquisition(
-        acqf=base_acqf,
-        model=bundle.model,
-        constraints=wrapper_constraints,
-        eta=constraint_config.eta,
-        posterior_mode=constraint_config.posterior_mode,
-        reduce_constraints=constraint_config.reduce_constraints,
-        reduce_q=constraint_config.reduce_q,
-        min_feasibility=constraint_config.min_feasibility,
-        detach_feasibility=constraint_config.detach_feasibility,
-    )
-
-
 def _keep_constrained_perturbation_q_expanded(
     *,
     bundle: ModelBundle | None,
@@ -385,25 +309,19 @@ def _resolve_objective(
 
 
 def apply_classification_perturbation_defaults() -> None:
-    """Register the support routes once."""
+    """Register classification perturbation support routes once."""
 
     global _APPLIED
     if _APPLIED:
         return
 
-    from .hetero_ordinal_perturbation import (
-        apply_hetero_ordinal_perturbation,
-    )
+    from .hetero_ordinal_perturbation import apply_hetero_ordinal_perturbation
 
     _factory._build_ordinal_objective = _build_ordinal
-    _factory.build_acquisition = _build_acquisition
     _factory.build_objective = _build_objective
-    _engine.build_acquisition = _build_acquisition
     _engine._resolve_objective_config_n_w_from_input_transform = _resolve_objective
     _engine_defaults._resolve_objective_config_n_w_from_input_transform = _resolve_objective
-    _engine_defaults._resolve_default_regression_nparego_class = (
-        _resolve_hybrid_nparego_class
-    )
+    _engine_defaults._resolve_default_regression_nparego_class = _resolve_hybrid_nparego_class
     apply_hetero_ordinal_perturbation()
     _APPLIED = True
 

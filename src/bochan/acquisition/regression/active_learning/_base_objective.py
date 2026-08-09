@@ -38,7 +38,7 @@ class _RegressionObjectiveMixin:
                 raise TypeError(f"{name}: objective must return Tensor. Got {type(out)}.")
             return out
 
-        # BoTorch MC objective / risk measure style.  Treat score as deterministic samples.
+        # BoTorch MC objective / risk measure style. Treat score as deterministic samples.
         if _is_mc_multi_output_objective(objective):
             pseudo = score
             if pseudo.ndim == expanded_X.ndim - 1:
@@ -110,10 +110,18 @@ class _RegressionObjectiveMixin:
         original_batch_shape = torch.Size(raw_X.shape[:-2])
         q = int(raw_X.shape[-2])
 
-        score = self._align_pointwise_score_to_X(score, Xt, name=f"{name} score before penalty")
-        score = score - self._total_penalty_per_point(Xt)
+        score = self._align_pointwise_score_to_X(
+            score,
+            Xt,
+            name=f"{name} score before penalty",
+        )
+        score = score - self._total_penalty_per_point(Xt, raw_X=raw_X)
 
-        score = self._align_pointwise_score_to_X(score, Xt, name=f"{name} score before objective")
+        score = self._align_pointwise_score_to_X(
+            score,
+            Xt,
+            name=f"{name} score before objective",
+        )
         score = self._apply_objective_to_score(
             score,
             raw_X=raw_X,

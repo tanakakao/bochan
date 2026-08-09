@@ -12,6 +12,13 @@ from torch import Tensor
 from torch.nn import Module
 
 
+_TREE_ENSEMBLE_ONE_TO_MANY_PREFIXES = (
+    "Random Forest",
+    "LightGBM",
+    "NGBoost",
+)
+
+
 def _require_external_inputs(train_X: Tensor) -> None:
     """Validate the common input contract for sklearn-style estimators."""
     if train_X.ndim != 2:
@@ -121,15 +128,73 @@ def _validate_output_indices(
         raise UnsupportedError(f"{model_name} currently exposes only output index 0.")
 
 
+def _input_transform_children(input_transform: Module) -> list[Module]:
+    """Return nested transforms for common BoTorch composite transforms."""
+    values = getattr(input_transform, "values", None)
+    if callable(values):
+        try:
+            children = list(values())
+        except TypeError:
+            children = []
+        if children:
+            return children
+
+    transforms = getattr(input_transform, "transforms", None)
+    if transforms is not None:
+        try:
+            return list(transforms)
+        except TypeError:
+            pass
+    return []
+
+
+def _one_to_many_applies_on_train(input_transform: Module) -> bool:
+    """Return whether a one-to-many transform can expand fitting rows."""
+    if not bool(getattr(input_transform, "is_one_to_many", False)):
+        return False
+
+    one_to_many_children = [
+        child
+        for child in _input_transform_children(input_transform)
+        if bool(getattr(child, "is_one_to_many", False))
+    ]
+    if one_to_many_children:
+        return any(_one_to_many_applies_on_train(child) for child in one_to_many_children)
+
+    return bool(getattr(input_transform, "transform_on_train", True))
+
+
 def _check_one_to_one_input_transform(
     input_transform: Module | None,
     *,
     model_name: str,
 ) -> None:
-    if input_transform is not None and bool(getattr(input_transform, "is_one_to_many", False)):
+    """Validate one-to-many transforms at the external-estimator boundary.
+
+    Random Forest, LightGBM, and NGBoost models can evaluate a whole expanded
+    perturbation batch in one NumPy estimator call (or one call per ensemble
+    member). BoTorch ``InputPerturbation`` is eval-only by default, so fitting
+    remains one row per observation while posterior evaluation expands ``q`` to
+    ``q * n_w``. Other external models keep the historical one-to-one contract.
+    """
+    if input_transform is None or not bool(
+        getattr(input_transform, "is_one_to_many", False)
+    ):
+        return
+
+    supports_eval_only_one_to_many = str(model_name).startswith(
+        _TREE_ENSEMBLE_ONE_TO_MANY_PREFIXES
+    )
+    if not supports_eval_only_one_to_many:
         raise UnsupportedError(
             f"{model_name} currently requires one-to-one input transforms; "
             "one-to-many perturbation transforms are not supported."
+        )
+
+    if _one_to_many_applies_on_train(input_transform):
+        raise UnsupportedError(
+            f"{model_name} supports one-to-many input transforms only for evaluation; "
+            "training-time row expansion is not supported."
         )
 
 
@@ -159,6 +224,29 @@ class _ExternalEstimatorMixin:
         """Convert transformed model inputs to estimator features."""
         return _to_numpy(X)
 
+    def _preprocess_fit_inputs(self, X: Tensor) -> Tensor:
+        """Apply only training-safe transforms to estimator fitting inputs.
+
+        ``InputTransform.preprocess_transform`` applies transforms configured for
+        training and deliberately skips eval-only one-to-many perturbations. This
+        keeps training and validation row counts aligned with their targets while
+        retaining normalization and other fitting-time preprocessing.
+        """
+        input_transform = getattr(self, "input_transform", None)
+        if input_transform is None:
+            return X
+
+        preprocess = getattr(input_transform, "preprocess_transform", None)
+        if callable(preprocess):
+            return preprocess(X)
+
+        was_training = bool(self.training)
+        self.train()
+        try:
+            return self.transform_inputs(X)
+        finally:
+            self.train(was_training)
+
     def _prepare_input_array(self, X: Tensor) -> np.ndarray:
         transformed_X = self.transform_inputs(X)
         return self._estimator_features(transformed_X)
@@ -171,7 +259,7 @@ class _ExternalRegressorMixin(_ExternalEstimatorMixin):
 
     def _prepare_training_arrays(self) -> tuple[np.ndarray, np.ndarray]:
         self.train()
-        transformed_X = self.transform_inputs(self.train_X)
+        transformed_X = self._preprocess_fit_inputs(self.train_X)
         transformed_Y = self.train_Y
         outcome_transform = getattr(self, "outcome_transform", None)
         if outcome_transform is not None:
@@ -195,7 +283,7 @@ class _ExternalRegressorMixin(_ExternalEstimatorMixin):
         if X_tensor.ndim != 2 or Y_tensor.ndim != 2 or Y_tensor.shape[-1] != 1:
             raise ValueError("Validation data must have shapes [n, d] and [n, 1].")
 
-        transformed_X = self.transform_inputs(X_tensor)
+        transformed_X = self._preprocess_fit_inputs(X_tensor)
         transformed_Y = Y_tensor
         outcome_transform = getattr(self, "outcome_transform", None)
         if outcome_transform is not None:
@@ -210,7 +298,7 @@ class _ExternalClassifierMixin(_ExternalEstimatorMixin):
 
     def _prepare_training_arrays(self) -> tuple[np.ndarray, np.ndarray]:
         self.train()
-        transformed_X = self.transform_inputs(self.train_X)
+        transformed_X = self._preprocess_fit_inputs(self.train_X)
         labels = _to_numpy(self.train_Y.squeeze(-1)).astype(np.int64, copy=False)
         return self._estimator_features(transformed_X), labels
 
@@ -227,7 +315,7 @@ class _ExternalClassifierMixin(_ExternalEstimatorMixin):
         X_tensor = torch.as_tensor(X_val, dtype=self.train_X.dtype, device=self.train_X.device)
         if X_tensor.ndim != 2:
             raise ValueError("Validation X must have shape [n, d].")
-        transformed_X = self.transform_inputs(X_tensor)
+        transformed_X = self._preprocess_fit_inputs(X_tensor)
         labels = _validate_classification_values(
             Y_val,
             num_classes=self.num_classes,
@@ -335,7 +423,6 @@ class _MixedCategoricalMixin:
 
     @property
     def categorical_values(self) -> dict[int, tuple[float, ...]]:
-        """Observed categorical values keyed by original input dimension."""
         return {
             dim: tuple(float(value) for value in values.tolist())
             for dim, values in self.categorical_encoder.categories.items()

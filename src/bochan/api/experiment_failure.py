@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .configs import ModelConfig
+from .configs import FitConfig, ModelConfig
 from .factory import build_model, fit_model
 from .observation import ExperimentFailureConfig, ObservationData
 
@@ -32,13 +32,14 @@ def attach_observation_state(
 
     The objective model is assumed to have already been fitted from the canonical
     objective training rows. This function never modifies or imputes objective Y.
+    Failure-model fitting is deliberately independent from the objective model's
+    fit configuration unless an explicit failure ``fit_config`` is supplied.
     """
 
     optimizer.observations = observations
     optimizer.failure_config = failure_config
     if optimizer.bundle is not None:
         optimizer.bundle.metadata["observation"] = observations.report()
-        optimizer.bundle.metadata["observed_target_mask"] = observations.observed_mask
 
     optimizer.failure_bundle = None
     optimizer.failure_model = None
@@ -63,7 +64,7 @@ def attach_observation_state(
         failure_config.model_config
         or default_failure_model_config(objective_config)
     )
-    failure_fit_config = failure_config.fit_config or optimizer.fit_config
+    failure_fit_config = failure_config.fit_config or FitConfig()
     failure_bundle = build_model(
         train_X=success_X,
         train_Y=success_Y,

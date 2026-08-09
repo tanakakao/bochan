@@ -3,16 +3,23 @@ from bochan.acquisition._nparego_shape import (
 )
 
 from . import multi_output as _multi_output
+from .hetero_multi_output import (
+    qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement,
+    qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
+    qHeteroMultiOutputMulticlassNParEGO,
+)
 from .hetero_single_output import NoiseCombineType, NoiseWeightMode
 from .input_perturbation import (
     configure_multiclass_hypervolume_input_perturbation,
 )
+from .multi_output import (
+    qMultiOutputMulticlassExpectedHypervolumeImprovement,
+    qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
+    qMultiOutputMulticlassNParEGO,
+)
 from .nehvi_baseline import configure_multiclass_nehvi_baseline_input
 from .nominal_duplicate_safe import (
-    qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement,
     qHeteroMultiOutputMulticlassExpectedImprovement,
-    qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
-    qHeteroMultiOutputMulticlassNParEGO,
     qHeteroMultiOutputMulticlassProbabilityOfFeasibility,
     qHeteroMultiOutputMulticlassProbabilityOfImprovement,
     qHeteroMultiOutputMulticlassUpperConfidenceBound,
@@ -20,10 +27,7 @@ from .nominal_duplicate_safe import (
     qHeteroMulticlassProbabilityOfFeasibility,
     qHeteroMulticlassProbabilityOfImprovement,
     qHeteroMulticlassUpperConfidenceBound,
-    qMultiOutputMulticlassExpectedHypervolumeImprovement,
     qMultiOutputMulticlassExpectedImprovement,
-    qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
-    qMultiOutputMulticlassNParEGO,
     qMultiOutputMulticlassProbabilityOfFeasibility,
     qMultiOutputMulticlassProbabilityOfImprovement,
     qMultiOutputMulticlassUpperConfidenceBound,

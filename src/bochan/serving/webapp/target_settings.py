@@ -11,7 +11,11 @@ from bochan.api.nan_multiobjective import make_nan_safe_default_ref_point
 
 from .target_missing_policy import (
     clean_rows as _clean_rows,
+)
+from .target_missing_policy import (
     encode_targets as _encode_targets,
+)
+from .target_missing_policy import (
     resolve_target_settings as _resolve_target_settings,
 )
 from .target_settings_core import (

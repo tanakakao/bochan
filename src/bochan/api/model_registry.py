@@ -218,6 +218,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
         "regression": {
             "base": ("botorch.models.gp_regression_mixed", "MixedSingleTaskGP"),
             "kronecker": ("bochan.models.regression.gaussian", "MixedKroneckerMultiTaskGP"),
+            "multitask": ("bochan.models.wide_mixed_multitask", "WideMixedMultiTaskGP"),
             "multifidelity": (
                 "bochan.models.regression.gaussian",
                 "WideMixedMultiFidelityGP",
@@ -264,7 +265,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "negative_binomial_base": ("bochan.models.regression.non_gaussian.negative_binomial.base", "NegativeBinomialMixedGPModel"),
             "negative_binomial_deepgp": ("bochan.models.regression.non_gaussian.negative_binomial.deep", "NegativeBinomialMixedDeepGPModel"),
             "negative_binomial_deepkernel": ("bochan.models.regression.non_gaussian.negative_binomial.deep", "DeepKernelNegativeBinomialMixedGPModel"),
-            "negative_binomial_saas": ("bochan.models.regression.non_gaussian.negative_binomial.high_dim", "SaasNegativeBinomialMixedGPModel"),
+            "negative_binomial_saas": ("bochan.models.regression.non_gaussian.negative_binomial.high_dim", "SaasNegativeBinomialGPModel"),
             "negative_binomial_pca": ("bochan.models.regression.non_gaussian.negative_binomial.high_dim", "PCANegativeBinomialMixedGPModel"),
             "negative_binomial_rembo": ("bochan.models.regression.non_gaussian.negative_binomial.high_dim", "REMBONegativeBinomialMixedGPModel"),
             "negative_binomial_rrp": ("bochan.models.regression.non_gaussian.negative_binomial.robust", "OutlierRelevancePursuitNegativeBinomialMixedGPModel"),
@@ -273,6 +274,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
         "multi_objective": {
             "base": ("botorch.models.gp_regression_mixed", "MixedSingleTaskGP"),
             "kronecker": ("bochan.models.regression.gaussian", "MixedKroneckerMultiTaskGP"),
+            "multitask": ("bochan.models.wide_mixed_multitask", "WideMixedMultiTaskGP"),
             "deepgp": ("bochan.models.regression.gaussian.deep", "DeepMixedGPModel"),
             "deepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelMixedGPModel"),
             "deepgpdeepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelDeepMixedGPModel"),

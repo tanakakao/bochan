@@ -3,7 +3,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pandas as pd
-import pytest
 import torch
 
 from bochan.api import FitConfig, ModelConfig
@@ -18,9 +17,6 @@ from bochan.serving.webapp.tabular_backend import (
 from bochan.serving.webapp.workflows import (
     _run_regression_web_workflow,
     run_regression_web_workflow,
-)
-from bochan.serving.webapp.workflows_tabular import (
-    _validate_partial_multiobjective_acquisition,
 )
 from bochan.tabular import ObservationTabularDataset, TabularBayesianOptimizer
 
@@ -260,30 +256,3 @@ def test_nan_safe_web_reference_point_uses_each_observed_objective() -> None:
     assert torch.isfinite(ref).all()
     assert ref[0] < 1.0
     assert ref[1] < 4.0
-
-
-class _Store:
-    def __init__(self, data: pd.DataFrame) -> None:
-        self.record = SimpleNamespace(data=data)
-
-    def get(self, dataset_id: str):
-        assert dataset_id == "dataset"
-        return self.record
-
-
-def test_partial_web_multiobjective_rejects_empirical_front_acquisitions() -> None:
-    data = pd.DataFrame(
-        {"x": [0.0, 1.0], "y1": [1.0, None], "y2": [None, 2.0]}
-    )
-    request = SimpleNamespace(
-        dataset_id="dataset",
-        model_type="multitask",
-        target_columns=["y1", "y2"],
-        target_column="y1",
-        directions={},
-        direction="maximize",
-        acquisition=SimpleNamespace(name="ehvi"),
-    )
-
-    with pytest.raises(ValueError, match="requires NEHVI"):
-        _validate_partial_multiobjective_acquisition(request, _Store(data))

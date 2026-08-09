@@ -7,11 +7,8 @@ behavior is selected through ordinary function imports from
 
 from __future__ import annotations
 
-from typing import Any
-
 from bochan.api.nan_multiobjective import make_nan_safe_default_ref_point
 
-from .model_runtime import apply_web_model_runtime_defaults
 from .target_missing_policy import (
     clean_rows as _clean_rows,
 )
@@ -19,7 +16,7 @@ from .target_missing_policy import (
     encode_targets as _encode_targets,
 )
 from .target_missing_policy import (
-    resolve_target_settings as _resolve_target_settings_with_missing_policy,
+    resolve_target_settings as _resolve_target_settings,
 )
 from .target_settings_core import (
     _as_2d,
@@ -31,27 +28,6 @@ from .target_settings_core import (
     _resolve_targets,
     _validate_columns,
 )
-
-
-def _resolve_target_settings(
-    request: Any,
-    *,
-    target_columns: list[str],
-    directions: dict[str, str],
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Resolve target settings and apply request-local Web model defaults."""
-
-    settings, model_kwargs = _resolve_target_settings_with_missing_policy(
-        request,
-        target_columns=target_columns,
-        directions=directions,
-    )
-    runtime_kwargs = apply_web_model_runtime_defaults(
-        model_kwargs,
-        model_type=str(getattr(request, "model_type", "base")),
-        fit_maxiter=int(getattr(request, "fit_maxiter", 128)),
-    )
-    return settings, runtime_kwargs
 
 
 def _reference_point(values):

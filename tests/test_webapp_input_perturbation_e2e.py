@@ -30,6 +30,8 @@ def _request(
     risk_type: str = "none",
     cross_validation: bool = False,
     feature_importance: bool = False,
+    acquisition_name: str = "EI",
+    acquisition_family: str = "bayesian_optimization",
 ) -> RegressionRunRequest:
     return RegressionRunRequest(
         dataset_id=dataset_id,
@@ -65,10 +67,10 @@ def _request(
             }
         ],
         acquisition={
-            "name": "EI",
+            "name": acquisition_name,
             "beta": 2.0,
             "acqf_kwargs": {
-                "web_family": "bayesian_optimization",
+                "web_family": acquisition_family,
                 "web_risk_type": risk_type,
                 "web_risk_alpha": 0.2,
             },
@@ -166,6 +168,25 @@ def test_web_regression_runs_end_to_end_with_input_perturbation(risk_type: str) 
     assert len(result["candidates"]) == 3
     assert result["metadata"]["input_perturbation_risk_type"] == risk_type
     assert result["metadata"]["input_perturbation_risk_enabled"] is (risk_type != "none")
+
+
+def test_web_variance_runs_end_to_end_with_input_perturbation() -> None:
+    """Active-learning variance must not reject perturbation replicas as duplicates."""
+
+    torch.manual_seed(0)
+    store, dataset_id = _store_with_regression_data()
+    result = run_regression_web_workflow(
+        _request(
+            dataset_id,
+            acquisition_name="variance",
+            acquisition_family="active_learning",
+        ),
+        store,
+    )
+
+    assert result["candidates"]
+    assert len(result["candidates"]) == 3
+    assert result["metadata"]["input_perturbation_risk_type"] == "none"
 
 
 def test_web_cross_validation_runs_with_input_perturbation() -> None:

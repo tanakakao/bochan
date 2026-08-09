@@ -47,6 +47,14 @@ def resolve_web_risk_settings(request: Any) -> dict[str, Any]:
         raise ValueError("Input perturbation risk alpha must be in (0, 1].")
 
     input_perturbation = bool(getattr(request, "input_perturbation", False))
+    model_type = str(getattr(request, "model_type", "")).lower()
+    try:
+        n_w = int(getattr(request, "n_w", 1))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("n_w must be an integer for Web input perturbation.") from exc
+    if n_w <= 0:
+        raise ValueError("n_w must be positive for Web input perturbation.")
+
     family = str(kwargs.get("web_family", "bayesian_optimization")).lower()
     enabled = input_perturbation and risk_type in {"var", "cvar"}
     if not input_perturbation and risk_type != "none":
@@ -59,6 +67,8 @@ def resolve_web_risk_settings(request: Any) -> dict[str, Any]:
 
     return {
         "input_perturbation": input_perturbation,
+        "n_w": n_w,
+        "model_type": model_type,
         "risk_type": risk_type if input_perturbation else "none",
         "risk_alpha": alpha,
         "risk_enabled": enabled,
@@ -125,6 +135,7 @@ def attach_web_risk_metadata(
     metadata = dict(result.get("metadata") or {})
     metadata.update(
         {
+            "input_perturbation_n_w": int(report.get("n_w", 1)),
             "input_perturbation_risk_type": report.get("risk_type", "none"),
             "input_perturbation_risk_alpha": float(report.get("risk_alpha", 0.2)),
             "input_perturbation_risk_enabled": bool(report.get("risk_enabled")),

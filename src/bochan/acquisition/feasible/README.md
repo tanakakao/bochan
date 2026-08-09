@@ -199,7 +199,7 @@ P(quality_rank >= 2) >= 0.8
 
 ## 6. 内部の使い分け
 
-`OutcomeConstraintConfig` は acquisition class が解決された後、通常の `acqf_factory` composition として処理されます。`factory.build_acquisition` などをimport時に差し替える処理は使いません。
+`OutcomeConstraintConfig` は acquisition class が解決された後、通常の acquisition composition として処理されます。`factory.build_acquisition` や `engine.build_acquisition` をimport時に差し替える処理は使いません。
 
 数値出力のsample constraintをacquisition classが明示的に `constraints=` として受け取れる場合は、BoTorch互換のnative constraintとしてそのまま渡します。
 
@@ -211,20 +211,7 @@ P(quality_rank >= 2) >= 0.8
 
 この分岐により、native constrained acquisitionの意味論を維持しつつ、Active LearningやLevel-setなどの非native acquisitionにも同じ高位constraint APIを利用できます。
 
-## 7. 負値を取り得る acquisition の weighting
-
-単純な `acquisition * feasibility` は、獲得値が負の場合に問題があります。例えば同じ `-10` という獲得値に対し、`P(feasible)=1.0` は `-10`、`P(feasible)=0.1` は `-1` となり、最大化ではfeasibilityの低い候補が有利になります。
-
-`FeasibilityWeightedAcquisition` はこの逆転を防ぐため、符号に応じて次のbounded monotone penaltyを使います。
-
-```text
-acquisition >= 0 : acquisition * P(feasible)
-acquisition <  0 : acquisition * (2 - P(feasible))
-```
-
-したがって、同じbase acquisition valueならfeasibilityが低下してscoreが改善することはありません。負値側の倍率は `1` から `2` の範囲に限定されるため、`P(feasible)` が0に近い場合でも除算による勾配発散を起こしません。
-
-## 8. Constraint sense
+## 7. Constraint sense
 
 - `sense="ge"`: `y >= threshold` を feasible とする。
 - `sense="le"`: `y <= threshold` を feasible とする。

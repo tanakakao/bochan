@@ -25,11 +25,19 @@ _SEARCH_METHODS = {
 
 # Core GA intentionally uses a thorough 64 x 100 search. The Web workbench
 # evaluates candidates synchronously and automatically routes tree ensembles to
-# GA, so use a smaller interactive budget here while leaving Core / Tabular
+# GA, so use smaller interactive budgets here while leaving Core / Tabular
 # optimizer defaults and explicitly selected PSO / SA / CMA-ES untouched.
 _WEB_GA_OPTIONS: dict[str, int] = {
     "pop_size": 32,
     "num_generations": 40,
+}
+_NGBOOST_WEB_GA_OPTIONS: dict[str, int] = {
+    "pop_size": 24,
+    "num_generations": 24,
+}
+_NGBOOST_PERTURBED_WEB_GA_OPTIONS: dict[str, int] = {
+    "pop_size": 16,
+    "num_generations": 20,
 }
 
 
@@ -41,6 +49,26 @@ def _mapping(value: Any) -> dict[str, Any]:
     if hasattr(value, "dict"):
         return dict(value.dict())
     return dict(vars(value))
+
+
+def _interactive_ga_options() -> dict[str, int]:
+    """Return the request-local GA budget for synchronous Web suggestion.
+
+    NGBoost evaluates a complete boosted estimator for every ensemble member at
+    every GA population row. InputPerturbation multiplies those rows by ``n_w``
+    again, so use a tighter Web-only search budget for NGBoost while keeping the
+    public Core optimizer unchanged. Outside a Web request context this helper
+    falls back to the ordinary interactive budget.
+    """
+
+    from .risk_settings import current_web_risk_report
+
+    report = current_web_risk_report()
+    if str(report.get("model_type", "")).lower() != "ngboost_ensemble":
+        return dict(_WEB_GA_OPTIONS)
+    if bool(report.get("input_perturbation", False)):
+        return dict(_NGBOOST_PERTURBED_WEB_GA_OPTIONS)
+    return dict(_NGBOOST_WEB_GA_OPTIONS)
 
 
 def normalize_feature_constraints(
@@ -150,11 +178,11 @@ def resolve_search_method(
     if method in {"torch", "optimize_acqf_torch"}:
         return "torch", {}, False
     if method in {"evo", "optimize_acqf_evo"}:
-        return "evo", {"options": dict(_WEB_GA_OPTIONS)}, False
+        return "evo", {"options": _interactive_ga_options()}, False
     if method == "ga":
         return "evo", {
             "method": "ga",
-            "options": dict(_WEB_GA_OPTIONS),
+            "options": _interactive_ga_options(),
         }, False
     if method in {"sa", "pso", "cmaes"}:
         return "evo", {"method": method}, False

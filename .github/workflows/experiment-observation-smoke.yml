@@ -19,7 +19,10 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[test,tabular,api]"
       - name: Core observation state
-        run: pytest -q --maxfail=1 tests/test_observation_data.py
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_observation_data.py \
+            tests/test_observation_tell_state.py
       - name: Partial objective models
         run: pytest -q --maxfail=1 tests/test_partial_observation_api.py
       - name: Success-aware acquisition
@@ -28,22 +31,11 @@ jobs:
         run: pytest -q --maxfail=1 tests/test_tabular_observation_states.py
       - name: FastAPI observation state
         run: pytest -q --maxfail=1 tests/test_fastapi_tabular_observation_states.py
-      - name: Web single target drop
-        run: pytest -q tests/test_webapp_target_missing_policy.py::test_single_objective_drops_missing_target_rows
-      - name: Web multi target drop
-        run: pytest -q tests/test_webapp_target_missing_policy.py::test_multiobjective_non_multitask_drops_any_missing_target_row
-      - name: Web multitask partial preserve
-        run: pytest -q tests/test_webapp_target_missing_policy.py::test_multitask_preserves_partial_targets_and_drops_unusable_rows
-      - name: Web multitask target observations
-        run: pytest -q tests/test_webapp_target_missing_policy.py::test_multitask_requires_an_observation_for_every_target
-      - name: Web target encoder
-        run: pytest -q tests/test_webapp_target_missing_policy.py::test_target_encoder_preserves_regression_nan_cells
-      - name: Web source facade
-        run: pytest -q tests/test_webapp_target_missing_policy.py::test_target_settings_facade_uses_source_level_policy_functions
-      - name: Web model variant
-        run: pytest -q tests/test_webapp_target_missing_policy.py::test_model_variant_reports_native_wide_multitask_model
-      - name: Web tabular observation flow
-        run: pytest -q --maxfail=1 tests/test_webapp_tabular_backend.py
+      - name: Web observation state
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_webapp_target_missing_policy.py \
+            tests/test_webapp_tabular_backend.py
       - name: Run lint
         run: |
           python -m pip install ruff
@@ -66,6 +58,7 @@ jobs:
             src/bochan/serving/webapp/workflows.py \
             src/bochan/serving/webapp/workflows_tabular.py \
             tests/test_observation_data.py \
+            tests/test_observation_tell_state.py \
             tests/test_partial_observation_api.py \
             tests/test_experiment_success_acquisition.py \
             tests/test_tabular_observation_states.py \

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Literal, Optional, Sequence
+from collections.abc import Sequence
+from typing import Literal
 
 import torch
 from botorch.acquisition.acquisition import AcquisitionFunction
@@ -202,9 +203,8 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
         base_value = self.acqf(X)
         pf = self.feasibility(X)
 
-        if self.reduce_q == "none":
-            if base_value.shape == pf.shape[:-1]:
-                pf = pf.mean(dim=-1)
+        if self.reduce_q == "none" and base_value.shape == pf.shape[:-1]:
+            pf = pf.mean(dim=-1)
 
         try:
             return base_value * pf
@@ -215,7 +215,7 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
                 "Consider reduce_q='mean', 'min', or 'prod'."
             ) from exc
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         if hasattr(self.acqf, "set_X_pending"):
             self.acqf.set_X_pending(X_pending)
         self.X_pending = X_pending

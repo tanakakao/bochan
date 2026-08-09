@@ -78,13 +78,13 @@ def _patch_default_multioutput_target_class() -> None:
 
 _patch_default_multioutput_target_class()
 
-from .multi_output import (
+from .multi_output import (  # noqa: E402
     MulticlassTargetProbabilityObjective,
     OutputReductionType,
     compute_observed_multiclass_target_probability_values,
     compute_observed_multiclass_utility,
 )
-from .single_output import (
+from .single_output import (  # noqa: E402
     compute_multiclass_target_probability_best_f,
     compute_multiclass_target_probability_values,
 )

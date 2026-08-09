@@ -365,6 +365,7 @@ class BayesianOptimizer(_DefaultBayesianOptimizer):
                     else "no_failed_experiments"
                 ),
             }
+        self._llm_refit_required = False
         return self
 
     def fit_observations(
@@ -466,14 +467,40 @@ class BayesianOptimizer(_DefaultBayesianOptimizer):
             context.X_pending = self.observations.pending_X
         return context
 
+    def _configured_acquisition(self, acq_config: Any | None) -> Any:
+        """Resolve an explicit or previously configured acquisition."""
+
+        resolved = acq_config if acq_config is not None else getattr(self, "acq_config", None)
+        if resolved is None:
+            raise ValueError(
+                "acq_config is required. Pass it explicitly or configure a default first."
+            )
+        if getattr(self, "_llm_refit_required", False):
+            raise RuntimeError(
+                "Model or fit settings changed after fitting. Call fit() or refit() "
+                "before building an acquisition."
+            )
+        return resolved
+
+    def _configured_optimizer(self, opt_config: OptimizeConfig | None) -> OptimizeConfig:
+        """Resolve an explicit or previously configured candidate optimizer."""
+
+        resolved = opt_config if opt_config is not None else getattr(self, "opt_config", None)
+        if resolved is None:
+            raise ValueError(
+                "opt_config is required. Pass it explicitly or configure a default first."
+            )
+        return resolved
+
     def _prepare_observation_acquisition(
         self,
-        acq_config: Any,
+        acq_config: Any | None,
         data_context: DataContext | None,
     ) -> tuple[Any, DataContext, Any]:
         """Build the regular acquisition, then compose experiment success once."""
 
         self._check_fitted()
+        acq_config = self._configured_acquisition(acq_config)
         base_context = self._resolve_data_context(data_context)
         context = replace(base_context, extra=dict(base_context.extra))
         resolved_config = self._resolve_acquisition_config(acq_config)
@@ -509,7 +536,7 @@ class BayesianOptimizer(_DefaultBayesianOptimizer):
 
     def acquisition(
         self,
-        acq_config: Any,
+        acq_config: Any | None = None,
         *,
         data_context: DataContext | None = None,
     ) -> Any:
@@ -520,8 +547,8 @@ class BayesianOptimizer(_DefaultBayesianOptimizer):
 
     def candidate(
         self,
-        acq_config: Any,
-        opt_config: OptimizeConfig,
+        acq_config: Any | None = None,
+        opt_config: OptimizeConfig | None = None,
         *,
         data_context: DataContext | None = None,
         bounds: Any | None = None,
@@ -541,35 +568,41 @@ class BayesianOptimizer(_DefaultBayesianOptimizer):
             self.bounds = opt_bounds
             context.bounds = opt_bounds
 
-        opt_config = resolve_information_optimizer_defaults(resolved_config, opt_config)
+        resolved_opt_config = self._configured_optimizer(opt_config)
+        resolved_opt_config = resolve_information_optimizer_defaults(
+            resolved_config,
+            resolved_opt_config,
+        )
         if _is_nsgaii_strategy(resolved_config):
-            opt_config = replace(opt_config, optimizer="nsgaii")
-        opt_config = self._merge_llm_settings_into_opt_config(opt_config)
+            resolved_opt_config = replace(resolved_opt_config, optimizer="nsgaii")
+        resolved_opt_config = self._merge_llm_settings_into_opt_config(
+            resolved_opt_config
+        )
         cat_dims = self.bundle.cat_dims if self.bundle is not None else []
-        opt_config = _resolve_optimizer_from_cat_dims(
-            opt_config=opt_config,
+        resolved_opt_config = _resolve_optimizer_from_cat_dims(
+            opt_config=resolved_opt_config,
             cat_dims=cat_dims,
         )
-        opt_config = _resolve_mixed_fixed_features_from_train_X(
-            opt_config=opt_config,
+        resolved_opt_config = _resolve_mixed_fixed_features_from_train_X(
+            opt_config=resolved_opt_config,
             train_X=self.train_X,
             cat_dims=cat_dims,
         )
-        opt_config = _resolve_mixed_optimizer_callable(opt_config)
+        resolved_opt_config = _resolve_mixed_optimizer_callable(resolved_opt_config)
 
         from .factory import optimize_candidates
 
         candidates, acq_value = optimize_candidates(
             acqf=acqf,
             bounds=opt_bounds,
-            config=opt_config,
+            config=resolved_opt_config,
         )
         result = CandidateResult(
             candidates=candidates,
             acq_value=acq_value,
             acqf=acqf,
             acq_config=resolved_config,
-            opt_config=opt_config,
+            opt_config=resolved_opt_config,
             data_context=context,
         )
         self.history.append(result)

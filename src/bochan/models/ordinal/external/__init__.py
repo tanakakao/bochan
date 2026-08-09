@@ -1,5 +1,11 @@
 """External cumulative ordinal surrogate models."""
 
+from .lightgbm import (
+    LightGBMMixedOrdinalEnsembleModel,
+    LightGBMMixedOrdinalModel,
+    LightGBMOrdinalEnsembleModel,
+    LightGBMOrdinalModel,
+)
 from .ngboost import (
     NGBoostMixedOrdinalEnsembleModel,
     NGBoostMixedOrdinalModel,
@@ -12,6 +18,10 @@ from .random_forest import (
 )
 
 __all__ = [
+    "LightGBMMixedOrdinalEnsembleModel",
+    "LightGBMMixedOrdinalModel",
+    "LightGBMOrdinalEnsembleModel",
+    "LightGBMOrdinalModel",
     "NGBoostMixedOrdinalEnsembleModel",
     "NGBoostMixedOrdinalModel",
     "NGBoostOrdinalEnsembleModel",

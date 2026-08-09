@@ -129,7 +129,6 @@ def prepare_feasibility_build(*, bundle: Any, config: Any) -> tuple[Any, Feasibi
     has_model_dependent_constraints = constraint_config.has_model_dependent_constraints()
     needs_non_native_wrapper = bool(
         config.constraints
-        and config.acqf_factory is None
         and not _explicitly_accepts_keyword(config.acqf_cls, "constraints")
     )
     should_wrap = bool(
@@ -137,12 +136,18 @@ def prepare_feasibility_build(*, bundle: Any, config: Any) -> tuple[Any, Feasibi
         and (has_model_dependent_constraints or needs_non_native_wrapper)
     )
     if not should_wrap:
-        return config, None
+        base_config = replace(
+            config,
+            acqf_factory=None,
+            outcome_constraint_config=None,
+        )
+        return base_config, None
 
     base_kwargs = dict(config.acqf_kwargs)
     base_kwargs.pop("constraints", None)
     base_config = replace(
         config,
+        acqf_factory=None,
         constraints=None,
         outcome_constraint_config=None,
         acqf_kwargs=base_kwargs,
@@ -175,11 +180,41 @@ def apply_feasibility_build_plan(*, acqf: Any, model: Any, plan: FeasibilityBuil
     )
 
 
+def build_outcome_constrained_acquisition(
+    *,
+    bundle: Any,
+    config: Any,
+    data_context: Any | None = None,
+) -> Any:
+    """Build an acquisition with high-level outcome constraints natively.
+
+    Numeric sample constraints are passed to acquisition classes that explicitly
+    support BoTorch's ``constraints`` keyword. Model-dependent class/rank
+    constraints, and numeric constraints for acquisitions without native support,
+    are composed through :class:`FeasibilityWeightedAcquisition`.
+    """
+
+    from .factory import build_acquisition
+
+    base_config, plan = prepare_feasibility_build(bundle=bundle, config=config)
+    acqf = build_acquisition(
+        bundle=bundle,
+        config=base_config,
+        data_context=data_context,
+    )
+    return apply_feasibility_build_plan(
+        acqf=acqf,
+        model=bundle.model,
+        plan=plan,
+    )
+
+
 __all__ = [
     "FeasibilityBuildPlan",
     "_constraint_specs",
     "_explicitly_accepts_keyword",
     "apply_feasibility_build_plan",
+    "build_outcome_constrained_acquisition",
     "prepare_feasibility_build",
     "resolve_outcome_constraint_config",
 ]

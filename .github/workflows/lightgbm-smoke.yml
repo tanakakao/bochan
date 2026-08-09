@@ -16,6 +16,7 @@ on:
       - "src/bochan/models/ordinal/external/**"
       - "tests/test_lightgbm_models.py"
       - "tests/test_lightgbm_optional_smoke.py"
+      - "tests/test_lightgbm_small_data.py"
       - "tests/test_model_package_layout.py"
       - ".github/workflows/lightgbm-smoke.yml"
   workflow_dispatch:
@@ -37,6 +38,7 @@ jobs:
           pytest -q --maxfail=1 \
             tests/test_lightgbm_models.py \
             tests/test_lightgbm_optional_smoke.py \
+            tests/test_lightgbm_small_data.py \
             tests/test_model_package_layout.py
       - name: Lint LightGBM modules
         run: |
@@ -51,4 +53,5 @@ jobs:
             src/bochan/models/ordinal/external/lightgbm.py \
             tests/test_lightgbm_models.py \
             tests/test_lightgbm_optional_smoke.py \
+            tests/test_lightgbm_small_data.py \
             tests/test_model_package_layout.py

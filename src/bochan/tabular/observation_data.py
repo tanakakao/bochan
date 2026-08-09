@@ -109,10 +109,15 @@ def _parse_status(work, status_col: ColumnKey | None):
 
 
 def _apply_target_missing_policy(work, target_cols, status_col, config):
-    """Drop only incomplete successful rows when requested.
+    """Apply objective missingness without discarding experiment-state evidence.
 
-    Failed and pending rows remain available as experiment-state observations even
-    when their target values are all missing.
+    Without an experiment-status column, ``drop`` retains the historical behavior
+    of removing rows that have any missing target. With an explicit status column,
+    every experiment row is retained so the independent success model can learn
+    from completed successful, failed, and pending trials. For an incomplete
+    successful row under ``drop``, every target cell on that row is set to NaN so
+    it contributes no objective observation while still contributing a success
+    label to the experiment-state model.
     """
 
     strategy = _target_missing_strategy(config)
@@ -125,9 +130,12 @@ def _apply_target_missing_policy(work, target_cols, status_col, config):
 
     status = work.loc[:, status_col].astype(str).str.strip().str.lower()
     successful = status == "success"
-    complete = ~work.loc[:, list(target_cols)].isna().any(axis=1)
-    keep = ~successful | complete
-    return work.loc[keep].copy()
+    incomplete = work.loc[:, list(target_cols)].isna().any(axis=1)
+    suppress_objectives = successful & incomplete
+    if bool(suppress_objectives.any()):
+        work = work.copy()
+        work.loc[suppress_objectives, list(target_cols)] = float("nan")
+    return work
 
 
 def _encode_target_categories_allow_missing(

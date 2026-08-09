@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Literal, Optional, Sequence
+from collections.abc import Sequence
+from typing import Literal
 
 import torch
 from botorch.acquisition.acquisition import AcquisitionFunction
@@ -81,7 +82,12 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
         if self.posterior_mode == "mean" and callable(getattr(self.model, "mean_posterior", None)):
             return self.model.mean_posterior(X)
 
-        return self.model.posterior(X, output_mode=self.posterior_mode)
+        try:
+            return self.model.posterior(X, output_mode=self.posterior_mode)
+        except TypeError as exc:
+            if "output_mode" not in str(exc):
+                raise
+            return self.model.posterior(X)
 
     def _class_probs_for_output(self, X: Tensor, output) -> Tensor:
         if not callable(getattr(self.model, "class_probs_list", None)):
@@ -197,20 +203,19 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
         base_value = self.acqf(X)
         pf = self.feasibility(X)
 
-        if self.reduce_q == "none":
-            if base_value.shape == pf.shape[:-1]:
-                pf = pf.mean(dim=-1)
+        if self.reduce_q == "none" and base_value.shape == pf.shape[:-1]:
+            pf = pf.mean(dim=-1)
 
         try:
             return base_value * pf
-        except RuntimeError as e:
+        except RuntimeError as exc:
             raise RuntimeError(
                 "Could not multiply base acquisition value by feasibility. "
                 f"base_value.shape={tuple(base_value.shape)}, feasibility.shape={tuple(pf.shape)}. "
                 "Consider reduce_q='mean', 'min', or 'prod'."
-            ) from e
+            ) from exc
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         if hasattr(self.acqf, "set_X_pending"):
             self.acqf.set_X_pending(X_pending)
         self.X_pending = X_pending

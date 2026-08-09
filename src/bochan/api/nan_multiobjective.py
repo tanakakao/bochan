@@ -1,11 +1,4 @@
-"""NaN-safe defaults for partially observed multi-objective targets.
-
-Wide multi-task models intentionally retain the original ``train_Y`` matrix,
-including NaNs that represent task values not observed at a given input. Model
-fitting converts those cells to long-format observations, but automatic EHVI /
-NEHVI defaults operate on the original matrix and therefore need separate
-missing-value handling.
-"""
+"""NaN-safe defaults for partially observed multi-objective targets."""
 
 from __future__ import annotations
 
@@ -31,12 +24,7 @@ def _as_finite_objective_matrix(values: Any) -> Any:
 
 
 def make_nan_safe_default_ref_point(values: Any, margin: float = 0.1) -> Any:
-    """Create a reference point from finite observations in each objective.
-
-    Each objective may be observed at different input rows. This is sufficient
-    for a conservative per-objective reference point, even when no complete
-    multi-objective row exists.
-    """
+    """Create a reference point from finite observations in each objective."""
 
     import torch
 
@@ -59,12 +47,7 @@ def make_nan_safe_default_ref_point(values: Any, margin: float = 0.1) -> Any:
 
 
 def complete_multiobjective_rows(values: Any) -> Any:
-    """Return rows where every objective is finite.
-
-    EHVI partitioning represents an observed Pareto set and therefore requires
-    joint objective vectors measured at the same input. Partially observed rows
-    cannot be silently imputed without changing the acquisition semantics.
-    """
+    """Return rows where every objective is finite."""
 
     import torch
 
@@ -93,24 +76,7 @@ def make_nan_safe_partitioning(ref_point: Any, values: Any) -> Any:
     return FastNondominatedPartitioning(ref_point=ref_point, Y=complete)
 
 
-def apply_nan_multiobjective() -> None:
-    """Install NaN-safe helpers in automatic defaults and engine imports."""
-
-    from . import automatic_multiobjective, engine_defaults
-
-    automatic_multiobjective._make_default_ref_point = make_nan_safe_default_ref_point
-    automatic_multiobjective.make_default_ref_point = make_nan_safe_default_ref_point
-    automatic_multiobjective._make_partitioning = make_nan_safe_partitioning
-    automatic_multiobjective.make_partitioning = make_nan_safe_partitioning
-
-    # engine_defaults imports these callables by name, so update its bound
-    # references as well as the source module.
-    engine_defaults.make_default_ref_point = make_nan_safe_default_ref_point
-    engine_defaults.make_partitioning = make_nan_safe_partitioning
-
-
 __all__ = [
-    "apply_nan_multiobjective",
     "complete_multiobjective_rows",
     "make_nan_safe_default_ref_point",
     "make_nan_safe_partitioning",

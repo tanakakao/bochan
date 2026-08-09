@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -33,16 +33,7 @@ def _resolve_structured_acqf_kwargs(
     name: str,
     kwargs: dict[str, Any],
 ) -> tuple[dict[str, Any], Any | None]:
-    """Resolve task-aware acquisition kwargs carried by a structured value.
-
-    Serving layers sometimes know more about the semantic output space than the
-    contextual acquisition-name resolver.  A structured ``thresholds`` value can
-    expose ``_resolve_acqf_kwargs`` to translate that metadata into concrete
-    acquisition kwargs and, when necessary, pin an acquisition class.
-
-    Ordinary lists / tensors are returned unchanged, so the public API keeps its
-    existing behavior outside integrations that explicitly opt in to the hook.
-    """
+    """Resolve task-aware acquisition kwargs carried by a structured value."""
 
     resolver = getattr(kwargs.get("thresholds"), "_resolve_acqf_kwargs", None)
     if not callable(resolver):
@@ -101,15 +92,10 @@ def _coerce_constraint_spec(value: Any) -> Any:
 class OutcomeConstraintConfig:
     """Serializable, user-facing configuration for outcome constraints.
 
-    Prefer this high-level config in notebooks and apps. It keeps the constraint
-    intent visible as data and lets bochan convert it to either BoTorch sample
-    constraints or a feasibility wrapper when model-dependent class probabilities
-    are required.
-
     ``constraints`` accepts ``FeasibilityConstraintSpec`` /
-    ``OrdinalRankConstraintSpec`` objects or equivalent dictionaries. The old
-    ``output_indices`` / ``operators`` / ``thresholds`` fields are still supported
-    for numeric threshold constraints.
+    ``OrdinalRankConstraintSpec`` objects or equivalent dictionaries. Numeric
+    threshold constraints may also use ``output_indices`` / ``operators`` /
+    ``thresholds``.
     """
 
     constraints: Sequence[Any] | None = None
@@ -117,8 +103,6 @@ class OutcomeConstraintConfig:
     operators: Sequence[ConstraintOperator] = field(default_factory=list)
     thresholds: Sequence[float] = field(default_factory=list)
 
-    # Settings used only when constraints need model access and are therefore
-    # applied through FeasibilityWeightedAcquisition.
     eta: float = 1e-3
     reduce_constraints: str = "prod"
     reduce_q: str = "mean"
@@ -188,13 +172,7 @@ class OutcomeConstraintConfig:
         return False
 
     def build(self, *, output_names: Sequence[str] | None = None) -> list[Any]:
-        """Build BoTorch-supported sample constraint callables.
-
-        Model-dependent class / rank probability constraints are intentionally
-        not converted here; they should be applied through
-        ``FeasibilityWeightedAcquisition`` so the model can provide
-        ``class_probs_list``.
-        """
+        """Build BoTorch-supported sample constraint callables."""
 
         if self.has_spec_constraints():
             if self.has_model_dependent_constraints():
@@ -217,7 +195,7 @@ class OutcomeConstraintConfig:
         )
 
     def wrapper_constraints(self) -> list[Any]:
-        """Return constraints that should be evaluated with model access."""
+        """Return constraints that require model-aware feasibility evaluation."""
 
         if not self.has_model_dependent_constraints():
             return []
@@ -226,27 +204,14 @@ class OutcomeConstraintConfig:
 
 @dataclass
 class AcquisitionConfig(_BaseAcquisitionConfig):
-    """High-level acquisition configuration.
-
-    Args:
-        outcome_constraint_config: User-facing constraint config. Prefer this
-            for normal use, especially when specifying classification classes.
-        constraints: Explicit BoTorch sample-constraint callables for advanced
-            Python use.
-
-    Notes:
-        ``constraints`` and ``outcome_constraint_config`` are mutually exclusive
-        user inputs. ``constraints`` is the low-level BoTorch-facing escape hatch;
-        ``outcome_constraint_config`` is the high-level, serializable API.
-
-        ``name="llm_selected"`` defers acquisition selection until
-        ``BayesianOptimizer.acquisition()`` or ``candidate()`` is called. The
-        optimizer's shared ``llm_settings`` are used, while explicitly supplied
-        objective, constraint, sampler, and keyword settings remain authoritative.
-    """
+    """High-level acquisition configuration."""
 
     constraints: list[Any] | None = None
     outcome_constraint_config: OutcomeConstraintConfig | None = None
+    _base_acqf_factory: Callable[..., Any] | None = field(
+        default=None,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         kwargs = dict(self.acqf_kwargs)
@@ -267,10 +232,7 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
                 "acqf_kwargs['constraints']."
             )
 
-        if (
-            self.constraints is not None
-            and self.outcome_constraint_config is not None
-        ):
+        if self.constraints is not None and self.outcome_constraint_config is not None:
             if replaying_internal_constraints:
                 self.constraints = None
             else:
@@ -286,9 +248,7 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
                 constraint_config = OutcomeConstraintConfig(**constraint_config)
                 self.outcome_constraint_config = constraint_config
             built_constraints = constraint_config.build()
-            self.constraints = (
-                built_constraints if len(built_constraints) > 0 else None
-            )
+            self.constraints = built_constraints if built_constraints else None
 
         if self.constraints is not None:
             kwargs["constraints"] = self.constraints
@@ -300,23 +260,22 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
             kwargs["beta"] = _DEFAULT_UCB_BETA
 
         self.acqf_kwargs = kwargs
+
+        if self.outcome_constraint_config is not None:
+            from .feasibility_defaults import build_outcome_constrained_acquisition
+
+            if (
+                self.acqf_factory is not None
+                and self.acqf_factory is not build_outcome_constrained_acquisition
+            ):
+                self._base_acqf_factory = self.acqf_factory
+                self.acqf_factory = build_outcome_constrained_acquisition
+            elif self.acqf_factory is None and self.acqf_cls is not None:
+                # Name-only configs are resolved with dataclasses.replace(...),
+                # which re-runs this hook after acqf_cls has been selected.
+                self.acqf_factory = build_outcome_constrained_acquisition
+
         _install_llm_selected_runtime_if_needed(self.name)
-
-
-def _install_nan_multiobjective() -> None:
-    from .nan_multiobjective import apply_nan_multiobjective
-
-    apply_nan_multiobjective()
-
-
-def _install_repair_constraint_defaults() -> None:
-    from .repair_constraint_defaults import apply_repair_constraint_defaults
-
-    apply_repair_constraint_defaults()
-
-
-_install_nan_multiobjective()
-_install_repair_constraint_defaults()
 
 
 __all__ = ["AcquisitionConfig", "ConstraintOperator", "OutcomeConstraintConfig"]

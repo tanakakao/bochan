@@ -63,6 +63,19 @@ class OptimizeConfig(_BaseOptimizeConfig):
         if self.duplicate_pool_restarts < 1:
             raise ValueError("duplicate_pool_restarts must be at least 1.")
 
+        # Top-level OptimizeConfig.inequality_constraints follow BoTorch's
+        # canonical a^T x >= rhs convention. If candidate repair falls back to
+        # those constraints, resolve the repair-local sense here rather than by
+        # replacing factory helpers at import time.
+        repair = self.repair_config
+        if (
+            repair is not None
+            and repair.inequality_constraints is None
+            and self.inequality_constraints is not None
+            and str(repair.inequality_sense).lower() != "ge"
+        ):
+            self.repair_config = replace(repair, inequality_sense="ge")
+
         if callable(self.optimizer) and not isinstance(self.optimizer, str):
             return
 

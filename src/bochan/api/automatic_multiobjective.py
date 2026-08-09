@@ -318,17 +318,19 @@ def _observed_multiobjective_values(
 
 
 def _make_default_ref_point(values: Any, margin: float = 0.1) -> Any:
-    """Create a maximization-space reference point below all observed values."""
+    """Create a NaN-safe maximization-space reference point."""
 
-    return (values.min(dim=-2).values - float(margin)).detach()
+    from .nan_multiobjective import make_nan_safe_default_ref_point
+
+    return make_nan_safe_default_ref_point(values, margin=margin)
 
 
 def _make_partitioning(ref_point: Any, values: Any) -> Any:
-    from botorch.utils.multi_objective.box_decompositions.non_dominated import (
-        FastNondominatedPartitioning,
-    )
+    """Build an EHVI partitioning from complete finite objective rows."""
 
-    return FastNondominatedPartitioning(ref_point=ref_point, Y=values)
+    from .nan_multiobjective import make_nan_safe_partitioning
+
+    return make_nan_safe_partitioning(ref_point, values)
 
 
 def observed_multiobjective_values(

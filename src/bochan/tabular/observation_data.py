@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -151,7 +151,9 @@ def _encode_target_categories_allow_missing(
 
     for column in categorical:
         values = Y_df.loc[:, column]
-        explicit = supplied.get(column) or supplied.get(str(column))
+        explicit = supplied.get(column)
+        if explicit is None:
+            explicit = supplied.get(str(column))
         if explicit is not None:
             mapping = dict(explicit)
         elif pd.api.types.is_numeric_dtype(values):
@@ -196,7 +198,13 @@ def dataframe_to_observation_tensors(
     if not input_cols:
         raise ValueError("input_cols could not be inferred. Pass TabularDataConfig.input_cols.")
 
-    selected = list(dict.fromkeys(input_cols + target_cols + ([status_col] if status_col is not None else [])))
+    selected = list(
+        dict.fromkeys(
+            input_cols
+            + target_cols
+            + ([status_col] if status_col is not None else [])
+        )
+    )
     missing_columns = [column for column in selected if column not in data.columns]
     if missing_columns:
         raise KeyError(f"Unknown tabular columns: {missing_columns!r}.")
@@ -237,13 +245,19 @@ def dataframe_to_observation_tensors(
     X = _to_tensor(X_df.to_numpy(dtype=float), dtype=dtype, device=config.device)
     Y = None
     observed_mask = None
+    import torch
+
+    failed_tensor = torch.as_tensor(failed_mask, dtype=torch.bool, device=X.device)
+    pending_tensor = torch.as_tensor(pending_mask, dtype=torch.bool, device=X.device)
     if Y_df is not None:
         Y = _to_tensor(Y_df.to_numpy(dtype=float), dtype=dtype, device=config.device)
         if Y.ndim == 1:
             Y = Y.reshape(-1, 1)
-        import torch
-
         observed_mask = torch.isfinite(Y)
+        unavailable = failed_tensor | pending_tensor
+        if bool(unavailable.any()):
+            observed_mask = observed_mask & ~unavailable.unsqueeze(-1)
+            Y = torch.where(observed_mask, Y, torch.full_like(Y, float("nan")))
 
     feature_names = list(input_cols)
     cat_dims = resolve_column_indices(config.categorical_cols, feature_names) or []
@@ -264,8 +278,8 @@ def dataframe_to_observation_tensors(
         target_impute_values=target_impute_values,
         source_index=work.index,
         observed_mask=observed_mask,
-        failed_mask=_to_tensor(failed_mask, dtype=None, device=config.device).bool(),
-        pending_mask=_to_tensor(pending_mask, dtype=None, device=config.device).bool(),
+        failed_mask=failed_tensor,
+        pending_mask=pending_tensor,
         experiment_status_name=status_col,
     )
 

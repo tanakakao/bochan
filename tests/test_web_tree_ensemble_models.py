@@ -3,18 +3,22 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-import pandas as pd
-import torch
-from botorch.posteriors.ensemble import EnsemblePosterior
+import pytest
 
-from bochan.api.model_registry import DEFAULT_MODEL_REGISTRY
-from bochan.desktop.services import DatasetStore, build_dataset_record
-from bochan.models.hybrid.task_aware_posterior import (
+pd = pytest.importorskip("pandas")
+torch = pytest.importorskip("torch")
+pytest.importorskip("botorch")
+pytest.importorskip("fastapi")
+
+from botorch.posteriors.ensemble import EnsemblePosterior  # noqa: E402
+from bochan.api.model_registry import DEFAULT_MODEL_REGISTRY  # noqa: E402
+from bochan.desktop.services import DatasetStore, build_dataset_record  # noqa: E402
+from bochan.models.hybrid.task_aware_posterior import (  # noqa: E402
     HybridPosteriorComponent,
     TaskAwareHybridPosterior,
 )
-from bochan.serving.webapp.app import RegressionRunRequest
-from bochan.serving.webapp.workflows import run_regression_web_workflow
+from bochan.serving.webapp.app import RegressionRunRequest  # noqa: E402
+from bochan.serving.webapp.workflows import run_regression_web_workflow  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -22,6 +22,7 @@ on:
       - "web/src/modelOptions.ts"
       - "web/src/regressionLikelihoodOptions.ts"
       - "web/src/pages/OptimizePage.tsx"
+      - "web/src/pages/SettingsPage.tsx"
       - "tests/test_hybrid_task_aware_posterior.py"
       - "tests/test_tabpfn_input_perturbation.py"
       - "tests/test_tabpfn_models.py"
@@ -29,6 +30,7 @@ on:
       - "tests/test_tree_ensemble_input_perturbation.py"
       - "tests/test_web_external_ensemble_matrix.py"
       - "tests/test_web_ngboost_runtime.py"
+      - "tests/test_web_tabpfn_mixed.py"
       - "tests/test_web_tabpfn_models.py"
       - "tests/test_web_tree_ensemble_models.py"
       - "tests/test_webapp_multiobjective_contract.py"
@@ -55,6 +57,7 @@ jobs:
             tests/test_tree_ensemble_input_perturbation.py \
             tests/test_web_external_ensemble_matrix.py \
             tests/test_web_ngboost_runtime.py \
+            tests/test_web_tabpfn_mixed.py \
             tests/test_web_tabpfn_models.py \
             tests/test_web_tree_ensemble_models.py \
             tests/test_hybrid_task_aware_posterior.py \
@@ -77,6 +80,7 @@ jobs:
             tests/test_tree_ensemble_input_perturbation.py \
             tests/test_web_external_ensemble_matrix.py \
             tests/test_web_ngboost_runtime.py \
+            tests/test_web_tabpfn_mixed.py \
             tests/test_web_tabpfn_models.py \
             tests/test_web_tree_ensemble_models.py \
             tests/test_webapp_multiobjective_contract.py

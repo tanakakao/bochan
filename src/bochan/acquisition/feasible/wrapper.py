@@ -23,12 +23,36 @@ PosteriorMode = Literal["objective", "mean", "probability", "expected_utility"]
 ConstraintSpec = FeasibilityConstraintSpec | OrdinalRankConstraintSpec
 
 
+def combine_acquisition_with_feasibility(base_value: Tensor, feasibility: Tensor) -> Tensor:
+    """Combine acquisition utility and feasibility without sign inversion.
+
+    Positive acquisition values keep the historical multiplicative weighting
+    ``a * p_f``. Negative values are divided by ``p_f`` instead, so decreasing
+    feasibility always makes a maximization acquisition worse rather than moving
+    a negative value spuriously toward zero.
+    """
+
+    if not torch.is_floating_point(base_value):
+        base_value = base_value.to(dtype=torch.get_default_dtype())
+    pf = feasibility.to(dtype=base_value.dtype, device=base_value.device)
+    eps = torch.finfo(base_value.dtype).eps
+    safe_pf = pf.clamp_min(eps)
+    return torch.where(
+        base_value >= 0,
+        base_value * pf,
+        base_value / safe_pf,
+    )
+
+
 class FeasibilityWeightedAcquisition(AcquisitionFunction):
-    """既存 acquisition に soft feasibility を掛ける wrapper。
+    """既存 acquisition に soft feasibility を適用する wrapper。
 
     `target_class` / `target_classes` 付きの `FeasibilityConstraintSpec` と
     `OrdinalRankConstraintSpec` は、model.class_probs_list() から確率を取得して
     評価する。そのため、モデル定義側の positive_class に依存しない。
+
+    獲得値が負になり得る acquisition でも、feasibility が低下するほど
+    maximization score が必ず悪化する sign-safe weighting を用いる。
     """
 
     def __init__(
@@ -81,7 +105,12 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
         if self.posterior_mode == "mean" and callable(getattr(self.model, "mean_posterior", None)):
             return self.model.mean_posterior(X)
 
-        return self.model.posterior(X, output_mode=self.posterior_mode)
+        try:
+            return self.model.posterior(X, output_mode=self.posterior_mode)
+        except TypeError as exc:
+            if "output_mode" not in str(exc):
+                raise
+            return self.model.posterior(X)
 
     def _class_probs_for_output(self, X: Tensor, output) -> Tensor:
         if not callable(getattr(self.model, "class_probs_list", None)):
@@ -202,13 +231,13 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
                 pf = pf.mean(dim=-1)
 
         try:
-            return base_value * pf
-        except RuntimeError as e:
+            return combine_acquisition_with_feasibility(base_value, pf)
+        except RuntimeError as exc:
             raise RuntimeError(
-                "Could not multiply base acquisition value by feasibility. "
+                "Could not combine base acquisition value with feasibility. "
                 f"base_value.shape={tuple(base_value.shape)}, feasibility.shape={tuple(pf.shape)}. "
                 "Consider reduce_q='mean', 'min', or 'prod'."
-            ) from e
+            ) from exc
 
     def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
         if hasattr(self.acqf, "set_X_pending"):
@@ -222,4 +251,5 @@ __all__ = [
     "FeasibilityWeightedAcquisition",
     "PosteriorMode",
     "QReduction",
+    "combine_acquisition_with_feasibility",
 ]

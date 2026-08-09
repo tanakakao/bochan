@@ -24,9 +24,10 @@ _SEARCH_METHODS = {
 }
 
 # Core GA intentionally uses a thorough 64 x 100 search. The Web workbench
-# evaluates candidates synchronously and automatically routes tree ensembles to
-# GA, so use smaller interactive budgets here while leaving Core / Tabular
-# optimizer defaults and explicitly selected PSO / SA / CMA-ES untouched.
+# evaluates candidates synchronously and automatically routes derivative-free
+# external estimators to GA, so use smaller interactive budgets here while
+# leaving Core / Tabular optimizer defaults and explicitly selected PSO / SA /
+# CMA-ES untouched.
 _WEB_GA_OPTIONS: dict[str, int] = {
     "pop_size": 32,
     "num_generations": 40,
@@ -38,6 +39,14 @@ _NGBOOST_WEB_GA_OPTIONS: dict[str, int] = {
 _NGBOOST_PERTURBED_WEB_GA_OPTIONS: dict[str, int] = {
     "pop_size": 16,
     "num_generations": 20,
+}
+_TABPFN_WEB_GA_OPTIONS: dict[str, int] = {
+    "pop_size": 16,
+    "num_generations": 20,
+}
+_TABPFN_PERTURBED_WEB_GA_OPTIONS: dict[str, int] = {
+    "pop_size": 12,
+    "num_generations": 16,
 }
 
 
@@ -55,20 +64,28 @@ def _interactive_ga_options() -> dict[str, int]:
     """Return the request-local GA budget for synchronous Web suggestion.
 
     NGBoost evaluates a complete boosted estimator for every ensemble member at
-    every GA population row. InputPerturbation multiplies those rows by ``n_w``
-    again, so use a tighter Web-only search budget for NGBoost while keeping the
-    public Core optimizer unchanged. Outside a Web request context this helper
+    every GA population row. TabPFN performs foundation-model inference for each
+    estimator call. InputPerturbation multiplies evaluation rows by ``n_w`` again,
+    so both expensive model families receive Web-only budgets while the public
+    Core optimizer remains unchanged. Outside a Web request context this helper
     falls back to the ordinary interactive budget.
     """
 
     from .risk_settings import current_web_runtime_context
 
     runtime = current_web_runtime_context()
-    if str(runtime.get("model_type", "")).lower() != "ngboost_ensemble":
-        return dict(_WEB_GA_OPTIONS)
-    if bool(runtime.get("input_perturbation", False)):
-        return dict(_NGBOOST_PERTURBED_WEB_GA_OPTIONS)
-    return dict(_NGBOOST_WEB_GA_OPTIONS)
+    model_type = str(runtime.get("model_type", "")).lower()
+    perturbed = bool(runtime.get("input_perturbation", False))
+
+    if model_type == "ngboost_ensemble":
+        if perturbed:
+            return dict(_NGBOOST_PERTURBED_WEB_GA_OPTIONS)
+        return dict(_NGBOOST_WEB_GA_OPTIONS)
+    if model_type == "tabpfn":
+        if perturbed:
+            return dict(_TABPFN_PERTURBED_WEB_GA_OPTIONS)
+        return dict(_TABPFN_WEB_GA_OPTIONS)
+    return dict(_WEB_GA_OPTIONS)
 
 
 def normalize_feature_constraints(

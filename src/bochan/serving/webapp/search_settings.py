@@ -23,6 +23,17 @@ _SEARCH_METHODS = {
     "nsga2",
 }
 
+# Core evolutionary optimizers intentionally use thorough defaults. The Web
+# workbench evaluates candidates synchronously and should remain interactive,
+# especially for sklearn-backed finite ensembles such as NGBoost. These budgets
+# are Web-only and leave the public Core / Tabular optimizer defaults untouched.
+_WEB_EVO_OPTIONS: dict[str, dict[str, int]] = {
+    "ga": {"pop_size": 32, "num_generations": 40},
+    "pso": {"swarm_size": 32, "num_iterations": 40},
+    "sa": {"sa_steps": 200},
+    "cmaes": {"maxiter": 80},
+}
+
 
 def _mapping(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
@@ -123,7 +134,7 @@ def resolve_search_method(
     *,
     multi_objective: bool,
 ) -> tuple[str, dict[str, Any], bool]:
-    """Resolve a Web search-method name to OptimizeConfig settings.
+    """Resolve a Web search-method name to interactive OptimizeConfig settings.
 
     Returns:
         ``(optimizer, optimizer_kwargs, use_acquisition_side_nsgaii)``.
@@ -141,9 +152,12 @@ def resolve_search_method(
     if method in {"torch", "optimize_acqf_torch"}:
         return "torch", {}, False
     if method in {"evo", "optimize_acqf_evo"}:
-        return "evo", {}, False
+        return "evo", {"options": dict(_WEB_EVO_OPTIONS["ga"])}, False
     if method in {"ga", "sa", "pso", "cmaes"}:
-        return "evo", {"method": method}, False
+        return "evo", {
+            "method": method,
+            "options": dict(_WEB_EVO_OPTIONS[method]),
+        }, False
     if method in {"thompson_sampling", "optimize_thompson_sampling"}:
         return "thompson_sampling", {}, False
     raise ValueError(f"Unsupported search method: {method!r}.")

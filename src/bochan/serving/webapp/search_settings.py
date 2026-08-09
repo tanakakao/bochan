@@ -61,12 +61,12 @@ def _interactive_ga_options() -> dict[str, int]:
     falls back to the ordinary interactive budget.
     """
 
-    from .risk_settings import current_web_risk_report
+    from .risk_settings import current_web_runtime_context
 
-    report = current_web_risk_report()
-    if str(report.get("model_type", "")).lower() != "ngboost_ensemble":
+    runtime = current_web_runtime_context()
+    if str(runtime.get("model_type", "")).lower() != "ngboost_ensemble":
         return dict(_WEB_GA_OPTIONS)
-    if bool(report.get("input_perturbation", False)):
+    if bool(runtime.get("input_perturbation", False)):
         return dict(_NGBOOST_PERTURBED_WEB_GA_OPTIONS)
     return dict(_NGBOOST_WEB_GA_OPTIONS)
 

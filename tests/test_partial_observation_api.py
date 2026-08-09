@@ -27,7 +27,9 @@ class _RecordingModel(Model):
     def posterior(self, X, **kwargs):
         mean = X[..., :1] * 0.0 + self.anchor
         q = int(X.shape[-2])
-        covariance = torch.eye(q, dtype=X.dtype, device=X.device).expand(*X.shape[:-2], q, q)
+        covariance = torch.eye(q, dtype=X.dtype, device=X.device).expand(
+            *X.shape[:-2], q, q
+        )
         return GPyTorchPosterior(MultivariateNormal(mean.squeeze(-1), covariance))
 
 
@@ -88,9 +90,64 @@ def test_hybrid_submodels_fit_only_their_observed_rows() -> None:
     assert torch.isnan(bo.model.train_Y).any()
 
 
+def test_hybrid_regression_binary_ordinal_use_independent_observation_rows() -> None:
+    X = torch.arange(6, dtype=torch.double).unsqueeze(-1)
+    Y = torch.tensor(
+        [
+            [10.0, 1.0, float("nan")],
+            [11.0, float("nan"), 0.0],
+            [float("nan"), 0.0, 1.0],
+            [13.0, 1.0, 2.0],
+            [14.0, float("nan"), 2.0],
+            [float("nan"), 0.0, float("nan")],
+        ],
+        dtype=torch.double,
+    )
+    model_config = ModelConfig(
+        task_type="hybrid",
+        model_type="base",
+        outcome_transform=False,
+        multi_output_config=MultiOutputConfig(
+            output_configs=[
+                _recording_config("regression"),
+                _recording_config("binary"),
+                _recording_config("ordinal"),
+            ],
+            output_names=["strength", "crack", "grade"],
+            use_hybrid=True,
+        ),
+    )
+    bo = BayesianOptimizer(model_config, FitConfig(skip_fit=True))
+    bo.fit(X, Y)
+
+    sub_bundles = bo.bundle.metadata["sub_bundles"]
+    assert [bundle.task_type for bundle in sub_bundles] == [
+        "regression",
+        "binary",
+        "ordinal",
+    ]
+    assert bo.bundle.metadata["observed_per_output"] == [4, 4, 4]
+    torch.testing.assert_close(
+        sub_bundles[0].train_X.squeeze(-1),
+        torch.tensor([0.0, 1.0, 3.0, 4.0], dtype=torch.double),
+    )
+    torch.testing.assert_close(
+        sub_bundles[1].train_X.squeeze(-1),
+        torch.tensor([0.0, 2.0, 3.0, 5.0], dtype=torch.double),
+    )
+    torch.testing.assert_close(
+        sub_bundles[2].train_X.squeeze(-1),
+        torch.tensor([1.0, 2.0, 3.0, 4.0], dtype=torch.double),
+    )
+    assert torch.isnan(bo.model.train_Y).any()
+
+
 def test_failed_rows_are_excluded_from_objective_but_used_by_success_model() -> None:
     X = torch.arange(5, dtype=torch.double).unsqueeze(-1)
-    Y = torch.tensor([[1.0], [float("nan")], [3.0], [float("nan")], [5.0]], dtype=torch.double)
+    Y = torch.tensor(
+        [[1.0], [float("nan")], [3.0], [float("nan")], [5.0]],
+        dtype=torch.double,
+    )
     observations = ObservationData.from_status(
         X,
         Y,
@@ -132,7 +189,13 @@ def test_failed_rows_are_excluded_from_objective_but_used_by_success_model() -> 
 def test_kronecker_missing_targets_are_rejected_without_imputation() -> None:
     X = torch.rand(5, 2, dtype=torch.double)
     Y = torch.tensor(
-        [[1.0, 2.0], [2.0, float("nan")], [3.0, 4.0], [4.0, 5.0], [5.0, 6.0]],
+        [
+            [1.0, 2.0],
+            [2.0, float("nan")],
+            [3.0, 4.0],
+            [4.0, 5.0],
+            [5.0, 6.0],
+        ],
         dtype=torch.double,
     )
     bo = BayesianOptimizer(

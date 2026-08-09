@@ -12,6 +12,8 @@ from contextvars import ContextVar
 from threading import RLock
 from typing import Any
 
+from .candidate_runtime import apply_web_candidate_runtime_defaults
+
 _WEB_REUSE_MODEL_KEY = "web_reuse_model_run_id"
 _STATE: ContextVar[dict[str, Any] | None] = ContextVar(
     "bochan_web_model_reuse_state",
@@ -114,7 +116,7 @@ def model_reuse_signature(request: Any) -> str:
 
 
 def prepare_model_reuse_request(request: Any) -> tuple[Any, str | None]:
-    """Remove the Web-only reuse identifier before normal model configuration."""
+    """Prepare an execution copy before normal Web model/candidate configuration."""
 
     model_kwargs = dict(getattr(request, "model_kwargs", {}) or {})
     raw_source = model_kwargs.pop(_WEB_REUSE_MODEL_KEY, None)
@@ -127,6 +129,7 @@ def prepare_model_reuse_request(request: Any) -> tuple[Any, str | None]:
         values = dict(vars(request))
         values["model_kwargs"] = model_kwargs
         cleaned = type("WebRequest", (), values)()
+    cleaned = apply_web_candidate_runtime_defaults(cleaned)
     return cleaned, source_run_id
 
 

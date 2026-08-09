@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from time import perf_counter
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,7 +21,7 @@ def test_web_ngboost_runtime_defaults_follow_fit_maxiter() -> None:
     )
 
     assert resolved == {
-        "ensemble_size": 5,
+        "ensemble_size": 3,
         "n_estimators": 128,
         "verbose": False,
     }
@@ -65,9 +66,24 @@ def test_web_target_settings_apply_ngboost_runtime_defaults() -> None:
         directions={"y": "maximize"},
     )
 
-    assert model_kwargs["ensemble_size"] == 5
+    assert model_kwargs["ensemble_size"] == 3
     assert model_kwargs["n_estimators"] == 23
     assert model_kwargs["verbose"] is False
+
+
+def _risk_request(*, model_type: str, input_perturbation: bool) -> SimpleNamespace:
+    return SimpleNamespace(
+        model_type=model_type,
+        input_perturbation=input_perturbation,
+        n_w=16,
+        acquisition={
+            "acqf_kwargs": {
+                "web_family": "bayesian_optimization",
+                "web_risk_type": "none",
+                "web_risk_alpha": 0.2,
+            }
+        },
+    )
 
 
 def test_web_evolutionary_search_uses_interactive_budget() -> None:
@@ -98,6 +114,51 @@ def test_web_evolutionary_search_uses_interactive_budget() -> None:
     }
 
 
+def test_web_ngboost_uses_smaller_ga_budget() -> None:
+    from bochan.serving.webapp.risk_settings import web_risk_run
+    from bochan.serving.webapp.search_settings import resolve_search_method
+
+    with web_risk_run(
+        _risk_request(model_type="ngboost_ensemble", input_perturbation=False)
+    ):
+        _, kwargs, _ = resolve_search_method("ga", multi_objective=False)
+
+    assert kwargs["options"] == {
+        "pop_size": 24,
+        "num_generations": 24,
+    }
+
+
+def test_web_perturbed_ngboost_uses_tight_ga_budget() -> None:
+    from bochan.serving.webapp.risk_settings import web_risk_run
+    from bochan.serving.webapp.search_settings import resolve_search_method
+
+    with web_risk_run(
+        _risk_request(model_type="ngboost_ensemble", input_perturbation=True)
+    ):
+        _, kwargs, _ = resolve_search_method("ga", multi_objective=False)
+
+    assert kwargs["options"] == {
+        "pop_size": 16,
+        "num_generations": 20,
+    }
+
+
+def test_web_perturbed_random_forest_keeps_general_ga_budget() -> None:
+    from bochan.serving.webapp.risk_settings import web_risk_run
+    from bochan.serving.webapp.search_settings import resolve_search_method
+
+    with web_risk_run(
+        _risk_request(model_type="random_forest", input_perturbation=True)
+    ):
+        _, kwargs, _ = resolve_search_method("ga", multi_objective=False)
+
+    assert kwargs["options"] == {
+        "pop_size": 32,
+        "num_generations": 40,
+    }
+
+
 def _ngboost_store() -> tuple[object, str]:
     from bochan.desktop.services import DatasetStore, build_dataset_record
 
@@ -118,9 +179,10 @@ def _ngboost_store() -> tuple[object, str]:
     return store, record.dataset_id
 
 
-def _ngboost_request(dataset_id: str):
+def _ngboost_request(dataset_id: str, *, input_perturbation: bool = False):
     from bochan.serving.webapp.app import RegressionRunRequest
 
+    risk_type = "cvar" if input_perturbation else "none"
     return RegressionRunRequest(
         dataset_id=dataset_id,
         feature_columns=["x"],
@@ -141,11 +203,14 @@ def _ngboost_request(dataset_id: str):
                 }
             ],
         },
-        # The regression test intentionally uses a tiny round count. The unit
+        # The regression tests intentionally use a tiny round count. The unit
         # tests above fix the production default mapping (128 -> 128 rounds).
         fit_maxiter=6,
         normalize=True,
         outcome_transform=True,
+        input_perturbation=input_perturbation,
+        n_w=16,
+        perturbation_std=0.1,
         search_space=[
             {
                 "name": "x",
@@ -158,7 +223,11 @@ def _ngboost_request(dataset_id: str):
         acquisition={
             "name": "EI",
             "beta": 2.0,
-            "acqf_kwargs": {"web_family": "bayesian_optimization"},
+            "acqf_kwargs": {
+                "web_family": "bayesian_optimization",
+                "web_risk_type": risk_type,
+                "web_risk_alpha": 0.2,
+            },
         },
         optimizer={
             "name": "ga",
@@ -172,16 +241,24 @@ def _ngboost_request(dataset_id: str):
     )
 
 
-def test_real_web_ngboost_fit_and_suggestion_complete() -> None:
-    pytest.importorskip("ngboost")
-
+def _run_ngboost_request(request):
     from bochan.serving.webapp.workflows import run_regression_web_workflow
 
     torch.manual_seed(0)
     store, dataset_id = _ngboost_store()
+    request = request(dataset_id)
     started = perf_counter()
-    result = run_regression_web_workflow(_ngboost_request(dataset_id), store)
+    result = run_regression_web_workflow(request, store)
     elapsed = perf_counter() - started
+    return result, elapsed
+
+
+def test_real_web_ngboost_fit_and_suggestion_complete() -> None:
+    pytest.importorskip("ngboost")
+
+    result, elapsed = _run_ngboost_request(
+        lambda dataset_id: _ngboost_request(dataset_id, input_perturbation=False)
+    )
 
     assert result["model_type"] == "ngboost_ensemble"
     assert result["task_type"] == "regression"
@@ -193,4 +270,18 @@ def test_real_web_ngboost_fit_and_suggestion_complete() -> None:
     # This is only a runaway guard, not a performance benchmark. The old Web
     # defaults could take many minutes; the focused 6-round smoke should finish
     # comfortably within this generous CI limit.
+    assert elapsed < 120.0
+
+
+def test_real_web_ngboost_input_perturbation_suggestion_complete() -> None:
+    pytest.importorskip("ngboost")
+
+    result, elapsed = _run_ngboost_request(
+        lambda dataset_id: _ngboost_request(dataset_id, input_perturbation=True)
+    )
+
+    assert len(result["candidates"]) == 1
+    assert result["metadata"]["input_perturbation_risk_type"] == "cvar"
+    assert result["metadata"]["input_perturbation_risk_enabled"] is True
+    assert result["metadata"]["timings_ms"]["candidate"] >= 0.0
     assert elapsed < 120.0

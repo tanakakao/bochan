@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 _NGBOOST_ENSEMBLE_MODEL = "ngboost_ensemble"
-_NGBOOST_WEB_ENSEMBLE_SIZE = 5
+_NGBOOST_WEB_ENSEMBLE_SIZE = 3
 
 
 def apply_web_model_runtime_defaults(

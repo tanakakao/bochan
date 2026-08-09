@@ -242,7 +242,7 @@ def test_web_multitask_backend_keeps_nan_targets_without_posterior_imputation() 
     assert torch.isnan(optimizer.dataset.Y).sum().item() == 2
     assert torch.isnan(optimizer.bo.model.train_Y_wide).sum().item() == 2
     assert report["acquisition_baseline_completed"] is False
-    assert type(optimizer.bo.model).__name__ == "WideMultiTaskGP"
+    assert type(optimizer.bo.model).__name__ == "WideMixedMultiTaskGP"
 
 
 def test_nan_safe_web_reference_point_uses_each_observed_objective() -> None:

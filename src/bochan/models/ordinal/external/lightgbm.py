@@ -17,6 +17,7 @@ from bochan.models.classification.common.probability import (
     _align_probability_columns,
     _classification_bootstrap_indices,
 )
+from bochan.models.external.lightgbm import _resolve_lightgbm_estimator_kwargs
 from bochan.models.external.native_categorical import _NativeCategoricalMixin
 
 from .base import (
@@ -75,7 +76,10 @@ class LightGBMOrdinalModel(_ExternalCumulativeOrdinalMixin, Model):
             latent_jitter=latent_jitter,
             weights=None,
         )
-        self._lightgbm_kwargs = dict(lightgbm_kwargs)
+        self._lightgbm_kwargs = _resolve_lightgbm_estimator_kwargs(
+            lightgbm_kwargs,
+            n_samples=int(train_X.shape[-2]),
+        )
         self.estimators = self._build_estimators(
             num_thresholds=inferred_classes - 1,
             estimators=estimators,
@@ -202,7 +206,10 @@ class LightGBMOrdinalEnsembleModel(_ExternalCumulativeOrdinalMixin, Model):
         )
         self.bootstrap = bool(bootstrap)
         self.random_state = random_state
-        self._lightgbm_kwargs = dict(lightgbm_kwargs)
+        self._lightgbm_kwargs = _resolve_lightgbm_estimator_kwargs(
+            lightgbm_kwargs,
+            n_samples=int(train_X.shape[-2]),
+        )
         self.estimators = self._build_estimators(
             num_thresholds=inferred_classes - 1,
             ensemble_size=ensemble_size,

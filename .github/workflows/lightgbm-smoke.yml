@@ -1,0 +1,54 @@
+name: LightGBM smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "pyproject.toml"
+      - "src/bochan/api/model_registry.py"
+      - "src/bochan/models/external/lightgbm.py"
+      - "src/bochan/models/external/native_categorical.py"
+      - "src/bochan/models/regression/external/**"
+      - "src/bochan/models/classification/common/lightgbm.py"
+      - "src/bochan/models/classification/binary/external/**"
+      - "src/bochan/models/classification/multiclass/external/**"
+      - "src/bochan/models/ordinal/external/**"
+      - "tests/test_lightgbm_models.py"
+      - "tests/test_lightgbm_optional_smoke.py"
+      - "tests/test_model_package_layout.py"
+      - ".github/workflows/lightgbm-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[test,api,lightgbm,tabular]"
+      - name: Run LightGBM tests
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_lightgbm_models.py \
+            tests/test_lightgbm_optional_smoke.py \
+            tests/test_model_package_layout.py
+      - name: Lint LightGBM modules
+        run: |
+          python -m pip install ruff
+          ruff check --ignore I001 \
+            src/bochan/models/external/lightgbm.py \
+            src/bochan/models/external/native_categorical.py \
+            src/bochan/models/regression/external/lightgbm.py \
+            src/bochan/models/classification/common/lightgbm.py \
+            src/bochan/models/classification/binary/external/lightgbm.py \
+            src/bochan/models/classification/multiclass/external/lightgbm.py \
+            src/bochan/models/ordinal/external/lightgbm.py \
+            tests/test_lightgbm_models.py \
+            tests/test_lightgbm_optional_smoke.py \
+            tests/test_model_package_layout.py

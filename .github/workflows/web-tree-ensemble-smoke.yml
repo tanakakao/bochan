@@ -9,6 +9,7 @@ on:
       - "src/bochan/models/hybrid/task_aware_posterior.py"
       - "src/bochan/serving/webapp/app.py"
       - "src/bochan/serving/webapp/model_runtime.py"
+      - "src/bochan/serving/webapp/risk_settings.py"
       - "src/bochan/serving/webapp/search_settings.py"
       - "src/bochan/serving/webapp/target_missing_policy.py"
       - "src/bochan/serving/webapp/target_settings.py"
@@ -47,6 +48,7 @@ jobs:
           ruff check --ignore I001,SIM108 \
             src/bochan/models/external/common.py \
             src/bochan/serving/webapp/model_runtime.py \
+            src/bochan/serving/webapp/risk_settings.py \
             src/bochan/serving/webapp/search_settings.py \
             src/bochan/serving/webapp/target_missing_policy.py \
             src/bochan/serving/webapp/target_settings.py \

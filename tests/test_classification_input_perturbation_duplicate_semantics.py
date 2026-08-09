@@ -140,7 +140,7 @@ def test_joint_numeric_hard_penalty_ignores_perturbation_replicas() -> None:
 
 
 def test_public_classification_acquisitions_use_nominal_duplicate_mixin() -> None:
-    from bochan.acquisition.binary.active_learning import qBinaryPredictiveEntropy
+    from bochan.acquisition.binary.active_learning import qBinaryProbabilityVariance
     from bochan.acquisition.binary.bayesian_optimization import (
         qBinaryProbabilityOfFeasibility,
     )
@@ -162,7 +162,7 @@ def test_public_classification_acquisitions_use_nominal_duplicate_mixin() -> Non
     )
 
     classes = [
-        qBinaryPredictiveEntropy,
+        qBinaryProbabilityVariance,
         qBinaryProbabilityOfFeasibility,
         qBinaryLatentStraddleAcquisition,
         qMulticlassProbabilityVariance,

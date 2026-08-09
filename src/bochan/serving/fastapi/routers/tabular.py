@@ -7,7 +7,12 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from bochan.tabular import TabularBayesianOptimizer
+from bochan.api import ExperimentFailureConfig
+from bochan.tabular import (
+    TabularBayesianOptimizer,
+    make_fit_config,
+    make_model_config,
+)
 
 from ..converters import model_metadata, to_serializable
 from ..dependencies import TabularOptimizerStore, get_tabular_optimizer_store
@@ -57,14 +62,7 @@ _TABULAR_CANDIDATE_OPTIMIZE_ALIASES = (
 
 
 def _normalize_string_dtypes(frame: Any, pd: Any) -> Any:
-    """Convert pandas string extension columns to mutable object columns.
-
-    Pandas may infer JSON string fields as ``StringDtype``. The tabular
-    converter subsequently replaces categorical labels with integer codes, and
-    extension string arrays reject that dtype-changing assignment. Normalizing
-    string columns at the HTTP boundary keeps behavior consistent across pandas
-    versions while preserving the original string values.
-    """
+    """Convert pandas string extension columns to mutable object columns."""
 
     for column in frame.columns:
         series = frame.loc[:, column]
@@ -98,6 +96,31 @@ def _schema_dict(value: Any | None) -> dict[str, Any] | None:
     return dict(value)
 
 
+def _experiment_failure_config(request: TabularFitModelRequest) -> ExperimentFailureConfig | None:
+    """Convert the JSON-safe failure settings to the core configuration."""
+
+    value = request.experiment_failure
+    if value is None:
+        return None
+    model_config = (
+        make_model_config(_schema_dict(value.model_config))
+        if value.model_config is not None
+        else None
+    )
+    fit_config = (
+        make_fit_config(_schema_dict(value.fit_config))
+        if value.fit_config is not None
+        else None
+    )
+    return ExperimentFailureConfig(
+        model_config=model_config,
+        fit_config=fit_config,
+        min_success_probability=value.min_success_probability,
+        eta=value.eta,
+        reduce_q=value.reduce_q,
+    )
+
+
 def _candidate_direct_kwargs(request: TabularCandidateRequest) -> dict[str, Any]:
     """Return explicitly supplied acquisition/objective candidate arguments."""
 
@@ -114,14 +137,7 @@ def _candidate_direct_kwargs(request: TabularCandidateRequest) -> dict[str, Any]
 
 
 def _candidate_optimize_config(request: TabularCandidateRequest) -> dict[str, Any]:
-    """Return optimize config with top-level input-constraint aliases applied.
-
-    ``outcome_constraint_config`` describes constraints on model outputs and is
-    forwarded directly to the acquisition builder. In contrast, linear input
-    ``constraints`` and candidate ``repair_config`` belong to ``OptimizeConfig``.
-    The FastAPI request accepts those two values either nested under
-    ``optimize_config`` or at the candidate-request top level for convenience.
-    """
+    """Return optimize config with top-level input-constraint aliases applied."""
 
     fields_set = getattr(request, "model_fields_set", set())
     opt_config = dict(request.opt_config or {})
@@ -155,7 +171,9 @@ def _fit_response(model_id: str, optimizer: TabularBayesianOptimizer) -> Tabular
         raise RuntimeError("Tabular optimizer has no fitted dataset or model bundle.")
 
     categorical_cols = [
-        dataset.feature_names[index] for index in dataset.cat_dims if 0 <= index < len(dataset.feature_names)
+        dataset.feature_names[index]
+        for index in dataset.cat_dims
+        if 0 <= index < len(dataset.feature_names)
     ]
     return TabularModelFitResponse(
         model_id=model_id,
@@ -178,16 +196,8 @@ def compute_tabular_feature_importance(
     request: TabularFeatureImportanceRequest,
     store: TabularOptimizerStore = TABULAR_STORE_DEP,
 ) -> TabularFeatureImportanceResponse:
-    """Compute core importance for a fitted model and serialize optional views.
+    """Compute core importance for a fitted model and serialize optional views."""
 
-    Args:
-        model_id: Stored tabular optimizer identifier.
-        request: Evaluation, inspection, and visualization settings.
-        store: Application-scoped optimizer store.
-
-    Returns:
-        JSON-safe core result, full summary, diagnostics, and Plotly payloads.
-    """
     try:
         optimizer = store.get(model_id)
     except KeyError as exc:
@@ -196,23 +206,27 @@ def compute_tabular_feature_importance(
         frame = _to_dataframe(request.data) if request.data is not None else None
         config = request.config.model_dump()
         groups = config.pop("feature_groups", [])
-        result = optimizer.feature_importance(data=frame, config=config, feature_groups=groups)
-        summary = optimizer.feature_importance_dataframe(result=result).to_dict(orient="records")
+        result = optimizer.feature_importance(
+            data=frame,
+            config=config,
+            feature_groups=groups,
+        )
+        summary = optimizer.feature_importance_dataframe(result=result).to_dict(
+            orient="records"
+        )
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     warnings = list(result.warnings)
-    diagnostics = {name: output.model_diagnostics for name, output in result.outputs.items()}
+    diagnostics = {
+        name: output.model_diagnostics for name, output in result.outputs.items()
+    }
     visualizations: list[dict[str, Any]] = []
     if request.visualization is not None:
         view = request.visualization
         try:
-            # Plotly is an optional visualization dependency. Import the
-            # visualization package only when the endpoint was explicitly
-            # asked to build figures, so the complete FastAPI router remains
-            # importable in serving-only installations.
             from bochan.visualization import build_feature_importance_figures
 
             figures = build_feature_importance_figures(
@@ -225,7 +239,12 @@ def compute_tabular_feature_importance(
                 rank_by=view.rank_by,
             )
             for figure_id, figure in figures.items():
-                visualizations.append({"id": f"feature-importance-{figure_id}", "figure": json.loads(figure.to_json())})
+                visualizations.append(
+                    {
+                        "id": f"feature-importance-{figure_id}",
+                        "figure": json.loads(figure.to_json()),
+                    }
+                )
         except Exception as exc:
             warnings.append(f"Feature-importance visualization failed: {exc}")
     return TabularFeatureImportanceResponse(
@@ -251,16 +270,31 @@ def fit_tabular_model(
         cv_config = _schema_dict(request.cv_config)
         if cv_config and cv_config.get("splitter") == "stratified_kfold":
             cv_config["splitter"] = "stratified"
-        if cv_config and cv_config.get("splitter") != "loo" and int(cv_config["n_splits"]) > len(frame):
+        if (
+            cv_config
+            and cv_config.get("splitter") != "loo"
+            and int(cv_config["n_splits"]) > len(frame)
+        ):
             raise ValueError("n_splits must not exceed the number of data rows.")
         task_type = str(request.bo_model_config.task_type)
-        if cv_config and cv_config.get("splitter") != "loo" and task_type in {"binary", "multiclass", "ordinal"}:
-            target = request.target_cols[0] if isinstance(request.target_cols, list) else request.target_cols
+        if (
+            cv_config
+            and cv_config.get("splitter") != "loo"
+            and task_type in {"binary", "multiclass", "ordinal"}
+        ):
+            target = (
+                request.target_cols[0]
+                if isinstance(request.target_cols, list)
+                else request.target_cols
+            )
             if int(cv_config["n_splits"]) > int(frame[target].value_counts().min()):
                 raise ValueError("n_splits must not exceed the smallest target class count.")
         direct_model_kwargs: dict[str, Any] = {}
         if request.multi_output_config is not None:
-            direct_model_kwargs["multi_output_config"] = _schema_dict(request.multi_output_config)
+            direct_model_kwargs["multi_output_config"] = _schema_dict(
+                request.multi_output_config
+            )
+        failure_config = _experiment_failure_config(request)
         optimizer = TabularBayesianOptimizer(
             model_config=_schema_dict(request.bo_model_config),
             fit_config=_schema_dict(request.fit_config),
@@ -273,6 +307,9 @@ def fit_tabular_model(
             device=request.device,
             dropna=request.dropna,
             missing_strategy=request.missing_strategy,
+            target_missing_strategy=request.target_missing_strategy,
+            experiment_status_col=request.experiment_status_col,
+            failure_config=failure_config,
             continuous_impute_strategy=request.continuous_impute_strategy,
             categorical_impute_strategy=request.categorical_impute_strategy,
             impute_targets=request.impute_targets,
@@ -325,7 +362,10 @@ def predict_tabular_model(
                 columns=columns,
                 records=records,
             )
-        return TabularPredictResponse(model_id=model_id, value=to_serializable(value))
+        return TabularPredictResponse(
+            model_id=model_id,
+            value=to_serializable(value),
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:

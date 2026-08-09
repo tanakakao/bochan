@@ -59,6 +59,29 @@ class _FakeProbabilityForest:
         return self
 
 
+def test_web_runtime_preserves_explicit_external_estimators() -> None:
+    from bochan.serving.webapp.model_runtime import apply_web_model_runtime_defaults
+
+    members = [object(), object()]
+    ngboost = apply_web_model_runtime_defaults(
+        {"estimators": members, "bootstrap": False},
+        model_type="ngboost_ensemble",
+        fit_maxiter=128,
+    )
+    injected_tabpfn = object()
+    tabpfn = apply_web_model_runtime_defaults(
+        {"estimator": injected_tabpfn},
+        model_type="tabpfn",
+        fit_maxiter=128,
+    )
+
+    assert ngboost == {"estimators": members, "bootstrap": False}
+    assert "ensemble_size" not in ngboost
+    assert "n_estimators" not in ngboost
+    assert tabpfn == {"estimator": injected_tabpfn}
+    assert "n_estimators" not in tabpfn
+
+
 def _store(num_classes: int) -> tuple[object, str, int]:
     from bochan.desktop.services import DatasetStore, build_dataset_record
 

@@ -4,7 +4,6 @@ import tomllib
 from pathlib import Path
 
 import pandas as pd
-import pytest
 import torch
 from botorch.posteriors.ensemble import EnsemblePosterior
 

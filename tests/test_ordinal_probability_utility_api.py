@@ -78,19 +78,19 @@ def test_ordinal_probability_posterior_exposes_complete_utility_contract() -> No
     utilities = torch.tensor([0.0, 1.0, 3.0], dtype=torch.double)
     posterior = OrdinalEnsemblePosterior(values=values, weights=weights)
 
+    mean_probs = (weights[:, None, None] * values).sum(dim=0)
     member_utility = (values * utilities).sum(dim=-1)
-    expected_member_utility = member_utility
-    expected_utility = (posterior.mean * utilities).sum(dim=-1)
+    expected_utility = (mean_probs * utilities).sum(dim=-1)
     expected_utility_variance = (
         weights[:, None]
         * (member_utility - expected_utility.unsqueeze(0)).square()
     ).sum(dim=0)
 
-    torch.testing.assert_close(posterior.class_probs(), posterior.mean)
+    torch.testing.assert_close(posterior.class_probs(), mean_probs)
     torch.testing.assert_close(posterior.expected_utility(utilities), expected_utility)
     torch.testing.assert_close(
         posterior.member_expected_utility(utilities),
-        expected_member_utility,
+        member_utility,
     )
     torch.testing.assert_close(
         posterior.utility_epistemic_variance(utilities),
@@ -98,7 +98,7 @@ def test_ordinal_probability_posterior_exposes_complete_utility_contract() -> No
     )
     torch.testing.assert_close(
         posterior.predict_class(),
-        posterior.mean.argmax(dim=-1),
+        mean_probs.argmax(dim=-1),
     )
     assert torch.all(posterior.epistemic_variance >= 0.0)
 

@@ -18,16 +18,20 @@ jobs:
           cache: pip
       - name: Install
         run: python -m pip install -e ".[test,tabular,api]"
-      - name: Run observation tests
-        run: |
-          pytest -q --maxfail=1 \
-            tests/test_observation_data.py \
-            tests/test_partial_observation_api.py \
-            tests/test_experiment_success_acquisition.py \
-            tests/test_tabular_observation_states.py \
-            tests/test_fastapi_tabular_observation_states.py \
-            tests/test_webapp_target_missing_policy.py \
-            tests/test_webapp_tabular_backend.py
+      - name: Core observation state
+        run: pytest -q --maxfail=1 tests/test_observation_data.py
+      - name: Partial objective models
+        run: pytest -q --maxfail=1 tests/test_partial_observation_api.py
+      - name: Success-aware acquisition
+        run: pytest -q --maxfail=1 tests/test_experiment_success_acquisition.py
+      - name: Tabular observation state
+        run: pytest -q --maxfail=1 tests/test_tabular_observation_states.py
+      - name: FastAPI observation state
+        run: pytest -q --maxfail=1 tests/test_fastapi_tabular_observation_states.py
+      - name: Web target missing policy
+        run: pytest -q --maxfail=1 tests/test_webapp_target_missing_policy.py
+      - name: Web tabular observation flow
+        run: pytest -q --maxfail=1 tests/test_webapp_tabular_backend.py
       - name: Run lint
         run: |
           python -m pip install ruff

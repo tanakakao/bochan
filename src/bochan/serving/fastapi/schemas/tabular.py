@@ -20,22 +20,6 @@ from .requests import APIRequest
 TabularPayload = list[dict[str, Any]] | dict[str, list[Any]]
 
 
-class CrossValidationRequest(APIRequest):
-    """JSON-safe subset of the core cross-validation configuration."""
-
-    splitter: Literal["auto", "kfold", "stratified", "stratified_kfold", "loo"] = "auto"
-    n_splits: int = Field(default=5, ge=2)
-    shuffle: bool = True
-    random_state: int | None = 0
-    classification_average: Literal["auto", "binary", "micro", "macro", "weighted"] = "auto"
-    classification_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
-    positive_class: int | str | float = 1
-    zero_division: Literal[0, 1] = 0
-    mape_zero_policy: Literal["warn_nan", "ignore", "clip"] = "warn_nan"
-    mape_epsilon: float = Field(default=1e-8, gt=0.0)
-    feature_importance_config: FeatureImportanceConfigRequest | None = None
-
-
 class FeatureImportanceGroupRequest(APIRequest):
     """Column-addressed permutation group."""
 
@@ -47,7 +31,9 @@ class FeatureImportanceGroupRequest(APIRequest):
 class FeatureImportanceConfigRequest(APIRequest):
     """HTTP defaults for core feature-importance inspection."""
 
-    predictive_methods: list[Literal["permutation"]] = Field(default_factory=lambda: ["permutation"])
+    predictive_methods: list[Literal["permutation"]] = Field(
+        default_factory=lambda: ["permutation"]
+    )
     diagnostic_methods: list[str] = Field(default_factory=lambda: ["auto"])
     n_repeats: int = Field(default=10, ge=1, le=100)
     random_state: int | None = 0
@@ -62,6 +48,24 @@ class FeatureImportanceConfigRequest(APIRequest):
     batch_size: int | None = Field(default=None, ge=1)
     unsupported_method_policy: Literal["raise", "warn", "skip"] = "warn"
     error_policy: Literal["raise", "warn", "skip"] = "warn"
+
+
+class CrossValidationRequest(APIRequest):
+    """JSON-safe subset of the core cross-validation configuration."""
+
+    splitter: Literal["auto", "kfold", "stratified", "stratified_kfold", "loo"] = "auto"
+    n_splits: int = Field(default=5, ge=2)
+    shuffle: bool = True
+    random_state: int | None = 0
+    classification_average: Literal[
+        "auto", "binary", "micro", "macro", "weighted"
+    ] = "auto"
+    classification_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    positive_class: int | str | float = 1
+    zero_division: Literal[0, 1] = 0
+    mape_zero_policy: Literal["warn_nan", "ignore", "clip"] = "warn_nan"
+    mape_epsilon: float = Field(default=1e-8, gt=0.0)
+    feature_importance_config: FeatureImportanceConfigRequest | None = None
 
 
 class FeatureImportanceVisualizationRequest(APIRequest):
@@ -81,7 +85,9 @@ class TabularFeatureImportanceRequest(APIRequest):
     """Evaluate a fitted tabular model on training or external data."""
 
     data: TabularPayload | None = None
-    config: FeatureImportanceConfigRequest = Field(default_factory=FeatureImportanceConfigRequest)
+    config: FeatureImportanceConfigRequest = Field(
+        default_factory=FeatureImportanceConfigRequest
+    )
     visualization: FeatureImportanceVisualizationRequest | None = Field(
         default_factory=FeatureImportanceVisualizationRequest
     )
@@ -118,6 +124,16 @@ class TabularFeatureImportanceResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class ExperimentFailureConfigRequest(APIRequest):
+    """HTTP configuration for the independent experiment-success classifier."""
+
+    failure_model_config: ModelConfigSchema | None = None
+    failure_fit_config: FitConfigSchema | None = None
+    min_success_probability: float = Field(default=0.5, ge=0.0, le=1.0)
+    eta: float = Field(default=0.05, gt=0.0)
+    reduce_q: Literal["prod", "min", "mean"] = "prod"
+
+
 class TabularFitModelRequest(APIRequest):
     """Fit a :class:`TabularBayesianOptimizer` from JSON tabular data."""
 
@@ -135,6 +151,9 @@ class TabularFitModelRequest(APIRequest):
     device: str | None = None
     dropna: bool = True
     missing_strategy: str | None = None
+    target_missing_strategy: Literal["drop", "keep"] = "drop"
+    experiment_status_col: str | None = None
+    experiment_failure: ExperimentFailureConfigRequest | None = None
     continuous_impute_strategy: str = "mean"
     categorical_impute_strategy: str = "mode"
     impute_targets: bool = False
@@ -156,9 +175,37 @@ class TabularFitModelRequest(APIRequest):
             return self
         model_kwargs = dict(self.bo_model_config.model_kwargs)
         if "likelihood" in model_kwargs:
-            raise ValueError("Specify either alpha or model_config.model_kwargs.likelihood, not both.")
+            raise ValueError(
+                "Specify either alpha or model_config.model_kwargs.likelihood, not both."
+            )
         model_kwargs["_tabular_noise_alpha"] = float(self.alpha)
         self.bo_model_config.model_kwargs = model_kwargs
+        return self
+
+    @model_validator(mode="after")
+    def validate_observation_fields(self):
+        """Keep experiment state independent from feature/target columns."""
+
+        status = self.experiment_status_col
+        targets = (
+            list(self.target_cols)
+            if isinstance(self.target_cols, list)
+            else [self.target_cols]
+        )
+        if status is not None:
+            if status in self.input_cols:
+                raise ValueError("experiment_status_col must not be included in input_cols.")
+            if status in targets:
+                raise ValueError("experiment_status_col must not be included in target_cols.")
+        if self.experiment_failure is not None and status is None:
+            raise ValueError(
+                "experiment_failure requires experiment_status_col so success/failure "
+                "labels are explicit."
+            )
+        if self.target_missing_strategy == "keep" and self.impute_targets:
+            raise ValueError(
+                "target_missing_strategy='keep' cannot be combined with impute_targets=True."
+            )
         return self
 
 
@@ -174,7 +221,9 @@ class TabularPredictRequest(APIRequest):
     """Predict from records containing the fitted feature columns."""
 
     data: TabularPayload
-    return_type: Literal["dataframe", "posterior", "mean", "variance", "mean_variance"] = "dataframe"
+    return_type: Literal[
+        "dataframe", "posterior", "mean", "variance", "mean_variance"
+    ] = "dataframe"
     include_input: bool = False
     posterior_kwargs: dict[str, Any] = Field(default_factory=dict)
 
@@ -260,6 +309,7 @@ class TabularCandidateResponse(BaseModel):
 
 __all__ = [
     "CrossValidationRequest",
+    "ExperimentFailureConfigRequest",
     "FeatureImportanceConfigRequest",
     "FeatureImportanceGroupRequest",
     "FeatureImportanceSummaryRecord",

@@ -146,6 +146,13 @@ def fit_tabular_optimizer(
 
     from bochan.tabular import TabularBayesianOptimizer
 
+    from .target_missing_policy import current_target_missing_report
+
+    missing_report = current_target_missing_report()
+    target_missing_strategy = (
+        "keep" if bool(missing_report.get("preserve_target_missing")) else "drop"
+    )
+
     categorical_features = categorical_feature_columns(encoded_features)
     categorical_targets = categorical_target_columns(target_metadata)
     fit_data = _mutable_category_frame(
@@ -165,12 +172,17 @@ def fit_tabular_optimizer(
         encode_categories=True,
         return_original_categories=True,
         dropna=False,
+        target_missing_strategy=target_missing_strategy,
         cross_validation=cross_validation,
         cv_config=cv_config,
     )
     optimizer.fit(fit_data)
     if optimizer.dataset is None:
         raise RuntimeError("TabularBayesianOptimizer did not retain its fitted dataset.")
+
+    state = current_target_missing_report()
+    if state.get("feature_impute_values"):
+        optimizer.dataset.impute_values = dict(state["feature_impute_values"])
 
     cross_validation_result = optimizer.cross_validation_result_
     if cross_validation_result is not None:
@@ -205,7 +217,7 @@ def encoded_features_from_tabular(
     optimizer: Any,
     fallback: dict[str, Any],
 ) -> dict[str, Any]:
-    """Expose tabular dataset metadata in the legacy Web response shape."""
+    """Expose tabular dataset metadata in the Web response shape."""
 
     dataset = optimizer.dataset
     if dataset is None:

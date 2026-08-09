@@ -40,6 +40,11 @@ from .converter import (
     tensor_to_dataframe,
 )
 from .multi_output_categories import apply_tabular_multi_output_categories
+from .observation_data import (
+    ObservationTabularDataset,
+    dataframe_to_observation_tensors,
+    numpy_to_observation_tensors,
+)
 from .ordinal_rank_labels import apply_tabular_ordinal_rank_labels
 from .prediction_labels import apply_tabular_prediction_labels
 
@@ -57,6 +62,7 @@ __all__ = [
     "CompositionSearchSpace",
     "CompositionTabularPreprocessor",
     "CompositionTransformer",
+    "ObservationTabularDataset",
     "SimplexTransform",
     "TabularBayesianOptimizer",
     "TabularDataConfig",
@@ -65,6 +71,7 @@ __all__ = [
     "UNSET",
     "bounds_to_tensor",
     "close_compositions",
+    "dataframe_to_observation_tensors",
     "dataframe_to_tensors",
     "drop_unset",
     "element_order",
@@ -77,6 +84,7 @@ __all__ = [
     "make_optimize_config",
     "make_repair_config",
     "normalize_composition",
+    "numpy_to_observation_tensors",
     "numpy_to_tensors",
     "parse_formula",
     "resolve_column_indices",

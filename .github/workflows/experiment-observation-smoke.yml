@@ -1,0 +1,73 @@
+name: Experiment observation smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[test,tabular,api,visualization]"
+      - name: Core observation state
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_observation_data.py \
+            tests/test_observation_tell_state.py
+      - name: Partial objective models
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_partial_observation_api.py \
+            tests/test_wide_mixed_multitask.py
+      - name: Success-aware acquisition
+        run: pytest -q --maxfail=1 tests/test_experiment_success_acquisition.py
+      - name: Tabular observation state
+        run: pytest -q --maxfail=1 tests/test_tabular_observation_states.py
+      - name: FastAPI observation state
+        run: pytest -q --maxfail=1 tests/test_fastapi_tabular_observation_states.py
+      - name: Web observation state
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_webapp_target_missing_policy.py \
+            tests/test_webapp_tabular_backend.py
+      - name: Run lint
+        run: |
+          python -m pip install ruff
+          ruff check \
+            src/bochan/api/model_registry.py \
+            src/bochan/api/observation.py \
+            src/bochan/api/experiment_failure.py \
+            src/bochan/api/observation_engine.py \
+            src/bochan/acquisition/feasible/experiment_success.py \
+            src/bochan/acquisition/feasible/__init__.py \
+            src/bochan/models/hybrid/partial_observation.py \
+            src/bochan/models/wide_mixed_multitask.py \
+            src/bochan/tabular/config.py \
+            src/bochan/tabular/observation_data.py \
+            src/bochan/tabular/observation_optimizer.py \
+            src/bochan/tabular/__init__.py \
+            src/bochan/serving/fastapi/schemas/tabular.py \
+            src/bochan/serving/fastapi/routers/tabular.py \
+            src/bochan/serving/webapp/target_missing_policy.py \
+            src/bochan/serving/webapp/target_settings.py \
+            src/bochan/serving/webapp/tabular_backend.py \
+            src/bochan/serving/webapp/workflows.py \
+            src/bochan/serving/webapp/workflows_tabular.py \
+            tests/test_observation_data.py \
+            tests/test_observation_tell_state.py \
+            tests/test_partial_observation_api.py \
+            tests/test_wide_mixed_multitask.py \
+            tests/test_experiment_success_acquisition.py \
+            tests/test_tabular_observation_states.py \
+            tests/test_fastapi_tabular_observation_states.py \
+            tests/test_webapp_target_missing_policy.py \
+            tests/test_webapp_tabular_backend.py

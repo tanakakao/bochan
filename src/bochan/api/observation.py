@@ -7,7 +7,7 @@ The canonical contract distinguishes four independent facts:
 - a pending experiment has not produced an outcome yet;
 - missing target values are never interpreted as experiment failures implicitly.
 
-This module contains no runtime patching.  It is consumed directly by the core
+This module contains no runtime patching. It is consumed directly by the core
 API, tabular conversion, and candidate construction paths.
 """
 
@@ -90,7 +90,9 @@ class ObservationData:
         if int(Y.shape[0]) != int(X.shape[0]):
             raise ValueError("X and Y must contain the same number of rows.")
         if not torch.is_floating_point(Y):
-            Y = Y.to(dtype=X.dtype if torch.is_floating_point(X) else torch.get_default_dtype())
+            Y = Y.to(
+                dtype=X.dtype if torch.is_floating_point(X) else torch.get_default_dtype()
+            )
         if bool(torch.isinf(Y).any()):
             raise ValueError("Y may contain NaN for unobserved targets, but not +/-inf.")
 
@@ -132,11 +134,11 @@ class ObservationData:
         *,
         status: Any,
         observed_mask: Any | None = None,
-    ) -> "ObservationData":
+    ) -> ObservationData:
         """Build observations from row status strings.
 
         Accepted row statuses are exactly ``success``, ``failed``, and
-        ``pending``.  Target-level missingness remains independent and is inferred
+        ``pending``. Target-level missingness remains independent and is inferred
         from finite Y cells unless ``observed_mask`` is supplied.
         """
 
@@ -220,6 +222,31 @@ class ObservationData:
             raise RuntimeError("Success labels must be finite.")
         return X, y
 
+    def append(self, other: ObservationData) -> ObservationData:
+        """Return a new observation table with rows from ``other`` appended."""
+
+        torch = _torch()
+        if int(self.X.shape[-1]) != int(other.X.shape[-1]):
+            raise ValueError("ObservationData feature dimensions must match.")
+        if int(self.Y.shape[-1]) != int(other.Y.shape[-1]):
+            raise ValueError("ObservationData target dimensions must match.")
+        return ObservationData(
+            X=torch.cat([self.X, other.X.to(self.X)], dim=0),
+            Y=torch.cat([self.Y, other.Y.to(self.Y)], dim=0),
+            observed_mask=torch.cat(
+                [self.observed_mask, other.observed_mask.to(self.observed_mask.device)],
+                dim=0,
+            ),
+            failed_mask=torch.cat(
+                [self.failed_mask, other.failed_mask.to(self.failed_mask.device)],
+                dim=0,
+            ),
+            pending_mask=torch.cat(
+                [self.pending_mask, other.pending_mask.to(self.pending_mask.device)],
+                dim=0,
+            ),
+        )
+
     def report(self) -> dict[str, Any]:
         """Return serializable observation counts for diagnostics."""
 
@@ -230,7 +257,8 @@ class ObservationData:
             "n_failed": int(self.failed_mask.sum().item()),
             "n_pending": int(self.pending_mask.sum().item()),
             "observed_per_output": [
-                int(value) for value in self.observed_mask.sum(dim=0).detach().cpu().tolist()
+                int(value)
+                for value in self.observed_mask.sum(dim=0).detach().cpu().tolist()
             ],
         }
 

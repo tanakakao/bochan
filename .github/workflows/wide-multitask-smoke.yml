@@ -45,6 +45,8 @@ jobs:
             tests/test_thompson_sampling_target_resolution.py \
             tests/test_outcome_constraints.py \
             tests/test_api_acquisition_constraints.py \
+            tests/test_outcome_constraint_config_api.py \
+            tests/test_feasibility_architecture.py \
             tests/test_nsgaii_acquisition_adapter.py \
             tests/test_nsgaii_linear_constraint.py \
             tests/test_tabular_outcome_constraint_column_names.py \
@@ -74,6 +76,7 @@ jobs:
             src/bochan/acquisition/__init__.py \
             src/bochan/acquisition/_nehvi_cache_root.py \
             src/bochan/acquisition/classification_constraints.py \
+            src/bochan/acquisition/feasible/wrapper.py \
             src/bochan/acquisition/multiclass/bayesian_optimization/nparego_observed_baseline.py \
             src/bochan/acquisition/nsgaii_constraint_install.py \
             src/bochan/acquisition/objective/__init__.py \
@@ -93,8 +96,11 @@ jobs:
             src/bochan/acquisition/wide_posterior_events.py \
             src/bochan/api/acquisition_config.py \
             src/bochan/api/automatic_multiobjective.py \
+            src/bochan/api/classification_perturbation_defaults.py \
+            src/bochan/api/feasibility_defaults.py \
+            src/bochan/api/nan_multiobjective.py \
             src/bochan/api/optimizer_api.py \
-            src/bochan/api/repair_constraint_defaults.py \
+            src/bochan/api/optimizer_config.py \
             src/bochan/models/hybrid/__init__.py \
             src/bochan/models/hybrid/class_probability_shapes.py \
             src/bochan/models/hybrid/task_aware_posterior.py \
@@ -138,6 +144,8 @@ jobs:
             tests/test_multiclass_nparego_public_api.py \
             tests/test_multiobjective_thompson_sampling.py \
             tests/test_thompson_sampling_target_resolution.py \
+            tests/test_outcome_constraint_config_api.py \
+            tests/test_feasibility_architecture.py \
             tests/test_nsgaii_acquisition_adapter.py \
             tests/test_nsgaii_linear_constraint.py \
             tests/test_tabular_outcome_constraint_column_names.py \

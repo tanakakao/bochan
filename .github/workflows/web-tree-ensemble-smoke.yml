@@ -6,11 +6,13 @@ on:
       - "pyproject.toml"
       - "src/bochan/api/model_registry.py"
       - "src/bochan/models/hybrid/task_aware_posterior.py"
+      - "src/bochan/serving/webapp/app.py"
       - "web/src/modelOptions.ts"
       - "web/src/regressionLikelihoodOptions.ts"
       - "web/src/pages/OptimizePage.tsx"
       - "tests/test_hybrid_task_aware_posterior.py"
       - "tests/test_web_tree_ensemble_models.py"
+      - "tests/test_webapp_multiobjective_contract.py"
       - ".github/workflows/web-tree-ensemble-smoke.yml"
   workflow_dispatch:
 
@@ -24,10 +26,10 @@ jobs:
           python-version: "3.11"
       - name: Install Web tree ensemble dependencies
         run: python -m pip install -e ".[test,web]" "ruff>=0.6"
-      - name: Run Web tree ensemble and hybrid posterior tests
-        run: pytest -q tests/test_web_tree_ensemble_models.py tests/test_hybrid_task_aware_posterior.py
+      - name: Run Web tree ensemble, hybrid posterior, and capability tests
+        run: pytest -q tests/test_web_tree_ensemble_models.py tests/test_hybrid_task_aware_posterior.py tests/test_webapp_multiobjective_contract.py
       - name: Lint focused Python changes
-        run: ruff check src/bochan/models/hybrid/task_aware_posterior.py tests/test_web_tree_ensemble_models.py
+        run: ruff check src/bochan/models/hybrid/task_aware_posterior.py tests/test_web_tree_ensemble_models.py tests/test_webapp_multiobjective_contract.py
       - uses: actions/setup-node@v4
         with:
           node-version: "20"

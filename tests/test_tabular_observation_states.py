@@ -47,7 +47,7 @@ def test_dataframe_observation_conversion_keeps_partial_targets_and_masks_states
     assert dataset.source_index.tolist() == [0, 1, 2, 3]
 
 
-def test_target_drop_keeps_failed_and_pending_rows_for_state_learning() -> None:
+def test_target_drop_keeps_all_status_rows_for_state_learning() -> None:
     data = pd.DataFrame(
         {
             "x": [0.0, 1.0, 2.0, 3.0],
@@ -65,9 +65,11 @@ def test_target_drop_keeps_failed_and_pending_rows_for_state_learning() -> None:
         ),
     )
 
-    assert dataset.source_index.tolist() == [0, 1, 2]
-    assert dataset.failed_mask.tolist() == [False, True, False]
-    assert dataset.pending_mask.tolist() == [False, False, True]
+    assert dataset.source_index.tolist() == [0, 1, 2, 3]
+    assert dataset.failed_mask.tolist() == [False, True, False, False]
+    assert dataset.pending_mask.tolist() == [False, False, True, False]
+    assert dataset.observed_mask.tolist() == [[True], [False], [False], [False]]
+    assert torch.isnan(dataset.Y[3]).all()
 
 
 def test_tabular_multitask_fit_preserves_unobserved_cells() -> None:

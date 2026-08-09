@@ -8,6 +8,8 @@ from typing import Any
 
 from .target_settings import _as_2d
 
+_WEB_YY_PLOT_MAX_POINTS = 2000
+
 
 def _figure_payload(
     figure: Any,
@@ -336,6 +338,33 @@ def _candidate_rows(
     return rows
 
 
+def _visualization_subset(
+    train_x: Any,
+    original_targets: Any,
+    *,
+    max_points: int,
+) -> tuple[Any, Any, int]:
+    """Return a deterministic row subset for interactive Web visualizations."""
+
+    import torch
+
+    if max_points <= 0:
+        raise ValueError("max_points must be positive.")
+    n_rows = int(train_x.shape[0])
+    if n_rows <= max_points:
+        return train_x, original_targets, n_rows
+
+    positions = torch.linspace(
+        0,
+        n_rows - 1,
+        steps=max_points,
+        device=train_x.device,
+    ).round().to(dtype=torch.long)
+    sampled_x = train_x.index_select(0, positions)
+    sampled_targets = original_targets.iloc[positions.detach().cpu().tolist()]
+    return sampled_x, sampled_targets, n_rows
+
+
 def _build_visualizations(
     *,
     optimizer: Any,
@@ -344,31 +373,51 @@ def _build_visualizations(
     target_columns: list[str],
     target_metadata: dict[str, dict[str, Any]],
     hybrid_model: bool,
+    max_points: int = _WEB_YY_PLOT_MAX_POINTS,
 ) -> tuple[list[dict[str, Any]], list[str]]:
-    """Build regression YY plots; retain explicit warnings for discrete outputs."""
+    """Build regression YY plots without unbounded full-dataset inference."""
 
     figures: list[dict[str, Any]] = []
     warnings: list[str] = []
+    regression_targets = [
+        target
+        for target in target_columns
+        if target_metadata[target]["internal_task"] == "regression"
+    ]
+    for target in target_columns:
+        if target_metadata[target]["internal_task"] != "regression":
+            warnings.append(f"{target}: 分類・順序回帰の専用可視化は未接続のため、候補テーブルで確認してください。")
+    if not regression_targets:
+        return figures, warnings
+
     try:
+        visualization_x, visualization_targets, original_row_count = _visualization_subset(
+            train_x,
+            original_targets,
+            max_points=max_points,
+        )
         display, _ = _display_predictions(
             optimizer,
-            train_x,
+            visualization_x,
             target_columns=target_columns,
             target_metadata=target_metadata,
             hybrid_model=hybrid_model,
         )
     except Exception as exc:
-        return [], [f"可視化用予測を生成できませんでした: {exc}"]
+        return [], warnings + [f"可視化用予測を生成できませんでした: {exc}"]
 
-    for target in target_columns:
-        meta = target_metadata[target]
-        if meta["internal_task"] != "regression":
-            warnings.append(f"{target}: 分類・順序回帰の専用可視化は未接続のため、候補テーブルで確認してください。")
-            continue
+    sampled_row_count = int(visualization_x.shape[0])
+    sampling_note = (
+        ""
+        if sampled_row_count == original_row_count
+        else f" 表示負荷軽減のため {original_row_count:,} 点から {sampled_row_count:,} 点を等間隔抽出しています。"
+    )
+
+    for target in regression_targets:
         try:
             import plotly.graph_objects as go
 
-            observed = original_targets[target].to_numpy(dtype=float)
+            observed = visualization_targets[target].to_numpy(dtype=float)
             predicted = display[target]["mean"].detach().cpu().numpy()
             lower = float(min(observed.min(), predicted.min()))
             upper = float(max(observed.max(), predicted.max()))
@@ -396,7 +445,10 @@ def _build_visualizations(
                     figure,
                     figure_id=f"{_safe_figure_id(target)}-yyplot",
                     title=f"{target}: 実測値と予測値",
-                    description="学習データに対する予測平均を実測値と比較します。",
+                    description=(
+                        "学習データに対する予測平均を実測値と比較します。"
+                        f"{sampling_note}"
+                    ),
                 )
             )
         except Exception as exc:

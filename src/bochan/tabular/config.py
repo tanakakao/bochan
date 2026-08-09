@@ -35,12 +35,22 @@ class TabularFeatureGroup:
 
 @dataclass
 class TabularDataConfig:
-    """Configuration for converting tabular data into bochan tensors."""
+    """Configuration for converting tabular data into bochan tensors.
+
+    ``missing_strategy`` applies to explanatory variables only. Target missingness
+    is controlled independently by ``target_missing_strategy`` so a missing
+    objective can be retained as an unobserved cell without imputing it.
+
+    When ``experiment_status_col`` is configured, its values must be ``success``,
+    ``failed``, or ``pending`` (case-insensitive). Failed and pending rows are
+    retained as experiment-state observations even when every target is missing.
+    """
 
     input_cols: Sequence[ColumnKey] | None = None
     target_cols: Sequence[ColumnKey] | ColumnKey | None = None
     categorical_cols: Sequence[ColumnKey] = field(default_factory=list)
     target_categorical_cols: Sequence[ColumnKey] | None = None
+    experiment_status_col: ColumnKey | None = None
 
     bounds: Any | Mapping[ColumnKey, Sequence[float]] | None = None
     dtype: Any | None = None
@@ -48,6 +58,7 @@ class TabularDataConfig:
 
     dropna: bool = True
     missing_strategy: str | None = None
+    target_missing_strategy: str = "drop"
     continuous_impute_strategy: str = "mean"
     categorical_impute_strategy: str = "mode"
     impute_targets: bool = False

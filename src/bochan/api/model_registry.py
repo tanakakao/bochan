@@ -80,6 +80,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "random_forest": ("bochan.models.regression.external", "RandomForestRegressorModel"),
             "deep_ensemble": ("bochan.models.regression.neural", "DeepEnsembleRegressorModel"),
             "pfn": ("bochan.models.regression.foundation", "PFNRegressorModel"),
+            "tabpfn": ("bochan.models.regression.foundation", "TabPFNRegressorModel"),
             "beta_base": ("bochan.models.regression.non_gaussian.beta.base", "BetaGPModel"),
             "beta_deepgp": ("bochan.models.regression.non_gaussian.beta.deep", "BetaDeepGPModel"),
             "beta_deepkernel": ("bochan.models.regression.non_gaussian.beta.deep", "DeepKernelBetaGPModel"),
@@ -175,6 +176,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "ngboost_ensemble": ("bochan.models.classification.binary.external", "NGBoostBinaryEnsembleModel"),
             "random_forest": ("bochan.models.classification.binary.external", "RandomForestBinaryClassificationModel"),
             "deep_ensemble": ("bochan.models.classification.binary.neural", "DeepEnsembleBinaryClassificationModel"),
+            "tabpfn": ("bochan.models.classification.binary.foundation", "TabPFNBinaryClassificationModel"),
         },
         "ordinal": {
             "base": ("bochan.models.ordinal.base", "OrdinalGPModel"),
@@ -212,6 +214,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "ngboost_ensemble": ("bochan.models.classification.multiclass.external", "NGBoostMulticlassEnsembleModel"),
             "random_forest": ("bochan.models.classification.multiclass.external", "RandomForestMulticlassClassificationModel"),
             "deep_ensemble": ("bochan.models.classification.multiclass.neural", "DeepEnsembleMulticlassClassificationModel"),
+            "tabpfn": ("bochan.models.classification.multiclass.foundation", "TabPFNMulticlassClassificationModel"),
         },
     },
     "mixed": {
@@ -237,6 +240,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "ngboost_ensemble": ("bochan.models.regression.external", "NGBoostMixedEnsembleModel"),
             "random_forest": ("bochan.models.regression.external", "RandomForestMixedRegressorModel"),
             "deep_ensemble": ("bochan.models.regression.neural", "DeepEnsembleMixedRegressorModel"),
+            "tabpfn": ("bochan.models.regression.foundation", "TabPFNMixedRegressorModel"),
             "beta_base": ("bochan.models.regression.non_gaussian.beta.base", "BetaMixedGPModel"),
             "beta_deepgp": ("bochan.models.regression.non_gaussian.beta.deep", "BetaMixedDeepGPModel"),
             "beta_deepkernel": ("bochan.models.regression.non_gaussian.beta.deep", "DeepKernelBetaMixedGPModel"),
@@ -250,7 +254,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "gamma_deepkernel": ("bochan.models.regression.non_gaussian.gamma.deep", "DeepKernelGammaMixedGPModel"),
             "gamma_saas": ("bochan.models.regression.non_gaussian.gamma.high_dim", "SaasGammaMixedGPModel"),
             "gamma_pca": ("bochan.models.regression.non_gaussian.gamma.high_dim", "PCAGammaMixedGPModel"),
-            "gamma_rembo": ("bochan.models.regression.non_gaussian.gamma.high_dim", "REMBOGammaMixedGPModel"),
+            "gamma_rembo": ("bochan.models.regression.non_gaussian.gamma.high_dim", "REMBOMixedGPModel"),
             "gamma_rrp": ("bochan.models.regression.non_gaussian.gamma.robust", "OutlierRelevancePursuitGammaMixedGPModel"),
             "gamma_hetero": ("bochan.models.regression.non_gaussian.gamma.robust", "HeteroscedasticGammaMixedGPModel"),
             "poisson_base": ("bochan.models.regression.non_gaussian.poisson.base", "PoissonMixedGPModel"),
@@ -304,6 +308,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "ngboost_ensemble": ("bochan.models.classification.binary.external", "NGBoostMixedBinaryEnsembleModel"),
             "random_forest": ("bochan.models.classification.binary.external", "RandomForestMixedBinaryClassificationModel"),
             "deep_ensemble": ("bochan.models.classification.binary.neural", "DeepEnsembleMixedBinaryClassificationModel"),
+            "tabpfn": ("bochan.models.classification.binary.foundation", "TabPFNMixedBinaryClassificationModel"),
         },
         "ordinal": {
             "base": ("bochan.models.ordinal.base", "OrdinalMixedGPModel"),
@@ -341,6 +346,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "ngboost_ensemble": ("bochan.models.classification.multiclass.external", "NGBoostMixedMulticlassEnsembleModel"),
             "random_forest": ("bochan.models.classification.multiclass.external", "RandomForestMixedMulticlassClassificationModel"),
             "deep_ensemble": ("bochan.models.classification.multiclass.neural", "DeepEnsembleMixedMulticlassClassificationModel"),
+            "tabpfn": ("bochan.models.classification.multiclass.foundation", "TabPFNMixedMulticlassClassificationModel"),
         },
     },
 }

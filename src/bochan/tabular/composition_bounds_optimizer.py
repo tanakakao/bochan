@@ -8,20 +8,22 @@ from typing import Any
 import numpy as np
 
 from . import element_constraint_composition_optimizer as _element_constraint_module
+from .observation_optimizer import ObservationTabularMixin
 
 _ElementConstraintTabularBayesianOptimizer = (
     _element_constraint_module.TabularBayesianOptimizer
 )
 
 
-class TabularBayesianOptimizer(_ElementConstraintTabularBayesianOptimizer):
-    """Infer bounds for ordinary columns beside composition-derived features.
+class TabularBayesianOptimizer(
+    ObservationTabularMixin,
+    _ElementConstraintTabularBayesianOptimizer,
+):
+    """Canonical composition- and observation-aware tabular optimizer.
 
-    Composition wrappers must create explicit bounds for ILR/CLR/ALR coordinates
-    and descriptor columns. Once a bounds mapping exists, the core tabular
-    converter requires an entry for every input feature. This layer fills any
-    missing passthrough numeric or categorical columns from the transformed
-    training frame while preserving user-supplied bounds.
+    The class keeps the existing composition preprocessing / repair chain while
+    adding explicit partial-observation and experiment-state handling through a
+    source-level mixin. This remains the single public tabular optimizer class.
     """
 
     @staticmethod

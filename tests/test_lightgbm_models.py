@@ -334,6 +334,7 @@ def test_mixed_lightgbm_classification_and_ordinal_use_native_categorical_featur
         cat_dims=[1],
         estimator=classifier,
     ).fit()
+    assert multiclass.is_fitted
     assert classifier.fit_X is not None
     assert classifier.fit_X.shape == (9, 2)
     assert classifier.fit_kwargs["categorical_feature"] == [1]
@@ -348,6 +349,7 @@ def test_mixed_lightgbm_classification_and_ordinal_use_native_categorical_featur
         cat_dims=[1],
         estimators=ordinal_estimators,
     ).fit()
+    assert ordinal.is_fitted
     assert ordinal_estimators[0].fit_X is not None
     assert ordinal_estimators[0].fit_X.shape == (9, 2)
     assert ordinal_estimators[0].fit_kwargs["categorical_feature"] == [1]

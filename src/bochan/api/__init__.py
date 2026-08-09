@@ -324,6 +324,14 @@ from .factory import (
     resolve_model_cls,
 )
 from .model_registry import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
+from .observation import ExperimentFailureConfig, ObservationData
+from .observation_engine import BayesianOptimizer as ObservationBayesianOptimizer
+
+# Observation-aware fitting is the canonical public optimizer.  The class uses
+# normal inheritance from the automatic-default engine; no runtime method or
+# factory replacement is required for observation handling.
+BayesianOptimizer = ObservationBayesianOptimizer
+
 from .study import CandidateBatch, StudySnapshot, StudySuggestion, Trial, TrialState
 from .study_controls import (
     BochanStudy,
@@ -348,6 +356,7 @@ __all__ = [
     "DataContext",
     "DEFAULT_MODEL_REGISTRY",
     "EarlyStoppingConfig",
+    "ExperimentFailureConfig",
     "FitConfig",
     "FeatureGroup",
     "FeatureImportanceConfig",
@@ -362,6 +371,7 @@ __all__ = [
     "MultiObjectiveConfig",
     "MultiOutputConfig",
     "ObjectiveConfig",
+    "ObservationData",
     "OutcomeConstraintConfig",
     "OutputConfig",
     "OutputCrossValidationResult",

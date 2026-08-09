@@ -324,7 +324,6 @@ class BayesianOptimizer(_DefaultBayesianOptimizer):
         self.model = self.bundle.model
         self.mll = self.bundle.mll
         self.bundle.metadata["observation"] = observation_data.report()
-        self.bundle.metadata["observed_target_mask"] = observation_data.observed_mask
 
         if llm_plan is not None:
             self.llm_plan = llm_plan
@@ -340,14 +339,16 @@ class BayesianOptimizer(_DefaultBayesianOptimizer):
             failure_model_config = failure_config.model_config or _default_failure_model_config(
                 self.model_config
             )
-            failure_fit_config = failure_config.fit_config or self.fit_config
             self.failure_bundle = build_model(
                 train_X=success_X,
                 train_Y=success_Y,
                 config=failure_model_config,
                 model_registry=self.model_registry,
             )
-            self.failure_bundle = fit_model(self.failure_bundle, failure_fit_config)
+            self.failure_bundle = fit_model(
+                self.failure_bundle,
+                failure_config.fit_config,
+            )
             self.failure_model = self.failure_bundle.model
             self.bundle.metadata["experiment_failure_model"] = {
                 "enabled": True,
@@ -407,6 +408,7 @@ class BayesianOptimizer(_DefaultBayesianOptimizer):
         if self.observations is None:
             raise RuntimeError("Call fit(...) before tell_observations(...).")
         self.observations = self.observations.append(observations)
+        self.train_X, self.train_Y = self.observations.objective_training_data()
         if refit:
             self.refit(fit_config=fit_config)
         return self

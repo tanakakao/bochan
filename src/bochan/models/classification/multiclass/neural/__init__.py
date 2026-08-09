@@ -1,15 +1,11 @@
-"""Neural ensemble classification models."""
+"""Neural models for multiclass classification."""
 
 from .deep_ensemble import (
-    DeepEnsembleBinaryClassificationModel,
-    DeepEnsembleMixedBinaryClassificationModel,
     DeepEnsembleMixedMulticlassClassificationModel,
     DeepEnsembleMulticlassClassificationModel,
 )
 
 __all__ = [
-    "DeepEnsembleBinaryClassificationModel",
-    "DeepEnsembleMixedBinaryClassificationModel",
     "DeepEnsembleMixedMulticlassClassificationModel",
     "DeepEnsembleMulticlassClassificationModel",
 ]

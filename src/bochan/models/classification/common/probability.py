@@ -1,4 +1,4 @@
-"""Shared BoTorch-facing base for external probability classifiers."""
+"""Shared BoTorch-facing probability classification infrastructure."""
 
 from __future__ import annotations
 
@@ -65,8 +65,7 @@ def _align_probability_columns(
     row_sums = aligned.sum(axis=1, keepdims=True)
     if np.any(row_sums <= 0):
         raise RuntimeError(f"{model_name} predict_proba returned a zero-probability row.")
-    aligned = np.clip(aligned / row_sums, 0.0, 1.0)
-    return aligned
+    return np.clip(aligned / row_sums, 0.0, 1.0)
 
 
 def _classification_bootstrap_indices(
@@ -102,12 +101,10 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
     _is_fitted: bool
 
     def make_mll(self, **kwargs: Any) -> None:
-        """Signal that external classifiers are fitted directly without a GP MLL."""
         del kwargs
         return None
 
     def _configure_probability_acquisition_bridge(self) -> None:
-        """Install the probability-space compatibility likelihood for binary AL."""
         if self.binary:
             self.likelihood = _ProbabilityPassthroughLikelihood()
 
@@ -158,6 +155,7 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
         posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ) -> ClassificationEnsemblePosterior:
+        del kwargs
         if output_indices is not None and (not self.binary or list(output_indices) != [0]):
             raise UnsupportedError(
                 f"{type(self).__name__} does not support output_indices={output_indices}."
@@ -179,7 +177,6 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
         return posterior
 
     def probability_posterior(self, X: Tensor, **kwargs: Any) -> ClassificationEnsemblePosterior:
-        """Return the standard probability posterior used by bochan prediction APIs."""
         return self.posterior(X, **kwargs)
 
     def epistemic_probability_posterior(
@@ -187,11 +184,9 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
         X: Tensor,
         **kwargs: Any,
     ) -> ClassificationEnsemblePosterior:
-        """Return member probability samples for epistemic active learning."""
         return self.posterior(X, **kwargs)
 
     def _multiclass_log_probability_posterior(self, X: Tensor) -> GPyTorchPosterior:
-        """Gaussian approximation to ensemble log-probabilities for legacy MC samplers."""
         probability_posterior = self.posterior(X)
         probability_values = probability_posterior.values.clamp_min(1e-9)
         log_values = probability_values.log()
@@ -237,13 +232,7 @@ class _ExternalProbabilityClassifierMixin(_ExternalClassifierMixin):
         posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ):
-        """Compatibility posterior used by existing classification acquisitions.
-
-        Binary models expose finite member probabilities directly and install a
-        passthrough Bernoulli likelihood. Multiclass models expose a Gaussian
-        approximation in log-probability space; the existing multiclass
-        acquisition softmax then maps those samples back to the simplex.
-        """
+        del kwargs
         if output_indices is not None and (not self.binary or list(output_indices) != [0]):
             raise UnsupportedError(
                 f"{type(self).__name__} does not support output_indices={output_indices}."

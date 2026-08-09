@@ -1,4 +1,4 @@
-"""BoTorch-compatible NGBoost classification models."""
+"""Shared NGBoost classification implementation."""
 
 from __future__ import annotations
 
@@ -11,12 +11,11 @@ from torch import Tensor
 from torch.nn import Module
 
 from bochan.models.external.common import (
-    _MixedCategoricalMixin,
     _check_one_to_one_input_transform,
     _require_classification_targets,
 )
 
-from .base import (
+from .probability import (
     _ExternalProbabilityClassifierMixin,
     _align_probability_columns,
     _classification_bootstrap_indices,
@@ -106,6 +105,7 @@ class _NGBoostClassificationModel(_ExternalProbabilityClassifierMixin, EnsembleM
             if estimator is not None
             else _new_ngboost_classifier(ngboost_kwargs, num_classes=self.num_classes)
         )
+        self._configure_probability_acquisition_bridge()
         self._is_fitted = False
 
     def fit(
@@ -210,6 +210,7 @@ class _NGBoostClassificationEnsembleModel(_ExternalProbabilityClassifierMixin, E
 
         if weights is not None and weights.numel() != self.ensemble_size:
             raise ValueError("weights must contain one value per ensemble member.")
+        self._configure_probability_acquisition_bridge()
         self._is_fitted = False
 
     def _build_estimators(self, estimator_factory: Callable[[], Any] | None) -> list[Any]:
@@ -287,143 +288,7 @@ class _NGBoostClassificationEnsembleModel(_ExternalProbabilityClassifierMixin, E
         ]
 
 
-class NGBoostBinaryClassificationModel(_NGBoostClassificationModel):
-    """Single probabilistic NGBoost binary classifier."""
-
-    def __init__(self, train_X: Tensor, train_Y: Tensor, **kwargs: Any) -> None:
-        super().__init__(train_X=train_X, train_Y=train_Y, binary=True, num_classes=2, **kwargs)
-
-
-class NGBoostBinaryEnsembleModel(_NGBoostClassificationEnsembleModel):
-    """Bootstrap NGBoost binary ensemble with epistemic probability samples."""
-
-    def __init__(self, train_X: Tensor, train_Y: Tensor, **kwargs: Any) -> None:
-        super().__init__(train_X=train_X, train_Y=train_Y, binary=True, num_classes=2, **kwargs)
-
-
-class NGBoostMulticlassClassificationModel(_NGBoostClassificationModel):
-    """Single NGBoost multiclass classifier using an automatic categorical Dist."""
-
-    def __init__(
-        self,
-        train_X: Tensor,
-        train_Y: Tensor,
-        *,
-        num_classes: int | None = None,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(
-            train_X=train_X,
-            train_Y=train_Y,
-            binary=False,
-            num_classes=num_classes,
-            **kwargs,
-        )
-
-
-class NGBoostMulticlassEnsembleModel(_NGBoostClassificationEnsembleModel):
-    """Bootstrap NGBoost multiclass ensemble."""
-
-    def __init__(
-        self,
-        train_X: Tensor,
-        train_Y: Tensor,
-        *,
-        num_classes: int | None = None,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(
-            train_X=train_X,
-            train_Y=train_Y,
-            binary=False,
-            num_classes=num_classes,
-            **kwargs,
-        )
-
-
-class NGBoostMixedBinaryClassificationModel(
-    _MixedCategoricalMixin,
-    NGBoostBinaryClassificationModel,
-):
-    """Single NGBoost binary classifier for mixed inputs."""
-
-    def __init__(
-        self,
-        train_X: Tensor,
-        train_Y: Tensor,
-        cat_dims: Sequence[int],
-        *,
-        categorical_atol: float = 1e-8,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(train_X=train_X, train_Y=train_Y, **kwargs)
-        self._configure_categorical_encoder(train_X, cat_dims, categorical_atol)
-
-
-class NGBoostMixedBinaryEnsembleModel(
-    _MixedCategoricalMixin,
-    NGBoostBinaryEnsembleModel,
-):
-    """Bootstrap NGBoost binary ensemble for mixed inputs."""
-
-    def __init__(
-        self,
-        train_X: Tensor,
-        train_Y: Tensor,
-        cat_dims: Sequence[int],
-        *,
-        categorical_atol: float = 1e-8,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(train_X=train_X, train_Y=train_Y, **kwargs)
-        self._configure_categorical_encoder(train_X, cat_dims, categorical_atol)
-
-
-class NGBoostMixedMulticlassClassificationModel(
-    _MixedCategoricalMixin,
-    NGBoostMulticlassClassificationModel,
-):
-    """Single NGBoost multiclass classifier for mixed inputs."""
-
-    def __init__(
-        self,
-        train_X: Tensor,
-        train_Y: Tensor,
-        cat_dims: Sequence[int],
-        *,
-        categorical_atol: float = 1e-8,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(train_X=train_X, train_Y=train_Y, **kwargs)
-        self._configure_categorical_encoder(train_X, cat_dims, categorical_atol)
-
-
-class NGBoostMixedMulticlassEnsembleModel(
-    _MixedCategoricalMixin,
-    NGBoostMulticlassEnsembleModel,
-):
-    """Bootstrap NGBoost multiclass ensemble for mixed inputs."""
-
-    def __init__(
-        self,
-        train_X: Tensor,
-        train_Y: Tensor,
-        cat_dims: Sequence[int],
-        *,
-        categorical_atol: float = 1e-8,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(train_X=train_X, train_Y=train_Y, **kwargs)
-        self._configure_categorical_encoder(train_X, cat_dims, categorical_atol)
-
-
 __all__ = [
-    "NGBoostBinaryClassificationModel",
-    "NGBoostBinaryEnsembleModel",
-    "NGBoostMixedBinaryClassificationModel",
-    "NGBoostMixedBinaryEnsembleModel",
-    "NGBoostMixedMulticlassClassificationModel",
-    "NGBoostMixedMulticlassEnsembleModel",
-    "NGBoostMulticlassClassificationModel",
-    "NGBoostMulticlassEnsembleModel",
+    "_NGBoostClassificationEnsembleModel",
+    "_NGBoostClassificationModel",
 ]

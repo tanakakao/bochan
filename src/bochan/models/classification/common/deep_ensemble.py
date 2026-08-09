@@ -1,4 +1,4 @@
-"""BoTorch-native Deep Ensemble models for binary and multiclass classification."""
+"""Shared differentiable Deep Ensemble classification implementation."""
 
 from __future__ import annotations
 
@@ -11,12 +11,10 @@ from botorch.models.ensemble import EnsembleModel
 from torch import Tensor, nn
 from torch.optim import Optimizer
 
-from bochan.models.classification.external.base import _ExternalProbabilityClassifierMixin
 from bochan.models.external.common import _require_classification_targets
-from bochan.models.regression.neural.deep_ensemble import (
-    _MixedCategoricalEncoder,
-    _make_activation,
-)
+from bochan.models.regression.neural.deep_ensemble import _make_activation
+
+from .probability import _ExternalProbabilityClassifierMixin
 
 
 class _DenseClassifier(nn.Module):
@@ -113,13 +111,7 @@ class _DeepEnsembleClassificationModel(
     _ExternalProbabilityClassifierMixin,
     EnsembleModel,
 ):
-    """Shared differentiable Deep Ensemble classifier.
-
-    The model reuses bochan's finite probability-posterior contract used by the
-    external Random Forest / NGBoost classifiers, but all inference remains in
-    PyTorch. Consequently, class-probability samples retain gradients with
-    respect to candidate inputs.
-    """
+    """Shared differentiable Deep Ensemble classifier."""
 
     def __init__(
         self,
@@ -138,8 +130,8 @@ class _DeepEnsembleClassificationModel(
         members: Sequence[nn.Module] | None = None,
         member_factory: Callable[[int, int], nn.Module] | None = None,
         weights: Tensor | None = None,
-        _feature_encoder: nn.Module | None = None,
-        _encoded_input_dim: int | None = None,
+        feature_encoder: nn.Module | None = None,
+        encoded_input_dim: int | None = None,
     ) -> None:
         if ensemble_size <= 0:
             raise ValueError("ensemble_size must be positive.")
@@ -163,8 +155,8 @@ class _DeepEnsembleClassificationModel(
         self.num_classes = int(inferred_classes)
         self.bootstrap = bool(bootstrap)
         self.random_state = random_state
-        self.feature_encoder = _feature_encoder if _feature_encoder is not None else nn.Identity()
-        encoded_input_dim = int(_encoded_input_dim or train_X.shape[-1])
+        self.feature_encoder = feature_encoder if feature_encoder is not None else nn.Identity()
+        input_dim = int(encoded_input_dim or train_X.shape[-1])
         output_dim = 1 if self.binary else self.num_classes
 
         if members is not None:
@@ -179,7 +171,7 @@ class _DeepEnsembleClassificationModel(
             member_list = [
                 self._build_member(
                     index=index,
-                    input_dim=encoded_input_dim,
+                    input_dim=input_dim,
                     output_dim=output_dim,
                     hidden_dims=hidden_dims,
                     activation=activation,
@@ -363,96 +355,4 @@ class _DeepEnsembleClassificationModel(
         return torch.stack(values, dim=-3)
 
 
-class DeepEnsembleBinaryClassificationModel(_DeepEnsembleClassificationModel):
-    """Binary Deep Ensemble classifier with epistemic probability samples."""
-
-    def __init__(self, train_X: Tensor, train_Y: Tensor, **kwargs: Any) -> None:
-        super().__init__(train_X=train_X, train_Y=train_Y, binary=True, num_classes=2, **kwargs)
-
-
-class DeepEnsembleMulticlassClassificationModel(_DeepEnsembleClassificationModel):
-    """Multiclass Deep Ensemble classifier with simplex-valued member samples."""
-
-    def __init__(
-        self,
-        train_X: Tensor,
-        train_Y: Tensor,
-        *,
-        num_classes: int | None = None,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(
-            train_X=train_X,
-            train_Y=train_Y,
-            binary=False,
-            num_classes=num_classes,
-            **kwargs,
-        )
-
-
-class DeepEnsembleMixedBinaryClassificationModel(DeepEnsembleBinaryClassificationModel):
-    """Binary Deep Ensemble classifier for mixed continuous/categorical inputs."""
-
-    def __init__(
-        self,
-        train_X: Tensor,
-        train_Y: Tensor,
-        cat_dims: Sequence[int],
-        *,
-        categorical_atol: float = 1e-8,
-        **kwargs: Any,
-    ) -> None:
-        encoder = _MixedCategoricalEncoder(train_X=train_X, cat_dims=cat_dims, atol=categorical_atol)
-        super().__init__(
-            train_X=train_X,
-            train_Y=train_Y,
-            _feature_encoder=encoder,
-            _encoded_input_dim=encoder.encoded_dim,
-            **kwargs,
-        )
-        self.cat_dims = list(encoder.cat_dims)
-
-    @property
-    def categorical_values(self) -> dict[int, tuple[float, ...]]:
-        encoder = self.feature_encoder
-        if not isinstance(encoder, _MixedCategoricalEncoder):  # pragma: no cover
-            raise RuntimeError("Mixed Deep Ensemble categorical encoder is unavailable.")
-        return encoder.categorical_values
-
-
-class DeepEnsembleMixedMulticlassClassificationModel(DeepEnsembleMulticlassClassificationModel):
-    """Multiclass Deep Ensemble classifier for mixed inputs."""
-
-    def __init__(
-        self,
-        train_X: Tensor,
-        train_Y: Tensor,
-        cat_dims: Sequence[int],
-        *,
-        categorical_atol: float = 1e-8,
-        **kwargs: Any,
-    ) -> None:
-        encoder = _MixedCategoricalEncoder(train_X=train_X, cat_dims=cat_dims, atol=categorical_atol)
-        super().__init__(
-            train_X=train_X,
-            train_Y=train_Y,
-            _feature_encoder=encoder,
-            _encoded_input_dim=encoder.encoded_dim,
-            **kwargs,
-        )
-        self.cat_dims = list(encoder.cat_dims)
-
-    @property
-    def categorical_values(self) -> dict[int, tuple[float, ...]]:
-        encoder = self.feature_encoder
-        if not isinstance(encoder, _MixedCategoricalEncoder):  # pragma: no cover
-            raise RuntimeError("Mixed Deep Ensemble categorical encoder is unavailable.")
-        return encoder.categorical_values
-
-
-__all__ = [
-    "DeepEnsembleBinaryClassificationModel",
-    "DeepEnsembleMixedBinaryClassificationModel",
-    "DeepEnsembleMixedMulticlassClassificationModel",
-    "DeepEnsembleMulticlassClassificationModel",
-]
+__all__ = ["_DeepEnsembleClassificationModel"]

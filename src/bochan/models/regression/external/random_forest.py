@@ -1,4 +1,4 @@
-"""BoTorch-compatible Random Forest surrogate models."""
+"""BoTorch-compatible Random Forest regression models."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from botorch.models.ensemble import EnsembleModel
 from torch import Tensor
 from torch.nn import Module
 
-from .common import (
+from bochan.models.external.common import (
     _ExternalRegressorMixin,
     _MixedCategoricalMixin,
     _check_one_to_one_input_transform,

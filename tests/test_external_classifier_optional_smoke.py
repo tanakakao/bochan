@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import torch
 
-from bochan.models.classification.external import (
+from bochan.models.classification.binary.external import (
     NGBoostBinaryClassificationModel,
-    NGBoostMulticlassClassificationModel,
     RandomForestBinaryClassificationModel,
+)
+from bochan.models.classification.multiclass.external import (
+    NGBoostMulticlassClassificationModel,
     RandomForestMulticlassClassificationModel,
 )
 

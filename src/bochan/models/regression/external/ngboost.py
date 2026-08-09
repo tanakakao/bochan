@@ -1,4 +1,4 @@
-"""BoTorch-compatible NGBoost surrogate models."""
+"""BoTorch-compatible NGBoost regression models."""
 
 from __future__ import annotations
 
@@ -17,8 +17,9 @@ from linear_operator.operators import DiagLinearOperator
 from torch import Tensor
 from torch.nn import Module
 
-from .common import (
+from bochan.models.external.common import (
     _ExternalRegressorMixin,
+    _MixedCategoricalMixin,
     _check_one_to_one_input_transform,
     _require_single_output,
     _validate_output_indices,
@@ -323,3 +324,43 @@ class NGBoostEnsembleModel(_NGBoostModelMixin, EnsembleModel):
             value = torch.as_tensor(prediction, dtype=X.dtype, device=X.device).reshape(*leading_shape, 1)
             member_values.append(value)
         return torch.stack(member_values, dim=-3)
+
+
+class NGBoostMixedRegressorModel(_MixedCategoricalMixin, NGBoostRegressorModel):
+    """NGBoost regressor for mixed continuous/categorical inputs."""
+
+    def __init__(
+        self,
+        train_X: Tensor,
+        train_Y: Tensor,
+        cat_dims: Sequence[int],
+        *,
+        categorical_atol: float = 1e-8,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(train_X=train_X, train_Y=train_Y, **kwargs)
+        self._configure_categorical_encoder(train_X, cat_dims, categorical_atol)
+
+
+class NGBoostMixedEnsembleModel(_MixedCategoricalMixin, NGBoostEnsembleModel):
+    """Bootstrap NGBoost ensemble for mixed inputs."""
+
+    def __init__(
+        self,
+        train_X: Tensor,
+        train_Y: Tensor,
+        cat_dims: Sequence[int],
+        *,
+        categorical_atol: float = 1e-8,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(train_X=train_X, train_Y=train_Y, **kwargs)
+        self._configure_categorical_encoder(train_X, cat_dims, categorical_atol)
+
+
+__all__ = [
+    "NGBoostEnsembleModel",
+    "NGBoostMixedEnsembleModel",
+    "NGBoostMixedRegressorModel",
+    "NGBoostRegressorModel",
+]

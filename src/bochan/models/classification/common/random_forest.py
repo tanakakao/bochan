@@ -1,8 +1,8 @@
-"""BoTorch-compatible Random Forest classification models."""
+"""Shared Random Forest classification implementation."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Any, Self
 
 import numpy as np
@@ -11,12 +11,11 @@ from torch import Tensor
 from torch.nn import Module
 
 from bochan.models.external.common import (
-    _MixedCategoricalMixin,
     _check_one_to_one_input_transform,
     _require_classification_targets,
 )
 
-from .base import _ExternalProbabilityClassifierMixin, _align_probability_columns
+from .probability import _ExternalProbabilityClassifierMixin, _align_probability_columns
 
 
 def _new_random_forest_classifier(kwargs: Mapping[str, Any]) -> Any:
@@ -129,74 +128,4 @@ class _RandomForestClassificationModel(_ExternalProbabilityClassifierMixin, Ense
         return arrays
 
 
-class RandomForestBinaryClassificationModel(_RandomForestClassificationModel):
-    """Binary Random Forest classifier with tree-level epistemic probability samples."""
-
-    def __init__(self, train_X: Tensor, train_Y: Tensor, **kwargs: Any) -> None:
-        super().__init__(train_X=train_X, train_Y=train_Y, binary=True, num_classes=2, **kwargs)
-
-
-class RandomForestMulticlassClassificationModel(_RandomForestClassificationModel):
-    """Multiclass Random Forest classifier with tree-level probability samples."""
-
-    def __init__(
-        self,
-        train_X: Tensor,
-        train_Y: Tensor,
-        *,
-        num_classes: int | None = None,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(
-            train_X=train_X,
-            train_Y=train_Y,
-            binary=False,
-            num_classes=num_classes,
-            **kwargs,
-        )
-
-
-class RandomForestMixedBinaryClassificationModel(
-    _MixedCategoricalMixin,
-    RandomForestBinaryClassificationModel,
-):
-    """Binary Random Forest classifier for mixed continuous/categorical inputs."""
-
-    def __init__(
-        self,
-        train_X: Tensor,
-        train_Y: Tensor,
-        cat_dims: Sequence[int],
-        *,
-        categorical_atol: float = 1e-8,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(train_X=train_X, train_Y=train_Y, **kwargs)
-        self._configure_categorical_encoder(train_X, cat_dims, categorical_atol)
-
-
-class RandomForestMixedMulticlassClassificationModel(
-    _MixedCategoricalMixin,
-    RandomForestMulticlassClassificationModel,
-):
-    """Multiclass Random Forest classifier for mixed inputs."""
-
-    def __init__(
-        self,
-        train_X: Tensor,
-        train_Y: Tensor,
-        cat_dims: Sequence[int],
-        *,
-        categorical_atol: float = 1e-8,
-        **kwargs: Any,
-    ) -> None:
-        super().__init__(train_X=train_X, train_Y=train_Y, **kwargs)
-        self._configure_categorical_encoder(train_X, cat_dims, categorical_atol)
-
-
-__all__ = [
-    "RandomForestBinaryClassificationModel",
-    "RandomForestMixedBinaryClassificationModel",
-    "RandomForestMixedMulticlassClassificationModel",
-    "RandomForestMulticlassClassificationModel",
-]
+__all__ = ["_RandomForestClassificationModel"]

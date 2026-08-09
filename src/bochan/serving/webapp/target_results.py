@@ -156,10 +156,13 @@ def _display_predictions(
                 ).clamp_min(0)
                 mean = probability_mean[:, 0]
                 variance = epistemic_variance[:, 0]
-                class_probabilities[target] = optimizer.model.class_probs_list(
-                    X,
-                    output_indices=[target],
-                )[0]
+                class_probabilities[target] = _as_2d(
+                    optimizer.model.class_probs_list(
+                        X,
+                        output_indices=[target],
+                    )[0],
+                    n_rows=n_rows,
+                )
             else:
                 probability_mean, epistemic_variance, _, _ = binary_probability_moments(
                     optimizer.model,
@@ -172,10 +175,13 @@ def _display_predictions(
                 ).clamp_min(0)[:, 0]
             prediction_space = "probability"
         elif task == "ordinal" and hybrid_model:
-            probs = optimizer.model.class_probs_list(
-                X,
-                output_indices=[target],
-            )[0]
+            probs = _as_2d(
+                optimizer.model.class_probs_list(
+                    X,
+                    output_indices=[target],
+                )[0],
+                n_rows=n_rows,
+            )
             ranks = torch.arange(
                 int(meta["num_classes"]),
                 dtype=probs.dtype,
@@ -190,10 +196,13 @@ def _display_predictions(
             variance = variances[:, index]
             prediction_space = "probability" if task in {"binary", "multiclass"} else "outcome"
             if task in {"binary", "multiclass"} and hybrid_model:
-                class_probabilities[target] = optimizer.model.class_probs_list(
-                    X,
-                    output_indices=[target],
-                )[0]
+                class_probabilities[target] = _as_2d(
+                    optimizer.model.class_probs_list(
+                        X,
+                        output_indices=[target],
+                    )[0],
+                    n_rows=n_rows,
+                )
         output[target] = {
             "mean": mean,
             "std": variance.sqrt(),

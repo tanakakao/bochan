@@ -75,6 +75,8 @@ class NominalDuplicatePenaltyMixin:
     """
 
     _bochan_raw_X_for_duplicate_penalty: Tensor | None = None
+    # Compatibility with the binary variance-only wrapper introduced in #536.
+    _raw_X_for_duplicate_penalty: Tensor | None = None
 
     @contextmanager
     def _without_hard_duplicate_flags(self, *names: str) -> Iterator[None]:
@@ -103,6 +105,8 @@ class NominalDuplicatePenaltyMixin:
 
     def _raw_X(self, ref: Tensor) -> Tensor | None:
         raw_X = self._bochan_raw_X_for_duplicate_penalty
+        if raw_X is None:
+            raw_X = self._raw_X_for_duplicate_penalty
         if raw_X is None:
             return None
         return _ensure_q_batch(raw_X).to(device=ref.device, dtype=ref.dtype)
@@ -264,12 +268,16 @@ class NominalDuplicatePenaltyMixin:
         )
 
     def forward(self, X: Tensor, *args: Any, **kwargs: Any) -> Tensor:
+        raw_X = _ensure_q_batch(X)
         previous = self._bochan_raw_X_for_duplicate_penalty
-        self._bochan_raw_X_for_duplicate_penalty = _ensure_q_batch(X)
+        legacy_previous = self._raw_X_for_duplicate_penalty
+        self._bochan_raw_X_for_duplicate_penalty = raw_X
+        self._raw_X_for_duplicate_penalty = raw_X
         try:
             return super().forward(X, *args, **kwargs)
         finally:
             self._bochan_raw_X_for_duplicate_penalty = previous
+            self._raw_X_for_duplicate_penalty = legacy_previous
 
 
 __all__ = ["NominalDuplicatePenaltyMixin"]

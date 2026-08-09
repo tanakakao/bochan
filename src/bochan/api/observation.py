@@ -274,6 +274,10 @@ class ExperimentFailureConfig:
     reduce_q: FailureQReduction = "prod"
 
     def __post_init__(self) -> None:
+        if self.fit_config is None:
+            from .configs import FitConfig
+
+            self.fit_config = FitConfig()
         probability = float(self.min_success_probability)
         if not 0.0 <= probability <= 1.0:
             raise ValueError("min_success_probability must be between 0 and 1.")

@@ -11,8 +11,9 @@ identity on the raw nominal q-batch and raw pending / observed references.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any
 
 import torch
 from torch import Tensor
@@ -96,12 +97,12 @@ class NominalDuplicatePenaltyMixin:
         if not hasattr(self, "hard_duplicate_penalty"):
             yield
             return
-        previous = getattr(self, "hard_duplicate_penalty")
-        setattr(self, "hard_duplicate_penalty", 0.0)
+        previous = self.hard_duplicate_penalty
+        self.hard_duplicate_penalty = 0.0
         try:
             yield
         finally:
-            setattr(self, "hard_duplicate_penalty", previous)
+            self.hard_duplicate_penalty = previous
 
     def _raw_X(self, ref: Tensor) -> Tensor | None:
         raw_X = self._bochan_raw_X_for_duplicate_penalty
@@ -243,13 +244,15 @@ class NominalDuplicatePenaltyMixin:
 
     def _joint_repulsion_penalty(self, X: Tensor) -> Tensor:
         """Preserve family-specific soft joint repulsion."""
-        with self._without_hard_duplicate_flags(
-            "exclude_same_batch_duplicates",
-            "exclude_pending_duplicates",
-            "exclude_observed_duplicates",
+        with (
+            self._without_hard_duplicate_flags(
+                "exclude_same_batch_duplicates",
+                "exclude_pending_duplicates",
+                "exclude_observed_duplicates",
+            ),
+            self._without_numeric_hard_duplicate_penalty(),
         ):
-            with self._without_numeric_hard_duplicate_penalty():
-                soft = super()._joint_repulsion_penalty(X)
+            soft = super()._joint_repulsion_penalty(X)
         return self._add_invalid_to_value(
             soft,
             self._combined_nominal_invalid(soft),

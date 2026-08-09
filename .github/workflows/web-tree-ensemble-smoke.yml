@@ -27,6 +27,7 @@ on:
       - "tests/test_tabpfn_models.py"
       - "tests/test_tabpfn_optional_smoke.py"
       - "tests/test_tree_ensemble_input_perturbation.py"
+      - "tests/test_web_external_ensemble_matrix.py"
       - "tests/test_web_ngboost_runtime.py"
       - "tests/test_web_tabpfn_models.py"
       - "tests/test_web_tree_ensemble_models.py"
@@ -52,6 +53,7 @@ jobs:
             tests/test_tabpfn_models.py \
             tests/test_tabpfn_optional_smoke.py \
             tests/test_tree_ensemble_input_perturbation.py \
+            tests/test_web_external_ensemble_matrix.py \
             tests/test_web_ngboost_runtime.py \
             tests/test_web_tabpfn_models.py \
             tests/test_web_tree_ensemble_models.py \
@@ -73,6 +75,7 @@ jobs:
             tests/test_tabpfn_input_perturbation.py \
             tests/test_tabpfn_optional_smoke.py \
             tests/test_tree_ensemble_input_perturbation.py \
+            tests/test_web_external_ensemble_matrix.py \
             tests/test_web_ngboost_runtime.py \
             tests/test_web_tabpfn_models.py \
             tests/test_web_tree_ensemble_models.py \

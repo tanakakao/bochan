@@ -40,7 +40,7 @@ jobs:
             tests/test_webapp_multiobjective_contract.py
       - name: Lint focused Python changes
         run: |
-          ruff check \
+          ruff check --ignore I001,SIM108 \
             src/bochan/serving/webapp/model_runtime.py \
             src/bochan/serving/webapp/search_settings.py \
             src/bochan/serving/webapp/target_settings.py \

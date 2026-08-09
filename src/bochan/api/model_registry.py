@@ -85,7 +85,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "beta_deepkernel": ("bochan.models.regression.non_gaussian.beta.deep", "DeepKernelBetaGPModel"),
             "beta_saas": ("bochan.models.regression.non_gaussian.beta.high_dim", "SaasBetaGPModel"),
             "beta_pca": ("bochan.models.regression.non_gaussian.beta.high_dim", "PCABetaGPModel"),
-            "beta_rembo": ("bochan.models.regression.non_gaussian.beta.high_dim", "REMBOSingleTaskGP"),
+            "beta_rembo": ("bochan.models.regression.non_gaussian.beta.high_dim", "REMBOBetaGPModel"),
             "beta_rrp": ("bochan.models.regression.non_gaussian.beta.robust", "OutlierRelevancePursuitBetaGPModel"),
             "beta_hetero": ("bochan.models.regression.non_gaussian.beta.robust", "HeteroscedasticBetaGPModel"),
             "beta_multitask": ("bochan.models.regression.non_gaussian.beta.base", "BetaMultiTaskGPModel"),
@@ -122,7 +122,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "negative_binomial_rrp": ("bochan.models.regression.non_gaussian.negative_binomial.robust", "OutlierRelevancePursuitNegativeBinomialGPModel"),
             "negative_binomial_hetero": ("bochan.models.regression.non_gaussian.negative_binomial.robust", "HeteroscedasticNegativeBinomialGPModel"),
             "negative_binomial_multitask": ("bochan.models.regression.non_gaussian.negative_binomial.base", "NegativeBinomialMultiTaskGPModel"),
-            "negative_binomial_wide_multitask": ("bochan.models.regression.non_gaussian.negative_binomial.base", "WideNegativeBinomialGPModel"),
+            "negative_binomial_wide_multitask": ("bochan.models.regression.non_gaussian.negative_binomial.base", "WideNegativeBinomialMultiTaskGPModel"),
             "negative_binomial_kronecker": ("bochan.models.regression.non_gaussian.negative_binomial.base", "KroneckerMultiTaskNegativeBinomialGPModel"),
         },
         "multi_objective": {

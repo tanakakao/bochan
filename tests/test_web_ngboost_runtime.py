@@ -186,6 +186,7 @@ def _ngboost_request(
     q: int = 1,
     sequential: bool = True,
     acquisition_family: str = "bayesian_optimization",
+    optimizer_name: str = "ga",
 ):
     from bochan.serving.webapp.app import RegressionRunRequest
 
@@ -237,7 +238,7 @@ def _ngboost_request(
             },
         },
         optimizer={
-            "name": "ga",
+            "name": optimizer_name,
             "q": q,
             "num_restarts": 1,
             "raw_samples": 16,
@@ -248,44 +249,97 @@ def _ngboost_request(
     )
 
 
-def test_web_ngboost_q_batch_uses_joint_execution_copy() -> None:
+@pytest.mark.parametrize(
+    "model_type",
+    ["random_forest", "lightgbm_ensemble", "ngboost_ensemble"],
+)
+@pytest.mark.parametrize("q", [2, 3])
+def test_web_tree_ga_q_batch_uses_joint_execution_copy(
+    model_type: str,
+    q: int,
+) -> None:
+    from bochan.serving.webapp.candidate_runtime import (
+        apply_web_candidate_runtime_defaults,
+        uses_tree_ensemble_joint_batch,
+    )
+
+    request = _ngboost_request("unused", q=q, sequential=True).model_copy(
+        update={"model_type": model_type}
+    )
+    resolved = apply_web_candidate_runtime_defaults(request)
+
+    assert uses_tree_ensemble_joint_batch(request) is True
+    assert request.optimizer.sequential is True
+    assert resolved is not request
+    assert resolved.optimizer is not request.optimizer
+    assert resolved.optimizer.q == q
+    assert resolved.optimizer.sequential is False
+
+
+@pytest.mark.parametrize("optimizer_name", ["pso", "sa"])
+def test_web_ngboost_pso_sa_q_batch_use_joint_execution(
+    optimizer_name: str,
+) -> None:
     from bochan.serving.webapp.candidate_runtime import (
         apply_web_candidate_runtime_defaults,
         uses_ngboost_joint_batch,
     )
 
-    request = _ngboost_request("unused", q=3, sequential=True)
+    request = _ngboost_request(
+        "unused",
+        q=3,
+        sequential=True,
+        optimizer_name=optimizer_name,
+    )
     resolved = apply_web_candidate_runtime_defaults(request)
 
     assert uses_ngboost_joint_batch(request) is True
-    assert request.optimizer.sequential is True
-    assert resolved is not request
-    assert resolved.optimizer is not request.optimizer
-    assert resolved.optimizer.q == 3
     assert resolved.optimizer.sequential is False
 
 
-def test_web_ngboost_joint_execution_is_narrowly_scoped() -> None:
+def test_web_tree_joint_execution_is_narrowly_scoped() -> None:
     from bochan.serving.webapp.candidate_runtime import (
         apply_web_candidate_runtime_defaults,
     )
 
-    q1 = _ngboost_request("unused", q=1, sequential=True)
-    already_joint = _ngboost_request("unused", q=3, sequential=False)
-    lse = _ngboost_request(
-        "unused",
-        q=3,
-        sequential=True,
-        acquisition_family="level_set_estimation",
-    )
-    random_forest = _ngboost_request("unused", q=3, sequential=True).model_copy(
-        update={"model_type": "random_forest"}
-    )
+    unchanged = [
+        _ngboost_request("unused", q=1, sequential=True),
+        _ngboost_request("unused", q=4, sequential=True),
+        _ngboost_request("unused", q=3, sequential=False),
+        _ngboost_request(
+            "unused",
+            q=3,
+            sequential=True,
+            acquisition_family="level_set_estimation",
+        ),
+        _ngboost_request(
+            "unused",
+            q=3,
+            sequential=True,
+            acquisition_family="active_learning",
+        ),
+        _ngboost_request(
+            "unused",
+            q=3,
+            sequential=True,
+            optimizer_name="cmaes",
+        ),
+        _ngboost_request(
+            "unused",
+            q=3,
+            sequential=True,
+            optimizer_name="pso",
+        ).model_copy(update={"model_type": "random_forest"}),
+        _ngboost_request(
+            "unused",
+            q=3,
+            sequential=True,
+            optimizer_name="sa",
+        ).model_copy(update={"model_type": "lightgbm_ensemble"}),
+    ]
 
-    assert apply_web_candidate_runtime_defaults(q1) is q1
-    assert apply_web_candidate_runtime_defaults(already_joint) is already_joint
-    assert apply_web_candidate_runtime_defaults(lse) is lse
-    assert apply_web_candidate_runtime_defaults(random_forest) is random_forest
+    for request in unchanged:
+        assert apply_web_candidate_runtime_defaults(request) is request
 
 
 def _run_ngboost_request(request):

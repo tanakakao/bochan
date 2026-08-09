@@ -19,6 +19,7 @@ on:
       - "tests/test_feature_importance_input_perturbation.py"
       - "tests/test_multiclass_yy_visualization.py"
       - "tests/test_webapp_input_perturbation_e2e.py"
+      - "tests/test_webapp_input_perturbation_prediction_shape.py"
       - ".github/workflows/web-input-perturbation-smoke.yml"
   workflow_dispatch:
 
@@ -40,15 +41,18 @@ jobs:
             tests/api/test_cross_validation_prediction_aggregation.py \
             tests/test_feature_importance_input_perturbation.py \
             tests/test_multiclass_yy_visualization.py \
-            tests/test_webapp_input_perturbation_e2e.py
+            tests/test_webapp_input_perturbation_e2e.py \
+            tests/test_webapp_input_perturbation_prediction_shape.py
       - name: Run Ruff
         run: |
           python -m pip install ruff
           ruff check --ignore I001,SIM102,SIM108 \
             src/bochan/api/cross_validation.py \
             src/bochan/inspection/feature_importance.py \
+            src/bochan/serving/webapp/target_results.py \
             src/bochan/visualization/multiclass_yy.py \
             tests/api/test_cross_validation_prediction_aggregation.py \
             tests/test_feature_importance_input_perturbation.py \
             tests/test_multiclass_yy_visualization.py \
-            tests/test_webapp_input_perturbation_e2e.py
+            tests/test_webapp_input_perturbation_e2e.py \
+            tests/test_webapp_input_perturbation_prediction_shape.py

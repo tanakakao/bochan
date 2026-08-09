@@ -117,6 +117,12 @@ def resolve_outcome_constraint_config(*, bundle: Any | None, config: Any) -> Any
     return config
 
 
+def _base_acqf_factory(config: Any) -> Any | None:
+    """Return an explicit user factory retained under feasibility composition."""
+
+    return getattr(config, "_base_acqf_factory", None)
+
+
 def prepare_feasibility_build(*, bundle: Any, config: Any) -> tuple[Any, FeasibilityBuildPlan | None]:
     """Resolve native constraints or prepare a model-aware feasibility wrapper."""
 
@@ -125,11 +131,15 @@ def prepare_feasibility_build(*, bundle: Any, config: Any) -> tuple[Any, Feasibi
     if constraint_config is None:
         return config, None
 
+    base_factory = _base_acqf_factory(config)
     wrapper_constraints = _constraint_specs(constraint_config)
     has_model_dependent_constraints = constraint_config.has_model_dependent_constraints()
     needs_non_native_wrapper = bool(
         config.constraints
-        and not _explicitly_accepts_keyword(config.acqf_cls, "constraints")
+        and (
+            base_factory is not None
+            or not _explicitly_accepts_keyword(config.acqf_cls, "constraints")
+        )
     )
     should_wrap = bool(
         wrapper_constraints
@@ -138,7 +148,7 @@ def prepare_feasibility_build(*, bundle: Any, config: Any) -> tuple[Any, Feasibi
     if not should_wrap:
         base_config = replace(
             config,
-            acqf_factory=None,
+            acqf_factory=base_factory,
             outcome_constraint_config=None,
         )
         return base_config, None
@@ -147,7 +157,7 @@ def prepare_feasibility_build(*, bundle: Any, config: Any) -> tuple[Any, Feasibi
     base_kwargs.pop("constraints", None)
     base_config = replace(
         config,
-        acqf_factory=None,
+        acqf_factory=base_factory,
         constraints=None,
         outcome_constraint_config=None,
         acqf_kwargs=base_kwargs,
@@ -190,8 +200,9 @@ def build_outcome_constrained_acquisition(
 
     Numeric sample constraints are passed to acquisition classes that explicitly
     support BoTorch's ``constraints`` keyword. Model-dependent class/rank
-    constraints, and numeric constraints for acquisitions without native support,
-    are composed through :class:`FeasibilityWeightedAcquisition`.
+    constraints, numeric constraints for acquisitions without native support,
+    and explicit acquisition factories are composed through
+    :class:`FeasibilityWeightedAcquisition` when necessary.
     """
 
     from .factory import build_acquisition

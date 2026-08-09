@@ -69,8 +69,8 @@ class NominalDuplicatePenaltyMixin:
     """Use raw candidates for hard duplicate identity checks.
 
     Posterior evaluation, score shape, risk aggregation, and soft transformed-
-    space repulsion stay unchanged. Only the hard duplicate term is suppressed
-    while the inherited soft term is calculated and then reapplied using raw
+    space repulsion stay unchanged. Only hard duplicate terms are suppressed
+    while inherited soft terms are calculated and then reapplied using raw
     optimization candidates.
     """
 
@@ -136,6 +136,17 @@ class NominalDuplicatePenaltyMixin:
         )
         return _invalid_batch_from_penalty(penalty)
 
+    def _combined_nominal_invalid(self, ref: Tensor) -> Tensor | None:
+        invalid = self._nominal_same_batch_invalid(ref)
+        for attr, enabled_attr in (
+            ("X_pending", "exclude_pending_duplicates"),
+            ("X_observed", "exclude_observed_duplicates"),
+        ):
+            extra = self._nominal_reference_invalid(ref, attr, enabled_attr)
+            if extra is not None:
+                invalid = extra if invalid is None else (invalid | extra)
+        return invalid
+
     def _add_invalid_to_value(self, value: Tensor, invalid: Tensor | None) -> Tensor:
         if invalid is None:
             return value
@@ -169,12 +180,13 @@ class NominalDuplicatePenaltyMixin:
         raw_X = self._raw_X(X)
         if raw_X is None:
             return super()._same_batch_duplicate_penalty_per_point(X)
-        invalid = self._nominal_same_batch_invalid(X)
         zeros = X.new_zeros(X.shape[:-1])
-        return self._add_invalid_to_value(zeros, invalid)
+        return self._add_invalid_to_value(
+            zeros,
+            self._nominal_same_batch_invalid(X),
+        )
 
     def _same_batch_penalty_per_point(self, X: Tensor) -> Tensor:
-        """Ordinal multi-output soft+hard same-batch penalty hook."""
         with self._without_hard_duplicate_flags("exclude_same_batch_duplicates"):
             soft = super()._same_batch_penalty_per_point(X)
         return self._add_invalid_to_value(
@@ -183,7 +195,6 @@ class NominalDuplicatePenaltyMixin:
         )
 
     def _same_batch_penalty(self, X: Tensor) -> Tensor:
-        """Multiclass batch-level soft+hard same-batch penalty hook."""
         with self._without_hard_duplicate_flags("exclude_same_batch_duplicates"):
             soft = super()._same_batch_penalty(X)
         return self._add_invalid_to_value(
@@ -202,60 +213,55 @@ class NominalDuplicatePenaltyMixin:
             return super()._reference_repulsion(X, X_ref, weight)
 
     def _pointwise_reference_penalty(self, X: Tensor) -> Tensor:
-        """Ordinal single-output combined pending/observed/same-batch hook."""
         with self._without_hard_duplicate_flags(
             "exclude_same_batch_duplicates",
             "exclude_pending_duplicates",
             "exclude_observed_duplicates",
         ):
             soft = super()._pointwise_reference_penalty(X)
-        invalid = self._nominal_same_batch_invalid(soft)
-        pending = self._nominal_reference_invalid(
+        return self._add_invalid_to_value(
             soft,
-            "X_pending",
-            "exclude_pending_duplicates",
+            self._combined_nominal_invalid(soft),
         )
-        observed = self._nominal_reference_invalid(
-            soft,
-            "X_observed",
-            "exclude_observed_duplicates",
-        )
-        for extra in (pending, observed):
-            if extra is not None:
-                invalid = extra if invalid is None else (invalid | extra)
-        return self._add_invalid_to_value(soft, invalid)
 
     def _pointwise_repulsion_penalty(self, X: Tensor) -> Tensor:
-        """Ordinal multi-output combined penalty hook."""
-        return (
-            self._pending_penalty_per_point(X)
-            + self._observed_penalty_per_point(X)
-            + self._same_batch_penalty_per_point(X)
+        """Preserve family-specific soft pointwise repulsion."""
+        with self._without_hard_duplicate_flags(
+            "exclude_same_batch_duplicates",
+            "exclude_pending_duplicates",
+            "exclude_observed_duplicates",
+        ):
+            soft = super()._pointwise_repulsion_penalty(X)
+        return self._add_invalid_to_value(
+            soft,
+            self._combined_nominal_invalid(soft),
+        )
+
+    def _joint_repulsion_penalty(self, X: Tensor) -> Tensor:
+        """Preserve family-specific soft joint repulsion."""
+        with self._without_hard_duplicate_flags(
+            "exclude_same_batch_duplicates",
+            "exclude_pending_duplicates",
+            "exclude_observed_duplicates",
+        ):
+            with self._without_numeric_hard_duplicate_penalty():
+                soft = super()._joint_repulsion_penalty(X)
+        return self._add_invalid_to_value(
+            soft,
+            self._combined_nominal_invalid(soft),
         )
 
     def _aggregated_reference_penalty(self, X: Tensor) -> Tensor:
-        """Fantasy acquisitions that expose a single aggregated penalty."""
         with self._without_hard_duplicate_flags(
             "exclude_same_batch_duplicates",
             "exclude_pending_duplicates",
             "exclude_observed_duplicates",
         ):
             soft = super()._aggregated_reference_penalty(X)
-        invalid = self._nominal_same_batch_invalid(soft)
-        pending = self._nominal_reference_invalid(
+        return self._add_invalid_to_value(
             soft,
-            "X_pending",
-            "exclude_pending_duplicates",
+            self._combined_nominal_invalid(soft),
         )
-        observed = self._nominal_reference_invalid(
-            soft,
-            "X_observed",
-            "exclude_observed_duplicates",
-        )
-        for extra in (pending, observed):
-            if extra is not None:
-                invalid = extra if invalid is None else (invalid | extra)
-        return self._add_invalid_to_value(soft, invalid)
 
     def forward(self, X: Tensor, *args: Any, **kwargs: Any) -> Tensor:
         previous = self._bochan_raw_X_for_duplicate_penalty

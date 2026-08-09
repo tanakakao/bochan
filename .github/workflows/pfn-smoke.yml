@@ -1,38 +1,53 @@
-name: PFN surrogate smoke
+name: Foundation surrogate smoke
 
 on:
   pull_request:
     branches: [main]
     paths:
+      - "pyproject.toml"
       - "src/bochan/models/regression/foundation/**"
+      - "src/bochan/models/classification/common/tabpfn.py"
+      - "src/bochan/models/classification/binary/foundation/**"
+      - "src/bochan/models/classification/multiclass/foundation/**"
       - "src/bochan/acquisition/regression/pfn.py"
       - "src/bochan/acquisition/regression/__init__.py"
       - "src/bochan/api/model_registry.py"
       - "tests/test_pfn_models.py"
+      - "tests/test_tabpfn_models.py"
+      - "tests/test_tabpfn_optional_smoke.py"
       - ".github/workflows/pfn-smoke.yml"
   workflow_dispatch:
 
 jobs:
-  pfn-smoke:
+  foundation-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install bochan test dependencies
-        run: python -m pip install -e ".[test]"
-      - name: Run focused PFN tests
-        run: pytest -q --maxfail=1 tests/test_pfn_models.py
-      - name: Lint PFN changes
+      - name: Install bochan foundation-model test dependencies
+        run: python -m pip install -e ".[test,tabpfn]"
+      - name: Run focused foundation-model tests
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_pfn_models.py \
+            tests/test_tabpfn_models.py \
+            tests/test_tabpfn_optional_smoke.py
+      - name: Lint foundation-model changes
         run: |
           python -m pip install ruff
           ruff check --ignore I001,SIM117 \
             src/bochan/models/regression/foundation \
+            src/bochan/models/classification/common/tabpfn.py \
+            src/bochan/models/classification/binary/foundation \
+            src/bochan/models/classification/multiclass/foundation \
             src/bochan/acquisition/regression/pfn.py \
             src/bochan/acquisition/regression/__init__.py \
-            tests/test_pfn_models.py
+            tests/test_pfn_models.py \
+            tests/test_tabpfn_models.py \
+            tests/test_tabpfn_optional_smoke.py
       - name: Install public PFNs4BO checkpoint compatibility dependencies
         run: |
           python -m pip install --no-deps pfns4bo==0.1.5

@@ -14,7 +14,10 @@ from bochan.models.external.common import (
     _check_one_to_one_input_transform,
     _require_classification_targets,
 )
-from bochan.models.external.lightgbm import _resolve_lightgbm_callbacks
+from bochan.models.external.lightgbm import (
+    _resolve_lightgbm_callbacks,
+    _resolve_lightgbm_estimator_kwargs,
+)
 
 from .probability import (
     _ExternalProbabilityClassifierMixin,
@@ -106,10 +109,14 @@ class _LightGBMClassificationModel(_ExternalProbabilityClassifierMixin, Ensemble
 
         self.binary = bool(binary)
         self.num_classes = int(inferred_classes)
+        resolved_lightgbm_kwargs = _resolve_lightgbm_estimator_kwargs(
+            lightgbm_kwargs,
+            n_samples=int(train_X.shape[-2]),
+        )
         self.estimator = (
             estimator
             if estimator is not None
-            else _new_lightgbm_classifier(lightgbm_kwargs)
+            else _new_lightgbm_classifier(resolved_lightgbm_kwargs)
         )
         self._configure_probability_acquisition_bridge()
         self._is_fitted = False
@@ -217,7 +224,10 @@ class _LightGBMClassificationEnsembleModel(
         self.num_classes = int(inferred_classes)
         self.bootstrap = bool(bootstrap)
         self.random_state = random_state
-        self._lightgbm_kwargs = dict(lightgbm_kwargs)
+        self._lightgbm_kwargs = _resolve_lightgbm_estimator_kwargs(
+            lightgbm_kwargs,
+            n_samples=int(train_X.shape[-2]),
+        )
 
         if estimators is not None:
             self.estimators = list(estimators)

@@ -23,6 +23,7 @@ from bochan.models.external.common import (
     _require_single_output,
     _validate_output_indices,
 )
+from bochan.models.external.lightgbm import _resolve_lightgbm_estimator_kwargs
 from bochan.models.external.native_categorical import _NativeCategoricalMixin
 
 
@@ -134,8 +135,14 @@ class LightGBMRegressorModel(_LightGBMRegressorMixin, Model):
 
         self._num_outputs = 1
         self.min_variance = float(min_variance)
+        resolved_lightgbm_kwargs = _resolve_lightgbm_estimator_kwargs(
+            lightgbm_kwargs,
+            n_samples=int(train_X.shape[-2]),
+        )
         self.estimator = (
-            estimator if estimator is not None else _new_lightgbm_regressor(lightgbm_kwargs)
+            estimator
+            if estimator is not None
+            else _new_lightgbm_regressor(resolved_lightgbm_kwargs)
         )
         self._is_fitted = False
 
@@ -265,7 +272,10 @@ class LightGBMEnsembleModel(_LightGBMRegressorMixin, EnsembleModel):
         self._num_outputs = 1
         self.bootstrap = bool(bootstrap)
         self.random_state = random_state
-        self._lightgbm_kwargs = dict(lightgbm_kwargs)
+        self._lightgbm_kwargs = _resolve_lightgbm_estimator_kwargs(
+            lightgbm_kwargs,
+            n_samples=int(train_X.shape[-2]),
+        )
 
         if estimators is not None:
             self.estimators = list(estimators)

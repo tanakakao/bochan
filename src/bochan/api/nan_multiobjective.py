@@ -2,9 +2,8 @@
 
 Wide multi-task models intentionally retain the original ``train_Y`` matrix,
 including NaNs that represent task values not observed at a given input. Model
-fitting converts those cells to long-format observations, but automatic EHVI /
-NEHVI defaults operate on the original matrix and therefore need separate
-missing-value handling.
+fitting converts those cells to long-format observations, while automatic
+multi-objective defaults call the helpers in this module directly.
 """
 
 from __future__ import annotations
@@ -94,19 +93,9 @@ def make_nan_safe_partitioning(ref_point: Any, values: Any) -> Any:
 
 
 def apply_nan_multiobjective() -> None:
-    """Install NaN-safe helpers in automatic defaults and engine imports."""
+    """Compatibility no-op; callers now use NaN-safe helpers directly."""
 
-    from . import automatic_multiobjective, engine_defaults
-
-    automatic_multiobjective._make_default_ref_point = make_nan_safe_default_ref_point
-    automatic_multiobjective.make_default_ref_point = make_nan_safe_default_ref_point
-    automatic_multiobjective._make_partitioning = make_nan_safe_partitioning
-    automatic_multiobjective.make_partitioning = make_nan_safe_partitioning
-
-    # engine_defaults imports these callables by name, so update its bound
-    # references as well as the source module.
-    engine_defaults.make_default_ref_point = make_nan_safe_default_ref_point
-    engine_defaults.make_partitioning = make_nan_safe_partitioning
+    return None
 
 
 __all__ = [

@@ -1,4 +1,4 @@
-"""Compatibility defaults for candidate repair constraint semantics."""
+"""Candidate-repair constraint semantics used by the core optimizer factory."""
 
 from __future__ import annotations
 
@@ -33,20 +33,9 @@ def _with_botorch_fallback_inequality_sense(config: Any) -> Any:
 
 
 def apply_repair_constraint_defaults() -> None:
-    """Install top-level inequality fallback semantics on the factory helper."""
+    """Compatibility no-op; the factory resolves this default directly."""
 
-    from . import factory as factory_module
-
-    current = factory_module._build_post_processing_func
-    if getattr(current, "_bochan_repair_constraint_defaults", False):
-        return
-
-    def build_post_processing_func(config: Any, bounds: Any):
-        resolved = _with_botorch_fallback_inequality_sense(config)
-        return current(resolved, bounds)
-
-    build_post_processing_func._bochan_repair_constraint_defaults = True
-    factory_module._build_post_processing_func = build_post_processing_func
+    return None
 
 
 __all__ = [

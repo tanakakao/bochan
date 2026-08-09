@@ -1,5 +1,11 @@
 """External-estimator models for binary classification."""
 
+from .lightgbm import (
+    LightGBMBinaryClassificationModel,
+    LightGBMBinaryEnsembleModel,
+    LightGBMMixedBinaryClassificationModel,
+    LightGBMMixedBinaryEnsembleModel,
+)
 from .ngboost import (
     NGBoostBinaryClassificationModel,
     NGBoostBinaryEnsembleModel,
@@ -12,6 +18,10 @@ from .random_forest import (
 )
 
 __all__ = [
+    "LightGBMBinaryClassificationModel",
+    "LightGBMBinaryEnsembleModel",
+    "LightGBMMixedBinaryClassificationModel",
+    "LightGBMMixedBinaryEnsembleModel",
     "NGBoostBinaryClassificationModel",
     "NGBoostBinaryEnsembleModel",
     "NGBoostMixedBinaryClassificationModel",

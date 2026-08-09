@@ -74,7 +74,7 @@ def test_fastapi_explicit_failure_and_pending_states_train_success_model(
             "target_missing_strategy": "keep",
             "experiment_status_col": "status",
             "experiment_failure": {
-                "fit_config": {"skip_fit": True},
+                "failure_fit_config": {"skip_fit": True},
                 "min_success_probability": 0.7,
             },
             "model_config": {
@@ -109,7 +109,7 @@ def test_fastapi_failure_config_requires_explicit_status_column(client_and_store
             "data": [{"x": 0.0, "y": 1.0}, {"x": 1.0, "y": 2.0}],
             "input_cols": ["x"],
             "target_cols": ["y"],
-            "experiment_failure": {"fit_config": {"skip_fit": True}},
+            "experiment_failure": {"failure_fit_config": {"skip_fit": True}},
             "model_config": {"task_type": "regression", "model_type": "base"},
             "fit_config": {"skip_fit": True},
         },

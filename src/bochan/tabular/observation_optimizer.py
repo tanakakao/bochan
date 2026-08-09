@@ -1,4 +1,4 @@
-"""Public tabular optimizer with explicit partial/failure observation states."""
+"""Observation-state mixin for the canonical tabular optimizer class."""
 
 from __future__ import annotations
 
@@ -8,9 +8,6 @@ from typing import Any
 from bochan.api import ExperimentFailureConfig
 from bochan.api.experiment_failure import attach_observation_state
 
-from .composition_bounds_optimizer import (
-    TabularBayesianOptimizer as _CompositionTabularBayesianOptimizer,
-)
 from .config import ColumnKey, TabularDataConfig
 from .observation_data import (
     ObservationTabularDataset,
@@ -49,13 +46,13 @@ def _uses_observation_conversion(config: TabularDataConfig) -> bool:
     )
 
 
-class TabularBayesianOptimizer(_CompositionTabularBayesianOptimizer):
-    """Tabular optimizer whose target missingness is an observation state.
+class ObservationTabularMixin:
+    """Add explicit partial/failure observation semantics to a tabular optimizer.
 
-    This class sits above the existing composition/multi-site preprocessing chain.
-    Consequently raw formula and other tabular transforms run first, while the
-    final tensor conversion uses :class:`ObservationTabularDataset` when partial
-    targets or an explicit experiment-status column are requested.
+    The mixin is intentionally not another public optimizer class. It is composed
+    into the existing final composition-aware ``TabularBayesianOptimizer`` so the
+    package has one canonical public class and all existing composition features
+    remain on that same class object.
     """
 
     def __init__(
@@ -119,7 +116,7 @@ class TabularBayesianOptimizer(_CompositionTabularBayesianOptimizer):
         failure_config: ExperimentFailureConfig | None = None,
         cross_validation: bool | None = None,
         **kwargs: Any,
-    ) -> TabularBayesianOptimizer:
+    ) -> Any:
         """Fit objectives once, then attach experiment state and success model."""
 
         resolved = _resolved_observation_config(
@@ -158,4 +155,4 @@ class TabularBayesianOptimizer(_CompositionTabularBayesianOptimizer):
         return result
 
 
-__all__ = ["TabularBayesianOptimizer"]
+__all__ = ["ObservationTabularMixin"]

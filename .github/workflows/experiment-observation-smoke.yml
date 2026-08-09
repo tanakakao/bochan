@@ -26,8 +26,14 @@ jobs:
         run: pytest -q --maxfail=1 tests/test_experiment_success_acquisition.py
       - name: Tabular observation state
         run: pytest -q --maxfail=1 tests/test_tabular_observation_states.py
-      - name: FastAPI observation state
-        run: pytest -q --maxfail=1 tests/test_fastapi_tabular_observation_states.py
+      - name: FastAPI partial multitask
+        run: pytest -q tests/test_fastapi_tabular_observation_states.py::test_fastapi_partial_multitask_keeps_unobserved_targets
+      - name: FastAPI failure and pending states
+        run: pytest -q tests/test_fastapi_tabular_observation_states.py::test_fastapi_explicit_failure_and_pending_states_train_success_model
+      - name: FastAPI failure config validation
+        run: pytest -q tests/test_fastapi_tabular_observation_states.py::test_fastapi_failure_config_requires_explicit_status_column
+      - name: FastAPI status column validation
+        run: pytest -q tests/test_fastapi_tabular_observation_states.py::test_fastapi_status_column_cannot_be_an_input
       - name: Web target missing policy
         run: pytest -q --maxfail=1 tests/test_webapp_target_missing_policy.py
       - name: Web tabular observation flow

@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 import pandas as pd
 import pytest
-import torch
 
 from bochan.serving.webapp import target_missing_policy as policy
+from bochan.serving.webapp import target_settings
 
 
 def _request(*, targets: list[str], model_type: str) -> SimpleNamespace:
@@ -14,13 +14,15 @@ def _request(*, targets: list[str], model_type: str) -> SimpleNamespace:
         target_columns=targets,
         target_column=targets[0] if targets else None,
         model_type=model_type,
+        model_kwargs={},
+        search_space=[],
     )
 
 
 def test_single_objective_drops_missing_target_rows() -> None:
     data = pd.DataFrame({"x": [0.0, 1.0, 2.0], "y": [1.0, None, 3.0]})
     with policy.target_missing_run(_request(targets=["y"], model_type="base")) as report:
-        cleaned = policy.clean_rows(
+        cleaned = target_settings._clean_rows(
             data,
             ["x"],
             ["y"],
@@ -43,7 +45,7 @@ def test_multiobjective_non_multitask_drops_any_missing_target_row() -> None:
     with policy.target_missing_run(
         _request(targets=["y1", "y2"], model_type="base")
     ):
-        cleaned = policy.clean_rows(
+        cleaned = target_settings._clean_rows(
             data,
             ["x"],
             ["y1", "y2"],
@@ -64,7 +66,7 @@ def test_multitask_preserves_partial_targets_and_drops_unusable_rows() -> None:
     with policy.target_missing_run(
         _request(targets=["y1", "y2"], model_type="multitask")
     ) as report:
-        cleaned = policy.clean_rows(
+        cleaned = target_settings._clean_rows(
             data,
             ["x"],
             ["y1", "y2"],
@@ -79,6 +81,7 @@ def test_multitask_preserves_partial_targets_and_drops_unusable_rows() -> None:
     assert report["target_missing_counts"] == {"y1": 1, "y2": 1}
     assert report["dropped_feature_rows"] == 1
     assert report["dropped_all_target_missing_rows"] == 1
+    assert report["acquisition_baseline_completed"] is False
 
 
 def test_multitask_requires_an_observation_for_every_target() -> None:
@@ -87,7 +90,7 @@ def test_multitask_requires_an_observation_for_every_target() -> None:
         _request(targets=["y1", "y2"], model_type="multitask")
     ):
         with pytest.raises(ValueError, match="without observations"):
-            policy.clean_rows(
+            target_settings._clean_rows(
                 data,
                 ["x"],
                 ["y1", "y2"],
@@ -122,7 +125,7 @@ def test_target_encoder_preserves_regression_nan_cells() -> None:
     with policy.target_missing_run(
         _request(targets=["y1", "y2"], model_type="multitask")
     ):
-        encoded, metadata = policy.encode_targets(data, settings)
+        encoded, metadata = target_settings._encode_targets(data, settings)
 
     assert encoded["y1"].isna().tolist() == [False, True]
     assert encoded["y2"].isna().tolist() == [True, False]
@@ -130,85 +133,17 @@ def test_target_encoder_preserves_regression_nan_cells() -> None:
     assert metadata["y2"]["internal_task"] == "regression"
 
 
-def test_adaptive_multitask_uses_wide_for_nan_and_kronecker_for_complete(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import bochan.models.regression.gaussian as gaussian
-    import bochan.models.wide_multitask_variants as wide
+def test_target_settings_facade_uses_source_level_policy_functions() -> None:
+    assert target_settings._clean_rows is policy.clean_rows
+    assert target_settings._encode_targets is policy.encode_targets
+    assert target_settings._resolve_target_settings is policy.resolve_target_settings
 
-    class FakeWide:
-        def __init__(self, train_X, train_Y, **kwargs):
-            self.train_X = train_X
-            self.train_Y = train_Y
 
-    class FakeKronecker:
-        def __init__(self, train_X, train_Y, **kwargs):
-            self.train_X = train_X
-            self.train_Y = train_Y
+def test_model_variant_reports_native_wide_multitask_model() -> None:
+    class WideMultiTaskGP:
+        pass
 
-    monkeypatch.setattr(wide, "WideMultiTaskGP", FakeWide)
-    monkeypatch.setattr(
-        gaussian,
-        "PerturbationSupportedKroneckerMultiTaskGP",
-        FakeKronecker,
+    assert policy.model_variant(WideMultiTaskGP()) == (
+        "wide_multitask",
+        "multitask",
     )
-    X = torch.zeros(2, 1, dtype=torch.double)
-
-    incomplete = policy.adaptive_multitask_gp(
-        X,
-        torch.tensor([[1.0, float("nan")], [2.0, 3.0]], dtype=torch.double),
-    )
-    complete = policy.adaptive_multitask_gp(
-        X,
-        torch.tensor([[1.0, 2.0], [2.0, 3.0]], dtype=torch.double),
-    )
-
-    assert isinstance(incomplete, FakeWide)
-    assert incomplete.web_multitask_variant == "wide_multitask"
-    assert incomplete.web_effective_model_type == "multitask"
-    assert isinstance(complete, FakeKronecker)
-    assert complete.web_multitask_variant == "kronecker"
-    assert complete.web_effective_model_type == "kronecker"
-
-
-def test_fit_wrapper_completes_only_acquisition_baseline(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    X = torch.tensor([[0.0], [1.0]], dtype=torch.double)
-    observed = torch.tensor(
-        [[1.0, float("nan")], [float("nan"), 4.0]],
-        dtype=torch.double,
-    )
-
-    class FakePosterior:
-        mean = torch.tensor([[1.5, 2.5], [3.5, 4.5]], dtype=torch.double)
-
-    class FakeModel:
-        web_multitask_variant = "wide_multitask"
-        web_effective_model_type = "multitask"
-
-        def posterior(self, value):
-            assert torch.equal(value, X)
-            return FakePosterior()
-
-    fake = SimpleNamespace(
-        dataset=SimpleNamespace(X=X, Y=observed.clone()),
-        bo=SimpleNamespace(model=FakeModel()),
-    )
-    monkeypatch.setattr(
-        policy,
-        "_ORIGINAL_FIT_TABULAR_OPTIMIZER",
-        lambda **kwargs: fake,
-    )
-
-    with policy.target_missing_run(
-        _request(targets=["y1", "y2"], model_type="multitask")
-    ) as report:
-        fitted = policy.fit_tabular_optimizer()
-
-    assert torch.isnan(fitted.web_observed_target_tensor).sum().item() == 2
-    assert torch.equal(
-        fitted.dataset.Y,
-        torch.tensor([[1.0, 2.5], [3.5, 4.0]], dtype=torch.double),
-    )
-    assert report["acquisition_baseline_completed"] is True

@@ -18,7 +18,6 @@ from .tabular_core import (
     TabularCandidateResponse,
     TabularFeatureImportanceRequest,
     TabularFeatureImportanceResponse,
-    TabularFitModelRequest as _CoreTabularFitModelRequest,
     TabularModelFitResponse,
     TabularModelLoadResponse,
     TabularPayload,
@@ -26,13 +25,14 @@ from .tabular_core import (
     TabularPredictResponse,
     TabularTellRequest,
 )
+from .tabular_core import TabularFitModelRequest as _CoreTabularFitModelRequest
 
 
 class ExperimentFailureConfigRequest(APIRequest):
     """HTTP configuration for the independent experiment-success classifier."""
 
-    model_config: ModelConfigSchema | None = None
-    fit_config: FitConfigSchema | None = None
+    failure_model_config: ModelConfigSchema | None = None
+    failure_fit_config: FitConfigSchema | None = None
     min_success_probability: float = Field(default=0.5, ge=0.0, le=1.0)
     eta: float = Field(default=0.05, gt=0.0)
     reduce_q: Literal["prod", "min", "mean"] = "prod"

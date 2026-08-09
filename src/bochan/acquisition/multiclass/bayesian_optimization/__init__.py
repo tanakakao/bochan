@@ -5,25 +5,37 @@ from bochan.acquisition._nparego_shape import (
 from . import multi_output as _multi_output
 from .hetero_multi_output import (
     qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement,
-    qHeteroMultiOutputMulticlassExpectedImprovement,
     qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
     qHeteroMultiOutputMulticlassNParEGO,
+)
+from .hetero_single_output import NoiseCombineType, NoiseWeightMode
+from .input_perturbation import (
+    configure_multiclass_hypervolume_input_perturbation,
+)
+from .multi_output import (
+    qMultiOutputMulticlassExpectedHypervolumeImprovement,
+    qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
+    qMultiOutputMulticlassNParEGO,
+)
+from .nehvi_baseline import configure_multiclass_nehvi_baseline_input
+from .nominal_duplicate_safe import (
+    qHeteroMultiOutputMulticlassExpectedImprovement,
     qHeteroMultiOutputMulticlassProbabilityOfFeasibility,
     qHeteroMultiOutputMulticlassProbabilityOfImprovement,
     qHeteroMultiOutputMulticlassUpperConfidenceBound,
-)
-from .hetero_single_output import (
-    NoiseCombineType,
-    NoiseWeightMode,
     qHeteroMulticlassExpectedImprovement,
     qHeteroMulticlassProbabilityOfFeasibility,
     qHeteroMulticlassProbabilityOfImprovement,
     qHeteroMulticlassUpperConfidenceBound,
+    qMultiOutputMulticlassExpectedImprovement,
+    qMultiOutputMulticlassProbabilityOfFeasibility,
+    qMultiOutputMulticlassProbabilityOfImprovement,
+    qMultiOutputMulticlassUpperConfidenceBound,
+    qMulticlassExpectedImprovement,
+    qMulticlassProbabilityOfFeasibility,
+    qMulticlassProbabilityOfImprovement,
+    qMulticlassUpperConfidenceBound,
 )
-from .input_perturbation import (
-    configure_multiclass_hypervolume_input_perturbation,
-)
-from .nehvi_baseline import configure_multiclass_nehvi_baseline_input
 from .nparego_input_perturbation import (
     configure_multiclass_nparego_input_perturbation,
 )
@@ -35,9 +47,7 @@ from .outputs import apply_bayesian_optimization_outputs
 
 # Keep q=1 sequential optimization shape handling aligned across classification
 # and ordinal NParEGO implementations.
-_multi_output._reduce_sample_and_q_to_tbatch = (
-    reduce_nparego_sample_and_q_to_tbatch
-)
+_multi_output._reduce_sample_and_q_to_tbatch = reduce_nparego_sample_and_q_to_tbatch
 
 
 def _patch_default_multioutput_target_class() -> None:
@@ -72,26 +82,15 @@ def _patch_default_multioutput_target_class() -> None:
 
 _patch_default_multioutput_target_class()
 
-from .multi_output import (
+from .multi_output import (  # noqa: E402
     MulticlassTargetProbabilityObjective,
     OutputReductionType,
     compute_observed_multiclass_target_probability_values,
     compute_observed_multiclass_utility,
-    qMultiOutputMulticlassExpectedHypervolumeImprovement,
-    qMultiOutputMulticlassExpectedImprovement,
-    qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
-    qMultiOutputMulticlassNParEGO,
-    qMultiOutputMulticlassProbabilityOfFeasibility,
-    qMultiOutputMulticlassProbabilityOfImprovement,
-    qMultiOutputMulticlassUpperConfidenceBound,
 )
-from .single_output import (
+from .single_output import (  # noqa: E402
     compute_multiclass_target_probability_best_f,
     compute_multiclass_target_probability_values,
-    qMulticlassExpectedImprovement,
-    qMulticlassProbabilityOfFeasibility,
-    qMulticlassProbabilityOfImprovement,
-    qMulticlassUpperConfidenceBound,
 )
 
 # qNEHVI builds its baseline partitioning before qEHVI installs the automatic

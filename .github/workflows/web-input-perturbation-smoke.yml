@@ -17,10 +17,12 @@ on:
       - "web/src/pages/SettingsPage.tsx"
       - "tests/api/test_cross_validation_prediction_aggregation.py"
       - "tests/test_binary_active_learning_input_perturbation_duplicates.py"
+      - "tests/test_classification_input_perturbation_duplicate_semantics.py"
       - "tests/test_feature_importance_input_perturbation.py"
       - "tests/test_multiclass_yy_visualization.py"
       - "tests/test_regression_active_learning_input_perturbation_duplicates.py"
       - "tests/test_webapp_binary_variance_input_perturbation_e2e.py"
+      - "tests/test_webapp_classification_input_perturbation_e2e.py"
       - "tests/test_webapp_input_perturbation_e2e.py"
       - "tests/test_webapp_input_perturbation_prediction_shape.py"
       - ".github/workflows/web-input-perturbation-smoke.yml"
@@ -29,7 +31,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,10 +45,12 @@ jobs:
           pytest -q --maxfail=1 \
             tests/api/test_cross_validation_prediction_aggregation.py \
             tests/test_binary_active_learning_input_perturbation_duplicates.py \
+            tests/test_classification_input_perturbation_duplicate_semantics.py \
             tests/test_feature_importance_input_perturbation.py \
             tests/test_multiclass_yy_visualization.py \
             tests/test_regression_active_learning_input_perturbation_duplicates.py \
             tests/test_webapp_binary_variance_input_perturbation_e2e.py \
+            tests/test_webapp_classification_input_perturbation_e2e.py \
             tests/test_webapp_input_perturbation_e2e.py \
             tests/test_webapp_input_perturbation_prediction_shape.py
       - name: Run Ruff
@@ -54,8 +58,23 @@ jobs:
           python -m pip install ruff
           ruff check --ignore I001,SIM102,SIM108 \
             src/bochan/api/cross_validation.py \
+            src/bochan/acquisition/_nominal_duplicate_penalties.py \
             src/bochan/acquisition/binary/active_learning/__init__.py \
-            src/bochan/acquisition/binary/active_learning/input_perturbation_safe.py \
+            src/bochan/acquisition/binary/active_learning/nominal_duplicate_safe.py \
+            src/bochan/acquisition/binary/bayesian_optimization/__init__.py \
+            src/bochan/acquisition/binary/bayesian_optimization/nominal_duplicate_safe.py \
+            src/bochan/acquisition/binary/levelset_estimation/__init__.py \
+            src/bochan/acquisition/binary/levelset_estimation/nominal_duplicate_safe.py \
+            src/bochan/acquisition/multiclass/active_learning/__init__.py \
+            src/bochan/acquisition/multiclass/active_learning/nominal_duplicate_safe.py \
+            src/bochan/acquisition/multiclass/bayesian_optimization/__init__.py \
+            src/bochan/acquisition/multiclass/bayesian_optimization/nominal_duplicate_safe.py \
+            src/bochan/acquisition/multiclass/levelset_estimation/__init__.py \
+            src/bochan/acquisition/multiclass/levelset_estimation/nominal_duplicate_safe.py \
+            src/bochan/acquisition/ordinal/active_learning/__init__.py \
+            src/bochan/acquisition/ordinal/active_learning/nominal_duplicate_safe.py \
+            src/bochan/acquisition/ordinal/levelset_estimation/__init__.py \
+            src/bochan/acquisition/ordinal/levelset_estimation/nominal_duplicate_safe.py \
             src/bochan/acquisition/regression/active_learning/_base_objective.py \
             src/bochan/acquisition/regression/active_learning/_base_scoring.py \
             src/bochan/inspection/feature_importance.py \
@@ -63,9 +82,11 @@ jobs:
             src/bochan/visualization/multiclass_yy.py \
             tests/api/test_cross_validation_prediction_aggregation.py \
             tests/test_binary_active_learning_input_perturbation_duplicates.py \
+            tests/test_classification_input_perturbation_duplicate_semantics.py \
             tests/test_feature_importance_input_perturbation.py \
             tests/test_multiclass_yy_visualization.py \
             tests/test_regression_active_learning_input_perturbation_duplicates.py \
             tests/test_webapp_binary_variance_input_perturbation_e2e.py \
+            tests/test_webapp_classification_input_perturbation_e2e.py \
             tests/test_webapp_input_perturbation_e2e.py \
             tests/test_webapp_input_perturbation_prediction_shape.py

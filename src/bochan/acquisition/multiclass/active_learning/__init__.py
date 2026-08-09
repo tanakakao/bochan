@@ -1,6 +1,8 @@
 from .alignment import apply_active_learning_alignment
 from .hetero_alignment import apply_hetero_noise_alignment
-from .hetero_multi_output import (
+from .hetero_single_output import NoiseCombineType, NoiseQAggregateType, NoiseWeightMode
+from .multi_output import OutputReductionType
+from .nominal_duplicate_safe import (
     qHeteroMultiOutputMulticlassBALD,
     qHeteroMultiOutputMulticlassGreedyJointBALD,
     qHeteroMultiOutputMulticlassIntegratedPosteriorVarianceProxy,
@@ -8,11 +10,6 @@ from .hetero_multi_output import (
     qHeteroMultiOutputMulticlassMarginUncertainty,
     qHeteroMultiOutputMulticlassPredictiveEntropy,
     qHeteroMultiOutputMulticlassProbabilityVariance,
-)
-from .hetero_single_output import (
-    NoiseCombineType,
-    NoiseQAggregateType,
-    NoiseWeightMode,
     qHeteroMulticlassBALD,
     qHeteroMulticlassGreedyJointBALD,
     qHeteroMulticlassIntegratedPosteriorVarianceProxy,
@@ -20,9 +17,6 @@ from .hetero_single_output import (
     qHeteroMulticlassMarginUncertainty,
     qHeteroMulticlassPredictiveEntropy,
     qHeteroMulticlassProbabilityVariance,
-)
-from .multi_output import (
-    OutputReductionType,
     qMultiOutputMulticlassBALD,
     qMultiOutputMulticlassGreedyJointBALD,
     qMultiOutputMulticlassIntegratedPosteriorVarianceProxy,
@@ -30,8 +24,6 @@ from .multi_output import (
     qMultiOutputMulticlassMarginUncertainty,
     qMultiOutputMulticlassPredictiveEntropy,
     qMultiOutputMulticlassProbabilityVariance,
-)
-from .single_output import (
     qMulticlassBALD,
     qMulticlassGreedyJointBALD,
     qMulticlassIntegratedPosteriorVarianceProxy,

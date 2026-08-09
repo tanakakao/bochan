@@ -1,61 +1,41 @@
-from .hetero_multi_output import (
-    qHeteroMultiOutputBinaryPredictiveEntropy,
-    qHeteroMultiOutputBinaryProbabilityVariance,
-    qHeteroMultiOutputBinaryMarginUncertainty,
+from .nominal_duplicate_safe import (
+    qBinaryBALD as _SingleOutputBinaryBALD,
+    qBinaryGreedyJointBALD,
+    qBinaryIntegratedPosteriorVarianceProxy,
+    qBinaryJointBALD,
+    qBinaryMarginUncertainty,
+    qBinaryPredictiveEntropy as _SingleOutputBinaryPredictiveEntropy,
+    qBinaryProbabilityVariance,
+    qHeteroBinaryBALD,
+    qHeteroBinaryIntegratedPosteriorVariance,
+    qHeteroBinaryMarginUncertainty,
+    qHeteroBinaryPredictiveEntropy,
+    qHeteroBinaryProbabilityVariance,
     qHeteroMultiOutputBinaryBALD,
     qHeteroMultiOutputBinaryIntegratedPosteriorVarianceProxy,
-)
-
-from .hetero_single_output import (
-    qHeteroBinaryPredictiveEntropy,
-    qHeteroBinaryBALD,
-    qHeteroBinaryProbabilityVariance,
-    qHeteroBinaryMarginUncertainty,
-    qHeteroBinaryIntegratedPosteriorVariance,
-)
-
-from .multi_output import (
-    qMultiOutputBinaryPredictiveEntropy,
-    qMultiOutputBinaryProbabilityVariance,
-    qMultiOutputBinaryMarginUncertainty,
+    qHeteroMultiOutputBinaryMarginUncertainty,
+    qHeteroMultiOutputBinaryPredictiveEntropy,
+    qHeteroMultiOutputBinaryProbabilityVariance,
     qMultiOutputBinaryBALD,
     qMultiOutputBinaryIntegratedPosteriorVarianceProxy,
+    qMultiOutputBinaryMarginUncertainty,
+    qMultiOutputBinaryPredictiveEntropy,
+    qMultiOutputBinaryProbabilityVariance,
 )
-
 from .single_output import (
-    qBinaryPredictiveEntropy as _SingleOutputBinaryPredictiveEntropy,
-    qBinaryBALD as _SingleOutputBinaryBALD,
-    qBinaryJointBALD,
-    qBinaryGreedyJointBALD,
-    qBinaryMarginUncertainty,
     qBinaryFantasyNegIntegratedPosteriorVariance as qBinaryFantasyNegIntegratedPosteriorVarianceEvo,
-)
-from .input_perturbation_safe import qBinaryProbabilityVariance
-from .integrated_posterior_variance import (
-    qBinaryIntegratedPosteriorVarianceProxy,
 )
 
 
 def qBinaryPredictiveEntropy(model, *args, **kwargs):
-    """Construct single- or multi-output binary predictive entropy.
-
-    Correlated Kronecker models are represented by one model object even when
-    they expose multiple outputs. Use ``model.num_outputs`` rather than wrapper
-    metadata to select the acquisition implementation.
-    """
+    """Construct single- or multi-output binary predictive entropy."""
     if int(getattr(model, "num_outputs", 1)) > 1:
         return qMultiOutputBinaryPredictiveEntropy(model, *args, **kwargs)
     return _SingleOutputBinaryPredictiveEntropy(model, *args, **kwargs)
 
 
 def qBinaryBALD(model, *args, **kwargs):
-    """Construct single- or multi-output binary BALD from the model shape.
-
-    Correlated Kronecker models are built as one model rather than a ModelList
-    wrapper, so high-level metadata may still label them as a single model. Their
-    ``num_outputs`` property is the reliable source for selecting the correct
-    acquisition implementation.
-    """
+    """Construct single- or multi-output binary BALD from the model shape."""
     if int(getattr(model, "num_outputs", 1)) > 1:
         return qMultiOutputBinaryBALD(model, *args, **kwargs)
     return _SingleOutputBinaryBALD(model, *args, **kwargs)

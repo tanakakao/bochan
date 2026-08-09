@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from time import perf_counter
+from types import SimpleNamespace
 
 import pytest
 
@@ -70,6 +71,21 @@ def test_web_target_settings_apply_ngboost_runtime_defaults() -> None:
     assert model_kwargs["verbose"] is False
 
 
+def _risk_request(*, model_type: str, input_perturbation: bool) -> SimpleNamespace:
+    return SimpleNamespace(
+        model_type=model_type,
+        input_perturbation=input_perturbation,
+        n_w=16,
+        acquisition={
+            "acqf_kwargs": {
+                "web_family": "bayesian_optimization",
+                "web_risk_type": "none",
+                "web_risk_alpha": 0.2,
+            }
+        },
+    )
+
+
 def test_web_evolutionary_search_uses_interactive_budget() -> None:
     from bochan.serving.webapp.search_settings import resolve_search_method
 
@@ -93,6 +109,51 @@ def test_web_evolutionary_search_uses_interactive_budget() -> None:
         multi_objective=False,
     )
     assert generic_evo_kwargs["options"] == {
+        "pop_size": 32,
+        "num_generations": 40,
+    }
+
+
+def test_web_ngboost_uses_smaller_ga_budget() -> None:
+    from bochan.serving.webapp.risk_settings import web_risk_run
+    from bochan.serving.webapp.search_settings import resolve_search_method
+
+    with web_risk_run(
+        _risk_request(model_type="ngboost_ensemble", input_perturbation=False)
+    ):
+        _, kwargs, _ = resolve_search_method("ga", multi_objective=False)
+
+    assert kwargs["options"] == {
+        "pop_size": 24,
+        "num_generations": 24,
+    }
+
+
+def test_web_perturbed_ngboost_uses_tight_ga_budget() -> None:
+    from bochan.serving.webapp.risk_settings import web_risk_run
+    from bochan.serving.webapp.search_settings import resolve_search_method
+
+    with web_risk_run(
+        _risk_request(model_type="ngboost_ensemble", input_perturbation=True)
+    ):
+        _, kwargs, _ = resolve_search_method("ga", multi_objective=False)
+
+    assert kwargs["options"] == {
+        "pop_size": 16,
+        "num_generations": 20,
+    }
+
+
+def test_web_perturbed_random_forest_keeps_general_ga_budget() -> None:
+    from bochan.serving.webapp.risk_settings import web_risk_run
+    from bochan.serving.webapp.search_settings import resolve_search_method
+
+    with web_risk_run(
+        _risk_request(model_type="random_forest", input_perturbation=True)
+    ):
+        _, kwargs, _ = resolve_search_method("ga", multi_objective=False)
+
+    assert kwargs["options"] == {
         "pop_size": 32,
         "num_generations": 40,
     }

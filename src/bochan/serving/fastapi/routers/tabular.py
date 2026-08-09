@@ -103,13 +103,13 @@ def _experiment_failure_config(request: TabularFitModelRequest) -> ExperimentFai
     if value is None:
         return None
     model_config = (
-        make_model_config(_schema_dict(value.model_config))
-        if value.model_config is not None
+        make_model_config(_schema_dict(value.failure_model_config))
+        if value.failure_model_config is not None
         else None
     )
     fit_config = (
-        make_fit_config(_schema_dict(value.fit_config))
-        if value.fit_config is not None
+        make_fit_config(_schema_dict(value.failure_fit_config))
+        if value.failure_fit_config is not None
         else None
     )
     return ExperimentFailureConfig(

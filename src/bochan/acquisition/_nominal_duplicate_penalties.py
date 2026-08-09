@@ -89,6 +89,18 @@ class NominalDuplicatePenaltyMixin:
             for name, value in previous.items():
                 setattr(self, name, value)
 
+    @contextmanager
+    def _without_numeric_hard_duplicate_penalty(self) -> Iterator[None]:
+        if not hasattr(self, "hard_duplicate_penalty"):
+            yield
+            return
+        previous = getattr(self, "hard_duplicate_penalty")
+        setattr(self, "hard_duplicate_penalty", 0.0)
+        try:
+            yield
+        finally:
+            setattr(self, "hard_duplicate_penalty", previous)
+
     def _raw_X(self, ref: Tensor) -> Tensor | None:
         raw_X = self._bochan_raw_X_for_duplicate_penalty
         if raw_X is None:
@@ -178,6 +190,16 @@ class NominalDuplicatePenaltyMixin:
             soft,
             self._nominal_same_batch_invalid(soft),
         )
+
+    def _same_batch_repulsion(self, X: Tensor) -> Tensor:
+        """Keep custom soft LSE repulsion but remove expanded-row hard hits."""
+        with self._without_numeric_hard_duplicate_penalty():
+            return super()._same_batch_repulsion(X)
+
+    def _reference_repulsion(self, X: Tensor, X_ref: Any, weight: float) -> Tensor:
+        """Keep custom soft LSE reference repulsion; common hard checks follow."""
+        with self._without_numeric_hard_duplicate_penalty():
+            return super()._reference_repulsion(X, X_ref, weight)
 
     def _pointwise_reference_penalty(self, X: Tensor) -> Tensor:
         """Ordinal single-output combined pending/observed/same-batch hook."""

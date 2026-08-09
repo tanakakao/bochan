@@ -1,14 +1,16 @@
-"""Multiclass Bayesian-optimization acquisitions with nominal duplicate semantics."""
+"""Multiclass BO acquisitions with nominal hard-duplicate semantics.
+
+Hypervolume and NParEGO acquisitions already have dedicated one-to-many
+InputPerturbation objective adapters and do not use the pointwise hard-duplicate
+path.  They intentionally remain unwrapped.
+"""
 
 from bochan.acquisition._nominal_duplicate_penalties import (
     NominalDuplicatePenaltyMixin,
 )
 
 from .hetero_multi_output import (
-    qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement as _qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement,
     qHeteroMultiOutputMulticlassExpectedImprovement as _qHeteroMultiOutputMulticlassExpectedImprovement,
-    qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement as _qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
-    qHeteroMultiOutputMulticlassNParEGO as _qHeteroMultiOutputMulticlassNParEGO,
     qHeteroMultiOutputMulticlassProbabilityOfFeasibility as _qHeteroMultiOutputMulticlassProbabilityOfFeasibility,
     qHeteroMultiOutputMulticlassProbabilityOfImprovement as _qHeteroMultiOutputMulticlassProbabilityOfImprovement,
     qHeteroMultiOutputMulticlassUpperConfidenceBound as _qHeteroMultiOutputMulticlassUpperConfidenceBound,
@@ -20,10 +22,7 @@ from .hetero_single_output import (
     qHeteroMulticlassUpperConfidenceBound as _qHeteroMulticlassUpperConfidenceBound,
 )
 from .multi_output import (
-    qMultiOutputMulticlassExpectedHypervolumeImprovement as _qMultiOutputMulticlassExpectedHypervolumeImprovement,
     qMultiOutputMulticlassExpectedImprovement as _qMultiOutputMulticlassExpectedImprovement,
-    qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement as _qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
-    qMultiOutputMulticlassNParEGO as _qMultiOutputMulticlassNParEGO,
     qMultiOutputMulticlassProbabilityOfFeasibility as _qMultiOutputMulticlassProbabilityOfFeasibility,
     qMultiOutputMulticlassProbabilityOfImprovement as _qMultiOutputMulticlassProbabilityOfImprovement,
     qMultiOutputMulticlassUpperConfidenceBound as _qMultiOutputMulticlassUpperConfidenceBound,
@@ -73,18 +72,6 @@ qMultiOutputMulticlassUpperConfidenceBound = _safe(
     "qMultiOutputMulticlassUpperConfidenceBound",
     _qMultiOutputMulticlassUpperConfidenceBound,
 )
-qMultiOutputMulticlassExpectedHypervolumeImprovement = _safe(
-    "qMultiOutputMulticlassExpectedHypervolumeImprovement",
-    _qMultiOutputMulticlassExpectedHypervolumeImprovement,
-)
-qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement = _safe(
-    "qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement",
-    _qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
-)
-qMultiOutputMulticlassNParEGO = _safe(
-    "qMultiOutputMulticlassNParEGO",
-    _qMultiOutputMulticlassNParEGO,
-)
 
 qHeteroMulticlassProbabilityOfFeasibility = _safe(
     "qHeteroMulticlassProbabilityOfFeasibility",
@@ -118,18 +105,6 @@ qHeteroMultiOutputMulticlassProbabilityOfImprovement = _safe(
 qHeteroMultiOutputMulticlassUpperConfidenceBound = _safe(
     "qHeteroMultiOutputMulticlassUpperConfidenceBound",
     _qHeteroMultiOutputMulticlassUpperConfidenceBound,
-)
-qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement = _safe(
-    "qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement",
-    _qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement,
-)
-qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement = _safe(
-    "qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement",
-    _qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
-)
-qHeteroMultiOutputMulticlassNParEGO = _safe(
-    "qHeteroMultiOutputMulticlassNParEGO",
-    _qHeteroMultiOutputMulticlassNParEGO,
 )
 
 

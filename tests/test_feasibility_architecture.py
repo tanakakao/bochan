@@ -19,7 +19,20 @@ def test_signed_feasibility_weighting_never_rewards_lower_feasibility() -> None:
     torch.testing.assert_close(high, base)
     assert low[0] < high[0]
     assert low[1] < high[1]
-    torch.testing.assert_close(low, torch.tensor([0.2, -20.0], dtype=torch.double))
+    torch.testing.assert_close(low, torch.tensor([0.2, -3.8], dtype=torch.double))
+
+
+def test_signed_feasibility_weighting_has_finite_gradients() -> None:
+    base = torch.tensor([-0.2, 0.3], dtype=torch.double, requires_grad=True)
+    feasibility = torch.tensor([1e-12, 0.4], dtype=torch.double, requires_grad=True)
+
+    value = combine_acquisition_with_feasibility(base, feasibility).sum()
+    value.backward()
+
+    assert base.grad is not None
+    assert feasibility.grad is not None
+    assert torch.isfinite(base.grad).all()
+    assert torch.isfinite(feasibility.grad).all()
 
 
 def test_tabular_outcome_constraint_entrypoint_does_not_patch_factory() -> None:

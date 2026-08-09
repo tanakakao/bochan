@@ -185,6 +185,31 @@ def _random_forest_request(
     )
 
 
+def _single_objective_tree_joint_request(
+    dataset_id: str,
+    *,
+    model_type: str,
+) -> Any:
+    request = _random_forest_request(dataset_id, multi_objective=False)
+    model_kwargs = dict(request.model_kwargs)
+    if model_type == "lightgbm_ensemble":
+        model_kwargs.update(
+            {
+                "ensemble_size": 3,
+                "n_estimators": 12,
+                "random_state": 0,
+            }
+        )
+    optimizer = request.optimizer.model_copy(update={"q": 3, "sequential": True})
+    return request.model_copy(
+        update={
+            "model_type": model_type,
+            "model_kwargs": model_kwargs,
+            "optimizer": optimizer,
+        }
+    )
+
+
 def test_web_random_forest_single_objective_runs_with_evolutionary_search() -> None:
     from bochan.serving.webapp.workflows import run_regression_web_workflow
 
@@ -220,3 +245,28 @@ def test_web_random_forest_multiobjective_runs_with_independent_surrogates() -> 
     assert len(result["candidates"]) == 1
     assert result["metadata"]["optimizer"] == "evo"
     assert result["metadata"]["search_method"] == "ga"
+
+
+@pytest.mark.parametrize("model_type", ["random_forest", "lightgbm_ensemble"])
+def test_web_rf_and_lightgbm_ga_q3_use_joint_batch(model_type: str) -> None:
+    from bochan.serving.webapp.workflows import run_regression_web_workflow
+
+    if model_type == "lightgbm_ensemble":
+        pytest.importorskip("lightgbm")
+
+    torch.manual_seed(0)
+    store, dataset_id = _random_forest_store()
+    request = _single_objective_tree_joint_request(
+        dataset_id,
+        model_type=model_type,
+    )
+
+    result = run_regression_web_workflow(request, store)
+    uniqueness = result["metadata"]["candidate_uniqueness"]
+
+    assert result["model_type"] == model_type
+    assert len(result["candidates"]) == 3
+    assert uniqueness["requested_q"] == 3
+    assert uniqueness["sequential"] is False
+    assert uniqueness["unique_count"] == 3
+    assert result["batch_acq_value"] is not None

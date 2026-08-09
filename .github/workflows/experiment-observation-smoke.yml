@@ -26,16 +26,22 @@ jobs:
         run: pytest -q --maxfail=1 tests/test_experiment_success_acquisition.py
       - name: Tabular observation state
         run: pytest -q --maxfail=1 tests/test_tabular_observation_states.py
-      - name: FastAPI partial multitask
-        run: pytest -q tests/test_fastapi_tabular_observation_states.py::test_fastapi_partial_multitask_keeps_unobserved_targets
-      - name: FastAPI failure and pending states
-        run: pytest -q tests/test_fastapi_tabular_observation_states.py::test_fastapi_explicit_failure_and_pending_states_train_success_model
-      - name: FastAPI failure config validation
-        run: pytest -q tests/test_fastapi_tabular_observation_states.py::test_fastapi_failure_config_requires_explicit_status_column
-      - name: FastAPI status column validation
-        run: pytest -q tests/test_fastapi_tabular_observation_states.py::test_fastapi_status_column_cannot_be_an_input
-      - name: Web target missing policy
-        run: pytest -q --maxfail=1 tests/test_webapp_target_missing_policy.py
+      - name: FastAPI observation state
+        run: pytest -q --maxfail=1 tests/test_fastapi_tabular_observation_states.py
+      - name: Web single target drop
+        run: pytest -q tests/test_webapp_target_missing_policy.py::test_single_objective_drops_missing_target_rows
+      - name: Web multi target drop
+        run: pytest -q tests/test_webapp_target_missing_policy.py::test_multiobjective_non_multitask_drops_any_missing_target_row
+      - name: Web multitask partial preserve
+        run: pytest -q tests/test_webapp_target_missing_policy.py::test_multitask_preserves_partial_targets_and_drops_unusable_rows
+      - name: Web multitask target observations
+        run: pytest -q tests/test_webapp_target_missing_policy.py::test_multitask_requires_an_observation_for_every_target
+      - name: Web target encoder
+        run: pytest -q tests/test_webapp_target_missing_policy.py::test_target_encoder_preserves_regression_nan_cells
+      - name: Web source facade
+        run: pytest -q tests/test_webapp_target_missing_policy.py::test_target_settings_facade_uses_source_level_policy_functions
+      - name: Web model variant
+        run: pytest -q tests/test_webapp_target_missing_policy.py::test_model_variant_reports_native_wide_multitask_model
       - name: Web tabular observation flow
         run: pytest -q --maxfail=1 tests/test_webapp_tabular_backend.py
       - name: Run lint

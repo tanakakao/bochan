@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -9,15 +10,6 @@ pd = pytest.importorskip("pandas")
 torch = pytest.importorskip("torch")
 pytest.importorskip("botorch")
 pytest.importorskip("fastapi")
-
-from bochan.api.model_registry import DEFAULT_MODEL_REGISTRY  # noqa: E402
-from bochan.desktop.services import DatasetStore, build_dataset_record  # noqa: E402
-from bochan.models.hybrid.task_aware_posterior import (  # noqa: E402
-    HybridPosteriorComponent,
-    TaskAwareHybridPosterior,
-)
-from bochan.serving.webapp.app import RegressionRunRequest  # noqa: E402
-from bochan.serving.webapp.workflows import run_regression_web_workflow  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +27,8 @@ WEB_OUTPUT_TASK_TYPES = (
 
 
 def test_web_tree_ensemble_models_exist_for_normal_and_mixed_output_tasks() -> None:
+    from bochan.api.model_registry import DEFAULT_MODEL_REGISTRY
+
     registry = DEFAULT_MODEL_REGISTRY.raw()
 
     for input_type in ("normal", "mixed"):
@@ -76,6 +70,11 @@ def test_web_extra_installs_optional_tree_ensemble_dependencies() -> None:
 def test_task_aware_hybrid_posterior_preserves_finite_ensemble_function_draws() -> None:
     from botorch.posteriors.ensemble import EnsemblePosterior
 
+    from bochan.models.hybrid.task_aware_posterior import (
+        HybridPosteriorComponent,
+        TaskAwareHybridPosterior,
+    )
+
     values = torch.tensor(
         [
             [[0.0], [1.0], [2.0]],
@@ -107,7 +106,9 @@ def test_task_aware_hybrid_posterior_preserves_finite_ensemble_function_draws() 
     assert torch.equal(samples[1, :, 0], values[1, :, 0])
 
 
-def _random_forest_store() -> tuple[DatasetStore, str]:
+def _random_forest_store() -> tuple[Any, str]:
+    from bochan.desktop.services import DatasetStore, build_dataset_record
+
     x = torch.linspace(0.0, 1.0, 12, dtype=torch.double).numpy()
     data = pd.DataFrame(
         {
@@ -130,7 +131,9 @@ def _random_forest_request(
     dataset_id: str,
     *,
     multi_objective: bool,
-) -> RegressionRunRequest:
+) -> Any:
+    from bochan.serving.webapp.app import RegressionRunRequest
+
     targets = ["strength", "ductility"] if multi_objective else ["strength"]
     target_settings = [
         {
@@ -183,6 +186,8 @@ def _random_forest_request(
 
 
 def test_web_random_forest_single_objective_runs_with_evolutionary_search() -> None:
+    from bochan.serving.webapp.workflows import run_regression_web_workflow
+
     torch.manual_seed(0)
     store, dataset_id = _random_forest_store()
 
@@ -199,6 +204,8 @@ def test_web_random_forest_single_objective_runs_with_evolutionary_search() -> N
 
 
 def test_web_random_forest_multiobjective_runs_with_independent_surrogates() -> None:
+    from bochan.serving.webapp.workflows import run_regression_web_workflow
+
     torch.manual_seed(0)
     store, dataset_id = _random_forest_store()
 

@@ -177,6 +177,7 @@ WEB_CAPABILITIES: dict[str, Any] = {
         "random_forest",
         "lightgbm_ensemble",
         "ngboost_ensemble",
+        "tabpfn",
         "multitask",
     ],
     "gamma_model_types": [

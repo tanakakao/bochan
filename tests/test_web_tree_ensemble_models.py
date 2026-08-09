@@ -11,7 +11,13 @@ pd = pytest.importorskip("pandas")
 torch = pytest.importorskip("torch")
 pytest.importorskip("fastapi")
 
+from botorch.posteriors.ensemble import EnsemblePosterior  # noqa: E402
+
 from bochan.desktop.services import DatasetStore, build_dataset_record  # noqa: E402
+from bochan.models.hybrid.task_aware_posterior import (  # noqa: E402
+    HybridPosteriorComponent,
+    TaskAwareHybridPosterior,
+)
 from bochan.serving.webapp.app import RegressionRunRequest  # noqa: E402
 from bochan.serving.webapp.workflows import run_regression_web_workflow  # noqa: E402
 
@@ -67,6 +73,38 @@ def test_web_extra_installs_optional_tree_ensemble_dependencies() -> None:
     assert "scikit-learn>=1.3" in web
     assert "lightgbm>=4.7,<5" in web
     assert "ngboost>=0.5.11,<0.6" in web
+
+
+def test_task_aware_hybrid_posterior_preserves_finite_ensemble_function_draws() -> None:
+    values = torch.tensor(
+        [
+            [[0.0], [1.0], [2.0]],
+            [[10.0], [11.0], [12.0]],
+        ],
+        dtype=torch.double,
+    )
+    ensemble = EnsemblePosterior(values=values)
+    component = HybridPosteriorComponent(
+        mean=ensemble.mean.squeeze(-1),
+        variance=ensemble.variance.squeeze(-1),
+        posterior=ensemble,
+        name="property",
+    )
+    posterior = TaskAwareHybridPosterior(
+        mean=component.mean.unsqueeze(-1),
+        variance=component.variance.unsqueeze(-1),
+        components=[component],
+    )
+
+    assert posterior.base_sample_shape == torch.Size([1])
+    samples = posterior.rsample_from_base_samples(
+        sample_shape=torch.Size([2]),
+        base_samples=torch.tensor([[-8.0], [8.0]], dtype=torch.double),
+    )
+
+    assert samples.shape == torch.Size([2, 3, 1])
+    assert torch.equal(samples[0, :, 0], values[0, :, 0])
+    assert torch.equal(samples[1, :, 0], values[1, :, 0])
 
 
 def _random_forest_store() -> tuple[DatasetStore, str]:

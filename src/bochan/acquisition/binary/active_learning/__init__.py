@@ -27,10 +27,10 @@ from .single_output import (
     qBinaryBALD as _SingleOutputBinaryBALD,
     qBinaryJointBALD,
     qBinaryGreedyJointBALD,
-    qBinaryProbabilityVariance,
     qBinaryMarginUncertainty,
     qBinaryFantasyNegIntegratedPosteriorVariance as qBinaryFantasyNegIntegratedPosteriorVarianceEvo,
 )
+from .input_perturbation_safe import qBinaryProbabilityVariance
 from .integrated_posterior_variance import (
     qBinaryIntegratedPosteriorVarianceProxy,
 )

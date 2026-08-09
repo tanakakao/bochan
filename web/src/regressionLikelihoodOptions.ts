@@ -16,6 +16,9 @@ export type RegressionModelVariant =
   | "rembo"
   | "rrp"
   | "hetero"
+  | "random_forest"
+  | "lightgbm_ensemble"
+  | "ngboost_ensemble"
   | "multitask";
 
 export const REGRESSION_LIKELIHOOD_OPTIONS: ReadonlyArray<{
@@ -59,6 +62,9 @@ const MODEL_VARIANT_LABELS: Record<RegressionModelVariant, string> = {
   rembo: "REMBO",
   rrp: "Robust (RRP)",
   hetero: "Heteroskedastic",
+  random_forest: "Random Forest",
+  lightgbm_ensemble: "LightGBM",
+  ngboost_ensemble: "NGBoost",
   multitask: "Multitask GP"
 };
 
@@ -90,6 +96,9 @@ export function regressionModelVariantFor(modelType: string): RegressionModelVar
     variant === "rembo" ||
     variant === "rrp" ||
     variant === "hetero" ||
+    variant === "random_forest" ||
+    variant === "lightgbm_ensemble" ||
+    variant === "ngboost_ensemble" ||
     variant === "multitask"
   ) {
     return variant;

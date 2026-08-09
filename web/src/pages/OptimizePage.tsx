@@ -5,6 +5,7 @@ import InputPerturbationRiskSettingsControl from "../components/InputPerturbatio
 import SearchVariableSettings from "../components/SearchVariableSettings";
 import TargetProposalSettings from "../components/TargetProposalSettings";
 import { useWorkbench } from "../context/WorkbenchContext";
+import { isTreeEnsembleModelType } from "../modelOptions";
 import type { AcquisitionFamily } from "../types";
 import {
   loadSearchMethod,
@@ -152,6 +153,7 @@ export default function OptimizePage() {
   const taskTypes = optimizedTargetSettings.map((setting) => setting.task_type);
   const homogeneousTask = taskTypes.length > 0 && taskTypes.every((task) => task === taskTypes[0]);
   const projectedModel = modelType === "pca" || modelType === "rembo";
+  const treeEnsembleModel = isTreeEnsembleModelType(modelType);
   const regressionLocalUncertaintyEquivalent = (
     acquisitionFamily === "active_learning"
     && homogeneousTask
@@ -175,11 +177,12 @@ export default function OptimizePage() {
 
   const searchMethodOptions = useMemo(
     () => SEARCH_METHOD_OPTIONS.filter((option) => (
-      option.value !== "nsgaii" || (
+      (!treeEnsembleModel || option.family !== "gradient") &&
+      (option.value !== "nsgaii" || (
         acquisitionFamily === "bayesian_optimization" && multiObjective
-      )
+      ))
     )),
-    [acquisitionFamily, multiObjective]
+    [acquisitionFamily, multiObjective, treeEnsembleModel]
   );
   const searchMethodFamily = searchMethodFamilyFor(searchMethod);
   const lseParameter = levelSetParameter(acquisition);
@@ -200,10 +203,11 @@ export default function OptimizePage() {
 
   useEffect(() => {
     if (!searchMethodOptions.some((option) => option.value === searchMethod)) {
-      setSearchMethod("normal");
-      saveSearchMethod("normal");
+      const fallback: SearchMethod = treeEnsembleModel ? "ga" : "normal";
+      setSearchMethod(fallback);
+      saveSearchMethod(fallback);
     }
-  }, [searchMethod, searchMethodOptions]);
+  }, [searchMethod, searchMethodOptions, treeEnsembleModel]);
 
   function changeFamily(nextFamily: AcquisitionFamily) {
     setAcquisitionFamily(nextFamily);
@@ -429,7 +433,11 @@ export default function OptimizePage() {
               ))}
             </select>
           </label>
-          <p className="settings-note search-method-note">{SEARCH_FAMILY_DESCRIPTIONS[searchMethodFamily]}</p>
+          <p className="settings-note search-method-note">
+            {treeEnsembleModel
+              ? "ツリー・アンサンブルは候補入力に対する勾配を利用できないため、メタヒューリスティクスまたはサンプリングで探索します。多目的ベイズ最適化ではNSGA-IIも選択できます。"
+              : SEARCH_FAMILY_DESCRIPTIONS[searchMethodFamily]}
+          </p>
         </article>
 
         <article className="panel compact-panel">

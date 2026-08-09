@@ -5,6 +5,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import torch
+from botorch.posteriors.ensemble import EnsemblePosterior
 from botorch.posteriors.posterior import Posterior
 from botorch.sampling.get_sampler import GetSampler
 from botorch.sampling.normal import SobolQMCNormalSampler
@@ -31,6 +32,7 @@ class _ComponentLayout:
     event_shape: torch.Size
     event_size: int
     use_source_posterior: bool
+    use_ensemble_posterior: bool = False
 
 
 class TaskAwareHybridPosterior(HybridPosterior):
@@ -42,6 +44,12 @@ class TaskAwareHybridPosterior(HybridPosterior):
     outputs can therefore retain their source posterior covariance, and binary
     or ordinal outputs can transform latent samples into bounded probability or
     expected-utility samples before EHVI / NEHVI / NParEGO consume them.
+
+    Finite ``EnsemblePosterior`` components use one base event per output and
+    t-batch. That event is mapped to one weighted ensemble-member index, matching
+    BoTorch's ``IndexSampler`` semantics where a sampled member is shared across
+    all q points. This preserves the joint function-draw interpretation of Random
+    Forest, LightGBM ensemble, NGBoost ensemble, and other finite ensembles.
     """
 
     def __init__(
@@ -97,10 +105,25 @@ class TaskAwareHybridPosterior(HybridPosterior):
     def _make_layout(self, component: HybridPosteriorComponent) -> _ComponentLayout:
         posterior = component.posterior
         use_source = False
+        use_ensemble = False
         source_shape = torch.Size()
         event_shape = torch.Size()
-        if posterior is not None:
-            raw_shape = getattr(posterior, "base_sample_shape", None)
+
+        if isinstance(posterior, EnsemblePosterior):
+            # BoTorch EnsemblePosterior intentionally has no Normal
+            # base_sample_shape. Its IndexSampler draws one member index for each
+            # sample and t-batch and reuses that member across every q point.
+            # Reserve one continuous base event here and convert it to the same
+            # discrete member-index contract in _draw_component.
+            if posterior.batch_shape == self.batch_shape:
+                source_shape = posterior.batch_shape
+                event_shape = torch.Size([1])
+                use_ensemble = True
+        elif posterior is not None:
+            try:
+                raw_shape = posterior.base_sample_shape
+            except (AttributeError, NotImplementedError):
+                raw_shape = None
             has_base_sampler = callable(
                 getattr(posterior, "rsample_from_base_samples", None)
             )
@@ -126,7 +149,7 @@ class TaskAwareHybridPosterior(HybridPosterior):
                     event_shape = source_event
                     use_source = True
 
-        if not use_source:
+        if not use_source and not use_ensemble:
             event_shape = torch.Size([self._mean.shape[-2]])
             source_shape = self.batch_shape + event_shape
 
@@ -136,6 +159,7 @@ class TaskAwareHybridPosterior(HybridPosterior):
             event_shape=event_shape,
             event_size=int(math.prod(event_shape)),
             use_source_posterior=use_source,
+            use_ensemble_posterior=use_ensemble,
         )
 
     @property
@@ -188,6 +212,32 @@ class TaskAwareHybridPosterior(HybridPosterior):
                 f"{tuple(target_shape)}; got {tuple(samples.shape)}."
             ) from exc
 
+    @staticmethod
+    def _ensemble_member_indices(
+        posterior: EnsemblePosterior,
+        standard_normal: Tensor,
+    ) -> Tensor:
+        """Map Normal QMC base values to weighted ensemble-member indices."""
+
+        uniform = 0.5 * (
+            1.0 + torch.erf(standard_normal / standard_normal.new_tensor(2.0).sqrt())
+        )
+        weights = posterior.weights.to(
+            device=uniform.device,
+            dtype=uniform.dtype,
+        )
+        cumulative = weights.cumsum(dim=-1)
+        # searchsorted assigns values exactly equal to a CDF boundary to the
+        # lower member, matching inverse-CDF sampling. Clamp only protects the
+        # numerically possible u == 1 endpoint.
+        upper = torch.nextafter(
+            uniform.new_tensor(1.0),
+            uniform.new_tensor(0.0),
+        )
+        uniform = uniform.clamp(min=0.0, max=upper)
+        indices = torch.searchsorted(cumulative, uniform.contiguous(), right=False)
+        return indices.clamp_max(posterior.ensemble_size - 1).to(dtype=torch.long)
+
     def _draw_component(
         self,
         layout: _ComponentLayout,
@@ -196,8 +246,26 @@ class TaskAwareHybridPosterior(HybridPosterior):
         base_samples: Tensor,
     ) -> Tensor:
         component = layout.component
-        if layout.use_source_posterior:
+        if layout.use_ensemble_posterior:
+            ensemble_posterior = component.posterior
+            if not isinstance(ensemble_posterior, EnsemblePosterior):
+                raise RuntimeError(
+                    f"{component.name}: ensemble layout requires EnsemblePosterior."
+                )
+            indices = self._ensemble_member_indices(
+                ensemble_posterior,
+                base_samples.squeeze(-1),
+            )
+            raw_samples = ensemble_posterior.rsample_from_base_samples(
+                sample_shape=sample_shape,
+                base_samples=indices,
+            )
+        elif layout.use_source_posterior:
             source_base = base_samples.reshape(sample_shape + layout.source_shape)
+            if component.posterior is None:
+                raise RuntimeError(
+                    f"{component.name}: source-posterior layout requires a posterior."
+                )
             raw_samples = component.posterior.rsample_from_base_samples(
                 sample_shape=sample_shape,
                 base_samples=source_base,
@@ -214,7 +282,7 @@ class TaskAwareHybridPosterior(HybridPosterior):
 
         transformed = (
             component.sample_transform(raw_samples)
-            if layout.use_source_posterior
+            if (layout.use_source_posterior or layout.use_ensemble_posterior)
             and component.sample_transform is not None
             else raw_samples
         )

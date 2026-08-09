@@ -35,6 +35,9 @@ def test_web_capabilities_advertise_requested_models() -> None:
         "rembo",
         "robust",
         "hetero",
+        "random_forest",
+        "lightgbm_ensemble",
+        "ngboost_ensemble",
         "multitask",
     ]
     assert WEB_CAPABILITIES["gamma_model_types"] == [

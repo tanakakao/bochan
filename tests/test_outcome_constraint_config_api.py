@@ -174,3 +174,40 @@ def test_target_class_outcome_constraints_wrap_base_acquisition() -> None:
     values = acqf(X)
     assert values.shape == torch.Size([5])
     assert torch.all(values > 0.5)
+
+
+def test_explicit_acqf_factory_is_preserved_under_target_class_constraints() -> None:
+    calls = []
+
+    def custom_factory(bundle, config, data_context=None):
+        calls.append((bundle, config, data_context))
+        return _BaseAcq(bundle.model)
+
+    config = AcquisitionConfig(
+        name="custom",
+        acqf_factory=custom_factory,
+        outcome_constraint_config=OutcomeConstraintConfig(
+            constraints=[
+                FeasibilityConstraintSpec(
+                    output="quality_class",
+                    target_class=2,
+                    threshold=0.7,
+                    sense="ge",
+                )
+            ],
+            eta=0.05,
+        ),
+    )
+
+    assert config.acqf_factory is build_outcome_constrained_acquisition
+    assert config._base_acqf_factory is custom_factory
+
+    acqf = build_acquisition(bundle=_Bundle(), config=config)
+
+    assert isinstance(acqf, FeasibilityWeightedAcquisition)
+    assert len(calls) == 1
+    assert calls[0][1].outcome_constraint_config is None
+    X = torch.zeros(4, 2, 2, dtype=torch.double)
+    values = acqf(X)
+    assert values.shape == torch.Size([4])
+    assert torch.all(values > 0.5)

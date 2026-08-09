@@ -1,33 +1,22 @@
-"""Missing-value policy and adaptive multi-task model selection for the Web API.
+"""Request-local missing-value policy for the Web target workflow.
 
-The Web workbench uses one user-facing ``multitask`` model option. This module
-keeps partially observed multi-output regression rows for that option and chooses
-an implementation from the actual target matrix:
-
-- incomplete targets -> ``WideMultiTaskGP`` (NaNs are unobserved task cells),
-- complete targets -> ``PerturbationSupportedKroneckerMultiTaskGP``.
-
-Explanatory-variable missing values are handled independently. The Web UI may
-remove affected rows or reuse the tabular converter's numeric / categorical
-imputation implementation.
+The policy is consumed through normal imports from :mod:`target_settings` and
+:mod:`tabular_backend`. It does not replace workflow functions or mutate model
+registries at runtime.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Iterator
+from typing import Any
 
 _WEB_FEATURE_MISSING_KEY = "web_feature_missing"
 _STATE: ContextVar[dict[str, Any] | None] = ContextVar(
     "bochan_web_target_missing_state",
     default=None,
 )
-_ORIGINAL_CLEAN_ROWS: Any | None = None
-_ORIGINAL_ENCODE_TARGETS: Any | None = None
-_ORIGINAL_FIT_TABULAR_OPTIMIZER: Any | None = None
-_ORIGINAL_RESOLVE_TARGET_SETTINGS: Any | None = None
-_INSTALLED = False
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -118,6 +107,8 @@ def target_missing_run(request: Any) -> Iterator[dict[str, Any]]:
         "dropped_all_target_missing_rows": 0,
         "multitask_variant": None,
         "effective_model_type": requested_model_type,
+        # Observed targets are never overwritten with posterior means. This flag
+        # remains explicit in the response metadata to make that fact inspectable.
         "acquisition_baseline_completed": False,
         **feature_settings,
     }
@@ -128,27 +119,16 @@ def target_missing_run(request: Any) -> Iterator[dict[str, Any]]:
         _STATE.reset(token)
 
 
+def current_target_missing_state() -> dict[str, Any] | None:
+    """Return the mutable state for source-level workflow helpers."""
+
+    return _STATE.get()
+
+
 def current_target_missing_report() -> dict[str, Any]:
     """Return a copy of the active request report."""
 
     return dict(_STATE.get() or {})
-
-
-def _default_clean_rows(
-    data: Any,
-    feature_columns: list[str],
-    target_columns: list[str],
-    *,
-    drop_missing: bool,
-) -> Any:
-    from .target_settings import _clean_rows
-
-    return _clean_rows(
-        data,
-        feature_columns,
-        target_columns,
-        drop_missing=drop_missing,
-    )
 
 
 def _safe_impute_value(value: Any) -> Any:
@@ -165,7 +145,7 @@ def _impute_feature_columns(
     feature_columns: list[str],
     state: dict[str, Any],
 ) -> Any:
-    """Reuse the tabular API's feature-imputation implementation."""
+    """Reuse the tabular feature-imputation implementation."""
 
     import pandas as pd
 
@@ -209,11 +189,13 @@ def clean_rows(
     *,
     drop_missing: bool,
 ) -> Any:
-    """Apply independent explanatory-variable and target missing-value policies."""
+    """Apply independent explanatory-variable and target missing policies."""
+
+    from .target_settings_core import _clean_rows as core_clean_rows
 
     state = _STATE.get()
     if state is None:
-        return _default_clean_rows(
+        return core_clean_rows(
             data,
             feature_columns,
             target_columns,
@@ -274,33 +256,25 @@ def clean_rows(
     return work.reset_index(drop=True)
 
 
-def _default_encode_targets(
-    data: Any,
-    target_settings: list[dict[str, Any]],
-) -> tuple[Any, dict[str, dict[str, Any]]]:
-    from .target_settings import _encode_targets
-
-    return _encode_targets(data, target_settings)
-
-
 def encode_targets(
     data: Any,
     target_settings: list[dict[str, Any]],
 ) -> tuple[Any, dict[str, dict[str, Any]]]:
-    """Preserve regression NaNs while reusing the normal target metadata encoder."""
+    """Preserve regression NaNs while deriving metadata from observed values."""
+
+    from .target_settings_core import _encode_targets as core_encode_targets
 
     state = _STATE.get()
     preserve = bool(state and state.get("preserve_target_missing"))
-    original = _ORIGINAL_ENCODE_TARGETS or _default_encode_targets
     target_names = [str(value["target"]) for value in target_settings]
     if not preserve or not data[target_names].isna().any().any():
-        return original(data, target_settings)
+        return core_encode_targets(data, target_settings)
 
     if any(
         str(setting.get("task_type", "regression")) != "regression"
         for setting in target_settings
     ):
-        return original(data, target_settings)
+        return core_encode_targets(data, target_settings)
 
     import pandas as pd
 
@@ -316,177 +290,43 @@ def encode_targets(
         if int(numeric.notna().sum()) == 0:
             raise ValueError(f"{target}: regression target requires an observed value.")
         numeric_targets[target] = numeric
+        # Metadata thresholds/classes are evaluated by the existing encoder. The
+        # fill is local to this temporary metadata frame and never becomes train Y.
         metadata_data[target] = numeric.fillna(float(numeric.mean()))
 
-    encoded, metadata = original(metadata_data, target_settings)
+    encoded, metadata = core_encode_targets(metadata_data, target_settings)
     for target, numeric in numeric_targets.items():
         encoded[target] = numeric.to_numpy(dtype=float)
     return encoded, metadata
 
 
 def resolve_target_settings(*args: Any, **kwargs: Any) -> tuple[Any, dict[str, Any]]:
-    """Remove Web-only feature missing settings before model construction."""
+    """Resolve target settings and remove Web-only feature-missing metadata."""
 
-    original = _ORIGINAL_RESOLVE_TARGET_SETTINGS
-    if original is None:
-        from .target_settings import _resolve_target_settings as original
+    from .target_settings_core import _resolve_target_settings as core_resolve
 
-    settings, model_kwargs = original(*args, **kwargs)
+    settings, model_kwargs = core_resolve(*args, **kwargs)
     cleaned = dict(model_kwargs)
     cleaned.pop(_WEB_FEATURE_MISSING_KEY, None)
     return settings, cleaned
 
 
-def adaptive_multitask_gp(train_X: Any, train_Y: Any, **kwargs: Any) -> Any:
-    """Build WideMultiTaskGP for incomplete Y, otherwise build KroneckerMultiTaskGP."""
-
-    import torch
-
-    train_X = torch.as_tensor(train_X)
-    train_Y = torch.as_tensor(train_Y, device=train_X.device)
-    if bool(torch.isnan(train_Y).any()):
-        from bochan.models.wide_multitask_variants import WideMultiTaskGP
-
-        model = WideMultiTaskGP(train_X=train_X, train_Y=train_Y, **kwargs)
-        variant = "wide_multitask"
-        effective_model_type = "multitask"
-    else:
-        from bochan.models.regression.gaussian import (
-            PerturbationSupportedKroneckerMultiTaskGP,
-        )
-
-        model = PerturbationSupportedKroneckerMultiTaskGP(
-            train_X=train_X,
-            train_Y=train_Y,
-            **kwargs,
-        )
-        variant = "kronecker"
-        effective_model_type = "kronecker"
-
-    setattr(model, "web_multitask_variant", variant)
-    setattr(model, "web_effective_model_type", effective_model_type)
-    state = _STATE.get()
-    if state is not None:
-        state["multitask_variant"] = variant
-        state["effective_model_type"] = effective_model_type
-    return model
-
-
-def _posterior_training_mean(model: Any, X: Any, *, n_outputs: int) -> Any:
-    """Return one posterior-mean row per original training input."""
-
-    import torch
-
-    with torch.no_grad():
-        mean = model.posterior(X).mean.detach()
-    n_rows = int(X.shape[0])
-    flat = mean.reshape(-1, n_outputs)
-    if int(flat.shape[0]) % n_rows != 0:
-        raise RuntimeError(
-            "Could not align multitask posterior means with training rows: "
-            f"mean.shape={tuple(mean.shape)}, n_rows={n_rows}."
-        )
-    return flat.reshape(n_rows, -1, n_outputs).mean(dim=1)
-
-
-def fit_tabular_optimizer(**kwargs: Any) -> Any:
-    """Fit normally, then complete only the acquisition baseline for missing targets."""
-
-    original = _ORIGINAL_FIT_TABULAR_OPTIMIZER
-    if original is None:
-        from .tabular_backend import fit_tabular_optimizer as original
-
-    optimizer = original(**kwargs)
-    dataset = optimizer.dataset
-    if dataset is None or dataset.Y is None:
-        return optimizer
-
-    state = _STATE.get()
-    if state is not None and state.get("feature_impute_values"):
-        dataset.impute_values = dict(state["feature_impute_values"])
-
-    import torch
-
-    observed_y = dataset.Y.detach().clone()
-    missing_mask = torch.isnan(observed_y)
-    model = optimizer.bo.model
-    variant = getattr(model, "web_multitask_variant", None)
-    if state is not None and variant:
-        state["multitask_variant"] = variant
-        state["effective_model_type"] = getattr(
-            model,
-            "web_effective_model_type",
-            "multitask" if variant == "wide_multitask" else "kronecker",
-        )
-
-    optimizer.web_observed_target_tensor = observed_y
-    optimizer.web_target_missing_mask = missing_mask
-    if bool(missing_mask.any()):
-        predicted = _posterior_training_mean(
-            model,
-            dataset.X,
-            n_outputs=int(observed_y.shape[-1]),
-        ).to(dtype=observed_y.dtype, device=observed_y.device)
-        dataset.Y = torch.where(missing_mask, predicted, observed_y)
-        if state is not None:
-            state["acquisition_baseline_completed"] = True
-    return optimizer
-
-
-def install_workflow_adapters(workflows_tabular: Any) -> None:
-    """Install request-aware adapters once and register the adaptive Web model."""
-
-    global _INSTALLED
-    global _ORIGINAL_CLEAN_ROWS
-    global _ORIGINAL_ENCODE_TARGETS
-    global _ORIGINAL_FIT_TABULAR_OPTIMIZER
-    global _ORIGINAL_RESOLVE_TARGET_SETTINGS
-
-    if _INSTALLED:
-        return
-    _ORIGINAL_CLEAN_ROWS = workflows_tabular._clean_rows
-    _ORIGINAL_ENCODE_TARGETS = workflows_tabular._encode_targets
-    _ORIGINAL_FIT_TABULAR_OPTIMIZER = workflows_tabular.fit_tabular_optimizer
-    _ORIGINAL_RESOLVE_TARGET_SETTINGS = workflows_tabular._resolve_target_settings
-    workflows_tabular._clean_rows = clean_rows
-    workflows_tabular._encode_targets = encode_targets
-    workflows_tabular.fit_tabular_optimizer = fit_tabular_optimizer
-    workflows_tabular._resolve_target_settings = resolve_target_settings
-
-    from bochan.api.model_registry import MODEL_REGISTRY
-
-    registry = MODEL_REGISTRY.raw()
-    adaptive_path = (
-        "bochan.serving.webapp.target_missing_policy",
-        "adaptive_multitask_gp",
-    )
-    registry["normal"]["regression"]["multitask"] = adaptive_path
-    registry["normal"]["multi_objective"]["multitask"] = adaptive_path
-    _INSTALLED = True
-
-
 def model_variant(model: Any) -> tuple[str | None, str | None]:
     """Return the fitted multitask variant and effective model key."""
 
-    variant = getattr(model, "web_multitask_variant", None)
-    effective = getattr(model, "web_effective_model_type", None)
-    if variant or effective:
-        return variant, effective
     class_name = type(model).__name__.lower()
     if "kronecker" in class_name:
         return "kronecker", "kronecker"
-    if "widemultitask" in class_name:
+    if hasattr(model, "train_Y_wide") and hasattr(model, "num_tasks"):
         return "wide_multitask", "multitask"
     return None, None
 
 
 __all__ = [
-    "adaptive_multitask_gp",
     "clean_rows",
     "current_target_missing_report",
+    "current_target_missing_state",
     "encode_targets",
-    "fit_tabular_optimizer",
-    "install_workflow_adapters",
     "model_variant",
     "resolve_target_settings",
     "target_missing_run",

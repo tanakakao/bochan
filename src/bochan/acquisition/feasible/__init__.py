@@ -19,6 +19,7 @@ from .constraints import (
     wrap_sample_constraint_for_input_perturbation,
     wrap_sample_constraints_for_input_perturbation,
 )
+from .experiment_success import ExperimentSuccessWeightedAcquisition
 from .wrapper import (
     ConstraintReduction,
     ConstraintSpec,
@@ -31,6 +32,7 @@ __all__ = [
     "ConstraintReduction",
     "ConstraintSense",
     "ConstraintSpec",
+    "ExperimentSuccessWeightedAcquisition",
     "FeasibilityConstraintSpec",
     "FeasibilityWeightedAcquisition",
     "OrdinalRankConstraintSpec",

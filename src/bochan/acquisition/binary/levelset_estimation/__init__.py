@@ -1,32 +1,23 @@
-from .hetero_multi_output import (
-    qHeteroMultiOutputBinaryClassEntropyAcquisition,
-    qHeteroMultiOutputBinaryICUAcquisition,
-    qHeteroMultiOutputBinaryBoundaryVarianceAcquisition,
-    qHeteroMultiOutputBinaryLatentStraddleAcquisition,
-    qHeteroMultiOutputBinaryJointLatentStraddleAcquisition,
-)
-
-from .hetero_single_output import (
-    qHeteroBinaryLatentStraddleAcquisition,
-    qHeteroBinaryICUAcquisition,
-    qHeteroBinaryBoundaryVarianceAcquisition,
-    qHeteroBinaryClassEntropyAcquisition,
-)
-
-from .multi_output import (
-    qMultiOutputBinaryLatentStraddleAcquisition,
-    qMultiOutputBinaryJointLatentStraddleAcquisition,
-    qMultiOutputBinaryClassEntropyAcquisition,
-    qMultiOutputBinaryICUAcquisition,
-    qMultiOutputBinaryBoundaryVarianceAcquisition
-)
-
-from .single_output import (
-    qBinaryLatentStraddleAcquisition,
-    qBinaryJointLatentStraddleAcquisition,
-    qBinaryICUAcquisition,
+from .nominal_duplicate_safe import (
     qBinaryBoundaryVarianceAcquisition,
     qBinaryClassEntropyAcquisition,
+    qBinaryICUAcquisition,
+    qBinaryJointLatentStraddleAcquisition,
+    qBinaryLatentStraddleAcquisition,
+    qHeteroBinaryBoundaryVarianceAcquisition,
+    qHeteroBinaryClassEntropyAcquisition,
+    qHeteroBinaryICUAcquisition,
+    qHeteroBinaryLatentStraddleAcquisition,
+    qHeteroMultiOutputBinaryBoundaryVarianceAcquisition,
+    qHeteroMultiOutputBinaryClassEntropyAcquisition,
+    qHeteroMultiOutputBinaryICUAcquisition,
+    qHeteroMultiOutputBinaryJointLatentStraddleAcquisition,
+    qHeteroMultiOutputBinaryLatentStraddleAcquisition,
+    qMultiOutputBinaryBoundaryVarianceAcquisition,
+    qMultiOutputBinaryClassEntropyAcquisition,
+    qMultiOutputBinaryICUAcquisition,
+    qMultiOutputBinaryJointLatentStraddleAcquisition,
+    qMultiOutputBinaryLatentStraddleAcquisition,
 )
 
 __all__ = [

@@ -28,7 +28,7 @@ def _store_with_binary_data() -> tuple[DatasetStore, str]:
     return store, record.dataset_id
 
 
-def _request(dataset_id: str) -> RegressionRunRequest:
+def _request(dataset_id: str, *, acquisition_name: str) -> RegressionRunRequest:
     return RegressionRunRequest(
         dataset_id=dataset_id,
         feature_columns=["x"],
@@ -63,7 +63,7 @@ def _request(dataset_id: str) -> RegressionRunRequest:
             }
         ],
         acquisition={
-            "name": "variance",
+            "name": acquisition_name,
             "beta": 2.0,
             "acqf_kwargs": {
                 "web_family": "active_learning",
@@ -81,12 +81,21 @@ def _request(dataset_id: str) -> RegressionRunRequest:
     )
 
 
-def test_web_binary_variance_runs_end_to_end_with_input_perturbation() -> None:
-    """Binary variance must keep optimize_acqf Boltzmann initialization finite."""
+@pytest.mark.parametrize(
+    "acquisition_name",
+    ["variance", "predictive_entropy", "bald"],
+)
+def test_web_binary_active_learning_runs_end_to_end_with_input_perturbation(
+    acquisition_name: str,
+) -> None:
+    """Binary active learning must keep Boltzmann initialization finite."""
 
     torch.manual_seed(0)
     store, dataset_id = _store_with_binary_data()
-    result = run_regression_web_workflow(_request(dataset_id), store)
+    result = run_regression_web_workflow(
+        _request(dataset_id, acquisition_name=acquisition_name),
+        store,
+    )
 
     assert result["candidates"]
     assert len(result["candidates"]) == 3

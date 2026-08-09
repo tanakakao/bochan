@@ -1,6 +1,6 @@
 # Feasible acquisition helpers
 
-`bochan.acquisition.feasible` は、既存 acquisition を変更せずに、分類・順序回帰・回帰出力を feasible constraint として扱うための補助パッケージです。
+`bochan.acquisition.feasible` は、分類・順序回帰・回帰出力を feasible constraint として扱うための補助パッケージです。
 
 ## 1. 推奨: `outcome_constraint_config` に書く
 
@@ -199,13 +199,32 @@ P(quality_rank >= 2) >= 0.8
 
 ## 6. 内部の使い分け
 
-`outcome_constraint_config` に数値出力のしきい値だけが含まれる場合は、BoTorch標準の `constraints=` に変換されます。
+`OutcomeConstraintConfig` は acquisition class が解決された後、通常の `acqf_factory` composition として処理されます。`factory.build_acquisition` などをimport時に差し替える処理は使いません。
 
-`target_class` / `target_classes` / `OrdinalRankConstraintSpec` のように `model.class_probs_list()` が必要な制約は、内部で `FeasibilityWeightedAcquisition` によるsoft feasibility weightingとして適用されます。
+数値出力のsample constraintをacquisition classが明示的に `constraints=` として受け取れる場合は、BoTorch互換のnative constraintとしてそのまま渡します。
 
-この分岐により、モデル定義側の `positive_class` に依存せず、制約ごとに対象クラスを変えられます。
+一方、次のケースでは `FeasibilityWeightedAcquisition` を使います。
 
-## 7. Constraint sense
+- `target_class` / `target_classes` のように `model.class_probs_list()` が必要な制約
+- `OrdinalRankConstraintSpec`
+- acquisition class自体が `constraints=` をサポートしない場合
+
+この分岐により、native constrained acquisitionの意味論を維持しつつ、Active LearningやLevel-setなどの非native acquisitionにも同じ高位constraint APIを利用できます。
+
+## 7. 負値を取り得る acquisition の weighting
+
+単純な `acquisition * feasibility` は、獲得値が負の場合に問題があります。例えば同じ `-10` という獲得値に対し、`P(feasible)=1.0` は `-10`、`P(feasible)=0.1` は `-1` となり、最大化ではfeasibilityの低い候補が有利になります。
+
+`FeasibilityWeightedAcquisition` はこの逆転を防ぐため、符号に応じて次のmonotone penaltyを使います。
+
+```text
+acquisition >= 0 : acquisition * P(feasible)
+acquisition <  0 : acquisition / P(feasible)
+```
+
+したがって、同じbase acquisition valueならfeasibilityが低下してscoreが改善することはありません。`P(feasible)=0`近傍では数値安全のためfloating-point epsilonで下限を設けます。
+
+## 8. Constraint sense
 
 - `sense="ge"`: `y >= threshold` を feasible とする。
 - `sense="le"`: `y <= threshold` を feasible とする。

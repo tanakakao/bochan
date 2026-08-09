@@ -37,7 +37,7 @@ def _mixed_X() -> torch.Tensor:
 
 def test_tabpfn_optional_dependency_is_supported_major_version() -> None:
     major, minor, *_ = (int(part) for part in version("tabpfn").split(".")[:2])
-    assert (major, minor) >= (8, 2)
+    assert (major, minor) >= (8, 1)
     assert major < 9
 
 

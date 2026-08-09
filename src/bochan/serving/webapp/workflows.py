@@ -1,4 +1,4 @@
-"""Compatibility exports and lifecycle wrapper for the Web target workflow."""
+"""Lifecycle wrapper for the Web target workflow."""
 
 from __future__ import annotations
 
@@ -12,11 +12,7 @@ from .model_reuse import model_reuse_run, prepare_model_reuse_request
 from .non_gaussian_validation import validate_non_gaussian_target_frame
 from .reuse_dataset import store_for_model_reuse
 from .risk_settings import attach_web_risk_metadata, web_risk_run
-from .target_missing_policy import (
-    install_workflow_adapters,
-    model_variant,
-    target_missing_run,
-)
+from .target_missing_policy import model_variant, target_missing_run
 from .visualization_sessions import (
     begin_visualization_run,
     discard_visualization_run,
@@ -26,8 +22,6 @@ from .visualization_sessions import (
 )
 
 _workflows_tabular = import_module(".workflows_tabular", package=__package__)
-
-install_workflow_adapters(_workflows_tabular)
 
 _build_outcome_constraint_config = _workflows_tabular._build_outcome_constraint_config
 _figure_payload = _workflows_tabular._figure_payload

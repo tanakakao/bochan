@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Literal, Optional, Sequence
+from collections.abc import Sequence
+from typing import Literal
 
 import torch
 from botorch.acquisition.acquisition import AcquisitionFunction
@@ -26,21 +27,19 @@ ConstraintSpec = FeasibilityConstraintSpec | OrdinalRankConstraintSpec
 def combine_acquisition_with_feasibility(base_value: Tensor, feasibility: Tensor) -> Tensor:
     """Combine acquisition utility and feasibility without sign inversion.
 
-    Positive acquisition values keep the historical multiplicative weighting
-    ``a * p_f``. Negative values are divided by ``p_f`` instead, so decreasing
-    feasibility always makes a maximization acquisition worse rather than moving
-    a negative value spuriously toward zero.
+    Positive acquisition values keep multiplicative weighting ``a * p_f``.
+    Negative values use the bounded penalty ``a * (2 - p_f)`` so decreasing
+    feasibility always makes a maximization acquisition worse without dividing
+    by probabilities near zero.
     """
 
     if not torch.is_floating_point(base_value):
         base_value = base_value.to(dtype=torch.get_default_dtype())
     pf = feasibility.to(dtype=base_value.dtype, device=base_value.device)
-    eps = torch.finfo(base_value.dtype).eps
-    safe_pf = pf.clamp_min(eps)
     return torch.where(
         base_value >= 0,
         base_value * pf,
-        base_value / safe_pf,
+        base_value * (2.0 - pf),
     )
 
 
@@ -226,9 +225,8 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
         base_value = self.acqf(X)
         pf = self.feasibility(X)
 
-        if self.reduce_q == "none":
-            if base_value.shape == pf.shape[:-1]:
-                pf = pf.mean(dim=-1)
+        if self.reduce_q == "none" and base_value.shape == pf.shape[:-1]:
+            pf = pf.mean(dim=-1)
 
         try:
             return combine_acquisition_with_feasibility(base_value, pf)
@@ -239,7 +237,7 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
                 "Consider reduce_q='mean', 'min', or 'prod'."
             ) from exc
 
-    def set_X_pending(self, X_pending: Optional[Tensor] = None) -> None:
+    def set_X_pending(self, X_pending: Tensor | None = None) -> None:
         if hasattr(self.acqf, "set_X_pending"):
             self.acqf.set_X_pending(X_pending)
         self.X_pending = X_pending

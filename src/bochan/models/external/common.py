@@ -12,13 +12,6 @@ from torch import Tensor
 from torch.nn import Module
 
 
-_TREE_ENSEMBLE_ONE_TO_MANY_PREFIXES = (
-    "Random Forest",
-    "LightGBM",
-    "NGBoost",
-)
-
-
 def _require_external_inputs(train_X: Tensor) -> None:
     """Validate the common input contract for sklearn-style estimators."""
     if train_X.ndim != 2:
@@ -171,25 +164,18 @@ def _check_one_to_one_input_transform(
 ) -> None:
     """Validate one-to-many transforms at the external-estimator boundary.
 
-    Random Forest, LightGBM, and NGBoost models can evaluate a whole expanded
-    perturbation batch in one NumPy estimator call (or one call per ensemble
-    member). BoTorch ``InputPerturbation`` is eval-only by default, so fitting
-    remains one row per observation while posterior evaluation expands ``q`` to
-    ``q * n_w``. Other external models keep the historical one-to-one contract.
+    External estimator models share one invariant: fitting and validation targets
+    have one row per nominal observation. Eval-only transforms such as BoTorch
+    ``InputPerturbation`` are safe because ``_preprocess_fit_inputs`` deliberately
+    skips them while posterior paths flatten and batch all transformed evaluation
+    rows before crossing the Tensor-to-NumPy boundary. Training-time one-to-many
+    expansion is rejected for every external estimator because it would break the
+    X/Y row contract.
     """
     if input_transform is None or not bool(
         getattr(input_transform, "is_one_to_many", False)
     ):
         return
-
-    supports_eval_only_one_to_many = str(model_name).startswith(
-        _TREE_ENSEMBLE_ONE_TO_MANY_PREFIXES
-    )
-    if not supports_eval_only_one_to_many:
-        raise UnsupportedError(
-            f"{model_name} currently requires one-to-one input transforms; "
-            "one-to-many perturbation transforms are not supported."
-        )
 
     if _one_to_many_applies_on_train(input_transform):
         raise UnsupportedError(

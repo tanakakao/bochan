@@ -1,5 +1,11 @@
 """External-estimator models for multiclass classification."""
 
+from .lightgbm import (
+    LightGBMMixedMulticlassClassificationModel,
+    LightGBMMixedMulticlassEnsembleModel,
+    LightGBMMulticlassClassificationModel,
+    LightGBMMulticlassEnsembleModel,
+)
 from .ngboost import (
     NGBoostMixedMulticlassClassificationModel,
     NGBoostMixedMulticlassEnsembleModel,
@@ -12,6 +18,10 @@ from .random_forest import (
 )
 
 __all__ = [
+    "LightGBMMixedMulticlassClassificationModel",
+    "LightGBMMixedMulticlassEnsembleModel",
+    "LightGBMMulticlassClassificationModel",
+    "LightGBMMulticlassEnsembleModel",
     "NGBoostMixedMulticlassClassificationModel",
     "NGBoostMixedMulticlassEnsembleModel",
     "NGBoostMulticlassClassificationModel",

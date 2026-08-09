@@ -12,6 +12,7 @@ on:
       - "src/bochan/posteriors/ordinal_ensemble.py"
       - "src/bochan/api/model_registry.py"
       - "tests/test_deep_ensemble_classification_ordinal.py"
+      - "tests/test_ordinal_bald_ensemble.py"
       - "tests/test_model_package_layout.py"
       - ".github/workflows/deep-ensemble-classification-ordinal-smoke.yml"
   workflow_dispatch:
@@ -32,6 +33,7 @@ jobs:
         run: |
           pytest -q --maxfail=1 \
             tests/test_deep_ensemble_classification_ordinal.py \
+            tests/test_ordinal_bald_ensemble.py \
             tests/test_model_package_layout.py
       - name: Lint
         run: |
@@ -43,4 +45,5 @@ jobs:
             src/bochan/models/ordinal/neural \
             src/bochan/posteriors/ordinal_ensemble.py \
             tests/test_deep_ensemble_classification_ordinal.py \
+            tests/test_ordinal_bald_ensemble.py \
             tests/test_model_package_layout.py

@@ -12,6 +12,14 @@ OLD_PUBLIC_PACKAGES = (
     "bochan.models.classification.neural",
 )
 
+EXTERNAL_MODEL_TYPES = (
+    "lightgbm",
+    "lightgbm_ensemble",
+    "ngboost",
+    "ngboost_ensemble",
+    "random_forest",
+)
+
 
 def test_obsolete_model_packages_are_removed() -> None:
     for module_name in OLD_PUBLIC_PACKAGES:
@@ -40,7 +48,7 @@ def test_external_regression_registry_uses_external_package() -> None:
     tree = DEFAULT_MODEL_REGISTRY.raw()
     for input_type in ("normal", "mixed"):
         regression = tree[input_type]["regression"]
-        for model_type in ("ngboost", "ngboost_ensemble", "random_forest"):
+        for model_type in EXTERNAL_MODEL_TYPES:
             module_name, _ = regression[model_type]
             assert module_name == "bochan.models.regression.external"
 
@@ -51,7 +59,7 @@ def test_classification_registry_is_split_by_task() -> None:
         binary = tree[input_type]["binary"]
         multiclass = tree[input_type]["multiclass"]
 
-        for model_type in ("ngboost", "ngboost_ensemble", "random_forest"):
+        for model_type in EXTERNAL_MODEL_TYPES:
             binary_module, _ = binary[model_type]
             multiclass_module, _ = multiclass[model_type]
             assert binary_module == "bochan.models.classification.binary.external"
@@ -67,7 +75,7 @@ def test_ordinal_registry_contains_external_and_neural_models() -> None:
     tree = DEFAULT_MODEL_REGISTRY.raw()
     for input_type in ("normal", "mixed"):
         ordinal = tree[input_type]["ordinal"]
-        for model_type in ("ngboost", "ngboost_ensemble", "random_forest"):
+        for model_type in EXTERNAL_MODEL_TYPES:
             module_name, _ = ordinal[model_type]
             assert module_name == "bochan.models.ordinal.external"
         deep_module, _ = ordinal["deep_ensemble"]

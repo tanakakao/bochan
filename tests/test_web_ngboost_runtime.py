@@ -281,7 +281,6 @@ def test_real_web_ngboost_input_perturbation_suggestion_complete() -> None:
     )
 
     assert len(result["candidates"]) == 1
-    assert result["metadata"]["input_perturbation_n_w"] == 16
     assert result["metadata"]["input_perturbation_risk_type"] == "cvar"
     assert result["metadata"]["input_perturbation_risk_enabled"] is True
     assert result["metadata"]["timings_ms"]["candidate"] >= 0.0

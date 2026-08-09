@@ -1,0 +1,44 @@
+name: Web input perturbation smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/bochan/api/**"
+      - "src/bochan/acquisition/**"
+      - "src/bochan/models/**"
+      - "src/bochan/serving/webapp/**"
+      - "src/bochan/tabular/**"
+      - "web/src/api.ts"
+      - "web/src/context/WorkbenchContext.tsx"
+      - "web/src/pages/SettingsPage.tsx"
+      - "tests/api/test_cross_validation_prediction_aggregation.py"
+      - "tests/test_webapp_input_perturbation_e2e.py"
+      - ".github/workflows/web-input-perturbation-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install Python dependencies
+        run: python -m pip install -e ".[test,api,visualization]"
+      - name: Run InputPerturbation regression tests
+        run: |
+          pytest -q --maxfail=1 \
+            tests/api/test_cross_validation_prediction_aggregation.py \
+            tests/test_webapp_input_perturbation_e2e.py
+      - name: Run Ruff
+        run: |
+          python -m pip install ruff
+          ruff check --ignore I001,SIM102,SIM108 \
+            src/bochan/api/cross_validation.py \
+            tests/api/test_cross_validation_prediction_aggregation.py \
+            tests/test_webapp_input_perturbation_e2e.py

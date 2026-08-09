@@ -174,6 +174,9 @@ WEB_CAPABILITIES: dict[str, Any] = {
         "rembo",
         "robust",
         "hetero",
+        "random_forest",
+        "lightgbm_ensemble",
+        "ngboost_ensemble",
         "multitask",
     ],
     "gamma_model_types": [

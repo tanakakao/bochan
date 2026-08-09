@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from pathlib import Path
 import tomllib
+from pathlib import Path
 
 import pytest
-
-from bochan.api.model_registry import DEFAULT_MODEL_REGISTRY
 
 pd = pytest.importorskip("pandas")
 torch = pytest.importorskip("torch")
@@ -13,6 +11,7 @@ pytest.importorskip("fastapi")
 
 from botorch.posteriors.ensemble import EnsemblePosterior  # noqa: E402
 
+from bochan.api.model_registry import DEFAULT_MODEL_REGISTRY  # noqa: E402
 from bochan.desktop.services import DatasetStore, build_dataset_record  # noqa: E402
 from bochan.models.hybrid.task_aware_posterior import (  # noqa: E402
     HybridPosteriorComponent,

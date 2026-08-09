@@ -68,6 +68,8 @@ desktop = [
 
 web = [
   "fastapi>=0.110",
+  "lightgbm>=4.7,<5",
+  "ngboost>=0.5.11,<0.6",
   "openpyxl>=3.1",
   "pandas>=2.0",
   "plotly>=5.18",
@@ -155,7 +157,7 @@ Repository = "https://github.com/tanakakao/bochan"
 Issues = "https://github.com/tanakakao/bochan/issues"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = "src"
 include-package-data = true
 
 [tool.setuptools.packages.find]

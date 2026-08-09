@@ -39,7 +39,7 @@ def _request(dataset_id: str) -> RegressionRunRequest:
             "web_target_settings": [
                 {
                     "target": "y",
-                    "task_type": "binary",
+                    "task_type": "classification",
                     "optimize": True,
                     "direction": "maximize",
                     "goal": "none",

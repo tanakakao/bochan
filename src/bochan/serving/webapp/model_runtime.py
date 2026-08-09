@@ -36,18 +36,28 @@ def apply_web_model_runtime_defaults(
     Explicit user model kwargs always override these Web defaults. ``fit_maxiter``
     is deliberately not mapped to TabPFN because it has no iteration semantics in
     the foundation-model estimator.
+
+    Injected ``estimator`` / ``estimators`` objects are already fully constructed.
+    Constructor-only Web defaults must not be added in that case: doing so can
+    create inconsistent ensemble-size contracts and makes custom estimator reuse
+    unexpectedly depend on Web defaults.
     """
 
     kwargs = dict(model_kwargs)
     normalized_model_type = str(model_type).lower()
 
     if normalized_model_type == _TABPFN_MODEL:
+        if kwargs.get("estimator") is not None:
+            return kwargs
         kwargs.setdefault("n_estimators", _TABPFN_WEB_N_ESTIMATORS)
         kwargs.setdefault("show_progress_bar", False)
         kwargs.setdefault("n_preprocessing_jobs", 1)
         return kwargs
 
     if normalized_model_type != _NGBOOST_ENSEMBLE_MODEL:
+        return kwargs
+
+    if kwargs.get("estimators") is not None:
         return kwargs
 
     iterations = int(fit_maxiter)

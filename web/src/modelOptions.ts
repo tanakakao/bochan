@@ -4,6 +4,7 @@ export type ModelFamily =
   | "high_dimensional"
   | "robust_noise"
   | "tree_ensemble"
+  | "foundation"
   | "multitask";
 
 export const MODEL_FAMILY_OPTIONS: Array<{ value: ModelFamily; label: string }> = [
@@ -12,6 +13,7 @@ export const MODEL_FAMILY_OPTIONS: Array<{ value: ModelFamily; label: string }> 
   { value: "high_dimensional", label: "高次元・次元削減" },
   { value: "robust_noise", label: "ノイズ・頑健" },
   { value: "tree_ensemble", label: "ツリー・アンサンブル" },
+  { value: "foundation", label: "基盤モデル" },
   { value: "multitask", label: "マルチタスク" }
 ];
 
@@ -27,6 +29,7 @@ export const MODEL_OPTIONS = [
   { value: "random_forest", label: "Random Forest", family: "tree_ensemble" },
   { value: "lightgbm_ensemble", label: "LightGBM", family: "tree_ensemble" },
   { value: "ngboost_ensemble", label: "NGBoost", family: "tree_ensemble" },
+  { value: "tabpfn", label: "TabPFN", family: "foundation" },
   { value: "multitask", label: "Multitask GP", family: "multitask" },
 
   { value: "gamma_base", label: "Gamma Base", family: "standard_gp" },
@@ -88,6 +91,7 @@ export const MODEL_DESCRIPTIONS: Record<WebModelType, string> = {
   random_forest: "多数の決定木の予測ばらつきを不確実性として利用するRandom Forestです。候補探索には勾配を使わない探索を使用します。",
   lightgbm_ensemble: "複数のLightGBMをbootstrap学習し、モデル間のばらつきを不確実性として利用します。候補探索には勾配を使わない探索を使用します。",
   ngboost_ensemble: "複数のNGBoostをbootstrap学習し、モデル間のばらつきを不確実性として利用します。候補探索には勾配を使わない探索を使用します。",
+  tabpfn: "事前学習済みの表形式基盤モデルTabPFNを利用します。回帰・二値分類・多クラス分類に対応し、候補探索には勾配を使わない探索を使用します。分類の不確実性は公開predict_probaを用い、TabPFN内部の推論アンサンブルを別のepistemicサンプルとして二重計上しません。",
   multitask: "回帰目的間の相関を学習して情報共有します。",
 
   gamma_base: "正値目的変数のGamma変分GPです。",
@@ -135,8 +139,25 @@ export function modelFamilyFor(modelType: string): ModelFamily {
   return MODEL_OPTIONS.find((option) => option.value === modelType)?.family ?? "standard_gp";
 }
 
-export function isTreeEnsembleModelType(modelType: string): boolean {
+export function isTreeEnsembleFamilyModelType(modelType: string): boolean {
   return modelFamilyFor(modelType) === "tree_ensemble";
+}
+
+export function requiresDerivativeFreeSearch(modelType: string): boolean {
+  return isTreeEnsembleFamilyModelType(modelType) || modelType === "tabpfn";
+}
+
+/**
+ * Backward-compatible helper used by the Optimize page. Historically this name
+ * meant tree ensembles only; it now represents the models that must avoid
+ * gradient candidate optimization at the external-estimator boundary.
+ */
+export function isTreeEnsembleModelType(modelType: string): boolean {
+  return requiresDerivativeFreeSearch(modelType);
+}
+
+export function modelSupportsTaskType(modelType: string, taskType: string): boolean {
+  return modelType !== "tabpfn" || taskType !== "ordinal";
 }
 
 export function isMultitaskModelType(modelType: string): boolean {

@@ -1,4 +1,6 @@
-from .hetero_multi_output import (
+from .hetero_single_output import NoiseCombineType, NoiseWeightMode
+from .multi_output import OutputReductionType
+from .nominal_duplicate_safe import (
     qHeteroMultiOutputMulticlassBoundaryVarianceAcquisition,
     qHeteroMultiOutputMulticlassClassEntropyAcquisition,
     qHeteroMultiOutputMulticlassICUAcquisition,
@@ -6,10 +8,6 @@ from .hetero_multi_output import (
     qHeteroMultiOutputMulticlassLatentStraddleAcquisition,
     qHeteroMultiOutputMulticlassLevelSetUncertainty,
     qHeteroMultiOutputMulticlassProbabilityOfExceedance,
-)
-from .hetero_single_output import (
-    NoiseCombineType,
-    NoiseWeightMode,
     qHeteroMulticlassBoundaryVarianceAcquisition,
     qHeteroMulticlassClassEntropyAcquisition,
     qHeteroMulticlassICUAcquisition,
@@ -17,9 +15,6 @@ from .hetero_single_output import (
     qHeteroMulticlassLatentStraddleAcquisition,
     qHeteroMulticlassLevelSetUncertainty,
     qHeteroMulticlassProbabilityOfExceedance,
-)
-from .multi_output import (
-    OutputReductionType,
     qMultiOutputMulticlassBoundaryVarianceAcquisition,
     qMultiOutputMulticlassClassEntropyAcquisition,
     qMultiOutputMulticlassICUAcquisition,
@@ -27,8 +22,6 @@ from .multi_output import (
     qMultiOutputMulticlassLatentStraddleAcquisition,
     qMultiOutputMulticlassLevelSetUncertainty,
     qMultiOutputMulticlassProbabilityOfExceedance,
-)
-from .single_output import (
     qMulticlassBoundaryVarianceAcquisition,
     qMulticlassClassEntropyAcquisition,
     qMulticlassICUAcquisition,

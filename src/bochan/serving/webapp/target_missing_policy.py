@@ -301,14 +301,24 @@ def encode_targets(
 
 
 def resolve_target_settings(*args: Any, **kwargs: Any) -> tuple[Any, dict[str, Any]]:
-    """Resolve target settings and remove Web-only feature-missing metadata."""
+    """Resolve target settings and apply request-local Web model defaults."""
 
+    from .model_runtime import apply_web_model_runtime_defaults
     from .target_settings_core import _resolve_target_settings as core_resolve
 
     settings, model_kwargs = core_resolve(*args, **kwargs)
     cleaned = dict(model_kwargs)
     cleaned.pop(_WEB_FEATURE_MISSING_KEY, None)
-    return settings, cleaned
+
+    request = args[0] if args else kwargs.get("request")
+    if request is None:
+        return settings, cleaned
+    runtime_kwargs = apply_web_model_runtime_defaults(
+        cleaned,
+        model_type=str(getattr(request, "model_type", "base")),
+        fit_maxiter=int(getattr(request, "fit_maxiter", 128)),
+    )
+    return settings, runtime_kwargs
 
 
 def model_variant(model: Any) -> tuple[str | None, str | None]:

@@ -1,31 +1,22 @@
-from .hetero_multi_output import (
-    qHeteroMultiOutputOrdinalProbabilityOfExceedance,
-    qHeteroMultiOutputOrdinalLevelSetUncertainty,
-    qHeteroMultiOutputOrdinalStraddle,
+from .nominal_duplicate_safe import (
     qHeteroMultiOutputOrdinalBoundaryVariance,
-)
-
-from .hetero_single_output import (
-    qHeteroOrdinalLatentStraddleAcquisition,
-    qHeteroOrdinalICUAcquisition,
+    qHeteroMultiOutputOrdinalLevelSetUncertainty,
+    qHeteroMultiOutputOrdinalProbabilityOfExceedance,
+    qHeteroMultiOutputOrdinalStraddle,
     qHeteroOrdinalBoundaryVarianceAcquisition,
     qHeteroOrdinalClassEntropyAcquisition,
-)
-
-from .multi_output import (
-    qMultiOutputOrdinalLatentStraddleAcquisition,
-    qMultiOutputOrdinalJointLatentStraddleAcquisition,
-    qMultiOutputOrdinalICUAcquisition,
+    qHeteroOrdinalICUAcquisition,
+    qHeteroOrdinalLatentStraddleAcquisition,
     qMultiOutputOrdinalBoundaryVarianceAcquisition,
     qMultiOutputOrdinalClassEntropyAcquisition,
-)
-
-from .single_output import (
-    qOrdinalLatentStraddleAcquisition,
-    qOrdinalJointLatentStraddleAcquisition,
-    qOrdinalICUAcquisition,
+    qMultiOutputOrdinalICUAcquisition,
+    qMultiOutputOrdinalJointLatentStraddleAcquisition,
+    qMultiOutputOrdinalLatentStraddleAcquisition,
     qOrdinalBoundaryVarianceAcquisition,
     qOrdinalClassEntropyAcquisition,
+    qOrdinalICUAcquisition,
+    qOrdinalJointLatentStraddleAcquisition,
+    qOrdinalLatentStraddleAcquisition,
 )
 
 __all__ = [

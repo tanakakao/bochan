@@ -215,14 +215,14 @@ P(quality_rank >= 2) >= 0.8
 
 単純な `acquisition * feasibility` は、獲得値が負の場合に問題があります。例えば同じ `-10` という獲得値に対し、`P(feasible)=1.0` は `-10`、`P(feasible)=0.1` は `-1` となり、最大化ではfeasibilityの低い候補が有利になります。
 
-`FeasibilityWeightedAcquisition` はこの逆転を防ぐため、符号に応じて次のmonotone penaltyを使います。
+`FeasibilityWeightedAcquisition` はこの逆転を防ぐため、符号に応じて次のbounded monotone penaltyを使います。
 
 ```text
 acquisition >= 0 : acquisition * P(feasible)
-acquisition <  0 : acquisition / P(feasible)
+acquisition <  0 : acquisition * (2 - P(feasible))
 ```
 
-したがって、同じbase acquisition valueならfeasibilityが低下してscoreが改善することはありません。`P(feasible)=0`近傍では数値安全のためfloating-point epsilonで下限を設けます。
+したがって、同じbase acquisition valueならfeasibilityが低下してscoreが改善することはありません。負値側の倍率は `1` から `2` の範囲に限定されるため、`P(feasible)` が0に近い場合でも除算による勾配発散を起こしません。
 
 ## 8. Constraint sense
 

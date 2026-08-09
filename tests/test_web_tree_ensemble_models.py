@@ -3,7 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 import tomllib
 
+import pytest
+
 from bochan.api.model_registry import DEFAULT_MODEL_REGISTRY
+
+pd = pytest.importorskip("pandas")
+torch = pytest.importorskip("torch")
+pytest.importorskip("fastapi")
+
+from bochan.desktop.services import DatasetStore, build_dataset_record  # noqa: E402
+from bochan.serving.webapp.app import RegressionRunRequest  # noqa: E402
+from bochan.serving.webapp.workflows import run_regression_web_workflow  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,3 +67,111 @@ def test_web_extra_installs_optional_tree_ensemble_dependencies() -> None:
     assert "scikit-learn>=1.3" in web
     assert "lightgbm>=4.7,<5" in web
     assert "ngboost>=0.5.11,<0.6" in web
+
+
+def _random_forest_store() -> tuple[DatasetStore, str]:
+    x = torch.linspace(0.0, 1.0, 12, dtype=torch.double).numpy()
+    data = pd.DataFrame(
+        {
+            "x": x,
+            "strength": 1.0 - (x - 0.25) ** 2,
+            "ductility": 1.0 - (x - 0.75) ** 2,
+        }
+    )
+    record = build_dataset_record(
+        data=data,
+        name="tree-ensemble.csv",
+        source_type="csv",
+    )
+    store = DatasetStore()
+    store.add(record)
+    return store, record.dataset_id
+
+
+def _random_forest_request(
+    dataset_id: str,
+    *,
+    multi_objective: bool,
+) -> RegressionRunRequest:
+    targets = ["strength", "ductility"] if multi_objective else ["strength"]
+    target_settings = [
+        {
+            "target": target,
+            "task_type": "regression",
+            "optimize": True,
+            "direction": "maximize",
+            "goal": "none",
+            "value": None,
+        }
+        for target in targets
+    ]
+    return RegressionRunRequest(
+        dataset_id=dataset_id,
+        feature_columns=["x"],
+        target_column=targets[0],
+        target_columns=targets,
+        directions={target: "maximize" for target in targets},
+        model_type="random_forest",
+        model_kwargs={
+            "n_estimators": 16,
+            "random_state": 0,
+            "web_target_settings": target_settings,
+        },
+        fit_maxiter=4,
+        normalize=True,
+        outcome_transform=True,
+        search_space=[
+            {
+                "name": "x",
+                "type": "numeric",
+                "lower": 0.0,
+                "upper": 1.0,
+                "fixed": False,
+            }
+        ],
+        acquisition={
+            "name": "EHVI" if multi_objective else "EI",
+            "beta": 2.0,
+            "acqf_kwargs": {"web_family": "bayesian_optimization"},
+        },
+        optimizer={
+            "name": "ga",
+            "q": 1,
+            "num_restarts": 1,
+            "raw_samples": 16,
+            "sequential": True,
+        },
+    )
+
+
+def test_web_random_forest_single_objective_runs_with_evolutionary_search() -> None:
+    torch.manual_seed(0)
+    store, dataset_id = _random_forest_store()
+
+    result = run_regression_web_workflow(
+        _random_forest_request(dataset_id, multi_objective=False),
+        store,
+    )
+
+    assert result["model_type"] == "random_forest"
+    assert result["task_type"] == "regression"
+    assert len(result["candidates"]) == 1
+    assert result["metadata"]["optimizer"] == "evo"
+    assert result["metadata"]["search_method"] == "ga"
+
+
+def test_web_random_forest_multiobjective_runs_with_independent_surrogates() -> None:
+    torch.manual_seed(0)
+    store, dataset_id = _random_forest_store()
+
+    result = run_regression_web_workflow(
+        _random_forest_request(dataset_id, multi_objective=True),
+        store,
+    )
+
+    assert result["model_type"] == "random_forest"
+    assert result["task_type"] == "multi_objective"
+    assert result["target_columns"] == ["strength", "ductility"]
+    assert len(result["candidates"]) == 1
+    assert result["metadata"]["optimizer"] == "evo"
+    assert result["metadata"]["search_method"] == "ga"

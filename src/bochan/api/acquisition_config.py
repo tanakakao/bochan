@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -208,6 +208,10 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
 
     constraints: list[Any] | None = None
     outcome_constraint_config: OutcomeConstraintConfig | None = None
+    _base_acqf_factory: Callable[..., Any] | None = field(
+        default=None,
+        repr=False,
+    )
 
     def __post_init__(self) -> None:
         kwargs = dict(self.acqf_kwargs)
@@ -257,18 +261,19 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
 
         self.acqf_kwargs = kwargs
 
-        # Name-only configs are first resolved by BayesianOptimizer. dataclasses.replace
-        # then re-runs this method with acqf_cls populated, at which point outcome
-        # constraint composition can be represented as a normal acqf_factory instead
-        # of mutating factory.build_acquisition at import time.
-        if (
-            self.outcome_constraint_config is not None
-            and self.acqf_cls is not None
-            and self.acqf_factory is None
-        ):
+        if self.outcome_constraint_config is not None:
             from .feasibility_defaults import build_outcome_constrained_acquisition
 
-            self.acqf_factory = build_outcome_constrained_acquisition
+            if (
+                self.acqf_factory is not None
+                and self.acqf_factory is not build_outcome_constrained_acquisition
+            ):
+                self._base_acqf_factory = self.acqf_factory
+                self.acqf_factory = build_outcome_constrained_acquisition
+            elif self.acqf_factory is None and self.acqf_cls is not None:
+                # Name-only configs are resolved with dataclasses.replace(...),
+                # which re-runs this hook after acqf_cls has been selected.
+                self.acqf_factory = build_outcome_constrained_acquisition
 
         _install_llm_selected_runtime_if_needed(self.name)
 

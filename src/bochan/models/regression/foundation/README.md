@@ -1,9 +1,11 @@
-# PFN regression surrogate
+# Foundation regression surrogates
+
+## PFNs4BO
 
 `PFNRegressorModel` integrates the public PFNs4BO pretrained models as an
 in-context single-output regression surrogate.
 
-## Version-1 scope
+### Version-1 scope
 
 - continuous inputs only
 - single-output regression only
@@ -17,7 +19,7 @@ pass. Candidate inputs are normalized to `[0, 1]` using the configured search
 bounds. Targets are affine-standardized by default and mapped back to the raw
 scale for predictive moments and EI.
 
-## Optional upstream code package
+### Optional upstream code package
 
 The official PFNs4BO checkpoints are full PyTorch pickles and therefore require
 the original `pfns4bo` Python modules when they are deserialized. The upstream
@@ -35,7 +37,7 @@ bochan downloads the selected official compressed checkpoint itself and stores
 it under `~/.cache/bochan/pfns4bo` (or `$BOCHAN_CACHE_DIR/pfns4bo`). A local
 checkpoint can instead be supplied with `model_path=`.
 
-## High-level model construction
+### High-level PFNs4BO construction
 
 Always pass the real search-space bounds when possible. Inferring bounds from
 observed points is supported only when every observed dimension already has a
@@ -66,7 +68,7 @@ optimizer.fit(train_X, train_Y)
 `fit()` loads and freezes the pretrained transformer. It does not optimize PFN
 parameters on the current task.
 
-## Native acquisitions
+### Native PFNs4BO acquisitions
 
 PFNs4BO represents the predictive distribution with a bar distribution rather
 than a Gaussian posterior. Version 1 therefore computes EI, PI, and UCB directly
@@ -96,3 +98,30 @@ multiple candidate points. Native acquisitions consequently require `q=1`.
 
 Mixed inputs, multi-output regression, classification/ordinal targets, joint q>1
 sampling, and custom/materials priors are intentionally deferred to later phases.
+
+## TabPFN
+
+`TabPFNRegressorModel` integrates the official `TabPFNRegressor` as a normal or
+mixed single-output regression surrogate.
+
+Install the optional dependency with:
+
+```bash
+pip install 'bochan[tabpfn]'
+```
+
+Use `model_type="tabpfn"` through the high-level API. For mixed inputs, pass
+`cat_dims`; bochan preserves the public feature width, compactly encodes observed
+categorical values internally, and passes the original categorical feature
+positions to TabPFN as `categorical_features_indices`.
+
+TabPFN's native regression output is a bar distribution. bochan requests
+`predict(output_type="full")` and evaluates the official criterion's predictive
+mean and variance. `tabpfn_distribution(X)` exposes the native full result,
+including its criterion and logits. Generic BoTorch code receives an independent
+Gaussian moment bridge with the same marginal mean and variance.
+
+The moment bridge is not a claim that TabPFN is Gaussian or that predictions are
+jointly independent. The current wrapper also crosses a Tensor-to-NumPy boundary,
+so gradient-based candidate optimization is not supported. Use derivative-free
+candidate optimization such as `evo` / `evo_mixed`.

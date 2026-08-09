@@ -36,12 +36,10 @@ from .knowledge_gradient import qBinaryKnowledgeGradient
 
 # Keep q=1 sequential optimization shape handling aligned across classification
 # and ordinal NParEGO implementations.
-_multi_output._reduce_sample_and_q_to_tbatch = (
-    reduce_nparego_sample_and_q_to_tbatch
-)
+_multi_output._reduce_sample_and_q_to_tbatch = reduce_nparego_sample_and_q_to_tbatch
 
 # Apply the same model-aware qNEHVI default used by ordinal models. This keeps
-# Kronecker binary models out of BoTorch's insupported cached-Cholesky path.
+# Kronecker binary models out of BoTorch's unsupported cached-Cholesky path.
 patch_nehvi_cache_root_init(
     _multi_output.qMultiOutputBinaryNoisyExpectedHypervolumeImprovement
 )
@@ -131,10 +129,7 @@ class _OneToManyObjectiveAdapter(MCMultiOutputObjective):
     needs the raw ``X`` so it can aggregate ``q * n_w`` samples back to ``q``.
     """
 
-    def __init__(
-        self,
-        objective: MCMultiOutputObjective,
-    ) -> None:
+    def __init__(self, objective: MCMultiOutputObjective) -> None:
         super().__init__()
         self.objective = objective
         self._verify_output_shape = False
@@ -291,15 +286,8 @@ class qMultiOutputBinaryNParEGO(_multi_output.qMultiOutputBinaryNParEGO):
         best_f=None,
         **kwargs,
     ) -> None:
-        # ``best_f`` may be injected by the high-level API's generic EI defaults,
-        # but NParEGO computes and registers its own scalarized ``best_value`` from
-        # ``X_baseline``. Accept and intentionally ignore the generic value.
         del best_f
-        base_objective = (
-            objective
-            if objective is not None
-            else IdentityMCMultiOutputObjective()
-        )
+        base_objective = objective or IdentityMCMultiOutputObjective()
         super().__init__(
             model=model,
             X_baseline=X_baseline,
@@ -316,12 +304,14 @@ from ._utils import (
 from .multi_output import (
     qMultiOutputBinaryExpectedHypervolumeImprovement,
     qMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
+)
+from .nominal_duplicate_safe import (
+    qBinaryProbabilityOfFeasibility,
     qMultiOutputBinaryProbabilityOfFeasibility,
 )
 from .single_output import (
     QBatchMode,
     qBinaryExpectedImprovement,
-    qBinaryProbabilityOfFeasibility,
     qBinaryProbabilityOfImprovement,
     qBinaryUpperConfidenceBound,
 )

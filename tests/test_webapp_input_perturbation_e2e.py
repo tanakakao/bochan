@@ -97,6 +97,63 @@ def _request(
     )
 
 
+def _lse_request(dataset_id: str, *, risk_type: str = "none") -> RegressionRunRequest:
+    """Build the Web Base GP + Straddle + InputPerturbation request."""
+
+    return RegressionRunRequest(
+        dataset_id=dataset_id,
+        feature_columns=["x"],
+        target_column="y",
+        target_columns=["y"],
+        model_type="base",
+        model_kwargs={
+            "web_target_settings": [
+                {
+                    "target": "y",
+                    "task_type": "regression",
+                    "optimize": True,
+                    "direction": "maximize",
+                    "goal": "above",
+                    "value": 0.2,
+                    "level_set_weight": 1.0,
+                }
+            ]
+        },
+        fit_maxiter=8,
+        normalize=True,
+        outcome_transform=True,
+        input_perturbation=True,
+        n_w=4,
+        perturbation_std=0.1,
+        search_space=[
+            {
+                "name": "x",
+                "type": "numeric",
+                "lower": 0.0,
+                "upper": 1.0,
+                "fixed": False,
+            }
+        ],
+        acquisition={
+            "name": "straddle",
+            "beta": 1.96,
+            "acqf_kwargs": {
+                "web_family": "level_set_estimation",
+                "web_level_set_parameter": 1.96,
+                "web_risk_type": risk_type,
+                "web_risk_alpha": 0.5,
+            },
+        },
+        optimizer={
+            "name": "optimize_acqf",
+            "q": 1,
+            "num_restarts": 2,
+            "raw_samples": 32,
+            "sequential": True,
+        },
+    )
+
+
 @pytest.mark.parametrize("risk_type", ["none", "var", "cvar"])
 def test_web_regression_runs_end_to_end_with_input_perturbation(risk_type: str) -> None:
     """Browser-default BO must support every Web InputPerturbation risk mode."""
@@ -140,3 +197,20 @@ def test_web_cv_feature_importance_runs_with_input_perturbation() -> None:
     assert result["candidates"]
     assert len(result["candidates"]) == 3
     assert result["metadata"]["input_perturbation_risk_type"] == "none"
+
+
+@pytest.mark.parametrize("risk_type", ["none", "cvar"])
+def test_web_straddle_runs_end_to_end_with_input_perturbation(risk_type: str) -> None:
+    """Web LSE must align nominal GP posterior rows with q*n_w transforms."""
+
+    torch.manual_seed(0)
+    store, dataset_id = _store_with_regression_data()
+    result = run_regression_web_workflow(
+        _lse_request(dataset_id, risk_type=risk_type),
+        store,
+    )
+
+    assert result["candidates"]
+    assert len(result["candidates"]) == 1
+    assert result["metadata"]["input_perturbation_risk_type"] == risk_type
+    assert result["metadata"]["input_perturbation_risk_enabled"] is (risk_type != "none")

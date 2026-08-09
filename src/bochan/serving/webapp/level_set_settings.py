@@ -95,18 +95,16 @@ def _risk_score_objective(
     if not 0.0 < float(alpha) <= 1.0:
         raise ValueError("LSE input-perturbation risk alpha must be in (0, 1].")
 
-    if multi_output:
-        from bochan.acquisition.regression.levelset_estimation.multi_output import (
-            MultiOutputRegressionLevelSetScoreObjective,
-        )
+    from bochan.acquisition.regression.levelset_estimation import (
+        MultiOutputRegressionLevelSetScoreObjective,
+        RegressionLevelSetScoreObjective,
+    )
 
-        objective_cls = MultiOutputRegressionLevelSetScoreObjective
-    else:
-        from bochan.acquisition.regression.levelset_estimation.single_output import (
-            RegressionLevelSetScoreObjective,
-        )
-
-        objective_cls = RegressionLevelSetScoreObjective
+    objective_cls = (
+        MultiOutputRegressionLevelSetScoreObjective
+        if multi_output
+        else RegressionLevelSetScoreObjective
+    )
     return objective_cls(
         n_w=n_w,
         risk_type=normalized,

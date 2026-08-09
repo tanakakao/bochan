@@ -7,9 +7,10 @@ registries at runtime.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import Any, Iterator
+from typing import Any
 
 _WEB_FEATURE_MISSING_KEY = "web_feature_missing"
 _STATE: ContextVar[dict[str, Any] | None] = ContextVar(
@@ -316,7 +317,7 @@ def model_variant(model: Any) -> tuple[str | None, str | None]:
     class_name = type(model).__name__.lower()
     if "kronecker" in class_name:
         return "kronecker", "kronecker"
-    if "widemultitask" in class_name:
+    if hasattr(model, "train_Y_wide") and hasattr(model, "num_tasks"):
         return "wide_multitask", "multitask"
     return None, None
 

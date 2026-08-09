@@ -298,16 +298,16 @@ def test_mixed_random_forest_perturbs_only_continuous_features() -> None:
     assert torch.isfinite(posterior.mean).all()
 
 
-def test_non_tree_external_models_keep_one_to_one_contract() -> None:
-    """The compatibility expansion is intentionally limited to tree families."""
+def test_external_eval_only_one_to_many_contract_is_model_name_independent() -> None:
+    """External estimator safety is based on transform timing, not model-name prefixes."""
     train_X, _ = _regression_data()
     transform = _perturbation_transform(train_X, n_w=3)
 
-    with pytest.raises(UnsupportedError, match="requires one-to-one input transforms"):
-        _check_one_to_one_input_transform(transform, model_name="TabPFN")
+    _check_one_to_one_input_transform(transform, model_name="TabPFN")
+    _check_one_to_one_input_transform(transform, model_name="Future external estimator")
 
 
-def test_training_time_one_to_many_transform_is_rejected_for_tree_models() -> None:
+def test_training_time_one_to_many_transform_is_rejected_for_external_models() -> None:
     """External estimators must never expand X without expanding fit targets."""
     perturbation = InputPerturbation(
         perturbation_set=torch.tensor([[0.0], [0.05]], dtype=torch.double),

@@ -1,7 +1,7 @@
 """Observation-aware high-level Bayesian optimization engine.
 
 This module extends the regular automatic-default engine through normal source
-inheritance.  It does not replace functions or class methods at import time.
+inheritance. It does not replace functions or class methods at import time.
 """
 
 from __future__ import annotations
@@ -9,7 +9,14 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from .configs import CandidateResult, DataContext, FitConfig, ModelBundle, ModelConfig, OptimizeConfig
+from .configs import (
+    CandidateResult,
+    DataContext,
+    FitConfig,
+    ModelBundle,
+    ModelConfig,
+    OptimizeConfig,
+)
 from .engine import (
     _filter_context_fields_for_acqf,
     _infer_bounds_from_train_X,
@@ -18,8 +25,8 @@ from .engine import (
     _resolve_objective_config_n_w_from_input_transform,
     _resolve_optimizer_from_cat_dims,
 )
+from .engine_defaults import BayesianOptimizer as _DefaultBayesianOptimizer
 from .engine_defaults import (
-    BayesianOptimizer as _DefaultBayesianOptimizer,
     resolve_acquisition_defaults,
     resolve_information_optimizer_defaults,
     resolve_llm_selected_model_config,
@@ -39,6 +46,11 @@ from .observation import ExperimentFailureConfig, ObservationData
 
 def _normalize_model_name(value: Any) -> str:
     return "".join(ch for ch in str(value).lower() if ch.isalnum())
+
+
+def _is_nsgaii_strategy(config: Any) -> bool:
+    name = "".join(ch for ch in str(getattr(config, "name", "")).lower() if ch.isalnum())
+    return name in {"nsgaii", "nsga2"}
 
 
 def _supports_wide_missing_targets(config: ModelConfig) -> bool:
@@ -258,7 +270,7 @@ class BayesianOptimizer(_DefaultBayesianOptimizer):
         failure_config: ExperimentFailureConfig | None = None,
         model_config: ModelConfig | None = None,
         fit_config: FitConfig | None = None,
-    ) -> "BayesianOptimizer":
+    ) -> BayesianOptimizer:
         """Fit objective models and, when requested, an independent success model."""
 
         if observation_data is None:
@@ -346,9 +358,11 @@ class BayesianOptimizer(_DefaultBayesianOptimizer):
         else:
             self.bundle.metadata["experiment_failure_model"] = {
                 "enabled": False,
-                "reason": "not_configured"
-                if failure_config is None
-                else "no_failed_experiments",
+                "reason": (
+                    "not_configured"
+                    if failure_config is None
+                    else "no_failed_experiments"
+                ),
             }
         return self
 
@@ -359,7 +373,7 @@ class BayesianOptimizer(_DefaultBayesianOptimizer):
         failure_config: ExperimentFailureConfig | None = None,
         model_config: ModelConfig | None = None,
         fit_config: FitConfig | None = None,
-    ) -> "BayesianOptimizer":
+    ) -> BayesianOptimizer:
         """Explicit observation-state entry point."""
 
         return self.fit(
@@ -369,7 +383,7 @@ class BayesianOptimizer(_DefaultBayesianOptimizer):
             fit_config=fit_config,
         )
 
-    def refit(self, *, fit_config: FitConfig | None = None) -> "BayesianOptimizer":
+    def refit(self, *, fit_config: FitConfig | None = None) -> BayesianOptimizer:
         """Refit from the preserved canonical observation table."""
 
         if self.observations is None:
@@ -380,6 +394,65 @@ class BayesianOptimizer(_DefaultBayesianOptimizer):
             model_config=self.model_config,
             fit_config=fit_config or self.fit_config,
         )
+
+    def tell_observations(
+        self,
+        observations: ObservationData,
+        *,
+        refit: bool = True,
+        fit_config: FitConfig | None = None,
+    ) -> BayesianOptimizer:
+        """Append explicit observation states and optionally refit all models."""
+
+        if self.observations is None:
+            raise RuntimeError("Call fit(...) before tell_observations(...).")
+        self.observations = self.observations.append(observations)
+        if refit:
+            self.refit(fit_config=fit_config)
+        return self
+
+    def tell(
+        self,
+        X_new: Any,
+        Y_new: Any,
+        *,
+        status: Any = "success",
+        observed_mask: Any | None = None,
+        refit: bool = True,
+        fit_config: FitConfig | None = None,
+    ) -> BayesianOptimizer:
+        """Append new trials; row status defaults to completed successful trials."""
+
+        import torch
+
+        X_tensor = torch.as_tensor(X_new)
+        n_rows = int(X_tensor.shape[0]) if X_tensor.ndim > 1 else 1
+        statuses = [status] * n_rows if isinstance(status, str) else list(status)
+        new_observations = ObservationData.from_status(
+            X_new,
+            Y_new,
+            status=statuses,
+            observed_mask=observed_mask,
+        )
+        return self.tell_observations(
+            new_observations,
+            refit=refit,
+            fit_config=fit_config,
+        )
+
+    def update_data(self, X_new: Any, Y_new: Any, *, append: bool = True) -> None:
+        """Update canonical observations instead of bypassing their state model."""
+
+        if not append:
+            self.fit(
+                X_new,
+                Y_new,
+                model_config=self.model_config,
+                fit_config=self.fit_config,
+                failure_config=self.failure_config,
+            )
+            return
+        self.tell(X_new, Y_new, status="success", refit=False)
 
     def _resolve_data_context(self, data_context: DataContext | None = None) -> DataContext:
         context = super()._resolve_data_context(data_context)
@@ -467,6 +540,8 @@ class BayesianOptimizer(_DefaultBayesianOptimizer):
             context.bounds = opt_bounds
 
         opt_config = resolve_information_optimizer_defaults(resolved_config, opt_config)
+        if _is_nsgaii_strategy(resolved_config):
+            opt_config = replace(opt_config, optimizer="nsgaii")
         opt_config = self._merge_llm_settings_into_opt_config(opt_config)
         cat_dims = self.bundle.cat_dims if self.bundle is not None else []
         opt_config = _resolve_optimizer_from_cat_dims(

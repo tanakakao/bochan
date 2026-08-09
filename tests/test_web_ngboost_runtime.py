@@ -21,7 +21,7 @@ def test_web_ngboost_runtime_defaults_follow_fit_maxiter() -> None:
     )
 
     assert resolved == {
-        "ensemble_size": 5,
+        "ensemble_size": 3,
         "n_estimators": 128,
         "verbose": False,
     }
@@ -66,7 +66,7 @@ def test_web_target_settings_apply_ngboost_runtime_defaults() -> None:
         directions={"y": "maximize"},
     )
 
-    assert model_kwargs["ensemble_size"] == 5
+    assert model_kwargs["ensemble_size"] == 3
     assert model_kwargs["n_estimators"] == 23
     assert model_kwargs["verbose"] is False
 

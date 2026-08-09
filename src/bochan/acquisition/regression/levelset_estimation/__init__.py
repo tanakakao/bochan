@@ -14,23 +14,19 @@ from .hetero_single_output import (
     qHeteroRegressionBoundaryVariance,
     qHeteroRegressionProbabilityOfExceedance,
 )
-
-from .multi_output import (
+from .input_perturbation_shapes import (
     MultiOutputRegressionLevelSetScoreObjective,
-    qMultiOutputRegressionStraddle,
-    qMultiOutputRegressionJointStraddle,
-    qMultiOutputRegressionICU,
-    qMultiOutputRegressionBoundaryVariance,
-    qMultiOutputRegressionProbabilityOfExceedance,
-)
-
-from .single_output import (
     RegressionLevelSetScoreObjective,
-    qRegressionStraddle,
-    qRegressionJointStraddle,
-    qRegressionICU,
+    qMultiOutputRegressionBoundaryVariance,
+    qMultiOutputRegressionICU,
+    qMultiOutputRegressionJointStraddle,
+    qMultiOutputRegressionProbabilityOfExceedance,
+    qMultiOutputRegressionStraddle,
     qRegressionBoundaryVariance,
+    qRegressionICU,
+    qRegressionJointStraddle,
     qRegressionProbabilityOfExceedance,
+    qRegressionStraddle,
 )
 
 __all__ = [

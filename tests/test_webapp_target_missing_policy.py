@@ -88,14 +88,13 @@ def test_multitask_requires_an_observation_for_every_target() -> None:
     data = pd.DataFrame({"x": [0.0, 1.0], "y1": [1.0, 2.0], "y2": [None, None]})
     with policy.target_missing_run(
         _request(targets=["y1", "y2"], model_type="multitask")
-    ):
-        with pytest.raises(ValueError, match="without observations"):
-            target_settings._clean_rows(
-                data,
-                ["x"],
-                ["y1", "y2"],
-                drop_missing=True,
-            )
+    ), pytest.raises(ValueError, match="without observations"):
+        target_settings._clean_rows(
+            data,
+            ["x"],
+            ["y1", "y2"],
+            drop_missing=True,
+        )
 
 
 def test_target_encoder_preserves_regression_nan_cells() -> None:
@@ -140,10 +139,11 @@ def test_target_settings_facade_uses_source_level_policy_functions() -> None:
 
 
 def test_model_variant_reports_native_wide_multitask_model() -> None:
-    class WideMultiTaskGP:
-        pass
+    class WideModel:
+        train_Y_wide = object()
+        num_tasks = 2
 
-    assert policy.model_variant(WideMultiTaskGP()) == (
+    assert policy.model_variant(WideModel()) == (
         "wide_multitask",
         "multitask",
     )

@@ -5,19 +5,26 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+_TREE_ENSEMBLE_MODELS = frozenset(
+    {
+        "random_forest",
+        "lightgbm_ensemble",
+        "ngboost_ensemble",
+    }
+)
+_GA_OPTIMIZERS = frozenset({"ga", "evo", "optimize_acqf_evo"})
+_NGBOOST_EXTRA_JOINT_OPTIMIZERS = frozenset({"pso", "sa"})
+_JOINT_BATCH_MAX_Q = 3
 
-def _mapping(value: Any) -> dict[str, Any]:
-    """Return a shallow mapping for Pydantic, dict, or namespace values."""
+
+def _field(value: Any, name: str, default: Any = None) -> Any:
+    """Read one field without serializing nested Pydantic model values."""
 
     if value is None:
-        return {}
+        return default
     if isinstance(value, dict):
-        return dict(value)
-    if hasattr(value, "model_dump"):
-        return dict(value.model_dump())
-    if hasattr(value, "dict"):
-        return dict(value.dict())
-    return dict(vars(value))
+        return value.get(name, default)
+    return getattr(value, name, default)
 
 
 def _normalized_name(value: Any) -> str:
@@ -26,54 +33,74 @@ def _normalized_name(value: Any) -> str:
     return str(value or "").replace("-", "_").lower()
 
 
-def uses_ngboost_joint_batch(request: Any) -> bool:
-    """Return whether Web NGBoost should optimize the requested q-batch jointly.
+def _joint_optimizer_names(model_type: str) -> frozenset[str]:
+    """Return evolutionary optimizers safe and useful for automatic joint q-batches."""
 
-    NGBoost prediction is Python / estimator-call heavy. Sequential evolutionary
-    optimization repeats the complete GA loop once for every requested candidate.
-    A joint q-batch keeps the same q-acquisition semantics while allowing each
-    ensemble member to predict all q points in one vectorized estimator call.
+    if model_type == "ngboost_ensemble":
+        return _GA_OPTIMIZERS | _NGBOOST_EXTRA_JOINT_OPTIMIZERS
+    return _GA_OPTIMIZERS
 
-    The policy is deliberately narrow: only Bayesian-optimization requests using
-    NGBoost with the GA/evolutionary backend and q > 1 are changed. Active
-    learning, level-set estimation, other optimizers, and other model families
-    retain the user's sequential setting.
+
+def uses_tree_ensemble_joint_batch(request: Any) -> bool:
+    """Return whether Web should optimize a tree-ensemble q-batch jointly.
+
+    Joint evolutionary optimization reduces repeated Python / estimator-call
+    round trips for tree ensembles while preserving the native q-acquisition
+    objective. The automatic policy is deliberately conservative:
+
+    - Random Forest and LightGBM use joint batches for GA/evo only.
+    - NGBoost additionally uses joint PSO and simulated annealing.
+    - q is limited to 2-3 so the joint search dimension does not grow too far.
+    - CMA-ES, q=1, q>3, Active Learning, and level-set estimation retain the
+      requested sequential behavior.
     """
 
-    if _normalized_name(getattr(request, "model_type", None)) != "ngboost_ensemble":
+    model_type = _normalized_name(_field(request, "model_type"))
+    if model_type not in _TREE_ENSEMBLE_MODELS:
         return False
 
-    optimizer = getattr(request, "optimizer", None)
-    optimizer_name = _normalized_name(_mapping(optimizer).get("name"))
-    if optimizer_name not in {"ga", "evo", "optimize_acqf_evo"}:
+    optimizer = _field(request, "optimizer")
+    optimizer_name = _normalized_name(_field(optimizer, "name"))
+    if optimizer_name not in _joint_optimizer_names(model_type):
         return False
 
-    optimizer_values = _mapping(optimizer)
     try:
-        q = int(optimizer_values.get("q", 1))
+        q = int(_field(optimizer, "q", 1))
     except (TypeError, ValueError):
         return False
-    if q <= 1 or not bool(optimizer_values.get("sequential", True)):
+    if not 1 < q <= _JOINT_BATCH_MAX_Q:
+        return False
+    if not bool(_field(optimizer, "sequential", True)):
         return False
 
-    acquisition = _mapping(getattr(request, "acquisition", None))
-    acqf_kwargs = _mapping(acquisition.get("acqf_kwargs"))
-    family = _normalized_name(acqf_kwargs.get("web_family", "bayesian_optimization"))
+    acquisition = _field(request, "acquisition")
+    acqf_kwargs = _field(acquisition, "acqf_kwargs", {})
+    family = _normalized_name(
+        _field(acqf_kwargs, "web_family", "bayesian_optimization")
+    )
     return family == "bayesian_optimization"
+
+
+def uses_ngboost_joint_batch(request: Any) -> bool:
+    """Backward-compatible NGBoost-specific joint-batch predicate."""
+
+    if _normalized_name(_field(request, "model_type")) != "ngboost_ensemble":
+        return False
+    return uses_tree_ensemble_joint_batch(request)
 
 
 def apply_web_candidate_runtime_defaults(request: Any) -> Any:
     """Return an execution copy with Web-only candidate runtime defaults applied.
 
-    The input request is never mutated. For qualifying NGBoost GA requests the
-    returned request uses ``optimizer.sequential=False`` so the evolutionary
-    backend receives one joint ``q`` optimization problem.
+    The input request is never mutated. Qualifying tree-ensemble evolutionary
+    requests use ``optimizer.sequential=False`` so the backend receives one joint
+    q-batch optimization problem.
     """
 
-    if not uses_ngboost_joint_batch(request):
+    if not uses_tree_ensemble_joint_batch(request):
         return request
 
-    optimizer = getattr(request, "optimizer", None)
+    optimizer = _field(request, "optimizer")
     if hasattr(optimizer, "model_copy"):
         resolved_optimizer = optimizer.model_copy(update={"sequential": False})
     elif isinstance(optimizer, dict):
@@ -98,4 +125,5 @@ def apply_web_candidate_runtime_defaults(request: Any) -> Any:
 __all__ = [
     "apply_web_candidate_runtime_defaults",
     "uses_ngboost_joint_batch",
+    "uses_tree_ensemble_joint_batch",
 ]

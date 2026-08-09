@@ -44,8 +44,8 @@ def qBinaryPredictiveEntropy(model, *args, **kwargs):
     metadata to select the acquisition implementation.
     """
     if int(getattr(model, "num_outputs", 1)) > 1:
-        return qMultiOutputBinaryPredictiveEntropy(model=model, *args, **kwargs)
-    return _SingleOutputBinaryPredictiveEntropy(model=model, *args, **kwargs)
+        return qMultiOutputBinaryPredictiveEntropy(model, *args, **kwargs)
+    return _SingleOutputBinaryPredictiveEntropy(model, *args, **kwargs)
 
 
 def qBinaryBALD(model, *args, **kwargs):
@@ -57,8 +57,8 @@ def qBinaryBALD(model, *args, **kwargs):
     acquisition implementation.
     """
     if int(getattr(model, "num_outputs", 1)) > 1:
-        return qMultiOutputBinaryBALD(model=model, *args, **kwargs)
-    return _SingleOutputBinaryBALD(model=model, *args, **kwargs)
+        return qMultiOutputBinaryBALD(model, *args, **kwargs)
+    return _SingleOutputBinaryBALD(model, *args, **kwargs)
 
 
 # The contextual short name ``nipv`` is currently registered against

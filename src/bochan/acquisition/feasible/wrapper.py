@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 from botorch.acquisition.acquisition import AcquisitionFunction
@@ -111,6 +111,98 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
                 raise
             return self.model.posterior(X)
 
+    def _output_index(self, output: Any) -> int:
+        return normalize_output_index(
+            output,
+            output_names=getattr(self.model, "output_names", None),
+        )
+
+    def _ordinal_submodel(self, output: Any) -> Any | None:
+        """Return the ordinal model that owns one constrained output, if known."""
+
+        idx = self._output_index(output)
+        specs = getattr(self.model, "specs", None)
+        if specs is not None and idx < len(specs):
+            spec = specs[idx]
+            if str(getattr(spec, "task_type", "")) == "ordinal":
+                return getattr(spec, "model", None)
+            return None
+
+        models = getattr(self.model, "models", None)
+        if models is not None and idx < len(models):
+            candidate = models[idx]
+            if getattr(candidate, "ordinal_likelihood", None) is not None:
+                return candidate
+            likelihood = getattr(candidate, "likelihood", None)
+            if likelihood is not None and "ordinal" in type(likelihood).__name__.lower():
+                return candidate
+            return None
+
+        if idx == 0:
+            if getattr(self.model, "ordinal_likelihood", None) is not None:
+                return self.model
+            likelihood = getattr(self.model, "likelihood", None)
+            if likelihood is not None and "ordinal" in type(likelihood).__name__.lower():
+                return self.model
+        return None
+
+    @staticmethod
+    def _call_latent_posterior(model: Any, X: Tensor) -> Any | None:
+        for name in ("latent_posterior", "posterior_latent", "posterior_f", "posterior"):
+            fn = getattr(model, name, None)
+            if not callable(fn):
+                continue
+            try:
+                return fn(X=X)
+            except TypeError:
+                try:
+                    return fn(X)
+                except TypeError:
+                    continue
+        return None
+
+    def _ordinal_gradient_proxy(
+        self,
+        X: Tensor,
+        output: Any,
+        exact_probs: Tensor,
+    ) -> Tensor | None:
+        """Build a stable ordered-logit gradient proxy from latent posterior mean.
+
+        The forward value remains the full posterior-predictive class probability.
+        Only candidate gradients use the plug-in probability at the latent mean,
+        avoiding unstable variance/quadrature derivatives near degenerate points.
+        """
+
+        ordinal_model = self._ordinal_submodel(output)
+        if ordinal_model is None:
+            return None
+        posterior = self._call_latent_posterior(ordinal_model, X)
+        if posterior is None:
+            return None
+        latent_mean = getattr(posterior, "mean", None)
+        if latent_mean is None:
+            return None
+
+        likelihood = getattr(ordinal_model, "ordinal_likelihood", None)
+        if likelihood is None:
+            likelihood = getattr(ordinal_model, "likelihood", None)
+        if likelihood is None:
+            return None
+
+        probability_fn = getattr(likelihood, "probs_from_latent", None)
+        if not callable(probability_fn):
+            probability_fn = getattr(likelihood, "class_probs_from_f", None)
+        if not callable(probability_fn):
+            return None
+
+        proxy = probability_fn(latent_mean)
+        while proxy.ndim > exact_probs.ndim and proxy.shape[0] == 1:
+            proxy = proxy.squeeze(0)
+        if proxy.shape != exact_probs.shape:
+            return None
+        return proxy.to(dtype=exact_probs.dtype, device=exact_probs.device)
+
     def _class_probs_for_output(self, X: Tensor, output) -> Tensor:
         if not callable(getattr(self.model, "class_probs_list", None)):
             raise AttributeError(
@@ -123,7 +215,14 @@ class FeasibilityWeightedAcquisition(AcquisitionFunction):
                 "Expected exactly one class probability tensor for "
                 f"output={output!r}, got {len(probs_list)}."
             )
-        return probs_list[0]
+        exact_probs = probs_list[0]
+        proxy = self._ordinal_gradient_proxy(X, output, exact_probs)
+        if proxy is None or not exact_probs.requires_grad:
+            return exact_probs
+
+        # Straight-through surrogate: preserve exact posterior-predictive values
+        # while taking candidate gradients through the stable latent-mean proxy.
+        return exact_probs.detach() + proxy - proxy.detach()
 
     def _ordinal_rank_constraint_value(
         self,

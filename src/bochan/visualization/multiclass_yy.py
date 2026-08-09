@@ -22,6 +22,27 @@ from .plots import show_yyplot_from_optimizer as _show_yyplot_from_optimizer
 from .utils import cycle_series
 
 
+def _aggregate_expanded_probability_rows(
+    probabilities: np.ndarray,
+    *,
+    n_samples: int,
+) -> np.ndarray:
+    """Average one-to-many evaluation rows back to nominal samples.
+
+    BoTorch input transforms such as ``InputPerturbation`` evaluate every
+    nominal input at multiple consecutive perturbed locations. YY plots are
+    defined against the nominal labels, so probability rows are averaged over
+    that expansion before plotting.
+    """
+
+    if probabilities.shape[0] == n_samples:
+        return probabilities
+    if n_samples <= 0 or probabilities.shape[0] % n_samples != 0:
+        return probabilities
+    expansion = probabilities.shape[0] // n_samples
+    return probabilities.reshape(n_samples, expansion, probabilities.shape[1]).mean(axis=1)
+
+
 def show_multiclass_yyplot(
     true_labels: pd.Series,
     probabilities: np.ndarray,
@@ -44,6 +65,10 @@ def show_multiclass_yyplot(
             "probabilities must have shape [n_samples, n_classes] matching "
             "class_labels."
         )
+    probabilities = _aggregate_expanded_probability_rows(
+        probabilities,
+        n_samples=len(true_labels),
+    )
     if probabilities.shape[0] != len(true_labels):
         raise ValueError(
             "The number of probability rows must match the number of labels."

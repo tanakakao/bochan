@@ -3,9 +3,10 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pandas as pd
 import torch
 
-from bochan.visualization import show_yyplot_from_optimizer
+from bochan.visualization import show_multiclass_yyplot, show_yyplot_from_optimizer
 from bochan.visualization.plots import (
     show_yyplot_from_optimizer as plots_show_yyplot_from_optimizer,
 )
@@ -116,3 +117,33 @@ def test_direct_plots_import_uses_multiclass_yy_dispatch() -> None:
         "beta",
         "gamma",
     ]
+
+
+def test_multiclass_yyplot_aggregates_input_perturbation_probability_rows() -> None:
+    """A 4-row dataset with n_w=16 must plot four nominal observations."""
+
+    true_labels = pd.Series(["alpha", "beta", "gamma", "alpha"], name="class")
+    nominal_probabilities = np.array(
+        [
+            [0.70, 0.20, 0.10],
+            [0.15, 0.75, 0.10],
+            [0.10, 0.20, 0.70],
+            [0.60, 0.25, 0.15],
+        ],
+        dtype=float,
+    )
+    probabilities = np.repeat(nominal_probabilities, 16, axis=0)
+
+    figure = show_multiclass_yyplot(
+        true_labels,
+        probabilities,
+        target="class",
+        class_labels=["alpha", "beta", "gamma"],
+    )
+
+    marker_traces = [trace for trace in figure.data if trace.mode == "markers"]
+    plotted = np.concatenate([np.asarray(trace.y, dtype=float) for trace in marker_traces])
+    expected = np.array([0.70, 0.75, 0.70, 0.60])
+
+    assert sum(len(trace.y) for trace in marker_traces) == len(true_labels)
+    np.testing.assert_allclose(np.sort(plotted), np.sort(expected), atol=1e-12)

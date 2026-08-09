@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 import torch
 
@@ -102,3 +104,104 @@ def test_web_workflow_uses_source_level_prediction_row_normalization() -> None:
     torch.testing.assert_close(target_results._as_2d(values, n_rows=2), expected)
     assert target_results._as_2d is target_settings._as_2d
     assert not hasattr(web_workflows._workflows_tabular, "_as_2d")
+
+
+class _Posterior:
+    def __init__(self, mean: torch.Tensor, variance: torch.Tensor) -> None:
+        self.mean = mean
+        self.variance = variance
+
+
+class _ExpandedHybridModel:
+    """Mimic n_w=16 class-probability expansion from InputPerturbation."""
+
+    def __init__(self, nominal_probabilities: torch.Tensor) -> None:
+        self.nominal_probabilities = nominal_probabilities
+
+    def posterior(
+        self,
+        X: torch.Tensor,
+        *,
+        output_mode: str = "mean",
+        output_indices: list[int] | None = None,
+    ) -> _Posterior:
+        del output_indices
+        n_rows = int(X.shape[0])
+        if output_mode == "probability":
+            probability = self.nominal_probabilities[:, :1]
+            mean = probability.repeat_interleave(16, dim=0)
+        else:
+            mean = torch.zeros(n_rows * 16, 1, dtype=X.dtype, device=X.device)
+        variance = torch.full_like(mean, 0.04)
+        return _Posterior(mean, variance)
+
+    def class_probs_list(
+        self,
+        X: torch.Tensor,
+        *,
+        output_indices: list[str] | None = None,
+    ) -> list[torch.Tensor]:
+        del X, output_indices
+        return [self.nominal_probabilities.repeat_interleave(16, dim=0)]
+
+
+def test_display_predictions_aggregates_multiclass_probability_rows() -> None:
+    """Web YY data must keep one probability row per nominal observation."""
+
+    X = torch.arange(8, dtype=torch.double).reshape(4, 2)
+    nominal = torch.tensor(
+        [
+            [0.70, 0.20, 0.10],
+            [0.15, 0.75, 0.10],
+            [0.10, 0.20, 0.70],
+            [0.60, 0.25, 0.15],
+        ],
+        dtype=torch.double,
+    )
+    optimizer = SimpleNamespace(model=_ExpandedHybridModel(nominal))
+
+    _, class_probabilities = target_results._display_predictions(
+        optimizer,
+        X,
+        target_columns=["class"],
+        target_metadata={"class": {"internal_task": "multiclass"}},
+        hybrid_model=True,
+    )
+
+    assert class_probabilities["class"].shape == (4, 3)
+    torch.testing.assert_close(class_probabilities["class"], nominal)
+
+
+def test_display_predictions_aggregates_ordinal_probability_rows() -> None:
+    """Expected-rank display must also use nominal rows after perturbation."""
+
+    X = torch.arange(8, dtype=torch.double).reshape(4, 2)
+    nominal = torch.tensor(
+        [
+            [0.70, 0.20, 0.10],
+            [0.15, 0.75, 0.10],
+            [0.10, 0.20, 0.70],
+            [0.60, 0.25, 0.15],
+        ],
+        dtype=torch.double,
+    )
+    optimizer = SimpleNamespace(model=_ExpandedHybridModel(nominal))
+
+    display, class_probabilities = target_results._display_predictions(
+        optimizer,
+        X,
+        target_columns=["class"],
+        target_metadata={
+            "class": {
+                "internal_task": "ordinal",
+                "num_classes": 3,
+            }
+        },
+        hybrid_model=True,
+    )
+
+    ranks = torch.arange(3, dtype=torch.double)
+    expected_mean = (nominal * ranks).sum(dim=-1)
+    assert display["class"]["mean"].shape == (4,)
+    torch.testing.assert_close(display["class"]["mean"], expected_mean)
+    torch.testing.assert_close(class_probabilities["class"], nominal)

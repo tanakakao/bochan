@@ -26,23 +26,41 @@ def _store_with_three_class_data() -> tuple[DatasetStore, str]:
     return store, record.dataset_id
 
 
-def _request(
-    dataset_id: str,
-    *,
-    task_type: str,
-) -> RegressionRunRequest:
-    setting = {
+def _target_setting(*, task_type: str, family: str) -> dict[str, object]:
+    lse = family == "level_set_estimation"
+    setting: dict[str, object] = {
         "target": "y",
         "task_type": task_type,
         "optimize": True,
         "direction": "maximize",
-        "goal": "none",
+        "goal": "above" if lse else "none",
         "value": None,
     }
     if task_type == "classification":
         setting["target_classes"] = [2]
+        if lse:
+            setting["value"] = 0.5
     else:
         setting["class_order"] = [0, 1, 2]
+        if lse:
+            setting["value"] = 1
+    return setting
+
+
+def _request(
+    dataset_id: str,
+    *,
+    task_type: str,
+    family: str,
+) -> RegressionRunRequest:
+    acquisition_name = "straddle" if family == "level_set_estimation" else "variance"
+    acqf_kwargs: dict[str, object] = {
+        "web_family": family,
+        "web_risk_type": "none",
+        "web_risk_alpha": 0.2,
+    }
+    if family == "level_set_estimation":
+        acqf_kwargs["web_level_set_parameter"] = 1.96
 
     return RegressionRunRequest(
         dataset_id=dataset_id,
@@ -50,7 +68,11 @@ def _request(
         target_column="y",
         target_columns=["y"],
         model_type="base",
-        model_kwargs={"web_target_settings": [setting]},
+        model_kwargs={
+            "web_target_settings": [
+                _target_setting(task_type=task_type, family=family)
+            ]
+        },
         fit_maxiter=8,
         normalize=True,
         outcome_transform=True,
@@ -67,13 +89,9 @@ def _request(
             }
         ],
         acquisition={
-            "name": "variance",
+            "name": acquisition_name,
             "beta": 2.0,
-            "acqf_kwargs": {
-                "web_family": "active_learning",
-                "web_risk_type": "none",
-                "web_risk_alpha": 0.2,
-            },
+            "acqf_kwargs": acqf_kwargs,
         },
         optimizer={
             "name": "optimize_acqf",
@@ -94,7 +112,31 @@ def test_web_three_class_active_learning_runs_with_input_perturbation(
     torch.manual_seed(0)
     store, dataset_id = _store_with_three_class_data()
     result = run_regression_web_workflow(
-        _request(dataset_id, task_type=task_type),
+        _request(
+            dataset_id,
+            task_type=task_type,
+            family="active_learning",
+        ),
+        store,
+    )
+
+    assert result["candidates"]
+    assert len(result["candidates"]) == 2
+    assert result["metadata"]["input_perturbation_risk_type"] == "none"
+
+
+@pytest.mark.parametrize("task_type", ["classification", "ordinal"])
+def test_web_three_class_lse_runs_with_input_perturbation(task_type: str) -> None:
+    """Hybrid classification/ordinal Web LSE must preserve nominal q semantics."""
+
+    torch.manual_seed(0)
+    store, dataset_id = _store_with_three_class_data()
+    result = run_regression_web_workflow(
+        _request(
+            dataset_id,
+            task_type=task_type,
+            family="level_set_estimation",
+        ),
         store,
     )
 

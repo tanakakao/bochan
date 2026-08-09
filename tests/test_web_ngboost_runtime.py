@@ -179,7 +179,14 @@ def _ngboost_store() -> tuple[object, str]:
     return store, record.dataset_id
 
 
-def _ngboost_request(dataset_id: str, *, input_perturbation: bool = False):
+def _ngboost_request(
+    dataset_id: str,
+    *,
+    input_perturbation: bool = False,
+    q: int = 1,
+    sequential: bool = True,
+    acquisition_family: str = "bayesian_optimization",
+):
     from bochan.serving.webapp.app import RegressionRunRequest
 
     risk_type = "cvar" if input_perturbation else "none"
@@ -224,21 +231,61 @@ def _ngboost_request(dataset_id: str, *, input_perturbation: bool = False):
             "name": "EI",
             "beta": 2.0,
             "acqf_kwargs": {
-                "web_family": "bayesian_optimization",
+                "web_family": acquisition_family,
                 "web_risk_type": risk_type,
                 "web_risk_alpha": 0.2,
             },
         },
         optimizer={
             "name": "ga",
-            "q": 1,
+            "q": q,
             "num_restarts": 1,
             "raw_samples": 16,
-            "sequential": True,
+            "sequential": sequential,
         },
         cross_validation=False,
         feature_importance={"enabled": False},
     )
+
+
+def test_web_ngboost_q_batch_uses_joint_execution_copy() -> None:
+    from bochan.serving.webapp.candidate_runtime import (
+        apply_web_candidate_runtime_defaults,
+        uses_ngboost_joint_batch,
+    )
+
+    request = _ngboost_request("unused", q=3, sequential=True)
+    resolved = apply_web_candidate_runtime_defaults(request)
+
+    assert uses_ngboost_joint_batch(request) is True
+    assert request.optimizer.sequential is True
+    assert resolved is not request
+    assert resolved.optimizer is not request.optimizer
+    assert resolved.optimizer.q == 3
+    assert resolved.optimizer.sequential is False
+
+
+def test_web_ngboost_joint_execution_is_narrowly_scoped() -> None:
+    from bochan.serving.webapp.candidate_runtime import (
+        apply_web_candidate_runtime_defaults,
+    )
+
+    q1 = _ngboost_request("unused", q=1, sequential=True)
+    already_joint = _ngboost_request("unused", q=3, sequential=False)
+    lse = _ngboost_request(
+        "unused",
+        q=3,
+        sequential=True,
+        acquisition_family="level_set_estimation",
+    )
+    random_forest = _ngboost_request("unused", q=3, sequential=True).model_copy(
+        update={"model_type": "random_forest"}
+    )
+
+    assert apply_web_candidate_runtime_defaults(q1) is q1
+    assert apply_web_candidate_runtime_defaults(already_joint) is already_joint
+    assert apply_web_candidate_runtime_defaults(lse) is lse
+    assert apply_web_candidate_runtime_defaults(random_forest) is random_forest
 
 
 def _run_ngboost_request(request):
@@ -281,6 +328,30 @@ def test_real_web_ngboost_input_perturbation_suggestion_complete() -> None:
     )
 
     assert len(result["candidates"]) == 1
+    assert result["metadata"]["input_perturbation_risk_type"] == "cvar"
+    assert result["metadata"]["input_perturbation_risk_enabled"] is True
+    assert result["metadata"]["timings_ms"]["candidate"] >= 0.0
+    assert elapsed < 120.0
+
+
+def test_real_web_ngboost_joint_q_batch_with_input_perturbation() -> None:
+    pytest.importorskip("ngboost")
+
+    result, elapsed = _run_ngboost_request(
+        lambda dataset_id: _ngboost_request(
+            dataset_id,
+            input_perturbation=True,
+            q=3,
+            sequential=True,
+        )
+    )
+
+    uniqueness = result["metadata"]["candidate_uniqueness"]
+    assert len(result["candidates"]) == 3
+    assert uniqueness["requested_q"] == 3
+    assert uniqueness["sequential"] is False
+    assert uniqueness["unique_count"] == 3
+    assert result["batch_acq_value"] is not None
     assert result["metadata"]["input_perturbation_risk_type"] == "cvar"
     assert result["metadata"]["input_perturbation_risk_enabled"] is True
     assert result["metadata"]["timings_ms"]["candidate"] >= 0.0

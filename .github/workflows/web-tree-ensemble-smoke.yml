@@ -32,12 +32,10 @@ jobs:
         run: ruff check src/bochan/models/hybrid/task_aware_posterior.py tests/test_web_tree_ensemble_models.py tests/test_webapp_multiobjective_contract.py
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          node-version: "24"
       - name: Install Web frontend dependencies
         working-directory: web
-        run: npm ci
+        run: npm install --no-audit --no-fund
       - name: Build Web frontend
         working-directory: web
         run: npm run build

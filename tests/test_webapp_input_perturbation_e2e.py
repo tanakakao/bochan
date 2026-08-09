@@ -24,7 +24,13 @@ def _store_with_regression_data() -> tuple[DatasetStore, str]:
     return store, record.dataset_id
 
 
-def _request(dataset_id: str, *, risk_type: str = "none", cross_validation: bool = False) -> RegressionRunRequest:
+def _request(
+    dataset_id: str,
+    *,
+    risk_type: str = "none",
+    cross_validation: bool = False,
+    feature_importance: bool = False,
+) -> RegressionRunRequest:
     return RegressionRunRequest(
         dataset_id=dataset_id,
         feature_columns=["x"],
@@ -76,6 +82,18 @@ def _request(dataset_id: str, *, risk_type: str = "none", cross_validation: bool
         },
         cross_validation=cross_validation,
         cv_config={"splitter": "kfold", "n_splits": 2} if cross_validation else None,
+        feature_importance=(
+            {
+                "enabled": True,
+                "source": "cross_validation",
+                "config": {
+                    "n_repeats": 2,
+                    "diagnostic_methods": [],
+                },
+            }
+            if feature_importance
+            else None
+        ),
     )
 
 
@@ -99,6 +117,25 @@ def test_web_cross_validation_runs_with_input_perturbation() -> None:
     torch.manual_seed(0)
     store, dataset_id = _store_with_regression_data()
     result = run_regression_web_workflow(_request(dataset_id, cross_validation=True), store)
+
+    assert result["candidates"]
+    assert len(result["candidates"]) == 3
+    assert result["metadata"]["input_perturbation_risk_type"] == "none"
+
+
+def test_web_cv_feature_importance_runs_with_input_perturbation() -> None:
+    """CV permutation importance must aggregate perturbation-expanded predictions."""
+
+    torch.manual_seed(0)
+    store, dataset_id = _store_with_regression_data()
+    result = run_regression_web_workflow(
+        _request(
+            dataset_id,
+            cross_validation=True,
+            feature_importance=True,
+        ),
+        store,
+    )
 
     assert result["candidates"]
     assert len(result["candidates"]) == 3

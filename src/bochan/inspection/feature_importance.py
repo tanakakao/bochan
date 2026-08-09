@@ -26,6 +26,28 @@ def _as_prediction(value: Any) -> Tensor:
     return value.unsqueeze(-1) if value.ndim == 1 else value
 
 
+def _aggregate_expanded_rows(value: Tensor, X: Tensor, *, kind: str) -> Tensor:
+    """Reduce one-to-many evaluation rows back to the nominal input rows.
+
+    BoTorch input transforms such as ``InputPerturbation`` evaluate each nominal
+    row at multiple perturbed locations. Permutation-importance metrics are
+    defined against the nominal target rows, so predictions must be averaged
+    across the expansion before scoring.
+    """
+
+    n_rows = int(X.shape[0])
+    if n_rows <= 0 or value.shape[0] == n_rows:
+        return value
+    if value.shape[0] % n_rows != 0:
+        raise ValueError(
+            f"{kind} rows must match feature-importance inputs or be an integer "
+            "one-to-many expansion; "
+            f"got values={value.shape[0]}, inputs={n_rows}."
+        )
+    expansion = value.shape[0] // n_rows
+    return value.reshape(n_rows, expansion, *value.shape[1:]).mean(dim=1)
+
+
 def _select_class_probability_output(
     value: Any,
     X: Tensor,
@@ -45,6 +67,11 @@ def _select_class_probability_output(
                     f"with shape={tuple(probability.shape)}."
                 )
             probability = probability[..., output, :]
+    probability = _aggregate_expanded_rows(
+        probability,
+        X,
+        kind="Class probability",
+    )
     if probability.ndim != 2 or probability.shape[0] != X.shape[0]:
         raise ValueError(
             "Class probabilities must have shape [n, num_classes] for feature "
@@ -123,7 +150,11 @@ def _predict(source: Any, X: Tensor, *, task: str, output: int) -> Tensor:
         else:
             posterior = source.posterior(X)
             value = posterior.mean
-    return _as_prediction(value)
+    return _aggregate_expanded_rows(
+        _as_prediction(value),
+        X,
+        kind="Prediction",
+    )
 
 
 def _multiclass_target_indices(target: Tensor, num_classes: int) -> Tensor:

@@ -297,19 +297,19 @@ class qMultiOutputBinaryNParEGO(_multi_output.qMultiOutputBinaryNParEGO):
         )
 
 
-from ._utils import (
+from ._utils import (  # noqa: E402
     compute_binary_best_f,
     compute_hetero_binary_classification_best_f,
 )
-from .multi_output import (
+from .multi_output import (  # noqa: E402
     qMultiOutputBinaryExpectedHypervolumeImprovement,
     qMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
 )
-from .nominal_duplicate_safe import (
+from .nominal_duplicate_safe import (  # noqa: E402
     qBinaryProbabilityOfFeasibility,
     qMultiOutputBinaryProbabilityOfFeasibility,
 )
-from .single_output import (
+from .single_output import (  # noqa: E402
     QBatchMode,
     qBinaryExpectedImprovement,
     qBinaryProbabilityOfImprovement,

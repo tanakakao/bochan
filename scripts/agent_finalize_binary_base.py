@@ -6,6 +6,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MODELS = ROOT / "src" / "bochan" / "models"
 
+# One-shot migration: fold package-level binary defaults into the owning models.
+
 
 def finalize_binary_defaults() -> None:
     path = MODELS / "classification" / "binary" / "base" / "models.py"
@@ -54,7 +56,6 @@ def validate() -> None:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
             and node.name == "__init__"
         )
-        all_args = [*init.args.posonlyargs, *init.args.args, *init.args.kwonlyargs]
         kwonly_defaults = {
             arg.arg: default
             for arg, default in zip(init.args.kwonlyargs, init.args.kw_defaults)

@@ -125,7 +125,7 @@ def test_multiclass_outputs_are_tasks_not_classes() -> None:
         train_X=X,
         train_Y=Y,
         rank=2,
-        num_inducing_points=4,
+        num_inducing=4,
         input_transform=Normalize(d=2, bounds=torch.stack([X.min(0).values, X.max(0).values])),
     )
     model.eval()

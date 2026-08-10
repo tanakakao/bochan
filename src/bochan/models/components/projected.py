@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """PCA / REMBO などの固定射影 wrapper の共通 base。
 
 このモジュールは、regression / classification / ordinal に共通する
@@ -9,25 +7,25 @@ raw-space / preproject-space / projected-space の管理を担当する。
 ``high_dim/decomposition.py`` に残す。
 """
 
-from typing import Any, Optional, Sequence
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import Any
 
 import torch
-from torch import Tensor
-
 from botorch.models.model import Model
-from botorch.models.transforms.input import InputTransform
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.models import ExactGP
+from torch import Tensor
 
 from bochan.models.components.projected_utils import (
     _apply_input_transform_for_eval,
     _apply_input_transform_for_training,
     _check_categorical_columns_unchanged,
     _get_cont_dims,
-    flatten_projected_one_to_many_point_axes,
     _normalize_dims,
+    flatten_projected_one_to_many_point_axes,
 )
-
 
 __all__ = [
     "_BaseProjectedModel",
@@ -195,15 +193,12 @@ class _BaseProjectedModel(Model):
 
     def set_train_data(
         self,
-        inputs: Optional[Tensor | tuple[Tensor, ...]] = None,
-        targets: Optional[Tensor] = None,
+        inputs: Tensor | tuple[Tensor, ...] | None = None,
+        targets: Tensor | None = None,
         strict: bool = True,
     ) -> None:
         if inputs is not None:
-            if torch.is_tensor(inputs):
-                X_raw = inputs
-            else:
-                X_raw = inputs[0]
+            X_raw = inputs if torch.is_tensor(inputs) else inputs[0]
             X_raw = torch.as_tensor(
                 X_raw,
                 device=self.train_input_raw.device,
@@ -244,7 +239,7 @@ class _BaseProjectedMixedModel(_BaseProjectedModel):
         *,
         input_dim: int,
         cat_dims: Sequence[int],
-        category_counts: Optional[dict[int, int]] = None,
+        category_counts: dict[int, int] | None = None,
     ) -> None:
         if len(cat_dims) == 0:
             raise ValueError("cat_dims must be specified for mixed projected models.")
@@ -255,17 +250,21 @@ class _BaseProjectedMixedModel(_BaseProjectedModel):
         self.cont_dims_original = list(self.cont_dims)
         if len(self.cont_dims) == 0:
             raise ValueError("At least one continuous dimension is required.")
-        self.category_counts = self._infer_category_counts(
-            getattr(self, "_raw_train_X", None),
-            category_counts=category_counts,
-        ) if getattr(self, "_raw_train_X", None) is not None else category_counts
+        self.category_counts = (
+            self._infer_category_counts(
+                getattr(self, "_raw_train_X", None),
+                category_counts=category_counts,
+            )
+            if getattr(self, "_raw_train_X", None) is not None
+            else category_counts
+        )
         self._ignore_X_dims_scaling_check = self.cat_dims
 
     def _infer_category_counts(
         self,
-        X: Optional[Tensor],
+        X: Tensor | None,
         *,
-        category_counts: Optional[dict[int, int]] = None,
+        category_counts: dict[int, int] | None = None,
     ) -> dict[int, int]:
         inferred: dict[int, int] = {}
         if category_counts is not None:
@@ -287,7 +286,7 @@ class _BaseProjectedMixedModel(_BaseProjectedModel):
         self,
         X: Tensor,
         *,
-        category_counts: Optional[dict[int, int]] = None,
+        category_counts: dict[int, int] | None = None,
     ) -> None:
         counts = self.category_counts if category_counts is None else category_counts
         if counts is None:
@@ -305,14 +304,18 @@ class _BaseProjectedMixedModel(_BaseProjectedModel):
                     f"got min={vals.min().item()}, max={vals.max().item()}."
                 )
 
-    def _project_continuous_and_concat_categorical(self, X_pre: Tensor, x_cont_projected: Tensor) -> Tensor:
+    def _project_continuous_and_concat_categorical(
+        self,
+        X_pre: Tensor,
+        x_cont_projected: Tensor,
+    ) -> Tensor:
         x_cat = X_pre[..., self.cat_dims]
         return torch.cat([x_cont_projected, x_cat], dim=-1)
 
     def _to_preprojection_space(self, X: Tensor) -> Tensor:
         X_pre = super()._to_preprojection_space(X)
         _check_categorical_columns_unchanged(
-            X=_BaseProjectedModel._to_preprojection_space(self, X) if False else X_pre,
+            X=X_pre,
             X_tf=X_pre,
             cat_dims=self.cat_dims,
         )

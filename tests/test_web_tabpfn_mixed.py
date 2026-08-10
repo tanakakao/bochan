@@ -127,7 +127,7 @@ def test_web_mixed_tabpfn_preserves_categories_through_perturbed_search() -> Non
 
     assert result["model_type"] == "tabpfn"
     assert len(result["candidates"]) == 1
-    assert result["candidates"][0]["material"] in {"A", "B"}
+    assert result["candidates"][0]["values"]["material"] in {"A", "B"}
     assert estimator.categorical_features_indices == [1]
     assert estimator.fit_X is not None
     assert estimator.fit_X.shape == (len(x), 2)

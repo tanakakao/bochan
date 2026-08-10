@@ -6,6 +6,8 @@ on:
       - "pyproject.toml"
       - "scripts/preload_tabpfn.bat"
       - "scripts/preload_tabpfn.sh"
+      - "src/bochan/tabpfn_assets.py"
+      - "src/bochan/tabpfn_preload.py"
       - "src/bochan/api/model_registry.py"
       - "src/bochan/models/external/common.py"
       - "src/bochan/models/hybrid/task_aware_posterior.py"
@@ -20,8 +22,6 @@ on:
       - "src/bochan/serving/webapp/model_runtime.py"
       - "src/bochan/serving/webapp/risk_settings.py"
       - "src/bochan/serving/webapp/search_settings.py"
-      - "src/bochan/serving/webapp/tabpfn_assets.py"
-      - "src/bochan/serving/webapp/tabpfn_preload.py"
       - "src/bochan/serving/webapp/target_missing_policy.py"
       - "src/bochan/serving/webapp/target_settings.py"
       - "web/src/modelOptions.ts"
@@ -59,6 +59,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Smoke lightweight TabPFN preload module before dependency install
+        env:
+          PYTHONPATH: src
+        run: python -m bochan.tabpfn_preload --help
       - name: Smoke Linux TabPFN preload helper
         run: bash scripts/preload_tabpfn.sh --help
       - name: Install Web external model dependencies
@@ -83,6 +87,8 @@ jobs:
       - name: Lint focused Python changes
         run: |
           ruff check --ignore I001,SIM108 \
+            src/bochan/tabpfn_assets.py \
+            src/bochan/tabpfn_preload.py \
             src/bochan/models/external/common.py \
             src/bochan/serving/webapp/app.py \
             src/bochan/serving/webapp/candidate_runtime.py \
@@ -91,8 +97,6 @@ jobs:
             src/bochan/serving/webapp/model_runtime.py \
             src/bochan/serving/webapp/risk_settings.py \
             src/bochan/serving/webapp/search_settings.py \
-            src/bochan/serving/webapp/tabpfn_assets.py \
-            src/bochan/serving/webapp/tabpfn_preload.py \
             src/bochan/serving/webapp/target_missing_policy.py \
             src/bochan/serving/webapp/target_settings.py \
             src/bochan/models/hybrid/task_aware_posterior.py \
@@ -129,6 +133,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Smoke lightweight TabPFN preload module before dependency install
+        shell: cmd
+        run: |
+          set "PYTHONPATH=%CD%\src"
+          python -m bochan.tabpfn_preload --help
       - name: Smoke Windows TabPFN preload helper
         shell: cmd
         run: scripts\preload_tabpfn.bat --help

@@ -1,4 +1,9 @@
-"""Command-line entrypoint for provisioning TabPFN Web runtime checkpoints."""
+"""Command-line entrypoint for provisioning TabPFN Web runtime checkpoints.
+
+This module intentionally lives outside ``bochan.serving.webapp`` so invoking
+``python -m bochan.tabpfn_preload`` does not initialize the Web application or
+import the wider BoTorch model stack.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,7 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 
-from .tabpfn_assets import preload_tabpfn_assets
+from bochan.tabpfn_assets import preload_tabpfn_assets
 
 
 def _parser() -> argparse.ArgumentParser:

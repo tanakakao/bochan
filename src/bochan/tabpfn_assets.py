@@ -1,9 +1,12 @@
-"""Deployment-time TabPFN model asset management for the Web workbench.
+"""Deployment-time TabPFN model asset management for bochan Web.
 
 The public Web runtime intentionally does not authenticate with Prior Labs or
 attempt to download TabPFN checkpoints while handling user requests. Required
 foundation-model weights are downloaded ahead of time by a deployment/preload
 step and are then treated as immutable runtime assets.
+
+This module intentionally lives outside ``bochan.serving.webapp`` so the preload
+CLI can run without importing the Web application and its BoTorch model stack.
 """
 
 from __future__ import annotations
@@ -109,7 +112,7 @@ def require_preloaded_tabpfn_assets(cache_dir: str | Path | None = None) -> dict
         "TabPFN is not provisioned for the bochan Web runtime. "
         f"Missing preloaded model weight(s): {missing}. "
         "Download the weights during deployment with "
-        "`python -m bochan.serving.webapp.tabpfn_preload` and make the same "
+        "`python -m bochan.tabpfn_preload` and make the same "
         f"checkpoint directory available at runtime via {_TABPFN_MODEL_CACHE_ENV}. "
         "Runtime authentication and model downloads are intentionally disabled."
     )

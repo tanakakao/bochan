@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from .tabpfn_assets import require_preloaded_tabpfn_assets
+from bochan.tabpfn_assets import require_preloaded_tabpfn_assets
 
 _NGBOOST_ENSEMBLE_MODEL = "ngboost_ensemble"
 _NGBOOST_WEB_ENSEMBLE_SIZE = 3
@@ -28,7 +28,7 @@ def _configure_tabpfn_web_environment() -> None:
     bochan Web uses a deployment-time preload contract: model checkpoints must
     already be present before the server handles user requests. Browser login is
     therefore never an acceptable runtime fallback, and the runtime model version
-    must match the version provisioned by :mod:`tabpfn_preload`.
+    must match the version provisioned by :mod:`bochan.tabpfn_preload`.
     """
 
     os.environ[_TABPFN_NO_BROWSER_ENV] = "1"

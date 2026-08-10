@@ -18,6 +18,15 @@ if old_validate not in text:
     raise RuntimeError("projected runtime validator anchor not found")
 text = text.replace(old_validate, new_validate, 1)
 
+# The contract concerns public projected *models*, not internal PCA / REMBO
+# transformer or config objects. Skip those internal classes in both the
+# generated regression test and the one-shot validator.
+loop_anchor = '''            if not class_node.name.startswith(("PCA", "REMBO")):\n                continue\n            init = next(\n'''
+loop_replacement = '''            if not class_node.name.startswith(("PCA", "REMBO")):\n                continue\n            if class_node.name.endswith(("Transformer", "Config")):\n                continue\n            init = next(\n'''
+if text.count(loop_anchor) != 2:
+    raise RuntimeError(f"expected 2 projected class-loop anchors, got {text.count(loop_anchor)}")
+text = text.replace(loop_anchor, loop_replacement)
+
 # Ordinal projected models previously used n_components as their public API,
 # while PCAConfig / REMBOConfig correctly use n_components internally. Narrow
 # the migration so only model constructor references become latent_dim.

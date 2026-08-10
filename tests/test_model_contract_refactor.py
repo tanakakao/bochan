@@ -213,3 +213,61 @@ def test_hybrid_package_exports_canonical_contract() -> None:
     assert expected <= set(hybrid.__all__)
     for name in expected:
         assert hasattr(hybrid, name), name
+
+
+def test_robust_train_data_mixin_has_no_compatibility_aliases() -> None:
+    robust_path = MODELS_ROOT / "components" / "robust.py"
+    tree = ast.parse(robust_path.read_text(encoding="utf-8"), filename=str(robust_path))
+    class_node = next(
+        node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "TrainDataMixin"
+    )
+    method_names = {
+        node.name
+        for node in class_node.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    forbidden = {
+        "train_input_raw",
+        "train_input",
+        "transformed_train_input",
+        "transformed_train_inputs",
+        "raw_train_X",
+        "train_X_original",
+        "train_X",
+        "train_Y",
+    }
+    assert not (method_names & forbidden)
+    assert "TrainInputsAliasMixin" not in robust_path.read_text(encoding="utf-8")
+
+
+def test_no_mechanical_latent_posterior_identifier_corruption() -> None:
+    forbidden = (
+        "latent_" "posterioror",
+        "latent_" "posterioramily",
+        "latent_" "posteriorn",
+    )
+    offenders: list[tuple[str, str]] = []
+    for root_name in ("src", "tests"):
+        root = REPO_ROOT / root_name
+        for path in root.rglob("*.py"):
+            source = path.read_text(encoding="utf-8")
+            for token in forbidden:
+                if token in source:
+                    offenders.append((str(path.relative_to(REPO_ROOT)), token))
+    assert not offenders
+
+
+def test_model_methods_do_not_repeat_property_decorator() -> None:
+    offenders: list[tuple[str, str]] = []
+    for path in MODELS_ROOT.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            property_count = sum(
+                isinstance(decorator, ast.Name) and decorator.id == "property"
+                for decorator in node.decorator_list
+            )
+            if property_count > 1:
+                offenders.append((str(path.relative_to(REPO_ROOT)), node.name))
+    assert not offenders

@@ -8,8 +8,8 @@ Ordinal 用 Robust / Outlier Relevance Pursuit モデル。
 
 命名規則:
     - RobustOrdinal* は label smoothing による一般ロバスト化。
-    - OutlierRelevancePursuitOrdinal* は train-point sparse offset による RRP。
-    - OutlierRelevancePursuitOrdinal* は train-point sparse offset による RRP。
+    - RobustRelevancePursuitOrdinal* は train-point sparse offset による RRP。
+    - RobustRelevancePursuitOrdinal* は train-point sparse offset による RRP。
 """
 
 import copy
@@ -24,12 +24,13 @@ from bochan.models.ordinal.base.models import (
     _BaseOrdinalGPModel,
     _MixedOrdinalLatentGP,
     _OrdinalLatentGP,
+    _infer_num_classes_from_train_Y,
     _normalize_dims,
 )
 from bochan.models.components.robust import (
     RobustOrdinalLogitLikelihood,
     SparseOutlierOrdinalLogitLikelihood,
-    TrainInputsAliasMixin,
+    TrainDataMixin,
     apply_input_transform_for_eval,
     apply_input_transform_for_training,
     check_categorical_columns_unchanged,
@@ -49,7 +50,7 @@ __all__ = [
 
 
 class RobustRelevancePursuitOrdinalGPModel(
-    TrainInputsAliasMixin,
+    TrainDataMixin,
     _BaseOrdinalGPModel,
 ):
     """
@@ -100,7 +101,7 @@ class RobustRelevancePursuitOrdinalGPModel(
             raw_train_X.device,
         )
         if num_classes is None:
-            num_classes = int(train_Y.max().item()) + 1
+            num_classes = _infer_num_classes_from_train_Y(train_Y)
 
         local_input_transform = clone_input_transform(input_transform)
 
@@ -287,7 +288,7 @@ class RobustRelevancePursuitOrdinalGPModel(
 
 
 class RobustRelevancePursuitOrdinalMixedGPModel(
-    TrainInputsAliasMixin,
+    TrainDataMixin,
     _BaseOrdinalGPModel,
 ):
     """
@@ -335,7 +336,7 @@ class RobustRelevancePursuitOrdinalMixedGPModel(
             raw_train_X.device,
         )
         if num_classes is None:
-            num_classes = int(train_Y.max().item()) + 1
+            num_classes = _infer_num_classes_from_train_Y(train_Y)
 
         cat_dims = _normalize_dims(cat_dims, raw_train_X.shape[-1])
 
@@ -656,7 +657,7 @@ class RobustRelevancePursuitOrdinalMixedGPModel(
         return new_model
 
 
-class RobustOrdinalGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
+class RobustOrdinalGPModel(TrainDataMixin, _BaseOrdinalGPModel):
     """
     config を使わない robust ordinal variational GP.
 
@@ -698,7 +699,7 @@ class RobustOrdinalGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
             raw_train_X.device,
         )
         if num_classes is None:
-            num_classes = int(train_Y.max().item()) + 1
+            num_classes = _infer_num_classes_from_train_Y(train_Y)
 
         local_input_transform = clone_input_transform(input_transform)
 
@@ -874,7 +875,7 @@ class RobustOrdinalGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
         return new_model
 
 
-class RobustOrdinalMixedGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
+class RobustOrdinalMixedGPModel(TrainDataMixin, _BaseOrdinalGPModel):
     """
     config を使わない mixed robust ordinal variational GP.
 
@@ -921,7 +922,7 @@ class RobustOrdinalMixedGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
             raw_train_X.device,
         )
         if num_classes is None:
-            num_classes = int(train_Y.max().item()) + 1
+            num_classes = _infer_num_classes_from_train_Y(train_Y)
 
         cat_dims = _normalize_dims(cat_dims, raw_train_X.shape[-1])
 

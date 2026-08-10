@@ -17,6 +17,7 @@ from torch import Tensor
 from botorch.models.model import Model
 from botorch.models.transforms.input import InputTransform
 from gpytorch.mlls import ExactMarginalLogLikelihood
+from gpytorch.models import ExactGP
 
 from bochan.models.components.projected_utils import (
     _apply_input_transform_for_eval,
@@ -81,31 +82,45 @@ class _BaseProjectedModel(Model):
         return getattr(self.base_model, "batch_shape", torch.Size())
 
     def make_mll(self, **kwargs: Any):
-        """内部 ``base_model`` 用の MLL を構築する。
+        """内部 ``base_model`` の種類に応じた MLL を構築する。
 
-        ``base_model`` が独自の ``make_mll`` を持つ場合は、``beta`` などの
-        タスク固有引数を含めてそのまま委譲する。ordinal projected model では
-        ``make_ordinal_mll`` を使い、それ以外の exact GP では ``beta`` を無視して
-        ``ExactMarginalLogLikelihood`` を構築する。
+        Exact Gaussian GP では ``beta`` は適用対象ではないため無視する。
+        Variational / task-specific model は、その model が公開する ``make_mll``
+        または ordinal MLL builder に固有引数を渡す。TypeError による互換
+        fallback は行わず、model family ごとの contract を明示する。
         """
-        if hasattr(self.base_model, "make_mll"):
-            return self.base_model.make_mll(**kwargs)
+        if isinstance(self.base_model, ExactGP):
+            mll_kwargs = dict(kwargs)
+            mll_kwargs.pop("beta", None)
+            if mll_kwargs:
+                names = ", ".join(sorted(mll_kwargs))
+                raise TypeError(
+                    "Exact projected models received unsupported MLL keyword arguments: "
+                    f"{names}."
+                )
+            return ExactMarginalLogLikelihood(
+                self.base_model.likelihood,
+                self.base_model,
+            )
 
-        mll_kwargs = dict(kwargs)
-        mll_kwargs.pop("beta", None)
+        base_make_mll = getattr(self.base_model, "make_mll", None)
+        if callable(base_make_mll):
+            return base_make_mll(**kwargs)
 
         if hasattr(self, "ordinal_likelihood"):
             from bochan.fit import make_ordinal_mll
 
-            return make_ordinal_mll(self, **mll_kwargs)
+            return make_ordinal_mll(self, **kwargs)
 
-        if mll_kwargs:
-            names = ", ".join(sorted(mll_kwargs))
+        if kwargs:
+            names = ", ".join(sorted(kwargs))
             raise TypeError(
-                "Exact projected models received unsupported MLL keyword arguments: "
-                f"{names}."
+                f"{type(self.base_model).__name__} received unsupported MLL keyword "
+                f"arguments: {names}."
             )
-        return ExactMarginalLogLikelihood(self.base_model.likelihood, self.base_model)
+        raise TypeError(
+            f"{type(self.base_model).__name__} does not define an MLL construction contract."
+        )
 
     @property
     def train_input_raw(self) -> Tensor:
@@ -143,8 +158,6 @@ class _BaseProjectedModel(Model):
     def train_targets(self) -> Tensor:
         return self._train_targets
 
-    @property
-    @property
     @property
     def _to_preprojection_space(self, X: Tensor) -> Tensor:
         if isinstance(X, tuple):

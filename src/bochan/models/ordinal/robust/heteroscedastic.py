@@ -223,7 +223,7 @@ class HeteroscedasticOrdinalGPModel(
         self.train_targets = train_Y_ord
 
         self._constructor_kwargs = {
-            "num_classes": int(num_classes),
+            "num_classes": int(self.num_classes),
             "num_inducing": int(num_inducing),
             "learn_inducing_locations": bool(learn_inducing_locations),
             "lr": self.lr,
@@ -457,7 +457,7 @@ class HeteroscedasticOrdinalMixedGPModel(
         self.cont_kernel = str(cont_kernel)
 
         self._constructor_kwargs = {
-            "num_classes": int(num_classes),
+            "num_classes": int(self.num_classes),
             "cat_dims": list(cat_dims),
             "category_counts": copy.deepcopy(category_counts),
             "category_values": copy.deepcopy(category_values),

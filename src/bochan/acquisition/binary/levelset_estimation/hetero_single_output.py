@@ -116,8 +116,6 @@ class _BaseHeteroBinaryLevelSetAcquisition(_BinaryClassificationAcqBase):
         raise AttributeError(
             "Latent posterior accessor was not found. Expected one of:\n"
             "  - model.latent_posterior(X)\n"
-            "  - model.latent_posterior(X)\n"
-            "  - model.latent_posterior(X)\n"
             "  - model.model.posterior(X)\n"
             "  - model.gp_model.posterior(X)"
         )

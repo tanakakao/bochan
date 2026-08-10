@@ -547,9 +547,6 @@ class _BaseOrdinalGPModel(ApproximateGPyTorchModel):
         return self.train_inputs[0]
 
     @property
-    @property
-    @property
-    @property
     def ordinal_likelihood(self) -> OrdinalLogitLikelihood:
         return self.likelihood
 

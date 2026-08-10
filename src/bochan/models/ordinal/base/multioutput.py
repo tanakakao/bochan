@@ -257,9 +257,6 @@ class MultiOutputOrdinalModel(Model):
         return torch.cat(ys, dim=-1)
 
     @property
-    @property
-    @property
-    @property
     def num_classes_list(self) -> list[int]:
         return [int(m.num_classes) for m in self.models]
 

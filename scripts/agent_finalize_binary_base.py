@@ -9,23 +9,27 @@ MODELS = ROOT / "src" / "bochan" / "models"
 # One-shot migration: fold package-level binary defaults into the owning models.
 
 
-def finalize_binary_defaults() -> None:
+def finalize_binary_defaults_and_names() -> None:
     path = MODELS / "classification" / "binary" / "base" / "models.py"
     text = path.read_text(encoding="utf-8")
     old = "        num_inducing: int = 20,"
     count = text.count(old)
     if count != 2:
         raise RuntimeError(f"expected exactly 2 binary base inducing defaults, got {count}")
-    path.write_text(text.replace(old, "        num_inducing: int = 128,"), encoding="utf-8")
+    text = text.replace(old, "        num_inducing: int = 128,")
+    text = text.replace(
+        '-> "GPClassificationMixedModel":',
+        '-> "BinaryClassificationMixedGPModel":',
+    )
+    path.write_text(text, encoding="utf-8")
 
 
 def extend_contract_guard() -> None:
     path = ROOT / "tests" / "test_model_contract_refactor.py"
     text = path.read_text(encoding="utf-8")
-    if "test_binary_base_package_exports_implementation_classes_directly" in text:
-        return
-    addition = r'''
-
+    additions: list[str] = []
+    if "test_binary_base_package_exports_implementation_classes_directly" not in text:
+        additions.append(r'''
 
 def test_binary_base_package_exports_implementation_classes_directly() -> None:
     import bochan.models.classification.binary.base as binary_base
@@ -36,13 +40,27 @@ def test_binary_base_package_exports_implementation_classes_directly() -> None:
         binary_base.BinaryClassificationMixedGPModel
         is binary_models.BinaryClassificationMixedGPModel
     )
-'''
-    path.write_text(text.rstrip() + addition.rstrip() + "\n", encoding="utf-8")
+''')
+    if "test_binary_base_has_no_stale_compatibility_class_names" not in text:
+        additions.append(r'''
+
+def test_binary_base_has_no_stale_compatibility_class_names() -> None:
+    path = MODELS_ROOT / "classification" / "binary" / "base" / "models.py"
+    source = path.read_text(encoding="utf-8")
+    assert '"GPClassificationModel"' not in source
+    assert '"GPClassificationMixedModel"' not in source
+''')
+    if additions:
+        path.write_text(
+            text.rstrip() + "\n" + "".join(additions).rstrip() + "\n",
+            encoding="utf-8",
+        )
 
 
 def validate() -> None:
     model_path = MODELS / "classification" / "binary" / "base" / "models.py"
-    tree = ast.parse(model_path.read_text(encoding="utf-8"), filename=str(model_path))
+    source = model_path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(model_path))
     defaults: dict[str, int] = {}
     for class_node in [node for node in tree.body if isinstance(node, ast.ClassDef)]:
         if class_node.name not in {
@@ -78,6 +96,10 @@ def validate() -> None:
     if len(defaults) != 2:
         raise RuntimeError(f"missing binary base models: {sorted(defaults)}")
 
+    for legacy_name in ('"GPClassificationModel"', '"GPClassificationMixedModel"'):
+        if legacy_name in source:
+            raise RuntimeError(f"stale binary compatibility class name remains: {legacy_name}")
+
     init_path = MODELS / "classification" / "binary" / "base" / "__init__.py"
     init_tree = ast.parse(init_path.read_text(encoding="utf-8"), filename=str(init_path))
     shadowing = {
@@ -94,6 +116,6 @@ def validate() -> None:
 
 
 if __name__ == "__main__":
-    finalize_binary_defaults()
+    finalize_binary_defaults_and_names()
     extend_contract_guard()
     validate()

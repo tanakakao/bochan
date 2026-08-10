@@ -4,6 +4,10 @@ bochan Web treats TabPFN model weights as deployment assets. The public Web
 runtime must not perform Prior Labs authentication or download checkpoints while
 handling user requests.
 
+The preload CLI intentionally lives at top-level `bochan.tabpfn_preload` rather
+than inside `bochan.serving.webapp`. This keeps provisioning independent from
+Web-app initialization and the wider BoTorch model stack.
+
 ## Local development quick start
 
 The repository includes platform-specific helpers that preload the same TabPFN
@@ -78,7 +82,7 @@ login can run `scripts\preload_tabpfn.bat --allow-browser-auth` on Windows or
 ```bash
 export TABPFN_TOKEN="..."
 export TABPFN_MODEL_CACHE_DIR="/var/lib/bochan/tabpfn"
-python -m bochan.serving.webapp.tabpfn_preload
+python -m bochan.tabpfn_preload
 ```
 
 The preload command downloads the official default TabPFN v3 classifier and
@@ -104,7 +108,7 @@ For a developer workstation only, the Python preload command can explicitly
 allow the TabPFN library's browser login flow:
 
 ```bash
-python -m bochan.serving.webapp.tabpfn_preload --allow-browser-auth
+python -m bochan.tabpfn_preload --allow-browser-auth
 ```
 
 The platform helper scripts expose the same option as described above.

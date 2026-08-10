@@ -8,6 +8,7 @@ TEXT_SUFFIXES = {".py", ".md", ".rst", ".txt"}
 REPLACEMENTS = {
     "_get_binary_mc_latent_posterioror_probability_samples": "_get_binary_mc_posterior_for_probability_samples",
     "_latent_posterioror_submodel": "_posterior_for_submodel",
+    "latent_posterioramily": "posterior_family",
     '("latent_posterior", "latent_posterior", "latent_posterior")': '("latent_posterior",)',
     '("latent_posterior", "latent_posterior")': '("latent_posterior",)',
     "latent_posterior / latent_posterior / latent_posterior": "latent_posterior",
@@ -20,6 +21,7 @@ REPLACEMENTS = {
 
 FORBIDDEN = (
     "latent_posterioror",
+    "latent_posterioramily",
     '("latent_posterior", "latent_posterior"',
     "latent_posterior / latent_posterior",
     "latent_posterior(X), or latent_posterior(X)",

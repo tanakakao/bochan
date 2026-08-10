@@ -72,7 +72,7 @@ export default function SettingsPage() {
   const taskTypes = useMemo(
     () => targetColumns
       .map((target) => targetSettings[target]?.task_type)
-      .filter((task): task is string => Boolean(task)),
+      .filter((task): task is NonNullable<typeof task> => Boolean(task)),
     [targetColumns, targetSettings]
   );
   const allRegression = taskTypes.length > 0 && taskTypes.every((task) => task === "regression");

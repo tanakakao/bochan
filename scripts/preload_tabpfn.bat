@@ -52,6 +52,22 @@ if defined BOCHAN_PYTHON (
     set "PYTHON_CMD=python"
 )
 
+rem Check the exact Python environment before asking for a secret.
+"%PYTHON_CMD%" -c "import tabpfn; from tabpfn.constants import ModelVersion; from tabpfn.model_loading import download_model, get_cache_dir, resolve_model_path" >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] A compatible TabPFN package is not installed in the selected Python environment.
+    echo Python executable:
+    "%PYTHON_CMD%" -c "import sys; print(sys.executable)"
+    echo.
+    echo Install or refresh the bochan Web dependencies from this repository:
+    echo   "%PYTHON_CMD%" -m pip install -e ".[web]"
+    echo.
+    echo Then rerun:
+    echo   scripts\preload_tabpfn.bat
+    popd
+    exit /b 2
+)
+
 if not defined TABPFN_TOKEN if "%TOKEN_OPTIONAL%"=="0" (
     echo Prior Labs API Key is required only for this preload step.
     for /f "usebackq delims=" %%T in (`powershell -NoProfile -Command "$s = Read-Host 'Prior Labs API Key' -AsSecureString; $b = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($s); try { [Runtime.InteropServices.Marshal]::PtrToStringBSTR($b) } finally { if ($b -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($b) } }"`) do set "TABPFN_TOKEN=%%T"

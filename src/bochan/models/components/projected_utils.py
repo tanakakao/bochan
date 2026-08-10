@@ -428,14 +428,10 @@ def _clone_fitted_rembo(rembo: REMBOTransformer) -> REMBOTransformer:
 def _resolve_latent_dim(
     *,
     latent_dim: Optional[int],
-    n_components: Optional[int],
     default: int,
 ) -> int:
-    """latent_dim / n_components の後方互換を解決する。"""
-    if latent_dim is not None and n_components is not None and latent_dim != n_components:
-        raise ValueError(
-            f"latent_dim and n_components are both specified but inconsistent: "
-            f"latent_dim={latent_dim}, n_components={n_components}."
-        )
-    value = n_components if n_components is not None else latent_dim
-    return int(default if value is None else value)
+    """Projected model の latent dimension を正の整数として解決する。"""
+    value = int(default if latent_dim is None else latent_dim)
+    if value <= 0:
+        raise ValueError(f"latent_dim must be a positive integer, got {value}.")
+    return value

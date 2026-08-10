@@ -9,8 +9,8 @@ PCA / REMBO の射影器は ``bochan.models.components.decomposition``、
 raw/preproject/projected 管理は ``bochan.models.components.projected`` に寄せる。
 
 Notes:
-    - 外部 API は ``n_components`` に統一する。
-    - 旧 API の ``latent_dim`` は ``__init__`` 引数から削除する。
+    - 外部 API は ``latent_dim`` に統一する。
+    - PCAConfig / REMBOConfig 内部では ``n_components`` を使う。
     - mixed wrapper 内部では、カテゴリ列の offset として ``projected_dim`` を使う。
 """
 
@@ -102,7 +102,7 @@ def _resolve_pca_config(
     n_components: Optional[int],
     default: int,
 ) -> PCAConfig:
-    """PCAConfig と n_components の指定を一元的に解決する。
+    """PCAConfig と latent_dim の指定を一元的に解決する。
 
     ``pca_config`` が与えられた場合はそれを優先する。ただし、同時に
     ``n_components`` も指定されている場合は、値の不一致をエラーにする。
@@ -130,7 +130,7 @@ def _resolve_rembo_config(
     default: int,
     seed: int,
 ) -> REMBOConfig:
-    """REMBOConfig と n_components の指定を一元的に解決する。
+    """REMBOConfig と latent_dim の指定を一元的に解決する。
 
     ``rembo_config`` が与えられた場合はそれを優先する。ただし、同時に
     ``n_components`` も指定されている場合は、値の不一致をエラーにする。
@@ -253,7 +253,7 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
         train_Y: Tensor,
         *,
         num_classes: Optional[int] = None,
-        n_components: Optional[int] = 2,
+        latent_dim: Optional[int] = 2,
         pca_config: Optional[PCAConfig] = None,
         num_inducing: int = 128,
         learn_inducing_locations: bool = True,
@@ -275,11 +275,10 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
         )
         self.pca_config = _resolve_pca_config(
             pca_config=pca_config,
-            n_components=n_components,
+            n_components=latent_dim,
             default=2,
         )
         self.projected_dim = int(self.pca_config.n_components)
-        self.n_components = self.projected_dim
         # 内部互換用。外部 API からは latent_dim を削除する。
         self.latent_dim = self.projected_dim
 
@@ -345,7 +344,7 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
         train_Y: Tensor,
         *,
         num_classes: Optional[int] = None,
-        n_components: Optional[int] = 2,
+        latent_dim: Optional[int] = 2,
         rembo_config: Optional[REMBOConfig] = None,
         seed: int = 42,
         num_inducing: int = 128,
@@ -368,12 +367,11 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
         )
         self.rembo_config = _resolve_rembo_config(
             rembo_config=rembo_config,
-            n_components=n_components,
+            n_components=latent_dim,
             default=2,
             seed=seed,
         )
         self.projected_dim = int(self.rembo_config.n_components)
-        self.n_components = self.projected_dim
         # 内部互換用。外部 API からは latent_dim を削除する。
         self.latent_dim = self.projected_dim
 
@@ -552,7 +550,7 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         cat_dims: Sequence[int] = (),
         category_counts: Optional[dict[int, int]] = None,
         cont_kernel: str = "matern52",
-        n_components: Optional[int] = 2,
+        latent_dim: Optional[int] = 2,
         pca_config: Optional[PCAConfig] = None,
         num_inducing: int = 128,
         learn_inducing_locations: bool = True,
@@ -576,11 +574,10 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         )
         self.pca_config = _resolve_pca_config(
             pca_config=pca_config,
-            n_components=n_components,
+            n_components=latent_dim,
             default=2,
         )
         self.projected_dim = int(self.pca_config.n_components)
-        self.n_components = self.projected_dim
         # 内部互換用。外部 API からは latent_dim を削除する。
         self.latent_dim = self.projected_dim
 
@@ -658,7 +655,7 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         cat_dims: Sequence[int] = (),
         category_counts: Optional[dict[int, int]] = None,
         cont_kernel: str = "matern52",
-        n_components: Optional[int] = 2,
+        latent_dim: Optional[int] = 2,
         rembo_config: Optional[REMBOConfig] = None,
         seed: int = 42,
         num_inducing: int = 128,
@@ -683,12 +680,11 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         )
         self.rembo_config = _resolve_rembo_config(
             rembo_config=rembo_config,
-            n_components=n_components,
+            n_components=latent_dim,
             default=2,
             seed=seed,
         )
         self.projected_dim = int(self.rembo_config.n_components)
-        self.n_components = self.projected_dim
         # 内部互換用。外部 API からは latent_dim を削除する。
         self.latent_dim = self.projected_dim
 

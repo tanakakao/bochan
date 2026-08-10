@@ -271,3 +271,51 @@ def test_model_methods_do_not_repeat_property_decorator() -> None:
             if property_count > 1:
                 offenders.append((str(path.relative_to(REPO_ROOT)), node.name))
     assert not offenders
+
+
+def test_projected_model_constructors_use_latent_dim_only() -> None:
+    offenders: list[tuple[str, str, str]] = []
+    checked = 0
+    for path in MODELS_ROOT.rglob("*decomposition.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for class_node in [node for node in tree.body if isinstance(node, ast.ClassDef)]:
+            if not class_node.name.startswith(("PCA", "REMBO")):
+                continue
+            if class_node.name.endswith(("Transformer", "Config")):
+                continue
+            init = next(
+                (
+                    node
+                    for node in class_node.body
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and node.name == "__init__"
+                ),
+                None,
+            )
+            if init is None:
+                continue
+            checked += 1
+            args = _function_arg_names(init)
+            forwards_constructor_args = init.args.vararg is not None or init.args.kwarg is not None
+            if "n_components" in args:
+                offenders.append((str(path.relative_to(REPO_ROOT)), class_node.name, "n_components"))
+            if "latent_dim" not in args and not forwards_constructor_args:
+                offenders.append((str(path.relative_to(REPO_ROOT)), class_node.name, "missing latent_dim"))
+    assert checked > 0
+    assert not offenders
+
+
+def test_projected_preprojection_transform_is_a_method() -> None:
+    projected_path = MODELS_ROOT / "components" / "projected.py"
+    tree = ast.parse(projected_path.read_text(encoding="utf-8"), filename=str(projected_path))
+    base = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "_BaseProjectedModel")
+    method = next(
+        node
+        for node in base.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "_to_preprojection_space"
+    )
+    assert not any(
+        isinstance(decorator, ast.Name) and decorator.id == "property"
+        for decorator in method.decorator_list
+    )

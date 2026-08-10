@@ -137,7 +137,7 @@ class _ContinuousProjectedPoissonModel(_BaseProjectedPoissonModel):
         if projector is None:
             if config is None:
                 try:
-                    config = self.config_cls(n_components=self.latent_dim, seed=seed)
+                    config = self.config_cls(latent_dim=self.latent_dim, seed=seed)
                 except TypeError:
                     config = self.config_cls(n_components=self.latent_dim)
             projector = self.transformer_cls(config)
@@ -261,7 +261,7 @@ class _MixedProjectedPoissonModel(_BaseProjectedPoissonModel):
         if projector is None:
             if config is None:
                 try:
-                    config = self.config_cls(n_components=self.latent_dim, seed=seed)
+                    config = self.config_cls(latent_dim=self.latent_dim, seed=seed)
                 except TypeError:
                     config = self.config_cls(n_components=self.latent_dim)
             projector = self.transformer_cls(config)

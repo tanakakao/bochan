@@ -287,7 +287,6 @@ class PCABinaryClassificationGPModel(_BaseProjectedClassificationGP):
         learn_inducing_locations: bool = True,
         pca_config: Optional[PCAConfig] = None,
         latent_dim: Optional[int] = None,
-        n_components: Optional[int] = None,
         fitted_pca: Optional[PCATransformer] = None,
         base_model: Optional[BinaryClassificationGPModel] = None,
     ) -> None:
@@ -298,7 +297,7 @@ class PCABinaryClassificationGPModel(_BaseProjectedClassificationGP):
             train_Yvar=train_Yvar,
             input_transform=input_transform,
         )
-        dim = _resolve_latent_dim(latent_dim=latent_dim, n_components=n_components, default=2)
+        dim = _resolve_latent_dim(latent_dim=latent_dim, default=2)
         self.pca_config = copy.deepcopy(pca_config) if pca_config is not None else PCAConfig(n_components=dim)
         self.pca = _clone_fitted_pca(fitted_pca) if fitted_pca is not None else PCATransformer(self.pca_config)
         if fitted_pca is None:
@@ -355,7 +354,6 @@ class REMBOBinaryClassificationGPModel(_BaseProjectedClassificationGP):
         learn_inducing_locations: bool = True,
         rembo_config: Optional[REMBOConfig] = None,
         latent_dim: Optional[int] = None,
-        n_components: Optional[int] = None,
         fitted_rembo: Optional[REMBOTransformer] = None,
         seed: int = 42,
         base_model: Optional[BinaryClassificationGPModel] = None,
@@ -367,7 +365,7 @@ class REMBOBinaryClassificationGPModel(_BaseProjectedClassificationGP):
             train_Yvar=train_Yvar,
             input_transform=input_transform,
         )
-        dim = _resolve_latent_dim(latent_dim=latent_dim, n_components=n_components, default=2)
+        dim = _resolve_latent_dim(latent_dim=latent_dim, default=2)
         self.rembo_config = copy.deepcopy(rembo_config) if rembo_config is not None else REMBOConfig(n_components=dim, seed=seed)
         self.rembo = _clone_fitted_rembo(fitted_rembo) if fitted_rembo is not None else REMBOTransformer(self.rembo_config)
         if fitted_rembo is None:
@@ -602,7 +600,6 @@ class PCABinaryClassificationMixedGPModel(_BaseProjectedMixedClassificationGP):
         learn_inducing_locations: bool = True,
         pca_config: Optional[PCAConfig] = None,
         latent_dim: Optional[int] = None,
-        n_components: Optional[int] = None,
         fitted_pca: Optional[PCATransformer] = None,
         category_counts: Optional[dict[int, int]] = None,
         base_model: Optional[BinaryClassificationMixedGPModel] = None,
@@ -616,7 +613,7 @@ class PCABinaryClassificationMixedGPModel(_BaseProjectedMixedClassificationGP):
             train_Yvar=train_Yvar,
             input_transform=input_transform,
         )
-        dim = _resolve_latent_dim(latent_dim=latent_dim, n_components=n_components, default=2)
+        dim = _resolve_latent_dim(latent_dim=latent_dim, default=2)
         self.pca_config = copy.deepcopy(pca_config) if pca_config is not None else PCAConfig(n_components=dim)
         self.pca = _clone_fitted_pca(fitted_pca) if fitted_pca is not None else PCATransformer(self.pca_config)
         if fitted_pca is None:
@@ -682,7 +679,6 @@ class REMBOBinaryClassificationMixedGPModel(_BaseProjectedMixedClassificationGP)
         learn_inducing_locations: bool = True,
         rembo_config: Optional[REMBOConfig] = None,
         latent_dim: Optional[int] = None,
-        n_components: Optional[int] = None,
         fitted_rembo: Optional[REMBOTransformer] = None,
         seed: int = 42,
         category_counts: Optional[dict[int, int]] = None,
@@ -697,7 +693,7 @@ class REMBOBinaryClassificationMixedGPModel(_BaseProjectedMixedClassificationGP)
             train_Yvar=train_Yvar,
             input_transform=input_transform,
         )
-        dim = _resolve_latent_dim(latent_dim=latent_dim, n_components=n_components, default=2)
+        dim = _resolve_latent_dim(latent_dim=latent_dim, default=2)
         self.rembo_config = copy.deepcopy(rembo_config) if rembo_config is not None else REMBOConfig(n_components=dim, seed=seed)
         self.rembo = _clone_fitted_rembo(fitted_rembo) if fitted_rembo is not None else REMBOTransformer(self.rembo_config)
         if fitted_rembo is None:

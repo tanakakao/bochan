@@ -158,7 +158,6 @@ class _BaseProjectedModel(Model):
     def train_targets(self) -> Tensor:
         return self._train_targets
 
-    @property
     def _to_preprojection_space(self, X: Tensor) -> Tensor:
         if isinstance(X, tuple):
             X = X[0]

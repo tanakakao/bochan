@@ -52,34 +52,18 @@ def _clone_fitted_rembo(rembo: REMBOTransformer) -> REMBOTransformer:
 
 def _resolve_projected_dim(
     *,
-    n_components: Optional[int],
     latent_dim: int,
     input_dim: int,
     name: str,
 ) -> int:
-    """
-    PCA / REMBO の射影次元を決める。
-
-    `n_components` が明示されていない場合は、デフォルト `latent_dim=8` が
-    入力次元を超えても使えるように `input_dim` へ丸める。
-    `n_components` が明示されている場合は、指定ミスを検出するために例外にする。
-    """
+    """PCA / REMBO の射影次元を ``latent_dim`` から解決する。"""
     input_dim = int(input_dim)
     if input_dim <= 0:
         raise ValueError(f"{name}: input dimension must be positive.")
 
-    if n_components is None:
-        resolved = min(int(latent_dim), input_dim)
-    else:
-        resolved = int(n_components)
-
+    resolved = min(int(latent_dim), input_dim)
     if resolved <= 0:
-        raise ValueError(f"{name}: n_components / latent_dim must be positive. Got {resolved}.")
-    if resolved > input_dim:
-        raise ValueError(
-            f"{name}: n_components must be <= input dimension. "
-            f"Got n_components={resolved}, input_dim={input_dim}."
-        )
+        raise ValueError(f"{name}: latent_dim must be positive. Got {resolved}.")
     return resolved
 
 
@@ -170,7 +154,6 @@ class PCAMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         *,
         num_classes: Optional[int] = None,
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         pca_config: Optional[PCAConfig] = None,
         projector: Optional[PCATransformer] = None,
         input_transform: Optional[InputTransform] = None,
@@ -183,7 +166,6 @@ class PCAMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         train_Y = prepare_class_targets(train_Y, train_X, num_classes=num_classes)
         self.input_dim_original = train_X.shape[-1]
         self.latent_dim = _resolve_projected_dim(
-            n_components=n_components,
             latent_dim=latent_dim,
             input_dim=self.input_dim_original,
             name=self.__class__.__name__,
@@ -229,7 +211,6 @@ class REMBOMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         *,
         num_classes: Optional[int] = None,
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         rembo_config: Optional[REMBOConfig] = None,
         projector: Optional[REMBOTransformer] = None,
         input_transform: Optional[InputTransform] = None,
@@ -243,7 +224,6 @@ class REMBOMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         train_Y = prepare_class_targets(train_Y, train_X, num_classes=num_classes)
         self.input_dim_original = train_X.shape[-1]
         self.latent_dim = _resolve_projected_dim(
-            n_components=n_components,
             latent_dim=latent_dim,
             input_dim=self.input_dim_original,
             name=self.__class__.__name__,
@@ -252,7 +232,7 @@ class REMBOMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         pre_X = apply_input_transform_for_training(train_X, self.input_transform, name='REMBOMulticlassClassificationGPModel.input_transform')
 
         if projector is None:
-            cfg = rembo_config or REMBOConfig(n_components=self.latent_dim, seed=seed)
+            cfg = rembo_config or REMBOConfig(latent_dim=self.latent_dim, seed=seed)
             projector = REMBOTransformer(cfg)
             projector.fit(pre_X)
         self.projector = projector
@@ -312,7 +292,6 @@ class PCAMulticlassClassificationMixedGPModel(_MixedProjectedMulticlassModel):
         cat_dims: Sequence[int],
         num_classes: Optional[int] = None,
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         pca_config: Optional[PCAConfig] = None,
         projector: Optional[PCATransformer] = None,
         input_transform: Optional[InputTransform] = None,
@@ -327,7 +306,6 @@ class PCAMulticlassClassificationMixedGPModel(_MixedProjectedMulticlassModel):
         self.cat_dims = normalize_dims(cat_dims, self.input_dim_original)
         self.cont_dims = get_cont_dims(self.input_dim_original, self.cat_dims)
         self.latent_dim = _resolve_projected_dim(
-            n_components=n_components,
             latent_dim=latent_dim,
             input_dim=len(self.cont_dims),
             name=self.__class__.__name__,
@@ -380,7 +358,6 @@ class REMBOMulticlassClassificationMixedGPModel(PCAMulticlassClassificationMixed
         cat_dims: Sequence[int],
         num_classes: Optional[int] = None,
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         rembo_config: Optional[REMBOConfig] = None,
         projector: Optional[REMBOTransformer] = None,
         input_transform: Optional[InputTransform] = None,
@@ -396,7 +373,6 @@ class REMBOMulticlassClassificationMixedGPModel(PCAMulticlassClassificationMixed
         self.cat_dims = normalize_dims(cat_dims, self.input_dim_original)
         self.cont_dims = get_cont_dims(self.input_dim_original, self.cat_dims)
         self.latent_dim = _resolve_projected_dim(
-            n_components=n_components,
             latent_dim=latent_dim,
             input_dim=len(self.cont_dims),
             name=self.__class__.__name__,
@@ -411,7 +387,7 @@ class REMBOMulticlassClassificationMixedGPModel(PCAMulticlassClassificationMixed
         check_categorical_columns_unchanged(train_X, pre_X, self.cat_dims)
 
         if projector is None:
-            cfg = rembo_config or REMBOConfig(n_components=self.latent_dim, seed=seed)
+            cfg = rembo_config or REMBOConfig(latent_dim=self.latent_dim, seed=seed)
             projector = REMBOTransformer(cfg)
             projector.fit(pre_X[..., self.cont_dims])
         self.projector = projector

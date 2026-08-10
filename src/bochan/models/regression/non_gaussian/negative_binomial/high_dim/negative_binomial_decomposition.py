@@ -145,7 +145,6 @@ class PCANegativeBinomialGPModel(_ContinuousProjectedNBModel):
         train_Y: Tensor,
         *,
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         pca_config: Optional[PCAConfig] = None,
         projector: Optional[PCATransformer] = None,
         likelihood: Optional[NegativeBinomialLogLikelihood] = None,
@@ -159,7 +158,7 @@ class PCANegativeBinomialGPModel(_ContinuousProjectedNBModel):
         train_X = torch.as_tensor(train_X)
         train_Y = prepare_count_targets(train_Y, train_X)
         self.input_dim_original = train_X.shape[-1]
-        self.latent_dim = int(n_components if n_components is not None else latent_dim)
+        self.latent_dim = int(latent_dim if latent_dim is not None else latent_dim)
         self.input_transform = clone_input_transform(input_transform)
         pre_X = apply_input_transform_for_training(train_X, self.input_transform, name="PCANegativeBinomialGPModel.input_transform")
         if projector is None:
@@ -197,7 +196,6 @@ class REMBONegativeBinomialGPModel(PCANegativeBinomialGPModel):
         train_Y: Tensor,
         *,
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         rembo_config: Optional[REMBOConfig] = None,
         projector: Optional[REMBOTransformer] = None,
         likelihood: Optional[NegativeBinomialLogLikelihood] = None,
@@ -212,11 +210,11 @@ class REMBONegativeBinomialGPModel(PCANegativeBinomialGPModel):
         train_X = torch.as_tensor(train_X)
         train_Y = prepare_count_targets(train_Y, train_X)
         self.input_dim_original = train_X.shape[-1]
-        self.latent_dim = int(n_components if n_components is not None else latent_dim)
+        self.latent_dim = int(latent_dim if latent_dim is not None else latent_dim)
         self.input_transform = clone_input_transform(input_transform)
         pre_X = apply_input_transform_for_training(train_X, self.input_transform, name="REMBONegativeBinomialGPModel.input_transform")
         if projector is None:
-            projector = REMBOTransformer(rembo_config or REMBOConfig(n_components=self.latent_dim, seed=seed))
+            projector = REMBOTransformer(rembo_config or REMBOConfig(latent_dim=self.latent_dim, seed=seed))
             projector.fit(pre_X)
         projected_X = projector.transform(pre_X)
         self.projector = projector
@@ -270,7 +268,6 @@ class PCANegativeBinomialMixedGPModel(_MixedProjectedNBModel):
         *,
         cat_dims: Sequence[int],
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         pca_config: Optional[PCAConfig] = None,
         projector: Optional[PCATransformer] = None,
         likelihood: Optional[NegativeBinomialLogLikelihood] = None,
@@ -286,7 +283,7 @@ class PCANegativeBinomialMixedGPModel(_MixedProjectedNBModel):
         self.input_dim_original = train_X.shape[-1]
         self.cat_dims = normalize_dims(cat_dims, self.input_dim_original)
         self.cont_dims = get_cont_dims(self.input_dim_original, self.cat_dims)
-        self.latent_dim = int(n_components if n_components is not None else latent_dim)
+        self.latent_dim = int(latent_dim if latent_dim is not None else latent_dim)
         self.input_transform = clone_input_transform(input_transform)
         pre_X = apply_input_transform_for_training(
             train_X,
@@ -354,7 +351,6 @@ class REMBONegativeBinomialMixedGPModel(_MixedProjectedNBModel):
         *,
         cat_dims: Sequence[int],
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         rembo_config: Optional[REMBOConfig] = None,
         projector: Optional[REMBOTransformer] = None,
         likelihood: Optional[NegativeBinomialLogLikelihood] = None,
@@ -371,7 +367,7 @@ class REMBONegativeBinomialMixedGPModel(_MixedProjectedNBModel):
         self.input_dim_original = train_X.shape[-1]
         self.cat_dims = normalize_dims(cat_dims, self.input_dim_original)
         self.cont_dims = get_cont_dims(self.input_dim_original, self.cat_dims)
-        self.latent_dim = int(n_components if n_components is not None else latent_dim)
+        self.latent_dim = int(latent_dim if latent_dim is not None else latent_dim)
         self.input_transform = clone_input_transform(input_transform)
         pre_X = apply_input_transform_for_training(
             train_X,
@@ -381,7 +377,7 @@ class REMBONegativeBinomialMixedGPModel(_MixedProjectedNBModel):
         )
         check_categorical_columns_unchanged(train_X, pre_X, self.cat_dims)
         if projector is None:
-            projector = REMBOTransformer(rembo_config or REMBOConfig(n_components=self.latent_dim, seed=seed))
+            projector = REMBOTransformer(rembo_config or REMBOConfig(latent_dim=self.latent_dim, seed=seed))
             projector.fit(pre_X[..., self.cont_dims])
         x_cont = projector.transform(pre_X[..., self.cont_dims])
         self.projector = projector

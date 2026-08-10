@@ -45,11 +45,14 @@ def function_args(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.arg]
     return [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
 
 
-def collect_renamed_classes() -> tuple[set[str], dict[str, set[str]]]:
-    renamed: set[str] = set()
+def collect_renamed_classes() -> tuple[set[str], set[tuple[str, str]], dict[str, set[str]]]:
+    """Return model class names/sites that explicitly expose the legacy argument."""
+    renamed_names: set[str] = set()
+    renamed_sites: set[tuple[str, str]] = set()
     bases: dict[str, set[str]] = {}
     for path in MODELS.rglob("*.py"):
         tree = ast.parse(read(path), filename=str(path))
+        relative_path = str(path.relative_to(ROOT))
         for node in tree.body:
             if not isinstance(node, ast.ClassDef):
                 continue
@@ -59,13 +62,14 @@ def collect_renamed_classes() -> tuple[set[str], dict[str, set[str]]]:
                     base_names.add(base.id)
                 elif isinstance(base, ast.Attribute):
                     base_names.add(base.attr)
-            bases[node.name] = base_names
+            bases.setdefault(node.name, set()).update(base_names)
             init = constructor(node)
             if init is None:
                 continue
             if LEGACY in {arg.arg for arg in function_args(init)}:
-                renamed.add(node.name)
-    return renamed, bases
+                renamed_names.add(node.name)
+                renamed_sites.add((relative_path, node.name))
+    return renamed_names, renamed_sites, bases
 
 
 def descendants_of(renamed: set[str], bases: dict[str, set[str]]) -> set[str]:
@@ -82,7 +86,8 @@ def descendants_of(renamed: set[str], bases: dict[str, set[str]]) -> set[str]:
     return descendants
 
 
-def canonicalize_model_constructors(renamed: set[str]) -> None:
+def canonicalize_model_constructors() -> None:
+    """Canonicalize each class locally, avoiding cross-module same-name collisions."""
     for path in MODELS.rglob("*.py"):
         source = read(path)
         tree = ast.parse(source, filename=str(path))
@@ -90,13 +95,15 @@ def canonicalize_model_constructors(renamed: set[str]) -> None:
         edits: list[tuple[int, int, str]] = []
 
         for class_node in tree.body:
-            if not isinstance(class_node, ast.ClassDef) or class_node.name not in renamed:
+            if not isinstance(class_node, ast.ClassDef):
                 continue
             init = constructor(class_node)
             if init is None:
                 continue
             args = function_args(init)
             names = {arg.arg for arg in args}
+            if LEGACY not in names:
+                continue
             legacy_arg = next(arg for arg in args if arg.arg == LEGACY)
 
             if CANONICAL in names:
@@ -113,14 +120,14 @@ def canonicalize_model_constructors(renamed: set[str]) -> None:
                 start = absolute(line_offsets, legacy_arg.lineno, legacy_arg.col_offset)
                 edits.append((start, start + len(LEGACY), CANONICAL))
 
-            # Rename only variable uses of the constructor argument. Keyword names
-            # on helper / GPyTorch calls are deliberately not AST Name nodes.
+            # Rename only variable uses of the model constructor argument. Keyword
+            # names on helpers / GPyTorch APIs remain `num_inducing_points`.
             for node in ast.walk(init):
                 if isinstance(node, ast.Name) and node.id == LEGACY:
                     start = absolute(line_offsets, node.lineno, node.col_offset)
                     edits.append((start, start + len(LEGACY), CANONICAL))
 
-            # Model state follows the same canonical name throughout the class.
+            # Model-owned state follows the same canonical public name.
             for node in ast.walk(class_node):
                 if (
                     isinstance(node, ast.Attribute)
@@ -173,8 +180,27 @@ def is_self_class_call(call: ast.Call) -> bool:
     )
 
 
-def migrate_python_call_sites(renamed: set[str], descendants: set[str]) -> None:
-    """Renamed bochan constructorsだけ keyword を canonical 名へ移す。"""
+def add_keyword_edit(
+    *,
+    source: str,
+    line_offsets: list[int],
+    call: ast.Call,
+    edits: list[tuple[int, int, str]],
+) -> None:
+    for keyword in call.keywords:
+        if keyword.arg != LEGACY:
+            continue
+        start = absolute(line_offsets, keyword.lineno, keyword.col_offset)
+        if source[start : start + len(LEGACY)] == LEGACY:
+            edits.append((start, start + len(LEGACY), CANONICAL))
+
+
+def migrate_python_call_sites(
+    renamed_names: set[str],
+    renamed_sites: set[tuple[str, str]],
+    descendants: set[str],
+) -> None:
+    """Migrate bochan model constructor call sites without touching helper APIs."""
     for root_name in ("src", "tests"):
         root = ROOT / root_name
         for path in root.rglob("*.py"):
@@ -185,37 +211,44 @@ def migrate_python_call_sites(renamed: set[str], descendants: set[str]) -> None:
                 continue
             line_offsets = offsets(source)
             edits: list[tuple[int, int, str]] = []
+            relative_path = str(path.relative_to(ROOT))
 
+            # Direct calls can occur in test functions, factories, methods, or at
+            # module scope. Scan the whole AST rather than only class bodies.
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                if call_target_name(node) in renamed_names:
+                    add_keyword_edit(
+                        source=source,
+                        line_offsets=line_offsets,
+                        call=node,
+                        edits=edits,
+                    )
+
+            # `super().__init__` and `self.__class__` do not expose a concrete
+            # target name in the Call node, so handle them with enclosing-class
+            # context. Site identity avoids duplicate class names across modules.
             for class_node in [node for node in tree.body if isinstance(node, ast.ClassDef)]:
+                class_is_renamed = (relative_path, class_node.name) in renamed_sites
                 class_allows_super = class_node.name in descendants
-                class_is_renamed = class_node.name in renamed
                 for node in ast.walk(class_node):
                     if not isinstance(node, ast.Call):
                         continue
-                    target = call_target_name(node)
-                    should_migrate = target in renamed
-                    should_migrate = should_migrate or (class_allows_super and is_super_init(node))
-                    should_migrate = should_migrate or (class_is_renamed and is_self_class_call(node))
-                    if not should_migrate:
-                        continue
-                    for keyword in node.keywords:
-                        if keyword.arg != LEGACY:
-                            continue
-                        start = absolute(line_offsets, keyword.lineno, keyword.col_offset)
-                        if source[start : start + len(LEGACY)] == LEGACY:
-                            edits.append((start, start + len(LEGACY), CANONICAL))
-
-            # Also migrate top-level direct constructor calls.
-            for node in tree.body:
-                if not isinstance(node, ast.Expr) or not isinstance(node.value, ast.Call):
-                    continue
-                call = node.value
-                if call_target_name(call) not in renamed:
-                    continue
-                for keyword in call.keywords:
-                    if keyword.arg == LEGACY:
-                        start = absolute(line_offsets, keyword.lineno, keyword.col_offset)
-                        edits.append((start, start + len(LEGACY), CANONICAL))
+                    if class_allows_super and is_super_init(node):
+                        add_keyword_edit(
+                            source=source,
+                            line_offsets=line_offsets,
+                            call=node,
+                            edits=edits,
+                        )
+                    if class_is_renamed and is_self_class_call(node):
+                        add_keyword_edit(
+                            source=source,
+                            line_offsets=line_offsets,
+                            call=node,
+                            edits=edits,
+                        )
 
             if edits:
                 for start, end, replacement in sorted(set(edits), reverse=True):
@@ -277,16 +310,17 @@ def test_binary_conditioning_annotation_uses_canonical_name() -> None:
         write(path, text.rstrip() + "\n" + "".join(additions).rstrip() + "\n")
 
 
-def validate(renamed: set[str]) -> None:
+def validate() -> None:
     offenders: list[str] = []
     stale_state: list[str] = []
     for path in MODELS.rglob("*.py"):
         tree = ast.parse(read(path), filename=str(path))
         for class_node in [node for node in tree.body if isinstance(node, ast.ClassDef)]:
             init = constructor(class_node)
-            if init is not None and LEGACY in {arg.arg for arg in function_args(init)}:
+            args = set() if init is None else {arg.arg for arg in function_args(init)}
+            if LEGACY in args:
                 offenders.append(f"{path.relative_to(ROOT)}::{class_node.name}")
-            if class_node.name in renamed:
+            if CANONICAL in args:
                 for node in ast.walk(class_node):
                     if (
                         isinstance(node, ast.Attribute)
@@ -306,13 +340,13 @@ def validate(renamed: set[str]) -> None:
 
 
 if __name__ == "__main__":
-    renamed_classes, base_map = collect_renamed_classes()
-    if not renamed_classes:
+    renamed_names, renamed_sites, base_map = collect_renamed_classes()
+    if not renamed_names:
         raise RuntimeError("no num_inducing_points model constructors found")
-    descendants = descendants_of(renamed_classes, base_map)
-    canonicalize_model_constructors(renamed_classes)
-    migrate_python_call_sites(renamed_classes, descendants)
+    descendants = descendants_of(renamed_names, base_map)
+    canonicalize_model_constructors()
+    migrate_python_call_sites(renamed_names, renamed_sites, descendants)
     fix_stale_binary_annotation()
     extend_contract_test()
-    validate(renamed_classes)
-    print(f"canonicalized {len(renamed_classes)} model constructor classes")
+    validate()
+    print(f"canonicalized {len(renamed_sites)} model constructor sites")

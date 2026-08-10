@@ -18,8 +18,17 @@ else
     PYTHON_CMD="python3"
 fi
 
+TOKEN_OPTIONAL=0
+for arg in "$@"; do
+    case "${arg}" in
+        --allow-browser-auth|--help|-h)
+            TOKEN_OPTIONAL=1
+            ;;
+    esac
+done
+
 TOKEN_WAS_PROMPTED=0
-if [[ -z "${TABPFN_TOKEN:-}" ]]; then
+if [[ -z "${TABPFN_TOKEN:-}" && "${TOKEN_OPTIONAL}" == "0" ]]; then
     if [[ ! -t 0 ]]; then
         echo "[ERROR] TABPFN_TOKEN is not set and no interactive terminal is available." >&2
         exit 1
@@ -31,7 +40,7 @@ if [[ -z "${TABPFN_TOKEN:-}" ]]; then
     TOKEN_WAS_PROMPTED=1
 fi
 
-if [[ -z "${TABPFN_TOKEN:-}" ]]; then
+if [[ -z "${TABPFN_TOKEN:-}" && "${TOKEN_OPTIONAL}" == "0" ]]; then
     echo "[ERROR] TABPFN_TOKEN is empty. Preload was not started." >&2
     exit 1
 fi
@@ -50,4 +59,6 @@ else
 fi
 
 "${PYTHON_CMD}" -m bochan.serving.webapp.tabpfn_preload "$@"
-echo "TabPFN preload completed successfully."
+if [[ "${TOKEN_OPTIONAL}" == "0" ]]; then
+    echo "TabPFN preload completed successfully."
+fi

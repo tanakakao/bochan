@@ -16,8 +16,8 @@ from bochan.models.classification.binary.base.multioutput import (
     MultiOutputBinaryClassificationModel,
 )
 from bochan.models.classification.binary.robust import (
-    OutlierRelevancePursuitBinaryClassificationGPModel,
-    OutlierRelevancePursuitBinaryClassificationMixedGPModel,
+    RobustRelevancePursuitBinaryClassificationGPModel,
+    RobustRelevancePursuitBinaryClassificationMixedGPModel,
 )
 from bochan.models.components.robust import SparseOutlierBernoulliLikelihood
 
@@ -99,7 +99,7 @@ def test_continuous_rrp_support_expansion_runs() -> None:
     X, Y = _toy_data()
     bounds = torch.tensor([[0.0, 0.0], [1.0, 1.0]], dtype=torch.double)
     _fit_one_step(
-        OutlierRelevancePursuitBinaryClassificationGPModel(
+        RobustRelevancePursuitBinaryClassificationGPModel(
             train_X=X,
             train_Y=Y,
             input_transform=Normalize(d=2, bounds=bounds),
@@ -111,7 +111,7 @@ def test_mixed_rrp_support_expansion_runs() -> None:
     X, Y = _toy_data(mixed=True)
     bounds = torch.tensor([[0.0, 0.0], [1.0, 2.0]], dtype=torch.double)
     _fit_one_step(
-        OutlierRelevancePursuitBinaryClassificationMixedGPModel(
+        RobustRelevancePursuitBinaryClassificationMixedGPModel(
             train_X=X,
             train_Y=Y,
             cat_dims=[1],

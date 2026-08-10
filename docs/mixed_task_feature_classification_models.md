@@ -111,7 +111,7 @@ model = MultiTaskOrdinalMixedGPModel(
     task_feature=1,
     rank=2,
     input_transform=input_transform,
-    inducing_points_num=32,
+    num_inducing=32,
 )
 ```
 

@@ -12,7 +12,7 @@ from bochan.models.classification.multiclass.high_dim import (
     REMBOMulticlassClassificationGPModel,
 )
 from bochan.models.ordinal.high_dim import PCAOrdinalGPModel, REMBOOrdinalGPModel
-from bochan.models.regression.gaussian.high_dim import PCASingleTaskGP, REMBOSingleTaskGP
+from bochan.models.regression.gaussian.high_dim import PCAGaussianGPModel, REMBOGaussianGPModel
 from bochan.models.regression.non_gaussian.beta.high_dim import PCABetaGPModel, REMBOBetaGPModel
 from bochan.models.regression.non_gaussian.gamma.high_dim import PCAGammaGPModel, REMBOGammaGPModel
 from bochan.models.regression.non_gaussian.negative_binomial.high_dim import (
@@ -28,7 +28,7 @@ from bochan.models.regression.non_gaussian.poisson.high_dim import (
 @pytest.mark.parametrize(
     "model_factory",
     [
-        lambda X: PCASingleTaskGP(X, torch.randn(8, 1, dtype=torch.double)),
+        lambda X: PCAGaussianGPModel(X, torch.randn(8, 1, dtype=torch.double)),
         lambda X: PCABetaGPModel(X, torch.full((8, 1), 0.5, dtype=torch.double)),
         lambda X: PCAGammaGPModel(X, torch.ones(8, 1, dtype=torch.double)),
         lambda X: PCAPoissonGPModel(X, torch.ones(8, 1, dtype=torch.double)),
@@ -57,7 +57,7 @@ def test_pca_models_default_to_two_components(model_factory):
 @pytest.mark.parametrize(
     "model_factory",
     [
-        lambda X: REMBOSingleTaskGP(X, torch.randn(8, 1, dtype=torch.double)),
+        lambda X: REMBOGaussianGPModel(X, torch.randn(8, 1, dtype=torch.double)),
         lambda X: REMBOBetaGPModel(X, torch.full((8, 1), 0.5, dtype=torch.double)),
         lambda X: REMBOGammaGPModel(X, torch.ones(8, 1, dtype=torch.double)),
         lambda X: REMBOPoissonGPModel(X, torch.ones(8, 1, dtype=torch.double)),

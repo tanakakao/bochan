@@ -5,8 +5,8 @@ from botorch.models.transforms.input import InputTransform
 from botorch.utils.transforms import normalize_indices
 
 from .deepgp import (
-    BinaryClassificationDeepGPModel,
-    BinaryClassificationMixedDeepGPModel,
+    DeepBinaryClassificationGPModel,
+    DeepBinaryClassificationMixedGPModel,
 )
 from bochan.models.components.layers import (
     DeepKernelDeepGPHiddenLayer,
@@ -37,7 +37,7 @@ def _make_deepkernel_feature_extractor(input_dim: int, ext_type: str, hidden_dim
     )
 
 
-class DeepKernelBinaryClassificationDeepGPModel(BinaryClassificationDeepGPModel):
+class DeepKernelDeepBinaryClassificationGPModel(DeepBinaryClassificationGPModel):
     """
     連続入力向け Deep Kernel + DeepGP の 2値分類モデル。
 
@@ -53,18 +53,18 @@ class DeepKernelBinaryClassificationDeepGPModel(BinaryClassificationDeepGPModel)
         likelihood: Optional[BernoulliLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         ext_type: str = "DEFAULT",
-        list_hidden_dims: Optional[Sequence[int]] = None,
+        hidden_dims: Optional[Sequence[int]] = None,
         model_type: str = "DEFAULT",
         kernel_hidden_dims: Optional[Sequence[int]] = None,
     ):
-        hidden_dims = list(list_hidden_dims) if list_hidden_dims is not None else [16]
+        hidden_dims = list(hidden_dims) if hidden_dims is not None else [16]
 
         super().__init__(
             train_X=train_X,
             train_Y=train_Y,
             likelihood=likelihood,
             input_transform=input_transform,
-            list_hidden_dims=hidden_dims,
+            hidden_dims=hidden_dims,
             model_type=model_type,
         )
 
@@ -83,8 +83,8 @@ class DeepKernelBinaryClassificationDeepGPModel(BinaryClassificationDeepGPModel)
         self.kernel_hidden_dims = None if kernel_hidden_dims is None else [int(h) for h in kernel_hidden_dims]
 
 
-class DeepKernelBinaryClassificationMixedDeepGPModel(
-    BinaryClassificationMixedDeepGPModel
+class DeepKernelDeepBinaryClassificationMixedGPModel(
+    DeepBinaryClassificationMixedGPModel
 ):
     """
     混合入力（連続 + カテゴリ）向け Deep Kernel + DeepGP の 2値分類モデル。

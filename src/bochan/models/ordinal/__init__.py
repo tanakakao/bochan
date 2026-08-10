@@ -8,12 +8,12 @@ from .base import (
     OrdinalMixedGPModel,
 )
 from .deep import (
-    DeepKernelOrdinalDeepGPModel,
+    DeepKernelDeepOrdinalGPModel,
     DeepKernelOrdinalGPModel,
-    DeepKernelOrdinalMixedDeepGPModel,
+    DeepKernelDeepOrdinalMixedGPModel,
     DeepKernelOrdinalMixedGPModel,
-    OrdinalDeepGPModel,
-    OrdinalMixedDeepGPModel,
+    DeepOrdinalGPModel,
+    DeepOrdinalMixedGPModel,
 )
 from .external import (
     NGBoostMixedOrdinalEnsembleModel,
@@ -34,8 +34,8 @@ from .high_dim import (
 from .robust import (
     HeteroscedasticOrdinalGPModel,
     HeteroscedasticOrdinalMixedGPModel,
-    OutlierRelevancePursuitOrdinalGPModel,
-    OutlierRelevancePursuitOrdinalMixedGPModel,
+    RobustRelevancePursuitOrdinalGPModel,
+    RobustRelevancePursuitOrdinalMixedGPModel,
 )
 
 __all__ = [
@@ -46,20 +46,20 @@ __all__ = [
     "MultiTaskOrdinalMixedGPModel",
     "KroneckerMultiTaskOrdinalGPModel",
     "KroneckerMultiTaskOrdinalMixedGPModel",
-    "OrdinalDeepGPModel",
-    "OrdinalMixedDeepGPModel",
+    "DeepOrdinalGPModel",
+    "DeepOrdinalMixedGPModel",
     "DeepKernelOrdinalGPModel",
     "DeepKernelOrdinalMixedGPModel",
-    "DeepKernelOrdinalDeepGPModel",
-    "DeepKernelOrdinalMixedDeepGPModel",
+    "DeepKernelDeepOrdinalGPModel",
+    "DeepKernelDeepOrdinalMixedGPModel",
     "SaasOrdinalGPModel",
     "SaasOrdinalMixedGPModel",
     "PCAOrdinalGPModel",
     "PCAOrdinalMixedGPModel",
     "REMBOOrdinalGPModel",
     "REMBOOrdinalMixedGPModel",
-    "OutlierRelevancePursuitOrdinalGPModel",
-    "OutlierRelevancePursuitOrdinalMixedGPModel",
+    "RobustRelevancePursuitOrdinalGPModel",
+    "RobustRelevancePursuitOrdinalMixedGPModel",
     "HeteroscedasticOrdinalGPModel",
     "HeteroscedasticOrdinalMixedGPModel",
     "NGBoostOrdinalModel",

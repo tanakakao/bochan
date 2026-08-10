@@ -142,7 +142,7 @@ class SparseOutlierGammaLikelihood(
         return super().log_marginal(observations, function_dist, *params, **kwargs)
 
 
-class OutlierRelevancePursuitGammaGPModel(GammaGPModel):
+class RobustRelevancePursuitGammaGPModel(GammaGPModel):
     """学習点 outlier RRP を持つ Gamma GP 回帰モデル。"""
 
     def __init__(
@@ -204,9 +204,9 @@ class OutlierRelevancePursuitGammaGPModel(GammaGPModel):
             min_concentration=min_concentration,
         )
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "OutlierRelevancePursuitGammaGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "RobustRelevancePursuitGammaGPModel":
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("noise is not supported for OutlierRelevancePursuitGammaGPModel.")
+            raise NotImplementedError("noise is not supported for RobustRelevancePursuitGammaGPModel.")
         if isinstance(X, tuple):
             X = X[0]
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
@@ -241,7 +241,7 @@ class OutlierRelevancePursuitGammaGPModel(GammaGPModel):
         return new_model
 
 
-class OutlierRelevancePursuitGammaMixedGPModel(GammaMixedGPModel):
+class RobustRelevancePursuitGammaMixedGPModel(GammaMixedGPModel):
     """mixed 入力版の Gamma outlier RRP モデル。"""
 
     def __init__(
@@ -308,6 +308,6 @@ class OutlierRelevancePursuitGammaMixedGPModel(GammaMixedGPModel):
 
 __all__ = [
     "SparseOutlierGammaLikelihood",
-    "OutlierRelevancePursuitGammaGPModel",
-    "OutlierRelevancePursuitGammaMixedGPModel",
+    "RobustRelevancePursuitGammaGPModel",
+    "RobustRelevancePursuitGammaMixedGPModel",
 ]

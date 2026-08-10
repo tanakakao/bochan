@@ -117,7 +117,7 @@ def test_ordinal_mixed_multitask_probabilities_and_conditioning() -> None:
         task_feature=1,
         rank=2,
         input_transform=_continuous_transform(),
-        inducing_points_num=4,
+        num_inducing=4,
     )
     model.eval()
     model.likelihood.eval()

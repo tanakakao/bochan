@@ -120,14 +120,14 @@ class _BasePoissonDeepGPModel(DeepGP, GPyTorchModel):
         return DeepApproximateMLL(base_mll)
 
 
-class PoissonDeepGPModel(_BasePoissonDeepGPModel):
+class DeepPoissonGPModel(_BasePoissonDeepGPModel):
     """true DeepGP + Poisson likelihood の count 回帰モデル。
 
     Args:
         train_X: raw-space training inputs。
         train_Y: 非負整数 count target。
         hidden_dim: 最初の hidden layer の出力次元。
-        list_hidden_dims: 複数 hidden layer を使う場合の出力次元列。
+        hidden_dims: 複数 hidden layer を使う場合の出力次元列。
         layer_type: `"default"` または `"deepkernel"`。
     """
 
@@ -138,7 +138,7 @@ class PoissonDeepGPModel(_BasePoissonDeepGPModel):
         *,
         hidden_dim: int = 4,
         num_inducing: int = 128,
-        list_hidden_dims: Optional[Sequence[int]] = None,
+        hidden_dims: Optional[Sequence[int]] = None,
         input_transform: Optional[InputTransform] = None,
         likelihood: Optional[PoissonLogLikelihood] = None,
         link: PoissonLink = "softplus",
@@ -152,13 +152,13 @@ class PoissonDeepGPModel(_BasePoissonDeepGPModel):
         train_X = torch.as_tensor(train_X)
         train_Y = prepare_count_targets(train_Y, train_X)
         self.input_transform = to_device_dtype_transform(clone_input_transform(input_transform), train_X)
-        train_X_tf = apply_input_transform_for_training(train_X, self.input_transform, name="PoissonDeepGPModel.input_transform")
+        train_X_tf = apply_input_transform_for_training(train_X, self.input_transform, name="DeepPoissonGPModel.input_transform")
 
         d = train_X_tf.shape[-1]
-        if list_hidden_dims is None:
-            list_hidden_dims = [int(hidden_dim)]
-        list_hidden_dims = [int(h) for h in list_hidden_dims]
-        first_out = list_hidden_dims[0]
+        if hidden_dims is None:
+            hidden_dims = [int(hidden_dim)]
+        hidden_dims = [int(h) for h in hidden_dims]
+        first_out = hidden_dims[0]
 
         if str(layer_type).lower() == "deepkernel":
             self.hidden_layer = DeepKernelDeepGPHiddenLayer(
@@ -181,7 +181,7 @@ class PoissonDeepGPModel(_BasePoissonDeepGPModel):
 
         current_dim = first_out
         extra_layers = []
-        for h in list_hidden_dims[1:]:
+        for h in hidden_dims[1:]:
             extra_layers.append(
                 DeepGPHiddenLayer(
                     input_dims=current_dim,
@@ -209,7 +209,7 @@ class PoissonDeepGPModel(_BasePoissonDeepGPModel):
         self.transformed_train_inputs = (train_X_tf.detach().clone(),)
         self.train_targets = train_Y
         self.hidden_dim = int(hidden_dim)
-        self.list_hidden_dims = list(list_hidden_dims)
+        self.hidden_dims = list(hidden_dims)
         self.num_inducing = int(num_inducing)
         self.layer_type = str(layer_type)
         self.mean_type = str(mean_type)
@@ -225,9 +225,9 @@ class PoissonDeepGPModel(_BasePoissonDeepGPModel):
             h = layer(h)
         return self.last_layer(h)
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "PoissonDeepGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "DeepPoissonGPModel":
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("PoissonDeepGPModel does not support noise in condition_on_observations.")
+            raise NotImplementedError("DeepPoissonGPModel does not support noise in condition_on_observations.")
         if isinstance(X, tuple):
             X = X[0]
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
@@ -241,7 +241,7 @@ class PoissonDeepGPModel(_BasePoissonDeepGPModel):
             train_Y=new_Y,
             hidden_dim=self.hidden_dim,
             num_inducing=self.num_inducing,
-            list_hidden_dims=self.list_hidden_dims,
+            hidden_dims=self.hidden_dims,
             input_transform=clone_input_transform(self.input_transform),
             likelihood=copy.deepcopy(self.likelihood),
             link=self.link,
@@ -256,7 +256,7 @@ class PoissonDeepGPModel(_BasePoissonDeepGPModel):
         return new_model
 
 
-class PoissonMixedDeepGPModel(_BasePoissonDeepGPModel):
+class DeepPoissonMixedGPModel(_BasePoissonDeepGPModel):
     """mixed 入力版 true DeepGP + Poisson likelihood。"""
 
     def __init__(
@@ -287,7 +287,7 @@ class PoissonMixedDeepGPModel(_BasePoissonDeepGPModel):
             train_X,
             self.input_transform,
             cat_dims=self.cat_dims,
-            name="PoissonMixedDeepGPModel.input_transform",
+            name="DeepPoissonMixedGPModel.input_transform",
         )
 
         if str(layer_type).lower() == "deepkernel":
@@ -339,9 +339,9 @@ class PoissonMixedDeepGPModel(_BasePoissonDeepGPModel):
         h = self.hidden_layer(X)
         return self.last_layer(h)
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "PoissonMixedDeepGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "DeepPoissonMixedGPModel":
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("PoissonMixedDeepGPModel does not support noise in condition_on_observations.")
+            raise NotImplementedError("DeepPoissonMixedGPModel does not support noise in condition_on_observations.")
         if isinstance(X, tuple):
             X = X[0]
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
@@ -370,4 +370,4 @@ class PoissonMixedDeepGPModel(_BasePoissonDeepGPModel):
         return new_model
 
 
-__all__ = ["PoissonDeepGPModel", "PoissonMixedDeepGPModel"]
+__all__ = ["DeepPoissonGPModel", "DeepPoissonMixedGPModel"]

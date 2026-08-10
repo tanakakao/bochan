@@ -27,7 +27,7 @@ from bochan.models.components.saas import (
 )
 
 
-class SaasSingleTaskGP(AdditiveMapSaasSingleTaskGP):
+class SaasGaussianGPModel(AdditiveMapSaasSingleTaskGP):
     """連続入力向け Additive MAP-SAAS single-task GP。
 
     Args:
@@ -72,7 +72,7 @@ class SaasSingleTaskGP(AdditiveMapSaasSingleTaskGP):
         return ExactMarginalLogLikelihood(self.likelihood, self)
 
 
-class SaasMixedSingleTaskGP(OneHotEncodingMixin, AdditiveMapSaasSingleTaskGP):
+class SaasGaussianMixedGPModel(OneHotEncodingMixin, AdditiveMapSaasSingleTaskGP):
     """mixed 入力向け Additive MAP-SAAS single-task GP。
 
     カテゴリ列を one-hot encode してから BoTorch の
@@ -199,7 +199,7 @@ class SaasMixedSingleTaskGP(OneHotEncodingMixin, AdditiveMapSaasSingleTaskGP):
         Y: Tensor,
         noise: Optional[Tensor] = None,
         **kwargs: Any,
-    ) -> "SaasMixedSingleTaskGP":
+    ) -> "SaasGaussianMixedGPModel":
         """raw/encoded X の追加観測で wrapper を再構築する。
 
         Notes:
@@ -260,13 +260,13 @@ class SaasMixedSingleTaskGP(OneHotEncodingMixin, AdditiveMapSaasSingleTaskGP):
 
 
 # 旧名を残す。
-MixedAdditiveMapSaasSingleTaskGP = SaasMixedSingleTaskGP
-AdditiveSaasSingleTaskGP = SaasSingleTaskGP
+MixedAdditiveMapSaasSingleTaskGP = SaasGaussianMixedGPModel
+AdditiveSaasSingleTaskGP = SaasGaussianGPModel
 
 
 __all__ = [
-    "SaasSingleTaskGP",
-    "SaasMixedSingleTaskGP",
+    "SaasGaussianGPModel",
+    "SaasGaussianMixedGPModel",
     "AdditiveSaasSingleTaskGP",
     "MixedAdditiveMapSaasSingleTaskGP",
 ]

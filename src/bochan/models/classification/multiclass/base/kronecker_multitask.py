@@ -62,6 +62,8 @@ class BlockDesignMulticlassLikelihood(Likelihood):
             raise ValueError(f"temperature must be > 0, got {temperature}.")
         self.num_classes = int(num_classes)
         self.temperature = float(temperature)
+        self.input_batch_shape = torch.Size()
+        self.input_q: int | None = None
 
     def _logits_from_samples(self, function_samples: Tensor) -> Tensor:
         if function_samples.ndim < 3:
@@ -285,8 +287,35 @@ class KroneckerMultiTaskMulticlassProbsPosterior(MultiOutputMulticlassProbsPoste
             )
         logits = latent.movedim(-3, -1) / self.temperature
         if self.output_indices is not None:
-            index = torch.as_tensor(self.output_indices, device=logits.device, dtype=torch.long)
+            index = torch.as_tensor(
+                self.output_indices,
+                device=logits.device,
+                dtype=torch.long,
+            )
             logits = logits.index_select(dim=-2, index=index)
+
+        if self.input_q != 1:
+            return logits
+
+        num_outputs = (
+            len(self.output_indices)
+            if self.output_indices is not None
+            else int(logits.shape[-2])
+        )
+        with_q_suffix = tuple(self.input_batch_shape) + (
+            1,
+            num_outputs,
+            self.num_classes,
+        )
+        if tuple(logits.shape[-len(with_q_suffix):]) == with_q_suffix:
+            return logits
+
+        without_q_suffix = tuple(self.input_batch_shape) + (
+            num_outputs,
+            self.num_classes,
+        )
+        if tuple(logits.shape[-len(without_q_suffix):]) == without_q_suffix:
+            return logits.unsqueeze(-3)
         return logits
 
     @property
@@ -574,6 +603,17 @@ class KroneckerMultiTaskMulticlassClassificationGPModel(ApproximateGPyTorchModel
             raise NotImplementedError(
                 f"{self.__class__.__name__} does not support observation_noise."
             )
+        X_tensor = torch.as_tensor(X[0] if isinstance(X, tuple) else X)
+        if X_tensor.ndim == 1:
+            input_batch_shape = torch.Size()
+            input_q = 1
+        elif X_tensor.ndim == 2:
+            input_batch_shape = torch.Size()
+            input_q = int(X_tensor.shape[-2])
+        else:
+            input_batch_shape = torch.Size(X_tensor.shape[:-2])
+            input_q = int(X_tensor.shape[-2])
+
         indices = self._normalize_output_indices(output_indices)
         posterior = KroneckerMultiTaskMulticlassProbsPosterior(
             latent_posterior=self.latent_posterior(X),
@@ -581,6 +621,8 @@ class KroneckerMultiTaskMulticlassClassificationGPModel(ApproximateGPyTorchModel
             output_indices=indices,
             temperature=self.temperature,
         )
+        posterior.input_batch_shape = input_batch_shape
+        posterior.input_q = input_q
         if posterior_transform is not None:
             posterior = posterior_transform(posterior)
         return posterior

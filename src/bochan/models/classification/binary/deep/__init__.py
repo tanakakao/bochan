@@ -1,12 +1,12 @@
-from .deepgp import BinaryClassificationDeepGPModel, BinaryClassificationMixedDeepGPModel
+from .deepgp import DeepBinaryClassificationGPModel, DeepBinaryClassificationMixedGPModel
 from .deepkernel_configurable import DeepKernelBinaryClassificationGPModel, DeepKernelBinaryClassificationMixedGPModel
-from .deepkerneldeepgp import DeepKernelBinaryClassificationDeepGPModel, DeepKernelBinaryClassificationMixedDeepGPModel
+from .deepkerneldeepgp import DeepKernelDeepBinaryClassificationGPModel, DeepKernelDeepBinaryClassificationMixedGPModel
 
 __all__ = [
-    "BinaryClassificationDeepGPModel",
-    "BinaryClassificationMixedDeepGPModel",
+    "DeepBinaryClassificationGPModel",
+    "DeepBinaryClassificationMixedGPModel",
     "DeepKernelBinaryClassificationGPModel",
     "DeepKernelBinaryClassificationMixedGPModel",
-    "DeepKernelBinaryClassificationDeepGPModel",
-    "DeepKernelBinaryClassificationMixedDeepGPModel"
+    "DeepKernelDeepBinaryClassificationGPModel",
+    "DeepKernelDeepBinaryClassificationMixedGPModel"
 ]

@@ -78,12 +78,12 @@ class DeepKernelOrdinalGPModel(_BaseDeepKernelOrdinalGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        num_classes: int,
+        num_classes: int | None = None,
         likelihood: Optional[_OneDimensionalLikelihood] = None,
         input_transform: InputTransformArg = "DEFAULT",
         ext_type: str = "DEFAULT",
         hidden_dims: Optional[Sequence[int]] = None,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.03,
         num_epochs: int = 300,
@@ -102,6 +102,8 @@ class DeepKernelOrdinalGPModel(_BaseDeepKernelOrdinalGPModel):
         inducing_points: Optional[Tensor] = None,
     ) -> None:
         train_Y = _prepare_ordinal_targets(train_Y, train_X)
+        if num_classes is None:
+            num_classes = int(train_Y.max().item()) + 1
         input_transform = _resolve_input_transform(train_X, input_transform)
         input_transform = _to_device_dtype_transform(input_transform, train_X)
 
@@ -135,7 +137,7 @@ class DeepKernelOrdinalGPModel(_BaseDeepKernelOrdinalGPModel):
             mean_module=mean_module,
             covar_module=covar_module,
             inducing_points=inducing_points,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
         )
 
@@ -145,7 +147,7 @@ class DeepKernelOrdinalGPModel(_BaseDeepKernelOrdinalGPModel):
             train_X=train_X,
             train_Y=train_Y,
             input_transform=input_transform,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             lr=lr,
             num_epochs=num_epochs,
@@ -186,7 +188,7 @@ class DeepKernelOrdinalGPModel(_BaseDeepKernelOrdinalGPModel):
             "input_transform": _clone_input_transform(self.input_transform),
             "ext_type": self.ext_type,
             "hidden_dims": copy.deepcopy(self.hidden_dims),
-            "inducing_points_num": self.inducing_points_num,
+            "num_inducing": self.num_inducing,
             "learn_inducing_locations": self.learn_inducing_locations,
             "lr": self.lr,
             "num_epochs": self.num_epochs,
@@ -221,7 +223,7 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        num_classes: int,
+        num_classes: int | None = None,
         cat_dims: Sequence[int],
         category_counts: Optional[dict[int, int]] = None,
         likelihood: Optional[_OneDimensionalLikelihood] = None,
@@ -229,7 +231,7 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
         ext_type: str = "DEFAULT",
         hidden_dims: Optional[Sequence[int]] = None,
         cont_kernel: str = "matern52",
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.03,
         num_epochs: int = 300,
@@ -250,6 +252,8 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
             raise ValueError("カテゴリ次元を指定する必要があります (cat_dims)。")
 
         train_Y = _prepare_ordinal_targets(train_Y, train_X)
+        if num_classes is None:
+            num_classes = int(train_Y.max().item()) + 1
         norm_cat_dims = _normalize_dims(cat_dims, train_X.shape[-1])
 
         norm_category_counts = self._infer_category_counts(
@@ -302,7 +306,7 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
             feature_extractor=feature_extractor,
             covar_module=covar_module,
             inducing_points=inducing_points,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             cont_kernel=cont_kernel,
         )
@@ -313,7 +317,7 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
             train_X=train_X,
             train_Y=train_Y,
             input_transform=input_transform,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             lr=lr,
             num_epochs=num_epochs,
@@ -420,7 +424,7 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
             "ext_type": self.ext_type,
             "hidden_dims": copy.deepcopy(self.hidden_dims),
             "cont_kernel": self.cont_kernel,
-            "inducing_points_num": self.inducing_points_num,
+            "num_inducing": self.num_inducing,
             "learn_inducing_locations": self.learn_inducing_locations,
             "lr": self.lr,
             "num_epochs": self.num_epochs,

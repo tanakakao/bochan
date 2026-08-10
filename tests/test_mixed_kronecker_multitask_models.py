@@ -22,7 +22,7 @@ from bochan.models.classification.multiclass.base import (
     KroneckerMultiTaskMulticlassClassificationMixedGPModel,
 )
 from bochan.models.ordinal.base import KroneckerMultiTaskOrdinalMixedGPModel
-from bochan.models.regression.gaussian import MixedKroneckerMultiTaskGP
+from bochan.models.regression.gaussian import GaussianMixedKroneckerMultiTaskGP
 
 
 def _make_mixed_X(dtype=torch.double) -> torch.Tensor:
@@ -217,7 +217,7 @@ def test_mixed_gaussian_kronecker_shapes_and_acquisition():
         ],
         dim=-1,
     )
-    model = MixedKroneckerMultiTaskGP(
+    model = GaussianMixedKroneckerMultiTaskGP(
         train_X=train_X,
         train_Y=train_Y,
         cat_dims=[1],

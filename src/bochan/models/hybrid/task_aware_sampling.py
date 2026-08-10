@@ -529,15 +529,4 @@ def _task_aware_posterior(
     )
     return posterior_transform(posterior) if posterior_transform is not None else posterior
 
-
-def apply_task_aware_hybrid_posterior(model_cls: type) -> None:
-    """Install bounded latent-to-decision sampling on HybridMultiOutputModel."""
-
-    if getattr(model_cls, "_task_aware_posterior_installed", False):
-        return
-    model_cls._task_aware_original_posterior = model_cls.posterior
-    model_cls.posterior = _task_aware_posterior
-    model_cls._task_aware_posterior_installed = True
-
-
-__all__ = ["apply_task_aware_hybrid_posterior"]
+__all__ = ["_task_aware_posterior"]

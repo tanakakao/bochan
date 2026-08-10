@@ -66,7 +66,7 @@ def _ordinal_model(train_y: torch.Tensor | None = None) -> OrdinalGPModel:
         train_X=train_x,
         train_Y=train_y,
         num_classes=3,
-        inducing_points_num=5,
+        num_inducing=5,
         conditioning_steps=1,
     )
     model.eval()

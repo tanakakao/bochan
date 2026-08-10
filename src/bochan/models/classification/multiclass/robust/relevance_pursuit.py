@@ -272,7 +272,7 @@ class SparseOutlierSoftmaxLikelihood(SoftmaxLikelihood, RelevancePursuitMixin):
         return super().log_marginal(observations, function_dist, *params, **kwargs)
 
 
-class OutlierRelevancePursuitMulticlassClassificationGPModel(MulticlassClassificationGPModel):
+class RobustRelevancePursuitMulticlassClassificationGPModel(MulticlassClassificationGPModel):
     """学習点 outlier RRP を持つ多クラス分類 GP。"""
 
     def __init__(
@@ -321,7 +321,7 @@ class OutlierRelevancePursuitMulticlassClassificationGPModel(MulticlassClassific
         )
 
 
-class OutlierRelevancePursuitMulticlassClassificationMixedGPModel(MulticlassClassificationMixedGPModel):
+class RobustRelevancePursuitMulticlassClassificationMixedGPModel(MulticlassClassificationMixedGPModel):
     """mixed 入力版の多クラス outlier RRP 分類 GP。"""
 
     def __init__(
@@ -374,6 +374,6 @@ class OutlierRelevancePursuitMulticlassClassificationMixedGPModel(MulticlassClas
 
 __all__ = [
     "SparseOutlierSoftmaxLikelihood",
-    "OutlierRelevancePursuitMulticlassClassificationGPModel",
-    "OutlierRelevancePursuitMulticlassClassificationMixedGPModel",
+    "RobustRelevancePursuitMulticlassClassificationGPModel",
+    "RobustRelevancePursuitMulticlassClassificationMixedGPModel",
 ]

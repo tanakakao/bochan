@@ -19,10 +19,10 @@ from bochan.models.components.projected_utils import (
 )
 from bochan.models.components.vae import VAEProjector
 
-__all__ = ["VAESingleTaskGP"]
+__all__ = ["VAEGaussianGPModel"]
 
 
-class VAESingleTaskGP(Model):
+class VAEGaussianGPModel(Model):
     """Gaussian regression GP with a jointly trained VAE input representation.
 
     Public prediction and acquisition APIs receive raw-space inputs. Internally,
@@ -319,7 +319,7 @@ class VAESingleTaskGP(Model):
         return None
 
     @staticmethod
-    def fit(model: VAESingleTaskGP, **kwargs: Any):
+    def fit(model: VAEGaussianGPModel, **kwargs: Any):
         """Fit ``model`` with the dedicated full-batch joint objective."""
         from bochan.fit.vae import fit_vae_gp
 

@@ -102,7 +102,7 @@ class SparseOutlierNegativeBinomialLikelihood(NegativeBinomialLogLikelihood, Rel
         return super().log_marginal(observations, self._shift_train_function_dist(function_dist), *params, **kwargs)
 
 
-class OutlierRelevancePursuitNegativeBinomialGPModel(NegativeBinomialGPModel):
+class RobustRelevancePursuitNegativeBinomialGPModel(NegativeBinomialGPModel):
     """学習点 outlier RRP を持つ Negative Binomial GP 回帰モデル。"""
 
     def __init__(
@@ -159,9 +159,9 @@ class OutlierRelevancePursuitNegativeBinomialGPModel(NegativeBinomialGPModel):
             min_total_count=min_total_count,
         )
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "OutlierRelevancePursuitNegativeBinomialGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "RobustRelevancePursuitNegativeBinomialGPModel":
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("noise is not supported for OutlierRelevancePursuitNegativeBinomialGPModel.")
+            raise NotImplementedError("noise is not supported for RobustRelevancePursuitNegativeBinomialGPModel.")
         if isinstance(X, tuple):
             X = X[0]
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
@@ -193,7 +193,7 @@ class OutlierRelevancePursuitNegativeBinomialGPModel(NegativeBinomialGPModel):
         return new_model
 
 
-class OutlierRelevancePursuitNegativeBinomialMixedGPModel(NegativeBinomialMixedGPModel):
+class RobustRelevancePursuitNegativeBinomialMixedGPModel(NegativeBinomialMixedGPModel):
     """mixed 入力版の Negative Binomial outlier RRP モデル。"""
 
     def __init__(
@@ -255,6 +255,6 @@ class OutlierRelevancePursuitNegativeBinomialMixedGPModel(NegativeBinomialMixedG
 
 __all__ = [
     "SparseOutlierNegativeBinomialLikelihood",
-    "OutlierRelevancePursuitNegativeBinomialGPModel",
-    "OutlierRelevancePursuitNegativeBinomialMixedGPModel",
+    "RobustRelevancePursuitNegativeBinomialGPModel",
+    "RobustRelevancePursuitNegativeBinomialMixedGPModel",
 ]

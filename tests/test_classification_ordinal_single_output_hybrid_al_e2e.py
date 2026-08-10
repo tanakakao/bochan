@@ -64,7 +64,7 @@ def _ordinal_model() -> OrdinalGPModel:
         train_X=train_x,
         train_Y=train_y,
         num_classes=3,
-        inducing_points_num=6,
+        num_inducing=6,
         conditioning_steps=1,
         conditioning_lr=0.03,
     )

@@ -88,7 +88,7 @@ def _partial_hybrid_wrapper(
 ) -> Any:
     """Retain the original wide observation table for a Hybrid wrapper."""
 
-    from bochan.models.hybrid.multi_output import HybridMultiOutputModel
+    from bochan.models.hybrid import HybridMultiOutputModel
 
     if not isinstance(model, HybridMultiOutputModel):
         return model

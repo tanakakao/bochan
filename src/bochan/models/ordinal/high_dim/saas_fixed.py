@@ -103,13 +103,13 @@ def _warn_if_train_yvar_is_provided(train_Yvar: Tensor | None) -> None:
 
 
 def _pop_inducing_points_num_alias(kwargs: dict[str, Any], num_inducing_points: int) -> int:
-    if "inducing_points_num" not in kwargs:
+    if "num_inducing" not in kwargs:
         return int(num_inducing_points)
-    alias_value = int(kwargs.pop("inducing_points_num"))
+    alias_value = int(kwargs.pop("num_inducing"))
     if int(num_inducing_points) != 20 and int(num_inducing_points) != alias_value:
         raise ValueError(
-            "Both num_inducing_points and inducing_points_num were specified with different values. "
-            f"num_inducing_points={num_inducing_points}, inducing_points_num={alias_value}."
+            "Both num_inducing_points and num_inducing were specified with different values. "
+            f"num_inducing_points={num_inducing_points}, num_inducing={alias_value}."
         )
     return alias_value
 
@@ -176,7 +176,7 @@ class SaasOrdinalGPModel(_OldSaasOrdinalGPModel):
             train_X=train_X,
             train_Y=train_Y,
             num_classes=resolved_num_classes,
-            inducing_points_num=num_inducing_points,
+            num_inducing=num_inducing_points,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,

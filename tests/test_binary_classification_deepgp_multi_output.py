@@ -18,8 +18,8 @@ from botorch.optim.optimize import optimize_acqf, optimize_acqf_mixed
 from bochan.fit import fit_deepgp_mll
 from bochan.models.classification.binary.base import MultiOutputBinaryClassificationModel
 from bochan.models.classification.binary.deep import (
-    BinaryClassificationDeepGPModel,
-    BinaryClassificationMixedDeepGPModel,
+    DeepBinaryClassificationGPModel,
+    DeepBinaryClassificationMixedGPModel,
 )
 from tests.test_binary_classification_base_multi_output import (
     N_OUTPUTS,
@@ -179,7 +179,7 @@ def create_deepgp_multi_output_binary_model_bundle(
     """出力ごとに DeepGP single-output classifier を fit して multi-output wrapper を作る。"""
     train_x, train_y, bounds = make_multi_output_binary_toy_data(n=n, d=d, cat=cat, m=m)
     cat_dims = [train_x.shape[-1] - 1] if cat else []
-    model_cls = BinaryClassificationMixedDeepGPModel if cat else BinaryClassificationDeepGPModel
+    model_cls = DeepBinaryClassificationMixedGPModel if cat else DeepBinaryClassificationGPModel
 
     models: list[Any] = []
     for j in range(train_y.shape[-1]):
@@ -192,7 +192,7 @@ def create_deepgp_multi_output_binary_model_bundle(
         if cat:
             kwargs.update({"cat_dims": cat_dims, "hidden_dim": 4, "num_inducing": 8, "num_inducing_last": 8})
         else:
-            kwargs.update({"list_hidden_dims": [4], "num_inducing": 8})
+            kwargs.update({"hidden_dims": [4], "num_inducing": 8})
 
         torch.manual_seed(j)
         submodel = model_cls(**kwargs)

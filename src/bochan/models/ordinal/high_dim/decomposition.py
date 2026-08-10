@@ -255,7 +255,7 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
         num_classes: Optional[int] = None,
         n_components: Optional[int] = 2,
         pca_config: Optional[PCAConfig] = None,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         fix_first_cutpoint: bool = True,
         init_gap: float = 1.0,
@@ -289,7 +289,7 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
         self._projected_train_X = self._project_preprojected_inputs(self.preproject_train_input).detach().clone()
 
         resolved_num_classes = None if num_classes is None else int(num_classes)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.fix_first_cutpoint = bool(fix_first_cutpoint)
         self.init_gap = float(init_gap)
@@ -302,7 +302,7 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
             train_X=self.projected_train_input,
             train_Y=train_Y,
             num_classes=resolved_num_classes,
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,
@@ -322,7 +322,7 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
             train_Y=train_Y,
             num_classes=self.num_classes,
             pca_config=copy.deepcopy(self.pca_config),
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,
@@ -348,7 +348,7 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
         n_components: Optional[int] = 2,
         rembo_config: Optional[REMBOConfig] = None,
         seed: int = 42,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         fix_first_cutpoint: bool = True,
         init_gap: float = 1.0,
@@ -383,7 +383,7 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
         self._projected_train_X = self._project_preprojected_inputs(self.preproject_train_input).detach().clone()
 
         resolved_num_classes = None if num_classes is None else int(num_classes)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.fix_first_cutpoint = bool(fix_first_cutpoint)
         self.init_gap = float(init_gap)
@@ -396,7 +396,7 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
             train_X=self.projected_train_input,
             train_Y=train_Y,
             num_classes=resolved_num_classes,
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,
@@ -416,7 +416,7 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
             train_Y=train_Y,
             num_classes=self.num_classes,
             rembo_config=copy.deepcopy(self.rembo_config),
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,
@@ -554,7 +554,7 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         cont_kernel: str = "matern52",
         n_components: Optional[int] = 2,
         pca_config: Optional[PCAConfig] = None,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         fix_first_cutpoint: bool = True,
         init_gap: float = 1.0,
@@ -591,7 +591,7 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
 
         resolved_num_classes = None if num_classes is None else int(num_classes)
         self.cont_kernel = str(cont_kernel)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.fix_first_cutpoint = bool(fix_first_cutpoint)
         self.init_gap = float(init_gap)
@@ -608,7 +608,7 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
             cat_dims=remapped_cat_dims,
             category_counts=self._make_remapped_counts(),
             cont_kernel=self.cont_kernel,
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,
@@ -632,7 +632,7 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
             category_counts=copy.deepcopy(self.category_counts),
             cont_kernel=self.cont_kernel,
             pca_config=copy.deepcopy(self.pca_config),
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,
@@ -661,7 +661,7 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         n_components: Optional[int] = 2,
         rembo_config: Optional[REMBOConfig] = None,
         seed: int = 42,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         fix_first_cutpoint: bool = True,
         init_gap: float = 1.0,
@@ -699,7 +699,7 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
 
         resolved_num_classes = None if num_classes is None else int(num_classes)
         self.cont_kernel = str(cont_kernel)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.fix_first_cutpoint = bool(fix_first_cutpoint)
         self.init_gap = float(init_gap)
@@ -716,7 +716,7 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
             cat_dims=remapped_cat_dims,
             category_counts=self._make_remapped_counts(),
             cont_kernel=self.cont_kernel,
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,
@@ -740,7 +740,7 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
             category_counts=copy.deepcopy(self.category_counts),
             cont_kernel=self.cont_kernel,
             rembo_config=copy.deepcopy(self.rembo_config),
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,

@@ -147,7 +147,7 @@ def test_wide_multitask_ordinal_nehvi_supports_repeated_torch_backward() -> None
         train_Y=train_Y,
         num_classes=3,
         rank=2,
-        inducing_points_num=4,
+        num_inducing=4,
     )
 
     _assert_nehvi_supports_optimizer_style_repeated_backward(model, train_X)

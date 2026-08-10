@@ -165,16 +165,4 @@ def predict_class(
 
     return torch.cat(out, dim=-1)
 
-
-def attach_prediction_methods(cls) -> None:
-    """HybridMultiOutputModel に prediction helper を追加する。"""
-
-    cls.predict_class_list = predict_class_list
-    cls.predict_class = predict_class
-
-
-__all__ = [
-    "attach_prediction_methods",
-    "predict_class",
-    "predict_class_list",
-]
+__all__ = ["predict_class", "predict_class_list"]

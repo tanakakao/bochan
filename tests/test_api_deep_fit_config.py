@@ -33,7 +33,7 @@ def test_binary_deep_model_uses_full_batch_fitter(monkeypatch) -> None:
     )
 
     deep_model_type = type(
-        "BinaryClassificationDeepGPModel",
+        "DeepBinaryClassificationGPModel",
         (),
         {"__module__": "bochan.models.classification.binary.deep.deepgp"},
     )

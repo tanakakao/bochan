@@ -143,7 +143,7 @@ def test_wide_ordinal_multitask_acquisition_family_uses_one_utility_per_task() -
         train_Y=train_Y,
         num_classes=3,
         rank=1,
-        inducing_points_num=6,
+        num_inducing=6,
     )
     model.eval()
     model.likelihood.eval()

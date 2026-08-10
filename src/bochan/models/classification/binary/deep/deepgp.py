@@ -468,7 +468,7 @@ class _BaseDeepGPBinaryClassificationModel(DeepGP, GPyTorchModel):
 # ============================================================
 
 
-class BinaryClassificationDeepGPModel(_BaseDeepGPBinaryClassificationModel):
+class DeepBinaryClassificationGPModel(_BaseDeepGPBinaryClassificationModel):
     """連続入力向けの 2 値分類 DeepGP モデル。
 
     latent DeepGP と ``BernoulliLikelihood`` を組み合わせたモデルです。
@@ -483,7 +483,7 @@ class BinaryClassificationDeepGPModel(_BaseDeepGPBinaryClassificationModel):
         input_transform: 任意の BoTorch input transform。raw-space 入力を
             ``train_inputs`` と ``train_inputs_raw`` に保持したまま、
             ``forward`` / ``posterior`` 内で適用する。
-        list_hidden_dims: hidden layer の出力次元リスト。デフォルトは ``[16]``。
+        hidden_dims: hidden layer の出力次元リスト。デフォルトは ``[16]``。
         model_type: モデル構造の指定。``"DEFAULT"`` では通常の層状 DeepGP、
             ``"skip"`` では元入力を skip-supported layer に再注入する。
         num_inducing: hidden layer の inducing point 数。
@@ -508,7 +508,7 @@ class BinaryClassificationDeepGPModel(_BaseDeepGPBinaryClassificationModel):
         train_Y: Tensor,
         likelihood: BernoulliLikelihood | None = None,
         input_transform: InputTransform | None = None,
-        list_hidden_dims: Sequence[int] | None = None,
+        hidden_dims: Sequence[int] | None = None,
         model_type: str = "DEFAULT",
         num_inducing: int = 128,
     ) -> None:
@@ -528,9 +528,9 @@ class BinaryClassificationDeepGPModel(_BaseDeepGPBinaryClassificationModel):
         )
         self.likelihood = likelihood or BernoulliLikelihood()
 
-        hidden_dims = list(list_hidden_dims) if list_hidden_dims is not None else [16]
+        hidden_dims = list(hidden_dims) if hidden_dims is not None else [16]
         if len(hidden_dims) == 0:
-            raise ValueError("list_hidden_dims には少なくとも1つの要素が必要です。")
+            raise ValueError("hidden_dims には少なくとも1つの要素が必要です。")
 
         self.use_skip = model_type.lower() == "skip"
         self.original_input_dim = train_X.shape[-1]
@@ -609,7 +609,7 @@ class BinaryClassificationDeepGPModel(_BaseDeepGPBinaryClassificationModel):
 # ============================================================
 
 
-class BinaryClassificationMixedDeepGPModel(_BaseDeepGPBinaryClassificationModel):
+class DeepBinaryClassificationMixedGPModel(_BaseDeepGPBinaryClassificationModel):
     """混合入力向けの 2 値分類 DeepGP モデル。
 
     連続列とカテゴリ列を同時に含む入力を扱います。最初の layer には

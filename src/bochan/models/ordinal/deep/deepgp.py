@@ -9,11 +9,11 @@
 ``class_probs`` と ``expected_utility`` から取得します。
 
 公開クラス:
-    OrdinalDeepGPModel: 連続入力向け順序回帰 DeepGP モデル。
-    OrdinalMixedDeepGPModel: 混合入力向け順序回帰 DeepGP モデル。
+    DeepOrdinalGPModel: 連続入力向け順序回帰 DeepGP モデル。
+    DeepOrdinalMixedGPModel: 混合入力向け順序回帰 DeepGP モデル。
 
 使用例:
-    >>> model = OrdinalDeepGPModel(train_X, train_Y, num_classes=3)
+    >>> model = DeepOrdinalGPModel(train_X, train_Y, num_classes=3)
     >>> fit_true_deep_ordinal_gp(model, num_epochs=200)
     >>> probs = model.class_probs(test_X)
     >>> pred = model.predict_class(test_X)
@@ -310,10 +310,10 @@ def _validate_categorical_values(
 
 
 
-def _default_hidden_dims(list_hidden_dims: Sequence[int] | None) -> list[int]:
-    hidden_dims = list(list_hidden_dims) if list_hidden_dims is not None else [16]
+def _default_hidden_dims(hidden_dims: Sequence[int] | None) -> list[int]:
+    hidden_dims = list(hidden_dims) if hidden_dims is not None else [16]
     if len(hidden_dims) == 0:
-        raise ValueError("list_hidden_dims must contain at least one element.")
+        raise ValueError("hidden_dims must contain at least one element.")
     return hidden_dims
 
 
@@ -646,7 +646,7 @@ class _BaseDeepOrdinalGPModel(DeepGP, GPyTorchModel):
 # ============================================================
 
 
-class OrdinalDeepGPModel(_BaseDeepOrdinalGPModel):
+class DeepOrdinalGPModel(_BaseDeepOrdinalGPModel):
     """連続入力向けの順序回帰 DeepGP モデル。
 
     latent DeepGP と ``OrdinalLogitLikelihood`` を組み合わせたモデルです。
@@ -659,7 +659,7 @@ class OrdinalDeepGPModel(_BaseDeepOrdinalGPModel):
         train_Y: 順序ラベル。形状は ``n`` または ``n x 1``。
             ラベルは ``0, ..., num_classes - 1`` の整数エンコードである必要がある。
         num_classes: 順序クラス数。
-        list_hidden_dims: hidden layer の出力次元リスト。デフォルトは ``[16]``。
+        hidden_dims: hidden layer の出力次元リスト。デフォルトは ``[16]``。
         num_inducing: 各 DeepGP layer の inducing point 数。
         learn_inducing_locations: inducing point の位置を学習するかどうか。
         lr: ``fit_true_deep_ordinal_gp`` および
@@ -686,7 +686,7 @@ class OrdinalDeepGPModel(_BaseDeepOrdinalGPModel):
         train_targets: 1 次元 long tensor として保持する順序ラベル。
         likelihood: latent 値をクラス確率に写像する ordinal likelihood。
         num_classes: 順序クラス数。
-        list_hidden_dims: hidden layer の次元リスト。
+        hidden_dims: hidden layer の次元リスト。
 
     Notes:
         ``posterior`` は設計上 latent-space の posterior を返します。
@@ -699,8 +699,8 @@ class OrdinalDeepGPModel(_BaseDeepOrdinalGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        num_classes: int,
-        list_hidden_dims: Sequence[int] | None = None,
+        num_classes: int | None = None,
+        hidden_dims: Sequence[int] | None = None,
         num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.01,
@@ -721,6 +721,8 @@ class OrdinalDeepGPModel(_BaseDeepOrdinalGPModel):
         super().__init__()
 
         train_Y = _prepare_ordinal_targets(train_Y, train_X)
+        if num_classes is None:
+            num_classes = int(train_Y.max().item()) + 1
         input_transform = _to_device_dtype_transform(input_transform, train_X)
 
         self.train_inputs = (train_X,)
@@ -736,7 +738,7 @@ class OrdinalDeepGPModel(_BaseDeepOrdinalGPModel):
         )
 
         self.num_classes = int(num_classes)
-        self.list_hidden_dims = list(_default_hidden_dims(list_hidden_dims))
+        self.hidden_dims = list(_default_hidden_dims(hidden_dims))
         self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.lr = float(lr)
@@ -755,9 +757,9 @@ class OrdinalDeepGPModel(_BaseDeepOrdinalGPModel):
         train_X_tf = _apply_input_transform_for_training(
             train_X,
             self.input_transform,
-            name="OrdinalDeepGPModel.input_transform",
+            name="DeepOrdinalGPModel.input_transform",
         )
-        hidden_dims = list(self.list_hidden_dims)
+        hidden_dims = list(self.hidden_dims)
         self.use_skip = self.model_type.lower() == "skip"
         self.original_input_dim = train_X.shape[-1]
 
@@ -820,7 +822,7 @@ class OrdinalDeepGPModel(_BaseDeepOrdinalGPModel):
     def _get_rebuild_kwargs(self) -> dict:
         return {
             "num_classes": self.num_classes,
-            "list_hidden_dims": list(self.list_hidden_dims),
+            "hidden_dims": list(self.hidden_dims),
             "num_inducing": self.num_inducing,
             "learn_inducing_locations": self.learn_inducing_locations,
             "lr": self.lr,
@@ -901,10 +903,10 @@ class OrdinalDeepGPModel(_BaseDeepOrdinalGPModel):
 # ============================================================
 
 
-class OrdinalMixedDeepGPModel(_BaseDeepOrdinalGPModel):
+class DeepOrdinalMixedGPModel(_BaseDeepOrdinalGPModel):
     """連続値・カテゴリ値の混合入力向け順序回帰 DeepGP モデル。
 
-    ``OrdinalDeepGPModel`` の mixed 入力版です。最初の layer は mixed-aware な
+    ``DeepOrdinalGPModel`` の mixed 入力版です。最初の layer は mixed-aware な
     layer で、カテゴリ列は整数エンコードされた raw 値として保持します。
     ``input_transform`` は、カテゴリ列を変更しない場合にのみ許容します。
 
@@ -917,7 +919,7 @@ class OrdinalMixedDeepGPModel(_BaseDeepOrdinalGPModel):
         cat_dims: ``train_X`` におけるカテゴリ列の index。
         category_counts: カテゴリ列 index からカテゴリ数への任意の対応表。
             省略時は各カテゴリ列について ``max(train_X[..., j]) + 1`` として推定する。
-        list_hidden_dims: hidden layer の出力次元リスト。最初の値は mixed input layer で使う。
+        hidden_dims: hidden layer の出力次元リスト。最初の値は mixed input layer で使う。
             デフォルトは ``[16]``。
         num_inducing: 各 DeepGP layer の inducing point 数。
         learn_inducing_locations: inducing point の位置を学習するかどうか。
@@ -954,10 +956,10 @@ class OrdinalMixedDeepGPModel(_BaseDeepOrdinalGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        num_classes: int,
+        num_classes: int | None = None,
         cat_dims: Sequence[int],
         category_counts: dict[int, int] | None = None,
-        list_hidden_dims: Sequence[int] | None = None,
+        hidden_dims: Sequence[int] | None = None,
         num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.01,
@@ -981,6 +983,8 @@ class OrdinalMixedDeepGPModel(_BaseDeepOrdinalGPModel):
             raise ValueError("cat_dims must be specified for the mixed DeepGP model.")
 
         train_Y = _prepare_ordinal_targets(train_Y, train_X)
+        if num_classes is None:
+            num_classes = int(train_Y.max().item()) + 1
         cat_dims = _normalize_cat_dims(cat_dims, train_X.shape[-1])
         category_counts = self._infer_category_counts(
             X=train_X,
@@ -1005,7 +1009,7 @@ class OrdinalMixedDeepGPModel(_BaseDeepOrdinalGPModel):
         self.num_classes = int(num_classes)
         self.cat_dims = list(cat_dims)
         self.category_counts = copy.deepcopy(category_counts)
-        self.list_hidden_dims = list(_default_hidden_dims(list_hidden_dims))
+        self.hidden_dims = list(_default_hidden_dims(hidden_dims))
         self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.lr = float(lr)
@@ -1031,9 +1035,9 @@ class OrdinalMixedDeepGPModel(_BaseDeepOrdinalGPModel):
             train_X,
             self.input_transform,
             cat_dims=self.cat_dims,
-            name="OrdinalMixedDeepGPModel.input_transform",
+            name="DeepOrdinalMixedGPModel.input_transform",
         )
-        hidden_dims = list(self.list_hidden_dims)
+        hidden_dims = list(self.hidden_dims)
 
         self.input_layer = _make_layer(
             DeepMixedGPHiddenLayer,
@@ -1147,7 +1151,7 @@ class OrdinalMixedDeepGPModel(_BaseDeepOrdinalGPModel):
             "num_classes": self.num_classes,
             "cat_dims": list(self.cat_dims),
             "category_counts": copy.deepcopy(self.category_counts),
-            "list_hidden_dims": list(self.list_hidden_dims),
+            "hidden_dims": list(self.hidden_dims),
             "num_inducing": self.num_inducing,
             "learn_inducing_locations": self.learn_inducing_locations,
             "lr": self.lr,
@@ -1231,7 +1235,7 @@ class OrdinalMixedDeepGPModel(_BaseDeepOrdinalGPModel):
 
 
 def fit_true_deep_ordinal_gp(
-    model: OrdinalDeepGPModel | OrdinalMixedDeepGPModel,
+    model: DeepOrdinalGPModel | DeepOrdinalMixedGPModel,
     num_epochs: int | None = None,
     lr: float | None = None,
     batch_size: int | None = None,

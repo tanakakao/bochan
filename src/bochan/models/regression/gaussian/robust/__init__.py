@@ -1,9 +1,9 @@
-from .relevance_pursuit import SafeRobustRelevancePursuitSingleTaskGP, SafeRobustRelevancePursuitMixedSingleTaskGP
-from .heteroscedastic import HeteroscedasticSingleTaskGP, HeteroscedasticMixedSingleTaskGP
+from .relevance_pursuit import RobustRelevancePursuitGaussianGPModel, RobustRelevancePursuitGaussianMixedGPModel
+from .heteroscedastic import HeteroscedasticGaussianGPModel, HeteroscedasticGaussianMixedGPModel
 
 __all__ = [
-    "SafeRobustRelevancePursuitSingleTaskGP",
-    "SafeRobustRelevancePursuitMixedSingleTaskGP",
-    "HeteroscedasticSingleTaskGP",
-    "HeteroscedasticMixedSingleTaskGP",
+    "RobustRelevancePursuitGaussianGPModel",
+    "RobustRelevancePursuitGaussianMixedGPModel",
+    "HeteroscedasticGaussianGPModel",
+    "HeteroscedasticGaussianMixedGPModel",
 ]

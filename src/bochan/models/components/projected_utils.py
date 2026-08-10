@@ -37,6 +37,7 @@ __all__ = [
     "_normalize_dims",
     "_get_cont_dims",
     "_expand_raw_X_to_match_transformed_q",
+    "flatten_projected_one_to_many_point_axes",
     "_check_categorical_columns_unchanged",
     "_apply_input_transform_for_training",
     "_apply_input_transform_for_eval",
@@ -144,6 +145,35 @@ def _expand_raw_X_to_match_transformed_q(X: Tensor, X_tf: Tensor) -> Tensor:
     if X.numel() == X_tf.numel():
         return X.reshape_as(X_tf)
     return X
+
+def flatten_projected_one_to_many_point_axes(
+    X: Tensor,
+    transformed: Tensor,
+) -> Tensor:
+    if isinstance(X, tuple):
+        X = X[0]
+    if not torch.is_tensor(X) or not torch.is_tensor(transformed):
+        return transformed
+    if X.ndim < 2 or transformed.ndim < X.ndim:
+        return transformed
+
+    batch_ndim = max(0, X.ndim - 2)
+    if tuple(transformed.shape[:batch_ndim]) != tuple(X.shape[:batch_ndim]):
+        return transformed
+
+    point_shape = transformed.shape[batch_ndim:-1]
+    if len(point_shape) <= 1:
+        return transformed
+
+    q_like = 1
+    for size in point_shape:
+        q_like *= int(size)
+    return transformed.reshape(
+        *transformed.shape[:batch_ndim],
+        q_like,
+        transformed.shape[-1],
+    )
+
 
 
 def _check_categorical_columns_unchanged(

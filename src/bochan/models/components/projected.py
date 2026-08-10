@@ -23,6 +23,7 @@ from bochan.models.components.projected_utils import (
     _apply_input_transform_for_training,
     _check_categorical_columns_unchanged,
     _get_cont_dims,
+    flatten_projected_one_to_many_point_axes,
     _normalize_dims,
 )
 
@@ -178,8 +179,10 @@ class _BaseProjectedModel(Model):
         raise NotImplementedError
 
     def transform_inputs(self, X: Tensor) -> Tensor:
-        X_pre = self._to_preprojection_space(X)
-        return self._project_preprojected_inputs(X_pre)
+        X_raw = X[0] if isinstance(X, tuple) else X
+        X_pre = self._to_preprojection_space(X_raw)
+        projected = self._project_preprojected_inputs(X_pre)
+        return flatten_projected_one_to_many_point_axes(X_raw, projected)
 
     def posterior(self, X: Tensor, *args: Any, **kwargs: Any):
         return self.base_model.posterior(self.transform_inputs(X), *args, **kwargs)

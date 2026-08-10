@@ -30,11 +30,11 @@ train_Y = torch.rand(40, 3, dtype=torch.double)  # [n, m]
 | 独立multi-output | `SingleTaskGP(train_Y=[n, m])` または `ModelListGP` |
 | task-id列を使うmulti-task | `MultiTaskGP` |
 | block-designの相関multi-task | `KroneckerMultiTaskGP` |
-| DeepGP | `DeepGPModel` / `DeepMixedGPModel` |
-| DeepKernel | `DeepKernelGPModel` / `DeepKernelMixedGPModel` |
-| 高次元SAAS | `SaasSingleTaskGP` / `SaasMixedSingleTaskGP` |
-| PCA / REMBO | `PCASingleTaskGP` / `REMBOSingleTaskGP` |
-| robust / heteroscedastic | `SafeRobustRelevancePursuitSingleTaskGP` / `HeteroscedasticSingleTaskGP` |
+| DeepGP | `DeepGaussianGPModel` / `DeepGaussianMixedGPModel` |
+| DeepKernel | `DeepKernelGaussianGPModel` / `DeepKernelGaussianMixedGPModel` |
+| 高次元SAAS | `SaasGaussianGPModel` / `SaasGaussianMixedGPModel` |
+| PCA / REMBO | `PCAGaussianGPModel` / `REMBOGaussianGPModel` |
+| robust / heteroscedastic | `RobustRelevancePursuitGaussianGPModel` / `HeteroscedasticGaussianGPModel` |
 
 最初は`SingleTaskGP`を基準にし、出力間相関を利用したい場合だけ`MultiTaskGP`または`KroneckerMultiTaskGP`を検討します。
 

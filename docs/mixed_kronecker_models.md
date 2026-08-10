@@ -20,7 +20,7 @@ input_transform = Normalize(d=4, indices=[0, 1, 3])
 Available models:
 
 ```python
-from bochan.models.regression.gaussian import MixedKroneckerMultiTaskGP
+from bochan.models.regression.gaussian import GaussianMixedKroneckerMultiTaskGP
 from bochan.models.classification.binary.base import (
     KroneckerMultiTaskBinaryClassificationMixedGPModel,
 )

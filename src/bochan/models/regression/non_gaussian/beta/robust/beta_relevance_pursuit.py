@@ -98,7 +98,7 @@ class SparseOutlierBetaLikelihood(BetaLogLikelihood, RelevancePursuitMixin):
         return super().log_marginal(observations, self._shift_train_function_dist(function_dist), *params, **kwargs)
 
 
-class OutlierRelevancePursuitBetaGPModel(BetaGPModel):
+class RobustRelevancePursuitBetaGPModel(BetaGPModel):
     """学習点 outlier RRP を持つ Beta GP 回帰モデル。"""
 
     def __init__(
@@ -154,9 +154,9 @@ class OutlierRelevancePursuitBetaGPModel(BetaGPModel):
             clip_targets=clip_targets,
         )
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "OutlierRelevancePursuitBetaGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "RobustRelevancePursuitBetaGPModel":
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("noise is not supported for OutlierRelevancePursuitBetaGPModel.")
+            raise NotImplementedError("noise is not supported for RobustRelevancePursuitBetaGPModel.")
         if isinstance(X, tuple):
             X = X[0]
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
@@ -188,7 +188,7 @@ class OutlierRelevancePursuitBetaGPModel(BetaGPModel):
         return new_model
 
 
-class OutlierRelevancePursuitBetaMixedGPModel(BetaMixedGPModel):
+class RobustRelevancePursuitBetaMixedGPModel(BetaMixedGPModel):
     """mixed 入力版の Beta outlier RRP モデル。"""
 
     def __init__(
@@ -247,4 +247,4 @@ class OutlierRelevancePursuitBetaMixedGPModel(BetaMixedGPModel):
         )
 
 
-__all__ = ["SparseOutlierBetaLikelihood", "OutlierRelevancePursuitBetaGPModel", "OutlierRelevancePursuitBetaMixedGPModel"]
+__all__ = ["SparseOutlierBetaLikelihood", "RobustRelevancePursuitBetaGPModel", "RobustRelevancePursuitBetaMixedGPModel"]

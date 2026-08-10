@@ -34,11 +34,11 @@ train_Y = torch.randint(0, 4, (50, 3), dtype=torch.long)  # [n, m]
 | 独立multi-output | `MultiOutputOrdinalModel` | 各submodelにmixed modelを使用 |
 | task-id列を使うmulti-task | `MultiTaskOrdinalGPModel` | - |
 | 相関ありblock-design multi-task | `KroneckerMultiTaskOrdinalGPModel` | - |
-| DeepGP | `OrdinalDeepGPModel` | `OrdinalMixedDeepGPModel` |
+| DeepGP | `DeepOrdinalGPModel` | `DeepOrdinalMixedGPModel` |
 | DeepKernel | `DeepKernelOrdinalGPModel` | `DeepKernelOrdinalMixedGPModel` |
 | 高次元SAAS | `SaasOrdinalGPModel` | `SaasOrdinalMixedGPModel` |
 | PCA / REMBO | `PCAOrdinalGPModel` / `REMBOOrdinalGPModel` | 対応mixed model |
-| 外れラベルRRP | `OutlierRelevancePursuitOrdinalGPModel` | 対応mixed model |
+| 外れラベルRRP | `RobustRelevancePursuitOrdinalGPModel` | 対応mixed model |
 | 不均一ノイズ | `HeteroscedasticOrdinalGPModel` | 対応mixed model |
 
 各出力を独立に扱うなら`MultiOutputOrdinalModel`、同一尺度のタスク間相関を利用するならKronecker multi-taskを使用します。
@@ -78,7 +78,7 @@ model = OrdinalGPModel(
     train_Y=train_Y,
     num_classes=num_classes,
     input_transform=Normalize(d=train_X.shape[-1], bounds=bounds),
-    inducing_points_num=32,
+    num_inducing=32,
 )
 
 fit_ordinal_gp(
@@ -159,7 +159,7 @@ model = OrdinalMixedGPModel(
         d=train_X.shape[-1],
         indices=[0, 1, 2],
     ),
-    inducing_points_num=32,
+    num_inducing=32,
 )
 fit_ordinal_gp(model, num_epochs=300, lr=0.03)
 ```
@@ -180,7 +180,7 @@ for task_index in range(train_Y.shape[-1]):
         train_X=train_X,
         train_Y=train_Y[:, task_index],
         num_classes=4,
-        inducing_points_num=32,
+        num_inducing=32,
     )
     fit_ordinal_gp(submodel, num_epochs=300, lr=0.03)
     submodels.append(submodel)
@@ -215,7 +215,7 @@ model = MultiTaskOrdinalGPModel(
     num_tasks=3,
     task_feature=-1,
     rank=2,
-    inducing_points_num=32,
+    num_inducing=32,
 )
 fit_ordinal_gp(model, num_epochs=300, lr=0.03)
 ```

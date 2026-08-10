@@ -7,8 +7,8 @@ from torch import Tensor
 from botorch.models.transforms.input import InputTransform
 
 from .deepgp import (
-    OrdinalMixedDeepGPModel,
-    OrdinalDeepGPModel,
+    DeepOrdinalMixedGPModel,
+    DeepOrdinalGPModel,
     _normalize_cat_dims,
 )
 from bochan.models.components.layers import (
@@ -42,7 +42,7 @@ def _make_deepkernel_feature_extractor(input_dim: int, ext_type: str, hidden_dim
     )
 
 
-class DeepKernelOrdinalDeepGPModel(OrdinalDeepGPModel):
+class DeepKernelDeepOrdinalGPModel(DeepOrdinalGPModel):
     """Continuous-input Deep Kernel + DeepGP ordinal model.
 
     Args:
@@ -56,7 +56,7 @@ class DeepKernelOrdinalDeepGPModel(OrdinalDeepGPModel):
         train_Y: Tensor,
         *,
         num_classes: int,
-        list_hidden_dims: Optional[Sequence[int]] = None,
+        hidden_dims: Optional[Sequence[int]] = None,
         num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.01,
@@ -80,7 +80,7 @@ class DeepKernelOrdinalDeepGPModel(OrdinalDeepGPModel):
             train_X=train_X,
             train_Y=train_Y,
             num_classes=num_classes,
-            list_hidden_dims=list_hidden_dims,
+            hidden_dims=hidden_dims,
             num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             lr=lr,
@@ -101,7 +101,7 @@ class DeepKernelOrdinalDeepGPModel(OrdinalDeepGPModel):
         self.ext_type = str(ext_type)
         self.kernel_hidden_dims = None if kernel_hidden_dims is None else [int(h) for h in kernel_hidden_dims]
 
-        hidden_dims = list(self.list_hidden_dims)
+        hidden_dims = list(self.hidden_dims)
         use_skip = self.ext_type.lower() == "skip"
         last_input_dim = hidden_dims[-1]
 
@@ -147,7 +147,7 @@ class DeepKernelOrdinalDeepGPModel(OrdinalDeepGPModel):
         return kwargs
 
 
-class DeepKernelOrdinalMixedDeepGPModel(OrdinalMixedDeepGPModel):
+class DeepKernelDeepOrdinalMixedGPModel(DeepOrdinalMixedGPModel):
     """Mixed-input Deep Kernel + DeepGP ordinal model.
 
     Args:
@@ -163,7 +163,7 @@ class DeepKernelOrdinalMixedDeepGPModel(OrdinalMixedDeepGPModel):
         num_classes: int,
         cat_dims: Sequence[int],
         category_counts: Optional[dict[int, int]] = None,
-        list_hidden_dims: Optional[Sequence[int]] = None,
+        hidden_dims: Optional[Sequence[int]] = None,
         num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.01,
@@ -189,7 +189,7 @@ class DeepKernelOrdinalMixedDeepGPModel(OrdinalMixedDeepGPModel):
             num_classes=num_classes,
             cat_dims=cat_dims,
             category_counts=category_counts,
-            list_hidden_dims=list_hidden_dims,
+            hidden_dims=hidden_dims,
             num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             lr=lr,
@@ -214,7 +214,7 @@ class DeepKernelOrdinalMixedDeepGPModel(OrdinalMixedDeepGPModel):
         self.cat_dims = _normalize_cat_dims(self.cat_dims, d)
         self.ord_dims = sorted(set(range(d)) - set(self.cat_dims))
 
-        hidden_dims = list(self.list_hidden_dims)
+        hidden_dims = list(self.hidden_dims)
         train_X_for_input_layer = self._apply_input_transform(
             train_X,
             apply_input_transform=True,
@@ -268,6 +268,6 @@ class DeepKernelOrdinalMixedDeepGPModel(OrdinalMixedDeepGPModel):
 
 
 __all__ = [
-    "DeepKernelOrdinalDeepGPModel",
-    "DeepKernelOrdinalMixedDeepGPModel",
+    "DeepKernelDeepOrdinalGPModel",
+    "DeepKernelDeepOrdinalMixedGPModel",
 ]

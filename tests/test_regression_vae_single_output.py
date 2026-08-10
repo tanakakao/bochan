@@ -7,7 +7,7 @@ from botorch.optim import optimize_acqf
 
 from bochan.api import BayesianOptimizer, FitConfig, ModelConfig
 from bochan.fit import VAEFitResult, fit_vae_gp
-from bochan.models.regression.gaussian.high_dim import VAESingleTaskGP
+from bochan.models.regression.gaussian.high_dim import VAEGaussianGPModel
 
 DTYPE = torch.double
 
@@ -31,7 +31,7 @@ def make_regression_data(
 
 def test_vae_single_task_gp_joint_fit_posterior_and_acquisition() -> None:
     train_X, train_Y, bounds = make_regression_data()
-    model = VAESingleTaskGP(
+    model = VAEGaussianGPModel(
         train_X=train_X,
         train_Y=train_Y,
         input_transform=Normalize(d=train_X.shape[-1], bounds=bounds),
@@ -111,7 +111,7 @@ def test_high_level_api_resolves_and_fits_vae_model() -> None:
 
     optimizer.fit(train_X, train_Y)
 
-    assert isinstance(optimizer.model, VAESingleTaskGP)
+    assert isinstance(optimizer.model, VAEGaussianGPModel)
     assert isinstance(optimizer.bundle.fit_result, VAEFitResult)
     assert optimizer.bundle.mll is None
     assert optimizer.bundle.metadata["fit_func"] == "fit"

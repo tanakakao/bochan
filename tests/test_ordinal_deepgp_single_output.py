@@ -13,8 +13,8 @@ import torch
 from botorch.optim.optimize import optimize_acqf, optimize_acqf_mixed
 
 from bochan.models.ordinal.deep.deepgp import (
-    OrdinalDeepGPModel,
-    OrdinalMixedDeepGPModel,
+    DeepOrdinalGPModel,
+    DeepOrdinalMixedGPModel,
     fit_true_deep_ordinal_gp,
 )
 from tests.test_binary_classification_base_single_output import (
@@ -153,7 +153,7 @@ def _assert_deepgp_ordinal_model_training(
     assert hasattr(mll, "mll") or hasattr(mll, "base_mll") or hasattr(mll, "model")
 
     if cat_dims:
-        assert isinstance(model, OrdinalMixedDeepGPModel)
+        assert isinstance(model, DeepOrdinalMixedGPModel)
         assert list(model.cat_dims) == cat_dims
         cat_values = torch.tensor([0.0, 1.0, 2.0], dtype=train_x.dtype, device=train_x.device)
         for cat_id in cat_dims:
@@ -175,25 +175,25 @@ def create_ordinal_deepgp_model_bundle(
 
     torch.manual_seed(0)
     if cat:
-        model = OrdinalMixedDeepGPModel(
+        model = DeepOrdinalMixedGPModel(
             train_X=train_x,
             train_Y=train_y,
             num_classes=NUM_CLASSES,
             cat_dims=cat_dims,
             input_transform=input_transform,
-            list_hidden_dims=[4],
+            hidden_dims=[4],
             num_inducing=8,
             lr=0.01,
             num_epochs=num_epochs,
             conditioning_steps=4,
         )
     else:
-        model = OrdinalDeepGPModel(
+        model = DeepOrdinalGPModel(
             train_X=train_x,
             train_Y=train_y,
             num_classes=NUM_CLASSES,
             input_transform=input_transform,
-            list_hidden_dims=[4],
+            hidden_dims=[4],
             num_inducing=8,
             lr=0.01,
             num_epochs=num_epochs,

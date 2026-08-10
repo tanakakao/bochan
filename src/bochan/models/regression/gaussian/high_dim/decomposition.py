@@ -42,10 +42,10 @@ from bochan.models.components.projected_utils import (
 
 
 __all__ = [
-    "PCASingleTaskGP",
-    "REMBOSingleTaskGP",
-    "PCAMixedSingleTaskGP",
-    "REMBOMixedSingleTaskGP",
+    "PCAGaussianGPModel",
+    "REMBOGaussianGPModel",
+    "PCAGaussianMixedGPModel",
+    "REMBOGaussianMixedGPModel",
 ]
 
 
@@ -155,7 +155,7 @@ class _BaseProjectedSingleTaskGP(_BaseProjectedModel):
         raise NotImplementedError
 
 
-class PCASingleTaskGP(_BaseProjectedSingleTaskGP):
+class PCAGaussianGPModel(_BaseProjectedSingleTaskGP):
     """PCA 射影後の低次元空間で学習する SingleTaskGP wrapper。
 
     Args:
@@ -232,7 +232,7 @@ class PCASingleTaskGP(_BaseProjectedSingleTaskGP):
         )
 
 
-class REMBOSingleTaskGP(_BaseProjectedSingleTaskGP):
+class REMBOGaussianGPModel(_BaseProjectedSingleTaskGP):
     """REMBO 固定ランダム射影後の低次元空間で学習する SingleTaskGP wrapper。"""
 
     def __init__(
@@ -393,7 +393,7 @@ class _BaseProjectedMixedSingleTaskGP(_BaseProjectedMixedModel):
         raise NotImplementedError
 
 
-class PCAMixedSingleTaskGP(_BaseProjectedMixedSingleTaskGP):
+class PCAGaussianMixedGPModel(_BaseProjectedMixedSingleTaskGP):
     """連続列だけ PCA 射影し、カテゴリ列を末尾に保持する MixedSingleTaskGP wrapper。"""
 
     def __init__(
@@ -458,7 +458,7 @@ class PCAMixedSingleTaskGP(_BaseProjectedMixedSingleTaskGP):
         )
 
 
-class REMBOMixedSingleTaskGP(_BaseProjectedMixedSingleTaskGP):
+class REMBOGaussianMixedGPModel(_BaseProjectedMixedSingleTaskGP):
     """連続列だけ REMBO 射影し、カテゴリ列を末尾に保持する MixedSingleTaskGP wrapper。"""
 
     def __init__(

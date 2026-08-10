@@ -325,7 +325,7 @@ num_inducing: int = 128
 learn_inducing_locations: bool = True
 ```
 
-`list_hidden_dims` のような別名は deprecated alias とする。
+`hidden_dims` のような別名は deprecated alias とする。
 
 ## 6. Class Naming Standard
 

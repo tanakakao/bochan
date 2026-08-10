@@ -739,7 +739,7 @@ uncertainty is better calibrated.
 |---|---|
 | continuous base | BoTorch `SingleTaskGP` |
 | mixed base | BoTorch `MixedSingleTaskGP` |
-| mixed Kronecker multitask | `MixedKroneckerMultiTaskGP` |
+| mixed Kronecker multitask | `GaussianMixedKroneckerMultiTaskGP` |
 | high-dimensional variants | task-specific SAAS, PCA, REMBO, or VAE wrappers |
 | deep variants | task-specific DeepGP or Deep Kernel wrappers |
 | robust variants | heteroscedastic or relevance-pursuit wrappers |

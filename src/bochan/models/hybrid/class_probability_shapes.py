@@ -12,7 +12,6 @@ from typing import Any
 import torch
 from torch import Tensor
 
-_PATCHED = False
 
 
 def _shape_endswith(
@@ -169,59 +168,4 @@ def _select_class_probability_output(
         )
     return selected
 
-
-def apply_hybrid_class_probability_shapes(hybrid_cls: type) -> None:
-    """Install DeepGP- and InputPerturbation-safe probability shape handling."""
-
-    global _PATCHED
-    if _PATCHED:
-        return
-
-    original_ordinal = hybrid_cls._ordinal_class_probs
-
-    def _ordinal_class_probs(self, spec: Any, X: Tensor, **kwargs: Any) -> Tensor:
-        fn = getattr(spec.model, "class_probs", None)
-        if callable(fn):
-            probs = self._call_class_probs(fn, X, **kwargs)
-            if torch.is_tensor(probs):
-                return _select_class_probability_output(
-                    probs,
-                    X,
-                    output_index=spec.output_index,
-                    name=f"{spec.name}.class_probs",
-                ).clamp_min(0.0)
-        return original_ordinal(self, spec, X, **kwargs)
-
-    def _multiclass_probs(self, spec: Any, X: Tensor, **kwargs: Any) -> Tensor:
-        fn = getattr(spec.model, "class_probs", None)
-        if callable(fn):
-            probs = self._call_class_probs(fn, X, **kwargs)
-            if torch.is_tensor(probs):
-                return _select_class_probability_output(
-                    probs,
-                    X,
-                    output_index=spec.output_index,
-                    name=f"{spec.name}.class_probs",
-                ).clamp_min(0.0)
-
-        post = self._call_accessor(
-            spec.model,
-            ("probability_posterior", "posterior"),
-            X,
-            **kwargs,
-        )
-        probs, _ = self._posterior_mean_variance(post, spec.name)
-        return _select_class_probability_output(
-            probs,
-            X,
-            output_index=spec.output_index,
-            name=f"{spec.name}.posterior.mean",
-        ).clamp_min(0.0)
-
-    hybrid_cls._ordinal_class_probs = _ordinal_class_probs
-    hybrid_cls._multiclass_probs = _multiclass_probs
-    hybrid_cls._bochan_class_probability_shapes_patched = True
-    _PATCHED = True
-
-
-__all__ = ["apply_hybrid_class_probability_shapes"]
+__all__ = ["_select_class_probability_output"]

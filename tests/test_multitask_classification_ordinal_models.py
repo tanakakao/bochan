@@ -48,7 +48,7 @@ def test_multitask_ordinal_shapes_and_class_probs():
         num_classes=3,
         num_tasks=2,
         task_feature=-1,
-        inducing_points_num=4,
+        num_inducing=4,
     )
 
     post = model.posterior(train_X[:3])

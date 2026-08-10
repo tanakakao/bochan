@@ -199,7 +199,7 @@ def create_ordinal_model_bundle(
             cat_dims=cat_dims,
             num_classes=NUM_CLASSES,
             input_transform=input_transform,
-            inducing_points_num=8,
+            num_inducing=8,
             conditioning_steps=4,
         )
     else:
@@ -208,7 +208,7 @@ def create_ordinal_model_bundle(
             train_Y=train_y,
             num_classes=NUM_CLASSES,
             input_transform=input_transform,
-            inducing_points_num=8,
+            num_inducing=8,
             conditioning_steps=4,
         )
 

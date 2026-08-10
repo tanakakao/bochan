@@ -9,7 +9,7 @@ from bochan.fit.deep.common import fit_deep_full_batch_mll
 from bochan.fit.deep.deepkernel import fit_deepkernel_mll
 from bochan.likelihoods.regression import build_single_task_likelihood
 from bochan.models.components.layers.kernel_layers import StableScaleToBounds
-from bochan.models.regression.gaussian.deep.deepkernel import DeepKernelGPModel
+from bochan.models.regression.gaussian.deep.deepkernel import DeepKernelGaussianGPModel
 
 
 class ConstantFeatureExtractor(nn.Module):
@@ -74,7 +74,7 @@ def test_stable_scale_to_bounds_keeps_constant_features_finite() -> None:
 def test_deepkernel_fit_handles_collapsed_fold_representation() -> None:
     train_X = torch.zeros(8, 3, dtype=torch.double)
     train_Y = torch.linspace(-1.0, 1.0, 8, dtype=torch.double).unsqueeze(-1)
-    model = DeepKernelGPModel(
+    model = DeepKernelGaussianGPModel(
         train_X=train_X,
         train_Y=train_Y,
         input_transform=None,
@@ -105,7 +105,7 @@ def test_deepkernel_fit_keeps_log_normal_noise_prior_in_support() -> None:
     with torch.no_grad():
         likelihood.noise_covar.raw_noise.fill_(-20.0)
 
-    model = DeepKernelGPModel(
+    model = DeepKernelGaussianGPModel(
         train_X=train_X,
         train_Y=train_Y,
         likelihood=likelihood,
@@ -125,7 +125,7 @@ def test_deepkernel_fit_keeps_log_normal_noise_prior_in_support() -> None:
 def test_deepkernel_stability_defaults_allow_custom_override() -> None:
     train_X = torch.rand(6, 2, dtype=torch.double)
     train_Y = train_X.sum(dim=-1, keepdim=True)
-    model = DeepKernelGPModel(
+    model = DeepKernelGaussianGPModel(
         train_X=train_X,
         train_Y=train_Y,
         input_transform=None,

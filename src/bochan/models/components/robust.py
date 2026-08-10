@@ -292,7 +292,7 @@ def canonicalize_inducing_points(
 
 def make_raw_inducing_points(
     raw_train_X: Tensor,
-    inducing_points_num: int,
+    num_inducing: int,
     inducing_points: Optional[Tensor],
 ) -> Tensor:
     """raw-space の inducing points を作る。"""
@@ -304,7 +304,7 @@ def make_raw_inducing_points(
             dtype=raw_train_X.dtype,
         )
     n = raw_train_X.shape[-2]
-    m = min(int(inducing_points_num), n)
+    m = min(int(num_inducing), n)
     perm = torch.randperm(n, device=raw_train_X.device)[:m]
     return raw_train_X[perm].detach().clone().contiguous()
 

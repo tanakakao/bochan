@@ -30,12 +30,12 @@ from bochan.models.components.heteroscedastic import (
 
 
 __all__ = [
-    "HeteroscedasticSingleTaskGP",
-    "HeteroscedasticMixedSingleTaskGP",
+    "HeteroscedasticGaussianGPModel",
+    "HeteroscedasticGaussianMixedGPModel",
 ]
 
 
-class HeteroscedasticSingleTaskGP(
+class HeteroscedasticGaussianGPModel(
     HeteroscedasticLatentPosteriorMixin,
     SingleTaskGP,
 ):
@@ -144,7 +144,7 @@ class HeteroscedasticSingleTaskGP(
         return ExactMarginalLogLikelihood(self.likelihood, self)
 
 
-class HeteroscedasticMixedSingleTaskGP(
+class HeteroscedasticGaussianMixedGPModel(
     HeteroscedasticLatentPosteriorMixin,
     MixedSingleTaskGP,
 ):
@@ -177,7 +177,7 @@ class HeteroscedasticMixedSingleTaskGP(
         min_noise: float = 1e-6,
     ) -> None:
         if len(cat_dims) == 0:
-            raise ValueError("cat_dims must be non-empty for HeteroscedasticMixedSingleTaskGP.")
+            raise ValueError("cat_dims must be non-empty for HeteroscedasticGaussianMixedGPModel.")
 
         train_X_raw = train_X.detach().clone()
         train_Y_col = ensure_2d_col(train_Y).to(train_X_raw)

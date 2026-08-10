@@ -315,12 +315,12 @@ class DeepKernelOrdinal(ApproximateGP):
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
         inducing_points: Tensor | None = None,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
     ) -> None:
         input_space_inducing = _select_inducing_points(
             train_x,
-            num_inducing_points=inducing_points_num,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
 
@@ -395,7 +395,7 @@ class DeepKernelMixedOrdinal(ApproximateGP):
         feature_extractor: nn.Module | None = None,
         covar_module: Kernel | None = None,
         inducing_points: Tensor | None = None,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         cont_kernel: str = "matern52",
     ) -> None:
@@ -409,7 +409,7 @@ class DeepKernelMixedOrdinal(ApproximateGP):
 
         input_space_inducing = _select_inducing_points(
             train_x,
-            num_inducing_points=inducing_points_num,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
 
@@ -496,7 +496,7 @@ class _BaseDeepKernelOrdinalGPModel(ApproximateGPyTorchModel):
         train_Y: Tensor,
         input_transform: InputTransform | None = None,
         *,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.03,
         num_epochs: int = 300,
@@ -526,7 +526,7 @@ class _BaseDeepKernelOrdinalGPModel(ApproximateGPyTorchModel):
         self.train_X = train_X
         self.train_Y = train_Y
 
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.lr = float(lr)
         self.num_epochs = int(num_epochs)
@@ -816,7 +816,7 @@ class DeepKernelOrdinalGPModel(_BaseDeepKernelOrdinalGPModel):
         likelihood: _OneDimensionalLikelihood | None = None,
         input_transform: InputTransformArg = "DEFAULT",
         ext_type: str = "DEFAULT",
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.03,
         num_epochs: int = 300,
@@ -861,7 +861,7 @@ class DeepKernelOrdinalGPModel(_BaseDeepKernelOrdinalGPModel):
             mean_module=mean_module,
             covar_module=covar_module,
             inducing_points=inducing_points,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
         )
 
@@ -871,7 +871,7 @@ class DeepKernelOrdinalGPModel(_BaseDeepKernelOrdinalGPModel):
             train_X=train_X,
             train_Y=train_Y,
             input_transform=input_transform,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             lr=lr,
             num_epochs=num_epochs,
@@ -894,7 +894,7 @@ class DeepKernelOrdinalGPModel(_BaseDeepKernelOrdinalGPModel):
             "num_classes": self.num_classes,
             "input_transform": _clone_input_transform(self.input_transform),
             "ext_type": self.ext_type,
-            "inducing_points_num": self.inducing_points_num,
+            "num_inducing": self.num_inducing,
             "learn_inducing_locations": self.learn_inducing_locations,
             "lr": self.lr,
             "num_epochs": self.num_epochs,
@@ -936,7 +936,7 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
         input_transform: InputTransformArg = "DEFAULT",
         ext_type: str = "DEFAULT",
         cont_kernel: str = "matern52",
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.03,
         num_epochs: int = 300,
@@ -1002,7 +1002,7 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
             feature_extractor=feature_extractor,
             covar_module=covar_module,
             inducing_points=inducing_points,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             cont_kernel=cont_kernel,
         )
@@ -1013,7 +1013,7 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
             train_X=train_X,
             train_Y=train_Y,
             input_transform=input_transform,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             lr=lr,
             num_epochs=num_epochs,
@@ -1112,7 +1112,7 @@ class DeepKernelOrdinalMixedGPModel(_BaseDeepKernelOrdinalGPModel):
             "input_transform": _clone_input_transform(self.input_transform),
             "ext_type": self.ext_type,
             "cont_kernel": self.cont_kernel,
-            "inducing_points_num": self.inducing_points_num,
+            "num_inducing": self.num_inducing,
             "learn_inducing_locations": self.learn_inducing_locations,
             "lr": self.lr,
             "num_epochs": self.num_epochs,

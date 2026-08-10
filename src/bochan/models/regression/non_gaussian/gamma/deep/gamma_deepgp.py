@@ -191,7 +191,7 @@ class _BaseGammaDeepGPModel(DeepGP, GPyTorchModel):
         return DeepApproximateMLL(base_mll)
 
 
-class GammaDeepGPModel(_BaseGammaDeepGPModel):
+class DeepGammaGPModel(_BaseGammaDeepGPModel):
     """true DeepGP + Gamma likelihood の正値連続値回帰モデル。"""
 
     def __init__(
@@ -201,7 +201,7 @@ class GammaDeepGPModel(_BaseGammaDeepGPModel):
         *,
         hidden_dim: int = 4,
         num_inducing: int = 128,
-        list_hidden_dims: Optional[Sequence[int]] = None,
+        hidden_dims: Optional[Sequence[int]] = None,
         input_transform: Optional[InputTransform] = None,
         outcome_transform: Optional[OutcomeTransform] = None,
         likelihood: Optional[GammaLogLikelihood] = None,
@@ -224,21 +224,21 @@ class GammaDeepGPModel(_BaseGammaDeepGPModel):
             train_X=train_X,
             outcome_transform=self.outcome_transform,
             min_mean=min_mean,
-            name="GammaDeepGPModel.outcome_transform",
+            name="DeepGammaGPModel.outcome_transform",
         )
 
         train_X_tf = apply_input_transform_for_training(
             train_X,
             self.input_transform,
-            name="GammaDeepGPModel.input_transform",
+            name="DeepGammaGPModel.input_transform",
         )
 
         d = train_X_tf.shape[-1]
-        if list_hidden_dims is None:
-            list_hidden_dims = [int(hidden_dim)]
-        list_hidden_dims = [int(h) for h in list_hidden_dims]
+        if hidden_dims is None:
+            hidden_dims = [int(hidden_dim)]
+        hidden_dims = [int(h) for h in hidden_dims]
 
-        first_out = list_hidden_dims[0]
+        first_out = hidden_dims[0]
         if str(layer_type).lower() == "deepkernel":
             self.hidden_layer = DeepKernelDeepGPHiddenLayer(
                 input_dims=d,
@@ -260,7 +260,7 @@ class GammaDeepGPModel(_BaseGammaDeepGPModel):
 
         current_dim = first_out
         extra_layers = []
-        for h in list_hidden_dims[1:]:
+        for h in hidden_dims[1:]:
             extra_layers.append(
                 DeepGPHiddenLayer(
                     input_dims=current_dim,
@@ -299,7 +299,7 @@ class GammaDeepGPModel(_BaseGammaDeepGPModel):
         self.train_targets = train_Y
 
         self.hidden_dim = int(hidden_dim)
-        self.list_hidden_dims = list(list_hidden_dims)
+        self.hidden_dims = list(hidden_dims)
         self.num_inducing = int(num_inducing)
         self.layer_type = str(layer_type)
         self.mean_type = str(mean_type)
@@ -319,9 +319,9 @@ class GammaDeepGPModel(_BaseGammaDeepGPModel):
             h = layer(h)
         return self.last_layer(h)
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "GammaDeepGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "DeepGammaGPModel":
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("GammaDeepGPModel does not support noise in condition_on_observations.")
+            raise NotImplementedError("DeepGammaGPModel does not support noise in condition_on_observations.")
         if isinstance(X, tuple):
             X = X[0]
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
@@ -338,7 +338,7 @@ class GammaDeepGPModel(_BaseGammaDeepGPModel):
             train_Y=new_Y,
             hidden_dim=self.hidden_dim,
             num_inducing=self.num_inducing,
-            list_hidden_dims=self.list_hidden_dims,
+            hidden_dims=self.hidden_dims,
             input_transform=clone_input_transform(self.input_transform),
             outcome_transform=clone_outcome_transform(self.outcome_transform),
             likelihood=copy.deepcopy(self.likelihood),
@@ -358,7 +358,7 @@ class GammaDeepGPModel(_BaseGammaDeepGPModel):
         return new_model
 
 
-class GammaMixedDeepGPModel(_BaseGammaDeepGPModel):
+class DeepGammaMixedGPModel(_BaseGammaDeepGPModel):
     """mixed 入力版 true DeepGP + Gamma likelihood。"""
 
     def __init__(
@@ -390,7 +390,7 @@ class GammaMixedDeepGPModel(_BaseGammaDeepGPModel):
             train_X=train_X,
             outcome_transform=self.outcome_transform,
             min_mean=min_mean,
-            name="GammaMixedDeepGPModel.outcome_transform",
+            name="DeepGammaMixedGPModel.outcome_transform",
         )
 
         d = train_X.shape[-1]
@@ -402,7 +402,7 @@ class GammaMixedDeepGPModel(_BaseGammaDeepGPModel):
             train_X,
             self.input_transform,
             cat_dims=self.cat_dims,
-            name="GammaMixedDeepGPModel.input_transform",
+            name="DeepGammaMixedGPModel.input_transform",
         )
 
         if str(layer_type).lower() == "deepkernel":
@@ -472,6 +472,6 @@ class GammaMixedDeepGPModel(_BaseGammaDeepGPModel):
 
 
 __all__ = [
-    "GammaDeepGPModel",
-    "GammaMixedDeepGPModel",
+    "DeepGammaGPModel",
+    "DeepGammaMixedGPModel",
 ]

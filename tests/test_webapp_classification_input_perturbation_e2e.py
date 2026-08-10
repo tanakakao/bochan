@@ -26,18 +26,24 @@ def _store_with_three_class_data() -> tuple[DatasetStore, str]:
     return store, record.dataset_id
 
 
-def _target_setting(*, task_type: str, family: str) -> dict[str, object]:
+def _target_setting(
+    *,
+    task_type: str,
+    family: str,
+    direction: str = "maximize",
+    target_classes: list[int] | None = None,
+) -> dict[str, object]:
     lse = family == "level_set_estimation"
     setting: dict[str, object] = {
         "target": "y",
         "task_type": task_type,
         "optimize": True,
-        "direction": "maximize",
+        "direction": direction,
         "goal": "above" if lse else "none",
         "value": None,
     }
     if task_type == "classification":
-        setting["target_classes"] = [2]
+        setting["target_classes"] = list(target_classes or [2])
         if lse:
             setting["value"] = 0.5
     else:
@@ -52,8 +58,17 @@ def _request(
     *,
     task_type: str,
     family: str,
+    acquisition_name: str | None = None,
+    direction: str = "maximize",
+    target_classes: list[int] | None = None,
 ) -> RegressionRunRequest:
-    acquisition_name = "straddle" if family == "level_set_estimation" else "variance"
+    if acquisition_name is None:
+        if family == "level_set_estimation":
+            acquisition_name = "straddle"
+        elif family == "active_learning":
+            acquisition_name = "variance"
+        else:
+            acquisition_name = "EI"
     acqf_kwargs: dict[str, object] = {
         "web_family": family,
         "web_risk_type": "none",
@@ -70,7 +85,12 @@ def _request(
         model_type="base",
         model_kwargs={
             "web_target_settings": [
-                _target_setting(task_type=task_type, family=family)
+                _target_setting(
+                    task_type=task_type,
+                    family=family,
+                    direction=direction,
+                    target_classes=target_classes,
+                )
             ]
         },
         fit_maxiter=8,
@@ -136,6 +156,51 @@ def test_web_three_class_lse_runs_with_input_perturbation(task_type: str) -> Non
             dataset_id,
             task_type=task_type,
             family="level_set_estimation",
+        ),
+        store,
+    )
+
+    assert result["candidates"]
+    assert len(result["candidates"]) == 2
+    assert result["metadata"]["input_perturbation_risk_type"] == "none"
+
+
+@pytest.mark.parametrize("acquisition_name", ["EI", "NEI", "PI", "UCB"])
+def test_web_three_class_bo_uses_hybrid_objective_acquisition(
+    acquisition_name: str,
+) -> None:
+    """Single-output multiclass BO must not unwrap Hybrid into raw class BO."""
+
+    torch.manual_seed(0)
+    store, dataset_id = _store_with_three_class_data()
+    result = run_regression_web_workflow(
+        _request(
+            dataset_id,
+            task_type="classification",
+            family="bayesian_optimization",
+            acquisition_name=acquisition_name,
+        ),
+        store,
+    )
+
+    assert result["candidates"]
+    assert len(result["candidates"]) == 2
+    assert result["metadata"]["input_perturbation_risk_type"] == "none"
+
+
+def test_web_multiclass_ei_preserves_multiple_class_utility_and_direction() -> None:
+    """Web multiclass EI must keep selected-class utility and minimize direction."""
+
+    torch.manual_seed(0)
+    store, dataset_id = _store_with_three_class_data()
+    result = run_regression_web_workflow(
+        _request(
+            dataset_id,
+            task_type="classification",
+            family="bayesian_optimization",
+            acquisition_name="EI",
+            direction="minimize",
+            target_classes=[0, 2],
         ),
         store,
     )

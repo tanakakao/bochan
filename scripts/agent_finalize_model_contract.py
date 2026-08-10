@@ -85,7 +85,7 @@ def fix_heteroscedastic_ordinal_num_classes() -> None:
     write(path, text.replace(old, '"num_classes": int(self.num_classes),'))
 
 
-def fix_rrp_ordinal_num_classes() -> None:
+def fix_robust_ordinal_num_classes() -> None:
     path = MODELS / "ordinal" / "robust" / "relevance_pursuit.py"
     text = read(path)
     import_anchor = "    _OrdinalLatentGP,\n    _normalize_dims,\n"
@@ -96,13 +96,13 @@ def fix_rrp_ordinal_num_classes() -> None:
     )
     if "_infer_num_classes_from_train_Y" not in text:
         if import_anchor not in text:
-            raise RuntimeError("ordinal RRP base import anchor not found")
+            raise RuntimeError("robust ordinal base import anchor not found")
         text = text.replace(import_anchor, import_replacement, 1)
 
     old = "            num_classes = int(train_Y.max().item()) + 1"
     count = text.count(old)
-    if count != 2:
-        raise RuntimeError(f"expected 2 RRP num_classes inference sites, got {count}")
+    if count != 4:
+        raise RuntimeError(f"expected 4 robust ordinal num_classes inference sites, got {count}")
     text = text.replace(old, "            num_classes = _infer_num_classes_from_train_Y(train_Y)")
     write(path, text)
 
@@ -205,7 +205,7 @@ def validate() -> None:
     if "OutlierRelevancePursuitOrdinal" in relevance:
         raise RuntimeError("legacy ordinal RRP name remains")
     if "num_classes = int(train_Y.max().item()) + 1" in relevance:
-        raise RuntimeError("ordinal RRP still bypasses canonical num_classes inference")
+        raise RuntimeError("robust ordinal still bypasses canonical num_classes inference")
 
     forbidden = (
         "latent_" "posterioror",
@@ -224,7 +224,7 @@ def validate() -> None:
 if __name__ == "__main__":
     formalize_robust_train_data_mixin()
     fix_heteroscedastic_ordinal_num_classes()
-    fix_rrp_ordinal_num_classes()
+    fix_robust_ordinal_num_classes()
     normalize_remaining_ordinal_rrp_names()
     clean_latent_posterior_messages()
     extend_contract_guard()

@@ -151,8 +151,9 @@ jobs:
       - name: Reject missing TabPFN before secret prompt
         shell: cmd
         run: |
-          scripts\preload_tabpfn.bat > preload-missing.txt 2>&1
-          if %ERRORLEVEL% NEQ 2 exit /b 1
+          cmd /V:ON /C "scripts\preload_tabpfn.bat > preload-missing.txt 2>&1 & echo !ERRORLEVEL! > preload-exit.txt & exit /b 0"
+          set /p PRELOAD_EXIT=<preload-exit.txt
+          if not "%PRELOAD_EXIT%"=="2" exit /b 1
           findstr /C:"A compatible TabPFN package is not installed" preload-missing.txt
           findstr /C:"pip install -e" preload-missing.txt
       - name: Smoke Windows TabPFN preload helper

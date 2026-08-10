@@ -134,6 +134,10 @@ def test_tabpfn_run_retains_yy_and_1d_visualization_session() -> None:
         reset_request_id(token)
 
     assert result["visualization_run_id"] == run_id
+    cached_ids = {item["id"] for item in result["visualizations"]}
+    assert "target-yyplot" in cached_ids
+    assert "prediction-1d-x-target" in cached_ids
+
     yyplot = build_visualization(
         run_id,
         {"kind": "yyplot", "target": "target"},
@@ -152,3 +156,16 @@ def test_tabpfn_run_retains_yy_and_1d_visualization_session() -> None:
 
     assert yyplot["figure"]["data"]
     assert one_dimensional["figure"]["data"]
+
+
+def test_start_web_preserves_sessions_unless_reload_is_explicit() -> None:
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "start_web.bat").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'set "BACKEND_RELOAD_ARGS="' in source
+    assert "BOCHAN_WEB_RELOAD" in source
+    assert "app:app --reload" not in source
+    assert "app:app %BACKEND_RELOAD_ARGS%" in source

@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/refactor-model-contracts
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -21,7 +24,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Apply model refactor
-        run: python scripts/agent_model_refactor.py
+        run: |
+          python scripts/agent_model_refactor.py
+          python scripts/agent_model_refactor_extra.py
       - name: Validate syntax and diff
         run: |
           python -m compileall -q src/bochan
@@ -29,6 +34,7 @@ jobs:
       - name: Remove one-shot tooling
         run: |
           rm scripts/agent_model_refactor.py
+          rm scripts/agent_model_refactor_extra.py
           rm .github/workflows/agent-model-refactor.yml
       - name: Commit generated refactor
         run: |

@@ -492,7 +492,7 @@ class BinaryClassificationMixedGPModel(ApproximateGPyTorchModel, FantasizeMixin)
         learn_inducing_locations: bool = True,
     ) -> None:
         if len(cat_dims) == 0:
-            raise ValueError("cat_dims must be non-empty for GPClassificationMixedModel.")
+            raise ValueError("cat_dims must be non-empty for BinaryClassificationMixedGPModel.")
 
         if train_Y.ndim > 1 and train_Y.shape[-1] == 1:
             train_Y = train_Y.squeeze(-1)

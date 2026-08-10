@@ -367,5 +367,5 @@ def test_binary_base_package_exports_implementation_classes_directly() -> None:
 def test_binary_base_has_no_stale_compatibility_class_names() -> None:
     path = MODELS_ROOT / "classification" / "binary" / "base" / "models.py"
     source = path.read_text(encoding="utf-8")
-    assert '"GPClassificationModel"' not in source
-    assert '"GPClassificationMixedModel"' not in source
+    assert "GPClassificationModel" not in source
+    assert "GPClassificationMixedModel" not in source

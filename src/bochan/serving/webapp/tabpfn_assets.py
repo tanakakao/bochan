@@ -160,7 +160,9 @@ def preload_tabpfn_assets(
 
     root = tabpfn_cache_dir(cache_dir)
     root.mkdir(parents=True, exist_ok=True)
-    if not allow_browser_auth:
+    if allow_browser_auth:
+        os.environ.pop(_TABPFN_NO_BROWSER_ENV, None)
+    else:
         os.environ[_TABPFN_NO_BROWSER_ENV] = "1"
 
     _download_default_model(root, "classifier")

@@ -35,4 +35,12 @@ if old_write not in text:
     raise RuntimeError("ordinal projected attribute cleanup anchor not found")
 text = text.replace(old_write, new_write, 1)
 
+# Keep generated regression tests at exactly one trailing newline so
+# `git diff --check` does not reject the one-shot migration.
+old_eof = '    write(path, text.rstrip() + addition + "\\n")\n'
+new_eof = '    write(path, text.rstrip() + addition.rstrip() + "\\n")\n'
+if old_eof not in text:
+    raise RuntimeError("projected contract-test EOF anchor not found")
+text = text.replace(old_eof, new_eof, 1)
+
 path.write_text(text, encoding="utf-8")

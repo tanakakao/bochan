@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "pyproject.toml"
+      - "start_web.bat"
       - "scripts/preload_tabpfn.bat"
       - "scripts/preload_tabpfn.sh"
       - "src/bochan/tabpfn_assets.py"
@@ -25,6 +26,8 @@ on:
       - "src/bochan/serving/webapp/target_missing_policy.py"
       - "src/bochan/serving/webapp/target_settings.py"
       - "src/bochan/serving/webapp/visualization_sessions.py"
+      - "src/bochan/serving/webapp/workflows.py"
+      - "web/src/InteractiveResultPlots.tsx"
       - "web/src/modelOptions.ts"
       - "web/src/regressionLikelihoodOptions.ts"
       - "web/src/pages/OptimizePage.tsx"
@@ -117,6 +120,7 @@ jobs:
             src/bochan/serving/webapp/target_missing_policy.py \
             src/bochan/serving/webapp/target_settings.py \
             src/bochan/serving/webapp/visualization_sessions.py \
+            src/bochan/serving/webapp/workflows.py \
             src/bochan/models/hybrid/task_aware_posterior.py \
             tests/test_tabpfn_input_perturbation.py \
             tests/test_tabpfn_optional_smoke.py \

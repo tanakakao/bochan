@@ -101,11 +101,12 @@ jobs:
             src/bochan/api/nan_multiobjective.py \
             src/bochan/api/optimizer_api.py \
             src/bochan/api/optimizer_config.py \
+            src/bochan/models/components/projected.py \
+            src/bochan/models/components/projected_utils.py \
             src/bochan/models/hybrid/__init__.py \
             src/bochan/models/hybrid/class_probability_shapes.py \
             src/bochan/models/hybrid/task_aware_posterior.py \
             src/bochan/models/hybrid/task_aware_sampling.py \
-            src/bochan/models/projected_input_perturbation.py \
             src/bochan/models/regression/non_gaussian/gamma/base/aligned.py \
             src/bochan/models/wide_multitask.py \
             src/bochan/models/wide_multitask_variants.py \

@@ -28,6 +28,12 @@ Usage: bash scripts/preload_tabpfn.sh [options]
 Preload the TabPFN v3 classifier and regressor checkpoints used by bochan Web.
 If TABPFN_TOKEN is not set, the Prior Labs API key is requested with hidden input.
 
+Python selection order:
+  1. BOCHAN_PYTHON
+  2. repo-local .venv/bin/python
+  3. python on PATH
+  4. python3 on PATH
+
 Common options passed to the Python preload command:
   --cache-dir PATH          Use an explicit TabPFN checkpoint directory.
   --allow-browser-auth      Allow Prior Labs browser authentication for local setup.
@@ -36,7 +42,7 @@ Common options passed to the Python preload command:
 Environment variables:
   TABPFN_TOKEN              Prior Labs API key. Optional when prompted interactively.
   TABPFN_MODEL_CACHE_DIR    Persistent checkpoint directory. Upstream default if unset.
-  BOCHAN_PYTHON             Python executable path. Defaults to python, then python3.
+  BOCHAN_PYTHON             Explicit Python executable path.
 EOF
     exit 0
 fi
@@ -45,6 +51,8 @@ export PYTHONPATH="${REPO_ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
 
 if [[ -n "${BOCHAN_PYTHON:-}" ]]; then
     PYTHON_CMD="${BOCHAN_PYTHON}"
+elif [[ -x "${REPO_ROOT}/.venv/bin/python" ]]; then
+    PYTHON_CMD="${REPO_ROOT}/.venv/bin/python"
 elif command -v python >/dev/null 2>&1; then
     PYTHON_CMD="python"
 else
@@ -57,7 +65,10 @@ if ! "${PYTHON_CMD}" -c 'import tabpfn; from tabpfn.constants import ModelVersio
     echo "Python executable:" >&2
     "${PYTHON_CMD}" -c 'import sys; print(sys.executable)' >&2 || true
     echo >&2
-    echo "Install or refresh the bochan Web dependencies from this repository:" >&2
+    echo "Preferred development setup with uv:" >&2
+    echo "  uv sync --all-extras" >&2
+    echo >&2
+    echo "Or install the bochan Web dependencies with pip:" >&2
     printf '  %q -m pip install -e ".[web]"\n' "${PYTHON_CMD}" >&2
     echo >&2
     echo "Then rerun:" >&2

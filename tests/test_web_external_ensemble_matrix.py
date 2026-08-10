@@ -242,6 +242,7 @@ def test_web_external_binary_ensemble_input_perturbation_runs(model_type: str) -
     )
 
     assert len(result["candidates"]) == 1
-    assert result["metadata"]["input_perturbation_risk_enabled"] is True
+    assert result["metadata"]["input_perturbation_risk_type"] == "none"
+    assert result["metadata"]["input_perturbation_risk_enabled"] is False
     for member in members:
         assert member.predict_calls > 0

@@ -11,7 +11,8 @@ from .multi_output import HybridMultiOutputModel as _HybridMultiOutputModel
 from .posterior import HybridPosterior
 from .prediction import predict_class as _predict_class
 from .prediction import predict_class_list as _predict_class_list
-from .specs import OutputIndex, OutputSpec, PosteriorMode, make_output_specs
+from .specs import OutputIndex, OutputSpec, PosteriorMode, TaskType
+from .task_aware_posterior import TaskAwareHybridPosterior
 from .task_aware_sampling import _task_aware_posterior
 
 
@@ -124,7 +125,9 @@ class HybridMultiOutputModel(_HybridMultiOutputModel):
 __all__ = [
     "HybridMultiOutputModel",
     "HybridPosterior",
+    "TaskAwareHybridPosterior",
+    "OutputIndex",
     "OutputSpec",
     "PosteriorMode",
-    "make_output_specs",
+    "TaskType",
 ]

@@ -82,7 +82,7 @@ else
     echo "TabPFN cache: upstream default cache directory"
 fi
 
-"${PYTHON_CMD}" -m bochan.serving.webapp.tabpfn_preload "$@"
+"${PYTHON_CMD}" -m bochan.tabpfn_preload "$@"
 if [[ "${TOKEN_OPTIONAL}" == "0" ]]; then
     echo "TabPFN preload completed successfully."
 fi

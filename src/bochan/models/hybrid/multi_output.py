@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any, Optional, Sequence, Union
+from typing import Any, Optional, Sequence
 
 import torch
 from botorch.acquisition.objective import PosteriorTransform
@@ -11,9 +11,7 @@ from torch import Tensor
 from torch.nn import Module, ModuleList
 
 from .posterior import HybridPosterior
-from .specs import OutputSpec, PosteriorMode
-
-OutputIndex = Union[int, str]
+from .specs import OutputIndex, OutputSpec, PosteriorMode
 
 
 class HybridMultiOutputModel(Model):
@@ -78,535 +76,476 @@ class HybridMultiOutputModel(Model):
 
     @property
     def batch_shape(self) -> torch.Size:
-        bs = getattr(self.models[0], "batch_shape", torch.Size())
-        for m in self.models[1:]:
-            if getattr(m, "batch_shape", torch.Size()) != bs:
-                raise NotImplementedError("All submodels must have the same batch_shape.")
-        return bs
+        batch_shapes = [getattr(m, "batch_shape", torch.Size()) for m in self.models]
+        if not batch_shapes:
+            return torch.Size()
+        first = batch_shapes[0]
+        if all(shape == first for shape in batch_shapes):
+            return first
+        return torch.Size()
 
     @property
-    def raw_train_X(self) -> Tensor:
-        return self._get_raw_train_x(self.models[0])
+    def train_inputs(self) -> tuple[Tensor, ...]:
+        return self.models[0].train_inputs
 
-    @property
-    def train_X(self) -> Tensor:
-        return self.raw_train_X
-
-    @property
-    def train_inputs(self) -> tuple[Tensor]:
-        return (self.raw_train_X,)
-
-    @property
-    def train_Y(self) -> Tensor:
-        ys = []
-        for model in self.models:
-            y = self._get_train_y(model)
-            if y.ndim == 1:
-                y = y.unsqueeze(-1)
-            ys.append(y)
-        return torch.cat(ys, dim=-1)
+    @train_inputs.setter
+    def train_inputs(self, value: tuple[Tensor, ...]) -> None:
+        self._train_inputs = value
 
     @property
     def train_targets(self) -> Tensor:
-        return self.train_Y
+        targets = []
+        for model in self.models:
+            target = getattr(model, "train_targets", None)
+            if target is None:
+                raise AttributeError(
+                    f"{type(model).__name__} does not expose train_targets."
+                )
+            target = torch.as_tensor(target)
+            if target.ndim == 1:
+                target = target.unsqueeze(-1)
+            targets.append(target)
+        return torch.cat(targets, dim=-1)
 
     @staticmethod
-    def _unwrap_X(X: Union[Tensor, tuple[Tensor, ...]]) -> Tensor:
+    def _unwrap_X(X: Tensor) -> Tensor:
         return X[0] if isinstance(X, tuple) else X
-
-    @staticmethod
-    def _get_raw_train_x(model: Model) -> Tensor:
-        for name in ("raw_train_X", "train_inputs_raw", "train_inputs"):
-            if not hasattr(model, name):
-                continue
-            value = getattr(model, name)
-            if isinstance(value, tuple):
-                return value[0]
-            return value
-        raise AttributeError(
-            f"{model.__class__.__name__} has no raw_train_X / train_inputs_raw / train_inputs."
-        )
-
-    @staticmethod
-    def _get_train_y(model: Model) -> Tensor:
-        for name in ("train_Y", "train_targets"):
-            if hasattr(model, name):
-                return getattr(model, name)
-        raise AttributeError(f"{model.__class__.__name__} has no train_Y / train_targets.")
 
     def _normalize_output_indices(
         self,
-        output_indices: Optional[Union[OutputIndex, Sequence[OutputIndex], Tensor]],
+        output_indices: OutputIndex | Sequence[OutputIndex] | Tensor | None,
     ) -> list[int]:
         if output_indices is None:
             return list(range(self.num_outputs))
         if torch.is_tensor(output_indices):
-            output_indices = output_indices.detach().cpu().tolist()
-        if isinstance(output_indices, (int, str)):
+            output_indices = output_indices.detach().cpu().flatten().tolist()
+        elif isinstance(output_indices, (int, str)):
             output_indices = [output_indices]
+        else:
+            output_indices = list(output_indices)
 
-        name_to_idx = {name: i for i, name in enumerate(self.output_names)}
-        idcs = []
-        for item in output_indices:
-            if isinstance(item, str):
-                if item not in name_to_idx:
-                    raise KeyError(f"Unknown output name {item!r}. Available={self.output_names}.")
-                i = name_to_idx[item]
+        name_to_index = {spec.name: i for i, spec in enumerate(self.specs)}
+        normalized: list[int] = []
+        for index in output_indices:
+            if isinstance(index, str):
+                if index not in name_to_index:
+                    raise KeyError(
+                        f"Unknown output name {index!r}. "
+                        f"Available outputs: {list(name_to_index)}."
+                    )
+                normalized.append(name_to_index[index])
             else:
-                i = int(item)
-            if i < 0 or i >= self.num_outputs:
-                raise IndexError(f"output index {i} is out of range for num_outputs={self.num_outputs}.")
-            idcs.append(i)
-        return idcs
+                resolved = int(index)
+                if resolved < 0:
+                    resolved += self.num_outputs
+                if resolved < 0 or resolved >= self.num_outputs:
+                    raise IndexError(
+                        f"output index {index} is out of bounds for {self.num_outputs} outputs."
+                    )
+                normalized.append(resolved)
+        return normalized
+
+    def subset_output(self, idcs: list[int]) -> "HybridMultiOutputModel":
+        selected = [self.specs[i] for i in idcs]
+        return self.__class__(selected)
 
     @staticmethod
-    def _call_accessor(model: Any, names: Sequence[str], X: Tensor, **kwargs: Any):
-        last_error: Optional[Exception] = None
+    def _call_accessor(
+        model: Module,
+        names: Sequence[str],
+        X: Tensor,
+        **kwargs: Any,
+    ) -> Any:
         for name in names:
-            fn = getattr(model, name, None)
-            if not callable(fn):
-                continue
-            try:
-                return fn(X=X, **kwargs)
-            except TypeError as e1:
-                last_error = e1
+            accessor = getattr(model, name, None)
+            if callable(accessor):
                 try:
-                    return fn(X, **kwargs)
-                except TypeError as e2:
-                    last_error = e2
-                    try:
-                        return fn(X)
-                    except TypeError as e3:
-                        last_error = e3
-        if last_error is not None:
-            raise last_error
-        raise AttributeError(f"{model.__class__.__name__} has none of {tuple(names)}.")
-
-    @staticmethod
-    def _call_class_probs(fn, X: Tensor, **kwargs: Any):
-        """class_probs 系 accessor を安全に呼ぶ。
-
-        ordinal / multiclass wrapper の `class_probs` は、BoTorch posterior と違って
-        `observation_noise` や `posterior_transform` を受け取らない実装がある。
-        そのため、まず kwargs 付きで試し、失敗した場合は X のみで再試行する。
-        """
-
-        try:
-            return fn(X=X, **kwargs)
-        except TypeError as e1:
-            try:
-                return fn(X, **kwargs)
-            except TypeError:
-                try:
-                    return fn(X=X)
+                    return accessor(X, **kwargs)
                 except TypeError:
-                    try:
-                        return fn(X)
-                    except TypeError:
-                        raise e1
+                    return accessor(X)
+        raise AttributeError(
+            f"{type(model).__name__} does not expose any of {tuple(names)}."
+        )
 
     @staticmethod
-    def _posterior_mean_variance(post: Posterior, name: str) -> tuple[Tensor, Tensor]:
-        mean = getattr(post, "mean", None)
-        if mean is None:
-            raise AttributeError(f"{name} posterior has no mean.")
-        var = getattr(post, "variance", None)
-        if var is None:
-            var = torch.zeros_like(mean)
-        return mean, var
-
-    @staticmethod
-    def _reduce_extra_sample_dims(t: Tensor, X: Tensor) -> Tensor:
-        expected = max(1, X.ndim - 1)
-        while t.ndim > expected:
-            t = t.mean(dim=0)
-        return t
-
-    def _select_scalar(self, t: Tensor, X: Tensor, *, output_index: int, name: str) -> Tensor:
-        if not torch.is_tensor(t):
-            raise TypeError(f"{name} must be a Tensor. Got {type(t)}.")
-
-        if t.ndim >= X.ndim and t.shape[-1] == 1:
-            t = t.squeeze(-1)
-
-        # multi-output posterior: [..., q, m] -> [..., q]
-        if t.ndim >= X.ndim and t.shape[-2] == X.shape[-2]:
-            if output_index >= t.shape[-1]:
-                raise IndexError(
-                    f"output_index={output_index} is out of bounds for {name}.shape={tuple(t.shape)}."
-                )
-            t = t[..., output_index]
-
-        return self._reduce_extra_sample_dims(t, X)
-
-    @staticmethod
-    def _stack(values: Sequence[Tensor], name: str) -> Tensor:
-        ref = values[0].shape
-        out = []
-        for i, v in enumerate(values):
-            if v.shape != ref:
-                try:
-                    v = v.expand(ref)
-                except RuntimeError as e:
-                    raise RuntimeError(
-                        f"All {name} tensors must have same shape. "
-                        f"0={tuple(ref)}, {i}={tuple(v.shape)}."
-                    ) from e
-            out.append(v.unsqueeze(-1))
-        return torch.cat(out, dim=-1)
-
-    @staticmethod
-    def _as_1d(values: Optional[Sequence[float] | Tensor], default: Tensor, name: str) -> Tensor:
-        if values is None:
-            return default
-        out = torch.as_tensor(values, device=default.device, dtype=default.dtype)
-        if out.ndim != 1:
-            raise ValueError(f"{name} must be 1D. Got shape={tuple(out.shape)}.")
-        return out
-
-    @staticmethod
-    def _class_utility_stats(probs: Tensor, utilities: Tensor) -> tuple[Tensor, Tensor]:
-        if probs.shape[-1] != utilities.numel():
-            raise RuntimeError(
-                "Number of classes does not match utilities. "
-                f"probs={tuple(probs.shape)}, utilities={utilities.numel()}."
+    def _posterior_mean_variance(
+        posterior: Any,
+        name: str,
+    ) -> tuple[Tensor, Tensor]:
+        mean = getattr(posterior, "mean", None)
+        variance = getattr(posterior, "variance", None)
+        if mean is None or variance is None:
+            raise AttributeError(
+                f"{name} posterior must expose mean and variance."
             )
-        utilities = utilities.reshape(*([1] * (probs.ndim - 1)), utilities.numel())
-        mean = (probs * utilities).sum(dim=-1)
-        var = (probs * (utilities - mean.unsqueeze(-1)).pow(2)).sum(dim=-1)
-        return mean, var
+        return torch.as_tensor(mean), torch.as_tensor(variance)
 
     @staticmethod
-    def _ordinal_likelihood(model: Any):
-        for name in ("ordinal_likelihood", "likelihood"):
-            value = getattr(model, name, None)
-            if value is not None:
-                return value
-        raise AttributeError(f"{model.__class__.__name__} has no ordinal_likelihood / likelihood.")
+    def _select_output_tensor(
+        tensor: Tensor,
+        output_index: int,
+        *,
+        name: str,
+    ) -> Tensor:
+        if tensor.ndim == 0:
+            return tensor
+        if tensor.shape[-1] == 1:
+            return tensor.squeeze(-1)
+        if output_index >= tensor.shape[-1]:
+            raise IndexError(
+                f"output_index={output_index} is out of bounds for {name}.shape={tuple(tensor.shape)}."
+            )
+        return tensor[..., output_index]
 
     @staticmethod
-    def _ordinal_cutpoints(likelihood: Any) -> Tensor:
-        for name in (
-            "get_cutpoints",
-            "transformed_cutpoints",
-            "cutpoints",
-            "thresholds",
-            "cuts",
-            "boundaries",
-            "raw_cutpoints",
-            "_ordered_cutpoints",
-            "_cutpoints",
-        ):
-            if not hasattr(likelihood, name):
-                continue
-            value = getattr(likelihood, name)
-            if callable(value):
-                value = value()
-            if torch.is_tensor(value):
-                return value.reshape(-1)
-        raise AttributeError("Could not find ordinal cutpoints.")
+    def _call_class_probs(fn: Any, X: Tensor, **kwargs: Any) -> Tensor:
+        try:
+            return fn(X, **kwargs)
+        except TypeError:
+            return fn(X)
 
-    @staticmethod
-    def _ordinal_probs_from_latent(latent_f: Tensor, cutpoints: Tensor, eps: float = 1e-12) -> Tensor:
-        if latent_f.ndim >= 1 and latent_f.shape[-1] == 1:
-            latent_f = latent_f.squeeze(-1)
-        cutpoints = cutpoints.to(device=latent_f.device, dtype=latent_f.dtype).reshape(-1)
-        cdf = torch.sigmoid(cutpoints.view(*([1] * latent_f.ndim), -1) - latent_f.unsqueeze(-1))
-        probs = torch.cat([cdf[..., :1], cdf[..., 1:] - cdf[..., :-1], 1.0 - cdf[..., -1:]], dim=-1)
-        probs = probs.clamp_min(eps)
-        return probs / probs.sum(dim=-1, keepdim=True).clamp_min(eps)
-
-    def _objective_transform(self, mean: Tensor, var: Tensor, spec: OutputSpec) -> tuple[Tensor, Tensor]:
-        if spec.eq_target is not None:
-            mean = -torch.abs(mean - float(spec.eq_target)) * spec.weight
-            var = var * (spec.weight ** 2)
-        else:
-            mean = mean * spec.sign * spec.weight
-            var = var * (spec.weight ** 2)
-        if spec.transform is not None:
-            mean = spec.transform(mean)
-        return mean, var
-
-    def _regression_stats(self, spec: OutputSpec, X: Tensor, output_mode: PosteriorMode, **kwargs: Any):
-        names = ("latent_posterior", "posterior") if output_mode == "latent" else ("posterior",)
-        post = self._call_accessor(spec.model, names, X, **kwargs)
-        mean, var = self._posterior_mean_variance(post, spec.name)
-        mean = self._select_scalar(mean, X, output_index=spec.output_index, name=f"{spec.name}.mean")
-        var = self._select_scalar(var, X, output_index=spec.output_index, name=f"{spec.name}.variance")
-        if output_mode in ("objective", "expected_utility"):
-            mean, var = self._objective_transform(mean, var, spec)
-        return mean, var
-
-    def _binary_probability_stats(self, spec: OutputSpec, X: Tensor, **kwargs: Any):
-        post = self._call_accessor(spec.model, ("probability_posterior", "posterior"), X, **kwargs)
-        p1, var = self._posterior_mean_variance(post, spec.name)
-        p1 = self._select_scalar(p1, X, output_index=spec.output_index, name=f"{spec.name}.p1").clamp(0.0, 1.0)
-        var = self._select_scalar(var, X, output_index=spec.output_index, name=f"{spec.name}.var").clamp_min(0.0)
-        p = 1.0 - p1 if spec.positive_class == 0 else p1
-        return p, var, p1
-
-    def _binary_stats(self, spec: OutputSpec, X: Tensor, output_mode: PosteriorMode, **kwargs: Any):
+    def _regression_stats(
+        self,
+        spec: OutputSpec,
+        X: Tensor,
+        *,
+        output_mode: PosteriorMode,
+        **kwargs: Any,
+    ) -> tuple[Tensor, Tensor]:
         if output_mode == "latent":
-            post = self._call_accessor(spec.model, ("latent_posterior", "latent_posterior", "latent_posterior"), X, **kwargs)
-            mean, var = self._posterior_mean_variance(post, spec.name)
-            return (
-                self._select_scalar(mean, X, output_index=spec.output_index, name=f"{spec.name}.latent_mean"),
-                self._select_scalar(var, X, output_index=spec.output_index, name=f"{spec.name}.latent_var"),
+            posterior = self._call_accessor(
+                spec.model,
+                ("latent_posterior", "posterior"),
+                X,
+                **kwargs,
             )
-
-        p, var, p1 = self._binary_probability_stats(spec, X, **kwargs)
-        if output_mode == "probability" or spec.utility_values is None:
-            mean = p
         else:
-            utilities = self._as_1d(
-                spec.utility_values,
-                torch.tensor([0.0, 1.0], device=p1.device, dtype=p1.dtype),
-                f"{spec.name}.utility_values",
-            )
-            if utilities.numel() != 2:
-                raise ValueError("Binary utility_values must have length 2.")
-            mean, var = self._class_utility_stats(torch.stack([1.0 - p1, p1], dim=-1), utilities)
+            posterior = self._call_accessor(spec.model, ("posterior",), X, **kwargs)
+        mean, variance = self._posterior_mean_variance(posterior, spec.name)
+        mean = self._select_output_tensor(mean, spec.output_index, name=f"{spec.name}.mean")
+        variance = self._select_output_tensor(
+            variance,
+            spec.output_index,
+            name=f"{spec.name}.variance",
+        )
+        return mean, variance
 
-        if output_mode in ("objective", "expected_utility"):
-            mean, var = self._objective_transform(mean, var, spec)
-        return mean, var
+    def _binary_probability_stats(
+        self,
+        spec: OutputSpec,
+        X: Tensor,
+        **kwargs: Any,
+    ) -> tuple[Tensor, Tensor, Tensor]:
+        posterior = self._call_accessor(
+            spec.model,
+            ("probability_posterior", "posterior"),
+            X,
+            **kwargs,
+        )
+        p1, variance = self._posterior_mean_variance(posterior, spec.name)
+        p1 = self._select_output_tensor(
+            p1,
+            spec.output_index,
+            name=f"{spec.name}.probability",
+        ).clamp(0.0, 1.0)
+        variance = self._select_output_tensor(
+            variance,
+            spec.output_index,
+            name=f"{spec.name}.variance",
+        ).clamp_min(0.0)
+        p0 = 1.0 - p1
+        return p0, variance, p1
 
     def _ordinal_class_probs(self, spec: OutputSpec, X: Tensor, **kwargs: Any) -> Tensor:
         fn = getattr(spec.model, "class_probs", None)
         if callable(fn):
             probs = self._call_class_probs(fn, X, **kwargs)
             if torch.is_tensor(probs):
-                if probs.ndim >= X.ndim + 1:
-                    probs = probs.squeeze(-2) if probs.shape[-2] == 1 else probs[..., spec.output_index, :]
-                return probs.clamp_min(0.0)
-
-        post = self._call_accessor(spec.model, ("latent_posterior", "latent_posterior", "latent_posterior"), X, **kwargs)
-        latent, _ = self._posterior_mean_variance(post, spec.name)
-        latent = self._select_scalar(latent, X, output_index=spec.output_index, name=f"{spec.name}.latent")
-        cutpoints = self._ordinal_cutpoints(self._ordinal_likelihood(spec.model))
-        return self._ordinal_probs_from_latent(latent, cutpoints)
-
-    def _ordinal_stats(self, spec: OutputSpec, X: Tensor, output_mode: PosteriorMode, **kwargs: Any):
-        if output_mode == "latent":
-            post = self._call_accessor(spec.model, ("latent_posterior", "latent_posterior", "latent_posterior"), X, **kwargs)
-            mean, var = self._posterior_mean_variance(post, spec.name)
-            return (
-                self._select_scalar(mean, X, output_index=spec.output_index, name=f"{spec.name}.latent_mean"),
-                self._select_scalar(var, X, output_index=spec.output_index, name=f"{spec.name}.latent_var"),
-            )
-
-        probs = self._ordinal_class_probs(spec, X, **kwargs)
-        utilities = self._as_1d(
-            spec.utility_values,
-            torch.arange(probs.shape[-1], device=probs.device, dtype=probs.dtype),
-            f"{spec.name}.utility_values",
+                return probs
+        posterior = self._call_accessor(
+            spec.model,
+            ("probability_posterior",),
+            X,
+            **kwargs,
         )
-        mean, var = self._class_utility_stats(probs, utilities)
-        if output_mode in ("objective", "expected_utility"):
-            mean, var = self._objective_transform(mean, var, spec)
-        return mean, var
+        if torch.is_tensor(posterior):
+            return posterior
+        mean = getattr(posterior, "mean", None)
+        if mean is None:
+            raise AttributeError(
+                f"{spec.name} ordinal probability posterior must expose probabilities or mean."
+            )
+        return torch.as_tensor(mean)
 
     def _multiclass_probs(self, spec: OutputSpec, X: Tensor, **kwargs: Any) -> Tensor:
         fn = getattr(spec.model, "class_probs", None)
         if callable(fn):
             probs = self._call_class_probs(fn, X, **kwargs)
             if torch.is_tensor(probs):
-                if probs.ndim >= X.ndim + 1:
-                    probs = probs.squeeze(-2) if probs.shape[-2] == 1 else probs[..., spec.output_index, :]
-                return probs.clamp_min(0.0)
+                return probs
+        posterior = self._call_accessor(
+            spec.model,
+            ("probability_posterior", "posterior"),
+            X,
+            **kwargs,
+        )
+        probs, _ = self._posterior_mean_variance(posterior, spec.name)
+        return probs
 
-        post = self._call_accessor(spec.model, ("probability_posterior", "posterior"), X, **kwargs)
-        probs, _ = self._posterior_mean_variance(post, spec.name)
-        if probs.ndim >= X.ndim + 1:
-            probs = probs.squeeze(-2) if probs.shape[-2] == 1 else probs[..., spec.output_index, :]
-        return probs.clamp_min(0.0)
-
-    def _multiclass_stats(self, spec: OutputSpec, X: Tensor, output_mode: PosteriorMode, **kwargs: Any):
-        if output_mode == "latent":
-            post = self._call_accessor(spec.model, ("latent_posterior", "posterior"), X, **kwargs)
-            mean, var = self._posterior_mean_variance(post, spec.name)
-            return (
-                self._select_scalar(mean, X, output_index=spec.output_index, name=f"{spec.name}.latent_mean"),
-                self._select_scalar(var, X, output_index=spec.output_index, name=f"{spec.name}.latent_var"),
+    @staticmethod
+    def _utility_tensor(
+        spec: OutputSpec,
+        *,
+        num_classes: int,
+        ref: Tensor,
+    ) -> Tensor:
+        if spec.utility_values is None:
+            return torch.arange(num_classes, device=ref.device, dtype=ref.dtype)
+        utility = torch.as_tensor(
+            spec.utility_values,
+            device=ref.device,
+            dtype=ref.dtype,
+        )
+        if utility.numel() != num_classes:
+            raise ValueError(
+                f"{spec.name}.utility_values must have length {num_classes}, got {utility.numel()}."
             )
+        return utility
 
-        probs = self._multiclass_probs(spec, X, **kwargs)
-        if output_mode == "probability":
-            cls = probs.shape[-1] - 1 if spec.positive_class is None else int(spec.positive_class)
-            if cls < 0 or cls >= probs.shape[-1]:
-                raise IndexError(f"positive_class={cls} is out of range.")
-            mean = probs[..., cls]
-            var = mean * (1.0 - mean)
-        else:
-            utilities = self._as_1d(
-                spec.utility_values,
-                torch.arange(probs.shape[-1], device=probs.device, dtype=probs.dtype),
-                f"{spec.name}.utility_values",
-            )
-            mean, var = self._class_utility_stats(probs, utilities)
-
-        if output_mode in ("objective", "expected_utility"):
-            mean, var = self._objective_transform(mean, var, spec)
-        return mean, var
-
-    def _stats(self, spec: OutputSpec, X: Tensor, output_mode: PosteriorMode, **kwargs: Any):
-        if spec.task_type == "regression":
-            return self._regression_stats(spec, X, output_mode, **kwargs)
+    def _probability_stats(
+        self,
+        spec: OutputSpec,
+        X: Tensor,
+        **kwargs: Any,
+    ) -> tuple[Tensor, Tensor]:
         if spec.task_type == "binary":
-            return self._binary_stats(spec, X, output_mode, **kwargs)
+            p0, _, p1 = self._binary_probability_stats(spec, X, **kwargs)
+            positive = 1 if spec.positive_class is None else int(spec.positive_class)
+            probability = p1 if positive == 1 else p0
+            return probability, (probability * (1.0 - probability)).clamp_min(0.0)
+
         if spec.task_type == "ordinal":
-            return self._ordinal_stats(spec, X, output_mode, **kwargs)
-        if spec.task_type == "multiclass":
-            return self._multiclass_stats(spec, X, output_mode, **kwargs)
-        raise RuntimeError(f"Unsupported task_type={spec.task_type!r}.")
+            probs = self._ordinal_class_probs(spec, X, **kwargs).clamp_min(0.0)
+        elif spec.task_type == "multiclass":
+            probs = self._multiclass_probs(spec, X, **kwargs).clamp_min(0.0)
+        else:
+            raise ValueError(
+                f"output_mode='probability' is unsupported for task_type={spec.task_type!r}."
+            )
+
+        positive = (
+            int(spec.positive_class)
+            if spec.positive_class is not None
+            else int(probs.shape[-1] - 1)
+        )
+        if positive < 0 or positive >= probs.shape[-1]:
+            raise IndexError(
+                f"positive_class={positive} is out of bounds for {spec.name} with "
+                f"{probs.shape[-1]} classes."
+            )
+        probability = probs[..., positive]
+        return probability, (probability * (1.0 - probability)).clamp_min(0.0)
+
+    def _expected_utility_stats(
+        self,
+        spec: OutputSpec,
+        X: Tensor,
+        **kwargs: Any,
+    ) -> tuple[Tensor, Tensor]:
+        if spec.task_type == "binary":
+            p0, _, p1 = self._binary_probability_stats(spec, X, **kwargs)
+            probs = torch.stack([p0, p1], dim=-1)
+        elif spec.task_type == "ordinal":
+            probs = self._ordinal_class_probs(spec, X, **kwargs).clamp_min(0.0)
+        elif spec.task_type == "multiclass":
+            probs = self._multiclass_probs(spec, X, **kwargs).clamp_min(0.0)
+        else:
+            raise ValueError(
+                f"output_mode='expected_utility' is unsupported for task_type={spec.task_type!r}."
+            )
+
+        utility = self._utility_tensor(
+            spec,
+            num_classes=int(probs.shape[-1]),
+            ref=probs,
+        )
+        mean = (probs * utility).sum(dim=-1)
+        second = (probs * utility.square()).sum(dim=-1)
+        variance = (second - mean.square()).clamp_min(0.0)
+        return mean, variance
+
+    @staticmethod
+    def _objective_transform_stats(
+        spec: OutputSpec,
+        mean: Tensor,
+        variance: Tensor,
+    ) -> tuple[Tensor, Tensor]:
+        scale = float(spec.sign) * float(spec.weight)
+        if spec.eq_target is not None:
+            mean = -torch.abs(mean - float(spec.eq_target))
+            variance = variance * (float(spec.weight) ** 2)
+        else:
+            mean = mean * scale
+            variance = variance * (scale**2)
+        if spec.transform is not None:
+            mean = spec.transform(mean)
+        return mean, variance
+
+    def _output_stats(
+        self,
+        spec: OutputSpec,
+        X: Tensor,
+        *,
+        output_mode: PosteriorMode,
+        **kwargs: Any,
+    ) -> tuple[Tensor, Tensor]:
+        if output_mode == "probability":
+            return self._probability_stats(spec, X, **kwargs)
+        if output_mode == "expected_utility":
+            return self._expected_utility_stats(spec, X, **kwargs)
+
+        if spec.task_type == "regression":
+            mean, variance = self._regression_stats(
+                spec,
+                X,
+                output_mode=output_mode,
+                **kwargs,
+            )
+        elif spec.task_type == "binary":
+            p0, variance, p1 = self._binary_probability_stats(spec, X, **kwargs)
+            if output_mode == "latent":
+                posterior = self._call_accessor(
+                    spec.model,
+                    ("latent_posterior", "posterior"),
+                    X,
+                    **kwargs,
+                )
+                mean, variance = self._posterior_mean_variance(posterior, spec.name)
+                mean = self._select_output_tensor(
+                    mean,
+                    spec.output_index,
+                    name=f"{spec.name}.latent_mean",
+                )
+                variance = self._select_output_tensor(
+                    variance,
+                    spec.output_index,
+                    name=f"{spec.name}.latent_variance",
+                )
+            else:
+                positive = 1 if spec.positive_class is None else int(spec.positive_class)
+                mean = p1 if positive == 1 else p0
+        elif spec.task_type == "ordinal":
+            probs = self._ordinal_class_probs(spec, X, **kwargs).clamp_min(0.0)
+            utility = self._utility_tensor(
+                spec,
+                num_classes=int(probs.shape[-1]),
+                ref=probs,
+            )
+            mean = (probs * utility).sum(dim=-1)
+            second = (probs * utility.square()).sum(dim=-1)
+            variance = (second - mean.square()).clamp_min(0.0)
+        elif spec.task_type == "multiclass":
+            probs = self._multiclass_probs(spec, X, **kwargs).clamp_min(0.0)
+            utility = self._utility_tensor(
+                spec,
+                num_classes=int(probs.shape[-1]),
+                ref=probs,
+            )
+            mean = (probs * utility).sum(dim=-1)
+            second = (probs * utility.square()).sum(dim=-1)
+            variance = (second - mean.square()).clamp_min(0.0)
+        else:
+            raise RuntimeError(f"Unsupported task_type={spec.task_type!r}.")
+
+        if output_mode == "objective":
+            return self._objective_transform_stats(spec, mean, variance)
+        return mean, variance
 
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[Union[OutputIndex, Sequence[OutputIndex], Tensor]] = None,
-        observation_noise: Union[bool, Tensor] = False,
+        output_indices: OutputIndex | Sequence[OutputIndex] | Tensor | None = None,
+        observation_noise: bool | Tensor = False,
         posterior_transform: Optional[PosteriorTransform] = None,
         *,
         output_mode: PosteriorMode = "objective",
         **kwargs: Any,
-    ) -> HybridPosterior:
-        if output_mode not in {"objective", "mean", "latent", "probability", "expected_utility"}:
-            raise ValueError(f"Unknown output_mode={output_mode!r}.")
-
-        X = self._unwrap_X(X)
-        call_kwargs = dict(kwargs)
-        call_kwargs.setdefault("observation_noise", observation_noise)
-        call_kwargs.setdefault("posterior_transform", None)
-
-        means, variances = [], []
-        for i in self._normalize_output_indices(output_indices):
-            mean_i, var_i = self._stats(self.specs[i], X, output_mode, **call_kwargs)
-            means.append(mean_i)
-            variances.append(var_i)
-
-        post = HybridPosterior(mean=self._stack(means, "mean"), variance=self._stack(variances, "variance"))
-        return posterior_transform(post) if posterior_transform is not None else post
-
-    def objective_posterior(self, X: Tensor, output_indices=None, **kwargs: Any) -> HybridPosterior:
-        return self.posterior(X=X, output_indices=output_indices, output_mode="objective", **kwargs)
-
-    def mean_posterior(self, X: Tensor, output_indices=None, **kwargs: Any) -> HybridPosterior:
-        return self.posterior(X=X, output_indices=output_indices, output_mode="mean", **kwargs)
-
-    def latent_posterior(self, X: Tensor, output_indices=None, **kwargs: Any) -> HybridPosterior:
-        return self.posterior(X=X, output_indices=output_indices, output_mode="latent", **kwargs)
-
-    def probability_posterior(self, X: Tensor, output_indices=None, **kwargs: Any) -> HybridPosterior:
-        return self.posterior(X=X, output_indices=output_indices, output_mode="probability", **kwargs)
-
-    def expected_utility_posterior(self, X: Tensor, output_indices=None, **kwargs: Any) -> HybridPosterior:
-        return self.posterior(X=X, output_indices=output_indices, output_mode="expected_utility", **kwargs)
-
-    def objective_mean(self, X: Tensor, output_indices=None, **kwargs: Any) -> Tensor:
-        return self.objective_posterior(X=X, output_indices=output_indices, **kwargs).mean
-
-    def expected_utility(self, X: Tensor, output_indices=None, **kwargs: Any) -> Tensor:
-        return self.expected_utility_posterior(X=X, output_indices=output_indices, **kwargs).mean
-
-    def class_probs_list(self, X: Tensor, output_indices=None, **kwargs: Any) -> list[Tensor]:
-        X = self._unwrap_X(X)
-        out = []
-        for i in self._normalize_output_indices(output_indices):
-            spec = self.specs[i]
-            if spec.task_type == "binary":
-                _, _, p1 = self._binary_probability_stats(spec, X, **kwargs)
-                out.append(torch.stack([1.0 - p1, p1], dim=-1))
-            elif spec.task_type == "ordinal":
-                out.append(self._ordinal_class_probs(spec, X, **kwargs))
-            elif spec.task_type == "multiclass":
-                out.append(self._multiclass_probs(spec, X, **kwargs))
-            else:
-                raise TypeError(f"Output {spec.name!r} is regression and has no class probabilities.")
-        return out
-
-    def subset_output(self, idcs: Union[OutputIndex, Sequence[OutputIndex], Tensor]) -> Model:
-        indices = self._normalize_output_indices(idcs)
-        if len(indices) == 1:
-            return self.models[indices[0]]
-        return self.__class__([self.specs[i] for i in indices])
-
-    def fantasize(
-        self,
-        X: Tensor,
-        sampler: Any,
-        observation_noise: bool | Tensor | None = None,
-        **kwargs: Any,
-    ) -> "HybridMultiOutputModel":
-        """Fantasize each independent submodel and rebuild the hybrid wrapper.
-
-        This enables fantasy-based acquisitions such as true regression NIPV
-        when the Web workbench represents even one target through the hybrid
-        multi-output wrapper.
-        """
-        X_tensor = self._unwrap_X(X)
-        new_specs = []
-        for i, spec in enumerate(self.specs):
-            fn = getattr(spec.model, "fantasize", None)
-            if not callable(fn):
-                raise NotImplementedError(
-                    f"Submodel {i} ({spec.name!r}) has no fantasize()."
-                )
-
-            call_kwargs = dict(kwargs)
-            if observation_noise is not None:
-                noise_i = observation_noise
-                if (
-                    torch.is_tensor(observation_noise)
-                    and observation_noise.ndim > 0
-                    and observation_noise.shape[-1] == self.num_outputs
-                ):
-                    noise_i = observation_noise[..., i : i + 1]
-                call_kwargs["observation_noise"] = noise_i
-
-            model_i = fn(
-                X=X_tensor,
-                sampler=sampler,
-                **call_kwargs,
+    ) -> Posterior:
+        if observation_noise is not False:
+            raise NotImplementedError(
+                "HybridMultiOutputModel does not support observation_noise."
             )
-            new_specs.append(replace(spec, model=model_i))
+        X = self._unwrap_X(X)
+        indices = self._normalize_output_indices(output_indices)
 
-        return self.__class__(new_specs)
+        means = []
+        variances = []
+        for i in indices:
+            mean, variance = self._output_stats(
+                self.specs[i],
+                X,
+                output_mode=output_mode,
+                **kwargs,
+            )
+            means.append(mean.unsqueeze(-1))
+            variances.append(variance.unsqueeze(-1))
+
+        posterior = HybridPosterior(
+            mean=torch.cat(means, dim=-1),
+            variance=torch.cat(variances, dim=-1),
+        )
+        if posterior_transform is not None:
+            posterior = posterior_transform(posterior)
+        return posterior
 
     def condition_on_observations(
         self,
         X: Tensor,
         Y: Tensor,
-        noise: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> "HybridMultiOutputModel":
-        X_tensor = self._unwrap_X(X)
-        expected = X_tensor.shape[:-1]
-        if Y.shape == expected and self.num_outputs == 1:
-            Y = Y.unsqueeze(-1)
-        if not (Y.shape[:-1] == expected and Y.shape[-1] == self.num_outputs):
+        if Y.shape[-1] != self.num_outputs:
             raise ValueError(
-                f"Expected Y.shape == X.shape[:-1] + ({self.num_outputs},), "
-                f"got X.shape={tuple(X_tensor.shape)}, Y.shape={tuple(Y.shape)}."
+                f"Y.shape[-1] must equal num_outputs={self.num_outputs}. "
+                f"Got Y.shape={tuple(Y.shape)}."
             )
-
-        if noise is not None:
-            if noise.shape == expected and self.num_outputs == 1:
-                noise = noise.unsqueeze(-1)
-            if not (noise.shape[:-1] == expected and noise.shape[-1] == self.num_outputs):
-                raise ValueError(
-                    f"Expected noise.shape == X.shape[:-1] + ({self.num_outputs},), "
-                    f"got noise.shape={tuple(noise.shape)}."
-                )
-
         new_specs = []
         for i, spec in enumerate(self.specs):
-            fn = getattr(spec.model, "condition_on_observations", None)
-            if not callable(fn):
-                raise NotImplementedError(f"Submodel {i} ({spec.name!r}) has no condition_on_observations.")
+            model = spec.model
+            condition = getattr(model, "condition_on_observations", None)
+            if not callable(condition):
+                raise NotImplementedError(
+                    f"{type(model).__name__} does not support condition_on_observations."
+                )
             y_i = Y[..., i : i + 1]
-            noise_i = None if noise is None else noise[..., i : i + 1]
-            model_i = fn(X=X, Y=y_i, **kwargs) if noise_i is None else fn(X=X, Y=y_i, noise=noise_i, **kwargs)
-            new_specs.append(replace(spec, model=model_i))
+            try:
+                new_model = condition(X=X, Y=y_i, **kwargs)
+            except TypeError:
+                new_model = condition(X, y_i, **kwargs)
+            new_specs.append(replace(spec, model=new_model))
+        return self.__class__(new_specs)
+
+    def fantasize(
+        self,
+        X: Tensor,
+        sampler: Any,
+        observation_noise: Tensor | None = None,
+        **kwargs: Any,
+    ) -> "HybridMultiOutputModel":
+        new_specs = []
+        for spec in self.specs:
+            fantasize = getattr(spec.model, "fantasize", None)
+            if not callable(fantasize):
+                raise NotImplementedError(
+                    f"{type(spec.model).__name__} does not support fantasize."
+                )
+            new_model = fantasize(
+                X,
+                sampler=sampler,
+                observation_noise=observation_noise,
+                **kwargs,
+            )
+            new_specs.append(replace(spec, model=new_model))
         return self.__class__(new_specs)
 
 

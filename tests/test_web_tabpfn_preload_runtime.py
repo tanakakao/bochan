@@ -84,6 +84,7 @@ def test_preload_can_explicitly_allow_interactive_browser_auth(tmp_path, monkeyp
 def test_web_tabpfn_requires_preloaded_assets_and_forces_no_browser(monkeypatch) -> None:
     calls: list[bool] = []
     monkeypatch.setenv("TABPFN_NO_BROWSER", "0")
+    monkeypatch.setattr(model_runtime, "_web_request_context_active", lambda: True)
     monkeypatch.setattr(
         model_runtime,
         "require_preloaded_tabpfn_assets",
@@ -104,6 +105,7 @@ def test_web_tabpfn_requires_preloaded_assets_and_forces_no_browser(monkeypatch)
 
 
 def test_web_tabpfn_missing_assets_error_is_not_replaced_by_auth_fallback(monkeypatch) -> None:
+    monkeypatch.setattr(model_runtime, "_web_request_context_active", lambda: True)
     monkeypatch.setattr(
         model_runtime,
         "require_preloaded_tabpfn_assets",
@@ -118,8 +120,26 @@ def test_web_tabpfn_missing_assets_error_is_not_replaced_by_auth_fallback(monkey
         )
 
 
+def test_runtime_default_resolution_outside_request_does_not_require_assets(monkeypatch) -> None:
+    monkeypatch.setattr(model_runtime, "_web_request_context_active", lambda: False)
+    monkeypatch.setattr(
+        model_runtime,
+        "require_preloaded_tabpfn_assets",
+        lambda: (_ for _ in ()).throw(AssertionError("must not be called")),
+    )
+
+    kwargs = model_runtime.apply_web_model_runtime_defaults(
+        {},
+        model_type="tabpfn",
+        fit_maxiter=128,
+    )
+
+    assert kwargs["n_estimators"] == 4
+
+
 def test_injected_tabpfn_estimator_does_not_require_deployment_assets(monkeypatch) -> None:
     estimator = object()
+    monkeypatch.setattr(model_runtime, "_web_request_context_active", lambda: True)
     monkeypatch.setattr(
         model_runtime,
         "require_preloaded_tabpfn_assets",

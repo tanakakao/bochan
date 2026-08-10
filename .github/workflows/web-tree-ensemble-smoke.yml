@@ -32,6 +32,7 @@ on:
       - "tests/test_web_external_ensemble_matrix.py"
       - "tests/test_web_model_capabilities.py"
       - "tests/test_web_ngboost_runtime.py"
+      - "tests/test_web_tabpfn_diagnostics.py"
       - "tests/test_web_tabpfn_mixed.py"
       - "tests/test_web_tabpfn_models.py"
       - "tests/test_web_tree_ensemble_models.py"
@@ -60,6 +61,7 @@ jobs:
             tests/test_web_external_ensemble_matrix.py \
             tests/test_web_model_capabilities.py \
             tests/test_web_ngboost_runtime.py \
+            tests/test_web_tabpfn_diagnostics.py \
             tests/test_web_tabpfn_mixed.py \
             tests/test_web_tabpfn_models.py \
             tests/test_web_tree_ensemble_models.py \
@@ -85,6 +87,7 @@ jobs:
             tests/test_web_external_ensemble_matrix.py \
             tests/test_web_model_capabilities.py \
             tests/test_web_ngboost_runtime.py \
+            tests/test_web_tabpfn_diagnostics.py \
             tests/test_web_tabpfn_mixed.py \
             tests/test_web_tabpfn_models.py \
             tests/test_web_tree_ensemble_models.py \

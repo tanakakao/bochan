@@ -23,7 +23,9 @@ jobs:
           python-version: '3.11'
           cache: pip
       - name: Align projected model API
-        run: python scripts/agent_align_projected_api.py
+        run: |
+          python scripts/agent_fix_projected_validator.py
+          python scripts/agent_align_projected_api.py
       - name: Validate syntax and diff
         run: |
           python -m compileall -q src/bochan tests/test_model_contract_refactor.py
@@ -40,6 +42,7 @@ jobs:
       - name: Remove one-shot tooling
         run: |
           rm scripts/agent_align_projected_api.py
+          rm scripts/agent_fix_projected_validator.py
           rm .github/workflows/agent-align-projected-api.yml
       - name: Commit projected API alignment
         run: |

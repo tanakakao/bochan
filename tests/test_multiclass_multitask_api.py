@@ -35,7 +35,7 @@ def test_api_builds_multiclass_multitask_with_public_output_contract() -> None:
         outcome_transform=True,
         model_kwargs={
             "rank": 2,
-            "num_inducing_points": 6,
+            "num_inducing": 6,
         },
     )
 

@@ -196,7 +196,7 @@ class PFNPosterior(Posterior):
 class PFNRegressorModel(Model):
     """In-context PFNs4BO surrogate for continuous single-output regression."""
 
-    posterior_family = "pfn_bar"
+    latent_posterioramily = "pfn_bar"
 
     def __init__(
         self,

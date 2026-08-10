@@ -75,7 +75,7 @@ def _latent_posterior(
     return _call_accessor(
         owner,
         spec.model,
-        ("latent_posterior", "posterior_latent", "posterior_f"),
+        ("latent_posterior", "latent_posterior", "latent_posterior"),
         X,
         **kwargs,
     )

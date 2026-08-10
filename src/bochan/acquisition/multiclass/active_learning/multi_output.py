@@ -240,7 +240,7 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
     def _has_explicit_multi_output(self) -> bool:
         return callable(getattr(self.model, "class_probs_list", None)) or len(self._submodels()) > 0
 
-    def _posterior_for_submodel(self, submodel, X: Tensor):
+    def _latent_posterioror_submodel(self, submodel, X: Tensor):
         class_probs = getattr(submodel, "class_probs", None)
         if callable(class_probs):
             return _TensorProbabilityPosterior(class_probs(X), eps=self.eps)
@@ -265,7 +265,7 @@ class _DirectMultiOutputMulticlassAcqBase(AcquisitionFunction):
         submodels = self._submodels()
         if len(submodels) > 0:
             return _StackedMulticlassPosterior(
-                [self._posterior_for_submodel(submodel, X) for submodel in submodels],
+                [self._latent_posterioror_submodel(submodel, X) for submodel in submodels],
                 eps=self.eps,
             )
         class_probs = getattr(self.model, "class_probs", None)

@@ -115,7 +115,7 @@ class TabPFNRegressorModel(_ExternalRegressorMixin, Model):
     predictive distribution itself is Gaussian or jointly independent.
     """
 
-    posterior_family = "tabpfn_bar"
+    latent_posterioramily = "tabpfn_bar"
 
     def __init__(
         self,

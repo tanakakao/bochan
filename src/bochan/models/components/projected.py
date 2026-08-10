@@ -144,17 +144,8 @@ class _BaseProjectedModel(Model):
         return self._train_targets
 
     @property
-    def raw_train_X(self) -> Tensor:
-        return self.train_input_raw
-
     @property
-    def train_X(self) -> Tensor:
-        return self.train_input_raw
-
     @property
-    def train_Y(self) -> Tensor:
-        return self.train_targets
-
     def _to_preprojection_space(self, X: Tensor) -> Tensor:
         if isinstance(X, tuple):
             X = X[0]

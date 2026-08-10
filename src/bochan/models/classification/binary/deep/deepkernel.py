@@ -567,13 +567,6 @@ class _BaseDeepKernelBinaryClassificationModel(ApproximateGPyTorchModel):
 
         return posterior
 
-    def posterior_latent(self, X, **kwargs):
-        return self.latent_posterior(X, **kwargs)
-
-    def posterior_f(self, X, **kwargs):
-        return self.latent_posterior(X, **kwargs)
-
-
 class DeepKernelBinaryClassificationGPModel(_BaseDeepKernelBinaryClassificationModel):
     """連続入力向け DeepKernel binary classification model。"""
 

@@ -347,7 +347,7 @@ class HybridMultiOutputModel(Model):
 
     def _binary_stats(self, spec: OutputSpec, X: Tensor, output_mode: PosteriorMode, **kwargs: Any):
         if output_mode == "latent":
-            post = self._call_accessor(spec.model, ("latent_posterior", "posterior_latent", "posterior_f"), X, **kwargs)
+            post = self._call_accessor(spec.model, ("latent_posterior", "latent_posterior", "latent_posterior"), X, **kwargs)
             mean, var = self._posterior_mean_variance(post, spec.name)
             return (
                 self._select_scalar(mean, X, output_index=spec.output_index, name=f"{spec.name}.latent_mean"),
@@ -380,7 +380,7 @@ class HybridMultiOutputModel(Model):
                     probs = probs.squeeze(-2) if probs.shape[-2] == 1 else probs[..., spec.output_index, :]
                 return probs.clamp_min(0.0)
 
-        post = self._call_accessor(spec.model, ("latent_posterior", "posterior_latent", "posterior_f"), X, **kwargs)
+        post = self._call_accessor(spec.model, ("latent_posterior", "latent_posterior", "latent_posterior"), X, **kwargs)
         latent, _ = self._posterior_mean_variance(post, spec.name)
         latent = self._select_scalar(latent, X, output_index=spec.output_index, name=f"{spec.name}.latent")
         cutpoints = self._ordinal_cutpoints(self._ordinal_likelihood(spec.model))
@@ -388,7 +388,7 @@ class HybridMultiOutputModel(Model):
 
     def _ordinal_stats(self, spec: OutputSpec, X: Tensor, output_mode: PosteriorMode, **kwargs: Any):
         if output_mode == "latent":
-            post = self._call_accessor(spec.model, ("latent_posterior", "posterior_latent", "posterior_f"), X, **kwargs)
+            post = self._call_accessor(spec.model, ("latent_posterior", "latent_posterior", "latent_posterior"), X, **kwargs)
             mean, var = self._posterior_mean_variance(post, spec.name)
             return (
                 self._select_scalar(mean, X, output_index=spec.output_index, name=f"{spec.name}.latent_mean"),
@@ -423,7 +423,7 @@ class HybridMultiOutputModel(Model):
 
     def _multiclass_stats(self, spec: OutputSpec, X: Tensor, output_mode: PosteriorMode, **kwargs: Any):
         if output_mode == "latent":
-            post = self._call_accessor(spec.model, ("latent_posterior", "posterior_latent", "posterior_f", "posterior"), X, **kwargs)
+            post = self._call_accessor(spec.model, ("latent_posterior", "posterior"), X, **kwargs)
             mean, var = self._posterior_mean_variance(post, spec.name)
             return (
                 self._select_scalar(mean, X, output_index=spec.output_index, name=f"{spec.name}.latent_mean"),

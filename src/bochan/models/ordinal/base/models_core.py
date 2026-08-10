@@ -547,35 +547,8 @@ class _BaseOrdinalGPModel(ApproximateGPyTorchModel):
         return self.train_inputs[0]
 
     @property
-    def train_X(self) -> Tensor:
-        """
-        Backward-supported alias.
-
-        Removed:
-            Use train_input_raw or train_inputs_raw[0] instead.
-        """
-        return self.train_input_raw
-
     @property
-    def train_Y(self) -> Tensor:
-        """
-        Backward-supported alias.
-
-        Removed:
-            Use train_targets instead.
-        """
-        return self.train_targets
-
     @property
-    def inducing_points_original(self) -> Tensor:
-        """
-        Backward-supported alias.
-
-        Removed:
-            Use inducing_points_raw instead.
-        """
-        return self.inducing_points_raw
-
     @property
     def ordinal_likelihood(self) -> OrdinalLogitLikelihood:
         return self.likelihood

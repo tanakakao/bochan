@@ -183,12 +183,6 @@ class _BaseProjectedClassificationGP(_BaseProjectedModel):
             post = posterior_transform(post)
         return post
 
-    def posterior_latent(self, X: Tensor, **kwargs: Any) -> Any:
-        return self.latent_posterior(X, **kwargs)
-
-    def posterior_f(self, X: Tensor, **kwargs: Any) -> Any:
-        return self.latent_posterior(X, **kwargs)
-
     def predict_proba(self, X: Tensor) -> Tensor:
         """p(y=1|x) を返す。"""
         if hasattr(self.base_model, "predict_proba"):
@@ -518,12 +512,6 @@ class _BaseProjectedMixedClassificationGP(_BaseProjectedMixedModel):
         if posterior_transform is not None:
             post = posterior_transform(post)
         return post
-
-    def posterior_latent(self, X: Tensor, **kwargs: Any) -> Any:
-        return self.latent_posterior(X, **kwargs)
-
-    def posterior_f(self, X: Tensor, **kwargs: Any) -> Any:
-        return self.latent_posterior(X, **kwargs)
 
     def predict_proba(self, X: Tensor) -> Tensor:
         if hasattr(self.base_model, "predict_proba"):

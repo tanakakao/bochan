@@ -205,12 +205,6 @@ class _OutlierRRPBinaryClassificationBase(ApproximateGPyTorchModel):
     def predict_proba(self, X: Tensor) -> Tensor:
         return self.posterior(X).mean
 
-    def posterior_latent(self, X: Tensor, **kwargs: Any) -> GPyTorchPosterior:
-        return self.latent_posterior(X, **kwargs)
-
-    def posterior_f(self, X: Tensor, **kwargs: Any) -> GPyTorchPosterior:
-        return self.latent_posterior(X, **kwargs)
-
     def make_mll(self, beta: float = 1.0) -> VariationalELBO:
         """この wrapper 用の VariationalELBO を返す。"""
         return _RRPVariationalELBO(

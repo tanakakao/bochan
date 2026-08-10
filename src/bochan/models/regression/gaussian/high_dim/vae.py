@@ -145,10 +145,6 @@ class VAEGaussianGPModel(Model):
         return self._raw_train_X
 
     @property
-    def raw_train_X(self) -> Tensor:
-        """Backward-supported raw training input alias."""
-        return self.train_input_raw
-
     @property
     def train_inputs(self) -> tuple[Tensor]:
         """Return raw-space training inputs in BoTorch tuple form."""
@@ -160,20 +156,12 @@ class VAEGaussianGPModel(Model):
         return (self.train_input_raw,)
 
     @property
-    def train_X(self) -> Tensor:
-        """Return raw-space training inputs."""
-        return self.train_input_raw
-
     @property
     def train_targets(self) -> Tensor:
         """Return original-scale training targets."""
         return self._train_targets
 
     @property
-    def train_Y(self) -> Tensor:
-        """Return original-scale training targets."""
-        return self.train_targets
-
     @property
     def preproject_train_input(self) -> Tensor:
         """Return input-transform output used by the VAE."""

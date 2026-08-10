@@ -274,7 +274,7 @@ model = KroneckerMultiTaskOrdinalGPModel(
     num_classes=num_classes,
     rank=2,
     input_transform=Normalize(d=train_X.shape[-1], bounds=bounds),
-    num_inducing_points=32,
+    num_inducing=32,
 )
 
 # block-design用ELBOを使うため、model.make_mll()を使用

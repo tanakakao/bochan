@@ -25,7 +25,7 @@ Notes:
     - ``forward`` は変分学習用の latent distribution を返す。
     - ``posterior`` は latent 正規分布ではなく、クラス 1 確率を返す。
     - latent 関数上で定義された獲得関数を使う場合は、
-      ``latent_posterior`` / ``posterior_f`` を使う。
+      ``latent_posterior`` / ``latent_posterior`` を使う。
 """
 
 from __future__ import annotations
@@ -365,12 +365,6 @@ class _BaseDeepGPBinaryClassificationModel(DeepGP, GPyTorchModel):
             posterior = posterior_transform(posterior)
         return posterior
 
-    def posterior_latent(self, X, **kwargs):
-        return self.latent_posterior(X, **kwargs)
-
-    def posterior_f(self, X, **kwargs):
-        return self.latent_posterior(X, **kwargs)
-
     def predict_proba(self, X: Tensor) -> Tensor:
         """クラス 1 確率を予測する。
 
@@ -474,7 +468,7 @@ class DeepBinaryClassificationGPModel(_BaseDeepGPBinaryClassificationModel):
     latent DeepGP と ``BernoulliLikelihood`` を組み合わせたモデルです。
     公開 ``posterior`` メソッドは、``SimpleBernoulliPosterior`` として
     クラス 1 確率を返します。latent GP posterior は
-    ``latent_posterior``、``posterior_latent``、または ``posterior_f`` から取得できます。
+    ``latent_posterior``、``latent_posterior``、または ``latent_posterior`` から取得できます。
 
     Args:
         train_X: raw-space の学習入力。形状は ``batch_shape x n x d`` または ``n x d``。

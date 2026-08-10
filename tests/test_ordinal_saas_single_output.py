@@ -175,7 +175,7 @@ def create_ordinal_saas_model_bundle(
             num_classes=NUM_CLASSES,
             cat_dims=cat_dims,
             input_transform=input_transform,
-            num_inducing_points=8,
+            num_inducing=8,
         )
     else:
         model = SaasOrdinalGPModel(
@@ -183,7 +183,7 @@ def create_ordinal_saas_model_bundle(
             train_Y=train_y,
             num_classes=NUM_CLASSES,
             input_transform=input_transform,
-            num_inducing_points=8,
+            num_inducing=8,
         )
 
     _fit_saas_ordinal_model(model, num_epochs=num_epochs, lr=0.03)

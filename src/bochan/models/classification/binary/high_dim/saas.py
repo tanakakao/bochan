@@ -335,12 +335,6 @@ class SaasBinaryClassificationMixedGPModel(OneHotEncodingMixin, SaasBinaryClassi
 
         return post
 
-    def posterior_latent(self, X: Tensor, **kwargs: Any) -> Any:
-        return self.latent_posterior(X, **kwargs)
-
-    def posterior_f(self, X: Tensor, **kwargs: Any) -> Any:
-        return self.latent_posterior(X, **kwargs)
-
     def forward(self, X: Tensor, apply_input_transform: bool = True):
         if isinstance(X, tuple):
             X = X[0]

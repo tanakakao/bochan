@@ -78,19 +78,8 @@ class MultiOutputOrdinalModel(Model):
     # train_inputs / train_targets handling
     # ---------------------------------------------------------------------
     @staticmethod
+    @staticmethod
     def _get_submodel_train_input_raw(model: Model) -> Tensor:
-        """
-        Get raw-space training input from a submodel.
-
-        Priority:
-            1. model.train_input_raw
-            2. model.train_inputs_raw[0]
-            3. model.train_X
-            4. model.train_inputs[0]
-        """
-        if hasattr(model, "train_input_raw"):
-            return model.train_input_raw
-
         if hasattr(model, "train_inputs_raw"):
             train_inputs_raw = model.train_inputs_raw
             if not isinstance(train_inputs_raw, tuple):
@@ -99,10 +88,8 @@ class MultiOutputOrdinalModel(Model):
                     f"Got {type(train_inputs_raw).__name__}."
                 )
             return train_inputs_raw[0]
-
-        if hasattr(model, "train_X"):
-            return model.train_X
-
+        if hasattr(model, "train_input_raw"):
+            return model.train_input_raw
         if hasattr(model, "train_inputs"):
             train_inputs = model.train_inputs
             if not isinstance(train_inputs, tuple):
@@ -111,10 +98,8 @@ class MultiOutputOrdinalModel(Model):
                     f"Got {type(train_inputs).__name__}."
                 )
             return train_inputs[0]
-
         raise AttributeError(
-            "Submodel does not have train_input_raw, train_inputs_raw, "
-            "train_X, or train_inputs."
+            "Submodel must expose train_inputs_raw, train_input_raw, or train_inputs."
         )
 
     @staticmethod
@@ -142,21 +127,11 @@ class MultiOutputOrdinalModel(Model):
         return MultiOutputOrdinalModel._get_submodel_train_input_raw(model)
 
     @staticmethod
+    @staticmethod
     def _get_submodel_train_targets(model: Model) -> Tensor:
-        """
-        Get training targets from a submodel.
-
-        Priority:
-            1. model.train_targets
-            2. model.train_Y
-        """
-        if hasattr(model, "train_targets"):
-            return model.train_targets
-
-        if hasattr(model, "train_Y"):
-            return model.train_Y
-
-        raise AttributeError("Submodel does not have train_targets or train_Y.")
+        if not hasattr(model, "train_targets"):
+            raise AttributeError("Submodel must expose train_targets.")
+        return model.train_targets
 
     def _validate_same_train_inputs(self) -> None:
         """
@@ -281,39 +256,9 @@ class MultiOutputOrdinalModel(Model):
 
         return torch.cat(ys, dim=-1)
 
-    # ---------------------------------------------------------------------
-    # Backward-supported aliases
-    # ---------------------------------------------------------------------
     @property
-    def train_X(self) -> Tensor:
-        """
-        Backward-supported alias.
-
-        Removed:
-            Use train_input_raw or train_inputs_raw[0] instead.
-        """
-        return self.train_input_raw
-
     @property
-    def raw_train_X(self) -> Tensor:
-        """
-        Backward-supported alias.
-
-        Removed:
-            Use train_input_raw instead.
-        """
-        return self.train_input_raw
-
     @property
-    def train_Y(self) -> Tensor:
-        """
-        Backward-supported alias.
-
-        Removed:
-            Use train_targets instead.
-        """
-        return self.train_targets
-
     @property
     def num_classes_list(self) -> list[int]:
         return [int(m.num_classes) for m in self.models]

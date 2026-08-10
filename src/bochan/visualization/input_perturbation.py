@@ -110,13 +110,13 @@ def _hybrid_display_prediction_mean_std(
 
     model = get_model(obj)
     specs = list(getattr(model, "specs", []) or [])
-    posterior_fn = getattr(model, "posterior", None)
-    if not specs or not callable(posterior_fn):
+    latent_posteriorn = getattr(model, "posterior", None)
+    if not specs or not callable(latent_posteriorn):
         return None
 
     X_t = to_tensor_like(X, obj)
     try:
-        posterior = posterior_fn(X_t, output_mode="mean")
+        posterior = latent_posteriorn(X_t, output_mode="mean")
     except TypeError:
         return None
 

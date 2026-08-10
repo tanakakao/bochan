@@ -387,7 +387,7 @@ class _MultiOutputBinaryClassificationAcqBase(AcquisitionFunction):
         if hasattr(self.model, "models"):
             posts = []
             for submodel in self.model.models:
-                for name in ("latent_posterior", "posterior_latent", "posterior_f"):
+                for name in ("latent_posterior", "latent_posterior", "latent_posterior"):
                     sub_fn = getattr(submodel, name, None)
                     if callable(sub_fn):
                         posts.append(sub_fn(X))

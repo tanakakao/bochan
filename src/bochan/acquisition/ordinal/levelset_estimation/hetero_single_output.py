@@ -989,7 +989,7 @@ class _BaseHeteroOrdinalLevelSetAcquisition(AcquisitionFunction):
         return out
 
     def _get_latent_posterior(self, X: Tensor):
-        for name in ("latent_posterior", "posterior_latent", "posterior_f"):
+        for name in ("latent_posterior", "latent_posterior", "latent_posterior"):
             fn = getattr(self.model, name, None)
             if callable(fn):
                 return fn(X)

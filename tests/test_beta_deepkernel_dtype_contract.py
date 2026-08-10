@@ -58,7 +58,7 @@ def test_deepkernel_beta_default_modules_match_training_dtype(dtype: torch.dtype
     model = DeepKernelBetaGPModel(
         train_X=train_x,
         train_Y=train_y,
-        num_inducing_points=6,
+        num_inducing=6,
     )
     model.eval()
     model.likelihood.eval()
@@ -88,7 +88,7 @@ def test_deepkernel_beta_mixed_default_modules_match_training_dtype(dtype: torch
         train_X=train_x,
         train_Y=train_y,
         cat_dims=[2],
-        num_inducing_points=6,
+        num_inducing=6,
     )
     model.eval()
     model.likelihood.eval()
@@ -128,7 +128,7 @@ def test_deepkernel_beta_moves_custom_modules_before_first_forward() -> None:
         feature_extractor=feature_extractor,
         mean_module=mean_module,
         covar_module=covar_module,
-        num_inducing_points=6,
+        num_inducing=6,
     )
 
     assert model.model.feature_extractor is feature_extractor
@@ -152,7 +152,7 @@ def test_deepkernel_beta_mixed_moves_custom_extractor_to_double() -> None:
         train_Y=train_y,
         cat_dims=[2],
         feature_extractor=feature_extractor,
-        num_inducing_points=6,
+        num_inducing=6,
     )
 
     assert model.model.feature_extractor is feature_extractor
@@ -174,7 +174,7 @@ def test_regression_active_learning_accepts_double_beta_deepkernel(
     model = DeepKernelBetaGPModel(
         train_X=train_x,
         train_Y=train_y,
-        num_inducing_points=6,
+        num_inducing=6,
     )
     model.eval()
     model.likelihood.eval()

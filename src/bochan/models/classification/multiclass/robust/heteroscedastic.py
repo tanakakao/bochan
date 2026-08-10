@@ -435,7 +435,7 @@ class HeteroscedasticMulticlassClassificationGPModel(_HeteroscedasticMulticlassM
         *,
         num_classes: Optional[int] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         temperature: float = 1.0,
         aux_lr: float = 0.01,
         aux_num_epochs: int = 300,
@@ -457,7 +457,7 @@ class HeteroscedasticMulticlassClassificationGPModel(_HeteroscedasticMulticlassM
                 train_Y=train_Y,
                 num_classes=num_classes,
                 input_transform=noise_tf,
-                num_inducing_points=num_inducing_points,
+                num_inducing=num_inducing,
                 temperature=temperature,
             )
             _fit_variational_multiclass_mll(
@@ -483,7 +483,7 @@ class HeteroscedasticMulticlassClassificationGPModel(_HeteroscedasticMulticlassM
             train_Y=train_Y,
             num_classes=num_classes,
             input_transform=input_transform,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             temperature=temperature,
         )
         self.noise_model = noise_model
@@ -502,7 +502,7 @@ class HeteroscedasticMulticlassClassificationMixedGPModel(_HeteroscedasticMultic
         cat_dims: Sequence[int],
         num_classes: Optional[int] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         temperature: float = 1.0,
         aux_lr: float = 0.01,
         aux_num_epochs: int = 300,
@@ -525,7 +525,7 @@ class HeteroscedasticMulticlassClassificationMixedGPModel(_HeteroscedasticMultic
                 cat_dims=cat_dims,
                 num_classes=num_classes,
                 input_transform=noise_tf,
-                num_inducing_points=num_inducing_points,
+                num_inducing=num_inducing,
                 temperature=temperature,
             )
             _fit_variational_multiclass_mll(
@@ -552,7 +552,7 @@ class HeteroscedasticMulticlassClassificationMixedGPModel(_HeteroscedasticMultic
             cat_dims=cat_dims,
             num_classes=num_classes,
             input_transform=input_transform,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             temperature=temperature,
         )
         self.noise_model = noise_model

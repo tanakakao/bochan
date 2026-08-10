@@ -46,7 +46,7 @@ class MultiTaskBinaryClassificationMixedGPModel(MultiTaskBinaryClassificationGPM
         mean_module: Optional[Mean] = None,
         data_covar_module: Optional[Kernel] = None,
         task_covar_module: Optional[IndexKernel] = None,
-        num_inducing_points: int = 20,
+        num_inducing: int = 20,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
     ) -> None:
@@ -82,7 +82,7 @@ class MultiTaskBinaryClassificationMixedGPModel(MultiTaskBinaryClassificationGPM
             mean_module=mean_module,
             data_covar_module=data_covar_module,
             task_covar_module=task_covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
         )
@@ -165,7 +165,7 @@ class MultiTaskBinaryClassificationMixedGPModel(MultiTaskBinaryClassificationGPM
             mean_module=deepcopy(self.model.mean_module),
             data_covar_module=deepcopy(self.model.data_covar_module),
             task_covar_module=deepcopy(self.model.task_covar_module),
-            num_inducing_points=inducing_points.shape[-2],
+            num_inducing=inducing_points.shape[-2],
             inducing_points=inducing_points,
             learn_inducing_locations=getattr(
                 self.model.variational_strategy,

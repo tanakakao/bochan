@@ -69,7 +69,7 @@ def test_gamma_fantasize_returns_finite_batched_posterior(is_mixed):
             train_X,
             train_Y,
             cat_dims=[1],
-            num_inducing_points=4,
+            num_inducing=4,
         )
         candidate = torch.tensor(
             [
@@ -87,7 +87,7 @@ def test_gamma_fantasize_returns_finite_batched_posterior(is_mixed):
         model = GammaGPModel(
             train_X,
             train_Y,
-            num_inducing_points=4,
+            num_inducing=4,
         )
         candidate = torch.tensor(
             [
@@ -123,7 +123,7 @@ def test_gamma_nipv_uses_fantasy_model_and_is_differentiable():
     model = GammaGPModel(
         train_X,
         train_Y,
-        num_inducing_points=4,
+        num_inducing=4,
     )
     model.eval()
     model.likelihood.eval()
@@ -180,7 +180,7 @@ def test_heteroscedastic_gamma_registers_noise_model_after_parent_init(monkeypat
         train_X=train_X,
         train_Y=train_Y,
         train_Yvar=train_Yvar,
-        num_inducing_points=3,
+        num_inducing=3,
     )
 
     assert model.noise_model is noise_model
@@ -211,7 +211,7 @@ def test_heteroscedastic_gamma_mixed_registers_noise_model_after_parent_init(mon
         train_X=train_X,
         train_Y=train_Y,
         cat_dims=[1],
-        num_inducing_points=3,
+        num_inducing=3,
     )
 
     assert model.noise_model is noise_model

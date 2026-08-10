@@ -155,7 +155,7 @@ class HeteroscedasticBinaryClassificationGPModel(
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 20,
+        num_inducing: int = 20,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         aux_lr: float = 0.01,
@@ -190,7 +190,7 @@ class HeteroscedasticBinaryClassificationGPModel(
                 input_transform=clone_input_transform(noise_tf),
                 mean_module=copy.deepcopy(mean_module),
                 covar_module=copy.deepcopy(covar_module),
-                num_inducing_points=num_inducing_points,
+                num_inducing=num_inducing,
                 inducing_points=inducing_points,
                 learn_inducing_locations=learn_inducing_locations,
             )
@@ -231,7 +231,7 @@ class HeteroscedasticBinaryClassificationGPModel(
             input_transform=input_transform,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
         )
@@ -246,7 +246,7 @@ class HeteroscedasticBinaryClassificationGPModel(
             "input_transform": clone_input_transform(input_transform),
             "mean_module": copy.deepcopy(mean_module),
             "covar_module": copy.deepcopy(covar_module),
-            "num_inducing_points": int(num_inducing_points),
+            "num_inducing_points": int(num_inducing),
             "inducing_points": None,
             "learn_inducing_locations": bool(learn_inducing_locations),
             "aux_lr": float(aux_lr),
@@ -322,7 +322,7 @@ class HeteroscedasticBinaryClassificationMixedGPModel(
         cont_kernel_factory: Optional[
             Callable[[torch.Size, int, Optional[List[int]]], Kernel]
         ] = None,
-        num_inducing_points: int = 20,
+        num_inducing: int = 20,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         aux_lr: float = 0.01,
@@ -374,7 +374,7 @@ class HeteroscedasticBinaryClassificationMixedGPModel(
                 mean_module=copy.deepcopy(mean_module),
                 covar_module=copy.deepcopy(covar_module),
                 cont_kernel_factory=cont_kernel_factory,
-                num_inducing_points=num_inducing_points,
+                num_inducing=num_inducing,
                 inducing_points=inducing_points,
                 learn_inducing_locations=learn_inducing_locations,
             )
@@ -418,7 +418,7 @@ class HeteroscedasticBinaryClassificationMixedGPModel(
             mean_module=mean_module,
             covar_module=covar_module,
             cont_kernel_factory=cont_kernel_factory,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
         )
@@ -435,7 +435,7 @@ class HeteroscedasticBinaryClassificationMixedGPModel(
             "mean_module": copy.deepcopy(mean_module),
             "covar_module": copy.deepcopy(covar_module),
             "cont_kernel_factory": cont_kernel_factory,
-            "num_inducing_points": int(num_inducing_points),
+            "num_inducing_points": int(num_inducing),
             "inducing_points": None,
             "learn_inducing_locations": bool(learn_inducing_locations),
             "aux_lr": float(aux_lr),

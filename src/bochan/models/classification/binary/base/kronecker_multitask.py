@@ -55,7 +55,7 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
         input_transform: InputTransform | None = None,
         mean_module: Mean | None = None,
         data_covar_module: Kernel | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
     ) -> None:
@@ -80,7 +80,7 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
 
         raw_inducing_points = canonicalize_shared_inducing_points(
             raw_train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
         inducing_points_tf = self._transform_for_training(
@@ -92,7 +92,7 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
             train_X=train_X_tf,
             train_Y=train_Y,
             rank=rank,
-            num_inducing_points=inducing_points_tf.shape[-2],
+            num_inducing=inducing_points_tf.shape[-2],
             inducing_points=inducing_points_tf,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
@@ -118,7 +118,7 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
         self.inducing_points = inducing_points_tf
         self.num_tasks = int(train_Y.shape[-1])
         self.rank = int(latent_model.rank)
-        self.num_inducing_points = int(inducing_points_tf.shape[-2])
+        self.num_inducing = int(inducing_points_tf.shape[-2])
         self.learn_inducing_locations = bool(learn_inducing_locations)
 
         self.to(device=raw_train_X.device, dtype=raw_train_X.dtype)
@@ -424,7 +424,7 @@ class KroneckerMultiTaskBinaryClassificationGPModel(
             input_transform=copy.deepcopy(self.input_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             data_covar_module=copy.deepcopy(self.model.data_covar_module),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=self.inducing_points_raw.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
         )

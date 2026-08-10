@@ -37,7 +37,7 @@ def test_kronecker_multitask_multiclass_shapes_probabilities_and_elbo():
         train_Y=train_Y,
         num_classes=3,
         rank=2,
-        num_inducing_points=4,
+        num_inducing=4,
     )
 
     posterior = model.posterior(train_X[:2])
@@ -80,7 +80,7 @@ def test_kronecker_multitask_multiclass_t_batch_and_sampling_shapes():
         train_Y=train_Y,
         num_classes=3,
         rank=2,
-        num_inducing_points=4,
+        num_inducing=4,
     )
 
     test_X = train_X[:2].unsqueeze(0).expand(4, 2, 1)
@@ -103,7 +103,7 @@ def test_kronecker_multitask_multiclass_helpers_and_conditioning():
         train_Y=train_Y,
         num_classes=3,
         rank=1,
-        num_inducing_points=4,
+        num_inducing=4,
     )
 
     probabilities_list = model.class_probs_list(train_X[:2])

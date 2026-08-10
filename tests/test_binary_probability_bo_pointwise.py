@@ -27,7 +27,7 @@ def _make_model() -> BinaryClassificationGPModel:
     return BinaryClassificationGPModel(
         train_X=train_X,
         train_Y=train_Y,
-        num_inducing_points=12,
+        num_inducing=12,
     )
 
 
@@ -247,7 +247,7 @@ def test_input_perturbation_penalties_keep_original_q_shape() -> None:
         train_Y=train_Y,
         cat_dims=[2],
         input_transform=input_transform,
-        num_inducing_points=12,
+        num_inducing=12,
     )
 
     X = torch.tensor(
@@ -300,7 +300,7 @@ def test_zero_weight_penalties_do_not_expand_pointwise_score() -> None:
         train_X=train_X,
         train_Y=train_Y,
         input_transform=input_transform,
-        num_inducing_points=12,
+        num_inducing=12,
     )
     acqf = qBinaryExpectedImprovement(
         model=model,

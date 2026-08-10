@@ -319,3 +319,35 @@ def test_projected_preprojection_transform_is_a_method() -> None:
         isinstance(decorator, ast.Name) and decorator.id == "property"
         for decorator in method.decorator_list
     )
+
+
+def test_model_constructors_use_num_inducing() -> None:
+    offenders: list[tuple[str, str]] = []
+    checked = 0
+    for path in MODELS_ROOT.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for class_node in [node for node in tree.body if isinstance(node, ast.ClassDef)]:
+            init = next(
+                (
+                    node
+                    for node in class_node.body
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and node.name == "__init__"
+                ),
+                None,
+            )
+            if init is None:
+                continue
+            args = _function_arg_names(init)
+            if "num_inducing" in args:
+                checked += 1
+            if "num_inducing_points" in args:
+                offenders.append((str(path.relative_to(REPO_ROOT)), class_node.name))
+    assert checked > 0
+    assert not offenders
+
+
+def test_binary_conditioning_annotation_uses_canonical_name() -> None:
+    path = MODELS_ROOT / "classification" / "binary" / "base" / "models.py"
+    source = path.read_text(encoding="utf-8")
+    assert '"GPClassificationModel"' not in source

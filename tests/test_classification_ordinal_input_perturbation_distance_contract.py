@@ -57,7 +57,7 @@ def _binary_model() -> BinaryClassificationGPModel:
     model = BinaryClassificationGPModel(
         train_X=train_x,
         train_Y=train_y,
-        num_inducing_points=6,
+        num_inducing=6,
         input_transform=_input_transform(train_x),
     )
     model.eval()
@@ -72,7 +72,7 @@ def _multiclass_model() -> MulticlassClassificationGPModel:
         train_X=train_x,
         train_Y=train_y,
         num_classes=3,
-        num_inducing_points=6,
+        num_inducing=6,
         input_transform=_input_transform(train_x),
     )
     model.eval()

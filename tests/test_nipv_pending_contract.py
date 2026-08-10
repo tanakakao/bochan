@@ -50,7 +50,7 @@ def _gamma_model(offset: float = 0.0) -> GammaGPModel:
     model = GammaGPModel(
         train_x,
         train_y,
-        num_inducing_points=3,
+        num_inducing=3,
     )
     model.eval()
     model.likelihood.eval()

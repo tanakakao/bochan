@@ -136,7 +136,7 @@ class _BaseProjectedClassificationGP(_BaseProjectedModel):
             input_transform=None,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing_points,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
         )
@@ -282,7 +282,7 @@ class PCABinaryClassificationGPModel(_BaseProjectedClassificationGP):
         input_transform: InputTransform | None = None,
         mean_module: Any | None = None,
         covar_module: Any | None = None,
-        num_inducing_points: int = 20,
+        num_inducing: int = 20,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         pca_config: Optional[PCAConfig] = None,
@@ -303,7 +303,7 @@ class PCABinaryClassificationGPModel(_BaseProjectedClassificationGP):
         if fitted_pca is None:
             self.pca.fit(self.preproject_train_input)
         self._projected_train_X = self._project_preprojected_inputs(self.preproject_train_input).detach().clone()
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.base_model = base_model or self._build_base_model(
             projected_train_X=self.projected_train_input,
@@ -312,7 +312,7 @@ class PCABinaryClassificationGPModel(_BaseProjectedClassificationGP):
             likelihood=likelihood,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=self.num_inducing_points,
+            num_inducing_points=self.num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=self.learn_inducing_locations,
         )
@@ -329,7 +329,7 @@ class PCABinaryClassificationGPModel(_BaseProjectedClassificationGP):
             input_transform=_clone_input_transform(self.input_transform),
             mean_module=copy.deepcopy(getattr(getattr(self.base_model, "model", None), "mean_module", None)),
             covar_module=copy.deepcopy(getattr(getattr(self.base_model, "model", None), "covar_module", None)),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=_get_variational_inducing_points(self),
             learn_inducing_locations=self.learn_inducing_locations,
             pca_config=copy.deepcopy(self.pca_config),
@@ -349,7 +349,7 @@ class REMBOBinaryClassificationGPModel(_BaseProjectedClassificationGP):
         input_transform: InputTransform | None = None,
         mean_module: Any | None = None,
         covar_module: Any | None = None,
-        num_inducing_points: int = 20,
+        num_inducing: int = 20,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         rembo_config: Optional[REMBOConfig] = None,
@@ -371,7 +371,7 @@ class REMBOBinaryClassificationGPModel(_BaseProjectedClassificationGP):
         if fitted_rembo is None:
             self.rembo.fit(self.preproject_train_input)
         self._projected_train_X = self._project_preprojected_inputs(self.preproject_train_input).detach().clone()
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.base_model = base_model or self._build_base_model(
             projected_train_X=self.projected_train_input,
@@ -380,7 +380,7 @@ class REMBOBinaryClassificationGPModel(_BaseProjectedClassificationGP):
             likelihood=likelihood,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=self.num_inducing_points,
+            num_inducing_points=self.num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=self.learn_inducing_locations,
         )
@@ -397,7 +397,7 @@ class REMBOBinaryClassificationGPModel(_BaseProjectedClassificationGP):
             input_transform=_clone_input_transform(self.input_transform),
             mean_module=copy.deepcopy(getattr(getattr(self.base_model, "model", None), "mean_module", None)),
             covar_module=copy.deepcopy(getattr(getattr(self.base_model, "model", None), "covar_module", None)),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=_get_variational_inducing_points(self),
             learn_inducing_locations=self.learn_inducing_locations,
             rembo_config=copy.deepcopy(self.rembo_config),
@@ -466,7 +466,7 @@ class _BaseProjectedMixedClassificationGP(_BaseProjectedMixedModel):
             mean_module=mean_module,
             covar_module=covar_module,
             cont_kernel_factory=cont_kernel_factory,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing_points,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
         )
@@ -595,7 +595,7 @@ class PCABinaryClassificationMixedGPModel(_BaseProjectedMixedClassificationGP):
         mean_module: Any | None = None,
         covar_module: Any | None = None,
         cont_kernel_factory: Any | None = None,
-        num_inducing_points: int = 20,
+        num_inducing: int = 20,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         pca_config: Optional[PCAConfig] = None,
@@ -620,7 +620,7 @@ class PCABinaryClassificationMixedGPModel(_BaseProjectedMixedClassificationGP):
             self.pca.fit(self.preproject_train_input[..., self.cont_dims])
         self.latent_dim = int(self.pca_config.n_components)
         self._projected_train_X = self._project_preprojected_inputs(self.preproject_train_input).detach().clone()
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self._cont_kernel_factory = cont_kernel_factory
         self.base_model = base_model or self._build_base_model(
@@ -631,7 +631,7 @@ class PCABinaryClassificationMixedGPModel(_BaseProjectedMixedClassificationGP):
             mean_module=mean_module,
             covar_module=covar_module,
             cont_kernel_factory=cont_kernel_factory,
-            num_inducing_points=self.num_inducing_points,
+            num_inducing_points=self.num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=self.learn_inducing_locations,
         )
@@ -652,7 +652,7 @@ class PCABinaryClassificationMixedGPModel(_BaseProjectedMixedClassificationGP):
             mean_module=copy.deepcopy(getattr(getattr(self.base_model, "model", None), "mean_module", None)),
             covar_module=copy.deepcopy(getattr(getattr(self.base_model, "model", None), "covar_module", None)),
             cont_kernel_factory=self._cont_kernel_factory,
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=_get_variational_inducing_points(self),
             learn_inducing_locations=self.learn_inducing_locations,
             pca_config=copy.deepcopy(self.pca_config),
@@ -674,7 +674,7 @@ class REMBOBinaryClassificationMixedGPModel(_BaseProjectedMixedClassificationGP)
         mean_module: Any | None = None,
         covar_module: Any | None = None,
         cont_kernel_factory: Any | None = None,
-        num_inducing_points: int = 20,
+        num_inducing: int = 20,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         rembo_config: Optional[REMBOConfig] = None,
@@ -700,7 +700,7 @@ class REMBOBinaryClassificationMixedGPModel(_BaseProjectedMixedClassificationGP)
             self.rembo.fit(self.preproject_train_input[..., self.cont_dims])
         self.latent_dim = int(self.rembo_config.n_components)
         self._projected_train_X = self._project_preprojected_inputs(self.preproject_train_input).detach().clone()
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self._cont_kernel_factory = cont_kernel_factory
         self.base_model = base_model or self._build_base_model(
@@ -711,7 +711,7 @@ class REMBOBinaryClassificationMixedGPModel(_BaseProjectedMixedClassificationGP)
             mean_module=mean_module,
             covar_module=covar_module,
             cont_kernel_factory=cont_kernel_factory,
-            num_inducing_points=self.num_inducing_points,
+            num_inducing_points=self.num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=self.learn_inducing_locations,
         )
@@ -732,7 +732,7 @@ class REMBOBinaryClassificationMixedGPModel(_BaseProjectedMixedClassificationGP)
             mean_module=copy.deepcopy(getattr(getattr(self.base_model, "model", None), "mean_module", None)),
             covar_module=copy.deepcopy(getattr(getattr(self.base_model, "model", None), "covar_module", None)),
             cont_kernel_factory=self._cont_kernel_factory,
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=_get_variational_inducing_points(self),
             learn_inducing_locations=self.learn_inducing_locations,
             rembo_config=copy.deepcopy(self.rembo_config),

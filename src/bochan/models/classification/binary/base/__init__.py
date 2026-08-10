@@ -45,7 +45,7 @@ class BinaryClassificationGPModel(_BinaryClassificationGPModel):
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
     ) -> None:
@@ -57,7 +57,7 @@ class BinaryClassificationGPModel(_BinaryClassificationGPModel):
             input_transform=input_transform,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
         )
@@ -83,7 +83,7 @@ class BinaryClassificationMixedGPModel(_BinaryClassificationMixedGPModel):
         cont_kernel_factory: Optional[
             Callable[[torch.Size, int, Optional[list[int]]], Kernel]
         ] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
     ) -> None:
@@ -97,7 +97,7 @@ class BinaryClassificationMixedGPModel(_BinaryClassificationMixedGPModel):
             mean_module=mean_module,
             covar_module=covar_module,
             cont_kernel_factory=cont_kernel_factory,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
         )

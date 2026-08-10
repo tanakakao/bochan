@@ -77,12 +77,12 @@ class _DeepKernelBetaSVGP(ApproximateGP):
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
         inducing_points: Optional[Tensor] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
     ) -> None:
         inducing_points = select_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
         variational_distribution = CholeskyVariationalDistribution(
@@ -138,7 +138,7 @@ class _DeepKernelMixedBetaSVGP(ApproximateGP):
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
         inducing_points: Optional[Tensor] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
     ) -> None:
         d = train_X.shape[-1]
@@ -146,7 +146,7 @@ class _DeepKernelMixedBetaSVGP(ApproximateGP):
         self.cont_dims = get_cont_dims(d, self.cat_dims)
         inducing_points = select_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
         variational_distribution = CholeskyVariationalDistribution(
@@ -215,7 +215,7 @@ class DeepKernelBetaGPModel(_BaseBetaGPModel):
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         link: BetaMeanLink = "sigmoid",
@@ -249,7 +249,7 @@ class DeepKernelBetaGPModel(_BaseBetaGPModel):
             mean_module=mean_module,
             covar_module=covar_module,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
         )
         super().__init__(
@@ -259,7 +259,7 @@ class DeepKernelBetaGPModel(_BaseBetaGPModel):
             train_Y=train_Y,
             input_transform=input_transform,
             cat_dims=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
             eps=eps,
@@ -284,7 +284,7 @@ class DeepKernelBetaMixedGPModel(_BaseBetaGPModel):
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         link: BetaMeanLink = "sigmoid",
@@ -321,7 +321,7 @@ class DeepKernelBetaMixedGPModel(_BaseBetaGPModel):
             mean_module=mean_module,
             covar_module=covar_module,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
         )
         super().__init__(
@@ -331,7 +331,7 @@ class DeepKernelBetaMixedGPModel(_BaseBetaGPModel):
             train_Y=train_Y,
             input_transform=input_transform,
             cat_dims=cat_dims,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
             eps=eps,

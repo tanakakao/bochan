@@ -115,7 +115,7 @@ class _ContinuousProjectedPoissonModel(_BaseProjectedPoissonModel):
         projector: Any | None = None,
         likelihood: Optional[PoissonLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         seed: int = 42,
         link: PoissonLink = "softplus",
         exp_clip: float = 20.0,
@@ -127,7 +127,7 @@ class _ContinuousProjectedPoissonModel(_BaseProjectedPoissonModel):
         self.input_dim_original = train_X.shape[-1]
         self.latent_dim = int(n_components if n_components is not None else (latent_dim if latent_dim is not None else self.default_latent_dim))
         self.input_transform = clone_input_transform(input_transform)
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.seed = int(seed)
         self.link = link
         self.exp_clip = float(exp_clip)
@@ -156,7 +156,7 @@ class _ContinuousProjectedPoissonModel(_BaseProjectedPoissonModel):
             train_Y=train_Y,
             likelihood=likelihood,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             exp_clip=exp_clip,
             min_rate=min_rate,
@@ -185,7 +185,7 @@ class _ContinuousProjectedPoissonModel(_BaseProjectedPoissonModel):
             projector=_clone_fitted_transformer(self.projector),
             likelihood=copy.deepcopy(self.base_model.likelihood),
             input_transform=clone_input_transform(self.input_transform),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             seed=self.seed,
             link=self.link,
             exp_clip=self.exp_clip,
@@ -230,7 +230,7 @@ class _MixedProjectedPoissonModel(_BaseProjectedPoissonModel):
         projector: Any | None = None,
         likelihood: Optional[PoissonLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         seed: int = 42,
         link: PoissonLink = "softplus",
         exp_clip: float = 20.0,
@@ -244,7 +244,7 @@ class _MixedProjectedPoissonModel(_BaseProjectedPoissonModel):
         self.cont_dims = get_cont_dims(self.input_dim_original, self.cat_dims)
         self.latent_dim = int(n_components if n_components is not None else (latent_dim if latent_dim is not None else self.default_latent_dim))
         self.input_transform = clone_input_transform(input_transform)
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.seed = int(seed)
         self.link = link
         self.exp_clip = float(exp_clip)
@@ -284,7 +284,7 @@ class _MixedProjectedPoissonModel(_BaseProjectedPoissonModel):
             cat_dims=latent_cat_dims,
             likelihood=likelihood,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             exp_clip=exp_clip,
             min_rate=min_rate,

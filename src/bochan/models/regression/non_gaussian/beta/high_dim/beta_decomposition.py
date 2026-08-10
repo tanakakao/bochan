@@ -153,7 +153,7 @@ class PCABetaGPModel(_ContinuousProjectedBetaModel):
         projector: Optional[PCATransformer] = None,
         likelihood: Optional[BetaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         link: BetaMeanLink = "sigmoid",
         eps: float = 1e-6,
         clip_targets: bool | None = None,
@@ -176,7 +176,7 @@ class PCABetaGPModel(_ContinuousProjectedBetaModel):
         self._preproject_train_X = pre_X.detach().clone()
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.link = link
         self.eps = float(eps)
         self.clip_targets = bool(clip_targets)
@@ -185,7 +185,7 @@ class PCABetaGPModel(_ContinuousProjectedBetaModel):
             train_Y=train_Y,
             likelihood=likelihood,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             eps=eps,
             clip_targets=clip_targets,
@@ -208,7 +208,7 @@ class REMBOBetaGPModel(_ContinuousProjectedBetaModel):
         projector: Optional[REMBOTransformer] = None,
         likelihood: Optional[BetaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         seed: int = 42,
         link: BetaMeanLink = "sigmoid",
         eps: float = 1e-6,
@@ -232,7 +232,7 @@ class REMBOBetaGPModel(_ContinuousProjectedBetaModel):
         self._preproject_train_X = pre_X.detach().clone()
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.seed = int(seed)
         self.link = link
         self.eps = float(eps)
@@ -242,7 +242,7 @@ class REMBOBetaGPModel(_ContinuousProjectedBetaModel):
             train_Y=train_Y,
             likelihood=likelihood,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             eps=eps,
             clip_targets=clip_targets,
@@ -285,7 +285,7 @@ class PCABetaMixedGPModel(_MixedProjectedBetaModel):
         projector: Optional[PCATransformer] = None,
         likelihood: Optional[BetaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         link: BetaMeanLink = "sigmoid",
         eps: float = 1e-6,
         clip_targets: bool | None = None,
@@ -313,7 +313,7 @@ class PCABetaMixedGPModel(_MixedProjectedBetaModel):
         self._preproject_train_X = pre_X.detach().clone()
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.link = link
         self.eps = float(eps)
         self.clip_targets = bool(clip_targets)
@@ -323,7 +323,7 @@ class PCABetaMixedGPModel(_MixedProjectedBetaModel):
             cat_dims=latent_cat_dims,
             likelihood=likelihood,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             eps=eps,
             clip_targets=clip_targets,
@@ -344,7 +344,7 @@ class REMBOBetaMixedGPModel(PCABetaMixedGPModel):
         projector: Optional[REMBOTransformer] = None,
         likelihood: Optional[BetaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         seed: int = 42,
         link: BetaMeanLink = "sigmoid",
         eps: float = 1e-6,
@@ -373,7 +373,7 @@ class REMBOBetaMixedGPModel(PCABetaMixedGPModel):
         self._preproject_train_X = pre_X.detach().clone()
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.seed = int(seed)
         self.link = link
         self.eps = float(eps)
@@ -384,7 +384,7 @@ class REMBOBetaMixedGPModel(PCABetaMixedGPModel):
             cat_dims=latent_cat_dims,
             likelihood=likelihood,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             eps=eps,
             clip_targets=clip_targets,

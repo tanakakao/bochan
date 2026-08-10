@@ -149,7 +149,7 @@ class PCANegativeBinomialGPModel(_ContinuousProjectedNBModel):
         projector: Optional[PCATransformer] = None,
         likelihood: Optional[NegativeBinomialLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         link: NBLink = "softplus",
         exp_clip: float = 20.0,
         min_mean: float = 1e-8,
@@ -171,7 +171,7 @@ class PCANegativeBinomialGPModel(_ContinuousProjectedNBModel):
         self._preproject_train_X = pre_X.detach().clone()
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.link = link
         self.exp_clip = float(exp_clip)
         self.min_mean = float(min_mean)
@@ -180,7 +180,7 @@ class PCANegativeBinomialGPModel(_ContinuousProjectedNBModel):
             train_Y=train_Y,
             likelihood=likelihood,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             exp_clip=exp_clip,
             min_mean=min_mean,
@@ -200,7 +200,7 @@ class REMBONegativeBinomialGPModel(PCANegativeBinomialGPModel):
         projector: Optional[REMBOTransformer] = None,
         likelihood: Optional[NegativeBinomialLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         seed: int = 42,
         link: NBLink = "softplus",
         exp_clip: float = 20.0,
@@ -223,7 +223,7 @@ class REMBONegativeBinomialGPModel(PCANegativeBinomialGPModel):
         self._preproject_train_X = pre_X.detach().clone()
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.seed = int(seed)
         self.link = link
         self.exp_clip = float(exp_clip)
@@ -233,7 +233,7 @@ class REMBONegativeBinomialGPModel(PCANegativeBinomialGPModel):
             train_Y=train_Y,
             likelihood=likelihood,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             exp_clip=exp_clip,
             min_mean=min_mean,
@@ -272,7 +272,7 @@ class PCANegativeBinomialMixedGPModel(_MixedProjectedNBModel):
         projector: Optional[PCATransformer] = None,
         likelihood: Optional[NegativeBinomialLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         link: NBLink = "softplus",
         exp_clip: float = 20.0,
         min_mean: float = 1e-8,
@@ -304,7 +304,7 @@ class PCANegativeBinomialMixedGPModel(_MixedProjectedNBModel):
         self._preproject_train_X = pre_X.detach().clone()
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.link = link
         self.exp_clip = float(exp_clip)
         self.min_mean = float(min_mean)
@@ -314,7 +314,7 @@ class PCANegativeBinomialMixedGPModel(_MixedProjectedNBModel):
             cat_dims=latent_cat_dims,
             likelihood=likelihood,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             exp_clip=exp_clip,
             min_mean=min_mean,
@@ -355,7 +355,7 @@ class REMBONegativeBinomialMixedGPModel(_MixedProjectedNBModel):
         projector: Optional[REMBOTransformer] = None,
         likelihood: Optional[NegativeBinomialLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         seed: int = 42,
         link: NBLink = "softplus",
         exp_clip: float = 20.0,
@@ -388,7 +388,7 @@ class REMBONegativeBinomialMixedGPModel(_MixedProjectedNBModel):
         self._preproject_train_X = pre_X.detach().clone()
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.seed = int(seed)
         self.link = link
         self.exp_clip = float(exp_clip)
@@ -399,7 +399,7 @@ class REMBONegativeBinomialMixedGPModel(_MixedProjectedNBModel):
             cat_dims=latent_cat_dims,
             likelihood=likelihood,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             exp_clip=exp_clip,
             min_mean=min_mean,

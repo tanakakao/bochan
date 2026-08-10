@@ -82,12 +82,12 @@ class _DeepKernelGammaSVGP(ApproximateGP):
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
         inducing_points: Optional[Tensor] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
     ) -> None:
         inducing_points = select_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
         variational_distribution = CholeskyVariationalDistribution(
@@ -148,7 +148,7 @@ class _DeepKernelMixedGammaSVGP(ApproximateGP):
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
         inducing_points: Optional[Tensor] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
     ) -> None:
         d = train_X.shape[-1]
@@ -157,7 +157,7 @@ class _DeepKernelMixedGammaSVGP(ApproximateGP):
 
         inducing_points = select_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
         variational_distribution = CholeskyVariationalDistribution(
@@ -230,7 +230,7 @@ class DeepKernelGammaGPModel(_BaseGammaGPModel):
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         link: GammaLink = "softplus",
@@ -272,7 +272,7 @@ class DeepKernelGammaGPModel(_BaseGammaGPModel):
             mean_module=mean_module,
             covar_module=covar_module,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
         )
         super().__init__(
@@ -284,7 +284,7 @@ class DeepKernelGammaGPModel(_BaseGammaGPModel):
             outcome_transform=outcome_transform,
             train_Y_raw=raw_train_Y,
             cat_dims=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
             exp_clip=exp_clip,
@@ -311,7 +311,7 @@ class DeepKernelGammaMixedGPModel(_BaseGammaGPModel):
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         link: GammaLink = "softplus",
@@ -356,7 +356,7 @@ class DeepKernelGammaMixedGPModel(_BaseGammaGPModel):
             mean_module=mean_module,
             covar_module=covar_module,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
         )
         super().__init__(
@@ -368,7 +368,7 @@ class DeepKernelGammaMixedGPModel(_BaseGammaGPModel):
             outcome_transform=outcome_transform,
             train_Y_raw=raw_train_Y,
             cat_dims=cat_dims,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
             exp_clip=exp_clip,

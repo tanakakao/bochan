@@ -150,7 +150,7 @@ class _LatentKroneckerMultiTaskMulticlassGP(ApproximateGP):
         *,
         num_classes: int,
         rank: Optional[int] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         mean_module: Optional[Mean] = None,
@@ -173,7 +173,7 @@ class _LatentKroneckerMultiTaskMulticlassGP(ApproximateGP):
 
         shared_inducing_points = canonicalize_shared_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
         latent_inducing_points = shared_inducing_points.view(
@@ -220,7 +220,7 @@ class _LatentKroneckerMultiTaskMulticlassGP(ApproximateGP):
         self.num_classes = num_classes
         self.num_tasks = num_tasks
         self.rank = rank
-        self.num_inducing_points = int(shared_inducing_points.shape[-2])
+        self.num_inducing = int(shared_inducing_points.shape[-2])
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.train_inputs = (train_X,)
         self.train_targets = train_Y
@@ -400,7 +400,7 @@ class KroneckerMultiTaskMulticlassClassificationGPModel(ApproximateGPyTorchModel
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         data_covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         temperature: float = 1.0,
@@ -428,7 +428,7 @@ class KroneckerMultiTaskMulticlassClassificationGPModel(ApproximateGPyTorchModel
 
         raw_inducing_points = canonicalize_shared_inducing_points(
             raw_train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
         inducing_points_tf = apply_input_transform_for_training(
@@ -442,7 +442,7 @@ class KroneckerMultiTaskMulticlassClassificationGPModel(ApproximateGPyTorchModel
             train_Y=train_Y,
             num_classes=num_classes,
             rank=rank,
-            num_inducing_points=inducing_points_tf.shape[-2],
+            num_inducing=inducing_points_tf.shape[-2],
             inducing_points=inducing_points_tf,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
@@ -477,7 +477,7 @@ class KroneckerMultiTaskMulticlassClassificationGPModel(ApproximateGPyTorchModel
         self.num_classes = num_classes
         self.num_tasks = int(train_Y.shape[-1])
         self.rank = int(latent_model.rank)
-        self.num_inducing_points = int(inducing_points_tf.shape[-2])
+        self.num_inducing = int(inducing_points_tf.shape[-2])
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.temperature = float(likelihood.temperature)
         self.to(device=raw_train_X.device, dtype=raw_train_X.dtype)
@@ -779,7 +779,7 @@ class KroneckerMultiTaskMulticlassClassificationGPModel(ApproximateGPyTorchModel
             input_transform=clone_input_transform(self.input_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             data_covar_module=copy.deepcopy(self.model.data_covar_module),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=self.inducing_points_raw.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             temperature=self.temperature,

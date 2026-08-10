@@ -157,7 +157,7 @@ class PCAMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         pca_config: Optional[PCAConfig] = None,
         projector: Optional[PCATransformer] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         **kwargs: Any,
     ) -> None:
         super().__init__()
@@ -186,14 +186,14 @@ class PCAMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
         self.num_classes = int(num_classes)
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
 
         self.base_model = MulticlassClassificationGPModel(
             train_X=projected_X,
             train_Y=train_Y,
             num_classes=num_classes,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             **kwargs,
         )
 
@@ -214,7 +214,7 @@ class REMBOMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         rembo_config: Optional[REMBOConfig] = None,
         projector: Optional[REMBOTransformer] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         seed: int = 42,
         **kwargs: Any,
     ) -> None:
@@ -244,7 +244,7 @@ class REMBOMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
         self.num_classes = int(num_classes)
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.seed = int(seed)
 
         self.base_model = MulticlassClassificationGPModel(
@@ -252,7 +252,7 @@ class REMBOMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
             train_Y=train_Y,
             num_classes=num_classes,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             **kwargs,
         )
 
@@ -295,7 +295,7 @@ class PCAMulticlassClassificationMixedGPModel(_MixedProjectedMulticlassModel):
         pca_config: Optional[PCAConfig] = None,
         projector: Optional[PCATransformer] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         **kwargs: Any,
     ) -> None:
         super().__init__()
@@ -334,7 +334,7 @@ class PCAMulticlassClassificationMixedGPModel(_MixedProjectedMulticlassModel):
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
         self.num_classes = int(num_classes)
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
 
         self.base_model = MulticlassClassificationMixedGPModel(
             train_X=projected_X,
@@ -342,7 +342,7 @@ class PCAMulticlassClassificationMixedGPModel(_MixedProjectedMulticlassModel):
             cat_dims=latent_cat_dims,
             num_classes=num_classes,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             **kwargs,
         )
 
@@ -361,7 +361,7 @@ class REMBOMulticlassClassificationMixedGPModel(PCAMulticlassClassificationMixed
         rembo_config: Optional[REMBOConfig] = None,
         projector: Optional[REMBOTransformer] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         seed: int = 42,
         **kwargs: Any,
     ) -> None:
@@ -401,7 +401,7 @@ class REMBOMulticlassClassificationMixedGPModel(PCAMulticlassClassificationMixed
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
         self.num_classes = int(num_classes)
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.seed = int(seed)
 
         self.base_model = MulticlassClassificationMixedGPModel(
@@ -410,7 +410,7 @@ class REMBOMulticlassClassificationMixedGPModel(PCAMulticlassClassificationMixed
             cat_dims=latent_cat_dims,
             num_classes=num_classes,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             **kwargs,
         )
 

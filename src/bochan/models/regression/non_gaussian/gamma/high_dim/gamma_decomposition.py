@@ -175,7 +175,7 @@ class PCAGammaGPModel(_ContinuousProjectedGammaModel):
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         outcome_transform: Optional[OutcomeTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         link: GammaLink = "softplus",
         exp_clip: float = 20.0,
         min_mean: float = 1e-8,
@@ -206,7 +206,7 @@ class PCAGammaGPModel(_ContinuousProjectedGammaModel):
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
 
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.link = link
         self.exp_clip = float(exp_clip)
         self.min_mean = float(min_mean)
@@ -217,7 +217,7 @@ class PCAGammaGPModel(_ContinuousProjectedGammaModel):
             likelihood=likelihood,
             input_transform=None,
             outcome_transform=clone_outcome_transform(self.outcome_transform),
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             exp_clip=exp_clip,
             min_mean=min_mean,
@@ -241,7 +241,7 @@ class REMBOGammaGPModel(_ContinuousProjectedGammaModel):
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         outcome_transform: Optional[OutcomeTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         seed: int = 42,
         link: GammaLink = "softplus",
         exp_clip: float = 20.0,
@@ -273,7 +273,7 @@ class REMBOGammaGPModel(_ContinuousProjectedGammaModel):
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
 
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.seed = int(seed)
         self.link = link
         self.exp_clip = float(exp_clip)
@@ -285,7 +285,7 @@ class REMBOGammaGPModel(_ContinuousProjectedGammaModel):
             likelihood=likelihood,
             input_transform=None,
             outcome_transform=clone_outcome_transform(self.outcome_transform),
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             exp_clip=exp_clip,
             min_mean=min_mean,
@@ -331,7 +331,7 @@ class PCAGammaMixedGPModel(_MixedProjectedGammaModel):
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         outcome_transform: Optional[OutcomeTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         link: GammaLink = "softplus",
         exp_clip: float = 20.0,
         min_mean: float = 1e-8,
@@ -369,7 +369,7 @@ class PCAGammaMixedGPModel(_MixedProjectedGammaModel):
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
 
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.link = link
         self.exp_clip = float(exp_clip)
         self.min_mean = float(min_mean)
@@ -381,7 +381,7 @@ class PCAGammaMixedGPModel(_MixedProjectedGammaModel):
             likelihood=likelihood,
             input_transform=None,
             outcome_transform=clone_outcome_transform(self.outcome_transform),
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             exp_clip=exp_clip,
             min_mean=min_mean,
@@ -403,7 +403,7 @@ class REMBOGammaMixedGPModel(PCAGammaMixedGPModel):
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         outcome_transform: Optional[OutcomeTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         seed: int = 42,
         link: GammaLink = "softplus",
         exp_clip: float = 20.0,
@@ -442,7 +442,7 @@ class REMBOGammaMixedGPModel(PCAGammaMixedGPModel):
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
 
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.seed = int(seed)
         self.link = link
         self.exp_clip = float(exp_clip)
@@ -455,7 +455,7 @@ class REMBOGammaMixedGPModel(PCAGammaMixedGPModel):
             likelihood=likelihood,
             input_transform=None,
             outcome_transform=clone_outcome_transform(self.outcome_transform),
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             exp_clip=exp_clip,
             min_mean=min_mean,

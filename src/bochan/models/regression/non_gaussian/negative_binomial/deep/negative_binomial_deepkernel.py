@@ -78,12 +78,12 @@ class _DeepKernelNegativeBinomialSVGP(ApproximateGP):
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
         inducing_points: Tensor | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
     ) -> None:
         inducing_points = select_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
         variational_distribution = CholeskyVariationalDistribution(
@@ -139,7 +139,7 @@ class _DeepKernelMixedNegativeBinomialSVGP(ApproximateGP):
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
         inducing_points: Tensor | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
     ) -> None:
         d = train_X.shape[-1]
@@ -147,7 +147,7 @@ class _DeepKernelMixedNegativeBinomialSVGP(ApproximateGP):
         self.cont_dims = get_cont_dims(d, self.cat_dims)
         inducing_points = select_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
         variational_distribution = CholeskyVariationalDistribution(
@@ -216,7 +216,7 @@ class DeepKernelNegativeBinomialGPModel(_BaseNegativeBinomialGPModel):
         feature_extractor: nn.Module | None = None,
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         link: NBLink = "softplus",
@@ -251,7 +251,7 @@ class DeepKernelNegativeBinomialGPModel(_BaseNegativeBinomialGPModel):
             mean_module=mean_module,
             covar_module=covar_module,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
         )
         super().__init__(
@@ -261,7 +261,7 @@ class DeepKernelNegativeBinomialGPModel(_BaseNegativeBinomialGPModel):
             train_Y=train_Y,
             input_transform=input_transform,
             cat_dims=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
             exp_clip=exp_clip,
@@ -287,7 +287,7 @@ class DeepKernelNegativeBinomialMixedGPModel(_BaseNegativeBinomialGPModel):
         feature_extractor: nn.Module | None = None,
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         link: NBLink = "softplus",
@@ -325,7 +325,7 @@ class DeepKernelNegativeBinomialMixedGPModel(_BaseNegativeBinomialGPModel):
             mean_module=mean_module,
             covar_module=covar_module,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
         )
         super().__init__(
@@ -335,7 +335,7 @@ class DeepKernelNegativeBinomialMixedGPModel(_BaseNegativeBinomialGPModel):
             train_Y=train_Y,
             input_transform=input_transform,
             cat_dims=cat_dims,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
             exp_clip=exp_clip,

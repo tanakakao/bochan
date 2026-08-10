@@ -34,9 +34,9 @@ jobs:
         run: |
           pytest -q --maxfail=1 \
             tests/test_model_contract_refactor.py \
-            tests/test_binary_classification_base_single_output.py \
             tests/test_multitask_classification_ordinal_models.py \
-            tests/test_binary_multiclass_aligned_defaults.py
+            tests/test_binary_multiclass_aligned_defaults.py \
+            tests/test_ordinal_robust_num_classes.py
       - name: Remove one-shot tooling
         run: |
           rm scripts/agent_align_num_inducing.py

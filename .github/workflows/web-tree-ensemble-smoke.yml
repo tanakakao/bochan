@@ -149,13 +149,23 @@ jobs:
           set "PYTHONPATH=%CD%\src"
           python -m bochan.tabpfn_preload --help
       - name: Reject missing TabPFN before secret prompt
-        shell: cmd
+        shell: pwsh
         run: |
-          cmd /V:ON /C "scripts\preload_tabpfn.bat > preload-missing.txt 2>&1 & echo !ERRORLEVEL! > preload-exit.txt & exit /b 0"
-          set /p PRELOAD_EXIT=<preload-exit.txt
-          if not "%PRELOAD_EXIT%"=="2" exit /b 1
-          findstr /C:"A compatible TabPFN package is not installed" preload-missing.txt
-          findstr /C:"pip install -e" preload-missing.txt
+          & cmd.exe /D /S /C 'scripts\preload_tabpfn.bat > preload-missing.txt 2>&1'
+          $code = $LASTEXITCODE
+          $output = Get-Content preload-missing.txt -Raw
+          if ($code -ne 2) {
+            Write-Host $output
+            throw "Expected preload helper exit code 2, got $code"
+          }
+          if (-not $output.Contains('A compatible TabPFN package is not installed')) {
+            Write-Host $output
+            throw 'Missing dependency guidance was not printed.'
+          }
+          if (-not $output.Contains('pip install -e')) {
+            Write-Host $output
+            throw 'Install command was not printed.'
+          }
       - name: Smoke Windows TabPFN preload helper
         shell: cmd
         run: scripts\preload_tabpfn.bat --help

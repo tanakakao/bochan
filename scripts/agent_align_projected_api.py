@@ -27,13 +27,34 @@ def write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def _offsets(source: str) -> list[int]:
+    offsets = [0]
+    for line in source.splitlines(keepends=True):
+        offsets.append(offsets[-1] + len(line))
+    return offsets
+
+
+def _absolute(offsets: list[int], lineno: int, col_offset: int) -> int:
+    return offsets[lineno - 1] + col_offset
+
+
+def _is_projected_model_class(node: ast.ClassDef) -> bool:
+    return (
+        node.name.startswith(("PCA", "REMBO"))
+        and not node.name.endswith(("Transformer", "Config"))
+    )
+
+
 def fix_orphan_projected_property() -> None:
     path = MODELS / "components" / "projected.py"
     text = read(path)
     bad = "    @property\n    def _to_preprojection_space(self, X: Tensor) -> Tensor:\n"
-    if bad not in text:
-        raise RuntimeError("expected orphan @property before _to_preprojection_space")
-    write(path, text.replace(bad, "    def _to_preprojection_space(self, X: Tensor) -> Tensor:\n", 1))
+    good = "    def _to_preprojection_space(self, X: Tensor) -> Tensor:\n"
+    if bad in text:
+        text = text.replace(bad, good, 1)
+    if good not in text:
+        raise RuntimeError("_to_preprojection_space method not found")
+    write(path, text)
 
 
 def canonicalize_projected_utils() -> None:
@@ -65,53 +86,97 @@ def canonicalize_projected_utils() -> None:
         raise ValueError(f"latent_dim must be a positive integer, got {value}.")
     return value
 '''
-    if old not in text:
-        raise RuntimeError("projected_utils compatibility resolver block not found")
-    write(path, text.replace(old, new, 1))
+    if old in text:
+        text = text.replace(old, new, 1)
+    elif new not in text:
+        raise RuntimeError("projected latent-dimension resolver block not found")
+    write(path, text)
 
 
-def remove_dual_dimension_parameters() -> None:
-    for path in PROJECTED_FILES:
-        text = read(path)
+def canonicalize_model_constructor_dimension(path: Path) -> None:
+    """PCA/REMBO model の public dimension argument を latent_dim に統一する。"""
+    source = read(path)
+    tree = ast.parse(source, filename=str(path))
+    offsets = _offsets(source)
+    lines = source.splitlines(keepends=True)
+    edits: list[tuple[int, int, str]] = []
 
-        if path.parts[-3:] == ("ordinal", "high_dim", "decomposition.py"):
-            text = text.replace(
-                "n_components: Optional[int] = 2,",
-                "latent_dim: Optional[int] = 2,",
-            )
-            text = text.replace("n_components=n_components,", "n_components=latent_dim,")
-            text = text.replace("``n_components``", "``latent_dim``")
-            text = text.replace("n_components の指定", "latent_dim の指定")
+    for class_node in [node for node in tree.body if isinstance(node, ast.ClassDef)]:
+        if not _is_projected_model_class(class_node):
+            continue
+        init = next(
+            (
+                node
+                for node in class_node.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "__init__"
+            ),
+            None,
+        )
+        if init is None:
+            continue
+
+        args = [*init.args.posonlyargs, *init.args.args, *init.args.kwonlyargs]
+        arg_names = {arg.arg for arg in args}
+        legacy_arg = next((arg for arg in args if arg.arg == "n_components"), None)
+        if legacy_arg is None:
+            continue
+
+        if "latent_dim" in arg_names:
+            # Each constructor argument is intentionally one-per-line in these wrappers.
+            line_start = offsets[legacy_arg.lineno - 1]
+            line_end = offsets[legacy_arg.lineno]
+            line = source[line_start:line_end]
+            if "n_components" not in line:
+                raise RuntimeError(f"could not isolate n_components argument line: {path}:{class_node.name}")
+            edits.append((line_start, line_end, ""))
         else:
-            text = re.sub(
-                r"\n(?P<indent>\s*)n_components: (?:Optional\[int\]|int \| None) = None,",
-                "",
-                text,
-            )
-            text = text.replace(
-                "n_components if n_components is not None else latent_dim",
-                "latent_dim",
-            )
-            text = text.replace(
-                "n_components=n_components,\n            latent_dim=latent_dim,",
-                "latent_dim=latent_dim,",
-            )
-            text = text.replace(
-                "latent_dim=latent_dim,\n            n_components=n_components,",
-                "latent_dim=latent_dim,",
-            )
-            text = text.replace("            n_components=n_components,\n", "")
+            start = _absolute(offsets, legacy_arg.lineno, legacy_arg.col_offset)
+            edits.append((start, start + len("n_components"), "latent_dim"))
 
-        # Rebuild calls must use the same canonical public argument.
-        text = text.replace(
-            "            n_components=self.latent_dim,\n",
-            "            latent_dim=self.latent_dim,\n",
-        )
-        text = text.replace(
-            "            n_components=self.projected_dim,\n",
-            "            latent_dim=self.projected_dim,\n",
-        )
-        write(path, text)
+        # Rename uses of the removed / renamed local variable, but never keyword names.
+        for node in ast.walk(init):
+            if isinstance(node, ast.Name) and node.id == "n_components":
+                start = _absolute(offsets, node.lineno, node.col_offset)
+                edits.append((start, start + len("n_components"), "latent_dim"))
+
+    # Avoid applying edits that fall inside a whole argument line scheduled for deletion.
+    deletions = [(start, end) for start, end, replacement in edits if replacement == ""]
+    filtered: list[tuple[int, int, str]] = []
+    for edit in edits:
+        start, end, replacement = edit
+        if replacement and any(d_start <= start and end <= d_end for d_start, d_end in deletions):
+            continue
+        filtered.append(edit)
+
+    for start, end, replacement in sorted(set(filtered), reverse=True):
+        source = source[:start] + replacement + source[end:]
+
+    # The shared resolver no longer accepts the compatibility keyword.
+    source = re.sub(
+        r"_resolve_latent_dim\(\s*latent_dim=latent_dim,\s*n_components=(?:latent_dim|n_components),\s*default=(?P<default>\d+),?\s*\)",
+        lambda match: f"_resolve_latent_dim(latent_dim=latent_dim, default={match.group('default')})",
+        source,
+        flags=re.DOTALL,
+    )
+
+    # Rebuild paths must use the same public constructor keyword.
+    source = source.replace("n_components=self.latent_dim,", "latent_dim=self.latent_dim,")
+    source = source.replace("n_components=self.projected_dim,", "latent_dim=self.projected_dim,")
+
+    # Remove model-level compatibility state; transformer config keeps n_components.
+    source = re.sub(r"^\s*self\.n_components\s*=\s*self\.projected_dim\s*\n", "", source, flags=re.MULTILINE)
+
+    # Remove stale compatibility documentation without changing internal config terminology.
+    source = re.sub(r"^\s*n_components:.*(?:後方互換|compatibility).*\n", "", source, flags=re.MULTILINE | re.IGNORECASE)
+    source = source.replace("外部 API は ``n_components`` に統一する。", "外部 API は ``latent_dim`` に統一する。")
+    source = source.replace(
+        "旧 API の ``latent_dim`` は ``__init__`` 引数から削除する。",
+        "PCAConfig / REMBOConfig 内部では ``n_components`` を使う。",
+    )
+    source = source.replace("n_components の指定", "latent_dim の指定")
+
+    write(path, source)
 
 
 def simplify_multiclass_resolver() -> None:
@@ -165,22 +230,33 @@ def simplify_multiclass_resolver() -> None:
         raise ValueError(f"{name}: latent_dim must be positive. Got {resolved}.")
     return resolved
 '''
-    if old not in text:
-        raise RuntimeError("multiclass projected resolver block not found")
-    text = text.replace(old, new, 1)
-    text = text.replace("            n_components=n_components,\n", "")
+    if old in text:
+        text = text.replace(old, new, 1)
+    elif new not in text:
+        raise RuntimeError("multiclass projected-dimension resolver block not found")
+
+    text = re.sub(
+        r"(_resolve_projected_dim\(\s*)n_components=latent_dim,\s*",
+        r"\1",
+        text,
+        flags=re.DOTALL,
+    )
     write(path, text)
 
 
-def migrate_python_call_sites() -> None:
-    """PCA/REMBO model callsだけ n_components= -> latent_dim= に移行する。"""
-    projected_names: set[str] = set()
+def projected_model_names() -> set[str]:
+    names: set[str] = set()
     for path in PROJECTED_FILES:
         tree = ast.parse(read(path), filename=str(path))
         for node in tree.body:
-            if isinstance(node, ast.ClassDef) and node.name.startswith(("PCA", "REMBO")):
-                projected_names.add(node.name)
+            if isinstance(node, ast.ClassDef) and _is_projected_model_class(node):
+                names.add(node.name)
+    return names
 
+
+def migrate_python_call_sites() -> None:
+    """bochan PCA/REMBO model callsだけ n_components= -> latent_dim= に移行する。"""
+    names = projected_model_names()
     for root_name in ("src", "tests"):
         root = ROOT / root_name
         for path in root.rglob("*.py"):
@@ -189,44 +265,38 @@ def migrate_python_call_sites() -> None:
                 tree = ast.parse(source, filename=str(path))
             except SyntaxError:
                 continue
-            replacements: list[tuple[int, int, str]] = []
-            lines = source.splitlines(keepends=True)
-            offsets = [0]
-            for line in lines:
-                offsets.append(offsets[-1] + len(line))
-
+            offsets = _offsets(source)
+            edits: list[tuple[int, int, str]] = []
             for node in ast.walk(tree):
                 if not isinstance(node, ast.Call):
                     continue
-                func_name = None
                 if isinstance(node.func, ast.Name):
                     func_name = node.func.id
                 elif isinstance(node.func, ast.Attribute):
                     func_name = node.func.attr
-                if func_name not in projected_names:
+                else:
+                    func_name = None
+                if func_name not in names:
                     continue
-                for kw in node.keywords:
-                    if kw.arg != "n_components" or not hasattr(kw, "lineno"):
+                for keyword in node.keywords:
+                    if keyword.arg != "n_components":
                         continue
-                    start = offsets[kw.lineno - 1] + kw.col_offset
-                    segment = source[start : offsets[kw.end_lineno]]
-                    match = re.match(r"n_components(?=\s*=)", segment)
-                    if match:
-                        replacements.append((start, start + len("n_components"), "latent_dim"))
-
-            if replacements:
-                for start, end, value in sorted(replacements, reverse=True):
-                    source = source[:start] + value + source[end:]
+                    start = _absolute(offsets, keyword.lineno, keyword.col_offset)
+                    if source[start : start + len("n_components")] == "n_components":
+                        edits.append((start, start + len("n_components"), "latent_dim"))
+            for start, end, replacement in sorted(set(edits), reverse=True):
+                source = source[:start] + replacement + source[end:]
+            if edits:
                 write(path, source)
 
 
 def extend_contract_test() -> None:
     path = ROOT / "tests" / "test_model_contract_refactor.py"
     text = read(path)
-    if "test_projected_model_constructors_use_latent_dim_only" in text:
-        return
-    addition = r'''
+    additions: list[str] = []
 
+    if "test_projected_model_constructors_use_latent_dim_only" not in text:
+        additions.append(r'''
 
 def test_projected_model_constructors_use_latent_dim_only() -> None:
     offenders: list[tuple[str, str, str]] = []
@@ -235,6 +305,8 @@ def test_projected_model_constructors_use_latent_dim_only() -> None:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for class_node in [node for node in tree.body if isinstance(node, ast.ClassDef)]:
             if not class_node.name.startswith(("PCA", "REMBO")):
+                continue
+            if class_node.name.endswith(("Transformer", "Config")):
                 continue
             init = next(
                 (
@@ -249,13 +321,17 @@ def test_projected_model_constructors_use_latent_dim_only() -> None:
                 continue
             checked += 1
             args = _function_arg_names(init)
+            forwards_constructor_args = init.args.vararg is not None or init.args.kwarg is not None
             if "n_components" in args:
                 offenders.append((str(path.relative_to(REPO_ROOT)), class_node.name, "n_components"))
-            if "latent_dim" not in args:
+            if "latent_dim" not in args and not forwards_constructor_args:
                 offenders.append((str(path.relative_to(REPO_ROOT)), class_node.name, "missing latent_dim"))
     assert checked > 0
     assert not offenders
+''')
 
+    if "test_projected_preprojection_transform_is_a_method" not in text:
+        additions.append(r'''
 
 def test_projected_preprojection_transform_is_a_method() -> None:
     projected_path = MODELS_ROOT / "components" / "projected.py"
@@ -271,15 +347,18 @@ def test_projected_preprojection_transform_is_a_method() -> None:
         isinstance(decorator, ast.Name) and decorator.id == "property"
         for decorator in method.decorator_list
     )
-'''
-    write(path, text.rstrip() + addition + "\n")
+''')
+
+    if additions:
+        write(path, text.rstrip() + "\n" + "".join(additions).rstrip() + "\n")
 
 
 def validate() -> None:
     for path in PROJECTED_FILES:
-        tree = ast.parse(read(path), filename=str(path))
+        source = read(path)
+        tree = ast.parse(source, filename=str(path))
         for class_node in [node for node in tree.body if isinstance(node, ast.ClassDef)]:
-            if not class_node.name.startswith(("PCA", "REMBO")):
+            if not _is_projected_model_class(class_node):
                 continue
             init = next(
                 (
@@ -296,20 +375,40 @@ def validate() -> None:
                 arg.arg
                 for arg in [*init.args.posonlyargs, *init.args.args, *init.args.kwonlyargs]
             }
-            if "n_components" in args or "latent_dim" not in args:
-                raise RuntimeError(f"non-canonical projected signature: {path}:{class_node.name}: {sorted(args)}")
+            forwards_constructor_args = init.args.vararg is not None or init.args.kwarg is not None
+            if "n_components" in args or ("latent_dim" not in args and not forwards_constructor_args):
+                raise RuntimeError(
+                    f"non-canonical projected signature: {path}:{class_node.name}: {sorted(args)}"
+                )
+
+        if re.search(
+            r"_resolve_latent_dim\([^)]*n_components\s*=",
+            source,
+            flags=re.DOTALL,
+        ):
+            raise RuntimeError(f"stale n_components resolver call remains: {path}")
 
     projected = ast.parse(read(MODELS / "components" / "projected.py"))
-    base = next(node for node in projected.body if isinstance(node, ast.ClassDef) and node.name == "_BaseProjectedModel")
-    method = next(node for node in base.body if isinstance(node, ast.FunctionDef) and node.name == "_to_preprojection_space")
-    if any(isinstance(d, ast.Name) and d.id == "property" for d in method.decorator_list):
+    base = next(
+        node
+        for node in projected.body
+        if isinstance(node, ast.ClassDef) and node.name == "_BaseProjectedModel"
+    )
+    method = next(
+        node
+        for node in base.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "_to_preprojection_space"
+    )
+    if any(isinstance(decorator, ast.Name) and decorator.id == "property" for decorator in method.decorator_list):
         raise RuntimeError("_to_preprojection_space remains a property")
 
 
 if __name__ == "__main__":
     fix_orphan_projected_property()
     canonicalize_projected_utils()
-    remove_dual_dimension_parameters()
+    for projected_file in PROJECTED_FILES:
+        canonicalize_model_constructor_dimension(projected_file)
     simplify_multiclass_resolver()
     migrate_python_call_sites()
     extend_contract_test()

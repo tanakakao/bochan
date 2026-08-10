@@ -63,6 +63,8 @@ jobs:
         env:
           PYTHONPATH: src
         run: python -m bochan.tabpfn_preload --help
+      - name: Create empty project venv for helper selection smoke
+        run: python -m venv .venv
       - name: Reject missing TabPFN before secret prompt
         shell: bash
         run: |
@@ -72,6 +74,8 @@ jobs:
           set -e
           test "${code}" -eq 2
           grep -F "A compatible TabPFN package is not installed" <<<"${output}"
+          grep -F '.venv/bin/python' <<<"${output}"
+          grep -F 'uv sync --all-extras' <<<"${output}"
           grep -F 'pip install -e ".[web]"' <<<"${output}"
       - name: Smoke Linux TabPFN preload helper
         run: bash scripts/preload_tabpfn.sh --help
@@ -148,6 +152,9 @@ jobs:
         run: |
           set "PYTHONPATH=%CD%\src"
           python -m bochan.tabpfn_preload --help
+      - name: Create empty project venv for helper selection smoke
+        shell: cmd
+        run: python -m venv .venv
       - name: Reject missing TabPFN before secret prompt
         shell: cmd
         run: |
@@ -158,6 +165,8 @@ jobs:
             exit /b 1
           )
           findstr /C:"A compatible TabPFN package is not installed" preload-missing.txt >nul || exit /b 1
+          findstr /C:".venv\Scripts\python.exe" preload-missing.txt >nul || exit /b 1
+          findstr /C:"uv sync --all-extras" preload-missing.txt >nul || exit /b 1
           findstr /C:"pip install -e" preload-missing.txt >nul || exit /b 1
           exit /b 0
       - name: Smoke Windows TabPFN preload helper

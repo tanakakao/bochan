@@ -27,6 +27,11 @@ if "%SHOW_HELP%"=="1" (
     echo Preload the TabPFN v3 classifier and regressor checkpoints used by bochan Web.
     echo If TABPFN_TOKEN is not set, the Prior Labs API key is requested with hidden input.
     echo.
+    echo Python selection order:
+    echo   1. BOCHAN_PYTHON
+    echo   2. repo-local .venv\Scripts\python.exe
+    echo   3. python on PATH
+    echo.
     echo Common options passed to the Python preload command:
     echo   --cache-dir PATH          Use an explicit TabPFN checkpoint directory.
     echo   --allow-browser-auth      Allow Prior Labs browser authentication for local setup.
@@ -35,7 +40,7 @@ if "%SHOW_HELP%"=="1" (
     echo Environment variables:
     echo   TABPFN_TOKEN              Prior Labs API key. Optional when prompted interactively.
     echo   TABPFN_MODEL_CACHE_DIR    Persistent checkpoint directory. Upstream default if unset.
-    echo   BOCHAN_PYTHON             Python executable path. Defaults to python.
+    echo   BOCHAN_PYTHON             Explicit Python executable path.
     popd
     exit /b 0
 )
@@ -48,6 +53,8 @@ if defined PYTHONPATH (
 
 if defined BOCHAN_PYTHON (
     set "PYTHON_CMD=%BOCHAN_PYTHON%"
+) else if exist "%REPO_ROOT%\.venv\Scripts\python.exe" (
+    set "PYTHON_CMD=%REPO_ROOT%\.venv\Scripts\python.exe"
 ) else (
     set "PYTHON_CMD=python"
 )
@@ -59,7 +66,10 @@ if errorlevel 1 (
     echo Python executable:
     "%PYTHON_CMD%" -c "import sys; print(sys.executable)"
     echo.
-    echo Install or refresh the bochan Web dependencies from this repository:
+    echo Preferred development setup with uv:
+    echo   uv sync --all-extras
+    echo.
+    echo Or install the bochan Web dependencies with pip:
     echo   "%PYTHON_CMD%" -m pip install -e ".[web]"
     echo.
     echo Then rerun:

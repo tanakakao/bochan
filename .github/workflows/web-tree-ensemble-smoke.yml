@@ -40,6 +40,10 @@ on:
       - ".github/workflows/web-tree-ensemble-smoke.yml"
   workflow_dispatch:
 
+concurrency:
+  group: web-external-model-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   web-external-model-smoke:
     runs-on: ubuntu-latest

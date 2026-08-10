@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -66,8 +65,7 @@ def _remove_binary_latent_aliases() -> None:
     for path in MODELS.rglob("*.py"):
         _remove_methods(path, names={"posterior_latent", "posterior_f"})
 
-    roots = [ROOT / "src", ROOT / "tests", ROOT / "docs"]
-    for root in roots:
+    for root in (ROOT / "src", ROOT / "tests", ROOT / "docs"):
         if not root.exists():
             continue
         for path in root.rglob("*"):
@@ -106,6 +104,15 @@ def _remove_explicit_model_alias_properties() -> None:
             _remove_methods(path, names=names)
 
     multi = ROOT / "src/bochan/models/ordinal/base/multioutput.py"
+    text = _read(multi)
+    text = text.replace(
+        "    # ---------------------------------------------------------------------\n"
+        "    # Backward-supported aliases\n"
+        "    # ---------------------------------------------------------------------\n",
+        "",
+    )
+    _write(multi, text)
+
     _replace_method(
         multi,
         "MultiOutputOrdinalModel",
@@ -149,8 +156,7 @@ def _remove_explicit_model_alias_properties() -> None:
 
 
 def _migrate_ordinal_saas_call_sites() -> None:
-    roots = [ROOT / "src", ROOT / "tests", ROOT / "docs"]
-    for root in roots:
+    for root in (ROOT / "src", ROOT / "tests", ROOT / "docs"):
         if not root.exists():
             continue
         for path in root.rglob("*"):

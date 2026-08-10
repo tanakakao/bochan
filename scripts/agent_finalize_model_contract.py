@@ -166,7 +166,7 @@ def test_no_mechanical_latent_posterior_identifier_corruption() -> None:
                     offenders.append((str(path.relative_to(REPO_ROOT)), token))
     assert not offenders
 '''
-    write(path, text.rstrip() + addition + "\n")
+    write(path, text.rstrip() + addition.rstrip() + "\n")
 
 
 def validate() -> None:

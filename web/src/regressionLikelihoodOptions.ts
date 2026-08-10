@@ -19,6 +19,7 @@ export type RegressionModelVariant =
   | "random_forest"
   | "lightgbm_ensemble"
   | "ngboost_ensemble"
+  | "tabpfn"
   | "multitask";
 
 export const REGRESSION_LIKELIHOOD_OPTIONS: ReadonlyArray<{
@@ -65,6 +66,7 @@ const MODEL_VARIANT_LABELS: Record<RegressionModelVariant, string> = {
   random_forest: "Random Forest",
   lightgbm_ensemble: "LightGBM",
   ngboost_ensemble: "NGBoost",
+  tabpfn: "TabPFN",
   multitask: "Multitask GP"
 };
 
@@ -77,8 +79,7 @@ export function regressionLikelihoodFor(modelType: string): RegressionLikelihood
   return "gaussian";
 }
 
-/** Resolve the architecture variant while ignoring the response likelihood prefix. */
-export function regressionModelVariantFor(modelType: string): RegressionModelVariant {
+function parseRegressionModelVariant(modelType: string): RegressionModelVariant | null {
   let variant = modelType;
   for (const prefix of ["negative_binomial_", "poisson_", "gamma_", "beta_"]) {
     if (variant.startsWith(prefix)) {
@@ -86,29 +87,25 @@ export function regressionModelVariantFor(modelType: string): RegressionModelVar
       break;
     }
   }
-  if (variant === "robust") return "rrp";
-  if (
-    variant === "base" ||
-    variant === "deepgp" ||
-    variant === "deepkernel" ||
-    variant === "saas" ||
-    variant === "pca" ||
-    variant === "rembo" ||
-    variant === "rrp" ||
-    variant === "hetero" ||
-    variant === "random_forest" ||
-    variant === "lightgbm_ensemble" ||
-    variant === "ngboost_ensemble" ||
-    variant === "multitask"
-  ) {
-    return variant;
+  if (variant === "robust") variant = "rrp";
+  if (Object.prototype.hasOwnProperty.call(MODEL_VARIANT_LABELS, variant)) {
+    return variant as RegressionModelVariant;
   }
-  return "base";
+  return null;
+}
+
+/** Resolve the architecture variant while ignoring the response likelihood prefix. */
+export function regressionModelVariantFor(modelType: string): RegressionModelVariant {
+  return parseRegressionModelVariant(modelType) ?? "base";
 }
 
 /** Return a distribution-independent label for one model architecture. */
-export function regressionModelVariantLabel(modelType: string): string {
-  return MODEL_VARIANT_LABELS[regressionModelVariantFor(modelType)];
+export function regressionModelVariantLabel(
+  modelType: string,
+  fallbackLabel: string = modelType
+): string {
+  const variant = parseRegressionModelVariant(modelType);
+  return variant ? MODEL_VARIANT_LABELS[variant] : fallbackLabel;
 }
 
 /** Pick the closest model after changing the response likelihood or family. */

@@ -24,6 +24,7 @@ on:
       - "web/src/regressionLikelihoodOptions.ts"
       - "web/src/pages/OptimizePage.tsx"
       - "web/src/pages/SettingsPage.tsx"
+      - "web/test/regressionLikelihoodOptions.test.ts"
       - "tests/test_hybrid_task_aware_posterior.py"
       - "tests/test_tabpfn_input_perturbation.py"
       - "tests/test_tabpfn_models.py"
@@ -102,6 +103,9 @@ jobs:
       - name: Install Web frontend dependencies
         working-directory: web
         run: npm install --no-audit --no-fund
+      - name: Test Web regression model labels
+        working-directory: web
+        run: node --experimental-strip-types test/regressionLikelihoodOptions.test.ts
       - name: Build Web frontend
         working-directory: web
         run: npm run build

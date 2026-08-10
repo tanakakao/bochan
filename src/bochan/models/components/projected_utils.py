@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """PCA / REMBO などの射影 wrapper で共通利用する補助関数群。
 
 このモジュールは regression / classification / ordinal の各タスクに依存しない
@@ -12,21 +10,21 @@ from __future__ import annotations
 - condition_on_observations 用の raw-space データ整形
 """
 
+from __future__ import annotations
+
 import copy
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 import torch
-from torch import Tensor
-
 from botorch.models.transforms.input import InputTransform, Normalize
+from torch import Tensor
 
 from bochan.models.components.decomposition import (
     PCAConfig,
-    REMBOConfig,
     PCATransformer,
+    REMBOConfig,
     REMBOTransformer,
 )
-
 
 __all__ = [
     "_clone_input_transform",
@@ -55,8 +53,8 @@ __all__ = [
 
 
 def _clone_input_transform(
-    input_transform: Optional[InputTransform],
-) -> Optional[InputTransform]:
+    input_transform: InputTransform | None,
+) -> InputTransform | None:
     """input_transform を安全に複製する。
 
     Args:
@@ -82,7 +80,7 @@ def _ensure_Y_last_dim(Y: Tensor) -> Tensor:
     return Y
 
 
-def _flatten_targets(Y: Tensor, *, dtype: Optional[torch.dtype] = None) -> Tensor:
+def _flatten_targets(Y: Tensor, *, dtype: torch.dtype | None = None) -> Tensor:
     """分類・順序回帰用 target を ``[n]`` にそろえる。"""
     if Y.ndim > 1 and Y.shape[-1] == 1:
         Y = Y.squeeze(-1)
@@ -90,7 +88,7 @@ def _flatten_targets(Y: Tensor, *, dtype: Optional[torch.dtype] = None) -> Tenso
     return Y if dtype is None else Y.to(dtype=dtype)
 
 
-def _flatten_optional_noise(noise: Optional[Tensor]) -> Optional[Tensor]:
+def _flatten_optional_noise(noise: Tensor | None) -> Tensor | None:
     """optional noise を ``[n]`` にそろえる。"""
     if noise is None:
         return None
@@ -146,6 +144,7 @@ def _expand_raw_X_to_match_transformed_q(X: Tensor, X_tf: Tensor) -> Tensor:
         return X.reshape_as(X_tf)
     return X
 
+
 def flatten_projected_one_to_many_point_axes(
     X: Tensor,
     transformed: Tensor,
@@ -175,11 +174,10 @@ def flatten_projected_one_to_many_point_axes(
     )
 
 
-
 def _check_categorical_columns_unchanged(
     X: Tensor,
     X_tf: Tensor,
-    cat_dims: Optional[Sequence[int]],
+    cat_dims: Sequence[int] | None,
 ) -> None:
     """input_transform がカテゴリ列を変更していないことを確認する。
 
@@ -210,9 +208,9 @@ def _check_categorical_columns_unchanged(
 
 def _apply_input_transform_for_training(
     X: Tensor,
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
-    cat_dims: Optional[Sequence[int]] = None,
+    cat_dims: Sequence[int] | None = None,
     name: str = "input_transform",
 ) -> Tensor:
     """学習データ準備用に input_transform を適用する。
@@ -248,9 +246,9 @@ def _apply_input_transform_for_training(
 
 def _apply_input_transform_for_eval(
     X: Tensor,
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
-    cat_dims: Optional[Sequence[int]] = None,
+    cat_dims: Sequence[int] | None = None,
 ) -> Tensor:
     """posterior / acquisition 評価用に input_transform を適用する。
 
@@ -274,12 +272,12 @@ def _apply_input_transform_for_eval(
 
 
 def _prepare_raw_input_transform_for_mixed(
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
     input_dim: int,
     cont_dims: Sequence[int],
     cat_dims: Sequence[int],
-) -> Optional[InputTransform]:
+) -> InputTransform | None:
     """mixed 用 input_transform を検査・補正する。
 
     Normalize が indices=None の場合、明示 bounds があれば連続列のみを対象にした
@@ -303,7 +301,7 @@ def _prepare_raw_input_transform_for_mixed(
         else:
             idx_list = [int(i) for i in indices]
 
-        bad = sorted(set(idx_list).intersection(set(int(i) for i in cat_dims)))
+        bad = sorted(set(idx_list).intersection(int(i) for i in cat_dims))
         if bad:
             raise ValueError(
                 "raw-space Normalize indices must exclude categorical dims. "
@@ -316,11 +314,11 @@ def _prepare_raw_input_transform_for_mixed(
 def _prepare_original_space_conditioning_data(
     X: Tensor,
     Y: Tensor,
-    noise: Optional[Tensor],
+    noise: Tensor | None,
     *,
     expected_input_dim: int,
     force_2d_Y: bool = False,
-) -> tuple[Tensor, Tensor, Optional[Tensor]]:
+) -> tuple[Tensor, Tensor, Tensor | None]:
     """condition_on_observations 用に raw-space 新規観測を整形する。
 
     Args:
@@ -364,7 +362,11 @@ def _prepare_original_space_conditioning_data(
 
     X_flat = X.reshape(-1, X.shape[-1])
     Y_flat = Y.reshape(-1).to(dtype=X.dtype, device=X.device)
-    noise_flat = None if noise is None else noise.reshape(-1).to(dtype=X.dtype, device=X.device)
+    noise_flat = (
+        None
+        if noise is None
+        else noise.reshape(-1).to(dtype=X.dtype, device=X.device)
+    )
 
     if force_2d_Y:
         Y_flat = Y_flat.unsqueeze(-1)
@@ -376,13 +378,13 @@ def _prepare_original_space_conditioning_data(
 
 def _concat_optional_noise(
     old_Y: Tensor,
-    old_Yvar: Optional[Tensor],
+    old_Yvar: Tensor | None,
     new_Y: Tensor,
-    new_Yvar: Optional[Tensor],
+    new_Yvar: Tensor | None,
     *,
     dtype: torch.dtype,
     device: torch.device,
-) -> Optional[Tensor]:
+) -> Tensor | None:
     """old/new の train_Yvar を連結する。片方だけある場合は 0 埋めする。"""
     if old_Yvar is None and new_Yvar is None:
         return None
@@ -427,7 +429,7 @@ def _clone_fitted_rembo(rembo: REMBOTransformer) -> REMBOTransformer:
 
 def _resolve_latent_dim(
     *,
-    latent_dim: Optional[int],
+    latent_dim: int | None,
     default: int,
 ) -> int:
     """Projected model の latent dimension を正の整数として解決する。"""

@@ -28,6 +28,7 @@ from .composition_visualization_compat import (
     install_composition_visualization_compat,
 )
 from .composition_web_support import install_composition_web_support
+from .hybrid_bo_routing import install_web_hybrid_objective_bo_routing
 from .pandas_compat import install_pandas_string_category_compat
 from .ternary_plot_grid_compat import install_ternary_plot_grid_compat
 from .visualization_feature_types import install_visualization_feature_type_compat
@@ -47,6 +48,7 @@ install_composition_pd_compat()
 install_composition_web_support()
 install_composition_candidate_repair_compat()
 install_composition_constraint_adapter()
+install_web_hybrid_objective_bo_routing()
 
 from . import workflows as _workflows  # noqa: E402
 from . import workflows_tabular as _workflows_tabular  # noqa: E402

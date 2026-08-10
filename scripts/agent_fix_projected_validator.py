@@ -36,12 +36,12 @@ if old_ordinal not in text:
     raise RuntimeError("ordinal projected migration anchor not found")
 text = text.replace(old_ordinal, new_ordinal, 1)
 
-# self.n_components was the old public-model attribute. projected_dim and
-# latent_dim are sufficient; config.n_components remains the transformer detail.
-old_write = '''        write(path, text)\n\n\ndef simplify_multiclass_resolver() -> None:\n'''
-new_write = '''        if path.parts[-3:] == ("ordinal", "high_dim", "decomposition.py"):\n            text = text.replace("        self.n_components = self.projected_dim\\n", "")\n            text = text.replace(\n                "        # 内部互換用。外部 API からは latent_dim を削除する。\\n",\n                "",\n            )\n        write(path, text)\n\n\ndef simplify_multiclass_resolver() -> None:\n'''
+# After the public n_components parameter is removed, all calls to the shared
+# dimension resolver must use its canonical `(latent_dim, default)` signature.
+old_write = '''        if path.parts[-3:] == ("ordinal", "high_dim", "decomposition.py"):\n            text = text.replace("        self.n_components = self.projected_dim\\n", "")\n            text = text.replace(\n                "        # 内部互換用。外部 API からは latent_dim を削除する。\\n",\n                "",\n            )\n        write(path, text)\n\n\ndef simplify_multiclass_resolver() -> None:\n'''
+new_write = '''        text = re.sub(\n            r"_resolve_latent_dim\\(latent_dim=latent_dim,\\s*n_components=n_components,\\s*default=(?P<default>\\d+)\\)",\n            lambda match: f"_resolve_latent_dim(latent_dim=latent_dim, default={match.group('default')})",\n            text,\n        )\n        if path.parts[-3:] == ("ordinal", "high_dim", "decomposition.py"):\n            text = text.replace("        self.n_components = self.projected_dim\\n", "")\n            text = text.replace(\n                "        # 内部互換用。外部 API からは latent_dim を削除する。\\n",\n                "",\n            )\n        write(path, text)\n\n\ndef simplify_multiclass_resolver() -> None:\n'''
 if old_write not in text:
-    raise RuntimeError("ordinal projected attribute cleanup anchor not found")
+    raise RuntimeError("projected resolver-call cleanup anchor not found")
 text = text.replace(old_write, new_write, 1)
 
 # Keep generated regression tests at exactly one trailing newline so
@@ -51,5 +51,12 @@ new_eof = '    write(path, text.rstrip() + addition.rstrip() + "\\n")\n'
 if old_eof not in text:
     raise RuntimeError("projected contract-test EOF anchor not found")
 text = text.replace(old_eof, new_eof, 1)
+
+# Add a validator guard for stale calls to the removed resolver argument.
+validate_anchor = '''    projected = ast.parse(read(MODELS / "components" / "projected.py"))\n'''
+validate_replacement = '''    for path in PROJECTED_FILES:\n        source = read(path)\n        if re.search(\n            r"_resolve_latent_dim\\([^)]*n_components\\s*=",\n            source,\n            flags=re.DOTALL,\n        ):\n            raise RuntimeError(f"stale n_components resolver call remains: {path}")\n\n    projected = ast.parse(read(MODELS / "components" / "projected.py"))\n'''
+if validate_anchor not in text:
+    raise RuntimeError("projected resolver validator anchor not found")
+text = text.replace(validate_anchor, validate_replacement, 1)
 
 path.write_text(text, encoding="utf-8")

@@ -32,6 +32,16 @@ def _configure_tabpfn_web_environment() -> None:
     os.environ[_TABPFN_NO_BROWSER_ENV] = "1"
 
 
+def _web_request_context_active() -> bool:
+    """Return whether model defaults are being resolved inside a real Web run."""
+
+    # Import lazily to avoid a module cycle: target_missing_policy imports this
+    # module while resolving target settings inside its request-local context.
+    from .target_missing_policy import current_target_missing_state
+
+    return current_target_missing_state() is not None
+
+
 def apply_web_model_runtime_defaults(
     model_kwargs: dict[str, Any],
     *,
@@ -50,11 +60,12 @@ def apply_web_model_runtime_defaults(
     optimization invokes prediction many times, so use fewer TabPFN ensemble
     members by default while retaining estimator-side automatic feature coverage.
 
-    The public Web runtime follows a stricter deployment contract than Core /
-    Notebook use: official TabPFN v3 classifier/regressor checkpoints must be
-    preloaded before model construction. Missing assets fail immediately before
-    TabPFN can authenticate or download. Core / Notebook behavior is unchanged
-    because this helper is only called by the Web workbench.
+    During an actual Web request, official TabPFN v3 classifier/regressor
+    checkpoints must be preloaded before model construction. Missing assets fail
+    immediately before TabPFN can authenticate or download. The helper remains
+    usable as a pure runtime-default resolver outside a Web request (for example in
+    unit tests and configuration tooling), while Core / Notebook behavior is
+    unchanged.
 
     Explicit injected ``estimator`` / ``estimators`` objects are already fully
     constructed and do not require bochan-managed runtime assets. Constructor-only
@@ -68,7 +79,8 @@ def apply_web_model_runtime_defaults(
         _configure_tabpfn_web_environment()
         if kwargs.get("estimator") is not None:
             return kwargs
-        require_preloaded_tabpfn_assets()
+        if _web_request_context_active():
+            require_preloaded_tabpfn_assets()
         kwargs.setdefault("n_estimators", _TABPFN_WEB_N_ESTIMATORS)
         kwargs.setdefault("show_progress_bar", False)
         kwargs.setdefault("n_preprocessing_jobs", 1)

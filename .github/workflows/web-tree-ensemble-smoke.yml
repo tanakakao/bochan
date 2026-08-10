@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "pyproject.toml"
+      - "scripts/preload_tabpfn.bat"
+      - "scripts/preload_tabpfn.sh"
       - "src/bochan/api/model_registry.py"
       - "src/bochan/models/external/common.py"
       - "src/bochan/models/hybrid/task_aware_posterior.py"
@@ -57,6 +59,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Smoke Linux TabPFN preload helper
+        env:
+          TABPFN_TOKEN: dummy-ci-token
+        run: bash scripts/preload_tabpfn.sh --help
       - name: Install Web external model dependencies
         run: python -m pip install -e ".[test,web]" "ruff>=0.6"
       - name: Run Web external model, perturbation, runtime, posterior, and capability tests
@@ -116,3 +122,17 @@ jobs:
       - name: Build Web frontend
         working-directory: web
         run: npm run build
+
+  tabpfn-preload-windows-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Smoke Windows TabPFN preload helper
+        shell: cmd
+        run: |
+          set "TABPFN_TOKEN=dummy-ci-token"
+          scripts\preload_tabpfn.bat --help

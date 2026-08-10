@@ -1,0 +1,270 @@
+name: Agent fix PR 547 CI
+
+on:
+  push:
+    branches:
+      - agent/refactor-model-contracts
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/refactor-model-contracts
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Repair hybrid task-aware wiring and projected lint
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          task_path = Path('src/bochan/models/hybrid/task_aware_sampling.py')
+          text = task_path.read_text()
+
+          helper_anchor = '\n\ndef _call_accessor(\n'
+          helpers = r'''
+
+
+def _reduce_extra_sample_dims(tensor: Tensor, X: Tensor) -> Tensor:
+    """Collapse only leading sampling dimensions, preserving candidate axes."""
+    expected = max(1, X.ndim - 1)
+    while tensor.ndim > expected:
+        tensor = tensor.mean(dim=0)
+    return tensor
+
+
+def _select_scalar(
+    tensor: Tensor,
+    X: Tensor,
+    *,
+    output_index: int,
+    name: str,
+) -> Tensor:
+    """Select one scalar output without collapsing InputPerturbation-expanded q."""
+    if not torch.is_tensor(tensor):
+        raise TypeError(f"{name} must be a Tensor. Got {type(tensor)}.")
+
+    if tensor.ndim >= X.ndim and tensor.shape[-1] == 1:
+        tensor = tensor.squeeze(-1)
+
+    if tensor.ndim >= X.ndim and tensor.shape[-2] == X.shape[-2]:
+        if output_index >= tensor.shape[-1]:
+            raise IndexError(
+                f"output_index={output_index} is out of bounds for "
+                f"{name}.shape={tuple(tensor.shape)}."
+            )
+        tensor = tensor[..., output_index]
+
+    return _reduce_extra_sample_dims(tensor, X)
+
+
+def _stack(values: Sequence[Tensor], name: str) -> Tensor:
+    """Stack task components on the final output axis."""
+    if not values:
+        raise ValueError(f"At least one {name} tensor is required.")
+    reference_shape = values[0].shape
+    outputs: list[Tensor] = []
+    for index, value in enumerate(values):
+        if value.shape != reference_shape:
+            try:
+                value = value.expand(reference_shape)
+            except RuntimeError as exc:
+                raise RuntimeError(
+                    f"All {name} tensors must have the same shape. "
+                    f"0={tuple(reference_shape)}, {index}={tuple(value.shape)}."
+                ) from exc
+        outputs.append(value.unsqueeze(-1))
+    return torch.cat(outputs, dim=-1)
+
+
+def _as_1d(
+    values: Sequence[float] | Tensor | None,
+    default: Tensor,
+    name: str,
+) -> Tensor:
+    """Normalize optional utility values to one dimension."""
+    if values is None:
+        return default
+    out = torch.as_tensor(values, device=default.device, dtype=default.dtype)
+    if out.ndim != 1:
+        raise ValueError(f"{name} must be 1D. Got shape={tuple(out.shape)}.")
+    return out
+
+
+def _ordinal_likelihood(model: Any) -> Any:
+    """Resolve the likelihood defining ordinal class probabilities."""
+    for candidate in (model, getattr(model, "model", None)):
+        if candidate is None:
+            continue
+        for name in ("ordinal_likelihood", "likelihood"):
+            value = getattr(candidate, name, None)
+            if value is not None:
+                return value
+    raise AttributeError(
+        f"Ordinal likelihood was not found for {type(model).__name__}."
+    )
+
+
+def _ordinal_cutpoints(likelihood: Any) -> Tensor:
+    """Resolve ordered cutpoints from a supported ordinal likelihood."""
+    for name in (
+        "get_cutpoints",
+        "transformed_cutpoints",
+        "cutpoints",
+        "thresholds",
+        "cuts",
+        "boundaries",
+        "raw_cutpoints",
+        "_ordered_cutpoints",
+        "_cutpoints",
+    ):
+        if not hasattr(likelihood, name):
+            continue
+        value = getattr(likelihood, name)
+        if callable(value):
+            value = value()
+        if torch.is_tensor(value):
+            return value.reshape(-1)
+    raise AttributeError(
+        f"Could not resolve ordinal cutpoints from {type(likelihood).__name__}."
+    )
+
+
+def _ordinal_probs_from_latent(
+    latent: Tensor,
+    cutpoints: Tensor,
+    eps: float = 1e-12,
+) -> Tensor:
+    """Convert an ordinal latent score to class probabilities."""
+    if latent.ndim >= 1 and latent.shape[-1] == 1:
+        latent = latent.squeeze(-1)
+    cuts = cutpoints.to(device=latent.device, dtype=latent.dtype).reshape(-1)
+    cdf = torch.sigmoid(
+        cuts.view(*([1] * latent.ndim), -1) - latent.unsqueeze(-1)
+    )
+    probs = torch.cat(
+        [cdf[..., :1], cdf[..., 1:] - cdf[..., :-1], 1.0 - cdf[..., -1:]],
+        dim=-1,
+    ).clamp_min(eps)
+    return probs / probs.sum(dim=-1, keepdim=True).clamp_min(eps)
+'''
+          if 'def _reduce_extra_sample_dims(' not in text:
+              assert helper_anchor in text
+              text = text.replace(helper_anchor, helpers + helper_anchor, 1)
+
+          replacements = {
+              'owner._as_1d(': '_as_1d(',
+              'owner._ordinal_likelihood(': '_ordinal_likelihood(',
+              'owner._ordinal_cutpoints(': '_ordinal_cutpoints(',
+              'owner._ordinal_probs_from_latent(': '_ordinal_probs_from_latent(',
+              'owner._select_scalar(': '_select_scalar(',
+              'self._stack(': '_stack(',
+          }
+          for old, new in replacements.items():
+              text = text.replace(old, new)
+
+          text = text.replace(
+              '''mean, variance = owner._regression_stats(\n        spec,\n        X,\n        output_mode,\n        **call_kwargs,\n    )''',
+              '''mean, variance = owner._regression_stats(\n        spec,\n        X,\n        output_mode=output_mode,\n        **call_kwargs,\n    )''',
+          )
+          for old_name in ('_binary_stats', '_ordinal_stats', '_multiclass_stats'):
+              old = f'''mean, _ = owner.{old_name}(\n            spec,\n            X,\n            output_mode,\n            **call_kwargs,\n        )'''
+              new = '''mean, _ = owner._output_stats(\n            spec,\n            X,\n            output_mode=output_mode,\n            **call_kwargs,\n        )'''
+              text = text.replace(old, new)
+
+          # Multiclass component has a different indentation/call site.
+          text = text.replace(
+              '''mean, _ = owner._multiclass_stats(\n        spec,\n        X,\n        output_mode,\n        **call_kwargs,\n    )''',
+              '''mean, _ = owner._output_stats(\n        spec,\n        X,\n        output_mode=output_mode,\n        **call_kwargs,\n    )''',
+          )
+
+          stale = (
+              'owner._as_1d(',
+              'owner._ordinal_likelihood(',
+              'owner._ordinal_cutpoints(',
+              'owner._ordinal_probs_from_latent(',
+              'owner._select_scalar(',
+              'owner._binary_stats(',
+              'owner._ordinal_stats(',
+              'owner._multiclass_stats(',
+              'self._stack(',
+          )
+          remaining = [token for token in stale if token in text]
+          if remaining:
+              raise RuntimeError(f'Stale task-aware helper references remain: {remaining}')
+          task_path.write_text(text)
+
+          def move_docstring_before_future(path: Path) -> None:
+              source = path.read_text()
+              prefix = 'from __future__ import annotations\n\n'
+              if not source.startswith(prefix + '"""'):
+                  return
+              start = len(prefix)
+              end = source.find('"""', start + 3)
+              if end < 0:
+                  raise RuntimeError(f'Unterminated module docstring in {path}')
+              end += 3
+              docstring = source[start:end]
+              rest = source[end:].lstrip('\n')
+              path.write_text(f'{docstring}\n\nfrom __future__ import annotations\n\n{rest}')
+
+          projected = Path('src/bochan/models/components/projected.py')
+          projected_utils = Path('src/bochan/models/components/projected_utils.py')
+          move_docstring_before_future(projected)
+          move_docstring_before_future(projected_utils)
+
+          source = projected.read_text()
+          source = source.replace(
+              '''        if inputs is not None:\n            if torch.is_tensor(inputs):\n                X_raw = inputs\n            else:\n                X_raw = inputs[0]\n            X_raw = torch.as_tensor(''',
+              '''        if inputs is not None:\n            X_raw = inputs if torch.is_tensor(inputs) else inputs[0]\n            X_raw = torch.as_tensor(''',
+          )
+          projected.write_text(source)
+          PY
+
+          python -m pip install ruff
+          ruff check --fix \
+            src/bochan/models/components/projected.py \
+            src/bochan/models/components/projected_utils.py \
+            src/bochan/models/hybrid/task_aware_sampling.py
+          ruff check \
+            src/bochan/models/components/projected.py \
+            src/bochan/models/components/projected_utils.py \
+            src/bochan/models/hybrid/task_aware_sampling.py
+          python -m compileall -q \
+            src/bochan/models/components/projected.py \
+            src/bochan/models/components/projected_utils.py \
+            src/bochan/models/hybrid
+          git diff --check
+
+      - name: Install test dependencies
+        run: python -m pip install -e ".[test,tabular,api]"
+
+      - name: Run focused regression tests
+        run: |
+          pytest -q --maxfail=1 \
+            tests/test_hybrid_task_aware_posterior.py \
+            tests/test_hybrid_input_perturbation_probability_shapes.py \
+            tests/test_webapp_binary_variance_input_perturbation_e2e.py \
+            tests/test_tree_ensemble_input_perturbation.py::test_web_random_forest_cvar_runs_with_input_perturbation \
+            tests/test_model_contract_refactor.py
+
+      - name: Commit repair
+        shell: bash
+        run: |
+          rm .github/workflows/agent-fix-pr547-ci.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Fix remaining PR 547 CI regressions"
+          git push origin HEAD:agent/refactor-model-contracts

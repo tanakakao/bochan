@@ -14,11 +14,24 @@ The repository includes platform-specific helpers that preload the same TabPFN
 v3 classifier/regressor checkpoints used by the Web runtime. The helpers do not
 write the Prior Labs API key to disk.
 
+Install or refresh the current checkout's Web dependencies before the first
+preload. This also keeps the local BoTorch/GPyTorch versions aligned with bochan:
+
+```bash
+python -m pip install -e ".[web]"
+```
+
+The helper scripts verify that the selected Python can import the TabPFN APIs
+needed by bochan before asking for an API key. If the dependency is missing or
+incompatible, they print the Python executable and the install command above and
+exit without requesting a secret.
+
 ### Windows Command Prompt
 
 From the bochan repository root, run:
 
 ```bat
+python -m pip install -e ".[web]"
 scripts\preload_tabpfn.bat
 ```
 
@@ -46,6 +59,7 @@ Prompt sessions.
 From the bochan repository root, run:
 
 ```bash
+python -m pip install -e ".[web]"
 bash scripts/preload_tabpfn.sh
 ```
 

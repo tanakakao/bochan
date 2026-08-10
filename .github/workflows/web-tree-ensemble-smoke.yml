@@ -18,6 +18,8 @@ on:
       - "src/bochan/serving/webapp/model_runtime.py"
       - "src/bochan/serving/webapp/risk_settings.py"
       - "src/bochan/serving/webapp/search_settings.py"
+      - "src/bochan/serving/webapp/tabpfn_assets.py"
+      - "src/bochan/serving/webapp/tabpfn_preload.py"
       - "src/bochan/serving/webapp/target_missing_policy.py"
       - "src/bochan/serving/webapp/target_settings.py"
       - "web/src/modelOptions.ts"
@@ -33,7 +35,7 @@ on:
       - "tests/test_web_external_ensemble_matrix.py"
       - "tests/test_web_model_capabilities.py"
       - "tests/test_web_ngboost_runtime.py"
-      - "tests/test_web_tabpfn_auth_runtime.py"
+      - "tests/test_web_tabpfn_preload_runtime.py"
       - "tests/test_web_tabpfn_diagnostics.py"
       - "tests/test_web_tabpfn_mixed.py"
       - "tests/test_web_tabpfn_models.py"
@@ -67,7 +69,7 @@ jobs:
             tests/test_web_external_ensemble_matrix.py \
             tests/test_web_model_capabilities.py \
             tests/test_web_ngboost_runtime.py \
-            tests/test_web_tabpfn_auth_runtime.py \
+            tests/test_web_tabpfn_preload_runtime.py \
             tests/test_web_tabpfn_diagnostics.py \
             tests/test_web_tabpfn_mixed.py \
             tests/test_web_tabpfn_models.py \
@@ -85,6 +87,8 @@ jobs:
             src/bochan/serving/webapp/model_runtime.py \
             src/bochan/serving/webapp/risk_settings.py \
             src/bochan/serving/webapp/search_settings.py \
+            src/bochan/serving/webapp/tabpfn_assets.py \
+            src/bochan/serving/webapp/tabpfn_preload.py \
             src/bochan/serving/webapp/target_missing_policy.py \
             src/bochan/serving/webapp/target_settings.py \
             src/bochan/models/hybrid/task_aware_posterior.py \
@@ -94,7 +98,7 @@ jobs:
             tests/test_web_external_ensemble_matrix.py \
             tests/test_web_model_capabilities.py \
             tests/test_web_ngboost_runtime.py \
-            tests/test_web_tabpfn_auth_runtime.py \
+            tests/test_web_tabpfn_preload_runtime.py \
             tests/test_web_tabpfn_diagnostics.py \
             tests/test_web_tabpfn_mixed.py \
             tests/test_web_tabpfn_models.py \

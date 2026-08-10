@@ -11,6 +11,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from .tabpfn_assets import require_preloaded_tabpfn_assets
+
 _NGBOOST_ENSEMBLE_MODEL = "ngboost_ensemble"
 _NGBOOST_WEB_ENSEMBLE_SIZE = 3
 _TABPFN_MODEL = "tabpfn"
@@ -19,20 +21,15 @@ _TABPFN_NO_BROWSER_ENV = "TABPFN_NO_BROWSER"
 
 
 def _configure_tabpfn_web_environment() -> None:
-    """Prevent library-managed browser login inside the Web server process.
+    """Disable browser authentication inside the public Web server process.
 
-    TabPFN performs a one-time license/authentication flow when model weights are
-    not yet available. Its default graphical flow opens a browser and starts a
-    loopback callback listener. That behavior is appropriate for an interactive
-    Python session, but not for a Web backend handling a model-fit request.
-
-    The official TabPFN non-interactive contract is ``TABPFN_NO_BROWSER`` plus
-    ``TABPFN_TOKEN`` (or previously cached credentials/model weights). Use
-    ``setdefault`` so an operator can explicitly opt back into TabPFN's browser
-    flow by defining the environment variable before starting bochan.
+    bochan Web uses a deployment-time preload contract: model checkpoints must
+    already be present before the server handles user requests. Browser login is
+    therefore never an acceptable runtime fallback, even if an operator happened
+    to define ``TABPFN_NO_BROWSER=0`` in the server environment.
     """
 
-    os.environ.setdefault(_TABPFN_NO_BROWSER_ENV, "1")
+    os.environ[_TABPFN_NO_BROWSER_ENV] = "1"
 
 
 def apply_web_model_runtime_defaults(
@@ -41,7 +38,7 @@ def apply_web_model_runtime_defaults(
     model_type: str,
     fit_maxiter: int,
 ) -> dict[str, Any]:
-    """Apply interactive Web defaults while preserving explicit model kwargs.
+    """Apply interactive Web defaults while preserving explicit estimator injection.
 
     NGBoost's estimator count is a constructor argument rather than a generic
     ``FitConfig`` option. Therefore the Web ``fit_maxiter`` control is translated
@@ -52,19 +49,16 @@ def apply_web_model_runtime_defaults(
     TabPFN already performs its own in-context ensemble inference. Web candidate
     optimization invokes prediction many times, so use fewer TabPFN ensemble
     members by default while retaining estimator-side automatic feature coverage.
-    The Web runtime also disables TabPFN's automatic browser authentication flow;
-    operators should authenticate non-interactively with ``TABPFN_TOKEN`` or use
-    already cached credentials/model weights. Core / Notebook behavior is not
-    changed because this helper is only called by the Web workbench.
 
-    Explicit user model kwargs always override these Web defaults. ``fit_maxiter``
-    is deliberately not mapped to TabPFN because it has no iteration semantics in
-    the foundation-model estimator.
+    The public Web runtime follows a stricter deployment contract than Core /
+    Notebook use: official TabPFN v3 classifier/regressor checkpoints must be
+    preloaded before model construction. Missing assets fail immediately before
+    TabPFN can authenticate or download. Core / Notebook behavior is unchanged
+    because this helper is only called by the Web workbench.
 
-    Injected ``estimator`` / ``estimators`` objects are already fully constructed.
-    Constructor-only Web defaults must not be added in that case: doing so can
-    create inconsistent ensemble-size contracts and makes custom estimator reuse
-    unexpectedly depend on Web defaults.
+    Explicit injected ``estimator`` / ``estimators`` objects are already fully
+    constructed and do not require bochan-managed runtime assets. Constructor-only
+    Web defaults must not be added in that case.
     """
 
     kwargs = dict(model_kwargs)
@@ -74,6 +68,7 @@ def apply_web_model_runtime_defaults(
         _configure_tabpfn_web_environment()
         if kwargs.get("estimator") is not None:
             return kwargs
+        require_preloaded_tabpfn_assets()
         kwargs.setdefault("n_estimators", _TABPFN_WEB_N_ESTIMATORS)
         kwargs.setdefault("show_progress_bar", False)
         kwargs.setdefault("n_preprocessing_jobs", 1)

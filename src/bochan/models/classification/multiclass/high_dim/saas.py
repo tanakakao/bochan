@@ -7,9 +7,8 @@ from torch import Tensor
 
 from botorch.models.map_saas import add_saas_prior
 from gpytorch.kernels import Kernel, MaternKernel, ScaleKernel
-from gpytorch.means import Mean
 
-from bochan.models.classification.multiclass import (
+from bochan.models.classification.multiclass.base import (
     MulticlassClassificationGPModel,
     MulticlassClassificationMixedGPModel,
 )
@@ -66,7 +65,13 @@ class SaasMulticlassClassificationGPModel(MulticlassClassificationGPModel):
         self.tau = tau
         self.saas_log_scale = bool(saas_log_scale)
         self.saas_nu = float(saas_nu)
-        super().__init__(train_X=train_X, train_Y=train_Y, num_classes=num_classes, covar_module=covar_module, **kwargs)
+        super().__init__(
+            train_X=train_X,
+            train_Y=train_Y,
+            num_classes=num_classes,
+            covar_module=covar_module,
+            **kwargs,
+        )
 
 
 class SaasMulticlassClassificationMixedGPModel(MulticlassClassificationMixedGPModel):
@@ -111,7 +116,7 @@ class SaasMulticlassClassificationMixedGPModel(MulticlassClassificationMixedGPMo
 
 
 __all__ = [
-    'SaasMulticlassClassificationGPModel',
-    'SaasMulticlassClassificationMixedGPModel',
-    'build_map_saas_multiclass_covar_module',
+    "SaasMulticlassClassificationGPModel",
+    "SaasMulticlassClassificationMixedGPModel",
+    "build_map_saas_multiclass_covar_module",
 ]

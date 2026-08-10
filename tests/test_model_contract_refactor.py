@@ -351,3 +351,21 @@ def test_binary_conditioning_annotation_uses_canonical_name() -> None:
     path = MODELS_ROOT / "classification" / "binary" / "base" / "models.py"
     source = path.read_text(encoding="utf-8")
     assert '"GPClassificationModel"' not in source
+
+
+def test_binary_base_package_exports_implementation_classes_directly() -> None:
+    import bochan.models.classification.binary.base as binary_base
+    from bochan.models.classification.binary.base import models as binary_models
+
+    assert binary_base.BinaryClassificationGPModel is binary_models.BinaryClassificationGPModel
+    assert (
+        binary_base.BinaryClassificationMixedGPModel
+        is binary_models.BinaryClassificationMixedGPModel
+    )
+
+
+def test_binary_base_has_no_stale_compatibility_class_names() -> None:
+    path = MODELS_ROOT / "classification" / "binary" / "base" / "models.py"
+    source = path.read_text(encoding="utf-8")
+    assert '"GPClassificationModel"' not in source
+    assert '"GPClassificationMixedModel"' not in source

@@ -232,7 +232,7 @@ class BinaryClassificationGPModel(ApproximateGPyTorchModel, FantasizeMixin):
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing: int = 20,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
     ) -> None:
@@ -487,7 +487,7 @@ class BinaryClassificationMixedGPModel(ApproximateGPyTorchModel, FantasizeMixin)
         cont_kernel_factory: Optional[
             Callable[[torch.Size, int, Optional[List[int]]], Kernel]
         ] = None,
-        num_inducing: int = 20,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
     ) -> None:
@@ -660,7 +660,7 @@ class BinaryClassificationMixedGPModel(ApproximateGPyTorchModel, FantasizeMixin)
         Y: Tensor,
         noise: Optional[Tensor] = None,
         **kwargs,
-    ) -> "GPClassificationMixedModel":
+    ) -> "BinaryClassificationMixedGPModel":
         """
         mixed classification model 用の condition_on_observations。
 

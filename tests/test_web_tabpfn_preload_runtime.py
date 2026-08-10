@@ -67,7 +67,7 @@ def test_preload_downloads_classifier_and_regressor_without_browser_by_default(
 
 def test_preload_can_explicitly_allow_interactive_browser_auth(tmp_path, monkeypatch) -> None:
     _patch_asset_names(monkeypatch)
-    monkeypatch.delenv("TABPFN_NO_BROWSER", raising=False)
+    monkeypatch.setenv("TABPFN_NO_BROWSER", "1")
 
     def fake_download(root, which):
         path = root / tabpfn_assets._default_model_filename(which)
@@ -81,9 +81,10 @@ def test_preload_can_explicitly_allow_interactive_browser_auth(tmp_path, monkeyp
     assert "TABPFN_NO_BROWSER" not in os.environ
 
 
-def test_web_tabpfn_requires_preloaded_assets_and_forces_no_browser(monkeypatch) -> None:
+def test_web_tabpfn_requires_preloaded_assets_and_pins_noninteractive_v3(monkeypatch) -> None:
     calls: list[bool] = []
     monkeypatch.setenv("TABPFN_NO_BROWSER", "0")
+    monkeypatch.setenv("TABPFN_MODEL_VERSION", "v2.6")
     monkeypatch.setattr(model_runtime, "_web_request_context_active", lambda: True)
     monkeypatch.setattr(
         model_runtime,
@@ -99,6 +100,7 @@ def test_web_tabpfn_requires_preloaded_assets_and_forces_no_browser(monkeypatch)
 
     assert calls == [True]
     assert os.environ["TABPFN_NO_BROWSER"] == "1"
+    assert os.environ["TABPFN_MODEL_VERSION"] == "v3"
     assert kwargs["n_estimators"] == 4
     assert kwargs["show_progress_bar"] is False
     assert kwargs["n_preprocessing_jobs"] == 1
@@ -157,6 +159,7 @@ def test_injected_tabpfn_estimator_does_not_require_deployment_assets(monkeypatc
 
 def test_non_tabpfn_web_model_does_not_change_tabpfn_auth_environment(monkeypatch) -> None:
     monkeypatch.delenv("TABPFN_NO_BROWSER", raising=False)
+    monkeypatch.delenv("TABPFN_MODEL_VERSION", raising=False)
 
     model_runtime.apply_web_model_runtime_defaults(
         {},
@@ -165,3 +168,4 @@ def test_non_tabpfn_web_model_does_not_change_tabpfn_auth_environment(monkeypatc
     )
 
     assert "TABPFN_NO_BROWSER" not in os.environ
+    assert "TABPFN_MODEL_VERSION" not in os.environ

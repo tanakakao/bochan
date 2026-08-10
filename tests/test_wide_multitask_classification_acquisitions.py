@@ -74,7 +74,7 @@ def test_wide_binary_multitask_acquisition_family_preserves_q_and_constraints() 
         train_X=train_X,
         train_Y=train_Y,
         rank=1,
-        num_inducing_points=6,
+        num_inducing=6,
     )
     model.eval()
     model.likelihood.eval()
@@ -236,7 +236,7 @@ def test_wide_multiclass_multitask_acquisition_family_reduces_class_axis() -> No
         train_Y=train_Y,
         num_classes=3,
         rank=1,
-        num_inducing_points=6,
+        num_inducing=6,
     )
     model.eval()
     model.likelihood.eval()

@@ -44,10 +44,10 @@ if exist "%VENV_PYTHON%" (
 )
 
 if defined BACKEND_RELOAD_ARGS (
-    echo Backend reload: enabled ^(BOCHAN_WEB_RELOAD=%BOCHAN_WEB_RELOAD%^\)
+    echo Backend reload: enabled - BOCHAN_WEB_RELOAD=%BOCHAN_WEB_RELOAD%
     echo [WARNING] Python reload clears in-memory datasets, fitted models, and visualization sessions.
 ) else (
-    echo Backend reload: disabled ^(recommended for model/visualization sessions^)
+    echo Backend reload: disabled - recommended for model/visualization sessions
 )
 
 echo Starting bochan backend at http://%BACKEND_HOST%:%BACKEND_PORT% ...

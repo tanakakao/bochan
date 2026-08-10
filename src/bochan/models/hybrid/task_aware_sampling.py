@@ -41,6 +41,131 @@ _GH_WEIGHTS = (
 )
 
 
+def _reduce_extra_sample_dims(tensor: Tensor, X: Tensor) -> Tensor:
+    """Collapse only leading sample axes while preserving candidate axes."""
+    expected = max(1, X.ndim - 1)
+    while tensor.ndim > expected:
+        tensor = tensor.mean(dim=0)
+    return tensor
+
+
+def _select_scalar(
+    tensor: Tensor,
+    X: Tensor,
+    *,
+    output_index: int,
+    name: str,
+) -> Tensor:
+    """Select one scalar output without collapsing perturbation-expanded q."""
+    if not torch.is_tensor(tensor):
+        raise TypeError(f"{name} must be a Tensor. Got {type(tensor)}.")
+
+    if tensor.ndim >= X.ndim and tensor.shape[-1] == 1:
+        tensor = tensor.squeeze(-1)
+
+    if tensor.ndim >= X.ndim and tensor.shape[-2] == X.shape[-2]:
+        if output_index >= tensor.shape[-1]:
+            raise IndexError(
+                f"output_index={output_index} is out of bounds for "
+                f"{name}.shape={tuple(tensor.shape)}."
+            )
+        tensor = tensor[..., output_index]
+
+    return _reduce_extra_sample_dims(tensor, X)
+
+
+def _stack(values: Sequence[Tensor], name: str) -> Tensor:
+    """Stack task components on the final output axis."""
+    if not values:
+        raise ValueError(f"At least one {name} tensor is required.")
+
+    reference_shape = values[0].shape
+    outputs: list[Tensor] = []
+    for index, value in enumerate(values):
+        if value.shape != reference_shape:
+            try:
+                value = value.expand(reference_shape)
+            except RuntimeError as exc:
+                raise RuntimeError(
+                    f"All {name} tensors must have the same shape. "
+                    f"0={tuple(reference_shape)}, {index}={tuple(value.shape)}."
+                ) from exc
+        outputs.append(value.unsqueeze(-1))
+    return torch.cat(outputs, dim=-1)
+
+
+def _as_1d(
+    values: Sequence[float] | Tensor | None,
+    default: Tensor,
+    name: str,
+) -> Tensor:
+    """Normalize optional utility values to one dimension."""
+    if values is None:
+        return default
+    out = torch.as_tensor(values, device=default.device, dtype=default.dtype)
+    if out.ndim != 1:
+        raise ValueError(f"{name} must be 1D. Got shape={tuple(out.shape)}.")
+    return out
+
+
+def _ordinal_likelihood(model: Any) -> Any:
+    """Resolve the likelihood that defines ordinal class probabilities."""
+    for candidate in (model, getattr(model, "model", None)):
+        if candidate is None:
+            continue
+        for name in ("ordinal_likelihood", "likelihood"):
+            likelihood = getattr(candidate, name, None)
+            if likelihood is not None:
+                return likelihood
+    raise AttributeError(
+        f"Ordinal likelihood was not found for {type(model).__name__}."
+    )
+
+
+def _ordinal_cutpoints(likelihood: Any) -> Tensor:
+    """Resolve ordered cutpoints from a supported ordinal likelihood."""
+    for name in (
+        "get_cutpoints",
+        "transformed_cutpoints",
+        "cutpoints",
+        "thresholds",
+        "cuts",
+        "boundaries",
+        "raw_cutpoints",
+        "_ordered_cutpoints",
+        "_cutpoints",
+    ):
+        if not hasattr(likelihood, name):
+            continue
+        value = getattr(likelihood, name)
+        if callable(value):
+            value = value()
+        if torch.is_tensor(value):
+            return value.reshape(-1)
+    raise AttributeError(
+        f"Could not resolve ordinal cutpoints from {type(likelihood).__name__}."
+    )
+
+
+def _ordinal_probs_from_latent(
+    latent: Tensor,
+    cutpoints: Tensor,
+    eps: float = 1e-12,
+) -> Tensor:
+    """Convert an ordinal latent score to class probabilities."""
+    if latent.ndim >= 1 and latent.shape[-1] == 1:
+        latent = latent.squeeze(-1)
+    cuts = cutpoints.to(device=latent.device, dtype=latent.dtype).reshape(-1)
+    cdf = torch.sigmoid(
+        cuts.view(*([1] * latent.ndim), -1) - latent.unsqueeze(-1)
+    )
+    probs = torch.cat(
+        [cdf[..., :1], cdf[..., 1:] - cdf[..., :-1], 1.0 - cdf[..., -1:]],
+        dim=-1,
+    ).clamp_min(eps)
+    return probs / probs.sum(dim=-1, keepdim=True).clamp_min(eps)
+
+
 def _call_accessor(
     owner: Any,
     model: Any,
@@ -49,7 +174,6 @@ def _call_accessor(
     **kwargs: Any,
 ) -> Any:
     """Call an accessor on a wrapper or its inner model."""
-
     candidates = [model]
     inner = getattr(model, "model", None)
     if inner is not None and inner is not model:
@@ -89,7 +213,6 @@ def _select_scalar_samples(
     name: str,
 ) -> Tensor:
     """Select one scalar output while preserving acquisition sample axes."""
-
     out = samples
 
     # A scalar posterior normally adds a final output dimension to X. Require
@@ -128,7 +251,6 @@ def _gauss_hermite_moments(
     transform: Callable[[Tensor], Tensor],
 ) -> tuple[Tensor, Tensor]:
     """Deterministically approximate scalar-latent transformed moments."""
-
     nodes = torch.as_tensor(
         _GH_NODES,
         device=latent_mean.device,
@@ -220,7 +342,7 @@ def _binary_value_transform(
         if output_mode == "probability" or spec.utility_values is None:
             value = selected_probability
         else:
-            utilities = owner._as_1d(
+            utilities = _as_1d(
                 spec.utility_values,
                 torch.tensor(
                     [0.0, 1.0],
@@ -246,9 +368,9 @@ def _ordinal_value_transform(
     X: Tensor,
     output_mode: PosteriorMode,
 ) -> Callable[[Tensor], Tensor]:
-    likelihood = owner._ordinal_likelihood(spec.model)
-    cutpoints = owner._ordinal_cutpoints(likelihood)
-    utilities = owner._as_1d(
+    likelihood = _ordinal_likelihood(spec.model)
+    cutpoints = _ordinal_cutpoints(likelihood)
+    utilities = _as_1d(
         spec.utility_values,
         torch.arange(
             cutpoints.numel() + 1,
@@ -269,7 +391,7 @@ def _ordinal_value_transform(
         if callable(class_probs_from_f):
             probabilities = class_probs_from_f(latent)
         else:
-            probabilities = owner._ordinal_probs_from_latent(latent, cutpoints)
+            probabilities = _ordinal_probs_from_latent(latent, cutpoints)
         local_utilities = utilities.to(
             device=probabilities.device,
             dtype=probabilities.dtype,
@@ -298,9 +420,11 @@ def _regression_component(
     mean, variance = owner._regression_stats(
         spec,
         X,
-        output_mode,
+        output_mode=output_mode,
         **call_kwargs,
     )
+    if output_mode in ("objective", "expected_utility"):
+        mean, variance = owner._objective_transform_stats(spec, mean, variance)
 
     def transform(samples: Tensor) -> Tensor:
         values = _select_scalar_samples(
@@ -332,10 +456,10 @@ def _binary_component(
     try:
         posterior = _latent_posterior(owner, spec, X, **call_kwargs)
     except (AttributeError, TypeError):
-        mean, _ = owner._binary_stats(
+        mean, _ = owner._output_stats(
             spec,
             X,
-            output_mode,
+            output_mode=output_mode,
             **call_kwargs,
         )
         return HybridPosteriorComponent(
@@ -348,13 +472,13 @@ def _binary_component(
         posterior,
         spec.name,
     )
-    latent_mean = owner._select_scalar(
+    latent_mean = _select_scalar(
         latent_mean,
         X,
         output_index=spec.output_index,
         name=f"{spec.name}.latent_mean",
     )
-    latent_variance = owner._select_scalar(
+    latent_variance = _select_scalar(
         latent_variance,
         X,
         output_index=spec.output_index,
@@ -385,10 +509,10 @@ def _ordinal_component(
     try:
         posterior = _latent_posterior(owner, spec, X, **call_kwargs)
     except (AttributeError, TypeError):
-        mean, _ = owner._ordinal_stats(
+        mean, _ = owner._output_stats(
             spec,
             X,
-            output_mode,
+            output_mode=output_mode,
             **call_kwargs,
         )
         return HybridPosteriorComponent(
@@ -401,13 +525,13 @@ def _ordinal_component(
         posterior,
         spec.name,
     )
-    latent_mean = owner._select_scalar(
+    latent_mean = _select_scalar(
         latent_mean,
         X,
         output_index=spec.output_index,
         name=f"{spec.name}.latent_mean",
     )
-    latent_variance = owner._select_scalar(
+    latent_variance = _select_scalar(
         latent_variance,
         X,
         output_index=spec.output_index,
@@ -440,10 +564,10 @@ def _multiclass_component(
     # multiclass acquisition classes remain probability-aware; hybrid generic
     # MC acquisition falls back to the predictive mean until a latent adapter
     # is available for that specific model.
-    mean, _ = owner._multiclass_stats(
+    mean, _ = owner._output_stats(
         spec,
         X,
-        output_mode,
+        output_mode=output_mode,
         **call_kwargs,
     )
     return HybridPosteriorComponent(
@@ -517,8 +641,8 @@ def _task_aware_posterior(
         )
         for index in self._normalize_output_indices(output_indices)
     ]
-    mean = self._stack([component.mean for component in components], "mean")
-    variance = self._stack(
+    mean = _stack([component.mean for component in components], "mean")
+    variance = _stack(
         [component.variance for component in components],
         "variance",
     )
@@ -528,5 +652,6 @@ def _task_aware_posterior(
         components=components,
     )
     return posterior_transform(posterior) if posterior_transform is not None else posterior
+
 
 __all__ = ["_task_aware_posterior"]

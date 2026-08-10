@@ -7,11 +7,8 @@ axes. InputPerturbation may also expand the public candidate axis from ``q`` to
 
 from __future__ import annotations
 
-from typing import Any
-
 import torch
 from torch import Tensor
-
 
 
 def _shape_endswith(
@@ -83,12 +80,8 @@ def _select_class_probability_output(
     missing_q = False
     q_like = raw_q
 
-    # Standard single-output classifier layout. Match the complete public
-    # batch+q suffix rather than relying on ndim: DeepGP adds leading sample
-    # axes, which previously made q look like a model-output axis.
     if _shape_endswith(probs.shape[:-1], input_batch_q):
         selected = probs
-    # Internal multi-output classifier layout: ... x batch x q x m x C.
     elif probs.ndim >= 2 and _shape_endswith(probs.shape[:-2], input_batch_q):
         num_outputs = int(probs.shape[-2])
         if output_index >= num_outputs:
@@ -167,5 +160,6 @@ def _select_class_probability_output(
             f"got shape={tuple(selected.shape)}."
         )
     return selected
+
 
 __all__ = ["_select_class_probability_output"]

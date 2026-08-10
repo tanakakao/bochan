@@ -51,6 +51,20 @@ else
     PYTHON_CMD="python3"
 fi
 
+# Check the exact Python environment before asking for a secret.
+if ! "${PYTHON_CMD}" -c 'import tabpfn; from tabpfn.constants import ModelVersion; from tabpfn.model_loading import download_model, get_cache_dir, resolve_model_path' >/dev/null 2>&1; then
+    echo "[ERROR] A compatible TabPFN package is not installed in the selected Python environment." >&2
+    echo "Python executable:" >&2
+    "${PYTHON_CMD}" -c 'import sys; print(sys.executable)' >&2 || true
+    echo >&2
+    echo "Install or refresh the bochan Web dependencies from this repository:" >&2
+    printf '  %q -m pip install -e ".[web]"\n' "${PYTHON_CMD}" >&2
+    echo >&2
+    echo "Then rerun:" >&2
+    echo "  bash scripts/preload_tabpfn.sh" >&2
+    exit 2
+fi
+
 TOKEN_WAS_PROMPTED=0
 if [[ -z "${TABPFN_TOKEN:-}" && "${TOKEN_OPTIONAL}" == "0" ]]; then
     if [[ ! -t 0 ]]; then

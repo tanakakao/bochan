@@ -17,6 +17,7 @@ LEGACY_PATCH_MODULES = (
     / "robust"
     / "heteroscedastic_alignment.py",
     MODELS_ROOT / "ordinal" / "robust" / "_num_classes.py",
+    MODELS_ROOT / "ordinal" / "high_dim" / "saas_fixed.py",
 )
 
 LEGACY_PATCH_INSTALLERS = {
@@ -62,9 +63,34 @@ LEGACY_SHARED_ARGUMENTS = {
     "inducing_points_num",
 }
 
+LEGACY_METHOD_NAMES = {
+    "posterior_latent",
+    "posterior_f",
+}
+
+LEGACY_PROPERTIES_BY_CLASS = {
+    "_BaseProjectedModel": {"raw_train_X", "train_X", "train_Y"},
+    "VAEGaussianGPModel": {"raw_train_X", "train_X", "train_Y"},
+    "_BaseOrdinalGPModel": {"train_X", "train_Y", "inducing_points_original"},
+    "MultiOutputOrdinalModel": {"train_X", "raw_train_X", "train_Y"},
+}
+
+SAAS_CANONICAL_CLASSES = {
+    "SaasOrdinalGPModel",
+    "SaasOrdinalMixedGPModel",
+}
+SAAS_LEGACY_ARGUMENTS = {"num_inducing_points", "ordinal_likelihood"}
+
 
 def _iter_model_python_files():
     return MODELS_ROOT.rglob("*.py")
+
+
+def _function_arg_names(node: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    return {
+        arg.arg
+        for arg in [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+    }
 
 
 def test_runtime_patch_modules_are_removed() -> None:
@@ -102,10 +128,55 @@ def test_legacy_shared_constructor_arguments_are_removed() -> None:
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            arg_names = {
-                arg.arg
-                for arg in [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
-            }
-            for name in LEGACY_SHARED_ARGUMENTS & arg_names:
+            for name in LEGACY_SHARED_ARGUMENTS & _function_arg_names(node):
                 offenders.append((str(path.relative_to(REPO_ROOT)), node.name, name))
+    assert not offenders
+
+
+def test_legacy_latent_posterior_method_aliases_are_removed() -> None:
+    offenders: list[tuple[str, str]] = []
+    for path in _iter_model_python_files():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                if node.name in LEGACY_METHOD_NAMES:
+                    offenders.append((str(path.relative_to(REPO_ROOT)), node.name))
+    assert not offenders
+
+
+def test_known_training_data_compatibility_properties_are_removed() -> None:
+    offenders: list[tuple[str, str, str]] = []
+    for path in _iter_model_python_files():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for class_node in [node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]:
+            forbidden = LEGACY_PROPERTIES_BY_CLASS.get(class_node.name, set())
+            if not forbidden:
+                continue
+            for node in class_node.body:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in forbidden:
+                    offenders.append(
+                        (str(path.relative_to(REPO_ROOT)), class_node.name, node.name)
+                    )
+    assert not offenders
+
+
+def test_ordinal_saas_uses_canonical_constructor_arguments() -> None:
+    saas_path = MODELS_ROOT / "ordinal" / "high_dim" / "saas.py"
+    tree = ast.parse(saas_path.read_text(encoding="utf-8"), filename=str(saas_path))
+    offenders: list[tuple[str, str]] = []
+    for class_node in [node for node in tree.body if isinstance(node, ast.ClassDef)]:
+        if class_node.name not in SAAS_CANONICAL_CLASSES:
+            continue
+        init = next(
+            (
+                node
+                for node in class_node.body
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name == "__init__"
+            ),
+            None,
+        )
+        assert init is not None
+        for name in SAAS_LEGACY_ARGUMENTS & _function_arg_names(init):
+            offenders.append((class_node.name, name))
     assert not offenders

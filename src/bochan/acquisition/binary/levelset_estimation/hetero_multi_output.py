@@ -508,7 +508,7 @@ class _MultiOutputLatentStraddleBase(_BinaryClassificationAcqBase):
         X = self._as_tensor(X)
 
         # 1. wrapper が latent posterior を提供している場合: raw X を渡す
-        for name in ("latent_posterior", "latent_posterior", "latent_posterior"):
+        for name in ("latent_posterior",):
             fn = getattr(submodel, name, None)
             if callable(fn):
                 return fn(X)
@@ -534,7 +534,7 @@ class _MultiOutputLatentStraddleBase(_BinaryClassificationAcqBase):
 
         raise AttributeError(
             f"Latent posterior accessor was not found for submodel {type(submodel).__name__}. "
-            "Expected one of: latent_posterior / latent_posterior / latent_posterior / "
+            "Expected one of: latent_posterior / "
             "model.posterior / gp_model.posterior / callable latent model."
         )
 

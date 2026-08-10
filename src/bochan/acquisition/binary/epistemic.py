@@ -53,7 +53,7 @@ def get_binary_latent_posterior(
             back to ``model.posterior`` would reintroduce Bernoulli observation
             variance and is therefore intentionally disallowed.
     """
-    for name in ("latent_posterior", "latent_posterior", "latent_posterior"):
+    for name in ("latent_posterior",):
         accessor = getattr(model, name, None)
         if callable(accessor):
             return _call_posterior_accessor(
@@ -64,7 +64,7 @@ def get_binary_latent_posterior(
 
     inner = getattr(model, "model", None)
     if inner is not None:
-        for name in ("latent_posterior", "latent_posterior", "latent_posterior"):
+        for name in ("latent_posterior",):
             accessor = getattr(inner, name, None)
             if callable(accessor):
                 return _call_posterior_accessor(
@@ -76,7 +76,7 @@ def get_binary_latent_posterior(
     raise AttributeError(
         f"{type(model).__name__} does not expose a latent posterior. "
         "Binary epistemic uncertainty requires latent_posterior(X), "
-        "latent_posterior(X), or latent_posterior(X)."
+        "latent_posterior(X)."
     )
 
 

@@ -345,7 +345,7 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
             ここで input_transform 済みの Xt を渡してはいけない。
             Xt を渡すと InputPerturbation が二重に適用される可能性がある。
         """
-        for name in ("latent_posterior", "latent_posterior", "latent_posterior"):
+        for name in ("latent_posterior",):
             fn = getattr(self.model, name, None)
             if not callable(fn):
                 continue
@@ -434,7 +434,7 @@ class _BinaryClassificationAcqBase(AcquisitionFunction):
         if latent_dist is not None:
             return latent_dist, orig, Xt
 
-        # 2. 修正済み latent_posterior / latent_posterior / latent_posterior を raw X で呼ぶ
+        # 2. 修正済み latent_posterior を raw X で呼ぶ
         latent_dist = self._call_model_latent_posterior_raw(
             X=X,
             Xt=Xt,

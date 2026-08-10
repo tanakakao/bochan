@@ -100,7 +100,7 @@ class _BaseHeteroBinaryLevelSetAcquisition(_BinaryClassificationAcqBase):
         self.objective = objective
 
     def _get_latent_posterior(self, X: Tensor):
-        for name in ("latent_posterior", "latent_posterior", "latent_posterior"):
+        for name in ("latent_posterior",):
             fn = getattr(self.model, name, None)
             if callable(fn):
                 return fn(X)

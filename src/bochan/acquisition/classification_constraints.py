@@ -197,7 +197,7 @@ def _patch_binary_nparego() -> None:
     @module.t_batch_mode_transform()
     def supported_forward(self, X: Tensor) -> Tensor:
         Xq = module.ensure_q_batch(X)
-        posterior = module._get_binary_mc_latent_posterioror_probability_samples(
+        posterior = module._get_binary_mc_posterior_for_probability_samples(
             self.model,
             Xq,
             samples_are_probs=self.samples_are_probs,

@@ -51,7 +51,7 @@ from ._utils import (
 )
 
 
-def _get_binary_mc_latent_posterioror_probability_samples(
+def _get_binary_mc_posterior_for_probability_samples(
     model,
     X: Tensor,
     *,
@@ -294,7 +294,7 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
 
     def _pointwise_pof(self, raw_X: Tensor, expanded_X: Tensor) -> Tensor:
         if self.mode in {"mc_likelihood", "mc_sigmoid"}:
-            post = _get_binary_mc_latent_posterioror_probability_samples(
+            post = _get_binary_mc_posterior_for_probability_samples(
                 self.model,
                 raw_X,
                 samples_are_probs=self.samples_are_probs,
@@ -312,7 +312,7 @@ class qMultiOutputBinaryProbabilityOfFeasibility(AcquisitionFunction):
             )
             p = probs.mean(dim=0)
         elif self.mode == "latent_cdf":
-            post = _get_binary_mc_latent_posterioror_probability_samples(
+            post = _get_binary_mc_posterior_for_probability_samples(
                 self.model,
                 raw_X,
                 samples_are_probs=False,
@@ -660,7 +660,7 @@ class qMultiOutputBinaryNParEGO(MCAcquisitionFunction):
     def forward(self, X: Tensor) -> Tensor:
         Xq = ensure_q_batch(X)
 
-        post = _get_binary_mc_latent_posterioror_probability_samples(
+        post = _get_binary_mc_posterior_for_probability_samples(
             self.model,
             Xq,
             samples_are_probs=self.samples_are_probs,

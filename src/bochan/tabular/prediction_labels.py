@@ -238,18 +238,18 @@ def _class_probabilities_for_output(
                 kwargs=posterior_kwargs,
             )
     elif task_type in _CLASSIFICATION_TASK_TYPES:
-        latent_posteriorn = getattr(model, "posterior", None)
-        if callable(latent_posteriorn):
+        posterior_fn = getattr(model, "posterior", None)
+        if callable(posterior_fn):
             try:
                 posterior = _call_output_accessor(
-                    latent_posteriorn,
+                    posterior_fn,
                     X,
                     output_index=output_index,
                     kwargs=posterior_kwargs,
                 )
             except (TypeError, NotImplementedError):
                 posterior = _call_single_accessor(
-                    latent_posteriorn,
+                    posterior_fn,
                     X,
                     kwargs=posterior_kwargs,
                 )

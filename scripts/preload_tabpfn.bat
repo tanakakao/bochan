@@ -13,6 +13,33 @@ if errorlevel 1 (
     exit /b 1
 )
 
+set "SHOW_HELP=0"
+set "TOKEN_OPTIONAL=0"
+for %%A in (%*) do (
+    if /I "%%~A"=="--allow-browser-auth" set "TOKEN_OPTIONAL=1"
+    if /I "%%~A"=="--help" set "SHOW_HELP=1"
+    if /I "%%~A"=="-h" set "SHOW_HELP=1"
+)
+
+if "%SHOW_HELP%"=="1" (
+    echo Usage: scripts\preload_tabpfn.bat [options]
+    echo.
+    echo Preload the TabPFN v3 classifier and regressor checkpoints used by bochan Web.
+    echo If TABPFN_TOKEN is not set, the Prior Labs API key is requested with hidden input.
+    echo.
+    echo Common options passed to the Python preload command:
+    echo   --cache-dir PATH          Use an explicit TabPFN checkpoint directory.
+    echo   --allow-browser-auth      Allow Prior Labs browser authentication for local setup.
+    echo   --help, -h                Show this help.
+    echo.
+    echo Environment variables:
+    echo   TABPFN_TOKEN              Prior Labs API key. Optional when prompted interactively.
+    echo   TABPFN_MODEL_CACHE_DIR    Persistent checkpoint directory. Upstream default if unset.
+    echo   BOCHAN_PYTHON             Python executable path. Defaults to python.
+    popd
+    exit /b 0
+)
+
 if defined PYTHONPATH (
     set "PYTHONPATH=%REPO_ROOT%\src;%PYTHONPATH%"
 ) else (
@@ -23,13 +50,6 @@ if defined BOCHAN_PYTHON (
     set "PYTHON_CMD=%BOCHAN_PYTHON%"
 ) else (
     set "PYTHON_CMD=python"
-)
-
-set "TOKEN_OPTIONAL=0"
-for %%A in (%*) do (
-    if /I "%%~A"=="--allow-browser-auth" set "TOKEN_OPTIONAL=1"
-    if /I "%%~A"=="--help" set "TOKEN_OPTIONAL=1"
-    if /I "%%~A"=="-h" set "TOKEN_OPTIONAL=1"
 )
 
 if not defined TABPFN_TOKEN if "%TOKEN_OPTIONAL%"=="0" (

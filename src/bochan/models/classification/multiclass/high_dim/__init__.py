@@ -13,6 +13,11 @@ from .decomposition import (
     REMBOMulticlassClassificationGPModel as _REMBOMulticlassClassificationGPModel,
     REMBOMulticlassClassificationMixedGPModel as _REMBOMulticlassClassificationMixedGPModel,
 )
+from .saas import (
+    SaasMulticlassClassificationGPModel,
+    SaasMulticlassClassificationMixedGPModel,
+    build_map_saas_multiclass_covar_module,
+)
 
 
 class _ProjectedMulticlassModelMixin:
@@ -53,6 +58,9 @@ class REMBOMulticlassClassificationMixedGPModel(
 
 
 __all__ = [
+    "SaasMulticlassClassificationGPModel",
+    "SaasMulticlassClassificationMixedGPModel",
+    "build_map_saas_multiclass_covar_module",
     "PCAMulticlassClassificationGPModel",
     "REMBOMulticlassClassificationGPModel",
     "PCAMulticlassClassificationMixedGPModel",

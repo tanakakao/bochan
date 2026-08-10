@@ -131,7 +131,9 @@ def test_web_tabpfn_cross_validation_and_permutation_importance_run() -> None:
     assert result["metadata"]["cross_validation"] is not None
     assert result["feature_importance"] is not None
     assert len(result["feature_importance_summary"]) >= 2
-    assert not result["feature_importance_warnings"]
+    assert result["feature_importance_warnings"] == [
+        "Feature importance was evaluated on training data and may be optimistic."
+    ]
     assert result["metadata"]["timings_ms"]["feature_importance"] >= 0.0
     assert estimator.fit_calls >= 1
     assert estimator.predict_calls > 0

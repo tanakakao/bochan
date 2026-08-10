@@ -15,6 +15,7 @@ from .risk_settings import attach_web_risk_metadata, web_risk_run
 from .target_missing_policy import model_variant, target_missing_run
 from .visualization_sessions import (
     begin_visualization_run,
+    build_visualization,
     discard_visualization_run,
     finalize_visualization_run,
     model_details,
@@ -205,6 +206,77 @@ def _attach_final_model_diagnostics(
         result["feature_importance_warnings"] = existing
 
 
+def _cache_default_interactive_visualizations(
+    result: dict[str, Any],
+    *,
+    run_id: str,
+    options: dict[str, Any],
+) -> None:
+    """Cache default plots while the fitted model session is definitely available.
+
+    Interactive plot selectors still use the live session endpoint. These cached
+    payloads provide an immediate Results-page fallback if the development server
+    is later reloaded or the in-memory session is otherwise lost.
+    """
+
+    regression_targets = list(options.get("regression_targets") or [])
+    if not regression_targets:
+        return
+
+    target = str(regression_targets[0])
+    controls = dict(options.get("feature_controls") or {})
+    fixed_values = {
+        str(name): control.get("default")
+        for name, control in controls.items()
+        if isinstance(control, dict) and "default" in control
+    }
+    requests: list[dict[str, Any]] = []
+    features = list(options.get("feature_columns") or [])
+    if features:
+        requests.append(
+            {
+                "kind": "1d",
+                "target": target,
+                "features": [str(features[0])],
+                "fixed_values": fixed_values,
+                "show_type": "pred",
+                "n": 30,
+            }
+        )
+    if len(regression_targets) >= 2:
+        requests.append(
+            {
+                "kind": "pareto",
+                "target_x": str(regression_targets[0]),
+                "target_y": str(regression_targets[1]),
+                "show_pareto_front": False,
+            }
+        )
+
+    visualizations = list(result.get("visualizations") or [])
+    existing_ids = {
+        str(item.get("id"))
+        for item in visualizations
+        if isinstance(item, dict) and item.get("id")
+    }
+    warnings = list(result.get("visualization_warnings") or [])
+    for request in requests:
+        try:
+            payload = build_visualization(run_id, request)
+        except Exception as exc:
+            warnings.append(
+                f"初期表示用{request['kind']}プロットをキャッシュできませんでした: {exc}"
+            )
+            continue
+        figure_id = str(payload.get("id") or "")
+        if figure_id and figure_id not in existing_ids:
+            visualizations.append(payload)
+            existing_ids.add(figure_id)
+
+    result["visualizations"] = visualizations
+    result["visualization_warnings"] = list(dict.fromkeys(warnings))
+
+
 def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     """Run the Tabular workflow and retain objects needed by Results and Logs."""
 
@@ -288,7 +360,13 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
                 "input_perturbation_risk_enabled"
             )
             result["visualization_run_id"] = run_id
-            result["visualization_options"] = visualization_options(session)
+            options = visualization_options(session)
+            result["visualization_options"] = options
+            _cache_default_interactive_visualizations(
+                result,
+                run_id=run_id,
+                options=options,
+            )
             metadata["model_details"] = details
             metadata["visualization_session"] = "in_memory"
             result["metadata"] = metadata
@@ -309,6 +387,7 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
 __all__ = [
     "_attach_final_model_diagnostics",
     "_build_outcome_constraint_config",
+    "_cache_default_interactive_visualizations",
     "_figure_payload",
     "_resolve_target_settings",
     "_resolve_targets",

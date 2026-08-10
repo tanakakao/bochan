@@ -37,7 +37,7 @@ from .logging import (
     set_request_id,
 )
 from .model_artifact_routes import create_model_artifact_router
-from .visualization_sessions import build_visualization
+from .visualization_sessions import build_visualization, get_visualization_session
 from .workflows import run_regression_web_workflow
 
 
@@ -513,9 +513,20 @@ def create_app(
         request: VisualizationRequestSchema,
     ) -> dict[str, Any]:
         try:
-            return build_visualization(run_id, request.model_dump())
+            get_visualization_session(run_id)
         except KeyError as exc:
+            log_event(
+                logger,
+                logging.WARNING,
+                "visualization_session_not_found",
+                "Visualization session was not found",
+                visualization_run_id=run_id,
+                visualization_kind=request.kind,
+            )
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+        try:
+            return build_visualization(run_id, request.model_dump())
         except Exception as exc:
             logger.exception(
                 "Result visualization failed",

@@ -63,6 +63,36 @@ function featureLabel(options: VisualizationOptions, feature: string): string {
   return options.feature_labels?.[feature] ?? feature;
 }
 
+function cachedYyPlot(result: RegressionResult, target: string): ResultVisualization | null {
+  return result.visualizations.find((value) => value.id === `${target}-yyplot`)
+    ?? result.visualizations.find((value) => value.id === `yyplot-${target}`)
+    ?? result.visualizations.find((value) => value.id.endsWith("-yyplot"))
+    ?? null;
+}
+
+function cachedParetoPlot(
+  result: RegressionResult,
+  targetX: string,
+  targetY: string
+): ResultVisualization | null {
+  return result.visualizations.find(
+    (value) => value.id === `pareto-${targetX}-${targetY}`
+  ) ?? null;
+}
+
+function cachedRightPlot(
+  result: RegressionResult,
+  kind: "1d" | "2d" | "ternary",
+  target: string,
+  features: string[],
+  showType: "pred" | "acqf"
+): ResultVisualization | null {
+  if (showType !== "pred" || kind !== "1d" || features.length !== 1) return null;
+  return result.visualizations.find(
+    (value) => value.id === `prediction-1d-${features[0]}-${target}`
+  ) ?? null;
+}
+
 /** Two-column interactive Plotly area using fitted FastAPI visualization sessions. */
 export default function InteractiveResultPlots({ result }: Props) {
   const options = useMemo(() => defaults(result), [result]);
@@ -143,12 +173,12 @@ export default function InteractiveResultPlots({ result }: Props) {
   }, [balanceCandidates, balanceElement, compositionMode, usesCompositionAxis]);
 
   useEffect(() => {
+    const saved = leftKind === "yyplot"
+      ? cachedYyPlot(result, leftTarget)
+      : showParetoFront
+        ? null
+        : cachedParetoPlot(result, targetX, targetY);
     if (!runId) {
-      const saved = leftKind === "yyplot"
-        ? result.visualizations.find((value) => value.id === `${leftTarget}-yyplot`)
-          ?? result.visualizations.find((value) => value.id.endsWith("-yyplot"))
-          ?? null
-        : null;
       setLeftPlot(saved);
       setLeftError(saved
         ? null
@@ -170,24 +200,38 @@ export default function InteractiveResultPlots({ result }: Props) {
           target_y: targetY,
           show_pareto_front: showParetoFront
         })
-      .then((value) => { if (active) setLeftPlot(value); })
+      .then((value) => {
+        if (!active) return;
+        setLeftPlot(value);
+        setLeftError(null);
+      })
       .catch((caught) => {
-        if (active) setLeftError(caught instanceof Error ? caught.message : String(caught));
+        if (!active) return;
+        if (saved) {
+          setLeftPlot(saved);
+          setLeftError(null);
+          return;
+        }
+        setLeftError(caught instanceof Error ? caught.message : String(caught));
       })
       .finally(() => { if (active) setLeftLoading(false); });
     return () => { active = false; };
-  }, [leftKind, leftTarget, result.visualizations, runId, showParetoFront, targetX, targetY]);
+  }, [leftKind, leftTarget, result, runId, showParetoFront, targetX, targetY]);
 
   useEffect(() => {
-    if (!runId) {
-      setRightError("可視化セッションがありません。候補を再生成してください。");
-      return;
-    }
     const features = rightKind === "1d"
       ? [featureA]
       : rightKind === "2d"
         ? [featureA, featureB]
         : [featureA, featureB, featureC];
+    const saved = cachedRightPlot(result, rightKind, rightTarget, features, showType);
+    if (!runId) {
+      setRightPlot(saved);
+      setRightError(saved
+        ? null
+        : "可視化セッションがありません。候補を再生成してください。");
+      return;
+    }
     if (features.some((value) => !value) || new Set(features).size !== features.length) {
       setRightError("図に使用する異なる説明変数を選択してください。");
       return;
@@ -210,9 +254,19 @@ export default function InteractiveResultPlots({ result }: Props) {
       sum_value: rightKind === "ternary" ? sumValue : undefined,
       n: rightKind === "2d" ? 30 : 50
     })
-      .then((value) => { if (active) setRightPlot(value); })
+      .then((value) => {
+        if (!active) return;
+        setRightPlot(value);
+        setRightError(null);
+      })
       .catch((caught) => {
-        if (active) setRightError(caught instanceof Error ? caught.message : String(caught));
+        if (!active) return;
+        if (saved) {
+          setRightPlot(saved);
+          setRightError(null);
+          return;
+        }
+        setRightError(caught instanceof Error ? caught.message : String(caught));
       })
       .finally(() => { if (active) setRightLoading(false); });
     return () => { active = false; };
@@ -223,6 +277,7 @@ export default function InteractiveResultPlots({ result }: Props) {
     featureB,
     featureC,
     fixedValues,
+    result,
     rightKind,
     rightTarget,
     runId,

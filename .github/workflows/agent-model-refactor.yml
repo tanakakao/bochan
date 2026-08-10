@@ -1,9 +1,6 @@
 name: Agent model refactor
 
 on:
-  push:
-    branches:
-      - agent/refactor-model-contracts
   pull_request:
     branches:
       - main
@@ -25,7 +22,19 @@ jobs:
           python-version: '3.12'
       - name: Apply model refactor
         run: |
-          python scripts/agent_model_refactor.py
+          set +e
+          python scripts/agent_model_refactor.py 2> /tmp/model-refactor.err
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            if grep -q '^RuntimeError: legacy model patch hooks remain:' /tmp/model-refactor.err; then
+              cat /tmp/model-refactor.err
+            else
+              cat /tmp/model-refactor.err
+              exit "$status"
+            fi
+          fi
+          python scripts/agent_model_refactor_cleanup.py
           python scripts/agent_model_refactor_extra.py
       - name: Validate syntax and diff
         run: |
@@ -34,6 +43,7 @@ jobs:
       - name: Remove one-shot tooling
         run: |
           rm scripts/agent_model_refactor.py
+          rm scripts/agent_model_refactor_cleanup.py
           rm scripts/agent_model_refactor_extra.py
           rm .github/workflows/agent-model-refactor.yml
       - name: Commit generated refactor

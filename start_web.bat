@@ -1,9 +1,9 @@
 @echo off
 setlocal EnableExtensions
 
-rem Fixed ports for the bochan development web application.
+rem Reserved ports for the bochan development web application.
 set "BACKEND_HOST=127.0.0.1"
-set "BACKEND_PORT=8000"
+set "BACKEND_PORT=8001"
 set "FRONTEND_HOST=127.0.0.1"
 set "FRONTEND_PORT=5173"
 set "HEALTH_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/api/v1/health"

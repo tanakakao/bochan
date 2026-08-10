@@ -1,5 +1,6 @@
 name: Agent fix PR 547 CI
 
+# One-shot repair workflow; it removes itself after a successful repair.
 on:
   push:
     branches:
@@ -177,12 +178,11 @@ def _ordinal_probs_from_latent(
               '''mean, variance = owner._regression_stats(\n        spec,\n        X,\n        output_mode,\n        **call_kwargs,\n    )''',
               '''mean, variance = owner._regression_stats(\n        spec,\n        X,\n        output_mode=output_mode,\n        **call_kwargs,\n    )''',
           )
-          for old_name in ('_binary_stats', '_ordinal_stats', '_multiclass_stats'):
+          for old_name in ('_binary_stats', '_ordinal_stats'):
               old = f'''mean, _ = owner.{old_name}(\n            spec,\n            X,\n            output_mode,\n            **call_kwargs,\n        )'''
               new = '''mean, _ = owner._output_stats(\n            spec,\n            X,\n            output_mode=output_mode,\n            **call_kwargs,\n        )'''
               text = text.replace(old, new)
 
-          # Multiclass component has a different indentation/call site.
           text = text.replace(
               '''mean, _ = owner._multiclass_stats(\n        spec,\n        X,\n        output_mode,\n        **call_kwargs,\n    )''',
               '''mean, _ = owner._output_stats(\n        spec,\n        X,\n        output_mode=output_mode,\n        **call_kwargs,\n    )''',

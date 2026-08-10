@@ -1,94 +1,130 @@
 from __future__ import annotations
 
-"""ordinal 用 MAP-SAAS GP モデル。
+"""MAP-SAAS ordinal GP models.
 
-連続入力版は ``OrdinalGPModel`` に SAAS prior 付き Matern kernel を渡す。
-Mixed 版はカテゴリ列を one-hot encode し、内部 ordinal GP には encoded-space の
-入力を渡す。
+The continuous model combines :class:`OrdinalGPModel` with a MAP-SAAS kernel.
+The mixed-input model one-hot encodes categorical inputs and keeps the latent GP
+in encoded feature space while exposing raw-space candidate inputs publicly.
 """
 
+import warnings
+from collections.abc import Sequence
 from copy import deepcopy
-from typing import Any, Optional, Sequence
+from typing import Any
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.objective import PosteriorTransform
 from gpytorch.kernels import Kernel
 from gpytorch.means import Mean
+from torch import Tensor
 
 from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
-from bochan.models.ordinal.base import OrdinalGPModel
 from bochan.models.components.saas import (
     OneHotEncodingMixin,
     build_map_saas_covar_module,
     concat_optional_noise,
-    flatten_optional_noise,
     flatten_targets,
     prepare_mixed_conditioning_data,
     to_device_dtype_transform,
 )
+from bochan.models.ordinal.base import OrdinalGPModel
 
 
-def _infer_num_classes(train_Y: Tensor, num_classes: Optional[int]) -> int:
-    """ordinal label から class 数を推定する。"""
-    if num_classes is not None:
-        return int(num_classes)
-    y = flatten_targets(train_Y).long()
-    if y.numel() == 0:
+def _labels_as_long(train_Y: Tensor) -> Tensor:
+    """Validate ordinal labels and return a flat integer tensor."""
+    y_raw = flatten_targets(torch.as_tensor(train_Y))
+    if y_raw.numel() == 0:
         raise ValueError("Cannot infer num_classes from empty train_Y.")
+    if y_raw.dtype.is_floating_point and not torch.allclose(y_raw, y_raw.round()):
+        raise ValueError("Ordinal labels must be integer-valued.")
+    y = y_raw.long()
     if y.min().item() < 0:
-        raise ValueError("Ordinal labels must be non-negative integers starting at 0.")
-    return int(y.max().item()) + 1
+        raise ValueError("Ordinal labels must be non-negative integers.")
+    return y
+
+
+def _infer_num_classes(train_Y: Tensor, num_classes: int | None) -> int:
+    """Resolve and validate the number of ordinal classes."""
+    y = _labels_as_long(train_Y)
+    if num_classes is not None:
+        k = int(num_classes)
+        if k < 3:
+            raise ValueError("num_classes must be >= 3 for ordinal GP models.")
+        if y.max().item() >= k:
+            raise ValueError(
+                "Ordinal labels must be in [0, num_classes - 1]. "
+                f"Got max label {int(y.max().item())} for num_classes={k}."
+            )
+        return k
+
+    unique_y = torch.unique(y).sort().values
+    if unique_y.numel() < 3:
+        raise ValueError(
+            "Ordinal GP requires at least 3 observed classes when num_classes is None. "
+            "Pass num_classes explicitly if some classes are currently unobserved."
+        )
+    expected = torch.arange(
+        unique_y.numel(),
+        device=unique_y.device,
+        dtype=unique_y.dtype,
+    )
+    if not torch.equal(unique_y, expected):
+        raise ValueError(
+            "When num_classes is None, ordinal labels must be consecutive integers starting at 0. "
+            f"Got labels {unique_y.detach().cpu().tolist()}."
+        )
+    return int(unique_y.numel())
+
+
+def _resolve_num_classes(
+    train_Y: Tensor,
+    num_classes: int | None,
+    likelihood: OrdinalLogitLikelihood | None,
+) -> int:
+    """Resolve ``num_classes`` against an optional custom ordinal likelihood."""
+    if likelihood is not None:
+        likelihood_num_classes = int(likelihood.num_classes)
+        if num_classes is None:
+            num_classes = likelihood_num_classes
+        elif int(num_classes) != likelihood_num_classes:
+            raise ValueError(
+                "num_classes and likelihood.num_classes are inconsistent. "
+                f"num_classes={int(num_classes)}, likelihood.num_classes={likelihood_num_classes}."
+            )
+    return _infer_num_classes(train_Y, num_classes)
+
+
+def _warn_if_train_yvar_is_provided(train_Yvar: Tensor | None) -> None:
+    if train_Yvar is not None:
+        warnings.warn(
+            "train_Yvar is accepted for the common model constructor contract but is ignored "
+            "by ordinal SAAS models because OrdinalLogitLikelihood does not use Gaussian "
+            "observation-noise variances.",
+            UserWarning,
+            stacklevel=3,
+        )
 
 
 def _flatten_ordinal_targets(y: Tensor) -> Tensor:
-    """ordinal target を [n] の long tensor にそろえる。"""
     return flatten_targets(y).long()
 
 
 class SaasOrdinalGPModel(OrdinalGPModel):
-    """MAP-SAAS style の ordinal GP。
-
-    Args:
-        train_X: 学習入力。
-        train_Y: ordinal label。0 始まりの整数ラベルを想定。
-        num_classes: クラス数。None の場合は train_Y から推定。
-        train_Yvar: optional noise。通常は None。
-        ordinal_likelihood: ordinal likelihood。
-        likelihood: ``ordinal_likelihood`` の alias。
-        input_transform: 入力変換。
-        mean_module: mean module。
-        covar_module: covar module。None の場合、SAAS prior 付き Matern kernel を使う。
-        num_inducing_points: inducing point 数。
-        inducing_points: inducing points。
-        learn_inducing_locations: inducing point を学習するか。
-        tau: SAAS global shrinkage。
-        saas_log_scale: log-scale SAAS flag。
-        saas_nu: Matern kernel の smoothness。
-        fix_first_cutpoint: 最初の cutpoint を固定するか。
-        init_gap: cutpoint 初期 gap。
-        eps: 数値安定化 epsilon。
-
-    Notes:
-        - 実体は通常の ordinal GP + MAP-SAAS kernel。
-        - fully Bayesian SAAS ではないため MCMC batch 次元は持たない。
-    """
+    """Continuous-input MAP-SAAS ordinal GP."""
 
     def __init__(
         self,
         train_X: Tensor,
         train_Y: Tensor,
+        train_Yvar: Tensor | None = None,
         *,
-        num_classes: Optional[int] = None,
-        train_Yvar: Optional[Tensor] = None,
-        ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
-        likelihood: Optional[OrdinalLogitLikelihood] = None,
+        num_classes: int | None = None,
+        likelihood: OrdinalLogitLikelihood | None = None,
         input_transform: Any | None = None,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 20,
-        inducing_points: Optional[Tensor] = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
+        num_inducing: int = 20,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         tau: float | Tensor | None = None,
         saas_log_scale: bool = True,
@@ -96,29 +132,15 @@ class SaasOrdinalGPModel(OrdinalGPModel):
         fix_first_cutpoint: bool = True,
         init_gap: float = 1.0,
         eps: float = 1e-8,
-        **kwargs: Any,
+        conditioning_steps: int = 50,
+        conditioning_lr: float | None = None,
+        conditioning_batch_size: int | None = None,
     ) -> None:
         train_X = torch.as_tensor(train_X)
         train_Y = torch.as_tensor(train_Y, device=train_X.device)
-        self.tau = tau
-        self.saas_log_scale = bool(saas_log_scale)
-        self.saas_nu = float(saas_nu)
-        self.num_classes = _infer_num_classes(train_Y=train_Y, num_classes=num_classes)
-        self.train_X_raw = train_X.detach().clone()
-        self.train_Y_raw = train_Y.detach().clone()
-        self.train_Yvar_raw = None if train_Yvar is None else train_Yvar.detach().clone()
-        self.train_inputs_raw = (train_X.detach().clone(),)
+        _warn_if_train_yvar_is_provided(train_Yvar)
 
-        if ordinal_likelihood is None:
-            ordinal_likelihood = likelihood
-        if ordinal_likelihood is None:
-            ordinal_likelihood = OrdinalLogitLikelihood(
-                num_classes=self.num_classes,
-                eps=float(eps),
-                init_gap=float(init_gap),
-                fix_first_cutpoint=bool(fix_first_cutpoint),
-            ).to(train_X)
-
+        resolved_num_classes = _resolve_num_classes(train_Y, num_classes, likelihood)
         input_transform = to_device_dtype_transform(input_transform, train_X)
         if covar_module is None:
             covar_module = build_map_saas_covar_module(
@@ -129,106 +151,66 @@ class SaasOrdinalGPModel(OrdinalGPModel):
                 nu=saas_nu,
             )
 
-        # OrdinalGPModel の版差を吸収する。
-        try:
-            super().__init__(
-                train_X=train_X,
-                train_Y=train_Y,
-                num_classes=self.num_classes,
-                train_Yvar=train_Yvar,
-                ordinal_likelihood=ordinal_likelihood,
-                input_transform=input_transform,
-                mean_module=mean_module,
-                covar_module=covar_module,
-                num_inducing_points=num_inducing_points,
-                inducing_points=inducing_points,
-                learn_inducing_locations=learn_inducing_locations,
-                **kwargs,
-            )
-        except TypeError:
-            try:
-                super().__init__(
-                    train_X=train_X,
-                    train_Y=train_Y,
-                    num_classes=self.num_classes,
-                    likelihood=ordinal_likelihood,
-                    input_transform=input_transform,
-                    mean_module=mean_module,
-                    covar_module=covar_module,
-                    num_inducing=num_inducing_points,
-                    inducing_points=inducing_points,
-                    learn_inducing_locations=learn_inducing_locations,
-                    **kwargs,
-                )
-            except TypeError:
-                super().__init__(
-                    train_X=train_X,
-                    train_Y=train_Y,
-                    num_classes=self.num_classes,
-                    input_transform=input_transform,
-                    mean_module=mean_module,
-                    covar_module=covar_module,
-                    num_inducing=num_inducing_points,
-                    inducing_points=inducing_points,
-                    learn_inducing_locations=learn_inducing_locations,
-                    **kwargs,
-                )
+        super().__init__(
+            train_X=train_X,
+            train_Y=train_Y,
+            num_classes=resolved_num_classes,
+            num_inducing=num_inducing,
+            inducing_points=inducing_points,
+            learn_inducing_locations=learn_inducing_locations,
+            mean_module=mean_module,
+            covar_module=covar_module,
+            input_transform=input_transform,
+            eps=eps,
+            init_gap=init_gap,
+            fix_first_cutpoint=fix_first_cutpoint,
+            conditioning_steps=conditioning_steps,
+            conditioning_lr=conditioning_lr,
+            conditioning_batch_size=conditioning_batch_size,
+        )
 
-        self.train_inputs_raw = (train_X.detach().clone(),)
+        if likelihood is not None:
+            self.likelihood = to_device_dtype_transform(likelihood, train_X)
+
+        self.tau = tau
+        self.saas_log_scale = bool(saas_log_scale)
+        self.saas_nu = float(saas_nu)
+        self.train_Yvar_raw = (
+            None if train_Yvar is None else torch.as_tensor(train_Yvar, device=train_X.device).detach().clone()
+        )
         self.train_targets = _flatten_ordinal_targets(train_Y).to(device=train_X.device)
+        self.model.train_targets = self.train_targets
 
     @property
     def batch_shape(self) -> torch.Size:
-        return torch.Size([])
+        return torch.Size()
 
     @property
     def num_outputs(self) -> int:
         return 1
 
+    def probability_posterior(self, X: Tensor, **kwargs: Any) -> Tensor:
+        _ = kwargs
+        return self.class_probs(X)
+
 
 class SaasOrdinalMixedGPModel(OneHotEncodingMixin, SaasOrdinalGPModel):
-    """mixed 入力向け MAP-SAAS ordinal GP。
-
-    Args:
-        train_X: raw-space の学習入力。カテゴリ列は整数エンコードを想定。
-        train_Y: ordinal label。
-        num_classes: クラス数。None の場合は train_Y から推定。
-        cat_dims: raw-space におけるカテゴリ列 index。
-        train_Yvar: optional noise。
-        ordinal_likelihood: ordinal likelihood。
-        likelihood: ``ordinal_likelihood`` の alias。
-        input_transform: raw-space または encoded-space 用 input transform。
-        mean_module: mean module。
-        covar_module: covar module。None の場合、encoded-space に SAAS prior を貼る。
-        num_inducing_points: inducing point 数。
-        inducing_points: raw-space または encoded-space の inducing points。
-        learn_inducing_locations: inducing point を学習するか。
-        tau: SAAS global shrinkage。
-        saas_log_scale: log-scale SAAS flag。
-        saas_nu: Matern kernel の smoothness。
-
-    Notes:
-        - public ``train_inputs_raw`` と ``train_inputs`` は raw-space。
-        - 内部 GP の学習は one-hot encoded-space で行う。
-        - encoded-space の情報は ``encoded_train_inputs_raw`` に保持する。
-        - raw-space の input_transform は one-hot encode 前に適用する。
-    """
+    """Mixed continuous/categorical MAP-SAAS ordinal GP."""
 
     def __init__(
         self,
         train_X: Tensor,
         train_Y: Tensor,
+        train_Yvar: Tensor | None = None,
         *,
-        num_classes: Optional[int] = None,
-        cat_dims: Optional[Sequence[int]] = None,
-        train_Yvar: Optional[Tensor] = None,
-        ordinal_likelihood: Optional[OrdinalLogitLikelihood] = None,
-        likelihood: Optional[OrdinalLogitLikelihood] = None,
+        cat_dims: Sequence[int],
+        num_classes: int | None = None,
+        likelihood: OrdinalLogitLikelihood | None = None,
         input_transform: Any | None = None,
-        mean_module: Optional[Mean] = None,
-        covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 20,
-        inducing_points: Optional[Tensor] = None,
+        mean_module: Mean | None = None,
+        covar_module: Kernel | None = None,
+        num_inducing: int = 20,
+        inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         tau: float | Tensor | None = None,
         saas_log_scale: bool = True,
@@ -236,30 +218,34 @@ class SaasOrdinalMixedGPModel(OneHotEncodingMixin, SaasOrdinalGPModel):
         fix_first_cutpoint: bool = True,
         init_gap: float = 1.0,
         eps: float = 1e-8,
-        **kwargs: Any,
+        conditioning_steps: int = 50,
+        conditioning_lr: float | None = None,
+        conditioning_batch_size: int | None = None,
     ) -> None:
         train_X = torch.as_tensor(train_X)
         train_Y = torch.as_tensor(train_Y, device=train_X.device)
-        self.train_X_raw = train_X.detach().clone()
-        self.train_Y_raw = train_Y.detach().clone()
-        self.train_Yvar_raw = None if train_Yvar is None else train_Yvar.detach().clone()
+        raw_train_X = train_X.detach().clone()
 
-        encoded_train_X = self._init_one_hot_encoding(train_X=train_X, cat_dims=cat_dims)
+        encoded_train_X = self._init_one_hot_encoding(
+            train_X=train_X,
+            cat_dims=list(cat_dims),
+        )
         self.encoded_train_inputs_raw = (encoded_train_X.detach().clone(),)
         expanded_input_transform = self._maybe_expand_input_transform(input_transform)
-        encoded_inducing_points = self._canonicalize_inducing_points_for_encoded_space(inducing_points)
+        encoded_inducing_points = self._canonicalize_inducing_points_for_encoded_space(
+            inducing_points
+        )
 
         super().__init__(
             train_X=encoded_train_X,
             train_Y=train_Y,
-            num_classes=num_classes,
             train_Yvar=train_Yvar,
-            ordinal_likelihood=ordinal_likelihood,
+            num_classes=num_classes,
             likelihood=likelihood,
             input_transform=expanded_input_transform,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=encoded_inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             tau=tau,
@@ -268,25 +254,28 @@ class SaasOrdinalMixedGPModel(OneHotEncodingMixin, SaasOrdinalGPModel):
             fix_first_cutpoint=fix_first_cutpoint,
             init_gap=init_gap,
             eps=eps,
-            **kwargs,
+            conditioning_steps=conditioning_steps,
+            conditioning_lr=conditioning_lr,
+            conditioning_batch_size=conditioning_batch_size,
         )
 
-        self.encoded_train_inputs = getattr(self, "train_inputs", (encoded_train_X,))
-        if len(self.encoded_train_inputs) > 0:
+        self.encoded_train_inputs = tuple(
+            x.detach().clone() for x in self.train_inputs
+        )
+        if self.encoded_train_inputs:
             self._check_encoded_categorical_blocks_unchanged(
                 X_encoded=encoded_train_X,
                 X_tf=self.encoded_train_inputs[0],
                 name=f"{self.__class__.__name__}.training_input_transform",
             )
-        self.encoded_inducing_points_raw = encoded_inducing_points
+        self.encoded_inducing_points_raw = self.inducing_points_raw.detach().clone()
 
-        # public 側は raw-space に戻す。
-        self.train_X_raw = train_X.detach().clone()
-        self.train_Y_raw = train_Y.detach().clone()
-        self.train_Yvar_raw = None if train_Yvar is None else train_Yvar.detach().clone()
-        self.train_inputs_raw = (train_X.detach().clone(),)
-        self.train_inputs = (train_X.detach().clone(),)
+        # The wrapper accepts raw-space candidates publicly; the latent model keeps
+        # its encoded-space training inputs established by the parent constructor.
+        self.train_inputs_raw = (raw_train_X,)
+        self.train_inputs = (raw_train_X.detach().clone(),)
         self.train_targets = _flatten_ordinal_targets(train_Y).to(device=train_X.device)
+        self.model.train_targets = self.train_targets
 
     @property
     def train_input_raw(self) -> Tensor:
@@ -297,18 +286,6 @@ class SaasOrdinalMixedGPModel(OneHotEncodingMixin, SaasOrdinalGPModel):
         return self.train_inputs[0]
 
     @property
-    def raw_train_X(self) -> Tensor:
-        return self.train_input_raw
-
-    @property
-    def train_X(self) -> Tensor:
-        return self.train_input_raw
-
-    @property
-    def train_Y(self) -> Tensor:
-        return self.train_targets
-
-    @property
     def encoded_train_input_raw(self) -> Tensor:
         return self.encoded_train_inputs_raw[0]
 
@@ -317,127 +294,101 @@ class SaasOrdinalMixedGPModel(OneHotEncodingMixin, SaasOrdinalGPModel):
         return self.encoded_train_inputs[0]
 
     def _set_transformed_inputs(self) -> None:
-        """BoTorch eval 時の自動 transformed input 更新を無効化する。"""
         return None
 
     def _canonicalize_posterior_X(self, X: Tensor) -> Tensor:
         if isinstance(X, tuple):
             X = X[0]
-        X = torch.as_tensor(X, device=self.train_input_raw.device, dtype=self.train_input_raw.dtype)
+        X = torch.as_tensor(
+            X,
+            device=self.train_input_raw.device,
+            dtype=self.train_input_raw.dtype,
+        )
         if X.ndim == 1:
             X = X.unsqueeze(0)
         if X.ndim < 2:
             raise ValueError(f"X must have at least 2 dims, got shape={tuple(X.shape)}.")
         if X.shape[-1] not in (self.raw_dim, self.encoded_dim):
             raise ValueError(
-                f"Expected raw dim {self.raw_dim} or encoded dim {self.encoded_dim}, got {X.shape[-1]}."
+                f"Expected raw dim {self.raw_dim} or encoded dim {self.encoded_dim}, "
+                f"got {X.shape[-1]}."
             )
         return X.contiguous()
 
     def _get_input_transform_for_eval(self, input_transform=None):
-        """明示指定または self.input_transform を返す。"""
         return input_transform if input_transform is not None else getattr(self, "input_transform", None)
 
     def _apply_transform_raw_first(self, X: Tensor, input_transform=None) -> Tensor:
-        """raw/encoded X を内部 GP が受け取る encoded-space へ変換する。
-
-        Mixed + InputPerturbation では、raw 3次元用の input_transform を
-        one-hot 後の encoded 4次元に適用すると次元不一致になる。
-        そのため raw 入力の場合は、
-
-            raw X -> input_transform -> one-hot encode -> inner GP
-
-        の順を優先する。encoded 入力の場合は、既に内部特徴空間にいるものとして
-        raw-space transform は原則再適用しない。
-        """
+        """Map raw or encoded inputs into the latent GP's encoded feature space."""
         X = self._canonicalize_posterior_X(X)
-        tf = self._get_input_transform_for_eval(input_transform)
-
-        if tf is None:
+        transform = self._get_input_transform_for_eval(input_transform)
+        if transform is None:
             return self._to_encoded_feature_space(X).contiguous()
 
-        # raw-space 入力: raw-space transform を先に適用し、その後 one-hot encode する。
         if X.shape[-1] == self.raw_dim:
-            raw_transform_error = None
+            raw_transform_error: Exception | None = None
             try:
-                X_raw_tf = tf(X)
-                if isinstance(X_raw_tf, tuple):
-                    X_raw_tf = X_raw_tf[0]
-                X_raw_tf = self._canonicalize_posterior_X(X_raw_tf)
-
-                if X_raw_tf.shape[-1] == self.raw_dim:
-                    return self._to_encoded_feature_space(X_raw_tf).contiguous()
-
-                if X_raw_tf.shape[-1] == self.encoded_dim:
+                transformed = transform(X)
+                if isinstance(transformed, tuple):
+                    transformed = transformed[0]
+                transformed = self._canonicalize_posterior_X(transformed)
+                if transformed.shape[-1] == self.raw_dim:
+                    return self._to_encoded_feature_space(transformed).contiguous()
+                if transformed.shape[-1] == self.encoded_dim:
                     self._check_encoded_categorical_blocks_unchanged(
                         X_encoded=self._to_encoded_feature_space(X),
-                        X_tf=X_raw_tf,
+                        X_tf=transformed,
                         name=f"{self.__class__.__name__}.raw_input_transform",
                     )
-                    return X_raw_tf.contiguous()
+                    return transformed.contiguous()
             except Exception as exc:
                 raw_transform_error = exc
 
-            # 旧実装互換: transform が encoded-space 用の場合のみ fallback する。
-            X_encoded = self._to_encoded_feature_space(X)
+            encoded = self._to_encoded_feature_space(X)
             try:
-                X_tf = tf(X_encoded)
-                if isinstance(X_tf, tuple):
-                    X_tf = X_tf[0]
+                transformed = transform(encoded)
+                if isinstance(transformed, tuple):
+                    transformed = transformed[0]
                 self._check_encoded_categorical_blocks_unchanged(
-                    X_encoded=X_encoded,
-                    X_tf=X_tf,
+                    X_encoded=encoded,
+                    X_tf=transformed,
                     name=f"{self.__class__.__name__}.encoded_input_transform",
                 )
-                return X_tf.contiguous()
+                return transformed.contiguous()
             except Exception:
                 if raw_transform_error is not None:
                     raise raw_transform_error
                 raise
 
-        # encoded-space 入力:
-        # raw-space InputPerturbation は encoded dim に適用できないため、無理に再適用しない。
-        # ただし encoded-space 用 transform であれば適用できる。
         try:
-            X_tf = tf(X)
-            if isinstance(X_tf, tuple):
-                X_tf = X_tf[0]
-            if X_tf.shape[-1] == self.encoded_dim:
+            transformed = transform(X)
+            if isinstance(transformed, tuple):
+                transformed = transformed[0]
+            if transformed.shape[-1] == self.encoded_dim:
                 self._check_encoded_categorical_blocks_unchanged(
                     X_encoded=X,
-                    X_tf=X_tf,
+                    X_tf=transformed,
                     name=f"{self.__class__.__name__}.encoded_input_transform",
                 )
-                return X_tf.contiguous()
+                return transformed.contiguous()
         except Exception:
             pass
-
         return X.contiguous()
 
     def transform_inputs(self, X: Tensor, input_transform=None) -> Tensor:
-        """raw/encoded X を内部 GP が受け取る encoded-space にそろえる。
-
-        raw-space の input_transform、特に InputPerturbation は one-hot encode 前に
-        適用する。これにより raw dim と encoded dim の不一致を避ける。
-        """
         return self._apply_transform_raw_first(X, input_transform=input_transform)
 
     def _to_training_feature_space(self, X: Tensor) -> Tensor:
-        """raw/encoded X を input_transform 適用済み encoded-space へ変換する。"""
         return self._apply_transform_raw_first(X)
 
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
+        output_indices: list[int] | None = None,
         observation_noise: bool | Tensor = False,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        posterior_transform: PosteriorTransform | None = None,
         **kwargs: Any,
     ):
-        # ここで _to_training_feature_space を先に呼ぶと、super().posterior -> self(X)
-        # の中で forward 側の変換が再度走り、mixed feature 変換や input_transform が
-        # 二重適用される。posterior には raw/encoded X をそのまま渡し、forward で
-        # 一度だけ raw transform -> encode -> inner GP の順に処理する。
         return super().posterior(
             X,
             output_indices=output_indices,
@@ -447,19 +398,16 @@ class SaasOrdinalMixedGPModel(OneHotEncodingMixin, SaasOrdinalGPModel):
         )
 
     def forward(self, X: Tensor):
-        # super().forward(...) は transform_inputs を再度呼ぶため使わない。
-        # ここで一度だけ内部 GP 用の feature space に変換する。
-        X_model = self._to_training_feature_space(X)
-        return self.model(X_model)
+        return self.model(self._to_training_feature_space(X))
 
     def condition_on_observations(
         self,
         X: Tensor,
         Y: Tensor,
-        noise: Optional[Tensor] = None,
+        noise: Tensor | None = None,
         **kwargs: Any,
     ) -> "SaasOrdinalMixedGPModel":
-        """raw/encoded X の追加観測で wrapper を再構築する。"""
+        """Rebuild the mixed model after appending raw-space observations."""
         X_new_raw, Y_new, Yvar_new = prepare_mixed_conditioning_data(
             X,
             Y,
@@ -471,14 +419,20 @@ class SaasOrdinalMixedGPModel(OneHotEncodingMixin, SaasOrdinalGPModel):
         )
         train_X_old = self.train_inputs_raw[0]
         train_Y_old = _flatten_ordinal_targets(self.train_targets)
-        X_full = torch.cat([
-            train_X_old,
-            X_new_raw.to(dtype=train_X_old.dtype, device=train_X_old.device),
-        ], dim=0)
-        Y_full = torch.cat([
-            train_Y_old,
-            Y_new.to(device=train_Y_old.device).long(),
-        ], dim=0)
+        X_full = torch.cat(
+            [
+                train_X_old,
+                X_new_raw.to(dtype=train_X_old.dtype, device=train_X_old.device),
+            ],
+            dim=0,
+        )
+        Y_full = torch.cat(
+            [
+                train_Y_old,
+                Y_new.to(device=train_Y_old.device).long(),
+            ],
+            dim=0,
+        )
         Yvar_full = concat_optional_noise(
             old_Y=train_Y_old.to(dtype=train_X_old.dtype),
             old_Yvar=self.train_Yvar_raw,
@@ -488,41 +442,39 @@ class SaasOrdinalMixedGPModel(OneHotEncodingMixin, SaasOrdinalGPModel):
             device=train_X_old.device,
         )
 
-        learn_inducing_locations = True
-        if hasattr(self, "model") and hasattr(self.model, "variational_strategy"):
-            learn_inducing_locations = getattr(self.model.variational_strategy, "learn_inducing_locations", True)
-
+        learn_inducing_locations = bool(
+            getattr(
+                getattr(self.model, "variational_strategy", None),
+                "learn_inducing_locations",
+                True,
+            )
+        )
         new_model = self.__class__(
             train_X=X_full,
             train_Y=Y_full,
-            num_classes=self.num_classes,
-            cat_dims=list(self.cat_dims),
             train_Yvar=Yvar_full,
-            ordinal_likelihood=deepcopy(getattr(self, "ordinal_likelihood", None)),
+            cat_dims=list(self.cat_dims),
+            num_classes=self.num_classes,
+            likelihood=deepcopy(self.likelihood),
             input_transform=deepcopy(getattr(self, "input_transform", None)),
-            mean_module=deepcopy(getattr(getattr(self, "model", None), "mean_module", None)),
-            covar_module=deepcopy(getattr(getattr(self, "model", None), "covar_module", None)),
-            num_inducing_points=(
-                int(self.encoded_inducing_points_raw.shape[-2])
-                if isinstance(self.encoded_inducing_points_raw, Tensor)
-                else 20
-            ),
-            inducing_points=(
-                self.encoded_inducing_points_raw.detach().clone()
-                if isinstance(self.encoded_inducing_points_raw, Tensor)
-                else None
-            ),
+            mean_module=deepcopy(getattr(self.model, "mean_module", None)),
+            covar_module=deepcopy(getattr(self.model, "covar_module", None)),
+            num_inducing=int(self.encoded_inducing_points_raw.shape[-2]),
+            inducing_points=self.encoded_inducing_points_raw.detach().clone(),
             learn_inducing_locations=learn_inducing_locations,
             tau=self.tau,
             saas_log_scale=self.saas_log_scale,
             saas_nu=self.saas_nu,
+            fix_first_cutpoint=self.fix_first_cutpoint,
+            init_gap=self.init_gap,
+            eps=self.eps,
+            conditioning_steps=self.conditioning_steps,
+            conditioning_lr=self.conditioning_lr,
+            conditioning_batch_size=self.conditioning_batch_size,
         )
         new_model.load_state_dict(self.state_dict(), strict=False)
         new_model.eval()
         return new_model
 
 
-__all__ = [
-    "SaasOrdinalGPModel",
-    "SaasOrdinalMixedGPModel",
-]
+__all__ = ["SaasOrdinalGPModel", "SaasOrdinalMixedGPModel"]

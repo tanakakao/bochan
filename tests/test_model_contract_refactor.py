@@ -180,3 +180,36 @@ def test_ordinal_saas_uses_canonical_constructor_arguments() -> None:
         for name in SAAS_LEGACY_ARGUMENTS & _function_arg_names(init):
             offenders.append((class_node.name, name))
     assert not offenders
+
+
+def test_multiclass_high_dim_package_exports_canonical_models() -> None:
+    from bochan.models.classification.multiclass import high_dim
+
+    expected = {
+        "SaasMulticlassClassificationGPModel",
+        "SaasMulticlassClassificationMixedGPModel",
+        "PCAMulticlassClassificationGPModel",
+        "PCAMulticlassClassificationMixedGPModel",
+        "REMBOMulticlassClassificationGPModel",
+        "REMBOMulticlassClassificationMixedGPModel",
+    }
+    assert expected <= set(high_dim.__all__)
+    for name in expected:
+        assert getattr(high_dim, name).__name__ == name
+
+
+def test_hybrid_package_exports_canonical_contract() -> None:
+    import bochan.models.hybrid as hybrid
+
+    expected = {
+        "HybridMultiOutputModel",
+        "HybridPosterior",
+        "TaskAwareHybridPosterior",
+        "OutputIndex",
+        "OutputSpec",
+        "PosteriorMode",
+        "TaskType",
+    }
+    assert expected <= set(hybrid.__all__)
+    for name in expected:
+        assert hasattr(hybrid, name), name

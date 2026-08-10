@@ -63,6 +63,13 @@ function featureLabel(options: VisualizationOptions, feature: string): string {
   return options.feature_labels?.[feature] ?? feature;
 }
 
+function cachedYyPlot(result: RegressionResult, target: string): ResultVisualization | null {
+  return result.visualizations.find((value) => value.id === `${target}-yyplot`)
+    ?? result.visualizations.find((value) => value.id === `yyplot-${target}`)
+    ?? result.visualizations.find((value) => value.id.endsWith("-yyplot"))
+    ?? null;
+}
+
 /** Two-column interactive Plotly area using fitted FastAPI visualization sessions. */
 export default function InteractiveResultPlots({ result }: Props) {
   const options = useMemo(() => defaults(result), [result]);
@@ -143,12 +150,8 @@ export default function InteractiveResultPlots({ result }: Props) {
   }, [balanceCandidates, balanceElement, compositionMode, usesCompositionAxis]);
 
   useEffect(() => {
+    const saved = leftKind === "yyplot" ? cachedYyPlot(result, leftTarget) : null;
     if (!runId) {
-      const saved = leftKind === "yyplot"
-        ? result.visualizations.find((value) => value.id === `${leftTarget}-yyplot`)
-          ?? result.visualizations.find((value) => value.id.endsWith("-yyplot"))
-          ?? null
-        : null;
       setLeftPlot(saved);
       setLeftError(saved
         ? null
@@ -170,13 +173,23 @@ export default function InteractiveResultPlots({ result }: Props) {
           target_y: targetY,
           show_pareto_front: showParetoFront
         })
-      .then((value) => { if (active) setLeftPlot(value); })
+      .then((value) => {
+        if (!active) return;
+        setLeftPlot(value);
+        setLeftError(null);
+      })
       .catch((caught) => {
-        if (active) setLeftError(caught instanceof Error ? caught.message : String(caught));
+        if (!active) return;
+        if (saved) {
+          setLeftPlot(saved);
+          setLeftError(null);
+          return;
+        }
+        setLeftError(caught instanceof Error ? caught.message : String(caught));
       })
       .finally(() => { if (active) setLeftLoading(false); });
     return () => { active = false; };
-  }, [leftKind, leftTarget, result.visualizations, runId, showParetoFront, targetX, targetY]);
+  }, [leftKind, leftTarget, result, runId, showParetoFront, targetX, targetY]);
 
   useEffect(() => {
     if (!runId) {

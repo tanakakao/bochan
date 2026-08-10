@@ -1,64 +1,265 @@
-# AGENTS.md
+# Refactoring Specification for BoTorch-Compatible Bayesian Optimization Extension Library
 
-## Scope
+## 0. Purpose
 
-この文書は `bochan` の model 実装と model family の整理規則を定義する。
-モデルの追加・変更・レビューでは、特別な理由がない限り以下を優先する。
+本仕様書は、ベイズ最適化拡張ライブラリ全体の public API・内部設計・命名規則・ファイル構成を統一し、
+以下を達成することを目的とする。
 
-## 1. Design Principles
+- BoTorch / GPyTorch と整合的な API を提供する
+- Gaussian regression だけでなく、Beta / Gamma / Count regression, classification, ordinal を統一的に扱う
+- mixed input を各モデル族に対する標準バリエーションとして扱う
+- robust / high-dimensional / deep 拡張を一貫した規則で整理する
+- acquisition function をタスク × 手法ファミリーで整理する
+- 将来の配布・保守・自動リファクタリングを容易にする
+- 既存コードとの後方互換性を可能な限り維持する
 
-### 1.1 Public models own their behavior
+本仕様書では、新規アルゴリズム追加よりも、既存実装の構造整理・命名統一・API 統一を優先する。
 
-public model class の挙動は、その class または明示的な基底 class / mixin に実装する。
-import 時に別 module から class method を差し替える monkey patch は使わない。
 
-BoTorch / GPyTorch の extension point として公式に提供される registration API は、
-class method の差し替えとは区別して使用してよい。
+## 1. Scope
 
-### 1.2 One canonical public API
+### 1.1 Included
+以下をリファクタリング対象とする。
 
-同じ意味の class 名・constructor 引数・method 名を複数公開しない。
-古い名称を alias として残す compatibility layer は作らず、call site・registry・test・docs を
-canonical 名へ同時に移行する。
+- regression models
+  - gaussian
+  - beta
+  - gamma
+  - count (poisson / negative binomial)
+- classification models
+- ordinal models
+- mixed-input variants
+- heteroscedastic variants
+- robust relevance pursuit (RRP) variants
+- high-dimensional variants
+  - PCA
+  - REMBO
+  - ALEBO
+  - SAAS
+- deep GP / deep kernel variants
+- acquisition functions
+- fit helper functions
+- utility / builder functions
+- docstrings / type hints / usage examples
+- tests
 
-### 1.3 Same family, same contract
+### 1.2 Excluded
+以下は今回の対象外とする。
 
-同じ model family では、可能な限り constructor、属性、posterior、fit、shape convention を揃える。
-分類・順序回帰・非 Gaussian likelihood など task / family 固有の意味を持つ引数は無理に共通化しない。
+- 数理定義そのものの全面変更
+- 既存獲得関数のアルゴリズム再設計
+- 実験性能改善を主目的とした再実装
+- UI / Streamlit 側の仕様変更
+- 学習済みモデル保存フォーマットの策定
 
-## 2. Package Organization
 
-モデルは原則として task と distribution family で分ける。
+## 2. Design Principles
+
+### 2.1 BoTorch-first
+可能な限り BoTorch の設計思想に合わせる。
+
+- `train_X`, `train_Y`, `train_Yvar`
+- `input_transform`
+- `outcome_transform`
+- `posterior()`
+- `construct_inputs()`
+- `train_inputs`, `train_targets`
+- `ModelList` / multi-output 互換性
+
+を重視する。
+
+### 2.2 Academic organization
+モデルはまず **タスク** と **出力分布族** で整理し、その上で
+- robust
+- high-dimensional
+- deep
+などの拡張を加える。
+
+### 2.3 Mixed input as a standard variant
+mixed input は独立カテゴリではなく、各モデル族に対する標準バリエーションとして扱う。
+そのため、通常版と mixed 版は原則として同一ファイルに併記する。
+
+### 2.4 Minimal surprise
+同種のモデル間で以下が揃っていることを優先する。
+
+- constructor 引数名
+- attribute 名
+- posterior の意味
+- fit API
+- shape convention
+
+余計なファイルは追加しない。
+できるだけ修正は既存のプログラムを書き直す。
+
+## 3. Package Structure Standard
+
+ライブラリ全体の標準構成は以下とする。
 
 ```text
 models/
+    __init__.py
+    base.py
+    utils.py
+
     components/
+        __init__.py
+        mixed_inputs.py
+        deep_layers.py
+        deep_kernel.py
+        posteriors.py
+        likelihood_utils.py
+        robust_utils.py
+        high_dim_utils.py
+
     regression/
+        __init__.py
+
         gaussian/
-            deep/
+            __init__.py
+            base.py
+            deep.py
+            _builders.py
             robust/
+                __init__.py
+                hetero.py
+                rrp.py
             high_dim/
-        non_gaussian/
-            beta/
-            gamma/
-            poisson/
-            negative_binomial/
+                __init__.py
+                pca.py
+                rembo.py
+                alebo.py
+                saas.py
+
+        beta/
+            __init__.py
+            base.py
+            deep.py
+            _builders.py
+            robust/
+                __init__.py
+                hetero.py
+                rrp.py
+            high_dim/
+                __init__.py
+                pca.py
+                rembo.py
+                alebo.py
+                saas.py
+
+        gamma/
+            __init__.py
+            base.py
+            deep.py
+            _builders.py
+            robust/
+                __init__.py
+                hetero.py
+                rrp.py
+            high_dim/
+                __init__.py
+                pca.py
+                rembo.py
+                alebo.py
+                saas.py
+
+        count/
+            __init__.py
+            base.py
+            deep.py
+            _builders.py
+            robust/
+                __init__.py
+                hetero.py
+                rrp.py
+            high_dim/
+                __init__.py
+                pca.py
+                rembo.py
+                alebo.py
+                saas.py
+
     classification/
-        binary/
-        multiclass/
+        __init__.py
+        base.py
+        deep.py
+        _builders.py
+        robust/
+            __init__.py
+            hetero.py
+            rrp.py
+        high_dim/
+            __init__.py
+            pca.py
+            rembo.py
+            alebo.py
+            saas.py
+
     ordinal/
-    hybrid/
-```
+        __init__.py
+        base.py
+        deep.py
+        _builders.py
+        robust/
+            __init__.py
+            hetero.py
+            rrp.py
+        high_dim/
+            __init__.py
+            pca.py
+            rembo.py
+            alebo.py
+            saas.py
+````
 
-### 2.1 Structural meaning
+### 3.1 Structural meaning
 
-* regression は出力分布族で分ける
-* classification と ordinal は独立 task として扱う
-* mixed variant は可能なら通常版と同じ module に置く
-* truly common な実装のみ `components/` に置く
-* runtime patch 用 module は作らない
+* `regression` の下は出力分布族で分ける
 
-## 3. Common Constructor Standard
+  * `gaussian`
+  * `beta`
+  * `gamma`
+  * `count`
+* `count` には Poisson / Negative Binomial を含める
+* `classification`, `ordinal` は独立タスクとして扱う
+* `mixed` は独立ファイルを作らず、各ファイルで通常版と併記する
+* builder 関数は `utils.py` に押し込まず、各モデル族の `_builders.py` に置く
+* truly common な部品のみ `components/` へ置く
+
+## 4. Model Family Definitions
+
+## 4.1 Regression families
+
+### Gaussian regression
+
+通常の Gaussian process regression。
+
+### Beta regression
+
+目的変数が `(0, 1)` にある割合・比率データ向け。
+
+### Gamma regression
+
+目的変数が正の連続値を取る場合向け。
+
+### Count regression
+
+カウントデータ向け。
+
+* `PoissonGPModel`
+* `NegativeBinomialGPModel`
+
+将来的に zero-inflated / hurdle などを追加してもよいが、
+当面は count family に含める。
+
+## 4.2 Classification
+
+二値分類および多クラス分類。
+
+## 4.3 Ordinal
+
+順序付きカテゴリを対象とする。
+
+## 5. Common Constructor Standard
 
 すべての public model class は、可能な限り以下の基本形を守る。
 
@@ -80,43 +281,43 @@ class SomeModel:
         ...
 ```
 
-Rules:
+### 5.1 Rules
 
-* `train_X`, `train_Y`, `train_Yvar` を先頭に置く
-* shared optional 引数は keyword-only を基本とする
-* BoTorch / GPyTorch と近い引数名を優先する
-* 同義の deprecated alias は定義しない
-* family-specific / task-specific 引数は明示する
-* `config` dataclass は public constructor の必須経路にしない
+* `train_X`, `train_Y`, `train_Yvar` を先頭固定とする
+* optional 引数は keyword-only とする
+* BoTorch と近い引数名を優先する
+* `config` dataclass は public API では原則使わない
+* family-specific な引数は明示する
 
-### 3.1 Mixed-input models
+### 5.2 Mixed-input models
 
-mixed 系は必要に応じて以下を追加する。
+mixed 系は以下を追加する。
 
 ```python
 cat_dims: Sequence[int]
 category_counts: Mapping[int, int] | None = None
 ```
 
-* `cat_dims` は public API では明示する
-* `category_counts` は省略可能な場合に自動推定する
-* input transform は categorical column の意味を壊してはいけない
+Rules:
 
-### 3.2 Ordinal models
+* `cat_dims` は public API では必須
+* `category_counts` は省略可
+* `category_counts is None` の場合、自動推定を試みる
+* mixed 版は独立ファイルにせず、通常版と同じモジュールに置く
 
-ordinal 系は必要に応じて以下を追加する。
+### 5.3 Ordinal models
+
+ordinal 系は以下を追加する。
 
 ```python
-num_classes: int | None = None
+num_classes: int
 fix_first_cutpoint: bool = True
 init_gap: float = 1.0
 ```
 
-`num_classes=None` を許す model は、canonicalized training target から class 数を推定する。
+### 5.4 Deep models
 
-### 3.3 Deep models
-
-deep 系の共通引数名は以下を canonical とする。
+deep 系は以下の命名に統一する。
 
 ```python
 hidden_dims: Sequence[int] | None = None
@@ -124,13 +325,15 @@ num_inducing: int = 128
 learn_inducing_locations: bool = True
 ```
 
-`list_hidden_dims`、`inducing_points_num` などの同義 alias は公開しない。
+`list_hidden_dims` のような別名は deprecated alias とする。
 
-## 4. Class Naming Standard
+## 6. Class Naming Standard
 
-命名は「variant / method + task or distribution + GPModel」を基本とし、同じ概念の語順を family 間で揃える。
+### 6.1 Regression
 
-### 4.1 Gaussian regression
+通常版 / mixed 版 / deep 版 / deep mixed 版は以下の規則で命名する。
+
+#### Gaussian
 
 * `GaussianGPModel`
 * `GaussianMixedGPModel`
@@ -138,72 +341,133 @@ learn_inducing_locations: bool = True
 * `DeepGaussianMixedGPModel`
 * `DeepKernelGaussianGPModel`
 * `DeepKernelGaussianMixedGPModel`
-* `DeepKernelDeepGaussianGPModel`
-* `DeepKernelDeepGaussianMixedGPModel`
-* `GaussianKroneckerMultiTaskGP`
-* `GaussianMixedKroneckerMultiTaskGP`
 
-### 4.2 Non-Gaussian regression
-
-例:
+#### Beta
 
 * `BetaGPModel`
+* `BetaMixedGPModel`
 * `DeepBetaGPModel`
 * `DeepBetaMixedGPModel`
+* `DeepKernelBetaGPModel`
+* `DeepKernelBetaMixedGPModel`
+
+#### Gamma
+
 * `GammaGPModel`
+* `GammaMixedGPModel`
 * `DeepGammaGPModel`
 * `DeepGammaMixedGPModel`
+* `DeepKernelGammaGPModel`
+* `DeepKernelGammaMixedGPModel`
+
+#### Count
+
 * `PoissonGPModel`
+* `PoissonMixedGPModel`
+* `NegativeBinomialGPModel`
+* `NegativeBinomialMixedGPModel`
 * `DeepPoissonGPModel`
 * `DeepPoissonMixedGPModel`
-* `NegativeBinomialGPModel`
 * `DeepNegativeBinomialGPModel`
 * `DeepNegativeBinomialMixedGPModel`
 
-### 4.3 Robust
-
-`Outlier...` / `SafeRobust...` のような歴史的 naming variant は作らず、method 名を揃える。
-
-例:
+### 6.2 Robust
 
 * `HeteroscedasticGaussianGPModel`
 * `HeteroscedasticGaussianMixedGPModel`
 * `RobustRelevancePursuitGaussianGPModel`
 * `RobustRelevancePursuitGaussianMixedGPModel`
-* `RobustRelevancePursuitBinaryClassificationGPModel`
-* `RobustRelevancePursuitOrdinalGPModel`
 
-### 4.4 High-dimensional
+Beta / Gamma / Count / Classification / Ordinal でも同様の規則に従う。
 
-例:
+### 6.3 High-dimensional
 
 * `PCAGaussianGPModel`
 * `PCAGaussianMixedGPModel`
 * `REMBOGaussianGPModel`
 * `REMBOGaussianMixedGPModel`
+* `ALEBOGaussianGPModel`
+* `ALEBOGaussianMixedGPModel`
 * `SaasGaussianGPModel`
 * `SaasGaussianMixedGPModel`
 
-他 family でも同じ語順を使う。
+他 family でも同様の規則に従う。
 
-### 4.5 Classification / Ordinal
+### 6.4 Classification / Ordinal
+
+同じ命名方針を適用する。
 
 例:
 
-* `BinaryClassificationGPModel`
-* `DeepBinaryClassificationGPModel`
-* `DeepBinaryClassificationMixedGPModel`
-* `MulticlassClassificationGPModel`
-* `DeepMulticlassClassificationGPModel`
-* `DeepMulticlassClassificationMixedGPModel`
+* `ClassifierGP`
+
+* `ClassifierMixedGP`
+
+* `DeepClassifierGP`
+
+* `DeepClassifierMixedGP`
+
 * `OrdinalGPModel`
+
 * `OrdinalMixedGPModel`
+
 * `DeepOrdinalGPModel`
+
 * `DeepOrdinalMixedGPModel`
 
-## 5. Posterior Standard
+## 7. File-Level Organization Rules
 
-すべての public model は可能な限り BoTorch に近い `posterior()` signature を持つ。
+### 7.1 Mixed variants
+
+`mixed.py` は作成しない。
+通常版と mixed 版は同一ファイルに置く。
+
+例:
+
+* `gamma/base.py`
+
+  * `GammaGPModel`
+  * `GammaMixedGPModel`
+
+* `gamma/deep.py`
+
+  * `DeepGammaGPModel`
+  * `DeepGammaMixedGPModel`
+  * `DeepKernelGammaGPModel`
+  * `DeepKernelGammaMixedGPModel`
+
+### 7.2 Robust variants
+
+robust は family 内でサブディレクトリ分割する。
+
+* `robust/hetero.py`
+* `robust/rrp.py`
+
+### 7.3 High-dimensional variants
+
+high-dimensional は family 内で手法別に分割する。
+
+* `high_dim/pca.py`
+* `high_dim/rembo.py`
+* `high_dim/alebo.py`
+* `high_dim/saas.py`
+
+### 7.4 Builder functions
+
+`_build_default_mixed_covar_module` のような builder は、
+`utils.py` ではなく、各 family の `_builders.py` に置く。
+
+例:
+
+* `gaussian/_builders.py`
+* `gamma/_builders.py`
+* `count/_builders.py`
+
+truly common な builder のみ `components/` に昇格してよい。
+
+## 8. Posterior Standard
+
+すべての public model は `posterior()` を実装し、可能な限り BoTorch の signature に近づける。
 
 ```python
 posterior(
@@ -214,73 +478,625 @@ posterior(
 )
 ```
 
-### 5.1 Regression
+### 8.1 Regression
 
-* `posterior.mean`: predictive mean
-* `posterior.variance`: predictive variance
+* `posterior.mean` は予測平均
+* `posterior.variance` は予測分散
 
-### 5.2 Classification
+### 8.2 Classification
 
-* public `posterior.mean` は probability scale を基本とする
-* latent distribution は canonical `latent_posterior()` で提供する
-* probability / label helper は task 内で一つの naming に揃える
-* `posterior_latent()` / `posterior_f()` のような同義 compatibility alias は新設しない
+* `posterior.mean` は確率スケールを基本とする
+* latent 値が必要な場合は別メソッドを提供する
 
-### 5.3 Ordinal
+推奨:
 
-* `posterior.mean` の意味を family 内で統一する
-* class probability / expected score / category prediction は役割を分ける
-* ordinal 固有の `num_classes`, cutpoint, utility 引数は共通化のために削らない
+* `latent_posterior()`
+* `predict_proba()`
+* `predict_label()`
 
-## 6. Data and Shape Convention
+### 8.3 Ordinal
 
-### 6.1 Input
+* `posterior.mean` の意味は project 全体で統一する
+* 推奨は expected score / expected utility のどちらかに固定
+* カテゴリ確率は別メソッドで提供する
 
-* training `train_X`: `[n, d]` または batch 付き equivalent
+推奨:
+
+* `predict_proba()`
+* `predict_category()`
+* `expected_score()`
+
+## 9. Data and Shape Convention
+
+### 9.1 Input
+
+* `train_X`: `[n, d]`
 * candidate `X`: `[..., q, d]`
-* InputPerturbation 等で内部 q-like axis が増える場合も、public raw-space と transformed-space を区別する
 
-### 6.2 Targets
+### 9.2 Regression targets
 
-* regression: `[n, 1]` を基本とし、必要なら `[n]` を内部 canonicalize する
-* binary / multiclass / ordinal: task 固有の target semantics を保持する
+* `train_Y`: `[n, 1]` を標準
+* `[n]` が与えられた場合は内部で `[n, 1]` に正規化可
 
-### 6.3 Stored training data
+### 9.3 Classification targets
 
-BoTorch / GPyTorch が要求する `train_inputs`, `train_targets` は compatibility alias ではなく framework contract として扱う。
-追加の raw / transformed training attributes は明確な役割があるものだけ保持する。
+* binary / multiclass ともに project 内で一貫した shape に統一する
 
-## 7. Fit / MLL Contract
+### 9.4 Ordinal targets
 
-model 固有 MLL が必要な場合は `make_mll()` に実装する。
-fit utility が class type ごとの private workaround を増やすより、model 自身が必要な training objective を明示する。
+* class index は整数
+* 値域は `[0, num_classes - 1]`
+* shape ルールは全 ordinal model で統一する
+
+### 9.5 Early shape validation
+
+shape mismatch はできるだけ早い段階で明示的エラーを出す。
+
+## 10. Transform Handling
+
+## 10.1 Input transform
+
+* `input_transform` は constructor に直接渡す
+* raw training input は原則として以下に保存する
+
+```python
+self.train_X_original
+```
+
+### 10.1.1 Rules
+
+* `train_inputs[0]` が transform 後でも許容
+* raw 可視化・デバッグのため `train_X_original` を持つ
+* `train_inputs_raw` などの別名は deprecated にする
+
+## 10.2 Outcome transform
+
+* regression family は BoTorch 互換を優先
+* classification / ordinal / non-Gaussian regression では、未対応なら明示的に禁止する
+* 対応する場合は「何に transform がかかるか」を docstring に明記する
+
+## 11. Mixed Input Policy
+
+### 11.1 cat_dims
+
+* raw 入力空間での categorical column index
+* 0-based
+* 昇順で保持
+
+### 11.2 category_counts
+
+* key は raw 入力空間での categorical column index
+* value はカテゴリ数
+
+### 11.3 Auto inference
+
+`category_counts is None` の場合、自動推定を試みる。
+
+条件:
+
+* 対象列が整数相当
+* 最小値が 0
+* 最大値が `K-1`
+
+失敗時は明示的エラーを出す。
+
+```python
+ValueError(
+    "Failed to infer category_counts from train_X. "
+    "Please pass category_counts explicitly."
+)
+```
+
+### 11.4 Common helpers
+
+category handling の共通ロジックは `components/mixed_inputs.py` に置いてよい。
 
 例:
 
-```python
-mll = model.make_mll(beta=1.0)
-```
+* `infer_category_counts`
+* `validate_cat_dims`
+* `split_numeric_and_categorical`
 
-`beta` など family-specific な引数は、その family で意味がある場合に残す。
+## 12. Acquisition Function Structure Standard
 
-## 8. Refactoring Rules
+獲得関数は **各モデル族ごと** に整理し、その中を **目的別** に以下の 3 分類で構成する。
 
-model contract を変更する PR では以下を同時に行う。
+- `bayesian_optimization`
+- `active_learning`
+- `level_set_estimation`
 
-1. class / method 本体へ runtime patch の実装を移す
-2. patch installer と import-time side effect を削除する
-3. canonical class / argument / method 名へ internal call site を移行する
-4. compatibility alias を削除する
-5. registry、tests、docs を同じ commit で更新する
-6. source-level guard と behavior test の両方で regression を防ぐ
+ここでの意味は次の通り。
 
-## 9. Review Checklist
+- **bayesian_optimization**
+  - 目的関数の良い点を探すことを主目的とする
+  - 最大化 / 最小化 / target 追従 / expected utility 最大化を含む
+- **active_learning**
+  - 情報獲得、モデル改善、不確実性低減を主目的とする
+- **level_set_estimation**
+  - 閾値境界、decision boundary、level set、contour の推定を主目的とする
 
-* import 時に model class へ method assignment / `setattr` をしていないか
-* BoTorch class 自体を書き換えていないか
-* deprecated class / arg / method alias が残っていないか
-* 同じ family の shared constructor args が同名か
-* classification / ordinal 固有引数を無理に共通化していないか
-* posterior shape / semantics が既存 acquisition と一致するか
-* registry / docs / tests が canonical 名を参照しているか
-* `python -m compileall` と relevant tests が通るか
+### 12.1 Directory structure
+
+```text
+acquisition/
+    __init__.py
+    base.py
+    penalties.py
+    utils.py
+
+    regression/
+        __init__.py
+
+        gaussian/
+            __init__.py
+            bayesian_optimization.py
+            active_learning.py
+            level_set_estimation.py
+
+        beta/
+            __init__.py
+            bayesian_optimization.py
+            active_learning.py
+            level_set_estimation.py
+
+        gamma/
+            __init__.py
+            bayesian_optimization.py
+            active_learning.py
+            level_set_estimation.py
+
+        count/
+            __init__.py
+            bayesian_optimization.py
+            active_learning.py
+            level_set_estimation.py
+
+    classification/
+        __init__.py
+        bayesian_optimization.py
+        active_learning.py
+        level_set_estimation.py
+
+    ordinal/
+        __init__.py
+        bayesian_optimization.py
+        active_learning.py
+        level_set_estimation.py
+````
+
+### 12.2 Structural meaning
+
+* 獲得関数はまず **モデル族** に対応して整理する
+* その中で、**何を目的に点を選ぶか** に応じて
+
+  * `bayesian_optimization.py`
+  * `active_learning.py`
+  * `level_set_estimation.py`
+    に分ける
+* `single_output.py` や `multi_output.py` を package の主分類にはしない
+* single-objective / q-batch / multi-objective は、同じ目的カテゴリ内で近くに配置する
+
+### 12.3 In-file ordering
+
+各 acquisition file では、原則として以下の順で class / function を並べる。
+
+1. single-objective
+2. q-batch single-objective
+3. multi-output / multi-objective
+4. q-batch multi-output / multi-objective
+5. private helper functions
+
+これにより、同じ目的・同じ理論に基づく single / q / multi 系を近くに保つ。
+
+### 12.4 Naming policy
+
+`normal.py` や `standard.py` は使わず、通常の最適化目的は必ず
+`bayesian_optimization.py`
+とする。
+
+理由:
+
+* `active_learning`
+* `level_set_estimation`
+  と並べたときに、目的が最も明確になるため。
+
+---
+
+## 13. Acquisition Family Definitions
+
+## 13.1 Bayesian optimization
+
+`bayesian_optimization.py` には、**良い目的値を持つ点を選ぶ** ための獲得関数を置く。
+
+対象:
+
+* maximization
+* minimization
+* target-seeking
+* expected utility maximization
+* scalarized optimization
+* hypervolume / Pareto-based optimization
+* knowledge-gradient / entropy search のうち BO 目的で使うもの
+
+### Representative examples
+
+#### Regression
+
+* Expected Improvement
+* Log Expected Improvement
+* Probability of Improvement
+* Upper Confidence Bound
+* Knowledge Gradient
+* Max-value entropy / predictive entropy / joint entropy search 系
+* scalarized BO
+* multi-objective BO
+
+#### Classification
+
+* positive class probability maximization
+* class utility maximization
+* target class probability optimization
+
+#### Ordinal
+
+* expected utility maximization
+* expected score maximization
+* expected utility improvement
+* utility-based UCB
+* multi-objective ordinal utility optimization
+
+---
+
+## 13.2 Active learning
+
+`active_learning.py` には、**情報獲得・不確実性低減・モデル改善** を目的とする獲得関数を置く。
+
+対象:
+
+* entropy-based methods
+* uncertainty sampling
+* BALD
+* variance reduction
+* integrated posterior uncertainty reduction
+* information gain 型 active learning
+* NIPV 系
+
+### Representative examples
+
+#### Regression
+
+* qNegIntegratedPosteriorVariance
+* posterior variance sampling
+* integrated variance reduction
+* pure uncertainty reduction
+
+#### Classification
+
+* predictive entropy
+* uncertainty sampling
+* BALD
+* qBALD
+* joint BALD
+* greedy joint BALD
+
+#### Ordinal
+
+* ordinal predictive entropy
+* ordinal uncertainty reduction
+* ordinal information gain
+
+---
+
+## 13.3 Level-set estimation
+
+`level_set_estimation.py` には、**閾値境界・decision boundary・level set・contour** の推定を目的とする獲得関数を置く。
+
+対象:
+
+* probability of exceedance
+* level set uncertainty
+* contour uncertainty
+* boundary uncertainty
+* straddle methods
+* threshold crossing / feasible region estimation
+* boundary-focused multi-objective methods
+
+### Important rule
+
+`straddle` 系は原則として `level_set_estimation.py` に置く。
+
+理由:
+
+* straddle は本質的に threshold / boundary 近傍を狙うため
+* level-set / contour / decision boundary estimation と理論的に近いため
+
+### Representative examples
+
+#### Regression
+
+* qStraddle
+* LogDetqStraddle
+* qICUAcquisition
+* qJointBoundaryVariance
+* qProbabilityOfExceedance
+* qLevelSetUncertainty
+
+#### Classification
+
+* StraddleClassifierAcquisition
+* LatentStraddleClassifierAcquisition
+* JointLatentStraddleClassifierAcquisition
+* threshold exceedance methods
+* boundary-focused classification acquisitions
+
+#### Ordinal
+
+* OrdinalExpectedUtilityProbabilityOfExceedance
+* OrdinalExpectedUtilityLevelSetUncertainty
+* OrdinalExpectedUtilityStraddle
+* qOrdinalExpectedUtilityProbabilityOfExceedance
+* qOrdinalExpectedUtilityLevelSetUncertainty
+* qOrdinalExpectedUtilityStraddle
+* MultiObjectiveOrdinalLevelSetProbabilityOfExceedance
+* MultiObjectiveOrdinalLevelSetUncertainty
+* MultiObjectiveOrdinalStraddle
+* qMultiObjectiveOrdinalLevelSetProbabilityOfExceedance
+* qMultiObjectiveOrdinalLevelSetUncertainty
+* qMultiObjectiveOrdinalStraddle
+
+---
+
+## 14. Multi-output / Multi-objective Policy
+
+### 14.1 Do not separate by top-level files
+
+`multi_output.py` や `multi_objective.py` を package の主分類としては使わない。
+
+理由:
+
+* multi-output / multi-objective は、各理論 family の拡張として現れるため
+* single と multi を別ファイルへ分けると、同じ理論の実装が離れて管理しづらくなるため
+
+### 14.2 Placement rule
+
+multi-output / multi-objective acquisition は、対応する目的ファイルの中に置く。
+
+例:
+
+* ordinal の expected-utility straddle 系の multi-objective 版
+
+  * `ordinal/level_set_estimation.py`
+* classification の BALD 系 multi-output 版
+
+  * `classification/active_learning.py`
+* regression の multi-objective BO
+
+  * `regression/*/bayesian_optimization.py`
+
+### 14.3 Naming examples
+
+* `OrdinalExpectedUtilityStraddle`
+
+* `qOrdinalExpectedUtilityStraddle`
+
+* `MultiObjectiveOrdinalStraddle`
+
+* `qMultiObjectiveOrdinalStraddle`
+
+* `ExpectedUtilityImprovement`
+
+* `qExpectedUtilityImprovement`
+
+* `MultiObjectiveExpectedUtilityImprovement`
+
+* `qMultiObjectiveExpectedUtilityImprovement`
+
+single / q / multi-objective の区別は class 名で表現する。
+
+---
+
+## 15. Penalty and Utility Helper Policy
+
+### 15.1 Penalties
+
+pending penalty / observed penalty / repulsion penalty は `penalties.py` に共通化する。
+
+例:
+
+* `_apply_pending_penalty`
+* `_apply_observed_penalty`
+* `_apply_repulsion_penalty`
+* `_pairwise_distance_penalty`
+
+### 15.2 Utility helpers
+
+entropy, logdet, shape validation, score reduction などの小関数は `utils.py` に置く。
+
+例:
+
+* entropy calculators
+* logdet helpers
+* shape validation helpers
+* posterior mean / variance extraction helpers
+
+### 15.3 Base classes
+
+共通 base / mixin は `base.py` に置く。
+
+例:
+
+* penalty-aware mixin
+* pending-aware acquisition base
+* common Monte Carlo acquisition base
+
+---
+
+## 16. Representative Placement Examples
+
+### 16.1 Regression / Gaussian
+
+#### `regression/gaussian/bayesian_optimization.py`
+
+* `qExpectedImprovement`
+* `qLogExpectedImprovement`
+* `qProbabilityOfImprovement`
+* `qUpperConfidenceBound`
+* `qKnowledgeGradient`
+* multi-objective BO 系
+
+#### `regression/gaussian/active_learning.py`
+
+* `qNegIntegratedPosteriorVariance`
+* variance reduction 系
+* posterior uncertainty reduction 系
+
+#### `regression/gaussian/level_set_estimation.py`
+
+* `qStraddle`
+* `LogDetqStraddle`
+* `qICUAcquisition`
+* `qJointBoundaryVariance`
+* `qProbabilityOfExceedance`
+* `qLevelSetUncertainty`
+
+### 16.2 Classification
+
+#### `classification/bayesian_optimization.py`
+
+* class probability maximization
+* class utility maximization
+* target class optimization
+
+#### `classification/active_learning.py`
+
+* `EntropyClassifierAcquisition`
+* `UncertaintySamplingClassifierAcquisition`
+* `BALDAcquisition`
+* `JointQBALDAcquisitionBinary`
+* `GreedyJointQBALDAcquisitionBinary`
+
+#### `classification/level_set_estimation.py`
+
+* `StraddleClassifierAcquisition`
+* `LatentStraddleClassifierAcquisition`
+* `JointLatentStraddleClassifierAcquisition`
+* threshold exceedance methods
+
+### 16.3 Ordinal
+
+#### `ordinal/bayesian_optimization.py`
+
+* ordinal expected utility maximization
+* ordinal expected score maximization
+* ordinal expected utility improvement
+* ordinal utility UCB
+* multi-objective ordinal utility optimization
+
+#### `ordinal/active_learning.py`
+
+* `qOrdinalPredictiveEntropy`
+* ordinal uncertainty reduction
+* ordinal information gain 系
+
+#### `ordinal/level_set_estimation.py`
+
+* `OrdinalExpectedUtilityProbabilityOfExceedance`
+* `OrdinalExpectedUtilityLevelSetUncertainty`
+* `OrdinalExpectedUtilityStraddle`
+* `qOrdinalExpectedUtilityProbabilityOfExceedance`
+* `qOrdinalExpectedUtilityLevelSetUncertainty`
+* `qOrdinalExpectedUtilityStraddle`
+* `MultiObjectiveOrdinalLevelSetProbabilityOfExceedance`
+* `MultiObjectiveOrdinalLevelSetUncertainty`
+* `MultiObjectiveOrdinalStraddle`
+* `qMultiObjectiveOrdinalLevelSetProbabilityOfExceedance`
+* `qMultiObjectiveOrdinalLevelSetUncertainty`
+* `qMultiObjectiveOrdinalStraddle`
+
+---
+
+## 17. Codex Refactor Instructions for Acquisition
+
+Codex は acquisition の整理において、以下の規則を守ること。
+
+1. まず各既存 acquisition を
+
+   * `bayesian_optimization`
+   * `active_learning`
+   * `level_set_estimation`
+     のいずれかへ分類する
+2. 次に、各モデル族 / タスク配下へ再配置する
+3. `single_output.py` / `multi_output.py` を主分類として新設しない
+4. single / q / multi-objective は同一目的ファイル内で近くに置く
+5. `straddle` は原則 `level_set_estimation.py` へ置く
+6. penalty / utility helper は `penalties.py` / `utils.py` へ共通化する
+7. class 名は可能な限り維持し、配置のみ整理する
+8. `__init__.py` で浅い import path を維持する
+
+### Forbidden
+
+* single / multi の分離だけを目的とした過剰なファイル分割
+* straddle の恣意的な移動
+* multi-objective をトップレベル独立 package に移すこと
+* class 名の無断変更
+
+---
+
+## 18. Acceptance Criteria for Acquisition Refactor
+
+以下を満たしたら acquisition 整理は完了とする。
+
+* acquisition が各モデル族 / タスク配下に整理されている
+* 各配下に
+
+  * `bayesian_optimization.py`
+  * `active_learning.py`
+  * `level_set_estimation.py`
+    がある
+* single / q / multi-objective が同一目的ファイル内で整理されている
+* `straddle` 系が `level_set_estimation.py` に配置されている
+* penalty と helper が共通モジュールへ整理されている
+* `__init__.py` による浅い import path が維持されている
+
+
+## 19. Codex Execution Instructions
+
+Codex は以下の順で作業すること。
+
+1. current public API の一覧を作る
+2. package structure を標準構成へ合わせる
+3. constructor signature を統一する
+4. mixed variants を通常版と同一ファイルへまとめる
+5. builder functions を `_builders.py` へ整理する
+6. acquisition を task × method family で再配置する
+7. deprecated alias を追加する
+8. docstring / type hints / examples を整備する
+9. smoke tests を追加する
+10. migration note を出す
+
+### Forbidden
+
+* 数理ロジックを独断で変更しない
+* posterior semantics を勝手に変えない
+* mixed / non-mixed の public class 名を無断変更しない
+* README / examples を削除しない
+
+### Preferred
+
+* 小さい patch 単位で進める
+* representative modules でパターン確定後に横展開する
+
+## 20. Acceptance Criteria
+
+以下を満たしたら完了とする。
+
+* package structure が本仕様と整合している
+* regression families に gaussian / beta / gamma / count がある
+* count family に Poisson / Negative Binomial が整理されている
+* mixed variants が各 family ファイルに統合されている
+* robust が `hetero.py` / `rrp.py` に分かれている
+* high-dimensional が `pca.py` / `rembo.py` / `alebo.py` / `saas.py` に分かれている
+* builder functions が `_builders.py` に整理されている
+* acquisition が task × method family で整理されている
+* docstring / examples / tests が最低限整備されている
+* backward compatibility が説明されている

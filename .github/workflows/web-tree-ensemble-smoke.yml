@@ -1,4 +1,4 @@
-name: Web tree ensemble smoke
+name: Web external model smoke
 
 on:
   pull_request:
@@ -7,8 +7,13 @@ on:
       - "src/bochan/api/model_registry.py"
       - "src/bochan/models/external/common.py"
       - "src/bochan/models/hybrid/task_aware_posterior.py"
+      - "src/bochan/models/regression/foundation/tabpfn.py"
+      - "src/bochan/models/classification/common/tabpfn.py"
+      - "src/bochan/models/classification/binary/foundation/tabpfn.py"
+      - "src/bochan/models/classification/multiclass/foundation/tabpfn.py"
       - "src/bochan/serving/webapp/app.py"
       - "src/bochan/serving/webapp/candidate_runtime.py"
+      - "src/bochan/serving/webapp/model_capabilities.py"
       - "src/bochan/serving/webapp/model_reuse.py"
       - "src/bochan/serving/webapp/model_runtime.py"
       - "src/bochan/serving/webapp/risk_settings.py"
@@ -18,30 +23,51 @@ on:
       - "web/src/modelOptions.ts"
       - "web/src/regressionLikelihoodOptions.ts"
       - "web/src/pages/OptimizePage.tsx"
+      - "web/src/pages/SettingsPage.tsx"
       - "tests/test_hybrid_task_aware_posterior.py"
+      - "tests/test_tabpfn_input_perturbation.py"
+      - "tests/test_tabpfn_models.py"
+      - "tests/test_tabpfn_optional_smoke.py"
       - "tests/test_tree_ensemble_input_perturbation.py"
+      - "tests/test_web_external_ensemble_matrix.py"
+      - "tests/test_web_model_capabilities.py"
       - "tests/test_web_ngboost_runtime.py"
+      - "tests/test_web_tabpfn_diagnostics.py"
+      - "tests/test_web_tabpfn_mixed.py"
+      - "tests/test_web_tabpfn_models.py"
       - "tests/test_web_tree_ensemble_models.py"
       - "tests/test_webapp_multiobjective_contract.py"
       - ".github/workflows/web-tree-ensemble-smoke.yml"
   workflow_dispatch:
 
+concurrency:
+  group: web-external-model-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  web-tree-ensemble-smoke:
+  web-external-model-smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install Web tree ensemble dependencies
+      - name: Install Web external model dependencies
         run: python -m pip install -e ".[test,web]" "ruff>=0.6"
-      - name: Run Web tree ensemble, perturbation, NGBoost runtime, hybrid posterior, and capability tests
+      - name: Run Web external model, perturbation, runtime, posterior, and capability tests
         run: |
           pytest -q --maxfail=1 \
+            tests/test_tabpfn_input_perturbation.py \
+            tests/test_tabpfn_models.py \
+            tests/test_tabpfn_optional_smoke.py \
             tests/test_tree_ensemble_input_perturbation.py \
+            tests/test_web_external_ensemble_matrix.py \
+            tests/test_web_model_capabilities.py \
             tests/test_web_ngboost_runtime.py \
+            tests/test_web_tabpfn_diagnostics.py \
+            tests/test_web_tabpfn_mixed.py \
+            tests/test_web_tabpfn_models.py \
             tests/test_web_tree_ensemble_models.py \
             tests/test_hybrid_task_aware_posterior.py \
             tests/test_webapp_multiobjective_contract.py
@@ -49,7 +75,9 @@ jobs:
         run: |
           ruff check --ignore I001,SIM108 \
             src/bochan/models/external/common.py \
+            src/bochan/serving/webapp/app.py \
             src/bochan/serving/webapp/candidate_runtime.py \
+            src/bochan/serving/webapp/model_capabilities.py \
             src/bochan/serving/webapp/model_reuse.py \
             src/bochan/serving/webapp/model_runtime.py \
             src/bochan/serving/webapp/risk_settings.py \
@@ -57,8 +85,15 @@ jobs:
             src/bochan/serving/webapp/target_missing_policy.py \
             src/bochan/serving/webapp/target_settings.py \
             src/bochan/models/hybrid/task_aware_posterior.py \
+            tests/test_tabpfn_input_perturbation.py \
+            tests/test_tabpfn_optional_smoke.py \
             tests/test_tree_ensemble_input_perturbation.py \
+            tests/test_web_external_ensemble_matrix.py \
+            tests/test_web_model_capabilities.py \
             tests/test_web_ngboost_runtime.py \
+            tests/test_web_tabpfn_diagnostics.py \
+            tests/test_web_tabpfn_mixed.py \
+            tests/test_web_tabpfn_models.py \
             tests/test_web_tree_ensemble_models.py \
             tests/test_webapp_multiobjective_contract.py
       - uses: actions/setup-node@v4

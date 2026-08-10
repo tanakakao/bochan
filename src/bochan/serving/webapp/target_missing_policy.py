@@ -303,6 +303,7 @@ def encode_targets(
 def resolve_target_settings(*args: Any, **kwargs: Any) -> tuple[Any, dict[str, Any]]:
     """Resolve target settings and apply request-local Web model defaults."""
 
+    from .model_capabilities import validate_web_model_acquisition_compatibility
     from .model_runtime import apply_web_model_runtime_defaults
     from .target_settings_core import _resolve_target_settings as core_resolve
 
@@ -313,6 +314,7 @@ def resolve_target_settings(*args: Any, **kwargs: Any) -> tuple[Any, dict[str, A
     request = args[0] if args else kwargs.get("request")
     if request is None:
         return settings, cleaned
+    validate_web_model_acquisition_compatibility(request, settings)
     runtime_kwargs = apply_web_model_runtime_defaults(
         cleaned,
         model_type=str(getattr(request, "model_type", "base")),

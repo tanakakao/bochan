@@ -48,12 +48,13 @@ def test_web_model_options_expose_tree_ensemble_family() -> None:
     assert '{ value: "ngboost_ensemble", label: "NGBoost", family: "tree_ensemble" }' in source
 
 
-def test_web_tree_ensemble_search_excludes_gradient_and_falls_back_to_ga() -> None:
+def test_web_derivative_free_models_exclude_gradient_and_fall_back_to_ga() -> None:
     source = (ROOT / "web" / "src" / "pages" / "OptimizePage.tsx").read_text(encoding="utf-8")
 
-    assert 'const treeEnsembleModel = isTreeEnsembleModelType(modelType);' in source
-    assert '(!treeEnsembleModel || option.family !== "gradient")' in source
-    assert 'const fallback: SearchMethod = treeEnsembleModel ? "ga" : "normal";' in source
+    assert "requiresDerivativeFreeSearch" in source
+    assert "const derivativeFreeModel = requiresDerivativeFreeSearch(modelType);" in source
+    assert '(!derivativeFreeModel || option.family !== "gradient")' in source
+    assert 'const fallback: SearchMethod = derivativeFreeModel ? "ga" : "normal";' in source
     assert 'option.value !== "nsgaii"' in source
 
 

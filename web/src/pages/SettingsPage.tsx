@@ -13,6 +13,7 @@ import {
   isNonGaussianModelType,
   isProjectedModelType,
   modelFamilyFor,
+  modelSupportsTaskType,
   type ModelFamily,
   type WebModelType
 } from "../modelOptions";
@@ -68,7 +69,12 @@ export default function SettingsPage() {
   }
 
   const preview = dataset.preview;
-  const taskTypes = targetColumns.map((target) => targetSettings[target]?.task_type).filter(Boolean);
+  const taskTypes = useMemo(
+    () => targetColumns
+      .map((target) => targetSettings[target]?.task_type)
+      .filter((task): task is NonNullable<typeof task> => Boolean(task)),
+    [targetColumns, targetSettings]
+  );
   const allRegression = taskTypes.length > 0 && taskTypes.every((task) => task === "regression");
   const hasRegressionTargets = taskTypes.some((task) => task === "regression");
   const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
@@ -78,10 +84,11 @@ export default function SettingsPage() {
 
   const availableModels = useMemo(
     () => MODEL_OPTIONS.filter((option) => (
+      taskTypes.every((task) => modelSupportsTaskType(option.value, task)) &&
       (!isNonGaussianModelType(option.value) || allRegression) &&
       (!isMultitaskModelType(option.value) || canUseMultitask)
     )),
-    [allRegression, canUseMultitask]
+    [allRegression, canUseMultitask, taskTypes]
   );
   const modelLikelihood = regressionLikelihoodFor(modelType);
   const modelFamily = modelFamilyFor(modelType);

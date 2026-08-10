@@ -12,6 +12,7 @@ _TREE_ENSEMBLE_MODELS = frozenset(
         "ngboost_ensemble",
     }
 )
+_BATCHED_EXTERNAL_MODELS = _TREE_ENSEMBLE_MODELS | {"tabpfn"}
 _GA_OPTIMIZERS = frozenset({"ga", "evo", "optimize_acqf_evo"})
 _NGBOOST_EXTRA_JOINT_OPTIMIZERS = frozenset({"pso", "sa"})
 _JOINT_BATCH_MAX_Q = 3
@@ -41,22 +42,19 @@ def _joint_optimizer_names(model_type: str) -> frozenset[str]:
     return _GA_OPTIMIZERS
 
 
-def uses_tree_ensemble_joint_batch(request: Any) -> bool:
-    """Return whether Web should optimize a tree-ensemble q-batch jointly.
+def uses_batched_external_joint_batch(request: Any) -> bool:
+    """Return whether Web should optimize an external-estimator q-batch jointly.
 
-    Joint evolutionary optimization reduces repeated Python / estimator-call
-    round trips for tree ensembles while preserving the native q-acquisition
-    objective. The automatic policy is deliberately conservative:
-
-    - Random Forest and LightGBM use joint batches for GA/evo only.
-    - NGBoost additionally uses joint PSO and simulated annealing.
-    - q is limited to 2-3 so the joint search dimension does not grow too far.
-    - CMA-ES, q=1, q>3, Active Learning, and level-set estimation retain the
-      requested sequential behavior.
+    External estimator prediction crosses a Python/Tensor-to-NumPy boundary.
+    Sequential evolutionary optimization repeats that complete call path once for
+    every requested candidate. RF, LightGBM, NGBoost, and TabPFN can instead
+    evaluate all q rows in one estimator-side batch. The automatic policy is
+    deliberately conservative: q is limited to 2-3, GA/evo is used for every
+    supported model, and NGBoost additionally allows PSO and simulated annealing.
     """
 
     model_type = _normalized_name(_field(request, "model_type"))
-    if model_type not in _TREE_ENSEMBLE_MODELS:
+    if model_type not in _BATCHED_EXTERNAL_MODELS:
         return False
 
     optimizer = _field(request, "optimizer")
@@ -81,23 +79,31 @@ def uses_tree_ensemble_joint_batch(request: Any) -> bool:
     return family == "bayesian_optimization"
 
 
+def uses_tree_ensemble_joint_batch(request: Any) -> bool:
+    """Backward-compatible tree-ensemble-specific joint-batch predicate."""
+
+    if _normalized_name(_field(request, "model_type")) not in _TREE_ENSEMBLE_MODELS:
+        return False
+    return uses_batched_external_joint_batch(request)
+
+
 def uses_ngboost_joint_batch(request: Any) -> bool:
     """Backward-compatible NGBoost-specific joint-batch predicate."""
 
     if _normalized_name(_field(request, "model_type")) != "ngboost_ensemble":
         return False
-    return uses_tree_ensemble_joint_batch(request)
+    return uses_batched_external_joint_batch(request)
 
 
 def apply_web_candidate_runtime_defaults(request: Any) -> Any:
     """Return an execution copy with Web-only candidate runtime defaults applied.
 
-    The input request is never mutated. Qualifying tree-ensemble evolutionary
+    The input request is never mutated. Qualifying external-estimator evolutionary
     requests use ``optimizer.sequential=False`` so the backend receives one joint
     q-batch optimization problem.
     """
 
-    if not uses_tree_ensemble_joint_batch(request):
+    if not uses_batched_external_joint_batch(request):
         return request
 
     optimizer = _field(request, "optimizer")
@@ -124,6 +130,7 @@ def apply_web_candidate_runtime_defaults(request: Any) -> Any:
 
 __all__ = [
     "apply_web_candidate_runtime_defaults",
+    "uses_batched_external_joint_batch",
     "uses_ngboost_joint_batch",
     "uses_tree_ensemble_joint_batch",
 ]

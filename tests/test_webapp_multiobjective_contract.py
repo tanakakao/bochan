@@ -38,6 +38,7 @@ def test_web_capabilities_advertise_requested_models() -> None:
         "random_forest",
         "lightgbm_ensemble",
         "ngboost_ensemble",
+        "tabpfn",
         "multitask",
     ]
     assert WEB_CAPABILITIES["gamma_model_types"] == [

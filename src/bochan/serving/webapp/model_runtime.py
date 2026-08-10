@@ -12,6 +12,8 @@ from typing import Any
 
 _NGBOOST_ENSEMBLE_MODEL = "ngboost_ensemble"
 _NGBOOST_WEB_ENSEMBLE_SIZE = 3
+_TABPFN_MODEL = "tabpfn"
+_TABPFN_WEB_N_ESTIMATORS = 4
 
 
 def apply_web_model_runtime_defaults(
@@ -23,14 +25,39 @@ def apply_web_model_runtime_defaults(
     """Apply interactive Web defaults while preserving explicit model kwargs.
 
     NGBoost's estimator count is a constructor argument rather than a generic
-    ``FitConfig`` option. Therefore the Web ``fit_maxiter`` control must be
-    translated explicitly for NGBoost. The ensemble is also intentionally
-    smaller than the core model default because each member is a complete
-    NGBoost fit and is evaluated again during acquisition optimization.
+    ``FitConfig`` option. Therefore the Web ``fit_maxiter`` control is translated
+    explicitly for NGBoost. Its ensemble is also intentionally smaller than the
+    core model default because every member is a complete NGBoost fit and is
+    evaluated again during acquisition optimization.
+
+    TabPFN already performs its own in-context ensemble inference. Web candidate
+    optimization invokes prediction many times, so use fewer TabPFN ensemble
+    members by default while retaining estimator-side automatic feature coverage.
+    Explicit user model kwargs always override these Web defaults. ``fit_maxiter``
+    is deliberately not mapped to TabPFN because it has no iteration semantics in
+    the foundation-model estimator.
+
+    Injected ``estimator`` / ``estimators`` objects are already fully constructed.
+    Constructor-only Web defaults must not be added in that case: doing so can
+    create inconsistent ensemble-size contracts and makes custom estimator reuse
+    unexpectedly depend on Web defaults.
     """
 
     kwargs = dict(model_kwargs)
-    if str(model_type).lower() != _NGBOOST_ENSEMBLE_MODEL:
+    normalized_model_type = str(model_type).lower()
+
+    if normalized_model_type == _TABPFN_MODEL:
+        if kwargs.get("estimator") is not None:
+            return kwargs
+        kwargs.setdefault("n_estimators", _TABPFN_WEB_N_ESTIMATORS)
+        kwargs.setdefault("show_progress_bar", False)
+        kwargs.setdefault("n_preprocessing_jobs", 1)
+        return kwargs
+
+    if normalized_model_type != _NGBOOST_ENSEMBLE_MODEL:
+        return kwargs
+
+    if kwargs.get("estimators") is not None:
         return kwargs
 
     iterations = int(fit_maxiter)

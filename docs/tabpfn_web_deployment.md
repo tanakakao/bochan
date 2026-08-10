@@ -14,8 +14,25 @@ The repository includes platform-specific helpers that preload the same TabPFN
 v3 classifier/regressor checkpoints used by the Web runtime. The helpers do not
 write the Prior Labs API key to disk.
 
-Install or refresh the current checkout's Web dependencies before the first
-preload. This also keeps the local BoTorch/GPyTorch versions aligned with bochan:
+For development with uv, synchronize all bochan optional dependencies into the
+repository-local `.venv`:
+
+```bash
+uv sync --all-extras
+```
+
+The preload helpers automatically prefer the repository-local virtual
+environment when it exists, so activation is not required just to run preload.
+The Python selection order is:
+
+1. explicit `BOCHAN_PYTHON`
+2. repository `.venv` (`.venv\Scripts\python.exe` on Windows,
+   `.venv/bin/python` on Linux)
+3. `python` on `PATH`
+4. Linux only: `python3` on `PATH`
+
+If uv is not being used, install or refresh the current checkout's Web
+requirements with the selected Python instead:
 
 ```bash
 python -m pip install -e ".[web]"
@@ -23,16 +40,24 @@ python -m pip install -e ".[web]"
 
 The helper scripts verify that the selected Python can import the TabPFN APIs
 needed by bochan before asking for an API key. If the dependency is missing or
-incompatible, they print the Python executable and the install command above and
-exit without requesting a secret.
+incompatible, they print the selected Python executable plus both the uv and pip
+recovery commands and exit without requesting a secret.
 
 ### Windows Command Prompt
 
 From the bochan repository root, run:
 
 ```bat
-python -m pip install -e ".[web]"
+uv sync --all-extras
 scripts\preload_tabpfn.bat
+```
+
+If `.venv\Scripts\python.exe` exists, the helper uses it automatically even when
+the virtual environment has not been activated in the current Command Prompt.
+To verify the environment directly, run:
+
+```bat
+.venv\Scripts\python.exe -c "import tabpfn; print(tabpfn.__version__)"
 ```
 
 If `TABPFN_TOKEN` is not already defined, the script prompts for the Prior Labs
@@ -59,14 +84,21 @@ Prompt sessions.
 From the bochan repository root, run:
 
 ```bash
-python -m pip install -e ".[web]"
+uv sync --all-extras
 bash scripts/preload_tabpfn.sh
+```
+
+If `.venv/bin/python` exists, the helper uses it automatically even when the
+virtual environment has not been activated. To verify the environment directly,
+run:
+
+```bash
+.venv/bin/python -c "import tabpfn; print(tabpfn.__version__)"
 ```
 
 If `TABPFN_TOKEN` is not already defined, the script prompts for the Prior Labs
 API key with hidden terminal input. The prompted token exists only inside the
-helper process. The helper prefers the active environment's `python`, then falls
-back to `python3`, and also prepends the repository `src` directory to
+helper process. The helper also prepends the repository `src` directory to
 `PYTHONPATH`.
 
 As on Windows, the upstream TabPFN cache is used by default. To use a specific

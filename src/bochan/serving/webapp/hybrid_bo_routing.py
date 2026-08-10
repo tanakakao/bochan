@@ -1,4 +1,4 @@
-"""Preserve Web Hybrid objective semantics for single-objective BO."""
+"""Preserve Web Hybrid objective semantics for classification / ordinal BO."""
 
 from __future__ import annotations
 
@@ -98,11 +98,11 @@ def _copy_with_update(value: Any, **updates: Any) -> Any:
     return cloned
 
 
-def _uses_single_hybrid_objective(request: Any) -> bool:
-    """Return whether Web fitting will use Hybrid with one optimized output."""
+def _uses_single_classification_or_ordinal_objective(request: Any) -> bool:
+    """Return whether Web uses Hybrid for one classification / ordinal objective."""
 
     from . import workflows_tabular
-    from .target_roles import apply_target_roles, optimized_targets
+    from .target_roles import apply_target_roles, optimized_settings
 
     if workflows_tabular._resolve_direct_multitask_model_type(str(request.model_type)) is not None:
         return False
@@ -118,11 +118,16 @@ def _uses_single_hybrid_objective(request: Any) -> bool:
         model_kwargs,
         directions=directions,
     )
-    return len(optimized_targets(target_settings)) == 1
+    objectives = optimized_settings(target_settings)
+    return (
+        len(objectives) == 1
+        and str(objectives[0].get("task_type", "")).lower()
+        in {"classification", "ordinal"}
+    )
 
 
 def prepare_hybrid_objective_bo_request(request: Any) -> Any:
-    """Attach a request-local generic BO resolver for single Hybrid objectives.
+    """Attach a request-local generic BO resolver for one Hybrid class objective.
 
     The Web workbench intentionally represents classification and ordinal targets
     through ``HybridMultiOutputModel`` so selected classes, utility values, target
@@ -139,7 +144,7 @@ def prepare_hybrid_objective_bo_request(request: Any) -> Any:
         return request
     if _generic_single_objective_bo_acqf_cls(str(acquisition.name)) is None:
         return request
-    if not _uses_single_hybrid_objective(request):
+    if not _uses_single_classification_or_ordinal_objective(request):
         return request
 
     # Respect an explicit structured resolver if a caller supplied one. Normal

@@ -5,7 +5,7 @@ import InputPerturbationRiskSettingsControl from "../components/InputPerturbatio
 import SearchVariableSettings from "../components/SearchVariableSettings";
 import TargetProposalSettings from "../components/TargetProposalSettings";
 import { useWorkbench } from "../context/WorkbenchContext";
-import { isTreeEnsembleModelType } from "../modelOptions";
+import { requiresDerivativeFreeSearch } from "../modelOptions";
 import type { AcquisitionFamily } from "../types";
 import {
   loadSearchMethod,
@@ -153,7 +153,8 @@ export default function OptimizePage() {
   const taskTypes = optimizedTargetSettings.map((setting) => setting.task_type);
   const homogeneousTask = taskTypes.length > 0 && taskTypes.every((task) => task === taskTypes[0]);
   const projectedModel = modelType === "pca" || modelType === "rembo";
-  const treeEnsembleModel = isTreeEnsembleModelType(modelType);
+  const derivativeFreeModel = requiresDerivativeFreeSearch(modelType);
+  const tabpfnClassification = modelType === "tabpfn" && taskTypes.some((task) => task === "classification");
   const regressionLocalUncertaintyEquivalent = (
     acquisitionFamily === "active_learning"
     && homogeneousTask
@@ -172,17 +173,21 @@ export default function OptimizePage() {
         ? ["EHVI", "NEHVI", "NParEGO"]
         : ["EI", "PI", "UCB"];
     }
-    return FAMILY_ACQUISITIONS[acquisitionFamily];
-  }, [acquisitionFamily, multiObjective]);
+    const options = FAMILY_ACQUISITIONS[acquisitionFamily];
+    if (acquisitionFamily === "active_learning" && tabpfnClassification) {
+      return options.filter((name) => name.toLowerCase() !== "bald");
+    }
+    return options;
+  }, [acquisitionFamily, multiObjective, tabpfnClassification]);
 
   const searchMethodOptions = useMemo(
     () => SEARCH_METHOD_OPTIONS.filter((option) => (
-      (!treeEnsembleModel || option.family !== "gradient") &&
+      (!derivativeFreeModel || option.family !== "gradient") &&
       (option.value !== "nsgaii" || (
         acquisitionFamily === "bayesian_optimization" && multiObjective
       ))
     )),
-    [acquisitionFamily, multiObjective, treeEnsembleModel]
+    [acquisitionFamily, derivativeFreeModel, multiObjective]
   );
   const searchMethodFamily = searchMethodFamilyFor(searchMethod);
   const lseParameter = levelSetParameter(acquisition);
@@ -203,11 +208,11 @@ export default function OptimizePage() {
 
   useEffect(() => {
     if (!searchMethodOptions.some((option) => option.value === searchMethod)) {
-      const fallback: SearchMethod = treeEnsembleModel ? "ga" : "normal";
+      const fallback: SearchMethod = derivativeFreeModel ? "ga" : "normal";
       setSearchMethod(fallback);
       saveSearchMethod(fallback);
     }
-  }, [searchMethod, searchMethodOptions, treeEnsembleModel]);
+  }, [derivativeFreeModel, searchMethod, searchMethodOptions]);
 
   function changeFamily(nextFamily: AcquisitionFamily) {
     setAcquisitionFamily(nextFamily);
@@ -245,6 +250,9 @@ export default function OptimizePage() {
     if (optimizedCount === 0) errors.push("最適化対象の目的変数を1つ以上選択してください。");
     if (modelType === "multitask" && acquisitionFamily !== "bayesian_optimization") {
       errors.push("Multitask GPは現在ベイズ最適化で使用してください。");
+    }
+    if (tabpfnClassification && acquisition.toLowerCase() === "bald") {
+      errors.push("TabPFN分類ではBALDを使用できません。Predictive Entropy、Variance、NIPVを使用してください。");
     }
     if (
       acquisitionFamily === "level_set_estimation" &&
@@ -296,7 +304,8 @@ export default function OptimizePage() {
     q,
     rawSamples,
     searchMethod,
-    settingsValid
+    settingsValid,
+    tabpfnClassification
   ]);
 
   const canExecute = validationErrors.length === 0;
@@ -407,6 +416,11 @@ export default function OptimizePage() {
             {acquisitionFamily === "active_learning" && "予測不確実性を減らすために情報量の高い候補を選びます。"}
             {acquisitionFamily === "level_set_estimation" && "設定した境界や目標付近を重点的に探索します。"}
           </p>
+          {tabpfnClassification && acquisitionFamily === "active_learning" && (
+            <p className="settings-note">
+              TabPFN分類はpredict_probaの予測分布を使用します。内部推論アンサンブルを独立なepistemic memberとして扱わないため、BALDは選択対象外です。
+            </p>
+          )}
           {regressionLocalUncertaintyEquivalent && (
             <p className="settings-note">
               標準の等分散Gaussian回帰では、Variance・Predictive Entropy・BALDはposterior varianceの単調変換になるため、
@@ -434,8 +448,8 @@ export default function OptimizePage() {
             </select>
           </label>
           <p className="settings-note search-method-note">
-            {treeEnsembleModel
-              ? "ツリー・アンサンブルは候補入力に対する勾配を利用できないため、メタヒューリスティクスまたはサンプリングで探索します。多目的ベイズ最適化ではNSGA-IIも選択できます。"
+            {derivativeFreeModel
+              ? "このモデルは候補入力に対する勾配を利用しないため、メタヒューリスティクスまたはサンプリングで探索します。多目的ベイズ最適化ではNSGA-IIも選択できます。"
               : SEARCH_FAMILY_DESCRIPTIONS[searchMethodFamily]}
           </p>
         </article>

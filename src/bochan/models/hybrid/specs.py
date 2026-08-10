@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Literal, Optional, Sequence
+from typing import Any, Callable, Literal, Optional, Sequence, Union
 
 from torch import Tensor
 
@@ -20,6 +20,8 @@ PosteriorMode = Literal[
     "probability",
     "expected_utility",
 ]
+
+OutputIndex = Union[int, str]
 
 
 @dataclass(frozen=True)
@@ -91,6 +93,7 @@ class OutputSpec:
 
 
 __all__ = [
+    "OutputIndex",
     "OutputSpec",
     "PosteriorMode",
     "TaskType",

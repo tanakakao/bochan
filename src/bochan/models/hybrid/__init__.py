@@ -89,6 +89,30 @@ class HybridMultiOutputModel(_HybridMultiOutputModel):
             **kwargs,
         )
 
+    def class_probs_list(
+        self,
+        X: Tensor,
+        output_indices: OutputIndex | list[OutputIndex] | Tensor | None = None,
+        **kwargs: Any,
+    ) -> list[Tensor]:
+        """Return class probabilities for selected classification outputs."""
+        X = self._unwrap_X(X)
+        outputs: list[Tensor] = []
+        for index in self._normalize_output_indices(output_indices):
+            spec = self.specs[index]
+            if spec.task_type == "binary":
+                _, _, p1 = self._binary_probability_stats(spec, X, **kwargs)
+                outputs.append(torch.stack([1.0 - p1, p1], dim=-1))
+            elif spec.task_type == "ordinal":
+                outputs.append(self._ordinal_class_probs(spec, X, **kwargs))
+            elif spec.task_type == "multiclass":
+                outputs.append(self._multiclass_probs(spec, X, **kwargs))
+            else:
+                raise TypeError(
+                    f"Output {spec.name!r} is regression and has no class probabilities."
+                )
+        return outputs
+
     def predict_class_list(
         self,
         X: Tensor,

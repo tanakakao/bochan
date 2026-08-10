@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -156,6 +158,45 @@ def test_tabpfn_run_retains_yy_and_1d_visualization_session() -> None:
 
     assert yyplot["figure"]["data"]
     assert one_dimensional["figure"]["data"]
+
+
+def test_visualization_route_returns_404_only_for_missing_session(monkeypatch) -> None:
+    from fastapi.testclient import TestClient
+
+    app_module = importlib.import_module("bochan.serving.webapp.app")
+
+    def missing_session(_run_id: str):
+        raise KeyError("missing-session")
+
+    monkeypatch.setattr(app_module, "get_visualization_session", missing_session)
+    client = TestClient(app_module.create_app(include_core_api=False))
+    response = client.post(
+        "/api/v1/runs/missing/visualizations",
+        json={"kind": "yyplot", "target": "target"},
+    )
+
+    assert response.status_code == 404
+    assert "missing-session" in response.json()["detail"]
+
+
+def test_visualization_route_does_not_misclassify_internal_key_error(monkeypatch) -> None:
+    from fastapi.testclient import TestClient
+
+    app_module = importlib.import_module("bochan.serving.webapp.app")
+    monkeypatch.setattr(app_module, "get_visualization_session", lambda _run_id: object())
+
+    def broken_plot(_run_id: str, _request: dict[str, object]):
+        raise KeyError("plot-internal-key")
+
+    monkeypatch.setattr(app_module, "build_visualization", broken_plot)
+    client = TestClient(app_module.create_app(include_core_api=False))
+    response = client.post(
+        "/api/v1/runs/existing/visualizations",
+        json={"kind": "yyplot", "target": "target"},
+    )
+
+    assert response.status_code == 400
+    assert "plot-internal-key" in response.json()["detail"]
 
 
 def test_start_web_preserves_sessions_unless_reload_is_explicit() -> None:

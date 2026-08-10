@@ -4,7 +4,7 @@ from .decomposition import (
     REMBOOrdinalGPModel,
     REMBOOrdinalMixedGPModel,
 )
-from .saas_fixed import SaasOrdinalGPModel, SaasOrdinalMixedGPModel
+from .saas import SaasOrdinalGPModel, SaasOrdinalMixedGPModel
 
 __all__ = [
     "PCAOrdinalGPModel",

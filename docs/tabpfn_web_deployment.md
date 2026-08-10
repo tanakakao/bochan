@@ -24,13 +24,16 @@ Browser authentication is disabled by default, so an automated deployment fails
 clearly when the token/license is unavailable.
 
 5. Start the normal bochan Web container with the same checkpoint directory
-   mounted, preferably read-only. `TABPFN_TOKEN` does not need to be present in
-   the runtime container.
+   mounted, preferably read-only. Do not expose `TABPFN_TOKEN` to the runtime
+   container.
 
 ```bash
 export TABPFN_MODEL_CACHE_DIR="/var/lib/bochan/tabpfn"
 # start bochan Web normally
 ```
+
+For stronger isolation, deny runtime egress to Prior Labs/Hugging Face at the
+infrastructure or network-policy layer as well.
 
 ## Local interactive provisioning
 

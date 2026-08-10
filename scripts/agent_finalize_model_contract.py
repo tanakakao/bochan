@@ -151,7 +151,11 @@ def test_robust_train_data_mixin_has_no_compatibility_aliases() -> None:
 
 
 def test_no_mechanical_latent_posterior_identifier_corruption() -> None:
-    forbidden = ("latent_posterioror", "latent_posterioramily", "latent_posteriorn")
+    forbidden = (
+        "latent_" "posterioror",
+        "latent_" "posterioramily",
+        "latent_" "posteriorn",
+    )
     offenders: list[tuple[str, str]] = []
     for root_name in ("src", "tests"):
         root = REPO_ROOT / root_name
@@ -179,11 +183,16 @@ def validate() -> None:
     if "OutlierRelevancePursuitOrdinal" in relevance:
         raise RuntimeError("legacy ordinal RRP name remains")
 
+    forbidden = (
+        "latent_" "posterioror",
+        "latent_" "posterioramily",
+        "latent_" "posteriorn",
+    )
     for root_name in ("src", "tests"):
         root = ROOT / root_name
         for path in root.rglob("*.py"):
             text = read(path)
-            for token in ("latent_posterioror", "latent_posterioramily", "latent_posteriorn"):
+            for token in forbidden:
                 if token in text:
                     raise RuntimeError(f"{path.relative_to(ROOT)} contains {token}")
 

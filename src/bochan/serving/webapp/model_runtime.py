@@ -18,18 +18,21 @@ _NGBOOST_WEB_ENSEMBLE_SIZE = 3
 _TABPFN_MODEL = "tabpfn"
 _TABPFN_WEB_N_ESTIMATORS = 4
 _TABPFN_NO_BROWSER_ENV = "TABPFN_NO_BROWSER"
+_TABPFN_MODEL_VERSION_ENV = "TABPFN_MODEL_VERSION"
+_TABPFN_WEB_VERSION = "v3"
 
 
 def _configure_tabpfn_web_environment() -> None:
-    """Disable browser authentication inside the public Web server process.
+    """Pin Web TabPFN to preloaded v3 assets with no browser auth fallback.
 
     bochan Web uses a deployment-time preload contract: model checkpoints must
     already be present before the server handles user requests. Browser login is
-    therefore never an acceptable runtime fallback, even if an operator happened
-    to define ``TABPFN_NO_BROWSER=0`` in the server environment.
+    therefore never an acceptable runtime fallback, and the runtime model version
+    must match the version provisioned by :mod:`tabpfn_preload`.
     """
 
     os.environ[_TABPFN_NO_BROWSER_ENV] = "1"
+    os.environ[_TABPFN_MODEL_VERSION_ENV] = _TABPFN_WEB_VERSION
 
 
 def _web_request_context_active() -> bool:

@@ -165,7 +165,7 @@ def test_web_three_class_lse_runs_with_input_perturbation(task_type: str) -> Non
     assert result["metadata"]["input_perturbation_risk_type"] == "none"
 
 
-@pytest.mark.parametrize("acquisition_name", ["EI", "PI", "UCB"])
+@pytest.mark.parametrize("acquisition_name", ["EI", "NEI", "PI", "UCB"])
 def test_web_three_class_bo_uses_hybrid_objective_acquisition(
     acquisition_name: str,
 ) -> None:

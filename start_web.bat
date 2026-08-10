@@ -8,6 +8,9 @@ set "FRONTEND_HOST=127.0.0.1"
 set "FRONTEND_PORT=5173"
 set "HEALTH_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/api/v1/health"
 set "VENV_PYTHON=%~dp0.venv\Scripts\python.exe"
+set "BACKEND_RELOAD_ARGS="
+if /i "%BOCHAN_WEB_RELOAD%"=="1" set "BACKEND_RELOAD_ARGS=--reload"
+if /i "%BOCHAN_WEB_RELOAD%"=="true" set "BACKEND_RELOAD_ARGS=--reload"
 
 if /i "%~1"=="backend" goto backend
 if /i "%~1"=="frontend" goto frontend
@@ -38,6 +41,13 @@ if exist "%VENV_PYTHON%" (
         exit /b 1
     )
     echo Python: uv run --extra web python
+)
+
+if defined BACKEND_RELOAD_ARGS (
+    echo Backend reload: enabled ^(BOCHAN_WEB_RELOAD=%BOCHAN_WEB_RELOAD%^\)
+    echo [WARNING] Python reload clears in-memory datasets, fitted models, and visualization sessions.
+) else (
+    echo Backend reload: disabled ^(recommended for model/visualization sessions^)
 )
 
 echo Starting bochan backend at http://%BACKEND_HOST%:%BACKEND_PORT% ...
@@ -84,15 +94,23 @@ echo bochan FastAPI backend
 echo ========================================
 echo.
 
+if defined BACKEND_RELOAD_ARGS (
+    echo Python source reload is enabled.
+    echo [WARNING] Reloading clears in-memory Web sessions; rerun the model after a reload.
+) else (
+    echo Python source reload is disabled to preserve in-memory Web sessions.
+)
+echo.
+
 if exist "%VENV_PYTHON%" (
     echo Using uv virtual environment:
     echo %VENV_PYTHON%
     echo.
-    "%VENV_PYTHON%" -m uvicorn bochan.serving.webapp.app:app --reload --host %BACKEND_HOST% --port %BACKEND_PORT%
+    "%VENV_PYTHON%" -m uvicorn bochan.serving.webapp.app:app %BACKEND_RELOAD_ARGS% --host %BACKEND_HOST% --port %BACKEND_PORT%
 ) else (
     echo .venv was not found. Starting through uv run.
     echo.
-    uv run --extra web python -m uvicorn bochan.serving.webapp.app:app --reload --host %BACKEND_HOST% --port %BACKEND_PORT%
+    uv run --extra web python -m uvicorn bochan.serving.webapp.app:app %BACKEND_RELOAD_ARGS% --host %BACKEND_HOST% --port %BACKEND_PORT%
 )
 
 set "SERVER_EXIT=%ERRORLEVEL%"

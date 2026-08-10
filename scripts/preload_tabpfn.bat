@@ -69,7 +69,7 @@ if defined TABPFN_MODEL_CACHE_DIR (
     echo TabPFN cache: upstream default cache directory
 )
 
-"%PYTHON_CMD%" -m bochan.serving.webapp.tabpfn_preload %*
+"%PYTHON_CMD%" -m bochan.tabpfn_preload %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
 rem Remove a token entered by this helper from its local environment.

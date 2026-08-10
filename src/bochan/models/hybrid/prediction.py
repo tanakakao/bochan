@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Sequence, Union
+from typing import Any, Sequence
 
 import torch
 from torch import Tensor
 
-from .specs import OutputSpec
-
-OutputIndex = Union[int, str]
+from .specs import OutputIndex, OutputSpec
 
 
 def _coerce_binary_threshold(
@@ -164,5 +162,6 @@ def predict_class(
         out.append(value.to(device=device, dtype=dtype).unsqueeze(-1))
 
     return torch.cat(out, dim=-1)
+
 
 __all__ = ["predict_class", "predict_class_list"]

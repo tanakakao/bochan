@@ -107,6 +107,77 @@ def fix_robust_ordinal_num_classes() -> None:
     write(path, text)
 
 
+def fix_projected_mll_contract() -> None:
+    path = MODELS / "components" / "projected.py"
+    text = read(path)
+    if "from gpytorch.models import ExactGP" not in text:
+        text = text.replace(
+            "from gpytorch.mlls import ExactMarginalLogLikelihood\n",
+            "from gpytorch.mlls import ExactMarginalLogLikelihood\nfrom gpytorch.models import ExactGP\n",
+            1,
+        )
+
+    start = text.index("    def make_mll(self, **kwargs: Any):\n")
+    end = text.index("    @property\n    def train_input_raw", start)
+    replacement = '''    def make_mll(self, **kwargs: Any):
+        """内部 ``base_model`` の種類に応じた MLL を構築する。
+
+        Exact Gaussian GP では ``beta`` は適用対象ではないため無視する。
+        Variational / task-specific model は、その model が公開する ``make_mll``
+        または ordinal MLL builder に固有引数を渡す。TypeError による互換
+        fallback は行わず、model family ごとの contract を明示する。
+        """
+        if isinstance(self.base_model, ExactGP):
+            mll_kwargs = dict(kwargs)
+            mll_kwargs.pop("beta", None)
+            if mll_kwargs:
+                names = ", ".join(sorted(mll_kwargs))
+                raise TypeError(
+                    "Exact projected models received unsupported MLL keyword arguments: "
+                    f"{names}."
+                )
+            return ExactMarginalLogLikelihood(
+                self.base_model.likelihood,
+                self.base_model,
+            )
+
+        base_make_mll = getattr(self.base_model, "make_mll", None)
+        if callable(base_make_mll):
+            return base_make_mll(**kwargs)
+
+        if hasattr(self, "ordinal_likelihood"):
+            from bochan.fit import make_ordinal_mll
+
+            return make_ordinal_mll(self, **kwargs)
+
+        if kwargs:
+            names = ", ".join(sorted(kwargs))
+            raise TypeError(
+                f"{type(self.base_model).__name__} received unsupported MLL keyword "
+                f"arguments: {names}."
+            )
+        raise TypeError(
+            f"{type(self.base_model).__name__} does not define an MLL construction contract."
+        )
+
+'''
+    write(path, text[:start] + replacement + text[end:])
+
+
+def dedupe_repeated_property_decorators() -> None:
+    """Alias method removal で残った連続 ``@property`` を1つに正規化する。"""
+    for path in MODELS.rglob("*.py"):
+        lines = read(path).splitlines(keepends=True)
+        out: list[str] = []
+        for line in lines:
+            if line.strip() == "@property" and out and out[-1] == line:
+                continue
+            out.append(line)
+        new = "".join(out)
+        if new != "".join(lines):
+            write(path, new)
+
+
 def normalize_remaining_ordinal_rrp_names() -> None:
     old = "OutlierRelevancePursuitOrdinal"
     new = "RobustRelevancePursuitOrdinal"
@@ -142,10 +213,9 @@ def clean_latent_posterior_messages() -> None:
 def extend_contract_guard() -> None:
     path = ROOT / "tests/test_model_contract_refactor.py"
     text = read(path)
-    if "test_robust_train_data_mixin_has_no_compatibility_aliases" in text:
-        return
-    addition = r'''
-
+    additions: list[str] = []
+    if "test_robust_train_data_mixin_has_no_compatibility_aliases" not in text:
+        additions.append(r'''
 
 def test_robust_train_data_mixin_has_no_compatibility_aliases() -> None:
     robust_path = MODELS_ROOT / "components" / "robust.py"
@@ -170,7 +240,9 @@ def test_robust_train_data_mixin_has_no_compatibility_aliases() -> None:
     }
     assert not (method_names & forbidden)
     assert "TrainInputsAliasMixin" not in robust_path.read_text(encoding="utf-8")
-
+''')
+    if "test_no_mechanical_latent_posterior_identifier_corruption" not in text:
+        additions.append(r'''
 
 def test_no_mechanical_latent_posterior_identifier_corruption() -> None:
     forbidden = (
@@ -187,8 +259,27 @@ def test_no_mechanical_latent_posterior_identifier_corruption() -> None:
                 if token in source:
                     offenders.append((str(path.relative_to(REPO_ROOT)), token))
     assert not offenders
-'''
-    write(path, text.rstrip() + addition.rstrip() + "\n")
+''')
+    if "test_model_methods_do_not_repeat_property_decorator" not in text:
+        additions.append(r'''
+
+def test_model_methods_do_not_repeat_property_decorator() -> None:
+    offenders: list[tuple[str, str]] = []
+    for path in MODELS_ROOT.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            property_count = sum(
+                isinstance(decorator, ast.Name) and decorator.id == "property"
+                for decorator in node.decorator_list
+            )
+            if property_count > 1:
+                offenders.append((str(path.relative_to(REPO_ROOT)), node.name))
+    assert not offenders
+''')
+    if additions:
+        write(path, text.rstrip() + "\n" + "".join(additions).rstrip() + "\n")
 
 
 def validate() -> None:
@@ -220,11 +311,26 @@ def validate() -> None:
                 if token in text:
                     raise RuntimeError(f"{path.relative_to(ROOT)} contains {token}")
 
+    for path in MODELS.rglob("*.py"):
+        tree = ast.parse(read(path), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                count = sum(
+                    isinstance(decorator, ast.Name) and decorator.id == "property"
+                    for decorator in node.decorator_list
+                )
+                if count > 1:
+                    raise RuntimeError(
+                        f"{path.relative_to(ROOT)}::{node.name} has repeated @property"
+                    )
+
 
 if __name__ == "__main__":
     formalize_robust_train_data_mixin()
     fix_heteroscedastic_ordinal_num_classes()
     fix_robust_ordinal_num_classes()
+    fix_projected_mll_contract()
+    dedupe_repeated_property_decorators()
     normalize_remaining_ordinal_rrp_names()
     clean_latent_posterior_messages()
     extend_contract_guard()

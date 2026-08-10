@@ -13,6 +13,7 @@ on:
       - "src/bochan/models/classification/multiclass/foundation/tabpfn.py"
       - "src/bochan/serving/webapp/app.py"
       - "src/bochan/serving/webapp/candidate_runtime.py"
+      - "src/bochan/serving/webapp/model_capabilities.py"
       - "src/bochan/serving/webapp/model_reuse.py"
       - "src/bochan/serving/webapp/model_runtime.py"
       - "src/bochan/serving/webapp/risk_settings.py"
@@ -29,6 +30,7 @@ on:
       - "tests/test_tabpfn_optional_smoke.py"
       - "tests/test_tree_ensemble_input_perturbation.py"
       - "tests/test_web_external_ensemble_matrix.py"
+      - "tests/test_web_model_capabilities.py"
       - "tests/test_web_ngboost_runtime.py"
       - "tests/test_web_tabpfn_mixed.py"
       - "tests/test_web_tabpfn_models.py"
@@ -56,6 +58,7 @@ jobs:
             tests/test_tabpfn_optional_smoke.py \
             tests/test_tree_ensemble_input_perturbation.py \
             tests/test_web_external_ensemble_matrix.py \
+            tests/test_web_model_capabilities.py \
             tests/test_web_ngboost_runtime.py \
             tests/test_web_tabpfn_mixed.py \
             tests/test_web_tabpfn_models.py \
@@ -68,6 +71,7 @@ jobs:
             src/bochan/models/external/common.py \
             src/bochan/serving/webapp/app.py \
             src/bochan/serving/webapp/candidate_runtime.py \
+            src/bochan/serving/webapp/model_capabilities.py \
             src/bochan/serving/webapp/model_reuse.py \
             src/bochan/serving/webapp/model_runtime.py \
             src/bochan/serving/webapp/risk_settings.py \
@@ -79,6 +83,7 @@ jobs:
             tests/test_tabpfn_optional_smoke.py \
             tests/test_tree_ensemble_input_perturbation.py \
             tests/test_web_external_ensemble_matrix.py \
+            tests/test_web_model_capabilities.py \
             tests/test_web_ngboost_runtime.py \
             tests/test_web_tabpfn_mixed.py \
             tests/test_web_tabpfn_models.py \

@@ -1,0 +1,227 @@
+name: Temporary model strategy layout refactor
+
+on:
+  push:
+    branches:
+      - agent/reorganize-multioutput-multitask
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reorganize model strategy packages
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p src/bochan/models/multitask
+          mkdir -p src/bochan/models/multioutput
+          mkdir -p src/bochan/models/multifidelity
+
+          git mv src/bochan/models/wide_multitask.py src/bochan/models/multitask/wide.py
+          git mv src/bochan/models/wide_multitask_variants.py src/bochan/models/multitask/task_feature.py
+          git mv src/bochan/models/wide_mixed_multitask.py src/bochan/models/multitask/mixed.py
+          git mv src/bochan/models/regression/_multitask.py src/bochan/models/multitask/validation.py
+          git mv src/bochan/models/components/kronecker_multitask.py src/bochan/models/multitask/kronecker.py
+
+          git mv src/bochan/models/classification/binary/base/multioutput.py src/bochan/models/multioutput/binary.py
+          git mv src/bochan/models/classification/multiclass/base/multioutput.py src/bochan/models/multioutput/multiclass.py
+          git mv src/bochan/models/ordinal/base/multioutput.py src/bochan/models/multioutput/ordinal.py
+
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path('.')
+
+          replacements = [
+              ('bochan.models.wide_multitask_variants', 'bochan.models.multitask.task_feature'),
+              ('bochan.models.wide_mixed_multitask', 'bochan.models.multitask.mixed'),
+              ('bochan.models.wide_multitask', 'bochan.models.multitask.wide'),
+              ('bochan.models.regression._multitask', 'bochan.models.multitask.validation'),
+              ('bochan.models.components.kronecker_multitask', 'bochan.models.multitask.kronecker'),
+              ('bochan.models.classification.binary.base.multioutput', 'bochan.models.multioutput.binary'),
+              ('bochan.models.classification.multiclass.base.multioutput', 'bochan.models.multioutput.multiclass'),
+              ('bochan.models.ordinal.base.multioutput', 'bochan.models.multioutput.ordinal'),
+              ('src/bochan/models/wide_multitask_variants.py', 'src/bochan/models/multitask/task_feature.py'),
+              ('src/bochan/models/wide_mixed_multitask.py', 'src/bochan/models/multitask/mixed.py'),
+              ('src/bochan/models/wide_multitask.py', 'src/bochan/models/multitask/wide.py'),
+              ('src/bochan/models/regression/_multitask.py', 'src/bochan/models/multitask/validation.py'),
+              ('src/bochan/models/components/kronecker_multitask.py', 'src/bochan/models/multitask/kronecker.py'),
+              ('src/bochan/models/classification/binary/base/multioutput.py', 'src/bochan/models/multioutput/binary.py'),
+              ('src/bochan/models/classification/multiclass/base/multioutput.py', 'src/bochan/models/multioutput/multiclass.py'),
+              ('src/bochan/models/ordinal/base/multioutput.py', 'src/bochan/models/multioutput/ordinal.py'),
+          ]
+
+          text_suffixes = {'.py', '.md', '.yml', '.yaml', '.toml', '.txt'}
+          for path in root.rglob('*'):
+              if not path.is_file():
+                  continue
+              if path.parts[:2] == ('.git', 'objects'):
+                  continue
+              if path.suffix not in text_suffixes and path.name not in {'AGENTS.md'}:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              updated = text
+              for old, new in replacements:
+                  updated = updated.replace(old, new)
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+
+          # Imports inside files that changed package depth.
+          task_feature = Path('src/bochan/models/multitask/task_feature.py')
+          text = task_feature.read_text(encoding='utf-8')
+          text = text.replace('from .wide_multitask import', 'from .wide import')
+          task_feature.write_text(text, encoding='utf-8')
+
+          mixed = Path('src/bochan/models/multitask/mixed.py')
+          text = mixed.read_text(encoding='utf-8')
+          text = text.replace('from .wide_multitask_variants import WideMultiTaskGP', 'from .task_feature import WideMultiTaskGP')
+          mixed.write_text(text, encoding='utf-8')
+
+          # Family packages keep shallow exports, but implementation ownership is
+          # canonical under bochan.models.multioutput.*.
+          family_dirs = {
+              Path('src/bochan/models/classification/binary/base'): 'bochan.models.multioutput.binary',
+              Path('src/bochan/models/classification/multiclass/base'): 'bochan.models.multioutput.multiclass',
+              Path('src/bochan/models/ordinal/base'): 'bochan.models.multioutput.ordinal',
+          }
+          for directory, module in family_dirs.items():
+              for path in directory.rglob('*.py'):
+                  text = path.read_text(encoding='utf-8')
+                  updated = text.replace('from .multioutput import', f'from {module} import')
+                  if updated != text:
+                      path.write_text(updated, encoding='utf-8')
+
+          # Wide posterior owns its event semantics directly; no runtime patch is
+          # needed after the package move.
+          wide = Path('src/bochan/models/multitask/wide.py')
+          text = wide.read_text(encoding='utf-8')
+          needle = '''    @property
+          def dtype(self) -> torch.dtype:
+              return self.posterior.dtype
+
+          @property
+          def base_sample_shape(self) -> torch.Size:
+          '''
+          replacement = '''    @property
+          def dtype(self) -> torch.dtype:
+              return self.posterior.dtype
+
+          @property
+          def event_shape(self) -> torch.Size:
+              mean = self.mean
+              trailing = 2 if self.scalar_task_values else 3
+              return torch.Size(mean.shape[-trailing:])
+
+          @property
+          def base_sample_shape(self) -> torch.Size:
+          '''
+          if needle not in text:
+              raise RuntimeError('Could not locate _WidePosterior dtype/base_sample_shape block.')
+          wide.write_text(text.replace(needle, replacement, 1), encoding='utf-8')
+
+          ordinal_acq = Path('src/bochan/acquisition/ordinal_multitask.py')
+          text = ordinal_acq.read_text(encoding='utf-8')
+          patch_block = '''    from bochan.acquisition.wide_posterior_events import (
+              apply_wide_posterior_events,
+          )
+
+          apply_wide_posterior_events()
+
+          '''
+          if patch_block not in text:
+              raise RuntimeError('Could not locate wide posterior runtime patch block.')
+          text = text.replace(patch_block, '', 1)
+          text = text.replace(
+              '"""Install wide posterior, likelihood, and task-proxy support.',
+              '"""Install likelihood and task-proxy support.',
+              1,
+          )
+          ordinal_acq.write_text(text, encoding='utf-8')
+
+          ordinal_multioutput = Path('src/bochan/models/multioutput/ordinal.py')
+          text = ordinal_multioutput.read_text(encoding='utf-8')
+          text = text.replace(
+              '    @staticmethod\n    @staticmethod\n    def _get_submodel_train_input_raw',
+              '    @staticmethod\n    def _get_submodel_train_input_raw',
+              1,
+          )
+          ordinal_multioutput.write_text(text, encoding='utf-8')
+
+          Path('src/bochan/models/multitask/__init__.py').write_text(
+              '''"""Shared infrastructure for correlated multi-task models."""\n\nfrom .kronecker import (\n    BlockDesignVariationalELBO,\n    LatentKroneckerMultiTaskGP,\n    canonicalize_block_design_targets,\n    canonicalize_shared_inducing_points,\n)\nfrom .mixed import WideMixedMultiTaskGP\nfrom .task_feature import (\n    PerturbationAwareStratifiedStandardize,\n    PerturbationAwareWidePosterior,\n    TaskFeatureInputTransform,\n    WideMultiTaskBinaryClassificationGPModel,\n    WideMultiTaskGP,\n    WideMultiTaskMulticlassClassificationGPModel,\n    WideMultiTaskOrdinalGPModel,\n    wide_to_long,\n)\nfrom .validation import (\n    long_to_sparse_wide,\n    validate_complete_block,\n    validate_long_multitask_data,\n)\n\n__all__ = [\n    "BlockDesignVariationalELBO",\n    "LatentKroneckerMultiTaskGP",\n    "PerturbationAwareStratifiedStandardize",\n    "PerturbationAwareWidePosterior",\n    "TaskFeatureInputTransform",\n    "WideMixedMultiTaskGP",\n    "WideMultiTaskBinaryClassificationGPModel",\n    "WideMultiTaskGP",\n    "WideMultiTaskMulticlassClassificationGPModel",\n    "WideMultiTaskOrdinalGPModel",\n    "canonicalize_block_design_targets",\n    "canonicalize_shared_inducing_points",\n    "long_to_sparse_wide",\n    "validate_complete_block",\n    "validate_long_multitask_data",\n    "wide_to_long",\n]\n''',
+              encoding='utf-8',
+          )
+
+          Path('src/bochan/models/multioutput/__init__.py').write_text(
+              '''"""Independent multi-output model aggregators.\n\nCanonical implementations live in ``binary``, ``multiclass``, and ``ordinal``.\nUnlike ``bochan.models.multitask``, these wrappers combine independently fitted\nsubmodels and do not introduce learned task covariance.\n"""\n''',
+              encoding='utf-8',
+          )
+
+          Path('src/bochan/models/multifidelity/__init__.py').write_text(
+              '''"""Cross-family extension point for shared multi-fidelity infrastructure.\n\nLikelihood-specific multi-fidelity models remain owned by their regression or\nclassification family. Shared fidelity-axis transforms, adapters, and validation\nshould be placed here as they are introduced.\n"""\n''',
+              encoding='utf-8',
+          )
+
+          Path('src/bochan/models/ARCHITECTURE.md').write_text(
+              '''# Model package ownership\n\nModel code is organized along two axes: **model family** and **cross-cutting strategy**.\n\n## Family-owned concrete models\n\nLikelihood- or task-specific implementations stay under their owning family, for example:\n\n- `regression/gaussian`, `regression/beta`, `regression/gamma`, `regression/count`\n- `classification/binary`, `classification/multiclass`\n- `ordinal`\n\nMixed variants that are specific to one concrete model remain with that family.\n\n## Cross-cutting strategy packages\n\n- `multitask/`: correlated outputs/tasks, task-feature adapters, shared ICM/Kronecker infrastructure, and validation.\n- `multioutput/`: wrappers that aggregate independently fitted single-output models.\n- `multifidelity/`: shared fidelity-axis abstractions and adapters. Concrete Gaussian/Bernoulli/etc. multi-fidelity models remain family-owned unless their implementation is genuinely cross-family.\n\nThis distinction is intentional: **multi-output does not imply multi-task correlation**.\n\n## Adding a new strategy\n\n1. Put family-independent mechanics in a dedicated top-level strategy package.\n2. Keep likelihood-specific concrete models under the family tree.\n3. Depend from family code toward shared strategy code, not the reverse unless an adapter explicitly wraps family models.\n4. Do not add forwarding modules at removed paths. Update imports and the model registry directly.\n5. Keep public data-shape contracts documented at the strategy boundary.\n\nThis layout is intended to let future multi-fidelity, transfer-learning, or related strategies grow without adding more one-off modules directly under `models/`.\n''',
+              encoding='utf-8',
+          )
+
+          Path('tests/test_model_strategy_package_layout.py').write_text(
+              '''from pathlib import Path\n\n\ndef test_cross_cutting_model_strategy_layout() -> None:\n    root = Path(__file__).resolve().parents[1] / "src" / "bochan" / "models"\n\n    expected = [\n        root / "multitask" / "wide.py",\n        root / "multitask" / "task_feature.py",\n        root / "multitask" / "mixed.py",\n        root / "multitask" / "validation.py",\n        root / "multitask" / "kronecker.py",\n        root / "multioutput" / "binary.py",\n        root / "multioutput" / "multiclass.py",\n        root / "multioutput" / "ordinal.py",\n        root / "multifidelity" / "__init__.py",\n    ]\n    removed = [\n        root / "wide_multitask.py",\n        root / "wide_multitask_variants.py",\n        root / "wide_mixed_multitask.py",\n        root / "regression" / "_multitask.py",\n        root / "components" / "kronecker_multitask.py",\n        root / "classification" / "binary" / "base" / "multioutput.py",\n        root / "classification" / "multiclass" / "base" / "multioutput.py",\n        root / "ordinal" / "base" / "multioutput.py",\n    ]\n\n    assert all(path.is_file() for path in expected)\n    assert not any(path.exists() for path in removed)\n''',
+              encoding='utf-8',
+          )
+
+          forbidden = [old for old, _ in replacements]
+          forbidden.extend([
+              'from .wide_multitask import',
+              'from .wide_multitask_variants import',
+              'bochan.acquisition.wide_posterior_events',
+          ])
+          failures = []
+          for path in root.rglob('*'):
+              if not path.is_file() or '.git' in path.parts:
+                  continue
+              if path == Path('.github/workflows/tmp_model_strategy_layout.yml'):
+                  continue
+              if path.suffix not in text_suffixes and path.name not in {'AGENTS.md'}:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              for token in forbidden:
+                  if token in text:
+                      failures.append(f'{path}: {token}')
+          if failures:
+              raise RuntimeError('Stale model-layout references remain:\n' + '\n'.join(failures))
+          PY
+
+          git rm src/bochan/acquisition/wide_posterior_events.py
+          git rm .github/workflows/tmp_model_strategy_layout.yml
+
+      - name: Validate Python syntax
+        run: python -m compileall -q src/bochan tests
+
+      - name: Commit refactor
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Reorganize multioutput and multitask models"
+          git push origin HEAD:agent/reorganize-multioutput-multitask

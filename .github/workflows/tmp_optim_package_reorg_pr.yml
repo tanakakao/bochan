@@ -26,7 +26,21 @@ jobs:
           cache: pip
 
       - name: Apply package reorganization
-        run: python .github/tmp_reorg_optim.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python .github/tmp_reorg_optim.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/test_nsgaii_no_grad.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              'from bochan.optim.nsgaii.adapter import _make_version_supported_optimizer',
+              'from bochan.optim.nsgaii.core import _make_version_supported_optimizer',
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
 
       - name: Remove temporary automation files
         run: |

@@ -15,7 +15,6 @@ from bochan.models.components.decomposition import (
     REMBOTransformer,
 )
 from bochan.models.components.multiclass import (
-    apply_input_transform_for_eval,
     apply_input_transform_for_training,
     check_categorical_columns_unchanged,
     clone_input_transform,
@@ -25,6 +24,7 @@ from bochan.models.components.multiclass import (
     prepare_class_targets,
 )
 from bochan.models.components.projected_utils import (
+    _apply_input_transform_for_eval as apply_input_transform_for_eval,
     flatten_projected_one_to_many_point_axes,
 )
 from bochan.models.classification.multiclass import (
@@ -338,7 +338,6 @@ class PCAMulticlassClassificationMixedGPModel(_MixedProjectedMulticlassModel):
         self._preproject_train_X = pre_X.detach().clone()
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
-        self.num_classes = int(num_inducing)
         self.num_classes = int(num_classes)
         self.num_inducing = int(num_inducing)
 

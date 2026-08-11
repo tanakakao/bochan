@@ -75,7 +75,7 @@ jobs:
         run: |
           python -m pip install -e ".[test,api,visualization]"
           python -m pip install ruff lightgbm
-      - name: Normalize changed Python imports
+      - name: Normalize generated sources
         shell: bash
         run: |
           mapfile -t files < <(git diff --name-only --diff-filter=ACMR -- '*.py')
@@ -94,6 +94,31 @@ jobs:
           if [ ${#files[@]} -gt 0 ]; then
             ruff check --fix --select I "${files[@]}"
           fi
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          paths = set(
+              subprocess.check_output(
+                  ["git", "diff", "--name-only", "--diff-filter=ACMR"],
+                  text=True,
+              ).splitlines()
+          )
+          paths.update(
+              {
+                  "AGENTS.md",
+                  "tests/test_model_package_layout.py",
+                  "src/bochan/models/ordinal/base/models.py",
+              }
+          )
+          for raw in sorted(paths):
+              path = Path(raw)
+              if not path.is_file() or path.suffix not in {".py", ".md", ".yml", ".yaml"}:
+                  continue
+              text = path.read_text(encoding="utf-8")
+              normalized = "\n".join(line.rstrip() for line in text.splitlines()) + "\n"
+              path.write_text(normalized, encoding="utf-8")
+          PY
       - name: Validate model component layout
         shell: bash
         run: |

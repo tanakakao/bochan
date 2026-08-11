@@ -116,7 +116,9 @@ jobs:
               if not path.is_file() or path.suffix not in {".py", ".md", ".yml", ".yaml"}:
                   continue
               text = path.read_text(encoding="utf-8")
-              normalized = "\n".join(line.rstrip() for line in text.splitlines()) + "\n"
+              normalized = "\n".join(
+                  line.rstrip() for line in text.rstrip().splitlines()
+              ) + "\n"
               path.write_text(normalized, encoding="utf-8")
           PY
       - name: Validate model component layout

@@ -1,4 +1,320 @@
-name: Non-Gaussian acquisition smoke
+name: Non-Gaussian acquisition follow-up bootstrap
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Apply canonical projected-model fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str, *, expected: int) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != expected:
+                  raise RuntimeError(f"{path}: expected {expected} replacements, found {count}: {old!r}")
+              p.write_text(text.replace(old, new), encoding="utf-8")
+
+          projected = {
+              "src/bochan/models/regression/non_gaussian/beta/high_dim/beta_decomposition.py": 4,
+              "src/bochan/models/regression/non_gaussian/gamma/high_dim/gamma_decomposition.py": 4,
+              "src/bochan/models/regression/non_gaussian/negative_binomial/high_dim/negative_binomial_decomposition.py": 4,
+          }
+          for path, count in projected.items():
+              replace(
+                  path,
+                  "int(latent_dim if latent_dim is not None else latent_dim)",
+                  "int(latent_dim)",
+                  expected=count,
+              )
+              replace(
+                  path,
+                  "num_inducing_points=self.num_inducing_points,",
+                  "num_inducing=self.num_inducing,",
+                  expected=1,
+              )
+
+          for path in (
+              "src/bochan/models/regression/non_gaussian/beta/high_dim/beta_decomposition.py",
+              "src/bochan/models/regression/non_gaussian/gamma/high_dim/gamma_decomposition.py",
+              "src/bochan/models/regression/non_gaussian/negative_binomial/high_dim/negative_binomial_decomposition.py",
+              "src/bochan/models/classification/multiclass/high_dim/decomposition.py",
+          ):
+              replace(
+                  path,
+                  "REMBOConfig(latent_dim=self.latent_dim, seed=seed)",
+                  "REMBOConfig(n_components=self.latent_dim, seed=seed)",
+                  expected=2,
+              )
+
+          poisson = "src/bochan/models/regression/non_gaussian/poisson/high_dim/poisson_decomposition.py"
+          replace(
+              poisson,
+              "        latent_dim: Optional[int] = None,\n        n_components: Optional[int] = None,",
+              "        latent_dim: Optional[int] = None,",
+              expected=2,
+          )
+          replace(
+              poisson,
+              "self.latent_dim = int(n_components if n_components is not None else (latent_dim if latent_dim is not None else self.default_latent_dim))",
+              "self.latent_dim = int(latent_dim if latent_dim is not None else self.default_latent_dim)",
+              expected=2,
+          )
+          replace(
+              poisson,
+              "            if config is None:\n                try:\n                    config = self.config_cls(latent_dim=self.latent_dim, seed=seed)\n                except TypeError:\n                    config = self.config_cls(n_components=self.latent_dim)",
+              "            if config is None:\n                if self.config_cls is REMBOConfig:\n                    config = REMBOConfig(\n                        n_components=self.latent_dim,\n                        seed=seed,\n                    )\n                else:\n                    config = PCAConfig(n_components=self.latent_dim)",
+              expected=2,
+          )
+
+          test_content = '''from __future__ import annotations
+
+import ast
+import importlib
+from pathlib import Path
+
+import pytest
+import torch
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+PROJECTED_DECOMPOSITION_PATHS = (
+    REPO_ROOT / "src/bochan/models/regression/non_gaussian/beta/high_dim/beta_decomposition.py",
+    REPO_ROOT / "src/bochan/models/regression/non_gaussian/gamma/high_dim/gamma_decomposition.py",
+    REPO_ROOT / "src/bochan/models/regression/non_gaussian/negative_binomial/high_dim/negative_binomial_decomposition.py",
+)
+REMBO_PATHS = (
+    *PROJECTED_DECOMPOSITION_PATHS,
+    REPO_ROOT / "src/bochan/models/regression/non_gaussian/poisson/high_dim/poisson_decomposition.py",
+    REPO_ROOT / "src/bochan/models/classification/multiclass/high_dim/decomposition.py",
+)
+
+
+def _call_name(node: ast.Call) -> str | None:
+    if isinstance(node.func, ast.Name):
+        return node.func.id
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return None
+
+
+def _train_x() -> torch.Tensor:
+    return torch.tensor(
+        [
+            [0.0, 0.1, 0.2],
+            [0.2, 0.3, 0.4],
+            [0.4, 0.5, 0.6],
+            [0.6, 0.7, 0.8],
+            [0.8, 0.9, 1.0],
+            [1.0, 0.8, 0.6],
+        ],
+        dtype=torch.double,
+    )
+
+
+def test_projected_conditioning_uses_canonical_num_inducing() -> None:
+    offenders = []
+    for path in PROJECTED_DECOMPOSITION_PATHS:
+        source = path.read_text(encoding="utf-8")
+        if "self.num_inducing_points" in source:
+            offenders.append(str(path.relative_to(REPO_ROOT)))
+    assert not offenders
+
+
+def test_rembo_config_uses_internal_n_components_keyword() -> None:
+    offenders = []
+    for path in REMBO_PATHS:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or _call_name(node) != "REMBOConfig":
+                continue
+            if any(keyword.arg == "latent_dim" for keyword in node.keywords):
+                offenders.append(str(path.relative_to(REPO_ROOT)))
+    assert not offenders
+
+
+def test_poisson_projected_base_drops_n_components_compatibility() -> None:
+    path = REPO_ROOT / "src/bochan/models/regression/non_gaussian/poisson/high_dim/poisson_decomposition.py"
+    source = path.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(path))
+    checked = 0
+    for class_node in tree.body:
+        if not isinstance(class_node, ast.ClassDef):
+            continue
+        if class_node.name not in {"_ContinuousProjectedPoissonModel", "_MixedProjectedPoissonModel"}:
+            continue
+        init = next(
+            node
+            for node in class_node.body
+            if isinstance(node, ast.FunctionDef) and node.name == "__init__"
+        )
+        names = {
+            arg.arg
+            for arg in [*init.args.posonlyargs, *init.args.args, *init.args.kwonlyargs]
+        }
+        checked += 1
+        assert "latent_dim" in names
+        assert "n_components" not in names
+    assert checked == 2
+    assert "except TypeError" not in source
+
+
+def test_projected_latent_dim_assignments_have_no_redundant_fallback() -> None:
+    offenders = []
+    marker = "latent_dim if latent_dim is not None else latent_dim"
+    for path in PROJECTED_DECOMPOSITION_PATHS:
+        if marker in path.read_text(encoding="utf-8"):
+            offenders.append(str(path.relative_to(REPO_ROOT)))
+    assert not offenders
+
+
+@pytest.mark.parametrize(
+    ("model_path", "class_name", "train_y"),
+    [
+        (
+            "bochan.models.regression.non_gaussian.beta.high_dim",
+            "REMBOBetaGPModel",
+            torch.tensor([0.15, 0.25, 0.35, 0.55, 0.75, 0.85], dtype=torch.double),
+        ),
+        (
+            "bochan.models.regression.non_gaussian.gamma.high_dim",
+            "REMBOGammaGPModel",
+            torch.tensor([0.5, 0.8, 1.1, 1.5, 2.0, 2.5], dtype=torch.double),
+        ),
+        (
+            "bochan.models.regression.non_gaussian.negative_binomial.high_dim",
+            "REMBONegativeBinomialGPModel",
+            torch.tensor([0.0, 1.0, 2.0, 1.0, 3.0, 2.0], dtype=torch.double),
+        ),
+        (
+            "bochan.models.regression.non_gaussian.poisson.high_dim",
+            "REMBOPoissonGPModel",
+            torch.tensor([0.0, 1.0, 2.0, 1.0, 3.0, 2.0], dtype=torch.double),
+        ),
+        (
+            "bochan.models.classification.multiclass.high_dim",
+            "REMBOMulticlassClassificationGPModel",
+            torch.tensor([0, 1, 2, 0, 1, 2], dtype=torch.double),
+        ),
+    ],
+)
+def test_rembo_models_build_with_canonical_public_latent_dim(
+    model_path: str,
+    class_name: str,
+    train_y: torch.Tensor,
+) -> None:
+    cls = getattr(importlib.import_module(model_path), class_name)
+    model = cls(train_X=_train_x(), train_Y=train_y, latent_dim=2, num_inducing=3)
+    assert model.latent_dim == 2
+
+
+@pytest.mark.parametrize(
+    ("model_path", "class_name", "train_y", "new_y"),
+    [
+        (
+            "bochan.models.regression.non_gaussian.beta.high_dim",
+            "PCABetaGPModel",
+            torch.tensor([0.15, 0.25, 0.35, 0.55, 0.75, 0.85], dtype=torch.double),
+            torch.tensor([0.45], dtype=torch.double),
+        ),
+        (
+            "bochan.models.regression.non_gaussian.gamma.high_dim",
+            "PCAGammaGPModel",
+            torch.tensor([0.5, 0.8, 1.1, 1.5, 2.0, 2.5], dtype=torch.double),
+            torch.tensor([1.3], dtype=torch.double),
+        ),
+        (
+            "bochan.models.regression.non_gaussian.negative_binomial.high_dim",
+            "PCANegativeBinomialGPModel",
+            torch.tensor([0.0, 1.0, 2.0, 1.0, 3.0, 2.0], dtype=torch.double),
+            torch.tensor([1.0], dtype=torch.double),
+        ),
+    ],
+)
+def test_projected_conditioning_preserves_num_inducing(
+    model_path: str,
+    class_name: str,
+    train_y: torch.Tensor,
+    new_y: torch.Tensor,
+) -> None:
+    cls = getattr(importlib.import_module(model_path), class_name)
+    model = cls(train_X=_train_x(), train_Y=train_y, latent_dim=2, num_inducing=3)
+    updated = model.condition_on_observations(
+        torch.tensor([[0.35, 0.45, 0.55]], dtype=torch.double),
+        new_y,
+    )
+    assert updated.num_inducing == model.num_inducing == 3
+
+
+def test_poisson_rejects_removed_n_components_alias() -> None:
+    from bochan.models.regression.non_gaussian.poisson.high_dim import PCAPoissonGPModel
+
+    with pytest.raises(TypeError):
+        PCAPoissonGPModel(
+            train_X=_train_x(),
+            train_Y=torch.tensor([0.0, 1.0, 2.0, 1.0, 3.0, 2.0], dtype=torch.double),
+            n_components=2,
+            num_inducing=3,
+        )
+'''
+          Path("tests/test_model_contract_followup.py").write_text(test_content, encoding="utf-8")
+
+          model_contract = '''name: Model contract smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[test,api]"
+      - name: Run model contract tests
+        run: |
+          pytest -q --maxfail=1 \\
+            tests/test_model_contract_refactor.py \\
+            tests/test_model_contract_followup.py \\
+            tests/test_mixed_kronecker_model_registry.py \\
+            tests/test_ordinal_deep_num_classes_inference.py \\
+            tests/test_ordinal_robust_num_classes.py \\
+            tests/test_projected_exact_mll_beta.py \\
+            tests/models/hybrid/test_multi_output_cat_dims.py
+      - name: Compile model package
+        run: python -m compileall -q src/bochan/models
+'''
+          Path(".github/workflows/model-contract-smoke.yml").write_text(model_contract, encoding="utf-8")
+
+          non_gaussian = '''name: Non-Gaussian acquisition smoke
 
 on:
   pull_request:
@@ -20,46 +336,64 @@ jobs:
         run: python -m pip install -e ".[test,api]"
       - name: Run focused acquisition tests
         run: |
-          pytest -q --maxfail=1 \
-            tests/test_non_gaussian_acquisition_stats.py \
-            tests/test_non_gaussian_acquisition_alignment.py \
-            tests/test_gamma_fantasize.py \
-            tests/test_poisson_heteroscedastic_init.py \
-            tests/test_negative_binomial_heteroscedastic_init.py \
-            tests/test_api_candidate_uniqueness.py \
+          pytest -q --maxfail=1 \\
+            tests/test_non_gaussian_acquisition_stats.py \\
+            tests/test_non_gaussian_acquisition_alignment.py \\
+            tests/test_gamma_fantasize.py \\
+            tests/test_poisson_heteroscedastic_init.py \\
+            tests/test_negative_binomial_heteroscedastic_init.py \\
+            tests/test_api_candidate_uniqueness.py \\
             tests/test_regression_active_learning_duplicate_exclusion.py
       - name: Lint changed modules
         run: |
           python -m pip install ruff
-          ruff check \
-            --per-file-ignores "src/bochan/api/acquisition_registry.py:UP035" \
-            --per-file-ignores "src/bochan/models/regression/non_gaussian/poisson/robust/poisson_heteroscedastic.py:UP035" \
-            --per-file-ignores "src/bochan/models/regression/non_gaussian/poisson/robust/poisson_heteroscedastic.py:UP045" \
-            --per-file-ignores "src/bochan/models/regression/non_gaussian/negative_binomial/robust/negative_binomial_heteroscedastic.py:I001" \
-            --per-file-ignores "src/bochan/models/regression/non_gaussian/negative_binomial/robust/negative_binomial_heteroscedastic.py:UP035" \
-            --per-file-ignores "src/bochan/models/regression/non_gaussian/negative_binomial/robust/negative_binomial_heteroscedastic.py:UP045" \
-            src/bochan/acquisition/non_gaussian/active_learning/single_output.py \
-            src/bochan/acquisition/non_gaussian/active_learning/multi_output.py \
-            src/bochan/acquisition/non_gaussian/active_learning/hetero_single_output.py \
-            src/bochan/acquisition/non_gaussian/active_learning/hetero_multi_output.py \
-            src/bochan/acquisition/regression/active_learning/_base.py \
-            src/bochan/acquisition/regression/active_learning/_base_common.py \
-            src/bochan/acquisition/regression/active_learning/_base_objective.py \
-            src/bochan/acquisition/regression/active_learning/_base_reference.py \
-            src/bochan/acquisition/regression/active_learning/_base_scoring.py \
-            src/bochan/acquisition/regression/active_learning/_integrated.py \
-            src/bochan/acquisition/regression/active_learning/_pointwise.py \
-            src/bochan/acquisition/regression/active_learning/single_output.py \
-            src/bochan/api/candidate_uniqueness.py \
-            src/bochan/api/optimizer_api.py \
-            src/bochan/api/optimizer_config.py \
-            src/bochan/api/optimizer_dispatch.py \
-            src/bochan/api/optimizer_support.py \
-            src/bochan/models/regression/non_gaussian/poisson/robust/poisson_heteroscedastic.py \
-            src/bochan/models/regression/non_gaussian/negative_binomial/robust/negative_binomial_heteroscedastic.py \
-            src/bochan/api/acquisition_registry.py \
-            tests/test_non_gaussian_acquisition_alignment.py \
-            tests/test_poisson_heteroscedastic_init.py \
-            tests/test_negative_binomial_heteroscedastic_init.py \
-            tests/test_api_candidate_uniqueness.py \
+          ruff check \\
+            --per-file-ignores "src/bochan/api/acquisition_registry.py:UP035" \\
+            --per-file-ignores "src/bochan/models/regression/non_gaussian/poisson/robust/poisson_heteroscedastic.py:UP035" \\
+            --per-file-ignores "src/bochan/models/regression/non_gaussian/poisson/robust/poisson_heteroscedastic.py:UP045" \\
+            --per-file-ignores "src/bochan/models/regression/non_gaussian/negative_binomial/robust/negative_binomial_heteroscedastic.py:I001" \\
+            --per-file-ignores "src/bochan/models/regression/non_gaussian/negative_binomial/robust/negative_binomial_heteroscedastic.py:UP035" \\
+            --per-file-ignores "src/bochan/models/regression/non_gaussian/negative_binomial/robust/negative_binomial_heteroscedastic.py:UP045" \\
+            src/bochan/acquisition/non_gaussian/active_learning/single_output.py \\
+            src/bochan/acquisition/non_gaussian/active_learning/multi_output.py \\
+            src/bochan/acquisition/non_gaussian/active_learning/hetero_single_output.py \\
+            src/bochan/acquisition/non_gaussian/active_learning/hetero_multi_output.py \\
+            src/bochan/acquisition/regression/active_learning/_base.py \\
+            src/bochan/acquisition/regression/active_learning/_base_common.py \\
+            src/bochan/acquisition/regression/active_learning/_base_objective.py \\
+            src/bochan/acquisition/regression/active_learning/_base_reference.py \\
+            src/bochan/acquisition/regression/active_learning/_base_scoring.py \\
+            src/bochan/acquisition/regression/active_learning/_integrated.py \\
+            src/bochan/acquisition/regression/active_learning/_pointwise.py \\
+            src/bochan/acquisition/regression/active_learning/single_output.py \\
+            src/bochan/api/candidate_uniqueness.py \\
+            src/bochan/api/optimizer_api.py \\
+            src/bochan/api/optimizer_config.py \\
+            src/bochan/api/optimizer_dispatch.py \\
+            src/bochan/api/optimizer_support.py \\
+            src/bochan/models/regression/non_gaussian/poisson/robust/poisson_heteroscedastic.py \\
+            src/bochan/models/regression/non_gaussian/negative_binomial/robust/negative_binomial_heteroscedastic.py \\
+            src/bochan/api/acquisition_registry.py \\
+            tests/test_non_gaussian_acquisition_alignment.py \\
+            tests/test_poisson_heteroscedastic_init.py \\
+            tests/test_negative_binomial_heteroscedastic_init.py \\
+            tests/test_api_candidate_uniqueness.py \\
             tests/test_regression_active_learning_duplicate_exclusion.py
+'''
+          Path(".github/workflows/non-gaussian-acquisition-smoke.yml").write_text(non_gaussian, encoding="utf-8")
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/model-contract-smoke.yml \
+            .github/workflows/non-gaussian-acquisition-smoke.yml \
+            tests/test_model_contract_followup.py \
+            src/bochan/models/classification/multiclass/high_dim/decomposition.py \
+            src/bochan/models/regression/non_gaussian/beta/high_dim/beta_decomposition.py \
+            src/bochan/models/regression/non_gaussian/gamma/high_dim/gamma_decomposition.py \
+            src/bochan/models/regression/non_gaussian/negative_binomial/high_dim/negative_binomial_decomposition.py \
+            src/bochan/models/regression/non_gaussian/poisson/high_dim/poisson_decomposition.py
+          git diff --cached --check
+          git commit -m "Fix projected model contract follow-up"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}

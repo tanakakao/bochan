@@ -2,7 +2,7 @@
 
 ``BayesianOptimizer`` is defined once in this module. Model fitting, automatic
 acquisition defaults, observation state, experiment failure handling, LLM
-suggestions and candidate generation are composed explicitly instead of being
+assistance and candidate generation are composed explicitly instead of being
 layered through multiple public subclasses or runtime method installers.
 """
 
@@ -39,13 +39,18 @@ from .engine_defaults import (
 )
 from .experiment_failure import attach_observation_state
 from .factory import fit_model
+from .llm_candidate_explanation import LLMCandidateExplanationMixin
 from .llm_suggestion import LLMSuggestionMixin
 from .observation import ExperimentFailureConfig, ObservationData
 from .observation_engine import _build_partial_objective_bundle
 from .optimizer_api import optimize_candidates, resolve_optimizer_from_cat_dims
 
 
-class BayesianOptimizer(LLMSuggestionMixin, _CoreBayesianOptimizer):
+class BayesianOptimizer(
+    LLMCandidateExplanationMixin,
+    LLMSuggestionMixin,
+    _CoreBayesianOptimizer,
+):
     """High-level Bayesian optimizer used by tensor, tabular and serving APIs.
 
     The class owns one canonical state machine for fitting, prediction,
@@ -66,6 +71,8 @@ class BayesianOptimizer(LLMSuggestionMixin, _CoreBayesianOptimizer):
         self.opt_config: OptimizeConfig | None = None
         self.last_suggestion: Any | None = None
         self.last_acquisition_suggestion: Any | None = None
+        self.last_candidate_explanation: Any | None = None
+        self.last_candidate_explanation_prompt: str | None = None
         self._llm_refit_required = False
 
     def fit(

@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
+from botorch.models.model import Model
+from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.utils.objective import compute_smoothed_feasibility_indicator
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
@@ -53,13 +56,33 @@ class qMultiOutputBinaryNParEGO(_BaseMultiOutputBinaryNParEGO):
 
     def __init__(
         self,
-        *args,
+        model: Model,
+        X_baseline: Tensor,
+        ref_point: Tensor,
+        *,
+        weights: Tensor | None = None,
+        sampler: SobolQMCNormalSampler | None = None,
+        objective: MCMultiOutputObjective | None = None,
+        rho: float = 0.05,
+        samples_are_probs: bool = False,
+        apply_sigmoid_if_needed: bool = True,
+        eps: float = 1e-6,
         constraints: Sequence[OutcomeConstraint] | None = None,
         eta: float | Tensor = 1e-3,
         fat: bool = False,
-        **kwargs,
     ) -> None:
-        super().__init__(*args, **kwargs)
+        super().__init__(
+            model=model,
+            X_baseline=X_baseline,
+            ref_point=ref_point,
+            weights=weights,
+            sampler=sampler,
+            objective=objective,
+            rho=rho,
+            samples_are_probs=samples_are_probs,
+            apply_sigmoid_if_needed=apply_sigmoid_if_needed,
+            eps=eps,
+        )
         raw_constraints, objective_constraints = split_outcome_constraints(constraints)
         self.constraints = list(constraints or [])
         self.raw_constraints = raw_constraints

@@ -25,6 +25,10 @@ from .engine import (
 )
 from .engine_defaults import resolve_acquisition_defaults
 from .feasibility_defaults import resolve_outcome_constraint_config
+from .llm_selected_acquisition import (
+    is_llm_selected_acquisition,
+    resolve_llm_selected_acquisition,
+)
 
 
 def _normalize_name(value: Any) -> str:
@@ -80,6 +84,8 @@ def resolve_acquisition_class(
 ) -> AcquisitionConfig:
     """Resolve contextual acquisition names against the fitted model."""
 
+    if is_llm_selected_acquisition(config):
+        config = resolve_llm_selected_acquisition(optimizer, config)
     if config.acqf_cls is not None or config.acqf_factory is not None:
         return config
     if is_nsgaii_strategy(config):

@@ -6,6 +6,7 @@ on:
       - main
     types:
       - opened
+      - synchronize
 
 permissions:
   contents: write
@@ -28,17 +29,29 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          import textwrap
 
-          workflow = Path(".github/workflows/model-component-layout-refactor.yml").read_text(
-              encoding="utf-8"
+          legacy = Path("src/bochan/posteriors/bernoulli.py")
+          canonical = Path(
+              "src/bochan/models/classification/binary/base/posterior.py"
           )
-          start_marker = "          python - <<'PY'\n"
-          end_marker = "\n          PY\n      - name: Install test dependencies"
-          start = workflow.index(start_marker) + len(start_marker)
-          end = workflow.index(end_marker, start)
-          code = textwrap.dedent(workflow[start:end])
-          exec(compile(code, "model_component_layout_refactor", "exec"))
+          if legacy.exists():
+              workflow = Path(
+                  ".github/workflows/model-component-layout-refactor.yml"
+              ).read_text(encoding="utf-8")
+              start_marker = "          python - <<'PY'\n"
+              end_marker = "\n          PY\n      - name: Install test dependencies"
+              start = workflow.index(start_marker) + len(start_marker)
+              end = workflow.index(end_marker, start)
+              raw = workflow[start:end]
+              code = "\n".join(
+                  line[10:] if line.startswith("          ") else line
+                  for line in raw.splitlines()
+              )
+              exec(compile(code, "model_component_layout_refactor", "exec"))
+          elif canonical.exists():
+              print("Canonical model component layout already applied; validation only.")
+          else:
+              raise RuntimeError("Unexpected model component layout state.")
           PY
       - name: Install test dependencies
         run: |
@@ -75,5 +88,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
+          if git diff --cached --quiet; then
+            echo "No refactor changes to commit."
+            exit 0
+          fi
           git commit -m "Reorganize model kernels and posteriors"
           git push origin HEAD:${{ github.event.pull_request.head.ref }}

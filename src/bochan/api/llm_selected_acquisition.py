@@ -5,6 +5,8 @@ canonical acquisition service.  This module contains pure selection helpers and
 does not replace ``BayesianOptimizer.acquisition`` or ``candidate`` at runtime.
 """
 
+# ruff: noqa: I001
+
 from __future__ import annotations
 
 import json

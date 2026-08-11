@@ -330,7 +330,7 @@ class _OrdinalLatentGP(ApproximateGP):
     def __init__(
         self,
         train_X: Tensor,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         mean_module: Optional[Mean] = None,
@@ -342,7 +342,7 @@ class _OrdinalLatentGP(ApproximateGP):
         n, d = train_X.shape
 
         if inducing_points is None:
-            m = min(int(inducing_points_num), n)
+            m = min(int(num_inducing), n)
             perm = torch.randperm(n, device=train_X.device)[:m]
             inducing_points = train_X[perm].clone()
 
@@ -380,7 +380,7 @@ class _MixedOrdinalLatentGP(ApproximateGP):
         self,
         train_X: Tensor,
         cat_dims: Sequence[int],
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         mean_module: Optional[Mean] = None,
@@ -393,7 +393,7 @@ class _MixedOrdinalLatentGP(ApproximateGP):
         n, d = train_X.shape
 
         if inducing_points is None:
-            m = min(int(inducing_points_num), n)
+            m = min(int(num_inducing), n)
             perm = torch.randperm(n, device=train_X.device)[:m]
             inducing_points = train_X[perm].clone()
 
@@ -547,36 +547,6 @@ class _BaseOrdinalGPModel(ApproximateGPyTorchModel):
         return self.train_inputs[0]
 
     @property
-    def train_X(self) -> Tensor:
-        """
-        Backward-supported alias.
-
-        Removed:
-            Use train_input_raw or train_inputs_raw[0] instead.
-        """
-        return self.train_input_raw
-
-    @property
-    def train_Y(self) -> Tensor:
-        """
-        Backward-supported alias.
-
-        Removed:
-            Use train_targets instead.
-        """
-        return self.train_targets
-
-    @property
-    def inducing_points_original(self) -> Tensor:
-        """
-        Backward-supported alias.
-
-        Removed:
-            Use inducing_points_raw instead.
-        """
-        return self.inducing_points_raw
-
-    @property
     def ordinal_likelihood(self) -> OrdinalLogitLikelihood:
         return self.likelihood
 
@@ -712,7 +682,7 @@ class OrdinalGPModel(_BaseOrdinalGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         num_classes: Optional[int] = None,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         mean_module: Optional[Mean] = None,
@@ -743,7 +713,7 @@ class OrdinalGPModel(_BaseOrdinalGPModel):
         )
 
         if inducing_points is None:
-            m = min(int(inducing_points_num), raw_train_X.shape[-2])
+            m = min(int(num_inducing), raw_train_X.shape[-2])
             perm = torch.randperm(raw_train_X.shape[-2], device=raw_train_X.device)[:m]
             raw_inducing_points = raw_train_X[perm].clone()
         else:
@@ -767,7 +737,7 @@ class OrdinalGPModel(_BaseOrdinalGPModel):
 
         latent_model = _OrdinalLatentGP(
             train_X=train_X_tf,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             inducing_points=inducing_points_tf,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
@@ -811,7 +781,7 @@ class OrdinalGPModel(_BaseOrdinalGPModel):
         self.inducing_points = inducing_points_tf
 
         self.num_classes = int(num_classes)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
 
         self.eps = float(eps)
@@ -848,7 +818,7 @@ class OrdinalGPModel(_BaseOrdinalGPModel):
             train_X=new_train_X,
             train_Y=new_train_Y,
             num_classes=self.num_classes,
-            inducing_points_num=self.model.variational_strategy.inducing_points.shape[-2],
+            num_inducing=self.model.variational_strategy.inducing_points.shape[-2],
             inducing_points=self.inducing_points_raw.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             mean_module=copy.deepcopy(self.model.mean_module),
@@ -902,7 +872,7 @@ class OrdinalMixedGPModel(_BaseOrdinalGPModel):
         category_counts: Optional[dict[int, int]] = None,
         category_values: Optional[dict[int, Sequence[int | float]]] = None,
         cont_kernel: str = "matern52",
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         mean_module: Optional[Mean] = None,
@@ -952,7 +922,7 @@ class OrdinalMixedGPModel(_BaseOrdinalGPModel):
         )
 
         if inducing_points is None:
-            m = min(int(inducing_points_num), raw_train_X.shape[-2])
+            m = min(int(num_inducing), raw_train_X.shape[-2])
             perm = torch.randperm(raw_train_X.shape[-2], device=raw_train_X.device)[:m]
             raw_inducing_points = raw_train_X[perm].clone()
         else:
@@ -985,7 +955,7 @@ class OrdinalMixedGPModel(_BaseOrdinalGPModel):
         latent_model = _MixedOrdinalLatentGP(
             train_X=train_X_tf,
             cat_dims=self.cat_dims,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             inducing_points=inducing_points_tf,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
@@ -1022,7 +992,7 @@ class OrdinalMixedGPModel(_BaseOrdinalGPModel):
 
         self.num_classes = int(num_classes)
         self.cont_kernel = str(cont_kernel)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
 
         self.eps = float(eps)
@@ -1200,7 +1170,7 @@ class OrdinalMixedGPModel(_BaseOrdinalGPModel):
                 for j, v in self.category_values.items()
             },
             cont_kernel=self.cont_kernel,
-            inducing_points_num=self.model.variational_strategy.inducing_points.shape[-2],
+            num_inducing=self.model.variational_strategy.inducing_points.shape[-2],
             inducing_points=self.inducing_points_raw.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             mean_module=copy.deepcopy(self.model.mean_module),

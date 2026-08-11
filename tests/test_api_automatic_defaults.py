@@ -20,22 +20,22 @@ from bochan.api import (
 )
 import bochan.api.engine_defaults as engine_defaults
 from bochan.models.regression.gaussian.high_dim import (
-    SaasMixedSingleTaskGP,
-    SaasSingleTaskGP,
+    SaasGaussianMixedGPModel,
+    SaasGaussianGPModel,
 )
 from bochan.models.regression.gaussian.kronecker_multitask import (
-    MixedKroneckerMultiTaskGP,
-    PerturbationSupportedKroneckerMultiTaskGP,
+    GaussianMixedKroneckerMultiTaskGP,
+    GaussianKroneckerMultiTaskGP,
 )
 from bochan.models.regression.gaussian.multifidelity import (
     WideMixedMultiFidelityGP,
     WideMultiFidelityGP,
 )
 from bochan.models.regression.gaussian.robust import (
-    HeteroscedasticMixedSingleTaskGP,
-    HeteroscedasticSingleTaskGP,
-    SafeRobustRelevancePursuitMixedSingleTaskGP,
-    SafeRobustRelevancePursuitSingleTaskGP,
+    HeteroscedasticGaussianMixedGPModel,
+    HeteroscedasticGaussianGPModel,
+    RobustRelevancePursuitGaussianMixedGPModel,
+    RobustRelevancePursuitGaussianGPModel,
 )
 from bochan.models.wide_multitask import WideMultiTaskGP
 
@@ -347,17 +347,17 @@ def test_acqf_kwargs_best_f_has_priority_over_data_context(monkeypatch) -> None:
     [
         SingleTaskGP,
         MixedSingleTaskGP,
-        PerturbationSupportedKroneckerMultiTaskGP,
-        MixedKroneckerMultiTaskGP,
+        GaussianKroneckerMultiTaskGP,
+        GaussianMixedKroneckerMultiTaskGP,
         WideMultiTaskGP,
         WideMultiFidelityGP,
         WideMixedMultiFidelityGP,
-        SaasSingleTaskGP,
-        SaasMixedSingleTaskGP,
-        SafeRobustRelevancePursuitSingleTaskGP,
-        SafeRobustRelevancePursuitMixedSingleTaskGP,
-        HeteroscedasticSingleTaskGP,
-        HeteroscedasticMixedSingleTaskGP,
+        SaasGaussianGPModel,
+        SaasGaussianMixedGPModel,
+        RobustRelevancePursuitGaussianGPModel,
+        RobustRelevancePursuitGaussianMixedGPModel,
+        HeteroscedasticGaussianGPModel,
+        HeteroscedasticGaussianMixedGPModel,
     ],
 )
 def test_exact_regression_models_define_make_mll_directly(model_cls) -> None:

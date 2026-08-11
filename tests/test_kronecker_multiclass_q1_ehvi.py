@@ -39,7 +39,7 @@ def _make_model() -> KroneckerMultiTaskMulticlassClassificationGPModel:
         train_Y=train_Y,
         num_classes=3,
         rank=2,
-        num_inducing_points=4,
+        num_inducing=4,
     )
     model.eval()
     model.likelihood.eval()

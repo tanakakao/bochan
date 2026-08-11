@@ -8,8 +8,8 @@ Ordinal 用 Robust / Outlier Relevance Pursuit モデル。
 
 命名規則:
     - RobustOrdinal* は label smoothing による一般ロバスト化。
-    - OutlierRelevancePursuitOrdinal* は train-point sparse offset による RRP。
-    - OutlierRelevancePursuitOrdinal* は train-point sparse offset による RRP。
+    - RobustRelevancePursuitOrdinal* は train-point sparse offset による RRP。
+    - RobustRelevancePursuitOrdinal* は train-point sparse offset による RRP。
 """
 
 import copy
@@ -24,12 +24,13 @@ from bochan.models.ordinal.base.models import (
     _BaseOrdinalGPModel,
     _MixedOrdinalLatentGP,
     _OrdinalLatentGP,
+    _infer_num_classes_from_train_Y,
     _normalize_dims,
 )
 from bochan.models.components.robust import (
     RobustOrdinalLogitLikelihood,
     SparseOutlierOrdinalLogitLikelihood,
-    TrainInputsAliasMixin,
+    TrainDataMixin,
     apply_input_transform_for_eval,
     apply_input_transform_for_training,
     check_categorical_columns_unchanged,
@@ -43,13 +44,13 @@ __all__ = [
     "SparseOutlierOrdinalLogitLikelihood",
     "RobustOrdinalGPModel",
     "RobustOrdinalMixedGPModel",
-    "OutlierRelevancePursuitOrdinalGPModel",
-    "OutlierRelevancePursuitOrdinalMixedGPModel",
+    "RobustRelevancePursuitOrdinalGPModel",
+    "RobustRelevancePursuitOrdinalMixedGPModel",
 ]
 
 
-class OutlierRelevancePursuitOrdinalGPModel(
-    TrainInputsAliasMixin,
+class RobustRelevancePursuitOrdinalGPModel(
+    TrainDataMixin,
     _BaseOrdinalGPModel,
 ):
     """
@@ -70,8 +71,8 @@ class OutlierRelevancePursuitOrdinalGPModel(
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        num_classes: int,
-        inducing_points_num: int = 128,
+        num_classes: int | None = None,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.03,
         num_epochs: int = 300,
@@ -99,29 +100,31 @@ class OutlierRelevancePursuitOrdinalGPModel(
             raw_train_X.shape[-2],
             raw_train_X.device,
         )
+        if num_classes is None:
+            num_classes = _infer_num_classes_from_train_Y(train_Y)
 
         local_input_transform = clone_input_transform(input_transform)
 
         raw_inducing_points = make_raw_inducing_points(
             raw_train_X=raw_train_X,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
         )
 
         transformed_train_X = apply_input_transform_for_training(
             raw_train_X,
             local_input_transform,
-            name="OutlierRelevancePursuitOrdinalGPModel.input_transform",
+            name="RobustRelevancePursuitOrdinalGPModel.input_transform",
         )
         transformed_inducing_points = apply_input_transform_for_training(
             raw_inducing_points,
             local_input_transform,
-            name="OutlierRelevancePursuitOrdinalGPModel.input_transform",
+            name="RobustRelevancePursuitOrdinalGPModel.input_transform",
         )
 
         latent_model = _OrdinalLatentGP(
             train_X=transformed_train_X,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             inducing_points=transformed_inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
@@ -163,7 +166,7 @@ class OutlierRelevancePursuitOrdinalGPModel(
         self.input_transform = local_input_transform
 
         self.num_classes = int(num_classes)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.fix_first_cutpoint = bool(fix_first_cutpoint)
         self.init_gap = float(init_gap)
@@ -214,10 +217,10 @@ class OutlierRelevancePursuitOrdinalGPModel(
         batch_size: Optional[int] = None,
         verbose: bool = False,
         **kwargs,
-    ) -> "OutlierRelevancePursuitOrdinalGPModel":
+    ) -> "RobustRelevancePursuitOrdinalGPModel":
         if kwargs.get("noise") is not None:
             raise NotImplementedError(
-                "noise is not supported for OutlierRelevancePursuitOrdinalGPModel."
+                "noise is not supported for RobustRelevancePursuitOrdinalGPModel."
             )
 
         X = self._canonicalize_observation_X(X)
@@ -230,7 +233,7 @@ class OutlierRelevancePursuitOrdinalGPModel(
             train_X=new_train_X,
             train_Y=new_train_Y,
             num_classes=self.num_classes,
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             lr=self.lr,
             num_epochs=self.num_epochs,
@@ -284,8 +287,8 @@ class OutlierRelevancePursuitOrdinalGPModel(
         return new_model
 
 
-class OutlierRelevancePursuitOrdinalMixedGPModel(
-    TrainInputsAliasMixin,
+class RobustRelevancePursuitOrdinalMixedGPModel(
+    TrainDataMixin,
     _BaseOrdinalGPModel,
 ):
     """
@@ -300,11 +303,11 @@ class OutlierRelevancePursuitOrdinalMixedGPModel(
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        num_classes: int,
+        num_classes: int | None = None,
         cat_dims: Sequence[int] = (),
         category_counts: Optional[dict[int, int]] = None,
         cont_kernel: str = "matern52",
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.03,
         num_epochs: int = 300,
@@ -332,6 +335,8 @@ class OutlierRelevancePursuitOrdinalMixedGPModel(
             raw_train_X.shape[-2],
             raw_train_X.device,
         )
+        if num_classes is None:
+            num_classes = _infer_num_classes_from_train_Y(train_Y)
 
         cat_dims = _normalize_dims(cat_dims, raw_train_X.shape[-1])
 
@@ -351,7 +356,7 @@ class OutlierRelevancePursuitOrdinalMixedGPModel(
 
         raw_inducing_points = make_raw_inducing_points(
             raw_train_X=raw_train_X,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
         )
 
@@ -367,13 +372,13 @@ class OutlierRelevancePursuitOrdinalMixedGPModel(
             raw_train_X,
             local_input_transform,
             cat_dims=cat_dims,
-            name="OutlierRelevancePursuitOrdinalMixedGPModel.input_transform",
+            name="RobustRelevancePursuitOrdinalMixedGPModel.input_transform",
         )
         transformed_inducing_points = apply_input_transform_for_training(
             raw_inducing_points,
             local_input_transform,
             cat_dims=cat_dims,
-            name="OutlierRelevancePursuitOrdinalMixedGPModel.input_transform",
+            name="RobustRelevancePursuitOrdinalMixedGPModel.input_transform",
         )
 
         self._validate_transformed_categorical_values(
@@ -390,7 +395,7 @@ class OutlierRelevancePursuitOrdinalMixedGPModel(
         latent_model = _MixedOrdinalLatentGP(
             train_X=transformed_train_X,
             cat_dims=cat_dims,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             inducing_points=transformed_inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
@@ -437,7 +442,7 @@ class OutlierRelevancePursuitOrdinalMixedGPModel(
         self.cont_kernel = str(cont_kernel)
 
         self.num_classes = int(num_classes)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.fix_first_cutpoint = bool(fix_first_cutpoint)
         self.init_gap = float(init_gap)
@@ -579,10 +584,10 @@ class OutlierRelevancePursuitOrdinalMixedGPModel(
         batch_size: Optional[int] = None,
         verbose: bool = False,
         **kwargs,
-    ) -> "OutlierRelevancePursuitOrdinalMixedGPModel":
+    ) -> "RobustRelevancePursuitOrdinalMixedGPModel":
         if kwargs.get("noise") is not None:
             raise NotImplementedError(
-                "noise is not supported for OutlierRelevancePursuitOrdinalMixedGPModel."
+                "noise is not supported for RobustRelevancePursuitOrdinalMixedGPModel."
             )
 
         X = self._canonicalize_observation_X(X)
@@ -598,7 +603,7 @@ class OutlierRelevancePursuitOrdinalMixedGPModel(
             cat_dims=self.cat_dims,
             category_counts=copy.deepcopy(self.category_counts),
             cont_kernel=self.cont_kernel,
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             lr=self.lr,
             num_epochs=self.num_epochs,
@@ -652,7 +657,7 @@ class OutlierRelevancePursuitOrdinalMixedGPModel(
         return new_model
 
 
-class RobustOrdinalGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
+class RobustOrdinalGPModel(TrainDataMixin, _BaseOrdinalGPModel):
     """
     config を使わない robust ordinal variational GP.
 
@@ -667,8 +672,8 @@ class RobustOrdinalGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        num_classes: int,
-        inducing_points_num: int = 128,
+        num_classes: int | None = None,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.03,
         num_epochs: int = 300,
@@ -693,12 +698,14 @@ class RobustOrdinalGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
             raw_train_X.shape[-2],
             raw_train_X.device,
         )
+        if num_classes is None:
+            num_classes = _infer_num_classes_from_train_Y(train_Y)
 
         local_input_transform = clone_input_transform(input_transform)
 
         raw_inducing_points = make_raw_inducing_points(
             raw_train_X=raw_train_X,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
         )
 
@@ -715,7 +722,7 @@ class RobustOrdinalGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
 
         latent_model = _OrdinalLatentGP(
             train_X=transformed_train_X,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             inducing_points=transformed_inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
@@ -749,7 +756,7 @@ class RobustOrdinalGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
 
         # constructor / rebuild 用
         self.num_classes = int(num_classes)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.fix_first_cutpoint = bool(fix_first_cutpoint)
         self.init_gap = float(init_gap)
@@ -816,7 +823,7 @@ class RobustOrdinalGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
             train_X=new_train_X,
             train_Y=new_train_Y,
             num_classes=self.num_classes,
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             lr=self.lr,
             num_epochs=self.num_epochs,
@@ -868,7 +875,7 @@ class RobustOrdinalGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
         return new_model
 
 
-class RobustOrdinalMixedGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
+class RobustOrdinalMixedGPModel(TrainDataMixin, _BaseOrdinalGPModel):
     """
     config を使わない mixed robust ordinal variational GP.
 
@@ -885,11 +892,11 @@ class RobustOrdinalMixedGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         *,
-        num_classes: int,
+        num_classes: int | None = None,
         cat_dims: Sequence[int] = (),
         category_counts: Optional[dict[int, int]] = None,
         cont_kernel: str = "matern52",
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         lr: float = 0.03,
         num_epochs: int = 300,
@@ -914,6 +921,8 @@ class RobustOrdinalMixedGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
             raw_train_X.shape[-2],
             raw_train_X.device,
         )
+        if num_classes is None:
+            num_classes = _infer_num_classes_from_train_Y(train_Y)
 
         cat_dims = _normalize_dims(cat_dims, raw_train_X.shape[-1])
 
@@ -933,7 +942,7 @@ class RobustOrdinalMixedGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
 
         raw_inducing_points = make_raw_inducing_points(
             raw_train_X=raw_train_X,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
         )
 
@@ -972,7 +981,7 @@ class RobustOrdinalMixedGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
         latent_model = _MixedOrdinalLatentGP(
             train_X=transformed_train_X,
             cat_dims=cat_dims,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             inducing_points=transformed_inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
@@ -1012,7 +1021,7 @@ class RobustOrdinalMixedGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
 
         # constructor / rebuild 用
         self.num_classes = int(num_classes)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.fix_first_cutpoint = bool(fix_first_cutpoint)
         self.init_gap = float(init_gap)
@@ -1176,7 +1185,7 @@ class RobustOrdinalMixedGPModel(TrainInputsAliasMixin, _BaseOrdinalGPModel):
             cat_dims=self.cat_dims,
             category_counts=copy.deepcopy(self.category_counts),
             cont_kernel=self.cont_kernel,
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             lr=self.lr,
             num_epochs=self.num_epochs,

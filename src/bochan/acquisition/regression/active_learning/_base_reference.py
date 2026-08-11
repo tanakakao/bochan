@@ -77,7 +77,7 @@ class _RegressionReferenceMixin:
         """Apply model input transform for distance / penalty calculations.
 
         Prefer ``model.transform_inputs`` over directly calling
-        ``model.input_transform``.  Wrapper models such as SaasMixedSingleTaskGP,
+        ``model.input_transform``.  Wrapper models such as SaasGaussianMixedGPModel,
         PCA, and REMBO have an internal representation that differs from raw
         candidate space.  Calling ``input_transform`` directly on raw ``X`` can
         therefore apply an encoded-space transform to raw-space data.

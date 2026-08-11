@@ -11,8 +11,8 @@ from bochan.models.classification.multiclass import (
 from bochan.models.classification.multiclass.deep import (
     DeepKernelMulticlassClassificationGPModel,
     DeepKernelMixedMulticlassClassificationGPModel,
-    MulticlassDeepGPModel,
-    MulticlassMixedDeepGPModel,
+    DeepMulticlassClassificationGPModel,
+    DeepMulticlassClassificationMixedGPModel,
 )
 from bochan.models.classification.multiclass.high_dim import (
     PCAMulticlassClassificationGPModel,
@@ -29,8 +29,8 @@ from bochan.models.classification.multiclass.high_dim import (
         MulticlassClassificationMixedGPModel,
         DeepKernelMulticlassClassificationGPModel,
         DeepKernelMixedMulticlassClassificationGPModel,
-        MulticlassDeepGPModel,
-        MulticlassMixedDeepGPModel,
+        DeepMulticlassClassificationGPModel,
+        DeepMulticlassClassificationMixedGPModel,
         PCAMulticlassClassificationGPModel,
         PCAMulticlassClassificationMixedGPModel,
         REMBOMulticlassClassificationGPModel,

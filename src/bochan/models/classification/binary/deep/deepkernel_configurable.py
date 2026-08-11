@@ -76,7 +76,7 @@ class DeepKernelBinaryClassificationGPModel(_BaseDeepKernelBinaryClassificationM
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 64,
+        num_inducing: int = 64,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         model_type: str = "DEFAULT",
@@ -100,7 +100,7 @@ class DeepKernelBinaryClassificationGPModel(_BaseDeepKernelBinaryClassificationM
 
         inducing_points = _select_inducing_points(
             train_X_tf,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
 
@@ -145,7 +145,7 @@ class DeepKernelBinaryClassificationMixedGPModel(_BaseDeepKernelBinaryClassifica
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 64,
+        num_inducing: int = 64,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         model_type: str = "DEFAULT",
@@ -186,7 +186,7 @@ class DeepKernelBinaryClassificationMixedGPModel(_BaseDeepKernelBinaryClassifica
 
         inducing_points = _select_inducing_points(
             train_X_tf,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
 

@@ -145,7 +145,7 @@ class LatentKroneckerMultiTaskGP(ApproximateGP):
         train_Y: Tensor,
         *,
         rank: Optional[int] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         mean_module: Optional[Mean] = None,
@@ -167,7 +167,7 @@ class LatentKroneckerMultiTaskGP(ApproximateGP):
 
         shared_inducing_points = canonicalize_shared_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
         latent_inducing_points = shared_inducing_points.unsqueeze(0).expand(
@@ -202,7 +202,7 @@ class LatentKroneckerMultiTaskGP(ApproximateGP):
 
         self.num_tasks = num_tasks
         self.rank = rank
-        self.num_inducing_points = int(shared_inducing_points.shape[-2])
+        self.num_inducing = int(shared_inducing_points.shape[-2])
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.train_inputs = (train_X,)
         self.train_targets = train_Y

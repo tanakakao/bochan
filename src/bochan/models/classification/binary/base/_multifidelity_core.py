@@ -43,7 +43,7 @@ class _WideMultiFidelityBinaryCore(_BinaryClassificationGPModel):
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
         fidelity_covar_module: Kernel | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         _full_covar_module: Kernel | None = None,
@@ -84,7 +84,7 @@ class _WideMultiFidelityBinaryCore(_BinaryClassificationGPModel):
             input_transform=prepare_fidelity_input_transform(input_transform, data_dim),
             mean_module=mean_module,
             covar_module=full_kernel,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
         )

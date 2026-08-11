@@ -31,11 +31,11 @@ train_Y = torch.randint(0, 3, (50, 2), dtype=torch.long)  # [n, m]
 | 標準SVGP | `MulticlassClassificationGPModel` | `MulticlassClassificationMixedGPModel` |
 | 独立multi-output | `MultiOutputMulticlassClassificationModel` | 各submodelにmixed modelを使用 |
 | 相関ありblock-design multi-task | `KroneckerMultiTaskMulticlassClassificationGPModel` | - |
-| DeepGP | `MulticlassDeepGPModel` | `MulticlassMixedDeepGPModel` |
+| DeepGP | `DeepMulticlassClassificationGPModel` | `DeepMulticlassClassificationMixedGPModel` |
 | DeepKernel | `DeepKernelMulticlassClassificationGPModel` | `DeepKernelMulticlassClassificationMixedGPModel` |
 | 高次元SAAS | `SaasMulticlassClassificationGPModel` | `SaasMulticlassClassificationMixedGPModel` |
 | PCA / REMBO | `PCAMulticlassClassificationGPModel` / `REMBOMulticlassClassificationGPModel` | 対応mixed model |
-| 外れラベルRRP | `OutlierRelevancePursuitMulticlassClassificationGPModel` | 対応mixed model |
+| 外れラベルRRP | `RobustRelevancePursuitMulticlassClassificationGPModel` | 対応mixed model |
 | 不均一ノイズ | `HeteroscedasticMulticlassClassificationGPModel` | 対応mixed model |
 
 出力間を独立に扱うならmulti-output wrapper、出力間相関も学習するならKronecker multi-taskを使用します。

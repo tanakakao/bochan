@@ -7,12 +7,8 @@ axes. InputPerturbation may also expand the public candidate axis from ``q`` to
 
 from __future__ import annotations
 
-from typing import Any
-
 import torch
 from torch import Tensor
-
-_PATCHED = False
 
 
 def _shape_endswith(
@@ -84,12 +80,8 @@ def _select_class_probability_output(
     missing_q = False
     q_like = raw_q
 
-    # Standard single-output classifier layout. Match the complete public
-    # batch+q suffix rather than relying on ndim: DeepGP adds leading sample
-    # axes, which previously made q look like a model-output axis.
     if _shape_endswith(probs.shape[:-1], input_batch_q):
         selected = probs
-    # Internal multi-output classifier layout: ... x batch x q x m x C.
     elif probs.ndim >= 2 and _shape_endswith(probs.shape[:-2], input_batch_q):
         num_outputs = int(probs.shape[-2])
         if output_index >= num_outputs:
@@ -170,58 +162,4 @@ def _select_class_probability_output(
     return selected
 
 
-def apply_hybrid_class_probability_shapes(hybrid_cls: type) -> None:
-    """Install DeepGP- and InputPerturbation-safe probability shape handling."""
-
-    global _PATCHED
-    if _PATCHED:
-        return
-
-    original_ordinal = hybrid_cls._ordinal_class_probs
-
-    def _ordinal_class_probs(self, spec: Any, X: Tensor, **kwargs: Any) -> Tensor:
-        fn = getattr(spec.model, "class_probs", None)
-        if callable(fn):
-            probs = self._call_class_probs(fn, X, **kwargs)
-            if torch.is_tensor(probs):
-                return _select_class_probability_output(
-                    probs,
-                    X,
-                    output_index=spec.output_index,
-                    name=f"{spec.name}.class_probs",
-                ).clamp_min(0.0)
-        return original_ordinal(self, spec, X, **kwargs)
-
-    def _multiclass_probs(self, spec: Any, X: Tensor, **kwargs: Any) -> Tensor:
-        fn = getattr(spec.model, "class_probs", None)
-        if callable(fn):
-            probs = self._call_class_probs(fn, X, **kwargs)
-            if torch.is_tensor(probs):
-                return _select_class_probability_output(
-                    probs,
-                    X,
-                    output_index=spec.output_index,
-                    name=f"{spec.name}.class_probs",
-                ).clamp_min(0.0)
-
-        post = self._call_accessor(
-            spec.model,
-            ("probability_posterior", "posterior"),
-            X,
-            **kwargs,
-        )
-        probs, _ = self._posterior_mean_variance(post, spec.name)
-        return _select_class_probability_output(
-            probs,
-            X,
-            output_index=spec.output_index,
-            name=f"{spec.name}.posterior.mean",
-        ).clamp_min(0.0)
-
-    hybrid_cls._ordinal_class_probs = _ordinal_class_probs
-    hybrid_cls._multiclass_probs = _multiclass_probs
-    hybrid_cls._bochan_class_probability_shapes_patched = True
-    _PATCHED = True
-
-
-__all__ = ["apply_hybrid_class_probability_shapes"]
+__all__ = ["_select_class_probability_output"]

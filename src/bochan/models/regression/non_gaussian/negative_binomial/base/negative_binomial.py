@@ -80,14 +80,14 @@ class _LatentNegativeBinomialSVGP(ApproximateGP):
         train_Y: Tensor,
         *,
         inducing_points: Tensor | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
     ) -> None:
         inducing_points = select_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
         variational_distribution = CholeskyVariationalDistribution(num_inducing_points=inducing_points.shape[-2])
@@ -117,7 +117,7 @@ class _LatentMixedNegativeBinomialSVGP(ApproximateGP):
         *,
         cat_dims: Sequence[int],
         inducing_points: Tensor | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
@@ -128,7 +128,7 @@ class _LatentMixedNegativeBinomialSVGP(ApproximateGP):
         self._ignore_X_dims_scaling_check = self.cat_dims
         inducing_points = select_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
         variational_distribution = CholeskyVariationalDistribution(num_inducing_points=inducing_points.shape[-2])
@@ -164,7 +164,7 @@ class _BaseNegativeBinomialGPModel(ApproximateGPyTorchModel):
         train_Y: Tensor,
         input_transform: InputTransform | None,
         cat_dims: Sequence[int] | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         link: NBLink = "softplus",
         exp_clip: float = 20.0,
@@ -176,7 +176,7 @@ class _BaseNegativeBinomialGPModel(ApproximateGPyTorchModel):
         self.train_inputs_raw = (train_X.detach().clone(),)
         self.train_inputs = (train_X,)
         self.train_targets = prepare_count_targets(train_Y, train_X)
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.link = link
         self.exp_clip = float(exp_clip)
@@ -292,7 +292,7 @@ class NegativeBinomialGPModel(_BaseNegativeBinomialGPModel):
         input_transform: InputTransform | None = None,
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         link: NBLink = "softplus",
@@ -318,7 +318,7 @@ class NegativeBinomialGPModel(_BaseNegativeBinomialGPModel):
             train_X=train_X_tf,
             train_Y=train_Y,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
             covar_module=covar_module,
@@ -330,7 +330,7 @@ class NegativeBinomialGPModel(_BaseNegativeBinomialGPModel):
             train_Y=train_Y,
             input_transform=input_transform,
             cat_dims=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
             exp_clip=exp_clip,
@@ -358,7 +358,7 @@ class NegativeBinomialGPModel(_BaseNegativeBinomialGPModel):
             input_transform=clone_input_transform(self.input_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             covar_module=copy.deepcopy(self.model.covar_module),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=self.model.variational_strategy.inducing_points.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             link=self.link,
@@ -383,7 +383,7 @@ class NegativeBinomialMixedGPModel(_BaseNegativeBinomialGPModel):
         input_transform: InputTransform | None = None,
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         link: NBLink = "softplus",
@@ -420,7 +420,7 @@ class NegativeBinomialMixedGPModel(_BaseNegativeBinomialGPModel):
             train_Y=train_Y,
             cat_dims=cat_dims,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
             covar_module=covar_module,
@@ -432,7 +432,7 @@ class NegativeBinomialMixedGPModel(_BaseNegativeBinomialGPModel):
             train_Y=train_Y,
             input_transform=input_transform,
             cat_dims=cat_dims,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
             exp_clip=exp_clip,

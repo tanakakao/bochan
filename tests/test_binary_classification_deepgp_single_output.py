@@ -18,8 +18,8 @@ from botorch.optim.optimize import optimize_acqf, optimize_acqf_mixed
 
 from bochan.fit import fit_deepgp_mll
 from bochan.models.classification.binary.deep import (
-    BinaryClassificationDeepGPModel,
-    BinaryClassificationMixedDeepGPModel,
+    DeepBinaryClassificationGPModel,
+    DeepBinaryClassificationMixedGPModel,
 )
 from tests.test_binary_classification_base_single_output import (
     DEVICE,
@@ -153,7 +153,7 @@ def create_binary_deepgp_model_bundle(
 
     torch.manual_seed(0)
     if cat:
-        model = BinaryClassificationMixedDeepGPModel(
+        model = DeepBinaryClassificationMixedGPModel(
             train_X=train_x,
             train_Y=train_y,
             input_transform=input_transform,
@@ -163,11 +163,11 @@ def create_binary_deepgp_model_bundle(
             num_inducing_last=8,
         )
     else:
-        model = BinaryClassificationDeepGPModel(
+        model = DeepBinaryClassificationGPModel(
             train_X=train_x,
             train_Y=train_y,
             input_transform=input_transform,
-            list_hidden_dims=[4],
+            hidden_dims=[4],
             num_inducing=8,
         )
 

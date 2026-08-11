@@ -6,8 +6,8 @@ import torch
 from gpytorch.distributions import MultivariateNormal
 
 from bochan.models.regression.non_gaussian.gamma.deep.gamma_deepgp import (
-    GammaDeepGPModel,
-    GammaMixedDeepGPModel,
+    DeepGammaGPModel,
+    DeepGammaMixedGPModel,
 )
 
 
@@ -18,14 +18,14 @@ def _make_gamma_targets(train_x: torch.Tensor) -> torch.Tensor:
     return 0.2 + train_x[..., 0].square() + 0.5 * train_x[..., 1]
 
 
-def _make_continuous_model() -> GammaDeepGPModel:
+def _make_continuous_model() -> DeepGammaGPModel:
     torch.manual_seed(0)
     train_x = torch.rand(10, 2, dtype=DTYPE)
-    model = GammaDeepGPModel(
+    model = DeepGammaGPModel(
         train_X=train_x,
         train_Y=_make_gamma_targets(train_x),
         hidden_dim=3,
-        list_hidden_dims=[3],
+        hidden_dims=[3],
         num_inducing=5,
     )
     model.eval()
@@ -33,13 +33,13 @@ def _make_continuous_model() -> GammaDeepGPModel:
     return model
 
 
-def _make_mixed_model() -> GammaMixedDeepGPModel:
+def _make_mixed_model() -> DeepGammaMixedGPModel:
     torch.manual_seed(0)
     continuous_x = torch.rand(10, 2, dtype=DTYPE)
     categorical_x = torch.randint(0, 2, (10, 1)).to(dtype=DTYPE)
     train_x = torch.cat([continuous_x, categorical_x], dim=-1)
     train_y = _make_gamma_targets(continuous_x) + 0.1 * categorical_x.squeeze(-1)
-    model = GammaMixedDeepGPModel(
+    model = DeepGammaMixedGPModel(
         train_X=train_x,
         train_Y=train_y,
         cat_dims=[2],
@@ -60,7 +60,7 @@ def test_moment_matching_preserves_within_and_between_component_variance() -> No
     dist = MultivariateNormal(component_mean, component_covar)
     test_x = torch.zeros(2, 1, dtype=DTYPE)
 
-    matched = GammaDeepGPModel._moment_match_deepgp_distribution(dist, X=test_x)
+    matched = DeepGammaGPModel._moment_match_deepgp_distribution(dist, X=test_x)
 
     expected_mean = torch.tensor([0.0, 1.0], dtype=DTYPE)
     expected_covar = torch.tensor(

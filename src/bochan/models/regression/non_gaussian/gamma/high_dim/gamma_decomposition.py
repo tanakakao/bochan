@@ -170,13 +170,12 @@ class PCAGammaGPModel(_ContinuousProjectedGammaModel):
         train_Y: Tensor,
         *,
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         pca_config: Optional[PCAConfig] = None,
         projector: Optional[PCATransformer] = None,
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         outcome_transform: Optional[OutcomeTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         link: GammaLink = "softplus",
         exp_clip: float = 20.0,
         min_mean: float = 1e-8,
@@ -185,7 +184,7 @@ class PCAGammaGPModel(_ContinuousProjectedGammaModel):
         train_X = torch.as_tensor(train_X)
         train_Y = prepare_positive_targets(train_Y, train_X, min_value=min_mean)
         self.input_dim_original = train_X.shape[-1]
-        self.latent_dim = int(n_components if n_components is not None else latent_dim)
+        self.latent_dim = int(latent_dim if latent_dim is not None else latent_dim)
         self.input_transform = clone_input_transform(input_transform)
         self.outcome_transform = clone_outcome_transform(outcome_transform)
         pre_X = apply_input_transform_for_training(
@@ -207,7 +206,7 @@ class PCAGammaGPModel(_ContinuousProjectedGammaModel):
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
 
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.link = link
         self.exp_clip = float(exp_clip)
         self.min_mean = float(min_mean)
@@ -218,7 +217,7 @@ class PCAGammaGPModel(_ContinuousProjectedGammaModel):
             likelihood=likelihood,
             input_transform=None,
             outcome_transform=clone_outcome_transform(self.outcome_transform),
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             exp_clip=exp_clip,
             min_mean=min_mean,
@@ -237,13 +236,12 @@ class REMBOGammaGPModel(_ContinuousProjectedGammaModel):
         train_Y: Tensor,
         *,
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         rembo_config: Optional[REMBOConfig] = None,
         projector: Optional[REMBOTransformer] = None,
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         outcome_transform: Optional[OutcomeTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         seed: int = 42,
         link: GammaLink = "softplus",
         exp_clip: float = 20.0,
@@ -253,7 +251,7 @@ class REMBOGammaGPModel(_ContinuousProjectedGammaModel):
         train_X = torch.as_tensor(train_X)
         train_Y = prepare_positive_targets(train_Y, train_X, min_value=min_mean)
         self.input_dim_original = train_X.shape[-1]
-        self.latent_dim = int(n_components if n_components is not None else latent_dim)
+        self.latent_dim = int(latent_dim if latent_dim is not None else latent_dim)
         self.input_transform = clone_input_transform(input_transform)
         self.outcome_transform = clone_outcome_transform(outcome_transform)
         pre_X = apply_input_transform_for_training(
@@ -263,7 +261,7 @@ class REMBOGammaGPModel(_ContinuousProjectedGammaModel):
         )
 
         if projector is None:
-            cfg = rembo_config or REMBOConfig(n_components=self.latent_dim, seed=seed)
+            cfg = rembo_config or REMBOConfig(latent_dim=self.latent_dim, seed=seed)
             projector = REMBOTransformer(cfg)
             projector.fit(pre_X)
         self.projector = projector
@@ -275,7 +273,7 @@ class REMBOGammaGPModel(_ContinuousProjectedGammaModel):
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
 
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.seed = int(seed)
         self.link = link
         self.exp_clip = float(exp_clip)
@@ -287,7 +285,7 @@ class REMBOGammaGPModel(_ContinuousProjectedGammaModel):
             likelihood=likelihood,
             input_transform=None,
             outcome_transform=clone_outcome_transform(self.outcome_transform),
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             exp_clip=exp_clip,
             min_mean=min_mean,
@@ -328,13 +326,12 @@ class PCAGammaMixedGPModel(_MixedProjectedGammaModel):
         *,
         cat_dims: Sequence[int],
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         pca_config: Optional[PCAConfig] = None,
         projector: Optional[PCATransformer] = None,
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         outcome_transform: Optional[OutcomeTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         link: GammaLink = "softplus",
         exp_clip: float = 20.0,
         min_mean: float = 1e-8,
@@ -345,7 +342,7 @@ class PCAGammaMixedGPModel(_MixedProjectedGammaModel):
         self.input_dim_original = train_X.shape[-1]
         self.cat_dims = normalize_dims(cat_dims, self.input_dim_original)
         self.cont_dims = get_cont_dims(self.input_dim_original, self.cat_dims)
-        self.latent_dim = int(n_components if n_components is not None else latent_dim)
+        self.latent_dim = int(latent_dim if latent_dim is not None else latent_dim)
         self.input_transform = clone_input_transform(input_transform)
         self.outcome_transform = clone_outcome_transform(outcome_transform)
         pre_X = apply_input_transform_for_training(
@@ -372,7 +369,7 @@ class PCAGammaMixedGPModel(_MixedProjectedGammaModel):
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
 
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.link = link
         self.exp_clip = float(exp_clip)
         self.min_mean = float(min_mean)
@@ -384,7 +381,7 @@ class PCAGammaMixedGPModel(_MixedProjectedGammaModel):
             likelihood=likelihood,
             input_transform=None,
             outcome_transform=clone_outcome_transform(self.outcome_transform),
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             exp_clip=exp_clip,
             min_mean=min_mean,
@@ -401,13 +398,12 @@ class REMBOGammaMixedGPModel(PCAGammaMixedGPModel):
         *,
         cat_dims: Sequence[int],
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         rembo_config: Optional[REMBOConfig] = None,
         projector: Optional[REMBOTransformer] = None,
         likelihood: Optional[GammaLogLikelihood] = None,
         input_transform: Optional[InputTransform] = None,
         outcome_transform: Optional[OutcomeTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         seed: int = 42,
         link: GammaLink = "softplus",
         exp_clip: float = 20.0,
@@ -419,7 +415,7 @@ class REMBOGammaMixedGPModel(PCAGammaMixedGPModel):
         self.input_dim_original = train_X.shape[-1]
         self.cat_dims = normalize_dims(cat_dims, self.input_dim_original)
         self.cont_dims = get_cont_dims(self.input_dim_original, self.cat_dims)
-        self.latent_dim = int(n_components if n_components is not None else latent_dim)
+        self.latent_dim = int(latent_dim if latent_dim is not None else latent_dim)
         self.input_transform = clone_input_transform(input_transform)
         self.outcome_transform = clone_outcome_transform(outcome_transform)
         pre_X = apply_input_transform_for_training(
@@ -431,7 +427,7 @@ class REMBOGammaMixedGPModel(PCAGammaMixedGPModel):
         check_categorical_columns_unchanged(train_X, pre_X, self.cat_dims)
 
         if projector is None:
-            cfg = rembo_config or REMBOConfig(n_components=self.latent_dim, seed=seed)
+            cfg = rembo_config or REMBOConfig(latent_dim=self.latent_dim, seed=seed)
             projector = REMBOTransformer(cfg)
             projector.fit(pre_X[..., self.cont_dims])
         self.projector = projector
@@ -446,7 +442,7 @@ class REMBOGammaMixedGPModel(PCAGammaMixedGPModel):
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
 
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.seed = int(seed)
         self.link = link
         self.exp_clip = float(exp_clip)
@@ -459,7 +455,7 @@ class REMBOGammaMixedGPModel(PCAGammaMixedGPModel):
             likelihood=likelihood,
             input_transform=None,
             outcome_transform=clone_outcome_transform(self.outcome_transform),
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             link=link,
             exp_clip=exp_clip,
             min_mean=min_mean,

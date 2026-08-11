@@ -241,7 +241,7 @@ class _LatentBetaMultiTaskSVGP(ApproximateGP):
         *,
         num_tasks: int,
         rank: int,
-        num_inducing_points: int,
+        num_inducing: int,
         inducing_points: Tensor | None,
         learn_inducing_locations: bool,
         mean_module: Mean | None,
@@ -250,7 +250,7 @@ class _LatentBetaMultiTaskSVGP(ApproximateGP):
     ) -> None:
         """Build the correlated latent process."""
         if inducing_points is None:
-            count = min(int(num_inducing_points), train_X.shape[-2])
+            count = min(int(num_inducing), train_X.shape[-2])
             indices = torch.linspace(0, train_X.shape[-2] - 1, count, device=train_X.device).long()
             inducing_points = train_X.index_select(-2, indices).clone()
         variational_distribution = CholeskyVariationalDistribution(inducing_points.shape[-2])
@@ -308,7 +308,7 @@ class _WideBetaMultiTaskCore(ApproximateGPyTorchModel):
         *,
         rank: int = 1,
         num_latents: int | None = None,
-        num_inducing_points: int = 64,
+        num_inducing: int = 64,
         inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         likelihood: BetaMultiTaskLikelihood | None = None,
@@ -393,7 +393,7 @@ class _WideBetaMultiTaskCore(ApproximateGPyTorchModel):
             long_Y,
             num_tasks=self.num_tasks,
             rank=self.rank,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
@@ -408,7 +408,7 @@ class _WideBetaMultiTaskCore(ApproximateGPyTorchModel):
         self.train_inputs = (train_X,)
         self.train_targets = transformed_Y
         self.observed_mask = observed
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.link = link
         self.learn_concentration = bool(learn_concentration)
@@ -497,7 +497,7 @@ class _WideBetaMultiTaskCore(ApproximateGPyTorchModel):
             torch.cat([self.train_targets_raw, Y], dim=-2),
             rank=self.rank,
             num_latents=self.num_latents,
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             input_transform=clone_input_transform(self.input_transform),
             mean_module=copy.deepcopy(self.model.mean_module),

@@ -78,7 +78,7 @@ class _LatentMulticlassSVGP(ApproximateGP):
         *,
         num_classes: int,
         inducing_points: Optional[Tensor] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
@@ -87,7 +87,7 @@ class _LatentMulticlassSVGP(ApproximateGP):
         batch_shape = torch.Size([self.num_classes])
         inducing_points = select_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
             num_classes=self.num_classes,
         )
@@ -127,7 +127,7 @@ class _BaseMulticlassClassificationModel(ApproximateGPyTorchModel):
         num_classes: int,
         input_transform: Optional[InputTransform],
         cat_dims: Optional[Sequence[int]] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         temperature: float = 1.0,
     ) -> None:
@@ -139,7 +139,7 @@ class _BaseMulticlassClassificationModel(ApproximateGPyTorchModel):
         self.train_inputs = (train_X.detach().clone(),)
         self.train_targets = prepare_class_targets(train_Y, train_X, num_classes=self.num_classes)
         self.transformed_train_inputs = (self.model.train_inputs[0].detach().clone(),)
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.temperature = float(temperature)
         self.to(train_X)
@@ -241,7 +241,7 @@ class MulticlassClassificationGPModel(_BaseMulticlassClassificationModel):
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         temperature: float = 1.0,
@@ -260,7 +260,7 @@ class MulticlassClassificationGPModel(_BaseMulticlassClassificationModel):
             train_Y=train_Y,
             num_classes=num_classes,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
             covar_module=covar_module,
@@ -278,7 +278,7 @@ class MulticlassClassificationGPModel(_BaseMulticlassClassificationModel):
             num_classes=num_classes,
             input_transform=input_transform,
             cat_dims=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             temperature=temperature,
         )
@@ -302,7 +302,7 @@ class MulticlassClassificationGPModel(_BaseMulticlassClassificationModel):
             input_transform=clone_input_transform(self.input_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             covar_module=copy.deepcopy(self.model.covar_module),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=self.model.variational_strategy.inducing_points.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             temperature=self.temperature,
@@ -326,7 +326,7 @@ class MulticlassClassificationMixedGPModel(_BaseMulticlassClassificationModel):
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         temperature: float = 1.0,
@@ -356,7 +356,7 @@ class MulticlassClassificationMixedGPModel(_BaseMulticlassClassificationModel):
             train_Y=train_Y,
             num_classes=num_classes,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
             covar_module=covar_module,
@@ -374,7 +374,7 @@ class MulticlassClassificationMixedGPModel(_BaseMulticlassClassificationModel):
             num_classes=num_classes,
             input_transform=input_transform,
             cat_dims=cat_dims,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             temperature=temperature,
         )

@@ -1,12 +1,12 @@
-from .deepgp import MulticlassDeepGPModel, MulticlassMixedDeepGPModel
+from .deepgp import DeepMulticlassClassificationGPModel, DeepMulticlassClassificationMixedGPModel
 from .deepkernel import (
     DeepKernelMulticlassClassificationGPModel,
     DeepKernelMulticlassClassificationMixedGPModel,
 )
 
 __all__ = [
-    "MulticlassDeepGPModel",
-    "MulticlassMixedDeepGPModel",
+    "DeepMulticlassClassificationGPModel",
+    "DeepMulticlassClassificationMixedGPModel",
     "DeepKernelMulticlassClassificationGPModel",
     "DeepKernelMulticlassClassificationMixedGPModel",
 ]

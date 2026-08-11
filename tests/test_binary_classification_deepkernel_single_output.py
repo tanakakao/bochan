@@ -165,14 +165,14 @@ def create_binary_deepkernel_model_bundle(
             train_Y=train_y,
             input_transform=input_transform,
             cat_dims=cat_dims,
-            num_inducing_points=8,
+            num_inducing=8,
         )
     else:
         model = DeepKernelBinaryClassificationGPModel(
             train_X=train_x,
             train_Y=train_y,
             input_transform=input_transform,
-            num_inducing_points=8,
+            num_inducing=8,
         )
 
     _fit_deepkernel_binary_model(

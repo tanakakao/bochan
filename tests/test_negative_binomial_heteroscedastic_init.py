@@ -80,7 +80,7 @@ def _make_model(
         train_X=train_x,
         train_Y=train_y,
         train_Yvar=train_yvar,
-        num_inducing_points=4,
+        num_inducing=4,
     )
     model.eval()
     model.likelihood.eval()
@@ -116,7 +116,7 @@ def test_negative_binomial_heteroscedastic_default_noise_path_initializes(
     model = HeteroscedasticNegativeBinomialGPModel(
         train_X=train_x,
         train_Y=train_y,
-        num_inducing_points=4,
+        num_inducing=4,
         aux_num_epochs=1,
     )
 
@@ -213,7 +213,7 @@ def test_negative_binomial_mixed_heteroscedastic_registers_noise_model(
         train_Y=train_y,
         train_Yvar=train_yvar,
         cat_dims=[2],
-        num_inducing_points=4,
+        num_inducing=4,
     )
 
     assert isinstance(model.noise_model, nn.Module)

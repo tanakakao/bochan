@@ -80,12 +80,12 @@ class _LatentPoissonSVGP(ApproximateGP):
         train_Y: Tensor,
         *,
         inducing_points: Optional[Tensor] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
     ) -> None:
-        inducing_points = select_inducing_points(train_X, num_inducing_points, inducing_points)
+        inducing_points = select_inducing_points(train_X, num_inducing, inducing_points)
         variational_distribution = CholeskyVariationalDistribution(inducing_points.shape[-2])
         variational_strategy = VariationalStrategy(
             self,
@@ -113,7 +113,7 @@ class _LatentMixedPoissonSVGP(ApproximateGP):
         *,
         cat_dims: Sequence[int],
         inducing_points: Optional[Tensor] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
@@ -123,7 +123,7 @@ class _LatentMixedPoissonSVGP(ApproximateGP):
         self.cont_dims = get_cont_dims(d, self.cat_dims)
         self._ignore_X_dims_scaling_check = self.cat_dims
 
-        inducing_points = select_inducing_points(train_X, num_inducing_points, inducing_points)
+        inducing_points = select_inducing_points(train_X, num_inducing, inducing_points)
         variational_distribution = CholeskyVariationalDistribution(inducing_points.shape[-2])
         variational_strategy = VariationalStrategy(
             self,
@@ -153,7 +153,7 @@ class _BasePoissonGPModel(ApproximateGPyTorchModel):
         train_Y: Tensor,
         input_transform: Optional[InputTransform],
         cat_dims: Optional[Sequence[int]] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         link: PoissonLink = "softplus",
         exp_clip: float = 20.0,
@@ -167,7 +167,7 @@ class _BasePoissonGPModel(ApproximateGPyTorchModel):
         self.train_inputs = (train_X,)
         self.train_targets = prepare_count_targets(train_Y, train_X)
 
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.link = link
         self.exp_clip = float(exp_clip)
@@ -277,7 +277,7 @@ class PoissonGPModel(_BasePoissonGPModel):
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         link: PoissonLink = "softplus",
@@ -297,7 +297,7 @@ class PoissonGPModel(_BasePoissonGPModel):
             train_X=train_X_tf,
             train_Y=train_Y,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
             covar_module=covar_module,
@@ -309,7 +309,7 @@ class PoissonGPModel(_BasePoissonGPModel):
             train_Y=train_Y,
             input_transform=input_transform,
             cat_dims=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
             exp_clip=exp_clip,
@@ -334,7 +334,7 @@ class PoissonGPModel(_BasePoissonGPModel):
             input_transform=clone_input_transform(self.input_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             covar_module=copy.deepcopy(self.model.covar_module),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=self.model.variational_strategy.inducing_points.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             link=self.link,
@@ -356,7 +356,7 @@ class PoissonMixedGPModel(_BasePoissonGPModel):
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         link: PoissonLink = "softplus",
@@ -383,7 +383,7 @@ class PoissonMixedGPModel(_BasePoissonGPModel):
             train_Y=train_Y,
             cat_dims=cat_dims,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
             covar_module=covar_module,
@@ -395,7 +395,7 @@ class PoissonMixedGPModel(_BasePoissonGPModel):
             train_Y=train_Y,
             input_transform=input_transform,
             cat_dims=cat_dims,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
             exp_clip=exp_clip,
@@ -422,7 +422,7 @@ class PoissonMixedGPModel(_BasePoissonGPModel):
             input_transform=clone_input_transform(self.input_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             covar_module=copy.deepcopy(self.model.covar_module),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=self.model.variational_strategy.inducing_points.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             link=self.link,

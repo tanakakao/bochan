@@ -111,7 +111,7 @@ class _BaseNegativeBinomialDeepGPModel(DeepGP, GPyTorchModel):
         return DeepApproximateMLL(base_mll)
 
 
-class NegativeBinomialDeepGPModel(_BaseNegativeBinomialDeepGPModel):
+class DeepNegativeBinomialGPModel(_BaseNegativeBinomialDeepGPModel):
     """true DeepGP + Negative Binomial likelihood の count 回帰モデル。"""
 
     def __init__(
@@ -121,7 +121,7 @@ class NegativeBinomialDeepGPModel(_BaseNegativeBinomialDeepGPModel):
         *,
         hidden_dim: int = 4,
         num_inducing: int = 128,
-        list_hidden_dims: Sequence[int] | None = None,
+        hidden_dims: Sequence[int] | None = None,
         input_transform: InputTransform | None = None,
         likelihood: NegativeBinomialLogLikelihood | None = None,
         link: NBLink = "softplus",
@@ -138,12 +138,12 @@ class NegativeBinomialDeepGPModel(_BaseNegativeBinomialDeepGPModel):
         train_X = torch.as_tensor(train_X)
         train_Y = prepare_count_targets(train_Y, train_X)
         self.input_transform = to_device_dtype_transform(clone_input_transform(input_transform), train_X)
-        train_X_tf = apply_input_transform_for_training(train_X, self.input_transform, name="NegativeBinomialDeepGPModel.input_transform")
+        train_X_tf = apply_input_transform_for_training(train_X, self.input_transform, name="DeepNegativeBinomialGPModel.input_transform")
         d = train_X_tf.shape[-1]
-        if list_hidden_dims is None:
-            list_hidden_dims = [int(hidden_dim)]
-        list_hidden_dims = [int(h) for h in list_hidden_dims]
-        first_out = list_hidden_dims[0]
+        if hidden_dims is None:
+            hidden_dims = [int(hidden_dim)]
+        hidden_dims = [int(h) for h in hidden_dims]
+        first_out = hidden_dims[0]
         if str(layer_type).lower() == "deepkernel":
             self.hidden_layer = DeepKernelDeepGPHiddenLayer(
                 input_dims=d,
@@ -164,7 +164,7 @@ class NegativeBinomialDeepGPModel(_BaseNegativeBinomialDeepGPModel):
             )
         current_dim = first_out
         extra_layers = []
-        for h in list_hidden_dims[1:]:
+        for h in hidden_dims[1:]:
             extra_layers.append(
                 DeepGPHiddenLayer(
                     input_dims=current_dim,
@@ -198,7 +198,7 @@ class NegativeBinomialDeepGPModel(_BaseNegativeBinomialDeepGPModel):
         self.transformed_train_inputs = (train_X_tf.detach().clone(),)
         self.train_targets = train_Y
         self.hidden_dim = int(hidden_dim)
-        self.list_hidden_dims = list(list_hidden_dims)
+        self.hidden_dims = list(hidden_dims)
         self.num_inducing = int(num_inducing)
         self.layer_type = str(layer_type)
         self.mean_type = str(mean_type)
@@ -217,9 +217,9 @@ class NegativeBinomialDeepGPModel(_BaseNegativeBinomialDeepGPModel):
             h = layer(h)
         return self.last_layer(h)
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> NegativeBinomialDeepGPModel:
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> DeepNegativeBinomialGPModel:
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("NegativeBinomialDeepGPModel does not support noise in condition_on_observations.")
+            raise NotImplementedError("DeepNegativeBinomialGPModel does not support noise in condition_on_observations.")
         if isinstance(X, tuple):
             X = X[0]
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
@@ -233,7 +233,7 @@ class NegativeBinomialDeepGPModel(_BaseNegativeBinomialDeepGPModel):
             train_Y=new_Y,
             hidden_dim=self.hidden_dim,
             num_inducing=self.num_inducing,
-            list_hidden_dims=self.list_hidden_dims,
+            hidden_dims=self.hidden_dims,
             input_transform=clone_input_transform(self.input_transform),
             likelihood=copy.deepcopy(self.likelihood),
             link=self.link,
@@ -252,7 +252,7 @@ class NegativeBinomialDeepGPModel(_BaseNegativeBinomialDeepGPModel):
         return new_model
 
 
-class NegativeBinomialMixedDeepGPModel(_BaseNegativeBinomialDeepGPModel):
+class DeepNegativeBinomialMixedGPModel(_BaseNegativeBinomialDeepGPModel):
     """mixed 入力版 true DeepGP + Negative Binomial likelihood。"""
 
     def __init__(
@@ -286,7 +286,7 @@ class NegativeBinomialMixedDeepGPModel(_BaseNegativeBinomialDeepGPModel):
             train_X,
             self.input_transform,
             cat_dims=self.cat_dims,
-            name="NegativeBinomialMixedDeepGPModel.input_transform",
+            name="DeepNegativeBinomialMixedGPModel.input_transform",
         )
         if str(layer_type).lower() == "deepkernel":
             self.hidden_layer = DeepKernelDeepMixedGPHiddenLayer(
@@ -349,6 +349,6 @@ class NegativeBinomialMixedDeepGPModel(_BaseNegativeBinomialDeepGPModel):
 
 
 __all__ = [
-    "NegativeBinomialDeepGPModel",
-    "NegativeBinomialMixedDeepGPModel",
+    "DeepNegativeBinomialGPModel",
+    "DeepNegativeBinomialMixedGPModel",
 ]

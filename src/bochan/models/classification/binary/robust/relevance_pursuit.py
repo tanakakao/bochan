@@ -39,8 +39,8 @@ from bochan.models.components.robust import (
 
 __all__ = [
     "SparseOutlierBernoulliLikelihood",
-    "OutlierRelevancePursuitBinaryClassificationGPModel",
-    "OutlierRelevancePursuitBinaryClassificationMixedGPModel",
+    "RobustRelevancePursuitBinaryClassificationGPModel",
+    "RobustRelevancePursuitBinaryClassificationMixedGPModel",
 ]
 
 
@@ -205,12 +205,6 @@ class _OutlierRRPBinaryClassificationBase(ApproximateGPyTorchModel):
     def predict_proba(self, X: Tensor) -> Tensor:
         return self.posterior(X).mean
 
-    def posterior_latent(self, X: Tensor, **kwargs: Any) -> GPyTorchPosterior:
-        return self.latent_posterior(X, **kwargs)
-
-    def posterior_f(self, X: Tensor, **kwargs: Any) -> GPyTorchPosterior:
-        return self.latent_posterior(X, **kwargs)
-
     def make_mll(self, beta: float = 1.0) -> VariationalELBO:
         """この wrapper 用の VariationalELBO を返す。"""
         return _RRPVariationalELBO(
@@ -221,7 +215,7 @@ class _OutlierRRPBinaryClassificationBase(ApproximateGPyTorchModel):
         )
 
 
-class OutlierRelevancePursuitBinaryClassificationGPModel(_OutlierRRPBinaryClassificationBase):
+class RobustRelevancePursuitBinaryClassificationGPModel(_OutlierRRPBinaryClassificationBase):
     """
     連続入力用 train-point outlier RRP binary classification GP。
 
@@ -295,7 +289,7 @@ class OutlierRelevancePursuitBinaryClassificationGPModel(_OutlierRRPBinaryClassi
         Y: Tensor,
         noise: Optional[Tensor] = None,
         **kwargs: Any,
-    ) -> "OutlierRelevancePursuitBinaryClassificationGPModel":
+    ) -> "RobustRelevancePursuitBinaryClassificationGPModel":
         _ = kwargs
         X_new, Y_new, Yvar_new = prepare_wrapper_conditioning_data(
             X,
@@ -334,7 +328,7 @@ class OutlierRelevancePursuitBinaryClassificationGPModel(_OutlierRRPBinaryClassi
         return new_model
 
 
-class OutlierRelevancePursuitBinaryClassificationMixedGPModel(_OutlierRRPBinaryClassificationBase):
+class RobustRelevancePursuitBinaryClassificationMixedGPModel(_OutlierRRPBinaryClassificationBase):
     """mixed 入力用 train-point outlier RRP binary classification GP。"""
 
     def __init__(
@@ -416,7 +410,7 @@ class OutlierRelevancePursuitBinaryClassificationMixedGPModel(_OutlierRRPBinaryC
         Y: Tensor,
         noise: Optional[Tensor] = None,
         **kwargs: Any,
-    ) -> "OutlierRelevancePursuitBinaryClassificationMixedGPModel":
+    ) -> "RobustRelevancePursuitBinaryClassificationMixedGPModel":
         _ = kwargs
         X_new, Y_new, Yvar_new = prepare_wrapper_conditioning_data(
             X,

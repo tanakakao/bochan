@@ -4,7 +4,7 @@ from typing import Sequence
 
 from torch.nn import Module
 
-from bochan.models.hybrid.multi_output import HybridMultiOutputModel
+from bochan.models.hybrid import HybridMultiOutputModel
 from bochan.models.hybrid.specs import OutputSpec
 
 

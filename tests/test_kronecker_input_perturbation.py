@@ -5,7 +5,7 @@ import torch
 from bochan.api import InputTransformConfig, ModelConfig
 from bochan.api.factory import build_model
 from bochan.models.regression.gaussian import (
-    PerturbationSupportedKroneckerMultiTaskGP,
+    GaussianKroneckerMultiTaskGP,
 )
 
 
@@ -47,7 +47,7 @@ def test_kronecker_registry_builds_perturbation_supported_model() -> None:
 
     assert isinstance(
         bundle.model,
-        PerturbationSupportedKroneckerMultiTaskGP,
+        GaussianKroneckerMultiTaskGP,
     )
 
 

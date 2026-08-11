@@ -22,7 +22,7 @@ from bochan.models.classification.multiclass.base import (
     KroneckerMultiTaskMulticlassClassificationMixedGPModel,
 )
 from bochan.models.ordinal.base import KroneckerMultiTaskOrdinalMixedGPModel
-from bochan.models.regression.gaussian import MixedKroneckerMultiTaskGP
+from bochan.models.regression.gaussian import GaussianMixedKroneckerMultiTaskGP
 
 
 def _make_mixed_X(dtype=torch.double) -> torch.Tensor:
@@ -59,7 +59,7 @@ def test_mixed_binary_kronecker_posterior_acquisition_and_conditioning():
         cat_dims=[1],
         rank=2,
         input_transform=_continuous_only_normalize(),
-        num_inducing_points=4,
+        num_inducing=4,
     )
     model.eval()
     model.likelihood.eval()
@@ -113,7 +113,7 @@ def test_mixed_multiclass_kronecker_shapes_and_class_kernel_batch():
         num_classes=3,
         rank=2,
         input_transform=_continuous_only_normalize(),
-        num_inducing_points=4,
+        num_inducing=4,
     )
     model.eval()
     model.likelihood.eval()
@@ -175,7 +175,7 @@ def test_mixed_ordinal_kronecker_shapes_acquisition_and_conditioning():
         num_classes=3,
         rank=2,
         input_transform=_continuous_only_normalize(),
-        num_inducing_points=4,
+        num_inducing=4,
     )
     model.eval()
     model.likelihood.eval()
@@ -217,7 +217,7 @@ def test_mixed_gaussian_kronecker_shapes_and_acquisition():
         ],
         dim=-1,
     )
-    model = MixedKroneckerMultiTaskGP(
+    model = GaussianMixedKroneckerMultiTaskGP(
         train_X=train_X,
         train_Y=train_Y,
         cat_dims=[1],
@@ -268,7 +268,7 @@ def test_mixed_kronecker_rejects_transforming_categorical_columns():
             train_Y=train_Y,
             cat_dims=[1],
             input_transform=Normalize(d=2),
-            num_inducing_points=4,
+            num_inducing=4,
         )
 
 
@@ -293,7 +293,7 @@ def test_mixed_kronecker_works_with_optimize_acqf_mixed():
         cat_dims=[1],
         rank=2,
         input_transform=_continuous_only_normalize(),
-        num_inducing_points=4,
+        num_inducing=4,
     )
     model.model.mean_module.constant.data.fill_(0.3)
     model.eval()

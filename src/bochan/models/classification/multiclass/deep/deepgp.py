@@ -164,7 +164,7 @@ class _BaseMulticlassDeepGPModel(DeepGP, GPyTorchModel):
         return DeepApproximateMLL(base_mll)
 
 
-class MulticlassDeepGPModel(_BaseMulticlassDeepGPModel):
+class DeepMulticlassClassificationGPModel(_BaseMulticlassDeepGPModel):
     """true DeepGP + SoftmaxLikelihood の多クラス分類モデル。"""
 
     def __init__(
@@ -175,7 +175,7 @@ class MulticlassDeepGPModel(_BaseMulticlassDeepGPModel):
         num_classes: Optional[int] = None,
         hidden_dim: int = 4,
         num_inducing: int = 128,
-        list_hidden_dims: Optional[Sequence[int]] = None,
+        hidden_dims: Optional[Sequence[int]] = None,
         input_transform: Optional[InputTransform] = None,
         likelihood: Optional[SoftmaxLikelihood] = None,
         mean_type: str = "linear",
@@ -191,25 +191,25 @@ class MulticlassDeepGPModel(_BaseMulticlassDeepGPModel):
         train_X_tf = apply_input_transform_for_training(
             train_X,
             self.input_transform,
-            name="MulticlassDeepGPModel.input_transform",
+            name="DeepMulticlassClassificationGPModel.input_transform",
         )
 
         d = train_X_tf.shape[-1]
-        if list_hidden_dims is None:
-            list_hidden_dims = [int(hidden_dim)]
-        list_hidden_dims = [int(h) for h in list_hidden_dims]
+        if hidden_dims is None:
+            hidden_dims = [int(hidden_dim)]
+        hidden_dims = [int(h) for h in hidden_dims]
 
         self.hidden_layer = _MulticlassDeepGPLayer(
             input_dims=d,
-            output_dims=list_hidden_dims[0],
+            output_dims=hidden_dims[0],
             num_inducing=num_inducing,
             input_data=train_X_tf,
             mean_type=mean_type,
             learn_inducing_locations=learn_inducing_locations,
         )
-        current_dim = list_hidden_dims[0]
+        current_dim = hidden_dims[0]
         extra_layers = []
-        for h in list_hidden_dims[1:]:
+        for h in hidden_dims[1:]:
             extra_layers.append(
                 _MulticlassDeepGPLayer(
                     input_dims=current_dim,
@@ -240,7 +240,7 @@ class MulticlassDeepGPModel(_BaseMulticlassDeepGPModel):
         self.transformed_train_inputs = (train_X_tf.detach().clone(),)
         self.train_targets = train_Y
         self.hidden_dim = int(hidden_dim)
-        self.list_hidden_dims = list(list_hidden_dims)
+        self.hidden_dims = list(hidden_dims)
         self.num_inducing = int(num_inducing)
         self.mean_type = str(mean_type)
         self.learn_inducing_locations = bool(learn_inducing_locations)
@@ -253,9 +253,9 @@ class MulticlassDeepGPModel(_BaseMulticlassDeepGPModel):
             h = layer(h)
         return self.last_layer(h)
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "MulticlassDeepGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "DeepMulticlassClassificationGPModel":
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("MulticlassDeepGPModel does not support noise in condition_on_observations.")
+            raise NotImplementedError("DeepMulticlassClassificationGPModel does not support noise in condition_on_observations.")
         if isinstance(X, tuple):
             X = X[0]
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
@@ -270,7 +270,7 @@ class MulticlassDeepGPModel(_BaseMulticlassDeepGPModel):
             num_classes=self.num_classes,
             hidden_dim=self.hidden_dim,
             num_inducing=self.num_inducing,
-            list_hidden_dims=self.list_hidden_dims,
+            hidden_dims=self.hidden_dims,
             input_transform=clone_input_transform(self.input_transform),
             likelihood=copy.deepcopy(self.likelihood),
             mean_type=self.mean_type,
@@ -283,7 +283,7 @@ class MulticlassDeepGPModel(_BaseMulticlassDeepGPModel):
         return new_model
 
 
-class MulticlassMixedDeepGPModel(MulticlassDeepGPModel):
+class DeepMulticlassClassificationMixedGPModel(DeepMulticlassClassificationGPModel):
     """mixed 入力版の多クラス DeepGP。
 
     Notes:
@@ -301,7 +301,7 @@ class MulticlassMixedDeepGPModel(MulticlassDeepGPModel):
         num_classes: Optional[int] = None,
         hidden_dim: int = 4,
         num_inducing: int = 128,
-        list_hidden_dims: Optional[Sequence[int]] = None,
+        hidden_dims: Optional[Sequence[int]] = None,
         input_transform: Optional[InputTransform] = None,
         likelihood: Optional[SoftmaxLikelihood] = None,
         mean_type: str = "linear",
@@ -317,7 +317,7 @@ class MulticlassMixedDeepGPModel(MulticlassDeepGPModel):
             num_classes=num_classes,
             hidden_dim=hidden_dim,
             num_inducing=num_inducing,
-            list_hidden_dims=list_hidden_dims,
+            hidden_dims=hidden_dims,
             input_transform=input_transform,
             likelihood=likelihood,
             mean_type=mean_type,
@@ -327,6 +327,6 @@ class MulticlassMixedDeepGPModel(MulticlassDeepGPModel):
 
 
 __all__ = [
-    "MulticlassDeepGPModel",
-    "MulticlassMixedDeepGPModel",
+    "DeepMulticlassClassificationGPModel",
+    "DeepMulticlassClassificationMixedGPModel",
 ]

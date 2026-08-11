@@ -33,12 +33,12 @@ from bochan.models.components.robust import SafeDeepcopyMixin
 
 
 __all__ = [
-    "SafeRobustRelevancePursuitSingleTaskGP",
-    "SafeRobustRelevancePursuitMixedSingleTaskGP",
+    "RobustRelevancePursuitGaussianGPModel",
+    "RobustRelevancePursuitGaussianMixedGPModel",
 ]
 
 
-class SafeRobustRelevancePursuitSingleTaskGP(
+class RobustRelevancePursuitGaussianGPModel(
     SafeDeepcopyMixin,
     RobustRelevancePursuitSingleTaskGP,
 ):
@@ -128,7 +128,7 @@ class SafeRobustRelevancePursuitSingleTaskGP(
         return ExactMarginalLogLikelihood(self.likelihood, self)
 
 
-class SafeRobustRelevancePursuitMixedSingleTaskGP(
+class RobustRelevancePursuitGaussianMixedGPModel(
     SafeDeepcopyMixin,
     MixedSingleTaskGP,
     RobustRelevancePursuitMixin,

@@ -1,20 +1,20 @@
 from .decomposition import (
-    PCAMixedSingleTaskGP,
-    PCASingleTaskGP,
-    REMBOMixedSingleTaskGP,
-    REMBOSingleTaskGP,
+    PCAGaussianMixedGPModel,
+    PCAGaussianGPModel,
+    REMBOGaussianMixedGPModel,
+    REMBOGaussianGPModel,
 )
-from .saas import SaasMixedSingleTaskGP, SaasSingleTaskGP
-from .vae import VAESingleTaskGP
-from .vae_mixed import VAEMixedSingleTaskGP
+from .saas import SaasGaussianMixedGPModel, SaasGaussianGPModel
+from .vae import VAEGaussianGPModel
+from .vae_mixed import VAEGaussianMixedGPModel
 
 __all__ = [
-    "SaasSingleTaskGP",
-    "SaasMixedSingleTaskGP",
-    "REMBOSingleTaskGP",
-    "REMBOMixedSingleTaskGP",
-    "PCASingleTaskGP",
-    "PCAMixedSingleTaskGP",
-    "VAESingleTaskGP",
-    "VAEMixedSingleTaskGP",
+    "SaasGaussianGPModel",
+    "SaasGaussianMixedGPModel",
+    "REMBOGaussianGPModel",
+    "REMBOGaussianMixedGPModel",
+    "PCAGaussianGPModel",
+    "PCAGaussianMixedGPModel",
+    "VAEGaussianGPModel",
+    "VAEGaussianMixedGPModel",
 ]

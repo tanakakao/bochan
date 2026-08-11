@@ -37,7 +37,7 @@ MC_POINTS = torch.linspace(0.1, 0.9, 5, dtype=DTYPE).unsqueeze(-1)
 def _binary_model() -> BinaryClassificationGPModel:
     train_x = torch.linspace(0.05, 0.95, 8, dtype=DTYPE).unsqueeze(-1)
     train_y = torch.tensor([0, 0, 0, 0, 1, 1, 1, 1], dtype=DTYPE).unsqueeze(-1)
-    model = BinaryClassificationGPModel(train_X=train_x, train_Y=train_y, num_inducing_points=6)
+    model = BinaryClassificationGPModel(train_X=train_x, train_Y=train_y, num_inducing=6)
     model.eval()
     model.likelihood.eval()
     return model
@@ -50,7 +50,7 @@ def _multiclass_model() -> MulticlassClassificationGPModel:
         train_X=train_x,
         train_Y=train_y,
         num_classes=3,
-        num_inducing_points=6,
+        num_inducing=6,
     )
     model.eval()
     model.likelihood.eval()
@@ -64,7 +64,7 @@ def _ordinal_model() -> OrdinalGPModel:
         train_X=train_x,
         train_Y=train_y,
         num_classes=3,
-        inducing_points_num=6,
+        num_inducing=6,
         conditioning_steps=1,
         conditioning_lr=0.03,
     )

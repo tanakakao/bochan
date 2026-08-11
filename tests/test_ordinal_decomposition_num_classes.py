@@ -48,7 +48,7 @@ def test_projected_ordinal_model_infers_num_classes(model_cls, mixed: bool) -> N
         train_X=train_x,
         train_Y=train_y,
         n_components=2,
-        inducing_points_num=4,
+        num_inducing=4,
         **_model_kwargs(train_x, mixed=mixed),
     )
 
@@ -66,7 +66,7 @@ def test_projected_ordinal_model_rejects_invalid_inferred_labels(model_cls, mixe
             train_X=train_x,
             train_Y=train_y,
             n_components=2,
-            inducing_points_num=3,
+            num_inducing=3,
             **_model_kwargs(train_x, mixed=mixed),
         )
 
@@ -81,7 +81,7 @@ def test_projected_ordinal_model_keeps_explicit_num_classes(model_cls, mixed: bo
         train_Y=train_y,
         num_classes=3,
         n_components=2,
-        inducing_points_num=3,
+        num_inducing=3,
         **_model_kwargs(train_x, mixed=mixed),
     )
 

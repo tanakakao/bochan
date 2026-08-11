@@ -17,8 +17,8 @@ from .base.models import _BaseMulticlassClassificationModel
 from .deep import (
     DeepKernelMulticlassClassificationGPModel,
     DeepKernelMulticlassClassificationMixedGPModel,
-    MulticlassDeepGPModel,
-    MulticlassMixedDeepGPModel,
+    DeepMulticlassClassificationGPModel,
+    DeepMulticlassClassificationMixedGPModel,
 )
 from .high_dim import (
     PCAMulticlassClassificationGPModel,
@@ -32,8 +32,8 @@ from .robust import (
     HeteroscedasticMulticlassClassificationGPModel,
     HeteroscedasticMulticlassClassificationMixedGPModel,
     HeteroscedasticMulticlassPosterior,
-    OutlierRelevancePursuitMulticlassClassificationGPModel,
-    OutlierRelevancePursuitMulticlassClassificationMixedGPModel,
+    RobustRelevancePursuitMulticlassClassificationGPModel,
+    RobustRelevancePursuitMulticlassClassificationMixedGPModel,
     SparseOutlierSoftmaxLikelihood,
 )
 
@@ -54,8 +54,8 @@ __all__ = [
     "MultiTaskMulticlassClassificationMixedGPModel",
     "DeepKernelMulticlassClassificationGPModel",
     "DeepKernelMulticlassClassificationMixedGPModel",
-    "MulticlassDeepGPModel",
-    "MulticlassMixedDeepGPModel",
+    "DeepMulticlassClassificationGPModel",
+    "DeepMulticlassClassificationMixedGPModel",
     "SaasMulticlassClassificationGPModel",
     "SaasMulticlassClassificationMixedGPModel",
     "PCAMulticlassClassificationGPModel",
@@ -63,8 +63,8 @@ __all__ = [
     "REMBOMulticlassClassificationGPModel",
     "REMBOMulticlassClassificationMixedGPModel",
     "SparseOutlierSoftmaxLikelihood",
-    "OutlierRelevancePursuitMulticlassClassificationGPModel",
-    "OutlierRelevancePursuitMulticlassClassificationMixedGPModel",
+    "RobustRelevancePursuitMulticlassClassificationGPModel",
+    "RobustRelevancePursuitMulticlassClassificationMixedGPModel",
     "HeteroscedasticMulticlassPosterior",
     "HeteroscedasticMulticlassClassificationGPModel",
     "HeteroscedasticMulticlassClassificationMixedGPModel",

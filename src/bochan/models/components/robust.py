@@ -34,7 +34,7 @@ from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
 
 __all__ = [
     "SafeDeepcopyMixin",
-    "TrainInputsAliasMixin",
+    "TrainDataMixin",
     "RobustOrdinalLogitLikelihood",
     "SparseOutlierBernoulliLikelihood",
     "SparseOutlierOrdinalLogitLikelihood",
@@ -292,7 +292,7 @@ def canonicalize_inducing_points(
 
 def make_raw_inducing_points(
     raw_train_X: Tensor,
-    inducing_points_num: int,
+    num_inducing: int,
     inducing_points: Optional[Tensor],
 ) -> Tensor:
     """raw-space の inducing points を作る。"""
@@ -304,7 +304,7 @@ def make_raw_inducing_points(
             dtype=raw_train_X.dtype,
         )
     n = raw_train_X.shape[-2]
-    m = min(int(inducing_points_num), n)
+    m = min(int(num_inducing), n)
     perm = torch.randperm(n, device=raw_train_X.device)[:m]
     return raw_train_X[perm].detach().clone().contiguous()
 
@@ -403,13 +403,13 @@ def prepare_wrapper_conditioning_data(
 
 
 # =============================================================================
-# train input alias mixin
+# train data synchronization mixin
 # =============================================================================
 
 
-class TrainInputsAliasMixin:
+class TrainDataMixin:
     """
-    train_inputs 系の共通 alias と set_train_data 実装。
+    train_inputs / train_targets と latent model を同期する set_train_data 実装。
 
     Public convention:
         train_inputs_raw[0]: raw-space X
@@ -465,39 +465,6 @@ class TrainInputsAliasMixin:
                     self.model.train_targets = targets
                 except Exception:
                     pass
-
-    @property
-    def train_input_raw(self) -> Tensor:
-        return self.train_inputs_raw[0]
-
-    @property
-    def train_input(self) -> Tensor:
-        return self.train_inputs[0]
-
-    @property
-    def transformed_train_input(self) -> Tensor:
-        return self.train_inputs[0]
-
-    @property
-    def transformed_train_inputs(self) -> tuple[Tensor]:
-        return self.train_inputs
-
-    @property
-    def raw_train_X(self) -> Tensor:
-        return self.train_input_raw
-
-    @property
-    def train_X_original(self) -> Tensor:
-        return self.train_input_raw
-
-    @property
-    def train_X(self) -> Tensor:
-        return self.train_input
-
-    @property
-    def train_Y(self) -> Tensor:
-        return self.train_targets
-
 
 # =============================================================================
 # robust likelihoods

@@ -232,7 +232,7 @@ class BinaryClassificationGPModel(ApproximateGPyTorchModel, FantasizeMixin):
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 20,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
     ) -> None:
@@ -264,7 +264,7 @@ class BinaryClassificationGPModel(ApproximateGPyTorchModel, FantasizeMixin):
 
         inducing_points = _select_inducing_points(
             transformed_train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
 
@@ -402,7 +402,7 @@ class BinaryClassificationGPModel(ApproximateGPyTorchModel, FantasizeMixin):
         Y: Tensor,
         noise: Optional[Tensor] = None,
         **kwargs,
-    ) -> "GPClassificationModel":
+    ) -> "BinaryClassificationGPModel":
         """
         観測 (X, Y) を追加した新しい分類モデルを返す。
 
@@ -446,7 +446,7 @@ class BinaryClassificationGPModel(ApproximateGPyTorchModel, FantasizeMixin):
             input_transform=deepcopy(self.input_transform),
             mean_module=deepcopy(self.model.mean_module),
             covar_module=deepcopy(self.model.covar_module),
-            num_inducing_points=inducing_points.shape[-2],
+            num_inducing=inducing_points.shape[-2],
             inducing_points=inducing_points,
             learn_inducing_locations=getattr(
                 self.model.variational_strategy,
@@ -487,12 +487,12 @@ class BinaryClassificationMixedGPModel(ApproximateGPyTorchModel, FantasizeMixin)
         cont_kernel_factory: Optional[
             Callable[[torch.Size, int, Optional[List[int]]], Kernel]
         ] = None,
-        num_inducing_points: int = 20,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
     ) -> None:
         if len(cat_dims) == 0:
-            raise ValueError("cat_dims must be non-empty for GPClassificationMixedModel.")
+            raise ValueError("cat_dims must be non-empty for BinaryClassificationMixedGPModel.")
 
         if train_Y.ndim > 1 and train_Y.shape[-1] == 1:
             train_Y = train_Y.squeeze(-1)
@@ -525,7 +525,7 @@ class BinaryClassificationMixedGPModel(ApproximateGPyTorchModel, FantasizeMixin)
 
         inducing_points = _select_inducing_points(
             transformed_train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
 
@@ -660,7 +660,7 @@ class BinaryClassificationMixedGPModel(ApproximateGPyTorchModel, FantasizeMixin)
         Y: Tensor,
         noise: Optional[Tensor] = None,
         **kwargs,
-    ) -> "GPClassificationMixedModel":
+    ) -> "BinaryClassificationMixedGPModel":
         """
         mixed classification model 用の condition_on_observations。
 
@@ -706,7 +706,7 @@ class BinaryClassificationMixedGPModel(ApproximateGPyTorchModel, FantasizeMixin)
             mean_module=deepcopy(self.model.mean_module),
             covar_module=deepcopy(self.model.covar_module),
             cont_kernel_factory=None,
-            num_inducing_points=inducing_points.shape[-2],
+            num_inducing=inducing_points.shape[-2],
             inducing_points=inducing_points,
             learn_inducing_locations=getattr(
                 self.model.variational_strategy,

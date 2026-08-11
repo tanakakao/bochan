@@ -42,10 +42,10 @@ from bochan.models.components.projected_utils import (
 
 
 __all__ = [
-    "PCASingleTaskGP",
-    "REMBOSingleTaskGP",
-    "PCAMixedSingleTaskGP",
-    "REMBOMixedSingleTaskGP",
+    "PCAGaussianGPModel",
+    "REMBOGaussianGPModel",
+    "PCAGaussianMixedGPModel",
+    "REMBOGaussianMixedGPModel",
 ]
 
 
@@ -155,7 +155,7 @@ class _BaseProjectedSingleTaskGP(_BaseProjectedModel):
         raise NotImplementedError
 
 
-class PCASingleTaskGP(_BaseProjectedSingleTaskGP):
+class PCAGaussianGPModel(_BaseProjectedSingleTaskGP):
     """PCA 射影後の低次元空間で学習する SingleTaskGP wrapper。
 
     Args:
@@ -169,7 +169,6 @@ class PCASingleTaskGP(_BaseProjectedSingleTaskGP):
         input_transform: raw-space に適用する input transform。内部 GP には渡さない。
         pca_config: 既存の PCAConfig。
         latent_dim: PCA の低次元次元数。
-        n_components: ``latent_dim`` の後方互換 alias。
         fitted_pca: fit 済み PCA transformer。condition 時の projector 固定に使う。
         base_model: 既存 base model。condition_on_observations 後の再構築で使う。
     """
@@ -186,7 +185,6 @@ class PCASingleTaskGP(_BaseProjectedSingleTaskGP):
         input_transform: InputTransform | None = None,
         pca_config: PCAConfig | None = None,
         latent_dim: int | None = None,
-        n_components: int | None = None,
         fitted_pca: PCATransformer | None = None,
         base_model: SingleTaskGP | None = None,
     ) -> None:
@@ -197,11 +195,7 @@ class PCASingleTaskGP(_BaseProjectedSingleTaskGP):
             train_Yvar=train_Yvar,
             input_transform=input_transform,
         )
-        dim = _resolve_latent_dim(
-            latent_dim=latent_dim,
-            n_components=n_components,
-            default=2,
-        )
+        dim = _resolve_latent_dim(latent_dim=latent_dim, default=2)
         self.pca_config = copy.deepcopy(pca_config) if pca_config is not None else PCAConfig(n_components=dim)
         self.pca = _clone_fitted_pca(fitted_pca) if fitted_pca is not None else PCATransformer(self.pca_config)
         if fitted_pca is None:
@@ -232,7 +226,7 @@ class PCASingleTaskGP(_BaseProjectedSingleTaskGP):
         )
 
 
-class REMBOSingleTaskGP(_BaseProjectedSingleTaskGP):
+class REMBOGaussianGPModel(_BaseProjectedSingleTaskGP):
     """REMBO 固定ランダム射影後の低次元空間で学習する SingleTaskGP wrapper。"""
 
     def __init__(
@@ -247,7 +241,6 @@ class REMBOSingleTaskGP(_BaseProjectedSingleTaskGP):
         input_transform: InputTransform | None = None,
         rembo_config: REMBOConfig | None = None,
         latent_dim: int | None = None,
-        n_components: int | None = None,
         fitted_rembo: REMBOTransformer | None = None,
         seed: int = 42,
         base_model: SingleTaskGP | None = None,
@@ -259,11 +252,7 @@ class REMBOSingleTaskGP(_BaseProjectedSingleTaskGP):
             train_Yvar=train_Yvar,
             input_transform=input_transform,
         )
-        dim = _resolve_latent_dim(
-            latent_dim=latent_dim,
-            n_components=n_components,
-            default=2,
-        )
+        dim = _resolve_latent_dim(latent_dim=latent_dim, default=2)
         self.rembo_config = copy.deepcopy(rembo_config) if rembo_config is not None else REMBOConfig(n_components=dim, seed=seed)
         self.rembo = _clone_fitted_rembo(fitted_rembo) if fitted_rembo is not None else REMBOTransformer(self.rembo_config)
         if fitted_rembo is None:
@@ -393,7 +382,7 @@ class _BaseProjectedMixedSingleTaskGP(_BaseProjectedMixedModel):
         raise NotImplementedError
 
 
-class PCAMixedSingleTaskGP(_BaseProjectedMixedSingleTaskGP):
+class PCAGaussianMixedGPModel(_BaseProjectedMixedSingleTaskGP):
     """連続列だけ PCA 射影し、カテゴリ列を末尾に保持する MixedSingleTaskGP wrapper。"""
 
     def __init__(
@@ -408,7 +397,6 @@ class PCAMixedSingleTaskGP(_BaseProjectedMixedSingleTaskGP):
         input_transform: InputTransform | None = None,
         pca_config: PCAConfig | None = None,
         latent_dim: int | None = None,
-        n_components: int | None = None,
         fitted_pca: PCATransformer | None = None,
         category_counts: Optional[dict[int, int]] = None,
         base_model: MixedSingleTaskGP | None = None,
@@ -422,7 +410,7 @@ class PCAMixedSingleTaskGP(_BaseProjectedMixedSingleTaskGP):
             train_Yvar=train_Yvar,
             input_transform=input_transform,
         )
-        dim = _resolve_latent_dim(latent_dim=latent_dim, n_components=n_components, default=2)
+        dim = _resolve_latent_dim(latent_dim=latent_dim, default=2)
         self.pca_config = copy.deepcopy(pca_config) if pca_config is not None else PCAConfig(n_components=dim)
         self.pca = _clone_fitted_pca(fitted_pca) if fitted_pca is not None else PCATransformer(self.pca_config)
         if fitted_pca is None:
@@ -458,7 +446,7 @@ class PCAMixedSingleTaskGP(_BaseProjectedMixedSingleTaskGP):
         )
 
 
-class REMBOMixedSingleTaskGP(_BaseProjectedMixedSingleTaskGP):
+class REMBOGaussianMixedGPModel(_BaseProjectedMixedSingleTaskGP):
     """連続列だけ REMBO 射影し、カテゴリ列を末尾に保持する MixedSingleTaskGP wrapper。"""
 
     def __init__(
@@ -473,7 +461,6 @@ class REMBOMixedSingleTaskGP(_BaseProjectedMixedSingleTaskGP):
         input_transform: InputTransform | None = None,
         rembo_config: REMBOConfig | None = None,
         latent_dim: int | None = None,
-        n_components: int | None = None,
         fitted_rembo: REMBOTransformer | None = None,
         seed: int = 42,
         category_counts: Optional[dict[int, int]] = None,
@@ -488,7 +475,7 @@ class REMBOMixedSingleTaskGP(_BaseProjectedMixedSingleTaskGP):
             train_Yvar=train_Yvar,
             input_transform=input_transform,
         )
-        dim = _resolve_latent_dim(latent_dim=latent_dim, n_components=n_components, default=2)
+        dim = _resolve_latent_dim(latent_dim=latent_dim, default=2)
         self.rembo_config = copy.deepcopy(rembo_config) if rembo_config is not None else REMBOConfig(n_components=dim, seed=seed)
         self.rembo = _clone_fitted_rembo(fitted_rembo) if fitted_rembo is not None else REMBOTransformer(self.rembo_config)
         if fitted_rembo is None:

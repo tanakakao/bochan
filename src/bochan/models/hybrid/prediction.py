@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Sequence, Union
+from typing import Any, Sequence
 
 import torch
 from torch import Tensor
 
-from .specs import OutputSpec
-
-OutputIndex = Union[int, str]
+from .specs import OutputIndex, OutputSpec
 
 
 def _coerce_binary_threshold(
@@ -166,15 +164,4 @@ def predict_class(
     return torch.cat(out, dim=-1)
 
 
-def attach_prediction_methods(cls) -> None:
-    """HybridMultiOutputModel に prediction helper を追加する。"""
-
-    cls.predict_class_list = predict_class_list
-    cls.predict_class = predict_class
-
-
-__all__ = [
-    "attach_prediction_methods",
-    "predict_class",
-    "predict_class_list",
-]
+__all__ = ["predict_class", "predict_class_list"]

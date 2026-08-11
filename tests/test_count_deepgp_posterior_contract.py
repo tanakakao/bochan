@@ -7,12 +7,12 @@ import pytest
 import torch
 
 from bochan.models.regression.non_gaussian.negative_binomial.deep.negative_binomial_deepgp import (
-    NegativeBinomialDeepGPModel,
-    NegativeBinomialMixedDeepGPModel,
+    DeepNegativeBinomialGPModel,
+    DeepNegativeBinomialMixedGPModel,
 )
 from bochan.models.regression.non_gaussian.poisson.deep.poisson_deepgp import (
-    PoissonDeepGPModel,
-    PoissonMixedDeepGPModel,
+    DeepPoissonGPModel,
+    DeepPoissonMixedGPModel,
 )
 
 
@@ -30,7 +30,7 @@ def _make_continuous_model(model_cls: type) -> object:
         train_X=train_x,
         train_Y=_make_count_targets(train_x),
         hidden_dim=3,
-        list_hidden_dims=[3],
+        hidden_dims=[3],
         num_inducing=5,
     ).eval()
 
@@ -51,13 +51,13 @@ def _make_mixed_model(model_cls: type) -> object:
 
 
 CONTINUOUS_FACTORIES: list[tuple[str, Callable[[], object]]] = [
-    ("poisson", lambda: _make_continuous_model(PoissonDeepGPModel)),
-    ("negative_binomial", lambda: _make_continuous_model(NegativeBinomialDeepGPModel)),
+    ("poisson", lambda: _make_continuous_model(DeepPoissonGPModel)),
+    ("negative_binomial", lambda: _make_continuous_model(DeepNegativeBinomialGPModel)),
 ]
 
 MIXED_FACTORIES: list[tuple[str, Callable[[], object]]] = [
-    ("poisson_mixed", lambda: _make_mixed_model(PoissonMixedDeepGPModel)),
-    ("negative_binomial_mixed", lambda: _make_mixed_model(NegativeBinomialMixedDeepGPModel)),
+    ("poisson_mixed", lambda: _make_mixed_model(DeepPoissonMixedGPModel)),
+    ("negative_binomial_mixed", lambda: _make_mixed_model(DeepNegativeBinomialMixedGPModel)),
 ]
 
 

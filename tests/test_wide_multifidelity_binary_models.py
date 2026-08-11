@@ -267,7 +267,7 @@ def test_mixed_binary_multifidelity_preserves_categories_and_fidelity() -> None:
         fidelity_values=[0.25, 0.5, 1.0],
         target_fidelity=1.0,
         input_transform=transform,
-        num_inducing_points=8,
+        num_inducing=8,
     )
     model.eval()
 

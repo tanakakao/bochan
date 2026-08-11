@@ -685,7 +685,7 @@ boundary近傍のmassとpredictive quantileを確認します。
 |---|---|
 | continuous base | BoTorch `SingleTaskGP` |
 | mixed base | BoTorch `MixedSingleTaskGP` |
-| mixed Kronecker multitask | `MixedKroneckerMultiTaskGP` |
+| mixed Kronecker multitask | `GaussianMixedKroneckerMultiTaskGP` |
 | high-dimensional | SAAS、PCA、REMBO、VAE wrapper |
 | deep | DeepGP、Deep Kernel wrapper |
 | robust | heteroscedastic、relevance-pursuit wrapper |

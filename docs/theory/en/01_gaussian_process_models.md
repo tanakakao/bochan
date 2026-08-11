@@ -767,7 +767,7 @@ Representative wrappers include:
 - `BinaryClassificationGPModel`;
 - `MulticlassClassificationGPModel`;
 - `OrdinalGPModel`;
-- `DeepGPModel`;
+- `DeepGaussianGPModel`;
 - `HybridMultiOutputModel`.
 
 ### 15.3 Posterior conventions in the current codebase

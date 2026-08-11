@@ -16,8 +16,8 @@ from botorch.optim.optimize import optimize_acqf, optimize_acqf_mixed
 
 from bochan.models.classification.binary.base import MultiOutputBinaryClassificationModel
 from bochan.models.classification.binary.robust import (
-    OutlierRelevancePursuitBinaryClassificationGPModel,
-    OutlierRelevancePursuitBinaryClassificationMixedGPModel,
+    RobustRelevancePursuitBinaryClassificationGPModel,
+    RobustRelevancePursuitBinaryClassificationMixedGPModel,
 )
 from tests._binary_classification_multi_output_variant_utils import assert_multi_output_wrapper_training
 from tests.test_binary_classification_base_multi_output import (
@@ -56,7 +56,7 @@ def create_rrp_multi_output_binary_model_bundle(
 ) -> dict[str, Any]:
     train_x, train_y, bounds = make_multi_output_binary_toy_data(n=n, d=d, cat=cat, m=m)
     cat_dims = [train_x.shape[-1] - 1] if cat else []
-    model_cls = OutlierRelevancePursuitBinaryClassificationMixedGPModel if cat else OutlierRelevancePursuitBinaryClassificationGPModel
+    model_cls = RobustRelevancePursuitBinaryClassificationMixedGPModel if cat else RobustRelevancePursuitBinaryClassificationGPModel
 
     models: list[Any] = []
     for j in range(train_y.shape[-1]):

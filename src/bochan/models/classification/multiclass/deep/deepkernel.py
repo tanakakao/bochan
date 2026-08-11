@@ -177,14 +177,14 @@ class _DeepKernelMulticlassSVGP(ApproximateGP):
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
         inducing_points: Optional[Tensor] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
     ) -> None:
         self.num_classes = int(num_classes)
         batch_shape = torch.Size([self.num_classes])
         inducing_points = select_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
             num_classes=self.num_classes,
         )
@@ -248,7 +248,7 @@ class _DeepKernelMixedMulticlassSVGP(ApproximateGP):
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
         inducing_points: Optional[Tensor] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
     ) -> None:
         self.num_classes = int(num_classes)
@@ -259,7 +259,7 @@ class _DeepKernelMixedMulticlassSVGP(ApproximateGP):
 
         inducing_points = select_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
             num_classes=self.num_classes,
         )
@@ -332,7 +332,7 @@ class DeepKernelMulticlassClassificationGPModel(_BaseMulticlassClassificationMod
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         temperature: float = 1.0,
@@ -356,7 +356,7 @@ class DeepKernelMulticlassClassificationGPModel(_BaseMulticlassClassificationMod
             mean_module=mean_module,
             covar_module=covar_module,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
         )
         likelihood = likelihood or SoftmaxLikelihood(
@@ -372,7 +372,7 @@ class DeepKernelMulticlassClassificationGPModel(_BaseMulticlassClassificationMod
             num_classes=num_classes,
             input_transform=input_transform,
             cat_dims=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             temperature=temperature,
         )
@@ -397,7 +397,7 @@ class DeepKernelMulticlassClassificationMixedGPModel(_BaseMulticlassClassificati
         feature_extractor: Optional[nn.Module] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         temperature: float = 1.0,
@@ -425,7 +425,7 @@ class DeepKernelMulticlassClassificationMixedGPModel(_BaseMulticlassClassificati
             mean_module=mean_module,
             covar_module=covar_module,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
         )
         likelihood = likelihood or SoftmaxLikelihood(
@@ -441,7 +441,7 @@ class DeepKernelMulticlassClassificationMixedGPModel(_BaseMulticlassClassificati
             num_classes=num_classes,
             input_transform=input_transform,
             cat_dims=cat_dims,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             temperature=temperature,
         )

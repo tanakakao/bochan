@@ -9,8 +9,8 @@ PCA / REMBO の射影器は ``bochan.models.components.decomposition``、
 raw/preproject/projected 管理は ``bochan.models.components.projected`` に寄せる。
 
 Notes:
-    - 外部 API は ``n_components`` に統一する。
-    - 旧 API の ``latent_dim`` は ``__init__`` 引数から削除する。
+    - 外部 API は ``latent_dim`` に統一する。
+    - PCAConfig / REMBOConfig 内部では ``n_components`` を使う。
     - mixed wrapper 内部では、カテゴリ列の offset として ``projected_dim`` を使う。
 """
 
@@ -102,7 +102,7 @@ def _resolve_pca_config(
     n_components: Optional[int],
     default: int,
 ) -> PCAConfig:
-    """PCAConfig と n_components の指定を一元的に解決する。
+    """PCAConfig と latent_dim の指定を一元的に解決する。
 
     ``pca_config`` が与えられた場合はそれを優先する。ただし、同時に
     ``n_components`` も指定されている場合は、値の不一致をエラーにする。
@@ -130,7 +130,7 @@ def _resolve_rembo_config(
     default: int,
     seed: int,
 ) -> REMBOConfig:
-    """REMBOConfig と n_components の指定を一元的に解決する。
+    """REMBOConfig と latent_dim の指定を一元的に解決する。
 
     ``rembo_config`` が与えられた場合はそれを優先する。ただし、同時に
     ``n_components`` も指定されている場合は、値の不一致をエラーにする。
@@ -253,9 +253,9 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
         train_Y: Tensor,
         *,
         num_classes: Optional[int] = None,
-        n_components: Optional[int] = 2,
+        latent_dim: Optional[int] = 2,
         pca_config: Optional[PCAConfig] = None,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         fix_first_cutpoint: bool = True,
         init_gap: float = 1.0,
@@ -275,11 +275,10 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
         )
         self.pca_config = _resolve_pca_config(
             pca_config=pca_config,
-            n_components=n_components,
+            n_components=latent_dim,
             default=2,
         )
         self.projected_dim = int(self.pca_config.n_components)
-        self.n_components = self.projected_dim
         # 内部互換用。外部 API からは latent_dim を削除する。
         self.latent_dim = self.projected_dim
 
@@ -289,7 +288,7 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
         self._projected_train_X = self._project_preprojected_inputs(self.preproject_train_input).detach().clone()
 
         resolved_num_classes = None if num_classes is None else int(num_classes)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.fix_first_cutpoint = bool(fix_first_cutpoint)
         self.init_gap = float(init_gap)
@@ -302,7 +301,7 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
             train_X=self.projected_train_input,
             train_Y=train_Y,
             num_classes=resolved_num_classes,
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,
@@ -322,7 +321,7 @@ class PCAOrdinalGPModel(_BaseProjectedOrdinalGP):
             train_Y=train_Y,
             num_classes=self.num_classes,
             pca_config=copy.deepcopy(self.pca_config),
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,
@@ -345,10 +344,10 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
         train_Y: Tensor,
         *,
         num_classes: Optional[int] = None,
-        n_components: Optional[int] = 2,
+        latent_dim: Optional[int] = 2,
         rembo_config: Optional[REMBOConfig] = None,
         seed: int = 42,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         fix_first_cutpoint: bool = True,
         init_gap: float = 1.0,
@@ -368,12 +367,11 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
         )
         self.rembo_config = _resolve_rembo_config(
             rembo_config=rembo_config,
-            n_components=n_components,
+            n_components=latent_dim,
             default=2,
             seed=seed,
         )
         self.projected_dim = int(self.rembo_config.n_components)
-        self.n_components = self.projected_dim
         # 内部互換用。外部 API からは latent_dim を削除する。
         self.latent_dim = self.projected_dim
 
@@ -383,7 +381,7 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
         self._projected_train_X = self._project_preprojected_inputs(self.preproject_train_input).detach().clone()
 
         resolved_num_classes = None if num_classes is None else int(num_classes)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.fix_first_cutpoint = bool(fix_first_cutpoint)
         self.init_gap = float(init_gap)
@@ -396,7 +394,7 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
             train_X=self.projected_train_input,
             train_Y=train_Y,
             num_classes=resolved_num_classes,
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,
@@ -416,7 +414,7 @@ class REMBOOrdinalGPModel(_BaseProjectedOrdinalGP):
             train_Y=train_Y,
             num_classes=self.num_classes,
             rembo_config=copy.deepcopy(self.rembo_config),
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,
@@ -552,9 +550,9 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         cat_dims: Sequence[int] = (),
         category_counts: Optional[dict[int, int]] = None,
         cont_kernel: str = "matern52",
-        n_components: Optional[int] = 2,
+        latent_dim: Optional[int] = 2,
         pca_config: Optional[PCAConfig] = None,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         fix_first_cutpoint: bool = True,
         init_gap: float = 1.0,
@@ -576,11 +574,10 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         )
         self.pca_config = _resolve_pca_config(
             pca_config=pca_config,
-            n_components=n_components,
+            n_components=latent_dim,
             default=2,
         )
         self.projected_dim = int(self.pca_config.n_components)
-        self.n_components = self.projected_dim
         # 内部互換用。外部 API からは latent_dim を削除する。
         self.latent_dim = self.projected_dim
 
@@ -591,7 +588,7 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
 
         resolved_num_classes = None if num_classes is None else int(num_classes)
         self.cont_kernel = str(cont_kernel)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.fix_first_cutpoint = bool(fix_first_cutpoint)
         self.init_gap = float(init_gap)
@@ -608,7 +605,7 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
             cat_dims=remapped_cat_dims,
             category_counts=self._make_remapped_counts(),
             cont_kernel=self.cont_kernel,
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,
@@ -632,7 +629,7 @@ class PCAOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
             category_counts=copy.deepcopy(self.category_counts),
             cont_kernel=self.cont_kernel,
             pca_config=copy.deepcopy(self.pca_config),
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,
@@ -658,10 +655,10 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         cat_dims: Sequence[int] = (),
         category_counts: Optional[dict[int, int]] = None,
         cont_kernel: str = "matern52",
-        n_components: Optional[int] = 2,
+        latent_dim: Optional[int] = 2,
         rembo_config: Optional[REMBOConfig] = None,
         seed: int = 42,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         fix_first_cutpoint: bool = True,
         init_gap: float = 1.0,
@@ -683,12 +680,11 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
         )
         self.rembo_config = _resolve_rembo_config(
             rembo_config=rembo_config,
-            n_components=n_components,
+            n_components=latent_dim,
             default=2,
             seed=seed,
         )
         self.projected_dim = int(self.rembo_config.n_components)
-        self.n_components = self.projected_dim
         # 内部互換用。外部 API からは latent_dim を削除する。
         self.latent_dim = self.projected_dim
 
@@ -699,7 +695,7 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
 
         resolved_num_classes = None if num_classes is None else int(num_classes)
         self.cont_kernel = str(cont_kernel)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.fix_first_cutpoint = bool(fix_first_cutpoint)
         self.init_gap = float(init_gap)
@@ -716,7 +712,7 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
             cat_dims=remapped_cat_dims,
             category_counts=self._make_remapped_counts(),
             cont_kernel=self.cont_kernel,
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,
@@ -740,7 +736,7 @@ class REMBOOrdinalMixedGPModel(_BaseProjectedOrdinalMixedGP):
             category_counts=copy.deepcopy(self.category_counts),
             cont_kernel=self.cont_kernel,
             rembo_config=copy.deepcopy(self.rembo_config),
-            inducing_points_num=self.inducing_points_num,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
             fix_first_cutpoint=self.fix_first_cutpoint,
             init_gap=self.init_gap,

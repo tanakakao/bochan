@@ -179,7 +179,7 @@ class _BaseBetaDeepGPModel(DeepGP, GPyTorchModel):
         return DeepApproximateMLL(base_mll)
 
 
-class BetaDeepGPModel(_BaseBetaDeepGPModel):
+class DeepBetaGPModel(_BaseBetaDeepGPModel):
     """true DeepGP + Beta likelihood の割合回帰モデル。"""
 
     def __init__(
@@ -189,7 +189,7 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
         *,
         hidden_dim: int = 4,
         num_inducing: int = 128,
-        list_hidden_dims: Sequence[int] | None = None,
+        hidden_dims: Sequence[int] | None = None,
         input_transform: InputTransform | None = None,
         likelihood: BetaLogLikelihood | None = None,
         link: BetaMeanLink = "sigmoid",
@@ -218,13 +218,13 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
         train_X_tf = apply_input_transform_for_training(
             train_X,
             self.input_transform,
-            name="BetaDeepGPModel.input_transform",
+            name="DeepBetaGPModel.input_transform",
         )
         d = train_X_tf.shape[-1]
-        if list_hidden_dims is None:
-            list_hidden_dims = [int(hidden_dim)]
-        list_hidden_dims = [int(h) for h in list_hidden_dims]
-        first_out = list_hidden_dims[0]
+        if hidden_dims is None:
+            hidden_dims = [int(hidden_dim)]
+        hidden_dims = [int(h) for h in hidden_dims]
+        first_out = hidden_dims[0]
         if str(layer_type).lower() == "deepkernel":
             self.hidden_layer = DeepKernelDeepGPHiddenLayer(
                 input_dims=d,
@@ -245,7 +245,7 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
             )
         current_dim = first_out
         layers = []
-        for h in list_hidden_dims[1:]:
+        for h in hidden_dims[1:]:
             layers.append(
                 DeepGPHiddenLayer(
                     input_dims=current_dim,
@@ -278,7 +278,7 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
         self.transformed_train_inputs = (train_X_tf.detach().clone(),)
         self.train_targets = train_Y
         self.hidden_dim = int(hidden_dim)
-        self.list_hidden_dims = list(list_hidden_dims)
+        self.hidden_dims = list(hidden_dims)
         self.num_inducing = int(num_inducing)
         self.layer_type = str(layer_type)
         self.mean_type = str(mean_type)
@@ -305,10 +305,10 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
         X: Tensor,
         Y: Tensor,
         **kwargs: Any,
-    ) -> BetaDeepGPModel:
+    ) -> DeepBetaGPModel:
         if kwargs.get("noise") is not None:
             raise NotImplementedError(
-                "BetaDeepGPModel does not support noise in "
+                "DeepBetaGPModel does not support noise in "
                 "condition_on_observations."
             )
         if isinstance(X, tuple):
@@ -333,7 +333,7 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
             train_Y=new_Y,
             hidden_dim=self.hidden_dim,
             num_inducing=self.num_inducing,
-            list_hidden_dims=self.list_hidden_dims,
+            hidden_dims=self.hidden_dims,
             input_transform=clone_input_transform(self.input_transform),
             likelihood=copy.deepcopy(self.likelihood),
             link=self.link,
@@ -355,7 +355,7 @@ class BetaDeepGPModel(_BaseBetaDeepGPModel):
         return new_model
 
 
-class BetaMixedDeepGPModel(_BaseBetaDeepGPModel):
+class DeepBetaMixedGPModel(_BaseBetaDeepGPModel):
     """mixed 入力版 true DeepGP + Beta likelihood。"""
 
     def __init__(
@@ -398,7 +398,7 @@ class BetaMixedDeepGPModel(_BaseBetaDeepGPModel):
             train_X,
             self.input_transform,
             cat_dims=self.cat_dims,
-            name="BetaMixedDeepGPModel.input_transform",
+            name="DeepBetaMixedGPModel.input_transform",
         )
         if str(layer_type).lower() == "deepkernel":
             self.hidden_layer = DeepKernelDeepMixedGPHiddenLayer(
@@ -461,4 +461,4 @@ class BetaMixedDeepGPModel(_BaseBetaDeepGPModel):
         return self.last_layer(self.hidden_layer(X))
 
 
-__all__ = ["BetaDeepGPModel", "BetaMixedDeepGPModel"]
+__all__ = ["DeepBetaGPModel", "DeepBetaMixedGPModel"]

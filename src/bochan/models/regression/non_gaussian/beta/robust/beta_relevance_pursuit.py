@@ -98,7 +98,7 @@ class SparseOutlierBetaLikelihood(BetaLogLikelihood, RelevancePursuitMixin):
         return super().log_marginal(observations, self._shift_train_function_dist(function_dist), *params, **kwargs)
 
 
-class OutlierRelevancePursuitBetaGPModel(BetaGPModel):
+class RobustRelevancePursuitBetaGPModel(BetaGPModel):
     """学習点 outlier RRP を持つ Beta GP 回帰モデル。"""
 
     def __init__(
@@ -109,7 +109,7 @@ class OutlierRelevancePursuitBetaGPModel(BetaGPModel):
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         outlier_indices: Optional[list[int]] = None,
@@ -143,7 +143,7 @@ class OutlierRelevancePursuitBetaGPModel(BetaGPModel):
             input_transform=input_transform,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
@@ -154,9 +154,9 @@ class OutlierRelevancePursuitBetaGPModel(BetaGPModel):
             clip_targets=clip_targets,
         )
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "OutlierRelevancePursuitBetaGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "RobustRelevancePursuitBetaGPModel":
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("noise is not supported for OutlierRelevancePursuitBetaGPModel.")
+            raise NotImplementedError("noise is not supported for RobustRelevancePursuitBetaGPModel.")
         if isinstance(X, tuple):
             X = X[0]
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
@@ -171,7 +171,7 @@ class OutlierRelevancePursuitBetaGPModel(BetaGPModel):
             input_transform=copy.deepcopy(self.input_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             covar_module=copy.deepcopy(self.model.covar_module),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=self.model.variational_strategy.inducing_points.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             outlier_indices=list(self.likelihood.support),
@@ -188,7 +188,7 @@ class OutlierRelevancePursuitBetaGPModel(BetaGPModel):
         return new_model
 
 
-class OutlierRelevancePursuitBetaMixedGPModel(BetaMixedGPModel):
+class RobustRelevancePursuitBetaMixedGPModel(BetaMixedGPModel):
     """mixed 入力版の Beta outlier RRP モデル。"""
 
     def __init__(
@@ -200,7 +200,7 @@ class OutlierRelevancePursuitBetaMixedGPModel(BetaMixedGPModel):
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         outlier_indices: Optional[list[int]] = None,
@@ -235,7 +235,7 @@ class OutlierRelevancePursuitBetaMixedGPModel(BetaMixedGPModel):
             input_transform=input_transform,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
@@ -247,4 +247,4 @@ class OutlierRelevancePursuitBetaMixedGPModel(BetaMixedGPModel):
         )
 
 
-__all__ = ["SparseOutlierBetaLikelihood", "OutlierRelevancePursuitBetaGPModel", "OutlierRelevancePursuitBetaMixedGPModel"]
+__all__ = ["SparseOutlierBetaLikelihood", "RobustRelevancePursuitBetaGPModel", "RobustRelevancePursuitBetaMixedGPModel"]

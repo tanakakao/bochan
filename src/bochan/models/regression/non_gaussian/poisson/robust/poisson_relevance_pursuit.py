@@ -118,7 +118,7 @@ class SparseOutlierPoissonLikelihood(PoissonLogLikelihood, RelevancePursuitMixin
         return super().log_marginal(observations, function_dist, *params, **kwargs)
 
 
-class OutlierRelevancePursuitPoissonGPModel(PoissonGPModel):
+class RobustRelevancePursuitPoissonGPModel(PoissonGPModel):
     """学習点 outlier RRP を持つ Poisson GP 回帰モデル。
 
     Notes:
@@ -134,7 +134,7 @@ class OutlierRelevancePursuitPoissonGPModel(PoissonGPModel):
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         outlier_indices: Optional[list[int]] = None,
@@ -161,7 +161,7 @@ class OutlierRelevancePursuitPoissonGPModel(PoissonGPModel):
             input_transform=input_transform,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
@@ -169,9 +169,9 @@ class OutlierRelevancePursuitPoissonGPModel(PoissonGPModel):
             min_rate=min_rate,
         )
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "OutlierRelevancePursuitPoissonGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "RobustRelevancePursuitPoissonGPModel":
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("noise is not supported for OutlierRelevancePursuitPoissonGPModel.")
+            raise NotImplementedError("noise is not supported for RobustRelevancePursuitPoissonGPModel.")
         if isinstance(X, tuple):
             X = X[0]
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
@@ -186,7 +186,7 @@ class OutlierRelevancePursuitPoissonGPModel(PoissonGPModel):
             input_transform=copy.deepcopy(self.input_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             covar_module=copy.deepcopy(self.model.covar_module),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=self.model.variational_strategy.inducing_points.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             outlier_indices=list(self.likelihood.support),
@@ -200,7 +200,7 @@ class OutlierRelevancePursuitPoissonGPModel(PoissonGPModel):
         return new_model
 
 
-class OutlierRelevancePursuitPoissonMixedGPModel(PoissonMixedGPModel):
+class RobustRelevancePursuitPoissonMixedGPModel(PoissonMixedGPModel):
     """mixed 入力版の Poisson outlier RRP モデル。"""
 
     def __init__(
@@ -212,7 +212,7 @@ class OutlierRelevancePursuitPoissonMixedGPModel(PoissonMixedGPModel):
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         outlier_indices: Optional[list[int]] = None,
@@ -240,7 +240,7 @@ class OutlierRelevancePursuitPoissonMixedGPModel(PoissonMixedGPModel):
             input_transform=input_transform,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
@@ -248,9 +248,9 @@ class OutlierRelevancePursuitPoissonMixedGPModel(PoissonMixedGPModel):
             min_rate=min_rate,
         )
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "OutlierRelevancePursuitPoissonMixedGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "RobustRelevancePursuitPoissonMixedGPModel":
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("noise is not supported for OutlierRelevancePursuitPoissonMixedGPModel.")
+            raise NotImplementedError("noise is not supported for RobustRelevancePursuitPoissonMixedGPModel.")
         if isinstance(X, tuple):
             X = X[0]
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
@@ -266,7 +266,7 @@ class OutlierRelevancePursuitPoissonMixedGPModel(PoissonMixedGPModel):
             input_transform=copy.deepcopy(self.input_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             covar_module=copy.deepcopy(self.model.covar_module),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=self.model.variational_strategy.inducing_points.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             outlier_indices=list(self.likelihood.support),
@@ -282,6 +282,6 @@ class OutlierRelevancePursuitPoissonMixedGPModel(PoissonMixedGPModel):
 
 __all__ = [
     "SparseOutlierPoissonLikelihood",
-    "OutlierRelevancePursuitPoissonGPModel",
-    "OutlierRelevancePursuitPoissonMixedGPModel",
+    "RobustRelevancePursuitPoissonGPModel",
+    "RobustRelevancePursuitPoissonMixedGPModel",
 ]

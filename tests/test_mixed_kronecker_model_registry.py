@@ -6,12 +6,12 @@ from bochan.models.classification.multiclass.base import (
     KroneckerMultiTaskMulticlassClassificationMixedGPModel,
 )
 from bochan.models.ordinal.base import KroneckerMultiTaskOrdinalMixedGPModel
-from bochan.models.regression.gaussian import MixedKroneckerMultiTaskGP
+from bochan.models.regression.gaussian import GaussianMixedKroneckerMultiTaskGP
 
 
 def test_mixed_kronecker_models_are_registered():
-    assert MODEL_REGISTRY["mixed"]["regression"]["kronecker"] is MixedKroneckerMultiTaskGP
-    assert MODEL_REGISTRY["mixed"]["multi_objective"]["kronecker"] is MixedKroneckerMultiTaskGP
+    assert MODEL_REGISTRY["mixed"]["regression"]["kronecker"] is GaussianMixedKroneckerMultiTaskGP
+    assert MODEL_REGISTRY["mixed"]["multi_objective"]["kronecker"] is GaussianMixedKroneckerMultiTaskGP
     assert (
         MODEL_REGISTRY["mixed"]["binary"]["kronecker"]
         is KroneckerMultiTaskBinaryClassificationMixedGPModel

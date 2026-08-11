@@ -8,10 +8,10 @@ import torch
 from torch import nn
 
 from bochan.models.classification.multiclass.deep.deepgp import (
-    MulticlassDeepGPModel,
+    DeepMulticlassClassificationGPModel,
 )
 from bochan.models.hybrid import HybridMultiOutputModel, OutputSpec
-from bochan.models.regression.gaussian.deep.deepgp import DeepGPModel
+from bochan.models.regression.gaussian.deep.deepgp import DeepGaussianGPModel
 from bochan.tabular import TabularBayesianOptimizer
 
 
@@ -130,19 +130,19 @@ def test_hybrid_class_probabilities_select_internal_output_axis() -> None:
 def test_hybrid_regression_multiclass_deepgp_posterior_preserves_batch_and_q() -> None:
     torch.manual_seed(0)
     train_X = torch.rand(12, 2, dtype=torch.double)
-    regression = DeepGPModel(
+    regression = DeepGaussianGPModel(
         train_X=train_X,
         train_Y=(train_X[:, :1] + train_X[:, 1:2]),
         input_transform=None,
         outcome_transform=None,
-        list_hidden_dims=[2],
+        hidden_dims=[2],
         num_inducing=4,
     )
-    multiclass = MulticlassDeepGPModel(
+    multiclass = DeepMulticlassClassificationGPModel(
         train_X=train_X,
         train_Y=torch.arange(12) % 3,
         hidden_dim=2,
-        list_hidden_dims=[2],
+        hidden_dims=[2],
         num_inducing=4,
     )
     hybrid = HybridMultiOutputModel(
@@ -198,7 +198,7 @@ def test_tabular_hybrid_deepgp_ehvi_candidate_generation() -> None:
                     "model_type": "deepgp",
                     "name": "property",
                     "model_kwargs": {
-                        "list_hidden_dims": [2],
+                        "hidden_dims": [2],
                         "num_inducing": 4,
                     },
                 },
@@ -208,7 +208,7 @@ def test_tabular_hybrid_deepgp_ehvi_candidate_generation() -> None:
                     "name": "quality",
                     "model_kwargs": {
                         "hidden_dim": 2,
-                        "list_hidden_dims": [2],
+                        "hidden_dims": [2],
                         "num_inducing": 4,
                     },
                 },

@@ -11,8 +11,8 @@ from bochan.acquisition.regression.active_learning import (
     qRegressionPredictiveEntropy,
 )
 from bochan.models.regression.non_gaussian.beta.deep.beta_deepgp import (
-    BetaDeepGPModel,
-    BetaMixedDeepGPModel,
+    DeepBetaGPModel,
+    DeepBetaMixedGPModel,
 )
 
 DTYPE = torch.double
@@ -23,14 +23,14 @@ def _make_beta_targets(train_x: torch.Tensor) -> torch.Tensor:
     return 0.1 + 0.8 * torch.sigmoid(latent)
 
 
-def _make_continuous_model() -> BetaDeepGPModel:
+def _make_continuous_model() -> DeepBetaGPModel:
     torch.manual_seed(0)
     train_x = torch.rand(10, 2, dtype=DTYPE)
-    model = BetaDeepGPModel(
+    model = DeepBetaGPModel(
         train_X=train_x,
         train_Y=_make_beta_targets(train_x),
         hidden_dim=3,
-        list_hidden_dims=[3],
+        hidden_dims=[3],
         num_inducing=5,
     )
     model.eval()
@@ -38,7 +38,7 @@ def _make_continuous_model() -> BetaDeepGPModel:
     return model
 
 
-def _make_mixed_model() -> BetaMixedDeepGPModel:
+def _make_mixed_model() -> DeepBetaMixedGPModel:
     torch.manual_seed(0)
     continuous_x = torch.rand(10, 2, dtype=DTYPE)
     categorical_x = torch.randint(0, 2, (10, 1)).to(dtype=DTYPE)
@@ -47,7 +47,7 @@ def _make_mixed_model() -> BetaMixedDeepGPModel:
         _make_beta_targets(continuous_x)
         + 0.05 * (categorical_x.squeeze(-1) - 0.5)
     ).clamp(0.05, 0.95)
-    model = BetaMixedDeepGPModel(
+    model = DeepBetaMixedGPModel(
         train_X=train_x,
         train_Y=train_y,
         cat_dims=[2],

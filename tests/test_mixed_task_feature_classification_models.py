@@ -57,7 +57,7 @@ def test_binary_mixed_multitask_posterior_optimizer_and_conditioning() -> None:
         task_feature=1,
         rank=2,
         input_transform=_continuous_transform(),
-        num_inducing_points=4,
+        num_inducing=4,
     )
     model.model.mean_module.constant.data.fill_(0.25)
     model.eval()
@@ -117,7 +117,7 @@ def test_ordinal_mixed_multitask_probabilities_and_conditioning() -> None:
         task_feature=1,
         rank=2,
         input_transform=_continuous_transform(),
-        inducing_points_num=4,
+        num_inducing=4,
     )
     model.eval()
     model.likelihood.eval()
@@ -210,7 +210,7 @@ def test_rejects_transforming_task_or_category_columns() -> None:
             num_tasks=2,
             task_feature=1,
             input_transform=Normalize(d=3),
-            num_inducing_points=4,
+            num_inducing=4,
         )
 
 

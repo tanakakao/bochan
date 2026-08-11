@@ -22,8 +22,8 @@ from botorch.optim.optimize import optimize_acqf, optimize_acqf_mixed
 
 from bochan.fit import fit_rrp_binary_classifier_mll
 from bochan.models.classification.binary.robust import (
-    OutlierRelevancePursuitBinaryClassificationGPModel,
-    OutlierRelevancePursuitBinaryClassificationMixedGPModel,
+    RobustRelevancePursuitBinaryClassificationGPModel,
+    RobustRelevancePursuitBinaryClassificationMixedGPModel,
 )
 from tests.test_binary_classification_base_single_output import (
     DEVICE,
@@ -210,14 +210,14 @@ def create_binary_rrp_model_bundle(
 
     torch.manual_seed(0)
     if cat:
-        model = OutlierRelevancePursuitBinaryClassificationMixedGPModel(
+        model = RobustRelevancePursuitBinaryClassificationMixedGPModel(
             train_X=train_x,
             train_Y=train_y,
             input_transform=input_transform,
             cat_dims=cat_dims,
         )
     else:
-        model = OutlierRelevancePursuitBinaryClassificationGPModel(
+        model = RobustRelevancePursuitBinaryClassificationGPModel(
             train_X=train_x,
             train_Y=train_y,
             input_transform=input_transform,

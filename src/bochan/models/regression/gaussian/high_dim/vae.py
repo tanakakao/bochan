@@ -19,10 +19,10 @@ from bochan.models.components.projected_utils import (
 )
 from bochan.models.components.vae import VAEProjector
 
-__all__ = ["VAESingleTaskGP"]
+__all__ = ["VAEGaussianGPModel"]
 
 
-class VAESingleTaskGP(Model):
+class VAEGaussianGPModel(Model):
     """Gaussian regression GP with a jointly trained VAE input representation.
 
     Public prediction and acquisition APIs receive raw-space inputs. Internally,
@@ -145,11 +145,6 @@ class VAESingleTaskGP(Model):
         return self._raw_train_X
 
     @property
-    def raw_train_X(self) -> Tensor:
-        """Backward-supported raw training input alias."""
-        return self.train_input_raw
-
-    @property
     def train_inputs(self) -> tuple[Tensor]:
         """Return raw-space training inputs in BoTorch tuple form."""
         return (self.train_input_raw,)
@@ -160,19 +155,9 @@ class VAESingleTaskGP(Model):
         return (self.train_input_raw,)
 
     @property
-    def train_X(self) -> Tensor:
-        """Return raw-space training inputs."""
-        return self.train_input_raw
-
-    @property
     def train_targets(self) -> Tensor:
         """Return original-scale training targets."""
         return self._train_targets
-
-    @property
-    def train_Y(self) -> Tensor:
-        """Return original-scale training targets."""
-        return self.train_targets
 
     @property
     def preproject_train_input(self) -> Tensor:
@@ -319,7 +304,7 @@ class VAESingleTaskGP(Model):
         return None
 
     @staticmethod
-    def fit(model: VAESingleTaskGP, **kwargs: Any):
+    def fit(model: VAEGaussianGPModel, **kwargs: Any):
         """Fit ``model`` with the dedicated full-batch joint objective."""
         from bochan.fit.vae import fit_vae_gp
 

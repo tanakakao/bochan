@@ -1,9 +1,9 @@
-from .deepgp import DeepGPModel, DeepMixedGPModel
-from .deepkernel_configurable import DeepKernelGPModel, DeepKernelMixedGPModel
-from .deepkerneldeepgp import DeepKernelDeepGPModel, DeepKernelDeepMixedGPModel
+from .deepgp import DeepGaussianGPModel, DeepGaussianMixedGPModel
+from .deepkernel_configurable import DeepKernelGaussianGPModel, DeepKernelGaussianMixedGPModel
+from .deepkerneldeepgp import DeepKernelDeepGaussianGPModel, DeepKernelDeepGaussianMixedGPModel
 
 __all__ = [
-    "DeepGPModel", "DeepMixedGPModel",
-    "DeepKernelGPModel", "DeepKernelMixedGPModel",
-    "DeepKernelDeepGPModel", "DeepKernelDeepMixedGPModel"
+    "DeepGaussianGPModel", "DeepGaussianMixedGPModel",
+    "DeepKernelGaussianGPModel", "DeepKernelGaussianMixedGPModel",
+    "DeepKernelDeepGaussianGPModel", "DeepKernelDeepGaussianMixedGPModel"
 ]

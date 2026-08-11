@@ -158,6 +158,19 @@ class MultiOutputMulticlassProbsPosterior(Posterior):
     def predict_class(self) -> Tensor:
         return self.mean.argmax(dim=-1)
 
+    def _extended_shape(
+        self,
+        sample_shape: torch.Size = torch.Size(),
+    ) -> torch.Size:
+        return torch.Size(sample_shape) + torch.Size(self.mean.shape[:-1])
+
+    @property
+    def batch_shape(self) -> torch.Size:
+        mean = self.mean
+        if mean.ndim <= 3:
+            return torch.Size()
+        return torch.Size(mean.shape[:-3])
+
 
 class MultiOutputMulticlassClassificationModel(Model):
     """

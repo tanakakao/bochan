@@ -32,7 +32,7 @@ class _MultiTaskOrdinalLatentGP(_OrdinalLatentGP):
         num_tasks: int,
         task_feature: int = -1,
         rank: int = 1,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         mean_module: Mean | None = None,
@@ -52,7 +52,7 @@ class _MultiTaskOrdinalLatentGP(_OrdinalLatentGP):
             raise ValueError(f"task_feature={task_feature} is out of bounds for input dim {d}.")
 
         if inducing_points is None:
-            m = min(int(inducing_points_num), n)
+            m = min(int(num_inducing), n)
             perm = torch.randperm(n, device=train_X.device)[:m]
             inducing_points = train_X[perm].clone()
         else:
@@ -65,7 +65,7 @@ class _MultiTaskOrdinalLatentGP(_OrdinalLatentGP):
 
         super().__init__(
             train_X=train_X,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
@@ -114,7 +114,7 @@ class MultiTaskOrdinalGPModel(OrdinalGPModel):
         num_tasks: int,
         task_feature: int = -1,
         rank: int = 1,
-        inducing_points_num: int = 128,
+        num_inducing: int = 128,
         inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         mean_module: Mean | None = None,
@@ -155,7 +155,7 @@ class MultiTaskOrdinalGPModel(OrdinalGPModel):
         input_transform = _prepare_input_transform(input_transform, raw_train_X)
 
         if inducing_points is None:
-            m = min(int(inducing_points_num), raw_train_X.shape[-2])
+            m = min(int(num_inducing), raw_train_X.shape[-2])
             perm = torch.randperm(raw_train_X.shape[-2], device=raw_train_X.device)[:m]
             raw_inducing_points = raw_train_X[perm].clone()
         else:
@@ -200,7 +200,7 @@ class MultiTaskOrdinalGPModel(OrdinalGPModel):
             num_tasks=num_tasks,
             task_feature=task_feature_pos,
             rank=rank,
-            inducing_points_num=inducing_points_num,
+            num_inducing=num_inducing,
             inducing_points=inducing_points_tf,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
@@ -236,7 +236,7 @@ class MultiTaskOrdinalGPModel(OrdinalGPModel):
         self.num_tasks = int(num_tasks)
         self.task_feature = int(task_feature_pos)
         self.rank = int(rank)
-        self.inducing_points_num = int(inducing_points_num)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
 
         self.eps = float(eps)
@@ -304,7 +304,7 @@ class MultiTaskOrdinalGPModel(OrdinalGPModel):
             num_tasks=self.num_tasks,
             task_feature=self.task_feature,
             rank=self.rank,
-            inducing_points_num=self.model.variational_strategy.inducing_points.shape[-2],
+            num_inducing=self.model.variational_strategy.inducing_points.shape[-2],
             inducing_points=self.inducing_points_raw.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             mean_module=copy.deepcopy(self.model.mean_module),

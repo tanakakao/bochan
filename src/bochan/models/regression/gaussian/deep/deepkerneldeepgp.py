@@ -2,7 +2,7 @@ from typing import List, Optional, Sequence, Union
 from botorch.models.transforms.outcome import OutcomeTransform, Standardize
 from botorch.models.transforms.input import InputTransform
 from botorch.utils.transforms import normalize_indices
-from .deepgp import DeepGPModel, DeepMixedGPModel
+from .deepgp import DeepGaussianGPModel, DeepGaussianMixedGPModel
 from bochan.models.components.layers import DeepKernelDeepGPHiddenLayer, DeepKernelDeepMixedGPHiddenLayer
 from bochan.models.components.layers.feature_extractor import LargeFeatureExtractor, SkipLargeFeatureExtractor
 import warnings
@@ -31,7 +31,7 @@ def _make_deepkernel_feature_extractor(input_dim: int, ext_type: str, hidden_dim
     )
 
 
-class DeepKernelDeepGPModel(DeepGPModel):
+class DeepKernelDeepGaussianGPModel(DeepGaussianGPModel):
     """
     Deep Gaussian Processモデルクラス。
 
@@ -48,7 +48,7 @@ class DeepKernelDeepGPModel(DeepGPModel):
         input_transform: Union[str, InputTransform, None] = "DEFAULT",
         outcome_transform: Union[str, OutcomeTransform, None] = "DEFAULT",
         ext_type="DEFAULT",
-        list_hidden_dims=[10, 10],
+        hidden_dims=[10, 10],
         kernel_hidden_dims: Optional[Sequence[int]] = None,
     ):
         super().__init__(
@@ -58,24 +58,24 @@ class DeepKernelDeepGPModel(DeepGPModel):
             likelihood,
             input_transform,
             outcome_transform,
-            list_hidden_dims,
+            hidden_dims,
         )
         num_outputs = train_Y.shape[-1]
         self.last_layer = DeepKernelDeepGPHiddenLayer(
-            input_dims=list_hidden_dims[-1],
+            input_dims=hidden_dims[-1],
             output_dims=None if num_outputs == 1 else num_outputs,
             ext_type=ext_type,
             mean_type="constant",
         )
         self.last_layer.feature_extractor = _make_deepkernel_feature_extractor(
-            input_dim=list_hidden_dims[-1],
+            input_dim=hidden_dims[-1],
             ext_type=ext_type,
             hidden_dims=kernel_hidden_dims,
         )
         self.kernel_hidden_dims = None if kernel_hidden_dims is None else [int(h) for h in kernel_hidden_dims]
 
 
-class DeepKernelDeepMixedGPModel(DeepMixedGPModel):
+class DeepKernelDeepGaussianMixedGPModel(DeepGaussianMixedGPModel):
     """
     Deep Gaussian Processモデル（混合データ対応）。
 

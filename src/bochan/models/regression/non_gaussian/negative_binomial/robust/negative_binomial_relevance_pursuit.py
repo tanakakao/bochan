@@ -102,7 +102,7 @@ class SparseOutlierNegativeBinomialLikelihood(NegativeBinomialLogLikelihood, Rel
         return super().log_marginal(observations, self._shift_train_function_dist(function_dist), *params, **kwargs)
 
 
-class OutlierRelevancePursuitNegativeBinomialGPModel(NegativeBinomialGPModel):
+class RobustRelevancePursuitNegativeBinomialGPModel(NegativeBinomialGPModel):
     """学習点 outlier RRP を持つ Negative Binomial GP 回帰モデル。"""
 
     def __init__(
@@ -113,7 +113,7 @@ class OutlierRelevancePursuitNegativeBinomialGPModel(NegativeBinomialGPModel):
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         outlier_indices: Optional[list[int]] = None,
@@ -148,7 +148,7 @@ class OutlierRelevancePursuitNegativeBinomialGPModel(NegativeBinomialGPModel):
             input_transform=input_transform,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
@@ -159,9 +159,9 @@ class OutlierRelevancePursuitNegativeBinomialGPModel(NegativeBinomialGPModel):
             min_total_count=min_total_count,
         )
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "OutlierRelevancePursuitNegativeBinomialGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "RobustRelevancePursuitNegativeBinomialGPModel":
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("noise is not supported for OutlierRelevancePursuitNegativeBinomialGPModel.")
+            raise NotImplementedError("noise is not supported for RobustRelevancePursuitNegativeBinomialGPModel.")
         if isinstance(X, tuple):
             X = X[0]
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
@@ -176,7 +176,7 @@ class OutlierRelevancePursuitNegativeBinomialGPModel(NegativeBinomialGPModel):
             input_transform=copy.deepcopy(self.input_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             covar_module=copy.deepcopy(self.model.covar_module),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=self.model.variational_strategy.inducing_points.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             outlier_indices=list(self.likelihood.support),
@@ -193,7 +193,7 @@ class OutlierRelevancePursuitNegativeBinomialGPModel(NegativeBinomialGPModel):
         return new_model
 
 
-class OutlierRelevancePursuitNegativeBinomialMixedGPModel(NegativeBinomialMixedGPModel):
+class RobustRelevancePursuitNegativeBinomialMixedGPModel(NegativeBinomialMixedGPModel):
     """mixed 入力版の Negative Binomial outlier RRP モデル。"""
 
     def __init__(
@@ -205,7 +205,7 @@ class OutlierRelevancePursuitNegativeBinomialMixedGPModel(NegativeBinomialMixedG
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         outlier_indices: Optional[list[int]] = None,
@@ -241,7 +241,7 @@ class OutlierRelevancePursuitNegativeBinomialMixedGPModel(NegativeBinomialMixedG
             input_transform=input_transform,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
@@ -255,6 +255,6 @@ class OutlierRelevancePursuitNegativeBinomialMixedGPModel(NegativeBinomialMixedG
 
 __all__ = [
     "SparseOutlierNegativeBinomialLikelihood",
-    "OutlierRelevancePursuitNegativeBinomialGPModel",
-    "OutlierRelevancePursuitNegativeBinomialMixedGPModel",
+    "RobustRelevancePursuitNegativeBinomialGPModel",
+    "RobustRelevancePursuitNegativeBinomialMixedGPModel",
 ]

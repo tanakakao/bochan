@@ -27,7 +27,7 @@ def _gamma_model() -> GammaGPModel:
     model = GammaGPModel(
         train_X=train_x,
         train_Y=train_y,
-        num_inducing_points=5,
+        num_inducing=5,
     )
     model.eval()
     model.likelihood.eval()

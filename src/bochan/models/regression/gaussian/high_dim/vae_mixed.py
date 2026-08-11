@@ -20,10 +20,10 @@ from bochan.models.components.projected_utils import (
 )
 from bochan.models.components.vae import VAEProjector
 
-__all__ = ["VAEMixedSingleTaskGP"]
+__all__ = ["VAEGaussianMixedGPModel"]
 
 
-class VAEMixedSingleTaskGP(_BaseProjectedMixedModel):
+class VAEGaussianMixedGPModel(_BaseProjectedMixedModel):
     """Mixed Gaussian regression GP with a jointly trained VAE projection.
 
     Only continuous columns are passed through the VAE. Integer-coded
@@ -365,7 +365,7 @@ class VAEMixedSingleTaskGP(_BaseProjectedMixedModel):
         return None
 
     @staticmethod
-    def fit(model: "VAEMixedSingleTaskGP", **kwargs: Any):
+    def fit(model: "VAEGaussianMixedGPModel", **kwargs: Any):
         """Fit ``model`` with the dedicated full-batch joint objective."""
         from bochan.fit.vae import fit_vae_gp
 

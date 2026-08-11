@@ -9,11 +9,11 @@ raw-space の入力を保持します。一方、``input_transform`` は必要�
 ``forward`` または ``posterior`` の内部で適用します。
 
 公開クラス:
-    DeepGPModel: 連続入力向けの DeepGP 回帰モデル。
-    DeepMixedGPModel: 連続値 + カテゴリ値の混合入力向け DeepGP 回帰モデル。
+    DeepGaussianGPModel: 連続入力向けの DeepGP 回帰モデル。
+    DeepGaussianMixedGPModel: 連続値 + カテゴリ値の混合入力向け DeepGP 回帰モデル。
 
 使用例:
-    >>> model = DeepGPModel(train_X, train_Y, list_hidden_dims=[16, 16])
+    >>> model = DeepGaussianGPModel(train_X, train_Y, hidden_dims=[16, 16])
     >>> mll = model.make_mll(beta=1.0)
     >>> output = model(train_X)
     >>> loss = -mll(output, train_Y)
@@ -413,7 +413,7 @@ class _BaseDeepGPModel(DeepGP, GPyTorchModel):
             ``VariationalELBO`` を ``DeepApproximateMLL`` で包んだ MLL。
 
         Example:
-            >>> model = DeepGPModel(train_X, train_Y)
+            >>> model = DeepGaussianGPModel(train_X, train_Y)
             >>> mll = model.make_mll()
             >>> output = model(train_X)
             >>> loss = -mll(output, model.train_targets)
@@ -456,7 +456,7 @@ class _BaseDeepGPModel(DeepGP, GPyTorchModel):
 # ============================================================
 
 
-class DeepGPModel(_BaseDeepGPModel):
+class DeepGaussianGPModel(_BaseDeepGPModel):
     """連続入力向けの Deep Gaussian Process 回帰モデル。
 
     このモデルは、連続値の設計変数を対象とします。学習入力は
@@ -482,7 +482,7 @@ class DeepGPModel(_BaseDeepGPModel):
         outcome_transform: 目的変数変換。``"DEFAULT"`` では
             ``Standardize(m=train_Y.shape[-1])`` を作成する。``"NONE"`` または
             ``None`` では目的変数変換を無効化する。
-        list_hidden_dims: hidden layer の出力次元リスト。デフォルトは ``[10]``。
+        hidden_dims: hidden layer の出力次元リスト。デフォルトは ``[10]``。
             各要素につき 1 つの DeepGP hidden layer を作成する。
         model_type: モデル構造の指定。``"DEFAULT"`` では通常の層状 DeepGP、
             ``"skip"`` では元入力を skip-supported layer に再注入する。
@@ -507,10 +507,11 @@ class DeepGPModel(_BaseDeepGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         train_Yvar: Tensor | None = None,
+        *,
         likelihood=None,
         input_transform: InputTransformArg = "DEFAULT",
         outcome_transform: OutcomeTransformArg = "DEFAULT",
-        list_hidden_dims: Sequence[int] | None = None,
+        hidden_dims: Sequence[int] | None = None,
         model_type: str = "DEFAULT",
         num_inducing: int = 128,
     ) -> None:
@@ -518,9 +519,9 @@ class DeepGPModel(_BaseDeepGPModel):
 
         input_dim = train_X.shape[-1]
         num_outputs = train_Y.shape[-1]
-        hidden_dims = list(list_hidden_dims) if list_hidden_dims is not None else [10]
+        hidden_dims = list(hidden_dims) if hidden_dims is not None else [10]
         if len(hidden_dims) == 0:
-            raise ValueError("list_hidden_dims には少なくとも1つの要素が必要です。")
+            raise ValueError("hidden_dims には少なくとも1つの要素が必要です。")
 
         train_Y, train_Yvar = self._setup_transforms(
             train_X=train_X,
@@ -614,7 +615,7 @@ class DeepGPModel(_BaseDeepGPModel):
 # ============================================================
 
 
-class DeepMixedGPModel(_BaseDeepGPModel):
+class DeepGaussianMixedGPModel(_BaseDeepGPModel):
     """連続値・カテゴリ値の混合入力向け DeepGP 回帰モデル。
 
     最初の layer には、連続列とカテゴリ列の両方を扱える mixed-aware な
@@ -658,6 +659,7 @@ class DeepMixedGPModel(_BaseDeepGPModel):
         train_Y: Tensor,
         cat_dims: Sequence[int],
         train_Yvar: Tensor | None = None,
+        *,
         likelihood=None,
         input_transform: InputTransformArg = "DEFAULT",
         outcome_transform: OutcomeTransformArg = "DEFAULT",

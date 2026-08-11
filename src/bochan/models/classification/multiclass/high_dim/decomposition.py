@@ -15,7 +15,6 @@ from bochan.models.components.decomposition import (
     REMBOTransformer,
 )
 from bochan.models.components.multiclass import (
-    apply_input_transform_for_eval,
     apply_input_transform_for_training,
     check_categorical_columns_unchanged,
     clone_input_transform,
@@ -23,6 +22,10 @@ from bochan.models.components.multiclass import (
     infer_num_classes,
     normalize_dims,
     prepare_class_targets,
+)
+from bochan.models.components.projected_utils import (
+    _apply_input_transform_for_eval as apply_input_transform_for_eval,
+    flatten_projected_one_to_many_point_axes,
 )
 from bochan.models.classification.multiclass import (
     MulticlassClassificationGPModel,
@@ -52,34 +55,18 @@ def _clone_fitted_rembo(rembo: REMBOTransformer) -> REMBOTransformer:
 
 def _resolve_projected_dim(
     *,
-    n_components: Optional[int],
     latent_dim: int,
     input_dim: int,
     name: str,
 ) -> int:
-    """
-    PCA / REMBO の射影次元を決める。
-
-    `n_components` が明示されていない場合は、デフォルト `latent_dim=8` が
-    入力次元を超えても使えるように `input_dim` へ丸める。
-    `n_components` が明示されている場合は、指定ミスを検出するために例外にする。
-    """
+    """PCA / REMBO の射影次元を ``latent_dim`` から解決する。"""
     input_dim = int(input_dim)
     if input_dim <= 0:
         raise ValueError(f"{name}: input dimension must be positive.")
 
-    if n_components is None:
-        resolved = min(int(latent_dim), input_dim)
-    else:
-        resolved = int(n_components)
-
+    resolved = min(int(latent_dim), input_dim)
     if resolved <= 0:
-        raise ValueError(f"{name}: n_components / latent_dim must be positive. Got {resolved}.")
-    if resolved > input_dim:
-        raise ValueError(
-            f"{name}: n_components must be <= input dimension. "
-            f"Got n_components={resolved}, input_dim={input_dim}."
-        )
+        raise ValueError(f"{name}: latent_dim must be positive. Got {resolved}.")
     return resolved
 
 
@@ -157,7 +144,8 @@ class _ContinuousProjectedMulticlassModel(_BaseProjectedMulticlassModel):
     def transform_inputs(self, X: Tensor) -> Tensor:
         if X.shape[-1] == self.latent_dim:
             return X
-        return self.projector.transform(self._to_preprojection_space(X))
+        projected = self.projector.transform(self._to_preprojection_space(X))
+        return flatten_projected_one_to_many_point_axes(X, projected)
 
 
 class PCAMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
@@ -170,11 +158,10 @@ class PCAMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         *,
         num_classes: Optional[int] = None,
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         pca_config: Optional[PCAConfig] = None,
         projector: Optional[PCATransformer] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         **kwargs: Any,
     ) -> None:
         super().__init__()
@@ -183,7 +170,6 @@ class PCAMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         train_Y = prepare_class_targets(train_Y, train_X, num_classes=num_classes)
         self.input_dim_original = train_X.shape[-1]
         self.latent_dim = _resolve_projected_dim(
-            n_components=n_components,
             latent_dim=latent_dim,
             input_dim=self.input_dim_original,
             name=self.__class__.__name__,
@@ -204,14 +190,14 @@ class PCAMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
         self.num_classes = int(num_classes)
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
 
         self.base_model = MulticlassClassificationGPModel(
             train_X=projected_X,
             train_Y=train_Y,
             num_classes=num_classes,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             **kwargs,
         )
 
@@ -229,11 +215,10 @@ class REMBOMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         *,
         num_classes: Optional[int] = None,
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         rembo_config: Optional[REMBOConfig] = None,
         projector: Optional[REMBOTransformer] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         seed: int = 42,
         **kwargs: Any,
     ) -> None:
@@ -243,7 +228,6 @@ class REMBOMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         train_Y = prepare_class_targets(train_Y, train_X, num_classes=num_classes)
         self.input_dim_original = train_X.shape[-1]
         self.latent_dim = _resolve_projected_dim(
-            n_components=n_components,
             latent_dim=latent_dim,
             input_dim=self.input_dim_original,
             name=self.__class__.__name__,
@@ -252,7 +236,7 @@ class REMBOMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         pre_X = apply_input_transform_for_training(train_X, self.input_transform, name='REMBOMulticlassClassificationGPModel.input_transform')
 
         if projector is None:
-            cfg = rembo_config or REMBOConfig(n_components=self.latent_dim, seed=seed)
+            cfg = rembo_config or REMBOConfig(latent_dim=self.latent_dim, seed=seed)
             projector = REMBOTransformer(cfg)
             projector.fit(pre_X)
         self.projector = projector
@@ -264,7 +248,7 @@ class REMBOMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
         self.num_classes = int(num_classes)
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.seed = int(seed)
 
         self.base_model = MulticlassClassificationGPModel(
@@ -272,7 +256,7 @@ class REMBOMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
             train_Y=train_Y,
             num_classes=num_classes,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             **kwargs,
         )
 
@@ -298,7 +282,8 @@ class _MixedProjectedMulticlassModel(_BaseProjectedMulticlassModel):
         return torch.cat([x_cont, x_cat], dim=-1)
 
     def transform_inputs(self, X: Tensor) -> Tensor:
-        return self._to_internal(X)
+        internal = self._to_internal(X)
+        return flatten_projected_one_to_many_point_axes(X, internal)
 
 
 class PCAMulticlassClassificationMixedGPModel(_MixedProjectedMulticlassModel):
@@ -312,11 +297,10 @@ class PCAMulticlassClassificationMixedGPModel(_MixedProjectedMulticlassModel):
         cat_dims: Sequence[int],
         num_classes: Optional[int] = None,
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         pca_config: Optional[PCAConfig] = None,
         projector: Optional[PCATransformer] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         **kwargs: Any,
     ) -> None:
         super().__init__()
@@ -327,7 +311,6 @@ class PCAMulticlassClassificationMixedGPModel(_MixedProjectedMulticlassModel):
         self.cat_dims = normalize_dims(cat_dims, self.input_dim_original)
         self.cont_dims = get_cont_dims(self.input_dim_original, self.cat_dims)
         self.latent_dim = _resolve_projected_dim(
-            n_components=n_components,
             latent_dim=latent_dim,
             input_dim=len(self.cont_dims),
             name=self.__class__.__name__,
@@ -356,7 +339,7 @@ class PCAMulticlassClassificationMixedGPModel(_MixedProjectedMulticlassModel):
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
         self.num_classes = int(num_classes)
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
 
         self.base_model = MulticlassClassificationMixedGPModel(
             train_X=projected_X,
@@ -364,7 +347,7 @@ class PCAMulticlassClassificationMixedGPModel(_MixedProjectedMulticlassModel):
             cat_dims=latent_cat_dims,
             num_classes=num_classes,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             **kwargs,
         )
 
@@ -380,11 +363,10 @@ class REMBOMulticlassClassificationMixedGPModel(PCAMulticlassClassificationMixed
         cat_dims: Sequence[int],
         num_classes: Optional[int] = None,
         latent_dim: int = 2,
-        n_components: Optional[int] = None,
         rembo_config: Optional[REMBOConfig] = None,
         projector: Optional[REMBOTransformer] = None,
         input_transform: Optional[InputTransform] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         seed: int = 42,
         **kwargs: Any,
     ) -> None:
@@ -396,7 +378,6 @@ class REMBOMulticlassClassificationMixedGPModel(PCAMulticlassClassificationMixed
         self.cat_dims = normalize_dims(cat_dims, self.input_dim_original)
         self.cont_dims = get_cont_dims(self.input_dim_original, self.cat_dims)
         self.latent_dim = _resolve_projected_dim(
-            n_components=n_components,
             latent_dim=latent_dim,
             input_dim=len(self.cont_dims),
             name=self.__class__.__name__,
@@ -411,7 +392,7 @@ class REMBOMulticlassClassificationMixedGPModel(PCAMulticlassClassificationMixed
         check_categorical_columns_unchanged(train_X, pre_X, self.cat_dims)
 
         if projector is None:
-            cfg = rembo_config or REMBOConfig(n_components=self.latent_dim, seed=seed)
+            cfg = rembo_config or REMBOConfig(latent_dim=self.latent_dim, seed=seed)
             projector = REMBOTransformer(cfg)
             projector.fit(pre_X[..., self.cont_dims])
         self.projector = projector
@@ -425,7 +406,7 @@ class REMBOMulticlassClassificationMixedGPModel(PCAMulticlassClassificationMixed
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
         self.num_classes = int(num_classes)
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.seed = int(seed)
 
         self.base_model = MulticlassClassificationMixedGPModel(
@@ -434,7 +415,7 @@ class REMBOMulticlassClassificationMixedGPModel(PCAMulticlassClassificationMixed
             cat_dims=latent_cat_dims,
             num_classes=num_classes,
             input_transform=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             **kwargs,
         )
 

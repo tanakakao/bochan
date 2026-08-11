@@ -35,7 +35,7 @@ def test_kronecker_multitask_binary_shapes_probabilities_and_elbo():
         train_X=train_X,
         train_Y=train_Y,
         rank=2,
-        num_inducing_points=4,
+        num_inducing=4,
     )
 
     posterior = model.posterior(train_X[:3])
@@ -82,7 +82,7 @@ def test_kronecker_multitask_ordinal_shapes_probabilities_and_elbo():
         train_Y=train_Y,
         num_classes=3,
         rank=2,
-        num_inducing_points=4,
+        num_inducing=4,
     )
 
     posterior = model.posterior(train_X[:3])

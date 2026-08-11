@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """PCA / REMBO などの固定射影 wrapper の共通 base。
 
 このモジュールは、regression / classification / ordinal に共通する
@@ -9,14 +7,16 @@ raw-space / preproject-space / projected-space の管理を担当する。
 ``high_dim/decomposition.py`` に残す。
 """
 
-from typing import Any, Optional, Sequence
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import Any
 
 import torch
-from torch import Tensor
-
 from botorch.models.model import Model
-from botorch.models.transforms.input import InputTransform
 from gpytorch.mlls import ExactMarginalLogLikelihood
+from gpytorch.models import ExactGP
+from torch import Tensor
 
 from bochan.models.components.projected_utils import (
     _apply_input_transform_for_eval,
@@ -24,8 +24,8 @@ from bochan.models.components.projected_utils import (
     _check_categorical_columns_unchanged,
     _get_cont_dims,
     _normalize_dims,
+    flatten_projected_one_to_many_point_axes,
 )
-
 
 __all__ = [
     "_BaseProjectedModel",
@@ -80,31 +80,45 @@ class _BaseProjectedModel(Model):
         return getattr(self.base_model, "batch_shape", torch.Size())
 
     def make_mll(self, **kwargs: Any):
-        """内部 ``base_model`` 用の MLL を構築する。
+        """内部 ``base_model`` の種類に応じた MLL を構築する。
 
-        ``base_model`` が独自の ``make_mll`` を持つ場合は、``beta`` などの
-        タスク固有引数を含めてそのまま委譲する。ordinal projected model では
-        ``make_ordinal_mll`` を使い、それ以外の exact GP では ``beta`` を無視して
-        ``ExactMarginalLogLikelihood`` を構築する。
+        Exact Gaussian GP では ``beta`` は適用対象ではないため無視する。
+        Variational / task-specific model は、その model が公開する ``make_mll``
+        または ordinal MLL builder に固有引数を渡す。TypeError による互換
+        fallback は行わず、model family ごとの contract を明示する。
         """
-        if hasattr(self.base_model, "make_mll"):
-            return self.base_model.make_mll(**kwargs)
+        if isinstance(self.base_model, ExactGP):
+            mll_kwargs = dict(kwargs)
+            mll_kwargs.pop("beta", None)
+            if mll_kwargs:
+                names = ", ".join(sorted(mll_kwargs))
+                raise TypeError(
+                    "Exact projected models received unsupported MLL keyword arguments: "
+                    f"{names}."
+                )
+            return ExactMarginalLogLikelihood(
+                self.base_model.likelihood,
+                self.base_model,
+            )
 
-        mll_kwargs = dict(kwargs)
-        mll_kwargs.pop("beta", None)
+        base_make_mll = getattr(self.base_model, "make_mll", None)
+        if callable(base_make_mll):
+            return base_make_mll(**kwargs)
 
         if hasattr(self, "ordinal_likelihood"):
             from bochan.fit import make_ordinal_mll
 
-            return make_ordinal_mll(self, **mll_kwargs)
+            return make_ordinal_mll(self, **kwargs)
 
-        if mll_kwargs:
-            names = ", ".join(sorted(mll_kwargs))
+        if kwargs:
+            names = ", ".join(sorted(kwargs))
             raise TypeError(
-                "Exact projected models received unsupported MLL keyword arguments: "
-                f"{names}."
+                f"{type(self.base_model).__name__} received unsupported MLL keyword "
+                f"arguments: {names}."
             )
-        return ExactMarginalLogLikelihood(self.base_model.likelihood, self.base_model)
+        raise TypeError(
+            f"{type(self.base_model).__name__} does not define an MLL construction contract."
+        )
 
     @property
     def train_input_raw(self) -> Tensor:
@@ -142,18 +156,6 @@ class _BaseProjectedModel(Model):
     def train_targets(self) -> Tensor:
         return self._train_targets
 
-    @property
-    def raw_train_X(self) -> Tensor:
-        return self.train_input_raw
-
-    @property
-    def train_X(self) -> Tensor:
-        return self.train_input_raw
-
-    @property
-    def train_Y(self) -> Tensor:
-        return self.train_targets
-
     def _to_preprojection_space(self, X: Tensor) -> Tensor:
         if isinstance(X, tuple):
             X = X[0]
@@ -178,8 +180,10 @@ class _BaseProjectedModel(Model):
         raise NotImplementedError
 
     def transform_inputs(self, X: Tensor) -> Tensor:
-        X_pre = self._to_preprojection_space(X)
-        return self._project_preprojected_inputs(X_pre)
+        X_raw = X[0] if isinstance(X, tuple) else X
+        X_pre = self._to_preprojection_space(X_raw)
+        projected = self._project_preprojected_inputs(X_pre)
+        return flatten_projected_one_to_many_point_axes(X_raw, projected)
 
     def posterior(self, X: Tensor, *args: Any, **kwargs: Any):
         return self.base_model.posterior(self.transform_inputs(X), *args, **kwargs)
@@ -189,15 +193,12 @@ class _BaseProjectedModel(Model):
 
     def set_train_data(
         self,
-        inputs: Optional[Tensor | tuple[Tensor, ...]] = None,
-        targets: Optional[Tensor] = None,
+        inputs: Tensor | tuple[Tensor, ...] | None = None,
+        targets: Tensor | None = None,
         strict: bool = True,
     ) -> None:
         if inputs is not None:
-            if torch.is_tensor(inputs):
-                X_raw = inputs
-            else:
-                X_raw = inputs[0]
+            X_raw = inputs if torch.is_tensor(inputs) else inputs[0]
             X_raw = torch.as_tensor(
                 X_raw,
                 device=self.train_input_raw.device,
@@ -238,7 +239,7 @@ class _BaseProjectedMixedModel(_BaseProjectedModel):
         *,
         input_dim: int,
         cat_dims: Sequence[int],
-        category_counts: Optional[dict[int, int]] = None,
+        category_counts: dict[int, int] | None = None,
     ) -> None:
         if len(cat_dims) == 0:
             raise ValueError("cat_dims must be specified for mixed projected models.")
@@ -249,17 +250,21 @@ class _BaseProjectedMixedModel(_BaseProjectedModel):
         self.cont_dims_original = list(self.cont_dims)
         if len(self.cont_dims) == 0:
             raise ValueError("At least one continuous dimension is required.")
-        self.category_counts = self._infer_category_counts(
-            getattr(self, "_raw_train_X", None),
-            category_counts=category_counts,
-        ) if getattr(self, "_raw_train_X", None) is not None else category_counts
+        self.category_counts = (
+            self._infer_category_counts(
+                getattr(self, "_raw_train_X", None),
+                category_counts=category_counts,
+            )
+            if getattr(self, "_raw_train_X", None) is not None
+            else category_counts
+        )
         self._ignore_X_dims_scaling_check = self.cat_dims
 
     def _infer_category_counts(
         self,
-        X: Optional[Tensor],
+        X: Tensor | None,
         *,
-        category_counts: Optional[dict[int, int]] = None,
+        category_counts: dict[int, int] | None = None,
     ) -> dict[int, int]:
         inferred: dict[int, int] = {}
         if category_counts is not None:
@@ -281,7 +286,7 @@ class _BaseProjectedMixedModel(_BaseProjectedModel):
         self,
         X: Tensor,
         *,
-        category_counts: Optional[dict[int, int]] = None,
+        category_counts: dict[int, int] | None = None,
     ) -> None:
         counts = self.category_counts if category_counts is None else category_counts
         if counts is None:
@@ -299,14 +304,18 @@ class _BaseProjectedMixedModel(_BaseProjectedModel):
                     f"got min={vals.min().item()}, max={vals.max().item()}."
                 )
 
-    def _project_continuous_and_concat_categorical(self, X_pre: Tensor, x_cont_projected: Tensor) -> Tensor:
+    def _project_continuous_and_concat_categorical(
+        self,
+        X_pre: Tensor,
+        x_cont_projected: Tensor,
+    ) -> Tensor:
         x_cat = X_pre[..., self.cat_dims]
         return torch.cat([x_cont_projected, x_cat], dim=-1)
 
     def _to_preprojection_space(self, X: Tensor) -> Tensor:
         X_pre = super()._to_preprojection_space(X)
         _check_categorical_columns_unchanged(
-            X=_BaseProjectedModel._to_preprojection_space(self, X) if False else X_pre,
+            X=X_pre,
             X_tf=X_pre,
             cat_dims=self.cat_dims,
         )

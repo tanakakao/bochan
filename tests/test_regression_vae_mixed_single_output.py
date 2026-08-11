@@ -7,7 +7,7 @@ from botorch.optim import optimize_acqf_mixed
 
 from bochan.api import BayesianOptimizer, FitConfig, ModelConfig
 from bochan.fit import VAEFitResult, fit_vae_gp
-from bochan.models.regression.gaussian.high_dim import VAEMixedSingleTaskGP
+from bochan.models.regression.gaussian.high_dim import VAEGaussianMixedGPModel
 
 DTYPE = torch.double
 CAT_DIMS = [1]
@@ -49,7 +49,7 @@ def make_continuous_only_normalize(bounds: torch.Tensor) -> Normalize:
 
 def test_vae_mixed_gp_projects_only_continuous_columns() -> None:
     train_X, train_Y, bounds = make_mixed_regression_data()
-    model = VAEMixedSingleTaskGP(
+    model = VAEGaussianMixedGPModel(
         train_X=train_X,
         train_Y=train_Y,
         cat_dims=CAT_DIMS,
@@ -135,7 +135,7 @@ def test_high_level_api_resolves_and_fits_mixed_vae_model() -> None:
 
     optimizer.fit(train_X, train_Y)
 
-    assert isinstance(optimizer.model, VAEMixedSingleTaskGP)
+    assert isinstance(optimizer.model, VAEGaussianMixedGPModel)
     assert isinstance(optimizer.bundle.fit_result, VAEFitResult)
     assert optimizer.bundle.input_type == "mixed"
     assert optimizer.bundle.mll is None

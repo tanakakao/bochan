@@ -100,7 +100,7 @@ class _BaseHeteroBinaryLevelSetAcquisition(_BinaryClassificationAcqBase):
         self.objective = objective
 
     def _get_latent_posterior(self, X: Tensor):
-        for name in ("latent_posterior", "posterior_latent", "posterior_f"):
+        for name in ("latent_posterior",):
             fn = getattr(self.model, name, None)
             if callable(fn):
                 return fn(X)
@@ -116,8 +116,6 @@ class _BaseHeteroBinaryLevelSetAcquisition(_BinaryClassificationAcqBase):
         raise AttributeError(
             "Latent posterior accessor was not found. Expected one of:\n"
             "  - model.latent_posterior(X)\n"
-            "  - model.posterior_latent(X)\n"
-            "  - model.posterior_f(X)\n"
             "  - model.model.posterior(X)\n"
             "  - model.gp_model.posterior(X)"
         )

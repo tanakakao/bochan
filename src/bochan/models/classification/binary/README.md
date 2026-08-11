@@ -30,13 +30,13 @@ cat_dims = [4]
 |---|---|---|
 | 標準SVGP | `BinaryClassificationGPModel` | `BinaryClassificationMixedGPModel` |
 | 相関ありblock-design multi-task | `KroneckerMultiTaskBinaryClassificationGPModel` | - |
-| DeepGP | `BinaryClassificationDeepGPModel` | `BinaryClassificationMixedDeepGPModel` |
+| DeepGP | `DeepBinaryClassificationGPModel` | `DeepBinaryClassificationMixedGPModel` |
 | DeepKernel | `DeepKernelBinaryClassificationGPModel` | `DeepKernelBinaryClassificationMixedGPModel` |
-| DeepKernel + DeepGP | `DeepKernelBinaryClassificationDeepGPModel` | `DeepKernelBinaryClassificationMixedDeepGPModel` |
+| DeepKernel + DeepGP | `DeepKernelDeepBinaryClassificationGPModel` | `DeepKernelDeepBinaryClassificationMixedGPModel` |
 | 高次元SAAS | `SaasBinaryClassificationGPModel` | `SaasBinaryClassificationMixedGPModel` |
 | PCA | `PCABinaryClassificationGPModel` | `PCABinaryClassificationMixedGPModel` |
 | REMBO | `REMBOBinaryClassificationGPModel` | `REMBOBinaryClassificationMixedGPModel` |
-| 外れラベルRRP | `OutlierRelevancePursuitBinaryClassificationGPModel` | `OutlierRelevancePursuitBinaryClassificationMixedGPModel` |
+| 外れラベルRRP | `RobustRelevancePursuitBinaryClassificationGPModel` | `RobustRelevancePursuitBinaryClassificationMixedGPModel` |
 | 不均一ノイズ | `HeteroscedasticBinaryClassificationGPModel` | `HeteroscedasticBinaryClassificationMixedGPModel` |
 
 基本方針は、まずbase modelを試し、不要変数が多い高次元問題ではSAAS、固定kernelでは表現力が不足する場合はDeepKernel / DeepGP、外れラベルが疑われる場合はRRPを検討します。
@@ -365,10 +365,10 @@ RRPは外れラベル候補を学習点単位で疎に推定します。説明�
 ```python
 from bochan.fit import fit_rrp_binary_classifier_mll
 from bochan.models.classification.binary.robust import (
-    OutlierRelevancePursuitBinaryClassificationGPModel,
+    RobustRelevancePursuitBinaryClassificationGPModel,
 )
 
-model = OutlierRelevancePursuitBinaryClassificationGPModel(
+model = RobustRelevancePursuitBinaryClassificationGPModel(
     train_X=train_X,
     train_Y=train_Y,
 )

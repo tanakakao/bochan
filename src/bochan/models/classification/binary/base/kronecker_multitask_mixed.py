@@ -52,7 +52,7 @@ class KroneckerMultiTaskBinaryClassificationMixedGPModel(
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         data_covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
     ) -> None:
@@ -86,7 +86,7 @@ class KroneckerMultiTaskBinaryClassificationMixedGPModel(
             input_transform=input_transform,
             mean_module=mean_module,
             data_covar_module=data_covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
         )
@@ -151,7 +151,7 @@ class KroneckerMultiTaskBinaryClassificationMixedGPModel(
             input_transform=copy.deepcopy(self.input_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             data_covar_module=copy.deepcopy(self.model.data_covar_module),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=self.inducing_points_raw.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
         )

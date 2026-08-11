@@ -6,14 +6,14 @@
 
 | 手法 | normal input | mixed input | 特徴 |
 |---|---|---|---|
-| PCA | `PCASingleTaskGP` | `PCAMixedSingleTaskGP` | データ分散を保つ線形射影を事前に固定 |
-| REMBO | `REMBOSingleTaskGP` | `REMBOMixedSingleTaskGP` | 固定ランダム射影による低次元化 |
-| SAAS | `SaasSingleTaskGP` | `SaasMixedSingleTaskGP` | 有効な少数変数をBayesianに選択 |
-| VAE | `VAESingleTaskGP` | `VAEMixedSingleTaskGP` | 入力復元と目的変数回帰を同時に考慮した非線形潜在表現 |
+| PCA | `PCAGaussianGPModel` | `PCAGaussianMixedGPModel` | データ分散を保つ線形射影を事前に固定 |
+| REMBO | `REMBOGaussianGPModel` | `REMBOGaussianMixedGPModel` | 固定ランダム射影による低次元化 |
+| SAAS | `SaasGaussianGPModel` | `SaasGaussianMixedGPModel` | 有効な少数変数をBayesianに選択 |
+| VAE | `VAEGaussianGPModel` | `VAEGaussianMixedGPModel` | 入力復元と目的変数回帰を同時に考慮した非線形潜在表現 |
 
 ## VAE-GP regression
 
-`VAESingleTaskGP`と`VAEMixedSingleTaskGP`は、VAEによる非線形な次元削減とGaussian GPを組み合わせたモデルです。
+`VAEGaussianGPModel`と`VAEGaussianMixedGPModel`は、VAEによる非線形な次元削減とGaussian GPを組み合わせたモデルです。
 
 学習時は、次の3項を同時に最小化します。
 
@@ -62,7 +62,7 @@ from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import Standardize
 
 from bochan.fit import fit_vae_gp
-from bochan.models.regression.gaussian.high_dim import VAESingleTaskGP
+from bochan.models.regression.gaussian.high_dim import VAEGaussianGPModel
 
 
 torch.manual_seed(0)
@@ -82,7 +82,7 @@ bounds = torch.stack(
     ]
 )
 
-model = VAESingleTaskGP(
+model = VAEGaussianGPModel(
     train_X=train_X,
     train_Y=train_Y,
     latent_dim=3,
@@ -125,7 +125,7 @@ from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import Standardize
 
 from bochan.fit import fit_vae_gp
-from bochan.models.regression.gaussian.high_dim import VAEMixedSingleTaskGP
+from bochan.models.regression.gaussian.high_dim import VAEGaussianMixedGPModel
 
 
 dtype = torch.double
@@ -152,7 +152,7 @@ bounds = torch.tensor(
     dtype=dtype,
 )
 
-model = VAEMixedSingleTaskGP(
+model = VAEGaussianMixedGPModel(
     train_X=train_X,
     train_Y=train_Y,
     cat_dims=cat_dims,
@@ -220,7 +220,7 @@ bo = BayesianOptimizer(
 bo.fit(train_X, train_Y)
 ```
 
-mixed inputでは`cat_dims`を指定すると、registryが`VAEMixedSingleTaskGP`を選択します。
+mixed inputでは`cat_dims`を指定すると、registryが`VAEGaussianMixedGPModel`を選択します。
 
 ```python
 bo = BayesianOptimizer(

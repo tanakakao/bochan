@@ -53,7 +53,7 @@ def _make_binary_model() -> KroneckerMultiTaskBinaryClassificationGPModel:
         train_X=train_X,
         train_Y=train_Y,
         rank=2,
-        num_inducing_points=4,
+        num_inducing=4,
     )
     # Avoid a perfectly symmetric zero-mean prior in the optimizer smoke test.
     model.model.mean_module.constant.data.fill_(0.35)
@@ -82,7 +82,7 @@ def _make_ordinal_model() -> KroneckerMultiTaskOrdinalGPModel:
         train_Y=train_Y,
         num_classes=3,
         rank=2,
-        num_inducing_points=4,
+        num_inducing=4,
     )
     model.eval()
     model.likelihood.eval()
@@ -109,7 +109,7 @@ def _make_multiclass_model() -> KroneckerMultiTaskMulticlassClassificationGPMode
         train_Y=train_Y,
         num_classes=3,
         rank=2,
-        num_inducing_points=4,
+        num_inducing=4,
     )
     model.eval()
     model.likelihood.eval()

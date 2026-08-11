@@ -39,9 +39,9 @@ def _walk_kernels(kernel: Kernel):
             yield module
 
 
-def test_binary_public_default_num_inducing_points_matches_multiclass() -> None:
+def test_binary_public_default_num_inducing_matches_multiclass() -> None:
     signature = inspect.signature(BinaryClassificationGPModel.__init__)
-    assert signature.parameters["num_inducing_points"].default == 128
+    assert signature.parameters["num_inducing"].default == 128
 
     train_X, train_Y = _make_binary_data()
     model = BinaryClassificationGPModel(train_X=train_X, train_Y=train_Y)
@@ -63,7 +63,7 @@ def test_binary_public_default_kernel_is_matern_2p5() -> None:
 
 def test_binary_mixed_defaults_match_multiclass_structure() -> None:
     signature = inspect.signature(BinaryClassificationMixedGPModel.__init__)
-    assert signature.parameters["num_inducing_points"].default == 128
+    assert signature.parameters["num_inducing"].default == 128
 
     train_cont, train_Y = _make_binary_data()
     category = torch.randint(0, 3, (train_cont.shape[0], 1)).to(train_cont)

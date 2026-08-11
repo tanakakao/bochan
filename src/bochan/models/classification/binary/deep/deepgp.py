@@ -25,7 +25,7 @@ Notes:
     - ``forward`` は変分学習用の latent distribution を返す。
     - ``posterior`` は latent 正規分布ではなく、クラス 1 確率を返す。
     - latent 関数上で定義された獲得関数を使う場合は、
-      ``latent_posterior`` / ``posterior_f`` を使う。
+      ``latent_posterior`` / ``latent_posterior`` を使う。
 """
 
 from __future__ import annotations
@@ -365,12 +365,6 @@ class _BaseDeepGPBinaryClassificationModel(DeepGP, GPyTorchModel):
             posterior = posterior_transform(posterior)
         return posterior
 
-    def posterior_latent(self, X, **kwargs):
-        return self.latent_posterior(X, **kwargs)
-
-    def posterior_f(self, X, **kwargs):
-        return self.latent_posterior(X, **kwargs)
-
     def predict_proba(self, X: Tensor) -> Tensor:
         """クラス 1 確率を予測する。
 
@@ -468,13 +462,13 @@ class _BaseDeepGPBinaryClassificationModel(DeepGP, GPyTorchModel):
 # ============================================================
 
 
-class BinaryClassificationDeepGPModel(_BaseDeepGPBinaryClassificationModel):
+class DeepBinaryClassificationGPModel(_BaseDeepGPBinaryClassificationModel):
     """連続入力向けの 2 値分類 DeepGP モデル。
 
     latent DeepGP と ``BernoulliLikelihood`` を組み合わせたモデルです。
     公開 ``posterior`` メソッドは、``SimpleBernoulliPosterior`` として
     クラス 1 確率を返します。latent GP posterior は
-    ``latent_posterior``、``posterior_latent``、または ``posterior_f`` から取得できます。
+    ``latent_posterior``、``latent_posterior``、または ``latent_posterior`` から取得できます。
 
     Args:
         train_X: raw-space の学習入力。形状は ``batch_shape x n x d`` または ``n x d``。
@@ -483,7 +477,7 @@ class BinaryClassificationDeepGPModel(_BaseDeepGPBinaryClassificationModel):
         input_transform: 任意の BoTorch input transform。raw-space 入力を
             ``train_inputs`` と ``train_inputs_raw`` に保持したまま、
             ``forward`` / ``posterior`` 内で適用する。
-        list_hidden_dims: hidden layer の出力次元リスト。デフォルトは ``[16]``。
+        hidden_dims: hidden layer の出力次元リスト。デフォルトは ``[16]``。
         model_type: モデル構造の指定。``"DEFAULT"`` では通常の層状 DeepGP、
             ``"skip"`` では元入力を skip-supported layer に再注入する。
         num_inducing: hidden layer の inducing point 数。
@@ -508,7 +502,7 @@ class BinaryClassificationDeepGPModel(_BaseDeepGPBinaryClassificationModel):
         train_Y: Tensor,
         likelihood: BernoulliLikelihood | None = None,
         input_transform: InputTransform | None = None,
-        list_hidden_dims: Sequence[int] | None = None,
+        hidden_dims: Sequence[int] | None = None,
         model_type: str = "DEFAULT",
         num_inducing: int = 128,
     ) -> None:
@@ -528,9 +522,9 @@ class BinaryClassificationDeepGPModel(_BaseDeepGPBinaryClassificationModel):
         )
         self.likelihood = likelihood or BernoulliLikelihood()
 
-        hidden_dims = list(list_hidden_dims) if list_hidden_dims is not None else [16]
+        hidden_dims = list(hidden_dims) if hidden_dims is not None else [16]
         if len(hidden_dims) == 0:
-            raise ValueError("list_hidden_dims には少なくとも1つの要素が必要です。")
+            raise ValueError("hidden_dims には少なくとも1つの要素が必要です。")
 
         self.use_skip = model_type.lower() == "skip"
         self.original_input_dim = train_X.shape[-1]
@@ -609,7 +603,7 @@ class BinaryClassificationDeepGPModel(_BaseDeepGPBinaryClassificationModel):
 # ============================================================
 
 
-class BinaryClassificationMixedDeepGPModel(_BaseDeepGPBinaryClassificationModel):
+class DeepBinaryClassificationMixedGPModel(_BaseDeepGPBinaryClassificationModel):
     """混合入力向けの 2 値分類 DeepGP モデル。
 
     連続列とカテゴリ列を同時に含む入力を扱います。最初の layer には

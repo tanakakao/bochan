@@ -272,7 +272,7 @@ class SparseOutlierSoftmaxLikelihood(SoftmaxLikelihood, RelevancePursuitMixin):
         return super().log_marginal(observations, function_dist, *params, **kwargs)
 
 
-class OutlierRelevancePursuitMulticlassClassificationGPModel(MulticlassClassificationGPModel):
+class RobustRelevancePursuitMulticlassClassificationGPModel(MulticlassClassificationGPModel):
     """学習点 outlier RRP を持つ多クラス分類 GP。"""
 
     def __init__(
@@ -284,7 +284,7 @@ class OutlierRelevancePursuitMulticlassClassificationGPModel(MulticlassClassific
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         outlier_indices: Optional[list[int]] = None,
@@ -314,14 +314,14 @@ class OutlierRelevancePursuitMulticlassClassificationGPModel(MulticlassClassific
             input_transform=input_transform,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             temperature=temperature,
         )
 
 
-class OutlierRelevancePursuitMulticlassClassificationMixedGPModel(MulticlassClassificationMixedGPModel):
+class RobustRelevancePursuitMulticlassClassificationMixedGPModel(MulticlassClassificationMixedGPModel):
     """mixed 入力版の多クラス outlier RRP 分類 GP。"""
 
     def __init__(
@@ -334,7 +334,7 @@ class OutlierRelevancePursuitMulticlassClassificationMixedGPModel(MulticlassClas
         input_transform: Optional[InputTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         outlier_indices: Optional[list[int]] = None,
@@ -365,7 +365,7 @@ class OutlierRelevancePursuitMulticlassClassificationMixedGPModel(MulticlassClas
             input_transform=input_transform,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             temperature=temperature,
@@ -374,6 +374,6 @@ class OutlierRelevancePursuitMulticlassClassificationMixedGPModel(MulticlassClas
 
 __all__ = [
     "SparseOutlierSoftmaxLikelihood",
-    "OutlierRelevancePursuitMulticlassClassificationGPModel",
-    "OutlierRelevancePursuitMulticlassClassificationMixedGPModel",
+    "RobustRelevancePursuitMulticlassClassificationGPModel",
+    "RobustRelevancePursuitMulticlassClassificationMixedGPModel",
 ]

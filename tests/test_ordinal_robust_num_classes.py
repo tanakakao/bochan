@@ -8,8 +8,8 @@ import torch
 from bochan.models.ordinal.robust import (
     HeteroscedasticOrdinalGPModel,
     HeteroscedasticOrdinalMixedGPModel,
-    OutlierRelevancePursuitOrdinalGPModel,
-    OutlierRelevancePursuitOrdinalMixedGPModel,
+    RobustRelevancePursuitOrdinalGPModel,
+    RobustRelevancePursuitOrdinalMixedGPModel,
 )
 from bochan.models.ordinal.robust import heteroscedastic as heteroscedastic_module
 from bochan.models.ordinal.robust import relevance_pursuit as relevance_pursuit_module
@@ -18,8 +18,8 @@ from bochan.models.ordinal.robust import relevance_pursuit as relevance_pursuit_
 DTYPE = torch.double
 DEVICE = torch.device("cpu")
 MODEL_CASES = (
-    pytest.param(OutlierRelevancePursuitOrdinalGPModel, False, False, id="rrp"),
-    pytest.param(OutlierRelevancePursuitOrdinalMixedGPModel, True, False, id="rrp-mixed"),
+    pytest.param(RobustRelevancePursuitOrdinalGPModel, False, False, id="rrp"),
+    pytest.param(RobustRelevancePursuitOrdinalMixedGPModel, True, False, id="rrp-mixed"),
     pytest.param(HeteroscedasticOrdinalGPModel, False, True, id="hetero"),
     pytest.param(HeteroscedasticOrdinalMixedGPModel, True, True, id="hetero-mixed"),
 )
@@ -48,7 +48,7 @@ def _model_kwargs(
     mixed: bool,
     heteroscedastic: bool,
 ) -> dict:
-    kwargs = {"inducing_points_num": min(4, train_x.shape[-2])}
+    kwargs = {"num_inducing": min(4, train_x.shape[-2])}
     if mixed:
         kwargs["cat_dims"] = [train_x.shape[-1] - 1]
     if heteroscedastic:
@@ -169,12 +169,12 @@ def test_robust_ordinal_model_keeps_explicit_num_classes(
 
 def test_direct_robust_module_imports_use_public_inference_classes() -> None:
     assert (
-        relevance_pursuit_module.OutlierRelevancePursuitOrdinalGPModel
-        is OutlierRelevancePursuitOrdinalGPModel
+        relevance_pursuit_module.RobustRelevancePursuitOrdinalGPModel
+        is RobustRelevancePursuitOrdinalGPModel
     )
     assert (
-        relevance_pursuit_module.OutlierRelevancePursuitOrdinalMixedGPModel
-        is OutlierRelevancePursuitOrdinalMixedGPModel
+        relevance_pursuit_module.RobustRelevancePursuitOrdinalMixedGPModel
+        is RobustRelevancePursuitOrdinalMixedGPModel
     )
     assert (
         heteroscedastic_module.HeteroscedasticOrdinalGPModel

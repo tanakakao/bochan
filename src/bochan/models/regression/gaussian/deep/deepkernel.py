@@ -474,7 +474,7 @@ class _BaseDeepKernelGPModel(DeepGP, GPyTorchModel):
         return self._num_outputs
 
 
-class DeepKernelGPModel(_BaseDeepKernelGPModel):
+class DeepKernelGaussianGPModel(_BaseDeepKernelGPModel):
     """
     連続入力向け Deep Kernel GP 回帰モデル。
     """
@@ -522,7 +522,7 @@ class DeepKernelGPModel(_BaseDeepKernelGPModel):
         self.to(train_X)
 
 
-class DeepKernelMixedGPModel(_BaseDeepKernelGPModel):
+class DeepKernelGaussianMixedGPModel(_BaseDeepKernelGPModel):
     """
     混合入力（連続 + カテゴリ）向け Deep Kernel GP 回帰モデル。
 

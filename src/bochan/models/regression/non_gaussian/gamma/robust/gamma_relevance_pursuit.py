@@ -142,7 +142,7 @@ class SparseOutlierGammaLikelihood(
         return super().log_marginal(observations, function_dist, *params, **kwargs)
 
 
-class OutlierRelevancePursuitGammaGPModel(GammaGPModel):
+class RobustRelevancePursuitGammaGPModel(GammaGPModel):
     """学習点 outlier RRP を持つ Gamma GP 回帰モデル。"""
 
     def __init__(
@@ -154,7 +154,7 @@ class OutlierRelevancePursuitGammaGPModel(GammaGPModel):
         outcome_transform: Optional[OutcomeTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         outlier_indices: Optional[list[int]] = None,
@@ -193,7 +193,7 @@ class OutlierRelevancePursuitGammaGPModel(GammaGPModel):
             outcome_transform=outcome_transform,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
@@ -204,9 +204,9 @@ class OutlierRelevancePursuitGammaGPModel(GammaGPModel):
             min_concentration=min_concentration,
         )
 
-    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "OutlierRelevancePursuitGammaGPModel":
+    def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> "RobustRelevancePursuitGammaGPModel":
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("noise is not supported for OutlierRelevancePursuitGammaGPModel.")
+            raise NotImplementedError("noise is not supported for RobustRelevancePursuitGammaGPModel.")
         if isinstance(X, tuple):
             X = X[0]
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
@@ -224,7 +224,7 @@ class OutlierRelevancePursuitGammaGPModel(GammaGPModel):
             outcome_transform=clone_outcome_transform(self.outcome_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             covar_module=copy.deepcopy(self.model.covar_module),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=self.model.variational_strategy.inducing_points.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             outlier_indices=list(self.likelihood.support),
@@ -241,7 +241,7 @@ class OutlierRelevancePursuitGammaGPModel(GammaGPModel):
         return new_model
 
 
-class OutlierRelevancePursuitGammaMixedGPModel(GammaMixedGPModel):
+class RobustRelevancePursuitGammaMixedGPModel(GammaMixedGPModel):
     """mixed 入力版の Gamma outlier RRP モデル。"""
 
     def __init__(
@@ -254,7 +254,7 @@ class OutlierRelevancePursuitGammaMixedGPModel(GammaMixedGPModel):
         outcome_transform: Optional[OutcomeTransform] = None,
         mean_module: Optional[Mean] = None,
         covar_module: Optional[Kernel] = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         outlier_indices: Optional[list[int]] = None,
@@ -294,7 +294,7 @@ class OutlierRelevancePursuitGammaMixedGPModel(GammaMixedGPModel):
             outcome_transform=outcome_transform,
             mean_module=mean_module,
             covar_module=covar_module,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             inducing_points=inducing_points,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
@@ -308,6 +308,6 @@ class OutlierRelevancePursuitGammaMixedGPModel(GammaMixedGPModel):
 
 __all__ = [
     "SparseOutlierGammaLikelihood",
-    "OutlierRelevancePursuitGammaGPModel",
-    "OutlierRelevancePursuitGammaMixedGPModel",
+    "RobustRelevancePursuitGammaGPModel",
+    "RobustRelevancePursuitGammaMixedGPModel",
 ]

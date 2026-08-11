@@ -152,14 +152,14 @@ class _LatentGammaSVGP(ApproximateGP):
         train_Y: Tensor,
         *,
         inducing_points: Tensor | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
     ) -> None:
         inducing_points = select_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
         variational_distribution = CholeskyVariationalDistribution(
@@ -191,7 +191,7 @@ class _LatentMixedGammaSVGP(ApproximateGP):
         *,
         cat_dims: Sequence[int],
         inducing_points: Tensor | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
@@ -203,7 +203,7 @@ class _LatentMixedGammaSVGP(ApproximateGP):
 
         inducing_points = select_inducing_points(
             train_X,
-            num_inducing_points=num_inducing_points,
+            num_inducing_points=num_inducing,
             inducing_points=inducing_points,
         )
         variational_distribution = CholeskyVariationalDistribution(
@@ -252,7 +252,7 @@ class _BaseGammaGPModel(ApproximateGPyTorchModel):
         outcome_transform: OutcomeTransform | None = None,
         train_Y_raw: Tensor | None = None,
         cat_dims: Sequence[int] | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         learn_inducing_locations: bool = True,
         link: GammaLink = "softplus",
         exp_clip: float = 20.0,
@@ -272,7 +272,7 @@ class _BaseGammaGPModel(ApproximateGPyTorchModel):
         )
         self.train_targets = prepare_positive_targets(train_Y, train_X, min_value=min_mean)
 
-        self.num_inducing_points = int(num_inducing_points)
+        self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.link = link
         self.exp_clip = float(exp_clip)
@@ -386,7 +386,7 @@ class GammaGPModel(_BaseGammaGPModel):
         outcome_transform: OutcomeTransform | None = None,
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         link: GammaLink = "softplus",
@@ -424,7 +424,7 @@ class GammaGPModel(_BaseGammaGPModel):
             train_X=train_X_tf,
             train_Y=train_Y,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
             covar_module=covar_module,
@@ -438,7 +438,7 @@ class GammaGPModel(_BaseGammaGPModel):
             outcome_transform=outcome_transform,
             train_Y_raw=raw_train_Y,
             cat_dims=None,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
             exp_clip=exp_clip,
@@ -467,7 +467,7 @@ class GammaGPModel(_BaseGammaGPModel):
             outcome_transform=clone_outcome_transform(self.outcome_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             covar_module=copy.deepcopy(self.model.covar_module),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=self.model.variational_strategy.inducing_points.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             link=self.link,
@@ -493,7 +493,7 @@ class GammaMixedGPModel(_BaseGammaGPModel):
         outcome_transform: OutcomeTransform | None = None,
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
-        num_inducing_points: int = 128,
+        num_inducing: int = 128,
         inducing_points: Tensor | None = None,
         learn_inducing_locations: bool = True,
         link: GammaLink = "softplus",
@@ -539,7 +539,7 @@ class GammaMixedGPModel(_BaseGammaGPModel):
             train_Y=train_Y,
             cat_dims=cat_dims,
             inducing_points=inducing_points,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             mean_module=mean_module,
             covar_module=covar_module,
@@ -553,7 +553,7 @@ class GammaMixedGPModel(_BaseGammaGPModel):
             outcome_transform=outcome_transform,
             train_Y_raw=raw_train_Y,
             cat_dims=cat_dims,
-            num_inducing_points=num_inducing_points,
+            num_inducing=num_inducing,
             learn_inducing_locations=learn_inducing_locations,
             link=link,
             exp_clip=exp_clip,

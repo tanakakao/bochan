@@ -33,7 +33,7 @@ def test_saas_ordinal_cutpoint_kwargs_are_respected() -> None:
         num_classes=3,
         fix_first_cutpoint=False,
         init_gap=0.5,
-        num_inducing_points=4,
+        num_inducing=4,
     )
 
     assert model.ordinal_likelihood.fix_first_cutpoint is False
@@ -49,8 +49,8 @@ def test_saas_ordinal_custom_likelihood_is_used() -> None:
         train_X=train_x,
         train_Y=train_y,
         num_classes=3,
-        ordinal_likelihood=likelihood,
-        num_inducing_points=4,
+        likelihood=likelihood,
+        num_inducing=4,
     )
 
     assert model.likelihood is likelihood
@@ -67,8 +67,8 @@ def test_saas_ordinal_mixed_custom_likelihood_is_used() -> None:
         train_Y=train_y,
         num_classes=3,
         cat_dims=[train_x.shape[-1] - 1],
-        ordinal_likelihood=likelihood,
-        num_inducing_points=4,
+        likelihood=likelihood,
+        num_inducing=4,
     )
 
     assert model.likelihood is likelihood
@@ -92,7 +92,7 @@ def test_saas_ordinal_rejects_invalid_inferred_labels(bad_y: torch.Tensor) -> No
         SaasOrdinalGPModel(
             train_X=train_x,
             train_Y=bad_y,
-            num_inducing_points=3,
+            num_inducing=3,
         )
 
 
@@ -104,7 +104,7 @@ def test_saas_ordinal_explicit_num_classes_allows_unobserved_classes() -> None:
         train_X=train_x,
         train_Y=train_y,
         num_classes=3,
-        num_inducing_points=3,
+        num_inducing=3,
     )
 
     assert model.num_classes == 3
@@ -120,5 +120,5 @@ def test_saas_ordinal_rejects_labels_outside_explicit_num_classes() -> None:
             train_X=train_x,
             train_Y=train_y,
             num_classes=3,
-            num_inducing_points=3,
+            num_inducing=3,
         )

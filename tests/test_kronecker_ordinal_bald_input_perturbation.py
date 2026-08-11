@@ -40,7 +40,7 @@ def _make_model(*, n_w: int = 4) -> KroneckerMultiTaskOrdinalGPModel:
         train_Y=train_Y,
         num_classes=3,
         rank=2,
-        num_inducing_points=4,
+        num_inducing=4,
         input_transform=input_transform,
     )
     model.eval()

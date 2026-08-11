@@ -15,7 +15,7 @@ from .deepkernel import (
 )
 
 
-class DeepKernelGPModel(_BaseDeepKernelGPModel):
+class DeepKernelGaussianGPModel(_BaseDeepKernelGPModel):
     """連続入力向け Deep Kernel GP 回帰モデル。
 
     Args:
@@ -63,7 +63,7 @@ class DeepKernelGPModel(_BaseDeepKernelGPModel):
         self.to(train_X)
 
 
-class DeepKernelMixedGPModel(_BaseDeepKernelGPModel):
+class DeepKernelGaussianMixedGPModel(_BaseDeepKernelGPModel):
     """混合入力（連続 + カテゴリ）向け Deep Kernel GP 回帰モデル。
 
     Args:
@@ -127,4 +127,4 @@ class DeepKernelMixedGPModel(_BaseDeepKernelGPModel):
         self.to(train_X)
 
 
-__all__ = ["DeepKernelGPModel", "DeepKernelMixedGPModel"]
+__all__ = ["DeepKernelGaussianGPModel", "DeepKernelGaussianMixedGPModel"]

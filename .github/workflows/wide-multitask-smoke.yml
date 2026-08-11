@@ -32,6 +32,7 @@ jobs:
             tests/test_wide_multitask_public_transform.py \
             tests/test_wide_multitask_acquisition_consistency.py \
             tests/test_wide_multitask_classification_acquisitions.py \
+            tests/test_acquisition_api_conventions.py \
             tests/test_classification_hypervolume_signatures.py \
             tests/test_api_objective_input_transform_defaults.py \
             tests/test_regression_straddle_input_perturbation_objective.py \
@@ -72,22 +73,22 @@ jobs:
           python -m pip install ruff
           set +e
           ruff check \
-            --per-file-ignores "src/bochan/acquisition/ordinal/bayesian_optimization/__init__.py:E402" \
-            --per-file-ignores "src/bochan/acquisition/ordinal/bayesian_optimization/__init__.py:I001" \
             src/bochan/acquisition/__init__.py \
+            src/bochan/acquisition/_api.py \
             src/bochan/acquisition/_nehvi_cache_root.py \
-            src/bochan/acquisition/classification_constraints.py \
             src/bochan/acquisition/feasible/wrapper.py \
+            src/bochan/acquisition/binary/bayesian_optimization/__init__.py \
+            src/bochan/acquisition/binary/bayesian_optimization/standard.py \
+            src/bochan/acquisition/multiclass/bayesian_optimization/__init__.py \
+            src/bochan/acquisition/multiclass/bayesian_optimization/standard.py \
             src/bochan/acquisition/multiclass/bayesian_optimization/nparego_observed_baseline.py \
-            src/bochan/acquisition/nsgaii_constraint_install.py \
             src/bochan/acquisition/objective/__init__.py \
             src/bochan/acquisition/objective/outcome_constraints.py \
             src/bochan/acquisition/objective/regression_perturbation.py \
             src/bochan/acquisition/ordinal/bayesian_optimization/__init__.py \
+            src/bochan/acquisition/ordinal/bayesian_optimization/standard.py \
             src/bochan/acquisition/ordinal/bayesian_optimization/_fixed_likelihood_graph.py \
             src/bochan/acquisition/ordinal/bayesian_optimization/_utility_defaults.py \
-            src/bochan/acquisition/ordinal_constraint_install.py \
-            src/bochan/acquisition/ordinal_multitask.py \
             src/bochan/acquisition/regression/active_learning/__init__.py \
             src/bochan/acquisition/regression/active_learning/integrated_variance.py \
             src/bochan/acquisition/regression/bayesian_optimization/__init__.py \
@@ -111,6 +112,7 @@ jobs:
             src/bochan/models/multitask/wide.py \
             src/bochan/models/regression/gamma/base/aligned.py \
             src/bochan/optim/__init__.py \
+            src/bochan/optim/nsgaii/__init__.py \
             src/bochan/optim/nsgaii/adapter.py \
             src/bochan/optim/nsgaii/constraints.py \
             src/bochan/optim/nsgaii/diversity.py \
@@ -126,6 +128,7 @@ jobs:
             src/bochan/serving/fastapi/schemas/tabular.py \
             src/bochan/serving/fastapi/stores/__init__.py \
             src/bochan/serving/fastapi/stores/tabular.py \
+            tests/test_acquisition_api_conventions.py \
             tests/test_gamma_fantasize.py \
             tests/test_wide_multitask_models.py \
             tests/test_wide_multitask_public_transform.py \

@@ -5,7 +5,9 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-import bochan.acquisition.ordinal.bayesian_optimization as ordinal_bo
+from bochan.acquisition.ordinal.bayesian_optimization._baseline import (
+    infer_multioutput_ordinal_train_y,
+)
 from bochan.api import (
     AcquisitionConfig,
     BayesianOptimizer,
@@ -124,19 +126,7 @@ def test_no_complete_ordinal_row_has_actionable_error() -> None:
         )
 
 
-def test_nparego_prefers_complete_wide_labels_over_long_targets(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_nparego(**kwargs):
-        captured.update(kwargs)
-        return SimpleNamespace()
-
-    monkeypatch.setattr(
-        ordinal_bo,
-        "_TBatchSafeMultiOutputOrdinalNParEGO",
-        fake_nparego,
-    )
-
+def test_nparego_prefers_complete_wide_labels_over_long_targets() -> None:
     train_Y_wide = torch.tensor(
         [
             [0.0, float("nan")],
@@ -152,17 +142,8 @@ def test_nparego_prefers_complete_wide_labels_over_long_targets(monkeypatch) -> 
         train_Y_wide=train_Y_wide,
         train_targets=torch.tensor([0.0, 1.0, 2.0, 1.0, 2.0, 0.0]),
     )
-    utility_values = [
-        torch.tensor([0.0, 1.0, 2.0], dtype=torch.double),
-        torch.tensor([0.0, 1.0, 2.0], dtype=torch.double),
-    ]
 
-    ordinal_bo.qMultiOutputOrdinalNParEGO(
-        model=model,
-        X_baseline=torch.linspace(0.0, 1.0, 4, dtype=torch.double).unsqueeze(-1),
-        ref_point=torch.tensor([-0.1, -0.1], dtype=torch.double),
-        utility_values=utility_values,
-    )
+    train_Y = infer_multioutput_ordinal_train_y(model)
 
     expected = torch.tensor(
         [
@@ -171,7 +152,7 @@ def test_nparego_prefers_complete_wide_labels_over_long_targets(monkeypatch) -> 
         ],
         dtype=torch.double,
     )
-    torch.testing.assert_close(captured["train_Y"], expected)
+    torch.testing.assert_close(train_Y, expected)
 
 
 def test_public_ordinal_multitask_acquisitions_accept_missing_targets() -> None:

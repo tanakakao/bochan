@@ -1,15 +1,16 @@
 """Epistemic probability utilities for binary classification.
 
 The binary model's regular ``posterior`` represents the predictive Bernoulli
-label distribution.  Its variance is therefore usually ``p * (1 - p)``.
-This module instead samples the latent GP posterior and maps each latent sample
-through the model likelihood.  Variation between those probability samples is
+label distribution. Its variance is therefore usually ``p * (1 - p)``. This
+module instead samples the latent GP posterior and maps each latent sample
+through the model likelihood. Variation between those probability samples is
 model (epistemic) uncertainty.
 """
 
 from __future__ import annotations
 
 import inspect
+from math import prod
 from typing import Any, Sequence
 
 import torch
@@ -29,6 +30,7 @@ def _call_posterior_accessor(
     output_indices: Sequence[int] | None = None,
 ) -> Posterior:
     """Call a latent posterior accessor without assuming its exact signature."""
+
     if output_indices is None:
         return accessor(X)
     try:
@@ -46,15 +48,19 @@ def get_binary_latent_posterior(
     *,
     output_indices: Sequence[int] | None = None,
 ) -> Posterior:
-    """Return the latent ``f`` posterior and never fall back to label variance.
+    """Return the latent ``f`` posterior and never fall back to label variance."""
 
-    Raises:
-        AttributeError: If no latent posterior accessor can be found.  Falling
-            back to ``model.posterior`` would reintroduce Bernoulli observation
-            variance and is therefore intentionally disallowed.
-    """
-    for name in ("latent_posterior",):
-        accessor = getattr(model, name, None)
+    accessor = getattr(model, "latent_posterior", None)
+    if callable(accessor):
+        return _call_posterior_accessor(
+            accessor,
+            X,
+            output_indices=output_indices,
+        )
+
+    inner = getattr(model, "model", None)
+    if inner is not None:
+        accessor = getattr(inner, "latent_posterior", None)
         if callable(accessor):
             return _call_posterior_accessor(
                 accessor,
@@ -62,21 +68,9 @@ def get_binary_latent_posterior(
                 output_indices=output_indices,
             )
 
-    inner = getattr(model, "model", None)
-    if inner is not None:
-        for name in ("latent_posterior",):
-            accessor = getattr(inner, name, None)
-            if callable(accessor):
-                return _call_posterior_accessor(
-                    accessor,
-                    X,
-                    output_indices=output_indices,
-                )
-
     raise AttributeError(
         f"{type(model).__name__} does not expose a latent posterior. "
-        "Binary epistemic uncertainty requires latent_posterior(X), "
-        "latent_posterior(X)."
+        "Binary epistemic uncertainty requires latent_posterior(X)."
     )
 
 
@@ -88,25 +82,162 @@ def _probability_mean(
     eps: float,
 ) -> Tensor | None:
     """Return the analytic predictive probability mean when available."""
+
     for name in ("probability_posterior", "posterior"):
         accessor = getattr(model, name, None)
         if not callable(accessor):
             continue
         try:
-            if output_indices is None:
-                posterior = accessor(X)
-            else:
-                posterior = _call_posterior_accessor(
-                    accessor,
-                    X,
-                    output_indices=output_indices,
-                )
+            posterior = _call_posterior_accessor(
+                accessor,
+                X,
+                output_indices=output_indices,
+            )
             mean = getattr(posterior, "mean", None)
             if torch.is_tensor(mean):
                 return mean.clamp(eps, 1.0 - eps)
         except Exception:
             continue
     return None
+
+
+def _find_contiguous_shape(
+    actual: tuple[int, ...],
+    target: tuple[int, ...],
+) -> list[int] | None:
+    """Return indices of the first contiguous ``target`` occurrence in ``actual``."""
+
+    if not target:
+        return []
+    width = len(target)
+    for start in range(len(actual) - width + 1):
+        if actual[start : start + width] == target:
+            return list(range(start, start + width))
+    return None
+
+
+def _align_probability_samples(
+    posterior: "BinaryEpistemicProbabilityPosterior",
+    probabilities: Tensor,
+    sample_shape: torch.Size,
+) -> Tensor:
+    """Align latent-derived probability samples with the analytic mean layout."""
+
+    probability_mean = posterior._probability_mean
+    if not torch.is_tensor(probability_mean):
+        return probabilities
+
+    sample_shape = torch.Size(sample_shape)
+    target_shape = torch.Size(probability_mean.shape)
+    expected_shape = sample_shape + target_shape
+    if probabilities.shape == expected_shape:
+        return probabilities
+
+    sample_ndim = len(sample_shape)
+    if torch.Size(probabilities.shape[:sample_ndim]) != sample_shape:
+        raise RuntimeError(
+            "Binary epistemic probability samples do not preserve the requested "
+            "sample shape. "
+            f"sample_shape={tuple(sample_shape)}, "
+            f" samples.shape={tuple(probabilities.shape)}, "
+            f"probability_mean.shape={tuple(target_shape)}."
+        )
+    if len(target_shape) < 2:
+        raise RuntimeError(
+            "Binary epistemic probability mean must have q and output axes. "
+            f"Got probability_mean.shape={tuple(target_shape)}."
+        )
+
+    values = probabilities
+    body_shape = tuple(int(size) for size in values.shape[sample_ndim:])
+    num_outputs = int(target_shape[-1])
+
+    if not body_shape or body_shape[-1] != num_outputs:
+        output_candidates = [
+            index for index, size in enumerate(body_shape) if size == num_outputs
+        ]
+        if len(output_candidates) != 1:
+            raise RuntimeError(
+                "Could not identify the objective-output axis in binary epistemic "
+                "probability samples. "
+                f"Expected num_outputs={num_outputs}, "
+                f"samples.shape={tuple(probabilities.shape)}, "
+                f"probability_mean.shape={tuple(target_shape)}, "
+                f"matching_axes={output_candidates}."
+            )
+        values = values.movedim(sample_ndim + output_candidates[0], -1)
+
+    body_without_output = tuple(
+        int(size) for size in values.shape[sample_ndim:-1]
+    )
+    expected_batch_shape = tuple(int(size) for size in target_shape[:-2])
+    q_like = int(target_shape[-2])
+    batch_indices = _find_contiguous_shape(
+        body_without_output,
+        expected_batch_shape,
+    )
+    if batch_indices is None:
+        raise RuntimeError(
+            "Could not identify the t-batch axes in binary epistemic probability "
+            "samples. "
+            f"Expected t_batch_shape={expected_batch_shape}, "
+            f"samples.shape={tuple(probabilities.shape)}, "
+            f"probability_mean.shape={tuple(target_shape)}."
+        )
+
+    remaining_indices = [
+        index
+        for index in range(len(body_without_output))
+        if index not in batch_indices
+    ]
+    permutation = (
+        list(range(sample_ndim))
+        + [sample_ndim + index for index in batch_indices]
+        + [sample_ndim + index for index in remaining_indices]
+        + [values.ndim - 1]
+    )
+    values = values.permute(*permutation)
+
+    point_start = sample_ndim + len(expected_batch_shape)
+    point_and_extra_shape = tuple(int(size) for size in values.shape[point_start:-1])
+    point_product = prod(point_and_extra_shape) if point_and_extra_shape else 1
+
+    if point_product == q_like:
+        return values.reshape(*sample_shape, *target_shape)
+
+    q_candidates = [
+        index for index, size in enumerate(point_and_extra_shape) if size == q_like
+    ]
+    if len(q_candidates) == 1:
+        values = values.movedim(point_start + q_candidates[0], point_start)
+        extra_size = prod(tuple(int(size) for size in values.shape[point_start + 1 : -1]))
+        values = values.reshape(
+            *sample_shape,
+            *expected_batch_shape,
+            q_like,
+            extra_size,
+            num_outputs,
+        )
+        return values.mean(dim=-2)
+
+    if q_like > 0 and point_product % q_like == 0:
+        extra_size = point_product // q_like
+        values = values.reshape(
+            *sample_shape,
+            *expected_batch_shape,
+            q_like,
+            extra_size,
+            num_outputs,
+        )
+        return values.mean(dim=-2)
+
+    raise RuntimeError(
+        "Could not align binary epistemic probability samples with the analytic "
+        "probability posterior. "
+        f"samples.shape={tuple(probabilities.shape)}, "
+        f"probability_mean.shape={tuple(target_shape)}, "
+        f"sample_shape={tuple(sample_shape)}."
+    )
 
 
 def binary_probability_samples(
@@ -120,6 +251,7 @@ def binary_probability_samples(
     base_samples: Tensor | None = None,
 ) -> Tensor:
     """Draw probability samples induced only by latent posterior uncertainty."""
+
     if sample_shape is None:
         if num_samples is None:
             num_samples = 128
@@ -159,19 +291,8 @@ def binary_probability_moments(
     output_indices: Sequence[int] | None = None,
     eps: float = 1e-6,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-    """Return probability mean and decomposed predictive variances.
+    """Return probability mean and decomposed predictive variances."""
 
-    Returns:
-        probability_mean:
-            Predictive class-1 probability.
-        epistemic_variance:
-            ``Var_f[p(y=1 | f)]`` across latent posterior samples.
-        aleatoric_variance:
-            ``E_f[p(1-p)]``.
-        total_label_variance:
-            ``probability_mean * (1-probability_mean)``.  Up to Monte Carlo
-            error this equals aleatoric plus epistemic variance.
-    """
     probability_samples = binary_probability_samples(
         model,
         X,
@@ -255,6 +376,12 @@ class BinaryEpistemicProbabilityPosterior(Posterior):
         return self.latent_posterior.event_shape
 
     @property
+    def batch_shape(self) -> torch.Size:
+        return torch.Size(
+            getattr(self.latent_posterior, "batch_shape", torch.Size())
+        )
+
+    @property
     def base_sample_shape(self) -> torch.Size:
         return self.latent_posterior.base_sample_shape
 
@@ -266,39 +393,42 @@ class BinaryEpistemicProbabilityPosterior(Posterior):
         self,
         sample_shape: torch.Size | None = None,
     ) -> torch.Size:
-        return self.latent_posterior._extended_shape(sample_shape=sample_shape)
+        resolved = torch.Size() if sample_shape is None else torch.Size(sample_shape)
+        return self.latent_posterior._extended_shape(sample_shape=resolved)
 
     def rsample(
         self,
         sample_shape: torch.Size | None = None,
     ) -> Tensor:
-        if sample_shape is None:
-            sample_shape = torch.Size()
-        latent_samples = self.latent_posterior.rsample(torch.Size(sample_shape))
-        return latent_samples_to_binary_probabilities(
+        resolved = torch.Size() if sample_shape is None else torch.Size(sample_shape)
+        latent_samples = self.latent_posterior.rsample(resolved)
+        probabilities = latent_samples_to_binary_probabilities(
             self.model,
             latent_samples,
             eps=self.eps,
             name="latent posterior samples",
             output_dim=-1,
         )
+        return _align_probability_samples(self, probabilities, resolved)
 
     def rsample_from_base_samples(
         self,
         sample_shape: torch.Size,
         base_samples: Tensor,
     ) -> Tensor:
+        resolved = torch.Size(sample_shape)
         latent_samples = self.latent_posterior.rsample_from_base_samples(
-            sample_shape=torch.Size(sample_shape),
+            sample_shape=resolved,
             base_samples=base_samples,
         )
-        return latent_samples_to_binary_probabilities(
+        probabilities = latent_samples_to_binary_probabilities(
             self.model,
             latent_samples,
             eps=self.eps,
             name="latent posterior base samples",
             output_dim=-1,
         )
+        return _align_probability_samples(self, probabilities, resolved)
 
 
 class BinaryEpistemicProbabilityModel(Model):
@@ -380,6 +510,7 @@ def as_epistemic_probability_model(
     eps: float = 1e-6,
 ) -> BinaryEpistemicProbabilityModel:
     """Wrap one binary model unless it is already epistemic-probability aware."""
+
     if isinstance(model, BinaryEpistemicProbabilityModel):
         return model
     return BinaryEpistemicProbabilityModel(

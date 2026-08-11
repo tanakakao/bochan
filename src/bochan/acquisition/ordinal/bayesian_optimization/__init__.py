@@ -1,26 +1,42 @@
-from functools import wraps
+"""Ordinal Bayesian optimization acquisitions.
+
+Importing this module is side-effect free. Ordinal utility conversion is an
+explicit BoTorch objective; acquisition classes are not patched at runtime.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Sequence
 
 import torch
+from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
+from botorch.models.model import Model
+from botorch.sampling.base import MCSampler
+from botorch.utils.objective import compute_smoothed_feasibility_indicator
+from botorch.utils.transforms import t_batch_mode_transform
+from torch import Tensor, nn
 
-from bochan.acquisition._nehvi_cache_root import patch_nehvi_cache_root_init
-from bochan.acquisition._nparego_shape import (
-    reduce_nparego_sample_and_q_to_tbatch,
+from bochan.acquisition._nehvi_cache_root import resolve_nehvi_cache_root
+from bochan.acquisition.objective.outcome_constraints import (
+    OutcomeConstraint,
+    split_outcome_constraints,
+    wrap_objective_space_constraints,
 )
 
 from . import multi_output as _multi_output
+from ._baseline import (
+    complete_ordinal_baseline_rows,
+    infer_multioutput_ordinal_train_y,
+)
 from ._utility_defaults import infer_multioutput_ordinal_utility_values
 from .hetero_multi_output import (
     qHeteroMultiOutputOrdinalExpectedHypervolumeImprovement,
     qHeteroMultiOutputOrdinalExpectedImprovement,
     qHeteroMultiOutputOrdinalExpectedUtility,
+    qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
     qHeteroMultiOutputOrdinalNormalScoreObjective,
+    qHeteroMultiOutputOrdinalNParEGO,
     qHeteroMultiOutputOrdinalProbabilityOfImprovement,
-)
-from .hetero_multi_output import (
-    qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement as _qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
-)
-from .hetero_multi_output import (
-    qHeteroMultiOutputOrdinalNParEGO as _qHeteroMultiOutputOrdinalNParEGO,
 )
 from .hetero_single_output import (
     qHeteroOrdinalExpectedImprovement,
@@ -29,38 +45,49 @@ from .hetero_single_output import (
     qHeteroOrdinalProbabilityOfImprovement,
 )
 from .knowledge_gradient import qOrdinalKnowledgeGradient
-
-# Keep q=1 sequential optimization shape handling aligned across classification
-# and ordinal NParEGO implementations.
-_multi_output._reduce_sample_and_q_to_tbatch = (
-    reduce_nparego_sample_and_q_to_tbatch
-)
-
-# Correlated Kronecker posteriors cannot use BoTorch's cached-Cholesky qNEHVI
-# path. Patch the class in-place before exporting it so package-level imports and
-# direct ``...multi_output`` imports share the same model-aware default.
-patch_nehvi_cache_root_init(
-    _multi_output.qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement
-)
-
+from .multi_output import compute_observed_ordinal_utility
 from .multi_output import (
-    compute_observed_ordinal_utility,
-    qMultiOutputOrdinalUtilityObjective,
+    qMultiOutputOrdinalExpectedHypervolumeImprovement as _BaseOrdinalEHVI,
 )
 from .multi_output import (
-    qMultiOutputOrdinalExpectedHypervolumeImprovement as _qMultiOutputOrdinalExpectedHypervolumeImprovement,
+    qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement as _BaseOrdinalNEHVI,
 )
+from .multi_output import qMultiOutputOrdinalNParEGO as _BaseMultiOutputOrdinalNParEGO
 from .multi_output import (
-    qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement as _qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
+    qMultiOutputOrdinalUtilityObjective as _BaseMultiOutputOrdinalUtilityObjective,
 )
-from .multi_output import (
-    qMultiOutputOrdinalNParEGO as _qMultiOutputOrdinalNParEGO,
+from .single_output import (
+    compute_ordinal_expected_utility_best_f,
+    qOrdinalProbabilityOfFeasibility,
+)
+from .standard import (
+    qOrdinalExpectedImprovement,
+    qOrdinalExpectedUtility,
+    qOrdinalProbabilityOfImprovement,
+    qOrdinalUpperConfidenceBound,
 )
 
-_NPAREGO_TBATCH_SHAPE_ERROR = (
-    "Expected scalarized NParEGO values to end in q or, for q=1, "
-    "to end in the t-batch shape."
+_NPAREGO_TBATCH_ERRORS = (
+    "Expected scalarized value to have q dimension as the last dimension.",
+    "qMultiOutputOrdinalNParEGO produced invalid output shape after scalarization.",
 )
+
+
+def _normalize_constraint_eta(
+    eta: Tensor | float,
+    constraints: Sequence[Callable[[Tensor], Tensor]] | None,
+) -> Tensor:
+    """Normalize BoTorch feasibility temperature to its registered buffer shape."""
+
+    count = 0 if constraints is None else len(constraints)
+    if torch.is_tensor(eta):
+        eta_tensor = eta
+        if eta_tensor.ndim == 0 and count:
+            eta_tensor = eta_tensor.expand(count).clone()
+        return eta_tensor
+    if count:
+        return torch.full((count,), float(eta))
+    return torch.as_tensor(float(eta))
 
 
 def _with_default_utility_values(model, utility_values):
@@ -69,290 +96,375 @@ def _with_default_utility_values(model, utility_values):
     return infer_multioutput_ordinal_utility_values(model)
 
 
-def _complete_ordinal_baseline_rows(train_Y):
-    """Return rows with every ordinal output observed for scalarization."""
+class qMultiOutputOrdinalUtilityObjective(_BaseMultiOutputOrdinalUtilityObjective):
+    """Ordinal utility objective with explicit wide-multitask likelihood mapping."""
 
-    tensor = torch.as_tensor(train_Y)
-    if tensor.ndim == 1:
-        tensor = tensor.unsqueeze(-1)
-    if tensor.ndim != 2:
-        raise ValueError(
-            "Ordinal multi-output baseline labels must have shape [n, m]. "
-            f"Got shape={tuple(tensor.shape)}."
+    def __init__(
+        self,
+        model,
+        utility_values=None,
+        *,
+        ordinal_likelihoods=None,
+        **kwargs,
+    ) -> None:
+        utility_values = _with_default_utility_values(model, utility_values)
+        if ordinal_likelihoods is None:
+            num_outputs = int(getattr(model, "num_outputs", 1))
+            likelihood = getattr(model, "ordinal_likelihood", None)
+            if likelihood is None:
+                likelihood = getattr(model, "likelihood", None)
+            if likelihood is not None and num_outputs > 1:
+                ordinal_likelihoods = [likelihood] * num_outputs
+        super().__init__(
+            model=model,
+            utility_values=utility_values,
+            ordinal_likelihoods=ordinal_likelihoods,
+            **kwargs,
         )
-    if not tensor.is_floating_point():
-        return tensor
 
-    finite = torch.isfinite(tensor)
-    complete = finite.all(dim=-1)
-    if bool(complete.any()):
-        return tensor[complete]
 
-    observed_counts = finite.sum(dim=0).detach().cpu().tolist()
-    raise ValueError(
-        "Ordinal NParEGO requires at least one training row with every output "
-        "observed to construct its baseline scalarization. Partially observed "
-        f"rows remain usable for model fitting. Observed counts per output={observed_counts}."
+def _resolve_ordinal_objective(
+    *,
+    model,
+    utility_values,
+    objective,
+    ordinal_likelihoods,
+    objective_signs,
+    link,
+    input_perturbation_n_w,
+    risk_type,
+    risk_alpha,
+):
+    if objective is not None:
+        return objective
+    return qMultiOutputOrdinalUtilityObjective(
+        model=model,
+        utility_values=utility_values,
+        ordinal_likelihoods=ordinal_likelihoods,
+        objective_signs=objective_signs,
+        link=link,
+        input_perturbation_n_w=input_perturbation_n_w,
+        risk_type=risk_type,
+        risk_alpha=risk_alpha,
     )
 
 
-def _infer_multioutput_ordinal_train_y(model):
-    """Infer complete raw wide labels without mistaking long targets for outputs."""
+class qMultiOutputOrdinalExpectedHypervolumeImprovement(_BaseOrdinalEHVI):
+    """Ordinal qEHVI with explicit objective-space constraint handling."""
 
-    expected_outputs = getattr(model, "num_tasks", None)
-    if expected_outputs is None:
-        expected_outputs = getattr(model, "num_outputs", None)
-    try:
-        expected_outputs = None if expected_outputs is None else int(expected_outputs)
-    except (TypeError, ValueError):
-        expected_outputs = None
+    def __init__(
+        self,
+        model: Model,
+        ref_point: Sequence[float] | Tensor,
+        *,
+        partitioning=None,
+        utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
+        objective: MCMultiOutputObjective | None = None,
+        train_Y: Tensor | None = None,
+        Y_baseline: Tensor | None = None,
+        ordinal_likelihoods: Sequence[nn.Module] | nn.Module | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
+        class_offset: int = 0,
+        sampler: MCSampler | None = None,
+        constraints: Sequence[Callable[[Tensor], Tensor]] | None = None,
+        X_pending: Tensor | None = None,
+        eta: Tensor | float = 1e-3,
+        fat: bool = False,
+        link: str = "auto",
+        input_perturbation_n_w: int | None = None,
+        risk_type=None,
+        risk_alpha: float = 0.5,
+    ) -> None:
+        utility_values = _with_default_utility_values(model, utility_values)
+        if train_Y is not None:
+            train_Y = complete_ordinal_baseline_rows(train_Y)
+        objective = _resolve_ordinal_objective(
+            model=model,
+            utility_values=utility_values,
+            objective=objective,
+            ordinal_likelihoods=ordinal_likelihoods,
+            objective_signs=objective_signs,
+            link=link,
+            input_perturbation_n_w=input_perturbation_n_w,
+            risk_type=risk_type,
+            risk_alpha=risk_alpha,
+        )
+        adapted_constraints = wrap_objective_space_constraints(
+            constraints,
+            objective_getter=lambda: getattr(self, "objective", None),
+        )
+        eta_tensor = _normalize_constraint_eta(eta, adapted_constraints)
+        super().__init__(
+            model=model,
+            ref_point=ref_point,
+            partitioning=partitioning,
+            utility_values=utility_values,
+            objective=objective,
+            train_Y=train_Y,
+            Y_baseline=Y_baseline,
+            ordinal_likelihoods=ordinal_likelihoods,
+            objective_signs=objective_signs,
+            class_offset=class_offset,
+            sampler=sampler,
+            constraints=adapted_constraints,
+            X_pending=X_pending,
+            eta=eta_tensor,
+            fat=fat,
+            link=link,
+            input_perturbation_n_w=input_perturbation_n_w,
+            risk_type=risk_type,
+            risk_alpha=risk_alpha,
+        )
 
-    for name in ("train_Y_wide", "train_Y", "train_targets"):
-        value = getattr(model, name, None)
-        if value is None:
-            continue
-        tensor = torch.as_tensor(value)
-        if tensor.ndim == 1:
-            tensor = tensor.unsqueeze(-1)
-        if tensor.ndim != 2:
-            continue
-        if expected_outputs is not None and tensor.shape[-1] != expected_outputs:
-            continue
-        return _complete_ordinal_baseline_rows(tensor)
 
-    submodels = getattr(model, "models", None)
-    if submodels is None:
-        return None
+class qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(_BaseOrdinalNEHVI):
+    """Ordinal qNEHVI with explicit objective-space constraint handling."""
 
-    columns = []
-    for submodel in submodels:
-        value = getattr(submodel, "train_Y", None)
-        if value is None:
-            value = getattr(submodel, "train_targets", None)
-        if value is None:
-            return None
-        column = torch.as_tensor(value)
-        if column.ndim == 1:
-            column = column.unsqueeze(-1)
-        elif column.shape[-1] != 1:
-            return None
-        columns.append(column)
+    def __init__(
+        self,
+        model: Model,
+        ref_point: Sequence[float] | Tensor,
+        X_baseline: Tensor,
+        *,
+        utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
+        objective: MCMultiOutputObjective | None = None,
+        ordinal_likelihoods: Sequence[nn.Module] | nn.Module | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
+        sampler: MCSampler | None = None,
+        constraints: Sequence[Callable[[Tensor], Tensor]] | None = None,
+        X_pending: Tensor | None = None,
+        eta: Tensor | float = 1e-3,
+        fat: bool = False,
+        link: str = "auto",
+        input_perturbation_n_w: int | None = None,
+        risk_type=None,
+        risk_alpha: float = 0.5,
+        cache_root: bool | None = None,
+        **kwargs,
+    ) -> None:
+        utility_values = _with_default_utility_values(model, utility_values)
+        objective = _resolve_ordinal_objective(
+            model=model,
+            utility_values=utility_values,
+            objective=objective,
+            ordinal_likelihoods=ordinal_likelihoods,
+            objective_signs=objective_signs,
+            link=link,
+            input_perturbation_n_w=input_perturbation_n_w,
+            risk_type=risk_type,
+            risk_alpha=risk_alpha,
+        )
+        adapted_constraints = wrap_objective_space_constraints(
+            constraints,
+            objective_getter=lambda: getattr(self, "objective", None),
+        )
+        eta_tensor = _normalize_constraint_eta(eta, adapted_constraints)
+        super().__init__(
+            model=model,
+            ref_point=ref_point,
+            X_baseline=X_baseline,
+            utility_values=utility_values,
+            objective=objective,
+            ordinal_likelihoods=ordinal_likelihoods,
+            objective_signs=objective_signs,
+            sampler=sampler,
+            constraints=adapted_constraints,
+            X_pending=X_pending,
+            eta=eta_tensor,
+            fat=fat,
+            link=link,
+            input_perturbation_n_w=input_perturbation_n_w,
+            risk_type=risk_type,
+            risk_alpha=risk_alpha,
+            cache_root=resolve_nehvi_cache_root(model, cache_root),
+            **kwargs,
+        )
 
-    if not columns:
-        return None
-    return _complete_ordinal_baseline_rows(torch.cat(columns, dim=-1))
 
+class qMultiOutputOrdinalNParEGO(_BaseMultiOutputOrdinalNParEGO):
+    """Ordinal NParEGO with explicit baseline, constraints, and t-batch handling."""
 
-class _TBatchSafeMultiOutputOrdinalNParEGO(_qMultiOutputOrdinalNParEGO):
-    """Ordinal NParEGO fallback for Kronecker t-batch / latent-rank collisions.
+    def __init__(
+        self,
+        model: Model,
+        X_baseline: Tensor,
+        ref_point: Tensor,
+        *,
+        utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
+        objective: MCMultiOutputObjective | None = None,
+        weights: Tensor | None = None,
+        sampler: MCSampler | None = None,
+        ordinal_likelihoods: Sequence[nn.Module] | nn.Module | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
+        train_Y: Tensor | None = None,
+        Y_baseline: Tensor | None = None,
+        class_offset: int = 0,
+        link: str = "auto",
+        input_perturbation_n_w: int | None = None,
+        risk_type=None,
+        risk_alpha: float = 0.5,
+        rho: float = 0.05,
+        constraints: Sequence[OutcomeConstraint] | None = None,
+        eta: float | Tensor = 1e-3,
+        fat: bool = False,
+    ) -> None:
+        utility_values = _with_default_utility_values(model, utility_values)
+        if Y_baseline is not None:
+            Y_baseline = torch.as_tensor(Y_baseline)
+            if not bool(torch.isfinite(Y_baseline).all()):
+                Y_baseline = None
+        if train_Y is None and Y_baseline is None:
+            train_Y = infer_multioutput_ordinal_train_y(model)
+        if train_Y is not None:
+            train_Y = complete_ordinal_baseline_rows(train_Y)
+        objective = _resolve_ordinal_objective(
+            model=model,
+            utility_values=utility_values,
+            objective=objective,
+            ordinal_likelihoods=ordinal_likelihoods,
+            objective_signs=objective_signs,
+            link=link,
+            input_perturbation_n_w=input_perturbation_n_w,
+            risk_type=risk_type,
+            risk_alpha=risk_alpha,
+        )
+        super().__init__(
+            model=model,
+            X_baseline=X_baseline,
+            ref_point=ref_point,
+            utility_values=utility_values,
+            objective=objective,
+            weights=weights,
+            sampler=sampler,
+            ordinal_likelihoods=ordinal_likelihoods,
+            objective_signs=objective_signs,
+            train_Y=train_Y,
+            Y_baseline=Y_baseline,
+            class_offset=class_offset,
+            link=link,
+            input_perturbation_n_w=input_perturbation_n_w,
+            risk_type=risk_type,
+            risk_alpha=risk_alpha,
+            rho=rho,
+        )
+        raw_constraints, objective_constraints = split_outcome_constraints(constraints)
+        self.constraints = list(constraints or [])
+        self.raw_constraints = raw_constraints
+        self.objective_constraints = objective_constraints
+        self.eta = eta
+        self.fat = bool(fat)
 
-    LMC Kronecker posteriors normally preserve optimizer t-batches. During
-    batched L-BFGS-B, however, an optimizer sub-batch can have the same size as
-    the latent rank. In that ambiguous case GPyTorch may consume the optimizer
-    batch as the latent batch and return samples without the t-batch dimension.
+    def _feasibility_factor(
+        self,
+        *,
+        raw_samples: Tensor,
+        objective_values: Tensor,
+    ) -> Tensor | None:
+        factor: Tensor | None = None
+        if self.raw_constraints:
+            factor = compute_smoothed_feasibility_indicator(
+                constraints=self.raw_constraints,
+                samples=raw_samples,
+                eta=self.eta,
+                fat=self.fat,
+            )
+        if self.objective_constraints:
+            objective_factor = compute_smoothed_feasibility_indicator(
+                constraints=self.objective_constraints,
+                samples=objective_values,
+                eta=self.eta,
+                fat=self.fat,
+            )
+            factor = objective_factor if factor is None else factor * objective_factor
+        return factor
 
-    The acquisition must not broadcast that single value across candidates,
-    because each optimizer row needs its own value and gradient. Instead, only
-    after the specific shape failure, evaluate each t-batch row independently
-    and stack the scalar acquisition values back into the original batch shape.
-    """
-
-    def _evaluate_single_tbatch(self, X_single: torch.Tensor) -> torch.Tensor:
-        """Evaluate one ``q x d`` design batch without an optimizer t-batch."""
-        posterior = self.model.posterior(X_single)
+    def _evaluate(self, X: Tensor) -> Tensor:
+        posterior = self.model.posterior(X)
         samples = self.get_posterior_samples(posterior)
-        values = self.base_objective(samples, X=X_single)
-        scalarized = self._scalarize(values)
+        objective_values = self.base_objective(samples, X=X)
+        scalarized = self._scalarize(objective_values)
         improvement = (
             scalarized - self.best_value.to(scalarized)
         ).clamp_min(0.0)
-        return reduce_nparego_sample_and_q_to_tbatch(improvement, X_single)
+        feasibility = self._feasibility_factor(
+            raw_samples=samples,
+            objective_values=objective_values,
+        )
+        if feasibility is not None:
+            improvement = improvement * feasibility
+        return _multi_output._reduce_sample_and_q_to_tbatch(improvement, X)
 
-    def forward(self, X: torch.Tensor) -> torch.Tensor:
+    @t_batch_mode_transform()
+    def forward(self, X: Tensor) -> Tensor:
+        Xq = _multi_output.ensure_q_batch(X)
         try:
-            return super().forward(X)
+            return self._evaluate(Xq)
         except RuntimeError as err:
-            if _NPAREGO_TBATCH_SHAPE_ERROR not in str(err):
+            if not any(message in str(err) for message in _NPAREGO_TBATCH_ERRORS):
                 raise
-
-            batch_shape = X.shape[:-2]
+            batch_shape = Xq.shape[:-2]
             if len(batch_shape) == 0:
                 raise
-
-            q, d = int(X.shape[-2]), int(X.shape[-1])
-            X_flat = X.reshape(-1, q, d)
-            values = [self._evaluate_single_tbatch(X_i) for X_i in X_flat]
+            q, d = int(Xq.shape[-2]), int(Xq.shape[-1])
+            X_flat = Xq.reshape(-1, q, d)
+            values = [self._evaluate(X_i) for X_i in X_flat]
             return torch.stack(values).reshape(batch_shape)
 
 
-@wraps(_qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement)
-def qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
-    *args,
-    Y_baseline=None,
-    **kwargs,
+class qOrdinalExpectedHypervolumeImprovement(
+    qMultiOutputOrdinalExpectedHypervolumeImprovement
 ):
-    """Construct hetero ordinal NEHVI with a utility-space baseline.
-
-    The high-level API may inject raw ordinal labels through ``Y_baseline``.
-    Integer tensors are therefore treated as labels rather than precomputed
-    utility values and are discarded so the underlying acquisition recomputes
-    the heteroscedastic utility baseline from ``X_baseline``. Floating-point
-    baselines remain supported as explicit utility-space overrides.
-    """
-    if Y_baseline is not None:
-        baseline = torch.as_tensor(Y_baseline)
-        if not baseline.is_floating_point():
-            Y_baseline = None
-    return _qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
-        *args,
-        Y_baseline=Y_baseline,
-        **kwargs,
-    )
+    """Ordinal multi-objective qEHVI with domain-first naming."""
 
 
-@wraps(_qHeteroMultiOutputOrdinalNParEGO)
-def qHeteroMultiOutputOrdinalNParEGO(
-    *args,
-    objective=None,
-    **kwargs,
+class qOrdinalNoisyExpectedHypervolumeImprovement(
+    qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement
 ):
-    """Construct hetero ordinal NParEGO without double scalarization.
-
-    NParEGO performs its own augmented Chebyshev scalarization after the
-    heteroscedastic ordinal utility objective has produced one value per output.
-    The generic high-level objective may already reduce the output dimension,
-    which would remove the ``m`` axis before NParEGO can scalarize it. Match the
-    binary NParEGO behavior by accepting the support argument but not
-    applying it inside the utility objective.
-    """
-    del objective
-    return _qHeteroMultiOutputOrdinalNParEGO(
-        *args,
-        objective=None,
-        **kwargs,
-    )
+    """Ordinal multi-objective qNEHVI with domain-first naming."""
 
 
-def qMultiOutputOrdinalExpectedHypervolumeImprovement(
-    model,
-    ref_point,
-    *,
-    partitioning=None,
-    utility_values=None,
-    **kwargs,
+class qOrdinalNParEGO(qMultiOutputOrdinalNParEGO):
+    """Ordinal multi-objective NParEGO with domain-first naming."""
+
+
+class qHeteroOrdinalExpectedHypervolumeImprovement(
+    qHeteroMultiOutputOrdinalExpectedHypervolumeImprovement
 ):
-    """Construct ordinal qEHVI with explicit context-facing parameters.
-
-    ``ref_point`` and ``partitioning`` are kept in the public signature so the
-    high-level API can retain automatically inferred context values when it
-    filters keyword arguments by callable signature.
-    """
-    if kwargs.get("train_Y") is not None:
-        kwargs["train_Y"] = _complete_ordinal_baseline_rows(kwargs["train_Y"])
-    return _qMultiOutputOrdinalExpectedHypervolumeImprovement(
-        model=model,
-        ref_point=ref_point,
-        partitioning=partitioning,
-        utility_values=_with_default_utility_values(model, utility_values),
-        **kwargs,
-    )
+    """Heteroscedastic ordinal qEHVI with domain-first naming."""
 
 
-def qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
-    model,
-    ref_point,
-    X_baseline,
-    *,
-    utility_values=None,
-    **kwargs,
+class qHeteroOrdinalNoisyExpectedHypervolumeImprovement(
+    qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement
 ):
-    """Construct ordinal qNEHVI with explicit baseline and utility defaults.
-
-    ``X_baseline`` must be explicit: the high-level engine filters automatic
-    context fields against this signature before constructing the acquisition.
-    """
-    return _qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(
-        model=model,
-        ref_point=ref_point,
-        X_baseline=X_baseline,
-        utility_values=_with_default_utility_values(model, utility_values),
-        **kwargs,
-    )
+    """Heteroscedastic ordinal qNEHVI with domain-first naming."""
 
 
-def qMultiOutputOrdinalNParEGO(
-    model,
-    X_baseline,
-    ref_point,
-    *,
-    utility_values=None,
-    train_Y=None,
-    best_f=None,
-    **kwargs,
-):
-    """Construct ordinal NParEGO with high-level API support.
+class qHeteroOrdinalNParEGO(qHeteroMultiOutputOrdinalNParEGO):
+    """Heteroscedastic ordinal NParEGO with domain-first naming."""
 
-    The generic acquisition-default resolver may inject ``best_f`` because
-    NParEGO is EI-based. This implementation computes its own scalarized
-    ``best_value`` from the baseline, matching the binary implementation, so the
-    generic value is accepted and intentionally ignored.
-
-    When neither ``train_Y`` nor an explicit utility-space ``Y_baseline`` is
-    supplied, raw ordinal labels are recovered from the model. The underlying
-    acquisition then performs the existing label-to-utility conversion.
-    """
-    del best_f
-    if train_Y is None and kwargs.get("Y_baseline") is None:
-        train_Y = _infer_multioutput_ordinal_train_y(model)
-    if train_Y is not None:
-        train_Y = _complete_ordinal_baseline_rows(train_Y)
-    return _TBatchSafeMultiOutputOrdinalNParEGO(
-        model=model,
-        X_baseline=X_baseline,
-        ref_point=ref_point,
-        utility_values=_with_default_utility_values(model, utility_values),
-        train_Y=train_Y,
-        **kwargs,
-    )
-
-
-from .single_output import (
-    compute_ordinal_expected_utility_best_f,
-    qOrdinalProbabilityOfFeasibility,
-)
-from .utility_acquisitions import (
-    OrdinalQBatchMode,
-    OrdinalQReduction,
-    qOrdinalExpectedImprovement,
-    qOrdinalExpectedUtility,
-    qOrdinalProbabilityOfImprovement,
-    qOrdinalUpperConfidenceBound,
-)
 
 __all__ = [
-    "OrdinalQBatchMode",
-    "OrdinalQReduction",
-    "qHeteroMultiOutputOrdinalNormalScoreObjective",
-    "qHeteroMultiOutputOrdinalExpectedUtility",
-    "qHeteroMultiOutputOrdinalProbabilityOfImprovement",
-    "qHeteroMultiOutputOrdinalExpectedImprovement",
-    "qHeteroMultiOutputOrdinalExpectedHypervolumeImprovement",
-    "qHeteroMultiOutputOrdinalNoisyExpectedHypervolumeImprovement",
-    "qHeteroMultiOutputOrdinalNParEGO",
-    "qHeteroOrdinalExpectedUtility",
-    "qHeteroOrdinalExpectedImprovement",
-    "qHeteroOrdinalProbabilityOfImprovement",
-    "qHeteroOrdinalExpectedUtilityUpperConfidenceBound",
-    "qMultiOutputOrdinalUtilityObjective",
-    "qMultiOutputOrdinalExpectedHypervolumeImprovement",
-    "qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement",
-    "qMultiOutputOrdinalNParEGO",
     "compute_observed_ordinal_utility",
-    "qOrdinalExpectedUtility",
+    "compute_ordinal_expected_utility_best_f",
+    "qHeteroMultiOutputOrdinalExpectedImprovement",
+    "qHeteroMultiOutputOrdinalExpectedUtility",
+    "qHeteroMultiOutputOrdinalNormalScoreObjective",
+    "qHeteroMultiOutputOrdinalProbabilityOfImprovement",
+    "qHeteroOrdinalExpectedHypervolumeImprovement",
+    "qHeteroOrdinalExpectedImprovement",
+    "qHeteroOrdinalExpectedUtility",
+    "qHeteroOrdinalExpectedUtilityUpperConfidenceBound",
+    "qHeteroOrdinalNParEGO",
+    "qHeteroOrdinalNoisyExpectedHypervolumeImprovement",
+    "qHeteroOrdinalProbabilityOfImprovement",
+    "qMultiOutputOrdinalUtilityObjective",
+    "qOrdinalExpectedHypervolumeImprovement",
     "qOrdinalExpectedImprovement",
+    "qOrdinalExpectedUtility",
+    "qOrdinalKnowledgeGradient",
+    "qOrdinalNParEGO",
+    "qOrdinalNoisyExpectedHypervolumeImprovement",
+    "qOrdinalProbabilityOfFeasibility",
     "qOrdinalProbabilityOfImprovement",
     "qOrdinalUpperConfidenceBound",
-    "qOrdinalKnowledgeGradient",
-    "qOrdinalProbabilityOfFeasibility",
-    "compute_ordinal_expected_utility_best_f",
 ]

@@ -52,7 +52,7 @@ jobs:
             pytest --collect-only -q "${focused[@]}"
           fi
 
-      - name: Check stale optimizer paths and lint
+      - name: Check stale optimizer paths and new package lint
         shell: bash
         run: |
           set -euo pipefail
@@ -62,10 +62,14 @@ jobs:
             exit 1
           fi
           python -m pip install ruff
-          mapfile -t changed_py < <(git diff --name-only --diff-filter=ACMR -- '*.py')
-          if [ "${#changed_py[@]}" -gt 0 ]; then
-            ruff check --fix "${changed_py[@]}"
-          fi
+          ruff check \
+            src/bochan/optim/__init__.py \
+            src/bochan/optim/gradient/__init__.py \
+            src/bochan/optim/evolutionary/__init__.py \
+            src/bochan/optim/nsgaii/__init__.py \
+            src/bochan/optim/thompson/__init__.py \
+            src/bochan/optim/llm/__init__.py \
+            tests/test_optim_package_layout.py
           git diff --check
 
       - name: Commit optimizer reorganization

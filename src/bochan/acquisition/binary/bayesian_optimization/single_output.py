@@ -6,7 +6,7 @@ from typing import Callable, Literal, Optional
 import torch
 import torch.nn.functional as F
 from torch import Tensor
-from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
+from bochan.acquisition.binary._probability import latent_samples_to_binary_probabilities
 from bochan.acquisition.binary.epistemic import binary_probability_samples
 
 from botorch.acquisition import AcquisitionFunction

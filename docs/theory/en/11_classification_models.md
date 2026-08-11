@@ -657,7 +657,7 @@ probability means.
 The posterior object and shared helpers are in
 
 ```text
-src/bochan/models/components/multiclass.py
+src/bochan/models/classification/multiclass/_components.py
 ```
 
 ---
@@ -908,7 +908,7 @@ Predictive metrics should be accompanied by:
 | Binary deep models | `src/bochan/models/classification/binary/deep/` |
 | Binary high-dimensional models | `src/bochan/models/classification/binary/high_dim/` |
 | Multiclass base models | `src/bochan/models/classification/multiclass/base/models.py` |
-| Multiclass posterior helpers | `src/bochan/models/components/multiclass.py` |
+| Multiclass posterior helpers | `src/bochan/models/classification/multiclass/_components.py` |
 | Multiclass robust models | `src/bochan/models/classification/multiclass/robust/` |
 | Multiclass deep models | `src/bochan/models/classification/multiclass/deep/` |
 | Multiclass high-dimensional models | `src/bochan/models/classification/multiclass/high_dim/` |

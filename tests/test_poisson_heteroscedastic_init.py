@@ -15,10 +15,10 @@ from bochan.acquisition.regression.active_learning import (
 from bochan.acquisition.regression.bayesian_optimization import (
     qHeteroRegressionUpperConfidenceBound,
 )
-from bochan.models.regression.non_gaussian.poisson.robust import (
-    poisson_heteroscedastic as hetero_module,
+from bochan.models.regression.count.poisson.robust import (
+    heteroscedastic as hetero_module,
 )
-from bochan.models.regression.non_gaussian.poisson.robust.poisson_heteroscedastic import (
+from bochan.models.regression.count.poisson.robust.heteroscedastic import (
     HeteroscedasticPoissonGPModel,
     HeteroscedasticPoissonMixedGPModel,
 )

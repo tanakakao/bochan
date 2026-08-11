@@ -25,7 +25,7 @@ from gpytorch.variational import (
 from torch import Tensor
 from torch.utils.data import DataLoader, TensorDataset
 
-from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
 from bochan.models.components.layers.feature_extractor import LargeFeatureExtractor, SkipLargeFeatureExtractor
 from bochan.models.ordinal.base.models import (
     _get_cont_dims,

@@ -15,7 +15,7 @@
 - BoTorch 標準 optimizer、mixed optimizer、進化計算 optimizer、torch optimizer、NSGA-II optimizer
 - grid rounding、k-sparse、線形制約補修などの candidate repair
 
-Non-Gaussian regression model は `bochan.models.regression.non_gaussian` に実装がありますが、現在の標準 `ModelConfig` registry には含めていません。API から使う場合は、`model_cls` / `model_factory` / custom registry を使って明示的に接続します。
+Distribution-specific regression models are organized under `bochan.models.regression.beta`, `bochan.models.regression.gamma`, and `bochan.models.regression.count`. They are available through the standard `ModelConfig` registry using the family-specific model keys.
 
 ---
 

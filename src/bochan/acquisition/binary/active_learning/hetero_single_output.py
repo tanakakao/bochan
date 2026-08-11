@@ -5,7 +5,7 @@ from typing import Callable, Literal, Optional
 import torch
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
-from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
+from bochan.acquisition.binary._probability import latent_samples_to_binary_probabilities
 from bochan.acquisition.binary.epistemic import binary_probability_moments
 
 from bochan.acquisition.binary.base import (

@@ -16,7 +16,7 @@ from gpytorch.models import ApproximateGP
 from gpytorch.utils.grid import ScaleToBounds
 from gpytorch.variational import CholeskyVariationalDistribution, VariationalStrategy
 
-from bochan.models.components.multiclass import (
+from bochan.models.classification.multiclass._components import (
     apply_input_transform_for_training,
     clone_input_transform,
     get_cont_dims,

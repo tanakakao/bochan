@@ -6,8 +6,8 @@ from botorch.sampling.get_sampler import get_sampler
 
 from bochan.api import ModelConfig
 from bochan.api.factory import resolve_model_cls
-from bochan.models.components.beta import BetaLogLikelihood, prepare_beta_targets
-from bochan.models.regression.non_gaussian.beta.base import (
+from bochan.models.regression.beta._components import BetaLogLikelihood, prepare_beta_targets
+from bochan.models.regression.beta.base import (
     BetaGPModel,
     WideBetaMultiTaskGPModel,
 )

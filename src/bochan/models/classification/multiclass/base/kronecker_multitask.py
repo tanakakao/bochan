@@ -29,7 +29,7 @@ from bochan.models.components.kronecker_multitask import (
     canonicalize_block_design_targets,
     canonicalize_shared_inducing_points,
 )
-from bochan.models.components.multiclass import (
+from bochan.models.classification.multiclass._components import (
     apply_input_transform_for_eval,
     apply_input_transform_for_training,
     clone_input_transform,

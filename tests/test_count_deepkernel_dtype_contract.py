@@ -6,11 +6,11 @@ from gpytorch.kernels import MaternKernel, ScaleKernel
 from gpytorch.means import ConstantMean
 from torch import nn
 
-from bochan.models.regression.non_gaussian.negative_binomial.deep.negative_binomial_deepkernel import (
+from bochan.models.regression.count.negative_binomial.deep.deepkernel import (
     DeepKernelNegativeBinomialGPModel,
     DeepKernelNegativeBinomialMixedGPModel,
 )
-from bochan.models.regression.non_gaussian.poisson.deep.poisson_deepkernel import (
+from bochan.models.regression.count.poisson.deep.deepkernel import (
     DeepKernelPoissonGPModel,
     DeepKernelPoissonMixedGPModel,
 )

@@ -5,8 +5,8 @@ import torch
 
 from bochan.api.configs import ModelConfig
 from bochan.api.factory import resolve_model_cls
-from bochan.models.components.negative_binomial import NegativeBinomialLogLikelihood
-from bochan.models.regression.non_gaussian.negative_binomial.base import (
+from bochan.models.regression.count.negative_binomial._components import NegativeBinomialLogLikelihood
+from bochan.models.regression.count.negative_binomial.base import (
     NegativeBinomialMultiTaskGPModel,
     WideNegativeBinomialMultiTaskGPModel,
 )

@@ -13,13 +13,13 @@ from bochan.models.classification.multiclass.high_dim import (
 )
 from bochan.models.ordinal.high_dim import PCAOrdinalGPModel, REMBOOrdinalGPModel
 from bochan.models.regression.gaussian.high_dim import PCAGaussianGPModel, REMBOGaussianGPModel
-from bochan.models.regression.non_gaussian.beta.high_dim import PCABetaGPModel, REMBOBetaGPModel
-from bochan.models.regression.non_gaussian.gamma.high_dim import PCAGammaGPModel, REMBOGammaGPModel
-from bochan.models.regression.non_gaussian.negative_binomial.high_dim import (
+from bochan.models.regression.beta.high_dim import PCABetaGPModel, REMBOBetaGPModel
+from bochan.models.regression.gamma.high_dim import PCAGammaGPModel, REMBOGammaGPModel
+from bochan.models.regression.count.negative_binomial.high_dim import (
     PCANegativeBinomialGPModel,
     REMBONegativeBinomialGPModel,
 )
-from bochan.models.regression.non_gaussian.poisson.high_dim import (
+from bochan.models.regression.count.poisson.high_dim import (
     PCAPoissonGPModel,
     REMBOPoissonGPModel,
 )

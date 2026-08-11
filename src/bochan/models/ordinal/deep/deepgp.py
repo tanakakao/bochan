@@ -49,7 +49,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader, TensorDataset
 
 # あなたの環境に合わせて import path は調整してください
-from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
 
 # 既存の layer 実装を参照する
 from bochan.models.components.layers import (

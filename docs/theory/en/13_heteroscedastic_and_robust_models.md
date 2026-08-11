@@ -492,7 +492,7 @@ quantiles, and constraint violation rate at the recommended candidate.
 |---|---|
 | Shared heteroscedastic utilities | `src/bochan/models/components/heteroscedastic.py` |
 | Gaussian heteroscedastic models | `src/bochan/models/regression/gaussian/robust/heteroscedastic.py` |
-| Non-Gaussian heteroscedastic models | `src/bochan/models/regression/non_gaussian/*/robust/` |
+| Non-Gaussian heteroscedastic models | `src/bochan/models/regression/{beta,gamma}/robust/` and `src/bochan/models/regression/count/*/robust/` |
 | Binary heteroscedastic models | `src/bochan/models/classification/binary/robust/heteroscedastic.py` |
 | Multiclass heteroscedastic models | `src/bochan/models/classification/multiclass/robust/heteroscedastic.py` |
 | Ordinal heteroscedastic models | `src/bochan/models/ordinal/robust/heteroscedastic.py` |

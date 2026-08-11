@@ -12,7 +12,7 @@ from botorch.models.ensemble import EnsembleModel
 from torch import Tensor, nn
 
 from bochan.fit.ordinal import fit_ordinal_mll
-from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
 from bochan.models.regression.neural.deep_ensemble import (
     _DenseRegressor,
     _MixedCategoricalEncoder,

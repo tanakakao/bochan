@@ -10,7 +10,7 @@ from torch import Tensor
 from bochan.acquisition.ordinal.bayesian_optimization.knowledge_gradient import (
     qOrdinalKnowledgeGradient,
 )
-from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
 
 
 class _CorrelatedOrdinalLatentModel(Model):

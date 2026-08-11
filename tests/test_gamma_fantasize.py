@@ -8,12 +8,12 @@ from torch import nn
 from bochan.acquisition.regression.active_learning import (
     qRegressionNegIntegratedPosteriorVariance,
 )
-from bochan.models.regression.non_gaussian.gamma.base import (
+from bochan.models.regression.gamma.base import (
     GammaGPModel,
     GammaMixedGPModel,
 )
-from bochan.models.regression.non_gaussian.gamma.robust import gamma_heteroscedastic
-from bochan.models.regression.non_gaussian.gamma.robust.gamma_heteroscedastic import (
+from bochan.models.regression.gamma.robust import heteroscedastic as gamma_heteroscedastic
+from bochan.models.regression.gamma.robust.heteroscedastic import (
     HeteroscedasticGammaGPModel,
     HeteroscedasticGammaMixedGPModel,
 )

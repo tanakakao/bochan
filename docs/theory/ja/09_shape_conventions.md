@@ -405,7 +405,7 @@ assert q_expanded == q * n_w
 ```text
 src/bochan/models/
 src/bochan/models/components/heteroscedastic.py
-src/bochan/models/components/multiclass.py
+src/bochan/models/classification/multiclass/_components.py
 src/bochan/models/hybrid/posterior.py
 ```
 

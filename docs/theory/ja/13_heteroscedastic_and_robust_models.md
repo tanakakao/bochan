@@ -333,7 +333,7 @@ shared helperは次を行います。
 |---|---|
 | shared helper | `src/bochan/models/components/heteroscedastic.py` |
 | Gaussian heteroscedastic | `src/bochan/models/regression/gaussian/robust/heteroscedastic.py` |
-| non-Gaussian robust | `src/bochan/models/regression/non_gaussian/*/robust/` |
+| non-Gaussian robust | `src/bochan/models/regression/{beta,gamma}/robust/` および `src/bochan/models/regression/count/*/robust/` |
 | binary robust | `src/bochan/models/classification/binary/robust/heteroscedastic.py` |
 | multiclass robust | `src/bochan/models/classification/multiclass/robust/heteroscedastic.py` |
 | ordinal robust | `src/bochan/models/ordinal/robust/heteroscedastic.py` |

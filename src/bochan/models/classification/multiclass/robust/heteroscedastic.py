@@ -12,7 +12,7 @@ from botorch.models.transforms.input import InputTransform
 from botorch.posteriors import Posterior
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
-from bochan.models.components.multiclass import (
+from bochan.models.classification.multiclass._components import (
     MulticlassProbsPosterior,
     extract_normalize_only_transform,
     prepare_class_targets,

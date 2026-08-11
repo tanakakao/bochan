@@ -5,8 +5,8 @@ import torch
 
 from bochan.api.model_capabilities import BETA_MODEL_TYPES, model_capability
 from bochan.api.model_registry import DEFAULT_MODEL_REGISTRY
-from bochan.models.components.beta import BetaLogLikelihood, prepare_beta_targets
-from bochan.models.regression.non_gaussian.beta.robust import HeteroscedasticBetaGPModel
+from bochan.models.regression.beta._components import BetaLogLikelihood, prepare_beta_targets
+from bochan.models.regression.beta.robust import HeteroscedasticBetaGPModel
 
 
 def test_beta_target_clipping_warns_and_rejects_invalid_values() -> None:

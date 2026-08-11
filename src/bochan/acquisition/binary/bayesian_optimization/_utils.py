@@ -9,7 +9,7 @@ from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 from botorch.models.model import Model
 from torch import Tensor
 
-from bochan.acquisition.binary._likelihood import values_to_binary_probabilities
+from bochan.acquisition.binary._probability import values_to_binary_probabilities
 from bochan.acquisition.binary.epistemic import get_binary_latent_posterior
 
 ReductionType = Literal["mean", "sum"]

@@ -26,8 +26,8 @@ from bochan.acquisition.regression.active_learning._integrated import (
 from bochan.acquisition.regression.active_learning.hetero_single_output import (
     qHeteroRegressionNegIntegratedPosteriorVariance,
 )
-from bochan.models.regression.non_gaussian.gamma.base import GammaGPModel
-from bochan.models.regression.non_gaussian.multioutput import NonGaussianModelList
+from bochan.models.regression.gamma.base import GammaGPModel
+from bochan.models.regression.multioutput import NonGaussianModelList
 
 DTYPE = torch.double
 BOUNDS = torch.tensor([[0.0], [1.0]], dtype=DTYPE)

@@ -18,7 +18,7 @@ from bochan.models.components.mixed_multitask import (
     transform_mixed_task_inputs,
     validate_mixed_task_input_transform,
 )
-from bochan.models.components.multiclass import (
+from bochan.models.classification.multiclass._components import (
     apply_input_transform_for_eval,
     apply_input_transform_for_training,
     build_default_multiclass_covar_module,

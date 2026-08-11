@@ -10,7 +10,7 @@ from bochan.acquisition._duplicate_exclusion import (
     hard_same_batch_duplicate_penalty_per_point,
     resolve_observed_X,
 )
-from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
+from bochan.acquisition.binary._probability import latent_samples_to_binary_probabilities
 from botorch.acquisition import AcquisitionFunction
 from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 from botorch.utils.transforms import t_batch_mode_transform

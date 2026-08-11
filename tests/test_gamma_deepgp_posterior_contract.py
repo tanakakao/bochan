@@ -5,7 +5,7 @@ import pytest
 import torch
 from gpytorch.distributions import MultivariateNormal
 
-from bochan.models.regression.non_gaussian.gamma.deep.gamma_deepgp import (
+from bochan.models.regression.gamma.deep.deepgp import (
     DeepGammaGPModel,
     DeepGammaMixedGPModel,
 )

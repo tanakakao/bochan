@@ -6,11 +6,11 @@ import gpytorch
 import pytest
 import torch
 
-from bochan.models.regression.non_gaussian.negative_binomial.deep.negative_binomial_deepgp import (
+from bochan.models.regression.count.negative_binomial.deep.deepgp import (
     DeepNegativeBinomialGPModel,
     DeepNegativeBinomialMixedGPModel,
 )
-from bochan.models.regression.non_gaussian.poisson.deep.poisson_deepgp import (
+from bochan.models.regression.count.poisson.deep.deepgp import (
     DeepPoissonGPModel,
     DeepPoissonMixedGPModel,
 )

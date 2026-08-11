@@ -702,10 +702,10 @@ src/bochan/models/regression/gaussian/robust/
 Non-Gaussian source tree：
 
 ```text
-src/bochan/models/regression/non_gaussian/beta/
-src/bochan/models/regression/non_gaussian/gamma/
-src/bochan/models/regression/non_gaussian/poisson/
-src/bochan/models/regression/non_gaussian/negative_binomial/
+src/bochan/models/regression/beta/
+src/bochan/models/regression/gamma/
+src/bochan/models/regression/count/poisson/
+src/bochan/models/regression/count/negative_binomial/
 ```
 
 fit function：

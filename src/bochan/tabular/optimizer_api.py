@@ -15,7 +15,7 @@ from bochan.api import (
     OptimizeConfig,
     OutputConfig,
 )
-from bochan.likelihoods.regression import (
+from bochan.models.regression.gaussian.likelihood import (
     build_multitask_likelihood,
     build_single_task_likelihood,
 )

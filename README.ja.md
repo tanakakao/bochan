@@ -747,7 +747,7 @@ Major model families:
 | Family | Purpose |
 |---|---|
 | `regression/gaussian` | Standard continuous-output Gaussian regression models. |
-| `regression/non_gaussian` | Poisson、Beta、Gamma、および Negative Binomial response models. |
+| `regression/beta`, `regression/gamma`, `regression/count` | Beta、Gamma、Poisson、および Negative Binomial response models. |
 | `classification/binary` | Binary GP classification および related wrappers. |
 | `classification/multiclass` | Multiclass GP classification および related wrappers. |
 | `ordinal` | Ordered-label / ordinal-regression GP wrappers. |
@@ -782,7 +782,7 @@ default API registry は、これらの `task_type` values を公開します。
 "hetero"
 ```
 
-`multiclass` では、`deepgpdeepkernel` は現在、別個の model type として登録されていません。Non-Gaussian models は `models/regression/non_gaussian/` の下に存在しますが、まだ default `ModelConfig` registry の一部ではありません。high-level API に接続するには、`model_cls`、`model_factory`、または custom registry を使用してください。
+`multiclass` では、`deepgpdeepkernel` は現在、別個の model type として登録されていません。分布固有の回帰モデルは `models/regression/beta/`、`models/regression/gamma/`、`models/regression/count/` に整理され、canonical な model registry path から解決されます。
 
 `cat_dims` が指定され、`input_type` が省略されている場合、API は `input_type="mixed"` を推論します。それ以外の場合は `input_type="normal"` を使用します。
 

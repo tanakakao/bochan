@@ -364,7 +364,7 @@ The main source directories mirror the mathematical separation.
 
 ```text
 src/bochan/models/          probabilistic models and posterior wrappers
-src/bochan/likelihoods/     custom observation likelihoods
+src/bochan/models/*/            family-owned observation likelihoods and model helpers
 src/bochan/fit/             model-specific fitting procedures
 src/bochan/acquisition/     BO, Active Learning, and LSE acquisitions
 src/bochan/optim/           acquisition optimizers and candidate repair

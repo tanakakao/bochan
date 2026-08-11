@@ -14,7 +14,7 @@ from bochan.models.components.decomposition import (
     PCATransformer,
     REMBOTransformer,
 )
-from bochan.models.components.multiclass import (
+from bochan.models.classification.multiclass._components import (
     apply_input_transform_for_training,
     check_categorical_columns_unchanged,
     clone_input_transform,

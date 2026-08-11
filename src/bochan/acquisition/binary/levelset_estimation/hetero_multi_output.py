@@ -8,7 +8,7 @@ from botorch.models.model import ModelList
 from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
-from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
+from bochan.acquisition.binary._probability import latent_samples_to_binary_probabilities
 
 from bochan.acquisition.binary.base import (
     ReductionType,

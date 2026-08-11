@@ -21,7 +21,7 @@ from gpytorch.variational import (
 )
 
 from bochan.fit.ordinal import fit_ordinal_gp
-from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
 
 
 def _normalize_dims(cat_dims: Sequence[int], d: int) -> list[int]:

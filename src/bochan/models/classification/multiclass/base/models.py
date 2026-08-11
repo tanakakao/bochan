@@ -21,7 +21,7 @@ from gpytorch.mlls import VariationalELBO
 from gpytorch.models import ApproximateGP
 from gpytorch.variational import CholeskyVariationalDistribution, VariationalStrategy
 
-from bochan.models.components.multiclass import (
+from bochan.models.classification.multiclass._components import (
     MulticlassProbsPosterior,
     apply_input_transform_for_eval,
     apply_input_transform_for_training,

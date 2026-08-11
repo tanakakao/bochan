@@ -356,7 +356,7 @@ optimization中またはoptimization後に、丸め、repair、sparsity、domain
 
 ```text
 src/bochan/models/          probabilistic models and posterior wrappers
-src/bochan/likelihoods/     custom observation likelihoods
+src/bochan/models/*/            family-owned observation likelihoods and model helpers
 src/bochan/fit/             model-specific fitting procedures
 src/bochan/acquisition/     BO, Active Learning, and LSE acquisitions
 src/bochan/optim/           acquisition optimizers and candidate repair

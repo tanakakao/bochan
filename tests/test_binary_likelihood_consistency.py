@@ -7,7 +7,7 @@ import torch
 from gpytorch.likelihoods import BernoulliLikelihood, Likelihood
 from torch.distributions import Bernoulli, Normal
 
-from bochan.acquisition.binary._likelihood import (
+from bochan.acquisition.binary._probability import (
     latent_samples_to_binary_probabilities,
     values_to_binary_probabilities,
 )
@@ -127,7 +127,7 @@ def test_binary_acquisitions_do_not_apply_sigmoid_to_plain_latent_values() -> No
     violations: list[str] = []
 
     for path in sorted(root.rglob("*.py")):
-        if path.name == "_likelihood.py":
+        if path.name == "_probability.py":
             continue
         source = path.read_text(encoding="utf-8")
         tree = ast.parse(source)

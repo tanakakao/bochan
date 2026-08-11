@@ -20,7 +20,7 @@ from bochan.acquisition._duplicate_exclusion import (
     resolve_observed_X,
     unwrap_single_output_model,
 )
-from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
 
 
 RiskType = Optional[Literal["var", "cvar"]]

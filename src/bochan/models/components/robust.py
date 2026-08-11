@@ -29,7 +29,7 @@ from botorch.models.transforms.input import InputTransform
 from gpytorch.distributions import MultivariateNormal
 from gpytorch.likelihoods import BernoulliLikelihood
 
-from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
 
 
 __all__ = [

@@ -7,13 +7,13 @@ import torch
 from botorch.posteriors.posterior_list import PosteriorList
 
 from bochan.api.model_registry import MODEL_REGISTRY
-from bochan.models.regression.non_gaussian.beta.base import (
+from bochan.models.regression.beta.base import (
     BetaMultiTaskGPModel,
     KroneckerMultiTaskBetaGPModel,
     WideBetaMultiTaskGPModel,
 )
-from bochan.models.regression.non_gaussian.gamma.base import GammaGPModel
-from bochan.models.regression.non_gaussian.multioutput import NonGaussianModelList
+from bochan.models.regression.gamma.base import GammaGPModel
+from bochan.models.regression.multioutput import NonGaussianModelList
 
 
 @pytest.mark.parametrize(

@@ -91,14 +91,13 @@ def test_nsgaii_name_ignores_optimizer_but_preserves_other_options(monkeypatch) 
     resolved = captured["config"]
     assert resolved.optimizer == "nsgaii"
     assert resolved.q == 3
-    assert resolved.optimizer_kwargs["population_size"] == 80
-    assert resolved.optimizer_kwargs["max_gen"] == 120
-    assert resolved.optimizer_kwargs["method"] == "ga"
-    assert original.optimizer == "evo"
-    assert original.optimizer_kwargs == {
+    assert resolved.optimizer_kwargs == original.optimizer_kwargs
+    assert resolved.optimizer_kwargs == {
         "population_size": 80,
         "max_gen": 120,
+        "method": "ga",
     }
+    assert original.optimizer == "evo"
 
 
 def test_non_nsgaii_name_keeps_selected_optimizer(monkeypatch) -> None:

@@ -15,7 +15,7 @@ from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.optim import optimize_acqf, optimize_acqf_mixed
 
 try:  # package import
-    from ..constraints.k_sparse import (
+    from ...constraints.k_sparse import (
         LinearConstraint,
         expand_categorical_features,
         generate_k_sparse_initial_conditions,

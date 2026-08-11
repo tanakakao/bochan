@@ -19,7 +19,7 @@ from bochan.api.automatic_multiobjective import (
     observed_multiobjective_values,
 )
 from bochan.api.configs import DataContext, ModelBundle
-from bochan.optim.nsgaii_strategy import NSGAIIStrategy
+from bochan.optim.nsgaii.strategy import NSGAIIStrategy
 
 
 def _ordinal_bundle(train_Y: torch.Tensor) -> ModelBundle:

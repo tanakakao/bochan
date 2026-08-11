@@ -9,7 +9,7 @@ from bochan.acquisition.multiclass.bayesian_optimization import (
 )
 from bochan.api.optimizer_api import OptimizeConfig, optimize_candidates
 from bochan.optim import optimize_thompson_sampling
-from bochan.optim.thompson_sampling_adapter import ThompsonScalarizedObjective
+from bochan.optim.thompson.adapter import ThompsonScalarizedObjective
 
 
 class _ScalarMarkedMultiObjective:

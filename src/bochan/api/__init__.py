@@ -217,7 +217,7 @@ def _resolve_acquisition_config_with_model_outputs(
     if acq_config.acqf_cls is not None or acq_config.acqf_factory is not None:
         return acq_config
     if _is_nsgaii_strategy(acq_config):
-        from bochan.optim.nsgaii_strategy import build_nsgaii_strategy
+        from bochan.optim.nsgaii.strategy import build_nsgaii_strategy
 
         return replace(acq_config, acqf_factory=build_nsgaii_strategy)
     self._check_fitted()

@@ -312,7 +312,7 @@ def test_public_nsgaii_applies_generated_constraints_after_multiclass_objective(
     monkeypatch,
 ) -> None:
     import bochan.optim as optim
-    import bochan.optim.nsgaii_constraints as support
+    import bochan.optim.nsgaii.constraints as support
 
     captured: dict[str, object] = {}
 

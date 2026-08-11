@@ -12,9 +12,9 @@ from typing import Any
 
 from torch import Tensor
 
-from . import nsgaii as _base
-from .nsgaii_diversity import select_diverse_nsgaii_candidates
-from .nsgaii_outputs import adapt_nsgaii_outputs
+from . import core as _base
+from .diversity import select_diverse_nsgaii_candidates
+from .outputs import adapt_nsgaii_outputs
 
 LinearConstraint = _base.LinearConstraint
 OutcomeConstraint = _base.OutcomeConstraint

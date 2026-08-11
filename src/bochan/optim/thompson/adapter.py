@@ -21,7 +21,7 @@ from botorch.acquisition.objective import MCAcquisitionObjective
 from botorch.generation import MaxPosteriorSampling
 from torch import Tensor
 
-from . import thompson_sampling as _base
+from . import core as _base
 
 Constraint = Callable[[Tensor], Tensor]
 

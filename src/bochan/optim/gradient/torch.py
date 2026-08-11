@@ -23,7 +23,7 @@ from botorch.acquisition.acquisition import AcquisitionFunction
 from torch import Tensor
 
 try:
-    from ..constraints.k_sparse import (
+    from ...constraints.k_sparse import (
         LinearConstraint,
         ScoreMode,
         SupportSelection,

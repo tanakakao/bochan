@@ -11,7 +11,7 @@ from bochan.acquisition.multiclass.bayesian_optimization.multi_output import (
     MulticlassTargetProbabilityObjective,
 )
 from bochan.api import AcquisitionConfig, InputTransformConfig, ModelConfig
-from bochan.optim.nsgaii_strategy import build_nsgaii_strategy
+from bochan.optim.nsgaii.strategy import build_nsgaii_strategy
 
 
 class _DummyMulticlassModel(nn.Module):

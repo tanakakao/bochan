@@ -6,7 +6,7 @@ import torch
 
 import bochan.api as api_module
 from bochan.api import AcquisitionConfig, OptimizeConfig
-from bochan.optim.nsgaii_strategy import NSGAIIStrategy, build_nsgaii_strategy
+from bochan.optim.nsgaii.strategy import NSGAIIStrategy, build_nsgaii_strategy
 
 
 def test_nsgaii_name_resolves_without_acquisition_registry() -> None:

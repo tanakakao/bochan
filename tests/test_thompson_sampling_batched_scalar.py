@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from bochan.optim.thompson_sampling_adapter import ThompsonScalarizedObjective
+from bochan.optim.thompson.adapter import ThompsonScalarizedObjective
 
 
 class _BatchedScalarObjective:

@@ -5,11 +5,11 @@ from types import SimpleNamespace
 import torch
 
 import bochan.api  # noqa: F401 - installs multiclass objective support
-import bochan.optim.nsgaii_adapter as nsgaii_adapter
+import bochan.optim.nsgaii.adapter as nsgaii_adapter
 from bochan.acquisition.multiclass.bayesian_optimization.multi_output import (
     MulticlassTargetProbabilityObjective,
 )
-from bochan.optim.nsgaii_outputs import adapt_nsgaii_outputs
+from bochan.optim.nsgaii.outputs import adapt_nsgaii_outputs
 
 
 class _FixedAcquisition:

@@ -24,6 +24,9 @@ from bochan.models.components.multiclass import (
     normalize_dims,
     prepare_class_targets,
 )
+from bochan.models.components.projected_utils import (
+    flatten_projected_one_to_many_point_axes,
+)
 from bochan.models.classification.multiclass import (
     MulticlassClassificationGPModel,
     MulticlassClassificationMixedGPModel,
@@ -141,7 +144,8 @@ class _ContinuousProjectedMulticlassModel(_BaseProjectedMulticlassModel):
     def transform_inputs(self, X: Tensor) -> Tensor:
         if X.shape[-1] == self.latent_dim:
             return X
-        return self.projector.transform(self._to_preprojection_space(X))
+        projected = self.projector.transform(self._to_preprojection_space(X))
+        return flatten_projected_one_to_many_point_axes(X, projected)
 
 
 class PCAMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
@@ -278,7 +282,8 @@ class _MixedProjectedMulticlassModel(_BaseProjectedMulticlassModel):
         return torch.cat([x_cont, x_cat], dim=-1)
 
     def transform_inputs(self, X: Tensor) -> Tensor:
-        return self._to_internal(X)
+        internal = self._to_internal(X)
+        return flatten_projected_one_to_many_point_axes(X, internal)
 
 
 class PCAMulticlassClassificationMixedGPModel(_MixedProjectedMulticlassModel):
@@ -333,6 +338,7 @@ class PCAMulticlassClassificationMixedGPModel(_MixedProjectedMulticlassModel):
         self._preproject_train_X = pre_X.detach().clone()
         self._projected_train_X = projected_X.detach().clone()
         self._train_targets = train_Y
+        self.num_classes = int(num_inducing)
         self.num_classes = int(num_classes)
         self.num_inducing = int(num_inducing)
 

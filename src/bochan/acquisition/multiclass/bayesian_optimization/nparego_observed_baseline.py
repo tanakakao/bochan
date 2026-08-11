@@ -35,6 +35,20 @@ def complete_multiclass_label_rows(train_Y: Tensor) -> Tensor:
     )
 
 
+def same_tensor_storage(left: Any, right: Any) -> bool:
+    """Return whether two tensor references point to the same stored values."""
+
+    if left is right and left is not None:
+        return True
+    if not torch.is_tensor(left) or not torch.is_tensor(right):
+        return False
+    return (
+        left.shape == right.shape
+        and left.device == right.device
+        and left.data_ptr() == right.data_ptr()
+    )
+
+
 def wide_multiclass_training_labels(model: Any) -> Tensor | None:
     """Return the model's retained wide multiclass labels, if available."""
 
@@ -71,18 +85,7 @@ def infer_multiclass_train_y(model: Any) -> Tensor | None:
 def is_training_label_baseline(model: Any, baseline: Any) -> bool:
     """Return whether ``baseline`` is the model's raw wide label tensor."""
 
-    train_Y = wide_multiclass_training_labels(model)
-    if baseline is None or train_Y is None:
-        return False
-    if baseline is train_Y:
-        return True
-    if not torch.is_tensor(baseline):
-        return False
-    return (
-        baseline.shape == train_Y.shape
-        and baseline.device == train_Y.device
-        and baseline.data_ptr() == train_Y.data_ptr()
-    )
+    return same_tensor_storage(baseline, wide_multiclass_training_labels(model))
 
 
 def objective_baseline_from_labels(
@@ -114,5 +117,6 @@ __all__ = [
     "infer_multiclass_train_y",
     "is_training_label_baseline",
     "objective_baseline_from_labels",
+    "same_tensor_storage",
     "wide_multiclass_training_labels",
 ]

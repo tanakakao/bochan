@@ -1,4 +1,4 @@
-"""Install domain-aware candidate explanation methods on BayesianOptimizer."""
+"""Candidate explanation mixin for the canonical Bayesian optimizer."""
 
 from __future__ import annotations
 
@@ -7,21 +7,22 @@ from typing import Any
 
 import torch
 
-from bochan.llm import candidate_explainer as _candidate_explainer_base
 from bochan.llm import candidate_explainer_overall as _candidate_explainer
 from bochan.llm.candidate_explainer_overall import (
     CandidateExplanation,
     CandidateExplanationConfig,
     build_candidate_explanation_prompt,
     explanation_from_payload,
-    select_representative_candidates,
 )
 from bochan.llm.client import make_llm_client
 from bochan.llm.parser import parse_json_payload
 
 
-def _safe_bounds_tensor(bounds: Any, X: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-    """Resolve finite column bounds without relying on unavailable torch.nanmin."""
+def _safe_bounds_tensor(
+    bounds: Any,
+    X: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Resolve finite column bounds without torch.nanmin / torch.nanmax."""
 
     if bounds is not None:
         try:
@@ -42,11 +43,91 @@ def _safe_bounds_tensor(bounds: Any, X: torch.Tensor) -> tuple[torch.Tensor, tor
         else:
             lower.append(float(finite.min().item()))
             upper.append(float(finite.max().item()))
-    return torch.tensor(lower, dtype=torch.double), torch.tensor(upper, dtype=torch.double)
+    return (
+        torch.tensor(lower, dtype=torch.double),
+        torch.tensor(upper, dtype=torch.double),
+    )
 
 
-_candidate_explainer_base._bounds_tensor = _safe_bounds_tensor
-_candidate_explainer._bounds_tensor = _safe_bounds_tensor
+def _per_candidate_acquisition(
+    acq_value: Any,
+    n_candidates: int,
+) -> torch.Tensor | None:
+    if acq_value is None:
+        return None
+    try:
+        values = torch.as_tensor(acq_value, dtype=torch.double).reshape(-1)
+    except (TypeError, ValueError, RuntimeError):
+        return None
+    if values.numel() != n_candidates:
+        return None
+    return values
+
+
+def _select_representative_candidates(
+    candidates: Any,
+    *,
+    acq_value: Any | None = None,
+    max_representatives: int = 5,
+    bounds: Any | None = None,
+) -> tuple[list[int], dict[int, str]]:
+    """Select best, central and diverse representatives without global patches."""
+
+    X = _candidate_explainer._as_2d_tensor(candidates)
+    n_candidates = int(X.shape[0])
+    if n_candidates == 0:
+        raise ValueError("candidates must contain at least one row.")
+    limit = min(max(int(max_representatives), 1), n_candidates)
+    if n_candidates <= limit:
+        indices = list(range(n_candidates))
+        return indices, {index: "all_candidates" for index in indices}
+
+    lower, upper = _safe_bounds_tensor(bounds, X)
+    scale = (upper - lower).abs().clamp_min(1e-12)
+    normalized = torch.nan_to_num(
+        (X - lower) / scale,
+        nan=0.0,
+        posinf=1.0,
+        neginf=0.0,
+    )
+
+    selected: list[int] = []
+    roles: dict[int, str] = {}
+    per_candidate_acq = _per_candidate_acquisition(acq_value, n_candidates)
+    if per_candidate_acq is not None and torch.isfinite(per_candidate_acq).any():
+        safe_values = torch.where(
+            torch.isfinite(per_candidate_acq),
+            per_candidate_acq,
+            torch.full_like(per_candidate_acq, -torch.inf),
+        )
+        first = int(torch.argmax(safe_values).item())
+        selected.append(first)
+        roles[first] = "highest_acquisition"
+    else:
+        selected.append(0)
+        roles[0] = "optimizer_first"
+
+    if len(selected) < limit:
+        centroid = normalized.mean(dim=0)
+        distances = torch.linalg.vector_norm(normalized - centroid, dim=-1)
+        for index in selected:
+            distances[index] = torch.inf
+        central = int(torch.argmin(distances).item())
+        if central not in selected:
+            selected.append(central)
+            roles[central] = "central_candidate"
+
+    while len(selected) < limit:
+        chosen = normalized[selected]
+        pairwise = torch.cdist(normalized, chosen)
+        min_distance = pairwise.min(dim=1).values
+        for index in selected:
+            min_distance[index] = -torch.inf
+        next_index = int(torch.argmax(min_distance).item())
+        selected.append(next_index)
+        roles[next_index] = "diverse_candidate"
+
+    return selected, roles
 
 
 def _coerce_config(
@@ -59,14 +140,11 @@ def _coerce_config(
     return CandidateExplanationConfig(**dict(value))
 
 
-def install_bayesian_optimizer_candidate_explanation_api(optimizer_cls: type[Any]) -> None:
-    """Attach candidate explanation methods to ``optimizer_cls`` once."""
-
-    if getattr(optimizer_cls, "_bochan_candidate_explanation_api_installed", False):
-        return
+class LLMCandidateExplanationMixin:
+    """Domain-aware explanation methods for final candidate batches."""
 
     def explain_candidates(
-        self: Any,
+        self,
         result: Any | None = None,
         *,
         candidates: Any | None = None,
@@ -80,13 +158,7 @@ def install_bayesian_optimizer_candidate_explanation_api(optimizer_cls: type[Any
         llm_context: Any | None = None,
         explanation_response: Any | None = None,
     ) -> CandidateExplanation:
-        """Explain final candidates from model and engineering perspectives.
-
-        This method never regenerates candidates. For large batches it selects a
-        highest-ranked, central, and diverse subset before the LLM call. Each
-        representative point includes both specialist perspectives and one
-        integrated, decision-oriented explanation.
-        """
+        """Explain final candidates without regenerating or mutating them."""
 
         resolved_config = _coerce_config(config)
         if max_representatives is not None:
@@ -94,7 +166,9 @@ def install_bayesian_optimizer_candidate_explanation_api(optimizer_cls: type[Any
             if resolved_config.max_representatives <= 0:
                 raise ValueError("max_representatives must be positive.")
         if perspectives is not None:
-            resolved_config.perspectives = tuple(str(item) for item in perspectives)
+            resolved_config.perspectives = tuple(
+                str(item) for item in perspectives
+            )
         if prompt is not None:
             resolved_config.prompt = str(prompt)
 
@@ -103,7 +177,8 @@ def install_bayesian_optimizer_candidate_explanation_api(optimizer_cls: type[Any
             history = getattr(self, "history", None) or []
             if not history:
                 raise ValueError(
-                    "No candidate result is available. Pass result/candidates or call candidate() first."
+                    "No candidate result is available. Pass result/candidates or "
+                    "call candidate() first."
                 )
             candidate_result = history[-1]
         if candidate_result is not None:
@@ -119,7 +194,7 @@ def install_bayesian_optimizer_candidate_explanation_api(optimizer_cls: type[Any
             if context_bounds is not None:
                 bounds = context_bounds
 
-        representative_indices, roles = select_representative_candidates(
+        representative_indices, roles = _select_representative_candidates(
             candidates,
             acq_value=acq_value,
             max_representatives=resolved_config.max_representatives,
@@ -135,13 +210,17 @@ def install_bayesian_optimizer_candidate_explanation_api(optimizer_cls: type[Any
         local_warnings: list[str] = []
         if resolved_config.include_predictions:
             try:
-                prediction = self.predict(selected_candidates, return_result=True)
+                prediction = self.predict(
+                    selected_candidates,
+                    return_result=True,
+                )
                 prediction_mean = getattr(prediction, "mean", None)
                 if resolved_config.include_uncertainty:
                     prediction_variance = getattr(prediction, "variance", None)
-            except Exception as exc:  # custom models may not expose a standard posterior
+            except Exception as exc:
                 local_warnings.append(
-                    f"Candidate prediction summary was unavailable: {type(exc).__name__}: {exc}"
+                    "Candidate prediction summary was unavailable: "
+                    f"{type(exc).__name__}: {exc}"
                 )
 
         settings = getattr(self, "llm_settings", None)
@@ -156,7 +235,10 @@ def install_bayesian_optimizer_candidate_explanation_api(optimizer_cls: type[Any
             if resolved_llm_context is None:
                 resolved_llm_context = settings.llm_context
         if resolved_goal is None:
-            resolved_goal = "Explain why the proposed experimental or process conditions are informative."
+            resolved_goal = (
+                "Explain why the proposed experimental or process conditions "
+                "are informative."
+            )
 
         acq_config = getattr(candidate_result, "acq_config", None)
         opt_config = getattr(candidate_result, "opt_config", None)
@@ -179,13 +261,17 @@ def install_bayesian_optimizer_candidate_explanation_api(optimizer_cls: type[Any
         )
         if explanation_response is None:
             client = make_llm_client(resolved_llm_config)
-            payload = parse_json_payload(client.generate_json(explanation_prompt).text)
+            payload = parse_json_payload(
+                client.generate_json(explanation_prompt).text
+            )
         else:
             payload = parse_json_payload(explanation_response)
         if not isinstance(payload, Mapping):
             raise ValueError("Candidate explanation response must be a JSON object.")
 
-        total_candidates = int(_candidate_explainer._as_2d_tensor(candidates).shape[0])
+        total_candidates = int(
+            _candidate_explainer._as_2d_tensor(candidates).shape[0]
+        )
         explanation = explanation_from_payload(
             payload,
             total_candidates=total_candidates,
@@ -198,14 +284,21 @@ def install_bayesian_optimizer_candidate_explanation_api(optimizer_cls: type[Any
             candidate_result.explanation = explanation
         return explanation
 
-    def explain_last_candidates(self: Any, **kwargs: Any) -> CandidateExplanation:
+    def explain_last_candidates(self, **kwargs: Any) -> CandidateExplanation:
         """Explain the most recent candidate result."""
 
         return self.explain_candidates(None, **kwargs)
 
-    optimizer_cls.explain_candidates = explain_candidates
-    optimizer_cls.explain_last_candidates = explain_last_candidates
-    optimizer_cls._bochan_candidate_explanation_api_installed = True
+
+def install_bayesian_optimizer_candidate_explanation_api(
+    optimizer_cls: type[Any],
+) -> None:
+    """Deprecated no-op retained for source compatibility."""
+
+    del optimizer_cls
 
 
-__all__ = ["install_bayesian_optimizer_candidate_explanation_api"]
+__all__ = [
+    "LLMCandidateExplanationMixin",
+    "install_bayesian_optimizer_candidate_explanation_api",
+]

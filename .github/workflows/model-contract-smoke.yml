@@ -23,9 +23,15 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Apply model package reorganization
+        id: apply_layout
         shell: bash
         run: |
           set -euo pipefail
+
+          if ! compgen -G '.github/model-layout.patch.part-*' > /dev/null; then
+            echo "applied=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           cat .github/model-layout.patch.part-* > /tmp/model-layout.patch.gz.b64
           echo "09bd70a750c22bf2b861264a23d4d87e461e164ec2a6074e333a316c000db48b  /tmp/model-layout.patch.gz.b64" | sha256sum -c -
@@ -40,46 +46,14 @@ jobs:
             xargs -d '\n' git rm -f < /tmp/generated-files.txt
           fi
 
+          # Workflow files are updated separately through the GitHub connector.
+          # Restoring them here keeps the source-layout commit pushable by Actions.
+          git checkout HEAD -- .github/workflows
           rm -f .github/model-layout.patch.part-*
-
-          cat > .github/workflows/model-contract-smoke.yml <<'YAML'
-          name: Model contract smoke
-
-          on:
-            pull_request:
-              branches:
-                - main
-            workflow_dispatch:
-
-          jobs:
-            test:
-              runs-on: ubuntu-latest
-              timeout-minutes: 30
-              steps:
-                - uses: actions/checkout@v4
-                - uses: actions/setup-python@v5
-                  with:
-                    python-version: "3.11"
-                    cache: pip
-                - name: Install
-                  run: python -m pip install -e ".[test,api]"
-                - name: Run model contract tests
-                  run: |
-                    pytest -q --maxfail=1 \
-                      tests/test_model_contract_refactor.py \
-                      tests/test_model_contract_followup.py \
-                      tests/test_model_package_layout.py \
-                      tests/test_mixed_kronecker_model_registry.py \
-                      tests/test_ordinal_deep_num_classes_inference.py \
-                      tests/test_ordinal_robust_num_classes.py \
-                      tests/test_projected_exact_mll_beta.py \
-                      tests/models/hybrid/test_multi_output_cat_dims.py
-                - name: Compile model package
-                  run: python -m compileall -q src/bochan/models
-          YAML
 
           python -m compileall -q src/bochan tests
           git diff --check
+          echo "applied=true" >> "$GITHUB_OUTPUT"
       - name: Install
         run: python -m pip install -e ".[test,api]"
       - name: Run model contract tests
@@ -94,6 +68,7 @@ jobs:
             tests/test_projected_exact_mll_beta.py \
             tests/models/hybrid/test_multi_output_cat_dims.py
       - name: Commit structural refactor
+        if: steps.apply_layout.outputs.applied == 'true'
         shell: bash
         run: |
           set -euo pipefail

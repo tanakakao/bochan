@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Any, Optional, Sequence, Union
 
 import torch
 from botorch.acquisition.objective import PosteriorTransform
@@ -11,7 +11,8 @@ from gpytorch.distributions import MultitaskMultivariateNormal, MultivariateNorm
 from torch import Tensor
 from torch.nn import ModuleList
 
-from bochan.models.classification.binary.base.posterior import SimpleBernoulliPosterior
+if TYPE_CHECKING:
+    from bochan.models.classification.binary.base.posterior import SimpleBernoulliPosterior
 
 
 class MultiOutputBernoulliPosterior(Posterior):
@@ -860,7 +861,7 @@ class MultiOutputBinaryClassificationModel(Model):
         Y: Tensor,
         noise: Optional[Tensor] = None,
         **kwargs: Any,
-    ) -> "MultiOutputClassificationModel":
+    ) -> "MultiOutputBinaryClassificationModel":
         """
         観測を追加した multi-output classification model を返す。
 

@@ -16,14 +16,14 @@ from bochan.acquisition.objective import make_outcome_constraints
 from bochan.api import AutoStandardizeOutcomeTransform, ModelConfig
 from bochan.api.engine_defaults import resolve_multi_output_model_config
 from bochan.api.model_registry import MODEL_REGISTRY
-from bochan.models.wide_multitask import wide_to_long
-from bochan.models.wide_multitask_variants import (
+from bochan.models.multitask.task_feature import (
     TaskFeatureInputTransform,
     WideMultiTaskBinaryClassificationGPModel,
     WideMultiTaskGP,
     WideMultiTaskMulticlassClassificationGPModel,
     WideMultiTaskOrdinalGPModel,
 )
+from bochan.models.multitask.wide import wide_to_long
 
 
 def _wide_data():

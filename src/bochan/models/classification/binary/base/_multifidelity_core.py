@@ -24,7 +24,7 @@ from ._multifidelity_utils import (
     wide_probability_tensors,
 )
 from .models import BinaryClassificationGPModel as _BinaryClassificationGPModel
-from .multioutput import MultiOutputBernoulliPosterior
+from bochan.models.multioutput.binary import MultiOutputBernoulliPosterior
 
 
 class _WideMultiFidelityBinaryCore(_BinaryClassificationGPModel):

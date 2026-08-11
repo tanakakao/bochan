@@ -24,7 +24,7 @@ from gpytorch.variational import (
 from torch import Tensor
 from torch.distributions import Categorical
 
-from bochan.models.components.kronecker_multitask import (
+from bochan.models.multitask.kronecker import (
     BlockDesignVariationalELBO,
     canonicalize_block_design_targets,
     canonicalize_shared_inducing_points,
@@ -36,7 +36,7 @@ from bochan.models.classification.multiclass._components import (
     to_device_dtype_transform,
 )
 
-from .multioutput import MultiOutputMulticlassProbsPosterior
+from bochan.models.multioutput.multiclass import MultiOutputMulticlassProbsPosterior
 
 
 class _ClassBatchedLMCVariationalStrategy(LMCVariationalStrategy):

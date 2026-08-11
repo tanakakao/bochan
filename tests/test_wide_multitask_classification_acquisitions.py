@@ -26,7 +26,7 @@ from bochan.acquisition.ordinal.bayesian_optimization import (
     qMultiOutputOrdinalNParEGO,
     qMultiOutputOrdinalUtilityObjective,
 )
-from bochan.models.wide_multitask_variants import (
+from bochan.models.multitask.task_feature import (
     WideMultiTaskBinaryClassificationGPModel,
     WideMultiTaskMulticlassClassificationGPModel,
     WideMultiTaskOrdinalGPModel,

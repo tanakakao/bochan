@@ -86,7 +86,7 @@ def _wide_task_proxies(model: Any) -> list[Any] | None:
 
 
 def apply_ordinal_multitask() -> None:
-    """Install wide posterior, likelihood, and task-proxy support.
+    """Install likelihood and task-proxy support.
 
     A long-format correlated ordinal model learns one shared likelihood and task
     covariance, while older multi-output acquisitions expect a ModelList-style
@@ -98,12 +98,6 @@ def apply_ordinal_multitask() -> None:
     base directly, so it uses the active-learning submodel resolver and no longer
     needs a separate level-set runtime patch.
     """
-
-    from bochan.acquisition.wide_posterior_events import (
-        apply_wide_posterior_events,
-    )
-
-    apply_wide_posterior_events()
 
     global _APPLIED
     if _APPLIED:

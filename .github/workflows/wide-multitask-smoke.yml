@@ -26,6 +26,7 @@ jobs:
         run: |
           set +e
           pytest -q --maxfail=1 \
+            tests/test_model_strategy_package_layout.py \
             tests/test_gamma_fantasize.py \
             tests/test_wide_multitask_models.py \
             tests/test_wide_multitask_public_transform.py \
@@ -93,7 +94,6 @@ jobs:
             src/bochan/acquisition/regression/bayesian_optimization/hetero_multi_output_autograd.py \
             src/bochan/acquisition/regression/levelset_estimation/objective_compat.py \
             src/bochan/acquisition/regression/levelset_estimation/hetero_objective_compat.py \
-            src/bochan/acquisition/wide_posterior_events.py \
             src/bochan/api/acquisition_config.py \
             src/bochan/api/automatic_multiobjective.py \
             src/bochan/api/classification_perturbation_defaults.py \
@@ -107,9 +107,9 @@ jobs:
             src/bochan/models/hybrid/class_probability_shapes.py \
             src/bochan/models/hybrid/task_aware_posterior.py \
             src/bochan/models/hybrid/task_aware_sampling.py \
+            src/bochan/models/multitask/task_feature.py \
+            src/bochan/models/multitask/wide.py \
             src/bochan/models/regression/gamma/base/aligned.py \
-            src/bochan/models/wide_multitask.py \
-            src/bochan/models/wide_multitask_variants.py \
             src/bochan/optim/__init__.py \
             src/bochan/optim/nsgaii_adapter.py \
             src/bochan/optim/nsgaii_constraints.py \

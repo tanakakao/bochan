@@ -10,7 +10,7 @@ from gpytorch.kernels import Kernel
 from gpytorch.means import Mean
 from torch import Tensor
 
-from bochan.models.components.kronecker_multitask import (
+from bochan.models.multitask.kronecker import (
     canonicalize_block_design_targets,
 )
 from bochan.models.components.mixed_kronecker import (

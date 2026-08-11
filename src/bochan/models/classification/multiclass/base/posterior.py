@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from bochan.models.classification.multiclass._components import MulticlassProbsPosterior
-from bochan.models.classification.multiclass.base.multioutput import (
+from bochan.models.multioutput.multiclass import (
     MultiOutputMulticlassProbsPosterior,
 )
 

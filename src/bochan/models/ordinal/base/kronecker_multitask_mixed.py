@@ -12,7 +12,7 @@ from torch import Tensor
 
 from bochan.fit.ordinal import fit_ordinal_gp
 from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
-from bochan.models.components.kronecker_multitask import (
+from bochan.models.multitask.kronecker import (
     canonicalize_block_design_targets,
 )
 from bochan.models.components.mixed_kronecker import (

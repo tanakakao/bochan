@@ -148,6 +148,10 @@ jobs:
       - name: Commit refactor
         shell: bash
         run: |
+          # Existing smoke workflows also need path updates, but the Actions
+          # token cannot publish workflow-file edits. They are applied through
+          # the GitHub connector immediately after this source commit lands.
+          git restore --source=HEAD -- .github/workflows
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A

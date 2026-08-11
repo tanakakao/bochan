@@ -47,7 +47,7 @@ jobs:
           set -euo pipefail
           python -m compileall -q src/bochan tests
           pytest -q tests/test_optim_package_layout.py
-          mapfile -t focused < <(git ls-files 'tests/*.py' | grep -Ei '(optim|nsgaii|thompson|k_sparse|llm)' | grep -v 'test_optim_package_layout.py' || true)
+          mapfile -t focused < <(git diff --name-only --diff-filter=ACMR -- 'tests/*.py' | grep -v 'test_optim_package_layout.py' || true)
           if [ "${#focused[@]}" -gt 0 ]; then
             pytest -q --maxfail=1 "${focused[@]}"
           fi

@@ -1,9 +1,9 @@
 """Canonical public Bayesian optimization API.
 
-``BayesianOptimizer`` is defined once in this module.  Model fitting, automatic
-acquisition defaults, observation state, experiment failure handling and
-candidate generation are composed explicitly instead of being layered through
-multiple public subclasses or patched from :mod:`bochan.api.__init__`.
+``BayesianOptimizer`` is defined once in this module. Model fitting, automatic
+acquisition defaults, observation state, experiment failure handling, LLM
+suggestions and candidate generation are composed explicitly instead of being
+layered through multiple public subclasses or runtime method installers.
 """
 
 from __future__ import annotations
@@ -39,19 +39,20 @@ from .engine_defaults import (
 )
 from .experiment_failure import attach_observation_state
 from .factory import fit_model
+from .llm_suggestion import LLMSuggestionMixin
 from .observation import ExperimentFailureConfig, ObservationData
 from .observation_engine import _build_partial_objective_bundle
 from .optimizer_api import optimize_candidates, resolve_optimizer_from_cat_dims
 
 
-class BayesianOptimizer(_CoreBayesianOptimizer):
+class BayesianOptimizer(LLMSuggestionMixin, _CoreBayesianOptimizer):
     """High-level Bayesian optimizer used by tensor, tabular and serving APIs.
 
     The class owns one canonical state machine for fitting, prediction,
-    acquisition construction, candidate generation and ask/tell updates.  Input
-    adapters such as :class:`bochan.tabular.TabularBayesianOptimizer` should
-    delegate Bayesian-optimization semantics to this class rather than
-    reimplementing them.
+    acquisition construction, candidate generation and ask/tell updates. Input
+    adapters such as :class:`bochan.tabular.TabularBayesianOptimizer` delegate
+    Bayesian-optimization semantics to this class rather than reimplementing
+    them.
     """
 
     observations: ObservationData | None = None
@@ -83,7 +84,7 @@ class BayesianOptimizer(_CoreBayesianOptimizer):
         """Fit objective and optional experiment-success models.
 
         Standard ``train_X`` / ``train_Y`` fitting and explicit observation-state
-        fitting use the same implementation.  Missing objective cells are never
+        fitting use the same implementation. Missing objective cells are never
         imputed here; supported wide models consume them directly and split-output
         models are fitted only from rows observed for each output.
         """
@@ -98,7 +99,10 @@ class BayesianOptimizer(_CoreBayesianOptimizer):
                 failed_mask=failed_mask,
                 pending_mask=pending_mask,
             )
-        elif any(value is not None for value in (observed_mask, failed_mask, pending_mask)):
+        elif any(
+            value is not None
+            for value in (observed_mask, failed_mask, pending_mask)
+        ):
             raise ValueError(
                 "Pass masks inside ObservationData when observation_data is supplied."
             )
@@ -454,17 +458,6 @@ class BayesianOptimizer(_CoreBayesianOptimizer):
                     "is not defined. Use an explicit observation-aware validation protocol."
                 )
         return super().cross_validate(*args, **kwargs)
-
-
-# LLM configuration methods are still implemented in their dedicated optional
-# modules, but they are attached only to this canonical class.  They no longer
-# decide which BayesianOptimizer class is public or replace functions in
-# ``engine`` / ``factory``.
-from .llm_suggestion import install_bayesian_optimizer_llm_api
-from .llm_selected_acquisition import install_llm_selected_acquisition_api
-
-install_bayesian_optimizer_llm_api(BayesianOptimizer)
-install_llm_selected_acquisition_api(BayesianOptimizer)
 
 
 __all__ = ["BayesianOptimizer"]

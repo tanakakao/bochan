@@ -80,8 +80,14 @@ class qHeteroRegressionNParEGO(qHeteroMultiOutputRegressionNParEGO):
     """Heteroscedastic regression NParEGO with domain-first naming."""
 
 
+class qHeteroRegressionDecoupledExpectedHypervolumeImprovement(
+    qHeteroMultiOutputRegressionDecoupledExpectedHypervolumeImprovement
+):
+    """Decoupled heteroscedastic regression qEHVI with domain-first naming."""
+
+
 __all__ = [
-    "qHeteroMultiOutputRegressionDecoupledExpectedHypervolumeImprovement",
+    "qHeteroRegressionDecoupledExpectedHypervolumeImprovement",
     "qHeteroRegressionExpectedHypervolumeImprovement",
     "qHeteroRegressionExpectedImprovement",
     "qHeteroRegressionNParEGO",

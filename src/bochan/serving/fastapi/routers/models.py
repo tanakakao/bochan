@@ -30,9 +30,10 @@ from ..schemas import (
     TellRequest,
 )
 from ..tabular_compat import (
+    TargetCategoryMetadata,
     bind_category_metadata,
     to_acquisition_config,
-    to_model_config,
+    to_model_config_with_metadata,
     to_target_tensor,
 )
 
@@ -41,7 +42,10 @@ OPTIMIZER_STORE_DEP = Depends(get_optimizer_store)
 router = APIRouter(prefix="/models", tags=["models"])
 
 
-def _model_fit_response(model_id: str, optimizer: BayesianOptimizer) -> ModelFitResponse:
+def _model_fit_response(
+    model_id: str,
+    optimizer: BayesianOptimizer,
+) -> ModelFitResponse:
     train_X = getattr(optimizer, "train_X", None)
     n_train = int(train_X.shape[-2]) if hasattr(train_X, "shape") else None
     bundle = optimizer.bundle
@@ -65,11 +69,20 @@ def _schema_to_dict(value: Any | None) -> dict[str, Any] | None:
 
 
 def _request_config(request: Any, name: str) -> dict[str, Any] | None:
-    value = getattr(request, "bo_model_config", None) if name == "model_config" else getattr(request, name, None)
+    value = (
+        getattr(request, "bo_model_config", None)
+        if name == "model_config"
+        else getattr(request, name, None)
+    )
     return None if value is None else dict(value)
 
 
-def _plan_from_request(request: LLMPlanRequest | AutoCandidateRequest, train_X: Any, train_Y: Any, bounds: Any) -> dict[str, Any]:
+def _plan_from_request(
+    request: LLMPlanRequest | AutoCandidateRequest,
+    train_X: Any,
+    train_Y: Any,
+    bounds: Any,
+) -> dict[str, Any]:
     return plan_configs(
         goal=request.goal,
         llm_config=_schema_to_dict(request.llm_config),
@@ -86,7 +99,11 @@ def _plan_from_request(request: LLMPlanRequest | AutoCandidateRequest, train_X: 
     )
 
 
-def _planned_config(plan: dict[str, Any], request: Any, name: str) -> dict[str, Any]:
+def _planned_config(
+    plan: dict[str, Any],
+    request: Any,
+    name: str,
+) -> dict[str, Any]:
     explicit = _request_config(request, name)
     if explicit is not None:
         return explicit
@@ -96,7 +113,10 @@ def _planned_config(plan: dict[str, Any], request: Any, name: str) -> dict[str, 
     return dict(value)
 
 
-def _inject_llm_options(opt_config: object, request: AutoCandidateRequest) -> object:
+def _inject_llm_options(
+    opt_config: object,
+    request: AutoCandidateRequest,
+) -> object:
     updates: dict[str, Any] = {"goal": request.goal}
     if request.llm_config is not None:
         updates["llm_config"] = _schema_to_dict(request.llm_config)
@@ -117,15 +137,26 @@ def fit_model(
     try:
         options = request.tensor_options
         train_X = to_tensor(request.train_X, options)
-        bounds = to_tensor(request.bounds, options) if request.bounds is not None else None
-        model_config = to_model_config(request.bo_model_config, options)
+        bounds = (
+            to_tensor(request.bounds, options)
+            if request.bounds is not None
+            else None
+        )
+        model_config, category_metadata = to_model_config_with_metadata(
+            request.bo_model_config,
+            options,
+        )
         train_Y = to_target_tensor(
             request.train_Y,
             options,
-            model_config=model_config,
+            metadata=category_metadata,
         )
         fit_config = to_fit_config(request.fit_config)
-        data_context = to_data_context(request.data_context, options) if request.data_context is not None else None
+        data_context = (
+            to_data_context(request.data_context, options)
+            if request.data_context is not None
+            else None
+        )
 
         optimizer = BayesianOptimizer(
             model_config=model_config,
@@ -134,7 +165,7 @@ def fit_model(
             data_context=data_context,
         )
         optimizer.fit(train_X, train_Y)
-        bind_category_metadata(optimizer, model_config)
+        bind_category_metadata(optimizer, category_metadata)
         model_id = store.add(optimizer)
         return _model_fit_response(model_id, optimizer)
     except Exception as exc:
@@ -147,9 +178,21 @@ def plan_model_config(request: LLMPlanRequest) -> dict[str, Any]:
 
     try:
         options = request.tensor_options
-        train_X = to_tensor(request.train_X, options) if request.train_X is not None else None
-        train_Y = to_tensor(request.train_Y, options) if request.train_Y is not None else None
-        bounds = to_tensor(request.bounds, options) if request.bounds is not None else None
+        train_X = (
+            to_tensor(request.train_X, options)
+            if request.train_X is not None
+            else None
+        )
+        train_Y = (
+            to_tensor(request.train_Y, options)
+            if request.train_Y is not None
+            else None
+        )
+        bounds = (
+            to_tensor(request.bounds, options)
+            if request.bounds is not None
+            else None
+        )
         plan = _plan_from_request(request, train_X, train_Y, bounds)
         return {"plan": plan}
     except Exception as exc:
@@ -166,29 +209,45 @@ def auto_candidates(
     try:
         options = request.tensor_options
         train_X = to_tensor(request.train_X, options)
-        bounds = to_tensor(request.bounds, options) if request.bounds is not None else None
-        explicit_model_config = (
-            to_model_config(request.bo_model_config, options)
-            if request.bo_model_config is not None
+        bounds = (
+            to_tensor(request.bounds, options)
+            if request.bounds is not None
             else None
         )
+
+        category_metadata = TargetCategoryMetadata()
+        explicit_model_config = None
+        if request.bo_model_config is not None:
+            explicit_model_config, category_metadata = to_model_config_with_metadata(
+                request.bo_model_config,
+                options,
+            )
+
         train_Y = (
             to_target_tensor(
                 request.train_Y,
                 options,
-                model_config=explicit_model_config,
+                metadata=category_metadata,
             )
             if explicit_model_config is not None
             else to_tensor(request.train_Y, options)
         )
         plan = _plan_from_request(request, train_X, train_Y, bounds)
 
-        model_config = explicit_model_config or to_model_config(
-            _planned_config(plan, request, "model_config"),
-            options,
-        )
+        if explicit_model_config is not None:
+            model_config = explicit_model_config
+        else:
+            model_config, category_metadata = to_model_config_with_metadata(
+                _planned_config(plan, request, "model_config"),
+                options,
+            )
+
         fit_config = to_fit_config(_planned_config(plan, request, "fit_config"))
-        data_context = to_data_context(request.data_context, options) if request.data_context is not None else None
+        data_context = (
+            to_data_context(request.data_context, options)
+            if request.data_context is not None
+            else None
+        )
 
         optimizer = BayesianOptimizer(
             model_config=model_config,
@@ -197,7 +256,7 @@ def auto_candidates(
             data_context=data_context,
         )
         optimizer.fit(train_X, train_Y)
-        bind_category_metadata(optimizer, model_config)
+        bind_category_metadata(optimizer, category_metadata)
         model_id = store.add(optimizer)
 
         acq_config = to_acquisition_config(
@@ -205,7 +264,10 @@ def auto_candidates(
             options,
             optimizer=optimizer,
         )
-        opt_config = to_optimize_config(_planned_config(plan, request, "optimize_config"), options)
+        opt_config = to_optimize_config(
+            _planned_config(plan, request, "optimize_config"),
+            options,
+        )
         opt_config = _inject_llm_options(opt_config, request)
         candidates, acq_value = optimizer.candidate(
             acq_config=acq_config,
@@ -228,7 +290,9 @@ def auto_candidates(
 
 
 @router.get("", response_model=ModelListResponse)
-def list_models(store: OptimizerStore = OPTIMIZER_STORE_DEP) -> ModelListResponse:
+def list_models(
+    store: OptimizerStore = OPTIMIZER_STORE_DEP,
+) -> ModelListResponse:
     return ModelListResponse(model_ids=store.list_ids())
 
 
@@ -240,7 +304,11 @@ def refit_model(
 ) -> ModelFitResponse:
     try:
         optimizer = store.get(model_id)
-        fit_config = to_fit_config(request.fit_config) if request.fit_config is not None else None
+        fit_config = (
+            to_fit_config(request.fit_config)
+            if request.fit_config is not None
+            else None
+        )
         optimizer.refit(fit_config=fit_config)
         return _model_fit_response(model_id, optimizer)
     except KeyError as exc:
@@ -264,8 +332,17 @@ def tell_model(
             options,
             optimizer=optimizer,
         )
-        fit_config = to_fit_config(request.fit_config) if request.fit_config is not None else None
-        optimizer.tell(new_X, new_Y, refit=request.refit, fit_config=fit_config)
+        fit_config = (
+            to_fit_config(request.fit_config)
+            if request.fit_config is not None
+            else None
+        )
+        optimizer.tell(
+            new_X,
+            new_Y,
+            refit=request.refit,
+            fit_config=fit_config,
+        )
         return _model_fit_response(model_id, optimizer)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

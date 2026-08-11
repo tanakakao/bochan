@@ -16,7 +16,7 @@ jobs:
         run: |
           git rev-parse HEAD > snapshot-commit.txt
           git rev-parse HEAD^{tree} > snapshot-tree.txt
-          tar --exclude=.git --exclude=bochan-snapshot.tgz -czf bochan-snapshot.tgz .
+          git archive --format=tar.gz -o bochan-snapshot.tgz HEAD
       - uses: actions/upload-artifact@v4
         with:
           name: model-layout-source-snapshot

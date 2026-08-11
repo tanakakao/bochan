@@ -32,6 +32,7 @@ jobs:
             tests/test_wide_multitask_public_transform.py \
             tests/test_wide_multitask_acquisition_consistency.py \
             tests/test_wide_multitask_classification_acquisitions.py \
+            tests/test_acquisition_api_conventions.py \
             tests/test_classification_hypervolume_signatures.py \
             tests/test_api_objective_input_transform_defaults.py \
             tests/test_regression_straddle_input_perturbation_objective.py \
@@ -127,6 +128,7 @@ jobs:
             src/bochan/serving/fastapi/schemas/tabular.py \
             src/bochan/serving/fastapi/stores/__init__.py \
             src/bochan/serving/fastapi/stores/tabular.py \
+            tests/test_acquisition_api_conventions.py \
             tests/test_gamma_fantasize.py \
             tests/test_wide_multitask_models.py \
             tests/test_wide_multitask_public_transform.py \

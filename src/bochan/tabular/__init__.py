@@ -10,7 +10,6 @@ from .builders import (
     make_optimize_config,
     make_repair_config,
 )
-from .candidate_outputs import apply_tabular_candidate_outputs
 from .composition import (
     ATOMIC_NUMBERS,
     ATOMIC_WEIGHTS,
@@ -50,7 +49,6 @@ from .prediction_labels import apply_tabular_prediction_labels
 
 apply_tabular_multi_output_categories()
 apply_tabular_ordinal_rank_labels()
-apply_tabular_candidate_outputs()
 apply_tabular_prediction_labels()
 
 __all__ = [

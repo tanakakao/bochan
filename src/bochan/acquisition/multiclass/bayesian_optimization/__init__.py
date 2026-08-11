@@ -1,6 +1,6 @@
 """Multiclass Bayesian optimization acquisitions.
 
-Importing this module is side-effect free.  Input-perturbation, baseline, and
+Importing this module is side-effect free. Input-perturbation, baseline, and
 constraint behavior must be expressed through models, objectives, or explicit
 acquisition constructor arguments rather than runtime class patching.
 """
@@ -21,19 +21,15 @@ from .multi_output import (
     qMultiOutputMulticlassNParEGO,
 )
 from .nominal_duplicate_safe import (
-    qHeteroMultiOutputMulticlassExpectedImprovement,
-    qHeteroMultiOutputMulticlassProbabilityOfFeasibility,
-    qHeteroMultiOutputMulticlassProbabilityOfImprovement,
-    qHeteroMultiOutputMulticlassUpperConfidenceBound,
     qHeteroMulticlassExpectedImprovement,
     qHeteroMulticlassProbabilityOfFeasibility,
     qHeteroMulticlassProbabilityOfImprovement,
     qHeteroMulticlassUpperConfidenceBound,
+    qMulticlassProbabilityOfFeasibility,
     qMultiOutputMulticlassExpectedImprovement,
     qMultiOutputMulticlassProbabilityOfFeasibility,
     qMultiOutputMulticlassProbabilityOfImprovement,
     qMultiOutputMulticlassUpperConfidenceBound,
-    qMulticlassProbabilityOfFeasibility,
 )
 from .single_output import (
     compute_multiclass_target_probability_best_f,

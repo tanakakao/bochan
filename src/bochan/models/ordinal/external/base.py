@@ -14,13 +14,13 @@ from gpytorch.distributions import MultivariateNormal
 from torch import Tensor
 from torch.nn import Module
 
-from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
 from bochan.models.external.common import (
-    _ExternalClassifierMixin,
     _check_one_to_one_input_transform,
+    _ExternalClassifierMixin,
     _require_classification_targets,
 )
-from bochan.posteriors.ordinal_ensemble import OrdinalEnsemblePosterior
+from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
+from bochan.models.ordinal.posterior import OrdinalEnsemblePosterior
 
 
 def _require_ordinal_targets(

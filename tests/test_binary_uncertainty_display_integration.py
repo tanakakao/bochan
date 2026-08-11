@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-from bochan.posteriors.bernoulli import SimpleBernoulliPosterior
+from bochan.models.classification.binary.base.posterior import SimpleBernoulliPosterior
 from bochan.serving.webapp.target_results import _display_predictions
 from bochan.visualization.input_perturbation import prediction_mean_std
 from tests.test_binary_epistemic_uncertainty import _EpistemicBinaryModel

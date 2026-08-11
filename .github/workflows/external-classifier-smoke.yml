@@ -10,7 +10,7 @@ on:
       - "src/bochan/models/classification/common/**"
       - "src/bochan/models/classification/binary/external/**"
       - "src/bochan/models/classification/multiclass/external/**"
-      - "src/bochan/posteriors/classification_ensemble.py"
+      - "src/bochan/models/classification/common/posterior.py"
       - "src/bochan/fit/classification/binary.py"
       - "src/bochan/fit/classification/multiclass.py"
       - "src/bochan/api/model_registry.py"
@@ -51,7 +51,7 @@ jobs:
             src/bochan/models/classification/common \
             src/bochan/models/classification/binary/external \
             src/bochan/models/classification/multiclass/external \
-            src/bochan/posteriors/classification_ensemble.py \
+            src/bochan/models/classification/common/posterior.py \
             tests/test_external_regression_models.py \
             tests/test_external_binary_classification_models.py \
             tests/test_external_multiclass_classification_models.py \

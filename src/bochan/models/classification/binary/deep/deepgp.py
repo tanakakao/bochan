@@ -45,13 +45,13 @@ from gpytorch.models.deep_gps import DeepGP
 from gpytorch.settings import fast_pred_var
 from torch import Tensor
 
+from bochan.models.classification.binary.base.posterior import SimpleBernoulliPosterior
 from bochan.models.components.layers import (
     DeepGPHiddenLayer,
     DeepMixedGPHiddenLayer,
     SkipDeepGPHiddenLayer,
     SkipDeepMixedGPHiddenLayer,
 )
-from bochan.posteriors.bernoulli import SimpleBernoulliPosterior
 
 # ============================================================
 # ヘルパー

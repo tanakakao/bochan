@@ -2,22 +2,21 @@
 from __future__ import annotations
 
 import copy
-from typing import Callable, Optional, Sequence, List
+from typing import Callable, List, Optional, Sequence
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.transforms.input import InputTransform
 from gpytorch.kernels import Kernel
 from gpytorch.likelihoods import BernoulliLikelihood
 from gpytorch.means import Mean
+from torch import Tensor
 
 from bochan.models.classification.binary.base import (
     BinaryClassificationGPModel,
     BinaryClassificationMixedGPModel,
 )
-from bochan.posteriors.bernoulli import SimpleBernoulliPosterior
+from bochan.models.classification.binary.base.posterior import SimpleBernoulliPosterior
 from bochan.models.components.heteroscedastic import (
     HeteroscedasticNoiseModelMixin,
     align_like,
@@ -34,7 +33,6 @@ from bochan.models.components.heteroscedastic import (
     prepare_conditioning_data,
     prepare_train_yvar,
 )
-
 
 __all__ = [
     "HeteroscedasticBinaryClassificationGPModel",

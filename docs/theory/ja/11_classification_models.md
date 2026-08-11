@@ -338,7 +338,7 @@ variance: batch_shape x q x 1
 source：
 
 ```text
-src/bochan/posteriors/bernoulli.py
+src/bochan/models/classification/binary/base/posterior.py
 ```
 
 Bernoulli random variableはdiscreteですが、多くのBoTorch MC acquisitionはdifferentiable reparameterized sampleを期待します。continuous probability sampleやnormal proxyを使う場合、それはexact label samplingではなく、実装上のposterior approximationとして解釈します。
@@ -817,7 +817,7 @@ predictive metricだけでなく、BO regret、target achievement、Active Learn
 | component | source |
 |---|---|
 | binary base model | `src/bochan/models/classification/binary/base/models.py` |
-| binary posterior | `src/bochan/posteriors/bernoulli.py` |
+| binary posterior | `src/bochan/models/classification/binary/base/posterior.py` |
 | binary robust | `src/bochan/models/classification/binary/robust/` |
 | binary deep | `src/bochan/models/classification/binary/deep/` |
 | binary high-dimensional | `src/bochan/models/classification/binary/high_dim/` |

@@ -6,7 +6,7 @@ from torch import nn
 
 from bochan.acquisition.ordinal.active_learning.single_output import qOrdinalBALD
 from bochan.models.ordinal.neural.deep_ensemble import DeepEnsembleOrdinalModel
-from bochan.posteriors.ordinal_ensemble import OrdinalEnsemblePosterior
+from bochan.models.ordinal.posterior import OrdinalEnsemblePosterior
 
 
 class _ConstantOrdinalMember(nn.Module):

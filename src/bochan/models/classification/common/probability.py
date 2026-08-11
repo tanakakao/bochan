@@ -13,8 +13,8 @@ from gpytorch.distributions import MultitaskMultivariateNormal
 from torch import Tensor
 from torch.nn import Module
 
+from bochan.models.classification.common.posterior import ClassificationEnsemblePosterior
 from bochan.models.external.common import _ExternalClassifierMixin
-from bochan.posteriors.classification_ensemble import ClassificationEnsemblePosterior
 
 
 class _ProbabilityPassthroughLikelihood(Module):

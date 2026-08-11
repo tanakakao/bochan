@@ -17,7 +17,7 @@ from bochan.models.classification.binary.external import (
     RandomForestBinaryClassificationModel,
     RandomForestMixedBinaryClassificationModel,
 )
-from bochan.posteriors.classification_ensemble import ClassificationEnsemblePosterior
+from bochan.models.classification.common.posterior import ClassificationEnsemblePosterior
 
 
 class _FakeProbabilityMember:

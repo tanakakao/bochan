@@ -1,24 +1,28 @@
 from copy import deepcopy
-from typing import Callable, Optional, Union, Sequence, Tuple, List
+from typing import Callable, List, Optional, Sequence, Tuple, Union
+
 import torch
-from torch import Tensor
-from gpytorch.models import ApproximateGP
-from gpytorch.distributions import MultivariateNormal
-from gpytorch.constraints import GreaterThan
-from gpytorch.kernels import Kernel, RBFKernel, MaternKernel, ScaleKernel
-from gpytorch.means import ConstantMean, Mean
-from gpytorch.likelihoods import BernoulliLikelihood
-from gpytorch.variational import CholeskyVariationalDistribution, VariationalStrategy
+from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.approximate_gp import ApproximateGPyTorchModel
 from botorch.models.model import FantasizeMixin
 from botorch.models.transforms.input import InputTransform
-from botorch.acquisition.objective import PosteriorTransform
 from botorch.posteriors.gpytorch import GPyTorchPosterior
+from gpytorch.constraints import GreaterThan
+from gpytorch.distributions import MultivariateNormal
+from gpytorch.kernels import Kernel, MaternKernel, RBFKernel, ScaleKernel
+from gpytorch.likelihoods import BernoulliLikelihood
+from gpytorch.means import ConstantMean, Mean
+from gpytorch.models import ApproximateGP
+from gpytorch.variational import CholeskyVariationalDistribution, VariationalStrategy
+from torch import Tensor
+
+from bochan.models.classification.binary.base.kernel import build_binary_mixed_kernel
+from bochan.models.classification.binary.base.posterior import (
+    SimpleBernoulliPosterior,
+    get_sampler_for_simple_bernoulli,
+)
 
 from ._latent_models import _LatentBinarySVGP, _LatentMixedBinarySVGP
-from bochan.posteriors.bernoulli import SimpleBernoulliPosterior, get_sampler_for_simple_bernoulli
-from bochan.kernels.categorical_kernel import categorical_kernel
-
 
 # ============================================================
 # utils
@@ -379,7 +383,7 @@ class BinaryClassificationGPModel(ApproximateGPyTorchModel, FantasizeMixin):
         # ここは likelihood を通さず、latent f の分布を返す
         latent_dist = self.model(X_eval)
         return GPyTorchPosterior(latent_dist)
-    
+
     def set_train_data(
         self,
         inputs: Optional[Union[Tensor, tuple[Tensor, ...]]] = None,
@@ -459,7 +463,7 @@ class BinaryClassificationGPModel(ApproximateGPyTorchModel, FantasizeMixin):
         new_model.load_state_dict(self.state_dict(), strict=False)
         new_model.eval()
         return new_model
-    
+
     @property
     def num_outputs(self) -> int:
         return 1
@@ -637,7 +641,7 @@ class BinaryClassificationMixedGPModel(ApproximateGPyTorchModel, FantasizeMixin)
         # ここは likelihood を通さず、latent f の分布を返す
         latent_dist = self.model(X_eval)
         return GPyTorchPosterior(latent_dist)
-    
+
     def set_train_data(
         self,
         inputs: Optional[Union[Tensor, tuple[Tensor, ...]]] = None,
@@ -718,7 +722,7 @@ class BinaryClassificationMixedGPModel(ApproximateGPyTorchModel, FantasizeMixin)
         new_model.load_state_dict(self.state_dict(), strict=False)
         new_model.eval()
         return new_model
-    
+
     @property
     def num_outputs(self) -> int:
         return 1

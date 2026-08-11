@@ -1,10 +1,10 @@
-from gpytorch.kernels import ScaleKernel
-from gpytorch.constraints import GreaterThan
 from botorch.models.kernels.categorical import CategoricalKernel
 from botorch.models.utils.gpytorch_modules import get_covar_module_with_dim_scaled_prior
+from gpytorch.constraints import GreaterThan
+from gpytorch.kernels import ScaleKernel
 
 
-def categorical_kernel(cat_dims, ord_dims, batch_shape):
+def build_binary_mixed_kernel(cat_dims, ord_dims, batch_shape):
     if len(ord_dims) == 0:
         return ScaleKernel(
             CategoricalKernel(
@@ -44,3 +44,5 @@ def categorical_kernel(cat_dims, ord_dims, batch_shape):
             )
         )
         return sum_kernel + prod_kernel
+
+__all__ = ["build_binary_mixed_kernel"]

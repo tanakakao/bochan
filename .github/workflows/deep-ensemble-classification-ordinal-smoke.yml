@@ -9,7 +9,7 @@ on:
       - "src/bochan/models/classification/binary/neural/**"
       - "src/bochan/models/classification/multiclass/neural/**"
       - "src/bochan/models/ordinal/neural/**"
-      - "src/bochan/posteriors/ordinal_ensemble.py"
+      - "src/bochan/models/ordinal/posterior.py"
       - "src/bochan/api/model_registry.py"
       - "tests/test_deep_ensemble_classification_ordinal.py"
       - "tests/test_ordinal_bald_ensemble.py"
@@ -43,7 +43,7 @@ jobs:
             src/bochan/models/classification/binary/neural \
             src/bochan/models/classification/multiclass/neural \
             src/bochan/models/ordinal/neural \
-            src/bochan/posteriors/ordinal_ensemble.py \
+            src/bochan/models/ordinal/posterior.py \
             tests/test_deep_ensemble_classification_ordinal.py \
             tests/test_ordinal_bald_ensemble.py \
             tests/test_model_package_layout.py

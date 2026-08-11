@@ -380,7 +380,7 @@ implementation rather than as exact discrete label sampling.
 The relevant source is:
 
 ```text
-src/bochan/posteriors/bernoulli.py
+src/bochan/models/classification/binary/base/posterior.py
 ```
 
 ---
@@ -902,7 +902,7 @@ Predictive metrics should be accompanied by:
 | Component | Source |
 |---|---|
 | Binary base models | `src/bochan/models/classification/binary/base/models.py` |
-| Binary custom posterior | `src/bochan/posteriors/bernoulli.py` |
+| Binary custom posterior | `src/bochan/models/classification/binary/base/posterior.py` |
 | Binary fitting | `src/bochan/fit/` classification fitting helpers |
 | Binary robust models | `src/bochan/models/classification/binary/robust/` |
 | Binary deep models | `src/bochan/models/classification/binary/deep/` |

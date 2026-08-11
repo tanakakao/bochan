@@ -9,7 +9,7 @@ on:
       - "src/bochan/api/acquisition_config.py"
       - "src/bochan/models/regression/gaussian/likelihood.py"
       - "src/bochan/model_artifact.py"
-      - "src/bochan/posteriors/bernoulli.py"
+      - "src/bochan/models/classification/binary/base/posterior.py"
       - "src/bochan/tabular/optimizer_api.py"
       - "src/bochan/serving/fastapi/**"
       - "src/bochan/serving/webapp/**"
@@ -88,7 +88,7 @@ jobs:
           ruff check --ignore I001,SIM102,SIM108 \
             src/bochan/api/acquisition_config.py \
             src/bochan/model_artifact.py \
-            src/bochan/posteriors/bernoulli.py \
+            src/bochan/models/classification/binary/base/posterior.py \
             src/bochan/serving/fastapi/router.py \
             src/bochan/serving/fastapi/routers/artifacts.py \
             src/bochan/serving/fastapi/routers/tabular.py \

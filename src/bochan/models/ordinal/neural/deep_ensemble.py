@@ -12,13 +12,13 @@ from botorch.models.ensemble import EnsembleModel
 from torch import Tensor, nn
 
 from bochan.fit.ordinal import fit_ordinal_mll
+from bochan.models.classification.common.posterior import ClassificationEnsemblePosterior
 from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
+from bochan.models.ordinal.posterior import OrdinalEnsemblePosterior
 from bochan.models.regression.neural.deep_ensemble import (
     _DenseRegressor,
     _MixedCategoricalEncoder,
 )
-from bochan.posteriors.classification_ensemble import ClassificationEnsemblePosterior
-from bochan.posteriors.ordinal_ensemble import OrdinalEnsemblePosterior
 
 
 def _require_ordinal_targets(

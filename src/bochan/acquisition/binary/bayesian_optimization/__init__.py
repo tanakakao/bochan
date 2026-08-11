@@ -6,6 +6,18 @@ functions, or other modules at runtime.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
+from botorch.utils.objective import compute_smoothed_feasibility_indicator
+from botorch.utils.transforms import t_batch_mode_transform
+from torch import Tensor
+
+from bochan.acquisition.objective.outcome_constraints import (
+    OutcomeConstraint,
+    split_outcome_constraints,
+)
+
+from . import multi_output as _multi_output
 from ._utils import compute_binary_best_f, compute_hetero_binary_classification_best_f
 from .hetero_multi_output import (
     qHeteroMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
@@ -23,8 +35,8 @@ from .knowledge_gradient import qBinaryKnowledgeGradient
 from .multi_output import (
     qMultiOutputBinaryExpectedHypervolumeImprovement,
     qMultiOutputBinaryNoisyExpectedHypervolumeImprovement,
-    qMultiOutputBinaryNParEGO,
 )
+from .multi_output import qMultiOutputBinaryNParEGO as _BaseMultiOutputBinaryNParEGO
 from .nominal_duplicate_safe import (
     qBinaryProbabilityOfFeasibility,
     qMultiOutputBinaryProbabilityOfFeasibility,
@@ -34,6 +46,84 @@ from .standard import (
     qBinaryProbabilityOfImprovement,
     qBinaryUpperConfidenceBound,
 )
+
+
+class qMultiOutputBinaryNParEGO(_BaseMultiOutputBinaryNParEGO):
+    """Binary NParEGO with explicit BoTorch-style outcome constraints."""
+
+    def __init__(
+        self,
+        *args,
+        constraints: Sequence[OutcomeConstraint] | None = None,
+        eta: float | Tensor = 1e-3,
+        fat: bool = False,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        raw_constraints, objective_constraints = split_outcome_constraints(constraints)
+        self.constraints = list(constraints or [])
+        self.raw_constraints = raw_constraints
+        self.objective_constraints = objective_constraints
+        self.eta = eta
+        self.fat = bool(fat)
+
+    def _feasibility_factor(
+        self,
+        *,
+        raw_samples: Tensor,
+        objective_values: Tensor,
+    ) -> Tensor | None:
+        factor: Tensor | None = None
+        if self.raw_constraints:
+            factor = compute_smoothed_feasibility_indicator(
+                constraints=self.raw_constraints,
+                samples=raw_samples,
+                eta=self.eta,
+                fat=self.fat,
+            )
+        if self.objective_constraints:
+            objective_factor = compute_smoothed_feasibility_indicator(
+                constraints=self.objective_constraints,
+                samples=objective_values,
+                eta=self.eta,
+                fat=self.fat,
+            )
+            factor = objective_factor if factor is None else factor * objective_factor
+        return factor
+
+    @t_batch_mode_transform()
+    def forward(self, X: Tensor) -> Tensor:
+        Xq = _multi_output.ensure_q_batch(X)
+        posterior = _multi_output._get_binary_mc_posterior_for_probability_samples(
+            self.model,
+            Xq,
+            samples_are_probs=self.samples_are_probs,
+            prefer_latent=(not self.samples_are_probs)
+            and self.apply_sigmoid_if_needed,
+        )
+        samples = self.get_posterior_samples(posterior)
+        probability_values = _multi_output.to_probability(
+            samples,
+            apply_sigmoid_if_needed=(
+                not self.samples_are_probs or self.apply_sigmoid_if_needed
+            ),
+            eps=self.eps,
+            name="NParEGO posterior samples",
+            model=self.model,
+            values_are_probs=self.samples_are_probs,
+        )
+        objective_values = self.base_objective(probability_values, X=Xq)
+        scalarized = self._scalarize(objective_values)
+        improvement = (
+            scalarized - self.best_value.to(scalarized)
+        ).clamp_min(0.0)
+        feasibility = self._feasibility_factor(
+            raw_samples=probability_values,
+            objective_values=objective_values,
+        )
+        if feasibility is not None:
+            improvement = improvement * feasibility
+        return _multi_output._reduce_sample_and_q_to_tbatch(improvement, Xq)
 
 
 class qBinaryExpectedHypervolumeImprovement(
@@ -85,5 +175,6 @@ __all__ = [
     "qHeteroBinaryNoisyExpectedHypervolumeImprovement",
     "qHeteroBinaryProbabilityOfImprovement",
     "qHeteroBinaryUpperConfidenceBound",
+    "qMultiOutputBinaryNParEGO",
     "qMultiOutputBinaryProbabilityOfFeasibility",
 ]

@@ -31,23 +31,44 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
-          path = Path("src/bochan/models/ordinal/base/models.py")
-          source = path.read_text(encoding="utf-8")
-          start_token = "\nif covar_module is None:\n"
-          end_token = "        latent_model = _OrdinalLatentGP("
-          start = source.find(start_token)
-          if start < 0:
-              raise RuntimeError("Generated unindented ordinal Matern block not found.")
-          start += 1
-          end = source.find(end_token, start)
-          if end < 0:
-              raise RuntimeError("Ordinal latent model marker not found after Matern block.")
-          block = source[start:end]
-          fixed = "".join(
-              f"        {line}" if line.strip() else line
-              for line in block.splitlines(keepends=True)
+          ordinal_path = Path("src/bochan/models/ordinal/base/models.py")
+          source = ordinal_path.read_text(encoding="utf-8")
+          unindented = "\nif covar_module is None:\n"
+          canonical = "\n        if covar_module is None:\n"
+          start = source.find(unindented)
+          if start >= 0:
+              start += 1
+              end_token = "        latent_model = _OrdinalLatentGP("
+              end = source.find(end_token, start)
+              if end < 0:
+                  raise RuntimeError(
+                      "Ordinal latent model marker not found after Matern block."
+                  )
+              block = source[start:end]
+              fixed = "".join(
+                  f"        {line}" if line.strip() else line
+                  for line in block.splitlines(keepends=True)
+              )
+              ordinal_path.write_text(
+                  source[:start] + fixed + source[end:],
+                  encoding="utf-8",
+              )
+          elif canonical not in source:
+              raise RuntimeError("Ordinal Matern block is in an unexpected state.")
+
+          multiclass_init = Path(
+              "src/bochan/models/classification/multiclass/base/__init__.py"
           )
-          path.write_text(source[:start] + fixed + source[end:], encoding="utf-8")
+          source = multiclass_init.read_text(encoding="utf-8")
+          old = "from . import posteriors as _posterior_sampler_registration"
+          new = "from . import posterior as _posterior_sampler_registration"
+          if old in source:
+              source = source.replace(old, new, 1)
+              multiclass_init.write_text(source, encoding="utf-8")
+          elif new not in source:
+              raise RuntimeError(
+                  "Multiclass posterior sampler registration import is unexpected."
+              )
           PY
       - name: Install test dependencies
         run: |
@@ -61,6 +82,7 @@ jobs:
             src/bochan/models/classification/binary/base/kernel.py
             src/bochan/models/classification/binary/base/posterior.py
             src/bochan/models/classification/common/posterior.py
+            src/bochan/models/classification/multiclass/base/__init__.py
             src/bochan/models/classification/multiclass/base/posterior.py
             src/bochan/models/ordinal/base/kernel.py
             src/bochan/models/ordinal/base/models.py
@@ -88,6 +110,7 @@ jobs:
             src/bochan/models/classification/binary/base/kernel.py \
             src/bochan/models/classification/binary/base/posterior.py \
             src/bochan/models/classification/common/posterior.py \
+            src/bochan/models/classification/multiclass/base/__init__.py \
             src/bochan/models/classification/multiclass/base/posterior.py \
             src/bochan/models/ordinal/base/kernel.py \
             src/bochan/models/ordinal/base/models.py \

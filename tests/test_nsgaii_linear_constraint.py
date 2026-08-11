@@ -43,7 +43,7 @@ def test_nsgaii_accepts_current_linear_constraint_arguments(monkeypatch) -> None
 
 def test_base_nsgaii_omits_unsupported_linear_constraint_kwargs(monkeypatch) -> None:
     """Verify BoTorch versions without input constraints do not receive them."""
-    import bochan.optim.nsgaii as base
+    import bochan.optim.nsgaii.core as base
 
     captured: dict[str, object] = {}
 
@@ -85,7 +85,7 @@ def test_base_nsgaii_omits_unsupported_linear_constraint_kwargs(monkeypatch) -> 
 
 def test_base_nsgaii_forwards_supported_linear_constraint_kwargs(monkeypatch) -> None:
     """Verify newer BoTorch signatures still receive input constraints."""
-    import bochan.optim.nsgaii as base
+    import bochan.optim.nsgaii.core as base
 
     captured: dict[str, object] = {}
 

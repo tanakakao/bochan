@@ -12,7 +12,7 @@ from bochan.models.classification.binary.base._latent_models import (
     _LatentBinarySVGP,
     _LatentMixedBinarySVGP,
 )
-from bochan.models.classification.binary.base.multioutput import (
+from bochan.models.multioutput.binary import (
     MultiOutputBinaryClassificationModel,
 )
 from bochan.models.classification.binary.robust import (

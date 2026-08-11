@@ -8,7 +8,7 @@ from bochan.api.automatic_multiobjective import (
     make_default_ref_point,
     make_partitioning,
 )
-from bochan.models.wide_multitask import wide_to_long
+from bochan.models.multitask.wide import wide_to_long
 
 
 def test_wide_to_long_omits_only_nan_target_cells() -> None:

@@ -19,7 +19,7 @@ from botorch.sampling.normal import SobolQMCNormalSampler
 from torch import Tensor
 
 from bochan.acquisition._nehvi_cache_root import patch_nehvi_cache_root_init
-from bochan.models.classification.binary.base.multioutput import (
+from bochan.models.multioutput.binary import (
     MultiOutputBernoulliPosterior,
 )
 

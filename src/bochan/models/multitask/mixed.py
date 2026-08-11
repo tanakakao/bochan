@@ -14,7 +14,7 @@ from bochan.models.components.mixed_kronecker import (
     validate_mixed_input_transform_for_training,
 )
 
-from .wide_multitask_variants import WideMultiTaskGP
+from .task_feature import WideMultiTaskGP
 
 
 class WideMixedMultiTaskGP(WideMultiTaskGP):

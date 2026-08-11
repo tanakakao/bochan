@@ -4,7 +4,7 @@ import torch
 
 from bochan.api import InputTransformConfig, ModelConfig
 from bochan.api.factory import build_model
-from bochan.models.wide_multitask_variants import (
+from bochan.models.multitask.task_feature import (
     TaskFeatureInputTransform,
     WideMultiTaskMulticlassClassificationGPModel,
 )

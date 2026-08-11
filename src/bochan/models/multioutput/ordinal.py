@@ -78,7 +78,6 @@ class MultiOutputOrdinalModel(Model):
     # train_inputs / train_targets handling
     # ---------------------------------------------------------------------
     @staticmethod
-    @staticmethod
     def _get_submodel_train_input_raw(model: Model) -> Tensor:
         if hasattr(model, "train_inputs_raw"):
             train_inputs_raw = model.train_inputs_raw

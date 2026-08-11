@@ -37,7 +37,7 @@ from bochan.models.regression.gaussian.robust import (
     RobustRelevancePursuitGaussianMixedGPModel,
     RobustRelevancePursuitGaussianGPModel,
 )
-from bochan.models.wide_multitask import WideMultiTaskGP
+from bochan.models.multitask.wide import WideMultiTaskGP
 
 
 class _NeedsBestF:

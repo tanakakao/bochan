@@ -347,7 +347,7 @@ def _build_wrapper_from_submodels(
 
         return MultiOutputBinaryClassificationModel(*submodels, **mo_config.wrapper_kwargs)
     if task_type == "ordinal":
-        from bochan.models.ordinal.base.multioutput import MultiOutputOrdinalModel
+        from bochan.models.multioutput.ordinal import MultiOutputOrdinalModel
 
         return MultiOutputOrdinalModel(*submodels, **mo_config.wrapper_kwargs)
     raise ValueError(

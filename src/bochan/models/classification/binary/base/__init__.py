@@ -13,7 +13,7 @@ from .multifidelity import (
     WideMultiFidelityBinaryClassificationGPModel,
     WideMultiFidelityBinaryClassificationMixedGPModel,
 )
-from .multioutput import MultiOutputBinaryClassificationModel
+from bochan.models.multioutput.binary import MultiOutputBinaryClassificationModel
 from .multitask import MultiTaskBinaryClassificationGPModel
 from .multitask_mixed import MultiTaskBinaryClassificationMixedGPModel
 

@@ -21,7 +21,7 @@ from bochan.models.components.mixed_kronecker import (
     normalize_mixed_dims,
     validate_mixed_input_transform_for_training,
 )
-from bochan.models.wide_multitask_variants import (
+from bochan.models.multitask.task_feature import (
     PerturbationAwareWidePosterior,
     TaskFeatureInputTransform,
 )

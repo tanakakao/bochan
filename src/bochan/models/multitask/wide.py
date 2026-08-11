@@ -136,6 +136,12 @@ class _WidePosterior(Posterior):
         return self.posterior.dtype
 
     @property
+    def event_shape(self) -> torch.Size:
+        mean = self.mean
+        trailing = 2 if self.scalar_task_values else 3
+        return torch.Size(mean.shape[-trailing:])
+
+    @property
     def base_sample_shape(self) -> torch.Size:
         return self.posterior.base_sample_shape
 

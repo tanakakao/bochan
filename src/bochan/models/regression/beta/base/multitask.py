@@ -567,7 +567,7 @@ class BetaMultiTaskGPModel(_WideBetaMultiTaskCore):
             num_tasks: Task count; inferred from ids when omitted.
             **kwargs: Family-specific variational model options.
         """
-        from bochan.models.regression._multitask import (
+        from bochan.models.multitask.validation import (
             long_to_sparse_wide,
             validate_long_multitask_data,
         )
@@ -628,7 +628,7 @@ class KroneckerMultiTaskBetaGPModel(WideBetaMultiTaskGPModel):
             train_Y: Finite targets with shape ``[n, m]``.
             **kwargs: Family-specific variational model options.
         """
-        from bochan.models.regression._multitask import validate_complete_block
+        from bochan.models.multitask.validation import validate_complete_block
 
         train_X = torch.as_tensor(train_X)
         train_Y = torch.as_tensor(train_Y, device=train_X.device, dtype=train_X.dtype)

@@ -12,7 +12,7 @@ from .models import (
     MulticlassClassificationMixedGPModel,
     build_mixed_multiclass_kernel,
 )
-from .multioutput import (
+from bochan.models.multioutput.multiclass import (
     MultiOutputMulticlassClassificationGPModel,
     MultiOutputMulticlassClassificationModel,
     MultiOutputMulticlassModel,

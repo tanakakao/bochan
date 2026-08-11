@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from bochan.api.model_registry import MODEL_REGISTRY
-from bochan.models.wide_mixed_multitask import WideMixedMultiTaskGP
+from bochan.models.multitask.mixed import WideMixedMultiTaskGP
 
 
 def _mixed_partial_data() -> tuple[torch.Tensor, torch.Tensor]:

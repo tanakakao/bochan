@@ -24,7 +24,7 @@ from bochan.acquisition.regression.bayesian_optimization import (
 )
 from bochan.api import AutoStandardizeOutcomeTransform
 from bochan.models.transforms.input import build_input_transform
-from bochan.models.wide_multitask_variants import (
+from bochan.models.multitask.task_feature import (
     PerturbationAwareWidePosterior,
     TaskFeatureInputTransform,
     WideMultiTaskGP,

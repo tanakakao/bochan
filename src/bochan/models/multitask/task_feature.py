@@ -16,15 +16,15 @@ from botorch.models.transforms.input import InputTransform
 from botorch.models.transforms.outcome import StratifiedStandardize
 from torch import Tensor
 
-from .wide_multitask import (
+from .wide import (
     WideMultiTaskBinaryClassificationGPModel as _WideMultiTaskBinaryClassificationGPModel,
 )
-from .wide_multitask import WideMultiTaskGP as _WideMultiTaskGP
-from .wide_multitask import (
+from .wide import WideMultiTaskGP as _WideMultiTaskGP
+from .wide import (
     WideMultiTaskMulticlassClassificationGPModel as _WideMultiTaskMulticlassClassificationGPModel,
 )
-from .wide_multitask import WideMultiTaskOrdinalGPModel as _WideMultiTaskOrdinalGPModel
-from .wide_multitask import _WidePosterior, wide_to_long
+from .wide import WideMultiTaskOrdinalGPModel as _WideMultiTaskOrdinalGPModel
+from .wide import _WidePosterior, wide_to_long
 
 
 def _align_task_feature(task_feature: Tensor, transformed: Tensor) -> tuple[Tensor, Tensor]:

@@ -15,7 +15,7 @@ from gpytorch.likelihoods import BernoulliLikelihood
 from gpytorch.means import Mean
 from torch import Tensor
 
-from bochan.models.components.kronecker_multitask import (
+from bochan.models.multitask.kronecker import (
     BlockDesignVariationalELBO,
     LatentKroneckerMultiTaskGP,
     canonicalize_block_design_targets,
@@ -23,7 +23,7 @@ from bochan.models.components.kronecker_multitask import (
 )
 
 from .models import _to_device_dtype_transform
-from .multioutput import MultiOutputBernoulliPosterior
+from bochan.models.multioutput.binary import MultiOutputBernoulliPosterior
 
 
 class KroneckerMultiTaskBinaryClassificationGPModel(

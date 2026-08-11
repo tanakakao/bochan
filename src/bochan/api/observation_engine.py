@@ -2,8 +2,8 @@
 
 The public optimizer is defined only in :mod:`bochan.api.optimizer`.
 Observation-specific model construction lives in :mod:`bochan.api.observation_service`.
-A lazy ``BayesianOptimizer`` attribute keeps direct imports on the same class
-object without defining or mutating another optimizer implementation.
+Compatibility attributes resolve to the same canonical implementations without
+creating another optimizer subclass or installing runtime patches.
 """
 
 from __future__ import annotations
@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import Any
 
 from .observation_service import build_objective_bundle
+
+_build_partial_objective_bundle = build_objective_bundle
 
 
 def __getattr__(name: str) -> Any:

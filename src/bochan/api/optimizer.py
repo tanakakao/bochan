@@ -17,6 +17,7 @@ from .acquisition_service import (
     resolve_acquisition,
     resolve_acquisition_class,
 )
+from .candidate_output import select_best_candidate_set
 from .configs import (
     AcquisitionConfig,
     CandidateResult,
@@ -398,6 +399,13 @@ class BayesianOptimizer(_CoreBayesianOptimizer):
             acqf=acqf,
             bounds=opt_bounds,
             config=resolved_opt_config,
+        )
+        candidates, acq_value = select_best_candidate_set(
+            candidates,
+            acq_value,
+            q=resolved_opt_config.q,
+            return_best_only=resolved_opt_config.return_best_only,
+            acqf=acqf,
         )
         result = CandidateResult(
             candidates=candidates,

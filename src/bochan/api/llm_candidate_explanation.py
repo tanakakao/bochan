@@ -7,15 +7,32 @@ from typing import Any
 
 import torch
 
-from bochan.llm import candidate_explainer_overall as _candidate_explainer
-from bochan.llm.candidate_explainer_overall import (
-    CandidateExplanation,
-    CandidateExplanationConfig,
-    build_candidate_explanation_prompt,
-    explanation_from_payload,
-)
-from bochan.llm.client import make_llm_client
-from bochan.llm.parser import parse_json_payload
+
+def _as_2d_tensor(value: Any) -> torch.Tensor:
+    tensor = (
+        value.detach().cpu()
+        if hasattr(value, "detach")
+        else torch.as_tensor(value)
+    )
+    tensor = tensor.to(dtype=torch.double)
+    if tensor.ndim == 1:
+        tensor = tensor.unsqueeze(-1)
+    if tensor.ndim != 2:
+        raise ValueError(
+            f"candidates must be a 2D matrix. Got shape={tuple(tensor.shape)}."
+        )
+    return tensor
+
+
+def _select_rows(value: Any, indices: Sequence[int]) -> Any:
+    if hasattr(value, "index_select"):
+        index = torch.as_tensor(
+            indices,
+            dtype=torch.long,
+            device=getattr(value, "device", None),
+        )
+        return value.index_select(0, index)
+    return [value[index] for index in indices]
 
 
 def _safe_bounds_tensor(
@@ -73,7 +90,7 @@ def _select_representative_candidates(
 ) -> tuple[list[int], dict[int, str]]:
     """Select best, central and diverse representatives without global patches."""
 
-    X = _candidate_explainer._as_2d_tensor(candidates)
+    X = _as_2d_tensor(candidates)
     n_candidates = int(X.shape[0])
     if n_candidates == 0:
         raise ValueError("candidates must contain at least one row.")
@@ -130,9 +147,9 @@ def _select_representative_candidates(
     return selected, roles
 
 
-def _coerce_config(
-    value: CandidateExplanationConfig | Mapping[str, Any] | None,
-) -> CandidateExplanationConfig:
+def _coerce_config(value: Any) -> Any:
+    from bochan.llm.candidate_explainer_overall import CandidateExplanationConfig
+
     if value is None:
         return CandidateExplanationConfig()
     if isinstance(value, CandidateExplanationConfig):
@@ -149,7 +166,7 @@ class LLMCandidateExplanationMixin:
         *,
         candidates: Any | None = None,
         acq_value: Any | None = None,
-        config: CandidateExplanationConfig | Mapping[str, Any] | None = None,
+        config: Any | None = None,
         max_representatives: int | None = None,
         perspectives: Sequence[str] | None = None,
         prompt: str | None = None,
@@ -157,8 +174,15 @@ class LLMCandidateExplanationMixin:
         llm_config: Any | None = None,
         llm_context: Any | None = None,
         explanation_response: Any | None = None,
-    ) -> CandidateExplanation:
+    ) -> Any:
         """Explain final candidates without regenerating or mutating them."""
+
+        from bochan.llm.candidate_explainer_overall import (
+            build_candidate_explanation_prompt,
+            explanation_from_payload,
+        )
+        from bochan.llm.client import make_llm_client
+        from bochan.llm.parser import parse_json_payload
 
         resolved_config = _coerce_config(config)
         if max_representatives is not None:
@@ -200,7 +224,7 @@ class LLMCandidateExplanationMixin:
             max_representatives=resolved_config.max_representatives,
             bounds=bounds,
         )
-        selected_candidates = _candidate_explainer._select_rows(
+        selected_candidates = _select_rows(
             candidates,
             representative_indices,
         )
@@ -269,9 +293,7 @@ class LLMCandidateExplanationMixin:
         if not isinstance(payload, Mapping):
             raise ValueError("Candidate explanation response must be a JSON object.")
 
-        total_candidates = int(
-            _candidate_explainer._as_2d_tensor(candidates).shape[0]
-        )
+        total_candidates = int(_as_2d_tensor(candidates).shape[0])
         explanation = explanation_from_payload(
             payload,
             total_candidates=total_candidates,
@@ -284,7 +306,7 @@ class LLMCandidateExplanationMixin:
             candidate_result.explanation = explanation
         return explanation
 
-    def explain_last_candidates(self, **kwargs: Any) -> CandidateExplanation:
+    def explain_last_candidates(self, **kwargs: Any) -> Any:
         """Explain the most recent candidate result."""
 
         return self.explain_candidates(None, **kwargs)

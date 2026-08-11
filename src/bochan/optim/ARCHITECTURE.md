@@ -21,6 +21,10 @@ optimizer surface used by API dispatch.
 ## Extension rule
 
 Add a new optimizer family as a new subpackage when it has its own optimization
-semantics or support utilities. Keep shared problem constraints under
-`bochan.constraints`; optimizer packages should only contain optimizer-facing
-adaptation. Avoid runtime monkey patches and forwarding modules for removed paths.
+semantics or support utilities. Each family owns its algorithm-specific core,
+adapters, and post-processing helpers; cross-family problem definitions remain
+outside `bochan.optim`.
+
+Keep shared problem constraints under `bochan.constraints`; optimizer packages
+should only contain optimizer-facing adaptation. Avoid runtime monkey patches and
+forwarding modules for removed paths.

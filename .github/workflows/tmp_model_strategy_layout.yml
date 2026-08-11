@@ -23,7 +23,10 @@ jobs:
           fetch-depth: 0
 
       - name: Reorganize model strategy packages
-        run: python .github/tmp_model_strategy_layout.py
+        shell: bash
+        run: |
+          sed -i 's/git("rm", str(wide_patch.relative_to(ROOT)))/git("rm", "-f", str(wide_patch.relative_to(ROOT)))/' .github/tmp_model_strategy_layout.py
+          python .github/tmp_model_strategy_layout.py
 
       - name: Validate Python syntax
         run: python -m compileall -q src/bochan tests

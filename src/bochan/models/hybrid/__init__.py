@@ -79,6 +79,7 @@ class HybridMultiOutputModel(_HybridMultiOutputModel):
         output_mode: PosteriorMode = "objective",
         **kwargs: Any,
     ):
+        self.eval()
         return _task_aware_posterior(
             self,
             X=X,
@@ -96,6 +97,7 @@ class HybridMultiOutputModel(_HybridMultiOutputModel):
         **kwargs: Any,
     ) -> list[Tensor]:
         """Return class probabilities for selected classification outputs."""
+        self.eval()
         X = self._unwrap_X(X)
         outputs: list[Tensor] = []
         for index in self._normalize_output_indices(output_indices):

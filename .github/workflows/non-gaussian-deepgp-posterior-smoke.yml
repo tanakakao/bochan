@@ -28,7 +28,7 @@ jobs:
           python -m pip install ruff
           ruff check \
             --ignore I001,UP035,UP045 \
-            src/bochan/models/regression/non_gaussian/beta/deep/beta_deepgp.py \
-            src/bochan/models/regression/non_gaussian/beta/deep/beta_deepkernel.py \
+            src/bochan/models/regression/beta/deep/deepgp.py \
+            src/bochan/models/regression/beta/deep/deepkernel.py \
             tests/test_beta_deepgp_posterior_contract.py \
             tests/test_beta_deepkernel_dtype_contract.py

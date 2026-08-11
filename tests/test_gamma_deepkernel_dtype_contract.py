@@ -6,7 +6,7 @@ from gpytorch.kernels import MaternKernel, ScaleKernel
 from gpytorch.means import ConstantMean
 from torch import nn
 
-from bochan.models.regression.non_gaussian.gamma.deep.gamma_deepkernel import (
+from bochan.models.regression.gamma.deep.deepkernel import (
     DeepKernelGammaGPModel,
     DeepKernelGammaMixedGPModel,
 )

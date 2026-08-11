@@ -613,7 +613,7 @@ batch_shape x q x K
 posterior helper：
 
 ```text
-src/bochan/models/components/multiclass.py
+src/bochan/models/classification/multiclass/_components.py
 ```
 
 ---
@@ -822,7 +822,7 @@ predictive metricだけでなく、BO regret、target achievement、Active Learn
 | binary deep | `src/bochan/models/classification/binary/deep/` |
 | binary high-dimensional | `src/bochan/models/classification/binary/high_dim/` |
 | multiclass base | `src/bochan/models/classification/multiclass/base/models.py` |
-| multiclass posterior helper | `src/bochan/models/components/multiclass.py` |
+| multiclass posterior helper | `src/bochan/models/classification/multiclass/_components.py` |
 | multiclass robust | `src/bochan/models/classification/multiclass/robust/` |
 | multiclass deep | `src/bochan/models/classification/multiclass/deep/` |
 | multiclass high-dimensional | `src/bochan/models/classification/multiclass/high_dim/` |

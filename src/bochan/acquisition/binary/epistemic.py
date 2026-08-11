@@ -17,7 +17,7 @@ from botorch.models.model import Model
 from botorch.posteriors.posterior import Posterior
 from torch import Tensor
 
-from bochan.acquisition.binary._likelihood import (
+from bochan.acquisition.binary._probability import (
     latent_samples_to_binary_probabilities,
 )
 

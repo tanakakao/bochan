@@ -7,7 +7,7 @@ from torch import nn
 
 from bochan.fit.deep.common import fit_deep_full_batch_mll
 from bochan.fit.deep.deepkernel import fit_deepkernel_mll
-from bochan.likelihoods.regression import build_single_task_likelihood
+from bochan.models.regression.gaussian.likelihood import build_single_task_likelihood
 from bochan.models.components.layers.kernel_layers import StableScaleToBounds
 from bochan.models.regression.gaussian.deep.deepkernel import DeepKernelGaussianGPModel
 

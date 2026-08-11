@@ -9,12 +9,12 @@ from bochan.models.classification.multiclass.high_dim import (
 )
 from bochan.models.ordinal.high_dim import PCAOrdinalGPModel
 from bochan.models.regression.gaussian.high_dim import PCAGaussianGPModel
-from bochan.models.regression.non_gaussian.beta.high_dim import PCABetaGPModel
-from bochan.models.regression.non_gaussian.gamma.high_dim import PCAGammaGPModel
-from bochan.models.regression.non_gaussian.negative_binomial.high_dim import (
+from bochan.models.regression.beta.high_dim import PCABetaGPModel
+from bochan.models.regression.gamma.high_dim import PCAGammaGPModel
+from bochan.models.regression.count.negative_binomial.high_dim import (
     PCANegativeBinomialGPModel,
 )
-from bochan.models.regression.non_gaussian.poisson.high_dim import PCAPoissonGPModel
+from bochan.models.regression.count.poisson.high_dim import PCAPoissonGPModel
 
 
 @pytest.mark.parametrize(

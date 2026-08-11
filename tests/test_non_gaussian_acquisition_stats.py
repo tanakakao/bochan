@@ -5,11 +5,11 @@ from bochan.acquisition.non_gaussian._stats import observation_variance_from_mea
 from bochan.acquisition.non_gaussian.active_learning import qNonGaussianResponseMeanVariance, qNonGaussianBALDProxy
 from bochan.acquisition.non_gaussian.levelset_estimation import qNonGaussianStraddle, qNonGaussianLevelSetUncertainty
 from bochan.api.acquisition_registry import resolve_acqf_cls
-from bochan.models.regression.non_gaussian.gamma import GammaGPModel
-from bochan.models.components.beta import BetaLogLikelihood
-from bochan.models.components.gamma import GammaLogLikelihood
-from bochan.models.components.poisson import PoissonLogLikelihood
-from bochan.models.components.negative_binomial import NegativeBinomialLogLikelihood
+from bochan.models.regression.gamma import GammaGPModel
+from bochan.models.regression.beta._components import BetaLogLikelihood
+from bochan.models.regression.gamma._components import GammaLogLikelihood
+from bochan.models.regression.count.poisson._components import PoissonLogLikelihood
+from bochan.models.regression.count.negative_binomial._components import NegativeBinomialLogLikelihood
 
 class Holder:
     def __init__(self, likelihood): self.likelihood=likelihood

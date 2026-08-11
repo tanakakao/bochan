@@ -14,7 +14,7 @@ from gpytorch.means import Mean
 from torch import Tensor
 
 from bochan.fit.ordinal import fit_ordinal_gp
-from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
 from bochan.models.components.kronecker_multitask import (
     BlockDesignVariationalELBO,
     LatentKroneckerMultiTaskGP,
@@ -145,7 +145,7 @@ class KroneckerMultiTaskOrdinalGPModel(_BaseOrdinalGPModel):
       ``0, ..., num_classes - 1``.
 
     A correlated latent score vector follows an ICM prior ``K_X ⊗ K_task``.
-    :class:`~bochan.likelihoods.ordinal.OrdinalLogitLikelihood` maps each task's
+    :class:`~bochan.models.ordinal.likelihood.OrdinalLogitLikelihood` maps each task's
     latent score to ordered class probabilities using shared cutpoints.
 
     Notes:

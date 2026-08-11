@@ -18,7 +18,7 @@ from gpytorch.kernels import Kernel
 from gpytorch.means import Mean
 from torch import Tensor
 
-from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
 from bochan.models.components.saas import (
     OneHotEncodingMixin,
     build_map_saas_covar_module,

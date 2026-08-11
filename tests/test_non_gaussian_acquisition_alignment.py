@@ -18,7 +18,7 @@ from bochan.acquisition.non_gaussian.active_learning import (
     qNonGaussianNegIntegratedResponseMeanVariance,
 )
 from bochan.api.acquisition_registry import resolve_acqf_cls
-from bochan.models.regression.non_gaussian.gamma import GammaGPModel
+from bochan.models.regression.gamma import GammaGPModel
 
 
 def _gamma_model() -> GammaGPModel:

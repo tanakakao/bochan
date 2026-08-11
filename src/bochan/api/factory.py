@@ -336,7 +336,7 @@ def _build_wrapper_from_submodels(
     task_type = next(iter(unique_task_types))
     if task_type in {"regression", "multi_objective"}:
         if any(_is_non_gaussian_regression_model(model) for model in submodels):
-            from bochan.models.regression.non_gaussian.multioutput import NonGaussianModelList
+            from bochan.models.regression.multioutput import NonGaussianModelList
 
             return NonGaussianModelList(*submodels)
         from botorch.models.model_list_gp_regression import ModelListGP
@@ -365,8 +365,13 @@ def _is_non_gaussian_regression_model(model: Any) -> bool:
     Returns:
         Whether the model belongs to the non-Gaussian regression protocol.
     """
-    return type(model).__module__.startswith(
-        "bochan.models.regression.non_gaussian."
+    module_name = type(model).__module__
+    return module_name.startswith(
+        (
+            "bochan.models.regression.beta.",
+            "bochan.models.regression.gamma.",
+            "bochan.models.regression.count.",
+        )
     ) or bool(getattr(model, "is_non_gaussian_model", False))
 
 

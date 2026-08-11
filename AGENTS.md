@@ -11,7 +11,7 @@
 - robust / high-dimensional / deep 拡張を一貫した規則で整理する
 - acquisition function をタスク × 手法ファミリーで整理する
 - 将来の配布・保守・自動リファクタリングを容易にする
-- 既存コードとの後方互換性を可能な限り維持する
+- canonical API を単一の契約とし、互換 alias / forwarding package / runtime patch を残さない
 
 本仕様書では、新規アルゴリズム追加よりも、既存実装の構造整理・命名統一・API 統一を優先する。
 
@@ -93,137 +93,147 @@ mixed input は独立カテゴリではなく、各モデル族に対する標�
 
 ## 3. Package Structure Standard
 
-ライブラリ全体の標準構成は以下とする。
+モデル実装は **task / response family を第一境界**とし、family 固有の likelihood・posterior・前処理 helper はその family が所有する。
+`models/components/` に置くのは複数 family から実際に再利用される部品だけとする。
+
+標準構成は以下とする。
 
 ```text
 models/
-    __init__.py
-    base.py
-    utils.py
-
     components/
-        __init__.py
-        mixed_inputs.py
-        deep_layers.py
-        deep_kernel.py
-        posteriors.py
-        likelihood_utils.py
-        robust_utils.py
-        high_dim_utils.py
+        decomposition.py
+        deepgp_posterior.py
+        heteroscedastic.py
+        kronecker_multitask.py
+        mixed_kronecker.py
+        mixed_multitask.py
+        projected.py
+        projected_utils.py
+        robust.py
+        saas.py
+        sampling.py
+        vae.py
+        layers/
 
     regression/
-        __init__.py
+        _multitask.py
+        multioutput.py
 
         gaussian/
-            __init__.py
-            base.py
-            deep.py
-            _builders.py
-            robust/
-                __init__.py
-                hetero.py
-                rrp.py
+            likelihood.py
+            deep/
             high_dim/
-                __init__.py
-                pca.py
-                rembo.py
-                alebo.py
-                saas.py
+            robust/
 
         beta/
-            __init__.py
-            base.py
-            deep.py
-            _builders.py
-            robust/
-                __init__.py
-                hetero.py
-                rrp.py
+            _components.py
+            base/
+                models.py
+                aligned.py
+                multitask.py
+            deep/
+                deepgp.py
+                deepkernel.py
             high_dim/
-                __init__.py
-                pca.py
-                rembo.py
-                alebo.py
+                decomposition.py
                 saas.py
+            robust/
+                heteroscedastic.py
+                relevance_pursuit.py
 
         gamma/
-            __init__.py
-            base.py
-            deep.py
-            _builders.py
-            robust/
-                __init__.py
-                hetero.py
-                rrp.py
+            _components.py
+            base/
+                models.py
+                aligned.py
+                multitask.py
+            deep/
+                deepgp.py
+                deepkernel.py
             high_dim/
-                __init__.py
-                pca.py
-                rembo.py
-                alebo.py
+                decomposition.py
                 saas.py
+            robust/
+                heteroscedastic.py
+                relevance_pursuit.py
 
         count/
-            __init__.py
-            base.py
-            deep.py
-            _builders.py
-            robust/
-                __init__.py
-                hetero.py
-                rrp.py
-            high_dim/
-                __init__.py
-                pca.py
-                rembo.py
-                alebo.py
-                saas.py
+            poisson/
+                _components.py
+                base/
+                    models.py
+                    aligned.py
+                    multitask.py
+                deep/
+                    deepgp.py
+                    deepkernel.py
+                high_dim/
+                    decomposition.py
+                    saas.py
+                robust/
+                    heteroscedastic.py
+                    relevance_pursuit.py
+
+            negative_binomial/
+                _components.py
+                base/
+                    models.py
+                    aligned.py
+                    multitask.py
+                deep/
+                    deepgp.py
+                    deepkernel.py
+                high_dim/
+                    decomposition.py
+                    saas.py
+                robust/
+                    heteroscedastic.py
+                    relevance_pursuit.py
+
+        external/
+        foundation/
+        neural/
 
     classification/
-        __init__.py
-        base.py
-        deep.py
-        _builders.py
-        robust/
-            __init__.py
-            hetero.py
-            rrp.py
-        high_dim/
-            __init__.py
-            pca.py
-            rembo.py
-            alebo.py
-            saas.py
+        common/
+        binary/
+        multiclass/
+            _components.py
+            base/
+            deep/
+            high_dim/
+            robust/
 
     ordinal/
-        __init__.py
-        base.py
-        deep.py
-        _builders.py
-        robust/
-            __init__.py
-            hetero.py
-            rrp.py
+        likelihood.py
+        base/
+        deep/
         high_dim/
-            __init__.py
-            pca.py
-            rembo.py
-            alebo.py
-            saas.py
-````
+        robust/
+
+    hybrid/
+    transforms/
+```
 
 ### 3.1 Structural meaning
 
-* `regression` の下は出力分布族で分ける
-
+* `regression` の直下は response family で分ける。
   * `gaussian`
   * `beta`
   * `gamma`
   * `count`
-* `count` には Poisson / Negative Binomial を含める
-* `classification`, `ordinal` は独立タスクとして扱う
-* `mixed` は独立ファイルを作らず、各ファイルで通常版と併記する
-* builder 関数は `utils.py` に押し込まず、各モデル族の `_builders.py` に置く
-* truly common な部品のみ `components/` へ置く
+* `count` の下に `poisson` / `negative_binomial` を置く。
+* `regression/non_gaussian` のような「Gaussian ではない」という否定形の中間 namespace は作らない。
+* model likelihood は owning family に置く。したがって top-level `bochan/likelihoods` package は作らない。
+  * Gaussian likelihood builder: `models/regression/gaussian/likelihood.py`
+  * Ordinal likelihood: `models/ordinal/likelihood.py`
+  * Beta / Gamma / Count の custom likelihood / posterior helper: 各 family の `_components.py`
+* `models/components/` は複数 family で共有する projection、robust、multitask、sampling、deep layer 等に限定する。
+* family 内の実装ファイル名では family 名を重ねない。例えば `beta/deep/deepgp.py` とし、`beta/deep/beta_deepgp.py` にはしない。
+* binary / multiclass / ordinal はタスク境界が異なるため独立 family とする。
+* mixed variant は独立した最上位 family にせず、対応する family の中で通常版と同じ public namespace から公開する。内部実装上の分割は可読性・再利用性を優先してよい。
+* acquisition 固有の probability 変換は model likelihood と混同しない。acquisition 配下に `_probability.py` 等として置く。
+* compatibility-only forwarding package、deprecated alias、runtime monkey patch は追加しない。移動時は import 使用箇所を canonical path へ直接更新する。
 
 ## 4. Model Family Definitions
 
@@ -325,7 +335,7 @@ num_inducing: int = 128
 learn_inducing_locations: bool = True
 ```
 
-`list_hidden_dims` のような別名は deprecated alias とする。
+`list_hidden_dims` のような旧別名は受理せず、canonical な `hidden_dims` のみを公開する。
 
 ## 6. Class Naming Standard
 
@@ -547,7 +557,7 @@ self.train_X_original
 
 * `train_inputs[0]` が transform 後でも許容
 * raw 可視化・デバッグのため `train_X_original` を持つ
-* `train_inputs_raw` などの別名は deprecated にする
+* public / internal attribute は canonical 名を1つに固定し、互換 alias は追加しない
 
 ## 10.2 Outcome transform
 
@@ -1069,7 +1079,7 @@ Codex は以下の順で作業すること。
 4. mixed variants を通常版と同一ファイルへまとめる
 5. builder functions を `_builders.py` へ整理する
 6. acquisition を task × method family で再配置する
-7. deprecated alias を追加する
+7. deprecated alias / forwarding package / runtime monkey patch を追加する
 8. docstring / type hints / examples を整備する
 9. smoke tests を追加する
 10. migration note を出す

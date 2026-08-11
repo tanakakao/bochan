@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from bochan.api import ModelConfig, MultiOutputConfig, OutputConfig
-from bochan.likelihoods.regression import build_single_task_likelihood
+from bochan.models.regression.gaussian.likelihood import build_single_task_likelihood
 from bochan.tabular import TabularBayesianOptimizer
 from bochan.tabular import optimizer_api
 

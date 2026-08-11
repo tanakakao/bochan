@@ -7,7 +7,7 @@ on:
     paths:
       - "src/bochan/fit/deep/common.py"
       - "src/bochan/fit/deep/deepkernel.py"
-      - "src/bochan/likelihoods/regression.py"
+      - "src/bochan/models/regression/gaussian/likelihood.py"
       - "src/bochan/models/components/layers/kernel_layers.py"
       - "src/bochan/models/regression/gaussian/deep/deepkernel.py"
       - "tests/test_deepkernel_stability.py"
@@ -38,7 +38,7 @@ jobs:
           ruff check --ignore I001 \
             src/bochan/fit/deep/common.py \
             src/bochan/fit/deep/deepkernel.py \
-            src/bochan/likelihoods/regression.py \
+            src/bochan/models/regression/gaussian/likelihood.py \
             src/bochan/models/components/layers/kernel_layers.py \
             tests/test_deepkernel_stability.py \
             tests/test_tabular_noise_alpha.py

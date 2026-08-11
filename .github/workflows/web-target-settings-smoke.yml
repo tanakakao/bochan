@@ -7,7 +7,7 @@ on:
     paths:
       - "pyproject.toml"
       - "src/bochan/api/acquisition_config.py"
-      - "src/bochan/likelihoods/regression.py"
+      - "src/bochan/models/regression/gaussian/likelihood.py"
       - "src/bochan/model_artifact.py"
       - "src/bochan/posteriors/bernoulli.py"
       - "src/bochan/tabular/optimizer_api.py"

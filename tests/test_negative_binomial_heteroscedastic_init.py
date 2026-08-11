@@ -15,10 +15,10 @@ from bochan.acquisition.regression.active_learning import (
 from bochan.acquisition.regression.bayesian_optimization.hetero_single_output import (
     qHeteroRegressionUpperConfidenceBound,
 )
-from bochan.models.regression.non_gaussian.negative_binomial.robust import (
-    negative_binomial_heteroscedastic as hetero_module,
+from bochan.models.regression.count.negative_binomial.robust import (
+    heteroscedastic as hetero_module,
 )
-from bochan.models.regression.non_gaussian.negative_binomial.robust.negative_binomial_heteroscedastic import (
+from bochan.models.regression.count.negative_binomial.robust.heteroscedastic import (
     HeteroscedasticNegativeBinomialGPModel,
     HeteroscedasticNegativeBinomialMixedGPModel,
 )

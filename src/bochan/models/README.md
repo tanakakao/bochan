@@ -106,8 +106,8 @@ models/
 Notes:
 
 - `regression/gaussian/` is the standard continuous-output regression family.
-- `regression/non_gaussian/` contains response distributions such as Poisson,
-  Beta, Gamma, and Negative Binomial.
+- `regression/beta/` and `regression/gamma/` own continuous non-Gaussian response families.
+- `regression/count/{poisson,negative_binomial}/` owns count-response families.
 - `classification/binary/` and `classification/multiclass/` are separated because
   their likelihoods, posterior semantics, target labels, and acquisition
   objectives are different.
@@ -179,10 +179,7 @@ not a separate `deepgpdeepkernel` registry key.
 
 ### Non-Gaussian registry status
 
-Non-Gaussian models exist under `models/regression/non_gaussian/`, but they are
-not currently part of the default high-level `ModelConfig(task_type=...)`
-registry. Use them directly, or add a custom registry / `model_cls` /
-`model_factory` path when wiring them through the API.
+Distribution-specific regression models live directly under their owning families: `models/regression/beta/`, `models/regression/gamma/`, and `models/regression/count/`. The standard high-level registry resolves these canonical package paths.
 
 ---
 
@@ -324,7 +321,8 @@ Current families:
 Layout:
 
 ```text
-regression/non_gaussian/<family>/
+regression/<family>/  # beta / gamma
+regression/count/<family>/  # poisson / negative_binomial
 ├── base/
 ├── deep/
 ├── high_dim/

@@ -107,7 +107,7 @@ jobs:
             src/bochan/models/hybrid/class_probability_shapes.py \
             src/bochan/models/hybrid/task_aware_posterior.py \
             src/bochan/models/hybrid/task_aware_sampling.py \
-            src/bochan/models/regression/non_gaussian/gamma/base/aligned.py \
+            src/bochan/models/regression/gamma/base/aligned.py \
             src/bochan/models/wide_multitask.py \
             src/bochan/models/wide_multitask_variants.py \
             src/bochan/optim/__init__.py \

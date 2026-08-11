@@ -309,7 +309,7 @@ source：
 src/bochan/models/
 src/bochan/models/components/
 src/bochan/models/transforms/
-src/bochan/likelihoods/
+src/bochan/models/regression/gaussian/likelihood.py and family-local likelihood modules
 src/bochan/fit/
 ```
 

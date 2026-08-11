@@ -780,7 +780,7 @@ Major model families:
 | Family | Purpose |
 |---|---|
 | `regression/gaussian` | Standard continuous-output Gaussian regression models. |
-| `regression/non_gaussian` | Poisson, Beta, Gamma, and Negative Binomial response models. |
+| `regression/beta`, `regression/gamma`, `regression/count` | Beta, Gamma, Poisson, and Negative Binomial response models. |
 | `classification/binary` | Binary GP classification and related wrappers. |
 | `classification/multiclass` | Multiclass GP classification and related wrappers. |
 | `ordinal` | Ordered-label / ordinal-regression GP wrappers. |
@@ -816,9 +816,10 @@ The registered `model_type` values are:
 ```
 
 For `multiclass`, `deepgpdeepkernel` is not currently registered as a separate
-model type. Non-Gaussian models exist under `models/regression/non_gaussian/`,
-but they are not part of the default `ModelConfig` registry yet; use `model_cls`,
-`model_factory`, or a custom registry to connect them to the high-level API.
+model type. Distribution-specific regression models are organized under
+`models/regression/beta/`, `models/regression/gamma/`, and
+`models/regression/count/`, and the standard registry resolves those canonical
+package paths directly.
 
 If `cat_dims` is provided and `input_type` is omitted, the API infers
 `input_type="mixed"`; otherwise it uses `input_type="normal"`.

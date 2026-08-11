@@ -5,7 +5,7 @@ import torch
 from bochan.models.classification.multiclass.base.multioutput import (
     MultiOutputMulticlassProbsPosterior,
 )
-from bochan.models.components.multiclass import MulticlassProbsPosterior
+from bochan.models.classification.multiclass._components import MulticlassProbsPosterior
 
 try:
     from botorch.sampling.get_sampler import GetSampler

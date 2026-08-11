@@ -1,82 +1,185 @@
 from __future__ import annotations
 
-import importlib.util
+import ast
+import subprocess
 from pathlib import Path
 
-from bochan.api.model_registry import DEFAULT_MODEL_REGISTRY
+import pytest
 
 
-OLD_PUBLIC_PACKAGES = (
-    "bochan.models.regression.boosting",
-    "bochan.models.classification.external",
-    "bochan.models.classification.neural",
-)
-
-EXTERNAL_MODEL_TYPES = (
-    "lightgbm",
-    "lightgbm_ensemble",
-    "ngboost",
-    "ngboost_ensemble",
-    "random_forest",
-)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SRC_ROOT = REPO_ROOT / "src" / "bochan"
+MODELS_ROOT = SRC_ROOT / "models"
 
 
-def test_obsolete_model_packages_are_removed() -> None:
-    for module_name in OLD_PUBLIC_PACKAGES:
-        assert importlib.util.find_spec(module_name) is None
-
-
-def test_repository_has_no_obsolete_model_imports() -> None:
-    paths = list(Path("src/bochan").rglob("*.py"))
-    paths.extend(
-        path
-        for path in Path("tests").rglob("*.py")
-        if path.name != "test_model_package_layout.py"
+def _tracked_files() -> set[str]:
+    result = subprocess.run(
+        ["git", "ls-files"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
     )
-    paths.extend(Path(".github/workflows").glob("*.yml"))
+    if result.returncode != 0:
+        pytest.skip("tracked-file check requires a Git checkout")
+    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
 
+
+def test_distributional_regression_families_use_canonical_layout() -> None:
+    assert not (MODELS_ROOT / "regression" / "non_gaussian").exists()
+    assert (MODELS_ROOT / "regression" / "beta" / "base" / "models.py").is_file()
+    assert (MODELS_ROOT / "regression" / "gamma" / "base" / "models.py").is_file()
+    assert (
+        MODELS_ROOT
+        / "regression"
+        / "count"
+        / "poisson"
+        / "base"
+        / "models.py"
+    ).is_file()
+    assert (
+        MODELS_ROOT
+        / "regression"
+        / "count"
+        / "negative_binomial"
+        / "base"
+        / "models.py"
+    ).is_file()
+
+
+def test_model_likelihoods_are_family_owned() -> None:
+    assert not (SRC_ROOT / "likelihoods").exists()
+    assert (MODELS_ROOT / "ordinal" / "likelihood.py").is_file()
+    assert (MODELS_ROOT / "regression" / "gaussian" / "likelihood.py").is_file()
+
+    tree = ast.parse(
+        (MODELS_ROOT / "regression" / "gaussian" / "likelihood.py").read_text(
+            encoding="utf-8"
+        )
+    )
+    function_names = {
+        node.name for node in tree.body if isinstance(node, ast.FunctionDef)
+    }
+    assert "build_single_task_likelihood" in function_names
+    assert "build_multitask_likelihood" in function_names
+    assert "singletasklikelihood" not in function_names
+    assert "multitasklikelihood" not in function_names
+
+
+def test_family_specific_components_are_not_global_components() -> None:
+    global_components = MODELS_ROOT / "components"
+    for filename in (
+        "beta.py",
+        "gamma.py",
+        "poisson.py",
+        "negative_binomial.py",
+        "multiclass.py",
+    ):
+        assert not (global_components / filename).exists()
+
+    assert (MODELS_ROOT / "regression" / "beta" / "_components.py").is_file()
+    assert (MODELS_ROOT / "regression" / "gamma" / "_components.py").is_file()
+    assert (
+        MODELS_ROOT / "regression" / "count" / "poisson" / "_components.py"
+    ).is_file()
+    assert (
+        MODELS_ROOT
+        / "regression"
+        / "count"
+        / "negative_binomial"
+        / "_components.py"
+    ).is_file()
+    assert (MODELS_ROOT / "classification" / "multiclass" / "_components.py").is_file()
+
+
+def test_acquisition_probability_helper_is_not_named_likelihood() -> None:
+    binary_root = SRC_ROOT / "acquisition" / "binary"
+    assert not (binary_root / "_likelihood.py").exists()
+    assert (binary_root / "_probability.py").is_file()
+
+
+def test_removed_model_paths_are_not_referenced() -> None:
+    forbidden = (
+        "bochan.models.regression.non_gaussian",
+        "bochan.likelihoods",
+        "bochan.models.components.beta",
+        "bochan.models.components.gamma",
+        "bochan.models.components.poisson",
+        "bochan.models.components.negative_binomial",
+        "bochan.models.components.multiclass",
+        "bochan.acquisition.binary._likelihood",
+    )
     offenders: list[str] = []
-    for path in paths:
-        text = path.read_text(encoding="utf-8")
-        for module_name in OLD_PUBLIC_PACKAGES:
-            if module_name in text:
-                offenders.append(f"{path}: {module_name}")
-    assert offenders == []
+    for root in (SRC_ROOT, REPO_ROOT / "tests"):
+        for path in root.rglob("*.py"):
+            if path == Path(__file__):
+                continue
+            source = path.read_text(encoding="utf-8")
+            if any(token in source for token in forbidden):
+                offenders.append(str(path.relative_to(REPO_ROOT)))
+    assert not offenders
 
 
-def test_external_regression_registry_uses_external_package() -> None:
-    tree = DEFAULT_MODEL_REGISTRY.raw()
-    for input_type in ("normal", "mixed"):
-        regression = tree[input_type]["regression"]
-        for model_type in EXTERNAL_MODEL_TYPES:
-            module_name, _ = regression[model_type]
-            assert module_name == "bochan.models.regression.external"
+def test_workflows_do_not_reference_removed_model_paths() -> None:
+    forbidden = (
+        "src/bochan/models/regression/non_gaussian/",
+        "src/bochan/likelihoods/",
+        "src/bochan/models/components/beta.py",
+        "src/bochan/models/components/gamma.py",
+        "src/bochan/models/components/poisson.py",
+        "src/bochan/models/components/negative_binomial.py",
+        "src/bochan/models/components/multiclass.py",
+        "src/bochan/acquisition/binary/_likelihood.py",
+    )
+    offenders: list[str] = []
+    workflows_root = REPO_ROOT / ".github" / "workflows"
+    for path in workflows_root.glob("*.yml"):
+        source = path.read_text(encoding="utf-8")
+        if any(token in source for token in forbidden):
+            offenders.append(str(path.relative_to(REPO_ROOT)))
+    assert not offenders
 
 
-def test_classification_registry_is_split_by_task() -> None:
-    tree = DEFAULT_MODEL_REGISTRY.raw()
-    for input_type in ("normal", "mixed"):
-        binary = tree[input_type]["binary"]
-        multiclass = tree[input_type]["multiclass"]
+def test_non_gaussian_posterior_sampling_is_not_monkey_patched() -> None:
+    sampling_path = MODELS_ROOT / "components" / "sampling.py"
+    source = sampling_path.read_text(encoding="utf-8")
+    for class_name in (
+        "BetaPosterior",
+        "GammaPosterior",
+        "PoissonPosterior",
+        "NegativeBinomialPosterior",
+    ):
+        assert f"{class_name}.rsample_from_base_samples =" not in source
 
-        for model_type in EXTERNAL_MODEL_TYPES:
-            binary_module, _ = binary[model_type]
-            multiclass_module, _ = multiclass[model_type]
-            assert binary_module == "bochan.models.classification.binary.external"
-            assert multiclass_module == "bochan.models.classification.multiclass.external"
+    posterior_files = (
+        MODELS_ROOT / "regression" / "beta" / "_components.py",
+        MODELS_ROOT / "regression" / "gamma" / "_components.py",
+        MODELS_ROOT / "regression" / "count" / "poisson" / "_components.py",
+        MODELS_ROOT
+        / "regression"
+        / "count"
+        / "negative_binomial"
+        / "_components.py",
+    )
+    for path in posterior_files:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        methods = {
+            node.name
+            for class_node in tree.body
+            if isinstance(class_node, ast.ClassDef) and class_node.name.endswith("Posterior")
+            for node in class_node.body
+            if isinstance(node, ast.FunctionDef)
+        }
+        assert "rsample_from_base_samples" in methods
 
-        binary_deep_module, _ = binary["deep_ensemble"]
-        multiclass_deep_module, _ = multiclass["deep_ensemble"]
-        assert binary_deep_module == "bochan.models.classification.binary.neural"
-        assert multiclass_deep_module == "bochan.models.classification.multiclass.neural"
 
-
-def test_ordinal_registry_contains_external_and_neural_models() -> None:
-    tree = DEFAULT_MODEL_REGISTRY.raw()
-    for input_type in ("normal", "mixed"):
-        ordinal = tree[input_type]["ordinal"]
-        for model_type in EXTERNAL_MODEL_TYPES:
-            module_name, _ = ordinal[model_type]
-            assert module_name == "bochan.models.ordinal.external"
-        deep_module, _ = ordinal["deep_ensemble"]
-        assert deep_module == "bochan.models.ordinal.neural"
+def test_generated_python_artifacts_are_not_tracked() -> None:
+    tracked = _tracked_files()
+    offenders = [
+        path
+        for path in tracked
+        if path.startswith("src/bochan.egg-info/")
+        or "/__pycache__/" in path
+        or path.endswith(".pyc")
+    ]
+    assert not offenders

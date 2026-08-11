@@ -10,7 +10,7 @@ from bochan.acquisition.regression.active_learning import (
     qRegressionPosteriorVariance,
     qRegressionPredictiveEntropy,
 )
-from bochan.models.regression.non_gaussian.beta.deep.beta_deepgp import (
+from bochan.models.regression.beta.deep.deepgp import (
     DeepBetaGPModel,
     DeepBetaMixedGPModel,
 )

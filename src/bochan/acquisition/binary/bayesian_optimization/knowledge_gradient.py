@@ -22,7 +22,7 @@ from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 
 from bochan.acquisition._duplicate_exclusion import unwrap_single_output_model
-from bochan.acquisition.binary._likelihood import (
+from bochan.acquisition.binary._probability import (
     latent_samples_to_binary_probabilities,
 )
 from bochan.acquisition.binary.epistemic import get_binary_latent_posterior

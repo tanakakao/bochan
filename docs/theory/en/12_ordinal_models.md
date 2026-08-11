@@ -983,7 +983,7 @@ interpreted as raw label correlation.
 
 | Component | Source |
 |---|---|
-| Ordered-logit likelihood | `src/bochan/likelihoods/ordinal.py` |
+| Ordered-logit likelihood | `src/bochan/models/ordinal/likelihood.py` |
 | Continuous and mixed base models | `src/bochan/models/ordinal/base/` |
 | Variational fit helper | `src/bochan/fit/ordinal.py` |
 | Ordinal posterior transforms | `src/bochan/models/transforms/posterior/ordinal.py` |

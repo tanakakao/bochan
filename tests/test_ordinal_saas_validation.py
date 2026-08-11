@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
 from bochan.models.ordinal.high_dim import SaasOrdinalGPModel, SaasOrdinalMixedGPModel
 
 

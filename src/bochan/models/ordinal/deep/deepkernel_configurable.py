@@ -13,7 +13,7 @@ from gpytorch.likelihoods import _OneDimensionalLikelihood
 from gpytorch.means import Mean
 from gpytorch.mlls import PredictiveLogLikelihood, VariationalELBO
 
-from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
 from bochan.models.components.layers.feature_extractor import (
     LargeFeatureExtractor,
     SkipLargeFeatureExtractor,

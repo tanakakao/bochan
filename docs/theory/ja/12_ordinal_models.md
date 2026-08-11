@@ -239,7 +239,7 @@ DeepGP、Deep Kernel、SAASはlatent representationを変えますが、ordered 
 
 | component | source |
 |---|---|
-| ordered-logit likelihood | `src/bochan/likelihoods/ordinal.py` |
+| ordered-logit likelihood | `src/bochan/models/ordinal/likelihood.py` |
 | base model | `src/bochan/models/ordinal/base/` |
 | fitting | `src/bochan/fit/ordinal.py` |
 | posterior transform | `src/bochan/models/transforms/posterior/ordinal.py` |

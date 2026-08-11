@@ -8,7 +8,7 @@ from bochan.acquisition.multiclass.bayesian_optimization import (
 from bochan.acquisition.multiclass.bayesian_optimization.input_perturbation import (
     validate_hypervolume_objective_q,
 )
-from bochan.models.components.multiclass import MulticlassProbsPosterior
+from bochan.models.classification.multiclass._components import MulticlassProbsPosterior
 
 
 class _FakeLatentPosterior:

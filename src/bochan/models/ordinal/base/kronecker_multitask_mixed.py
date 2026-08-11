@@ -11,7 +11,7 @@ from gpytorch.means import Mean
 from torch import Tensor
 
 from bochan.fit.ordinal import fit_ordinal_gp
-from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
+from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
 from bochan.models.components.kronecker_multitask import (
     canonicalize_block_design_targets,
 )

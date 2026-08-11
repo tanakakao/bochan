@@ -13,7 +13,7 @@ from gpytorch.kernels import Kernel
 from gpytorch.likelihoods import SoftmaxLikelihood
 from gpytorch.means import Mean
 
-from bochan.models.components.multiclass import prepare_class_targets
+from bochan.models.classification.multiclass._components import prepare_class_targets
 from bochan.models.classification.multiclass import (
     MulticlassClassificationGPModel,
     MulticlassClassificationMixedGPModel,

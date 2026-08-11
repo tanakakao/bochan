@@ -7,7 +7,7 @@ from typing import Callable, Optional
 import torch
 from torch import Tensor
 from botorch.utils.transforms import t_batch_mode_transform
-from bochan.acquisition.binary._likelihood import latent_samples_to_binary_probabilities
+from bochan.acquisition.binary._probability import latent_samples_to_binary_probabilities
 
 from .multi_output import (
     _MultiOutputBinaryClassificationAcqBase,

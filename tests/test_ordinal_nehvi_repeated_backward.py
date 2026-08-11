@@ -9,8 +9,8 @@ from bochan.acquisition.ordinal.bayesian_optimization import (
     qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
     qMultiOutputOrdinalUtilityObjective,
 )
-from bochan.likelihoods.ordinal import OrdinalLogitLikelihood
 from bochan.models.ordinal.base import KroneckerMultiTaskOrdinalGPModel
+from bochan.models.ordinal.likelihood import OrdinalLogitLikelihood
 from bochan.models.wide_multitask_variants import WideMultiTaskOrdinalGPModel
 
 

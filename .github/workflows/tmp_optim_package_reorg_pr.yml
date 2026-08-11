@@ -30,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
           python .github/tmp_reorg_optim.py
-          git rm tests/test_nsgaii_no_grad.py
+          git rm -f tests/test_nsgaii_no_grad.py
 
       - name: Remove temporary automation files
         run: |

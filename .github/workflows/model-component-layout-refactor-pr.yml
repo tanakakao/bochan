@@ -33,27 +33,21 @@ jobs:
 
           path = Path("src/bochan/models/ordinal/base/models.py")
           source = path.read_text(encoding="utf-8")
-          old = '''if covar_module is None:
-              covar_module = ScaleKernel(
-                  MaternKernel(
-                      nu=2.5,
-                      ard_num_dims=raw_train_X.shape[-1],
-                  )
-              ).to(device=raw_train_X.device, dtype=raw_train_X.dtype)
-
-          '''
-          new = '''        if covar_module is None:
-              covar_module = ScaleKernel(
-                  MaternKernel(
-                      nu=2.5,
-                      ard_num_dims=raw_train_X.shape[-1],
-                  )
-              ).to(device=raw_train_X.device, dtype=raw_train_X.dtype)
-
-          '''
-          if old not in source:
-              raise RuntimeError("Generated ordinal Matern block not found.")
-          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          start_token = "\nif covar_module is None:\n"
+          end_token = "        latent_model = _OrdinalLatentGP("
+          start = source.find(start_token)
+          if start < 0:
+              raise RuntimeError("Generated unindented ordinal Matern block not found.")
+          start += 1
+          end = source.find(end_token, start)
+          if end < 0:
+              raise RuntimeError("Ordinal latent model marker not found after Matern block.")
+          block = source[start:end]
+          fixed = "".join(
+              f"        {line}" if line.strip() else line
+              for line in block.splitlines(keepends=True)
+          )
+          path.write_text(source[:start] + fixed + source[end:], encoding="utf-8")
           PY
       - name: Install test dependencies
         run: |

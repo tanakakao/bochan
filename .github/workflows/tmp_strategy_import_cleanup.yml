@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - agent/reorganize-multioutput-multitask
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize]
 
 permissions:
   contents: write

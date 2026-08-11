@@ -38,7 +38,7 @@ def _safe(name: str, base: type) -> type:
     def __init__(self, model, *args, **kwargs) -> None:
         base.__init__(
             self,
-            model=adapt_wide_ordinal_model(model),
+            adapt_wide_ordinal_model(model),
             *args,
             **kwargs,
         )

@@ -1,8 +1,11 @@
 """Ordinal active-learning acquisitions with nominal duplicate semantics."""
 
+from functools import wraps
+
 from bochan.acquisition._nominal_duplicate_penalties import (
     NominalDuplicatePenaltyMixin,
 )
+from bochan.acquisition.ordinal._wide import adapt_wide_ordinal_model
 
 from .bald import qMultiOutputOrdinalBALD as _qMultiOutputOrdinalBALD
 from .hetero_multi_output import (
@@ -35,7 +38,20 @@ from .single_output import (
 
 
 def _safe(name: str, base: type) -> type:
-    return type(name, (NominalDuplicatePenaltyMixin, base), {"__module__": __name__})
+    @wraps(base.__init__)
+    def __init__(self, model, *args, **kwargs) -> None:
+        base.__init__(
+            self,
+            model=adapt_wide_ordinal_model(model),
+            *args,
+            **kwargs,
+        )
+
+    return type(
+        name,
+        (NominalDuplicatePenaltyMixin, base),
+        {"__module__": __name__, "__init__": __init__},
+    )
 
 
 qOrdinalPredictiveEntropy = _safe("qOrdinalPredictiveEntropy", _qOrdinalPredictiveEntropy)

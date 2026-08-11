@@ -41,34 +41,35 @@ jobs:
               end_token = "        latent_model = _OrdinalLatentGP("
               end = source.find(end_token, start)
               if end < 0:
-                  raise RuntimeError(
-                      "Ordinal latent model marker not found after Matern block."
-                  )
+                  raise RuntimeError("Ordinal latent model marker not found after Matern block.")
               block = source[start:end]
               fixed = "".join(
                   f"        {line}" if line.strip() else line
                   for line in block.splitlines(keepends=True)
               )
-              ordinal_path.write_text(
-                  source[:start] + fixed + source[end:],
-                  encoding="utf-8",
-              )
+              ordinal_path.write_text(source[:start] + fixed + source[end:], encoding="utf-8")
           elif canonical not in source:
               raise RuntimeError("Ordinal Matern block is in an unexpected state.")
 
-          multiclass_init = Path(
-              "src/bochan/models/classification/multiclass/base/__init__.py"
-          )
+          multiclass_init = Path("src/bochan/models/classification/multiclass/base/__init__.py")
           source = multiclass_init.read_text(encoding="utf-8")
-          old = "from . import posteriors as _posterior_sampler_registration"
-          new = "from . import posterior as _posterior_sampler_registration"
-          if old in source:
-              source = source.replace(old, new, 1)
-              multiclass_init.write_text(source, encoding="utf-8")
-          elif new not in source:
-              raise RuntimeError(
-                  "Multiclass posterior sampler registration import is unexpected."
-              )
+          legacy_imports = (
+              "from . import posteriors as _posterior_sampler_registration",
+              "from . import posterior as _posterior_sampler_registration",
+          )
+          canonical_import = "from . import posterior as posterior"
+          for old in legacy_imports:
+              if old in source:
+                  source = source.replace(old, canonical_import, 1)
+                  break
+          if canonical_import not in source:
+              raise RuntimeError("Multiclass posterior module import is in an unexpected state.")
+          if '    "posterior",\n' not in source:
+              marker = "__all__ = [\n"
+              if marker not in source:
+                  raise RuntimeError("Multiclass __all__ marker not found.")
+              source = source.replace(marker, marker + '    "posterior",\n', 1)
+          multiclass_init.write_text(source, encoding="utf-8")
           PY
       - name: Install test dependencies
         run: |

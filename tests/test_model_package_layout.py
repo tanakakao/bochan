@@ -120,6 +120,25 @@ def test_removed_model_paths_are_not_referenced() -> None:
     assert not offenders
 
 
+def test_workflows_do_not_reference_removed_model_paths() -> None:
+    forbidden = (
+        "src/bochan/models/regression/non_gaussian/",
+        "src/bochan/likelihoods/",
+        "src/bochan/models/components/beta.py",
+        "src/bochan/models/components/gamma.py",
+        "src/bochan/models/components/poisson.py",
+        "src/bochan/models/components/negative_binomial.py",
+        "src/bochan/models/components/multiclass.py",
+        "src/bochan/acquisition/binary/_likelihood.py",
+    )
+    offenders: list[str] = []
+    workflows_root = REPO_ROOT / ".github" / "workflows"
+    for path in workflows_root.glob("*.yml"):
+        source = path.read_text(encoding="utf-8")
+        if any(token in source for token in forbidden):
+            offenders.append(str(path.relative_to(REPO_ROOT)))
+    assert not offenders
+
 
 def test_non_gaussian_posterior_sampling_is_not_monkey_patched() -> None:
     sampling_path = MODELS_ROOT / "components" / "sampling.py"
@@ -152,6 +171,7 @@ def test_non_gaussian_posterior_sampling_is_not_monkey_patched() -> None:
             if isinstance(node, ast.FunctionDef)
         }
         assert "rsample_from_base_samples" in methods
+
 
 def test_generated_python_artifacts_are_not_tracked() -> None:
     tracked = _tracked_files()

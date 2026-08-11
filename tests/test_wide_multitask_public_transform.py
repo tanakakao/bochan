@@ -23,12 +23,12 @@ from bochan.acquisition.regression.bayesian_optimization import (
     qMultiOutputRegressionNParEGO,
 )
 from bochan.api import AutoStandardizeOutcomeTransform
-from bochan.models.transforms.input import build_input_transform
 from bochan.models.multitask.task_feature import (
     PerturbationAwareWidePosterior,
     TaskFeatureInputTransform,
     WideMultiTaskGP,
 )
+from bochan.models.transforms.input import build_input_transform
 from bochan.optim.nsgaii_outputs import adapt_nsgaii_outputs
 
 

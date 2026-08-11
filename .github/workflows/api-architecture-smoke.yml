@@ -34,18 +34,27 @@ jobs:
             tests/test_tabular_ordinal_rank_string_labels.py \
             tests/test_tabular_prediction_labels.py \
             tests/test_tabular_deepgp_candidate_output.py \
-            tests/test_fastapi_tabular_category_constraints.py
+            tests/test_fastapi_tabular_category_constraints.py \
+            tests/test_fastapi_tabular_endpoints.py
       - name: Run Ruff
         run: |
           ruff check \
             src/bochan/api/__init__.py \
             src/bochan/api/acquisition_service.py \
             src/bochan/api/candidate_output.py \
+            src/bochan/api/observation_service.py \
             src/bochan/api/optimizer.py \
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/composition_bounds_optimizer.py \
             src/bochan/tabular/multi_output_categories.py \
             src/bochan/tabular/ordinal_rank_labels.py \
             src/bochan/tabular/public_optimizer.py \
+            src/bochan/serving/fastapi/routers/candidates.py \
+            src/bochan/serving/fastapi/routers/models.py \
+            src/bochan/serving/fastapi/routers/suggestions.py \
+            src/bochan/serving/fastapi/services/candidates.py \
+            src/bochan/serving/fastapi/stores/object.py \
+            src/bochan/serving/fastapi/tabular_compat.py \
             tests/test_api_architecture.py \
+            tests/test_fastapi_tabular_category_constraints.py \
             tests/test_tabular_architecture.py

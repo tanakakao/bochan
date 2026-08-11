@@ -59,6 +59,11 @@ from .nominal_duplicate_safe import (
     qMultiOutputMulticlassProbabilityOfImprovement,
     qMultiOutputMulticlassUpperConfidenceBound,
 )
+from .nparego_observed_baseline import (
+    infer_multiclass_train_y,
+    is_training_label_baseline,
+    objective_baseline_from_labels,
+)
 from .single_output import (
     compute_multiclass_target_probability_best_f,
     compute_multiclass_target_probability_values,
@@ -93,8 +98,6 @@ def _constraint_parameter_list(
     *,
     count: int,
 ) -> list[Any]:
-    """Normalize scalar and per-constraint parameters to a Python list."""
-
     if isinstance(value, list):
         if len(value) != count:
             raise ValueError(
@@ -124,7 +127,6 @@ def _multiclass_feasibility_weights(
     eta_values = _constraint_parameter_list(eta, count=len(constraints))
     fat_values = _constraint_parameter_list(fat, count=len(constraints))
     feasibility: Tensor | None = None
-
     for constraint, eta_value, fat_value in zip(
         constraints,
         eta_values,
@@ -140,12 +142,12 @@ def _multiclass_feasibility_weights(
                 dtype=constraint_value.dtype,
                 device=constraint_value.device,
             )
-            if fat_value:
-                weight = fatmoid(-constraint_value, tau=eta_tensor)
-            else:
-                weight = torch.sigmoid(-constraint_value / eta_tensor)
+            weight = (
+                fatmoid(-constraint_value, tau=eta_tensor)
+                if fat_value
+                else torch.sigmoid(-constraint_value / eta_tensor)
+            )
         feasibility = weight if feasibility is None else feasibility * weight
-
     if feasibility is None:
         raise RuntimeError("At least one constraint is required.")
     return feasibility
@@ -154,11 +156,7 @@ def _multiclass_feasibility_weights(
 class _MulticlassConstraintEHVI:
     """Shape-safe qEHVI feasibility calculation for multiclass raw samples."""
 
-    def _compute_qehvi(
-        self,
-        samples: Tensor,
-        X: Tensor | None = None,
-    ) -> Tensor:
+    def _compute_qehvi(self, samples: Tensor, X: Tensor | None = None) -> Tensor:
         from .input_perturbation import validate_hypervolume_objective_q
 
         obj = self.objective(samples, X=X)
@@ -186,12 +184,7 @@ class _MulticlassConstraintEHVI:
         sample_batch_view_shape = torch.Size(
             [
                 batch_shape[0] if cell_batch_ndim > 0 else 1,
-                *[
-                    1
-                    for _ in range(
-                        len(batch_shape) - max(cell_batch_ndim, 1)
-                    )
-                ],
+                *[1 for _ in range(len(batch_shape) - max(cell_batch_ndim, 1))],
                 *self.cell_lower_bounds.shape[1:-2],
             ]
         )
@@ -201,16 +194,12 @@ class _MulticlassConstraintEHVI:
             1,
             self.cell_upper_bounds.shape[-1],
         )
-
         for subset_size in range(1, self.q_out + 1):
             subset_indices = q_subset_indices[f"q_choose_{subset_size}"]
             obj_subsets = obj.index_select(
                 dim=-2,
                 index=subset_indices.view(-1),
-            )
-            obj_subsets = obj_subsets.view(
-                obj.shape[:-2] + subset_indices.shape + obj.shape[-1:]
-            )
+            ).view(obj.shape[:-2] + subset_indices.shape + obj.shape[-1:])
             overlap_vertices = obj_subsets.min(dim=-2).values
             overlap_vertices = torch.min(
                 overlap_vertices.unsqueeze(-3),
@@ -226,9 +215,7 @@ class _MulticlassConstraintEHVI:
                     index=subset_indices.view(-1),
                 ).view(feasibility.shape[:-1] + subset_indices.shape)
                 areas = areas * feasibility_subsets.unsqueeze(-3).prod(dim=-1)
-            areas = areas.sum(dim=-1)
-            areas_per_segment += (-1) ** (subset_size + 1) * areas
-
+            areas_per_segment += (-1) ** (subset_size + 1) * areas.sum(dim=-1)
         return areas_per_segment.sum(dim=-1).mean(dim=0)
 
 
@@ -236,7 +223,7 @@ class qMultiOutputMulticlassExpectedHypervolumeImprovement(
     _MulticlassConstraintEHVI,
     _BaseMulticlassEHVI,
 ):
-    """Multiclass qEHVI with explicit objective-space constraint handling."""
+    """Internal multiclass qEHVI with explicit objective-space constraints."""
 
     def __init__(
         self,
@@ -261,7 +248,6 @@ class qMultiOutputMulticlassExpectedHypervolumeImprovement(
             constraints,
             objective_getter=lambda: getattr(self, "objective", None),
         )
-        eta_tensor = _normalize_constraint_eta(eta, adapted_constraints)
         super().__init__(
             model=model,
             ref_point=ref_point,
@@ -275,7 +261,7 @@ class qMultiOutputMulticlassExpectedHypervolumeImprovement(
             objective=objective,
             constraints=adapted_constraints,
             X_pending=X_pending,
-            eta=eta_tensor,
+            eta=_normalize_constraint_eta(eta, adapted_constraints),
             fat=fat,
             eps=eps,
         )
@@ -285,7 +271,7 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(
     _MulticlassConstraintEHVI,
     _BaseMulticlassNEHVI,
 ):
-    """Multiclass qNEHVI with explicit objective-space constraint handling."""
+    """Internal multiclass qNEHVI with explicit objective-space constraints."""
 
     def __init__(
         self,
@@ -317,7 +303,6 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(
             constraints,
             objective_getter=lambda: getattr(self, "objective", None),
         )
-        eta_tensor = _normalize_constraint_eta(eta, adapted_constraints)
         super().__init__(
             model=model,
             ref_point=ref_point,
@@ -331,7 +316,7 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(
             objective=objective,
             constraints=adapted_constraints,
             X_pending=X_pending,
-            eta=eta_tensor,
+            eta=_normalize_constraint_eta(eta, adapted_constraints),
             fat=fat,
             prune_baseline=prune_baseline,
             alpha=alpha,
@@ -345,17 +330,69 @@ class qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement(
 
 
 class qMultiOutputMulticlassNParEGO(_BaseMultiOutputMulticlassNParEGO):
-    """Multiclass NParEGO with explicit BoTorch-style outcome constraints."""
+    """Internal multiclass NParEGO with explicit baseline and constraints."""
 
     def __init__(
         self,
-        *args,
+        model: Model,
+        X_baseline: Tensor,
+        ref_point: Tensor | Sequence[float],
+        *,
+        target_class: int | Sequence[int] | None = None,
+        output_target_classes: Sequence[int] | None = None,
+        class_reduction: ClassReductionType = "mean",
+        utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
+        train_Y: Tensor | None = None,
+        Y_baseline: Tensor | None = None,
+        class_offset: int = 0,
+        weights: Tensor | None = None,
+        sampler: SobolQMCNormalSampler | None = None,
+        objective: MCMultiOutputObjective | None = None,
+        rho: float = 0.05,
+        eps: float = 1e-8,
         constraints: Sequence[OutcomeConstraint] | None = None,
         eta: float | Tensor = 1e-3,
         fat: bool = False,
-        **kwargs,
     ) -> None:
-        super().__init__(*args, **kwargs)
+        inferred_train_Y = infer_multiclass_train_y(model)
+        if train_Y is None:
+            train_Y = inferred_train_Y
+        if Y_baseline is not None and is_training_label_baseline(model, Y_baseline):
+            Y_baseline = None
+        if Y_baseline is not None and not bool(torch.isfinite(torch.as_tensor(Y_baseline)).all()):
+            Y_baseline = None
+        if Y_baseline is None and train_Y is not None:
+            Y_baseline = objective_baseline_from_labels(
+                _multi_output,
+                train_Y=train_Y,
+                target_class=target_class,
+                output_target_classes=output_target_classes,
+                class_reduction=class_reduction,
+                utility_values=utility_values,
+                objective_signs=objective_signs,
+                class_offset=class_offset,
+            )
+            train_Y = None
+
+        super().__init__(
+            model=model,
+            X_baseline=X_baseline,
+            ref_point=ref_point,
+            target_class=target_class,
+            output_target_classes=output_target_classes,
+            class_reduction=class_reduction,
+            utility_values=utility_values,
+            objective_signs=objective_signs,
+            train_Y=train_Y,
+            Y_baseline=Y_baseline,
+            class_offset=class_offset,
+            weights=weights,
+            sampler=sampler,
+            objective=objective,
+            rho=rho,
+            eps=eps,
+        )
         raw_constraints, objective_constraints = split_outcome_constraints(constraints)
         self.constraints = list(constraints or [])
         self.raw_constraints = raw_constraints
@@ -394,9 +431,7 @@ class qMultiOutputMulticlassNParEGO(_BaseMultiOutputMulticlassNParEGO):
         samples = self.get_posterior_samples(posterior)
         objective_values = self.base_objective(samples, X=Xq)
         scalarized = self._scalarize(objective_values)
-        improvement = (
-            scalarized - self.best_value.to(scalarized)
-        ).clamp_min(0.0)
+        improvement = (scalarized - self.best_value.to(scalarized)).clamp_min(0.0)
         feasibility = self._feasibility_factor(
             raw_samples=samples,
             objective_values=objective_values,
@@ -462,10 +497,7 @@ __all__ = [
     "qMulticlassProbabilityOfFeasibility",
     "qMulticlassProbabilityOfImprovement",
     "qMulticlassUpperConfidenceBound",
-    "qMultiOutputMulticlassExpectedHypervolumeImprovement",
     "qMultiOutputMulticlassExpectedImprovement",
-    "qMultiOutputMulticlassNParEGO",
-    "qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement",
     "qMultiOutputMulticlassProbabilityOfFeasibility",
     "qMultiOutputMulticlassProbabilityOfImprovement",
     "qMultiOutputMulticlassUpperConfidenceBound",

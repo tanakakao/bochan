@@ -1,29 +1,31 @@
-"""Optimizer implementations."""
+"""Acquisition optimization backends.
 
-from .evo import (
+Algorithm-specific implementations live in subpackages. This module exposes the
+stable high-level optimizer surface used by the API dispatch layer.
+"""
+
+from .evolutionary import (
     candidate_transform_mixed_factory,
     optimize_acqf_evo,
     optimize_acqf_evo_k_sparse,
     optimize_acqf_evo_mixed,
     optimize_acqf_evo_mixed_k_sparse,
 )
-from .llm import optimize_acqf_llm_candidate_set
-from .nsgaii_adapter import (
-    equality_constraints_to_inequality_constraints,
-    optimize_acqf_nsgaii,
-    validate_discrete_choices,
-)
-from .standard import optimize_acqf_k_sparse, optimize_acqf_mixed_k_sparse
-from .thompson_sampling_adapter import (
-    optimize_thompson_sampling,
-    optimize_thompson_sampling_mixed,
-)
-from .torch_multitask import optimize_acqf_torch
-from .torch_opt import (
+from .gradient import (
+    optimize_acqf_k_sparse,
+    optimize_acqf_mixed_k_sparse,
+    optimize_acqf_torch,
     optimize_acqf_torch_k_sparse,
     optimize_acqf_torch_mixed,
     optimize_acqf_torch_mixed_k_sparse,
 )
+from .llm import optimize_acqf_llm_candidate_set
+from .nsgaii import (
+    equality_constraints_to_inequality_constraints,
+    optimize_acqf_nsgaii,
+    validate_discrete_choices,
+)
+from .thompson import optimize_thompson_sampling, optimize_thompson_sampling_mixed
 
 __all__ = [
     "optimize_acqf_k_sparse",

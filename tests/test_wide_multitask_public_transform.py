@@ -29,7 +29,7 @@ from bochan.models.multitask.task_feature import (
     WideMultiTaskGP,
 )
 from bochan.models.transforms.input import build_input_transform
-from bochan.optim.nsgaii_outputs import adapt_nsgaii_outputs
+from bochan.optim.nsgaii.outputs import adapt_nsgaii_outputs
 
 
 def test_task_feature_transform_accepts_public_and_internal_inputs() -> None:

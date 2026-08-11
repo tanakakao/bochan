@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from bochan.optim.nsgaii_adapter import optimize_acqf_nsgaii
+from bochan.optim.nsgaii.adapter import optimize_acqf_nsgaii
 
 
 class _TwoOutputAcquisition:
@@ -31,7 +31,7 @@ def test_current_nsgaii_signature_receives_public_options(monkeypatch) -> None:
         return X, Y
 
     monkeypatch.setattr(
-        "bochan.optim.nsgaii_adapter._base.optimize_acqf_nsgaii",
+        "bochan.optim.nsgaii.adapter._base.optimize_acqf_nsgaii",
         current_optimize_acqf_nsgaii,
     )
     linear_constraint = (

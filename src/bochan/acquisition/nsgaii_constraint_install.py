@@ -13,7 +13,7 @@ def install_nsgaii_constraints() -> None:
         return
 
     import bochan.optim as optim_package
-    from bochan.optim.nsgaii_constraints import optimize_acqf_nsgaii
+    from bochan.optim.nsgaii.constraints import optimize_acqf_nsgaii
 
     optim_package.optimize_acqf_nsgaii = optimize_acqf_nsgaii
     _INSTALLED = True

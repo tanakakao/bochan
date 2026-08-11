@@ -3,9 +3,9 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-import bochan.optim.nsgaii_adapter as adapter
-from bochan.optim.nsgaii_diversity import select_diverse_nsgaii_candidates
-from bochan.optim.nsgaii_outputs import (
+import bochan.optim.nsgaii.adapter as adapter
+from bochan.optim.nsgaii.diversity import select_diverse_nsgaii_candidates
+from bochan.optim.nsgaii.outputs import (
     NSGAIIAcquisitionContextAdapter,
     NSGAIIObjectiveOutputAdapter,
 )

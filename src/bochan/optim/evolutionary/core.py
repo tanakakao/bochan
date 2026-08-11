@@ -14,7 +14,7 @@ from torch import Tensor
 from botorch.acquisition.acquisition import AcquisitionFunction
 
 try:
-    from ..constraints.k_sparse import (
+    from ...constraints.k_sparse import (
         LinearConstraint,
         expand_categorical_features,
         make_k_sparse_post_processing_func,

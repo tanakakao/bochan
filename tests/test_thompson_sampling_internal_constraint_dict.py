@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from bochan.optim import optimize_thompson_sampling
-from bochan.optim.thompson_sampling_adapter import _resolve_outcome_constraints
+from bochan.optim.thompson.adapter import _resolve_outcome_constraints
 
 
 class _ScalarObjective:

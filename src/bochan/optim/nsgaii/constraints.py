@@ -12,8 +12,8 @@ from bochan.acquisition.objective.outcome_constraints import (
     wrap_objective_space_constraints,
 )
 
-from .nsgaii_adapter import LinearConstraint
-from .nsgaii_adapter import optimize_acqf_nsgaii as _base_optimize_acqf_nsgaii
+from .adapter import LinearConstraint
+from .adapter import optimize_acqf_nsgaii as _base_optimize_acqf_nsgaii
 
 
 def optimize_acqf_nsgaii(

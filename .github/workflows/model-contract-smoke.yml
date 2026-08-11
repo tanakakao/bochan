@@ -12,6 +12,19 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Snapshot repository for structural refactor
+        run: |
+          git rev-parse HEAD > snapshot-commit.txt
+          git rev-parse HEAD^{tree} > snapshot-tree.txt
+          tar --exclude=.git --exclude=bochan-snapshot.tgz -czf bochan-snapshot.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model-layout-source-snapshot
+          path: |
+            bochan-snapshot.tgz
+            snapshot-commit.txt
+            snapshot-tree.txt
+          retention-days: 1
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"

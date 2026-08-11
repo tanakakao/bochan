@@ -18,6 +18,7 @@ from bochan.models.classification.binary.external import (
     LightGBMMixedBinaryClassificationModel,
     LightGBMMixedBinaryEnsembleModel,
 )
+from bochan.models.classification.common.posterior import ClassificationEnsemblePosterior
 from bochan.models.classification.multiclass.external import (
     LightGBMMixedMulticlassClassificationModel,
     LightGBMMixedMulticlassEnsembleModel,
@@ -30,14 +31,13 @@ from bochan.models.ordinal.external import (
     LightGBMOrdinalEnsembleModel,
     LightGBMOrdinalModel,
 )
+from bochan.models.ordinal.posterior import OrdinalEnsemblePosterior
 from bochan.models.regression.external import (
     LightGBMEnsembleModel,
     LightGBMMixedEnsembleModel,
     LightGBMMixedRegressorModel,
     LightGBMRegressorModel,
 )
-from bochan.posteriors.classification_ensemble import ClassificationEnsemblePosterior
-from bochan.posteriors.ordinal_ensemble import OrdinalEnsemblePosterior
 
 
 class _FakeLGBMRegressor:

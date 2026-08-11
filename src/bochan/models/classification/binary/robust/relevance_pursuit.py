@@ -15,16 +15,15 @@ import copy
 from typing import Any, Callable, Optional, Sequence
 
 import torch
-from torch import Tensor
-
 from botorch.models.approximate_gp import ApproximateGPyTorchModel
 from botorch.models.transforms.input import InputTransform
 from botorch.posteriors import Posterior
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from gpytorch.mlls import VariationalELBO
+from torch import Tensor
 
 from bochan.models.classification.binary.base.models import _LatentBinarySVGP, _LatentMixedBinarySVGP
-from bochan.posteriors.bernoulli import SimpleBernoulliPosterior
+from bochan.models.classification.binary.base.posterior import SimpleBernoulliPosterior
 from bochan.models.components.robust import (
     SparseOutlierBernoulliLikelihood,
     apply_input_transform_for_eval,
@@ -35,7 +34,6 @@ from bochan.models.components.robust import (
     make_augmented_targets_and_base_indices,
     prepare_wrapper_conditioning_data,
 )
-
 
 __all__ = [
     "SparseOutlierBernoulliLikelihood",

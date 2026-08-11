@@ -1110,3 +1110,28 @@ Codex は以下の順で作業すること。
 * acquisition が task × method family で整理されている
 * docstring / examples / tests が最低限整備されている
 * backward compatibility が説明されている
+
+
+### Model-owned kernels and posteriors
+
+Kernel / posterior modules follow the same ownership boundary as the model family.
+Family-specific implementations must not be placed in top-level `bochan/kernels` or
+`bochan/posteriors` packages.
+
+Canonical locations include:
+
+```text
+models/classification/binary/base/kernel.py
+models/classification/binary/base/posterior.py
+models/classification/common/posterior.py
+models/classification/multiclass/base/posterior.py
+models/ordinal/base/kernel.py
+models/ordinal/posterior.py
+models/hybrid/posterior.py
+models/components/deepgp_posterior.py
+```
+
+A kernel or posterior belongs in `models/components/` only when it is genuinely
+shared by multiple model families. Do not retain forwarding modules at removed
+paths. Ordinal base models use a single canonical `base/models.py`; migration
+layers such as `models_core.py` are not allowed.

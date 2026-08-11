@@ -5,7 +5,7 @@ import pytest
 import torch
 
 from bochan.models.ordinal.external import RandomForestOrdinalModel
-from bochan.posteriors.ordinal_ensemble import OrdinalEnsemblePosterior
+from bochan.models.ordinal.posterior import OrdinalEnsemblePosterior
 
 
 class _FakeBinaryTree:

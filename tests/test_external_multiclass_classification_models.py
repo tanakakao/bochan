@@ -10,6 +10,7 @@ from bochan.acquisition.multiclass.active_learning.single_output import (
 )
 from bochan.api import FitConfig, ModelConfig
 from bochan.api.factory import build_model, fit_model, resolve_model_cls
+from bochan.models.classification.common.posterior import ClassificationEnsemblePosterior
 from bochan.models.classification.multiclass.external import (
     NGBoostMixedMulticlassClassificationModel,
     NGBoostMulticlassClassificationModel,
@@ -17,7 +18,6 @@ from bochan.models.classification.multiclass.external import (
     RandomForestMixedMulticlassClassificationModel,
     RandomForestMulticlassClassificationModel,
 )
-from bochan.posteriors.classification_ensemble import ClassificationEnsemblePosterior
 
 
 class _FakeMulticlassMember:

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import torch
 
+from bochan.models.classification.multiclass._components import MulticlassProbsPosterior
 from bochan.models.classification.multiclass.base.multioutput import (
     MultiOutputMulticlassProbsPosterior,
 )
-from bochan.models.classification.multiclass._components import MulticlassProbsPosterior
 
 try:
     from botorch.sampling.get_sampler import GetSampler

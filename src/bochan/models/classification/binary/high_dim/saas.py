@@ -11,17 +11,16 @@ from copy import deepcopy
 from typing import Any, Optional, Sequence
 
 import torch
-from torch import Tensor
-
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.posteriors import GPyTorchPosterior
 from gpytorch.kernels import Kernel
 from gpytorch.likelihoods import BernoulliLikelihood
 from gpytorch.means import Mean
 from gpytorch.mlls.variational_elbo import VariationalELBO
+from torch import Tensor
 
 from bochan.models.classification.binary.base import BinaryClassificationGPModel
-from bochan.posteriors.bernoulli import SimpleBernoulliPosterior
+from bochan.models.classification.binary.base.posterior import SimpleBernoulliPosterior
 from bochan.models.components.saas import (
     OneHotEncodingMixin,
     build_map_saas_covar_module,

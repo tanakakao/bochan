@@ -4,18 +4,6 @@ from typing import List, Optional, Sequence, Union
 
 import torch
 import torch.nn as nn
-from torch import Tensor
-
-from gpytorch.constraints import GreaterThan
-from gpytorch.distributions import MultivariateNormal
-from gpytorch.kernels import Kernel, MaternKernel, ScaleKernel
-from gpytorch.likelihoods import BernoulliLikelihood
-from gpytorch.means import ConstantMean, Mean
-from gpytorch.models import ApproximateGP
-from gpytorch.mlls import VariationalELBO
-from gpytorch.utils.grid import ScaleToBounds
-from gpytorch.variational import CholeskyVariationalDistribution, VariationalStrategy
-
 from botorch.acquisition.objective import PosteriorTransform
 from botorch.models.approximate_gp import ApproximateGPyTorchModel
 from botorch.models.kernels.categorical import CategoricalKernel
@@ -23,13 +11,22 @@ from botorch.models.transforms.input import InputTransform
 from botorch.models.utils.gpytorch_modules import get_covar_module_with_dim_scaled_prior
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from botorch.utils.transforms import normalize_indices
+from gpytorch.constraints import GreaterThan
+from gpytorch.distributions import MultivariateNormal
+from gpytorch.kernels import Kernel, MaternKernel, ScaleKernel
+from gpytorch.likelihoods import BernoulliLikelihood
+from gpytorch.means import ConstantMean, Mean
+from gpytorch.mlls import VariationalELBO
+from gpytorch.models import ApproximateGP
+from gpytorch.utils.grid import ScaleToBounds
+from gpytorch.variational import CholeskyVariationalDistribution, VariationalStrategy
+from torch import Tensor
 
+from bochan.models.classification.binary.base.posterior import SimpleBernoulliPosterior
 from bochan.models.components.layers.feature_extractor import (
     LargeFeatureExtractor,
     SkipLargeFeatureExtractor,
 )
-from bochan.posteriors.bernoulli import SimpleBernoulliPosterior
-
 
 # ============================================================
 # Helpers

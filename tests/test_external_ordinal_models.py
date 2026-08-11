@@ -27,7 +27,7 @@ from bochan.models.ordinal.external.base import (
     _class_probs_from_cumulative,
     _cumulative_from_class_probs,
 )
-from bochan.posteriors.ordinal_ensemble import OrdinalEnsemblePosterior
+from bochan.models.ordinal.posterior import OrdinalEnsemblePosterior
 
 
 class _FakeBinaryTree:

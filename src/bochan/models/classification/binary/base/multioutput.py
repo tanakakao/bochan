@@ -11,7 +11,7 @@ from gpytorch.distributions import MultitaskMultivariateNormal, MultivariateNorm
 from torch import Tensor
 from torch.nn import ModuleList
 
-from bochan.posteriors.bernoulli import SimpleBernoulliPosterior
+from bochan.models.classification.binary.base.posterior import SimpleBernoulliPosterior
 
 
 class MultiOutputBernoulliPosterior(Posterior):

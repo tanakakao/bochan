@@ -1,3 +1,4 @@
+from . import posterior as posterior
 from .kronecker_multitask import (
     BlockDesignMulticlassLikelihood,
     KroneckerMultiTaskMulticlassClassificationGPModel,
@@ -21,9 +22,9 @@ from .multitask import (
     MultiTaskMulticlassClassificationGPModel,
     MultiTaskMulticlassClassificationMixedGPModel,
 )
-from . import posteriors as _posterior_sampler_registration
 
 __all__ = [
+    "posterior",
     "BlockDesignMulticlassLikelihood",
     "KroneckerMultiTaskMulticlassClassificationGPModel",
     "KroneckerMultiTaskMulticlassClassificationMixedGPModel",

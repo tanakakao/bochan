@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src" / "bochan"
 MODELS_ROOT = SRC_ROOT / "models"
@@ -183,3 +182,87 @@ def test_generated_python_artifacts_are_not_tracked() -> None:
         or path.endswith(".pyc")
     ]
     assert not offenders
+
+
+def test_model_kernels_and_posteriors_are_family_owned() -> None:
+    assert not (SRC_ROOT / "kernels").exists()
+    assert not (SRC_ROOT / "posteriors").exists()
+
+    assert (
+        MODELS_ROOT / "classification" / "binary" / "base" / "kernel.py"
+    ).is_file()
+    assert (
+        MODELS_ROOT / "classification" / "binary" / "base" / "posterior.py"
+    ).is_file()
+    assert (
+        MODELS_ROOT / "classification" / "common" / "posterior.py"
+    ).is_file()
+    assert (MODELS_ROOT / "ordinal" / "base" / "kernel.py").is_file()
+    assert (MODELS_ROOT / "ordinal" / "posterior.py").is_file()
+    assert (
+        MODELS_ROOT / "classification" / "multiclass" / "base" / "posterior.py"
+    ).is_file()
+
+
+def test_ordinal_base_has_one_canonical_model_and_kernel_implementation() -> None:
+    ordinal_base = MODELS_ROOT / "ordinal" / "base"
+    assert not (ordinal_base / "models_core.py").exists()
+
+    models_source = (ordinal_base / "models.py").read_text(encoding="utf-8")
+    kernel_source = (ordinal_base / "kernel.py").read_text(encoding="utf-8")
+
+    assert "_OldOrdinalGPModel" not in models_source
+    assert "def build_mixed_ordinal_kernel(" not in models_source
+    assert kernel_source.count("def build_mixed_ordinal_kernel(") == 1
+    assert models_source.count("class OrdinalGPModel(") == 1
+
+
+def test_removed_kernel_and_posterior_paths_are_not_referenced() -> None:
+    forbidden = (
+        "bochan.kernels",
+        "bochan.posteriors",
+        "src/bochan/kernels/",
+        "src/bochan/posteriors/",
+        "classification.multiclass.base.posteriors",
+        "classification/multiclass/base/posteriors.py",
+        "models.ordinal.base.models_core",
+        "models/ordinal/base/models_core.py",
+    )
+    offenders: list[str] = []
+    roots = (
+        SRC_ROOT,
+        REPO_ROOT / "tests",
+        REPO_ROOT / "docs",
+        REPO_ROOT / ".github",
+    )
+    helper_names = {
+        "model-component-layout-refactor.yml",
+        "model-component-layout-refactor-pr.yml",
+        "model_component_layout_refactor.py",
+    }
+    for root in roots:
+        if not root.exists():
+            continue
+        for candidate in root.rglob("*"):
+            if candidate.name in helper_names:
+                continue
+            if (
+                not candidate.is_file()
+                or candidate.suffix not in {".py", ".md", ".yml", ".yaml"}
+            ):
+                continue
+            if candidate == Path(__file__):
+                continue
+            candidate_source = candidate.read_text(encoding="utf-8")
+            if any(token in candidate_source for token in forbidden):
+                offenders.append(str(candidate.relative_to(REPO_ROOT)))
+    assert not offenders
+
+
+def test_binary_kernel_has_task_specific_builder_name() -> None:
+    kernel_path = (
+        MODELS_ROOT / "classification" / "binary" / "base" / "kernel.py"
+    )
+    source = kernel_path.read_text(encoding="utf-8")
+    assert "def build_binary_mixed_kernel(" in source
+    assert "def categorical_kernel(" not in source

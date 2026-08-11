@@ -380,7 +380,7 @@ implementation rather than as exact discrete label sampling.
 The relevant source is:
 
 ```text
-src/bochan/posteriors/bernoulli.py
+src/bochan/models/classification/binary/base/posterior.py
 ```
 
 ---
@@ -460,7 +460,8 @@ Useful metrics include:
 ### Log loss
 
 ```math
--rac1n
+-
+rac1n
 \sum_i
 [y_i\log p_i+(1-y_i)\log(1-p_i)].
 ```
@@ -671,7 +672,8 @@ p_k(x)
 =
 \mathbb E_{q(\mathbf f(x))}
 \left[
-rac{e^{f_k/T}}
+
+rac{e^{f_k/T}}
 {\sum_je^{f_j/T}}
 \right].
 ```
@@ -679,7 +681,8 @@ p_k(x)
 This is not generally equal to
 
 ```math
-rac{e^{\mathbb E[f_k]/T}}
+
+rac{e^{\mathbb E[f_k]/T}}
 {\sum_je^{\mathbb E[f_j]/T}}.
 ```
 
@@ -902,7 +905,7 @@ Predictive metrics should be accompanied by:
 | Component | Source |
 |---|---|
 | Binary base models | `src/bochan/models/classification/binary/base/models.py` |
-| Binary custom posterior | `src/bochan/posteriors/bernoulli.py` |
+| Binary custom posterior | `src/bochan/models/classification/binary/base/posterior.py` |
 | Binary fitting | `src/bochan/fit/` classification fitting helpers |
 | Binary robust models | `src/bochan/models/classification/binary/robust/` |
 | Binary deep models | `src/bochan/models/classification/binary/deep/` |

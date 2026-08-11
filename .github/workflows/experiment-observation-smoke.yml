@@ -50,7 +50,7 @@ jobs:
             src/bochan/acquisition/feasible/experiment_success.py \
             src/bochan/acquisition/feasible/__init__.py \
             src/bochan/models/hybrid/partial_observation.py \
-            src/bochan/models/wide_mixed_multitask.py \
+            src/bochan/models/multitask/mixed.py \
             src/bochan/tabular/config.py \
             src/bochan/tabular/observation_data.py \
             src/bochan/tabular/observation_optimizer.py \

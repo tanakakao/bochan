@@ -14,9 +14,10 @@ from bochan.serving.fastapi.schemas import (
     OutputConfigSchema,
 )
 from bochan.serving.fastapi.tabular_compat import (
+    TargetCategoryMetadata,
     bind_category_metadata,
     to_acquisition_config,
-    to_model_config,
+    to_model_config_with_metadata,
     to_target_tensor,
 )
 
@@ -45,13 +46,14 @@ def _model_schema() -> ModelConfigSchema:
 
 
 def _optimizer_with_category_metadata():
-    model_config = to_model_config(_model_schema())
+    model_config, metadata = to_model_config_with_metadata(_model_schema())
     optimizer = SimpleNamespace(
         model=SimpleNamespace(output_names=["property", "quality"]),
         model_config=model_config,
+        bundle=SimpleNamespace(metadata={}),
     )
-    bind_category_metadata(optimizer, model_config)
-    return optimizer, model_config
+    bind_category_metadata(optimizer, metadata)
+    return optimizer, model_config, metadata
 
 
 def test_output_config_schema_advertises_tabular_category_fields() -> None:
@@ -62,33 +64,37 @@ def test_output_config_schema_advertises_tabular_category_fields() -> None:
     assert "category_map" in properties
 
 
-def test_fastapi_model_converter_strips_and_retains_ordered_categories() -> None:
-    optimizer, model_config = _optimizer_with_category_metadata()
+def test_fastapi_model_converter_strips_and_returns_ordered_categories() -> None:
+    optimizer, model_config, metadata = _optimizer_with_category_metadata()
 
     output_config = model_config.multi_output_config.output_configs[1]
     assert output_config.name == "quality"
     assert not hasattr(output_config, "ordered_categories")
 
-    maps = optimizer._bochan_fastapi_target_category_maps
-    assert maps == {"quality": {"a": 0, "b": 1, "c": 2}}
+    assert isinstance(metadata, TargetCategoryMetadata)
+    assert metadata.normalized_maps() == {
+        "quality": {"a": 0, "b": 1, "c": 2}
+    }
+    assert optimizer.target_category_metadata is metadata
+    assert optimizer.bundle.metadata["target_category_metadata"] is metadata
 
 
 def test_fastapi_encodes_string_target_values() -> None:
-    _, model_config = _optimizer_with_category_metadata()
+    _, _, metadata = _optimizer_with_category_metadata()
 
     train_y = to_target_tensor(
         [
             [0.2, "a"],
             [0.7, "c"],
         ],
-        model_config=model_config,
+        metadata=metadata,
     )
 
     assert train_y.tolist() == [[0.2, 0.0], [0.7, 2.0]]
 
 
 def test_fastapi_resolves_string_ordinal_rank() -> None:
-    optimizer, _ = _optimizer_with_category_metadata()
+    optimizer, _, _ = _optimizer_with_category_metadata()
     schema = AcquisitionConfigSchema(
         name="ei",
         outcome_constraint_config={
@@ -113,7 +119,7 @@ def test_fastapi_resolves_string_ordinal_rank() -> None:
 
 
 def test_fastapi_resolves_string_target_class() -> None:
-    optimizer, _ = _optimizer_with_category_metadata()
+    optimizer, _, _ = _optimizer_with_category_metadata()
     schema = AcquisitionConfigSchema(
         name="ei",
         outcome_constraint_config={
@@ -135,7 +141,7 @@ def test_fastapi_resolves_string_target_class() -> None:
 
 
 def test_fastapi_rejects_unknown_string_ordinal_rank() -> None:
-    optimizer, _ = _optimizer_with_category_metadata()
+    optimizer, _, _ = _optimizer_with_category_metadata()
     schema = AcquisitionConfigSchema(
         name="ei",
         outcome_constraint_config={

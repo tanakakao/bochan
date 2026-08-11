@@ -6,15 +6,21 @@ explicit BoTorch objective; acquisition classes are not patched at runtime.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
+import torch
+from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
+from botorch.models.model import Model
+from botorch.sampling.base import MCSampler
 from botorch.utils.objective import compute_smoothed_feasibility_indicator
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
+from torch import nn
 
 from bochan.acquisition.objective.outcome_constraints import (
     OutcomeConstraint,
     split_outcome_constraints,
+    wrap_objective_space_constraints,
 )
 
 from . import multi_output as _multi_output
@@ -34,10 +40,12 @@ from .hetero_single_output import (
     qHeteroOrdinalProbabilityOfImprovement,
 )
 from .knowledge_gradient import qOrdinalKnowledgeGradient
+from .multi_output import compute_observed_ordinal_utility
 from .multi_output import (
-    compute_observed_ordinal_utility,
-    qMultiOutputOrdinalExpectedHypervolumeImprovement,
-    qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
+    qMultiOutputOrdinalExpectedHypervolumeImprovement as _BaseOrdinalEHVI,
+)
+from .multi_output import (
+    qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement as _BaseOrdinalNEHVI,
 )
 from .multi_output import qMultiOutputOrdinalNParEGO as _BaseMultiOutputOrdinalNParEGO
 from .multi_output import (
@@ -53,6 +61,23 @@ from .standard import (
     qOrdinalProbabilityOfImprovement,
     qOrdinalUpperConfidenceBound,
 )
+
+
+def _normalize_constraint_eta(
+    eta: Tensor | float,
+    constraints: Sequence[Callable[[Tensor], Tensor]] | None,
+) -> Tensor:
+    """Normalize BoTorch feasibility temperature to its registered buffer shape."""
+
+    count = 0 if constraints is None else len(constraints)
+    if torch.is_tensor(eta):
+        eta_tensor = eta
+        if eta_tensor.ndim == 0 and count:
+            eta_tensor = eta_tensor.expand(count).clone()
+        return eta_tensor
+    if count:
+        return torch.full((count,), float(eta))
+    return torch.as_tensor(float(eta))
 
 
 class qMultiOutputOrdinalUtilityObjective(_BaseMultiOutputOrdinalUtilityObjective):
@@ -77,6 +102,110 @@ class qMultiOutputOrdinalUtilityObjective(_BaseMultiOutputOrdinalUtilityObjectiv
             model=model,
             utility_values=utility_values,
             ordinal_likelihoods=ordinal_likelihoods,
+            **kwargs,
+        )
+
+
+class qMultiOutputOrdinalExpectedHypervolumeImprovement(_BaseOrdinalEHVI):
+    """Ordinal qEHVI with explicit objective-space constraint handling."""
+
+    def __init__(
+        self,
+        model: Model,
+        ref_point: Sequence[float] | Tensor,
+        *,
+        partitioning=None,
+        utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
+        objective: MCMultiOutputObjective | None = None,
+        train_Y: Tensor | None = None,
+        Y_baseline: Tensor | None = None,
+        ordinal_likelihoods: Sequence[nn.Module] | nn.Module | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
+        class_offset: int = 0,
+        sampler: MCSampler | None = None,
+        constraints: Sequence[Callable[[Tensor], Tensor]] | None = None,
+        X_pending: Tensor | None = None,
+        eta: Tensor | float = 1e-3,
+        fat: bool = False,
+        link: str = "auto",
+        input_perturbation_n_w: int | None = None,
+        risk_type=None,
+        risk_alpha: float = 0.5,
+    ) -> None:
+        adapted_constraints = wrap_objective_space_constraints(
+            constraints,
+            objective_getter=lambda: getattr(self, "objective", None),
+        )
+        eta_tensor = _normalize_constraint_eta(eta, adapted_constraints)
+        super().__init__(
+            model=model,
+            ref_point=ref_point,
+            partitioning=partitioning,
+            utility_values=utility_values,
+            objective=objective,
+            train_Y=train_Y,
+            Y_baseline=Y_baseline,
+            ordinal_likelihoods=ordinal_likelihoods,
+            objective_signs=objective_signs,
+            class_offset=class_offset,
+            sampler=sampler,
+            constraints=adapted_constraints,
+            X_pending=X_pending,
+            eta=eta_tensor,
+            fat=fat,
+            link=link,
+            input_perturbation_n_w=input_perturbation_n_w,
+            risk_type=risk_type,
+            risk_alpha=risk_alpha,
+        )
+
+
+class qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(_BaseOrdinalNEHVI):
+    """Ordinal qNEHVI with explicit objective-space constraint handling."""
+
+    def __init__(
+        self,
+        model: Model,
+        ref_point: Sequence[float] | Tensor,
+        X_baseline: Tensor,
+        *,
+        utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
+        objective: MCMultiOutputObjective | None = None,
+        ordinal_likelihoods: Sequence[nn.Module] | nn.Module | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
+        sampler: MCSampler | None = None,
+        constraints: Sequence[Callable[[Tensor], Tensor]] | None = None,
+        X_pending: Tensor | None = None,
+        eta: Tensor | float = 1e-3,
+        fat: bool = False,
+        link: str = "auto",
+        input_perturbation_n_w: int | None = None,
+        risk_type=None,
+        risk_alpha: float = 0.5,
+        **kwargs,
+    ) -> None:
+        adapted_constraints = wrap_objective_space_constraints(
+            constraints,
+            objective_getter=lambda: getattr(self, "objective", None),
+        )
+        eta_tensor = _normalize_constraint_eta(eta, adapted_constraints)
+        super().__init__(
+            model=model,
+            ref_point=ref_point,
+            X_baseline=X_baseline,
+            utility_values=utility_values,
+            objective=objective,
+            ordinal_likelihoods=ordinal_likelihoods,
+            objective_signs=objective_signs,
+            sampler=sampler,
+            constraints=adapted_constraints,
+            X_pending=X_pending,
+            eta=eta_tensor,
+            fat=fat,
+            link=link,
+            input_perturbation_n_w=input_perturbation_n_w,
+            risk_type=risk_type,
+            risk_alpha=risk_alpha,
             **kwargs,
         )
 
@@ -189,7 +318,9 @@ __all__ = [
     "qHeteroOrdinalNParEGO",
     "qHeteroOrdinalNoisyExpectedHypervolumeImprovement",
     "qHeteroOrdinalProbabilityOfImprovement",
+    "qMultiOutputOrdinalExpectedHypervolumeImprovement",
     "qMultiOutputOrdinalNParEGO",
+    "qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement",
     "qMultiOutputOrdinalUtilityObjective",
     "qOrdinalExpectedHypervolumeImprovement",
     "qOrdinalExpectedImprovement",

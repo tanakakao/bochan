@@ -1,6 +1,6 @@
 """Regression Bayesian optimization acquisitions.
 
-Standard single-output regression BO uses BoTorch directly.  Custom classes in
+Standard single-output regression BO uses BoTorch directly. Custom classes in
 this package cover multi-objective and heteroscedastic extensions.
 """
 
@@ -38,16 +38,26 @@ class qRegressionNoisyExpectedHypervolumeImprovement(
     """Regression qNEHVI with domain-first naming."""
 
 
-class qRegressionLogExpectedHypervolumeImprovement(
-    qMultiOutputRegressionLogExpectedHypervolumeImprovement
-):
-    """Regression qLogEHVI with domain-first naming."""
+if qMultiOutputRegressionLogExpectedHypervolumeImprovement is not None:
+
+    class qRegressionLogExpectedHypervolumeImprovement(
+        qMultiOutputRegressionLogExpectedHypervolumeImprovement
+    ):
+        """Regression qLogEHVI with domain-first naming."""
+
+else:
+    qRegressionLogExpectedHypervolumeImprovement = None
 
 
-class qRegressionLogNoisyExpectedHypervolumeImprovement(
-    qMultiOutputRegressionLogNoisyExpectedHypervolumeImprovement
-):
-    """Regression qLogNEHVI with domain-first naming."""
+if qMultiOutputRegressionLogNoisyExpectedHypervolumeImprovement is not None:
+
+    class qRegressionLogNoisyExpectedHypervolumeImprovement(
+        qMultiOutputRegressionLogNoisyExpectedHypervolumeImprovement
+    ):
+        """Regression qLogNEHVI with domain-first naming."""
+
+else:
+    qRegressionLogNoisyExpectedHypervolumeImprovement = None
 
 
 class qRegressionNParEGO(qMultiOutputRegressionNParEGO):

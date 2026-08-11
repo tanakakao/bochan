@@ -139,7 +139,7 @@ def test_joint_numeric_hard_penalty_ignores_perturbation_replicas() -> None:
     assert torch.isposinf(duplicate).all()
 
 
-def test_public_classification_acquisitions_use_nominal_duplicate_mixin() -> None:
+def test_score_based_classification_acquisitions_keep_nominal_duplicate_mixin() -> None:
     from bochan.acquisition.binary.active_learning import qBinaryProbabilityVariance
     from bochan.acquisition.binary.bayesian_optimization import (
         qBinaryProbabilityOfFeasibility,
@@ -151,7 +151,7 @@ def test_public_classification_acquisitions_use_nominal_duplicate_mixin() -> Non
         qMulticlassProbabilityVariance,
     )
     from bochan.acquisition.multiclass.bayesian_optimization import (
-        qMulticlassExpectedImprovement,
+        qMulticlassProbabilityOfFeasibility,
     )
     from bochan.acquisition.multiclass.levelset_estimation import (
         qMulticlassLatentStraddleAcquisition,
@@ -166,7 +166,7 @@ def test_public_classification_acquisitions_use_nominal_duplicate_mixin() -> Non
         qBinaryProbabilityOfFeasibility,
         qBinaryLatentStraddleAcquisition,
         qMulticlassProbabilityVariance,
-        qMulticlassExpectedImprovement,
+        qMulticlassProbabilityOfFeasibility,
         qMulticlassLatentStraddleAcquisition,
         qOrdinalUtilityVariance,
         qOrdinalLatentStraddleAcquisition,
@@ -174,3 +174,36 @@ def test_public_classification_acquisitions_use_nominal_duplicate_mixin() -> Non
 
     for cls in classes:
         assert issubclass(cls, NominalDuplicatePenaltyMixin), cls
+
+
+def test_standard_classification_bo_does_not_own_duplicate_penalties() -> None:
+    from bochan.acquisition.binary.bayesian_optimization import (
+        qBinaryExpectedImprovement,
+        qBinaryProbabilityOfImprovement,
+        qBinaryUpperConfidenceBound,
+    )
+    from bochan.acquisition.multiclass.bayesian_optimization import (
+        qMulticlassExpectedImprovement,
+        qMulticlassProbabilityOfImprovement,
+        qMulticlassUpperConfidenceBound,
+    )
+    from bochan.acquisition.ordinal.bayesian_optimization import (
+        qOrdinalExpectedImprovement,
+        qOrdinalProbabilityOfImprovement,
+        qOrdinalUpperConfidenceBound,
+    )
+
+    classes = [
+        qBinaryExpectedImprovement,
+        qBinaryProbabilityOfImprovement,
+        qBinaryUpperConfidenceBound,
+        qMulticlassExpectedImprovement,
+        qMulticlassProbabilityOfImprovement,
+        qMulticlassUpperConfidenceBound,
+        qOrdinalExpectedImprovement,
+        qOrdinalProbabilityOfImprovement,
+        qOrdinalUpperConfidenceBound,
+    ]
+
+    for cls in classes:
+        assert not issubclass(cls, NominalDuplicatePenaltyMixin), cls

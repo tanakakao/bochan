@@ -22,6 +22,7 @@ jobs:
         run: |
           pytest -q --maxfail=1 \
             tests/test_model_contract_refactor.py \
+            tests/test_model_contract_followup.py \
             tests/test_mixed_kronecker_model_registry.py \
             tests/test_ordinal_deep_num_classes_inference.py \
             tests/test_ordinal_robust_num_classes.py \

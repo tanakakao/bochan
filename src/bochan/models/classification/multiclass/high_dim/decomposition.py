@@ -236,7 +236,7 @@ class REMBOMulticlassClassificationGPModel(_ContinuousProjectedMulticlassModel):
         pre_X = apply_input_transform_for_training(train_X, self.input_transform, name='REMBOMulticlassClassificationGPModel.input_transform')
 
         if projector is None:
-            cfg = rembo_config or REMBOConfig(latent_dim=self.latent_dim, seed=seed)
+            cfg = rembo_config or REMBOConfig(n_components=self.latent_dim, seed=seed)
             projector = REMBOTransformer(cfg)
             projector.fit(pre_X)
         self.projector = projector
@@ -392,7 +392,7 @@ class REMBOMulticlassClassificationMixedGPModel(PCAMulticlassClassificationMixed
         check_categorical_columns_unchanged(train_X, pre_X, self.cat_dims)
 
         if projector is None:
-            cfg = rembo_config or REMBOConfig(latent_dim=self.latent_dim, seed=seed)
+            cfg = rembo_config or REMBOConfig(n_components=self.latent_dim, seed=seed)
             projector = REMBOTransformer(cfg)
             projector.fit(pre_X[..., self.cont_dims])
         self.projector = projector

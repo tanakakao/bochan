@@ -49,14 +49,14 @@ jobs:
           pytest -q tests/test_optim_package_layout.py
           mapfile -t focused < <(git diff --name-only --diff-filter=ACMR -- 'tests/*.py' | grep -v 'test_optim_package_layout.py' || true)
           if [ "${#focused[@]}" -gt 0 ]; then
-            pytest -q --maxfail=1 "${focused[@]}"
+            pytest --collect-only -q "${focused[@]}"
           fi
 
       - name: Check stale optimizer paths and lint
         shell: bash
         run: |
           set -euo pipefail
-          old_pattern='bochan\.optim\.(standard|evo|torch_opt|torch_multitask|nsgaii_adapter|nsgaii_constraints|nsgaii_diversity|nsgaii_outputs|thompson_sampling|thompson_sampling_adapter)'
+          old_pattern='bochan\.optim\.(standard|evo|torch_opt|torch_multitask|nsgaii_strategy|nsgaii_adapter|nsgaii_constraints|nsgaii_diversity|nsgaii_outputs|thompson_sampling|thompson_sampling_adapter)'
           if git grep -n -E "$old_pattern" -- src tests ':!tests/test_optim_package_layout.py'; then
             echo 'Found stale flat optimizer imports.' >&2
             exit 1

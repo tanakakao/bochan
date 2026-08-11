@@ -4,13 +4,17 @@ from types import SimpleNamespace
 
 import torch
 
-import bochan.api as api_module
-from bochan.api import AcquisitionConfig, OptimizeConfig
+from bochan.api import AcquisitionConfig, BayesianOptimizer, DataContext, OptimizeConfig
+from bochan.api.acquisition_service import (
+    is_nsgaii_strategy,
+    resolve_acquisition_class,
+)
+import bochan.api.optimizer as optimizer_module
 from bochan.optim.nsgaii.strategy import NSGAIIStrategy, build_nsgaii_strategy
 
 
 def test_nsgaii_name_resolves_without_acquisition_registry() -> None:
-    engine = SimpleNamespace(
+    optimizer = SimpleNamespace(
         bundle=SimpleNamespace(
             task_type="regression",
             model_type="base",
@@ -19,10 +23,11 @@ def test_nsgaii_name_resolves_without_acquisition_registry() -> None:
         ),
         acquisition_registry=None,
         _check_fitted=lambda: None,
+        _acquisition_routing_context=lambda: ("regression", "base", True),
     )
 
-    resolved = api_module._resolve_acquisition_config_with_model_outputs(
-        engine,
+    resolved = resolve_acquisition_class(
+        optimizer,
         AcquisitionConfig(name="nsgaii"),
     )
 
@@ -30,42 +35,60 @@ def test_nsgaii_name_resolves_without_acquisition_registry() -> None:
     assert resolved.acqf_factory is build_nsgaii_strategy
 
 
+def _candidate_optimizer(
+    monkeypatch,
+    *,
+    acq_config: AcquisitionConfig,
+    captured: dict[str, object],
+) -> BayesianOptimizer:
+    bounds = torch.tensor([[0.0], [1.0]], dtype=torch.double)
+    optimizer = object.__new__(BayesianOptimizer)
+    optimizer.bundle = SimpleNamespace(cat_dims=[])
+    optimizer.observations = None
+    optimizer.bounds = bounds
+    optimizer.train_X = torch.tensor([[0.0], [1.0]], dtype=torch.double)
+    optimizer.history = []
+    optimizer.llm_settings = None
+
+    monkeypatch.setattr(
+        BayesianOptimizer,
+        "_prepare_acquisition",
+        lambda self, config, data_context: (
+            acq_config,
+            DataContext(bounds=bounds),
+            object(),
+        ),
+    )
+
+    def fake_optimize_candidates(*, acqf, bounds, config):
+        captured["config"] = config
+        return torch.tensor([[0.5]], dtype=torch.double), torch.tensor(1.0)
+
+    monkeypatch.setattr(
+        optimizer_module,
+        "optimize_candidates",
+        fake_optimize_candidates,
+    )
+    return optimizer
+
+
 def test_nsgaii_name_ignores_optimizer_but_preserves_other_options(monkeypatch) -> None:
     captured: dict[str, object] = {}
-
-    def fake_candidate(
-        self,
-        acq_config,
-        opt_config,
-        *,
-        data_context=None,
-        bounds=None,
-        return_result=False,
-    ):
-        captured["acq_config"] = acq_config
-        captured["opt_config"] = opt_config
-        captured["data_context"] = data_context
-        captured["bounds"] = bounds
-        captured["return_result"] = return_result
-        return "result"
-
-    monkeypatch.setattr(api_module, "_original_candidate", fake_candidate)
+    acq_config = AcquisitionConfig(name="NSGA-II")
+    optimizer = _candidate_optimizer(
+        monkeypatch,
+        acq_config=acq_config,
+        captured=captured,
+    )
     original = OptimizeConfig(
         optimizer="evo",
         q=3,
         optimizer_kwargs={"population_size": 80, "max_gen": 120},
     )
 
-    result = api_module._candidate_with_acquisition_side_nsgaii(
-        object(),
-        AcquisitionConfig(name="NSGA-II"),
-        original,
-        bounds=torch.tensor([[0.0], [1.0]], dtype=torch.double),
-        return_result=True,
-    )
+    optimizer.candidate(acq_config=acq_config, opt_config=original)
 
-    resolved = captured["opt_config"]
-    assert result == "result"
+    resolved = captured["config"]
     assert resolved.optimizer == "nsgaii"
     assert resolved.q == 3
     assert resolved.optimizer_kwargs == {
@@ -77,30 +100,18 @@ def test_nsgaii_name_ignores_optimizer_but_preserves_other_options(monkeypatch) 
 
 def test_non_nsgaii_name_keeps_selected_optimizer(monkeypatch) -> None:
     captured: dict[str, object] = {}
-
-    def fake_candidate(
-        self,
-        acq_config,
-        opt_config,
-        *,
-        data_context=None,
-        bounds=None,
-        return_result=False,
-    ):
-        captured["opt_config"] = opt_config
-        return "result"
-
-    monkeypatch.setattr(api_module, "_original_candidate", fake_candidate)
+    acq_config = AcquisitionConfig(name="ehvi")
+    optimizer = _candidate_optimizer(
+        monkeypatch,
+        acq_config=acq_config,
+        captured=captured,
+    )
     original = OptimizeConfig(optimizer="evo", q=2)
 
-    api_module._candidate_with_acquisition_side_nsgaii(
-        object(),
-        AcquisitionConfig(name="ehvi"),
-        original,
-    )
+    optimizer.candidate(acq_config=acq_config, opt_config=original)
 
-    assert captured["opt_config"] is original
-    assert captured["opt_config"].optimizer == "evo"
+    assert captured["config"].optimizer == "evo"
+    assert not is_nsgaii_strategy(acq_config)
 
 
 def test_nsgaii_strategy_keeps_objective_constraints_and_ref_point(monkeypatch) -> None:

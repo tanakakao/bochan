@@ -1,23 +1,25 @@
-from bochan.acquisition._nparego_shape import (
-    reduce_nparego_sample_and_q_to_tbatch,
-)
+"""Multiclass Bayesian optimization acquisitions.
 
-from . import multi_output as _multi_output
+Importing this module is side-effect free.  Input-perturbation, baseline, and
+constraint behavior must be expressed through models, objectives, or explicit
+acquisition constructor arguments rather than runtime class patching.
+"""
+
 from .hetero_multi_output import (
     qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement,
     qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
     qHeteroMultiOutputMulticlassNParEGO,
 )
 from .hetero_single_output import NoiseCombineType, NoiseWeightMode
-from .input_perturbation import (
-    configure_multiclass_hypervolume_input_perturbation,
-)
 from .multi_output import (
+    MulticlassTargetProbabilityObjective,
+    OutputReductionType,
+    compute_observed_multiclass_target_probability_values,
+    compute_observed_multiclass_utility,
     qMultiOutputMulticlassExpectedHypervolumeImprovement,
     qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
     qMultiOutputMulticlassNParEGO,
 )
-from .nehvi_baseline import configure_multiclass_nehvi_baseline_input
 from .nominal_duplicate_safe import (
     qHeteroMultiOutputMulticlassExpectedImprovement,
     qHeteroMultiOutputMulticlassProbabilityOfFeasibility,
@@ -31,126 +33,78 @@ from .nominal_duplicate_safe import (
     qMultiOutputMulticlassProbabilityOfFeasibility,
     qMultiOutputMulticlassProbabilityOfImprovement,
     qMultiOutputMulticlassUpperConfidenceBound,
-    qMulticlassExpectedImprovement,
     qMulticlassProbabilityOfFeasibility,
-    qMulticlassProbabilityOfImprovement,
-    qMulticlassUpperConfidenceBound,
 )
-from .nparego_input_perturbation import (
-    configure_multiclass_nparego_input_perturbation,
-)
-from .nparego_observed_baseline import (
-    configure_hetero_multiclass_nparego_observed_baseline,
-    configure_multiclass_nparego_observed_baseline,
-)
-from .outputs import apply_bayesian_optimization_outputs
-
-# Keep q=1 sequential optimization shape handling aligned across classification
-# and ordinal NParEGO implementations.
-_multi_output._reduce_sample_and_q_to_tbatch = reduce_nparego_sample_and_q_to_tbatch
-
-
-def _patch_default_multioutput_target_class() -> None:
-    """Use class 0 when target-probability acquisitions omit a target class."""
-
-    base_cls = _multi_output._MultiOutputMulticlassTargetClassBOBase
-    original_init = base_cls.__init__
-    if getattr(original_init, "_bochan_default_target_class_zero", False):
-        return
-
-    def _init_with_default_target(
-        self,
-        model,
-        *,
-        target_class=None,
-        output_target_classes=None,
-        **kwargs,
-    ) -> None:
-        if target_class is None and output_target_classes is None:
-            target_class = 0
-        original_init(
-            self,
-            model=model,
-            target_class=target_class,
-            output_target_classes=output_target_classes,
-            **kwargs,
-        )
-
-    _init_with_default_target._bochan_default_target_class_zero = True
-    base_cls.__init__ = _init_with_default_target
-
-
-_patch_default_multioutput_target_class()
-
-from .multi_output import (  # noqa: E402
-    MulticlassTargetProbabilityObjective,
-    OutputReductionType,
-    compute_observed_multiclass_target_probability_values,
-    compute_observed_multiclass_utility,
-)
-from .single_output import (  # noqa: E402
+from .single_output import (
     compute_multiclass_target_probability_best_f,
     compute_multiclass_target_probability_values,
 )
-
-# qNEHVI builds its baseline partitioning before qEHVI installs the automatic
-# InputPerturbation objective adapter. Preserve raw X_baseline for an explicitly
-# pre-wrapped objective so it can distinguish raw q from q * n_w.
-configure_multiclass_nehvi_baseline_input(_multi_output)
-
-# qNParEGO also calls its objective with X=None for baseline and candidate
-# evaluation. Supply raw X so the adapter can distinguish q from q * n_w.
-configure_multiclass_nparego_input_perturbation(_multi_output)
-
-# The high-level API defaults Y_baseline to the original wide class-label tensor.
-# qNParEGO expects objective-space baseline values, so convert only that retained
-# training-label tensor and preserve explicit user-provided objective baselines.
-configure_multiclass_nparego_observed_baseline(_multi_output)
-configure_hetero_multiclass_nparego_observed_baseline(
-    _multi_output,
-    qHeteroMultiOutputMulticlassNParEGO,
+from .standard import (
+    MulticlassProbabilityObjective,
+    qMulticlassExpectedImprovement,
+    qMulticlassProbabilityOfImprovement,
+    qMulticlassUpperConfidenceBound,
 )
 
-# A one-to-many InputPerturbation transform expands q to q*n_w. qEHVI subset
-# enumeration is exponential in that effective q, so aggregate the built-in
-# multiclass objective back to raw q before BoTorch enters the subset loop.
-configure_multiclass_hypervolume_input_perturbation(
-    qMultiOutputMulticlassExpectedHypervolumeImprovement,
-    default_objective_type=MulticlassTargetProbabilityObjective,
-)
 
-# DeepGP などで qEHVI の戻り値に extra sample / latent 次元が残る場合の出力整形 patch。
-apply_bayesian_optimization_outputs()
+class qMulticlassExpectedHypervolumeImprovement(
+    qMultiOutputMulticlassExpectedHypervolumeImprovement
+):
+    """Multiclass multi-objective qEHVI with domain-first naming."""
+
+
+class qMulticlassNoisyExpectedHypervolumeImprovement(
+    qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement
+):
+    """Multiclass multi-objective qNEHVI with domain-first naming."""
+
+
+class qMulticlassNParEGO(qMultiOutputMulticlassNParEGO):
+    """Multiclass multi-objective NParEGO with domain-first naming."""
+
+
+class qHeteroMulticlassExpectedHypervolumeImprovement(
+    qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement
+):
+    """Heteroscedastic multiclass qEHVI with domain-first naming."""
+
+
+class qHeteroMulticlassNoisyExpectedHypervolumeImprovement(
+    qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement
+):
+    """Heteroscedastic multiclass qNEHVI with domain-first naming."""
+
+
+class qHeteroMulticlassNParEGO(qHeteroMultiOutputMulticlassNParEGO):
+    """Heteroscedastic multiclass NParEGO with domain-first naming."""
+
 
 __all__ = [
+    "MulticlassProbabilityObjective",
+    "MulticlassTargetProbabilityObjective",
     "NoiseCombineType",
     "NoiseWeightMode",
     "OutputReductionType",
-    "apply_bayesian_optimization_outputs",
     "compute_multiclass_target_probability_best_f",
     "compute_multiclass_target_probability_values",
-    "compute_observed_multiclass_utility",
     "compute_observed_multiclass_target_probability_values",
-    "qMulticlassProbabilityOfFeasibility",
-    "qMulticlassExpectedImprovement",
-    "qMulticlassProbabilityOfImprovement",
-    "qMulticlassUpperConfidenceBound",
-    "qMultiOutputMulticlassProbabilityOfFeasibility",
-    "qMultiOutputMulticlassExpectedHypervolumeImprovement",
-    "qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement",
-    "qMultiOutputMulticlassNParEGO",
-    "qMultiOutputMulticlassExpectedImprovement",
-    "qMultiOutputMulticlassProbabilityOfImprovement",
-    "qMultiOutputMulticlassUpperConfidenceBound",
-    "qHeteroMulticlassProbabilityOfFeasibility",
+    "compute_observed_multiclass_utility",
+    "qHeteroMulticlassExpectedHypervolumeImprovement",
     "qHeteroMulticlassExpectedImprovement",
+    "qHeteroMulticlassNParEGO",
+    "qHeteroMulticlassNoisyExpectedHypervolumeImprovement",
+    "qHeteroMulticlassProbabilityOfFeasibility",
     "qHeteroMulticlassProbabilityOfImprovement",
     "qHeteroMulticlassUpperConfidenceBound",
-    "qHeteroMultiOutputMulticlassProbabilityOfFeasibility",
-    "qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement",
-    "qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement",
-    "qHeteroMultiOutputMulticlassNParEGO",
-    "qHeteroMultiOutputMulticlassExpectedImprovement",
-    "qHeteroMultiOutputMulticlassProbabilityOfImprovement",
-    "qHeteroMultiOutputMulticlassUpperConfidenceBound",
+    "qMulticlassExpectedHypervolumeImprovement",
+    "qMulticlassExpectedImprovement",
+    "qMulticlassNParEGO",
+    "qMulticlassNoisyExpectedHypervolumeImprovement",
+    "qMulticlassProbabilityOfFeasibility",
+    "qMulticlassProbabilityOfImprovement",
+    "qMulticlassUpperConfidenceBound",
+    "qMultiOutputMulticlassExpectedImprovement",
+    "qMultiOutputMulticlassProbabilityOfFeasibility",
+    "qMultiOutputMulticlassProbabilityOfImprovement",
+    "qMultiOutputMulticlassUpperConfidenceBound",
 ]

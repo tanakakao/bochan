@@ -12,6 +12,11 @@ from gpytorch.mlls import ExactMarginalLogLikelihood
 from torch import Tensor
 from torch.utils.data import DataLoader, TensorDataset
 
+from bochan.models.regression.count.poisson import (
+    PoissonGPModel,
+    PoissonLogLikelihood,
+    PoissonMixedGPModel,
+)
 from bochan.models.regression.count.poisson._components import (
     PoissonLink,
     PoissonPosterior,
@@ -19,11 +24,6 @@ from bochan.models.regression.count.poisson._components import (
     ensure_2d_col,
     extract_normalize_only_transform,
     prepare_count_targets,
-)
-from bochan.models.regression.count.poisson import (
-    PoissonGPModel,
-    PoissonLogLikelihood,
-    PoissonMixedGPModel,
 )
 
 

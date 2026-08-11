@@ -1,0 +1,76 @@
+name: Temporary optim package reorganization PR
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  reorganize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/reorganize-optim-packages
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Apply package reorganization
+        run: python .github/tmp_reorg_optim.py
+
+      - name: Remove temporary automation files
+        run: |
+          git rm .github/tmp_reorg_optim.py
+          git rm .github/workflows/tmp_optim_package_reorg.yml
+          git rm .github/workflows/tmp_optim_package_reorg_pr.yml
+
+      - name: Install test dependencies
+        run: python -m pip install -e ".[test,tabular,api,visualization]"
+
+      - name: Validate optimizer package layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q src/bochan tests
+          pytest -q tests/test_optim_package_layout.py
+          mapfile -t focused < <(git ls-files 'tests/*.py' | grep -Ei '(optim|nsgaii|thompson|k_sparse|llm)' | grep -v 'test_optim_package_layout.py' || true)
+          if [ "${#focused[@]}" -gt 0 ]; then
+            pytest -q --maxfail=1 "${focused[@]}"
+          fi
+
+      - name: Check stale optimizer paths and lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          old_pattern='bochan\.optim\.(standard|evo|torch_opt|torch_multitask|nsgaii_adapter|nsgaii_constraints|nsgaii_diversity|nsgaii_outputs|thompson_sampling|thompson_sampling_adapter)'
+          if git grep -n -E "$old_pattern" -- src tests ':!tests/test_optim_package_layout.py'; then
+            echo 'Found stale flat optimizer imports.' >&2
+            exit 1
+          fi
+          python -m pip install ruff
+          mapfile -t changed_py < <(git diff --name-only --diff-filter=ACMR -- '*.py')
+          if [ "${#changed_py[@]}" -gt 0 ]; then
+            ruff check --fix "${changed_py[@]}"
+          fi
+          git diff --check
+
+      - name: Commit optimizer reorganization
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Reorganize optimizer packages by algorithm family"
+          git push origin HEAD:agent/reorganize-optim-packages

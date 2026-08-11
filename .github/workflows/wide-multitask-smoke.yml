@@ -111,10 +111,10 @@ jobs:
             src/bochan/models/multitask/wide.py \
             src/bochan/models/regression/gamma/base/aligned.py \
             src/bochan/optim/__init__.py \
-            src/bochan/optim/nsgaii_adapter.py \
-            src/bochan/optim/nsgaii_constraints.py \
-            src/bochan/optim/nsgaii_diversity.py \
-            src/bochan/optim/torch_multitask.py \
+            src/bochan/optim/nsgaii/adapter.py \
+            src/bochan/optim/nsgaii/constraints.py \
+            src/bochan/optim/nsgaii/diversity.py \
+            src/bochan/optim/gradient/multitask.py \
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/optimizer_api.py \
             src/bochan/tabular/outcome_constraints.py \

@@ -28,6 +28,9 @@ jobs:
           mkdir -p src/bochan/models/multitask src/bochan/models/multioutput src/bochan/models/multifidelity
           sed -i 's/git("rm", str(wide_patch.relative_to(ROOT)))/git("rm", "-f", str(wide_patch.relative_to(ROOT)))/' .github/tmp_model_strategy_layout.py
           python .github/tmp_model_strategy_layout.py
+          git checkout HEAD -- .github/workflows
+          rm -f .github/workflows/tmp_model_strategy_layout.yml
+          rm -f .github/tmp_model_strategy_layout.py
 
       - name: Validate Python syntax
         run: python -m compileall -q src/bochan tests

@@ -1,4 +1,4 @@
-from . import posterior as posterior
+from . import posterior
 from .kronecker_multitask import (
     BlockDesignMulticlassLikelihood,
     KroneckerMultiTaskMulticlassClassificationGPModel,

@@ -28,3 +28,17 @@ def test_cross_cutting_model_strategy_layout() -> None:
 
     assert all(path.is_file() for path in expected)
     assert not any(path.exists() for path in removed)
+
+
+def test_canonical_strategy_modules_import_directly() -> None:
+    from bochan.models.multioutput.binary import MultiOutputBinaryClassificationModel
+    from bochan.models.multioutput.multiclass import (
+        MultiOutputMulticlassClassificationModel,
+    )
+    from bochan.models.multioutput.ordinal import MultiOutputOrdinalModel
+    from bochan.models.multitask.task_feature import WideMultiTaskGP
+
+    assert MultiOutputBinaryClassificationModel.__name__
+    assert MultiOutputMulticlassClassificationModel.__name__
+    assert MultiOutputOrdinalModel.__name__
+    assert WideMultiTaskGP.__name__

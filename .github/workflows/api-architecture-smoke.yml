@@ -28,11 +28,24 @@ jobs:
             tests/test_api_automatic_defaults.py \
             tests/test_api_nsgaii_strategy.py \
             tests/test_observation_data.py \
-            tests/test_partial_observation_api.py
+            tests/test_partial_observation_api.py \
+            tests/test_tabular_architecture.py \
+            tests/test_tabular_multi_output_categories.py \
+            tests/test_tabular_ordinal_rank_string_labels.py \
+            tests/test_tabular_prediction_labels.py \
+            tests/test_tabular_deepgp_candidate_output.py \
+            tests/test_fastapi_tabular_category_constraints.py
       - name: Run Ruff
         run: |
           ruff check \
             src/bochan/api/__init__.py \
             src/bochan/api/acquisition_service.py \
+            src/bochan/api/candidate_output.py \
             src/bochan/api/optimizer.py \
-            tests/test_api_architecture.py
+            src/bochan/tabular/__init__.py \
+            src/bochan/tabular/composition_bounds_optimizer.py \
+            src/bochan/tabular/multi_output_categories.py \
+            src/bochan/tabular/ordinal_rank_labels.py \
+            src/bochan/tabular/public_optimizer.py \
+            tests/test_api_architecture.py \
+            tests/test_tabular_architecture.py

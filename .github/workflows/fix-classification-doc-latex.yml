@@ -1,0 +1,54 @@
+name: Fix classification doc LaTeX
+
+on:
+  push:
+    branches:
+      - agent/model-component-layout
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/model-component-layout
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Repair escaped LaTeX fractions
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("docs/theory/en/11_classification_models.md")
+          source = path.read_text(encoding="utf-8")
+          replacements = {
+              "-\nrac1n\n": "-\\frac1n\n",
+              "\nrac{e^{f_k/T}}\n": "\n\\frac{e^{f_k/T}}\n",
+              "\nrac{e^{\\mathbb E[f_k]/T}}\n": "\n\\frac{e^{\\mathbb E[f_k]/T}}\n",
+          }
+          for old, new in replacements.items():
+              count = source.count(old)
+              if count != 1:
+                  raise RuntimeError(f"Expected exactly one occurrence of {old!r}, found {count}")
+              source = source.replace(old, new, 1)
+          if "\nrac" in source:
+              raise RuntimeError("Unexpected residual broken LaTeX token 'rac'.")
+          path.write_text(source, encoding="utf-8")
+          PY
+      - name: Commit repair
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No repair needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/theory/en/11_classification_models.md
+          git commit -m "Fix classification theory LaTeX"
+          git push origin HEAD:agent/model-component-layout

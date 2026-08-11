@@ -1,9 +1,11 @@
 name: Normalize classification theory doc
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/model-component-layout
+      - main
+    types:
+      - synchronize
 
 permissions:
   contents: write
@@ -14,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/model-component-layout
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
       - name: Restore main doc and apply only canonical path updates
         shell: bash
@@ -47,4 +49,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/theory/en/11_classification_models.md
           git commit -m "Normalize classification theory doc"
-          git push origin HEAD:agent/model-component-layout
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}

@@ -1,3 +1,5 @@
+"""Multiclass acquisition functions."""
+
 from .active_learning import (
     qHeteroMultiOutputMulticlassBALD,
     qHeteroMultiOutputMulticlassGreedyJointBALD,
@@ -27,25 +29,17 @@ from .active_learning import (
     qMulticlassProbabilityVariance,
 )
 from .bayesian_optimization import (
-    qHeteroMultiOutputMulticlassExpectedHypervolumeImprovement,
-    qHeteroMultiOutputMulticlassExpectedImprovement,
-    qHeteroMultiOutputMulticlassNParEGO,
-    qHeteroMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
-    qHeteroMultiOutputMulticlassProbabilityOfFeasibility,
-    qHeteroMultiOutputMulticlassProbabilityOfImprovement,
-    qHeteroMultiOutputMulticlassUpperConfidenceBound,
+    qHeteroMulticlassExpectedHypervolumeImprovement,
     qHeteroMulticlassExpectedImprovement,
+    qHeteroMulticlassNParEGO,
+    qHeteroMulticlassNoisyExpectedHypervolumeImprovement,
     qHeteroMulticlassProbabilityOfFeasibility,
     qHeteroMulticlassProbabilityOfImprovement,
     qHeteroMulticlassUpperConfidenceBound,
-    qMultiOutputMulticlassExpectedHypervolumeImprovement,
-    qMultiOutputMulticlassExpectedImprovement,
-    qMultiOutputMulticlassNParEGO,
-    qMultiOutputMulticlassNoisyExpectedHypervolumeImprovement,
-    qMultiOutputMulticlassProbabilityOfFeasibility,
-    qMultiOutputMulticlassProbabilityOfImprovement,
-    qMultiOutputMulticlassUpperConfidenceBound,
+    qMulticlassExpectedHypervolumeImprovement,
     qMulticlassExpectedImprovement,
+    qMulticlassNParEGO,
+    qMulticlassNoisyExpectedHypervolumeImprovement,
     qMulticlassProbabilityOfFeasibility,
     qMulticlassProbabilityOfImprovement,
     qMulticlassUpperConfidenceBound,
@@ -84,4 +78,9 @@ from .levelset_estimation import (
     qMulticlassProbabilityOfExceedance,
 )
 
-__all__ = [name for name in globals() if name.startswith("q") or name in {"NoiseCombineType", "NoiseWeightMode", "OutputReductionType"}]
+__all__ = [
+    name
+    for name in globals()
+    if name.startswith("q")
+    or name in {"NoiseCombineType", "NoiseWeightMode", "OutputReductionType"}
+]

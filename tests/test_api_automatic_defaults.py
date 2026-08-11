@@ -118,7 +118,7 @@ def test_explicit_multi_output_config_is_preserved() -> None:
 def test_bayesian_optimizer_fit_uses_automatic_multi_output_config(monkeypatch) -> None:
     captured = {}
 
-    def fake_build_model(train_X, train_Y, config, *, model_registry=None):
+    def fake_build_model(*, train_X, train_Y, config, model_registry=None):
         captured["config"] = config
         return ModelBundle(
             model=SimpleNamespace(),
@@ -130,8 +130,14 @@ def test_bayesian_optimizer_fit_uses_automatic_multi_output_config(monkeypatch) 
             metadata={"multi_output": config.multi_output_config is not None},
         )
 
-    monkeypatch.setattr("bochan.api.engine.build_model", fake_build_model)
-    monkeypatch.setattr("bochan.api.engine.fit_model", lambda bundle, config: bundle)
+    monkeypatch.setattr(
+        "bochan.api.optimizer._build_partial_objective_bundle",
+        fake_build_model,
+    )
+    monkeypatch.setattr(
+        "bochan.api.optimizer.fit_model",
+        lambda bundle, config: bundle,
+    )
 
     optimizer = BayesianOptimizer(
         ModelConfig(

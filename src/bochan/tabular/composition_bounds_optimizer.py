@@ -7,24 +7,17 @@ from typing import Any
 
 import numpy as np
 
-from . import element_constraint_composition_optimizer as _element_constraint_module
-from .observation_optimizer import ObservationTabularMixin
-
-_ElementConstraintTabularBayesianOptimizer = (
-    _element_constraint_module.TabularBayesianOptimizer
+from .element_constraint_composition_optimizer import (
+    TabularBayesianOptimizer as _ElementConstraintTabularBayesianOptimizer,
 )
+from .observation_optimizer import ObservationTabularMixin
 
 
 class TabularBayesianOptimizer(
     ObservationTabularMixin,
     _ElementConstraintTabularBayesianOptimizer,
 ):
-    """Canonical composition- and observation-aware tabular optimizer.
-
-    The class keeps the existing composition preprocessing / repair chain while
-    adding explicit partial-observation and experiment-state handling through a
-    source-level mixin. This remains the single public tabular optimizer class.
-    """
+    """Composition- and observation-aware internal tabular implementation."""
 
     @staticmethod
     def _mapping_contains_column(bounds: Mapping[Any, Any], column: Any) -> bool:
@@ -77,7 +70,5 @@ class TabularBayesianOptimizer(
         expanded = super()._expanded_multi_site_bounds(bounds, transformed)
         return self._complete_transformed_bounds(expanded, transformed)
 
-
-_element_constraint_module.TabularBayesianOptimizer = TabularBayesianOptimizer
 
 __all__ = ["TabularBayesianOptimizer"]

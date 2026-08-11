@@ -17,6 +17,7 @@ def test_api_import_does_not_replace_engine_or_factory_symbols() -> None:
     assert acquisition_service.build_acquisition.__module__ == (
         "bochan.api.acquisition_service"
     )
+    assert api.build_acquisition is acquisition_service.build_acquisition
 
 
 def test_canonical_optimizer_owns_observation_and_candidate_entry_points() -> None:

@@ -14,9 +14,9 @@ from botorch.models.model import Model
 from botorch.sampling.base import MCSampler
 from botorch.utils.objective import compute_smoothed_feasibility_indicator
 from botorch.utils.transforms import t_batch_mode_transform
-from torch import Tensor
-from torch import nn
+from torch import Tensor, nn
 
+from bochan.acquisition._nehvi_cache_root import resolve_nehvi_cache_root
 from bochan.acquisition.objective.outcome_constraints import (
     OutcomeConstraint,
     split_outcome_constraints,
@@ -24,6 +24,11 @@ from bochan.acquisition.objective.outcome_constraints import (
 )
 
 from . import multi_output as _multi_output
+from ._baseline import (
+    complete_ordinal_baseline_rows,
+    infer_multioutput_ordinal_train_y,
+)
+from ._utility_defaults import infer_multioutput_ordinal_utility_values
 from .hetero_multi_output import (
     qHeteroMultiOutputOrdinalExpectedHypervolumeImprovement,
     qHeteroMultiOutputOrdinalExpectedImprovement,
@@ -62,6 +67,11 @@ from .standard import (
     qOrdinalUpperConfidenceBound,
 )
 
+_NPAREGO_TBATCH_ERRORS = (
+    "Expected scalarized value to have q dimension as the last dimension.",
+    "qMultiOutputOrdinalNParEGO produced invalid output shape after scalarization.",
+)
+
 
 def _normalize_constraint_eta(
     eta: Tensor | float,
@@ -80,17 +90,24 @@ def _normalize_constraint_eta(
     return torch.as_tensor(float(eta))
 
 
+def _with_default_utility_values(model, utility_values):
+    if utility_values is not None:
+        return utility_values
+    return infer_multioutput_ordinal_utility_values(model)
+
+
 class qMultiOutputOrdinalUtilityObjective(_BaseMultiOutputOrdinalUtilityObjective):
     """Ordinal utility objective with explicit wide-multitask likelihood mapping."""
 
     def __init__(
         self,
         model,
-        utility_values,
+        utility_values=None,
         *,
         ordinal_likelihoods=None,
         **kwargs,
     ) -> None:
+        utility_values = _with_default_utility_values(model, utility_values)
         if ordinal_likelihoods is None:
             num_outputs = int(getattr(model, "num_outputs", 1))
             likelihood = getattr(model, "ordinal_likelihood", None)
@@ -104,6 +121,32 @@ class qMultiOutputOrdinalUtilityObjective(_BaseMultiOutputOrdinalUtilityObjectiv
             ordinal_likelihoods=ordinal_likelihoods,
             **kwargs,
         )
+
+
+def _resolve_ordinal_objective(
+    *,
+    model,
+    utility_values,
+    objective,
+    ordinal_likelihoods,
+    objective_signs,
+    link,
+    input_perturbation_n_w,
+    risk_type,
+    risk_alpha,
+):
+    if objective is not None:
+        return objective
+    return qMultiOutputOrdinalUtilityObjective(
+        model=model,
+        utility_values=utility_values,
+        ordinal_likelihoods=ordinal_likelihoods,
+        objective_signs=objective_signs,
+        link=link,
+        input_perturbation_n_w=input_perturbation_n_w,
+        risk_type=risk_type,
+        risk_alpha=risk_alpha,
+    )
 
 
 class qMultiOutputOrdinalExpectedHypervolumeImprovement(_BaseOrdinalEHVI):
@@ -132,6 +175,20 @@ class qMultiOutputOrdinalExpectedHypervolumeImprovement(_BaseOrdinalEHVI):
         risk_type=None,
         risk_alpha: float = 0.5,
     ) -> None:
+        utility_values = _with_default_utility_values(model, utility_values)
+        if train_Y is not None:
+            train_Y = complete_ordinal_baseline_rows(train_Y)
+        objective = _resolve_ordinal_objective(
+            model=model,
+            utility_values=utility_values,
+            objective=objective,
+            ordinal_likelihoods=ordinal_likelihoods,
+            objective_signs=objective_signs,
+            link=link,
+            input_perturbation_n_w=input_perturbation_n_w,
+            risk_type=risk_type,
+            risk_alpha=risk_alpha,
+        )
         adapted_constraints = wrap_objective_space_constraints(
             constraints,
             objective_getter=lambda: getattr(self, "objective", None),
@@ -182,8 +239,21 @@ class qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(_BaseOrdinalNEHVI):
         input_perturbation_n_w: int | None = None,
         risk_type=None,
         risk_alpha: float = 0.5,
+        cache_root: bool | None = None,
         **kwargs,
     ) -> None:
+        utility_values = _with_default_utility_values(model, utility_values)
+        objective = _resolve_ordinal_objective(
+            model=model,
+            utility_values=utility_values,
+            objective=objective,
+            ordinal_likelihoods=ordinal_likelihoods,
+            objective_signs=objective_signs,
+            link=link,
+            input_perturbation_n_w=input_perturbation_n_w,
+            risk_type=risk_type,
+            risk_alpha=risk_alpha,
+        )
         adapted_constraints = wrap_objective_space_constraints(
             constraints,
             objective_getter=lambda: getattr(self, "objective", None),
@@ -206,22 +276,73 @@ class qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement(_BaseOrdinalNEHVI):
             input_perturbation_n_w=input_perturbation_n_w,
             risk_type=risk_type,
             risk_alpha=risk_alpha,
+            cache_root=resolve_nehvi_cache_root(model, cache_root),
             **kwargs,
         )
 
 
 class qMultiOutputOrdinalNParEGO(_BaseMultiOutputOrdinalNParEGO):
-    """Ordinal NParEGO with explicit BoTorch-style outcome constraints."""
+    """Ordinal NParEGO with explicit baseline, constraints, and t-batch handling."""
 
     def __init__(
         self,
-        *args,
+        model: Model,
+        X_baseline: Tensor,
+        ref_point: Tensor,
+        *,
+        utility_values: Sequence[Sequence[float]] | Sequence[float] | Tensor | None = None,
+        objective: MCMultiOutputObjective | None = None,
+        weights: Tensor | None = None,
+        sampler: MCSampler | None = None,
+        ordinal_likelihoods: Sequence[nn.Module] | nn.Module | None = None,
+        objective_signs: Sequence[float] | Tensor | None = None,
+        train_Y: Tensor | None = None,
+        Y_baseline: Tensor | None = None,
+        class_offset: int = 0,
+        link: str = "auto",
+        input_perturbation_n_w: int | None = None,
+        risk_type=None,
+        risk_alpha: float = 0.5,
+        rho: float = 0.05,
         constraints: Sequence[OutcomeConstraint] | None = None,
         eta: float | Tensor = 1e-3,
         fat: bool = False,
-        **kwargs,
     ) -> None:
-        super().__init__(*args, **kwargs)
+        utility_values = _with_default_utility_values(model, utility_values)
+        if train_Y is None and Y_baseline is None:
+            train_Y = infer_multioutput_ordinal_train_y(model)
+        if train_Y is not None:
+            train_Y = complete_ordinal_baseline_rows(train_Y)
+        objective = _resolve_ordinal_objective(
+            model=model,
+            utility_values=utility_values,
+            objective=objective,
+            ordinal_likelihoods=ordinal_likelihoods,
+            objective_signs=objective_signs,
+            link=link,
+            input_perturbation_n_w=input_perturbation_n_w,
+            risk_type=risk_type,
+            risk_alpha=risk_alpha,
+        )
+        super().__init__(
+            model=model,
+            X_baseline=X_baseline,
+            ref_point=ref_point,
+            utility_values=utility_values,
+            objective=objective,
+            weights=weights,
+            sampler=sampler,
+            ordinal_likelihoods=ordinal_likelihoods,
+            objective_signs=objective_signs,
+            train_Y=train_Y,
+            Y_baseline=Y_baseline,
+            class_offset=class_offset,
+            link=link,
+            input_perturbation_n_w=input_perturbation_n_w,
+            risk_type=risk_type,
+            risk_alpha=risk_alpha,
+            rho=rho,
+        )
         raw_constraints, objective_constraints = split_outcome_constraints(constraints)
         self.constraints = list(constraints or [])
         self.raw_constraints = raw_constraints
@@ -253,12 +374,10 @@ class qMultiOutputOrdinalNParEGO(_BaseMultiOutputOrdinalNParEGO):
             factor = objective_factor if factor is None else factor * objective_factor
         return factor
 
-    @t_batch_mode_transform()
-    def forward(self, X: Tensor) -> Tensor:
-        Xq = _multi_output.ensure_q_batch(X)
-        posterior = self.model.posterior(Xq)
+    def _evaluate(self, X: Tensor) -> Tensor:
+        posterior = self.model.posterior(X)
         samples = self.get_posterior_samples(posterior)
-        objective_values = self.base_objective(samples, X=Xq)
+        objective_values = self.base_objective(samples, X=X)
         scalarized = self._scalarize(objective_values)
         improvement = (
             scalarized - self.best_value.to(scalarized)
@@ -269,7 +388,23 @@ class qMultiOutputOrdinalNParEGO(_BaseMultiOutputOrdinalNParEGO):
         )
         if feasibility is not None:
             improvement = improvement * feasibility
-        return _multi_output._reduce_sample_and_q_to_tbatch(improvement, Xq)
+        return _multi_output._reduce_sample_and_q_to_tbatch(improvement, X)
+
+    @t_batch_mode_transform()
+    def forward(self, X: Tensor) -> Tensor:
+        Xq = _multi_output.ensure_q_batch(X)
+        try:
+            return self._evaluate(Xq)
+        except RuntimeError as err:
+            if not any(message in str(err) for message in _NPAREGO_TBATCH_ERRORS):
+                raise
+            batch_shape = Xq.shape[:-2]
+            if len(batch_shape) == 0:
+                raise
+            q, d = int(Xq.shape[-2]), int(Xq.shape[-1])
+            X_flat = Xq.reshape(-1, q, d)
+            values = [self._evaluate(X_i) for X_i in X_flat]
+            return torch.stack(values).reshape(batch_shape)
 
 
 class qOrdinalExpectedHypervolumeImprovement(
@@ -318,9 +453,6 @@ __all__ = [
     "qHeteroOrdinalNParEGO",
     "qHeteroOrdinalNoisyExpectedHypervolumeImprovement",
     "qHeteroOrdinalProbabilityOfImprovement",
-    "qMultiOutputOrdinalExpectedHypervolumeImprovement",
-    "qMultiOutputOrdinalNParEGO",
-    "qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement",
     "qMultiOutputOrdinalUtilityObjective",
     "qOrdinalExpectedHypervolumeImprovement",
     "qOrdinalExpectedImprovement",

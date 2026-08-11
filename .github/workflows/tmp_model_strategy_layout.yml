@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - agent/reorganize-multioutput-multitask
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize]
 
 permissions:
   contents: write
@@ -15,6 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: agent/reorganize-multioutput-multitask
           fetch-depth: 0
 
       - name: Reorganize model strategy packages

@@ -6,7 +6,11 @@ from collections.abc import Sequence
 
 from botorch.acquisition.monte_carlo import (
     qExpectedImprovement as _qExpectedImprovement,
+)
+from botorch.acquisition.monte_carlo import (
     qProbabilityOfImprovement as _qProbabilityOfImprovement,
+)
+from botorch.acquisition.monte_carlo import (
     qUpperConfidenceBound as _qUpperConfidenceBound,
 )
 from botorch.acquisition.objective import MCAcquisitionObjective
@@ -26,7 +30,7 @@ class MulticlassProbabilityObjective(MCAcquisitionObjective):
     """Select target-class probability from multiclass posterior samples.
 
     Models used with this objective are expected to expose probabilities with
-    the class dimension last.  The acquisition does not guess whether samples
+    the class dimension last. The acquisition does not guess whether samples
     are logits and does not apply softmax implicitly.
     """
 

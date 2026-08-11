@@ -460,8 +460,7 @@ Useful metrics include:
 ### Log loss
 
 ```math
--
-rac1n
+-\frac1n
 \sum_i
 [y_i\log p_i+(1-y_i)\log(1-p_i)].
 ```
@@ -673,7 +672,7 @@ p_k(x)
 \mathbb E_{q(\mathbf f(x))}
 \left[
 
-rac{e^{f_k/T}}
+\frac{e^{f_k/T}}
 {\sum_je^{f_j/T}}
 \right].
 ```
@@ -682,7 +681,7 @@ This is not generally equal to
 
 ```math
 
-rac{e^{\mathbb E[f_k]/T}}
+\frac{e^{\mathbb E[f_k]/T}}
 {\sum_je^{\mathbb E[f_j]/T}}.
 ```
 

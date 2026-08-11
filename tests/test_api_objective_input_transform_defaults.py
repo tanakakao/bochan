@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import torch
 
-import bochan.api.engine as engine
 from bochan.api import (
     AcquisitionConfig,
     InputTransformConfig,
@@ -12,6 +11,7 @@ from bochan.api import (
     ModelConfig,
     ObjectiveConfig,
 )
+from bochan.api.acquisition_service import resolve_input_perturbation_objective
 
 
 def _make_bundle(
@@ -48,10 +48,7 @@ def _resolve(
     config: AcquisitionConfig,
     bundle: ModelBundle,
 ) -> AcquisitionConfig:
-    return engine._resolve_objective_config_n_w_from_input_transform(
-        acq_config=config,
-        bundle=bundle,
-    )
+    return resolve_input_perturbation_objective(bundle, config)
 
 
 def test_missing_objective_config_uses_input_transform_n_w() -> None:

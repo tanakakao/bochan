@@ -300,7 +300,14 @@ class PoissonPosterior(Posterior):
     def rsample(self, sample_shape: Optional[torch.Size] = None, base_samples: Optional[Tensor] = None) -> Tensor:
         if sample_shape is None:
             sample_shape = torch.Size()
-        f_samples = self.latent_posterior.rsample(sample_shape=sample_shape, base_samples=base_samples)
+        f_samples = (
+            self.latent_posterior.rsample(sample_shape=sample_shape)
+            if base_samples is None
+            else self.latent_posterior.rsample_from_base_samples(
+                sample_shape=sample_shape,
+                base_samples=base_samples,
+            )
+        )
         return self.likelihood.rate_from_f(f_samples)
 
     def rsample_from_base_samples(

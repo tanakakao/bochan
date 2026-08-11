@@ -25,6 +25,7 @@ jobs:
       - name: Reorganize model strategy packages
         shell: bash
         run: |
+          mkdir -p src/bochan/models/multitask src/bochan/models/multioutput src/bochan/models/multifidelity
           sed -i 's/git("rm", str(wide_patch.relative_to(ROOT)))/git("rm", "-f", str(wide_patch.relative_to(ROOT)))/' .github/tmp_model_strategy_layout.py
           python .github/tmp_model_strategy_layout.py
 

@@ -309,6 +309,10 @@ class qMultiOutputOrdinalNParEGO(_BaseMultiOutputOrdinalNParEGO):
         fat: bool = False,
     ) -> None:
         utility_values = _with_default_utility_values(model, utility_values)
+        if Y_baseline is not None:
+            Y_baseline = torch.as_tensor(Y_baseline)
+            if not bool(torch.isfinite(Y_baseline).all()):
+                Y_baseline = None
         if train_Y is None and Y_baseline is None:
             train_Y = infer_multioutput_ordinal_train_y(model)
         if train_Y is not None:

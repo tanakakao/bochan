@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from botorch.acquisition.monte_carlo import (
     qExpectedImprovement as _qExpectedImprovement,
+)
+from botorch.acquisition.monte_carlo import (
     qProbabilityOfImprovement as _qProbabilityOfImprovement,
-    qSimpleRegret as _qSimpleRegret,
+)
+from botorch.acquisition.monte_carlo import qSimpleRegret as _qSimpleRegret
+from botorch.acquisition.monte_carlo import (
     qUpperConfidenceBound as _qUpperConfidenceBound,
 )
 from botorch.acquisition.objective import MCAcquisitionObjective

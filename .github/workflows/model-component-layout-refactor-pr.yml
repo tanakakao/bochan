@@ -1,0 +1,50 @@
+name: Model component layout refactor PR trigger
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  normalize-doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Restore main classification doc and apply canonical paths
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          path = Path("docs/theory/en/11_classification_models.md")
+          base = subprocess.check_output(
+              ["git", "show", "origin/main:docs/theory/en/11_classification_models.md"],
+              text=True,
+          )
+          old = "src/bochan/posteriors/bernoulli.py"
+          new = "src/bochan/models/classification/binary/base/posterior.py"
+          if base.count(old) != 2:
+              raise RuntimeError("Unexpected Bernoulli posterior reference count in main doc")
+          path.write_text(base.replace(old, new), encoding="utf-8")
+          PY
+      - name: Commit normalization
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No normalization needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/theory/en/11_classification_models.md
+          git commit -m "Normalize classification theory doc"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}

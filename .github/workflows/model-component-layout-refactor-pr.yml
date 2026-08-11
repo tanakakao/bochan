@@ -27,33 +27,34 @@ jobs:
       - name: Execute canonical refactor script
         shell: bash
         run: |
+          python .github/scripts/model_component_layout_refactor.py
           python - <<'PY'
-          import re
           from pathlib import Path
 
-          path = Path(".github/scripts/model_component_layout_refactor.py")
+          path = Path("src/bochan/models/ordinal/base/models.py")
           source = path.read_text(encoding="utf-8")
-          pattern = re.compile(
-              r"    matern_default = textwrap\.dedent\(\n.*?"
-              r"    core = core\.replace\(latent_marker, matern_default \+ latent_marker, 1\)",
-              flags=re.S,
-          )
-          replacement = '''    matern_default = (
-              "        if covar_module is None:\\n"
-              "            covar_module = ScaleKernel(\\n"
-              "                MaternKernel(\\n"
-              "                    nu=2.5,\\n"
-              "                    ard_num_dims=raw_train_X.shape[-1],\\n"
-              "                )\\n"
-              "            ).to(device=raw_train_X.device, dtype=raw_train_X.dtype)\\n\\n"
-          )
-          core = core.replace(latent_marker, matern_default + latent_marker, 1)'''
-          source, count = pattern.subn(lambda _: replacement, source, count=1)
-          if count != 1:
-              raise RuntimeError(f"Ordinal Matern generation block replacements: {count}")
-          path.write_text(source, encoding="utf-8")
+          old = '''if covar_module is None:
+              covar_module = ScaleKernel(
+                  MaternKernel(
+                      nu=2.5,
+                      ard_num_dims=raw_train_X.shape[-1],
+                  )
+              ).to(device=raw_train_X.device, dtype=raw_train_X.dtype)
+
+          '''
+          new = '''        if covar_module is None:
+              covar_module = ScaleKernel(
+                  MaternKernel(
+                      nu=2.5,
+                      ard_num_dims=raw_train_X.shape[-1],
+                  )
+              ).to(device=raw_train_X.device, dtype=raw_train_X.dtype)
+
+          '''
+          if old not in source:
+              raise RuntimeError("Generated ordinal Matern block not found.")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8")
           PY
-          python .github/scripts/model_component_layout_refactor.py
       - name: Install test dependencies
         run: |
           python -m pip install -e ".[test,api]"

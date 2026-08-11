@@ -49,7 +49,7 @@ from .standard import (
 
 
 class qMultiOutputBinaryNParEGO(_BaseMultiOutputBinaryNParEGO):
-    """Binary NParEGO with explicit BoTorch-style outcome constraints."""
+    """Internal binary NParEGO implementation with explicit outcome constraints."""
 
     def __init__(
         self,
@@ -175,6 +175,5 @@ __all__ = [
     "qHeteroBinaryNoisyExpectedHypervolumeImprovement",
     "qHeteroBinaryProbabilityOfImprovement",
     "qHeteroBinaryUpperConfidenceBound",
-    "qMultiOutputBinaryNParEGO",
     "qMultiOutputBinaryProbabilityOfFeasibility",
 ]

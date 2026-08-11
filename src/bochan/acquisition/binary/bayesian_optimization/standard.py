@@ -4,13 +4,22 @@ from __future__ import annotations
 
 from botorch.acquisition.monte_carlo import (
     qExpectedImprovement as _qExpectedImprovement,
+)
+from botorch.acquisition.monte_carlo import (
     qProbabilityOfImprovement as _qProbabilityOfImprovement,
+)
+from botorch.acquisition.monte_carlo import (
     qUpperConfidenceBound as _qUpperConfidenceBound,
 )
 from botorch.models.model import Model
 from torch import Tensor
 
-from bochan.acquisition._api import Constraints, MCObjective, PosteriorTransformArg, Sampler
+from bochan.acquisition._api import (
+    Constraints,
+    MCObjective,
+    PosteriorTransformArg,
+    Sampler,
+)
 from bochan.acquisition.binary.epistemic import as_epistemic_probability_model
 
 
@@ -23,7 +32,7 @@ def _probability_model(model: Model) -> Model:
 class qBinaryExpectedImprovement(_qExpectedImprovement):
     """Joint qEI on positive-class probability.
 
-    ``best_f`` is required and is interpreted in the objective space.  The
+    ``best_f`` is required and is interpreted in the objective space. The
     constructor intentionally mirrors BoTorch qEI and does not infer baselines,
     switch between pointwise/joint q semantics, or add duplicate penalties.
     """

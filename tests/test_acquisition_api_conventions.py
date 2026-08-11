@@ -113,6 +113,22 @@ def test_improvement_acquisitions_require_explicit_best_f(acquisition_cls) -> No
     assert best_f.default is inspect.Parameter.empty
 
 
+@pytest.mark.parametrize(
+    "acquisition_cls",
+    [
+        qBinaryNParEGO,
+        qMulticlassNParEGO,
+        qOrdinalNParEGO,
+        qRegressionNParEGO,
+    ],
+)
+def test_nparego_exposes_baseline_and_reference_point(acquisition_cls) -> None:
+    parameters = inspect.signature(acquisition_cls).parameters
+    for name in ("model", "X_baseline", "ref_point"):
+        assert name in parameters
+        assert parameters[name].default is inspect.Parameter.empty
+
+
 def test_multiobjective_public_names_are_domain_first() -> None:
     classes = [
         qBinaryExpectedHypervolumeImprovement,

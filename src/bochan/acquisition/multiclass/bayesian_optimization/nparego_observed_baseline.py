@@ -35,8 +35,8 @@ def complete_multiclass_label_rows(train_Y: Tensor) -> Tensor:
     )
 
 
-def infer_multiclass_train_y(model: Any) -> Tensor | None:
-    """Return complete wide multiclass labels retained by a model, if available."""
+def wide_multiclass_training_labels(model: Any) -> Tensor | None:
+    """Return the model's retained wide multiclass labels, if available."""
 
     expected_outputs = getattr(model, "num_tasks", None)
     if expected_outputs is None:
@@ -57,8 +57,32 @@ def infer_multiclass_train_y(model: Any) -> Tensor | None:
             continue
         if expected_outputs is not None and tensor.shape[-1] != expected_outputs:
             continue
-        return complete_multiclass_label_rows(tensor)
+        return tensor
     return None
+
+
+def infer_multiclass_train_y(model: Any) -> Tensor | None:
+    """Return complete wide multiclass labels retained by a model, if available."""
+
+    train_Y = wide_multiclass_training_labels(model)
+    return None if train_Y is None else complete_multiclass_label_rows(train_Y)
+
+
+def is_training_label_baseline(model: Any, baseline: Any) -> bool:
+    """Return whether ``baseline`` is the model's raw wide label tensor."""
+
+    train_Y = wide_multiclass_training_labels(model)
+    if baseline is None or train_Y is None:
+        return False
+    if baseline is train_Y:
+        return True
+    if not torch.is_tensor(baseline):
+        return False
+    return (
+        baseline.shape == train_Y.shape
+        and baseline.device == train_Y.device
+        and baseline.data_ptr() == train_Y.data_ptr()
+    )
 
 
 def objective_baseline_from_labels(
@@ -88,5 +112,7 @@ def objective_baseline_from_labels(
 __all__ = [
     "complete_multiclass_label_rows",
     "infer_multiclass_train_y",
+    "is_training_label_baseline",
     "objective_baseline_from_labels",
+    "wide_multiclass_training_labels",
 ]

@@ -1,7 +1,15 @@
 from __future__ import annotations
 
+import importlib.util
+
 import bochan.api as api
-from bochan.api import acquisition_service, engine, engine_defaults, factory, optimizer
+from bochan.api import engine, factory, optimizer
+from bochan.api.acquisition import defaults as acquisition_defaults
+from bochan.api.acquisition import service as acquisition_service
+from bochan.api.candidate import output as candidate_output
+from bochan.api.llm import LLMCandidateExplanationMixin, LLMSuggestionMixin
+from bochan.api.observation import service as observation_service
+from bochan.api.observation import state as observation_state
 
 
 def test_public_bayesian_optimizer_has_one_canonical_definition() -> None:
@@ -10,10 +18,10 @@ def test_public_bayesian_optimizer_has_one_canonical_definition() -> None:
     assert issubclass(api.BayesianOptimizer, engine.BayesianOptimizer)
 
 
-def test_engine_defaults_is_helper_only() -> None:
-    assert "BayesianOptimizer" not in vars(engine_defaults)
-    assert callable(engine_defaults.resolve_acquisition_defaults)
-    assert callable(engine_defaults.resolve_multi_output_model_config)
+def test_acquisition_defaults_have_one_owner() -> None:
+    assert callable(acquisition_defaults.resolve_acquisition_defaults)
+    assert callable(acquisition_defaults.resolve_multi_output_model_config)
+    assert acquisition_defaults.__name__ == "bochan.api.acquisition.defaults"
 
 
 def test_api_import_does_not_replace_engine_or_factory_symbols() -> None:
@@ -21,9 +29,41 @@ def test_api_import_does_not_replace_engine_or_factory_symbols() -> None:
     assert engine.BayesianOptimizer.__module__ == "bochan.api.engine"
     assert factory.build_acquisition.__module__ == "bochan.api.factory"
     assert acquisition_service.build_acquisition.__module__ == (
-        "bochan.api.acquisition_service"
+        "bochan.api.acquisition.service"
     )
     assert api.build_acquisition is acquisition_service.build_acquisition
+
+
+def test_runtime_services_live_in_responsibility_subpackages() -> None:
+    assert candidate_output.select_best_candidate_set.__module__ == (
+        "bochan.api.candidate.output"
+    )
+    assert observation_state.ObservationData.__module__ == (
+        "bochan.api.observation.state"
+    )
+    assert observation_service.build_objective_bundle.__module__ == (
+        "bochan.api.observation.service"
+    )
+    assert LLMSuggestionMixin.__module__ == "bochan.api.llm.suggestion"
+    assert LLMCandidateExplanationMixin.__module__ == "bochan.api.llm.explanation"
+
+
+def test_removed_compatibility_and_patch_modules_do_not_exist() -> None:
+    removed = {
+        "bochan.api.acquisition_service",
+        "bochan.api.candidate_output",
+        "bochan.api.classification_perturbation_defaults",
+        "bochan.api.engine_defaults",
+        "bochan.api.kronecker_input_perturbation_defaults",
+        "bochan.api.llm_candidate_explanation",
+        "bochan.api.llm_selected_acquisition",
+        "bochan.api.llm_suggestion",
+        "bochan.api.observation_engine",
+        "bochan.api.observation_service",
+        "bochan.acquisition.objective.regression_perturbation",
+    }
+    for module_name in removed:
+        assert importlib.util.find_spec(module_name) is None
 
 
 def test_canonical_optimizer_owns_observation_and_candidate_entry_points() -> None:

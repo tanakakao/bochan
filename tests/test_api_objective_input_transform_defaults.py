@@ -11,7 +11,7 @@ from bochan.api import (
     ModelConfig,
     ObjectiveConfig,
 )
-from bochan.api.acquisition_service import resolve_input_perturbation_objective
+from bochan.api.acquisition.service import resolve_input_perturbation_objective
 
 
 def _make_bundle(

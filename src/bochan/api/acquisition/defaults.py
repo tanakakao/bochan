@@ -1,4 +1,4 @@
-"""Pure automatic-default helpers for the high-level Bayesian optimizer."""
+"""Automatic acquisition and model-routing defaults for the high-level API."""
 
 from __future__ import annotations
 
@@ -7,14 +7,14 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import Any
 
-from .automatic_best_f import compute_best_f
-from .automatic_default_utils import _num_outputs
-from .automatic_multiobjective import (
+from ..automatic_best_f import compute_best_f
+from ..automatic_default_utils import _num_outputs
+from ..automatic_multiobjective import (
     make_default_ref_point,
     make_partitioning,
     observed_multiobjective_values,
 )
-from .configs import (
+from ..configs import (
     AcquisitionConfig,
     DataContext,
     FitConfig,
@@ -23,7 +23,7 @@ from .configs import (
     ModelConfig,
     MultiOutputConfig,
 )
-from .information_acquisition_defaults import (
+from ..information_acquisition_defaults import (
     is_information_acquisition,
     resolve_information_acquisition_defaults,
 )
@@ -114,9 +114,13 @@ def _coerce_model_config(value: Any) -> ModelConfig:
         return value
     data = dict(value or {})
     if data.get("input_transform_config") is not None:
-        data["input_transform_config"] = _coerce_input_transform_config(data["input_transform_config"])
+        data["input_transform_config"] = _coerce_input_transform_config(
+            data["input_transform_config"]
+        )
     if data.get("multi_output_config") is not None:
-        data["multi_output_config"] = _coerce_multi_output_config(data["multi_output_config"])
+        data["multi_output_config"] = _coerce_multi_output_config(
+            data["multi_output_config"]
+        )
     return ModelConfig(**data)
 
 
@@ -136,12 +140,7 @@ def resolve_llm_selected_model_config(
     bounds: Any | None = None,
     fit_config: FitConfig | None = None,
 ) -> tuple[ModelConfig, FitConfig | None, dict[str, Any] | None]:
-    """Resolve ``ModelConfig(model_type='llm_selected')`` into a concrete model config.
-
-    This mirrors candidate generation's ``OptimizeConfig(optimizer='llm_candidate_set')``
-    pattern: the selector is configured through an existing config object, and provider
-    details are passed through ``model_kwargs``.
-    """
+    """Resolve ``ModelConfig(model_type='llm_selected')`` into a concrete config."""
 
     if not _is_llm_selected_model_config(model_config):
         return model_config, fit_config, None
@@ -149,7 +148,11 @@ def resolve_llm_selected_model_config(
     from bochan.llm import plan_configs
 
     kwargs = dict(model_config.model_kwargs or {})
-    goal = kwargs.pop("goal", None) or kwargs.pop("text", None) or "Select a suitable bochan model configuration."
+    goal = (
+        kwargs.pop("goal", None)
+        or kwargs.pop("text", None)
+        or "Select a suitable bochan model configuration."
+    )
     llm_config = kwargs.pop("llm_config", None)
     llm_context = kwargs.pop("llm_context", None)
     planner_response = kwargs.pop("planner_response", None)
@@ -213,7 +216,10 @@ def _resolve_multiclass_multi_output_wrapper(
 
     if str(model_config.task_type) != "multiclass":
         return multi_output_config
-    if multi_output_config.wrapper_cls is not None or multi_output_config.wrapper_factory is not None:
+    if (
+        multi_output_config.wrapper_cls is not None
+        or multi_output_config.wrapper_factory is not None
+    ):
         return multi_output_config
     if multi_output_config.use_hybrid is True:
         return multi_output_config
@@ -240,14 +246,7 @@ def resolve_multi_output_model_config(
     model_config: ModelConfig,
     train_Y: Any,
 ) -> ModelConfig:
-    """Resolve automatic wrapping for targets with two or more columns.
-
-    Correlated multi-task and wide multi-fidelity models consume wide targets
-    directly and must remain a single model rather than being split into a
-    ModelList-style wrapper. Homogeneous multiclass outputs use their dedicated
-    probability-aware wrapper; Hybrid remains reserved for heterogeneous output
-    task types or explicit use.
-    """
+    """Resolve automatic wrapping for targets with two or more columns."""
 
     if _normalize_name(model_config.model_type) in {
         "kronecker",
@@ -278,18 +277,7 @@ def _resolve_default_regression_nparego_class(
     bundle: ModelBundle,
     config: AcquisitionConfig,
 ) -> AcquisitionConfig:
-    """Use bochan's regression NParEGO implementation for multi-output regression.
-
-    The short aliases ``nparego`` and ``qnparego`` historically resolve to
-    BoTorch ``qExpectedImprovement`` and rely on a separately scalarized
-    objective. For multi-output regression, default to
-    ``qMultiOutputRegressionNParEGO`` instead so a normal
-    ``RegressionLinearMCObjective`` can be supplied as the multi-output
-    preprocessing objective.
-
-    Explicit canonical acquisition names and non-regression tasks are left
-    unchanged.
-    """
+    """Use bochan's regression NParEGO implementation for multi-output regression."""
 
     if _normalize_name(config.name) not in {"nparego", "qnparego"}:
         return config
@@ -304,13 +292,7 @@ def _resolve_default_regression_nparego_class(
 
 
 def _uses_internal_nparego_baseline(config: AcquisitionConfig) -> bool:
-    """Return whether NParEGO owns baseline comparison and scalarization.
-
-    bochan's task-specific NParEGO implementations and BoTorch ``qLogNParEGO``
-    both consume ``X_baseline`` and perform Chebyshev scalarization internally.
-    Their ``objective`` argument is therefore a multi-output preprocessing
-    objective, not a scalarized EI objective, and they do not use ``best_f``.
-    """
+    """Return whether NParEGO owns baseline comparison and scalarization."""
 
     acqf_cls = config.acqf_cls
     if acqf_cls is None:
@@ -354,18 +336,7 @@ def _resolve_internal_nparego_scalarization_weights(
     config: AcquisitionConfig,
     context: DataContext,
 ) -> tuple[AcquisitionConfig, DataContext]:
-    """Route multi-objective scalarization weights into NParEGO itself.
-
-    ``prepare_multi_objective_context`` historically turns
-    ``MultiObjectiveConfig.scalarization_weights`` into a scalar
-    ``GenericMCObjective``. Self-scalarizing NParEGO classes must instead receive
-    those weights through their constructor; otherwise the objective dimension
-    is collapsed before NParEGO applies Chebyshev scalarization a second time.
-
-    The returned context contains a cloned ``MultiObjectiveConfig`` with generic
-    auto-scalarization disabled only for this internal NParEGO path. The caller's
-    original configuration is not mutated.
-    """
+    """Route multi-objective scalarization weights into NParEGO itself."""
 
     weight_keyword = _nparego_weight_keyword(config)
     mo_config = context.multi_objective
@@ -458,12 +429,7 @@ def _resolve_default_ordinal_objective(
     bundle: ModelBundle,
     config: AcquisitionConfig,
 ) -> AcquisitionConfig:
-    """Create expected-utility objective for ordinal utility acquisitions.
-
-    Explicit ``objective``, ``objective_factory`` and ``objective_config`` always
-    take precedence. Utility values are inferred as ``[0, ..., K - 1]`` from
-    ``num_classes`` or the ordinal cutpoints.
-    """
+    """Create expected-utility objective for ordinal utility acquisitions."""
 
     if str(bundle.task_type) != "ordinal":
         return config
@@ -477,7 +443,7 @@ def _resolve_default_ordinal_objective(
 
     from bochan.acquisition.objective import OrdinalExpectedUtilityMCObjective
 
-    from .factory import _infer_ordinal_likelihood, _infer_ordinal_utility_values
+    from ..factory import _infer_ordinal_likelihood, _infer_ordinal_utility_values
 
     likelihood = _infer_ordinal_likelihood(bundle.model)
     utility_values = _infer_ordinal_utility_values(bundle.model, likelihood)
@@ -493,14 +459,7 @@ def _resolve_default_nparego_objective(
     config: AcquisitionConfig,
     context: DataContext,
 ) -> AcquisitionConfig:
-    """Resolve the objective contract for NParEGO acquisitions.
-
-    Self-baselining NParEGO implementations perform Chebyshev scalarization
-    internally. For those classes, an explicit objective is preserved as a
-    multi-output preprocessing objective and no generic scalar objective is
-    injected. External legacy NParEGO classes keep the historical fallback that
-    constructs a random Chebyshev ``GenericMCObjective``.
-    """
+    """Resolve the objective contract for NParEGO acquisitions."""
 
     if _uses_internal_nparego_baseline(config):
         return config
@@ -564,7 +523,7 @@ def resolve_acquisition_defaults(
 ) -> tuple[AcquisitionConfig, DataContext]:
     """Fill acquisition-specific defaults without overwriting explicit values."""
 
-    from .factory import prepare_multi_objective_context
+    from ..factory import prepare_multi_objective_context
 
     config = _resolve_default_regression_nparego_class(bundle, config)
     config, context = _resolve_internal_nparego_scalarization_weights(config, context)
@@ -641,17 +600,15 @@ def resolve_acquisition_data_context(
     config: AcquisitionConfig,
     context: DataContext,
 ) -> DataContext:
-    """Support helper returning only the resolved ``DataContext``."""
+    """Return only the resolved data context."""
 
     _, context = resolve_acquisition_defaults(bundle, config, context)
     return context
 
 
-def __getattr__(name: str) -> Any:
-    """Lazily re-export the canonical optimizer for legacy direct imports."""
-
-    if name == "BayesianOptimizer":
-        from .optimizer import BayesianOptimizer
-
-        return BayesianOptimizer
-    raise AttributeError(name)
+__all__ = [
+    "resolve_acquisition_data_context",
+    "resolve_acquisition_defaults",
+    "resolve_llm_selected_model_config",
+    "resolve_multi_output_model_config",
+]

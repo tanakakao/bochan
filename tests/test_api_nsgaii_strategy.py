@@ -4,12 +4,12 @@ from types import SimpleNamespace
 
 import torch
 
+import bochan.api.optimizer as optimizer_module
 from bochan.api import AcquisitionConfig, BayesianOptimizer, DataContext, OptimizeConfig
-from bochan.api.acquisition_service import (
+from bochan.api.acquisition.service import (
     is_nsgaii_strategy,
     resolve_acquisition_class,
 )
-import bochan.api.optimizer as optimizer_module
 from bochan.optim.nsgaii.strategy import NSGAIIStrategy, build_nsgaii_strategy
 
 

@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from bochan.api import AcquisitionConfig, DataContext, ModelBundle, ModelConfig
-import bochan.api.engine_defaults as engine_defaults
+from bochan.api.acquisition import defaults as engine_defaults
 
 
 class _NParEGOExpectedImprovement:

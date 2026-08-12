@@ -60,14 +60,4 @@ class CompositionBoundsResolver:
         return completed
 
 
-def __getattr__(name: str) -> Any:
-    """Lazily preserve the historical optimizer import without another subclass."""
-
-    if name == "TabularBayesianOptimizer":
-        from .public_optimizer import TabularBayesianOptimizer
-
-        return TabularBayesianOptimizer
-    raise AttributeError(name)
-
-
 __all__ = ["CompositionBoundsResolver"]

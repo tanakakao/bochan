@@ -60,7 +60,7 @@ def select_best_candidate_set(
     """Collapse stray model/sample batch axes to the best ``q x d`` set.
 
     Some posterior implementations expose an internal sample or latent batch axis
-    to the candidate optimizer.  The high-level API promises one candidate set
+    to the candidate optimizer. The high-level API promises one candidate set
     when ``return_best_only=True``; this helper enforces that contract before
     tabular or HTTP adapters see the result.
     """

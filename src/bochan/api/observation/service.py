@@ -1,11 +1,11 @@
-"""Observation-aware model building shared by the canonical optimizer."""
+"""Observation-aware model building for the canonical optimizer."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from .configs import ModelBundle, ModelConfig
-from .factory import (
+from ..configs import ModelBundle, ModelConfig
+from ..factory import (
     _as_cat_dims,
     _build_single_model,
     _build_wrapper_from_submodels,
@@ -205,11 +205,6 @@ def build_objective_bundle(
         config=config,
         model_registry=model_registry,
     )
-
-
-# Internal alias retained while tests and downstream helpers migrate to the
-# service-oriented name.
-_build_partial_objective_bundle = build_objective_bundle
 
 
 __all__ = ["build_objective_bundle"]

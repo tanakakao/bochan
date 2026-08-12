@@ -1,9 +1,4 @@
-"""LLM-assisted configuration suggestions for :class:`BayesianOptimizer`.
-
-LLM planning is exposed as an explicit mixin.  The mixin adds review-first
-suggestion methods without replacing ``fit``, ``acquisition`` or ``candidate``
-at runtime; the canonical optimizer keeps ownership of those state transitions.
-"""
+"""LLM-assisted configuration suggestions for the canonical optimizer."""
 
 from __future__ import annotations
 
@@ -12,16 +7,16 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Any, Literal
 
-from .acquisition_config import AcquisitionConfig, OutcomeConstraintConfig
-from .configs import (
+from ..acquisition_config import AcquisitionConfig, OutcomeConstraintConfig
+from ..configs import (
     CandidateRepairConfig,
     InputTransformConfig,
     ModelConfig,
     MultiOutputConfig,
     ObjectiveConfig,
 )
-from .fit_config import FitConfig
-from .optimizer_api import OptimizeConfig
+from ..fit_config import FitConfig
+from ..optimizer_api import OptimizeConfig
 
 SuggestionMode = Literal["all", "model", "acquisition", "optimizer"]
 _SECTION_NAMES = ("model", "acquisition", "optimizer")
@@ -139,8 +134,6 @@ class BayesianOptimizerSuggestion:
         self.warnings = list(self.warnings or [])
 
     def to_dict(self) -> dict[str, Any]:
-        """Return a JSON-friendly representation for review and logging."""
-
         return {
             "mode": self.mode,
             "plan": _to_jsonable(self.plan),
@@ -256,9 +249,7 @@ class LLMSuggestionMixin:
         resolved_train_Y = (
             train_Y if train_Y is not None else getattr(self, "train_Y", None)
         )
-        resolved_bounds = (
-            bounds if bounds is not None else getattr(self, "bounds", None)
-        )
+        resolved_bounds = bounds if bounds is not None else getattr(self, "bounds", None)
 
         plan = plan_configs(
             goal=resolved_goal,
@@ -283,18 +274,12 @@ class LLMSuggestionMixin:
             ),
             requested_sections=sections,
             section_prompts=section_prompts,
-            existing_model_config=_safe_config_repr(
-                getattr(self, "model_config", None)
-            ),
-            existing_fit_config=_safe_config_repr(
-                getattr(self, "fit_config", None)
-            ),
+            existing_model_config=_safe_config_repr(getattr(self, "model_config", None)),
+            existing_fit_config=_safe_config_repr(getattr(self, "fit_config", None)),
             existing_acquisition_config=_safe_config_repr(
                 getattr(self, "acq_config", None)
             ),
-            existing_optimize_config=_safe_config_repr(
-                getattr(self, "opt_config", None)
-            ),
+            existing_optimize_config=_safe_config_repr(getattr(self, "opt_config", None)),
         )
         suggestion = suggestion_from_plan(plan, mode=normalized_mode)
         self.last_suggestion = suggestion
@@ -311,8 +296,6 @@ class LLMSuggestionMixin:
         optimizer_prompt: str | None = None,
         **kwargs: Any,
     ) -> BayesianOptimizerSuggestion:
-        """Suggest model, acquisition, and optimization settings together."""
-
         return self.suggest(
             "all",
             prompt=prompt,
@@ -327,8 +310,6 @@ class LLMSuggestionMixin:
         prompt: str | None = None,
         **kwargs: Any,
     ) -> BayesianOptimizerSuggestion:
-        """Suggest only ``ModelConfig`` and ``FitConfig``."""
-
         return self.suggest("model", prompt=prompt, **kwargs)
 
     def suggest_acquisition(
@@ -336,8 +317,6 @@ class LLMSuggestionMixin:
         prompt: str | None = None,
         **kwargs: Any,
     ) -> BayesianOptimizerSuggestion:
-        """Suggest only ``AcquisitionConfig`` and objective-related settings."""
-
         return self.suggest("acquisition", prompt=prompt, **kwargs)
 
     def suggest_optimizer(
@@ -345,8 +324,6 @@ class LLMSuggestionMixin:
         prompt: str | None = None,
         **kwargs: Any,
     ) -> BayesianOptimizerSuggestion:
-        """Suggest only ``OptimizeConfig`` and candidate-search settings."""
-
         return self.suggest("optimizer", prompt=prompt, **kwargs)
 
     def apply_suggestion(
@@ -386,20 +363,9 @@ class LLMSuggestionMixin:
         return self
 
 
-def install_bayesian_optimizer_llm_api(optimizer_cls: type[Any]) -> None:
-    """Deprecated no-op retained for source compatibility.
-
-    Use :class:`LLMSuggestionMixin` in the canonical optimizer instead.  No
-    methods are attached or replaced at runtime.
-    """
-
-    del optimizer_cls
-
-
 __all__ = [
     "BayesianOptimizerSuggestion",
     "LLMSuggestionMixin",
     "SuggestionMode",
-    "install_bayesian_optimizer_llm_api",
     "suggestion_from_plan",
 ]

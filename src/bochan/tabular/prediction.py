@@ -6,8 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 import numpy as np
-
-from bochan.models._posterior_utils import extract_mean_and_variance
+import torch
 
 _LABEL_RETURN_TYPES = {"labels", "label", "classes", "class_labels"}
 _DATAFRAME_RETURN_TYPES = {
@@ -116,9 +115,7 @@ def _multiclass_probabilities(model: Any, X: Any, posterior_kwargs: dict[str, An
         except TypeError:
             return method(X)
 
-    posterior = model.posterior(X, **posterior_kwargs)
-    mean, _ = extract_mean_and_variance(posterior)
-    return mean
+    return model.posterior(X, **posterior_kwargs).mean
 
 
 def _ordinal_scores(model: Any, X: Any, posterior_kwargs: dict[str, Any]) -> Any:
@@ -134,9 +131,7 @@ def _ordinal_scores(model: Any, X: Any, posterior_kwargs: dict[str, Any]) -> Any
             return method(X, **posterior_kwargs)
         except TypeError:
             return method(X)
-    posterior = model.posterior(X, **posterior_kwargs)
-    mean, _ = extract_mean_and_variance(posterior)
-    return mean
+    return model.posterior(X, **posterior_kwargs).mean
 
 
 def _ordinal_probabilities(model: Any, X: Any, posterior_kwargs: dict[str, Any]) -> Any | None:
@@ -165,12 +160,8 @@ def _single_output_labels(
     posterior_kwargs: dict[str, Any],
     binary_threshold: float,
 ) -> tuple[np.ndarray, np.ndarray | None]:
-    import torch
-
     if task_type == "binary":
-        posterior = model.posterior(X, **posterior_kwargs)
-        mean, _ = extract_mean_and_variance(posterior)
-        probabilities = mean
+        probabilities = model.posterior(X, **posterior_kwargs).mean
         if probabilities.ndim > 1 and probabilities.shape[-1] == 1:
             probabilities = probabilities.squeeze(-1)
         indices = (probabilities >= float(binary_threshold)).to(dtype=torch.long)
@@ -258,22 +249,39 @@ def _multi_output_classification_labels(
             return [array.argmax(axis=-1) for array in arrays], arrays
         tensor = torch.as_tensor(values)
         if tensor.ndim >= 3:
-            labels = [tensor[..., index, :].argmax(dim=-1).detach().cpu().numpy() for index in range(tensor.shape[-2])]
-            probs = [tensor[..., index, :].detach().cpu().numpy() for index in range(tensor.shape[-2])]
+            labels = [
+                tensor[..., index, :].argmax(dim=-1).detach().cpu().numpy()
+                for index in range(tensor.shape[-2])
+            ]
+            probs = [
+                tensor[..., index, :].detach().cpu().numpy()
+                for index in range(tensor.shape[-2])
+            ]
             return labels, probs
 
-    posterior = model.posterior(X, **posterior_kwargs)
-    mean, _ = extract_mean_and_variance(posterior)
-    tensor = torch.as_tensor(mean)
+    tensor = torch.as_tensor(model.posterior(X, **posterior_kwargs).mean)
     if tensor.ndim == 1:
         tensor = tensor.unsqueeze(-1)
     labels: list[np.ndarray] = []
     for index in range(tensor.shape[-1]):
         values = tensor[..., index]
         if task_type == "binary":
-            labels.append((values >= binary_threshold).to(dtype=torch.long).detach().cpu().numpy())
+            labels.append(
+                (values >= binary_threshold)
+                .to(dtype=torch.long)
+                .detach()
+                .cpu()
+                .numpy()
+            )
         else:
-            labels.append(values.round().to(dtype=torch.long).clamp_min(0).detach().cpu().numpy())
+            labels.append(
+                values.round()
+                .to(dtype=torch.long)
+                .clamp_min(0)
+                .detach()
+                .cpu()
+                .numpy()
+            )
     return labels, [None] * len(labels)
 
 

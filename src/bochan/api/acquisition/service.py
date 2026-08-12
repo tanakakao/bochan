@@ -15,10 +15,7 @@ from ..engine import (
     _resolve_objective_config_n_w_from_input_transform,
 )
 from ..feasibility_defaults import resolve_outcome_constraint_config
-from ..llm_selected_acquisition import (
-    is_llm_selected_acquisition,
-    resolve_llm_selected_acquisition,
-)
+from ..llm import is_llm_selected_acquisition, resolve_llm_selected_acquisition
 from .classification import (
     build_multiclass_objective,
     build_ordinal_objective,

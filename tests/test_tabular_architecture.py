@@ -14,9 +14,7 @@ def test_tabular_public_optimizer_has_one_canonical_entry_point() -> None:
 
 def test_composition_bounds_is_component_not_optimizer_layer() -> None:
     assert "TabularBayesianOptimizer" not in vars(composition_bounds_optimizer)
-    assert composition_bounds_optimizer.TabularBayesianOptimizer is (
-        tabular.TabularBayesianOptimizer
-    )
+    assert not hasattr(composition_bounds_optimizer, "TabularBayesianOptimizer")
     assert all(
         base.__module__ != "bochan.tabular.composition_bounds_optimizer"
         for base in tabular.TabularBayesianOptimizer.__mro__

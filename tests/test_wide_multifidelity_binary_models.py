@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import torch
 import pytest
+import torch
 from botorch.models.transforms.input import Normalize
 
 from bochan.acquisition.binary.active_learning import (
@@ -9,7 +9,7 @@ from bochan.acquisition.binary.active_learning import (
     qBinaryPredictiveEntropy,
 )
 from bochan.api import InputTransformConfig, ModelConfig
-from bochan.api.engine_defaults import resolve_multi_output_model_config
+from bochan.api.acquisition.defaults import resolve_multi_output_model_config
 from bochan.api.factory import build_model
 from bochan.api.model_registry import MODEL_REGISTRY
 from bochan.models.classification.binary.base import (

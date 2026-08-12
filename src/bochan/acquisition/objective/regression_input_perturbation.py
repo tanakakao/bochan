@@ -6,8 +6,8 @@ from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 
 from .regression import (
     MultiOutputRegressionInputPerturbationObjective as _BasePerturbationObjective,
-    RiskType,
 )
+from .regression import RiskType
 
 
 class MultiOutputRegressionInputPerturbationObjective(_BasePerturbationObjective):

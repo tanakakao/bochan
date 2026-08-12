@@ -43,11 +43,15 @@ jobs:
         run: |
           ruff check \
             src/bochan/api/__init__.py \
-            src/bochan/api/acquisition_service.py \
-            src/bochan/api/candidate_output.py \
+            src/bochan/api/acquisition/__init__.py \
+            src/bochan/api/acquisition/service.py \
+            src/bochan/api/candidate/__init__.py \
+            src/bochan/api/candidate/output.py \
             src/bochan/api/engine_defaults.py \
             src/bochan/api/llm_selected_acquisition.py \
-            src/bochan/api/observation_service.py \
+            src/bochan/api/observation/__init__.py \
+            src/bochan/api/observation/state.py \
+            src/bochan/api/observation/service.py \
             src/bochan/api/optimizer.py \
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/composition_bounds_optimizer.py \

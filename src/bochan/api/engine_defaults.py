@@ -645,3 +645,13 @@ def resolve_acquisition_data_context(
 
     _, context = resolve_acquisition_defaults(bundle, config, context)
     return context
+
+
+def __getattr__(name: str) -> Any:
+    """Lazily re-export the canonical optimizer for legacy direct imports."""
+
+    if name == "BayesianOptimizer":
+        from .optimizer import BayesianOptimizer
+
+        return BayesianOptimizer
+    raise AttributeError(name)

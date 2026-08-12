@@ -24,7 +24,7 @@ from .ordinal_rank_labels import (
     resolve_acquisition_ordinal_ranks,
     resolve_ordinal_rank_config,
 )
-from .prediction_labels import (
+from .prediction import (
     _DATAFRAME_RETURN_TYPES,
     _LABEL_RETURN_TYPES,
     _prediction_tensor_and_index,

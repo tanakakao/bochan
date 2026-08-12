@@ -11,13 +11,13 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from .acquisition_service import (
+from .acquisition.service import (
     build_acquisition,
     is_nsgaii_strategy,
     resolve_acquisition,
     resolve_acquisition_class,
 )
-from .candidate_output import select_best_candidate_set
+from .candidate.output import select_best_candidate_set
 from .configs import (
     AcquisitionConfig,
     CandidateResult,
@@ -42,7 +42,7 @@ from .information_acquisition_defaults import resolve_information_optimizer_defa
 from .llm_candidate_explanation import LLMCandidateExplanationMixin
 from .llm_suggestion import LLMSuggestionMixin
 from .observation import ExperimentFailureConfig, ObservationData
-from .observation_engine import _build_partial_objective_bundle
+from .observation.service import build_objective_bundle
 from .optimizer_api import optimize_candidates, resolve_optimizer_from_cat_dims
 
 
@@ -143,7 +143,7 @@ class BayesianOptimizer(
         if self.data_context is not None:
             self._resolve_data_context(self.data_context)
 
-        self.bundle = _build_partial_objective_bundle(
+        self.bundle = build_objective_bundle(
             train_X=objective_X,
             train_Y=objective_Y,
             config=self.model_config,

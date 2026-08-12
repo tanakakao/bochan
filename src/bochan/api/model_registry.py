@@ -248,7 +248,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "gamma_deepkernel": ("bochan.models.regression.gamma.deep", "DeepKernelGammaMixedGPModel"),
             "gamma_saas": ("bochan.models.regression.gamma.high_dim", "SaasGammaMixedGPModel"),
             "gamma_pca": ("bochan.models.regression.gamma.high_dim", "PCAGammaMixedGPModel"),
-            "gamma_rembo": ("bochan.models.regression.gamma.high_dim", "REMBOMixedGammaGPModel"),
+            "gamma_rembo": ("bochan.models.regression.gamma.high_dim", "REMBOGammaMixedGPModel"),
             "gamma_rrp": ("bochan.models.regression.gamma.robust", "RobustRelevancePursuitGammaMixedGPModel"),
             "gamma_hetero": ("bochan.models.regression.gamma.robust", "HeteroscedasticGammaMixedGPModel"),
             "poisson_base": ("bochan.models.regression.count.poisson.base", "PoissonMixedGPModel"),

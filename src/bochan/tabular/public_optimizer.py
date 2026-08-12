@@ -1,8 +1,8 @@
 """Canonical pandas / numpy adapter for :class:`bochan.api.BayesianOptimizer`.
 
-The legacy composition optimizer chain remains an internal implementation detail
-for now.  Public tabular behavior is composed explicitly in this class instead
-of being installed by ``bochan.tabular`` import-time monkey patches.
+Tabular-only concerns are composed explicitly here. Composition bound completion
+is delegated to a stateless resolver rather than represented by another optimizer
+subclass in the inheritance chain.
 """
 
 from __future__ import annotations
@@ -11,13 +11,15 @@ from collections.abc import Mapping
 from typing import Any
 
 from .builders import UNSET
-from .composition_bounds_optimizer import (
-    TabularBayesianOptimizer as _CompositionTabularBayesianOptimizer,
+from .composition_bounds_optimizer import CompositionBoundsResolver
+from .element_constraint_composition_optimizer import (
+    TabularBayesianOptimizer as _ElementConstraintTabularBayesianOptimizer,
 )
 from .multi_output_categories import (
     _extract_output_category_maps,
     _merge_target_category_metadata,
 )
+from .observation_optimizer import ObservationTabularMixin
 from .ordinal_rank_labels import (
     resolve_acquisition_ordinal_ranks,
     resolve_ordinal_rank_config,
@@ -30,8 +32,13 @@ from .prediction_labels import (
 )
 
 
-class TabularBayesianOptimizer(_CompositionTabularBayesianOptimizer):
+class TabularBayesianOptimizer(
+    ObservationTabularMixin,
+    _ElementConstraintTabularBayesianOptimizer,
+):
     """Single public tabular optimizer delegating BO semantics to the core API."""
+
+    composition_bounds_resolver = CompositionBoundsResolver()
 
     def __init__(
         self,
@@ -73,6 +80,18 @@ class TabularBayesianOptimizer(_CompositionTabularBayesianOptimizer):
             fit_config=fit_config,
             **kwargs,
         )
+
+    def _expanded_bounds(self, bounds: Any, transformed: Any) -> Any:
+        """Complete transformed single-site composition bounds."""
+
+        expanded = super()._expanded_bounds(bounds, transformed)
+        return self.composition_bounds_resolver.complete(expanded, transformed)
+
+    def _expanded_multi_site_bounds(self, bounds: Any, transformed: Any) -> Any:
+        """Complete transformed multi-site composition bounds."""
+
+        expanded = super()._expanded_multi_site_bounds(bounds, transformed)
+        return self.composition_bounds_resolver.complete(expanded, transformed)
 
     def candidate(
         self,

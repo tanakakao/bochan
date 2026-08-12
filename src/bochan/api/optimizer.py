@@ -33,8 +33,7 @@ from .engine import (
 from .experiment_failure import attach_observation_state
 from .factory import fit_model
 from .information_acquisition_defaults import resolve_information_optimizer_defaults
-from .llm_candidate_explanation import LLMCandidateExplanationMixin
-from .llm_suggestion import LLMSuggestionMixin
+from .llm import LLMCandidateExplanationMixin, LLMSuggestionMixin
 from .observation import ExperimentFailureConfig, ObservationData
 from .observation.service import build_objective_bundle
 from .optimizer_api import optimize_candidates, resolve_optimizer_from_cat_dims

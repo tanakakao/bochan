@@ -19,29 +19,23 @@ from ..engine import (
     _input_transform_n_w_from_bundle,
     _resolve_objective_config_n_w_from_input_transform,
 )
-from ..engine_defaults import resolve_acquisition_defaults
 from ..feasibility_defaults import resolve_outcome_constraint_config
 from ..llm_selected_acquisition import (
     is_llm_selected_acquisition,
     resolve_llm_selected_acquisition,
 )
+from .defaults import resolve_acquisition_defaults
 
 
 def _normalize_name(value: Any) -> str:
-    """Return a separator-free lower-case name."""
-
     return "".join(character for character in str(value).lower() if character.isalnum())
 
 
 def is_nsgaii_strategy(config: AcquisitionConfig) -> bool:
-    """Return whether acquisition-side strategy selection requests NSGA-II."""
-
     return _normalize_name(config.name) in {"nsgaii", "nsga2"}
 
 
 def infer_bundle_multi_output(bundle: ModelBundle) -> bool:
-    """Infer multi-output status for wrappers and correlated multitask models."""
-
     if bool(bundle.metadata.get("multi_output", False)):
         return True
     try:
@@ -51,8 +45,6 @@ def infer_bundle_multi_output(bundle: ModelBundle) -> bool:
 
 
 def _is_vector_strategy(config: AcquisitionConfig) -> bool:
-    """Return whether an acquisition consumes vector-valued objective samples."""
-
     name = _normalize_name(config.name)
     cls_name = _normalize_name(getattr(config.acqf_cls, "__name__", ""))
     combined = f"{name}{cls_name}"
@@ -78,8 +70,6 @@ def resolve_acquisition_class(
     optimizer: Any,
     config: AcquisitionConfig,
 ) -> AcquisitionConfig:
-    """Resolve contextual acquisition names against the fitted model."""
-
     if is_llm_selected_acquisition(config):
         config = resolve_llm_selected_acquisition(optimizer, config)
     if config.acqf_cls is not None or config.acqf_factory is not None:
@@ -117,8 +107,6 @@ def resolve_input_perturbation_objective(
     bundle: ModelBundle,
     config: AcquisitionConfig,
 ) -> AcquisitionConfig:
-    """Resolve one-to-many input-perturbation objective defaults explicitly."""
-
     if (
         config.objective is not None
         or config.objective_factory is not None
@@ -190,8 +178,6 @@ def resolve_acquisition(
     config: AcquisitionConfig,
     context: DataContext,
 ) -> tuple[AcquisitionConfig, DataContext]:
-    """Resolve class, perturbation semantics and automatic data defaults."""
-
     resolved = resolve_acquisition_class(optimizer, config)
     resolved = resolve_input_perturbation_objective(optimizer.bundle, resolved)
     resolved, context = resolve_acquisition_defaults(
@@ -212,8 +198,6 @@ def build_objective(
     config: AcquisitionConfig,
     data_context: DataContext | None = None,
 ) -> Any | None:
-    """Build an objective through the canonical public API path."""
-
     if (
         config.objective is not None
         or config.objective_factory is not None
@@ -248,8 +232,6 @@ def build_acquisition(
     config: AcquisitionConfig,
     data_context: DataContext | None = None,
 ) -> Any:
-    """Construct an acquisition through the canonical public API path."""
-
     context = data_context or DataContext()
     context = _factory.prepare_multi_objective_context(bundle, context, config)
     if config.acqf_factory is not None:

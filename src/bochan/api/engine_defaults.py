@@ -1,4 +1,4 @@
-"""Automatic defaults for the high-level Bayesian optimizer."""
+"""Pure automatic-default helpers for the high-level Bayesian optimizer."""
 
 from __future__ import annotations
 
@@ -22,14 +22,10 @@ from .configs import (
     ModelBundle,
     ModelConfig,
     MultiOutputConfig,
-    OptimizeConfig,
 )
-from .engine import BayesianOptimizer as _BaseBayesianOptimizer
-from .engine import _resolve_objective_config_n_w_from_input_transform
 from .information_acquisition_defaults import (
     is_information_acquisition,
     resolve_information_acquisition_defaults,
-    resolve_information_optimizer_defaults,
 )
 
 
@@ -649,96 +645,3 @@ def resolve_acquisition_data_context(
 
     _, context = resolve_acquisition_defaults(bundle, config, context)
     return context
-
-
-class BayesianOptimizer(_BaseBayesianOptimizer):
-    """High-level optimizer with model and acquisition defaults inferred from data."""
-
-    def fit(
-        self,
-        train_X: Any,
-        train_Y: Any,
-        *,
-        model_config: ModelConfig | None = None,
-        fit_config: FitConfig | None = None,
-    ) -> BayesianOptimizer:
-        base_model_config = model_config or self.model_config
-        base_fit_config = fit_config or self.fit_config
-        llm_plan = None
-        base_model_config, base_fit_config, llm_plan = resolve_llm_selected_model_config(
-            base_model_config,
-            train_X,
-            train_Y,
-            bounds=self.bounds,
-            fit_config=base_fit_config,
-        )
-        resolved_model_config = resolve_multi_output_model_config(
-            base_model_config,
-            train_Y,
-        )
-        super().fit(
-            train_X,
-            train_Y,
-            model_config=resolved_model_config,
-            fit_config=base_fit_config,
-        )
-        if llm_plan is not None:
-            self.llm_plan = llm_plan
-            if self.bundle is not None:
-                self.bundle.metadata["llm_plan"] = llm_plan
-                self.bundle.metadata["llm_selected_model_config"] = resolved_model_config
-        return self
-
-    def _prepare_default_acquisition_context(
-        self,
-        acq_config: AcquisitionConfig,
-        data_context: DataContext | None,
-    ) -> tuple[AcquisitionConfig, DataContext]:
-        self._check_fitted()
-        base_context = self._resolve_data_context(data_context)
-        context = replace(base_context, extra=dict(base_context.extra))
-        resolved_config = self._resolve_acquisition_config(acq_config)
-        resolved_config = _resolve_objective_config_n_w_from_input_transform(
-            acq_config=resolved_config,
-            bundle=self.bundle,
-        )
-        resolved_config, context = resolve_acquisition_defaults(
-            self.bundle,
-            resolved_config,
-            context,
-        )
-        return resolved_config, context
-
-    def acquisition(
-        self,
-        acq_config: AcquisitionConfig,
-        *,
-        data_context: DataContext | None = None,
-    ) -> Any:
-        resolved_config, context = self._prepare_default_acquisition_context(
-            acq_config,
-            data_context,
-        )
-        return super().acquisition(resolved_config, data_context=context)
-
-    def candidate(
-        self,
-        acq_config: AcquisitionConfig,
-        opt_config: OptimizeConfig,
-        *,
-        data_context: DataContext | None = None,
-        bounds: Any | None = None,
-        return_result: bool = False,
-    ) -> Any:
-        resolved_config, context = self._prepare_default_acquisition_context(
-            acq_config,
-            data_context,
-        )
-        opt_config = resolve_information_optimizer_defaults(resolved_config, opt_config)
-        return super().candidate(
-            resolved_config,
-            opt_config,
-            data_context=context,
-            bounds=bounds,
-            return_result=return_result,
-        )

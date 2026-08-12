@@ -1,4 +1,8 @@
-"""Complete missing bounds for composition-enabled tabular workflows."""
+"""Composition-aware transformed-bound completion helpers.
+
+The bounds logic is a stateless component. It no longer defines another
+``TabularBayesianOptimizer`` subclass in the public adapter inheritance chain.
+"""
 
 from __future__ import annotations
 
@@ -7,24 +11,20 @@ from typing import Any
 
 import numpy as np
 
-from .element_constraint_composition_optimizer import (
-    TabularBayesianOptimizer as _ElementConstraintTabularBayesianOptimizer,
-)
-from .observation_optimizer import ObservationTabularMixin
 
-
-class TabularBayesianOptimizer(
-    ObservationTabularMixin,
-    _ElementConstraintTabularBayesianOptimizer,
-):
-    """Composition- and observation-aware internal tabular implementation."""
+class CompositionBoundsResolver:
+    """Complete missing transformed bounds from observed transformed columns."""
 
     @staticmethod
-    def _mapping_contains_column(bounds: Mapping[Any, Any], column: Any) -> bool:
+    def mapping_contains_column(bounds: Mapping[Any, Any], column: Any) -> bool:
+        """Return whether a bound exists using either native or string keys."""
+
         return column in bounds or str(column) in bounds
 
     @staticmethod
-    def _infer_column_bound(series: Any, column: Any) -> list[float]:
+    def infer_column_bound(series: Any, column: Any) -> list[float]:
+        """Infer one numeric or categorical transformed-column bound."""
+
         import pandas as pd
 
         if pd.api.types.is_numeric_dtype(series):
@@ -44,31 +44,30 @@ class TabularBayesianOptimizer(
             )
         return [0.0, float(unique_count - 1)]
 
-    @classmethod
-    def _complete_transformed_bounds(
-        cls,
-        bounds: Any,
-        transformed: Any,
-    ) -> Any:
+    def complete(self, bounds: Any, transformed: Any) -> Any:
+        """Fill only transformed columns that are absent from mapping bounds."""
+
         if not isinstance(bounds, Mapping):
             return bounds
         completed = dict(bounds)
         for column in transformed.columns:
-            if cls._mapping_contains_column(completed, column):
+            if self.mapping_contains_column(completed, column):
                 continue
-            completed[column] = cls._infer_column_bound(
+            completed[column] = self.infer_column_bound(
                 transformed.loc[:, column],
                 column,
             )
         return completed
 
-    def _expanded_bounds(self, bounds: Any, transformed: Any) -> Any:
-        expanded = super()._expanded_bounds(bounds, transformed)
-        return self._complete_transformed_bounds(expanded, transformed)
 
-    def _expanded_multi_site_bounds(self, bounds: Any, transformed: Any) -> Any:
-        expanded = super()._expanded_multi_site_bounds(bounds, transformed)
-        return self._complete_transformed_bounds(expanded, transformed)
+def __getattr__(name: str) -> Any:
+    """Lazily preserve the historical optimizer import without another subclass."""
+
+    if name == "TabularBayesianOptimizer":
+        from .public_optimizer import TabularBayesianOptimizer
+
+        return TabularBayesianOptimizer
+    raise AttributeError(name)
 
 
-__all__ = ["TabularBayesianOptimizer"]
+__all__ = ["CompositionBoundsResolver"]

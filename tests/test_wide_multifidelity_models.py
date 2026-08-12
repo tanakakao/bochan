@@ -10,9 +10,9 @@ from bochan.api import (
     DataContext,
     ModelConfig,
 )
+from bochan.api.acquisition.defaults import resolve_multi_output_model_config
 from bochan.api.automatic_best_f import compute_best_f
 from bochan.api.configs import ModelBundle
-from bochan.api.engine_defaults import resolve_multi_output_model_config
 from bochan.api.factory import build_model
 from bochan.api.model_registry import MODEL_REGISTRY
 from bochan.models.regression.gaussian import (

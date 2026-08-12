@@ -22,7 +22,7 @@ from ..llm_selected_acquisition import (
 from .classification import (
     build_multiclass_objective,
     build_ordinal_objective,
-    maybe_disable_objective_shape_check,
+    prepare_objective_instance,
 )
 from .defaults import resolve_acquisition_defaults
 
@@ -208,7 +208,7 @@ def build_objective(
             config=config,
             data_context=data_context,
         )
-        return maybe_disable_objective_shape_check(objective, config)
+        return prepare_objective_instance(objective, config)
 
     task_type = str(bundle.task_type)
     if task_type == "multiclass":
@@ -224,7 +224,7 @@ def build_objective(
             config=config,
             data_context=data_context,
         )
-    return maybe_disable_objective_shape_check(objective, config)
+    return prepare_objective_instance(objective, config)
 
 
 def build_acquisition(

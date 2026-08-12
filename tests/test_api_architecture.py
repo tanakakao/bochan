@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import bochan.api as api
-from bochan.api import acquisition_service, engine, factory, optimizer
+from bochan.api import acquisition_service, engine, engine_defaults, factory, optimizer
 
 
 def test_public_bayesian_optimizer_has_one_canonical_definition() -> None:
     assert api.BayesianOptimizer is optimizer.BayesianOptimizer
     assert api.BayesianOptimizer.__module__ == "bochan.api.optimizer"
     assert issubclass(api.BayesianOptimizer, engine.BayesianOptimizer)
+
+
+def test_engine_defaults_is_helper_only() -> None:
+    assert "BayesianOptimizer" not in vars(engine_defaults)
+    assert callable(engine_defaults.resolve_acquisition_defaults)
+    assert callable(engine_defaults.resolve_multi_output_model_config)
 
 
 def test_api_import_does_not_replace_engine_or_factory_symbols() -> None:

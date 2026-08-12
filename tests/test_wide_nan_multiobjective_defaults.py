@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from bochan.api import AcquisitionConfig, engine_defaults
+from bochan.api.acquisition import defaults as acquisition_defaults
 from bochan.api.automatic_multiobjective import (
     make_default_ref_point,
     make_partitioning,
@@ -90,9 +90,6 @@ def test_reference_point_requires_each_output_to_have_an_observation() -> None:
         make_default_ref_point(values)
 
 
-def test_public_api_installs_nan_safe_engine_default_references() -> None:
-    # Importing the public AcquisitionConfig installs support for the
-    # callables that engine_defaults imported by name.
-    assert AcquisitionConfig is not None
-    assert engine_defaults.make_default_ref_point is make_default_ref_point
-    assert engine_defaults.make_partitioning is make_partitioning
+def test_acquisition_defaults_reference_nan_safe_multiobjective_helpers_directly() -> None:
+    assert acquisition_defaults.make_default_ref_point is make_default_ref_point
+    assert acquisition_defaults.make_partitioning is make_partitioning

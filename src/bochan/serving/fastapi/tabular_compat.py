@@ -118,7 +118,7 @@ def bind_category_metadata(
 ) -> None:
     """Bind explicit target metadata to a fitted optimizer and its bundle."""
 
-    setattr(optimizer, "target_category_metadata", metadata)
+    optimizer.target_category_metadata = metadata
     bundle = getattr(optimizer, "bundle", None)
     bundle_metadata = getattr(bundle, "metadata", None)
     if isinstance(bundle_metadata, dict):

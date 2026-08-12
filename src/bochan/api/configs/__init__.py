@@ -1,13 +1,14 @@
-"""Configuration objects for the high-level bochan API."""
+"""Base configuration dataclasses for the high-level bochan API."""
 
-from .acquisition import AcquisitionConfig, ConstraintOperator, OutcomeConstraintConfig
 from .base import (
+    AcquisitionConfig,
     AutoStandardizeOutcomeTransform,
     CandidateRepairConfig,
     CandidateResult,
     DataContext,
     Direction,
     FinalPriority,
+    FitConfig,
     InequalitySense,
     InputTransformConfig,
     InputType,
@@ -18,7 +19,8 @@ from .base import (
     MultiOutputConfig,
     ObjectiveConfig,
     ObjectiveMode,
-    OptimizerName as BaseOptimizerName,
+    OptimizeConfig,
+    OptimizerName,
     OutputConfig,
     OutputConfigLike,
     PredictionResult,
@@ -29,20 +31,12 @@ from .base import (
     build_outcome_transform_for_task,
     is_regression_outcome_task,
 )
-from .fit import FitConfig
-from .optimize import (
-    OptimizeConfig,
-    resolve_optimizer_from_cat_dims,
-    uses_mixed_fixed_features,
-)
 
 __all__ = [
     "AcquisitionConfig",
     "AutoStandardizeOutcomeTransform",
-    "BaseOptimizerName",
     "CandidateRepairConfig",
     "CandidateResult",
-    "ConstraintOperator",
     "DataContext",
     "Direction",
     "FinalPriority",
@@ -57,10 +51,10 @@ __all__ = [
     "MultiOutputConfig",
     "ObjectiveConfig",
     "ObjectiveMode",
-    "OutcomeConstraintConfig",
+    "OptimizeConfig",
+    "OptimizerName",
     "OutputConfig",
     "OutputConfigLike",
-    "OptimizeConfig",
     "PredictionResult",
     "REGRESSION_OUTCOME_TASK_TYPES",
     "SparseScore",
@@ -68,6 +62,4 @@ __all__ = [
     "TaskType",
     "build_outcome_transform_for_task",
     "is_regression_outcome_task",
-    "resolve_optimizer_from_cat_dims",
-    "uses_mixed_fixed_features",
 ]

@@ -14,25 +14,21 @@ from bochan.inspection import (
 )
 
 from .acquisition import build_acquisition
-from .config import (
-    AcquisitionConfig,
+from .acquisition_config import AcquisitionConfig, OutcomeConstraintConfig
+from .acquisition_registry import available_acqf_names, resolve_acqf_cls
+from .configs import (
     AutoStandardizeOutcomeTransform,
     CandidateRepairConfig,
     CandidateResult,
     DataContext,
-    FitConfig,
     InputTransformConfig,
     ModelBundle,
     ModelConfig,
     MultiObjectiveConfig,
     MultiOutputConfig,
     ObjectiveConfig,
-    OutcomeConstraintConfig,
     OutputConfig,
-    OptimizeConfig,
     PredictionResult,
-    resolve_optimizer_from_cat_dims,
-    uses_mixed_fixed_features,
 )
 from .cross_validation import (
     CrossValidationConfig,
@@ -51,15 +47,15 @@ from .factory import (
     prepare_multi_objective_context,
     resolve_model_cls,
 )
+from .fit_config import FitConfig
+from .model_registry import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
 from .observation import ExperimentFailureConfig, ObservationData
 from .optimizer import BayesianOptimizer
-from .optimizer_api import optimize_candidates
-from .registry import (
-    DEFAULT_MODEL_REGISTRY,
-    MODEL_REGISTRY,
-    LazyModelRegistry,
-    available_acqf_names,
-    resolve_acqf_cls,
+from .optimizer_api import (
+    OptimizeConfig,
+    optimize_candidates,
+    resolve_optimizer_from_cat_dims,
+    uses_mixed_fixed_features,
 )
 from .study import CandidateBatch, StudySnapshot, StudySuggestion, Trial, TrialState
 from .study_controls import (

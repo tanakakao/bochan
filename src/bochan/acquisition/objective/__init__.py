@@ -46,9 +46,6 @@ from .regression import (
     MultiOutputRegressionInputPerturbationObjective,
     make_regression_scalar_callable,
 )
-from .regression_perturbation import (
-    configure_regression_perturbation_objective,
-)
 
 from .hybrid import (
     Direction,
@@ -68,9 +65,6 @@ from .outcome_constraints import (
     make_outcome_constraint,
     make_outcome_constraints,
 )
-
-
-configure_regression_perturbation_objective()
 
 
 __all__ = [

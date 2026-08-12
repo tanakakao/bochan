@@ -2,334 +2,451 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from typing import Any
 
-import numpy as np
 import torch
+from torch import Tensor
 
-_LABEL_RETURN_TYPES = {"labels", "label", "classes", "class_labels"}
+from .converter import dataframe_to_tensors
+
+_CLASSIFICATION_TASK_TYPES = {"binary", "multiclass", "ordinal"}
+_LABEL_RETURN_TYPES = {
+    "label",
+    "labels",
+    "predicted_label",
+    "predicted_labels",
+    "classification_labels",
+}
 _DATAFRAME_RETURN_TYPES = {
     "dataframe",
     "df",
-    "mean",
-    "posterior_mean",
-    "posterior mean",
+    "mean_variance_dataframe",
+    "mean_variance_df",
 }
 
 
-def _task_type(optimizer: Any) -> str:
-    bundle = getattr(optimizer.bo, "bundle", None)
-    if bundle is not None:
-        return str(bundle.task_type)
-    return str(getattr(optimizer.model_config, "task_type", "regression"))
+def _call_with_fallbacks(calls: Sequence[Callable[[], Any]]) -> Any:
+    """Call model accessors while tolerating optional keyword differences."""
+
+    last_error: TypeError | None = None
+    for call in calls:
+        try:
+            return call()
+        except TypeError as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("No prediction accessor call was provided.")
 
 
-def _model_type(config: Any) -> str:
-    if isinstance(config, Mapping):
-        return str(config.get("model_type", "base"))
-    return str(getattr(config, "model_type", "base"))
-
-
-def _normalize_name(value: Any) -> str:
-    return "".join(character for character in str(value).lower() if character.isalnum())
-
-
-def _classification_output_configs(optimizer: Any) -> list[Any]:
-    bundle = getattr(optimizer.bo, "bundle", None)
-    metadata = getattr(bundle, "metadata", {}) if bundle is not None else {}
-    configured = metadata.get("output_configs")
-    if configured is not None:
-        return list(configured)
-
-    multi_output = getattr(optimizer.model_config, "multi_output_config", None)
-    if multi_output is None:
-        return []
-    if isinstance(multi_output, Mapping):
-        output_configs = multi_output.get("output_configs")
-    else:
-        output_configs = getattr(multi_output, "output_configs", None)
-    return list(output_configs or ())
-
-
-def _prediction_tensor_and_index(optimizer: Any, data: Any) -> tuple[Any, Any | None]:
-    import pandas as pd
-
-    original_index = data.index if isinstance(data, pd.DataFrame) else None
-    X, _, _, _ = optimizer._prepare_prediction(data)
-    return X, original_index
-
-
-def _category_maps(optimizer: Any) -> dict[Any, dict[Any, int]]:
-    dataset = getattr(optimizer, "dataset", None)
-    if dataset is None:
-        return {}
-    return dict(getattr(dataset, "target_category_maps", None) or {})
-
-
-def _target_names(optimizer: Any, n_outputs: int) -> list[Any]:
-    dataset = getattr(optimizer, "dataset", None)
-    names = list(getattr(dataset, "target_names", ()) or ()) if dataset is not None else []
-    if len(names) >= n_outputs:
-        return names[:n_outputs]
-    return [*names, *[f"output_{index}" for index in range(len(names), n_outputs)]]
-
-
-def _inverse_category_map(
-    category_maps: Mapping[Any, Mapping[Any, int]],
-    output_name: Any,
-) -> dict[int, Any] | None:
-    category_map = category_maps.get(output_name)
-    if category_map is None:
-        category_map = category_maps.get(str(output_name))
-    if category_map is None:
-        return None
-    return {int(index): category for category, index in category_map.items()}
-
-
-def _decode_indices(
-    indices: np.ndarray,
-    inverse_map: Mapping[int, Any] | None,
-) -> np.ndarray:
-    values = np.asarray(indices, dtype=int)
-    if inverse_map is None:
-        return values
-    return np.asarray(
-        [inverse_map.get(int(index), int(index)) for index in values],
-        dtype=object,
+def _call_output_accessor(
+    fn: Callable[..., Any],
+    X: Tensor,
+    *,
+    output_index: int,
+    kwargs: Mapping[str, Any],
+) -> Any:
+    call_kwargs = dict(kwargs)
+    return _call_with_fallbacks(
+        [
+            lambda: fn(X=X, output_indices=[output_index], **call_kwargs),
+            lambda: fn(X, output_indices=[output_index], **call_kwargs),
+            lambda: fn(X=X, output_indices=[output_index]),
+            lambda: fn(X, output_indices=[output_index]),
+        ]
     )
 
 
-def _multiclass_probabilities(model: Any, X: Any, posterior_kwargs: dict[str, Any]) -> Any:
-    for method_name in (
-        "class_probs",
-        "predict_proba",
-        "predict_probabilities",
-        "class_probabilities",
-    ):
-        method = getattr(model, method_name, None)
-        if method is None:
-            continue
-        try:
-            return method(X, **posterior_kwargs)
-        except TypeError:
-            return method(X)
-
-    return model.posterior(X, **posterior_kwargs).mean
-
-
-def _ordinal_scores(model: Any, X: Any, posterior_kwargs: dict[str, Any]) -> Any:
-    for method_name in (
-        "expected_utility",
-        "ordinal_expected_utility",
-        "predict_scores",
-    ):
-        method = getattr(model, method_name, None)
-        if method is None:
-            continue
-        try:
-            return method(X, **posterior_kwargs)
-        except TypeError:
-            return method(X)
-    return model.posterior(X, **posterior_kwargs).mean
-
-
-def _ordinal_probabilities(model: Any, X: Any, posterior_kwargs: dict[str, Any]) -> Any | None:
-    for method_name in (
-        "class_probs",
-        "ordinal_probs",
-        "predict_proba",
-        "predict_probabilities",
-        "class_probabilities",
-    ):
-        method = getattr(model, method_name, None)
-        if method is None:
-            continue
-        try:
-            return method(X, **posterior_kwargs)
-        except TypeError:
-            return method(X)
-    return None
-
-
-def _single_output_labels(
+def _call_single_accessor(
+    fn: Callable[..., Any],
+    X: Tensor,
     *,
-    task_type: str,
-    model: Any,
-    X: Any,
-    posterior_kwargs: dict[str, Any],
-    binary_threshold: float,
-) -> tuple[np.ndarray, np.ndarray | None]:
-    if task_type == "binary":
-        probabilities = model.posterior(X, **posterior_kwargs).mean
-        if probabilities.ndim > 1 and probabilities.shape[-1] == 1:
-            probabilities = probabilities.squeeze(-1)
-        indices = (probabilities >= float(binary_threshold)).to(dtype=torch.long)
-        return indices.detach().cpu().numpy(), probabilities.detach().cpu().numpy()
-
-    if task_type == "multiclass":
-        probabilities = _multiclass_probabilities(model, X, posterior_kwargs)
-        if isinstance(probabilities, Sequence) and not hasattr(probabilities, "shape"):
-            probabilities = probabilities[0]
-        tensor = torch.as_tensor(probabilities)
-        if tensor.ndim == 1:
-            indices = tensor.to(dtype=torch.long)
-            return indices.detach().cpu().numpy(), None
-        indices = tensor.argmax(dim=-1)
-        return indices.detach().cpu().numpy(), tensor.detach().cpu().numpy()
-
-    if task_type == "ordinal":
-        probabilities = _ordinal_probabilities(model, X, posterior_kwargs)
-        if probabilities is not None:
-            if isinstance(probabilities, Sequence) and not hasattr(probabilities, "shape"):
-                probabilities = probabilities[0]
-            tensor = torch.as_tensor(probabilities)
-            if tensor.ndim > 1 and tensor.shape[-1] > 1:
-                indices = tensor.argmax(dim=-1)
-                return indices.detach().cpu().numpy(), tensor.detach().cpu().numpy()
-
-        score = torch.as_tensor(_ordinal_scores(model, X, posterior_kwargs))
-        if score.ndim > 1 and score.shape[-1] == 1:
-            score = score.squeeze(-1)
-        indices = score.round().to(dtype=torch.long).clamp_min(0)
-        return indices.detach().cpu().numpy(), None
-
-    raise ValueError(f"Unsupported classification task_type={task_type!r}.")
+    kwargs: Mapping[str, Any],
+) -> Any:
+    call_kwargs = dict(kwargs)
+    return _call_with_fallbacks(
+        [
+            lambda: fn(X=X, **call_kwargs),
+            lambda: fn(X, **call_kwargs),
+            lambda: fn(X=X),
+            lambda: fn(X),
+        ]
+    )
 
 
-def _wrapper_models(model: Any) -> list[Any]:
-    models = getattr(model, "models", None)
-    if models is not None:
-        return list(models)
-    return []
+def _output_task_types(optimizer: Any) -> list[str]:
+    """Resolve one task type for every fitted tabular target column."""
 
+    if optimizer.dataset is None:
+        return []
+    target_names = list(optimizer.dataset.target_names)
+    model = getattr(optimizer.bo, "model", None)
+    if model is None:
+        bundle = getattr(optimizer.bo, "bundle", None)
+        model = getattr(bundle, "model", None)
 
-def _multi_output_classification_labels(
-    optimizer: Any,
-    X: Any,
-    posterior_kwargs: dict[str, Any],
-    binary_threshold: float,
-) -> tuple[list[np.ndarray], list[np.ndarray | None]]:
-    bundle = optimizer.bo.bundle
-    model = bundle.model
-    output_configs = _classification_output_configs(optimizer)
-    wrapper_models = _wrapper_models(model)
+    task_types = getattr(model, "task_types", None)
+    if callable(task_types):
+        task_types = task_types()
+    if task_types is not None:
+        values = [str(value).lower() for value in task_types]
+        if len(values) == len(target_names):
+            return values
 
-    if output_configs and wrapper_models and len(output_configs) == len(wrapper_models):
-        labels: list[np.ndarray] = []
-        probabilities: list[np.ndarray | None] = []
-        for output_config, submodel in zip(output_configs, wrapper_models, strict=True):
-            if isinstance(output_config, Mapping):
-                task_type = str(output_config.get("task_type", "regression"))
+    bundle = getattr(optimizer.bo, "bundle", None)
+    metadata = dict(getattr(bundle, "metadata", {}) or {})
+    metadata_task_types = metadata.get("output_task_types")
+    if metadata_task_types is not None:
+        values = [str(value).lower() for value in metadata_task_types]
+        if len(values) == len(target_names):
+            return values
+
+    fallback_task_type = getattr(optimizer.model_config, "task_type", "regression")
+    task_type = str(getattr(bundle, "task_type", fallback_task_type)).lower()
+    if task_type != "hybrid":
+        return [task_type] * len(target_names)
+
+    multi_output_config = getattr(optimizer.model_config, "multi_output_config", None)
+    output_configs = getattr(multi_output_config, "output_configs", None)
+    if output_configs is not None and len(output_configs) == len(target_names):
+        resolved = []
+        for item in output_configs:
+            if isinstance(item, Mapping):
+                resolved.append(str(item.get("task_type", "regression")).lower())
+            elif isinstance(item, str):
+                resolved.append(item.lower())
             else:
-                task_type = str(getattr(output_config, "task_type", "regression"))
-            if task_type not in {"binary", "multiclass", "ordinal"}:
-                labels.append(np.asarray([], dtype=int))
-                probabilities.append(None)
-                continue
-            output_labels, output_probabilities = _single_output_labels(
-                task_type=task_type,
-                model=submodel,
-                X=X,
-                posterior_kwargs=posterior_kwargs,
-                binary_threshold=binary_threshold,
-            )
-            labels.append(output_labels)
-            probabilities.append(output_probabilities)
-        return labels, probabilities
+                resolved.append(str(getattr(item, "task_type", "regression")).lower())
+        return resolved
 
-    task_type = _task_type(optimizer)
-    if task_type not in {"binary", "multiclass", "ordinal"}:
-        return [], []
+    return ["regression"] * len(target_names)
 
-    if task_type == "multiclass":
-        values = _multiclass_probabilities(model, X, posterior_kwargs)
-        if isinstance(values, Sequence) and not hasattr(values, "shape"):
-            arrays = [np.asarray(torch_value.detach().cpu()) for torch_value in values]
-            return [array.argmax(axis=-1) for array in arrays], arrays
-        tensor = torch.as_tensor(values)
-        if tensor.ndim >= 3:
-            labels = [
-                tensor[..., index, :].argmax(dim=-1).detach().cpu().numpy()
-                for index in range(tensor.shape[-2])
-            ]
-            probs = [
-                tensor[..., index, :].detach().cpu().numpy()
-                for index in range(tensor.shape[-2])
-            ]
-            return labels, probs
 
-    tensor = torch.as_tensor(model.posterior(X, **posterior_kwargs).mean)
-    if tensor.ndim == 1:
-        tensor = tensor.unsqueeze(-1)
-    labels: list[np.ndarray] = []
-    for index in range(tensor.shape[-1]):
-        values = tensor[..., index]
-        if task_type == "binary":
-            labels.append(
-                (values >= binary_threshold)
-                .to(dtype=torch.long)
-                .detach()
-                .cpu()
-                .numpy()
-            )
+def _select_output_probability_tensor(
+    value: Any,
+    *,
+    output_index: int,
+    num_outputs: int,
+) -> Tensor:
+    """Select one output while preserving the final class dimension."""
+
+    tensor = value if torch.is_tensor(value) else torch.as_tensor(value)
+    if num_outputs > 1 and tensor.ndim >= 3 and tensor.shape[-2] == num_outputs:
+        tensor = tensor[..., output_index, :]
+    return tensor
+
+
+def _reduce_probabilities_to_rows(
+    probabilities: Tensor,
+    *,
+    n_rows: int,
+) -> Tensor:
+    """Reduce sample, batch, or perturbation axes to rows x classes."""
+
+    probabilities = probabilities.detach()
+    while probabilities.ndim > 2:
+        if probabilities.shape[-2] == n_rows:
+            probabilities = probabilities.reshape(
+                -1,
+                n_rows,
+                probabilities.shape[-1],
+            ).mean(dim=0)
+        elif probabilities.shape[0] == n_rows:
+            probabilities = probabilities.reshape(
+                n_rows,
+                -1,
+                probabilities.shape[-1],
+            ).mean(dim=1)
         else:
-            labels.append(
-                values.round()
-                .to(dtype=torch.long)
-                .clamp_min(0)
-                .detach()
-                .cpu()
-                .numpy()
+            probabilities = probabilities.mean(dim=0)
+
+    if probabilities.ndim == 1:
+        probabilities = probabilities.reshape(-1, 1)
+    if probabilities.ndim != 2:
+        raise RuntimeError(
+            "Class probabilities could not be reduced to a two-dimensional table. "
+            f"Got shape={tuple(probabilities.shape)}."
+        )
+
+    if probabilities.shape[0] != n_rows:
+        if probabilities.shape[0] % n_rows != 0:
+            raise RuntimeError(
+                "Class probabilities could not be aligned with prediction rows. "
+                f"probabilities.shape={tuple(probabilities.shape)}, n_rows={n_rows}."
             )
-    return labels, [None] * len(labels)
+        probabilities = probabilities.reshape(
+            n_rows,
+            -1,
+            probabilities.shape[-1],
+        ).mean(dim=1)
+    return probabilities
+
+
+def _class_probabilities_for_output(
+    optimizer: Any,
+    X: Tensor,
+    *,
+    output_index: int,
+    task_type: str,
+    posterior_kwargs: Mapping[str, Any],
+    n_rows: int,
+) -> Tensor | None:
+    """Return class probabilities for one classification output."""
+
+    model = getattr(optimizer.bo, "model", None)
+    if model is None:
+        bundle = getattr(optimizer.bo, "bundle", None)
+        model = getattr(bundle, "model", None)
+    if model is None:
+        return None
+
+    num_outputs = len(optimizer.dataset.target_names) if optimizer.dataset is not None else 1
+    class_probs_list = getattr(model, "class_probs_list", None)
+    if callable(class_probs_list):
+        values = _call_output_accessor(
+            class_probs_list,
+            X,
+            output_index=output_index,
+            kwargs=posterior_kwargs,
+        )
+        if len(values) != 1:
+            raise RuntimeError(
+                "class_probs_list must return exactly one tensor when one output "
+                f"is requested. Got {len(values)} values for output_index={output_index}."
+            )
+        probabilities = _select_output_probability_tensor(
+            values[0],
+            output_index=output_index,
+            num_outputs=num_outputs,
+        )
+        return _reduce_probabilities_to_rows(probabilities, n_rows=n_rows)
+
+    class_probs = getattr(model, "class_probs", None)
+    if callable(class_probs):
+        probabilities = _call_single_accessor(class_probs, X, kwargs=posterior_kwargs)
+        probabilities = _select_output_probability_tensor(
+            probabilities,
+            output_index=output_index,
+            num_outputs=num_outputs,
+        )
+        return _reduce_probabilities_to_rows(probabilities, n_rows=n_rows)
+
+    probability_posterior = getattr(model, "probability_posterior", None)
+    posterior = None
+    if callable(probability_posterior):
+        try:
+            posterior = _call_output_accessor(
+                probability_posterior,
+                X,
+                output_index=output_index,
+                kwargs=posterior_kwargs,
+            )
+        except (TypeError, NotImplementedError):
+            posterior = _call_single_accessor(
+                probability_posterior,
+                X,
+                kwargs=posterior_kwargs,
+            )
+    elif task_type in _CLASSIFICATION_TASK_TYPES:
+        posterior_fn = getattr(model, "posterior", None)
+        if callable(posterior_fn):
+            try:
+                posterior = _call_output_accessor(
+                    posterior_fn,
+                    X,
+                    output_index=output_index,
+                    kwargs=posterior_kwargs,
+                )
+            except (TypeError, NotImplementedError):
+                posterior = _call_single_accessor(
+                    posterior_fn,
+                    X,
+                    kwargs=posterior_kwargs,
+                )
+
+    mean = getattr(posterior, "mean", None)
+    if mean is None:
+        return None
+    probabilities = _select_output_probability_tensor(
+        mean,
+        output_index=output_index,
+        num_outputs=num_outputs,
+    )
+    probabilities = _reduce_probabilities_to_rows(probabilities, n_rows=n_rows)
+    if task_type == "binary" and probabilities.shape[-1] == 1:
+        p1 = probabilities[..., 0].clamp(0.0, 1.0)
+        probabilities = torch.stack([1.0 - p1, p1], dim=-1)
+    return probabilities
+
+
+def _predicted_classes_from_model(
+    optimizer: Any,
+    X: Tensor,
+    *,
+    output_index: int,
+    posterior_kwargs: Mapping[str, Any],
+    n_rows: int,
+) -> Tensor | None:
+    """Fallback to a model's discrete predict_class accessor."""
+
+    model = getattr(optimizer.bo, "model", None)
+    if model is None:
+        bundle = getattr(optimizer.bo, "bundle", None)
+        model = getattr(bundle, "model", None)
+    fn = getattr(model, "predict_class", None)
+    if not callable(fn):
+        return None
+    try:
+        values = _call_output_accessor(
+            fn,
+            X,
+            output_index=output_index,
+            kwargs=posterior_kwargs,
+        )
+    except (TypeError, NotImplementedError):
+        values = _call_single_accessor(fn, X, kwargs=posterior_kwargs)
+    tensor = values if torch.is_tensor(values) else torch.as_tensor(values)
+    if tensor.ndim >= 2 and tensor.shape[-1] == len(optimizer.dataset.target_names):
+        tensor = tensor[..., output_index]
+    tensor = tensor.detach().reshape(-1)
+    if tensor.numel() != n_rows:
+        if tensor.numel() % n_rows != 0:
+            raise RuntimeError(
+                "Predicted classes could not be aligned with prediction rows. "
+                f"predicted.shape={tuple(tensor.shape)}, n_rows={n_rows}."
+            )
+        tensor = tensor.reshape(n_rows, -1).to(torch.double).mean(dim=1).round()
+    return tensor.to(torch.long)
+
+
+def _inverse_target_map(
+    optimizer: Any,
+    target_name: Any,
+) -> Mapping[int, Any] | None:
+    if optimizer.dataset is None:
+        return None
+    inverse_maps = dict(
+        getattr(optimizer.dataset, "inverse_target_category_maps", None) or {}
+    )
+    mapping = inverse_maps.get(target_name)
+    if mapping is None:
+        mapping = inverse_maps.get(str(target_name))
+    return mapping
 
 
 def classification_prediction_dataframe(
     optimizer: Any,
-    X: Any,
+    X: Tensor,
     *,
-    posterior_kwargs: dict[str, Any] | None = None,
+    posterior_kwargs: Mapping[str, Any] | None = None,
     binary_threshold: float = 0.5,
 ) -> Any:
-    """Return decoded class labels for classification / ordinal outputs."""
+    """Build decoded prediction-label columns for classification outputs."""
 
     import pandas as pd
 
-    posterior_kwargs = dict(posterior_kwargs or {})
-    category_maps = _category_maps(optimizer)
-    labels, _ = _multi_output_classification_labels(
-        optimizer,
-        X,
-        posterior_kwargs,
-        float(binary_threshold),
-    )
-    if not labels:
-        return pd.DataFrame(index=range(int(X.shape[0])))
+    if optimizer.dataset is None:
+        raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
+    threshold = float(binary_threshold)
+    if not 0.0 <= threshold <= 1.0:
+        raise ValueError("binary_threshold must be between 0 and 1.")
 
-    target_names = _target_names(optimizer, len(labels))
-    output_configs = _classification_output_configs(optimizer)
-    task_type = _task_type(optimizer)
+    target_names = list(optimizer.dataset.target_names)
+    task_types = _output_task_types(optimizer)
+    n_rows = int(X.shape[-2]) if X.ndim >= 2 else int(X.shape[0])
+    posterior_kwargs = dict(posterior_kwargs or {})
     columns: dict[str, Any] = {}
-    for index, encoded in enumerate(labels):
-        if encoded.size == 0:
+
+    for output_index, (target_name, task_type) in enumerate(
+        zip(target_names, task_types, strict=True)
+    ):
+        if task_type not in _CLASSIFICATION_TASK_TYPES:
             continue
-        output_task = task_type
-        if output_configs and index < len(output_configs):
-            output_config = output_configs[index]
-            output_task = (
-                str(output_config.get("task_type", "regression"))
-                if isinstance(output_config, Mapping)
-                else str(getattr(output_config, "task_type", "regression"))
+
+        probabilities = _class_probabilities_for_output(
+            optimizer,
+            X,
+            output_index=output_index,
+            task_type=task_type,
+            posterior_kwargs=posterior_kwargs,
+            n_rows=n_rows,
+        )
+        predicted_probability: Tensor | None = None
+        if probabilities is not None:
+            probabilities = probabilities.clamp_min(0.0)
+            if task_type == "binary":
+                if probabilities.shape[-1] == 1:
+                    p1 = probabilities[..., 0].clamp(0.0, 1.0)
+                else:
+                    p1 = probabilities[..., 1].clamp(0.0, 1.0)
+                predicted_class = (p1 >= threshold).to(torch.long)
+                predicted_probability = torch.where(
+                    predicted_class == 1,
+                    p1,
+                    1.0 - p1,
+                )
+            else:
+                denominator = probabilities.sum(dim=-1, keepdim=True).clamp_min(1e-12)
+                probabilities = probabilities / denominator
+                predicted_probability, predicted_class = probabilities.max(dim=-1)
+        else:
+            predicted_class = _predicted_classes_from_model(
+                optimizer,
+                X,
+                output_index=output_index,
+                posterior_kwargs=posterior_kwargs,
+                n_rows=n_rows,
             )
-        if output_task not in {"binary", "multiclass", "ordinal"}:
-            continue
-        output_name = target_names[index]
-        inverse = _inverse_category_map(category_maps, output_name)
-        decoded = _decode_indices(encoded, inverse)
-        columns[f"{output_name}_label"] = decoded
+            if predicted_class is None:
+                raise AttributeError(
+                    "Could not obtain class probabilities or predicted classes for "
+                    f"output {target_name!r}."
+                )
+
+        class_indices = predicted_class.detach().cpu().to(torch.long).tolist()
+        inverse_map = _inverse_target_map(optimizer, target_name)
+        decoded_labels = [
+            inverse_map.get(int(class_index), int(class_index))
+            if inverse_map is not None
+            else int(class_index)
+            for class_index in class_indices
+        ]
+        prefix = str(target_name)
+        columns[f"{prefix}_predicted_class_index"] = class_indices
+        columns[f"{prefix}_predicted_label"] = decoded_labels
+        if predicted_probability is not None:
+            columns[f"{prefix}_predicted_probability"] = (
+                predicted_probability.detach().cpu().tolist()
+            )
 
     return pd.DataFrame(columns)
+
+
+def _prediction_tensor_and_index(
+    optimizer: Any,
+    data: Any,
+) -> tuple[Tensor, Any | None]:
+    """Convert input exactly as the canonical tabular predict path does."""
+
+    if optimizer.dataset is None:
+        raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
+    try:
+        import pandas as pd
+    except ImportError:
+        pd = None
+
+    if pd is not None and isinstance(data, pd.DataFrame):
+        config = replace(
+            optimizer.data_config,
+            target_cols=None,
+            input_cols=optimizer.dataset.feature_names,
+        )
+        return dataframe_to_tensors(data, config).X, data.index
+
+    X = data if torch.is_tensor(data) else torch.as_tensor(data)
+    return X, None
 
 
 __all__ = [

@@ -43,8 +43,10 @@ from .ordinal import (
 from .regression import (
     RegressionScalarObjective,
     RegressionLinearMCObjective,
-    MultiOutputRegressionInputPerturbationObjective,
     make_regression_scalar_callable,
+)
+from .regression_input_perturbation import (
+    MultiOutputRegressionInputPerturbationObjective,
 )
 
 from .hybrid import (

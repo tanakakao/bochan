@@ -11,7 +11,7 @@ from botorch.acquisition.multi_objective.hypervolume_knowledge_gradient import (
     qHypervolumeKnowledgeGradient,
 )
 
-import bochan.api.engine_defaults as engine_defaults
+from bochan.api.acquisition import defaults as engine_defaults
 import bochan.api.information_acquisition_defaults as info_defaults
 from bochan.api import (
     AcquisitionConfig,

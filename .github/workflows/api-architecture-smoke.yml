@@ -61,6 +61,7 @@ jobs:
             src/bochan/tabular/composition_bounds_optimizer.py \
             src/bochan/tabular/multi_output_categories.py \
             src/bochan/tabular/ordinal_rank_labels.py \
+            src/bochan/tabular/prediction.py \
             src/bochan/tabular/public_optimizer.py \
             src/bochan/serving/fastapi/routers/candidates.py \
             src/bochan/serving/fastapi/routers/models.py \

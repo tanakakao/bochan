@@ -8,11 +8,6 @@ from typing import Any
 
 from .. import factory as _factory
 from ..acquisition_registry import resolve_acqf_cls
-from ..classification_perturbation_defaults import (
-    _build_multiclass,
-    _build_ordinal,
-    _maybe_disable_objective_shape_check,
-)
 from ..configs import AcquisitionConfig, DataContext, ModelBundle, ObjectiveConfig
 from ..engine import (
     _filter_context_fields_for_acqf,
@@ -23,6 +18,11 @@ from ..feasibility_defaults import resolve_outcome_constraint_config
 from ..llm_selected_acquisition import (
     is_llm_selected_acquisition,
     resolve_llm_selected_acquisition,
+)
+from .classification import (
+    build_multiclass_objective,
+    build_ordinal_objective,
+    maybe_disable_objective_shape_check,
 )
 from .defaults import resolve_acquisition_defaults
 
@@ -208,23 +208,23 @@ def build_objective(
             config=config,
             data_context=data_context,
         )
-        return _maybe_disable_objective_shape_check(objective, config)
+        return maybe_disable_objective_shape_check(objective, config)
 
     task_type = str(bundle.task_type)
     if task_type == "multiclass":
-        objective = _build_multiclass(bundle, config)
+        objective = build_multiclass_objective(bundle, config)
     elif (
         task_type == "ordinal"
         and _factory._objective_mode(config.objective_config) == "multi_output"
     ):
-        objective = _build_ordinal(bundle, config.objective_config)
+        objective = build_ordinal_objective(bundle, config.objective_config)
     else:
         objective = _factory.build_objective(
             bundle=bundle,
             config=config,
             data_context=data_context,
         )
-    return _maybe_disable_objective_shape_check(objective, config)
+    return maybe_disable_objective_shape_check(objective, config)
 
 
 def build_acquisition(

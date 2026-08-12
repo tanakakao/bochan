@@ -3,7 +3,8 @@ from __future__ import annotations
 import importlib.util
 
 import bochan.api as api
-from bochan.api import engine, engine_defaults, factory, optimizer
+from bochan.api import engine, factory, optimizer
+from bochan.api.acquisition import defaults as acquisition_defaults
 from bochan.api.acquisition import service as acquisition_service
 from bochan.api.candidate import output as candidate_output
 from bochan.api.observation import service as observation_service
@@ -16,10 +17,10 @@ def test_public_bayesian_optimizer_has_one_canonical_definition() -> None:
     assert issubclass(api.BayesianOptimizer, engine.BayesianOptimizer)
 
 
-def test_engine_defaults_is_helper_only() -> None:
-    assert "BayesianOptimizer" not in vars(engine_defaults)
-    assert callable(engine_defaults.resolve_acquisition_defaults)
-    assert callable(engine_defaults.resolve_multi_output_model_config)
+def test_acquisition_defaults_have_one_owner() -> None:
+    assert callable(acquisition_defaults.resolve_acquisition_defaults)
+    assert callable(acquisition_defaults.resolve_multi_output_model_config)
+    assert acquisition_defaults.__name__ == "bochan.api.acquisition.defaults"
 
 
 def test_api_import_does_not_replace_engine_or_factory_symbols() -> None:
@@ -44,11 +45,19 @@ def test_runtime_services_live_in_responsibility_subpackages() -> None:
     )
 
 
-def test_removed_compatibility_modules_do_not_exist() -> None:
-    assert importlib.util.find_spec("bochan.api.observation_engine") is None
-    assert importlib.util.find_spec("bochan.api.observation_service") is None
-    assert importlib.util.find_spec("bochan.api.candidate_output") is None
-    assert importlib.util.find_spec("bochan.api.acquisition_service") is None
+def test_removed_compatibility_and_patch_modules_do_not_exist() -> None:
+    removed = {
+        "bochan.api.acquisition_service",
+        "bochan.api.candidate_output",
+        "bochan.api.classification_perturbation_defaults",
+        "bochan.api.engine_defaults",
+        "bochan.api.kronecker_input_perturbation_defaults",
+        "bochan.api.observation_engine",
+        "bochan.api.observation_service",
+        "bochan.acquisition.objective.regression_perturbation",
+    }
+    for module_name in removed:
+        assert importlib.util.find_spec(module_name) is None
 
 
 def test_canonical_optimizer_owns_observation_and_candidate_entry_points() -> None:

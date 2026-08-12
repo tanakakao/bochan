@@ -15,9 +15,9 @@ from bochan.inspection import (
     compute_feature_importance,
 )
 
+from .acquisition import build_acquisition
 from .acquisition_config import AcquisitionConfig, OutcomeConstraintConfig
 from .acquisition_registry import available_acqf_names, resolve_acqf_cls
-from .acquisition_service import build_acquisition
 from .configs import (
     AutoStandardizeOutcomeTransform,
     CandidateRepairConfig,

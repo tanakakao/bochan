@@ -33,12 +33,12 @@ from .engine import (
     _resolve_mixed_optimizer_callable,
 )
 from .engine_defaults import (
-    resolve_information_optimizer_defaults,
     resolve_llm_selected_model_config,
     resolve_multi_output_model_config,
 )
 from .experiment_failure import attach_observation_state
 from .factory import fit_model
+from .information_acquisition_defaults import resolve_information_optimizer_defaults
 from .llm_candidate_explanation import LLMCandidateExplanationMixin
 from .llm_suggestion import LLMSuggestionMixin
 from .observation import ExperimentFailureConfig, ObservationData

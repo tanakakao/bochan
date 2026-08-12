@@ -153,13 +153,26 @@ def objective_keeps_perturbation_expanded(config: AcquisitionConfig) -> bool:
     )
 
 
-def maybe_disable_objective_shape_check(
+def prepare_objective_instance(
     objective: Any,
     config: AcquisitionConfig,
 ) -> Any:
-    """Keep q*n_w objective values expanded until constraints are evaluated."""
+    """Configure only the constructed objective instance for perturbation shapes."""
 
-    if objective is not None and objective_keeps_perturbation_expanded(config):
+    if objective is None:
+        return None
+
+    inner_objective = getattr(objective, "inner_objective", None)
+    if inner_objective is not None and hasattr(inner_objective, "_verify_output_shape"):
+        objective_config = config.objective_config
+        if (
+            objective_config is not None
+            and objective_config.n_w is not None
+            and int(objective_config.n_w) > 1
+        ):
+            inner_objective._verify_output_shape = False
+
+    if objective_keeps_perturbation_expanded(config):
         objective._verify_output_shape = False
     return objective
 
@@ -167,5 +180,5 @@ def maybe_disable_objective_shape_check(
 __all__ = [
     "build_multiclass_objective",
     "build_ordinal_objective",
-    "maybe_disable_objective_shape_check",
+    "prepare_objective_instance",
 ]

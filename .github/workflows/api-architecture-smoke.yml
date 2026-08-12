@@ -45,6 +45,7 @@ jobs:
             src/bochan/api/__init__.py \
             src/bochan/api/acquisition_service.py \
             src/bochan/api/candidate_output.py \
+            src/bochan/api/engine_defaults.py \
             src/bochan/api/llm_selected_acquisition.py \
             src/bochan/api/observation_service.py \
             src/bochan/api/optimizer.py \

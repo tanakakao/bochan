@@ -1,9 +1,8 @@
 """Execution-time LLM resolution for ``AcquisitionConfig``.
 
-``BayesianOptimizer.suggest_acquisition()`` remains the review-first API. This
-module adds the declarative counterpart: ``AcquisitionConfig(name="llm_selected")``
-is resolved to a concrete acquisition immediately before acquisition construction
-or candidate generation.
+``AcquisitionConfig(name="llm_selected")`` is resolved explicitly by the
+canonical acquisition service.  This module contains pure selection helpers and
+does not replace ``BayesianOptimizer.acquisition`` or ``candidate`` at runtime.
 """
 
 # ruff: noqa: I001
@@ -95,7 +94,6 @@ def _merge_requested_config(
         "context_fields": requested.context_fields,
         "filter_kwargs_by_signature": requested.filter_kwargs_by_signature,
     }
-
     for name in (
         "objective",
         "objective_config",
@@ -141,112 +139,51 @@ def _merge_requested_config(
     return replace(suggested, **updates)
 
 
+def resolve_llm_selected_acquisition(
+    optimizer: Any,
+    config: AcquisitionConfig,
+) -> AcquisitionConfig:
+    """Resolve one selector configuration through the fitted optimizer."""
+
+    if not is_llm_selected_acquisition(config):
+        return config
+    if getattr(optimizer, "llm_settings", None) is None:
+        raise ValueError(
+            "AcquisitionConfig(name='llm_selected') requires llm_settings "
+            "on BayesianOptimizer or configure_llm(...)."
+        )
+    if getattr(optimizer, "_llm_refit_required", False):
+        raise RuntimeError(
+            "The LLM changed model or fit settings after fitting. Call fit() "
+            "or refit() before resolving an acquisition."
+        )
+
+    optimizer._check_fitted()
+    suggestion = optimizer.suggest_acquisition(
+        prompt=_selection_prompt(config),
+        apply=False,
+    )
+    resolved = _merge_requested_config(config, suggestion.acq_config)
+    optimizer.acq_config = resolved
+    optimizer.last_acquisition_suggestion = suggestion
+    return resolved
+
+
 def install_llm_selected_acquisition_api(
     optimizer_cls: type[Any] | None = None,
 ) -> None:
-    """Install execution-time acquisition selection on ``BayesianOptimizer``."""
+    """Deprecated no-op retained for import compatibility.
 
-    if optimizer_cls is None:
-        from .engine_defaults import BayesianOptimizer
+    LLM-selected acquisitions are resolved by
+    :func:`resolve_llm_selected_acquisition` from the canonical acquisition
+    service.  No optimizer methods are installed or replaced.
+    """
 
-        optimizer_cls = BayesianOptimizer
-
-    if not hasattr(optimizer_cls, "suggest_acquisition"):
-        from .llm_suggestion import install_bayesian_optimizer_llm_api
-
-        install_bayesian_optimizer_llm_api(optimizer_cls)
-
-    if getattr(
-        optimizer_cls,
-        "_bochan_llm_selected_acquisition_api_installed",
-        False,
-    ):
-        return
-
-    original_acquisition = optimizer_cls.acquisition
-    original_candidate = optimizer_cls.candidate
-
-    def resolve_llm_selected_acquisition(
-        self: Any,
-        config: AcquisitionConfig,
-    ) -> AcquisitionConfig:
-        """Resolve a selector config and cache the concrete result."""
-
-        if not is_llm_selected_acquisition(config):
-            return config
-        if getattr(self, "llm_settings", None) is None:
-            raise ValueError(
-                "AcquisitionConfig(name='llm_selected') requires llm_settings "
-                "on BayesianOptimizer or configure_llm(...)."
-            )
-        if getattr(self, "_llm_refit_required", False):
-            raise RuntimeError(
-                "The LLM changed model or fit settings after fitting. Call fit() "
-                "or refit() before resolving an acquisition."
-            )
-
-        check_fitted = getattr(self, "_check_fitted", None)
-        if callable(check_fitted):
-            check_fitted()
-
-        suggestion = self.suggest_acquisition(
-            prompt=_selection_prompt(config),
-            apply=False,
-        )
-        resolved = _merge_requested_config(config, suggestion.acq_config)
-        self.acq_config = resolved
-        self.last_acquisition_suggestion = suggestion
-        return resolved
-
-    def acquisition_with_llm_selected(
-        self: Any,
-        acq_config: AcquisitionConfig | None = None,
-        *,
-        data_context: Any | None = None,
-    ) -> Any:
-        resolved = acq_config
-        if resolved is None:
-            resolved = getattr(self, "acq_config", None)
-        if resolved is not None and is_llm_selected_acquisition(resolved):
-            resolved = resolve_llm_selected_acquisition(self, resolved)
-        return original_acquisition(
-            self,
-            resolved,
-            data_context=data_context,
-        )
-
-    def candidate_with_llm_selected(
-        self: Any,
-        acq_config: AcquisitionConfig | None = None,
-        opt_config: Any | None = None,
-        *,
-        data_context: Any | None = None,
-        bounds: Any | None = None,
-        return_result: bool = False,
-    ) -> Any:
-        resolved = acq_config
-        if resolved is None:
-            resolved = getattr(self, "acq_config", None)
-        if resolved is not None and is_llm_selected_acquisition(resolved):
-            resolved = resolve_llm_selected_acquisition(self, resolved)
-        return original_candidate(
-            self,
-            resolved,
-            opt_config,
-            data_context=data_context,
-            bounds=bounds,
-            return_result=return_result,
-        )
-
-    optimizer_cls._resolve_llm_selected_acquisition = (
-        resolve_llm_selected_acquisition
-    )
-    optimizer_cls.acquisition = acquisition_with_llm_selected
-    optimizer_cls.candidate = candidate_with_llm_selected
-    optimizer_cls._bochan_llm_selected_acquisition_api_installed = True
+    del optimizer_cls
 
 
 __all__ = [
     "install_llm_selected_acquisition_api",
     "is_llm_selected_acquisition",
+    "resolve_llm_selected_acquisition",
 ]

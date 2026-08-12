@@ -1,12 +1,10 @@
-'''Resolve tabular target category metadata declared in output configs.'''
+"""Resolve tabular target category metadata declared in output configs."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from functools import wraps
 from typing import Any
 
-_APPLIED = False
 _CATEGORY_KEYS = ("ordered_categories", "categories", "category_map")
 
 
@@ -16,7 +14,7 @@ def _category_map_from_output_config(
     key: str,
     output_name: Any,
 ) -> dict[Any, int]:
-    '''Normalize one output-level category declaration to a label-index map.'''
+    """Normalize one output-level category declaration to a label-index map."""
 
     if key == "category_map":
         if not isinstance(value, Mapping):
@@ -68,7 +66,7 @@ def _category_map_from_output_config(
 def _extract_output_category_maps(
     multi_output_config: Any,
 ) -> tuple[Any, dict[Any, dict[Any, int]]]:
-    '''Remove tabular category metadata from output configs and return mappings.'''
+    """Remove tabular category metadata from output configs and return mappings."""
 
     if not isinstance(multi_output_config, Mapping):
         return multi_output_config, {}
@@ -139,7 +137,7 @@ def _merge_target_category_metadata(
     kwargs: dict[str, Any],
     inferred_maps: Mapping[Any, Mapping[Any, int]],
 ) -> None:
-    '''Merge inferred maps with explicit tabular data configuration.'''
+    """Merge inferred maps with explicit tabular data configuration."""
 
     if not inferred_maps:
         return
@@ -179,66 +177,8 @@ def _merge_target_category_metadata(
     kwargs["target_category_maps"] = merged_maps
 
 
-def apply_tabular_multi_output_categories() -> None:
-    '''Allow output configs to carry tabular category ordering and mappings.'''
-
-    global _APPLIED
-    if _APPLIED:
-        return
-
-    from . import optimizer_api
-
-    original_init = optimizer_api.TabularBayesianOptimizer.__init__
-    if getattr(original_init, "_bochan_supports_output_categories", False):
-        _APPLIED = True
-        return
-
-    @wraps(original_init)
-    def init_with_output_categories(
-        self,
-        model_config=None,
-        fit_config=None,
-        **kwargs: Any,
-    ) -> None:
-        inferred_maps: dict[Any, dict[Any, int]] = {}
-
-        if isinstance(model_config, Mapping):
-            resolved_model_config = dict(model_config)
-            multi_output_config = resolved_model_config.get("multi_output_config")
-            if multi_output_config is not None:
-                resolved_multi_output, maps = _extract_output_category_maps(
-                    multi_output_config
-                )
-                resolved_model_config["multi_output_config"] = resolved_multi_output
-                inferred_maps.update(maps)
-            model_config = resolved_model_config
-
-        direct_multi_output = kwargs.get("multi_output_config")
-        if direct_multi_output is not None:
-            resolved_multi_output, maps = _extract_output_category_maps(
-                direct_multi_output
-            )
-            kwargs["multi_output_config"] = resolved_multi_output
-            for output_name, category_map in maps.items():
-                existing = inferred_maps.get(output_name)
-                if existing is not None and existing != category_map:
-                    raise ValueError(
-                        f"Conflicting category declarations for output "
-                        f"{output_name!r}."
-                    )
-                inferred_maps[output_name] = category_map
-
-        _merge_target_category_metadata(kwargs, inferred_maps)
-        original_init(
-            self,
-            model_config=model_config,
-            fit_config=fit_config,
-            **kwargs,
-        )
-
-    setattr(init_with_output_categories, "_bochan_supports_output_categories", True)
-    optimizer_api.TabularBayesianOptimizer.__init__ = init_with_output_categories
-    _APPLIED = True
-
-
-__all__ = ["apply_tabular_multi_output_categories"]
+__all__ = [
+    "_category_map_from_output_config",
+    "_extract_output_category_maps",
+    "_merge_target_category_metadata",
+]

@@ -1,18 +1,39 @@
-"""FastAPI compatibility helpers for tabular category metadata."""
+"""FastAPI helpers for tabular category metadata and label conversion."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from . import converters as _converters
 
-_CATEGORY_MAPS_ATTR = "_bochan_fastapi_target_category_maps"
-_TARGET_NAMES_ATTR = "_bochan_fastapi_target_names"
+_CATEGORY_METADATA_KEY = "target_category_metadata"
+
+
+@dataclass(frozen=True)
+class TargetCategoryMetadata:
+    """Transport metadata required to encode/decode categorical target labels."""
+
+    target_names: tuple[Any, ...] = ()
+    category_maps: Mapping[Any, Mapping[Any, int]] | None = None
+
+    def normalized_maps(self) -> dict[Any, dict[Any, int]]:
+        """Return mutable integer-valued category maps."""
+
+        return {
+            output: {label: int(index) for label, index in mapping.items()}
+            for output, mapping in dict(self.category_maps or {}).items()
+        }
+
+    @property
+    def empty(self) -> bool:
+        return not bool(self.category_maps)
 
 
 def _dump(value: Any) -> dict[str, Any]:
     """Return a mutable request payload without losing mapping values."""
+
     if value is None:
         return {}
     if hasattr(value, "model_dump"):
@@ -26,6 +47,7 @@ def _dump(value: Any) -> dict[str, Any]:
 
 def _clean_output_category_nones(value: Any) -> Any:
     """Remove Pydantic ``None`` defaults before tabular metadata extraction."""
+
     if not isinstance(value, Mapping):
         return value
     cleaned = dict(value)
@@ -37,12 +59,13 @@ def _clean_output_category_nones(value: Any) -> Any:
 
 def _extract_category_metadata(
     model_config_payload: dict[str, Any],
-) -> tuple[dict[str, Any], dict[Any, dict[Any, int]], list[Any]]:
-    """Strip tabular category fields and return their resolved mappings."""
+) -> tuple[dict[str, Any], TargetCategoryMetadata]:
+    """Strip tabular category fields and return an explicit metadata object."""
+
     resolved = dict(model_config_payload)
     multi_output = resolved.get("multi_output_config")
     if multi_output is None:
-        return resolved, {}, []
+        return resolved, TargetCategoryMetadata()
 
     multi_output_payload = _dump(multi_output)
     output_configs = multi_output_payload.get("output_configs")
@@ -51,8 +74,6 @@ def _extract_category_metadata(
             _clean_output_category_nones(item) for item in output_configs
         ]
 
-    # Reuse the tabular implementation so FastAPI and notebook validation stay
-    # identical for ordered_categories / categories / category_map.
     from bochan.tabular.multi_output_categories import _extract_output_category_maps
 
     cleaned_multi_output, category_maps = _extract_output_category_maps(
@@ -67,97 +88,75 @@ def _extract_category_metadata(
         else:
             target_names.append(None)
 
-    return resolved, category_maps, target_names
+    return resolved, TargetCategoryMetadata(
+        target_names=tuple(target_names),
+        category_maps=category_maps,
+    )
 
 
-def _set_category_metadata(
+def to_model_config_with_metadata(
     value: Any,
-    *,
-    category_maps: Mapping[Any, Mapping[Any, int]],
-    target_names: list[Any],
-) -> None:
-    """Attach JSON-only category metadata to a core config or optimizer."""
-    maps = {
-        output: {label: int(index) for label, index in mapping.items()}
-        for output, mapping in category_maps.items()
-    }
-    setattr(value, _CATEGORY_MAPS_ATTR, maps)
-    setattr(value, _TARGET_NAMES_ATTR, list(target_names))
+    options: Any | None = None,
+) -> tuple[Any, TargetCategoryMetadata]:
+    """Convert a model payload and return its transport-only target metadata."""
+
+    payload = _dump(value)
+    payload, metadata = _extract_category_metadata(payload)
+    return _converters.to_model_config(payload, options), metadata
 
 
 def to_model_config(value: Any, options: Any | None = None) -> Any:
-    """Convert a FastAPI model payload while retaining tabular label metadata."""
-    payload = _dump(value)
-    payload, category_maps, target_names = _extract_category_metadata(payload)
-    config = _converters.to_model_config(payload, options)
+    """Convert a FastAPI model payload to the tensor-oriented core config."""
 
-    _set_category_metadata(
-        config,
-        category_maps=category_maps,
-        target_names=target_names,
-    )
-    multi_output_config = getattr(config, "multi_output_config", None)
-    if multi_output_config is not None:
-        _set_category_metadata(
-            multi_output_config,
-            category_maps=category_maps,
-            target_names=target_names,
-        )
+    config, _ = to_model_config_with_metadata(value, options)
     return config
 
 
-def bind_category_metadata(optimizer: Any, model_config: Any) -> None:
-    """Bind retained category metadata to a fitted FastAPI optimizer."""
-    category_maps = getattr(model_config, _CATEGORY_MAPS_ATTR, {})
-    target_names = getattr(model_config, _TARGET_NAMES_ATTR, [])
-    _set_category_metadata(
-        optimizer,
-        category_maps=category_maps,
-        target_names=list(target_names),
-    )
+def bind_category_metadata(
+    optimizer: Any,
+    metadata: TargetCategoryMetadata,
+) -> None:
+    """Bind explicit target metadata to a fitted optimizer and its bundle."""
+
+    optimizer.target_category_metadata = metadata
+    bundle = getattr(optimizer, "bundle", None)
+    bundle_metadata = getattr(bundle, "metadata", None)
+    if isinstance(bundle_metadata, dict):
+        bundle_metadata[_CATEGORY_METADATA_KEY] = metadata
 
 
-def _category_context(optimizer: Any) -> tuple[list[Any], dict[Any, dict[Any, int]]]:
-    """Return output names and category maps retained by FastAPI model fitting."""
-    category_maps = dict(getattr(optimizer, _CATEGORY_MAPS_ATTR, {}) or {})
-    target_names = list(getattr(optimizer, _TARGET_NAMES_ATTR, []) or [])
+def _category_metadata_from_optimizer(optimizer: Any) -> TargetCategoryMetadata:
+    metadata = getattr(optimizer, "target_category_metadata", None)
+    if isinstance(metadata, TargetCategoryMetadata):
+        return metadata
 
-    model_config = getattr(optimizer, "model_config", None)
-    if not category_maps and model_config is not None:
-        category_maps = dict(
-            getattr(model_config, _CATEGORY_MAPS_ATTR, {}) or {}
-        )
-        multi_output_config = getattr(model_config, "multi_output_config", None)
-        if not category_maps and multi_output_config is not None:
-            category_maps = dict(
-                getattr(multi_output_config, _CATEGORY_MAPS_ATTR, {}) or {}
+    bundle = getattr(optimizer, "bundle", None)
+    bundle_metadata = getattr(bundle, "metadata", None)
+    if isinstance(bundle_metadata, Mapping):
+        metadata = bundle_metadata.get(_CATEGORY_METADATA_KEY)
+        if isinstance(metadata, TargetCategoryMetadata):
+            return metadata
+        if isinstance(metadata, Mapping):
+            return TargetCategoryMetadata(
+                target_names=tuple(metadata.get("target_names", ())),
+                category_maps=metadata.get("category_maps", {}),
             )
+    return TargetCategoryMetadata()
+
+
+def _category_context(
+    optimizer: Any,
+) -> tuple[list[Any], dict[Any, dict[Any, int]]]:
+    """Return output names and category maps retained by FastAPI model fitting."""
+
+    metadata = _category_metadata_from_optimizer(optimizer)
+    category_maps = metadata.normalized_maps()
+    target_names = list(metadata.target_names)
 
     model = getattr(optimizer, "model", None)
     model_names = getattr(model, "output_names", None)
     if model_names is not None:
         target_names = list(model_names)
-
-    if not target_names and category_maps:
-        target_names = list(category_maps)
-    return target_names, category_maps
-
-
-def _category_context_from_model_config(
-    model_config: Any,
-) -> tuple[list[Any], dict[Any, dict[Any, int]]]:
-    """Return retained output names and category maps from a model config."""
-    category_maps = dict(
-        getattr(model_config, _CATEGORY_MAPS_ATTR, {}) or {}
-    )
-    target_names = list(
-        getattr(model_config, _TARGET_NAMES_ATTR, []) or []
-    )
-    multi_output_config = getattr(model_config, "multi_output_config", None)
-    if not category_maps and multi_output_config is not None:
-        category_maps = dict(
-            getattr(multi_output_config, _CATEGORY_MAPS_ATTR, {}) or {}
-        )
     if not target_names and category_maps:
         target_names = list(category_maps)
     return target_names, category_maps
@@ -170,6 +169,7 @@ def _resolve_category_label(
     output: Any,
 ) -> Any:
     """Resolve one original label while preserving already encoded indices."""
+
     try:
         if value in mapping:
             return int(mapping[value])
@@ -197,16 +197,16 @@ def to_target_tensor(
     value: Any,
     options: Any | None = None,
     *,
-    model_config: Any | None = None,
+    metadata: TargetCategoryMetadata | None = None,
     optimizer: Any | None = None,
 ) -> Any:
     """Encode FastAPI string target labels and convert them to a tensor."""
+
     if optimizer is not None:
         target_names, category_maps = _category_context(optimizer)
-    elif model_config is not None:
-        target_names, category_maps = _category_context_from_model_config(
-            model_config
-        )
+    elif metadata is not None:
+        target_names = list(metadata.target_names)
+        category_maps = metadata.normalized_maps()
     else:
         target_names, category_maps = [], {}
 
@@ -273,15 +273,16 @@ def to_acquisition_config(
     optimizer: Any | None = None,
 ) -> Any:
     """Convert acquisition settings and resolve original target labels."""
+
     payload = _dump(value)
     if optimizer is not None:
         target_names, category_maps = _category_context(optimizer)
         if target_names and category_maps:
-            # Importing bochan.tabular applies the string target-class and
-            # ordinal-rank label resolvers used by TabularBayesianOptimizer.
-            import bochan.tabular  # noqa: F401
             from bochan.tabular.optimizer_api import (
                 _resolve_acquisition_config_columns,
+            )
+            from bochan.tabular.ordinal_rank_labels import (
+                resolve_acquisition_ordinal_ranks,
             )
 
             payload = _resolve_acquisition_config_columns(
@@ -289,12 +290,19 @@ def to_acquisition_config(
                 target_names,
                 category_maps,
             )
+            payload = resolve_acquisition_ordinal_ranks(
+                payload,
+                target_names=target_names,
+                target_category_maps=category_maps,
+            )
     return _converters.to_acquisition_config(payload, options)
 
 
 __all__ = [
+    "TargetCategoryMetadata",
     "bind_category_metadata",
     "to_acquisition_config",
     "to_model_config",
+    "to_model_config_with_metadata",
     "to_target_tensor",
 ]

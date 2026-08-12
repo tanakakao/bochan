@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
-from bochan.api import AcquisitionConfig, ModelConfig, ObjectiveConfig, OptimizeConfig
+from bochan.api import AcquisitionConfig, ModelConfig, ObjectiveConfig
 from bochan.api.llm_selected_acquisition import (
-    install_llm_selected_acquisition_api,
+    resolve_llm_selected_acquisition,
 )
 from bochan.llm import LLMSettings
 
@@ -18,33 +20,28 @@ class _DummyOptimizer:
         self.train_Y = [[0.0], [1.0]]
         self.bounds = [[0.0], [1.0]]
         self.bundle = object()
+        self.acq_config = None
+        self.last_acquisition_suggestion = None
+        self._llm_refit_required = False
+        self.captured_prompt = None
 
     def _check_fitted(self):
         if self.bundle is None:
             raise RuntimeError("not fitted")
 
-    def fit(self, *args, **kwargs):
-        return self
-
-    def acquisition(self, acq_config, *, data_context=None):
-        return acq_config
-
-    def candidate(
-        self,
-        acq_config,
-        opt_config,
-        *,
-        data_context=None,
-        bounds=None,
-        return_result=False,
-    ):
-        return acq_config, opt_config
+    def suggest_acquisition(self, *, prompt, apply=False):
+        assert apply is False
+        self.captured_prompt = prompt
+        response = dict(self.llm_settings.planner_response or {})
+        payload = response.get("acquisition_config")
+        acq_config = AcquisitionConfig(**payload) if payload is not None else None
+        return SimpleNamespace(
+            acq_config=acq_config,
+            reasoning_summary=response.get("reasoning_summary", ""),
+        )
 
 
-install_llm_selected_acquisition_api(_DummyOptimizer)
-
-
-def test_llm_selected_acquisition_is_resolved_at_candidate_time():
+def test_llm_selected_acquisition_is_resolved_explicitly():
     explicit_objective = ObjectiveConfig(
         mode="multi_output",
         outputs=[0, 1],
@@ -71,55 +68,51 @@ def test_llm_selected_acquisition_is_resolved_at_candidate_time():
         )
     )
 
-    resolved_acq, resolved_opt = optimizer.candidate(
-        acq_config=AcquisitionConfig(
+    resolved = resolve_llm_selected_acquisition(
+        optimizer,
+        AcquisitionConfig(
             name="llm_selected",
             objective_config=explicit_objective,
             acqf_kwargs={"prune_baseline": True},
         ),
-        opt_config=OptimizeConfig(optimizer="llm_candidate_set", q=3),
     )
 
-    assert resolved_acq.name == "NEHVI"
-    assert resolved_acq.objective_config is explicit_objective
-    assert resolved_acq.acqf_kwargs["prune_baseline"] is True
-    assert resolved_opt.optimizer == "llm_candidate_set"
+    assert resolved.name == "NEHVI"
+    assert resolved.objective_config is explicit_objective
+    assert resolved.acqf_kwargs["prune_baseline"] is True
     assert optimizer.acq_config.name == "NEHVI"
     assert optimizer.last_acquisition_suggestion.reasoning_summary.startswith(
         "Use NEHVI"
     )
 
 
-def test_llm_selected_acquisition_includes_requested_config_in_prompt(monkeypatch):
-    captured = {}
-
-    def fake_plan_configs(**kwargs):
-        captured.update(kwargs)
-        return {"acquisition_config": {"name": "UCB"}}
-
-    monkeypatch.setattr("bochan.llm.plan_configs", fake_plan_configs)
+def test_llm_selected_acquisition_includes_requested_config_in_prompt():
     optimizer = _DummyOptimizer(
-        llm_settings=LLMSettings(goal="探索を強めたい")
+        llm_settings=LLMSettings(
+            goal="探索を強めたい",
+            planner_response={"acquisition_config": {"name": "UCB"}},
+        )
     )
     requested = AcquisitionConfig(
         name="llm_selected",
         objective_config=ObjectiveConfig(direction="maximize"),
     )
 
-    resolved = optimizer.acquisition(requested)
+    resolved = resolve_llm_selected_acquisition(optimizer, requested)
 
     assert resolved.name == "UCB"
-    assert captured["requested_sections"] == ["acquisition"]
-    prompt = captured["section_prompts"]["acquisition"]
-    assert '"name": "llm_selected"' in prompt
-    assert '"direction": "maximize"' in prompt
+    assert '"name": "llm_selected"' in optimizer.captured_prompt
+    assert '"direction": "maximize"' in optimizer.captured_prompt
 
 
 def test_llm_selected_acquisition_requires_shared_llm_settings():
     optimizer = _DummyOptimizer(llm_settings=None)
 
     with pytest.raises(ValueError, match="requires llm_settings"):
-        optimizer.acquisition(AcquisitionConfig(name="llm_selected"))
+        resolve_llm_selected_acquisition(
+            optimizer,
+            AcquisitionConfig(name="llm_selected"),
+        )
 
 
 def test_llm_selected_acquisition_rejects_recursive_selector_response():
@@ -133,4 +126,7 @@ def test_llm_selected_acquisition_rejects_recursive_selector_response():
     )
 
     with pytest.raises(ValueError, match="concrete acquisition name"):
-        optimizer.acquisition(AcquisitionConfig(name="llm_selected"))
+        resolve_llm_selected_acquisition(
+            optimizer,
+            AcquisitionConfig(name="llm_selected"),
+        )

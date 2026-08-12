@@ -317,4 +317,4 @@ def test_fixed_fraction_constraint_is_forwarded_to_named_optimizer(monkeypatch) 
 def test_public_optimizer_exposes_element_constraint_support() -> None:
     from bochan.tabular import TabularBayesianOptimizer as PublicOptimizer
 
-    assert PublicOptimizer is TabularBayesianOptimizer
+    assert issubclass(PublicOptimizer, TabularBayesianOptimizer)

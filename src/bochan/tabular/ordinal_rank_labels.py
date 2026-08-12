@@ -1,16 +1,15 @@
-'''Resolve string labels used by tabular ordinal-rank constraints.'''
+"""Resolve string labels used by tabular ordinal-rank constraints."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from typing import Any
 
-_APPLIED = False
 _ORDINAL_RANK_KINDS = {"ordinal", "ordinal_rank", "ordinalrank", "rank"}
 
 
 def _constraint_kind(value: Mapping[str, Any]) -> str:
-    '''Return the normalized constraint kind used by serializable configs.'''
+    """Return the normalized constraint kind used by serializable configs."""
 
     return str(
         value.get("kind")
@@ -20,60 +19,89 @@ def _constraint_kind(value: Mapping[str, Any]) -> str:
     ).lower()
 
 
-def apply_tabular_ordinal_rank_labels() -> None:
-    '''Resolve string ordinal ranks through fitted target category mappings.
+def resolve_ordinal_rank_constraint(
+    value: Any,
+    *,
+    target_names: list[Any],
+    target_category_maps: Mapping[Any, Mapping[Any, int]] | None,
+) -> Any:
+    """Resolve one string ordinal rank to the encoded integer class index."""
 
-    The core ordinal constraint spec stores an integer rank.  The tabular API,
-    however, also retains mappings from original target labels to encoded class
-    indices.  This extension applies the same label-resolution rules already
-    used for ``target_class`` / ``target_classes`` to ordinal ``rank`` values,
-    allowing configurations such as ``{"rank": "medium"}``.
-    '''
+    if not isinstance(value, Mapping):
+        return value
+    if _constraint_kind(value) not in _ORDINAL_RANK_KINDS:
+        return value
 
-    global _APPLIED
-    if _APPLIED:
-        return
+    rank = value.get("rank")
+    output = value.get("output")
+    if not isinstance(rank, str) or output is None:
+        return value
 
-    from . import optimizer_api
+    from .optimizer_api import _resolve_target_class_value
 
-    original_resolver = optimizer_api._resolve_constraint_target_classes
-    if getattr(original_resolver, "_bochan_resolves_string_ordinal_rank", False):
-        _APPLIED = True
-        return
+    resolved = dict(value)
+    resolved["rank"] = _resolve_target_class_value(
+        rank,
+        output=output,
+        target_names=target_names,
+        target_category_maps=target_category_maps,
+    )
+    return resolved
 
-    def resolve_constraint_labels(
-        value: Any,
-        *,
-        target_names: list[Any],
-        target_category_maps: Mapping[Any, Mapping[Any, int]] | None,
-    ) -> Any:
-        resolved = original_resolver(
-            value,
+
+def resolve_ordinal_rank_config(
+    value: Any,
+    *,
+    target_names: list[Any],
+    target_category_maps: Mapping[Any, Mapping[Any, int]] | None,
+) -> Any:
+    """Resolve ordinal ranks nested in an outcome-constraint configuration."""
+
+    if not isinstance(value, Mapping):
+        return value
+    resolved = dict(value)
+    constraints = resolved.get("constraints")
+    if constraints is None:
+        return resolved
+    constraint_values = (
+        [constraints]
+        if isinstance(constraints, Mapping)
+        else list(constraints)
+    )
+    resolved["constraints"] = [
+        resolve_ordinal_rank_constraint(
+            item,
             target_names=target_names,
             target_category_maps=target_category_maps,
         )
-        if not isinstance(resolved, Mapping):
-            return resolved
-        if _constraint_kind(resolved) not in _ORDINAL_RANK_KINDS:
-            return resolved
-
-        rank = resolved.get("rank")
-        output = resolved.get("output")
-        if not isinstance(rank, str) or output is None:
-            return resolved
-
-        updated = dict(resolved)
-        updated["rank"] = optimizer_api._resolve_target_class_value(
-            rank,
-            output=output,
-            target_names=target_names,
-            target_category_maps=target_category_maps,
-        )
-        return updated
-
-    setattr(resolve_constraint_labels, "_bochan_resolves_string_ordinal_rank", True)
-    optimizer_api._resolve_constraint_target_classes = resolve_constraint_labels
-    _APPLIED = True
+        for item in constraint_values
+    ]
+    return resolved
 
 
-__all__ = ["apply_tabular_ordinal_rank_labels"]
+def resolve_acquisition_ordinal_ranks(
+    value: Any,
+    *,
+    target_names: list[Any],
+    target_category_maps: Mapping[Any, Mapping[Any, int]] | None,
+) -> Any:
+    """Resolve ordinal ranks nested in a mapping-style acquisition config."""
+
+    if not isinstance(value, Mapping):
+        return value
+    if "outcome_constraint_config" not in value:
+        return value
+    resolved = dict(value)
+    resolved["outcome_constraint_config"] = resolve_ordinal_rank_config(
+        resolved["outcome_constraint_config"],
+        target_names=target_names,
+        target_category_maps=target_category_maps,
+    )
+    return resolved
+
+
+__all__ = [
+    "resolve_acquisition_ordinal_ranks",
+    "resolve_ordinal_rank_config",
+    "resolve_ordinal_rank_constraint",
+]

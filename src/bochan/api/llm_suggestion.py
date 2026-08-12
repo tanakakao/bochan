@@ -1,9 +1,8 @@
 """LLM-assisted configuration suggestions for :class:`BayesianOptimizer`.
 
-This module keeps LLM planning separate from model fitting and candidate generation.
-It installs a review-first API on the public ``BayesianOptimizer`` class so users can
-request all settings together or model, acquisition, and optimizer settings
-independently.
+LLM planning is exposed as an explicit mixin.  The mixin adds review-first
+suggestion methods without replacing ``fit``, ``acquisition`` or ``candidate``
+at runtime; the canonical optimizer keeps ownership of those state transitions.
 """
 
 from __future__ import annotations
@@ -29,7 +28,9 @@ _SECTION_NAMES = ("model", "acquisition", "optimizer")
 
 
 def _normalize_mode(value: Any) -> SuggestionMode:
-    normalized = "".join(character for character in str(value).lower() if character.isalnum())
+    normalized = "".join(
+        character for character in str(value).lower() if character.isalnum()
+    )
     if normalized in {"all", "full", "config", "settings"}:
         return "all"
     if normalized in {"model", "modelconfig", "fit", "fitconfig"}:
@@ -204,18 +205,11 @@ def _section_prompt_map(
     return result
 
 
-def install_bayesian_optimizer_llm_api(optimizer_cls: type[Any]) -> None:
-    """Install the public LLM suggestion methods on ``optimizer_cls`` once."""
-
-    if getattr(optimizer_cls, "_bochan_llm_suggestion_api_installed", False):
-        return
-
-    original_fit = optimizer_cls.fit
-    original_acquisition = optimizer_cls.acquisition
-    original_candidate = optimizer_cls.candidate
+class LLMSuggestionMixin:
+    """Review-first LLM configuration methods for the canonical optimizer."""
 
     def suggest(
-        self: Any,
+        self,
         mode: str = "all",
         *,
         prompt: str | None = None,
@@ -232,13 +226,7 @@ def install_bayesian_optimizer_llm_api(optimizer_cls: type[Any]) -> None:
         planner_response: Any | None = None,
         apply: bool = False,
     ) -> BayesianOptimizerSuggestion:
-        """Ask an LLM for all or selected BayesianOptimizer settings.
-
-        ``prompt`` applies to the selected section for single-section modes and is
-        treated as an overall instruction in ``mode='all'``. Use ``model_prompt``,
-        ``acquisition_prompt``, and ``optimizer_prompt`` to provide independent
-        instructions in one all-settings request.
-        """
+        """Ask an LLM for all or selected BayesianOptimizer settings."""
 
         from bochan.llm import plan_configs
 
@@ -257,16 +245,33 @@ def install_bayesian_optimizer_llm_api(optimizer_cls: type[Any]) -> None:
         settings_kwargs = settings.model_kwargs() if settings is not None else {}
         resolved_goal = goal or settings_kwargs.get("goal")
         if resolved_goal is None:
-            resolved_goal = prompt or "Configure BayesianOptimizer for the supplied data and objective."
+            resolved_goal = (
+                prompt
+                or "Configure BayesianOptimizer for the supplied data and objective."
+            )
 
-        resolved_train_X = train_X if train_X is not None else getattr(self, "train_X", None)
-        resolved_train_Y = train_Y if train_Y is not None else getattr(self, "train_Y", None)
-        resolved_bounds = bounds if bounds is not None else getattr(self, "bounds", None)
+        resolved_train_X = (
+            train_X if train_X is not None else getattr(self, "train_X", None)
+        )
+        resolved_train_Y = (
+            train_Y if train_Y is not None else getattr(self, "train_Y", None)
+        )
+        resolved_bounds = (
+            bounds if bounds is not None else getattr(self, "bounds", None)
+        )
 
         plan = plan_configs(
             goal=resolved_goal,
-            llm_config=llm_config if llm_config is not None else settings_kwargs.get("llm_config"),
-            llm_context=llm_context if llm_context is not None else settings_kwargs.get("llm_context"),
+            llm_config=(
+                llm_config
+                if llm_config is not None
+                else settings_kwargs.get("llm_config")
+            ),
+            llm_context=(
+                llm_context
+                if llm_context is not None
+                else settings_kwargs.get("llm_context")
+            ),
             train_X=resolved_train_X,
             train_Y=resolved_train_Y,
             bounds=resolved_bounds,
@@ -278,10 +283,18 @@ def install_bayesian_optimizer_llm_api(optimizer_cls: type[Any]) -> None:
             ),
             requested_sections=sections,
             section_prompts=section_prompts,
-            existing_model_config=_safe_config_repr(getattr(self, "model_config", None)),
-            existing_fit_config=_safe_config_repr(getattr(self, "fit_config", None)),
-            existing_acquisition_config=_safe_config_repr(getattr(self, "acq_config", None)),
-            existing_optimize_config=_safe_config_repr(getattr(self, "opt_config", None)),
+            existing_model_config=_safe_config_repr(
+                getattr(self, "model_config", None)
+            ),
+            existing_fit_config=_safe_config_repr(
+                getattr(self, "fit_config", None)
+            ),
+            existing_acquisition_config=_safe_config_repr(
+                getattr(self, "acq_config", None)
+            ),
+            existing_optimize_config=_safe_config_repr(
+                getattr(self, "opt_config", None)
+            ),
         )
         suggestion = suggestion_from_plan(plan, mode=normalized_mode)
         self.last_suggestion = suggestion
@@ -290,7 +303,7 @@ def install_bayesian_optimizer_llm_api(optimizer_cls: type[Any]) -> None:
         return suggestion
 
     def suggest_all(
-        self: Any,
+        self,
         *,
         prompt: str | None = None,
         model_prompt: str | None = None,
@@ -310,7 +323,7 @@ def install_bayesian_optimizer_llm_api(optimizer_cls: type[Any]) -> None:
         )
 
     def suggest_model(
-        self: Any,
+        self,
         prompt: str | None = None,
         **kwargs: Any,
     ) -> BayesianOptimizerSuggestion:
@@ -319,7 +332,7 @@ def install_bayesian_optimizer_llm_api(optimizer_cls: type[Any]) -> None:
         return self.suggest("model", prompt=prompt, **kwargs)
 
     def suggest_acquisition(
-        self: Any,
+        self,
         prompt: str | None = None,
         **kwargs: Any,
     ) -> BayesianOptimizerSuggestion:
@@ -328,7 +341,7 @@ def install_bayesian_optimizer_llm_api(optimizer_cls: type[Any]) -> None:
         return self.suggest("acquisition", prompt=prompt, **kwargs)
 
     def suggest_optimizer(
-        self: Any,
+        self,
         prompt: str | None = None,
         **kwargs: Any,
     ) -> BayesianOptimizerSuggestion:
@@ -337,7 +350,7 @@ def install_bayesian_optimizer_llm_api(optimizer_cls: type[Any]) -> None:
         return self.suggest("optimizer", prompt=prompt, **kwargs)
 
     def apply_suggestion(
-        self: Any,
+        self,
         suggestion: BayesianOptimizerSuggestion | Mapping[str, Any],
         *,
         model_config: bool = True,
@@ -345,7 +358,7 @@ def install_bayesian_optimizer_llm_api(optimizer_cls: type[Any]) -> None:
         acq_config: bool = True,
         opt_config: bool = True,
     ) -> Any:
-        """Apply selected parts of an LLM suggestion to the optimizer defaults."""
+        """Apply selected parts of an LLM suggestion to optimizer defaults."""
 
         if not isinstance(suggestion, BayesianOptimizerSuggestion):
             suggestion = suggestion_from_plan(dict(suggestion), mode="all")
@@ -354,7 +367,9 @@ def install_bayesian_optimizer_llm_api(optimizer_cls: type[Any]) -> None:
         if model_config and suggestion.model_config is not None:
             merge = getattr(self, "_merge_llm_settings_into_model_config", None)
             self.model_config = (
-                merge(suggestion.model_config) if callable(merge) else suggestion.model_config
+                merge(suggestion.model_config)
+                if callable(merge)
+                else suggestion.model_config
             )
             model_changed = True
         if fit_config and suggestion.fit_config is not None:
@@ -370,74 +385,20 @@ def install_bayesian_optimizer_llm_api(optimizer_cls: type[Any]) -> None:
             self._llm_refit_required = True
         return self
 
-    def fit_with_llm_state(self: Any, *args: Any, **kwargs: Any) -> Any:
-        result = original_fit(self, *args, **kwargs)
-        self._llm_refit_required = False
-        return result
 
-    def acquisition_with_default(
-        self: Any,
-        acq_config: AcquisitionConfig | None = None,
-        *,
-        data_context: Any | None = None,
-    ) -> Any:
-        resolved = acq_config if acq_config is not None else getattr(self, "acq_config", None)
-        if resolved is None:
-            raise ValueError(
-                "acq_config is required. Pass it explicitly or apply an LLM acquisition suggestion first."
-            )
-        if getattr(self, "_llm_refit_required", False):
-            raise RuntimeError(
-                "The LLM changed model or fit settings after fitting. Call fit() or refit() before building an acquisition."
-            )
-        return original_acquisition(self, resolved, data_context=data_context)
+def install_bayesian_optimizer_llm_api(optimizer_cls: type[Any]) -> None:
+    """Deprecated no-op retained for source compatibility.
 
-    def candidate_with_defaults(
-        self: Any,
-        acq_config: AcquisitionConfig | None = None,
-        opt_config: OptimizeConfig | None = None,
-        *,
-        data_context: Any | None = None,
-        bounds: Any | None = None,
-        return_result: bool = False,
-    ) -> Any:
-        resolved_acq = acq_config if acq_config is not None else getattr(self, "acq_config", None)
-        resolved_opt = opt_config if opt_config is not None else getattr(self, "opt_config", None)
-        if resolved_acq is None:
-            raise ValueError(
-                "acq_config is required. Pass it explicitly or apply an LLM acquisition suggestion first."
-            )
-        if resolved_opt is None:
-            raise ValueError(
-                "opt_config is required. Pass it explicitly or apply an LLM optimizer suggestion first."
-            )
-        if getattr(self, "_llm_refit_required", False):
-            raise RuntimeError(
-                "The LLM changed model or fit settings after fitting. Call fit() or refit() before candidate()."
-            )
-        return original_candidate(
-            self,
-            resolved_acq,
-            resolved_opt,
-            data_context=data_context,
-            bounds=bounds,
-            return_result=return_result,
-        )
+    Use :class:`LLMSuggestionMixin` in the canonical optimizer instead.  No
+    methods are attached or replaced at runtime.
+    """
 
-    optimizer_cls.suggest = suggest
-    optimizer_cls.suggest_all = suggest_all
-    optimizer_cls.suggest_model = suggest_model
-    optimizer_cls.suggest_acquisition = suggest_acquisition
-    optimizer_cls.suggest_optimizer = suggest_optimizer
-    optimizer_cls.apply_suggestion = apply_suggestion
-    optimizer_cls.fit = fit_with_llm_state
-    optimizer_cls.acquisition = acquisition_with_default
-    optimizer_cls.candidate = candidate_with_defaults
-    optimizer_cls._bochan_llm_suggestion_api_installed = True
+    del optimizer_cls
 
 
 __all__ = [
     "BayesianOptimizerSuggestion",
+    "LLMSuggestionMixin",
     "SuggestionMode",
     "install_bayesian_optimizer_llm_api",
     "suggestion_from_plan",

@@ -1,18 +1,21 @@
-"""Optimizer and study store implementations for FastAPI serving."""
+"""Store contracts and implementations for FastAPI serving."""
 
 from __future__ import annotations
 
 from .base import OptimizerStore
 from .file import FileOptimizerStore
 from .memory import InMemoryOptimizerStore
+from .object import InMemoryObjectStore, ObjectStore
 from .study import InMemoryStudyStore, StudyStore
 from .tabular import InMemoryTabularOptimizerStore, TabularOptimizerStore
 
 __all__ = [
     "FileOptimizerStore",
+    "InMemoryObjectStore",
     "InMemoryOptimizerStore",
     "InMemoryStudyStore",
     "InMemoryTabularOptimizerStore",
+    "ObjectStore",
     "OptimizerStore",
     "StudyStore",
     "TabularOptimizerStore",

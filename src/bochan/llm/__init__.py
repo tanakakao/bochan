@@ -1,4 +1,9 @@
-"""LLM-assisted helpers for bochan."""
+"""LLM-assisted helpers for bochan.
+
+Importing this package exports planning, candidate-generation and explanation
+utilities only. Public ``BayesianOptimizer`` methods are composed explicitly by
+the API layer rather than installed from this package at import time.
+"""
 
 from .candidate_explainer_overall import (
     CandidateExplanation,
@@ -17,21 +22,6 @@ from .client import BaseLLMClient, GeminiClient, LLMResponse, OpenAIClient, make
 from .configs import GoalConfig, LLMConfig, LLMContextConfig, LLMSettings
 from .prompt_builder import build_candidate_prompt, build_goal_planner_prompt
 from .structured_planner import build_config_planner_prompt, plan_configs
-
-
-def _install_candidate_explanation_api() -> None:
-    """Attach explanation methods when the public LLM package is imported."""
-
-    from bochan.api.engine_defaults import BayesianOptimizer
-    from bochan.api.llm_candidate_explanation import (
-        install_bayesian_optimizer_candidate_explanation_api,
-    )
-
-    install_bayesian_optimizer_candidate_explanation_api(BayesianOptimizer)
-
-
-_install_candidate_explanation_api()
-
 
 __all__ = [
     "BaseLLMClient",

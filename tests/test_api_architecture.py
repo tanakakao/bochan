@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 
 import bochan.api as api
-from bochan.api import engine, factory, optimizer
+from bochan.api import configs, engine, factory, optimizer
 from bochan.api.acquisition import defaults as acquisition_defaults
 from bochan.api.acquisition import service as acquisition_service
 from bochan.api.candidate import output as candidate_output
@@ -16,6 +16,13 @@ def test_public_bayesian_optimizer_has_one_canonical_definition() -> None:
     assert api.BayesianOptimizer is optimizer.BayesianOptimizer
     assert api.BayesianOptimizer.__module__ == "bochan.api.optimizer"
     assert issubclass(api.BayesianOptimizer, engine.BayesianOptimizer)
+
+
+def test_base_configs_are_owned_by_package() -> None:
+    assert hasattr(configs, "__path__")
+    assert configs.ModelConfig is api.ModelConfig
+    assert configs.MultiOutputConfig is api.MultiOutputConfig
+    assert configs.ModelConfig.__module__ == "bochan.api.configs.base"
 
 
 def test_acquisition_defaults_have_one_owner() -> None:

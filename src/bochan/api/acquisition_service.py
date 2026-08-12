@@ -7,6 +7,7 @@ or class methods in ``engine`` / ``factory`` at runtime.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import replace
 from typing import Any
 
@@ -291,10 +292,8 @@ def build_acquisition(
     # latent model that an acquisition implementation may expose through .model.
     model = getattr(bundle, "model", None)
     if model is not None:
-        try:
+        with suppress(Exception):
             object.__setattr__(acqf, "_bochan_thompson_model", model)
-        except Exception:
-            pass
     return acqf
 
 

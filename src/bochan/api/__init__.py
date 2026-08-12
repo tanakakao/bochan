@@ -48,7 +48,7 @@ from .factory import (
     resolve_model_cls,
 )
 from .fit_config import FitConfig
-from .model_registry import DEFAULT_MODEL_REGISTRY, LazyModelRegistry, MODEL_REGISTRY
+from .model_registry import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
 from .observation import ExperimentFailureConfig, ObservationData
 from .optimizer import BayesianOptimizer
 from .optimizer_api import (

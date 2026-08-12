@@ -1,16 +1,14 @@
-"""Canonical public Bayesian optimization API.
-
-``BayesianOptimizer`` is defined once in this module. Model fitting, automatic
-acquisition defaults, observation state, experiment failure handling, LLM
-assistance and candidate generation are composed explicitly instead of being
-layered through multiple public subclasses or runtime method installers.
-"""
+"""Canonical public Bayesian optimization API."""
 
 from __future__ import annotations
 
 from dataclasses import replace
 from typing import Any
 
+from .acquisition.defaults import (
+    resolve_llm_selected_model_config,
+    resolve_multi_output_model_config,
+)
 from .acquisition.service import (
     build_acquisition,
     is_nsgaii_strategy,
@@ -32,10 +30,6 @@ from .engine import (
     _resolve_mixed_fixed_features_from_train_X,
     _resolve_mixed_optimizer_callable,
 )
-from .engine_defaults import (
-    resolve_llm_selected_model_config,
-    resolve_multi_output_model_config,
-)
 from .experiment_failure import attach_observation_state
 from .factory import fit_model
 from .information_acquisition_defaults import resolve_information_optimizer_defaults
@@ -51,14 +45,7 @@ class BayesianOptimizer(
     LLMSuggestionMixin,
     _CoreBayesianOptimizer,
 ):
-    """High-level Bayesian optimizer used by tensor, tabular and serving APIs.
-
-    The class owns one canonical state machine for fitting, prediction,
-    acquisition construction, candidate generation and ask/tell updates. Input
-    adapters such as :class:`bochan.tabular.TabularBayesianOptimizer` delegate
-    Bayesian-optimization semantics to this class rather than reimplementing
-    them.
-    """
+    """High-level optimizer shared by tensor, tabular, and serving APIs."""
 
     observations: ObservationData | None = None
     failure_config: ExperimentFailureConfig | None = None
@@ -88,14 +75,6 @@ class BayesianOptimizer(
         model_config: ModelConfig | None = None,
         fit_config: FitConfig | None = None,
     ) -> BayesianOptimizer:
-        """Fit objective and optional experiment-success models.
-
-        Standard ``train_X`` / ``train_Y`` fitting and explicit observation-state
-        fitting use the same implementation. Missing objective cells are never
-        imputed here; supported wide models consume them directly and split-output
-        models are fitted only from rows observed for each output.
-        """
-
         if observation_data is None:
             if train_X is None or train_Y is None:
                 raise ValueError("Provide observation_data or both train_X and train_Y.")
@@ -175,8 +154,6 @@ class BayesianOptimizer(
         model_config: ModelConfig | None = None,
         fit_config: FitConfig | None = None,
     ) -> BayesianOptimizer:
-        """Fit from an explicit canonical observation table."""
-
         return self.fit(
             observation_data=observations,
             failure_config=failure_config,
@@ -185,8 +162,6 @@ class BayesianOptimizer(
         )
 
     def refit(self, *, fit_config: FitConfig | None = None) -> BayesianOptimizer:
-        """Refit all configured models from the canonical observation state."""
-
         if self.observations is None:
             return super().refit(fit_config=fit_config)
         return self.fit(
@@ -203,8 +178,6 @@ class BayesianOptimizer(
         refit: bool = True,
         fit_config: FitConfig | None = None,
     ) -> BayesianOptimizer:
-        """Append explicit observation states and optionally refit."""
-
         if self.observations is None:
             raise RuntimeError("Call fit(...) before tell_observations(...).")
         self.observations = self.observations.append(observations)
@@ -223,8 +196,6 @@ class BayesianOptimizer(
         refit: bool = True,
         fit_config: FitConfig | None = None,
     ) -> BayesianOptimizer:
-        """Append new trials and optionally refit the optimizer."""
-
         import torch
 
         X_tensor = torch.as_tensor(X_new)
@@ -249,8 +220,6 @@ class BayesianOptimizer(
         *,
         append: bool = True,
     ) -> BayesianOptimizer:
-        """Update the canonical observation state."""
-
         if not append:
             self.fit(
                 X_new,
@@ -281,8 +250,6 @@ class BayesianOptimizer(
         self,
         acq_config: AcquisitionConfig,
     ) -> AcquisitionConfig:
-        """Resolve one acquisition without package-level class mutation."""
-
         return resolve_acquisition_class(self, acq_config)
 
     def _configured_acquisition(
@@ -317,8 +284,6 @@ class BayesianOptimizer(
         acq_config: AcquisitionConfig | None,
         data_context: DataContext | None,
     ) -> tuple[AcquisitionConfig, DataContext, Any]:
-        """Resolve defaults, construct the acquisition and compose feasibility."""
-
         self._check_fitted()
         configured = self._configured_acquisition(acq_config)
         context = self._resolve_data_context(data_context)
@@ -348,8 +313,6 @@ class BayesianOptimizer(
         *,
         data_context: DataContext | None = None,
     ) -> Any:
-        """Build the configured acquisition function."""
-
         _, _, acqf = self._prepare_acquisition(acq_config, data_context)
         return acqf
 
@@ -362,8 +325,6 @@ class BayesianOptimizer(
         bounds: Any | None = None,
         return_result: bool = False,
     ) -> CandidateResult | tuple[Any, Any]:
-        """Generate candidates through the canonical acquisition/optimizer path."""
-
         resolved_config, context, acqf = self._prepare_acquisition(
             acq_config,
             data_context,
@@ -440,8 +401,6 @@ class BayesianOptimizer(
         bounds: Any | None = None,
         return_result: bool = False,
     ) -> CandidateResult | tuple[Any, Any]:
-        """Alias for :meth:`candidate` for ask-and-tell workflows."""
-
         return self.candidate(
             acq_config=acq_config,
             opt_config=opt_config,
@@ -451,8 +410,6 @@ class BayesianOptimizer(
         )
 
     def cross_validate(self, *args: Any, **kwargs: Any) -> Any:
-        """Reject ambiguous CV semantics for partial/failure observations."""
-
         if self.observations is not None:
             has_partial = not bool(self.observations.observed_mask.all())
             has_failure_state = bool(

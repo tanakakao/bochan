@@ -6,13 +6,11 @@ from bochan.acquisition.objective.regression import (
     MultiOutputRegressionInputPerturbationObjective,
     RegressionLinearMCObjective,
 )
-from bochan.api.kronecker_input_perturbation_defaults import (
-    install_kronecker_input_perturbation_objective_defaults,
-)
+from bochan.api import AcquisitionConfig, ObjectiveConfig
+from bochan.api.acquisition.classification import prepare_objective_instance
 
 
 def _make_objective(*, n_w: int = 4):
-    install_kronecker_input_perturbation_objective_defaults()
     inner = RegressionLinearMCObjective(
         output_indices=[0, 1],
         weights=[1.0, 1.0],
@@ -23,6 +21,11 @@ def _make_objective(*, n_w: int = 4):
         n_w=n_w,
         risk_type=None,
     )
+    config = AcquisitionConfig(
+        name="qEHVI",
+        objective_config=ObjectiveConfig(mode="multi_output", n_w=n_w),
+    )
+    prepare_objective_instance(outer, config)
     return inner, outer
 
 

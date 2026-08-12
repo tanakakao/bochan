@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import bochan.api as api
 import bochan.tabular as tabular
-from bochan.tabular import composition_bounds_optimizer
+from bochan.tabular import composition_bounds_optimizer, optimizer_api
 from bochan.tabular import optimizer as legacy_optimizer
-from bochan.tabular import optimizer_api
 
 
 def test_tabular_public_optimizer_has_one_canonical_entry_point() -> None:

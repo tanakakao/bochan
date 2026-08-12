@@ -7,6 +7,7 @@ from bochan.api import engine, factory, optimizer
 from bochan.api.acquisition import defaults as acquisition_defaults
 from bochan.api.acquisition import service as acquisition_service
 from bochan.api.candidate import output as candidate_output
+from bochan.api.llm import LLMCandidateExplanationMixin, LLMSuggestionMixin
 from bochan.api.observation import service as observation_service
 from bochan.api.observation import state as observation_state
 
@@ -43,6 +44,8 @@ def test_runtime_services_live_in_responsibility_subpackages() -> None:
     assert observation_service.build_objective_bundle.__module__ == (
         "bochan.api.observation.service"
     )
+    assert LLMSuggestionMixin.__module__ == "bochan.api.llm.suggestion"
+    assert LLMCandidateExplanationMixin.__module__ == "bochan.api.llm.explanation"
 
 
 def test_removed_compatibility_and_patch_modules_do_not_exist() -> None:
@@ -52,6 +55,9 @@ def test_removed_compatibility_and_patch_modules_do_not_exist() -> None:
         "bochan.api.classification_perturbation_defaults",
         "bochan.api.engine_defaults",
         "bochan.api.kronecker_input_perturbation_defaults",
+        "bochan.api.llm_candidate_explanation",
+        "bochan.api.llm_selected_acquisition",
+        "bochan.api.llm_suggestion",
         "bochan.api.observation_engine",
         "bochan.api.observation_service",
         "bochan.acquisition.objective.regression_perturbation",

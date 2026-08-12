@@ -7,8 +7,6 @@ functions or class methods in sibling modules at runtime.
 
 from __future__ import annotations
 
-from typing import Any
-
 from bochan.inspection import (
     FeatureGroup,
     FeatureImportanceConfig,
@@ -50,6 +48,7 @@ from .factory import (
     resolve_model_cls,
 )
 from .fit_config import FitConfig
+from .model_registry import DEFAULT_MODEL_REGISTRY, LazyModelRegistry, MODEL_REGISTRY
 from .observation import ExperimentFailureConfig, ObservationData
 from .optimizer import BayesianOptimizer
 from .optimizer_api import (
@@ -66,23 +65,6 @@ from .study_controls import (
     GenerationStep,
     StopDecision,
 )
-
-_MODEL_REGISTRY_EXPORTS = {
-    "DEFAULT_MODEL_REGISTRY",
-    "LazyModelRegistry",
-    "MODEL_REGISTRY",
-}
-
-
-def __getattr__(name: str) -> Any:
-    """Lazy-load the model registry without making normal API import bootstrap it."""
-
-    if name in _MODEL_REGISTRY_EXPORTS:
-        from . import model_registry
-
-        return getattr(model_registry, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
 
 __all__ = [
     "AcquisitionConfig",

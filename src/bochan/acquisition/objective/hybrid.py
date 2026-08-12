@@ -7,10 +7,12 @@ import torch
 from torch import Tensor
 
 from .regression import (
-    MultiOutputRegressionInputPerturbationObjective,
     RegressionLinearMCObjective,
     RegressionScalarObjective,
     RiskType,
+)
+from .regression_input_perturbation import (
+    MultiOutputRegressionInputPerturbationObjective,
 )
 
 OutputKey = Union[int, str]

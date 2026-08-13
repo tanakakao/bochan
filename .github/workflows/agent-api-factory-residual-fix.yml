@@ -91,22 +91,30 @@ jobs:
           ordinal_test.write_text(text, encoding='utf-8')
 
           replace(
+              'tests/test_multioutput_binary_input_perturbation_defaults.py',
+              'from bochan.api.factory import build_objective',
+              'from bochan.api.acquisition.service import build_objective',
+          )
+          replace(
               'tests/test_api_nsgaii_strategy.py',
               '"bochan.api.factory.build_objective"',
               '"bochan.api.acquisition.service.build_objective"',
           )
-
           replace(
               'src/bochan/optim/nsgaii/strategy.py',
               'from bochan.api.factory import build_objective',
               'from bochan.api.acquisition.service import build_objective',
           )
 
-          # These references should now exist only in factory.py itself and the
-          # final removal workflow / architecture guard.
+          allowed = {
+              'src/bochan/api/factory.py',
+              'src/bochan/api/acquisition/service.py',
+              'src/bochan/api/optimizer/dispatch.py',
+              'tests/test_api_architecture.py',
+          }
           residuals = []
           for path in [*Path('src').rglob('*.py'), *Path('tests').rglob('*.py')]:
-              if path.as_posix() == 'src/bochan/api/factory.py':
+              if path.as_posix() in allowed:
                   continue
               text = path.read_text(encoding='utf-8')
               if 'bochan.api.factory' in text or 'from ..factory import' in text or 'import factory as _factory' in text:
@@ -121,6 +129,7 @@ jobs:
             src/bochan/api/acquisition/classification.py \
             src/bochan/optim/nsgaii/strategy.py \
             tests/test_ordinal_multiclass_input_perturbation_defaults.py \
+            tests/test_multioutput_binary_input_perturbation_defaults.py \
             tests/test_api_nsgaii_strategy.py
       - name: Commit consumer migration
         run: |

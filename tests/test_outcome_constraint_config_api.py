@@ -9,8 +9,8 @@ from bochan.acquisition.feasible import (
     FeasibilityWeightedAcquisition,
 )
 from bochan.api import build_acquisition
-from bochan.api.acquisition_config import AcquisitionConfig, OutcomeConstraintConfig
 from bochan.api.configs import ObjectiveConfig
+from bochan.api.configs.acquisition import AcquisitionConfig, OutcomeConstraintConfig
 from bochan.api.feasibility_defaults import (
     build_outcome_constrained_acquisition,
     resolve_outcome_constraint_config,

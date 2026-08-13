@@ -57,7 +57,7 @@ jobs:
         run: |
           python -m pip install ruff
           ruff check --ignore I001,SIM102,SIM108 \
-            src/bochan/api/cross_validation.py \
+            src/bochan/api/evaluation/cross_validation.py \
             src/bochan/acquisition/_nominal_duplicate_penalties.py \
             src/bochan/acquisition/binary/active_learning/__init__.py \
             src/bochan/acquisition/binary/active_learning/nominal_duplicate_safe.py \

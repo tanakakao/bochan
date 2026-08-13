@@ -50,11 +50,11 @@ jobs:
             src/bochan/acquisition/regression/active_learning/_integrated.py \
             src/bochan/acquisition/regression/active_learning/_pointwise.py \
             src/bochan/acquisition/regression/active_learning/single_output.py \
-            src/bochan/api/candidate_uniqueness.py \
-            src/bochan/api/optimizer_api.py \
+            src/bochan/api/candidate/uniqueness.py \
+            src/bochan/api/optimizer/service.py \
             src/bochan/api/configs/optimize.py \
-            src/bochan/api/optimizer_dispatch.py \
-            src/bochan/api/optimizer_support.py \
+            src/bochan/api/optimizer/dispatch.py \
+            src/bochan/api/optimizer/support.py \
             src/bochan/models/regression/count/poisson/robust/heteroscedastic.py \
             src/bochan/models/regression/count/negative_binomial/robust/heteroscedastic.py \
             src/bochan/api/registry/acquisition.py \

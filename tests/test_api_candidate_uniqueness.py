@@ -102,7 +102,6 @@ def test_duplicate_slots_use_same_acquisition_and_restart_pool() -> None:
     assert acquisition.X_pending is None
 
 
-
 def test_refill_removes_q_specific_optimizer_kwargs() -> None:
     candidates = torch.tensor([[0.1], [0.1], [0.2]], dtype=torch.double)
     captured: list[OptimizeConfig] = []
@@ -136,6 +135,7 @@ def test_refill_removes_q_specific_optimizer_kwargs() -> None:
         torch.tensor([[0.1], [0.2], [0.3]], dtype=torch.double),
     )
     assert captured[0].optimizer_kwargs == {"options": {"maxiter": 20}}
+
 
 def test_restart_pool_works_without_native_pending_support() -> None:
     candidates = torch.tensor([[0.1], [0.1], [0.2]], dtype=torch.double)
@@ -269,9 +269,11 @@ def test_candidate_uniqueness_defaults_are_validated() -> None:
 def test_candidate_fix_contains_no_web_monkey_patch_or_acquisition_wrapper() -> None:
     root = Path(__file__).parents[1]
     web_init = (root / "src" / "bochan" / "serving" / "webapp" / "__init__.py").read_text()
-    optimizer_source = (root / "src" / "bochan" / "api" / "optimizer_api.py").read_text()
+    optimizer_source = (
+        root / "src" / "bochan" / "api" / "optimizer" / "service.py"
+    ).read_text()
     uniqueness_source = (
-        root / "src" / "bochan" / "api" / "candidate_uniqueness.py"
+        root / "src" / "bochan" / "api" / "candidate" / "uniqueness.py"
     ).read_text()
 
     assert "candidate_batch_diversity" not in web_init

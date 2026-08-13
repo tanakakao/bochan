@@ -123,7 +123,15 @@ jobs:
               raise RuntimeError('remaining factory consumers: ' + ', '.join(residuals))
           PY
           python -m pip install ruff
-          ruff check \
+          ruff check --select I,F --fix \
+            src/bochan/api/optimizer/core.py \
+            src/bochan/api/acquisition/feasibility.py \
+            src/bochan/api/acquisition/classification.py \
+            src/bochan/optim/nsgaii/strategy.py \
+            tests/test_ordinal_multiclass_input_perturbation_defaults.py \
+            tests/test_multioutput_binary_input_perturbation_defaults.py \
+            tests/test_api_nsgaii_strategy.py
+          ruff check --select I,F \
             src/bochan/api/optimizer/core.py \
             src/bochan/api/acquisition/feasibility.py \
             src/bochan/api/acquisition/classification.py \

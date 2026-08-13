@@ -14,6 +14,7 @@ from bochan.api import OptimizeConfig
 
 from .builders import UNSET
 from .composition_bounds_optimizer import CompositionBoundsResolver
+from .composition_element_columns import CompositionElementColumnTransform
 from .composition_element_constraint_candidates import (
     CompositionElementConstraintCandidateReranker,
 )
@@ -50,6 +51,7 @@ class TabularBayesianOptimizer(
     """Single public tabular optimizer delegating BO semantics to the core API."""
 
     composition_bounds_resolver = CompositionBoundsResolver()
+    composition_element_column_transform = CompositionElementColumnTransform()
     composition_total_constraint_resolver = CompositionTotalConstraintResolver()
     composition_variable_total_transform = CompositionVariableTotalTransform()
     composition_element_constraint_resolver = CompositionElementConstraintResolver()
@@ -158,8 +160,12 @@ class TabularBayesianOptimizer(
             data,
             site_name,
             config,
-            site_source_columns=self._site_source_columns,
-            numeric_site_values=self._numeric_site_values,
+            site_source_columns=(
+                self.composition_element_column_transform.source_columns
+            ),
+            numeric_site_values=(
+                self.composition_element_column_transform.numeric_site_values
+            ),
         )
 
     def _prepare_multi_site_frame(
@@ -180,8 +186,12 @@ class TabularBayesianOptimizer(
                 frame,
                 fit_transformers=fit_transformers,
             ),
-            site_source_columns=self._site_source_columns,
-            numeric_site_values=self._numeric_site_values,
+            site_source_columns=(
+                self.composition_element_column_transform.source_columns
+            ),
+            numeric_site_values=(
+                self.composition_element_column_transform.numeric_site_values
+            ),
         )
 
     def _replace_multi_site_input_cols(
@@ -192,7 +202,9 @@ class TabularBayesianOptimizer(
             input_cols,
             composition_sites=self.composition_sites,
             composition_transformers=self.composition_transformers_,
-            site_source_columns=self._site_source_columns,
+            site_source_columns=(
+                self.composition_element_column_transform.source_columns
+            ),
         )
 
     @classmethod

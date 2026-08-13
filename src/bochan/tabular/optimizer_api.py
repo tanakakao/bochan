@@ -1,4 +1,4 @@
-'''Public tabular optimizer API aligned with :mod:`bochan.api` config fields.'''
+"""API-specific behavior composed into the canonical tabular optimizer."""
 
 from __future__ import annotations
 
@@ -22,7 +22,6 @@ from bochan.models.regression.gaussian.likelihood import (
 
 from .builders import UNSET, make_acquisition_config, make_fit_config, make_optimize_config
 from .converter import resolve_column_indices
-from .optimizer import TabularBayesianOptimizer as _BaseTabularBayesianOptimizer
 
 _ACQUISITION_DIRECT_KEYS = {
     "acq_name",
@@ -89,7 +88,7 @@ def _extract_noise_alpha(
     model_kwargs: Mapping[str, Any] | None,
     explicit_alpha: float | None,
 ) -> tuple[float | None, dict[str, Any]]:
-    """Resolve direct and Web-adapter alpha values and remove private metadata."""
+    """Resolve explicit and adapter-supplied alpha metadata."""
 
     kwargs = dict(model_kwargs or {})
     embedded = kwargs.pop(_TABULAR_NOISE_ALPHA_KEY, None)
@@ -154,7 +153,7 @@ def _apply_alpha_to_output_config(
     train_Y: Any,
     explicit_alpha: float | None,
 ) -> tuple[Any, bool]:
-    """Attach a likelihood to one regression output config when requested."""
+    """Attach an alpha-configured likelihood to one regression output."""
 
     if isinstance(raw_config, ModelConfig):
         return (
@@ -186,7 +185,10 @@ def _apply_alpha_to_output_config(
     if isinstance(raw_config, Mapping):
         payload = dict(raw_config)
         task_type = str(payload.get("task_type", ""))
-        alpha, kwargs = _extract_noise_alpha(payload.get("model_kwargs"), explicit_alpha)
+        alpha, kwargs = _extract_noise_alpha(
+            payload.get("model_kwargs"),
+            explicit_alpha,
+        )
         payload["model_kwargs"] = kwargs
         if task_type not in _REGRESSION_TASK_TYPES or alpha is None:
             return payload, False
@@ -231,7 +233,7 @@ def _apply_alpha_to_model_config(
     train_Y: Any,
     explicit_alpha: float | None,
 ) -> ModelConfig:
-    """Inject alpha-configured likelihoods without changing the tensor Core API."""
+    """Inject alpha-configured likelihoods without changing the tensor API."""
 
     alpha, root_kwargs = _extract_noise_alpha(
         model_config.model_kwargs,
@@ -262,7 +264,9 @@ def _apply_alpha_to_model_config(
             updated_outputs.append(updated)
             applied = applied or output_applied
         if alpha is not None and not applied:
-            raise ValueError("alpha was specified, but the hybrid model has no regression output.")
+            raise ValueError(
+                "alpha was specified, but the hybrid model has no regression output."
+            )
         return replace(
             model_config,
             multi_output_config=replace(
@@ -296,13 +300,7 @@ def _merge_input_transform_direct_values(
     n_w: int | Any = UNSET,
     std: float | Any = UNSET,
 ) -> Any:
-    """Merge direct tabular input-transform fields into ``InputTransformConfig``.
-
-    ``TabularBayesianOptimizer`` is intended to be usable from notebooks without
-    importing config objects.  The public API therefore accepts fields such as
-    ``perturbation=True`` directly and converts them to the internal
-    ``InputTransformConfig`` representation here.
-    """
+    """Merge direct input-transform fields into ``InputTransformConfig``."""
 
     updates = {
         key: value
@@ -319,22 +317,21 @@ def _merge_input_transform_direct_values(
 
     base = input_transform_config
     if base is UNSET and model_config is not None:
-        if isinstance(model_config, dict):
+        if isinstance(model_config, Mapping):
             base = model_config.get("input_transform_config", UNSET)
         else:
             base = model_config.input_transform_config
 
     if base is UNSET or base is None:
         return InputTransformConfig(**updates)
-    if isinstance(base, dict):
-        return InputTransformConfig(**{**base, **updates})
+    if isinstance(base, Mapping):
+        return InputTransformConfig(**{**dict(base), **updates})
     if isinstance(base, InputTransformConfig):
         return replace(base, **updates)
 
     raise TypeError(
-        "Direct input transform fields such as perturbation, n_w, std, and "
-        "normalize require input_transform_config to be None, dict, or "
-        f"InputTransformConfig. Got {type(base).__name__}."
+        "Direct input-transform fields require input_transform_config to be "
+        f"None, a mapping, or InputTransformConfig. Got {type(base).__name__}."
     )
 
 
@@ -385,7 +382,7 @@ def _resolve_target_class_value(
     target_names: list[Any],
     target_category_maps: Mapping[Any, Mapping[Any, int]] | None,
 ) -> Any:
-    """Resolve a tabular class label while preserving numeric class indices."""
+    """Resolve a categorical target label to its encoded class index."""
 
     if not isinstance(value, str):
         return value
@@ -395,27 +392,16 @@ def _resolve_target_class_value(
         target_names,
         target_category_maps,
     )
-    if mapping is not None:
-        if value in mapping:
-            return int(mapping[value])
-        for label, class_index in mapping.items():
-            if str(label) == value:
-                return int(class_index)
-
-    # Numeric strings were accepted previously because the core spec applies
-    # int(value). Preserve that behavior even when a categorical map exists.
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        pass
-
     if mapping is None:
         raise ValueError(
             f"String target class {value!r} for output {output!r} cannot be "
-            "resolved because no target category map is available. Use an "
-            "encoded class index or fit with categorical target encoding."
+            "resolved because no target category map is available."
         )
-
+    if value in mapping:
+        return int(mapping[value])
+    for label, class_index in mapping.items():
+        if str(label) == value:
+            return int(class_index)
     raise KeyError(
         f"Unknown target class label {value!r} for output {output!r}. "
         f"Available labels: {list(mapping)!r}."
@@ -451,7 +437,11 @@ def _resolve_constraint_target_classes(
 
     target_classes = resolved.get("target_classes")
     if target_classes is not None:
-        values = [target_classes] if isinstance(target_classes, str) else list(target_classes)
+        values = (
+            [target_classes]
+            if isinstance(target_classes, str)
+            else list(target_classes)
+        )
         resolved["target_classes"] = [
             _resolve_target_class_value(
                 item,
@@ -476,12 +466,17 @@ def _resolve_outcome_constraint_config_columns(
 
     resolved = dict(value)
     if "output_indices" in resolved:
-        output_indices = resolve_column_indices(resolved["output_indices"], target_names)
+        output_indices = resolve_column_indices(
+            resolved["output_indices"],
+            target_names,
+        )
         resolved["output_indices"] = output_indices or []
 
     constraints = resolved.get("constraints")
     if constraints is not None:
-        constraint_values = [constraints] if isinstance(constraints, Mapping) else list(constraints)
+        constraint_values = (
+            [constraints] if isinstance(constraints, Mapping) else list(constraints)
+        )
         resolved["constraints"] = [
             _resolve_constraint_target_classes(
                 item,
@@ -498,7 +493,7 @@ def _resolve_acquisition_config_columns(
     target_names: list[Any],
     target_category_maps: Mapping[Any, Mapping[Any, int]] | None = None,
 ) -> Any:
-    """Resolve named outcomes and class labels nested in an acquisition config."""
+    """Resolve named outcomes nested in an acquisition config mapping."""
 
     if not isinstance(acq_config, Mapping):
         return acq_config
@@ -514,22 +509,15 @@ def _resolve_acquisition_config_columns(
     return resolved
 
 
-class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
-    '''Pandas / numpy friendly optimizer with public API convenience fields.
-
-    This subclass preserves the existing tabular implementation while exposing
-    recently added high-level API fields through direct keyword arguments.
-    Existing ``model_config``, ``fit_config``, ``acq_config``, and ``opt_config``
-    objects remain fully supported.
-    '''
+class TabularApiMixin:
+    """Add API-facing tabular conveniences without defining another optimizer."""
 
     def __init__(
         self,
+        *args: Any,
         model_config: ModelConfig | dict[str, Any] | None = None,
         fit_config: FitConfig | dict[str, Any] | None = None,
-        *,
         alpha: float | None = None,
-        fit_beta: float | None | Any = UNSET,
         beta: float | None | Any = UNSET,
         normalize: bool | Any = UNSET,
         perturbation: bool | Any = UNSET,
@@ -546,16 +534,17 @@ class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
             n_w=n_w,
             std=std,
         )
-        if fit_beta is not UNSET and beta is not UNSET:
-            raise ValueError("Specify either fit_beta or beta, not both.")
         if beta is not UNSET:
-            fit_beta = beta
-        if fit_beta is not UNSET:
-            fit_config = make_fit_config(fit_config, fit_beta=fit_beta)
-        super().__init__(model_config=model_config, fit_config=fit_config, **kwargs)
+            fit_config = make_fit_config(fit_config, beta=beta)
+        super().__init__(
+            *args,
+            model_config=model_config,
+            fit_config=fit_config,
+            **kwargs,
+        )
 
     def _model_config_with_tabular_cat_dims(self, dataset: Any) -> ModelConfig:
-        """Add inferred categorical dimensions and an optional noise-floor likelihood."""
+        """Add inferred categorical dimensions and an optional noise floor."""
 
         model_config = super()._model_config_with_tabular_cat_dims(dataset)
         return _apply_alpha_to_model_config(
@@ -572,14 +561,13 @@ class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
         *,
         fit_config: FitConfig | dict[str, Any] | None = None,
         alpha: float | None | Any = UNSET,
-        fit_beta: float | None | Any = UNSET,
         beta: float | None | Any = UNSET,
         normalize: bool | Any = UNSET,
         perturbation: bool | Any = UNSET,
         n_w: int | Any = UNSET,
         std: float | Any = UNSET,
         **kwargs: Any,
-    ) -> TabularBayesianOptimizer:
+    ) -> Any:
         if alpha is not UNSET:
             self.alpha = _validate_noise_alpha(alpha)
         _apply_input_transform_direct_values(
@@ -590,13 +578,17 @@ class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
             n_w=n_w,
             std=std,
         )
-        if fit_beta is not UNSET and beta is not UNSET:
-            raise ValueError("Specify either fit_beta or beta, not both.")
         if beta is not UNSET:
-            fit_beta = beta
-        if fit_beta is not UNSET:
-            fit_config = make_fit_config(fit_config or self.fit_config, fit_beta=fit_beta)
-        return super().fit(data=data, y=y, fit_config=fit_config, **kwargs)
+            fit_config = make_fit_config(
+                fit_config or self.fit_config,
+                beta=beta,
+            )
+        return super().fit(
+            data=data,
+            y=y,
+            fit_config=fit_config,
+            **kwargs,
+        )
 
     def candidate(
         self,
@@ -653,7 +645,11 @@ class TabularBayesianOptimizer(_BaseTabularBayesianOptimizer):
             acq_config = make_acquisition_config(acq_config, **acq_values)
         if evo_method is not UNSET:
             opt_config = make_optimize_config(opt_config, evo_method=evo_method)
-        return super().candidate(acq_config=acq_config, opt_config=opt_config, **kwargs)
+        return super().candidate(
+            acq_config=acq_config,
+            opt_config=opt_config,
+            **kwargs,
+        )
 
 
-__all__ = ["TabularBayesianOptimizer"]
+__all__ = ["TabularApiMixin"]

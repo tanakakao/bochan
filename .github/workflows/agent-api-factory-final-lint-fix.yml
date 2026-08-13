@@ -1,0 +1,61 @@
+name: Agent API factory final lint fix
+
+on:
+  push:
+    branches:
+      - agent/api-factory-final-split
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: contains(github.event.head_commit.message, '[agent-api-factory-final-lint-fix]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/api-factory-final-split
+          fetch-depth: 0
+      - name: Focus final split lint on imports
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/agent-api-factory-final-split.yml')
+          text = path.read_text(encoding='utf-8')
+          old = '''          ruff check \\
+            src/bochan/api/__init__.py \\
+            src/bochan/api/acquisition/context.py \\
+            src/bochan/api/acquisition/objective.py \\
+            src/bochan/api/acquisition/service.py \\
+            src/bochan/api/optimizer/backend.py \\
+            src/bochan/api/optimizer/dispatch.py \\
+            tests/test_api_architecture.py\n'''
+          new = '''          ruff check --select I,F --fix \\
+            src/bochan/api/__init__.py \\
+            src/bochan/api/acquisition/context.py \\
+            src/bochan/api/acquisition/objective.py \\
+            src/bochan/api/acquisition/service.py \\
+            src/bochan/api/optimizer/backend.py \\
+            src/bochan/api/optimizer/dispatch.py \\
+            tests/test_api_architecture.py\n          ruff check --select I,F \\
+            src/bochan/api/__init__.py \\
+            src/bochan/api/acquisition/context.py \\
+            src/bochan/api/acquisition/objective.py \\
+            src/bochan/api/acquisition/service.py \\
+            src/bochan/api/optimizer/backend.py \\
+            src/bochan/api/optimizer/dispatch.py \\
+            tests/test_api_architecture.py\n'''
+          if old not in text:
+              raise RuntimeError('expected final split Ruff block not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Commit workflow correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/agent-api-factory-final-lint-fix.yml
+          git add .github/workflows/agent-api-factory-final-split.yml
+          git commit -m "Focus final API split lint validation"
+          git push origin HEAD:agent/api-factory-final-split

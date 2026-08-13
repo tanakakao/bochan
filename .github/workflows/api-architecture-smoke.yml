@@ -46,7 +46,7 @@ jobs:
             src/bochan/api/__init__.py \
             src/bochan/api/acquisition/__init__.py \
             src/bochan/api/acquisition/classification.py \
-            src/bochan/api/acquisition/defaults.py \
+            src/bochan/api/acquisition/defaults/__init__.py \
             src/bochan/api/acquisition/service.py \
             src/bochan/api/candidate/__init__.py \
             src/bochan/api/candidate/output.py \
@@ -62,7 +62,7 @@ jobs:
             src/bochan/api/observation/__init__.py \
             src/bochan/api/observation/state.py \
             src/bochan/api/observation/service.py \
-            src/bochan/api/optimizer.py \
+            src/bochan/api/optimizer/__init__.py \
             src/bochan/api/registry/__init__.py \
             src/bochan/api/registry/acquisition.py \
             src/bochan/api/registry/model.py \

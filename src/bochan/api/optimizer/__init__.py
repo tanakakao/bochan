@@ -25,17 +25,17 @@ from ..configs import (
     ModelConfig,
     OptimizeConfig,
 )
+from ..factory import fit_model
+from ..llm import LLMCandidateExplanationMixin, LLMSuggestionMixin
+from ..observation import ExperimentFailureConfig, ObservationData
+from ..observation.failure import attach_observation_state
+from ..observation.service import build_objective_bundle
 from .core import BayesianOptimizer as _CoreBayesianOptimizer
 from .core import (
     _infer_bounds_from_train_X,
     _resolve_mixed_fixed_features_from_train_X,
     _resolve_mixed_optimizer_callable,
 )
-from ..observation.failure import attach_observation_state
-from ..factory import fit_model
-from ..llm import LLMCandidateExplanationMixin, LLMSuggestionMixin
-from ..observation import ExperimentFailureConfig, ObservationData
-from ..observation.service import build_objective_bundle
 from .service import optimize_candidates, resolve_optimizer_from_cat_dims
 
 

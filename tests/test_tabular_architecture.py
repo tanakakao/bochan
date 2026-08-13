@@ -1,12 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
+
 import bochan.api as api
 import bochan.tabular as tabular
-from bochan.tabular import (
-    composition_bounds_optimizer,
-    element_constraint_composition_optimizer,
-    optimizer_api,
-)
+from bochan.tabular import composition_bounds_optimizer, optimizer_api
 from bochan.tabular import optimizer as legacy_optimizer
 from bochan.tabular.composition_element_constraint_candidates import (
     CompositionElementConstraintCandidateReranker,
@@ -70,11 +68,11 @@ def test_variable_total_behavior_uses_explicit_transform_component() -> None:
     )
     assert (
         tabular.TabularBayesianOptimizer.inverse_compositions.__module__
-        == "bochan.tabular.element_constraint_composition_optimizer"
+        == "bochan.tabular.public_optimizer"
     )
 
 
-def test_element_constraints_use_explicit_components() -> None:
+def test_element_constraints_use_explicit_components_without_optimizer_layer() -> None:
     assert isinstance(
         tabular.TabularBayesianOptimizer.composition_element_constraint_resolver,
         CompositionElementConstraintResolver,
@@ -86,14 +84,20 @@ def test_element_constraints_use_explicit_components() -> None:
     assert CompositionElementConstraintProjector.__module__ == (
         "bochan.tabular.composition_element_constraints"
     )
-    adapter = element_constraint_composition_optimizer.TabularBayesianOptimizer
-    assert "_project_element_values" not in vars(adapter)
-    assert "_validate_element_constraints" not in vars(adapter)
-    assert "_normalize_element_constraints" not in vars(adapter)
-    assert "_requested_q" not in vars(adapter)
-    assert "_rerank_candidates" not in vars(adapter)
-    assert adapter.inverse_compositions.__module__ == (
+    assert importlib.util.find_spec(
         "bochan.tabular.element_constraint_composition_optimizer"
+    ) is None
+    assert all(
+        cls.__module__ != "bochan.tabular.element_constraint_composition_optimizer"
+        for cls in tabular.TabularBayesianOptimizer.__mro__
+    )
+    assert (
+        tabular.TabularBayesianOptimizer.inverse_compositions.__module__
+        == "bochan.tabular.public_optimizer"
+    )
+    assert (
+        tabular.TabularBayesianOptimizer.candidate.__module__
+        == "bochan.tabular.public_optimizer"
     )
 
 

@@ -8,7 +8,7 @@ from typing import Any
 
 from .. import factory as _factory
 from ..configs import AcquisitionConfig, DataContext, ModelBundle, ObjectiveConfig
-from ..optimizer.core import (
+from .context import (
     _filter_context_fields_for_acqf,
     _input_transform_n_w_from_bundle,
     _resolve_objective_config_n_w_from_input_transform,

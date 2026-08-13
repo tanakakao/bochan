@@ -7,6 +7,9 @@ from bochan.api import configs, engine, factory, optimizer
 from bochan.api.acquisition import defaults as acquisition_defaults
 from bochan.api.acquisition import service as acquisition_service
 from bochan.api.candidate import output as candidate_output
+from bochan.api.configs import acquisition as acquisition_config
+from bochan.api.configs import fit as fit_config
+from bochan.api.configs import optimize as optimize_config
 from bochan.api.llm import LLMCandidateExplanationMixin, LLMSuggestionMixin
 from bochan.api.observation import service as observation_service
 from bochan.api.observation import state as observation_state
@@ -23,6 +26,15 @@ def test_base_configs_are_owned_by_package() -> None:
     assert configs.ModelConfig is api.ModelConfig
     assert configs.MultiOutputConfig is api.MultiOutputConfig
     assert configs.ModelConfig.__module__ == "bochan.api.configs.base"
+
+
+def test_specialized_configs_are_owned_by_package_modules() -> None:
+    assert api.AcquisitionConfig is acquisition_config.AcquisitionConfig
+    assert api.FitConfig is fit_config.FitConfig
+    assert api.OptimizeConfig is optimize_config.OptimizeConfig
+    assert api.AcquisitionConfig.__module__ == "bochan.api.configs.acquisition"
+    assert api.FitConfig.__module__ == "bochan.api.configs.fit"
+    assert api.OptimizeConfig.__module__ == "bochan.api.configs.optimize"
 
 
 def test_acquisition_defaults_have_one_owner() -> None:
@@ -57,16 +69,19 @@ def test_runtime_services_live_in_responsibility_subpackages() -> None:
 
 def test_removed_compatibility_and_patch_modules_do_not_exist() -> None:
     removed = {
+        "bochan.api.acquisition_config",
         "bochan.api.acquisition_service",
         "bochan.api.candidate_output",
         "bochan.api.classification_perturbation_defaults",
         "bochan.api.engine_defaults",
+        "bochan.api.fit_config",
         "bochan.api.kronecker_input_perturbation_defaults",
         "bochan.api.llm_candidate_explanation",
         "bochan.api.llm_selected_acquisition",
         "bochan.api.llm_suggestion",
         "bochan.api.observation_engine",
         "bochan.api.observation_service",
+        "bochan.api.optimizer_config",
         "bochan.acquisition.objective.regression_perturbation",
     }
     for module_name in removed:

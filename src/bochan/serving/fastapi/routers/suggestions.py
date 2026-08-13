@@ -14,7 +14,7 @@ from ..converters import (
     to_tensor,
 )
 from ..schemas import CandidateResponse, SuggestRequest
-from ..tabular_compat import (
+from ..target_categories import (
     bind_category_metadata,
     to_acquisition_config,
     to_model_config_with_metadata,

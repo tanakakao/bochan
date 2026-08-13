@@ -47,7 +47,7 @@ def test_candidate_resolves_direct_named_outcome_constraint_outputs() -> None:
         },
     )
     assert acq_config.outcome_constraint_config is not None
-    assert acq_config.outcome_constraint_config.output_indices == [0, 1]
+    assert acq_config.outcome_constraint_config["output_indices"] == [0, 1]
 
 
 def test_candidate_resolves_nested_named_outcome_constraint_outputs() -> None:
@@ -64,7 +64,7 @@ def test_candidate_resolves_nested_named_outcome_constraint_outputs() -> None:
         },
     )
     assert acq_config.outcome_constraint_config is not None
-    assert acq_config.outcome_constraint_config.output_indices == [0, 1]
+    assert acq_config.outcome_constraint_config["output_indices"] == [0, 1]
 
 
 def test_candidate_rejects_unknown_named_outcome_constraint_output() -> None:

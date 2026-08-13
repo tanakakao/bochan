@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from bochan.tabular import TabularBayesianOptimizer
-from bochan.tabular import optimizer_api
+from bochan.tabular.optimizer import TabularBayesianOptimizer as _TabularOptimizerCore
 
 
 def test_tabular_constructor_accepts_direct_input_transform_kwargs() -> None:
@@ -37,7 +37,7 @@ def test_tabular_fit_accepts_direct_input_transform_kwargs(monkeypatch) -> None:
         captured["kwargs"] = kwargs
         return self
 
-    monkeypatch.setattr(optimizer_api._BaseTabularBayesianOptimizer, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
 
     bo = TabularBayesianOptimizer(
         task_type="regression",

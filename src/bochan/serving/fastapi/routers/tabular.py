@@ -90,6 +90,8 @@ def predict_tabular_model(
     optimizer = _get_optimizer(store, model_id)
     try:
         return predict_response(model_id, optimizer, request)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -109,6 +111,8 @@ def _candidate_endpoint(
             request,
             use_ask=use_ask,
         )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

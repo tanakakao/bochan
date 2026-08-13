@@ -33,11 +33,8 @@ jobs:
           ruff check \
             --per-file-ignores "src/bochan/tabular/multi_site_composition_optimizer.py:I001" \
             --per-file-ignores "src/bochan/tabular/multi_site_composition_optimizer.py:UP037" \
-            --per-file-ignores "src/bochan/tabular/element_column_composition_optimizer.py:I001" \
-            --per-file-ignores "src/bochan/tabular/element_column_composition_optimizer.py:UP037" \
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/multi_site_composition_optimizer.py \
-            src/bochan/tabular/element_column_composition_optimizer.py \
             src/bochan/tabular/composition_bounds_optimizer.py \
             src/bochan/tabular/composition_element_columns.py \
             src/bochan/tabular/composition_element_constraint_candidates.py \

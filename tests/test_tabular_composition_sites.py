@@ -1,10 +1,8 @@
 import pandas as pd
 import pytest
 
-from bochan.tabular.multi_site_composition_optimizer import (
-    TabularBayesianOptimizer,
-    _CoreTabularBayesianOptimizer,
-)
+from bochan.tabular import TabularBayesianOptimizer
+from bochan.tabular.optimizer import TabularBayesianOptimizer as _TabularOptimizerCore
 
 
 def _frame() -> pd.DataFrame:
@@ -47,7 +45,7 @@ def test_multi_site_fit_replaces_each_formula_column(monkeypatch) -> None:
         captured["kwargs"] = kwargs
         return self
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
     optimizer = TabularBayesianOptimizer(
         input_cols=["A_formula", "B_formula", "temperature"],
         target_cols="property",
@@ -87,8 +85,8 @@ def test_multi_site_candidate_repairs_each_site_independently(monkeypatch) -> No
             1.0,
         )
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
     optimizer = TabularBayesianOptimizer(
         input_cols=["A_formula", "B_formula", "temperature"],
         target_cols="property",
@@ -122,8 +120,8 @@ def test_multi_site_predict_accepts_raw_formula_columns(monkeypatch) -> None:
         captured["data"] = data
         return data
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "predict", fake_predict)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "predict", fake_predict)
     optimizer = TabularBayesianOptimizer(
         input_cols=["A_formula", "B_formula", "temperature"],
         target_cols="property",
@@ -139,12 +137,16 @@ def test_multi_site_predict_accepts_raw_formula_columns(monkeypatch) -> None:
     assert "B__ilr__1" in captured["data"].columns
 
 
-def test_multi_site_rejects_legacy_composition_arguments() -> None:
-    with pytest.raises(ValueError, match="not both"):
-        TabularBayesianOptimizer(
-            composition_col="formula",
-            composition_sites=_sites(),
-        )
+def test_single_site_uses_same_canonical_composition_sites_api() -> None:
+    sites = {
+        "alloy": {
+            "column": "A_formula",
+            "elements": ["La", "Sr", "Ba"],
+        }
+    }
+    optimizer = TabularBayesianOptimizer(composition_sites=sites)
+    assert tuple(optimizer.composition_sites) == ("alloy",)
+    assert optimizer.composition_sites["alloy"]["column"] == "A_formula"
 
 
 def test_multi_site_requires_unique_columns() -> None:

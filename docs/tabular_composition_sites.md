@@ -1,20 +1,10 @@
 # A/Bサイトを分けた組成最適化
 
-`bochan.tabular.TabularBayesianOptimizer`は、`composition_sites`を指定することで、Aサイト、Bサイトなど複数の独立した組成サイトを同時に扱えます。
+`bochan.tabular.TabularBayesianOptimizer` は `composition_sites` を canonical API として、単一組成・A/Bサイトなど複数の独立した組成サイトを同じ仕組みで扱います。
 
-各サイトについて、以下を個別に指定できます。
-
-- 使用可能な元素
-- 1候補で使用する元素数の最小値・最大値
-- 必ず使用する元素
-- 各元素の上下限
-- 各元素の刻み幅
-- Fraction、CLR、ALR、ILR表現
-- 原子分率または重量分率
+各サイトでは、使用可能元素、元素数、必須元素、上下限、刻み、表現、原子分率/重量分率、固定または可変の総量を個別に設定できます。
 
 ## 入力データ
-
-サイトごとに組成式列を分けます。
 
 ```python
 import pandas as pd
@@ -39,23 +29,14 @@ from bochan.tabular import TabularBayesianOptimizer
 bo = TabularBayesianOptimizer(
     input_cols=["A_formula", "B_formula", "temperature"],
     target_cols="property",
-    bounds={
-        "temperature": [850.0, 1100.0],
-    },
+    bounds={"temperature": [850.0, 1100.0]},
     composition_sites={
         "A": {
             "column": "A_formula",
-
-            # Aサイトで使用可能な元素
             "elements": ["La", "Sr", "Ba", "Ca"],
-
-            # 1候補あたり1～2元素
             "min_components": 1,
             "max_components": 2,
-
-            # Laを必ず使用
             "required_components": ["La"],
-
             "representation": "ilr",
             "bounds": {
                 "La": [0.20, 1.00],
@@ -72,17 +53,10 @@ bo = TabularBayesianOptimizer(
         },
         "B": {
             "column": "B_formula",
-
-            # Bサイトで使用可能な元素
             "elements": ["Fe", "Co", "Mn", "Ni"],
-
-            # 1候補あたり2～3元素
             "min_components": 2,
             "max_components": 3,
-
-            # Feを必ず使用
             "required_components": ["Fe"],
-
             "representation": "ilr",
             "bounds": {
                 "Fe": [0.20, 1.00],
@@ -104,7 +78,7 @@ bo.fit(df)
 candidates, acq_value = bo.candidate(acq_name="EI", q=3)
 ```
 
-候補には、サイトごとの組成式と分率列が返されます。
+候補にはサイトごとの組成式と分率列が返されます。
 
 ```text
 A_formula
@@ -120,9 +94,31 @@ B__fraction__Ni
 temperature
 ```
 
+## 単一組成
+
+単一組成も同じ `composition_sites` を 1 サイトだけ定義します。
+
+```python
+bo = TabularBayesianOptimizer(
+    input_cols=["formula", "temperature"],
+    target_cols="property",
+    composition_sites={
+        "formula": {
+            "column": "formula",
+            "elements": ["Fe", "Co", "Ni"],
+            "min_components": 2,
+            "max_components": 3,
+            "required_components": ["Fe"],
+        }
+    },
+)
+```
+
+単一サイト専用の `composition_col` / `formula_col` / `composition_*` API はありません。
+
 ## 元素数を固定する
 
-Aサイトを常に2元素にする場合は、最小値と最大値を同じにします。
+最小値と最大値を同じにします。
 
 ```python
 "A": {
@@ -133,68 +129,44 @@ Aサイトを常に2元素にする場合は、最小値と最大値を同じに
 }
 ```
 
-## 使用元素を限定する
-
-`elements`に含めた元素だけが、そのサイトの候補として使用されます。
-
-```python
-"elements": ["La", "Sr"]
-```
-
-この場合、BaやCaは候補に生成されません。
-
-## 必須元素を複数指定する
+## 必須元素
 
 ```python
 "required_components": ["La", "Sr"]
 ```
 
-必須元素数は`max_components`以下である必要があります。
+必須元素数は `max_components` 以下である必要があります。
 
-## サイトごとの独立したrepair
+## サイトごとの repair
 
-候補生成後、各サイトは独立して次の制約へrepairされます。
+候補生成後、各サイトは独立して次の制約へ repair されます。
 
 1. 必須元素を有効化
 2. 正の下限を持つ元素を有効化
 3. 候補値が大きい元素から最大元素数まで選択
 4. 最小元素数に足りない場合は候補元素を追加
 5. 非選択元素をゼロに固定
-6. サイト内の合計が`total`になるようbounded simplexへ射影
+6. サイト内の合計が `total` になるよう bounded simplex へ射影
 7. 刻み幅へ丸め、残差を再配分
 
-AサイトとBサイトでは、元素集合、元素数、必須元素、上下限、刻み幅が完全に独立です。
-
-## 単一組成APIとの関係
-
-従来の単一組成指定は引き続き利用できます。
-
-```python
-bo = TabularBayesianOptimizer(
-    composition_col="formula",
-    composition_elements=["Fe", "Co", "Ni"],
-    composition_min_components=2,
-    composition_max_components=3,
-    composition_required_components=["Fe"],
-)
-```
-
-`composition_sites`と`composition_col`または`formula_col`を同時に指定することはできません。
+AサイトとBサイトでは元素集合、元素数、必須元素、上下限、刻み幅が独立です。
 
 ## 主なサイト設定
 
 | キー | 内容 | 既定値 |
 |---|---|---|
-| `column` | サイト組成式の列名 | 必須 |
-| `elements` | 使用可能な元素 | 必須 |
+| `column` | サイト組成式の列名 | formula site では必須 |
+| `element_columns` | 元素ごとの数値列 | element-column site で使用 |
+| `elements` | 使用可能な元素 | formula site では必須 |
 | `min_components` | 使用元素数の最小値 | `1` |
 | `max_components` | 使用元素数の最大値 | 全候補元素数 |
 | `required_components` | 必ず使用する元素 | なし |
-| `representation` | `fractions`、`clr`、`alr`、`ilr` | `ilr` |
-| `normalization` | `atomic_fraction`または`weight_fraction` | `atomic_fraction` |
+| `representation` | `fractions` / `clr` / `alr` / `ilr` | `ilr` |
+| `normalization` | `atomic_fraction` / `weight_fraction` | `atomic_fraction` |
 | `bounds` | 元素ごとの下限・上限 | `[0, total]` |
 | `steps` | 元素ごとの刻み幅 | なし |
-| `total` | サイト内組成量の合計 | `1.0` |
-| `coordinate_bounds` | CLR・ALR・ILR座標の探索範囲 | `[-8, 8]` |
+| `total` | 固定サイト総量 | `1.0` |
+| `total_bounds` | 可変サイト総量の探索範囲 | なし |
+| `coordinate_bounds` | CLR/ALR/ILR座標の探索範囲 | `[-8, 8]` |
 
-`min_active_components`、`max_active_components`は、それぞれ`min_components`、`max_components`の別名としても使用できます。`required_elements`は`required_components`の別名です。
+設定名は上記 canonical 名のみを使用します。`min_active_components` / `max_active_components` / `required_elements` などの compatibility alias はサポートしません。

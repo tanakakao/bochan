@@ -6,11 +6,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from bochan.tabular.multi_output_categories import (
+from bochan.tabular.targets import (
     extract_output_category_maps,
     resolve_acquisition_config_columns,
+    resolve_acquisition_ordinal_ranks,
 )
-from bochan.tabular.ordinal_rank_labels import resolve_acquisition_ordinal_ranks
 
 from . import converters
 

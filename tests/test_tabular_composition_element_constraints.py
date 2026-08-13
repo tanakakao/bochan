@@ -2,9 +2,7 @@ import pandas as pd
 import pytest
 
 from bochan.tabular.composition import ATOMIC_WEIGHTS
-from bochan.tabular.element_constraint_composition_optimizer import (
-    TabularBayesianOptimizer,
-)
+from bochan.tabular import TabularBayesianOptimizer
 from bochan.tabular.optimizer_api import (
     TabularBayesianOptimizer as _CoreTabularBayesianOptimizer,
 )

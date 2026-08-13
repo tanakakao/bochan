@@ -1,14 +1,17 @@
-"""Resolve tabular target category metadata declared in output configs."""
+"""Target-category normalization and label resolution for tabular outputs."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from .builders import UNSET
+from .converter import resolve_column_indices
+
 _CATEGORY_KEYS = ("ordered_categories", "categories", "category_map")
 
 
-def _category_map_from_output_config(
+def category_map_from_output_config(
     value: Any,
     *,
     key: str,
@@ -63,7 +66,7 @@ def _category_map_from_output_config(
     return {label: int(index) for label, index in mapping.items()}
 
 
-def _extract_output_category_maps(
+def extract_output_category_maps(
     multi_output_config: Any,
 ) -> tuple[Any, dict[Any, dict[Any, int]]]:
     """Remove tabular category metadata from output configs and return mappings."""
@@ -113,7 +116,7 @@ def _extract_output_category_maps(
                 f"Got task_type={task_type!r} for output {output_name!r}."
             )
 
-        category_map = _category_map_from_output_config(
+        category_map = category_map_from_output_config(
             output_config[key],
             key=key,
             output_name=output_name,
@@ -133,7 +136,7 @@ def _extract_output_category_maps(
     return resolved_multi_output, inferred_maps
 
 
-def _merge_target_category_metadata(
+def merge_target_category_metadata(
     kwargs: dict[str, Any],
     inferred_maps: Mapping[Any, Mapping[Any, int]],
 ) -> None:
@@ -177,8 +180,166 @@ def _merge_target_category_metadata(
     kwargs["target_category_maps"] = merged_maps
 
 
+def target_category_map_for_output(
+    output: Any,
+    target_names: Sequence[Any],
+    target_category_maps: Mapping[Any, Mapping[Any, int]] | None,
+) -> Mapping[Any, int] | None:
+    """Return the original-label to class-index map for one target output."""
+
+    if not target_category_maps:
+        return None
+    resolved = resolve_column_indices([output], list(target_names))
+    if not resolved:
+        return None
+    target_name = target_names[resolved[0]]
+    mapping = target_category_maps.get(target_name)
+    if mapping is None:
+        mapping = target_category_maps.get(str(target_name))
+    return mapping
+
+
+def resolve_target_class_value(
+    value: Any,
+    *,
+    output: Any,
+    target_names: Sequence[Any],
+    target_category_maps: Mapping[Any, Mapping[Any, int]] | None,
+) -> Any:
+    """Resolve a categorical target label to its encoded class index."""
+
+    if not isinstance(value, str):
+        return value
+
+    mapping = target_category_map_for_output(
+        output,
+        target_names,
+        target_category_maps,
+    )
+    if mapping is None:
+        raise ValueError(
+            f"String target class {value!r} for output {output!r} cannot be "
+            "resolved because no target category map is available."
+        )
+    if value in mapping:
+        return int(mapping[value])
+    for label, class_index in mapping.items():
+        if str(label) == value:
+            return int(class_index)
+    raise KeyError(
+        f"Unknown target class label {value!r} for output {output!r}. "
+        f"Available labels: {list(mapping)!r}."
+    )
+
+
+def resolve_constraint_target_classes(
+    value: Any,
+    *,
+    target_names: Sequence[Any],
+    target_category_maps: Mapping[Any, Mapping[Any, int]] | None,
+) -> Any:
+    """Resolve string target-class fields in one constraint mapping."""
+
+    if not isinstance(value, Mapping):
+        return value
+    if "target_class" not in value and "target_classes" not in value:
+        return value
+
+    resolved = dict(value)
+    output = resolved.get("output")
+    if output is None:
+        return resolved
+
+    target_class = resolved.get("target_class")
+    if target_class is not None:
+        resolved["target_class"] = resolve_target_class_value(
+            target_class,
+            output=output,
+            target_names=target_names,
+            target_category_maps=target_category_maps,
+        )
+
+    target_classes = resolved.get("target_classes")
+    if target_classes is not None:
+        values = (
+            [target_classes]
+            if isinstance(target_classes, str)
+            else list(target_classes)
+        )
+        resolved["target_classes"] = [
+            resolve_target_class_value(
+                item,
+                output=output,
+                target_names=target_names,
+                target_category_maps=target_category_maps,
+            )
+            for item in values
+        ]
+    return resolved
+
+
+def resolve_outcome_constraint_config_columns(
+    value: Any,
+    target_names: Sequence[Any],
+    target_category_maps: Mapping[Any, Mapping[Any, int]] | None = None,
+) -> Any:
+    """Resolve tabular target names and class labels in an outcome config."""
+
+    if value is UNSET or value is None or not isinstance(value, Mapping):
+        return value
+
+    resolved = dict(value)
+    if "output_indices" in resolved:
+        output_indices = resolve_column_indices(
+            resolved["output_indices"],
+            list(target_names),
+        )
+        resolved["output_indices"] = output_indices or []
+
+    constraints = resolved.get("constraints")
+    if constraints is not None:
+        constraint_values = (
+            [constraints] if isinstance(constraints, Mapping) else list(constraints)
+        )
+        resolved["constraints"] = [
+            resolve_constraint_target_classes(
+                item,
+                target_names=target_names,
+                target_category_maps=target_category_maps,
+            )
+            for item in constraint_values
+        ]
+    return resolved
+
+
+def resolve_acquisition_config_columns(
+    acq_config: Any,
+    target_names: Sequence[Any],
+    target_category_maps: Mapping[Any, Mapping[Any, int]] | None = None,
+) -> Any:
+    """Resolve named outcomes and target labels nested in an acquisition config."""
+
+    if not isinstance(acq_config, Mapping):
+        return acq_config
+    if "outcome_constraint_config" not in acq_config:
+        return acq_config
+
+    resolved = dict(acq_config)
+    resolved["outcome_constraint_config"] = resolve_outcome_constraint_config_columns(
+        resolved["outcome_constraint_config"],
+        target_names,
+        target_category_maps,
+    )
+    return resolved
+
+
 __all__ = [
-    "_category_map_from_output_config",
-    "_extract_output_category_maps",
-    "_merge_target_category_metadata",
+    "category_map_from_output_config",
+    "extract_output_category_maps",
+    "merge_target_category_metadata",
+    "resolve_acquisition_config_columns",
+    "resolve_constraint_target_classes",
+    "resolve_outcome_constraint_config_columns",
+    "resolve_target_class_value",
+    "target_category_map_for_output",
 ]

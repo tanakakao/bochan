@@ -1,0 +1,113 @@
+name: Agent API acquisition context fix
+
+on:
+  push:
+    branches:
+      - agent/api-root-responsibility-cleanup
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: contains(github.event.head_commit.message, '[agent-api-context-fix]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/api-root-responsibility-cleanup
+          fetch-depth: 0
+      - name: Move acquisition context helpers and fix optimizer imports
+        shell: bash
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import compileall
+          from pathlib import Path
+
+          repo = Path.cwd()
+          api = repo / 'src/bochan/api'
+          core = api / 'optimizer/core.py'
+          service = api / 'acquisition/service.py'
+          context = api / 'acquisition/context.py'
+
+          core_text = core.read_text(encoding='utf-8')
+          service_text = service.read_text(encoding='utf-8')
+
+          # Correct package-relative imports left by the mechanical optimizer move.
+          core_text = core_text.replace('import inspect\n', '')
+          core_text = core_text.replace('from .registry.acquisition import', 'from ..registry.acquisition import')
+          core_text = core_text.replace('from .configs import (', 'from ..configs import (')
+          core_text = core_text.replace('from .factory import', 'from ..factory import')
+          core_text = core_text.replace(
+              'from .evaluation.cross_validation import cross_validate_optimizer',
+              'from ..evaluation.cross_validation import cross_validate_optimizer',
+          )
+
+          start = core_text.index('\ndef _filter_context_fields_for_acqf')
+          end = core_text.index('\ndef _optimizer_name', start)
+          helper_block = core_text[start + 1:end].rstrip() + '\n'
+          core_text = core_text[:start] + '\n' + core_text[end:]
+
+          anchor = 'from ..factory import build_acquisition, build_model, fit_model, optimize_candidates\n'
+          helper_import = (
+              'from ..acquisition.context import (\n'
+              '    _filter_context_fields_for_acqf,\n'
+              '    _resolve_objective_config_n_w_from_input_transform,\n'
+              ')\n'
+          )
+          if helper_import not in core_text:
+              core_text = core_text.replace(anchor, anchor + helper_import, 1)
+
+          context_text = (
+              '"""Acquisition context helpers shared by public optimization services."""\n\n'
+              'from __future__ import annotations\n\n'
+              'import inspect\n'
+              'from dataclasses import replace\n'
+              'from typing import Any\n\n'
+              'from ..configs import AcquisitionConfig, ModelBundle, ModelConfig\n\n\n'
+              + helper_block
+          )
+
+          old_service_import = (
+              'from ..optimizer.core import (\n'
+              '    _filter_context_fields_for_acqf,\n'
+              '    _input_transform_n_w_from_bundle,\n'
+              '    _resolve_objective_config_n_w_from_input_transform,\n'
+              ')\n'
+          )
+          new_service_import = (
+              'from .context import (\n'
+              '    _filter_context_fields_for_acqf,\n'
+              '    _input_transform_n_w_from_bundle,\n'
+              '    _resolve_objective_config_n_w_from_input_transform,\n'
+              ')\n'
+          )
+          if old_service_import not in service_text:
+              raise RuntimeError('expected optimizer-core helper import not found in acquisition service')
+          service_text = service_text.replace(old_service_import, new_service_import, 1)
+
+          core.write_text(core_text, encoding='utf-8')
+          context.write_text(context_text, encoding='utf-8')
+          service.write_text(service_text, encoding='utf-8')
+
+          # Structural invariants: acquisition no longer depends on optimizer package.
+          if 'optimizer.core' in service_text:
+              raise RuntimeError('acquisition service still depends on optimizer core')
+          for invalid in ('from .registry', 'from .configs', 'from .factory', 'from .evaluation'):
+              if invalid in core_text:
+                  raise RuntimeError(f'invalid optimizer relative import remains: {invalid}')
+          if not compileall.compile_dir(str(api), quiet=1):
+              raise RuntimeError('compileall failed after acquisition context refactor')
+          PY
+      - name: Commit acquisition context refactor
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/agent-api-context-fix.yml
+          git add -A
+          git status --short
+          git commit -m "Separate acquisition context from optimizer core"
+          git push origin HEAD:agent/api-root-responsibility-cleanup

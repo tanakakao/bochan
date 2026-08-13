@@ -16,8 +16,6 @@ on:
       - "src/bochan/serving/webapp/composition_pd_compat.py"
       - "src/bochan/serving/webapp/composition_feature_importance.py"
       - "src/bochan/serving/webapp/composition_feature_importance_views.py"
-      - "src/bochan/serving/webapp/composition_importance_records_compat.py"
-      - "src/bochan/serving/webapp/composition_importance_output_compat.py"
       - "src/bochan/serving/webapp/composition_element_importance_figures.py"
       - "src/bochan/serving/webapp/pandas_compat.py"
       - "src/bochan/serving/webapp/visualization_feature_types.py"
@@ -106,8 +104,6 @@ jobs:
             src/bochan/serving/webapp/composition_pd_compat.py \
             src/bochan/serving/webapp/composition_feature_importance.py \
             src/bochan/serving/webapp/composition_feature_importance_views.py \
-            src/bochan/serving/webapp/composition_importance_records_compat.py \
-            src/bochan/serving/webapp/composition_importance_output_compat.py \
             src/bochan/serving/webapp/composition_element_importance_figures.py \
             src/bochan/serving/webapp/pandas_compat.py \
             src/bochan/serving/webapp/visualization_feature_types.py \

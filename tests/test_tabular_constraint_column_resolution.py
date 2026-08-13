@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import torch
 
-from bochan.tabular.builders import make_optimize_config
-from bochan.tabular.converter import resolve_optimize_config_columns
+from bochan.tabular.config import make_optimize_config
+from bochan.tabular.data import resolve_optimize_config_columns
 
 
 def _assert_linear_constraint(

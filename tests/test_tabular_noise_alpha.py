@@ -6,7 +6,7 @@ import torch
 from bochan.api import ModelConfig, MultiOutputConfig, OutputConfig
 from bochan.models.regression.gaussian.likelihood import build_single_task_likelihood
 from bochan.tabular import TabularBayesianOptimizer
-from bochan.tabular import optimizer_api
+from bochan.tabular.optimizer import settings as optimizer_settings
 
 
 def _training_data() -> tuple[torch.Tensor, torch.Tensor]:
@@ -86,7 +86,7 @@ def test_tabular_alpha_builds_likelihood_for_supported_regression() -> None:
         outcome_transform=False,
     )
 
-    resolved = optimizer_api._apply_alpha_to_model_config(
+    resolved = optimizer_settings.apply_alpha_to_model_config(
         config,
         train_X=train_X,
         train_Y=train_Y,
@@ -102,7 +102,7 @@ def test_tabular_alpha_applies_only_to_hybrid_regression_outputs() -> None:
     train_X, train_Y = _training_data()
     binary_Y = (train_Y > train_Y.mean()).to(train_Y)
     combined_Y = torch.cat([train_Y, binary_Y], dim=-1)
-    private_key = optimizer_api._TABULAR_NOISE_ALPHA_KEY
+    private_key = optimizer_settings._TABULAR_NOISE_ALPHA_KEY
     config = ModelConfig(
         task_type="hybrid",
         model_type="base",
@@ -124,7 +124,7 @@ def test_tabular_alpha_applies_only_to_hybrid_regression_outputs() -> None:
         ),
     )
 
-    resolved = optimizer_api._apply_alpha_to_model_config(
+    resolved = optimizer_settings.apply_alpha_to_model_config(
         config,
         train_X=train_X,
         train_Y=combined_Y,
@@ -151,8 +151,8 @@ def test_tabular_alpha_rejects_unsupported_gaussian_model() -> None:
         outcome_transform=False,
     )
 
-    with pytest.raises(ValueError, match="recommended Gaussian regression models"):
-        optimizer_api._apply_alpha_to_model_config(
+    with pytest.raises(ValueError, match="alpha is not supported"):
+        optimizer_settings.apply_alpha_to_model_config(
             config,
             train_X=train_X,
             train_Y=train_Y,
@@ -181,7 +181,7 @@ def test_fastapi_tabular_schema_forwards_alpha_to_model_kwargs() -> None:
 
     assert request.alpha == pytest.approx(1e-6)
     assert request.bo_model_config.model_kwargs[
-        optimizer_api._TABULAR_NOISE_ALPHA_KEY
+        optimizer_settings._TABULAR_NOISE_ALPHA_KEY
     ] == pytest.approx(1e-6)
 
     with pytest.raises(ValidationError):

@@ -2,27 +2,21 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
-from typing import Any, Callable
+from typing import Any
 
 from bochan.api import ExperimentFailureConfig
 from bochan.api.observation.failure import attach_observation_state
 
 from ..config import ColumnKey, TabularDataConfig
-from .data import (
-    ObservationTabularDataset,
-    dataframe_to_observation_tensors,
-    numpy_to_observation_tensors,
-)
+from .data import ObservationTabularDataset, dataframe_to_observation_tensors, numpy_to_observation_tensors
 
 
 class ObservationAdapter:
     """Resolve observation-aware conversion and attach experiment state."""
 
-    def __init__(
-        self,
-        failure_config: ExperimentFailureConfig | None = None,
-    ) -> None:
+    def __init__(self, failure_config: ExperimentFailureConfig | None = None) -> None:
         self.failure_config = failure_config
 
     @staticmethod
@@ -71,7 +65,6 @@ class ObservationAdapter:
                 feature_names=feature_names,
                 target_names=target_names,
             )
-
         try:
             import pandas as pd
         except ImportError:
@@ -87,8 +80,7 @@ class ObservationAdapter:
         )
 
     def resolve_failure_config(
-        self,
-        failure_config: ExperimentFailureConfig | None,
+        self, failure_config: ExperimentFailureConfig | None
     ) -> ExperimentFailureConfig | None:
         return self.failure_config if failure_config is None else failure_config
 

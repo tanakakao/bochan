@@ -47,6 +47,7 @@ class TabularBayesianOptimizer(
 
     composition_bounds_resolver = CompositionBoundsResolver()
     composition_total_constraint_resolver = CompositionTotalConstraintResolver()
+    composition_variable_total_transform = CompositionVariableTotalTransform()
 
     def __init__(
         self,

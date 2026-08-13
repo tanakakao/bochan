@@ -40,7 +40,7 @@ def resolve_model_cls(
         return config.model_cls
 
     if model_registry is None:
-        from .registry.model import DEFAULT_MODEL_REGISTRY
+        from ..registry.model import DEFAULT_MODEL_REGISTRY
 
         model_registry = DEFAULT_MODEL_REGISTRY
 

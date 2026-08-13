@@ -118,19 +118,32 @@ def summary(study_id: str, study: BochanStudy) -> StudySummaryResponse:
     )
 
 
+def _normalize_direction(value: Any) -> str:
+    if isinstance(value, bool):
+        return "maximize" if value else "minimize"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return "maximize" if float(value) >= 0.0 else "minimize"
+    normalized = str(value).strip().lower().replace("_", "").replace("-", "")
+    if normalized in {"maximize", "max", "greater", "higher", "high"}:
+        return "maximize"
+    if normalized in {"minimize", "min", "less", "lower", "low"}:
+        return "minimize"
+    raise ValueError(f"Unknown optimization direction: {value!r}.")
+
+
 def _direction(study: BochanStudy, output_index: int, direction: Any | None) -> str:
     if direction is not None:
-        return str(direction)
+        return _normalize_direction(direction)
     objective = getattr(getattr(study, "acq_config", None), "objective_config", None)
     directions = getattr(objective, "directions", None) if objective is not None else None
     if directions is not None:
         values = list(directions)
         index = output_index if output_index >= 0 else len(values) + output_index
         if 0 <= index < len(values):
-            return str(values[index])
+            return _normalize_direction(values[index])
     configured = getattr(objective, "direction", None) if objective is not None else None
     if configured is not None:
-        return str(configured)
+        return _normalize_direction(configured)
     maximize = getattr(objective, "maximize", None) if objective is not None else None
     return "maximize" if maximize is None or bool(maximize) else "minimize"
 
@@ -145,7 +158,10 @@ def _values(value: Any) -> list[Any]:
     stack = list(reversed(value))
     while stack:
         item = stack.pop()
-        stack.extend(reversed(item)) if isinstance(item, list) else out.append(item)
+        if isinstance(item, list):
+            stack.extend(reversed(item))
+        else:
+            out.append(item)
     return out
 
 

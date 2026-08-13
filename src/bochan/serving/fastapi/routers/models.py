@@ -29,7 +29,7 @@ from ..schemas import (
     RefitModelRequest,
     TellRequest,
 )
-from ..tabular_compat import (
+from ..target_categories import (
     TargetCategoryMetadata,
     bind_category_metadata,
     to_acquisition_config,

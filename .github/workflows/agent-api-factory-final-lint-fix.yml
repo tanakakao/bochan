@@ -24,31 +24,10 @@ jobs:
 
           path = Path('.github/workflows/agent-api-factory-final-split.yml')
           text = path.read_text(encoding='utf-8')
-          old = '''          ruff check \\
-            src/bochan/api/__init__.py \\
-            src/bochan/api/acquisition/context.py \\
-            src/bochan/api/acquisition/objective.py \\
-            src/bochan/api/acquisition/service.py \\
-            src/bochan/api/optimizer/backend.py \\
-            src/bochan/api/optimizer/dispatch.py \\
-            tests/test_api_architecture.py\n'''
-          new = '''          ruff check --select I,F --fix \\
-            src/bochan/api/__init__.py \\
-            src/bochan/api/acquisition/context.py \\
-            src/bochan/api/acquisition/objective.py \\
-            src/bochan/api/acquisition/service.py \\
-            src/bochan/api/optimizer/backend.py \\
-            src/bochan/api/optimizer/dispatch.py \\
-            tests/test_api_architecture.py\n          ruff check --select I,F \\
-            src/bochan/api/__init__.py \\
-            src/bochan/api/acquisition/context.py \\
-            src/bochan/api/acquisition/objective.py \\
-            src/bochan/api/acquisition/service.py \\
-            src/bochan/api/optimizer/backend.py \\
-            src/bochan/api/optimizer/dispatch.py \\
-            tests/test_api_architecture.py\n'''
+          old = '          ruff check \\\n'
+          new = '          ruff check --select I,F --fix \\\n'
           if old not in text:
-              raise RuntimeError('expected final split Ruff block not found')
+              raise RuntimeError('final split Ruff command not found')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
       - name: Commit workflow correction

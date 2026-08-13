@@ -68,6 +68,7 @@ jobs:
             src/bochan/api/registry/model.py \
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/composition_bounds_optimizer.py \
+            src/bochan/tabular/composition_element_constraints.py \
             src/bochan/tabular/composition_total_constraints.py \
             src/bochan/tabular/composition_variable_total_transform.py \
             src/bochan/tabular/multi_output_categories.py \

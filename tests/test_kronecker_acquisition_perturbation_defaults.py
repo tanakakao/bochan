@@ -11,7 +11,7 @@ from bochan.api import (
     ModelConfig,
     ObjectiveConfig,
 )
-from bochan.api.factory import build_model
+from bochan.api.modeling.build import build_model
 
 
 def _make_bundle(*, n_w: int = 4):

@@ -4,15 +4,15 @@ import pytest
 import torch
 
 from bochan.api import ModelConfig
-from bochan.api.factory import build_model, resolve_model_cls
+from bochan.api.modeling.build import build_model, resolve_model_cls
 from bochan.models.regression.beta.base import WideBetaMultiTaskGPModel
-from bochan.models.regression.gamma.base import WideGammaMultiTaskGPModel
 from bochan.models.regression.count.negative_binomial.base import (
     WideNegativeBinomialMultiTaskGPModel,
 )
 from bochan.models.regression.count.poisson.base import (
     WidePoissonMultiTaskGPModel,
 )
+from bochan.models.regression.gamma.base import WideGammaMultiTaskGPModel
 from bochan.models.transforms.outcome import PositiveScaleOutcomeTransform
 from bochan.serving.webapp import workflows_tabular
 

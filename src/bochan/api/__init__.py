@@ -45,13 +45,9 @@ from .evaluation.cross_validation import (
     clone_fit_config_for_evaluation,
     clone_model_config_for_evaluation,
 )
-from .factory import (
-    build_model,
-    fit_model,
-    infer_input_type,
-    prepare_multi_objective_context,
-    resolve_model_cls,
-)
+from .factory import prepare_multi_objective_context
+from .modeling.build import build_model, infer_input_type, resolve_model_cls
+from .modeling.fit import fit_model
 from .observation import ExperimentFailureConfig, ObservationData
 from .optimizer import BayesianOptimizer
 from .optimizer.service import optimize_candidates

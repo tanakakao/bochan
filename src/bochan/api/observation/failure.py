@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from ..configs import FitConfig, ModelConfig
-from ..factory import build_model, fit_model
+from ..modeling.build import build_model
+from ..modeling.fit import fit_model
 from .state import ExperimentFailureConfig, ObservationData
 
 

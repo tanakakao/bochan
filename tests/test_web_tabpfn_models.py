@@ -360,7 +360,7 @@ def test_web_tabpfn_classification_active_learning_runs_end_to_end(num_classes: 
 
 def test_tabpfn_ordinal_configuration_fails_with_core_registry_error() -> None:
     from bochan.api import ModelConfig
-    from bochan.api.factory import resolve_model_cls
+    from bochan.api.modeling.build import resolve_model_cls
 
     with pytest.raises(ValueError, match="Unknown model setting"):
         resolve_model_cls(

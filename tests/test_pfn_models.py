@@ -10,7 +10,8 @@ from bochan.acquisition.regression.pfn import (
     PFNUpperConfidenceBound,
 )
 from bochan.api import FitConfig, ModelConfig
-from bochan.api.factory import build_model, fit_model
+from bochan.api.modeling.build import build_model
+from bochan.api.modeling.fit import fit_model
 from bochan.models.regression.foundation import PFNPosterior, PFNRegressorModel
 
 

@@ -9,7 +9,8 @@ from bochan.acquisition.multiclass.active_learning.single_output import (
     qMulticlassProbabilityVariance,
 )
 from bochan.api import FitConfig, ModelConfig
-from bochan.api.factory import build_model, fit_model, resolve_model_cls
+from bochan.api.modeling.build import build_model, resolve_model_cls
+from bochan.api.modeling.fit import fit_model
 from bochan.models.classification.common.posterior import ClassificationEnsemblePosterior
 from bochan.models.classification.multiclass.external import (
     NGBoostMixedMulticlassClassificationModel,

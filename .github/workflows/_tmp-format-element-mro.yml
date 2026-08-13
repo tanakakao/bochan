@@ -1,0 +1,42 @@
+name: Temporary format element constraint MRO cleanup
+
+on:
+  push:
+    branches:
+      - agent/tabular-element-constraint-mro-cleanup
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.event.head_commit.message != 'Format element constraint MRO cleanup'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/tabular-element-constraint-mro-cleanup
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Format changed Python files
+        run: |
+          python -m pip install ruff
+          ruff format \
+            src/bochan/tabular/public_optimizer.py \
+            tests/test_tabular_architecture.py \
+            tests/test_tabular_composition_element_constraints.py
+          ruff check --fix \
+            src/bochan/tabular/public_optimizer.py \
+            tests/test_tabular_architecture.py \
+            tests/test_tabular_composition_element_constraints.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/bochan/tabular/public_optimizer.py \
+            tests/test_tabular_architecture.py \
+            tests/test_tabular_composition_element_constraints.py
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Format element constraint MRO cleanup"
+          git push origin HEAD:agent/tabular-element-constraint-mro-cleanup

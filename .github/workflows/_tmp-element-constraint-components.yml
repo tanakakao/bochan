@@ -1,0 +1,392 @@
+name: Temporary element constraint component codemod
+
+on:
+  push:
+    branches:
+      - agent/tabular-element-constraint-components
+
+permissions:
+  contents: write
+
+jobs:
+  codemod:
+    if: github.event.head_commit.message != 'Extract element constraint components'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/tabular-element-constraint-components
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Extract resolver and projector
+        shell: bash
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import ast
+          from pathlib import Path
+
+          source_path = Path('src/bochan/tabular/element_constraint_composition_optimizer.py')
+          text = source_path.read_text()
+          lines = text.splitlines(keepends=True)
+          tree = ast.parse(text)
+          optimizer_class = next(
+              node
+              for node in tree.body
+              if isinstance(node, ast.ClassDef) and node.name == 'TabularBayesianOptimizer'
+          )
+          methods = {
+              node.name: node
+              for node in optimizer_class.body
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+          }
+
+          def method_bounds(name: str) -> tuple[int, int]:
+              node = methods[name]
+              starts = [node.lineno]
+              starts.extend(dec.lineno for dec in node.decorator_list)
+              return min(starts) - 1, node.end_lineno
+
+          def method_source(name: str) -> str:
+              start, end = method_bounds(name)
+              return ''.join(lines[start:end])
+
+          normalize = method_source('_normalize_element_constraints').replace(
+              'def _normalize_element_constraints(',
+              'def normalize(',
+              1,
+          )
+          component_bounds = method_source('_component_bounds').replace(
+              'def _component_bounds(',
+              'def component_bounds(',
+              1,
+          )
+          basis_scale = method_source('_basis_scale').replace(
+              'def _basis_scale(',
+              'def basis_scale(',
+              1,
+          )
+
+          projector_method_names = [
+              '_validate_element_constraints',
+              '_constraint_sites',
+              '_support_options',
+              '_entry_order',
+              '_solve_support',
+              '_project_element_values',
+              '_row_native_values',
+              '_write_row_native_values',
+              '_repair_element_constraint_frame',
+          ]
+          projector_methods = '\n\n'.join(method_source(name).rstrip() for name in projector_method_names)
+
+          component_text = '''\
+"""Element-constraint normalization and mixed-integer composition projection."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from itertools import combinations, islice, product
+from math import ceil, floor
+from typing import Any
+
+import numpy as np
+from scipy.optimize import Bounds, LinearConstraint, milp
+
+from .composition import ATOMIC_WEIGHTS, close_compositions, format_formula
+
+_WEIGHT_NORMALIZATIONS = {"weight_fraction", "weight", "mass_fraction"}
+_BASIS_ALIASES = {
+    "atomic": "atomic_amount",
+    "atomic_amount": "atomic_amount",
+    "molar": "atomic_amount",
+    "mole": "atomic_amount",
+    "weight": "weight_amount",
+    "weight_amount": "weight_amount",
+    "mass": "weight_amount",
+    "mass_amount": "weight_amount",
+}
+
+
+class CompositionElementConstraintResolver:
+    """Normalize element constraints and map compatible ones to model coordinates."""
+
+'''
+          component_text += normalize + '\n\n' + component_bounds + '\n\n' + basis_scale
+          component_text += '''
+
+    @classmethod
+    def named_constraints(
+        cls,
+        constraints: Sequence[Mapping[str, Any]],
+        composition_sites: Mapping[str, Mapping[str, Any]],
+        composition_transformers: Mapping[str, Any],
+    ) -> list[tuple[Any, ...]]:
+        """Translate fixed-total Fraction constraints to named model constraints."""
+
+        if not constraints:
+            return []
+        resolved: list[tuple[Any, ...]] = []
+        for constraint in constraints:
+            names: list[str] = []
+            coefficients: list[float] = []
+            compatible = True
+            for term in constraint["terms"]:
+                config = composition_sites[term["site"]]
+                if config.get("variable_total") or str(
+                    config["representation"]
+                ).lower() not in {"fraction", "fractions"}:
+                    compatible = False
+                    break
+                transformer = composition_transformers.get(term["site"])
+                if transformer is None:
+                    compatible = False
+                    break
+                names.append(
+                    f"{transformer.prefix}__fraction__{term['element']}"
+                )
+                coefficients.append(
+                    float(term["coefficient"])
+                    * cls.basis_scale(
+                        config,
+                        term["element"],
+                        constraint["basis"],
+                    )
+                    * float(config["total"])
+                )
+            if compatible:
+                resolved.append(
+                    (
+                        names,
+                        coefficients,
+                        constraint["operator"],
+                        float(constraint["rhs"]),
+                    )
+                )
+        return resolved
+
+
+class CompositionElementConstraintProjector:
+    """Project native composition values onto element constraints using MILP."""
+
+    def __init__(
+        self,
+        *,
+        composition_sites: Mapping[str, Mapping[str, Any]],
+        composition_element_constraints: Sequence[Mapping[str, Any]],
+        composition_transformers: Mapping[str, Any],
+        max_supports: int,
+    ) -> None:
+        self.composition_sites = composition_sites
+        self.composition_element_constraints = composition_element_constraints
+        self.composition_transformers_ = composition_transformers
+        self.composition_constraint_max_supports = int(max_supports)
+
+    @staticmethod
+    def _component_bounds(
+        config: Mapping[str, Any],
+        element: str,
+        total: float,
+    ) -> tuple[float, float]:
+        return CompositionElementConstraintResolver.component_bounds(
+            config,
+            element,
+            total,
+        )
+
+    @staticmethod
+    def _basis_scale(
+        config: Mapping[str, Any],
+        element: str,
+        basis: str,
+    ) -> float:
+        return CompositionElementConstraintResolver.basis_scale(
+            config,
+            element,
+            basis,
+        )
+
+    def validate(self) -> None:
+        """Validate bounds and joint fixed-total feasibility."""
+
+        self._validate_element_constraints()
+
+    def project(
+        self,
+        raw: Mapping[tuple[str, str], float],
+        totals: Mapping[str, float],
+    ) -> dict[tuple[str, str], float]:
+        """Project one native composition onto all configured constraints."""
+
+        return self._project_element_values(raw, totals)
+
+    def repair_frame(self, restored: Any) -> Any:
+        """Project every row of a restored composition frame."""
+
+        return self._repair_element_constraint_frame(restored)
+
+'''
+          component_text += projector_methods + '''
+
+
+__all__ = [
+    "CompositionElementConstraintProjector",
+    "CompositionElementConstraintResolver",
+]
+'''
+          Path('src/bochan/tabular/composition_element_constraints.py').write_text(component_text)
+
+          # Remove domain-heavy implementation methods from the optimizer adapter.
+          remove_names = {
+              '_normalize_element_constraints',
+              '_validate_element_constraints',
+              '_component_bounds',
+              '_basis_scale',
+              '_constraint_sites',
+              '_support_options',
+              '_entry_order',
+              '_solve_support',
+              '_project_element_values',
+              '_row_native_values',
+              '_write_row_native_values',
+              '_repair_element_constraint_frame',
+              '_named_element_constraints',
+          }
+          ranges = sorted(
+              (method_bounds(name) for name in remove_names),
+              reverse=True,
+          )
+          adapter_lines = lines[:]
+          for start, end in ranges:
+              del adapter_lines[start:end]
+          adapter = ''.join(adapter_lines)
+
+          adapter = adapter.replace(
+              'from itertools import combinations, islice, product\n'
+              'from math import ceil, floor\n',
+              '',
+          )
+          adapter = adapter.replace('import numpy as np\nfrom scipy.optimize import Bounds, LinearConstraint, milp\n\n', '')
+          adapter = adapter.replace(
+              'from .composition import ATOMIC_WEIGHTS, close_compositions, format_formula\n',
+              '',
+          )
+          adapter = adapter.replace(
+              'from .composition_total_constraints import CompositionTotalConstraintResolver\n',
+              'from .composition_element_constraints import (\n'
+              '    CompositionElementConstraintProjector,\n'
+              '    CompositionElementConstraintResolver,\n'
+              ')\n'
+              'from .composition_total_constraints import CompositionTotalConstraintResolver\n',
+          )
+          constants_start = adapter.index('_WEIGHT_NORMALIZATIONS =')
+          class_start = adapter.index('\n\nclass TabularBayesianOptimizer', constants_start)
+          adapter = adapter[:constants_start] + adapter[class_start + 2:]
+          adapter = adapter.replace(
+              '    composition_variable_total_transform = CompositionVariableTotalTransform()\n',
+              '    composition_variable_total_transform = CompositionVariableTotalTransform()\n'
+              '    composition_element_constraint_resolver = (\n'
+              '        CompositionElementConstraintResolver()\n'
+              '    )\n',
+              1,
+          )
+          adapter = adapter.replace(
+              '        self.composition_element_constraints = self._normalize_element_constraints(\n'
+              '            composition_element_constraints\n'
+              '        )\n',
+              '        self.composition_element_constraints = (\n'
+              '            self.composition_element_constraint_resolver.normalize(\n'
+              '                composition_element_constraints\n'
+              '            )\n'
+              '        )\n',
+              1,
+          )
+          adapter = adapter.replace(
+              '        self._validate_element_constraints()\n',
+              '        self._make_element_constraint_projector().validate()\n',
+              1,
+          )
+
+          class_anchor = '        self._make_element_constraint_projector().validate()\n\n'
+          projector_factory = '''\
+    def _make_element_constraint_projector(
+        self,
+    ) -> CompositionElementConstraintProjector:
+        """Build the projector from the current fitted composition context."""
+
+        return CompositionElementConstraintProjector(
+            composition_sites=self.composition_sites,
+            composition_element_constraints=self.composition_element_constraints,
+            composition_transformers=getattr(self, "composition_transformers_", {}),
+            max_supports=self.composition_constraint_max_supports,
+        )
+
+    def _named_element_constraints(self) -> list[tuple[Any, ...]]:
+        """Resolve optimizer-native constraints through the explicit resolver."""
+
+        return self.composition_element_constraint_resolver.named_constraints(
+            self.composition_element_constraints,
+            self.composition_sites,
+            self.composition_transformers_,
+        )
+
+'''
+          if class_anchor not in adapter:
+              raise SystemExit('projector factory insertion anchor not found')
+          adapter = adapter.replace(class_anchor, class_anchor + projector_factory, 1)
+          adapter = adapter.replace(
+              '            restored = self._repair_element_constraint_frame(restored)\n',
+              '            restored = (\n'
+              '                self._make_element_constraint_projector().repair_frame(restored)\n'
+              '            )\n',
+              1,
+          )
+          source_path.write_text(adapter)
+
+          # Architecture tests assert ownership moved out of the adapter.
+          arch_path = Path('tests/test_tabular_architecture.py')
+          arch = arch_path.read_text()
+          arch = arch.replace(
+              'from bochan.tabular.composition_total_constraints import (\n'
+              '    CompositionTotalConstraintResolver,\n'
+              ')\n',
+              'from bochan.tabular.composition_element_constraints import (\n'
+              '    CompositionElementConstraintProjector,\n'
+              '    CompositionElementConstraintResolver,\n'
+              ')\n'
+              'from bochan.tabular.composition_total_constraints import (\n'
+              '    CompositionTotalConstraintResolver,\n'
+              ')\n'
+              'from bochan.tabular import element_constraint_composition_optimizer\n',
+              1,
+          )
+          marker = '\n\ndef test_tabular_import_does_not_patch_core_candidate_method() -> None:\n'
+          new_test = '''
+
+def test_element_constraints_use_explicit_components() -> None:
+    assert isinstance(
+        tabular.TabularBayesianOptimizer.composition_element_constraint_resolver,
+        CompositionElementConstraintResolver,
+    )
+    assert CompositionElementConstraintProjector.__module__ == (
+        "bochan.tabular.composition_element_constraints"
+    )
+    adapter = element_constraint_composition_optimizer.TabularBayesianOptimizer
+    assert "_project_element_values" not in vars(adapter)
+    assert "_validate_element_constraints" not in vars(adapter)
+    assert "_normalize_element_constraints" not in vars(adapter)
+    assert adapter.inverse_compositions.__module__ == (
+        "bochan.tabular.element_constraint_composition_optimizer"
+    )
+'''
+          if marker not in arch:
+              raise SystemExit('architecture test insertion anchor not found')
+          arch_path.write_text(arch.replace(marker, new_test + marker, 1))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/bochan/tabular tests/test_tabular_architecture.py
+          git commit -m "Extract element constraint components"
+          git push origin HEAD:agent/tabular-element-constraint-components

@@ -10,6 +10,7 @@ from bochan.tabular.composition_total_constraints import (
 from bochan.tabular.composition_variable_total_transform import (
     CompositionVariableTotalTransform,
 )
+from bochan.tabular.linear_constraints import merge_named_linear_constraints
 
 
 def test_tabular_public_optimizer_has_one_canonical_entry_point() -> None:
@@ -36,13 +37,12 @@ def test_composition_total_constraints_use_explicit_resolver() -> None:
         tabular.TabularBayesianOptimizer.composition_total_constraint_resolver,
         CompositionTotalConstraintResolver,
     )
-    assert (
-        tabular.TabularBayesianOptimizer._normalize_total_constraints.__func__
-        is not None
+    assert not hasattr(
+        CompositionTotalConstraintResolver,
+        "merge_optimize_config",
     )
-    assert (
-        tabular.TabularBayesianOptimizer._normalize_total_constraints.__module__
-        == "bochan.tabular.public_optimizer"
+    assert merge_named_linear_constraints.__module__ == (
+        "bochan.tabular.linear_constraints"
     )
 
 
@@ -53,7 +53,11 @@ def test_variable_total_behavior_uses_explicit_transform_component() -> None:
     )
     assert (
         tabular.TabularBayesianOptimizer._prepare_multi_site_frame.__module__
-        == "bochan.tabular.variable_total_composition_optimizer"
+        == "bochan.tabular.public_optimizer"
+    )
+    assert all(
+        base.__module__ != "bochan.tabular.variable_total_composition_optimizer"
+        for base in tabular.TabularBayesianOptimizer.__mro__
     )
     assert (
         tabular.TabularBayesianOptimizer.inverse_compositions.__module__

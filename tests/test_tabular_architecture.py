@@ -7,6 +7,7 @@ from bochan.tabular import optimizer as legacy_optimizer
 from bochan.tabular.composition_total_constraints import (
     CompositionTotalConstraintResolver,
 )
+from bochan.tabular.composition_variable_total import CompositionVariableTotalTransform
 
 
 def test_tabular_public_optimizer_has_one_canonical_entry_point() -> None:
@@ -40,6 +41,17 @@ def test_composition_total_constraints_use_explicit_resolver() -> None:
     assert (
         tabular.TabularBayesianOptimizer._normalize_total_constraints.__module__
         == "bochan.tabular.public_optimizer"
+    )
+
+
+def test_variable_total_behavior_uses_explicit_transform_component() -> None:
+    assert isinstance(
+        tabular.TabularBayesianOptimizer.variable_total_transform,
+        CompositionVariableTotalTransform,
+    )
+    assert (
+        tabular.TabularBayesianOptimizer._normalize_composition_sites.__module__
+        == "bochan.tabular.variable_total_composition_optimizer"
     )
 
 

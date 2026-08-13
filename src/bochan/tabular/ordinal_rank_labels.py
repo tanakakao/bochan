@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from .multi_output_categories import resolve_target_class_value
+
 _ORDINAL_RANK_KINDS = {"ordinal", "ordinal_rank", "ordinalrank", "rank"}
 
 
@@ -37,10 +39,8 @@ def resolve_ordinal_rank_constraint(
     if not isinstance(rank, str) or output is None:
         return value
 
-    from .optimizer_api import _resolve_target_class_value
-
     resolved = dict(value)
-    resolved["rank"] = _resolve_target_class_value(
+    resolved["rank"] = resolve_target_class_value(
         rank,
         output=output,
         target_names=target_names,

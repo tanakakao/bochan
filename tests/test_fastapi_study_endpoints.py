@@ -1,5 +1,7 @@
 """FastAPI Study endpoint tests for the canonical HTTP contract."""
 
+# ruff: noqa: E402
+
 import pytest
 
 pytest.importorskip("fastapi")

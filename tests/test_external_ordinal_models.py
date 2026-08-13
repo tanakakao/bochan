@@ -15,7 +15,8 @@ from bochan.acquisition.ordinal.bayesian_optimization.single_output import (
     qOrdinalProbabilityOfFeasibility,
 )
 from bochan.api import FitConfig, ModelConfig
-from bochan.api.factory import build_model, fit_model, resolve_model_cls
+from bochan.api.modeling.build import build_model, resolve_model_cls
+from bochan.api.modeling.fit import fit_model
 from bochan.models.ordinal.external import (
     NGBoostMixedOrdinalModel,
     NGBoostOrdinalEnsembleModel,

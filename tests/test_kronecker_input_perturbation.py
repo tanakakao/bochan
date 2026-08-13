@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from bochan.api import InputTransformConfig, ModelConfig
-from bochan.api.factory import build_model
+from bochan.api.modeling.build import build_model
 from bochan.models.regression.gaussian import (
     GaussianKroneckerMultiTaskGP,
 )

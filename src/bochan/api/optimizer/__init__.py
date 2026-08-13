@@ -25,8 +25,8 @@ from ..configs import (
     ModelConfig,
     OptimizeConfig,
 )
-from ..factory import fit_model
 from ..llm import LLMCandidateExplanationMixin, LLMSuggestionMixin
+from ..modeling.fit import fit_model
 from ..observation import ExperimentFailureConfig, ObservationData
 from ..observation.failure import attach_observation_state
 from ..observation.service import build_objective_bundle

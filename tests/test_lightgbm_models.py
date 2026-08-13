@@ -11,7 +11,8 @@ from bochan.acquisition.binary.active_learning.single_output import qBinaryBALD
 from bochan.acquisition.multiclass.active_learning.single_output import qMulticlassBALD
 from bochan.acquisition.ordinal.active_learning.single_output import qOrdinalPredictiveEntropy
 from bochan.api import FitConfig, ModelConfig
-from bochan.api.factory import build_model, fit_model, resolve_model_cls
+from bochan.api.modeling.build import build_model, resolve_model_cls
+from bochan.api.modeling.fit import fit_model
 from bochan.models.classification.binary.external import (
     LightGBMBinaryClassificationModel,
     LightGBMBinaryEnsembleModel,

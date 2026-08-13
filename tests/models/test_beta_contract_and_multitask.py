@@ -5,7 +5,7 @@ import torch
 from botorch.sampling.get_sampler import get_sampler
 
 from bochan.api import ModelConfig
-from bochan.api.factory import resolve_model_cls
+from bochan.api.modeling.build import resolve_model_cls
 from bochan.models.regression.beta._components import BetaLogLikelihood, prepare_beta_targets
 from bochan.models.regression.beta.base import (
     BetaGPModel,

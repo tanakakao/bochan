@@ -9,7 +9,8 @@ from botorch.posteriors.ensemble import EnsemblePosterior
 from torch import nn
 
 from bochan.api import FitConfig, ModelConfig
-from bochan.api.factory import build_model, fit_model, resolve_model_cls
+from bochan.api.modeling.build import build_model, resolve_model_cls
+from bochan.api.modeling.fit import fit_model
 from bochan.models.regression.neural import (
     DeepEnsembleMixedRegressorModel,
     DeepEnsembleRegressorModel,

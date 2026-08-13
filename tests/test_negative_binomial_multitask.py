@@ -4,10 +4,9 @@ import pytest
 import torch
 
 from bochan.api.configs import ModelConfig
-from bochan.api.factory import resolve_model_cls
+from bochan.api.modeling.build import resolve_model_cls
 from bochan.models.regression.count.negative_binomial._components import NegativeBinomialLogLikelihood
 from bochan.models.regression.count.negative_binomial.base import (
-    NegativeBinomialMultiTaskGPModel,
     WideNegativeBinomialMultiTaskGPModel,
 )
 

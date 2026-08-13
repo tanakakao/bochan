@@ -10,7 +10,7 @@ on:
       - "src/bochan/models/classification/multiclass/neural/**"
       - "src/bochan/models/ordinal/neural/**"
       - "src/bochan/models/ordinal/posterior.py"
-      - "src/bochan/api/model_registry.py"
+      - "src/bochan/api/registry/model.py"
       - "tests/test_deep_ensemble_classification_ordinal.py"
       - "tests/test_ordinal_bald_ensemble.py"
       - "tests/test_model_package_layout.py"

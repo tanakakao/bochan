@@ -8,10 +8,10 @@ import pytest
 import bochan.api.optimizer.service as optimizer_api_module
 from bochan.api import OptimizeConfig
 from bochan.api.optimizer.service import (
-    _resolve_thompson_sampling_target,
     resolve_optimizer_from_cat_dims,
     uses_mixed_fixed_features,
 )
+from bochan.api.optimizer.support import _resolve_thompson_sampling_target
 
 
 @pytest.mark.parametrize("method", ["ga", "pso", "sa", "cmaes"])

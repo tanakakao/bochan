@@ -4,11 +4,8 @@ from dataclasses import dataclass
 
 import torch
 
-from bochan.api.optimizer.service import (
-    OptimizeConfig,
-    _resolve_thompson_sampling_target,
-    optimize_candidates,
-)
+from bochan.api.optimizer.service import OptimizeConfig, optimize_candidates
+from bochan.api.optimizer.support import _resolve_thompson_sampling_target
 
 
 class _PosteriorModel:

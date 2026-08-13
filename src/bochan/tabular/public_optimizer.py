@@ -1,17 +1,20 @@
 """Canonical pandas / numpy adapter for :class:`bochan.api.BayesianOptimizer`.
 
 Tabular-only concerns are composed explicitly here. Composition bound completion
-is delegated to a stateless resolver rather than represented by another optimizer
-subclass in the inheritance chain.
+and composition-total constraint handling are delegated to stateless resolvers
+rather than represented as public optimizer responsibilities.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
+
+from bochan.api import OptimizeConfig
 
 from .builders import UNSET
 from .composition_bounds_optimizer import CompositionBoundsResolver
+from .composition_total_constraints import CompositionTotalConstraintResolver
 from .element_constraint_composition_optimizer import (
     TabularBayesianOptimizer as _ElementConstraintTabularBayesianOptimizer,
 )
@@ -39,6 +42,7 @@ class TabularBayesianOptimizer(
     """Single public tabular optimizer delegating BO semantics to the core API."""
 
     composition_bounds_resolver = CompositionBoundsResolver()
+    composition_total_constraint_resolver = CompositionTotalConstraintResolver()
 
     def __init__(
         self,
@@ -79,6 +83,44 @@ class TabularBayesianOptimizer(
             model_config=model_config,
             fit_config=fit_config,
             **kwargs,
+        )
+
+    @classmethod
+    def _normalize_total_constraints(
+        cls,
+        constraints: Sequence[Any] | None,
+    ) -> list[dict[str, Any]]:
+        """Normalize composition total constraints through the owned resolver."""
+
+        return cls.composition_total_constraint_resolver.normalize(constraints)
+
+    def _validate_total_constraints(self) -> None:
+        """Validate coupled totals through the owned resolver."""
+
+        self.composition_total_constraint_resolver.validate(
+            self.composition_total_constraints,
+            self.composition_sites,
+        )
+
+    def _named_total_constraints(self) -> list[tuple[Any, ...]]:
+        """Translate coupled totals to named model-feature constraints."""
+
+        return self.composition_total_constraint_resolver.named_constraints(
+            self.composition_total_constraints,
+            self.composition_sites,
+        )
+
+    @classmethod
+    def _merge_total_constraints(
+        cls,
+        opt_config: OptimizeConfig | Mapping[str, Any] | None,
+        constraints: Sequence[tuple[Any, ...]],
+    ) -> OptimizeConfig | Mapping[str, Any] | None:
+        """Merge total constraints through the owned resolver."""
+
+        return cls.composition_total_constraint_resolver.merge_optimize_config(
+            opt_config,
+            constraints,
         )
 
     def _expanded_bounds(self, bounds: Any, transformed: Any) -> Any:

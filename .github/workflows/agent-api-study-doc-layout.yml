@@ -45,7 +45,10 @@ jobs:
               path.write_text(updated, encoding='utf-8')
 
           residuals = []
+          temporary_workflow = Path('.github/workflows/agent-api-study-doc-layout.yml')
           for path in Path('.').rglob('*'):
+              if path == temporary_workflow:
+                  continue
               if not path.is_file() or '.git' in path.parts:
                   continue
               if path.suffix.lower() not in {'.md', '.py', '.yml', '.yaml', '.toml'}:

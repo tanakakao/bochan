@@ -1,9 +1,4 @@
-"""Canonical multi-site composition support for the tabular optimizer.
-
-Composition handling is configured exclusively through ``composition_sites``.
-Single-site problems use the same API with one site entry; no legacy
-``composition_col`` / ``formula_col`` adapter is retained.
-"""
+"""Canonical multi-site composition behavior for the tabular optimizer."""
 
 from __future__ import annotations
 
@@ -20,7 +15,6 @@ from .composition import (
     close_compositions,
     format_formula,
 )
-from .optimizer_api import TabularBayesianOptimizer as _CoreTabularBayesianOptimizer
 
 
 _SITE_DEFAULTS: dict[str, Any] = {
@@ -44,29 +38,23 @@ _SITE_DEFAULTS: dict[str, Any] = {
 }
 
 
-class TabularBayesianOptimizer(_CoreTabularBayesianOptimizer):
-    """Tabular optimizer supporting one or more independent composition sites.
+class MultiSiteCompositionMixin:
+    """Add canonical one-or-more-site composition handling to a tabular optimizer.
 
-    ``composition_sites`` maps site names to canonical site settings. A single
-    composition is represented by a mapping containing exactly one site.
+    A single composition is represented by one entry in ``composition_sites``;
+    no separate single-site or formula-column compatibility API is provided.
     """
 
     def __init__(
         self,
-        model_config: Any | None = None,
-        fit_config: Any | None = None,
-        *,
+        *args: Any,
         composition_sites: Mapping[str, Mapping[str, Any]] | None = None,
         **kwargs: Any,
     ) -> None:
         self.composition_sites = self._normalize_composition_sites(composition_sites)
         self.composition_transformers_: dict[str, CompositionTransformer] = {}
         self.composition_search_spaces_: dict[str, CompositionSearchSpace] = {}
-        super().__init__(
-            model_config=model_config,
-            fit_config=fit_config,
-            **kwargs,
-        )
+        super().__init__(*args, **kwargs)
 
     @staticmethod
     def _normalize_composition_sites(
@@ -126,8 +114,6 @@ class TabularBayesianOptimizer(_CoreTabularBayesianOptimizer):
 
     @property
     def composition_enabled(self) -> bool:
-        """Return whether canonical composition-site preprocessing is enabled."""
-
         return self.multi_site_composition_enabled
 
     def _make_site_transformer(
@@ -251,15 +237,6 @@ class TabularBayesianOptimizer(_CoreTabularBayesianOptimizer):
             raise ValueError("Each composition coordinate bound must be an increasing pair.")
         return float(pair[0]), float(pair[1])
 
-    def _expanded_bounds(self, bounds: Any, transformed: Any) -> Any:
-        """Return non-composition bounds unchanged.
-
-        The former single-site implementation lived here. Canonical composition
-        preprocessing now uses ``_expanded_multi_site_bounds`` exclusively.
-        """
-
-        return bounds
-
     def _expanded_multi_site_bounds(self, bounds: Any, transformed: Any) -> Any:
         if bounds is not None and not isinstance(bounds, Mapping):
             raise TypeError(
@@ -315,7 +292,7 @@ class TabularBayesianOptimizer(_CoreTabularBayesianOptimizer):
         categorical_cols: Sequence[Any] | None = None,
         bounds: Any = None,
         **kwargs: Any,
-    ) -> "TabularBayesianOptimizer":
+    ) -> Any:
         if not self.multi_site_composition_enabled:
             return super().fit(
                 data=data,
@@ -351,8 +328,7 @@ class TabularBayesianOptimizer(_CoreTabularBayesianOptimizer):
             )
         ]
         resolved_bounds = self._expanded_multi_site_bounds(source_bounds, transformed)
-        return _CoreTabularBayesianOptimizer.fit(
-            self,
+        return super().fit(
             data=transformed,
             y=y,
             input_cols=resolved_input_cols,
@@ -362,8 +338,6 @@ class TabularBayesianOptimizer(_CoreTabularBayesianOptimizer):
         )
 
     def transform_compositions(self, data: Any) -> Any:
-        """Transform configured composition sites to model-space columns."""
-
         if not self.multi_site_composition_enabled:
             return data
         if not self.composition_transformers_:
@@ -377,8 +351,6 @@ class TabularBayesianOptimizer(_CoreTabularBayesianOptimizer):
         repair: bool = True,
         keep_coordinates: bool = False,
     ) -> Any:
-        """Restore formulas and fractions for all configured composition sites."""
-
         if not self.multi_site_composition_enabled:
             return data
 
@@ -494,8 +466,7 @@ class TabularBayesianOptimizer(_CoreTabularBayesianOptimizer):
                 f"generation at sites {descriptor_sites!r}."
             )
 
-        result = _CoreTabularBayesianOptimizer.candidate(
-            self,
+        result = super().candidate(
             acq_config=acq_config,
             opt_config=opt_config,
             return_dataframe=return_dataframe,
@@ -513,10 +484,9 @@ class TabularBayesianOptimizer(_CoreTabularBayesianOptimizer):
         return restored, acq_value
 
     def predict(self, data: Any, **kwargs: Any) -> Any:
-        if not self.multi_site_composition_enabled:
-            return super().predict(data, **kwargs)
-        transformed = self._prepare_multi_site_frame(data, fit_transformers=False)
-        return _CoreTabularBayesianOptimizer.predict(self, transformed, **kwargs)
+        if self.multi_site_composition_enabled:
+            data = self._prepare_multi_site_frame(data, fit_transformers=False)
+        return super().predict(data, **kwargs)
 
     def feature_importance(
         self,
@@ -524,16 +494,9 @@ class TabularBayesianOptimizer(_CoreTabularBayesianOptimizer):
         y: Any | None = None,
         **kwargs: Any,
     ) -> Any:
-        if not self.multi_site_composition_enabled:
-            return super().feature_importance(data=data, y=y, **kwargs)
-        if data is not None:
+        if data is not None and self.multi_site_composition_enabled:
             data = self._prepare_multi_site_frame(data, fit_transformers=False)
-        return _CoreTabularBayesianOptimizer.feature_importance(
-            self,
-            data=data,
-            y=y,
-            **kwargs,
-        )
+        return super().feature_importance(data=data, y=y, **kwargs)
 
 
-__all__ = ["TabularBayesianOptimizer"]
+__all__ = ["MultiSiteCompositionMixin"]

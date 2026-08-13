@@ -15,7 +15,7 @@ from bochan.api import (
     InputTransformConfig,
     ModelConfig,
 )
-from bochan.api.automatic_multiobjective import (
+from bochan.api.acquisition.defaults.multiobjective import (
     make_default_ref_point,
     make_partitioning,
     observed_multiobjective_values,

@@ -5,7 +5,9 @@ import importlib.util
 import bochan.api as api
 from bochan.api import configs, engine, factory, optimizer, registry
 from bochan.api.acquisition import defaults as acquisition_defaults
+from bochan.api.acquisition import feasibility as acquisition_feasibility
 from bochan.api.acquisition import service as acquisition_service
+from bochan.api.acquisition.defaults import resolver as acquisition_default_resolver
 from bochan.api.candidate import output as candidate_output
 from bochan.api.configs import acquisition as acquisition_config
 from bochan.api.configs import fit as fit_config
@@ -56,8 +58,18 @@ def test_registries_are_owned_by_registry_package() -> None:
 
 
 def test_acquisition_defaults_have_one_owner() -> None:
-    assert callable(acquisition_defaults.resolve_acquisition_defaults)
-    assert callable(acquisition_defaults.resolve_multi_output_model_config)
+    assert hasattr(acquisition_defaults, "__path__")
+    assert (
+        acquisition_defaults.resolve_acquisition_defaults
+        is acquisition_default_resolver.resolve_acquisition_defaults
+    )
+    assert (
+        acquisition_defaults.resolve_multi_output_model_config
+        is acquisition_default_resolver.resolve_multi_output_model_config
+    )
+    assert acquisition_defaults.resolve_acquisition_defaults.__module__ == (
+        "bochan.api.acquisition.defaults.resolver"
+    )
     assert acquisition_defaults.__name__ == "bochan.api.acquisition.defaults"
 
 
@@ -74,6 +86,9 @@ def test_api_import_does_not_replace_engine_or_factory_symbols() -> None:
 def test_runtime_services_live_in_responsibility_subpackages() -> None:
     assert candidate_output.select_best_candidate_set.__module__ == (
         "bochan.api.candidate.output"
+    )
+    assert acquisition_feasibility.FeasibilityBuildPlan.__module__ == (
+        "bochan.api.acquisition.feasibility"
     )
     assert observation_state.ObservationData.__module__ == (
         "bochan.api.observation.state"
@@ -119,16 +134,22 @@ def test_removed_compatibility_and_patch_modules_do_not_exist() -> None:
         "bochan.api.acquisition_config",
         "bochan.api.acquisition_registry",
         "bochan.api.acquisition_service",
+        "bochan.api.automatic_best_f",
+        "bochan.api.automatic_default_utils",
+        "bochan.api.automatic_multiobjective",
         "bochan.api.candidate_output",
         "bochan.api.classification_perturbation_defaults",
         "bochan.api.engine_defaults",
+        "bochan.api.feasibility_defaults",
         "bochan.api.fit_config",
         "bochan.api.hetero_ordinal_perturbation",
+        "bochan.api.information_acquisition_defaults",
         "bochan.api.kronecker_input_perturbation_defaults",
         "bochan.api.llm_candidate_explanation",
         "bochan.api.llm_selected_acquisition",
         "bochan.api.llm_suggestion",
         "bochan.api.model_registry",
+        "bochan.api.nan_multiobjective",
         "bochan.api.observation_engine",
         "bochan.api.observation_service",
         "bochan.api.optimizer_config",

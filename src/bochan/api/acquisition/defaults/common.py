@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .configs import AcquisitionConfig, ModelBundle
+from ...configs import AcquisitionConfig, ModelBundle
 
 
 def _num_outputs(train_Y: Any) -> int:

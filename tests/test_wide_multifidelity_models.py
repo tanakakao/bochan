@@ -11,7 +11,7 @@ from bochan.api import (
     ModelConfig,
 )
 from bochan.api.acquisition.defaults import resolve_multi_output_model_config
-from bochan.api.automatic_best_f import compute_best_f
+from bochan.api.acquisition.defaults.best_f import compute_best_f
 from bochan.api.configs import ModelBundle
 from bochan.api.factory import build_model
 from bochan.api.registry.model import MODEL_REGISTRY

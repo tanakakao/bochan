@@ -7,7 +7,7 @@ behavior is selected through ordinary function imports from
 
 from __future__ import annotations
 
-from bochan.api.nan_multiobjective import make_nan_safe_default_ref_point
+from bochan.api.acquisition.defaults.nan import make_nan_safe_default_ref_point
 
 from .target_missing_policy import (
     clean_rows as _clean_rows,

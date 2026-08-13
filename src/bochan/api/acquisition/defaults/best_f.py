@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from .automatic_default_utils import (
+from .common import (
     _call_objective,
     _infer_ordinal_utility_values,
     _objective_config_value,
     _sub_bundles,
 )
-from .automatic_multiobjective import _regression_observed_values
-from .configs import AcquisitionConfig, DataContext, ModelBundle
+from .multiobjective import _regression_observed_values
+from ...configs import AcquisitionConfig, DataContext, ModelBundle
 
 
 def _compute_binary_best_f(bundle: ModelBundle, config: AcquisitionConfig) -> Any:
@@ -151,7 +151,7 @@ def _multifidelity_target_values(
 
     import torch
 
-    from .factory import build_objective
+    from ...factory import build_objective
 
     values = torch.as_tensor(bundle.train_Y)
     if values.ndim != 2 or int(target_index) >= values.shape[-1]:

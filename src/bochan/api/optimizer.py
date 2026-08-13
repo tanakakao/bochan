@@ -9,6 +9,7 @@ from .acquisition.defaults import (
     resolve_llm_selected_model_config,
     resolve_multi_output_model_config,
 )
+from .acquisition.defaults.information import resolve_information_optimizer_defaults
 from .acquisition.service import (
     build_acquisition,
     is_nsgaii_strategy,
@@ -32,7 +33,6 @@ from .engine import (
 )
 from .experiment_failure import attach_observation_state
 from .factory import fit_model
-from .information_acquisition_defaults import resolve_information_optimizer_defaults
 from .llm import LLMCandidateExplanationMixin, LLMSuggestionMixin
 from .observation import ExperimentFailureConfig, ObservationData
 from .observation.service import build_objective_bundle

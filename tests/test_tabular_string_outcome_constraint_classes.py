@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from bochan.api import AcquisitionConfig
-from bochan.tabular.multi_output_categories import (
+from bochan.tabular.targets import (
     resolve_acquisition_config_columns,
     resolve_outcome_constraint_config_columns,
 )

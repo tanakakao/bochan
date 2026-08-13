@@ -1,8 +1,8 @@
 """Canonical pandas / numpy adapter for :class:`bochan.api.BayesianOptimizer`.
 
-Tabular-only concerns are composed explicitly here. Composition bound completion
-and composition-total constraint handling are delegated to stateless resolvers
-rather than represented as public optimizer responsibilities.
+Tabular-only concerns are composed explicitly here. Composition bounds and
+composition constraints are delegated to stateless components rather than
+represented as public optimizer responsibilities.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from bochan.api import OptimizeConfig
 
 from .builders import UNSET
 from .composition_bounds_optimizer import CompositionBoundsResolver
+from .composition_element_constraints import CompositionElementConstraintResolver
 from .composition_total_constraints import CompositionTotalConstraintResolver
 from .composition_variable_total_transform import CompositionVariableTotalTransform
 from .element_column_composition_optimizer import (
@@ -46,6 +47,7 @@ class TabularBayesianOptimizer(
     """Single public tabular optimizer delegating BO semantics to the core API."""
 
     composition_bounds_resolver = CompositionBoundsResolver()
+    composition_element_constraint_resolver = CompositionElementConstraintResolver()
     composition_total_constraint_resolver = CompositionTotalConstraintResolver()
     composition_variable_total_transform = CompositionVariableTotalTransform()
 
@@ -182,6 +184,59 @@ class TabularBayesianOptimizer(
             composition_sites=self.composition_sites,
             composition_transformers=self.composition_transformers_,
             site_source_columns=self._site_source_columns,
+        )
+
+    @classmethod
+    def _normalize_element_constraints(
+        cls,
+        constraints: Sequence[Any] | None,
+    ) -> list[dict[str, Any]]:
+        """Normalize element constraints through the owned resolver."""
+
+        return cls.composition_element_constraint_resolver.normalize(constraints)
+
+    def _validate_element_constraints(self) -> None:
+        """Validate element constraints through the owned resolver."""
+
+        self.composition_element_constraint_resolver.validate(
+            self.composition_element_constraints,
+            self.composition_sites,
+            project_values=self._project_element_values,
+        )
+
+    @classmethod
+    def _component_bounds(
+        cls,
+        config: Mapping[str, Any],
+        element: str,
+        total: float,
+    ) -> tuple[float, float]:
+        return cls.composition_element_constraint_resolver.component_bounds(
+            config,
+            element,
+            total,
+        )
+
+    @classmethod
+    def _basis_scale(
+        cls,
+        config: Mapping[str, Any],
+        element: str,
+        basis: str,
+    ) -> float:
+        return cls.composition_element_constraint_resolver.basis_scale(
+            config,
+            element,
+            basis,
+        )
+
+    def _named_element_constraints(self) -> list[tuple[Any, ...]]:
+        """Translate compatible element constraints through the owned resolver."""
+
+        return self.composition_element_constraint_resolver.named_constraints(
+            self.composition_element_constraints,
+            self.composition_sites,
+            self.composition_transformers_,
         )
 
     @classmethod

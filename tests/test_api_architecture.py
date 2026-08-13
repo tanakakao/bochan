@@ -3,13 +3,15 @@ from __future__ import annotations
 import importlib.util
 
 import bochan.api as api
-from bochan.api import engine, factory, optimizer
+from bochan.api import acquisition_registry, engine, factory, model_registry, optimizer
 from bochan.api.acquisition import defaults as acquisition_defaults
 from bochan.api.acquisition import service as acquisition_service
 from bochan.api.candidate import output as candidate_output
 from bochan.api.llm import LLMCandidateExplanationMixin, LLMSuggestionMixin
 from bochan.api.observation import service as observation_service
 from bochan.api.observation import state as observation_state
+from bochan.api.registry import acquisition as registry_acquisition
+from bochan.api.registry import model as registry_model
 
 
 def test_public_bayesian_optimizer_has_one_canonical_definition() -> None:
@@ -46,6 +48,26 @@ def test_runtime_services_live_in_responsibility_subpackages() -> None:
     )
     assert LLMSuggestionMixin.__module__ == "bochan.api.llm.suggestion"
     assert LLMCandidateExplanationMixin.__module__ == "bochan.api.llm.explanation"
+
+
+def test_registries_have_one_canonical_owner() -> None:
+    assert registry_model.LazyModelRegistry.__module__ == "bochan.api.registry.model"
+    assert api.LazyModelRegistry is registry_model.LazyModelRegistry
+    assert api.MODEL_REGISTRY is registry_model.MODEL_REGISTRY
+    assert api.DEFAULT_MODEL_REGISTRY is registry_model.DEFAULT_MODEL_REGISTRY
+
+    assert registry_acquisition.resolve_acqf_cls.__module__ == (
+        "bochan.api.registry.acquisition"
+    )
+    assert api.resolve_acqf_cls is registry_acquisition.resolve_acqf_cls
+    assert api.available_acqf_names is registry_acquisition.available_acqf_names
+
+
+def test_flat_registry_modules_are_declarative_facades() -> None:
+    assert model_registry.LazyModelRegistry is registry_model.LazyModelRegistry
+    assert model_registry.MODEL_REGISTRY is registry_model.MODEL_REGISTRY
+    assert acquisition_registry.resolve_acqf_cls is registry_acquisition.resolve_acqf_cls
+    assert acquisition_registry.available_acqf_names is registry_acquisition.available_acqf_names
 
 
 def test_removed_compatibility_and_patch_modules_do_not_exist() -> None:

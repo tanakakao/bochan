@@ -11,14 +11,12 @@ from .composition_visualization_compat import (
     install_composition_visualization_compat,
 )
 from .hybrid_bo_routing import install_web_hybrid_objective_bo_routing
-from .pandas_compat import install_pandas_string_category_compat
 from .ternary_plot_grid_compat import install_ternary_plot_grid_compat
 from .visualization_feature_types import install_visualization_feature_type_compat
 
 # Composition fitting, candidate handling, and composition-specific importance
 # postprocessing are wired explicitly through workflows.py/workflows_tabular.py.
 # Remaining installers below are presentation/runtime adapters outside that path.
-install_pandas_string_category_compat()
 install_visualization_feature_type_compat()
 install_ternary_plot_grid_compat()
 install_composition_visualization()

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import bochan.api as api
 import bochan.tabular as tabular
 from bochan.tabular.composition import CompositionAdapter
@@ -12,6 +14,11 @@ from bochan.tabular.optimizer.diagnostics import DiagnosticsService
 def test_tabular_public_optimizer_has_one_canonical_entry_point() -> None:
     assert tabular.TabularBayesianOptimizer is TabularBayesianOptimizer
     assert TabularBayesianOptimizer.__module__ == "bochan.tabular.optimizer.core"
+
+
+def test_tabular_root_contains_only_public_python_entry_point() -> None:
+    root = Path(tabular.__file__).resolve().parent
+    assert sorted(path.name for path in root.glob("*.py")) == ["__init__.py"]
 
 
 def test_canonical_optimizer_has_no_functional_mixin_inheritance() -> None:

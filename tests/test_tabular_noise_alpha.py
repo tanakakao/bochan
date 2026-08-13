@@ -151,7 +151,7 @@ def test_tabular_alpha_rejects_unsupported_gaussian_model() -> None:
         outcome_transform=False,
     )
 
-    with pytest.raises(ValueError, match="recommended Gaussian regression models"):
+    with pytest.raises(ValueError, match="alpha is not supported"):
         optimizer_settings.apply_alpha_to_model_config(
             config,
             train_X=train_X,

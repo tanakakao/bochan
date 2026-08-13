@@ -129,7 +129,10 @@ def test_multi_site_predict_accepts_raw_formula_columns(monkeypatch) -> None:
         composition_sites=_sites(),
     )
     optimizer.fit(_frame())
-    optimizer.predict(_frame().drop(columns=["property"]))
+    optimizer.predict(
+        _frame().drop(columns=["property"]),
+        include_prediction_labels=False,
+    )
 
     assert "A_formula" not in captured["data"].columns
     assert "B_formula" not in captured["data"].columns

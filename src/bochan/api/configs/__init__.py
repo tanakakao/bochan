@@ -1,6 +1,7 @@
 """Base configuration dataclasses for the high-level bochan API."""
 
 from .base import (
+    REGRESSION_OUTCOME_TASK_TYPES,
     AcquisitionConfig,
     AutoStandardizeOutcomeTransform,
     CandidateRepairConfig,
@@ -24,7 +25,6 @@ from .base import (
     OutputConfig,
     OutputConfigLike,
     PredictionResult,
-    REGRESSION_OUTCOME_TASK_TYPES,
     SparseScore,
     SupportSelection,
     TaskType,

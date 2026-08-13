@@ -9,7 +9,7 @@ import numpy as np
 
 from ..formula import ATOMIC_WEIGHTS
 
-_WEIGHT_NORMALIZATIONS = {"weight_fraction", "weight", "mass_fraction"}
+_WEIGHT_NORMALIZATIONS = {"weight_fraction", "weight", "mass_fraction", "wt%"}
 _BASIS_ALIASES = {
     "atomic": "atomic_amount",
     "atomic_amount": "atomic_amount",
@@ -107,14 +107,23 @@ class CompositionElementConstraintResolver:
         return max(0.0, lower), min(float(total), upper)
 
     @staticmethod
+    def native_basis(config: Mapping[str, Any]) -> str:
+        """Return the basis used by native composition values."""
+
+        if config.get("input_kind") == "element_columns":
+            return str(
+                config.get("input_basis") or config.get("normalization", "atomic_fraction")
+            ).lower()
+        return str(config["normalization"]).lower()
+
+    @classmethod
     def basis_scale(
+        cls,
         config: Mapping[str, Any],
         element: str,
         basis: str,
     ) -> float:
-        native_is_weight = (
-            str(config["normalization"]).lower() in _WEIGHT_NORMALIZATIONS
-        )
+        native_is_weight = cls.native_basis(config) in _WEIGHT_NORMALIZATIONS
         if basis == "atomic_amount":
             return 1.0 / ATOMIC_WEIGHTS[element] if native_is_weight else 1.0
         return 1.0 if native_is_weight else ATOMIC_WEIGHTS[element]
@@ -126,7 +135,7 @@ class CompositionElementConstraintResolver:
         composition_sites: Mapping[str, Mapping[str, Any]],
         composition_transformers: Mapping[str, Any],
     ) -> list[tuple[Any, ...]]:
-        """Translate fixed-total fraction constraints to named model constraints."""
+        """Translate compatible fixed-total fraction constraints to model space."""
 
         if not constraints:
             return []
@@ -141,6 +150,15 @@ class CompositionElementConstraintResolver:
                     "fraction",
                     "fractions",
                 }:
+                    compatible = False
+                    break
+                # Element-column weight inputs are converted to atomic model
+                # coordinates. Absolute native-basis constraints are therefore
+                # not linear in those coordinates; repair them in native space.
+                if (
+                    config.get("input_kind") == "element_columns"
+                    and cls.native_basis(config) in _WEIGHT_NORMALIZATIONS
+                ):
                     compatible = False
                     break
                 transformer = composition_transformers.get(term["site"])

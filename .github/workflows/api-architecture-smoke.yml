@@ -69,6 +69,8 @@ jobs:
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/composition_bounds_optimizer.py \
             src/bochan/tabular/composition_total_constraints.py \
+            src/bochan/tabular/composition_variable_total.py \
+            src/bochan/tabular/variable_total_composition_optimizer.py \
             src/bochan/tabular/multi_output_categories.py \
             src/bochan/tabular/ordinal_rank_labels.py \
             src/bochan/tabular/prediction.py \

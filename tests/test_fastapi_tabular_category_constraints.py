@@ -1,4 +1,4 @@
-"""FastAPI coverage for tabular category metadata and string constraints."""
+"""FastAPI coverage for target category metadata and string constraints."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from bochan.serving.fastapi.schemas import (
     ModelConfigSchema,
     OutputConfigSchema,
 )
-from bochan.serving.fastapi.tabular_compat import (
+from bochan.serving.fastapi.target_categories import (
     TargetCategoryMetadata,
     bind_category_metadata,
     to_acquisition_config,

@@ -7,7 +7,6 @@ from dataclasses import replace
 from typing import Any
 
 from .. import factory as _factory
-from ..registry.acquisition import resolve_acqf_cls
 from ..configs import AcquisitionConfig, DataContext, ModelBundle, ObjectiveConfig
 from ..engine import (
     _filter_context_fields_for_acqf,
@@ -16,6 +15,7 @@ from ..engine import (
 )
 from ..feasibility_defaults import resolve_outcome_constraint_config
 from ..llm import is_llm_selected_acquisition, resolve_llm_selected_acquisition
+from ..registry.acquisition import resolve_acqf_cls
 from .classification import (
     build_multiclass_objective,
     build_ordinal_objective,

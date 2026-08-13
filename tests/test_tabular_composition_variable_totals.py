@@ -1,11 +1,9 @@
 import pandas as pd
 import pytest
 
+from bochan.tabular import TabularBayesianOptimizer
 from bochan.tabular.optimizer_api import (
     TabularBayesianOptimizer as _CoreTabularBayesianOptimizer,
-)
-from bochan.tabular.variable_total_composition_optimizer import (
-    TabularBayesianOptimizer,
 )
 
 
@@ -239,7 +237,5 @@ def test_infeasible_coupled_total_constraint_is_rejected() -> None:
         )
 
 
-def test_public_tabular_optimizer_exposes_variable_total_support() -> None:
-    from bochan.tabular import TabularBayesianOptimizer as PublicOptimizer
-
-    assert issubclass(PublicOptimizer, TabularBayesianOptimizer)
+def test_public_tabular_optimizer_is_variable_total_contract() -> None:
+    assert TabularBayesianOptimizer.__module__ == "bochan.tabular.public_optimizer"

@@ -6,17 +6,24 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import Any
 
-from .. import factory as _factory
 from ..candidate.uniqueness import ensure_unique_candidates
 from ..configs import OptimizeConfig as _BaseOptimizeConfig
 from ..configs.optimizer_names import _InternalMixedOptimizerName, _optimizer_name
+from ..support.callables import _filter_kwargs_for_callable
+from .backend import (
+    _build_post_processing_func,
+    _merge_fixed_features_list,
+)
+from .backend import (
+    optimize_candidates as _base_optimize_candidates,
+)
 from .support import (
     _force_sequential_for_kronecker,
     _resolve_thompson_sampling_target,
 )
 
 OptimizeBackend = Callable[..., tuple[Any, Any]]
-_BASE_OPTIMIZE_CANDIDATES = _factory.optimize_candidates
+_BASE_OPTIMIZE_CANDIDATES = _base_optimize_candidates
 
 
 def _common_kwargs(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> dict[str, Any]:
@@ -29,7 +36,7 @@ def _common_kwargs(acqf: Any, bounds: Any, config: _BaseOptimizeConfig) -> dict[
         "return_best_only": config.return_best_only,
         "sequential": config.sequential,
     }
-    post_processing_func = _factory._build_post_processing_func(config, bounds)
+    post_processing_func = _build_post_processing_func(config, bounds)
     if post_processing_func is not None:
         kwargs["post_processing_func"] = post_processing_func
     if config.fixed_features is not None:
@@ -100,7 +107,7 @@ def _optimize_candidates_once(
     if name in {"nsgaii", "optimize_acqf_nsgaii"}:
         from bochan.optim import optimize_acqf_nsgaii
 
-        kwargs = _factory._filter_kwargs_for_callable(optimize_acqf_nsgaii, kwargs)
+        kwargs = _filter_kwargs_for_callable(optimize_acqf_nsgaii, kwargs)
         return optimize_acqf_nsgaii(**kwargs)
 
     if name in {
@@ -110,7 +117,7 @@ def _optimize_candidates_once(
     }:
         from bochan.optim import optimize_acqf_llm_candidate_set
 
-        kwargs = _factory._filter_kwargs_for_callable(
+        kwargs = _filter_kwargs_for_callable(
             optimize_acqf_llm_candidate_set,
             kwargs,
         )
@@ -127,7 +134,7 @@ def _optimize_candidates_once(
     if use_mixed:
         from bochan.optim import optimize_thompson_sampling_mixed
 
-        fixed_features_list = _factory._merge_fixed_features_list(
+        fixed_features_list = _merge_fixed_features_list(
             config.fixed_features,
             config.fixed_features_list,
         )
@@ -137,7 +144,7 @@ def _optimize_candidates_once(
             )
         kwargs.pop("fixed_features", None)
         kwargs["fixed_features_list"] = fixed_features_list
-        kwargs = _factory._filter_kwargs_for_callable(
+        kwargs = _filter_kwargs_for_callable(
             optimize_thompson_sampling_mixed,
             kwargs,
         )
@@ -145,7 +152,7 @@ def _optimize_candidates_once(
 
     from bochan.optim import optimize_thompson_sampling
 
-    kwargs = _factory._filter_kwargs_for_callable(
+    kwargs = _filter_kwargs_for_callable(
         optimize_thompson_sampling,
         kwargs,
     )

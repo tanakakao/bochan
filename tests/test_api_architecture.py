@@ -183,3 +183,14 @@ def test_canonical_optimizer_owns_observation_and_candidate_entry_points() -> No
         "ask",
     }
     assert methods.issubset(vars(api.BayesianOptimizer))
+
+
+def test_api_factory_module_is_removed() -> None:
+    import importlib.util
+    from pathlib import Path
+
+    import bochan.api as api_module
+
+    assert importlib.util.find_spec("bochan.api.factory") is None
+    assert not (Path(api_module.__file__).resolve().parent / "factory.py").exists()
+

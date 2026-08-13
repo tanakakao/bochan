@@ -1,0 +1,73 @@
+name: Temporary wire element-column transform
+
+on:
+  push:
+    branches:
+      - agent/tabular-element-column-transform
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    if: github.event.head_commit.message != 'Use explicit element-column transform component'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/tabular-element-column-transform
+      - name: Update public optimizer callbacks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/bochan/tabular/public_optimizer.py')
+          text = path.read_text()
+          text = text.replace(
+              'from .composition_element_constraint_candidates import (\n',
+              'from .composition_element_columns import CompositionElementColumnTransform\n'
+              'from .composition_element_constraint_candidates import (\n',
+              1,
+          )
+          text = text.replace(
+              '    composition_bounds_resolver = CompositionBoundsResolver()\n',
+              '    composition_bounds_resolver = CompositionBoundsResolver()\n'
+              '    composition_element_column_transform = CompositionElementColumnTransform()\n',
+              1,
+          )
+          text = text.replace(
+              '            site_source_columns=self._site_source_columns,\n'
+              '            numeric_site_values=self._numeric_site_values,\n',
+              '            site_source_columns=(\n'
+              '                self.composition_element_column_transform.source_columns\n'
+              '            ),\n'
+              '            numeric_site_values=(\n'
+              '                self.composition_element_column_transform.numeric_site_values\n'
+              '            ),\n',
+              1,
+          )
+          text = text.replace(
+              '            site_source_columns=self._site_source_columns,\n'
+              '            numeric_site_values=self._numeric_site_values,\n',
+              '            site_source_columns=(\n'
+              '                self.composition_element_column_transform.source_columns\n'
+              '            ),\n'
+              '            numeric_site_values=(\n'
+              '                self.composition_element_column_transform.numeric_site_values\n'
+              '            ),\n',
+              1,
+          )
+          text = text.replace(
+              '            site_source_columns=self._site_source_columns,\n',
+              '            site_source_columns=(\n'
+              '                self.composition_element_column_transform.source_columns\n'
+              '            ),\n',
+              1,
+          )
+          path.write_text(text)
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/bochan/tabular/public_optimizer.py
+          git commit -m "Use explicit element-column transform component"
+          git push origin HEAD:agent/tabular-element-column-transform

@@ -13,7 +13,6 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
-from .acquisition_config import AcquisitionConfig
 from .configs import (
     CandidateRepairConfig,
     DataContext,
@@ -24,8 +23,9 @@ from .configs import (
     ObjectiveConfig,
     OutputConfig,
 )
-from .fit_config import FitConfig
-from .optimizer_api import OptimizeConfig
+from .configs.acquisition import AcquisitionConfig
+from .configs.fit import FitConfig
+from .configs.optimize import OptimizeConfig
 from .study import (
     BochanStudy as _BaseBochanStudy,
     CandidateBatch,

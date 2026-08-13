@@ -3,10 +3,22 @@ from __future__ import annotations
 import importlib.util
 
 import bochan.api as api
-from bochan.api import acquisition_registry, engine, factory, model_registry, optimizer
+from bochan.api import (
+    acquisition_config,
+    acquisition_registry,
+    engine,
+    factory,
+    fit_config,
+    model_registry,
+    optimizer,
+    optimizer_config,
+)
 from bochan.api.acquisition import defaults as acquisition_defaults
 from bochan.api.acquisition import service as acquisition_service
 from bochan.api.candidate import output as candidate_output
+from bochan.api.config import acquisition as config_acquisition
+from bochan.api.config import fit as config_fit
+from bochan.api.config import optimize as config_optimize
 from bochan.api.llm import LLMCandidateExplanationMixin, LLMSuggestionMixin
 from bochan.api.observation import service as observation_service
 from bochan.api.observation import state as observation_state
@@ -68,6 +80,34 @@ def test_flat_registry_modules_are_declarative_facades() -> None:
     assert model_registry.MODEL_REGISTRY is registry_model.MODEL_REGISTRY
     assert acquisition_registry.resolve_acqf_cls is registry_acquisition.resolve_acqf_cls
     assert acquisition_registry.available_acqf_names is registry_acquisition.available_acqf_names
+
+
+def test_public_configs_have_canonical_package_owners() -> None:
+    assert config_fit.FitConfig.__module__ == "bochan.api.config.fit"
+    assert config_acquisition.AcquisitionConfig.__module__ == (
+        "bochan.api.config.acquisition"
+    )
+    assert config_acquisition.OutcomeConstraintConfig.__module__ == (
+        "bochan.api.config.acquisition"
+    )
+    assert config_optimize.OptimizeConfig.__module__ == "bochan.api.config.optimize"
+
+    assert api.FitConfig is config_fit.FitConfig
+    assert api.AcquisitionConfig is config_acquisition.AcquisitionConfig
+    assert api.OutcomeConstraintConfig is config_acquisition.OutcomeConstraintConfig
+    assert api.OptimizeConfig is config_optimize.OptimizeConfig
+
+
+def test_flat_config_modules_are_declarative_facades() -> None:
+    assert fit_config.FitConfig is config_fit.FitConfig
+    assert acquisition_config.AcquisitionConfig is config_acquisition.AcquisitionConfig
+    assert acquisition_config.OutcomeConstraintConfig is (
+        config_acquisition.OutcomeConstraintConfig
+    )
+    assert optimizer_config.OptimizeConfig is config_optimize.OptimizeConfig
+    assert optimizer_config.resolve_optimizer_from_cat_dims is (
+        config_optimize.resolve_optimizer_from_cat_dims
+    )
 
 
 def test_removed_compatibility_and_patch_modules_do_not_exist() -> None:

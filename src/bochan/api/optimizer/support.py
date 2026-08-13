@@ -6,16 +6,7 @@ from dataclasses import replace
 from typing import Any
 
 from ..configs import OptimizeConfig as _BaseOptimizeConfig
-from ..configs.optimizer_names import (
-    _ALIASES,
-    _CANONICAL_OPTIMIZERS,
-    _EVOLUTIONARY_METHODS,
-    _MIXED_OPTIMIZERS,
-    EvolutionaryMethod,
-    OptimizerName,
-    _InternalMixedOptimizerName,
-    _optimizer_name,
-)
+from ..configs.optimizer_names import _ALIASES, _optimizer_name
 
 
 def _uses_kronecker_model(value: Any, *, _seen: set[int] | None = None) -> bool:

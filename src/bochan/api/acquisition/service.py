@@ -8,17 +8,17 @@ from typing import Any
 
 from .. import factory as _factory
 from ..configs import AcquisitionConfig, DataContext, ModelBundle, ObjectiveConfig
-from .context import (
-    _filter_context_fields_for_acqf,
-    _input_transform_n_w_from_bundle,
-    _resolve_objective_config_n_w_from_input_transform,
-)
 from ..llm import is_llm_selected_acquisition, resolve_llm_selected_acquisition
 from ..registry.acquisition import resolve_acqf_cls
 from .classification import (
     build_multiclass_objective,
     build_ordinal_objective,
     prepare_objective_instance,
+)
+from .context import (
+    _filter_context_fields_for_acqf,
+    _input_transform_n_w_from_bundle,
+    _resolve_objective_config_n_w_from_input_transform,
 )
 from .defaults import resolve_acquisition_defaults
 from .feasibility import resolve_outcome_constraint_config

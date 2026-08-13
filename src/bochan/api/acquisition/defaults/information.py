@@ -14,12 +14,12 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
+from ...configs import AcquisitionConfig, DataContext, ModelBundle, OptimizeConfig
 from .common import _num_outputs
 from .multiobjective import (
     make_default_ref_point,
     observed_multiobjective_values,
 )
-from ...configs import AcquisitionConfig, DataContext, ModelBundle, OptimizeConfig
 
 
 def _normalize_name(value: Any) -> str:

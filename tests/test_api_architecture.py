@@ -4,7 +4,6 @@ import importlib.util
 
 import bochan.api as api
 from bochan.api import configs, factory, optimizer, registry
-from bochan.api.optimizer import core as optimizer_core
 from bochan.api.acquisition import defaults as acquisition_defaults
 from bochan.api.acquisition import feasibility as acquisition_feasibility
 from bochan.api.acquisition import service as acquisition_service
@@ -16,6 +15,7 @@ from bochan.api.configs import optimize as optimize_config
 from bochan.api.llm import LLMCandidateExplanationMixin, LLMSuggestionMixin
 from bochan.api.observation import service as observation_service
 from bochan.api.observation import state as observation_state
+from bochan.api.optimizer import core as optimizer_core
 from bochan.api.registry import acquisition as acquisition_registry
 from bochan.api.registry import model as model_registry
 from bochan.serving.fastapi.routers import tabular as tabular_router

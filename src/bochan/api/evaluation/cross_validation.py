@@ -602,7 +602,7 @@ def cross_validate_optimizer(
 
 
 def _aggregate_feature_importance(folds: list[Any]) -> Any:
-    """Aggregate per-fold feature importance using fold spread as error bars.
+    """Aggregate fold means and ranks without aligning latent diagnostics.
 
     Args:
         folds: Validation-fold ``FeatureImportanceResult`` objects.
@@ -617,42 +617,55 @@ def _aggregate_feature_importance(folds: list[Any]) -> Any:
         CrossValidatedOutputImportance,
     )
 
-    if not folds:
-        return None
-    outputs: dict[str, CrossValidatedOutputImportance] = {}
-    names = list(folds[0].outputs)
-    for name in names:
-        task_type = folds[0].outputs[name].task_type
-        methods = set(folds[0].outputs[name].methods)
-        for fold in folds[1:]:
-            methods &= set(fold.outputs[name].methods)
-        aggregated_methods: dict[str, CrossValidatedMethodResult] = {}
-        for method in sorted(methods):
-            fold_values = torch.stack(
-                [fold.outputs[name].methods[method].values.detach().double() for fold in folds]
+    outputs = {}
+    for output_name, first_output in folds[0].outputs.items():
+        methods = {}
+        for method_name in first_output.predictive_methods:
+            method_folds = [
+                fold.outputs[output_name].predictive_methods[method_name]
+                for fold in folds
+            ]
+            entries = {}
+            for entry_name in method_folds[0].entries:
+                fold_entries = [method.entries[entry_name] for method in method_folds]
+                values = torch.tensor(
+                    [entry.importance.mean for entry in fold_entries],
+                    dtype=torch.float64,
+                )
+                ranks = torch.tensor(
+                    [entry.importance.rank for entry in fold_entries],
+                    dtype=torch.float64,
+                )
+                entries[entry_name] = CrossValidatedImportanceSummary(
+                    values,
+                    float(values.mean()),
+                    float(values.std(unbiased=False)),
+                    float(values.min()),
+                    float(values.max()),
+                    float(values.median()),
+                    float(ranks.mean()),
+                    float(ranks.std(unbiased=False)),
+                    len(values),
+                    [entry.importance.std for entry in fold_entries],
+                )
+            methods[method_name] = CrossValidatedMethodResult(
+                method_name, entries, method_folds
             )
-            mean = fold_values.mean(dim=0)
-            std = fold_values.std(dim=0, unbiased=False)
-            first = folds[0].outputs[name].methods[method]
-            aggregated_methods[method] = CrossValidatedMethodResult(
-                method=method,
-                values=mean,
-                fold_std=std,
-                n_folds=len(folds),
-                source=getattr(first, "source", "cross_validation"),
-                metadata={"aggregation": "validation_fold_mean"},
-            )
-        outputs[name] = CrossValidatedOutputImportance(
-            name=name,
-            task_type=task_type,
-            methods=aggregated_methods,
+        outputs[output_name] = CrossValidatedOutputImportance(
+            output_name,
+            first_output.task_type,
+            methods,
+            {},
+            [fold.outputs[output_name].model_diagnostics for fold in folds],
+            warnings=[
+                warning
+                for fold in folds
+                for warning in fold.outputs[output_name].warnings
+            ],
         )
-    summary = CrossValidatedImportanceSummary(
-        n_folds=len(folds),
-        outputs=outputs,
-    )
     return CrossValidatedFeatureImportanceResult(
-        outputs=outputs,
-        summary=summary,
-        metadata={"aggregation": "validation_fold_mean"},
+        outputs,
+        folds[0].feature_names,
+        [warning for fold in folds for warning in fold.warnings],
+        {"n_folds": len(folds), "pooled_oof_importance": False},
     )

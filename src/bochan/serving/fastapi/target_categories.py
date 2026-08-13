@@ -1,4 +1,4 @@
-"""FastAPI helpers for tabular category metadata and label conversion."""
+"""FastAPI transport helpers for categorical target metadata and labels."""
 
 from __future__ import annotations
 
@@ -6,7 +6,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from . import converters as _converters
+from bochan.tabular.multi_output_categories import (
+    extract_output_category_maps,
+    resolve_acquisition_config_columns,
+)
+from bochan.tabular.ordinal_rank_labels import resolve_acquisition_ordinal_ranks
+
+from . import converters
 
 _CATEGORY_METADATA_KEY = "target_category_metadata"
 
@@ -46,7 +52,7 @@ def _dump(value: Any) -> dict[str, Any]:
 
 
 def _clean_output_category_nones(value: Any) -> Any:
-    """Remove Pydantic ``None`` defaults before tabular metadata extraction."""
+    """Remove Pydantic ``None`` defaults before category metadata extraction."""
 
     if not isinstance(value, Mapping):
         return value
@@ -60,7 +66,7 @@ def _clean_output_category_nones(value: Any) -> Any:
 def _extract_category_metadata(
     model_config_payload: dict[str, Any],
 ) -> tuple[dict[str, Any], TargetCategoryMetadata]:
-    """Strip tabular category fields and return an explicit metadata object."""
+    """Strip transport category fields and return explicit metadata."""
 
     resolved = dict(model_config_payload)
     multi_output = resolved.get("multi_output_config")
@@ -74,9 +80,7 @@ def _extract_category_metadata(
             _clean_output_category_nones(item) for item in output_configs
         ]
 
-    from bochan.tabular.multi_output_categories import _extract_output_category_maps
-
-    cleaned_multi_output, category_maps = _extract_output_category_maps(
+    cleaned_multi_output, category_maps = extract_output_category_maps(
         multi_output_payload
     )
     resolved["multi_output_config"] = cleaned_multi_output
@@ -102,7 +106,7 @@ def to_model_config_with_metadata(
 
     payload = _dump(value)
     payload, metadata = _extract_category_metadata(payload)
-    return _converters.to_model_config(payload, options), metadata
+    return converters.to_model_config(payload, options), metadata
 
 
 def to_model_config(value: Any, options: Any | None = None) -> Any:
@@ -147,7 +151,7 @@ def _category_metadata_from_optimizer(optimizer: Any) -> TargetCategoryMetadata:
 def _category_context(
     optimizer: Any,
 ) -> tuple[list[Any], dict[Any, dict[Any, int]]]:
-    """Return output names and category maps retained by FastAPI model fitting."""
+    """Return output names and category maps retained by model fitting."""
 
     metadata = _category_metadata_from_optimizer(optimizer)
     category_maps = metadata.normalized_maps()
@@ -200,7 +204,7 @@ def to_target_tensor(
     metadata: TargetCategoryMetadata | None = None,
     optimizer: Any | None = None,
 ) -> Any:
-    """Encode FastAPI string target labels and convert them to a tensor."""
+    """Encode FastAPI target labels and convert them to a tensor."""
 
     if optimizer is not None:
         target_names, category_maps = _category_context(optimizer)
@@ -211,10 +215,10 @@ def to_target_tensor(
         target_names, category_maps = [], {}
 
     if not category_maps:
-        return _converters.to_tensor(value, options)
+        return converters.to_tensor(value, options)
 
     if hasattr(value, "detach"):
-        return _converters.to_tensor(value, options)
+        return converters.to_tensor(value, options)
     if hasattr(value, "tolist") and not isinstance(value, (list, tuple)):
         value = value.tolist()
 
@@ -237,7 +241,7 @@ def to_target_tensor(
             )
             for item in rows
         ]
-        return _converters.to_tensor(encoded, options)
+        return converters.to_tensor(encoded, options)
 
     if not is_matrix:
         raise ValueError(
@@ -263,7 +267,7 @@ def to_target_tensor(
                     output=output_name,
                 )
         encoded_rows.append(row_values)
-    return _converters.to_tensor(encoded_rows, options)
+    return converters.to_tensor(encoded_rows, options)
 
 
 def to_acquisition_config(
@@ -278,14 +282,7 @@ def to_acquisition_config(
     if optimizer is not None:
         target_names, category_maps = _category_context(optimizer)
         if target_names and category_maps:
-            from bochan.tabular.optimizer_api import (
-                _resolve_acquisition_config_columns,
-            )
-            from bochan.tabular.ordinal_rank_labels import (
-                resolve_acquisition_ordinal_ranks,
-            )
-
-            payload = _resolve_acquisition_config_columns(
+            payload = resolve_acquisition_config_columns(
                 payload,
                 target_names,
                 category_maps,
@@ -295,7 +292,7 @@ def to_acquisition_config(
                 target_names=target_names,
                 target_category_maps=category_maps,
             )
-    return _converters.to_acquisition_config(payload, options)
+    return converters.to_acquisition_config(payload, options)
 
 
 __all__ = [

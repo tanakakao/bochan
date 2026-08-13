@@ -1,8 +1,8 @@
 """Canonical pandas / numpy adapter for :class:`bochan.api.BayesianOptimizer`.
 
-Tabular-only concerns are composed explicitly here. Composition transforms,
-bounds, and constraints are delegated to stateless components rather than
-represented as public optimizer inheritance layers.
+Tabular-only concerns are composed from functional mixins and stateless
+components. Compatibility optimizer subclasses are deliberately not part of
+the inheritance graph.
 """
 
 from __future__ import annotations
@@ -25,13 +25,13 @@ from .composition_element_constraints import (
 from .composition_total_constraints import CompositionTotalConstraintResolver
 from .composition_variable_total_transform import CompositionVariableTotalTransform
 from .multi_output_categories import (
-    _extract_output_category_maps,
-    _merge_target_category_metadata,
+    extract_output_category_maps,
+    merge_target_category_metadata,
 )
-from .multi_site_composition_optimizer import (
-    TabularBayesianOptimizer as _FormulaMultiSiteTabularBayesianOptimizer,
-)
+from .multi_site_composition_optimizer import MultiSiteCompositionMixin
 from .observation_optimizer import ObservationTabularMixin
+from .optimizer import TabularBayesianOptimizer as _TabularOptimizerCore
+from .optimizer_api import TabularApiMixin
 from .ordinal_rank_labels import (
     resolve_acquisition_ordinal_ranks,
     resolve_ordinal_rank_config,
@@ -46,7 +46,9 @@ from .prediction import (
 
 class TabularBayesianOptimizer(
     ObservationTabularMixin,
-    _FormulaMultiSiteTabularBayesianOptimizer,
+    MultiSiteCompositionMixin,
+    TabularApiMixin,
+    _TabularOptimizerCore,
 ):
     """Single public tabular optimizer delegating BO semantics to the core API."""
 
@@ -55,7 +57,9 @@ class TabularBayesianOptimizer(
     composition_total_constraint_resolver = CompositionTotalConstraintResolver()
     composition_variable_total_transform = CompositionVariableTotalTransform()
     composition_element_constraint_resolver = CompositionElementConstraintResolver()
-    composition_element_constraint_candidate_reranker = CompositionElementConstraintCandidateReranker()
+    composition_element_constraint_candidate_reranker = (
+        CompositionElementConstraintCandidateReranker()
+    )
 
     def __init__(
         self,
@@ -70,42 +74,55 @@ class TabularBayesianOptimizer(
         composition_constraint_max_supports: int = 256,
         **kwargs: Any,
     ) -> None:
-        self.composition_total_constraints = self.composition_total_constraint_resolver.normalize(
-            composition_total_constraints
+        self.composition_total_constraints = (
+            self.composition_total_constraint_resolver.normalize(
+                composition_total_constraints
+            )
         )
-        self.composition_element_constraints = self.composition_element_constraint_resolver.normalize(
-            composition_element_constraints
+        self.composition_element_constraints = (
+            self.composition_element_constraint_resolver.normalize(
+                composition_element_constraints
+            )
         )
         self.composition_constraint_rerank = bool(composition_constraint_rerank)
-        self.composition_constraint_rerank_factor = int(composition_constraint_rerank_factor)
-        self.composition_constraint_max_supports = int(composition_constraint_max_supports)
+        self.composition_constraint_rerank_factor = int(
+            composition_constraint_rerank_factor
+        )
+        self.composition_constraint_max_supports = int(
+            composition_constraint_max_supports
+        )
         if self.composition_constraint_rerank_factor < 1:
             raise ValueError("composition_constraint_rerank_factor must be >= 1.")
         if self.composition_constraint_max_supports < 1:
             raise ValueError("composition_constraint_max_supports must be >= 1.")
 
         inferred_maps: dict[Any, dict[Any, int]] = {}
-
         if isinstance(model_config, Mapping):
             resolved_model_config = dict(model_config)
             multi_output_config = resolved_model_config.get("multi_output_config")
             if multi_output_config is not None:
-                resolved_multi_output, maps = _extract_output_category_maps(multi_output_config)
+                resolved_multi_output, maps = extract_output_category_maps(
+                    multi_output_config
+                )
                 resolved_model_config["multi_output_config"] = resolved_multi_output
                 inferred_maps.update(maps)
             model_config = resolved_model_config
 
         direct_multi_output = kwargs.get("multi_output_config")
         if direct_multi_output is not None:
-            resolved_multi_output, maps = _extract_output_category_maps(direct_multi_output)
+            resolved_multi_output, maps = extract_output_category_maps(
+                direct_multi_output
+            )
             kwargs["multi_output_config"] = resolved_multi_output
             for output_name, category_map in maps.items():
                 existing = inferred_maps.get(output_name)
                 if existing is not None and existing != category_map:
-                    raise ValueError(f"Conflicting category declarations for output {output_name!r}.")
+                    raise ValueError(
+                        f"Conflicting category declarations for output {output_name!r}."
+                    )
                 inferred_maps[output_name] = category_map
 
-        _merge_target_category_metadata(kwargs, inferred_maps)
+        merge_target_category_metadata(kwargs, inferred_maps)
         super().__init__(
             model_config=model_config,
             fit_config=fit_config,
@@ -120,11 +137,11 @@ class TabularBayesianOptimizer(
         cls,
         sites: Mapping[str, Mapping[str, Any]] | None,
     ) -> dict[str, dict[str, Any]]:
-        """Normalize element-column declarations on top of formula multi-site sites."""
+        """Normalize element-column declarations on canonical composition sites."""
 
         return cls.composition_element_column_transform.normalize_sites(
             sites,
-            base_normalizer=(_FormulaMultiSiteTabularBayesianOptimizer._normalize_composition_sites),
+            base_normalizer=MultiSiteCompositionMixin._normalize_composition_sites,
         )
 
     @classmethod
@@ -148,7 +165,7 @@ class TabularBayesianOptimizer(
 
         return cls.composition_variable_total_transform.make_site_search_space(
             config,
-            base_factory=_FormulaMultiSiteTabularBayesianOptimizer._make_site_search_space,
+            base_factory=MultiSiteCompositionMixin._make_site_search_space,
         )
 
     @classmethod
@@ -172,8 +189,8 @@ class TabularBayesianOptimizer(
             data,
             site_name,
             config,
-            site_source_columns=(self.composition_element_column_transform.source_columns),
-            numeric_site_values=(self.composition_element_column_transform.numeric_site_values),
+            site_source_columns=self.composition_element_column_transform.source_columns,
+            numeric_site_values=self.composition_element_column_transform.numeric_site_values,
         )
 
     def _prepare_element_column_frame(
@@ -182,7 +199,7 @@ class TabularBayesianOptimizer(
         *,
         fit_transformers: bool,
     ) -> Any:
-        """Apply element-column conversion around the formula multi-site transform."""
+        """Apply element-column conversion around the base composition transform."""
 
         return self.composition_element_column_transform.prepare_multi_site_frame(
             data,
@@ -190,7 +207,7 @@ class TabularBayesianOptimizer(
             composition_sites=self.composition_sites,
             composition_transformers=self.composition_transformers_,
             base_prepare=lambda frame, *, fit_transformers: (
-                _FormulaMultiSiteTabularBayesianOptimizer._prepare_multi_site_frame(
+                MultiSiteCompositionMixin._prepare_multi_site_frame(
                     self,
                     frame,
                     fit_transformers=fit_transformers,
@@ -211,8 +228,8 @@ class TabularBayesianOptimizer(
             fit_transformers=fit_transformers,
             composition_sites=self.composition_sites,
             base_prepare=self._prepare_element_column_frame,
-            site_source_columns=(self.composition_element_column_transform.source_columns),
-            numeric_site_values=(self.composition_element_column_transform.numeric_site_values),
+            site_source_columns=self.composition_element_column_transform.source_columns,
+            numeric_site_values=self.composition_element_column_transform.numeric_site_values,
         )
 
     def _replace_multi_site_input_cols(
@@ -223,7 +240,7 @@ class TabularBayesianOptimizer(
             input_cols,
             composition_sites=self.composition_sites,
             composition_transformers=self.composition_transformers_,
-            site_source_columns=(self.composition_element_column_transform.source_columns),
+            site_source_columns=self.composition_element_column_transform.source_columns,
         )
 
     @classmethod
@@ -231,21 +248,15 @@ class TabularBayesianOptimizer(
         cls,
         constraints: Sequence[Any] | None,
     ) -> list[dict[str, Any]]:
-        """Normalize composition total constraints through the owned resolver."""
-
         return cls.composition_total_constraint_resolver.normalize(constraints)
 
     def _validate_total_constraints(self) -> None:
-        """Validate coupled totals through the owned resolver."""
-
         self.composition_total_constraint_resolver.validate(
             self.composition_total_constraints,
             self.composition_sites,
         )
 
     def _named_total_constraints(self) -> list[tuple[Any, ...]]:
-        """Translate coupled totals to named model-feature constraints."""
-
         return self.composition_total_constraint_resolver.named_constraints(
             self.composition_total_constraints,
             self.composition_sites,
@@ -257,8 +268,6 @@ class TabularBayesianOptimizer(
         opt_config: OptimizeConfig | Mapping[str, Any] | None,
         constraints: Sequence[tuple[Any, ...]],
     ) -> OptimizeConfig | Mapping[str, Any] | None:
-        """Merge total constraints through the owned resolver."""
-
         return cls.composition_total_constraint_resolver.merge_optimize_config(
             opt_config,
             constraints,
@@ -267,8 +276,6 @@ class TabularBayesianOptimizer(
     def _make_element_constraint_projector(
         self,
     ) -> CompositionElementConstraintProjector:
-        """Build the projector from the current fitted composition context."""
-
         return CompositionElementConstraintProjector(
             composition_sites=self.composition_sites,
             composition_element_constraints=self.composition_element_constraints,
@@ -277,8 +284,6 @@ class TabularBayesianOptimizer(
         )
 
     def _named_element_constraints(self) -> list[tuple[Any, ...]]:
-        """Translate compatible element constraints to model coordinates."""
-
         return self.composition_element_constraint_resolver.named_constraints(
             self.composition_element_constraints,
             self.composition_sites,
@@ -295,7 +300,7 @@ class TabularBayesianOptimizer(
         bounds: Any = None,
         **kwargs: Any,
     ) -> TabularBayesianOptimizer:
-        """Filter native composition columns before formula multi-site fitting."""
+        """Filter native composition columns before canonical composition fitting."""
 
         if not self.multi_site_composition_enabled:
             return super().fit(
@@ -306,10 +311,12 @@ class TabularBayesianOptimizer(
                 bounds=bounds,
                 **kwargs,
             )
-        resolved_categorical = self.composition_element_column_transform.resolve_categorical_cols(
-            categorical_cols,
-            default_categorical_cols=self.data_config.categorical_cols or (),
-            composition_sites=self.composition_sites,
+        resolved_categorical = (
+            self.composition_element_column_transform.resolve_categorical_cols(
+                categorical_cols,
+                default_categorical_cols=self.data_config.categorical_cols or (),
+                composition_sites=self.composition_sites,
+            )
         )
         return super().fit(
             data=data,
@@ -329,7 +336,7 @@ class TabularBayesianOptimizer(
     ) -> Any:
         """Restore variable totals before applying element-constraint repair."""
 
-        restored = _FormulaMultiSiteTabularBayesianOptimizer.inverse_compositions(
+        restored = MultiSiteCompositionMixin.inverse_compositions(
             self,
             data,
             repair=repair,
@@ -349,20 +356,18 @@ class TabularBayesianOptimizer(
             multi_site_composition_enabled=self.multi_site_composition_enabled,
             repair=repair,
         )
-        if repair and self.multi_site_composition_enabled and self.composition_element_constraints:
+        if (
+            repair
+            and self.multi_site_composition_enabled
+            and self.composition_element_constraints
+        ):
             restored = self._make_element_constraint_projector().repair_frame(restored)
         return restored
-
-    def _expanded_bounds(self, bounds: Any, transformed: Any) -> Any:
-        """Complete transformed single-site composition bounds."""
-
-        expanded = super()._expanded_bounds(bounds, transformed)
-        return self.composition_bounds_resolver.complete(expanded, transformed)
 
     def _expanded_multi_site_bounds(self, bounds: Any, transformed: Any) -> Any:
         """Complete variable-total and transformed composition bounds."""
 
-        expanded = _FormulaMultiSiteTabularBayesianOptimizer._expanded_multi_site_bounds(
+        expanded = MultiSiteCompositionMixin._expanded_multi_site_bounds(
             self,
             bounds,
             transformed,
@@ -395,7 +400,9 @@ class TabularBayesianOptimizer(
 
         target_names = list(self.dataset.target_names) if self.dataset is not None else []
         target_category_maps = (
-            dict(getattr(self.dataset, "target_category_maps", None) or {}) if self.dataset is not None else {}
+            dict(getattr(self.dataset, "target_category_maps", None) or {})
+            if self.dataset is not None
+            else {}
         )
         if target_names:
             acq_config = resolve_acquisition_ordinal_ranks(
@@ -445,9 +452,11 @@ class TabularBayesianOptimizer(
                 **kwargs,
             )
 
-        requested_q = self.composition_element_constraint_candidate_reranker.requested_q(
-            opt_config,
-            kwargs,
+        requested_q = (
+            self.composition_element_constraint_candidate_reranker.requested_q(
+                opt_config,
+                kwargs,
+            )
         )
         factor = (
             self.composition_constraint_rerank_factor
@@ -532,7 +541,9 @@ class TabularBayesianOptimizer(
             binary_threshold=binary_threshold,
         )
         if labels_only and labels_df.shape[1] == 0:
-            raise ValueError("The fitted optimizer has no binary, multiclass, or ordinal outputs.")
+            raise ValueError(
+                "The fitted optimizer has no binary, multiclass, or ordinal outputs."
+            )
         if original_index is not None:
             labels_df.index = original_index
 

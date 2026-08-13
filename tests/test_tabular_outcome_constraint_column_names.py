@@ -4,7 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from bochan.tabular import TabularBayesianOptimizer, optimizer_api
+from bochan.tabular import TabularBayesianOptimizer
+from bochan.tabular.optimizer import TabularBayesianOptimizer as _TabularOptimizerCore
 
 
 def _make_fitted_stub() -> TabularBayesianOptimizer:
@@ -25,7 +26,7 @@ def test_candidate_resolves_direct_named_outcome_constraint_outputs(monkeypatch)
         captured["acq_config"] = acq_config
         return "ok"
 
-    monkeypatch.setattr(optimizer_api._BaseTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
     optimizer = _make_fitted_stub()
 
     result = optimizer.candidate(
@@ -50,7 +51,7 @@ def test_candidate_resolves_nested_named_outcome_constraint_outputs(monkeypatch)
         captured["acq_config"] = acq_config
         return "ok"
 
-    monkeypatch.setattr(optimizer_api._BaseTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
     optimizer = _make_fitted_stub()
 
     result = optimizer.candidate(
@@ -71,7 +72,7 @@ def test_candidate_resolves_nested_named_outcome_constraint_outputs(monkeypatch)
 
 def test_candidate_rejects_unknown_named_outcome_constraint_output(monkeypatch) -> None:
     monkeypatch.setattr(
-        optimizer_api._BaseTabularBayesianOptimizer,
+        _TabularOptimizerCore,
         "candidate",
         lambda self, acq_config=None, opt_config=None, **kwargs: "ok",
     )

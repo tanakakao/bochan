@@ -6,9 +6,9 @@ on:
       - main
     paths:
       - "src/bochan/serving/webapp/composition_web_support.py"
-      - "src/bochan/serving/webapp/composition_candidate_repair_compat.py"
       - "src/bochan/serving/webapp/composition_web_routes.py"
-      - "src/bochan/serving/webapp/composition_constraint_adapter.py"
+      - "src/bochan/serving/webapp/workflows_tabular.py"
+      - "src/bochan/serving/webapp/tabular_backend.py"
       - "src/bochan/serving/webapp/composition_visualization.py"
       - "src/bochan/serving/webapp/composition_visualization_compat.py"
       - "src/bochan/serving/webapp/composition_multielement_ternary.py"
@@ -16,8 +16,6 @@ on:
       - "src/bochan/serving/webapp/composition_pd_compat.py"
       - "src/bochan/serving/webapp/composition_feature_importance.py"
       - "src/bochan/serving/webapp/composition_feature_importance_views.py"
-      - "src/bochan/serving/webapp/composition_importance_records_compat.py"
-      - "src/bochan/serving/webapp/composition_importance_output_compat.py"
       - "src/bochan/serving/webapp/composition_element_importance_figures.py"
       - "src/bochan/serving/webapp/pandas_compat.py"
       - "src/bochan/serving/webapp/visualization_feature_types.py"
@@ -96,9 +94,9 @@ jobs:
           python -m pip install ruff
           ruff check --ignore I001,SIM102,SIM105,SIM108,B010 \
             src/bochan/serving/webapp/composition_web_support.py \
-            src/bochan/serving/webapp/composition_candidate_repair_compat.py \
             src/bochan/serving/webapp/composition_web_routes.py \
-            src/bochan/serving/webapp/composition_constraint_adapter.py \
+            src/bochan/serving/webapp/workflows_tabular.py \
+            src/bochan/serving/webapp/tabular_backend.py \
             src/bochan/serving/webapp/composition_visualization.py \
             src/bochan/serving/webapp/composition_visualization_compat.py \
             src/bochan/serving/webapp/composition_multielement_ternary.py \
@@ -106,8 +104,6 @@ jobs:
             src/bochan/serving/webapp/composition_pd_compat.py \
             src/bochan/serving/webapp/composition_feature_importance.py \
             src/bochan/serving/webapp/composition_feature_importance_views.py \
-            src/bochan/serving/webapp/composition_importance_records_compat.py \
-            src/bochan/serving/webapp/composition_importance_output_compat.py \
             src/bochan/serving/webapp/composition_element_importance_figures.py \
             src/bochan/serving/webapp/pandas_compat.py \
             src/bochan/serving/webapp/visualization_feature_types.py \

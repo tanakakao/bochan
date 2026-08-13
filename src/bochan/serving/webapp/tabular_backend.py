@@ -34,7 +34,11 @@ def feature_category_maps(
     """Convert Web category maps to original-label maps accepted by the tabular API."""
 
     maps: dict[str, dict[Any, int]] = {}
-    for column, encoded_map in dict(encoded_features.get("category_maps") or {}).items():
+    for column, encoded_map in dict(
+        encoded_features.get("category_maps") or {}
+    ).items():
+        if column not in data.columns:
+            continue
         series = data[column]
         maps[str(column)] = {
             _category_key_from_label(series, label): int(index)
@@ -57,7 +61,9 @@ def target_category_maps(
     return maps
 
 
-def tabular_bounds(encoded_features: dict[str, Any]) -> dict[str, tuple[float, float]]:
+def tabular_bounds(
+    encoded_features: dict[str, Any],
+) -> dict[str, tuple[float, float]]:
     """Return column-keyed bounds for TabularDataConfig."""
 
     feature_columns = list(encoded_features["feature_columns"])
@@ -68,11 +74,16 @@ def tabular_bounds(encoded_features: dict[str, Any]) -> dict[str, tuple[float, f
     }
 
 
-def categorical_feature_columns(encoded_features: dict[str, Any]) -> list[str]:
+def categorical_feature_columns(
+    encoded_features: dict[str, Any],
+) -> list[str]:
     """Resolve encoded categorical positions back to feature names."""
 
     columns = list(encoded_features["feature_columns"])
-    return [columns[int(index)] for index in encoded_features.get("cat_dims", [])]
+    return [
+        columns[int(index)]
+        for index in encoded_features.get("cat_dims", [])
+    ]
 
 
 def categorical_target_columns(
@@ -118,6 +129,7 @@ def fit_tabular_optimizer(
     fit_config: Any,
     cross_validation: bool = False,
     cv_config: dict[str, Any] | None = None,
+    composition_config: dict[str, Any] | None = None,
 ) -> Any:
     """Fit or reuse the public pandas-friendly optimizer for the Web workflow."""
 
@@ -133,7 +145,9 @@ def fit_tabular_optimizer(
     source_run_id = str((reuse_state or {}).get("source_run_id") or "")
     if source_run_id:
         if not run_id:
-            raise RuntimeError("Model reuse requires an active Web request identifier.")
+            raise RuntimeError(
+                "Model reuse requires an active Web request identifier."
+            )
         return reuse_fitted_tabular_optimizer(
             source_run_id=source_run_id,
             current_run_id=run_id,
@@ -150,15 +164,40 @@ def fit_tabular_optimizer(
 
     missing_report = current_target_missing_report()
     target_missing_strategy = (
-        "keep" if bool(missing_report.get("preserve_target_missing")) else "drop"
+        "keep"
+        if bool(missing_report.get("preserve_target_missing"))
+        else "drop"
     )
 
-    categorical_features = categorical_feature_columns(encoded_features)
+    categorical_features = [
+        column
+        for column in categorical_feature_columns(encoded_features)
+        if column in data.columns
+        and (
+            composition_config is None
+            or column != composition_config["column"]
+        )
+    ]
     categorical_targets = categorical_target_columns(target_metadata)
     fit_data = _mutable_category_frame(
         data,
         categorical_columns=[*categorical_features, *categorical_targets],
     )
+
+    composition_kwargs: dict[str, Any] = {}
+    if composition_config is not None:
+        from .composition_web_support import composition_site
+
+        composition_kwargs = {
+            "composition_sites": {
+                "composition": composition_site(composition_config),
+            },
+            "composition_element_constraints": composition_config[
+                "element_constraints"
+            ],
+            "composition_constraint_rerank": True,
+        }
+
     optimizer = TabularBayesianOptimizer(
         model_config=model_config,
         fit_config=fit_config,
@@ -175,10 +214,13 @@ def fit_tabular_optimizer(
         target_missing_strategy=target_missing_strategy,
         cross_validation=cross_validation,
         cv_config=cv_config,
+        **composition_kwargs,
     )
     optimizer.fit(fit_data)
     if optimizer.dataset is None:
-        raise RuntimeError("TabularBayesianOptimizer did not retain its fitted dataset.")
+        raise RuntimeError(
+            "TabularBayesianOptimizer did not retain its fitted dataset."
+        )
 
     state = current_target_missing_report()
     if state.get("feature_impute_values"):
@@ -226,7 +268,9 @@ def encoded_features_from_tabular(
     metadata["feature_columns"] = list(dataset.feature_names)
     metadata["cat_dims"] = list(dataset.cat_dims)
     metadata["category_maps"] = dict(dataset.category_maps or {})
-    metadata["inverse_category_maps"] = dict(dataset.inverse_category_maps or {})
+    metadata["inverse_category_maps"] = dict(
+        dataset.inverse_category_maps or {}
+    )
     if dataset.bounds is not None:
         metadata["bounds"] = dataset.bounds.detach().cpu().tolist()
     return metadata

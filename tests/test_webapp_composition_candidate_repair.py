@@ -6,8 +6,8 @@ from typing import Any
 import pandas as pd
 import torch
 
-from bochan.serving.webapp.composition_candidate_repair_compat import (
-    _install_candidate_repair,
+from bochan.serving.webapp.composition_web_support import (
+    repair_composition_candidate_result,
 )
 from bochan.tabular.config import TabularDataConfig
 
@@ -85,9 +85,11 @@ class _FractionOptimizer:
 
 def test_fraction_candidate_repair_preserves_model_dimension() -> None:
     optimizer = _FractionOptimizer()
-    _install_candidate_repair(optimizer)
 
-    result = optimizer.candidate(return_result=True)
+    result = repair_composition_candidate_result(
+        optimizer,
+        optimizer.candidate(return_result=True),
+    )
 
     assert result.candidates.shape == (2, 3)
     assert torch.allclose(

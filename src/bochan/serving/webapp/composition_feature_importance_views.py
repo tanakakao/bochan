@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 from collections import defaultdict
 from typing import Any
 
@@ -33,10 +32,13 @@ def _replace_predictive_summary(
     result: dict[str, Any],
     payload: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """Replace transformed composition-coordinate PI by one joint group row."""
+    """Replace supported composition coordinates by one joint group row."""
 
     coordinate_features = {
         str(value) for value in payload.get("coordinate_features") or ()
+    }
+    supported_outputs = {
+        str(row.get("output_name")) for row in payload.get("overall") or ()
     }
     summary = [
         dict(row) for row in list(result.get("feature_importance_summary") or ())
@@ -47,6 +49,7 @@ def _replace_predictive_summary(
         if not (
             str(row.get("importance_kind")) == "predictive"
             and str(row.get("feature")) in coordinate_features
+            and str(row.get("output_name")) in supported_outputs
         )
     ]
     filtered.extend(dict(row) for row in payload.get("overall") or ())
@@ -141,7 +144,12 @@ def _composition_predictive_figures(
             selected = [
                 row
                 for row in selected
-                if (_safe_float(row.get("normalized_mean" if normalized else "mean")) or 0.0)
+                if (
+                    _safe_float(
+                        row.get("normalized_mean" if normalized else "mean")
+                    )
+                    or 0.0
+                )
                 >= 0.0
             ]
         value_key = "normalized_mean" if normalized else "mean"
@@ -162,7 +170,9 @@ def _composition_predictive_figures(
         for row in selected:
             between_fold = _safe_float(row.get("between_fold_std"))
             repeat_std = _safe_float(row.get("std"))
-            errors.append(between_fold if between_fold is not None else (repeat_std or 0.0))
+            errors.append(
+                between_fold if between_fold is not None else (repeat_std or 0.0)
+            )
 
         figure = go.Figure(
             go.Bar(
@@ -218,7 +228,7 @@ def _composition_predictive_figures(
 
 def postprocess_composition_feature_importance(
     result: dict[str, Any],
-    request: Any,
+    request: Any | None,
 ) -> None:
     """Replace coordinate-level PI and rebuild affected Web figures."""
 
@@ -250,38 +260,16 @@ def postprocess_composition_feature_importance(
     result["feature_importance_visualizations"] = existing
 
 
-def install_composition_feature_importance_views() -> None:
-    """Install response postprocessing before app.py binds the workflow."""
+def postprocess_composition_importance_views(
+    result: dict[str, Any],
+    _session: Any,
+) -> None:
+    """Postprocess with default presentation settings from the explicit workflow."""
 
-    from . import workflows
-
-    if getattr(
-        workflows,
-        "_composition_feature_importance_views_installed",
-        False,
-    ):
-        return
-    original = workflows.run_regression_web_workflow
-
-    def workflow_adapter(request: Any, store: Any) -> dict[str, Any]:
-        result = original(request, store)
-        postprocess_composition_feature_importance(result, request)
-        from .logging import current_request_id
-        from .visualization_sessions import get_visualization_session
-
-        run_id = current_request_id()
-        if run_id:
-            try:
-                get_visualization_session(run_id).result = copy.deepcopy(result)
-            except KeyError:
-                pass
-        return result
-
-    workflows.run_regression_web_workflow = workflow_adapter
-    workflows._composition_feature_importance_views_installed = True
+    postprocess_composition_feature_importance(result, None)
 
 
 __all__ = [
-    "install_composition_feature_importance_views",
     "postprocess_composition_feature_importance",
+    "postprocess_composition_importance_views",
 ]

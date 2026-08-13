@@ -1,9 +1,7 @@
 import pandas as pd
 
 from bochan.tabular import TabularBayesianOptimizer
-from bochan.tabular.optimizer_api import (
-    TabularBayesianOptimizer as _CoreTabularBayesianOptimizer,
-)
+from bochan.tabular.optimizer import TabularBayesianOptimizer as _TabularOptimizerCore
 
 
 def _frame() -> pd.DataFrame:
@@ -17,9 +15,17 @@ def _frame() -> pd.DataFrame:
     )
 
 
-def test_legacy_composition_infers_passthrough_bounds_with_descriptors(
-    monkeypatch,
-) -> None:
+def _single_site(**overrides):
+    config = {
+        "column": "formula",
+        "elements": ["Fe", "Co", "Ni"],
+        "representation": "ilr",
+    }
+    config.update(overrides)
+    return {"formula": config}
+
+
+def test_single_site_infers_passthrough_bounds_with_descriptors(monkeypatch) -> None:
     captured = {}
 
     def fake_fit(self, data=None, y=None, **kwargs):
@@ -27,25 +33,25 @@ def test_legacy_composition_infers_passthrough_bounds_with_descriptors(
         captured["kwargs"] = kwargs
         return self
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
     bo = TabularBayesianOptimizer(
         input_cols=["formula", "temperature"],
         target_cols="property",
-        composition_col="formula",
-        composition_representation="ilr",
-        composition_include_descriptors=True,
-        composition_descriptor_properties=[
-            "atomic_number",
-            "atomic_weight",
-            "electronegativity",
-        ],
-        composition_element_properties={
-            "electronegativity": {
-                "Fe": 1.83,
-                "Co": 1.88,
-                "Ni": 1.91,
-            }
-        },
+        composition_sites=_single_site(
+            include_descriptors=True,
+            descriptor_properties=[
+                "atomic_number",
+                "atomic_weight",
+                "electronegativity",
+            ],
+            element_properties={
+                "electronegativity": {
+                    "Fe": 1.83,
+                    "Co": 1.88,
+                    "Ni": 1.91,
+                }
+            },
+        ),
     )
 
     assert bo.fit(_frame()) is bo
@@ -64,13 +70,12 @@ def test_explicit_passthrough_bound_is_preserved(monkeypatch) -> None:
         captured["kwargs"] = kwargs
         return self
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
     bo = TabularBayesianOptimizer(
         input_cols=["formula", "temperature"],
         target_cols="property",
         bounds={"temperature": [850.0, 1050.0]},
-        composition_col="formula",
-        composition_representation="ilr",
+        composition_sites=_single_site(),
     )
 
     bo.fit(_frame())
@@ -84,12 +89,12 @@ def test_categorical_passthrough_bound_matches_label_encoding(monkeypatch) -> No
         captured["kwargs"] = kwargs
         return self
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
     bo = TabularBayesianOptimizer(
         input_cols=["formula", "temperature", "furnace"],
         target_cols="property",
         categorical_cols=["furnace"],
-        composition_col="formula",
+        composition_sites=_single_site(),
     )
 
     bo.fit(_frame())
@@ -111,7 +116,7 @@ def test_multi_site_composition_infers_passthrough_bounds(monkeypatch) -> None:
         captured["kwargs"] = kwargs
         return self
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
     bo = TabularBayesianOptimizer(
         input_cols=["A_formula", "temperature"],
         target_cols="property",

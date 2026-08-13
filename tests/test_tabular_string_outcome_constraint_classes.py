@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 
 from bochan.api import AcquisitionConfig
-from bochan.tabular.optimizer_api import (
-    _resolve_acquisition_config_columns,
-    _resolve_outcome_constraint_config_columns,
+from bochan.tabular.multi_output_categories import (
+    resolve_acquisition_config_columns,
+    resolve_outcome_constraint_config_columns,
 )
 
 
@@ -23,7 +23,7 @@ def _constraint_config(*, target_class=None, target_classes=None):
 
 
 def test_string_target_classes_are_resolved_before_config_construction() -> None:
-    resolved = _resolve_outcome_constraint_config_columns(
+    resolved = resolve_outcome_constraint_config_columns(
         _constraint_config(target_classes=["a", "c"]),
         ["property", "y_ord_str"],
         {"y_ord_str": {"a": 0, "b": 1, "c": 2}},
@@ -39,7 +39,7 @@ def test_string_target_classes_are_resolved_before_config_construction() -> None
 
 
 def test_single_string_target_classes_value_is_treated_as_one_label() -> None:
-    resolved = _resolve_outcome_constraint_config_columns(
+    resolved = resolve_outcome_constraint_config_columns(
         _constraint_config(target_classes="a"),
         ["property", "y_ord_str"],
         {"y_ord_str": {"a": 0, "b": 1, "c": 2}},
@@ -49,7 +49,7 @@ def test_single_string_target_classes_value_is_treated_as_one_label() -> None:
 
 
 def test_nested_acquisition_config_resolves_string_target_class() -> None:
-    resolved = _resolve_acquisition_config_columns(
+    resolved = resolve_acquisition_config_columns(
         {
             "name": "ucb",
             "outcome_constraint_config": _constraint_config(target_class="b"),
@@ -61,19 +61,18 @@ def test_nested_acquisition_config_resolves_string_target_class() -> None:
     assert resolved["outcome_constraint_config"]["constraints"][0]["target_class"] == 1
 
 
-def test_numeric_string_target_class_preserves_previous_index_behavior() -> None:
-    resolved = _resolve_outcome_constraint_config_columns(
-        _constraint_config(target_class="2"),
-        ["property", "y_ord_str"],
-        {},
-    )
-
-    assert resolved["constraints"][0]["target_class"] == 2
+def test_numeric_string_target_class_requires_explicit_category_map() -> None:
+    with pytest.raises(ValueError, match="no target category map"):
+        resolve_outcome_constraint_config_columns(
+            _constraint_config(target_class="2"),
+            ["property", "y_ord_str"],
+            {},
+        )
 
 
 def test_unknown_string_target_class_reports_available_labels() -> None:
     with pytest.raises(KeyError, match="Available labels"):
-        _resolve_outcome_constraint_config_columns(
+        resolve_outcome_constraint_config_columns(
             _constraint_config(target_classes=["unknown"]),
             ["property", "y_ord_str"],
             {"y_ord_str": {"a": 0, "b": 1, "c": 2}},

@@ -85,7 +85,7 @@ jobs:
             src/bochan/serving/fastapi/services/candidates.py \
             src/bochan/serving/fastapi/services/tabular.py \
             src/bochan/serving/fastapi/stores/object.py \
-            src/bochan/serving/fastapi/tabular_compat.py \
+            src/bochan/serving/fastapi/target_categories.py \
             tests/test_api_architecture.py \
             tests/test_fastapi_tabular_category_constraints.py \
             tests/test_llm_selected_acquisition_config.py \

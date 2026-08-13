@@ -2,9 +2,7 @@ import pandas as pd
 import pytest
 
 from bochan.tabular import TabularBayesianOptimizer
-from bochan.tabular.optimizer_api import (
-    TabularBayesianOptimizer as _CoreTabularBayesianOptimizer,
-)
+from bochan.tabular.optimizer import TabularBayesianOptimizer as _TabularOptimizerCore
 
 
 def _single_site_frame() -> pd.DataFrame:
@@ -26,7 +24,7 @@ def test_variable_total_is_added_as_model_feature(monkeypatch) -> None:
         captured["kwargs"] = kwargs
         return self
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
     bo = TabularBayesianOptimizer(
         input_cols=["A_La", "A_Sr", "temperature"],
         target_cols="property",
@@ -66,8 +64,8 @@ def test_variable_total_candidate_restores_requested_site_sum(monkeypatch) -> No
             1.0,
         )
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
     bo = TabularBayesianOptimizer(
         input_cols=["A_La", "A_Sr", "temperature"],
         target_cols="property",
@@ -118,8 +116,8 @@ def test_two_variable_site_totals_can_be_coupled(monkeypatch) -> None:
             1.0,
         )
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
     bo = TabularBayesianOptimizer(
         input_cols=["A_La", "A_Sr", "B_Fe", "B_Co"],
         target_cols="property",
@@ -140,8 +138,8 @@ def test_two_variable_site_totals_can_be_coupled(monkeypatch) -> None:
     bo.fit(frame)
 
     candidates, _ = bo.candidate()
-    assert captured["opt_config"]["constraints"] == [
-        (["A__total", "B__total"], [1.0, 1.0], "=", 100.0)
+    assert captured["opt_config"].equality_constraints == [
+        (["A__total", "B__total"], [1.0, 1.0], 100.0)
     ]
     assert candidates.loc[0, ["A_La", "A_Sr"]].sum() == pytest.approx(40.0)
     assert candidates.loc[0, ["B_Fe", "B_Co"]].sum() == pytest.approx(60.0)
@@ -178,8 +176,8 @@ def test_fixed_site_total_is_removed_from_coupled_constraint(monkeypatch) -> Non
             "property": [10.0, 12.0],
         }
     )
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
     bo = TabularBayesianOptimizer(
         input_cols=["A_La", "A_Sr", "B_Fe", "B_Co"],
         target_cols="property",
@@ -200,8 +198,8 @@ def test_fixed_site_total_is_removed_from_coupled_constraint(monkeypatch) -> Non
     bo.fit(frame)
 
     bo.candidate()
-    assert captured["opt_config"]["constraints"] == [
-        (["A__total"], [1.0], "=", 50.0)
+    assert captured["opt_config"].equality_constraints == [
+        (["A__total"], [1.0], 50.0)
     ]
 
 
@@ -238,7 +236,4 @@ def test_infeasible_coupled_total_constraint_is_rejected() -> None:
 
 
 def test_variable_total_support_uses_canonical_public_optimizer() -> None:
-    assert (
-        TabularBayesianOptimizer.__module__
-        == "bochan.tabular.public_optimizer"
-    )
+    assert TabularBayesianOptimizer.__module__ == "bochan.tabular.public_optimizer"

@@ -3,9 +3,7 @@ import pytest
 
 from bochan.tabular import TabularBayesianOptimizer
 from bochan.tabular.composition import ATOMIC_WEIGHTS
-from bochan.tabular.optimizer_api import (
-    TabularBayesianOptimizer as _CoreTabularBayesianOptimizer,
-)
+from bochan.tabular.optimizer import TabularBayesianOptimizer as _TabularOptimizerCore
 
 
 def _fake_fit(self, data=None, y=None, **kwargs):
@@ -16,14 +14,10 @@ def test_same_site_atomic_ratio_is_repaired_after_ilr(monkeypatch) -> None:
     def fake_candidate(self, *args, **kwargs):
         return pd.DataFrame({"A__ilr__1": [0.0]}), 1.0
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", _fake_fit)
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", _fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
     frame = pd.DataFrame(
-        {
-            "A_La": [0.6, 0.5],
-            "A_Sr": [0.4, 0.5],
-            "property": [1.0, 2.0],
-        }
+        {"A_La": [0.6, 0.5], "A_Sr": [0.4, 0.5], "property": [1.0, 2.0]}
     )
     bo = TabularBayesianOptimizer(
         input_cols=["A_La", "A_Sr"],
@@ -53,7 +47,9 @@ def test_same_site_atomic_ratio_is_repaired_after_ilr(monkeypatch) -> None:
     bo.fit(frame)
 
     candidates, _ = bo.candidate()
-    assert candidates.loc[0, "A_Sr"] == pytest.approx(0.5 * candidates.loc[0, "A_La"], abs=1e-7)
+    assert candidates.loc[0, "A_Sr"] == pytest.approx(
+        0.5 * candidates.loc[0, "A_La"], abs=1e-7
+    )
     assert candidates.loc[0, ["A_La", "A_Sr"]].sum() == pytest.approx(1.0)
 
 
@@ -61,8 +57,8 @@ def test_same_site_atomic_ratio_range_is_repaired(monkeypatch) -> None:
     def fake_candidate(self, *args, **kwargs):
         return pd.DataFrame({"A__ilr__1": [2.0], "A__ilr__2": [-2.0]}), 1.0
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", _fake_fit)
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", _fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
     frame = pd.DataFrame(
         {
             "A_La": [0.6, 0.5],
@@ -116,17 +112,12 @@ def test_same_site_atomic_ratio_range_is_repaired(monkeypatch) -> None:
 def test_cross_site_atomic_constraint_converts_weight_amounts(monkeypatch) -> None:
     def fake_candidate(self, *args, **kwargs):
         return (
-            pd.DataFrame(
-                {
-                    "A__ilr__1": [0.0],
-                    "B__ilr__1": [0.0],
-                }
-            ),
+            pd.DataFrame({"A__ilr__1": [0.0], "B__ilr__1": [0.0]}),
             1.0,
         )
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", _fake_fit)
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", _fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
     frame = pd.DataFrame(
         {
             "A_La": [25.0, 30.0],
@@ -173,7 +164,9 @@ def test_cross_site_atomic_constraint_converts_weight_amounts(monkeypatch) -> No
 
     candidates, _ = bo.candidate()
     a_la_atomic = candidates.loc[0, "A_La"] / ATOMIC_WEIGHTS["La"]
-    assert a_la_atomic == pytest.approx(0.5 * candidates.loc[0, "B_Fe"], abs=1e-7)
+    assert a_la_atomic == pytest.approx(
+        0.5 * candidates.loc[0, "B_Fe"], abs=1e-7
+    )
     assert candidates.loc[0, ["A_La", "A_Sr"]].sum() == pytest.approx(50.0)
     assert candidates.loc[0, ["B_Fe", "B_Co"]].sum() == pytest.approx(50.0)
 
@@ -182,14 +175,10 @@ def test_compatible_steps_are_preserved_with_exact_ratio(monkeypatch) -> None:
     def fake_candidate(self, *args, **kwargs):
         return pd.DataFrame({"A__ilr__1": [0.0]}), 1.0
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", _fake_fit)
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", _fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
     frame = pd.DataFrame(
-        {
-            "A_La": [66.0, 64.0],
-            "A_Sr": [33.0, 35.0],
-            "property": [1.0, 2.0],
-        }
+        {"A_La": [66.0, 64.0], "A_Sr": [33.0, 35.0], "property": [1.0, 2.0]}
     )
     bo = TabularBayesianOptimizer(
         input_cols=["A_La", "A_Sr"],
@@ -253,22 +242,15 @@ def test_fixed_fraction_constraint_is_forwarded_to_named_optimizer(monkeypatch) 
         captured["opt_config"] = kwargs["opt_config"]
         return (
             pd.DataFrame(
-                {
-                    "A__fraction__La": [2.0 / 3.0],
-                    "A__fraction__Sr": [1.0 / 3.0],
-                }
+                {"A__fraction__La": [2.0 / 3.0], "A__fraction__Sr": [1.0 / 3.0]}
             ),
             1.0,
         )
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", _fake_fit)
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", _fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
     frame = pd.DataFrame(
-        {
-            "A_La": [0.6, 0.5],
-            "A_Sr": [0.4, 0.5],
-            "property": [1.0, 2.0],
-        }
+        {"A_La": [0.6, 0.5], "A_Sr": [0.4, 0.5], "property": [1.0, 2.0]}
     )
     bo = TabularBayesianOptimizer(
         input_cols=["A_La", "A_Sr"],
@@ -296,17 +278,10 @@ def test_fixed_fraction_constraint_is_forwarded_to_named_optimizer(monkeypatch) 
     bo.fit(frame)
 
     bo.candidate()
-    assert captured["opt_config"]["constraints"] == [
-        (
-            ["A__fraction__Sr", "A__fraction__La"],
-            [1.0, -0.5],
-            "=",
-            0.0,
-        )
+    assert captured["opt_config"].equality_constraints == [
+        (["A__fraction__Sr", "A__fraction__La"], [1.0, -0.5], 0.0)
     ]
 
 
 def test_public_optimizer_exposes_element_constraint_support() -> None:
-    from bochan.tabular import TabularBayesianOptimizer as PublicOptimizer
-
-    assert issubclass(PublicOptimizer, TabularBayesianOptimizer)
+    assert TabularBayesianOptimizer.__module__ == "bochan.tabular.public_optimizer"

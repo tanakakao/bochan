@@ -2,9 +2,7 @@ import pandas as pd
 import pytest
 
 from bochan.tabular import TabularBayesianOptimizer
-from bochan.tabular.optimizer_api import (
-    TabularBayesianOptimizer as _CoreTabularBayesianOptimizer,
-)
+from bochan.tabular.optimizer import TabularBayesianOptimizer as _TabularOptimizerCore
 
 
 def _frame() -> pd.DataFrame:
@@ -27,7 +25,7 @@ def test_element_columns_are_replaced_with_ilr_features(monkeypatch) -> None:
         captured["kwargs"] = kwargs
         return self
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
     bo = TabularBayesianOptimizer(
         input_cols=["Fe", "Ti", "Al", "temperature"],
         target_cols="property",
@@ -68,8 +66,8 @@ def test_element_column_candidates_restore_original_columns(monkeypatch) -> None
             1.0,
         )
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
     bo = TabularBayesianOptimizer(
         input_cols=["Fe", "Ti", "Al", "temperature"],
         target_cols="property",
@@ -125,8 +123,8 @@ def test_two_element_column_sites_are_repaired_independently(monkeypatch) -> Non
             1.0,
         )
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
     bo = TabularBayesianOptimizer(
         input_cols=[
             "A_La",
@@ -203,8 +201,8 @@ def test_total_100_restores_percentage_columns(monkeypatch) -> None:
             1.0,
         )
 
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", fake_fit)
-    monkeypatch.setattr(_CoreTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
     bo = TabularBayesianOptimizer(
         input_cols=["Fe", "Ti", "Al"],
         target_cols="property",
@@ -222,7 +220,5 @@ def test_total_100_restores_percentage_columns(monkeypatch) -> None:
     assert candidates.loc[0, ["Fe", "Ti", "Al"]].sum() == pytest.approx(100.0)
 
 
-def test_public_tabular_optimizer_exposes_element_column_support() -> None:
-    from bochan.tabular import TabularBayesianOptimizer as PublicOptimizer
-
-    assert issubclass(PublicOptimizer, TabularBayesianOptimizer)
+def test_public_tabular_optimizer_is_canonical_entry_point() -> None:
+    assert TabularBayesianOptimizer.__module__ == "bochan.tabular.public_optimizer"

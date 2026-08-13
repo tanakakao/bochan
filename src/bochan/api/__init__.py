@@ -14,7 +14,14 @@ from bochan.inspection import (
 )
 
 from .acquisition import build_acquisition
-from .acquisition_config import AcquisitionConfig, OutcomeConstraintConfig
+from .config import (
+    AcquisitionConfig,
+    FitConfig,
+    OptimizeConfig,
+    OutcomeConstraintConfig,
+    resolve_optimizer_from_cat_dims,
+    uses_mixed_fixed_features,
+)
 from .configs import (
     AutoStandardizeOutcomeTransform,
     CandidateRepairConfig,
@@ -46,15 +53,9 @@ from .factory import (
     prepare_multi_objective_context,
     resolve_model_cls,
 )
-from .fit_config import FitConfig
 from .observation import ExperimentFailureConfig, ObservationData
 from .optimizer import BayesianOptimizer
-from .optimizer_api import (
-    OptimizeConfig,
-    optimize_candidates,
-    resolve_optimizer_from_cat_dims,
-    uses_mixed_fixed_features,
-)
+from .optimizer_api import optimize_candidates
 from .registry import (
     DEFAULT_MODEL_REGISTRY,
     MODEL_REGISTRY,

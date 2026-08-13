@@ -278,8 +278,8 @@ def test_fixed_fraction_constraint_is_forwarded_to_named_optimizer(monkeypatch) 
     bo.fit(frame)
 
     bo.candidate()
-    assert captured["opt_config"]["constraints"] == [
-        (["A__fraction__Sr", "A__fraction__La"], [1.0, -0.5], "=", 0.0)
+    assert captured["opt_config"].equality_constraints == [
+        (["A__fraction__Sr", "A__fraction__La"], [1.0, -0.5], 0.0)
     ]
 
 

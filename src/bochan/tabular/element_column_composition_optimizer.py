@@ -23,9 +23,7 @@ class TabularBayesianOptimizer(_FormulaMultiSiteTabularBayesianOptimizer):
     ) -> dict[str, dict[str, Any]]:
         return cls.composition_element_column_transform.normalize_sites(
             sites,
-            base_normalizer=(
-                _FormulaMultiSiteTabularBayesianOptimizer._normalize_composition_sites
-            ),
+            base_normalizer=(_FormulaMultiSiteTabularBayesianOptimizer._normalize_composition_sites),
         )
 
     def _prepare_multi_site_frame(
@@ -73,7 +71,7 @@ class TabularBayesianOptimizer(_FormulaMultiSiteTabularBayesianOptimizer):
         categorical_cols: Sequence[Any] | None = None,
         bounds: Any = None,
         **kwargs: Any,
-    ) -> "TabularBayesianOptimizer":
+    ) -> TabularBayesianOptimizer:
         if not self.multi_site_composition_enabled:
             return super().fit(
                 data=data,
@@ -83,12 +81,10 @@ class TabularBayesianOptimizer(_FormulaMultiSiteTabularBayesianOptimizer):
                 bounds=bounds,
                 **kwargs,
             )
-        resolved_categorical = (
-            self.composition_element_column_transform.resolve_categorical_cols(
-                categorical_cols,
-                default_categorical_cols=self.data_config.categorical_cols or (),
-                composition_sites=self.composition_sites,
-            )
+        resolved_categorical = self.composition_element_column_transform.resolve_categorical_cols(
+            categorical_cols,
+            default_categorical_cols=self.data_config.categorical_cols or (),
+            composition_sites=self.composition_sites,
         )
         return super().fit(
             data=data,

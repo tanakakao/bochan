@@ -51,15 +51,10 @@ class CompositionElementColumnTransform:
 
             if "input_basis" in config:
                 if "normalization" in config:
-                    raise ValueError(
-                        f"Composition site {name!r} supplies both 'input_basis' "
-                        "and 'normalization'."
-                    )
+                    raise ValueError(f"Composition site {name!r} supplies both 'input_basis' and 'normalization'.")
                 basis = str(config.pop("input_basis")).lower()
                 if basis not in _INPUT_BASIS_ALIASES:
-                    raise ValueError(
-                        f"Unknown input_basis {basis!r} for site {name!r}."
-                    )
+                    raise ValueError(f"Unknown input_basis {basis!r} for site {name!r}.")
                 config["normalization"] = _INPUT_BASIS_ALIASES[basis]
 
             element_columns = config.pop("element_columns", None)
@@ -74,21 +69,13 @@ class CompositionElementColumnTransform:
 
             if formula_column is not None:
                 raise ValueError(
-                    f"Composition site {name!r} must specify exactly one of "
-                    "'column' or 'element_columns'."
+                    f"Composition site {name!r} must specify exactly one of 'column' or 'element_columns'."
                 )
             if not isinstance(element_columns, Mapping) or not element_columns:
-                raise ValueError(
-                    f"Composition site {name!r} requires a non-empty "
-                    "element_columns mapping."
-                )
-            mapped_columns = {
-                str(element): column for element, column in element_columns.items()
-            }
+                raise ValueError(f"Composition site {name!r} requires a non-empty element_columns mapping.")
+            mapped_columns = {str(element): column for element, column in element_columns.items()}
             if len(set(map(str, mapped_columns.values()))) != len(mapped_columns):
-                raise ValueError(
-                    f"Composition site {name!r} must use unique element columns."
-                )
+                raise ValueError(f"Composition site {name!r} must use unique element columns.")
 
             configured_elements = config.get("elements")
             if configured_elements is None:
@@ -96,17 +83,10 @@ class CompositionElementColumnTransform:
             else:
                 elements = tuple(dict.fromkeys(configured_elements))
                 if set(elements) != set(mapped_columns):
-                    raise ValueError(
-                        f"Composition site {name!r} elements must match the "
-                        "element_columns keys."
-                    )
-                mapped_columns = {
-                    element: mapped_columns[element] for element in elements
-                }
+                    raise ValueError(f"Composition site {name!r} elements must match the element_columns keys.")
+                mapped_columns = {element: mapped_columns[element] for element in elements}
             if len(elements) < 2:
-                raise ValueError(
-                    f"Composition site {name!r} requires at least two elements."
-                )
+                raise ValueError(f"Composition site {name!r} requires at least two elements.")
 
             config["column"] = f"__bochan_{name}_composition_formula__"
             config["elements"] = elements
@@ -117,10 +97,7 @@ class CompositionElementColumnTransform:
             source_columns.extend(str(column) for column in mapped_columns.values())
 
         if len(set(source_columns)) != len(source_columns):
-            raise ValueError(
-                "Formula and element input columns must be unique across "
-                "composition sites."
-            )
+            raise ValueError("Formula and element input columns must be unique across composition sites.")
         return normalized
 
     @staticmethod
@@ -142,17 +119,11 @@ class CompositionElementColumnTransform:
         columns = list(config["element_columns"].values())
         values = frame.loc[:, columns].to_numpy(dtype=float)
         if not np.isfinite(values).all():
-            raise ValueError(
-                f"Element columns for site {site_name!r} must contain finite values."
-            )
+            raise ValueError(f"Element columns for site {site_name!r} must contain finite values.")
         if np.any(values < 0):
-            raise ValueError(
-                f"Element columns for site {site_name!r} must be non-negative."
-            )
+            raise ValueError(f"Element columns for site {site_name!r} must be non-negative.")
         if np.any(values.sum(axis=1) <= 0):
-            raise ValueError(
-                f"Every row at site {site_name!r} must have a positive total."
-            )
+            raise ValueError(f"Every row at site {site_name!r} must have a positive total.")
         return values
 
     @classmethod
@@ -180,9 +151,7 @@ class CompositionElementColumnTransform:
             if missing:
                 if model_names and model_names.issubset(prepared.columns):
                     continue
-                raise KeyError(
-                    f"Missing element columns for site {site_name!r}: {missing!r}."
-                )
+                raise KeyError(f"Missing element columns for site {site_name!r}: {missing!r}.")
 
             values = cls.numeric_site_values(prepared, site_name, config)
             values = values / values.sum(axis=1, keepdims=True)
@@ -255,9 +224,7 @@ class CompositionElementColumnTransform:
             if site_name is None:
                 resolved.append(column)
             elif site_name not in inserted:
-                resolved.extend(
-                    composition_transformers[site_name].feature_names_ or ()
-                )
+                resolved.extend(composition_transformers[site_name].feature_names_ or ())
                 inserted.add(site_name)
         return resolved
 
@@ -288,19 +255,9 @@ class CompositionElementColumnTransform:
     ) -> list[Any]:
         """Exclude composition source columns from categorical model inputs."""
 
-        source_categorical = (
-            list(categorical_cols)
-            if categorical_cols is not None
-            else list(default_categorical_cols)
-        )
-        source_columns = {
-            str(column)
-            for config in composition_sites.values()
-            for column in cls.source_columns(config)
-        }
-        return [
-            column for column in source_categorical if str(column) not in source_columns
-        ]
+        source_categorical = list(categorical_cols) if categorical_cols is not None else list(default_categorical_cols)
+        source_columns = {str(column) for config in composition_sites.values() for column in cls.source_columns(config)}
+        return [column for column in source_categorical if str(column) not in source_columns]
 
     @classmethod
     def inverse_compositions(
@@ -323,9 +280,7 @@ class CompositionElementColumnTransform:
             fraction_columns: list[str] = []
             for element, output_column in config["element_columns"].items():
                 fraction_column = f"{transformer.prefix}__fraction__{element}"
-                restored[output_column] = (
-                    restored[fraction_column] * float(config["total"])
-                )
+                restored[output_column] = restored[fraction_column] * float(config["total"])
                 fraction_columns.append(fraction_column)
             restored = restored.drop(
                 columns=[config["column"], *fraction_columns],

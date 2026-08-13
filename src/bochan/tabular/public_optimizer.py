@@ -160,12 +160,8 @@ class TabularBayesianOptimizer(
             data,
             site_name,
             config,
-            site_source_columns=(
-                self.composition_element_column_transform.source_columns
-            ),
-            numeric_site_values=(
-                self.composition_element_column_transform.numeric_site_values
-            ),
+            site_source_columns=(self.composition_element_column_transform.source_columns),
+            numeric_site_values=(self.composition_element_column_transform.numeric_site_values),
         )
 
     def _prepare_multi_site_frame(
@@ -186,12 +182,8 @@ class TabularBayesianOptimizer(
                 frame,
                 fit_transformers=fit_transformers,
             ),
-            site_source_columns=(
-                self.composition_element_column_transform.source_columns
-            ),
-            numeric_site_values=(
-                self.composition_element_column_transform.numeric_site_values
-            ),
+            site_source_columns=(self.composition_element_column_transform.source_columns),
+            numeric_site_values=(self.composition_element_column_transform.numeric_site_values),
         )
 
     def _replace_multi_site_input_cols(
@@ -202,9 +194,7 @@ class TabularBayesianOptimizer(
             input_cols,
             composition_sites=self.composition_sites,
             composition_transformers=self.composition_transformers_,
-            site_source_columns=(
-                self.composition_element_column_transform.source_columns
-            ),
+            site_source_columns=(self.composition_element_column_transform.source_columns),
         )
 
     @classmethod

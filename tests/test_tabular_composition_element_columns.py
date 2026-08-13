@@ -1,9 +1,7 @@
 import pandas as pd
 import pytest
 
-from bochan.tabular.element_column_composition_optimizer import (
-    TabularBayesianOptimizer,
-)
+from bochan.tabular import TabularBayesianOptimizer
 from bochan.tabular.optimizer_api import (
     TabularBayesianOptimizer as _CoreTabularBayesianOptimizer,
 )
@@ -50,12 +48,8 @@ def test_element_columns_are_replaced_with_ilr_features(monkeypatch) -> None:
         "temperature",
     ]
     assert captured["kwargs"]["bounds"]["alloy__ilr__1"] == [-8.0, 8.0]
-    assert captured["data"].loc[0, "alloy__ilr__1"] == pytest.approx(
-        captured["data"].loc[1, "alloy__ilr__1"]
-    )
-    assert captured["data"].loc[0, "alloy__ilr__2"] == pytest.approx(
-        captured["data"].loc[1, "alloy__ilr__2"]
-    )
+    assert captured["data"].loc[0, "alloy__ilr__1"] == pytest.approx(captured["data"].loc[1, "alloy__ilr__1"])
+    assert captured["data"].loc[0, "alloy__ilr__2"] == pytest.approx(captured["data"].loc[1, "alloy__ilr__2"])
 
 
 def test_element_column_candidates_restore_original_columns(monkeypatch) -> None:

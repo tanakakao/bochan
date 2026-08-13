@@ -24,12 +24,12 @@ from .composition_element_constraints import (
 )
 from .composition_total_constraints import CompositionTotalConstraintResolver
 from .composition_variable_total_transform import CompositionVariableTotalTransform
-from .element_column_composition_optimizer import (
-    TabularBayesianOptimizer as _ElementColumnTabularBayesianOptimizer,
-)
 from .multi_output_categories import (
     _extract_output_category_maps,
     _merge_target_category_metadata,
+)
+from .multi_site_composition_optimizer import (
+    TabularBayesianOptimizer as _FormulaMultiSiteTabularBayesianOptimizer,
 )
 from .observation_optimizer import ObservationTabularMixin
 from .ordinal_rank_labels import (
@@ -46,7 +46,7 @@ from .prediction import (
 
 class TabularBayesianOptimizer(
     ObservationTabularMixin,
-    _ElementColumnTabularBayesianOptimizer,
+    _FormulaMultiSiteTabularBayesianOptimizer,
 ):
     """Single public tabular optimizer delegating BO semantics to the core API."""
 
@@ -116,15 +116,27 @@ class TabularBayesianOptimizer(
         self._make_element_constraint_projector().validate()
 
     @classmethod
+    def _normalize_element_column_sites(
+        cls,
+        sites: Mapping[str, Mapping[str, Any]] | None,
+    ) -> dict[str, dict[str, Any]]:
+        """Normalize element-column declarations on top of formula multi-site sites."""
+
+        return cls.composition_element_column_transform.normalize_sites(
+            sites,
+            base_normalizer=(_FormulaMultiSiteTabularBayesianOptimizer._normalize_composition_sites),
+        )
+
+    @classmethod
     def _normalize_composition_sites(
         cls,
         sites: Mapping[str, Mapping[str, Any]] | None,
     ) -> dict[str, dict[str, Any]]:
-        """Normalize variable-total sites through the transform component."""
+        """Normalize variable totals around the element-column transform."""
 
         return cls.composition_variable_total_transform.normalize_sites(
             sites,
-            base_normalizer=(_ElementColumnTabularBayesianOptimizer._normalize_composition_sites),
+            base_normalizer=cls._normalize_element_column_sites,
         )
 
     @classmethod
@@ -136,7 +148,7 @@ class TabularBayesianOptimizer(
 
         return cls.composition_variable_total_transform.make_site_search_space(
             config,
-            base_factory=_ElementColumnTabularBayesianOptimizer._make_site_search_space,
+            base_factory=_FormulaMultiSiteTabularBayesianOptimizer._make_site_search_space,
         )
 
     @classmethod
@@ -164,6 +176,28 @@ class TabularBayesianOptimizer(
             numeric_site_values=(self.composition_element_column_transform.numeric_site_values),
         )
 
+    def _prepare_element_column_frame(
+        self,
+        data: Any,
+        *,
+        fit_transformers: bool,
+    ) -> Any:
+        """Apply element-column conversion around the formula multi-site transform."""
+
+        return self.composition_element_column_transform.prepare_multi_site_frame(
+            data,
+            fit_transformers=fit_transformers,
+            composition_sites=self.composition_sites,
+            composition_transformers=self.composition_transformers_,
+            base_prepare=lambda frame, *, fit_transformers: (
+                _FormulaMultiSiteTabularBayesianOptimizer._prepare_multi_site_frame(
+                    self,
+                    frame,
+                    fit_transformers=fit_transformers,
+                )
+            ),
+        )
+
     def _prepare_multi_site_frame(
         self,
         data: Any,
@@ -176,12 +210,7 @@ class TabularBayesianOptimizer(
             data,
             fit_transformers=fit_transformers,
             composition_sites=self.composition_sites,
-            base_prepare=lambda frame, *, fit_transformers: super(
-                TabularBayesianOptimizer, self
-            )._prepare_multi_site_frame(
-                frame,
-                fit_transformers=fit_transformers,
-            ),
+            base_prepare=self._prepare_element_column_frame,
             site_source_columns=(self.composition_element_column_transform.source_columns),
             numeric_site_values=(self.composition_element_column_transform.numeric_site_values),
         )
@@ -256,6 +285,41 @@ class TabularBayesianOptimizer(
             self.composition_transformers_,
         )
 
+    def fit(
+        self,
+        data: Any | None = None,
+        y: Any | None = None,
+        *,
+        input_cols: Sequence[Any] | None = None,
+        categorical_cols: Sequence[Any] | None = None,
+        bounds: Any = None,
+        **kwargs: Any,
+    ) -> TabularBayesianOptimizer:
+        """Filter native composition columns before formula multi-site fitting."""
+
+        if not self.multi_site_composition_enabled:
+            return super().fit(
+                data=data,
+                y=y,
+                input_cols=input_cols,
+                categorical_cols=categorical_cols,
+                bounds=bounds,
+                **kwargs,
+            )
+        resolved_categorical = self.composition_element_column_transform.resolve_categorical_cols(
+            categorical_cols,
+            default_categorical_cols=self.data_config.categorical_cols or (),
+            composition_sites=self.composition_sites,
+        )
+        return super().fit(
+            data=data,
+            y=y,
+            input_cols=input_cols,
+            categorical_cols=resolved_categorical,
+            bounds=bounds,
+            **kwargs,
+        )
+
     def inverse_compositions(
         self,
         data: Any,
@@ -265,10 +329,17 @@ class TabularBayesianOptimizer(
     ) -> Any:
         """Restore variable totals before applying element-constraint repair."""
 
-        restored = super().inverse_compositions(
+        restored = _FormulaMultiSiteTabularBayesianOptimizer.inverse_compositions(
+            self,
             data,
             repair=repair,
             keep_coordinates=keep_coordinates,
+        )
+        restored = self.composition_element_column_transform.inverse_compositions(
+            restored,
+            composition_sites=self.composition_sites,
+            composition_transformers=self.composition_transformers_,
+            enabled=self.multi_site_composition_enabled,
         )
         restored = self.composition_variable_total_transform.inverse_compositions(
             data,
@@ -291,7 +362,15 @@ class TabularBayesianOptimizer(
     def _expanded_multi_site_bounds(self, bounds: Any, transformed: Any) -> Any:
         """Complete variable-total and transformed composition bounds."""
 
-        expanded = super()._expanded_multi_site_bounds(bounds, transformed)
+        expanded = _FormulaMultiSiteTabularBayesianOptimizer._expanded_multi_site_bounds(
+            self,
+            bounds,
+            transformed,
+        )
+        expanded = self.composition_element_column_transform.clean_bounds(
+            expanded,
+            composition_sites=self.composition_sites,
+        )
         expanded = self.composition_variable_total_transform.complete_bounds(
             expanded,
             composition_sites=self.composition_sites,

@@ -21,7 +21,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from .configs import (
+from ..configs import (
     AcquisitionConfig,
     CandidateRepairConfig,
     DataContext,
@@ -32,7 +32,7 @@ from .configs import (
     ObjectiveConfig,
     OptimizeConfig,
 )
-from .engine import BayesianOptimizer
+from ..optimizer.core import BayesianOptimizer
 
 
 TrialStateLike = Literal["CANDIDATE", "RUNNING", "COMPLETED", "FAILED"] | str

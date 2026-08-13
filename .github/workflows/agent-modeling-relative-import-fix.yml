@@ -1,0 +1,62 @@
+name: Agent modeling relative import fix
+
+on:
+  push:
+    branches:
+      - agent/api-factory-modeling-split
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: contains(github.event.head_commit.message, '[agent-modeling-relative-import-fix]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/api-factory-modeling-split
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fix moved-package relative imports
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import ast
+          import compileall
+
+          path = Path('src/bochan/api/modeling/build.py')
+          text = path.read_text(encoding='utf-8')
+          old = 'from .registry.model import DEFAULT_MODEL_REGISTRY'
+          new = 'from ..registry.model import DEFAULT_MODEL_REGISTRY'
+          if old not in text:
+              raise RuntimeError('expected registry import not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # Moved modeling modules may only use one-dot imports for siblings in
+          # the modeling package. API-root dependencies need two dots.
+          allowed_one_dot = set()
+          for source in Path('src/bochan/api/modeling').glob('*.py'):
+              tree = ast.parse(source.read_text(encoding='utf-8'))
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.ImportFrom) and node.level == 1:
+                      module = node.module or ''
+                      if module not in allowed_one_dot:
+                          raise RuntimeError(
+                              f'unexpected one-dot import in moved module {source}: {module}'
+                          )
+          if not compileall.compile_dir('src/bochan/api/modeling', quiet=1):
+              raise RuntimeError('modeling compileall failed')
+          PY
+          python -m pip install ruff
+          ruff check src/bochan/api/modeling/build.py src/bochan/api/modeling/fit.py
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/agent-modeling-relative-import-fix.yml
+          git add -A
+          git commit -m "Fix modeling package relative imports"
+          git push origin HEAD:agent/api-factory-modeling-split

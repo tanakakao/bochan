@@ -4,6 +4,9 @@ import bochan.api as api
 import bochan.tabular as tabular
 from bochan.tabular import composition_bounds_optimizer, optimizer_api
 from bochan.tabular import optimizer as legacy_optimizer
+from bochan.tabular.composition_element_constraints import (
+    CompositionElementConstraintResolver,
+)
 from bochan.tabular.composition_total_constraints import (
     CompositionTotalConstraintResolver,
 )
@@ -28,6 +31,25 @@ def test_composition_bounds_is_component_not_optimizer_layer() -> None:
     assert isinstance(
         tabular.TabularBayesianOptimizer.composition_bounds_resolver,
         composition_bounds_optimizer.CompositionBoundsResolver,
+    )
+
+
+def test_composition_element_constraints_use_explicit_resolver() -> None:
+    assert isinstance(
+        tabular.TabularBayesianOptimizer.composition_element_constraint_resolver,
+        CompositionElementConstraintResolver,
+    )
+    assert (
+        tabular.TabularBayesianOptimizer._normalize_element_constraints.__module__
+        == "bochan.tabular.public_optimizer"
+    )
+    assert (
+        tabular.TabularBayesianOptimizer._validate_element_constraints.__module__
+        == "bochan.tabular.public_optimizer"
+    )
+    assert (
+        tabular.TabularBayesianOptimizer._named_element_constraints.__module__
+        == "bochan.tabular.public_optimizer"
     )
 
 

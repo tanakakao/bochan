@@ -53,7 +53,11 @@ def test_variable_total_behavior_uses_explicit_transform_component() -> None:
     )
     assert (
         tabular.TabularBayesianOptimizer._prepare_multi_site_frame.__module__
-        == "bochan.tabular.variable_total_composition_optimizer"
+        == "bochan.tabular.public_optimizer"
+    )
+    assert all(
+        cls.__module__ != "bochan.tabular.variable_total_composition_optimizer"
+        for cls in tabular.TabularBayesianOptimizer.__mro__
     )
     assert (
         tabular.TabularBayesianOptimizer.inverse_compositions.__module__

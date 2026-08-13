@@ -30,7 +30,8 @@ from .multi_output_categories import (
 )
 from .multi_site_composition_optimizer import MultiSiteCompositionMixin
 from .observation_optimizer import ObservationTabularMixin
-from .optimizer_api import TabularBayesianOptimizer as _TabularApiOptimizer
+from .optimizer import TabularBayesianOptimizer as _TabularOptimizerCore
+from .optimizer_api import TabularApiMixin
 from .ordinal_rank_labels import (
     resolve_acquisition_ordinal_ranks,
     resolve_ordinal_rank_config,
@@ -46,7 +47,8 @@ from .prediction import (
 class TabularBayesianOptimizer(
     ObservationTabularMixin,
     MultiSiteCompositionMixin,
-    _TabularApiOptimizer,
+    TabularApiMixin,
+    _TabularOptimizerCore,
 ):
     """Single public tabular optimizer delegating BO semantics to the core API."""
 

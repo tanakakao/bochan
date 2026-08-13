@@ -1,44 +1,23 @@
-"""Single-formula composition support for the React/FastAPI workbench.
+"""Explicit composition helpers for the React/FastAPI tabular workflow.
 
-The Web regression request keeps its backward-compatible public schema and sends
-composition settings through ``model_kwargs.web_composition``.  This module
-adapts the existing Web workflow to the public composition-aware
-``TabularBayesianOptimizer`` without duplicating the target/acquisition logic.
+The Web workflow calls these functions directly.  No import-time function
+replacement, ContextVar routing, or instance-method monkey patching is used.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from contextvars import ContextVar
 from dataclasses import replace
-from types import MethodType, SimpleNamespace
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 
-_SITE_NAME = "composition"
-_ACTIVE_CONFIG: ContextVar[dict[str, Any] | None] = ContextVar(
-    "bochan_web_composition_config",
-    default=None,
+from bochan.tabular.composition_element_constraints import (
+    CompositionElementConstraintResolver,
 )
-_INSTALLED = False
 
-_REPRESENTATION_ALIASES = {
-    "fraction": "fractions",
-    "fractions": "fractions",
-    "none": "fractions",
-    "clr": "clr",
-    "alr": "alr",
-    "ilr": "ilr",
-}
-_NORMALIZATION_ALIASES = {
-    "atomic": "atomic_fraction",
-    "atomic_fraction": "atomic_fraction",
-    "molar": "atomic_fraction",
-    "weight": "weight_fraction",
-    "weight_fraction": "weight_fraction",
-    "mass_fraction": "weight_fraction",
-}
+_SITE_NAME = "composition"
 
 
 def _finite(value: Any, default: float) -> float:
@@ -54,40 +33,73 @@ def _string_list(value: Any) -> list[str]:
     elif isinstance(value, Sequence):
         values = [str(item).strip() for item in value]
     else:
-        raise TypeError("Composition element settings must be a sequence or comma-separated string.")
+        raise TypeError(
+            "Composition element settings must be a sequence or comma-separated string."
+        )
     return list(dict.fromkeys(item for item in values if item))
 
 
 def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]:
-    """Validate and normalize one Web composition-ratio configuration."""
+    """Validate one Web composition configuration using canonical field names."""
 
     if not isinstance(raw, Mapping):
         raise TypeError("web_composition must be a mapping.")
+    unknown = set(raw) - {
+        "enabled",
+        "column",
+        "elements",
+        "normalization",
+        "representation",
+        "reference_element",
+        "pseudocount",
+        "precision",
+        "total",
+        "bounds",
+        "steps",
+        "min_components",
+        "max_components",
+        "required_components",
+        "coordinate_bounds",
+        "element_constraints",
+    }
+    if unknown:
+        raise KeyError(
+            f"Unknown Web composition settings: {sorted(unknown)!r}."
+        )
+
     column = str(raw.get("column") or "").strip()
     if not column:
         raise ValueError("web_composition.column is required.")
 
-    representation_key = str(raw.get("representation", "ilr")).lower()
-    try:
-        representation = _REPRESENTATION_ALIASES[representation_key]
-    except KeyError as exc:
-        raise ValueError("Composition representation must be fractions, clr, alr, or ilr.") from exc
+    representation = str(raw.get("representation", "ilr")).lower()
+    if representation not in {"fractions", "clr", "alr", "ilr"}:
+        raise ValueError(
+            "Composition representation must be fractions, clr, alr, or ilr."
+        )
 
-    normalization_key = str(raw.get("normalization", "atomic_fraction")).lower()
-    try:
-        normalization = _NORMALIZATION_ALIASES[normalization_key]
-    except KeyError as exc:
-        raise ValueError("Composition normalization must be atomic_fraction or weight_fraction.") from exc
+    normalization = str(raw.get("normalization", "atomic_fraction")).lower()
+    if normalization not in {"atomic_fraction", "weight_fraction"}:
+        raise ValueError(
+            "Composition normalization must be atomic_fraction or weight_fraction."
+        )
 
     elements = _string_list(raw.get("elements"))
-    required = _string_list(raw.get("required_components", raw.get("required_elements")))
+    required = _string_list(raw.get("required_components"))
+
     bounds: dict[str, tuple[float, float]] = {}
     for element, pair in dict(raw.get("bounds") or {}).items():
         values = tuple(pair)
         if len(values) != 2:
-            raise ValueError(f"Composition bounds for {element!r} must have two values.")
+            raise ValueError(
+                f"Composition bounds for {element!r} must have two values."
+            )
         lower, upper = map(float, values)
-        if not np.isfinite(lower) or not np.isfinite(upper) or lower < 0 or lower > upper:
+        if (
+            not np.isfinite(lower)
+            or not np.isfinite(upper)
+            or lower < 0
+            or lower > upper
+        ):
             raise ValueError(f"Invalid composition bounds for {element!r}.")
         bounds[str(element)] = (lower, upper)
 
@@ -95,14 +107,20 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
     for element, value in dict(raw.get("steps") or {}).items():
         step = float(value)
         if not np.isfinite(step) or step <= 0:
-            raise ValueError(f"Composition step for {element!r} must be positive.")
+            raise ValueError(
+                f"Composition step for {element!r} must be positive."
+            )
         steps[str(element)] = step
 
     coordinate_pair = tuple(raw.get("coordinate_bounds") or (-8.0, 8.0))
     if len(coordinate_pair) != 2:
         raise ValueError("coordinate_bounds must have two values.")
     coordinate_lower, coordinate_upper = map(float, coordinate_pair)
-    if not np.isfinite(coordinate_lower) or not np.isfinite(coordinate_upper) or coordinate_lower >= coordinate_upper:
+    if (
+        not np.isfinite(coordinate_lower)
+        or not np.isfinite(coordinate_upper)
+        or coordinate_lower >= coordinate_upper
+    ):
         raise ValueError("coordinate_bounds must be finite and increasing.")
 
     total = _finite(raw.get("total", 1.0), 1.0)
@@ -110,26 +128,42 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
         raise ValueError("Composition total must be positive.")
     min_components = int(raw.get("min_components", 1))
     max_components_raw = raw.get("max_components")
-    max_components = None if max_components_raw in (None, "") else int(max_components_raw)
+    max_components = (
+        None
+        if max_components_raw in (None, "")
+        else int(max_components_raw)
+    )
     if min_components < 1:
         raise ValueError("min_components must be at least 1.")
     if max_components is not None and max_components < min_components:
-        raise ValueError("max_components must be greater than or equal to min_components.")
+        raise ValueError(
+            "max_components must be greater than or equal to min_components."
+        )
 
     constraints: list[dict[str, Any]] = []
-    for index, item in enumerate(raw.get("element_constraints") or raw.get("constraints") or []):
+    for index, item in enumerate(raw.get("element_constraints") or []):
         if not isinstance(item, Mapping):
-            raise TypeError(f"Composition element constraint {index} must be a mapping.")
+            raise TypeError(
+                f"Composition element constraint {index} must be a mapping."
+            )
         terms: list[dict[str, Any]] = []
         for term_index, term in enumerate(item.get("terms") or []):
             if not isinstance(term, Mapping):
-                raise TypeError(f"Term {term_index} in composition constraint {index} must be a mapping.")
+                raise TypeError(
+                    f"Term {term_index} in composition constraint {index} "
+                    "must be a mapping."
+                )
             element = str(term.get("element") or "").strip()
             if not element:
-                raise ValueError(f"Term {term_index} in composition constraint {index} requires an element.")
+                raise ValueError(
+                    f"Term {term_index} in composition constraint {index} "
+                    "requires an element."
+                )
             coefficient = float(term.get("coefficient", 1.0))
             if not np.isfinite(coefficient):
-                raise ValueError("Composition constraint coefficients must be finite.")
+                raise ValueError(
+                    "Composition constraint coefficients must be finite."
+                )
             terms.append(
                 {
                     "site": _SITE_NAME,
@@ -138,16 +172,22 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
                 }
             )
         if not terms:
-            raise ValueError(f"Composition element constraint {index} requires one or more terms.")
+            raise ValueError(
+                f"Composition element constraint {index} requires one or more terms."
+            )
         operator = str(item.get("operator", "="))
-        if operator == "==":
-            operator = "="
         if operator not in {"=", "<=", ">="}:
-            raise ValueError("Composition constraint operator must be =, <=, or >=.")
+            raise ValueError(
+                "Composition constraint operator must be =, <=, or >=."
+            )
         rhs = float(item.get("rhs", 0.0))
         if not np.isfinite(rhs):
             raise ValueError("Composition constraint rhs must be finite.")
         basis = str(item.get("basis", "atomic_amount"))
+        if basis not in {"atomic_amount", "weight_amount"}:
+            raise ValueError(
+                "Composition constraint basis must be atomic_amount or weight_amount."
+            )
         constraints.append(
             {
                 "terms": terms,
@@ -177,7 +217,11 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
     }
 
 
-def _request_without_web_composition(request: Any) -> tuple[Any, dict[str, Any] | None]:
+def extract_web_composition_request(
+    request: Any,
+) -> tuple[Any, dict[str, Any] | None]:
+    """Remove transport-only composition settings from a Web request."""
+
     model_kwargs = dict(getattr(request, "model_kwargs", None) or {})
     raw = model_kwargs.pop("web_composition", None)
     if not raw or not bool(dict(raw).get("enabled", True)):
@@ -190,7 +234,10 @@ def _request_without_web_composition(request: Any) -> tuple[Any, dict[str, Any] 
     return SimpleNamespace(**values), config
 
 
-def _composition_transformer(data: Any, config: dict[str, Any]) -> tuple[Any, dict[str, Any]]:
+def _composition_transformer(
+    data: Any,
+    config: dict[str, Any],
+) -> tuple[Any, dict[str, Any]]:
     from bochan.tabular.composition import CompositionTransformer
 
     column = config["column"]
@@ -216,9 +263,15 @@ def _composition_transformer(data: Any, config: dict[str, Any]) -> tuple[Any, di
     unknown.update(set(resolved["bounds"]) - set(elements))
     unknown.update(set(resolved["steps"]) - set(elements))
     for constraint in resolved["element_constraints"]:
-        unknown.update(term["element"] for term in constraint["terms"] if term["element"] not in elements)
+        unknown.update(
+            term["element"]
+            for term in constraint["terms"]
+            if term["element"] not in elements
+        )
     if unknown:
-        raise ValueError(f"Composition settings reference unknown elements: {sorted(unknown)!r}.")
+        raise ValueError(
+            f"Composition settings reference unknown elements: {sorted(unknown)!r}."
+        )
     transformed = transformer.transform_frame(data, column, drop_formula=True)
     resolved["feature_names"] = list(transformer.feature_names_ or ())
     return transformed, resolved
@@ -231,7 +284,10 @@ def _coordinate_specs(config: dict[str, Any]) -> list[Any]:
     if config["representation"] == "fractions":
         for index, name in enumerate(names):
             element = elements[index]
-            lower, upper = config["bounds"].get(element, (0.0, config["total"]))
+            lower, upper = config["bounds"].get(
+                element,
+                (0.0, config["total"]),
+            )
             specs.append(
                 SimpleNamespace(
                     name=name,
@@ -260,35 +316,65 @@ def _coordinate_specs(config: dict[str, Any]) -> list[Any]:
     return specs
 
 
-def _composition_encode_features(original: Any, *, data: Any, feature_columns: list[str], search_space: list[Any]) -> dict[str, Any]:
-    config = _ACTIVE_CONFIG.get()
-    if config is None:
-        return original(data=data, feature_columns=feature_columns, search_space=search_space)
+def prepare_composition_encoded_features(
+    *,
+    data: Any,
+    feature_columns: list[str],
+    search_space: list[Any],
+    config: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Build Web search metadata in the transformed composition feature space."""
+
+    from bochan.desktop.services import _encode_features
+
     if config["column"] not in feature_columns:
-        raise ValueError("The composition formula column must be selected as an explanatory variable.")
+        raise ValueError(
+            "The composition formula column must be selected as an explanatory variable."
+        )
 
     transformed, resolved = _composition_transformer(data, config)
-    config.clear()
-    config.update(resolved)
     transformed_columns: list[str] = []
     for column in feature_columns:
-        if column == config["column"]:
-            transformed_columns.extend(config["feature_names"])
+        if column == resolved["column"]:
+            transformed_columns.extend(resolved["feature_names"])
         else:
             transformed_columns.append(column)
-    filtered_specs = [spec for spec in search_space if getattr(spec, "name", None) != config["column"]]
-    filtered_specs.extend(_coordinate_specs(config))
-    encoded = original(
+    filtered_specs = [
+        spec
+        for spec in search_space
+        if getattr(spec, "name", None) != resolved["column"]
+    ]
+    filtered_specs.extend(_coordinate_specs(resolved))
+    encoded = _encode_features(
         data=transformed,
         feature_columns=transformed_columns,
         search_space=filtered_specs,
     )
-    encoded["web_composition"] = dict(config)
+    encoded["web_composition"] = dict(resolved)
     encoded["source_feature_columns"] = list(feature_columns)
-    return encoded
+    return encoded, resolved
 
 
-def _composition_site(config: dict[str, Any]) -> dict[str, Any]:
+def composition_model_feature_columns(
+    feature_columns: Sequence[str],
+    config: Mapping[str, Any] | None,
+) -> list[str]:
+    """Return model-space feature names for Web linear-constraint resolution."""
+
+    if config is None:
+        return list(feature_columns)
+    model_columns: list[str] = []
+    for column in feature_columns:
+        if column == config["column"]:
+            model_columns.extend(config.get("feature_names") or ())
+        else:
+            model_columns.append(column)
+    return model_columns
+
+
+def composition_site(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Convert validated Web settings to one canonical composition site."""
+
     return {
         "column": config["column"],
         "elements": config["elements"],
@@ -309,166 +395,97 @@ def _composition_site(config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _replace_candidate_result(result: Any, *, candidates: Any, acq_value: Any) -> Any:
+def _composition_model_columns(optimizer: Any) -> list[str]:
+    columns: list[str] = []
+    for transformer in dict(
+        getattr(optimizer, "composition_transformers_", None) or {}
+    ).values():
+        columns.extend(
+            str(name)
+            for name in (getattr(transformer, "feature_names_", None) or ())
+        )
+    return list(dict.fromkeys(columns))
+
+
+def _replace_candidate_result(
+    result: Any,
+    *,
+    candidates: Any,
+    acq_value: Any,
+) -> Any:
     try:
-        return replace(result, candidates=candidates, acq_value=acq_value)
+        return replace(
+            result,
+            candidates=candidates,
+            acq_value=acq_value,
+        )
     except TypeError:
         result.candidates = candidates
         result.acq_value = acq_value
         return result
 
 
-def _install_candidate_repair(optimizer: Any) -> None:
-    if getattr(optimizer, "_web_composition_candidate_repair", False):
-        return
-    original = optimizer.candidate
+def repair_composition_candidate_result(
+    optimizer: Any,
+    result: Any,
+) -> Any:
+    """Repair candidate compositions and return them in the fitted model space."""
 
-    def candidate_with_repair(self: Any, *args: Any, **kwargs: Any) -> Any:
-        result = original(*args, **kwargs)
-        if not kwargs.get("return_result"):
-            return result
-        from bochan.tabular.converter import dataframe_to_tensors
+    from bochan.tabular.converter import dataframe_to_tensors
 
-        raw_frame = self.candidates_to_dataframe(result.candidates)
-        restored = self.inverse_compositions(raw_frame, repair=True, keep_coordinates=False)
-        transformed = self.transform_compositions(restored)
-        data_config = replace(
-            self.data_config,
-            input_cols=self.dataset.feature_names,
-            target_cols=None,
-        )
-        repaired_x = dataframe_to_tensors(transformed, data_config).X
-        repaired_acq = result.acq_value
-        try:
-            import torch
-
-            with torch.no_grad():
-                scores = result.acqf(repaired_x.unsqueeze(-2)).detach().reshape(-1)
-            if scores.numel() == repaired_x.shape[0]:
-                repaired_acq = scores
-        except (AttributeError, RuntimeError, TypeError, ValueError):
-            pass
-        return _replace_candidate_result(
-            result,
-            candidates=repaired_x,
-            acq_value=repaired_acq,
+    raw_frame = optimizer.candidates_to_dataframe(result.candidates)
+    restored = optimizer.inverse_compositions(
+        raw_frame,
+        repair=True,
+        keep_coordinates=False,
+    )
+    transform_source = restored.drop(
+        columns=_composition_model_columns(optimizer),
+        errors="ignore",
+    )
+    transformed = optimizer.transform_compositions(transform_source)
+    data_config = replace(
+        optimizer.data_config,
+        input_cols=optimizer.dataset.feature_names,
+        target_cols=None,
+    )
+    repaired_x = dataframe_to_tensors(transformed, data_config).X
+    expected_dimension = int(result.candidates.shape[-1])
+    if int(repaired_x.shape[-1]) != expected_dimension:
+        raise RuntimeError(
+            "Composition candidate repair changed the model feature dimension: "
+            f"expected {expected_dimension}, got {int(repaired_x.shape[-1])}."
         )
 
-    optimizer.candidate = MethodType(candidate_with_repair, optimizer)
-    optimizer._web_composition_candidate_repair = True
+    repaired_acq = result.acq_value
+    try:
+        import torch
 
-
-def _composition_fit_tabular_optimizer(original: Any, **kwargs: Any) -> Any:
-    encoded_features = kwargs["encoded_features"]
-    config = encoded_features.get("web_composition")
-    if config is None:
-        return original(**kwargs)
-
-    from .feature_importance_outputs import relabel_feature_importance_outputs
-    from .logging import current_request_id
-    from .model_reuse import (
-        current_model_reuse_state,
-        register_fitted_model,
-        reuse_fitted_tabular_optimizer,
-    )
-    from .tabular_backend import (
-        _mutable_category_frame,
-        categorical_feature_columns,
-        categorical_target_columns,
-        feature_category_maps,
-        tabular_bounds,
-        target_category_maps,
+        with torch.no_grad():
+            scores = result.acqf(repaired_x.unsqueeze(-2)).detach().reshape(-1)
+        if scores.numel() == repaired_x.shape[0]:
+            repaired_acq = scores
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        pass
+    return _replace_candidate_result(
+        result,
+        candidates=repaired_x,
+        acq_value=repaired_acq,
     )
 
-    data = kwargs["data"]
-    feature_columns = kwargs["feature_columns"]
-    target_columns = kwargs["target_columns"]
-    target_metadata = kwargs["target_metadata"]
-    model_config = kwargs["model_config"]
-    fit_config = kwargs["fit_config"]
-    cross_validation = kwargs.get("cross_validation", False)
-    cv_config = kwargs.get("cv_config")
 
-    run_id = current_request_id()
-    reuse_state = current_model_reuse_state()
-    source_run_id = str((reuse_state or {}).get("source_run_id") or "")
-    if source_run_id:
-        if not run_id:
-            raise RuntimeError("Model reuse requires an active Web request identifier.")
-        return reuse_fitted_tabular_optimizer(
-            source_run_id=source_run_id,
-            current_run_id=run_id,
-            data=data,
-            feature_columns=feature_columns,
-            target_columns=target_columns,
-            target_metadata=target_metadata,
-            hybrid_model=str(getattr(model_config, "task_type", "")) == "hybrid",
-        )
-
-    from bochan.tabular import TabularBayesianOptimizer
-
-    categorical_features = [
-        column
-        for column in categorical_feature_columns(encoded_features)
-        if column in data.columns and column != config["column"]
-    ]
-    categorical_targets = categorical_target_columns(target_metadata)
-    fit_data = _mutable_category_frame(
-        data,
-        categorical_columns=[*categorical_features, *categorical_targets],
+def _element_constraint_results(
+    tabular_optimizer: Any,
+    restored: Any,
+    row_index: Any,
+) -> list[dict[str, Any]]:
+    constraints = list(
+        getattr(tabular_optimizer, "composition_element_constraints", ()) or ()
     )
-    optimizer = TabularBayesianOptimizer(
-        model_config=model_config,
-        fit_config=fit_config,
-        input_cols=feature_columns,
-        target_cols=target_columns,
-        categorical_cols=categorical_features,
-        target_categorical_cols=categorical_targets,
-        bounds=tabular_bounds(encoded_features),
-        category_maps=feature_category_maps(data, encoded_features),
-        target_category_maps=target_category_maps(target_metadata),
-        encode_categories=True,
-        return_original_categories=True,
-        dropna=False,
-        cross_validation=cross_validation,
-        cv_config=cv_config,
-        composition_sites={_SITE_NAME: _composition_site(config)},
-        composition_element_constraints=config["element_constraints"],
-        composition_constraint_rerank=True,
-    )
-    optimizer.fit(fit_data)
-    if optimizer.dataset is None:
-        raise RuntimeError("TabularBayesianOptimizer did not retain its fitted dataset.")
-    _install_candidate_repair(optimizer)
-    setattr(optimizer.bo, "_web_tabular_optimizer", optimizer)
-
-    cross_validation_result = optimizer.cross_validation_result_
-    if cross_validation_result is not None:
-        importance = getattr(cross_validation_result, "feature_importance", None)
-        if importance is not None:
-            relabel_feature_importance_outputs(importance, target_columns)
-
-    from .visualization_sessions import attach_fitted_tabular_optimizer
-
-    if run_id:
-        attach_fitted_tabular_optimizer(
-            run_id,
-            tabular_optimizer=optimizer,
-            data=data,
-            feature_columns=feature_columns,
-            target_columns=target_columns,
-            target_metadata=target_metadata,
-            hybrid_model=str(getattr(model_config, "task_type", "")) == "hybrid",
-        )
-        register_fitted_model(run_id)
-    return optimizer
-
-
-def _element_constraint_results(tabular_optimizer: Any, restored: Any, row_index: Any) -> list[dict[str, Any]]:
-    constraints = list(getattr(tabular_optimizer, "composition_element_constraints", ()) or ())
     if not constraints:
         return []
-    raw, _totals = tabular_optimizer._row_native_values(restored, row_index)
+    projector = tabular_optimizer._make_element_constraint_projector()
+    raw, _totals = projector._row_native_values(restored, row_index)
     results: list[dict[str, Any]] = []
     for index, constraint in enumerate(constraints):
         lhs = 0.0
@@ -478,7 +495,11 @@ def _element_constraint_results(tabular_optimizer: Any, restored: Any, row_index
             config = tabular_optimizer.composition_sites[site]
             lhs += (
                 float(term["coefficient"])
-                * tabular_optimizer._basis_scale(config, element, constraint["basis"])
+                * CompositionElementConstraintResolver.basis_scale(
+                    config,
+                    element,
+                    constraint["basis"],
+                )
                 * float(raw[(site, element)])
             )
         rhs = float(constraint["rhs"])
@@ -502,21 +523,22 @@ def _element_constraint_results(tabular_optimizer: Any, restored: Any, row_index
     return results
 
 
-def _composition_candidate_rows(original: Any, **kwargs: Any) -> list[dict[str, Any]]:
-    rows = original(**kwargs)
-    core_optimizer = kwargs["optimizer"]
-    tabular_optimizer = getattr(core_optimizer, "_web_tabular_optimizer", None)
-    if tabular_optimizer is None:
-        return rows
-    candidates = kwargs["candidates"]
+def add_composition_candidate_rows(
+    rows: list[dict[str, Any]],
+    *,
+    tabular_optimizer: Any,
+    candidates: Any,
+    config: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    """Replace model coordinates in response rows with repaired composition values."""
+
     raw_frame = tabular_optimizer.candidates_to_dataframe(candidates)
     restored = tabular_optimizer.inverse_compositions(
         raw_frame,
         repair=True,
         keep_coordinates=False,
     )
-    config = _ACTIVE_CONFIG.get() or {}
-    formula_column = config.get("column")
+    formula_column = config["column"]
     coordinate_columns = set(config.get("feature_names") or ())
     output_columns = [
         column
@@ -528,7 +550,9 @@ def _composition_candidate_rows(original: Any, **kwargs: Any) -> list[dict[str, 
             row["values"].pop(column, None)
         for column in output_columns:
             value = restored.iloc[row_index][column]
-            row["values"][str(column)] = value.item() if hasattr(value, "item") else value
+            row["values"][str(column)] = (
+                value.item() if hasattr(value, "item") else value
+            )
         constraint_results = _element_constraint_results(
             tabular_optimizer,
             restored,
@@ -541,108 +565,31 @@ def _composition_candidate_rows(original: Any, **kwargs: Any) -> list[dict[str, 
     return rows
 
 
-def install_composition_web_support() -> None:
-    """Install composition-aware adapters before the Web app imports workflows."""
+def composition_response_metadata(
+    config: Mapping[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Return the stable composition metadata included in Web results."""
 
-    global _INSTALLED
-    if _INSTALLED:
-        return
-    from . import workflows_tabular
-
-    original_encode = workflows_tabular._encode_features
-    original_fit = workflows_tabular.fit_tabular_optimizer
-    original_rows = workflows_tabular._candidate_rows
-    original_workflow = workflows_tabular.run_regression_web_workflow
-
-    def encode_adapter(*, data: Any, feature_columns: list[str], search_space: list[Any]) -> dict[str, Any]:
-        return _composition_encode_features(
-            original_encode,
-            data=data,
-            feature_columns=feature_columns,
-            search_space=search_space,
-        )
-
-    def fit_adapter(**kwargs: Any) -> Any:
-        return _composition_fit_tabular_optimizer(original_fit, **kwargs)
-
-    def row_adapter(**kwargs: Any) -> list[dict[str, Any]]:
-        return _composition_candidate_rows(original_rows, **kwargs)
-
-    def workflow_adapter(request: Any, store: Any) -> dict[str, Any]:
-        processing_request, config = _request_without_web_composition(request)
-        if config is None:
-            return original_workflow(request, store)
-        token = _ACTIVE_CONFIG.set(config)
-        try:
-            result = original_workflow(processing_request, store)
-            metadata = dict(result.get("metadata") or {})
-            metadata["composition"] = {
-                "column": config["column"],
-                "elements": list(config.get("elements") or ()),
-                "normalization": config["normalization"],
-                "representation": config["representation"],
-                "total": config["total"],
-                "constraints": len(config["element_constraints"]),
-            }
-            result["metadata"] = metadata
-            return result
-        finally:
-            _ACTIVE_CONFIG.reset(token)
-
-    workflows_tabular._encode_features = encode_adapter
-    workflows_tabular.fit_tabular_optimizer = fit_adapter
-    workflows_tabular._candidate_rows = row_adapter
-    workflows_tabular.run_regression_web_workflow = workflow_adapter
-    _INSTALLED = True
-
-
-def register_composition_routes(app: Any, *, api_prefix: str = "/api/v1") -> None:
-    """Register a typed FastAPI endpoint for formula/config validation."""
-
-    route_path = f"{api_prefix.rstrip('/')}/composition/validate"
-    if any(getattr(route, "path", None) == route_path for route in app.routes):
-        return
-    from pydantic import BaseModel, ConfigDict, Field
-
-    class CompositionValidationRequest(BaseModel):
-        model_config = ConfigDict(extra="forbid")
-        formulas: list[str] = Field(min_length=1)
-        settings: dict[str, Any]
-
-    @app.post(route_path)
-    def validate_composition(request: CompositionValidationRequest) -> dict[str, Any]:
-        import pandas as pd
-
-        from bochan.tabular.composition import format_formula, normalize_composition, parse_formula
-
-        config = normalize_web_composition_settings(request.settings)
-        frame = pd.DataFrame({config["column"]: request.formulas})
-        _transformed, resolved = _composition_transformer(frame, config)
-        elements = list(resolved["elements"])
-        rows: list[dict[str, Any]] = []
-        for formula in request.formulas:
-            parsed = parse_formula(formula)
-            normalized = normalize_composition(parsed, basis=resolved["normalization"])
-            fractions = {element: float(normalized.get(element, 0.0)) for element in elements}
-            rows.append(
-                {
-                    "input": formula,
-                    "formula": format_formula(fractions, order=elements, precision=resolved["precision"]),
-                    "fractions": fractions,
-                }
-            )
-        return {
-            "column": resolved["column"],
-            "elements": elements,
-            "representation": resolved["representation"],
-            "normalization": resolved["normalization"],
-            "feature_names": list(resolved["feature_names"]),
-            "rows": rows,
-        }
+    if config is None:
+        return None
+    return {
+        "column": config["column"],
+        "elements": list(config.get("elements") or ()),
+        "normalization": config["normalization"],
+        "representation": config["representation"],
+        "total": config["total"],
+        "constraints": len(config["element_constraints"]),
+    }
 
 
 __all__ = [
-    "install_composition_web_support",
+    "_composition_transformer",
+    "add_composition_candidate_rows",
+    "composition_model_feature_columns",
+    "composition_response_metadata",
+    "composition_site",
+    "extract_web_composition_request",
     "normalize_web_composition_settings",
-    "register_composition_routes",
+    "prepare_composition_encoded_features",
+    "repair_composition_candidate_result",
 ]

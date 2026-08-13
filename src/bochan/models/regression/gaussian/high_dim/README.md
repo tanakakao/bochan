@@ -425,7 +425,7 @@ src/bochan/models/components/vae.py
 src/bochan/models/regression/gaussian/high_dim/vae.py
 src/bochan/models/regression/gaussian/high_dim/vae_mixed.py
 src/bochan/fit/vae.py
-src/bochan/api/model_registry.py
+src/bochan/api/registry/model.py
 tests/test_regression_vae_single_output.py
 tests/test_regression_vae_mixed_single_output.py
 ```

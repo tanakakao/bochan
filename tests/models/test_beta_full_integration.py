@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from bochan.api.model_capabilities import BETA_MODEL_TYPES, model_capability
-from bochan.api.model_registry import DEFAULT_MODEL_REGISTRY
+from bochan.api.registry.model import DEFAULT_MODEL_REGISTRY
 from bochan.models.regression.beta._components import BetaLogLikelihood, prepare_beta_targets
 from bochan.models.regression.beta.robust import HeteroscedasticBetaGPModel
 

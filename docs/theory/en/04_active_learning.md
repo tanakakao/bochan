@@ -913,7 +913,7 @@ Representative classes:
 ### High-level resolution
 
 ```text
-src/bochan/api/acquisition_registry.py
+src/bochan/api/registry/acquisition.py
 ```
 
 contains the current public-name mappings.  The class implementation determines

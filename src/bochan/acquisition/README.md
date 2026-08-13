@@ -539,7 +539,7 @@ When adding a new acquisition function:
    acquisitions expect.
 4. Prefer shared utilities for posterior sampling, output reduction, risk
    aggregation, and feasibility handling.
-5. Register the class in `bochan.api.acquisition_registry` if it should be
+5. Register the class in `bochan.api.registry.acquisition` if it should be
    available from `AcquisitionConfig(name=...)`.
 6. Avoid reimplementing BoTorch standard acquisitions unless the family requires
    probability, utility, response-scale, or heteroscedastic behavior that the

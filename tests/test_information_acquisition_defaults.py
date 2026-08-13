@@ -21,7 +21,7 @@ from bochan.api import (
     OptimizeConfig,
 )
 from bochan.api.acquisition import defaults as engine_defaults
-from bochan.api.acquisition_registry import available_acqf_names, resolve_acqf_cls
+from bochan.api.registry.acquisition import available_acqf_names, resolve_acqf_cls
 
 
 def _make_bundle(

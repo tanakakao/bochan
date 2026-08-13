@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from bochan.api.model_registry import MODEL_REGISTRY
+from bochan.api.registry.model import MODEL_REGISTRY
 from bochan.models.multitask.mixed import WideMixedMultiTaskGP
 
 

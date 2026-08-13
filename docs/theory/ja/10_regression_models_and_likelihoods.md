@@ -679,7 +679,7 @@ boundary近傍のmassとpredictive quantileを確認します。
 
 ### Gaussian regression
 
-`src/bochan/api/model_registry.py`は、基本構成を次へ解決します。
+`src/bochan/api/registry/model.py`は、基本構成を次へ解決します。
 
 | 構成 | model |
 |---|---|

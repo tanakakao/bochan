@@ -954,8 +954,8 @@ pruning and MC acquisitions call automatic sampler resolution.
 ### 27.5 Registry and high-level API
 
 ```text
-src/bochan/api/model_registry.py
-src/bochan/api/acquisition_registry.py
+src/bochan/api/registry/model.py
+src/bochan/api/registry/acquisition.py
 ```
 
 resolve names, but they do not validate every semantic shape assumption.  The

@@ -14,7 +14,7 @@ from bochan.inspection import (
 )
 
 from .acquisition import build_acquisition
-from .acquisition_registry import available_acqf_names, resolve_acqf_cls
+from .registry.acquisition import available_acqf_names, resolve_acqf_cls
 from .configs import (
     AutoStandardizeOutcomeTransform,
     CandidateRepairConfig,
@@ -53,7 +53,7 @@ from .factory import (
     prepare_multi_objective_context,
     resolve_model_cls,
 )
-from .model_registry import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
+from .registry.model import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
 from .observation import ExperimentFailureConfig, ObservationData
 from .optimizer import BayesianOptimizer
 from .optimizer_api import optimize_candidates

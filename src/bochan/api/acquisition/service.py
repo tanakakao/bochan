@@ -7,7 +7,7 @@ from dataclasses import replace
 from typing import Any
 
 from .. import factory as _factory
-from ..acquisition_registry import resolve_acqf_cls
+from ..registry.acquisition import resolve_acqf_cls
 from ..configs import AcquisitionConfig, DataContext, ModelBundle, ObjectiveConfig
 from ..engine import (
     _filter_context_fields_for_acqf,

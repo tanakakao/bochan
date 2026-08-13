@@ -10,7 +10,7 @@ from bochan.acquisition.ordinal.bayesian_optimization import (
     qMultiOutputOrdinalNParEGO,
     qMultiOutputOrdinalNoisyExpectedHypervolumeImprovement,
 )
-from bochan.api.acquisition_registry import resolve_acqf_cls
+from bochan.api.registry.acquisition import resolve_acqf_cls
 
 
 def test_infers_shared_utilities_per_wrapper_output():

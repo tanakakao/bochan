@@ -827,7 +827,7 @@ predictive metricだけでなく、BO regret、target achievement、Active Learn
 | multiclass deep | `src/bochan/models/classification/multiclass/deep/` |
 | multiclass high-dimensional | `src/bochan/models/classification/multiclass/high_dim/` |
 | posterior transform | `src/bochan/models/transforms/posterior/classification.py` |
-| high-level registry | `src/bochan/api/model_registry.py` |
+| high-level registry | `src/bochan/api/registry/model.py` |
 
 ---
 

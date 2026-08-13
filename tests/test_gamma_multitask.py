@@ -7,7 +7,7 @@ from botorch.sampling.get_sampler import get_sampler
 
 from bochan.api.configs import FitConfig, ModelConfig
 from bochan.api.factory import build_model, fit_model
-from bochan.api.model_registry import MODEL_REGISTRY
+from bochan.api.registry.model import MODEL_REGISTRY
 from bochan.models.regression.gamma.base import (
     GammaMultiTaskGPModel,
     WideGammaMultiTaskGPModel,

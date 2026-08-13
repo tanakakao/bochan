@@ -913,7 +913,7 @@ Predictive metrics should be accompanied by:
 | Multiclass deep models | `src/bochan/models/classification/multiclass/deep/` |
 | Multiclass high-dimensional models | `src/bochan/models/classification/multiclass/high_dim/` |
 | Classification posterior transforms | `src/bochan/models/transforms/posterior/classification.py` |
-| High-level model resolution | `src/bochan/api/model_registry.py` |
+| High-level model resolution | `src/bochan/api/registry/model.py` |
 
 ---
 

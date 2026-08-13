@@ -733,7 +733,7 @@ uncertainty is better calibrated.
 
 ### 19.1 Gaussian regression registry
 
-`src/bochan/api/model_registry.py` resolves base Gaussian regression to:
+`src/bochan/api/registry/model.py` resolves base Gaussian regression to:
 
 | Configuration | Model |
 |---|---|

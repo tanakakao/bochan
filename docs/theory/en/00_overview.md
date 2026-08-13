@@ -374,8 +374,8 @@ src/bochan/api/             high-level configuration and registries
 Representative high-level registries are:
 
 ```text
-src/bochan/api/model_registry.py
-src/bochan/api/acquisition_registry.py
+src/bochan/api/registry/model.py
+src/bochan/api/registry/acquisition.py
 ```
 
 The registry resolves user-facing model and acquisition names to concrete

@@ -802,7 +802,7 @@ family-specific modules.
 ### 20.2 High-level name resolution
 
 ```text
-src/bochan/api/acquisition_registry.py
+src/bochan/api/registry/acquisition.py
 ```
 
 registers public names such as regression Straddle, joint Straddle, ICU,

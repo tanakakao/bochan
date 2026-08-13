@@ -362,7 +362,7 @@ model、objective、posterior contractを確認してから適用します。
 
 ## 17. `bochan`実装との対応
 
-`src/bochan/api/acquisition_registry.py`は代表的に次を解決します。
+`src/bochan/api/registry/acquisition.py`は代表的に次を解決します。
 
 | alias | class |
 |---|---|

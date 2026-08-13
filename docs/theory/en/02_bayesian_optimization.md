@@ -554,8 +554,8 @@ Candidate post-processing
 
 | Theory object | `bochan` / BoTorch implementation |
 |---|---|
-| Surrogate construction | `src/bochan/api/model_registry.py` and task-specific model folders |
-| Standard qEI / qNEI / qUCB / qPI | resolved through `src/bochan/api/acquisition_registry.py` to BoTorch classes |
+| Surrogate construction | `src/bochan/api/registry/model.py` and task-specific model folders |
+| Standard qEI / qNEI / qUCB / qPI | resolved through `src/bochan/api/registry/acquisition.py` to BoTorch classes |
 | qKG | BoTorch `qKnowledgeGradient` through the acquisition registry |
 | Multi-step look-ahead | BoTorch `qMultiStepLookahead` through the registry |
 | qEHVI / qNEHVI | BoTorch multi-objective acquisitions through the registry |

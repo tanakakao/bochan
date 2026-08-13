@@ -15,7 +15,7 @@ from botorch.utils.multi_objective.box_decompositions.non_dominated import (
 from bochan.acquisition.objective import make_outcome_constraints
 from bochan.api import AutoStandardizeOutcomeTransform, ModelConfig
 from bochan.api.acquisition.defaults import resolve_multi_output_model_config
-from bochan.api.model_registry import MODEL_REGISTRY
+from bochan.api.registry.model import MODEL_REGISTRY
 from bochan.models.multitask.task_feature import (
     TaskFeatureInputTransform,
     WideMultiTaskBinaryClassificationGPModel,

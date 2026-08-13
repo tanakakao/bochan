@@ -366,8 +366,8 @@ src/bochan/api/             high-level configuration and registries
 代表的な高水準registryは次のとおりです。
 
 ```text
-src/bochan/api/model_registry.py
-src/bochan/api/acquisition_registry.py
+src/bochan/api/registry/model.py
+src/bochan/api/registry/acquisition.py
 ```
 
 registryは利用者向けのmodel名・acquisition名を具体的なclassへ解決します。理論的な意味はalias名だけではなく、最終的に解決されたclassによって決まります。

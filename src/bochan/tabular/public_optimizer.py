@@ -1,8 +1,8 @@
 """Canonical pandas / numpy adapter for :class:`bochan.api.BayesianOptimizer`.
 
-Tabular-only concerns are composed explicitly here. Composition bound completion
-and composition-total constraint handling are delegated to stateless resolvers
-rather than represented as public optimizer responsibilities.
+Tabular-only concerns are composed explicitly here. Composition bound completion,
+variable-total transformation, and composition-total constraints are delegated to
+stateless components rather than represented as optimizer inheritance layers.
 """
 
 from __future__ import annotations
@@ -10,14 +10,15 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from bochan.api import OptimizeConfig
-
 from .builders import UNSET
+from .composition import CompositionSearchSpace
 from .composition_bounds_optimizer import CompositionBoundsResolver
 from .composition_total_constraints import CompositionTotalConstraintResolver
+from .composition_variable_total_transform import CompositionVariableTotalTransform
 from .element_constraint_composition_optimizer import (
     TabularBayesianOptimizer as _ElementConstraintTabularBayesianOptimizer,
 )
+from .linear_constraints import merge_named_linear_constraints
 from .multi_output_categories import (
     _extract_output_category_maps,
     _merge_target_category_metadata,
@@ -43,13 +44,21 @@ class TabularBayesianOptimizer(
 
     composition_bounds_resolver = CompositionBoundsResolver()
     composition_total_constraint_resolver = CompositionTotalConstraintResolver()
+    composition_variable_total_transform = CompositionVariableTotalTransform()
 
     def __init__(
         self,
         model_config: Any | None = None,
         fit_config: Any | None = None,
+        *,
+        composition_total_constraints: Sequence[Any] | None = None,
         **kwargs: Any,
     ) -> None:
+        self.composition_total_constraints = (
+            self.composition_total_constraint_resolver.normalize(
+                composition_total_constraints
+            )
+        )
         inferred_maps: dict[Any, dict[Any, int]] = {}
 
         if isinstance(model_config, Mapping):
@@ -84,43 +93,63 @@ class TabularBayesianOptimizer(
             fit_config=fit_config,
             **kwargs,
         )
-
-    @classmethod
-    def _normalize_total_constraints(
-        cls,
-        constraints: Sequence[Any] | None,
-    ) -> list[dict[str, Any]]:
-        """Normalize composition total constraints through the owned resolver."""
-
-        return cls.composition_total_constraint_resolver.normalize(constraints)
-
-    def _validate_total_constraints(self) -> None:
-        """Validate coupled totals through the owned resolver."""
-
         self.composition_total_constraint_resolver.validate(
             self.composition_total_constraints,
             self.composition_sites,
         )
 
-    def _named_total_constraints(self) -> list[tuple[Any, ...]]:
-        """Translate coupled totals to named model-feature constraints."""
+    @classmethod
+    def _normalize_composition_sites(
+        cls,
+        sites: Mapping[str, Mapping[str, Any]] | None,
+    ) -> dict[str, dict[str, Any]]:
+        """Normalize composition sites including variable-total settings."""
 
-        return self.composition_total_constraint_resolver.named_constraints(
-            self.composition_total_constraints,
-            self.composition_sites,
+        return cls.composition_variable_total_transform.normalize_sites(
+            sites,
+            base_normalizer=super()._normalize_composition_sites,
         )
 
     @classmethod
-    def _merge_total_constraints(
+    def _make_site_search_space(
         cls,
-        opt_config: OptimizeConfig | Mapping[str, Any] | None,
-        constraints: Sequence[tuple[Any, ...]],
-    ) -> OptimizeConfig | Mapping[str, Any] | None:
-        """Merge total constraints through the owned resolver."""
+        config: Mapping[str, Any],
+    ) -> CompositionSearchSpace | None:
+        """Build fixed-total search spaces and defer variable totals to the model."""
 
-        return cls.composition_total_constraint_resolver.merge_optimize_config(
-            opt_config,
-            constraints,
+        return cls.composition_variable_total_transform.make_site_search_space(
+            config,
+            base_factory=super()._make_site_search_space,
+        )
+
+    def _prepare_multi_site_frame(
+        self,
+        data: Any,
+        *,
+        fit_transformers: bool,
+    ) -> Any:
+        """Transform composition inputs and append learned total features."""
+
+        return self.composition_variable_total_transform.prepare_multi_site_frame(
+            data,
+            fit_transformers=fit_transformers,
+            composition_sites=self.composition_sites,
+            base_prepare=super()._prepare_multi_site_frame,
+            site_source_columns=self._site_source_columns,
+            numeric_site_values=self._numeric_site_values,
+        )
+
+    def _replace_multi_site_input_cols(
+        self,
+        input_cols: Sequence[Any] | None,
+    ) -> list[Any] | None:
+        """Replace composition source columns with model coordinates and totals."""
+
+        return self.composition_variable_total_transform.replace_input_cols(
+            input_cols,
+            composition_sites=self.composition_sites,
+            composition_transformers=self.composition_transformers_,
+            site_source_columns=self._site_source_columns,
         )
 
     def _expanded_bounds(self, bounds: Any, transformed: Any) -> Any:
@@ -130,10 +159,38 @@ class TabularBayesianOptimizer(
         return self.composition_bounds_resolver.complete(expanded, transformed)
 
     def _expanded_multi_site_bounds(self, bounds: Any, transformed: Any) -> Any:
-        """Complete transformed multi-site composition bounds."""
+        """Complete variable-total and remaining transformed multi-site bounds."""
 
         expanded = super()._expanded_multi_site_bounds(bounds, transformed)
+        expanded = self.composition_variable_total_transform.complete_bounds(
+            expanded,
+            composition_sites=self.composition_sites,
+            composition_transformers=self.composition_transformers_,
+        )
         return self.composition_bounds_resolver.complete(expanded, transformed)
+
+    def _inverse_compositions_for_element_constraint_repair(
+        self,
+        data: Any,
+        *,
+        repair: bool,
+        keep_coordinates: bool,
+    ) -> Any:
+        """Restore variable totals before element-constraint projection."""
+
+        restored = super()._inverse_compositions_for_element_constraint_repair(
+            data,
+            repair=repair,
+            keep_coordinates=keep_coordinates,
+        )
+        return self.composition_variable_total_transform.inverse_compositions(
+            data,
+            restored,
+            composition_sites=self.composition_sites,
+            composition_transformers=self.composition_transformers_,
+            multi_site_composition_enabled=self.multi_site_composition_enabled,
+            repair=repair,
+        )
 
     def candidate(
         self,
@@ -141,7 +198,7 @@ class TabularBayesianOptimizer(
         opt_config: Any | None = None,
         **kwargs: Any,
     ) -> Any:
-        """Resolve tabular ordinal labels before delegating candidate generation."""
+        """Resolve tabular labels and coupled totals before candidate generation."""
 
         target_names = list(self.dataset.target_names) if self.dataset is not None else []
         target_category_maps = (
@@ -165,6 +222,15 @@ class TabularBayesianOptimizer(
                     target_names=target_names,
                     target_category_maps=target_category_maps,
                 )
+
+        named_total_constraints = self.composition_total_constraint_resolver.named_constraints(
+            self.composition_total_constraints,
+            self.composition_sites,
+        )
+        opt_config = merge_named_linear_constraints(
+            opt_config,
+            named_total_constraints,
+        )
         return super().candidate(
             acq_config=acq_config,
             opt_config=opt_config,

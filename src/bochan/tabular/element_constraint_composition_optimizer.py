@@ -13,9 +13,10 @@ from scipy.optimize import Bounds, LinearConstraint, milp
 
 from .composition import ATOMIC_WEIGHTS, close_compositions, format_formula
 from .converter import dataframe_to_tensors
-from .variable_total_composition_optimizer import (
-    TabularBayesianOptimizer as _VariableTotalTabularBayesianOptimizer,
+from .element_column_composition_optimizer import (
+    TabularBayesianOptimizer as _ElementColumnTabularBayesianOptimizer,
 )
+from .linear_constraints import merge_named_linear_constraints
 
 _WEIGHT_NORMALIZATIONS = {"weight_fraction", "weight", "mass_fraction"}
 _BASIS_ALIASES = {
@@ -30,7 +31,7 @@ _BASIS_ALIASES = {
 }
 
 
-class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
+class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
     """Support linear equality and inequality constraints between elements.
 
     Constraints are expressed in atomic or weight amounts and may span multiple
@@ -583,6 +584,19 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
             self._write_row_native_values(repaired, row_index, values)
         return repaired
 
+    def _inverse_compositions_for_element_constraint_repair(
+        self,
+        data: Any,
+        *,
+        repair: bool,
+        keep_coordinates: bool,
+    ) -> Any:
+        return super().inverse_compositions(
+            data,
+            repair=repair,
+            keep_coordinates=keep_coordinates,
+        )
+
     def inverse_compositions(
         self,
         data: Any,
@@ -590,7 +604,7 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
         repair: bool = True,
         keep_coordinates: bool = False,
     ) -> Any:
-        restored = super().inverse_compositions(
+        restored = self._inverse_compositions_for_element_constraint_repair(
             data,
             repair=repair,
             keep_coordinates=keep_coordinates,
@@ -700,7 +714,7 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
         **kwargs: Any,
     ) -> Any:
         named_constraints = self._named_element_constraints()
-        opt_config = self._merge_total_constraints(opt_config, named_constraints)
+        opt_config = merge_named_linear_constraints(opt_config, named_constraints)
         rerank = (
             self.composition_constraint_rerank
             if composition_constraint_rerank is None

@@ -26,44 +26,70 @@ jobs:
 
           temporary_workflow = Path('.github/workflows/agent-ci-reference-cleanup.yml')
 
-          test_path = Path('tests/test_tabular_non_native_outcome_constraints.py')
-          text = test_path.read_text(encoding='utf-8')
+          syntax_test = Path('tests/test_tabular_non_native_outcome_constraints.py')
+          text = syntax_test.read_text(encoding='utf-8')
           old_import = 'from bochan.api.optimizer import core as engine as api_engine'
           new_import = 'from bochan.api.optimizer import core as api_engine'
           if old_import not in text:
               raise RuntimeError('expected malformed optimizer import was not found')
-          test_path.write_text(text.replace(old_import, new_import, 1), encoding='utf-8')
-          py_compile.compile(str(test_path), doraise=True)
+          syntax_test.write_text(text.replace(old_import, new_import, 1), encoding='utf-8')
+          py_compile.compile(str(syntax_test), doraise=True)
+
+          source_test = Path('tests/test_api_candidate_uniqueness.py')
+          text = source_test.read_text(encoding='utf-8')
+          source_replacements = {
+              'root / "src" / "bochan" / "api" / "optimizer_api.py"':
+                  'root / "src" / "bochan" / "api" / "optimizer" / "service.py"',
+              'root / "src" / "bochan" / "api" / "candidate_uniqueness.py"':
+                  'root / "src" / "bochan" / "api" / "candidate" / "uniqueness.py"',
+          }
+          for old, new in source_replacements.items():
+              if old not in text:
+                  raise RuntimeError(f'expected stale source-test path was not found: {old}')
+              text = text.replace(old, new)
+          source_test.write_text(text, encoding='utf-8')
+          py_compile.compile(str(source_test), doraise=True)
 
           workflow_replacements = {
-              Path('.github/workflows/wide-multitask-smoke.yml'): {
-                  'src/bochan/api/automatic_multiobjective.py': 'src/bochan/api/acquisition/defaults/multiobjective.py',
-                  'src/bochan/api/feasibility_defaults.py': 'src/bochan/api/acquisition/feasibility.py',
-                  'src/bochan/api/nan_multiobjective.py': 'src/bochan/api/acquisition/defaults/nan.py',
-                  'src/bochan/api/optimizer_api.py': 'src/bochan/api/optimizer/service.py',
-              },
-              Path('.github/workflows/study-results-smoke.yml'): {
-                  'src/bochan/api/study_results.py': 'src/bochan/api/study/results.py',
-              },
+              'src/bochan/api/automatic_best_f.py': 'src/bochan/api/acquisition/defaults/best_f.py',
+              'src/bochan/api/automatic_default_utils.py': 'src/bochan/api/acquisition/defaults/common.py',
+              'src/bochan/api/automatic_multiobjective.py': 'src/bochan/api/acquisition/defaults/multiobjective.py',
+              'src/bochan/api/information_acquisition_defaults.py': 'src/bochan/api/acquisition/defaults/information.py',
+              'src/bochan/api/nan_multiobjective.py': 'src/bochan/api/acquisition/defaults/nan.py',
+              'src/bochan/api/feasibility_defaults.py': 'src/bochan/api/acquisition/feasibility.py',
+              'src/bochan/api/candidate_uniqueness.py': 'src/bochan/api/candidate/uniqueness.py',
+              'src/bochan/api/cross_validation.py': 'src/bochan/api/evaluation/cross_validation.py',
+              'src/bochan/api/experiment_failure.py': 'src/bochan/api/observation/failure.py',
+              'src/bochan/api/model_capabilities.py': 'src/bochan/api/registry/capabilities.py',
+              'src/bochan/api/study.py': 'src/bochan/api/study/core.py',
+              'src/bochan/api/study_controls.py': 'src/bochan/api/study/controls.py',
+              'src/bochan/api/study_results.py': 'src/bochan/api/study/results.py',
+              'src/bochan/api/engine.py': 'src/bochan/api/optimizer/core.py',
+              'src/bochan/api/optimizer_api.py': 'src/bochan/api/optimizer/service.py',
+              'src/bochan/api/optimizer_dispatch.py': 'src/bochan/api/optimizer/dispatch.py',
+              'src/bochan/api/optimizer_support.py': 'src/bochan/api/optimizer/support.py',
           }
 
-          stale_paths = set()
-          for workflow_path, replacements in workflow_replacements.items():
-              workflow = workflow_path.read_text(encoding='utf-8')
-              for old, new in replacements.items():
-                  stale_paths.add(old)
-                  if old not in workflow:
-                      raise RuntimeError(
-                          f'expected stale CI path was not found in {workflow_path}: {old}'
-                      )
-                  workflow = workflow.replace(old, new)
-              workflow_path.write_text(workflow, encoding='utf-8')
+          changed_workflows = []
+          for path in Path('.github/workflows').glob('*.y*ml'):
+              if path == temporary_workflow:
+                  continue
+              current = path.read_text(encoding='utf-8')
+              updated = current
+              for old, new in workflow_replacements.items():
+                  updated = updated.replace(old, new)
+              if updated != current:
+                  path.write_text(updated, encoding='utf-8')
+                  changed_workflows.append(str(path))
+
+          if not changed_workflows:
+              raise RuntimeError('no permanent workflow references were updated')
 
           for path in Path('.github/workflows').glob('*.y*ml'):
               if path == temporary_workflow:
                   continue
               current = path.read_text(encoding='utf-8')
-              for old in stale_paths:
+              for old in workflow_replacements:
                   if old in current:
                       raise RuntimeError(f'stale moved API path remains in {path}: {old}')
           PY
@@ -74,5 +100,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm -f .github/workflows/agent-ci-reference-cleanup.yml
           git add -A
+          git status --short
           git commit -m "Fix CI references after API package moves"
           git push origin HEAD:agent/api-root-responsibility-cleanup

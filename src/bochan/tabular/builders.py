@@ -275,12 +275,12 @@ def make_acquisition_config(
     '''Create or update ``AcquisitionConfig`` from direct fields or a mapping.'''
 
     values = drop_unset(values)
-    acq_config, values = _merge_base_dict(acq_config, values)
-
     direct_name = values.pop("acq_name", UNSET)
-    config_name = values.get("name", UNSET)
-    if direct_name is not UNSET and config_name is not UNSET:
+    direct_config_name = values.get("name", UNSET)
+    if direct_name is not UNSET and direct_config_name is not UNSET:
         raise ValueError("Specify either acq_name or name, not both.")
+
+    acq_config, values = _merge_base_dict(acq_config, values)
     if direct_name is not UNSET:
         values["name"] = direct_name
 

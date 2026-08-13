@@ -32,7 +32,7 @@ jobs:
         run: |
           python -m pip install ruff
           ruff check \
-            --per-file-ignores "src/bochan/api/acquisition_registry.py:UP035" \
+            --per-file-ignores "src/bochan/api/registry/acquisition.py:UP035" \
             --per-file-ignores "src/bochan/models/regression/count/poisson/robust/heteroscedastic.py:UP035" \
             --per-file-ignores "src/bochan/models/regression/count/poisson/robust/heteroscedastic.py:UP045" \
             --per-file-ignores "src/bochan/models/regression/count/negative_binomial/robust/heteroscedastic.py:I001" \
@@ -57,7 +57,7 @@ jobs:
             src/bochan/api/optimizer_support.py \
             src/bochan/models/regression/count/poisson/robust/heteroscedastic.py \
             src/bochan/models/regression/count/negative_binomial/robust/heteroscedastic.py \
-            src/bochan/api/acquisition_registry.py \
+            src/bochan/api/registry/acquisition.py \
             tests/test_non_gaussian_acquisition_alignment.py \
             tests/test_poisson_heteroscedastic_init.py \
             tests/test_negative_binomial_heteroscedastic_init.py \

@@ -572,7 +572,7 @@ next_batch = study.ask(q=3, return_batch=True)
 - failed experiments または simulations のための `mark_failed(...)`;
 - run history inspection のための `trials_dataframe()`。
 
-詳細な examples については `src/bochan/api/STUDY_README.md` を参照してください。
+詳細な examples については `src/bochan/api/study/README.md` を参照してください。
 
 ---
 
@@ -851,7 +851,7 @@ non-Gaussian likelihoods に対する Gaussian-style `noise=` のような unsup
 | `src/bochan/acquisition/README.md` | Acquisition family overview、objectives、feasibility、active learning、level-set estimation、multiclass acquisitions、および non-Gaussian acquisitions. |
 | `src/bochan/acquisition/feasible/README.md` | Feasibility constraints と feasibility wrapper usage. |
 | `src/bochan/api/README.md` | Tensor-based Python API usage、config objects、registries、objectives、candidate optimization、および repair. |
-| `src/bochan/api/STUDY_README.md` | `BochanStudy` optimization loop、`ask()` / `tell()`、`optimize()`、save / load、early stopping、および generation schedules. |
+| `src/bochan/api/study/README.md` | `BochanStudy` optimization loop、`ask()` / `tell()`、`optimize()`、save / load、early stopping、および generation schedules. |
 | `src/bochan/tabular/README.md` | pandas / numpy / CSV wrapper、column-name based settings、categorical encoding、imputation、candidate repair、`fit_beta`、`evo_method`、および constraints. |
 | `src/bochan/serving/fastapi/README.md` | HTTP / JSON serving examples、tensor conversion、optimizer settings、candidate repair、constraints、および multiclass workflows. |
 

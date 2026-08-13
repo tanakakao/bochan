@@ -7,6 +7,9 @@ import logging
 from importlib import import_module
 from typing import Any
 
+from .composition_element_importance_figures import append_element_importance_figures
+from .composition_feature_importance import attach_composition_feature_importance
+from .composition_feature_importance_views import postprocess_composition_importance_views
 from .logging import current_request_id, get_logger, log_event
 from .model_reuse import model_reuse_run, prepare_model_reuse_request
 from .non_gaussian_validation import validate_non_gaussian_target_frame
@@ -310,6 +313,13 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
                 workflow_store,
             )
             session = finalize_visualization_run(run_id, result)
+            attach_composition_feature_importance(
+                result,
+                processing_request,
+                session,
+            )
+            postprocess_composition_importance_views(result, session)
+            append_element_importance_figures(result, session)
             _attach_final_model_diagnostics(result, processing_request, session)
             session.request_details["request_payload"] = (
                 processing_request.model_dump(exclude_none=False)

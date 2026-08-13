@@ -2,12 +2,6 @@
 
 from typing import Any
 
-from .composition_importance_output_compat import (
-    install_composition_importance_output_compat,
-)
-from .composition_importance_records_compat import (
-    install_composition_importance_records_compat,
-)
 from .composition_multielement_ternary import (
     install_composition_multielement_ternary,
 )
@@ -35,9 +29,6 @@ install_web_hybrid_objective_bo_routing()
 
 from .app import WEB_CAPABILITIES, app, create_app as _create_app  # noqa: E402
 from .composition_web_routes import register_composition_routes  # noqa: E402
-
-install_composition_importance_records_compat()
-install_composition_importance_output_compat()
 
 WEB_CAPABILITIES["composition"] = {
     "enabled": True,

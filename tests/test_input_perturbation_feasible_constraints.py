@@ -9,12 +9,12 @@ from bochan.acquisition.feasible import (
     make_sample_constraints,
     wrap_sample_constraints_for_input_perturbation,
 )
-from bochan.api.acquisition_config import AcquisitionConfig
 from bochan.api.classification_perturbation_defaults import (
     _build_objective,
     _keep_constrained_perturbation_q_expanded,
 )
 from bochan.api.configs import ObjectiveConfig
+from bochan.api.configs.acquisition import AcquisitionConfig
 
 
 @dataclass

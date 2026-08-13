@@ -7,7 +7,7 @@ from typing import Any
 
 from .candidate_uniqueness import ensure_unique_candidates
 from .configs import OptimizeConfig as _BaseOptimizeConfig
-from .optimizer_config import (
+from .configs.optimize import (
     OptimizeConfig,
     resolve_optimizer_from_cat_dims,
     uses_mixed_fixed_features,

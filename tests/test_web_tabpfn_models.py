@@ -181,7 +181,7 @@ def test_web_exposes_tabpfn_as_foundation_derivative_free_model() -> None:
 
 
 def test_web_capabilities_and_registry_expose_supported_tabpfn_tasks() -> None:
-    from bochan.api.model_registry import DEFAULT_MODEL_REGISTRY
+    from bochan.api.registry.model import DEFAULT_MODEL_REGISTRY
     from bochan.serving.webapp.app import WEB_CAPABILITIES
 
     registry = DEFAULT_MODEL_REGISTRY.raw()

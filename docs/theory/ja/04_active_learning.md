@@ -433,7 +433,7 @@ src/bochan/acquisition/ordinal/active_learning/
 
 代表class：`qOrdinalPredictiveEntropy`、`qOrdinalBALD`、`qOrdinalUtilityVariance`、`qOrdinalMarginUncertainty`。
 
-public nameの解決は`src/bochan/api/acquisition_registry.py`で行います。class実装がexact、fantasy-based、MC、proxyのどれかを決めます。
+public nameの解決は`src/bochan/api/registry/acquisition.py`で行います。class実装がexact、fantasy-based、MC、proxyのどれかを決めます。
 
 ---
 

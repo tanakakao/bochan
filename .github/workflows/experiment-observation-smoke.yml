@@ -43,7 +43,7 @@ jobs:
         run: |
           python -m pip install ruff
           ruff check \
-            src/bochan/api/model_registry.py \
+            src/bochan/api/registry/model.py \
             src/bochan/api/observation/__init__.py \
             src/bochan/api/observation/state.py \
             src/bochan/api/observation/service.py \

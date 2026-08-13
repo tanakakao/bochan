@@ -1210,7 +1210,7 @@ Shape tests should include:
 High-level public registration is in
 
 ```text
-src/bochan/api/acquisition_registry.py
+src/bochan/api/registry/acquisition.py
 ```
 
 ### Regression
@@ -1270,7 +1270,7 @@ src/bochan/api/acquisition_registry.py
 | Ordinal multi-output | `src/bochan/acquisition/ordinal/levelset_estimation/multi_output.py` |
 | Ordinal heteroscedastic | `src/bochan/acquisition/ordinal/levelset_estimation/hetero_*.py` |
 | Non-Gaussian regression | `src/bochan/acquisition/non_gaussian/levelset_estimation/` |
-| Public registry | `src/bochan/api/acquisition_registry.py` |
+| Public registry | `src/bochan/api/registry/acquisition.py` |
 
 ---
 

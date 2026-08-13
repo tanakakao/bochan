@@ -10,7 +10,7 @@ on:
       - "src/bochan/models/ordinal/external/**"
       - "src/bochan/models/ordinal/__init__.py"
       - "src/bochan/models/ordinal/posterior.py"
-      - "src/bochan/api/model_registry.py"
+      - "src/bochan/api/registry/model.py"
       - "src/bochan/fit/ordinal.py"
       - "tests/test_external_ordinal_models.py"
       - "tests/test_external_ordinal_optional_smoke.py"

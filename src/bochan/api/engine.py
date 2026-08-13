@@ -14,7 +14,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
-from .acquisition_registry import resolve_acqf_cls
+from .registry.acquisition import resolve_acqf_cls
 from .configs import (
     AcquisitionConfig,
     CandidateResult,

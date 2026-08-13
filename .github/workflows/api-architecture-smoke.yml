@@ -42,6 +42,7 @@ jobs:
       - name: Run Ruff
         run: |
           ruff check \
+            --per-file-ignores "src/bochan/api/registry/acquisition.py:UP035" \
             src/bochan/api/__init__.py \
             src/bochan/api/acquisition/__init__.py \
             src/bochan/api/acquisition/classification.py \
@@ -49,6 +50,11 @@ jobs:
             src/bochan/api/acquisition/service.py \
             src/bochan/api/candidate/__init__.py \
             src/bochan/api/candidate/output.py \
+            src/bochan/api/configs/__init__.py \
+            src/bochan/api/configs/acquisition.py \
+            src/bochan/api/configs/base.py \
+            src/bochan/api/configs/fit.py \
+            src/bochan/api/configs/optimize.py \
             src/bochan/api/llm/__init__.py \
             src/bochan/api/llm/acquisition.py \
             src/bochan/api/llm/explanation.py \
@@ -57,8 +63,16 @@ jobs:
             src/bochan/api/observation/state.py \
             src/bochan/api/observation/service.py \
             src/bochan/api/optimizer.py \
+            src/bochan/api/registry/__init__.py \
+            src/bochan/api/registry/acquisition.py \
+            src/bochan/api/registry/model.py \
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/composition_bounds_optimizer.py \
+            src/bochan/tabular/composition_element_columns.py \
+            src/bochan/tabular/composition_element_constraint_candidates.py \
+            src/bochan/tabular/composition_element_constraints.py \
+            src/bochan/tabular/composition_total_constraints.py \
+            src/bochan/tabular/composition_variable_total_transform.py \
             src/bochan/tabular/multi_output_categories.py \
             src/bochan/tabular/ordinal_rank_labels.py \
             src/bochan/tabular/prediction.py \
@@ -66,7 +80,10 @@ jobs:
             src/bochan/serving/fastapi/routers/candidates.py \
             src/bochan/serving/fastapi/routers/models.py \
             src/bochan/serving/fastapi/routers/suggestions.py \
+            src/bochan/serving/fastapi/routers/tabular.py \
+            src/bochan/serving/fastapi/services/__init__.py \
             src/bochan/serving/fastapi/services/candidates.py \
+            src/bochan/serving/fastapi/services/tabular.py \
             src/bochan/serving/fastapi/stores/object.py \
             src/bochan/serving/fastapi/tabular_compat.py \
             tests/test_api_architecture.py \

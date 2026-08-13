@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - "pyproject.toml"
-      - "src/bochan/api/model_registry.py"
+      - "src/bochan/api/registry/model.py"
       - "src/bochan/models/external/lightgbm.py"
       - "src/bochan/models/external/native_categorical.py"
       - "src/bochan/models/regression/external/**"

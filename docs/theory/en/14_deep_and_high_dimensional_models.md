@@ -530,7 +530,7 @@ This separates the value of representation learning from the value of the GP.
 | PCA / REMBO | task-specific `high_dim/decomposition.py` modules |
 | SAAS | task-specific `high_dim/saas.py` modules |
 | VAE-GP | `src/bochan/models/regression/gaussian/high_dim/vae*.py` |
-| High-level registry | `src/bochan/api/model_registry.py` |
+| High-level registry | `src/bochan/api/registry/model.py` |
 
 ---
 

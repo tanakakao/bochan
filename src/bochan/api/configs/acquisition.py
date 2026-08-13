@@ -8,7 +8,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from .configs import AcquisitionConfig as _BaseAcquisitionConfig
+from .base import AcquisitionConfig as _BaseAcquisitionConfig
 
 
 _DEFAULT_UCB_BETA = 3.0
@@ -244,7 +244,7 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
         self.acqf_kwargs = kwargs
 
         if self.outcome_constraint_config is not None:
-            from .feasibility_defaults import build_outcome_constrained_acquisition
+            from ..feasibility_defaults import build_outcome_constrained_acquisition
 
             if (
                 self.acqf_factory is not None

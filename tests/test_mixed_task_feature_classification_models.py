@@ -4,7 +4,7 @@ from botorch.models.transforms.input import Normalize
 from botorch.optim import optimize_acqf_mixed
 
 from bochan.acquisition.binary.active_learning import qBinaryPredictiveEntropy
-from bochan.api.model_registry import MODEL_REGISTRY
+from bochan.api.registry.model import MODEL_REGISTRY
 from bochan.models.classification.binary.base import (
     MultiTaskBinaryClassificationMixedGPModel,
 )

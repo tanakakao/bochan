@@ -1,9 +1,8 @@
-"""Linear element constraints for multi-site composition optimization."""
+"""Element-constraint normalization and mixed-integer composition projection."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import replace
 from itertools import combinations, islice, product
 from math import ceil, floor
 from typing import Any
@@ -12,10 +11,6 @@ import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 
 from .composition import ATOMIC_WEIGHTS, close_compositions, format_formula
-from .converter import dataframe_to_tensors
-from .variable_total_composition_optimizer import (
-    TabularBayesianOptimizer as _VariableTotalTabularBayesianOptimizer,
-)
 
 _WEIGHT_NORMALIZATIONS = {"weight_fraction", "weight", "mass_fraction"}
 _BASIS_ALIASES = {
@@ -30,77 +25,30 @@ _BASIS_ALIASES = {
 }
 
 
-class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
-    """Support linear equality and inequality constraints between elements.
-
-    Constraints are expressed in atomic or weight amounts and may span multiple
-    composition sites. Fixed-total Fraction coordinates are also forwarded to
-    the existing named linear-constraint optimizer. For CLR, ALR, ILR, variable
-    totals, sparsity, or stepped compositions, candidates are repaired after
-    inverse transformation with a mixed-integer linear projection.
-    """
-
-    def __init__(
-        self,
-        model_config: Any | None = None,
-        fit_config: Any | None = None,
-        *,
-        composition_element_constraints: Sequence[Any] | None = None,
-        composition_constraint_rerank: bool = True,
-        composition_constraint_rerank_factor: int = 4,
-        composition_constraint_max_supports: int = 256,
-        **kwargs: Any,
-    ) -> None:
-        self.composition_element_constraints = self._normalize_element_constraints(
-            composition_element_constraints
-        )
-        self.composition_constraint_rerank = bool(composition_constraint_rerank)
-        self.composition_constraint_rerank_factor = int(
-            composition_constraint_rerank_factor
-        )
-        self.composition_constraint_max_supports = int(
-            composition_constraint_max_supports
-        )
-        if self.composition_constraint_rerank_factor < 1:
-            raise ValueError("composition_constraint_rerank_factor must be >= 1.")
-        if self.composition_constraint_max_supports < 1:
-            raise ValueError("composition_constraint_max_supports must be >= 1.")
-        super().__init__(
-            model_config=model_config,
-            fit_config=fit_config,
-            **kwargs,
-        )
-        self._validate_element_constraints()
+class CompositionElementConstraintResolver:
+    """Normalize element constraints and map compatible ones to model coordinates."""
 
     @staticmethod
-    def _normalize_element_constraints(
+    def normalize(
         constraints: Sequence[Any] | None,
     ) -> list[dict[str, Any]]:
         normalized: list[dict[str, Any]] = []
         for index, raw in enumerate(constraints or ()):
             if not isinstance(raw, Mapping):
-                raise TypeError(
-                    "Each composition element constraint must be a mapping."
-                )
+                raise TypeError("Each composition element constraint must be a mapping.")
             raw_terms = raw.get("terms")
             if not isinstance(raw_terms, Sequence) or isinstance(raw_terms, str):
-                raise ValueError(
-                    f"Composition element constraint {index} requires 'terms'."
-                )
+                raise ValueError(f"Composition element constraint {index} requires 'terms'.")
             combined: dict[tuple[str, str], float] = {}
             for term_index, raw_term in enumerate(raw_terms):
                 if not isinstance(raw_term, Mapping):
-                    raise TypeError(
-                        f"Term {term_index} in composition element constraint "
-                        f"{index} must be a mapping."
-                    )
+                    raise TypeError(f"Term {term_index} in composition element constraint {index} must be a mapping.")
                 site = raw_term.get("site")
                 element = raw_term.get("element")
                 coefficient = raw_term.get("coefficient", 1.0)
                 if site is None or element is None:
                     raise ValueError(
-                        f"Term {term_index} in composition element constraint "
-                        f"{index} requires site and element."
+                        f"Term {term_index} in composition element constraint {index} requires site and element."
                     )
                 coefficient = float(coefficient)
                 if not np.isfinite(coefficient):
@@ -118,17 +66,13 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
                 if abs(coefficient) > 1e-15
             )
             if not terms:
-                raise ValueError(
-                    f"Composition element constraint {index} has no nonzero terms."
-                )
+                raise ValueError(f"Composition element constraint {index} has no nonzero terms.")
 
             operator = str(raw.get("operator", raw.get("op", "=")))
             if operator == "==":
                 operator = "="
             if operator not in {"=", "<=", ">="}:
-                raise ValueError(
-                    f"Unknown composition element operator {operator!r}."
-                )
+                raise ValueError(f"Unknown composition element operator {operator!r}.")
             rhs = float(raw.get("rhs", 0.0))
             if not np.isfinite(rhs):
                 raise ValueError("Element-constraint rhs must be finite.")
@@ -136,10 +80,7 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
             try:
                 basis = _BASIS_ALIASES[basis_name]
             except KeyError as exc:
-                raise ValueError(
-                    "Element-constraint basis must be 'atomic_amount' or "
-                    "'weight_amount'."
-                ) from exc
+                raise ValueError("Element-constraint basis must be 'atomic_amount' or 'weight_amount'.") from exc
             normalized.append(
                 {
                     "terms": terms,
@@ -150,28 +91,149 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
             )
         return normalized
 
+    @staticmethod
+    def component_bounds(
+        config: Mapping[str, Any],
+        element: str,
+        total: float,
+    ) -> tuple[float, float]:
+        pair = config["bounds"].get(element, (0.0, total))
+        lower, upper = map(float, pair)
+        return max(0.0, lower), min(float(total), upper)
+
+    @staticmethod
+    def basis_scale(
+        config: Mapping[str, Any],
+        element: str,
+        basis: str,
+    ) -> float:
+        native_is_weight = str(config["normalization"]).lower() in _WEIGHT_NORMALIZATIONS
+        if basis == "atomic_amount":
+            return 1.0 / ATOMIC_WEIGHTS[element] if native_is_weight else 1.0
+        return 1.0 if native_is_weight else ATOMIC_WEIGHTS[element]
+
+    @classmethod
+    def named_constraints(
+        cls,
+        constraints: Sequence[Mapping[str, Any]],
+        composition_sites: Mapping[str, Mapping[str, Any]],
+        composition_transformers: Mapping[str, Any],
+    ) -> list[tuple[Any, ...]]:
+        "Translate fixed-total Fraction constraints to named model constraints."
+
+        if not constraints:
+            return []
+        resolved: list[tuple[Any, ...]] = []
+        for constraint in constraints:
+            names: list[str] = []
+            coefficients: list[float] = []
+            compatible = True
+            for term in constraint["terms"]:
+                config = composition_sites[term["site"]]
+                if config.get("variable_total") or str(config["representation"]).lower() not in {
+                    "fraction",
+                    "fractions",
+                }:
+                    compatible = False
+                    break
+                transformer = composition_transformers.get(term["site"])
+                if transformer is None:
+                    compatible = False
+                    break
+                names.append(f"{transformer.prefix}__fraction__{term['element']}")
+                coefficients.append(
+                    float(term["coefficient"])
+                    * cls.basis_scale(
+                        config,
+                        term["element"],
+                        constraint["basis"],
+                    )
+                    * float(config["total"])
+                )
+            if compatible:
+                resolved.append(
+                    (
+                        names,
+                        coefficients,
+                        constraint["operator"],
+                        float(constraint["rhs"]),
+                    )
+                )
+        return resolved
+
+
+class CompositionElementConstraintProjector:
+    "Project native composition values onto element constraints using MILP."
+
+    def __init__(
+        self,
+        *,
+        composition_sites: Mapping[str, Mapping[str, Any]],
+        composition_element_constraints: Sequence[Mapping[str, Any]],
+        composition_transformers: Mapping[str, Any],
+        max_supports: int,
+    ) -> None:
+        self.composition_sites = composition_sites
+        self.composition_element_constraints = composition_element_constraints
+        self.composition_transformers_ = composition_transformers
+        self.composition_constraint_max_supports = int(max_supports)
+
+    @staticmethod
+    def _component_bounds(
+        config: Mapping[str, Any],
+        element: str,
+        total: float,
+    ) -> tuple[float, float]:
+        return CompositionElementConstraintResolver.component_bounds(
+            config,
+            element,
+            total,
+        )
+
+    @staticmethod
+    def _basis_scale(
+        config: Mapping[str, Any],
+        element: str,
+        basis: str,
+    ) -> float:
+        return CompositionElementConstraintResolver.basis_scale(
+            config,
+            element,
+            basis,
+        )
+
+    def validate(self) -> None:
+        "Validate bounds and joint fixed-total feasibility."
+        self._validate_element_constraints()
+
+    def project(
+        self,
+        raw: Mapping[tuple[str, str], float],
+        totals: Mapping[str, float],
+    ) -> dict[tuple[str, str], float]:
+        "Project one native composition onto all configured constraints."
+        return self._project_element_values(raw, totals)
+
+    def repair_frame(self, restored: Any) -> Any:
+        "Project every row of a restored composition frame."
+        return self._repair_element_constraint_frame(restored)
+
     def _validate_element_constraints(self) -> None:
         if not self.composition_element_constraints:
             return
         if not self.composition_sites:
-            raise ValueError(
-                "composition_element_constraints requires composition_sites."
-            )
+            raise ValueError("composition_element_constraints requires composition_sites.")
         for constraint in self.composition_element_constraints:
             lhs_min = 0.0
             lhs_max = 0.0
             for term in constraint["terms"]:
                 site = term["site"]
                 if site not in self.composition_sites:
-                    raise KeyError(
-                        f"Unknown composition site {site!r} in element constraint."
-                    )
+                    raise KeyError(f"Unknown composition site {site!r} in element constraint.")
                 config = self.composition_sites[site]
                 element = term["element"]
                 if element not in config["elements"]:
-                    raise KeyError(
-                        f"Unknown element {element!r} at composition site {site!r}."
-                    )
+                    raise KeyError(f"Unknown element {element!r} at composition site {site!r}.")
                 if config.get("variable_total"):
                     total_upper = float(config["total_bounds"][1])
                 else:
@@ -197,18 +259,11 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
             )
             if not feasible:
                 raise ValueError(
-                    "A composition element constraint is infeasible within the "
-                    "configured component bounds."
+                    "A composition element constraint is infeasible within the configured component bounds."
                 )
 
-        if not any(
-            config.get("variable_total")
-            for config in self.composition_sites.values()
-        ):
-            totals = {
-                site: float(config["total"])
-                for site, config in self.composition_sites.items()
-            }
+        if not any(config.get("variable_total") for config in self.composition_sites.values()):
+            totals = {site: float(config["total"]) for site, config in self.composition_sites.items()}
             raw = {
                 (site, element): totals[site] / len(config["elements"])
                 for site, config in self.composition_sites.items()
@@ -223,35 +278,8 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
                     "jointly infeasible."
                 ) from exc
 
-    @staticmethod
-    def _component_bounds(
-        config: Mapping[str, Any],
-        element: str,
-        total: float,
-    ) -> tuple[float, float]:
-        pair = config["bounds"].get(element, (0.0, total))
-        lower, upper = map(float, pair)
-        return max(0.0, lower), min(float(total), upper)
-
-    @staticmethod
-    def _basis_scale(
-        config: Mapping[str, Any],
-        element: str,
-        basis: str,
-    ) -> float:
-        native_is_weight = (
-            str(config["normalization"]).lower() in _WEIGHT_NORMALIZATIONS
-        )
-        if basis == "atomic_amount":
-            return 1.0 / ATOMIC_WEIGHTS[element] if native_is_weight else 1.0
-        return 1.0 if native_is_weight else ATOMIC_WEIGHTS[element]
-
     def _constraint_sites(self) -> set[str]:
-        return {
-            term["site"]
-            for constraint in self.composition_element_constraints
-            for term in constraint["terms"]
-        }
+        return {term["site"] for constraint in self.composition_element_constraints for term in constraint["terms"]}
 
     def _support_options(
         self,
@@ -271,9 +299,7 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
             if lower > tolerance:
                 required.add(element)
             step = config["steps"].get(element)
-            if upper > tolerance and (
-                step is None or lower > tolerance or upper + tolerance >= float(step)
-            ):
+            if upper > tolerance and (step is None or lower > tolerance or upper + tolerance >= float(step)):
                 activatable.append(element)
 
         minimum = int(config["min_components"])
@@ -283,11 +309,7 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
             key=lambda element: raw.get((site, element), 0.0),
             reverse=True,
         )
-        current = {
-            element
-            for element in activatable
-            if raw.get((site, element), 0.0) > tolerance
-        }
+        current = {element for element in activatable if raw.get((site, element), 0.0) > tolerance}
         current.update(required)
         removable = sorted(
             current - required,
@@ -300,38 +322,26 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
                 break
             current.add(element)
         if not required.issubset(current) or not minimum <= len(current) <= maximum:
-            raise ValueError(
-                f"No valid active-element support is available at site {site!r}."
-            )
+            raise ValueError(f"No valid active-element support is available at site {site!r}.")
 
-        options: set[tuple[str, ...]] = {
-            tuple(element for element in elements if element in current)
-        }
+        options: set[tuple[str, ...]] = {tuple(element for element in elements if element in current)}
         if enumerate_alternatives:
             optional = [element for element in activatable if element not in required]
             for size in range(max(minimum, len(required)), maximum + 1):
                 choose = size - len(required)
                 for selected in combinations(optional, choose):
                     support = required | set(selected)
-                    options.add(
-                        tuple(element for element in elements if element in support)
-                    )
+                    options.add(tuple(element for element in elements if element in support))
 
         scored = sorted(
             options,
-            key=lambda support: sum(
-                raw.get((site, element), 0.0) for element in support
-            ),
+            key=lambda support: sum(raw.get((site, element), 0.0) for element in support),
             reverse=True,
         )
         return scored[: min(64, self.composition_constraint_max_supports)]
 
     def _entry_order(self) -> list[tuple[str, str]]:
-        return [
-            (site, element)
-            for site, config in self.composition_sites.items()
-            for element in config["elements"]
-        ]
+        return [(site, element) for site, config in self.composition_sites.items() for element in config["elements"]]
 
     def _solve_support(
         self,
@@ -372,9 +382,7 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
                         0,
                         ceil((effective_lower - lower) / step - 1e-10),
                     )
-                    upper_variables[index] = floor(
-                        (upper - lower) / step + 1e-10
-                    )
+                    upper_variables[index] = floor((upper - lower) / step + 1e-10)
                     integrality[index] = 1
                     if lower_variables[index] > upper_variables[index]:
                         return None
@@ -556,17 +564,12 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
                     restored.at[row_index, output_column] = absolute[index]
 
             if config.get("input_kind") == "formula":
-                if (
-                    str(config["normalization"]).lower()
-                    in _WEIGHT_NORMALIZATIONS
-                ):
+                if str(config["normalization"]).lower() in _WEIGHT_NORMALIZATIONS:
                     weights = np.asarray(
                         [ATOMIC_WEIGHTS[element] for element in elements],
                         dtype=float,
                     )
-                    atomic_fractions = close_compositions(
-                        fractions[None, :] / weights[None, :]
-                    )[0]
+                    atomic_fractions = close_compositions(fractions[None, :] / weights[None, :])[0]
                 else:
                     atomic_fractions = close_compositions(fractions[None, :])[0]
                 restored.at[row_index, config["column"]] = format_formula(
@@ -583,175 +586,8 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
             self._write_row_native_values(repaired, row_index, values)
         return repaired
 
-    def inverse_compositions(
-        self,
-        data: Any,
-        *,
-        repair: bool = True,
-        keep_coordinates: bool = False,
-    ) -> Any:
-        restored = super().inverse_compositions(
-            data,
-            repair=repair,
-            keep_coordinates=keep_coordinates,
-        )
-        if (
-            repair
-            and self.multi_site_composition_enabled
-            and self.composition_element_constraints
-        ):
-            restored = self._repair_element_constraint_frame(restored)
-        return restored
 
-    def _named_element_constraints(self) -> list[tuple[Any, ...]]:
-        if not self.composition_element_constraints:
-            return []
-        resolved: list[tuple[Any, ...]] = []
-        for constraint in self.composition_element_constraints:
-            names: list[str] = []
-            coefficients: list[float] = []
-            compatible = True
-            for term in constraint["terms"]:
-                config = self.composition_sites[term["site"]]
-                if config.get("variable_total") or str(
-                    config["representation"]
-                ).lower() not in {"fraction", "fractions"}:
-                    compatible = False
-                    break
-                transformer = self.composition_transformers_.get(term["site"])
-                if transformer is None:
-                    compatible = False
-                    break
-                names.append(
-                    f"{transformer.prefix}__fraction__{term['element']}"
-                )
-                coefficients.append(
-                    float(term["coefficient"])
-                    * self._basis_scale(
-                        config,
-                        term["element"],
-                        constraint["basis"],
-                    )
-                    * float(config["total"])
-                )
-            if compatible:
-                resolved.append(
-                    (
-                        names,
-                        coefficients,
-                        constraint["operator"],
-                        float(constraint["rhs"]),
-                    )
-                )
-        return resolved
-
-    @staticmethod
-    def _requested_q(opt_config: Any, kwargs: Mapping[str, Any]) -> int:
-        direct = kwargs.get("q")
-        if isinstance(direct, int):
-            return max(1, direct)
-        if isinstance(opt_config, Mapping) and isinstance(opt_config.get("q"), int):
-            return max(1, int(opt_config["q"]))
-        configured = getattr(opt_config, "q", None)
-        return max(1, int(configured)) if isinstance(configured, int) else 1
-
-    def _rerank_candidates(
-        self,
-        candidates: Any,
-        acqf: Any,
-        requested_q: int,
-    ) -> tuple[Any, Any]:
-        import torch
-
-        unique = candidates.drop_duplicates().reset_index(drop=True)
-        transformed = self.transform_compositions(unique)
-        data_config = replace(
-            self.data_config,
-            input_cols=self.dataset.feature_names,
-            target_cols=None,
-        )
-        X = dataframe_to_tensors(transformed, data_config).X
-        with torch.no_grad():
-            try:
-                scores = acqf(X.unsqueeze(-2))
-            except (RuntimeError, ValueError, TypeError):
-                scores = acqf(X)
-        scores = scores.detach().reshape(-1)
-        if scores.numel() != len(unique):
-            raise ValueError(
-                "The acquisition function did not return one score per repaired "
-                "candidate."
-            )
-        order = torch.argsort(scores, descending=True)[:requested_q]
-        indices = order.detach().cpu().numpy().tolist()
-        return unique.iloc[indices].reset_index(drop=True), scores[order]
-
-    def candidate(
-        self,
-        acq_config: Any | None = None,
-        opt_config: Any | None = None,
-        *,
-        return_dataframe: bool = True,
-        return_result: bool = False,
-        return_composition: bool = True,
-        keep_composition_coordinates: bool = False,
-        composition_constraint_rerank: bool | None = None,
-        composition_constraint_rerank_factor: int | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        named_constraints = self._named_element_constraints()
-        opt_config = self._merge_total_constraints(opt_config, named_constraints)
-        rerank = (
-            self.composition_constraint_rerank
-            if composition_constraint_rerank is None
-            else bool(composition_constraint_rerank)
-        )
-        if (
-            not self.composition_element_constraints
-            or not rerank
-            or return_result
-            or not return_dataframe
-            or not return_composition
-        ):
-            return super().candidate(
-                acq_config=acq_config,
-                opt_config=opt_config,
-                return_dataframe=return_dataframe,
-                return_result=return_result,
-                return_composition=return_composition,
-                keep_composition_coordinates=keep_composition_coordinates,
-                **kwargs,
-            )
-
-        requested_q = self._requested_q(opt_config, kwargs)
-        factor = (
-            self.composition_constraint_rerank_factor
-            if composition_constraint_rerank_factor is None
-            else int(composition_constraint_rerank_factor)
-        )
-        if factor < 1:
-            raise ValueError("composition_constraint_rerank_factor must be >= 1.")
-        call_kwargs = dict(kwargs)
-        call_kwargs["q"] = requested_q * factor
-        result = super().candidate(
-            acq_config=acq_config,
-            opt_config=opt_config,
-            return_dataframe=True,
-            return_result=True,
-            return_composition=False,
-            **call_kwargs,
-        )
-        raw_candidates = self.candidates_to_dataframe(result.candidates)
-        repaired = self.inverse_compositions(
-            raw_candidates,
-            repair=True,
-            keep_coordinates=keep_composition_coordinates,
-        )
-        try:
-            return self._rerank_candidates(repaired, result.acqf, requested_q)
-        except (RuntimeError, ValueError, TypeError, KeyError):
-            selected = repaired.drop_duplicates().head(requested_q).reset_index(drop=True)
-            return selected, result.acq_value
-
-
-__all__ = ["TabularBayesianOptimizer"]
+__all__ = [
+    "CompositionElementConstraintProjector",
+    "CompositionElementConstraintResolver",
+]

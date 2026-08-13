@@ -14,7 +14,7 @@ from botorch.acquisition.multi_objective.parego import qLogNParEGO
 from bochan.acquisition.regression.bayesian_optimization import (
     qMultiOutputRegressionNParEGO,
 )
-from bochan.api.acquisition_registry import available_acqf_names, resolve_acqf_cls
+from bochan.api.registry.acquisition import available_acqf_names, resolve_acqf_cls
 
 
 def test_log_nei_alias_resolves_to_botorch() -> None:

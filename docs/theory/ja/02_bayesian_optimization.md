@@ -336,8 +336,8 @@ candidates = optimizer.suggest(q=q)
 主要source：
 
 ```text
-src/bochan/api/model_registry.py
-src/bochan/api/acquisition_registry.py
+src/bochan/api/registry/model.py
+src/bochan/api/registry/acquisition.py
 src/bochan/api/factory.py
 src/bochan/optim/
 ```

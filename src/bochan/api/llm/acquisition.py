@@ -8,7 +8,7 @@ from dataclasses import asdict, replace
 from enum import Enum
 from typing import Any
 
-from ..acquisition_config import AcquisitionConfig
+from ..configs.acquisition import AcquisitionConfig
 
 _LLM_SELECTED_NAMES = {
     "llm",

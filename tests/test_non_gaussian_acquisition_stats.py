@@ -4,7 +4,7 @@ import pytest
 from bochan.acquisition.non_gaussian._stats import observation_variance_from_mean
 from bochan.acquisition.non_gaussian.active_learning import qNonGaussianResponseMeanVariance, qNonGaussianBALDProxy
 from bochan.acquisition.non_gaussian.levelset_estimation import qNonGaussianStraddle, qNonGaussianLevelSetUncertainty
-from bochan.api.acquisition_registry import resolve_acqf_cls
+from bochan.api.registry.acquisition import resolve_acqf_cls
 from bochan.models.regression.gamma import GammaGPModel
 from bochan.models.regression.beta._components import BetaLogLikelihood
 from bochan.models.regression.gamma._components import GammaLogLikelihood

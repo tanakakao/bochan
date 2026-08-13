@@ -11,7 +11,7 @@ from bochan.acquisition.binary.active_learning import (
 from bochan.api import InputTransformConfig, ModelConfig
 from bochan.api.acquisition.defaults import resolve_multi_output_model_config
 from bochan.api.factory import build_model
-from bochan.api.model_registry import MODEL_REGISTRY
+from bochan.api.registry.model import MODEL_REGISTRY
 from bochan.models.classification.binary.base import (
     WideMixedMultiFidelityBinaryClassificationGPModel,
     WideMultiFidelityBinaryClassificationGPModel,

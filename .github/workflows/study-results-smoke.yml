@@ -28,6 +28,7 @@ jobs:
             tests/test_visualization_categorical_fixed_values.py \
             tests/test_fastapi_study_endpoints.py \
             tests/test_fastapi_router_architecture.py \
+            tests/test_fastapi_root_router_boundary.py \
             2>&1 | tee pytest-study.log
           status=${PIPESTATUS[0]}
           echo "$status" > pytest-study.status
@@ -46,6 +47,7 @@ jobs:
             src/bochan/visualization/study.py \
             src/bochan/visualization/utils.py \
             src/bochan/serving/fastapi/dependencies.py \
+            src/bochan/serving/fastapi/router.py \
             src/bochan/serving/fastapi/routers/__init__.py \
             src/bochan/serving/fastapi/routers/studies.py \
             src/bochan/serving/fastapi/schemas/study.py \
@@ -56,6 +58,7 @@ jobs:
             tests/test_visualization_categorical_fixed_values.py \
             tests/test_fastapi_study_endpoints.py \
             tests/test_fastapi_router_architecture.py \
+            tests/test_fastapi_root_router_boundary.py \
             2>&1 | tee ruff-study.log
           status=${PIPESTATUS[0]}
           echo "$status" > ruff-study.status

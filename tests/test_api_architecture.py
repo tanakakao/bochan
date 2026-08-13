@@ -139,6 +139,7 @@ def test_removed_compatibility_and_patch_modules_do_not_exist() -> None:
         "bochan.api.automatic_multiobjective",
         "bochan.api.candidate_output",
         "bochan.api.classification_perturbation_defaults",
+        "bochan.api.composition",
         "bochan.api.engine_defaults",
         "bochan.api.feasibility_defaults",
         "bochan.api.fit_config",

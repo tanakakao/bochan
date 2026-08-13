@@ -75,7 +75,10 @@ jobs:
             src/bochan/serving/fastapi/routers/candidates.py \
             src/bochan/serving/fastapi/routers/models.py \
             src/bochan/serving/fastapi/routers/suggestions.py \
+            src/bochan/serving/fastapi/routers/tabular.py \
+            src/bochan/serving/fastapi/services/__init__.py \
             src/bochan/serving/fastapi/services/candidates.py \
+            src/bochan/serving/fastapi/services/tabular.py \
             src/bochan/serving/fastapi/stores/object.py \
             src/bochan/serving/fastapi/tabular_compat.py \
             tests/test_api_architecture.py \

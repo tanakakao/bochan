@@ -15,6 +15,8 @@ from bochan.api.observation import service as observation_service
 from bochan.api.observation import state as observation_state
 from bochan.api.registry import acquisition as acquisition_registry
 from bochan.api.registry import model as model_registry
+from bochan.serving.fastapi.routers import tabular as tabular_router
+from bochan.serving.fastapi.services import tabular as tabular_service
 
 
 def test_public_bayesian_optimizer_has_one_canonical_definition() -> None:
@@ -81,6 +83,35 @@ def test_runtime_services_live_in_responsibility_subpackages() -> None:
     )
     assert LLMSuggestionMixin.__module__ == "bochan.api.llm.suggestion"
     assert LLMCandidateExplanationMixin.__module__ == "bochan.api.llm.explanation"
+
+
+def test_fastapi_tabular_domain_logic_is_owned_by_application_service() -> None:
+    service_functions = {
+        "build_fit_response",
+        "candidate_response",
+        "compute_feature_importance_response",
+        "fit_tabular_optimizer",
+        "predict_response",
+        "to_dataframe",
+    }
+    assert service_functions.issubset(vars(tabular_service))
+    for name in service_functions:
+        assert getattr(tabular_service, name).__module__ == (
+            "bochan.serving.fastapi.services.tabular"
+        )
+
+    removed_router_helpers = {
+        "_candidate_direct_kwargs",
+        "_candidate_optimize_config",
+        "_experiment_failure_config",
+        "_fit_response",
+        "_frame_records",
+        "_generate_candidates",
+        "_normalize_string_dtypes",
+        "_schema_dict",
+        "_to_dataframe",
+    }
+    assert removed_router_helpers.isdisjoint(vars(tabular_router))
 
 
 def test_removed_compatibility_and_patch_modules_do_not_exist() -> None:

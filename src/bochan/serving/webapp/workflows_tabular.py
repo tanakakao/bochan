@@ -16,6 +16,14 @@ from bochan.desktop.services import (
     _requires_beta,
 )
 
+from .composition_web_support import (
+    add_composition_candidate_rows,
+    composition_model_feature_columns,
+    composition_response_metadata,
+    extract_web_composition_request,
+    prepare_composition_encoded_features,
+    repair_composition_candidate_result,
+)
 from .level_set_settings import configure_level_set_acqf_kwargs
 from .logging import current_request_id, get_logger, log_event
 from .risk_settings import (
@@ -86,7 +94,11 @@ def _acquisition_family(acqf_kwargs: dict[str, Any]) -> str:
 
 
 def _normalized_acquisition_name(name: str) -> str:
-    return "".join(character for character in str(name).lower() if character.isalnum())
+    return "".join(
+        character
+        for character in str(name).lower()
+        if character.isalnum()
+    )
 
 
 def _set_active_learning_kwargs(
@@ -99,6 +111,7 @@ def _set_active_learning_kwargs(
     output_weights: Any | None = None,
 ) -> None:
     """Attach task/output-aware Active Learning constructor arguments."""
+
     task = str(task_type).lower()
     if multi_output:
         if output_weights is not None:
@@ -110,8 +123,6 @@ def _set_active_learning_kwargs(
 
     if acq_key in {"nipv", "qnipv"}:
         acqf_kwargs.setdefault("mc_points", train_x)
-        # Classification / ordinal NIPV implementations also expose observed
-        # exclusion. True Gaussian regression NIPV does not accept X_observed.
         if task != "regression":
             acqf_kwargs.setdefault("X_observed", train_x)
         return
@@ -125,7 +136,8 @@ def _set_active_learning_reference_kwargs(
     acq_key: str,
     train_x: object,
 ) -> None:
-    """Backward-compatible Regression single-output AL reference helper."""
+    """Configure single-output regression Active Learning references."""
+
     _set_active_learning_kwargs(
         acqf_kwargs,
         acq_key=acq_key,
@@ -199,11 +211,19 @@ def _multi_objective_config(
         )
     return ObjectiveConfig(
         mode="multi_output",
-        outputs=[target_columns.index(target) for target in objective_targets],
-        directions=[str(setting["direction"]) for setting in objective_settings],
+        outputs=[
+            target_columns.index(target)
+            for target in objective_targets
+        ],
+        directions=[
+            str(setting["direction"])
+            for setting in objective_settings
+        ],
         weights=[1.0] * len(objective_targets),
         eq_targets=[
-            float(setting["value"]) if setting["goal"] == "target" and not setting.get("legacy") else None
+            float(setting["value"])
+            if setting["goal"] == "target" and not setting.get("legacy")
+            else None
             for setting in objective_settings
         ],
     )
@@ -251,12 +271,23 @@ def _candidate_distance_tolerances(
 
     ratio = float(relative_distance)
     if ratio < 0 or ratio > 1:
-        raise ValueError("minimum_candidate_distance_ratio must be between 0 and 1.")
+        raise ValueError(
+            "minimum_candidate_distance_ratio must be between 0 and 1."
+        )
     lower = [float(value) for value in encoded["bounds"][0]]
     upper = [float(value) for value in encoded["bounds"][1]]
-    categorical = {int(index) for index in encoded["cat_dims"]}
-    fixed = {int(index) for index in encoded["fixed_features"]}
-    steps = {int(index): abs(float(value)) for index, value in encoded["steps"].items()}
+    categorical = {
+        int(index)
+        for index in encoded["cat_dims"]
+    }
+    fixed = {
+        int(index)
+        for index in encoded["fixed_features"]
+    }
+    steps = {
+        int(index): abs(float(value))
+        for index, value in encoded["steps"].items()
+    }
 
     tolerances: list[float] = []
     for index, (low, high) in enumerate(zip(lower, upper, strict=True)):
@@ -265,7 +296,9 @@ def _candidate_distance_tolerances(
             continue
         range_distance = abs(high - low) * ratio
         resolution_distance = 0.5 * steps.get(index, 0.0)
-        tolerances.append(max(range_distance, resolution_distance, 1e-12))
+        tolerances.append(
+            max(range_distance, resolution_distance, 1e-12)
+        )
     return tolerances
 
 
@@ -291,6 +324,8 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     timings_ms: dict[str, float] = {}
     request_id = current_request_id()
 
+    request, composition_config = extract_web_composition_request(request)
+
     target_columns, legacy_directions = _resolve_targets(request)
     target_settings, user_model_kwargs = _resolve_target_settings(
         request,
@@ -314,16 +349,24 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     acq_key = _normalized_acquisition_name(requested_acq_name)
 
     search_method_name = str(request.optimizer.name or "normal")
-    resolved_optimizer, optimizer_kwargs, search_requests_nsgaii = resolve_search_method(
-        search_method_name,
-        multi_objective=multi_objective,
+    resolved_optimizer, optimizer_kwargs, search_requests_nsgaii = (
+        resolve_search_method(
+            search_method_name,
+            multi_objective=multi_objective,
+        )
     )
     use_nsgaii = search_requests_nsgaii or acq_key in {"nsgaii", "nsga2"}
     if use_nsgaii and acquisition_family != "bayesian_optimization":
-        raise ValueError("NSGA-II is available only for multi-objective Bayesian optimization.")
+        raise ValueError(
+            "NSGA-II is available only for multi-objective Bayesian optimization."
+        )
 
     requested_model_type = str(request.model_type)
-    model_type = "rrp" if requested_model_type == "robust" else requested_model_type
+    model_type = (
+        "rrp"
+        if requested_model_type == "robust"
+        else requested_model_type
+    )
     display_model_type = "robust" if model_type == "rrp" else model_type
 
     preparation_started = perf_counter()
@@ -338,58 +381,109 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         drop_missing=request.drop_missing,
     )
 
-    # These helpers now provide Web search metadata only. The actual DataFrame-to-
-    # tensor conversion and category encoding used for fitting is performed by
-    # TabularBayesianOptimizer below.
-    encoded_features = _encode_features(
-        data=data,
-        feature_columns=feature_columns,
-        search_space=list(request.search_space or []),
+    if composition_config is None:
+        encoded_features = _encode_features(
+            data=data,
+            feature_columns=feature_columns,
+            search_space=list(request.search_space or []),
+        )
+    else:
+        encoded_features, composition_config = (
+            prepare_composition_encoded_features(
+                data=data,
+                feature_columns=feature_columns,
+                search_space=list(request.search_space or []),
+                config=composition_config,
+            )
+        )
+    encoded_targets, target_metadata = _encode_targets(
+        data,
+        target_settings,
     )
-    encoded_targets, target_metadata = _encode_targets(data, target_settings)
 
     feature_constraints = normalize_feature_constraints(
         list(request.constraints or []),
         feature_columns=feature_columns,
     )
-    processing_request = _request_with_constraints(request, feature_constraints)
+    processing_request = _request_with_constraints(
+        request,
+        feature_constraints,
+    )
+    constraint_feature_columns = composition_model_feature_columns(
+        feature_columns,
+        composition_config,
+    )
     equality_constraints, inequality_constraints = botorch_linear_constraints(
         feature_constraints,
-        feature_columns=feature_columns,
+        feature_columns=constraint_feature_columns,
     )
 
-    internal_tasks = [target_metadata[target]["internal_task"] for target in target_columns]
+    internal_tasks = [
+        target_metadata[target]["internal_task"]
+        for target in target_columns
+    ]
     direct_multitask_model_type = _resolve_direct_multitask_model_type(model_type)
     direct_multitask = direct_multitask_model_type is not None
     if direct_multitask:
         if acquisition_family != "bayesian_optimization":
-            raise ValueError("multitask is currently available only with Bayesian optimization in the Web workbench.")
+            raise ValueError(
+                "multitask is currently available only with Bayesian "
+                "optimization in the Web workbench."
+            )
         if len(target_columns) < 2:
-            raise ValueError("multitask requires at least two target columns.")
+            raise ValueError(
+                "multitask requires at least two target columns."
+            )
         if any(task != "regression" for task in internal_tasks):
-            raise ValueError("The Web workbench currently enables multitask only for homogeneous regression targets.")
+            raise ValueError(
+                "The Web workbench currently enables multitask only for "
+                "homogeneous regression targets."
+            )
         if encoded_features["cat_dims"]:
-            raise ValueError("multitask is not registered for mixed categorical inputs in multi-objective regression.")
+            raise ValueError(
+                "multitask is not registered for mixed categorical inputs "
+                "in multi-objective regression."
+            )
 
-    provisional_train_x = torch.as_tensor(encoded_features["X"], dtype=torch.double)
-    provisional_bounds = torch.as_tensor(encoded_features["bounds"], dtype=torch.double)
+    provisional_train_x = torch.as_tensor(
+        encoded_features["X"],
+        dtype=torch.double,
+    )
+    provisional_bounds = torch.as_tensor(
+        encoded_features["bounds"],
+        dtype=torch.double,
+    )
     timings_ms["prepare"] = round(
         (perf_counter() - preparation_started) * 1000,
         3,
     )
 
     importance_settings = getattr(request, "feature_importance", None)
-    importance_enabled = bool(importance_settings and importance_settings.enabled)
+    importance_enabled = bool(
+        importance_settings and importance_settings.enabled
+    )
     importance_source = None
     effective_cv_config = dict(request.cv_config or {})
     if importance_enabled:
         importance_source = importance_settings.source
         if importance_source == "auto":
-            importance_source = "cross_validation" if request.cross_validation else "training"
-        if importance_source == "cross_validation" and not request.cross_validation:
-            raise ValueError("Cross-validation feature importance requires cross_validation=true.")
+            importance_source = (
+                "cross_validation"
+                if request.cross_validation
+                else "training"
+            )
+        if (
+            importance_source == "cross_validation"
+            and not request.cross_validation
+        ):
+            raise ValueError(
+                "Cross-validation feature importance requires "
+                "cross_validation=true."
+            )
         if importance_source == "cross_validation":
-            effective_cv_config["feature_importance_config"] = importance_settings.config.model_dump()
+            effective_cv_config["feature_importance_config"] = (
+                importance_settings.config.model_dump()
+            )
 
     input_transform_config = InputTransformConfig(
         normalize=request.normalize,
@@ -464,21 +558,29 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         fit_config=fit_config,
         cross_validation=request.cross_validation,
         cv_config=effective_cv_config or None,
+        composition_config=composition_config,
     )
     dataset = tabular_optimizer.dataset
     if dataset is None or dataset.Y is None:
-        raise RuntimeError("TabularBayesianOptimizer did not produce fitted X/Y data.")
+        raise RuntimeError(
+            "TabularBayesianOptimizer did not produce fitted X/Y data."
+        )
     optimizer = tabular_optimizer.bo
     train_x = dataset.X
     train_y = dataset.Y
     bounds = dataset.bounds
     if bounds is None:
-        raise RuntimeError("TabularBayesianOptimizer did not resolve search bounds.")
+        raise RuntimeError(
+            "TabularBayesianOptimizer did not resolve search bounds."
+        )
     encoded_features = encoded_features_from_tabular(
         tabular_optimizer,
         encoded_features,
     )
-    timings_ms["fit"] = round((perf_counter() - fit_started) * 1000, 3)
+    timings_ms["fit"] = round(
+        (perf_counter() - fit_started) * 1000,
+        3,
+    )
 
     importance_result = None
     importance_warnings: list[str] = []
@@ -495,34 +597,54 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
                     None,
                 )
                 if importance_result is None:
-                    raise RuntimeError("Cross-validation did not return feature importance.")
+                    raise RuntimeError(
+                        "Cross-validation did not return feature importance."
+                    )
                 from bochan.visualization import (
                     cross_validated_feature_importance_dataframe,
                 )
 
                 frames = [
-                    cross_validated_feature_importance_dataframe(importance_result, output_name=name)
+                    cross_validated_feature_importance_dataframe(
+                        importance_result,
+                        output_name=name,
+                    )
                     for name in importance_result.outputs
                 ]
             else:
                 importance_result = tabular_optimizer.feature_importance(
-                    config=importance_settings.config.model_dump(exclude={"feature_groups"}),
-                    feature_groups=[group.model_dump() for group in importance_settings.config.feature_groups],
+                    config=importance_settings.config.model_dump(
+                        exclude={"feature_groups"}
+                    ),
+                    feature_groups=[
+                        group.model_dump()
+                        for group in importance_settings.config.feature_groups
+                    ],
                 )
                 frames = [
-                    tabular_optimizer.feature_importance_dataframe(importance_result, output_name=name)
+                    tabular_optimizer.feature_importance_dataframe(
+                        importance_result,
+                        output_name=name,
+                    )
                     for name in importance_result.outputs
                 ]
                 model_diagnostics = {
-                    name: output.model_diagnostics for name, output in importance_result.outputs.items()
+                    name: output.model_diagnostics
+                    for name, output in importance_result.outputs.items()
                 }
             for frame in frames:
-                importance_summary.extend(frame.to_dict(orient="records"))
-            importance_warnings.extend(getattr(importance_result, "warnings", []))
+                importance_summary.extend(
+                    frame.to_dict(orient="records")
+                )
+            importance_warnings.extend(
+                getattr(importance_result, "warnings", [])
+            )
         except Exception as exc:
             if importance_settings.config.error_policy == "raise":
                 raise
-            importance_warnings.append(f"Feature importance failed: {exc}")
+            importance_warnings.append(
+                f"Feature importance failed: {exc}"
+            )
             importance_result = None
         timings_ms["feature_importance"] = round(
             (perf_counter() - importance_started) * 1000,
@@ -530,9 +652,11 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         )
         if importance_result is not None:
             view_started = perf_counter()
-            importance_visualizations, view_warnings = _build_feature_importance_visualizations(
-                importance_result,
-                visualization_config=importance_settings.visualization,
+            importance_visualizations, view_warnings = (
+                _build_feature_importance_visualizations(
+                    importance_result,
+                    visualization_config=importance_settings.visualization,
+                )
             )
             importance_warnings.extend(view_warnings)
             timings_ms["feature_importance_visualization"] = round(
@@ -542,7 +666,10 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
 
     if hybrid_model:
         objective_values_full = normalize_web_prediction_rows(
-            optimizer.model.posterior(train_x, output_mode="objective").mean,
+            optimizer.model.posterior(
+                train_x,
+                output_mode="objective",
+            ).mean,
             n_rows=int(train_x.shape[0]),
             report=risk_settings,
         ).detach()
@@ -564,7 +691,9 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         target_columns=target_columns,
         directions=directions,
         hybrid_model=hybrid_model,
-        exclude_optimized_boundaries=acquisition_family == "level_set_estimation",
+        exclude_optimized_boundaries=(
+            acquisition_family == "level_set_estimation"
+        ),
     )
 
     objective_config: Any | None
@@ -574,10 +703,19 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     if acquisition_family == "bayesian_optimization":
         if not multi_objective:
             if acq_key not in {"ei", "nei", "pi", "ucb"}:
-                raise ValueError(f"Single-objective Bayesian optimization requires EI, PI, or UCB, got {acq_name}.")
-            if _requires_best_f(acq_name.upper()) and "best_f" not in acqf_kwargs:
+                raise ValueError(
+                    "Single-objective Bayesian optimization requires EI, PI, "
+                    f"or UCB, got {acq_name}."
+                )
+            if (
+                _requires_best_f(acq_name.upper())
+                and "best_f" not in acqf_kwargs
+            ):
                 acqf_kwargs["best_f"] = objective_values[:, 0].max()
-            if _requires_beta(acq_name.upper()) and "beta" not in acqf_kwargs:
+            if (
+                _requires_beta(acq_name.upper())
+                and "beta" not in acqf_kwargs
+            ):
                 acqf_kwargs["beta"] = request.acquisition.beta
 
             active_setting = objective_settings[0]
@@ -595,7 +733,8 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
                     direction=str(active_setting["direction"]),
                     eq_target=(
                         float(active_setting["value"])
-                        if active_setting["goal"] == "target" and not active_setting.get("legacy")
+                        if active_setting["goal"] == "target"
+                        and not active_setting.get("legacy")
                         else None
                     ),
                 )
@@ -614,7 +753,9 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
                 "nsga2",
             }:
                 raise ValueError(
-                    f"Multi-objective Bayesian optimization requires EHVI, NEHVI, NParEGO, or NSGA-II, got {acq_name}."
+                    "Multi-objective Bayesian optimization requires EHVI, "
+                    "NEHVI, NParEGO, or NSGA-II, "
+                    f"got {acq_name}."
                 )
             ref_point = _reference_point(objective_values)
             partitioning = None
@@ -648,11 +789,15 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
             "nipv",
             "qnipv",
         }:
-            raise ValueError(f"Active learning supports variance, predictive_entropy, BALD, or NIPV, got {acq_name}.")
+            raise ValueError(
+                "Active learning supports variance, predictive_entropy, "
+                f"BALD, or NIPV, got {acq_name}."
+            )
         objective_config = None
         homogeneous_task = (
             internal_tasks[0]
-            if internal_tasks and all(task == internal_tasks[0] for task in internal_tasks)
+            if internal_tasks
+            and all(task == internal_tasks[0] for task in internal_tasks)
             else "hybrid"
         )
         _set_active_learning_kwargs(
@@ -672,7 +817,10 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         )
     else:
         if acq_key not in {"straddle", "boundaryvariance", "icu"}:
-            raise ValueError(f"Level-set estimation supports straddle, boundary_variance, or ICU, got {acq_name}.")
+            raise ValueError(
+                "Level-set estimation supports straddle, boundary_variance, "
+                f"or ICU, got {acq_name}."
+            )
         objective_config = None
         configure_level_set_acqf_kwargs(
             acqf_kwargs,
@@ -709,7 +857,13 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         encoded=encoded_features,
         bounds=bounds,
     )
-    minimum_distance_ratio = float(getattr(request.optimizer, "minimum_candidate_distance_ratio", 1e-3))
+    minimum_distance_ratio = float(
+        getattr(
+            request.optimizer,
+            "minimum_candidate_distance_ratio",
+            1e-3,
+        )
+    )
     duplicate_tolerances = _candidate_distance_tolerances(
         encoded_features,
         relative_distance=minimum_distance_ratio,
@@ -744,6 +898,11 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         data_context=data_context,
         return_result=True,
     )
+    if composition_config is not None:
+        candidate_result = repair_composition_candidate_result(
+            tabular_optimizer,
+            candidate_result,
+        )
     raw_candidates = candidate_result.candidates
     raw_acq_value = candidate_result.acq_value
     candidates = _postprocess_candidates(
@@ -785,13 +944,23 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         target_metadata=target_metadata,
         hybrid_model=hybrid_model,
     )
+    if composition_config is not None:
+        rows = add_composition_candidate_rows(
+            rows,
+            tabular_optimizer=tabular_optimizer,
+            candidates=candidates,
+            config=composition_config,
+        )
     for row in rows:
         feature_results = feature_constraint_results(
             row["values"],
             feature_constraints,
         )
         row["constraints"].extend(feature_results)
-        row["constraints_ok"] = bool(row["constraints_ok"]) and all(result["ok"] for result in feature_results)
+        row["constraints_ok"] = bool(row["constraints_ok"]) and all(
+            result["ok"]
+            for result in feature_results
+        )
     timings_ms["prediction"] = round(
         (perf_counter() - prediction_started) * 1000,
         3,
@@ -823,7 +992,10 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     else:
         best_observed_value = best_observed_by_target
 
-    task_type = _response_task_type(target_settings, target_columns)
+    task_type = _response_task_type(
+        target_settings,
+        target_columns,
+    )
     serializable_settings = _serializable_target_settings(target_settings)
     timings_ms["total"] = round(
         (perf_counter() - workflow_started) * 1000,
@@ -850,7 +1022,11 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
     )
 
     first_target = objective_targets[0]
-    internal_model_type = direct_multitask_model_type if direct_multitask else model_type
+    internal_model_type = (
+        direct_multitask_model_type
+        if direct_multitask
+        else model_type
+    )
     return {
         "dataset_id": record.dataset_id,
         "dataset_name": record.name,
@@ -866,7 +1042,9 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         "direction": directions[first_target],
         "outcome_constraints": [],
         "cat_dims": encoded_features["cat_dims"],
-        "category_maps": to_serializable(encoded_features["category_maps"]),
+        "category_maps": to_serializable(
+            encoded_features["category_maps"]
+        ),
         "target_metadata": to_serializable(target_metadata),
         "best_observed": best_observed_value,
         "best_observed_by_target": best_observed_by_target,
@@ -880,11 +1058,15 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         "feature_importance_source": importance_source,
         "feature_importance_summary": to_serializable(importance_summary),
         "feature_importance_visualizations": importance_visualizations,
-        "feature_importance_warnings": list(dict.fromkeys(importance_warnings)),
+        "feature_importance_warnings": list(
+            dict.fromkeys(importance_warnings)
+        ),
         "model_diagnostics": to_serializable(model_diagnostics),
         "metadata": {
             "request_id": request_id,
-            "dropped_rows": int(record.profile["n_rows"] - len(data)),
+            "dropped_rows": int(
+                record.profile["n_rows"] - len(data)
+            ),
             "acquisition_family": acquisition_family,
             "acquisition": acq_name,
             "requested_acquisition": requested_acq_name,
@@ -899,7 +1081,13 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
                 "unique_count": unique_candidate_count,
                 "sequential": bool(request.optimizer.sequential),
                 "minimum_distance_ratio": minimum_distance_ratio,
-                "per_feature_tolerances": dict(zip(feature_columns, duplicate_tolerances, strict=True)),
+                "per_feature_tolerances": dict(
+                    zip(
+                        encoded_features["feature_columns"],
+                        duplicate_tolerances,
+                        strict=True,
+                    )
+                ),
                 "warning": uniqueness_warning,
             },
             "n_feature_constraints": len(feature_constraints),
@@ -907,13 +1095,28 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
             "n_optimized_targets": len(objective_targets),
             "target_columns": target_columns,
             "optimized_targets": objective_targets,
-            "constraint_only_targets": [target for target in target_columns if target not in objective_targets],
+            "constraint_only_targets": [
+                target
+                for target in target_columns
+                if target not in objective_targets
+            ],
             "target_settings": serializable_settings,
             "internal_tasks": internal_tasks,
             "internal_model_type": internal_model_type,
             "hybrid_model": hybrid_model,
             "timings_ms": timings_ms,
-            "cross_validation": to_serializable(tabular_optimizer.cross_validation_result_),
+            "cross_validation": to_serializable(
+                tabular_optimizer.cross_validation_result_
+            ),
+            **(
+                {
+                    "composition": composition_response_metadata(
+                        composition_config
+                    )
+                }
+                if composition_config is not None
+                else {}
+            ),
         },
     }
 

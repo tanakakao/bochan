@@ -1,0 +1,73 @@
+name: API registry codemod
+
+on:
+  push:
+    branches:
+      - agent/api-registry-layout
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.event.head_commit.message == 'Run API registry codemod'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/api-registry-layout
+          fetch-depth: 0
+      - name: Migrate registry imports
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          root = Path('.')
+          suffixes = {'.py', '.md', '.yml', '.yaml', '.toml', '.txt'}
+          replacements = (
+              ('from .model_registry import', 'from .registry.model import'),
+              ('from ..model_registry import', 'from ..registry.model import'),
+              ('from ...model_registry import', 'from ...registry.model import'),
+              ('from .acquisition_registry import', 'from .registry.acquisition import'),
+              ('from ..acquisition_registry import', 'from ..registry.acquisition import'),
+              ('from ...acquisition_registry import', 'from ...registry.acquisition import'),
+              ('from bochan.api import model_registry', 'from bochan.api.registry import model as model_registry'),
+              ('from bochan.api import acquisition_registry', 'from bochan.api.registry import acquisition as acquisition_registry'),
+              ('bochan.api.model_registry', 'bochan.api.registry.model'),
+              ('bochan.api.acquisition_registry', 'bochan.api.registry.acquisition'),
+              ('src/bochan/api/model_registry.py', 'src/bochan/api/registry/model.py'),
+              ('src/bochan/api/acquisition_registry.py', 'src/bochan/api/registry/acquisition.py'),
+          )
+
+          for path in root.rglob('*'):
+              if not path.is_file() or path.suffix not in suffixes:
+                  continue
+              if '.git' in path.parts:
+                  continue
+              text = path.read_text(encoding='utf-8')
+              updated = text
+              for old, new in replacements:
+                  updated = updated.replace(old, new)
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+
+          for path in (
+              Path('src/bochan/api/model_registry.py'),
+              Path('src/bochan/api/acquisition_registry.py'),
+          ):
+              path.unlink()
+
+          Path('.github/workflows/api-registry-codemod.yml').unlink()
+          PY
+
+          if git grep -n -E 'bochan\.api\.(model_registry|acquisition_registry)|src/bochan/api/(model_registry|acquisition_registry)\.py' -- ':!*.lock'; then
+            echo 'Old registry path remains after codemod.' >&2
+            exit 1
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Move API registries into registry package'
+          git push origin HEAD:agent/api-registry-layout

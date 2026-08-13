@@ -4,8 +4,13 @@ import importlib.util
 
 import bochan.api as api
 import bochan.tabular as tabular
-from bochan.tabular import composition_bounds_optimizer, optimizer_api
+from bochan.tabular import (
+    composition_bounds_optimizer,
+    element_column_composition_optimizer,
+    optimizer_api,
+)
 from bochan.tabular import optimizer as legacy_optimizer
+from bochan.tabular.composition_element_columns import CompositionElementColumnTransform
 from bochan.tabular.composition_element_constraint_candidates import (
     CompositionElementConstraintCandidateReranker,
 )
@@ -36,6 +41,18 @@ def test_composition_bounds_is_component_not_optimizer_layer() -> None:
         tabular.TabularBayesianOptimizer.composition_bounds_resolver,
         composition_bounds_optimizer.CompositionBoundsResolver,
     )
+
+
+def test_element_columns_use_explicit_transform_component() -> None:
+    assert isinstance(
+        tabular.TabularBayesianOptimizer.composition_element_column_transform,
+        CompositionElementColumnTransform,
+    )
+    adapter = element_column_composition_optimizer.TabularBayesianOptimizer
+    assert "_with_internal_formula_columns" not in vars(adapter)
+    assert "_numeric_site_values" not in vars(adapter)
+    assert "_site_source_columns" not in vars(adapter)
+    assert adapter._prepare_multi_site_frame.__module__ == ("bochan.tabular.element_column_composition_optimizer")
 
 
 def test_composition_total_constraints_use_explicit_resolver() -> None:

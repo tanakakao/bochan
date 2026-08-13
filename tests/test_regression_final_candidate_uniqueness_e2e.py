@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from bochan.api import OptimizeConfig
-from bochan.api.candidate_uniqueness import count_unique_candidate_rows
+from bochan.api.candidate.uniqueness import count_unique_candidate_rows
 from bochan.api.optimizer_dispatch import optimize_candidates
 from bochan.serving.webapp.target_results import (
     _batch_acq_value,

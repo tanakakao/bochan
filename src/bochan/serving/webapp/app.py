@@ -12,7 +12,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
-from bochan.api.model_capabilities import BETA_MODEL_TYPES
+from bochan.api.registry.capabilities import BETA_MODEL_TYPES
 from bochan.desktop.services import (
     DatasetStore,
     build_dataset_record,

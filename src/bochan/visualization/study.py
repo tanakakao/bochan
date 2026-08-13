@@ -7,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 
-from bochan.api.study_results import (
+from bochan.api.study.results import (
     _resolve_direction,
     _row_values,
     _trial_value,

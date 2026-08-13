@@ -31,7 +31,7 @@ from .engine import (
     _resolve_mixed_fixed_features_from_train_X,
     _resolve_mixed_optimizer_callable,
 )
-from .experiment_failure import attach_observation_state
+from .observation.failure import attach_observation_state
 from .factory import fit_model
 from .llm import LLMCandidateExplanationMixin, LLMSuggestionMixin
 from .observation import ExperimentFailureConfig, ObservationData

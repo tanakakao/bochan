@@ -7,7 +7,7 @@ import pytest
 import torch
 
 from bochan.api import OptimizeConfig
-from bochan.api.candidate_uniqueness import ensure_unique_candidates
+from bochan.api.candidate.uniqueness import ensure_unique_candidates
 
 
 class _PendingAwareAcquisition:

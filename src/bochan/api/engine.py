@@ -206,7 +206,7 @@ class BayesianOptimizer:
         Returns:
             A ``CrossValidationResult`` grouped by output.
         """
-        from .cross_validation import cross_validate_optimizer
+        from .evaluation.cross_validation import cross_validate_optimizer
 
         return cross_validate_optimizer(
             self,

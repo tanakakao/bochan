@@ -7,7 +7,7 @@ from dataclasses import replace
 from typing import Any
 
 from . import factory as _factory
-from .candidate_uniqueness import ensure_unique_candidates
+from .candidate.uniqueness import ensure_unique_candidates
 from .configs import OptimizeConfig as _BaseOptimizeConfig
 from .optimizer_support import (
     _force_sequential_for_kronecker,

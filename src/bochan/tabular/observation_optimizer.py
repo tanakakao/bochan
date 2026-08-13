@@ -6,7 +6,7 @@ from dataclasses import replace
 from typing import Any
 
 from bochan.api import ExperimentFailureConfig
-from bochan.api.experiment_failure import attach_observation_state
+from bochan.api.observation.failure import attach_observation_state
 
 from .config import ColumnKey, TabularDataConfig
 from .observation_data import (

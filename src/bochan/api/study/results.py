@@ -6,7 +6,7 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any, Literal
 
-from .study import Trial, TrialState
+from .core import Trial, TrialState
 
 Direction = Literal["maximize", "minimize"]
 
@@ -383,32 +383,64 @@ def _best_params_property(self: Any) -> dict[str, Any]:
     return get_best_params(self)
 
 
-def install_study_result_api(cls: type) -> type:
-    """Install result helpers on a Study class once."""
-    if getattr(cls, "_bochan_result_api_installed", False):
-        return cls
-    cls.best_trials = best_trials
-    cls.get_best_trial = get_best_trial
-    cls.get_best_value = get_best_value
-    cls.get_best_x = get_best_x
-    cls.get_best_params = get_best_params
-    cls.best_result = best_result
-    cls.pareto_trials = pareto_trials
-    cls.best_trial = property(_best_trial_property)
-    cls.best_value = property(_best_value_property)
-    cls.best_x = property(_best_x_property)
-    cls.best_params = property(_best_params_property)
-    cls._bochan_result_api_installed = True
-    return cls
+class StudyResultMixin:
+    """Explicit Optuna-like result API shared by public study classes."""
+
+    def best_trials(self, *, top_k: int = 1, output_index: int = 0, direction: Any | None = None) -> list[Trial]:
+        return best_trials(self, top_k=top_k, output_index=output_index, direction=direction)
+
+    def get_best_trial(self, *, output_index: int = 0, direction: Any | None = None) -> Trial:
+        return get_best_trial(self, output_index=output_index, direction=direction)
+
+    def get_best_value(self, *, output_index: int = 0, direction: Any | None = None) -> float:
+        return get_best_value(self, output_index=output_index, direction=direction)
+
+    def get_best_x(self, *, output_index: int = 0, direction: Any | None = None) -> Any:
+        return get_best_x(self, output_index=output_index, direction=direction)
+
+    def get_best_params(self, *, param_names: Sequence[str] | None = None, output_index: int = 0, direction: Any | None = None) -> dict[str, Any]:
+        return get_best_params(
+            self,
+            param_names=param_names,
+            output_index=output_index,
+            direction=direction,
+        )
+
+    def best_result(self, *, param_names: Sequence[str] | None = None, output_index: int = 0, direction: Any | None = None) -> dict[str, Any]:
+        return best_result(
+            self,
+            param_names=param_names,
+            output_index=output_index,
+            direction=direction,
+        )
+
+    def pareto_trials(self, *, output_indices: Sequence[int] | None = None, directions: Sequence[Any] | None = None) -> list[Trial]:
+        return pareto_trials(self, output_indices=output_indices, directions=directions)
+
+    @property
+    def best_trial(self) -> Trial:
+        return _best_trial_property(self)
+
+    @property
+    def best_value(self) -> float:
+        return _best_value_property(self)
+
+    @property
+    def best_x(self) -> Any:
+        return _best_x_property(self)
+
+    @property
+    def best_params(self) -> dict[str, Any]:
+        return _best_params_property(self)
 
 
-__all__ = [
+    __all__ = [
     "best_result",
     "best_trials",
     "get_best_params",
     "get_best_trial",
     "get_best_value",
     "get_best_x",
-    "install_study_result_api",
+    "StudyResultMixin",
     "pareto_trials",
 ]

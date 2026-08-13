@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .candidate_uniqueness import ensure_unique_candidates
+from .candidate.uniqueness import ensure_unique_candidates
 from .configs import OptimizeConfig as _BaseOptimizeConfig
 from .configs.optimize import (
     OptimizeConfig,

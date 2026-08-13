@@ -5,7 +5,7 @@ import importlib.util
 import bochan.api as api
 import bochan.tabular as tabular
 from bochan.tabular import composition_bounds_optimizer, optimizer_api
-from bochan.tabular import optimizer as legacy_optimizer
+from bochan.tabular import optimizer as tabular_optimizer
 from bochan.tabular.composition_element_columns import CompositionElementColumnTransform
 from bochan.tabular.composition_element_constraint_candidates import (
     CompositionElementConstraintCandidateReranker,
@@ -26,9 +26,16 @@ def test_tabular_public_optimizer_has_one_canonical_entry_point() -> None:
     assert tabular.TabularBayesianOptimizer.__module__ == "bochan.tabular.public_optimizer"
 
 
+def test_legacy_single_site_composition_optimizer_is_removed() -> None:
+    assert importlib.util.find_spec("bochan.tabular.composition_optimizer") is None
+    assert all(
+        cls.__module__ != "bochan.tabular.composition_optimizer"
+        for cls in tabular.TabularBayesianOptimizer.__mro__
+    )
+
+
 def test_composition_bounds_is_component_not_optimizer_layer() -> None:
     assert "TabularBayesianOptimizer" not in vars(composition_bounds_optimizer)
-    assert not hasattr(composition_bounds_optimizer, "TabularBayesianOptimizer")
     assert all(
         base.__module__ != "bochan.tabular.composition_bounds_optimizer"
         for base in tabular.TabularBayesianOptimizer.__mro__
@@ -66,10 +73,6 @@ def test_composition_total_constraints_use_explicit_resolver() -> None:
     assert isinstance(
         tabular.TabularBayesianOptimizer.composition_total_constraint_resolver,
         CompositionTotalConstraintResolver,
-    )
-    assert (
-        tabular.TabularBayesianOptimizer._normalize_total_constraints.__func__
-        is not None
     )
     assert (
         tabular.TabularBayesianOptimizer._normalize_total_constraints.__module__
@@ -116,10 +119,6 @@ def test_element_constraints_use_explicit_components_without_optimizer_layer() -
         for cls in tabular.TabularBayesianOptimizer.__mro__
     )
     assert (
-        tabular.TabularBayesianOptimizer.inverse_compositions.__module__
-        == "bochan.tabular.public_optimizer"
-    )
-    assert (
         tabular.TabularBayesianOptimizer.candidate.__module__
         == "bochan.tabular.public_optimizer"
     )
@@ -133,13 +132,13 @@ def test_tabular_import_does_not_patch_core_candidate_method() -> None:
     assert api.BayesianOptimizer.candidate.__module__ == "bochan.api.optimizer"
 
 
-def test_tabular_import_does_not_patch_legacy_init_or_predict_methods() -> None:
+def test_tabular_import_does_not_patch_internal_init_or_predict_methods() -> None:
     assert not getattr(
         optimizer_api.TabularBayesianOptimizer.__init__,
         "_bochan_supports_output_categories",
         False,
     )
     assert not hasattr(
-        legacy_optimizer.TabularBayesianOptimizer,
+        tabular_optimizer.TabularBayesianOptimizer,
         "_bochan_predict_before_tabular_labels",
     )

@@ -7,7 +7,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
-from ..optimizer_support import (
+from ..optimizer.support import (
     _ALIASES,
     _CANONICAL_OPTIMIZERS,
     _EVOLUTIONARY_METHODS,

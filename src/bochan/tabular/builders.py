@@ -39,11 +39,16 @@ def _take_fields(cls: type, values: dict[str, Any]) -> dict[str, Any]:
     return taken
 
 
-def _take_aliases(values: dict[str, Any], aliases: dict[str, str]) -> dict[str, Any]:
+def _take_prefixed_fields(
+    values: dict[str, Any],
+    field_map: Mapping[str, str],
+) -> dict[str, Any]:
+    '''Map explicit flattened tabular fields to nested config field names.'''
+
     taken: dict[str, Any] = {}
-    for alias, target in aliases.items():
-        if alias in values:
-            taken[target] = values.pop(alias)
+    for source, target in field_map.items():
+        if source in values:
+            taken[target] = values.pop(source)
     return taken
 
 
@@ -112,8 +117,6 @@ def _split_linear_constraints(constraints: Any | None) -> tuple[list[Any], list[
         elif normalized_sense == "ge":
             inequality_constraints.append((indices, coefficients, rhs))
         else:
-            # BoTorch inequality constraints use a^T x >= rhs.  Convert
-            # a^T x <= rhs to (-a)^T x >= -rhs.
             inequality_constraints.append(
                 (
                     indices,
@@ -124,19 +127,15 @@ def _split_linear_constraints(constraints: Any | None) -> tuple[list[Any], list[
     return equality_constraints, inequality_constraints
 
 
-def _merge_base_dict(base: Any | None, values: dict[str, Any]) -> tuple[Any | None, dict[str, Any]]:
-    '''Merge a user-facing config dict with direct override values.'''
+def _merge_base_dict(
+    base: Any | None,
+    values: dict[str, Any],
+) -> tuple[Any | None, dict[str, Any]]:
+    '''Merge a config mapping with explicitly supplied direct values.'''
 
     if isinstance(base, Mapping):
         merged = dict(base)
-        for key, value in values.items():
-            # TabularBayesianOptimizer.candidate historically passes
-            # repair_config=None when the direct repair_config argument is not
-            # supplied.  Do not let that synthetic None erase a nested
-            # repair_config that the user provided inside opt_config={...}.
-            if key == "repair_config" and value is None and key in merged:
-                continue
-            merged[key] = value
+        merged.update(values)
         return None, merged
     return base, values
 
@@ -190,8 +189,11 @@ def _coerce_model_config_values(values: dict[str, Any]) -> dict[str, Any]:
     return values
 
 
-def make_model_config(model_config: ModelConfig | Mapping[str, Any] | None = None, **values: Any) -> ModelConfig:
-    '''Create or update ``ModelConfig`` from direct keyword arguments or a dict.'''
+def make_model_config(
+    model_config: ModelConfig | Mapping[str, Any] | None = None,
+    **values: Any,
+) -> ModelConfig:
+    '''Create or update ``ModelConfig`` from direct keyword arguments or a mapping.'''
 
     values = drop_unset(values)
     model_config, values = _merge_base_dict(model_config, values)
@@ -205,17 +207,19 @@ def make_model_config(model_config: ModelConfig | Mapping[str, Any] | None = Non
     return replace(model_config, **model_values) if model_values else model_config
 
 
-def make_fit_config(fit_config: FitConfig | Mapping[str, Any] | None = None, **values: Any) -> FitConfig | None:
-    '''Create or update ``FitConfig`` from direct keyword arguments or a dict.'''
+def make_fit_config(
+    fit_config: FitConfig | Mapping[str, Any] | None = None,
+    **values: Any,
+) -> FitConfig | None:
+    '''Create or update ``FitConfig`` from canonical or flattened tabular fields.'''
 
     values = drop_unset(values)
     fit_config, values = _merge_base_dict(fit_config, values)
-    fit_values = _take_aliases(
+    fit_values = _take_prefixed_fields(
         values,
         {
             "fit_method": "method",
             "fit_optimizer_kwargs": "optimizer_kwargs",
-            "fit_beta": "beta",
         },
     )
     fit_values.update(_take_fields(FitConfig, values))
@@ -229,11 +233,11 @@ def make_objective_config(
     objective_config: ObjectiveConfig | Mapping[str, Any] | None = None,
     **values: Any,
 ) -> ObjectiveConfig | None:
-    '''Create or update ``ObjectiveConfig`` from direct keyword arguments or a dict.'''
+    '''Create or update ``ObjectiveConfig`` from canonical or flattened fields.'''
 
     values = drop_unset(values)
     objective_config, values = _merge_base_dict(objective_config, values)
-    objective_values = _take_aliases(
+    objective_values = _take_prefixed_fields(
         values,
         {
             "objective_mode": "mode",
@@ -268,13 +272,17 @@ def make_acquisition_config(
     acq_config: AcquisitionConfig | Mapping[str, Any] | None = None,
     **values: Any,
 ) -> AcquisitionConfig:
-    '''Create or update ``AcquisitionConfig`` from direct keyword arguments or a dict.'''
+    '''Create or update ``AcquisitionConfig`` from direct fields or a mapping.'''
 
     values = drop_unset(values)
     acq_config, values = _merge_base_dict(acq_config, values)
-    name = values.pop("acq_name", UNSET)
-    if name is UNSET:
-        name = values.pop("name", UNSET)
+
+    direct_name = values.pop("acq_name", UNSET)
+    config_name = values.get("name", UNSET)
+    if direct_name is not UNSET and config_name is not UNSET:
+        raise ValueError("Specify either acq_name or name, not both.")
+    if direct_name is not UNSET:
+        values["name"] = direct_name
 
     objective_config = values.pop("objective_config", None)
     objective_direct: dict[str, Any] = {}
@@ -282,11 +290,12 @@ def make_acquisition_config(
         if key.startswith("objective_"):
             objective_direct[key] = values.pop(key)
     if objective_config is not None or objective_direct:
-        objective_config = make_objective_config(objective_config, **objective_direct)
+        objective_config = make_objective_config(
+            objective_config,
+            **objective_direct,
+        )
 
     acq_values = _take_fields(AcquisitionConfig, values)
-    if name is not UNSET:
-        acq_values["name"] = name
     if objective_config is not None:
         acq_values["objective_config"] = objective_config
 
@@ -305,11 +314,11 @@ def make_repair_config(
     repair_config: CandidateRepairConfig | Mapping[str, Any] | None = None,
     **values: Any,
 ) -> CandidateRepairConfig | None:
-    '''Create or update ``CandidateRepairConfig`` from direct keyword arguments or a dict.'''
+    '''Create or update ``CandidateRepairConfig`` from canonical or flattened fields.'''
 
     values = drop_unset(values)
     repair_config, values = _merge_base_dict(repair_config, values)
-    repair_values = _take_aliases(
+    repair_values = _take_prefixed_fields(
         values,
         {
             "repair_bounds": "bounds",
@@ -336,14 +345,19 @@ def _repair_config_has_explicit_inequality_constraints(repair_config: Any) -> bo
     return getattr(repair_config, "inequality_constraints", None) is not None
 
 
-def make_optimize_config(opt_config: OptimizeConfig | Mapping[str, Any] | None = None, **values: Any) -> OptimizeConfig:
-    '''Create or update ``OptimizeConfig`` and nested repair config from direct kwargs or a dict.'''
+def make_optimize_config(
+    opt_config: OptimizeConfig | Mapping[str, Any] | None = None,
+    **values: Any,
+) -> OptimizeConfig:
+    '''Create or update ``OptimizeConfig`` and its nested repair config.'''
 
     values = drop_unset(values)
     opt_config, values = _merge_base_dict(opt_config, values)
 
     unified_constraints = values.pop("constraints", None)
-    parsed_equalities, parsed_inequalities = _split_linear_constraints(unified_constraints)
+    parsed_equalities, parsed_inequalities = _split_linear_constraints(
+        unified_constraints
+    )
     if parsed_equalities:
         values["equality_constraints"] = _append_constraints(
             values.get("equality_constraints"),
@@ -360,7 +374,7 @@ def make_optimize_config(opt_config: OptimizeConfig | Mapping[str, Any] | None =
 
     repair_direct: dict[str, Any] = {}
     repair_field_names = _field_names(CandidateRepairConfig) - _field_names(OptimizeConfig)
-    repair_aliases = {
+    repair_flattened_fields = {
         "repair_bounds",
         "repair_fixed_features",
         "repair_equality_constraints",
@@ -368,7 +382,7 @@ def make_optimize_config(opt_config: OptimizeConfig | Mapping[str, Any] | None =
         "repair_inequality_sense",
     }
     for key in list(values):
-        if key in repair_field_names or key in repair_aliases:
+        if key in repair_field_names or key in repair_flattened_fields:
             repair_direct[key] = values.pop(key)
 
     if (
@@ -381,9 +395,6 @@ def make_optimize_config(opt_config: OptimizeConfig | Mapping[str, Any] | None =
         and "repair_inequality_sense" not in repair_direct
         and "inequality_sense" not in repair_direct
     ):
-        # Unified constraints are canonicalized to BoTorch's a^T x >= rhs
-        # convention.  When repair falls back to these top-level inequalities,
-        # it must use the same sense.
         repair_direct["repair_inequality_sense"] = "ge"
 
     if repair_config is not None or repair_direct:

@@ -13,9 +13,7 @@ from typing import Any
 
 import numpy as np
 
-from bochan.tabular.composition_element_constraints import (
-    CompositionElementConstraintResolver,
-)
+from bochan.tabular.composition.constraints import CompositionElementConstraintResolver
 
 _SITE_NAME = "composition"
 
@@ -431,7 +429,7 @@ def repair_composition_candidate_result(
 ) -> Any:
     """Repair candidate compositions and return them in the fitted model space."""
 
-    from bochan.tabular.converter import dataframe_to_tensors
+    from bochan.tabular.data import dataframe_to_tensors
 
     raw_frame = optimizer.candidates_to_dataframe(result.candidates)
     restored = optimizer.inverse_compositions(

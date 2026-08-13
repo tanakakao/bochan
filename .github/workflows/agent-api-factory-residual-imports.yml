@@ -48,7 +48,12 @@ jobs:
           new = 'from bochan.api import configs, optimizer, registry'
           if old not in text:
               raise RuntimeError('expected architecture import not found')
-          architecture.write_text(text.replace(old, new, 1), encoding='utf-8')
+          text = text.replace(old, new, 1)
+          obsolete = '    assert factory.build_acquisition.__module__ == "bochan.api.factory"\n'
+          if obsolete not in text:
+              raise RuntimeError('expected obsolete factory assertion not found')
+          text = text.replace(obsolete, '', 1)
+          architecture.write_text(text, encoding='utf-8')
           changed.append(architecture.as_posix())
 
           if len(changed) < 5:

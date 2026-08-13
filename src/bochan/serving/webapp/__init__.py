@@ -2,13 +2,6 @@
 
 from typing import Any
 
-from .composition_element_importance_figures import (
-    install_composition_element_importance_figures,
-)
-from .composition_feature_importance import install_composition_feature_importance
-from .composition_feature_importance_views import (
-    install_composition_feature_importance_views,
-)
 from .composition_importance_output_compat import (
     install_composition_importance_output_compat,
 )
@@ -28,9 +21,9 @@ from .pandas_compat import install_pandas_string_category_compat
 from .ternary_plot_grid_compat import install_ternary_plot_grid_compat
 from .visualization_feature_types import install_visualization_feature_type_compat
 
-# These Web-only visualization adapters remain outside the tabular optimizer
-# path. Composition fitting/candidate handling itself is integrated directly in
-# workflows_tabular.py and does not install runtime patches.
+# Composition fitting, candidate handling, and composition-specific importance
+# postprocessing are wired explicitly through workflows.py/workflows_tabular.py.
+# Remaining installers below are presentation/runtime adapters outside that path.
 install_pandas_string_category_compat()
 install_visualization_feature_type_compat()
 install_ternary_plot_grid_compat()
@@ -43,13 +36,8 @@ install_web_hybrid_objective_bo_routing()
 from .app import WEB_CAPABILITIES, app, create_app as _create_app  # noqa: E402
 from .composition_web_routes import register_composition_routes  # noqa: E402
 
-# Composition feature-importance presentation is installed after app/session
-# construction. These presentation adapters are independent of tabular fitting.
 install_composition_importance_records_compat()
-install_composition_feature_importance()
-install_composition_feature_importance_views()
 install_composition_importance_output_compat()
-install_composition_element_importance_figures()
 
 WEB_CAPABILITIES["composition"] = {
     "enabled": True,

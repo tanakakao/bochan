@@ -12,9 +12,11 @@ import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 
 from .composition import ATOMIC_WEIGHTS, close_compositions, format_formula
+from .composition_total_constraints import CompositionTotalConstraintResolver
+from .composition_variable_total_transform import CompositionVariableTotalTransform
 from .converter import dataframe_to_tensors
-from .variable_total_composition_optimizer import (
-    TabularBayesianOptimizer as _VariableTotalTabularBayesianOptimizer,
+from .element_column_composition_optimizer import (
+    TabularBayesianOptimizer as _ElementColumnTabularBayesianOptimizer,
 )
 
 _WEIGHT_NORMALIZATIONS = {"weight_fraction", "weight", "mass_fraction"}
@@ -30,7 +32,7 @@ _BASIS_ALIASES = {
 }
 
 
-class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
+class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
     """Support linear equality and inequality constraints between elements.
 
     Constraints are expressed in atomic or weight amounts and may span multiple
@@ -39,6 +41,8 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
     totals, sparsity, or stepped compositions, candidates are repaired after
     inverse transformation with a mixed-integer linear projection.
     """
+
+    composition_variable_total_transform = CompositionVariableTotalTransform()
 
     def __init__(
         self,
@@ -595,6 +599,14 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
             repair=repair,
             keep_coordinates=keep_coordinates,
         )
+        restored = self.composition_variable_total_transform.inverse_compositions(
+            data,
+            restored,
+            composition_sites=self.composition_sites,
+            composition_transformers=self.composition_transformers_,
+            multi_site_composition_enabled=self.multi_site_composition_enabled,
+            repair=repair,
+        )
         if (
             repair
             and self.multi_site_composition_enabled
@@ -700,7 +712,10 @@ class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):
         **kwargs: Any,
     ) -> Any:
         named_constraints = self._named_element_constraints()
-        opt_config = self._merge_total_constraints(opt_config, named_constraints)
+        opt_config = CompositionTotalConstraintResolver.merge_optimize_config(
+            opt_config,
+            named_constraints,
+        )
         rerank = (
             self.composition_constraint_rerank
             if composition_constraint_rerank is None

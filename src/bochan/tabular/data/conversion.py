@@ -258,10 +258,13 @@ def _encode_dataframe_category_columns(
         else:
             mapping = {value: index for index, value in enumerate(pd.unique(values.dropna()))}
 
-        df.loc[:, column] = values.map(mapping)
-        if df.loc[:, column].isna().any():
-            missing = sorted(set(values[df.loc[:, column].isna()].tolist()))
+        encoded = values.map(mapping)
+        if encoded.isna().any():
+            missing = sorted(set(values[encoded.isna()].tolist()))
             raise ValueError(f"Unmapped categorical values in {column!r}: {missing!r}.")
+        # Replace the whole column so pandas may change extension dtypes such as
+        # StringDtype to the numeric dtype required by tensor conversion.
+        df[column] = encoded
         category_maps[column] = mapping
         inverse_maps[column] = {int(value): key for key, value in mapping.items()}
     return category_maps, inverse_maps

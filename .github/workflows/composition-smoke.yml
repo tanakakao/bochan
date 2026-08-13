@@ -39,6 +39,7 @@ jobs:
             src/bochan/tabular/multi_site_composition_optimizer.py \
             src/bochan/tabular/element_column_composition_optimizer.py \
             src/bochan/tabular/composition_bounds_optimizer.py \
+            src/bochan/tabular/composition_element_columns.py \
             src/bochan/tabular/composition_element_constraint_candidates.py \
             src/bochan/tabular/composition_element_constraints.py \
             src/bochan/tabular/composition_total_constraints.py \

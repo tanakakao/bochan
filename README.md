@@ -599,7 +599,7 @@ next_batch = study.ask(q=3, return_batch=True)
 - `mark_failed(...)` for failed experiments or simulations;
 - `trials_dataframe()` for run history inspection.
 
-See `src/bochan/api/STUDY_README.md` for detailed examples.
+See `src/bochan/api/study/README.md` for detailed examples.
 
 ---
 
@@ -896,7 +896,7 @@ should raise explicit `NotImplementedError` rather than being ignored.
 | `src/bochan/acquisition/README.md` | Acquisition family overview, objectives, feasibility, active learning, level-set estimation, multiclass acquisitions, and non-Gaussian acquisitions. |
 | `src/bochan/acquisition/feasible/README.md` | Feasibility constraints and feasibility wrapper usage. |
 | `src/bochan/api/README.md` | Tensor-based Python API usage, config objects, registries, objectives, candidate optimization, and repair. |
-| `src/bochan/api/STUDY_README.md` | `BochanStudy` optimization loop, `ask()` / `tell()`, `optimize()`, save / load, early stopping, and generation schedules. |
+| `src/bochan/api/study/README.md` | `BochanStudy` optimization loop, `ask()` / `tell()`, `optimize()`, save / load, early stopping, and generation schedules. |
 | `src/bochan/tabular/README.md` | pandas / numpy / CSV wrapper, column-name based settings, categorical encoding, imputation, candidate repair, `fit_beta`, `evo_method`, and constraints. |
 | `src/bochan/serving/fastapi/README.md` | HTTP / JSON serving examples, tensor conversion, optimizer settings, candidate repair, constraints, and multiclass workflows. |
 

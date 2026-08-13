@@ -1880,7 +1880,7 @@ study.tell(batch, measured_values)
 study.save("study.json")
 ```
 
-`BochanStudy` の詳細は `src/bochan/api/STUDY_README.md` を参照してください。
+`BochanStudy` の詳細は `src/bochan/api/study/README.md` を参照してください。
 
 ---
 

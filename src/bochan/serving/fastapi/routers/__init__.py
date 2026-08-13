@@ -1,5 +1,37 @@
-"""Routers for the bochan FastAPI app."""
+"""Router composition for the bochan FastAPI app."""
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from fastapi import APIRouter
+
+from . import (
+    acquisitions,
+    artifacts,
+    candidates,
+    health,
+    models,
+    predictions,
+    studies,
+    suggestions,
+    tabular,
+    tabular_artifacts,
+)
+
+
+def create_api_router(*, prefix: str = "") -> APIRouter:
+    """Create the common bochan API router."""
+    router = APIRouter(prefix=prefix)
+    router.include_router(health.router)
+    router.include_router(models.router)
+    router.include_router(tabular.router)
+    router.include_router(tabular_artifacts.router)
+    router.include_router(studies.router)
+    router.include_router(suggestions.router)
+    router.include_router(predictions.router)
+    router.include_router(candidates.router)
+    router.include_router(acquisitions.router)
+    router.include_router(artifacts.router)
+    return router
+
+
+__all__ = ["create_api_router"]

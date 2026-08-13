@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
-from .router import create_api_router
+from .routers import create_api_router
 
 
 def create_app(*, title: str = "bochan API", version: str = "0.1.0") -> FastAPI:

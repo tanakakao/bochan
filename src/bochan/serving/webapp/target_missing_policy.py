@@ -150,7 +150,7 @@ def _impute_feature_columns(
     import pandas as pd
 
     from bochan.tabular.config import TabularDataConfig
-    from bochan.tabular.converter import _apply_missing_value_strategy
+    from bochan.tabular.data.conversion import _apply_missing_value_strategy
 
     config = TabularDataConfig(
         input_cols=feature_columns,

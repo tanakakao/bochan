@@ -1,15 +1,5 @@
-'''Tabular pandas / numpy API for bochan.'''
+"""Pandas / numpy convenience API for bochan."""
 
-from .builders import (
-    UNSET,
-    drop_unset,
-    make_acquisition_config,
-    make_fit_config,
-    make_model_config,
-    make_objective_config,
-    make_optimize_config,
-    make_repair_config,
-)
 from .composition import (
     ATOMIC_NUMBERS,
     ATOMIC_WEIGHTS,
@@ -26,23 +16,35 @@ from .composition import (
     normalize_composition,
     parse_formula,
 )
-from .config import ColumnKey, TabularDataConfig, TabularFeatureGroup
-from .converter import (
+from .config import (
+    UNSET,
+    ColumnKey,
+    TabularDataConfig,
+    TabularFeatureGroup,
+    drop_unset,
+    make_acquisition_config,
+    make_fit_config,
+    make_model_config,
+    make_objective_config,
+    make_optimize_config,
+    make_repair_config,
+)
+from .data import (
     TabularDataset,
-    bounds_to_tensor,
     dataframe_to_tensors,
     numpy_to_tensors,
     resolve_column_indices,
+    resolve_dtype,
     resolve_optimize_config_columns,
     resolve_repair_config_columns,
     tensor_to_dataframe,
 )
-from .observation_data import (
+from .observation import (
     ObservationTabularDataset,
     dataframe_to_observation_tensors,
     numpy_to_observation_tensors,
 )
-from .public_optimizer import TabularBayesianOptimizer
+from .optimizer import TabularBayesianOptimizer
 
 __all__ = [
     "ATOMIC_NUMBERS",
@@ -60,7 +62,6 @@ __all__ = [
     "TabularDataset",
     "TabularFeatureGroup",
     "UNSET",
-    "bounds_to_tensor",
     "close_compositions",
     "dataframe_to_observation_tensors",
     "dataframe_to_tensors",
@@ -79,6 +80,7 @@ __all__ = [
     "numpy_to_tensors",
     "parse_formula",
     "resolve_column_indices",
+    "resolve_dtype",
     "resolve_optimize_config_columns",
     "resolve_repair_config_columns",
     "tensor_to_dataframe",

@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - "src/bochan/models/regression/neural/**"
-      - "src/bochan/api/model_registry.py"
+      - "src/bochan/api/registry/model.py"
       - "tests/test_deep_ensemble_models.py"
       - ".github/workflows/deep-ensemble-smoke.yml"
   workflow_dispatch:

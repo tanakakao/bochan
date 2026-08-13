@@ -13,7 +13,6 @@ from ..engine import (
     _input_transform_n_w_from_bundle,
     _resolve_objective_config_n_w_from_input_transform,
 )
-from ..feasibility_defaults import resolve_outcome_constraint_config
 from ..llm import is_llm_selected_acquisition, resolve_llm_selected_acquisition
 from ..registry.acquisition import resolve_acqf_cls
 from .classification import (
@@ -22,6 +21,7 @@ from .classification import (
     prepare_objective_instance,
 )
 from .defaults import resolve_acquisition_defaults
+from .feasibility import resolve_outcome_constraint_config
 
 
 def _normalize_name(value: Any) -> str:

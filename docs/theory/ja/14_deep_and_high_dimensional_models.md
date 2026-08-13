@@ -343,7 +343,7 @@ src/bochan/models/classification/multiclass/high_dim/
 src/bochan/models/ordinal/deep/
 src/bochan/models/ordinal/high_dim/
 src/bochan/fit/
-src/bochan/api/model_registry.py
+src/bochan/api/registry/model.py
 src/bochan/api/factory.py
 ```
 

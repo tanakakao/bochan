@@ -6,7 +6,7 @@ import pytest
 import torch
 from botorch.posteriors.posterior_list import PosteriorList
 
-from bochan.api.model_registry import MODEL_REGISTRY
+from bochan.api.registry.model import MODEL_REGISTRY
 from bochan.models.regression.beta.base import (
     BetaMultiTaskGPModel,
     KroneckerMultiTaskBetaGPModel,

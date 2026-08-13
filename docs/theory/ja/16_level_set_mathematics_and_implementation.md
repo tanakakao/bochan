@@ -637,7 +637,7 @@ src/bochan/acquisition/binary/levelset_estimation/
 src/bochan/acquisition/multiclass/levelset_estimation/
 src/bochan/acquisition/ordinal/levelset_estimation/
 src/bochan/acquisition/non_gaussian/levelset_estimation/
-src/bochan/api/acquisition_registry.py
+src/bochan/api/registry/acquisition.py
 ```
 
 ---

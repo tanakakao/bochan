@@ -144,7 +144,7 @@ its docstring.
 
 ## High-level API registry support
 
-The default high-level registry in `bochan.api.model_registry` is lazy and maps
+The default high-level registry in `bochan.api.registry.model` is lazy and maps
 `input_type`, `task_type`, and `model_type` to model classes only when they are
 requested.
 
@@ -628,7 +628,7 @@ When adding a new model wrapper, check the following:
 - [ ] Are unsupported options rejected explicitly with `NotImplementedError` or
       `ValueError`?
 - [ ] If the model should be reachable from the high-level API, is it registered
-      in `bochan.api.model_registry`?
+      in `bochan.api.registry.model`?
 
 ---
 

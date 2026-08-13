@@ -27,7 +27,7 @@ WEB_OUTPUT_TASK_TYPES = (
 
 
 def test_web_tree_ensemble_models_exist_for_normal_and_mixed_output_tasks() -> None:
-    from bochan.api.model_registry import DEFAULT_MODEL_REGISTRY
+    from bochan.api.registry.model import DEFAULT_MODEL_REGISTRY
 
     registry = DEFAULT_MODEL_REGISTRY.raw()
 

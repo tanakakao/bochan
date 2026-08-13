@@ -8,7 +8,7 @@ from botorch.acquisition.knowledge_gradient import qKnowledgeGradient
 
 import bochan.api.information_acquisition_defaults as info_defaults
 from bochan.api import AcquisitionConfig, DataContext, ModelBundle, ModelConfig, OptimizeConfig
-from bochan.api.acquisition_registry import resolve_acqf_cls
+from bochan.api.registry.acquisition import resolve_acqf_cls
 
 
 def _make_bundle(

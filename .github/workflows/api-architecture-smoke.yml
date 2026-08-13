@@ -42,6 +42,7 @@ jobs:
       - name: Run Ruff
         run: |
           ruff check \
+            --per-file-ignores "src/bochan/api/registry/acquisition.py:UP035" \
             src/bochan/api/__init__.py \
             src/bochan/api/acquisition/__init__.py \
             src/bochan/api/acquisition/classification.py \
@@ -62,6 +63,9 @@ jobs:
             src/bochan/api/observation/state.py \
             src/bochan/api/observation/service.py \
             src/bochan/api/optimizer.py \
+            src/bochan/api/registry/__init__.py \
+            src/bochan/api/registry/acquisition.py \
+            src/bochan/api/registry/model.py \
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/composition_bounds_optimizer.py \
             src/bochan/tabular/multi_output_categories.py \

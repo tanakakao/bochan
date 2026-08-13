@@ -672,7 +672,7 @@ name in this table.
 
 ### 18.1 Standard acquisitions resolved by the registry
 
-`src/bochan/api/acquisition_registry.py` maps aliases to BoTorch classes.
+`src/bochan/api/registry/acquisition.py` maps aliases to BoTorch classes.
 Representative mappings include:
 
 | Alias family | Resolved class |

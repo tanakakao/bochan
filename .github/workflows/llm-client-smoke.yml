@@ -8,7 +8,7 @@ on:
       - "src/bochan/llm/**"
       - "src/bochan/api/configs/acquisition.py"
       - "src/bochan/api/llm/**"
-      - "src/bochan/api/model_registry.py"
+      - "src/bochan/api/registry/model.py"
       - "tests/test_llm_client_tls.py"
       - "tests/test_llm_candidate_explanation.py"
       - "tests/test_llm_candidate_overall_explanation.py"
@@ -59,7 +59,7 @@ jobs:
               src/bochan/api/llm/acquisition.py \
               src/bochan/api/llm/explanation.py \
               src/bochan/api/llm/suggestion.py \
-              src/bochan/api/model_registry.py \
+              src/bochan/api/registry/model.py \
               src/bochan/llm/__init__.py \
               src/bochan/llm/candidate_explainer_overall.py \
               src/bochan/llm/client.py \

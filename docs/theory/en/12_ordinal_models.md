@@ -994,7 +994,7 @@ interpreted as raw label correlation.
 | Ordinal robust models | `src/bochan/models/ordinal/robust/` |
 | Ordinal deep models | `src/bochan/models/ordinal/deep/` |
 | Ordinal high-dimensional models | `src/bochan/models/ordinal/high_dim/` |
-| High-level registration | `src/bochan/api/model_registry.py` |
+| High-level registration | `src/bochan/api/registry/model.py` |
 
 ---
 

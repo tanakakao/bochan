@@ -10,7 +10,7 @@ from bochan.acquisition.regression.active_learning import (
     qRegressionPosteriorVariance,
     qRegressionPredictiveEntropy,
 )
-from bochan.api.acquisition_registry import resolve_acqf_cls
+from bochan.api.registry.acquisition import resolve_acqf_cls
 
 
 class _HomoskedasticGaussianModel(torch.nn.Module):

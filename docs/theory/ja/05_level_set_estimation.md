@@ -443,7 +443,7 @@ src/bochan/acquisition/ordinal/levelset_estimation/
 src/bochan/acquisition/non_gaussian/levelset_estimation/
 ```
 
-public nameは`src/bochan/api/acquisition_registry.py`で登録されます。
+public nameは`src/bochan/api/registry/acquisition.py`で登録されます。
 
 acquisitionによって消費する空間は異なります。
 

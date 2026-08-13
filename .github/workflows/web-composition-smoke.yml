@@ -5,6 +5,7 @@ on:
     branches:
       - main
     paths:
+      - "src/bochan/tabular/data/conversion.py"
       - "src/bochan/serving/webapp/composition_web_support.py"
       - "src/bochan/serving/webapp/composition_web_routes.py"
       - "src/bochan/serving/webapp/workflows_tabular.py"
@@ -17,7 +18,6 @@ on:
       - "src/bochan/serving/webapp/composition_feature_importance.py"
       - "src/bochan/serving/webapp/composition_feature_importance_views.py"
       - "src/bochan/serving/webapp/composition_element_importance_figures.py"
-      - "src/bochan/serving/webapp/pandas_compat.py"
       - "src/bochan/serving/webapp/visualization_feature_types.py"
       - "src/bochan/serving/webapp/__init__.py"
       - "web/src/compositionExtension.ts"
@@ -48,7 +48,6 @@ on:
       - "tests/test_webapp_composition_state_pd.py"
       - "tests/test_webapp_composition_feature_importance.py"
       - "tests/test_webapp_composition_feature_importance_integration.py"
-      - "tests/test_webapp_pandas_compat.py"
       - "tests/test_webapp_composition_settings_placement.py"
       - "tests/test_webapp_composition_navigation_architecture.py"
       - "tests/test_webapp_composition_runtime_transport.py"
@@ -81,7 +80,6 @@ jobs:
           tests/test_webapp_composition_state_pd.py
           tests/test_webapp_composition_feature_importance.py
           tests/test_webapp_composition_feature_importance_integration.py
-          tests/test_webapp_pandas_compat.py
           tests/test_webapp_composition_settings_placement.py
           tests/test_webapp_composition_navigation_architecture.py
           tests/test_webapp_composition_runtime_transport.py
@@ -93,6 +91,7 @@ jobs:
         run: |
           python -m pip install ruff
           ruff check --ignore I001,SIM102,SIM105,SIM108,B010 \
+            src/bochan/tabular/data/conversion.py \
             src/bochan/serving/webapp/composition_web_support.py \
             src/bochan/serving/webapp/composition_web_routes.py \
             src/bochan/serving/webapp/workflows_tabular.py \
@@ -105,7 +104,6 @@ jobs:
             src/bochan/serving/webapp/composition_feature_importance.py \
             src/bochan/serving/webapp/composition_feature_importance_views.py \
             src/bochan/serving/webapp/composition_element_importance_figures.py \
-            src/bochan/serving/webapp/pandas_compat.py \
             src/bochan/serving/webapp/visualization_feature_types.py \
             src/bochan/serving/webapp/__init__.py \
             tests/test_webapp_composition_support.py \
@@ -115,7 +113,6 @@ jobs:
             tests/test_webapp_composition_state_pd.py \
             tests/test_webapp_composition_feature_importance.py \
             tests/test_webapp_composition_feature_importance_integration.py \
-            tests/test_webapp_pandas_compat.py \
             tests/test_webapp_composition_settings_placement.py \
             tests/test_webapp_composition_navigation_architecture.py \
             tests/test_webapp_composition_runtime_transport.py \

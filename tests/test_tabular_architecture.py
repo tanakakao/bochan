@@ -10,9 +10,7 @@ from bochan.tabular import (
     optimizer_api,
 )
 from bochan.tabular import optimizer as legacy_optimizer
-from bochan.tabular.composition_element_column_transform import (
-    CompositionElementColumnTransform,
-)
+from bochan.tabular.composition_element_columns import CompositionElementColumnTransform
 from bochan.tabular.composition_element_constraint_candidates import (
     CompositionElementConstraintCandidateReranker,
 )

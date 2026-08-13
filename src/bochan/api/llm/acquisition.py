@@ -1,11 +1,4 @@
-"""Execution-time LLM resolution for ``AcquisitionConfig``.
-
-``AcquisitionConfig(name="llm_selected")`` is resolved explicitly by the
-canonical acquisition service.  This module contains pure selection helpers and
-does not replace ``BayesianOptimizer.acquisition`` or ``candidate`` at runtime.
-"""
-
-# ruff: noqa: I001
+"""Execution-time LLM resolution for ``AcquisitionConfig``."""
 
 from __future__ import annotations
 
@@ -15,8 +8,7 @@ from dataclasses import asdict, replace
 from enum import Enum
 from typing import Any
 
-from .acquisition_config import AcquisitionConfig
-
+from ..acquisition_config import AcquisitionConfig
 
 _LLM_SELECTED_NAMES = {
     "llm",
@@ -169,21 +161,7 @@ def resolve_llm_selected_acquisition(
     return resolved
 
 
-def install_llm_selected_acquisition_api(
-    optimizer_cls: type[Any] | None = None,
-) -> None:
-    """Deprecated no-op retained for import compatibility.
-
-    LLM-selected acquisitions are resolved by
-    :func:`resolve_llm_selected_acquisition` from the canonical acquisition
-    service.  No optimizer methods are installed or replaced.
-    """
-
-    del optimizer_cls
-
-
 __all__ = [
-    "install_llm_selected_acquisition_api",
     "is_llm_selected_acquisition",
     "resolve_llm_selected_acquisition",
 ]

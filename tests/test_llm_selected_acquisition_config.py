@@ -5,9 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from bochan.api import AcquisitionConfig, ModelConfig, ObjectiveConfig
-from bochan.api.llm_selected_acquisition import (
-    resolve_llm_selected_acquisition,
-)
+from bochan.api.llm import resolve_llm_selected_acquisition
 from bochan.llm import LLMSettings
 
 

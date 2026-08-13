@@ -10,7 +10,7 @@ from bochan.acquisition.regression.bayesian_optimization import (
     qMultiOutputRegressionNParEGO,
 )
 from bochan.api import AcquisitionConfig, DataContext, ModelBundle, ModelConfig
-from bochan.api.engine_defaults import resolve_acquisition_defaults
+from bochan.api.acquisition.defaults import resolve_acquisition_defaults
 
 
 def _make_bundle(train_Y: torch.Tensor) -> ModelBundle:

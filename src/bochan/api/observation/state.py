@@ -1,15 +1,4 @@
-"""Observation-state handling for physical experiment workflows.
-
-The canonical contract distinguishes four independent facts:
-
-- a target cell can be observed or not observed;
-- a completed experiment can succeed or fail;
-- a pending experiment has not produced an outcome yet;
-- missing target values are never interpreted as experiment failures implicitly.
-
-This module contains no runtime patching. It is consumed directly by the core
-API, tabular conversion, and candidate construction paths.
-"""
+"""Observation-state handling for physical experiment workflows."""
 
 from __future__ import annotations
 
@@ -54,21 +43,7 @@ def _as_observed_mask(value: Any | None, *, Y: Any):
 
 @dataclass
 class ObservationData:
-    """Canonical tensor representation of experiment observations.
-
-    Args:
-        X: Experiment conditions with shape ``[n, d]``.
-        Y: Target matrix with shape ``[n, m]`` or ``[n]``. Unobserved target
-            cells are represented as NaN in the canonical stored matrix.
-        observed_mask: Optional cell-wise observation mask. When omitted, finite
-            target cells are treated as observed.
-        failed_mask: Optional row mask identifying completed failed experiments.
-            Failed rows are excluded from every objective target while remaining
-            useful for an experiment-success classifier.
-        pending_mask: Optional row mask identifying experiments still running.
-            Pending rows are excluded from objective and success-model fitting and
-            are exposed through :attr:`pending_X` for acquisition ``X_pending``.
-    """
+    """Canonical tensor representation of experiment observations."""
 
     X: Any
     Y: Any
@@ -135,13 +110,6 @@ class ObservationData:
         status: Any,
         observed_mask: Any | None = None,
     ) -> ObservationData:
-        """Build observations from row status strings.
-
-        Accepted row statuses are exactly ``success``, ``failed``, and
-        ``pending``. Target-level missingness remains independent and is inferred
-        from finite Y cells unless ``observed_mask`` is supplied.
-        """
-
         statuses = [str(value).strip().lower() for value in list(status)]
         valid = {"success", "failed", "pending"}
         invalid = sorted(set(statuses) - valid)
@@ -160,45 +128,31 @@ class ObservationData:
 
     @property
     def completed_mask(self):
-        """Rows whose experiment has finished, whether successful or failed."""
-
         return ~self.pending_mask
 
     @property
     def success_mask(self):
-        """Completed rows that did not fail experimentally."""
-
         return self.completed_mask & ~self.failed_mask
 
     @property
     def objective_row_mask(self):
-        """Successful rows containing at least one observed objective."""
-
         return self.success_mask & self.observed_mask.any(dim=-1)
 
     @property
     def pending_X(self):
-        """Conditions currently running and therefore suitable for ``X_pending``."""
-
         return self.X[self.pending_mask]
 
     @property
     def completed_X(self):
-        """All finished experiment conditions, including failed experiments."""
-
         return self.X[self.completed_mask]
 
     def objective_training_data(self) -> tuple[Any, Any]:
-        """Return successful rows with at least one observed target cell."""
-
         mask = self.objective_row_mask
         if not bool(mask.any()):
             raise ValueError("No successful experiment contains an observed objective value.")
         return self.X[mask], self.Y[mask]
 
     def output_training_data(self, output_index: int) -> tuple[Any, Any]:
-        """Return rows where one output was actually observed."""
-
         index = int(output_index)
         if index < 0 or index >= int(self.Y.shape[-1]):
             raise IndexError(
@@ -210,8 +164,6 @@ class ObservationData:
         return self.X[mask], self.Y[mask, index : index + 1]
 
     def success_training_data(self) -> tuple[Any, Any]:
-        """Return completed experiments and binary success labels."""
-
         torch = _torch()
         completed = self.completed_mask
         if not bool(completed.any()):
@@ -223,8 +175,6 @@ class ObservationData:
         return X, y
 
     def append(self, other: ObservationData) -> ObservationData:
-        """Return a new observation table with rows from ``other`` appended."""
-
         torch = _torch()
         if int(self.X.shape[-1]) != int(other.X.shape[-1]):
             raise ValueError("ObservationData feature dimensions must match.")
@@ -248,8 +198,6 @@ class ObservationData:
         )
 
     def report(self) -> dict[str, Any]:
-        """Return serializable observation counts for diagnostics."""
-
         return {
             "n_rows": int(self.X.shape[0]),
             "n_completed": int(self.completed_mask.sum().item()),
@@ -275,7 +223,7 @@ class ExperimentFailureConfig:
 
     def __post_init__(self) -> None:
         if self.fit_config is None:
-            from .configs import FitConfig
+            from ..configs import FitConfig
 
             self.fit_config = FitConfig()
         probability = float(self.min_success_probability)

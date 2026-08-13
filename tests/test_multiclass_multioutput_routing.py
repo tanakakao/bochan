@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from bochan.api import ModelConfig
-from bochan.api.engine_defaults import resolve_multi_output_model_config
+from bochan.api.acquisition.defaults import resolve_multi_output_model_config
 from bochan.models.classification.multiclass.base import MultiOutputMulticlassClassificationModel
 
 

@@ -88,7 +88,7 @@ def _select_representative_candidates(
     max_representatives: int = 5,
     bounds: Any | None = None,
 ) -> tuple[list[int], dict[int, str]]:
-    """Select best, central and diverse representatives without global patches."""
+    """Select best, central and diverse representatives."""
 
     X = _as_2d_tensor(candidates)
     n_candidates = int(X.shape[0])
@@ -190,9 +190,7 @@ class LLMCandidateExplanationMixin:
             if resolved_config.max_representatives <= 0:
                 raise ValueError("max_representatives must be positive.")
         if perspectives is not None:
-            resolved_config.perspectives = tuple(
-                str(item) for item in perspectives
-            )
+            resolved_config.perspectives = tuple(str(item) for item in perspectives)
         if prompt is not None:
             resolved_config.prompt = str(prompt)
 
@@ -224,20 +222,14 @@ class LLMCandidateExplanationMixin:
             max_representatives=resolved_config.max_representatives,
             bounds=bounds,
         )
-        selected_candidates = _select_rows(
-            candidates,
-            representative_indices,
-        )
+        selected_candidates = _select_rows(candidates, representative_indices)
 
         prediction_mean = None
         prediction_variance = None
         local_warnings: list[str] = []
         if resolved_config.include_predictions:
             try:
-                prediction = self.predict(
-                    selected_candidates,
-                    return_result=True,
-                )
+                prediction = self.predict(selected_candidates, return_result=True)
                 prediction_mean = getattr(prediction, "mean", None)
                 if resolved_config.include_uncertainty:
                     prediction_variance = getattr(prediction, "variance", None)
@@ -285,9 +277,7 @@ class LLMCandidateExplanationMixin:
         )
         if explanation_response is None:
             client = make_llm_client(resolved_llm_config)
-            payload = parse_json_payload(
-                client.generate_json(explanation_prompt).text
-            )
+            payload = parse_json_payload(client.generate_json(explanation_prompt).text)
         else:
             payload = parse_json_payload(explanation_response)
         if not isinstance(payload, Mapping):
@@ -312,15 +302,4 @@ class LLMCandidateExplanationMixin:
         return self.explain_candidates(None, **kwargs)
 
 
-def install_bayesian_optimizer_candidate_explanation_api(
-    optimizer_cls: type[Any],
-) -> None:
-    """Deprecated no-op retained for source compatibility."""
-
-    del optimizer_cls
-
-
-__all__ = [
-    "LLMCandidateExplanationMixin",
-    "install_bayesian_optimizer_candidate_explanation_api",
-]
+__all__ = ["LLMCandidateExplanationMixin"]

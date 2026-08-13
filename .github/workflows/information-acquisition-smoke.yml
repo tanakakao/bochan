@@ -32,7 +32,7 @@ jobs:
           ruff check \
             --per-file-ignores "src/bochan/api/acquisition_registry.py:UP035" \
             src/bochan/api/acquisition_registry.py \
-            src/bochan/api/engine_defaults.py \
+            src/bochan/api/acquisition/defaults.py \
             src/bochan/api/information_acquisition_defaults.py \
             tests/test_knowledge_gradient_defaults.py \
             tests/test_information_acquisition_defaults.py \

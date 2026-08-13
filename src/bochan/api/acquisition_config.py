@@ -13,14 +13,6 @@ from .configs import AcquisitionConfig as _BaseAcquisitionConfig
 
 _DEFAULT_UCB_BETA = 3.0
 _UCB_NAMES = {"ucb", "qucb", "upperconfidencebound", "qupperconfidencebound"}
-_LLM_SELECTED_NAMES = {
-    "llm",
-    "llmselected",
-    "llmacquisitionselect",
-    "llmacquisitionselected",
-    "llmplanned",
-    "llmplanner",
-}
 ConstraintOperator = Literal["ge", "gt", "le", "lt"]
 _MISSING = object()
 
@@ -49,16 +41,6 @@ def _resolve_structured_acqf_kwargs(
     if not isinstance(resolved_kwargs, dict):
         raise TypeError("Structured acquisition kwarg resolver must return a dict.")
     return resolved_kwargs, acqf_cls
-
-
-def _install_llm_selected_runtime_if_needed(name: str) -> None:
-    """Install execution-time LLM acquisition resolution for selector names."""
-
-    if _normalize_acquisition_name(name) not in _LLM_SELECTED_NAMES:
-        return
-    from .llm_selected_acquisition import install_llm_selected_acquisition_api
-
-    install_llm_selected_acquisition_api()
 
 
 def _coerce_constraint_spec(value: Any) -> Any:
@@ -274,8 +256,6 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
                 # Name-only configs are resolved with dataclasses.replace(...),
                 # which re-runs this hook after acqf_cls has been selected.
                 self.acqf_factory = build_outcome_constrained_acquisition
-
-        _install_llm_selected_runtime_if_needed(self.name)
 
 
 __all__ = ["AcquisitionConfig", "ConstraintOperator", "OutcomeConstraintConfig"]

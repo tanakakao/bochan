@@ -6,7 +6,6 @@ import pytest
 import torch
 from botorch.acquisition.multi_objective.parego import qLogNParEGO
 
-import bochan.api.engine_defaults as engine_defaults
 from bochan.acquisition.binary.bayesian_optimization import (
     qHeteroMultiOutputBinaryNParEGO,
     qMultiOutputBinaryNParEGO,
@@ -24,7 +23,8 @@ from bochan.acquisition.regression.bayesian_optimization import (
     qMultiOutputRegressionNParEGO,
 )
 from bochan.api import AcquisitionConfig, DataContext
-from bochan.api import _uses_internal_nparego_baseline
+from bochan.api.acquisition import defaults as engine_defaults
+from bochan.api.acquisition.defaults import _uses_internal_nparego_baseline
 
 
 @pytest.mark.parametrize(

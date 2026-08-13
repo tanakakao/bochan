@@ -84,7 +84,7 @@ jobs:
             src/bochan/acquisition/multiclass/bayesian_optimization/nparego_observed_baseline.py \
             src/bochan/acquisition/objective/__init__.py \
             src/bochan/acquisition/objective/outcome_constraints.py \
-            src/bochan/acquisition/objective/regression_perturbation.py \
+            src/bochan/acquisition/objective/regression_input_perturbation.py \
             src/bochan/acquisition/ordinal/bayesian_optimization/__init__.py \
             src/bochan/acquisition/ordinal/bayesian_optimization/standard.py \
             src/bochan/acquisition/ordinal/bayesian_optimization/_fixed_likelihood_graph.py \
@@ -97,7 +97,6 @@ jobs:
             src/bochan/acquisition/regression/levelset_estimation/hetero_objective_compat.py \
             src/bochan/api/acquisition_config.py \
             src/bochan/api/automatic_multiobjective.py \
-            src/bochan/api/classification_perturbation_defaults.py \
             src/bochan/api/feasibility_defaults.py \
             src/bochan/api/nan_multiobjective.py \
             src/bochan/api/optimizer_api.py \
@@ -119,8 +118,7 @@ jobs:
             src/bochan/optim/gradient/multitask.py \
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/optimizer_api.py \
-            src/bochan/tabular/outcome_constraints.py \
-            src/bochan/tabular/prediction_labels.py \
+            src/bochan/tabular/prediction.py \
             src/bochan/serving/fastapi/dependencies.py \
             src/bochan/serving/fastapi/router.py \
             src/bochan/serving/fastapi/routers/tabular.py \

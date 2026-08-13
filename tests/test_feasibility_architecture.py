@@ -1,16 +1,12 @@
 from __future__ import annotations
 
+import importlib.util
+
 from bochan.api import CandidateRepairConfig, OptimizeConfig
-from bochan.api import factory as api_factory
-from bochan.tabular.outcome_constraints import apply_tabular_outcome_constraints
 
 
-def test_tabular_outcome_constraint_entrypoint_does_not_patch_factory() -> None:
-    before = api_factory.build_acquisition
-
-    apply_tabular_outcome_constraints()
-
-    assert api_factory.build_acquisition is before
+def test_tabular_outcome_constraint_compatibility_module_is_removed() -> None:
+    assert importlib.util.find_spec("bochan.tabular.outcome_constraints") is None
 
 
 def test_repair_fallback_inequality_sense_is_resolved_in_optimize_config() -> None:

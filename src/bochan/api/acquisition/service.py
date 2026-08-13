@@ -1,9 +1,4 @@
-"""Acquisition orchestration for the public :class:`BayesianOptimizer`.
-
-This module owns high-level acquisition routing and default resolution.  It is
-intentionally explicit: importing :mod:`bochan.api` must not replace functions
-or class methods in ``engine`` / ``factory`` at runtime.
-"""
+"""Acquisition orchestration for the public :class:`BayesianOptimizer`."""
 
 from __future__ import annotations
 
@@ -11,42 +6,33 @@ from contextlib import suppress
 from dataclasses import replace
 from typing import Any
 
-from . import factory as _factory
-from .acquisition_registry import resolve_acqf_cls
-from .classification_perturbation_defaults import (
-    _build_multiclass,
-    _build_ordinal,
-    _maybe_disable_objective_shape_check,
-)
-from .configs import AcquisitionConfig, DataContext, ModelBundle, ObjectiveConfig
-from .engine import (
+from .. import factory as _factory
+from ..acquisition_registry import resolve_acqf_cls
+from ..configs import AcquisitionConfig, DataContext, ModelBundle, ObjectiveConfig
+from ..engine import (
     _filter_context_fields_for_acqf,
     _input_transform_n_w_from_bundle,
     _resolve_objective_config_n_w_from_input_transform,
 )
-from .engine_defaults import resolve_acquisition_defaults
-from .feasibility_defaults import resolve_outcome_constraint_config
-from .llm_selected_acquisition import (
-    is_llm_selected_acquisition,
-    resolve_llm_selected_acquisition,
+from ..feasibility_defaults import resolve_outcome_constraint_config
+from ..llm import is_llm_selected_acquisition, resolve_llm_selected_acquisition
+from .classification import (
+    build_multiclass_objective,
+    build_ordinal_objective,
+    prepare_objective_instance,
 )
+from .defaults import resolve_acquisition_defaults
 
 
 def _normalize_name(value: Any) -> str:
-    """Return a separator-free lower-case name."""
-
     return "".join(character for character in str(value).lower() if character.isalnum())
 
 
 def is_nsgaii_strategy(config: AcquisitionConfig) -> bool:
-    """Return whether acquisition-side strategy selection requests NSGA-II."""
-
     return _normalize_name(config.name) in {"nsgaii", "nsga2"}
 
 
 def infer_bundle_multi_output(bundle: ModelBundle) -> bool:
-    """Infer multi-output status for wrappers and correlated multitask models."""
-
     if bool(bundle.metadata.get("multi_output", False)):
         return True
     try:
@@ -56,8 +42,6 @@ def infer_bundle_multi_output(bundle: ModelBundle) -> bool:
 
 
 def _is_vector_strategy(config: AcquisitionConfig) -> bool:
-    """Return whether an acquisition consumes vector-valued objective samples."""
-
     name = _normalize_name(config.name)
     cls_name = _normalize_name(getattr(config.acqf_cls, "__name__", ""))
     combined = f"{name}{cls_name}"
@@ -83,8 +67,6 @@ def resolve_acquisition_class(
     optimizer: Any,
     config: AcquisitionConfig,
 ) -> AcquisitionConfig:
-    """Resolve contextual acquisition names against the fitted model."""
-
     if is_llm_selected_acquisition(config):
         config = resolve_llm_selected_acquisition(optimizer, config)
     if config.acqf_cls is not None or config.acqf_factory is not None:
@@ -99,7 +81,6 @@ def resolve_acquisition_class(
     if task_type == str(optimizer.bundle.task_type):
         multi_output = infer_bundle_multi_output(optimizer.bundle)
 
-    # Hybrid multi-objective NParEGO uses the regression vector implementation.
     if (
         _normalize_name(config.name) in {"nparego", "qnparego"}
         and task_type == "hybrid"
@@ -123,8 +104,6 @@ def resolve_input_perturbation_objective(
     bundle: ModelBundle,
     config: AcquisitionConfig,
 ) -> AcquisitionConfig:
-    """Resolve one-to-many input-perturbation objective defaults explicitly."""
-
     if (
         config.objective is not None
         or config.objective_factory is not None
@@ -166,10 +145,6 @@ def resolve_input_perturbation_objective(
                         ),
                     )
 
-    # Outcome constraints are part of the normal config-resolution path.  When
-    # one-to-many perturbations are risk-neutral, keep q*n_w expanded until the
-    # feasibility indicator has been evaluated so objective and constraints stay
-    # shape-aligned.
     resolved = resolve_outcome_constraint_config(bundle=bundle, config=resolved)
     objective_config = resolved.objective_config
     if (
@@ -200,8 +175,6 @@ def resolve_acquisition(
     config: AcquisitionConfig,
     context: DataContext,
 ) -> tuple[AcquisitionConfig, DataContext]:
-    """Resolve class, perturbation semantics and automatic data defaults."""
-
     resolved = resolve_acquisition_class(optimizer, config)
     resolved = resolve_input_perturbation_objective(optimizer.bundle, resolved)
     resolved, context = resolve_acquisition_defaults(
@@ -222,8 +195,6 @@ def build_objective(
     config: AcquisitionConfig,
     data_context: DataContext | None = None,
 ) -> Any | None:
-    """Build an objective without replacing :mod:`bochan.api.factory` globals."""
-
     if (
         config.objective is not None
         or config.objective_factory is not None
@@ -234,20 +205,23 @@ def build_objective(
             config=config,
             data_context=data_context,
         )
-        return _maybe_disable_objective_shape_check(objective, config)
+        return prepare_objective_instance(objective, config)
 
     task_type = str(bundle.task_type)
     if task_type == "multiclass":
-        objective = _build_multiclass(bundle, config)
-    elif task_type == "ordinal" and _factory._objective_mode(config.objective_config) == "multi_output":
-        objective = _build_ordinal(bundle, config.objective_config)
+        objective = build_multiclass_objective(bundle, config)
+    elif (
+        task_type == "ordinal"
+        and _factory._objective_mode(config.objective_config) == "multi_output"
+    ):
+        objective = build_ordinal_objective(bundle, config.objective_config)
     else:
         objective = _factory.build_objective(
             bundle=bundle,
             config=config,
             data_context=data_context,
         )
-    return _maybe_disable_objective_shape_check(objective, config)
+    return prepare_objective_instance(objective, config)
 
 
 def build_acquisition(
@@ -255,8 +229,6 @@ def build_acquisition(
     config: AcquisitionConfig,
     data_context: DataContext | None = None,
 ) -> Any:
-    """Construct an acquisition through the canonical public API path."""
-
     context = data_context or DataContext()
     context = _factory.prepare_multi_objective_context(bundle, context, config)
     if config.acqf_factory is not None:
@@ -288,8 +260,6 @@ def build_acquisition(
             kwargs = _factory._filter_kwargs_for_callable(config.acqf_cls, kwargs)
         acqf = config.acqf_cls(**kwargs)
 
-    # Thompson sampling must target the fitted public model, not an internal
-    # latent model that an acquisition implementation may expose through .model.
     model = getattr(bundle, "model", None)
     if model is not None:
         with suppress(Exception):

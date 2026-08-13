@@ -6,9 +6,9 @@ from botorch.posteriors.gpytorch import GPyTorchPosterior
 from gpytorch.distributions import MultivariateNormal
 from torch import nn
 
+from bochan.api import BayesianOptimizer
 from bochan.api.configs import FitConfig, ModelConfig, MultiOutputConfig
 from bochan.api.observation import ExperimentFailureConfig, ObservationData
-from bochan.api.observation_engine import BayesianOptimizer
 
 
 class _RecordingModel(Model):

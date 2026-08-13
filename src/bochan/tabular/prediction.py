@@ -1,15 +1,15 @@
+"""Prediction-label helpers for the canonical tabular optimizer."""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
-from functools import wraps
 from typing import Any
 
 import torch
 from torch import Tensor
 
 from .converter import dataframe_to_tensors
-from .optimizer import TabularBayesianOptimizer
 
 _CLASSIFICATION_TASK_TYPES = {"binary", "multiclass", "ordinal"}
 _LABEL_RETURN_TYPES = {
@@ -25,7 +25,6 @@ _DATAFRAME_RETURN_TYPES = {
     "mean_variance_dataframe",
     "mean_variance_df",
 }
-_ORIGINAL_PREDICT_ATTR = "_bochan_predict_before_tabular_labels"
 
 
 def _call_with_fallbacks(calls: Sequence[Callable[[], Any]]) -> Any:
@@ -77,7 +76,7 @@ def _call_single_accessor(
     )
 
 
-def _output_task_types(optimizer: TabularBayesianOptimizer) -> list[str]:
+def _output_task_types(optimizer: Any) -> list[str]:
     """Resolve one task type for every fitted tabular target column."""
 
     if optimizer.dataset is None:
@@ -104,7 +103,8 @@ def _output_task_types(optimizer: TabularBayesianOptimizer) -> list[str]:
         if len(values) == len(target_names):
             return values
 
-    task_type = str(getattr(bundle, "task_type", optimizer.model_config.task_type)).lower()
+    fallback_task_type = getattr(optimizer.model_config, "task_type", "regression")
+    task_type = str(getattr(bundle, "task_type", fallback_task_type)).lower()
     if task_type != "hybrid":
         return [task_type] * len(target_names)
 
@@ -116,7 +116,7 @@ def _output_task_types(optimizer: TabularBayesianOptimizer) -> list[str]:
             if isinstance(item, Mapping):
                 resolved.append(str(item.get("task_type", "regression")).lower())
             elif isinstance(item, str):
-                resolved.append(str(item).lower())
+                resolved.append(item.lower())
             else:
                 resolved.append(str(getattr(item, "task_type", "regression")).lower())
         return resolved
@@ -143,14 +143,22 @@ def _reduce_probabilities_to_rows(
     *,
     n_rows: int,
 ) -> Tensor:
-    """Reduce sample, batch, or input-perturbation axes to ``n_rows x classes``."""
+    """Reduce sample, batch, or perturbation axes to rows x classes."""
 
     probabilities = probabilities.detach()
     while probabilities.ndim > 2:
         if probabilities.shape[-2] == n_rows:
-            probabilities = probabilities.reshape(-1, n_rows, probabilities.shape[-1]).mean(dim=0)
+            probabilities = probabilities.reshape(
+                -1,
+                n_rows,
+                probabilities.shape[-1],
+            ).mean(dim=0)
         elif probabilities.shape[0] == n_rows:
-            probabilities = probabilities.reshape(n_rows, -1, probabilities.shape[-1]).mean(dim=1)
+            probabilities = probabilities.reshape(
+                n_rows,
+                -1,
+                probabilities.shape[-1],
+            ).mean(dim=1)
         else:
             probabilities = probabilities.mean(dim=0)
 
@@ -168,12 +176,16 @@ def _reduce_probabilities_to_rows(
                 "Class probabilities could not be aligned with prediction rows. "
                 f"probabilities.shape={tuple(probabilities.shape)}, n_rows={n_rows}."
             )
-        probabilities = probabilities.reshape(n_rows, -1, probabilities.shape[-1]).mean(dim=1)
+        probabilities = probabilities.reshape(
+            n_rows,
+            -1,
+            probabilities.shape[-1],
+        ).mean(dim=1)
     return probabilities
 
 
 def _class_probabilities_for_output(
-    optimizer: TabularBayesianOptimizer,
+    optimizer: Any,
     X: Tensor,
     *,
     output_index: int,
@@ -181,7 +193,7 @@ def _class_probabilities_for_output(
     posterior_kwargs: Mapping[str, Any],
     n_rows: int,
 ) -> Tensor | None:
-    """Return class probabilities for one binary, ordinal, or multiclass output."""
+    """Return class probabilities for one classification output."""
 
     model = getattr(optimizer.bo, "model", None)
     if model is None:
@@ -201,8 +213,8 @@ def _class_probabilities_for_output(
         )
         if len(values) != 1:
             raise RuntimeError(
-                "class_probs_list must return exactly one tensor when one output is requested. "
-                f"Got {len(values)} values for output_index={output_index}."
+                "class_probs_list must return exactly one tensor when one output "
+                f"is requested. Got {len(values)} values for output_index={output_index}."
             )
         probabilities = _select_output_probability_tensor(
             values[0],
@@ -270,7 +282,7 @@ def _class_probabilities_for_output(
 
 
 def _predicted_classes_from_model(
-    optimizer: TabularBayesianOptimizer,
+    optimizer: Any,
     X: Tensor,
     *,
     output_index: int,
@@ -310,12 +322,14 @@ def _predicted_classes_from_model(
 
 
 def _inverse_target_map(
-    optimizer: TabularBayesianOptimizer,
+    optimizer: Any,
     target_name: Any,
 ) -> Mapping[int, Any] | None:
     if optimizer.dataset is None:
         return None
-    inverse_maps = dict(getattr(optimizer.dataset, "inverse_target_category_maps", None) or {})
+    inverse_maps = dict(
+        getattr(optimizer.dataset, "inverse_target_category_maps", None) or {}
+    )
     mapping = inverse_maps.get(target_name)
     if mapping is None:
         mapping = inverse_maps.get(str(target_name))
@@ -323,13 +337,13 @@ def _inverse_target_map(
 
 
 def classification_prediction_dataframe(
-    optimizer: TabularBayesianOptimizer,
+    optimizer: Any,
     X: Tensor,
     *,
     posterior_kwargs: Mapping[str, Any] | None = None,
     binary_threshold: float = 0.5,
-):
-    """Build decoded prediction-label columns for all classification outputs."""
+) -> Any:
+    """Build decoded prediction-label columns for classification outputs."""
 
     import pandas as pd
 
@@ -345,7 +359,9 @@ def classification_prediction_dataframe(
     posterior_kwargs = dict(posterior_kwargs or {})
     columns: dict[str, Any] = {}
 
-    for output_index, (target_name, task_type) in enumerate(zip(target_names, task_types, strict=True)):
+    for output_index, (target_name, task_type) in enumerate(
+        zip(target_names, task_types, strict=True)
+    ):
         if task_type not in _CLASSIFICATION_TASK_TYPES:
             continue
 
@@ -366,7 +382,11 @@ def classification_prediction_dataframe(
                 else:
                     p1 = probabilities[..., 1].clamp(0.0, 1.0)
                 predicted_class = (p1 >= threshold).to(torch.long)
-                predicted_probability = torch.where(predicted_class == 1, p1, 1.0 - p1)
+                predicted_probability = torch.where(
+                    predicted_class == 1,
+                    p1,
+                    1.0 - p1,
+                )
             else:
                 denominator = probabilities.sum(dim=-1, keepdim=True).clamp_min(1e-12)
                 probabilities = probabilities / denominator
@@ -381,29 +401,34 @@ def classification_prediction_dataframe(
             )
             if predicted_class is None:
                 raise AttributeError(
-                    f"Could not obtain class probabilities or predicted classes for output {target_name!r}."
+                    "Could not obtain class probabilities or predicted classes for "
+                    f"output {target_name!r}."
                 )
 
         class_indices = predicted_class.detach().cpu().to(torch.long).tolist()
         inverse_map = _inverse_target_map(optimizer, target_name)
         decoded_labels = [
-            inverse_map.get(int(class_index), int(class_index)) if inverse_map is not None else int(class_index)
+            inverse_map.get(int(class_index), int(class_index))
+            if inverse_map is not None
+            else int(class_index)
             for class_index in class_indices
         ]
         prefix = str(target_name)
         columns[f"{prefix}_predicted_class_index"] = class_indices
         columns[f"{prefix}_predicted_label"] = decoded_labels
         if predicted_probability is not None:
-            columns[f"{prefix}_predicted_probability"] = predicted_probability.detach().cpu().tolist()
+            columns[f"{prefix}_predicted_probability"] = (
+                predicted_probability.detach().cpu().tolist()
+            )
 
     return pd.DataFrame(columns)
 
 
 def _prediction_tensor_and_index(
-    optimizer: TabularBayesianOptimizer,
+    optimizer: Any,
     data: Any,
 ) -> tuple[Tensor, Any | None]:
-    """Convert prediction input exactly as the base tabular predict method does."""
+    """Convert input exactly as the canonical tabular predict path does."""
 
     if optimizer.dataset is None:
         raise RuntimeError("No fitted tabular dataset found. Call fit() first.")
@@ -424,88 +449,9 @@ def _prediction_tensor_and_index(
     return X, None
 
 
-def apply_tabular_prediction_labels() -> None:
-    """Patch tabular ``predict`` to append decoded classification labels."""
-
-    cls = TabularBayesianOptimizer
-    if hasattr(cls, _ORIGINAL_PREDICT_ATTR):
-        return
-
-    original_predict = cls.predict
-    setattr(cls, _ORIGINAL_PREDICT_ATTR, original_predict)
-
-    @wraps(original_predict)
-    def _predict(
-        self,
-        data: Any,
-        *,
-        return_type: str = "dataframe",
-        include_input: bool = False,
-        return_dataframe_input: bool = False,
-        posterior_kwargs: dict[str, Any] | None = None,
-        include_prediction_labels: bool = True,
-        binary_threshold: float = 0.5,
-        **kwargs: Any,
-    ) -> Any:
-        normalized_return_type = str(return_type).lower()
-        labels_only = normalized_return_type in _LABEL_RETURN_TYPES
-        dataframe_return = normalized_return_type in _DATAFRAME_RETURN_TYPES
-
-        if not labels_only:
-            result = original_predict(
-                self,
-                data,
-                return_type=return_type,
-                include_input=include_input,
-                return_dataframe_input=return_dataframe_input,
-                posterior_kwargs=posterior_kwargs,
-                **kwargs,
-            )
-            if not include_prediction_labels or not dataframe_return:
-                return result
-            if return_dataframe_input:
-                prediction_df, returned_input = result
-            else:
-                prediction_df = result
-                returned_input = None
-        else:
-            prediction_df = None
-            returned_input = data if return_dataframe_input else None
-
-        X, original_index = _prediction_tensor_and_index(self, data)
-        labels_df = classification_prediction_dataframe(
-            self,
-            X,
-            posterior_kwargs=posterior_kwargs,
-            binary_threshold=binary_threshold,
-        )
-        if labels_only and labels_df.shape[1] == 0:
-            raise ValueError("The fitted optimizer has no binary, multiclass, or ordinal outputs.")
-        if original_index is not None:
-            labels_df.index = original_index
-
-        if prediction_df is None:
-            output_df = labels_df
-            if include_input:
-                input_df = self._prediction_input_to_dataframe(data, X)
-                if original_index is not None:
-                    input_df.index = original_index
-                output_df = input_df.join(output_df)
-        elif labels_df.shape[1] == 0:
-            output_df = prediction_df
-        else:
-            attrs = dict(getattr(prediction_df, "attrs", {}) or {})
-            output_df = prediction_df.join(labels_df)
-            output_df.attrs.update(attrs)
-
-        if return_dataframe_input:
-            return output_df, returned_input
-        return output_df
-
-    cls.predict = _predict
-
-
 __all__ = [
-    "apply_tabular_prediction_labels",
+    "_DATAFRAME_RETURN_TYPES",
+    "_LABEL_RETURN_TYPES",
+    "_prediction_tensor_and_index",
     "classification_prediction_dataframe",
 ]

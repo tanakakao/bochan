@@ -49,7 +49,6 @@ def test_multi_site_adapter_replaces_formula_columns_and_expands_bounds() -> Non
         _frame(),
         fit_transformers=True,
     )
-
     assert "A_site" not in transformed.columns
     assert "B_site" not in transformed.columns
     assert "temperature" in transformed.columns
@@ -90,7 +89,6 @@ def test_inverse_compositions_repairs_each_site_independently() -> None:
     restored = optimizer.inverse_compositions(candidate, repair=True)
     assert restored.loc[0, "A_site"]
     assert restored.loc[0, "B_site"]
-    assert restored.loc[0, f"{b_transformer.prefix}__fraction__La"] <= pytest.approx(0.8, abs=1e-7)
     fractions = restored.loc[
         0,
         [
@@ -100,9 +98,9 @@ def test_inverse_compositions_repairs_each_site_independently() -> None:
         ],
     ].astype(float)
     assert fractions.sum() == pytest.approx(1.0)
-    assert fractions[0] <= 0.8 + 1e-7
-    assert fractions[1] >= 0.1 - 1e-7
-    assert fractions[2] >= 0.1 - 1e-7
+    assert fractions.iloc[0] <= 0.8 + 1e-7
+    assert fractions.iloc[1] >= 0.1 - 1e-7
+    assert fractions.iloc[2] >= 0.1 - 1e-7
 
 
 def test_transform_compositions_accepts_raw_formula_columns() -> None:

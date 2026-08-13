@@ -11,7 +11,7 @@ on:
       - "src/bochan/models/classification/multiclass/foundation/**"
       - "src/bochan/acquisition/regression/pfn.py"
       - "src/bochan/acquisition/regression/__init__.py"
-      - "src/bochan/api/model_registry.py"
+      - "src/bochan/api/registry/model.py"
       - "tests/test_pfn_models.py"
       - "tests/test_tabpfn_models.py"
       - "tests/test_tabpfn_optional_smoke.py"

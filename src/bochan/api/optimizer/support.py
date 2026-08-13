@@ -1,75 +1,21 @@
-"""Shared optimizer-name, model, and Thompson-sampling helpers."""
+"""Shared optimizer model and Thompson-sampling helpers."""
 
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any, Literal
+from typing import Any
 
 from ..configs import OptimizeConfig as _BaseOptimizeConfig
-
-EvolutionaryMethod = Literal["ga", "pso", "sa", "cmaes"]
-OptimizerName = Literal[
-    "optimize_acqf",
-    "evo",
-    "ga",
-    "pso",
-    "sa",
-    "cmaes",
-    "torch",
-    "nsgaii",
-    "thompson_sampling",
-    "llm_candidate_set",
-]
-
-_CANONICAL_OPTIMIZERS = {
-    "optimize_acqf",
-    "evo",
-    "torch",
-    "nsgaii",
-    "thompson_sampling",
-    "llm_candidate_set",
-}
-_EVOLUTIONARY_METHODS = {"ga", "pso", "sa", "cmaes"}
-_MIXED_OPTIMIZERS = {
-    "optimize_acqf_mixed",
-    "evo_mixed",
-    "optimize_acqf_evo_mixed",
-    "torch_mixed",
-    "optimize_acqf_torch_mixed",
-    "thompson_sampling_mixed",
-    "optimize_thompson_sampling_mixed",
-}
-_ALIASES = {
-    "optimize_acqf_mixed": "optimize_acqf",
-    "optimize_acqf_evo": "evo",
-    "evo_mixed": "evo",
-    "optimize_acqf_evo_mixed": "evo",
-    "optimize_acqf_torch": "torch",
-    "torch_mixed": "torch",
-    "optimize_acqf_torch_mixed": "torch",
-    "optimize_acqf_nsgaii": "nsgaii",
-    "optimize_thompson_sampling": "thompson_sampling",
-    "thompson_sampling_mixed": "thompson_sampling",
-    "optimize_thompson_sampling_mixed": "thompson_sampling",
-    "thompson": "thompson_sampling",
-    "llm": "llm_candidate_set",
-    "llm_candidate": "llm_candidate_set",
-    "optimize_acqf_llm": "llm_candidate_set",
-    "optimize_acqf_llm_candidate_set": "llm_candidate_set",
-}
-
-
-class _InternalMixedOptimizerName(str):
-    """Mark a mixed optimizer name selected internally from categorical dims.
-
-    Publicly supplied old mixed names are still normalized to canonical family
-    names. The marker survives ``dataclasses.replace`` so downstream config copies
-    retain the internally selected mixed implementation.
-    """
-
-
-def _optimizer_name(optimizer: str) -> str:
-    return optimizer.replace("-", "_").lower()
+from ..configs.optimizer_names import (
+    _ALIASES,
+    _CANONICAL_OPTIMIZERS,
+    _EVOLUTIONARY_METHODS,
+    _MIXED_OPTIMIZERS,
+    EvolutionaryMethod,
+    OptimizerName,
+    _InternalMixedOptimizerName,
+    _optimizer_name,
+)
 
 
 def _uses_kronecker_model(value: Any, *, _seen: set[int] | None = None) -> bool:
@@ -242,5 +188,3 @@ def _resolve_thompson_sampling_target(acqf: Any) -> Any:
     if _has_posterior(acqf):
         return acqf
     return acqf
-
-

@@ -7,7 +7,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
-from ..optimizer.support import (
+from .base import OptimizeConfig as _BaseOptimizeConfig
+from .optimizer_names import (
     _ALIASES,
     _CANONICAL_OPTIMIZERS,
     _EVOLUTIONARY_METHODS,
@@ -17,7 +18,6 @@ from ..optimizer.support import (
     _InternalMixedOptimizerName,
     _optimizer_name,
 )
-from .base import OptimizeConfig as _BaseOptimizeConfig
 
 
 @dataclass

@@ -9,7 +9,7 @@ on:
       - "scripts/preload_tabpfn.sh"
       - "src/bochan/tabpfn_assets.py"
       - "src/bochan/tabpfn_preload.py"
-      - "src/bochan/api/model_registry.py"
+      - "src/bochan/api/registry/model.py"
       - "src/bochan/models/external/common.py"
       - "src/bochan/models/hybrid/task_aware_posterior.py"
       - "src/bochan/models/regression/foundation/tabpfn.py"

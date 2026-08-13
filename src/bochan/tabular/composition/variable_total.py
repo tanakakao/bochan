@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 
+from .columns import CompositionElementColumnTransform
 from .formula import ATOMIC_WEIGHTS, format_formula, parse_formula
 from .search_space import CompositionSearchSpace
 from .simplex import close_compositions
@@ -19,7 +20,9 @@ class CompositionVariableTotalTransform:
     def normalize_sites(
         sites: Mapping[str, Mapping[str, Any]] | None,
         *,
-        base_normalizer: Callable[[Mapping[str, Mapping[str, Any]] | None], dict[str, dict[str, Any]]],
+        base_normalizer: Callable[
+            [Mapping[str, Mapping[str, Any]] | None], dict[str, dict[str, Any]]
+        ],
     ) -> dict[str, dict[str, Any]]:
         if not sites:
             return {}
@@ -45,7 +48,11 @@ class CompositionVariableTotalTransform:
                     f"total_bounds for site {name!r} must contain two values."
                 )
             lower, upper = map(float, pair)
-            if not np.isfinite([lower, upper]).all() or lower <= 0.0 or lower >= upper:
+            if (
+                not np.isfinite([lower, upper]).all()
+                or lower <= 0.0
+                or lower >= upper
+            ):
                 raise ValueError(
                     f"total_bounds for site {name!r} must be finite, positive, and increasing."
                 )
@@ -66,15 +73,21 @@ class CompositionVariableTotalTransform:
             config["variable_total"] = True
             config["total_bounds"] = total_bounds
             config["total_feature"] = (
-                str(total_feature) if total_feature is not None else f"{prefix}__total"
+                str(total_feature)
+                if total_feature is not None
+                else f"{prefix}__total"
             )
-            lower_sum = sum(float(pair[0]) for pair in config["bounds"].values())
+            lower_sum = sum(
+                float(pair[0]) for pair in config["bounds"].values()
+            )
             if lower_sum > total_bounds[0] + 1e-12:
                 raise ValueError(
                     f"Lower component bounds at site {name!r} require a total of at least "
                     f"{lower_sum}, so the lower end of total_bounds={total_bounds!r} is infeasible."
                 )
-            if all(element in config["bounds"] for element in config["elements"]):
+            if all(
+                element in config["bounds"] for element in config["elements"]
+            ):
                 upper_sum = sum(
                     float(config["bounds"][element][1])
                     for element in config["elements"]
@@ -90,21 +103,28 @@ class CompositionVariableTotalTransform:
             if config["variable_total"]
         ]
         if len(set(total_features)) != len(total_features):
-            raise ValueError("Each variable composition total needs a unique feature name.")
+            raise ValueError(
+                "Each variable composition total needs a unique feature name."
+            )
         return normalized
 
     @staticmethod
     def make_site_search_space(
         config: Mapping[str, Any],
         *,
-        base_factory: Callable[[Mapping[str, Any]], CompositionSearchSpace | None],
+        base_factory: Callable[
+            [Mapping[str, Any]], CompositionSearchSpace | None
+        ],
     ) -> CompositionSearchSpace | None:
         if config.get("variable_total"):
             return None
         return base_factory(config)
 
     @staticmethod
-    def formula_site_totals(formulas: Any, config: Mapping[str, Any]) -> np.ndarray:
+    def formula_site_totals(
+        formulas: Any,
+        config: Mapping[str, Any],
+    ) -> np.ndarray:
         totals: list[float] = []
         weight_basis = str(config["normalization"]).lower() in {
             "weight_fraction",
@@ -130,8 +150,12 @@ class CompositionVariableTotalTransform:
         site_name: str,
         config: Mapping[str, Any],
         *,
-        site_source_columns: Callable[[Mapping[str, Any]], Sequence[Any]],
-        numeric_site_values: Callable[[Any, str, Mapping[str, Any]], np.ndarray],
+        site_source_columns: Callable[
+            [Mapping[str, Any]], Sequence[Any]
+        ],
+        numeric_site_values: Callable[
+            [Any, str, Mapping[str, Any]], np.ndarray
+        ],
     ) -> np.ndarray | None:
         total_feature = config["total_feature"]
         if total_feature in data.columns:
@@ -160,13 +184,19 @@ class CompositionVariableTotalTransform:
         fit_transformers: bool,
         composition_sites: Mapping[str, Mapping[str, Any]],
         base_prepare: Callable[..., Any],
-        site_source_columns: Callable[[Mapping[str, Any]], Sequence[Any]],
-        numeric_site_values: Callable[[Any, str, Mapping[str, Any]], np.ndarray],
+        site_source_columns: Callable[
+            [Mapping[str, Any]], Sequence[Any]
+        ],
+        numeric_site_values: Callable[
+            [Any, str, Mapping[str, Any]], np.ndarray
+        ],
     ) -> Any:
         import pandas as pd
 
         if not isinstance(data, pd.DataFrame):
-            raise TypeError("composition_sites requires pandas DataFrame input.")
+            raise TypeError(
+                "composition_sites requires pandas DataFrame input."
+            )
         totals: dict[str, np.ndarray] = {}
         for site_name, config in composition_sites.items():
             if not config.get("variable_total"):
@@ -180,9 +210,14 @@ class CompositionVariableTotalTransform:
             )
             if values is not None:
                 totals[site_name] = values
-        transformed = base_prepare(data, fit_transformers=fit_transformers)
+        transformed = base_prepare(
+            data,
+            fit_transformers=fit_transformers,
+        )
         for site_name, values in totals.items():
-            transformed.loc[:, composition_sites[site_name]["total_feature"]] = values
+            transformed.loc[
+                :, composition_sites[site_name]["total_feature"]
+            ] = values
         return transformed
 
     @staticmethod
@@ -191,7 +226,9 @@ class CompositionVariableTotalTransform:
         *,
         composition_sites: Mapping[str, Mapping[str, Any]],
         composition_transformers: Mapping[str, Any],
-        site_source_columns: Callable[[Mapping[str, Any]], Sequence[Any]],
+        site_source_columns: Callable[
+            [Mapping[str, Any]], Sequence[Any]
+        ],
     ) -> list[Any] | None:
         if input_cols is None:
             return None
@@ -209,7 +246,9 @@ class CompositionVariableTotalTransform:
                 continue
             if site_name in inserted:
                 continue
-            resolved.extend(composition_transformers[site_name].feature_names_ or ())
+            resolved.extend(
+                composition_transformers[site_name].feature_names_ or ()
+            )
             config = composition_sites[site_name]
             if config.get("variable_total"):
                 resolved.append(config["total_feature"])
@@ -226,8 +265,13 @@ class CompositionVariableTotalTransform:
         for site_name, config in composition_sites.items():
             if not config.get("variable_total"):
                 continue
-            expanded[config["total_feature"]] = list(config["total_bounds"])
-            if str(config["representation"]).lower() not in {"none", "fractions"}:
+            expanded[config["total_feature"]] = list(
+                config["total_bounds"]
+            )
+            if str(config["representation"]).lower() not in {
+                "none",
+                "fractions",
+            }:
                 continue
             transformer = composition_transformers[site_name]
             elements = transformer._require_fitted()
@@ -265,7 +309,9 @@ class CompositionVariableTotalTransform:
 
         if not multi_site_composition_enabled:
             return restored
-        candidates = data if isinstance(data, pd.DataFrame) else pd.DataFrame(data)
+        candidates = (
+            data if isinstance(data, pd.DataFrame) else pd.DataFrame(data)
+        )
         for site_name, config in composition_sites.items():
             if not config.get("variable_total"):
                 continue
@@ -284,7 +330,9 @@ class CompositionVariableTotalTransform:
             elements = transformer._require_fitted()
             representation_names = transformer._representation_names(elements)
             missing = [
-                name for name in representation_names if name not in candidates.columns
+                name
+                for name in representation_names
+                if name not in candidates.columns
             ]
             if missing:
                 raise KeyError(
@@ -292,15 +340,32 @@ class CompositionVariableTotalTransform:
                 )
             simplex_transform = transformer.simplex_transform_
             assert simplex_transform is not None
-            basis_fractions = simplex_transform.inverse_transform(
+            model_fractions = simplex_transform.inverse_transform(
                 candidates.loc[:, representation_names].to_numpy(dtype=float),
                 n_components=len(elements),
             )
+            native_fractions = model_fractions
+            if config.get("input_kind") == "element_columns":
+                native_fractions = (
+                    CompositionElementColumnTransform.from_atomic_fractions(
+                        model_fractions,
+                        config,
+                    )
+                )
+
             rows: list[dict[str, float]] = []
-            for basis_row, total in zip(basis_fractions, totals, strict=True):
+            for native_row, total in zip(
+                native_fractions,
+                totals,
+                strict=True,
+            ):
                 composition = {
                     element: float(value) * float(total)
-                    for element, value in zip(elements, basis_row, strict=True)
+                    for element, value in zip(
+                        elements,
+                        native_row,
+                        strict=True,
+                    )
                 }
                 if repair:
                     composition = cls.dynamic_search_space(
@@ -309,14 +374,19 @@ class CompositionVariableTotalTransform:
                     ).repair(composition)
                 rows.append(composition)
             absolute = np.asarray(
-                [[row[element] for element in elements] for row in rows],
+                [
+                    [row[element] for element in elements]
+                    for row in rows
+                ],
                 dtype=float,
             )
             actual_totals = absolute.sum(axis=1)
             restored.loc[:, total_feature] = actual_totals
             if config.get("input_kind") == "element_columns":
                 for index, element in enumerate(elements):
-                    restored.loc[:, config["element_columns"][element]] = absolute[:, index]
+                    restored.loc[
+                        :, config["element_columns"][element]
+                    ] = absolute[:, index]
                 continue
             normalized_basis = absolute / actual_totals[:, None]
             if str(config["normalization"]).lower() in {
@@ -342,9 +412,13 @@ class CompositionVariableTotalTransform:
                 for row in atomic_fractions
             ]
             for index, element in enumerate(elements):
-                fraction_column = f"{transformer.prefix}__fraction__{element}"
+                fraction_column = (
+                    f"{transformer.prefix}__fraction__{element}"
+                )
                 if fraction_column in restored:
-                    restored.loc[:, fraction_column] = normalized_basis[:, index]
+                    restored.loc[:, fraction_column] = normalized_basis[
+                        :, index
+                    ]
         return restored
 
 

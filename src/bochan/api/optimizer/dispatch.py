@@ -9,10 +9,9 @@ from typing import Any
 from .. import factory as _factory
 from ..candidate.uniqueness import ensure_unique_candidates
 from ..configs import OptimizeConfig as _BaseOptimizeConfig
+from ..configs.optimizer_names import _InternalMixedOptimizerName, _optimizer_name
 from .support import (
     _force_sequential_for_kronecker,
-    _InternalMixedOptimizerName,
-    _optimizer_name,
     _resolve_thompson_sampling_target,
 )
 
@@ -53,7 +52,7 @@ def _optimize_candidates_once(
     """Dispatch one optimizer call without final duplicate refill.
 
     ``base_optimize_candidates`` is an explicit dependency-injection hook used
-    by compatibility tests and custom callers.  It avoids runtime mutation of
+    by compatibility tests and custom callers. It avoids runtime mutation of
     module or class methods.
     """
 

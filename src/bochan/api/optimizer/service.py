@@ -1,4 +1,3 @@
-# ruff: noqa: F401, I001
 """Canonical optimizer configuration and high-level dispatch helpers."""
 
 from __future__ import annotations
@@ -12,31 +11,11 @@ from ..configs.optimize import (
     resolve_optimizer_from_cat_dims,
     uses_mixed_fixed_features,
 )
+from ..configs.optimizer_names import EvolutionaryMethod, OptimizerName
 from . import dispatch as _optimizer_dispatch
-from .dispatch import (
-    _common_kwargs,
-    _optimize_candidates_once,
-)
-from .support import (
-    EvolutionaryMethod,
-    OptimizerName,
-    _ALIASES,
-    _CANONICAL_OPTIMIZERS,
-    _EVOLUTIONARY_METHODS,
-    _InternalMixedOptimizerName,
-    _MIXED_OPTIMIZERS,
-    _configured_thompson_sampling_model,
-    _force_sequential_for_kronecker,
-    _has_posterior,
-    _has_thompson_sampling_context,
-    _is_callable_acquisition,
-    _optimizer_name,
-    _resolve_thompson_sampling_target,
-    _uses_kronecker_model,
-)
 
 # Preserve the existing test/customization seam without mutating a different
-# module at runtime.  The value is passed explicitly to the shared dispatcher.
+# module at runtime. The value is passed explicitly to the shared dispatcher.
 _BASE_OPTIMIZE_CANDIDATES = _optimizer_dispatch._BASE_OPTIMIZE_CANDIDATES
 
 

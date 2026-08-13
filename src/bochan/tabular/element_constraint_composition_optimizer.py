@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import replace
+from collections.abc import Sequence
 from typing import Any
 
+from .composition_element_constraint_candidates import (
+    CompositionElementConstraintCandidateReranker,
+)
 from .composition_element_constraints import (
     CompositionElementConstraintProjector,
     CompositionElementConstraintResolver,
 )
 from .composition_total_constraints import CompositionTotalConstraintResolver
 from .composition_variable_total_transform import CompositionVariableTotalTransform
-from .converter import dataframe_to_tensors
 from .element_column_composition_optimizer import (
     TabularBayesianOptimizer as _ElementColumnTabularBayesianOptimizer,
 )
@@ -30,6 +31,9 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
 
     composition_variable_total_transform = CompositionVariableTotalTransform()
     composition_element_constraint_resolver = CompositionElementConstraintResolver()
+    composition_element_constraint_candidate_reranker = (
+        CompositionElementConstraintCandidateReranker()
+    )
 
     def __init__(
         self,
@@ -42,12 +46,18 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
         composition_constraint_max_supports: int = 256,
         **kwargs: Any,
     ) -> None:
-        self.composition_element_constraints = self.composition_element_constraint_resolver.normalize(
-            composition_element_constraints
+        self.composition_element_constraints = (
+            self.composition_element_constraint_resolver.normalize(
+                composition_element_constraints
+            )
         )
         self.composition_constraint_rerank = bool(composition_constraint_rerank)
-        self.composition_constraint_rerank_factor = int(composition_constraint_rerank_factor)
-        self.composition_constraint_max_supports = int(composition_constraint_max_supports)
+        self.composition_constraint_rerank_factor = int(
+            composition_constraint_rerank_factor
+        )
+        self.composition_constraint_max_supports = int(
+            composition_constraint_max_supports
+        )
         if self.composition_constraint_rerank_factor < 1:
             raise ValueError("composition_constraint_rerank_factor must be >= 1.")
         if self.composition_constraint_max_supports < 1:
@@ -100,47 +110,13 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
             multi_site_composition_enabled=self.multi_site_composition_enabled,
             repair=repair,
         )
-        if repair and self.multi_site_composition_enabled and self.composition_element_constraints:
+        if (
+            repair
+            and self.multi_site_composition_enabled
+            and self.composition_element_constraints
+        ):
             restored = self._make_element_constraint_projector().repair_frame(restored)
         return restored
-
-    @staticmethod
-    def _requested_q(opt_config: Any, kwargs: Mapping[str, Any]) -> int:
-        direct = kwargs.get("q")
-        if isinstance(direct, int):
-            return max(1, direct)
-        if isinstance(opt_config, Mapping) and isinstance(opt_config.get("q"), int):
-            return max(1, int(opt_config["q"]))
-        configured = getattr(opt_config, "q", None)
-        return max(1, int(configured)) if isinstance(configured, int) else 1
-
-    def _rerank_candidates(
-        self,
-        candidates: Any,
-        acqf: Any,
-        requested_q: int,
-    ) -> tuple[Any, Any]:
-        import torch
-
-        unique = candidates.drop_duplicates().reset_index(drop=True)
-        transformed = self.transform_compositions(unique)
-        data_config = replace(
-            self.data_config,
-            input_cols=self.dataset.feature_names,
-            target_cols=None,
-        )
-        X = dataframe_to_tensors(transformed, data_config).X
-        with torch.no_grad():
-            try:
-                scores = acqf(X.unsqueeze(-2))
-            except (RuntimeError, ValueError, TypeError):
-                scores = acqf(X)
-        scores = scores.detach().reshape(-1)
-        if scores.numel() != len(unique):
-            raise ValueError("The acquisition function did not return one score per repaired candidate.")
-        order = torch.argsort(scores, descending=True)[:requested_q]
-        indices = order.detach().cpu().numpy().tolist()
-        return unique.iloc[indices].reset_index(drop=True), scores[order]
 
     def candidate(
         self,
@@ -182,7 +158,12 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
                 **kwargs,
             )
 
-        requested_q = self._requested_q(opt_config, kwargs)
+        requested_q = (
+            self.composition_element_constraint_candidate_reranker.requested_q(
+                opt_config,
+                kwargs,
+            )
+        )
         factor = (
             self.composition_constraint_rerank_factor
             if composition_constraint_rerank_factor is None
@@ -207,7 +188,14 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
             keep_coordinates=keep_composition_coordinates,
         )
         try:
-            return self._rerank_candidates(repaired, result.acqf, requested_q)
+            return self.composition_element_constraint_candidate_reranker.rerank(
+                repaired,
+                result.acqf,
+                requested_q,
+                transform_compositions=self.transform_compositions,
+                data_config=self.data_config,
+                feature_names=self.dataset.feature_names,
+            )
         except (RuntimeError, ValueError, TypeError, KeyError):
             selected = repaired.drop_duplicates().head(requested_q).reset_index(drop=True)
             return selected, result.acq_value

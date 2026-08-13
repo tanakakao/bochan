@@ -1,0 +1,184 @@
+name: Agent API optimizer package refactor
+
+on:
+  push:
+    branches:
+      - agent/api-root-responsibility-cleanup
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: contains(github.event.head_commit.message, '[agent-api-optimizer-refactor]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/api-root-responsibility-cleanup
+          fetch-depth: 0
+      - name: Consolidate optimizer modules
+        shell: bash
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import compileall
+          import re
+          from pathlib import Path
+
+          repo = Path.cwd()
+          api = repo / 'src/bochan/api'
+          optimizer = api / 'optimizer'
+          if optimizer.exists():
+              raise RuntimeError('optimizer package already exists')
+
+          def move(source: Path, destination: Path) -> None:
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              source.replace(destination)
+
+          def rewrite(path: Path, transform) -> None:
+              text = path.read_text(encoding='utf-8')
+              updated = transform(text)
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+
+          def replace_all(old: str, new: str) -> None:
+              allowed = {'.py', '.md', '.rst', '.toml', '.yml', '.yaml'}
+              workflow = repo / '.github/workflows/agent-api-optimizer-refactor.yml'
+              for path in repo.rglob('*'):
+                  if path == workflow or not path.is_file() or path.suffix.lower() not in allowed:
+                      continue
+                  try:
+                      text = path.read_text(encoding='utf-8')
+                  except UnicodeDecodeError:
+                      continue
+                  if old in text:
+                      path.write_text(text.replace(old, new), encoding='utf-8')
+
+          public_tmp = api / '_optimizer_public_tmp.py'
+          move(api / 'optimizer.py', public_tmp)
+          optimizer.mkdir()
+          move(public_tmp, optimizer / '__init__.py')
+          move(api / 'engine.py', optimizer / 'core.py')
+          move(api / 'optimizer_api.py', optimizer / 'service.py')
+          move(api / 'optimizer_dispatch.py', optimizer / 'dispatch.py')
+          move(api / 'optimizer_support.py', optimizer / 'support.py')
+
+          # Core only depends on API siblings outside the optimizer package.
+          rewrite(
+              optimizer / 'core.py',
+              lambda text: re.sub(r'(?m)^from \\.', 'from ..', text),
+          )
+
+          def rewrite_public(text: str) -> str:
+              for sibling in ('acquisition', 'candidate', 'configs', 'observation', 'factory', 'llm'):
+                  text = text.replace(f'from .{sibling}', f'from ..{sibling}')
+              text = text.replace('from .engine import', 'from .core import')
+              text = text.replace('from .optimizer_api import', 'from .service import')
+              return text
+
+          rewrite(optimizer / '__init__.py', rewrite_public)
+
+          def rewrite_service(text: str) -> str:
+              text = text.replace('from .candidate', 'from ..candidate')
+              text = text.replace('from .configs', 'from ..configs')
+              text = text.replace('from . import optimizer_dispatch as _optimizer_dispatch', 'from . import dispatch as _optimizer_dispatch')
+              text = text.replace('from .optimizer_dispatch import', 'from .dispatch import')
+              text = text.replace('from .optimizer_support import', 'from .support import')
+              return text
+
+          rewrite(optimizer / 'service.py', rewrite_service)
+
+          def rewrite_dispatch(text: str) -> str:
+              text = text.replace('from . import factory as _factory', 'from .. import factory as _factory')
+              text = text.replace('from .candidate', 'from ..candidate')
+              text = text.replace('from .configs', 'from ..configs')
+              text = text.replace('from .optimizer_support import', 'from .support import')
+              return text
+
+          rewrite(optimizer / 'dispatch.py', rewrite_dispatch)
+          rewrite(
+              optimizer / 'support.py',
+              lambda text: text.replace('from .configs', 'from ..configs'),
+          )
+
+          # Absolute imports in tests, docs, serving, and study code.
+          replacements = {
+              'bochan.api.engine': 'bochan.api.optimizer.core',
+              'bochan.api.optimizer_api': 'bochan.api.optimizer.service',
+              'bochan.api.optimizer_dispatch': 'bochan.api.optimizer.dispatch',
+              'bochan.api.optimizer_support': 'bochan.api.optimizer.support',
+          }
+          for old, new in replacements.items():
+              replace_all(old, new)
+
+          # Relative imports in remaining api modules.
+          for path in api.glob('*.py'):
+              rewrite(
+                  path,
+                  lambda text: (
+                      text.replace('from .engine import', 'from .optimizer.core import')
+                      .replace('from .optimizer_api import', 'from .optimizer.service import')
+                      .replace('from .optimizer_dispatch import', 'from .optimizer.dispatch import')
+                      .replace('from .optimizer_support import', 'from .optimizer.support import')
+                  ),
+              )
+
+          # Study package may import the old root core directly.
+          for path in (api / 'study').rglob('*.py'):
+              rewrite(
+                  path,
+                  lambda text: text.replace('from ..engine import', 'from ..optimizer.core import'),
+              )
+
+          architecture = repo / 'tests/test_api_architecture.py'
+          def rewrite_architecture(text: str) -> str:
+              text = text.replace(
+                  'from bochan.api import configs, engine, factory, optimizer, registry',
+                  'from bochan.api import configs, factory, optimizer, registry\\nfrom bochan.api.optimizer import core as optimizer_core',
+              )
+              text = text.replace('engine.BayesianOptimizer', 'optimizer_core.BayesianOptimizer')
+              text = text.replace('"bochan.api.engine"', '"bochan.api.optimizer.core"')
+              marker = '        "bochan.api.fit_config",\\n'
+              additions = (
+                  '        "bochan.api.engine",\\n'
+                  '        "bochan.api.optimizer_api",\\n'
+                  '        "bochan.api.optimizer_dispatch",\\n'
+                  '        "bochan.api.optimizer_support",\\n'
+              )
+              if marker in text and '"bochan.api.optimizer_api"' not in text:
+                  text = text.replace(marker, marker + additions, 1)
+              return text
+          rewrite(architecture, rewrite_architecture)
+
+          # Catch less common import forms.
+          replace_all('from bochan.api import engine', 'from bochan.api.optimizer import core as engine')
+          replace_all('import bochan.api.engine as ', 'import bochan.api.optimizer.core as ')
+
+          production = '\\n'.join(
+              path.read_text(encoding='utf-8')
+              for path in (repo / 'src/bochan').rglob('*.py')
+          )
+          for removed in (
+              'bochan.api.engine',
+              'bochan.api.optimizer_api',
+              'bochan.api.optimizer_dispatch',
+              'bochan.api.optimizer_support',
+          ):
+              if removed in production:
+                  raise RuntimeError(f'old optimizer path remains in production: {removed}')
+
+          if not compileall.compile_dir(str(api), quiet=1):
+              raise RuntimeError('compileall failed after optimizer package refactor')
+          PY
+      - name: Commit optimizer package refactor
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/agent-api-optimizer-refactor.yml
+          git add -A
+          git status --short
+          git commit -m "Consolidate API optimizer modules into one package"
+          git push origin HEAD:agent/api-root-responsibility-cleanup

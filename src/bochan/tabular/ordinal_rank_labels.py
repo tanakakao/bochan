@@ -1,4 +1,8 @@
-"""Resolve string labels used by tabular ordinal-rank constraints."""
+"""Resolve string labels used by tabular ordinal-rank constraints.
+
+Category-to-index resolution is owned by :mod:`multi_output_categories`; this
+module only normalizes the ordinal-constraint structures that contain labels.
+"""
 
 from __future__ import annotations
 

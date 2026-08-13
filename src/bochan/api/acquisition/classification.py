@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from .. import factory as _factory
 from ..configs import AcquisitionConfig, ModelBundle, ObjectiveConfig
+from ..support.callables import _filter_kwargs_for_callable
+from .objective import (
+    _build_ordinal_objective,
+    _direction_to_sign,
+    _objective_mode,
+)
 
 
 def _num_outputs(bundle: ModelBundle) -> int:
@@ -25,7 +30,7 @@ def _signs(
     if explicit is not None:
         return explicit
     if config.directions is not None:
-        return [_factory._direction_to_sign(value) for value in config.directions]
+        return [_direction_to_sign(value) for value in config.directions]
     if config.maximize:
         return None
     return [-1.0] * _num_outputs(bundle)
@@ -37,8 +42,8 @@ def build_ordinal_objective(
 ) -> Any:
     """Build the multi-output ordinal objective when requested."""
 
-    if _factory._objective_mode(config) != "multi_output":
-        return _factory._build_ordinal_objective(bundle, config)
+    if _objective_mode(config) != "multi_output":
+        return _build_ordinal_objective(bundle, config)
 
     from bochan.acquisition.ordinal.bayesian_optimization import (
         qMultiOutputOrdinalUtilityObjective,
@@ -72,7 +77,7 @@ def build_ordinal_objective(
         ),
     }
     resolved.update(kwargs)
-    resolved = _factory._filter_kwargs_for_callable(
+    resolved = _filter_kwargs_for_callable(
         qMultiOutputOrdinalUtilityObjective,
         resolved,
     )
@@ -95,7 +100,7 @@ def build_multiclass_objective(
     objective_config = config.objective_config
     if objective_config is None:
         return None
-    mode = _factory._objective_mode(objective_config)
+    mode = _objective_mode(objective_config)
     if mode == "none":
         return None
     if mode != "multi_output":

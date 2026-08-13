@@ -3,7 +3,7 @@
 `BayesianOptimizer` はモデル生成・学習・予測・獲得関数生成・候補点最適化を
 1つのクラスから扱うための薄い高レベル API です。
 
-内部処理は `factory.py` の関数に委譲しており、研究用途では関数単位、
+内部処理は責務別 service / modeling module に委譲し、研究用途では関数単位、
 アプリ用途ではクラス単位で使い分けられるようにしています。
 """
 
@@ -17,6 +17,7 @@ from ..acquisition.context import (
     _filter_context_fields_for_acqf,
     _resolve_objective_config_n_w_from_input_transform,
 )
+from ..acquisition.service import build_acquisition
 from ..configs import (
     AcquisitionConfig,
     CandidateResult,
@@ -27,10 +28,10 @@ from ..configs import (
     OptimizeConfig,
     PredictionResult,
 )
-from ..factory import build_acquisition, optimize_candidates
 from ..modeling.build import build_model
 from ..modeling.fit import fit_model
 from ..registry.acquisition import resolve_acqf_cls
+from .service import optimize_candidates
 
 
 def _compact_name(value: Any) -> str:

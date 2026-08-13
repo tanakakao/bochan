@@ -1,8 +1,8 @@
 """Core outcome-constraint composition for acquisition construction.
 
 This module keeps feasibility routing in the normal high-level API call graph.
-It intentionally does not replace functions in :mod:`bochan.api.factory` or
-:mod:`bochan.api.optimizer.core` at runtime.
+It intentionally does not replace functions in acquisition or optimizer
+services at runtime.
 """
 
 from __future__ import annotations
@@ -196,7 +196,7 @@ def build_outcome_constrained_acquisition(
 ) -> Any:
     """Build an acquisition with high-level outcome constraints natively."""
 
-    from ..factory import build_acquisition
+    from .service import build_acquisition
 
     base_config, plan = prepare_feasibility_build(bundle=bundle, config=config)
     acqf = build_acquisition(

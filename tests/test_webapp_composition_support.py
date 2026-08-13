@@ -23,7 +23,7 @@ from bochan.serving.webapp.visualization_sessions import (
     visualization_options,
 )
 from bochan.tabular.config import TabularDataConfig
-from bochan.tabular.converter import dataframe_to_tensors
+from bochan.tabular.data import dataframe_to_tensors
 
 
 def test_normalize_web_composition_settings_supports_element_constraints() -> None:

@@ -1,7 +1,8 @@
 # Composition API and tabular integration
 
-組成式の解析・変換・逆変換・simplex repair は通常 API の `bochan.composition` から利用できます。
-モデル固有のクラスではなく、任意の回帰・分類・active learning 処理の前後に置く汎用 API です。
+組成式の解析・変換・逆変換・simplex repair は、組成ユーティリティと `bochan.tabular.TabularBayesianOptimizer` の canonical `composition_sites` API から利用できます。
+
+## 通常 API
 
 ```python
 from bochan.composition import (
@@ -11,8 +12,6 @@ from bochan.composition import (
     parse_formula,
 )
 ```
-
-## 通常 API
 
 ```python
 transformer = CompositionTransformer(
@@ -55,10 +54,9 @@ space = CompositionSearchSpace(
 valid_composition = space.repair(raw_composition)
 ```
 
-## TabularBayesianOptimizer の直接引数
+## TabularBayesianOptimizer
 
-Tabular API では `CompositionColumnConfig` を作る必要はありません。
-元の `input_cols` には組成式列をそのまま指定します。
+Tabular API では、単一組成・複数サイト組成のどちらも `composition_sites` に統一します。単一組成は 1 サイトだけを定義します。
 
 ```python
 from bochan.tabular import TabularBayesianOptimizer
@@ -68,33 +66,35 @@ bo = TabularBayesianOptimizer(
     model_type="base",
     input_cols=["formula", "temperature"],
     target_cols="property",
-    bounds={
-        "temperature": [850.0, 1000.0],
+    bounds={"temperature": [850.0, 1000.0]},
+    composition_sites={
+        "formula": {
+            "column": "formula",
+            "elements": ["Fe", "Co", "Ni"],
+            "representation": "ilr",
+            "coordinate_bounds": [-8.0, 8.0],
+            "bounds": {
+                "Fe": [0.20, 0.80],
+                "Co": [0.00, 0.40],
+                "Ni": [0.00, 0.60],
+            },
+            "steps": {
+                "Fe": 0.01,
+                "Co": 0.01,
+                "Ni": 0.01,
+            },
+            "required_components": ["Fe"],
+            "min_components": 2,
+            "max_components": 3,
+        }
     },
-    composition_col="formula",
-    composition_elements=["Fe", "Co", "Ni"],
-    composition_representation="ilr",
-    composition_coordinate_bounds=[-8.0, 8.0],
-    composition_bounds={
-        "Fe": [0.20, 0.80],
-        "Co": [0.00, 0.40],
-        "Ni": [0.00, 0.60],
-    },
-    composition_steps={
-        "Fe": 0.01,
-        "Co": 0.01,
-        "Ni": 0.01,
-    },
-    composition_required_components=["Fe"],
-    composition_min_components=2,
-    composition_max_components=3,
 )
 
 bo.fit(df)
 candidates, acq_value = bo.candidate(acq_name="EI", q=3)
 ```
 
-学習時には内部で次の変換が行われます。
+学習時には組成式列がモデル空間へ変換されます。
 
 ```text
 formula -> formula__ilr__1, formula__ilr__2
@@ -123,31 +123,50 @@ prediction = bo.predict(
 )
 ```
 
-## 主な直接引数
+## composition_sites の主な設定
 
-| 引数 | 内容 |
+| 設定 | 内容 |
 |---|---|
-| `composition_col` | 組成式列 |
-| `composition_elements` | 探索対象元素。省略時は学習データから推定 |
-| `composition_normalization` | `atomic_fraction` / `weight_fraction` |
-| `composition_representation` | `fractions` / `clr` / `alr` / `ilr` |
-| `composition_coordinate_bounds` | CLR/ALR/ILR 座標の探索範囲 |
-| `composition_bounds` | 元素比率の上下限 |
-| `composition_steps` | 元素比率の刻み |
-| `composition_required_components` | 必須元素 |
-| `composition_min_components` | 最小有効元素数 |
-| `composition_max_components` | 最大有効元素数 |
+| `column` | 組成式列 |
+| `elements` | 探索対象元素 |
+| `normalization` | `atomic_fraction` / `weight_fraction` |
+| `representation` | `fractions` / `clr` / `alr` / `ilr` |
+| `coordinate_bounds` | CLR/ALR/ILR 座標の探索範囲 |
+| `bounds` | 元素量の上下限 |
+| `steps` | 元素量の刻み |
+| `required_components` | 必須元素 |
+| `min_components` | 最小有効元素数 |
+| `max_components` | 最大有効元素数 |
+| `total` | 固定サイト総量 |
+| `total_bounds` | 可変サイト総量の探索範囲 |
+
+元素ごとの数値列から組成を作る場合は `element_columns` を使用します。`column` と `element_columns` は同一サイトで同時には指定しません。
+
+## 複数サイト
+
+複数の独立組成は同じ mapping にサイトを追加します。
+
+```python
+composition_sites={
+    "A": {
+        "column": "A_formula",
+        "elements": ["La", "Sr", "Ba"],
+    },
+    "B": {
+        "column": "B_formula",
+        "elements": ["Fe", "Co", "Mn"],
+    },
+}
+```
+
+単一サイトと複数サイトで別 optimizer や別 API は使用しません。
 
 ## 組成記述子
 
-通常 API では `CompositionDescriptorCalculator` または
-`CompositionTransformer(include_descriptors=True)` を使用できます。
+通常 API では `CompositionDescriptorCalculator` または `CompositionTransformer(include_descriptors=True)` を使用できます。
 
-Tabular API でも `composition_include_descriptors=True` で学習と予測に使用できます。
-ただし、記述子は組成から決まる派生値であるため、現在の連続候補最適化では独立変数として最適化しません。
-候補生成時は `composition_include_descriptors=False` を使用してください。
+Tabular API ではサイト設定に `include_descriptors=True`、`descriptor_properties`、`element_properties` を指定できます。記述子は組成から決まる派生値であるため、学習・予測には使用できますが、候補生成では独立変数として最適化しません。候補生成を行うサイトでは `include_descriptors=False` を使用してください。
 
-## 互換 API
+## API 方針
 
-既存の `CompositionColumnConfig` と `CompositionTabularPreprocessor` は互換用途として残しています。
-新規コードでは、通常 API または `TabularBayesianOptimizer` の直接引数を推奨します。
+`TabularBayesianOptimizer` の組成設定は `composition_sites` が唯一の canonical entry point です。旧 `composition_col` / `formula_col` / `composition_*` 引数を保持する compatibility layer はありません。呼び出し側を `composition_sites` へ直接移行してください。

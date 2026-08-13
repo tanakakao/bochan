@@ -1,0 +1,237 @@
+name: Agent API final source cleanup
+
+on:
+  push:
+    branches:
+      - agent/api-root-responsibility-cleanup
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: contains(github.event.head_commit.message, '[agent-api-final-source-cleanup]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/api-root-responsibility-cleanup
+          fetch-depth: 0
+      - name: Fix final source regressions
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import py_compile
+
+          # Ruff: acquisition service import order.
+          path = Path('src/bochan/api/acquisition/service.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''from .. import factory as _factory
+from ..configs import AcquisitionConfig, DataContext, ModelBundle, ObjectiveConfig
+from .context import (
+    _filter_context_fields_for_acqf,
+    _input_transform_n_w_from_bundle,
+    _resolve_objective_config_n_w_from_input_transform,
+)
+from ..llm import is_llm_selected_acquisition, resolve_llm_selected_acquisition
+from ..registry.acquisition import resolve_acqf_cls
+from .classification import (
+    build_multiclass_objective,
+    build_ordinal_objective,
+    prepare_objective_instance,
+)
+'''
+          new = '''from .. import factory as _factory
+from ..configs import AcquisitionConfig, DataContext, ModelBundle, ObjectiveConfig
+from ..llm import is_llm_selected_acquisition, resolve_llm_selected_acquisition
+from ..registry.acquisition import resolve_acqf_cls
+from .classification import (
+    build_multiclass_objective,
+    build_ordinal_objective,
+    prepare_objective_instance,
+)
+from .context import (
+    _filter_context_fields_for_acqf,
+    _input_transform_n_w_from_bundle,
+    _resolve_objective_config_n_w_from_input_transform,
+)
+'''
+          if old not in text:
+              raise RuntimeError('acquisition service import block changed unexpectedly')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # Ruff: information defaults import order.
+          path = Path('src/bochan/api/acquisition/defaults/information.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''from .common import _num_outputs
+from .multiobjective import (
+    make_default_ref_point,
+    observed_multiobjective_values,
+)
+from ...configs import AcquisitionConfig, DataContext, ModelBundle, OptimizeConfig
+'''
+          new = '''from ...configs import AcquisitionConfig, DataContext, ModelBundle, OptimizeConfig
+from .common import _num_outputs
+from .multiobjective import (
+    make_default_ref_point,
+    observed_multiobjective_values,
+)
+'''
+          if old not in text:
+              raise RuntimeError('information defaults import block changed unexpectedly')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # Ruff + architecture: optimizer names are owned by configs.optimizer_names;
+          # support only imports symbols it actually consumes.
+          path = Path('src/bochan/api/optimizer/support.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''from ..configs.optimizer_names import (
+    _ALIASES,
+    _CANONICAL_OPTIMIZERS,
+    _EVOLUTIONARY_METHODS,
+    _MIXED_OPTIMIZERS,
+    EvolutionaryMethod,
+    OptimizerName,
+    _InternalMixedOptimizerName,
+    _optimizer_name,
+)
+'''
+          new = 'from ..configs.optimizer_names import _ALIASES, _optimizer_name\n'
+          if old not in text:
+              raise RuntimeError('optimizer support import block changed unexpectedly')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # Ruff: architecture test import order.
+          path = Path('tests/test_api_architecture.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''import bochan.api as api
+from bochan.api import configs, factory, optimizer, registry
+from bochan.api.optimizer import core as optimizer_core
+from bochan.api.acquisition import defaults as acquisition_defaults
+'''
+          new = '''import bochan.api as api
+from bochan.api import configs, factory, optimizer, registry
+from bochan.api.acquisition import defaults as acquisition_defaults
+'''
+          if old not in text:
+              raise RuntimeError('architecture test import block changed unexpectedly')
+          text = text.replace(old, new, 1)
+          marker = 'from bochan.api.observation import state as observation_state\n'
+          if marker not in text:
+              raise RuntimeError('architecture test optimizer import anchor missing')
+          text = text.replace(
+              marker,
+              marker + 'from bochan.api.optimizer import core as optimizer_core\n',
+              1,
+          )
+          path.write_text(text, encoding='utf-8')
+
+          # Restore the feature-importance aggregation to the current inspection
+          # result contract. The moved file must preserve the pre-move behavior.
+          path = Path('src/bochan/api/evaluation/cross_validation.py')
+          text = path.read_text(encoding='utf-8')
+          marker = '\ndef _aggregate_feature_importance(folds: list[Any]) -> Any:\n'
+          if marker not in text:
+              raise RuntimeError('cross-validation aggregation function missing')
+          prefix = text.split(marker, 1)[0]
+          aggregate = r'''
+def _aggregate_feature_importance(folds: list[Any]) -> Any:
+    """Aggregate fold means and ranks without aligning latent diagnostics.
+
+    Args:
+        folds: Validation-fold ``FeatureImportanceResult`` objects.
+
+    Returns:
+        Cross-validated output-oriented importance result.
+    """
+    from bochan.inspection.result_types import (
+        CrossValidatedFeatureImportanceResult,
+        CrossValidatedImportanceSummary,
+        CrossValidatedMethodResult,
+        CrossValidatedOutputImportance,
+    )
+
+    outputs = {}
+    for output_name, first_output in folds[0].outputs.items():
+        methods = {}
+        for method_name in first_output.predictive_methods:
+            method_folds = [
+                fold.outputs[output_name].predictive_methods[method_name]
+                for fold in folds
+            ]
+            entries = {}
+            for entry_name in method_folds[0].entries:
+                fold_entries = [method.entries[entry_name] for method in method_folds]
+                values = torch.tensor(
+                    [entry.importance.mean for entry in fold_entries],
+                    dtype=torch.float64,
+                )
+                ranks = torch.tensor(
+                    [entry.importance.rank for entry in fold_entries],
+                    dtype=torch.float64,
+                )
+                entries[entry_name] = CrossValidatedImportanceSummary(
+                    values,
+                    float(values.mean()),
+                    float(values.std(unbiased=False)),
+                    float(values.min()),
+                    float(values.max()),
+                    float(values.median()),
+                    float(ranks.mean()),
+                    float(ranks.std(unbiased=False)),
+                    len(values),
+                    [entry.importance.std for entry in fold_entries],
+                )
+            methods[method_name] = CrossValidatedMethodResult(
+                method_name,
+                entries,
+                method_folds,
+            )
+        outputs[output_name] = CrossValidatedOutputImportance(
+            output_name,
+            first_output.task_type,
+            methods,
+            {},
+            [fold.outputs[output_name].model_diagnostics for fold in folds],
+            warnings=[
+                warning
+                for fold in folds
+                for warning in fold.outputs[output_name].warnings
+            ],
+        )
+    return CrossValidatedFeatureImportanceResult(
+        outputs,
+        folds[0].feature_names,
+        [warning for fold in folds for warning in fold.warnings],
+        {"n_folds": len(folds), "pooled_oof_importance": False},
+    )
+'''
+          path.write_text(prefix + aggregate, encoding='utf-8')
+
+          for check in (
+              'src/bochan/api/acquisition/service.py',
+              'src/bochan/api/acquisition/defaults/information.py',
+              'src/bochan/api/optimizer/support.py',
+              'src/bochan/api/evaluation/cross_validation.py',
+              'tests/test_api_architecture.py',
+          ):
+              py_compile.compile(check, doraise=True)
+          PY
+          python -m pip install ruff
+          ruff check \
+            src/bochan/api/acquisition/service.py \
+            src/bochan/api/acquisition/defaults/information.py \
+            src/bochan/api/optimizer/support.py \
+            src/bochan/api/evaluation/cross_validation.py \
+            tests/test_api_architecture.py
+      - name: Commit final source cleanup
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/agent-api-final-source-cleanup.yml
+          git add -A
+          git status --short
+          git commit -m "Fix final API package cleanup regressions"
+          git push origin HEAD:agent/api-root-responsibility-cleanup

@@ -1,0 +1,41 @@
+name: Temporary public variable-total transform owner
+
+on:
+  push:
+    branches:
+      - agent/tabular-variable-total-mro-cleanup
+
+permissions:
+  contents: write
+
+jobs:
+  codemod:
+    if: github.event.head_commit.message != 'Own variable-total transform in public optimizer'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/tabular-variable-total-mro-cleanup
+      - name: Make public optimizer own the transform component
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/bochan/tabular/public_optimizer.py')
+          text = path.read_text()
+          old = '    composition_total_constraint_resolver = CompositionTotalConstraintResolver()\n'
+          new = (
+              old
+              + '    composition_variable_total_transform = CompositionVariableTotalTransform()\n'
+          )
+          if old not in text:
+              raise SystemExit('public optimizer component anchor not found')
+          if '    composition_variable_total_transform = CompositionVariableTotalTransform()\n' not in text:
+              path.write_text(text.replace(old, new, 1))
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/bochan/tabular/public_optimizer.py
+          git commit -m "Own variable-total transform in public optimizer"
+          git push origin HEAD:agent/tabular-variable-total-mro-cleanup

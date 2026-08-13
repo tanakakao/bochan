@@ -5,6 +5,7 @@ import importlib.util
 import bochan.api as api
 import bochan.tabular as tabular
 from bochan.tabular import composition_bounds_optimizer, optimizer_api
+from bochan.tabular import multi_site_composition_optimizer
 from bochan.tabular import optimizer as tabular_optimizer
 from bochan.tabular.composition_element_columns import CompositionElementColumnTransform
 from bochan.tabular.composition_element_constraint_candidates import (
@@ -20,18 +21,28 @@ from bochan.tabular.composition_total_constraints import (
 from bochan.tabular.composition_variable_total_transform import (
     CompositionVariableTotalTransform,
 )
+from bochan.tabular.multi_site_composition_optimizer import MultiSiteCompositionMixin
+from bochan.tabular.observation_optimizer import ObservationTabularMixin
+from bochan.tabular.optimizer_api import TabularApiMixin
 
 
 def test_tabular_public_optimizer_has_one_canonical_entry_point() -> None:
     assert tabular.TabularBayesianOptimizer.__module__ == "bochan.tabular.public_optimizer"
 
 
-def test_legacy_single_site_composition_optimizer_is_removed() -> None:
+def test_internal_behavior_modules_do_not_define_optimizer_classes() -> None:
+    assert "TabularBayesianOptimizer" not in vars(optimizer_api)
+    assert "TabularBayesianOptimizer" not in vars(multi_site_composition_optimizer)
     assert importlib.util.find_spec("bochan.tabular.composition_optimizer") is None
-    assert all(
-        cls.__module__ != "bochan.tabular.composition_optimizer"
-        for cls in tabular.TabularBayesianOptimizer.__mro__
-    )
+
+
+def test_canonical_optimizer_composes_functional_mixins_and_one_core() -> None:
+    mro = tabular.TabularBayesianOptimizer.__mro__
+    assert ObservationTabularMixin in mro
+    assert MultiSiteCompositionMixin in mro
+    assert TabularApiMixin in mro
+    assert tabular_optimizer.TabularBayesianOptimizer in mro
+    assert sum(cls.__name__ == "TabularBayesianOptimizer" for cls in mro) == 2
 
 
 def test_composition_bounds_is_component_not_optimizer_layer() -> None:
@@ -134,7 +145,7 @@ def test_tabular_import_does_not_patch_core_candidate_method() -> None:
 
 def test_tabular_import_does_not_patch_internal_init_or_predict_methods() -> None:
     assert not getattr(
-        optimizer_api.TabularBayesianOptimizer.__init__,
+        TabularApiMixin.__init__,
         "_bochan_supports_output_categories",
         False,
     )

@@ -114,6 +114,10 @@ class CompositionElementColumnTransform:
                 native_basis,
                 native_basis,
             )
+            # Element-column values are converted to atomic fractions before the
+            # formula transformer. Keep the model coordinate basis atomic and
+            # retain the source basis separately in ``input_basis``.
+            resolved["normalization"] = "atomic_fraction"
             resolved["element_columns"] = mapped_columns
             normalized[name] = resolved
             source_columns.extend(

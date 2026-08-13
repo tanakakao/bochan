@@ -117,10 +117,13 @@ def ask_study(
     def operation(study: BochanStudy) -> StudyAskResponse:
         batch = study.ask(
             q=request.q,
-            acq_config=acquisition_config(request.acq_config, request.tensor_options),
+            acq_config=acquisition_config(
+                request.acquisition_config,
+                request.tensor_options,
+            ),
             opt_config=(
-                to_optimize_config(request.opt_config, request.tensor_options)
-                if request.opt_config is not None
+                to_optimize_config(request.optimize_config, request.tensor_options)
+                if request.optimize_config is not None
                 else None
             ),
             data_context=(

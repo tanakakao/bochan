@@ -17,6 +17,7 @@ from .element_column_composition_optimizer import (
     TabularBayesianOptimizer as _ElementColumnTabularBayesianOptimizer,
 )
 
+
 class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
     """Support linear equality and inequality constraints between elements.
 
@@ -41,18 +42,12 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
         composition_constraint_max_supports: int = 256,
         **kwargs: Any,
     ) -> None:
-        self.composition_element_constraints = (
-            self.composition_element_constraint_resolver.normalize(
-                composition_element_constraints
-            )
+        self.composition_element_constraints = self.composition_element_constraint_resolver.normalize(
+            composition_element_constraints
         )
         self.composition_constraint_rerank = bool(composition_constraint_rerank)
-        self.composition_constraint_rerank_factor = int(
-            composition_constraint_rerank_factor
-        )
-        self.composition_constraint_max_supports = int(
-            composition_constraint_max_supports
-        )
+        self.composition_constraint_rerank_factor = int(composition_constraint_rerank_factor)
+        self.composition_constraint_max_supports = int(composition_constraint_max_supports)
         if self.composition_constraint_rerank_factor < 1:
             raise ValueError("composition_constraint_rerank_factor must be >= 1.")
         if self.composition_constraint_max_supports < 1:
@@ -85,18 +80,6 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
             self.composition_transformers_,
         )
 
-
-
-
-
-
-
-
-
-
-
-
-
     def inverse_compositions(
         self,
         data: Any,
@@ -117,16 +100,9 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
             multi_site_composition_enabled=self.multi_site_composition_enabled,
             repair=repair,
         )
-        if (
-            repair
-            and self.multi_site_composition_enabled
-            and self.composition_element_constraints
-        ):
-            restored = (
-                self._make_element_constraint_projector().repair_frame(restored)
-            )
+        if repair and self.multi_site_composition_enabled and self.composition_element_constraints:
+            restored = self._make_element_constraint_projector().repair_frame(restored)
         return restored
-
 
     @staticmethod
     def _requested_q(opt_config: Any, kwargs: Mapping[str, Any]) -> int:
@@ -161,10 +137,7 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
                 scores = acqf(X)
         scores = scores.detach().reshape(-1)
         if scores.numel() != len(unique):
-            raise ValueError(
-                "The acquisition function did not return one score per repaired "
-                "candidate."
-            )
+            raise ValueError("The acquisition function did not return one score per repaired candidate.")
         order = torch.argsort(scores, descending=True)[:requested_q]
         indices = order.detach().cpu().numpy().tolist()
         return unique.iloc[indices].reset_index(drop=True), scores[order]

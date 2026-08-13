@@ -35,28 +35,20 @@ class CompositionElementConstraintResolver:
         normalized: list[dict[str, Any]] = []
         for index, raw in enumerate(constraints or ()):
             if not isinstance(raw, Mapping):
-                raise TypeError(
-                    "Each composition element constraint must be a mapping."
-                )
+                raise TypeError("Each composition element constraint must be a mapping.")
             raw_terms = raw.get("terms")
             if not isinstance(raw_terms, Sequence) or isinstance(raw_terms, str):
-                raise ValueError(
-                    f"Composition element constraint {index} requires 'terms'."
-                )
+                raise ValueError(f"Composition element constraint {index} requires 'terms'.")
             combined: dict[tuple[str, str], float] = {}
             for term_index, raw_term in enumerate(raw_terms):
                 if not isinstance(raw_term, Mapping):
-                    raise TypeError(
-                        f"Term {term_index} in composition element constraint "
-                        f"{index} must be a mapping."
-                    )
+                    raise TypeError(f"Term {term_index} in composition element constraint {index} must be a mapping.")
                 site = raw_term.get("site")
                 element = raw_term.get("element")
                 coefficient = raw_term.get("coefficient", 1.0)
                 if site is None or element is None:
                     raise ValueError(
-                        f"Term {term_index} in composition element constraint "
-                        f"{index} requires site and element."
+                        f"Term {term_index} in composition element constraint {index} requires site and element."
                     )
                 coefficient = float(coefficient)
                 if not np.isfinite(coefficient):
@@ -74,17 +66,13 @@ class CompositionElementConstraintResolver:
                 if abs(coefficient) > 1e-15
             )
             if not terms:
-                raise ValueError(
-                    f"Composition element constraint {index} has no nonzero terms."
-                )
+                raise ValueError(f"Composition element constraint {index} has no nonzero terms.")
 
             operator = str(raw.get("operator", raw.get("op", "=")))
             if operator == "==":
                 operator = "="
             if operator not in {"=", "<=", ">="}:
-                raise ValueError(
-                    f"Unknown composition element operator {operator!r}."
-                )
+                raise ValueError(f"Unknown composition element operator {operator!r}.")
             rhs = float(raw.get("rhs", 0.0))
             if not np.isfinite(rhs):
                 raise ValueError("Element-constraint rhs must be finite.")
@@ -92,10 +80,7 @@ class CompositionElementConstraintResolver:
             try:
                 basis = _BASIS_ALIASES[basis_name]
             except KeyError as exc:
-                raise ValueError(
-                    "Element-constraint basis must be 'atomic_amount' or "
-                    "'weight_amount'."
-                ) from exc
+                raise ValueError("Element-constraint basis must be 'atomic_amount' or 'weight_amount'.") from exc
             normalized.append(
                 {
                     "terms": terms,
@@ -105,7 +90,6 @@ class CompositionElementConstraintResolver:
                 }
             )
         return normalized
-
 
     @staticmethod
     def component_bounds(
@@ -117,16 +101,13 @@ class CompositionElementConstraintResolver:
         lower, upper = map(float, pair)
         return max(0.0, lower), min(float(total), upper)
 
-
     @staticmethod
     def basis_scale(
         config: Mapping[str, Any],
         element: str,
         basis: str,
     ) -> float:
-        native_is_weight = (
-            str(config["normalization"]).lower() in _WEIGHT_NORMALIZATIONS
-        )
+        native_is_weight = str(config["normalization"]).lower() in _WEIGHT_NORMALIZATIONS
         if basis == "atomic_amount":
             return 1.0 / ATOMIC_WEIGHTS[element] if native_is_weight else 1.0
         return 1.0 if native_is_weight else ATOMIC_WEIGHTS[element]
@@ -149,18 +130,17 @@ class CompositionElementConstraintResolver:
             compatible = True
             for term in constraint["terms"]:
                 config = composition_sites[term["site"]]
-                if config.get("variable_total") or str(
-                    config["representation"]
-                ).lower() not in {"fraction", "fractions"}:
+                if config.get("variable_total") or str(config["representation"]).lower() not in {
+                    "fraction",
+                    "fractions",
+                }:
                     compatible = False
                     break
                 transformer = composition_transformers.get(term["site"])
                 if transformer is None:
                     compatible = False
                     break
-                names.append(
-                    f"{transformer.prefix}__fraction__{term['element']}"
-                )
+                names.append(f"{transformer.prefix}__fraction__{term['element']}")
                 coefficients.append(
                     float(term["coefficient"])
                     * cls.basis_scale(
@@ -242,24 +222,18 @@ class CompositionElementConstraintProjector:
         if not self.composition_element_constraints:
             return
         if not self.composition_sites:
-            raise ValueError(
-                "composition_element_constraints requires composition_sites."
-            )
+            raise ValueError("composition_element_constraints requires composition_sites.")
         for constraint in self.composition_element_constraints:
             lhs_min = 0.0
             lhs_max = 0.0
             for term in constraint["terms"]:
                 site = term["site"]
                 if site not in self.composition_sites:
-                    raise KeyError(
-                        f"Unknown composition site {site!r} in element constraint."
-                    )
+                    raise KeyError(f"Unknown composition site {site!r} in element constraint.")
                 config = self.composition_sites[site]
                 element = term["element"]
                 if element not in config["elements"]:
-                    raise KeyError(
-                        f"Unknown element {element!r} at composition site {site!r}."
-                    )
+                    raise KeyError(f"Unknown element {element!r} at composition site {site!r}.")
                 if config.get("variable_total"):
                     total_upper = float(config["total_bounds"][1])
                 else:
@@ -285,18 +259,11 @@ class CompositionElementConstraintProjector:
             )
             if not feasible:
                 raise ValueError(
-                    "A composition element constraint is infeasible within the "
-                    "configured component bounds."
+                    "A composition element constraint is infeasible within the configured component bounds."
                 )
 
-        if not any(
-            config.get("variable_total")
-            for config in self.composition_sites.values()
-        ):
-            totals = {
-                site: float(config["total"])
-                for site, config in self.composition_sites.items()
-            }
+        if not any(config.get("variable_total") for config in self.composition_sites.values()):
+            totals = {site: float(config["total"]) for site, config in self.composition_sites.items()}
             raw = {
                 (site, element): totals[site] / len(config["elements"])
                 for site, config in self.composition_sites.items()
@@ -312,11 +279,7 @@ class CompositionElementConstraintProjector:
                 ) from exc
 
     def _constraint_sites(self) -> set[str]:
-        return {
-            term["site"]
-            for constraint in self.composition_element_constraints
-            for term in constraint["terms"]
-        }
+        return {term["site"] for constraint in self.composition_element_constraints for term in constraint["terms"]}
 
     def _support_options(
         self,
@@ -336,9 +299,7 @@ class CompositionElementConstraintProjector:
             if lower > tolerance:
                 required.add(element)
             step = config["steps"].get(element)
-            if upper > tolerance and (
-                step is None or lower > tolerance or upper + tolerance >= float(step)
-            ):
+            if upper > tolerance and (step is None or lower > tolerance or upper + tolerance >= float(step)):
                 activatable.append(element)
 
         minimum = int(config["min_components"])
@@ -348,11 +309,7 @@ class CompositionElementConstraintProjector:
             key=lambda element: raw.get((site, element), 0.0),
             reverse=True,
         )
-        current = {
-            element
-            for element in activatable
-            if raw.get((site, element), 0.0) > tolerance
-        }
+        current = {element for element in activatable if raw.get((site, element), 0.0) > tolerance}
         current.update(required)
         removable = sorted(
             current - required,
@@ -365,38 +322,26 @@ class CompositionElementConstraintProjector:
                 break
             current.add(element)
         if not required.issubset(current) or not minimum <= len(current) <= maximum:
-            raise ValueError(
-                f"No valid active-element support is available at site {site!r}."
-            )
+            raise ValueError(f"No valid active-element support is available at site {site!r}.")
 
-        options: set[tuple[str, ...]] = {
-            tuple(element for element in elements if element in current)
-        }
+        options: set[tuple[str, ...]] = {tuple(element for element in elements if element in current)}
         if enumerate_alternatives:
             optional = [element for element in activatable if element not in required]
             for size in range(max(minimum, len(required)), maximum + 1):
                 choose = size - len(required)
                 for selected in combinations(optional, choose):
                     support = required | set(selected)
-                    options.add(
-                        tuple(element for element in elements if element in support)
-                    )
+                    options.add(tuple(element for element in elements if element in support))
 
         scored = sorted(
             options,
-            key=lambda support: sum(
-                raw.get((site, element), 0.0) for element in support
-            ),
+            key=lambda support: sum(raw.get((site, element), 0.0) for element in support),
             reverse=True,
         )
         return scored[: min(64, self.composition_constraint_max_supports)]
 
     def _entry_order(self) -> list[tuple[str, str]]:
-        return [
-            (site, element)
-            for site, config in self.composition_sites.items()
-            for element in config["elements"]
-        ]
+        return [(site, element) for site, config in self.composition_sites.items() for element in config["elements"]]
 
     def _solve_support(
         self,
@@ -437,9 +382,7 @@ class CompositionElementConstraintProjector:
                         0,
                         ceil((effective_lower - lower) / step - 1e-10),
                     )
-                    upper_variables[index] = floor(
-                        (upper - lower) / step + 1e-10
-                    )
+                    upper_variables[index] = floor((upper - lower) / step + 1e-10)
                     integrality[index] = 1
                     if lower_variables[index] > upper_variables[index]:
                         return None
@@ -621,17 +564,12 @@ class CompositionElementConstraintProjector:
                     restored.at[row_index, output_column] = absolute[index]
 
             if config.get("input_kind") == "formula":
-                if (
-                    str(config["normalization"]).lower()
-                    in _WEIGHT_NORMALIZATIONS
-                ):
+                if str(config["normalization"]).lower() in _WEIGHT_NORMALIZATIONS:
                     weights = np.asarray(
                         [ATOMIC_WEIGHTS[element] for element in elements],
                         dtype=float,
                     )
-                    atomic_fractions = close_compositions(
-                        fractions[None, :] / weights[None, :]
-                    )[0]
+                    atomic_fractions = close_compositions(fractions[None, :] / weights[None, :])[0]
                 else:
                     atomic_fractions = close_compositions(fractions[None, :])[0]
                 restored.at[row_index, config["column"]] = format_formula(

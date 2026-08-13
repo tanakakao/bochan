@@ -23,7 +23,7 @@ from ..schemas import (
     TabularModelLoadResponse,
     TabularTellRequest,
 )
-from .tabular import _fit_response, _to_dataframe
+from ..services.tabular import build_fit_response, to_dataframe
 
 TABULAR_STORE_DEP = Depends(get_tabular_optimizer_store)
 FILE_STORE_DEP = Depends(get_file_optimizer_store)
@@ -78,13 +78,17 @@ def tell_tabular_model(
 
     try:
         optimizer = store.get(model_id)
-        frame = _to_dataframe(request.data)
+        frame = to_dataframe(request.data)
         _append_tabular_data(optimizer, frame)
         if request.refit:
-            fit_config = to_fit_config(request.fit_config) if request.fit_config is not None else optimizer.fit_config
+            fit_config = (
+                to_fit_config(request.fit_config)
+                if request.fit_config is not None
+                else optimizer.fit_config
+            )
             optimizer.bo.refit(fit_config=fit_config)
             optimizer._sync_visualization_metadata()  # noqa: SLF001
-        return _fit_response(model_id, optimizer)
+        return build_fit_response(model_id, optimizer)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
@@ -148,7 +152,7 @@ def load_tabular_model(
             raise TypeError("The selected artifact does not contain a tabular optimizer.")
         _synchronize_tabular_dataset(optimizer)
         model_id = store.add(optimizer)
-        response = _fit_response(model_id, optimizer).model_dump()
+        response = build_fit_response(model_id, optimizer).model_dump()
         return TabularModelLoadResponse(
             **response,
             filename=file_store.relative_name(path),

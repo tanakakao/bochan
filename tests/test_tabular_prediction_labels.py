@@ -7,6 +7,7 @@ import pytest
 import torch
 
 from bochan.tabular import TabularBayesianOptimizer, TabularDataConfig
+from bochan.tabular.composition import CompositionAdapter
 
 
 class _PredictingBO:
@@ -42,7 +43,7 @@ def _optimizer(
     inverse_target_category_maps=None,
 ) -> TabularBayesianOptimizer:
     optimizer = object.__new__(TabularBayesianOptimizer)
-    optimizer.composition_sites = {}
+    optimizer.composition = CompositionAdapter()
     optimizer.dataset = SimpleNamespace(
         target_names=target_names,
         feature_names=["x"],

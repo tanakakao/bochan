@@ -1,159 +1,113 @@
+from __future__ import annotations
+
 import pandas as pd
 import pytest
 
 from bochan.tabular import TabularBayesianOptimizer
-from bochan.tabular.optimizer import TabularBayesianOptimizer as _TabularOptimizerCore
 
 
 def _frame() -> pd.DataFrame:
     return pd.DataFrame(
         {
-            "A_formula": ["La0.7Sr0.3", "La0.5Ba0.5"],
-            "B_formula": ["Fe0.6Co0.4", "Fe0.5Mn0.5"],
-            "temperature": [900.0, 950.0],
-            "property": [10.0, 12.0],
+            "A_site": ["La0.6Sr0.4", "La0.5Sr0.5", "La0.7Sr0.3"],
+            "B_site": ["La0.5Sr0.3Ca0.2", "La0.4Sr0.4Ca0.2", "La0.6Sr0.2Ca0.2"],
+            "temperature": [900.0, 1000.0, 1100.0],
+            "property": [1.0, 2.0, 3.0],
         }
     )
 
 
-def _sites() -> dict:
-    return {
-        "A": {
-            "column": "A_formula",
-            "elements": ["La", "Sr", "Ba"],
-            "min_components": 2,
-            "max_components": 2,
-            "required_components": ["La"],
-            "steps": {"La": 0.01, "Sr": 0.01, "Ba": 0.01},
-        },
-        "B": {
-            "column": "B_formula",
-            "elements": ["Fe", "Co", "Mn"],
-            "min_components": 2,
-            "max_components": 2,
-            "required_components": ["Fe"],
-            "steps": {"Fe": 0.01, "Co": 0.01, "Mn": 0.01},
-        },
-    }
-
-
-def test_multi_site_fit_replaces_each_formula_column(monkeypatch) -> None:
-    captured = {}
-
-    def fake_fit(self, data=None, y=None, **kwargs):
-        captured["data"] = data
-        captured["kwargs"] = kwargs
-        return self
-
-    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
-    optimizer = TabularBayesianOptimizer(
-        input_cols=["A_formula", "B_formula", "temperature"],
+def _optimizer() -> TabularBayesianOptimizer:
+    return TabularBayesianOptimizer(
+        input_cols=["A_site", "B_site", "temperature"],
         target_cols="property",
-        bounds={"temperature": [850.0, 1000.0]},
-        composition_sites=_sites(),
+        composition_sites={
+            "A": {
+                "column": "A_site",
+                "elements": ["La", "Sr"],
+                "representation": "clr",
+            },
+            "B": {
+                "column": "B_site",
+                "elements": ["La", "Sr", "Ca"],
+                "representation": "fractions",
+                "bounds": {
+                    "La": [0.3, 0.8],
+                    "Sr": [0.1, 0.5],
+                    "Ca": [0.1, 0.4],
+                },
+                "min_components": 3,
+                "max_components": 3,
+            },
+        },
     )
 
-    assert optimizer.fit(_frame()) is optimizer
-    assert "A_formula" not in captured["data"].columns
-    assert "B_formula" not in captured["data"].columns
-    assert captured["kwargs"]["input_cols"] == [
-        "A__ilr__1",
-        "A__ilr__2",
-        "B__ilr__1",
-        "B__ilr__2",
+
+def test_multi_site_adapter_replaces_formula_columns_and_expands_bounds() -> None:
+    optimizer = _optimizer()
+    transformed = optimizer.composition.prepare_frame(
+        _frame(),
+        fit_transformers=True,
+    )
+    assert "A_site" not in transformed.columns
+    assert "B_site" not in transformed.columns
+    assert "temperature" in transformed.columns
+    assert set(optimizer.composition.transformers) == {"A", "B"}
+
+    resolved_cols = optimizer.composition.replace_input_cols(
+        ["A_site", "B_site", "temperature"]
+    )
+    expected = [
+        *(optimizer.composition.transformers["A"].feature_names_ or ()),
+        *(optimizer.composition.transformers["B"].feature_names_ or ()),
         "temperature",
     ]
-    assert captured["kwargs"]["bounds"]["A__ilr__1"] == [-8.0, 8.0]
-    assert captured["kwargs"]["bounds"]["B__ilr__1"] == [-8.0, 8.0]
+    assert resolved_cols == expected
 
-
-def test_multi_site_candidate_repairs_each_site_independently(monkeypatch) -> None:
-    def fake_fit(self, data=None, y=None, **kwargs):
-        return self
-
-    def fake_candidate(self, *args, **kwargs):
-        return (
-            pd.DataFrame(
-                {
-                    "A__ilr__1": [0.0],
-                    "A__ilr__2": [0.0],
-                    "B__ilr__1": [0.0],
-                    "B__ilr__2": [0.0],
-                    "temperature": [925.0],
-                }
-            ),
-            1.0,
-        )
-
-    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
-    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
-    optimizer = TabularBayesianOptimizer(
-        input_cols=["A_formula", "B_formula", "temperature"],
-        target_cols="property",
-        bounds={"temperature": [850.0, 1000.0]},
-        composition_sites=_sites(),
+    bounds = optimizer.composition.expanded_bounds(
+        {"temperature": [800.0, 1200.0]},
+        transformed,
     )
-    optimizer.fit(_frame())
-
-    candidates, _ = optimizer.candidate()
-
-    assert candidates.loc[0, "A_formula"]
-    assert candidates.loc[0, "B_formula"]
-    a_columns = [column for column in candidates if column.startswith("A__fraction__")]
-    b_columns = [column for column in candidates if column.startswith("B__fraction__")]
-    assert candidates.loc[0, a_columns].sum() == pytest.approx(1.0)
-    assert candidates.loc[0, b_columns].sum() == pytest.approx(1.0)
-    assert sum(candidates.loc[0, a_columns] > 0) == 2
-    assert sum(candidates.loc[0, b_columns] > 0) == 2
-    assert candidates.loc[0, "A__fraction__La"] > 0
-    assert candidates.loc[0, "B__fraction__Fe"] > 0
-    assert candidates.loc[0, "temperature"] == 925.0
+    assert "temperature" in bounds
+    for transformer in optimizer.composition.transformers.values():
+        for name in transformer.feature_names_ or ():
+            assert name in bounds
 
 
-def test_multi_site_predict_accepts_raw_formula_columns(monkeypatch) -> None:
-    captured = {}
-
-    def fake_fit(self, data=None, y=None, **kwargs):
-        return self
-
-    def fake_predict(self, data, **kwargs):
-        captured["data"] = data
-        return data
-
-    monkeypatch.setattr(_TabularOptimizerCore, "fit", fake_fit)
-    monkeypatch.setattr(_TabularOptimizerCore, "predict", fake_predict)
-    optimizer = TabularBayesianOptimizer(
-        input_cols=["A_formula", "B_formula", "temperature"],
-        target_cols="property",
-        bounds={"temperature": [850.0, 1000.0]},
-        composition_sites=_sites(),
+def test_inverse_compositions_repairs_each_site_independently() -> None:
+    optimizer = _optimizer()
+    transformed = optimizer.composition.prepare_frame(
+        _frame(),
+        fit_transformers=True,
     )
-    optimizer.fit(_frame())
-    optimizer.predict(
-        _frame().drop(columns=["property"]),
-        include_prediction_labels=False,
-    )
+    candidate = transformed.head(1).copy()
+    b_transformer = optimizer.composition.transformers["B"]
+    b_names = list(b_transformer.feature_names_ or ())
+    assert len(b_names) == 3
+    candidate.loc[:, b_names] = [0.95, 0.03, 0.02]
 
-    assert "A_formula" not in captured["data"].columns
-    assert "B_formula" not in captured["data"].columns
-    assert "A__ilr__1" in captured["data"].columns
-    assert "B__ilr__1" in captured["data"].columns
+    restored = optimizer.inverse_compositions(candidate, repair=True)
+    assert restored.loc[0, "A_site"]
+    assert restored.loc[0, "B_site"]
+    fractions = restored.loc[
+        0,
+        [
+            f"{b_transformer.prefix}__fraction__La",
+            f"{b_transformer.prefix}__fraction__Sr",
+            f"{b_transformer.prefix}__fraction__Ca",
+        ],
+    ].astype(float)
+    assert fractions.sum() == pytest.approx(1.0)
+    assert fractions.iloc[0] <= 0.8 + 1e-7
+    assert fractions.iloc[1] >= 0.1 - 1e-7
+    assert fractions.iloc[2] >= 0.1 - 1e-7
 
 
-def test_single_site_uses_same_canonical_composition_sites_api() -> None:
-    sites = {
-        "alloy": {
-            "column": "A_formula",
-            "elements": ["La", "Sr", "Ba"],
-        }
-    }
-    optimizer = TabularBayesianOptimizer(composition_sites=sites)
-    assert tuple(optimizer.composition_sites) == ("alloy",)
-    assert optimizer.composition_sites["alloy"]["column"] == "A_formula"
-
-
-def test_multi_site_requires_unique_columns() -> None:
-    sites = _sites()
-    sites["B"]["column"] = "A_formula"
-    with pytest.raises(ValueError, match="unique"):
-        TabularBayesianOptimizer(composition_sites=sites)
+def test_transform_compositions_accepts_raw_formula_columns() -> None:
+    optimizer = _optimizer()
+    optimizer.composition.prepare_frame(_frame(), fit_transformers=True)
+    transformed = optimizer.transform_compositions(_frame().iloc[:2])
+    assert "A_site" not in transformed.columns
+    assert "B_site" not in transformed.columns
+    for transformer in optimizer.composition.transformers.values():
+        assert set(transformer.feature_names_ or ()).issubset(transformed.columns)

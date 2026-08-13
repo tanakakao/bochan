@@ -1,14 +1,27 @@
 """Composition-aware preprocessing for bochan tabular models."""
 
+from .adapter import CompositionAdapter
 from .descriptors import CompositionDescriptorCalculator
-from .formula import ATOMIC_NUMBERS, ATOMIC_WEIGHTS, element_order, format_formula, normalize_composition, parse_formula
+from .formula import (
+    ATOMIC_NUMBERS,
+    ATOMIC_WEIGHTS,
+    element_order,
+    format_formula,
+    normalize_composition,
+    parse_formula,
+)
 from .search_space import CompositionSearchSpace
 from .simplex import SimplexTransform, close_compositions, ilr_basis
-from .transformer import CompositionColumnConfig, CompositionTabularPreprocessor, CompositionTransformer
+from .transformer import (
+    CompositionColumnConfig,
+    CompositionTabularPreprocessor,
+    CompositionTransformer,
+)
 
 __all__ = [
     "ATOMIC_NUMBERS",
     "ATOMIC_WEIGHTS",
+    "CompositionAdapter",
     "CompositionColumnConfig",
     "CompositionDescriptorCalculator",
     "CompositionSearchSpace",

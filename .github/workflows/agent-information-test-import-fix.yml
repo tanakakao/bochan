@@ -1,0 +1,53 @@
+name: Agent information test import fix
+
+on:
+  push:
+    branches:
+      - agent/api-root-responsibility-cleanup
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: contains(github.event.head_commit.message, '[agent-info-test-import-fix]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/api-root-responsibility-cleanup
+          fetch-depth: 0
+      - name: Update removed information defaults imports
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          old = 'import bochan.api.information_acquisition_defaults as info_defaults'
+          new = 'import bochan.api.acquisition.defaults.information as info_defaults'
+          changed = []
+          for path in Path('tests').rglob('*.py'):
+              text = path.read_text(encoding='utf-8')
+              if old in text:
+                  path.write_text(text.replace(old, new), encoding='utf-8')
+                  changed.append(str(path))
+          expected = {
+              'tests/test_knowledge_gradient_defaults.py',
+              'tests/test_information_acquisition_defaults.py',
+              'tests/test_multiobjective_entropy_defaults.py',
+          }
+          if set(changed) != expected:
+              raise RuntimeError(f'unexpected information-import replacements: {changed}')
+          for path in Path('tests').rglob('*.py'):
+              if 'bochan.api.information_acquisition_defaults' in path.read_text(encoding='utf-8'):
+                  raise RuntimeError(f'old information defaults import remains: {path}')
+          PY
+      - name: Commit canonical test imports
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/agent-information-test-import-fix.yml
+          git add -A
+          git commit -m "Use canonical information defaults imports in tests"
+          git push origin HEAD:agent/api-root-responsibility-cleanup

@@ -24,7 +24,7 @@ jobs:
           from pathlib import Path
 
           root = Path('.')
-          suffixes = {'.py', '.md', '.yml', '.yaml', '.toml', '.txt', '.ipynb'}
+          suffixes = {'.py', '.md', '.toml', '.txt', '.ipynb'}
           replacements = (
               ('from .model_registry import', 'from .registry.model import'),
               ('from ..model_registry import', 'from ..registry.model import'),
@@ -43,7 +43,7 @@ jobs:
           for path in root.rglob('*'):
               if not path.is_file() or path.suffix not in suffixes:
                   continue
-              if '.git' in path.parts:
+              if '.git' in path.parts or path.parts[:2] == ('.github', 'workflows'):
                   continue
               text = path.read_text(encoding='utf-8')
               updated = text
@@ -57,17 +57,15 @@ jobs:
               Path('src/bochan/api/acquisition_registry.py'),
           ):
               path.unlink()
-
-          Path('.github/workflows/api-registry-codemod.yml').unlink()
           PY
 
-          if git grep -n -E 'bochan\.api\.(model_registry|acquisition_registry)|src/bochan/api/(model_registry|acquisition_registry)\.py' -- ':!*.lock'; then
+          if git grep -n -E 'bochan\.api\.(model_registry|acquisition_registry)|src/bochan/api/(model_registry|acquisition_registry)\.py' -- ':!*.lock' ':!.github/workflows/*'; then
             echo 'Old registry path remains after codemod.' >&2
             exit 1
           fi
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
+          git add -A ':!.github/workflows'
           git commit -m 'Move API registries into registry package'
           git push origin HEAD:agent/api-registry-layout

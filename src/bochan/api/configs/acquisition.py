@@ -244,7 +244,7 @@ class AcquisitionConfig(_BaseAcquisitionConfig):
         self.acqf_kwargs = kwargs
 
         if self.outcome_constraint_config is not None:
-            from ..feasibility_defaults import build_outcome_constrained_acquisition
+            from ..acquisition.feasibility import build_outcome_constrained_acquisition
 
             if (
                 self.acqf_factory is not None

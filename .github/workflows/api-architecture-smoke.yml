@@ -75,15 +75,12 @@ jobs:
             src/bochan/tabular/data/conversion.py \
             src/bochan/tabular/data/dataset.py \
             src/bochan/tabular/observation/__init__.py \
-            src/bochan/tabular/observation/adapter.py \
             src/bochan/tabular/observation/data.py \
             src/bochan/tabular/optimizer/__init__.py \
-            src/bochan/tabular/optimizer/core.py \
             src/bochan/tabular/optimizer/configuration.py \
             src/bochan/tabular/optimizer/settings.py \
             src/bochan/tabular/optimizer/fitting.py \
             src/bochan/tabular/optimizer/candidates.py \
-            src/bochan/tabular/optimizer/diagnostics.py \
             src/bochan/tabular/optimizer/prediction.py \
             src/bochan/tabular/targets/__init__.py \
             src/bochan/tabular/targets/categories.py \

@@ -52,7 +52,7 @@ from .multiclass_ternary import (
     show_multiclass_triscatter,
     show_multiclass_triscatter_from_optimizer,
 )
-from .multiclass_yy import (
+from .multiclass_yyplot import (
     show_multiclass_yyplot,
     show_yyplot_from_optimizer,
 )

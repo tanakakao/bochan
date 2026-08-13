@@ -1,10 +1,8 @@
 import pandas as pd
 import pytest
 
+from bochan.tabular import TabularBayesianOptimizer
 from bochan.tabular.composition import ATOMIC_WEIGHTS
-from bochan.tabular.element_constraint_composition_optimizer import (
-    TabularBayesianOptimizer,
-)
 from bochan.tabular.optimizer_api import (
     TabularBayesianOptimizer as _CoreTabularBayesianOptimizer,
 )
@@ -314,7 +312,5 @@ def test_fixed_fraction_constraint_is_forwarded_to_named_optimizer(monkeypatch) 
     ]
 
 
-def test_public_optimizer_exposes_element_constraint_support() -> None:
-    from bochan.tabular import TabularBayesianOptimizer as PublicOptimizer
-
-    assert issubclass(PublicOptimizer, TabularBayesianOptimizer)
+def test_public_tabular_optimizer_is_element_constraint_contract() -> None:
+    assert TabularBayesianOptimizer.__module__ == "bochan.tabular.public_optimizer"

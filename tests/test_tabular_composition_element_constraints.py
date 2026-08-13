@@ -1,10 +1,8 @@
 import pandas as pd
 import pytest
 
+from bochan.tabular import TabularBayesianOptimizer
 from bochan.tabular.composition import ATOMIC_WEIGHTS
-from bochan.tabular.element_constraint_composition_optimizer import (
-    TabularBayesianOptimizer,
-)
 from bochan.tabular.optimizer_api import (
     TabularBayesianOptimizer as _CoreTabularBayesianOptimizer,
 )
@@ -55,17 +53,13 @@ def test_same_site_atomic_ratio_is_repaired_after_ilr(monkeypatch) -> None:
     bo.fit(frame)
 
     candidates, _ = bo.candidate()
-    assert candidates.loc[0, "A_Sr"] == pytest.approx(
-        0.5 * candidates.loc[0, "A_La"], abs=1e-7
-    )
+    assert candidates.loc[0, "A_Sr"] == pytest.approx(0.5 * candidates.loc[0, "A_La"], abs=1e-7)
     assert candidates.loc[0, ["A_La", "A_Sr"]].sum() == pytest.approx(1.0)
 
 
 def test_same_site_atomic_ratio_range_is_repaired(monkeypatch) -> None:
     def fake_candidate(self, *args, **kwargs):
-        return pd.DataFrame(
-            {"A__ilr__1": [2.0], "A__ilr__2": [-2.0]}
-        ), 1.0
+        return pd.DataFrame({"A__ilr__1": [2.0], "A__ilr__2": [-2.0]}), 1.0
 
     monkeypatch.setattr(_CoreTabularBayesianOptimizer, "fit", _fake_fit)
     monkeypatch.setattr(_CoreTabularBayesianOptimizer, "candidate", fake_candidate)
@@ -179,9 +173,7 @@ def test_cross_site_atomic_constraint_converts_weight_amounts(monkeypatch) -> No
 
     candidates, _ = bo.candidate()
     a_la_atomic = candidates.loc[0, "A_La"] / ATOMIC_WEIGHTS["La"]
-    assert a_la_atomic == pytest.approx(
-        0.5 * candidates.loc[0, "B_Fe"], abs=1e-7
-    )
+    assert a_la_atomic == pytest.approx(0.5 * candidates.loc[0, "B_Fe"], abs=1e-7)
     assert candidates.loc[0, ["A_La", "A_Sr"]].sum() == pytest.approx(50.0)
     assert candidates.loc[0, ["B_Fe", "B_Co"]].sum() == pytest.approx(50.0)
 

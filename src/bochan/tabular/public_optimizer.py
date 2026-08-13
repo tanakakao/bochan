@@ -53,9 +53,7 @@ class TabularBayesianOptimizer(
     composition_total_constraint_resolver = CompositionTotalConstraintResolver()
     composition_variable_total_transform = CompositionVariableTotalTransform()
     composition_element_constraint_resolver = CompositionElementConstraintResolver()
-    composition_element_constraint_candidate_reranker = (
-        CompositionElementConstraintCandidateReranker()
-    )
+    composition_element_constraint_candidate_reranker = CompositionElementConstraintCandidateReranker()
 
     def __init__(
         self,
@@ -70,23 +68,15 @@ class TabularBayesianOptimizer(
         composition_constraint_max_supports: int = 256,
         **kwargs: Any,
     ) -> None:
-        self.composition_total_constraints = (
-            self.composition_total_constraint_resolver.normalize(
-                composition_total_constraints
-            )
+        self.composition_total_constraints = self.composition_total_constraint_resolver.normalize(
+            composition_total_constraints
         )
-        self.composition_element_constraints = (
-            self.composition_element_constraint_resolver.normalize(
-                composition_element_constraints
-            )
+        self.composition_element_constraints = self.composition_element_constraint_resolver.normalize(
+            composition_element_constraints
         )
         self.composition_constraint_rerank = bool(composition_constraint_rerank)
-        self.composition_constraint_rerank_factor = int(
-            composition_constraint_rerank_factor
-        )
-        self.composition_constraint_max_supports = int(
-            composition_constraint_max_supports
-        )
+        self.composition_constraint_rerank_factor = int(composition_constraint_rerank_factor)
+        self.composition_constraint_max_supports = int(composition_constraint_max_supports)
         if self.composition_constraint_rerank_factor < 1:
             raise ValueError("composition_constraint_rerank_factor must be >= 1.")
         if self.composition_constraint_max_supports < 1:
@@ -98,26 +88,19 @@ class TabularBayesianOptimizer(
             resolved_model_config = dict(model_config)
             multi_output_config = resolved_model_config.get("multi_output_config")
             if multi_output_config is not None:
-                resolved_multi_output, maps = _extract_output_category_maps(
-                    multi_output_config
-                )
+                resolved_multi_output, maps = _extract_output_category_maps(multi_output_config)
                 resolved_model_config["multi_output_config"] = resolved_multi_output
                 inferred_maps.update(maps)
             model_config = resolved_model_config
 
         direct_multi_output = kwargs.get("multi_output_config")
         if direct_multi_output is not None:
-            resolved_multi_output, maps = _extract_output_category_maps(
-                direct_multi_output
-            )
+            resolved_multi_output, maps = _extract_output_category_maps(direct_multi_output)
             kwargs["multi_output_config"] = resolved_multi_output
             for output_name, category_map in maps.items():
                 existing = inferred_maps.get(output_name)
                 if existing is not None and existing != category_map:
-                    raise ValueError(
-                        "Conflicting category declarations for output "
-                        f"{output_name!r}."
-                    )
+                    raise ValueError(f"Conflicting category declarations for output {output_name!r}.")
                 inferred_maps[output_name] = category_map
 
         _merge_target_category_metadata(kwargs, inferred_maps)
@@ -139,9 +122,7 @@ class TabularBayesianOptimizer(
 
         return cls.composition_variable_total_transform.normalize_sites(
             sites,
-            base_normalizer=(
-                _ElementColumnTabularBayesianOptimizer._normalize_composition_sites
-            ),
+            base_normalizer=(_ElementColumnTabularBayesianOptimizer._normalize_composition_sites),
         )
 
     @classmethod
@@ -295,11 +276,7 @@ class TabularBayesianOptimizer(
             multi_site_composition_enabled=self.multi_site_composition_enabled,
             repair=repair,
         )
-        if (
-            repair
-            and self.multi_site_composition_enabled
-            and self.composition_element_constraints
-        ):
+        if repair and self.multi_site_composition_enabled and self.composition_element_constraints:
             restored = self._make_element_constraint_projector().repair_frame(restored)
         return restored
 
@@ -337,9 +314,7 @@ class TabularBayesianOptimizer(
 
         target_names = list(self.dataset.target_names) if self.dataset is not None else []
         target_category_maps = (
-            dict(getattr(self.dataset, "target_category_maps", None) or {})
-            if self.dataset is not None
-            else {}
+            dict(getattr(self.dataset, "target_category_maps", None) or {}) if self.dataset is not None else {}
         )
         if target_names:
             acq_config = resolve_acquisition_ordinal_ranks(
@@ -389,11 +364,9 @@ class TabularBayesianOptimizer(
                 **kwargs,
             )
 
-        requested_q = (
-            self.composition_element_constraint_candidate_reranker.requested_q(
-                opt_config,
-                kwargs,
-            )
+        requested_q = self.composition_element_constraint_candidate_reranker.requested_q(
+            opt_config,
+            kwargs,
         )
         factor = (
             self.composition_constraint_rerank_factor
@@ -478,9 +451,7 @@ class TabularBayesianOptimizer(
             binary_threshold=binary_threshold,
         )
         if labels_only and labels_df.shape[1] == 0:
-            raise ValueError(
-                "The fitted optimizer has no binary, multiclass, or ordinal outputs."
-            )
+            raise ValueError("The fitted optimizer has no binary, multiclass, or ordinal outputs.")
         if original_index is not None:
             labels_df.index = original_index
 

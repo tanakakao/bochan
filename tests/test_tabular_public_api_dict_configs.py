@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from bochan.tabular import TabularBayesianOptimizer
-from bochan.tabular import optimizer_api
 from bochan.tabular.builders import (
     make_acquisition_config,
     make_model_config,
     make_optimize_config,
 )
+from bochan.tabular.optimizer import TabularBayesianOptimizer as _TabularOptimizerCore
 
 
 def test_make_model_config_accepts_dict_with_nested_input_transform() -> None:
@@ -208,7 +208,7 @@ def test_tabular_candidate_accepts_dict_configs(monkeypatch) -> None:
         captured["kwargs"] = kwargs
         return "ok"
 
-    monkeypatch.setattr(optimizer_api._BaseTabularBayesianOptimizer, "candidate", fake_candidate)
+    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
 
     bo = TabularBayesianOptimizer(
         task_type="regression",

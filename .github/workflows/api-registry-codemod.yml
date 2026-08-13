@@ -24,7 +24,7 @@ jobs:
           from pathlib import Path
 
           root = Path('.')
-          suffixes = {'.py', '.md', '.yml', '.yaml', '.toml', '.txt'}
+          suffixes = {'.py', '.md', '.yml', '.yaml', '.toml', '.txt', '.ipynb'}
           replacements = (
               ('from .model_registry import', 'from .registry.model import'),
               ('from ..model_registry import', 'from ..registry.model import'),

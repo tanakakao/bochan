@@ -50,7 +50,10 @@ jobs:
             src/bochan/api/candidate/__init__.py \
             src/bochan/api/candidate/output.py \
             src/bochan/api/configs/__init__.py \
+            src/bochan/api/configs/acquisition.py \
             src/bochan/api/configs/base.py \
+            src/bochan/api/configs/fit.py \
+            src/bochan/api/configs/optimize.py \
             src/bochan/api/llm/__init__.py \
             src/bochan/api/llm/acquisition.py \
             src/bochan/api/llm/explanation.py \

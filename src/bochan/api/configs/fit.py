@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .configs import FitConfig as _BaseFitConfig
+from .base import FitConfig as _BaseFitConfig
 
 
 @dataclass

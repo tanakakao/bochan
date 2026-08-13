@@ -95,12 +95,12 @@ jobs:
             src/bochan/acquisition/regression/bayesian_optimization/hetero_multi_output_autograd.py \
             src/bochan/acquisition/regression/levelset_estimation/objective_compat.py \
             src/bochan/acquisition/regression/levelset_estimation/hetero_objective_compat.py \
-            src/bochan/api/acquisition_config.py \
+            src/bochan/api/configs/acquisition.py \
             src/bochan/api/automatic_multiobjective.py \
             src/bochan/api/feasibility_defaults.py \
             src/bochan/api/nan_multiobjective.py \
             src/bochan/api/optimizer_api.py \
-            src/bochan/api/optimizer_config.py \
+            src/bochan/api/configs/optimize.py \
             src/bochan/models/components/projected.py \
             src/bochan/models/components/projected_utils.py \
             src/bochan/models/hybrid/__init__.py \

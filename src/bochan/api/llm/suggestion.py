@@ -7,7 +7,6 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Any, Literal
 
-from ..acquisition_config import AcquisitionConfig, OutcomeConstraintConfig
 from ..configs import (
     CandidateRepairConfig,
     InputTransformConfig,
@@ -15,8 +14,9 @@ from ..configs import (
     MultiOutputConfig,
     ObjectiveConfig,
 )
-from ..fit_config import FitConfig
-from ..optimizer_api import OptimizeConfig
+from ..configs.acquisition import AcquisitionConfig, OutcomeConstraintConfig
+from ..configs.fit import FitConfig
+from ..configs.optimize import OptimizeConfig
 
 SuggestionMode = Literal["all", "model", "acquisition", "optimizer"]
 _SECTION_NAMES = ("model", "acquisition", "optimizer")

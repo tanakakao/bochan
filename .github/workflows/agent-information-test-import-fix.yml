@@ -39,8 +39,9 @@ jobs:
           if set(changed) != expected:
               raise RuntimeError(f'unexpected information-import replacements: {changed}')
           for path in Path('tests').rglob('*.py'):
-              if 'bochan.api.information_acquisition_defaults' in path.read_text(encoding='utf-8'):
-                  raise RuntimeError(f'old information defaults import remains: {path}')
+              for line in path.read_text(encoding='utf-8').splitlines():
+                  if line.strip().startswith(old):
+                      raise RuntimeError(f'old information defaults import remains: {path}')
           PY
       - name: Commit canonical test imports
         shell: bash

@@ -6,7 +6,7 @@ on:
       - main
     paths:
       - "src/bochan/llm/**"
-      - "src/bochan/api/acquisition_config.py"
+      - "src/bochan/api/configs/acquisition.py"
       - "src/bochan/api/llm/**"
       - "src/bochan/api/model_registry.py"
       - "tests/test_llm_client_tls.py"
@@ -54,7 +54,7 @@ jobs:
           {
             ruff check --ignore UP037 src/bochan/llm/candidate_explainer.py &&
             ruff check \
-              src/bochan/api/acquisition_config.py \
+              src/bochan/api/configs/acquisition.py \
               src/bochan/api/llm/__init__.py \
               src/bochan/api/llm/acquisition.py \
               src/bochan/api/llm/explanation.py \

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 from typing import Any
 
 
@@ -92,8 +91,15 @@ def _element_figures(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return figures
 
 
-def append_element_importance_figures(result: dict[str, Any]) -> None:
-    """Append element-wise cards without duplicating restored result figures."""
+def append_element_importance_figures(
+    result: dict[str, Any],
+    _session: Any | None = None,
+) -> None:
+    """Append element-wise cards as an explicit workflow postprocessor.
+
+    ``_session`` is accepted to share the Web postprocessor calling convention;
+    this renderer only needs the serialized composition-importance payload.
+    """
 
     payload = result.get("composition_feature_importance")
     if not isinstance(payload, dict):
@@ -122,38 +128,4 @@ def append_element_importance_figures(result: dict[str, Any]) -> None:
     result["feature_importance_visualizations"] = existing
 
 
-def install_composition_element_importance_figures() -> None:
-    """Install element-card generation before app.py binds the workflow."""
-
-    from . import workflows
-
-    if getattr(
-        workflows,
-        "_composition_element_importance_figures_installed",
-        False,
-    ):
-        return
-    original = workflows.run_regression_web_workflow
-
-    def workflow_adapter(request: Any, store: Any) -> dict[str, Any]:
-        result = original(request, store)
-        append_element_importance_figures(result)
-        from .logging import current_request_id
-        from .visualization_sessions import get_visualization_session
-
-        run_id = current_request_id()
-        if run_id:
-            try:
-                get_visualization_session(run_id).result = copy.deepcopy(result)
-            except KeyError:
-                pass
-        return result
-
-    workflows.run_regression_web_workflow = workflow_adapter
-    workflows._composition_element_importance_figures_installed = True
-
-
-__all__ = [
-    "append_element_importance_figures",
-    "install_composition_element_importance_figures",
-]
+__all__ = ["append_element_importance_figures"]

@@ -262,7 +262,7 @@ def _resolve_kg(
 
     _require_supported_task(bundle, "kg")
 
-    from ...factory import build_objective
+    from ..objective import build_objective
 
     objective = build_objective(bundle=bundle, config=config, data_context=context)
     _require_scalar_kg_objective(bundle, config, objective)
@@ -620,7 +620,7 @@ def _prepare_hvkg_multiobjective_context(
 ) -> tuple[AcquisitionConfig, DataContext]:
     """Prepare MO context without applying generic scalarization to HVKG."""
 
-    from ...factory import prepare_multi_objective_context
+    from ..context import prepare_multi_objective_context
 
     mo_config = context.multi_objective
     if mo_config is not None and mo_config.auto_scalarization:
@@ -672,7 +672,7 @@ def _resolve_hvkg(
             "HVKG requires bounds when current_value is not supplied explicitly."
         )
 
-    from ...factory import build_objective
+    from ..objective import build_objective
 
     objective = build_objective(bundle=bundle, config=config, data_context=context)
     if objective is not None and config.objective is None:

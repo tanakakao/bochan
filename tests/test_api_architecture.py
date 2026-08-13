@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 
 import bochan.api as api
-from bochan.api import configs, factory, optimizer, registry
+from bochan.api import configs, optimizer, registry
 from bochan.api.acquisition import defaults as acquisition_defaults
 from bochan.api.acquisition import feasibility as acquisition_feasibility
 from bochan.api.acquisition import service as acquisition_service
@@ -77,7 +77,6 @@ def test_acquisition_defaults_have_one_owner() -> None:
 def test_api_import_does_not_replace_optimizer_core_or_factory_symbols() -> None:
     assert optimizer_core.BayesianOptimizer is not api.BayesianOptimizer
     assert optimizer_core.BayesianOptimizer.__module__ == "bochan.api.optimizer.core"
-    assert factory.build_acquisition.__module__ == "bochan.api.factory"
     assert acquisition_service.build_acquisition.__module__ == (
         "bochan.api.acquisition.service"
     )

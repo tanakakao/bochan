@@ -14,12 +14,12 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from .automatic_default_utils import _num_outputs
-from .automatic_multiobjective import (
+from ...configs import AcquisitionConfig, DataContext, ModelBundle, OptimizeConfig
+from .common import _num_outputs
+from .multiobjective import (
     make_default_ref_point,
     observed_multiobjective_values,
 )
-from .configs import AcquisitionConfig, DataContext, ModelBundle, OptimizeConfig
 
 
 def _normalize_name(value: Any) -> str:
@@ -262,7 +262,7 @@ def _resolve_kg(
 
     _require_supported_task(bundle, "kg")
 
-    from .factory import build_objective
+    from ...factory import build_objective
 
     objective = build_objective(bundle=bundle, config=config, data_context=context)
     _require_scalar_kg_objective(bundle, config, objective)
@@ -620,7 +620,7 @@ def _prepare_hvkg_multiobjective_context(
 ) -> tuple[AcquisitionConfig, DataContext]:
     """Prepare MO context without applying generic scalarization to HVKG."""
 
-    from .factory import prepare_multi_objective_context
+    from ...factory import prepare_multi_objective_context
 
     mo_config = context.multi_objective
     if mo_config is not None and mo_config.auto_scalarization:
@@ -672,7 +672,7 @@ def _resolve_hvkg(
             "HVKG requires bounds when current_value is not supplied explicitly."
         )
 
-    from .factory import build_objective
+    from ...factory import build_objective
 
     objective = build_objective(bundle=bundle, config=config, data_context=context)
     if objective is not None and config.objective is None:

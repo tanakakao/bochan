@@ -2,7 +2,7 @@
 
 import torch
 
-from bochan.api.cross_validation import (
+from bochan.api.evaluation.cross_validation import (
     _aggregate_expanded_moments,
     _aggregate_expanded_probabilities,
 )

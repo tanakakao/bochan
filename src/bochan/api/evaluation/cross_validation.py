@@ -10,7 +10,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from .configs import FitConfig, ModelConfig, PredictionResult
+from ..configs import FitConfig, ModelConfig, PredictionResult
 
 
 @dataclass
@@ -621,12 +621,21 @@ def _aggregate_feature_importance(folds: list[Any]) -> Any:
     for output_name, first_output in folds[0].outputs.items():
         methods = {}
         for method_name in first_output.predictive_methods:
-            method_folds = [fold.outputs[output_name].predictive_methods[method_name] for fold in folds]
+            method_folds = [
+                fold.outputs[output_name].predictive_methods[method_name]
+                for fold in folds
+            ]
             entries = {}
             for entry_name in method_folds[0].entries:
                 fold_entries = [method.entries[entry_name] for method in method_folds]
-                values = torch.tensor([entry.importance.mean for entry in fold_entries], dtype=torch.float64)
-                ranks = torch.tensor([entry.importance.rank for entry in fold_entries], dtype=torch.float64)
+                values = torch.tensor(
+                    [entry.importance.mean for entry in fold_entries],
+                    dtype=torch.float64,
+                )
+                ranks = torch.tensor(
+                    [entry.importance.rank for entry in fold_entries],
+                    dtype=torch.float64,
+                )
                 entries[entry_name] = CrossValidatedImportanceSummary(
                     values,
                     float(values.mean()),
@@ -639,14 +648,20 @@ def _aggregate_feature_importance(folds: list[Any]) -> Any:
                     len(values),
                     [entry.importance.std for entry in fold_entries],
                 )
-            methods[method_name] = CrossValidatedMethodResult(method_name, entries, method_folds)
+            methods[method_name] = CrossValidatedMethodResult(
+                method_name, entries, method_folds
+            )
         outputs[output_name] = CrossValidatedOutputImportance(
             output_name,
             first_output.task_type,
             methods,
             {},
             [fold.outputs[output_name].model_diagnostics for fold in folds],
-            warnings=[warning for fold in folds for warning in fold.outputs[output_name].warnings],
+            warnings=[
+                warning
+                for fold in folds
+                for warning in fold.outputs[output_name].warnings
+            ],
         )
     return CrossValidatedFeatureImportanceResult(
         outputs,

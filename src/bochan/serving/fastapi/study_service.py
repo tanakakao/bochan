@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from bochan.api import BochanStudy, Trial
-from bochan.api.study_results import _resolve_direction, _row_values, _trial_value
+from bochan.api.study.results import _resolve_direction, _row_values, _trial_value
 
 from .converters import (
     to_acquisition_config,

@@ -6,8 +6,8 @@ import torch
 from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 
 from bochan.api import AcquisitionConfig, DataContext, ModelBundle, ModelConfig
-from bochan.api.acquisition import defaults as engine_defaults
-from bochan.api.automatic_multiobjective import observed_multiobjective_values
+from bochan.api.acquisition.defaults import resolver as engine_defaults
+from bochan.api.acquisition.defaults.multiobjective import observed_multiobjective_values
 
 
 class _NeedsEHVIContext:

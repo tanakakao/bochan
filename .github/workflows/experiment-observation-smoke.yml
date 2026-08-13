@@ -47,7 +47,7 @@ jobs:
             src/bochan/api/observation/__init__.py \
             src/bochan/api/observation/state.py \
             src/bochan/api/observation/service.py \
-            src/bochan/api/experiment_failure.py \
+            src/bochan/api/observation/failure.py \
             src/bochan/acquisition/feasible/experiment_success.py \
             src/bochan/acquisition/feasible/__init__.py \
             src/bochan/models/hybrid/partial_observation.py \

@@ -7,7 +7,7 @@ from torch import nn
 
 import bochan.acquisition.ordinal.bayesian_optimization as ordinal_bo_package
 import bochan.api  # noqa: F401 - installs high-level support routes
-import bochan.api.engine as engine_module
+import bochan.api.optimizer.core as engine_module
 import bochan.api.factory as factory_module
 from bochan.acquisition.multiclass.bayesian_optimization import (
     hetero_multi_output as hetero_multiclass_module,

@@ -7,7 +7,7 @@ from time import perf_counter
 from types import SimpleNamespace
 from typing import Any
 
-from bochan.api.candidate_uniqueness import count_unique_candidate_rows
+from bochan.api.candidate.uniqueness import count_unique_candidate_rows
 from bochan.desktop.services import (
     _build_repair_config,
     _encode_features,

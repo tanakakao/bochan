@@ -2,7 +2,7 @@
 
 This module keeps feasibility routing in the normal high-level API call graph.
 It intentionally does not replace functions in :mod:`bochan.api.factory` or
-:mod:`bochan.api.engine` at runtime.
+:mod:`bochan.api.optimizer.core` at runtime.
 """
 
 from __future__ import annotations
@@ -93,13 +93,11 @@ def resolve_outcome_constraint_config(*, bundle: Any | None, config: Any) -> Any
     if constraint_config is None:
         return config
     if isinstance(constraint_config, dict):
-        from .configs.acquisition import OutcomeConstraintConfig
+        from ..configs.acquisition import OutcomeConstraintConfig
 
         constraint_config = OutcomeConstraintConfig(**constraint_config)
         config.outcome_constraint_config = constraint_config
 
-    # Class-probability and ordinal-rank constraints need model access and are
-    # applied by FeasibilityWeightedAcquisition rather than sample callables.
     if constraint_config.wrapper_constraints():
         kwargs = dict(config.acqf_kwargs)
         kwargs.pop("constraints", None)
@@ -196,16 +194,9 @@ def build_outcome_constrained_acquisition(
     config: Any,
     data_context: Any | None = None,
 ) -> Any:
-    """Build an acquisition with high-level outcome constraints natively.
+    """Build an acquisition with high-level outcome constraints natively."""
 
-    Numeric sample constraints are passed to acquisition classes that explicitly
-    support BoTorch's ``constraints`` keyword. Model-dependent class/rank
-    constraints, numeric constraints for acquisitions without native support,
-    and explicit acquisition factories are composed through
-    :class:`FeasibilityWeightedAcquisition` when necessary.
-    """
-
-    from .factory import build_acquisition
+    from ..factory import build_acquisition
 
     base_config, plan = prepare_feasibility_build(bundle=bundle, config=config)
     acqf = build_acquisition(

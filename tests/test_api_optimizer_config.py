@@ -5,13 +5,13 @@ from types import SimpleNamespace
 
 import pytest
 
-import bochan.api.optimizer_api as optimizer_api_module
+import bochan.api.optimizer.service as optimizer_api_module
 from bochan.api import OptimizeConfig
-from bochan.api.optimizer_api import (
-    _resolve_thompson_sampling_target,
+from bochan.api.optimizer.service import (
     resolve_optimizer_from_cat_dims,
     uses_mixed_fixed_features,
 )
+from bochan.api.optimizer.support import _resolve_thompson_sampling_target
 
 
 @pytest.mark.parametrize("method", ["ga", "pso", "sa", "cmaes"])

@@ -35,7 +35,7 @@ from .configs.optimize import (
     resolve_optimizer_from_cat_dims,
     uses_mixed_fixed_features,
 )
-from .cross_validation import (
+from .evaluation.cross_validation import (
     CrossValidationConfig,
     CrossValidationResult,
     CVFoldResult,
@@ -54,11 +54,11 @@ from .factory import (
 )
 from .observation import ExperimentFailureConfig, ObservationData
 from .optimizer import BayesianOptimizer
-from .optimizer_api import optimize_candidates
+from .optimizer.service import optimize_candidates
 from .registry.acquisition import available_acqf_names, resolve_acqf_cls
 from .registry.model import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
 from .study import CandidateBatch, StudySnapshot, StudySuggestion, Trial, TrialState
-from .study_controls import (
+from .study.controls import (
     BochanStudy,
     EarlyStoppingConfig,
     GenerationSchedule,

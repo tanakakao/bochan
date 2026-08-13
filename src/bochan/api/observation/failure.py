@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from .configs import FitConfig, ModelConfig
-from .factory import build_model, fit_model
-from .observation import ExperimentFailureConfig, ObservationData
+from ..configs import FitConfig, ModelConfig
+from ..factory import build_model, fit_model
+from .state import ExperimentFailureConfig, ObservationData
 
 
 def default_failure_model_config(objective_config: ModelConfig) -> ModelConfig:

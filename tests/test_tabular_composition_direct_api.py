@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from bochan.api.composition import CompositionTransformer
+from bochan.composition import CompositionTransformer
 from bochan.tabular.composition_optimizer import (
     TabularBayesianOptimizer,
     _TabularBayesianOptimizer,
@@ -18,7 +18,7 @@ def _frame():
     )
 
 
-def test_composition_is_available_from_normal_api():
+def test_composition_is_available_from_canonical_package():
     transformer = CompositionTransformer(
         elements=["Fe", "Co", "Ni"],
         representation="ilr",

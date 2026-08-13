@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .automatic_default_utils import (
+from .common import (
     _call_objective,
     _direction_sign,
     _infer_ordinal_utility_values,
@@ -14,7 +14,7 @@ from .automatic_default_utils import (
     _objective_config_value,
     _sub_bundles,
 )
-from .configs import AcquisitionConfig, DataContext, ModelBundle
+from ...configs import AcquisitionConfig, DataContext, ModelBundle
 
 
 def _observed_train_targets(bundle: ModelBundle) -> Any:
@@ -139,7 +139,7 @@ def _regression_observed_values(
     config: AcquisitionConfig,
     context: DataContext,
 ) -> Any:
-    from .factory import build_objective
+    from ...factory import build_objective
 
     values = _as_observed_matrix(
         _observed_train_targets(bundle),
@@ -193,7 +193,7 @@ def _binary_observed_values(
         shape_X_for_model,
         to_probability,
     )
-    from .factory import build_objective
+    from ...factory import build_objective
 
     Xq = ensure_q_batch(bundle.train_X)
     with torch.no_grad():
@@ -320,7 +320,7 @@ def _observed_multiobjective_values(
 def _make_default_ref_point(values: Any, margin: float = 0.1) -> Any:
     """Create a NaN-safe maximization-space reference point."""
 
-    from .nan_multiobjective import make_nan_safe_default_ref_point
+    from .nan import make_nan_safe_default_ref_point
 
     return make_nan_safe_default_ref_point(values, margin=margin)
 
@@ -328,7 +328,7 @@ def _make_default_ref_point(values: Any, margin: float = 0.1) -> Any:
 def _make_partitioning(ref_point: Any, values: Any) -> Any:
     """Build an EHVI partitioning from complete finite objective rows."""
 
-    from .nan_multiobjective import make_nan_safe_partitioning
+    from .nan import make_nan_safe_partitioning
 
     return make_nan_safe_partitioning(ref_point, values)
 

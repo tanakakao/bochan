@@ -8,7 +8,7 @@ import torch
 from bochan.acquisition.objective import (
     MultiOutputBinaryClassificationInputPerturbationObjective,
 )
-from bochan.api.automatic_multiobjective import observed_multiobjective_values
+from bochan.api.acquisition.defaults.multiobjective import observed_multiobjective_values
 from bochan.api.configs import AcquisitionConfig, DataContext
 from bochan.models.classification.binary.base import (
     MultiOutputBinaryClassificationModel,

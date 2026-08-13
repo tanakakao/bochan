@@ -13,7 +13,7 @@ from bochan.acquisition.ordinal.bayesian_optimization import (
     qOrdinalNoisyExpectedHypervolumeImprovement,
 )
 from bochan.api import AcquisitionConfig
-from bochan.api.engine import _filter_context_fields_for_acqf
+from bochan.api.optimizer.core import _filter_context_fields_for_acqf
 
 
 @pytest.mark.parametrize(

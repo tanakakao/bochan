@@ -23,8 +23,8 @@ from bochan.acquisition.regression.bayesian_optimization import (
     qMultiOutputRegressionNParEGO,
 )
 from bochan.api import AcquisitionConfig, DataContext
-from bochan.api.acquisition import defaults as engine_defaults
-from bochan.api.acquisition.defaults import _uses_internal_nparego_baseline
+from bochan.api.acquisition.defaults import resolver as engine_defaults
+from bochan.api.acquisition.defaults.resolver import _uses_internal_nparego_baseline
 
 
 @pytest.mark.parametrize(

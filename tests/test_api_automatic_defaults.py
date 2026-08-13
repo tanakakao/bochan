@@ -19,6 +19,7 @@ from bochan.api import (
     MultiOutputConfig,
 )
 from bochan.api.acquisition import defaults as acquisition_defaults
+from bochan.api.acquisition.defaults import resolver as engine_defaults
 from bochan.models.multitask.wide import WideMultiTaskGP
 from bochan.models.regression.gaussian.high_dim import (
     SaasGaussianMixedGPModel,
@@ -200,7 +201,7 @@ def test_explicit_best_f_is_not_overwritten(monkeypatch) -> None:
     bundle = _make_bundle()
     explicit = torch.tensor(9.0, dtype=torch.double)
     monkeypatch.setattr(
-        acquisition_defaults,
+        engine_defaults,
         "compute_best_f",
         lambda *args, **kwargs: pytest.fail("automatic best_f must not run"),
     )
@@ -228,7 +229,7 @@ def test_ehvi_computes_ref_point_and_partitioning(monkeypatch) -> None:
         captured["values"] = values
         return sentinel
 
-    monkeypatch.setattr(acquisition_defaults, "make_partitioning", fake_partitioning)
+    monkeypatch.setattr(engine_defaults, "make_partitioning", fake_partitioning)
 
     context = acquisition_defaults.resolve_acquisition_data_context(
         bundle,
@@ -273,7 +274,7 @@ def test_explicit_ref_point_and_partitioning_are_preserved(monkeypatch) -> None:
     ref_point = torch.tensor([-5.0, -6.0], dtype=torch.double)
     partitioning = object()
     monkeypatch.setattr(
-        acquisition_defaults,
+        engine_defaults,
         "observed_multiobjective_values",
         lambda *args, **kwargs: pytest.fail(
             "automatic multi-objective defaults must not run"
@@ -305,7 +306,7 @@ def test_variadic_wrapper_receives_defaults_through_acqf_kwargs(monkeypatch) -> 
     bundle = _make_bundle(train_Y=train_Y)
     partitioning = object()
     monkeypatch.setattr(
-        acquisition_defaults,
+        engine_defaults,
         "make_partitioning",
         lambda ref_point, values: partitioning,
     )
@@ -329,7 +330,7 @@ def test_acqf_kwargs_best_f_has_priority_over_data_context(monkeypatch) -> None:
     bundle = _make_bundle()
     explicit = torch.tensor(7.0, dtype=torch.double)
     monkeypatch.setattr(
-        acquisition_defaults,
+        engine_defaults,
         "compute_best_f",
         lambda *args, **kwargs: pytest.fail("automatic best_f must not run"),
     )

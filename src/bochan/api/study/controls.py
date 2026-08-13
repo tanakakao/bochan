@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
-from .configs import (
+from ..configs import (
     CandidateRepairConfig,
     DataContext,
     InputTransformConfig,
@@ -23,10 +23,10 @@ from .configs import (
     ObjectiveConfig,
     OutputConfig,
 )
-from .configs.acquisition import AcquisitionConfig
-from .configs.fit import FitConfig
-from .configs.optimize import OptimizeConfig
-from .study import (
+from ..configs.acquisition import AcquisitionConfig
+from ..configs.fit import FitConfig
+from ..configs.optimize import OptimizeConfig
+from .core import (
     BochanStudy as _BaseBochanStudy,
     CandidateBatch,
     StudySnapshot,
@@ -35,7 +35,7 @@ from .study import (
     _scalar_from_row,
     _to_jsonable,
 )
-from .study_results import install_study_result_api
+from .results import StudyResultMixin
 
 Direction = Literal["maximize", "minimize"]
 TargetMode = Literal["ge", "le", "abs_diff_le"]
@@ -140,7 +140,7 @@ GenerationScheduleLike = (
 )
 
 
-class BochanStudy(_BaseBochanStudy):
+class BochanStudy(StudyResultMixin, _BaseBochanStudy):
     """Config defaults, dictionaries, early stopping, and schedules.
 
     When omitted, the study uses ``ModelConfig()`` (regression/base),
@@ -784,5 +784,3 @@ def _safe_asdict(value: Any) -> Any:
     except Exception:
         return repr(value)
 
-
-install_study_result_api(BochanStudy)

@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 import bochan.api
-import bochan.api.engine as engine_module
+import bochan.api.optimizer.core as engine_module
 from bochan.acquisition.multiclass.bayesian_optimization.multi_output import (
     MulticlassTargetProbabilityObjective,
 )

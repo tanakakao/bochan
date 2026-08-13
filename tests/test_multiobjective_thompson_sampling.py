@@ -7,7 +7,7 @@ import torch
 from bochan.acquisition.multiclass.bayesian_optimization import (
     MulticlassTargetProbabilityObjective,
 )
-from bochan.api.optimizer_api import OptimizeConfig, optimize_candidates
+from bochan.api.optimizer.service import OptimizeConfig, optimize_candidates
 from bochan.optim import optimize_thompson_sampling
 from bochan.optim.thompson.adapter import ThompsonScalarizedObjective
 

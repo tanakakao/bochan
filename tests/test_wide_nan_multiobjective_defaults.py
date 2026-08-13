@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 import torch
 
-from bochan.api.acquisition import defaults as acquisition_defaults
-from bochan.api.automatic_multiobjective import (
+from bochan.api.acquisition.defaults import resolver as acquisition_defaults
+from bochan.api.acquisition.defaults.multiobjective import (
     make_default_ref_point,
     make_partitioning,
 )

@@ -3,7 +3,8 @@ from __future__ import annotations
 import importlib.util
 
 import bochan.api as api
-from bochan.api import configs, factory, optimizer, registry\nfrom bochan.api.optimizer import core as optimizer_core
+from bochan.api import configs, factory, optimizer, registry
+from bochan.api.optimizer import core as optimizer_core
 from bochan.api.acquisition import defaults as acquisition_defaults
 from bochan.api.acquisition import feasibility as acquisition_feasibility
 from bochan.api.acquisition import service as acquisition_service
@@ -73,7 +74,7 @@ def test_acquisition_defaults_have_one_owner() -> None:
     assert acquisition_defaults.__name__ == "bochan.api.acquisition.defaults"
 
 
-def test_api_import_does_not_replace_engine_or_factory_symbols() -> None:
+def test_api_import_does_not_replace_optimizer_core_or_factory_symbols() -> None:
     assert optimizer_core.BayesianOptimizer is not api.BayesianOptimizer
     assert optimizer_core.BayesianOptimizer.__module__ == "bochan.api.optimizer.core"
     assert factory.build_acquisition.__module__ == "bochan.api.factory"
@@ -142,11 +143,9 @@ def test_removed_compatibility_and_patch_modules_do_not_exist() -> None:
         "bochan.api.composition",
         "bochan.api.candidate_uniqueness",
         "bochan.api.cross_validation",
+        "bochan.api.engine",
+        "bochan.api.engine_defaults",
         "bochan.api.experiment_failure",
-        "bochan.api.model_capabilities",
-        "bochan.api.study_controls",
-        "bochan.api.study_results",
-        "bochan.api.optimizer.core_defaults",
         "bochan.api.feasibility_defaults",
         "bochan.api.fit_config",
         "bochan.api.hetero_ordinal_perturbation",
@@ -155,11 +154,17 @@ def test_removed_compatibility_and_patch_modules_do_not_exist() -> None:
         "bochan.api.llm_candidate_explanation",
         "bochan.api.llm_selected_acquisition",
         "bochan.api.llm_suggestion",
+        "bochan.api.model_capabilities",
         "bochan.api.model_registry",
         "bochan.api.nan_multiobjective",
         "bochan.api.observation_engine",
         "bochan.api.observation_service",
+        "bochan.api.optimizer_api",
         "bochan.api.optimizer_config",
+        "bochan.api.optimizer_dispatch",
+        "bochan.api.optimizer_support",
+        "bochan.api.study_controls",
+        "bochan.api.study_results",
         "bochan.acquisition.objective.regression_perturbation",
     }
     for module_name in removed:

@@ -93,7 +93,7 @@ def resolve_outcome_constraint_config(*, bundle: Any | None, config: Any) -> Any
     if constraint_config is None:
         return config
     if isinstance(constraint_config, dict):
-        from .acquisition_config import OutcomeConstraintConfig
+        from .configs.acquisition import OutcomeConstraintConfig
 
         constraint_config = OutcomeConstraintConfig(**constraint_config)
         config.outcome_constraint_config = constraint_config

@@ -47,16 +47,21 @@ jobs:
             src/bochan/api/acquisition/classification.py \
             src/bochan/api/acquisition/defaults.py \
             src/bochan/api/acquisition/service.py \
+            src/bochan/api/acquisition_registry.py \
             src/bochan/api/candidate/__init__.py \
             src/bochan/api/candidate/output.py \
             src/bochan/api/llm/__init__.py \
             src/bochan/api/llm/acquisition.py \
             src/bochan/api/llm/explanation.py \
             src/bochan/api/llm/suggestion.py \
+            src/bochan/api/model_registry.py \
             src/bochan/api/observation/__init__.py \
             src/bochan/api/observation/state.py \
             src/bochan/api/observation/service.py \
             src/bochan/api/optimizer.py \
+            src/bochan/api/registry/__init__.py \
+            src/bochan/api/registry/acquisition.py \
+            src/bochan/api/registry/model.py \
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/composition_bounds_optimizer.py \
             src/bochan/tabular/multi_output_categories.py \

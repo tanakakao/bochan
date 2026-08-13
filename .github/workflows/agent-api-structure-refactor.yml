@@ -1,0 +1,298 @@
+name: Agent API structural refactor
+
+on:
+  push:
+    branches:
+      - agent/api-root-responsibility-cleanup
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: contains(github.event.head_commit.message, '[agent-api-structure-refactor]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/api-root-responsibility-cleanup
+          fetch-depth: 0
+      - name: Apply responsibility moves
+        shell: bash
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import re
+          from pathlib import Path
+
+          repo = Path.cwd()
+          api = repo / "src/bochan/api"
+
+          def move(source: Path, destination: Path) -> None:
+              if not source.exists():
+                  raise RuntimeError(f"missing source: {source}")
+              destination.parent.mkdir(parents=True, exist_ok=True)
+              if destination.exists():
+                  raise RuntimeError(f"destination already exists: {destination}")
+              source.replace(destination)
+
+          def rewrite(path: Path, transform) -> None:
+              text = path.read_text(encoding="utf-8")
+              updated = transform(text)
+              if updated != text:
+                  path.write_text(updated, encoding="utf-8")
+
+          def replace_all(old: str, new: str) -> int:
+              count = 0
+              allowed = {".py", ".md", ".rst", ".toml", ".yml", ".yaml"}
+              for path in repo.rglob("*"):
+                  if not path.is_file() or path.suffix.lower() not in allowed:
+                      continue
+                  try:
+                      text = path.read_text(encoding="utf-8")
+                  except UnicodeDecodeError:
+                      continue
+                  if old not in text:
+                      continue
+                  count += text.count(old)
+                  path.write_text(text.replace(old, new), encoding="utf-8")
+              return count
+
+          # Move single-responsibility modules into their existing owners.
+          move(api / "candidate_uniqueness.py", api / "candidate/uniqueness.py")
+          move(api / "experiment_failure.py", api / "observation/failure.py")
+          move(api / "model_capabilities.py", api / "registry/capabilities.py")
+          move(api / "cross_validation.py", api / "evaluation/cross_validation.py")
+
+          # A moved root module now imports API siblings from one level higher.
+          rewrite(
+              api / "evaluation/cross_validation.py",
+              lambda text: re.sub(r"(?m)^from \\.", "from ..", text),
+          )
+          rewrite(
+              api / "observation/failure.py",
+              lambda text: (
+                  text.replace("from .configs", "from ..configs")
+                  .replace("from .factory", "from ..factory")
+                  .replace(
+                      "from .observation import ExperimentFailureConfig, ObservationData",
+                      "from .state import ExperimentFailureConfig, ObservationData",
+                  )
+              ),
+          )
+
+          # Promote study.py + study_controls.py + study_results.py to one package.
+          study_core_tmp = api / "_study_core_tmp.py"
+          study_controls_tmp = api / "_study_controls_tmp.py"
+          study_results_tmp = api / "_study_results_tmp.py"
+          move(api / "study.py", study_core_tmp)
+          move(api / "study_controls.py", study_controls_tmp)
+          move(api / "study_results.py", study_results_tmp)
+          study_dir = api / "study"
+          study_dir.mkdir()
+          move(study_core_tmp, study_dir / "core.py")
+          move(study_controls_tmp, study_dir / "controls.py")
+          move(study_results_tmp, study_dir / "results.py")
+
+          # Core used to live at api root, so every explicit relative import points up.
+          rewrite(
+              study_dir / "core.py",
+              lambda text: re.sub(r"(?m)^from \\.", "from ..", text),
+          )
+
+          # Result helpers now own an explicit mixin instead of mutating BochanStudy.
+          def rewrite_results(text: str) -> str:
+              text = text.replace("from .study import Trial, TrialState", "from .core import Trial, TrialState")
+              pattern = re.compile(
+                  r"def install_study_result_api\(cls: type\) -> type:\n.*?\n\n__all__ = \[",
+                  re.DOTALL,
+              )
+              replacement = '''class StudyResultMixin:
+              """Explicit Optuna-like result API shared by public study classes."""
+
+              def best_trials(self, *, top_k: int = 1, output_index: int = 0, direction: Any | None = None) -> list[Trial]:
+                  return best_trials(self, top_k=top_k, output_index=output_index, direction=direction)
+
+              def get_best_trial(self, *, output_index: int = 0, direction: Any | None = None) -> Trial:
+                  return get_best_trial(self, output_index=output_index, direction=direction)
+
+              def get_best_value(self, *, output_index: int = 0, direction: Any | None = None) -> float:
+                  return get_best_value(self, output_index=output_index, direction=direction)
+
+              def get_best_x(self, *, output_index: int = 0, direction: Any | None = None) -> Any:
+                  return get_best_x(self, output_index=output_index, direction=direction)
+
+              def get_best_params(self, *, param_names: Sequence[str] | None = None, output_index: int = 0, direction: Any | None = None) -> dict[str, Any]:
+                  return get_best_params(
+                      self,
+                      param_names=param_names,
+                      output_index=output_index,
+                      direction=direction,
+                  )
+
+              def best_result(self, *, param_names: Sequence[str] | None = None, output_index: int = 0, direction: Any | None = None) -> dict[str, Any]:
+                  return best_result(
+                      self,
+                      param_names=param_names,
+                      output_index=output_index,
+                      direction=direction,
+                  )
+
+              def pareto_trials(self, *, output_indices: Sequence[int] | None = None, directions: Sequence[Any] | None = None) -> list[Trial]:
+                  return pareto_trials(self, output_indices=output_indices, directions=directions)
+
+              @property
+              def best_trial(self) -> Trial:
+                  return _best_trial_property(self)
+
+              @property
+              def best_value(self) -> float:
+                  return _best_value_property(self)
+
+              @property
+              def best_x(self) -> Any:
+                  return _best_x_property(self)
+
+              @property
+              def best_params(self) -> dict[str, Any]:
+                  return _best_params_property(self)
+
+
+              __all__ = ['''
+              text, substitutions = pattern.subn(replacement, text, count=1)
+              if substitutions != 1:
+                  raise RuntimeError(f"study result installer replacement count={substitutions}")
+              text = text.replace('    "install_study_result_api",\n', '    "StudyResultMixin",\n')
+              return text
+
+          rewrite(study_dir / "results.py", rewrite_results)
+
+          def rewrite_controls(text: str) -> str:
+              text = text.replace("from .study import (", "from .core import (")
+              text = text.replace(
+                  "from .study_results import install_study_result_api",
+                  "from .results import StudyResultMixin",
+              )
+              # All other root-level API dependencies move one package level up.
+              for sibling in (
+                  "configs",
+                  "optimizer",
+                  "factory",
+                  "observation",
+                  "registry",
+                  "llm",
+                  "acquisition",
+                  "candidate",
+              ):
+                  text = text.replace(f"from .{sibling}", f"from ..{sibling}")
+              old_class = "class BochanStudy(_BaseBochanStudy):"
+              new_class = "class BochanStudy(StudyResultMixin, _BaseBochanStudy):"
+              if text.count(old_class) != 1:
+                  raise RuntimeError("unexpected BochanStudy class declaration")
+              text = text.replace(old_class, new_class)
+              if text.count("install_study_result_api(BochanStudy)") != 1:
+                  raise RuntimeError("unexpected study result installer call count")
+              text = text.replace("\n\ninstall_study_result_api(BochanStudy)\n", "\n")
+              return text
+
+          rewrite(study_dir / "controls.py", rewrite_controls)
+
+          (study_dir / "__init__.py").write_text(
+              '''"""Study-level ask/tell orchestration and result APIs."""
+
+          from .core import CandidateBatch, StudySnapshot, StudySuggestion, Trial, TrialState
+          from .controls import (
+              BochanStudy,
+              EarlyStoppingConfig,
+              GenerationSchedule,
+              GenerationStep,
+              StopDecision,
+          )
+
+          __all__ = [
+              "BochanStudy",
+              "CandidateBatch",
+              "EarlyStoppingConfig",
+              "GenerationSchedule",
+              "GenerationStep",
+              "StopDecision",
+              "StudySnapshot",
+              "StudySuggestion",
+              "Trial",
+              "TrialState",
+          ]
+          ''',
+              encoding="utf-8",
+          )
+
+          # Rewrite external/internal imports to the new canonical owners.
+          replacements = {
+              "bochan.api.candidate_uniqueness": "bochan.api.candidate.uniqueness",
+              "bochan.api.experiment_failure": "bochan.api.observation.failure",
+              "bochan.api.model_capabilities": "bochan.api.registry.capabilities",
+              "bochan.api.cross_validation": "bochan.api.evaluation.cross_validation",
+              "bochan.api.study_controls": "bochan.api.study.controls",
+              "bochan.api.study_results": "bochan.api.study.results",
+          }
+          for old, new in replacements.items():
+              replace_all(old, new)
+
+          # Remaining api-root modules use explicit responsibility paths.
+          for path in api.glob("*.py"):
+              rewrite(
+                  path,
+                  lambda text: (
+                      text.replace("from .candidate_uniqueness", "from .candidate.uniqueness")
+                      .replace("from .experiment_failure", "from .observation.failure")
+                      .replace("from .model_capabilities", "from .registry.capabilities")
+                      .replace("from .cross_validation", "from .evaluation.cross_validation")
+                      .replace("from .study_controls", "from .study.controls")
+                      .replace("from .study_results", "from .study.results")
+                  ),
+              )
+
+          # Architecture tests must prevent the removed root modules from returning.
+          architecture = repo / "tests/test_api_architecture.py"
+          architecture_text = architecture.read_text(encoding="utf-8")
+          marker = '        "bochan.api.composition",\n'
+          removed_paths = (
+              "bochan.api.candidate_uniqueness",
+              "bochan.api.cross_validation",
+              "bochan.api.experiment_failure",
+              "bochan.api.model_capabilities",
+              "bochan.api.study_controls",
+              "bochan.api.study_results",
+          )
+          if marker not in architecture_text:
+              raise RuntimeError("architecture removal marker missing")
+          insertion = marker + "".join(f'        "{name}",\n' for name in removed_paths)
+          architecture.write_text(
+              architecture_text.replace(marker, insertion, 1),
+              encoding="utf-8",
+          )
+
+          # The old study installer must be gone from production code.
+          production = "\n".join(
+              path.read_text(encoding="utf-8")
+              for path in (repo / "src/bochan").rglob("*.py")
+          )
+          if "install_study_result_api" in production:
+              raise RuntimeError("runtime study result installer still exists")
+
+          # Syntax-check the structural rewrite before committing it.
+          import compileall
+          if not compileall.compile_dir(str(api), quiet=1):
+              raise RuntimeError("compileall failed after API structural refactor")
+          PY
+      - name: Commit structural refactor
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/agent-api-structure-refactor.yml
+          git add src tests docs web || true
+          git add -u
+          git status --short
+          git commit -m "Organize API responsibility packages and remove study runtime patch"
+          git push origin HEAD:agent/api-root-responsibility-cleanup

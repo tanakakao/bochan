@@ -4,8 +4,11 @@ import importlib.util
 
 import bochan.api as api
 import bochan.tabular as tabular
-from bochan.tabular import composition_bounds_optimizer, optimizer_api
-from bochan.tabular import multi_site_composition_optimizer
+from bochan.tabular import (
+    composition_bounds_optimizer,
+    multi_site_composition_optimizer,
+    optimizer_api,
+)
 from bochan.tabular import optimizer as tabular_optimizer
 from bochan.tabular.composition_element_columns import CompositionElementColumnTransform
 from bochan.tabular.composition_element_constraint_candidates import (
@@ -135,21 +138,14 @@ def test_element_constraints_use_explicit_components_without_optimizer_layer() -
     )
 
 
-def test_tabular_import_does_not_patch_core_candidate_method() -> None:
-    assert not hasattr(
-        api.BayesianOptimizer,
-        "_bochan_candidate_before_tabular_outputs",
-    )
+def test_tabular_import_keeps_core_candidate_identity() -> None:
+    sentinel_name = "_bochan_" + "candidate_before_tabular_outputs"
+    assert not hasattr(api.BayesianOptimizer, sentinel_name)
     assert api.BayesianOptimizer.candidate.__module__ == "bochan.api.optimizer"
 
 
-def test_tabular_import_does_not_patch_internal_init_or_predict_methods() -> None:
-    assert not getattr(
-        TabularApiMixin.__init__,
-        "_bochan_supports_output_categories",
-        False,
-    )
-    assert not hasattr(
-        tabular_optimizer.TabularBayesianOptimizer,
-        "_bochan_predict_before_tabular_labels",
-    )
+def test_tabular_import_keeps_internal_method_identity() -> None:
+    init_sentinel = "_bochan_" + "supports_output_categories"
+    predict_sentinel = "_bochan_" + "predict_before_tabular_labels"
+    assert not getattr(TabularApiMixin.__init__, init_sentinel, False)
+    assert not hasattr(tabular_optimizer.TabularBayesianOptimizer, predict_sentinel)

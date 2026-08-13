@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from bochan.tabular import TabularBayesianOptimizer
-from bochan.tabular.builders import (
+from bochan.tabular.config import (
     make_acquisition_config,
     make_model_config,
     make_optimize_config,
 )
-from bochan.tabular.optimizer import TabularBayesianOptimizer as _TabularOptimizerCore
 
 
 def test_make_model_config_accepts_dict_with_nested_input_transform() -> None:
@@ -22,7 +21,6 @@ def test_make_model_config_accepts_dict_with_nested_input_transform() -> None:
             },
         }
     )
-
     assert config.task_type == "regression"
     assert config.input_transform_config is not None
     assert config.input_transform_config.normalize is False
@@ -35,16 +33,11 @@ def test_make_acquisition_config_accepts_dict_with_nested_objective_config() -> 
     config = make_acquisition_config(
         {
             "name": "EI",
-            "objective_config": {
-                "mode": "scalar",
-                "output": 0,
-                "n_w": 4,
-            },
+            "objective_config": {"mode": "scalar", "output": 0, "n_w": 4},
         },
         objective_risk_type="cvar",
         objective_alpha=0.2,
     )
-
     assert config.name == "EI"
     assert config.objective_config is not None
     assert config.objective_config.mode == "scalar"
@@ -59,15 +52,11 @@ def test_make_optimize_config_accepts_dict_with_nested_repair_config() -> None:
         {
             "q": 3,
             "optimizer": "pso",
-            "repair_config": {
-                "comp_idx": [0, 1, 2],
-                "k": 2,
-            },
+            "repair_config": {"comp_idx": [0, 1, 2], "k": 2},
         },
         steps=0.1,
         final_priority="constraints",
     )
-
     assert config.q == 3
     assert config.optimizer == "evo"
     assert config.evo_method == "pso"
@@ -91,7 +80,6 @@ def test_make_optimize_config_preserves_dict_repair_config_when_direct_none_is_s
         },
         repair_config=None,
     )
-
     assert config.q == 2
     assert config.repair_config is not None
     assert config.repair_config.numeric_indices == [0, 1, 2]
@@ -116,7 +104,6 @@ def test_make_optimize_config_accepts_unified_linear_constraints() -> None:
             },
         }
     )
-
     assert config.equality_constraints == [([0, 1, 2], [1.0, 1.0, 1.0], 1.0)]
     assert config.inequality_constraints == [
         ([3, 4], [1.0, 1.0], 100.0),
@@ -132,7 +119,6 @@ def test_make_optimize_config_accepts_unified_linear_constraints() -> None:
 def test_make_optimize_config_routes_shared_direct_fields_to_optimizer_config() -> None:
     equality_constraints = [([0, 1, 2], [1.0, 1.0, 1.0], 1.0)]
     inequality_constraints = [([3], [1.0], 100.0)]
-
     config = make_optimize_config(
         q=5,
         equality_constraints=equality_constraints,
@@ -143,7 +129,6 @@ def test_make_optimize_config_routes_shared_direct_fields_to_optimizer_config() 
         comp_idx=[0, 1, 2],
         k=2,
     )
-
     assert config.q == 5
     assert config.equality_constraints is equality_constraints
     assert config.inequality_constraints is inequality_constraints
@@ -161,14 +146,12 @@ def test_make_optimize_config_routes_shared_direct_fields_to_optimizer_config() 
 def test_make_optimize_config_accepts_repair_prefixed_shared_field_overrides() -> None:
     optimizer_equality_constraints = [([0, 1], [1.0, 1.0], 1.0)]
     repair_equality_constraints = [([0, 1, 2], [1.0, 1.0, 1.0], 1.0)]
-
     config = make_optimize_config(
         equality_constraints=optimizer_equality_constraints,
         repair_equality_constraints=repair_equality_constraints,
         repair_fixed_features={2: 0.0},
         steps=[0.01, 0.01, 0.01],
     )
-
     assert config.equality_constraints is optimizer_equality_constraints
     assert config.repair_config is not None
     assert config.repair_config.equality_constraints is repair_equality_constraints
@@ -181,16 +164,12 @@ def test_tabular_constructor_accepts_dict_configs() -> None:
         model_config={
             "task_type": "regression",
             "model_type": "base",
-            "input_transform_config": {
-                "perturbation": True,
-                "n_w": 4,
-            },
+            "input_transform_config": {"perturbation": True, "n_w": 4},
         },
         fit_config={"maxiter": 32},
         input_cols=["x1"],
         target_cols="y",
     )
-
     assert bo.model_config.task_type == "regression"
     assert bo.model_config.input_transform_config is not None
     assert bo.model_config.input_transform_config.perturbation is True
@@ -199,35 +178,19 @@ def test_tabular_constructor_accepts_dict_configs() -> None:
     assert bo.fit_config.maxiter == 32
 
 
-def test_tabular_candidate_accepts_dict_configs(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_candidate(self, acq_config=None, opt_config=None, **kwargs):
-        captured["acq_config"] = acq_config
-        captured["opt_config"] = opt_config
-        captured["kwargs"] = kwargs
-        return "ok"
-
-    monkeypatch.setattr(_TabularOptimizerCore, "candidate", fake_candidate)
-
+def test_tabular_candidate_accepts_dict_configs() -> None:
     bo = TabularBayesianOptimizer(
         task_type="regression",
         model_type="base",
         input_cols=["x1"],
         target_cols="y",
     )
-
-    result = bo.candidate(
-        acq_config={"name": "EI", "objective_config": {"n_w": 4}},
-        opt_config={"q": 2, "optimizer": "evo"},
-        objective_risk_type="cvar",
-        evo_method="ga",
+    acq_config, opt_config = bo.candidates._prepare_configs(
+        bo,
+        {"name": "EI", "objective_config": {"n_w": 4}},
+        {"q": 2, "optimizer": "evo"},
+        {"objective_risk_type": "cvar", "evo_method": "ga"},
     )
-
-    assert result == "ok"
-    acq_config = captured["acq_config"]
-    opt_config = captured["opt_config"]
-
     assert acq_config.name == "EI"
     assert acq_config.objective_config is not None
     assert acq_config.objective_config.n_w == 4

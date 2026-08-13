@@ -37,7 +37,6 @@ jobs:
             src/bochan/tabular/composition/bounds.py \
             src/bochan/tabular/composition/columns.py \
             src/bochan/tabular/composition/constraints/__init__.py \
-            src/bochan/tabular/composition/constraints/projector.py \
             src/bochan/tabular/composition/constraints/reranker.py \
             src/bochan/tabular/composition/constraints/resolver.py \
             src/bochan/tabular/composition/totals.py \

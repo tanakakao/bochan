@@ -10,7 +10,7 @@ on:
       - "src/bochan/models/regression/gaussian/likelihood.py"
       - "src/bochan/model_artifact.py"
       - "src/bochan/models/classification/binary/base/posterior.py"
-      - "src/bochan/tabular/optimizer_api.py"
+      - "src/bochan/tabular/optimizer/settings.py"
       - "src/bochan/serving/fastapi/**"
       - "src/bochan/serving/webapp/**"
       - "src/bochan/visualization/input_perturbation.py"

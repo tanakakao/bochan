@@ -32,7 +32,7 @@ jobs:
               raise RuntimeError('expected feasibility_defaults import was not found')
           path.write_text(text.replace(old, new), encoding='utf-8')
 
-          forbidden = (
+          forbidden_absolute = (
               'bochan.api.acquisition_config',
               'bochan.api.acquisition_registry',
               'bochan.api.acquisition_service',
@@ -67,7 +67,7 @@ jobs:
               'bochan.api.study_controls',
               'bochan.api.study_results',
           )
-          forbidden_relative = (
+          forbidden_api_relative = (
               'from .engine ', 'from .engine import', 'from ..engine ', 'from ..engine import',
               'from .feasibility_defaults ', 'from .feasibility_defaults import',
               'from ..feasibility_defaults ', 'from ..feasibility_defaults import',
@@ -78,16 +78,27 @@ jobs:
               'from .optimizer_support ', 'from .optimizer_support import',
               'from ..optimizer_support ', 'from ..optimizer_support import',
           )
+
           bad = []
           for source in Path('src/bochan').rglob('*.py'):
               for number, line in enumerate(source.read_text(encoding='utf-8').splitlines(), start=1):
                   stripped = line.strip()
                   if not (stripped.startswith('from ') or stripped.startswith('import ')):
                       continue
-                  if any(name in stripped for name in forbidden) or any(fragment in stripped for fragment in forbidden_relative):
+                  if any(name in stripped for name in forbidden_absolute):
                       bad.append(f'{source}:{number}: {stripped}')
+
+          api_root = Path('src/bochan/api')
+          for source in api_root.rglob('*.py'):
+              for number, line in enumerate(source.read_text(encoding='utf-8').splitlines(), start=1):
+                  stripped = line.strip()
+                  if not (stripped.startswith('from ') or stripped.startswith('import ')):
+                      continue
+                  if any(fragment in stripped for fragment in forbidden_api_relative):
+                      bad.append(f'{source}:{number}: {stripped}')
+
           if bad:
-              raise RuntimeError('removed API imports remain:\n' + '\n'.join(bad))
+              raise RuntimeError('removed API imports remain:\n' + '\n'.join(sorted(set(bad))))
           if not compileall.compile_dir('src/bochan/api', quiet=1):
               raise RuntimeError('API compileall failed')
           PY

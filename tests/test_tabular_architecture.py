@@ -57,7 +57,7 @@ def test_variable_total_behavior_uses_explicit_transform_component() -> None:
     )
     assert (
         tabular.TabularBayesianOptimizer.inverse_compositions.__module__
-        == "bochan.tabular.variable_total_composition_optimizer"
+        == "bochan.tabular.element_constraint_composition_optimizer"
     )
 
 

@@ -15,7 +15,7 @@ from bochan.serving.webapp.composition_web_routes import (
     register_composition_routes,
 )
 from bochan.serving.webapp.composition_web_support import (
-    _ACTIVE_CONFIG,
+    composition_model_feature_columns,
     normalize_web_composition_settings,
 )
 from bochan.serving.webapp.visualization_sessions import (
@@ -145,24 +145,25 @@ def test_ordinary_constraint_uses_shifted_index_after_ilr_expansion() -> None:
         rhs=1000.0,
         terms=[SimpleNamespace(column="temperature", coefficient=1.0)],
     )
-    token = _ACTIVE_CONFIG.set(
+    feature_columns = composition_model_feature_columns(
+        ["formula", "temperature"],
         {
             "column": "formula",
             "feature_names": ["formula__ilr__1", "formula__ilr__2"],
-        }
+        },
     )
-    try:
-        equality, inequality = workflows_tabular.botorch_linear_constraints(
-            [constraint],
-            feature_columns=["formula", "temperature"],
-        )
-    finally:
-        _ACTIVE_CONFIG.reset(token)
+    equality, inequality = workflows_tabular.botorch_linear_constraints(
+        [constraint],
+        feature_columns=feature_columns,
+    )
 
     assert equality == []
     indices, coefficients, rhs = inequality[0]
     assert torch.equal(indices, torch.tensor([2]))
-    assert torch.equal(coefficients, torch.tensor([-1.0], dtype=torch.double))
+    assert torch.equal(
+        coefficients,
+        torch.tensor([-1.0], dtype=torch.double),
+    )
     assert rhs == -1000.0
 
 

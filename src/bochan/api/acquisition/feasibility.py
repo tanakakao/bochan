@@ -2,7 +2,7 @@
 
 This module keeps feasibility routing in the normal high-level API call graph.
 It intentionally does not replace functions in :mod:`bochan.api.factory` or
-:mod:`bochan.api.engine` at runtime.
+:mod:`bochan.api.optimizer.core` at runtime.
 """
 
 from __future__ import annotations

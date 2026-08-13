@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import torch
 
-from bochan.api.optimizer_api import (
+from bochan.api.optimizer.service import (
     OptimizeConfig,
     _resolve_thompson_sampling_target,
     optimize_candidates,

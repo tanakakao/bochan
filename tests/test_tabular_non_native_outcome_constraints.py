@@ -20,7 +20,7 @@ from bochan.acquisition.regression.levelset_estimation import (
     qMultiOutputRegressionStraddle,
 )
 from bochan.api import AcquisitionConfig, ModelBundle, ModelConfig, OutcomeConstraintConfig
-from bochan.api import engine as api_engine
+from bochan.api.optimizer import core as engine as api_engine
 from bochan.tabular import TabularBayesianOptimizer  # noqa: F401
 
 

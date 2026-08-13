@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any, Literal
 
-from .configs import OptimizeConfig as _BaseOptimizeConfig
+from ..configs import OptimizeConfig as _BaseOptimizeConfig
 
 EvolutionaryMethod = Literal["ga", "pso", "sa", "cmaes"]
 OptimizerName = Literal[

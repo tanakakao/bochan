@@ -5,19 +5,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from .candidate.uniqueness import ensure_unique_candidates
-from .configs import OptimizeConfig as _BaseOptimizeConfig
-from .configs.optimize import (
+from ..candidate.uniqueness import ensure_unique_candidates
+from ..configs import OptimizeConfig as _BaseOptimizeConfig
+from ..configs.optimize import (
     OptimizeConfig,
     resolve_optimizer_from_cat_dims,
     uses_mixed_fixed_features,
 )
-from . import optimizer_dispatch as _optimizer_dispatch
-from .optimizer_dispatch import (
+from . import dispatch as _optimizer_dispatch
+from .dispatch import (
     _common_kwargs,
     _optimize_candidates_once,
 )
-from .optimizer_support import (
+from .support import (
     EvolutionaryMethod,
     OptimizerName,
     _ALIASES,

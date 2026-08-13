@@ -4,7 +4,7 @@ import torch
 
 from bochan.api import OptimizeConfig
 from bochan.api.candidate.uniqueness import count_unique_candidate_rows
-from bochan.api.optimizer_dispatch import optimize_candidates
+from bochan.api.optimizer.dispatch import optimize_candidates
 from bochan.serving.webapp.target_results import (
     _batch_acq_value,
     _broadcast_acq_values,

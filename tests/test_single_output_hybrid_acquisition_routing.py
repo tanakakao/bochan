@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from bochan.api import AcquisitionConfig
-from bochan.api.engine import BayesianOptimizer
+from bochan.api.optimizer.core import BayesianOptimizer
 
 
 def _resolve_hybrid_acquisition(

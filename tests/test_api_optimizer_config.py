@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-import bochan.api.optimizer_api as optimizer_api_module
+import bochan.api.optimizer.service as optimizer_api_module
 from bochan.api import OptimizeConfig
-from bochan.api.optimizer_api import (
+from bochan.api.optimizer.service import (
     _resolve_thompson_sampling_target,
     resolve_optimizer_from_cat_dims,
     uses_mixed_fixed_features,

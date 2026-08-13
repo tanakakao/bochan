@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import torch
 
-import bochan.api.engine as engine
+import bochan.api.optimizer.core as engine
 from bochan.api import (
     AcquisitionConfig,
     InputTransformConfig,

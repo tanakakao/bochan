@@ -1,6 +1,6 @@
 """Study-level ask/tell optimization loop for bochan.
 
-このモジュールは、既存の :class:`bochan.api.engine.BayesianOptimizer` を
+このモジュールは、既存の :class:`bochan.api.optimizer.core.BayesianOptimizer` を
 1 step の候補点生成エンジンとして利用し、その上に実験履歴・pending 管理・
 保存/再開・Python 関数の自動評価ループを載せるための軽量 manager を提供します。
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from bochan.api.optimizer_api import (
+from bochan.api.optimizer.service import (
     OptimizeConfig,
     _force_sequential_for_kronecker,
 )

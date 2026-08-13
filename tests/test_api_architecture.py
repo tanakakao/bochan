@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 
 import bochan.api as api
-from bochan.api import configs, engine, factory, optimizer, registry
+from bochan.api import configs, factory, optimizer, registry\nfrom bochan.api.optimizer import core as optimizer_core
 from bochan.api.acquisition import defaults as acquisition_defaults
 from bochan.api.acquisition import feasibility as acquisition_feasibility
 from bochan.api.acquisition import service as acquisition_service
@@ -24,7 +24,7 @@ from bochan.serving.fastapi.services import tabular as tabular_service
 def test_public_bayesian_optimizer_has_one_canonical_definition() -> None:
     assert api.BayesianOptimizer is optimizer.BayesianOptimizer
     assert api.BayesianOptimizer.__module__ == "bochan.api.optimizer"
-    assert issubclass(api.BayesianOptimizer, engine.BayesianOptimizer)
+    assert issubclass(api.BayesianOptimizer, optimizer_core.BayesianOptimizer)
 
 
 def test_base_configs_are_owned_by_package() -> None:
@@ -74,8 +74,8 @@ def test_acquisition_defaults_have_one_owner() -> None:
 
 
 def test_api_import_does_not_replace_engine_or_factory_symbols() -> None:
-    assert engine.BayesianOptimizer is not api.BayesianOptimizer
-    assert engine.BayesianOptimizer.__module__ == "bochan.api.engine"
+    assert optimizer_core.BayesianOptimizer is not api.BayesianOptimizer
+    assert optimizer_core.BayesianOptimizer.__module__ == "bochan.api.optimizer.core"
     assert factory.build_acquisition.__module__ == "bochan.api.factory"
     assert acquisition_service.build_acquisition.__module__ == (
         "bochan.api.acquisition.service"
@@ -146,7 +146,7 @@ def test_removed_compatibility_and_patch_modules_do_not_exist() -> None:
         "bochan.api.model_capabilities",
         "bochan.api.study_controls",
         "bochan.api.study_results",
-        "bochan.api.engine_defaults",
+        "bochan.api.optimizer.core_defaults",
         "bochan.api.feasibility_defaults",
         "bochan.api.fit_config",
         "bochan.api.hetero_ordinal_perturbation",

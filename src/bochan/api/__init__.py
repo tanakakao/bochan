@@ -54,7 +54,7 @@ from .factory import (
 )
 from .observation import ExperimentFailureConfig, ObservationData
 from .optimizer import BayesianOptimizer
-from .optimizer_api import optimize_candidates
+from .optimizer.service import optimize_candidates
 from .registry.acquisition import available_acqf_names, resolve_acqf_cls
 from .registry.model import DEFAULT_MODEL_REGISTRY, MODEL_REGISTRY, LazyModelRegistry
 from .study import CandidateBatch, StudySnapshot, StudySuggestion, Trial, TrialState

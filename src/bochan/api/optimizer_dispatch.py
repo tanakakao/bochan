@@ -9,8 +9,8 @@ from typing import Any
 from . import factory as _factory
 from .candidate_uniqueness import ensure_unique_candidates
 from .configs import OptimizeConfig as _BaseOptimizeConfig
-from .optimizer_config import _InternalMixedOptimizerName
 from .optimizer_support import (
+    _InternalMixedOptimizerName,
     _force_sequential_for_kronecker,
     _optimizer_name,
     _resolve_thompson_sampling_target,

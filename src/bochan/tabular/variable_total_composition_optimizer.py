@@ -11,7 +11,7 @@ from bochan.api import OptimizeConfig
 
 from .composition import CompositionSearchSpace
 from .composition_total_constraints import CompositionTotalConstraintResolver
-from .composition_variable_total import CompositionVariableTotalTransformer
+from .composition_variable_total_transform import CompositionVariableTotalTransform
 from .element_column_composition_optimizer import (
     TabularBayesianOptimizer as _ElementColumnTabularBayesianOptimizer,
 )
@@ -21,7 +21,7 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
     """Thin adapter composing variable-total transformation components."""
 
     composition_total_constraint_resolver = CompositionTotalConstraintResolver()
-    composition_variable_total_transformer = CompositionVariableTotalTransformer()
+    composition_variable_total_transform = CompositionVariableTotalTransform()
 
     def __init__(
         self,
@@ -50,7 +50,7 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
         cls,
         sites: Mapping[str, Mapping[str, Any]] | None,
     ) -> dict[str, dict[str, Any]]:
-        return cls.composition_variable_total_transformer.normalize_sites(
+        return cls.composition_variable_total_transform.normalize_sites(
             sites,
             base_normalizer=(
                 _ElementColumnTabularBayesianOptimizer._normalize_composition_sites
@@ -75,7 +75,7 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
         cls,
         config: Mapping[str, Any],
     ) -> CompositionSearchSpace | None:
-        return cls.composition_variable_total_transformer.make_site_search_space(
+        return cls.composition_variable_total_transform.make_site_search_space(
             config,
             base_factory=_ElementColumnTabularBayesianOptimizer._make_site_search_space,
         )
@@ -86,7 +86,7 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
         formulas: Any,
         config: Mapping[str, Any],
     ) -> np.ndarray:
-        return cls.composition_variable_total_transformer.formula_site_totals(
+        return cls.composition_variable_total_transform.formula_site_totals(
             formulas,
             config,
         )
@@ -97,11 +97,12 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
         site_name: str,
         config: Mapping[str, Any],
     ) -> np.ndarray | None:
-        return self.composition_variable_total_transformer.site_totals_from_frame(
-            self,
+        return self.composition_variable_total_transform.site_totals_from_frame(
             data,
             site_name,
             config,
+            site_source_columns=self._site_source_columns,
+            numeric_site_values=self._numeric_site_values,
         )
 
     def _prepare_multi_site_frame(
@@ -110,31 +111,37 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
         *,
         fit_transformers: bool,
     ) -> Any:
-        totals = self.composition_variable_total_transformer.collect_totals(self, data)
-        transformed = super()._prepare_multi_site_frame(
+        return self.composition_variable_total_transform.prepare_multi_site_frame(
             data,
             fit_transformers=fit_transformers,
-        )
-        return self.composition_variable_total_transformer.inject_totals(
-            self,
-            transformed,
-            totals,
+            composition_sites=self.composition_sites,
+            base_prepare=lambda frame, *, fit_transformers: super(
+                TabularBayesianOptimizer, self
+            )._prepare_multi_site_frame(
+                frame,
+                fit_transformers=fit_transformers,
+            ),
+            site_source_columns=self._site_source_columns,
+            numeric_site_values=self._numeric_site_values,
         )
 
     def _replace_multi_site_input_cols(
         self,
         input_cols: Sequence[Any] | None,
     ) -> list[Any] | None:
-        return self.composition_variable_total_transformer.replace_input_cols(
-            self,
+        return self.composition_variable_total_transform.replace_input_cols(
             input_cols,
+            composition_sites=self.composition_sites,
+            composition_transformers=self.composition_transformers_,
+            site_source_columns=self._site_source_columns,
         )
 
     def _expanded_multi_site_bounds(self, bounds: Any, transformed: Any) -> Any:
         expanded = super()._expanded_multi_site_bounds(bounds, transformed)
-        return self.composition_variable_total_transformer.complete_bounds(
-            self,
+        return self.composition_variable_total_transform.complete_bounds(
             expanded,
+            composition_sites=self.composition_sites,
+            composition_transformers=self.composition_transformers_,
         )
 
     def _named_total_constraints(self) -> list[tuple[Any, ...]]:
@@ -174,7 +181,7 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
         config: Mapping[str, Any],
         total: float,
     ) -> CompositionSearchSpace:
-        return cls.composition_variable_total_transformer.dynamic_search_space(
+        return cls.composition_variable_total_transform.dynamic_search_space(
             config,
             total,
         )
@@ -191,10 +198,12 @@ class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):
             repair=repair,
             keep_coordinates=keep_coordinates,
         )
-        return self.composition_variable_total_transformer.restore(
-            self,
+        return self.composition_variable_total_transform.inverse_compositions(
             data,
             restored,
+            composition_sites=self.composition_sites,
+            composition_transformers=self.composition_transformers_,
+            multi_site_composition_enabled=self.multi_site_composition_enabled,
             repair=repair,
         )
 

@@ -7,8 +7,8 @@ from torch import nn
 
 import bochan.acquisition.ordinal.bayesian_optimization as ordinal_bo_package
 import bochan.api  # noqa: F401 - installs high-level support routes
-import bochan.api.optimizer.core as engine_module
-import bochan.api.factory as factory_module
+import bochan.api.acquisition.context as acquisition_context
+import bochan.api.acquisition.service as acquisition_service
 from bochan.acquisition.multiclass.bayesian_optimization import (
     hetero_multi_output as hetero_multiclass_module,
 )
@@ -93,7 +93,7 @@ def _make_bundle(task_type: str, model, *, n_w: int = 16):
 
 
 def _resolve(bundle, name: str, **kwargs):
-    return engine_module._resolve_objective_config_n_w_from_input_transform(
+    return acquisition_context._resolve_objective_config_n_w_from_input_transform(
         acq_config=AcquisitionConfig(name=name, **kwargs),
         bundle=bundle,
     )
@@ -158,7 +158,7 @@ def test_ordinal_objective_aggregates_48_rows_to_q3() -> None:
     model = _DummyOrdinalModel()
     bundle = _make_bundle("ordinal", model)
     resolved = _resolve(bundle, "ehvi")
-    objective = factory_module.build_objective(bundle=bundle, config=resolved)
+    objective = acquisition_service.build_objective(bundle=bundle, config=resolved)
 
     assert isinstance(objective, qMultiOutputOrdinalUtilityObjective)
     assert objective.input_perturbation_n_w == 16
@@ -188,7 +188,7 @@ def test_multiclass_objective_aggregates_48_rows_to_q3() -> None:
         "ehvi",
         acqf_kwargs={"output_target_classes": [1, 2]},
     )
-    objective = factory_module.build_objective(bundle=bundle, config=resolved)
+    objective = acquisition_service.build_objective(bundle=bundle, config=resolved)
 
     assert isinstance(objective, InputPerturbationMultiOutputObjectiveAdapter)
     assert objective.n_w == 16
@@ -216,7 +216,7 @@ def test_hetero_multiclass_aggregates_before_noise_weighting() -> None:
         "ehvi",
         acqf_kwargs={"output_target_classes": [1, 2]},
     )
-    base_objective = factory_module.build_objective(
+    base_objective = acquisition_service.build_objective(
         bundle=bundle,
         config=resolved,
     )

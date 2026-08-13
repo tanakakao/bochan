@@ -14,6 +14,7 @@ from bochan.inspection import (
 )
 
 from .acquisition import build_acquisition
+from .acquisition.context import prepare_multi_objective_context
 from .configs import (
     AutoStandardizeOutcomeTransform,
     CandidateRepairConfig,
@@ -45,7 +46,6 @@ from .evaluation.cross_validation import (
     clone_fit_config_for_evaluation,
     clone_model_config_for_evaluation,
 )
-from .factory import prepare_multi_objective_context
 from .modeling.build import build_model, infer_input_type, resolve_model_cls
 from .modeling.fit import fit_model
 from .observation import ExperimentFailureConfig, ObservationData

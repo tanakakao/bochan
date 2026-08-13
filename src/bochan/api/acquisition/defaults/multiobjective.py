@@ -139,7 +139,7 @@ def _regression_observed_values(
     config: AcquisitionConfig,
     context: DataContext,
 ) -> Any:
-    from ...factory import build_objective
+    from ..objective import build_objective
 
     values = _as_observed_matrix(
         _observed_train_targets(bundle),
@@ -193,7 +193,7 @@ def _binary_observed_values(
         shape_X_for_model,
         to_probability,
     )
-    from ...factory import build_objective
+    from ..objective import build_objective
 
     Xq = ensure_q_batch(bundle.train_X)
     with torch.no_grad():

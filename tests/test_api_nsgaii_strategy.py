@@ -122,7 +122,7 @@ def test_nsgaii_strategy_keeps_objective_constraints_and_ref_point(monkeypatch) 
     ref_point = torch.tensor([0.0, 0.0], dtype=torch.double)
 
     monkeypatch.setattr(
-        "bochan.api.factory.build_objective",
+        "bochan.api.acquisition.service.build_objective",
         lambda bundle, config, data_context: objective,
     )
     bundle = SimpleNamespace(model=SimpleNamespace(num_outputs=2))

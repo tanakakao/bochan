@@ -6,10 +6,10 @@ from contextlib import suppress
 from dataclasses import replace
 from typing import Any
 
-from .. import factory as _factory
 from ..configs import AcquisitionConfig, DataContext, ModelBundle, ObjectiveConfig
 from ..llm import is_llm_selected_acquisition, resolve_llm_selected_acquisition
 from ..registry.acquisition import resolve_acqf_cls
+from ..support.callables import _filter_kwargs_for_callable
 from .classification import (
     build_multiclass_objective,
     build_ordinal_objective,
@@ -19,9 +19,12 @@ from .context import (
     _filter_context_fields_for_acqf,
     _input_transform_n_w_from_bundle,
     _resolve_objective_config_n_w_from_input_transform,
+    prepare_multi_objective_context,
 )
 from .defaults import resolve_acquisition_defaults
 from .feasibility import resolve_outcome_constraint_config
+from .objective import _objective_mode
+from .objective import build_objective as _build_configured_objective
 
 
 def _normalize_name(value: Any) -> str:
@@ -200,7 +203,7 @@ def build_objective(
         or config.objective_factory is not None
         or config.objective_config is None
     ):
-        objective = _factory.build_objective(
+        objective = _build_configured_objective(
             bundle=bundle,
             config=config,
             data_context=data_context,
@@ -212,11 +215,11 @@ def build_objective(
         objective = build_multiclass_objective(bundle, config)
     elif (
         task_type == "ordinal"
-        and _factory._objective_mode(config.objective_config) == "multi_output"
+        and _objective_mode(config.objective_config) == "multi_output"
     ):
         objective = build_ordinal_objective(bundle, config.objective_config)
     else:
-        objective = _factory.build_objective(
+        objective = _build_configured_objective(
             bundle=bundle,
             config=config,
             data_context=data_context,
@@ -230,7 +233,7 @@ def build_acquisition(
     data_context: DataContext | None = None,
 ) -> Any:
     context = data_context or DataContext()
-    context = _factory.prepare_multi_objective_context(bundle, context, config)
+    context = prepare_multi_objective_context(bundle, context, config)
     if config.acqf_factory is not None:
         acqf = config.acqf_factory(bundle=bundle, config=config, data_context=context)
     else:
@@ -257,7 +260,7 @@ def build_acquisition(
             if value is not None:
                 kwargs[key] = value
         if config.filter_kwargs_by_signature:
-            kwargs = _factory._filter_kwargs_for_callable(config.acqf_cls, kwargs)
+            kwargs = _filter_kwargs_for_callable(config.acqf_cls, kwargs)
         acqf = config.acqf_cls(**kwargs)
 
     model = getattr(bundle, "model", None)

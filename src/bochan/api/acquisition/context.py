@@ -6,7 +6,7 @@ import inspect
 from dataclasses import replace
 from typing import Any
 
-from ..configs import AcquisitionConfig, ModelBundle, ModelConfig
+from ..configs import AcquisitionConfig, DataContext, ModelBundle, ModelConfig
 
 
 def _filter_context_fields_for_acqf(config: AcquisitionConfig) -> AcquisitionConfig:
@@ -102,3 +102,61 @@ def _resolve_objective_config_n_w_from_input_transform(
         acq_config,
         objective_config=replace(objective_config, n_w=inferred_n_w),
     )
+
+
+def _looks_like_ehvi(config: AcquisitionConfig) -> bool:
+    name = config.name.lower()
+    cls_name = ""
+    if config.acqf_cls is not None:
+        cls_name = getattr(config.acqf_cls, "__name__", "").lower()
+    return "ehvi" in f"{name} {cls_name}" and "nehvi" not in f"{name} {cls_name}"
+
+
+def _make_fast_nondominated_partitioning(ref_point: Any, Y: Any) -> Any:
+    from botorch.utils.multi_objective.box_decompositions import FastNondominatedPartitioning
+
+    return FastNondominatedPartitioning(ref_point=ref_point, Y=Y)
+
+
+def _make_chebyshev_objective(weights: Any, Y: Any, alpha: float) -> Any:
+    from botorch.acquisition.objective import GenericMCObjective
+    from botorch.utils.multi_objective.scalarization import get_chebyshev_scalarization
+
+    scalarization = get_chebyshev_scalarization(weights=weights, Y=Y, alpha=alpha)
+    return GenericMCObjective(lambda samples, X=None: scalarization(samples))
+
+
+def _has_configured_objective(acq_config: AcquisitionConfig | None) -> bool:
+    return bool(
+        acq_config is not None
+        and (
+            acq_config.objective is not None
+            or acq_config.objective_factory is not None
+            or acq_config.objective_config is not None
+        )
+    )
+
+
+def prepare_multi_objective_context(bundle: ModelBundle, data_context: DataContext, acq_config: AcquisitionConfig | None = None) -> DataContext:
+    mo_config = data_context.multi_objective
+    if mo_config is None:
+        return data_context
+    if data_context.Y_baseline is None:
+        data_context.Y_baseline = mo_config.Y_baseline
+    if data_context.Y_baseline is None:
+        data_context.Y_baseline = bundle.train_Y
+    if data_context.ref_point is None:
+        data_context.ref_point = mo_config.ref_point
+    if data_context.partitioning is None:
+        data_context.partitioning = mo_config.partitioning
+    if data_context.objective_thresholds is None:
+        data_context.objective_thresholds = mo_config.objective_thresholds
+    if data_context.constraints is None:
+        data_context.constraints = mo_config.constraints
+    if acq_config is not None and not _has_configured_objective(acq_config) and mo_config.objective is not None:
+        acq_config.objective = mo_config.objective
+    if acq_config is not None and not _has_configured_objective(acq_config) and mo_config.auto_scalarization and mo_config.scalarization_weights is not None and data_context.Y_baseline is not None:
+        acq_config.objective = _make_chebyshev_objective(weights=mo_config.scalarization_weights, Y=data_context.Y_baseline, alpha=mo_config.scalarization_alpha)
+    if acq_config is not None and mo_config.auto_partitioning and data_context.partitioning is None and data_context.ref_point is not None and data_context.Y_baseline is not None and _looks_like_ehvi(acq_config):
+        data_context.partitioning = _make_fast_nondominated_partitioning(ref_point=data_context.ref_point, Y=data_context.Y_baseline)
+    return data_context

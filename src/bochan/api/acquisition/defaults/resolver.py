@@ -7,13 +7,6 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from typing import Any
 
-from .best_f import compute_best_f
-from .common import _num_outputs
-from .multiobjective import (
-    make_default_ref_point,
-    make_partitioning,
-    observed_multiobjective_values,
-)
 from ...configs import (
     AcquisitionConfig,
     DataContext,
@@ -23,9 +16,16 @@ from ...configs import (
     ModelConfig,
     MultiOutputConfig,
 )
+from .best_f import compute_best_f
+from .common import _num_outputs
 from .information import (
     is_information_acquisition,
     resolve_information_acquisition_defaults,
+)
+from .multiobjective import (
+    make_default_ref_point,
+    make_partitioning,
+    observed_multiobjective_values,
 )
 
 
@@ -443,7 +443,7 @@ def _resolve_default_ordinal_objective(
 
     from bochan.acquisition.objective import OrdinalExpectedUtilityMCObjective
 
-    from ...factory import _infer_ordinal_likelihood, _infer_ordinal_utility_values
+    from ..objective import _infer_ordinal_likelihood, _infer_ordinal_utility_values
 
     likelihood = _infer_ordinal_likelihood(bundle.model)
     utility_values = _infer_ordinal_utility_values(bundle.model, likelihood)
@@ -523,7 +523,7 @@ def resolve_acquisition_defaults(
 ) -> tuple[AcquisitionConfig, DataContext]:
     """Fill acquisition-specific defaults without overwriting explicit values."""
 
-    from ...factory import prepare_multi_objective_context
+    from ..context import prepare_multi_objective_context
 
     config = _resolve_default_regression_nparego_class(bundle, config)
     config, context = _resolve_internal_nparego_scalarization_weights(config, context)

@@ -18,7 +18,7 @@ from bochan.api import (
     ModelConfig,
     ObjectiveConfig,
 )
-from bochan.api.factory import build_objective
+from bochan.api.acquisition.service import build_objective
 
 
 def _make_binary_bundle(

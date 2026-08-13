@@ -1,8 +1,8 @@
 """Canonical pandas / numpy adapter for :class:`bochan.api.BayesianOptimizer`.
 
-Tabular-only concerns are composed explicitly here. Composition bound completion
-and composition-total constraint handling are delegated to stateless resolvers
-rather than represented as public optimizer responsibilities.
+Tabular-only concerns are composed explicitly here. Composition bound completion,
+composition-total constraints, and variable-total transforms are delegated to
+stateless components rather than represented as public optimizer responsibilities.
 """
 
 from __future__ import annotations
@@ -15,6 +15,10 @@ from bochan.api import OptimizeConfig
 from .builders import UNSET
 from .composition_bounds_optimizer import CompositionBoundsResolver
 from .composition_total_constraints import CompositionTotalConstraintResolver
+from .composition_variable_total_transform import CompositionVariableTotalTransform
+from .element_column_composition_optimizer import (
+    TabularBayesianOptimizer as _ElementColumnTabularBayesianOptimizer,
+)
 from .element_constraint_composition_optimizer import (
     TabularBayesianOptimizer as _ElementConstraintTabularBayesianOptimizer,
 )
@@ -43,6 +47,7 @@ class TabularBayesianOptimizer(
 
     composition_bounds_resolver = CompositionBoundsResolver()
     composition_total_constraint_resolver = CompositionTotalConstraintResolver()
+    composition_variable_total_transform = CompositionVariableTotalTransform()
 
     def __init__(
         self,
@@ -123,6 +128,79 @@ class TabularBayesianOptimizer(
             constraints,
         )
 
+    @staticmethod
+    def _make_site_search_space(config: Mapping[str, Any]) -> Any:
+        """Keep variable-total sites out of fixed-total search-space construction."""
+
+        if config.get("variable_total"):
+            return None
+        return _ElementColumnTabularBayesianOptimizer._make_site_search_space(config)
+
+    @classmethod
+    def _formula_site_totals(
+        cls,
+        formulas: Any,
+        config: Mapping[str, Any],
+    ) -> Any:
+        """Resolve formula-derived totals through the variable-total component."""
+
+        return cls.composition_variable_total_transform.formula_site_totals(
+            formulas,
+            config,
+        )
+
+    def _site_totals_from_frame(
+        self,
+        data: Any,
+        site_name: str,
+        config: Mapping[str, Any],
+    ) -> Any:
+        """Resolve source-frame totals through the variable-total component."""
+
+        return self.composition_variable_total_transform.site_totals_from_frame(
+            data,
+            site_name,
+            config,
+            site_source_columns=self._site_source_columns,
+            numeric_site_values=self._numeric_site_values,
+        )
+
+    def _prepare_multi_site_frame(
+        self,
+        data: Any,
+        *,
+        fit_transformers: bool,
+    ) -> Any:
+        """Append variable-total features after the element-column base transform."""
+
+        return self.composition_variable_total_transform.prepare_multi_site_frame(
+            data,
+            fit_transformers=fit_transformers,
+            composition_sites=self.composition_sites,
+            base_prepare=lambda frame, *, fit_transformers: (
+                _ElementColumnTabularBayesianOptimizer._prepare_multi_site_frame(
+                    self,
+                    frame,
+                    fit_transformers=fit_transformers,
+                )
+            ),
+            site_source_columns=self._site_source_columns,
+            numeric_site_values=self._numeric_site_values,
+        )
+
+    def _replace_multi_site_input_cols(
+        self,
+        input_cols: Sequence[Any] | None,
+    ) -> list[Any] | None:
+        """Map source composition columns to coordinates and total features."""
+
+        return self.composition_variable_total_transform.replace_input_cols(
+            input_cols,
+            composition_sites=self.composition_sites,
+            composition_transformers=self.composition_transformers_,
+            site_source_columns=self._site_source_columns,
+        )
+
     def _expanded_bounds(self, bounds: Any, transformed: Any) -> Any:
         """Complete transformed single-site composition bounds."""
 
@@ -130,10 +208,63 @@ class TabularBayesianOptimizer(
         return self.composition_bounds_resolver.complete(expanded, transformed)
 
     def _expanded_multi_site_bounds(self, bounds: Any, transformed: Any) -> Any:
-        """Complete transformed multi-site composition bounds."""
+        """Complete base, variable-total, and generic transformed bounds."""
 
-        expanded = super()._expanded_multi_site_bounds(bounds, transformed)
+        expanded = _ElementColumnTabularBayesianOptimizer._expanded_multi_site_bounds(
+            self,
+            bounds,
+            transformed,
+        )
+        expanded = self.composition_variable_total_transform.complete_bounds(
+            expanded,
+            composition_sites=self.composition_sites,
+            composition_transformers=self.composition_transformers_,
+        )
         return self.composition_bounds_resolver.complete(expanded, transformed)
+
+    @classmethod
+    def _dynamic_search_space(
+        cls,
+        config: Mapping[str, Any],
+        total: float,
+    ) -> Any:
+        """Build candidate-specific repair bounds through the transform component."""
+
+        return cls.composition_variable_total_transform.dynamic_search_space(
+            config,
+            total,
+        )
+
+    def inverse_compositions(
+        self,
+        data: Any,
+        *,
+        repair: bool = True,
+        keep_coordinates: bool = False,
+    ) -> Any:
+        """Restore variable totals before applying element-constraint projection."""
+
+        restored = _ElementColumnTabularBayesianOptimizer.inverse_compositions(
+            self,
+            data,
+            repair=repair,
+            keep_coordinates=keep_coordinates,
+        )
+        restored = self.composition_variable_total_transform.inverse_compositions(
+            data,
+            restored,
+            composition_sites=self.composition_sites,
+            composition_transformers=self.composition_transformers_,
+            multi_site_composition_enabled=self.multi_site_composition_enabled,
+            repair=repair,
+        )
+        if (
+            repair
+            and self.multi_site_composition_enabled
+            and self.composition_element_constraints
+        ):
+            restored = self._repair_element_constraint_frame(restored)
+        return restored
 
     def candidate(
         self,

@@ -4,10 +4,22 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from . import acquisitions, artifacts, candidates, health, models, predictions, studies, suggestions, tabular, tabular_artifacts
+from . import (
+    acquisitions,
+    artifacts,
+    candidates,
+    health,
+    models,
+    predictions,
+    studies,
+    suggestions,
+    tabular,
+    tabular_artifacts,
+)
 
 
 def create_api_router(*, prefix: str = "") -> APIRouter:
+    """Create the common bochan API router."""
     router = APIRouter(prefix=prefix)
     router.include_router(health.router)
     router.include_router(models.router)

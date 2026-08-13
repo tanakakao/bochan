@@ -1,0 +1,235 @@
+name: Agent API factory final split
+
+on:
+  push:
+    branches:
+      - agent/api-factory-final-split
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: contains(github.event.head_commit.message, '[agent-api-factory-final-split]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/api-factory-final-split
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Split remaining factory responsibilities
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import ast
+          import compileall
+          from pathlib import Path
+
+          root = Path('.')
+          api = root / 'src/bochan/api'
+          factory_path = api / 'factory.py'
+          source = factory_path.read_text(encoding='utf-8')
+          lines = source.splitlines()
+          tree = ast.parse(source)
+          functions = {
+              node.name: node
+              for node in tree.body
+              if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+          }
+
+          def extract(names: list[str]) -> str:
+              chunks: list[str] = []
+              for name in names:
+                  node = functions.get(name)
+                  if node is None or node.end_lineno is None:
+                      raise RuntimeError(f'factory function not found: {name}')
+                  chunks.append('\n'.join(lines[node.lineno - 1:node.end_lineno]))
+              return '\n\n\n'.join(chunks).rstrip() + '\n'
+
+          context_names = [
+              '_looks_like_ehvi',
+              '_make_fast_nondominated_partitioning',
+              '_make_chebyshev_objective',
+              '_has_configured_objective',
+              'prepare_multi_objective_context',
+          ]
+          objective_names = [
+              '_objective_mode',
+              '_direction_to_sign',
+              '_output_to_index',
+              '_infer_ordinal_likelihood',
+              '_infer_ordinal_utility_values',
+              '_common_objective_kwargs',
+              '_build_regression_objective',
+              '_build_binary_objective',
+              '_build_ordinal_objective',
+              '_build_hybrid_objective',
+              'build_objective',
+          ]
+          backend_names = [
+              '_build_post_processing_func',
+              '_with_sequential',
+              '_merge_fixed_features',
+              '_merge_fixed_features_list',
+              'optimize_candidates',
+          ]
+
+          objective_module = '''"""Objective construction for the public acquisition API."""\n\nfrom __future__ import annotations\n\nfrom typing import Any\n\nfrom ..configs import AcquisitionConfig, DataContext, ModelBundle, ObjectiveConfig\nfrom ..support.callables import _filter_kwargs_for_callable\n\n\n'''
+          objective_module += extract(objective_names)
+          objective_module += '\n\n__all__ = ["build_objective"]\n'
+          (api / 'acquisition/objective.py').write_text(objective_module, encoding='utf-8')
+
+          context_path = api / 'acquisition/context.py'
+          context_text = context_path.read_text(encoding='utf-8')
+          old_context_import = 'from ..configs import AcquisitionConfig, ModelBundle, ModelConfig'
+          new_context_import = 'from ..configs import AcquisitionConfig, DataContext, ModelBundle, ModelConfig'
+          if old_context_import not in context_text:
+              raise RuntimeError('expected acquisition context import not found')
+          context_text = context_text.replace(old_context_import, new_context_import, 1).rstrip()
+          context_text += '\n\n\n' + extract(context_names)
+          context_path.write_text(context_text, encoding='utf-8')
+
+          backend_module = '''"""Low-level candidate optimizer backend dispatch."""\n\nfrom __future__ import annotations\n\nfrom collections.abc import Callable, Mapping, Sequence\nfrom typing import Any\n\nfrom ..configs import OptimizeConfig\nfrom ..configs.optimizer_names import _optimizer_name\nfrom ..support.callables import _filter_kwargs_for_callable\n\n\n'''
+          backend_module += extract(backend_names)
+          backend_module += '\n\n__all__ = ["optimize_candidates"]\n'
+          (api / 'optimizer/backend.py').write_text(backend_module, encoding='utf-8')
+
+          service_path = api / 'acquisition/service.py'
+          service = service_path.read_text(encoding='utf-8')
+          service = service.replace('from .. import factory as _factory\n', '')
+          anchor = 'from ..registry.acquisition import resolve_acqf_cls\n'
+          if anchor not in service:
+              raise RuntimeError('acquisition service registry import anchor not found')
+          service = service.replace(
+              anchor,
+              anchor + 'from ..support.callables import _filter_kwargs_for_callable\n',
+              1,
+          )
+          service = service.replace(
+              '    _resolve_objective_config_n_w_from_input_transform,\n)',
+              '    _resolve_objective_config_n_w_from_input_transform,\n    prepare_multi_objective_context,\n)',
+              1,
+          )
+          objective_anchor = 'from .feasibility import resolve_outcome_constraint_config\n'
+          if objective_anchor not in service:
+              raise RuntimeError('acquisition service feasibility anchor not found')
+          service = service.replace(
+              objective_anchor,
+              objective_anchor + 'from .objective import _objective_mode, build_objective as _build_configured_objective\n',
+              1,
+          )
+          service = service.replace('_factory.build_objective', '_build_configured_objective')
+          service = service.replace('_factory._objective_mode', '_objective_mode')
+          service = service.replace('_factory.prepare_multi_objective_context', 'prepare_multi_objective_context')
+          service = service.replace('_factory._filter_kwargs_for_callable', '_filter_kwargs_for_callable')
+          service_path.write_text(service, encoding='utf-8')
+
+          dispatch_path = api / 'optimizer/dispatch.py'
+          dispatch = dispatch_path.read_text(encoding='utf-8')
+          dispatch = dispatch.replace('from .. import factory as _factory\n', '')
+          dispatch_anchor = 'from ..configs.optimizer_names import _InternalMixedOptimizerName, _optimizer_name\n'
+          if dispatch_anchor not in dispatch:
+              raise RuntimeError('optimizer dispatch config anchor not found')
+          dispatch = dispatch.replace(
+              dispatch_anchor,
+              dispatch_anchor + 'from ..support.callables import _filter_kwargs_for_callable\n',
+              1,
+          )
+          support_anchor = 'from .support import (\n'
+          if support_anchor not in dispatch:
+              raise RuntimeError('optimizer dispatch support anchor not found')
+          dispatch = dispatch.replace(
+              support_anchor,
+              'from .backend import (\n'
+              '    _build_post_processing_func,\n'
+              '    _merge_fixed_features_list,\n'
+              '    optimize_candidates as _base_optimize_candidates,\n'
+              ')\n'
+              + support_anchor,
+              1,
+          )
+          dispatch = dispatch.replace('_BASE_OPTIMIZE_CANDIDATES = _factory.optimize_candidates', '_BASE_OPTIMIZE_CANDIDATES = _base_optimize_candidates')
+          dispatch = dispatch.replace('_factory._build_post_processing_func', '_build_post_processing_func')
+          dispatch = dispatch.replace('_factory._filter_kwargs_for_callable', '_filter_kwargs_for_callable')
+          dispatch = dispatch.replace('_factory._merge_fixed_features_list', '_merge_fixed_features_list')
+          dispatch_path.write_text(dispatch, encoding='utf-8')
+
+          init_path = api / '__init__.py'
+          init_text = init_path.read_text(encoding='utf-8')
+          old_init = 'from .factory import prepare_multi_objective_context\n'
+          if old_init not in init_text:
+              raise RuntimeError('top-level factory context import not found')
+          init_text = init_text.replace(
+              old_init,
+              'from .acquisition.context import prepare_multi_objective_context\n',
+              1,
+          )
+          init_path.write_text(init_text, encoding='utf-8')
+
+          replacements = {
+              'from bochan.api.factory import build_objective': 'from bochan.api.acquisition.objective import build_objective',
+              'from bochan.api.factory import prepare_multi_objective_context': 'from bochan.api.acquisition.context import prepare_multi_objective_context',
+              'from bochan.api.factory import optimize_candidates': 'from bochan.api.optimizer.backend import optimize_candidates',
+              'from bochan.api.factory import _build_post_processing_func': 'from bochan.api.optimizer.backend import _build_post_processing_func',
+              'from bochan.api.factory import _merge_fixed_features_list': 'from bochan.api.optimizer.backend import _merge_fixed_features_list',
+              'from bochan.api.factory import _filter_kwargs_for_callable': 'from bochan.api.support.callables import _filter_kwargs_for_callable',
+              'from bochan.api.factory import _objective_mode': 'from bochan.api.acquisition.objective import _objective_mode',
+          }
+          for path in [*Path('src').rglob('*.py'), *Path('tests').rglob('*.py')]:
+              text = path.read_text(encoding='utf-8')
+              updated = text
+              for old, new in replacements.items():
+                  updated = updated.replace(old, new)
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+
+          architecture = Path('tests/test_api_architecture.py')
+          architecture_text = architecture.read_text(encoding='utf-8').rstrip()
+          guard = '''\n\n\ndef test_api_factory_module_is_removed() -> None:\n    import importlib.util\n    from pathlib import Path\n\n    import bochan.api as api_module\n\n    assert importlib.util.find_spec("bochan.api.factory") is None\n    assert not (Path(api_module.__file__).resolve().parent / "factory.py").exists()\n'''
+          if 'test_api_factory_module_is_removed' not in architecture_text:
+              architecture.write_text(architecture_text + guard + '\n', encoding='utf-8')
+
+          factory_path.unlink()
+
+          residuals: list[str] = []
+          for path in [*Path('src').rglob('*.py'), *Path('tests').rglob('*.py')]:
+              text = path.read_text(encoding='utf-8')
+              for marker in ('bochan.api.factory', 'from .factory import', 'from ..factory import', 'import factory as _factory'):
+                  if marker in text and path != architecture:
+                      residuals.append(f'{path}: {marker}')
+          if residuals:
+              raise RuntimeError('residual factory references:\n' + '\n'.join(residuals))
+
+          for path in (
+              api / 'acquisition/objective.py',
+              api / 'acquisition/context.py',
+              api / 'acquisition/service.py',
+              api / 'optimizer/backend.py',
+              api / 'optimizer/dispatch.py',
+              api / '__init__.py',
+          ):
+              ast.parse(path.read_text(encoding='utf-8'))
+          if not compileall.compile_dir('src/bochan/api', quiet=1):
+              raise RuntimeError('API compileall failed')
+          PY
+          python -m pip install ruff
+          ruff check \
+            src/bochan/api/__init__.py \
+            src/bochan/api/acquisition/context.py \
+            src/bochan/api/acquisition/objective.py \
+            src/bochan/api/acquisition/service.py \
+            src/bochan/api/optimizer/backend.py \
+            src/bochan/api/optimizer/dispatch.py \
+            tests/test_api_architecture.py
+      - name: Commit final split
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/agent-api-factory-final-split.yml
+          git add -A
+          git commit -m "Remove final API factory module"
+          git push origin HEAD:agent/api-factory-final-split

@@ -25,8 +25,8 @@ from .composition_element_constraints import (
 from .composition_total_constraints import CompositionTotalConstraintResolver
 from .composition_variable_total_transform import CompositionVariableTotalTransform
 from .multi_output_categories import (
-    _extract_output_category_maps,
-    _merge_target_category_metadata,
+    extract_output_category_maps,
+    merge_target_category_metadata,
 )
 from .multi_site_composition_optimizer import MultiSiteCompositionMixin
 from .observation_optimizer import ObservationTabularMixin
@@ -101,7 +101,7 @@ class TabularBayesianOptimizer(
             resolved_model_config = dict(model_config)
             multi_output_config = resolved_model_config.get("multi_output_config")
             if multi_output_config is not None:
-                resolved_multi_output, maps = _extract_output_category_maps(
+                resolved_multi_output, maps = extract_output_category_maps(
                     multi_output_config
                 )
                 resolved_model_config["multi_output_config"] = resolved_multi_output
@@ -110,7 +110,7 @@ class TabularBayesianOptimizer(
 
         direct_multi_output = kwargs.get("multi_output_config")
         if direct_multi_output is not None:
-            resolved_multi_output, maps = _extract_output_category_maps(
+            resolved_multi_output, maps = extract_output_category_maps(
                 direct_multi_output
             )
             kwargs["multi_output_config"] = resolved_multi_output
@@ -122,7 +122,7 @@ class TabularBayesianOptimizer(
                     )
                 inferred_maps[output_name] = category_map
 
-        _merge_target_category_metadata(kwargs, inferred_maps)
+        merge_target_category_metadata(kwargs, inferred_maps)
         super().__init__(
             model_config=model_config,
             fit_config=fit_config,

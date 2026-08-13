@@ -1,0 +1,64 @@
+name: Agent CI reference cleanup
+
+on:
+  push:
+    branches:
+      - agent/api-root-responsibility-cleanup
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: contains(github.event.head_commit.message, '[agent-ci-reference-cleanup]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/api-root-responsibility-cleanup
+          fetch-depth: 0
+      - name: Fix moved API references in tests and CI
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import py_compile
+
+          test_path = Path('tests/test_tabular_non_native_outcome_constraints.py')
+          text = test_path.read_text(encoding='utf-8')
+          old_import = 'from bochan.api.optimizer import core as engine as api_engine'
+          new_import = 'from bochan.api.optimizer import core as api_engine'
+          if old_import not in text:
+              raise RuntimeError('expected malformed optimizer import was not found')
+          test_path.write_text(text.replace(old_import, new_import, 1), encoding='utf-8')
+          py_compile.compile(str(test_path), doraise=True)
+
+          workflow_path = Path('.github/workflows/wide-multitask-smoke.yml')
+          workflow = workflow_path.read_text(encoding='utf-8')
+          replacements = {
+              'src/bochan/api/automatic_multiobjective.py': 'src/bochan/api/acquisition/defaults/multiobjective.py',
+              'src/bochan/api/feasibility_defaults.py': 'src/bochan/api/acquisition/feasibility.py',
+              'src/bochan/api/nan_multiobjective.py': 'src/bochan/api/acquisition/defaults/nan.py',
+              'src/bochan/api/optimizer_api.py': 'src/bochan/api/optimizer/service.py',
+          }
+          for old, new in replacements.items():
+              if old not in workflow:
+                  raise RuntimeError(f'expected stale CI path was not found: {old}')
+              workflow = workflow.replace(old, new)
+          workflow_path.write_text(workflow, encoding='utf-8')
+
+          for path in Path('.github/workflows').glob('*.y*ml'):
+              current = path.read_text(encoding='utf-8')
+              for old in replacements:
+                  if old in current:
+                      raise RuntimeError(f'stale moved API path remains in {path}: {old}')
+          PY
+      - name: Commit canonical test and CI references
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/agent-ci-reference-cleanup.yml
+          git add -A
+          git commit -m "Fix CI references after API package moves"
+          git push origin HEAD:agent/api-root-responsibility-cleanup

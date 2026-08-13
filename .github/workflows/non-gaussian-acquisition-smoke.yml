@@ -52,7 +52,7 @@ jobs:
             src/bochan/acquisition/regression/active_learning/single_output.py \
             src/bochan/api/candidate_uniqueness.py \
             src/bochan/api/optimizer_api.py \
-            src/bochan/api/optimizer_config.py \
+            src/bochan/api/configs/optimize.py \
             src/bochan/api/optimizer_dispatch.py \
             src/bochan/api/optimizer_support.py \
             src/bochan/models/regression/count/poisson/robust/heteroscedastic.py \

@@ -1,0 +1,320 @@
+name: Temporary variable-total MRO cleanup
+
+on:
+  push:
+    branches:
+      - agent/tabular-variable-total-mro-cleanup
+
+permissions:
+  contents: write
+
+jobs:
+  codemod:
+    if: github.event.head_commit.message != 'Remove variable-total optimizer MRO layer'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/tabular-variable-total-mro-cleanup
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Apply cleanup
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              if old not in text:
+                  raise SystemExit(f"Expected text not found in {path}: {old[:120]!r}")
+              file.write_text(text.replace(old, new, 1))
+
+          element_path = "src/bochan/tabular/element_constraint_composition_optimizer.py"
+          replace_once(
+              element_path,
+              "from .converter import dataframe_to_tensors\nfrom .variable_total_composition_optimizer import (\n    TabularBayesianOptimizer as _VariableTotalTabularBayesianOptimizer,\n)\n",
+              "from .composition_total_constraints import CompositionTotalConstraintResolver\n"
+              "from .composition_variable_total_transform import CompositionVariableTotalTransform\n"
+              "from .converter import dataframe_to_tensors\n"
+              "from .element_column_composition_optimizer import (\n"
+              "    TabularBayesianOptimizer as _ElementColumnTabularBayesianOptimizer,\n"
+              ")\n",
+          )
+          replace_once(
+              element_path,
+              "class TabularBayesianOptimizer(_VariableTotalTabularBayesianOptimizer):",
+              "class TabularBayesianOptimizer(_ElementColumnTabularBayesianOptimizer):",
+          )
+          replace_once(
+              element_path,
+              "    totals, sparsity, or stepped compositions, candidates are repaired after\n"
+              "    inverse transformation with a mixed-integer linear projection.\n"
+              "    \"\"\"\n\n"
+              "    def __init__(\n",
+              "    totals, sparsity, or stepped compositions, candidates are repaired after\n"
+              "    inverse transformation with a mixed-integer linear projection.\n"
+              "    \"\"\"\n\n"
+              "    composition_variable_total_transform = CompositionVariableTotalTransform()\n\n"
+              "    def __init__(\n",
+          )
+          replace_once(
+              element_path,
+              "        restored = super().inverse_compositions(\n"
+              "            data,\n"
+              "            repair=repair,\n"
+              "            keep_coordinates=keep_coordinates,\n"
+              "        )\n"
+              "        if (\n",
+              "        restored = super().inverse_compositions(\n"
+              "            data,\n"
+              "            repair=repair,\n"
+              "            keep_coordinates=keep_coordinates,\n"
+              "        )\n"
+              "        restored = self.composition_variable_total_transform.inverse_compositions(\n"
+              "            data,\n"
+              "            restored,\n"
+              "            composition_sites=self.composition_sites,\n"
+              "            composition_transformers=self.composition_transformers_,\n"
+              "            multi_site_composition_enabled=self.multi_site_composition_enabled,\n"
+              "            repair=repair,\n"
+              "        )\n"
+              "        if (\n",
+          )
+          replace_once(
+              element_path,
+              "        opt_config = self._merge_total_constraints(opt_config, named_constraints)\n",
+              "        opt_config = CompositionTotalConstraintResolver.merge_optimize_config(\n"
+              "            opt_config,\n"
+              "            named_constraints,\n"
+              "        )\n",
+          )
+
+          public_path = "src/bochan/tabular/public_optimizer.py"
+          replace_once(
+              public_path,
+              "from .composition_total_constraints import CompositionTotalConstraintResolver\n"
+              "from .element_constraint_composition_optimizer import (\n",
+              "from .composition_total_constraints import CompositionTotalConstraintResolver\n"
+              "from .composition_variable_total_transform import CompositionVariableTotalTransform\n"
+              "from .element_column_composition_optimizer import (\n"
+              "    TabularBayesianOptimizer as _ElementColumnTabularBayesianOptimizer,\n"
+              ")\n"
+              "from .element_constraint_composition_optimizer import (\n",
+          )
+          replace_once(
+              public_path,
+              "    def __init__(\n"
+              "        self,\n"
+              "        model_config: Any | None = None,\n"
+              "        fit_config: Any | None = None,\n"
+              "        **kwargs: Any,\n"
+              "    ) -> None:\n"
+              "        inferred_maps: dict[Any, dict[Any, int]] = {}\n",
+              "    def __init__(\n"
+              "        self,\n"
+              "        model_config: Any | None = None,\n"
+              "        fit_config: Any | None = None,\n"
+              "        *,\n"
+              "        composition_sites: Mapping[str, Mapping[str, Any]] | None = None,\n"
+              "        composition_total_constraints: Sequence[Any] | None = None,\n"
+              "        **kwargs: Any,\n"
+              "    ) -> None:\n"
+              "        self.composition_total_constraints = (\n"
+              "            self.composition_total_constraint_resolver.normalize(\n"
+              "                composition_total_constraints\n"
+              "            )\n"
+              "        )\n"
+              "        inferred_maps: dict[Any, dict[Any, int]] = {}\n",
+          )
+          replace_once(
+              public_path,
+              "        super().__init__(\n"
+              "            model_config=model_config,\n"
+              "            fit_config=fit_config,\n"
+              "            **kwargs,\n"
+              "        )\n\n"
+              "    @classmethod\n"
+              "    def _normalize_total_constraints(\n",
+              "        super().__init__(\n"
+              "            model_config=model_config,\n"
+              "            fit_config=fit_config,\n"
+              "            composition_sites=composition_sites,\n"
+              "            **kwargs,\n"
+              "        )\n"
+              "        self._validate_total_constraints()\n\n"
+              "    @classmethod\n"
+              "    def _normalize_composition_sites(\n"
+              "        cls,\n"
+              "        sites: Mapping[str, Mapping[str, Any]] | None,\n"
+              "    ) -> dict[str, dict[str, Any]]:\n"
+              "        \"\"\"Normalize variable-total sites through the transform component.\"\"\"\n\n"
+              "        return cls.composition_variable_total_transform.normalize_sites(\n"
+              "            sites,\n"
+              "            base_normalizer=(\n"
+              "                _ElementColumnTabularBayesianOptimizer._normalize_composition_sites\n"
+              "            ),\n"
+              "        )\n\n"
+              "    @classmethod\n"
+              "    def _make_site_search_space(\n"
+              "        cls,\n"
+              "        config: Mapping[str, Any],\n"
+              "    ) -> Any:\n"
+              "        \"\"\"Use dynamic search spaces for variable-total sites.\"\"\"\n\n"
+              "        return cls.composition_variable_total_transform.make_site_search_space(\n"
+              "            config,\n"
+              "            base_factory=_ElementColumnTabularBayesianOptimizer._make_site_search_space,\n"
+              "        )\n\n"
+              "    @classmethod\n"
+              "    def _formula_site_totals(\n"
+              "        cls,\n"
+              "        formulas: Any,\n"
+              "        config: Mapping[str, Any],\n"
+              "    ) -> Any:\n"
+              "        return cls.composition_variable_total_transform.formula_site_totals(\n"
+              "            formulas,\n"
+              "            config,\n"
+              "        )\n\n"
+              "    def _site_totals_from_frame(\n"
+              "        self,\n"
+              "        data: Any,\n"
+              "        site_name: str,\n"
+              "        config: Mapping[str, Any],\n"
+              "    ) -> Any:\n"
+              "        return self.composition_variable_total_transform.site_totals_from_frame(\n"
+              "            data,\n"
+              "            site_name,\n"
+              "            config,\n"
+              "            site_source_columns=self._site_source_columns,\n"
+              "            numeric_site_values=self._numeric_site_values,\n"
+              "        )\n\n"
+              "    def _prepare_multi_site_frame(\n"
+              "        self,\n"
+              "        data: Any,\n"
+              "        *,\n"
+              "        fit_transformers: bool,\n"
+              "    ) -> Any:\n"
+              "        \"\"\"Inject variable-total features around the element-column transform.\"\"\"\n\n"
+              "        return self.composition_variable_total_transform.prepare_multi_site_frame(\n"
+              "            data,\n"
+              "            fit_transformers=fit_transformers,\n"
+              "            composition_sites=self.composition_sites,\n"
+              "            base_prepare=lambda frame, *, fit_transformers: super(\n"
+              "                TabularBayesianOptimizer, self\n"
+              "            )._prepare_multi_site_frame(\n"
+              "                frame,\n"
+              "                fit_transformers=fit_transformers,\n"
+              "            ),\n"
+              "            site_source_columns=self._site_source_columns,\n"
+              "            numeric_site_values=self._numeric_site_values,\n"
+              "        )\n\n"
+              "    def _replace_multi_site_input_cols(\n"
+              "        self,\n"
+              "        input_cols: Sequence[Any] | None,\n"
+              "    ) -> list[Any] | None:\n"
+              "        return self.composition_variable_total_transform.replace_input_cols(\n"
+              "            input_cols,\n"
+              "            composition_sites=self.composition_sites,\n"
+              "            composition_transformers=self.composition_transformers_,\n"
+              "            site_source_columns=self._site_source_columns,\n"
+              "        )\n\n"
+              "    @classmethod\n"
+              "    def _normalize_total_constraints(\n",
+          )
+          replace_once(
+              public_path,
+              "    def _expanded_multi_site_bounds(self, bounds: Any, transformed: Any) -> Any:\n"
+              "        \"\"\"Complete transformed multi-site composition bounds.\"\"\"\n\n"
+              "        expanded = super()._expanded_multi_site_bounds(bounds, transformed)\n"
+              "        return self.composition_bounds_resolver.complete(expanded, transformed)\n",
+              "    def _expanded_multi_site_bounds(self, bounds: Any, transformed: Any) -> Any:\n"
+              "        \"\"\"Complete variable-total and transformed composition bounds.\"\"\"\n\n"
+              "        expanded = super()._expanded_multi_site_bounds(bounds, transformed)\n"
+              "        expanded = self.composition_variable_total_transform.complete_bounds(\n"
+              "            expanded,\n"
+              "            composition_sites=self.composition_sites,\n"
+              "            composition_transformers=self.composition_transformers_,\n"
+              "        )\n"
+              "        return self.composition_bounds_resolver.complete(expanded, transformed)\n",
+          )
+          replace_once(
+              public_path,
+              "        return super().candidate(\n"
+              "            acq_config=acq_config,\n"
+              "            opt_config=opt_config,\n"
+              "            **kwargs,\n"
+              "        )\n\n"
+              "    def predict(\n",
+              "        total_constraints = self._named_total_constraints()\n"
+              "        opt_config = self._merge_total_constraints(\n"
+              "            opt_config,\n"
+              "            total_constraints,\n"
+              "        )\n"
+              "        return super().candidate(\n"
+              "            acq_config=acq_config,\n"
+              "            opt_config=opt_config,\n"
+              "            **kwargs,\n"
+              "        )\n\n"
+              "    def predict(\n",
+          )
+
+          variable_test = "tests/test_tabular_composition_variable_totals.py"
+          replace_once(
+              variable_test,
+              "from bochan.tabular.optimizer_api import (\n"
+              "    TabularBayesianOptimizer as _CoreTabularBayesianOptimizer,\n"
+              ")\n"
+              "from bochan.tabular.variable_total_composition_optimizer import (\n"
+              "    TabularBayesianOptimizer,\n"
+              ")\n",
+              "from bochan.tabular import TabularBayesianOptimizer\n"
+              "from bochan.tabular.optimizer_api import (\n"
+              "    TabularBayesianOptimizer as _CoreTabularBayesianOptimizer,\n"
+              ")\n",
+          )
+          replace_once(
+              variable_test,
+              "def test_public_tabular_optimizer_exposes_variable_total_support() -> None:\n"
+              "    from bochan.tabular import TabularBayesianOptimizer as PublicOptimizer\n\n"
+              "    assert issubclass(PublicOptimizer, TabularBayesianOptimizer)\n",
+              "def test_variable_total_support_uses_canonical_public_optimizer() -> None:\n"
+              "    assert (\n"
+              "        TabularBayesianOptimizer.__module__\n"
+              "        == \"bochan.tabular.public_optimizer\"\n"
+              "    )\n",
+          )
+
+          architecture_test = "tests/test_tabular_architecture.py"
+          replace_once(
+              architecture_test,
+              "    assert (\n"
+              "        tabular.TabularBayesianOptimizer._prepare_multi_site_frame.__module__\n"
+              "        == \"bochan.tabular.variable_total_composition_optimizer\"\n"
+              "    )\n",
+              "    assert (\n"
+              "        tabular.TabularBayesianOptimizer._prepare_multi_site_frame.__module__\n"
+              "        == \"bochan.tabular.public_optimizer\"\n"
+              "    )\n"
+              "    assert all(\n"
+              "        cls.__module__ != \"bochan.tabular.variable_total_composition_optimizer\"\n"
+              "        for cls in tabular.TabularBayesianOptimizer.__mro__\n"
+              "    )\n",
+          )
+
+          workflow = ".github/workflows/api-architecture-smoke.yml"
+          replace_once(
+              workflow,
+              "            src/bochan/tabular/variable_total_composition_optimizer.py \\\n",
+              "",
+          )
+
+          Path("src/bochan/tabular/variable_total_composition_optimizer.py").unlink()
+          Path(".github/workflows/_tmp-variable-total-mro-cleanup.yml").unlink()
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Remove variable-total optimizer MRO layer"
+          git push origin HEAD:agent/tabular-variable-total-mro-cleanup

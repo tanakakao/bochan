@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 
 from .formula import ATOMIC_WEIGHTS, format_formula
+from .simplex import close_compositions
 
 _INPUT_BASIS_ALIASES = {
     "atomic": "atomic_fraction",
@@ -25,6 +26,7 @@ _INPUT_BASIS_ALIASES = {
     "stoichiometric": "none",
     "none": "none",
 }
+_WEIGHT_BASES = {"weight_fraction", "weight", "mass_fraction", "wt%"}
 
 
 class CompositionElementColumnTransform:
@@ -34,7 +36,9 @@ class CompositionElementColumnTransform:
     def normalize_sites(
         sites: Mapping[str, Mapping[str, Any]] | None,
         *,
-        base_normalizer: Callable[[Mapping[str, Mapping[str, Any]] | None], dict[str, dict[str, Any]]],
+        base_normalizer: Callable[
+            [Mapping[str, Mapping[str, Any]] | None], dict[str, dict[str, Any]]
+        ],
     ) -> dict[str, dict[str, Any]]:
         if not sites:
             return {}
@@ -62,6 +66,7 @@ class CompositionElementColumnTransform:
             if element_columns is None:
                 resolved = base_normalizer({name: config})[name]
                 resolved["input_kind"] = "formula"
+                resolved["input_basis"] = None
                 resolved["element_columns"] = None
                 normalized[name] = resolved
                 source_columns.append(str(resolved["column"]))
@@ -79,7 +84,9 @@ class CompositionElementColumnTransform:
                 str(element): column for element, column in element_columns.items()
             }
             if len(set(map(str, mapped_columns.values()))) != len(mapped_columns):
-                raise ValueError(f"Composition site {name!r} must use unique element columns.")
+                raise ValueError(
+                    f"Composition site {name!r} must use unique element columns."
+                )
 
             configured_elements = config.get("elements")
             if configured_elements is None:
@@ -90,17 +97,28 @@ class CompositionElementColumnTransform:
                     raise ValueError(
                         f"Composition site {name!r} elements must match the element_columns keys."
                     )
-                mapped_columns = {element: mapped_columns[element] for element in elements}
+                mapped_columns = {
+                    element: mapped_columns[element] for element in elements
+                }
             if len(elements) < 2:
-                raise ValueError(f"Composition site {name!r} requires at least two elements.")
+                raise ValueError(
+                    f"Composition site {name!r} requires at least two elements."
+                )
 
             config["column"] = f"__bochan_{name}_composition_formula__"
             config["elements"] = elements
             resolved = base_normalizer({name: config})[name]
+            native_basis = str(resolved["normalization"]).lower()
             resolved["input_kind"] = "element_columns"
+            resolved["input_basis"] = _INPUT_BASIS_ALIASES.get(
+                native_basis,
+                native_basis,
+            )
             resolved["element_columns"] = mapped_columns
             normalized[name] = resolved
-            source_columns.extend(str(column) for column in mapped_columns.values())
+            source_columns.extend(
+                str(column) for column in mapped_columns.values()
+            )
 
         if len(set(source_columns)) != len(source_columns):
             raise ValueError(
@@ -136,6 +154,46 @@ class CompositionElementColumnTransform:
             )
         return values
 
+    @staticmethod
+    def _input_basis(config: Mapping[str, Any]) -> str:
+        return str(
+            config.get("input_basis") or config.get("normalization", "atomic_fraction")
+        ).lower()
+
+    @classmethod
+    def to_atomic_fractions(
+        cls,
+        values: Any,
+        config: Mapping[str, Any],
+    ) -> np.ndarray:
+        """Convert native element-column values to atomic fractions."""
+
+        fractions = close_compositions(np.asarray(values, dtype=float))
+        if cls._input_basis(config) in _WEIGHT_BASES:
+            weights = np.asarray(
+                [ATOMIC_WEIGHTS[element] for element in config["elements"]],
+                dtype=float,
+            )
+            fractions = close_compositions(fractions / weights)
+        return fractions
+
+    @classmethod
+    def from_atomic_fractions(
+        cls,
+        values: Any,
+        config: Mapping[str, Any],
+    ) -> np.ndarray:
+        """Convert atomic fractions to the native element-column basis."""
+
+        fractions = close_compositions(np.asarray(values, dtype=float))
+        if cls._input_basis(config) in _WEIGHT_BASES:
+            weights = np.asarray(
+                [ATOMIC_WEIGHTS[element] for element in config["elements"]],
+                dtype=float,
+            )
+            fractions = close_compositions(fractions * weights)
+        return fractions
+
     @classmethod
     def with_internal_formula_columns(
         cls,
@@ -155,7 +213,9 @@ class CompositionElementColumnTransform:
             source_columns = cls.source_columns(config)
             missing = [column for column in source_columns if column not in prepared]
             transformer = composition_transformers.get(site_name)
-            model_names = set(transformer.feature_names_ or ()) if transformer else set()
+            model_names = (
+                set(transformer.feature_names_ or ()) if transformer else set()
+            )
             if missing:
                 if model_names and model_names.issubset(prepared.columns):
                     continue
@@ -164,13 +224,7 @@ class CompositionElementColumnTransform:
                 )
 
             values = cls.numeric_site_values(prepared, site_name, config)
-            values = values / values.sum(axis=1, keepdims=True)
-            if str(config["normalization"]).lower() == "weight_fraction":
-                weights = np.asarray(
-                    [ATOMIC_WEIGHTS[element] for element in config["elements"]],
-                    dtype=float,
-                )
-                values = values / weights
+            atomic_fractions = cls.to_atomic_fractions(values, config)
             prepared[config["column"]] = [
                 format_formula(
                     dict(zip(config["elements"], row, strict=True)),
@@ -179,7 +233,7 @@ class CompositionElementColumnTransform:
                     omit_one=False,
                     zero_tolerance=0.0,
                 )
-                for row in values
+                for row in atomic_fractions
             ]
         return prepared
 
@@ -230,7 +284,9 @@ class CompositionElementColumnTransform:
             if site_name is None:
                 resolved.append(column)
             elif site_name not in inserted:
-                resolved.extend(composition_transformers[site_name].feature_names_ or ())
+                resolved.extend(
+                    composition_transformers[site_name].feature_names_ or ()
+                )
                 inserted.add(site_name)
         return resolved
 
@@ -267,7 +323,11 @@ class CompositionElementColumnTransform:
             for config in composition_sites.values()
             for column in cls.source_columns(config)
         }
-        return [column for column in source_categorical if str(column) not in source_columns]
+        return [
+            column
+            for column in source_categorical
+            if str(column) not in source_columns
+        ]
 
     @classmethod
     def inverse_compositions(
@@ -285,11 +345,23 @@ class CompositionElementColumnTransform:
             if config.get("input_kind") != "element_columns":
                 continue
             transformer = composition_transformers[site_name]
-            fraction_columns: list[str] = []
-            for element, output_column in config["element_columns"].items():
-                fraction_column = f"{transformer.prefix}__fraction__{element}"
-                restored[output_column] = restored[fraction_column] * float(config["total"])
-                fraction_columns.append(fraction_column)
+            elements = tuple(config["elements"])
+            fraction_columns = [
+                f"{transformer.prefix}__fraction__{element}"
+                for element in elements
+            ]
+            atomic_fractions = restored.loc[:, fraction_columns].to_numpy(
+                dtype=float
+            )
+            native_fractions = cls.from_atomic_fractions(
+                atomic_fractions,
+                config,
+            )
+            total = float(config["total"])
+            for index, element in enumerate(elements):
+                restored[config["element_columns"][element]] = (
+                    native_fractions[:, index] * total
+                )
             restored = restored.drop(
                 columns=[config["column"], *fraction_columns],
                 errors="ignore",

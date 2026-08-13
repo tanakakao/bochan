@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..configs import ModelBundle, ModelConfig
-from ..factory import (
+from ..modeling.build import (
     _as_cat_dims,
     _build_single_model,
     _build_wrapper_from_submodels,

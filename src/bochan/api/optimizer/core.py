@@ -13,7 +13,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
-from ..registry.acquisition import resolve_acqf_cls
+from ..acquisition.context import (
+    _filter_context_fields_for_acqf,
+    _resolve_objective_config_n_w_from_input_transform,
+)
 from ..configs import (
     AcquisitionConfig,
     CandidateResult,
@@ -24,11 +27,10 @@ from ..configs import (
     OptimizeConfig,
     PredictionResult,
 )
-from ..factory import build_acquisition, build_model, fit_model, optimize_candidates
-from ..acquisition.context import (
-    _filter_context_fields_for_acqf,
-    _resolve_objective_config_n_w_from_input_transform,
-)
+from ..factory import build_acquisition, optimize_candidates
+from ..modeling.build import build_model
+from ..modeling.fit import fit_model
+from ..registry.acquisition import resolve_acqf_cls
 
 
 def _compact_name(value: Any) -> str:

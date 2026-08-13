@@ -6,9 +6,8 @@ import pytest
 import torch
 
 from bochan.api import ModelConfig
-from bochan.api.factory import build_model, resolve_model_cls
+from bochan.api.modeling.build import build_model, resolve_model_cls
 from bochan.models.regression.count.poisson.base import (
-    PoissonMultiTaskGPModel,
     WidePoissonMultiTaskGPModel,
 )
 

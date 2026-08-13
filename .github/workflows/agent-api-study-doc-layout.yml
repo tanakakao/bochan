@@ -1,0 +1,69 @@
+name: Agent API study documentation layout
+
+on:
+  push:
+    branches:
+      - agent/api-study-doc-layout
+
+permissions:
+  contents: write
+
+jobs:
+  move:
+    if: contains(github.event.head_commit.message, '[agent-api-study-doc-layout]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/api-study-doc-layout
+          fetch-depth: 0
+      - name: Move Study documentation to its owner package
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          old = Path('src/bochan/api/STUDY_README.md')
+          new = Path('src/bochan/api/study/README.md')
+          if not old.exists():
+              raise RuntimeError('root STUDY_README.md not found')
+          if new.exists():
+              raise RuntimeError('study/README.md already exists')
+          new.write_text(old.read_text(encoding='utf-8'), encoding='utf-8')
+          old.unlink()
+
+          for raw in ('README.md', 'README.ja.md', 'src/bochan/api/README.md'):
+              path = Path(raw)
+              text = path.read_text(encoding='utf-8')
+              updated = text.replace(
+                  'src/bochan/api/STUDY_README.md',
+                  'src/bochan/api/study/README.md',
+              )
+              if raw == 'src/bochan/api/README.md':
+                  updated = updated.replace('STUDY_README.md', 'study/README.md')
+              if updated == text:
+                  raise RuntimeError(f'expected STUDY_README reference not found in {raw}')
+              path.write_text(updated, encoding='utf-8')
+
+          residuals = []
+          for path in Path('.').rglob('*'):
+              if not path.is_file() or '.git' in path.parts:
+                  continue
+              if path.suffix.lower() not in {'.md', '.py', '.yml', '.yaml', '.toml'}:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              if 'STUDY_README.md' in text:
+                  residuals.append(str(path))
+          if residuals:
+              raise RuntimeError('residual STUDY_README references: ' + ', '.join(residuals))
+          PY
+      - name: Commit documentation move
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/agent-api-study-doc-layout.yml
+          git add -A
+          git commit -m "Move API Study documentation into study package"
+          git push origin HEAD:agent/api-study-doc-layout

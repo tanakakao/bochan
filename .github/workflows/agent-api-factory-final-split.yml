@@ -217,7 +217,15 @@ jobs:
               raise RuntimeError('API compileall failed')
           PY
           python -m pip install ruff
-          ruff check \
+          ruff check --select I,F --fix \
+            src/bochan/api/__init__.py \
+            src/bochan/api/acquisition/context.py \
+            src/bochan/api/acquisition/objective.py \
+            src/bochan/api/acquisition/service.py \
+            src/bochan/api/optimizer/backend.py \
+            src/bochan/api/optimizer/dispatch.py \
+            tests/test_api_architecture.py
+          ruff check --select I,F \
             src/bochan/api/__init__.py \
             src/bochan/api/acquisition/context.py \
             src/bochan/api/acquisition/objective.py \

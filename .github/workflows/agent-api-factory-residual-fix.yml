@@ -1,0 +1,132 @@
+name: Agent API factory residual fix
+
+on:
+  push:
+    branches:
+      - agent/api-factory-final-split
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: contains(github.event.head_commit.message, '[agent-api-factory-residual-fix]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/api-factory-final-split
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Migrate remaining factory consumers
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str, *, count: int = -1) -> None:
+              target = Path(path)
+              text = target.read_text(encoding='utf-8')
+              if old not in text:
+                  raise RuntimeError(f'expected text not found in {path}: {old!r}')
+              target.write_text(text.replace(old, new, count), encoding='utf-8')
+
+          replace(
+              'src/bochan/api/optimizer/core.py',
+              '内部処理は `factory.py` の関数に委譲しており、研究用途では関数単位、\nアプリ用途ではクラス単位で使い分けられるようにしています。',
+              '内部処理は責務別 service / modeling module に委譲し、研究用途では関数単位、\nアプリ用途ではクラス単位で使い分けられるようにしています。',
+          )
+          replace(
+              'src/bochan/api/optimizer/core.py',
+              'from ..factory import build_acquisition, optimize_candidates',
+              'from ..acquisition.service import build_acquisition\nfrom .service import optimize_candidates',
+          )
+
+          replace(
+              'src/bochan/api/acquisition/feasibility.py',
+              'It intentionally does not replace functions in :mod:`bochan.api.factory` or\n:mod:`bochan.api.optimizer.core` at runtime.',
+              'It intentionally does not replace functions in acquisition or optimizer\nservices at runtime.',
+          )
+          replace(
+              'src/bochan/api/acquisition/feasibility.py',
+              '    from ..factory import build_acquisition',
+              '    from .service import build_acquisition',
+          )
+
+          classification = Path('src/bochan/api/acquisition/classification.py')
+          text = classification.read_text(encoding='utf-8')
+          text = text.replace(
+              'from .. import factory as _factory\nfrom ..configs import AcquisitionConfig, ModelBundle, ObjectiveConfig\n',
+              'from ..configs import AcquisitionConfig, ModelBundle, ObjectiveConfig\n'
+              'from ..support.callables import _filter_kwargs_for_callable\n'
+              'from .objective import (\n'
+              '    _build_ordinal_objective,\n'
+              '    _direction_to_sign,\n'
+              '    _objective_mode,\n'
+              ')\n',
+          )
+          text = text.replace('_factory._direction_to_sign', '_direction_to_sign')
+          text = text.replace('_factory._objective_mode', '_objective_mode')
+          text = text.replace('_factory._build_ordinal_objective', '_build_ordinal_objective')
+          text = text.replace('_factory._filter_kwargs_for_callable', '_filter_kwargs_for_callable')
+          if '_factory' in text:
+              raise RuntimeError('classification.py still references _factory')
+          classification.write_text(text, encoding='utf-8')
+
+          ordinal_test = Path('tests/test_ordinal_multiclass_input_perturbation_defaults.py')
+          text = ordinal_test.read_text(encoding='utf-8')
+          text = text.replace(
+              'import bochan.api.optimizer.core as engine_module\nimport bochan.api.factory as factory_module\n',
+              'import bochan.api.acquisition.context as acquisition_context\n'
+              'import bochan.api.acquisition.service as acquisition_service\n',
+          )
+          text = text.replace(
+              'engine_module._resolve_objective_config_n_w_from_input_transform',
+              'acquisition_context._resolve_objective_config_n_w_from_input_transform',
+          )
+          text = text.replace('factory_module.build_objective', 'acquisition_service.build_objective')
+          if 'bochan.api.factory' in text or 'factory_module' in text:
+              raise RuntimeError('ordinal/multiclass test still references factory')
+          ordinal_test.write_text(text, encoding='utf-8')
+
+          replace(
+              'tests/test_api_nsgaii_strategy.py',
+              '"bochan.api.factory.build_objective"',
+              '"bochan.api.acquisition.service.build_objective"',
+          )
+
+          replace(
+              'src/bochan/optim/nsgaii/strategy.py',
+              'from bochan.api.factory import build_objective',
+              'from bochan.api.acquisition.service import build_objective',
+          )
+
+          # These references should now exist only in factory.py itself and the
+          # final removal workflow / architecture guard.
+          residuals = []
+          for path in [*Path('src').rglob('*.py'), *Path('tests').rglob('*.py')]:
+              if path.as_posix() == 'src/bochan/api/factory.py':
+                  continue
+              text = path.read_text(encoding='utf-8')
+              if 'bochan.api.factory' in text or 'from ..factory import' in text or 'import factory as _factory' in text:
+                  residuals.append(str(path))
+          if residuals:
+              raise RuntimeError('remaining factory consumers: ' + ', '.join(residuals))
+          PY
+          python -m pip install ruff
+          ruff check \
+            src/bochan/api/optimizer/core.py \
+            src/bochan/api/acquisition/feasibility.py \
+            src/bochan/api/acquisition/classification.py \
+            src/bochan/optim/nsgaii/strategy.py \
+            tests/test_ordinal_multiclass_input_perturbation_defaults.py \
+            tests/test_api_nsgaii_strategy.py
+      - name: Commit consumer migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/agent-api-factory-residual-fix.yml
+          git add -A
+          git commit -m "Migrate final API factory consumers"
+          git push origin HEAD:agent/api-factory-final-split

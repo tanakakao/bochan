@@ -4,9 +4,14 @@ import bochan.api as api
 import bochan.tabular as tabular
 from bochan.tabular import composition_bounds_optimizer, optimizer_api
 from bochan.tabular import optimizer as legacy_optimizer
+from bochan.tabular.composition_element_constraints import (
+    CompositionElementConstraintProjector,
+    CompositionElementConstraintResolver,
+)
 from bochan.tabular.composition_total_constraints import (
     CompositionTotalConstraintResolver,
 )
+from bochan.tabular import element_constraint_composition_optimizer
 from bochan.tabular.composition_variable_total_transform import (
     CompositionVariableTotalTransform,
 )
@@ -62,6 +67,23 @@ def test_variable_total_behavior_uses_explicit_transform_component() -> None:
     assert (
         tabular.TabularBayesianOptimizer.inverse_compositions.__module__
         == "bochan.tabular.element_constraint_composition_optimizer"
+    )
+
+
+def test_element_constraints_use_explicit_components() -> None:
+    assert isinstance(
+        tabular.TabularBayesianOptimizer.composition_element_constraint_resolver,
+        CompositionElementConstraintResolver,
+    )
+    assert CompositionElementConstraintProjector.__module__ == (
+        "bochan.tabular.composition_element_constraints"
+    )
+    adapter = element_constraint_composition_optimizer.TabularBayesianOptimizer
+    assert "_project_element_values" not in vars(adapter)
+    assert "_validate_element_constraints" not in vars(adapter)
+    assert "_normalize_element_constraints" not in vars(adapter)
+    assert adapter.inverse_compositions.__module__ == (
+        "bochan.tabular.element_constraint_composition_optimizer"
     )
 
 

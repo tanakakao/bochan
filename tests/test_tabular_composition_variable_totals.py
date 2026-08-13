@@ -138,8 +138,8 @@ def test_two_variable_site_totals_can_be_coupled(monkeypatch) -> None:
     bo.fit(frame)
 
     candidates, _ = bo.candidate()
-    assert captured["opt_config"]["constraints"] == [
-        (["A__total", "B__total"], [1.0, 1.0], "=", 100.0)
+    assert captured["opt_config"].equality_constraints == [
+        (["A__total", "B__total"], [1.0, 1.0], 100.0)
     ]
     assert candidates.loc[0, ["A_La", "A_Sr"]].sum() == pytest.approx(40.0)
     assert candidates.loc[0, ["B_Fe", "B_Co"]].sum() == pytest.approx(60.0)
@@ -198,8 +198,8 @@ def test_fixed_site_total_is_removed_from_coupled_constraint(monkeypatch) -> Non
     bo.fit(frame)
 
     bo.candidate()
-    assert captured["opt_config"]["constraints"] == [
-        (["A__total"], [1.0], "=", 50.0)
+    assert captured["opt_config"].equality_constraints == [
+        (["A__total"], [1.0], 50.0)
     ]
 
 

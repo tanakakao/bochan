@@ -42,6 +42,7 @@ def _optimizer(
     inverse_target_category_maps=None,
 ) -> TabularBayesianOptimizer:
     optimizer = object.__new__(TabularBayesianOptimizer)
+    optimizer.composition_sites = {}
     optimizer.dataset = SimpleNamespace(
         target_names=target_names,
         feature_names=["x"],

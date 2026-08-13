@@ -1,0 +1,99 @@
+name: Agent API factory residual imports
+
+on:
+  push:
+    branches:
+      - agent/api-factory-final-split
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: contains(github.event.head_commit.message, '[agent-api-factory-residual-imports]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/api-factory-final-split
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Remove residual factory imports
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          defaults = Path('src/bochan/api/acquisition/defaults')
+          replacements = {
+              'from ...factory import build_objective': 'from ..objective import build_objective',
+              'from ...factory import prepare_multi_objective_context': 'from ..context import prepare_multi_objective_context',
+              'from ...factory import _infer_ordinal_likelihood, _infer_ordinal_utility_values': 'from ..objective import _infer_ordinal_likelihood, _infer_ordinal_utility_values',
+          }
+          changed = []
+          for path in defaults.glob('*.py'):
+              text = path.read_text(encoding='utf-8')
+              updated = text
+              for old, new in replacements.items():
+                  updated = updated.replace(old, new)
+              if updated != text:
+                  path.write_text(updated, encoding='utf-8')
+                  changed.append(path.as_posix())
+
+          architecture = Path('tests/test_api_architecture.py')
+          text = architecture.read_text(encoding='utf-8')
+          old = 'from bochan.api import configs, factory, optimizer, registry'
+          new = 'from bochan.api import configs, optimizer, registry'
+          if old not in text:
+              raise RuntimeError('expected architecture import not found')
+          architecture.write_text(text.replace(old, new, 1), encoding='utf-8')
+          changed.append(architecture.as_posix())
+
+          if len(changed) < 5:
+              raise RuntimeError(f'expected defaults + architecture updates, got: {changed}')
+
+          residuals = []
+          for root in (Path('src'), Path('tests')):
+              for path in root.rglob('*.py'):
+                  try:
+                      tree = ast.parse(path.read_text(encoding='utf-8'))
+                  except SyntaxError as exc:
+                      raise RuntimeError(f'AST parse failed for {path}: {exc}') from exc
+                  for node in ast.walk(tree):
+                      if isinstance(node, ast.ImportFrom):
+                          module = node.module or ''
+                          imported = {alias.name for alias in node.names}
+                          if module == 'bochan.api.factory' or module == 'factory':
+                              residuals.append(f'{path}:{node.lineno}: from {"." * node.level}{module}')
+                          if module == 'bochan.api' and 'factory' in imported:
+                              residuals.append(f'{path}:{node.lineno}: from bochan.api import factory')
+                      elif isinstance(node, ast.Import):
+                          for alias in node.names:
+                              if alias.name == 'bochan.api.factory':
+                                  residuals.append(f'{path}:{node.lineno}: import bochan.api.factory')
+          if residuals:
+              raise RuntimeError('residual factory imports:\n' + '\n'.join(residuals))
+          PY
+          python -m pip install ruff
+          ruff check --select I,F --fix \
+            src/bochan/api/acquisition/defaults/best_f.py \
+            src/bochan/api/acquisition/defaults/information.py \
+            src/bochan/api/acquisition/defaults/multiobjective.py \
+            src/bochan/api/acquisition/defaults/resolver.py \
+            tests/test_api_architecture.py
+          ruff check --select I,F \
+            src/bochan/api/acquisition/defaults/best_f.py \
+            src/bochan/api/acquisition/defaults/information.py \
+            src/bochan/api/acquisition/defaults/multiobjective.py \
+            src/bochan/api/acquisition/defaults/resolver.py \
+            tests/test_api_architecture.py
+      - name: Commit residual import cleanup
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/agent-api-factory-residual-imports.yml
+          git add -A
+          git commit -m "Remove residual API factory imports"
+          git push origin HEAD:agent/api-factory-final-split

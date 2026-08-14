@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-from ..visualization_sessions import get_visualization_session
+from ..services.visualization_sessions import get_visualization_session
 
 
 class ModelReuseDatasetStore:

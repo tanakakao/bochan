@@ -22,7 +22,7 @@ from bochan.serving.webapp.services.model_artifacts import (  # noqa: E402
     serialize_web_model_artifact,
 )
 from bochan.serving.webapp.services.model_reuse import register_model_signature  # noqa: E402
-from bochan.serving.webapp.visualization_sessions import (  # noqa: E402
+from bochan.serving.webapp.services.visualization_sessions import (  # noqa: E402
     VisualizationSession,
     get_visualization_session,
     register_visualization_session,

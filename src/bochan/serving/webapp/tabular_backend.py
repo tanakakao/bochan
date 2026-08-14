@@ -2,9 +2,54 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
-from .feature_importance_outputs import relabel_feature_importance_outputs
+
+def relabel_feature_importance_outputs(
+    result: Any,
+    target_columns: Sequence[str],
+) -> Any:
+    """Replace positional output names with source target-column names.
+
+    Native wide multitask models do not use ``MultiOutputConfig``. Core
+    cross-validation therefore names their outputs ``output_0``, ``output_1``,
+    and so on, even though permutation importance is evaluated independently
+    for each posterior output. The Web response should use the original target
+    columns so the summary table and generated figure identifiers stay aligned.
+
+    The supplied result is mutated in place and returned for convenience. If
+    its output count does not match the target-column count, no changes are
+    made because a positional mapping would be ambiguous.
+    """
+
+    outputs = getattr(result, "outputs", None)
+    targets = [str(column) for column in target_columns]
+    if not isinstance(outputs, dict) or len(outputs) != len(targets):
+        return result
+    if len(set(targets)) != len(targets):
+        return result
+
+    original_items = list(outputs.items())
+    name_map: dict[str, str] = {}
+    renamed: dict[str, Any] = {}
+    for (original_name, output), target_name in zip(
+        original_items,
+        targets,
+        strict=True,
+    ):
+        name_map[str(original_name)] = target_name
+        if hasattr(output, "output_name"):
+            output.output_name = target_name
+        renamed[target_name] = output
+
+    result.outputs = renamed
+    metadata = getattr(result, "metadata", None)
+    if isinstance(metadata, dict):
+        metadata["output_name_map"] = name_map
+        metadata["output_names_source"] = "target_columns"
+    return result
+
 
 
 def _category_key_from_label(series: Any, label: Any) -> Any:
@@ -160,7 +205,7 @@ def fit_tabular_optimizer(
 
     from bochan.tabular import TabularBayesianOptimizer
 
-    from .target_missing_policy import current_target_missing_report
+    from .targets.missing import current_target_missing_report
 
     missing_report = current_target_missing_report()
     target_missing_strategy = (
@@ -239,7 +284,7 @@ def fit_tabular_optimizer(
                 target_columns,
             )
 
-    from .visualization_sessions import attach_fitted_tabular_optimizer
+    from .services.visualization_sessions import attach_fitted_tabular_optimizer
 
     if run_id:
         attach_fitted_tabular_optimizer(

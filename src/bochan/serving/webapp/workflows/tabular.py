@@ -49,14 +49,14 @@ from ..settings.targets import (
     _validate_columns,
 )
 from ..tabular_backend import encoded_features_from_tabular, fit_tabular_optimizer
-from ..target_results import (
+from ..targets.results import (
     _batch_acq_value,
     _build_feature_importance_visualizations,
     _build_visualizations,
     _candidate_rows,
     _figure_payload,
 )
-from ..target_roles import (
+from ..targets.roles import (
     apply_target_roles,
     best_observed,
     objective_values_direct,

@@ -98,8 +98,8 @@ def _copy_with_update(value: Any, **updates: Any) -> Any:
 def _uses_single_classification_or_ordinal_objective(request: Any) -> bool:
     """Return whether Web uses Hybrid for one classification / ordinal objective."""
 
-    from .target_roles import apply_target_roles, optimized_settings
-    from .workflows import tabular as workflows_tabular
+    from ..targets.roles import apply_target_roles, optimized_settings
+    from . import tabular as workflows_tabular
 
     if workflows_tabular._resolve_direct_multitask_model_type(str(request.model_type)) is not None:
         return False

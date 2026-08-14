@@ -117,7 +117,7 @@ jobs:
             src/bochan/acquisition/regression/active_learning/_base_objective.py \
             src/bochan/acquisition/regression/active_learning/_base_scoring.py \
             src/bochan/inspection/feature_importance.py \
-            src/bochan/serving/webapp/target_results.py \
+            src/bochan/serving/webapp/targets/results.py \
             src/bochan/visualization/data/__init__.py \
             src/bochan/visualization/data/frames.py \
             src/bochan/visualization/data/grids.py \

@@ -8,7 +8,7 @@ from functools import wraps
 from threading import RLock
 from typing import Any
 
-from .target_results import _display_predictions, _figure_payload
+from ..targets.results import _display_predictions, _figure_payload
 
 
 @dataclass
@@ -38,7 +38,7 @@ _MAX_SESSIONS = 12
 def begin_visualization_run(run_id: str, request: Any) -> None:
     """Capture request settings before the existing Web workflow begins."""
 
-    from .settings.search import normalize_feature_constraints
+    from ..settings.search import normalize_feature_constraints
 
     feature_columns = list(request.feature_columns)
     constraints = normalize_feature_constraints(
@@ -633,10 +633,10 @@ def _build_generic_visualization(run_id: str, request: dict[str, Any]) -> dict[s
 def visualization_options(session: VisualizationSession) -> dict[str, Any]:
     """Return generic options extended explicitly for composition sessions."""
 
-    from .composition.multielement_ternary import (
+    from ..composition.multielement_ternary import (
         extend_visualization_options as extend_ternary_options,
     )
-    from .composition.visualization_dispatch import extend_visualization_options
+    from ..composition.visualization_dispatch import extend_visualization_options
 
     options = extend_visualization_options(
         _base_visualization_options(session),
@@ -648,10 +648,10 @@ def visualization_options(session: VisualizationSession) -> dict[str, Any]:
 def build_visualization(run_id: str, request: dict[str, Any]) -> dict[str, Any]:
     """Build a result plot through explicit composition or generic dispatch."""
 
-    from .composition.multielement_ternary import (
+    from ..composition.multielement_ternary import (
         build_visualization as build_ternary_visualization,
     )
-    from .composition.visualization_dispatch import build_composition_visualization
+    from ..composition.visualization_dispatch import build_composition_visualization
 
     session = get_visualization_session(run_id)
     ternary_result = build_ternary_visualization(session, request)

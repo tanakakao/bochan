@@ -8,7 +8,7 @@ import torch
 
 from bochan.serving.webapp.routers.capabilities import WEB_CAPABILITIES
 from bochan.serving.webapp.schemas.regression import RegressionRunRequest
-from bochan.serving.webapp.target_roles import (
+from bochan.serving.webapp.targets.roles import (
     apply_target_roles,
     build_target_constraint_config,
     level_set_thresholds,

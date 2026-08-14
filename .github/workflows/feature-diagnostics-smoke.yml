@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - "src/bochan/inspection/diagnostics.py"
-      - "src/bochan/serving/webapp/feature_importance_outputs.py"
       - "src/bochan/serving/webapp/tabular_backend.py"
       - "src/bochan/serving/webapp/workflows/__init__.py"
       - "tests/test_feature_importance.py"
@@ -42,7 +41,6 @@ jobs:
           python -m pip install ruff
           ruff check --ignore I001,SIM102,SIM108 \
             src/bochan/inspection/diagnostics.py \
-            src/bochan/serving/webapp/feature_importance_outputs.py \
             src/bochan/serving/webapp/tabular_backend.py \
             src/bochan/serving/webapp/workflows/__init__.py \
             tests/test_hybrid_model_diagnostics.py \

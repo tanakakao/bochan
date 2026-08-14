@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from bochan.serving.webapp.feature_importance_outputs import (
+from bochan.serving.webapp.tabular_backend import (
     relabel_feature_importance_outputs,
 )
 

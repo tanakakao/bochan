@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from bochan.serving.webapp.target_results import _setting_constraint_result
+from bochan.serving.webapp.targets.results import _setting_constraint_result
 
 
 def test_regression_without_constraint_is_always_feasible() -> None:

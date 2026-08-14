@@ -157,6 +157,15 @@ def test_removed_webapp_modules_stay_removed_and_unimported() -> None:
         "model_artifact_support",
         "workflows_extended",
         "_visualization_sessions_core",
+        "feature_importance_outputs",
+        "hybrid_bo_routing",
+        "model_capabilities",
+        "non_gaussian_validation",
+        "target_missing_policy",
+        "target_results",
+        "target_roles",
+        "target_settings_core",
+        "visualization_sessions",
     }
     removed_paths = [WEBAPP_ROOT / f"{name}.py" for name in removed_modules]
     forbidden_imports = {
@@ -172,6 +181,18 @@ def test_removed_webapp_modules_stay_removed_and_unimported() -> None:
 
     assert [path.name for path in removed_paths if path.exists()] == []
     assert stale_imports == []
+
+
+def test_webapp_root_contains_only_entrypoints_and_shared_adapters() -> None:
+    root_modules = sorted(path.name for path in WEBAPP_ROOT.glob("*.py"))
+
+    assert root_modules == [
+        "__init__.py",
+        "app.py",
+        "logging.py",
+        "prediction_shapes.py",
+        "tabular_backend.py",
+    ]
 
 
 def test_webapp_ci_path_filters_reference_existing_files() -> None:

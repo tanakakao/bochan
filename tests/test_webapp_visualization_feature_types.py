@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from bochan.serving.webapp import visualization_sessions
+from bochan.serving.webapp.services import visualization_sessions
 
 
 def _session(
@@ -115,5 +115,5 @@ def test_feature_type_compatibility_module_is_removed() -> None:
     assert not (root / "runtime_adapters.py").exists()
     assert (
         visualization_sessions._numeric_features.__module__
-        == "bochan.serving.webapp.visualization_sessions"
+        == "bochan.serving.webapp.services.visualization_sessions"
     )

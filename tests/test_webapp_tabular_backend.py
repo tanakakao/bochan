@@ -7,13 +7,13 @@ import torch
 
 from bochan.api import FitConfig, ModelConfig
 from bochan.serving.fastapi.schemas.tabular import TabularFitModelRequest
-from bochan.serving.webapp import target_missing_policy as policy
 from bochan.serving.webapp.settings import targets as target_settings
 from bochan.serving.webapp.tabular_backend import (
     feature_category_maps,
     fit_tabular_optimizer,
     target_category_maps,
 )
+from bochan.serving.webapp.targets import missing as policy
 from bochan.serving.webapp.workflows import (
     _run_regression_web_workflow,
     run_regression_web_workflow,

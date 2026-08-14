@@ -30,7 +30,7 @@ class _FailIfCalledModel:
 
 
 def test_web_visualization_subset_caps_large_training_data() -> None:
-    from bochan.serving.webapp.target_results import _visualization_subset
+    from bochan.serving.webapp.targets.results import _visualization_subset
 
     train_x = torch.arange(2500, dtype=torch.double).reshape(-1, 1)
     targets = pd.DataFrame({"property": train_x[:, 0].numpy()})
@@ -49,7 +49,7 @@ def test_web_visualization_subset_caps_large_training_data() -> None:
 
 
 def test_web_yy_plot_predicts_only_sampled_rows() -> None:
-    from bochan.serving.webapp.target_results import _build_visualizations
+    from bochan.serving.webapp.targets.results import _build_visualizations
 
     model = _RecordingRegressionModel()
     optimizer = SimpleNamespace(model=model)
@@ -73,7 +73,7 @@ def test_web_yy_plot_predicts_only_sampled_rows() -> None:
 
 
 def test_classification_only_web_visualization_skips_prediction() -> None:
-    from bochan.serving.webapp.target_results import _build_visualizations
+    from bochan.serving.webapp.targets.results import _build_visualizations
 
     optimizer = SimpleNamespace(model=_FailIfCalledModel())
     train_x = torch.arange(8, dtype=torch.double).reshape(-1, 1)

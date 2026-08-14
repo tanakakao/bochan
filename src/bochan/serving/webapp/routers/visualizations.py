@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 
 from ..logging import log_event
 from ..schemas.visualization import VisualizationRequestSchema
-from ..visualization_sessions import build_visualization, get_visualization_session
+from ..services.visualization_sessions import build_visualization, get_visualization_session
 
 
 def create_visualization_router(*, logger: Any) -> APIRouter:

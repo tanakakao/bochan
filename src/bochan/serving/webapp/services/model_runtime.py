@@ -40,7 +40,7 @@ def _web_request_context_active() -> bool:
 
     # Import lazily to avoid a module cycle: target_missing_policy imports this
     # module while resolving target settings inside its request-local context.
-    from ..target_missing_policy import current_target_missing_state
+    from ..targets.missing import current_target_missing_state
 
     return current_target_missing_state() is not None
 

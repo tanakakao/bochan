@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from bochan.serving.webapp.non_gaussian_validation import (
+from bochan.serving.webapp.workflows.non_gaussian_validation import (
     non_gaussian_family,
     validate_non_gaussian_target_frame,
 )

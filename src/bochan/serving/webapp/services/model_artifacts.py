@@ -15,7 +15,7 @@ from bochan.model_artifact import (
 )
 from bochan.tabular import TabularBayesianOptimizer
 
-from ..visualization_sessions import (
+from ..services.visualization_sessions import (
     VisualizationSession,
     get_visualization_session,
     register_visualization_session,

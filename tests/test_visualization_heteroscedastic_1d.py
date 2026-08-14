@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from bochan.serving.webapp.visualization_sessions import (
+from bochan.serving.webapp.services.visualization_sessions import (
     VisualizationSession,
     build_visualization,
     discard_visualization_run,

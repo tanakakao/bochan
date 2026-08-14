@@ -495,7 +495,7 @@ def install_composition_feature_importance() -> None:
     def workflow_adapter(request: Any, store: Any) -> dict[str, Any]:
         result = original(request, store)
         from ..logging import current_request_id
-        from ..visualization_sessions import get_visualization_session
+        from ..services.visualization_sessions import get_visualization_session
 
         run_id = current_request_id()
         if not run_id:

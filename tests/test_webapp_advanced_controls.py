@@ -12,7 +12,7 @@ from bochan.serving.webapp.settings.search import (
     feature_constraint_results,
     normalize_feature_constraints,
 )
-from bochan.serving.webapp.visualization_sessions import (
+from bochan.serving.webapp.services.visualization_sessions import (
     VisualizationSession,
     _target_relation,
     model_details,

@@ -210,7 +210,7 @@ def reuse_fitted_tabular_optimizer(
 ) -> Any:
     """Clone a fitted Tabular optimizer shell while sharing its trained model."""
 
-    from ..visualization_sessions import (
+    from ..services.visualization_sessions import (
         attach_fitted_tabular_optimizer,
         get_visualization_session,
     )

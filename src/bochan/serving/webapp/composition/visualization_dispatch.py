@@ -38,7 +38,7 @@ def _unavailable_payload(kind: str, message: str) -> dict[str, Any]:
 
     import plotly.graph_objects as go
 
-    from ..target_results import _figure_payload
+    from ..targets.results import _figure_payload
 
     figure = go.Figure()
     figure.add_annotation(
@@ -75,7 +75,7 @@ def _build_ordinary_axis_composition_visualization(
     from bochan.visualization import show_1dplot_with_pred, show_scatter_with_acqf
 
     from . import visualization as composition
-    from ..target_results import _figure_payload
+    from ..targets.results import _figure_payload
 
     context = composition._composition_context(session)
     if context is None:
@@ -297,7 +297,7 @@ def _build_partial_dependence_1d(
     from bochan.visualization import show_1dplot_with_pred
 
     from . import visualization as composition
-    from ..target_results import _figure_payload
+    from ..targets.results import _figure_payload
 
     context = composition._composition_context(session)
     if context is None:

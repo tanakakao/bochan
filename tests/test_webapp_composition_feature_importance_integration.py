@@ -94,6 +94,14 @@ def test_attach_composition_feature_importance_runs_core_permutation() -> None:
             )
         }
         composition_element_constraints: list[dict[str, object]] = []
+        composition = SimpleNamespace(
+            sites=composition_sites,
+            transformers=composition_transformers_,
+            search_spaces=composition_search_spaces_,
+        )
+        candidates = SimpleNamespace(
+            element_constraints=composition_element_constraints,
+        )
 
         @staticmethod
         def transform_compositions(frame: pd.DataFrame) -> pd.DataFrame:

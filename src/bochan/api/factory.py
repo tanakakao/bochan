@@ -406,9 +406,7 @@ def _build_post_processing_func(config: OptimizeConfig, bounds: Any) -> Callable
 
     grid_base = repair_bounds[0]
     if repair.bounds is None:
-        import torch
-
-        grid_base = torch.zeros_like(repair_bounds[0])
+        grid_base = repair_bounds[0].new_zeros(repair_bounds[0].shape)
 
     return make_grid_k_sparse_post_processing_func(
         bounds=repair_bounds,

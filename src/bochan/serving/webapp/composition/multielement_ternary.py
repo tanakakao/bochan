@@ -112,7 +112,7 @@ def _build_multielement_ternary_visualization(
     from bochan.visualization import show_triscatter_with_acqf
 
     from . import visualization as composition
-    from ..target_results import _figure_payload
+    from ..targets.results import _figure_payload
 
     context = composition._composition_context(session)
     if context is None:

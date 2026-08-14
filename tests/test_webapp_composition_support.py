@@ -15,7 +15,7 @@ from bochan.serving.webapp.composition.support import (
     normalize_web_composition_settings,
 )
 from bochan.serving.webapp.routers.composition import create_composition_router
-from bochan.serving.webapp.visualization_sessions import (
+from bochan.serving.webapp.services.visualization_sessions import (
     VisualizationSession,
     visualization_options,
 )

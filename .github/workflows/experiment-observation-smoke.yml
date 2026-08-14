@@ -60,7 +60,7 @@ jobs:
             src/bochan/tabular/__init__.py \
             src/bochan/serving/fastapi/schemas/tabular.py \
             src/bochan/serving/fastapi/routers/tabular.py \
-            src/bochan/serving/webapp/target_missing_policy.py \
+            src/bochan/serving/webapp/targets/missing.py \
             src/bochan/serving/webapp/settings/targets.py \
             src/bochan/serving/webapp/tabular_backend.py \
             src/bochan/serving/webapp/workflows/__init__.py \

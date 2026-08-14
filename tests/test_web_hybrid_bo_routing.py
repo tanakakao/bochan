@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from botorch.acquisition.monte_carlo import qExpectedImprovement
 
-from bochan.serving.webapp import hybrid_bo_routing
+from bochan.serving.webapp.workflows import hybrid_bo_routing
 
 
 def test_prepare_hybrid_bo_request_attaches_request_local_resolver(monkeypatch) -> None:
@@ -50,7 +50,7 @@ def test_hybrid_bo_routing_is_native_workflow_not_runtime_patch() -> None:
     root = Path("src/bochan/serving/webapp")
     workflows_root = root / "workflows"
     workflow_source = (workflows_root / "__init__.py").read_text(encoding="utf-8")
-    routing_source = (root / "hybrid_bo_routing.py").read_text(encoding="utf-8")
+    routing_source = (workflows_root / "hybrid_bo_routing.py").read_text(encoding="utf-8")
     init_source = (root / "__init__.py").read_text(encoding="utf-8")
 
     assert "def _run_tabular_web_workflow" in workflow_source

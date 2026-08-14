@@ -7,7 +7,7 @@ import pytest
 
 from bochan.serving.webapp.schemas.visualization import VisualizationRequestSchema
 from bochan.serving.webapp.services.reuse_dataset import store_for_model_reuse
-from bochan.serving.webapp.visualization_sessions import (
+from bochan.serving.webapp.services.visualization_sessions import (
     VisualizationSession,
     _pareto_plot,
     _target_relation,

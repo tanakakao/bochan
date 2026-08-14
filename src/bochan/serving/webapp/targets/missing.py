@@ -191,7 +191,7 @@ def clean_rows(
 ) -> Any:
     """Apply independent explanatory-variable and target missing policies."""
 
-    from .target_settings_core import _clean_rows as core_clean_rows
+    from .settings import _clean_rows as core_clean_rows
 
     state = _STATE.get()
     if state is None:
@@ -262,7 +262,7 @@ def encode_targets(
 ) -> tuple[Any, dict[str, dict[str, Any]]]:
     """Preserve regression NaNs while deriving metadata from observed values."""
 
-    from .target_settings_core import _encode_targets as core_encode_targets
+    from .settings import _encode_targets as core_encode_targets
 
     state = _STATE.get()
     preserve = bool(state and state.get("preserve_target_missing"))
@@ -303,9 +303,9 @@ def encode_targets(
 def resolve_target_settings(*args: Any, **kwargs: Any) -> tuple[Any, dict[str, Any]]:
     """Resolve target settings and apply request-local Web model defaults."""
 
-    from .model_capabilities import validate_web_model_acquisition_compatibility
-    from .services.model_runtime import apply_web_model_runtime_defaults
-    from .target_settings_core import _resolve_target_settings as core_resolve
+    from ..services.model_capabilities import validate_web_model_acquisition_compatibility
+    from ..services.model_runtime import apply_web_model_runtime_defaults
+    from .settings import _resolve_target_settings as core_resolve
 
     settings, model_kwargs = core_resolve(*args, **kwargs)
     cleaned = dict(model_kwargs)

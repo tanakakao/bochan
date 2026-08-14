@@ -18,14 +18,14 @@ on:
       - "src/bochan/models/classification/multiclass/foundation/tabpfn.py"
       - "src/bochan/serving/webapp/app.py"
       - "src/bochan/serving/webapp/services/candidate_runtime.py"
-      - "src/bochan/serving/webapp/model_capabilities.py"
+      - "src/bochan/serving/webapp/services/model_capabilities.py"
       - "src/bochan/serving/webapp/services/model_reuse.py"
       - "src/bochan/serving/webapp/services/model_runtime.py"
       - "src/bochan/serving/webapp/settings/risk.py"
       - "src/bochan/serving/webapp/settings/search.py"
-      - "src/bochan/serving/webapp/target_missing_policy.py"
+      - "src/bochan/serving/webapp/targets/missing.py"
       - "src/bochan/serving/webapp/settings/targets.py"
-      - "src/bochan/serving/webapp/visualization_sessions.py"
+      - "src/bochan/serving/webapp/services/visualization_sessions.py"
       - "src/bochan/serving/webapp/workflows/__init__.py"
       - "src/bochan/serving/webapp/workflows/tabular.py"
       - "web/src/InteractiveResultPlots.tsx"
@@ -113,14 +113,14 @@ jobs:
             src/bochan/models/external/common.py \
             src/bochan/serving/webapp/app.py \
             src/bochan/serving/webapp/services/candidate_runtime.py \
-            src/bochan/serving/webapp/model_capabilities.py \
+            src/bochan/serving/webapp/services/model_capabilities.py \
             src/bochan/serving/webapp/services/model_reuse.py \
             src/bochan/serving/webapp/services/model_runtime.py \
             src/bochan/serving/webapp/settings/risk.py \
             src/bochan/serving/webapp/settings/search.py \
-            src/bochan/serving/webapp/target_missing_policy.py \
+            src/bochan/serving/webapp/targets/missing.py \
             src/bochan/serving/webapp/settings/targets.py \
-            src/bochan/serving/webapp/visualization_sessions.py \
+            src/bochan/serving/webapp/services/visualization_sessions.py \
             src/bochan/serving/webapp/workflows/__init__.py \
             src/bochan/serving/webapp/workflows/tabular.py \
             src/bochan/models/hybrid/task_aware_posterior.py \

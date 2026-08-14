@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -26,7 +25,7 @@ def test_experiment_result_page_is_connected() -> None:
     project_api = (ROOT / "web/src/experimentProject.ts").read_text(encoding="utf-8")
     main = (ROOT / "web/src/main.tsx").read_text(encoding="utf-8")
     visualization_sessions = (
-        ROOT / "src/bochan/serving/webapp/visualization_sessions.py"
+        ROOT / "src/bochan/serving/webapp/services/visualization_sessions.py"
     ).read_text(encoding="utf-8")
     target_relation = (
         ROOT / "src/bochan/visualization/target_relation.py"

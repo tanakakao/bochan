@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from bochan.api import AcquisitionConfig
-from bochan.serving.webapp.target_roles import level_set_thresholds, output_spec_kwargs
+from bochan.serving.webapp.targets.roles import level_set_thresholds, output_spec_kwargs
 
 
 def _regression_meta(*, value: float = 2.5) -> dict[str, object]:

@@ -13,7 +13,7 @@ from bochan.serving.webapp.services.model_reuse import (
     register_fitted_model,
     reuse_fitted_tabular_optimizer,
 )
-from bochan.serving.webapp.visualization_sessions import (
+from bochan.serving.webapp.services.visualization_sessions import (
     VisualizationSession,
     register_visualization_session,
 )

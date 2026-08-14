@@ -303,7 +303,7 @@ def test_web_source_exposes_composition_axis_controls() -> None:
 
 def test_composition_visualization_uses_explicit_dispatch() -> None:
     session_source = Path(
-        "src/bochan/serving/webapp/visualization_sessions.py"
+        "src/bochan/serving/webapp/services/visualization_sessions.py"
     ).read_text(encoding="utf-8")
     dispatch_source = Path(
         "src/bochan/serving/webapp/composition/visualization_dispatch.py"

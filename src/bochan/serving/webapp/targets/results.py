@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from .settings.targets import _as_2d
+from ..settings.targets import _as_2d
 
 _WEB_YY_PLOT_MAX_POINTS = 2000
 

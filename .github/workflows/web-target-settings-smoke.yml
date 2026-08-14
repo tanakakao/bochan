@@ -116,17 +116,17 @@ jobs:
             src/bochan/serving/webapp/schemas/visualization.py \
             src/bochan/serving/webapp/services/experiment_history.py \
             src/bochan/serving/webapp/services/project_archive.py \
-            src/bochan/serving/webapp/hybrid_bo_routing.py \
+            src/bochan/serving/webapp/workflows/hybrid_bo_routing.py \
             src/bochan/serving/webapp/services/model_artifacts.py \
             src/bochan/serving/webapp/services/model_reuse.py \
-            src/bochan/serving/webapp/non_gaussian_validation.py \
+            src/bochan/serving/webapp/workflows/non_gaussian_validation.py \
             src/bochan/serving/webapp/services/reuse_dataset.py \
             src/bochan/serving/webapp/settings/targets.py \
-            src/bochan/serving/webapp/target_roles.py \
-            src/bochan/serving/webapp/target_results.py \
+            src/bochan/serving/webapp/targets/roles.py \
+            src/bochan/serving/webapp/targets/results.py \
             src/bochan/serving/webapp/settings/search.py \
             src/bochan/serving/webapp/tabular_backend.py \
-            src/bochan/serving/webapp/visualization_sessions.py \
+            src/bochan/serving/webapp/services/visualization_sessions.py \
             src/bochan/serving/webapp/workflows/__init__.py \
             src/bochan/serving/webapp/workflows/tabular.py \
             src/bochan/visualization/input_perturbation.py \

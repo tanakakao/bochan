@@ -579,7 +579,7 @@ def _reference_point(values: Any) -> Any:
 def _as_2d(value: Any, *, n_rows: int) -> Any:
     """Normalize prediction rows, including InputPerturbation expansion."""
 
-    from .prediction_shapes import normalize_prediction_rows
+    from ..prediction_shapes import normalize_prediction_rows
 
     return normalize_prediction_rows(value, n_rows=n_rows)
 

@@ -113,7 +113,7 @@ def _request(dataset_id: str, estimator: object):
 
 def test_tabpfn_run_retains_yy_and_1d_visualization_session() -> None:
     from bochan.serving.webapp.logging import reset_request_id, set_request_id
-    from bochan.serving.webapp.visualization_sessions import build_visualization
+    from bochan.serving.webapp.services.visualization_sessions import build_visualization
     from bochan.serving.webapp.workflows import run_regression_web_workflow
     from bochan.serving.workbench.datasets import DatasetStore, build_dataset_record
 

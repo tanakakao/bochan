@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from bochan.serving.webapp import target_missing_policy as policy
 from bochan.serving.webapp.settings import targets as target_settings
+from bochan.serving.webapp.targets import missing as policy
 
 
 def _request(*, targets: list[str], model_type: str) -> SimpleNamespace:

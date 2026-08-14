@@ -96,7 +96,7 @@ class CompositionTabularPreprocessor:
         self.transformer = make_composition_transformer(config)
         self.search_space = search_space
 
-    def fit(self, frame: Any) -> "CompositionTabularPreprocessor":
+    def fit(self, frame: Any) -> CompositionTabularPreprocessor:
         """Fit the formula vocabulary from a DataFrame."""
 
         if self.config.column not in frame.columns:
@@ -129,17 +129,12 @@ class CompositionTabularPreprocessor:
 
         import pandas as pd
 
-        elements = self.transformer._require_fitted()
-        representation_names = self.transformer._representation_names(elements)
+        elements = self.transformer.fitted_elements
+        representation_names = self.transformer.representation_feature_names_
         if not isinstance(candidates, pd.DataFrame):
             candidates = pd.DataFrame(candidates, columns=representation_names)
         array = candidates.loc[:, representation_names].to_numpy(dtype=float)
-        simplex_transform = self.transformer.simplex_transform_
-        assert simplex_transform is not None
-        fractions = simplex_transform.inverse_transform(
-            array,
-            n_components=len(elements),
-        )
+        fractions = self.transformer.inverse_transform_fractions(array)
 
         fraction_rows: list[dict[str, float]] = []
         for row in fractions:
@@ -155,7 +150,7 @@ class CompositionTabularPreprocessor:
             ],
             dtype=float,
         )
-        atomic_fractions = self.transformer._to_atomic_fractions(fraction_array)
+        atomic_fractions = self.transformer.basis_to_atomic_fractions(fraction_array)
         formula_series = pd.Series(
             [
                 format_formula(

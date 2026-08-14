@@ -83,6 +83,24 @@ def test_tabular_composition_has_no_legacy_domain_modules() -> None:
         assert not (root / name).exists()
 
 
+def test_tabular_composition_uses_only_public_transformer_boundary() -> None:
+    root = Path(tabular.__file__).resolve().parent / "composition"
+    forbidden = {
+        "_require_fitted",
+        "_representation_names",
+        "_to_atomic_fractions",
+        "simplex_transform_",
+    }
+    for path in root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        used = {
+            node.attr
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute) and node.attr in forbidden
+        }
+        assert not used, f"{path} reaches into private transformer state: {sorted(used)!r}."
+
+
 def test_tabular_import_keeps_core_candidate_identity() -> None:
     sentinel_name = "_bochan_" + "candidate_before_tabular_outputs"
     assert not hasattr(api.BayesianOptimizer, sentinel_name)

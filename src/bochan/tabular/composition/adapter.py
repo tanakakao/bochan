@@ -8,11 +8,9 @@ from typing import Any
 import numpy as np
 
 from bochan.composition import (
-    ATOMIC_WEIGHTS,
     CompositionDescriptorCalculator,
     CompositionSearchSpace,
     CompositionTransformer,
-    close_compositions,
     format_formula,
 )
 
@@ -213,8 +211,8 @@ class CompositionAdapter:
             expanded.pop(column, None)
             expanded.pop(str(column), None)
             transformer = self.transformers[site_name]
-            elements = transformer._require_fitted()
-            representation_names = transformer._representation_names(elements)
+            elements = transformer.fitted_elements
+            representation_names = transformer.representation_feature_names_
             representation = str(config["representation"]).lower()
             for index, feature_name in enumerate(representation_names):
                 if feature_name in expanded:
@@ -292,8 +290,8 @@ class CompositionAdapter:
         all_representation_names: list[str] = []
         for site_name, config in self.sites.items():
             transformer = self.transformers[site_name]
-            elements = transformer._require_fitted()
-            representation_names = transformer._representation_names(elements)
+            elements = transformer.fitted_elements
+            representation_names = transformer.representation_feature_names_
             all_representation_names.extend(representation_names)
             missing = [
                 name for name in representation_names if name not in candidates
@@ -304,12 +302,7 @@ class CompositionAdapter:
                 )
 
             array = candidates.loc[:, representation_names].to_numpy(dtype=float)
-            simplex_transform = transformer.simplex_transform_
-            assert simplex_transform is not None
-            basis_fractions = simplex_transform.inverse_transform(
-                array,
-                n_components=len(elements),
-            )
+            basis_fractions = transformer.inverse_transform_fractions(array)
             rows: list[dict[str, float]] = []
             search_space = self.search_spaces.get(site_name)
             for basis_row in basis_fractions:
@@ -328,18 +321,7 @@ class CompositionAdapter:
                 ],
                 dtype=float,
             )
-            if str(config["normalization"]).lower() in {
-                "weight_fraction",
-                "weight",
-                "mass_fraction",
-            }:
-                weights = np.asarray(
-                    [ATOMIC_WEIGHTS[element] for element in elements],
-                    dtype=float,
-                )
-                atomic_fractions = close_compositions(normalized_basis / weights)
-            else:
-                atomic_fractions = close_compositions(normalized_basis)
+            atomic_fractions = transformer.basis_to_atomic_fractions(normalized_basis)
 
             formula = pd.Series(
                 [

@@ -97,6 +97,33 @@ def test_core_transformer_outputs_numpy_and_inverse_formulas():
     assert recovered[0] == "Fe0.5Co0.2Ni0.3"
 
 
+def test_core_transformer_exposes_public_inverse_boundary():
+    formulas = ["Fe0.5Co0.2Ni0.3", "Fe0.4Co0.2Ni0.4"]
+    transformer = CompositionTransformer(
+        representation="ilr",
+        include_descriptors=True,
+        prefix="alloy",
+    )
+    transformed = transformer.fit_transform(formulas)
+
+    assert transformer.fitted_elements == ("Fe", "Co", "Ni")
+    assert transformer.representation_feature_names_ == (
+        "alloy__ilr__1",
+        "alloy__ilr__2",
+    )
+    fractions = transformer.inverse_transform_fractions(transformed)
+    np.testing.assert_allclose(
+        fractions,
+        [[0.5, 0.2, 0.3], [0.4, 0.2, 0.4]],
+        atol=1e-10,
+    )
+    np.testing.assert_allclose(
+        transformer.basis_to_atomic_fractions(fractions),
+        fractions,
+        atol=1e-10,
+    )
+
+
 def test_search_space_repairs_bounds_total_steps_and_sparsity():
     space = CompositionSearchSpace(
         components=["Fe", "Ni", "Co", "Cr"],

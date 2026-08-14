@@ -11,12 +11,13 @@ on:
       - "src/bochan/serving/webapp/workflows_tabular.py"
       - "src/bochan/serving/webapp/tabular_backend.py"
       - "src/bochan/serving/webapp/composition_visualization.py"
+      - "src/bochan/serving/webapp/composition_visualization_dispatch.py"
       - "src/bochan/serving/webapp/composition_visualization_compat.py"
       - "src/bochan/serving/webapp/composition_multielement_ternary.py"
-      - "src/bochan/serving/webapp/composition_pd_compat.py"
       - "src/bochan/serving/webapp/composition_feature_importance.py"
       - "src/bochan/serving/webapp/composition_feature_importance_views.py"
       - "src/bochan/serving/webapp/composition_element_importance_figures.py"
+      - "src/bochan/serving/webapp/_visualization_sessions_core.py"
       - "src/bochan/serving/webapp/visualization_sessions.py"
       - "src/bochan/serving/webapp/runtime_adapters.py"
       - "src/bochan/serving/webapp/__init__.py"
@@ -101,9 +102,9 @@ jobs:
             src/bochan/serving/webapp/workflows_tabular.py \
             src/bochan/serving/webapp/tabular_backend.py \
             src/bochan/serving/webapp/composition_visualization.py \
+            src/bochan/serving/webapp/composition_visualization_dispatch.py \
             src/bochan/serving/webapp/composition_visualization_compat.py \
             src/bochan/serving/webapp/composition_multielement_ternary.py \
-            src/bochan/serving/webapp/composition_pd_compat.py \
             src/bochan/serving/webapp/composition_feature_importance.py \
             src/bochan/serving/webapp/composition_feature_importance_views.py \
             src/bochan/serving/webapp/composition_element_importance_figures.py \

@@ -85,18 +85,21 @@ def test_workbench_dataset_loader_rejects_non_web_sources() -> None:
 
 
 def test_webapp_source_imports_workbench_dataset_services() -> None:
-    app_path = (
+    webapp_root = (
         Path(__file__).parents[1]
         / "src"
         / "bochan"
         / "serving"
         / "webapp"
-        / "app.py"
     )
-    tree = ast.parse(app_path.read_text(encoding="utf-8"))
+    source_paths = [
+        webapp_root / "app.py",
+        webapp_root / "routers" / "datasets.py",
+    ]
     imported_names = {
         alias.name
-        for node in ast.walk(tree)
+        for path in source_paths
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
         if isinstance(node, ast.ImportFrom)
         and node.module == "bochan.serving.workbench.datasets"
         for alias in node.names

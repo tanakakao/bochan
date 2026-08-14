@@ -63,9 +63,7 @@ def test_package_root_does_not_patch_imported_modules() -> None:
         targets: list[ast.expr] = []
         if isinstance(node, ast.Assign):
             targets.extend(node.targets)
-        elif isinstance(node, ast.AnnAssign):
-            targets.append(node.target)
-        elif isinstance(node, ast.AugAssign):
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
             targets.append(node.target)
         attribute_assignments.extend(
             target for target in targets if isinstance(target, ast.Attribute)

@@ -1,0 +1,125 @@
+"""Study result projection helpers for FastAPI responses."""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Mapping
+from typing import Any
+
+from bochan.api import BochanStudy, Trial
+
+from ..converters import to_serializable
+
+
+def _normalize_direction(value: Any) -> str:
+    if isinstance(value, bool):
+        return "maximize" if value else "minimize"
+    if isinstance(value, (int, float)):
+        return "maximize" if float(value) >= 0.0 else "minimize"
+    normalized = str(value).strip().lower().replace("_", "").replace("-", "")
+    if normalized in {"maximize", "max", "greater", "higher", "high"}:
+        return "maximize"
+    if normalized in {"minimize", "min", "less", "lower", "low"}:
+        return "minimize"
+    raise ValueError(f"Unknown optimization direction: {value!r}.")
+
+
+def _direction(study: BochanStudy, output_index: int, direction: Any | None) -> str:
+    if direction is not None:
+        return _normalize_direction(direction)
+    objective = getattr(getattr(study, "acq_config", None), "objective_config", None)
+    configured = getattr(objective, "directions", None)
+    if configured is not None:
+        values = list(configured)
+        index = output_index if output_index >= 0 else len(values) + output_index
+        if 0 <= index < len(values):
+            return _normalize_direction(values[index])
+    configured = getattr(objective, "direction", None)
+    if configured is not None:
+        return _normalize_direction(configured)
+    maximize = getattr(objective, "maximize", None)
+    return "maximize" if maximize is None or bool(maximize) else "minimize"
+
+
+def _values(value: Any) -> list[Any]:
+    value = to_serializable(value)
+    if isinstance(value, Mapping):
+        return list(value.values())
+    if not isinstance(value, list):
+        return [value]
+    out: list[Any] = []
+    stack = list(reversed(value))
+    while stack:
+        item = stack.pop()
+        if isinstance(item, list):
+            stack.extend(reversed(item))
+        else:
+            out.append(item)
+    return out
+
+
+def _trial_value(trial: Trial, output_index: int) -> float | None:
+    values = _values(trial.y)
+    index = output_index if output_index >= 0 else len(values) + output_index
+    if index < 0 or index >= len(values):
+        raise IndexError(f"output_index={output_index} is out of range for {len(values)} outputs.")
+    try:
+        value = float(values[index])
+    except (TypeError, ValueError):
+        return None
+    return value if math.isfinite(value) else None
+
+
+def history_records(
+    study: BochanStudy,
+    *,
+    output_index: int,
+    direction: Any | None,
+) -> tuple[str, list[dict[str, Any]]]:
+    resolved = _direction(study, output_index, direction)
+    records: list[dict[str, Any]] = []
+    best: float | None = None
+    for order, trial in enumerate(sorted(study.completed_trials(), key=lambda item: item.trial_id)):
+        value = _trial_value(trial, output_index)
+        if value is None:
+            continue
+        is_best = best is None or (resolved == "maximize" and value > best) or (resolved == "minimize" and value < best)
+        if is_best:
+            best = value
+        records.append({
+            "trial_id": trial.trial_id,
+            "order": order,
+            "cycle": trial.metadata.get("cycle", order),
+            "value": value,
+            "best_value": best,
+            "is_best": is_best,
+        })
+    return resolved, records
+
+
+def pareto_records(
+    study: BochanStudy,
+    *,
+    output_indices: list[int] | None,
+    directions: list[str] | None,
+) -> tuple[list[int], list[str], list[Trial], list[dict[str, Any]]]:
+    completed = [trial for trial in study.completed_trials() if trial.y is not None]
+    indices = list(output_indices) if output_indices is not None else list(
+        range(max((len(_values(trial.y)) for trial in completed), default=0))
+    )
+    resolved = [_direction(study, index, None) for index in indices] if directions is None else list(directions)
+    pareto = study.pareto_trials(output_indices=indices, directions=resolved)
+    pareto_ids = {trial.trial_id for trial in pareto}
+    records: list[dict[str, Any]] = []
+    for trial in completed:
+        values = [_trial_value(trial, index) for index in indices]
+        if any(value is None for value in values):
+            continue
+        item = trial.to_dict()
+        item["selected_values"] = values
+        item["is_pareto"] = trial.trial_id in pareto_ids
+        records.append(to_serializable(item))
+    return indices, resolved, pareto, records
+
+
+__all__ = ["history_records", "pareto_records"]

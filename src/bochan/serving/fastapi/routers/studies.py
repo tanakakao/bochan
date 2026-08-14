@@ -29,14 +29,8 @@ from ..schemas.study import (
     StudyTrialIdsRequest,
     StudyTrialsResponse,
 )
-from ..study_service import (
-    acquisition_config,
-    build_study,
-    history_records,
-    pareto_records,
-    restore_trials,
-    summary,
-)
+from ..services.studies import acquisition_config, build_study, restore_trials, summary
+from ..services.study_results import history_records, pareto_records
 
 STUDY_STORE_DEP = Depends(get_study_store)
 router = APIRouter(prefix="/studies", tags=["studies"])

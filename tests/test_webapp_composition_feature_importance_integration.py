@@ -4,14 +4,14 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from bochan.serving.webapp.composition.feature_importance import (
-    attach_composition_feature_importance,
-)
-from bochan.tabular.composition import (
+from bochan.composition import (
     CompositionSearchSpace,
     CompositionTransformer,
     normalize_composition,
     parse_formula,
+)
+from bochan.serving.webapp.composition.feature_importance import (
+    attach_composition_feature_importance,
 )
 
 

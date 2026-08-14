@@ -10,8 +10,8 @@ from typing import Any
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 
-from ..formula import ATOMIC_WEIGHTS, format_formula
-from ..simplex import close_compositions
+from bochan.composition import ATOMIC_WEIGHTS, close_compositions, format_formula
+
 from .resolver import CompositionElementConstraintResolver, _WEIGHT_NORMALIZATIONS
 
 

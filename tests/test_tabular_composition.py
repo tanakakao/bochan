@@ -79,7 +79,7 @@ def test_descriptor_calculator_supports_custom_properties():
     np.testing.assert_allclose(result, [[1.87, 0.08]])
 
 
-def test_transformer_outputs_model_ready_frame_and_inverse_formula():
+def test_core_transformer_outputs_numpy_and_inverse_formulas():
     formulas = pd.Series(["Fe0.5Ni0.3Co0.2", "Fe0.4Ni0.4Co0.2"])
     transformer = CompositionTransformer(
         representation="ilr",
@@ -87,11 +87,14 @@ def test_transformer_outputs_model_ready_frame_and_inverse_formula():
         prefix="alloy",
     )
     transformed = transformer.fit_transform(formulas)
+    assert isinstance(transformed, np.ndarray)
     assert transformed.shape[0] == 2
-    assert "alloy__ilr__1" in transformed.columns
-    assert "alloy__descriptor__atomic_number__mean" in transformed.columns
+    assert "alloy__ilr__1" in (transformer.feature_names_ or ())
+    assert "alloy__descriptor__atomic_number__mean" in (
+        transformer.feature_names_ or ()
+    )
     recovered = transformer.inverse_transform(transformed)
-    assert recovered.iloc[0] == "Fe0.5Co0.2Ni0.3"
+    assert recovered[0] == "Fe0.5Co0.2Ni0.3"
 
 
 def test_search_space_repairs_bounds_total_steps_and_sparsity():
@@ -168,7 +171,7 @@ def test_inverse_transform_converts_weight_fraction_to_atomic_formula():
         precision=4,
     )
     transformed = transformer.fit_transform(pd.Series(["H2O"]))
-    assert transformer.inverse_transform(transformed).iloc[0] == "H0.6667O0.3333"
+    assert transformer.inverse_transform(transformed)[0] == "H0.6667O0.3333"
 
 
 def test_inverse_transform_omits_pseudocount_zero_components():
@@ -178,7 +181,7 @@ def test_inverse_transform_omits_pseudocount_zero_components():
         precision=6,
     )
     transformed = transformer.fit_transform(pd.Series(["Fe0.5Ni0.5"]))
-    assert transformer.inverse_transform(transformed).iloc[0] == "Fe0.5Ni0.5"
+    assert transformer.inverse_transform(transformed)[0] == "Fe0.5Ni0.5"
 
 
 def test_search_space_rejects_non_activatable_required_component():

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 import bochan.api as api
+import bochan.composition as composition
 import bochan.tabular as tabular
+from bochan.composition import CompositionTransformer
 from bochan.tabular.composition import CompositionAdapter
 from bochan.tabular.observation import ObservationAdapter
 from bochan.tabular.optimizer.candidates import CandidateService
@@ -51,6 +54,33 @@ def test_lower_level_components_do_not_define_optimizer_facades() -> None:
         diagnostics,
     ):
         assert "TabularBayesianOptimizer" not in vars(module)
+
+
+def test_core_composition_has_no_tabular_or_pandas_imports() -> None:
+    root = Path(composition.__file__).resolve().parent
+    forbidden = ("bochan.tabular", "bochan.serving", "pandas")
+    for path in root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.append(node.module)
+        for module in imported:
+            assert not module.startswith(forbidden), (
+                f"{path} must not depend on {module}."
+            )
+
+
+def test_composition_transformer_is_core_domain_type() -> None:
+    assert CompositionTransformer.__module__ == "bochan.composition.transformer"
+
+
+def test_tabular_composition_has_no_legacy_domain_modules() -> None:
+    root = Path(tabular.__file__).resolve().parent / "composition"
+    for name in ("formula.py", "simplex.py", "descriptors.py", "search_space.py"):
+        assert not (root / name).exists()
 
 
 def test_tabular_import_keeps_core_candidate_identity() -> None:

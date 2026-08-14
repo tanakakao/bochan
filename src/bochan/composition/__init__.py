@@ -1,19 +1,17 @@
-"""Public composition API independent of individual bochan model classes."""
+"""Core composition domain API."""
 
-from bochan.tabular.composition import (
+from .descriptors import CompositionDescriptorCalculator
+from .formula import (
     ATOMIC_NUMBERS,
     ATOMIC_WEIGHTS,
-    CompositionDescriptorCalculator,
-    CompositionSearchSpace,
-    CompositionTransformer,
-    SimplexTransform,
-    close_compositions,
     element_order,
     format_formula,
-    ilr_basis,
     normalize_composition,
     parse_formula,
 )
+from .search_space import CompositionSearchSpace
+from .simplex import SimplexTransform, close_compositions, ilr_basis
+from .transformer import CompositionTransformer
 
 __all__ = [
     "ATOMIC_NUMBERS",

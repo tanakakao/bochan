@@ -7,10 +7,15 @@ from typing import Any
 
 import numpy as np
 
+from bochan.composition import (
+    ATOMIC_WEIGHTS,
+    CompositionSearchSpace,
+    close_compositions,
+    format_formula,
+    parse_formula,
+)
+
 from .columns import CompositionElementColumnTransform
-from .formula import ATOMIC_WEIGHTS, format_formula, parse_formula
-from .search_space import CompositionSearchSpace
-from .simplex import close_compositions
 
 
 class CompositionVariableTotalTransform:

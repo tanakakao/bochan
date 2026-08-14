@@ -9,7 +9,12 @@ from typing import Any
 import numpy as np
 
 
-def _project_bounded_simplex(values: np.ndarray, lower: np.ndarray, upper: np.ndarray, total: float) -> np.ndarray:
+def _project_bounded_simplex(
+    values: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+    total: float,
+) -> np.ndarray:
     if lower.sum() > total + 1e-12 or upper.sum() < total - 1e-12:
         raise ValueError("Bounds do not intersect the requested composition total.")
     left = float(np.min(values - upper))
@@ -24,10 +29,7 @@ def _project_bounded_simplex(values: np.ndarray, lower: np.ndarray, upper: np.nd
     projected = np.clip(values - 0.5 * (left + right), lower, upper)
     residual = total - projected.sum()
     if abs(residual) > 1e-10:
-        if residual > 0:
-            room = upper - projected
-        else:
-            room = projected - lower
+        room = upper - projected if residual > 0 else projected - lower
         for index in np.argsort(-room):
             adjustment = np.sign(residual) * min(abs(residual), room[index])
             projected[index] += adjustment
@@ -84,7 +86,7 @@ class CompositionSearchSpace:
                 raise ValueError(f"Required component {component!r} cannot be active within its bounds and step.")
         for component, step in self.steps.items():
             if component not in components:
-                raise KeyError(f"Unknown step component {component!r}.")
+                raise KeyError(f"Unknown step component: {component!r}.")
             if not np.isfinite(step) or float(step) <= 0:
                 raise ValueError("Composition steps must be finite and positive.")
 
@@ -103,12 +105,18 @@ class CompositionSearchSpace:
                 lower[index], upper[index] = map(float, pair)
         return lower, upper
 
-    def _as_array(self, candidate: Mapping[str, float] | Sequence[float] | np.ndarray) -> np.ndarray:
+    def _as_array(
+        self,
+        candidate: Mapping[str, float] | Sequence[float] | np.ndarray,
+    ) -> np.ndarray:
         if isinstance(candidate, Mapping):
             unknown = set(candidate) - set(self.components)
             if unknown:
                 raise KeyError(f"Unknown composition components: {sorted(unknown)!r}.")
-            values = np.asarray([candidate.get(component, 0.0) for component in self.components], dtype=float)
+            values = np.asarray(
+                [candidate.get(component, 0.0) for component in self.components],
+                dtype=float,
+            )
         else:
             values = np.asarray(candidate, dtype=float)
         if values.ndim != 1 or values.shape[0] != len(self.components):
@@ -117,7 +125,12 @@ class CompositionSearchSpace:
             raise ValueError("Candidate values must be finite.")
         return values
 
-    def _active_mask(self, raw: np.ndarray, lower: np.ndarray, upper: np.ndarray) -> np.ndarray:
+    def _active_mask(
+        self,
+        raw: np.ndarray,
+        lower: np.ndarray,
+        upper: np.ndarray,
+    ) -> np.ndarray:
         maximum = len(self.components) if self.max_active_components is None else int(self.max_active_components)
         required = {self.components.index(component) for component in self.required_components}
         required.update(np.flatnonzero(lower > self.tolerance).tolist())
@@ -147,9 +160,17 @@ class CompositionSearchSpace:
         mask[list(active)] = True
         return mask
 
-    def _quantize(self, projected: np.ndarray, lower: np.ndarray, upper: np.ndarray, active: np.ndarray) -> np.ndarray:
+    def _quantize(
+        self,
+        projected: np.ndarray,
+        lower: np.ndarray,
+        upper: np.ndarray,
+        active: np.ndarray,
+    ) -> np.ndarray:
         quantized = projected.copy()
-        step_array = np.asarray([float(self.steps.get(component, 0.0)) for component in self.components])
+        step_array = np.asarray(
+            [float(self.steps.get(component, 0.0)) for component in self.components]
+        )
         for index, step in enumerate(step_array):
             if not active[index] or step <= 0:
                 continue
@@ -166,11 +187,22 @@ class CompositionSearchSpace:
             for index in np.flatnonzero(active):
                 step = step_array[index]
                 if step <= 0:
-                    capacity = upper[index] - quantized[index] if direction > 0 else quantized[index] - lower[index]
+                    capacity = (
+                        upper[index] - quantized[index]
+                        if direction > 0
+                        else quantized[index] - lower[index]
+                    )
                     delta = min(abs(residual), capacity)
                 else:
-                    capacity = upper[index] - quantized[index] if direction > 0 else quantized[index] - lower[index]
-                    can_step = capacity + self.tolerance >= step and abs(residual) + self.tolerance >= step
+                    capacity = (
+                        upper[index] - quantized[index]
+                        if direction > 0
+                        else quantized[index] - lower[index]
+                    )
+                    can_step = (
+                        capacity + self.tolerance >= step
+                        and abs(residual) + self.tolerance >= step
+                    )
                     delta = step if can_step else 0.0
                 if delta > self.tolerance:
                     score = direction * (projected[index] - quantized[index])
@@ -188,7 +220,10 @@ class CompositionSearchSpace:
             )
         return quantized
 
-    def repair(self, candidate: Mapping[str, float] | Sequence[float] | np.ndarray) -> dict[str, float]:
+    def repair(
+        self,
+        candidate: Mapping[str, float] | Sequence[float] | np.ndarray,
+    ) -> dict[str, float]:
         """Repair a raw candidate to bounds, sparsity, steps, and total constraints."""
 
         raw = np.maximum(self._as_array(candidate), 0.0)
@@ -203,13 +238,34 @@ class CompositionSearchSpace:
         active_upper[inactive] = 0.0
         for index in np.flatnonzero(active):
             component = self.components[index]
-            positive_floor = float(self.steps.get(component, min(10.0 * self.tolerance, active_upper[index])))
+            positive_floor = float(
+                self.steps.get(
+                    component,
+                    min(10.0 * self.tolerance, active_upper[index]),
+                )
+            )
             active_lower[index] = max(active_lower[index], positive_floor)
-        projected = _project_bounded_simplex(raw, active_lower, active_upper, self.total)
-        repaired = self._quantize(projected, active_lower, active_upper, active)
-        return {component: float(repaired[index]) for index, component in enumerate(self.components)}
+        projected = _project_bounded_simplex(
+            raw,
+            active_lower,
+            active_upper,
+            self.total,
+        )
+        repaired = self._quantize(
+            projected,
+            active_lower,
+            active_upper,
+            active,
+        )
+        return {
+            component: float(repaired[index])
+            for index, component in enumerate(self.components)
+        }
 
-    def validate(self, candidate: Mapping[str, float] | Sequence[float] | np.ndarray) -> list[str]:
+    def validate(
+        self,
+        candidate: Mapping[str, float] | Sequence[float] | np.ndarray,
+    ) -> list[str]:
         """Return human-readable validation errors without modifying the candidate."""
 
         values = self._as_array(candidate)
@@ -222,7 +278,9 @@ class CompositionSearchSpace:
         active_count = int(np.count_nonzero(values > self.tolerance))
         maximum = len(self.components) if self.max_active_components is None else int(self.max_active_components)
         if not self.min_active_components <= active_count <= maximum:
-            errors.append(f"Active component count must be between {self.min_active_components} and {maximum}.")
+            errors.append(
+                f"Active component count must be between {self.min_active_components} and {maximum}."
+            )
         for component in self.required_components:
             if values[self.components.index(component)] <= self.tolerance:
                 errors.append(f"Required component {component!r} is inactive.")
@@ -235,17 +293,5 @@ class CompositionSearchSpace:
                 errors.append(f"Component {component!r} does not follow step {step}.")
         return errors
 
-    def repair_frame(self, frame: Any) -> Any:
-        """Repair composition columns in a pandas DataFrame."""
 
-        import pandas as pd
-
-        if not isinstance(frame, pd.DataFrame):
-            raise TypeError("repair_frame expects a pandas.DataFrame.")
-        repaired = frame.copy()
-        missing = [component for component in self.components if component not in repaired.columns]
-        if missing:
-            raise KeyError(f"Missing composition columns: {missing!r}.")
-        rows = [self.repair(row) for row in repaired.loc[:, list(self.components)].to_dict(orient="records")]
-        repaired.loc[:, list(self.components)] = pd.DataFrame(rows, index=repaired.index)
-        return repaired
+__all__ = ["CompositionSearchSpace"]

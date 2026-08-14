@@ -1,6 +1,6 @@
 """Explicit composition helpers for the React/FastAPI tabular workflow.
 
-The Web workflow calls these functions directly.  No import-time function
+The Web workflow calls these functions directly. No import-time function
 replacement, ContextVar routing, or instance-method monkey patching is used.
 """
 
@@ -236,7 +236,8 @@ def _composition_transformer(
     data: Any,
     config: dict[str, Any],
 ) -> tuple[Any, dict[str, Any]]:
-    from bochan.tabular.composition import CompositionTransformer
+    from bochan.composition import CompositionTransformer
+    from bochan.tabular.composition.transformer import transform_composition_frame
 
     column = config["column"]
     if column not in data.columns:
@@ -270,7 +271,12 @@ def _composition_transformer(
         raise ValueError(
             f"Composition settings reference unknown elements: {sorted(unknown)!r}."
         )
-    transformed = transformer.transform_frame(data, column, drop_formula=True)
+    transformed = transform_composition_frame(
+        transformer,
+        data,
+        column,
+        drop_formula=True,
+    )
     resolved["feature_names"] = list(transformer.feature_names_ or ())
     return transformed, resolved
 

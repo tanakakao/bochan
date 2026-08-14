@@ -26,7 +26,7 @@ def test_experiment_result_page_is_connected() -> None:
     project_api = (ROOT / "web/src/experimentProject.ts").read_text(encoding="utf-8")
     main = (ROOT / "web/src/main.tsx").read_text(encoding="utf-8")
     visualization_sessions = (
-        ROOT / "src/bochan/serving/webapp/_visualization_sessions_core.py"
+        ROOT / "src/bochan/serving/webapp/visualization_sessions.py"
     ).read_text(encoding="utf-8")
     target_relation = (
         ROOT / "src/bochan/visualization/target_relation.py"
@@ -99,6 +99,9 @@ def test_experiment_result_page_is_connected() -> None:
     assert "aggregate_categorical" in target_relation
     assert "category_orders" in target_relation
     assert "show_pareto_front" in target_relation
+    assert not (
+        ROOT / "src/bochan/serving/webapp/_visualization_sessions_core.py"
+    ).exists()
     assert "from bochan.visualization import show_target_relation_plot" in visualization_sessions
     assert "return show_target_relation_plot(" in visualization_sessions
     assert "from .target_relation import show_target_relation_plot" in visualization_init

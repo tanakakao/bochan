@@ -54,9 +54,9 @@ class _DiagnosticFakeTabPFNRegressor:
 
 
 def test_web_tabpfn_cross_validation_and_permutation_importance_run() -> None:
-    from bochan.desktop.services import DatasetStore, build_dataset_record
     from bochan.serving.webapp.app import RegressionRunRequest
     from bochan.serving.webapp.workflows import run_regression_web_workflow
+    from bochan.serving.workbench.datasets import DatasetStore, build_dataset_record
 
     x1 = np.linspace(0.0, 1.0, 18)
     x2 = np.linspace(1.0, 0.0, 18)

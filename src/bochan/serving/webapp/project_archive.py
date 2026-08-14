@@ -15,8 +15,8 @@ from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile, is_zipfile
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
-from bochan.desktop.services import build_dataset_record
 from bochan.serving.fastapi.converters import to_serializable
+from bochan.serving.workbench.datasets import build_dataset_record
 
 from .experiment_history import ExperimentCycleRequest, ExperimentHistoryStore
 from .model_artifacts import (

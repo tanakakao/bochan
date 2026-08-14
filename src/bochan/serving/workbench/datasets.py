@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import base64
 import io
-import sqlite3
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Literal
@@ -62,16 +61,14 @@ def decode_base64_payload(value: str) -> bytes:
 
 def load_dataframe_from_payload(
     *,
-    source_type: Literal["csv", "excel", "sqlite", "duckdb"],
+    source_type: Literal["csv", "excel"],
     content_base64: str | None = None,
     name: str | None = None,
     encoding: str = "utf-8-sig",
     sep: str | None = None,
     sheet_name: str | int | None = 0,
-    sql: str | None = None,
-    database_path: str | None = None,
 ) -> tuple[Any, dict[str, Any]]:
-    """Load a pandas DataFrame from a browser or local database payload."""
+    """Load a pandas DataFrame from a browser-uploaded CSV or Excel payload."""
 
     import pandas as pd
 
@@ -94,26 +91,6 @@ def load_dataframe_from_payload(
             raise ValueError("content_base64 is required for Excel input.")
         raw = decode_base64_payload(content_base64)
         return pd.read_excel(io.BytesIO(raw), sheet_name=sheet_name), metadata
-
-    if source_type == "sqlite":
-        if not database_path:
-            raise ValueError("database_path is required for SQLite input.")
-        if not sql:
-            raise ValueError("sql is required for SQLite input.")
-        with sqlite3.connect(database_path) as conn:
-            return pd.read_sql_query(sql, conn), {**metadata, "database_path": database_path, "sql": sql}
-
-    if source_type == "duckdb":
-        if not database_path:
-            raise ValueError("database_path is required for DuckDB input.")
-        if not sql:
-            raise ValueError("sql is required for DuckDB input.")
-        try:
-            import duckdb
-        except ImportError as exc:
-            raise RuntimeError("Install DuckDB support to use DuckDB data sources.") from exc
-        with duckdb.connect(database_path) as conn:
-            return conn.execute(sql).df(), {**metadata, "database_path": database_path, "sql": sql}
 
     raise ValueError(f"Unsupported source_type: {source_type}")
 

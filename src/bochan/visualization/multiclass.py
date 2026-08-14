@@ -12,6 +12,10 @@ from plotly.colors import qualitative
 from plotly.graph_objs._figure import Figure
 
 from .data import training_dataframe
+from .input_perturbation import (
+    aggregate_input_perturbation_probabilities,
+    input_perturbation_n_w,
+)
 from .plots import (
     show_1dplot_from_optimizer as _show_1dplot_from_optimizer,
     show_scatter_with_acqf_from_optimizer as _show_scatter_with_acqf_from_optimizer,
@@ -141,9 +145,6 @@ def _as_probability_matrix(values: Any, *, n_points: int) -> np.ndarray:
         )
     if arr.shape[0] != n_points and arr.shape[1] == n_points:
         arr = arr.T
-    if arr.shape[0] > n_points and arr.shape[0] % n_points == 0:
-        repeats = arr.shape[0] // n_points
-        arr = arr.reshape(n_points, repeats, arr.shape[-1]).mean(axis=1)
     if arr.shape[0] != n_points:
         raise RuntimeError(
             "The number of probability rows does not match the number of inputs. "
@@ -181,8 +182,14 @@ def multiclass_probabilities(
     """Return class probabilities with shape ``[n, C]``."""
 
     X_arr = ensure_2d(X)
+    n_points = len(X_arr)
     values = _probability_tensor(obj, X, output_index=output_index)
-    return _as_probability_matrix(values, n_points=len(X_arr))
+    values = aggregate_input_perturbation_probabilities(
+        values,
+        n_points=n_points,
+        n_w=input_perturbation_n_w(obj),
+    )
+    return _as_probability_matrix(values, n_points=n_points)
 
 
 def _metadata_values(obj: Any, keys: Sequence[str]) -> Any | None:

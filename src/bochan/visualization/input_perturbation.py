@@ -7,13 +7,9 @@ from typing import Any
 
 import numpy as np
 
-from .utils import (
-    ensure_2d,
-    get_model,
-    prediction_mean_std as _base_prediction_mean_std,
-    to_numpy,
-    to_tensor_like,
-)
+from bochan.acquisition.binary.epistemic import binary_probability_moments
+
+from .utils import ensure_2d, get_model, to_numpy, to_tensor_like
 
 
 def _n_w_from_model_config(model_config: Any | None) -> int | None:
@@ -94,6 +90,66 @@ def _num_input_points(X: Any) -> int:
     return int(np.prod(arr.shape[:-1]))
 
 
+def _is_binary_prediction_object(obj: Any, model: Any) -> bool:
+    """Return whether binary probability uncertainty semantics should be used."""
+
+    bundle = getattr(obj, "bundle", None)
+    task_type = getattr(bundle, "task_type", None)
+    if task_type is None:
+        config = getattr(obj, "model_config", None)
+        task_type = getattr(config, "task_type", None)
+    if str(task_type).lower() == "binary":
+        return True
+    module_name = type(model).__module__.lower()
+    class_name = type(model).__name__.lower()
+    return "classification.binary" in module_name or "binary" in class_name
+
+
+def _base_prediction_mean_std(
+    obj: Any,
+    X: Any,
+    *,
+    uncertainty_kind: str = "epistemic",
+    num_uncertainty_samples: int = 256,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return predictive moments before input-perturbation aggregation."""
+
+    X_t = to_tensor_like(X, obj)
+    model = get_model(obj)
+
+    if _is_binary_prediction_object(obj, model):
+        mean, epistemic, aleatoric, observation = binary_probability_moments(
+            model,
+            X_t,
+            num_samples=num_uncertainty_samples,
+        )
+        key = str(uncertainty_kind).lower()
+        if key == "epistemic":
+            var = epistemic
+        elif key == "aleatoric":
+            var = aleatoric
+        elif key in {"observation", "bernoulli", "total_label"}:
+            var = observation
+        else:
+            raise ValueError(
+                "binary uncertainty_kind must be 'epistemic', 'aleatoric', "
+                "'observation', or 'bernoulli'."
+            )
+    elif hasattr(obj, "predict"):
+        try:
+            mean, var = obj.predict(X_t, return_type="mean_variance")
+        except TypeError:
+            posterior = model.posterior(X_t)
+            mean, var = posterior.mean, posterior.variance
+    else:
+        posterior = model.posterior(X_t)
+        mean, var = posterior.mean, posterior.variance
+
+    mean_arr = ensure_2d(mean)
+    std_arr = np.sqrt(np.clip(ensure_2d(var), 0.0, None))
+    return mean_arr, std_arr
+
+
 def _hybrid_display_prediction_mean_std(
     obj: Any,
     X: Any,
@@ -103,8 +159,8 @@ def _hybrid_display_prediction_mean_std(
     ``HybridMultiOutputModel.posterior()`` defaults to ``output_mode='objective'``.
     That scale is correct for acquisition optimization, but it is not suitable for
     prediction plots: a target-value regression becomes ``-abs(y - target)`` and a
-    minimized regression is sign-flipped.  Visualization must instead use the raw
-    prediction scale.  Ordinal outputs are displayed as expected rank, matching
+    minimized regression is sign-flipped. Visualization must instead use the raw
+    prediction scale. Ordinal outputs are displayed as expected rank, matching
     the Web candidate table.
     """
 
@@ -245,7 +301,12 @@ def prediction_mean_std(
     uncertainty_kind: str = "epistemic",
     num_uncertainty_samples: int = 256,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return display-scale visualization moments with perturbations aggregated."""
+    """Return canonical display-scale predictive mean and standard deviation.
+
+    The helper preserves binary probability uncertainty semantics, uses raw
+    display-scale moments for hybrid outputs, and aggregates expanded input
+    perturbations back to one row per original point.
+    """
 
     hybrid_display = _hybrid_display_prediction_mean_std(obj, X)
     if hybrid_display is None:

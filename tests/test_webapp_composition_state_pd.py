@@ -4,11 +4,11 @@ from pathlib import Path
 
 import numpy as np
 
-from bochan.serving.webapp.composition_pd_compat import (
+from bochan.serving.webapp.composition_visualization import _CompositionContext
+from bochan.serving.webapp.composition_visualization_dispatch import (
     _aggregate_prediction,
     _vary_fraction_rows,
 )
-from bochan.serving.webapp.composition_visualization import _CompositionContext
 
 
 def _context() -> _CompositionContext:
@@ -107,22 +107,17 @@ def test_dataset_state_resets_and_hides_stale_composition_settings() -> None:
     assert "installCompositionDatasetState();" in main
 
 
-def test_composition_pd_adapter_is_installed_after_visualization_compat() -> None:
+def test_composition_pd_is_native_dispatch_not_runtime_adapter() -> None:
     runtime_source = Path(
         "src/bochan/serving/webapp/runtime_adapters.py"
     ).read_text(encoding="utf-8")
-    init_source = Path("src/bochan/serving/webapp/__init__.py").read_text(
-        encoding="utf-8"
-    )
-    compat_source = Path(
-        "src/bochan/serving/webapp/composition_pd_compat.py"
+    dispatch_source = Path(
+        "src/bochan/serving/webapp/composition_visualization_dispatch.py"
     ).read_text(encoding="utf-8")
+    removed_pd = Path("src/bochan/serving/webapp/composition_pd_compat.py")
 
-    visualization_position = runtime_source.index(
-        "install_composition_visualization_compat()"
-    )
-    pd_position = runtime_source.index("install_composition_pd_compat()")
-    assert visualization_position < pd_position
-    assert "install_web_runtime_adapters()" in init_source
-    assert "_build_partial_dependence_1d" in compat_source
-    assert "各学習行の組成と他の説明変数を保持" in compat_source
+    assert "install_composition_pd_compat" not in runtime_source
+    assert not removed_pd.exists()
+    assert "_build_partial_dependence_1d" in dispatch_source
+    assert "各学習行の組成と他の説明変数を保持" in dispatch_source
+    assert 'kind == "1d" and show_type == "pred" and task == "regression"' in dispatch_source

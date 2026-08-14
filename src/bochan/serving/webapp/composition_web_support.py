@@ -323,7 +323,7 @@ def prepare_composition_encoded_features(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Build Web search metadata in the transformed composition feature space."""
 
-    from bochan.desktop.services import _encode_features
+    from bochan.serving.workbench.workflow_utils import _encode_features
 
     if config["column"] not in feature_columns:
         raise ValueError(

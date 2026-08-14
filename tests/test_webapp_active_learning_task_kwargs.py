@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from bochan.serving.webapp.workflows_tabular import _set_active_learning_kwargs
+from bochan.serving.webapp.workflows.tabular import _set_active_learning_kwargs
 
 
 @pytest.mark.parametrize(

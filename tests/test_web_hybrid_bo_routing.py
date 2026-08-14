@@ -48,12 +48,16 @@ def test_prepare_hybrid_bo_request_ignores_non_bo_family() -> None:
 
 def test_hybrid_bo_routing_is_native_workflow_not_runtime_patch() -> None:
     root = Path("src/bochan/serving/webapp")
-    workflow_source = (root / "workflows.py").read_text(encoding="utf-8")
+    workflows_root = root / "workflows"
+    workflow_source = (workflows_root / "__init__.py").read_text(encoding="utf-8")
     routing_source = (root / "hybrid_bo_routing.py").read_text(encoding="utf-8")
     init_source = (root / "__init__.py").read_text(encoding="utf-8")
 
     assert "def _run_tabular_web_workflow" in workflow_source
     assert "prepare_hybrid_objective_bo_request(request)" in workflow_source
+    assert (workflows_root / "tabular.py").is_file()
+    assert not (root / "workflows.py").exists()
+    assert not (root / "workflows_tabular.py").exists()
     assert "def install_web_hybrid_objective_bo_routing" not in routing_source
     assert "workflows_tabular.run_regression_web_workflow =" not in routing_source
     assert not (root / "runtime_adapters.py").exists()

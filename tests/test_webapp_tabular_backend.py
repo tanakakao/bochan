@@ -23,7 +23,7 @@ from bochan.tabular import ObservationTabularDataset, TabularBayesianOptimizer
 
 def test_web_workflow_wrapper_calls_source_level_tabular_entrypoint() -> None:
     assert run_regression_web_workflow.__module__.endswith("workflows")
-    assert _run_regression_web_workflow.__module__.endswith("workflows_tabular")
+    assert _run_regression_web_workflow.__module__.endswith("workflows.tabular")
     assert not hasattr(policy, "install_workflow_adapters")
     assert not hasattr(policy, "adaptive_multitask_gp")
 

@@ -10,7 +10,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from bochan.serving.webapp import app
-from bochan.serving.webapp import workflows_tabular
 from bochan.serving.webapp.composition.support import (
     composition_model_feature_columns,
     normalize_web_composition_settings,
@@ -20,6 +19,7 @@ from bochan.serving.webapp.visualization_sessions import (
     VisualizationSession,
     visualization_options,
 )
+from bochan.serving.webapp.workflows import tabular as workflows_tabular
 from bochan.tabular.config import TabularDataConfig
 from bochan.tabular.data import dataframe_to_tensors
 

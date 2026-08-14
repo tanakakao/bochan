@@ -9,7 +9,7 @@ on:
       - "src/bochan/serving/webapp/composition/support.py"
       - "src/bochan/serving/webapp/routers/composition.py"
       - "src/bochan/serving/webapp/schemas/composition.py"
-      - "src/bochan/serving/webapp/workflows_tabular.py"
+      - "src/bochan/serving/webapp/workflows/tabular.py"
       - "src/bochan/serving/webapp/tabular_backend.py"
       - "src/bochan/serving/webapp/composition/visualization.py"
       - "src/bochan/serving/webapp/composition/visualization_dispatch.py"
@@ -99,7 +99,7 @@ jobs:
             src/bochan/serving/webapp/composition/support.py \
             src/bochan/serving/webapp/routers/composition.py \
             src/bochan/serving/webapp/schemas/composition.py \
-            src/bochan/serving/webapp/workflows_tabular.py \
+            src/bochan/serving/webapp/workflows/tabular.py \
             src/bochan/serving/webapp/tabular_backend.py \
             src/bochan/serving/webapp/composition/visualization.py \
             src/bochan/serving/webapp/composition/visualization_dispatch.py \

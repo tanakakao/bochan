@@ -8,7 +8,7 @@ on:
       - "src/bochan/inspection/diagnostics.py"
       - "src/bochan/serving/webapp/feature_importance_outputs.py"
       - "src/bochan/serving/webapp/tabular_backend.py"
-      - "src/bochan/serving/webapp/workflows.py"
+      - "src/bochan/serving/webapp/workflows/__init__.py"
       - "tests/test_feature_importance.py"
       - "tests/test_hybrid_model_diagnostics.py"
       - "tests/test_saas_diagnostics.py"
@@ -44,7 +44,7 @@ jobs:
             src/bochan/inspection/diagnostics.py \
             src/bochan/serving/webapp/feature_importance_outputs.py \
             src/bochan/serving/webapp/tabular_backend.py \
-            src/bochan/serving/webapp/workflows.py \
+            src/bochan/serving/webapp/workflows/__init__.py \
             tests/test_hybrid_model_diagnostics.py \
             tests/test_saas_diagnostics.py \
             tests/test_web_feature_importance_output_names.py \

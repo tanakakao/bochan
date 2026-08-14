@@ -404,12 +404,19 @@ def _build_post_processing_func(config: OptimizeConfig, bounds: Any) -> Callable
     if fixed_features is None:
         fixed_features = config.fixed_features
 
+    grid_base = repair_bounds[0]
+    if repair.bounds is None:
+        import torch
+
+        grid_base = torch.zeros_like(repair_bounds[0])
+
     return make_grid_k_sparse_post_processing_func(
         bounds=repair_bounds,
         numeric_indices=repair.numeric_indices,
         steps=repair.steps,
         comp_idx=repair.comp_idx,
         k=repair.k,
+        grid_base=grid_base,
         equality_constraints=equality_constraints,
         inequality_constraints=inequality_constraints,
         inequality_sense=repair.inequality_sense,

@@ -1,5 +1,4 @@
 from .alignment import apply_active_learning_alignment
-from .hetero_alignment import apply_hetero_noise_alignment
 from .hetero_single_output import NoiseCombineType, NoiseQAggregateType, NoiseWeightMode
 from .multi_output import OutputReductionType
 from .nominal_duplicate_safe import (
@@ -35,8 +34,6 @@ from .nominal_duplicate_safe import (
 
 # DeepGP などで posterior sample / latent 軸が片側だけに残る場合の align 互換 patch。
 apply_active_learning_alignment()
-# Hetero multi-output の score/noise weight 軸ずれを補正する patch。
-apply_hetero_noise_alignment()
 
 __all__ = [
     "NoiseCombineType",
@@ -44,7 +41,6 @@ __all__ = [
     "NoiseWeightMode",
     "OutputReductionType",
     "apply_active_learning_alignment",
-    "apply_hetero_noise_alignment",
     "qMulticlassPredictiveEntropy",
     "qMulticlassProbabilityVariance",
     "qMulticlassMarginUncertainty",

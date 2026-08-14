@@ -22,6 +22,47 @@ NoiseCombineType = Literal["multiply", "subtract", "add"]
 NoiseQAggregateType = Literal["mean", "sum", "max", "min", "product"]
 
 
+def _align_score_to_weight(score: Tensor, weight: Tensor) -> Tensor:
+    """Align hetero score tensor to the noise-weight tensor shape."""
+    score = torch.as_tensor(score, device=weight.device, dtype=weight.dtype)
+
+    if score.shape == weight.shape:
+        return score
+
+    if score.ndim == 2 and weight.ndim == 2 and score.T.shape == weight.shape:
+        return score.T
+
+    if score.ndim == weight.ndim and score.ndim >= 2:
+        if score.shape[0] == weight.shape[-1] and tuple(score.shape[1:]) == tuple(weight.shape[:-1]):
+            return score.movedim(0, -1)
+
+    if score.ndim < weight.ndim and tuple(score.shape) == tuple(weight.shape[-score.ndim:]):
+        view_shape = (1,) * (weight.ndim - score.ndim) + tuple(score.shape)
+        return score.reshape(view_shape).expand_as(weight)
+
+    if score.ndim > weight.ndim and tuple(score.shape[-weight.ndim:]) == tuple(weight.shape):
+        leading_dims = tuple(range(score.ndim - weight.ndim))
+        return score.mean(dim=leading_dims)
+
+    if score.numel() == weight.numel():
+        return score.reshape_as(weight)
+
+    if score.numel() == 1:
+        return score.reshape(()).expand_as(weight)
+
+    if score.ndim >= 1 and score.shape[-1] == weight.shape[-1]:
+        while score.ndim > 1:
+            score = score.mean(dim=0)
+        return score.reshape(*([1] * (weight.ndim - 1)), weight.shape[-1]).expand_as(weight)
+
+    if score.ndim >= 1 and score.shape[0] == weight.shape[-1]:
+        while score.ndim > 1:
+            score = score.mean(dim=-1)
+        return score.reshape(*([1] * (weight.ndim - 1)), weight.shape[-1]).expand_as(weight)
+
+    return score
+
+
 class _HeteroMultiOutputMulticlassMixin:
     """Noise-aware mixin for complete heteroscedastic multi-output multiclass AL."""
 
@@ -171,10 +212,13 @@ class _HeteroMultiOutputMulticlassMixin:
         return (self.noise_weight_scale * weight).clamp_min(self.noise_min_weight)
 
     def _combine_score_and_weight(self, score: Tensor, weight: Tensor) -> Tensor:
+        weight = torch.as_tensor(weight)
+        score = _align_score_to_weight(score, weight)
+        weight = weight.to(score)
         if self.noise_combine == "multiply":
-            return score * weight.to(score)
+            return score * weight
         if self.noise_combine in {"subtract", "add"}:
-            return score - (1.0 - weight.to(score))
+            return score - (1.0 - weight)
         raise ValueError(f"Unknown noise_combine: {self.noise_combine!r}.")
 
     def _apply_noise_to_score_per_output(self, score_per_output: Tensor, X: Tensor) -> Tensor:

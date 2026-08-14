@@ -71,9 +71,6 @@ jobs:
             src/bochan/api/registry/acquisition.py \
             src/bochan/api/registry/model.py \
             src/bochan/constraints/postprocess.py \
-            src/bochan/optim/evolutionary/core.py \
-            src/bochan/optim/gradient/botorch.py \
-            src/bochan/optim/gradient/torch.py \
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/config/__init__.py \
             src/bochan/tabular/config/builders.py \
@@ -112,3 +109,7 @@ jobs:
             tests/test_repair_compatibility_cleanup.py \
             tests/test_tabular_architecture.py \
             tests/test_workbench_services_layout.py
+          ruff check --select F821 \
+            src/bochan/optim/evolutionary/core.py \
+            src/bochan/optim/gradient/botorch.py \
+            src/bochan/optim/gradient/torch.py

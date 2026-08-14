@@ -96,7 +96,7 @@ class CompositionTabularPreprocessor:
         self.transformer = make_composition_transformer(config)
         self.search_space = search_space
 
-    def fit(self, frame: Any) -> "CompositionTabularPreprocessor":
+    def fit(self, frame: Any) -> CompositionTabularPreprocessor:
         """Fit the formula vocabulary from a DataFrame."""
 
         if self.config.column not in frame.columns:

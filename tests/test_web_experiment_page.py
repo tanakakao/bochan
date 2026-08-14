@@ -26,7 +26,7 @@ def test_experiment_result_page_is_connected() -> None:
     project_api = (ROOT / "web/src/experimentProject.ts").read_text(encoding="utf-8")
     main = (ROOT / "web/src/main.tsx").read_text(encoding="utf-8")
     visualization_sessions = (
-        ROOT / "src/bochan/serving/webapp/visualization_sessions.py"
+        ROOT / "src/bochan/serving/webapp/_visualization_sessions_core.py"
     ).read_text(encoding="utf-8")
     target_relation = (
         ROOT / "src/bochan/visualization/target_relation.py"

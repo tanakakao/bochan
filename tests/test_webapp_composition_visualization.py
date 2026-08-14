@@ -314,19 +314,28 @@ def test_composition_visualization_uses_explicit_dispatch() -> None:
     runtime_adapters = Path(
         "src/bochan/serving/webapp/runtime_adapters.py"
     ).read_text(encoding="utf-8")
+    compat_path = Path(
+        "src/bochan/serving/webapp/composition_visualization_compat.py"
+    )
     frontend = Path("web/src/compositionVisualizationGuard.ts").read_text(
         encoding="utf-8"
     )
 
+    assert "build_ternary_visualization(session, request)" in session_source
+    assert "extend_ternary_options(options, session)" in session_source
     assert "build_composition_visualization(session, request)" in session_source
-    assert "extend_visualization_options(_core.visualization_options(session), session)" in session_source
     assert 'kind in {"1d", "2d"} and not composition_axes' in dispatch_source
     assert "_build_ordinary_axis_composition_visualization" in dispatch_source
     assert "_build_partial_dependence_1d" in dispatch_source
     assert "_build_multielement_ternary_visualization" in ternary_backend
     assert "_ternary_slice_grid(sum_value, divisions)" in ternary_backend
+    assert "def install_composition_multielement_ternary" not in ternary_backend
+    assert "visualization_sessions.visualization_options =" not in ternary_backend
+    assert "visualization_sessions.build_visualization =" not in ternary_backend
+    assert not compat_path.exists()
     assert "fractionOptions.size >= 3" in frontend
     assert "install_composition_visualization()" not in runtime_adapters
     assert "install_composition_visualization_compat()" not in runtime_adapters
     assert "install_composition_pd_compat()" not in runtime_adapters
-    assert "install_composition_multielement_ternary()" in runtime_adapters
+    assert "install_composition_multielement_ternary()" not in runtime_adapters
+    assert "install_web_hybrid_objective_bo_routing()" in runtime_adapters

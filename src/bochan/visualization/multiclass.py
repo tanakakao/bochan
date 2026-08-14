@@ -12,6 +12,10 @@ from plotly.colors import qualitative
 from plotly.graph_objs._figure import Figure
 
 from .data import training_dataframe
+from .input_perturbation import (
+    aggregate_input_perturbation_probabilities,
+    input_perturbation_n_w,
+)
 from .plots import (
     show_1dplot_from_optimizer as _show_1dplot_from_optimizer,
     show_scatter_with_acqf_from_optimizer as _show_scatter_with_acqf_from_optimizer,
@@ -178,8 +182,14 @@ def multiclass_probabilities(
     """Return class probabilities with shape ``[n, C]``."""
 
     X_arr = ensure_2d(X)
+    n_points = len(X_arr)
     values = _probability_tensor(obj, X, output_index=output_index)
-    return _as_probability_matrix(values, n_points=len(X_arr))
+    values = aggregate_input_perturbation_probabilities(
+        values,
+        n_points=n_points,
+        n_w=input_perturbation_n_w(obj),
+    )
+    return _as_probability_matrix(values, n_points=n_points)
 
 
 def _metadata_values(obj: Any, keys: Sequence[str]) -> Any | None:

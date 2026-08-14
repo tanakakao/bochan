@@ -93,12 +93,21 @@ def test_webapp_import_uses_workbench_dataset_services() -> None:
     assert app_module.load_dataframe_from_payload is datasets.load_dataframe_from_payload
 
 
-def test_web_backend_has_no_desktop_imports() -> None:
-    source_root = Path(__file__).parents[1] / "src" / "bochan" / "serving" / "webapp"
-    offenders = [
-        path.relative_to(source_root).as_posix()
-        for path in source_root.rglob("*.py")
+def _desktop_import_offenders(root: Path) -> list[str]:
+    return [
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*.py")
         if "bochan.desktop" in path.read_text(encoding="utf-8")
     ]
 
-    assert offenders == []
+
+def test_web_backend_has_no_desktop_imports() -> None:
+    source_root = Path(__file__).parents[1] / "src" / "bochan" / "serving" / "webapp"
+
+    assert _desktop_import_offenders(source_root) == []
+
+
+def test_web_tests_have_no_desktop_imports() -> None:
+    tests_root = Path(__file__).parent
+
+    assert _desktop_import_offenders(tests_root) == []

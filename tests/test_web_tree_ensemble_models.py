@@ -108,7 +108,7 @@ def test_task_aware_hybrid_posterior_preserves_finite_ensemble_function_draws() 
 
 
 def _random_forest_store() -> tuple[Any, str]:
-    from bochan.desktop.services import DatasetStore, build_dataset_record
+    from bochan.serving.workbench.datasets import DatasetStore, build_dataset_record
 
     x = torch.linspace(0.0, 1.0, 12, dtype=torch.double).numpy()
     data = pd.DataFrame(

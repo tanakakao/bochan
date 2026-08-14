@@ -319,7 +319,7 @@ def _formula_strings(
     context: _CompositionContext,
     fractions: np.ndarray,
 ) -> list[str]:
-    from bochan.tabular.composition import (
+    from bochan.composition import (
         ATOMIC_WEIGHTS,
         close_compositions,
         format_formula,

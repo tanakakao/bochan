@@ -11,10 +11,10 @@ from fastapi.testclient import TestClient
 
 from bochan.serving.webapp import app
 from bochan.serving.webapp import workflows_tabular
-from bochan.serving.webapp.composition_web_routes import (
+from bochan.serving.webapp.composition.routes import (
     register_composition_routes,
 )
-from bochan.serving.webapp.composition_web_support import (
+from bochan.serving.webapp.composition.support import (
     composition_model_feature_columns,
     normalize_web_composition_settings,
 )

@@ -351,7 +351,7 @@ def _source_default(session: Any, column: str, fixed_values: dict[str, Any]) -> 
     if series.empty:
         raise ValueError(f"No observed value is available for {column!r}.")
     if column in fixed_values:
-        from .tabular_backend import _category_key_from_label
+        from ..tabular_backend import _category_key_from_label
 
         return _category_key_from_label(series, fixed_values[column])
     try:
@@ -526,7 +526,7 @@ def _build_composition_visualization(
     session: Any,
     request: dict[str, Any],
 ) -> dict[str, Any]:
-    from .target_results import _figure_payload
+    from ..target_results import _figure_payload
 
     context = _composition_context(session)
     if context is None:
@@ -741,7 +741,7 @@ def _build_composition_visualization(
 def install_composition_visualization() -> None:
     """Install composition-aware option and plotting wrappers before app import."""
 
-    from . import visualization_sessions
+    from .. import visualization_sessions
 
     if getattr(visualization_sessions, "_composition_visualization_installed", False):
         return

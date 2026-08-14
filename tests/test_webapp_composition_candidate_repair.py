@@ -6,7 +6,7 @@ from typing import Any
 import pandas as pd
 import torch
 
-from bochan.serving.webapp.composition_web_support import (
+from bochan.serving.webapp.composition.support import (
     repair_composition_candidate_result,
 )
 from bochan.tabular.config import TabularDataConfig

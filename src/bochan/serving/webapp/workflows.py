@@ -7,9 +7,9 @@ import logging
 from importlib import import_module
 from typing import Any
 
-from .composition_element_importance_figures import append_element_importance_figures
-from .composition_feature_importance import attach_composition_feature_importance
-from .composition_feature_importance_views import postprocess_composition_importance_views
+from .composition.element_importance_figures import append_element_importance_figures
+from .composition.feature_importance import attach_composition_feature_importance
+from .composition.feature_importance_views import postprocess_composition_importance_views
 from .hybrid_bo_routing import prepare_hybrid_objective_bo_request
 from .logging import current_request_id, get_logger, log_event
 from .model_reuse import model_reuse_run, prepare_model_reuse_request

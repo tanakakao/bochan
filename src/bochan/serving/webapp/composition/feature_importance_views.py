@@ -91,7 +91,7 @@ def _replace_predictive_summary(
 def _matches_target(figure: dict[str, Any], target: str) -> bool:
     """Return whether a feature-importance figure belongs to one target."""
 
-    from .target_results import _safe_figure_id
+    from ..target_results import _safe_figure_id
 
     identifier = str(figure.get("id") or "").lower()
     title = str(figure.get("title") or "")
@@ -115,7 +115,7 @@ def _composition_predictive_figures(
 
     import plotly.graph_objects as go
 
-    from .target_results import _figure_payload, _safe_figure_id
+    from ..target_results import _figure_payload, _safe_figure_id
 
     normalized = bool(_setting(visualization_settings, "normalized", False))
     top_k = _setting(visualization_settings, "top_k", 15)

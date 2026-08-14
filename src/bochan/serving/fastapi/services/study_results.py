@@ -1,0 +1,1 @@
+"""Study result projection helpers."""

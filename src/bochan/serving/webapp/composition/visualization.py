@@ -738,32 +738,4 @@ def _build_composition_visualization(
     )
 
 
-def install_composition_visualization() -> None:
-    """Install composition-aware option and plotting wrappers before app import."""
-
-    from ..services import visualization_sessions
-
-    if getattr(visualization_sessions, "_composition_visualization_installed", False):
-        return
-    original_options = visualization_sessions.visualization_options
-    original_build = visualization_sessions.build_visualization
-
-    def options_adapter(session: Any) -> dict[str, Any]:
-        return _extend_visualization_options(original_options(session), session)
-
-    def build_adapter(run_id: str, request: dict[str, Any]) -> dict[str, Any]:
-        session = visualization_sessions.get_visualization_session(run_id)
-        context = _composition_context(session)
-        features = [str(value) for value in list(request.get("features") or [])]
-        if context is not None and any(
-            _element_for_feature(context, feature) is not None for feature in features
-        ):
-            return _build_composition_visualization(session, request)
-        return original_build(run_id, request)
-
-    visualization_sessions.visualization_options = options_adapter
-    visualization_sessions.build_visualization = build_adapter
-    visualization_sessions._composition_visualization_installed = True
-
-
-__all__ = ["install_composition_visualization"]
+__all__: list[str] = []

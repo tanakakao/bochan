@@ -79,11 +79,20 @@ def test_workbench_feature_encoding_preserves_numeric_and_categorical_metadata()
 
 def test_workbench_dataset_loader_rejects_non_web_sources() -> None:
     with pytest.raises(ValueError, match="Unsupported source_type"):
-        datasets.load_dataframe_from_payload(source_type="sqlite")  # type: ignore[arg-type]
+        datasets.load_dataframe_from_payload(  # type: ignore[arg-type]
+            source_type="sqlite"
+        )
 
 
 def test_webapp_source_imports_workbench_dataset_services() -> None:
-    app_path = Path(__file__).parents[1] / "src" / "bochan" / "serving" / "webapp" / "app.py"
+    app_path = (
+        Path(__file__).parents[1]
+        / "src"
+        / "bochan"
+        / "serving"
+        / "webapp"
+        / "app.py"
+    )
     tree = ast.parse(app_path.read_text(encoding="utf-8"))
     imported_names = {
         alias.name
@@ -115,7 +124,9 @@ def _imports_desktop(path: Path) -> bool:
             module = node.module or ""
             if module == "bochan.desktop" or module.startswith("bochan.desktop."):
                 return True
-            if module == "bochan" and any(alias.name == "desktop" for alias in node.names):
+            if module == "bochan" and any(
+                alias.name == "desktop" for alias in node.names
+            ):
                 return True
     return False
 

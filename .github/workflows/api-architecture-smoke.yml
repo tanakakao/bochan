@@ -30,6 +30,7 @@ jobs:
             tests/test_api_automatic_defaults.py \
             tests/test_api_nsgaii_strategy.py \
             tests/test_llm_selected_acquisition_config.py \
+            tests/test_multiclass_nehvi_baseline_native.py \
             tests/test_multiclass_nehvi_input_perturbation_baseline.py \
             tests/test_observation_data.py \
             tests/test_partial_observation_api.py \

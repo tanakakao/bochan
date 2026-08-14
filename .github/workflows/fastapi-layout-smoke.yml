@@ -1,1 +1,16 @@
 name: FastAPI layout smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/bochan/serving/fastapi/**"
+      - "tests/test_fastapi_package_layout.py"
+      - ".github/workflows/fastapi-layout-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10

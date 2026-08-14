@@ -10,6 +10,7 @@ from typing import Any
 from .composition_element_importance_figures import append_element_importance_figures
 from .composition_feature_importance import attach_composition_feature_importance
 from .composition_feature_importance_views import postprocess_composition_importance_views
+from .hybrid_bo_routing import prepare_hybrid_objective_bo_request
 from .logging import current_request_id, get_logger, log_event
 from .model_reuse import model_reuse_run, prepare_model_reuse_request
 from .non_gaussian_validation import validate_non_gaussian_target_frame
@@ -34,6 +35,15 @@ _resolve_targets = _workflows_tabular._resolve_targets
 _run_regression_web_workflow = _workflows_tabular.run_regression_web_workflow
 
 LOGGER = get_logger("workflow.details")
+
+
+def _run_tabular_web_workflow(request: Any, store: Any) -> dict[str, Any]:
+    """Run the tabular core with request-local Hybrid BO routing when required."""
+
+    return _run_regression_web_workflow(
+        prepare_hybrid_objective_bo_request(request),
+        store,
+    )
 
 
 def _validate_non_gaussian_web_targets(request: Any, store: Any) -> None:
@@ -297,7 +307,7 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         web_risk_run(processing_request) as risk_report,
     ):
         if not run_id:
-            result = _run_regression_web_workflow(
+            result = _run_tabular_web_workflow(
                 processing_request,
                 workflow_store,
             )
@@ -308,7 +318,7 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
 
         begin_visualization_run(run_id, processing_request)
         try:
-            result = _run_regression_web_workflow(
+            result = _run_tabular_web_workflow(
                 processing_request,
                 workflow_store,
             )

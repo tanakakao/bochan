@@ -2,16 +2,8 @@
 
 from typing import Any
 
-from .runtime_adapters import install_web_runtime_adapters
-
-# Composition fitting, candidate handling, and composition-specific importance
-# postprocessing are wired explicitly through workflows.py/workflows_tabular.py.
-# Remaining presentation/runtime adapters are centralized in runtime_adapters.py
-# until their behavior can be absorbed into the normal implementation.
-install_web_runtime_adapters()
-
-from .app import WEB_CAPABILITIES, app, create_app as _create_app  # noqa: E402
-from .composition_web_routes import register_composition_routes  # noqa: E402
+from .app import WEB_CAPABILITIES, app, create_app as _create_app
+from .composition_web_routes import register_composition_routes
 
 WEB_CAPABILITIES["composition"] = {
     "enabled": True,

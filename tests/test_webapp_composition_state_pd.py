@@ -108,15 +108,13 @@ def test_dataset_state_resets_and_hides_stale_composition_settings() -> None:
 
 
 def test_composition_pd_is_native_dispatch_not_runtime_adapter() -> None:
-    runtime_source = Path(
-        "src/bochan/serving/webapp/runtime_adapters.py"
-    ).read_text(encoding="utf-8")
+    runtime_path = Path("src/bochan/serving/webapp/runtime_adapters.py")
     dispatch_source = Path(
         "src/bochan/serving/webapp/composition_visualization_dispatch.py"
     ).read_text(encoding="utf-8")
     removed_pd = Path("src/bochan/serving/webapp/composition_pd_compat.py")
 
-    assert "install_composition_pd_compat" not in runtime_source
+    assert not runtime_path.exists()
     assert not removed_pd.exists()
     assert "_build_partial_dependence_1d" in dispatch_source
     assert "各学習行の組成と他の説明変数を保持" in dispatch_source

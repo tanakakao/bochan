@@ -311,9 +311,7 @@ def test_composition_visualization_uses_explicit_dispatch() -> None:
     ternary_backend = Path(
         "src/bochan/serving/webapp/composition_multielement_ternary.py"
     ).read_text(encoding="utf-8")
-    runtime_adapters = Path(
-        "src/bochan/serving/webapp/runtime_adapters.py"
-    ).read_text(encoding="utf-8")
+    runtime_path = Path("src/bochan/serving/webapp/runtime_adapters.py")
     compat_path = Path(
         "src/bochan/serving/webapp/composition_visualization_compat.py"
     )
@@ -333,9 +331,5 @@ def test_composition_visualization_uses_explicit_dispatch() -> None:
     assert "visualization_sessions.visualization_options =" not in ternary_backend
     assert "visualization_sessions.build_visualization =" not in ternary_backend
     assert not compat_path.exists()
+    assert not runtime_path.exists()
     assert "fractionOptions.size >= 3" in frontend
-    assert "install_composition_visualization()" not in runtime_adapters
-    assert "install_composition_visualization_compat()" not in runtime_adapters
-    assert "install_composition_pd_compat()" not in runtime_adapters
-    assert "install_composition_multielement_ternary()" not in runtime_adapters
-    assert "install_web_hybrid_objective_bo_routing()" in runtime_adapters

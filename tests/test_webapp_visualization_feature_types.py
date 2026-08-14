@@ -110,10 +110,9 @@ def test_visualization_options_handle_string_source_without_runtime_patch() -> N
 
 def test_feature_type_compatibility_module_is_removed() -> None:
     root = Path(visualization_sessions.__file__).resolve().parent
-    runtime_source = (root / "runtime_adapters.py").read_text(encoding="utf-8")
 
     assert not (root / "visualization_feature_types.py").exists()
-    assert "install_visualization_feature_type_compat" not in runtime_source
+    assert not (root / "runtime_adapters.py").exists()
     assert (
         visualization_sessions._numeric_features.__module__
         == "bochan.serving.webapp.visualization_sessions"

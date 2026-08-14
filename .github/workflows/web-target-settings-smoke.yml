@@ -20,6 +20,7 @@ on:
       - "tests/test_common_model_artifact_api.py"
       - "tests/test_tabular_noise_alpha.py"
       - "tests/test_visualization_display_scale.py"
+      - "tests/test_web_hybrid_bo_routing.py"
       - "tests/test_webapp_multiobjective_contract.py"
       - "tests/test_webapp_level_set_settings.py"
       - "tests/test_webapp_target_results_contract.py"
@@ -60,6 +61,7 @@ jobs:
             tests/test_common_model_artifact_api.py \
             tests/test_tabular_noise_alpha.py \
             tests/test_visualization_display_scale.py \
+            tests/test_web_hybrid_bo_routing.py \
             tests/test_webapp_multiobjective_contract.py \
             tests/test_webapp_level_set_settings.py \
             tests/test_webapp_target_results_contract.py \
@@ -99,6 +101,7 @@ jobs:
             src/bochan/serving/webapp/app.py \
             src/bochan/serving/webapp/experiment_history.py \
             src/bochan/serving/webapp/project_archive.py \
+            src/bochan/serving/webapp/hybrid_bo_routing.py \
             src/bochan/serving/webapp/model_artifacts.py \
             src/bochan/serving/webapp/model_artifact_routes.py \
             src/bochan/serving/webapp/model_reuse.py \
@@ -119,6 +122,7 @@ jobs:
             tests/test_binary_uncertainty_display_integration.py \
             tests/test_common_model_artifact_api.py \
             tests/test_visualization_display_scale.py \
+            tests/test_web_hybrid_bo_routing.py \
             tests/test_webapp_multiobjective_contract.py \
             tests/test_webapp_level_set_settings.py \
             tests/test_webapp_target_results_contract.py \

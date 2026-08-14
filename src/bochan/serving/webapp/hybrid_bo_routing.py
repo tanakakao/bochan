@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import copy
-from functools import wraps
 from typing import Any
-
-_INSTALLED = False
 
 
 def _normalize_acquisition_name(name: str) -> str:
@@ -158,29 +155,4 @@ def prepare_hybrid_objective_bo_request(request: Any) -> Any:
     return _copy_with_update(request, acquisition=acquisition)
 
 
-def install_web_hybrid_objective_bo_routing() -> None:
-    """Install request-local Hybrid objective routing before workflows are bound."""
-
-    global _INSTALLED
-    if _INSTALLED:
-        return
-
-    from . import workflows_tabular
-
-    original_workflow = workflows_tabular.run_regression_web_workflow
-
-    @wraps(original_workflow)
-    def workflow_adapter(request: Any, store: Any) -> dict[str, Any]:
-        return original_workflow(
-            prepare_hybrid_objective_bo_request(request),
-            store,
-        )
-
-    workflows_tabular.run_regression_web_workflow = workflow_adapter
-    _INSTALLED = True
-
-
-__all__ = [
-    "install_web_hybrid_objective_bo_routing",
-    "prepare_hybrid_objective_bo_request",
-]
+__all__ = ["prepare_hybrid_objective_bo_request"]

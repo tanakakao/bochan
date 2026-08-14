@@ -20,10 +20,7 @@ def _session(
         category_maps=dict(category_maps or {}),
     )
     return SimpleNamespace(
-        tabular_optimizer=SimpleNamespace(
-            dataset=dataset,
-            composition=SimpleNamespace(sites={}, transformers={}),
-        ),
+        tabular_optimizer=SimpleNamespace(dataset=dataset),
         data=data,
         feature_columns=list(feature_columns),
         target_columns=["property"],

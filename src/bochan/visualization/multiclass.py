@@ -141,6 +141,9 @@ def _as_probability_matrix(values: Any, *, n_points: int) -> np.ndarray:
         )
     if arr.shape[0] != n_points and arr.shape[1] == n_points:
         arr = arr.T
+    if arr.shape[0] > n_points and arr.shape[0] % n_points == 0:
+        repeats = arr.shape[0] // n_points
+        arr = arr.reshape(n_points, repeats, arr.shape[-1]).mean(axis=1)
     if arr.shape[0] != n_points:
         raise RuntimeError(
             "The number of probability rows does not match the number of inputs. "

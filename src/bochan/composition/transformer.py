@@ -122,7 +122,7 @@ class CompositionTransformer:
         elements = self._require_fitted()
         return tuple(self._representation_names(elements))
 
-    def fit(self, formulas: Any) -> "CompositionTransformer":
+    def fit(self, formulas: Any) -> CompositionTransformer:
         """Learn a deterministic element vocabulary from formula values."""
 
         values = self._values(formulas)

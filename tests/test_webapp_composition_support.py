@@ -193,7 +193,8 @@ def test_composition_formula_is_categorical_visualization_control() -> None:
     session = VisualizationSession(
         optimizer=SimpleNamespace(model=SimpleNamespace()),
         tabular_optimizer=SimpleNamespace(
-            dataset=SimpleNamespace(cat_dims=[], category_maps={})
+            dataset=SimpleNamespace(cat_dims=[], category_maps={}),
+            composition=SimpleNamespace(sites={}, transformers={}),
         ),
         data=pd.DataFrame(
             {

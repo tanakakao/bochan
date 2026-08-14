@@ -481,20 +481,18 @@ def _element_constraint_results(
     restored: Any,
     row_index: Any,
 ) -> list[dict[str, Any]]:
-    constraints = list(
-        getattr(tabular_optimizer, "composition_element_constraints", ()) or ()
-    )
+    constraints = list(tabular_optimizer.candidates.element_constraints)
     if not constraints:
         return []
-    projector = tabular_optimizer._make_element_constraint_projector()
-    raw, _totals = projector._row_native_values(restored, row_index)
+    projector = tabular_optimizer.candidates.projector()
+    raw, _totals = projector.row_native_values(restored, row_index)
     results: list[dict[str, Any]] = []
     for index, constraint in enumerate(constraints):
         lhs = 0.0
         for term in constraint["terms"]:
             site = term["site"]
             element = term["element"]
-            config = tabular_optimizer.composition_sites[site]
+            config = tabular_optimizer.composition.sites[site]
             lhs += (
                 float(term["coefficient"])
                 * CompositionElementConstraintResolver.basis_scale(

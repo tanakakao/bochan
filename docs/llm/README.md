@@ -7,8 +7,7 @@ LLMはベイズ最適化そのものを置き換えるのではなく、設定�
 ## Guides
 
 - [LLM-assisted planning and candidate generation](../../README_LLM.md) — LLM連携全体の入口。設定提案、候補集合生成、provider設定、FastAPI連携を説明します。
-- [Candidate explanation](candidate_explanation.md) — 最終候補をモデル根拠、物理、化学、製造、開発、リスクの観点から説明する方法です。
-- [Candidate overall explanation](candidate_overall_explanation.md) — `overall_interpretation` と候補群全体の総合説明に焦点を当てた補足ガイドです。
+- [Candidate explanation](candidate_explanation.md) — 最終候補をモデル根拠、総合説明、物理、化学、製造、開発、リスクの観点から説明する方法です。`overall_interpretation` の説明もこのガイドに統合しています。
 - [Hybrid and constrained Bayesian optimization](hybrid_constraints.md) — 回帰・分類・ordinalを組み合わせたHybridモデルと、目的・出力制約・候補制約を扱います。
 - [LLM-selected acquisition](../llm_selected_acquisition.md) — `AcquisitionConfig(name="llm_selected")` の選択・検証フローを説明します。
 

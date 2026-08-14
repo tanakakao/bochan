@@ -32,17 +32,27 @@ def _numeric_features(session: VisualizationSession) -> list[str]:
 def visualization_options(session: VisualizationSession) -> dict[str, Any]:
     """Return normal options extended explicitly for composition sessions."""
 
+    from .composition_multielement_ternary import (
+        extend_visualization_options as extend_ternary_options,
+    )
     from .composition_visualization_dispatch import extend_visualization_options
 
-    return extend_visualization_options(_core.visualization_options(session), session)
+    options = extend_visualization_options(_core.visualization_options(session), session)
+    return extend_ternary_options(options, session)
 
 
 def build_visualization(run_id: str, request: dict[str, Any]) -> dict[str, Any]:
     """Build a result plot through explicit composition or generic dispatch."""
 
+    from .composition_multielement_ternary import (
+        build_visualization as build_ternary_visualization,
+    )
     from .composition_visualization_dispatch import build_composition_visualization
 
     session = get_visualization_session(run_id)
+    ternary_result = build_ternary_visualization(session, request)
+    if ternary_result is not None:
+        return ternary_result
     composition_result = build_composition_visualization(session, request)
     if composition_result is not None:
         return composition_result

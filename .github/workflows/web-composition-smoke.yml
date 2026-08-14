@@ -21,6 +21,7 @@ on:
       - "src/bochan/serving/webapp/__init__.py"
       - "src/bochan/visualization/__init__.py"
       - "src/bochan/visualization/ternary.py"
+      - "web/vite.config.ts"
       - "web/src/compositionExtension.ts"
       - "web/src/compositionRuntime.ts"
       - "web/src/compositionDatasetState.ts"

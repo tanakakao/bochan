@@ -25,7 +25,7 @@ def _constraint_import_levels(path: str) -> list[int]:
 
 
 def _build_post_processing(config: OptimizeConfig, bounds: torch.Tensor) -> Any:
-    builder = getattr(api_factory, "_build_post_processing_func")
+    builder = vars(api_factory)["_build_post_processing_func"]
     return builder(config, bounds)
 
 

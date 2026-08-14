@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bochan.serving.webapp.app import RegressionRunRequest
+from bochan.serving.webapp.schemas.regression import RegressionRunRequest
 
 
 ROOT = Path(__file__).resolve().parents[1]

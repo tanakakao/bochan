@@ -7,7 +7,7 @@ torch = pytest.importorskip("torch")
 pytest.importorskip("botorch")
 pytest.importorskip("fastapi")
 
-from bochan.serving.webapp.app import RegressionRunRequest  # noqa: E402
+from bochan.serving.webapp.schemas.regression import RegressionRunRequest  # noqa: E402
 from bochan.serving.webapp.workflows import run_regression_web_workflow  # noqa: E402
 from bochan.serving.workbench.datasets import DatasetStore, build_dataset_record  # noqa: E402
 

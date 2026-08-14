@@ -48,7 +48,7 @@ def test_web_ngboost_runtime_defaults_preserve_explicit_parameters() -> None:
 
 
 def test_web_target_settings_apply_ngboost_runtime_defaults() -> None:
-    from bochan.serving.webapp.app import RegressionRunRequest
+    from bochan.serving.webapp.schemas.regression import RegressionRunRequest
     from bochan.serving.webapp.target_settings import _resolve_target_settings
 
     request = RegressionRunRequest(
@@ -188,7 +188,7 @@ def _ngboost_request(
     acquisition_family: str = "bayesian_optimization",
     optimizer_name: str = "ga",
 ):
-    from bochan.serving.webapp.app import RegressionRunRequest
+    from bochan.serving.webapp.schemas.regression import RegressionRunRequest
 
     risk_type = "cvar" if input_perturbation else "none"
     return RegressionRunRequest(

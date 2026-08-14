@@ -133,7 +133,7 @@ def _random_forest_request(
     *,
     multi_objective: bool,
 ) -> Any:
-    from bochan.serving.webapp.app import RegressionRunRequest
+    from bochan.serving.webapp.schemas.regression import RegressionRunRequest
 
     targets = ["strength", "ductility"] if multi_objective else ["strength"]
     target_settings = [

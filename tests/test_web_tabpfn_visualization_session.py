@@ -61,7 +61,7 @@ class _FakeTabPFNRegressor:
 
 
 def _request(dataset_id: str, estimator: object):
-    from bochan.serving.webapp.app import RegressionRunRequest
+    from bochan.serving.webapp.schemas.regression import RegressionRunRequest
 
     return RegressionRunRequest(
         dataset_id=dataset_id,
@@ -164,11 +164,12 @@ def test_visualization_route_returns_404_only_for_missing_session(monkeypatch) -
     from fastapi.testclient import TestClient
 
     app_module = importlib.import_module("bochan.serving.webapp.app")
+    router_module = importlib.import_module("bochan.serving.webapp.routers.visualizations")
 
     def missing_session(_run_id: str):
         raise KeyError("missing-session")
 
-    monkeypatch.setattr(app_module, "get_visualization_session", missing_session)
+    monkeypatch.setattr(router_module, "get_visualization_session", missing_session)
     client = TestClient(app_module.create_app(include_core_api=False))
     response = client.post(
         "/api/v1/runs/missing/visualizations",
@@ -183,12 +184,13 @@ def test_visualization_route_does_not_misclassify_internal_key_error(monkeypatch
     from fastapi.testclient import TestClient
 
     app_module = importlib.import_module("bochan.serving.webapp.app")
-    monkeypatch.setattr(app_module, "get_visualization_session", lambda _run_id: object())
+    router_module = importlib.import_module("bochan.serving.webapp.routers.visualizations")
+    monkeypatch.setattr(router_module, "get_visualization_session", lambda _run_id: object())
 
     def broken_plot(_run_id: str, _request: dict[str, object]):
         raise KeyError("plot-internal-key")
 
-    monkeypatch.setattr(app_module, "build_visualization", broken_plot)
+    monkeypatch.setattr(router_module, "build_visualization", broken_plot)
     client = TestClient(app_module.create_app(include_core_api=False))
     response = client.post(
         "/api/v1/runs/existing/visualizations",

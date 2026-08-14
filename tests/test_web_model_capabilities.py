@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _classification_request(*, model_type: str, acquisition: str):
-    from bochan.serving.webapp.app import RegressionRunRequest
+    from bochan.serving.webapp.schemas.regression import RegressionRunRequest
 
     return RegressionRunRequest(
         dataset_id="unused",

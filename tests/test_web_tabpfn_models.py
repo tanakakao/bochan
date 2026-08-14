@@ -108,7 +108,7 @@ def _request(
     q: int = 1,
     input_perturbation: bool = False,
 ):
-    from bochan.serving.webapp.app import RegressionRunRequest
+    from bochan.serving.webapp.schemas.regression import RegressionRunRequest
 
     acquisition_name = "EI" if task_type == "regression" else "predictive_entropy"
     family = "bayesian_optimization" if task_type == "regression" else "active_learning"
@@ -182,7 +182,7 @@ def test_web_exposes_tabpfn_as_foundation_derivative_free_model() -> None:
 
 def test_web_capabilities_and_registry_expose_supported_tabpfn_tasks() -> None:
     from bochan.api.registry.model import DEFAULT_MODEL_REGISTRY
-    from bochan.serving.webapp.app import WEB_CAPABILITIES
+    from bochan.serving.webapp.routers.capabilities import WEB_CAPABILITIES
 
     registry = DEFAULT_MODEL_REGISTRY.raw()
     assert "tabpfn" in WEB_CAPABILITIES["model_types"]

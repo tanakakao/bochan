@@ -99,11 +99,25 @@ jobs:
             src/bochan/serving/fastapi/schemas/tabular.py \
             src/bochan/serving/fastapi/stores/file.py \
             src/bochan/serving/webapp/app.py \
+            src/bochan/serving/webapp/routers/__init__.py \
+            src/bochan/serving/webapp/routers/capabilities.py \
+            src/bochan/serving/webapp/routers/composition.py \
+            src/bochan/serving/webapp/routers/datasets.py \
+            src/bochan/serving/webapp/routers/logs.py \
+            src/bochan/serving/webapp/routers/model_artifacts.py \
+            src/bochan/serving/webapp/routers/regression.py \
+            src/bochan/serving/webapp/routers/visualizations.py \
+            src/bochan/serving/webapp/schemas/__init__.py \
+            src/bochan/serving/webapp/schemas/_base.py \
+            src/bochan/serving/webapp/schemas/composition.py \
+            src/bochan/serving/webapp/schemas/dataset.py \
+            src/bochan/serving/webapp/schemas/regression.py \
+            src/bochan/serving/webapp/schemas/search.py \
+            src/bochan/serving/webapp/schemas/visualization.py \
             src/bochan/serving/webapp/experiment_history.py \
             src/bochan/serving/webapp/project_archive.py \
             src/bochan/serving/webapp/hybrid_bo_routing.py \
             src/bochan/serving/webapp/model_artifacts.py \
-            src/bochan/serving/webapp/model_artifact_routes.py \
             src/bochan/serving/webapp/model_reuse.py \
             src/bochan/serving/webapp/non_gaussian_validation.py \
             src/bochan/serving/webapp/reuse_dataset.py \

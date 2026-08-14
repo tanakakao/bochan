@@ -11,13 +11,11 @@ from fastapi.testclient import TestClient
 
 from bochan.serving.webapp import app
 from bochan.serving.webapp import workflows_tabular
-from bochan.serving.webapp.composition.routes import (
-    register_composition_routes,
-)
 from bochan.serving.webapp.composition.support import (
     composition_model_feature_columns,
     normalize_web_composition_settings,
 )
+from bochan.serving.webapp.routers.composition import create_composition_router
 from bochan.serving.webapp.visualization_sessions import (
     VisualizationSession,
     visualization_options,
@@ -90,11 +88,13 @@ def test_composition_validate_endpoint_infers_elements_and_normalizes_ratios() -
 def test_typed_composition_regression_endpoint_injects_settings() -> None:
     test_app = FastAPI()
 
-    @test_app.post("/api/v1/regression/run")
     def base_run(request: Any) -> dict[str, Any]:
         return request.model_dump()
 
-    register_composition_routes(test_app)
+    test_app.include_router(
+        create_composition_router(run_regression=base_run),
+        prefix="/api/v1",
+    )
     response = TestClient(test_app).post(
         "/api/v1/composition/regression/run",
         json={
@@ -156,7 +156,6 @@ def test_ordinary_constraint_uses_shifted_index_after_ilr_expansion() -> None:
         [constraint],
         feature_columns=feature_columns,
     )
-
     assert equality == []
     indices, coefficients, rhs = inequality[0]
     assert torch.equal(indices, torch.tensor([2]))

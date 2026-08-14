@@ -4,11 +4,9 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from bochan.serving.webapp.app import (
-    RegressionRunRequest,
-    VisualizationRequestSchema,
-    _profile_with_category_values,
-)
+from bochan.serving.webapp.routers.datasets import _profile_with_category_values
+from bochan.serving.webapp.schemas.regression import RegressionRunRequest
+from bochan.serving.webapp.schemas.visualization import VisualizationRequestSchema
 from bochan.serving.webapp.search_settings import (
     botorch_linear_constraints,
     feature_constraint_results,

@@ -123,7 +123,7 @@ def _request(
     model_kwargs: dict[str, object],
     input_perturbation: bool,
 ):
-    from bochan.serving.webapp.app import RegressionRunRequest
+    from bochan.serving.webapp.schemas.regression import RegressionRunRequest
 
     target_setting: dict[str, object] = {
         "target": "target",

@@ -7,7 +7,8 @@ on:
     paths:
       - "src/bochan/tabular/data/conversion.py"
       - "src/bochan/serving/webapp/composition/support.py"
-      - "src/bochan/serving/webapp/composition/routes.py"
+      - "src/bochan/serving/webapp/routers/composition.py"
+      - "src/bochan/serving/webapp/schemas/composition.py"
       - "src/bochan/serving/webapp/workflows_tabular.py"
       - "src/bochan/serving/webapp/tabular_backend.py"
       - "src/bochan/serving/webapp/composition/visualization.py"
@@ -96,7 +97,8 @@ jobs:
           ruff check --ignore I001,SIM102,SIM105,SIM108,B010 \
             src/bochan/tabular/data/conversion.py \
             src/bochan/serving/webapp/composition/support.py \
-            src/bochan/serving/webapp/composition/routes.py \
+            src/bochan/serving/webapp/routers/composition.py \
+            src/bochan/serving/webapp/schemas/composition.py \
             src/bochan/serving/webapp/workflows_tabular.py \
             src/bochan/serving/webapp/tabular_backend.py \
             src/bochan/serving/webapp/composition/visualization.py \

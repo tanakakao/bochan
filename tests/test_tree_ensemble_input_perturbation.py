@@ -329,7 +329,7 @@ def test_web_random_forest_cvar_runs_with_input_perturbation() -> None:
     pytest.importorskip("fastapi")
     pytest.importorskip("sklearn")
 
-    from bochan.serving.webapp.app import RegressionRunRequest
+    from bochan.serving.webapp.schemas.regression import RegressionRunRequest
     from bochan.serving.webapp.workflows import run_regression_web_workflow
     from bochan.serving.workbench.datasets import DatasetStore, build_dataset_record
 

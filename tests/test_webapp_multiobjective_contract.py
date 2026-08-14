@@ -6,7 +6,8 @@ import pandas as pd
 import pytest
 import torch
 
-from bochan.serving.webapp.app import WEB_CAPABILITIES, RegressionRunRequest
+from bochan.serving.webapp.routers.capabilities import WEB_CAPABILITIES
+from bochan.serving.webapp.schemas.regression import RegressionRunRequest
 from bochan.serving.webapp.target_roles import (
     apply_target_roles,
     build_target_constraint_config,

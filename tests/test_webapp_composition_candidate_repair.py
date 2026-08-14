@@ -11,6 +11,7 @@ import torch
 from bochan.serving.webapp.composition.support import (
     repair_composition_candidate_result,
 )
+from bochan.tabular.composition.constraints import CompositionElementConstraintProjector
 from bochan.tabular.config import TabularDataConfig
 
 
@@ -106,11 +107,49 @@ def test_fraction_candidate_repair_preserves_model_dimension() -> None:
     assert result.acq_value.shape == (2,)
 
 
-def test_web_composition_support_uses_canonical_transformer_state() -> None:
+def test_constraint_projector_exposes_native_row_values() -> None:
+    projector = CompositionElementConstraintProjector(
+        composition_sites={
+            "composition": {
+                "elements": ("Fe", "Co"),
+                "total": 1.0,
+                "input_kind": "formula",
+            }
+        },
+        composition_element_constraints=(),
+        composition_transformers={
+            "composition": SimpleNamespace(prefix="formula")
+        },
+        max_supports=16,
+    )
+    restored = pd.DataFrame(
+        {
+            "formula__fraction__Fe": [0.4],
+            "formula__fraction__Co": [0.6],
+        }
+    )
+
+    raw, totals = projector.row_native_values(restored, 0)
+
+    assert raw == {
+        ("composition", "Fe"): 0.4,
+        ("composition", "Co"): 0.6,
+    }
+    assert totals == {"composition": 1.0}
+
+
+def test_web_composition_support_uses_canonical_component_state() -> None:
     root = Path(__file__).resolve().parents[1]
     path = root / "src/bochan/serving/webapp/composition/support.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    forbidden = {"_require_fitted", "composition_transformers_"}
+    forbidden = {
+        "_make_element_constraint_projector",
+        "_require_fitted",
+        "_row_native_values",
+        "composition_element_constraints",
+        "composition_sites",
+        "composition_transformers_",
+    }
     used = {
         node.attr
         for node in ast.walk(tree)
@@ -118,6 +157,6 @@ def test_web_composition_support_uses_canonical_transformer_state() -> None:
     }
 
     assert not used, (
-        "Web composition support reaches stale transformer state: "
+        "Web composition support reaches stale or private composition state: "
         f"{sorted(used)!r}."
     )

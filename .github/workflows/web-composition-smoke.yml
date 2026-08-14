@@ -12,7 +12,6 @@ on:
       - "src/bochan/serving/webapp/tabular_backend.py"
       - "src/bochan/serving/webapp/composition_visualization.py"
       - "src/bochan/serving/webapp/composition_visualization_dispatch.py"
-      - "src/bochan/serving/webapp/composition_visualization_compat.py"
       - "src/bochan/serving/webapp/composition_multielement_ternary.py"
       - "src/bochan/serving/webapp/composition_feature_importance.py"
       - "src/bochan/serving/webapp/composition_feature_importance_views.py"
@@ -103,7 +102,6 @@ jobs:
             src/bochan/serving/webapp/tabular_backend.py \
             src/bochan/serving/webapp/composition_visualization.py \
             src/bochan/serving/webapp/composition_visualization_dispatch.py \
-            src/bochan/serving/webapp/composition_visualization_compat.py \
             src/bochan/serving/webapp/composition_multielement_ternary.py \
             src/bochan/serving/webapp/composition_feature_importance.py \
             src/bochan/serving/webapp/composition_feature_importance_views.py \

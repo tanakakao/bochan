@@ -12,14 +12,12 @@ technical-debt boundaries.
 
 from __future__ import annotations
 
-from .composition_multielement_ternary import install_composition_multielement_ternary
 from .hybrid_bo_routing import install_web_hybrid_objective_bo_routing
 
 
 def install_web_runtime_adapters() -> None:
-    """Install the remaining Web runtime adapters in their required order."""
+    """Install the remaining Web runtime adapters."""
 
-    install_composition_multielement_ternary()
     install_web_hybrid_objective_bo_routing()
 
 

@@ -3,6 +3,7 @@
 `BayesianOptimizer` が返した候補条件について、単に「獲得関数値が高い」と説明するだけでなく、次の視点から構造化して説明できます。
 
 - モデルが直接示している根拠
+- 候補ごとの総合的な意思決定向け説明
 - 物理的な解釈
 - 化学的な解釈
 - 製造現場での実行性、制御性、品質、安全、スケールアップ
@@ -114,6 +115,7 @@ print(explanation.warnings)
 for item in explanation.candidate_explanations:
     print(item.candidate_index)
     print(item.headline)
+    print(item.overall_interpretation)
     print(item.model_evidence)
     print(item.physical_interpretation)
     print(item.chemical_interpretation)
@@ -405,6 +407,9 @@ response = {
             "candidate_index": 0,
             "representative_role": "highest_acquisition",
             "headline": "高性能が期待される活用候補",
+            "overall_interpretation": (
+                "モデル上の有望性と実工程上の成立性を合わせて評価する候補である。"
+            ),
             "model_evidence": [
                 "予測導電率が代表候補中で最も高い。",
             ],
@@ -468,6 +473,7 @@ CandidateExplanation
 │   ├── candidate_index
 │   ├── representative_role
 │   ├── headline
+│   ├── overall_interpretation
 │   ├── model_evidence
 │   ├── physical_interpretation
 │   ├── chemical_interpretation
@@ -482,7 +488,108 @@ CandidateExplanation
 
 ---
 
-## 13. 注意事項
+## 13. 候補群・候補ごとの総合説明
+
+`BayesianOptimizer.explain_candidates()` は、物理・化学・製造・開発の各視点に加えて、候補群全体の `summary` と、各代表候補の `overall_interpretation` を返します。
+
+```python
+result = bo.candidate(
+    acq_config=acq_config,
+    opt_config=opt_config,
+    return_result=True,
+)
+
+explanation = bo.explain_candidates(
+    result,
+    max_representatives=5,
+    prompt="量産性、設備ばらつき、反応機構を重視して説明する。",
+)
+```
+
+### 候補群全体の総合説明
+
+```python
+print(explanation.summary)
+```
+
+`summary` は、提案された候補群全体について、技術的な狙い、探索と活用の構成、実務上の価値、主要なリスクをまとめます。
+
+### 候補ごとの総合説明
+
+```python
+for item in explanation.candidate_explanations:
+    print(item.headline)
+    print(item.overall_interpretation)
+```
+
+`overall_interpretation` は、次の情報を統合した意思決定向けの説明です。
+
+- モデル予測と不確かさ
+- 物理的な解釈
+- 化学的な解釈
+- 製造性、制御性、スケールアップ
+- 開発上の学習価値
+- リスクとトレードオフ
+- 次に行うべき実験・測定
+
+各視点は個別フィールドとしても保持されます。
+
+```python
+item.model_evidence
+item.physical_interpretation
+item.chemical_interpretation
+item.manufacturing_interpretation
+item.development_interpretation
+item.risks_and_tradeoffs
+item.recommended_checks
+item.confidence
+```
+
+総合説明で概要を把握し、必要に応じて各視点へ掘り下げる使い方を想定しています。
+
+### JSON保存
+
+```python
+payload = explanation.to_dict()
+```
+
+各候補の辞書には `overall_interpretation` が含まれます。
+
+### 総合説明を含むオフライン応答例
+
+```python
+explanation = bo.explain_candidates(
+    result,
+    explanation_response={
+        "summary": "候補群全体では性能向上と工程成立性を同時に確認する。",
+        "candidate_explanations": [
+            {
+                "candidate_index": 0,
+                "headline": "性能有望だが工程確認が必要な候補",
+                "overall_interpretation": (
+                    "モデル上は有望で物理化学的にも妥当な可能性がある一方、"
+                    "量産時の制御余裕を確認してから採用判断すべき候補である。"
+                ),
+                "model_evidence": ["予測値が高い。"],
+                "physical_interpretation": ["構造変化が寄与する可能性がある。"],
+                "chemical_interpretation": ["反応進行度が変化する可能性がある。"],
+                "manufacturing_interpretation": ["設備ばらつきの確認が必要である。"],
+                "development_interpretation": ["仮説識別価値が高い。"],
+                "risks_and_tradeoffs": ["制御幅が狭い可能性がある。"],
+                "recommended_checks": ["条件を振った再現実験を行う。"],
+                "confidence": "medium",
+            }
+        ],
+        "warnings": [],
+    },
+)
+```
+
+旧形式の応答に `overall_interpretation` がない場合は空文字として扱うため、後方互換性があります。
+
+---
+
+## 14. 注意事項
 
 この説明は実験結果の代わりではありません。
 
@@ -493,6 +600,7 @@ CandidateExplanation
 - 安全、法規、設備保護に関わる判断をLLMへ委ねないでください。
 - 目的変数、単位、カテゴリの意味、設備制約を `LLMContextConfig` に明示してください。
 - 因果関係を確認するには、追加実験、分析、再現試験が必要です。
+- 総合説明は候補を自動承認するものではありません。設備能力、安全性、法規、原料互換性、測定系、量産再現性は専門家が最終確認してください。
 
 推奨する運用は次です。
 
@@ -500,6 +608,7 @@ CandidateExplanation
 BayesianOptimizerの候補
   -> モデル根拠を確認
   -> LLMの物理・化学・製造・開発仮説を確認
+  -> overall_interpretationで候補ごとの総合判断材料を確認
   -> warningsとassumptionsを確認
   -> 専門家が実施可否を判断
   -> 必要な分析・再現試験を付けて実験

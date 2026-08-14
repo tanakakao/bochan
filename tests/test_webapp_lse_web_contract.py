@@ -5,11 +5,11 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from bochan.serving.webapp.level_set_settings import (
+from bochan.serving.webapp.settings.level_set import (
     configure_level_set_acqf_kwargs,
     level_set_output_weights,
 )
-from bochan.serving.webapp.search_settings import build_target_constraint_config
+from bochan.serving.webapp.settings.search import build_target_constraint_config
 
 
 def _meta(target: str, value: float) -> dict[str, object]:

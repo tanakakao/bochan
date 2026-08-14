@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from .target_roles import level_set_thresholds
+from ..target_roles import level_set_thresholds
 
 _WEB_LEVEL_SET_PARAMETER_KEY = "web_level_set_parameter"
 

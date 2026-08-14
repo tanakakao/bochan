@@ -24,14 +24,14 @@ from .composition.support import (
     prepare_composition_encoded_features,
     repair_composition_candidate_result,
 )
-from .level_set_settings import configure_level_set_acqf_kwargs
+from .settings.level_set import configure_level_set_acqf_kwargs
 from .logging import current_request_id, get_logger, log_event
-from .risk_settings import (
+from .settings.risk import (
     apply_web_risk_to_objective_config,
     normalize_web_prediction_rows,
     resolve_web_risk_settings,
 )
-from .search_settings import (
+from .settings.search import (
     botorch_linear_constraints,
     build_target_constraint_config,
     feature_constraint_results,
@@ -57,7 +57,7 @@ from .target_roles import (
     select_optimized_values,
     target_directions,
 )
-from .target_settings import (
+from .settings.targets import (
     _build_outcome_constraint_config,
     _clean_rows,
     _encode_targets,

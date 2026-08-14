@@ -232,8 +232,8 @@ def _risk_request(*, input_perturbation: bool) -> SimpleNamespace:
 
 
 def test_web_tabpfn_uses_bounded_ga_budgets() -> None:
-    from bochan.serving.webapp.risk_settings import web_risk_run
-    from bochan.serving.webapp.search_settings import resolve_search_method
+    from bochan.serving.webapp.settings.risk import web_risk_run
+    from bochan.serving.webapp.settings.search import resolve_search_method
 
     with web_risk_run(_risk_request(input_perturbation=False)):
         _, ordinary, _ = resolve_search_method("ga", multi_objective=False)

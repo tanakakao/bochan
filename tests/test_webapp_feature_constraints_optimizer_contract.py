@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import torch
 
 from bochan.acquisition.feasible import constraint_value_from_class_probs
-from bochan.serving.webapp.search_settings import (
+from bochan.serving.webapp.settings.search import (
     botorch_linear_constraints,
     build_target_constraint_config,
     feature_constraint_results,

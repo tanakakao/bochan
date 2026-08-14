@@ -288,7 +288,7 @@ def build_target_constraint_config(
     """Build feasibility rules independently from optimization direction."""
 
     if all(bool(setting.get("legacy")) for setting in target_settings):
-        from .target_settings import _build_outcome_constraint_config
+        from .settings.targets import _build_outcome_constraint_config
 
         return _build_outcome_constraint_config(
             request,

@@ -50,7 +50,7 @@ def _classification_request(*, model_type: str, acquisition: str):
 
 
 def test_tabpfn_classification_bald_is_rejected_before_model_construction() -> None:
-    from bochan.serving.webapp.target_settings import _resolve_target_settings
+    from bochan.serving.webapp.settings.targets import _resolve_target_settings
 
     request = _classification_request(model_type="tabpfn", acquisition="BALD")
 
@@ -63,7 +63,7 @@ def test_tabpfn_classification_bald_is_rejected_before_model_construction() -> N
 
 
 def test_other_external_classifiers_keep_bald_compatibility() -> None:
-    from bochan.serving.webapp.target_settings import _resolve_target_settings
+    from bochan.serving.webapp.settings.targets import _resolve_target_settings
 
     request = _classification_request(model_type="random_forest", acquisition="BALD")
     settings, _ = _resolve_target_settings(

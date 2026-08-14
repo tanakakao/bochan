@@ -18,7 +18,7 @@ from bochan.serving.webapp.target_roles import (
     output_spec_kwargs,
     select_optimized_values,
 )
-from bochan.serving.webapp.target_settings import (
+from bochan.serving.webapp.settings.targets import (
     _build_outcome_constraint_config,
     _encode_targets,
     _resolve_target_settings,

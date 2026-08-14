@@ -12,9 +12,9 @@ from .composition.feature_importance import attach_composition_feature_importanc
 from .composition.feature_importance_views import postprocess_composition_importance_views
 from .hybrid_bo_routing import prepare_hybrid_objective_bo_request
 from .logging import current_request_id, get_logger, log_event
-from .model_reuse import model_reuse_run, prepare_model_reuse_request
 from .non_gaussian_validation import validate_non_gaussian_target_frame
-from .reuse_dataset import store_for_model_reuse
+from .services.model_reuse import model_reuse_run, prepare_model_reuse_request
+from .services.reuse_dataset import store_for_model_reuse
 from .settings.risk import attach_web_risk_metadata, web_risk_run
 from .target_missing_policy import model_variant, target_missing_run
 from .visualization_sessions import (

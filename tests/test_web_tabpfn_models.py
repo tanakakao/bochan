@@ -193,7 +193,7 @@ def test_web_capabilities_and_registry_expose_supported_tabpfn_tasks() -> None:
 
 
 def test_web_tabpfn_runtime_defaults_are_small_and_explicit_kwargs_win() -> None:
-    from bochan.serving.webapp.model_runtime import apply_web_model_runtime_defaults
+    from bochan.serving.webapp.services.model_runtime import apply_web_model_runtime_defaults
 
     defaults = apply_web_model_runtime_defaults({}, model_type="tabpfn", fit_maxiter=128)
     explicit = apply_web_model_runtime_defaults(
@@ -245,7 +245,7 @@ def test_web_tabpfn_uses_bounded_ga_budgets() -> None:
 
 
 def test_web_tabpfn_q3_ga_uses_joint_execution_copy() -> None:
-    from bochan.serving.webapp.candidate_runtime import (
+    from bochan.serving.webapp.services.candidate_runtime import (
         apply_web_candidate_runtime_defaults,
         uses_batched_external_joint_batch,
     )

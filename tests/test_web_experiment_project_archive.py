@@ -9,7 +9,7 @@ from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
 
-import bochan.serving.webapp.project_archive as project_archive_module
+import bochan.serving.webapp.services.project_archive as project_archive_module
 from bochan.serving.webapp.app import create_app
 
 
@@ -368,7 +368,7 @@ def test_model_import_rejects_invalid_project_zip() -> None:
 
 
 def test_latest_stale_result_model_is_associated_with_its_training_snapshot() -> None:
-    from bochan.serving.webapp.project_archive import (
+    from bochan.serving.webapp.services.project_archive import (
         ExperimentProjectExportRequest,
         _model_export_candidates,
     )

@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 import torch
 
-from bochan.serving.webapp.model_reuse import (
+from bochan.serving.webapp.services.model_reuse import (
     model_reuse_run,
     model_reuse_signature,
     prepare_model_reuse_request,

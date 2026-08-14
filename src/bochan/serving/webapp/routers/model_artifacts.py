@@ -11,14 +11,14 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from bochan.serving.fastapi.converters import to_serializable
 from bochan.serving.workbench.datasets import build_dataset_record, dataframe_preview
 
-from ..experiment_history import ExperimentCycleRequest, ExperimentHistoryStore
-from ..model_artifacts import (
+from ..services.experiment_history import ExperimentCycleRequest, ExperimentHistoryStore
+from ..services.model_artifacts import (
     deserialize_web_model_artifact,
     restore_web_model_artifact,
     serialize_web_model_artifact,
 )
-from ..model_reuse import model_reuse_signature, register_model_signature
-from ..project_archive import (
+from ..services.model_reuse import model_reuse_signature, register_model_signature
+from ..services.project_archive import (
     PROJECT_ARCHIVE_VERSION,
     ExperimentProjectExportRequest,
     is_experiment_project_archive,

@@ -12,7 +12,7 @@ pytest.importorskip("fastapi")
 
 
 def test_web_ngboost_runtime_defaults_follow_fit_maxiter() -> None:
-    from bochan.serving.webapp.model_runtime import apply_web_model_runtime_defaults
+    from bochan.serving.webapp.services.model_runtime import apply_web_model_runtime_defaults
 
     resolved = apply_web_model_runtime_defaults(
         {},
@@ -28,7 +28,7 @@ def test_web_ngboost_runtime_defaults_follow_fit_maxiter() -> None:
 
 
 def test_web_ngboost_runtime_defaults_preserve_explicit_parameters() -> None:
-    from bochan.serving.webapp.model_runtime import apply_web_model_runtime_defaults
+    from bochan.serving.webapp.services.model_runtime import apply_web_model_runtime_defaults
 
     resolved = apply_web_model_runtime_defaults(
         {
@@ -256,7 +256,7 @@ def test_web_tree_ga_q_batch_uses_joint_execution_copy(
     model_type: str,
     q: int,
 ) -> None:
-    from bochan.serving.webapp.candidate_runtime import (
+    from bochan.serving.webapp.services.candidate_runtime import (
         apply_web_candidate_runtime_defaults,
         uses_tree_ensemble_joint_batch,
     )
@@ -278,7 +278,7 @@ def test_web_tree_ga_q_batch_uses_joint_execution_copy(
 def test_web_ngboost_pso_sa_q_batch_use_joint_execution(
     optimizer_name: str,
 ) -> None:
-    from bochan.serving.webapp.candidate_runtime import (
+    from bochan.serving.webapp.services.candidate_runtime import (
         apply_web_candidate_runtime_defaults,
         uses_ngboost_joint_batch,
     )
@@ -296,7 +296,7 @@ def test_web_ngboost_pso_sa_q_batch_use_joint_execution(
 
 
 def test_web_tree_joint_execution_is_narrowly_scoped() -> None:
-    from bochan.serving.webapp.candidate_runtime import (
+    from bochan.serving.webapp.services.candidate_runtime import (
         apply_web_candidate_runtime_defaults,
     )
 

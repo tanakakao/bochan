@@ -5,7 +5,7 @@ import os
 import pytest
 
 import bochan.tabpfn_assets as tabpfn_assets
-from bochan.serving.webapp import model_runtime
+from bochan.serving.webapp.services import model_runtime
 
 
 def _patch_asset_names(monkeypatch) -> None:

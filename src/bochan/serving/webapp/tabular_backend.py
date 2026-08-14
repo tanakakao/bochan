@@ -134,7 +134,7 @@ def fit_tabular_optimizer(
     """Fit or reuse the public pandas-friendly optimizer for the Web workflow."""
 
     from .logging import current_request_id
-    from .model_reuse import (
+    from .services.model_reuse import (
         current_model_reuse_state,
         register_fitted_model,
         reuse_fitted_tabular_optimizer,

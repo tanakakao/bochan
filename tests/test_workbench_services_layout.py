@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import importlib
+import ast
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -82,15 +82,22 @@ def test_workbench_dataset_loader_rejects_non_web_sources() -> None:
         datasets.load_dataframe_from_payload(source_type="sqlite")  # type: ignore[arg-type]
 
 
-def test_webapp_import_uses_workbench_dataset_services() -> None:
-    pytest.importorskip("fastapi")
+def test_webapp_source_imports_workbench_dataset_services() -> None:
+    app_path = Path(__file__).parents[1] / "src" / "bochan" / "serving" / "webapp" / "app.py"
+    tree = ast.parse(app_path.read_text(encoding="utf-8"))
+    imported_names = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module == "bochan.serving.workbench.datasets"
+        for alias in node.names
+    }
 
-    app_module = importlib.import_module("bochan.serving.webapp.app")
-
-    assert app_module.DatasetStore is datasets.DatasetStore
-    assert app_module.build_dataset_record is datasets.build_dataset_record
-    assert app_module.dataframe_preview is datasets.dataframe_preview
-    assert app_module.load_dataframe_from_payload is datasets.load_dataframe_from_payload
+    assert {
+        "DatasetStore",
+        "build_dataset_record",
+        "dataframe_preview",
+        "load_dataframe_from_payload",
+    } <= imported_names
 
 
 def _desktop_import_offenders(root: Path) -> list[str]:

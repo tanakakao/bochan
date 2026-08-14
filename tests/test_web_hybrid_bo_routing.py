@@ -58,6 +58,7 @@ def test_hybrid_bo_routing_is_native_workflow_not_runtime_patch() -> None:
     assert (workflows_root / "tabular.py").is_file()
     assert not (root / "workflows.py").exists()
     assert not (root / "workflows_tabular.py").exists()
+    assert not (root / "workflows_extended.py").exists()
     assert "def install_web_hybrid_objective_bo_routing" not in routing_source
     assert "workflows_tabular.run_regression_web_workflow =" not in routing_source
     assert not (root / "runtime_adapters.py").exists()

@@ -53,9 +53,9 @@ class _MixedFakeTabPFNRegressor:
 
 
 def test_web_mixed_tabpfn_preserves_categories_through_perturbed_search() -> None:
-    from bochan.desktop.services import DatasetStore, build_dataset_record
     from bochan.serving.webapp.app import RegressionRunRequest
     from bochan.serving.webapp.workflows import run_regression_web_workflow
+    from bochan.serving.workbench.datasets import DatasetStore, build_dataset_record
 
     x = np.linspace(0.0, 1.0, 16)
     material = np.asarray(["A", "B"] * 8)

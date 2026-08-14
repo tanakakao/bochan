@@ -13,12 +13,14 @@ from .conversion import (
     tensor_to_dataframe,
 )
 from .dataset import TabularDataset
+from .preparation import prepare_dataframe_missing_values
 
 __all__ = [
     "TabularDataset",
     "bounds_to_tensor",
     "dataframe_to_tensors",
     "numpy_to_tensors",
+    "prepare_dataframe_missing_values",
     "resolve_column_indices",
     "resolve_dtype",
     "resolve_optimize_config_columns",

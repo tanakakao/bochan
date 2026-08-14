@@ -29,11 +29,14 @@ class _CompositionContext:
 
 def _composition_context(session: Any) -> _CompositionContext | None:
     optimizer = session.tabular_optimizer
-    sites = dict(optimizer.composition.sites)
+    composition = getattr(optimizer, "composition", None)
+    if composition is None:
+        return None
+    sites = dict(composition.sites)
     if len(sites) != 1:
         return None
     site_name, raw_config = next(iter(sites.items()))
-    transformer = optimizer.composition.transformers.get(site_name)
+    transformer = composition.transformers.get(site_name)
     if transformer is None:
         return None
     elements = tuple(str(value) for value in transformer.fitted_elements)

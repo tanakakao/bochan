@@ -24,8 +24,8 @@ from .composition.support import (
     prepare_composition_encoded_features,
     repair_composition_candidate_result,
 )
-from .settings.level_set import configure_level_set_acqf_kwargs
 from .logging import current_request_id, get_logger, log_event
+from .settings.level_set import configure_level_set_acqf_kwargs
 from .settings.risk import (
     apply_web_risk_to_objective_config,
     normalize_web_prediction_rows,
@@ -37,6 +37,16 @@ from .settings.search import (
     feature_constraint_results,
     normalize_feature_constraints,
     resolve_search_method,
+)
+from .settings.targets import (
+    _build_outcome_constraint_config,
+    _clean_rows,
+    _encode_targets,
+    _model_kwargs,
+    _reference_point,
+    _resolve_target_settings,
+    _resolve_targets,
+    _validate_columns,
 )
 from .tabular_backend import encoded_features_from_tabular, fit_tabular_optimizer
 from .target_results import (
@@ -56,16 +66,6 @@ from .target_roles import (
     output_spec_kwargs,
     select_optimized_values,
     target_directions,
-)
-from .settings.targets import (
-    _build_outcome_constraint_config,
-    _clean_rows,
-    _encode_targets,
-    _model_kwargs,
-    _reference_point,
-    _resolve_target_settings,
-    _resolve_targets,
-    _validate_columns,
 )
 
 LOGGER = get_logger("workflow")

@@ -168,9 +168,9 @@ class _CompositionFractionPredictor:
         optimizer = self.session.tabular_optimizer
         repaired = np.asarray(fractions, dtype=float).copy()
         if not joint:
-            search_space = dict(
-                getattr(optimizer, "composition_search_spaces_", None) or {}
-            ).get(self.context.site_name)
+            search_space = optimizer.composition.search_spaces.get(
+                self.context.site_name
+            )
             if search_space is not None:
                 total = float(self.context.config.get("total", 1.0))
                 for row_index, row in enumerate(repaired):
@@ -432,14 +432,9 @@ def attach_composition_feature_importance(
                 "最終モデルの学習データ上で評価しています。"
                 "通常PIはcross-validation集約です。"
             )
-        transformer = dict(
-            getattr(
-                session.tabular_optimizer,
-                "composition_transformers_",
-                None,
-            )
-            or {}
-        )[context.site_name]
+        transformer = session.tabular_optimizer.composition.transformers[
+            context.site_name
+        ]
         coordinate_features = list(transformer.feature_names_ or ())
         payload = {
             "column": context.column,

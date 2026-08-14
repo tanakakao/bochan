@@ -7,7 +7,6 @@ normal inheritance rather than import-time class or module mutation.
 
 from __future__ import annotations
 
-import torch
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 
@@ -215,53 +214,53 @@ class _DirectMultiOutputMulticlassAcqBase(
     _NativeMulticlassAlignmentMixin,
     _core._DirectMultiOutputMulticlassAcqBase,
 ):
-    """Direct multiclass base with native shape alignment."""
+    """Direct multiclass base for BO / level-set subclasses needing alignment."""
 
 
 class qMultiOutputMulticlassPredictiveEntropy(
-    _DirectMultiOutputMulticlassAcqBase,
+    _NativeMulticlassAlignmentMixin,
     _core.qMultiOutputMulticlassPredictiveEntropy,
 ):
     pass
 
 
 class qMultiOutputMulticlassProbabilityVariance(
-    _DirectMultiOutputMulticlassAcqBase,
+    _NativeMulticlassAlignmentMixin,
     _core.qMultiOutputMulticlassProbabilityVariance,
 ):
     pass
 
 
 class qMultiOutputMulticlassMarginUncertainty(
-    _DirectMultiOutputMulticlassAcqBase,
+    _NativeMulticlassAlignmentMixin,
     _core.qMultiOutputMulticlassMarginUncertainty,
 ):
     pass
 
 
 class qMultiOutputMulticlassBALD(
-    _DirectMultiOutputMulticlassAcqBase,
+    _NativeMulticlassAlignmentMixin,
     _core.qMultiOutputMulticlassBALD,
 ):
     pass
 
 
 class qMultiOutputMulticlassJointBALD(
-    qMultiOutputMulticlassBALD,
+    _NativeMulticlassAlignmentMixin,
     _core.qMultiOutputMulticlassJointBALD,
 ):
     pass
 
 
 class qMultiOutputMulticlassGreedyJointBALD(
-    qMultiOutputMulticlassJointBALD,
+    _NativeMulticlassAlignmentMixin,
     _core.qMultiOutputMulticlassGreedyJointBALD,
 ):
     pass
 
 
 class qMultiOutputMulticlassIntegratedPosteriorVarianceProxy(
-    _DirectMultiOutputMulticlassAcqBase,
+    _NativeMulticlassAlignmentMixin,
     _core.qMultiOutputMulticlassIntegratedPosteriorVarianceProxy,
 ):
     @t_batch_mode_transform()

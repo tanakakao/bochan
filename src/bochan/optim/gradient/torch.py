@@ -849,7 +849,7 @@ def optimize_acqf_torch_mixed_k_sparse(
     else:
         batch_initial_conditions = post(batch_initial_conditions.to(device=bounds.device, dtype=bounds.dtype))
 
-    return optimize_acqf_mixed_torch(
+    return optimize_acqf_torch_mixed(
         acq_function=acq_function,
         bounds=bounds,
         q=q,

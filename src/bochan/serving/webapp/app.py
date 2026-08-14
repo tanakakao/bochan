@@ -5,20 +5,15 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from time import perf_counter
-from typing import Any, Literal
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, Field
 
 from bochan.api.registry.capabilities import BETA_MODEL_TYPES
 from bochan.serving.fastapi import create_api_router
 from bochan.serving.fastapi.converters import to_serializable
-from bochan.serving.fastapi.schemas.tabular import (
-    FeatureImportanceConfigRequest,
-    FeatureImportanceVisualizationRequest,
-)
 from bochan.serving.workbench.datasets import (
     DatasetStore,
     build_dataset_record,
@@ -37,130 +32,9 @@ from .logging import (
     set_request_id,
 )
 from .model_artifact_routes import create_model_artifact_router
+from .schemas import DatasetLoadRequest, RegressionRunRequest, VisualizationRequestSchema
 from .visualization_sessions import build_visualization, get_visualization_session
 from .workflows import run_regression_web_workflow
-
-
-class _Schema(BaseModel):
-    """Base request schema used by the web application API."""
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class DatasetLoadRequest(_Schema):
-    """Browser-uploaded tabular dataset encoded as base64."""
-
-    source_type: Literal["csv", "excel"] = "csv"
-    name: str | None = None
-    content_base64: str
-    encoding: str = "utf-8-sig"
-    sep: str | None = None
-    sheet_name: str | int | None = 0
-
-
-class SearchVariableSchema(_Schema):
-    """Search-space settings for one feature column."""
-
-    name: str
-    type: Literal["auto", "numeric", "categorical"] = "auto"
-    lower: float | None = None
-    upper: float | None = None
-    step: float | None = None
-    fixed: bool = False
-    fixed_value: Any | None = None
-    categories: list[Any] | None = None
-
-
-class OutcomeConstraintSchema(_Schema):
-    """Threshold constraint on one selected target in the original value scale."""
-
-    id: str | None = None
-    target: str
-    operator: Literal["<=", ">="]
-    value: float
-
-
-class WebFeatureImportanceSettingsSchema(_Schema):
-    """Optional feature-importance execution and presentation settings."""
-
-    enabled: bool = False
-    source: Literal["auto", "training", "cross_validation"] = "auto"
-    config: FeatureImportanceConfigRequest = Field(default_factory=FeatureImportanceConfigRequest)
-    visualization: FeatureImportanceVisualizationRequest = Field(default_factory=FeatureImportanceVisualizationRequest)
-
-
-class AcquisitionSettingsSchema(_Schema):
-    """Acquisition-function settings exposed by the web workbench."""
-
-    name: str = "EI"
-    beta: float = 2.0
-    acqf_kwargs: dict[str, Any] = Field(default_factory=dict)
-
-
-class OptimizerSettingsSchema(_Schema):
-    """Candidate optimizer settings."""
-
-    name: str = "optimize_acqf"
-    q: int = Field(default=1, ge=1)
-    num_restarts: int = Field(default=10, ge=1)
-    raw_samples: int = Field(default=256, ge=1)
-    sequential: bool = True
-    minimum_candidate_distance_ratio: float = Field(default=1e-3, ge=0.0, le=1.0)
-
-
-class KSparseSettingsSchema(_Schema):
-    """Limit the number of non-zero variables selected from a feature subset."""
-
-    enabled: bool = False
-    columns: list[str] = Field(default_factory=list)
-    k: int = Field(default=1, ge=1)
-    score: Literal["abs", "value"] = "abs"
-    support_selection: str = "topk"
-    final_priority: str = "grid"
-
-
-class VisualizationRequestSchema(_Schema):
-    """Select one existing Plotly visualization for a fitted Web run."""
-
-    kind: Literal["yyplot", "target_relation", "pareto", "1d", "2d", "ternary"]
-    target: str | None = None
-    target_x: str | None = None
-    target_y: str | None = None
-    show_pareto_front: bool = False
-    features: list[str] = Field(default_factory=list)
-    fixed_values: dict[str, Any] = Field(default_factory=dict)
-    show_type: Literal["pred", "acqf"] = "pred"
-    n: int = Field(default=50, ge=10, le=150)
-    sum_value: float | None = None
-
-
-class RegressionRunRequest(_Schema):
-    """Run single- or multi-objective regression optimization."""
-
-    dataset_id: str
-    feature_columns: list[str]
-    target_column: str | None = None
-    target_columns: list[str] = Field(default_factory=list)
-    direction: Literal["maximize", "minimize"] = "maximize"
-    directions: dict[str, Literal["maximize", "minimize"]] = Field(default_factory=dict)
-    model_type: str = "base"
-    model_kwargs: dict[str, Any] = Field(default_factory=dict)
-    fit_maxiter: int = Field(default=128, ge=1)
-    normalize: bool = True
-    outcome_transform: bool = True
-    input_perturbation: bool = False
-    n_w: int = Field(default=16, ge=1)
-    perturbation_std: float = Field(default=0.1, gt=0.0)
-    search_space: list[SearchVariableSchema] = Field(default_factory=list)
-    constraints: list[Any] = Field(default_factory=list)
-    outcome_constraints: list[OutcomeConstraintSchema] = Field(default_factory=list)
-    k_sparse: KSparseSettingsSchema | None = None
-    acquisition: AcquisitionSettingsSchema = Field(default_factory=AcquisitionSettingsSchema)
-    optimizer: OptimizerSettingsSchema = Field(default_factory=OptimizerSettingsSchema)
-    drop_missing: bool = True
-    cross_validation: bool = False
-    cv_config: dict[str, Any] | None = None
-    feature_importance: WebFeatureImportanceSettingsSchema | None = None
 
 
 WEB_CAPABILITIES: dict[str, Any] = {
@@ -556,13 +430,4 @@ def create_app(
 app = create_app()
 
 
-__all__ = [
-    "DatasetLoadRequest",
-    "KSparseSettingsSchema",
-    "OutcomeConstraintSchema",
-    "RegressionRunRequest",
-    "VisualizationRequestSchema",
-    "WEB_CAPABILITIES",
-    "app",
-    "create_app",
-]
+__all__ = ["WEB_CAPABILITIES", "app", "create_app"]

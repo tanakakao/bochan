@@ -106,21 +106,17 @@ def test_public_ternary_plot_rejects_value_coordinate_length_mismatch() -> None:
         )
 
 
-def test_web_runtime_no_longer_owns_ternary_plot_patch() -> None:
+def test_web_runtime_adapter_module_is_removed() -> None:
     compat_path = Path("src/bochan/serving/webapp/ternary_plot_grid_compat.py")
     runtime_path = Path("src/bochan/serving/webapp/runtime_adapters.py")
 
     assert not compat_path.exists()
-    runtime_source = runtime_path.read_text(encoding="utf-8")
-    assert "ternary_plot_grid_compat" not in runtime_source
-    assert "install_ternary_plot_grid_compat" not in runtime_source
+    assert not runtime_path.exists()
 
 
-def test_web_runtime_install_does_not_replace_plotly_ternary_factory() -> None:
+def test_web_package_import_does_not_replace_plotly_ternary_factory() -> None:
     original = ff.create_ternary_contour
 
-    from bochan.serving.webapp.runtime_adapters import install_web_runtime_adapters
-
-    install_web_runtime_adapters()
+    import bochan.serving.webapp  # noqa: F401
 
     assert ff.create_ternary_contour is original

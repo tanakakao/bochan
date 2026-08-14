@@ -1,15 +1,16 @@
 """Compatibility layer for the legacy desktop shell.
 
 Shared dataset and candidate-workflow helpers now live under
-:mod:`bochan.serving.webapp`.  This module re-exports them so the legacy desktop
-entry point and older imports keep working until the desktop package is removed.
+:mod:`bochan.serving.workbench`. This module re-exports them so the legacy
+desktop entry point and older imports keep working until the desktop package is
+removed.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from bochan.serving.webapp.datasets import (
+from bochan.serving.workbench.datasets import (
     DatasetRecord,
     DatasetStore,
     build_dataset_record,
@@ -19,7 +20,7 @@ from bochan.serving.webapp.datasets import (
     load_dataframe_from_payload,
     profile_dataframe,
 )
-from bochan.serving.webapp.workflow_utils import (
+from bochan.serving.workbench.workflow_utils import (
     _build_repair_config,
     _encode_features,
     _linear_constraints,

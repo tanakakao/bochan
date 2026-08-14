@@ -14,20 +14,12 @@ from torch import Tensor
 from botorch.acquisition.acquisition import AcquisitionFunction
 from botorch.optim import optimize_acqf, optimize_acqf_mixed
 
-try:  # package import
-    from ...constraints.k_sparse import (
-        LinearConstraint,
-        expand_categorical_features,
-        generate_k_sparse_initial_conditions,
-        make_k_sparse_post_processing_func,
-    )
-except ImportError:  # flat-file fallback
-    from constraints.k_sparse import (  # type: ignore
-        LinearConstraint,
-        expand_categorical_features,
-        generate_k_sparse_initial_conditions,
-        make_k_sparse_post_processing_func,
-    )
+from ...constraints.k_sparse import (
+    LinearConstraint,
+    expand_categorical_features,
+    generate_k_sparse_initial_conditions,
+    make_k_sparse_post_processing_func,
+)
 
 
 def _compose_post_processing(

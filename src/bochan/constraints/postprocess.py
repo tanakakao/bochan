@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 from collections.abc import Callable, Sequence
 from typing import Literal
 
@@ -33,34 +32,6 @@ def compose_post_processing_funcs(*funcs: Callable[[Tensor], Tensor] | None) -> 
     return post_process
 
 
-def _infer_grid_base_from_repair_context(bounds: Tensor) -> Tensor:
-    """Infer grid base from the surrounding repair configuration when possible.
-
-    The high-level factory passes ``repair.bounds if repair.bounds is not None
-    else bounds`` into this function, so the raw ``bounds`` argument alone does
-    not tell us whether the user explicitly supplied ``CandidateRepairConfig``
-    bounds.  To preserve the public behavior without changing the factory API,
-    this helper inspects the immediate call context used by
-    ``_build_post_processing_func``.
-
-    Rules:
-        - ``CandidateRepairConfig.bounds is None`` -> zero-origin grid.
-        - ``CandidateRepairConfig.bounds is not None`` -> ``bounds[0]`` origin.
-        - Non-factory callers -> ``bounds[0]`` origin for backward support.
-    """
-    frame = inspect.currentframe()
-    try:
-        caller = frame.f_back if frame is not None else None
-        factory_frame = caller.f_back if caller is not None else None
-        repair = factory_frame.f_locals.get("repair") if factory_frame is not None else None
-        if repair is not None and getattr(repair, "bounds", None) is None:
-            return torch.zeros_like(bounds[0])
-    finally:
-        # Avoid keeping frame reference cycles alive.
-        del frame
-    return bounds[0]
-
-
 def make_grid_k_sparse_post_processing_func(
     *,
     bounds: Tensor,
@@ -68,6 +39,7 @@ def make_grid_k_sparse_post_processing_func(
     comp_idx: Sequence[int] | None = None,
     k: int = 0,
     numeric_indices: Sequence[int] | None = None,
+    grid_base: Tensor | None = None,
     equality_constraints: list[LinearConstraint] | None = None,
     inequality_constraints: list[LinearConstraint] | None = None,
     inequality_sense: Literal["le", "ge"] = "le",
@@ -91,14 +63,15 @@ def make_grid_k_sparse_post_processing_func(
         bounds: BoTorch-style bounds with shape ``(2, d)``.
         steps: Grid step sizes with shape ``(d,)`` or ``(len(numeric_indices),)``.
             If ``None``, grid rounding is disabled while k-sparse / linear
-            repairs remain active. When called through ``CandidateRepairConfig``,
-            grid rounding uses ``CandidateRepairConfig.bounds[0]`` as the origin
-            if repair bounds are explicitly supplied, and zero as the origin if
-            repair bounds are omitted.
+            repairs remain active.
         comp_idx: Dimensions subject to k-sparse support.
         k: Maximum number of active components inside ``comp_idx``.  The current
             k-sparse repair keeps exactly up to ``k`` selected support entries.
         numeric_indices: Dimensions to round.  ``None`` means all dimensions.
+        grid_base: Explicit grid origin. ``None`` uses ``bounds[0]``. The
+            high-level ``CandidateRepairConfig`` path passes a zero origin when
+            repair-specific bounds are omitted, preserving its established
+            absolute-grid behavior without inspecting caller frames.
         equality_constraints: Linear equality constraints.
         inequality_constraints: Linear inequality constraints.
         inequality_sense: Sense used by the k-sparse repair.  ``"le"`` means
@@ -134,11 +107,11 @@ def make_grid_k_sparse_post_processing_func(
         max_iters=max_iters,
     )
 
-    grid_base = _infer_grid_base_from_repair_context(bounds) if steps is not None else bounds[0]
+    resolved_grid_base = bounds[0] if grid_base is None else grid_base
     grid_post = make_grid_rounding_post_processing_func(
         steps=steps,
         bounds=bounds,
-        base=grid_base,
+        base=resolved_grid_base,
         numeric_indices=numeric_indices,
         sparse_indices=comp_idx,
         support_eps=support_eps,

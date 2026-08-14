@@ -22,24 +22,14 @@ import torch
 from botorch.acquisition.acquisition import AcquisitionFunction
 from torch import Tensor
 
-try:
-    from ...constraints.k_sparse import (
-        LinearConstraint,
-        ScoreMode,
-        SupportSelection,
-        expand_categorical_features,
-        generate_k_sparse_initial_conditions,
-        make_k_sparse_post_processing_func,
-    )
-except ImportError:
-    from constraints.k_sparse import (  # type: ignore
-        LinearConstraint,
-        ScoreMode,
-        SupportSelection,
-        expand_categorical_features,
-        generate_k_sparse_initial_conditions,
-        make_k_sparse_post_processing_func,
-    )
+from ...constraints.k_sparse import (
+    LinearConstraint,
+    ScoreMode,
+    SupportSelection,
+    expand_categorical_features,
+    generate_k_sparse_initial_conditions,
+    make_k_sparse_post_processing_func,
+)
 
 TorchOptimizerName = Literal["adam", "adamw", "sgd", "rmsprop", "lbfgs"]
 InequalitySense = Literal["ge", "le"]
@@ -859,7 +849,7 @@ def optimize_acqf_torch_mixed_k_sparse(
     else:
         batch_initial_conditions = post(batch_initial_conditions.to(device=bounds.device, dtype=bounds.dtype))
 
-    return optimize_acqf_mixed_torch(
+    return optimize_acqf_torch_mixed(
         acq_function=acq_function,
         bounds=bounds,
         q=q,

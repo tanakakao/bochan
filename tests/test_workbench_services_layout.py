@@ -101,8 +101,8 @@ def _desktop_import_offenders(root: Path) -> list[str]:
     ]
 
 
-def test_web_backend_has_no_desktop_imports() -> None:
-    source_root = Path(__file__).parents[1] / "src" / "bochan" / "serving" / "webapp"
+def test_bochan_package_has_no_desktop_imports() -> None:
+    source_root = Path(__file__).parents[1] / "src" / "bochan"
 
     assert _desktop_import_offenders(source_root) == []
 

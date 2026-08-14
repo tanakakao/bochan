@@ -11,6 +11,7 @@ on:
       - "src/bochan/models/**"
       - "src/bochan/serving/webapp/**"
       - "src/bochan/tabular/**"
+      - "src/bochan/visualization/ARCHITECTURE.md"
       - "src/bochan/visualization/__init__.py"
       - "src/bochan/visualization/data/**"
       - "src/bochan/visualization/input_perturbation.py"
@@ -36,6 +37,7 @@ on:
       - "tests/test_probability_1d_bounds.py"
       - "tests/test_probability_visualization_input_perturbation.py"
       - "tests/test_regression_active_learning_input_perturbation_duplicates.py"
+      - "tests/test_visualization_architecture.py"
       - "tests/test_visualization_data_architecture.py"
       - "tests/test_visualization_display_scale.py"
       - "tests/test_visualization_heteroscedastic_1d.py"
@@ -78,6 +80,7 @@ jobs:
             tests/test_probability_1d_bounds.py \
             tests/test_probability_visualization_input_perturbation.py \
             tests/test_regression_active_learning_input_perturbation_duplicates.py \
+            tests/test_visualization_architecture.py \
             tests/test_visualization_data_architecture.py \
             tests/test_visualization_display_scale.py \
             tests/test_visualization_heteroscedastic_1d.py \
@@ -128,6 +131,7 @@ jobs:
             tests/test_multiclass_yy_visualization.py \
             tests/test_probability_visualization_input_perturbation.py \
             tests/test_regression_active_learning_input_perturbation_duplicates.py \
+            tests/test_visualization_architecture.py \
             tests/test_visualization_data_architecture.py \
             tests/test_visualization_input_perturbation.py \
             tests/test_visualization_plot_dispatch_architecture.py \

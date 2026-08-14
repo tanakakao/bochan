@@ -10,9 +10,23 @@ from bochan.composition import (
     normalize_composition,
     parse_formula,
 )
+from bochan.serving.webapp import workflows
+from bochan.serving.webapp.composition import feature_importance as composition_importance
 from bochan.serving.webapp.composition.feature_importance import (
     attach_composition_feature_importance,
 )
+
+
+def test_composition_feature_importance_is_source_level_integrated() -> None:
+    assert not hasattr(
+        composition_importance,
+        "install_composition_feature_importance",
+    )
+    assert (
+        workflows.attach_composition_feature_importance
+        is composition_importance.attach_composition_feature_importance
+    )
+    assert not hasattr(workflows, "_composition_feature_importance_installed")
 
 
 def _fraction_frame(data: pd.DataFrame) -> pd.DataFrame:

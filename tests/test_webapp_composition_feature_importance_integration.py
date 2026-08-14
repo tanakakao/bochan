@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
@@ -27,6 +28,12 @@ def test_composition_feature_importance_is_source_level_integrated() -> None:
         is composition_importance.attach_composition_feature_importance
     )
     assert not hasattr(workflows, "_composition_feature_importance_installed")
+
+    source = Path(
+        "src/bochan/serving/webapp/composition/feature_importance.py"
+    ).read_text(encoding="utf-8")
+    assert "composition_search_spaces_" not in source
+    assert "composition_transformers_" not in source
 
 
 def _fraction_frame(data: pd.DataFrame) -> pd.DataFrame:
@@ -85,15 +92,17 @@ def test_attach_composition_feature_importance_runs_core_permutation() -> None:
     }
 
     class Optimizer:
-        composition_sites = {"composition": config}
-        composition_transformers_ = {"composition": transformer}
-        composition_search_spaces_ = {
-            "composition": CompositionSearchSpace(
-                components=["Fe", "Co", "Ni"],
-                total=1.0,
-            )
-        }
-        composition_element_constraints: list[dict[str, object]] = []
+        composition = SimpleNamespace(
+            sites={"composition": config},
+            transformers={"composition": transformer},
+            search_spaces={
+                "composition": CompositionSearchSpace(
+                    components=["Fe", "Co", "Ni"],
+                    total=1.0,
+                )
+            },
+        )
+        candidates = SimpleNamespace(element_constraints=[])
 
         @staticmethod
         def transform_compositions(frame: pd.DataFrame) -> pd.DataFrame:

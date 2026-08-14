@@ -146,10 +146,7 @@ def test_visualization_options_add_element_fraction_axes() -> None:
 
     class Transformer:
         prefix = context.prefix
-
-        @staticmethod
-        def _require_fitted() -> tuple[str, ...]:
-            return context.elements
+        fitted_elements = context.elements
 
     restored = pd.DataFrame(
         {
@@ -163,8 +160,11 @@ def test_visualization_options_add_element_fraction_axes() -> None:
     )
 
     optimizer = SimpleNamespace(
-        composition_sites={context.site_name: context.config},
-        composition_transformers_={context.site_name: Transformer()},
+        composition=SimpleNamespace(
+            sites={context.site_name: context.config},
+            transformers={context.site_name: Transformer()},
+        ),
+        candidates=SimpleNamespace(element_constraints=[]),
         transform_compositions=lambda data: data,
         inverse_compositions=lambda data, **kwargs: restored,
     )
@@ -225,15 +225,14 @@ def test_multielement_ternary_options_use_first_three_default_fractions() -> Non
 
     class Transformer:
         prefix = context.prefix
-
-        @staticmethod
-        def _require_fitted() -> tuple[str, ...]:
-            return context.elements
+        fitted_elements = context.elements
 
     session = SimpleNamespace(
         tabular_optimizer=SimpleNamespace(
-            composition_sites={context.site_name: context.config},
-            composition_transformers_={context.site_name: Transformer()},
+            composition=SimpleNamespace(
+                sites={context.site_name: context.config},
+                transformers={context.site_name: Transformer()},
+            )
         )
     )
     options = _extend_multielement_ternary_options(
@@ -329,6 +328,11 @@ def test_composition_visualization_uses_explicit_dispatch() -> None:
     assert "_composition_visualization_installed" not in visualization_source
     assert "visualization_sessions.visualization_options =" not in visualization_source
     assert "visualization_sessions.build_visualization =" not in visualization_source
+    assert "composition_sites" not in visualization_source
+    assert "composition_transformers_" not in visualization_source
+    assert "composition_element_constraints" not in visualization_source
+    assert "_require_fitted" not in visualization_source
+    assert "optimizer._basis_scale" not in visualization_source
     assert 'kind in {"1d", "2d"} and not composition_axes' in dispatch_source
     assert "_build_ordinary_axis_composition_visualization" in dispatch_source
     assert "_build_partial_dependence_1d" in dispatch_source

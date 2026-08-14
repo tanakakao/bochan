@@ -88,7 +88,8 @@ def test_webapp_source_imports_workbench_dataset_services() -> None:
     imported_names = {
         alias.name
         for node in ast.walk(tree)
-        if isinstance(node, ast.ImportFrom) and node.module == "bochan.serving.workbench.datasets"
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "bochan.serving.workbench.datasets"
         for alias in node.names
     }
 
@@ -100,11 +101,30 @@ def test_webapp_source_imports_workbench_dataset_services() -> None:
     } <= imported_names
 
 
+def _imports_desktop(path: Path) -> bool:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(
+                alias.name == "bochan.desktop"
+                or alias.name.startswith("bochan.desktop.")
+                for alias in node.names
+            ):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module == "bochan.desktop" or module.startswith("bochan.desktop."):
+                return True
+            if module == "bochan" and any(alias.name == "desktop" for alias in node.names):
+                return True
+    return False
+
+
 def _desktop_import_offenders(root: Path) -> list[str]:
     return [
         path.relative_to(root).as_posix()
         for path in root.rglob("*.py")
-        if "bochan.desktop" in path.read_text(encoding="utf-8")
+        if _imports_desktop(path)
     ]
 
 

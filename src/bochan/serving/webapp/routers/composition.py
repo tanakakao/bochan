@@ -32,7 +32,7 @@ def create_composition_router(
     ) -> dict[str, Any]:
         import pandas as pd
 
-        from bochan.tabular.composition import (
+        from bochan.composition import (
             format_formula,
             normalize_composition,
             parse_formula,

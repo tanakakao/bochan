@@ -7,14 +7,19 @@ from typing import Any
 
 import numpy as np
 
+from bochan.composition import (
+    ATOMIC_WEIGHTS,
+    CompositionDescriptorCalculator,
+    CompositionSearchSpace,
+    CompositionTransformer,
+    close_compositions,
+    format_formula,
+)
+
 from .bounds import CompositionBoundsResolver
 from .columns import CompositionElementColumnTransform
 from .config import normalize_composition_sites
-from .descriptors import CompositionDescriptorCalculator
-from .formula import ATOMIC_WEIGHTS, format_formula
-from .search_space import CompositionSearchSpace
-from .simplex import close_compositions
-from .transformer import CompositionTransformer
+from .transformer import transform_composition_frame
 from .variable_total import CompositionVariableTotalTransform
 
 
@@ -124,7 +129,8 @@ class CompositionAdapter:
                     self.search_spaces.pop(site_name, None)
                 else:
                     self.search_spaces[site_name] = search_space
-            transformed = transformer.transform_frame(
+            transformed = transform_composition_frame(
+                transformer,
                 transformed,
                 column,
                 drop_formula=True,
@@ -289,7 +295,9 @@ class CompositionAdapter:
             elements = transformer._require_fitted()
             representation_names = transformer._representation_names(elements)
             all_representation_names.extend(representation_names)
-            missing = [name for name in representation_names if name not in candidates]
+            missing = [
+                name for name in representation_names if name not in candidates
+            ]
             if missing:
                 raise KeyError(
                     f"Missing model-space columns for site {site_name!r}: {missing!r}."
@@ -353,7 +361,10 @@ class CompositionAdapter:
             output_frames.extend([formula, fractions])
 
         drop_columns = [] if keep_coordinates else all_representation_names
-        passthrough = candidates.drop(columns=drop_columns, errors="ignore")
+        passthrough = candidates.drop(
+            columns=drop_columns,
+            errors="ignore",
+        )
         output_frames.append(passthrough)
         return pd.concat(output_frames, axis=1)
 

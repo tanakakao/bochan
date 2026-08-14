@@ -11,7 +11,7 @@ from .formula import (
 )
 from .search_space import CompositionSearchSpace
 from .simplex import SimplexTransform, close_compositions, ilr_basis
-from bochan.tabular.composition.transformer import CompositionTransformer
+from .transformer import CompositionTransformer
 
 __all__ = [
     "ATOMIC_NUMBERS",

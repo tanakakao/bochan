@@ -3,8 +3,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
+from bochan.composition import ATOMIC_WEIGHTS
 from bochan.tabular import TabularBayesianOptimizer
-from bochan.tabular.composition import ATOMIC_WEIGHTS
 
 
 def _inverse(optimizer, frame, **coordinates):

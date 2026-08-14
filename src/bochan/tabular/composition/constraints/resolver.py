@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 
-from ..formula import ATOMIC_WEIGHTS
+from bochan.composition import ATOMIC_WEIGHTS
 
 _WEIGHT_NORMALIZATIONS = {"weight_fraction", "weight", "mass_fraction", "wt%"}
 _BASIS_ALIASES = {
@@ -152,9 +152,6 @@ class CompositionElementConstraintResolver:
                 }:
                     compatible = False
                     break
-                # Element-column weight inputs are converted to atomic model
-                # coordinates. Absolute native-basis constraints are therefore
-                # not linear in those coordinates; repair them in native space.
                 if (
                     config.get("input_kind") == "element_columns"
                     and cls.native_basis(config) in _WEIGHT_NORMALIZATIONS

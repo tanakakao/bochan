@@ -23,6 +23,12 @@ _PENDING = _core._PENDING
 _MAX_SESSIONS = _core._MAX_SESSIONS
 
 
+def _numeric_features(session: VisualizationSession) -> list[str]:
+    """Expose the source-aware feature typing contract from the public owner."""
+
+    return _core._numeric_features(session)
+
+
 def visualization_options(session: VisualizationSession) -> dict[str, Any]:
     """Return normal options extended explicitly for composition sessions."""
 

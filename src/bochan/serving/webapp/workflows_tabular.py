@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from bochan.api.candidate.uniqueness import count_unique_candidate_rows
-from bochan.desktop.services import (
+from bochan.serving.workbench.workflow_utils import (
     _build_repair_config,
     _encode_features,
     _postprocess_candidates,

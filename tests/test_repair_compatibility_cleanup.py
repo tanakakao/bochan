@@ -83,6 +83,30 @@ def test_optimizer_constraint_imports_use_package_relative_path_only() -> None:
         assert _constraint_import_levels(path) == [3]
 
 
+def test_torch_mixed_k_sparse_wrapper_calls_existing_optimizer() -> None:
+    tree = _source_tree("src/bochan/optim/gradient/torch.py")
+    defined_functions = {
+        node.name
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+    }
+    wrapper = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "optimize_acqf_torch_mixed_k_sparse"
+    )
+    called_names = {
+        node.func.id
+        for node in ast.walk(wrapper)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+
+    assert "optimize_acqf_torch_mixed" in defined_functions
+    assert "optimize_acqf_torch_mixed" in called_names
+    assert "optimize_acqf_mixed_torch" not in called_names
+
+
 def test_direct_grid_repair_defaults_to_lower_bound_origin() -> None:
     bounds = torch.tensor([[0.25], [1.0]], dtype=torch.double)
     post_process = make_grid_k_sparse_post_processing_func(

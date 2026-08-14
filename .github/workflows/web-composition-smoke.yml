@@ -18,7 +18,6 @@ on:
       - "src/bochan/serving/webapp/composition_element_importance_figures.py"
       - "src/bochan/serving/webapp/_visualization_sessions_core.py"
       - "src/bochan/serving/webapp/visualization_sessions.py"
-      - "src/bochan/serving/webapp/runtime_adapters.py"
       - "src/bochan/serving/webapp/__init__.py"
       - "src/bochan/visualization/__init__.py"
       - "src/bochan/visualization/ternary.py"
@@ -107,7 +106,6 @@ jobs:
             src/bochan/serving/webapp/composition_feature_importance_views.py \
             src/bochan/serving/webapp/composition_element_importance_figures.py \
             src/bochan/serving/webapp/visualization_sessions.py \
-            src/bochan/serving/webapp/runtime_adapters.py \
             src/bochan/serving/webapp/__init__.py \
             src/bochan/visualization/__init__.py \
             src/bochan/visualization/ternary.py \

@@ -5,27 +5,65 @@ from pathlib import Path
 
 import torch
 
+import bochan.api.factory as api_factory
 from bochan.api.configs.base import CandidateRepairConfig, OptimizeConfig
-from bochan.api.factory import _build_post_processing_func
 from bochan.constraints.postprocess import make_grid_k_sparse_post_processing_func
 
 
+def _source_tree(path: str) -> ast.Module:
+    return ast.parse(Path(path).read_text(encoding="utf-8"))
+
+
 def _constraint_import_levels(path: str) -> list[int]:
-    tree = ast.parse(Path(path).read_text(encoding="utf-8"))
     return [
         node.level
-        for node in ast.walk(tree)
+        for node in ast.walk(_source_tree(path))
         if isinstance(node, ast.ImportFrom)
         and node.module == "constraints.k_sparse"
     ]
 
 
 def test_candidate_repair_does_not_inspect_caller_frames() -> None:
-    source = Path("src/bochan/constraints/postprocess.py").read_text(encoding="utf-8")
+    tree = _source_tree("src/bochan/constraints/postprocess.py")
+    imported_modules = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module is not None
+    }
+    imported_names = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+    }
+    names = {
+        node.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name)
+    }
+    attributes = {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+    }
+    repair_factory = next(
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "make_grid_k_sparse_post_processing_func"
+    )
+    keyword_args = repair_factory.args.kwonlyargs
+    keyword_defaults = repair_factory.args.kw_defaults
+    grid_base_index = next(
+        index for index, arg in enumerate(keyword_args) if arg.arg == "grid_base"
+    )
 
-    assert "currentframe" not in source
-    assert "import inspect" not in source
-    assert "grid_base: Tensor | None = None" in source
+    assert "inspect" not in imported_modules
+    assert "inspect" not in imported_names
+    assert "currentframe" not in names
+    assert "currentframe" not in attributes
+    assert isinstance(keyword_defaults[grid_base_index], ast.Constant)
+    assert keyword_defaults[grid_base_index].value is None
 
 
 def test_optimizer_constraint_imports_use_package_relative_path_only() -> None:
@@ -36,9 +74,7 @@ def test_optimizer_constraint_imports_use_package_relative_path_only() -> None:
     ]
 
     for path in paths:
-        source = Path(path).read_text(encoding="utf-8")
         assert _constraint_import_levels(path) == [3]
-        assert "from constraints.k_sparse" not in source
 
 
 def test_direct_grid_repair_defaults_to_lower_bound_origin() -> None:
@@ -63,7 +99,7 @@ def test_high_level_repair_without_private_bounds_uses_zero_origin() -> None:
         )
     )
 
-    post_process = _build_post_processing_func(config, bounds)
+    post_process = api_factory._build_post_processing_func(config, bounds)
     assert post_process is not None
     result = post_process(torch.tensor([[0.31]], dtype=torch.double))
 
@@ -80,7 +116,7 @@ def test_high_level_repair_with_explicit_bounds_uses_lower_bound_origin() -> Non
         )
     )
 
-    post_process = _build_post_processing_func(config, bounds)
+    post_process = api_factory._build_post_processing_func(config, bounds)
     assert post_process is not None
     result = post_process(torch.tensor([[0.31]], dtype=torch.double))
 

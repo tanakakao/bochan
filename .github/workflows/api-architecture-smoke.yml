@@ -37,6 +37,7 @@ jobs:
             tests/test_tabular_ordinal_rank_string_labels.py \
             tests/test_tabular_prediction_labels.py \
             tests/test_tabular_deepgp_candidate_output.py \
+            tests/test_fastapi_services_package_boundary.py \
             tests/test_fastapi_tabular_category_constraints.py \
             tests/test_fastapi_tabular_endpoints.py
       - name: Run Ruff
@@ -95,6 +96,7 @@ jobs:
             src/bochan/serving/fastapi/stores/object.py \
             src/bochan/serving/fastapi/target_categories.py \
             tests/test_api_architecture.py \
+            tests/test_fastapi_services_package_boundary.py \
             tests/test_fastapi_tabular_category_constraints.py \
             tests/test_llm_selected_acquisition_config.py \
             tests/test_tabular_architecture.py

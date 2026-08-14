@@ -1,4 +1,4 @@
-"""Model fit / lifecycle endpoints."""
+"""Model fit / planning endpoints."""
 
 from __future__ import annotations
 
@@ -11,11 +11,8 @@ from ..schemas import (
     AutoCandidateRequest,
     FitModelRequest,
     LLMPlanRequest,
-    ModelDeleteResponse,
     ModelFitResponse,
     ModelListResponse,
-    RefitModelRequest,
-    TellRequest,
 )
 from ..services import models as model_service
 

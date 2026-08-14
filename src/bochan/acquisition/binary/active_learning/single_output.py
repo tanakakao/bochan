@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Callable, Literal, Optional
+from typing import Callable, Optional
 
 import torch
 from botorch.acquisition.acquisition import AcquisitionFunction
@@ -13,24 +13,13 @@ from bochan.acquisition.binary.epistemic import binary_probability_moments
 
 from bochan.acquisition.binary.base import (
     LargeQStrategy,
+    ROICombineType,
+    ROIWeightMode,
     ReductionType,
     UncertaintyScoreType,
     _BinaryClassificationAcqBase,
 )
-
-try:
-    from bochan.acquisition.binary.base import (
-        ROIWeightMode,
-        ROICombineType,
-    )
-except ImportError:  # fallback for older base.py
-    ROIWeightMode = Literal["none", "prob_above", "prob_below", "prob_interval", "custom"]
-    ROICombineType = Literal["multiply", "add"]
-
-try:
-    from ...objective.binary import BinaryClassificationScoreObjectiveMixin
-except ImportError:  # fallback when installed under bochan.acquisition
-    from bochan.acquisition.objective.binary import BinaryClassificationScoreObjectiveMixin
+from bochan.acquisition.objective.binary import BinaryClassificationScoreObjectiveMixin
 
 from ._utils import (
     _align_pointwise_score_to_X,

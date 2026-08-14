@@ -117,4 +117,7 @@ def test_web_composition_support_uses_canonical_transformer_state() -> None:
         if isinstance(node, ast.Attribute) and node.attr in forbidden
     }
 
-    assert not used, f"Web composition support reaches stale transformer state: {sorted(used)!r}."
+    assert not used, (
+        "Web composition support reaches stale transformer state: "
+        f"{sorted(used)!r}."
+    )

@@ -268,7 +268,7 @@ def dataframe_to_observation_tensors(
         category_maps=category_maps,
         inverse_category_maps=inverse_maps,
         target_category_maps=target_category_maps,
-        inverse_target_category_maps=inverse_maps,
+        inverse_target_category_maps=inverse_target_category_maps,
         impute_values=impute_values,
         target_impute_values=target_impute_values,
         source_index=work.index,

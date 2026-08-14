@@ -108,6 +108,9 @@ def test_dataset_state_resets_and_hides_stale_composition_settings() -> None:
 
 
 def test_composition_pd_adapter_is_installed_after_visualization_compat() -> None:
+    runtime_source = Path(
+        "src/bochan/serving/webapp/runtime_adapters.py"
+    ).read_text(encoding="utf-8")
     init_source = Path("src/bochan/serving/webapp/__init__.py").read_text(
         encoding="utf-8"
     )
@@ -115,10 +118,11 @@ def test_composition_pd_adapter_is_installed_after_visualization_compat() -> Non
         "src/bochan/serving/webapp/composition_pd_compat.py"
     ).read_text(encoding="utf-8")
 
-    visualization_position = init_source.index(
+    visualization_position = runtime_source.index(
         "install_composition_visualization_compat()"
     )
-    pd_position = init_source.index("install_composition_pd_compat()")
+    pd_position = runtime_source.index("install_composition_pd_compat()")
     assert visualization_position < pd_position
+    assert "install_web_runtime_adapters()" in init_source
     assert "_build_partial_dependence_1d" in compat_source
     assert "各学習行の組成と他の説明変数を保持" in compat_source

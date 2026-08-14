@@ -305,6 +305,9 @@ def test_composition_visualization_uses_explicit_dispatch() -> None:
     session_source = Path(
         "src/bochan/serving/webapp/services/visualization_sessions.py"
     ).read_text(encoding="utf-8")
+    visualization_source = Path(
+        "src/bochan/serving/webapp/composition/visualization.py"
+    ).read_text(encoding="utf-8")
     dispatch_source = Path(
         "src/bochan/serving/webapp/composition/visualization_dispatch.py"
     ).read_text(encoding="utf-8")
@@ -322,6 +325,10 @@ def test_composition_visualization_uses_explicit_dispatch() -> None:
     assert "build_ternary_visualization(session, request)" in session_source
     assert "extend_ternary_options(options, session)" in session_source
     assert "build_composition_visualization(session, request)" in session_source
+    assert "def install_composition_visualization" not in visualization_source
+    assert "_composition_visualization_installed" not in visualization_source
+    assert "visualization_sessions.visualization_options =" not in visualization_source
+    assert "visualization_sessions.build_visualization =" not in visualization_source
     assert 'kind in {"1d", "2d"} and not composition_axes' in dispatch_source
     assert "_build_ordinary_axis_composition_visualization" in dispatch_source
     assert "_build_partial_dependence_1d" in dispatch_source

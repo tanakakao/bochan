@@ -32,10 +32,13 @@ def test_active_learning_alignment_is_native() -> None:
     )
 
 
-def test_native_alignment_preserves_public_bald_hierarchy() -> None:
-    assert issubclass(qMultiOutputMulticlassBALD, _DirectMultiOutputMulticlassAcqBase)
-    assert issubclass(qMultiOutputMulticlassJointBALD, qMultiOutputMulticlassBALD)
-    assert issubclass(
-        qMultiOutputMulticlassGreedyJointBALD,
-        qMultiOutputMulticlassJointBALD,
+def test_native_alignment_preserves_acquisition_constructors() -> None:
+    assert qMultiOutputMulticlassBALD.__init__ is core.qMultiOutputMulticlassBALD.__init__
+    assert (
+        qMultiOutputMulticlassJointBALD.__init__
+        is core.qMultiOutputMulticlassJointBALD.__init__
+    )
+    assert (
+        qMultiOutputMulticlassGreedyJointBALD.__init__
+        is core.qMultiOutputMulticlassGreedyJointBALD.__init__
     )

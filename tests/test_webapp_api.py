@@ -40,11 +40,31 @@ def test_web_capabilities() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["task_types"] == ["regression"]
+    assert payload["task_types"] == [
+        "regression",
+        "classification",
+        "ordinal",
+        "hybrid",
+        "multi_objective",
+    ]
     assert "base" in payload["model_types"]
+    assert "multitask" in payload["model_types"]
     assert "EI" in payload["acquisitions"]
-    assert payload["visualizations"] == ["yyplot", "prediction-1d", "prediction-2d"]
+    assert payload["visualizations"] == [
+        "yyplot",
+        "target_relation",
+        "pareto",
+        "prediction-1d",
+        "prediction-2d",
+        "ternary",
+    ]
     assert payload["logging"]["recent_logs_endpoint"] == "/api/v1/logs"
+    assert payload["model_artifacts"]["download_endpoint"] == (
+        "/api/v1/runs/{run_id}/model-artifact"
+    )
+    assert payload["composition"]["validation_endpoint"] == (
+        "/api/v1/composition/validate"
+    )
 
 
 def test_recent_logs_endpoint() -> None:
@@ -109,5 +129,12 @@ def test_web_app_uses_fastapi_prefix_configuration() -> None:
 
     assert health_response.status_code == 200
     assert capabilities_response.status_code == 200
-    assert capabilities_response.json()["logging"]["recent_logs_endpoint"] == "/bochan/logs"
+    capabilities = capabilities_response.json()
+    assert capabilities["logging"]["recent_logs_endpoint"] == "/bochan/logs"
+    assert capabilities["model_artifacts"]["download_endpoint"] == (
+        "/bochan/runs/{run_id}/model-artifact"
+    )
+    assert capabilities["composition"]["optimization_endpoint"] == (
+        "/bochan/composition/regression/run"
+    )
     assert legacy_response.status_code == 404

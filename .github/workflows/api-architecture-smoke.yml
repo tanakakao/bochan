@@ -43,7 +43,9 @@ jobs:
             tests/test_fastapi_services_package_boundary.py \
             tests/test_fastapi_tabular_category_constraints.py \
             tests/test_fastapi_tabular_endpoints.py \
-            tests/test_workbench_services_layout.py
+            tests/test_workbench_services_layout.py \
+            tests/test_webapp_api.py \
+            tests/test_webapp_serving_architecture.py
       - name: Run Ruff
         run: |
           ruff check \
@@ -110,7 +112,9 @@ jobs:
             tests/test_llm_selected_acquisition_config.py \
             tests/test_repair_compatibility_cleanup.py \
             tests/test_tabular_architecture.py \
-            tests/test_workbench_services_layout.py
+            tests/test_workbench_services_layout.py \
+            tests/test_webapp_api.py \
+            tests/test_webapp_serving_architecture.py
           ruff check --select F821 \
             src/bochan/optim/evolutionary/core.py \
             src/bochan/optim/gradient/botorch.py \

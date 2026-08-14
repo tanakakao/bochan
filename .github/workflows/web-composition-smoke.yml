@@ -17,7 +17,7 @@ on:
       - "src/bochan/serving/webapp/composition_feature_importance.py"
       - "src/bochan/serving/webapp/composition_feature_importance_views.py"
       - "src/bochan/serving/webapp/composition_element_importance_figures.py"
-      - "src/bochan/serving/webapp/visualization_feature_types.py"
+      - "src/bochan/serving/webapp/visualization_sessions.py"
       - "src/bochan/serving/webapp/runtime_adapters.py"
       - "src/bochan/serving/webapp/__init__.py"
       - "src/bochan/visualization/__init__.py"
@@ -46,6 +46,7 @@ on:
       - "tests/test_webapp_composition_support.py"
       - "tests/test_webapp_composition_candidate_repair.py"
       - "tests/test_webapp_composition_visualization.py"
+      - "tests/test_webapp_visualization_feature_types.py"
       - "tests/test_ternary_plot_grid.py"
       - "tests/test_webapp_composition_state_pd.py"
       - "tests/test_webapp_composition_feature_importance.py"
@@ -78,6 +79,7 @@ jobs:
           tests/test_webapp_composition_support.py
           tests/test_webapp_composition_candidate_repair.py
           tests/test_webapp_composition_visualization.py
+          tests/test_webapp_visualization_feature_types.py
           tests/test_ternary_plot_grid.py
           tests/test_webapp_composition_state_pd.py
           tests/test_webapp_composition_feature_importance.py
@@ -105,7 +107,7 @@ jobs:
             src/bochan/serving/webapp/composition_feature_importance.py \
             src/bochan/serving/webapp/composition_feature_importance_views.py \
             src/bochan/serving/webapp/composition_element_importance_figures.py \
-            src/bochan/serving/webapp/visualization_feature_types.py \
+            src/bochan/serving/webapp/visualization_sessions.py \
             src/bochan/serving/webapp/runtime_adapters.py \
             src/bochan/serving/webapp/__init__.py \
             src/bochan/visualization/__init__.py \
@@ -113,6 +115,7 @@ jobs:
             tests/test_webapp_composition_support.py \
             tests/test_webapp_composition_candidate_repair.py \
             tests/test_webapp_composition_visualization.py \
+            tests/test_webapp_visualization_feature_types.py \
             tests/test_ternary_plot_grid.py \
             tests/test_webapp_composition_state_pd.py \
             tests/test_webapp_composition_feature_importance.py \

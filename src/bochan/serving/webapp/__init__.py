@@ -2,28 +2,13 @@
 
 from typing import Any
 
-from .composition_multielement_ternary import (
-    install_composition_multielement_ternary,
-)
-from .composition_pd_compat import install_composition_pd_compat
-from .composition_visualization import install_composition_visualization
-from .composition_visualization_compat import (
-    install_composition_visualization_compat,
-)
-from .hybrid_bo_routing import install_web_hybrid_objective_bo_routing
-from .ternary_plot_grid_compat import install_ternary_plot_grid_compat
-from .visualization_feature_types import install_visualization_feature_type_compat
+from .runtime_adapters import install_web_runtime_adapters
 
 # Composition fitting, candidate handling, and composition-specific importance
 # postprocessing are wired explicitly through workflows.py/workflows_tabular.py.
-# Remaining installers below are presentation/runtime adapters outside that path.
-install_visualization_feature_type_compat()
-install_ternary_plot_grid_compat()
-install_composition_visualization()
-install_composition_visualization_compat()
-install_composition_multielement_ternary()
-install_composition_pd_compat()
-install_web_hybrid_objective_bo_routing()
+# Remaining presentation/runtime adapters are centralized in runtime_adapters.py
+# until their behavior can be absorbed into the normal implementation.
+install_web_runtime_adapters()
 
 from .app import WEB_CAPABILITIES, app, create_app as _create_app  # noqa: E402
 from .composition_web_routes import register_composition_routes  # noqa: E402

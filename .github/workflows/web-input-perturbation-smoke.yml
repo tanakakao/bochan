@@ -11,6 +11,8 @@ on:
       - "src/bochan/models/**"
       - "src/bochan/serving/webapp/**"
       - "src/bochan/tabular/**"
+      - "src/bochan/visualization/data/**"
+      - "src/bochan/visualization/input_perturbation.py"
       - "src/bochan/visualization/multiclass_yy.py"
       - "web/src/api.ts"
       - "web/src/context/WorkbenchContext.tsx"
@@ -20,7 +22,10 @@ on:
       - "tests/test_classification_input_perturbation_duplicate_semantics.py"
       - "tests/test_feature_importance_input_perturbation.py"
       - "tests/test_multiclass_yy_visualization.py"
+      - "tests/test_probability_visualization_input_perturbation.py"
       - "tests/test_regression_active_learning_input_perturbation_duplicates.py"
+      - "tests/test_visualization_data_architecture.py"
+      - "tests/test_visualization_input_perturbation.py"
       - "tests/test_webapp_binary_variance_input_perturbation_e2e.py"
       - "tests/test_webapp_classification_input_perturbation_e2e.py"
       - "tests/test_webapp_input_perturbation_e2e.py"
@@ -48,7 +53,10 @@ jobs:
             tests/test_classification_input_perturbation_duplicate_semantics.py \
             tests/test_feature_importance_input_perturbation.py \
             tests/test_multiclass_yy_visualization.py \
+            tests/test_probability_visualization_input_perturbation.py \
             tests/test_regression_active_learning_input_perturbation_duplicates.py \
+            tests/test_visualization_data_architecture.py \
+            tests/test_visualization_input_perturbation.py \
             tests/test_webapp_binary_variance_input_perturbation_e2e.py \
             tests/test_webapp_classification_input_perturbation_e2e.py \
             tests/test_webapp_input_perturbation_e2e.py \
@@ -79,13 +87,21 @@ jobs:
             src/bochan/acquisition/regression/active_learning/_base_scoring.py \
             src/bochan/inspection/feature_importance.py \
             src/bochan/serving/webapp/target_results.py \
+            src/bochan/visualization/data/__init__.py \
+            src/bochan/visualization/data/frames.py \
+            src/bochan/visualization/data/grids.py \
+            src/bochan/visualization/data/study.py \
+            src/bochan/visualization/data/ternary.py \
             src/bochan/visualization/multiclass_yy.py \
             tests/api/test_cross_validation_prediction_aggregation.py \
             tests/test_binary_active_learning_input_perturbation_duplicates.py \
             tests/test_classification_input_perturbation_duplicate_semantics.py \
             tests/test_feature_importance_input_perturbation.py \
             tests/test_multiclass_yy_visualization.py \
+            tests/test_probability_visualization_input_perturbation.py \
             tests/test_regression_active_learning_input_perturbation_duplicates.py \
+            tests/test_visualization_data_architecture.py \
+            tests/test_visualization_input_perturbation.py \
             tests/test_webapp_binary_variance_input_perturbation_e2e.py \
             tests/test_webapp_classification_input_perturbation_e2e.py \
             tests/test_webapp_input_perturbation_e2e.py \

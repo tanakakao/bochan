@@ -26,6 +26,8 @@ jobs:
             tests/test_model_package_layout.py \
             tests/test_non_gaussian_posterior_base_samples.py \
             tests/test_mixed_kronecker_model_registry.py \
+            tests/test_multiclass_active_learning_native_alignment.py \
+            tests/test_multiclass_bald_batch_shape.py \
             tests/test_ordinal_active_learning_reference_transform.py \
             tests/test_ordinal_deep_num_classes_inference.py \
             tests/test_ordinal_robust_num_classes.py \

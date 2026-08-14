@@ -16,10 +16,10 @@ from bochan.serving.webapp.composition_visualization import (
     _extend_visualization_options,
     _resolve_fraction_matrix,
 )
-from bochan.serving.webapp.composition_visualization_compat import (
+from bochan.serving.webapp.composition_visualization_dispatch import (
     _constant_composition_grid,
-    _object_backed_string_columns,
 )
+from bochan.tabular.data.conversion import _encode_dataframe_category_columns
 
 
 def _context() -> _CompositionContext:
@@ -119,21 +119,26 @@ def test_constant_composition_grid_preserves_baseline_for_ordinary_axes() -> Non
     assert np.allclose(fractions, np.tile(baseline, (4, 1)))
 
 
-def test_generated_string_categories_are_object_backed_for_pandas3() -> None:
-    source = pd.DataFrame(
+def test_dataframe_category_encoding_accepts_pandas3_string_dtype() -> None:
+    frame = pd.DataFrame(
         {
-            "formula": pd.Series(["Fe2O3", "Al2O3"], dtype="string"),
             "category": pd.Series(["A", "B"], dtype="string"),
             "temperature": [900.0, 1000.0],
         }
     )
 
-    converted = _object_backed_string_columns(source)
+    category_maps, _ = _encode_dataframe_category_columns(
+        frame,
+        columns=["category"],
+        supplied_maps={"category": {"A": 0, "B": 1}},
+        encode_categories=True,
+        pd=pd,
+        require_existing=["category", "temperature"],
+    )
 
-    assert converted["formula"].dtype == object
-    assert converted["category"].dtype == object
-    assert pd.api.types.is_float_dtype(converted["temperature"].dtype)
-    assert converted.to_dict("list") == source.to_dict("list")
+    assert category_maps == {"category": {"A": 0, "B": 1}}
+    assert frame["category"].tolist() == [0, 1]
+    assert pd.api.types.is_numeric_dtype(frame["category"].dtype)
 
 
 def test_visualization_options_add_element_fraction_axes() -> None:
@@ -296,32 +301,32 @@ def test_web_source_exposes_composition_axis_controls() -> None:
     assert "fraction_features" in type_source
 
 
-def test_visualization_compat_routes_ordinary_and_multielement_ternary_axes() -> None:
-    compatibility = Path(
-        "src/bochan/serving/webapp/composition_visualization_compat.py"
+def test_composition_visualization_uses_explicit_dispatch() -> None:
+    session_source = Path(
+        "src/bochan/serving/webapp/visualization_sessions.py"
+    ).read_text(encoding="utf-8")
+    dispatch_source = Path(
+        "src/bochan/serving/webapp/composition_visualization_dispatch.py"
     ).read_text(encoding="utf-8")
     ternary_backend = Path(
         "src/bochan/serving/webapp/composition_multielement_ternary.py"
     ).read_text(encoding="utf-8")
-    frontend = Path("web/src/compositionVisualizationGuard.ts").read_text(
-        encoding="utf-8"
-    )
     runtime_adapters = Path(
         "src/bochan/serving/webapp/runtime_adapters.py"
     ).read_text(encoding="utf-8")
-    web_init = Path("src/bochan/serving/webapp/__init__.py").read_text(
+    frontend = Path("web/src/compositionVisualizationGuard.ts").read_text(
         encoding="utf-8"
     )
-    main = Path("web/src/main.tsx").read_text(encoding="utf-8")
 
-    assert 'kind in {"1d", "2d"} and not composition_axes' in compatibility
-    assert "_build_ordinary_axis_composition_visualization" in compatibility
-    assert "_object_backed_string_columns(source)" in compatibility
+    assert "build_composition_visualization(session, request)" in session_source
+    assert "extend_visualization_options(_core.visualization_options(session), session)" in session_source
+    assert 'kind in {"1d", "2d"} and not composition_axes' in dispatch_source
+    assert "_build_ordinary_axis_composition_visualization" in dispatch_source
+    assert "_build_partial_dependence_1d" in dispatch_source
     assert "_build_multielement_ternary_visualization" in ternary_backend
     assert "_ternary_slice_grid(sum_value, divisions)" in ternary_backend
-    assert "len(features) == 3 and len(composition_axes) == 3" in ternary_backend
     assert "fractionOptions.size >= 3" in frontend
-    assert 'kindSelect.value = "1d"' in frontend
+    assert "install_composition_visualization()" not in runtime_adapters
+    assert "install_composition_visualization_compat()" not in runtime_adapters
+    assert "install_composition_pd_compat()" not in runtime_adapters
     assert "install_composition_multielement_ternary()" in runtime_adapters
-    assert "install_web_runtime_adapters()" in web_init
-    assert "installCompositionVisualizationGuard" in main

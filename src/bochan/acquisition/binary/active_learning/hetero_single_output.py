@@ -9,27 +9,14 @@ from bochan.acquisition.binary._probability import latent_samples_to_binary_prob
 from bochan.acquisition.binary.epistemic import binary_probability_moments
 
 from bochan.acquisition.binary.base import (
+    NoiseCombineType,
+    NoiseWeightMode,
+    ROICombineType,
+    ROIWeightMode,
     ReductionType,
     _BinaryClassificationAcqBase,
 )
-
-try:
-    from bochan.acquisition.binary.base import (
-        ROIWeightMode,
-        ROICombineType,
-        NoiseWeightMode,
-        NoiseCombineType,
-    )
-except ImportError:  # fallback for older base.py
-    ROIWeightMode = Literal["none", "prob_above", "prob_below", "prob_interval", "custom"]
-    ROICombineType = Literal["multiply", "add"]
-    NoiseWeightMode = Literal["none", "inverse_linear", "inverse_exp", "custom"]
-    NoiseCombineType = Literal["multiply", "subtract"]
-
-try:
-    from ...objective.binary import BinaryClassificationScoreObjectiveMixin
-except ImportError:  # fallback when installed under bochan.acquisition
-    from bochan.acquisition.objective.binary import BinaryClassificationScoreObjectiveMixin
+from bochan.acquisition.objective.binary import BinaryClassificationScoreObjectiveMixin
 
 from ._utils import (
     _align_pointwise_score_to_X,

@@ -14,15 +14,13 @@ the objective q dimension before BoTorch starts subset enumeration.
 from __future__ import annotations
 
 import math
-from functools import wraps
-from typing import Any, Literal, Optional, TypeVar
+from typing import Any, Literal, Optional
 
 import torch
 from botorch.acquisition.multi_objective.objective import MCMultiOutputObjective
 from torch import Tensor
 
 RiskType = Optional[Literal["var", "cvar"]]
-AcquisitionType = TypeVar("AcquisitionType", bound=type)
 
 
 def infer_input_perturbation_n_w(model: Any) -> int | None:
@@ -167,68 +165,8 @@ def validate_hypervolume_objective_q(
         )
 
 
-def configure_multiclass_hypervolume_input_perturbation(
-    acquisition_cls: AcquisitionType,
-    *,
-    default_objective_type: type,
-) -> AcquisitionType:
-    """Patch a multiclass qEHVI class with automatic perturbation aggregation.
-
-    Only bochan's built-in default multiclass objective is wrapped automatically.
-    Explicit custom objectives are left unchanged, but the q-dimension guard still
-    prevents an accidental exponential allocation.
-    """
-    if getattr(acquisition_cls, "_bochan_input_perturbation_patched", False):
-        return acquisition_cls
-
-    original_init = acquisition_cls.__init__
-    original_compute_qehvi = acquisition_cls._compute_qehvi
-
-    @wraps(original_init)
-    def supported_init(self, model, *args, **kwargs):
-        explicit_n_w = kwargs.pop("input_perturbation_n_w", None)
-        risk_type = kwargs.pop("input_perturbation_risk_type", None)
-        risk_alpha = kwargs.pop("input_perturbation_risk_alpha", 0.5)
-
-        original_init(self, model, *args, **kwargs)
-
-        inferred_n_w = infer_input_perturbation_n_w(model)
-        n_w = inferred_n_w if explicit_n_w is None else int(explicit_n_w)
-        self.input_perturbation_n_w = n_w
-
-        if (
-            n_w is not None
-            and int(n_w) > 1
-            and isinstance(self.objective, default_objective_type)
-            and not getattr(
-                self.objective,
-                "_bochan_aggregates_input_perturbation",
-                False,
-            )
-        ):
-            self.objective = InputPerturbationMultiOutputObjectiveAdapter(
-                self.objective,
-                n_w=int(n_w),
-                risk_type=risk_type,
-                alpha=float(risk_alpha),
-            )
-
-    def supported_compute_qehvi(self, samples: Tensor, X: Tensor | None = None):
-        objective_values = self.objective(samples, X=X)
-        validate_hypervolume_objective_q(objective_values, X)
-        return original_compute_qehvi(self, samples=samples, X=X)
-
-    acquisition_cls.__init__ = supported_init
-    acquisition_cls._compute_qehvi = supported_compute_qehvi
-    acquisition_cls._bochan_input_perturbation_patched = True
-    acquisition_cls._bochan_original_init = original_init
-    acquisition_cls._bochan_original_compute_qehvi = original_compute_qehvi
-    return acquisition_cls
-
-
 __all__ = [
     "InputPerturbationMultiOutputObjectiveAdapter",
     "infer_input_perturbation_n_w",
-    "configure_multiclass_hypervolume_input_perturbation",
     "validate_hypervolume_objective_q",
 ]

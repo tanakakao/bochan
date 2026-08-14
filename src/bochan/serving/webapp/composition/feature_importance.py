@@ -13,8 +13,6 @@ second raw-composition importance view after the normal Web workflow finishes:
 
 from __future__ import annotations
 
-import copy
-from contextlib import suppress
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
@@ -483,34 +481,4 @@ def attach_composition_feature_importance(
         result["feature_importance_warnings"] = existing
 
 
-def install_composition_feature_importance() -> None:
-    """Wrap the lifecycle workflow before ``app.py`` binds its route callable."""
-
-    from .. import workflows
-
-    if getattr(workflows, "_composition_feature_importance_installed", False):
-        return
-    original = workflows.run_regression_web_workflow
-
-    def workflow_adapter(request: Any, store: Any) -> dict[str, Any]:
-        result = original(request, store)
-        from ..logging import current_request_id
-        from ..services.visualization_sessions import get_visualization_session
-
-        run_id = current_request_id()
-        if not run_id:
-            return result
-        with suppress(KeyError):
-            session = get_visualization_session(run_id)
-            attach_composition_feature_importance(result, request, session)
-            session.result = copy.deepcopy(result)
-        return result
-
-    workflows.run_regression_web_workflow = workflow_adapter
-    workflows._composition_feature_importance_installed = True
-
-
-__all__ = [
-    "attach_composition_feature_importance",
-    "install_composition_feature_importance",
-]
+__all__ = ["attach_composition_feature_importance"]

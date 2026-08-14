@@ -8,6 +8,8 @@ from typing import Any
 
 import numpy as np
 
+from bochan.tabular.composition.constraints import CompositionElementConstraintResolver
+
 _FRACTION_TOKEN = "__fraction__"
 _MODE_KEY = "__composition_mode__"
 _BALANCE_KEY = "__composition_balance_element__"
@@ -27,16 +29,14 @@ class _CompositionContext:
 
 def _composition_context(session: Any) -> _CompositionContext | None:
     optimizer = session.tabular_optimizer
-    sites = dict(getattr(optimizer, "composition_sites", None) or {})
+    sites = dict(optimizer.composition.sites)
     if len(sites) != 1:
         return None
     site_name, raw_config = next(iter(sites.items()))
-    transformer = dict(
-        getattr(optimizer, "composition_transformers_", None) or {}
-    ).get(site_name)
+    transformer = optimizer.composition.transformers.get(site_name)
     if transformer is None:
         return None
-    elements = tuple(str(value) for value in transformer._require_fitted())
+    elements = tuple(str(value) for value in transformer.fitted_elements)
     prefix = str(transformer.prefix)
     return _CompositionContext(
         site_name=str(site_name),
@@ -281,9 +281,7 @@ def _composition_validity(
         if element in context.elements:
             valid &= active[:, context.elements.index(element)]
 
-    constraints = list(
-        getattr(optimizer, "composition_element_constraints", None) or ()
-    )
+    constraints = list(optimizer.candidates.element_constraints)
     for constraint in constraints:
         lhs = np.zeros(fractions.shape[0], dtype=float)
         for term in constraint["terms"]:
@@ -293,7 +291,7 @@ def _composition_validity(
             if element not in context.elements:
                 continue
             index = context.elements.index(element)
-            scale = optimizer._basis_scale(
+            scale = CompositionElementConstraintResolver.basis_scale(
                 context.config,
                 element,
                 constraint["basis"],
@@ -560,18 +558,13 @@ def _build_composition_visualization(
         feature = features[0]
         lower, upper = _axis_bounds(session, context, feature)
         grid = np.linspace(lower, upper, n)
-        fraction_axes = (
-            {feature: grid} if feature in composition_axes else {}
-        )
-        ordinary_axes = (
-            {} if feature in composition_axes else {feature: grid}
-        )
+        fraction_axes = {feature: grid} if feature in composition_axes else {}
+        ordinary_axes = {} if feature in composition_axes else {feature: grid}
         fractions, base_valid = _resolve_fraction_matrix(
             context,
             baseline=baseline,
-            axis_values=fraction_axes or {
-                context.fraction_features[0]: np.full(n, baseline[0])
-            },
+            axis_values=fraction_axes
+            or {context.fraction_features[0]: np.full(n, baseline[0])},
             mode=mode,
             balance_element=balance_element,
         )

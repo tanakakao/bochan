@@ -1,0 +1,27 @@
+name: Theory docs smoke
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "docs/theory/**"
+      - "tests/test_theory_docs_structure.py"
+      - ".github/workflows/theory-docs-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  structure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test tools
+        run: python -m pip install pytest ruff
+      - name: Validate theory docs structure
+        run: pytest -q tests/test_theory_docs_structure.py
+      - name: Lint structure test
+        run: ruff check tests/test_theory_docs_structure.py

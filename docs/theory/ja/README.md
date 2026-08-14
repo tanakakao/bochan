@@ -1,5 +1,7 @@
 # `bochan` 理論リファレンス
 
+[理論ドキュメント入口](../README.md) · [English](../en/README.md) · **日本語**
+
 このディレクトリは、`bochan`で用いる数理、統計的仮定、逐次意思決定、および実装上の契約を章立てで整理した日本語版リファレンスです。
 
 単なる機能一覧ではなく、次の4層を一貫して理解できる参考書として構成しています。
@@ -27,6 +29,18 @@
 | 07 | `07_multi_objective_and_constraints.md` | Pareto、hypervolume、EHVI、NEHVI、scalarization、chance constraint |
 | 08 | `08_input_perturbation_and_risk.md` | 入力摂動、平均／最悪値、VaR、CVaR、chance constraint、`q * n_w` |
 | 09 | `09_shape_conventions.md` | Tensor軸、t-batch、q-batch、sample、class、boundary、DeepGP、ensemble |
+
+### 獲得関数の補足章
+
+以下は03章を補足する個別トピックです。基本の読書順は03章を中心とします。
+
+| ファイル | トピック |
+|---|---|
+| `03b_information_theoretic_acquisitions.md` | 情報理論的獲得関数 |
+| `03c_knowledge_gradient.md` | Knowledge Gradient |
+| `03d_multiobjective_entropy_search.md` | 多目的Entropy Search |
+| `03e_binary_knowledge_gradient.md` | 二値出力のKnowledge Gradient |
+| `03f_ordinal_knowledge_gradient.md` | 順序出力のKnowledge Gradient |
 
 ## Part II. モデル族と実装詳細
 

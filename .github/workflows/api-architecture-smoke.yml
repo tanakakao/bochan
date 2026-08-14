@@ -39,7 +39,8 @@ jobs:
             tests/test_tabular_deepgp_candidate_output.py \
             tests/test_fastapi_services_package_boundary.py \
             tests/test_fastapi_tabular_category_constraints.py \
-            tests/test_fastapi_tabular_endpoints.py
+            tests/test_fastapi_tabular_endpoints.py \
+            tests/test_workbench_services_layout.py
       - name: Run Ruff
         run: |
           ruff check \
@@ -95,8 +96,12 @@ jobs:
             src/bochan/serving/fastapi/services/tabular.py \
             src/bochan/serving/fastapi/stores/object.py \
             src/bochan/serving/fastapi/target_categories.py \
+            src/bochan/serving/workbench/__init__.py \
+            src/bochan/serving/workbench/datasets.py \
+            src/bochan/serving/workbench/workflow_utils.py \
             tests/test_api_architecture.py \
             tests/test_fastapi_services_package_boundary.py \
             tests/test_fastapi_tabular_category_constraints.py \
             tests/test_llm_selected_acquisition_config.py \
-            tests/test_tabular_architecture.py
+            tests/test_tabular_architecture.py \
+            tests/test_workbench_services_layout.py

@@ -160,7 +160,7 @@ def test_web_perturbed_random_forest_keeps_general_ga_budget() -> None:
 
 
 def _ngboost_store() -> tuple[object, str]:
-    from bochan.desktop.services import DatasetStore, build_dataset_record
+    from bochan.serving.workbench.datasets import DatasetStore, build_dataset_record
 
     x = torch.linspace(0.0, 1.0, 16, dtype=torch.double).numpy()
     data = pd.DataFrame(
@@ -211,8 +211,6 @@ def _ngboost_request(
                 }
             ],
         },
-        # The regression tests intentionally use a tiny round count. The unit
-        # tests above fix the production default mapping (128 -> 128 rounds).
         fit_maxiter=6,
         normalize=True,
         outcome_transform=True,
@@ -368,9 +366,6 @@ def test_real_web_ngboost_fit_and_suggestion_complete() -> None:
     assert result["metadata"]["search_method"] == "ga"
     assert result["metadata"]["timings_ms"]["fit"] >= 0.0
     assert result["metadata"]["timings_ms"]["candidate"] >= 0.0
-    # This is only a runaway guard, not a performance benchmark. The old Web
-    # defaults could take many minutes; the focused 6-round smoke should finish
-    # comfortably within this generous CI limit.
     assert elapsed < 120.0
 
 

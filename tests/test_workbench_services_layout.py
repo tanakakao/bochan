@@ -1,24 +1,13 @@
 from __future__ import annotations
 
-import importlib
+import ast
+from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
 import pytest
 
-from bochan.desktop import services as desktop_services
 from bochan.serving.workbench import datasets, workflow_utils
-
-
-def test_desktop_services_reexport_workbench_implementations() -> None:
-    assert desktop_services.DatasetRecord is datasets.DatasetRecord
-    assert desktop_services.DatasetStore is datasets.DatasetStore
-    assert desktop_services.build_dataset_record is datasets.build_dataset_record
-    assert desktop_services.dataframe_preview is datasets.dataframe_preview
-    assert desktop_services.load_dataframe_from_payload is datasets.load_dataframe_from_payload
-    assert desktop_services._encode_features is workflow_utils._encode_features
-    assert desktop_services._build_repair_config is workflow_utils._build_repair_config
-    assert desktop_services._postprocess_candidates is workflow_utils._postprocess_candidates
 
 
 def test_workbench_dataset_store_and_profile() -> None:
@@ -88,12 +77,75 @@ def test_workbench_feature_encoding_preserves_numeric_and_categorical_metadata()
     assert encoded["category_maps"] == {"atmosphere": {"air": 0, "n2": 1}}
 
 
-def test_webapp_import_remains_valid_after_service_migration() -> None:
-    pytest.importorskip("fastapi")
+def test_workbench_dataset_loader_rejects_non_web_sources() -> None:
+    with pytest.raises(ValueError, match="Unsupported source_type"):
+        datasets.load_dataframe_from_payload(  # type: ignore[arg-type]
+            source_type="sqlite"
+        )
 
-    app_module = importlib.import_module("bochan.serving.webapp.app")
 
-    assert app_module.DatasetStore is datasets.DatasetStore
-    assert app_module.build_dataset_record is datasets.build_dataset_record
-    assert app_module.dataframe_preview is datasets.dataframe_preview
-    assert app_module.load_dataframe_from_payload is datasets.load_dataframe_from_payload
+def test_webapp_source_imports_workbench_dataset_services() -> None:
+    app_path = (
+        Path(__file__).parents[1]
+        / "src"
+        / "bochan"
+        / "serving"
+        / "webapp"
+        / "app.py"
+    )
+    tree = ast.parse(app_path.read_text(encoding="utf-8"))
+    imported_names = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "bochan.serving.workbench.datasets"
+        for alias in node.names
+    }
+
+    assert {
+        "DatasetStore",
+        "build_dataset_record",
+        "dataframe_preview",
+        "load_dataframe_from_payload",
+    } <= imported_names
+
+
+def _imports_desktop(path: Path) -> bool:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            if any(
+                alias.name == "bochan.desktop"
+                or alias.name.startswith("bochan.desktop.")
+                for alias in node.names
+            ):
+                return True
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module == "bochan.desktop" or module.startswith("bochan.desktop."):
+                return True
+            if module == "bochan" and any(
+                alias.name == "desktop" for alias in node.names
+            ):
+                return True
+    return False
+
+
+def _desktop_import_offenders(root: Path) -> list[str]:
+    return [
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*.py")
+        if _imports_desktop(path)
+    ]
+
+
+def test_bochan_package_has_no_desktop_imports() -> None:
+    source_root = Path(__file__).parents[1] / "src" / "bochan"
+
+    assert _desktop_import_offenders(source_root) == []
+
+
+def test_web_tests_have_no_desktop_imports() -> None:
+    tests_root = Path(__file__).parent
+
+    assert _desktop_import_offenders(tests_root) == []

@@ -88,7 +88,7 @@ class _FakeTabPFNClassifier:
 
 
 def _store(data: pd.DataFrame) -> tuple[object, str]:
-    from bochan.desktop.services import DatasetStore, build_dataset_record
+    from bochan.serving.workbench.datasets import DatasetStore, build_dataset_record
 
     record = build_dataset_record(
         data=data,

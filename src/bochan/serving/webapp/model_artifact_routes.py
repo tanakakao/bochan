@@ -8,11 +8,8 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
-from bochan.desktop.services import (
-    build_dataset_record,
-    dataframe_preview,
-)
 from bochan.serving.fastapi.converters import to_serializable
+from bochan.serving.workbench.datasets import build_dataset_record, dataframe_preview
 
 from .experiment_history import ExperimentCycleRequest, ExperimentHistoryStore
 from .model_artifacts import (

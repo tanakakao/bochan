@@ -13,17 +13,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field
 
 from bochan.api.registry.capabilities import BETA_MODEL_TYPES
-from bochan.desktop.services import (
-    DatasetStore,
-    build_dataset_record,
-    dataframe_preview,
-    load_dataframe_from_payload,
-)
 from bochan.serving.fastapi import create_api_router
 from bochan.serving.fastapi.converters import to_serializable
 from bochan.serving.fastapi.schemas.tabular import (
     FeatureImportanceConfigRequest,
     FeatureImportanceVisualizationRequest,
+)
+from bochan.serving.workbench.datasets import (
+    DatasetStore,
+    build_dataset_record,
+    dataframe_preview,
+    load_dataframe_from_payload,
 )
 
 from .logging import (

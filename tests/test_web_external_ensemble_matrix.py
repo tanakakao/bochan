@@ -83,7 +83,7 @@ def test_web_runtime_preserves_explicit_external_estimators() -> None:
 
 
 def _store(num_classes: int) -> tuple[object, str, int]:
-    from bochan.desktop.services import DatasetStore, build_dataset_record
+    from bochan.serving.workbench.datasets import DatasetStore, build_dataset_record
 
     x = np.linspace(0.0, 1.0, 15)
     if num_classes == 2:

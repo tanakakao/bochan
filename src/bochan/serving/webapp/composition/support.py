@@ -253,7 +253,7 @@ def _composition_transformer(
         precision=config["precision"],
     )
     transformer.fit(data.loc[:, column])
-    elements = list(transformer._require_fitted())
+    elements = list(transformer.fitted_elements)
     resolved = dict(config)
     resolved["elements"] = elements
     if resolved["max_components"] is None:
@@ -401,12 +401,10 @@ def composition_site(config: Mapping[str, Any]) -> dict[str, Any]:
 
 def _composition_model_columns(optimizer: Any) -> list[str]:
     columns: list[str] = []
-    for transformer in dict(
-        getattr(optimizer, "composition_transformers_", None) or {}
-    ).values():
+    for transformer in optimizer.composition.transformers.values():
         columns.extend(
             str(name)
-            for name in (getattr(transformer, "feature_names_", None) or ())
+            for name in (transformer.feature_names_ or ())
         )
     return list(dict.fromkeys(columns))
 

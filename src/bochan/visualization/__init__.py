@@ -1,7 +1,6 @@
 """Visualization helpers for bochan."""
 
 from . import plots as _plots
-from . import utils as _utils
 from .data import (
     candidates_dataframe,
     create_grid,
@@ -24,14 +23,6 @@ from .feature_importance import (
     show_pca_explained_variance,
     show_task_correlation_diagnostics,
 )
-from .input_perturbation import (
-    prediction_mean_std as _prediction_mean_std_with_input_perturbation,
-)
-
-# Direct ``utils`` imports retain the perturbation-aware display semantics while
-# prediction DataFrame builders now own that dependency directly.
-_utils.prediction_mean_std = _prediction_mean_std_with_input_perturbation
-
 from .multiclass import (
     MulticlassHeatmapMode,
     infer_class_labels,

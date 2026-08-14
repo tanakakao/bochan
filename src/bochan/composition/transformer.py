@@ -74,6 +74,12 @@ class CompositionTransformer:
             )
         return self.elements_
 
+    @property
+    def fitted_elements(self) -> tuple[str, ...]:
+        """Return the fitted element vocabulary."""
+
+        return self._require_fitted()
+
     def _reference_index(self, elements: Sequence[str]) -> int | None:
         if self.representation.lower() != "alr":
             return None
@@ -186,16 +192,29 @@ class CompositionTransformer:
             )
         return np.asarray(raw_rows), np.asarray(normalized_rows)
 
-    def _to_atomic_fractions(self, fractions: np.ndarray) -> np.ndarray:
+    def basis_to_atomic_fractions(self, fractions: Any) -> np.ndarray:
+        """Convert values in the configured composition basis to atomic fractions."""
+
         elements = self._require_fitted()
+        array = np.asarray(fractions, dtype=float)
+        if array.ndim == 1:
+            array = array.reshape(1, -1)
+        if (
+            array.ndim != 2
+            or array.shape[1] != len(elements)
+            or not np.isfinite(array).all()
+        ):
+            raise ValueError(
+                "Composition fractions must be a finite 2D array matching the fitted elements."
+            )
         mode = self.normalization.lower()
         if mode in {"weight_fraction", "weight", "mass_fraction"}:
             weights = np.asarray(
                 [ATOMIC_WEIGHTS[element] for element in elements],
                 dtype=float,
             )
-            return close_compositions(fractions / weights)
-        return close_compositions(fractions)
+            return close_compositions(array / weights)
+        return close_compositions(array)
 
     def transform(self, formulas: Any) -> np.ndarray:
         """Transform formulas into a numeric NumPy feature matrix."""
@@ -230,8 +249,8 @@ class CompositionTransformer:
 
         return self.fit(formulas).transform(formulas)
 
-    def inverse_transform(self, values: Any) -> list[str]:
-        """Convert model coordinates back to canonical formula strings."""
+    def inverse_transform_fractions(self, values: Any) -> np.ndarray:
+        """Convert model coordinates back to fractions in the configured basis."""
 
         elements = self._require_fitted()
         array = np.asarray(values, dtype=float)
@@ -240,7 +259,7 @@ class CompositionTransformer:
         if array.ndim != 2 or not np.isfinite(array).all():
             raise ValueError("Composition coordinates must be a finite 2D array.")
 
-        representation_width = len(self._representation_names(elements))
+        representation_width = len(self.representation_feature_names_)
         full_width = len(self.feature_names_ or ())
         if array.shape[1] == full_width and full_width > representation_width:
             array = array[:, :representation_width]
@@ -250,11 +269,17 @@ class CompositionTransformer:
             )
 
         assert self.simplex_transform_ is not None
-        fractions = self.simplex_transform_.inverse_transform(
+        return self.simplex_transform_.inverse_transform(
             array,
             n_components=len(elements),
         )
-        atomic_fractions = self._to_atomic_fractions(fractions)
+
+    def inverse_transform(self, values: Any) -> list[str]:
+        """Convert model coordinates back to canonical formula strings."""
+
+        elements = self._require_fitted()
+        fractions = self.inverse_transform_fractions(values)
+        atomic_fractions = self.basis_to_atomic_fractions(fractions)
         return [
             format_formula(
                 dict(zip(elements, row, strict=True)),

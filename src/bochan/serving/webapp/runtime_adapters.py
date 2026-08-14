@@ -17,13 +17,11 @@ from .composition_pd_compat import install_composition_pd_compat
 from .composition_visualization import install_composition_visualization
 from .composition_visualization_compat import install_composition_visualization_compat
 from .hybrid_bo_routing import install_web_hybrid_objective_bo_routing
-from .visualization_feature_types import install_visualization_feature_type_compat
 
 
 def install_web_runtime_adapters() -> None:
     """Install the remaining Web runtime adapters in their required order."""
 
-    install_visualization_feature_type_compat()
     install_composition_visualization()
     install_composition_visualization_compat()
     install_composition_multielement_ternary()

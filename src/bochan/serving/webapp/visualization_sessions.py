@@ -168,8 +168,38 @@ def get_visualization_session(run_id: str) -> VisualizationSession:
 
 
 def _numeric_features(session: VisualizationSession) -> list[str]:
-    cat_dims = set(int(value) for value in (session.tabular_optimizer.dataset.cat_dims or []))
-    return [name for index, name in enumerate(session.feature_columns) if index not in cat_dims]
+    """Return numeric source columns without assuming transformed index alignment.
+
+    Composition columns can expand into several model coordinates, so categorical
+    dimensions from the transformed tensor dataset do not necessarily line up with
+    ``session.feature_columns``. Source dtypes and named category maps therefore own
+    the classification whenever the original column is available. Positional
+    ``cat_dims`` are retained only as a fallback for features absent from the source
+    frame.
+    """
+
+    import pandas as pd
+
+    dataset = getattr(session.tabular_optimizer, "dataset", None)
+    category_maps = dict(getattr(dataset, "category_maps", None) or {})
+    categorical_names = {str(name) for name in category_maps}
+    cat_dims = set(int(value) for value in (getattr(dataset, "cat_dims", None) or []))
+    data_columns = set(getattr(session.data, "columns", []))
+
+    numeric: list[str] = []
+    for index, name in enumerate(session.feature_columns):
+        if str(name) in categorical_names:
+            continue
+
+        if name in data_columns:
+            dtype = session.data[name].dtype
+            if pd.api.types.is_numeric_dtype(dtype) and not pd.api.types.is_bool_dtype(dtype):
+                numeric.append(name)
+            continue
+
+        if index not in cat_dims:
+            numeric.append(name)
+    return numeric
 
 
 def _ternary_groups(session: VisualizationSession) -> list[dict[str, Any]]:

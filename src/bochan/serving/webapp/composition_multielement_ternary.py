@@ -6,8 +6,6 @@ from typing import Any
 
 import numpy as np
 
-_INSTALLED = False
-
 
 def _ternary_slice_grid(sum_value: float, divisions: int) -> np.ndarray:
     """Return a barycentric grid whose selected fractions sum to ``sum_value``."""
@@ -125,11 +123,7 @@ def _build_multielement_ternary_visualization(
 
     features = [str(value) for value in list(request.get("features") or ())]
     composition_axes = composition._composition_axes(context, features)
-    if (
-        len(features) != 3
-        or len(set(features)) != 3
-        or len(composition_axes) != 3
-    ):
+    if len(features) != 3 or len(set(features)) != 3 or len(composition_axes) != 3:
         raise ValueError(
             "Composition ternary plotting requires three different element-ratio axes."
         )
@@ -225,44 +219,38 @@ def _build_multielement_ternary_visualization(
     )
 
 
-def install_composition_multielement_ternary() -> None:
-    """Install outer Web option and plotting adapters for ternary slices."""
+def extend_visualization_options(
+    options: dict[str, Any],
+    session: Any,
+) -> dict[str, Any]:
+    """Extend composition options with an explicit ternary slice definition."""
 
-    global _INSTALLED
-    if _INSTALLED:
-        return
+    return _extend_multielement_ternary_options(options, session)
+
+
+def build_visualization(
+    session: Any,
+    request: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Return a composition ternary plot when the request belongs to this service."""
 
     from . import composition_visualization as composition
-    from . import visualization_sessions
-    from .composition_visualization_compat import _unavailable_payload
+    from .composition_visualization_dispatch import _unavailable_payload
 
-    current_options = visualization_sessions.visualization_options
-    current_build = visualization_sessions.build_visualization
+    context = composition._composition_context(session)
+    if context is None or str(request.get("kind", "1d")).lower() != "ternary":
+        return None
 
-    def options_adapter(session: Any) -> dict[str, Any]:
-        return _extend_multielement_ternary_options(current_options(session), session)
-
-    def build_adapter(run_id: str, request: dict[str, Any]) -> dict[str, Any]:
-        session = visualization_sessions.get_visualization_session(run_id)
-        context = composition._composition_context(session)
-        if context is None or str(request.get("kind", "1d")).lower() != "ternary":
-            return current_build(run_id, request)
-
-        features = [str(value) for value in list(request.get("features") or ())]
-        composition_axes = composition._composition_axes(context, features)
-        if not composition_axes:
-            return current_build(run_id, request)
-        if len(features) == 3 and len(composition_axes) == 3:
-            return _build_multielement_ternary_visualization(session, request)
-        return _unavailable_payload(
-            "ternary",
-            "組成の三角図では、異なる3つの元素比率を軸として選択してください。",
-        )
-
-    visualization_sessions.visualization_options = options_adapter
-    visualization_sessions.build_visualization = build_adapter
-    visualization_sessions._composition_multielement_ternary = True
-    _INSTALLED = True
+    features = [str(value) for value in list(request.get("features") or ())]
+    composition_axes = composition._composition_axes(context, features)
+    if not composition_axes:
+        return None
+    if len(features) == 3 and len(composition_axes) == 3:
+        return _build_multielement_ternary_visualization(session, request)
+    return _unavailable_payload(
+        "ternary",
+        "組成の三角図では、異なる3つの元素比率を軸として選択してください。",
+    )
 
 
 __all__ = [
@@ -270,5 +258,6 @@ __all__ = [
     "_extend_multielement_ternary_options",
     "_ternary_slice_grid",
     "_ternary_sum_value",
-    "install_composition_multielement_ternary",
+    "build_visualization",
+    "extend_visualization_options",
 ]

@@ -7,7 +7,6 @@ from .plots import (
     show_scatter_with_acqf,
     show_scatter_with_acqf_from_optimizer,
     show_target_over_cycle_study,
-    show_triscatter_with_acqf,
     show_triscatter_with_acqf_from_optimizer,
     show_yyplot,
     show_yyplot_from_optimizer,
@@ -72,6 +71,7 @@ from .study import (
     study_pareto_dataframe,
 )
 from .target_relation import show_target_relation_plot
+from .ternary import show_triscatter_with_acqf
 from .utils import CYCLE_COLORS
 
 __all__ = [

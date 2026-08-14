@@ -6,6 +6,7 @@ import ast
 from pathlib import Path
 
 import bochan.visualization as visualization
+import bochan.visualization.ternary as ternary_plot
 from bochan.visualization import input_perturbation, multiclass, ordinal, plots
 from bochan.visualization.data import frames, grids, study, ternary
 
@@ -30,6 +31,7 @@ _EXPECTED_ROOT = {
     "probability_1d.py",
     "study.py",
     "target_relation.py",
+    "ternary.py",
     "utils.py",
 }
 
@@ -87,6 +89,10 @@ def test_public_functions_have_concrete_owners() -> None:
         input_perturbation.prediction_mean_std.__module__
         == "bochan.visualization.input_perturbation"
     )
+    assert (
+        ternary_plot.show_triscatter_with_acqf.__module__
+        == "bochan.visualization.ternary"
+    )
 
     assert plots.show_1dplot_from_optimizer.__module__ == "bochan.visualization.plots"
     assert (
@@ -101,8 +107,9 @@ def test_public_functions_have_concrete_owners() -> None:
 
 
 def test_package_root_exports_canonical_plot_dispatchers() -> None:
-    """Package-root plotting imports must be the canonical ``plots`` functions."""
+    """Package-root plotting imports must have their declared canonical owners."""
 
+    assert visualization.show_triscatter_with_acqf is ternary_plot.show_triscatter_with_acqf
     assert visualization.show_1dplot_from_optimizer is plots.show_1dplot_from_optimizer
     assert (
         visualization.show_scatter_with_acqf_from_optimizer

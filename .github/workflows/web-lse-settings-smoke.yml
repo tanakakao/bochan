@@ -10,8 +10,8 @@ on:
       - "src/bochan/serving/webapp/settings/risk.py"
       - "src/bochan/serving/webapp/settings/search.py"
       - "src/bochan/serving/webapp/settings/targets.py"
-      - "src/bochan/serving/webapp/workflows.py"
-      - "src/bochan/serving/webapp/workflows_tabular.py"
+      - "src/bochan/serving/webapp/workflows/__init__.py"
+      - "src/bochan/serving/webapp/workflows/tabular.py"
       - "web/src/api.ts"
       - "web/src/components/InputPerturbationRiskSettings.tsx"
       - "web/src/components/TargetProposalSettings.tsx"
@@ -56,8 +56,8 @@ jobs:
             src/bochan/serving/webapp/settings/risk.py \
             src/bochan/serving/webapp/settings/search.py \
             src/bochan/serving/webapp/settings/targets.py \
-            src/bochan/serving/webapp/workflows.py \
-            src/bochan/serving/webapp/workflows_tabular.py \
+            src/bochan/serving/webapp/workflows/__init__.py \
+            src/bochan/serving/webapp/workflows/tabular.py \
             tests/test_regression_lse_input_perturbation_shape.py \
             tests/test_webapp_input_perturbation_risk.py \
             tests/test_webapp_input_perturbation_prediction_shape.py \

@@ -14,7 +14,7 @@ from bochan.models.regression.count.poisson.base import (
 )
 from bochan.models.regression.gamma.base import WideGammaMultiTaskGPModel
 from bochan.models.transforms.outcome import PositiveScaleOutcomeTransform
-from bochan.serving.webapp import workflows_tabular
+from bochan.serving.webapp.workflows import tabular as workflows_tabular
 
 
 @pytest.mark.parametrize(

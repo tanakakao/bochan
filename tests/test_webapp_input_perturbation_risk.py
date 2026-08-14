@@ -14,7 +14,7 @@ from bochan.serving.webapp.settings.risk import (
     resolve_web_risk_settings,
     web_risk_run,
 )
-from bochan.serving.webapp.workflows_tabular import _acquisition_family
+from bochan.serving.webapp.workflows.tabular import _acquisition_family
 
 
 def _request(

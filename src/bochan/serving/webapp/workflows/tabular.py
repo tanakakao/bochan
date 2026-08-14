@@ -16,7 +16,7 @@ from bochan.serving.workbench.workflow_utils import (
     _requires_beta,
 )
 
-from .composition.support import (
+from ..composition.support import (
     add_composition_candidate_rows,
     composition_model_feature_columns,
     composition_response_metadata,
@@ -24,21 +24,21 @@ from .composition.support import (
     prepare_composition_encoded_features,
     repair_composition_candidate_result,
 )
-from .logging import current_request_id, get_logger, log_event
-from .settings.level_set import configure_level_set_acqf_kwargs
-from .settings.risk import (
+from ..logging import current_request_id, get_logger, log_event
+from ..settings.level_set import configure_level_set_acqf_kwargs
+from ..settings.risk import (
     apply_web_risk_to_objective_config,
     normalize_web_prediction_rows,
     resolve_web_risk_settings,
 )
-from .settings.search import (
+from ..settings.search import (
     botorch_linear_constraints,
     build_target_constraint_config,
     feature_constraint_results,
     normalize_feature_constraints,
     resolve_search_method,
 )
-from .settings.targets import (
+from ..settings.targets import (
     _build_outcome_constraint_config,
     _clean_rows,
     _encode_targets,
@@ -48,15 +48,15 @@ from .settings.targets import (
     _resolve_targets,
     _validate_columns,
 )
-from .tabular_backend import encoded_features_from_tabular, fit_tabular_optimizer
-from .target_results import (
+from ..tabular_backend import encoded_features_from_tabular, fit_tabular_optimizer
+from ..target_results import (
     _batch_acq_value,
     _build_feature_importance_visualizations,
     _build_visualizations,
     _candidate_rows,
     _figure_payload,
 )
-from .target_roles import (
+from ..target_roles import (
     apply_target_roles,
     best_observed,
     objective_values_direct,

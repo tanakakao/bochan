@@ -9,7 +9,7 @@ from bochan.serving.webapp.target_results import (
     _batch_acq_value,
     _broadcast_acq_values,
 )
-from bochan.serving.webapp.workflows_tabular import _candidate_distance_tolerances
+from bochan.serving.webapp.workflows.tabular import _candidate_distance_tolerances
 
 
 class _PendingAwareRegressionAcquisition(torch.nn.Module):

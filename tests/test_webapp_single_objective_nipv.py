@@ -9,7 +9,7 @@ from bochan.acquisition.regression.active_learning import (
     qRegressionNegIntegratedPosteriorVariance,
 )
 from bochan.models.hybrid import HybridMultiOutputModel, OutputSpec
-from bochan.serving.webapp.workflows_tabular import (
+from bochan.serving.webapp.workflows.tabular import (
     _set_active_learning_reference_kwargs,
 )
 

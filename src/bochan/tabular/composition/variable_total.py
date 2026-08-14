@@ -10,7 +10,6 @@ import numpy as np
 from bochan.composition import (
     ATOMIC_WEIGHTS,
     CompositionSearchSpace,
-    close_compositions,
     format_formula,
     parse_formula,
 )
@@ -279,8 +278,7 @@ class CompositionVariableTotalTransform:
             }:
                 continue
             transformer = composition_transformers[site_name]
-            elements = transformer._require_fitted()
-            for feature_name in transformer._representation_names(elements):
+            for feature_name in transformer.representation_feature_names_:
                 expanded[feature_name] = [0.0, 1.0]
         return expanded
 
@@ -332,8 +330,8 @@ class CompositionVariableTotalTransform:
                 upper,
             )
             transformer = composition_transformers[site_name]
-            elements = transformer._require_fitted()
-            representation_names = transformer._representation_names(elements)
+            elements = transformer.fitted_elements
+            representation_names = transformer.representation_feature_names_
             missing = [
                 name
                 for name in representation_names
@@ -343,11 +341,8 @@ class CompositionVariableTotalTransform:
                 raise KeyError(
                     f"Missing model-space columns for site {site_name!r}: {missing!r}."
                 )
-            simplex_transform = transformer.simplex_transform_
-            assert simplex_transform is not None
-            model_fractions = simplex_transform.inverse_transform(
-                candidates.loc[:, representation_names].to_numpy(dtype=float),
-                n_components=len(elements),
+            model_fractions = transformer.inverse_transform_fractions(
+                candidates.loc[:, representation_names].to_numpy(dtype=float)
             )
             native_fractions = model_fractions
             if config.get("input_kind") == "element_columns":
@@ -394,20 +389,7 @@ class CompositionVariableTotalTransform:
                     ] = absolute[:, index]
                 continue
             normalized_basis = absolute / actual_totals[:, None]
-            if str(config["normalization"]).lower() in {
-                "weight_fraction",
-                "weight",
-                "mass_fraction",
-            }:
-                weights = np.asarray(
-                    [ATOMIC_WEIGHTS[element] for element in elements],
-                    dtype=float,
-                )
-                atomic_fractions = close_compositions(
-                    normalized_basis / weights
-                )
-            else:
-                atomic_fractions = close_compositions(normalized_basis)
+            atomic_fractions = transformer.basis_to_atomic_fractions(normalized_basis)
             restored.loc[:, config["column"]] = [
                 format_formula(
                     dict(zip(elements, row, strict=True)),

@@ -1,4 +1,3 @@
-from .alignment import apply_active_learning_alignment
 from .hetero_single_output import NoiseCombineType, NoiseQAggregateType, NoiseWeightMode
 from .multi_output import OutputReductionType
 from .nominal_duplicate_safe import (
@@ -32,15 +31,11 @@ from .nominal_duplicate_safe import (
     qMulticlassProbabilityVariance,
 )
 
-# DeepGP などで posterior sample / latent 軸が片側だけに残る場合の align 互換 patch。
-apply_active_learning_alignment()
-
 __all__ = [
     "NoiseCombineType",
     "NoiseQAggregateType",
     "NoiseWeightMode",
     "OutputReductionType",
-    "apply_active_learning_alignment",
     "qMulticlassPredictiveEntropy",
     "qMulticlassProbabilityVariance",
     "qMulticlassMarginUncertainty",

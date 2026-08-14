@@ -6,7 +6,7 @@ from dataclasses import replace
 from typing import Any
 
 from ..converters import to_data_context, to_optimize_config, to_tensor
-from ..target_categories import to_acquisition_config
+from .target_categories import to_acquisition_config
 
 
 def _schema_to_dict(value: Any | None) -> dict[str, Any] | None:

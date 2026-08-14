@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from bochan.serving.webapp.composition_feature_importance import (
+from bochan.serving.webapp.composition.feature_importance import (
     attach_composition_feature_importance,
 )
 from bochan.tabular.composition import (

@@ -22,7 +22,7 @@ def _element_figures(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
     import plotly.graph_objects as go
 
-    from .target_results import _figure_payload, _safe_figure_id
+    from ..target_results import _figure_payload, _safe_figure_id
 
     records = [dict(row) for row in payload.get("elements") or ()]
     outputs = list(

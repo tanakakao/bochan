@@ -21,7 +21,7 @@ from typing import Any
 
 import numpy as np
 
-from .composition_visualization import (
+from .visualization import (
     _composition_context,
     _composition_validity,
     _formula_strings,
@@ -486,7 +486,7 @@ def attach_composition_feature_importance(
 def install_composition_feature_importance() -> None:
     """Wrap the lifecycle workflow before ``app.py`` binds its route callable."""
 
-    from . import workflows
+    from .. import workflows
 
     if getattr(workflows, "_composition_feature_importance_installed", False):
         return
@@ -494,8 +494,8 @@ def install_composition_feature_importance() -> None:
 
     def workflow_adapter(request: Any, store: Any) -> dict[str, Any]:
         result = original(request, store)
-        from .logging import current_request_id
-        from .visualization_sessions import get_visualization_session
+        from ..logging import current_request_id
+        from ..visualization_sessions import get_visualization_session
 
         run_id = current_request_id()
         if not run_id:

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from bochan.serving.webapp.composition_element_importance_figures import (
+from bochan.serving.webapp.composition.element_importance_figures import (
     append_element_importance_figures,
 )
-from bochan.serving.webapp.composition_feature_importance import (
+from bochan.serving.webapp.composition.feature_importance import (
     _resolve_perturbed_fractions,
 )
-from bochan.serving.webapp.composition_feature_importance_views import (
+from bochan.serving.webapp.composition.feature_importance_views import (
     _replace_predictive_summary,
 )
 

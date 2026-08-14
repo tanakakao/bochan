@@ -6,17 +6,17 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from bochan.serving.webapp.composition_multielement_ternary import (
+from bochan.serving.webapp.composition.multielement_ternary import (
     _extend_multielement_ternary_options,
     _ternary_slice_grid,
     _ternary_sum_value,
 )
-from bochan.serving.webapp.composition_visualization import (
+from bochan.serving.webapp.composition.visualization import (
     _CompositionContext,
     _extend_visualization_options,
     _resolve_fraction_matrix,
 )
-from bochan.serving.webapp.composition_visualization_dispatch import (
+from bochan.serving.webapp.composition.visualization_dispatch import (
     _constant_composition_grid,
 )
 from bochan.tabular.data.conversion import _encode_dataframe_category_columns
@@ -306,10 +306,10 @@ def test_composition_visualization_uses_explicit_dispatch() -> None:
         "src/bochan/serving/webapp/visualization_sessions.py"
     ).read_text(encoding="utf-8")
     dispatch_source = Path(
-        "src/bochan/serving/webapp/composition_visualization_dispatch.py"
+        "src/bochan/serving/webapp/composition/visualization_dispatch.py"
     ).read_text(encoding="utf-8")
     ternary_backend = Path(
-        "src/bochan/serving/webapp/composition_multielement_ternary.py"
+        "src/bochan/serving/webapp/composition/multielement_ternary.py"
     ).read_text(encoding="utf-8")
     runtime_path = Path("src/bochan/serving/webapp/runtime_adapters.py")
     compat_path = Path(

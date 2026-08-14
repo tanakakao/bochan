@@ -4,8 +4,8 @@ from pathlib import Path
 
 import numpy as np
 
-from bochan.serving.webapp.composition_visualization import _CompositionContext
-from bochan.serving.webapp.composition_visualization_dispatch import (
+from bochan.serving.webapp.composition.visualization import _CompositionContext
+from bochan.serving.webapp.composition.visualization_dispatch import (
     _aggregate_prediction,
     _vary_fraction_rows,
 )
@@ -110,7 +110,7 @@ def test_dataset_state_resets_and_hides_stale_composition_settings() -> None:
 def test_composition_pd_is_native_dispatch_not_runtime_adapter() -> None:
     runtime_path = Path("src/bochan/serving/webapp/runtime_adapters.py")
     dispatch_source = Path(
-        "src/bochan/serving/webapp/composition_visualization_dispatch.py"
+        "src/bochan/serving/webapp/composition/visualization_dispatch.py"
     ).read_text(encoding="utf-8")
     removed_pd = Path("src/bochan/serving/webapp/composition_pd_compat.py")
 

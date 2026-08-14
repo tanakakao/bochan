@@ -3,7 +3,7 @@
 from typing import Any
 
 from .app import WEB_CAPABILITIES, app, create_app as _create_app
-from .composition_web_routes import register_composition_routes
+from .composition.routes import register_composition_routes
 
 WEB_CAPABILITIES["composition"] = {
     "enabled": True,

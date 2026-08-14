@@ -31,7 +31,7 @@ def _ternary_sum_value(
 ) -> float:
     """Resolve the selected three-element total for one ternary cross-section."""
 
-    from . import composition_visualization as composition
+    from . import visualization as composition
 
     if len(context.elements) == 3:
         return 1.0
@@ -56,7 +56,7 @@ def _extend_multielement_ternary_options(
 ) -> dict[str, Any]:
     """Register an initial three-element ternary slice for larger compositions."""
 
-    from . import composition_visualization as composition
+    from . import visualization as composition
 
     context = composition._composition_context(session)
     if context is None or len(context.elements) < 3:
@@ -111,8 +111,8 @@ def _build_multielement_ternary_visualization(
 
     from bochan.visualization import show_triscatter_with_acqf
 
-    from . import composition_visualization as composition
-    from .target_results import _figure_payload
+    from . import visualization as composition
+    from ..target_results import _figure_payload
 
     context = composition._composition_context(session)
     if context is None:
@@ -234,8 +234,8 @@ def build_visualization(
 ) -> dict[str, Any] | None:
     """Return a composition ternary plot when the request belongs to this service."""
 
-    from . import composition_visualization as composition
-    from .composition_visualization_dispatch import _unavailable_payload
+    from . import visualization as composition
+    from .visualization_dispatch import _unavailable_payload
 
     context = composition._composition_context(session)
     if context is None or str(request.get("kind", "1d")).lower() != "ternary":

@@ -20,7 +20,7 @@ def _constant_composition_grid(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Repeat the baseline composition through the normal closure routine."""
 
-    from . import composition_visualization as composition
+    from . import visualization as composition
 
     return composition._resolve_fraction_matrix(
         context,
@@ -38,7 +38,7 @@ def _unavailable_payload(kind: str, message: str) -> dict[str, Any]:
 
     import plotly.graph_objects as go
 
-    from .target_results import _figure_payload
+    from ..target_results import _figure_payload
 
     figure = go.Figure()
     figure.add_annotation(
@@ -74,8 +74,8 @@ def _build_ordinary_axis_composition_visualization(
 
     from bochan.visualization import show_1dplot_with_pred, show_scatter_with_acqf
 
-    from . import composition_visualization as composition
-    from .target_results import _figure_payload
+    from . import visualization as composition
+    from ..target_results import _figure_payload
 
     context = composition._composition_context(session)
     if context is None:
@@ -192,7 +192,7 @@ def _sample_source_rows(session: Any) -> Any:
 def _axis_values(session: Any, context: Any, feature: str, n: int) -> np.ndarray:
     """Build numeric or categorical values for one PD axis."""
 
-    from . import composition_visualization as composition
+    from . import visualization as composition
 
     if composition._element_for_feature(context, feature) is not None:
         lower, upper = composition._axis_bounds(session, context, feature)
@@ -229,7 +229,7 @@ def _vary_fraction_rows(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Vary one element ratio independently for every observed composition row."""
 
-    from . import composition_visualization as composition
+    from . import visualization as composition
 
     element = composition._element_for_feature(context, feature)
     if element is None:
@@ -296,8 +296,8 @@ def _build_partial_dependence_1d(
 
     from bochan.visualization import show_1dplot_with_pred
 
-    from . import composition_visualization as composition
-    from .target_results import _figure_payload
+    from . import visualization as composition
+    from ..target_results import _figure_payload
 
     context = composition._composition_context(session)
     if context is None:
@@ -406,7 +406,7 @@ def _build_partial_dependence_1d(
 def extend_visualization_options(options: dict[str, Any], session: Any) -> dict[str, Any]:
     """Extend generic controls with source-aware composition fraction controls."""
 
-    from . import composition_visualization as composition
+    from . import visualization as composition
 
     result = composition._extend_visualization_options(options, session)
     context = composition._composition_context(session)
@@ -427,7 +427,7 @@ def build_composition_visualization(
 ) -> dict[str, Any] | None:
     """Dispatch composition-aware plots without runtime function reassignment."""
 
-    from . import composition_visualization as composition
+    from . import visualization as composition
 
     context = composition._composition_context(session)
     kind = str(request.get("kind", "1d")).lower()

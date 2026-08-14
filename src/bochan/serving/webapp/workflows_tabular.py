@@ -16,7 +16,7 @@ from bochan.serving.workbench.workflow_utils import (
     _requires_beta,
 )
 
-from .composition_web_support import (
+from .composition.support import (
     add_composition_candidate_rows,
     composition_model_feature_columns,
     composition_response_metadata,

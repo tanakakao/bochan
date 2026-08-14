@@ -186,7 +186,7 @@ def fit_tabular_optimizer(
 
     composition_kwargs: dict[str, Any] = {}
     if composition_config is not None:
-        from .composition_web_support import composition_site
+        from .composition.support import composition_site
 
         composition_kwargs = {
             "composition_sites": {

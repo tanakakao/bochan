@@ -6,16 +6,16 @@ on:
       - main
     paths:
       - "src/bochan/tabular/data/conversion.py"
-      - "src/bochan/serving/webapp/composition_web_support.py"
-      - "src/bochan/serving/webapp/composition_web_routes.py"
+      - "src/bochan/serving/webapp/composition/support.py"
+      - "src/bochan/serving/webapp/composition/routes.py"
       - "src/bochan/serving/webapp/workflows_tabular.py"
       - "src/bochan/serving/webapp/tabular_backend.py"
-      - "src/bochan/serving/webapp/composition_visualization.py"
-      - "src/bochan/serving/webapp/composition_visualization_dispatch.py"
-      - "src/bochan/serving/webapp/composition_multielement_ternary.py"
-      - "src/bochan/serving/webapp/composition_feature_importance.py"
-      - "src/bochan/serving/webapp/composition_feature_importance_views.py"
-      - "src/bochan/serving/webapp/composition_element_importance_figures.py"
+      - "src/bochan/serving/webapp/composition/visualization.py"
+      - "src/bochan/serving/webapp/composition/visualization_dispatch.py"
+      - "src/bochan/serving/webapp/composition/multielement_ternary.py"
+      - "src/bochan/serving/webapp/composition/feature_importance.py"
+      - "src/bochan/serving/webapp/composition/feature_importance_views.py"
+      - "src/bochan/serving/webapp/composition/element_importance_figures.py"
       - "src/bochan/serving/webapp/_visualization_sessions_core.py"
       - "src/bochan/serving/webapp/visualization_sessions.py"
       - "src/bochan/serving/webapp/__init__.py"
@@ -95,16 +95,16 @@ jobs:
           python -m pip install ruff
           ruff check --ignore I001,SIM102,SIM105,SIM108,B010 \
             src/bochan/tabular/data/conversion.py \
-            src/bochan/serving/webapp/composition_web_support.py \
-            src/bochan/serving/webapp/composition_web_routes.py \
+            src/bochan/serving/webapp/composition/support.py \
+            src/bochan/serving/webapp/composition/routes.py \
             src/bochan/serving/webapp/workflows_tabular.py \
             src/bochan/serving/webapp/tabular_backend.py \
-            src/bochan/serving/webapp/composition_visualization.py \
-            src/bochan/serving/webapp/composition_visualization_dispatch.py \
-            src/bochan/serving/webapp/composition_multielement_ternary.py \
-            src/bochan/serving/webapp/composition_feature_importance.py \
-            src/bochan/serving/webapp/composition_feature_importance_views.py \
-            src/bochan/serving/webapp/composition_element_importance_figures.py \
+            src/bochan/serving/webapp/composition/visualization.py \
+            src/bochan/serving/webapp/composition/visualization_dispatch.py \
+            src/bochan/serving/webapp/composition/multielement_ternary.py \
+            src/bochan/serving/webapp/composition/feature_importance.py \
+            src/bochan/serving/webapp/composition/feature_importance_views.py \
+            src/bochan/serving/webapp/composition/element_importance_figures.py \
             src/bochan/serving/webapp/visualization_sessions.py \
             src/bochan/serving/webapp/__init__.py \
             src/bochan/visualization/__init__.py \

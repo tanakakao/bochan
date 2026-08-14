@@ -6,8 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .app import RegressionRunRequest
-from .composition_web_support import (
+from ..app import RegressionRunRequest
+from .support import (
     _composition_transformer,
     normalize_web_composition_settings,
 )

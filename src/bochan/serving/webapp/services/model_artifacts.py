@@ -15,16 +15,16 @@ from bochan.model_artifact import (
 )
 from bochan.tabular import TabularBayesianOptimizer
 
-from .model_reuse import (
-    get_registered_model_signature,
-    model_reuse_signature,
-    register_model_signature,
-)
-from .visualization_sessions import (
+from ..visualization_sessions import (
     VisualizationSession,
     get_visualization_session,
     register_visualization_session,
     visualization_options,
+)
+from .model_reuse import (
+    get_registered_model_signature,
+    model_reuse_signature,
+    register_model_signature,
 )
 
 _MAX_ARTIFACT_BYTES = 512 * 1024 * 1024

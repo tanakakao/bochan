@@ -10,8 +10,8 @@ from .capabilities import create_capabilities_router
 from .composition import create_composition_router
 from .datasets import create_datasets_router
 from .logs import create_logs_router
-from .model_artifacts import create_model_artifact_router
 from .regression import create_regression_router, run_regression_request
+from .services.model_artifacts import create_model_artifact_router
 from .visualizations import create_visualization_router
 
 

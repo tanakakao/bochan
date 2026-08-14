@@ -304,7 +304,7 @@ def resolve_target_settings(*args: Any, **kwargs: Any) -> tuple[Any, dict[str, A
     """Resolve target settings and apply request-local Web model defaults."""
 
     from .model_capabilities import validate_web_model_acquisition_compatibility
-    from .model_runtime import apply_web_model_runtime_defaults
+    from .services.model_runtime import apply_web_model_runtime_defaults
     from .target_settings_core import _resolve_target_settings as core_resolve
 
     settings, model_kwargs = core_resolve(*args, **kwargs)

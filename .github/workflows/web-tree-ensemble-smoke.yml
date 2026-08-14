@@ -17,10 +17,10 @@ on:
       - "src/bochan/models/classification/binary/foundation/tabpfn.py"
       - "src/bochan/models/classification/multiclass/foundation/tabpfn.py"
       - "src/bochan/serving/webapp/app.py"
-      - "src/bochan/serving/webapp/candidate_runtime.py"
+      - "src/bochan/serving/webapp/services/candidate_runtime.py"
       - "src/bochan/serving/webapp/model_capabilities.py"
-      - "src/bochan/serving/webapp/model_reuse.py"
-      - "src/bochan/serving/webapp/model_runtime.py"
+      - "src/bochan/serving/webapp/services/model_reuse.py"
+      - "src/bochan/serving/webapp/services/model_runtime.py"
       - "src/bochan/serving/webapp/settings/risk.py"
       - "src/bochan/serving/webapp/settings/search.py"
       - "src/bochan/serving/webapp/target_missing_policy.py"
@@ -111,10 +111,10 @@ jobs:
             src/bochan/tabpfn_preload.py \
             src/bochan/models/external/common.py \
             src/bochan/serving/webapp/app.py \
-            src/bochan/serving/webapp/candidate_runtime.py \
+            src/bochan/serving/webapp/services/candidate_runtime.py \
             src/bochan/serving/webapp/model_capabilities.py \
-            src/bochan/serving/webapp/model_reuse.py \
-            src/bochan/serving/webapp/model_runtime.py \
+            src/bochan/serving/webapp/services/model_reuse.py \
+            src/bochan/serving/webapp/services/model_runtime.py \
             src/bochan/serving/webapp/settings/risk.py \
             src/bochan/serving/webapp/settings/search.py \
             src/bochan/serving/webapp/target_missing_policy.py \

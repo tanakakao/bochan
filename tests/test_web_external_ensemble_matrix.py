@@ -60,7 +60,7 @@ class _FakeProbabilityForest:
 
 
 def test_web_runtime_preserves_explicit_external_estimators() -> None:
-    from bochan.serving.webapp.model_runtime import apply_web_model_runtime_defaults
+    from bochan.serving.webapp.services.model_runtime import apply_web_model_runtime_defaults
 
     members = [object(), object()]
     ngboost = apply_web_model_runtime_defaults(

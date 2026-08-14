@@ -114,13 +114,13 @@ jobs:
             src/bochan/serving/webapp/schemas/regression.py \
             src/bochan/serving/webapp/schemas/search.py \
             src/bochan/serving/webapp/schemas/visualization.py \
-            src/bochan/serving/webapp/experiment_history.py \
-            src/bochan/serving/webapp/project_archive.py \
+            src/bochan/serving/webapp/services/experiment_history.py \
+            src/bochan/serving/webapp/services/project_archive.py \
             src/bochan/serving/webapp/hybrid_bo_routing.py \
-            src/bochan/serving/webapp/model_artifacts.py \
-            src/bochan/serving/webapp/model_reuse.py \
+            src/bochan/serving/webapp/services/model_artifacts.py \
+            src/bochan/serving/webapp/services/model_reuse.py \
             src/bochan/serving/webapp/non_gaussian_validation.py \
-            src/bochan/serving/webapp/reuse_dataset.py \
+            src/bochan/serving/webapp/services/reuse_dataset.py \
             src/bochan/serving/webapp/settings/targets.py \
             src/bochan/serving/webapp/target_roles.py \
             src/bochan/serving/webapp/target_results.py \

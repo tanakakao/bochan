@@ -16,12 +16,12 @@ pytest.importorskip("torch")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from bochan.serving.webapp.app import create_app  # noqa: E402
-from bochan.serving.webapp.model_artifacts import (  # noqa: E402
+from bochan.serving.webapp.services.model_artifacts import (  # noqa: E402
     deserialize_web_model_artifact,
     restore_web_model_artifact,
     serialize_web_model_artifact,
 )
-from bochan.serving.webapp.model_reuse import register_model_signature  # noqa: E402
+from bochan.serving.webapp.services.model_reuse import register_model_signature  # noqa: E402
 from bochan.serving.webapp.visualization_sessions import (  # noqa: E402
     VisualizationSession,
     get_visualization_session,

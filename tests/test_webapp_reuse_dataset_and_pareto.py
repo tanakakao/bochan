@@ -5,8 +5,8 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from bochan.serving.webapp.reuse_dataset import store_for_model_reuse
 from bochan.serving.webapp.schemas.visualization import VisualizationRequestSchema
+from bochan.serving.webapp.services.reuse_dataset import store_for_model_reuse
 from bochan.serving.webapp.visualization_sessions import (
     VisualizationSession,
     _pareto_plot,

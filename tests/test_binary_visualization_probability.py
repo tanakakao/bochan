@@ -3,7 +3,8 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from bochan.visualization.utils import get_model, prediction_mean_std
+from bochan.visualization.input_perturbation import prediction_mean_std
+from bochan.visualization.utils import get_model
 from tests.test_binary_epistemic_uncertainty import _EpistemicBinaryModel
 
 

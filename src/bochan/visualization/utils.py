@@ -8,8 +8,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from bochan.acquisition.binary.epistemic import binary_probability_moments
-
 CYCLE_COLORS = [
     "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
     "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
@@ -231,69 +229,6 @@ def candidate_result_from(obj: Any) -> Any | None:
     if history:
         return history[-1]
     return None
-
-
-def _is_binary_prediction_object(obj: Any, model: Any) -> bool:
-    """Return whether binary uncertainty semantics should be used."""
-    bundle = getattr(obj, "bundle", None)
-    task_type = getattr(bundle, "task_type", None)
-    if task_type is None:
-        config = getattr(obj, "model_config", None)
-        task_type = getattr(config, "task_type", None)
-    if str(task_type).lower() == "binary":
-        return True
-    module_name = type(model).__module__.lower()
-    class_name = type(model).__name__.lower()
-    return "classification.binary" in module_name or "binary" in class_name
-
-
-def prediction_mean_std(
-    obj: Any,
-    X: Any,
-    *,
-    uncertainty_kind: str = "epistemic",
-    num_uncertainty_samples: int = 256,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Return predictive mean and standard deviation for visualization.
-
-    Binary classification defaults to probability epistemic uncertainty
-    ``sqrt(Var_f[p(y=1|f)])``.  Set ``uncertainty_kind`` to ``aleatoric`` or
-    ``observation`` / ``bernoulli`` to inspect label-level uncertainty.
-    """
-    X_t = to_tensor_like(X, obj)
-    model = get_model(obj)
-
-    if _is_binary_prediction_object(obj, model):
-        mean, epistemic, aleatoric, observation = binary_probability_moments(
-            model,
-            X_t,
-            num_samples=num_uncertainty_samples,
-        )
-        key = str(uncertainty_kind).lower()
-        if key == "epistemic":
-            var = epistemic
-        elif key == "aleatoric":
-            var = aleatoric
-        elif key in {"observation", "bernoulli", "total_label"}:
-            var = observation
-        else:
-            raise ValueError(
-                "binary uncertainty_kind must be 'epistemic', 'aleatoric', "
-                "'observation', or 'bernoulli'."
-            )
-    elif hasattr(obj, "predict"):
-        try:
-            mean, var = obj.predict(X_t, return_type="mean_variance")
-        except TypeError:
-            posterior = model.posterior(X_t)
-            mean, var = posterior.mean, posterior.variance
-    else:
-        posterior = model.posterior(X_t)
-        mean, var = posterior.mean, posterior.variance
-
-    mean_arr = ensure_2d(mean)
-    std_arr = np.sqrt(np.clip(ensure_2d(var), 0.0, None))
-    return mean_arr, std_arr
 
 
 def evaluate_acqf_on_points(acqf: Any, X: Any) -> np.ndarray:

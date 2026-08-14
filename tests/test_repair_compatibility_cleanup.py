@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import Any
 
 import torch
 
@@ -21,6 +22,11 @@ def _constraint_import_levels(path: str) -> list[int]:
         if isinstance(node, ast.ImportFrom)
         and node.module == "constraints.k_sparse"
     ]
+
+
+def _build_post_processing(config: OptimizeConfig, bounds: torch.Tensor) -> Any:
+    builder = getattr(api_factory, "_build_post_processing_func")
+    return builder(config, bounds)
 
 
 def test_candidate_repair_does_not_inspect_caller_frames() -> None:
@@ -49,7 +55,7 @@ def test_candidate_repair_does_not_inspect_caller_frames() -> None:
     repair_factory = next(
         node
         for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        if isinstance(node, ast.FunctionDef)
         and node.name == "make_grid_k_sparse_post_processing_func"
     )
     keyword_args = repair_factory.args.kwonlyargs
@@ -99,7 +105,7 @@ def test_high_level_repair_without_private_bounds_uses_zero_origin() -> None:
         )
     )
 
-    post_process = api_factory._build_post_processing_func(config, bounds)
+    post_process = _build_post_processing(config, bounds)
     assert post_process is not None
     result = post_process(torch.tensor([[0.31]], dtype=torch.double))
 
@@ -116,7 +122,7 @@ def test_high_level_repair_with_explicit_bounds_uses_lower_bound_origin() -> Non
         )
     )
 
-    post_process = api_factory._build_post_processing_func(config, bounds)
+    post_process = _build_post_processing(config, bounds)
     assert post_process is not None
     result = post_process(torch.tensor([[0.31]], dtype=torch.double))
 

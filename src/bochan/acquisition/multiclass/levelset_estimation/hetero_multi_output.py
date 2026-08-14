@@ -4,7 +4,6 @@ import torch
 from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 
-from bochan.acquisition.multiclass.active_learning.hetero_alignment import apply_hetero_noise_alignment
 from bochan.acquisition.multiclass.active_learning.hetero_multi_output import _HeteroMultiOutputMulticlassMixin
 
 from .multi_output import (
@@ -17,11 +16,6 @@ from .multi_output import (
     qMultiOutputMulticlassLatentStraddleAcquisition,
     qMultiOutputMulticlassProbabilityOfExceedance,
 )
-
-# Keep the existing Active Learning heteroscedastic noise-alignment support.
-# Level-set q-like sampling alignment itself is implemented natively in the
-# joint multiclass LSE base and requires no runtime patch.
-apply_hetero_noise_alignment()
 
 
 class qHeteroMultiOutputMulticlassLatentStraddleAcquisition(

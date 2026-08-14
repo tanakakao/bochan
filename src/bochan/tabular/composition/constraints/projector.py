@@ -64,6 +64,15 @@ class CompositionElementConstraintProjector:
     def repair_frame(self, restored: Any) -> Any:
         return self._repair_element_constraint_frame(restored)
 
+    def row_native_values(
+        self,
+        restored: Any,
+        row_index: Any,
+    ) -> tuple[dict[tuple[str, str], float], dict[str, float]]:
+        """Return native element values and site totals for one restored row."""
+
+        return self._row_native_values(restored, row_index)
+
     def _validate_element_constraints(self) -> None:
         if not self.composition_element_constraints:
             return

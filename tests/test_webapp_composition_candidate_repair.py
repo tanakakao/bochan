@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -34,11 +36,13 @@ class _FractionOptimizer:
                 "temperature": [800.0, 1000.0],
             },
         )
-        self.composition_transformers_ = {
-            "composition": SimpleNamespace(
-                feature_names_=tuple(self.feature_names[:2])
-            )
-        }
+        self.composition = SimpleNamespace(
+            transformers={
+                "composition": SimpleNamespace(
+                    feature_names_=tuple(self.feature_names[:2])
+                )
+            }
+        )
 
     def candidate(self, *_: Any, **__: Any) -> Any:
         return SimpleNamespace(
@@ -100,3 +104,17 @@ def test_fraction_candidate_repair_preserves_model_dimension() -> None:
         ),
     )
     assert result.acq_value.shape == (2,)
+
+
+def test_web_composition_support_uses_canonical_transformer_state() -> None:
+    root = Path(__file__).resolve().parents[1]
+    path = root / "src/bochan/serving/webapp/composition/support.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    forbidden = {"_require_fitted", "composition_transformers_"}
+    used = {
+        node.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute) and node.attr in forbidden
+    }
+
+    assert not used, f"Web composition support reaches stale transformer state: {sorted(used)!r}."

@@ -1,6 +1,5 @@
 """Visualization helpers for bochan."""
 
-from . import data as _data
 from . import plots as _plots
 from . import utils as _utils
 from .data import (
@@ -14,9 +13,6 @@ from .data import (
     training_dataframe,
     tri_grid,
 )
-from .input_perturbation import (
-    prediction_mean_std as _prediction_mean_std_with_input_perturbation,
-)
 from .feature_importance import (
     ard_diagnostics_dataframe,
     build_feature_importance_figures,
@@ -28,10 +24,12 @@ from .feature_importance import (
     show_pca_explained_variance,
     show_task_correlation_diagnostics,
 )
+from .input_perturbation import (
+    prediction_mean_std as _prediction_mean_std_with_input_perturbation,
+)
 
-# ``data.py`` imports prediction_mean_std directly. Replace both references so
-# package and direct submodule imports use perturbation-aware visualization.
-_data.prediction_mean_std = _prediction_mean_std_with_input_perturbation
+# Direct ``utils`` imports retain the perturbation-aware display semantics while
+# prediction DataFrame builders now own that dependency directly.
 _utils.prediction_mean_std = _prediction_mean_std_with_input_perturbation
 
 from .multiclass import (
@@ -136,10 +134,10 @@ __all__ = [
     "MulticlassHeatmapMode",
     "OrdinalDisplayMode",
     "OrdinalProbabilityMode",
-    "candidates_dataframe",
-    "create_grid",
     "ard_diagnostics_dataframe",
     "build_feature_importance_figures",
+    "candidates_dataframe",
+    "create_grid",
     "cross_validated_feature_importance_dataframe",
     "feature_importance_dataframe",
     "get_const_array",
@@ -160,17 +158,11 @@ __all__ = [
     "ordinal_probabilities",
     "ordinal_tri_grid",
     "prediction_dataframe",
-    "training_dataframe",
-    "study_history_dataframe",
-    "study_pareto_dataframe",
-    "tri_grid",
     "show_1dplot_from_optimizer",
+    "show_1dplot_with_pred",
     "show_ard_diagnostics",
     "show_cross_validated_feature_importance",
     "show_feature_importance",
-    "show_pca_explained_variance",
-    "show_task_correlation_diagnostics",
-    "show_1dplot_with_pred",
     "show_multiclass_1dplot",
     "show_multiclass_1dplot_from_optimizer",
     "show_multiclass_heatmap",
@@ -178,18 +170,24 @@ __all__ = [
     "show_multiclass_triscatter",
     "show_multiclass_triscatter_from_optimizer",
     "show_multiclass_yyplot",
+    "show_optimization_history_study",
     "show_ordinal_1dplot_from_optimizer",
     "show_ordinal_heatmap_from_optimizer",
     "show_ordinal_triscatter_from_optimizer",
-    "show_optimization_history_study",
     "show_pareto_front_study",
     "show_pareto_plot",
+    "show_pca_explained_variance",
     "show_scatter_with_acqf",
     "show_scatter_with_acqf_from_optimizer",
     "show_target_over_cycle_study",
     "show_target_relation_plot",
+    "show_task_correlation_diagnostics",
     "show_triscatter_with_acqf",
     "show_triscatter_with_acqf_from_optimizer",
     "show_yyplot",
     "show_yyplot_from_optimizer",
+    "study_history_dataframe",
+    "study_pareto_dataframe",
+    "training_dataframe",
+    "tri_grid",
 ]

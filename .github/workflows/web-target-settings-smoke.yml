@@ -128,7 +128,6 @@ jobs:
             src/bochan/serving/webapp/tabular_backend.py \
             src/bochan/serving/webapp/visualization_sessions.py \
             src/bochan/serving/webapp/workflows/__init__.py \
-            src/bochan/serving/webapp/workflows_extended.py \
             src/bochan/serving/webapp/workflows/tabular.py \
             src/bochan/visualization/input_perturbation.py \
             src/bochan/visualization/plots.py \

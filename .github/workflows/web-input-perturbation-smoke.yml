@@ -17,18 +17,23 @@ on:
       - "src/bochan/visualization/multiclass.py"
       - "src/bochan/visualization/multiclass_yy.py"
       - "src/bochan/visualization/ordinal.py"
+      - "src/bochan/visualization/utils.py"
       - "web/src/api.ts"
       - "web/src/context/WorkbenchContext.tsx"
       - "web/src/pages/SettingsPage.tsx"
       - "tests/api/test_cross_validation_prediction_aggregation.py"
       - "tests/test_binary_active_learning_input_perturbation_duplicates.py"
+      - "tests/test_binary_uncertainty_display_integration.py"
+      - "tests/test_binary_visualization_probability.py"
       - "tests/test_classification_input_perturbation_duplicate_semantics.py"
       - "tests/test_feature_importance_input_perturbation.py"
       - "tests/test_multiclass_yy_visualization.py"
       - "tests/test_probability_visualization_input_perturbation.py"
       - "tests/test_regression_active_learning_input_perturbation_duplicates.py"
       - "tests/test_visualization_data_architecture.py"
+      - "tests/test_visualization_display_scale.py"
       - "tests/test_visualization_input_perturbation.py"
+      - "tests/test_visualization_prediction_architecture.py"
       - "tests/test_visualization_probability_architecture.py"
       - "tests/test_webapp_binary_variance_input_perturbation_e2e.py"
       - "tests/test_webapp_classification_input_perturbation_e2e.py"
@@ -54,13 +59,17 @@ jobs:
           pytest -q --maxfail=1 \
             tests/api/test_cross_validation_prediction_aggregation.py \
             tests/test_binary_active_learning_input_perturbation_duplicates.py \
+            tests/test_binary_uncertainty_display_integration.py \
+            tests/test_binary_visualization_probability.py \
             tests/test_classification_input_perturbation_duplicate_semantics.py \
             tests/test_feature_importance_input_perturbation.py \
             tests/test_multiclass_yy_visualization.py \
             tests/test_probability_visualization_input_perturbation.py \
             tests/test_regression_active_learning_input_perturbation_duplicates.py \
             tests/test_visualization_data_architecture.py \
+            tests/test_visualization_display_scale.py \
             tests/test_visualization_input_perturbation.py \
+            tests/test_visualization_prediction_architecture.py \
             tests/test_visualization_probability_architecture.py \
             tests/test_webapp_binary_variance_input_perturbation_e2e.py \
             tests/test_webapp_classification_input_perturbation_e2e.py \
@@ -107,6 +116,7 @@ jobs:
             tests/test_regression_active_learning_input_perturbation_duplicates.py \
             tests/test_visualization_data_architecture.py \
             tests/test_visualization_input_perturbation.py \
+            tests/test_visualization_prediction_architecture.py \
             tests/test_visualization_probability_architecture.py \
             tests/test_webapp_binary_variance_input_perturbation_e2e.py \
             tests/test_webapp_classification_input_perturbation_e2e.py \

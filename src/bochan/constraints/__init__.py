@@ -13,7 +13,7 @@ from .constraints import (
     make_linear_constraint_repair_func,
     project_linear_constraints,
 )
-from .ksparse import (
+from .k_sparse import (
     diversify_within_q,
     enforce_sum_on_support,
     expand_categorical_features,

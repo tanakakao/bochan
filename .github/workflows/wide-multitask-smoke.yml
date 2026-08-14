@@ -27,6 +27,7 @@ jobs:
           set +e
           pytest -q --maxfail=1 \
             tests/test_model_strategy_package_layout.py \
+            tests/test_compatibility_cleanup_layout.py \
             tests/test_gamma_fantasize.py \
             tests/test_wide_multitask_models.py \
             tests/test_wide_multitask_public_transform.py \
@@ -93,8 +94,6 @@ jobs:
             src/bochan/acquisition/regression/active_learning/integrated_variance.py \
             src/bochan/acquisition/regression/bayesian_optimization/__init__.py \
             src/bochan/acquisition/regression/bayesian_optimization/hetero_multi_output_autograd.py \
-            src/bochan/acquisition/regression/levelset_estimation/objective_compat.py \
-            src/bochan/acquisition/regression/levelset_estimation/hetero_objective_compat.py \
             src/bochan/api/configs/acquisition.py \
             src/bochan/api/acquisition/defaults/multiobjective.py \
             src/bochan/api/acquisition/feasibility.py \
@@ -126,6 +125,7 @@ jobs:
             src/bochan/serving/fastapi/schemas/tabular.py \
             src/bochan/serving/fastapi/stores/__init__.py \
             src/bochan/serving/fastapi/stores/tabular.py \
+            tests/test_compatibility_cleanup_layout.py \
             tests/test_acquisition_api_conventions.py \
             tests/test_gamma_fantasize.py \
             tests/test_wide_multitask_models.py \

@@ -306,6 +306,9 @@ def test_visualization_compat_routes_ordinary_and_multielement_ternary_axes() ->
     frontend = Path("web/src/compositionVisualizationGuard.ts").read_text(
         encoding="utf-8"
     )
+    runtime_adapters = Path(
+        "src/bochan/serving/webapp/runtime_adapters.py"
+    ).read_text(encoding="utf-8")
     web_init = Path("src/bochan/serving/webapp/__init__.py").read_text(
         encoding="utf-8"
     )
@@ -319,5 +322,6 @@ def test_visualization_compat_routes_ordinary_and_multielement_ternary_axes() ->
     assert "len(features) == 3 and len(composition_axes) == 3" in ternary_backend
     assert "fractionOptions.size >= 3" in frontend
     assert 'kindSelect.value = "1d"' in frontend
-    assert "install_composition_multielement_ternary" in web_init
+    assert "install_composition_multielement_ternary()" in runtime_adapters
+    assert "install_web_runtime_adapters()" in web_init
     assert "installCompositionVisualizationGuard" in main

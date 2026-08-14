@@ -10,7 +10,7 @@ import torch
 from torch import Tensor
 
 from .constraints import LinearConstraint, linear_constraint_violations, normalize_bounds
-from .ksparse import make_k_sparse_post_processing_func
+from .k_sparse import make_k_sparse_post_processing_func
 from .rounding import grid_residual, make_grid_rounding_post_processing_func
 
 FinalPriority = Literal["grid", "constraints"]

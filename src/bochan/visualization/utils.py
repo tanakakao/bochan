@@ -121,20 +121,12 @@ def get_bounds(obj: Any, train_X: Any | None = None) -> Any:
     return np.stack([np.nanmin(arr, axis=0), np.nanmax(arr, axis=0)], axis=0)
 
 
-def infer_feature_cols(
-    obj: Any,
-    feature_cols: Sequence[str] | None = None,
-    n_cols: int | None = None,
-) -> list[str]:
+def infer_feature_cols(obj: Any, feature_cols: Sequence[str] | None = None, n_cols: int | None = None) -> list[str]:
     """説明変数名を推定する。"""
 
     if feature_cols is not None:
         return list(feature_cols)
-    for candidate in (
-        obj,
-        getattr(obj, "bundle", None),
-        getattr(obj, "data_context", None),
-    ):
+    for candidate in (obj, getattr(obj, "bundle", None), getattr(obj, "data_context", None)):
         meta = getattr(candidate, "metadata", None)
         if isinstance(meta, Mapping):
             for key in ("feature_cols", "features", "x_cols"):
@@ -145,20 +137,12 @@ def infer_feature_cols(
     return [f"x{i}" for i in range(int(n_cols))]
 
 
-def infer_target_cols(
-    obj: Any,
-    target_cols: Sequence[str] | None = None,
-    n_cols: int | None = None,
-) -> list[str]:
+def infer_target_cols(obj: Any, target_cols: Sequence[str] | None = None, n_cols: int | None = None) -> list[str]:
     """目的変数名を推定する。"""
 
     if target_cols is not None:
         return list(target_cols)
-    for candidate in (
-        obj,
-        getattr(obj, "bundle", None),
-        getattr(obj, "data_context", None),
-    ):
+    for candidate in (obj, getattr(obj, "bundle", None), getattr(obj, "data_context", None)):
         meta = getattr(candidate, "metadata", None)
         if isinstance(meta, Mapping):
             for key in ("target_cols", "targets", "y_cols", "output_names"):
@@ -223,15 +207,11 @@ def encode_category_value(value: Any, mapping: Mapping[Any, Any] | None) -> Any:
     except TypeError:
         pass
 
-    raw_matches = [
-        encoded for label, encoded in mapping.items() if str(label) == str(value)
-    ]
+    raw_matches = [encoded for label, encoded in mapping.items() if str(label) == str(value)]
     if len(raw_matches) == 1:
         return raw_matches[0]
 
-    encoded_matches = [
-        encoded for encoded in mapping.values() if str(encoded) == str(value)
-    ]
+    encoded_matches = [encoded for encoded in mapping.values() if str(encoded) == str(value)]
     if len(encoded_matches) == 1:
         return encoded_matches[0]
 
@@ -243,10 +223,7 @@ def encode_category_value(value: Any, mapping: Mapping[Any, Any] | None) -> Any:
 def candidate_result_from(obj: Any) -> Any | None:
     """BayesianOptimizer / BochanStudy から直近の CandidateResult を取り出す。"""
 
-    if (
-        hasattr(obj, "last_candidate_batch")
-        and getattr(obj, "last_candidate_batch") is not None
-    ):
+    if hasattr(obj, "last_candidate_batch") and getattr(obj, "last_candidate_batch") is not None:
         return getattr(obj.last_candidate_batch, "result", None)
     history = getattr(obj, "history", None)
     if history:
@@ -321,20 +298,13 @@ def axis_values(
         b = ensure_2d(bounds)
         lo, hi = float(b[0, col_index]), float(b[1, col_index])
     else:
-        lo = float(np.nanmin(train_arr[:, col_index]))
-        hi = float(np.nanmax(train_arr[:, col_index]))
+        lo, hi = float(np.nanmin(train_arr[:, col_index])), float(np.nanmax(train_arr[:, col_index]))
     if lo == hi:
         lo, hi = lo - 0.5, hi + 0.5
     return np.linspace(lo, hi, int(n))
 
 
-def cycle_series(
-    cycle: str | Sequence[Any] | pd.Series | None,
-    *,
-    X: pd.DataFrame | None = None,
-    y: pd.DataFrame | None = None,
-    length: int | None = None,
-) -> pd.Series | None:
+def cycle_series(cycle: str | Sequence[Any] | pd.Series | None, *, X: pd.DataFrame | None = None, y: pd.DataFrame | None = None, length: int | None = None) -> pd.Series | None:
     """cycle 指定を Series に正規化する。"""
 
     if cycle is None:

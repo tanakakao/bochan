@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from types import SimpleNamespace
 
 import pytest
@@ -8,7 +9,6 @@ from botorch.models import SingleTaskGP
 from botorch.models.gp_regression_mixed import MixedSingleTaskGP
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
-import bochan.fit  # noqa: F401
 from bochan.api import (
     AcquisitionConfig,
     BayesianOptimizer,
@@ -17,6 +17,7 @@ from bochan.api import (
     ModelBundle,
     ModelConfig,
     MultiOutputConfig,
+    fit_model,
 )
 from bochan.api.acquisition import defaults as acquisition_defaults
 from bochan.api.acquisition.defaults import resolver as engine_defaults
@@ -352,8 +353,6 @@ def test_acqf_kwargs_best_f_has_priority_over_data_context(monkeypatch) -> None:
 @pytest.mark.parametrize(
     "model_cls",
     [
-        SingleTaskGP,
-        MixedSingleTaskGP,
         GaussianKroneckerMultiTaskGP,
         GaussianMixedKroneckerMultiTaskGP,
         WideMultiTaskGP,
@@ -367,18 +366,47 @@ def test_acqf_kwargs_best_f_has_priority_over_data_context(monkeypatch) -> None:
         HeteroscedasticGaussianMixedGPModel,
     ],
 )
-def test_exact_regression_models_define_make_mll_directly(model_cls) -> None:
+def test_bochan_exact_regression_models_define_make_mll_directly(model_cls) -> None:
     assert "make_mll" in model_cls.__dict__
     assert callable(model_cls.__dict__["make_mll"])
 
 
-def test_single_task_make_mll_returns_exact_marginal_log_likelihood() -> None:
+def test_importing_bochan_fit_does_not_patch_botorch_exact_models() -> None:
+    single_task_attrs = set(SingleTaskGP.__dict__)
+    mixed_task_attrs = set(MixedSingleTaskGP.__dict__)
+
+    import bochan.fit
+
+    importlib.reload(bochan.fit)
+
+    assert set(SingleTaskGP.__dict__) == single_task_attrs
+    assert set(MixedSingleTaskGP.__dict__) == mixed_task_attrs
+    assert "make_mll" not in SingleTaskGP.__dict__
+    assert "make_mll" not in MixedSingleTaskGP.__dict__
+
+
+def test_single_task_default_fit_builds_exact_mll_without_model_method() -> None:
     train_X = torch.linspace(0.0, 1.0, 4, dtype=torch.double).unsqueeze(-1)
     train_Y = train_X.square()
     model = SingleTaskGP(train_X=train_X, train_Y=train_Y)
+    bundle = ModelBundle(
+        model=model,
+        train_X=train_X,
+        train_Y=train_Y,
+        model_config=ModelConfig(
+            task_type="regression",
+            model_type="base",
+            outcome_transform=False,
+        ),
+        task_type="regression",
+        model_type="base",
+    )
 
-    mll = model.make_mll()
+    fitted = fit_model(
+        bundle,
+        FitConfig(fit_func=lambda mll: mll),
+    )
 
-    assert isinstance(mll, ExactMarginalLogLikelihood)
-    assert mll.model is model
-    assert mll.likelihood is model.likelihood
+    assert isinstance(fitted.mll, ExactMarginalLogLikelihood)
+    assert fitted.mll.model is model
+    assert fitted.mll.likelihood is model.likelihood

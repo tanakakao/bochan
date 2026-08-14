@@ -10,15 +10,14 @@ from bochan.api.factory import _build_post_processing_func
 from bochan.constraints.postprocess import make_grid_k_sparse_post_processing_func
 
 
-def _imported_modules(path: str) -> set[str]:
+def _constraint_import_levels(path: str) -> list[int]:
     tree = ast.parse(Path(path).read_text(encoding="utf-8"))
-    modules: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            modules.add(node.module or "")
-        elif isinstance(node, ast.Import):
-            modules.update(alias.name for alias in node.names)
-    return modules
+    return [
+        node.level
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "constraints.k_sparse"
+    ]
 
 
 def test_candidate_repair_does_not_inspect_caller_frames() -> None:
@@ -38,10 +37,8 @@ def test_optimizer_constraint_imports_use_package_relative_path_only() -> None:
 
     for path in paths:
         source = Path(path).read_text(encoding="utf-8")
-        modules = _imported_modules(path)
-        assert "constraints.k_sparse" not in modules
+        assert _constraint_import_levels(path) == [3]
         assert "from constraints.k_sparse" not in source
-        assert "...constraints.k_sparse" in source
 
 
 def test_direct_grid_repair_defaults_to_lower_bound_origin() -> None:

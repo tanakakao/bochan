@@ -15,8 +15,10 @@ on:
       - "src/bochan/visualization/data/**"
       - "src/bochan/visualization/input_perturbation.py"
       - "src/bochan/visualization/multiclass.py"
+      - "src/bochan/visualization/multiclass_ternary.py"
       - "src/bochan/visualization/multiclass_yy.py"
       - "src/bochan/visualization/ordinal.py"
+      - "src/bochan/visualization/plots.py"
       - "src/bochan/visualization/utils.py"
       - "web/src/api.ts"
       - "web/src/context/WorkbenchContext.tsx"
@@ -27,12 +29,18 @@ on:
       - "tests/test_binary_visualization_probability.py"
       - "tests/test_classification_input_perturbation_duplicate_semantics.py"
       - "tests/test_feature_importance_input_perturbation.py"
+      - "tests/test_multiclass_ternary_visualization.py"
+      - "tests/test_multiclass_visualization.py"
       - "tests/test_multiclass_yy_visualization.py"
+      - "tests/test_ordinal_visualization.py"
+      - "tests/test_probability_1d_bounds.py"
       - "tests/test_probability_visualization_input_perturbation.py"
       - "tests/test_regression_active_learning_input_perturbation_duplicates.py"
       - "tests/test_visualization_data_architecture.py"
       - "tests/test_visualization_display_scale.py"
+      - "tests/test_visualization_heteroscedastic_1d.py"
       - "tests/test_visualization_input_perturbation.py"
+      - "tests/test_visualization_plot_dispatch_architecture.py"
       - "tests/test_visualization_prediction_architecture.py"
       - "tests/test_visualization_probability_architecture.py"
       - "tests/test_webapp_binary_variance_input_perturbation_e2e.py"
@@ -63,12 +71,18 @@ jobs:
             tests/test_binary_visualization_probability.py \
             tests/test_classification_input_perturbation_duplicate_semantics.py \
             tests/test_feature_importance_input_perturbation.py \
+            tests/test_multiclass_ternary_visualization.py \
+            tests/test_multiclass_visualization.py \
             tests/test_multiclass_yy_visualization.py \
+            tests/test_ordinal_visualization.py \
+            tests/test_probability_1d_bounds.py \
             tests/test_probability_visualization_input_perturbation.py \
             tests/test_regression_active_learning_input_perturbation_duplicates.py \
             tests/test_visualization_data_architecture.py \
             tests/test_visualization_display_scale.py \
+            tests/test_visualization_heteroscedastic_1d.py \
             tests/test_visualization_input_perturbation.py \
+            tests/test_visualization_plot_dispatch_architecture.py \
             tests/test_visualization_prediction_architecture.py \
             tests/test_visualization_probability_architecture.py \
             tests/test_webapp_binary_variance_input_perturbation_e2e.py \
@@ -116,6 +130,7 @@ jobs:
             tests/test_regression_active_learning_input_perturbation_duplicates.py \
             tests/test_visualization_data_architecture.py \
             tests/test_visualization_input_perturbation.py \
+            tests/test_visualization_plot_dispatch_architecture.py \
             tests/test_visualization_prediction_architecture.py \
             tests/test_visualization_probability_architecture.py \
             tests/test_webapp_binary_variance_input_perturbation_e2e.py \

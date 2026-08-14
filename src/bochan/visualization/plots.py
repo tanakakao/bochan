@@ -577,3 +577,144 @@ def show_triscatter_with_acqf_from_optimizer(
     data = tri_grid(obj, [feature_col1, feature_col2, feature_col3], target_col, value_dict, feature_cols=list(X_df.columns), target_cols=list(y_df.columns), candidate_result=candidate_result, sum_value=sum_value, n=n, show_type=show_type)  # type: ignore[arg-type]
     df_cand = candidates_dataframe(obj, candidate_result=candidate_result, feature_cols=list(X_df.columns), target_cols=list(y_df.columns), include_prediction=False)
     return show_triscatter_with_acqf(feature_col1, feature_col2, feature_col3, target_col, data, X_df, y_df, df_cand, show_type=show_type, cycle=cycle, ncontours=ncontours)
+
+
+# These late imports intentionally occur after the generic optimizer renderers are
+# defined. Specialized modules capture those generic functions as their fallback
+# implementations, then the public names below become the canonical dispatchers.
+from .multiclass_yy import (  # noqa: E402
+    show_yyplot_from_optimizer as _dispatch_yyplot_from_optimizer,
+)
+from .ordinal_display import (  # noqa: E402
+    show_scatter_with_acqf_from_optimizer as _dispatch_scatter_from_optimizer,
+    show_triscatter_with_acqf_from_optimizer as _dispatch_triscatter_from_optimizer,
+)
+from .probability_1d import (  # noqa: E402
+    show_1dplot_from_optimizer as _dispatch_1dplot_from_optimizer,
+)
+
+
+def show_yyplot_from_optimizer(  # noqa: F811
+    obj: Any,
+    target: str,
+    *,
+    feature_cols: Sequence[str] | None = None,
+    target_cols: Sequence[str] | None = None,
+    candidate_result: Any | None = None,
+    cycle: str | Sequence[Any] | pd.Series | None = None,
+    class_labels: Sequence[Any] | None = None,
+    output_index: int | None = None,
+) -> Figure:
+    """Dispatch YY plots to task-aware visualization implementations."""
+
+    return _dispatch_yyplot_from_optimizer(
+        obj,
+        target,
+        feature_cols=feature_cols,
+        target_cols=target_cols,
+        candidate_result=candidate_result,
+        cycle=cycle,
+        class_labels=class_labels,
+        output_index=output_index,
+    )
+
+
+def show_1dplot_from_optimizer(  # noqa: F811
+    obj: Any,
+    feature: str,
+    target: str,
+    *,
+    feature_cols: Sequence[str] | None = None,
+    target_cols: Sequence[str] | None = None,
+    value_dict: dict[str, Any] | None = None,
+    candidate_result: Any | None = None,
+    n: int = 50,
+    cycle: str | Sequence[Any] | pd.Series | None = None,
+    **kwargs: Any,
+) -> Figure:
+    """Dispatch 1D plots to probability, ordinal, or regression renderers."""
+
+    return _dispatch_1dplot_from_optimizer(
+        obj,
+        feature,
+        target,
+        feature_cols=feature_cols,
+        target_cols=target_cols,
+        value_dict=value_dict,
+        candidate_result=candidate_result,
+        n=n,
+        cycle=cycle,
+        **kwargs,
+    )
+
+
+def show_scatter_with_acqf_from_optimizer(  # noqa: F811
+    obj: Any,
+    feature_col1: str,
+    feature_col2: str,
+    target_col: str,
+    *,
+    feature_cols: Sequence[str] | None = None,
+    target_cols: Sequence[str] | None = None,
+    value_dict: dict[str, Any] | None = None,
+    candidate_result: Any | None = None,
+    n: int = 25,
+    show_type: str = "acqf",
+    cycle: str | Sequence[Any] | pd.Series | None = None,
+    **kwargs: Any,
+) -> Figure:
+    """Dispatch 2D plots while preserving task-specific probability views."""
+
+    return _dispatch_scatter_from_optimizer(
+        obj,
+        feature_col1,
+        feature_col2,
+        target_col,
+        feature_cols=feature_cols,
+        target_cols=target_cols,
+        value_dict=value_dict,
+        candidate_result=candidate_result,
+        n=n,
+        show_type=show_type,
+        cycle=cycle,
+        **kwargs,
+    )
+
+
+def show_triscatter_with_acqf_from_optimizer(  # noqa: F811
+    obj: Any,
+    feature_col1: str,
+    feature_col2: str,
+    feature_col3: str,
+    target_col: str,
+    *,
+    feature_cols: Sequence[str] | None = None,
+    target_cols: Sequence[str] | None = None,
+    value_dict: dict[str, Any] | None = None,
+    candidate_result: Any | None = None,
+    sum_value: float | None = None,
+    n: int = 50,
+    show_type: str = "acqf",
+    cycle: str | Sequence[Any] | pd.Series | None = None,
+    ncontours: int = 25,
+    **kwargs: Any,
+) -> Figure:
+    """Dispatch ternary plots while preserving task-specific probability views."""
+
+    return _dispatch_triscatter_from_optimizer(
+        obj,
+        feature_col1,
+        feature_col2,
+        feature_col3,
+        target_col,
+        feature_cols=feature_cols,
+        target_cols=target_cols,
+        value_dict=value_dict,
+        candidate_result=candidate_result,
+        sum_value=sum_value,
+        n=n,
+        show_type=show_type,
+        cycle=cycle,
+        ncontours=ncontours,
+        **kwargs,
+    )

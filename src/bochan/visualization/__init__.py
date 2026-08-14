@@ -1,6 +1,17 @@
 """Visualization helpers for bochan."""
 
-from . import plots as _plots
+from .plots import (
+    show_1dplot_from_optimizer,
+    show_1dplot_with_pred,
+    show_pareto_plot,
+    show_scatter_with_acqf,
+    show_scatter_with_acqf_from_optimizer,
+    show_target_over_cycle_study,
+    show_triscatter_with_acqf,
+    show_triscatter_with_acqf_from_optimizer,
+    show_yyplot,
+    show_yyplot_from_optimizer,
+)
 from .data import (
     candidates_dataframe,
     create_grid,
@@ -41,10 +52,7 @@ from .multiclass_ternary import (
     show_multiclass_triscatter,
     show_multiclass_triscatter_from_optimizer,
 )
-from .multiclass_yy import (
-    show_multiclass_yyplot,
-    show_yyplot_from_optimizer,
-)
+from .multiclass_yy import show_multiclass_yyplot
 from .ordinal import (
     is_ordinal_object,
     ordinal_grid_1d,
@@ -56,16 +64,7 @@ from .ordinal import (
     show_ordinal_heatmap_from_optimizer,
     show_ordinal_triscatter_from_optimizer,
 )
-from .ordinal_display import (
-    OrdinalDisplayMode,
-    OrdinalProbabilityMode,
-    show_1dplot_from_optimizer,
-    show_scatter_with_acqf_from_optimizer,
-    show_triscatter_with_acqf_from_optimizer,
-)
-from .probability_1d import (
-    show_1dplot_from_optimizer as _show_probability_1dplot_from_optimizer,
-)
+from .ordinal_display import OrdinalDisplayMode, OrdinalProbabilityMode
 from .study import (
     show_optimization_history_study,
     show_pareto_front_study,
@@ -73,25 +72,7 @@ from .study import (
     study_pareto_dataframe,
 )
 from .target_relation import show_target_relation_plot
-from .plots import (
-    show_1dplot_with_pred,
-    show_pareto_plot,
-    show_scatter_with_acqf,
-    show_target_over_cycle_study,
-    show_triscatter_with_acqf,
-    show_yyplot,
-)
 from .utils import CYCLE_COLORS
-
-show_1dplot_from_optimizer = _show_probability_1dplot_from_optimizer
-
-# Keep direct imports from ``bochan.visualization.plots`` consistent with the
-# package-level API. The wrappers delegate to the existing implementations when
-# the optional multiclass / ordinal probability displays are not selected.
-_plots.show_1dplot_from_optimizer = show_1dplot_from_optimizer
-_plots.show_scatter_with_acqf_from_optimizer = show_scatter_with_acqf_from_optimizer
-_plots.show_triscatter_with_acqf_from_optimizer = show_triscatter_with_acqf_from_optimizer
-_plots.show_yyplot_from_optimizer = show_yyplot_from_optimizer
 
 __all__ = [
     "CYCLE_COLORS",

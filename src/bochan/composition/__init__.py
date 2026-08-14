@@ -9,8 +9,8 @@ from .formula import (
     normalize_composition,
     parse_formula,
 )
+from .search_space import CompositionSearchSpace
 from .simplex import SimplexTransform, close_compositions, ilr_basis
-from bochan.tabular.composition.search_space import CompositionSearchSpace
 from bochan.tabular.composition.transformer import CompositionTransformer
 
 __all__ = [

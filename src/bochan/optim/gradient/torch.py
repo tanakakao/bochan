@@ -22,24 +22,14 @@ import torch
 from botorch.acquisition.acquisition import AcquisitionFunction
 from torch import Tensor
 
-try:
-    from ...constraints.k_sparse import (
-        LinearConstraint,
-        ScoreMode,
-        SupportSelection,
-        expand_categorical_features,
-        generate_k_sparse_initial_conditions,
-        make_k_sparse_post_processing_func,
-    )
-except ImportError:
-    from constraints.k_sparse import (  # type: ignore
-        LinearConstraint,
-        ScoreMode,
-        SupportSelection,
-        expand_categorical_features,
-        generate_k_sparse_initial_conditions,
-        make_k_sparse_post_processing_func,
-    )
+from ...constraints.k_sparse import (
+    LinearConstraint,
+    ScoreMode,
+    SupportSelection,
+    expand_categorical_features,
+    generate_k_sparse_initial_conditions,
+    make_k_sparse_post_processing_func,
+)
 
 TorchOptimizerName = Literal["adam", "adamw", "sgd", "rmsprop", "lbfgs"]
 InequalitySense = Literal["ge", "le"]

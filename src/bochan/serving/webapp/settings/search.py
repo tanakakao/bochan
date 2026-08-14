@@ -71,7 +71,7 @@ def _interactive_ga_options() -> dict[str, int]:
     falls back to the ordinary interactive budget.
     """
 
-    from .risk_settings import current_web_runtime_context
+    from .risk import current_web_runtime_context
 
     runtime = current_web_runtime_context()
     model_type = str(runtime.get("model_type", "")).lower()
@@ -229,7 +229,7 @@ def build_target_constraint_config(
     if all(bool(setting.get("legacy")) for setting in target_settings):
         if exclude_optimized_boundaries:
             return None
-        from .target_settings import _build_outcome_constraint_config
+        from .targets import _build_outcome_constraint_config
 
         return _build_outcome_constraint_config(
             request,

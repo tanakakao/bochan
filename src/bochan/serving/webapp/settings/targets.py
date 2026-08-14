@@ -1,24 +1,24 @@
 """Target settings with request-local missing-value handling.
 
-The stable target semantics live in :mod:`target_settings_core`. Missing-value
+The stable target semantics live in :mod:`bochan.serving.webapp.target_settings_core`. Missing-value
 behavior is selected through ordinary function imports from
-:mod:`target_missing_policy`; no workflow function is replaced at runtime.
+:mod:`bochan.serving.webapp.target_missing_policy`; no workflow function is replaced at runtime.
 """
 
 from __future__ import annotations
 
 from bochan.api.acquisition.defaults.nan import make_nan_safe_default_ref_point
 
-from .target_missing_policy import (
+from ..target_missing_policy import (
     clean_rows as _clean_rows,
 )
-from .target_missing_policy import (
+from ..target_missing_policy import (
     encode_targets as _encode_targets,
 )
-from .target_missing_policy import (
+from ..target_missing_policy import (
     resolve_target_settings as _resolve_target_settings,
 )
-from .target_settings_core import (
+from ..target_settings_core import (
     _as_2d,
     _build_outcome_constraint_config,
     _build_target_constraint_config,

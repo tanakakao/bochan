@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from bochan.api import ObjectiveConfig
-from bochan.serving.webapp.risk_settings import (
+from bochan.serving.webapp.settings.risk import (
     apply_web_risk_to_objective_config,
     attach_web_risk_metadata,
     current_web_risk_report,

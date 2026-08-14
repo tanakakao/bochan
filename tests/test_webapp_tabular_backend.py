@@ -8,7 +8,7 @@ import torch
 from bochan.api import FitConfig, ModelConfig
 from bochan.serving.fastapi.schemas.tabular import TabularFitModelRequest
 from bochan.serving.webapp import target_missing_policy as policy
-from bochan.serving.webapp import target_settings
+from bochan.serving.webapp.settings import targets as target_settings
 from bochan.serving.webapp.tabular_backend import (
     feature_category_maps,
     fit_tabular_optimizer,

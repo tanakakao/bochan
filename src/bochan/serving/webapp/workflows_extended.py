@@ -16,7 +16,7 @@ from bochan.serving.workbench.workflow_utils import (
 )
 
 from .logging import current_request_id, get_logger, log_event
-from .search_settings import (
+from .settings.search import (
     botorch_linear_constraints,
     build_target_constraint_config,
     feature_constraint_results,
@@ -36,7 +36,7 @@ from .target_roles import (
     select_optimized_values,
     target_directions,
 )
-from .target_settings import (
+from .settings.targets import (
     _as_2d,
     _build_outcome_constraint_config,
     _clean_rows,

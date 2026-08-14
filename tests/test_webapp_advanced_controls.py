@@ -7,7 +7,7 @@ import pandas as pd
 from bochan.serving.webapp.routers.datasets import _profile_with_category_values
 from bochan.serving.webapp.schemas.regression import RegressionRunRequest
 from bochan.serving.webapp.schemas.visualization import VisualizationRequestSchema
-from bochan.serving.webapp.search_settings import (
+from bochan.serving.webapp.settings.search import (
     botorch_linear_constraints,
     feature_constraint_results,
     normalize_feature_constraints,

@@ -15,7 +15,7 @@ from .logging import current_request_id, get_logger, log_event
 from .model_reuse import model_reuse_run, prepare_model_reuse_request
 from .non_gaussian_validation import validate_non_gaussian_target_frame
 from .reuse_dataset import store_for_model_reuse
-from .risk_settings import attach_web_risk_metadata, web_risk_run
+from .settings.risk import attach_web_risk_metadata, web_risk_run
 from .target_missing_policy import model_variant, target_missing_run
 from .visualization_sessions import (
     begin_visualization_run,

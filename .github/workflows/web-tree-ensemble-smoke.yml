@@ -21,10 +21,10 @@ on:
       - "src/bochan/serving/webapp/model_capabilities.py"
       - "src/bochan/serving/webapp/model_reuse.py"
       - "src/bochan/serving/webapp/model_runtime.py"
-      - "src/bochan/serving/webapp/risk_settings.py"
-      - "src/bochan/serving/webapp/search_settings.py"
+      - "src/bochan/serving/webapp/settings/risk.py"
+      - "src/bochan/serving/webapp/settings/search.py"
       - "src/bochan/serving/webapp/target_missing_policy.py"
-      - "src/bochan/serving/webapp/target_settings.py"
+      - "src/bochan/serving/webapp/settings/targets.py"
       - "src/bochan/serving/webapp/visualization_sessions.py"
       - "src/bochan/serving/webapp/workflows.py"
       - "web/src/InteractiveResultPlots.tsx"
@@ -115,10 +115,10 @@ jobs:
             src/bochan/serving/webapp/model_capabilities.py \
             src/bochan/serving/webapp/model_reuse.py \
             src/bochan/serving/webapp/model_runtime.py \
-            src/bochan/serving/webapp/risk_settings.py \
-            src/bochan/serving/webapp/search_settings.py \
+            src/bochan/serving/webapp/settings/risk.py \
+            src/bochan/serving/webapp/settings/search.py \
             src/bochan/serving/webapp/target_missing_policy.py \
-            src/bochan/serving/webapp/target_settings.py \
+            src/bochan/serving/webapp/settings/targets.py \
             src/bochan/serving/webapp/visualization_sessions.py \
             src/bochan/serving/webapp/workflows.py \
             src/bochan/models/hybrid/task_aware_posterior.py \

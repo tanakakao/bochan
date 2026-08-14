@@ -8,7 +8,7 @@ from contextvars import ContextVar
 from dataclasses import replace
 from typing import Any
 
-from .prediction_shapes import normalize_prediction_rows
+from ..prediction_shapes import normalize_prediction_rows
 
 _WEB_RISK_TYPE_KEY = "web_risk_type"
 _WEB_RISK_ALPHA_KEY = "web_risk_alpha"

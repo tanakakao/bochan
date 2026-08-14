@@ -38,7 +38,7 @@ _MAX_SESSIONS = 12
 def begin_visualization_run(run_id: str, request: Any) -> None:
     """Capture request settings before the existing Web workflow begins."""
 
-    from .search_settings import normalize_feature_constraints
+    from .settings.search import normalize_feature_constraints
 
     feature_columns = list(request.feature_columns)
     constraints = normalize_feature_constraints(

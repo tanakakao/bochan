@@ -5,7 +5,8 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from bochan.serving.webapp import target_results, target_settings
+from bochan.serving.webapp import target_results
+from bochan.serving.webapp.settings import targets as target_settings
 from bochan.serving.webapp import workflows as web_workflows
 from bochan.serving.webapp.prediction_shapes import normalize_prediction_rows
 

@@ -49,7 +49,7 @@ def test_web_ngboost_runtime_defaults_preserve_explicit_parameters() -> None:
 
 def test_web_target_settings_apply_ngboost_runtime_defaults() -> None:
     from bochan.serving.webapp.schemas.regression import RegressionRunRequest
-    from bochan.serving.webapp.target_settings import _resolve_target_settings
+    from bochan.serving.webapp.settings.targets import _resolve_target_settings
 
     request = RegressionRunRequest(
         dataset_id="unused",
@@ -87,7 +87,7 @@ def _risk_request(*, model_type: str, input_perturbation: bool) -> SimpleNamespa
 
 
 def test_web_evolutionary_search_uses_interactive_budget() -> None:
-    from bochan.serving.webapp.search_settings import resolve_search_method
+    from bochan.serving.webapp.settings.search import resolve_search_method
 
     optimizer, kwargs, nsgaii = resolve_search_method(
         "ga",
@@ -115,8 +115,8 @@ def test_web_evolutionary_search_uses_interactive_budget() -> None:
 
 
 def test_web_ngboost_uses_smaller_ga_budget() -> None:
-    from bochan.serving.webapp.risk_settings import web_risk_run
-    from bochan.serving.webapp.search_settings import resolve_search_method
+    from bochan.serving.webapp.settings.risk import web_risk_run
+    from bochan.serving.webapp.settings.search import resolve_search_method
 
     with web_risk_run(
         _risk_request(model_type="ngboost_ensemble", input_perturbation=False)
@@ -130,8 +130,8 @@ def test_web_ngboost_uses_smaller_ga_budget() -> None:
 
 
 def test_web_perturbed_ngboost_uses_tight_ga_budget() -> None:
-    from bochan.serving.webapp.risk_settings import web_risk_run
-    from bochan.serving.webapp.search_settings import resolve_search_method
+    from bochan.serving.webapp.settings.risk import web_risk_run
+    from bochan.serving.webapp.settings.search import resolve_search_method
 
     with web_risk_run(
         _risk_request(model_type="ngboost_ensemble", input_perturbation=True)
@@ -145,8 +145,8 @@ def test_web_perturbed_ngboost_uses_tight_ga_budget() -> None:
 
 
 def test_web_perturbed_random_forest_keeps_general_ga_budget() -> None:
-    from bochan.serving.webapp.risk_settings import web_risk_run
-    from bochan.serving.webapp.search_settings import resolve_search_method
+    from bochan.serving.webapp.settings.risk import web_risk_run
+    from bochan.serving.webapp.settings.search import resolve_search_method
 
     with web_risk_run(
         _risk_request(model_type="random_forest", input_perturbation=True)

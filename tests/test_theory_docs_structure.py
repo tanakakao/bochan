@@ -51,7 +51,11 @@ def test_theory_language_indexes_link_to_each_other() -> None:
 
 
 def test_theory_migration_scaffolding_is_removed() -> None:
+    migration_workflow = (
+        REPO_ROOT / ".github" / "workflows" / "build-bilingual-theory-docs.yml"
+    )
+
     assert not (THEORY_ROOT / "root_readme_new.md").exists()
     assert not (THEORY_ROOT / "selector.txt").exists()
-    assert not (REPO_ROOT / ".github" / "workflows" / "build-bilingual-theory-docs.yml").exists()
+    assert not migration_workflow.exists()
     assert not list((REPO_ROOT / ".github").glob("translation-trigger*.txt"))

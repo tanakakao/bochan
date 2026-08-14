@@ -15,6 +15,10 @@ import pandas as pd
 from plotly.graph_objs._figure import Figure
 
 from .data import training_dataframe
+from .input_perturbation import (
+    aggregate_input_perturbation_probabilities,
+    input_perturbation_n_w,
+)
 from .multiclass import (
     MulticlassHeatmapMode,
     _as_probability_matrix,
@@ -151,8 +155,14 @@ def ordinal_probabilities(
     """Return ordinal category probabilities with shape ``[n, K]``."""
 
     X_arr = ensure_2d(X)
+    n_points = len(X_arr)
     values = _ordinal_probability_tensor(obj, X, output_index=output_index)
-    return _as_probability_matrix(values, n_points=len(X_arr))
+    values = aggregate_input_perturbation_probabilities(
+        values,
+        n_points=n_points,
+        n_w=input_perturbation_n_w(obj),
+    )
+    return _as_probability_matrix(values, n_points=n_points)
 
 
 def ordinal_prediction_dataframe(

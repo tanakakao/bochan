@@ -23,8 +23,7 @@ NoiseQAggregateType = Literal["mean", "sum", "max", "min", "product"]
 
 
 def _align_score_to_weight(score: Tensor, weight: Tensor) -> Tensor:
-    """Align a heteroscedastic score tensor to its noise-weight shape."""
-
+    """Align hetero score tensor to the noise-weight tensor shape."""
     score = torch.as_tensor(score, device=weight.device, dtype=weight.dtype)
 
     if score.shape == weight.shape:
@@ -34,21 +33,14 @@ def _align_score_to_weight(score: Tensor, weight: Tensor) -> Tensor:
         return score.T
 
     if score.ndim == weight.ndim and score.ndim >= 2:
-        if (
-            score.shape[0] == weight.shape[-1]
-            and tuple(score.shape[1:]) == tuple(weight.shape[:-1])
-        ):
+        if score.shape[0] == weight.shape[-1] and tuple(score.shape[1:]) == tuple(weight.shape[:-1]):
             return score.movedim(0, -1)
 
-    if score.ndim < weight.ndim and tuple(score.shape) == tuple(
-        weight.shape[-score.ndim :]
-    ):
+    if score.ndim < weight.ndim and tuple(score.shape) == tuple(weight.shape[-score.ndim:]):
         view_shape = (1,) * (weight.ndim - score.ndim) + tuple(score.shape)
         return score.reshape(view_shape).expand_as(weight)
 
-    if score.ndim > weight.ndim and tuple(score.shape[-weight.ndim :]) == tuple(
-        weight.shape
-    ):
+    if score.ndim > weight.ndim and tuple(score.shape[-weight.ndim:]) == tuple(weight.shape):
         leading_dims = tuple(range(score.ndim - weight.ndim))
         return score.mean(dim=leading_dims)
 
@@ -61,16 +53,12 @@ def _align_score_to_weight(score: Tensor, weight: Tensor) -> Tensor:
     if score.ndim >= 1 and score.shape[-1] == weight.shape[-1]:
         while score.ndim > 1:
             score = score.mean(dim=0)
-        return score.reshape(
-            *([1] * (weight.ndim - 1)), weight.shape[-1]
-        ).expand_as(weight)
+        return score.reshape(*([1] * (weight.ndim - 1)), weight.shape[-1]).expand_as(weight)
 
     if score.ndim >= 1 and score.shape[0] == weight.shape[-1]:
         while score.ndim > 1:
             score = score.mean(dim=-1)
-        return score.reshape(
-            *([1] * (weight.ndim - 1)), weight.shape[-1]
-        ).expand_as(weight)
+        return score.reshape(*([1] * (weight.ndim - 1)), weight.shape[-1]).expand_as(weight)
 
     return score
 
@@ -143,13 +131,7 @@ class _HeteroMultiOutputMulticlassMixin:
             return noise.squeeze(-1)
         return noise.mean().expand(point_shape)
 
-    def _to_multioutput_noise(
-        self,
-        noise: Tensor,
-        X: Tensor,
-        *,
-        n_outputs: int,
-    ) -> Tensor:
+    def _to_multioutput_noise(self, noise: Tensor, X: Tensor, *, n_outputs: int) -> Tensor:
         point_shape = X.shape[:-1]
         target_shape = (*point_shape, int(n_outputs))
         noise = torch.as_tensor(noise, device=X.device, dtype=X.dtype)
@@ -187,12 +169,7 @@ class _HeteroMultiOutputMulticlassMixin:
 
         X = self._ensure_q_batch(X)
         if self.noise_mode == "none":
-            return torch.zeros(
-                *X.shape[:-1],
-                int(n_outputs),
-                device=X.device,
-                dtype=X.dtype,
-            )
+            return torch.zeros(*X.shape[:-1], int(n_outputs), device=X.device, dtype=X.dtype)
 
         if self.noise_weight_fn is not None:
             custom = self.noise_weight_fn(None, X)
@@ -200,18 +177,14 @@ class _HeteroMultiOutputMulticlassMixin:
 
         model_noise = self._call_predict_noise_var(self.model, X)
         if model_noise is not None:
-            return self._maybe_convert_log_var(
-                self._to_multioutput_noise(model_noise, X, n_outputs=n_outputs)
-            )
+            return self._maybe_convert_log_var(self._to_multioutput_noise(model_noise, X, n_outputs=n_outputs))
 
         submodels = self._submodels()
         if len(submodels) > 0:
             pieces = []
             for submodel in submodels:
                 noise_i = self._get_single_model_noise_tensor(submodel, X)
-                noise_i = self._maybe_convert_log_var(
-                    self._to_point_noise(noise_i, X)
-                )
+                noise_i = self._maybe_convert_log_var(self._to_point_noise(noise_i, X))
                 pieces.append(noise_i.unsqueeze(-1))
             noise = torch.cat(pieces, dim=-1)
             if noise.shape[-1] != n_outputs:
@@ -219,31 +192,21 @@ class _HeteroMultiOutputMulticlassMixin:
             return noise
 
         noise = self._get_single_model_noise_tensor(self.model, X)
-        return self._maybe_convert_log_var(
-            self._to_multioutput_noise(noise, X, n_outputs=n_outputs)
-        )
+        return self._maybe_convert_log_var(self._to_multioutput_noise(noise, X, n_outputs=n_outputs))
 
     def _noise_to_weight(self, noise: Tensor) -> Tensor:
         if self.noise_mode == "none":
             weight = torch.ones_like(noise)
         elif self.noise_mode == "custom":
             if self.noise_weight_fn is None:
-                raise ValueError(
-                    "noise_weight_fn must be provided when noise_mode='custom'."
-                )
+                raise ValueError("noise_weight_fn must be provided when noise_mode='custom'.")
             weight = self.noise_weight_fn(noise, None)
         elif self.noise_mode == "inverse_linear":
-            weight = 1.0 / (
-                1.0 + self.noise_penalty_lambda * noise.clamp_min(0.0)
-            )
+            weight = 1.0 / (1.0 + self.noise_penalty_lambda * noise.clamp_min(0.0))
         elif self.noise_mode == "inverse_sqrt":
-            weight = 1.0 / torch.sqrt(
-                1.0 + self.noise_penalty_lambda * noise.clamp_min(0.0)
-            )
+            weight = 1.0 / torch.sqrt(1.0 + self.noise_penalty_lambda * noise.clamp_min(0.0))
         elif self.noise_mode == "exp":
-            weight = torch.exp(
-                -self.noise_penalty_lambda * noise.clamp_min(0.0)
-            )
+            weight = torch.exp(-self.noise_penalty_lambda * noise.clamp_min(0.0))
         else:
             raise ValueError(f"Unknown noise_mode: {self.noise_mode!r}.")
         return (self.noise_weight_scale * weight).clamp_min(self.noise_min_weight)
@@ -258,11 +221,7 @@ class _HeteroMultiOutputMulticlassMixin:
             return score - (1.0 - weight)
         raise ValueError(f"Unknown noise_combine: {self.noise_combine!r}.")
 
-    def _apply_noise_to_score_per_output(
-        self,
-        score_per_output: Tensor,
-        X: Tensor,
-    ) -> Tensor:
+    def _apply_noise_to_score_per_output(self, score_per_output: Tensor, X: Tensor) -> Tensor:
         noise = self._get_noise_values(X, n_outputs=score_per_output.shape[-1])
         weight = self._noise_to_weight(noise).to(score_per_output)
         return self._combine_score_and_weight(score_per_output, weight)
@@ -278,19 +237,11 @@ class _HeteroMultiOutputMulticlassMixin:
             return weight.min(dim=-2).values
         if self.noise_q_aggregate == "product":
             return weight.prod(dim=-2)
-        raise ValueError(
-            f"Unknown noise_q_aggregate: {self.noise_q_aggregate!r}."
-        )
+        raise ValueError(f"Unknown noise_q_aggregate: {self.noise_q_aggregate!r}.")
 
-    def _apply_noise_to_q_aggregated_output_score(
-        self,
-        score_per_output: Tensor,
-        X: Tensor,
-    ) -> Tensor:
+    def _apply_noise_to_q_aggregated_output_score(self, score_per_output: Tensor, X: Tensor) -> Tensor:
         noise = self._get_noise_values(X, n_outputs=score_per_output.shape[-1])
-        weight = self._aggregate_noise_over_q(
-            self._noise_to_weight(noise)
-        ).to(score_per_output)
+        weight = self._aggregate_noise_over_q(self._noise_to_weight(noise)).to(score_per_output)
         return self._combine_score_and_weight(score_per_output, weight)
 
 
@@ -320,9 +271,7 @@ class qHeteroMultiOutputMulticlassProbabilityVariance(
         raw_X = self._ensure_q_batch(X)
         self._current_batch_shape = raw_X.shape[:-2]
         Xt = self._apply_input_transform(raw_X)
-        score_per_output = self._class_probability_variance(
-            self._mean_probs(raw_X)
-        )
+        score_per_output = self._class_probability_variance(self._mean_probs(raw_X))
         score_per_output = self._apply_noise_to_score_per_output(score_per_output, Xt)
         value = self._pointwise_score_to_value(score_per_output, raw_X, Xt)
         return self._finalize(value, raw_X, name=self.__class__.__name__)
@@ -370,10 +319,7 @@ class qHeteroMultiOutputMulticlassJointBALD(
         raw_X = self._ensure_q_batch(X)
         Xt = self._apply_input_transform(raw_X)
         value_per_output = self._joint_bald_per_output(raw_X)
-        value_per_output = self._apply_noise_to_q_aggregated_output_score(
-            value_per_output,
-            Xt,
-        )
+        value_per_output = self._apply_noise_to_q_aggregated_output_score(value_per_output, Xt)
         value = self._aggregate_outputs(value_per_output)
         value = value - self._joint_penalty(raw_X, Xt)
         value = self._apply_objective(value, raw_X=raw_X, expanded_X=Xt)
@@ -396,14 +342,9 @@ class qHeteroMultiOutputMulticlassGreedyJointBALD(
             Xp = X_pending.to(device=raw_X.device, dtype=raw_X.dtype)
             Xp = self._expand_pending_to_batch(Xp, raw_X.shape[:-2])
             pending_value = self._joint_bald_per_output(Xp)
-            all_value = self._joint_bald_per_output(
-                torch.cat([Xp, raw_X], dim=-2)
-            )
+            all_value = self._joint_bald_per_output(torch.cat([Xp, raw_X], dim=-2))
             value_per_output = all_value - pending_value
-        value_per_output = self._apply_noise_to_q_aggregated_output_score(
-            value_per_output,
-            Xt,
-        )
+        value_per_output = self._apply_noise_to_q_aggregated_output_score(value_per_output, Xt)
         value = self._aggregate_outputs(value_per_output)
         value = value - self._observed_penalty_per_point(Xt).sum(dim=-1)
         value = value - self._same_batch_penalty(Xt)
@@ -424,10 +365,7 @@ class qHeteroMultiOutputMulticlassIntegratedPosteriorVarianceProxy(
         probs = self._mean_probs(raw_X)
         local_score = self._class_probability_variance(probs)
         integrated_score = self._integrated_variance_per_output(raw_X, Xt)
-        score_per_output = (
-            self.local_weight * local_score
-            + self.integrated_weight * integrated_score
-        )
+        score_per_output = self.local_weight * local_score + self.integrated_weight * integrated_score
         score_per_output = self._apply_noise_to_score_per_output(score_per_output, Xt)
         value = self._pointwise_score_to_value(score_per_output, raw_X, Xt)
         return self._finalize(value, raw_X, name=self.__class__.__name__)

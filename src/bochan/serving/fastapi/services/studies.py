@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from bochan.api import BochanStudy, Trial
+from bochan.api import BochanStudy
 
 from ..converters import (
     to_acquisition_config,
@@ -57,23 +57,11 @@ def build_study(
 ) -> BochanStudy:
     options = request.tensor_options
     study = BochanStudy(
-        model_config=(
-            to_model_config(request.bo_model_config, options)
-            if request.bo_model_config is not None
-            else None
-        ),
+        model_config=(to_model_config(request.bo_model_config, options) if request.bo_model_config is not None else None),
         fit_config=(to_fit_config(request.fit_config) if request.fit_config is not None else None),
         acq_config=acquisition_config(request.acquisition_config, options),
-        opt_config=(
-            to_optimize_config(request.optimize_config, options)
-            if request.optimize_config is not None
-            else None
-        ),
-        data_context=(
-            to_data_context(request.data_context, options)
-            if request.data_context is not None
-            else None
-        ),
+        opt_config=(to_optimize_config(request.optimize_config, options) if request.optimize_config is not None else None),
+        data_context=(to_data_context(request.data_context, options) if request.data_context is not None else None),
         bounds=to_tensor(request.bounds, options) if request.bounds is not None else None,
         n_initial_random=request.n_initial_random,
         early_stopping_config=request.early_stopping_config,
@@ -92,6 +80,8 @@ def build_study(
 
 
 def restore_trials(study: BochanStudy, snapshot: Mapping[str, Any]) -> None:
+    from bochan.api import Trial
+
     study.trials = [Trial.from_dict(item) for item in snapshot.get("trials", [])]
     study.next_trial_id = int(snapshot.get("next_trial_id", 0))
     if study.trials:
@@ -115,3 +105,6 @@ def summary(study_id: str, study: BochanStudy) -> StudySummaryResponse:
         current_generation_step=to_serializable(study.current_generation_step()),
         stop_decision=to_serializable(study.stop_decision),
     )
+
+
+__all__ = ["acquisition_config", "build_study", "generation_schedule", "restore_trials", "summary"]

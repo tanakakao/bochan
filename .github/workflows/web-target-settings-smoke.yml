@@ -18,6 +18,7 @@ on:
       - "src/bochan/visualization/target_relation.py"
       - "tests/test_binary_uncertainty_display_integration.py"
       - "tests/test_common_model_artifact_api.py"
+      - "tests/test_tabular_data_preparation_api.py"
       - "tests/test_tabular_noise_alpha.py"
       - "tests/test_visualization_display_scale.py"
       - "tests/test_web_hybrid_bo_routing.py"
@@ -59,6 +60,7 @@ jobs:
           pytest -q --maxfail=1 \
             tests/test_binary_uncertainty_display_integration.py \
             tests/test_common_model_artifact_api.py \
+            tests/test_tabular_data_preparation_api.py \
             tests/test_tabular_noise_alpha.py \
             tests/test_visualization_display_scale.py \
             tests/test_web_hybrid_bo_routing.py \
@@ -91,6 +93,8 @@ jobs:
             src/bochan/api/configs/acquisition.py \
             src/bochan/model_artifact.py \
             src/bochan/models/classification/binary/base/posterior.py \
+            src/bochan/tabular/data/preparation.py \
+            src/bochan/tabular/observation/data.py \
             src/bochan/serving/fastapi/router.py \
             src/bochan/serving/fastapi/routers/artifacts.py \
             src/bochan/serving/fastapi/routers/tabular.py \
@@ -122,6 +126,7 @@ jobs:
             src/bochan/serving/webapp/workflows/non_gaussian_validation.py \
             src/bochan/serving/webapp/services/reuse_dataset.py \
             src/bochan/serving/webapp/settings/targets.py \
+            src/bochan/serving/webapp/targets/missing.py \
             src/bochan/serving/webapp/targets/roles.py \
             src/bochan/serving/webapp/targets/results.py \
             src/bochan/serving/webapp/settings/search.py \
@@ -134,6 +139,7 @@ jobs:
             src/bochan/visualization/target_relation.py \
             tests/test_binary_uncertainty_display_integration.py \
             tests/test_common_model_artifact_api.py \
+            tests/test_tabular_data_preparation_api.py \
             tests/test_visualization_display_scale.py \
             tests/test_web_hybrid_bo_routing.py \
             tests/test_webapp_multiobjective_contract.py \

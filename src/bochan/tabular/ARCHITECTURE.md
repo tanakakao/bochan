@@ -8,8 +8,9 @@
 
 - `config/`: tabular configuration dataclasses and builders that normalize
   public keyword/mapping input into canonical API configs.
-- `data/`: `TabularDataset`, DataFrame/numpy/tensor conversion, category
-  encoding, column-index resolution, and bounds/config column resolution.
+- `data/`: `TabularDataset`, DataFrame/numpy/tensor conversion, missing-value
+  preparation, category encoding, column-index resolution, and bounds/config
+  column resolution.
 - `targets/`: categorical target metadata, class-label resolution, and ordinal
   rank semantics.
 - `composition/`: composition-domain parsing, transforms, search spaces,

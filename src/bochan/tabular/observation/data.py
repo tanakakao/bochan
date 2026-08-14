@@ -9,9 +9,9 @@ from typing import Any
 from bochan.api import ObservationData
 
 from ..config import ColumnKey, TabularDataConfig
+from ..data import prepare_dataframe_missing_values
 from ..data.columns import _as_list, _to_tensor, bounds_to_tensor, resolve_column_indices
 from ..data.conversion import (
-    _apply_missing_value_strategy,
     _encode_dataframe_category_columns,
     _infer_string_target_categorical_cols,
     _pandas,
@@ -67,12 +67,11 @@ def _apply_feature_missing_policy(work, input_cols, config, pd):
         raise ValueError("missing_strategy must be one of 'drop', 'none', or 'impute'.")
 
     feature_frame = work.loc[:, list(input_cols)].copy()
-    prepared, impute_values, _ = _apply_missing_value_strategy(
-        work=feature_frame,
+    prepared, impute_values, _ = prepare_dataframe_missing_values(
+        feature_frame,
+        config,
         input_cols=input_cols,
         target_cols=[],
-        config=config,
-        pd=pd,
     )
     updated = work.loc[prepared.index].copy()
     updated.loc[:, list(input_cols)] = prepared.loc[:, list(input_cols)]

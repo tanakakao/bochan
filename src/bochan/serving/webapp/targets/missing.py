@@ -145,12 +145,10 @@ def _impute_feature_columns(
     feature_columns: list[str],
     state: dict[str, Any],
 ) -> Any:
-    """Reuse the tabular feature-imputation implementation."""
-
-    import pandas as pd
+    """Reuse the public tabular feature-imputation implementation."""
 
     from bochan.tabular.config import TabularDataConfig
-    from bochan.tabular.data.conversion import _apply_missing_value_strategy
+    from bochan.tabular.data import prepare_dataframe_missing_values
 
     config = TabularDataConfig(
         input_cols=feature_columns,
@@ -166,12 +164,11 @@ def _impute_feature_columns(
             state.get("multiple_impute_sample_posterior")
         ),
     )
-    prepared, impute_values, _ = _apply_missing_value_strategy(
-        work=data.copy(),
+    prepared, impute_values, _ = prepare_dataframe_missing_values(
+        data,
+        config,
         input_cols=feature_columns,
         target_cols=[],
-        config=config,
-        pd=pd,
     )
     if prepared[feature_columns].isna().any().any():
         raise ValueError("Feature imputation left unresolved missing values.")

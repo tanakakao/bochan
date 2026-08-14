@@ -74,7 +74,7 @@ def candidates_dataframe(
     if result is None or getattr(result, "candidates", None) is None:
         return None
 
-    candidates = getattr(result, "candidates")
+    candidates = result.candidates
     X_array = ensure_2d(candidates)
     x_columns = infer_feature_cols(obj, feature_cols, X_array.shape[1])
     frame = pd.DataFrame(X_array, columns=x_columns)

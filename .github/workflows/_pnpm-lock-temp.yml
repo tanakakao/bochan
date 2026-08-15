@@ -1,0 +1,30 @@
+name: Generate pnpm lockfile temp
+
+on:
+  push:
+    branches:
+      - agent/migrate-web-to-pnpm
+    paths:
+      - ".github/workflows/_pnpm-lock-temp.yml"
+      - "web/package.json"
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/setup@v2
+        with:
+          version: "11.21.0"
+          runtime: node@24
+          package-json-file: web/package.json
+          install: false
+      - name: Generate lockfile
+        working-directory: web
+        run: pnpm install --lockfile-only --ignore-scripts
+      - name: Upload lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: pnpm-lock
+          path: web/pnpm-lock.yaml
+          if-no-files-found: error

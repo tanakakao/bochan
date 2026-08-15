@@ -364,7 +364,7 @@ export default function OptimizePage() {
       <SectionHeader
         step="4 · SUGGEST"
         title="次に試す条件を設定する"
-        text="目的、探索範囲、制約、提案件数だけを確認すれば実行できます。獲得関数や探索アルゴリズムは詳細設定から変更できます。"
+        text="目的、探索範囲、提案件数だけを確認すれば実行できます。候補制約や獲得関数、探索アルゴリズムは詳細設定から変更できます。"
         action={executionButtons()}
       />
 
@@ -400,13 +400,13 @@ export default function OptimizePage() {
         numberOrUndefined={numberOrUndefined}
       />
 
-      <FeatureConstraints variables={selectedVariables} />
-
       <details className="panel compact-panel model-output-details">
-        <summary>詳細設定（獲得関数・探索手法・候補生成）</summary>
+        <summary>詳細設定（候補制約・獲得関数・探索手法）</summary>
         <p className="settings-note">
-          通常は推奨設定のままで実行できます。探索戦略や候補生成の挙動を明示的に調整するときだけ変更してください。
+          通常は推奨設定のままで実行できます。実験上の候補制約や探索戦略、候補生成の挙動を明示的に調整するときだけ変更してください。
         </p>
+
+        <FeatureConstraints variables={selectedVariables} />
 
         <div className="form-grid optimize-grid suggestion-method-grid">
           <article className="panel compact-panel">

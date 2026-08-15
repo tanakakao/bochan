@@ -1,5 +1,6 @@
 .selection-grid {
   --select-variable-card-min-height: 56px;
+  --select-target-missing-card-min-height: 60px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
@@ -42,6 +43,10 @@
   font-weight: 680;
   line-height: 1.35;
   text-align: left;
+}
+
+.variable-choice.target-variable-choice.selected-with-missing {
+  min-height: var(--select-target-missing-card-min-height);
 }
 
 .variable-choice:hover:not(:disabled) {

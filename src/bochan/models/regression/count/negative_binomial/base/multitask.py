@@ -1,4 +1,4 @@
-"""Correlated variational multi-task NegativeBinomial regression models."""
+"""Correlated variational multi-task Negative Binomial regression models."""
 
 from __future__ import annotations
 
@@ -23,15 +23,18 @@ from torch import Tensor
 
 from bochan.models.classification.binary.base.multitask import _TaskProductKernel
 from bochan.models.regression.count.negative_binomial._components import (
-    NBLink,
+    NegativeBinomialLink,
     NegativeBinomialLogLikelihood,
+)
+
+from .models import (
     clone_input_transform,
     to_device_dtype_transform,
 )
 
 
 class NegativeBinomialMultiTaskPosterior(Posterior):
-    """NegativeBinomial response posterior that preserves the joint task covariance."""
+    """Negative Binomial response posterior preserving joint task covariance."""
 
     def __init__(
         self,
@@ -46,10 +49,10 @@ class NegativeBinomialMultiTaskPosterior(Posterior):
 
         Args:
             latent_posterior: Joint latent posterior over interleaved point-task pairs.
-            likelihood: Fitted NegativeBinomial likelihood.
+            likelihood: Fitted Negative Binomial likelihood.
             q: Number of candidate points.
             num_tasks: Number of tasks.
-            add_observation_noise: Whether to include Negative Binomial observation variance.
+            add_observation_noise: Whether to include observation variance.
         """
         super().__init__()
         self.latent_posterior = latent_posterior
@@ -96,7 +99,7 @@ class NegativeBinomialMultiTaskPosterior(Posterior):
 
     @property
     def mean(self) -> Tensor:
-        """Return positive Negative Binomial conditional means with shape ``[..., q, m]``."""
+        """Return positive response means with shape ``[..., q, m]``."""
         return self._reshape(self.likelihood.mean_from_f(self.latent_posterior.mean))
 
     @property
@@ -106,15 +109,15 @@ class NegativeBinomialMultiTaskPosterior(Posterior):
         mean_variance = self.mean.square() * latent
         if not self.add_observation_noise:
             return mean_variance
-        r = self.likelihood.total_count.to(self.mean)
-        return mean_variance + self.mean + self.mean.square() / r
+        total_count = self.likelihood.total_count.to(self.mean)
+        return mean_variance + self.mean + self.mean.square() / total_count
 
     def rsample(
         self,
         sample_shape: torch.Size | None = None,
         base_samples: Tensor | None = None,
     ) -> Tensor:
-        """Draw differentiable positive samples while retaining task correlation."""
+        """Draw differentiable positive mean samples retaining task correlation."""
         sample_shape = torch.Size() if sample_shape is None else sample_shape
         if base_samples is None:
             latent = self.latent_posterior.rsample(sample_shape=sample_shape)
@@ -130,7 +133,7 @@ class NegativeBinomialMultiTaskPosterior(Posterior):
         sample_shape: torch.Size,
         base_samples: Tensor,
     ) -> Tensor:
-        """Map common-random-number latent samples to NegativeBinomial response means."""
+        """Map common-random-number latent samples to response means."""
         latent = self.latent_posterior.rsample_from_base_samples(
             sample_shape=sample_shape,
             base_samples=base_samples,
@@ -205,14 +208,17 @@ def _wide_to_long(train_X: Tensor, train_Y: Tensor) -> tuple[Tensor, Tensor, Ten
     observed = ~torch.isnan(train_Y)
     if not observed.any(dim=0).all():
         missing = (~observed.any(dim=0)).nonzero(as_tuple=False).flatten().tolist()
-        raise ValueError(f"Each NegativeBinomial task requires an observation; empty tasks: {missing}.")
+        raise ValueError(
+            "Each Negative Binomial task requires an observation; "
+            f"empty tasks: {missing}."
+        )
     rows, tasks = observed.nonzero(as_tuple=True)
     long_X = torch.cat([train_X[rows], tasks.to(train_X).unsqueeze(-1)], dim=-1)
     return long_X, train_Y[rows, tasks], observed
 
 
 class _WideNegativeBinomialMultiTaskCore(ApproximateGPyTorchModel):
-    """Correlated non-Gaussian multi-task GP for wide count targets.
+    """Correlated non-Gaussian multi-task GP for overdispersed wide counts.
 
     The model learns an ICM covariance ``K_x * K_task`` in a single variational
     GP. It is not an independent ``ModelList`` and is not an exact Gaussian
@@ -235,35 +241,35 @@ class _WideNegativeBinomialMultiTaskCore(ApproximateGPyTorchModel):
         mean_module: Mean | None = None,
         covar_module: Kernel | None = None,
         task_covar_module: IndexKernel | None = None,
-        link: NBLink = "softplus",
-        init_total_count: float | Tensor = 10.0,
+        link: NegativeBinomialLink = "softplus",
+        init_total_count: float = 10.0,
         learn_total_count: bool = True,
-        min_total_count: float = 1e-6,
         exp_clip: float = 20.0,
         min_mean: float = 1e-8,
+        min_total_count: float = 1e-6,
     ) -> None:
-        """Initialize a correlated NegativeBinomial multi-task model.
+        """Initialize a correlated Negative Binomial multi-task model.
 
         Args:
             train_X: Raw inputs with shape ``[n, d]``.
-            train_Y: Non-negative integer wide targets with shape ``[n, m]``; NaNs are omitted.
+            train_Y: Positive wide targets with shape ``[n, m]``; NaNs are omitted.
             rank: Rank of the learned task covariance.
             num_latents: Reserved LMC-compatible setting; defaults to ``rank``.
-            num_inducing_points: Maximum number of long-form inducing points.
+            num_inducing: Maximum number of long-form inducing points.
             inducing_points: Optional long-form inducing points including task id.
             learn_inducing_locations: Whether inducing locations are trainable.
-            likelihood: Optional NegativeBinomial likelihood.
+            likelihood: Optional Negative Binomial likelihood.
             input_transform: Raw-space BoTorch input transform.
             outcome_transform: Unsupported; must be ``None`` for raw counts.
             mean_module: Optional latent mean.
             covar_module: Optional data covariance.
             task_covar_module: Optional task covariance.
-            link: Positive Negative Binomial mean link.
-            init_total_count: Initial task-specific dispersion ``r``.
-            learn_total_count: Whether dispersion is optimized.
+            link: Positive response-mean link.
+            init_total_count: Initial dispersion/total-count parameter.
+            learn_total_count: Whether total-count is learnable.
+            exp_clip: Maximum latent value used by the exponential link.
+            min_mean: Numerical lower bound for response means.
             min_total_count: Numerical lower bound for dispersion.
-            exp_clip: Maximum latent log-rate used by the exponential link.
-            min_mean: Numerical lower bound for rates.
         """
         train_X = torch.as_tensor(train_X)
         train_Y = torch.as_tensor(train_Y, device=train_X.device, dtype=train_X.dtype)
@@ -272,16 +278,18 @@ class _WideNegativeBinomialMultiTaskCore(ApproximateGPyTorchModel):
         finite = ~torch.isnan(train_Y)
         observed_values = train_Y[finite]
         if not torch.isfinite(observed_values).all():
-            raise ValueError("NegativeBinomial targets must be finite or NaN for missing cells.")
+            raise ValueError(
+                "Negative Binomial targets must be finite or NaN for missing cells."
+            )
         if bool((observed_values < 0).any()):
-            raise ValueError("NegativeBinomial targets must be non-negative.")
+            raise ValueError("Negative Binomial targets must be non-negative.")
         if not torch.isclose(
             observed_values, observed_values.round(), atol=1e-6, rtol=0.0
         ).all():
-            raise ValueError("NegativeBinomial targets must be integer counts.")
+            raise ValueError("Negative Binomial targets must be integer counts.")
         if outcome_transform is not None:
             raise ValueError(
-                "NegativeBinomial models require raw counts; outcome_transform is not supported."
+                "Negative Binomial models require raw counts; outcome_transform is not supported."
             )
         self.num_tasks = int(train_Y.shape[-1])
         self.rank = int(rank)
@@ -303,18 +311,14 @@ class _WideNegativeBinomialMultiTaskCore(ApproximateGPyTorchModel):
         transformed_Y = train_Y.clone()
 
         long_X, long_Y, observed = _wide_to_long(transformed_X, transformed_Y)
-        if likelihood is None:
-            initial_r = torch.as_tensor(init_total_count, device=train_X.device, dtype=train_X.dtype)
-            if initial_r.ndim == 0:
-                initial_r = initial_r.expand(self.num_tasks).clone()
-            if initial_r.shape != torch.Size([self.num_tasks]):
-                raise ValueError("init_total_count must be scalar or have shape [num_tasks].")
-            likelihood = NegativeBinomialLogLikelihood(
-            link=link, init_total_count=initial_r,
-            learn_total_count=learn_total_count, exp_clip=exp_clip,
-            min_mean=min_mean, min_total_count=min_total_count,
+        likelihood = likelihood or NegativeBinomialLogLikelihood(
+            link=link,
+            init_total_count=init_total_count,
+            learn_total_count=learn_total_count,
+            exp_clip=exp_clip,
+            min_mean=min_mean,
+            min_total_count=min_total_count,
         )
-        likelihood.observation_task_indices = long_X[:, -1].long()
         latent_model = _LatentNegativeBinomialMultiTaskSVGP(
             long_X,
             long_Y,
@@ -337,9 +341,9 @@ class _WideNegativeBinomialMultiTaskCore(ApproximateGPyTorchModel):
         self.num_inducing = int(num_inducing)
         self.learn_inducing_locations = bool(learn_inducing_locations)
         self.link = link
+        self.learn_total_count = bool(learn_total_count)
         self.exp_clip = float(exp_clip)
         self.min_mean = float(min_mean)
-        self.learn_total_count = bool(learn_total_count)
         self.min_total_count = float(min_total_count)
         self.to(train_X)
 
@@ -371,7 +375,9 @@ class _WideNegativeBinomialMultiTaskCore(ApproximateGPyTorchModel):
     ) -> Posterior:
         """Return a positive response posterior with shape ``[..., q, m]``."""
         if output_indices is not None:
-            raise NotImplementedError("NegativeBinomial multitask output subsetting is not implemented.")
+            raise NotImplementedError(
+                "Negative Binomial multitask output subsetting is not implemented."
+            )
         if torch.is_tensor(observation_noise):
             raise NotImplementedError("Tensor observation_noise is not supported.")
         posterior: Posterior = NegativeBinomialMultiTaskPosterior(
@@ -382,16 +388,7 @@ class _WideNegativeBinomialMultiTaskCore(ApproximateGPyTorchModel):
         return posterior if posterior_transform is None else posterior_transform(posterior)
 
     def mean_posterior(self, X: Tensor, **kwargs: Any) -> NegativeBinomialMultiTaskPosterior:
-        """Return the differentiable rate posterior with shape ``[..., q, m]``.
-
-        Args:
-            X: Raw candidate inputs.
-            **kwargs: Arguments forwarded to :meth:`posterior`.
-
-        Returns:
-            The joint task-correlated rate posterior, excluding conditional
-            Negative Binomial observation variance.
-        """
+        """Return the differentiable response-mean posterior."""
         return self.posterior(X, observation_noise=False, **kwargs)  # type: ignore[return-value]
 
     def sample_observations(
@@ -399,20 +396,22 @@ class _WideNegativeBinomialMultiTaskCore(ApproximateGPyTorchModel):
         X: Tensor,
         sample_shape: torch.Size | None = None,
     ) -> Tensor:
-        """Draw non-reparameterized count samples for prediction or diagnostics.
+        """Draw non-reparameterized Negative Binomial count samples.
 
         Args:
             X: Raw candidate inputs.
             sample_shape: Leading sample dimensions.
 
         Returns:
-            Integer-valued count samples with trailing ``q, task`` axes.
+            Integer-valued samples with trailing ``q, task`` axes.
         """
         sample_shape = torch.Size() if sample_shape is None else sample_shape
         means = self.mean_posterior(X).rsample(sample_shape)
-        r = self.dispersion().to(means)
+        total_count = self.likelihood.total_count.to(means)
+        probs = total_count / (total_count + means.clamp_min(self.likelihood.min_mean))
         return torch.distributions.NegativeBinomial(
-            total_count=r.expand_as(means), logits=(means / r).log()
+            total_count=total_count,
+            probs=probs,
         ).sample()
 
     @property
@@ -425,22 +424,6 @@ class _WideNegativeBinomialMultiTaskCore(ApproximateGPyTorchModel):
         """Return the finite learned task covariance matrix."""
         return self.task_covar_module.covar_matrix.to_dense()
 
-    def dispersion(self, X: Tensor | None = None) -> Tensor:
-        """Return task-specific positive dispersion ``r``.
-
-        Args:
-            X: Ignored because the base multitask model uses task-specific scalars.
-
-        Returns:
-            A tensor with shape ``[num_tasks]``.
-        """
-        del X
-        return self.likelihood.total_count
-
-    def predictive_posterior(self, X: Tensor, **kwargs: Any) -> NegativeBinomialMultiTaskPosterior:
-        """Return the count predictive posterior including aleatoric variance."""
-        return self.posterior(X, observation_noise=True, **kwargs)  # type: ignore[return-value]
-
     def make_mll(self, **kwargs: Any) -> VariationalELBO:
         """Build the non-Gaussian variational training objective."""
         return VariationalELBO(
@@ -450,7 +433,9 @@ class _WideNegativeBinomialMultiTaskCore(ApproximateGPyTorchModel):
     def condition_on_observations(self, X: Tensor, Y: Tensor, **kwargs: Any) -> NegativeBinomialMultiTaskGPModel:
         """Rebuild the same correlated structure with additional raw observations."""
         if kwargs.get("noise") is not None:
-            raise NotImplementedError("NegativeBinomial multitask conditioning does not accept noise.")
+            raise NotImplementedError(
+                "Negative Binomial multitask conditioning does not accept noise."
+            )
         X = torch.as_tensor(X, device=self.train_inputs_raw[0].device, dtype=self.train_inputs_raw[0].dtype)
         Y = torch.as_tensor(Y, device=X.device, dtype=X.dtype)
         return self.__class__(
@@ -466,11 +451,10 @@ class _WideNegativeBinomialMultiTaskCore(ApproximateGPyTorchModel):
             covar_module=copy.deepcopy(self.model.data_covar_module),
             task_covar_module=copy.deepcopy(self.model.task_covar_module),
             link=self.link,
-            init_total_count=self.likelihood.total_count.detach().clone(),
             learn_total_count=self.learn_total_count,
-            min_total_count=self.min_total_count,
             exp_clip=self.exp_clip,
             min_mean=self.min_mean,
+            min_total_count=self.min_total_count,
         )
 
     def fantasize(self, X: Tensor, sampler: Any, **kwargs: Any) -> NegativeBinomialMultiTaskGPModel:
@@ -482,14 +466,15 @@ class _WideNegativeBinomialMultiTaskCore(ApproximateGPyTorchModel):
         fantasies = sampler(self.posterior(X))
         if fantasies.ndim != 2:
             raise NotImplementedError(
-                "Batched NegativeBinomial multitask fantasies require batched variational training data. "
-                "Use posterior samples directly for MC acquisition functions."
+                "Batched Negative Binomial multitask fantasies require batched "
+                "variational training data. Use posterior samples directly for "
+                "MC acquisition functions."
             )
         return self.condition_on_observations(X, fantasies, **kwargs)
 
 
 class WideNegativeBinomialMultiTaskGPModel(_WideNegativeBinomialMultiTaskCore):
-    """Correlated wide Negative Binomial model that omits, rather than imputes, NaN cells."""
+    """Correlated wide model that omits, rather than imputes, NaN count cells."""
 
     def __init__(self, train_X: Tensor, train_Y: Tensor, **kwargs: Any) -> None:
         """Initialize from a shared input design and wide targets.
@@ -569,7 +554,7 @@ class NegativeBinomialMultiTaskGPModel(_WideNegativeBinomialMultiTaskCore):
             num_tasks=self.num_tasks,
             rank=self.rank,
             num_latents=self.num_latents,
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
         )
 

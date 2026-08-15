@@ -15,6 +15,7 @@ on:
       - "web/src/api.ts"
       - "web/src/components/InputPerturbationRiskSettings.tsx"
       - "web/src/components/TargetProposalSettings.tsx"
+      - "web/src/targetSettingUtils.ts"
       - "web/src/modelArtifactRestore.ts"
       - "web/src/pages/OptimizePage.tsx"
       - "web/src/types.ts"
@@ -22,6 +23,7 @@ on:
       - "tests/test_webapp_input_perturbation_risk.py"
       - "tests/test_webapp_input_perturbation_prediction_shape.py"
       - "tests/test_webapp_level_set_settings.py"
+      - "tests/test_webapp_lse_target_defaults.py"
       - "tests/test_webapp_lse_web_contract.py"
       - ".github/workflows/web-lse-settings-smoke.yml"
   workflow_dispatch:
@@ -43,6 +45,7 @@ jobs:
           pytest -q --maxfail=1 \
             tests/test_regression_lse_input_perturbation_shape.py \
             tests/test_webapp_level_set_settings.py \
+            tests/test_webapp_lse_target_defaults.py \
             tests/test_webapp_lse_web_contract.py \
             tests/test_webapp_input_perturbation_risk.py \
             tests/test_webapp_input_perturbation_prediction_shape.py
@@ -61,6 +64,7 @@ jobs:
             tests/test_regression_lse_input_perturbation_shape.py \
             tests/test_webapp_input_perturbation_risk.py \
             tests/test_webapp_input_perturbation_prediction_shape.py \
+            tests/test_webapp_lse_target_defaults.py \
             tests/test_webapp_lse_web_contract.py
       - name: Set up pnpm and Node.js
         uses: pnpm/setup@v2

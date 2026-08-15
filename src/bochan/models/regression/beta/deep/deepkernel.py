@@ -219,7 +219,7 @@ class DeepKernelBetaGPModel(_BaseBetaGPModel):
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         link: BetaMeanLink = "sigmoid",
-        init_concentration: float = 20.0,
+        concentration: float = 20.0,
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
@@ -235,7 +235,7 @@ class DeepKernelBetaGPModel(_BaseBetaGPModel):
         )
         likelihood = likelihood or BetaLogLikelihood(
             link=link,
-            init_concentration=init_concentration,
+            concentration=concentration,
             learn_concentration=learn_concentration,
             eps=eps,
             min_concentration=min_concentration,
@@ -288,7 +288,7 @@ class DeepKernelBetaMixedGPModel(_BaseBetaGPModel):
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         link: BetaMeanLink = "sigmoid",
-        init_concentration: float = 20.0,
+        concentration: float = 20.0,
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
@@ -306,7 +306,7 @@ class DeepKernelBetaMixedGPModel(_BaseBetaGPModel):
         )
         likelihood = likelihood or BetaLogLikelihood(
             link=link,
-            init_concentration=init_concentration,
+            concentration=concentration,
             learn_concentration=learn_concentration,
             eps=eps,
             min_concentration=min_concentration,

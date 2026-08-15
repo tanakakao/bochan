@@ -62,11 +62,16 @@ jobs:
             tests/test_webapp_input_perturbation_risk.py \
             tests/test_webapp_input_perturbation_prediction_shape.py \
             tests/test_webapp_lse_web_contract.py
-      - uses: actions/setup-node@v4
+      - name: Set up pnpm and Node.js
+        uses: pnpm/setup@v2
         with:
-          node-version: "24"
+          package-json-file: web/package.json
+          runtime: node@24
+          cache: true
+          cache-dependency-path: web/pnpm-lock.yaml
+          install: false
       - name: Build Web
         working-directory: web
         run: |
-          npm install --no-audit --no-fund
-          npm run build
+          pnpm install --frozen-lockfile
+          pnpm run build

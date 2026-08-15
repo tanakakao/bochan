@@ -1,28 +1,21 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  applyAnalysisConfig,
+  applyStoredRunSettings,
+  captureStoredRunSettings,
+  createGuidedAnalysisConfig,
+  createGuidedTargetPatch,
+  createGuidedVariablePatch,
+  restoreStoredRunSettings,
+  type StoredRunSettingsSnapshot
+} from "../analysisConfig";
 import { EmptyState, SectionHeader } from "../components/Common";
 import CompositionKindControl from "../components/CompositionKindControl";
 import { useWorkbench } from "../context/WorkbenchContext";
 import { getColumnClassValues } from "../targetSettingUtils";
-import type { ColumnProfile, Direction, SearchVariable, TargetSetting } from "../types";
-import {
-  loadFeatureConstraints,
-  loadFeatureMissingSettings,
-  loadSearchMethod,
-  loadSelectionCountConstraint,
-  saveFeatureConstraints,
-  saveFeatureMissingSettings,
-  saveSearchMethod,
-  saveSelectionCountConstraint
-} from "../webRunSettings";
+import type { ColumnProfile, Direction } from "../types";
 import { useWorkbenchMode } from "../workbenchMode";
 import "./PreparePage.css";
-
-interface StoredRunSettingsSnapshot {
-  featureConstraints: ReturnType<typeof loadFeatureConstraints>;
-  featureMissing: ReturnType<typeof loadFeatureMissingSettings>;
-  searchMethod: ReturnType<typeof loadSearchMethod>;
-  selectionCount: ReturnType<typeof loadSelectionCountConstraint>;
-}
 
 function missingValueSummary(column: ColumnProfile): string {
   const percent = column.missing_rate * 100;
@@ -36,91 +29,6 @@ function columnIsSelectable(column: ColumnProfile): boolean {
 
 function columnSelectionDisabledReason(column: ColumnProfile): string {
   return column.unique_count === 0 ? "有効な値がありません" : "値が1種類のみ";
-}
-
-function simpleTargetPatch(
-  column: ColumnProfile,
-  preview: Record<string, unknown>[],
-  direction: Direction
-): Partial<TargetSetting> {
-  const common: Partial<TargetSetting> = {
-    optimize: true,
-    direction,
-    goal: "none",
-    value: null,
-    target_class: null,
-    target_classes: [],
-    class_order: [],
-    target_values: []
-  };
-  if (column.kind === "numeric") return { ...common, task_type: "regression" };
-
-  const classes = getColumnClassValues(column, preview);
-  const selectedClass = classes.length === 2 ? classes[1] : classes[0];
-  return {
-    ...common,
-    task_type: "classification",
-    target_class: classes.length === 2 ? selectedClass ?? null : null,
-    target_classes: selectedClass === undefined ? [] : [selectedClass]
-  };
-}
-
-function simpleVariablePatch(
-  column: ColumnProfile,
-  preview: Record<string, unknown>[]
-): Partial<SearchVariable> {
-  const categorical = column.kind === "categorical";
-  if (categorical) {
-    return {
-      type: "categorical",
-      categories: getColumnClassValues(column, preview),
-      lower: undefined,
-      upper: undefined,
-      step: undefined,
-      fixed: false,
-      fixed_value: undefined
-    };
-  }
-  return {
-    type: "numeric",
-    categories: undefined,
-    lower: column.min ?? undefined,
-    upper: column.max ?? undefined,
-    step: undefined,
-    fixed: false,
-    fixed_value: undefined
-  };
-}
-
-function captureStoredRunSettings(): StoredRunSettingsSnapshot {
-  return {
-    featureConstraints: loadFeatureConstraints(),
-    featureMissing: loadFeatureMissingSettings(),
-    searchMethod: loadSearchMethod(),
-    selectionCount: loadSelectionCountConstraint()
-  };
-}
-
-function applySimpleStoredRunSettings(): void {
-  saveFeatureConstraints([]);
-  saveSelectionCountConstraint({ enabled: false, variables: [], k: 1 });
-  saveFeatureMissingSettings({
-    strategy: "drop",
-    continuousStrategy: "mean",
-    categoricalStrategy: "mode",
-    imputeMaxIter: 10,
-    imputeRandomState: null,
-    multipleImputeSamplePosterior: false
-  });
-  saveSearchMethod("normal");
-}
-
-function restoreStoredRunSettings(snapshot: StoredRunSettingsSnapshot | null): void {
-  if (!snapshot) return;
-  saveFeatureConstraints(snapshot.featureConstraints);
-  saveFeatureMissingSettings(snapshot.featureMissing);
-  saveSearchMethod(snapshot.searchMethod);
-  saveSelectionCountConstraint(snapshot.selectionCount);
 }
 
 /** Selects targets/features and defines whether each selected feature is numeric or categorical. */
@@ -272,35 +180,44 @@ export default function PreparePage() {
     if (!canConfigure || simpleExecutionPending) return;
     setError(null);
     simpleExecutionStarted.current = false;
+
+    const config = createGuidedAnalysisConfig({
+      featureCount: featureColumns.length,
+      targetCount: targetColumns.length,
+      q
+    });
     storedRunSettings.current = captureStoredRunSettings();
-    applySimpleStoredRunSettings();
+    applyStoredRunSettings(config.persisted);
 
     targetColumns.forEach((name) => {
       const column = selectableColumns.find((candidate) => candidate.name === name);
       if (column) {
         patchTargetSetting(
           name,
-          simpleTargetPatch(column, preview, targetSettings[name]?.direction ?? "maximize")
+          createGuidedTargetPatch(column, preview, targetSettings[name]?.direction ?? "maximize")
         );
       }
     });
     featureColumns.forEach((name) => {
       const column = selectableColumns.find((candidate) => candidate.name === name);
-      if (column) patchVariable(name, simpleVariablePatch(column, preview));
+      if (column) patchVariable(name, createGuidedVariablePatch(column, preview));
     });
 
-    setNormalize(true);
-    setInputPerturbation(false);
-    setNW(16);
-    setPerturbationStd(0.1);
-    setProjectionDimensions(Math.min(2, Math.max(featureColumns.length, 1)));
-    setModelType("base");
-    setAcquisitionFamily("bayesian_optimization");
-    setAcquisition(targetColumns.length > 1 ? "EHVI" : "EI");
-    setBeta(2);
-    setFitMaxiter(128);
-    setNumRestarts(10);
-    setRawSamples(256);
+    applyAnalysisConfig(config, {
+      setNormalize,
+      setInputPerturbation,
+      setNW,
+      setPerturbationStd,
+      setProjectionDimensions,
+      setModelType,
+      setAcquisitionFamily,
+      setAcquisition,
+      setBeta,
+      setFitMaxiter,
+      setQ,
+      setNumRestarts,
+      setRawSamples
+    });
     setSimpleExecutionPending(true);
   }
 

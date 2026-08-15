@@ -1,4 +1,11 @@
-import type { AcquisitionFamily } from "./types";
+import { getColumnClassValues } from "./targetSettingUtils";
+import type {
+  AcquisitionFamily,
+  ColumnProfile,
+  Direction,
+  SearchVariable,
+  TargetSetting
+} from "./types";
 import {
   loadFeatureConstraints,
   loadFeatureMissingSettings,
@@ -92,6 +99,63 @@ const GUIDED_SELECTION_COUNT: SelectionCountConstraint = {
   variables: [],
   k: 1
 };
+
+/** Build the target-setting patch shared by guided UI entry points. */
+export function createGuidedTargetPatch(
+  column: ColumnProfile,
+  preview: Record<string, unknown>[],
+  direction: Direction
+): Partial<TargetSetting> {
+  const common: Partial<TargetSetting> = {
+    optimize: true,
+    direction,
+    goal: "none",
+    value: null,
+    target_class: null,
+    target_classes: [],
+    class_order: [],
+    target_values: []
+  };
+  if (column.kind === "numeric") return { ...common, task_type: "regression" };
+
+  const classes = getColumnClassValues(column, preview);
+  const selectedClass = classes.length === 2 ? classes[1] : classes[0];
+  return {
+    ...common,
+    task_type: "classification",
+    target_class: classes.length === 2 ? selectedClass ?? null : null,
+    target_classes: selectedClass === undefined ? [] : [selectedClass]
+  };
+}
+
+/** Build the search-variable patch shared by guided UI entry points. */
+export function createGuidedVariablePatch(
+  column: ColumnProfile,
+  preview: Record<string, unknown>[],
+  categorical = column.kind === "categorical"
+): Partial<SearchVariable> {
+  const useCategorical = column.kind === "categorical" || categorical;
+  if (useCategorical) {
+    return {
+      type: "categorical",
+      categories: getColumnClassValues(column, preview),
+      lower: undefined,
+      upper: undefined,
+      step: undefined,
+      fixed: false,
+      fixed_value: undefined
+    };
+  }
+  return {
+    type: "numeric",
+    categories: undefined,
+    lower: column.min ?? undefined,
+    upper: column.max ?? undefined,
+    step: undefined,
+    fixed: false,
+    fixed_value: undefined
+  };
+}
 
 /** Capture persisted advanced settings from the current workbench state. */
 export function captureStoredRunSettings(): StoredRunSettingsSnapshot {

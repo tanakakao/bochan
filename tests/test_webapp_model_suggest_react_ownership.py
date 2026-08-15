@@ -57,13 +57,16 @@ def test_model_and_suggest_keep_primary_controls_visible_before_details() -> Non
     suggest_card = optimize.index('className="panel suggestion-workbench-card"')
     suggest_details = optimize.index('className="suggestion-card-details model-output-details"')
     search_space = optimize.index("<SearchVariableSettings")
-    assert target_proposal < suggest_card < suggest_details < search_space
+    feature_constraints = optimize.index("<FeatureConstraints variables", search_space)
+    assert target_proposal < suggest_card < suggest_details < search_space < feature_constraints
 
     assert optimize.index('className="suggestion-config-grid"', suggest_card) < suggest_details
     assert optimize.index("獲得関数", suggest_card) < suggest_details
-    assert optimize.index("候補点数 q", suggest_card) < suggest_details
-    assert optimize.index("最適化手法", suggest_card) < suggest_details
-    assert optimize.index("<FeatureConstraints variables", suggest_details) > suggest_details
+    search_family = optimize.index("探索手法の大分類", suggest_card)
+    search_method = optimize.index("最適化手法", search_family)
+    q = optimize.index("候補点数 q", search_method)
+    assert suggest_card < search_family < search_method < q < suggest_details
+    assert "<FeatureConstraints variables" not in optimize[suggest_details:search_space]
     assert optimize.index("num_restarts", suggest_details) > suggest_details
     assert optimize.index("raw_samples", suggest_details) > suggest_details
 

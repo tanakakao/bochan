@@ -126,7 +126,7 @@ export default function FeatureConstraints({ variables }: Props) {
     <article className="panel candidate-feature-constraint-panel">
       <div className="panel-title">
         <div>
-          <span className="panel-kicker">ADVANCED · FEATURE CONSTRAINTS</span>
+          <span className="panel-kicker">FEATURE CONSTRAINTS</span>
           <h3>説明変数の候補制約</h3>
           <p>候補生成時に使用する重み付き和の制約と、有効にする変数数を設定します。</p>
         </div>

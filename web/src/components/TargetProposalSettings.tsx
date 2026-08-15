@@ -1,5 +1,9 @@
+import { useEffect } from "react";
 import { useWorkbench } from "../context/WorkbenchContext";
-import { getColumnClassValues } from "../targetSettingUtils";
+import {
+  getColumnClassValues,
+  levelSetTargetDefaultPatch
+} from "../targetSettingUtils";
 import type {
   ColumnProfile,
   Direction,
@@ -39,6 +43,17 @@ export default function TargetProposalSettings({
     const column = columns.find((candidate) => candidate.name === target);
     return column ? getColumnClassValues(column, preview) : [];
   }
+
+  useEffect(() => {
+    if (!isLevelSet) return;
+    targetColumns.forEach((target) => {
+      const column = columns.find((candidate) => candidate.name === target);
+      const setting = targetSettings[target];
+      if (!column || !setting) return;
+      const patch = levelSetTargetDefaultPatch(column, setting, preview);
+      if (patch) patchTargetSetting(target, patch);
+    });
+  }, [columns, isLevelSet, patchTargetSetting, preview, targetColumns, targetSettings]);
 
   function changeGoal(target: string, nextGoal: Exclude<TargetGoal, "target">) {
     const column = columns.find((candidate) => candidate.name === target);
@@ -119,6 +134,18 @@ export default function TargetProposalSettings({
     changeGoal(target, nextGoal);
   }
 
+  function changeOptimize(target: string, optimize: boolean) {
+    const column = columns.find((candidate) => candidate.name === target);
+    const setting = targetSettings[target];
+    if (!column || !setting) return;
+    if (!optimize || !isLevelSet) {
+      patchTargetSetting(target, { optimize });
+      return;
+    }
+    const patch = levelSetTargetDefaultPatch(column, { ...setting, optimize: true }, preview);
+    patchTargetSetting(target, { optimize: true, ...(patch ?? {}) });
+  }
+
   function directionControl(target: string, setting: TargetSetting) {
     if (!setting.optimize) return <span className="muted-cell">対象外</span>;
     if (isLevelSet) {
@@ -168,6 +195,7 @@ export default function TargetProposalSettings({
           type="number"
           step="any"
           value={setting.value ?? ""}
+          aria-label={isLevelSet ? `${target}の探索するしきい値` : undefined}
           onChange={(event) => patchTargetSetting(target, {
             value: numberOrUndefined(event.target.value) ?? null
           })}
@@ -263,7 +291,7 @@ export default function TargetProposalSettings({
           <h3>{isLevelSet ? "目的変数のレベルセット条件" : "目的変数の候補提案条件"}</h3>
           <p>
             {isLevelSet
-              ? "各最適化対象に境界を設定します。最大化・最小化方向は使用せず、分類は対象クラス確率、順序回帰は設定済みのクラス順を目的尺度として扱います。"
+              ? "探索する境界を目的変数ごとに設定します。回帰は目標値の等高線、分類は対象クラス確率、順序回帰は設定済みのクラス順を境界尺度として扱います。"
               : "最適化対象、方向、目標値、実行可能性制約、狙うクラスを設定します。"}
           </p>
         </div>
@@ -274,8 +302,8 @@ export default function TargetProposalSettings({
           <thead>
             <tr>
               <th>目的変数</th><th>最適化対象</th><th>{isLevelSet ? "探索" : "方向"}</th>
-              <th>{isLevelSet ? "境界条件 / 制約" : "制約"}</th>
-              <th>{isLevelSet ? "境界しきい値／目標値" : "しきい値／目標値"}</th><th>対象クラス</th>
+              <th>{isLevelSet ? "レベルセット条件" : "制約"}</th>
+              <th>{isLevelSet ? "探索するしきい値" : "しきい値／目標値"}</th><th>対象クラス</th>
             </tr>
           </thead>
           <tbody>
@@ -284,6 +312,7 @@ export default function TargetProposalSettings({
               if (!setting) return null;
               const classes = setting.class_order?.length ? setting.class_order : classesFor(target);
               const targetMode = setting.goal === "target";
+              const optimizedLevelSet = isLevelSet && setting.optimize;
               const constraintValue = isLevelSet
                 ? setting.goal
                 : targetMode
@@ -299,33 +328,37 @@ export default function TargetProposalSettings({
                       checked={setting.optimize}
                       disabled={targetMode}
                       title={targetMode ? "目標値は最適化目的として扱います。" : "制約専用にする場合はチェックを外します。"}
-                      onChange={(event) => patchTargetSetting(target, { optimize: event.target.checked })}
+                      onChange={(event) => changeOptimize(target, event.target.checked)}
                     />
                   </td>
                   <td>{directionControl(target, setting)}</td>
                   <td>
-                    <select
-                      value={constraintValue}
-                      disabled={!isLevelSet && targetMode}
-                      title={isLevelSet
-                        ? setting.optimize
-                          ? "最適化対象ではLSEの境界条件として使用し、候補のhard constraintにはしません。"
-                          : "最適化対象外では候補の実行可能性制約として使用します。"
-                        : targetMode
-                          ? "目標値は方向で設定されています。"
-                          : undefined}
-                      onChange={(event) => changeConstraintGoal(
-                        target,
-                        event.target.value as TargetGoal
-                      )}
-                    >
-                      <option value="none">なし</option>
-                      <option value="above">以上</option>
-                      <option value="below">以下</option>
-                      {isLevelSet && setting.task_type !== "classification" && (
-                        <option value="target">目標値</option>
-                      )}
-                    </select>
+                    {optimizedLevelSet && setting.task_type === "regression" ? (
+                      <span className="muted-cell" aria-label={`${target}のレベルセット条件`}>目標値</span>
+                    ) : (
+                      <select
+                        value={constraintValue}
+                        disabled={!isLevelSet && targetMode}
+                        title={isLevelSet
+                          ? setting.optimize
+                            ? "最適化対象ではLSEの境界条件として使用し、候補のhard constraintにはしません。"
+                            : "最適化対象外では候補の実行可能性制約として使用します。"
+                          : targetMode
+                            ? "目標値は方向で設定されています。"
+                            : undefined}
+                        onChange={(event) => changeConstraintGoal(
+                          target,
+                          event.target.value as TargetGoal
+                        )}
+                      >
+                        {!optimizedLevelSet && <option value="none">なし</option>}
+                        <option value="above">以上</option>
+                        <option value="below">以下</option>
+                        {optimizedLevelSet && setting.task_type === "ordinal" && (
+                          <option value="target">目標値</option>
+                        )}
+                      </select>
+                    )}
                   </td>
                   <td>{targetValueControl(target, setting, classes)}</td>
                   <td className="class-config-cell">{desiredClassControl(target, setting, classesFor(target))}</td>
@@ -337,7 +370,7 @@ export default function TargetProposalSettings({
       </div>
       <p className="settings-note">
         {isLevelSet
-          ? "レベルセット推定では最大化・最小化方向を設定しません。最適化対象行の「以上／以下／目標値」は探索する境界を定義し、hard constraintにはしません。チェックを外した行の「以上／以下」は実行可能性制約として使用します。Multiclass は選択クラス群の合計確率、順序回帰は設定済みクラス順を境界尺度として扱います。複数出力の境界重みは相対値として正規化されます。"
+          ? "回帰は目標値に固定し、その値を探索するしきい値として使用します。未設定の分類は対象クラス確率0.5、順序回帰はクラス順の中央を初期境界にします。分類・順序回帰では必要に応じて境界方向や対象クラスを変更できます。複数出力の境界重みは相対値として正規化されます。"
           : "方向・制約・対象クラスは候補提案時にのみ使用します。ここを変更しても、互換性のある学習済みモデルは再利用できます。"}
       </p>
     </article>

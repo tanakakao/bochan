@@ -14,7 +14,7 @@ import {
   type SelectionCountConstraint
 } from "./webRunSettings";
 
-/** Persisted settings that guided execution temporarily overrides. */
+/** Persisted settings that an analysis configuration may apply for execution. */
 export interface StoredRunSettingsSnapshot {
   featureConstraints: FeatureConstraint[];
   featureMissing: FeatureMissingSettings;
@@ -22,27 +22,40 @@ export interface StoredRunSettingsSnapshot {
   selectionCount: SelectionCountConstraint;
 }
 
-/** Canonical analysis settings shared by the guided UI entry points. */
+/** Canonical model settings shared by every web analysis entry point. */
+export interface AnalysisModelConfig {
+  normalize: boolean;
+  inputPerturbation: boolean;
+  nW: number;
+  perturbationStd: number;
+  projectionDimensions: number;
+  modelType: string;
+  fitMaxiter: number;
+}
+
+/** Canonical acquisition settings shared by every web analysis entry point. */
+export interface AnalysisAcquisitionConfig {
+  family: AcquisitionFamily;
+  name: string;
+  beta: number;
+}
+
+/** Canonical candidate-search settings shared by every web analysis entry point. */
+export interface AnalysisSearchConfig {
+  q: number;
+  numRestarts: number;
+  rawSamples: number;
+  /** Optional for guided flows that intentionally preserve the current setting. */
+  sequential?: boolean;
+  /** Optional for guided flows that intentionally preserve the current setting. */
+  minimumCandidateDistanceRatio?: number;
+}
+
+/** Canonical analysis settings used by Simple, Advanced, and Conversation modes. */
 export interface AnalysisConfig {
-  model: {
-    normalize: boolean;
-    inputPerturbation: boolean;
-    nW: number;
-    perturbationStd: number;
-    projectionDimensions: number;
-    modelType: string;
-    fitMaxiter: number;
-  };
-  acquisition: {
-    family: AcquisitionFamily;
-    name: string;
-    beta: number;
-  };
-  search: {
-    q: number;
-    numRestarts: number;
-    rawSamples: number;
-  };
+  model: AnalysisModelConfig;
+  acquisition: AnalysisAcquisitionConfig;
+  search: AnalysisSearchConfig;
   persisted: StoredRunSettingsSnapshot;
 }
 
@@ -61,6 +74,8 @@ export interface AnalysisConfigSetters {
   setQ: (value: number) => void;
   setNumRestarts: (value: number) => void;
   setRawSamples: (value: number) => void;
+  setSequential?: (value: boolean) => void;
+  setMinimumCandidateDistanceRatio?: (value: number) => void;
 }
 
 const GUIDED_FEATURE_MISSING: FeatureMissingSettings = {
@@ -78,12 +93,17 @@ const GUIDED_SELECTION_COUNT: SelectionCountConstraint = {
   k: 1
 };
 
-/**
- * Build the recommended defaults used by Simple and Conversation modes.
- *
- * Advanced UI can later produce the same AnalysisConfig shape while exposing
- * each field for explicit override.
- */
+/** Capture persisted advanced settings from the current workbench state. */
+export function captureStoredRunSettings(): StoredRunSettingsSnapshot {
+  return {
+    featureConstraints: loadFeatureConstraints(),
+    featureMissing: loadFeatureMissingSettings(),
+    searchMethod: loadSearchMethod(),
+    selectionCount: loadSelectionCountConstraint()
+  };
+}
+
+/** Build the recommended defaults used by Simple and Conversation modes. */
 export function createGuidedAnalysisConfig({
   featureCount,
   targetCount,
@@ -122,13 +142,27 @@ export function createGuidedAnalysisConfig({
   };
 }
 
-/** Capture persisted advanced settings before guided execution temporarily changes them. */
-export function captureStoredRunSettings(): StoredRunSettingsSnapshot {
+/**
+ * Build the canonical config represented by the Advanced Model/Suggest controls.
+ *
+ * Persisted controls such as feature constraints, missing-value handling, and
+ * search method are captured at execution time so child control state cannot
+ * drift from the request that is about to run.
+ */
+export function createAdvancedAnalysisConfig({
+  model,
+  acquisition,
+  search
+}: {
+  model: AnalysisModelConfig;
+  acquisition: AnalysisAcquisitionConfig;
+  search: Required<AnalysisSearchConfig>;
+}): AnalysisConfig {
   return {
-    featureConstraints: loadFeatureConstraints(),
-    featureMissing: loadFeatureMissingSettings(),
-    searchMethod: loadSearchMethod(),
-    selectionCount: loadSelectionCountConstraint()
+    model: { ...model },
+    acquisition: { ...acquisition },
+    search: { ...search },
+    persisted: captureStoredRunSettings()
   };
 }
 
@@ -161,4 +195,10 @@ export function applyAnalysisConfig(config: AnalysisConfig, setters: AnalysisCon
   setters.setQ(config.search.q);
   setters.setNumRestarts(config.search.numRestarts);
   setters.setRawSamples(config.search.rawSamples);
+  if (config.search.sequential !== undefined) {
+    setters.setSequential?.(config.search.sequential);
+  }
+  if (config.search.minimumCandidateDistanceRatio !== undefined) {
+    setters.setMinimumCandidateDistanceRatio?.(config.search.minimumCandidateDistanceRatio);
+  }
 }

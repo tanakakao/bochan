@@ -1,64 +1,108 @@
 # bochan Web Workbench UI
 
-bochan Webの既存単一目的回帰ワークフローを、malchan Webと共通のデザイン言語を持つページ型ワークベンチへ再構成しています。
+bochan Webは、データ読込からモデル設定、候補提案、実験結果の追加までを一つのReactワークベンチで扱います。
 
-バックエンドAPI、データアップロード形式、回帰モデル学習、候補生成、Plotly可視化、JSONLログの契約は変更していません。
+バックエンドAPI、データアップロード形式、モデル学習、候補生成、Plotly可視化の契約とは分離し、フロントエンド側では画面・状態・設定の責務を明示的に分けています。
 
 ## 画面構成
 
+詳細モードの主ワークフローは次の5段階です。
+
 | Step | Page | Purpose |
 |---|---|---|
-| 1 | Data | CSV/Excel読込、データ概要、プレビュー、列プロファイル |
-| 2 | Prepare | 数値目的変数と数値・カテゴリ説明変数の選択 |
-| 3 | Optimize | 最適化方向、GPモデル、獲得関数、候補生成設定、探索空間 |
-| 4 | Results | 候補表、予測平均・標準偏差・獲得値、Plotly可視化 |
-| 5 | Logs | FastAPIの構造化JSONL実行ログ |
+| 1 | Data | CSV/Excel読込、保存モデル・プロジェクト読込、データ概要 |
+| 2 | Select | 目的変数、説明変数、数値・カテゴリ・組成式の選択 |
+| 3 | Model | モデル、前処理、欠損処理、診断などの設定 |
+| 4 | Suggest | 目的・探索範囲・提案件数と、必要に応じた高度な候補生成設定 |
+| 5 | Results | 候補表、予測、不確実性、診断、Plotly可視化 |
+
+Results取得後は`Experiment`から実験値を追加し、データ更新→再学習→次候補提案のサイクルへ進めます。
+
+補助フローとして`Conversation`があり、質問形式で必要な設定を組み立てて候補提案まで進められます。
+
+簡易モードでは通常操作を`Data → Select → Results`に絞り、内部では同じworkbench設定・実行経路を利用します。
 
 ## 共通レイアウト
 
-- 上部: ブランド、工程ストリップ、FastAPI接続状態、テーマ切替
-- 左側: ページナビゲーション
-- 中央: 現在のページ
+- 上部: ブランド、現在の工程、FastAPI接続状態、テーマ・チュートリアル操作
+- 左側: 対話モード、簡易/詳細モード切替、ワークフローナビゲーション
+- 中央: 現在のページとエラー表示
 - 右側: データ、探索条件、最新結果のコンテキスト
-- 下部: API状態、行数、候補数
+- 下部: API状態、モード、行数、候補数
+- 実行中: 共通の処理中オーバーレイと進捗表示
 
-画面幅が狭い場合は右側コンテキストを非表示にし、左ナビゲーションを横スクロール型へ変更します。
+画面シェルは`web/src/components/workbench/`に集約し、`App.tsx`はそれらを組み立てるだけのcomposition rootとしています。
+
+主な所有先は次の通りです。
+
+```text
+App.tsx
+└─ components/workbench/
+   ├─ WorkbenchHeader.tsx
+   ├─ WorkbenchLeftRail.tsx
+   ├─ WorkbenchContextRail.tsx
+   ├─ WorkbenchStatusBar.tsx
+   ├─ WorkbenchErrorAlert.tsx
+   ├─ WorkbenchBusyOverlay.tsx
+   ├─ useWorkbenchShell.ts
+   ├─ workbenchPages.ts
+   └─ workbenchPresentation.ts
+```
+
+`useWorkbenchShell.ts`は、補助ページのhash routing、簡易/詳細モードに応じた表示工程、進捗表示、右サイドバー開閉など、分析設定とは独立したshell状態だけを扱います。
 
 ## 状態管理
 
-`web/src/context/WorkbenchContext.tsx`で次の状態を共有します。
+ページ側の公開APIは`useWorkbench()`に統一したままですが、`WorkbenchContext.tsx`自身には個別状態を集中させません。
 
-- 読み込んだデータセット
-- 目的変数と説明変数
-- 各探索変数の範囲、刻み、固定値
-- 最適化方向
-- モデルと獲得関数
-- 候補生成パラメータ
-- 最新の候補生成結果
-- API接続状態
-- ライト・ダークテーマ
+内部状態は責務ごとのhook/moduleに分割しています。
 
-ページを移動してもこれらの状態は維持されます。
+```text
+context/
+├─ WorkbenchContext.tsx
+│  └─ domain stateを合成し、upload/import/executeを調停
+├─ useWorkbenchRuntimeState.ts
+│  └─ theme / API health / busy / error / current step
+├─ useWorkbenchSelectionState.ts
+│  └─ dataset / targets / features / search variables
+├─ useWorkbenchRunSettings.ts
+│  └─ model / acquisition / search / diagnostics
+├─ useWorkbenchResultState.ts
+│  └─ latest result / fitted-model signature
+├─ workbenchValidation.ts
+│  └─ pure validation / derived state
+├─ workbenchDefaults.ts
+│  └─ dataset読込時の初期値生成
+└─ workbenchTypes.ts
+   └─ context contract / workflow types
+```
+
+この構成により、ページを移動しても一貫した状態を共有しつつ、UI shell、選択状態、モデル設定、validation、API実行を独立して変更できます。
 
 ## ページ遷移条件
 
-- DataとLogsは常に開けます。
-- Prepareはデータ読込後に開けます。
-- Optimizeは目的変数と1つ以上の説明変数を設定すると開けます。
-- Resultsは候補生成が成功すると開けます。
+Contextの`canOpenStep()`が主ワークフローの遷移条件を一元管理します。
+
+- Data: 常に開ける
+- Select: データ読込後
+- Model: 目的変数と説明変数を選択後
+- Suggest: モデル設定が妥当になった後
+- Results: 候補生成または保存モデル読込で結果が存在するとき
+- Experiment: データと結果の両方が存在するとき
+
+簡易モードではModel/Suggestを直接表示せず、Select画面から同じ設定・実行基盤を利用して候補生成します。
 
 ## API
 
-既存のWeb APIをそのまま使用します。
+フロントエンドからは既存のWeb APIを使用します。代表的なエンドポイントは次の通りです。
 
 ```text
 GET  /api/v1/health
 POST /api/v1/datasets
 POST /api/v1/regression/run
-GET  /api/v1/logs
 ```
 
-`POST /api/v1/regression/run`のリクエスト構造や候補レスポンスは変更していません。
+モデルartifact、実験履歴、可視化sessionなどの追加APIも各機能moduleから呼び出します。`WorkbenchContext.tsx`の分割はAPI request/response契約を変更しません。
 
 ## 開発起動
 
@@ -90,4 +134,6 @@ cd web
 npm run build
 ```
 
-このビルドではTypeScriptの厳格チェックとViteの生成処理が実行されます。
+このビルドではTypeScriptのstrict checkとVite buildを実行します。
+
+UIの責務境界については`tests/test_webapp_workbench_architecture.py`でも静的に検証し、`App.tsx`や`WorkbenchContext.tsx`へ機能が再集中しないようにしています。

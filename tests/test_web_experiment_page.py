@@ -9,6 +9,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_experiment_result_page_is_connected() -> None:
     app = (ROOT / "web/src/App.tsx").read_text(encoding="utf-8")
+    shell = (ROOT / "web/src/components/workbench/useWorkbenchShell.ts").read_text(
+        encoding="utf-8"
+    )
+    left_rail = (ROOT / "web/src/components/workbench/WorkbenchLeftRail.tsx").read_text(
+        encoding="utf-8"
+    )
+    page_registry = (ROOT / "web/src/components/workbench/workbenchPages.ts").read_text(
+        encoding="utf-8"
+    )
     results = (ROOT / "web/src/pages/ResultsPage.tsx").read_text(encoding="utf-8")
     experiment = (ROOT / "web/src/pages/ExperimentPage.tsx").read_text(encoding="utf-8")
     history = (ROOT / "web/src/components/ExperimentHistoryPanel.tsx").read_text(encoding="utf-8")
@@ -35,14 +44,15 @@ def test_experiment_result_page_is_connected() -> None:
     ).read_text(encoding="utf-8")
 
     assert 'window.location.hash = "experiment"' in results
-    assert 'import ExperimentPage from "./pages/ExperimentPage"' in app
-    assert "strong>Experiment</strong><small>実験結果追加" in app
-    assert "const experimentAvailable = Boolean(dataset && result);" in app
-    assert 'auxiliaryPage === "experiment" && experimentAvailable' in app
-    assert 'if (auxiliaryPage === "experiment" && !experimentAvailable)' in app
-    assert 'setStep("data");\n      clearAuxiliaryHash();' in app
-    assert 'disabled={!experimentAvailable}' in app
-    assert 'STEPS.filter(([id]) => id !== "logs")' in app
+    assert "WorkbenchLeftRail" in app
+    assert 'import ExperimentPage from "../../pages/ExperimentPage"' in page_registry
+    assert "strong>Experiment</strong><small>実験結果追加" in left_rail
+    assert "const experimentAvailable = Boolean(dataset && result);" in shell
+    assert 'auxiliaryPage === "experiment" && experimentAvailable' in shell
+    assert 'if (auxiliaryPage === "experiment" && !experimentAvailable)' in shell
+    assert 'setStep("data");\n      clearAuxiliaryHash();' in shell
+    assert 'disabled={!experimentAvailable}' in left_rail
+    assert 'STEPS.filter(([id]) => id !== "logs")' in shell
     assert 'setStep("logs")' not in results
 
     assert "experimentValueControl" in experiment
@@ -91,7 +101,7 @@ def test_experiment_result_page_is_connected() -> None:
     assert "現データのパレートフロント" in interactive
     assert "show_pareto_front" in interactive
     assert "result.visualizations.find" in interactive
-    assert "!result?.metadata?.stale_after_data_append" in context
+    assert "!results.result?.metadata?.stale_after_data_append" in context
     assert "グラフは引き続き確認できます" in results
 
     assert "show_target_relation_plot" in target_relation

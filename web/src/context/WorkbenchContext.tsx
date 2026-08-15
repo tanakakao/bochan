@@ -1,603 +1,183 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode
-} from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 import {
   buildModelReuseSignature,
-  fetchHealth,
   runRegression,
   uploadDataset,
   uploadModelArtifact,
   type RunRegressionInput
 } from "../api";
 import { restoreWorkbenchFromArtifact } from "../modelArtifactRestore";
-import { MODEL_OPTIONS } from "../modelOptions";
-import { getColumnClassValues } from "../targetSettingUtils";
-import type {
-  AcquisitionFamily,
-  ColumnProfile,
-  DatasetResponse,
-  Direction,
-  FeatureImportanceSettings,
-  RegressionResult,
-  SearchVariable,
-  TargetClassValue,
-  TargetSetting
-} from "../types";
-import { loadCrossValidationSettings, saveCrossValidationSettings } from "../webRunSettings";
+import { createInitialSelectionState, numberOrUndefined } from "./workbenchDefaults";
+import { useWorkbenchResultState } from "./useWorkbenchResultState";
+import { useWorkbenchRuntimeState } from "./useWorkbenchRuntimeState";
+import { useWorkbenchRunSettings } from "./useWorkbenchRunSettings";
+import { useWorkbenchSelectionState } from "./useWorkbenchSelectionState";
+import {
+  STEPS,
+  type ModelExecutionMode,
+  type WorkbenchContextValue,
+  type WorkbenchStep
+} from "./workbenchTypes";
+import { deriveWorkbenchState } from "./workbenchValidation";
 
-export type WorkbenchStep = "data" | "prepare" | "settings" | "optimize" | "results" | "logs";
-export type Theme = "light" | "dark";
-export type ModelExecutionMode = "reuse" | "retrain";
-export type HealthState = {
-  status: "loading" | "ready" | "error";
-  text: string;
-};
-
-export const STEPS: Array<[WorkbenchStep, string, string]> = [
-  ["data", "Data", "データ読込"],
-  ["prepare", "Select", "変数・型選択"],
-  ["settings", "Model", "モデル設定"],
-  ["optimize", "Suggest", "候補提案"],
-  ["results", "Results", "候補と可視化"],
-  ["logs", "Logs", "実行履歴"]
-];
-
-function numberOrUndefined(value: string): number | undefined {
-  if (value.trim() === "") return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function createVariable(
-  column: ColumnProfile,
-  preview: Record<string, unknown>[]
-): SearchVariable {
-  if (column.kind === "categorical") {
-    return {
-      name: column.name,
-      type: "categorical",
-      fixed: false,
-      categories: getColumnClassValues(column, preview)
-    };
-  }
-  return {
-    name: column.name,
-    type: "numeric",
-    lower: column.min ?? undefined,
-    upper: column.max ?? undefined,
-    fixed: false
-  };
-}
-
-function createTargetSetting(
-  column: ColumnProfile,
-  preview: Record<string, unknown>[]
-): TargetSetting {
-  const common = {
-    target: column.name,
-    optimize: true,
-    direction: "maximize" as Direction,
-    goal: "none" as const,
-    value: null
-  };
-  if (column.kind === "numeric") {
-    return { ...common, task_type: "regression" };
-  }
-
-  const classes = getColumnClassValues(column, preview);
-  if (classes.length === 2) {
-    return {
-      ...common,
-      task_type: "classification",
-      target_class: classes[1],
-      target_classes: [classes[1]]
-    };
-  }
-  return {
-    ...common,
-    task_type: "classification",
-    target_class: null,
-    target_classes: classes.length ? [classes[0]] : []
-  };
-}
-
-function finiteNumber(value: unknown): number | null {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function classKey(value: TargetClassValue): string {
-  return String(value);
-}
-
-function containsClass(values: TargetClassValue[], value: TargetClassValue | null | undefined): boolean {
-  if (value === null || value === undefined) return false;
-  const requested = classKey(value);
-  return values.some((candidate) => classKey(candidate) === requested);
-}
-
-function sameClassSet(left: TargetClassValue[], right: TargetClassValue[]): boolean {
-  if (left.length !== right.length) return false;
-  const leftKeys = new Set(left.map(classKey));
-  const rightKeys = new Set(right.map(classKey));
-  return leftKeys.size === left.length && rightKeys.size === right.length &&
-    [...leftKeys].every((value) => rightKeys.has(value));
-}
-
-function validateVariableModelSetting(variable: SearchVariable): boolean {
-  return variable.type !== "categorical" || Boolean(variable.categories?.length);
-}
-
-function validateVariableCandidateSetting(variable: SearchVariable): boolean {
-  if (variable.type === "categorical") {
-    if (!variable.categories?.length) return false;
-    if (!variable.fixed) return true;
-    return variable.fixed_value !== undefined &&
-      variable.categories.some((value) => String(value) === String(variable.fixed_value));
-  }
-  const lower = finiteNumber(variable.lower);
-  const upper = finiteNumber(variable.upper);
-  if (lower === null || upper === null || lower >= upper) return false;
-  if (variable.step !== undefined && (finiteNumber(variable.step) ?? 0) <= 0) return false;
-  if (!variable.fixed) return true;
-  const fixed = finiteNumber(variable.fixed_value);
-  return fixed !== null && fixed >= lower && fixed <= upper;
-}
-
-function validateTargetModelSetting(
-  setting: TargetSetting,
-  column: ColumnProfile | undefined,
-  preview: Record<string, unknown>[]
-): boolean {
-  if (!column) return false;
-  if (setting.task_type === "regression") return column.kind === "numeric";
-
-  const classes = getColumnClassValues(column, preview);
-  if (classes.length < 2) return false;
-  if (setting.task_type === "classification") {
-    return classes.length !== 2 || containsClass(classes, setting.target_class);
-  }
-  return sameClassSet(setting.class_order ?? [], classes);
-}
-
-function validateTargetCandidateSetting(
-  setting: TargetSetting,
-  column: ColumnProfile | undefined,
-  preview: Record<string, unknown>[]
-): boolean {
-  if (!column) return false;
-  if (setting.goal === "target" && !setting.optimize) return false;
-
-  if (setting.task_type === "regression") {
-    return setting.goal === "none" || finiteNumber(setting.value) !== null;
-  }
-
-  const classes = getColumnClassValues(column, preview);
-  if (classes.length < 2) return false;
-  if (setting.task_type === "classification") {
-    if (classes.length === 2) {
-      if (!containsClass(classes, setting.target_class)) return false;
-    } else {
-      const selected = setting.target_classes ?? [];
-      if (selected.length === 0 || !selected.every((value) => containsClass(classes, value))) return false;
-    }
-    if (setting.goal === "above" || setting.goal === "below") {
-      const threshold = finiteNumber(setting.value);
-      return threshold !== null && threshold >= 0 && threshold <= 1;
-    }
-    return setting.goal === "none";
-  }
-
-  const order = setting.class_order ?? [];
-  if (!sameClassSet(order, classes)) return false;
-  if (setting.goal === "none") return true;
-  if (setting.goal === "above" || setting.goal === "below") {
-    return containsClass(order, setting.value as TargetClassValue);
-  }
-  const targets = setting.target_values ?? [];
-  return targets.length > 0 && targets.every((value) => containsClass(order, value));
-}
-
-interface WorkbenchContextValue {
-  theme: Theme;
-  setTheme: (theme: Theme) => void;
-  step: WorkbenchStep;
-  setStep: (step: WorkbenchStep) => void;
-  canOpenStep: (step: WorkbenchStep) => boolean;
-  health: HealthState;
-  busy: string | null;
-  error: string | null;
-  setError: (error: string | null) => void;
-  dataset: DatasetResponse | null;
-  columns: ColumnProfile[];
-  selectableColumns: ColumnProfile[];
-  targetCandidates: ColumnProfile[];
-  featureColumns: string[];
-  targetColumn: string;
-  targetColumns: string[];
-  targetSettings: Record<string, TargetSetting>;
-  selectedTargetSettings: TargetSetting[];
-  optimizedTargetSettings: TargetSetting[];
-  targetDirections: Record<string, Direction>;
-  direction: Direction;
-  variables: Record<string, SearchVariable>;
-  selectedVariables: SearchVariable[];
-  normalize: boolean;
-  setNormalize: (value: boolean) => void;
-  inputPerturbation: boolean;
-  setInputPerturbation: (value: boolean) => void;
-  nW: number;
-  setNW: (value: number) => void;
-  perturbationStd: number;
-  setPerturbationStd: (value: number) => void;
-  projectionDimensions: number;
-  setProjectionDimensions: (value: number) => void;
-  modelType: string;
-  setModelType: (modelType: string) => void;
-  acquisitionFamily: AcquisitionFamily;
-  setAcquisitionFamily: (family: AcquisitionFamily) => void;
-  acquisition: string;
-  setAcquisition: (acquisition: string) => void;
-  beta: number;
-  setBeta: (beta: number) => void;
-  fitMaxiter: number;
-  setFitMaxiter: (fitMaxiter: number) => void;
-  crossValidation: { enabled: boolean; method: "kfold" | "loo"; nSplits: number };
-  setCrossValidation: (value: { enabled: boolean; method: "kfold" | "loo"; nSplits: number }) => void;
-  featureImportance: FeatureImportanceSettings;
-  setFeatureImportance: (value: FeatureImportanceSettings) => void;
-  q: number;
-  setQ: (q: number) => void;
-  sequential: boolean;
-  setSequential: (sequential: boolean) => void;
-  minimumCandidateDistanceRatio: number;
-  setMinimumCandidateDistanceRatio: (ratio: number) => void;
-  numRestarts: number;
-  setNumRestarts: (numRestarts: number) => void;
-  rawSamples: number;
-  setRawSamples: (rawSamples: number) => void;
-  result: RegressionResult | null;
-  canConfigure: boolean;
-  settingsValid: boolean;
-  candidateSettingsValid: boolean;
-  modelReuseAvailable: boolean;
-  handleFile: (file: File | null) => Promise<void>;
-  handleModelArtifact: (file: File | null) => Promise<void>;
-  toggleFeature: (name: string) => void;
-  toggleTarget: (name: string) => void;
-  patchTargetSetting: (target: string, patch: Partial<TargetSetting>) => void;
-  patchVariable: (name: string, patch: Partial<SearchVariable>) => void;
-  execute: (mode?: ModelExecutionMode) => Promise<void>;
-  numberOrUndefined: (value: string) => number | undefined;
-}
+export { STEPS } from "./workbenchTypes";
+export type {
+  CrossValidationSettings,
+  HealthState,
+  ModelExecutionMode,
+  Theme,
+  WorkbenchContextValue,
+  WorkbenchStep
+} from "./workbenchTypes";
 
 const WorkbenchContext = createContext<WorkbenchContextValue | null>(null);
 
+/** Composes the workbench domain hooks and coordinates cross-domain API actions. */
 export function WorkbenchProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    const stored = window.localStorage.getItem("bochan-theme");
-    if (stored === "dark" || stored === "light") return stored;
-    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-  });
-  const [step, setStepState] = useState<WorkbenchStep>("data");
-  const [health, setHealth] = useState<HealthState>({ status: "loading", text: "接続確認中" });
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [dataset, setDataset] = useState<DatasetResponse | null>(null);
-  const [featureColumns, setFeatureColumns] = useState<string[]>([]);
-  const [targetColumns, setTargetColumns] = useState<string[]>([]);
-  const [targetSettings, setTargetSettings] = useState<Record<string, TargetSetting>>({});
-  const [variables, setVariables] = useState<Record<string, SearchVariable>>({});
-  const [normalize, setNormalize] = useState(true);
-  const [inputPerturbation, setInputPerturbation] = useState(false);
-  const [nW, setNW] = useState(16);
-  const [perturbationStd, setPerturbationStd] = useState(0.1);
-  const [projectionDimensions, setProjectionDimensions] = useState(2);
-  const [modelType, setModelType] = useState("base");
-  const [acquisitionFamily, setAcquisitionFamily] = useState<AcquisitionFamily>("bayesian_optimization");
-  const [acquisition, setAcquisition] = useState("EI");
-  const [beta, setBeta] = useState(2);
-  const [fitMaxiter, setFitMaxiter] = useState(128);
-  const [crossValidation, setCrossValidation] = useState(loadCrossValidationSettings);
-  const [featureImportance, setFeatureImportance] = useState<FeatureImportanceSettings>({
-    enabled: false, source: "auto", nRepeats: 10, randomState: 0,
-    diagnosticAuto: true, computeNoiseImportance: true, normalizeImportance: false,
-    topK: 15, rankBy: "value", includeNegative: true, showErrorBars: true
-  });
-  const [q, setQ] = useState(3);
-  const [sequential, setSequential] = useState(true);
-  const [minimumCandidateDistanceRatio, setMinimumCandidateDistanceRatio] = useState(1e-3);
-  const [numRestarts, setNumRestarts] = useState(10);
-  const [rawSamples, setRawSamples] = useState(256);
-  const [result, setResult] = useState<RegressionResult | null>(null);
-  const [lastModelSignature, setLastModelSignature] = useState<string | null>(null);
+  const runtime = useWorkbenchRuntimeState();
+  const selection = useWorkbenchSelectionState();
+  const settings = useWorkbenchRunSettings();
+  const results = useWorkbenchResultState();
 
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("bochan-theme", theme);
-  }, [theme]);
-  useEffect(() => saveCrossValidationSettings(crossValidation), [crossValidation]);
+  const derived = useMemo(() => deriveWorkbenchState({
+    dataset: selection.dataset,
+    featureColumns: selection.featureColumns,
+    targetColumns: selection.targetColumns,
+    targetSettings: selection.targetSettings,
+    variables: selection.variables,
+    inputPerturbation: settings.inputPerturbation,
+    nW: settings.nW,
+    perturbationStd: settings.perturbationStd,
+    projectionDimensions: settings.projectionDimensions,
+    modelType: settings.modelType,
+    fitMaxiter: settings.fitMaxiter
+  }), [
+    selection.dataset,
+    selection.featureColumns,
+    selection.targetColumns,
+    selection.targetSettings,
+    selection.variables,
+    settings.inputPerturbation,
+    settings.nW,
+    settings.perturbationStd,
+    settings.projectionDimensions,
+    settings.modelType,
+    settings.fitMaxiter
+  ]);
 
-  useEffect(() => {
-    let active = true;
-    fetchHealth()
-      .then((response) => {
-        if (active) setHealth({ status: "ready", text: response.application || "bochan-web" });
-      })
-      .catch(() => {
-        if (active) setHealth({ status: "error", text: "FastAPIに接続できません" });
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const columns = dataset?.profile.columns ?? [];
-  const preview = dataset?.preview ?? [];
-  const selectableColumns = columns.filter(
-    (column) => column.kind === "numeric" || column.kind === "categorical"
-  );
-  const targetCandidates = selectableColumns;
-  const selectedTargetSettings = useMemo(
-    () => targetColumns
-      .map((name) => targetSettings[name])
-      .filter((setting): setting is TargetSetting => Boolean(setting)),
-    [targetColumns, targetSettings]
-  );
-  const optimizedTargetSettings = useMemo(
-    () => selectedTargetSettings.filter((setting) => setting.optimize),
-    [selectedTargetSettings]
-  );
-  const targetColumn = optimizedTargetSettings[0]?.target ?? targetColumns[0] ?? "";
-  const selectedVariables = useMemo(
-    () => featureColumns
-      .map((name) => variables[name])
-      .filter((value): value is SearchVariable => Boolean(value)),
-    [featureColumns, variables]
-  );
-  const targetDirections = useMemo(
-    () => Object.fromEntries(selectedTargetSettings.map((setting) => [
-      setting.target,
-      setting.goal === "target" ? "maximize" : setting.direction
-    ])) as Record<string, Direction>,
-    [selectedTargetSettings]
-  );
-  const direction = targetDirections[targetColumn] ?? "maximize";
-  const canConfigure = Boolean(
-    dataset &&
-    targetColumns.length > 0 &&
-    featureColumns.length > 0 &&
-    targetColumns.every((target) => !featureColumns.includes(target))
-  );
-  const allRegression = selectedTargetSettings.length > 0 &&
-    selectedTargetSettings.every((setting) => setting.task_type === "regression");
-  const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
-  const canUseMultitask = targetColumns.length > 1 && allRegression && !hasCategoricalFeatures;
-  const projectedModel = modelType === "pca" || modelType === "rembo";
-  const modelTypeKnown = MODEL_OPTIONS.some((option) => option.value === modelType);
-  const settingsValid = Boolean(
-    canConfigure &&
-    selectedTargetSettings.length === targetColumns.length &&
-    selectedTargetSettings.every((setting) => validateTargetModelSetting(
-      setting,
-      columns.find((column) => column.name === setting.target),
-      preview
-    )) &&
-    selectedVariables.every(validateVariableModelSetting) &&
-    (!inputPerturbation || (Number.isInteger(nW) && nW >= 1 && perturbationStd > 0)) &&
-    modelTypeKnown &&
-    (modelType !== "multitask" || canUseMultitask) &&
-    (!projectedModel || (
-      Number.isInteger(projectionDimensions) &&
-      projectionDimensions >= 1 &&
-      projectionDimensions <= Math.max(selectedVariables.length, 1)
-    )) &&
-    Number.isInteger(fitMaxiter) && fitMaxiter >= 1
-  );
-  const candidateSettingsValid = Boolean(
-    settingsValid &&
-    optimizedTargetSettings.length > 0 &&
-    selectedTargetSettings.every((setting) => validateTargetCandidateSetting(
-      setting,
-      columns.find((column) => column.name === setting.target),
-      preview
-    )) &&
-    selectedVariables.every(validateVariableCandidateSetting)
-  );
-  const currentRunInput: RunRegressionInput | null = dataset ? {
-    datasetId: dataset.dataset_id,
-    featureColumns,
-    targetColumn,
-    targetColumns,
-    targetSettings: selectedTargetSettings,
-    targetDirections,
-    direction,
-    modelType,
-    projectionDimensions,
-    fitMaxiter,
-    normalize,
-    inputPerturbation,
-    nW,
-    perturbationStd,
-    acquisitionFamily,
-    acquisition,
-    beta,
-    q,
-    sequential,
-    minimumCandidateDistanceRatio,
-    numRestarts,
-    rawSamples,
-    searchSpace: selectedVariables,
-    crossValidation,
-    featureImportance
+  const currentRunInput: RunRegressionInput | null = selection.dataset ? {
+    datasetId: selection.dataset.dataset_id,
+    featureColumns: selection.featureColumns,
+    targetColumn: derived.targetColumn,
+    targetColumns: selection.targetColumns,
+    targetSettings: derived.selectedTargetSettings,
+    targetDirections: derived.targetDirections,
+    direction: derived.direction,
+    modelType: settings.modelType,
+    projectionDimensions: settings.projectionDimensions,
+    fitMaxiter: settings.fitMaxiter,
+    normalize: settings.normalize,
+    inputPerturbation: settings.inputPerturbation,
+    nW: settings.nW,
+    perturbationStd: settings.perturbationStd,
+    acquisitionFamily: settings.acquisitionFamily,
+    acquisition: settings.acquisition,
+    beta: settings.beta,
+    q: settings.q,
+    sequential: settings.sequential,
+    minimumCandidateDistanceRatio: settings.minimumCandidateDistanceRatio,
+    numRestarts: settings.numRestarts,
+    rawSamples: settings.rawSamples,
+    searchSpace: derived.selectedVariables,
+    crossValidation: settings.crossValidation,
+    featureImportance: settings.featureImportance
   } : null;
   const currentModelSignature = currentRunInput
     ? buildModelReuseSignature(currentRunInput)
     : null;
   const modelReuseAvailable = Boolean(
-    candidateSettingsValid &&
-    !result?.metadata?.stale_after_data_append &&
-    result?.visualization_run_id &&
-    lastModelSignature &&
-    currentModelSignature === lastModelSignature
+    derived.candidateSettingsValid &&
+    !results.result?.metadata?.stale_after_data_append &&
+    results.result?.visualization_run_id &&
+    results.lastModelSignature &&
+    currentModelSignature === results.lastModelSignature
   );
-
-  function setTheme(nextTheme: Theme) {
-    setThemeState(nextTheme);
-  }
 
   function canOpenStep(nextStep: WorkbenchStep): boolean {
     if (nextStep === "data" || nextStep === "logs") return true;
-    if (nextStep === "prepare") return Boolean(dataset);
-    if (nextStep === "settings") return canConfigure;
-    if (nextStep === "optimize") return settingsValid;
-    if (nextStep === "results") return Boolean(result);
+    if (nextStep === "prepare") return Boolean(selection.dataset);
+    if (nextStep === "settings") return derived.canConfigure;
+    if (nextStep === "optimize") return derived.settingsValid;
+    if (nextStep === "results") return Boolean(results.result);
     return false;
   }
 
   function setStep(nextStep: WorkbenchStep) {
-    if (canOpenStep(nextStep)) setStepState(nextStep);
+    if (canOpenStep(nextStep)) runtime.setStepState(nextStep);
   }
 
   async function handleFile(file: File | null) {
     if (!file) return;
-    setBusy("データを読み込んでいます");
-    setError(null);
-    setResult(null);
-    setLastModelSignature(null);
+    runtime.setBusy("データを読み込んでいます");
+    runtime.setError(null);
+    results.clearResult();
     try {
       const loaded = await uploadDataset(file);
-      setDataset(loaded);
-      const candidates = loaded.profile.columns.filter(
-        (column) => column.kind === "numeric" || column.kind === "categorical"
-      );
-      const initialTarget = candidates.at(-1);
-      const initialFeatures = candidates
-        .filter((column) => column.name !== initialTarget?.name)
-        .map((column) => column.name);
-      setTargetColumns(initialTarget ? [initialTarget.name] : []);
-      setTargetSettings(initialTarget ? {
-        [initialTarget.name]: createTargetSetting(initialTarget, loaded.preview)
-      } : {});
-      setFeatureColumns(initialFeatures);
-      setVariables(Object.fromEntries(
-        candidates.map((column) => [column.name, createVariable(column, loaded.preview)])
-      ));
-      setNormalize(true);
-      setInputPerturbation(false);
-      setNW(16);
-      setPerturbationStd(0.1);
-      setProjectionDimensions(Math.min(2, Math.max(initialFeatures.length, 1)));
-      setModelType("base");
-      setAcquisitionFamily("bayesian_optimization");
-      setAcquisition("EI");
-      setSequential(true);
-      setMinimumCandidateDistanceRatio(1e-3);
-      setStepState("prepare");
+      const initial = createInitialSelectionState(loaded);
+      selection.replaceSelection(initial);
+      settings.resetDatasetSensitiveSettings(initial.projectionDimensions);
+      runtime.setStepState("prepare");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      runtime.setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
-      setBusy(null);
+      runtime.setBusy(null);
     }
   }
 
   async function handleModelArtifact(file: File | null) {
     if (!file) return;
-    setBusy("保存モデルを読み込んでいます");
-    setError(null);
+    runtime.setBusy("保存モデルを読み込んでいます");
+    runtime.setError(null);
     try {
       const imported = await uploadModelArtifact(file);
       const restored = restoreWorkbenchFromArtifact(imported);
-      setDataset(imported.dataset);
-      setFeatureColumns(restored.featureColumns);
-      setTargetColumns(restored.targetColumns);
-      setTargetSettings(restored.targetSettings);
-      setVariables(restored.variables);
-      setNormalize(restored.normalize);
-      setInputPerturbation(restored.inputPerturbation);
-      setNW(restored.nW);
-      setPerturbationStd(restored.perturbationStd);
-      setProjectionDimensions(restored.projectionDimensions);
-      setModelType(restored.modelType);
-      setAcquisitionFamily(restored.acquisitionFamily);
-      setAcquisition(restored.acquisition);
-      setBeta(restored.beta);
-      setFitMaxiter(restored.fitMaxiter);
-      setQ(restored.q);
-      setSequential(restored.sequential);
-      setMinimumCandidateDistanceRatio(restored.minimumCandidateDistanceRatio);
-      setNumRestarts(restored.numRestarts);
-      setRawSamples(restored.rawSamples);
-      setResult(imported.result);
-      setLastModelSignature(restored.modelSignature);
-      setStepState("results");
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  function toggleFeature(name: string) {
-    if (targetColumns.includes(name)) return;
-    setFeatureColumns((current) =>
-      current.includes(name)
-        ? current.filter((column) => column !== name)
-        : [...current, name]
-    );
-  }
-
-  function toggleTarget(name: string) {
-    const profile = columns.find((column) => column.name === name);
-    if (!profile) return;
-    setTargetColumns((current) => {
-      const selected = current.includes(name);
-      const next = selected ? current.filter((column) => column !== name) : [...current, name];
-      setFeatureColumns((features) => features.filter((column) => !next.includes(column)));
-      setTargetSettings((settings) => {
-        const updated = { ...settings };
-        if (selected) delete updated[name];
-        else updated[name] = updated[name] ?? createTargetSetting(profile, preview);
-        return updated;
+      selection.replaceSelection({
+        dataset: imported.dataset,
+        featureColumns: restored.featureColumns,
+        targetColumns: restored.targetColumns,
+        targetSettings: restored.targetSettings,
+        variables: restored.variables
       });
-      return next;
-    });
-  }
-
-  function patchTargetSetting(target: string, patch: Partial<TargetSetting>) {
-    setTargetSettings((current) => ({
-      ...current,
-      [target]: { ...current[target], ...patch, target }
-    }));
-  }
-
-  function patchVariable(name: string, patch: Partial<SearchVariable>) {
-    setVariables((current) => ({
-      ...current,
-      [name]: { ...current[name], ...patch }
-    }));
+      settings.restoreRunSettings(restored);
+      results.setResult(imported.result);
+      results.setLastModelSignature(restored.modelSignature);
+      runtime.setStepState("results");
+    } catch (caught) {
+      runtime.setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      runtime.setBusy(null);
+    }
   }
 
   async function execute(mode: ModelExecutionMode = "retrain") {
-    if (!currentRunInput || !candidateSettingsValid) return;
-    if (featureImportance.enabled && featureImportance.source === "cross_validation" && !crossValidation.enabled) {
-      setError("Cross-validation feature importance requires cross_validation=true.");
+    if (!currentRunInput || !derived.candidateSettingsValid) return;
+    if (
+      settings.featureImportance.enabled &&
+      settings.featureImportance.source === "cross_validation" &&
+      !settings.crossValidation.enabled
+    ) {
+      runtime.setError("Cross-validation feature importance requires cross_validation=true.");
       return;
     }
     const modelSignature = currentModelSignature ?? buildModelReuseSignature(currentRunInput);
-    const reusableRunId = result?.visualization_run_id;
+    const reusableRunId = results.result?.visualization_run_id;
     const canReuse = Boolean(
       reusableRunId &&
-      !result?.metadata?.stale_after_data_append &&
-      lastModelSignature === modelSignature
+      !results.result?.metadata?.stale_after_data_append &&
+      results.lastModelSignature === modelSignature
     );
     if (mode === "reuse" && !canReuse) {
-      setError(
+      runtime.setError(
         "学習済みモデルを使用できません。データ、タスク、モデル、前処理、欠損処理、または探索範囲が変更されています。"
       );
       return;
@@ -608,91 +188,91 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       reuseModelRunId: reuseModel ? reusableRunId : undefined
     };
 
-    setBusy(reuseModel
+    runtime.setBusy(reuseModel
       ? "学習済みモデルを使用して候補提案を実行しています"
       : "モデルを再学習して候補提案を実行しています");
-    setError(null);
+    runtime.setError(null);
     try {
       const response = await runRegression(input);
-      setResult(response);
-      setLastModelSignature(modelSignature);
-      setStepState("results");
+      results.setResult(response);
+      results.setLastModelSignature(modelSignature);
+      runtime.setStepState("results");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      runtime.setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
-      setBusy(null);
+      runtime.setBusy(null);
     }
   }
 
   const value: WorkbenchContextValue = {
-    theme,
-    setTheme,
-    step,
+    theme: runtime.theme,
+    setTheme: runtime.setTheme,
+    step: runtime.step,
     setStep,
     canOpenStep,
-    health,
-    busy,
-    error,
-    setError,
-    dataset,
-    columns,
-    selectableColumns,
-    targetCandidates,
-    featureColumns,
-    targetColumn,
-    targetColumns,
-    targetSettings,
-    selectedTargetSettings,
-    optimizedTargetSettings,
-    targetDirections,
-    direction,
-    variables,
-    selectedVariables,
-    normalize,
-    setNormalize,
-    inputPerturbation,
-    setInputPerturbation,
-    nW,
-    setNW,
-    perturbationStd,
-    setPerturbationStd,
-    projectionDimensions,
-    setProjectionDimensions,
-    modelType,
-    setModelType,
-    acquisitionFamily,
-    setAcquisitionFamily,
-    acquisition,
-    setAcquisition,
-    beta,
-    setBeta,
-    fitMaxiter,
-    setFitMaxiter,
-    crossValidation,
-    setCrossValidation,
-    featureImportance,
-    setFeatureImportance,
-    q,
-    setQ,
-    sequential,
-    setSequential,
-    minimumCandidateDistanceRatio,
-    setMinimumCandidateDistanceRatio,
-    numRestarts,
-    setNumRestarts,
-    rawSamples,
-    setRawSamples,
-    result,
-    canConfigure,
-    settingsValid,
-    candidateSettingsValid,
+    health: runtime.health,
+    busy: runtime.busy,
+    error: runtime.error,
+    setError: runtime.setError,
+    dataset: selection.dataset,
+    columns: derived.columns,
+    selectableColumns: derived.selectableColumns,
+    targetCandidates: derived.targetCandidates,
+    featureColumns: selection.featureColumns,
+    targetColumn: derived.targetColumn,
+    targetColumns: selection.targetColumns,
+    targetSettings: selection.targetSettings,
+    selectedTargetSettings: derived.selectedTargetSettings,
+    optimizedTargetSettings: derived.optimizedTargetSettings,
+    targetDirections: derived.targetDirections,
+    direction: derived.direction,
+    variables: selection.variables,
+    selectedVariables: derived.selectedVariables,
+    normalize: settings.normalize,
+    setNormalize: settings.setNormalize,
+    inputPerturbation: settings.inputPerturbation,
+    setInputPerturbation: settings.setInputPerturbation,
+    nW: settings.nW,
+    setNW: settings.setNW,
+    perturbationStd: settings.perturbationStd,
+    setPerturbationStd: settings.setPerturbationStd,
+    projectionDimensions: settings.projectionDimensions,
+    setProjectionDimensions: settings.setProjectionDimensions,
+    modelType: settings.modelType,
+    setModelType: settings.setModelType,
+    acquisitionFamily: settings.acquisitionFamily,
+    setAcquisitionFamily: settings.setAcquisitionFamily,
+    acquisition: settings.acquisition,
+    setAcquisition: settings.setAcquisition,
+    beta: settings.beta,
+    setBeta: settings.setBeta,
+    fitMaxiter: settings.fitMaxiter,
+    setFitMaxiter: settings.setFitMaxiter,
+    crossValidation: settings.crossValidation,
+    setCrossValidation: settings.setCrossValidation,
+    featureImportance: settings.featureImportance,
+    setFeatureImportance: settings.setFeatureImportance,
+    q: settings.q,
+    setQ: settings.setQ,
+    sequential: settings.sequential,
+    setSequential: settings.setSequential,
+    minimumCandidateDistanceRatio: settings.minimumCandidateDistanceRatio,
+    setMinimumCandidateDistanceRatio: settings.setMinimumCandidateDistanceRatio,
+    numRestarts: settings.numRestarts,
+    setNumRestarts: settings.setNumRestarts,
+    rawSamples: settings.rawSamples,
+    setRawSamples: settings.setRawSamples,
+    result: results.result,
+    canConfigure: derived.canConfigure,
+    settingsValid: derived.settingsValid,
+    candidateSettingsValid: derived.candidateSettingsValid,
     modelReuseAvailable,
     handleFile,
     handleModelArtifact,
-    toggleFeature,
-    toggleTarget,
-    patchTargetSetting,
-    patchVariable,
+    toggleFeature: selection.toggleFeature,
+    toggleTarget: selection.toggleTarget,
+    patchTargetSetting: selection.patchTargetSetting,
+    patchVariable: selection.patchVariable,
     execute,
     numberOrUndefined
   };

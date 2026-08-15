@@ -7,10 +7,14 @@
   outline-color: var(--danger);
 }
 
-/* Give target-variable cards visibly more vertical room for warning metadata. */
-.target-variable-choice {
-  min-height: 88px;
-  padding-block: 17px;
+/*
+ * PreparePage.css is evaluated before several global styles imported by main.tsx.
+ * Use a selector that outranks the later generic .variable-choice/button rules so
+ * the Select target-card spacing cannot be reset by those global declarations.
+ */
+button.variable-choice.target-variable-choice {
+  min-height: 72px;
+  padding: 14px 16px;
   box-sizing: border-box;
 }
 

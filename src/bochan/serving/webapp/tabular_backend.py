@@ -200,7 +200,9 @@ def fit_tabular_optimizer(
             feature_columns=feature_columns,
             target_columns=target_columns,
             target_metadata=target_metadata,
+            model_config=model_config,
             hybrid_model=str(getattr(model_config, "task_type", "")) == "hybrid",
+            composition_config=composition_config,
         )
 
     from bochan.tabular import TabularBayesianOptimizer

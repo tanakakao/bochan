@@ -7,9 +7,9 @@
   outline-color: var(--danger);
 }
 
-/* Give target-variable cards a little more vertical room without changing feature cards. */
+/* Give target-variable cards enough vertical room for warning metadata. */
 .target-variable-choice {
-  min-height: 60px;
+  min-height: 72px;
   box-sizing: border-box;
 }
 

@@ -15,12 +15,19 @@ import {
   saveSelectionCountConstraint
 } from "../webRunSettings";
 import { useWorkbenchMode } from "../workbenchMode";
+import "./PreparePage.css";
 
 interface StoredRunSettingsSnapshot {
   featureConstraints: ReturnType<typeof loadFeatureConstraints>;
   featureMissing: ReturnType<typeof loadFeatureMissingSettings>;
   searchMethod: ReturnType<typeof loadSearchMethod>;
   selectionCount: ReturnType<typeof loadSelectionCountConstraint>;
+}
+
+function missingValueSummary(column: ColumnProfile): string {
+  const percent = column.missing_rate * 100;
+  const digits = percent > 0 && percent < 0.1 ? 2 : 1;
+  return `欠損 ${column.missing_count}件 (${percent.toFixed(digits)}%)`;
 }
 
 function simpleTargetPatch(
@@ -183,6 +190,12 @@ export default function PreparePage() {
   const preview = dataset.preview;
   const targetSet = new Set(targetColumns);
   const featureCandidates = selectableColumns.filter((column) => !targetSet.has(column.name));
+  const selectedTargetMissingCount = targetCandidates.filter(
+    (column) => targetSet.has(column.name) && column.missing_count > 0
+  ).length;
+  const selectedFeatureMissingCount = featureCandidates.filter(
+    (column) => featureColumns.includes(column.name) && column.missing_count > 0
+  ).length;
 
   function replaceFeatureSelection(names: string[]) {
     const desired = new Set(names);
@@ -375,8 +388,12 @@ export default function PreparePage() {
                 ? "良くしたい値を選択します。"
                 : "モデル化、候補提案、制約判定に使用する出力列を選択します。"}</p>
             </div>
-            <span className={`status-chip ${targetColumns.length ? "success" : "warning"}`}>
-              {targetColumns.length ? `${targetColumns.length} selected` : "Required"}
+            <span className={`status-chip ${targetColumns.length && selectedTargetMissingCount === 0 ? "success" : "warning"}`}>
+              {targetColumns.length === 0
+                ? "Required"
+                : selectedTargetMissingCount > 0
+                  ? `${selectedTargetMissingCount}列に欠損`
+                  : `${targetColumns.length} selected`}
             </span>
           </div>
           <div className="button-row selection-actions">
@@ -387,15 +404,22 @@ export default function PreparePage() {
           <div className="variable-selection-list" role="group" aria-label="目的変数">
             {targetCandidates.map((column) => {
               const selected = targetSet.has(column.name);
+              const selectedWithMissing = selected && column.missing_count > 0;
               return (
                 <button
                   type="button"
                   key={column.name}
-                  className={`variable-choice ${selected ? "selected" : ""}`}
+                  className={`variable-choice target-variable-choice ${selected ? "selected" : ""} ${selectedWithMissing ? "selected-with-missing" : ""}`}
                   aria-pressed={selected}
+                  title={selectedWithMissing ? `${column.name}: ${missingValueSummary(column)}` : undefined}
                   onClick={() => toggleTarget(column.name)}
                 >
-                  {column.name}
+                  <span className="variable-choice-copy">
+                    <span>{column.name}</span>
+                    {selectedWithMissing && (
+                      <small className="missing-value-warning">⚠ {missingValueSummary(column)}</small>
+                    )}
+                  </span>
                 </button>
               );
             })}
@@ -411,8 +435,12 @@ export default function PreparePage() {
                 ? "実験で変更できる条件を選択します。数値／カテゴリはデータから自動判定します。"
                 : "淡い赤は数値、オレンジはカテゴリ扱いです。カテゴリ設定を変更すると、その列も選択されます。"}</p>
             </div>
-            <span className={`status-chip ${featureColumns.length ? "success" : "warning"}`}>
-              {featureColumns.length ? `${featureColumns.length} selected` : "Required"}
+            <span className={`status-chip ${featureColumns.length && selectedFeatureMissingCount === 0 ? "success" : "warning"}`}>
+              {featureColumns.length === 0
+                ? "Required"
+                : selectedFeatureMissingCount > 0
+                  ? `${selectedFeatureMissingCount}列に欠損`
+                  : `${featureColumns.length} selected`}
             </span>
           </div>
 
@@ -443,18 +471,25 @@ export default function PreparePage() {
               const selected = featureColumns.includes(column.name);
               const variable = variables[column.name];
               const categorical = variable?.type === "categorical" || column.kind === "categorical";
+              const selectedWithMissing = selected && column.missing_count > 0;
 
               if (mode === "simple") {
                 return (
                   <button
                     type="button"
                     key={column.name}
-                    className={`variable-choice simple-feature-choice ${selected ? "selected" : ""}`}
+                    className={`variable-choice simple-feature-choice ${selected ? "selected" : ""} ${selectedWithMissing ? "selected-with-missing" : ""}`}
                     aria-pressed={selected}
+                    title={selectedWithMissing ? `${column.name}: ${missingValueSummary(column)}` : undefined}
                     onClick={() => toggleFeature(column.name)}
                   >
-                    <span>{column.name}</span>
-                    <small>{categorical ? "カテゴリ" : "数値"}</small>
+                    <span className="variable-choice-copy">
+                      <span>{column.name}</span>
+                      <small>{categorical ? "カテゴリ" : "数値"}</small>
+                      {selectedWithMissing && (
+                        <small className="missing-value-warning">⚠ {missingValueSummary(column)}</small>
+                      )}
+                    </span>
                   </button>
                 );
               }
@@ -462,7 +497,8 @@ export default function PreparePage() {
               return (
                 <div
                   key={column.name}
-                  className={`variable-choice feature-variable-choice ${selected ? "selected" : ""} ${selected && categorical ? "selected-categorical" : ""}`}
+                  className={`variable-choice feature-variable-choice ${selected ? "selected" : ""} ${selected && categorical ? "selected-categorical" : ""} ${selectedWithMissing ? "selected-with-missing" : ""}`}
+                  title={selectedWithMissing ? `${column.name}: ${missingValueSummary(column)}` : undefined}
                 >
                   <button
                     type="button"
@@ -472,6 +508,9 @@ export default function PreparePage() {
                   >
                     <span>{column.name}</span>
                     <small>{categorical ? "categorical" : "numeric"}</small>
+                    {selectedWithMissing && (
+                      <span className="missing-value-warning">⚠ {missingValueSummary(column)}</span>
+                    )}
                   </button>
                   <label className="feature-type-toggle" title={column.kind === "categorical" ? "入力データ上カテゴリ列のため固定です。" : "カテゴリ変数として扱う"}>
                     <input

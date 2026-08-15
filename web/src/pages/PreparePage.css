@@ -7,17 +7,6 @@
   outline-color: var(--danger);
 }
 
-/*
- * PreparePage.css is evaluated before several global styles imported by main.tsx.
- * Use a selector that outranks the later generic .variable-choice/button rules so
- * the Select target-card spacing cannot be reset by those global declarations.
- */
-button.variable-choice.target-variable-choice {
-  min-height: 72px;
-  padding: 14px 16px;
-  box-sizing: border-box;
-}
-
 .variable-choice-copy {
   min-width: 0;
   display: grid;

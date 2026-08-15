@@ -125,14 +125,6 @@ export default function CompositionKindControl({ column, preview, categorical }:
           組成式
         </button>
       </div>
-      {highCardinality && (
-        <small
-          className="high-cardinality-warning"
-          title="ユニーク率が高いカテゴリ列です。IDや識別子でないか確認してください。"
-        >
-          ⚠ ID列の可能性 · {profile?.unique_count}/{nonMissingCount} unique ({uniquePercent}%)
-        </small>
-      )}
     </div>
   );
 }

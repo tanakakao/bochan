@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { loadCompositionSettings } from "../compositionExtension";
+import { useWorkbench } from "../context/WorkbenchContext";
 
 const STORAGE_KEY = "bochan-web-composition-settings";
 const CHANGE_EVENT = "bochan-composition-settings-change";
+const HIGH_CARDINALITY_RATIO = 0.8;
+const HIGH_CARDINALITY_MIN_UNIQUE = 10;
 
 type CompositionSettings = ReturnType<typeof loadCompositionSettings>;
 
@@ -30,8 +33,25 @@ function saveCompositionSettings(settings: CompositionSettings): void {
 
 /** Selects normal categorical input or chemical-composition parsing for one feature. */
 export default function CompositionKindControl({ column, preview, categorical }: Props) {
+  const { dataset, featureColumns } = useWorkbench();
   const [settings, setSettings] = useState<CompositionSettings>(() => loadCompositionSettings());
   const selected = settings.enabled && settings.column === column;
+  const profile = dataset?.profile.columns.find((candidate) => candidate.name === column);
+  const nonMissingCount = profile && dataset
+    ? Math.max(dataset.profile.n_rows - profile.missing_count, 0)
+    : 0;
+  const uniqueRatio = profile && nonMissingCount > 0
+    ? profile.unique_count / nonMissingCount
+    : 0;
+  const highCardinality = Boolean(
+    categorical &&
+    !selected &&
+    featureColumns.includes(column) &&
+    profile &&
+    profile.unique_count >= HIGH_CARDINALITY_MIN_UNIQUE &&
+    uniqueRatio >= HIGH_CARDINALITY_RATIO
+  );
+  const uniquePercent = Math.round(uniqueRatio * 100);
 
   const refresh = useCallback(() => {
     setSettings(loadCompositionSettings());
@@ -78,7 +98,7 @@ export default function CompositionKindControl({ column, preview, categorical }:
   }
 
   return (
-    <div className="composition-kind-control composition-kind-control-segmented">
+    <div className={`composition-kind-control composition-kind-control-segmented ${highCardinality ? "high-cardinality-category" : ""}`}>
       <span>入力表記</span>
       <div
         className="composition-kind-segment"
@@ -87,8 +107,11 @@ export default function CompositionKindControl({ column, preview, categorical }:
       >
         <button
           type="button"
-          className={`composition-kind-option ${selected ? "" : "active"}`}
+          className={`composition-kind-option ${selected ? "" : "active"} ${highCardinality ? "high-cardinality-normal" : ""}`}
           aria-pressed={!selected}
+          title={highCardinality
+            ? `非欠損${nonMissingCount}件中${profile?.unique_count ?? 0}種類（${uniquePercent}%）です。IDや識別子列の可能性があります。`
+            : undefined}
           onClick={selectNormal}
         >
           通常
@@ -102,6 +125,14 @@ export default function CompositionKindControl({ column, preview, categorical }:
           組成式
         </button>
       </div>
+      {highCardinality && (
+        <small
+          className="high-cardinality-warning"
+          title="ユニーク率が高いカテゴリ列です。IDや識別子でないか確認してください。"
+        >
+          ⚠ ID列の可能性 · {profile?.unique_count}/{nonMissingCount} unique ({uniquePercent}%)
+        </small>
+      )}
     </div>
   );
 }

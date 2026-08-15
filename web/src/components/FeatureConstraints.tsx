@@ -37,7 +37,6 @@ export default function FeatureConstraints({ variables }: Props) {
   const [selectionCount, setSelectionCount] = useState<SelectionCountConstraint>(
     () => loadSelectionCountConstraint()
   );
-  const activeConstraintCount = constraints.length + (selectionCount.enabled ? 1 : 0);
 
   useEffect(() => {
     setConstraints((current) => {
@@ -124,194 +123,184 @@ export default function FeatureConstraints({ variables }: Props) {
   }
 
   return (
-    <details className="panel compact-panel model-output-details feature-constraints-details">
-      <summary>
-        詳細設定（説明変数の候補制約）
-        {activeConstraintCount > 0 && ` · ${activeConstraintCount}件設定中`}
-      </summary>
-      <p className="settings-note">
-        通常は設定不要です。実験上の組合せ条件や、候補で同時に有効にする変数数を制限したい場合だけ設定してください。
-      </p>
+    <article className="panel candidate-feature-constraint-panel">
+      <div className="panel-title">
+        <div>
+          <span className="panel-kicker">ADVANCED · FEATURE CONSTRAINTS</span>
+          <h3>説明変数の候補制約</h3>
+          <p>候補生成時に使用する重み付き和の制約と、有効にする変数数を設定します。</p>
+        </div>
+        <span className={`status-chip ${constraints.length || selectionCount.enabled ? "success" : ""}`}>
+          {constraints.length + (selectionCount.enabled ? 1 : 0)} constraints
+        </span>
+      </div>
 
-      <article className="panel candidate-feature-constraint-panel">
-        <div className="panel-title">
+      <section className="constraint-section">
+        <div className="constraint-section-heading">
           <div>
-            <span className="panel-kicker">ADVANCED · FEATURE CONSTRAINTS</span>
-            <h3>説明変数の候補制約</h3>
-            <p>候補生成時に使用する重み付き和の制約と、有効にする変数数を設定します。</p>
+            <h4>線形和制約</h4>
+            <p>Σ（係数 × 説明変数）に対して、等式または不等式を設定します。</p>
           </div>
-          <span className={`status-chip ${activeConstraintCount ? "success" : ""}`}>
-            {activeConstraintCount} constraints
-          </span>
+          <div className="button-row constraint-actions">
+            <button type="button" className="secondary" disabled={!numericVariables.length} onClick={addConstraint}>
+              制約を追加
+            </button>
+            <button type="button" className="secondary" disabled={!constraints.length} onClick={() => update([])}>
+              全削除
+            </button>
+          </div>
         </div>
 
-        <section className="constraint-section">
-          <div className="constraint-section-heading">
-            <div>
-              <h4>線形和制約</h4>
-              <p>Σ（係数 × 説明変数）に対して、等式または不等式を設定します。</p>
-            </div>
-            <div className="button-row constraint-actions">
-              <button type="button" className="secondary" disabled={!numericVariables.length} onClick={addConstraint}>
-                制約を追加
-              </button>
-              <button type="button" className="secondary" disabled={!constraints.length} onClick={() => update([])}>
-                全削除
-              </button>
-            </div>
-          </div>
-
-          {!numericVariables.length ? (
-            <p className="settings-note">数値型の説明変数がないため、線形制約は追加できません。</p>
-          ) : constraints.length === 0 ? (
-            <div className="constraint-empty">制約は設定されていません。</div>
-          ) : (
-            <div className="constraint-list">
-              {constraints.map((constraint, index) => (
-                <div className="constraint-card" key={constraint.id}>
-                  <div className="constraint-card-heading">
-                    <div>
-                      <span className="constraint-index">{index + 1}</span>
-                      <strong>{expression(constraint)}</strong>
-                    </div>
-                    <button
-                      type="button"
-                      className="constraint-delete"
-                      aria-label={`制約${index + 1}を削除`}
-                      title="この制約を削除"
-                      onClick={() => removeConstraint(constraint.id)}
-                    >×</button>
+        {!numericVariables.length ? (
+          <p className="settings-note">数値型の説明変数がないため、線形制約は追加できません。</p>
+        ) : constraints.length === 0 ? (
+          <div className="constraint-empty">制約は設定されていません。</div>
+        ) : (
+          <div className="constraint-list">
+            {constraints.map((constraint, index) => (
+              <div className="constraint-card" key={constraint.id}>
+                <div className="constraint-card-heading">
+                  <div>
+                    <span className="constraint-index">{index + 1}</span>
+                    <strong>{expression(constraint)}</strong>
                   </div>
-
-                  <div className="constraint-relation-row">
-                    <span className="constraint-expression">Σ（係数 × 変数）</span>
-                    <select
-                      aria-label={`制約${index + 1}の演算子`}
-                      value={constraint.operator}
-                      onChange={(event) => patchConstraint(constraint.id, {
-                        operator: event.target.value as FeatureConstraintOperator
-                      })}
-                    >
-                      <option value=">">&gt;</option>
-                      <option value="<">&lt;</option>
-                      <option value="=">=</option>
-                    </select>
-                    <input
-                      type="number"
-                      step="any"
-                      aria-label={`制約${index + 1}の値`}
-                      value={constraint.value}
-                      onChange={(event) => patchConstraint(constraint.id, { value: Number(event.target.value) })}
-                    />
-                  </div>
-
-                  <details className="constraint-expander" open>
-                    <summary>説明変数と係数を設定</summary>
-                    <div className="constraint-variable-picker" role="group" aria-label={`制約${index + 1}の説明変数`}>
-                      {numericVariables.map((variable) => {
-                        const selected = constraint.variables.includes(variable.name);
-                        return (
-                          <button
-                            key={variable.name}
-                            type="button"
-                            className={selected ? "selected" : ""}
-                            aria-pressed={selected}
-                            onClick={() => toggleConstraintVariable(constraint, variable.name)}
-                          >
-                            {variable.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {constraint.variables.length > 0 && (
-                      <div className="coefficient-grid">
-                        {constraint.variables.map((name) => (
-                          <label key={name}>
-                            <span>{name} の係数</span>
-                            <input
-                              type="number"
-                              step="any"
-                              value={constraint.coefficients[name] ?? 1}
-                              onChange={(event) => patchConstraint(constraint.id, {
-                                coefficients: {
-                                  ...constraint.coefficients,
-                                  [name]: Number(event.target.value)
-                                }
-                              })}
-                            />
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </details>
+                  <button
+                    type="button"
+                    className="constraint-delete"
+                    aria-label={`制約${index + 1}を削除`}
+                    title="この制約を削除"
+                    onClick={() => removeConstraint(constraint.id)}
+                  >×</button>
                 </div>
-              ))}
-            </div>
-          )}
-        </section>
 
-        <section className="constraint-section selection-count-section">
-          <div className="constraint-section-heading">
-            <div>
-              <h4>有効変数数制約</h4>
-              <p>選択した数値変数のうち、候補ごとに非ゼロで採用する最大数を指定します。</p>
+                <div className="constraint-relation-row">
+                  <span className="constraint-expression">Σ（係数 × 変数）</span>
+                  <select
+                    aria-label={`制約${index + 1}の演算子`}
+                    value={constraint.operator}
+                    onChange={(event) => patchConstraint(constraint.id, {
+                      operator: event.target.value as FeatureConstraintOperator
+                    })}
+                  >
+                    <option value=">">&gt;</option>
+                    <option value="<">&lt;</option>
+                    <option value="=">=</option>
+                  </select>
+                  <input
+                    type="number"
+                    step="any"
+                    aria-label={`制約${index + 1}の値`}
+                    value={constraint.value}
+                    onChange={(event) => patchConstraint(constraint.id, { value: Number(event.target.value) })}
+                  />
+                </div>
+
+                <details className="constraint-expander" open>
+                  <summary>説明変数と係数を設定</summary>
+                  <div className="constraint-variable-picker" role="group" aria-label={`制約${index + 1}の説明変数`}>
+                    {numericVariables.map((variable) => {
+                      const selected = constraint.variables.includes(variable.name);
+                      return (
+                        <button
+                          key={variable.name}
+                          type="button"
+                          className={selected ? "selected" : ""}
+                          aria-pressed={selected}
+                          onClick={() => toggleConstraintVariable(constraint, variable.name)}
+                        >
+                          {variable.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {constraint.variables.length > 0 && (
+                    <div className="coefficient-grid">
+                      {constraint.variables.map((name) => (
+                        <label key={name}>
+                          <span>{name} の係数</span>
+                          <input
+                            type="number"
+                            step="any"
+                            value={constraint.coefficients[name] ?? 1}
+                            onChange={(event) => patchConstraint(constraint.id, {
+                              coefficients: {
+                                ...constraint.coefficients,
+                                [name]: Number(event.target.value)
+                              }
+                            })}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </details>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="constraint-section selection-count-section">
+        <div className="constraint-section-heading">
+          <div>
+            <h4>有効変数数制約</h4>
+            <p>選択した数値変数のうち、候補ごとに非ゼロで採用する最大数を指定します。</p>
+          </div>
+          <label className="switch-field">
+            <input
+              type="checkbox"
+              checked={selectionCount.enabled}
+              aria-label="スパース制約を使用する"
+              onChange={(event) => updateSelectionCount({
+                ...selectionCount,
+                enabled: event.target.checked
+              })}
+            />
+            <span>使用する</span>
+          </label>
+        </div>
+
+        {selectionCount.enabled && (
+          <div className="selection-count-editor">
+            <div className="constraint-variable-picker" role="group" aria-label="スパース制約の候補変数">
+              {numericVariables.map((variable) => {
+                const selected = selectionCount.variables.includes(variable.name);
+                return (
+                  <button
+                    key={variable.name}
+                    type="button"
+                    className={selected ? "selected" : ""}
+                    aria-pressed={selected}
+                    onClick={() => toggleSelectionVariable(variable.name)}
+                  >
+                    {variable.name}
+                  </button>
+                );
+              })}
             </div>
-            <label className="switch-field">
+            <label className="selection-count-input">
+              <span>採用する変数数</span>
               <input
-                type="checkbox"
-                checked={selectionCount.enabled}
-                aria-label="スパース制約を使用する"
+                type="number"
+                min={1}
+                max={Math.max(selectionCount.variables.length, 1)}
+                value={selectionCount.k}
                 onChange={(event) => updateSelectionCount({
                   ...selectionCount,
-                  enabled: event.target.checked
+                  k: Math.max(1, Math.min(Number(event.target.value), Math.max(selectionCount.variables.length, 1)))
                 })}
               />
-              <span>使用する</span>
+              <small>選択候補 {selectionCount.variables.length} 変数中</small>
             </label>
           </div>
+        )}
+      </section>
 
-          {selectionCount.enabled && (
-            <div className="selection-count-editor">
-              <div className="constraint-variable-picker" role="group" aria-label="スパース制約の候補変数">
-                {numericVariables.map((variable) => {
-                  const selected = selectionCount.variables.includes(variable.name);
-                  return (
-                    <button
-                      key={variable.name}
-                      type="button"
-                      className={selected ? "selected" : ""}
-                      aria-pressed={selected}
-                      onClick={() => toggleSelectionVariable(variable.name)}
-                    >
-                      {variable.name}
-                    </button>
-                  );
-                })}
-              </div>
-              <label className="selection-count-input">
-                <span>採用する変数数</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={Math.max(selectionCount.variables.length, 1)}
-                  value={selectionCount.k}
-                  onChange={(event) => updateSelectionCount({
-                    ...selectionCount,
-                    k: Math.max(1, Math.min(Number(event.target.value), Math.max(selectionCount.variables.length, 1)))
-                  })}
-                />
-                <small>選択候補 {selectionCount.variables.length} 変数中</small>
-              </label>
-            </div>
-          )}
-        </section>
+      <CompositionLinearConstraints />
 
-        <CompositionLinearConstraints />
-
-        <p className="settings-note">
-          「&gt;」「&lt;」は数値最適化上、それぞれ「以上」「以下」として扱います。有効変数数制約では0を未採用として扱います。
-        </p>
-      </article>
-    </details>
+      <p className="settings-note">
+        「&gt;」「&lt;」は数値最適化上、それぞれ「以上」「以下」として扱います。有効変数数制約では0を未採用として扱います。
+      </p>
+    </article>
   );
 }

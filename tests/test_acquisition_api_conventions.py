@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import inspect
 
 import pytest
@@ -95,6 +96,18 @@ def test_standard_bo_public_api_excludes_legacy_pointwise_and_penalty_controls(
         "best_f_quantile",
     }
     assert legacy_parameters.isdisjoint(parameters)
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    [
+        "bochan.acquisition.ordinal.bayesian_optimization.single_output_removed_api",
+        "bochan.acquisition.ordinal.bayesian_optimization.utility_acquisitions",
+        "bochan.acquisition.binary.base_pending_patch_snippet",
+    ],
+)
+def test_removed_compatibility_modules_stay_removed(module_name: str) -> None:
+    assert importlib.util.find_spec(module_name) is None
 
 
 @pytest.mark.parametrize(

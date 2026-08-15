@@ -8,6 +8,9 @@ on:
       - ".github/workflows/_pnpm-lock-temp.yml"
       - "web/package.json"
 
+permissions:
+  contents: write
+
 jobs:
   lockfile:
     runs-on: ubuntu-latest
@@ -22,9 +25,13 @@ jobs:
       - name: Generate lockfile
         working-directory: web
         run: pnpm install --lockfile-only --ignore-scripts
-      - name: Upload lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: pnpm-lock
-          path: web/pnpm-lock.yaml
-          if-no-files-found: error
+      - name: Commit lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "Add pnpm lockfile"
+          git push

@@ -1,23 +1,34 @@
 from pathlib import Path
 
 
-SOURCE = Path("web/src/compositionExtension.ts")
+SETTINGS_SOURCE = Path("web/src/compositionExtension.ts")
+MODEL_SOURCE = Path("web/src/components/CompositionModelSettings.tsx")
+CANDIDATE_SOURCE = Path("web/src/components/CompositionCandidateConstraints.tsx")
 
 
-def test_composition_panels_use_render_signatures_instead_of_serialized_inner_html() -> None:
-    source = SOURCE.read_text(encoding="utf-8")
+def test_composition_extension_is_settings_only() -> None:
+    source = SETTINGS_SOURCE.read_text(encoding="utf-8")
 
-    assert "const panelRenderSignatures = new WeakMap<HTMLElement, string>();" in source
-    assert "panelRenderSignatures.get(host) === html" in source
-    assert "panelRenderSignatures.set(replacement, html)" in source
-    assert "host.innerHTML === html" not in source
+    assert "loadCompositionSettings" in source
+    assert "MutationObserver" not in source
+    assert "document.querySelector" not in source
+    assert "document.createElement" not in source
+    assert "innerHTML" not in source
+    assert "replaceWith" not in source
+    assert "installCompositionExtension" not in source
 
 
-def test_composition_observer_does_not_observe_its_own_panel_replacement() -> None:
-    source = SOURCE.read_text(encoding="utf-8")
+def test_composition_panels_are_rendered_by_react_components() -> None:
+    model = MODEL_SOURCE.read_text(encoding="utf-8")
+    candidate = CANDIDATE_SOURCE.read_text(encoding="utf-8")
 
-    assert "let compositionObserver: MutationObserver | null = null;" in source
-    assert "compositionObserver?.disconnect();" in source
-    assert "finally {\n    observeCompositionMutations();\n  }" in source
-    assert "records.some(mutationAffectsComposition)" in source
-    assert "COMPOSITION_ANCHOR_SELECTOR" in source
+    assert "composition-model-settings-react" in model
+    assert "組成式のモデル変換" in model
+    assert "composition-search-space-constraints-react" in candidate
+    assert "composition-linear-constraints-react" in candidate
+
+    for source in (model, candidate):
+        assert "MutationObserver" not in source
+        assert "document.querySelector" not in source
+        assert "document.createElement" not in source
+        assert "replaceWith" not in source

@@ -317,7 +317,7 @@ def test_composition_visualization_uses_explicit_dispatch() -> None:
     compat_path = Path(
         "src/bochan/serving/webapp/composition_visualization_compat.py"
     )
-    frontend = Path("web/src/compositionVisualizationGuard.ts").read_text(
+    frontend = Path("web/src/InteractiveResultPlots.tsx").read_text(
         encoding="utf-8"
     )
 
@@ -343,4 +343,9 @@ def test_composition_visualization_uses_explicit_dispatch() -> None:
     assert "visualization_sessions.build_visualization =" not in ternary_backend
     assert not compat_path.exists()
     assert not runtime_path.exists()
-    assert "fractionOptions.size >= 3" in frontend
+    assert "const ternaryAvailable = compositionFeatures.length > 0" in frontend
+    assert "compositionFeatures.length >= 3" in frontend
+    assert "disabled={!ternaryAvailable}" in frontend
+    assert 'rightKind === "ternary" && !ternaryAvailable' in frontend
+    assert "MutationObserver" not in frontend
+    assert "document.querySelector" not in frontend

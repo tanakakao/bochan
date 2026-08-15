@@ -49,6 +49,7 @@ web/
 ├── src/
 ├── test/
 ├── package.json
+├── pnpm-lock.yaml
 └── vite.config.ts
 ```
 
@@ -77,8 +78,10 @@ From the repository root:
 ```bash
 pip install -e ".[web]"
 cd web
-npm install
+pnpm install --frozen-lockfile
 ```
+
+The frontend package manager version is pinned by the `packageManager` field in `web/package.json`. Ensure `pnpm` is available on `PATH` before starting the frontend.
 
 The `web` optional dependency group installs the Python dependencies required by the Web backend, including FastAPI, pandas, scikit-learn, Plotly, Excel support, and the Web-supported optional surrogate packages.
 
@@ -94,7 +97,7 @@ Start the frontend in another terminal:
 
 ```bash
 cd web
-npm run dev
+pnpm run dev
 ```
 
 Then open `http://localhost:5173`.

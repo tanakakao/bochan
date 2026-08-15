@@ -51,6 +51,7 @@ on:
       - "web/src/main.tsx"
       - "web/test/importanceFeatureLabels.test.ts"
       - "web/package.json"
+      - "web/pnpm-lock.yaml"
       - "tests/test_webapp_composition_support.py"
       - "tests/test_webapp_composition_candidate_repair.py"
       - "tests/test_webapp_composition_visualization.py"
@@ -140,15 +141,20 @@ jobs:
             tests/test_webapp_workbench_architecture.py \
             tests/test_webapp_layout_safety.py \
             tests/test_webapp_color_theme.py
-      - uses: actions/setup-node@v4
+      - name: Set up pnpm and Node.js
+        uses: pnpm/setup@v2
         with:
-          node-version: "24"
+          package-json-file: web/package.json
+          runtime: node@24
+          cache: true
+          cache-dependency-path: web/pnpm-lock.yaml
+          install: false
       - name: Install React dependencies
         working-directory: web
-        run: npm install --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
       - name: Test importance labels
         working-directory: web
-        run: npm run test:importance-labels
+        run: pnpm run test:importance-labels
       - name: Build React workbench
         working-directory: web
-        run: npm run build
+        run: pnpm run build

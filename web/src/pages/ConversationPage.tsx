@@ -1,17 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  applyAnalysisConfig,
+  applyStoredRunSettings,
+  captureStoredRunSettings,
+  createGuidedAnalysisConfig,
+  restoreStoredRunSettings,
+  type StoredRunSettingsSnapshot
+} from "../analysisConfig";
 import { useWorkbench } from "../context/WorkbenchContext";
 import { getColumnClassValues } from "../targetSettingUtils";
 import type { ColumnProfile, Direction, SearchVariable } from "../types";
-import {
-  loadFeatureConstraints,
-  loadFeatureMissingSettings,
-  loadSearchMethod,
-  loadSelectionCountConstraint,
-  saveFeatureConstraints,
-  saveFeatureMissingSettings,
-  saveSearchMethod,
-  saveSelectionCountConstraint
-} from "../webRunSettings";
 import "../conversation-mode.css";
 
 type ConversationStage = "data" | "target" | "direction" | "features" | "count" | "confirm" | "result";
@@ -21,13 +19,6 @@ interface ConversationMessage {
   id: number;
   role: MessageRole;
   text: string;
-}
-
-interface StoredRunSettingsSnapshot {
-  featureConstraints: ReturnType<typeof loadFeatureConstraints>;
-  featureMissing: ReturnType<typeof loadFeatureMissingSettings>;
-  searchMethod: ReturnType<typeof loadSearchMethod>;
-  selectionCount: ReturnType<typeof loadSelectionCountConstraint>;
 }
 
 let messageSequence = 0;
@@ -72,37 +63,6 @@ function simpleVariablePatch(
     fixed: false,
     fixed_value: undefined
   };
-}
-
-function captureStoredRunSettings(): StoredRunSettingsSnapshot {
-  return {
-    featureConstraints: loadFeatureConstraints(),
-    featureMissing: loadFeatureMissingSettings(),
-    searchMethod: loadSearchMethod(),
-    selectionCount: loadSelectionCountConstraint()
-  };
-}
-
-function applyConversationDefaults(): void {
-  saveFeatureConstraints([]);
-  saveSelectionCountConstraint({ enabled: false, variables: [], k: 1 });
-  saveFeatureMissingSettings({
-    strategy: "drop",
-    continuousStrategy: "mean",
-    categoricalStrategy: "mode",
-    imputeMaxIter: 10,
-    imputeRandomState: null,
-    multipleImputeSamplePosterior: false
-  });
-  saveSearchMethod("normal");
-}
-
-function restoreStoredRunSettings(snapshot: StoredRunSettingsSnapshot | null): void {
-  if (!snapshot) return;
-  saveFeatureConstraints(snapshot.featureConstraints);
-  saveFeatureMissingSettings(snapshot.featureMissing);
-  saveSearchMethod(snapshot.searchMethod);
-  saveSelectionCountConstraint(snapshot.selectionCount);
 }
 
 function includesColumn(text: string, name: string): boolean {
@@ -328,23 +288,31 @@ export default function ConversationPage() {
   function requestRun(): void {
     if (!dataset || !draftTarget || draftFeatures.length === 0 || busy) return;
     setError(null);
+
+    const config = createGuidedAnalysisConfig({
+      featureCount: draftFeatures.length,
+      targetCount: 1,
+      q: draftQ
+    });
     storedRunSettings.current = captureStoredRunSettings();
-    applyConversationDefaults();
-    setNormalize(true);
-    setInputPerturbation(false);
-    setNW(16);
-    setPerturbationStd(0.1);
-    setProjectionDimensions(Math.min(2, Math.max(draftFeatures.length, 1)));
-    setModelType("base");
-    setAcquisitionFamily("bayesian_optimization");
-    setAcquisition("EI");
-    setBeta(2);
-    setFitMaxiter(128);
+    applyStoredRunSettings(config.persisted);
+    applyAnalysisConfig(config, {
+      setNormalize,
+      setInputPerturbation,
+      setNW,
+      setPerturbationStd,
+      setProjectionDimensions,
+      setModelType,
+      setAcquisitionFamily,
+      setAcquisition,
+      setBeta,
+      setFitMaxiter,
+      setQ,
+      setNumRestarts,
+      setRawSamples
+    });
     setCrossValidation({ ...crossValidation, enabled: false });
     setFeatureImportance({ ...featureImportance, enabled: false });
-    setQ(draftQ);
-    setNumRestarts(10);
-    setRawSamples(256);
     window.setTimeout(() => setRunRequested(true), 0);
   }
 

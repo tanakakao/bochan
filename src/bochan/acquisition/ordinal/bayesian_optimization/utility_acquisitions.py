@@ -48,7 +48,10 @@ def _finalize_output(value: Tensor, X: Tensor, *, name: str) -> Tensor:
 
 
 class _OrdinalPointwiseUtilityBOBase(MCAcquisitionFunction):
-    """Common ordinal utility BO base with pointwise and joint q semantics."""
+    """Common ordinal utility BO base with joint q semantics by default.
+
+    ``q_mode="pointwise"`` remains available as an explicit compatibility mode.
+    """
 
     def __init__(
         self,
@@ -56,7 +59,7 @@ class _OrdinalPointwiseUtilityBOBase(MCAcquisitionFunction):
         *,
         objective: Callable[[Tensor, Optional[Tensor]], Tensor],
         sampler: Optional[MCSampler] = None,
-        q_mode: OrdinalQBatchMode = "pointwise",
+        q_mode: OrdinalQBatchMode = "joint",
         reduction: OrdinalQReduction = "mean",
         X_pending: Optional[Tensor] = None,
         X_observed: Optional[Tensor] = None,

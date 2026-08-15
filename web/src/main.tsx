@@ -16,6 +16,7 @@ import "./experiment-results.css";
 import "./experiment-history.css";
 import "./styles/workbench-design.css";
 import "./composition-extension.css";
+import "./styles/layout-safety.css";
 import "./red-theme.css";
 
 installCompositionRuntime();

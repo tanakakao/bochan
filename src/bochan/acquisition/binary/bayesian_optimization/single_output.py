@@ -246,7 +246,8 @@ class _BinaryProbabilityBOBase(MCAcquisitionFunction):
 
     ``q_mode="joint"``はBoTorchのqEI/qPI/qUCBと同様に、joint posteriorを
     sampleし、sampleごとにq方向を最大化する。``q_mode="pointwise"``は
-    各候補点のscoreを個別に計算してq方向へ集約する。
+    各候補点のscoreを個別に計算してq方向へ集約する。jointを既定とし、
+    pointwiseは明示的に指定した場合だけ使用する。
     """
 
     def __init__(
@@ -255,7 +256,7 @@ class _BinaryProbabilityBOBase(MCAcquisitionFunction):
         *,
         sampler: Optional[SobolQMCNormalSampler] = None,
         apply_sigmoid_if_needed: bool = True,
-        q_mode: QBatchMode = "pointwise",
+        q_mode: QBatchMode = "joint",
         reduction: ReductionType = "mean",
         X_pending: Tensor | None = None,
         X_observed: Tensor | None = None,
@@ -598,8 +599,8 @@ class _BinaryProbabilityBOBase(MCAcquisitionFunction):
 class qBinaryExpectedImprovement(_BinaryProbabilityBOBase):
     """Positive-class probabilityに対するExpected Improvement。
 
-    ``q_mode="joint"``はBoTorch qEIと同じjoint max、既定の
-    ``q_mode="pointwise"``は各点のEIをq方向へ集約する。
+    ``q_mode="joint"``を既定としてBoTorch qEIと同じjoint maxを使う。
+    ``q_mode="pointwise"``は各点のEIをq方向へ集約する明示的な互換mode。
     """
 
     def __init__(
@@ -609,7 +610,7 @@ class qBinaryExpectedImprovement(_BinaryProbabilityBOBase):
         *,
         sampler: Optional[SobolQMCNormalSampler] = None,
         apply_sigmoid_if_needed: bool = True,
-        q_mode: QBatchMode = "pointwise",
+        q_mode: QBatchMode = "joint",
         reduction: ReductionType = "mean",
         X_pending: Tensor | None = None,
         X_observed: Tensor | None = None,
@@ -687,7 +688,7 @@ class qBinaryProbabilityOfImprovement(_BinaryProbabilityBOBase):
         tau: float = 1e-3,
         sampler: Optional[SobolQMCNormalSampler] = None,
         apply_sigmoid_if_needed: bool = True,
-        q_mode: QBatchMode = "pointwise",
+        q_mode: QBatchMode = "joint",
         reduction: ReductionType = "mean",
         X_pending: Tensor | None = None,
         X_observed: Tensor | None = None,
@@ -766,7 +767,7 @@ class qBinaryUpperConfidenceBound(_BinaryProbabilityBOBase):
         *,
         sampler: Optional[SobolQMCNormalSampler] = None,
         apply_sigmoid_if_needed: bool = True,
-        q_mode: QBatchMode = "pointwise",
+        q_mode: QBatchMode = "joint",
         reduction: ReductionType = "mean",
         X_pending: Tensor | None = None,
         X_observed: Tensor | None = None,

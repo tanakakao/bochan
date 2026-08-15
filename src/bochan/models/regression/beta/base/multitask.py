@@ -57,7 +57,7 @@ class BetaMultiTaskLikelihood(BetaLogLikelihood):
             **kwargs: Arguments forwarded to :class:`BetaLogLikelihood`.
         """
         super().__init__(
-            init_concentration=1.0,
+            concentration=1.0,
             learn_concentration=learn_concentration,
             **kwargs,
         )

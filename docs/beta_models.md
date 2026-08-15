@@ -27,7 +27,7 @@ optimizer = BayesianOptimizer(
         outcome_transform=False,
         model_kwargs={
             "link": "sigmoid",
-            "init_concentration": 20.0,
+            "concentration": 20.0,
             "clip_targets": True,
         },
     ),

@@ -15,7 +15,7 @@ class Holder:
     def __init__(self, likelihood): self.likelihood=likelihood
 
 @pytest.mark.parametrize(("likelihood","mean","expected"),[
-    (BetaLogLikelihood(init_concentration=9.), .4, .4*.6/10),
+    (BetaLogLikelihood(concentration=9.), .4, .4*.6/10),
     (GammaLogLikelihood(init_concentration=4.), 2., 1.),
     (PoissonLogLikelihood(), 3., 3.),
     (NegativeBinomialLogLikelihood(init_total_count=2.), 2., 4.),

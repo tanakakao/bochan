@@ -104,6 +104,7 @@ def _build_input_transform_from_config(
         categorical_idx=None if categorical_idx is None else list(categorical_idx),
         n_w=tf_config.n_w,
         std=tf_config.std,
+        normalize=tf_config.normalize,
     )
 
 
@@ -403,5 +404,4 @@ def build_model(train_X: Any, train_Y: Any, config: ModelConfig, *, model_regist
     if config.multi_output_config is not None:
         return build_multi_output_model(train_X, train_Y, config, model_registry=model_registry)
     return _build_single_model(train_X, train_Y, config, model_registry=model_registry)
-
 

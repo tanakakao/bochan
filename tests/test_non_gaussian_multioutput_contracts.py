@@ -41,7 +41,7 @@ def test_long_beta_contract_and_sparse_wide_conversion() -> None:
     """Long observations retain only observed cells and expose task correlation."""
     X = torch.tensor([[0.0, 0.0], [0.0, 1.0], [1.0, 0.0]], dtype=torch.double)
     Y = torch.tensor([0.2, 0.7, 0.4], dtype=torch.double)
-    model = BetaMultiTaskGPModel(X, Y, task_feature=1, num_tasks=2, num_inducing_points=3)
+    model = BetaMultiTaskGPModel(X, Y, task_feature=1, num_tasks=2, num_inducing=3)
     assert model.model.train_targets.numel() == 3
     assert model.observed_mask.sum() == 3
     assert model.posterior(torch.tensor([[0.5]], dtype=torch.double)).mean.shape == (1, 2)
@@ -60,7 +60,7 @@ def test_wide_and_kronecker_missing_target_contracts() -> None:
     """Wide models omit NaNs while Kronecker models reject incomplete blocks."""
     X = torch.linspace(0, 1, 3, dtype=torch.double).unsqueeze(-1)
     Y = torch.tensor([[0.2, 0.3], [0.4, torch.nan], [0.6, 0.7]], dtype=torch.double)
-    wide = WideBetaMultiTaskGPModel(X, Y, num_inducing_points=4)
+    wide = WideBetaMultiTaskGPModel(X, Y, num_inducing=4)
     assert wide.model.train_targets.numel() == 5
     with pytest.raises(ValueError, match="wide_multitask"):
         KroneckerMultiTaskBetaGPModel(X, Y)

@@ -249,7 +249,7 @@ class _WideNegativeBinomialMultiTaskCore(ApproximateGPyTorchModel):
             train_Y: Non-negative integer wide targets with shape ``[n, m]``; NaNs are omitted.
             rank: Rank of the learned task covariance.
             num_latents: Reserved LMC-compatible setting; defaults to ``rank``.
-            num_inducing_points: Maximum number of long-form inducing points.
+            num_inducing: Maximum number of long-form inducing points.
             inducing_points: Optional long-form inducing points including task id.
             learn_inducing_locations: Whether inducing locations are trainable.
             likelihood: Optional NegativeBinomial likelihood.
@@ -569,7 +569,7 @@ class NegativeBinomialMultiTaskGPModel(_WideNegativeBinomialMultiTaskCore):
             num_tasks=self.num_tasks,
             rank=self.rank,
             num_latents=self.num_latents,
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
         )
 

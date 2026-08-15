@@ -109,20 +109,9 @@ def setup_input_perturbation(
     )
 
 
-def _extract_transform_metadata(bounds: Tensor | dict | None, normalize: bool) -> tuple[Tensor | None, bool]:
-    """API 側から渡された lightweight metadata を取り出す。
-
-    既存の factory との互換を保つため、InputTransformConfig 側では normalize フラグを
-    bounds に metadata として同梱できるようにしている。
-    """
-    if isinstance(bounds, dict) and bounds.get("__bochan_input_transform_config__", False):
-        return bounds.get("bounds"), bool(bounds.get("normalize", normalize))
-    return bounds, normalize
-
-
 def build_input_transform(
     train_X: Tensor,
-    bounds: Tensor | dict | None,
+    bounds: Tensor | None,
     perturbation: bool,
     categorical_idx: Optional[List[int]] = None,
     n_w: int = N_W,
@@ -136,8 +125,7 @@ def build_input_transform(
         train_X:
             学習入力。
         bounds:
-            raw-space の bounds。API の `InputTransformConfig` 経由では metadata dict が
-            渡される場合もある。None の場合は train_X から自動推定する。
+            raw-space の bounds。None の場合は train_X から自動推定する。
         perturbation:
             InputPerturbation を使うか。
         categorical_idx:
@@ -155,7 +143,6 @@ def build_input_transform(
         - normalize=False かつ perturbation=True の場合、InputPerturbation は raw 空間に適用する。
         - normalize=False かつ perturbation=False の場合、None を返す。
     """
-    bounds, normalize = _extract_transform_metadata(bounds, normalize)
     if bounds is None:
         bounds = _infer_bounds_from_train_X(train_X)
 

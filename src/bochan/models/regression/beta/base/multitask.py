@@ -43,7 +43,7 @@ class BetaMultiTaskLikelihood(BetaLogLikelihood):
         num_tasks: int,
         *,
         task_indices: Tensor,
-        init_concentration: float | Tensor = 20.0,
+        concentration: float | Tensor = 20.0,
         learn_concentration: bool = True,
         **kwargs: Any,
     ) -> None:
@@ -52,18 +52,18 @@ class BetaMultiTaskLikelihood(BetaLogLikelihood):
         Args:
             num_tasks: Number of response tasks.
             task_indices: Long-form task index for every observed cell.
-            init_concentration: Scalar or length-``num_tasks`` initial precision.
+            concentration: Scalar or length-``num_tasks`` initial precision.
             learn_concentration: Whether precision is optimized with the ELBO.
             **kwargs: Arguments forwarded to :class:`BetaLogLikelihood`.
         """
         super().__init__(
-            init_concentration=1.0,
+            concentration=1.0,
             learn_concentration=learn_concentration,
             **kwargs,
         )
         self.register_buffer("task_indices", task_indices.long().clone())
         del self.raw_concentration
-        initial = torch.as_tensor(init_concentration, dtype=torch.get_default_dtype()).flatten()
+        initial = torch.as_tensor(concentration, dtype=torch.get_default_dtype()).flatten()
         if initial.numel() == 1:
             initial = initial.expand(num_tasks).clone()
         if initial.numel() != num_tasks or bool((initial <= 0).any()):
@@ -318,7 +318,6 @@ class _WideBetaMultiTaskCore(ApproximateGPyTorchModel):
         task_covar_module: IndexKernel | None = None,
         link: BetaMeanLink = "sigmoid",
         concentration: float | Tensor = 20.0,
-        init_concentration: float | Tensor | None = None,
         learn_concentration: bool = True,
         min_concentration: float = 1e-6,
         boundary_policy: str = "error",
@@ -331,7 +330,7 @@ class _WideBetaMultiTaskCore(ApproximateGPyTorchModel):
             train_Y: Positive wide targets with shape ``[n, m]``; NaNs are omitted.
             rank: Rank of the learned task covariance.
             num_latents: Reserved LMC-compatible setting; defaults to ``rank``.
-            num_inducing_points: Maximum number of long-form inducing points.
+            num_inducing: Maximum number of long-form inducing points.
             inducing_points: Optional long-form inducing points including task id.
             learn_inducing_locations: Whether inducing locations are trainable.
             likelihood: Optional Beta likelihood.
@@ -341,7 +340,6 @@ class _WideBetaMultiTaskCore(ApproximateGPyTorchModel):
             task_covar_module: Optional task covariance.
             link: Link from latent logits to the Beta mean.
             concentration: Initial scalar or task-specific Beta precision.
-            init_concentration: Deprecated spelling of ``concentration``.
             learn_concentration: Whether task precision is optimized.
             min_concentration: Numerical lower bound for precision.
             boundary_policy: ``error`` (default) or explicit fixed-epsilon ``clip``.
@@ -377,13 +375,11 @@ class _WideBetaMultiTaskCore(ApproximateGPyTorchModel):
         transformed_Y = train_Y.clone()
         long_X, long_Y, observed = _wide_to_long(transformed_X, transformed_Y)
         task_indices = long_X[:, -1].long()
-        if init_concentration is not None:
-            concentration = init_concentration
         likelihood = likelihood or BetaMultiTaskLikelihood(
             self.num_tasks,
             task_indices=task_indices,
             link=link,
-            init_concentration=concentration,
+            concentration=concentration,
             learn_concentration=learn_concentration,
             eps=boundary_epsilon,
             min_concentration=min_concentration,
@@ -607,8 +603,18 @@ class BetaMultiTaskGPModel(_WideBetaMultiTaskCore):
             num_tasks=self.num_tasks,
             rank=self.rank,
             num_latents=self.num_latents,
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             learn_inducing_locations=self.learn_inducing_locations,
+            input_transform=clone_input_transform(self.input_transform),
+            mean_module=copy.deepcopy(self.model.mean_module),
+            covar_module=copy.deepcopy(self.model.data_covar_module),
+            task_covar_module=copy.deepcopy(self.model.task_covar_module),
+            link=self.link,
+            concentration=self.likelihood.concentration.detach().clone(),
+            learn_concentration=self.learn_concentration,
+            min_concentration=self.min_concentration,
+            boundary_policy=self.boundary_policy,
+            boundary_epsilon=self.boundary_epsilon,
         )
 
 

@@ -69,7 +69,7 @@ class NegativeBinomialMixedGPModel(_AlignedNegativeBinomialMixin, _NegativeBinom
             input_transform=clone_input_transform(self.input_transform),
             mean_module=copy.deepcopy(self.model.mean_module),
             covar_module=copy.deepcopy(self.model.covar_module),
-            num_inducing_points=self.num_inducing_points,
+            num_inducing=self.num_inducing,
             inducing_points=self.model.variational_strategy.inducing_points.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             link=self.link,

@@ -272,8 +272,7 @@ class BetaGPModel(_BaseBetaGPModel):
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         link: BetaMeanLink = "sigmoid",
-        init_concentration: float = 20.0,
-        concentration: float | None = None,
+        concentration: float = 20.0,
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
@@ -282,8 +281,6 @@ class BetaGPModel(_BaseBetaGPModel):
         boundary_epsilon: float | None = None,
     ) -> None:
         train_X = torch.as_tensor(train_X)
-        if concentration is not None:
-            init_concentration = float(concentration)
         if boundary_epsilon is not None:
             eps = float(boundary_epsilon)
         train_targets_raw = torch.as_tensor(train_Y, device=train_X.device, dtype=train_X.dtype).detach().clone()
@@ -295,7 +292,7 @@ class BetaGPModel(_BaseBetaGPModel):
         train_X_tf = apply_input_transform_for_training(train_X, input_transform, name="BetaGPModel.input_transform")
         likelihood = likelihood or BetaLogLikelihood(
             link=link,
-            init_concentration=init_concentration,
+            init_concentration=concentration,
             learn_concentration=learn_concentration,
             eps=eps,
             min_concentration=min_concentration,
@@ -321,7 +318,6 @@ class BetaGPModel(_BaseBetaGPModel):
             link=link,
             eps=eps,
         )
-        self.init_concentration = float(init_concentration)
         self.learn_concentration = bool(learn_concentration)
         self.min_concentration = float(min_concentration)
         self.boundary_policy = "clip" if clip_targets is True else str(boundary_policy)
@@ -352,7 +348,7 @@ class BetaGPModel(_BaseBetaGPModel):
             inducing_points=self.model.variational_strategy.inducing_points.detach().clone(),
             learn_inducing_locations=self.learn_inducing_locations,
             link=self.link,
-            init_concentration=float(self.likelihood.concentration.detach().cpu()),
+            concentration=float(self.likelihood.concentration.detach().cpu()),
             learn_concentration=self.learn_concentration,
             eps=self.eps,
             min_concentration=self.min_concentration,
@@ -379,8 +375,7 @@ class BetaMixedGPModel(_BaseBetaGPModel):
         inducing_points: Optional[Tensor] = None,
         learn_inducing_locations: bool = True,
         link: BetaMeanLink = "sigmoid",
-        init_concentration: float = 20.0,
-        concentration: float | None = None,
+        concentration: float = 20.0,
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
@@ -389,8 +384,6 @@ class BetaMixedGPModel(_BaseBetaGPModel):
         boundary_epsilon: float | None = None,
     ) -> None:
         train_X = torch.as_tensor(train_X)
-        if concentration is not None:
-            init_concentration = float(concentration)
         if boundary_epsilon is not None:
             eps = float(boundary_epsilon)
         d = train_X.shape[-1]
@@ -412,7 +405,7 @@ class BetaMixedGPModel(_BaseBetaGPModel):
         check_categorical_columns_unchanged(train_X, train_X_tf, cat_dims=cat_dims)
         likelihood = likelihood or BetaLogLikelihood(
             link=link,
-            init_concentration=init_concentration,
+            init_concentration=concentration,
             learn_concentration=learn_concentration,
             eps=eps,
             min_concentration=min_concentration,
@@ -440,7 +433,6 @@ class BetaMixedGPModel(_BaseBetaGPModel):
             eps=eps,
         )
         self.cat_dims = list(cat_dims)
-        self.init_concentration = float(init_concentration)
         self.learn_concentration = bool(learn_concentration)
         self.min_concentration = float(min_concentration)
         self.boundary_policy = "clip" if clip_targets is True else str(boundary_policy)

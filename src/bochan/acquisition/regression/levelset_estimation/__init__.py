@@ -1,5 +1,4 @@
 from .hetero_multi_output import (
-    HeteroMultiOutputRegressionLevelSetScoreObjective,
     qHeteroMultiOutputRegressionStraddle,
     qHeteroMultiOutputRegressionJointStraddle,
     qHeteroMultiOutputRegressionICU,
@@ -29,7 +28,6 @@ from .input_perturbation_shapes import (
 )
 
 __all__ = [
-    "HeteroMultiOutputRegressionLevelSetScoreObjective",
     "qHeteroMultiOutputRegressionStraddle",
     "qHeteroMultiOutputRegressionJointStraddle",
     "qHeteroMultiOutputRegressionICU",

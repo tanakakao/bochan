@@ -15,6 +15,8 @@ from botorch.models.model import Model
 from botorch.posteriors.posterior import Posterior
 from torch import Tensor, nn
 
+from ._pfns4bo_compat import apply_pfns4bo_torch_compat
+
 _PUBLIC_MODEL_FILES = {
     "hebo_plus": "model_hebo_morebudget_9_unused_features_3.pt",
     "hebo_plus_userprior": "hebo_morebudget_9_unused_features_3_userpriorperdim2_8.pt",
@@ -126,6 +128,7 @@ def load_pfns4bo_pretrained(
             f"Expected one of {sorted(_PUBLIC_MODEL_FILES)}."
         )
 
+    apply_pfns4bo_torch_compat()
     _import_pfns4bo()
     if model_path is None:
         root = Path(cache_dir).expanduser() if cache_dir is not None else _default_cache_dir()
@@ -139,11 +142,7 @@ def load_pfns4bo_pretrained(
         if not path.exists():
             raise FileNotFoundError(f"PFNs4BO checkpoint was not found at {path}.")
 
-    load_kwargs: dict[str, Any] = {"map_location": device}
-    try:
-        model = torch.load(path, weights_only=False, **load_kwargs)
-    except TypeError:  # pragma: no cover - compatibility with older torch
-        model = torch.load(path, **load_kwargs)
+    model = torch.load(path, map_location=device, weights_only=False)
     if not isinstance(model, nn.Module):
         raise TypeError("The PFNs4BO checkpoint did not contain a torch.nn.Module.")
     return model

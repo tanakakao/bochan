@@ -1,16 +1,25 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+import torch
+from botorch.models import SingleTaskGP
 
 from bochan.api import AcquisitionConfig
+from bochan.models.hybrid import HybridMultiOutputModel, OutputSpec
 from bochan.serving.webapp.targets.roles import level_set_thresholds, output_spec_kwargs
 
 
-def _regression_meta(*, value: float = 2.5) -> dict[str, object]:
+def _regression_meta(
+    *,
+    value: float = 2.5,
+    goal: str = "above",
+) -> dict[str, object]:
     return {
         "target": "y",
         "internal_task": "regression",
-        "goal": "above",
+        "goal": goal,
         "configured_value": value,
         "direction": "maximize",
         "class_index": None,
@@ -78,6 +87,90 @@ def test_single_output_web_level_set_uses_hybrid_objective_acquisition(
     assert "thresholds" not in config.acqf_kwargs
     assert "output_weights" not in config.acqf_kwargs
     assert "output_reduction" not in config.acqf_kwargs
+
+
+def test_regression_target_level_set_routes_user_threshold_to_zero_distance_contour() -> None:
+    meta = _regression_meta(value=3.75, goal="target")
+    spec = output_spec_kwargs(meta)
+    thresholds = level_set_thresholds(
+        target_columns=["y"],
+        target_metadata={"y": meta},
+        objective_targets=["y"],
+    )
+    config = AcquisitionConfig(
+        name="straddle",
+        acqf_kwargs={
+            "thresholds": thresholds,
+            "output_weights": [1.0],
+            "output_reduction": "weighted_mean",
+        },
+    )
+
+    # The Web hybrid output becomes -|y - 3.75|, so the equivalent LSE
+    # acquisition boundary is zero.  This is exactly beta*sigma - |mu - h|
+    # for Straddle and the same threshold-centering used by BV / ICU.
+    assert spec["eq_target"] == pytest.approx(3.75)
+    assert list(thresholds) == [0.0]
+    assert config.acqf_cls is not None
+    assert config.acqf_cls.__name__ == "qRegressionStraddle"
+    assert config.acqf_kwargs["threshold"] == pytest.approx(0.0)
+
+
+def test_regression_target_level_set_actual_straddle_uses_user_threshold() -> None:
+    threshold = 3.75
+    meta = _regression_meta(value=threshold, goal="target")
+    train_x = torch.tensor([[0.0], [0.5], [1.0]], dtype=torch.double)
+    train_y = torch.tensor([[2.0], [3.0], [5.0]], dtype=torch.double)
+    base_model = SingleTaskGP(train_x, train_y)
+    base_model.eval()
+    hybrid_model = HybridMultiOutputModel(
+        [
+            OutputSpec(
+                name="y",
+                task_type="regression",
+                model=base_model,
+                **output_spec_kwargs(meta),
+            )
+        ]
+    )
+    thresholds = level_set_thresholds(
+        target_columns=["y"],
+        target_metadata={"y": meta},
+        objective_targets=["y"],
+    )
+    config = AcquisitionConfig(
+        name="straddle",
+        acqf_kwargs={
+            "thresholds": thresholds,
+            "output_weights": [1.0],
+            "output_reduction": "weighted_mean",
+        },
+    )
+    assert config.acqf_cls is not None
+    acquisition = config.acqf_cls(model=hybrid_model, **config.acqf_kwargs)
+
+    candidate = torch.tensor([[[0.35]]], dtype=torch.double)
+    posterior = base_model.posterior(candidate, observation_noise=False)
+    mean = posterior.mean.squeeze(-1)
+    std = posterior.variance.clamp_min(1e-12).sqrt().squeeze(-1)
+    expected = 1.96 * std - (mean - threshold).abs()
+    actual = acquisition(candidate)
+
+    assert acquisition.threshold.item() == pytest.approx(0.0)
+    assert hybrid_model.specs[0].eq_target == pytest.approx(threshold)
+    assert torch.allclose(actual, expected.squeeze(-1), atol=1e-8, rtol=1e-6)
+
+
+def test_lse_uses_wider_untouched_candidate_distance_default() -> None:
+    source = Path("web/src/context/useWorkbenchRunSettings.ts").read_text(
+        encoding="utf-8"
+    )
+
+    assert "const DEFAULT_CANDIDATE_DISTANCE_RATIO = 1e-3;" in source
+    assert "const DEFAULT_LSE_CANDIDATE_DISTANCE_RATIO = 1e-2;" in source
+    assert "minimumCandidateDistanceTouched" in source
+    assert 'nextFamily === "level_set_estimation"' in source
+    assert "restored.minimumCandidateDistanceRatio" in source
 
 
 def test_multiclass_level_set_uses_selected_class_probability_objective() -> None:

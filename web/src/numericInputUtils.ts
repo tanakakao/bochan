@@ -46,36 +46,8 @@ function isDynamicNumberInput(element: EventTarget | null): element is HTMLInput
   return true;
 }
 
-function updateInputStep(element: EventTarget | null): void {
+/** Update one React-owned number input before the browser applies spinner/arrow increments. */
+export function updateDynamicNumberInputStep(element: EventTarget | null): void {
   if (!isDynamicNumberInput(element)) return;
   element.step = String(dynamicNumberStep(element.value, [element.min, element.max]));
-}
-
-/**
- * Keep continuous number-input spinner and ArrowUp / ArrowDown increments aligned
- * with the current value scale. Explicit integer controls (`step=1`) are ignored.
- */
-export function installDynamicNumberInputSteps(root: Document = document): () => void {
-  const updateFromEvent = (event: Event) => updateInputStep(event.target);
-  const updateFromKeyboard = (event: KeyboardEvent) => {
-    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
-      updateInputStep(event.target);
-    }
-  };
-  const updateAll = () => {
-    root.querySelectorAll<HTMLInputElement>('input[type="number"]').forEach(updateInputStep);
-  };
-
-  root.addEventListener("focusin", updateFromEvent, true);
-  root.addEventListener("pointerdown", updateFromEvent, true);
-  root.addEventListener("input", updateFromEvent, true);
-  root.addEventListener("keydown", updateFromKeyboard, true);
-  queueMicrotask(updateAll);
-
-  return () => {
-    root.removeEventListener("focusin", updateFromEvent, true);
-    root.removeEventListener("pointerdown", updateFromEvent, true);
-    root.removeEventListener("input", updateFromEvent, true);
-    root.removeEventListener("keydown", updateFromKeyboard, true);
-  };
 }

@@ -283,7 +283,7 @@ class BetaLogLikelihood(_OneDimensionalLikelihood):
     def __init__(
         self,
         link: BetaMeanLink = "sigmoid",
-        init_concentration: float = 20.0,
+        concentration: float = 20.0,
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
@@ -292,16 +292,16 @@ class BetaLogLikelihood(_OneDimensionalLikelihood):
             raise ValueError("link must be 'sigmoid' or 'probit'.")
         if not 0.0 < float(eps) < 0.5:
             raise ValueError("eps must satisfy 0 < eps < 0.5.")
-        if not math.isfinite(float(init_concentration)) or float(init_concentration) <= 0.0:
-            raise ValueError("init_concentration must be finite and positive.")
+        if not math.isfinite(float(concentration)) or float(concentration) <= 0.0:
+            raise ValueError("concentration must be finite and positive.")
         if not math.isfinite(float(min_concentration)) or float(min_concentration) <= 0.0:
             raise ValueError("min_concentration must be finite and positive.")
         super().__init__()
         self.link = str(link)
         self.eps = float(eps)
         self.min_concentration = float(min_concentration)
-        init = torch.as_tensor(float(init_concentration)).clamp_min(self.min_concentration)
-        raw = torch.log(torch.expm1(init))
+        initial = torch.as_tensor(float(concentration)).clamp_min(self.min_concentration)
+        raw = torch.log(torch.expm1(initial))
         if learn_concentration:
             self.register_parameter("raw_concentration", torch.nn.Parameter(raw.clone()))
         else:

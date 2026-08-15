@@ -25,7 +25,7 @@ interface RestoredRunSettings {
 export function useWorkbenchRunSettings() {
   const [normalize, setNormalize] = useState(true);
   const [inputPerturbation, setInputPerturbation] = useState(false);
-  const [nW, setNW] = useState(16);
+  const [nW, setNW] = useState(4);
   const [perturbationStd, setPerturbationStd] = useState(0.1);
   const [projectionDimensions, setProjectionDimensions] = useState(2);
   const [modelType, setModelType] = useState("base");
@@ -48,7 +48,7 @@ export function useWorkbenchRunSettings() {
   function resetDatasetSensitiveSettings(nextProjectionDimensions: number) {
     setNormalize(true);
     setInputPerturbation(false);
-    setNW(16);
+    setNW(4);
     setPerturbationStd(0.1);
     setProjectionDimensions(nextProjectionDimensions);
     setModelType("base");

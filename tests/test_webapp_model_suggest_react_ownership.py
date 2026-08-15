@@ -47,10 +47,11 @@ def test_model_and_suggest_keep_primary_controls_visible_before_details() -> Non
 
     training = settings.index("<h4>学習</h4>", model_details)
     robustness = settings.index("<h4>頑健化</h4>", model_details)
-    missing_noise = settings.index("<h4>欠損値・観測ノイズ</h4>", model_details)
+    missing_values = settings.index("<h4>欠損値</h4>", model_details)
+    observation_noise = settings.index("<h4>観測ノイズ</h4>", model_details)
     accuracy = settings.index("<h3>精度評価</h3>", model_details)
     importance = settings.index("<h3>特徴量重要度</h3>", model_details)
-    assert model_details < training < robustness < missing_noise < accuracy < importance
+    assert model_details < training < robustness < missing_values < observation_noise < accuracy < importance
 
     target_proposal = optimize.index("<TargetProposalSettings")
     suggest_card = optimize.index('className="panel suggestion-workbench-card"')
@@ -71,3 +72,19 @@ def test_model_and_suggest_keep_primary_controls_visible_before_details() -> Non
     responsive = workflow[workflow.index("@media (max-width: 980px)") :]
     assert ".model-config-grid," in responsive
     assert "grid-template-columns: 1fr;" in responsive
+
+
+def test_model_defaults_and_detail_copy_are_intentional() -> None:
+    settings = Path("web/src/pages/SettingsPage.tsx").read_text(encoding="utf-8")
+    run_settings = Path("web/src/context/useWorkbenchRunSettings.ts").read_text(encoding="utf-8")
+
+    assert 'const [inputPerturbation, setInputPerturbation] = useState(false);' in run_settings
+    assert 'const [nW, setNW] = useState(4);' in run_settings
+    assert "setInputPerturbation(false);" in run_settings
+    assert "setNW(4);" in run_settings
+
+    assert "CVのON/OFFは上のモデル選択欄で切り替え" not in settings
+    assert "計算のON/OFFは上のモデル選択欄で切り替え" not in settings
+    assert "モデル選択欄でCVを有効にすると" not in settings
+    assert "モデル選択欄で特徴量重要度を有効にすると" not in settings
+    assert "基本設定で入力摂動を有効にすると" not in settings

@@ -181,7 +181,7 @@ export function createGuidedAnalysisConfig({
     model: {
       normalize: true,
       inputPerturbation: false,
-      nW: 16,
+      nW: 4,
       perturbationStd: 0.1,
       projectionDimensions: Math.min(2, Math.max(featureCount, 1)),
       modelType: "base",

@@ -7,10 +7,8 @@
   outline-color: var(--danger);
 }
 
-/* Keep Select cards tall enough for compact warning metadata without clipping. */
-.target-variable-choice,
-.simple-feature-choice,
-.feature-variable-choice {
+/* Give target-variable cards a little more vertical room without changing feature cards. */
+.target-variable-choice {
   min-height: 60px;
   box-sizing: border-box;
 }

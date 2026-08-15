@@ -8,18 +8,6 @@ interface DatasetPayload {
 
 let installed = false;
 let originalFetch: typeof window.fetch | null = null;
-let visibilityScheduled = false;
-
-function compositionIsSelected(): boolean {
-  try {
-    const raw = window.localStorage.getItem(COMPOSITION_SETTINGS_KEY);
-    if (!raw) return false;
-    const settings = JSON.parse(raw) as Record<string, unknown>;
-    return Boolean(settings.enabled && String(settings.column ?? "").trim());
-  } catch {
-    return false;
-  }
-}
 
 function resetCompositionSelection(): void {
   window.localStorage.setItem(
@@ -27,27 +15,6 @@ function resetCompositionSelection(): void {
     JSON.stringify({ enabled: false, column: "", elements: [] })
   );
   window.dispatchEvent(new CustomEvent(COMPOSITION_CHANGE_EVENT));
-}
-
-function synchronizeCompositionPanelVisibility(): void {
-  const visible = compositionIsSelected();
-  document
-    .querySelectorAll<HTMLElement>(
-      ".composition-model-settings-host, .composition-constraint-settings-host"
-    )
-    .forEach((host) => {
-      host.hidden = !visible;
-      host.setAttribute("aria-hidden", String(!visible));
-    });
-}
-
-function scheduleVisibilitySynchronization(): void {
-  if (visibilityScheduled) return;
-  visibilityScheduled = true;
-  queueMicrotask(() => {
-    visibilityScheduled = false;
-    synchronizeCompositionPanelVisibility();
-  });
 }
 
 function isDatasetResponse(url: URL, method: string): boolean {
@@ -89,13 +56,9 @@ function installDatasetFetchGuard(): void {
   };
 }
 
+/** Reset composition selection when the active dataset changes, without touching the DOM. */
 export function installCompositionDatasetState(): void {
   if (installed) return;
   installed = true;
   installDatasetFetchGuard();
-
-  const observer = new MutationObserver(scheduleVisibilitySynchronization);
-  observer.observe(document.documentElement, { subtree: true, childList: true });
-  window.addEventListener(COMPOSITION_CHANGE_EVENT, scheduleVisibilitySynchronization);
-  scheduleVisibilitySynchronization();
 }

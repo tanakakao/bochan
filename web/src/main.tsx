@@ -7,8 +7,6 @@ import { installCompositionRuntime } from "./compositionRuntime";
 import { installCompositionVisualizationGuard } from "./compositionVisualizationGuard";
 import { installConversationIconRuntime } from "./conversationIconRuntime";
 import { installDynamicNumberInputSteps } from "./numericInputUtils";
-import { installUxEnhancementsRuntime } from "./uxEnhancementsRuntime";
-import { installUxCorrectionsRuntime } from "./uxCorrectionsRuntime";
 import "./styles.css";
 import "./target-settings.css";
 import "./constraint-settings.css";
@@ -35,8 +33,6 @@ installCompositionRuntime();
 installCompositionDatasetState();
 installCompositionVisualizationGuard();
 installConversationIconRuntime();
-installUxEnhancementsRuntime();
-installUxCorrectionsRuntime();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

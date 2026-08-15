@@ -193,7 +193,7 @@ class DeepBetaGPModel(_BaseBetaDeepGPModel):
         input_transform: InputTransform | None = None,
         likelihood: BetaLogLikelihood | None = None,
         link: BetaMeanLink = "sigmoid",
-        init_concentration: float = 20.0,
+        concentration: float = 20.0,
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
@@ -268,7 +268,7 @@ class DeepBetaGPModel(_BaseBetaDeepGPModel):
         )
         self.likelihood = likelihood or BetaLogLikelihood(
             link=link,
-            init_concentration=init_concentration,
+            concentration=concentration,
             learn_concentration=learn_concentration,
             eps=eps,
             min_concentration=min_concentration,
@@ -287,7 +287,6 @@ class DeepBetaGPModel(_BaseBetaDeepGPModel):
             None if posterior_seed is None else int(posterior_seed)
         )
         self.link = link
-        self.init_concentration = float(init_concentration)
         self.learn_concentration = bool(learn_concentration)
         self.eps = float(eps)
         self.min_concentration = float(min_concentration)
@@ -337,7 +336,7 @@ class DeepBetaGPModel(_BaseBetaDeepGPModel):
             input_transform=clone_input_transform(self.input_transform),
             likelihood=copy.deepcopy(self.likelihood),
             link=self.link,
-            init_concentration=float(
+            concentration=float(
                 self.likelihood.concentration.detach().cpu()
             ),
             learn_concentration=self.learn_concentration,
@@ -369,7 +368,7 @@ class DeepBetaMixedGPModel(_BaseBetaDeepGPModel):
         input_transform: InputTransform | None = None,
         likelihood: BetaLogLikelihood | None = None,
         link: BetaMeanLink = "sigmoid",
-        init_concentration: float = 20.0,
+        concentration: float = 20.0,
         learn_concentration: bool = True,
         eps: float = 1e-6,
         min_concentration: float = 1e-6,
@@ -432,7 +431,7 @@ class DeepBetaMixedGPModel(_BaseBetaDeepGPModel):
         )
         self.likelihood = likelihood or BetaLogLikelihood(
             link=link,
-            init_concentration=init_concentration,
+            concentration=concentration,
             learn_concentration=learn_concentration,
             eps=eps,
             min_concentration=min_concentration,
@@ -450,7 +449,6 @@ class DeepBetaMixedGPModel(_BaseBetaDeepGPModel):
             None if posterior_seed is None else int(posterior_seed)
         )
         self.link = link
-        self.init_concentration = float(init_concentration)
         self.learn_concentration = bool(learn_concentration)
         self.eps = float(eps)
         self.min_concentration = float(min_concentration)

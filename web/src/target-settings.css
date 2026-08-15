@@ -1,4 +1,5 @@
 .selection-grid {
+  --select-variable-card-min-height: 56px;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
@@ -27,7 +28,7 @@
 
 .variable-choice {
   width: 100%;
-  min-height: 54px;
+  min-height: var(--select-variable-card-min-height);
   display: flex;
   align-items: center;
   justify-content: flex-start;

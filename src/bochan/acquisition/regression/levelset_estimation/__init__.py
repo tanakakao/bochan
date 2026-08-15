@@ -7,7 +7,6 @@ from .hetero_multi_output import (
     qHeteroMultiOutputRegressionProbabilityOfExceedance,
 )
 from .hetero_single_output import (
-    HeteroRegressionLevelSetScoreObjective,
     qHeteroRegressionStraddle,
     qHeteroRegressionJointStraddle,
     qHeteroRegressionICU,
@@ -36,7 +35,6 @@ __all__ = [
     "qHeteroMultiOutputRegressionICU",
     "qHeteroMultiOutputRegressionBoundaryVariance",
     "qHeteroMultiOutputRegressionProbabilityOfExceedance",
-    "HeteroRegressionLevelSetScoreObjective",
     "qHeteroRegressionStraddle",
     "qHeteroRegressionJointStraddle",
     "qHeteroRegressionICU",

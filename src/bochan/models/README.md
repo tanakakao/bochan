@@ -1,16 +1,12 @@
 # models package
 
-`bochan.models` contains BoTorch-style surrogate-model wrappers used by the
+`bochan.models` contains BoTorch-style surrogate model wrappers used by the
 acquisition package and higher-level optimization / active-learning workflows.
 
-The package is organized along two axes:
-
-1. **model family / response semantics** — regression, classification, ordinal,
-   hybrid, external, and related concrete model implementations;
-2. **cross-cutting strategy** — multi-task, independent multi-output, and
-   multi-fidelity mechanics that can be reused by several concrete families.
-
-The canonical ownership rules are documented in `ARCHITECTURE.md`.
+The package is organized around model families rather than one-off experiments.
+Each family should expose a consistent wrapper API so that acquisition functions,
+fit helpers, visualization utilities, tabular wrappers, serving APIs, and
+candidate-generation code can treat models uniformly.
 
 ---
 
@@ -20,36 +16,33 @@ The main goals of this package are:
 
 1. Keep a BoTorch-like public interface.
 2. Separate raw search-space inputs from transformed / latent-model inputs.
-3. Keep posterior semantics explicit across regression, classification, ordinal,
-   and non-Gaussian response families.
-4. Make advanced variants discoverable through regular family-owned paths.
-5. Keep cross-family mechanics in dedicated strategy packages rather than
-   duplicating them in each model family.
-6. Avoid model-specific acquisition logic when a BoTorch-compatible posterior or
-   objective is sufficient.
-7. Keep high-level registry behavior explicit and lazy.
+3. Use consistent naming across regression, binary classification, multiclass
+   classification, ordinal regression, and non-Gaussian regression.
+4. Make advanced model variants discoverable through a regular directory layout.
+5. Avoid adding custom model-specific acquisition logic when BoTorch-compatible
+   posterior / objective behavior is enough.
+6. Keep high-level API registry behavior explicit, especially for model families
+   that exist in `models/` but are not yet exposed by the default API registry.
 
 A model wrapper should generally provide:
 
-- `posterior(X, ...)`;
-- `latent_posterior(X, ...)` when the model has a latent GP layer;
-- `condition_on_observations(X, Y, ...)` when supported;
-- `make_mll()` for the recommended marginal log-likelihood / ELBO;
-- `train_inputs`;
-- `train_inputs_raw`;
-- `train_targets`;
-- `input_transform` support where applicable.
+- `posterior(X, ...)`
+- `latent_posterior(X, ...)` when the model has a latent GP layer
+- `condition_on_observations(X, Y, ...)` when supported
+- `make_mll()` for the recommended marginal log-likelihood / ELBO
+- `train_inputs`
+- `train_inputs_raw`
+- `train_targets`
+- `input_transform` support where applicable
 
 ---
 
 ## Current layout
 
-The current broad package layout is:
-
 ```text
 models/
-├── components/          # shared likelihood/posterior/decomposition primitives
-├── transforms/          # shared input-transform builders
+├── components/
+├── transforms/
 ├── regression/
 │   ├── gaussian/
 │   ├── beta/
@@ -71,81 +64,95 @@ models/
 └── external/
 ```
 
-Important ownership rules:
+Notes:
 
-- `regression/gaussian/` owns standard continuous Gaussian-response models.
-- `regression/beta/` and `regression/gamma/` own continuous non-Gaussian
-  response families.
+- `regression/gaussian/` is the standard continuous-output regression family.
+- `regression/beta/` and `regression/gamma/` own continuous non-Gaussian response families.
 - `regression/count/{poisson,negative_binomial}/` owns count-response families.
 - `regression/external/`, `regression/foundation/`, and `regression/neural/` own
-  regression-specific integrations such as external estimators, PFN-style
-  foundation models, and deep ensembles.
-- `classification/binary/` and `classification/multiclass/` remain separate
-  because their likelihoods, posterior semantics, target labels, and
-  acquisitions differ.
-- `classification/common/` contains shared classification internals rather than
-  a concrete public task family.
-- `ordinal/` is a first-class family because cutpoints, ordered probabilities,
-  and boundary-aware acquisitions are central to its semantics.
-- `hybrid/` combines heterogeneous task families while preserving output task
-  metadata.
-- `multitask/` owns correlated task/output mechanics and task-feature adapters.
+  regression-specific external-estimator, foundation-model, and neural-ensemble
+  integrations.
+- `classification/binary/` and `classification/multiclass/` are separated because
+  their likelihoods, posterior semantics, target labels, and acquisition
+  objectives are different.
+- `classification/common/` contains shared classification internals rather than a
+  concrete public task family.
+- `ordinal/` is treated as its own family rather than a special case of
+  classification, because ordinal cutpoints and boundary-aware acquisitions are
+  central to its API.
+- `hybrid/` contains wrappers and output specifications for heterogeneous
+  multi-output models that combine regression, binary, multiclass, and ordinal
+  outputs.
+- `multitask/` owns correlated task/output mechanics, task-feature adapters, and
+  shared multi-task infrastructure.
 - `multioutput/` owns wrappers that aggregate independently fitted outputs.
 - `multifidelity/` owns reusable fidelity-axis abstractions and adapters.
-- concrete likelihood-specific multi-task / multi-fidelity implementations stay
+- concrete likelihood-specific multi-task or multi-fidelity implementations stay
   with their owning family when they are not genuinely cross-family.
+- `components/` contains reusable likelihoods, posterior wrappers, transforms,
+  kernels, decomposition utilities, and small helper functions shared by model
+  wrappers.
+- `transforms/` contains input-transform builders used by the API layer, including
+  Normalize and input perturbation composition.
 
-This means **multi-output does not imply multi-task correlation**.
+This separation is intentional: **multi-output does not imply multi-task
+correlation**. See `ARCHITECTURE.md` for the canonical ownership rules.
 
 ---
 
-## Common family convention
+## Directory convention inside each family
 
-GP-oriented response families commonly use subpackages such as:
+Where possible, GP-oriented model families use the same internal subdirectories:
 
 | Directory | Meaning |
 |---|---|
-| `base/` | Standard wrappers and core likelihood / posterior integration. |
+| `base/` | Standard model wrappers and core likelihood / posterior integration. |
 | `deep/` | DeepGP or Deep Kernel GP variants. |
-| `high_dim/` | PCA, REMBO, SAAS, VAE, or related high-dimensional wrappers. |
+| `high_dim/` | PCA, REMBO, SAAS, VAE, or other high-dimensional wrappers. |
 | `robust/` | Heteroscedastic, robust relevance pursuit, or noise-aware variants. |
 
-This convention is intentionally not forced onto external / foundation / neural
-integrations when a different grouping is clearer.
+Not every family is required to have a complete implementation in every
+subcategory. External, foundation, and neural integrations may use a different
+family-specific grouping when that is clearer. If a file exists only as a
+placeholder, it should say so clearly in its docstring.
 
 ---
 
 ## High-level API registry support
 
-The canonical high-level model registry lives in
-`bochan.api.registry.model`. It is lazy and is indexed by:
+The default high-level registry in `bochan.api.registry.model` is lazy and maps
+`input_type`, `task_type`, and `model_type` to model classes only when they are
+requested.
 
-```text
-input_type -> task_type -> model_type
-```
+The exact registered `model_type` values are task-dependent and evolve as model
+families are added. The registry is the source of truth; this README intentionally
+does not maintain a second exhaustive flat table that can drift from the code.
 
-The exact `model_type` set is **task-dependent** and changes as families are
-added. The registry itself is the source of truth; this README intentionally does
-not maintain a second exhaustive flat list.
+Representative groups currently include:
 
-Representative normal-input regression strategies currently include:
-
-- GP families: `base`, `kronecker`, `multitask`, `multifidelity`, `deepgp`,
-  `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `vae`, `rrp`,
-  `hetero`;
-- external / neural / foundation families: `lightgbm`, `lightgbm_ensemble`,
-  `ngboost`, `ngboost_ensemble`, `random_forest`, `deep_ensemble`, `pfn`,
-  `tabpfn`;
+- Gaussian GP strategies such as `base`, `kronecker`, `multitask`,
+  `multifidelity`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`,
+  `rembo`, `vae`, `rrp`, and `hetero` where supported;
+- external / neural / foundation estimators such as `lightgbm`,
+  `lightgbm_ensemble`, `ngboost`, `ngboost_ensemble`, `random_forest`,
+  `deep_ensemble`, `pfn`, and `tabpfn` where supported;
 - distribution-specific regression keys prefixed by `beta_`, `gamma_`,
   `poisson_`, and `negative_binomial_`.
 
 Binary, multiclass, ordinal, multi-objective, mixed-input, multi-task, and
 multi-fidelity registries expose the subset appropriate to their task contracts.
-For example, a model key that exists for regression should not be assumed to be
-available for multiclass or ordinal tasks unless it is registered there.
+A key available for regression should not be assumed to exist for another task
+unless it is registered there.
 
-When `cat_dims` is supplied, the API may infer mixed-input handling where the
-requested model family supports it.
+When `cat_dims` is supplied, the API may infer `input_type="mixed"` where the
+requested model family supports mixed inputs.
+
+### Non-Gaussian registry status
+
+Distribution-specific regression models live directly under their owning
+families: `models/regression/beta/`, `models/regression/gamma/`, and
+`models/regression/count/`. The standard high-level registry resolves these
+canonical package paths.
 
 ---
 
@@ -160,134 +167,248 @@ train_inputs      = inputs actually used by the internal latent / BoTorch model
 train_inputs_raw  = original raw search-space inputs
 ```
 
-For models without a transform or dimension reduction, these may contain the
+For models without any transform or dimension reduction, these can contain the
 same values. For transformed, mixed, high-dimensional, or input-perturbation
-models they are intentionally different.
+models, they are intentionally different.
 
 This distinction matters because:
 
-- fit helpers usually need the internal training-input shape;
+- fit helpers usually need the internal training input shape;
 - visualization and candidate-update logic often need raw search-space inputs;
 - high-dimensional wrappers may train on latent `Z` while accepting raw `X` at
-  the public boundary;
+  the public API boundary;
 - mixed models must preserve categorical columns while transforming continuous
   columns.
 
 ### `posterior(X, ...)`
 
 `posterior(X)` should return the prediction object expected by downstream
-acquisition functions, but its semantics depend on the model family.
+acquisition functions.
 
-| Family | Main public posterior semantics |
+Examples:
+
+| Family | `posterior(X)` should represent |
 |---|---|
-| Gaussian regression | continuous response predictive distribution |
-| Binary classification | probability-scale prediction / posterior |
-| Multiclass classification | class-probability representation |
-| Ordinal regression | latent score or task-specific ordinal posterior contract; class probabilities are exposed separately where required |
-| Poisson / count regression | response rate / count-scale posterior wrapper |
-| Beta regression | response mean / Beta observation-scale posterior wrapper |
-| Gamma regression | positive response posterior wrapper |
-| Hybrid multi-output | task-aware output collection or objective-space posterior |
+| Gaussian regression | predictive distribution of continuous response `y` |
+| Binary classification | predictive Bernoulli probability / probability-scale posterior |
+| Multiclass classification | class probability / simplex-like predictive representation |
+| Ordinal regression | ordinal class probabilities or expected utility depending on wrapper design |
+| Poisson non-Gaussian | response rate / count-scale posterior wrapper |
+| Beta non-Gaussian | response mean / Beta observation-scale posterior wrapper |
+| Gamma non-Gaussian | response mean / positive response posterior wrapper |
+| Negative Binomial non-Gaussian | response mean / count-scale posterior wrapper |
+| Hybrid multi-output | output collection or objective-space posterior assembled from submodels |
 
-Do not infer epistemic uncertainty merely from a common `[..., q, m]` shape.
-Independent ModelList outputs, correlated multi-task outputs, and heterogeneous
-transformed outputs have different covariance semantics.
+For acquisition functions that need the latent GP directly, provide
+`latent_posterior(X)`.
 
 ### `latent_posterior(X, ...)`
 
 Use `latent_posterior` when the model is trained through a latent GP but the
-public prediction is transformed through a likelihood or link function.
+public `posterior` exposes a transformed response-scale distribution.
 
 Typical examples:
 
 - binary classification: latent `f` -> sigmoid probability;
 - multiclass classification: class-wise latent GP -> class probabilities;
-- ordinal regression: latent `f` -> cutpoint probabilities;
+- ordinal regression: latent `f` -> cutpoint class probabilities;
 - Poisson regression: latent `f` -> positive rate;
 - Beta regression: latent `f` -> mean in `(0, 1)`;
 - Gamma / Negative Binomial regression: latent `f` -> positive mean.
 
 ### `forward(X)`
 
-For GPyTorch-trained wrappers, `forward(X)` should return the latent distribution
-used by the likelihood during fitting. The public prediction API should remain
-`posterior(X)`.
+For GP wrappers that are trained through GPyTorch MLL / ELBO, `forward(X)` should
+return the latent GP distribution used by the likelihood during fitting. The
+public prediction API should remain `posterior(X)`.
 
 ### `make_mll()`
 
-Wrappers should expose `make_mll()` when there is a recommended training
+Wrappers should expose a `make_mll()` method when there is a recommended training
 objective.
 
 Typical examples:
 
 - exact Gaussian GP: `ExactMarginalLogLikelihood`;
 - variational classification / ordinal / non-Gaussian GP: `VariationalELBO` or
-  another family-appropriate approximate MLL;
-- deep wrappers: family-specific MLL helpers where required.
+  another approximate MLL;
+- deep GP / deep kernel wrappers: family-specific MLL helpers when required.
+
+This makes examples less ambiguous than manually constructing `mll` from nested
+attributes.
 
 ### `condition_on_observations`
 
 Where supported, `condition_on_observations(X, Y, ...)` should accept raw
 search-space `X`, update the raw training set, apply target preparation, and
-return a new wrapper with consistent transforms / likelihood state.
+return a new wrapper instance with consistent transforms / likelihood state.
 
-Unsupported Gaussian-style `noise=` arguments for non-Gaussian or classification
-families should raise explicitly instead of being silently ignored.
+For non-Gaussian or classification models, observation noise passed through a
+Gaussian-style `noise=` argument may be unsupported. In that case, the method
+should raise `NotImplementedError` explicitly rather than silently ignoring it.
 
 ---
 
 ## Model families
 
-### Gaussian regression
+## 1. Gaussian regression
 
-Gaussian regression is the standard continuous-output family. Typical variants
-include exact GP, mixed-input GP, DeepGP / Deep Kernel GP, PCA / REMBO / SAAS /
-VAE high-dimensional wrappers, multi-task / multi-fidelity forms, robust
-relevance pursuit, and heteroscedastic models.
+Gaussian regression models are the standard continuous-output models. They are
+used when the observation model is well approximated by a Gaussian likelihood.
 
-Prefer BoTorch standard acquisitions whenever the model exposes a compatible
-posterior.
+Typical use cases:
 
-### Non-Gaussian regression
+- continuous response optimization;
+- continuous response active learning;
+- level-set estimation for scalar thresholds;
+- multi-output regression through independent model lists or compatible
+  multi-output wrappers.
 
-Current non-Gaussian response ownership is:
+Common variants:
 
-| Family | Path | Target type |
+- base exact GP wrappers;
+- mixed continuous / categorical GP wrappers;
+- DeepGP and Deep Kernel GP variants;
+- high-dimensional wrappers such as PCA / REMBO / SAAS;
+- robust relevance pursuit and heteroscedastic variants.
+
+For standard Bayesian optimization, prefer BoTorch's existing acquisition
+functions whenever the wrapper exposes a BoTorch-compatible posterior.
+
+---
+
+## 2. Non-Gaussian regression
+
+Non-Gaussian regression models are used when the response distribution is not
+well described by Gaussian observation noise.
+
+Current families:
+
+| Family | Target type | Typical link / response scale |
 |---|---|---|
-| Beta | `regression/beta/` | continuous values in `(0, 1)` |
-| Gamma | `regression/gamma/` | positive continuous values |
-| Poisson | `regression/count/poisson/` | non-negative integer counts |
-| Negative Binomial | `regression/count/negative_binomial/` | over-dispersed counts |
+| Poisson | non-negative integer counts | latent `f` -> rate `lambda` |
+| Beta | continuous values in `(0, 1)` | latent `f` -> mean `mu` |
+| Gamma | positive continuous values | latent `f` -> positive mean |
+| Negative Binomial | over-dispersed counts | latent `f` -> positive mean |
 
-These families commonly use `base/`, `deep/`, `high_dim/`, and `robust/`
-subpackages. Multi-task and Kronecker variants that are specific to a likelihood
-remain under that likelihood's family-owned path.
+Layout:
 
-Custom non-Gaussian active-learning and level-set acquisitions live under
-`bochan.acquisition.non_gaussian`. Standard BO acquisitions are not reimplemented
-when the response-scale posterior and objective are sufficient.
+```text
+regression/<family>/  # beta / gamma
+regression/count/<family>/  # poisson / negative_binomial
+├── base/
+├── deep/
+├── high_dim/
+└── robust/
+```
 
-### Binary classification
+Design notes:
 
-Binary classification uses a latent GP plus a probability-scale prediction
-contract. Typical uses include feasibility modeling, binary constraints,
-boundary exploration, and active learning with entropy / BALD / margin criteria.
+- The model-specific likelihood and posterior helpers live in
+  `models/components/<family>.py`.
+- The wrapper should expose `posterior(X)` on the response scale.
+- The wrapper should expose `latent_posterior(X)` for acquisition functions that
+  need latent GP uncertainty.
+- `posterior.rsample()` should be interpreted as differentiable response-scale
+  samples such as rate or mean samples, not necessarily raw observation samples.
+- Raw observation samples such as Poisson counts may be non-reparameterized and
+  should be provided through explicit helper methods when needed.
 
-### Multiclass classification
+Acquisition notes:
 
-Multiclass labels are unordered. Posterior semantics are class probabilities,
-and target-class BO / LSE operates on selected class probabilities rather than
-ordered cutpoints.
+- Custom non-Gaussian active-learning and level-set acquisitions live under
+  `bochan.acquisition.non_gaussian`.
+- Standard BO acquisitions such as qEI / qNEI / qUCB are not reimplemented if the
+  response-scale posterior and objective are sufficient.
 
-### Ordinal regression
+---
 
-Ordinal models represent ordered labels with latent scores and cutpoints.
-Class-probability and expected-utility operations should preserve that ordering
-rather than treating the task as unordered multiclass classification.
+## 3. Binary classification
 
-### Hybrid multi-output models
+Binary classification models use a latent GP and a classification likelihood or
+posterior wrapper to expose probability-scale predictions.
 
-Hybrid models combine heterogeneous outputs, for example:
+Typical use cases:
+
+- feasibility modeling;
+- binary constraints in Bayesian optimization;
+- boundary exploration;
+- active learning with BALD / entropy / margin uncertainty.
+
+Important conventions:
+
+- `forward(X)` returns latent GP quantities used for training.
+- `latent_posterior(X)` returns the latent GP posterior.
+- `posterior(X)` should expose probability-scale predictions when the wrapper is
+  intended for acquisition functions.
+- Mixed models should keep categorical columns unmodified by continuous input
+  transforms.
+
+Binary classification is kept under `classification/binary/` instead of
+`classification/base/` because multiclass classification has different posterior
+semantics and shape expectations.
+
+---
+
+## 4. Multiclass classification
+
+Multiclass classification models extend the classification family to more than
+two unordered classes.
+
+Typical use cases:
+
+- multiple discrete labels without ordinal ordering;
+- class-probability objectives such as maximizing `p(target_class | x)`;
+- multiclass constraints or feasibility categories;
+- active learning with entropy, BALD, JointBALD, margin uncertainty, or
+  probability variance;
+- class-probability level-set estimation.
+
+Important distinction from ordinal models:
+
+- multiclass labels have no natural order;
+- posterior values represent class probabilities;
+- boundary logic is based on probability ambiguity or target-class thresholds,
+  not ordered cutpoints.
+
+Registry notes:
+
+- availability of `model_type` values is task-dependent; consult
+  `bochan.api.registry.model` for the exact multiclass entries;
+- do not infer multiclass support from regression registry keys.
+
+---
+
+## 5. Ordinal regression
+
+Ordinal regression models are used when labels have an ordered structure, for
+example class `0 < 1 < 2 < ...`.
+
+Typical use cases:
+
+- ordered quality levels;
+- risk categories;
+- thresholded material or process outcomes;
+- ordinal constraints in Bayesian optimization;
+- boundary-focused active learning and level-set estimation.
+
+Important conventions:
+
+- The model has latent GP values and ordered cutpoints / thresholds.
+- `get_cutpoints()` or equivalent helper methods should expose the current
+  cutpoints when possible.
+- `posterior(X)` should expose ordinal class probabilities or a wrapper that can
+  be converted to expected utility.
+- Utility values may often be inferred as `0, 1, ..., K-1`, but explicit
+  `utility_values` should be supported where acquisition functions need them.
+- Boundary-aware acquisitions should support target boundary selection when
+  applicable.
+
+---
+
+## 6. Hybrid multi-output models
+
+Hybrid models combine outputs with different task semantics, for example:
 
 ```text
 strength      -> regression
@@ -296,73 +417,134 @@ defect_type   -> multiclass
 quality_rank  -> ordinal
 ```
 
-Hybrid wrappers should preserve output names and task semantics so objectives and
-serving layers do not depend on fragile positional assumptions.
+`models/hybrid/` provides:
 
-### Multi-task, multi-output, and multi-fidelity
+- output specifications that describe each output's task type and conversion
+  metadata;
+- prediction wrappers that preserve output names and task semantics;
+- `HybridMultiOutputModel`, which delegates fitting / posterior calls to
+  submodels and can expose objective-space predictions.
 
-These are deliberately separate concepts:
+Typical use cases:
 
-- `multitask/`: correlated tasks/outputs, task features, and shared covariance
-  structure;
-- `multioutput/`: independent output models collected behind one interface;
-- `multifidelity/`: explicit fidelity dimensions and shared fidelity mechanics.
+- multi-objective optimization over heterogeneous measurements;
+- combining a continuous objective with binary feasibility;
+- jointly proposing experiments for regression and ordered quality labels;
+- serving a single model id that wraps several task-specific models.
 
-Use the package that matches the statistical relationship being modeled rather
-than treating all vector-valued outputs as the same abstraction.
+Hybrid wrappers should not hide the submodel task semantics. Acquisition
+objectives should use `OutputSpec` / `HybridObjectiveSpec` or output names rather
+than relying on positional assumptions when names are available.
+
+---
+
+## 7. Components
+
+`models/components/` contains reusable building blocks shared by wrappers.
+
+Typical contents:
+
+- likelihood classes;
+- posterior wrapper classes;
+- target-preparation utilities;
+- input-transform helpers;
+- mixed continuous / categorical helpers;
+- decomposition / projection utilities;
+- default covariance module builders;
+- functions for aligning tensor shapes.
+
+Component modules should not define high-level model-family policy. They should
+provide small, reusable primitives that family wrappers compose.
 
 ---
 
 ## Input transforms and mixed variables
 
-`InputTransformConfig` builds shared transforms through
-`models/transforms/input.py`.
+Input transforms should be passed as constructor arguments where possible.
+
+`InputTransformConfig` in the API builds transforms through
+`models/transforms/input.py`. The default behavior is `normalize=True` and
+`perturbation=False`; input perturbation can be enabled independently.
 
 For mixed continuous / categorical models:
 
 - continuous columns may be normalized or transformed;
-- categorical columns must remain valid category coordinates;
-- helper checks should reject transforms that modify categorical columns;
+- categorical columns should remain unchanged;
+- helper checks should raise an error if an input transform modifies categorical
+  columns;
 - `cat_dims` should be normalized and stored consistently.
 
 For input perturbation:
 
-- training transforms must not accidentally expand training data through
+- training transforms should not accidentally expand training data through
   perturbation samples;
 - evaluation-time transforms may expand `q` to `q * n_w`;
-- objectives or acquisition helpers aggregate expanded scores back to `q`;
-- `ObjectiveConfig(n_w=...)` should match the perturbation count when risk
-  aggregation is required.
+- objective classes or acquisition helpers should aggregate expanded scores back
+  to `q`;
+- `ObjectiveConfig(n_w=...)` should match the perturbation count used by the
+  model transform when risk aggregation is needed.
 
 ---
 
 ## High-dimensional wrappers
 
-High-dimensional models may use PCA, REMBO, SAAS, VAE, or related strategies.
-Recommended state terminology is:
+High-dimensional wrappers may use PCA, REMBO, SAAS, or related strategies.
+
+Recommended state convention:
 
 ```text
 train_inputs_raw          = raw X in the original search space
 preproject_train_inputs   = transformed X before projection, when applicable
 projected_train_inputs    = latent Z after projection, when applicable
-train_inputs              = inputs actually used by the internal model
+train_inputs              = inputs actually used by the internal GP
 ```
 
-Public `posterior(X)` should generally accept raw `X` unless a wrapper explicitly
+Public `posterior(X)` should generally accept raw `X` unless the wrapper clearly
 states that it expects latent projected inputs.
 
-Feature-importance interpretation must be tied to the space where the parameter
-is defined. PCA loadings, REMBO projections, SAAS / ARD lengthscales, and deep
-latent lengthscales are not automatically raw-feature importance scores.
+High-dimensional wrappers should also make feature-importance interpretation
+explicit. For example, SAAS / ARD-style lengthscales should be interpreted in the
+space actually used by the internal model, while PCA / REMBO importance may need
+to be mapped back through the projection.
+
+---
+
+## Deep models
+
+DeepGP and Deep Kernel GP wrappers should preserve the same public API:
+
+- `forward(X)` for training-time latent distributions;
+- `posterior(X)` for downstream predictive quantities;
+- `latent_posterior(X)` when response-scale prediction is transformed through a
+  likelihood;
+- `input_transform` support before feature extraction where appropriate.
+
+For mixed deep kernel models, continuous dimensions may be passed through the
+feature extractor while categorical dimensions are handled by a categorical or
+mixed kernel component.
 
 ---
 
 ## Robust and heteroscedastic models
 
-Robust and heteroscedastic wrappers should distinguish latent epistemic
-uncertainty from observation noise. If the model has separate mean and noise
-components, downstream acquisitions should access them through stable public
-contracts rather than fragile private attributes.
+Robust and heteroscedastic models should make the distinction between latent
+uncertainty and observation noise explicit.
+
+Typical use cases:
+
+- avoiding noisy regions in candidate selection;
+- modeling input-dependent observation variance;
+- robust relevance pursuit or sparse feature selection;
+- combining mean prediction with noise penalties in acquisition functions.
+
+When a model has separate mean and noise components, wrappers should expose a
+clear API so acquisition functions can access both without relying on fragile
+private attributes.
+
+Heteroscedastic classification and ordinal wrappers are expected to expose enough
+noise or confidence information for `qHetero...` acquisitions to apply
+`noise_mode` / `noise_combine` style behavior without knowing the model's private
+implementation details.
 
 ---
 
@@ -377,12 +559,15 @@ fit_func(mll)
 posterior = model.posterior(test_X)
 ```
 
-### Latent / response posterior
+### Latent-posterior use
 
 ```python
 latent_post = model.latent_posterior(test_X)
 response_post = model.posterior(test_X)
 ```
+
+Use this pattern for classification, multiclass, ordinal, and non-Gaussian models
+where latent `f` and response-scale predictions have different meanings.
 
 ### Updating with new observations
 
@@ -390,47 +575,54 @@ response_post = model.posterior(test_X)
 new_model = model.condition_on_observations(X=new_X, Y=new_Y)
 ```
 
-The returned model should preserve family settings such as likelihood, input
-transform, categorical dimensions, inducing-point configuration, link-function
-settings, and output specifications.
+The returned model should preserve model-family settings such as likelihood,
+input transform, categorical dimensions, inducing point configuration, link
+function settings, and output specifications.
 
 ---
 
 ## Implementation checklist for new models
 
+When adding a new model wrapper, check the following:
+
 - [ ] Does the wrapper expose `posterior(X)`?
 - [ ] If there is a latent GP, does it expose `latent_posterior(X)`?
-- [ ] Are `train_inputs` and `train_inputs_raw` consistent with the package convention?
+- [ ] Are `train_inputs` and `train_inputs_raw` consistent with the package
+      convention?
 - [ ] Does `forward(X)` return the correct training-time latent distribution?
 - [ ] Is `make_mll()` implemented when there is a recommended MLL / ELBO?
 - [ ] Does `condition_on_observations` preserve raw inputs and model settings?
 - [ ] Are input transforms applied consistently at train and eval time?
 - [ ] For mixed models, are categorical columns preserved?
-- [ ] For projected models, is raw-to-latent state stored explicitly?
-- [ ] For hybrid models, are output names and task-specific specs preserved?
-- [ ] Are tensor shapes compatible with q-batch acquisitions?
-- [ ] Are unsupported options rejected explicitly?
-- [ ] If the model should be public, is it registered in `bochan.api.registry.model`?
-- [ ] Does the model live in the family / strategy package that owns its semantics?
+- [ ] For high-dimensional models, is the raw-to-latent projection state stored?
+- [ ] For hybrid models, are output names and task-specific output specs kept?
+- [ ] Are tensor shapes compatible with q-batch acquisition functions?
+- [ ] Are public class names aligned with the family naming policy?
+- [ ] Are unsupported options rejected explicitly with `NotImplementedError` or
+      `ValueError`?
+- [ ] If the model should be reachable from the high-level API, is it registered
+      in `bochan.api.registry.model`?
 
 ---
 
 ## Relationship with acquisition functions
 
-Model wrappers should expose enough stable posterior semantics that acquisition
-functions do not need model-private implementation details.
+Model wrappers should be designed so that acquisition functions do not need to
+know implementation details. In practice:
 
-- Gaussian regression should use BoTorch standard acquisitions whenever possible.
-- Binary / multiclass / ordinal models often require probability or utility
+- Gaussian regression should work with BoTorch's standard acquisitions whenever
+  possible.
+- Binary / multiclass / ordinal models often need probability or utility
   objectives.
 - Non-Gaussian models should expose response-scale posterior quantities so
-  standard BO acquisitions remain usable when mathematically appropriate.
-- Custom non-Gaussian active-learning / LSE acquisitions may use
-  `latent_posterior(X)` plus the likelihood to estimate response uncertainty.
+  standard BO acquisitions remain usable.
+- Custom non-Gaussian active-learning and level-set acquisitions use
+  `latent_posterior(X)` plus `model.likelihood(function_samples)` to estimate
+  response-scale uncertainty.
 - Heteroscedastic models should expose stable public access to noise-related
-  predictions.
-- Hybrid wrappers should expose task-aware or objective-space predictions for
-  downstream multi-output acquisitions.
+  predictions so `qHetero...` acquisitions do not depend on private attributes.
+- Hybrid wrappers should expose an objective-space posterior for acquisitions
+  that need all outputs on a common scalar / multi-objective scale.
 
-Keeping this boundary clean makes it easier to add models and acquisitions
-without rebuilding adapters or duplicating cross-family logic.
+Keeping this boundary clean makes it easier to add new acquisition functions
+without rewriting model wrappers.

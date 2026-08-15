@@ -11,14 +11,14 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_web_input_perturbation_is_disabled_unless_user_enables_it() -> None:
     """The Web defaults and request schema must not silently enable perturbation."""
 
-    context = (ROOT / "web/src/context/WorkbenchContext.tsx").read_text(
+    settings = (ROOT / "web/src/context/useWorkbenchRunSettings.ts").read_text(
         encoding="utf-8"
     )
     api = (ROOT / "web/src/api.ts").read_text(encoding="utf-8")
 
-    assert "const [inputPerturbation, setInputPerturbation] = useState(false);" in context
-    assert "setInputPerturbation(false);" in context
-    assert "setInputPerturbation(true)" not in context
+    assert "const [inputPerturbation, setInputPerturbation] = useState(false);" in settings
+    assert "setInputPerturbation(false);" in settings
+    assert "setInputPerturbation(true)" not in settings
     assert "input_perturbation: input.inputPerturbation" in api
 
     request = RegressionRunRequest(

@@ -31,11 +31,11 @@ from bochan.acquisition.ordinal.active_learning import (
 from bochan.acquisition.ordinal.bayesian_optimization import (
     compute_ordinal_expected_utility_best_f,
     qOrdinalExpectedImprovement,
+    qOrdinalExpectedUtility,
     qOrdinalProbabilityOfFeasibility,
     qOrdinalProbabilityOfImprovement,
     qOrdinalUpperConfidenceBound,
 )
-from bochan.acquisition.ordinal.bayesian_optimization.single_output import qOrdinalExpectedUtility
 from bochan.acquisition.ordinal.levelset_estimation import (
     qOrdinalBoundaryVarianceAcquisition,
     qOrdinalClassEntropyAcquisition,
@@ -93,7 +93,6 @@ def make_ordinal_toy_data(
     labels = torch.zeros_like(score, dtype=torch.long)
     labels = labels + (score > q1).long() + (score > q2).long()
 
-    # OrdinalGPModel が num_classes を推定できるように、各 class が最低1件あることを保証する。
     labels[0] = 0
     labels[1] = 1
     labels[2] = 2
@@ -297,13 +296,6 @@ def ordinal_bo_acquisition_cases(model: Any, train_x: torch.Tensor) -> list[tupl
     common_kwargs = {
         "objective": objective,
         "sampler": sampler,
-        "pending_penalty_weight": 0.01,
-        "pending_penalty_beta": 5.0,
-        "same_batch_penalty_weight": 0.01,
-        "same_batch_penalty_beta": 5.0,
-        "observed_penalty_weight": 0.0,
-        "observed_penalty_beta": 5.0,
-        "X_observed": train_x,
     }
     return [
         (qOrdinalExpectedUtility, dict(common_kwargs), "bo_expected_utility"),

@@ -10,6 +10,54 @@ interface Props {
   numberOrUndefined: (value: string) => number | undefined;
 }
 
+type VariableErrors = {
+  lower?: string;
+  upper?: string;
+  step?: string;
+  fixed?: string;
+};
+
+function finiteNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function validateVariable(variable: SearchVariable): VariableErrors {
+  const errors: VariableErrors = {};
+  if (variable.type === "categorical") {
+    if (variable.fixed && (variable.fixed_value === undefined || String(variable.fixed_value) === "")) {
+      errors.fixed = "固定するカテゴリを選択してください。";
+    }
+    return errors;
+  }
+
+  const lower = finiteNumber(variable.lower);
+  const upper = finiteNumber(variable.upper);
+  if (lower !== null && upper !== null && lower >= upper) {
+    errors.lower = "下限は上限より小さくしてください。";
+    errors.upper = "上限は下限より大きくしてください。";
+  }
+  if (variable.step !== undefined && (finiteNumber(variable.step) ?? 0) <= 0) {
+    errors.step = "刻みは0より大きくしてください。";
+  }
+  if (variable.fixed) {
+    const fixed = finiteNumber(variable.fixed_value);
+    if (fixed === null) {
+      errors.fixed = "固定値を入力してください。";
+    } else if (lower !== null && upper !== null && (fixed < lower || fixed > upper)) {
+      errors.fixed = "固定値は探索範囲内にしてください。";
+    }
+  }
+  return errors;
+}
+
+function invalidProps(message?: string) {
+  return {
+    className: message ? "input-invalid" : undefined,
+    "aria-invalid": message ? true : undefined
+  };
+}
+
 /** Edits candidate-search bounds, steps, and fixed values without changing feature types. */
 export default function SearchVariableSettings({
   columns,
@@ -43,35 +91,48 @@ export default function SearchVariableSettings({
           <tbody>
             {variables.map((variable) => {
               const categories = categoriesForVariable(variable.name);
+              const errors = validateVariable(variable);
               return (
                 <tr key={variable.name}>
                   <td><strong>{variable.name}</strong></td>
                   <td><span className={`status-chip ${variable.type === "categorical" ? "categorical-chip" : ""}`}>{variable.type}</span></td>
                   <td>{variable.type === "numeric" ? (
-                    <input
-                      type="number"
-                      step="any"
-                      value={variable.lower ?? ""}
-                      onChange={(event) => patchVariable(variable.name, { lower: numberOrUndefined(event.target.value) })}
-                    />
+                    <>
+                      <input
+                        type="number"
+                        step="any"
+                        value={variable.lower ?? ""}
+                        {...invalidProps(errors.lower)}
+                        onChange={(event) => patchVariable(variable.name, { lower: numberOrUndefined(event.target.value) })}
+                      />
+                      {errors.lower && <small className="field-inline-error">{errors.lower}</small>}
+                    </>
                   ) : "—"}</td>
                   <td>{variable.type === "numeric" ? (
-                    <input
-                      type="number"
-                      step="any"
-                      value={variable.upper ?? ""}
-                      onChange={(event) => patchVariable(variable.name, { upper: numberOrUndefined(event.target.value) })}
-                    />
+                    <>
+                      <input
+                        type="number"
+                        step="any"
+                        value={variable.upper ?? ""}
+                        {...invalidProps(errors.upper)}
+                        onChange={(event) => patchVariable(variable.name, { upper: numberOrUndefined(event.target.value) })}
+                      />
+                      {errors.upper && <small className="field-inline-error">{errors.upper}</small>}
+                    </>
                   ) : "—"}</td>
                   <td>{variable.type === "numeric" ? (
-                    <input
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={variable.step ?? ""}
-                      placeholder="任意"
-                      onChange={(event) => patchVariable(variable.name, { step: numberOrUndefined(event.target.value) })}
-                    />
+                    <>
+                      <input
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={variable.step ?? ""}
+                        placeholder="任意"
+                        {...invalidProps(errors.step)}
+                        onChange={(event) => patchVariable(variable.name, { step: numberOrUndefined(event.target.value) })}
+                      />
+                      {errors.step && <small className="field-inline-error">{errors.step}</small>}
+                    </>
                   ) : "—"}</td>
                   <td>
                     <input
@@ -86,24 +147,32 @@ export default function SearchVariableSettings({
                   </td>
                   <td>
                     {variable.fixed && variable.type === "categorical" ? (
-                      <select
-                        value={String(variable.fixed_value ?? "")}
-                        onChange={(event) => patchVariable(variable.name, { fixed_value: event.target.value })}
-                      >
-                        <option value="">選択</option>
-                        {categories.map((category) => (
-                          <option key={String(category)} value={String(category)}>{String(category)}</option>
-                        ))}
-                      </select>
+                      <>
+                        <select
+                          value={String(variable.fixed_value ?? "")}
+                          {...invalidProps(errors.fixed)}
+                          onChange={(event) => patchVariable(variable.name, { fixed_value: event.target.value })}
+                        >
+                          <option value="">選択</option>
+                          {categories.map((category) => (
+                            <option key={String(category)} value={String(category)}>{String(category)}</option>
+                          ))}
+                        </select>
+                        {errors.fixed && <small className="field-inline-error">{errors.fixed}</small>}
+                      </>
                     ) : variable.fixed ? (
-                      <input
-                        type="number"
-                        step="any"
-                        value={variable.fixed_value ?? ""}
-                        onChange={(event) => patchVariable(variable.name, {
-                          fixed_value: numberOrUndefined(event.target.value)
-                        })}
-                      />
+                      <>
+                        <input
+                          type="number"
+                          step="any"
+                          value={variable.fixed_value ?? ""}
+                          {...invalidProps(errors.fixed)}
+                          onChange={(event) => patchVariable(variable.name, {
+                            fixed_value: numberOrUndefined(event.target.value)
+                          })}
+                        />
+                        {errors.fixed && <small className="field-inline-error">{errors.fixed}</small>}
+                      </>
                     ) : "—"}
                   </td>
                 </tr>

@@ -44,7 +44,14 @@ def _plain(value: Any) -> Any:
 
 
 def _target_model_settings(model_kwargs: dict[str, Any]) -> list[dict[str, Any]]:
-    """Keep only target fields that affect encoding or model construction."""
+    """Keep only target fields that affect encoding or model construction.
+
+    Goal, threshold / target value, optimization role, direction, selected
+    classification class, and level-set weight are candidate-time semantics. The
+    fitted classifier / regressor does not change when those values change. An
+    ordinal ``class_order`` does change encoded training labels and therefore
+    remains part of the fitted-model signature.
+    """
 
     raw_settings = list(model_kwargs.pop("web_target_settings", []) or [])
     model_kwargs.pop("web_target_roles", None)
@@ -57,11 +64,27 @@ def _target_model_settings(model_kwargs: dict[str, Any]) -> list[dict[str, Any]]
             {
                 "target": value.get("target"),
                 "task_type": value.get("task_type"),
-                "target_class": value.get("target_class"),
                 "class_order": list(value.get("class_order") or []),
             }
         )
     return settings
+
+
+def _strip_candidate_only_composition_settings(model_kwargs: dict[str, Any]) -> None:
+    """Remove composition rules that affect proposals but not fitted features."""
+
+    raw = model_kwargs.get("web_composition")
+    if raw is None:
+        return
+    value = _plain(raw)
+    if not isinstance(value, dict):
+        return
+    # Element constraints are enforced by CandidateService after the composition
+    # transformer has been fitted. Representation, elements, normalization,
+    # bounds, coordinate bounds, and the remaining settings stay in the model
+    # signature because they may alter fitted features or the input transform.
+    value.pop("element_constraints", None)
+    model_kwargs["web_composition"] = value
 
 
 def _model_search_space(request: Any) -> list[dict[str, Any]]:
@@ -90,6 +113,7 @@ def model_reuse_signature(request: Any) -> str:
     model_kwargs = dict(getattr(request, "model_kwargs", {}) or {})
     model_kwargs.pop(_WEB_REUSE_MODEL_KEY, None)
     target_model_settings = _target_model_settings(model_kwargs)
+    _strip_candidate_only_composition_settings(model_kwargs)
     payload = {
         "dataset_id": getattr(request, "dataset_id", None),
         "feature_columns": list(getattr(request, "feature_columns", []) or []),
@@ -198,6 +222,116 @@ def mark_model_reused(source_run_id: str) -> None:
     state["fit_skipped"] = True
 
 
+def _refresh_hybrid_wrapper(source_model: Any, model_config: Any) -> Any:
+    """Rebuild only the objective-view wrapper around already-fitted submodels."""
+
+    from bochan.api.modeling.build import (
+        _build_wrapper_from_submodels,
+        _resolve_output_configs,
+    )
+    from bochan.models.hybrid import HybridMultiOutputModel
+
+    if not isinstance(source_model, HybridMultiOutputModel):
+        raise RuntimeError(
+            "The reusable fitted model does not expose the expected Hybrid wrapper."
+        )
+    multi_output_config = getattr(model_config, "multi_output_config", None)
+    if multi_output_config is None:
+        raise RuntimeError(
+            "Current Hybrid model configuration has no multi_output_config."
+        )
+
+    submodels = list(source_model.models)
+    output_configs, output_names, inline_spec_kwargs, _ = _resolve_output_configs(
+        model_config,
+        len(submodels),
+    )
+    refreshed = _build_wrapper_from_submodels(
+        submodels,
+        output_configs,
+        multi_output_config,
+        output_names=output_names,
+        output_spec_kwargs=inline_spec_kwargs,
+    )
+
+    # Partial-target training wraps the same Hybrid specs with retained wide
+    # observation metadata. Preserve that contract while changing only the
+    # candidate-time OutputSpec view.
+    if all(
+        hasattr(source_model, name)
+        for name in ("train_X_wide", "train_Y_wide", "observed_mask_wide")
+    ):
+        from bochan.models.hybrid.partial_observation import (
+            PartiallyObservedHybridMultiOutputModel,
+        )
+
+        refreshed = PartiallyObservedHybridMultiOutputModel(
+            specs=list(refreshed.specs),
+            train_X_wide=source_model.train_X_wide,
+            train_Y_wide=source_model.train_Y_wide,
+            observed_mask_wide=source_model.observed_mask_wide,
+        )
+
+    refreshed.train(bool(getattr(source_model, "training", False)))
+    return refreshed
+
+
+def _clone_bayesian_optimizer_for_reuse(
+    source_bo: Any,
+    *,
+    model_config: Any,
+    hybrid_model: bool,
+) -> Any:
+    """Clone mutable optimizer state and refresh candidate-time model semantics."""
+
+    reused_bo = copy.copy(source_bo)
+    if hasattr(source_bo, "history"):
+        reused_bo.history = list(source_bo.history)
+    reused_bo.model_config = model_config
+
+    source_bundle = getattr(source_bo, "bundle", None)
+    reused_bundle = None
+    if source_bundle is not None:
+        reused_bundle = copy.copy(source_bundle)
+        reused_bundle.metadata = dict(getattr(source_bundle, "metadata", {}) or {})
+        reused_bundle.model_config = model_config
+        reused_bo.bundle = reused_bundle
+
+    source_model = getattr(source_bo, "model", None)
+    if source_model is None:
+        raise RuntimeError("The selected fitted optimizer has no model to reuse.")
+    reused_model = (
+        _refresh_hybrid_wrapper(source_model, model_config)
+        if hybrid_model
+        else source_model
+    )
+    reused_bo.model = reused_model
+    if reused_bundle is not None:
+        reused_bundle.model = reused_model
+    return reused_bo
+
+
+def _clone_candidate_service(
+    source_optimizer: Any,
+    reused_optimizer: Any,
+    *,
+    composition_config: dict[str, Any] | None,
+) -> None:
+    """Clone request-local candidate state and apply current composition rules."""
+
+    source_service = getattr(source_optimizer, "candidates", None)
+    if source_service is None:
+        return
+    reused_service = copy.copy(source_service)
+    reused_service.composition = reused_optimizer.composition
+    if composition_config is not None:
+        reused_service.element_constraints = reused_service.element_resolver.normalize(
+            composition_config.get("element_constraints") or []
+        )
+        reused_service.projector().validate()
+    reused_optimizer.candidates = reused_service
+
+
 def reuse_fitted_tabular_optimizer(
     *,
     source_run_id: str,
@@ -206,9 +340,11 @@ def reuse_fitted_tabular_optimizer(
     feature_columns: list[str],
     target_columns: list[str],
     target_metadata: dict[str, dict[str, Any]],
+    model_config: Any,
     hybrid_model: bool,
+    composition_config: dict[str, Any] | None = None,
 ) -> Any:
-    """Clone a fitted Tabular optimizer shell while sharing its trained model."""
+    """Reuse fitted predictors while rebuilding current candidate-time semantics."""
 
     from ..services.visualization_sessions import (
         attach_fitted_tabular_optimizer,
@@ -231,13 +367,14 @@ def reuse_fitted_tabular_optimizer(
         )
 
     source = get_visualization_session(source_run_id)
-    reused = copy.copy(source.tabular_optimizer)
+    source_tabular = source.tabular_optimizer
+    reused = copy.copy(source_tabular)
     reused.__dict__.pop("candidate", None)
-    reused.dataset = copy.copy(source.tabular_optimizer.dataset)
+    reused.dataset = copy.copy(source_tabular.dataset)
     if reused.dataset is None:
         raise RuntimeError("The selected fitted model has no retained tabular dataset.")
 
-    observed = getattr(source.tabular_optimizer, "web_observed_target_tensor", None)
+    observed = getattr(source_tabular, "web_observed_target_tensor", None)
     if observed is not None:
         reused.dataset.Y = observed.detach().clone()
     elif reused.dataset.Y is not None:
@@ -246,6 +383,18 @@ def reuse_fitted_tabular_optimizer(
         reused.dataset.X = reused.dataset.X.detach().clone()
     if reused.dataset.bounds is not None:
         reused.dataset.bounds = reused.dataset.bounds.detach().clone()
+
+    reused.model_config = model_config
+    reused.bo = _clone_bayesian_optimizer_for_reuse(
+        source_tabular.bo,
+        model_config=model_config,
+        hybrid_model=hybrid_model,
+    )
+    _clone_candidate_service(
+        source_tabular,
+        reused,
+        composition_config=composition_config,
+    )
 
     reused.web_model_reused = True
     reused.web_model_reuse_source_run_id = source_run_id

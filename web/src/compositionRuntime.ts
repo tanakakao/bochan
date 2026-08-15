@@ -98,7 +98,9 @@ function installFetchAdapter(): void {
           ...(payload.model_kwargs ?? {}),
           web_composition: backendSettings(settings)
         };
-        delete payload.model_kwargs.web_reuse_model_run_id;
+        // Keep web_reuse_model_run_id intact. The backend fitted-model signature
+        // rejects representation / encoding changes while allowing proposal-only
+        // composition element constraints to change without retraining.
         payload.search_space = Array.isArray(payload.search_space)
           ? payload.search_space.map((spec: Record<string, unknown>) => (
               spec.name === settings.column

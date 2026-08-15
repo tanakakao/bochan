@@ -1,5 +1,4 @@
 from .hetero_multi_output import (
-    HeteroMultiOutputRegressionLevelSetScoreObjective,
     qHeteroMultiOutputRegressionStraddle,
     qHeteroMultiOutputRegressionJointStraddle,
     qHeteroMultiOutputRegressionICU,
@@ -7,7 +6,6 @@ from .hetero_multi_output import (
     qHeteroMultiOutputRegressionProbabilityOfExceedance,
 )
 from .hetero_single_output import (
-    HeteroRegressionLevelSetScoreObjective,
     qHeteroRegressionStraddle,
     qHeteroRegressionJointStraddle,
     qHeteroRegressionICU,
@@ -30,13 +28,11 @@ from .input_perturbation_shapes import (
 )
 
 __all__ = [
-    "HeteroMultiOutputRegressionLevelSetScoreObjective",
     "qHeteroMultiOutputRegressionStraddle",
     "qHeteroMultiOutputRegressionJointStraddle",
     "qHeteroMultiOutputRegressionICU",
     "qHeteroMultiOutputRegressionBoundaryVariance",
     "qHeteroMultiOutputRegressionProbabilityOfExceedance",
-    "HeteroRegressionLevelSetScoreObjective",
     "qHeteroRegressionStraddle",
     "qHeteroRegressionJointStraddle",
     "qHeteroRegressionICU",

@@ -10,7 +10,7 @@ from bochan.acquisition.ordinal.active_learning.single_output import (
     qOrdinalBALD,
     qOrdinalPredictiveEntropy,
 )
-from bochan.acquisition.ordinal.bayesian_optimization.single_output import (
+from bochan.acquisition.ordinal.bayesian_optimization import (
     qOrdinalExpectedUtility,
     qOrdinalProbabilityOfFeasibility,
 )

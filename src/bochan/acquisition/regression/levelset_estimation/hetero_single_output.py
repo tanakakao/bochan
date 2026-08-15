@@ -9,7 +9,6 @@ from botorch.utils.transforms import t_batch_mode_transform
 from torch import Tensor
 
 from .single_output import (
-    RegressionLevelSetScoreObjective,
     _RegressionLevelSetBase,
     _ensure_q_batch,
     _safe_logdet,
@@ -19,14 +18,6 @@ from .single_output import (
 VarianceSource = Literal["latent", "total", "noise"]
 BoundaryMode = Literal["distance_to_threshold", "above", "below"]
 ProbabilityMode = Literal["above", "below", "interval"]
-
-
-class HeteroRegressionLevelSetScoreObjective(RegressionLevelSetScoreObjective):
-    """Score objective for heteroscedastic regression LSE.
-
-    The objective contract is identical to standard regression LSE; the separate
-    public class name is retained for API clarity and backward compatibility.
-    """
 
 
 class _HeteroRegressionLevelSetBase(_RegressionLevelSetBase):
@@ -367,7 +358,6 @@ class qHeteroRegressionProbabilityOfExceedance(_HeteroRegressionLevelSetBase):
 
 
 __all__ = [
-    "HeteroRegressionLevelSetScoreObjective",
     "qHeteroRegressionStraddle",
     "qHeteroRegressionJointStraddle",
     "qHeteroRegressionICU",

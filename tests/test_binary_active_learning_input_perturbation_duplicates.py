@@ -37,11 +37,11 @@ def _acquisition(**kwargs) -> qBinaryProbabilityVariance:
 
 def _penalty(acqf: qBinaryProbabilityVariance, raw_X: Tensor) -> Tensor:
     Xt = acqf.model.transform_inputs(raw_X)
-    acqf._raw_X_for_duplicate_penalty = raw_X
+    acqf._bochan_raw_X_for_duplicate_penalty = raw_X
     try:
         return acqf._candidate_penalty_per_point(Xt)
     finally:
-        acqf._raw_X_for_duplicate_penalty = None
+        acqf._bochan_raw_X_for_duplicate_penalty = None
 
 
 def test_binary_perturbation_replicas_are_not_same_batch_duplicates() -> None:

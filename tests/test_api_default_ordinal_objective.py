@@ -3,9 +3,7 @@ from __future__ import annotations
 import torch
 
 from bochan.acquisition.objective import OrdinalExpectedUtilityMCObjective
-from bochan.acquisition.ordinal.bayesian_optimization.utility_acquisitions import (
-    qOrdinalExpectedImprovement,
-)
+from bochan.acquisition.ordinal.bayesian_optimization import qOrdinalExpectedImprovement
 from bochan.api.acquisition.defaults import resolve_acquisition_defaults
 from bochan.api.configs import (
     AcquisitionConfig,

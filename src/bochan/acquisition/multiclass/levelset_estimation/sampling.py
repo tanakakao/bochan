@@ -1,11 +1,6 @@
 from __future__ import annotations
 
-"""Pure q-like alignment helpers for multiclass level-set sampling.
-
-The joint multiclass LSE acquisition now calls :func:`align_levelset_q_like`
-directly from its normal implementation.  This module deliberately performs no
-runtime class mutation and is kept for private compatibility only.
-"""
+"""q-like alignment helpers for multiclass level-set sampling."""
 
 from torch import Tensor
 
@@ -19,7 +14,7 @@ def align_levelset_q_like(
     """Align sampled target probabilities from ``q_like`` to the raw q axis.
 
     Wrapper / heteroscedastic models may collapse the q axis to one value, while
-    InputPerturbation-like transforms may expand it.  The alignment contract is:
+    InputPerturbation-like transforms may expand it. The alignment contract is:
 
     - identical q: return unchanged;
     - ``q_like == 1``: broadcast across raw q;
@@ -60,13 +55,4 @@ def align_levelset_q_like(
     )
 
 
-def configure_levelset_sampling() -> None:
-    """Deprecated no-op retained for private import compatibility.
-
-    q-like alignment is integrated directly into the joint multiclass LSE
-    acquisition.  Calling this function intentionally has no side effects.
-    """
-    return None
-
-
-__all__ = ["align_levelset_q_like", "configure_levelset_sampling"]
+__all__ = ["align_levelset_q_like"]

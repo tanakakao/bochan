@@ -20,3 +20,43 @@ def test_model_to_suggest_navigation_has_no_legacy_page_hosts() -> None:
     assert "composition-constraint-settings-host" not in runtime
     assert "model-primary-grid" not in runtime
     assert "feature-constraint-panel" not in runtime
+
+
+def test_model_and_suggest_keep_primary_controls_visible_before_details() -> None:
+    settings = Path("web/src/pages/SettingsPage.tsx").read_text(encoding="utf-8")
+    optimize = Path("web/src/pages/OptimizePage.tsx").read_text(encoding="utf-8")
+    workflow = Path("web/src/styles/workflow.css").read_text(encoding="utf-8")
+
+    target_task = settings.index("<TargetModelSettings")
+    model_card = settings.index('className="panel model-workbench-card"')
+    model_details = settings.index('className="model-card-details model-output-details"')
+    assert target_task < model_card < model_details
+
+    assert settings.index('className="model-config-grid"', model_card) < model_details
+    assert settings.index("model-selection-column", model_card) < model_details
+    assert settings.index("model-basic-settings", model_card) < model_details
+    assert settings.index("checked={normalize}", model_card) < model_details
+    assert settings.index("checked={inputPerturbation}", model_card) < model_details
+    assert settings.index("<NoiseAlphaSettings", model_card) < model_details
+    assert settings.index("<FeatureMissingSettings", model_card) < model_details
+    assert settings.index("Fit maxiter", model_details) > model_details
+
+    target_proposal = optimize.index("<TargetProposalSettings")
+    suggest_card = optimize.index('className="panel suggestion-workbench-card"')
+    suggest_details = optimize.index('className="suggestion-card-details model-output-details"')
+    search_space = optimize.index("<SearchVariableSettings")
+    assert target_proposal < suggest_card < suggest_details < search_space
+
+    assert optimize.index('className="suggestion-config-grid"', suggest_card) < suggest_details
+    assert optimize.index("獲得関数", suggest_card) < suggest_details
+    assert optimize.index("候補点数 q", suggest_card) < suggest_details
+    assert optimize.index("最適化手法", suggest_card) < suggest_details
+    assert optimize.index("<FeatureConstraints variables", suggest_details) > suggest_details
+    assert optimize.index("num_restarts", suggest_details) > suggest_details
+    assert optimize.index("raw_samples", suggest_details) > suggest_details
+
+    assert ".model-config-grid," in workflow
+    assert ".suggestion-config-grid" in workflow
+    responsive = workflow[workflow.index("@media (max-width: 980px)") :]
+    assert ".model-config-grid," in responsive
+    assert "grid-template-columns: 1fr;" in responsive

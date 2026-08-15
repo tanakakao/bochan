@@ -45,6 +45,7 @@ on:
       - "web/src/components/SearchVariableSettings.tsx"
       - "web/src/components/FeatureConstraints.tsx"
       - "web/src/pages/SettingsPage.tsx"
+      - "web/src/pages/OptimizePage.tsx"
       - "web/src/pages/ResultsPage.tsx"
       - "web/src/importanceFeatureLabels.ts"
       - "web/src/InteractiveResultPlots.tsx"

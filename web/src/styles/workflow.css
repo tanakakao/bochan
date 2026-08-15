@@ -549,6 +549,197 @@
   margin-bottom: 18px;
 }
 
+/* Model/Suggest primary controls are grouped by task, not one card per setting. */
+.model-workbench-card,
+.suggestion-workbench-card {
+  margin-bottom: 18px;
+}
+
+.model-config-grid,
+.suggestion-config-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-subtle);
+}
+
+.model-config-column,
+.suggestion-config-column {
+  min-width: 0;
+  padding: 18px;
+}
+
+.model-config-column + .model-config-column,
+.suggestion-config-column + .suggestion-config-column {
+  border-left: 1px solid var(--line);
+}
+
+.config-column-heading {
+  margin-bottom: 14px;
+}
+
+.config-column-heading h4 {
+  margin: 4px 0;
+  font-size: 16px;
+}
+
+.config-column-heading p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.model-config-fields,
+.suggestion-config-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.model-selection-note,
+.suggestion-config-column > .settings-note {
+  margin-top: 12px;
+}
+
+.compact-setting-list {
+  display: grid;
+}
+
+.compact-setting-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  color: var(--text);
+}
+
+.compact-setting-list > .compact-setting-row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.compact-setting-row > span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.compact-setting-row strong {
+  font-size: 13px;
+}
+
+.compact-setting-row small {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.compact-setting-row > input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-height: auto;
+  flex: 0 0 auto;
+}
+
+.model-basic-settings .transform-card,
+.model-basic-settings .feature-missing-panel {
+  min-width: 0;
+  margin: 0;
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.model-basic-settings .transform-card-heading {
+  align-items: center;
+}
+
+.model-basic-settings .transform-card-heading .panel-kicker,
+.model-basic-settings .feature-missing-panel .panel-kicker {
+  display: none;
+}
+
+.model-basic-settings .transform-card-heading h4,
+.model-basic-settings .feature-missing-panel .panel-title h3 {
+  margin: 0;
+  font-size: 13px;
+}
+
+.model-basic-settings .transform-card > p,
+.model-basic-settings .feature-missing-panel .panel-title p,
+.model-basic-settings .feature-missing-panel .settings-note {
+  display: none;
+}
+
+.model-basic-settings .feature-missing-panel .panel-title {
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.model-basic-settings .feature-missing-panel .feature-missing-section {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.model-basic-settings .feature-missing-panel .constraint-variable-picker {
+  margin-top: 0;
+}
+
+.model-basic-settings .constraint-variable-picker button {
+  min-height: 34px;
+  padding: 6px 9px;
+  font-size: 11px;
+}
+
+.model-basic-settings .transform-fields {
+  grid-template-columns: 1fr;
+  margin-top: 10px;
+}
+
+.model-card-details,
+.suggestion-card-details {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.model-card-details > summary,
+.suggestion-card-details > summary {
+  width: fit-content;
+}
+
+.model-advanced-section {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-subtle);
+}
+
+.model-card-details > .panel,
+.suggestion-card-details > .panel,
+.suggestion-card-details > .feature-constraint-panel {
+  margin-top: 16px;
+  margin-bottom: 0;
+}
+
+.candidate-generation-panel .model-settings-grid {
+  margin-top: 14px;
+}
+
 @media (max-width: 1180px) {
   .model-primary-grid {
     grid-template-columns: 1fr;
@@ -562,8 +753,26 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .model-config-fields,
+  .suggestion-config-fields {
+    grid-template-columns: 1fr;
+  }
+
   .simple-default-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .model-config-grid,
+  .suggestion-config-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .model-config-column + .model-config-column,
+  .suggestion-config-column + .suggestion-config-column {
+    border-top: 1px solid var(--line);
+    border-left: 0;
   }
 }
 
@@ -603,5 +812,10 @@
 
   .feature-variable-choice {
     grid-template-columns: 1fr;
+  }
+
+  .model-config-column,
+  .suggestion-config-column {
+    padding: 14px;
   }
 }

@@ -23,19 +23,31 @@ OLD_PATCH_STYLES = (
 )
 
 
-def test_model_settings_cards_follow_requested_react_order() -> None:
+def test_model_settings_follow_problem_then_primary_then_details_order() -> None:
     source = SETTINGS_SOURCE.read_text(encoding="utf-8")
 
-    preprocessing_index = source.index("feature-preprocessing-panel")
-    composition_index = source.index("<CompositionModelSettings />")
-    accuracy_index = source.index("<h3>精度評価</h3>")
-    importance_index = source.index("<h3>特徴量重要度</h3>")
+    target_task_index = source.index("<TargetModelSettings")
+    model_card_index = source.index('className="panel model-workbench-card"')
+    model_selection_index = source.index("model-selection-column", model_card_index)
+    basic_settings_index = source.index("model-basic-settings", model_card_index)
+    details_index = source.index('className="model-card-details model-output-details"')
+    composition_index = source.index("<CompositionModelSettings />", details_index)
+    accuracy_index = source.index("<h3>精度評価</h3>", details_index)
+    importance_index = source.index("<h3>特徴量重要度</h3>", details_index)
 
-    assert preprocessing_index < composition_index < accuracy_index < importance_index
-    assert "<FeatureMissingSettings />" in source
-    preprocessing_start = source.index('className="panel feature-preprocessing-panel"')
-    preprocessing_end = source.index("<CompositionModelSettings />", preprocessing_start)
-    assert preprocessing_start < source.index("<FeatureMissingSettings />") < preprocessing_end
+    assert target_task_index < model_card_index
+    assert model_card_index < model_selection_index < details_index
+    assert model_card_index < basic_settings_index < details_index
+    assert details_index < composition_index < accuracy_index < importance_index
+
+    normalize_index = source.index("checked={normalize}", basic_settings_index)
+    perturbation_index = source.index("checked={inputPerturbation}", basic_settings_index)
+    alpha_index = source.index("<NoiseAlphaSettings", basic_settings_index)
+    missing_index = source.index("<FeatureMissingSettings />", basic_settings_index)
+    assert basic_settings_index < normalize_index < details_index
+    assert basic_settings_index < perturbation_index < details_index
+    assert basic_settings_index < alpha_index < details_index
+    assert basic_settings_index < missing_index < details_index
 
 
 def test_workflow_pages_do_not_use_dom_reordering_extensions() -> None:

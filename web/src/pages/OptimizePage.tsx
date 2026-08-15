@@ -424,7 +424,7 @@ export default function OptimizePage() {
       <SectionHeader
         step="4 · SUGGEST"
         title="次に試す条件を設定する"
-        text="目的、探索範囲、提案件数だけを確認すれば実行できます。候補制約や獲得関数、探索アルゴリズムは詳細設定から変更できます。"
+        text="目的、獲得関数、提案件数、探索手法、探索範囲を上から確認します。候補制約や生成パラメータは必要なときだけ詳細設定を開いて変更できます。"
         action={executionButtons()}
       />
 
@@ -437,57 +437,40 @@ export default function OptimizePage() {
         numberOrUndefined={numberOrUndefined}
       />
 
-      <article className="panel compact-panel">
+      <article className="panel suggestion-workbench-card">
         <div className="panel-title">
           <div>
-            <span className="panel-kicker">REQUIRED · CANDIDATES</span>
-            <h3>提案件数</h3>
-            <p>今回の実験で提案する候補点数だけを指定します。</p>
+            <span className="panel-kicker">SEARCH STRATEGY</span>
+            <h3>探索戦略</h3>
+            <p>左で候補の評価基準、右で提案件数と候補探索アルゴリズムを設定します。</p>
           </div>
-          <span className="status-chip success">q={q}</span>
+          <span className="status-chip success">{acquisition} · q={q}</span>
         </div>
-        <label>
-          候補点数 q
-          <input type="number" min={1} max={20} step={1} value={q} onChange={(event) => setQ(Number(event.target.value))} />
-        </label>
-      </article>
 
-      <SearchVariableSettings
-        columns={columns}
-        preview={dataset.preview}
-        variables={selectedVariables}
-        patchVariable={patchVariable}
-        numberOrUndefined={numberOrUndefined}
-      />
-
-      <details className="panel compact-panel model-output-details">
-        <summary>詳細設定（候補制約・獲得関数・探索手法）</summary>
-        <p className="settings-note">
-          通常は推奨設定のままで実行できます。実験上の候補制約や探索戦略、候補生成の挙動を明示的に調整するときだけ変更してください。
-        </p>
-
-        <FeatureConstraints variables={selectedVariables} />
-
-        <div className="form-grid optimize-grid suggestion-method-grid">
-          <article className="panel compact-panel">
-            <div className="panel-title"><div><span className="panel-kicker">ACQUISITION</span><h3>獲得関数</h3></div></div>
-            <label>
-              大分類
-              <select value={acquisitionFamily} onChange={(event) => changeFamily(event.target.value as AcquisitionFamily)}>
-                {FAMILY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-            </label>
-            <label>
-              獲得関数
-              <select value={acquisition} onChange={(event) => changeAcquisition(event.target.value)} disabled={searchMethod === "nsgaii"}>
-                {acquisitionOptions.map((name) => <option key={name} value={name}>{name}</option>)}
-              </select>
-            </label>
-            {acquisition.toUpperCase().includes("UCB") && searchMethod !== "nsgaii" && (
-              <label>Beta<input type="number" min={0} step="any" value={beta} onChange={(event) => setBeta(Number(event.target.value))} /></label>
-            )}
-            {acquisitionFamily === "level_set_estimation" && (
-              <>
+        <div className="suggestion-config-grid">
+          <section className="suggestion-config-column acquisition-config-column">
+            <div className="config-column-heading">
+              <span className="panel-kicker">ACQUISITION</span>
+              <h4>獲得関数</h4>
+              <p>何を価値の高い次候補とみなすかを選択します。</p>
+            </div>
+            <div className="suggestion-config-fields">
+              <label>
+                大分類
+                <select value={acquisitionFamily} onChange={(event) => changeFamily(event.target.value as AcquisitionFamily)}>
+                  {FAMILY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+              <label>
+                獲得関数
+                <select value={acquisition} onChange={(event) => changeAcquisition(event.target.value)} disabled={searchMethod === "nsgaii"}>
+                  {acquisitionOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+                </select>
+              </label>
+              {acquisition.toUpperCase().includes("UCB") && searchMethod !== "nsgaii" && (
+                <label>Beta<input type="number" min={0} step="any" value={beta} onChange={(event) => setBeta(Number(event.target.value))} /></label>
+              )}
+              {acquisitionFamily === "level_set_estimation" && (
                 <label>
                   {lseParameter.label}
                   <input
@@ -498,8 +481,10 @@ export default function OptimizePage() {
                     onChange={(event) => setBeta(Number(event.target.value))}
                   />
                 </label>
-                <small className="settings-note">{lseParameter.help}</small>
-              </>
+              )}
+            </div>
+            {acquisitionFamily === "level_set_estimation" && (
+              <p className="settings-note">{lseParameter.help}</p>
             )}
             <p className="settings-note">
               {searchMethod === "nsgaii" && "NSGA-II選択時は、内部的にNSGA-II用のベクトル獲得戦略へ切り替えます。"}
@@ -518,35 +503,56 @@ export default function OptimizePage() {
                 同じ候補順位になるのが正常です。異なる観点で実験点を選びたい場合は、領域全体の不確実性低減を評価するNIPVを使用してください。
               </p>
             )}
-          </article>
+          </section>
 
-          <article className="panel compact-panel">
-            <div className="panel-title"><div><span className="panel-kicker">SEARCH METHOD</span><h3>探索手法</h3></div></div>
-            <label>
-              大分類
-              <select value={searchMethodFamily} onChange={(event) => changeSearchMethodFamily(event.target.value as SearchMethodFamily)}>
-                {availableSearchMethodFamilies.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              最適化手法
-              <select value={searchMethod} onChange={(event) => changeSearchMethod(event.target.value as SearchMethod)}>
-                {searchMethods.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
+          <section className="suggestion-config-column candidate-strategy-column">
+            <div className="config-column-heading">
+              <span className="panel-kicker">CANDIDATE SEARCH</span>
+              <h4>候補探索</h4>
+              <p>何点提案し、獲得関数をどの方法で最適化するかを指定します。</p>
+            </div>
+            <div className="suggestion-config-fields">
+              <label>
+                候補点数 q
+                <input type="number" min={1} max={20} step={1} value={q} onChange={(event) => setQ(Number(event.target.value))} />
+              </label>
+              <label>
+                探索手法の大分類
+                <select value={searchMethodFamily} onChange={(event) => changeSearchMethodFamily(event.target.value as SearchMethodFamily)}>
+                  {availableSearchMethodFamilies.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                最適化手法
+                <select value={searchMethod} onChange={(event) => changeSearchMethod(event.target.value as SearchMethod)}>
+                  {searchMethods.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <p className="settings-note search-method-note">
               {derivativeFreeModel
                 ? "このモデルは候補入力に対する勾配を利用しないため、メタヒューリスティクスまたはサンプリングで探索します。多目的ベイズ最適化ではNSGA-IIも選択できます。"
                 : SEARCH_FAMILY_DESCRIPTIONS[searchMethodFamily]}
             </p>
-          </article>
+          </section>
+        </div>
 
-          <article className="panel compact-panel">
-            <div className="panel-title"><div><span className="panel-kicker">CANDIDATE SEARCH</span><h3>候補生成の詳細</h3></div></div>
+        <details className="suggestion-card-details model-output-details">
+          <summary>詳細設定（候補制約・候補生成）</summary>
+          <p className="settings-note">
+            実験上の制約、逐次生成、候補間距離、optimizerの探索量、入力摂動時の候補評価を明示的に調整するときだけ変更してください。
+          </p>
+
+          <FeatureConstraints variables={selectedVariables} />
+
+          <article className="panel compact-panel candidate-generation-panel">
+            <div className="panel-title">
+              <div><span className="panel-kicker">CANDIDATE GENERATION</span><h3>候補生成の詳細</h3></div>
+            </div>
             <label className="checkbox-row">
               <input
                 type="checkbox"
@@ -560,43 +566,53 @@ export default function OptimizePage() {
               q &gt; 1で有効にすると、選択済み候補をpendingとして次候補を順番に探索します。
               カテゴリ変数、CMA-ES、LSE + 入力摂動では自動的に有効になります。
             </p>
-            <label>
-              最小候補間距離（探索範囲比 %）
-              <input
-                type="number"
-                min={0}
-                max={100}
-                step={0.01}
-                value={minimumCandidateDistanceRatio * 100}
-                onChange={(event) => setMinimumCandidateDistanceRatio(Number(event.target.value) / 100)}
-              />
-            </label>
+            <div className="model-settings-grid">
+              <label>
+                最小候補間距離（探索範囲比 %）
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.01}
+                  value={minimumCandidateDistanceRatio * 100}
+                  onChange={(event) => setMinimumCandidateDistanceRatio(Number(event.target.value) / 100)}
+                />
+              </label>
+              <label>num_restarts<input type="number" min={1} step={1} value={numRestarts} onChange={(event) => setNumRestarts(Number(event.target.value))} /></label>
+              <label>raw_samples<input type="number" min={1} step={1} value={rawSamples} onChange={(event) => setRawSamples(Number(event.target.value))} /></label>
+            </div>
             <p className="settings-note">
               連続変数は探索範囲比、step指定変数は実験分解能、カテゴリ変数はカテゴリ一致で重複を判定します。
             </p>
-            <label>num_restarts<input type="number" min={1} step={1} value={numRestarts} onChange={(event) => setNumRestarts(Number(event.target.value))} /></label>
-            <label>raw_samples<input type="number" min={1} step={1} value={rawSamples} onChange={(event) => setRawSamples(Number(event.target.value))} /></label>
           </article>
-        </div>
 
-        {inputPerturbation && (
-          <article className="panel compact-panel">
-            <div className="panel-title">
-              <div>
-                <span className="panel-kicker">INPUT PERTURBATION RISK</span>
-                <h3>入力摂動の候補評価</h3>
-                <p>探索範囲から生成した候補を、入力ばらつきに対してどのように集約して評価するかを設定します。</p>
+          {inputPerturbation && (
+            <article className="panel compact-panel">
+              <div className="panel-title">
+                <div>
+                  <span className="panel-kicker">INPUT PERTURBATION RISK</span>
+                  <h3>入力摂動の候補評価</h3>
+                  <p>探索範囲から生成した候補を、入力ばらつきに対してどのように集約して評価するかを設定します。</p>
+                </div>
               </div>
-            </div>
-            <div className="transform-fields">
-              <InputPerturbationRiskSettingsControl
-                acquisitionFamily={acquisitionFamily}
-                disabled={acquisitionFamily === "active_learning"}
-              />
-            </div>
-          </article>
-        )}
-      </details>
+              <div className="transform-fields">
+                <InputPerturbationRiskSettingsControl
+                  acquisitionFamily={acquisitionFamily}
+                  disabled={acquisitionFamily === "active_learning"}
+                />
+              </div>
+            </article>
+          )}
+        </details>
+      </article>
+
+      <SearchVariableSettings
+        columns={columns}
+        preview={dataset.preview}
+        variables={selectedVariables}
+        patchVariable={patchVariable}
+        numberOrUndefined={numberOrUndefined}
+      />
 
       <article className="panel compact-panel validation-panel">
         <div className="panel-title">

@@ -88,18 +88,55 @@ button.composition-kind-option.high-cardinality-normal:hover:not(:disabled) {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 38%, transparent);
 }
 
+/* Keep warning badges attached to the data-type label without changing card layout. */
+.feature-variable-choice.selected-with-missing .missing-value-warning,
+.simple-feature-choice.selected-with-missing .missing-value-warning {
+  display: none;
+}
+
+.feature-variable-choice.selected-with-missing
+  .variable-choice-main > small:first-of-type,
 .feature-variable-choice:has(.composition-kind-control.high-cardinality-category)
-  .variable-choice-main > small:first-of-type {
+  .variable-choice-main > small:first-of-type,
+.simple-feature-choice.selected-with-missing
+  .variable-choice-copy > small:first-of-type {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  width: fit-content;
   max-width: 100%;
   white-space: nowrap;
+}
+
+.feature-variable-choice.selected-with-missing
+  .variable-choice-main > small:first-of-type::before,
+.simple-feature-choice.selected-with-missing
+  .variable-choice-copy > small:first-of-type::after {
+  content: "⚠ 欠損あり";
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 5px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--line));
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 760;
+  line-height: 1;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.feature-variable-choice.selected-with-missing
+  .variable-choice-main > small:first-of-type::before {
+  order: 2;
 }
 
 .feature-variable-choice:has(.composition-kind-control.high-cardinality-category)
   .variable-choice-main > small:first-of-type::after {
   content: "⚠ ID列候補";
+  order: 3;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -121,6 +158,10 @@ button.composition-kind-option.high-cardinality-normal:hover:not(:disabled) {
     white-space: normal;
   }
 
+  .feature-variable-choice.selected-with-missing
+    .variable-choice-main > small:first-of-type::before,
+  .simple-feature-choice.selected-with-missing
+    .variable-choice-copy > small:first-of-type::after,
   .feature-variable-choice:has(.composition-kind-control.high-cardinality-category)
     .variable-choice-main > small:first-of-type::after {
     font-size: 8px;

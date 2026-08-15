@@ -1,10 +1,12 @@
 .variable-choice.selected-with-missing {
   outline: 2px solid var(--danger);
   outline-offset: -1px;
+  border-color: color-mix(in srgb, var(--danger) 72%, var(--line)) !important;
 }
 
 .variable-choice.selected-with-missing:hover:not(:disabled) {
   outline-color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 78%, var(--line)) !important;
 }
 
 .variable-choice-copy {
@@ -49,11 +51,67 @@
 
 .target-variable-choice.selected-with-missing,
 .simple-feature-choice.selected-with-missing {
-  border-color: color-mix(in srgb, var(--danger) 70%, var(--line));
+  border-color: color-mix(in srgb, var(--danger) 72%, var(--line)) !important;
 }
 
-.feature-variable-choice.selected-with-missing .variable-choice-main {
-  gap: 4px;
+/* Keep feature metadata compact: type, missingness, and ID warning share one row. */
+.feature-variable-choice .variable-choice-main {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  align-content: center;
+  justify-content: start;
+  column-gap: 6px;
+  row-gap: 2px;
+}
+
+.feature-variable-choice .variable-choice-main > span:first-child {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.feature-variable-choice .variable-choice-main > small:first-of-type {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: center;
+}
+
+.feature-variable-choice .variable-choice-main > .missing-value-warning {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: center;
+}
+
+.feature-variable-choice .variable-choice-main > .column-selection-disabled {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
+/* Simple mode uses the same compact type + missingness row. */
+.simple-feature-choice .variable-choice-copy {
+  grid-template-columns: max-content max-content;
+  align-items: center;
+  justify-content: start;
+  column-gap: 6px;
+  row-gap: 3px;
+}
+
+.simple-feature-choice .variable-choice-copy > span:first-child {
+  grid-column: 1 / -1;
+}
+
+.simple-feature-choice .variable-choice-copy > small:first-of-type {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.simple-feature-choice .variable-choice-copy > .missing-value-warning {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.simple-feature-choice .variable-choice-copy > .column-selection-disabled {
+  grid-column: 1 / -1;
+  grid-row: 3;
 }
 
 .variable-choice.constant-column,
@@ -75,10 +133,6 @@ button.variable-choice.constant-column:disabled,
 .feature-variable-choice.constant-column .composition-kind-control {
   pointer-events: none;
   opacity: 0.48;
-}
-
-.feature-variable-choice.constant-column .variable-choice-main {
-  gap: 4px;
 }
 
 button.composition-kind-option.high-cardinality-normal,
@@ -119,6 +173,11 @@ button.composition-kind-option.high-cardinality-normal:hover:not(:disabled) {
   .missing-value-warning,
   .column-selection-disabled {
     white-space: normal;
+  }
+
+  .feature-variable-choice .variable-choice-main,
+  .simple-feature-choice .variable-choice-copy {
+    grid-template-columns: max-content minmax(0, 1fr);
   }
 
   .feature-variable-choice:has(.composition-kind-control.high-cardinality-category)

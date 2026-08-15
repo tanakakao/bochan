@@ -1,13 +1,10 @@
 .variable-choice.selected-with-missing {
   outline: 2px solid var(--danger);
   outline-offset: -1px;
-  border-color: color-mix(in srgb, var(--danger) 72%, var(--line)) !important;
-  box-shadow: inset 4px 0 0 var(--danger), var(--shadow-xs) !important;
 }
 
 .variable-choice.selected-with-missing:hover:not(:disabled) {
   outline-color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 78%, var(--line)) !important;
 }
 
 .variable-choice-copy {
@@ -28,11 +25,11 @@
   align-items: center;
   width: fit-content;
   max-width: 100%;
-  padding: 2px 5px;
+  padding: 3px 7px;
   border-radius: 999px;
-  font-size: 9px !important;
+  font-size: 10px !important;
   font-weight: 760;
-  line-height: 1.1;
+  line-height: 1.2;
   letter-spacing: 0 !important;
   text-transform: none !important;
   white-space: nowrap;
@@ -41,7 +38,7 @@
 .missing-value-warning {
   color: var(--danger) !important;
   background: var(--danger-soft);
-  border: 1px solid color-mix(in srgb, var(--danger) 48%, var(--line));
+  border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--line));
 }
 
 .column-selection-disabled {
@@ -52,81 +49,11 @@
 
 .target-variable-choice.selected-with-missing,
 .simple-feature-choice.selected-with-missing {
-  border-color: color-mix(in srgb, var(--danger) 72%, var(--line)) !important;
+  border-color: color-mix(in srgb, var(--danger) 70%, var(--line));
 }
 
-/*
- * Keep the column name on the first line and metadata on the second line.
- * The global workflow stylesheet gives every span inside variable-choice-main
- * width: 100%; explicitly override that for warning badges so they do not
- * stretch across the whole card.
- */
-.feature-variable-choice .variable-choice-main {
-  display: flex;
-  flex-flow: row wrap;
-  align-content: center;
-  align-items: center;
-  justify-content: flex-start;
-  column-gap: 6px;
-  row-gap: 2px;
-}
-
-.feature-variable-choice .variable-choice-main > span:first-child {
-  flex: 0 0 100%;
-  width: 100%;
-  min-width: 0;
-}
-
-.feature-variable-choice .variable-choice-main > small:first-of-type {
-  flex: 0 0 auto;
-  width: auto;
-  max-width: max-content;
-}
-
-.feature-variable-choice .variable-choice-main > .missing-value-warning {
-  flex: 0 0 auto;
-  width: fit-content !important;
-  max-width: max-content !important;
-  overflow: visible !important;
-  font-size: 9px !important;
-  font-weight: 760 !important;
-  text-overflow: clip !important;
-  white-space: nowrap !important;
-}
-
-.feature-variable-choice .variable-choice-main > .column-selection-disabled {
-  flex: 0 0 100%;
-  width: fit-content !important;
-  max-width: 100%;
-}
-
-/* Simple mode keeps the same visual order without affecting the advanced card controls. */
-.simple-feature-choice .variable-choice-copy {
-  grid-template-columns: max-content max-content;
-  align-items: center;
-  justify-content: start;
-  column-gap: 6px;
-  row-gap: 3px;
-}
-
-.simple-feature-choice .variable-choice-copy > span:first-child {
-  grid-column: 1 / -1;
-}
-
-.simple-feature-choice .variable-choice-copy > small:first-of-type {
-  grid-column: 1;
-  grid-row: 2;
-}
-
-.simple-feature-choice .variable-choice-copy > .missing-value-warning {
-  grid-column: 2;
-  grid-row: 2;
-  width: fit-content;
-}
-
-.simple-feature-choice .variable-choice-copy > .column-selection-disabled {
-  grid-column: 1 / -1;
-  grid-row: 3;
+.feature-variable-choice.selected-with-missing .variable-choice-main {
+  gap: 4px;
 }
 
 .variable-choice.constant-column,
@@ -148,6 +75,10 @@ button.variable-choice.constant-column:disabled,
 .feature-variable-choice.constant-column .composition-kind-control {
   pointer-events: none;
   opacity: 0.48;
+}
+
+.feature-variable-choice.constant-column .variable-choice-main {
+  gap: 4px;
 }
 
 button.composition-kind-option.high-cardinality-normal,
@@ -188,18 +119,6 @@ button.composition-kind-option.high-cardinality-normal:hover:not(:disabled) {
   .missing-value-warning,
   .column-selection-disabled {
     white-space: normal;
-  }
-
-  .feature-variable-choice .variable-choice-main {
-    column-gap: 4px;
-  }
-
-  .feature-variable-choice .variable-choice-main > .missing-value-warning {
-    max-width: 100% !important;
-  }
-
-  .simple-feature-choice .variable-choice-copy {
-    grid-template-columns: max-content minmax(0, 1fr);
   }
 
   .feature-variable-choice:has(.composition-kind-control.high-cardinality-category)

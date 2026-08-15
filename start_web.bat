@@ -137,8 +137,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if not exist "node_modules" (
-    echo node_modules was not found. Running pnpm install --frozen-lockfile...
+if not exist "node_modules\.pnpm" (
+    echo pnpm-managed node_modules was not found. Running pnpm install --frozen-lockfile...
     call pnpm install --frozen-lockfile
     if errorlevel 1 (
         echo.

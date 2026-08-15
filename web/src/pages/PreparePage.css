@@ -2,6 +2,7 @@
   outline: 2px solid var(--danger);
   outline-offset: -1px;
   border-color: color-mix(in srgb, var(--danger) 72%, var(--line)) !important;
+  box-shadow: inset 4px 0 0 var(--danger), var(--shadow-xs) !important;
 }
 
 .variable-choice.selected-with-missing:hover:not(:disabled) {
@@ -27,11 +28,11 @@
   align-items: center;
   width: fit-content;
   max-width: 100%;
-  padding: 3px 7px;
+  padding: 2px 5px;
   border-radius: 999px;
-  font-size: 10px !important;
+  font-size: 9px !important;
   font-weight: 760;
-  line-height: 1.2;
+  line-height: 1.1;
   letter-spacing: 0 !important;
   text-transform: none !important;
   white-space: nowrap;
@@ -40,7 +41,7 @@
 .missing-value-warning {
   color: var(--danger) !important;
   background: var(--danger-soft);
-  border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--line));
+  border: 1px solid color-mix(in srgb, var(--danger) 48%, var(--line));
 }
 
 .column-selection-disabled {
@@ -54,39 +55,52 @@
   border-color: color-mix(in srgb, var(--danger) 72%, var(--line)) !important;
 }
 
-/* Keep feature metadata compact: type, missingness, and ID warning share one row. */
+/*
+ * Keep the column name on the first line and metadata on the second line.
+ * The global workflow stylesheet gives every span inside variable-choice-main
+ * width: 100%; explicitly override that for warning badges so they do not
+ * stretch across the whole card.
+ */
 .feature-variable-choice .variable-choice-main {
-  display: grid;
-  grid-template-columns: max-content max-content;
+  display: flex;
+  flex-flow: row wrap;
   align-content: center;
-  justify-content: start;
+  align-items: center;
+  justify-content: flex-start;
   column-gap: 6px;
   row-gap: 2px;
 }
 
 .feature-variable-choice .variable-choice-main > span:first-child {
-  grid-column: 1 / -1;
+  flex: 0 0 100%;
+  width: 100%;
   min-width: 0;
 }
 
 .feature-variable-choice .variable-choice-main > small:first-of-type {
-  grid-column: 1;
-  grid-row: 2;
-  align-self: center;
+  flex: 0 0 auto;
+  width: auto;
+  max-width: max-content;
 }
 
 .feature-variable-choice .variable-choice-main > .missing-value-warning {
-  grid-column: 2;
-  grid-row: 2;
-  align-self: center;
+  flex: 0 0 auto;
+  width: fit-content !important;
+  max-width: max-content !important;
+  overflow: visible !important;
+  font-size: 9px !important;
+  font-weight: 760 !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
 }
 
 .feature-variable-choice .variable-choice-main > .column-selection-disabled {
-  grid-column: 1 / -1;
-  grid-row: 3;
+  flex: 0 0 100%;
+  width: fit-content !important;
+  max-width: 100%;
 }
 
-/* Simple mode uses the same compact type + missingness row. */
+/* Simple mode keeps the same visual order without affecting the advanced card controls. */
 .simple-feature-choice .variable-choice-copy {
   grid-template-columns: max-content max-content;
   align-items: center;
@@ -107,6 +121,7 @@
 .simple-feature-choice .variable-choice-copy > .missing-value-warning {
   grid-column: 2;
   grid-row: 2;
+  width: fit-content;
 }
 
 .simple-feature-choice .variable-choice-copy > .column-selection-disabled {
@@ -175,7 +190,14 @@ button.composition-kind-option.high-cardinality-normal:hover:not(:disabled) {
     white-space: normal;
   }
 
-  .feature-variable-choice .variable-choice-main,
+  .feature-variable-choice .variable-choice-main {
+    column-gap: 4px;
+  }
+
+  .feature-variable-choice .variable-choice-main > .missing-value-warning {
+    max-width: 100% !important;
+  }
+
   .simple-feature-choice .variable-choice-copy {
     grid-template-columns: max-content minmax(0, 1fr);
   }

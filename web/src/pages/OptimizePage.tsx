@@ -424,7 +424,7 @@ export default function OptimizePage() {
       <SectionHeader
         step="4 · SUGGEST"
         title="次に試す条件を設定する"
-        text="目的、獲得関数、提案件数、探索手法、探索範囲を上から確認します。候補制約や生成パラメータは必要なときだけ詳細設定を開いて変更できます。"
+        text="目的、獲得関数、探索手法、提案件数、探索範囲、候補制約を上から確認します。候補生成パラメータは必要なときだけ詳細設定を開いて変更できます。"
         action={executionButtons()}
       />
 
@@ -442,7 +442,7 @@ export default function OptimizePage() {
           <div>
             <span className="panel-kicker">SEARCH STRATEGY</span>
             <h3>探索戦略</h3>
-            <p>左で候補の評価基準、右で提案件数と候補探索アルゴリズムを設定します。</p>
+            <p>左で候補の評価基準、右で候補探索アルゴリズムと提案件数を設定します。</p>
           </div>
           <span className="status-chip success">{acquisition} · q={q}</span>
         </div>
@@ -509,13 +509,9 @@ export default function OptimizePage() {
             <div className="config-column-heading">
               <span className="panel-kicker">CANDIDATE SEARCH</span>
               <h4>候補探索</h4>
-              <p>何点提案し、獲得関数をどの方法で最適化するかを指定します。</p>
+              <p>獲得関数をどの方法で最適化し、何点提案するかを指定します。</p>
             </div>
             <div className="suggestion-config-fields">
-              <label>
-                候補点数 q
-                <input type="number" min={1} max={20} step={1} value={q} onChange={(event) => setQ(Number(event.target.value))} />
-              </label>
               <label>
                 探索手法の大分類
                 <select value={searchMethodFamily} onChange={(event) => changeSearchMethodFamily(event.target.value as SearchMethodFamily)}>
@@ -532,6 +528,10 @@ export default function OptimizePage() {
                   ))}
                 </select>
               </label>
+              <label>
+                候補点数 q
+                <input type="number" min={1} max={20} step={1} value={q} onChange={(event) => setQ(Number(event.target.value))} />
+              </label>
             </div>
             <p className="settings-note search-method-note">
               {derivativeFreeModel
@@ -542,12 +542,10 @@ export default function OptimizePage() {
         </div>
 
         <details className="suggestion-card-details model-output-details">
-          <summary>詳細設定（候補制約・候補生成）</summary>
+          <summary>詳細設定（候補生成）</summary>
           <p className="settings-note">
-            実験上の制約、逐次生成、候補間距離、optimizerの探索量、入力摂動時の候補評価を明示的に調整するときだけ変更してください。
+            逐次生成、候補間距離、optimizerの探索量、入力摂動時の候補評価を明示的に調整するときだけ変更してください。
           </p>
-
-          <FeatureConstraints variables={selectedVariables} />
 
           <article className="panel compact-panel candidate-generation-panel">
             <div className="panel-title">
@@ -613,6 +611,8 @@ export default function OptimizePage() {
         patchVariable={patchVariable}
         numberOrUndefined={numberOrUndefined}
       />
+
+      <FeatureConstraints variables={selectedVariables} />
 
       <article className="panel compact-panel validation-panel">
         <div className="panel-title">

@@ -5,7 +5,7 @@ from types import MethodType
 
 import torch
 
-from bochan.acquisition.binary.bayesian_optimization import (
+from bochan.acquisition.binary.bayesian_optimization.single_output import (
     qBinaryExpectedImprovement,
     qBinaryProbabilityOfImprovement,
     qBinaryUpperConfidenceBound,
@@ -49,7 +49,7 @@ def test_binary_probability_bo_defaults() -> None:
     ):
         signature = inspect.signature(cls.__init__)
         assert signature.parameters["apply_sigmoid_if_needed"].default is True
-        assert signature.parameters["q_mode"].default == "pointwise"
+        assert signature.parameters["q_mode"].default == "joint"
         assert signature.parameters["reduction"].default == "mean"
         assert "X_pending" in signature.parameters
         assert "X_observed" in signature.parameters
@@ -316,4 +316,3 @@ def test_zero_weight_penalties_do_not_expand_pointwise_score() -> None:
 
     assert value.shape == torch.Size([1])
     assert torch.isfinite(value).all()
-

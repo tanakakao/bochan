@@ -41,7 +41,7 @@ def test_beta_boundary_clip_is_explicit_and_preserves_raw_targets() -> None:
 
 def test_beta_mean_concentration_parameterization() -> None:
     """Beta shapes reproduce the requested conditional mean and variance."""
-    likelihood = BetaLogLikelihood(init_concentration=9.0, learn_concentration=False)
+    likelihood = BetaLogLikelihood(concentration=9.0, learn_concentration=False)
     latent = torch.logit(torch.tensor([0.2, 0.7], dtype=torch.double))
     concentration1, concentration0 = likelihood.beta_params_from_f(latent)
     distribution = torch.distributions.Beta(concentration1, concentration0)
@@ -55,7 +55,7 @@ def test_beta_multitask_wide_partial_posterior_and_sampler() -> None:
     X, Y = _data()
     Y[0, 2] = torch.nan
     Y[2, 0] = torch.nan
-    model = WideBetaMultiTaskGPModel(X, Y, rank=2, num_inducing_points=5)
+    model = WideBetaMultiTaskGPModel(X, Y, rank=2, num_inducing=5)
     posterior = model.posterior(X[:2])
     assert posterior.mean.shape == torch.Size([2, 3])
     assert posterior.rsample(torch.Size([4])).shape == torch.Size([4, 2, 3])

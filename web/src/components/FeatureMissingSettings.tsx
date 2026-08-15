@@ -37,11 +37,7 @@ export function FeatureMissingImputationSettings({
   onChange
 }: FeatureMissingSettingsProps) {
   if (settings.strategy !== "impute") {
-    return (
-      <p className="settings-note">
-        現在は欠損行を削除します。基本設定で「補完」を選ぶと補完手法を設定できます。
-      </p>
-    );
+    return <p className="settings-note">欠損行はモデル学習前に削除されます。</p>;
   }
 
   return (

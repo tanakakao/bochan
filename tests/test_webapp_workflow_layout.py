@@ -34,7 +34,8 @@ def test_model_settings_follow_problem_then_primary_then_details_order() -> None
     training_index = source.index("<h4>学習</h4>", details_index)
     robustness_index = source.index("<h4>頑健化</h4>", details_index)
     composition_index = source.index("<CompositionModelSettings />", details_index)
-    missing_noise_index = source.index("<h4>欠損値・観測ノイズ</h4>", details_index)
+    missing_index = source.index("<h4>欠損値</h4>", details_index)
+    noise_index = source.index("<h4>観測ノイズ</h4>", details_index)
     accuracy_index = source.index("<h3>精度評価</h3>", details_index)
     importance_index = source.index("<h3>特徴量重要度</h3>", details_index)
 
@@ -42,8 +43,8 @@ def test_model_settings_follow_problem_then_primary_then_details_order() -> None
     assert model_card_index < model_selection_index < details_index
     assert model_card_index < basic_settings_index < details_index
     assert details_index < training_index < robustness_index
-    assert robustness_index < composition_index < missing_noise_index
-    assert missing_noise_index < accuracy_index < importance_index
+    assert robustness_index < composition_index < missing_index < noise_index
+    assert noise_index < accuracy_index < importance_index
 
     normalize_index = source.index("checked={normalize}", basic_settings_index)
     perturbation_index = source.index("checked={inputPerturbation}", basic_settings_index)

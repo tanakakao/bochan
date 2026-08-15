@@ -152,7 +152,7 @@ export default function SettingsPage() {
       <SectionHeader
         step="3 · MODEL"
         title="目的変数とタスクを決める"
-        text="まず何を予測・最適化するかを確認し、その下でモデルと基本設定を選びます。学習や診断の細かな設定は必要なときだけ開けます。"
+        text="目的変数とタスクに応じて、モデル・前処理・評価条件を設定します。"
         action={
           <button disabled={!settingsValid} onClick={() => setStep("optimize")}>
             候補提案へ
@@ -173,7 +173,6 @@ export default function SettingsPage() {
           <div>
             <span className="panel-kicker">SURROGATE MODEL</span>
             <h3>モデルと基本設定</h3>
-            <p>左でモデルと評価のON/OFF、右で日常的に確認する前処理・頑健化設定を指定します。</p>
           </div>
           <span className="status-chip success">{modelType}</span>
         </div>
@@ -248,7 +247,6 @@ export default function SettingsPage() {
             <div className="config-column-heading">
               <span className="panel-kicker">BASIC SETTINGS</span>
               <h4>基本設定</h4>
-              <p>頻繁に確認する前処理と頑健化の入口だけを常時表示します。</p>
             </div>
             <div className="compact-setting-list">
               <label className="compact-setting-row">
@@ -282,10 +280,7 @@ export default function SettingsPage() {
         </div>
 
         <details className="model-card-details model-output-details" open={!settingsValid}>
-          <summary>詳細設定（学習・頑健化・欠損／ノイズ・評価／診断）</summary>
-          <p className="settings-note">
-            基本画面では操作頻度の高い設定だけを表示します。ここでは学習条件、頑健化の数値条件、欠損補完、観測ノイズ、CVと重要度の詳細を調整できます。
-          </p>
+          <summary>詳細設定（学習・頑健化・欠損値・観測ノイズ・評価・診断）</summary>
 
           <section className="model-advanced-section model-training-section">
             <div className="config-column-heading">
@@ -324,9 +319,9 @@ export default function SettingsPage() {
             <div className="config-column-heading">
               <span className="panel-kicker">ROBUSTNESS</span>
               <h4>頑健化</h4>
-              <p>入力摂動を有効にした場合のサンプリング条件を設定します。</p>
+              <p>入力ばらつきを考慮する場合のサンプリング条件を設定します。</p>
             </div>
-            {inputPerturbation ? (
+            {inputPerturbation && (
               <div className="model-settings-grid">
                 <label>
                   摂動サンプル数 n
@@ -349,25 +344,28 @@ export default function SettingsPage() {
                   />
                 </label>
               </div>
-            ) : (
-              <p className="settings-note">基本設定で入力摂動を有効にすると、頑健化の数値条件を設定できます。</p>
             )}
           </section>
 
           <CompositionModelSettings />
 
-          <section className="model-advanced-section model-data-handling-section">
+          <section className="model-advanced-section model-missing-values-section">
             <div className="config-column-heading">
-              <span className="panel-kicker">MISSING VALUES & NOISE</span>
-              <h4>欠損値・観測ノイズ</h4>
-              <p>補完を選んだ場合の手法と、対応モデルの観測ノイズ下限を設定します。</p>
+              <span className="panel-kicker">MISSING VALUES</span>
+              <h4>欠損値</h4>
+              <p>説明変数を補完する場合の補完手法を設定します。</p>
             </div>
-            <div className="model-detail-subsection">
-              <h5>欠損値の補完手法</h5>
-              <FeatureMissingImputationSettings
-                settings={featureMissingSettings}
-                onChange={updateFeatureMissingSettings}
-              />
+            <FeatureMissingImputationSettings
+              settings={featureMissingSettings}
+              onChange={updateFeatureMissingSettings}
+            />
+          </section>
+
+          <section className="model-advanced-section model-observation-noise-section">
+            <div className="config-column-heading">
+              <span className="panel-kicker">OBSERVATION NOISE</span>
+              <h4>観測ノイズ</h4>
+              <p>対応する回帰モデルの観測ノイズ下限を設定します。</p>
             </div>
             <NoiseAlphaSettings
               modelType={modelType}
@@ -380,13 +378,12 @@ export default function SettingsPage() {
               <div>
                 <span className="panel-kicker">ACCURACY</span>
                 <h3>精度評価</h3>
-                <p>CVのON/OFFは上のモデル選択欄で切り替え、ここでは評価方法を設定します。</p>
               </div>
               <span className={`status-chip ${crossValidation.enabled ? "success" : ""}`}>
                 {crossValidation.enabled ? "ON" : "OFF"}
               </span>
             </div>
-            {crossValidation.enabled ? (
+            {crossValidation.enabled && (
               <>
                 <div className="model-settings-grid">
                   <label>
@@ -422,8 +419,6 @@ export default function SettingsPage() {
                   交差検証ではデータを分割してモデルを複数回学習するため、通常より時間がかかります。最終モデルは交差検証後に全データで別途学習されます。分類ではクラス比率を保つ層化分割を使用します。
                 </p>
               </>
-            ) : (
-              <p className="settings-note">モデル選択欄でCVを有効にすると、検証方法と分割数を設定できます。</p>
             )}
           </article>
 
@@ -432,13 +427,12 @@ export default function SettingsPage() {
               <div>
                 <span className="panel-kicker">INSPECTION</span>
                 <h3>特徴量重要度</h3>
-                <p>計算のON/OFFは上のモデル選択欄で切り替え、ここでは取得内容と表示条件を設定します。</p>
               </div>
               <span className={`status-chip ${featureImportance.enabled ? "success" : ""}`}>
                 {featureImportance.enabled ? "ON" : "OFF"}
               </span>
             </div>
-            {featureImportance.enabled ? (
+            {featureImportance.enabled && (
               <>
                 <div className="model-settings-grid">
                   <label>
@@ -561,8 +555,6 @@ export default function SettingsPage() {
                   モデル固有診断を選択すると、学習モデルが提供するARD、PCA、マルチタスク相関などを取得します。計算回数は概ね 特徴量数 × 反復回数 × fold数 に比例します。
                 </p>
               </>
-            ) : (
-              <p className="settings-note">モデル選択欄で特徴量重要度を有効にすると、取得内容や表示条件を設定できます。</p>
             )}
           </article>
         </details>

@@ -32,6 +32,7 @@ on:
       - "web/src/advanced-settings.css"
       - "web/src/model-artifact.css"
       - "web/src/result-interactions.css"
+      - "web/src/target-settings.css"
       - "web/src/styles/workbench-design.css"
       - "web/src/styles/workflow.css"
       - "web/src/styles/typography.css"

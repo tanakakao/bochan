@@ -98,6 +98,9 @@ export default function InteractiveResultPlots({ result }: Props) {
   const options = useMemo(() => defaults(result), [result]);
   const composition = options.composition;
   const compositionFeatures = composition?.fraction_features ?? [];
+  const ternaryAvailable = compositionFeatures.length > 0
+    ? compositionFeatures.length >= 3
+    : options.numeric_features.length >= 3;
   const runId = result.visualization_run_id;
   const [leftKind, setLeftKind] = useState<LeftVisualizationKind>(
     result.visualization_run_id && options.regression_targets.length >= 2 ? "pareto" : "yyplot"
@@ -160,6 +163,10 @@ export default function InteractiveResultPlots({ result }: Props) {
       setLeftKind("yyplot");
     }
   }, [leftKind, options.regression_targets]);
+
+  useEffect(() => {
+    if (rightKind === "ternary" && !ternaryAvailable) setRightKind("1d");
+  }, [rightKind, ternaryAvailable]);
 
   useEffect(() => {
     if (
@@ -295,6 +302,7 @@ export default function InteractiveResultPlots({ result }: Props) {
   }
 
   function changeRightKind(value: "1d" | "2d" | "ternary") {
+    if (value === "ternary" && !ternaryAvailable) return;
     setRightKind(value);
     if (value !== "1d" && !options.numeric_features.includes(featureA)) {
       setFeatureA(options.numeric_features[0] ?? "");
@@ -377,7 +385,13 @@ export default function InteractiveResultPlots({ result }: Props) {
             >
               <option value="1d">1次元プロット</option>
               <option value="2d" disabled={options.numeric_features.length < 2}>2次元プロット</option>
-              <option value="ternary" disabled={options.numeric_features.length < 3}>三角図</option>
+              <option
+                value="ternary"
+                disabled={!ternaryAvailable}
+                title={ternaryAvailable
+                  ? "3変数または3元素の断面を三角図で表示します。"
+                  : "組成の三角図には候補元素が3種類以上必要です。"}
+              >三角図</option>
             </select></label>
             <label>目的変数<select value={rightTarget} onChange={(event) => setRightTarget(event.target.value)}>
               {options.target_columns.map((target) => <option key={target} value={target}>{target}</option>)}

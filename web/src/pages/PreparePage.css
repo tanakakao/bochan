@@ -32,7 +32,8 @@
   line-height: 1.2;
   letter-spacing: 0 !important;
   text-transform: none !important;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .missing-value-warning {
@@ -102,10 +103,11 @@ button.composition-kind-option.high-cardinality-normal:hover:not(:disabled) {
   .variable-choice-copy > small:first-of-type {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  width: fit-content;
+  flex-wrap: wrap;
+  gap: 4px 5px;
+  width: 100%;
   max-width: 100%;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .feature-variable-choice.selected-with-missing
@@ -126,6 +128,7 @@ button.composition-kind-option.high-cardinality-normal:hover:not(:disabled) {
   line-height: 1;
   letter-spacing: 0;
   text-transform: none;
+  white-space: nowrap;
 }
 
 .feature-variable-choice.selected-with-missing
@@ -150,14 +153,10 @@ button.composition-kind-option.high-cardinality-normal:hover:not(:disabled) {
   line-height: 1;
   letter-spacing: 0;
   text-transform: none;
+  white-space: nowrap;
 }
 
 @media (max-width: 760px) {
-  .missing-value-warning,
-  .column-selection-disabled {
-    white-space: normal;
-  }
-
   .feature-variable-choice.selected-with-missing
     .variable-choice-main > small:first-of-type::before,
   .simple-feature-choice.selected-with-missing

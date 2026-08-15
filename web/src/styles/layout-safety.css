@@ -1,0 +1,320 @@
+/* Cross-domain containment and responsive safety.
+ *
+ * This layer owns geometry only: shrinking, wrapping, and narrow-screen
+ * fallbacks for dynamic text. Domain colors and component visuals stay in
+ * their canonical stylesheets.
+ */
+
+.app-root,
+.app-shell,
+.content,
+.content-inner,
+.panel,
+.side-card,
+.metric,
+.settings-card,
+.canvas-panel,
+.variable-choice,
+.constraint-card,
+.transform-card,
+.constraint-section,
+.data-entry-choice,
+.conversation-thread,
+.conversation-action-card,
+.conversation-summary-card,
+.experiment-entry-panel,
+.experiment-import-panel,
+.history-overview-grid > div,
+.history-setting-grid > div,
+.visualization-card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cards > *,
+.form-grid > *,
+.simple-default-grid > *,
+.model-settings-grid > *,
+.search-transform-grid > *,
+.transform-fields > *,
+.coefficient-grid > *,
+.model-detail-grid > *,
+.interactive-plot-grid > *,
+.plot-controls > *,
+.conversation-choice-grid > *,
+.conversation-feature-list > *,
+.conversation-result-values > *,
+.history-overview-grid > *,
+.history-setting-grid > * {
+  min-width: 0;
+}
+
+.section-header,
+.panel-title,
+.result-subheading,
+.transform-card-heading,
+.constraint-section-heading,
+.composition-inline-heading,
+.history-section-heading,
+.experiment-save-row,
+.experiment-import-controls,
+.experiment-complete {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.section-header > *,
+.panel-title > *,
+.result-subheading > *,
+.transform-card-heading > *,
+.constraint-section-heading > *,
+.composition-inline-heading > *,
+.history-section-heading > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.section-header h2,
+.section-header p,
+.panel-title h3,
+.panel-title p,
+.side-card-title strong,
+.settings-title h3,
+.result-subheading h3,
+.result-subheading p,
+.transform-card h4,
+.transform-card p,
+.constraint-section h4,
+.constraint-section p,
+.composition-inline-heading h4,
+.composition-inline-heading p,
+.history-section-heading h4,
+.history-section-heading p,
+.settings-note,
+.alert,
+.inline-message,
+.artifact-security-note,
+.artifact-loaded-note,
+.stale-result-note {
+  overflow-wrap: anywhere;
+}
+
+.status-chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.context-list > div {
+  min-width: 0;
+  align-items: flex-start;
+}
+
+.context-list span {
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.context-list strong {
+  min-width: 0;
+  max-width: 68%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.runtime-large,
+.runtime-large > div,
+.runtime-copy,
+.side-card-title,
+.rail-note,
+.rail-note > div:last-child {
+  min-width: 0;
+}
+
+.file-summary,
+.file-summary > *,
+.data-entry-choice-copy,
+.experiment-file-picker,
+.experiment-file-picker > *,
+.history-panel-actions,
+.history-panel-actions > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.file-summary strong {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.data-entry-choice-copy strong,
+.experiment-file-picker strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.variable-choice-copy,
+.feature-variable-choice,
+.feature-variable-choice .variable-choice-main,
+.feature-type-toggle,
+.composition-kind-control,
+.composition-kind-segment {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.constraint-card-heading,
+.constraint-card-heading > div,
+.constraint-expression,
+.constraint-variable-picker,
+.selection-count-editor,
+.class-order-item {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.constraint-expression,
+.constraint-card-heading strong,
+.class-order-item strong {
+  overflow-wrap: anywhere;
+}
+
+.constraint-variable-picker button {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.switch-field {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+  white-space: normal;
+}
+
+.conversation-heading,
+.conversation-heading > *,
+.conversation-message,
+.conversation-bubble,
+.conversation-action-card,
+.conversation-action-card > *,
+.conversation-choice-grid button,
+.conversation-choice-grid button > *,
+.conversation-feature,
+.conversation-feature > span:last-child,
+.conversation-result-values div,
+.conversation-prediction,
+.conversation-summary-card,
+.conversation-summary-card > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.conversation-bubble,
+.conversation-action-card > strong,
+.conversation-action-card > p,
+.conversation-choice-grid button strong,
+.conversation-choice-grid button small,
+.conversation-result-values strong,
+.conversation-prediction strong,
+.conversation-warning,
+.conversation-note-card p {
+  overflow-wrap: anywhere;
+}
+
+.conversation-prediction strong {
+  font-size: clamp(20px, 4vw, 28px);
+}
+
+.history-target-summary,
+.history-target-summary > *,
+.history-cycle-details summary,
+.history-cycle-details summary > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.history-target-summary span {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.statusbar {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.statusbar > span {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.statusbar > span:not(.privacy-status) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 760px) {
+  .panel-title,
+  .result-subheading,
+  .transform-card-heading,
+  .constraint-section-heading,
+  .composition-inline-heading,
+  .history-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .panel-title .status-chip {
+    align-self: flex-start;
+  }
+
+  .history-panel-actions {
+    width: 100%;
+    justify-items: stretch;
+  }
+}
+
+@media (max-width: 640px) {
+  .feature-variable-choice {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .feature-type-toggle,
+  .composition-kind-control {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .composition-kind-control {
+    border-left: 0;
+  }
+
+  .context-list strong {
+    max-width: 62%;
+  }
+
+  .privacy-status {
+    display: none;
+  }
+}
+
+@media (max-width: 420px) {
+  .context-list > div {
+    display: grid;
+    gap: 4px;
+  }
+
+  .context-list strong {
+    max-width: 100%;
+    text-align: left;
+  }
+
+  .statusbar {
+    gap: 8px;
+  }
+}

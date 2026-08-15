@@ -49,6 +49,8 @@ web/
 ├── src/
 ├── test/
 ├── package.json
+├── pnpm-lock.yaml
+├── pnpm-workspace.yaml
 └── vite.config.ts
 ```
 
@@ -72,17 +74,59 @@ The authoritative runtime capability list is available from `GET /api/v1/capabil
 
 ## Installation
 
+### Install pnpm on Windows
+
+The frontend uses pnpm and pins the project version in `web/package.json`.
+For pnpm 11 installed through npm, Node.js 22 or newer is required.
+
+First confirm Node.js is available:
+
+```bat
+node --version
+```
+
+The pnpm documentation currently recommends the npm-based installer on Windows:
+
+```bat
+npx get-pnpm
+pnpm --version
+```
+
+If you prefer Windows Package Manager, `winget` is also supported:
+
+```bat
+winget install -e --id pnpm.pnpm
+```
+
+If `pnpm` is not found immediately after installation, open a new terminal and run `pnpm --version` again.
+When pnpm is run inside this project, the `packageManager` field in `web/package.json` selects the pinned pnpm version.
+See the official pnpm installation documentation for other installation methods: https://pnpm.io/installation
+
+### Install bochan Web dependencies
+
 From the repository root:
 
 ```bash
 pip install -e ".[web]"
 cd web
-npm install
+pnpm install --frozen-lockfile
 ```
 
 The `web` optional dependency group installs the Python dependencies required by the Web backend, including FastAPI, pandas, scikit-learn, Plotly, Excel support, and the Web-supported optional surrogate packages.
 
 ## Development startup
+
+### Windows launcher
+
+For the normal Windows development flow, start from the repository root:
+
+```bat
+start_web.bat
+```
+
+This starts both the FastAPI backend and the React frontend. If pnpm-managed frontend dependencies are not present, the launcher automatically runs `pnpm install --frozen-lockfile` before starting Vite. An existing npm-style `node_modules` directory does not need to be removed manually.
+
+### Manual startup
 
 Start the backend from the repository root:
 
@@ -94,12 +138,10 @@ Start the frontend in another terminal:
 
 ```bash
 cd web
-npm run dev
+pnpm run dev
 ```
 
 Then open `http://localhost:5173`.
-
-On Windows, the repository-level `start_web.bat` can be used for the configured local startup flow.
 
 ## Data handling
 

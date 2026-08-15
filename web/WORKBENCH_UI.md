@@ -117,8 +117,8 @@ uvicorn bochan.serving.webapp.app:app --reload --port 8000
 
 ```bash
 cd web
-npm install
-npm run dev
+pnpm install --frozen-lockfile
+pnpm run dev
 ```
 
 ブラウザ:
@@ -131,7 +131,7 @@ http://localhost:5173
 
 ```bash
 cd web
-npm run build
+pnpm run build
 ```
 
 このビルドではTypeScriptのstrict checkとVite buildを実行します。

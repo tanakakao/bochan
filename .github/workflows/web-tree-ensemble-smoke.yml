@@ -137,18 +137,23 @@ jobs:
             tests/test_web_tabpfn_visualization_session.py \
             tests/test_web_tree_ensemble_models.py \
             tests/test_webapp_multiobjective_contract.py
-      - uses: actions/setup-node@v4
+      - name: Set up pnpm and Node.js
+        uses: pnpm/setup@v2
         with:
-          node-version: "24"
+          package-json-file: web/package.json
+          runtime: node@24
+          cache: true
+          cache-dependency-path: web/pnpm-lock.yaml
+          install: false
       - name: Install Web frontend dependencies
         working-directory: web
-        run: npm install --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
       - name: Test Web regression model labels
         working-directory: web
         run: node --experimental-strip-types test/regressionLikelihoodOptions.test.ts
       - name: Build Web frontend
         working-directory: web
-        run: npm run build
+        run: pnpm run build
 
   tabpfn-preload-windows-smoke:
     runs-on: windows-latest

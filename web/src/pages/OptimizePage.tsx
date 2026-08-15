@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  applyAnalysisConfig,
+  applyStoredRunSettings,
+  createAdvancedAnalysisConfig
+} from "../analysisConfig";
 import { EmptyState, SectionHeader } from "../components/Common";
 import FeatureConstraints from "../components/FeatureConstraints";
 import InputPerturbationRiskSettingsControl from "../components/InputPerturbationRiskSettings";
@@ -123,9 +128,18 @@ export default function OptimizePage() {
     optimizedTargetSettings,
     selectedVariables,
     patchVariable,
-    modelType,
-    projectionDimensions,
+    normalize,
+    setNormalize,
     inputPerturbation,
+    setInputPerturbation,
+    nW,
+    setNW,
+    perturbationStd,
+    setPerturbationStd,
+    modelType,
+    setModelType,
+    projectionDimensions,
+    setProjectionDimensions,
     acquisitionFamily,
     setAcquisitionFamily,
     acquisition,
@@ -133,6 +147,7 @@ export default function OptimizePage() {
     beta,
     setBeta,
     fitMaxiter,
+    setFitMaxiter,
     q,
     setQ,
     sequential,
@@ -313,12 +328,57 @@ export default function OptimizePage() {
   const taskSummary = homogeneousTask ? taskLabel(taskTypes[0] ?? "regression") : "混合タスク";
   const searchMethodLabel = searchMethodOptions.find((option) => option.value === searchMethod)?.label ?? searchMethod;
 
+  function executeAdvanced(mode: "reuse" | "retrain") {
+    const config = createAdvancedAnalysisConfig({
+      model: {
+        normalize,
+        inputPerturbation,
+        nW,
+        perturbationStd,
+        projectionDimensions,
+        modelType,
+        fitMaxiter
+      },
+      acquisition: {
+        family: acquisitionFamily,
+        name: acquisition,
+        beta
+      },
+      search: {
+        q,
+        sequential,
+        minimumCandidateDistanceRatio,
+        numRestarts,
+        rawSamples
+      }
+    });
+    applyStoredRunSettings(config.persisted);
+    applyAnalysisConfig(config, {
+      setNormalize,
+      setInputPerturbation,
+      setNW,
+      setPerturbationStd,
+      setProjectionDimensions,
+      setModelType,
+      setAcquisitionFamily,
+      setAcquisition,
+      setBeta,
+      setFitMaxiter,
+      setQ,
+      setSequential,
+      setMinimumCandidateDistanceRatio,
+      setNumRestarts,
+      setRawSamples
+    });
+    void execute(mode);
+  }
+
   function executionButtons() {
     if (!modelReuseAvailable) {
       return (
         <button
           disabled={!canExecute}
-          onClick={() => void execute("retrain")}
+          onClick={() => executeAdvanced("retrain")}
           title="現在の設定でモデルを学習してから候補を生成します。"
         >
           モデルを学習して候補を生成
@@ -330,14 +390,14 @@ export default function OptimizePage() {
         <button
           className="secondary"
           disabled={!canExecute}
-          onClick={() => void execute("retrain")}
+          onClick={() => executeAdvanced("retrain")}
           title="現在の設定でモデルを学習し直してから候補を生成します。"
         >
           再学習
         </button>
         <button
           disabled={!canExecute}
-          onClick={() => void execute("reuse")}
+          onClick={() => executeAdvanced("reuse")}
           title="モデルの再学習を省略し、現在の候補提案条件で候補だけを生成します。"
         >
           学習済みモデルを使用

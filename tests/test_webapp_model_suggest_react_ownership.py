@@ -37,9 +37,20 @@ def test_model_and_suggest_keep_primary_controls_visible_before_details() -> Non
     assert settings.index("model-basic-settings", model_card) < model_details
     assert settings.index("checked={normalize}", model_card) < model_details
     assert settings.index("checked={inputPerturbation}", model_card) < model_details
-    assert settings.index("<NoiseAlphaSettings", model_card) < model_details
-    assert settings.index("<FeatureMissingSettings", model_card) < model_details
+    assert settings.index("checked={crossValidation.enabled}", model_card) < model_details
+    assert settings.index("checked={featureImportance.enabled}", model_card) < model_details
+    assert settings.index("<FeatureMissingStrategySettings", model_card) < model_details
+
     assert settings.index("Fit maxiter", model_details) > model_details
+    assert settings.index("<FeatureMissingImputationSettings", model_details) > model_details
+    assert settings.index("<NoiseAlphaSettings", model_details) > model_details
+
+    training = settings.index("<h4>学習</h4>", model_details)
+    robustness = settings.index("<h4>頑健化</h4>", model_details)
+    missing_noise = settings.index("<h4>欠損値・観測ノイズ</h4>", model_details)
+    accuracy = settings.index("<h3>精度評価</h3>", model_details)
+    importance = settings.index("<h3>特徴量重要度</h3>", model_details)
+    assert model_details < training < robustness < missing_noise < accuracy < importance
 
     target_proposal = optimize.index("<TargetProposalSettings")
     suggest_card = optimize.index('className="panel suggestion-workbench-card"')

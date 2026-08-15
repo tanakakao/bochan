@@ -20,7 +20,8 @@
 }
 
 .missing-value-warning,
-.column-selection-disabled {
+.column-selection-disabled,
+.high-cardinality-warning {
   display: inline-flex;
   align-items: center;
   width: fit-content;
@@ -45,6 +46,12 @@
   color: var(--muted) !important;
   background: var(--surface-strong);
   border: 1px solid var(--line-strong);
+}
+
+.high-cardinality-warning {
+  color: var(--warning) !important;
+  background: var(--warning-soft);
+  border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--line));
 }
 
 .target-variable-choice.selected-with-missing,
@@ -81,9 +88,36 @@ button.variable-choice.constant-column:disabled,
   gap: 4px;
 }
 
+.composition-kind-control.high-cardinality-category {
+  min-width: 190px;
+  display: grid;
+  gap: 5px;
+  align-content: center;
+}
+
+button.composition-kind-option.high-cardinality-normal,
+button.composition-kind-option.high-cardinality-normal:hover:not(:disabled) {
+  color: var(--warning);
+  background: var(--warning-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 38%, transparent);
+}
+
+.composition-kind-control .high-cardinality-warning {
+  justify-self: stretch;
+  width: auto;
+  justify-content: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @media (max-width: 760px) {
   .missing-value-warning,
-  .column-selection-disabled {
+  .column-selection-disabled,
+  .high-cardinality-warning {
     white-space: normal;
+  }
+
+  .composition-kind-control.high-cardinality-category {
+    min-width: 0;
   }
 }

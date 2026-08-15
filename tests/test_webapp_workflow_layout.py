@@ -1,12 +1,26 @@
 from pathlib import Path
 
 
-LAYOUT_CSS = Path("web/src/workflow-layout-extension.css")
+LAYOUT_CSS = Path("web/src/result-interactions.css")
 MAIN_SOURCE = Path("web/src/main.tsx")
 SETTINGS_SOURCE = Path("web/src/pages/SettingsPage.tsx")
 RESULTS_SOURCE = Path("web/src/pages/ResultsPage.tsx")
 RESULT_PLOTS_SOURCE = Path("web/src/InteractiveResultPlots.tsx")
 RESULTS_EXTENSION_SOURCE = Path("web/src/resultsLayoutExtension.ts")
+
+
+OLD_PATCH_STYLES = (
+    "web/src/constraint-settings.css",
+    "web/src/constraint-selection.css",
+    "web/src/data-dropzone.css",
+    "web/src/workflow-separation.css",
+    "web/src/ui-adjustments.css",
+    "web/src/readability.css",
+    "web/src/ux-simplification.css",
+    "web/src/ux-enhancements.css",
+    "web/src/ux-corrections.css",
+    "web/src/workflow-layout-extension.css",
+)
 
 
 def test_model_settings_cards_follow_requested_react_order() -> None:
@@ -58,6 +72,25 @@ def test_workflow_pages_do_not_use_dom_reordering_extensions() -> None:
         assert "composition-constraint-settings-host" not in source
         assert "composition-search-space-constraints-proxy" not in source
         assert "composition-linear-constraints-proxy" not in source
+
+
+def test_workbench_css_uses_canonical_ownership_files() -> None:
+    main = MAIN_SOURCE.read_text(encoding="utf-8")
+    target_css = Path("web/src/target-settings.css").read_text(encoding="utf-8")
+
+    assert 'import "./styles/workflow.css";' in main
+    assert 'import "./styles/typography.css";' in main
+    assert 'import "./styles/workbench-design.css";' in main
+    assert 'import "./advanced-settings.css";' in main
+    assert 'import "./model-artifact.css";' in main
+    assert 'import "./result-interactions.css";' in main
+
+    for path in OLD_PATCH_STYLES:
+        assert not Path(path).exists()
+        assert Path(path).name not in main
+
+    assert "body {" not in target_css
+    assert ".brand-wordmark" not in target_css
 
 
 def test_results_dashboard_is_owned_by_react() -> None:

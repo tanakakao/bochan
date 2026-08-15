@@ -8,6 +8,10 @@
   height: 100% !important;
 }
 
+.interactive-plot-grid {
+  grid-template-columns: minmax(340px, 0.85fr) minmax(0, 1.15fr);
+}
+
 .results-interactive-section .interactive-plot-stage {
   min-height: 560px;
 }
@@ -50,6 +54,86 @@
   color: var(--primary) !important;
 }
 
+.feature-importance-panel .result-subheading p,
+.feature-importance-panel > p,
+.feature-importance-panel .visualization-card > h3,
+.feature-importance-panel .visualization-card > p,
+.feature-importance-panel .gtitle {
+  display: none !important;
+}
+
+.feature-importance-panel .visualization-card {
+  padding-top: 0.75rem;
+}
+
+.results-dashboard-layout {
+  display: grid;
+  grid-template-columns: minmax(340px, 0.9fr) minmax(0, 1.1fr);
+  grid-template-areas:
+    "candidates candidates"
+    "yy accuracy"
+    "importance relationship";
+  gap: 18px;
+  align-items: start;
+  margin-top: 0;
+}
+
+.results-dashboard-layout > .results-candidates-panel {
+  grid-area: candidates;
+  min-width: 0;
+  margin: 0;
+}
+
+.results-dashboard-layout > .results-interactive-section,
+.results-dashboard-layout > .results-interactive-section > .interactive-plot-grid {
+  display: contents;
+}
+
+.results-dashboard-layout .results-interactive-section > .result-subheading {
+  display: none;
+}
+
+.results-dashboard-layout .results-yy-card {
+  grid-area: yy;
+}
+
+.results-dashboard-layout .results-relationship-card {
+  grid-area: relationship;
+}
+
+.results-dashboard-layout > .results-accuracy-slot {
+  grid-area: accuracy;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+}
+
+.results-dashboard-layout > .results-importance-slot {
+  grid-area: importance;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+}
+
+.results-dashboard-layout > .results-importance-slot > .feature-importance-panel {
+  margin: 0;
+}
+
+.results-dashboard-layout > .results-importance-slot > .feature-importance-panel .visualization-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.results-dashboard-layout .interactive-plot-card {
+  min-width: 0;
+  height: 100%;
+}
+
+.results-dashboard-layout .results-accuracy-placeholder,
+.results-dashboard-layout .results-importance-placeholder {
+  min-height: 220px;
+  margin: 0;
+}
+
 .model-save-control {
   min-width: min(310px, 100%);
   display: grid;
@@ -78,6 +162,22 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+
+@media (max-width: 1180px) {
+  .interactive-plot-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .results-dashboard-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "candidates"
+      "yy"
+      "accuracy"
+      "importance"
+      "relationship";
+  }
 }
 
 @media (max-width: 760px) {

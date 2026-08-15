@@ -9,6 +9,98 @@
   margin-top: 0;
 }
 
+.data-entry-switcher {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.3fr);
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 2px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.data-entry-switcher-heading h3,
+.data-entry-switcher-heading p {
+  margin: 0;
+}
+
+.data-entry-switcher-heading h3 {
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+.data-entry-switcher-heading p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.data-entry-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.data-entry-choice {
+  min-height: 72px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 18px;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.data-entry-choice.active {
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-color: color-mix(in srgb, var(--primary) 34%, var(--line));
+}
+
+.data-entry-choice-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--primary);
+}
+
+.data-entry-choice-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.data-entry-choice-copy strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.data-entry-choice-copy small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-entry-choice-arrow {
+  color: var(--subtle);
+  font-size: 18px;
+}
+
+.data-source-grid[data-entry-mode="new"] > .model-artifact-panel,
+.data-source-grid[data-entry-mode="resume"] > .data-file-panel,
+.data-source-grid[data-entry-mode="resume"] > .tutorial-sample-panel {
+  display: none;
+}
+
 .data-file-panel {
   grid-column: 1 / -1;
 }
@@ -19,6 +111,19 @@
 
 .model-dropzone {
   background: color-mix(in srgb, var(--primary-soft) 40%, var(--surface-subtle));
+}
+
+.dropzone.dragging {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 12%, transparent);
+  transform: translateY(-1px) scale(1.005);
+}
+
+.dropzone.dragging .upload-symbol {
+  color: #ffffff;
+  background: var(--primary);
+  border-color: var(--primary);
 }
 
 .artifact-security-note {
@@ -32,7 +137,14 @@
 }
 
 @media (max-width: 980px) {
-  .data-source-grid {
+  .data-source-grid,
+  .data-entry-switcher {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .data-entry-choices {
     grid-template-columns: 1fr;
   }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState, type ComponentType } from "react";
+import ExecutionProgress from "./components/ExecutionProgress";
 import {
   STEPS,
   WorkbenchProvider,
@@ -42,6 +43,7 @@ const API_STATUS_LABELS = {
   error: "エラー"
 } as const;
 const DEFAULT_PORTAL_URL = "http://127.0.0.1:5172";
+const CONTEXT_COLLAPSE_KEY = "bochan-context-rail-collapsed";
 
 function resolvePortalUrl(): string {
   const configured = import.meta.env.VITE_PORTAL_URL?.trim();
@@ -109,6 +111,9 @@ function WorkbenchLayout() {
   const mode = useWorkbenchMode();
   const [auxiliaryPage, setAuxiliaryPage] = useState<AuxiliaryPage | null>(currentAuxiliaryPage);
   const [tutorialRequest, setTutorialRequest] = useState(0);
+  const [contextRailCollapsed, setContextRailCollapsed] = useState(
+    () => window.localStorage.getItem(CONTEXT_COLLAPSE_KEY) === "1"
+  );
   const {
     theme,
     setTheme,
@@ -172,6 +177,10 @@ function WorkbenchLayout() {
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(CONTEXT_COLLAPSE_KEY, contextRailCollapsed ? "1" : "0");
+  }, [contextRailCollapsed]);
 
   useEffect(() => {
     if (auxiliaryPage === "experiment" && !experimentAvailable) {
@@ -271,7 +280,7 @@ function WorkbenchLayout() {
         </div>
       </header>
 
-      <main className="app-shell">
+      <main className={`app-shell ${contextRailCollapsed ? "context-rail-collapsed" : ""}`}>
         <aside className="left-rail">
           <button
             type="button"
@@ -370,7 +379,21 @@ function WorkbenchLayout() {
           </div>
         </section>
 
-        <aside className="right-rail" data-tutorial="context">
+        <aside
+          className={`right-rail ${contextRailCollapsed ? "context-collapsed" : ""}`}
+          data-tutorial="context"
+        >
+          <button
+            type="button"
+            className="context-rail-toggle secondary"
+            aria-expanded={!contextRailCollapsed}
+            aria-label={contextRailCollapsed ? "右サイドバーを開く" : "右サイドバーを折り畳む"}
+            title={contextRailCollapsed ? "設定サマリーを開く" : "設定サマリーを折り畳む"}
+            onClick={() => setContextRailCollapsed((current) => !current)}
+          >
+            {contextRailCollapsed ? "‹" : "›"}
+          </button>
+
           <div className={`side-card runtime-card ${health.status}`}>
             <div className="side-card-title">
               <span>Runtime</span>
@@ -455,6 +478,7 @@ function WorkbenchLayout() {
             <span className="eyebrow">PROCESSING</span>
             <h3>{busy}</h3>
             <p>処理中は画面操作を一時停止しています。完了後に結果を表示します。</p>
+            <ExecutionProgress busy={busy} />
             <span className="busy-state">処理中</span>
           </div>
         </div>

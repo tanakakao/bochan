@@ -30,6 +30,14 @@ function missingValueSummary(column: ColumnProfile): string {
   return `欠損 ${column.missing_count}件 (${percent.toFixed(digits)}%)`;
 }
 
+function columnIsSelectable(column: ColumnProfile): boolean {
+  return column.unique_count > 1;
+}
+
+function columnSelectionDisabledReason(column: ColumnProfile): string {
+  return column.unique_count === 0 ? "有効な値がありません" : "値が1種類のみ";
+}
+
 function simpleTargetPatch(
   column: ColumnProfile,
   preview: Record<string, unknown>[],
@@ -153,6 +161,7 @@ export default function PreparePage() {
   const [simpleExecutionPending, setSimpleExecutionPending] = useState(false);
   const simpleExecutionStarted = useRef(false);
   const storedRunSettings = useRef<StoredRunSettingsSnapshot | null>(null);
+  const normalizedDatasetId = useRef<string | null>(null);
 
   useEffect(() => {
     if (!simpleExecutionPending || simpleExecutionStarted.current) return;
@@ -173,6 +182,22 @@ export default function PreparePage() {
       storedRunSettings.current = null;
     });
   }, [candidateSettingsValid, execute, setError, simpleExecutionPending]);
+
+  useEffect(() => {
+    const datasetId = dataset?.dataset_id ?? null;
+    if (!datasetId || normalizedDatasetId.current === datasetId) return;
+    normalizedDatasetId.current = datasetId;
+    if (dataset?.source_type === "model_artifact") return;
+
+    targetColumns.forEach((name) => {
+      const column = targetCandidates.find((candidate) => candidate.name === name);
+      if (column && !columnIsSelectable(column)) toggleTarget(name);
+    });
+    featureColumns.forEach((name) => {
+      const column = selectableColumns.find((candidate) => candidate.name === name);
+      if (column && !columnIsSelectable(column)) toggleFeature(name);
+    });
+  }, [dataset, featureColumns, selectableColumns, targetCandidates, targetColumns, toggleFeature, toggleTarget]);
 
   if (!dataset) {
     return (
@@ -198,10 +223,15 @@ export default function PreparePage() {
   ).length;
 
   function replaceFeatureSelection(names: string[]) {
-    const desired = new Set(names);
+    const eligibleNames = new Set(
+      names.filter((name) => {
+        const column = featureCandidates.find((candidate) => candidate.name === name);
+        return Boolean(column && columnIsSelectable(column));
+      })
+    );
     featureCandidates.forEach((column) => {
       const selected = featureColumns.includes(column.name);
-      if (selected !== desired.has(column.name)) toggleFeature(column.name);
+      if (selected !== eligibleNames.has(column.name)) toggleFeature(column.name);
     });
   }
 
@@ -212,7 +242,7 @@ export default function PreparePage() {
   function setFeatureCategorical(name: string, categorical: boolean) {
     const column = selectableColumns.find((candidate) => candidate.name === name);
     const variable = variables[name];
-    if (!column || !variable) return;
+    if (!column || !variable || !columnIsSelectable(column)) return;
     if (!featureColumns.includes(name)) toggleFeature(name);
     const nextType = categorical || column.kind === "categorical" ? "categorical" : "numeric";
     patchVariable(name, {
@@ -385,8 +415,8 @@ export default function PreparePage() {
               <span className="panel-kicker">TARGET COLUMNS</span>
               <h3>目的変数</h3>
               <p>{mode === "simple"
-                ? "良くしたい値を選択します。"
-                : "モデル化、候補提案、制約判定に使用する出力列を選択します。"}</p>
+                ? "良くしたい値を選択します。グレーの列は値が1種類以下のため選択できません。"
+                : "モデル化、候補提案、制約判定に使用する出力列を選択します。グレーの列は値が1種類以下のため選択できません。"}</p>
             </div>
             <span className={`status-chip ${targetColumns.length && selectedTargetMissingCount === 0 ? "success" : "warning"}`}>
               {targetColumns.length === 0
@@ -404,18 +434,28 @@ export default function PreparePage() {
           <div className="variable-selection-list" role="group" aria-label="目的変数">
             {targetCandidates.map((column) => {
               const selected = targetSet.has(column.name);
+              const unavailable = !columnIsSelectable(column);
               const selectedWithMissing = selected && column.missing_count > 0;
+              const title = unavailable
+                ? `${column.name}: ${columnSelectionDisabledReason(column)}`
+                : selectedWithMissing
+                  ? `${column.name}: ${missingValueSummary(column)}`
+                  : undefined;
               return (
                 <button
                   type="button"
                   key={column.name}
-                  className={`variable-choice target-variable-choice ${selected ? "selected" : ""} ${selectedWithMissing ? "selected-with-missing" : ""}`}
+                  className={`variable-choice target-variable-choice ${selected ? "selected" : ""} ${selectedWithMissing ? "selected-with-missing" : ""} ${unavailable ? "constant-column" : ""}`}
                   aria-pressed={selected}
-                  title={selectedWithMissing ? `${column.name}: ${missingValueSummary(column)}` : undefined}
+                  disabled={unavailable && !selected}
+                  title={title}
                   onClick={() => toggleTarget(column.name)}
                 >
                   <span className="variable-choice-copy">
                     <span>{column.name}</span>
+                    {unavailable && (
+                      <small className="column-selection-disabled">{columnSelectionDisabledReason(column)}</small>
+                    )}
                     {selectedWithMissing && (
                       <small className="missing-value-warning">⚠ {missingValueSummary(column)}</small>
                     )}
@@ -432,8 +472,8 @@ export default function PreparePage() {
               <span className="panel-kicker">FEATURE COLUMNS</span>
               <h3>説明変数</h3>
               <p>{mode === "simple"
-                ? "実験で変更できる条件を選択します。数値／カテゴリはデータから自動判定します。"
-                : "淡い赤は数値、オレンジはカテゴリ扱いです。カテゴリ設定を変更すると、その列も選択されます。"}</p>
+                ? "実験で変更できる条件を選択します。数値／カテゴリはデータから自動判定します。グレーの列は選択できません。"
+                : "淡い赤は数値、オレンジはカテゴリ扱いです。グレーの列は値が1種類以下のため選択できません。"}</p>
             </div>
             <span className={`status-chip ${featureColumns.length && selectedFeatureMissingCount === 0 ? "success" : "warning"}`}>
               {featureColumns.length === 0
@@ -447,7 +487,9 @@ export default function PreparePage() {
           <div className="button-row selection-actions">
             <button
               className="secondary"
-              onClick={() => replaceFeatureSelection(featureCandidates.map((column) => column.name))}
+              onClick={() => replaceFeatureSelection(
+                featureCandidates.filter(columnIsSelectable).map((column) => column.name)
+              )}
             >
               全選択
             </button>
@@ -455,7 +497,9 @@ export default function PreparePage() {
               <button
                 className="secondary"
                 onClick={() => replaceFeatureSelection(
-                  featureCandidates.filter((column) => column.kind === "numeric").map((column) => column.name)
+                  featureCandidates
+                    .filter((column) => column.kind === "numeric" && columnIsSelectable(column))
+                    .map((column) => column.name)
                 )}
               >
                 数値列のみ
@@ -471,21 +515,31 @@ export default function PreparePage() {
               const selected = featureColumns.includes(column.name);
               const variable = variables[column.name];
               const categorical = variable?.type === "categorical" || column.kind === "categorical";
+              const unavailable = !columnIsSelectable(column);
               const selectedWithMissing = selected && column.missing_count > 0;
+              const title = unavailable
+                ? `${column.name}: ${columnSelectionDisabledReason(column)}`
+                : selectedWithMissing
+                  ? `${column.name}: ${missingValueSummary(column)}`
+                  : undefined;
 
               if (mode === "simple") {
                 return (
                   <button
                     type="button"
                     key={column.name}
-                    className={`variable-choice simple-feature-choice ${selected ? "selected" : ""} ${selectedWithMissing ? "selected-with-missing" : ""}`}
+                    className={`variable-choice simple-feature-choice ${selected ? "selected" : ""} ${selectedWithMissing ? "selected-with-missing" : ""} ${unavailable ? "constant-column" : ""}`}
                     aria-pressed={selected}
-                    title={selectedWithMissing ? `${column.name}: ${missingValueSummary(column)}` : undefined}
+                    disabled={unavailable && !selected}
+                    title={title}
                     onClick={() => toggleFeature(column.name)}
                   >
                     <span className="variable-choice-copy">
                       <span>{column.name}</span>
                       <small>{categorical ? "カテゴリ" : "数値"}</small>
+                      {unavailable && (
+                        <small className="column-selection-disabled">{columnSelectionDisabledReason(column)}</small>
+                      )}
                       {selectedWithMissing && (
                         <small className="missing-value-warning">⚠ {missingValueSummary(column)}</small>
                       )}
@@ -497,26 +551,31 @@ export default function PreparePage() {
               return (
                 <div
                   key={column.name}
-                  className={`variable-choice feature-variable-choice ${selected ? "selected" : ""} ${selected && categorical ? "selected-categorical" : ""} ${selectedWithMissing ? "selected-with-missing" : ""}`}
-                  title={selectedWithMissing ? `${column.name}: ${missingValueSummary(column)}` : undefined}
+                  className={`variable-choice feature-variable-choice ${selected ? "selected" : ""} ${selected && categorical ? "selected-categorical" : ""} ${selectedWithMissing ? "selected-with-missing" : ""} ${unavailable ? "constant-column" : ""}`}
+                  aria-disabled={unavailable && !selected}
+                  title={title}
                 >
                   <button
                     type="button"
                     className="variable-choice-main"
                     aria-pressed={selected}
+                    disabled={unavailable && !selected}
                     onClick={() => toggleFeature(column.name)}
                   >
                     <span>{column.name}</span>
                     <small>{categorical ? "categorical" : "numeric"}</small>
+                    {unavailable && (
+                      <span className="column-selection-disabled">{columnSelectionDisabledReason(column)}</span>
+                    )}
                     {selectedWithMissing && (
                       <span className="missing-value-warning">⚠ {missingValueSummary(column)}</span>
                     )}
                   </button>
-                  <label className="feature-type-toggle" title={column.kind === "categorical" ? "入力データ上カテゴリ列のため固定です。" : "カテゴリ変数として扱う"}>
+                  <label className="feature-type-toggle" title={unavailable ? columnSelectionDisabledReason(column) : column.kind === "categorical" ? "入力データ上カテゴリ列のため固定です。" : "カテゴリ変数として扱う"}>
                     <input
                       type="checkbox"
                       checked={categorical}
-                      disabled={column.kind === "categorical"}
+                      disabled={unavailable || column.kind === "categorical"}
                       onChange={(event) => setFeatureCategorical(column.name, event.target.checked)}
                     />
                     <span>カテゴリ</span>

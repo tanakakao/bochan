@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { EmptyState, MetricCard, SectionHeader } from "../components/Common";
 import { useWorkbench } from "../context/WorkbenchContext";
 import {
@@ -7,16 +7,27 @@ import {
 } from "../tutorial/sampleDataset";
 import { useSampleTutorialActive } from "../tutorial/tutorialRuntime";
 
+type DataEntryMode = "new" | "resume";
+
 export default function DataPage() {
   const { busy, dataset, columns, handleFile, handleModelArtifact, setError, setStep } = useWorkbench();
   const [dataDragging, setDataDragging] = useState(false);
+  const [dataEntryMode, setDataEntryMode] = useState<DataEntryMode>(() => (
+    dataset?.source_type === "model_artifact" ? "resume" : "new"
+  ));
   const sampleTutorialActive = useSampleTutorialActive();
   const numericCount = columns.filter((column) => column.kind === "numeric").length;
   const categoricalCount = columns.filter((column) => column.kind === "categorical").length;
   const tutorialSampleLoaded = dataset?.name === TUTORIAL_SAMPLE_DATASET_NAME;
 
+  useEffect(() => {
+    if (dataset?.source_type === "model_artifact") setDataEntryMode("resume");
+  }, [dataset?.source_type]);
+
   function loadDataFile(file: File | null | undefined) {
-    if (file) void handleFile(file);
+    if (!file) return;
+    setDataEntryMode("new");
+    void handleFile(file);
   }
 
   async function selectModelArtifact(file: File | null, input: HTMLInputElement) {
@@ -27,7 +38,10 @@ export default function DataPage() {
         "pickleファイルは読込時にコードを実行できるため、このbochan Webアプリから自分で保存した信頼できるファイルだけを選択してください。\n\n" +
         "このモデルファイルを信頼して読み込みますか？"
       );
-      if (trusted) await handleModelArtifact(file);
+      if (trusted) {
+        setDataEntryMode("resume");
+        await handleModelArtifact(file);
+      }
     } finally {
       input.value = "";
     }
@@ -43,6 +57,7 @@ export default function DataPage() {
       );
       if (!trusted) return;
       setError(null);
+      setDataEntryMode("resume");
       await handleModelArtifact(file);
     } finally {
       input.value = "";
@@ -55,6 +70,7 @@ export default function DataPage() {
     )) {
       return;
     }
+    setDataEntryMode("new");
     void handleFile(createTutorialSampleFile());
   }
 
@@ -71,7 +87,43 @@ export default function DataPage() {
         }
       />
 
-      <div className="data-source-grid">
+      <div className="data-source-grid" data-entry-mode={dataEntryMode}>
+        <section className="data-entry-switcher" aria-label="Data画面の開始方法">
+          <div className="data-entry-switcher-heading">
+            <span className="panel-kicker">START</span>
+            <h3>どの方法で始めますか？</h3>
+            <p>新しいデータから解析するか、保存済みの作業を復元します。</p>
+          </div>
+          <div className="data-entry-choices">
+            <button
+              type="button"
+              className={`data-entry-choice secondary ${dataEntryMode === "new" ? "active" : ""}`}
+              aria-pressed={dataEntryMode === "new"}
+              onClick={() => setDataEntryMode("new")}
+            >
+              <span className="data-entry-choice-icon" aria-hidden="true">＋</span>
+              <span className="data-entry-choice-copy">
+                <strong>新しい解析</strong>
+                <small>CSV / Excelから新しい最適化を開始</small>
+              </span>
+              <span className="data-entry-choice-arrow" aria-hidden="true">›</span>
+            </button>
+            <button
+              type="button"
+              className={`data-entry-choice secondary ${dataEntryMode === "resume" ? "active" : ""}`}
+              aria-pressed={dataEntryMode === "resume"}
+              onClick={() => setDataEntryMode("resume")}
+            >
+              <span className="data-entry-choice-icon" aria-hidden="true">↺</span>
+              <span className="data-entry-choice-copy">
+                <strong>作業を再開</strong>
+                <small>保存モデル / プロジェクトを読み込む</small>
+              </span>
+              <span className="data-entry-choice-arrow" aria-hidden="true">›</span>
+            </button>
+          </div>
+        </section>
+
         {sampleTutorialActive && (
           <article className="panel tutorial-sample-panel" data-tutorial="sample-data">
             <div className="panel-title">

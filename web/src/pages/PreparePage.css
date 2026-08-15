@@ -1,0 +1,53 @@
+.variable-choice.selected-with-missing {
+  outline: 2px solid var(--danger);
+  outline-offset: -1px;
+}
+
+.variable-choice.selected-with-missing:hover:not(:disabled) {
+  outline-color: var(--danger);
+}
+
+.variable-choice-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.variable-choice-copy > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.missing-value-warning {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px 7px;
+  color: var(--danger) !important;
+  background: var(--danger-soft);
+  border: 1px solid color-mix(in srgb, var(--danger) 42%, var(--line));
+  border-radius: 999px;
+  font-size: 10px !important;
+  font-weight: 760;
+  line-height: 1.2;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+  white-space: nowrap;
+}
+
+.target-variable-choice.selected-with-missing,
+.simple-feature-choice.selected-with-missing {
+  border-color: color-mix(in srgb, var(--danger) 70%, var(--line));
+}
+
+.feature-variable-choice.selected-with-missing .variable-choice-main {
+  gap: 4px;
+}
+
+@media (max-width: 760px) {
+  .missing-value-warning {
+    white-space: normal;
+  }
+}

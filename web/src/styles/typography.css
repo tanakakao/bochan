@@ -98,7 +98,6 @@ small,
 .tab strong,
 .workbench-mode-switch button,
 .portal-button,
-.conversation-launcher-copy strong,
 .conversation-choice-grid button strong,
 .conversation-feature strong,
 .conversation-action-card > strong,
@@ -120,7 +119,6 @@ small,
 
 .workflow-step,
 .tab small,
-.conversation-launcher-copy small,
 .conversation-choice-grid button small,
 .conversation-feature small,
 .context-list,
@@ -164,8 +162,20 @@ small,
   min-height: 58px;
 }
 
-.conversation-launcher {
-  min-height: 64px;
+/* The left-rail launcher is a compact two-line control; keep its typography and
+   geometry together so shared control sizing cannot push its copy outside. */
+button.conversation-launcher {
+  min-height: 66px;
+}
+
+.conversation-launcher-copy strong {
+  font-size: 13px !important;
+  line-height: 1.25;
+}
+
+.conversation-launcher-copy small {
+  font-size: 11px !important;
+  line-height: 1.3;
 }
 
 .conversation-action-card button,

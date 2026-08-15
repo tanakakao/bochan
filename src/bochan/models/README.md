@@ -42,65 +42,26 @@ A model wrapper should generally provide:
 ```text
 models/
 ├── components/
-│   ├── beta.py
-│   ├── decomposition.py
-│   ├── gamma.py
-│   ├── negative_binomial.py
-│   └── poisson.py
-│
 ├── transforms/
-│   └── input.py
-│
 ├── regression/
 │   ├── gaussian/
-│   │   ├── base/
-│   │   ├── deep/
-│   │   ├── high_dim/
-│   │   └── robust/
-│   └── non_gaussian/
-│       ├── poisson/
-│       │   ├── base/
-│       │   ├── deep/
-│       │   ├── high_dim/
-│       │   └── robust/
-│       ├── beta/
-│       │   ├── base/
-│       │   ├── deep/
-│       │   ├── high_dim/
-│       │   └── robust/
-│       ├── gamma/
-│       │   ├── base/
-│       │   ├── deep/
-│       │   ├── high_dim/
-│       │   └── robust/
-│       └── negative_binomial/
-│           ├── base/
-│           ├── deep/
-│           ├── high_dim/
-│           └── robust/
-│
+│   ├── beta/
+│   ├── gamma/
+│   ├── count/
+│   ├── external/
+│   ├── foundation/
+│   ├── neural/
+│   └── multioutput.py
 ├── classification/
 │   ├── binary/
-│   │   ├── base/
-│   │   ├── deep/
-│   │   ├── high_dim/
-│   │   └── robust/
-│   └── multiclass/
-│       ├── base/
-│       ├── deep/
-│       ├── high_dim/
-│       └── robust/
-│
+│   ├── multiclass/
+│   └── common/
 ├── ordinal/
-│   ├── base/
-│   ├── deep/
-│   ├── high_dim/
-│   └── robust/
-│
-└── hybrid/
-    ├── multi_output.py
-    ├── prediction.py
-    └── specs.py
+├── hybrid/
+├── multitask/
+├── multioutput/
+├── multifidelity/
+└── external/
 ```
 
 Notes:
@@ -108,37 +69,52 @@ Notes:
 - `regression/gaussian/` is the standard continuous-output regression family.
 - `regression/beta/` and `regression/gamma/` own continuous non-Gaussian response families.
 - `regression/count/{poisson,negative_binomial}/` owns count-response families.
+- `regression/external/`, `regression/foundation/`, and `regression/neural/` own
+  regression-specific external-estimator, foundation-model, and neural-ensemble
+  integrations.
 - `classification/binary/` and `classification/multiclass/` are separated because
   their likelihoods, posterior semantics, target labels, and acquisition
   objectives are different.
+- `classification/common/` contains shared classification internals rather than a
+  concrete public task family.
 - `ordinal/` is treated as its own family rather than a special case of
   classification, because ordinal cutpoints and boundary-aware acquisitions are
   central to its API.
 - `hybrid/` contains wrappers and output specifications for heterogeneous
   multi-output models that combine regression, binary, multiclass, and ordinal
   outputs.
+- `multitask/` owns correlated task/output mechanics, task-feature adapters, and
+  shared multi-task infrastructure.
+- `multioutput/` owns wrappers that aggregate independently fitted outputs.
+- `multifidelity/` owns reusable fidelity-axis abstractions and adapters.
+- concrete likelihood-specific multi-task or multi-fidelity implementations stay
+  with their owning family when they are not genuinely cross-family.
 - `components/` contains reusable likelihoods, posterior wrappers, transforms,
   kernels, decomposition utilities, and small helper functions shared by model
   wrappers.
 - `transforms/` contains input-transform builders used by the API layer, including
   Normalize and input perturbation composition.
 
+This separation is intentional: **multi-output does not imply multi-task
+correlation**. See `ARCHITECTURE.md` for the canonical ownership rules.
+
 ---
 
 ## Directory convention inside each family
 
-Where possible, each model family uses the same internal subdirectories:
+Where possible, GP-oriented model families use the same internal subdirectories:
 
 | Directory | Meaning |
 |---|---|
 | `base/` | Standard model wrappers and core likelihood / posterior integration. |
 | `deep/` | DeepGP or Deep Kernel GP variants. |
-| `high_dim/` | PCA, REMBO, SAAS, or other high-dimensional wrappers. |
+| `high_dim/` | PCA, REMBO, SAAS, VAE, or other high-dimensional wrappers. |
 | `robust/` | Heteroscedastic, robust relevance pursuit, or noise-aware variants. |
 
 Not every family is required to have a complete implementation in every
-subcategory. If a file exists only as a placeholder, it should say so clearly in
-its docstring.
+subcategory. External, foundation, and neural integrations may use a different
+family-specific grouping when that is clearer. If a file exists only as a
+placeholder, it should say so clearly in its docstring.
 
 ---
 
@@ -148,38 +124,35 @@ The default high-level registry in `bochan.api.registry.model` is lazy and maps
 `input_type`, `task_type`, and `model_type` to model classes only when they are
 requested.
 
-### Normal-input registry
+The exact registered `model_type` values are task-dependent and evolve as model
+families are added. The registry is the source of truth; this README intentionally
+does not maintain a second exhaustive flat table that can drift from the code.
 
-| `task_type` | Registered `model_type` values |
-|---|---|
-| `regression` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
-| `multi_objective` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
-| `binary` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
-| `ordinal` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
-| `multiclass` | `base`, `deepgp`, `deepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
+Representative groups currently include:
 
-### Mixed-input registry
+- Gaussian GP strategies such as `base`, `kronecker`, `multitask`,
+  `multifidelity`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`,
+  `rembo`, `vae`, `rrp`, and `hetero` where supported;
+- external / neural / foundation estimators such as `lightgbm`,
+  `lightgbm_ensemble`, `ngboost`, `ngboost_ensemble`, `random_forest`,
+  `deep_ensemble`, `pfn`, and `tabpfn` where supported;
+- distribution-specific regression keys prefixed by `beta_`, `gamma_`,
+  `poisson_`, and `negative_binomial_`.
 
-The same task families are registered under `input_type="mixed"` when `cat_dims`
-is supplied. Mixed regression and multi-objective models use BoTorch's
-`MixedSingleTaskGP` for `model_type="base"`; mixed classification and ordinal
-models use family-specific mixed wrappers.
+Binary, multiclass, ordinal, multi-objective, mixed-input, multi-task, and
+multi-fidelity registries expose the subset appropriate to their task contracts.
+A key available for regression should not be assumed to exist for another task
+unless it is registered there.
 
-| `task_type` | Registered `model_type` values |
-|---|---|
-| `regression` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
-| `multi_objective` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
-| `binary` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
-| `ordinal` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
-| `multiclass` | `base`, `deepgp`, `deepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
-
-`deepgpdeepkernel` is currently registered for regression, multi-objective,
-binary, and ordinal tasks. Multiclass has `deepgp` and `deepkernel` entries, but
-not a separate `deepgpdeepkernel` registry key.
+When `cat_dims` is supplied, the API may infer `input_type="mixed"` where the
+requested model family supports mixed inputs.
 
 ### Non-Gaussian registry status
 
-Distribution-specific regression models live directly under their owning families: `models/regression/beta/`, `models/regression/gamma/`, and `models/regression/count/`. The standard high-level registry resolves these canonical package paths.
+Distribution-specific regression models live directly under their owning
+families: `models/regression/beta/`, `models/regression/gamma/`, and
+`models/regression/count/`. The standard high-level registry resolves these
+canonical package paths.
 
 ---
 
@@ -400,9 +373,9 @@ Important distinction from ordinal models:
 
 Registry notes:
 
-- `base`, `deepgp`, `deepkernel`, `saas`, `pca`, `rembo`, `rrp`, and `hetero` are
-  registered for both normal and mixed multiclass inputs.
-- `deepgpdeepkernel` is not currently a multiclass registry key.
+- availability of `model_type` values is task-dependent; consult
+  `bochan.api.registry.model` for the exact multiclass entries;
+- do not infer multiclass support from regression registry keys.
 
 ---
 

@@ -622,7 +622,7 @@ tabular API は次をサポートします。
 
 - explicit config objects の代わりとなる direct keyword arguments;
 - 既存の `ModelConfig`、`FitConfig`、`AcquisitionConfig`、`OptimizeConfig`、および `CandidateRepairConfig` objects;
-- `FitConfig.beta` のための `fit_beta` / `beta`;
+- `FitConfig.beta` のための direct field `beta`; `fit_beta` compatibility alias はありません;
 - evolutionary backend selection のための `evo_method`;
 - user-facing outcome constraints のための `outcome_constraint_config`;
 - label encoding と candidate decoding を通じた string categorical input columns;
@@ -651,20 +651,22 @@ uvicorn bochan.serving.fastapi.app:app --reload
 
 FastAPI layer は Python API を反映します。これは `ModelConfig`、`FitConfig`、`AcquisitionConfig`、`OutcomeConstraintConfig`、`OptimizeConfig`、および `DataContext` の JSON versions を受け取ります。
 
+既定の API prefix は `/api/v1` です。
+
 Important endpoints:
 
 | method | path | Purpose |
 |---|---|---|
-| `GET` | `/health` | Health check |
-| `POST` | `/models` | model を fit し、memory に保存する |
-| `GET` | `/models` | 保存された model ids を一覧表示する |
-| `POST` | `/models/{model_id}/predict` | Predict |
-| `POST` | `/models/{model_id}/candidates` | candidates を生成する |
-| `POST` | `/models/{model_id}/ask` | candidate generation の alias |
-| `POST` | `/models/{model_id}/tell` | observations を追加し、任意で refit する |
-| `POST` | `/models/{model_id}/refit` | 既存の optimizer を refit する |
-| `POST` | `/models/{model_id}/candidates/compare` | 複数の acquisitions を比較する |
-| `GET` | `/acquisitions/names` | acquisition aliases を一覧表示する |
+| `GET` | `/api/v1/health` | Health check |
+| `POST` | `/api/v1/models` | model を fit し、memory に保存する |
+| `GET` | `/api/v1/models` | 保存された model ids を一覧表示する |
+| `POST` | `/api/v1/models/{model_id}/predict` | Predict |
+| `POST` | `/api/v1/models/{model_id}/candidates` | candidates を生成する |
+| `POST` | `/api/v1/models/{model_id}/ask` | candidate generation の alias |
+| `POST` | `/api/v1/models/{model_id}/tell` | observations を追加し、任意で refit する |
+| `POST` | `/api/v1/models/{model_id}/refit` | 既存の optimizer を refit する |
+| `POST` | `/api/v1/models/{model_id}/candidates/compare` | 複数の acquisitions を比較する |
+| `GET` | `/api/v1/acquisitions/names` | acquisition aliases を一覧表示する |
 
 Example candidate payload:
 
@@ -691,100 +693,83 @@ HTTP examples については `src/bochan/serving/fastapi/README.md` を参照�
 
 ```text
 src/bochan/
-├── api/
 ├── acquisition/
-│   ├── objective/
-│   ├── feasible/
-│   ├── regression/
-│   ├── binary/
-│   ├── multiclass/
-│   ├── ordinal/
-│   └── non_gaussian/
+├── api/
+├── composition/
+├── constraints/
 ├── fit/
+├── inspection/
+├── llm/
 ├── models/
-│   ├── components/
-│   ├── transforms/
-│   ├── regression/
-│   │   ├── gaussian/
-│   │   └── non_gaussian/
-│   ├── classification/
-│   │   ├── binary/
-│   │   └── multiclass/
-│   ├── ordinal/
-│   └── hybrid/
+├── optim/
+├── serving/
+│   ├── fastapi/
+│   ├── webapp/
+│   └── workbench/
 ├── tabular/
-├── visualization/
-└── serving/
-    └── fastapi/
+└── visualization/
 ```
+
+`model_artifact.py`、`tabpfn_assets.py`、`tabpfn_preload.py` などの cross-cutting root modules は、複数 surface で共有される処理や deployment-time tooling のため、意図的に `serving.webapp` の外にあります。
 
 ### Model layout
 
-Model families は次の broad structure を使用します。
+Model code は model-family と cross-cutting-strategy の2軸で整理されています。
 
 ```text
 models/
+├── components/
+├── transforms/
 ├── regression/
 │   ├── gaussian/
-│   │   ├── base/
-│   │   ├── deep/
-│   │   ├── high_dim/
-│   │   └── robust/
-│   └── non_gaussian/
-│       ├── poisson/
-│       ├── beta/
-│       ├── gamma/
-│       └── negative_binomial/
+│   ├── beta/
+│   ├── gamma/
+│   ├── count/
+│   ├── external/
+│   ├── foundation/
+│   └── neural/
 ├── classification/
 │   ├── binary/
-│   └── multiclass/
+│   ├── multiclass/
+│   └── common/
 ├── ordinal/
-└── hybrid/
+├── hybrid/
+├── multitask/
+├── multioutput/
+├── multifidelity/
+└── external/
 ```
 
-Major model families:
+Major model families / strategies:
 
-| Family | Purpose |
+| Family / strategy | Purpose |
 |---|---|
 | `regression/gaussian` | Standard continuous-output Gaussian regression models. |
 | `regression/beta`, `regression/gamma`, `regression/count` | Beta、Gamma、Poisson、および Negative Binomial response models. |
+| `regression/external`, `regression/foundation`, `regression/neural` | Regression 向け external estimator、foundation model、neural ensemble。 |
 | `classification/binary` | Binary GP classification および related wrappers. |
 | `classification/multiclass` | Multiclass GP classification および related wrappers. |
-| `ordinal` | Ordered-label / ordinal-regression GP wrappers. |
-| `hybrid` | heterogeneous task families のための Multi-output wrapper. |
-| `components` | Shared likelihoods、posterior wrappers、transforms、decomposition utilities、および helper functions. |
-| `transforms` | Normalize と input perturbation のための Input transform builders. |
+| `ordinal` | Ordered-label / ordinal-regression wrappers. |
+| `hybrid` | Task semantics を保持する heterogeneous multi-output wrappers. |
+| `multitask` | Correlated task/output mechanics と task-feature adapters. |
+| `multioutput` | Independently fitted outputs を束ねる wrappers. |
+| `multifidelity` | Shared fidelity-axis abstractions と adapters. |
+| `components` | Shared likelihood、posterior、decomposition、helper primitives. |
+| `transforms` | Shared input-transform builders. |
+
+Canonical ownership rule は `src/bochan/models/ARCHITECTURE.md` を参照してください。
 
 ### High-level model registry
 
-default API registry は、これらの `task_type` values を公開します。
+正確な registered `model_type` values は task-dependent です。Source of truth は `bochan.api.registry.model` であり、この README では registry とずれやすい単一の exhaustive flat list を維持しません。
 
-```python
-"regression"
-"multi_objective"
-"binary"
-"multiclass"
-"ordinal"
-"hybrid"
-```
+代表的な group には次があります。
 
-登録済みの `model_type` values は次のとおりです。
+- 対応する task での Gaussian GP strategies: `base`、`kronecker`、`multitask`、`multifidelity`、`deepgp`、`deepkernel`、`deepgpdeepkernel`、`saas`、`pca`、`rembo`、`vae`、`rrp`、`hetero`;
+- external / neural / foundation estimators: `lightgbm`、`ngboost`、`random_forest`、`deep_ensemble`、`pfn`、`tabpfn`;
+- distribution-specific regression keys: `beta_`、`gamma_`、`poisson_`、`negative_binomial_` prefixes。
 
-```python
-"base"
-"deepgp"
-"deepkernel"
-"deepgpdeepkernel"
-"saas"
-"pca"
-"rembo"
-"rrp"
-"hetero"
-```
-
-`multiclass` では、`deepgpdeepkernel` は現在、別個の model type として登録されていません。分布固有の回帰モデルは `models/regression/beta/`、`models/regression/gamma/`、`models/regression/count/` に整理され、canonical な model registry path から解決されます。
-
-`cat_dims` が指定され、`input_type` が省略されている場合、API は `input_type="mixed"` を推論します。それ以外の場合は `input_type="normal"` を使用します。
+`cat_dims` が指定され、`input_type` が省略されている場合、requested model family が対応していれば mixed-input handling を推論します。
 
 ---
 
@@ -847,13 +832,16 @@ non-Gaussian likelihoods に対する Gaussian-style `noise=` のような unsup
 | File | Contents |
 |---|---|
 | `docs/theory/README.md` | GP models、Bayesian optimization、acquisition functions、active learning、level-set estimation、classification / ordinal BO、multi-objective constraints、input perturbation、risk、および tensor shape conventions の theoretical background. |
-| `src/bochan/models/README.md` | Model family overview、default model registry、wrapper API conventions、および model implementation checklist. |
+| `src/bochan/models/README.md` | Model family overview、registry guidance、wrapper API conventions、および model implementation checklist. |
+| `src/bochan/models/ARCHITECTURE.md` | Canonical model-family と cross-cutting strategy の ownership rules. |
 | `src/bochan/acquisition/README.md` | Acquisition family overview、objectives、feasibility、active learning、level-set estimation、multiclass acquisitions、および non-Gaussian acquisitions. |
 | `src/bochan/acquisition/feasible/README.md` | Feasibility constraints と feasibility wrapper usage. |
 | `src/bochan/api/README.md` | Tensor-based Python API usage、config objects、registries、objectives、candidate optimization、および repair. |
 | `src/bochan/api/STUDY_README.md` | `BochanStudy` optimization loop、`ask()` / `tell()`、`optimize()`、save / load、early stopping、および generation schedules. |
-| `src/bochan/tabular/README.md` | pandas / numpy / CSV wrapper、column-name based settings、categorical encoding、imputation、candidate repair、`fit_beta`、`evo_method`、および constraints. |
+| `src/bochan/tabular/README.md` | pandas / numpy / CSV wrapper、column-name based settings、categorical encoding、imputation、candidate repair、`beta`、`evo_method`、および constraints. |
+| `src/bochan/tabular/ARCHITECTURE.md` | Canonical tabular package ownership と dependency direction. |
 | `src/bochan/serving/fastapi/README.md` | HTTP / JSON serving examples、tensor conversion、optimizer settings、candidate repair、constraints、および multiclass workflows. |
+| `src/bochan/serving/fastapi/ARCHITECTURE.md` | Canonical FastAPI transport-layer ownership. |
 
 ---
 

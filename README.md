@@ -651,7 +651,7 @@ The tabular API supports:
 
 - direct keyword arguments instead of explicit config objects;
 - existing `ModelConfig`, `FitConfig`, `AcquisitionConfig`, `OptimizeConfig`, and `CandidateRepairConfig` objects;
-- `fit_beta` / `beta` for `FitConfig.beta`;
+- direct `beta` for `FitConfig.beta`; `fit_beta` is not a compatibility alias;
 - `evo_method` for evolutionary backend selection;
 - `outcome_constraint_config` for user-facing outcome constraints;
 - string categorical input columns through label encoding and candidate decoding;
@@ -682,20 +682,22 @@ The FastAPI layer mirrors the Python API. It accepts JSON versions of
 `ModelConfig`, `FitConfig`, `AcquisitionConfig`, `OutcomeConstraintConfig`,
 `OptimizeConfig`, and `DataContext`.
 
+The default API prefix is `/api/v1`.
+
 Important endpoints:
 
 | method | path | Purpose |
 |---|---|---|
-| `GET` | `/health` | Health check |
-| `POST` | `/models` | Fit a model and store it in memory |
-| `GET` | `/models` | List stored model ids |
-| `POST` | `/models/{model_id}/predict` | Predict |
-| `POST` | `/models/{model_id}/candidates` | Generate candidates |
-| `POST` | `/models/{model_id}/ask` | Alias for candidate generation |
-| `POST` | `/models/{model_id}/tell` | Add observations and optionally refit |
-| `POST` | `/models/{model_id}/refit` | Refit existing optimizer |
-| `POST` | `/models/{model_id}/candidates/compare` | Compare multiple acquisitions |
-| `GET` | `/acquisitions/names` | List acquisition aliases |
+| `GET` | `/api/v1/health` | Health check |
+| `POST` | `/api/v1/models` | Fit a model and store it in memory |
+| `GET` | `/api/v1/models` | List stored model ids |
+| `POST` | `/api/v1/models/{model_id}/predict` | Predict |
+| `POST` | `/api/v1/models/{model_id}/candidates` | Generate candidates |
+| `POST` | `/api/v1/models/{model_id}/ask` | Alias for candidate generation |
+| `POST` | `/api/v1/models/{model_id}/tell` | Add observations and optionally refit |
+| `POST` | `/api/v1/models/{model_id}/refit` | Refit existing optimizer |
+| `POST` | `/api/v1/models/{model_id}/candidates/compare` | Compare multiple acquisitions |
+| `GET` | `/api/v1/acquisitions/names` | List acquisition aliases |
 
 Example candidate payload:
 
@@ -724,105 +726,92 @@ model fitting, and target-class BO.
 
 ```text
 src/bochan/
-├── api/
 ├── acquisition/
-│   ├── objective/
-│   ├── feasible/
-│   ├── regression/
-│   ├── binary/
-│   ├── multiclass/
-│   ├── ordinal/
-│   └── non_gaussian/
+├── api/
+├── composition/
+├── constraints/
 ├── fit/
+├── inspection/
+├── llm/
 ├── models/
-│   ├── components/
-│   ├── transforms/
-│   ├── regression/
-│   │   ├── gaussian/
-│   │   └── non_gaussian/
-│   ├── classification/
-│   │   ├── binary/
-│   │   └── multiclass/
-│   ├── ordinal/
-│   └── hybrid/
+├── optim/
+├── serving/
+│   ├── fastapi/
+│   ├── webapp/
+│   └── workbench/
 ├── tabular/
-├── visualization/
-└── serving/
-    └── fastapi/
+└── visualization/
 ```
+
+Cross-cutting root modules such as `model_artifact.py`, `tabpfn_assets.py`, and
+`tabpfn_preload.py` intentionally remain outside `serving.webapp` because they
+are shared by multiple surfaces or deployment-time tooling.
 
 ### Model layout
 
-Model families use the following broad structure:
+Model code is organized along model-family and cross-cutting-strategy axes:
 
 ```text
 models/
+├── components/
+├── transforms/
 ├── regression/
 │   ├── gaussian/
-│   │   ├── base/
-│   │   ├── deep/
-│   │   ├── high_dim/
-│   │   └── robust/
-│   └── non_gaussian/
-│       ├── poisson/
-│       ├── beta/
-│       ├── gamma/
-│       └── negative_binomial/
+│   ├── beta/
+│   ├── gamma/
+│   ├── count/
+│   ├── external/
+│   ├── foundation/
+│   └── neural/
 ├── classification/
 │   ├── binary/
-│   └── multiclass/
+│   ├── multiclass/
+│   └── common/
 ├── ordinal/
-└── hybrid/
+├── hybrid/
+├── multitask/
+├── multioutput/
+├── multifidelity/
+└── external/
 ```
 
-Major model families:
+Major model families and strategies:
 
-| Family | Purpose |
+| Family / strategy | Purpose |
 |---|---|
 | `regression/gaussian` | Standard continuous-output Gaussian regression models. |
 | `regression/beta`, `regression/gamma`, `regression/count` | Beta, Gamma, Poisson, and Negative Binomial response models. |
+| `regression/external`, `regression/foundation`, `regression/neural` | External estimators, foundation models, and neural ensembles for regression. |
 | `classification/binary` | Binary GP classification and related wrappers. |
 | `classification/multiclass` | Multiclass GP classification and related wrappers. |
-| `ordinal` | Ordered-label / ordinal-regression GP wrappers. |
-| `hybrid` | Multi-output wrapper for heterogeneous task families. |
-| `components` | Shared likelihoods, posterior wrappers, transforms, decomposition utilities, and helper functions. |
-| `transforms` | Input transform builders for Normalize and input perturbation. |
+| `ordinal` | Ordered-label / ordinal-regression wrappers. |
+| `hybrid` | Heterogeneous multi-output wrappers preserving task semantics. |
+| `multitask` | Correlated task/output mechanics and task-feature adapters. |
+| `multioutput` | Wrappers aggregating independently fitted outputs. |
+| `multifidelity` | Shared fidelity-axis abstractions and adapters. |
+| `components` | Shared likelihood, posterior, decomposition, and helper primitives. |
+| `transforms` | Shared input-transform builders. |
+
+See `src/bochan/models/ARCHITECTURE.md` for the canonical ownership rules.
 
 ### High-level model registry
 
-The default API registry exposes these `task_type` values:
+The exact registered `model_type` values are task-dependent. The source of truth
+is `bochan.api.registry.model`; this README intentionally avoids maintaining a
+second exhaustive flat list that can drift from the registry.
 
-```python
-"regression"
-"multi_objective"
-"binary"
-"multiclass"
-"ordinal"
-"hybrid"
-```
+Representative groups currently include:
 
-The registered `model_type` values are:
+- Gaussian GP strategies such as `base`, `kronecker`, `multitask`,
+  `multifidelity`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`,
+  `rembo`, `vae`, `rrp`, and `hetero` where supported;
+- external / neural / foundation estimators such as `lightgbm`, `ngboost`,
+  `random_forest`, `deep_ensemble`, `pfn`, and `tabpfn` where supported;
+- distribution-specific regression keys prefixed by `beta_`, `gamma_`,
+  `poisson_`, and `negative_binomial_`.
 
-```python
-"base"
-"deepgp"
-"deepkernel"
-"deepgpdeepkernel"
-"saas"
-"pca"
-"rembo"
-"rrp"
-"hetero"
-```
-
-For `multiclass`, `deepgpdeepkernel` is not currently registered as a separate
-model type. Distribution-specific regression models are organized under
-`models/regression/beta/`, `models/regression/gamma/`, and
-`models/regression/count/`, and the standard registry resolves those canonical
-package paths directly.
-
-If `cat_dims` is provided and `input_type` is omitted, the API infers
-`input_type="mixed"`; otherwise it uses `input_type="normal"`.
+If `cat_dims` is provided and `input_type` is omitted, the API infers mixed-input
+handling where the requested model family supports it.
 
 ---
 
@@ -892,13 +881,16 @@ should raise explicit `NotImplementedError` rather than being ignored.
 | File | Contents |
 |---|---|
 | `docs/theory/README.md` | Theoretical background for GP models, Bayesian optimization, acquisition functions, active learning, level-set estimation, classification / ordinal BO, multi-objective constraints, input perturbation, risk, and tensor shape conventions. |
-| `src/bochan/models/README.md` | Model family overview, default model registry, wrapper API conventions, and model implementation checklist. |
+| `src/bochan/models/README.md` | Model family overview, registry guidance, wrapper API conventions, and model implementation checklist. |
+| `src/bochan/models/ARCHITECTURE.md` | Canonical model-family and cross-cutting strategy ownership rules. |
 | `src/bochan/acquisition/README.md` | Acquisition family overview, objectives, feasibility, active learning, level-set estimation, multiclass acquisitions, and non-Gaussian acquisitions. |
 | `src/bochan/acquisition/feasible/README.md` | Feasibility constraints and feasibility wrapper usage. |
 | `src/bochan/api/README.md` | Tensor-based Python API usage, config objects, registries, objectives, candidate optimization, and repair. |
 | `src/bochan/api/STUDY_README.md` | `BochanStudy` optimization loop, `ask()` / `tell()`, `optimize()`, save / load, early stopping, and generation schedules. |
-| `src/bochan/tabular/README.md` | pandas / numpy / CSV wrapper, column-name based settings, categorical encoding, imputation, candidate repair, `fit_beta`, `evo_method`, and constraints. |
+| `src/bochan/tabular/README.md` | pandas / numpy / CSV wrapper, column-name based settings, categorical encoding, imputation, candidate repair, `beta`, `evo_method`, and constraints. |
+| `src/bochan/tabular/ARCHITECTURE.md` | Canonical tabular package ownership and dependency direction. |
 | `src/bochan/serving/fastapi/README.md` | HTTP / JSON serving examples, tensor conversion, optimizer settings, candidate repair, constraints, and multiclass workflows. |
+| `src/bochan/serving/fastapi/ARCHITECTURE.md` | Canonical FastAPI transport-layer ownership. |
 
 ---
 

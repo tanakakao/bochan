@@ -292,7 +292,7 @@ class BetaGPModel(_BaseBetaGPModel):
         train_X_tf = apply_input_transform_for_training(train_X, input_transform, name="BetaGPModel.input_transform")
         likelihood = likelihood or BetaLogLikelihood(
             link=link,
-            init_concentration=concentration,
+            concentration=concentration,
             learn_concentration=learn_concentration,
             eps=eps,
             min_concentration=min_concentration,
@@ -405,7 +405,7 @@ class BetaMixedGPModel(_BaseBetaGPModel):
         check_categorical_columns_unchanged(train_X, train_X_tf, cat_dims=cat_dims)
         likelihood = likelihood or BetaLogLikelihood(
             link=link,
-            init_concentration=concentration,
+            concentration=concentration,
             learn_concentration=learn_concentration,
             eps=eps,
             min_concentration=min_concentration,

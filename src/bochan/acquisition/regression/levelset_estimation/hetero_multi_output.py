@@ -9,7 +9,6 @@ from torch import Tensor
 
 from .multi_output import (
     BoundaryMode,
-    MultiOutputRegressionLevelSetScoreObjective,
     ProbabilityMode,
     _MultiOutputRegressionLevelSetBase,
     _ensure_q_batch,
@@ -20,12 +19,6 @@ from .multi_output import (
 VarianceSource = Literal["latent", "total", "noise"]
 NoiseCombineType = Literal["subtract", "multiply", "none"]
 NoiseWeightMode = Literal["inverse_linear", "inverse_sqrt", "exp", "none"]
-
-
-class HeteroMultiOutputRegressionLevelSetScoreObjective(
-    MultiOutputRegressionLevelSetScoreObjective
-):
-    """Score objective for heteroscedastic multi-output regression LSE."""
 
 
 class _HeteroMultiOutputRegressionLevelSetBase(_MultiOutputRegressionLevelSetBase):
@@ -422,7 +415,6 @@ class qHeteroMultiOutputRegressionProbabilityOfExceedance(_HeteroMultiOutputRegr
 
 
 __all__ = [
-    "HeteroMultiOutputRegressionLevelSetScoreObjective",
     "qHeteroMultiOutputRegressionStraddle",
     "qHeteroMultiOutputRegressionJointStraddle",
     "qHeteroMultiOutputRegressionICU",

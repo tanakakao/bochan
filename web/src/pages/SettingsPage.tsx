@@ -1,7 +1,10 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { EmptyState, SectionHeader } from "../components/Common";
 import CompositionModelSettings from "../components/CompositionModelSettings";
-import FeatureMissingSettings from "../components/FeatureMissingSettings";
+import {
+  FeatureMissingImputationSettings,
+  FeatureMissingStrategySettings
+} from "../components/FeatureMissingSettings";
 import NoiseAlphaSettings from "../components/NoiseAlphaSettings";
 import TargetModelSettings from "../components/TargetModelSettings";
 import { useWorkbench } from "../context/WorkbenchContext";
@@ -23,6 +26,11 @@ import {
   regressionModelVariantLabel,
   selectRegressionModelType
 } from "../regressionLikelihoodOptions";
+import {
+  loadFeatureMissingSettings,
+  saveFeatureMissingSettings,
+  type FeatureMissingSettings as FeatureMissingSettingsValue
+} from "../webRunSettings";
 
 /** Configures only settings that define the fitted surrogate model. */
 export default function SettingsPage() {
@@ -54,6 +62,9 @@ export default function SettingsPage() {
     settingsValid,
     setStep
   } = useWorkbench();
+  const [featureMissingSettings, setFeatureMissingSettings] = useState<FeatureMissingSettingsValue>(
+    () => loadFeatureMissingSettings()
+  );
 
   if (!dataset || targetColumns.length === 0 || selectedVariables.length === 0) {
     return (
@@ -129,6 +140,11 @@ export default function SettingsPage() {
     if (nextModelType) setModelType(nextModelType);
   }
 
+  function updateFeatureMissingSettings(next: FeatureMissingSettingsValue) {
+    setFeatureMissingSettings(next);
+    saveFeatureMissingSettings(next);
+  }
+
   const selectedModelDescription = MODEL_DESCRIPTIONS[modelType as WebModelType] ?? "";
 
   return (
@@ -157,7 +173,7 @@ export default function SettingsPage() {
           <div>
             <span className="panel-kicker">SURROGATE MODEL</span>
             <h3>モデルと基本設定</h3>
-            <p>左で学習モデルを選び、右で日常的に確認する前処理・頑健化設定をまとめて指定します。</p>
+            <p>左でモデルと評価のON/OFF、右で日常的に確認する前処理・頑健化設定を指定します。</p>
           </div>
           <span className="status-chip success">{modelType}</span>
         </div>
@@ -195,13 +211,44 @@ export default function SettingsPage() {
                 ? " 複数の回帰目的列をwide形式の相関付きモデルで学習します。"
                 : null}
             </p>
+
+            <div className="compact-setting-list model-analysis-toggles">
+              <label className="compact-setting-row">
+                <span>
+                  <strong>交差検証（CV）</strong>
+                  <small>モデル精度を交差検証で評価</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={crossValidation.enabled}
+                  onChange={(event) => setCrossValidation({
+                    ...crossValidation,
+                    enabled: event.target.checked
+                  })}
+                />
+              </label>
+              <label className="compact-setting-row">
+                <span>
+                  <strong>特徴量重要度</strong>
+                  <small>Permutation Importanceなどを計算</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={featureImportance.enabled}
+                  onChange={(event) => setFeatureImportance({
+                    ...featureImportance,
+                    enabled: event.target.checked
+                  })}
+                />
+              </label>
+            </div>
           </section>
 
           <section className="model-config-column model-basic-settings">
             <div className="config-column-heading">
               <span className="panel-kicker">BASIC SETTINGS</span>
               <h4>基本設定</h4>
-              <p>頻繁に確認するON/OFFや前処理だけを常時表示します。</p>
+              <p>頻繁に確認する前処理と頑健化の入口だけを常時表示します。</p>
             </div>
             <div className="compact-setting-list">
               <label className="compact-setting-row">
@@ -226,27 +273,37 @@ export default function SettingsPage() {
                   onChange={(event) => setInputPerturbation(event.target.checked)}
                 />
               </label>
-              <NoiseAlphaSettings
-                modelType={modelType}
-                hasRegressionTargets={hasRegressionTargets}
+              <FeatureMissingStrategySettings
+                settings={featureMissingSettings}
+                onChange={updateFeatureMissingSettings}
               />
-              <FeatureMissingSettings />
             </div>
           </section>
         </div>
 
         <details className="model-card-details model-output-details" open={!settingsValid}>
-          <summary>詳細設定（学習・頑健化・診断）</summary>
+          <summary>詳細設定（学習・頑健化・欠損／ノイズ・評価／診断）</summary>
           <p className="settings-note">
-            学習反復数、モデル固有次元、入力摂動の数値条件、組成モデル、精度評価、特徴量重要度を調整するときだけ変更してください。
+            基本画面では操作頻度の高い設定だけを表示します。ここでは学習条件、頑健化の数値条件、欠損補完、観測ノイズ、CVと重要度の詳細を調整できます。
           </p>
 
-          <section className="model-advanced-section">
+          <section className="model-advanced-section model-training-section">
             <div className="config-column-heading">
-              <span className="panel-kicker">TRAINING & ROBUSTNESS</span>
-              <h4>学習・頑健化</h4>
+              <span className="panel-kicker">TRAINING</span>
+              <h4>学習</h4>
+              <p>モデル学習そのものに関わる反復数やモデル固有次元を設定します。</p>
             </div>
             <div className="model-settings-grid">
+              <label>
+                Fit maxiter
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={fitMaxiter}
+                  onChange={(event) => setFitMaxiter(Number(event.target.value))}
+                />
+              </label>
               {projectedModel && (
                 <label>
                   射影・潜在次元数
@@ -260,119 +317,128 @@ export default function SettingsPage() {
                   />
                 </label>
               )}
-              <label>
-                Fit maxiter
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  value={fitMaxiter}
-                  onChange={(event) => setFitMaxiter(Number(event.target.value))}
-                />
-              </label>
-              {inputPerturbation && (
-                <>
-                  <label>
-                    摂動サンプル数 n
-                    <input
-                      type="number"
-                      min={1}
-                      step={1}
-                      value={nW}
-                      onChange={(event) => setNW(Number(event.target.value))}
-                    />
-                  </label>
-                  <label>
-                    ばらつき（標準偏差）
-                    <input
-                      type="number"
-                      min={0.000001}
-                      step="any"
-                      value={perturbationStd}
-                      onChange={(event) => setPerturbationStd(Number(event.target.value))}
-                    />
-                  </label>
-                </>
-              )}
             </div>
+          </section>
+
+          <section className="model-advanced-section model-robustness-section">
+            <div className="config-column-heading">
+              <span className="panel-kicker">ROBUSTNESS</span>
+              <h4>頑健化</h4>
+              <p>入力摂動を有効にした場合のサンプリング条件を設定します。</p>
+            </div>
+            {inputPerturbation ? (
+              <div className="model-settings-grid">
+                <label>
+                  摂動サンプル数 n
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={nW}
+                    onChange={(event) => setNW(Number(event.target.value))}
+                  />
+                </label>
+                <label>
+                  ばらつき（標準偏差）
+                  <input
+                    type="number"
+                    min={0.000001}
+                    step="any"
+                    value={perturbationStd}
+                    onChange={(event) => setPerturbationStd(Number(event.target.value))}
+                  />
+                </label>
+              </div>
+            ) : (
+              <p className="settings-note">基本設定で入力摂動を有効にすると、頑健化の数値条件を設定できます。</p>
+            )}
           </section>
 
           <CompositionModelSettings />
 
-          <article className="panel">
-            <div className="panel-title">
-              <div><span className="panel-kicker">ACCURACY</span><h3>精度評価</h3></div>
+          <section className="model-advanced-section model-data-handling-section">
+            <div className="config-column-heading">
+              <span className="panel-kicker">MISSING VALUES & NOISE</span>
+              <h4>欠損値・観測ノイズ</h4>
+              <p>補完を選んだ場合の手法と、対応モデルの観測ノイズ下限を設定します。</p>
             </div>
-            <label className="switch-field">
-              <input
-                type="checkbox"
-                checked={crossValidation.enabled}
-                onChange={(event) => setCrossValidation({
-                  ...crossValidation,
-                  enabled: event.target.checked
-                })}
+            <div className="model-detail-subsection">
+              <h5>欠損値の補完手法</h5>
+              <FeatureMissingImputationSettings
+                settings={featureMissingSettings}
+                onChange={updateFeatureMissingSettings}
               />
-              <span>交差検証でモデル精度を評価する</span>
-            </label>
-            {crossValidation.enabled && (
-              <div className="model-settings-grid">
-                <label>
-                  検証方法
-                  <select
-                    value={crossValidation.method}
-                    onChange={(event) => setCrossValidation({
-                      ...crossValidation,
-                      method: event.target.value as "kfold" | "loo"
-                    })}
-                  >
-                    <option value="kfold">K-fold</option>
-                    <option value="loo">Leave-One-Out</option>
-                  </select>
-                </label>
-                {crossValidation.method === "kfold" && (
+            </div>
+            <NoiseAlphaSettings
+              modelType={modelType}
+              hasRegressionTargets={hasRegressionTargets}
+            />
+          </section>
+
+          <article className="panel model-evaluation-panel">
+            <div className="panel-title">
+              <div>
+                <span className="panel-kicker">ACCURACY</span>
+                <h3>精度評価</h3>
+                <p>CVのON/OFFは上のモデル選択欄で切り替え、ここでは評価方法を設定します。</p>
+              </div>
+              <span className={`status-chip ${crossValidation.enabled ? "success" : ""}`}>
+                {crossValidation.enabled ? "ON" : "OFF"}
+              </span>
+            </div>
+            {crossValidation.enabled ? (
+              <>
+                <div className="model-settings-grid">
                   <label>
-                    分割数
-                    <input
-                      type="number"
-                      min={2}
-                      max={dataset.profile.n_rows}
-                      value={crossValidation.nSplits}
+                    検証方法
+                    <select
+                      value={crossValidation.method}
                       onChange={(event) => setCrossValidation({
                         ...crossValidation,
-                        nSplits: Number(event.target.value)
+                        method: event.target.value as "kfold" | "loo"
                       })}
-                    />
+                    >
+                      <option value="kfold">K-fold</option>
+                      <option value="loo">Leave-One-Out</option>
+                    </select>
                   </label>
-                )}
-              </div>
-            )}
-            {crossValidation.enabled && (
-              <p className="settings-note">
-                交差検証ではデータを分割してモデルを複数回学習するため、通常より時間がかかります。最終モデルは交差検証後に全データで別途学習されます。分類ではクラス比率を保つ層化分割を使用します。
-              </p>
+                  {crossValidation.method === "kfold" && (
+                    <label>
+                      分割数
+                      <input
+                        type="number"
+                        min={2}
+                        max={dataset.profile.n_rows}
+                        value={crossValidation.nSplits}
+                        onChange={(event) => setCrossValidation({
+                          ...crossValidation,
+                          nSplits: Number(event.target.value)
+                        })}
+                      />
+                    </label>
+                  )}
+                </div>
+                <p className="settings-note">
+                  交差検証ではデータを分割してモデルを複数回学習するため、通常より時間がかかります。最終モデルは交差検証後に全データで別途学習されます。分類ではクラス比率を保つ層化分割を使用します。
+                </p>
+              </>
+            ) : (
+              <p className="settings-note">モデル選択欄でCVを有効にすると、検証方法と分割数を設定できます。</p>
             )}
           </article>
 
-          <article className="panel">
+          <article className="panel model-importance-panel">
             <div className="panel-title">
               <div>
                 <span className="panel-kicker">INSPECTION</span>
                 <h3>特徴量重要度</h3>
-                <p>Permutation Importanceとモデル固有診断の取得内容を選択します。</p>
+                <p>計算のON/OFFは上のモデル選択欄で切り替え、ここでは取得内容と表示条件を設定します。</p>
               </div>
+              <span className={`status-chip ${featureImportance.enabled ? "success" : ""}`}>
+                {featureImportance.enabled ? "ON" : "OFF"}
+              </span>
             </div>
-            <label className="switch-field">
-              <input
-                type="checkbox"
-                checked={featureImportance.enabled}
-                onChange={(event) => setFeatureImportance({
-                  ...featureImportance,
-                  enabled: event.target.checked
-                })}
-              />
-              <span>特徴量重要度を計算する</span>
-            </label>
-            {featureImportance.enabled && (
+            {featureImportance.enabled ? (
               <>
                 <div className="model-settings-grid">
                   <label>
@@ -495,6 +561,8 @@ export default function SettingsPage() {
                   モデル固有診断を選択すると、学習モデルが提供するARD、PCA、マルチタスク相関などを取得します。計算回数は概ね 特徴量数 × 反復回数 × fold数 に比例します。
                 </p>
               </>
+            ) : (
+              <p className="settings-note">モデル選択欄で特徴量重要度を有効にすると、取得内容や表示条件を設定できます。</p>
             )}
           </article>
         </details>

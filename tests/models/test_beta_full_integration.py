@@ -24,7 +24,7 @@ def test_beta_target_clipping_warns_and_rejects_invalid_values() -> None:
     [
         ({"link": "logit"}, "link"),
         ({"eps": 0.5}, "eps"),
-        ({"init_concentration": 0.0}, "init_concentration"),
+        ({"concentration": 0.0}, "concentration"),
         ({"min_concentration": float("inf")}, "min_concentration"),
     ],
 )

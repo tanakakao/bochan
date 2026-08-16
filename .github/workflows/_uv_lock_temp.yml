@@ -1,4 +1,4 @@
-name: Generate and validate uv lock
+name: Validate locked environment
 
 on:
   push:
@@ -7,13 +7,15 @@ on:
     paths:
       - ".github/workflows/_uv_lock_temp.yml"
       - "pyproject.toml"
+      - "uv.lock"
       - ".python-version"
+      - "start_web.bat"
 
 permissions:
   contents: write
 
 jobs:
-  lock:
+  environment:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,23 +25,17 @@ jobs:
           version: "0.12.1"
       - name: Install Python
         run: uv python install 3.12
-      - name: Generate lockfile
-        run: uv lock
       - name: Validate lockfile
         run: uv lock --check
       - name: Sync Web environment from lockfile
         run: uv sync --locked --extra web
       - name: Smoke-test environment
         run: uv run --locked --extra web python -c "import bochan, fastapi, uvicorn; print('bochan uv environment OK')"
-      - name: Commit lockfile
-        shell: bash
-        run: |
-          git add uv.lock
-          if git diff --cached --quiet; then
-            echo "uv.lock is already up to date."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Add uv lockfile"
-          git push
+
+  windows-launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate launcher configuration
+        shell: cmd
+        run: call start_web.bat check

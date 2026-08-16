@@ -64,18 +64,22 @@ def _configure_acquisition_parameter(
     if not math.isfinite(value) or value < 0.0:
         raise ValueError("Web LSE acquisition parameter must be non-negative and finite.")
 
+    # The Web control is the request-local source of truth. Do not preserve an
+    # older value that may have arrived in a copied acquisition kwargs mapping.
     if acq_key == "straddle":
-        acqf_kwargs.setdefault("beta", value)
+        acqf_kwargs["beta"] = value
         return
     if acq_key == "boundaryvariance":
         if value <= 0.0:
             raise ValueError("Boundary Variance tau must be greater than zero.")
-        acqf_kwargs.setdefault("tau", value)
+        acqf_kwargs["tau"] = value
         return
     if acq_key == "icu":
         # Zero is the Web sentinel for the class default: bandwidth = posterior std.
         if value > 0.0:
-            acqf_kwargs.setdefault("bandwidth", value)
+            acqf_kwargs["bandwidth"] = value
+        else:
+            acqf_kwargs.pop("bandwidth", None)
         return
     raise ValueError(f"Unsupported Web level-set acquisition: {acq_key!r}.")
 
@@ -127,7 +131,7 @@ def configure_level_set_acqf_kwargs(
     risk_type: str = "none",
     risk_alpha: float = 0.2,
 ) -> dict[str, Any]:
-    """Attach Web LSE thresholds, weights, duplicate references, and risk."""
+    """Attach current Web LSE thresholds, weights, observations, and risk settings."""
 
     if acq_key not in {"straddle", "boundaryvariance", "icu"}:
         raise ValueError(f"Unsupported Web level-set acquisition: {acq_key!r}.")
@@ -137,24 +141,24 @@ def configure_level_set_acqf_kwargs(
         target_metadata=target_metadata,
         objective_targets=objective_targets,
     )
-    acqf_kwargs.setdefault("thresholds", thresholds)
-    acqf_kwargs.setdefault(
-        "output_weights",
-        level_set_output_weights(
-            target_columns=target_columns,
-            target_settings=target_settings,
-            objective_targets=objective_targets,
-        ),
+    # These values are derived from the current Web request and therefore must
+    # replace, rather than merely default, any candidate-time values carried by a
+    # reused runtime shell.
+    acqf_kwargs["thresholds"] = thresholds
+    acqf_kwargs["output_weights"] = level_set_output_weights(
+        target_columns=target_columns,
+        target_settings=target_settings,
+        objective_targets=objective_targets,
     )
-    acqf_kwargs.setdefault("output_reduction", "weighted_mean")
-    acqf_kwargs.setdefault("X_observed", train_x)
+    acqf_kwargs["output_reduction"] = "weighted_mean"
+    acqf_kwargs["X_observed"] = train_x
     _configure_acquisition_parameter(acqf_kwargs, acq_key=acq_key)
 
     if input_perturbation:
         n_w = int(n_w)
         if n_w <= 0:
             raise ValueError("LSE InputPerturbation n_w must be positive.")
-        acqf_kwargs.setdefault("n_w", n_w)
+        acqf_kwargs["n_w"] = n_w
         objective = _risk_score_objective(
             multi_output=len(target_columns) > 1,
             n_w=n_w,
@@ -162,7 +166,7 @@ def configure_level_set_acqf_kwargs(
             alpha=risk_alpha,
         )
         if objective is not None:
-            acqf_kwargs.setdefault("objective", objective)
+            acqf_kwargs["objective"] = objective
     elif str(risk_type).lower() not in {"", "none"}:
         raise ValueError("LSE VaR/CVaR requires input_perturbation=true.")
 

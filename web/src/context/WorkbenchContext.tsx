@@ -160,16 +160,62 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   }
 
   async function execute(mode: ModelExecutionMode = "retrain") {
-    if (!currentRunInput || !derived.candidateSettingsValid) return;
+    const liveSelection = selection.getCurrentSelection();
+    if (!liveSelection) return;
+    const liveDerived = deriveWorkbenchState({
+      dataset: liveSelection.dataset,
+      featureColumns: liveSelection.featureColumns,
+      targetColumns: liveSelection.targetColumns,
+      targetSettings: liveSelection.targetSettings,
+      variables: liveSelection.variables,
+      inputPerturbation: settings.inputPerturbation,
+      nW: settings.nW,
+      perturbationStd: settings.perturbationStd,
+      projectionDimensions: settings.projectionDimensions,
+      modelType: settings.modelType,
+      fitMaxiter: settings.fitMaxiter
+    });
+    if (!liveDerived.candidateSettingsValid) return;
+
+    // Build from the live refs rather than render-time selection values. This
+    // guarantees that a just-edited threshold, fixed value, or search bound is
+    // included even if the execution button is pressed before another render.
+    const executionInput: RunRegressionInput = {
+      datasetId: liveSelection.dataset.dataset_id,
+      featureColumns: liveSelection.featureColumns,
+      targetColumn: liveDerived.targetColumn,
+      targetColumns: liveSelection.targetColumns,
+      targetSettings: liveDerived.selectedTargetSettings,
+      targetDirections: liveDerived.targetDirections,
+      direction: liveDerived.direction,
+      modelType: settings.modelType,
+      projectionDimensions: settings.projectionDimensions,
+      fitMaxiter: settings.fitMaxiter,
+      normalize: settings.normalize,
+      inputPerturbation: settings.inputPerturbation,
+      nW: settings.nW,
+      perturbationStd: settings.perturbationStd,
+      acquisitionFamily: settings.acquisitionFamily,
+      acquisition: settings.acquisition,
+      beta: settings.beta,
+      q: settings.q,
+      sequential: settings.sequential,
+      minimumCandidateDistanceRatio: settings.minimumCandidateDistanceRatio,
+      numRestarts: settings.numRestarts,
+      rawSamples: settings.rawSamples,
+      searchSpace: liveDerived.selectedVariables,
+      crossValidation: settings.crossValidation,
+      featureImportance: settings.featureImportance
+    };
     if (
-      settings.featureImportance.enabled &&
-      settings.featureImportance.source === "cross_validation" &&
-      !settings.crossValidation.enabled
+      executionInput.featureImportance?.enabled &&
+      executionInput.featureImportance.source === "cross_validation" &&
+      !executionInput.crossValidation?.enabled
     ) {
       runtime.setError("Cross-validation feature importance requires cross_validation=true.");
       return;
     }
-    const modelSignature = currentModelSignature ?? buildModelReuseSignature(currentRunInput);
+    const modelSignature = buildModelReuseSignature(executionInput);
     const reusableRunId = results.result?.visualization_run_id;
     const canReuse = Boolean(
       reusableRunId &&
@@ -184,7 +230,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     }
     const reuseModel = mode === "reuse";
     const input: RunRegressionInput = {
-      ...currentRunInput,
+      ...executionInput,
       reuseModelRunId: reuseModel ? reusableRunId : undefined
     };
 

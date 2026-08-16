@@ -1,4 +1,4 @@
-name: uv lock
+name: Python environment
 
 on:
   pull_request:
@@ -6,6 +6,8 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - ".python-version"
+      - "start_web.bat"
+      - ".github/workflows/uv-lock.yml"
   push:
     branches:
       - main
@@ -13,6 +15,8 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - ".python-version"
+      - "start_web.bat"
+      - ".github/workflows/uv-lock.yml"
 
 jobs:
   lock-check:
@@ -27,3 +31,11 @@ jobs:
         run: uv python install 3.12
       - name: Verify lockfile is current
         run: uv lock --check
+
+  launcher-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Windows launcher
+        shell: cmd
+        run: call start_web.bat check

@@ -8,10 +8,13 @@ set "FRONTEND_HOST=127.0.0.1"
 set "FRONTEND_PORT=5173"
 set "HEALTH_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/api/v1/health"
 set "VENV_PYTHON=%~dp0.venv\Scripts\python.exe"
+set "PROJECT_FILE=%~dp0pyproject.toml"
+set "LOCK_FILE=%~dp0uv.lock"
 set "BACKEND_RELOAD_ARGS="
 if /i "%BOCHAN_WEB_RELOAD%"=="1" set "BACKEND_RELOAD_ARGS=--reload"
 if /i "%BOCHAN_WEB_RELOAD%"=="true" set "BACKEND_RELOAD_ARGS=--reload"
 
+if /i "%~1"=="check" goto check
 if /i "%~1"=="backend" goto backend
 if /i "%~1"=="frontend" goto frontend
 
@@ -36,12 +39,12 @@ if exist "%VENV_PYTHON%" (
     where uv >nul 2>&1
     if errorlevel 1 (
         echo [ERROR] Neither .venv\Scripts\python.exe nor uv was found.
-        echo Create the uv environment in this repository or install uv.
+        echo Run uv sync --locked --extra web or install uv first.
         echo.
         pause
         exit /b 1
     )
-    echo Python: uv run --extra web python
+    echo Python: uv run --locked --extra web python
 )
 
 if defined BACKEND_RELOAD_ARGS (
@@ -80,6 +83,16 @@ echo Press any key to close only this launcher window.
 pause >nul
 exit /b 0
 
+:check
+if not "%BACKEND_HOST%"=="127.0.0.1" exit /b 1
+if not "%BACKEND_PORT%"=="8001" exit /b 1
+if not "%FRONTEND_HOST%"=="127.0.0.1" exit /b 1
+if not "%FRONTEND_PORT%"=="5173" exit /b 1
+if not exist "%PROJECT_FILE%" exit /b 1
+if not exist "%LOCK_FILE%" exit /b 1
+echo bochan launcher configuration is valid.
+exit /b 0
+
 :wait_for_backend
 for /L %%I in (1,1,60) do (
     powershell.exe -NoProfile -Command "try { $response = Invoke-WebRequest -UseBasicParsing -Uri '%HEALTH_URL%' -TimeoutSec 2; if ($response.StatusCode -eq 200) { exit 0 } } catch {}; exit 1" >nul 2>&1
@@ -109,9 +122,9 @@ if exist "%VENV_PYTHON%" (
     echo.
     "%VENV_PYTHON%" -m uvicorn bochan.serving.webapp.app:app %BACKEND_RELOAD_ARGS% --host %BACKEND_HOST% --port %BACKEND_PORT%
 ) else (
-    echo .venv was not found. Starting through uv run.
+    echo .venv was not found. Starting through locked uv environment.
     echo.
-    uv run --extra web python -m uvicorn bochan.serving.webapp.app:app %BACKEND_RELOAD_ARGS% --host %BACKEND_HOST% --port %BACKEND_PORT%
+    uv run --locked --extra web python -m uvicorn bochan.serving.webapp.app:app %BACKEND_RELOAD_ARGS% --host %BACKEND_HOST% --port %BACKEND_PORT%
 )
 
 set "SERVER_EXIT=%ERRORLEVEL%"

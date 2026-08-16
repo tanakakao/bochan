@@ -8,10 +8,13 @@ set "FRONTEND_HOST=127.0.0.1"
 set "FRONTEND_PORT=5173"
 set "HEALTH_URL=http://%BACKEND_HOST%:%BACKEND_PORT%/api/v1/health"
 set "VENV_PYTHON=%~dp0.venv\Scripts\python.exe"
+set "PROJECT_FILE=%~dp0pyproject.toml"
+set "LOCK_FILE=%~dp0uv.lock"
 set "BACKEND_RELOAD_ARGS="
 if /i "%BOCHAN_WEB_RELOAD%"=="1" set "BACKEND_RELOAD_ARGS=--reload"
 if /i "%BOCHAN_WEB_RELOAD%"=="true" set "BACKEND_RELOAD_ARGS=--reload"
 
+if /i "%~1"=="check" goto check
 if /i "%~1"=="backend" goto backend
 if /i "%~1"=="frontend" goto frontend
 
@@ -78,6 +81,16 @@ echo Health  : %HEALTH_URL%
 echo.
 echo Press any key to close only this launcher window.
 pause >nul
+exit /b 0
+
+:check
+if not "%BACKEND_HOST%"=="127.0.0.1" exit /b 1
+if not "%BACKEND_PORT%"=="8001" exit /b 1
+if not "%FRONTEND_HOST%"=="127.0.0.1" exit /b 1
+if not "%FRONTEND_PORT%"=="5173" exit /b 1
+if not exist "%PROJECT_FILE%" exit /b 1
+if not exist "%LOCK_FILE%" exit /b 1
+echo bochan launcher configuration is valid.
 exit /b 0
 
 :wait_for_backend

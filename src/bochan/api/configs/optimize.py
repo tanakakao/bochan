@@ -48,6 +48,20 @@ class OptimizeConfig(_BaseOptimizeConfig):
     duplicate_refill_attempts: int = 4
     duplicate_pool_restarts: int = 16
 
+    def __getstate__(self) -> dict[str, Any]:
+        """Return persistent state without request-local candidate callbacks.
+
+        ``final_candidate_postprocess`` is an execution-time hook used while
+        generating one candidate batch. Web workflows may bind it to a local
+        function, which standard pickle cannot serialize. Candidate history is
+        persisted with model artifacts, so keep the full optimization config
+        while dropping only this non-replayable runtime callback.
+        """
+
+        state = dict(self.__dict__)
+        state["final_candidate_postprocess"] = None
+        return state
+
     def __post_init__(self) -> None:
         if self.duplicate_tolerance < 0:
             raise ValueError("duplicate_tolerance must be non-negative.")

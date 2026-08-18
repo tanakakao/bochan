@@ -15,7 +15,7 @@ from ..composition.constraints import (
 )
 from ..composition.totals import CompositionTotalConstraintResolver
 from ..config import make_acquisition_config, make_optimize_config
-from ..data import resolve_dtype, resolve_optimize_config_columns
+from ..data import resolve_column_indices, resolve_dtype, resolve_optimize_config_columns
 from ..targets import (
     resolve_acquisition_config_columns,
     resolve_acquisition_ordinal_ranks,
@@ -69,6 +69,59 @@ _OPT_KEYS = {field.name for field in fields(OptimizeConfig)} | {
 
 def _take(values: dict[str, Any], keys: set[str]) -> dict[str, Any]:
     return {key: values.pop(key) for key in list(values) if key in keys}
+
+
+def _resolve_named_objective_outputs(
+    values: Mapping[str, Any],
+    target_names: Sequence[Any],
+) -> dict[str, Any]:
+    """Resolve explicitly supplied tabular target names to output indices.
+
+    Omitted objective fields are intentionally left untouched so single-output
+    models keep the core API's existing implicit objective selection.
+    """
+
+    resolved = dict(values)
+
+    def resolve_one(value: Any) -> Any:
+        if value is None:
+            return None
+        indices = resolve_column_indices(value, target_names)
+        if not indices:
+            return value
+        return int(indices[0])
+
+    def resolve_many(value: Any) -> Any:
+        if value is None:
+            return None
+        indices = resolve_column_indices(value, target_names)
+        return None if indices is None else [int(index) for index in indices]
+
+    if "objective_output" in resolved:
+        resolved["objective_output"] = resolve_one(resolved["objective_output"])
+    if "objective_outputs" in resolved:
+        resolved["objective_outputs"] = resolve_many(resolved["objective_outputs"])
+
+    objective_config = resolved.get("objective_config")
+    if isinstance(objective_config, Mapping):
+        nested = dict(objective_config)
+        if "output" in nested:
+            nested["output"] = resolve_one(nested["output"])
+        if "outputs" in nested:
+            nested["outputs"] = resolve_many(nested["outputs"])
+        resolved["objective_config"] = nested
+
+    objective_specs = resolved.get("objective_specs")
+    if objective_specs is not None:
+        specs = []
+        for spec in objective_specs:
+            if isinstance(spec, Mapping) and "output" in spec:
+                spec = dict(spec)
+                spec["output"] = resolve_one(spec["output"])
+            specs.append(spec)
+        resolved["objective_specs"] = specs
+
+    return resolved
 
 
 class CandidateService:
@@ -137,6 +190,8 @@ class CandidateService:
                 target_names,
                 target_maps,
             )
+            if isinstance(acq_config, Mapping):
+                acq_config = _resolve_named_objective_outputs(acq_config, target_names)
             acq_config = resolve_acquisition_ordinal_ranks(
                 acq_config,
                 target_names=target_names,
@@ -155,6 +210,8 @@ class CandidateService:
                 )
 
         acq_values = _take(values, _ACQ_KEYS)
+        if target_names and acq_values:
+            acq_values = _resolve_named_objective_outputs(acq_values, target_names)
         if isinstance(acq_config, Mapping) or acq_values:
             acq_config = make_acquisition_config(acq_config, **acq_values)
 

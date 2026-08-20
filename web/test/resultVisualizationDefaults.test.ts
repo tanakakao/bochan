@@ -81,6 +81,7 @@ assert.equal(controls?.catalyst.default, "B");
 assert.equal(controls?.formula__fraction__Fe.default, 0.7);
 assert.equal(controls?.missing_from_candidate.default, 5);
 assert.equal(source.visualization_options?.feature_controls?.temperature.default, 900);
+assert.strictEqual(withFirstCandidateVisualizationDefaults(source), updated);
 
 const invalidCategory = makeResult();
 invalidCategory.candidates[1].values.catalyst = "C";

@@ -6,6 +6,8 @@ import type {
 
 type FeatureControl = NonNullable<VisualizationOptions["feature_controls"]>[string];
 
+const CACHE = new WeakMap<RegressionResult, RegressionResult>();
+
 function firstCandidate(result: RegressionResult): CandidateRow | undefined {
   const rankOne = result.candidates.find((candidate) => candidate.rank === 1);
   if (rankOne) return rankOne;
@@ -28,7 +30,7 @@ function candidateDefault(
 }
 
 /**
- * Return a result whose plot slice controls start from the top-ranked candidate.
+ * Return a stable result whose plot slice controls start from the top-ranked candidate.
  *
  * Candidate values are already repaired/decoded by the Web backend. Composition
  * fraction values are therefore handled the same way as ordinary numeric inputs
@@ -38,10 +40,16 @@ function candidateDefault(
 export function withFirstCandidateVisualizationDefaults(
   result: RegressionResult
 ): RegressionResult {
+  const cached = CACHE.get(result);
+  if (cached) return cached;
+
   const options = result.visualization_options;
   const controls = options?.feature_controls;
   const candidate = firstCandidate(result);
-  if (!options || !controls || !candidate) return result;
+  if (!options || !controls || !candidate) {
+    CACHE.set(result, result);
+    return result;
+  }
 
   let changed = false;
   const nextControls = Object.fromEntries(
@@ -76,14 +84,17 @@ export function withFirstCandidateVisualizationDefaults(
     })
   );
 
-  if (!changed) return result;
-  return {
-    ...result,
-    visualization_options: {
-      ...options,
-      feature_controls: nextControls
-    }
-  };
+  const updated = changed
+    ? {
+        ...result,
+        visualization_options: {
+          ...options,
+          feature_controls: nextControls
+        }
+      }
+    : result;
+  CACHE.set(result, updated);
+  return updated;
 }
 
 /** Stable React key so a newly generated candidate set resets plot control state. */

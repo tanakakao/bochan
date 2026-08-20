@@ -48,10 +48,12 @@ on:
       - "web/src/pages/OptimizePage.tsx"
       - "web/src/pages/ResultsPage.tsx"
       - "web/src/importanceFeatureLabels.ts"
+      - "web/src/resultVisualizationDefaults.ts"
       - "web/src/InteractiveResultPlots.tsx"
       - "web/src/red-theme.css"
       - "web/src/main.tsx"
       - "web/test/importanceFeatureLabels.test.ts"
+      - "web/test/resultVisualizationDefaults.test.ts"
       - "web/package.json"
       - "web/pnpm-lock.yaml"
       - "tests/test_webapp_composition_support.py"
@@ -157,6 +159,9 @@ jobs:
       - name: Test importance labels
         working-directory: web
         run: pnpm run test:importance-labels
+      - name: Test visualization defaults
+        working-directory: web
+        run: pnpm run test:visualization-defaults
       - name: Build React workbench
         working-directory: web
         run: pnpm run build

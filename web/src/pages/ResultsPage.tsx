@@ -3,6 +3,10 @@ import { EmptyState, SectionHeader } from "../components/Common";
 import InteractiveResultPlots from "../InteractiveResultPlots";
 import { withImportanceFeatureLabels } from "../importanceFeatureLabels";
 import { downloadNamedModelArtifact } from "../modelArtifactDownload";
+import {
+  visualizationDefaultsKey,
+  withFirstCandidateVisualizationDefaults
+} from "../resultVisualizationDefaults";
 import { useWorkbench } from "../context/WorkbenchContext";
 import FeatureImportancePanel from "../FeatureImportancePanel";
 
@@ -76,7 +80,7 @@ export default function ResultsPage() {
     );
   }
 
-  const completedResult = result;
+  const completedResult = withFirstCandidateVisualizationDefaults(result);
   const importanceResult = withImportanceFeatureLabels(completedResult);
   const importanceAvailable = Boolean(
     (importanceResult.feature_importance_summary?.length ?? 0) > 0
@@ -272,7 +276,10 @@ export default function ResultsPage() {
           </div>
         </article>
 
-        <InteractiveResultPlots result={completedResult} />
+        <InteractiveResultPlots
+          key={visualizationDefaultsKey(completedResult)}
+          result={completedResult}
+        />
 
         {cv?.outputs ? (
           <article className="panel compact-panel results-accuracy-slot">

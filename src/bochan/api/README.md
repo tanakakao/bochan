@@ -181,6 +181,8 @@ model_config = ModelConfig(
 "deepgp"
 "deepkernel"
 "deepgpdeepkernel"
+"crabnet_gp"
+"crabnet_dkl"
 "saas"
 "pca"
 "rembo"
@@ -196,7 +198,7 @@ model_config = ModelConfig(
 
 | `task_type` | 登録済み `model_type` |
 |---|---|
-| `regression` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
+| `regression` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `crabnet_gp`, `crabnet_dkl`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
 | `multi_objective` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
 | `binary` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
 | `ordinal` | `base`, `deepgp`, `deepkernel`, `deepgpdeepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
@@ -213,6 +215,10 @@ model_config = ModelConfig(
 | `multiclass` | `base`, `deepgp`, `deepkernel`, `saas`, `pca`, `rembo`, `rrp`, `hetero` |
 
 `deepgpdeepkernel` は regression / multi_objective / binary / ordinal では登録済みですが、multiclass では独立した registry key としては登録していません。
+
+`crabnet_gp` と `crabnet_dkl` は normal-input の single-output Gaussian
+regression 専用です。Tabular API では `composition_sites` から必要な元素語彙と
+組成・連続process列を自動解決します。
 
 ### 4.2 regression base
 

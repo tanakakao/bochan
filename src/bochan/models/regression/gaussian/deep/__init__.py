@@ -1,4 +1,4 @@
-from .crabnet import CrabNetDKLModel, CrabNetGPModel
+from .crabnet import CrabNetDKLModel, CrabNetGPModel, CrabNetInputTransform
 from .deepgp import DeepGaussianGPModel, DeepGaussianMixedGPModel
 from .deepkernel_configurable import DeepKernelGaussianGPModel, DeepKernelGaussianMixedGPModel
 from .deepkerneldeepgp import DeepKernelDeepGaussianGPModel, DeepKernelDeepGaussianMixedGPModel
@@ -6,6 +6,7 @@ from .deepkerneldeepgp import DeepKernelDeepGaussianGPModel, DeepKernelDeepGauss
 __all__ = [
     "CrabNetDKLModel",
     "CrabNetGPModel",
+    "CrabNetInputTransform",
     "DeepGaussianGPModel",
     "DeepGaussianMixedGPModel",
     "DeepKernelDeepGaussianGPModel",

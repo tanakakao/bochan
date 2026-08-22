@@ -5,12 +5,163 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
+import torch
+
 from bochan.api import CrossValidationConfig
+from bochan.composition import ATOMIC_NUMBERS, ATOMIC_WEIGHTS
 
 from ..config import UNSET, make_fit_config, make_model_config
 from ..data import dataframe_to_tensors, numpy_to_tensors
 from .configuration import DATA_KEYS, FIT_KEYS, MODEL_KEYS, merge_data_config, resolve_cv_config, take
 from .settings import apply_alpha_to_model_config, merge_input_transform_config, validate_noise_alpha
+
+_CRABNET_MODEL_TYPES = frozenset({"crabnet_gp", "crabnet_dkl"})
+_WEIGHT_BASIS_NAMES = frozenset({"weight", "weight_fraction", "mass_fraction", "wt%"})
+
+
+def _configure_tabular_crabnet_model(
+    owner: Any,
+    dataset: Any,
+    config: Any,
+) -> Any:
+    """Derive the canonical CrabNet tensor contract from one composition site."""
+
+    model_type = str(config.model_type).lower()
+    if model_type not in _CRABNET_MODEL_TYPES:
+        return config
+    if str(config.task_type) != "regression":
+        raise ValueError("Tabular CrabNet models support task_type='regression' only.")
+    if config.multi_output_config is not None or dataset.Y.shape[-1] != 1:
+        raise ValueError("Tabular CrabNet models currently support single-output Gaussian regression only.")
+    if config.input_type not in (None, "normal"):
+        raise ValueError("Tabular CrabNet models support normal continuous inputs only.")
+    if dataset.cat_dims:
+        categorical = [dataset.feature_names[index] for index in dataset.cat_dims]
+        raise ValueError(
+            "Tabular CrabNet models support continuous process columns only; "
+            f"categorical columns were configured: {categorical!r}."
+        )
+    if len(owner.composition.sites) != 1:
+        raise ValueError("Tabular CrabNet models require exactly one composition site.")
+
+    site_name, site_config = next(iter(owner.composition.sites.items()))
+    if site_config["include_descriptors"]:
+        raise ValueError(
+            "Tabular CrabNet models do not accept independent composition "
+            f"descriptor columns; disable include_descriptors for site {site_name!r}."
+        )
+    transformer = owner.composition.transformers.get(site_name)
+    if transformer is None:
+        raise RuntimeError("The CrabNet composition transformer must be fitted before model construction.")
+
+    elements = transformer.fitted_elements
+    coordinate_names = list(transformer.representation_feature_names_)
+    feature_names = list(dataset.feature_names)
+    missing = [name for name in coordinate_names if name not in feature_names]
+    if missing:
+        raise ValueError(
+            f"The CrabNet composition source must be included in input_cols; missing model coordinates: {missing!r}."
+        )
+    composition_indices = [feature_names.index(name) for name in coordinate_names]
+    composition_index_set = set(composition_indices)
+    process_indices = [index for index in range(dataset.X.shape[-1]) if index not in composition_index_set]
+
+    model_kwargs = dict(config.model_kwargs)
+    reserved = sorted({"element_ids", "input_transform"}.intersection(model_kwargs))
+    if config.input_transform is not None or reserved:
+        raise ValueError(
+            "Tabular CrabNet models derive element_ids and input_transform from "
+            "composition_sites; do not provide them explicitly."
+        )
+
+    encoder_training = model_kwargs.pop("encoder_training", None)
+    if model_type == "crabnet_gp":
+        if encoder_training is not None or "trainable_encoder_layers" in model_kwargs:
+            raise ValueError(
+                "crabnet_gp always freezes the encoder. Use model_type='crabnet_dkl' "
+                "for partial or full encoder training."
+            )
+    elif encoder_training is not None:
+        if "trainable_encoder_layers" in model_kwargs:
+            raise ValueError("Specify either encoder_training or trainable_encoder_layers, not both.")
+        normalized_training = str(encoder_training).lower()
+        if normalized_training == "partial":
+            model_kwargs["trainable_encoder_layers"] = 1
+        elif normalized_training == "full":
+            model_kwargs["trainable_encoder_layers"] = "all"
+        else:
+            raise ValueError(
+                "encoder_training must be 'partial' or 'full'. Use model_type='crabnet_gp' for a frozen encoder."
+            )
+
+    transform_config = config.input_transform_config
+    normalize_process = True
+    transform_bounds = dataset.bounds
+    if transform_config is not None:
+        if transform_config.perturbation:
+            raise ValueError("Tabular CrabNet models do not yet support input perturbation.")
+        if transform_config.categorical_idx is not None:
+            raise ValueError("Tabular CrabNet models do not support categorical input transforms.")
+        normalize_process = bool(transform_config.normalize)
+        if transform_config.bounds is not None:
+            try:
+                transform_bounds = torch.as_tensor(
+                    transform_config.bounds,
+                    dtype=dataset.X.dtype,
+                    device=dataset.X.device,
+                )
+            except (TypeError, ValueError) as error:
+                raise TypeError(
+                    "CrabNet InputTransformConfig.bounds must be a 2 x d tensor-like value; "
+                    "use tabular bounds for column-addressed mappings."
+                ) from error
+
+    process_bounds = None
+    if process_indices and normalize_process:
+        if transform_bounds is None:
+            transform_bounds = torch.stack(
+                (
+                    dataset.X.min(dim=0).values,
+                    dataset.X.max(dim=0).values,
+                )
+            )
+        if transform_bounds.shape != (2, dataset.X.shape[-1]):
+            raise ValueError("CrabNet process normalization bounds must have shape [2, d].")
+        process_bounds = transform_bounds[:, process_indices]
+
+    reference_index = None
+    if str(site_config["representation"]).lower() == "alr":
+        reference_element = site_config["reference_element"]
+        reference_index = len(elements) - 1 if reference_element is None else elements.index(reference_element)
+
+    component_weights = dataset.X.new_ones(len(elements))
+    if str(site_config["normalization"]).lower() in _WEIGHT_BASIS_NAMES:
+        component_weights = dataset.X.new_tensor([ATOMIC_WEIGHTS[element] for element in elements])
+
+    from bochan.models.regression.gaussian.deep import CrabNetInputTransform
+
+    input_transform = CrabNetInputTransform(
+        input_dim=dataset.X.shape[-1],
+        composition_indices=composition_indices,
+        n_components=len(elements),
+        method=str(site_config["representation"]),
+        reference_index=reference_index,
+        process_bounds=process_bounds,
+        component_weights=component_weights,
+        normalize_process=normalize_process,
+    ).to(dataset.X)
+    model_kwargs["element_ids"] = dataset.X.new_tensor(
+        [ATOMIC_NUMBERS[element] for element in elements],
+        dtype=torch.long,
+    )
+
+    return replace(
+        config,
+        input_type="normal",
+        input_transform=input_transform,
+        input_transform_config=None,
+        model_kwargs=model_kwargs,
+    )
 
 
 def default_to_dataset(owner: Any, data: Any, y: Any | None = None, *, data_config: Any = None, feature_names: Any = None, target_names: Any = None) -> Any:
@@ -32,7 +183,11 @@ def to_dataset(owner: Any, data: Any, y: Any | None = None, *, data_config: Any 
 
 
 def model_config_for_dataset(owner: Any, dataset: Any) -> Any:
-    config = owner.model_config
+    config = _configure_tabular_crabnet_model(
+        owner,
+        dataset,
+        owner.model_config,
+    )
     if config.cat_dims is None and dataset.cat_dims:
         config = replace(config, cat_dims=dataset.cat_dims)
     return apply_alpha_to_model_config(config, train_X=dataset.X, train_Y=dataset.Y, explicit_alpha=owner.alpha)

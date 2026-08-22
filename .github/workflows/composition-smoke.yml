@@ -31,7 +31,8 @@ jobs:
             tests/test_tabular_composition_element_columns.py \
             tests/test_tabular_composition_variable_totals.py \
             tests/test_tabular_composition_element_constraints.py \
-            tests/test_tabular_composition_passthrough_bounds.py
+            tests/test_tabular_composition_passthrough_bounds.py \
+            tests/test_tabular_crabnet_models.py
       - name: Lint composition APIs
         run: |
           python -m pip install ruff
@@ -45,6 +46,8 @@ jobs:
             src/bochan/composition/transformer.py \
             src/bochan/models/regression/gaussian/deep/__init__.py \
             src/bochan/models/regression/gaussian/deep/crabnet.py \
+            src/bochan/api/modeling/fit.py \
+            src/bochan/api/registry/model.py \
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/composition/__init__.py \
             src/bochan/tabular/composition/adapter.py \
@@ -56,6 +59,7 @@ jobs:
             src/bochan/tabular/composition/totals.py \
             src/bochan/tabular/composition/transformer.py \
             src/bochan/tabular/composition/variable_total.py \
+            src/bochan/tabular/optimizer/fitting.py \
             tests/test_material_encoder_fusion.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
@@ -66,4 +70,5 @@ jobs:
             tests/test_tabular_composition_element_columns.py \
             tests/test_tabular_composition_variable_totals.py \
             tests/test_tabular_composition_element_constraints.py \
-            tests/test_tabular_composition_passthrough_bounds.py
+            tests/test_tabular_composition_passthrough_bounds.py \
+            tests/test_tabular_crabnet_models.py

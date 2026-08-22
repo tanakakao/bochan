@@ -3,6 +3,7 @@
 from .descriptors import CompositionDescriptorCalculator
 from .encoders import (
     ConcatFusion,
+    CrabNetEncoder,
     MaterialEncoder,
     MaterialProcessFusion,
     build_material_process_fusion,
@@ -26,6 +27,7 @@ __all__ = [
     "CompositionSearchSpace",
     "CompositionTransformer",
     "ConcatFusion",
+    "CrabNetEncoder",
     "MaterialEncoder",
     "MaterialProcessFusion",
     "SimplexTransform",

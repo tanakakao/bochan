@@ -1,12 +1,14 @@
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 
 from bochan.composition import (
     CompositionDescriptorCalculator,
     CompositionSearchSpace,
     CompositionTransformer,
     SimplexTransform,
+    TorchSimplexTransform,
     format_formula,
     parse_formula,
 )
@@ -60,6 +62,124 @@ def test_log_ratio_round_trip(method):
         n_components=3,
     )
     np.testing.assert_allclose(recovered, values, atol=1e-10)
+
+
+@pytest.mark.parametrize(
+    ("method", "reference_index"),
+    [
+        ("fractions", None),
+        ("clr", None),
+        ("alr", 1),
+        ("ilr", None),
+    ],
+)
+def test_torch_inverse_matches_numpy_for_all_representations(
+    method: str,
+    reference_index: int | None,
+) -> None:
+    values = np.asarray(
+        [
+            [0.50, 0.30, 0.20],
+            [0.20, 0.20, 0.60],
+            [0.15, 0.70, 0.15],
+            [0.80, 0.10, 0.10],
+        ]
+    )
+    numpy_transform = SimplexTransform(
+        method=method,
+        reference_index=reference_index,
+    )
+    coordinates = numpy_transform.transform(values).reshape(2, 2, -1)
+    torch_coordinates = torch.tensor(coordinates, dtype=torch.double)
+    torch_transform = TorchSimplexTransform(
+        n_components=3,
+        method=method,
+        reference_index=reference_index,
+    )
+
+    actual = torch_transform(torch_coordinates)
+    expected = numpy_transform.inverse_transform(
+        coordinates.reshape(4, -1),
+        n_components=3,
+    ).reshape(2, 2, 3)
+
+    assert actual.shape == torch.Size([2, 2, 3])
+    assert actual.dtype == torch_coordinates.dtype
+    assert actual.device == torch_coordinates.device
+    torch.testing.assert_close(
+        actual,
+        torch.tensor(expected, dtype=torch.double),
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    torch.testing.assert_close(
+        actual.sum(dim=-1),
+        torch.ones((2, 2), dtype=torch.double),
+    )
+
+
+def test_torch_ilr_inverse_preserves_autograd_and_module_dtype() -> None:
+    transform = TorchSimplexTransform(n_components=3, method="ilr").double()
+    coordinates = torch.tensor(
+        [[0.25, -0.40], [-0.30, 0.15]],
+        dtype=torch.double,
+        requires_grad=True,
+    )
+
+    assert torch.autograd.gradcheck(transform, (coordinates,))
+    fractions = transform(coordinates)
+    loss = (fractions * torch.tensor([1.0, 2.0, 4.0], dtype=torch.double)).sum()
+    (gradient,) = torch.autograd.grad(loss, coordinates)
+
+    assert {buffer.dtype for buffer in transform.buffers()} == {torch.double}
+    assert torch.isfinite(gradient).all()
+    assert gradient.abs().sum() > 0
+
+    float_transform = transform.float()
+    float_fractions = float_transform(coordinates.detach().float())
+    assert {buffer.dtype for buffer in float_transform.buffers()} == {torch.float32}
+    assert float_fractions.dtype == torch.float32
+
+
+def test_torch_fraction_closure_preserves_autograd() -> None:
+    transform = TorchSimplexTransform(n_components=3, method="fractions").double()
+    unclosed = torch.tensor(
+        [[2.0, 3.0, 5.0], [4.0, 1.0, 3.0]],
+        dtype=torch.double,
+        requires_grad=True,
+    )
+
+    assert torch.autograd.gradcheck(transform, (unclosed,))
+    closed = transform(unclosed)
+    loss = (closed * unclosed.new_tensor([1.0, 2.0, 4.0])).sum()
+    (gradient,) = torch.autograd.grad(loss, unclosed)
+
+    assert torch.isfinite(gradient).all()
+    assert gradient.abs().sum() > 0
+    torch.testing.assert_close(
+        closed.sum(dim=-1),
+        torch.ones(2, dtype=torch.double),
+    )
+
+
+def test_torch_simplex_transform_validates_tensor_contract() -> None:
+    ilr = TorchSimplexTransform(n_components=3, method="ilr")
+    fractions = TorchSimplexTransform(n_components=3, method="fractions")
+
+    with pytest.raises(TypeError, match="torch.Tensor"):
+        ilr(np.asarray([0.1, 0.2]))  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="floating-point"):
+        ilr(torch.tensor([1, 2]))
+    with pytest.raises(ValueError, match="final dimension of 2"):
+        ilr(torch.tensor([0.1, 0.2, 0.3]))
+    with pytest.raises(ValueError, match="finite"):
+        ilr(torch.tensor([0.1, torch.inf]))
+    with pytest.raises(ValueError, match="non-negative"):
+        fractions(torch.tensor([0.5, -0.1, 0.6]))
+    with pytest.raises(ValueError, match="at least one positive"):
+        fractions(torch.zeros(3))
+    with pytest.raises(TypeError, match="integer"):
+        TorchSimplexTransform(n_components=3.5)
 
 
 def test_descriptor_calculator_supports_custom_properties():

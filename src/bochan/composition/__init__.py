@@ -17,7 +17,7 @@ from .formula import (
     parse_formula,
 )
 from .search_space import CompositionSearchSpace
-from .simplex import SimplexTransform, close_compositions, ilr_basis
+from .simplex import SimplexTransform, TorchSimplexTransform, close_compositions, ilr_basis
 from .transformer import CompositionTransformer
 
 __all__ = [
@@ -31,6 +31,7 @@ __all__ = [
     "MaterialEncoder",
     "MaterialProcessFusion",
     "SimplexTransform",
+    "TorchSimplexTransform",
     "close_compositions",
     "build_material_process_fusion",
     "element_order",

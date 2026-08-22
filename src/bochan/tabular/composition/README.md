@@ -22,6 +22,7 @@ from bochan.composition import (
     CompositionSearchSpace,
     CompositionTransformer,
     SimplexTransform,
+    TorchSimplexTransform,
     close_compositions,
     format_formula,
     normalize_composition,
@@ -44,6 +45,32 @@ X_comp = transformer.fit_transform([
 ])
 formulas = transformer.inverse_transform(X_comp)
 ```
+
+勾配ベースの acquisition 最適化では `TorchSimplexTransform` を使い、ILR などの
+モデル座標を fraction に戻します。先頭次元を保つため、通常の batch だけでなく
+BoTorch の `batch_shape x q x d` Tensor をそのまま渡せます。演算は Torch 内で完結し、
+入力の dtype / device と autograd graph を維持します。
+
+```python
+import torch
+
+from bochan.composition import TorchSimplexTransform
+
+
+inverse_ilr = TorchSimplexTransform(n_components=3, method="ilr")
+X_ilr = torch.tensor(
+    [[[0.25, -0.15], [-0.10, 0.30]]],
+    dtype=torch.double,
+    requires_grad=True,
+)
+fractions = inverse_ilr(X_ilr)
+weighted_property = (fractions * X_ilr.new_tensor([1.0, 2.0, 4.0])).sum()
+weighted_property.backward()
+```
+
+`method="fractions"` は非負 Tensor を closure し、`clr` / `alr` / `ilr` は安定な
+softmax によって simplex へ写します。表形式の前処理には引き続き NumPy ベースの
+`SimplexTransform` / `CompositionTransformer` を使います。
 
 `CompositionSearchSpace` は total、元素上下限、刻み、必須元素、有効元素数を domain object として扱います。
 

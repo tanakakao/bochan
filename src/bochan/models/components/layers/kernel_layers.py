@@ -2,18 +2,16 @@ from collections.abc import Sequence
 
 import torch
 import torch.nn as nn
-from torch import Tensor
-
-from gpytorch.models import ExactGP
-from gpytorch.distributions import MultivariateNormal, MultitaskMultivariateNormal
-from gpytorch.means import ConstantMean, MultitaskMean
-from gpytorch.kernels import ScaleKernel, RBFKernel, MultitaskKernel
-from gpytorch.constraints import GreaterThan
-
 from botorch.models.gpytorch import BatchedMultiOutputGPyTorchModel
 from botorch.models.kernels.categorical import CategoricalKernel
 from botorch.models.utils.gpytorch_modules import get_covar_module_with_dim_scaled_prior
 from botorch.utils.transforms import normalize_indices
+from gpytorch.constraints import GreaterThan
+from gpytorch.distributions import MultitaskMultivariateNormal, MultivariateNormal
+from gpytorch.kernels import MultitaskKernel, RBFKernel, ScaleKernel
+from gpytorch.means import ConstantMean, MultitaskMean
+from gpytorch.models import ExactGP
+from torch import Tensor
 
 from ..layers.feature_extractor import LargeFeatureExtractor, SkipLargeFeatureExtractor
 
@@ -75,14 +73,13 @@ class StableScaleToBounds(nn.Module):
         safe_range = (max_val - min_val).clamp_min(min_range)
         scaled = (x - min_val) * (scale / safe_range) + 0.95 * self.lower_bound
         if not torch.isfinite(scaled).all():
-            raise FloatingPointError(
-                "Deep Kernel feature scaling produced non-finite values."
-            )
+            raise FloatingPointError("Deep Kernel feature scaling produced non-finite values.")
         return scaled
 
 
 def _make_feature_extractor(
     input_dim: int,
+    output_dim: int | None = None,
     ext_type: str = "DEFAULT",
     hidden_dims: Sequence[int] | None = None,
 ) -> nn.Module:
@@ -91,20 +88,25 @@ def _make_feature_extractor(
 
     Args:
         input_dim (int): 入力次元
+        output_dim (int | None): 出力特徴次元。None の場合は input_dim。
         ext_type (str): "DEFAULT" または "skip"
         hidden_dims (Sequence[int] | None): 隠れ層の次元数。
             None の場合は従来通り [input_dim * 8, input_dim * 4, input_dim * 2] を使う。
     """
+    output_dim = input_dim if output_dim is None else int(output_dim)
+    if input_dim <= 0:
+        raise ValueError("input_dim must be positive.")
+    if output_dim <= 0:
+        raise ValueError("output_dim must be positive.")
+
     hidden_dims = (
-        [input_dim * 8, input_dim * 4, input_dim * 2]
-        if hidden_dims is None
-        else [int(h) for h in hidden_dims]
+        [input_dim * 8, input_dim * 4, input_dim * 2] if hidden_dims is None else [int(h) for h in hidden_dims]
     )
 
     if ext_type.lower() == "skip":
         return SkipLargeFeatureExtractor(
             input_dim=input_dim,
-            output_dim=input_dim,
+            output_dim=output_dim,
             hidden_dims=hidden_dims,
             activation="leaky_relu",
             dropout=0.0,
@@ -114,12 +116,79 @@ def _make_feature_extractor(
 
     return LargeFeatureExtractor(
         input_dim=input_dim,
-        output_dim=input_dim,
+        output_dim=output_dim,
         hidden_dims=hidden_dims,
         activation="leaky_relu",
         dropout=0.0,
         use_bn=False,
     )
+
+
+def _feature_output_dim(
+    *,
+    train_x: Tensor,
+    feature_extractor: nn.Module,
+    latent_dim: int | None,
+) -> int:
+    """Resolve and validate the last dimension produced by a feature extractor."""
+
+    configured = None if latent_dim is None else int(latent_dim)
+    if configured is not None and configured <= 0:
+        raise ValueError("latent_dim must be positive.")
+
+    declared = getattr(feature_extractor, "output_dim", None)
+    if declared is not None:
+        declared = int(declared)
+        if declared <= 0:
+            raise ValueError("feature_extractor.output_dim must be positive.")
+        if configured is not None and configured != declared:
+            raise ValueError(f"latent_dim does not match feature_extractor.output_dim: {configured} != {declared}.")
+        return declared
+
+    if configured is not None:
+        return configured
+
+    sample_input = train_x[..., :1, :]
+    was_training = feature_extractor.training
+    feature_extractor.eval()
+    try:
+        with torch.no_grad():
+            sample = feature_extractor(sample_input)
+    finally:
+        feature_extractor.train(was_training)
+    if not torch.is_tensor(sample) or sample.ndim == 0:
+        raise ValueError("feature_extractor must return a Tensor with a feature dimension.")
+    if sample.shape[:-1] != sample_input.shape[:-1]:
+        raise ValueError(
+            "feature_extractor must preserve all leading input dimensions. "
+            f"Got input shape {tuple(sample_input.shape)} and "
+            f"output shape {tuple(sample.shape)}."
+        )
+    inferred = int(sample.shape[-1])
+    if inferred <= 0:
+        raise ValueError("feature_extractor must produce at least one feature.")
+    return inferred
+
+
+def _validate_projected_features(
+    *,
+    x: Tensor,
+    projected_x: Tensor,
+    latent_dim: int,
+) -> None:
+    """Validate the feature extractor contract before evaluating a GP kernel."""
+
+    if not torch.is_tensor(projected_x):
+        raise TypeError("feature_extractor must return a Tensor.")
+    if projected_x.shape[:-1] != x.shape[:-1]:
+        raise ValueError(
+            "feature_extractor must preserve all leading input dimensions. "
+            f"Got input shape {tuple(x.shape)} and output shape {tuple(projected_x.shape)}."
+        )
+    if projected_x.shape[-1] != latent_dim:
+        raise ValueError(
+            f"feature_extractor output width does not match latent_dim: {projected_x.shape[-1]} != {latent_dim}."
+        )
 
 
 class DeepKernel(ExactGP):
@@ -138,15 +207,29 @@ class DeepKernel(ExactGP):
         likelihood,
         ext_type: str = "DEFAULT",
         hidden_dims: Sequence[int] | None = None,
+        feature_extractor: nn.Module | None = None,
+        latent_dim: int | None = None,
     ) -> None:
         super().__init__(train_x, train_y, likelihood)
 
         input_dim = train_x.size(-1)
-        num_outputs = (
-            train_y.shape[-1]
-            if (train_y.ndim > 1) and (train_y.shape[-1] != 1)
-            else None
+        self.input_dim = int(input_dim)
+        self.feature_extractor = (
+            _make_feature_extractor(
+                input_dim=input_dim,
+                output_dim=latent_dim,
+                ext_type=ext_type,
+                hidden_dims=hidden_dims,
+            )
+            if feature_extractor is None
+            else feature_extractor
+        ).to(train_x)
+        self.latent_dim = _feature_output_dim(
+            train_x=train_x,
+            feature_extractor=self.feature_extractor,
+            latent_dim=latent_dim,
         )
+        num_outputs = train_y.shape[-1] if (train_y.ndim > 1) and (train_y.shape[-1] != 1) else None
         self.num_outputs = 1 if num_outputs is None else num_outputs
 
         batch_shape = torch.Size([] if num_outputs is None else [num_outputs])
@@ -156,7 +239,7 @@ class DeepKernel(ExactGP):
             self.covar_module = ScaleKernel(
                 RBFKernel(
                     batch_shape=batch_shape,
-                    ard_num_dims=input_dim,
+                    ard_num_dims=self.latent_dim,
                 ),
                 batch_shape=batch_shape,
             )
@@ -166,17 +249,9 @@ class DeepKernel(ExactGP):
                 num_tasks=train_y.shape[-1],
             )
             self.covar_module = MultitaskKernel(
-                ScaleKernel(
-                    RBFKernel(ard_num_dims=input_dim)
-                ),
+                ScaleKernel(RBFKernel(ard_num_dims=self.latent_dim)),
                 num_tasks=train_y.shape[-1],
             )
-
-        self.feature_extractor = _make_feature_extractor(
-            input_dim=input_dim,
-            ext_type=ext_type,
-            hidden_dims=hidden_dims,
-        )
 
         # NN の出力特徴を [-1, 1] に押し込む。
         # fold内で特徴がほぼ一定になっても0除算しない。
@@ -191,6 +266,11 @@ class DeepKernel(ExactGP):
             MultivariateNormal | MultitaskMultivariateNormal
         """
         projected_x = self.feature_extractor(x)
+        _validate_projected_features(
+            x=x,
+            projected_x=projected_x,
+            latent_dim=self.latent_dim,
+        )
         projected_x = self.scale_to_bounds(projected_x)
 
         mean_x = self.mean_module(projected_x)
@@ -223,6 +303,8 @@ class DeepKernelMixed(BatchedMultiOutputGPyTorchModel, ExactGP):
         likelihood,
         ext_type: str = "DEFAULT",
         hidden_dims: Sequence[int] | None = None,
+        feature_extractor: nn.Module | None = None,
+        latent_dim: int | None = None,
     ) -> None:
         super().__init__(train_x, train_y, likelihood)
 
@@ -230,11 +312,7 @@ class DeepKernelMixed(BatchedMultiOutputGPyTorchModel, ExactGP):
             raise ValueError("カテゴリ次元を指定する必要があります (cat_dims)。")
 
         d = train_x.shape[-1]
-        self._num_outputs = (
-            train_y.shape[-1]
-            if (train_y.ndim > 1) and (train_y.shape[-1] != 1)
-            else 1
-        )
+        self._num_outputs = train_y.shape[-1] if (train_y.ndim > 1) and (train_y.shape[-1] != 1) else 1
 
         self._ignore_X_dims_scaling_check = cat_dims
 
@@ -248,15 +326,38 @@ class DeepKernelMixed(BatchedMultiOutputGPyTorchModel, ExactGP):
 
         # 連続列がある場合のみ feature extractor を使う
         if cont_dim > 0:
-            self.feature_extractor = _make_feature_extractor(
-                input_dim=cont_dim,
-                ext_type=ext_type,
-                hidden_dims=hidden_dims,
+            self.feature_extractor = (
+                _make_feature_extractor(
+                    input_dim=cont_dim,
+                    output_dim=latent_dim,
+                    ext_type=ext_type,
+                    hidden_dims=hidden_dims,
+                )
+                if feature_extractor is None
+                else feature_extractor
+            ).to(train_x)
+            self.latent_dim = _feature_output_dim(
+                train_x=train_x[..., self.ord_dims],
+                feature_extractor=self.feature_extractor,
+                latent_dim=latent_dim,
             )
             self.scale_to_bounds = StableScaleToBounds(-1.0, 1.0)
         else:
+            if feature_extractor is not None:
+                raise ValueError("feature_extractor cannot be used when all inputs are categorical.")
+            if latent_dim not in (None, 0):
+                raise ValueError("latent_dim cannot be set when all inputs are categorical.")
             self.feature_extractor = nn.Identity()
             self.scale_to_bounds = nn.Identity()
+            self.latent_dim = 0
+
+        self._preserve_input_layout = self.latent_dim == cont_dim
+        if self._preserve_input_layout:
+            self.kernel_ord_dims = self.ord_dims
+            self.kernel_cat_dims = self.cat_dims
+        else:
+            self.kernel_ord_dims = list(range(self.latent_dim))
+            self.kernel_cat_dims = list(range(self.latent_dim, self.latent_dim + len(self.cat_dims)))
 
         if self._num_outputs == 1:
             self.mean_module = ConstantMean(batch_shape=aug_batch_shape)
@@ -273,7 +374,7 @@ class DeepKernelMixed(BatchedMultiOutputGPyTorchModel, ExactGP):
                 CategoricalKernel(
                     batch_shape=aug_batch_shape,
                     ard_num_dims=len(self.cat_dims),
-                    active_dims=self.cat_dims,
+                    active_dims=self.kernel_cat_dims,
                     lengthscale_constraint=GreaterThan(1e-6),
                 )
             )
@@ -282,23 +383,19 @@ class DeepKernelMixed(BatchedMultiOutputGPyTorchModel, ExactGP):
 
             cont_kernel = cont_kernel_factory(
                 batch_shape=aug_batch_shape,
-                ard_num_dims=len(self.ord_dims),
-                active_dims=self.ord_dims,
+                ard_num_dims=self.latent_dim,
+                active_dims=self.kernel_ord_dims,
             )
 
             cat_kernel = CategoricalKernel(
                 batch_shape=aug_batch_shape,
                 ard_num_dims=len(self.cat_dims),
-                active_dims=self.cat_dims,
+                active_dims=self.kernel_cat_dims,
                 lengthscale_constraint=GreaterThan(1e-6),
             )
 
-            sum_kernel = ScaleKernel(
-                cont_kernel + ScaleKernel(cat_kernel)
-            )
-            prod_kernel = ScaleKernel(
-                cont_kernel * cat_kernel
-            )
+            sum_kernel = ScaleKernel(cont_kernel + ScaleKernel(cat_kernel))
+            prod_kernel = ScaleKernel(cont_kernel * cat_kernel)
             base_kernel = sum_kernel + prod_kernel
 
         if self._num_outputs == 1:
@@ -321,12 +418,19 @@ class DeepKernelMixed(BatchedMultiOutputGPyTorchModel, ExactGP):
         cat_x = x[..., self.cat_dims]
 
         projected_cont_x = self.feature_extractor(cont_x)
+        _validate_projected_features(
+            x=cont_x,
+            projected_x=projected_cont_x,
+            latent_dim=self.latent_dim,
+        )
         projected_cont_x = self.scale_to_bounds(projected_cont_x)
 
-        out = torch.empty_like(x)
-        out[..., self.ord_dims] = projected_cont_x
-        out[..., self.cat_dims] = cat_x
-        return out
+        if self._preserve_input_layout:
+            out = torch.empty_like(x)
+            out[..., self.ord_dims] = projected_cont_x
+            out[..., self.cat_dims] = cat_x
+            return out
+        return torch.cat([projected_cont_x, cat_x], dim=-1)
 
     def forward(self, x: Tensor):
         """

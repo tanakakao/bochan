@@ -1,28 +1,25 @@
+from collections.abc import Sequence
+
 import torch
-from torch import Tensor
-from typing import Optional, Union, Sequence
-
-from gpytorch.mlls import ExactMarginalLogLikelihood
-from gpytorch.settings import fast_pred_var
-from gpytorch.likelihoods import GaussianLikelihood, MultitaskGaussianLikelihood
-
 from botorch.acquisition.objective import PosteriorTransform
-from gpytorch.models.deep_gps import DeepGP
 from botorch.models.gpytorch import GPyTorchModel
 from botorch.models.transforms.input import InputTransform, Normalize
 from botorch.models.transforms.outcome import OutcomeTransform, Standardize
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from botorch.utils.transforms import normalize_indices
+from gpytorch.likelihoods import GaussianLikelihood
+from gpytorch.mlls import ExactMarginalLogLikelihood
+from gpytorch.models.deep_gps import DeepGP
+from gpytorch.settings import fast_pred_var
+from torch import Tensor, nn
 
 from bochan.models.components.layers import DeepKernel, DeepKernelMixed
 
-
-InputTransformArg = Union[str, InputTransform, None]
-OutcomeTransformArg = Union[str, OutcomeTransform, None]
-
+InputTransformArg = str | InputTransform | None
+OutcomeTransformArg = str | OutcomeTransform | None
 
 
-def _clone_tensor_tuple(inputs: Union[Tensor, tuple[Tensor, ...]]) -> tuple[Tensor, ...]:
+def _clone_tensor_tuple(inputs: Tensor | tuple[Tensor, ...]) -> tuple[Tensor, ...]:
     """Tensor または Tensor tuple を detach + clone して保持する。"""
     if torch.is_tensor(inputs):
         inputs = (inputs,)
@@ -52,7 +49,7 @@ def _expand_raw_X_to_match_transformed_q(X: Tensor, X_tf: Tensor) -> Tensor:
 def _check_categorical_columns_unchanged(
     X: Tensor,
     X_tf: Tensor,
-    cat_dims: Optional[Sequence[int]],
+    cat_dims: Sequence[int] | None,
 ) -> None:
     """mixed model で input_transform がカテゴリ列を変更していないか確認する。"""
     if cat_dims is None or len(cat_dims) == 0:
@@ -79,9 +76,9 @@ def _check_categorical_columns_unchanged(
 
 def _apply_input_transform_for_training(
     X: Tensor,
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
-    cat_dims: Optional[Sequence[int]] = None,
+    cat_dims: Sequence[int] | None = None,
     name: str = "input_transform",
 ) -> Tensor:
     """学習データ用に input_transform を一度だけ適用する。"""
@@ -107,9 +104,9 @@ def _apply_input_transform_for_training(
 
 def _apply_input_transform_for_eval(
     X: Tensor,
-    input_transform: Optional[InputTransform],
+    input_transform: InputTransform | None,
     *,
-    cat_dims: Optional[Sequence[int]] = None,
+    cat_dims: Sequence[int] | None = None,
 ) -> Tensor:
     """posterior / acquisition 評価用に input_transform を適用する。"""
     if input_transform is None:
@@ -143,9 +140,9 @@ class _BaseDeepKernelGPModel(DeepGP, GPyTorchModel):
         self,
         train_X: Tensor,
         train_Y: Tensor,
-        train_Yvar: Optional[Tensor],
+        train_Yvar: Tensor | None,
         outcome_transform: OutcomeTransformArg,
-    ) -> tuple[Tensor, Optional[Tensor]]:
+    ) -> tuple[Tensor, Tensor | None]:
         """
         outcome_transform を解決し、必要なら train_Y / train_Yvar に適用する。
         """
@@ -222,7 +219,7 @@ class _BaseDeepKernelGPModel(DeepGP, GPyTorchModel):
         self,
         train_X: Tensor,
         train_Y: Tensor,
-        train_Yvar: Optional[Tensor],
+        train_Yvar: Tensor | None,
         input_transform: InputTransformArg,
         outcome_transform: OutcomeTransformArg,
     ) -> tuple[Tensor, Tensor, Tensor]:
@@ -305,7 +302,7 @@ class _BaseDeepKernelGPModel(DeepGP, GPyTorchModel):
             return self.transform_inputs(X)
         return X
 
-    def _apply_observation_noise(self, mvn, observation_noise: Union[bool, Tensor]):
+    def _apply_observation_noise(self, mvn, observation_noise: bool | Tensor):
         """
         observation_noise を適用する。
         """
@@ -382,9 +379,9 @@ class _BaseDeepKernelGPModel(DeepGP, GPyTorchModel):
     def posterior(
         self,
         X: Tensor,
-        output_indices: Optional[list[int]] = None,
-        observation_noise: Union[bool, Tensor] = False,
-        posterior_transform: Optional[PosteriorTransform] = None,
+        output_indices: list[int] | None = None,
+        observation_noise: bool | Tensor = False,
+        posterior_transform: PosteriorTransform | None = None,
     ):
         """
         posterior を返す。
@@ -394,9 +391,7 @@ class _BaseDeepKernelGPModel(DeepGP, GPyTorchModel):
         - outcome_transform の逆変換もここで適用
         """
         if output_indices is not None:
-            raise NotImplementedError(
-                f"{self.__class__.__name__}.posterior does not support output_indices."
-            )
+            raise NotImplementedError(f"{self.__class__.__name__}.posterior does not support output_indices.")
 
         self.eval()
 
@@ -483,11 +478,14 @@ class DeepKernelGaussianGPModel(_BaseDeepKernelGPModel):
         self,
         train_X: Tensor,
         train_Y: Tensor,
-        train_Yvar: Optional[Tensor] = None,
+        train_Yvar: Tensor | None = None,
         likelihood=None,
         input_transform: InputTransformArg = "DEFAULT",
         outcome_transform: OutcomeTransformArg = "DEFAULT",
         ext_type: str = "DEFAULT",
+        hidden_dims: Sequence[int] | None = None,
+        feature_extractor: nn.Module | None = None,
+        latent_dim: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -502,13 +500,11 @@ class DeepKernelGaussianGPModel(_BaseDeepKernelGPModel):
         # likelihood はここで作る
         if likelihood is None:
             if self._num_outputs == 1:
-                from botorch.models.utils.gpytorch_modules import (
-                    get_gaussian_likelihood_with_lognormal_prior,
-                )
                 # likelihood = get_gaussian_likelihood_with_lognormal_prior()
                 likelihood = GaussianLikelihood()
             else:
                 from gpytorch.likelihoods import MultitaskGaussianLikelihood
+
                 likelihood = MultitaskGaussianLikelihood(num_tasks=self._num_outputs)
 
         self.likelihood = likelihood
@@ -518,7 +514,13 @@ class DeepKernelGaussianGPModel(_BaseDeepKernelGPModel):
             train_y=prepared_train_Y,
             likelihood=self.likelihood,
             ext_type=ext_type,
+            hidden_dims=hidden_dims,
+            feature_extractor=feature_extractor,
+            latent_dim=latent_dim,
         )
+        self.ext_type = str(ext_type)
+        self.hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
+        self.latent_dim = self.deepkernel.latent_dim
         self.to(train_X)
 
 
@@ -535,11 +537,14 @@ class DeepKernelGaussianMixedGPModel(_BaseDeepKernelGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         cat_dims: Sequence[int],
-        train_Yvar: Optional[Tensor] = None,
+        train_Yvar: Tensor | None = None,
         likelihood=None,
         input_transform: InputTransformArg = "DEFAULT",
         outcome_transform: OutcomeTransformArg = "DEFAULT",
         ext_type: str = "DEFAULT",
+        hidden_dims: Sequence[int] | None = None,
+        feature_extractor: nn.Module | None = None,
+        latent_dim: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -567,9 +572,11 @@ class DeepKernelGaussianMixedGPModel(_BaseDeepKernelGPModel):
                 from botorch.models.utils.gpytorch_modules import (
                     get_gaussian_likelihood_with_lognormal_prior,
                 )
+
                 likelihood = get_gaussian_likelihood_with_lognormal_prior()
             else:
                 from gpytorch.likelihoods import MultitaskGaussianLikelihood
+
                 likelihood = MultitaskGaussianLikelihood(num_tasks=self._num_outputs)
 
         self.likelihood = likelihood
@@ -580,5 +587,11 @@ class DeepKernelGaussianMixedGPModel(_BaseDeepKernelGPModel):
             cat_dims=cat_dims,
             likelihood=self.likelihood,
             ext_type=ext_type,
+            hidden_dims=hidden_dims,
+            feature_extractor=feature_extractor,
+            latent_dim=latent_dim,
         )
+        self.ext_type = str(ext_type)
+        self.hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
+        self.latent_dim = self.deepkernel.latent_dim
         self.to(train_X)

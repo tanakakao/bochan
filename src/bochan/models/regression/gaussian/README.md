@@ -38,6 +38,36 @@ train_Y = torch.rand(40, 3, dtype=torch.double)  # [n, m]
 
 最初は`SingleTaskGP`を基準にし、出力間相関を利用したい場合だけ`MultiTaskGP`または`KroneckerMultiTaskGP`を検討します。
 
+### DeepKernelの任意feature extractor
+
+Gaussian DeepKernelは、入力次元とlatent次元を分離できます。`feature_extractor=None`
+では従来どおり入力次元と同じ幅のMLPを使います。任意の`nn.Module`を渡す場合は、
+最後の次元を`latent_dim`に合わせてください。GP kernelのARD次元にも同じ値が使われます。
+
+```python
+import torch
+from torch import nn
+
+from bochan.models.regression.gaussian.deep import DeepKernelGaussianGPModel
+
+
+feature_extractor = nn.Sequential(
+    nn.Linear(train_X.shape[-1], 64),
+    nn.SiLU(),
+    nn.Linear(64, 16),
+)
+model = DeepKernelGaussianGPModel(
+    train_X=train_X,
+    train_Y=train_Y,
+    feature_extractor=feature_extractor,
+    latent_dim=16,
+)
+```
+
+`latent_dim`を省略した場合は、feature extractorの`output_dim`属性、またはsample
+forwardから出力幅を解決します。明示した`latent_dim`と実際の出力幅が異なる場合は、
+kernel評価前に具体的なshape errorを返します。
+
 ## 3. 標準回帰の最小例
 
 ```python

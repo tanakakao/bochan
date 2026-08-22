@@ -21,6 +21,7 @@ jobs:
       - name: Test composition APIs
         run: |
           pytest -q --maxfail=1 \
+            tests/test_material_encoder_fusion.py \
             tests/test_tabular_composition.py \
             tests/test_tabular_architecture.py \
             tests/test_tabular_composition_sites.py \
@@ -33,6 +34,10 @@ jobs:
         run: |
           python -m pip install ruff
           ruff check \
+            src/bochan/composition/__init__.py \
+            src/bochan/composition/encoders/__init__.py \
+            src/bochan/composition/encoders/base.py \
+            src/bochan/composition/encoders/fusion.py \
             src/bochan/composition/transformer.py \
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/composition/__init__.py \
@@ -45,6 +50,7 @@ jobs:
             src/bochan/tabular/composition/totals.py \
             src/bochan/tabular/composition/transformer.py \
             src/bochan/tabular/composition/variable_total.py \
+            tests/test_material_encoder_fusion.py \
             tests/test_tabular_architecture.py \
             tests/test_tabular_composition.py \
             tests/test_tabular_composition_sites.py \

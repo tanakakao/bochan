@@ -1,6 +1,12 @@
 """Core composition domain API."""
 
 from .descriptors import CompositionDescriptorCalculator
+from .encoders import (
+    ConcatFusion,
+    MaterialEncoder,
+    MaterialProcessFusion,
+    build_material_process_fusion,
+)
 from .formula import (
     ATOMIC_NUMBERS,
     ATOMIC_WEIGHTS,
@@ -19,8 +25,12 @@ __all__ = [
     "CompositionDescriptorCalculator",
     "CompositionSearchSpace",
     "CompositionTransformer",
+    "ConcatFusion",
+    "MaterialEncoder",
+    "MaterialProcessFusion",
     "SimplexTransform",
     "close_compositions",
+    "build_material_process_fusion",
     "element_order",
     "format_formula",
     "ilr_basis",

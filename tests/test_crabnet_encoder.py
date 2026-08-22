@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -43,7 +44,17 @@ def _inputs(dtype: torch.dtype = torch.float32) -> tuple[Tensor, Tensor]:
 
 def test_public_composition_import_does_not_import_optional_crabnet() -> None:
     assert CrabNetEncoder is crabnet_module.CrabNetEncoder
-    assert "crabnet.kingcrab" not in sys.modules
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            ("import sys; import bochan.composition; assert 'crabnet.kingcrab' not in sys.modules"),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_constructing_upstream_encoder_has_clear_optional_dependency_error(

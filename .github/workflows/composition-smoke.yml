@@ -22,6 +22,7 @@ jobs:
         run: |
           pytest -q --maxfail=1 \
             tests/test_crabnet_encoder.py \
+            tests/test_crabnet_gp.py \
             tests/test_material_encoder_fusion.py \
             tests/test_tabular_composition.py \
             tests/test_tabular_architecture.py \
@@ -41,6 +42,8 @@ jobs:
             src/bochan/composition/encoders/crabnet.py \
             src/bochan/composition/encoders/fusion.py \
             src/bochan/composition/transformer.py \
+            src/bochan/models/regression/gaussian/deep/__init__.py \
+            src/bochan/models/regression/gaussian/deep/crabnet.py \
             src/bochan/tabular/__init__.py \
             src/bochan/tabular/composition/__init__.py \
             src/bochan/tabular/composition/adapter.py \
@@ -54,6 +57,7 @@ jobs:
             src/bochan/tabular/composition/variable_total.py \
             tests/test_material_encoder_fusion.py \
             tests/test_crabnet_encoder.py \
+            tests/test_crabnet_gp.py \
             tests/test_tabular_architecture.py \
             tests/test_tabular_composition.py \
             tests/test_tabular_composition_sites.py \

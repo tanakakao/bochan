@@ -32,6 +32,7 @@ train_Y = torch.rand(40, 3, dtype=torch.double)  # [n, m]
 | block-designの相関multi-task | `KroneckerMultiTaskGP` |
 | DeepGP | `DeepGaussianGPModel` / `DeepGaussianMixedGPModel` |
 | DeepKernel | `DeepKernelGaussianGPModel` / `DeepKernelGaussianMixedGPModel` |
+| frozen CrabNet + exact GP | `CrabNetGPModel` |
 | 高次元SAAS | `SaasGaussianGPModel` / `SaasGaussianMixedGPModel` |
 | PCA / REMBO | `PCAGaussianGPModel` / `REMBOGaussianGPModel` |
 | robust / heteroscedastic | `RobustRelevancePursuitGaussianGPModel` / `HeteroscedasticGaussianGPModel` |
@@ -67,6 +68,44 @@ model = DeepKernelGaussianGPModel(
 `latent_dim`を省略した場合は、feature extractorの`output_dim`属性、またはsample
 forwardから出力幅を解決します。明示した`latent_dim`と実際の出力幅が異なる場合は、
 kernel評価前に具体的なshape errorを返します。
+
+### CrabNet-GPの低レベルAPI
+
+`CrabNetGPModel`は、固定したCrabNet material encoderの表現と連続process特徴を
+concatし、trainableな線形projectionを通してexact GPへ渡します。最初の組成列は
+`element_ids`と同じ順序のfractionで、残りの列がprocess特徴です。これは
+`composition_sites`による前処理後の低レベルTensor契約であり、組成式用の別APIでは
+ありません。
+
+```python
+import torch
+
+from bochan.composition import CrabNetEncoder
+from bochan.models.regression.gaussian.deep import CrabNetGPModel
+
+
+element_ids = torch.tensor([26, 27, 28], dtype=torch.long)  # Fe, Co, Ni
+fractions = torch.tensor(
+    [[0.5, 0.3, 0.2], [0.6, 0.2, 0.2], [0.4, 0.4, 0.2]],
+    dtype=torch.double,
+)
+process_X = torch.tensor([[900.0, 2.0], [950.0, 4.0], [1000.0, 3.0]], dtype=torch.double)
+train_X = torch.cat([fractions, process_X], dim=-1)
+train_Y = torch.tensor([[1.1], [1.4], [1.2]], dtype=torch.double)
+
+model = CrabNetGPModel(
+    train_X=train_X,
+    train_Y=train_Y,
+    element_ids=element_ids,
+    encoder=CrabNetEncoder(checkpoint="crabnet.pth"),
+    latent_dim=32,
+)
+posterior = model.posterior(train_X[:1])
+```
+
+既定のinput transformはprocess列だけを正規化し、fractionは変更しません。encoder
+parameterはfreezeされますが、composition/process入力からposteriorまでのgradientは
+保持されます。初期版ではcategorical processと`train_Yvar`は未対応です。
 
 ## 3. 標準回帰の最小例
 

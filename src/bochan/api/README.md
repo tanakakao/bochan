@@ -338,10 +338,14 @@ model_config = ModelConfig(
     model_type="deepkernel",
     model_kwargs={
         "feature_extractor": feature_extractor,
-        "feature_dim": 8,
+        "latent_dim": 8,
     },
 )
 ```
+
+Gaussian regressionでは`feature_extractor`を任意の`nn.Module`として注入でき、
+`latent_dim`がGP kernelのARD次元になります。`feature_extractor=None`では従来の
+MLPが使われ、既定のlatent次元は入力次元です。
 
 classification / multiclass / ordinal でも family-specific deepkernel wrapper が登録されています。
 

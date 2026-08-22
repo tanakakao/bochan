@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from typing import Optional, Sequence
-
-from torch import Tensor
-from gpytorch.likelihoods import GaussianLikelihood, MultitaskGaussianLikelihood
+from collections.abc import Sequence
 
 from botorch.utils.transforms import normalize_indices
+from gpytorch.likelihoods import GaussianLikelihood, MultitaskGaussianLikelihood
+from torch import Tensor, nn
 
 from bochan.models.components.layers import DeepKernel, DeepKernelMixed
+
 from .deepkernel import (
-    _BaseDeepKernelGPModel,
     InputTransformArg,
     OutcomeTransformArg,
+    _BaseDeepKernelGPModel,
 )
 
 
@@ -21,18 +21,25 @@ class DeepKernelGaussianGPModel(_BaseDeepKernelGPModel):
     Args:
         hidden_dims: DeepKernel feature extractor の隠れ層次元。
             None の場合は従来通り [input_dim * 8, input_dim * 4, input_dim * 2] を使う。
+        feature_extractor: ``R^input_dim -> R^latent_dim`` の任意の module。
+            None の場合は既存の MLP / skip MLP を使う。
+        latent_dim: GP kernel が受け取る特徴次元。None の場合、既存 MLP では
+            input_dim、任意 module では ``output_dim`` 属性または sample forward
+            から解決する。
     """
 
     def __init__(
         self,
         train_X: Tensor,
         train_Y: Tensor,
-        train_Yvar: Optional[Tensor] = None,
+        train_Yvar: Tensor | None = None,
         likelihood=None,
         input_transform: InputTransformArg = "DEFAULT",
         outcome_transform: OutcomeTransformArg = "DEFAULT",
         ext_type: str = "DEFAULT",
-        hidden_dims: Optional[Sequence[int]] = None,
+        hidden_dims: Sequence[int] | None = None,
+        feature_extractor: nn.Module | None = None,
+        latent_dim: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -57,9 +64,12 @@ class DeepKernelGaussianGPModel(_BaseDeepKernelGPModel):
             likelihood=self.likelihood,
             ext_type=ext_type,
             hidden_dims=hidden_dims,
+            feature_extractor=feature_extractor,
+            latent_dim=latent_dim,
         )
         self.ext_type = str(ext_type)
         self.hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
+        self.latent_dim = self.deepkernel.latent_dim
         self.to(train_X)
 
 
@@ -69,6 +79,8 @@ class DeepKernelGaussianMixedGPModel(_BaseDeepKernelGPModel):
     Args:
         hidden_dims: 連続変数側 feature extractor の隠れ層次元。
             None の場合は従来通り [cont_dim * 8, cont_dim * 4, cont_dim * 2] を使う。
+        feature_extractor: 連続変数から任意の latent 表現を作る module。
+        latent_dim: feature extractor の出力次元。
     """
 
     def __init__(
@@ -76,12 +88,14 @@ class DeepKernelGaussianMixedGPModel(_BaseDeepKernelGPModel):
         train_X: Tensor,
         train_Y: Tensor,
         cat_dims: Sequence[int],
-        train_Yvar: Optional[Tensor] = None,
+        train_Yvar: Tensor | None = None,
         likelihood=None,
         input_transform: InputTransformArg = "DEFAULT",
         outcome_transform: OutcomeTransformArg = "DEFAULT",
         ext_type: str = "DEFAULT",
-        hidden_dims: Optional[Sequence[int]] = None,
+        hidden_dims: Sequence[int] | None = None,
+        feature_extractor: nn.Module | None = None,
+        latent_dim: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -109,6 +123,7 @@ class DeepKernelGaussianMixedGPModel(_BaseDeepKernelGPModel):
                 from botorch.models.utils.gpytorch_modules import (
                     get_gaussian_likelihood_with_lognormal_prior,
                 )
+
                 likelihood = get_gaussian_likelihood_with_lognormal_prior()
             else:
                 likelihood = MultitaskGaussianLikelihood(num_tasks=self._num_outputs)
@@ -121,9 +136,12 @@ class DeepKernelGaussianMixedGPModel(_BaseDeepKernelGPModel):
             likelihood=self.likelihood,
             ext_type=ext_type,
             hidden_dims=hidden_dims,
+            feature_extractor=feature_extractor,
+            latent_dim=latent_dim,
         )
         self.ext_type = str(ext_type)
         self.hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
+        self.latent_dim = self.deepkernel.latent_dim
         self.to(train_X)
 
 

@@ -1,4 +1,4 @@
-"""Frozen CrabNet feature extraction with an exact Gaussian process."""
+"""CrabNet feature extraction with exact Gaussian processes."""
 
 from __future__ import annotations
 
@@ -19,6 +19,9 @@ from bochan.composition.encoders.crabnet import Checkpoint
 
 from .deepkernel import InputTransformArg, OutcomeTransformArg
 from .deepkernel_configurable import DeepKernelGaussianGPModel
+
+_EncoderTrainingMode = Literal["frozen", "partial", "full"]
+_TrainableEncoderLayers = int | Literal["all"]
 
 
 def _validate_element_ids(element_ids: Tensor) -> Tensor:
@@ -88,6 +91,72 @@ def _resolve_material_encoder(
     return material_encoder
 
 
+def _validate_trainable_encoder_layers(
+    trainable_encoder_layers: _TrainableEncoderLayers,
+) -> _TrainableEncoderLayers:
+    """Validate a partial/full CrabNet fine-tuning configuration."""
+
+    if trainable_encoder_layers == "all":
+        return "all"
+    if (
+        isinstance(trainable_encoder_layers, bool)
+        or not isinstance(trainable_encoder_layers, int)
+        or trainable_encoder_layers <= 0
+    ):
+        raise ValueError("trainable_encoder_layers must be a positive integer or 'all'.")
+    return trainable_encoder_layers
+
+
+def _crabnet_transformer_layers(
+    material_encoder: CrabNetEncoder,
+) -> tuple[nn.Module, ...]:
+    """Return the ordered upstream Transformer layers for partial unfreezing."""
+
+    transformer = getattr(material_encoder.encoder, "transformer_encoder", None)
+    layers = getattr(transformer, "layers", None)
+    if not isinstance(layers, (nn.ModuleList, nn.Sequential)) or len(layers) == 0:
+        raise ValueError(
+            "Partial CrabNet unfreezing requires "
+            "encoder.transformer_encoder.layers to be a non-empty "
+            "torch.nn.ModuleList or torch.nn.Sequential. Use "
+            "trainable_encoder_layers='all' for an injected encoder without "
+            "the upstream CrabNet Transformer structure."
+        )
+    return tuple(layers)
+
+
+def _configure_dkl_encoder(
+    material_encoder: CrabNetEncoder,
+    trainable_encoder_layers: _TrainableEncoderLayers,
+) -> tuple[_EncoderTrainingMode, tuple[nn.Module, ...]]:
+    """Unfreeze the requested encoder parameters and return its train policy."""
+
+    for parameter in material_encoder.parameters():
+        parameter.requires_grad_(False)
+
+    if trainable_encoder_layers == "all":
+        parameters = tuple(material_encoder.parameters())
+        if not parameters:
+            raise ValueError("The CrabNet encoder exposes no parameters to fine-tune.")
+        for parameter in parameters:
+            parameter.requires_grad_(True)
+        return "full", ()
+
+    layers = _crabnet_transformer_layers(material_encoder)
+    if trainable_encoder_layers > len(layers):
+        raise ValueError(
+            "trainable_encoder_layers exceeds the number of CrabNet "
+            f"Transformer layers: {trainable_encoder_layers} > {len(layers)}."
+        )
+    trainable_modules = layers[-trainable_encoder_layers:]
+    parameters = tuple(parameter for module in trainable_modules for parameter in module.parameters())
+    if not parameters:
+        raise ValueError("The selected CrabNet Transformer layers expose no parameters to fine-tune.")
+    for parameter in parameters:
+        parameter.requires_grad_(True)
+    return "partial", trainable_modules
+
+
 class _CrabNetGPFeatureExtractor(nn.Module):
     """Map fixed-vocabulary fractions and process features to a GP latent space."""
 
@@ -110,6 +179,8 @@ class _CrabNetGPFeatureExtractor(nn.Module):
             raise ValueError("latent_dim must be positive.")
 
         self.material_encoder = material_encoder
+        self._encoder_training_mode: _EncoderTrainingMode = "frozen"
+        self._trainable_encoder_modules: tuple[nn.Module, ...] = ()
         self.register_buffer("element_ids", element_ids)
         self.composition_dim = int(element_ids.numel())
         self.process_dim = int(process_dim)
@@ -145,11 +216,31 @@ class _CrabNetGPFeatureExtractor(nn.Module):
         self.projection = projection
 
     def train(self, mode: bool = True) -> _CrabNetGPFeatureExtractor:
-        """Set train mode while keeping the frozen CrabNet encoder deterministic."""
+        """Apply the configured frozen, partial, or full encoder train policy."""
 
         super().train(mode)
-        self.material_encoder.eval()
+        if self._encoder_training_mode == "frozen":
+            self.material_encoder.eval()
+        elif self._encoder_training_mode == "partial":
+            self.material_encoder.eval()
+            for module in self._trainable_encoder_modules:
+                module.train(mode)
         return self
+
+    def _configure_encoder_training(
+        self,
+        mode: _EncoderTrainingMode,
+        trainable_modules: tuple[nn.Module, ...] = (),
+    ) -> None:
+        """Set the internal encoder train-mode policy and apply it immediately."""
+
+        if mode == "partial" and not trainable_modules:
+            raise ValueError("Partial encoder training requires at least one trainable module.")
+        if mode != "partial" and trainable_modules:
+            raise ValueError("Trainable encoder modules are valid only for partial training.")
+        self._encoder_training_mode = mode
+        self._trainable_encoder_modules = trainable_modules
+        self.train(self.training)
 
     def validate_input(self, X: Tensor) -> None:
         """Validate the public packed-tensor contract without running CrabNet."""
@@ -241,7 +332,7 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
         checkpoint: Optional upstream or adapter checkpoint forwarded to the
             material encoder.
         latent_dim: Width of the trainable projection passed to the GP kernel.
-        fusion: Material/process fusion strategy.  Phase 4 supports concat.
+        fusion: Material/process fusion strategy. Concat is currently supported.
         projection: Optional projection module.  A linear projection is used
             by default.
         strict_checkpoint: Require a complete encoder checkpoint state.
@@ -272,10 +363,11 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
     ) -> None:
         if train_X.ndim != 2:
             raise ValueError("train_X must have shape [n, d].")
+        model_name = self.__class__.__name__
         if train_Y.ndim > 1 and train_Y.shape[-1] != 1:
-            raise ValueError("CrabNetGPModel currently supports single-output train_Y only.")
+            raise ValueError(f"{model_name} currently supports single-output train_Y only.")
         if train_Yvar is not None:
-            raise NotImplementedError("CrabNetGPModel does not yet support train_Yvar.")
+            raise NotImplementedError(f"{model_name} does not yet support train_Yvar.")
         if isinstance(latent_dim, bool) or not isinstance(latent_dim, int) or latent_dim <= 0:
             raise ValueError("latent_dim must be a positive integer.")
 
@@ -350,7 +442,7 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
 
     @property
     def material_encoder(self) -> CrabNetEncoder:
-        """Return the frozen CrabNet material encoder."""
+        """Return the CrabNet material encoder."""
 
         return self.crabnet_feature_extractor.material_encoder
 
@@ -385,4 +477,90 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
         return self.crabnet_feature_extractor.process_dim
 
 
-__all__ = ["CrabNetGPModel"]
+class CrabNetDKLModel(CrabNetGPModel):
+    """Exact GP that jointly fine-tunes a CrabNet material encoder.
+
+    This model retains :class:`CrabNetGPModel`'s packed fraction/process Tensor
+    contract, posterior API, process-only normalization, fusion, and latent
+    projection. The difference is the encoder optimization policy: a positive
+    ``trainable_encoder_layers`` value fine-tunes that many final upstream
+    Transformer layers, while ``"all"`` fine-tunes the complete encoder.
+
+    Partial fine-tuning keeps the frozen encoder prefix in evaluation mode and
+    switches only the selected final Transformer layers between train/eval
+    modes. Full fine-tuning follows the ordinary model train/eval mode. In both
+    cases :func:`bochan.fit.deep.deepkernel.fit_deepkernel_mll` jointly
+    optimizes the unfrozen encoder parameters, material/process projection,
+    exact GP, and likelihood.
+
+    Args:
+        train_X: ``[n, composition_dim + process_dim]`` training inputs.
+        train_Y: Single-output targets with shape ``[n]`` or ``[n, 1]``.
+        train_Yvar: Reserved for future fixed-noise support.
+        element_ids: Atomic-number vocabulary matching the fraction columns.
+        encoder: Optional :class:`CrabNetEncoder` or raw upstream encoder.
+        checkpoint: Optional upstream or adapter encoder checkpoint.
+        latent_dim: Width of the projection passed to the GP kernel.
+        fusion: Material/process fusion strategy.
+        projection: Optional latent projection module.
+        strict_checkpoint: Require a complete encoder checkpoint state.
+        trainable_encoder_layers: Positive number of final upstream Transformer
+            layers to unfreeze, or ``"all"`` for full encoder fine-tuning.
+        likelihood: Optional GPyTorch likelihood.
+        input_transform: ``"DEFAULT"`` normalizes process columns only.
+        outcome_transform: Outcome transform forwarded to the Gaussian
+            DeepKernel wrapper.
+    """
+
+    def __init__(
+        self,
+        train_X: Tensor,
+        train_Y: Tensor,
+        train_Yvar: Tensor | None = None,
+        *,
+        element_ids: Tensor,
+        encoder: CrabNetEncoder | nn.Module | None = None,
+        checkpoint: Checkpoint | None = None,
+        latent_dim: int = 32,
+        fusion: Literal["concat"] | MaterialProcessFusion = "concat",
+        projection: nn.Module | None = None,
+        strict_checkpoint: bool = True,
+        trainable_encoder_layers: int | Literal["all"] = 1,
+        likelihood: Likelihood | None = None,
+        input_transform: InputTransformArg = "DEFAULT",
+        outcome_transform: OutcomeTransformArg = "DEFAULT",
+    ) -> None:
+        resolved_trainable_layers = _validate_trainable_encoder_layers(trainable_encoder_layers)
+        super().__init__(
+            train_X=train_X,
+            train_Y=train_Y,
+            train_Yvar=train_Yvar,
+            element_ids=element_ids,
+            encoder=encoder,
+            checkpoint=checkpoint,
+            latent_dim=latent_dim,
+            fusion=fusion,
+            projection=projection,
+            strict_checkpoint=strict_checkpoint,
+            likelihood=likelihood,
+            input_transform=input_transform,
+            outcome_transform=outcome_transform,
+        )
+        training_mode, trainable_modules = _configure_dkl_encoder(
+            self.material_encoder,
+            resolved_trainable_layers,
+        )
+        self._trainable_encoder_layers = resolved_trainable_layers
+        self.crabnet_feature_extractor._configure_encoder_training(
+            training_mode,
+            trainable_modules,
+        )
+
+    @property
+    def trainable_encoder_layers(self) -> int | Literal["all"]:
+        """Return the immutable partial/full encoder fine-tuning policy."""
+
+        return self._trainable_encoder_layers
+
+
+__all__ = ["CrabNetDKLModel", "CrabNetGPModel"]

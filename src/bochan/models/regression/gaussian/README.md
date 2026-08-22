@@ -33,6 +33,7 @@ train_Y = torch.rand(40, 3, dtype=torch.double)  # [n, m]
 | DeepGP | `DeepGaussianGPModel` / `DeepGaussianMixedGPModel` |
 | DeepKernel | `DeepKernelGaussianGPModel` / `DeepKernelGaussianMixedGPModel` |
 | frozen CrabNet + exact GP | `CrabNetGPModel` |
+| fine-tuned CrabNet + exact GP | `CrabNetDKLModel` |
 | 高次元SAAS | `SaasGaussianGPModel` / `SaasGaussianMixedGPModel` |
 | PCA / REMBO | `PCAGaussianGPModel` / `REMBOGaussianGPModel` |
 | robust / heteroscedastic | `RobustRelevancePursuitGaussianGPModel` / `HeteroscedasticGaussianGPModel` |
@@ -149,6 +150,35 @@ candidate, acq_value = optimize_acqf(
 この直接fraction最適化はPhase 5の低レベル契約です。ILR等のcomposition coordinateから
 fractionへautogradを維持して戻す場合は、canonical domain API の
 `bochan.composition.TorchSimplexTransform`を使います。
+
+#### CrabNet-DKLの共同学習
+
+`CrabNetDKLModel`は`CrabNetGPModel`と同じfraction/process Tensor契約、fusion、
+projection、exact GP、posterior APIを使いながら、CrabNet encoderもMLL学習へ含めます。
+`trainable_encoder_layers`に正の整数を指定すると末尾のTransformer layerだけを、
+`"all"`を指定するとencoder全体をfine-tuningします。
+
+```python
+from bochan.fit.deep import fit_deepkernel_mll
+from bochan.models.regression.gaussian.deep import CrabNetDKLModel
+
+
+dkl_model = CrabNetDKLModel(
+    train_X=train_X,
+    train_Y=train_Y,
+    element_ids=element_ids,
+    encoder=CrabNetEncoder(checkpoint="crabnet.pth"),
+    latent_dim=32,
+    trainable_encoder_layers=1,
+)
+fit_deepkernel_mll(dkl_model.make_mll(), num_epochs=100, lr=1e-3)
+```
+
+partial fine-tuningでは、未選択のencoder prefixをfreezeかつevaluation modeに保ち、
+選択した末尾layerだけをtraining modeへ切り替えます。`"all"`ではencoder全体が通常の
+train/eval modeに従います。partial指定はupstream CrabNetの
+`encoder.transformer_encoder.layers`構造を必要とし、構造を持たない独自encoderでは
+明示的なエラーになります。固定表現を使う場合は、従来どおり`CrabNetGPModel`を使います。
 
 ## 3. 標準回帰の最小例
 

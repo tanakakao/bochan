@@ -10,6 +10,8 @@ from botorch.acquisition.logei import (
 )
 from botorch.acquisition.monte_carlo import qUpperConfidenceBound
 from botorch.models.transforms.input import Normalize
+from botorch.optim import optimize_acqf
+from botorch.sampling.normal import SobolQMCNormalSampler
 from torch import Tensor, nn
 
 from bochan.composition import CrabNetEncoder
@@ -26,8 +28,14 @@ class FakeCrabNet(nn.Module):
         self.scale = nn.Parameter(torch.arange(1, d_model + 1, dtype=torch.float32))
 
     def forward(self, element_ids: Tensor, fractions: Tensor) -> Tensor:
-        del element_ids
-        return fractions.unsqueeze(-1) * self.scale
+        feature_scale = torch.arange(
+            1,
+            self.d_model + 1,
+            device=fractions.device,
+            dtype=fractions.dtype,
+        )
+        element_signal = element_ids.to(dtype=fractions.dtype).unsqueeze(-1) / (100 * feature_scale)
+        return fractions.unsqueeze(-1) * self.scale * (1 + element_signal)
 
 
 def _element_ids() -> Tensor:
@@ -210,6 +218,85 @@ def test_model_supports_qlogei_qucb_and_qlognei() -> None:
     assert all(torch.isfinite(value).all() for value in values)
     assert not any(parameter.requires_grad for parameter in model.material_encoder.parameters())
     assert all(parameter.grad is None for parameter in model.material_encoder.parameters())
+
+
+def test_qlogei_gradient_spans_simplex_tangent_and_process_directions() -> None:
+    model = _model(with_process=True, latent_dim=4)
+    _, train_Y = _data(with_process=True)
+    acquisition = qLogExpectedImprovement(
+        model=model,
+        best_f=train_Y.max(),
+        sampler=SobolQMCNormalSampler(sample_shape=torch.Size([64]), seed=11),
+    )
+    test_X = torch.tensor(
+        [[[0.40, 0.35, 0.25, 1075.0, 3.0]]],
+        dtype=torch.double,
+        requires_grad=True,
+    )
+
+    value = acquisition(test_X)
+    (gradient,) = torch.autograd.grad(value.sum(), test_X)
+    composition_gradient = gradient[..., : model.composition_dim]
+    simplex_tangent_gradient = composition_gradient - composition_gradient.mean(
+        dim=-1,
+        keepdim=True,
+    )
+    process_gradient = gradient[..., model.composition_dim :]
+
+    assert torch.isfinite(value).all()
+    assert torch.isfinite(gradient).all()
+    assert simplex_tangent_gradient.abs().sum() > 1e-8
+    assert process_gradient.abs().sum() > 1e-8
+
+
+def test_optimize_acqf_jointly_optimizes_composition_and_process() -> None:
+    model = _model(with_process=True, latent_dim=4)
+    _, train_Y = _data(with_process=True)
+    acquisition = qLogExpectedImprovement(
+        model=model,
+        best_f=train_Y.max(),
+        sampler=SobolQMCNormalSampler(sample_shape=torch.Size([64]), seed=17),
+    )
+    bounds = torch.tensor(
+        [
+            [0.05, 0.05, 0.05, 850.0, 0.5],
+            [0.80, 0.80, 0.80, 1300.0, 6.0],
+        ],
+        dtype=torch.double,
+    )
+    composition_constraint = (
+        torch.arange(model.composition_dim, device=bounds.device, dtype=torch.long),
+        torch.ones(model.composition_dim, device=bounds.device, dtype=bounds.dtype),
+        1.0,
+    )
+
+    candidates, acq_value = optimize_acqf(
+        acq_function=acquisition,
+        bounds=bounds,
+        q=3,
+        num_restarts=10,
+        raw_samples=256,
+        equality_constraints=[composition_constraint],
+        options={"batch_limit": 5, "maxiter": 50},
+    )
+    posterior = model.posterior(candidates)
+
+    assert candidates.shape == torch.Size([3, 5])
+    assert acq_value is not None
+    assert acq_value.shape == torch.Size([])
+    assert torch.isfinite(candidates).all()
+    assert torch.isfinite(acq_value)
+    assert torch.all(candidates >= bounds[0] - 1e-7)
+    assert torch.all(candidates <= bounds[1] + 1e-7)
+    assert torch.allclose(
+        candidates[..., : model.composition_dim].sum(dim=-1),
+        torch.ones(3, dtype=candidates.dtype),
+        rtol=1e-6,
+        atol=1e-6,
+    )
+    assert torch.isfinite(posterior.mean).all()
+    assert torch.isfinite(posterior.variance).all()
+    assert not any(parameter.requires_grad for parameter in model.material_encoder.parameters())
 
 
 def test_full_model_save_load_restores_posterior_and_metadata(tmp_path: Path) -> None:

@@ -107,6 +107,48 @@ posterior = model.posterior(train_X[:1])
 parameterはfreezeされますが、composition/process入力からposteriorまでのgradientは
 保持されます。初期版ではcategorical processと`train_Yvar`は未対応です。
 
+#### 組成とprocess条件の同時最適化
+
+fractionを探索座標として直接使う場合は、各候補のfraction和を1に保つため、BoTorchの
+intra-point equality constraintを渡します。1次元のindex tensorを使うと、この制約は
+q-batch内の各候補へ個別に適用されます。process列は同じ`bounds`内で同時に最適化され
+ます。
+
+```python
+from botorch.acquisition.logei import qLogExpectedImprovement
+from botorch.optim import optimize_acqf
+
+
+acqf = qLogExpectedImprovement(
+    model=model,
+    best_f=train_Y.max(),
+)
+bounds = torch.tensor(
+    [
+        [0.05, 0.05, 0.05, 850.0, 0.5],
+        [0.80, 0.80, 0.80, 1300.0, 6.0],
+    ],
+    dtype=train_X.dtype,
+)
+composition_constraint = (
+    torch.arange(model.composition_dim, device=bounds.device, dtype=torch.long),
+    torch.ones(model.composition_dim, device=bounds.device, dtype=bounds.dtype),
+    1.0,
+)
+
+candidate, acq_value = optimize_acqf(
+    acq_function=acqf,
+    bounds=bounds,
+    q=3,
+    num_restarts=10,
+    raw_samples=256,
+    equality_constraints=[composition_constraint],
+)
+```
+
+この直接fraction最適化はPhase 5の低レベル契約です。ILR等のcomposition coordinateから
+fractionへautogradを維持して戻すTorch-native変換は、別段階で追加します。
+
 ## 3. 標準回帰の最小例
 
 ```python

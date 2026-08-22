@@ -224,6 +224,12 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
     trainable.  Categorical process variables are not supported in this first
     model; encode only continuous process features here.
 
+    When optimizing the packed fraction representation directly with
+    :func:`botorch.optim.optimize_acqf`, pass an intra-point linear equality
+    constraint over the first ``len(element_ids)`` columns so that every
+    candidate remains on the unit simplex.  Process columns stay unconstrained
+    by that equality and are optimized jointly within their box bounds.
+
     Args:
         train_X: ``[n, composition_dim + process_dim]`` training inputs.
         train_Y: Single-output targets with shape ``[n]`` or ``[n, 1]``.

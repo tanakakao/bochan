@@ -70,6 +70,12 @@ Tabular DataFrame / numpy / CSV workflows:
 pip install -e ".[tabular]"
 ```
 
+CrabNet material encoder:
+
+```bash
+pip install -e ".[materials]"
+```
+
 Notebook examples:
 
 ```bash

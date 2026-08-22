@@ -130,8 +130,8 @@ class _BaseDeepKernelGPModel(DeepGP, GPyTorchModel):
     def __init__(self) -> None:
         super().__init__()
         self._num_outputs = 1
-        self._model_dtype = None
-        self._model_device = None
+        self._model_dtype: torch.dtype | None = None
+        self._model_device: torch.device | None = None
 
     # ------------------------------------------------------------------
     # transform 解決

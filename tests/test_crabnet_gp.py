@@ -14,7 +14,7 @@ from botorch.optim import optimize_acqf
 from botorch.sampling.normal import SobolQMCNormalSampler
 from torch import Tensor, nn
 
-from bochan.composition import CrabNetEncoder
+from bochan.composition import CrabNetEncoder, TorchSimplexTransform
 from bochan.fit.deep.deepkernel import fit_deepkernel_mll
 from bochan.models.regression.gaussian.deep import CrabNetGPModel
 
@@ -247,6 +247,43 @@ def test_qlogei_gradient_spans_simplex_tangent_and_process_directions() -> None:
     assert torch.isfinite(gradient).all()
     assert simplex_tangent_gradient.abs().sum() > 1e-8
     assert process_gradient.abs().sum() > 1e-8
+
+
+def test_qlogei_gradient_flows_from_ilr_coordinates_through_crabnet_gp() -> None:
+    model = _model(with_process=True, latent_dim=4)
+    _, train_Y = _data(with_process=True)
+    acquisition = qLogExpectedImprovement(
+        model=model,
+        best_f=train_Y.max(),
+        sampler=SobolQMCNormalSampler(sample_shape=torch.Size([64]), seed=13),
+    )
+    coordinate_X = torch.tensor(
+        [[[0.25, -0.15, 1075.0, 3.0]]],
+        dtype=torch.double,
+        requires_grad=True,
+    )
+    inverse_ilr = TorchSimplexTransform(
+        n_components=model.composition_dim,
+        method="ilr",
+    ).to(coordinate_X)
+    fractions = inverse_ilr(coordinate_X[..., : inverse_ilr.input_dim])
+    model_X = torch.cat(
+        [fractions, coordinate_X[..., inverse_ilr.input_dim :]],
+        dim=-1,
+    )
+
+    value = acquisition(model_X)
+    (gradient,) = torch.autograd.grad(value.sum(), coordinate_X)
+
+    assert torch.isfinite(value).all()
+    assert torch.isfinite(gradient).all()
+    assert gradient[..., : inverse_ilr.input_dim].abs().sum() > 1e-8
+    assert gradient[..., inverse_ilr.input_dim :].abs().sum() > 1e-8
+    torch.testing.assert_close(
+        fractions.sum(dim=-1),
+        torch.ones((1, 1), dtype=fractions.dtype),
+    )
+    assert all(parameter.grad is None for parameter in model.material_encoder.parameters())
 
 
 def test_optimize_acqf_jointly_optimizes_composition_and_process() -> None:

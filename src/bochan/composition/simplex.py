@@ -3,9 +3,50 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import sqrt
+from operator import index
 from typing import Any
 
 import numpy as np
+import torch
+from torch import Tensor, nn
+
+_SIMPLEX_METHODS = {"none", "fractions", "clr", "alr", "ilr"}
+
+
+def _normalize_method(method: str) -> str:
+    normalized = method.lower()
+    if normalized not in _SIMPLEX_METHODS:
+        raise ValueError("method must be one of 'none', 'fractions', 'clr', 'alr', or 'ilr'.")
+    return "none" if normalized == "fractions" else normalized
+
+
+def _resolve_reference(reference_index: int | None, n_components: int) -> int:
+    reference = n_components - 1 if reference_index is None else int(reference_index)
+    if not 0 <= reference < n_components:
+        raise ValueError(f"reference_index must be between 0 and {n_components - 1}.")
+    return reference
+
+
+def _validate_n_components(n_components: int) -> int:
+    try:
+        resolved = index(n_components)
+    except TypeError as error:
+        raise TypeError("n_components must be an integer.") from error
+    if resolved < 2:
+        raise ValueError("n_components must be at least 2.")
+    return resolved
+
+
+def _ilr_basis_values(n_components: int) -> list[list[float]]:
+    n_components = _validate_n_components(n_components)
+    basis = [[0.0] * (n_components - 1) for _ in range(n_components)]
+    for column in range(n_components - 1):
+        scale = sqrt((column + 1) * (column + 2))
+        for row in range(column + 1):
+            basis[row][column] = 1.0 / scale
+        basis[column + 1][column] = -(column + 1) / scale
+    return basis
 
 
 def close_compositions(values: Any, *, pseudocount: float = 0.0) -> np.ndarray:
@@ -33,14 +74,7 @@ def close_compositions(values: Any, *, pseudocount: float = 0.0) -> np.ndarray:
 def ilr_basis(n_components: int) -> np.ndarray:
     """Return the sequential binary partition (Helmert) ILR basis."""
 
-    if n_components < 2:
-        raise ValueError("n_components must be at least 2.")
-    basis = np.zeros((n_components, n_components - 1), dtype=float)
-    for column in range(n_components - 1):
-        scale = np.sqrt((column + 1) * (column + 2))
-        basis[: column + 1, column] = 1.0 / scale
-        basis[column + 1, column] = -(column + 1) / scale
-    return basis
+    return np.asarray(_ilr_basis_values(n_components), dtype=float)
 
 
 @dataclass(frozen=True)
@@ -58,16 +92,10 @@ class SimplexTransform:
     reference_index: int | None = None
 
     def _method(self) -> str:
-        method = self.method.lower()
-        if method not in {"none", "fractions", "clr", "alr", "ilr"}:
-            raise ValueError("method must be one of 'none', 'fractions', 'clr', 'alr', or 'ilr'.")
-        return "none" if method == "fractions" else method
+        return _normalize_method(self.method)
 
     def _reference(self, n_components: int) -> int:
-        reference = n_components - 1 if self.reference_index is None else int(self.reference_index)
-        if not 0 <= reference < n_components:
-            raise ValueError(f"reference_index must be between 0 and {n_components - 1}.")
-        return reference
+        return _resolve_reference(self.reference_index, n_components)
 
     def transform(self, values: Any) -> np.ndarray:
         """Transform compositions from the simplex to model coordinates."""
@@ -119,3 +147,99 @@ class SimplexTransform:
         logits = logits - logits.max(axis=1, keepdims=True)
         exp_values = np.exp(logits)
         return exp_values / exp_values.sum(axis=1, keepdims=True)
+
+
+class TorchSimplexTransform(nn.Module):
+    """Map Torch model coordinates to fractions on the unit simplex.
+
+    The final dimension contains composition coordinates. All leading dimensions
+    are preserved, so the module accepts both ordinary batches and BoTorch
+    ``batch_shape x q x d`` inputs. The inverse is implemented entirely with
+    Torch operations and therefore remains in the autograd graph.
+
+    Args:
+        n_components: Number of output fractions. Must be at least two.
+        method: Coordinate representation: ``fractions``, ``clr``, ``alr``, or
+            ``ilr``. ``none`` is equivalent to ``fractions``.
+        reference_index: Zero-based denominator component for ALR. Defaults to
+            the final component.
+    """
+
+    _ilr_basis: Tensor
+
+    def __init__(
+        self,
+        n_components: int,
+        *,
+        method: str = "ilr",
+        reference_index: int | None = None,
+    ) -> None:
+        super().__init__()
+        self.n_components = _validate_n_components(n_components)
+        self.method = _normalize_method(method)
+        self.reference_index = (
+            None if reference_index is None else _resolve_reference(reference_index, self.n_components)
+        )
+        basis = torch.tensor(
+            _ilr_basis_values(self.n_components),
+            dtype=torch.double,
+        )
+        self.register_buffer("_ilr_basis", basis, persistent=True)
+
+    @property
+    def input_dim(self) -> int:
+        """Return the required size of the coordinate dimension."""
+
+        if self.method in {"alr", "ilr"}:
+            return self.n_components - 1
+        return self.n_components
+
+    def forward(self, values: Tensor) -> Tensor:
+        """Return closed fractions while preserving dtype, device, and gradients."""
+
+        if not isinstance(values, Tensor):
+            raise TypeError("values must be a torch.Tensor.")
+        if not values.is_floating_point():
+            raise TypeError("values must have a floating-point dtype.")
+        if values.ndim < 1 or values.shape[-1] != self.input_dim:
+            raise ValueError(f"Expected a final dimension of {self.input_dim}, got {tuple(values.shape)}.")
+        if not torch.isfinite(values).all():
+            raise ValueError("Transformed values must be finite.")
+
+        if self.method == "none":
+            if torch.any(values < 0):
+                raise ValueError("Composition values must be non-negative.")
+            totals = values.sum(dim=-1, keepdim=True)
+            if torch.any(totals <= 0):
+                raise ValueError("Each composition must contain at least one positive component.")
+            return values / totals
+
+        if self.method == "clr":
+            logits = values
+        elif self.method == "alr":
+            reference = _resolve_reference(self.reference_index, self.n_components)
+            zero = values.new_zeros((*values.shape[:-1], 1))
+            logits = torch.cat(
+                (values[..., :reference], zero, values[..., reference:]),
+                dim=-1,
+            )
+        else:
+            basis = self._ilr_basis.to(dtype=values.dtype, device=values.device)
+            logits = values @ basis.transpose(-2, -1)
+        return torch.softmax(logits, dim=-1)
+
+    def extra_repr(self) -> str:
+        """Return a concise representation for nested model summaries."""
+
+        reference = ""
+        if self.method == "alr":
+            reference = f", reference_index={_resolve_reference(self.reference_index, self.n_components)}"
+        return f"n_components={self.n_components}, method={self.method!r}{reference}"
+
+
+__all__ = [
+    "SimplexTransform",
+    "TorchSimplexTransform",
+    "close_compositions",
+    "ilr_basis",
+]

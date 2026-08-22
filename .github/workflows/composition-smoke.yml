@@ -41,6 +41,7 @@ jobs:
             src/bochan/composition/encoders/base.py \
             src/bochan/composition/encoders/crabnet.py \
             src/bochan/composition/encoders/fusion.py \
+            src/bochan/composition/simplex.py \
             src/bochan/composition/transformer.py \
             src/bochan/models/regression/gaussian/deep/__init__.py \
             src/bochan/models/regression/gaussian/deep/crabnet.py \

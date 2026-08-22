@@ -147,7 +147,8 @@ candidate, acq_value = optimize_acqf(
 ```
 
 この直接fraction最適化はPhase 5の低レベル契約です。ILR等のcomposition coordinateから
-fractionへautogradを維持して戻すTorch-native変換は、別段階で追加します。
+fractionへautogradを維持して戻す場合は、canonical domain API の
+`bochan.composition.TorchSimplexTransform`を使います。
 
 ## 3. 標準回帰の最小例
 

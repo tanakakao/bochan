@@ -12,6 +12,7 @@ export type RegressionModelVariant =
   | "deepgp"
   | "deepkernel"
   | "crabnet_gp"
+  | "crabnet_mixed_gp"
   | "crabnet_dkl"
   | "saas"
   | "pca"
@@ -61,6 +62,7 @@ const MODEL_VARIANT_LABELS: Record<RegressionModelVariant, string> = {
   deepgp: "Deep GP",
   deepkernel: "Deep Kernel GP",
   crabnet_gp: "CrabNet-GP",
+  crabnet_mixed_gp: "CrabNet-Mixed GP",
   crabnet_dkl: "CrabNet-DKL",
   saas: "SAAS",
   pca: "PCA",

@@ -6,6 +6,9 @@ on:
       - main
     paths:
       - "src/bochan/tabular/data/conversion.py"
+      - "src/bochan/tabular/optimizer/fitting.py"
+      - "src/bochan/api/modeling/fit.py"
+      - "src/bochan/models/regression/gaussian/deep/crabnet_mixed.py"
       - "src/bochan/serving/webapp/composition/support.py"
       - "src/bochan/serving/webapp/composition/descriptors.py"
       - "src/bochan/serving/webapp/routers/composition.py"
@@ -63,6 +66,8 @@ on:
       - "web/test/importanceFeatureLabels.test.ts"
       - "web/package.json"
       - "web/pnpm-lock.yaml"
+      - "tests/test_tabular_crabnet_mixed_gp.py"
+      - "tests/test_webapp_crabnet_mixed_gp_contract.py"
       - "tests/test_webapp_composition_support.py"
       - "tests/test_webapp_composition_descriptors.py"
       - "tests/test_webapp_composition_candidate_repair.py"
@@ -103,6 +108,8 @@ jobs:
       - name: Run composition API tests
         run: >-
           pytest -q
+          tests/test_tabular_crabnet_mixed_gp.py
+          tests/test_webapp_crabnet_mixed_gp_contract.py
           tests/test_webapp_composition_support.py
           tests/test_webapp_composition_descriptors.py
           tests/test_webapp_composition_candidate_repair.py
@@ -129,6 +136,9 @@ jobs:
           python -m pip install ruff
           ruff check --ignore I001,SIM102,SIM105,SIM108,B010 \
             src/bochan/tabular/data/conversion.py \
+            src/bochan/tabular/optimizer/fitting.py \
+            src/bochan/api/modeling/fit.py \
+            src/bochan/models/regression/gaussian/deep/crabnet_mixed.py \
             src/bochan/serving/webapp/composition/support.py \
             src/bochan/serving/webapp/composition/descriptors.py \
             src/bochan/serving/webapp/routers/composition.py \
@@ -148,6 +158,8 @@ jobs:
             src/bochan/serving/webapp/__init__.py \
             src/bochan/visualization/__init__.py \
             src/bochan/visualization/ternary.py \
+            tests/test_tabular_crabnet_mixed_gp.py \
+            tests/test_webapp_crabnet_mixed_gp_contract.py \
             tests/test_webapp_composition_support.py \
             tests/test_webapp_composition_descriptors.py \
             tests/test_webapp_composition_candidate_repair.py \

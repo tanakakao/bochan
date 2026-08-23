@@ -32,6 +32,7 @@ def test_web_capabilities_advertise_requested_models() -> None:
         "deepgp",
         "deepkernel",
         "crabnet_gp",
+        "crabnet_mixed_gp",
         "crabnet_dkl",
         "saas",
         "pca",

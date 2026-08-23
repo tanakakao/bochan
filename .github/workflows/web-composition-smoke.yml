@@ -67,6 +67,7 @@ on:
       - "web/package.json"
       - "web/pnpm-lock.yaml"
       - "tests/test_tabular_crabnet_mixed_gp.py"
+      - "tests/test_webapp_crabnet_mixed_gp_contract.py"
       - "tests/test_webapp_composition_support.py"
       - "tests/test_webapp_composition_descriptors.py"
       - "tests/test_webapp_composition_candidate_repair.py"
@@ -108,6 +109,7 @@ jobs:
         run: >-
           pytest -q
           tests/test_tabular_crabnet_mixed_gp.py
+          tests/test_webapp_crabnet_mixed_gp_contract.py
           tests/test_webapp_composition_support.py
           tests/test_webapp_composition_descriptors.py
           tests/test_webapp_composition_candidate_repair.py
@@ -157,6 +159,7 @@ jobs:
             src/bochan/visualization/__init__.py \
             src/bochan/visualization/ternary.py \
             tests/test_tabular_crabnet_mixed_gp.py \
+            tests/test_webapp_crabnet_mixed_gp_contract.py \
             tests/test_webapp_composition_support.py \
             tests/test_webapp_composition_descriptors.py \
             tests/test_webapp_composition_candidate_repair.py \

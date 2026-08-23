@@ -14,6 +14,7 @@ import {
   MODEL_FAMILY_OPTIONS,
   MODEL_OPTIONS,
   isMultitaskModelType,
+  isCrabNetMixedModelType,
   isCrabNetModelType,
   isNonGaussianModelType,
   isProjectedModelType,
@@ -93,17 +94,19 @@ export default function SettingsPage() {
   const hasRegressionTargets = taskTypes.some((task) => task === "regression");
   const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
   const canUseMultitask = targetColumns.length > 1 && allRegression && !hasCategoricalFeatures;
-  const canUseCrabNet = Boolean(
+  const crabNetCompositionReady = Boolean(
     targetColumns.length === 1 &&
     allRegression &&
     compositionSettings.enabled &&
     compositionSettings.column &&
     selectedVariables.some((variable) => variable.name === compositionSettings.column) &&
-    compositionSettings.elements.length >= 2 &&
-    !selectedVariables.some(
-      (variable) => variable.type === "categorical" && variable.name !== compositionSettings.column
-    )
+    compositionSettings.elements.length >= 2
   );
+  const hasCategoricalProcess = selectedVariables.some(
+    (variable) => variable.type === "categorical" && variable.name !== compositionSettings.column
+  );
+  const canUseCrabNet = crabNetCompositionReady && !hasCategoricalProcess;
+  const canUseCrabNetMixed = crabNetCompositionReady && hasCategoricalProcess;
   const projectedModel = isProjectedModelType(modelType);
   const maxProjectionDimensions = Math.max(selectedVariables.length, 1);
 
@@ -112,9 +115,11 @@ export default function SettingsPage() {
       taskTypes.every((task) => modelSupportsTaskType(option.value, task)) &&
       (!isNonGaussianModelType(option.value) || allRegression) &&
       (!isMultitaskModelType(option.value) || canUseMultitask) &&
-      (!isCrabNetModelType(option.value) || canUseCrabNet)
+      (!isCrabNetModelType(option.value) || (
+        isCrabNetMixedModelType(option.value) ? canUseCrabNetMixed : canUseCrabNet
+      ))
     )),
-    [allRegression, canUseCrabNet, canUseMultitask, taskTypes]
+    [allRegression, canUseCrabNet, canUseCrabNetMixed, canUseMultitask, taskTypes]
   );
   const modelLikelihood = regressionLikelihoodFor(modelType);
   const modelFamily = modelFamilyFor(modelType);

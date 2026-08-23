@@ -15,7 +15,8 @@ from ..data import dataframe_to_tensors, numpy_to_tensors
 from .configuration import DATA_KEYS, FIT_KEYS, MODEL_KEYS, merge_data_config, resolve_cv_config, take
 from .settings import apply_alpha_to_model_config, merge_input_transform_config, validate_noise_alpha
 
-_CRABNET_MODEL_TYPES = frozenset({"crabnet_gp", "crabnet_dkl"})
+_CRABNET_MODEL_TYPES = frozenset({"crabnet_gp", "crabnet_dkl", "crabnet_mixed_gp"})
+_CRABNET_FROZEN_MODEL_TYPES = frozenset({"crabnet_gp", "crabnet_mixed_gp"})
 _WEIGHT_BASIS_NAMES = frozenset({"weight", "weight_fraction", "mass_fraction", "wt%"})
 
 
@@ -29,17 +30,28 @@ def _configure_tabular_crabnet_model(
     model_type = str(config.model_type).lower()
     if model_type not in _CRABNET_MODEL_TYPES:
         return config
+    mixed_model = model_type == "crabnet_mixed_gp"
     if str(config.task_type) != "regression":
         raise ValueError("Tabular CrabNet models support task_type='regression' only.")
     if config.multi_output_config is not None or dataset.Y.shape[-1] != 1:
         raise ValueError("Tabular CrabNet models currently support single-output Gaussian regression only.")
-    if config.input_type not in (None, "normal"):
-        raise ValueError("Tabular CrabNet models support normal continuous inputs only.")
-    if dataset.cat_dims:
+    expected_input_type = "mixed" if mixed_model else "normal"
+    if config.input_type not in (None, expected_input_type):
+        raise ValueError(
+            f"{model_type} requires input_type={expected_input_type!r}."
+        )
+    if mixed_model:
+        if not dataset.cat_dims:
+            raise ValueError(
+                "crabnet_mixed_gp requires at least one categorical process column. "
+                "Use crabnet_gp when all process columns are continuous."
+            )
+    elif dataset.cat_dims:
         categorical = [dataset.feature_names[index] for index in dataset.cat_dims]
         raise ValueError(
-            "Tabular CrabNet models support continuous process columns only; "
-            f"categorical columns were configured: {categorical!r}."
+            "crabnet_gp/crabnet_dkl support continuous process columns only; "
+            f"categorical columns were configured: {categorical!r}. "
+            "Use model_type='crabnet_mixed_gp' for mixed process inputs."
         )
     if len(owner.composition.sites) != 1:
         raise ValueError("Tabular CrabNet models require exactly one composition site.")
@@ -64,21 +76,37 @@ def _configure_tabular_crabnet_model(
         )
     composition_indices = [feature_names.index(name) for name in coordinate_names]
     composition_index_set = set(composition_indices)
-    process_indices = [index for index in range(dataset.X.shape[-1]) if index not in composition_index_set]
+    categorical_index_set = set(dataset.cat_dims)
+    process_indices = [
+        index
+        for index in range(dataset.X.shape[-1])
+        if index not in composition_index_set and index not in categorical_index_set
+    ]
 
     model_kwargs = dict(config.model_kwargs)
-    reserved = sorted({"element_ids", "input_transform"}.intersection(model_kwargs))
+    derived_names = {
+        "element_ids",
+        "input_transform",
+        "composition_indices",
+        "method",
+        "reference_index",
+        "process_bounds",
+        "component_weights",
+        "normalize_process",
+    }
+    reserved = sorted(derived_names.intersection(model_kwargs))
     if config.input_transform is not None or reserved:
         raise ValueError(
-            "Tabular CrabNet models derive element_ids and input_transform from "
-            "composition_sites; do not provide them explicitly."
+            "Tabular CrabNet models derive composition/process layout from "
+            "composition_sites and categorical_cols; do not provide "
+            f"input_transform or derived model kwargs explicitly: {reserved!r}."
         )
 
     encoder_training = model_kwargs.pop("encoder_training", None)
-    if model_type == "crabnet_gp":
+    if model_type in _CRABNET_FROZEN_MODEL_TYPES:
         if encoder_training is not None or "trainable_encoder_layers" in model_kwargs:
             raise ValueError(
-                "crabnet_gp always freezes the encoder. Use model_type='crabnet_dkl' "
+                f"{model_type} always freezes the encoder. Use model_type='crabnet_dkl' "
                 "for partial or full encoder training."
             )
     elif encoder_training is not None:
@@ -91,7 +119,8 @@ def _configure_tabular_crabnet_model(
             model_kwargs["trainable_encoder_layers"] = "all"
         else:
             raise ValueError(
-                "encoder_training must be 'partial' or 'full'. Use model_type='crabnet_gp' for a frozen encoder."
+                "encoder_training must be 'partial' or 'full'. Use crabnet_gp or "
+                "crabnet_mixed_gp for a frozen encoder."
             )
 
     transform_config = config.input_transform_config
@@ -100,8 +129,8 @@ def _configure_tabular_crabnet_model(
     if transform_config is not None:
         if transform_config.perturbation:
             raise ValueError("Tabular CrabNet models do not yet support input perturbation.")
-        if transform_config.categorical_idx is not None:
-            raise ValueError("Tabular CrabNet models do not support categorical input transforms.")
+        if not mixed_model and transform_config.categorical_idx is not None:
+            raise ValueError("Continuous CrabNet models do not support categorical input transforms.")
         normalize_process = bool(transform_config.normalize)
         if transform_config.bounds is not None:
             try:
@@ -138,6 +167,34 @@ def _configure_tabular_crabnet_model(
     if str(site_config["normalization"]).lower() in _WEIGHT_BASIS_NAMES:
         component_weights = dataset.X.new_tensor([ATOMIC_WEIGHTS[element] for element in elements])
 
+    element_ids = dataset.X.new_tensor(
+        [ATOMIC_NUMBERS[element] for element in elements],
+        dtype=torch.long,
+    )
+    model_kwargs["element_ids"] = element_ids
+
+    if mixed_model:
+        from bochan.models.regression.gaussian.deep import CrabNetMixedGPModel
+
+        model_kwargs.update(
+            {
+                "composition_indices": composition_indices,
+                "method": str(site_config["representation"]),
+                "reference_index": reference_index,
+                "process_bounds": process_bounds,
+                "component_weights": component_weights,
+                "normalize_process": normalize_process,
+            }
+        )
+        return replace(
+            config,
+            model_cls=CrabNetMixedGPModel,
+            input_type="mixed",
+            input_transform=None,
+            input_transform_config=None,
+            model_kwargs=model_kwargs,
+        )
+
     from bochan.models.regression.gaussian.deep import CrabNetInputTransform
 
     input_transform = CrabNetInputTransform(
@@ -150,10 +207,6 @@ def _configure_tabular_crabnet_model(
         component_weights=component_weights,
         normalize_process=normalize_process,
     ).to(dataset.X)
-    model_kwargs["element_ids"] = dataset.X.new_tensor(
-        [ATOMIC_NUMBERS[element] for element in elements],
-        dtype=torch.long,
-    )
 
     return replace(
         config,

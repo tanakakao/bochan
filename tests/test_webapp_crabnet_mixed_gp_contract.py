@@ -83,9 +83,13 @@ def test_web_capabilities_and_react_options_publish_crabnet_mixed_gp() -> None:
     assert crabnet["mixed_process_model_types"] == [
         "crabnet_mixed_gp",
         "crabnet_mixed_dkl",
+        "crabnet_mixed_multitask",
+        "crabnet_mixed_multitask_dkl",
     ]
 
     options = (ROOT / "web" / "src" / "modelOptions.ts").read_text(encoding="utf-8")
     settings = (ROOT / "web" / "src" / "pages" / "SettingsPage.tsx").read_text(encoding="utf-8")
     assert 'value: "crabnet_mixed_gp"' in options
+    assert 'value: "crabnet_mixed_multitask"' in options
+    assert 'value: "crabnet_mixed_multitask_dkl"' in options
     assert "isCrabNetMixedModelType" in settings

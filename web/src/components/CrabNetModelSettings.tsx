@@ -1,5 +1,9 @@
 import { useWorkbench } from "../context/WorkbenchContext";
-import { isCrabNetMixedModelType, isCrabNetModelType } from "../modelOptions";
+import {
+  isCrabNetDKLModelType,
+  isCrabNetMixedModelType,
+  isCrabNetModelType
+} from "../modelOptions";
 
 /** Configures the server-side checkpoint and CrabNet-DKL fine-tuning policy. */
 export default function CrabNetModelSettings() {
@@ -20,11 +24,14 @@ export default function CrabNetModelSettings() {
     compositionSettings.elements.length >= 2
   );
   const mixedModel = isCrabNetMixedModelType(modelType);
-  const title = mixedModel
-    ? "CrabNet-Mixed GP"
-    : modelType === "crabnet_gp"
-      ? "CrabNet-GP"
-      : "CrabNet-DKL";
+  const dklModel = isCrabNetDKLModelType(modelType);
+  const title = modelType === "crabnet_mixed_dkl"
+    ? "CrabNet-Mixed DKL"
+    : modelType === "crabnet_mixed_gp"
+      ? "CrabNet-Mixed GP"
+      : modelType === "crabnet_gp"
+        ? "CrabNet-GP"
+        : "CrabNet-DKL";
 
   return (
     <article className="panel model-advanced-section crabnet-model-settings">
@@ -32,9 +39,11 @@ export default function CrabNetModelSettings() {
         <span className="panel-kicker">CRABNET</span>
         <h4>{title} 設定</h4>
         <p>
-          {mixedModel
-            ? "組成式と連続process条件をCrabNet側の連続表現へ変換し、カテゴリprocess条件をCategorical kernelで統合します。"
-            : "組成式と連続process条件を同じGaussian GPで学習します。"}
+          {modelType === "crabnet_mixed_dkl"
+            ? "CrabNet組成表現、連続process条件、学習可能なカテゴリEmbeddingをニューラル融合し、その潜在表現上でGaussian GPを学習します。"
+            : modelType === "crabnet_mixed_gp"
+              ? "組成式と連続process条件をCrabNet側の連続表現へ変換し、カテゴリprocess条件をCategorical kernelで統合します。"
+              : "組成式と連続process条件を同じGaussian GPで学習します。"}
         </p>
       </div>
       <div className="model-settings-grid">
@@ -47,7 +56,7 @@ export default function CrabNetModelSettings() {
           />
           <small>Webサーバーから読み取れるcheckpointパスを指定します。空欄ではランダム初期化です。</small>
         </label>
-        {modelType === "crabnet_dkl" && (
+        {dklModel && (
           <label>
             Encoder training
             <select
@@ -69,9 +78,13 @@ export default function CrabNetModelSettings() {
         </p>
       )}
       <p className="settings-note">
-        {mixedModel
-          ? "対応範囲は単一の回帰目的、1つの組成式列、連続process列＋カテゴリprocess列です。カテゴリ候補はmixed optimizerで列挙し、CrabNet encoderは凍結します。入力摂動、複数目的には対応していません。"
-          : "対応範囲は単一の回帰目的、1つの組成式列、連続process列です。カテゴリprocessはCrabNet-Mixed GPを使用してください。入力摂動、複数目的には対応していません。"}
+        {modelType === "crabnet_mixed_dkl"
+          ? "対応範囲は単一の回帰目的、1つの組成式列、連続process列＋カテゴリprocess列です。カテゴリ候補はmixed optimizerで列挙し、カテゴリ値は学習可能なEmbeddingとして潜在表現へ統合します。CrabNet encoderはPartialまたはFullで微調整できます。入力摂動、複数目的には対応していません。"
+          : modelType === "crabnet_mixed_gp"
+            ? "対応範囲は単一の回帰目的、1つの組成式列、連続process列＋カテゴリprocess列です。カテゴリ候補はmixed optimizerで列挙し、CrabNet encoderは凍結します。入力摂動、複数目的には対応していません。"
+            : mixedModel
+              ? "対応範囲は単一の回帰目的、1つの組成式列、連続process列＋カテゴリprocess列です。"
+              : "対応範囲は単一の回帰目的、1つの組成式列、連続process列です。カテゴリprocessを含む場合はCrabNet-Mixed GPまたはCrabNet-Mixed DKLを使用してください。入力摂動、複数目的には対応していません。"}
       </p>
     </article>
   );

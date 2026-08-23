@@ -3,6 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 import torch
+from botorch.models.model_list_gp_regression import ModelListGP
 from torch import nn
 
 from bochan.api import ModelConfig, resolve_model_cls
@@ -285,13 +286,20 @@ def test_tabular_crabnet_rejects_unsupported_domain_shapes(
         optimizer.fit(frame)
 
 
-def test_tabular_crabnet_rejects_multi_output_and_invalid_encoder_training() -> None:
+def test_tabular_crabnet_supports_multi_output_and_rejects_invalid_encoder_training() -> None:
     frame = _frame().assign(second_property=lambda value: value["property"] * 2)
     multi_output = _optimizer("crabnet_gp", encoder=LayeredFakeCrabNet())
     multi_output.source_data_config.target_cols = ["property", "second_property"]
+    multi_output.fit(frame)
 
-    with pytest.raises(ValueError, match="single-output"):
-        multi_output.fit(frame)
+    bundle = multi_output.bo.bundle
+    assert bundle is not None
+    assert isinstance(bundle.model, ModelListGP)
+    assert len(bundle.model.models) == 2
+    first, second = bundle.model.models
+    assert isinstance(first, CrabNetGPModel)
+    assert isinstance(second, CrabNetGPModel)
+    assert first.material_encoder is not second.material_encoder
 
     invalid_training = _optimizer(
         "crabnet_dkl",

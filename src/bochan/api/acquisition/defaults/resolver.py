@@ -252,6 +252,7 @@ def resolve_multi_output_model_config(
         "kronecker",
         "multitask",
         "multifidelity",
+        "crabnetmultitask",
     }:
         return model_config
 
@@ -298,7 +299,7 @@ def _uses_internal_nparego_baseline(config: AcquisitionConfig) -> bool:
     if acqf_cls is None:
         return False
     normalized = _normalize_name(
-        f"{config.name} {getattr(acqf_cls, '__name__', '')}"
+        f"{config.name} {getattr(config.acqf_cls, '__name__', '')}"
     )
     if "nparego" not in normalized:
         return False

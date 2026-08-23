@@ -52,6 +52,18 @@ _TABULAR_CANDIDATE_OPTIMIZE_ALIASES = (
     "repair_config",
 )
 
+_CRABNET_FASTAPI_MODEL_TYPES = frozenset(
+    {
+        "crabnet_gp",
+        "crabnet_dkl",
+        "crabnet_multitask",
+        "crabnet_multitask_dkl",
+    }
+)
+_CRABNET_FASTAPI_DKL_MODEL_TYPES = frozenset(
+    {"crabnet_dkl", "crabnet_multitask_dkl"}
+)
+
 
 def _normalize_string_dtypes(frame: Any, pd: Any) -> Any:
     """Convert pandas string extension columns to mutable object columns."""
@@ -177,11 +189,11 @@ def build_fit_response(
         if 0 <= index < len(dataset.feature_names)
     ]
     metadata = model_metadata(optimizer.bo)
-    if str(bundle.model_type) in {"crabnet_gp", "crabnet_dkl"}:
+    if str(bundle.model_type) in _CRABNET_FASTAPI_MODEL_TYPES:
         model = bundle.model
         material_encoder = getattr(model, "material_encoder", None)
         trainable_layers = getattr(model, "trainable_encoder_layers", None)
-        if str(bundle.model_type) == "crabnet_gp":
+        if str(bundle.model_type) not in _CRABNET_FASTAPI_DKL_MODEL_TYPES:
             training_mode = "frozen"
         elif trainable_layers == "all":
             training_mode = "full"
@@ -197,6 +209,12 @@ def build_fit_response(
             "composition_site": site_name,
             "composition_column": site.get("column"),
             "process_dim": getattr(model, "process_dim", None),
+            "n_outputs": getattr(model, "num_outputs", 1),
+            "output_structure": (
+                "correlated_multitask"
+                if str(bundle.model_type) in {"crabnet_multitask", "crabnet_multitask_dkl"}
+                else "single_or_independent"
+            ),
         }
     return TabularModelFitResponse(
         model_id=model_id,
@@ -238,42 +256,27 @@ def compute_feature_importance_response(
     }
     visualizations: list[dict[str, Any]] = []
     if request.visualization is not None:
-        view = request.visualization
         try:
-            from bochan.visualization import build_feature_importance_figures
-
-            figures = build_feature_importance_figures(
-                result,
-                include_predictive=view.include_predictive,
-                include_noise=view.include_noise,
-                include_classwise=view.include_classwise,
-                normalized=view.normalized,
-                top_k=view.top_k,
-                rank_by=view.rank_by,
+            visualizations = optimizer.feature_importance_plots(
+                result=result,
+                config=request.visualization.model_dump(exclude_none=True),
             )
-            for figure_id, figure in figures.items():
-                visualizations.append(
-                    {
-                        "id": f"feature-importance-{figure_id}",
-                        "figure": json.loads(figure.to_json()),
-                    }
-                )
-        except Exception as exc:
-            warnings.append(f"Feature-importance visualization failed: {exc}")
+        except (ImportError, ValueError, RuntimeError, TypeError) as exc:
+            warnings.append(f"Feature-importance visualization unavailable: {exc}")
 
     return TabularFeatureImportanceResponse(
         model_id=model_id,
-        source="training" if frame is None else "external",
+        source=str(result.source),
         result=to_serializable(result),
         summary=to_serializable(summary),
         diagnostics=to_serializable(diagnostics),
         visualizations=to_serializable(visualizations),
-        warnings=list(dict.fromkeys(to_serializable(warnings))),
+        warnings=to_serializable(warnings),
     )
 
 
 def fit_tabular_optimizer(request: TabularFitModelRequest) -> TabularBayesianOptimizer:
-    """Validate a fit request and return a fitted tabular optimizer."""
+    """Build and fit the canonical tabular optimizer for an HTTP request."""
 
     frame = to_dataframe(request.data)
     cv_config = _schema_dict(request.cv_config)

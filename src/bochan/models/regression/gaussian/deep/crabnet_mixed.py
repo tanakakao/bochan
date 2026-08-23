@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Literal, cast
 
-import torch
 from botorch.utils.transforms import normalize_indices
 from gpytorch.likelihoods import Likelihood
 from torch import Tensor, nn

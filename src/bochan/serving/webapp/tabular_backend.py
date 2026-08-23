@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 
 
@@ -49,7 +50,6 @@ def relabel_feature_importance_outputs(
         metadata["output_name_map"] = name_map
         metadata["output_names_source"] = "target_columns"
     return result
-
 
 
 def _category_key_from_label(series: Any, label: Any) -> Any:
@@ -163,6 +163,97 @@ def _mutable_category_frame(
     return frame
 
 
+def _descriptor_augmented_model_config(
+    *,
+    model_config: Any,
+    encoded_features: dict[str, Any],
+    composition_config: dict[str, Any] | None,
+) -> Any:
+    """Attach a differentiable derived-descriptor transform to a Web model.
+
+    The tabular dataset and candidate optimizer remain in the original decision
+    space. The model sees descriptors appended from the current composition at
+    every train/predict/acquisition evaluation.
+    """
+
+    if composition_config is None or not bool(
+        composition_config.get("include_descriptors", False)
+    ):
+        return model_config
+
+    model_type = str(getattr(model_config, "model_type", "")).lower()
+    if model_type in {"crabnet_gp", "crabnet_dkl"}:
+        raise ValueError(
+            "CrabNet already derives a learned material representation from the "
+            "composition. Web composition descriptors cannot currently be "
+            "combined with CrabNet-GP/CrabNet-DKL."
+        )
+    if model_type in {
+        "random_forest",
+        "lightgbm_ensemble",
+        "ngboost_ensemble",
+        "tabpfn",
+    }:
+        raise ValueError(
+            "Web composition descriptor augmentation currently requires a "
+            "BoTorch-native surrogate model; external estimator models are not "
+            "yet supported."
+        )
+    if getattr(model_config, "input_transform", None) is not None:
+        raise ValueError(
+            "Composition descriptor augmentation cannot replace an explicitly "
+            "configured model input_transform."
+        )
+
+    transform_config = getattr(model_config, "input_transform_config", None)
+    if transform_config is not None and bool(
+        getattr(transform_config, "perturbation", False)
+    ):
+        raise ValueError(
+            "Web composition descriptors do not yet support input perturbation. "
+            "Disable input perturbation so descriptors remain deterministic "
+            "functions of each composition candidate."
+        )
+
+    import torch
+
+    from .composition.descriptors import (
+        build_composition_descriptor_input_transform,
+    )
+
+    bounds = torch.as_tensor(
+        encoded_features["bounds"],
+        dtype=torch.double,
+    )
+    normalize = bool(
+        getattr(transform_config, "normalize", True)
+        if transform_config is not None
+        else True
+    )
+    input_transform, descriptor_names, augmented_bounds = (
+        build_composition_descriptor_input_transform(
+            feature_names=encoded_features["feature_columns"],
+            bounds=bounds,
+            categorical_idx=encoded_features.get("cat_dims") or None,
+            config=composition_config,
+            normalize=normalize,
+        )
+    )
+    composition_config["descriptor_feature_names"] = list(descriptor_names)
+    composition_config["model_feature_names"] = [
+        *list(encoded_features["feature_columns"]),
+        *descriptor_names,
+    ]
+    composition_config["model_bounds_with_descriptors"] = (
+        augmented_bounds.detach().cpu().tolist()
+    )
+    return replace(
+        model_config,
+        input_transform=input_transform,
+        input_transform_config=None,
+    )
+
+
 def fit_tabular_optimizer(
     *,
     data: Any,
@@ -183,6 +274,12 @@ def fit_tabular_optimizer(
         current_model_reuse_state,
         register_fitted_model,
         reuse_fitted_tabular_optimizer,
+    )
+
+    model_config = _descriptor_augmented_model_config(
+        model_config=model_config,
+        encoded_features=encoded_features,
+        composition_config=composition_config,
     )
 
     run_id = current_request_id()
@@ -329,6 +426,7 @@ __all__ = [
     "encoded_features_from_tabular",
     "feature_category_maps",
     "fit_tabular_optimizer",
+    "relabel_feature_importance_outputs",
     "tabular_bounds",
     "target_category_maps",
 ]

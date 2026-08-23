@@ -14,6 +14,8 @@ from bochan.models.regression.gaussian.deep import (
     CrabNetMixedDKLModel,
     CrabNetMixedGPModel,
 )
+from bochan.serving.fastapi.schemas.tabular import TabularFitModelRequest
+from bochan.serving.fastapi.services.tabular import fit_tabular_optimizer
 from bochan.tabular import TabularBayesianOptimizer
 
 
@@ -97,6 +99,21 @@ def _frame() -> pd.DataFrame:
     )
 
 
+def _composition_site() -> dict[str, object]:
+    return {
+        "column": "formula",
+        "elements": ["Ba", "Sr", "Ti", "O"],
+        "representation": "ilr",
+        "coordinate_bounds": [-3.0, 3.0],
+        "bounds": {
+            "Ba": [0.05, 0.70],
+            "Sr": [0.05, 0.70],
+            "Ti": [0.05, 0.70],
+            "O": [0.05, 0.80],
+        },
+    }
+
+
 def _optimizer(
     model_type: str,
     *,
@@ -127,20 +144,7 @@ def _optimizer(
         ),
         categorical_cols=["atmosphere", "method"] if mixed else [],
         target_cols=["property_a", "property_b"],
-        composition_sites={
-            "formula": {
-                "column": "formula",
-                "elements": ["Ba", "Sr", "Ti", "O"],
-                "representation": "ilr",
-                "coordinate_bounds": (-3.0, 3.0),
-                "bounds": {
-                    "Ba": [0.05, 0.70],
-                    "Sr": [0.05, 0.70],
-                    "Ti": [0.05, 0.70],
-                    "O": [0.05, 0.80],
-                },
-            }
-        },
+        composition_sites={"formula": _composition_site()},
         bounds={"temperature": [950.0, 1400.0]},
         model_kwargs=model_kwargs,
         num_epochs=1,
@@ -148,6 +152,35 @@ def _optimizer(
         cross_validation=cross_validation,
         cv_config={"splitter": "kfold", "n_splits": 2, "shuffle": False},
     )
+
+
+def _fastapi_payload(model_type: str) -> dict[str, object]:
+    mixed = model_type in MIXED_MODELS
+    model_kwargs: dict[str, object] = {
+        "encoder": _FakeCrabNet(),
+        "latent_dim": 4,
+    }
+    if model_type == "crabnet_mixed_dkl":
+        model_kwargs["category_embedding_dims"] = [3, 2]
+
+    return {
+        "data": _frame().to_dict(orient="records"),
+        "input_cols": (
+            ["formula", "temperature", "atmosphere", "method"]
+            if mixed
+            else ["formula", "temperature"]
+        ),
+        "categorical_cols": ["atmosphere", "method"] if mixed else [],
+        "target_cols": ["property_a", "property_b"],
+        "bounds": {"temperature": [950.0, 1400.0]},
+        "composition_sites": {"formula": _composition_site()},
+        "model_config": {
+            "task_type": "regression",
+            "model_type": model_type,
+            "model_kwargs": model_kwargs,
+        },
+        "fit_config": {"skip_fit": True},
+    }
 
 
 @pytest.mark.parametrize("model_type", list(MODEL_CLASSES))
@@ -241,3 +274,19 @@ def test_crabnet_multioutput_cross_validation_keeps_independent_models(
     assert isinstance(bundle.model, ModelListGP)
     first, second = bundle.model.models
     assert first.material_encoder is not second.material_encoder
+
+
+@pytest.mark.parametrize("model_type", list(MODEL_CLASSES))
+def test_fastapi_accepts_and_builds_independent_crabnet_multioutput(model_type: str) -> None:
+    request = TabularFitModelRequest.model_validate(_fastapi_payload(model_type))
+    if model_type in DKL_MODELS:
+        assert request.bo_model_config.model_kwargs["encoder_training"] == "partial"
+
+    optimizer = fit_tabular_optimizer(request)
+    bundle = optimizer.bo.bundle
+    assert bundle is not None
+    assert isinstance(bundle.model, ModelListGP)
+    assert len(bundle.model.models) == 2
+    assert isinstance(bundle.model.models[0], MODEL_CLASSES[model_type])
+    assert isinstance(bundle.model.models[1], MODEL_CLASSES[model_type])
+    assert bundle.model.models[0].material_encoder is not bundle.model.models[1].material_encoder

@@ -76,3 +76,8 @@ def test_crabnet_final_acceptance_contract_is_documented_and_ci_guarded() -> Non
         "tests/test_crabnet_integration_closure.py",
     ):
         assert test_path in workflow
+
+    web_workflow = (ROOT / ".github" / "workflows" / "web-composition-smoke.yml").read_text(encoding="utf-8")
+    assert "tests/test_fastapi_web_crabnet_models.py" in web_workflow
+    assert "tests/test_crabnet_integration_closure.py" in web_workflow
+    assert "pnpm run build" in web_workflow

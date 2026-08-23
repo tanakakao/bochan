@@ -80,6 +80,7 @@ on:
       - "tests/test_webapp_layout_safety.py"
       - "tests/test_webapp_color_theme.py"
       - "tests/test_fastapi_web_crabnet_models.py"
+      - "tests/test_crabnet_integration_closure.py"
       - "pyproject.toml"
       - ".github/workflows/web-composition-smoke.yml"
   workflow_dispatch:
@@ -117,6 +118,7 @@ jobs:
           tests/test_webapp_layout_safety.py
           tests/test_webapp_color_theme.py
           tests/test_fastapi_web_crabnet_models.py
+          tests/test_crabnet_integration_closure.py
       - name: Run Python lint
         run: |
           python -m pip install ruff
@@ -157,7 +159,8 @@ jobs:
             tests/test_webapp_workbench_architecture.py \
             tests/test_webapp_layout_safety.py \
             tests/test_webapp_color_theme.py \
-            tests/test_fastapi_web_crabnet_models.py
+            tests/test_fastapi_web_crabnet_models.py \
+            tests/test_crabnet_integration_closure.py
       - name: Set up pnpm and Node.js
         uses: pnpm/setup@v2
         with:

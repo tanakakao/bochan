@@ -489,23 +489,25 @@ class TabularCandidateResponse(BaseModel):
     model_id: str
     columns: list[str]
     candidates: list[dict[str, Any]]
-    acq_value: Any | None = None
+    acq_value: Any
 
 
-class TabularModelSaveRequest(APIRequest):
-    """Save a fitted tabular optimizer to a server-local common model file."""
-
-    path: str
-
-
-class TabularModelSaveResponse(BaseModel):
-    model_id: str
-    filename: str
-    path: str
-
-
-class TabularModelLoadRequest(APIRequest):
-    """Load a server-local common tabular model into the in-memory API store."""
-
-    path: str
-    map_location: str | None = None
+__all__ = [
+    "CrossValidationRequest",
+    "ExperimentFailureConfigRequest",
+    "FeatureImportanceConfigRequest",
+    "FeatureImportanceGroupRequest",
+    "FeatureImportanceSummaryRecord",
+    "FeatureImportanceVisualizationRequest",
+    "TabularCandidateRequest",
+    "TabularCandidateResponse",
+    "TabularFitModelRequest",
+    "TabularFeatureImportanceRequest",
+    "TabularFeatureImportanceResponse",
+    "TabularModelFitResponse",
+    "TabularModelLoadResponse",
+    "TabularPayload",
+    "TabularPredictRequest",
+    "TabularPredictResponse",
+    "TabularTellRequest",
+]

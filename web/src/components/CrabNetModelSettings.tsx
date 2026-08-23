@@ -25,13 +25,16 @@ export default function CrabNetModelSettings() {
   );
   const mixedModel = isCrabNetMixedModelType(modelType);
   const dklModel = isCrabNetDKLModelType(modelType);
-  const title = modelType === "crabnet_mixed_dkl"
-    ? "CrabNet-Mixed DKL"
-    : modelType === "crabnet_mixed_gp"
-      ? "CrabNet-Mixed GP"
-      : modelType === "crabnet_gp"
-        ? "CrabNet-GP"
-        : "CrabNet-DKL";
+  const multitaskModel = modelType === "crabnet_multitask";
+  const title = modelType === "crabnet_multitask"
+    ? "CrabNet-MultiTask"
+    : modelType === "crabnet_mixed_dkl"
+      ? "CrabNet-Mixed DKL"
+      : modelType === "crabnet_mixed_gp"
+        ? "CrabNet-Mixed GP"
+        : modelType === "crabnet_gp"
+          ? "CrabNet-GP"
+          : "CrabNet-DKL";
 
   return (
     <article className="panel model-advanced-section crabnet-model-settings">
@@ -39,11 +42,13 @@ export default function CrabNetModelSettings() {
         <span className="panel-kicker">CRABNET</span>
         <h4>{title} 設定</h4>
         <p>
-          {modelType === "crabnet_mixed_dkl"
-            ? "CrabNet組成表現、連続process条件、学習可能なカテゴリEmbeddingをニューラル融合し、その潜在表現上でGaussian GPを学習します。"
-            : modelType === "crabnet_mixed_gp"
-              ? "組成式と連続process条件をCrabNet側の連続表現へ変換し、カテゴリprocess条件をCategorical kernelで統合します。"
-              : "組成式と連続process条件を同じGaussian GPで学習します。"}
+          {multitaskModel
+            ? "共有したCrabNet組成表現と連続process条件の潜在空間上で、複数の回帰目的間の相関をMultiTask kernelとして学習します。"
+            : modelType === "crabnet_mixed_dkl"
+              ? "CrabNet組成表現、連続process条件、学習可能なカテゴリEmbeddingをニューラル融合し、その潜在表現上でGaussian GPを学習します。"
+              : modelType === "crabnet_mixed_gp"
+                ? "組成式と連続process条件をCrabNet側の連続表現へ変換し、カテゴリprocess条件をCategorical kernelで統合します。"
+                : "組成式と連続process条件を同じGaussian GPで学習します。"}
         </p>
       </div>
       <div className="model-settings-grid">
@@ -78,13 +83,15 @@ export default function CrabNetModelSettings() {
         </p>
       )}
       <p className="settings-note">
-        {modelType === "crabnet_mixed_dkl"
-          ? "対応範囲は単一の回帰目的、1つの組成式列、連続process列＋カテゴリprocess列です。カテゴリ候補はmixed optimizerで列挙し、カテゴリ値は学習可能なEmbeddingとして潜在表現へ統合します。CrabNet encoderはPartialまたはFullで微調整できます。入力摂動、複数目的には対応していません。"
-          : modelType === "crabnet_mixed_gp"
-            ? "対応範囲は単一の回帰目的、1つの組成式列、連続process列＋カテゴリprocess列です。カテゴリ候補はmixed optimizerで列挙し、CrabNet encoderは凍結します。入力摂動、複数目的には対応していません。"
-            : mixedModel
-              ? "対応範囲は単一の回帰目的、1つの組成式列、連続process列＋カテゴリprocess列です。"
-              : "対応範囲は単一の回帰目的、1つの組成式列、連続process列です。カテゴリprocessを含む場合はCrabNet-Mixed GPまたはCrabNet-Mixed DKLを使用してください。入力摂動、複数目的には対応していません。"}
+        {multitaskModel
+          ? "対応範囲は2つ以上の連続回帰目的、1つの組成式列、連続process列です。目的間相関をtask covarianceで学習し、CrabNet encoderは全目的で共有・凍結します。カテゴリprocessと入力摂動には未対応です。"
+          : modelType === "crabnet_mixed_dkl"
+            ? "1つ以上の連続回帰目的、1つの組成式列、連続process列＋カテゴリprocess列に対応します。複数目的では目的ごとに独立したモデルを構築します。カテゴリ候補はmixed optimizerで列挙し、カテゴリ値は学習可能なEmbeddingとして潜在表現へ統合します。"
+            : modelType === "crabnet_mixed_gp"
+              ? "1つ以上の連続回帰目的、1つの組成式列、連続process列＋カテゴリprocess列に対応します。複数目的では目的ごとに独立したモデルを構築し、CrabNet encoderは凍結します。"
+              : mixedModel
+                ? "1つ以上の連続回帰目的、1つの組成式列、連続process列＋カテゴリprocess列に対応します。"
+                : "1つ以上の連続回帰目的、1つの組成式列、連続process列に対応します。通常のCrabNet系で複数目的を選ぶと独立ModelListとなり、CrabNet-MultiTaskでは目的間相関を学習します。カテゴリprocessを含む場合はCrabNet-Mixed GPまたはCrabNet-Mixed DKLを使用してください。"}
       </p>
     </article>
   );

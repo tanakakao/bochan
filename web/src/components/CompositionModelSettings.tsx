@@ -5,6 +5,8 @@ import {
   saveCompositionSettings,
   type CompositionSettings
 } from "../compositionExtension";
+import { useWorkbench } from "../context/WorkbenchContext";
+import { isCrabNetModelType } from "../modelOptions";
 
 type Representation = CompositionSettings["representation"];
 type Normalization = CompositionSettings["normalization"];
@@ -52,8 +54,10 @@ function useCompositionSettings(): [CompositionSettings, (updater: SettingsUpdat
 
 /** Configures composition-coordinate conversion inside the React-owned Model page. */
 export default function CompositionModelSettings() {
+  const { modelType } = useWorkbench();
   const [settings, update] = useCompositionSettings();
   const [elementsText, setElementsText] = useState(() => settings.elements.join(", "));
+  const descriptorDisabledForModel = isCrabNetModelType(modelType);
 
   useEffect(() => {
     setElementsText(settings.elements.join(", "));
@@ -227,6 +231,7 @@ export default function CompositionModelSettings() {
             <input
               type="checkbox"
               checked={settings.includeDescriptors}
+              disabled={descriptorDisabledForModel}
               onChange={(event) => update((current) => ({
                 ...current,
                 includeDescriptors: event.target.checked
@@ -235,7 +240,14 @@ export default function CompositionModelSettings() {
           </label>
         </div>
 
-        {settings.includeDescriptors && (
+        {descriptorDisabledForModel && (
+          <p className="settings-note">
+            CrabNetでは派生記述子を追加しません。CrabNet自身が組成から学習表現を生成するため、
+            実行時はこの設定を自動的にOFFとして扱います。設定値自体は保持され、通常GPへ戻すと再利用できます。
+          </p>
+        )}
+
+        {settings.includeDescriptors && !descriptorDisabledForModel && (
           <>
             <div className="model-settings-grid">
               <fieldset>

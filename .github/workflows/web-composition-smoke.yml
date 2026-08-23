@@ -75,6 +75,7 @@ on:
       - "tests/test_webapp_composition_settings_placement.py"
       - "tests/test_webapp_composition_navigation_architecture.py"
       - "tests/test_webapp_composition_runtime_transport.py"
+      - "tests/test_webapp_crabnet_descriptor_guard_contract.py"
       - "tests/test_webapp_model_suggest_react_ownership.py"
       - "tests/test_webapp_results_navigation.py"
       - "tests/test_webapp_workflow_layout.py"
@@ -114,6 +115,7 @@ jobs:
           tests/test_webapp_composition_settings_placement.py
           tests/test_webapp_composition_navigation_architecture.py
           tests/test_webapp_composition_runtime_transport.py
+          tests/test_webapp_crabnet_descriptor_guard_contract.py
           tests/test_webapp_model_suggest_react_ownership.py
           tests/test_webapp_results_navigation.py
           tests/test_webapp_workflow_layout.py
@@ -158,6 +160,7 @@ jobs:
             tests/test_webapp_composition_settings_placement.py \
             tests/test_webapp_composition_navigation_architecture.py \
             tests/test_webapp_composition_runtime_transport.py \
+            tests/test_webapp_crabnet_descriptor_guard_contract.py \
             tests/test_webapp_model_suggest_react_ownership.py \
             tests/test_webapp_results_navigation.py \
             tests/test_webapp_workflow_layout.py \

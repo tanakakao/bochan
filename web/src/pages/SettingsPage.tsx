@@ -95,7 +95,6 @@ export default function SettingsPage() {
   const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
   const canUseMultitask = targetColumns.length > 1 && allRegression && !hasCategoricalFeatures;
   const crabNetCompositionReady = Boolean(
-    targetColumns.length === 1 &&
     allRegression &&
     compositionSettings.enabled &&
     compositionSettings.column &&
@@ -105,7 +104,7 @@ export default function SettingsPage() {
   const hasCategoricalProcess = selectedVariables.some(
     (variable) => variable.type === "categorical" && variable.name !== compositionSettings.column
   );
-  const canUseCrabNet = crabNetCompositionReady && !hasCategoricalProcess;
+  const canUseCrabNet = targetColumns.length === 1 && crabNetCompositionReady && !hasCategoricalProcess;
   const canUseCrabNetMixed = crabNetCompositionReady && hasCategoricalProcess;
   const projectedModel = isProjectedModelType(modelType);
   const maxProjectionDimensions = Math.max(selectedVariables.length, 1);
@@ -116,10 +115,12 @@ export default function SettingsPage() {
       (!isNonGaussianModelType(option.value) || allRegression) &&
       (!isMultitaskModelType(option.value) || canUseMultitask) &&
       (!isCrabNetModelType(option.value) || (
-        isCrabNetMixedModelType(option.value) ? canUseCrabNetMixed : canUseCrabNet
+        isCrabNetMixedModelType(option.value)
+          ? canUseCrabNetMixed && (targetColumns.length === 1 || option.value === "crabnet_mixed_dkl")
+          : canUseCrabNet
       ))
     )),
-    [allRegression, canUseCrabNet, canUseCrabNetMixed, canUseMultitask, taskTypes]
+    [allRegression, canUseCrabNet, canUseCrabNetMixed, canUseMultitask, targetColumns.length, taskTypes]
   );
   const modelLikelihood = regressionLikelihoodFor(modelType);
   const modelFamily = modelFamilyFor(modelType);
@@ -228,6 +229,9 @@ export default function SettingsPage() {
               {selectedModelDescription}
               {isMultitaskModelType(modelType)
                 ? " 複数の回帰目的列をwide形式の相関付きモデルで学習します。"
+                : null}
+              {modelType === "crabnet_mixed_dkl" && targetColumns.length > 1
+                ? " 複数目的では目的ごとに独立したCrabNet-Mixed DKLを学習し、ModelListGPとして多目的最適化します。"
                 : null}
             </p>
 

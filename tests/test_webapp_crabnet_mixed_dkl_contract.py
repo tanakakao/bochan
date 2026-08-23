@@ -25,10 +25,13 @@ def _encoded(*, categorical: bool) -> dict[str, object]:
     }
 
 
-def test_web_crabnet_mixed_gp_accepts_categorical_process_and_freezes_encoder() -> None:
+def test_web_crabnet_mixed_dkl_accepts_categories_and_encoder_training() -> None:
     model_kwargs, metadata = _resolve_crabnet_web_model(
-        model_type="crabnet_mixed_gp",
-        model_kwargs={"checkpoint": " /srv/crabnet.pth "},
+        model_type="crabnet_mixed_dkl",
+        model_kwargs={
+            "checkpoint": " /srv/crabnet.pth ",
+            "encoder_training": "full",
+        },
         target_columns=["property"],
         internal_tasks=["regression"],
         feature_columns=["formula", "temperature", "atmosphere"],
@@ -38,17 +41,18 @@ def test_web_crabnet_mixed_gp_accepts_categorical_process_and_freezes_encoder() 
     )
 
     assert model_kwargs["checkpoint"] == "/srv/crabnet.pth"
+    assert model_kwargs["encoder_training"] == "full"
     assert metadata is not None
-    assert metadata["encoder_training"] == "frozen"
+    assert metadata["encoder_training"] == "full"
     assert metadata["continuous_process_columns"] == ["temperature"]
     assert metadata["categorical_process_columns"] == ["atmosphere"]
-    assert metadata["categorical_representation"] == "categorical_kernel"
+    assert metadata["categorical_representation"] == "embedding"
 
 
-def test_web_crabnet_mixed_gp_requires_categorical_process() -> None:
+def test_web_crabnet_mixed_dkl_requires_categorical_process() -> None:
     with pytest.raises(ValueError, match="requires at least one categorical process column"):
         _resolve_crabnet_web_model(
-            model_type="crabnet_mixed_gp",
+            model_type="crabnet_mixed_dkl",
             model_kwargs={},
             target_columns=["property"],
             internal_tasks=["regression"],
@@ -62,10 +66,10 @@ def test_web_crabnet_mixed_gp_requires_categorical_process() -> None:
         )
 
 
-def test_web_standard_crabnet_points_categorical_process_to_mixed_model() -> None:
-    with pytest.raises(ValueError, match="Use crabnet_mixed_gp"):
+def test_web_crabnet_dkl_points_categories_to_mixed_dkl() -> None:
+    with pytest.raises(ValueError, match="Use crabnet_mixed_dkl"):
         _resolve_crabnet_web_model(
-            model_type="crabnet_gp",
+            model_type="crabnet_dkl",
             model_kwargs={},
             target_columns=["property"],
             internal_tasks=["regression"],
@@ -76,16 +80,21 @@ def test_web_standard_crabnet_points_categorical_process_to_mixed_model() -> Non
         )
 
 
-def test_web_capabilities_and_react_options_publish_crabnet_mixed_gp() -> None:
-    assert "crabnet_mixed_gp" in WEB_CAPABILITIES["model_types"]
+def test_web_capabilities_and_react_options_publish_crabnet_mixed_dkl() -> None:
+    assert "crabnet_mixed_dkl" in WEB_CAPABILITIES["model_types"]
     crabnet = WEB_CAPABILITIES["crabnet"]
-    assert "crabnet_mixed_gp" in crabnet["model_types"]
-    assert crabnet["mixed_process_model_types"] == [
-        "crabnet_mixed_gp",
-        "crabnet_mixed_dkl",
-    ]
+    assert "crabnet_mixed_dkl" in crabnet["model_types"]
+    assert "crabnet_mixed_dkl" in crabnet["mixed_process_model_types"]
+    assert crabnet["mixed_categorical_embedding"] is True
 
     options = (ROOT / "web" / "src" / "modelOptions.ts").read_text(encoding="utf-8")
-    settings = (ROOT / "web" / "src" / "pages" / "SettingsPage.tsx").read_text(encoding="utf-8")
-    assert 'value: "crabnet_mixed_gp"' in options
-    assert "isCrabNetMixedModelType" in settings
+    settings = (ROOT / "web" / "src" / "components" / "CrabNetModelSettings.tsx").read_text(
+        encoding="utf-8"
+    )
+    api = (ROOT / "web" / "src" / "api.ts").read_text(encoding="utf-8")
+
+    assert 'value: "crabnet_mixed_dkl"' in options
+    assert 'modelType === "crabnet_mixed_dkl"' in settings
+    assert "isCrabNetDKLModelType" in settings
+    assert 'modelType === "crabnet_mixed_dkl"' in api
+    assert "isCrabNetDKLRunModel" in api

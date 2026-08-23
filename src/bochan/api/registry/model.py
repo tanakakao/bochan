@@ -224,6 +224,8 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "deepgp": ("bochan.models.regression.gaussian.deep", "DeepGaussianMixedGPModel"),
             "deepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelGaussianMixedGPModel"),
             "deepgpdeepkernel": ("bochan.models.regression.gaussian.deep", "DeepKernelDeepGaussianMixedGPModel"),
+            "crabnet_mixed_gp": ("bochan.models.regression.gaussian.deep", "CrabNetMixedGPModel"),
+            "crabnet_mixed_dkl": ("bochan.models.regression.gaussian.deep", "CrabNetMixedDKLModel"),
             "saas": ("bochan.models.regression.gaussian.high_dim", "SaasGaussianMixedGPModel"),
             "pca": ("bochan.models.regression.gaussian.high_dim", "PCAGaussianMixedGPModel"),
             "rembo": ("bochan.models.regression.gaussian.high_dim", "REMBOGaussianMixedGPModel"),

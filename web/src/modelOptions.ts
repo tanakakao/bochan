@@ -207,7 +207,7 @@ export function modelSupportsTaskType(modelType: string, taskType: string): bool
 }
 
 export function isMultitaskModelType(modelType: string): boolean {
-  return modelFamilyFor(modelType) === "multitask";
+  return modelFamilyFor(modelType) === "multitask" && !isCrabNetMultitaskModelType(modelType);
 }
 
 export function isProjectedModelType(modelType: string): boolean {

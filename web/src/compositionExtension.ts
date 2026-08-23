@@ -7,6 +7,11 @@ type Representation = "fractions" | "clr" | "alr" | "ilr";
 type Normalization = "atomic_fraction" | "weight_fraction";
 type ConstraintOperator = "=" | "<=" | ">=";
 type ConstraintBasis = "atomic_amount" | "weight_amount";
+type DescriptorProperty = "atomic_number" | "atomic_weight";
+type DescriptorStatistic = "mean" | "std" | "min" | "max" | "range";
+
+const DESCRIPTOR_PROPERTIES: DescriptorProperty[] = ["atomic_number", "atomic_weight"];
+const DESCRIPTOR_STATISTICS: DescriptorStatistic[] = ["mean", "std", "min", "max", "range"];
 
 interface ConstraintTerm {
   element: string;
@@ -38,6 +43,11 @@ export interface CompositionSettings {
   bounds: Record<string, [number, number]>;
   steps: Record<string, number | null>;
   constraints: ElementConstraint[];
+  includeDescriptors: boolean;
+  descriptorProperties: DescriptorProperty[];
+  descriptorStatistics: DescriptorStatistic[];
+  descriptorIncludeNumElements: boolean;
+  descriptorIncludeMixingEntropy: boolean;
 }
 
 const DEFAULT_SETTINGS: CompositionSettings = {
@@ -56,7 +66,12 @@ const DEFAULT_SETTINGS: CompositionSettings = {
   requiredComponents: [],
   bounds: {},
   steps: {},
-  constraints: []
+  constraints: [],
+  includeDescriptors: false,
+  descriptorProperties: [...DESCRIPTOR_PROPERTIES],
+  descriptorStatistics: [...DESCRIPTOR_STATISTICS],
+  descriptorIncludeNumElements: true,
+  descriptorIncludeMixingEntropy: true
 };
 
 function newId(): string {
@@ -78,6 +93,22 @@ function uniqueStrings(value: unknown): string[] {
       ? value.split(/[,\s]+/)
       : [];
   return [...new Set(values.map((item) => String(item).trim()).filter(Boolean))];
+}
+
+function descriptorProperties(value: unknown): DescriptorProperty[] {
+  if (value === undefined) return [...DESCRIPTOR_PROPERTIES];
+  const allowed = new Set<string>(DESCRIPTOR_PROPERTIES);
+  return uniqueStrings(value).filter(
+    (item): item is DescriptorProperty => allowed.has(item)
+  );
+}
+
+function descriptorStatistics(value: unknown): DescriptorStatistic[] {
+  if (value === undefined) return [...DESCRIPTOR_STATISTICS];
+  const allowed = new Set<string>(DESCRIPTOR_STATISTICS);
+  return uniqueStrings(value).filter(
+    (item): item is DescriptorStatistic => allowed.has(item)
+  );
 }
 
 function normalizeConstraint(value: unknown, elements: Set<string>): ElementConstraint | null {
@@ -162,7 +193,16 @@ function normalizeSettings(value: unknown): CompositionSettings {
     requiredComponents: uniqueStrings(raw.requiredComponents).filter((element) => elementSet.has(element)),
     bounds,
     steps,
-    constraints
+    constraints,
+    includeDescriptors: Boolean(raw.includeDescriptors),
+    descriptorProperties: descriptorProperties(raw.descriptorProperties),
+    descriptorStatistics: descriptorStatistics(raw.descriptorStatistics),
+    descriptorIncludeNumElements: raw.descriptorIncludeNumElements === undefined
+      ? true
+      : Boolean(raw.descriptorIncludeNumElements),
+    descriptorIncludeMixingEntropy: raw.descriptorIncludeMixingEntropy === undefined
+      ? true
+      : Boolean(raw.descriptorIncludeMixingEntropy)
   };
 }
 
@@ -234,7 +274,13 @@ export function compositionSettingsToBackend(
       operator: constraint.operator,
       rhs: constraint.rhs,
       basis: constraint.basis
-    }))
+    })),
+    include_descriptors: settings.includeDescriptors,
+    descriptor_properties: settings.descriptorProperties,
+    descriptor_statistics: settings.descriptorStatistics,
+    descriptor_include_num_elements: settings.descriptorIncludeNumElements,
+    descriptor_include_mixing_entropy: settings.descriptorIncludeMixingEntropy,
+    element_properties: {}
   };
 }
 
@@ -261,7 +307,12 @@ export function compositionSettingsFromBackend(value: unknown): CompositionSetti
     requiredComponents: raw.required_components,
     bounds: raw.bounds,
     steps: raw.steps,
-    constraints: raw.element_constraints
+    constraints: raw.element_constraints,
+    includeDescriptors: raw.include_descriptors,
+    descriptorProperties: raw.descriptor_properties,
+    descriptorStatistics: raw.descriptor_statistics,
+    descriptorIncludeNumElements: raw.descriptor_include_num_elements,
+    descriptorIncludeMixingEntropy: raw.descriptor_include_mixing_entropy
   });
 }
 

@@ -14,6 +14,8 @@ from bochan.models.regression.gaussian.deep import (
     CrabNetMultiTaskDKLModel,
     CrabNetMultiTaskGPModel,
 )
+from bochan.serving.fastapi.schemas.tabular import TabularFitModelRequest
+from bochan.serving.fastapi.services.tabular import fit_tabular_optimizer
 from bochan.tabular import TabularBayesianOptimizer
 
 
@@ -138,6 +140,50 @@ def _optimizer(
         cross_validation=cross_validation,
         cv_config={"splitter": "kfold", "n_splits": 2, "shuffle": False},
     )
+
+
+def _fastapi_payload(model_type: str, *, mixed: bool, dkl: bool) -> dict[str, object]:
+    input_cols = ["formula", "temperature"]
+    categorical_cols: list[str] = []
+    if mixed:
+        input_cols.append("atmosphere")
+        categorical_cols = ["atmosphere"]
+
+    model_kwargs: dict[str, object] = {
+        "encoder": _FakeCrabNet(),
+        "latent_dim": 4,
+    }
+    if dkl:
+        model_kwargs["encoder_training"] = "partial"
+
+    return {
+        "data": _frame().to_dict(orient="records"),
+        "model_config": {
+            "task_type": "multi_objective",
+            "model_type": model_type,
+            "input_type": "mixed" if mixed else "normal",
+            "model_kwargs": model_kwargs,
+        },
+        "fit_config": {"skip_fit": True},
+        "input_cols": input_cols,
+        "categorical_cols": categorical_cols,
+        "target_cols": ["property_a", "property_b"],
+        "composition_sites": {
+            "formula": {
+                "column": "formula",
+                "elements": ["Ba", "Sr", "Ti", "O"],
+                "representation": "ilr",
+                "coordinate_bounds": [-3.0, 3.0],
+                "bounds": {
+                    "Ba": [0.05, 0.70],
+                    "Sr": [0.05, 0.70],
+                    "Ti": [0.05, 0.70],
+                    "O": [0.05, 0.80],
+                },
+            }
+        },
+        "bounds": {"temperature": [950.0, 1400.0]},
+    }
 
 
 @pytest.mark.parametrize(
@@ -266,6 +312,34 @@ def test_crabnet_multitask_family_cross_validation_preserves_correlated_model(
     assert isinstance(bundle.model, expected_cls)
     assert isinstance(bundle.model.deepkernel.covar_module, MultitaskKernel)
     assert bundle.model_config.multi_output_config is None
+
+
+@pytest.mark.parametrize(
+    ("model_type", "expected_cls", "mixed", "dkl"),
+    MODEL_CASES,
+)
+def test_fastapi_accepts_and_builds_correlated_crabnet_multitask(
+    model_type: str,
+    expected_cls: type,
+    mixed: bool,
+    dkl: bool,
+) -> None:
+    request = TabularFitModelRequest.model_validate(
+        _fastapi_payload(model_type, mixed=mixed, dkl=dkl)
+    )
+    optimizer = fit_tabular_optimizer(request)
+    bundle = optimizer.bo.bundle
+
+    assert bundle is not None
+    assert isinstance(bundle.model, expected_cls)
+    assert bundle.model_config.multi_output_config is None
+    assert bundle.model.num_outputs == 2
+    assert isinstance(bundle.model.deepkernel.covar_module, MultitaskKernel)
+    encoder_parameters = list(bundle.model.material_encoder.parameters())
+    if dkl:
+        assert any(parameter.requires_grad for parameter in encoder_parameters)
+    else:
+        assert not any(parameter.requires_grad for parameter in encoder_parameters)
 
 
 @pytest.mark.parametrize(

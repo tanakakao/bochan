@@ -207,11 +207,6 @@ def _resolve_crabnet_web_model(
             f"{model_type} supports continuous regression targets only."
         )
     independent_multi_output = len(target_columns) > 1
-    if independent_multi_output and model_type != "crabnet_mixed_dkl":
-        raise ValueError(
-            f"{model_type} currently supports one regression target. "
-            "Use crabnet_mixed_dkl for independent multi-output mixed regression."
-        )
     categorical = [
         encoded_features["feature_columns"][int(index)]
         for index in encoded_features["cat_dims"]

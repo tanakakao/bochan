@@ -19,7 +19,11 @@ from .requests import APIRequest
 
 TabularPayload = list[dict[str, Any]] | dict[str, list[Any]]
 
-_CRABNET_MODEL_TYPES = frozenset({"crabnet_gp", "crabnet_dkl"})
+_CRABNET_MODEL_TYPES = frozenset(
+    {"crabnet_gp", "crabnet_dkl", "crabnet_mixed_gp", "crabnet_mixed_dkl"}
+)
+_CRABNET_MIXED_MODEL_TYPES = frozenset({"crabnet_mixed_gp", "crabnet_mixed_dkl"})
+_CRABNET_DKL_MODEL_TYPES = frozenset({"crabnet_dkl", "crabnet_mixed_dkl"})
 
 
 class FeatureImportanceGroupRequest(APIRequest):
@@ -223,26 +227,47 @@ class TabularFitModelRequest(APIRequest):
         if model_type not in _CRABNET_MODEL_TYPES:
             return self
 
-        if str(self.bo_model_config.task_type).lower() != "regression":
-            raise ValueError("Tabular CrabNet models support task_type='regression' only.")
+        task_type = str(self.bo_model_config.task_type).lower()
+        if task_type not in {"regression", "multi_objective"}:
+            raise ValueError(
+                "Tabular CrabNet models support regression or multi_objective regression only."
+            )
         targets = (
             list(self.target_cols)
             if isinstance(self.target_cols, list)
             else [self.target_cols]
         )
-        if len(targets) != 1:
-            raise ValueError("Tabular CrabNet models currently support one target column only.")
+        if not targets:
+            raise ValueError("Tabular CrabNet models require at least one target column.")
         if (
             self.multi_output_config is not None
             or self.bo_model_config.multi_output_config is not None
         ):
-            raise ValueError("Tabular CrabNet models do not support multi_output_config.")
-        if self.bo_model_config.input_type not in (None, "normal"):
-            raise ValueError("Tabular CrabNet models support normal continuous inputs only.")
-        if self.categorical_cols:
-            raise ValueError("Tabular CrabNet models support continuous process columns only.")
+            raise ValueError(
+                "Tabular CrabNet multi-output structure is derived automatically from "
+                "target_cols; do not provide multi_output_config explicitly."
+            )
+
+        mixed_model = model_type in _CRABNET_MIXED_MODEL_TYPES
+        expected_input_type = "mixed" if mixed_model else "normal"
+        if self.bo_model_config.input_type not in (None, expected_input_type):
+            raise ValueError(
+                f"{model_type} requires input_type={expected_input_type!r}."
+            )
+        if mixed_model and not self.categorical_cols:
+            fallback = "crabnet_dkl" if model_type == "crabnet_mixed_dkl" else "crabnet_gp"
+            raise ValueError(
+                f"{model_type} requires at least one categorical process column. "
+                f"Use {fallback} when all process columns are continuous."
+            )
+        if not mixed_model and self.categorical_cols:
+            fallback = "crabnet_mixed_dkl" if model_type == "crabnet_dkl" else "crabnet_mixed_gp"
+            raise ValueError(
+                f"{model_type} supports continuous process columns only. "
+                f"Use {fallback} for categorical process inputs."
+            )
         if self.target_categorical_cols:
-            raise ValueError("Tabular CrabNet models require a continuous regression target.")
+            raise ValueError("Tabular CrabNet models require continuous regression targets.")
 
         sites = dict(self.composition_sites or {})
         if len(sites) != 1:
@@ -264,7 +289,8 @@ class TabularFitModelRequest(APIRequest):
                 )
             if transform.categorical_idx:
                 raise ValueError(
-                    "Tabular CrabNet models do not support categorical input transforms."
+                    "Tabular CrabNet categorical input layout is derived from "
+                    "categorical_cols; do not set categorical_idx explicitly."
                 )
 
         model_kwargs = dict(self.bo_model_config.model_kwargs)
@@ -281,11 +307,11 @@ class TabularFitModelRequest(APIRequest):
                 "The FastAPI CrabNet interface accepts encoder_training='partial' "
                 "or 'full'; configure trainable_encoder_layers through the Python API."
             )
-        if model_type == "crabnet_gp":
+        if model_type not in _CRABNET_DKL_MODEL_TYPES:
             if "encoder_training" in model_kwargs:
                 raise ValueError(
-                    "crabnet_gp always freezes the encoder; encoder_training is "
-                    "available only for crabnet_dkl."
+                    f"{model_type} always freezes the encoder; encoder_training is "
+                    "available only for CrabNet DKL model types."
                 )
         else:
             encoder_training = str(
@@ -309,7 +335,7 @@ class TabularTellRequest(APIRequest):
 class TabularPredictRequest(APIRequest):
     """Predict from records containing the fitted feature columns."""
 
-    data: TabularPayload
+    data: TabularPayload | None = None
     return_type: Literal[
         "dataframe", "posterior", "mean", "variance", "mean_variance"
     ] = "dataframe"

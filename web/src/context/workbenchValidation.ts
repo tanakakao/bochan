@@ -1,4 +1,9 @@
-import { MODEL_OPTIONS, isCrabNetMixedModelType, isCrabNetModelType } from "../modelOptions";
+import {
+  MODEL_OPTIONS,
+  isCrabNetMixedModelType,
+  isCrabNetModelType,
+  isCrabNetMultitaskModelType
+} from "../modelOptions";
 import type { CompositionSettings } from "../compositionExtension";
 import { getColumnClassValues } from "../targetSettingUtils";
 import type {
@@ -187,6 +192,7 @@ export function deriveWorkbenchState(input: WorkbenchValidationInput): Workbench
   const modelTypeKnown = MODEL_OPTIONS.some((option) => option.value === modelType);
   const crabnetModel = isCrabNetModelType(modelType);
   const crabnetMixedModel = isCrabNetMixedModelType(modelType);
+  const crabnetMultitaskModel = isCrabNetMultitaskModelType(modelType);
   const compositionColumn = compositionSettings.enabled
     ? compositionSettings.column
     : "";
@@ -198,14 +204,14 @@ export function deriveWorkbenchState(input: WorkbenchValidationInput): Workbench
   const hasCategoricalProcessFeatures = selectedVariables.some(
     (variable) => variable.type === "categorical" && variable.name !== compositionColumn
   );
-  const crabnetTargetCountValid = modelType === "crabnet_multitask"
+  const crabnetOutputCountValid = crabnetMultitaskModel
     ? targetColumns.length > 1
     : targetColumns.length > 0;
   const crabnetProcessTypeValid = crabnetMixedModel
     ? hasCategoricalProcessFeatures
     : !hasCategoricalProcessFeatures;
   const crabnetSettingsValid = !crabnetModel || Boolean(
-    crabnetTargetCountValid &&
+    crabnetOutputCountValid &&
     allRegression &&
     crabnetCompositionReady &&
     crabnetProcessTypeValid &&
@@ -223,7 +229,6 @@ export function deriveWorkbenchState(input: WorkbenchValidationInput): Workbench
     (!inputPerturbation || (Number.isInteger(nW) && nW >= 1 && perturbationStd > 0)) &&
     modelTypeKnown &&
     (modelType !== "multitask" || canUseMultitask) &&
-    (modelType !== "crabnet_multitask" || canUseMultitask) &&
     crabnetSettingsValid &&
     (!projectedModel || (
       Number.isInteger(projectionDimensions) &&

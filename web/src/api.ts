@@ -252,19 +252,33 @@ function canonicalValue(value: unknown): unknown {
   return value;
 }
 
+function isCrabNetMultitaskRunModel(modelType: string): boolean {
+  return modelType === "crabnet_multitask" ||
+    modelType === "crabnet_multitask_dkl" ||
+    modelType === "crabnet_mixed_multitask" ||
+    modelType === "crabnet_mixed_multitask_dkl";
+}
+
 function isCrabNetRunModel(modelType: string): boolean {
   return modelType === "crabnet_gp" ||
     modelType === "crabnet_mixed_gp" ||
     modelType === "crabnet_dkl" ||
-    modelType === "crabnet_mixed_dkl";
+    modelType === "crabnet_mixed_dkl" ||
+    isCrabNetMultitaskRunModel(modelType);
 }
 
 function isCrabNetMixedRunModel(modelType: string): boolean {
-  return modelType === "crabnet_mixed_gp" || modelType === "crabnet_mixed_dkl";
+  return modelType === "crabnet_mixed_gp" ||
+    modelType === "crabnet_mixed_dkl" ||
+    modelType === "crabnet_mixed_multitask" ||
+    modelType === "crabnet_mixed_multitask_dkl";
 }
 
 function isCrabNetDKLRunModel(modelType: string): boolean {
-  return modelType === "crabnet_dkl" || modelType === "crabnet_mixed_dkl";
+  return modelType === "crabnet_dkl" ||
+    modelType === "crabnet_mixed_dkl" ||
+    modelType === "crabnet_multitask_dkl" ||
+    modelType === "crabnet_mixed_multitask_dkl";
 }
 
 function resolvedNoiseAlpha(input: RunRegressionInput): number | null {
@@ -392,9 +406,13 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
   const crabnetModel = isCrabNetRunModel(input.modelType);
   const crabnetMixedModel = isCrabNetMixedRunModel(input.modelType);
   const crabnetDKLModel = isCrabNetDKLRunModel(input.modelType);
+  const crabnetMultitaskModel = isCrabNetMultitaskRunModel(input.modelType);
   if (crabnetModel) {
     if (input.targetSettings.some((setting) => setting.task_type !== "regression")) {
       throw new Error("CrabNetモデルは連続回帰目的にのみ対応しています。");
+    }
+    if (crabnetMultitaskModel && input.targetColumns.length < 2) {
+      throw new Error("CrabNet-MultiTaskモデルは連続回帰目的を2列以上選択してください。");
     }
     const composition = input.compositionSettings;
     if (
@@ -409,11 +427,23 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       (variable) => variable.type === "categorical" && variable.name !== composition.column
     );
     if (crabnetMixedModel && categoricalProcess.length === 0) {
-      const label = input.modelType === "crabnet_mixed_dkl" ? "CrabNet-Mixed DKL" : "CrabNet-Mixed GP";
+      const label = input.modelType === "crabnet_mixed_multitask_dkl"
+        ? "CrabNet-Mixed MultiTask DKL"
+        : input.modelType === "crabnet_mixed_multitask"
+          ? "CrabNet-Mixed MultiTask GP"
+          : input.modelType === "crabnet_mixed_dkl"
+            ? "CrabNet-Mixed DKL"
+            : "CrabNet-Mixed GP";
       throw new Error(`${label}にはカテゴリprocess列を1列以上設定してください。`);
     }
     if (!crabnetMixedModel && categoricalProcess.length > 0) {
-      const label = crabnetDKLModel ? "CrabNet-Mixed DKL" : "CrabNet-Mixed GP";
+      const label = crabnetMultitaskModel
+        ? crabnetDKLModel
+          ? "CrabNet-Mixed MultiTask DKL"
+          : "CrabNet-Mixed MultiTask GP"
+        : crabnetDKLModel
+          ? "CrabNet-Mixed DKL"
+          : "CrabNet-Mixed GP";
       throw new Error(`カテゴリprocess列を含む場合は${label}を使用してください。`);
     }
     if (input.inputPerturbation) {
@@ -494,9 +524,6 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       optimize: setting.optimize,
       direction: setting.direction
     }])),
-    // The Web endpoint keeps its public schema backward compatible. This
-    // Web-only adapter setting is removed before model construction and is
-    // executed through the same tabular converter used by /tabular/models.
     web_feature_missing: {
       strategy: featureMissing.strategy,
       continuous_impute_strategy: featureMissing.continuousStrategy,
@@ -591,8 +618,6 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
           (input.acquisitionFamily === "level_set_estimation" && input.inputPerturbation),
         minimum_candidate_distance_ratio: minimumCandidateDistanceRatio
       },
-      // Target missing values still use the automatic target policy. Feature
-      // missing values are controlled independently through web_feature_missing.
       drop_missing: true,
       cross_validation: input.crossValidation?.enabled ?? false,
       cv_config: input.crossValidation?.enabled ? (input.crossValidation.method === "loo"

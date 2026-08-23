@@ -1,4 +1,4 @@
-import { MODEL_OPTIONS, isCrabNetModelType } from "../modelOptions";
+import { MODEL_OPTIONS, isCrabNetMixedModelType, isCrabNetModelType } from "../modelOptions";
 import type { CompositionSettings } from "../compositionExtension";
 import { getColumnClassValues } from "../targetSettingUtils";
 import type {
@@ -186,6 +186,7 @@ export function deriveWorkbenchState(input: WorkbenchValidationInput): Workbench
   const projectedModel = modelType === "pca" || modelType === "rembo";
   const modelTypeKnown = MODEL_OPTIONS.some((option) => option.value === modelType);
   const crabnetModel = isCrabNetModelType(modelType);
+  const crabnetMixedModel = isCrabNetMixedModelType(modelType);
   const compositionColumn = compositionSettings.enabled
     ? compositionSettings.column
     : "";
@@ -197,11 +198,17 @@ export function deriveWorkbenchState(input: WorkbenchValidationInput): Workbench
   const hasCategoricalProcessFeatures = selectedVariables.some(
     (variable) => variable.type === "categorical" && variable.name !== compositionColumn
   );
+  const crabnetTargetCountValid = targetColumns.length === 1 || (
+    modelType === "crabnet_mixed_dkl" && targetColumns.length > 1
+  );
+  const crabnetProcessTypeValid = crabnetMixedModel
+    ? hasCategoricalProcessFeatures
+    : !hasCategoricalProcessFeatures;
   const crabnetSettingsValid = !crabnetModel || Boolean(
-    targetColumns.length === 1 &&
+    crabnetTargetCountValid &&
     allRegression &&
     crabnetCompositionReady &&
-    !hasCategoricalProcessFeatures &&
+    crabnetProcessTypeValid &&
     !inputPerturbation
   );
   const settingsValid = Boolean(

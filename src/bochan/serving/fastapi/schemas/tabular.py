@@ -239,6 +239,19 @@ class TabularFitModelRequest(APIRequest):
         )
         if not targets:
             raise ValueError("Tabular CrabNet models require at least one target column.")
+        data_columns = (
+            set(self.data[0])
+            if isinstance(self.data, list) and self.data
+            else set(self.data)
+            if isinstance(self.data, dict)
+            else set()
+        )
+        missing_targets = [target for target in targets if target not in data_columns]
+        if missing_targets:
+            raise ValueError(
+                "Each target_cols entry must name one target column present in data; "
+                f"missing: {missing_targets!r}."
+            )
         if (
             self.multi_output_config is not None
             or self.bo_model_config.multi_output_config is not None

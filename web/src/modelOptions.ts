@@ -35,6 +35,10 @@ export const MODEL_OPTIONS = [
   { value: "ngboost_ensemble", label: "NGBoost", family: "tree_ensemble" },
   { value: "tabpfn", label: "TabPFN", family: "foundation" },
   { value: "multitask", label: "Multitask GP", family: "multitask" },
+  { value: "crabnet_multitask", label: "CrabNet-MultiTask GP", family: "multitask" },
+  { value: "crabnet_multitask_dkl", label: "CrabNet-MultiTask DKL", family: "multitask" },
+  { value: "crabnet_mixed_multitask", label: "CrabNet-Mixed MultiTask GP", family: "multitask" },
+  { value: "crabnet_mixed_multitask_dkl", label: "CrabNet-Mixed MultiTask DKL", family: "multitask" },
 
   { value: "gamma_base", label: "Gamma Base", family: "standard_gp" },
   { value: "gamma_deepgp", label: "Gamma Deep GP", family: "deep_representation" },
@@ -91,6 +95,10 @@ export const MODEL_DESCRIPTIONS: Record<WebModelType, string> = {
   crabnet_mixed_gp: "凍結したCrabNet組成表現と連続process条件を連続kernelへ、カテゴリprocess条件をCategorical kernelへ接続するMixed GPです。",
   crabnet_dkl: "CrabNet組成エンコーダを部分または全層で微調整し、Gaussian GPと同時学習します。",
   crabnet_mixed_dkl: "CrabNet組成表現、連続process条件、学習可能なカテゴリEmbeddingをニューラル融合し、その潜在表現上でGaussian GPを同時学習するMixed DKLです。",
+  crabnet_multitask: "共有した凍結CrabNet組成表現と連続process条件を用い、複数回帰目的間のtask covarianceを学習する相関付きMultiTask GPです。",
+  crabnet_multitask_dkl: "共有CrabNet encoderを微調整しながら、連続process条件との共有潜在表現と目的間task covarianceを同時学習するMultiTask DKLです。",
+  crabnet_mixed_multitask: "共有した凍結CrabNet表現と連続process条件、カテゴリprocessのCategorical kernelを用いて目的間相関を学習するMixed MultiTask GPです。",
+  crabnet_mixed_multitask_dkl: "共有CrabNet encoder、連続process条件、カテゴリEmbeddingを共同学習し、共有潜在表現上で目的間相関を学習するMixed MultiTask DKLです。",
   saas: "高次元入力のうち重要な少数次元を疎に選択します。",
   pca: "指定次元へPCA射影してモデル化します。",
   rembo: "指定次元の低次元空間から探索します。",
@@ -136,7 +144,7 @@ export const MODEL_DESCRIPTIONS: Record<WebModelType, string> = {
   negative_binomial_deepgp: "Negative Binomial尤度を用いるDeep GPカウント回帰です。",
   negative_binomial_deepkernel: "学習特徴上でNegative Binomial回帰を行います。",
   negative_binomial_saas: "高次元カウント目的変数向けNegative Binomial SAASモデルです。",
-  negative_binomial_pca: "raw入力をPCA射影してNegative Binomial回帰を行います。",
+  negative_binomial_pca: "raw入力をPCA射影するNegative Binomial回帰です。",
   negative_binomial_rembo: "低次元REMBO空間でNegative Binomial回帰を行います。",
   negative_binomial_rrp: "外れ観測に頑健なNegative Binomial回帰です。",
   negative_binomial_hetero: "入力依存の追加分散を持つNegative Binomial回帰です。",
@@ -155,19 +163,33 @@ export function requiresDerivativeFreeSearch(modelType: string): boolean {
   return isTreeEnsembleFamilyModelType(modelType) || modelType === "tabpfn";
 }
 
+export function isCrabNetMultitaskModelType(modelType: string): boolean {
+  return modelType === "crabnet_multitask" ||
+    modelType === "crabnet_multitask_dkl" ||
+    modelType === "crabnet_mixed_multitask" ||
+    modelType === "crabnet_mixed_multitask_dkl";
+}
+
 export function isCrabNetMixedModelType(modelType: string): boolean {
-  return modelType === "crabnet_mixed_gp" || modelType === "crabnet_mixed_dkl";
+  return modelType === "crabnet_mixed_gp" ||
+    modelType === "crabnet_mixed_dkl" ||
+    modelType === "crabnet_mixed_multitask" ||
+    modelType === "crabnet_mixed_multitask_dkl";
 }
 
 export function isCrabNetDKLModelType(modelType: string): boolean {
-  return modelType === "crabnet_dkl" || modelType === "crabnet_mixed_dkl";
+  return modelType === "crabnet_dkl" ||
+    modelType === "crabnet_mixed_dkl" ||
+    modelType === "crabnet_multitask_dkl" ||
+    modelType === "crabnet_mixed_multitask_dkl";
 }
 
 export function isCrabNetModelType(modelType: string): boolean {
   return modelType === "crabnet_gp" ||
     modelType === "crabnet_mixed_gp" ||
     modelType === "crabnet_dkl" ||
-    modelType === "crabnet_mixed_dkl";
+    modelType === "crabnet_mixed_dkl" ||
+    isCrabNetMultitaskModelType(modelType);
 }
 
 /**
@@ -185,7 +207,7 @@ export function modelSupportsTaskType(modelType: string, taskType: string): bool
 }
 
 export function isMultitaskModelType(modelType: string): boolean {
-  return modelFamilyFor(modelType) === "multitask";
+  return modelFamilyFor(modelType) === "multitask" && !isCrabNetMultitaskModelType(modelType);
 }
 
 export function isProjectedModelType(modelType: string): boolean {

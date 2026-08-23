@@ -132,16 +132,24 @@ def test_web_crabnet_dkl_points_categories_to_mixed_dkl() -> None:
 
 def test_web_capabilities_and_react_publish_all_crabnet_multioutput_models() -> None:
     crabnet = WEB_CAPABILITIES["crabnet"]
-    expected = [
+    independent = [
         "crabnet_gp",
         "crabnet_mixed_gp",
         "crabnet_dkl",
         "crabnet_mixed_dkl",
     ]
-    assert crabnet["model_types"] == expected
+    correlated = [
+        "crabnet_multitask",
+        "crabnet_multitask_dkl",
+        "crabnet_mixed_multitask",
+        "crabnet_mixed_multitask_dkl",
+    ]
+    assert crabnet["model_types"] == independent + correlated
     assert crabnet["single_output_regression_only"] is False
-    assert crabnet["independent_multi_output_model_types"] == expected
+    assert crabnet["independent_multi_output_model_types"] == independent
     assert crabnet["multi_output_structure"] == "model_list"
+    assert crabnet["correlated_multi_output_model_types"] == correlated
+    assert crabnet["correlated_multi_output_structure"] == "multitask_kernel"
 
     options = (ROOT / "web" / "src" / "modelOptions.ts").read_text(encoding="utf-8")
     settings = (ROOT / "web" / "src" / "components" / "CrabNetModelSettings.tsx").read_text(
@@ -153,9 +161,11 @@ def test_web_capabilities_and_react_publish_all_crabnet_multioutput_models() -> 
     )
     api = (ROOT / "web" / "src" / "api.ts").read_text(encoding="utf-8")
 
-    assert 'value: "crabnet_mixed_dkl"' in options
+    for model_type in correlated:
+        assert f'value: "{model_type}"' in options
     assert 'modelType === "crabnet_mixed_dkl"' in settings
     assert "isCrabNetDKLModelType" in settings
+    assert "isCrabNetMultitaskModelType" in options
     assert "isCrabNetModelType(modelType) && targetColumns.length > 1" in page
     assert "canUseCrabNet = crabNetCompositionReady && !hasCategoricalProcess" in page
     assert "crabnetTargetCountValid" not in validation

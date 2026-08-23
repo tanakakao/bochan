@@ -138,6 +138,10 @@ def _resolve_fit_func(bundle: ModelBundle, config: FitConfig, mll: Any | None) -
         "crabnet_dkl",
         "crabnet_mixed_gp",
         "crabnet_mixed_dkl",
+        "crabnet_multitask",
+        "crabnet_multitask_dkl",
+        "crabnet_mixed_multitask",
+        "crabnet_mixed_multitask_dkl",
     }:
         from bochan.fit import fit_deepkernel_mll
 

@@ -19,11 +19,65 @@ from .requests import APIRequest
 
 TabularPayload = list[dict[str, Any]] | dict[str, list[Any]]
 
-_CRABNET_MODEL_TYPES = frozenset(
-    {"crabnet_gp", "crabnet_dkl", "crabnet_mixed_gp", "crabnet_mixed_dkl"}
+# Correlated CrabNet models keep wide Y in one model and learn task covariance.
+_CRABNET_CORRELATED_MULTITASK_MODEL_TYPES = frozenset(
+    {
+        "crabnet_multitask",
+        "crabnet_multitask_dkl",
+        "crabnet_mixed_multitask",
+        "crabnet_mixed_multitask_dkl",
+    }
 )
-_CRABNET_MIXED_MODEL_TYPES = frozenset({"crabnet_mixed_gp", "crabnet_mixed_dkl"})
-_CRABNET_DKL_MODEL_TYPES = frozenset({"crabnet_dkl", "crabnet_mixed_dkl"})
+_CRABNET_MODEL_TYPES = frozenset(
+    {
+        "crabnet_gp",
+        "crabnet_dkl",
+        "crabnet_mixed_gp",
+        "crabnet_mixed_dkl",
+        "crabnet_multitask",
+        "crabnet_multitask_dkl",
+        "crabnet_mixed_multitask",
+        "crabnet_mixed_multitask_dkl",
+    }
+)
+_CRABNET_MIXED_MODEL_TYPES = frozenset(
+    {
+        "crabnet_mixed_gp",
+        "crabnet_mixed_dkl",
+        "crabnet_mixed_multitask",
+        "crabnet_mixed_multitask_dkl",
+    }
+)
+_CRABNET_DKL_MODEL_TYPES = frozenset(
+    {
+        "crabnet_dkl",
+        "crabnet_mixed_dkl",
+        "crabnet_multitask_dkl",
+        "crabnet_mixed_multitask_dkl",
+    }
+)
+
+
+def _crabnet_single_output_fallback(model_type: str) -> str:
+    return {
+        "crabnet_multitask": "crabnet_gp",
+        "crabnet_multitask_dkl": "crabnet_dkl",
+        "crabnet_mixed_multitask": "crabnet_mixed_gp",
+        "crabnet_mixed_multitask_dkl": "crabnet_mixed_dkl",
+    }[model_type]
+
+
+def _crabnet_process_fallback(model_type: str) -> str:
+    return {
+        "crabnet_gp": "crabnet_mixed_gp",
+        "crabnet_dkl": "crabnet_mixed_dkl",
+        "crabnet_mixed_gp": "crabnet_gp",
+        "crabnet_mixed_dkl": "crabnet_dkl",
+        "crabnet_multitask": "crabnet_mixed_multitask",
+        "crabnet_multitask_dkl": "crabnet_mixed_multitask_dkl",
+        "crabnet_mixed_multitask": "crabnet_multitask",
+        "crabnet_mixed_multitask_dkl": "crabnet_multitask_dkl",
+    }[model_type]
 
 
 class FeatureImportanceGroupRequest(APIRequest):
@@ -239,6 +293,13 @@ class TabularFitModelRequest(APIRequest):
         )
         if not targets:
             raise ValueError("Tabular CrabNet models require at least one target column.")
+        correlated_multitask = model_type in _CRABNET_CORRELATED_MULTITASK_MODEL_TYPES
+        if correlated_multitask and len(targets) < 2:
+            fallback = _crabnet_single_output_fallback(model_type)
+            raise ValueError(
+                f"{model_type} requires at least two continuous target columns. "
+                f"Use {fallback} for single-output regression."
+            )
         data_columns = (
             set(self.data[0])
             if isinstance(self.data, list) and self.data
@@ -268,13 +329,13 @@ class TabularFitModelRequest(APIRequest):
                 f"{model_type} requires input_type={expected_input_type!r}."
             )
         if mixed_model and not self.categorical_cols:
-            fallback = "crabnet_dkl" if model_type == "crabnet_mixed_dkl" else "crabnet_gp"
+            fallback = _crabnet_process_fallback(model_type)
             raise ValueError(
                 f"{model_type} requires at least one categorical process column. "
                 f"Use {fallback} when all process columns are continuous."
             )
         if not mixed_model and self.categorical_cols:
-            fallback = "crabnet_mixed_dkl" if model_type == "crabnet_dkl" else "crabnet_mixed_gp"
+            fallback = _crabnet_process_fallback(model_type)
             raise ValueError(
                 f"{model_type} supports continuous process columns only. "
                 f"Use {fallback} for categorical process inputs."

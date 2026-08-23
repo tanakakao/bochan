@@ -12,6 +12,31 @@ from ..logging import log_event
 from ..schemas.regression import RegressionRunRequest
 from ..workflows import run_regression_web_workflow
 
+_CRABNET_MULTITASK_WEB_BASE_MODELS = {
+    "crabnet_multitask": "crabnet_gp",
+    "crabnet_multitask_dkl": "crabnet_dkl",
+    "crabnet_mixed_multitask": "crabnet_mixed_gp",
+    "crabnet_mixed_multitask_dkl": "crabnet_mixed_dkl",
+}
+_WEB_CRABNET_MULTITASK_MODEL_KEY = "web_correlated_crabnet_model_type"
+
+
+def _workflow_request(request: RegressionRunRequest) -> RegressionRunRequest:
+    """Use existing CrabNet Web validation while preserving correlated model intent."""
+
+    model_type = str(request.model_type).lower()
+    base_model_type = _CRABNET_MULTITASK_WEB_BASE_MODELS.get(model_type)
+    if base_model_type is None:
+        return request
+    model_kwargs = dict(request.model_kwargs or {})
+    model_kwargs[_WEB_CRABNET_MULTITASK_MODEL_KEY] = model_type
+    return request.model_copy(
+        update={
+            "model_type": base_model_type,
+            "model_kwargs": model_kwargs,
+        }
+    )
+
 
 def run_regression_request(
     request: RegressionRunRequest,
@@ -44,7 +69,10 @@ def run_regression_request(
         k_sparse=to_serializable(request.k_sparse),
     )
     try:
-        result = run_regression_web_workflow(request, dataset_store)
+        result = run_regression_web_workflow(
+            _workflow_request(request),
+            dataset_store,
+        )
         log_event(
             logger,
             logging.INFO,

@@ -133,7 +133,11 @@ def _resolve_fit_func(bundle: ModelBundle, config: FitConfig, mll: Any | None) -
 
         return fit_deepgp_mll, False
 
-    if "deepkernel" in model_type or model_type in {"crabnet_gp", "crabnet_dkl"}:
+    if "deepkernel" in model_type or model_type in {
+        "crabnet_gp",
+        "crabnet_dkl",
+        "crabnet_mixed_gp",
+    }:
         from bochan.fit import fit_deepkernel_mll
 
         return fit_deepkernel_mll, False
@@ -193,4 +197,3 @@ def fit_model(bundle: ModelBundle, config: FitConfig | None = None) -> ModelBund
             return _fit_single_bundle(bundle, config)
         return bundle
     return _fit_single_bundle(bundle, config)
-

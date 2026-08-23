@@ -33,7 +33,10 @@ _CRABNET_MODEL_TYPES = frozenset(
         "crabnet_dkl",
         "crabnet_mixed_gp",
         "crabnet_mixed_dkl",
-        *_CRABNET_CORRELATED_MULTITASK_MODEL_TYPES,
+        "crabnet_multitask",
+        "crabnet_multitask_dkl",
+        "crabnet_mixed_multitask",
+        "crabnet_mixed_multitask_dkl",
     }
 )
 _CRABNET_MIXED_MODEL_TYPES = frozenset(

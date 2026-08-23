@@ -198,10 +198,14 @@ export function deriveWorkbenchState(input: WorkbenchValidationInput): Workbench
   const hasCategoricalProcessFeatures = selectedVariables.some(
     (variable) => variable.type === "categorical" && variable.name !== compositionColumn
   );
+  const crabnetTargetCountValid = modelType === "crabnet_multitask"
+    ? targetColumns.length > 1
+    : targetColumns.length > 0;
   const crabnetProcessTypeValid = crabnetMixedModel
     ? hasCategoricalProcessFeatures
     : !hasCategoricalProcessFeatures;
   const crabnetSettingsValid = !crabnetModel || Boolean(
+    crabnetTargetCountValid &&
     allRegression &&
     crabnetCompositionReady &&
     crabnetProcessTypeValid &&
@@ -219,6 +223,7 @@ export function deriveWorkbenchState(input: WorkbenchValidationInput): Workbench
     (!inputPerturbation || (Number.isInteger(nW) && nW >= 1 && perturbationStd > 0)) &&
     modelTypeKnown &&
     (modelType !== "multitask" || canUseMultitask) &&
+    (modelType !== "crabnet_multitask" || canUseMultitask) &&
     crabnetSettingsValid &&
     (!projectedModel || (
       Number.isInteger(projectionDimensions) &&

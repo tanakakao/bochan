@@ -16,7 +16,7 @@ from torch import Tensor, nn
 
 from bochan.composition import CrabNetEncoder, TorchSimplexTransform
 from bochan.fit.deep.deepkernel import fit_deepkernel_mll
-from bochan.models.regression.gaussian.deep import CrabNetGPModel
+from bochan.models.regression.gaussian.deep import CrabNetDKLModel, CrabNetGPModel
 
 
 class FakeCrabNet(nn.Module):
@@ -36,6 +36,31 @@ class FakeCrabNet(nn.Module):
         )
         element_signal = element_ids.to(dtype=fractions.dtype).unsqueeze(-1) / (100 * feature_scale)
         return fractions.unsqueeze(-1) * self.scale * (1 + element_signal)
+
+
+class FakeTransformerStack(nn.Module):
+    """Minimal upstream-style Transformer stack for partial-unfreeze tests."""
+
+    def __init__(self, d_model: int, num_layers: int) -> None:
+        super().__init__()
+        self.layers = nn.ModuleList(nn.Linear(d_model, d_model) for _ in range(num_layers))
+
+
+class LayeredFakeCrabNet(nn.Module):
+    """Differentiable encoder exposing CrabNet's Transformer layer structure."""
+
+    def __init__(self, d_model: int = 4, num_layers: int = 3) -> None:
+        super().__init__()
+        self.d_model = d_model
+        self.embedding = nn.Linear(1, d_model)
+        self.transformer_encoder = FakeTransformerStack(d_model, num_layers)
+
+    def forward(self, element_ids: Tensor, fractions: Tensor) -> Tensor:
+        element_signal = element_ids.to(dtype=fractions.dtype).unsqueeze(-1) / 100
+        features = self.embedding(fractions.unsqueeze(-1) * (1 + element_signal))
+        for layer in self.transformer_encoder.layers:
+            features = torch.tanh(layer(features))
+        return features * fractions.unsqueeze(-1)
 
 
 def _element_ids() -> Tensor:
@@ -99,6 +124,24 @@ def _model(*, with_process: bool, latent_dim: int = 3) -> CrabNetGPModel:
     )
 
 
+def _dkl_model(
+    *,
+    with_process: bool,
+    trainable_encoder_layers: int | str = 1,
+) -> CrabNetDKLModel:
+    torch.manual_seed(0)
+    train_X, train_Y = _data(with_process=with_process)
+    return CrabNetDKLModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        element_ids=_element_ids(),
+        encoder=LayeredFakeCrabNet(),
+        latent_dim=4,
+        trainable_encoder_layers=trainable_encoder_layers,  # type: ignore[arg-type]
+        outcome_transform=None,
+    )
+
+
 def test_composition_only_posterior_preserves_batch_q_and_sample_shapes() -> None:
     model = _model(with_process=False)
     fractions = _fractions()
@@ -156,6 +199,148 @@ def test_encoder_is_frozen_and_input_gradients_are_preserved() -> None:
     assert test_X.grad[..., :3].abs().sum() > 0
     assert test_X.grad[..., 3:].abs().sum() > 0
     assert all(parameter.grad is None for parameter in model.material_encoder.parameters())
+
+
+def test_dkl_partial_unfreeze_selects_final_transformer_layers_and_modes() -> None:
+    model = _dkl_model(with_process=True, trainable_encoder_layers=2)
+    named_parameters = dict(model.material_encoder.named_parameters())
+    layers = model.material_encoder.encoder.transformer_encoder.layers
+
+    assert model.trainable_encoder_layers == 2
+    assert not named_parameters["encoder.embedding.weight"].requires_grad
+    assert not named_parameters["encoder.transformer_encoder.layers.0.weight"].requires_grad
+    assert named_parameters["encoder.transformer_encoder.layers.1.weight"].requires_grad
+    assert named_parameters["encoder.transformer_encoder.layers.2.weight"].requires_grad
+    assert all(parameter.requires_grad for parameter in model.projection.parameters())
+
+    model.train()
+    assert not model.material_encoder.training
+    assert not layers[0].training
+    assert layers[1].training
+    assert layers[2].training
+
+    model.eval()
+    assert not any(layer.training for layer in layers)
+
+
+def test_dkl_full_unfreeze_trains_complete_injected_encoder() -> None:
+    train_X, train_Y = _data(with_process=False)
+    model = CrabNetDKLModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        element_ids=_element_ids(),
+        encoder=FakeCrabNet(),
+        latent_dim=3,
+        trainable_encoder_layers="all",
+        outcome_transform=None,
+    )
+
+    assert model.trainable_encoder_layers == "all"
+    assert all(parameter.requires_grad for parameter in model.material_encoder.parameters())
+    encoder_before = model.material_encoder.encoder.scale.detach().clone()
+
+    model.train()
+    assert model.material_encoder.training
+    model.eval()
+    assert not model.material_encoder.training
+
+    fit_deepkernel_mll(model.make_mll(), num_epochs=2, lr=0.01)
+    assert not torch.equal(model.material_encoder.encoder.scale, encoder_before)
+
+
+def test_dkl_fit_jointly_updates_encoder_projection_and_exact_gp() -> None:
+    model = _dkl_model(with_process=True, trainable_encoder_layers=1)
+    named_encoder_parameters = dict(model.material_encoder.named_parameters())
+    frozen_before = {
+        name: parameter.detach().clone()
+        for name, parameter in named_encoder_parameters.items()
+        if not parameter.requires_grad
+    }
+    trainable_before = {
+        name: parameter.detach().clone()
+        for name, parameter in named_encoder_parameters.items()
+        if parameter.requires_grad
+    }
+    projection_before = {name: parameter.detach().clone() for name, parameter in model.projection.named_parameters()}
+    gp_before = {
+        name: parameter.detach().clone()
+        for name, parameter in model.deepkernel.named_parameters()
+        if not name.startswith("feature_extractor.")
+    }
+
+    fit_deepkernel_mll(model.make_mll(), num_epochs=3, lr=0.01)
+
+    assert trainable_before
+    assert all(
+        torch.equal(parameter, frozen_before[name])
+        for name, parameter in named_encoder_parameters.items()
+        if name in frozen_before
+    )
+    assert any(not torch.equal(named_encoder_parameters[name], before) for name, before in trainable_before.items())
+    assert any(
+        not torch.equal(dict(model.projection.named_parameters())[name], before)
+        for name, before in projection_before.items()
+    )
+    assert any(
+        not torch.equal(dict(model.deepkernel.named_parameters())[name], before) for name, before in gp_before.items()
+    )
+    assert all(parameter.grad is None for name, parameter in named_encoder_parameters.items() if name in frozen_before)
+    assert all(
+        parameter.grad is not None and torch.isfinite(parameter.grad).all()
+        for name, parameter in named_encoder_parameters.items()
+        if name in trainable_before
+    )
+
+
+def test_dkl_qlogei_preserves_composition_and_process_input_gradients() -> None:
+    model = _dkl_model(with_process=True, trainable_encoder_layers=1)
+    _, train_Y = _data(with_process=True)
+    acquisition = qLogExpectedImprovement(
+        model=model,
+        best_f=train_Y.max(),
+        sampler=SobolQMCNormalSampler(sample_shape=torch.Size([64]), seed=19),
+    )
+    test_X = torch.tensor(
+        [[[0.40, 0.35, 0.25, 1075.0, 3.0]]],
+        dtype=torch.double,
+        requires_grad=True,
+    )
+
+    value = acquisition(test_X)
+    (gradient,) = torch.autograd.grad(value.sum(), test_X)
+    posterior = model.posterior(test_X)
+    samples = posterior.rsample(sample_shape=torch.Size([3]))
+
+    assert torch.isfinite(value).all()
+    assert torch.isfinite(gradient).all()
+    assert gradient[..., : model.composition_dim].abs().sum() > 1e-8
+    assert gradient[..., model.composition_dim :].abs().sum() > 1e-8
+    assert posterior.mean.shape == torch.Size([1, 1, 1])
+    assert samples.shape == torch.Size([3, 1, 1, 1])
+    assert torch.isfinite(samples).all()
+
+
+def test_dkl_save_load_preserves_policy_and_posterior(tmp_path: Path) -> None:
+    model = _dkl_model(with_process=True, trainable_encoder_layers=1)
+    train_X, _ = _data(with_process=True)
+    model.eval()
+    reference = model.posterior(train_X[:2])
+    path = tmp_path / "crabnet_dkl.pt"
+
+    torch.save(model, path)
+    restored = torch.load(path, map_location="cpu", weights_only=False)
+    restored_posterior = restored.posterior(train_X[:2])
+
+    assert isinstance(restored, CrabNetDKLModel)
+    assert restored.trainable_encoder_layers == 1
+    assert torch.allclose(restored_posterior.mean, reference.mean)
+    assert torch.allclose(restored_posterior.variance, reference.variance)
+    restored.train()
+    layers = restored.material_encoder.encoder.transformer_encoder.layers
+    assert not restored.material_encoder.training
+    assert not layers[0].training
+    assert not layers[1].training
+    assert layers[2].training
 
 
 def test_zero_fraction_elements_are_converted_to_crabnet_padding() -> None:
@@ -422,6 +607,44 @@ def test_model_rejects_unsupported_or_invalid_inputs() -> None:
         )
 
 
+@pytest.mark.parametrize("trainable_encoder_layers", [0, True, "partial"])
+def test_dkl_rejects_invalid_unfreeze_configuration(
+    trainable_encoder_layers: object,
+) -> None:
+    train_X, train_Y = _data(with_process=False)
+
+    with pytest.raises(ValueError, match="positive integer or 'all'"):
+        CrabNetDKLModel(
+            train_X=train_X,
+            train_Y=train_Y,
+            element_ids=_element_ids(),
+            encoder=LayeredFakeCrabNet(),
+            trainable_encoder_layers=trainable_encoder_layers,  # type: ignore[arg-type]
+        )
+
+
+def test_dkl_partial_unfreeze_requires_explicit_transformer_structure() -> None:
+    train_X, train_Y = _data(with_process=False)
+
+    with pytest.raises(ValueError, match="transformer_encoder.layers"):
+        CrabNetDKLModel(
+            train_X=train_X,
+            train_Y=train_Y,
+            element_ids=_element_ids(),
+            encoder=FakeCrabNet(),
+            trainable_encoder_layers=1,
+        )
+
+    with pytest.raises(ValueError, match="exceeds the number"):
+        CrabNetDKLModel(
+            train_X=train_X,
+            train_Y=train_Y,
+            element_ids=_element_ids(),
+            encoder=LayeredFakeCrabNet(num_layers=2),
+            trainable_encoder_layers=3,
+        )
+
+
 def test_real_crabnet_gp_runs_on_cpu_when_materials_extra_is_installed() -> None:
     pytest.importorskip("crabnet.kingcrab")
     material_encoder = CrabNetEncoder(
@@ -454,3 +677,45 @@ def test_real_crabnet_gp_runs_on_cpu_when_materials_extra_is_installed() -> None
     assert test_X.grad is not None
     assert torch.isfinite(test_X.grad).all()
     assert not any(parameter.requires_grad for parameter in model.material_encoder.parameters())
+
+
+def test_real_crabnet_dkl_partially_unfreezes_and_runs_on_cpu() -> None:
+    pytest.importorskip("crabnet.kingcrab")
+    material_encoder = CrabNetEncoder(
+        d_model=8,
+        num_layers=2,
+        num_heads=2,
+        dim_feedforward=16,
+        dropout=0.0,
+        pe_resolution=32,
+        ple_resolution=32,
+    )
+    train_X, train_Y = _data(with_process=False)
+    model = CrabNetDKLModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        element_ids=_element_ids(),
+        encoder=material_encoder,
+        latent_dim=4,
+        trainable_encoder_layers=1,
+        outcome_transform=None,
+    )
+    named_parameters = dict(model.material_encoder.named_parameters())
+
+    fit_deepkernel_mll(model.make_mll(), num_epochs=1, lr=0.001)
+    posterior = model.posterior(train_X[:2])
+
+    assert any(
+        parameter.requires_grad
+        for name, parameter in named_parameters.items()
+        if "transformer_encoder.layers.1" in name
+    )
+    assert not any(
+        parameter.requires_grad
+        for name, parameter in named_parameters.items()
+        if "transformer_encoder.layers.0" in name
+    )
+    assert posterior.mean.shape == torch.Size([2, 1])
+    assert posterior.variance.shape == torch.Size([2, 1])
+    assert torch.isfinite(posterior.mean).all()
+    assert torch.isfinite(posterior.variance).all()

@@ -252,6 +252,12 @@ function canonicalValue(value: unknown): unknown {
   return value;
 }
 
+function isCrabNetRunModel(modelType: string): boolean {
+  return modelType === "crabnet_gp" ||
+    modelType === "crabnet_mixed_gp" ||
+    modelType === "crabnet_dkl";
+}
+
 function resolvedNoiseAlpha(input: RunRegressionInput): number | null {
   const hasRegressionTarget = input.targetSettings.some(
     (setting) => setting.task_type === "regression"
@@ -288,7 +294,7 @@ export function buildModelReuseSignature(input: RunRegressionInput): string {
     targetColumns: input.targetColumns,
     targetModelSettings,
     modelType: input.modelType,
-    crabnet: input.modelType === "crabnet_gp" || input.modelType === "crabnet_dkl"
+    crabnet: isCrabNetRunModel(input.modelType)
       ? {
           checkpoint: input.crabnetCheckpoint.trim() || null,
           encoderTraining: input.modelType === "crabnet_dkl"
@@ -374,7 +380,8 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
   }
   const settingError = input.targetSettings.map(validateTargetSetting).find(Boolean);
   if (settingError) throw new Error(settingError);
-  const crabnetModel = input.modelType === "crabnet_gp" || input.modelType === "crabnet_dkl";
+  const crabnetModel = isCrabNetRunModel(input.modelType);
+  const crabnetMixedModel = input.modelType === "crabnet_mixed_gp";
   if (crabnetModel) {
     if (input.targetColumns.length !== 1 || input.targetSettings[0]?.task_type !== "regression") {
       throw new Error("CrabNetモデルは単一の連続回帰目的にのみ対応しています。");
@@ -388,10 +395,14 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
     ) {
       throw new Error("CrabNetモデルには候補元素を2種類以上設定した組成式列が必要です。");
     }
-    if (input.searchSpace.some(
+    const categoricalProcess = input.searchSpace.filter(
       (variable) => variable.type === "categorical" && variable.name !== composition.column
-    )) {
-      throw new Error("CrabNetモデルのprocess列は連続数値にしてください。");
+    );
+    if (crabnetMixedModel && categoricalProcess.length === 0) {
+      throw new Error("CrabNet-Mixed GPにはカテゴリprocess列を1列以上設定してください。");
+    }
+    if (!crabnetMixedModel && categoricalProcess.length > 0) {
+      throw new Error("カテゴリprocess列を含む場合はCrabNet-Mixed GPを使用してください。");
     }
     if (input.inputPerturbation) {
       throw new Error("CrabNetモデルは入力摂動にまだ対応していません。");

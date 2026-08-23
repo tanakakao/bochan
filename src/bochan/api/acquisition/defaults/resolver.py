@@ -253,6 +253,9 @@ def resolve_multi_output_model_config(
         "multitask",
         "multifidelity",
         "crabnetmultitask",
+        "crabnetmultitaskdkl",
+        "crabnetmixedmultitask",
+        "crabnetmixedmultitaskdkl",
     }:
         return model_config
 

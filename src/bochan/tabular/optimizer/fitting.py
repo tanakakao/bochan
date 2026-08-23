@@ -17,10 +17,18 @@ from .configuration import DATA_KEYS, FIT_KEYS, MODEL_KEYS, merge_data_config, r
 from .settings import apply_alpha_to_model_config, merge_input_transform_config, validate_noise_alpha
 
 _CRABNET_MODEL_TYPES = frozenset(
-    {"crabnet_gp", "crabnet_dkl", "crabnet_mixed_gp", "crabnet_mixed_dkl"}
+    {
+        "crabnet_gp",
+        "crabnet_dkl",
+        "crabnet_mixed_gp",
+        "crabnet_mixed_dkl",
+        "crabnet_multitask",
+    }
 )
 _CRABNET_MIXED_MODEL_TYPES = frozenset({"crabnet_mixed_gp", "crabnet_mixed_dkl"})
-_CRABNET_FROZEN_MODEL_TYPES = frozenset({"crabnet_gp", "crabnet_mixed_gp"})
+_CRABNET_FROZEN_MODEL_TYPES = frozenset(
+    {"crabnet_gp", "crabnet_mixed_gp", "crabnet_multitask"}
+)
 _WEIGHT_BASIS_NAMES = frozenset({"weight", "weight_fraction", "mass_fraction", "wt%"})
 
 
@@ -83,12 +91,18 @@ def _configure_tabular_crabnet_model(
     if model_type not in _CRABNET_MODEL_TYPES:
         return config
     mixed_model = model_type in _CRABNET_MIXED_MODEL_TYPES
+    multitask_model = model_type == "crabnet_multitask"
     dkl_model = model_type in {"crabnet_dkl", "crabnet_mixed_dkl"}
     task_type = str(config.task_type)
     n_outputs = int(dataset.Y.shape[-1])
     if task_type not in {"regression", "multi_objective"}:
         raise ValueError(
             "Tabular CrabNet models support regression or multi_objective regression only."
+        )
+    if multitask_model and n_outputs < 2:
+        raise ValueError(
+            "crabnet_multitask requires at least two continuous target columns. "
+            "Use model_type='crabnet_gp' for a single target."
         )
     if config.multi_output_config is not None:
         raise ValueError(
@@ -109,6 +123,12 @@ def _configure_tabular_crabnet_model(
             )
     elif dataset.cat_dims:
         categorical = [dataset.feature_names[index] for index in dataset.cat_dims]
+        if multitask_model:
+            raise ValueError(
+                "crabnet_multitask currently supports continuous process columns only; "
+                f"categorical columns were configured: {categorical!r}. "
+                "A correlated CrabNet mixed-multitask model is not implemented yet."
+            )
         fallback = "crabnet_mixed_dkl" if dkl_model else "crabnet_mixed_gp"
         raise ValueError(
             f"{model_type} supports continuous process columns only; "
@@ -168,6 +188,11 @@ def _configure_tabular_crabnet_model(
     encoder_training = model_kwargs.pop("encoder_training", None)
     if model_type in _CRABNET_FROZEN_MODEL_TYPES:
         if encoder_training is not None or "trainable_encoder_layers" in model_kwargs:
+            if multitask_model:
+                raise ValueError(
+                    "crabnet_multitask always freezes its shared CrabNet encoder. "
+                    "A trainable CrabNet multitask DKL variant is not implemented yet."
+                )
             fallback = "crabnet_mixed_dkl" if mixed_model else "crabnet_dkl"
             raise ValueError(
                 f"{model_type} always freezes the encoder. Use model_type={fallback!r} "
@@ -298,6 +323,21 @@ def _configure_tabular_crabnet_model(
         component_weights=component_weights,
         normalize_process=normalize_process,
     ).to(dataset.X)
+
+    if multitask_model:
+        from bochan.models.regression.gaussian.deep import CrabNetMultiTaskGPModel
+
+        return replace(
+            config,
+            task_type="multi_objective",
+            model_cls=CrabNetMultiTaskGPModel,
+            input_type="normal",
+            cat_dims=None,
+            input_transform=input_transform,
+            input_transform_config=None,
+            model_kwargs=model_kwargs,
+            multi_output_config=None,
+        )
 
     single_output_config = replace(
         config,

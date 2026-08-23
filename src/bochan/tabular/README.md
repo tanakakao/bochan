@@ -283,6 +283,53 @@ bo = TabularBayesianOptimizer(
 
 複数サイトも同じ mapping に site を追加します。`composition_col` / `formula_col` / `composition_*` compatibility API はありません。
 
+### CrabNet-GP / CrabNet-DKL
+
+単一組成と連続processを使うGaussian regressionでは、凍結encoderの
+`model_type="crabnet_gp"`、またはencoderを共同学習する
+`model_type="crabnet_dkl"`を選べます。
+
+```python
+bo = TabularBayesianOptimizer(
+    task_type="regression",
+    model_type="crabnet_gp",
+    input_cols=["formula", "temperature", "pressure", "holding_time"],
+    target_cols="property",
+    composition_sites={
+        "formula": {
+            "column": "formula",
+            "elements": ["Ba", "Sr", "Ti", "O"],
+            "representation": "ilr",
+            "bounds": {
+                "Ba": [0.0, 0.6],
+                "Sr": [0.0, 0.6],
+                "Ti": [0.1, 0.6],
+                "O": [0.2, 0.8],
+            },
+        }
+    },
+    bounds={
+        "temperature": [1000.0, 1400.0],
+        "pressure": [0.5, 2.0],
+        "holding_time": [1.0, 10.0],
+    },
+    model_kwargs={
+        "latent_dim": 32,
+        "checkpoint": "path/to/crabnet-checkpoint.pt",
+    },
+)
+```
+
+`crabnet_dkl`では、`model_kwargs={"encoder_training": "partial"}`が最終
+Transformer層を、`{"encoder_training": "full"}`がencoder全体を学習します。
+低レベルAPIの明示的な層数を使う場合は`trainable_encoder_layers`を指定します。
+
+元素番号、組成座標の列、連続process列は`input_cols`と`composition_sites`から
+自動解決されます。ILR / ALR / CLR / fraction座標はモデル内部で微分可能な原子分率へ
+変換されるため、`composition_dims`や`process_dims`を指定する必要はありません。
+現在の初期保証は、1つの組成site、連続process、single-output Gaussian regressionです。
+カテゴリprocess、複数site、multi-outputを指定した場合は明示的なエラーになります。
+
 詳細は以下を参照してください。
 
 - `docs/tabular_composition.md`

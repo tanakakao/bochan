@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Literal, cast
 
 import torch
-from botorch.models.transforms.input import Normalize
+from botorch.models.transforms.input import InputTransform, Normalize
 from gpytorch.likelihoods import Likelihood
 from torch import Tensor, nn
 
 from bochan.composition import (
     CrabNetEncoder,
     MaterialProcessFusion,
+    TorchSimplexTransform,
     build_material_process_fusion,
 )
 from bochan.composition.encoders.crabnet import Checkpoint
@@ -22,6 +23,176 @@ from .deepkernel_configurable import DeepKernelGaussianGPModel
 
 _EncoderTrainingMode = Literal["frozen", "partial", "full"]
 _TrainableEncoderLayers = int | Literal["all"]
+
+
+class CrabNetInputTransform(InputTransform):
+    """Pack composition coordinates and continuous process features for CrabNet.
+
+    The public CrabNet GP models consume fractions first and process features
+    second.  Tabular composition optimization instead operates in the fitted
+    coordinate representation (for example ILR).  This transform bridges the
+    two contracts with Torch-only operations, preserving gradients from an
+    acquisition value back to every raw tabular decision variable.
+
+    Args:
+        input_dim: Width of the raw tabular model-coordinate tensor.
+        composition_indices: Raw tensor columns containing the composition
+            coordinates, in fitted-element order.
+        n_components: Number of elemental fractions produced for CrabNet.
+        method: Composition representation: fractions, CLR, ALR, or ILR.
+        reference_index: ALR denominator component, when applicable.
+        process_bounds: Optional ``[2, process_dim]`` bounds used to normalize
+            continuous process columns. Required when process normalization is
+            enabled and at least one process column is present.
+        component_weights: Optional positive component weights. Supplying
+            atomic weights converts weight-basis fractions to atomic fractions.
+        normalize_process: Normalize continuous process columns to ``[0, 1]``.
+    """
+
+    is_one_to_many = False
+    composition_indices: Tensor
+    process_indices: Tensor
+    process_lower: Tensor
+    process_range: Tensor
+    component_weights: Tensor
+
+    def __init__(
+        self,
+        *,
+        input_dim: int,
+        composition_indices: Sequence[int],
+        n_components: int,
+        method: str = "ilr",
+        reference_index: int | None = None,
+        process_bounds: Tensor | None = None,
+        component_weights: Tensor | None = None,
+        normalize_process: bool = True,
+    ) -> None:
+        super().__init__()
+        if isinstance(input_dim, bool) or not isinstance(input_dim, int) or input_dim <= 0:
+            raise ValueError("input_dim must be a positive integer.")
+
+        indices = [int(index) for index in composition_indices]
+        if not indices:
+            raise ValueError("composition_indices must not be empty.")
+        if len(indices) != len(set(indices)):
+            raise ValueError("composition_indices must not contain duplicates.")
+        if min(indices) < 0 or max(indices) >= input_dim:
+            raise ValueError("composition_indices must be valid raw input columns.")
+
+        simplex = TorchSimplexTransform(
+            n_components=n_components,
+            method=method,
+            reference_index=reference_index,
+        )
+        if len(indices) != simplex.input_dim:
+            raise ValueError(
+                "composition_indices width does not match the configured "
+                f"composition representation: {len(indices)} != {simplex.input_dim}."
+            )
+
+        process_indices = [index for index in range(input_dim) if index not in set(indices)]
+        process_dim = len(process_indices)
+        normalize_process = bool(normalize_process)
+        if normalize_process and process_dim and process_bounds is None:
+            raise ValueError(
+                "process_bounds is required when normalize_process=True and continuous process columns are present."
+            )
+
+        if process_bounds is None:
+            process_lower = torch.empty(0, dtype=torch.double)
+            process_range = torch.empty(0, dtype=torch.double)
+        else:
+            if not torch.is_tensor(process_bounds):
+                raise TypeError("process_bounds must be a Tensor.")
+            if process_bounds.shape != torch.Size([2, process_dim]):
+                raise ValueError(
+                    "process_bounds must have shape [2, process_dim]: "
+                    f"{tuple(process_bounds.shape)} != {(2, process_dim)}."
+                )
+            if not process_bounds.is_floating_point() or not torch.isfinite(process_bounds).all():
+                raise ValueError("process_bounds must be a finite floating-point Tensor.")
+            process_lower = process_bounds[0].detach().clone()
+            raw_range = process_bounds[1] - process_bounds[0]
+            if (raw_range < 0).any():
+                raise ValueError("process_bounds upper values must be >= lower values.")
+            process_range = torch.where(raw_range > 0, raw_range, torch.ones_like(raw_range))
+
+        if component_weights is None:
+            component_weights = torch.ones(n_components, dtype=torch.double)
+        elif not torch.is_tensor(component_weights):
+            raise TypeError("component_weights must be a Tensor.")
+        if component_weights.shape != torch.Size([n_components]):
+            raise ValueError(
+                "component_weights must contain one value per component: "
+                f"{tuple(component_weights.shape)} != {(n_components,)}."
+            )
+        if (
+            not component_weights.is_floating_point()
+            or not torch.isfinite(component_weights).all()
+            or (component_weights <= 0).any()
+        ):
+            raise ValueError("component_weights must contain finite positive values.")
+
+        self.input_dim = input_dim
+        self.composition_dim = int(n_components)
+        self.process_dim = process_dim
+        self.output_dim = self.composition_dim + self.process_dim
+        self.normalize_process = normalize_process
+        self.simplex = simplex
+        self.transform_on_train = True
+        self.transform_on_eval = True
+        self.transform_on_fantasize = True
+        self.register_buffer(
+            "composition_indices",
+            torch.tensor(indices, dtype=torch.long),
+        )
+        self.register_buffer(
+            "process_indices",
+            torch.tensor(process_indices, dtype=torch.long),
+        )
+        self.register_buffer("process_lower", process_lower)
+        self.register_buffer("process_range", process_range)
+        self.register_buffer(
+            "component_weights",
+            component_weights.detach().clone(),
+        )
+
+    def transform(self, X: Tensor) -> Tensor:
+        """Return fractions followed by normalized continuous process values."""
+
+        if not torch.is_tensor(X):
+            raise TypeError("X must be a Tensor.")
+        if X.ndim == 0 or X.shape[-1] != self.input_dim:
+            raise ValueError(f"X width must equal input_dim: {X.shape[-1] if X.ndim else 0} != {self.input_dim}.")
+        if not X.is_floating_point() or not torch.isfinite(X).all():
+            raise ValueError("X must be a finite floating-point Tensor.")
+
+        coordinate_indices = self.composition_indices.to(device=X.device)
+        coordinates = X.index_select(-1, coordinate_indices)
+        basis_fractions = self.simplex(coordinates)
+        weights = self.component_weights.to(dtype=X.dtype, device=X.device)
+        atomic_values = basis_fractions / weights
+        fractions = atomic_values / atomic_values.sum(dim=-1, keepdim=True)
+
+        if not self.process_dim:
+            return fractions
+        process_indices = self.process_indices.to(device=X.device)
+        process = X.index_select(-1, process_indices)
+        if self.normalize_process:
+            lower = self.process_lower.to(dtype=X.dtype, device=X.device)
+            scale = self.process_range.to(dtype=X.dtype, device=X.device)
+            process = (process - lower) / scale
+        return torch.cat((fractions, process), dim=-1)
+
+    def extra_repr(self) -> str:
+        """Return the raw and packed input contracts for module summaries."""
+
+        return (
+            f"input_dim={self.input_dim}, composition_dim={self.composition_dim}, "
+            f"process_dim={self.process_dim}, method={self.simplex.method!r}, "
+            f"normalize_process={self.normalize_process}"
+        )
 
 
 def _validate_element_ids(element_ids: Tensor) -> Tensor:
@@ -301,12 +472,12 @@ def _resolve_input_transform(
 class CrabNetGPModel(DeepKernelGaussianGPModel):
     """Exact Gaussian process over frozen CrabNet material representations.
 
-    ``train_X`` is a standard floating-point BoTorch tensor.  Its first
-    ``len(element_ids)`` columns contain fractions in the same order as the
-    fixed atomic-number vocabulary ``element_ids``; any remaining columns are
-    continuous process features.  This is the low-level tensor contract after
-    the canonical ``composition_sites`` preprocessing, not a second formula
-    API.
+    ``train_X`` is a standard floating-point BoTorch tensor. By default, its
+    first ``len(element_ids)`` columns contain fractions in the same order as
+    the fixed atomic-number vocabulary ``element_ids``; any remaining columns
+    are continuous process features. This is the low-level tensor contract,
+    not a second formula API. A :class:`CrabNetInputTransform` may instead map
+    canonical tabular composition coordinates to that packed representation.
 
     The CrabNet encoder is frozen and always kept in evaluation mode.  Its
     forward pass is not wrapped in ``torch.no_grad()``, so gradients with
@@ -338,6 +509,8 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
         strict_checkpoint: Require a complete encoder checkpoint state.
         likelihood: Optional GPyTorch likelihood.
         input_transform: ``"DEFAULT"`` normalizes process columns only.
+            :class:`CrabNetInputTransform` additionally supports canonical
+            tabular composition coordinates while preserving autograd.
         outcome_transform: Outcome transform forwarded to the Gaussian
             DeepKernel wrapper.
     """
@@ -373,16 +546,30 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
 
         validated_element_ids = _validate_element_ids(element_ids)
         composition_dim = int(validated_element_ids.numel())
-        if train_X.shape[-1] < composition_dim:
-            raise ValueError(
-                "train_X must contain one fraction column for every element_id. "
-                f"Got {train_X.shape[-1]} columns for {composition_dim} elements."
+        if isinstance(input_transform, CrabNetInputTransform):
+            if input_transform.composition_dim != composition_dim:
+                raise ValueError(
+                    "CrabNetInputTransform.n_components must match element_ids: "
+                    f"{input_transform.composition_dim} != {composition_dim}."
+                )
+            if train_X.shape[-1] != input_transform.input_dim:
+                raise ValueError(
+                    "train_X width must match CrabNetInputTransform.input_dim: "
+                    f"{train_X.shape[-1]} != {input_transform.input_dim}."
+                )
+            process_dim = input_transform.process_dim
+        else:
+            if train_X.shape[-1] < composition_dim:
+                raise ValueError(
+                    "train_X must contain one fraction column for every element_id. "
+                    f"Got {train_X.shape[-1]} columns for {composition_dim} elements."
+                )
+            _validate_model_inputs(
+                train_X,
+                composition_dim=composition_dim,
+                input_dim=train_X.shape[-1],
             )
-        _validate_model_inputs(
-            train_X,
-            composition_dim=composition_dim,
-            input_dim=train_X.shape[-1],
-        )
+            process_dim = train_X.shape[-1] - composition_dim
 
         material_encoder = _resolve_material_encoder(
             encoder,
@@ -392,15 +579,19 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
         feature_extractor = _CrabNetGPFeatureExtractor(
             material_encoder=material_encoder,
             element_ids=validated_element_ids,
-            process_dim=train_X.shape[-1] - composition_dim,
+            process_dim=process_dim,
             latent_dim=latent_dim,
             fusion=fusion,
             projection=projection,
         )
-        resolved_input_transform = _resolve_input_transform(
-            train_X,
-            composition_dim=composition_dim,
-            input_transform=input_transform,
+        resolved_input_transform = (
+            input_transform
+            if isinstance(input_transform, CrabNetInputTransform)
+            else _resolve_input_transform(
+                train_X,
+                composition_dim=composition_dim,
+                input_transform=input_transform,
+            )
         )
 
         super().__init__(
@@ -563,4 +754,4 @@ class CrabNetDKLModel(CrabNetGPModel):
         return self._trainable_encoder_layers
 
 
-__all__ = ["CrabNetDKLModel", "CrabNetGPModel"]
+__all__ = ["CrabNetDKLModel", "CrabNetGPModel", "CrabNetInputTransform"]

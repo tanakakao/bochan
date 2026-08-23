@@ -244,7 +244,7 @@ _MODEL_REGISTRY_TREE: RegistryTree = {
             "beta_deepkernel": ("bochan.models.regression.beta.deep", "DeepKernelBetaMixedGPModel"),
             "beta_saas": ("bochan.models.regression.beta.high_dim", "SaasBetaMixedGPModel"),
             "beta_pca": ("bochan.models.regression.beta.high_dim", "PCABetaMixedGPModel"),
-            "beta_rembo": ("bochan.models.regression.beta.high_dim", "REMBOMixedGPModel"),
+            "beta_rembo": ("bochan.models.regression.beta.high_dim", "REMBOBetaMixedGPModel"),
             "beta_rrp": ("bochan.models.regression.beta.robust", "RobustRelevancePursuitBetaMixedGPModel"),
             "beta_hetero": ("bochan.models.regression.beta.robust", "HeteroscedasticBetaMixedGPModel"),
             "gamma_base": ("bochan.models.regression.gamma.base", "GammaMixedGPModel"),

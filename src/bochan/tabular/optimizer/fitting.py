@@ -97,8 +97,8 @@ def _configure_tabular_crabnet_model(
         )
     if n_outputs > 1 and model_type != "crabnet_mixed_dkl":
         raise ValueError(
-            "Independent multi-output is currently implemented for "
-            "model_type='crabnet_mixed_dkl' only."
+            f"{model_type} remains single-output. Independent multi-output is currently "
+            "implemented for model_type='crabnet_mixed_dkl' only."
         )
     expected_input_type = "mixed" if mixed_model else "normal"
     if config.input_type not in (None, expected_input_type):

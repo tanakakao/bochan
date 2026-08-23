@@ -19,6 +19,7 @@ from .requests import APIRequest
 
 TabularPayload = list[dict[str, Any]] | dict[str, list[Any]]
 
+# Correlated CrabNet models keep wide Y in one model and learn task covariance.
 _CRABNET_CORRELATED_MULTITASK_MODEL_TYPES = frozenset(
     {
         "crabnet_multitask",

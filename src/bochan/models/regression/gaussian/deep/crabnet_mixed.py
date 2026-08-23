@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Literal, cast
 
 import torch
@@ -178,6 +178,23 @@ class CrabNetMixedGPModel(DeepKernelGaussianMixedGPModel):
             latent_dim=latent_dim,
         )
 
+    def _apply(
+        self,
+        fn: Callable[[Tensor], Tensor],
+        recurse: bool = True,
+    ) -> CrabNetMixedGPModel:
+        """Move all components and refresh the wrapper dtype/device contract."""
+
+        module = super()._apply(fn, recurse=recurse)
+        reference = next(
+            (value for value in (*self.parameters(), *self.buffers()) if value.is_floating_point()),
+            None,
+        )
+        if reference is not None:
+            self._model_dtype = reference.dtype
+            self._model_device = reference.device
+        return cast(CrabNetMixedGPModel, module)
+
     @property
     def mixed_feature_extractor(self) -> _CrabNetMixedContinuousFeatureExtractor:
         """Return the continuous CrabNet feature extractor owned by the mixed GP."""
@@ -201,6 +218,12 @@ class CrabNetMixedGPModel(DeepKernelGaussianMixedGPModel):
         """Return the trainable latent projection."""
 
         return self.crabnet_feature_extractor.projection
+
+    @property
+    def fusion(self) -> MaterialProcessFusion:
+        """Return the material/numeric-process fusion module."""
+
+        return self.crabnet_feature_extractor.fusion
 
     @property
     def element_ids(self) -> Tensor:

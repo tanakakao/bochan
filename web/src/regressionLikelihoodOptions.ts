@@ -16,6 +16,9 @@ export type RegressionModelVariant =
   | "crabnet_dkl"
   | "crabnet_mixed_dkl"
   | "crabnet_multitask"
+  | "crabnet_multitask_dkl"
+  | "crabnet_mixed_multitask"
+  | "crabnet_mixed_multitask_dkl"
   | "saas"
   | "pca"
   | "rembo"
@@ -67,7 +70,10 @@ const MODEL_VARIANT_LABELS: Record<RegressionModelVariant, string> = {
   crabnet_mixed_gp: "CrabNet-Mixed GP",
   crabnet_dkl: "CrabNet-DKL",
   crabnet_mixed_dkl: "CrabNet-Mixed DKL",
-  crabnet_multitask: "CrabNet-MultiTask",
+  crabnet_multitask: "CrabNet-MultiTask GP",
+  crabnet_multitask_dkl: "CrabNet-MultiTask DKL",
+  crabnet_mixed_multitask: "CrabNet-Mixed MultiTask GP",
+  crabnet_mixed_multitask_dkl: "CrabNet-Mixed MultiTask DKL",
   saas: "SAAS",
   pca: "PCA",
   rembo: "REMBO",

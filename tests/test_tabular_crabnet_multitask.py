@@ -170,7 +170,7 @@ def test_crabnet_multitask_cross_validation_preserves_correlated_model() -> None
 
     result = optimizer.cross_validation_result_
     assert result is not None
-    assert set(result.outputs) == {"property_a", "property_b"}
+    assert set(result.outputs) == {"output_0", "output_1"}
     bundle = optimizer.bo.bundle
     assert bundle is not None
     assert isinstance(bundle.model, CrabNetMultiTaskGPModel)

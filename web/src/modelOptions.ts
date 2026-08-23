@@ -22,6 +22,7 @@ export const MODEL_OPTIONS = [
   { value: "deepgp", label: "Deep GP", family: "deep_representation" },
   { value: "deepkernel", label: "Deep Kernel GP", family: "deep_representation" },
   { value: "crabnet_gp", label: "CrabNet-GP", family: "deep_representation" },
+  { value: "crabnet_mixed_gp", label: "CrabNet-Mixed GP", family: "deep_representation" },
   { value: "crabnet_dkl", label: "CrabNet-DKL", family: "deep_representation" },
   { value: "saas", label: "SAAS", family: "high_dimensional" },
   { value: "pca", label: "PCA", family: "high_dimensional" },
@@ -86,6 +87,7 @@ export const MODEL_DESCRIPTIONS: Record<WebModelType, string> = {
   deepgp: "複数層のガウス過程で非線形な表現を学習します。",
   deepkernel: "ニューラルネットワークで特徴表現を学習し、ガウス過程へ接続します。",
   crabnet_gp: "凍結したCrabNet組成エンコーダと連続process条件をGaussian GPへ接続します。",
+  crabnet_mixed_gp: "凍結したCrabNet組成表現と連続process条件を連続kernelへ、カテゴリprocess条件をCategorical kernelへ接続するMixed GPです。",
   crabnet_dkl: "CrabNet組成エンコーダを部分または全層で微調整し、Gaussian GPと同時学習します。",
   saas: "高次元入力のうち重要な少数次元を疎に選択します。",
   pca: "指定次元へPCA射影してモデル化します。",
@@ -151,8 +153,14 @@ export function requiresDerivativeFreeSearch(modelType: string): boolean {
   return isTreeEnsembleFamilyModelType(modelType) || modelType === "tabpfn";
 }
 
+export function isCrabNetMixedModelType(modelType: string): boolean {
+  return modelType === "crabnet_mixed_gp";
+}
+
 export function isCrabNetModelType(modelType: string): boolean {
-  return modelType === "crabnet_gp" || modelType === "crabnet_dkl";
+  return modelType === "crabnet_gp" ||
+    modelType === "crabnet_mixed_gp" ||
+    modelType === "crabnet_dkl";
 }
 
 /**

@@ -92,7 +92,7 @@ def _optimizer(*, cross_validation: bool = False) -> TabularBayesianOptimizer:
         num_epochs=1,
         lr=0.01,
         cross_validation=cross_validation,
-        cv_config={"method": "kfold", "n_splits": 2, "shuffle": False},
+        cv_config={"splitter": "kfold", "n_splits": 2, "shuffle": False},
     )
 
 

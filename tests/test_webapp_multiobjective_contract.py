@@ -34,6 +34,7 @@ def test_web_capabilities_advertise_requested_models() -> None:
         "crabnet_gp",
         "crabnet_mixed_gp",
         "crabnet_dkl",
+        "crabnet_mixed_dkl",
         "saas",
         "pca",
         "rembo",

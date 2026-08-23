@@ -24,6 +24,7 @@ export const MODEL_OPTIONS = [
   { value: "crabnet_gp", label: "CrabNet-GP", family: "deep_representation" },
   { value: "crabnet_mixed_gp", label: "CrabNet-Mixed GP", family: "deep_representation" },
   { value: "crabnet_dkl", label: "CrabNet-DKL", family: "deep_representation" },
+  { value: "crabnet_mixed_dkl", label: "CrabNet-Mixed DKL", family: "deep_representation" },
   { value: "saas", label: "SAAS", family: "high_dimensional" },
   { value: "pca", label: "PCA", family: "high_dimensional" },
   { value: "rembo", label: "REMBO", family: "high_dimensional" },
@@ -89,6 +90,7 @@ export const MODEL_DESCRIPTIONS: Record<WebModelType, string> = {
   crabnet_gp: "凍結したCrabNet組成エンコーダと連続process条件をGaussian GPへ接続します。",
   crabnet_mixed_gp: "凍結したCrabNet組成表現と連続process条件を連続kernelへ、カテゴリprocess条件をCategorical kernelへ接続するMixed GPです。",
   crabnet_dkl: "CrabNet組成エンコーダを部分または全層で微調整し、Gaussian GPと同時学習します。",
+  crabnet_mixed_dkl: "CrabNet組成表現、連続process条件、学習可能なカテゴリEmbeddingをニューラル融合し、その潜在表現上でGaussian GPを同時学習するMixed DKLです。",
   saas: "高次元入力のうち重要な少数次元を疎に選択します。",
   pca: "指定次元へPCA射影してモデル化します。",
   rembo: "指定次元の低次元空間から探索します。",
@@ -154,13 +156,18 @@ export function requiresDerivativeFreeSearch(modelType: string): boolean {
 }
 
 export function isCrabNetMixedModelType(modelType: string): boolean {
-  return modelType === "crabnet_mixed_gp";
+  return modelType === "crabnet_mixed_gp" || modelType === "crabnet_mixed_dkl";
+}
+
+export function isCrabNetDKLModelType(modelType: string): boolean {
+  return modelType === "crabnet_dkl" || modelType === "crabnet_mixed_dkl";
 }
 
 export function isCrabNetModelType(modelType: string): boolean {
   return modelType === "crabnet_gp" ||
     modelType === "crabnet_mixed_gp" ||
-    modelType === "crabnet_dkl";
+    modelType === "crabnet_dkl" ||
+    modelType === "crabnet_mixed_dkl";
 }
 
 /**

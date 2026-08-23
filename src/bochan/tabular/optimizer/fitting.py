@@ -15,7 +15,10 @@ from ..data import dataframe_to_tensors, numpy_to_tensors
 from .configuration import DATA_KEYS, FIT_KEYS, MODEL_KEYS, merge_data_config, resolve_cv_config, take
 from .settings import apply_alpha_to_model_config, merge_input_transform_config, validate_noise_alpha
 
-_CRABNET_MODEL_TYPES = frozenset({"crabnet_gp", "crabnet_dkl", "crabnet_mixed_gp"})
+_CRABNET_MODEL_TYPES = frozenset(
+    {"crabnet_gp", "crabnet_dkl", "crabnet_mixed_gp", "crabnet_mixed_dkl"}
+)
+_CRABNET_MIXED_MODEL_TYPES = frozenset({"crabnet_mixed_gp", "crabnet_mixed_dkl"})
 _CRABNET_FROZEN_MODEL_TYPES = frozenset({"crabnet_gp", "crabnet_mixed_gp"})
 _WEIGHT_BASIS_NAMES = frozenset({"weight", "weight_fraction", "mass_fraction", "wt%"})
 
@@ -30,7 +33,8 @@ def _configure_tabular_crabnet_model(
     model_type = str(config.model_type).lower()
     if model_type not in _CRABNET_MODEL_TYPES:
         return config
-    mixed_model = model_type == "crabnet_mixed_gp"
+    mixed_model = model_type in _CRABNET_MIXED_MODEL_TYPES
+    dkl_model = model_type in {"crabnet_dkl", "crabnet_mixed_dkl"}
     if str(config.task_type) != "regression":
         raise ValueError("Tabular CrabNet models support task_type='regression' only.")
     if config.multi_output_config is not None or dataset.Y.shape[-1] != 1:
@@ -42,16 +46,18 @@ def _configure_tabular_crabnet_model(
         )
     if mixed_model:
         if not dataset.cat_dims:
+            fallback = "crabnet_dkl" if dkl_model else "crabnet_gp"
             raise ValueError(
-                "crabnet_mixed_gp requires at least one categorical process column. "
-                "Use crabnet_gp when all process columns are continuous."
+                f"{model_type} requires at least one categorical process column. "
+                f"Use {fallback} when all process columns are continuous."
             )
     elif dataset.cat_dims:
         categorical = [dataset.feature_names[index] for index in dataset.cat_dims]
+        fallback = "crabnet_mixed_dkl" if dkl_model else "crabnet_mixed_gp"
         raise ValueError(
-            "crabnet_gp/crabnet_dkl support continuous process columns only; "
+            f"{model_type} supports continuous process columns only; "
             f"categorical columns were configured: {categorical!r}. "
-            "Use model_type='crabnet_mixed_gp' for mixed process inputs."
+            f"Use model_type={fallback!r} for mixed process inputs."
         )
     if len(owner.composition.sites) != 1:
         raise ValueError("Tabular CrabNet models require exactly one composition site.")
@@ -93,6 +99,7 @@ def _configure_tabular_crabnet_model(
         "process_bounds",
         "component_weights",
         "normalize_process",
+        "category_cardinalities",
     }
     reserved = sorted(derived_names.intersection(model_kwargs))
     if config.input_transform is not None or reserved:
@@ -105,8 +112,9 @@ def _configure_tabular_crabnet_model(
     encoder_training = model_kwargs.pop("encoder_training", None)
     if model_type in _CRABNET_FROZEN_MODEL_TYPES:
         if encoder_training is not None or "trainable_encoder_layers" in model_kwargs:
+            fallback = "crabnet_mixed_dkl" if mixed_model else "crabnet_dkl"
             raise ValueError(
-                f"{model_type} always freezes the encoder. Use model_type='crabnet_dkl' "
+                f"{model_type} always freezes the encoder. Use model_type={fallback!r} "
                 "for partial or full encoder training."
             )
     elif encoder_training is not None:
@@ -174,7 +182,24 @@ def _configure_tabular_crabnet_model(
     model_kwargs["element_ids"] = element_ids
 
     if mixed_model:
-        from bochan.models.regression.gaussian.deep import CrabNetMixedGPModel
+        if model_type == "crabnet_mixed_dkl":
+            from bochan.models.regression.gaussian.deep import CrabNetMixedDKLModel
+
+            model_cls = CrabNetMixedDKLModel
+            category_cardinalities: list[int] = []
+            for index in dataset.cat_dims:
+                values = dataset.X[:, int(index)]
+                rounded = values.round()
+                if not torch.allclose(values, rounded, rtol=0.0, atol=1e-6) or (rounded < 0).any():
+                    raise ValueError(
+                        "CrabNet-Mixed DKL requires non-negative integer-coded categorical process columns."
+                    )
+                category_cardinalities.append(int(rounded.max().item()) + 1)
+            model_kwargs["category_cardinalities"] = category_cardinalities
+        else:
+            from bochan.models.regression.gaussian.deep import CrabNetMixedGPModel
+
+            model_cls = CrabNetMixedGPModel
 
         model_kwargs.update(
             {
@@ -188,7 +213,7 @@ def _configure_tabular_crabnet_model(
         )
         return replace(
             config,
-            model_cls=CrabNetMixedGPModel,
+            model_cls=model_cls,
             input_type="mixed",
             input_transform=None,
             input_transform_config=None,

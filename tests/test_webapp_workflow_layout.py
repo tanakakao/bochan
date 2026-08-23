@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 LAYOUT_CSS = Path("web/src/result-interactions.css")
 MAIN_SOURCE = Path("web/src/main.tsx")
 SETTINGS_SOURCE = Path("web/src/pages/SettingsPage.tsx")
@@ -64,7 +63,7 @@ def test_model_settings_follow_problem_then_primary_then_details_order() -> None
 
 def test_workflow_pages_do_not_use_dom_reordering_extensions() -> None:
     main = MAIN_SOURCE.read_text(encoding="utf-8")
-    composition_runtime = Path("web/src/compositionRuntime.ts").read_text(encoding="utf-8")
+    composition_api = Path("web/src/api.ts").read_text(encoding="utf-8")
     candidate_controls = Path(
         "web/src/components/CompositionCandidateConstraints.tsx"
     ).read_text(encoding="utf-8")
@@ -81,7 +80,7 @@ def test_workflow_pages_do_not_use_dom_reordering_extensions() -> None:
     assert not RESULTS_EXTENSION_SOURCE.exists()
 
     for source in (
-        composition_runtime,
+        composition_api,
         candidate_controls,
         model_controls,
         results,
@@ -91,11 +90,13 @@ def test_workflow_pages_do_not_use_dom_reordering_extensions() -> None:
         assert "replaceWith" not in source
         assert "insertAdjacentElement" not in source
 
-    for source in (composition_runtime, candidate_controls, model_controls):
+    for source in (composition_api, candidate_controls, model_controls):
         assert "composition-model-settings-host" not in source
         assert "composition-constraint-settings-host" not in source
         assert "composition-search-space-constraints-proxy" not in source
         assert "composition-linear-constraints-proxy" not in source
+    assert "window.fetch =" not in composition_api
+    assert not Path("web/src/compositionRuntime.ts").exists()
 
 
 def test_workbench_css_uses_canonical_ownership_files() -> None:

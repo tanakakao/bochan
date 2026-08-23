@@ -27,6 +27,16 @@ foldモデルを含まない指標・予測結果が返ります。
 pip install -e ".[api,tabular]"
 ```
 
+`crabnet_gp` / `crabnet_dkl` では pinned CrabNet encoder も必要です。
+
+```bash
+pip install -e ".[api,tabular,materials]"
+```
+
+単一組成式と連続process列を扱うrequest、checkpoint、DKLの
+`encoder_training="partial" | "full"`、候補responseについては
+[`docs/crabnet_fastapi_web.md`](../../../../docs/crabnet_fastapi_web.md)を参照してください。
+
 ## Endpoints
 
 | method | path | purpose |

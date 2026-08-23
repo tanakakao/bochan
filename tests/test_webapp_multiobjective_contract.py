@@ -8,6 +8,12 @@ import torch
 
 from bochan.serving.webapp.routers.capabilities import WEB_CAPABILITIES
 from bochan.serving.webapp.schemas.regression import RegressionRunRequest
+from bochan.serving.webapp.settings.targets import (
+    _build_outcome_constraint_config,
+    _encode_targets,
+    _resolve_target_settings,
+    _resolve_targets,
+)
 from bochan.serving.webapp.targets.roles import (
     apply_target_roles,
     build_target_constraint_config,
@@ -18,12 +24,6 @@ from bochan.serving.webapp.targets.roles import (
     output_spec_kwargs,
     select_optimized_values,
 )
-from bochan.serving.webapp.settings.targets import (
-    _build_outcome_constraint_config,
-    _encode_targets,
-    _resolve_target_settings,
-    _resolve_targets,
-)
 
 
 def test_web_capabilities_advertise_requested_models() -> None:
@@ -31,6 +31,8 @@ def test_web_capabilities_advertise_requested_models() -> None:
         "base",
         "deepgp",
         "deepkernel",
+        "crabnet_gp",
+        "crabnet_dkl",
         "saas",
         "pca",
         "rembo",

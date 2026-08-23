@@ -4,7 +4,7 @@ from pathlib import Path
 def test_model_to_suggest_navigation_has_no_legacy_page_hosts() -> None:
     main = Path("web/src/main.tsx").read_text(encoding="utf-8")
     settings = Path("web/src/pages/SettingsPage.tsx").read_text(encoding="utf-8")
-    runtime = Path("web/src/compositionRuntime.ts").read_text(encoding="utf-8")
+    api = Path("web/src/api.ts").read_text(encoding="utf-8")
 
     assert "<CompositionModelSettings />" in settings
     assert "<CompositionSearchSpaceConstraints />" in Path(
@@ -16,10 +16,12 @@ def test_model_to_suggest_navigation_has_no_legacy_page_hosts() -> None:
 
     assert "installCompositionExtension" not in main
     assert "installWorkflowLayoutExtension" not in main
-    assert "composition-model-settings-host" not in runtime
-    assert "composition-constraint-settings-host" not in runtime
-    assert "model-primary-grid" not in runtime
-    assert "feature-constraint-panel" not in runtime
+    assert "composition-model-settings-host" not in api
+    assert "composition-constraint-settings-host" not in api
+    assert "model-primary-grid" not in api
+    assert "feature-constraint-panel" not in api
+    assert "window.fetch =" not in api
+    assert not Path("web/src/compositionRuntime.ts").exists()
 
 
 def test_model_and_suggest_keep_primary_controls_visible_before_details() -> None:

@@ -1,4 +1,5 @@
-import { MODEL_OPTIONS } from "../modelOptions";
+import { MODEL_OPTIONS, isCrabNetModelType } from "../modelOptions";
+import type { CompositionSettings } from "../compositionExtension";
 import { getColumnClassValues } from "../targetSettingUtils";
 import type {
   ColumnProfile,
@@ -120,6 +121,7 @@ export interface WorkbenchValidationInput {
   perturbationStd: number;
   projectionDimensions: number;
   modelType: string;
+  compositionSettings: CompositionSettings;
   fitMaxiter: number;
 }
 
@@ -150,6 +152,7 @@ export function deriveWorkbenchState(input: WorkbenchValidationInput): Workbench
     perturbationStd,
     projectionDimensions,
     modelType,
+    compositionSettings,
     fitMaxiter
   } = input;
   const columns = dataset?.profile.columns ?? [];
@@ -182,6 +185,25 @@ export function deriveWorkbenchState(input: WorkbenchValidationInput): Workbench
   const canUseMultitask = targetColumns.length > 1 && allRegression && !hasCategoricalFeatures;
   const projectedModel = modelType === "pca" || modelType === "rembo";
   const modelTypeKnown = MODEL_OPTIONS.some((option) => option.value === modelType);
+  const crabnetModel = isCrabNetModelType(modelType);
+  const compositionColumn = compositionSettings.enabled
+    ? compositionSettings.column
+    : "";
+  const crabnetCompositionReady = Boolean(
+    compositionColumn &&
+    featureColumns.includes(compositionColumn) &&
+    compositionSettings.elements.length >= 2
+  );
+  const hasCategoricalProcessFeatures = selectedVariables.some(
+    (variable) => variable.type === "categorical" && variable.name !== compositionColumn
+  );
+  const crabnetSettingsValid = !crabnetModel || Boolean(
+    targetColumns.length === 1 &&
+    allRegression &&
+    crabnetCompositionReady &&
+    !hasCategoricalProcessFeatures &&
+    !inputPerturbation
+  );
   const settingsValid = Boolean(
     canConfigure &&
     selectedTargetSettings.length === targetColumns.length &&
@@ -194,6 +216,7 @@ export function deriveWorkbenchState(input: WorkbenchValidationInput): Workbench
     (!inputPerturbation || (Number.isInteger(nW) && nW >= 1 && perturbationStd > 0)) &&
     modelTypeKnown &&
     (modelType !== "multitask" || canUseMultitask) &&
+    crabnetSettingsValid &&
     (!projectedModel || (
       Number.isInteger(projectionDimensions) &&
       projectionDimensions >= 1 &&

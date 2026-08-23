@@ -1,4 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import {
+  COMPOSITION_SETTINGS_CHANGE_EVENT,
+  loadCompositionSettings,
+  saveCompositionSettings,
+  type CompositionSettings
+} from "../compositionExtension";
 import type { AcquisitionFamily, FeatureImportanceSettings } from "../types";
 import { loadCrossValidationSettings, saveCrossValidationSettings } from "../webRunSettings";
 import { DEFAULT_FEATURE_IMPORTANCE } from "./workbenchDefaults";
@@ -13,6 +19,9 @@ interface RestoredRunSettings {
   perturbationStd: number;
   projectionDimensions: number;
   modelType: string;
+  compositionSettings: CompositionSettings;
+  crabnetCheckpoint: string;
+  crabnetEncoderTraining: "partial" | "full";
   acquisitionFamily: AcquisitionFamily;
   acquisition: string;
   beta: number;
@@ -32,6 +41,11 @@ export function useWorkbenchRunSettings() {
   const [perturbationStd, setPerturbationStd] = useState(0.1);
   const [projectionDimensions, setProjectionDimensions] = useState(2);
   const [modelType, setModelType] = useState("base");
+  const [compositionSettings, setCompositionSettings] = useState(loadCompositionSettings);
+  const [crabnetCheckpoint, setCrabnetCheckpoint] = useState("");
+  const [crabnetEncoderTraining, setCrabnetEncoderTraining] = useState<"partial" | "full">(
+    "partial"
+  );
   const [acquisitionFamily, setAcquisitionFamilyState] = useState<AcquisitionFamily>("bayesian_optimization");
   const [acquisition, setAcquisition] = useState("EI");
   const [beta, setBeta] = useState(2);
@@ -50,6 +64,11 @@ export function useWorkbenchRunSettings() {
   const [rawSamples, setRawSamples] = useState(256);
 
   useEffect(() => saveCrossValidationSettings(crossValidation), [crossValidation]);
+  useEffect(() => {
+    const refresh = () => setCompositionSettings(loadCompositionSettings());
+    window.addEventListener(COMPOSITION_SETTINGS_CHANGE_EVENT, refresh);
+    return () => window.removeEventListener(COMPOSITION_SETTINGS_CHANGE_EVENT, refresh);
+  }, []);
 
   function setAcquisitionFamily(nextFamily: AcquisitionFamily) {
     setAcquisitionFamilyState(nextFamily);
@@ -74,6 +93,8 @@ export function useWorkbenchRunSettings() {
     setPerturbationStd(0.1);
     setProjectionDimensions(nextProjectionDimensions);
     setModelType("base");
+    setCrabnetCheckpoint("");
+    setCrabnetEncoderTraining("partial");
     setAcquisitionFamilyState("bayesian_optimization");
     setAcquisition("EI");
     setSequential(true);
@@ -88,6 +109,9 @@ export function useWorkbenchRunSettings() {
     setPerturbationStd(restored.perturbationStd);
     setProjectionDimensions(restored.projectionDimensions);
     setModelType(restored.modelType);
+    saveCompositionSettings(restored.compositionSettings);
+    setCrabnetCheckpoint(restored.crabnetCheckpoint);
+    setCrabnetEncoderTraining(restored.crabnetEncoderTraining);
     setAcquisitionFamilyState(restored.acquisitionFamily);
     setAcquisition(restored.acquisition);
     setBeta(restored.beta);
@@ -113,6 +137,11 @@ export function useWorkbenchRunSettings() {
     setProjectionDimensions,
     modelType,
     setModelType,
+    compositionSettings,
+    crabnetCheckpoint,
+    setCrabnetCheckpoint,
+    crabnetEncoderTraining,
+    setCrabnetEncoderTraining,
     acquisitionFamily,
     setAcquisitionFamily,
     acquisition,

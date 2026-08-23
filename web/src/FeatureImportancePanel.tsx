@@ -40,7 +40,7 @@ const DIAGNOSTIC_LABELS: Record<string, string> = {
   pca: "PCA診断",
   rembo: "REMBO診断",
   vae: "VAE診断",
-  deepkernel: "Deep Kernel診断",
+  deepkernel: "Deep Kernel GP診断",
   deepgp: "Deep GP診断",
   heteroscedastic: "入力依存ノイズ診断",
   observation_relevance: "観測関連度（RRP）",

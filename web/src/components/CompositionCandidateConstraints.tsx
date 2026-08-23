@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { loadCompositionSettings } from "../compositionExtension";
+import {
+  COMPOSITION_SETTINGS_CHANGE_EVENT,
+  loadCompositionSettings,
+  saveCompositionSettings,
+  type CompositionSettings
+} from "../compositionExtension";
 
-const STORAGE_KEY = "bochan-web-composition-settings";
-const CHANGE_EVENT = "bochan-composition-settings-change";
-
-type CompositionSettings = ReturnType<typeof loadCompositionSettings>;
 type ElementConstraint = CompositionSettings["constraints"][number];
 type ConstraintTerm = ElementConstraint["terms"][number];
 type SettingsUpdater = (settings: CompositionSettings) => CompositionSettings;
@@ -16,18 +17,13 @@ function newConstraintId(): string {
   return `composition-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function saveCompositionSettings(settings: CompositionSettings): void {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
-}
-
 function useCompositionSettings(): [CompositionSettings, (updater: SettingsUpdater) => void] {
   const [settings, setSettings] = useState<CompositionSettings>(() => loadCompositionSettings());
 
   useEffect(() => {
     const refresh = () => setSettings(loadCompositionSettings());
-    window.addEventListener(CHANGE_EVENT, refresh);
-    return () => window.removeEventListener(CHANGE_EVENT, refresh);
+    window.addEventListener(COMPOSITION_SETTINGS_CHANGE_EVENT, refresh);
+    return () => window.removeEventListener(COMPOSITION_SETTINGS_CHANGE_EVENT, refresh);
   }, []);
 
   const update = useCallback((updater: SettingsUpdater) => {

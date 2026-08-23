@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
-import { loadCompositionSettings } from "../compositionExtension";
+import {
+  COMPOSITION_SETTINGS_CHANGE_EVENT,
+  loadCompositionSettings,
+  saveCompositionSettings,
+  type CompositionSettings
+} from "../compositionExtension";
 import { useWorkbench } from "../context/WorkbenchContext";
 
-const STORAGE_KEY = "bochan-web-composition-settings";
-const CHANGE_EVENT = "bochan-composition-settings-change";
 const HIGH_CARDINALITY_RATIO = 0.8;
 const HIGH_CARDINALITY_MIN_UNIQUE = 10;
-
-type CompositionSettings = ReturnType<typeof loadCompositionSettings>;
 
 type Props = {
   column: string;
@@ -24,11 +25,6 @@ function elementSymbols(formula: unknown): string[] {
 
 function inferElements(column: string, preview: Record<string, unknown>[]): string[] {
   return [...new Set(preview.flatMap((row) => elementSymbols(row[column])))];
-}
-
-function saveCompositionSettings(settings: CompositionSettings): void {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
 }
 
 /** Selects normal categorical input or chemical-composition parsing for one feature. */
@@ -58,8 +54,8 @@ export default function CompositionKindControl({ column, preview, categorical }:
   }, []);
 
   useEffect(() => {
-    window.addEventListener(CHANGE_EVENT, refresh);
-    return () => window.removeEventListener(CHANGE_EVENT, refresh);
+    window.addEventListener(COMPOSITION_SETTINGS_CHANGE_EVENT, refresh);
+    return () => window.removeEventListener(COMPOSITION_SETTINGS_CHANGE_EVENT, refresh);
   }, [refresh]);
 
   useEffect(() => {

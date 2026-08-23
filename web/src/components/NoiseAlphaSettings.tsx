@@ -43,7 +43,7 @@ export default function NoiseAlphaSettings({
       </p>
       {!supported && (
         <p className="settings-note">
-          この設定はBase GP、Deep GP、Deep Kernel、PCA、REMBO、Robust RRPの回帰出力にのみ適用されます。
+          この設定はBase GP、Deep GP、Deep Kernel GP、PCA、REMBO、Robust RRPの回帰出力にのみ適用されます。
         </p>
       )}
     </>

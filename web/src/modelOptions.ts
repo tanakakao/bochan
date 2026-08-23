@@ -20,7 +20,9 @@ export const MODEL_FAMILY_OPTIONS: Array<{ value: ModelFamily; label: string }> 
 export const MODEL_OPTIONS = [
   { value: "base", label: "Base GP", family: "standard_gp" },
   { value: "deepgp", label: "Deep GP", family: "deep_representation" },
-  { value: "deepkernel", label: "Deep Kernel", family: "deep_representation" },
+  { value: "deepkernel", label: "Deep Kernel GP", family: "deep_representation" },
+  { value: "crabnet_gp", label: "CrabNet-GP", family: "deep_representation" },
+  { value: "crabnet_dkl", label: "CrabNet-DKL", family: "deep_representation" },
   { value: "saas", label: "SAAS", family: "high_dimensional" },
   { value: "pca", label: "PCA", family: "high_dimensional" },
   { value: "rembo", label: "REMBO", family: "high_dimensional" },
@@ -83,6 +85,8 @@ export const MODEL_DESCRIPTIONS: Record<WebModelType, string> = {
   base: "標準的なガウス過程モデルです。",
   deepgp: "複数層のガウス過程で非線形な表現を学習します。",
   deepkernel: "ニューラルネットワークで特徴表現を学習し、ガウス過程へ接続します。",
+  crabnet_gp: "凍結したCrabNet組成エンコーダと連続process条件をGaussian GPへ接続します。",
+  crabnet_dkl: "CrabNet組成エンコーダを部分または全層で微調整し、Gaussian GPと同時学習します。",
   saas: "高次元入力のうち重要な少数次元を疎に選択します。",
   pca: "指定次元へPCA射影してモデル化します。",
   rembo: "指定次元の低次元空間から探索します。",
@@ -147,6 +151,10 @@ export function requiresDerivativeFreeSearch(modelType: string): boolean {
   return isTreeEnsembleFamilyModelType(modelType) || modelType === "tabpfn";
 }
 
+export function isCrabNetModelType(modelType: string): boolean {
+  return modelType === "crabnet_gp" || modelType === "crabnet_dkl";
+}
+
 /**
  * Backward-compatible helper used by the Optimize page. Historically this name
  * meant tree ensembles only; it now represents the models that must avoid
@@ -157,6 +165,7 @@ export function isTreeEnsembleModelType(modelType: string): boolean {
 }
 
 export function modelSupportsTaskType(modelType: string, taskType: string): boolean {
+  if (isCrabNetModelType(modelType)) return taskType === "regression";
   return modelType !== "tabpfn" || taskType !== "ordinal";
 }
 

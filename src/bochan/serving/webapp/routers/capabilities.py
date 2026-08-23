@@ -6,13 +6,14 @@ from fastapi import APIRouter
 
 from bochan.api.registry.capabilities import BETA_MODEL_TYPES
 
-
 WEB_CAPABILITIES: dict[str, Any] = {
     "task_types": ["regression", "classification", "ordinal", "hybrid", "multi_objective"],
     "model_types": [
         "base",
         "deepgp",
         "deepkernel",
+        "crabnet_gp",
+        "crabnet_dkl",
         "saas",
         "pca",
         "rembo",
@@ -86,6 +87,16 @@ WEB_CAPABILITIES: dict[str, Any] = {
         "feature_importance": ["composition_total", "element_perturbation"],
         "validation_endpoint": "/api/v1/composition/validate",
         "optimization_endpoint": "/api/v1/composition/regression/run",
+    },
+    "crabnet": {
+        "model_types": ["crabnet_gp", "crabnet_dkl"],
+        "checkpoint": True,
+        "encoder_training": ["partial", "full"],
+        "default_encoder_training": "partial",
+        "max_formula_columns": 1,
+        "continuous_process_only": True,
+        "single_output_regression_only": True,
+        "input_perturbation": False,
     },
 }
 

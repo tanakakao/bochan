@@ -16,6 +16,8 @@ import numpy as np
 from bochan.tabular.composition.constraints import CompositionElementConstraintResolver
 
 _SITE_NAME = "composition"
+_DESCRIPTOR_BUILTINS = {"atomic_number", "atomic_weight"}
+_DESCRIPTOR_STATISTICS = {"mean", "std", "min", "max", "range"}
 
 
 def _finite(value: Any, default: float) -> float:
@@ -35,6 +37,76 @@ def _string_list(value: Any) -> list[str]:
             "Composition element settings must be a sequence or comma-separated string."
         )
     return list(dict.fromkeys(item for item in values if item))
+
+
+def _element_properties(value: Any) -> dict[str, dict[str, float]]:
+    if value in (None, {}):
+        return {}
+    if not isinstance(value, Mapping):
+        raise TypeError("element_properties must be a mapping.")
+    result: dict[str, dict[str, float]] = {}
+    for property_name, raw_values in value.items():
+        if not isinstance(raw_values, Mapping):
+            raise TypeError(
+                f"element_properties[{property_name!r}] must be a mapping."
+            )
+        values: dict[str, float] = {}
+        for element, raw_value in raw_values.items():
+            numeric = float(raw_value)
+            if not np.isfinite(numeric):
+                raise ValueError(
+                    "Custom elemental-property values must be finite."
+                )
+            values[str(element)] = numeric
+        result[str(property_name)] = values
+    return result
+
+
+def _descriptor_settings(raw: Mapping[str, Any]) -> dict[str, Any]:
+    properties = _string_list(
+        raw.get("descriptor_properties", ("atomic_number", "atomic_weight"))
+    )
+    statistics = _string_list(
+        raw.get("descriptor_statistics", ("mean", "std", "min", "max", "range"))
+    )
+    unknown_statistics = set(statistics) - _DESCRIPTOR_STATISTICS
+    if unknown_statistics:
+        raise ValueError(
+            f"Unknown descriptor statistics: {sorted(unknown_statistics)!r}."
+        )
+
+    custom = _element_properties(raw.get("element_properties"))
+    unknown_properties = set(properties) - _DESCRIPTOR_BUILTINS - set(custom)
+    if unknown_properties:
+        raise KeyError(
+            f"Unknown elemental properties: {sorted(unknown_properties)!r}."
+        )
+
+    include_descriptors = bool(raw.get("include_descriptors", False))
+    include_num_elements = bool(
+        raw.get("descriptor_include_num_elements", True)
+    )
+    include_mixing_entropy = bool(
+        raw.get("descriptor_include_mixing_entropy", True)
+    )
+    if (
+        include_descriptors
+        and not properties
+        and not include_num_elements
+        and not include_mixing_entropy
+    ):
+        raise ValueError(
+            "Composition descriptors are enabled but no descriptor features "
+            "were selected."
+        )
+    return {
+        "include_descriptors": include_descriptors,
+        "descriptor_properties": properties,
+        "descriptor_statistics": statistics,
+        "descriptor_include_num_elements": include_num_elements,
+        "descriptor_include_mixing_entropy": include_mixing_entropy,
+        "element_properties": custom,
+    }
 
 
 def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]:
@@ -59,6 +131,12 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
         "required_components",
         "coordinate_bounds",
         "element_constraints",
+        "include_descriptors",
+        "descriptor_properties",
+        "descriptor_statistics",
+        "descriptor_include_num_elements",
+        "descriptor_include_mixing_entropy",
+        "element_properties",
     }
     if unknown:
         raise KeyError(
@@ -212,6 +290,7 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
         "required_components": required,
         "coordinate_bounds": (coordinate_lower, coordinate_upper),
         "element_constraints": constraints,
+        **_descriptor_settings(raw),
     }
 
 
@@ -242,6 +321,8 @@ def _composition_transformer(
     column = config["column"]
     if column not in data.columns:
         raise KeyError(f"Unknown composition formula column {column!r}.")
+    # The Web optimizer keeps only true decision coordinates in the tabular
+    # dataset. Descriptor features are appended later by a model InputTransform.
     transformer = CompositionTransformer(
         elements=config["elements"] or None,
         normalization=config["normalization"],
@@ -271,6 +352,13 @@ def _composition_transformer(
         raise ValueError(
             f"Composition settings reference unknown elements: {sorted(unknown)!r}."
         )
+    for property_name, property_values in resolved["element_properties"].items():
+        missing = set(elements) - set(property_values)
+        if missing and property_name in resolved["descriptor_properties"]:
+            raise ValueError(
+                f"Custom property {property_name!r} is missing elements "
+                f"{sorted(missing)!r}."
+            )
     transformed = transform_composition_frame(
         transformer,
         data,
@@ -363,7 +451,7 @@ def composition_model_feature_columns(
     feature_columns: Sequence[str],
     config: Mapping[str, Any] | None,
 ) -> list[str]:
-    """Return model-space feature names for Web linear-constraint resolution."""
+    """Return decision-space feature names for Web linear constraints."""
 
     if config is None:
         return list(feature_columns)
@@ -379,6 +467,9 @@ def composition_model_feature_columns(
 def composition_site(config: Mapping[str, Any]) -> dict[str, Any]:
     """Convert validated Web settings to one canonical composition site."""
 
+    # Descriptors deliberately remain disabled in the CompositionAdapter.
+    # Candidate optimization operates on composition coordinates only, while
+    # the model InputTransform recomputes descriptors from every candidate.
     return {
         "column": config["column"],
         "elements": config["elements"],
@@ -431,7 +522,7 @@ def repair_composition_candidate_result(
     optimizer: Any,
     result: Any,
 ) -> Any:
-    """Repair candidate compositions and return them in the fitted model space."""
+    """Repair candidate compositions and return them in the fitted decision space."""
 
     from bochan.tabular.data import dataframe_to_tensors
 
@@ -530,7 +621,7 @@ def add_composition_candidate_rows(
     candidates: Any,
     config: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
-    """Replace model coordinates in response rows with repaired composition values."""
+    """Replace decision coordinates in response rows with repaired composition values."""
 
     raw_frame = tabular_optimizer.candidates_to_dataframe(candidates)
     restored = tabular_optimizer.inverse_compositions(
@@ -572,6 +663,19 @@ def composition_response_metadata(
 
     if config is None:
         return None
+    descriptor_metadata = {
+        "enabled": bool(config.get("include_descriptors", False)),
+        "properties": list(config.get("descriptor_properties") or ()),
+        "statistics": list(config.get("descriptor_statistics") or ()),
+        "include_num_elements": bool(
+            config.get("descriptor_include_num_elements", True)
+        ),
+        "include_mixing_entropy": bool(
+            config.get("descriptor_include_mixing_entropy", True)
+        ),
+        "feature_names": list(config.get("descriptor_feature_names") or ()),
+        "derived_not_optimized": True,
+    }
     return {
         "column": config["column"],
         "elements": list(config.get("elements") or ()),
@@ -579,6 +683,7 @@ def composition_response_metadata(
         "representation": config["representation"],
         "total": config["total"],
         "constraints": len(config["element_constraints"]),
+        "descriptors": descriptor_metadata,
     }
 
 

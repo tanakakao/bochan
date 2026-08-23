@@ -6,23 +6,27 @@ from collections.abc import Sequence
 from dataclasses import replace
 from typing import Any
 
+_WEB_CRABNET_MULTITASK_MODEL_KEY = "web_correlated_crabnet_model_type"
+_CRABNET_MULTITASK_WEB_BASE_MODELS = {
+    "crabnet_multitask": "crabnet_gp",
+    "crabnet_multitask_dkl": "crabnet_dkl",
+    "crabnet_mixed_multitask": "crabnet_mixed_gp",
+    "crabnet_mixed_multitask_dkl": "crabnet_mixed_dkl",
+}
+_CRABNET_MODEL_TYPES = {
+    "crabnet_gp",
+    "crabnet_dkl",
+    "crabnet_mixed_gp",
+    "crabnet_mixed_dkl",
+    *_CRABNET_MULTITASK_WEB_BASE_MODELS,
+}
+
 
 def relabel_feature_importance_outputs(
     result: Any,
     target_columns: Sequence[str],
 ) -> Any:
-    """Replace positional output names with source target-column names.
-
-    Native wide multitask models do not use ``MultiOutputConfig``. Core
-    cross-validation therefore names their outputs ``output_0``, ``output_1``,
-    and so on, even though permutation importance is evaluated independently
-    for each posterior output. The Web response should use the original target
-    columns so the summary table and generated figure identifiers stay aligned.
-
-    The supplied result is mutated in place and returned for convenience. If
-    its output count does not match the target-column count, no changes are
-    made because a positional mapping would be ambiguous.
-    """
+    """Replace positional output names with source target-column names."""
 
     outputs = getattr(result, "outputs", None)
     targets = [str(column) for column in target_columns]
@@ -163,6 +167,30 @@ def _mutable_category_frame(
     return frame
 
 
+def _restore_correlated_crabnet_model_config(model_config: Any) -> Any:
+    """Restore the public correlated model ID after legacy Web validation."""
+
+    model_kwargs = dict(getattr(model_config, "model_kwargs", {}) or {})
+    requested = model_kwargs.pop(_WEB_CRABNET_MULTITASK_MODEL_KEY, None)
+    if requested is None:
+        return model_config
+    requested = str(requested).lower()
+    expected_base = _CRABNET_MULTITASK_WEB_BASE_MODELS.get(requested)
+    if expected_base is None:
+        raise ValueError(f"Unknown correlated CrabNet model type: {requested!r}.")
+    current = str(getattr(model_config, "model_type", "")).lower()
+    if current != expected_base:
+        raise ValueError(
+            "Correlated CrabNet Web adapter received an inconsistent base model: "
+            f"{current!r} != {expected_base!r}."
+        )
+    return replace(
+        model_config,
+        model_type=requested,
+        model_kwargs=model_kwargs,
+    )
+
+
 def _unwrap_single_output_crabnet_mixed_model_config(model_config: Any) -> Any:
     """Convert Web's one-output hybrid wrapper into a direct mixed CrabNet model."""
 
@@ -198,12 +226,7 @@ def _descriptor_augmented_model_config(
     encoded_features: dict[str, Any],
     composition_config: dict[str, Any] | None,
 ) -> Any:
-    """Attach a differentiable derived-descriptor transform to a Web model.
-
-    The tabular dataset and candidate optimizer remain in the original decision
-    space. The model sees descriptors appended from the current composition at
-    every train/predict/acquisition evaluation.
-    """
+    """Attach a differentiable derived-descriptor transform to a Web model."""
 
     if composition_config is None or not bool(
         composition_config.get("include_descriptors", False)
@@ -211,12 +234,7 @@ def _descriptor_augmented_model_config(
         return model_config
 
     model_type = str(getattr(model_config, "model_type", "")).lower()
-    if model_type in {
-        "crabnet_gp",
-        "crabnet_dkl",
-        "crabnet_mixed_gp",
-        "crabnet_mixed_dkl",
-    }:
+    if model_type in _CRABNET_MODEL_TYPES:
         raise ValueError(
             "CrabNet already derives a learned material representation from the "
             "composition. Web composition descriptors cannot currently be "
@@ -310,6 +328,7 @@ def fit_tabular_optimizer(
         reuse_fitted_tabular_optimizer,
     )
 
+    model_config = _restore_correlated_crabnet_model_config(model_config)
     model_config = _unwrap_single_output_crabnet_mixed_model_config(model_config)
     model_config = _descriptor_augmented_model_config(
         model_config=model_config,

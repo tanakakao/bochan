@@ -307,7 +307,7 @@ class CompositionDescriptorInputTransform(InputTransform):
         if self.include_mixing_entropy:
             positive = fractions.clamp_min(torch.finfo(fractions.dtype).tiny)
             descriptors.append(
-                (-(fractions * positive.log()).sum(dim=-1, keepdim=True))
+                -(fractions * positive.log()).sum(dim=-1, keepdim=True)
             )
         if not descriptors:
             return X

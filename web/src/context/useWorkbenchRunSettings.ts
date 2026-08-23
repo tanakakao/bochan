@@ -5,6 +5,7 @@ import {
   saveCompositionSettings,
   type CompositionSettings
 } from "../compositionExtension";
+import { isCrabNetModelType } from "../modelOptions";
 import type { AcquisitionFamily, FeatureImportanceSettings } from "../types";
 import { loadCrossValidationSettings, saveCrossValidationSettings } from "../webRunSettings";
 import { DEFAULT_FEATURE_IMPORTANCE } from "./workbenchDefaults";
@@ -124,6 +125,14 @@ export function useWorkbenchRunSettings() {
     setRawSamples(restored.rawSamples);
   }
 
+  // CrabNet already derives a learned composition representation. Keep the
+  // user's descriptor preference in storage so it is restored when switching
+  // back to a compatible model, but never send descriptor augmentation to a
+  // CrabNet fit/candidate request.
+  const effectiveCompositionSettings = isCrabNetModelType(modelType)
+    ? { ...compositionSettings, includeDescriptors: false }
+    : compositionSettings;
+
   return {
     normalize,
     setNormalize,
@@ -137,7 +146,7 @@ export function useWorkbenchRunSettings() {
     setProjectionDimensions,
     modelType,
     setModelType,
-    compositionSettings,
+    compositionSettings: effectiveCompositionSettings,
     crabnetCheckpoint,
     setCrabnetCheckpoint,
     crabnetEncoderTraining,

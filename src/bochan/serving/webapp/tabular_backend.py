@@ -164,16 +164,10 @@ def _mutable_category_frame(
 
 
 def _unwrap_single_output_crabnet_mixed_model_config(model_config: Any) -> Any:
-    """Convert Web's one-output hybrid wrapper into the direct mixed CrabNet model.
+    """Convert Web's one-output hybrid wrapper into a direct mixed CrabNet model."""
 
-    The generic Web workflow builds non-special single-output models through a
-    one-output ``MultiOutputConfig``. ``crabnet_mixed_gp`` needs the direct
-    tabular model contract so composition/categorical layout can be derived
-    before construction. Keep all parent search/transform settings while taking
-    the single output's model kwargs and regression task.
-    """
-
-    if str(getattr(model_config, "model_type", "")).lower() != "crabnet_mixed_gp":
+    model_type = str(getattr(model_config, "model_type", "")).lower()
+    if model_type not in {"crabnet_mixed_gp", "crabnet_mixed_dkl"}:
         return model_config
     if str(getattr(model_config, "task_type", "")).lower() != "hybrid":
         return model_config
@@ -182,12 +176,12 @@ def _unwrap_single_output_crabnet_mixed_model_config(model_config: Any) -> Any:
     output_configs = list(getattr(multi_output, "output_configs", None) or [])
     if len(output_configs) != 1:
         raise ValueError(
-            "crabnet_mixed_gp currently supports exactly one regression target."
+            f"{model_type} currently supports exactly one regression target."
         )
     output = output_configs[0]
     if str(getattr(output, "task_type", "")).lower() != "regression":
         raise ValueError(
-            "crabnet_mixed_gp currently supports a continuous regression target only."
+            f"{model_type} currently supports a continuous regression target only."
         )
     return replace(
         model_config,
@@ -217,7 +211,12 @@ def _descriptor_augmented_model_config(
         return model_config
 
     model_type = str(getattr(model_config, "model_type", "")).lower()
-    if model_type in {"crabnet_gp", "crabnet_dkl", "crabnet_mixed_gp"}:
+    if model_type in {
+        "crabnet_gp",
+        "crabnet_dkl",
+        "crabnet_mixed_gp",
+        "crabnet_mixed_dkl",
+    }:
         raise ValueError(
             "CrabNet already derives a learned material representation from the "
             "composition. Web composition descriptors cannot currently be "

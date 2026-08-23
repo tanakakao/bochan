@@ -690,11 +690,12 @@ The FastAPI layer mirrors the Python API. It accepts JSON versions of
 
 The default API prefix is `/api/v1`.
 
-Tabular FastAPI and the React workbench also expose the canonical
-`crabnet_gp` / `crabnet_dkl` selectors for one composition formula plus
-continuous process columns. See
-[`docs/crabnet_fastapi_web.md`](docs/crabnet_fastapi_web.md) for checkpoint,
-partial/full encoder training, validation, and candidate-response examples.
+The Python model API, Tabular API, Tabular FastAPI, and React workbench expose
+the same canonical `crabnet_gp` / `crabnet_dkl` selectors for one composition
+formula plus continuous process columns. See the
+[`CrabNet-GP / CrabNet-DKL integration guide`](docs/crabnet_fastapi_web.md) for
+checkpoint handling, frozen/partial/full encoder training, validation,
+candidate-response examples, reproducibility, and the final acceptance matrix.
 
 Important endpoints:
 

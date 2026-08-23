@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 from bochan.api import ModelConfig, resolve_model_cls
-from bochan.composition import ATOMIC_NUMBERS, parse_formula
+from bochan.composition import ATOMIC_NUMBERS, CrabNetEncoder, parse_formula
 from bochan.models.regression.gaussian.deep import (
     CrabNetDKLModel,
     CrabNetGPModel,
@@ -202,8 +202,12 @@ def test_tabular_crabnet_gp_derives_layout_fits_predicts_and_generates_candidate
 
 def test_tabular_crabnet_dkl_maps_training_policy_and_jointly_fits() -> None:
     encoder = LayeredFakeCrabNet()
-    frozen_before = encoder.transformer_encoder.layers[0].weight.detach().clone()
-    trainable_before = encoder.transformer_encoder.layers[-1].weight.detach().clone()
+    frozen_layer = encoder.transformer_encoder.layers[0]
+    trainable_layer = encoder.transformer_encoder.layers[-1]
+    assert isinstance(frozen_layer, nn.Linear)
+    assert isinstance(trainable_layer, nn.Linear)
+    frozen_before = frozen_layer.weight.detach().clone()
+    trainable_before = trainable_layer.weight.detach().clone()
     optimizer = _optimizer(
         "crabnet_dkl",
         encoder=encoder,
@@ -216,13 +220,10 @@ def test_tabular_crabnet_dkl_maps_training_policy_and_jointly_fits() -> None:
     assert isinstance(model, CrabNetDKLModel)
     assert model.trainable_encoder_layers == 1
     assert bundle.metadata["fit_func"] == "fit_deepkernel_mll"
-    assert torch.equal(encoder.transformer_encoder.layers[0].weight, frozen_before)
-    assert not torch.equal(
-        encoder.transformer_encoder.layers[-1].weight,
-        trainable_before,
-    )
-    assert not encoder.transformer_encoder.layers[0].weight.requires_grad
-    assert encoder.transformer_encoder.layers[-1].weight.requires_grad
+    assert torch.equal(frozen_layer.weight, frozen_before)
+    assert not torch.equal(trainable_layer.weight, trainable_before)
+    assert not frozen_layer.weight.requires_grad
+    assert trainable_layer.weight.requires_grad
 
 
 def test_tabular_crabnet_dkl_full_training_unfreezes_complete_encoder() -> None:
@@ -323,3 +324,35 @@ def test_tabular_crabnet_rejects_multiple_sites_without_affecting_existing_api()
 
     with pytest.raises(ValueError, match="exactly one composition site"):
         optimizer.fit(frame)
+
+
+def test_real_crabnet_runs_from_formula_rows_to_tabular_candidate() -> None:
+    pytest.importorskip("crabnet.kingcrab")
+    torch.manual_seed(0)
+    encoder = CrabNetEncoder(
+        d_model=8,
+        num_layers=1,
+        num_heads=2,
+        dim_feedforward=16,
+        dropout=0.0,
+        pe_resolution=32,
+        ple_resolution=32,
+    )
+    optimizer = _optimizer("crabnet_gp", encoder=encoder)
+    optimizer.fit_config.num_epochs = 0
+    optimizer.fit(_frame())
+
+    candidates, acquisition_value = optimizer.candidate(
+        acq_name="logei",
+        q=1,
+        num_restarts=1,
+        raw_samples=8,
+        optimizer_kwargs={"options": {"maxiter": 5, "batch_limit": 1}},
+    )
+
+    parsed = parse_formula(candidates.loc[0, "formula"])
+    assert set(parsed) == {"Ba", "Sr", "Ti", "O"}
+    assert torch.isfinite(torch.as_tensor(acquisition_value)).all()
+    assert 950.0 <= candidates.loc[0, "temperature"] <= 1400.0
+    assert 0.5 <= candidates.loc[0, "pressure"] <= 2.0
+    assert 1.0 <= candidates.loc[0, "holding_time"] <= 10.0

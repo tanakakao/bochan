@@ -198,14 +198,10 @@ export function deriveWorkbenchState(input: WorkbenchValidationInput): Workbench
   const hasCategoricalProcessFeatures = selectedVariables.some(
     (variable) => variable.type === "categorical" && variable.name !== compositionColumn
   );
-  const crabnetTargetCountValid = targetColumns.length === 1 || (
-    modelType === "crabnet_mixed_dkl" && targetColumns.length > 1
-  );
   const crabnetProcessTypeValid = crabnetMixedModel
     ? hasCategoricalProcessFeatures
     : !hasCategoricalProcessFeatures;
   const crabnetSettingsValid = !crabnetModel || Boolean(
-    crabnetTargetCountValid &&
     allRegression &&
     crabnetCompositionReady &&
     crabnetProcessTypeValid &&

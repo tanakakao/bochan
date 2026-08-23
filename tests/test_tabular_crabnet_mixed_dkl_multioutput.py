@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import pandas as pd
+import pytest
 import torch
 from botorch.models.model_list_gp_regression import ModelListGP
 from torch import nn
 
 from bochan.api import DataContext
 from bochan.composition import parse_formula
-from bochan.models.regression.gaussian.deep import CrabNetMixedDKLModel
+from bochan.models.regression.gaussian.deep import (
+    CrabNetDKLModel,
+    CrabNetGPModel,
+    CrabNetMixedDKLModel,
+    CrabNetMixedGPModel,
+)
 from bochan.tabular import TabularBayesianOptimizer
 
 
@@ -39,6 +45,16 @@ class _FakeCrabNet(nn.Module):
     ) -> torch.Tensor:
         values = self.embedding(element_ids) * fractions.unsqueeze(-1)
         return self.transformer_encoder(values)
+
+
+MODEL_CLASSES = {
+    "crabnet_gp": CrabNetGPModel,
+    "crabnet_dkl": CrabNetDKLModel,
+    "crabnet_mixed_gp": CrabNetMixedGPModel,
+    "crabnet_mixed_dkl": CrabNetMixedDKLModel,
+}
+MIXED_MODELS = {"crabnet_mixed_gp", "crabnet_mixed_dkl"}
+DKL_MODELS = {"crabnet_dkl", "crabnet_mixed_dkl"}
 
 
 def _frame() -> pd.DataFrame:
@@ -81,12 +97,35 @@ def _frame() -> pd.DataFrame:
     )
 
 
-def _optimizer(*, cross_validation: bool = False) -> TabularBayesianOptimizer:
+def _optimizer(
+    model_type: str,
+    *,
+    cross_validation: bool = False,
+) -> TabularBayesianOptimizer:
+    mixed = model_type in MIXED_MODELS
+    model_kwargs: dict[str, object] = {
+        "encoder": _FakeCrabNet(),
+        "latent_dim": 4,
+    }
+    if model_type in DKL_MODELS:
+        model_kwargs["encoder_training"] = "partial"
+    if model_type == "crabnet_mixed_dkl":
+        model_kwargs.update(
+            {
+                "category_embedding_dims": [3, 2],
+                "projection_hidden_dim": 8,
+            }
+        )
+
     return TabularBayesianOptimizer(
         task_type="multi_objective",
-        model_type="crabnet_mixed_dkl",
-        input_cols=["formula", "temperature", "atmosphere", "method"],
-        categorical_cols=["atmosphere", "method"],
+        model_type=model_type,
+        input_cols=(
+            ["formula", "temperature", "atmosphere", "method"]
+            if mixed
+            else ["formula", "temperature"]
+        ),
+        categorical_cols=["atmosphere", "method"] if mixed else [],
         target_cols=["property_a", "property_b"],
         composition_sites={
             "formula": {
@@ -103,13 +142,7 @@ def _optimizer(*, cross_validation: bool = False) -> TabularBayesianOptimizer:
             }
         },
         bounds={"temperature": [950.0, 1400.0]},
-        model_kwargs={
-            "encoder": _FakeCrabNet(),
-            "latent_dim": 4,
-            "encoder_training": "partial",
-            "category_embedding_dims": [3, 2],
-            "projection_hidden_dim": 8,
-        },
+        model_kwargs=model_kwargs,
         num_epochs=1,
         lr=0.01,
         cross_validation=cross_validation,
@@ -117,9 +150,10 @@ def _optimizer(*, cross_validation: bool = False) -> TabularBayesianOptimizer:
     )
 
 
-def test_crabnet_mixed_dkl_builds_independent_model_list() -> None:
+@pytest.mark.parametrize("model_type", list(MODEL_CLASSES))
+def test_crabnet_models_build_fully_independent_model_lists(model_type: str) -> None:
     torch.manual_seed(0)
-    optimizer = _optimizer().fit(_frame())
+    optimizer = _optimizer(model_type).fit(_frame())
     bundle = optimizer.bo.bundle
     assert bundle is not None
     assert isinstance(bundle.model, ModelListGP)
@@ -127,15 +161,23 @@ def test_crabnet_mixed_dkl_builds_independent_model_list() -> None:
     assert len(bundle.model.models) == 2
 
     first, second = bundle.model.models
-    assert isinstance(first, CrabNetMixedDKLModel)
-    assert isinstance(second, CrabNetMixedDKLModel)
+    expected_cls = MODEL_CLASSES[model_type]
+    assert isinstance(first, expected_cls)
+    assert isinstance(second, expected_cls)
     assert first is not second
     assert first.material_encoder is not second.material_encoder
-    assert first.mixed_dkl_feature_extractor is not second.mixed_dkl_feature_extractor
-    assert first.category_embeddings is not second.category_embeddings
-    assert first.category_embeddings[0].weight.data_ptr() != second.category_embeddings[0].weight.data_ptr()
-    assert first.category_cardinalities == (3, 2)
-    assert second.category_cardinalities == (3, 2)
+    first_encoder_parameter = next(first.material_encoder.parameters())
+    second_encoder_parameter = next(second.material_encoder.parameters())
+    assert first_encoder_parameter.data_ptr() != second_encoder_parameter.data_ptr()
+
+    if model_type == "crabnet_mixed_dkl":
+        assert first.category_embeddings is not second.category_embeddings
+        assert (
+            first.category_embeddings[0].weight.data_ptr()
+            != second.category_embeddings[0].weight.data_ptr()
+        )
+        assert first.category_cardinalities == (3, 2)
+        assert second.category_cardinalities == (3, 2)
 
     sub_bundles = bundle.metadata["sub_bundles"]
     assert len(sub_bundles) == 2
@@ -151,9 +193,10 @@ def test_crabnet_mixed_dkl_builds_independent_model_list() -> None:
     assert gradient[:, continuous_dims].abs().sum() > 0
 
 
-def test_crabnet_mixed_dkl_multioutput_optimizes_nehvi_with_mixed_inputs() -> None:
+@pytest.mark.parametrize("model_type", list(MODEL_CLASSES))
+def test_crabnet_multioutput_optimizes_nehvi(model_type: str) -> None:
     torch.manual_seed(0)
-    optimizer = _optimizer().fit(_frame())
+    optimizer = _optimizer(model_type).fit(_frame())
     assert optimizer.train_X is not None
     assert optimizer.train_Y is not None
 
@@ -177,14 +220,18 @@ def test_crabnet_mixed_dkl_multioutput_optimizes_nehvi_with_mixed_inputs() -> No
     parsed = parse_formula(candidates.loc[0, "formula"])
     assert set(parsed) == {"Ba", "Sr", "Ti", "O"}
     assert 950.0 <= candidates.loc[0, "temperature"] <= 1400.0
-    assert candidates.loc[0, "atmosphere"] in {"air", "N2", "Ar"}
-    assert candidates.loc[0, "method"] in {"furnace", "SPS"}
+    if model_type in MIXED_MODELS:
+        assert candidates.loc[0, "atmosphere"] in {"air", "N2", "Ar"}
+        assert candidates.loc[0, "method"] in {"furnace", "SPS"}
     assert torch.isfinite(torch.as_tensor(acq_value)).all()
 
 
-def test_crabnet_mixed_dkl_multioutput_cross_validation_keeps_independent_models() -> None:
+@pytest.mark.parametrize("model_type", list(MODEL_CLASSES))
+def test_crabnet_multioutput_cross_validation_keeps_independent_models(
+    model_type: str,
+) -> None:
     torch.manual_seed(0)
-    optimizer = _optimizer(cross_validation=True).fit(_frame())
+    optimizer = _optimizer(model_type, cross_validation=True).fit(_frame())
 
     result = optimizer.cross_validation_result_
     assert result is not None
@@ -194,4 +241,3 @@ def test_crabnet_mixed_dkl_multioutput_cross_validation_keeps_independent_models
     assert isinstance(bundle.model, ModelListGP)
     first, second = bundle.model.models
     assert first.material_encoder is not second.material_encoder
-    assert first.category_embeddings[0].weight.data_ptr() != second.category_embeddings[0].weight.data_ptr()

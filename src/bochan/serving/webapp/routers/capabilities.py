@@ -100,7 +100,14 @@ WEB_CAPABILITIES: dict[str, Any] = {
         "mixed_process_model_types": ["crabnet_mixed_gp", "crabnet_mixed_dkl"],
         "mixed_categorical_kernel": True,
         "mixed_categorical_embedding": True,
-        "single_output_regression_only": True,
+        "single_output_regression_only": False,
+        "independent_multi_output_model_types": [
+            "crabnet_gp",
+            "crabnet_mixed_gp",
+            "crabnet_dkl",
+            "crabnet_mixed_dkl",
+        ],
+        "multi_output_structure": "model_list",
         "input_perturbation": False,
     },
 }

@@ -95,7 +95,6 @@ export default function SettingsPage() {
   const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
   const canUseMultitask = targetColumns.length > 1 && allRegression && !hasCategoricalFeatures;
   const crabNetCompositionReady = Boolean(
-    targetColumns.length === 1 &&
     allRegression &&
     compositionSettings.enabled &&
     compositionSettings.column &&
@@ -228,6 +227,9 @@ export default function SettingsPage() {
               {selectedModelDescription}
               {isMultitaskModelType(modelType)
                 ? " 複数の回帰目的列をwide形式の相関付きモデルで学習します。"
+                : null}
+              {isCrabNetModelType(modelType) && targetColumns.length > 1
+                ? " 複数目的では目的ごとに独立したCrabNetモデルを学習し、ModelListGPとして多目的最適化します。"
                 : null}
             </p>
 

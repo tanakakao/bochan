@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import replace
 from typing import Any
 
 import torch
 
-from bochan.api import CrossValidationConfig
+from bochan.api import CrossValidationConfig, MultiOutputConfig
 from bochan.composition import ATOMIC_NUMBERS, ATOMIC_WEIGHTS
 
 from ..config import UNSET, make_fit_config, make_model_config
@@ -23,6 +24,54 @@ _CRABNET_FROZEN_MODEL_TYPES = frozenset({"crabnet_gp", "crabnet_mixed_gp"})
 _WEIGHT_BASIS_NAMES = frozenset({"weight", "weight_fraction", "mass_fraction", "wt%"})
 
 
+def _independent_crabnet_multi_output_config(
+    config: Any,
+    dataset: Any,
+    single_output_config: Any,
+) -> Any:
+    """Build fully independent CrabNet submodels for every regression output."""
+
+    output_names = list(dataset.target_names)
+    if len(output_names) != int(dataset.Y.shape[-1]):
+        raise RuntimeError(
+            "CrabNet target metadata must match the number of target columns."
+        )
+
+    output_configs = []
+    for _ in output_names:
+        try:
+            output_config = copy.deepcopy(single_output_config)
+        except Exception as error:
+            raise TypeError(
+                "Independent CrabNet multi-output requires model configuration objects "
+                "such as injected encoders, transforms, or projections to support deepcopy."
+            ) from error
+        output_configs.append(
+            replace(
+                output_config,
+                task_type="regression",
+                multi_output_config=None,
+            )
+        )
+
+    return replace(
+        config,
+        task_type="multi_objective",
+        model_cls=None,
+        model_factory=None,
+        input_type=single_output_config.input_type,
+        cat_dims=single_output_config.cat_dims,
+        input_transform=None,
+        input_transform_config=None,
+        model_kwargs={},
+        multi_output_config=MultiOutputConfig(
+            output_configs=output_configs,
+            output_names=output_names,
+            use_hybrid=False,
+        ),
+    )
+
+
 def _configure_tabular_crabnet_model(
     owner: Any,
     dataset: Any,
@@ -35,10 +84,17 @@ def _configure_tabular_crabnet_model(
         return config
     mixed_model = model_type in _CRABNET_MIXED_MODEL_TYPES
     dkl_model = model_type in {"crabnet_dkl", "crabnet_mixed_dkl"}
-    if str(config.task_type) != "regression":
-        raise ValueError("Tabular CrabNet models support task_type='regression' only.")
-    if config.multi_output_config is not None or dataset.Y.shape[-1] != 1:
-        raise ValueError("Tabular CrabNet models currently support single-output Gaussian regression only.")
+    task_type = str(config.task_type)
+    n_outputs = int(dataset.Y.shape[-1])
+    if task_type not in {"regression", "multi_objective"}:
+        raise ValueError(
+            "Tabular CrabNet models support regression or multi_objective regression only."
+        )
+    if config.multi_output_config is not None:
+        raise ValueError(
+            "Tabular CrabNet multi-output structure is derived automatically from target_cols; "
+            "do not provide multi_output_config explicitly."
+        )
     expected_input_type = "mixed" if mixed_model else "normal"
     if config.input_type not in (None, expected_input_type):
         raise ValueError(
@@ -211,14 +267,24 @@ def _configure_tabular_crabnet_model(
                 "normalize_process": normalize_process,
             }
         )
-        return replace(
+        single_output_config = replace(
             config,
+            task_type="regression",
             model_cls=model_cls,
             input_type="mixed",
+            cat_dims=list(dataset.cat_dims) or None,
             input_transform=None,
             input_transform_config=None,
             model_kwargs=model_kwargs,
+            multi_output_config=None,
         )
+        if n_outputs > 1:
+            return _independent_crabnet_multi_output_config(
+                config,
+                dataset,
+                single_output_config,
+            )
+        return single_output_config
 
     from bochan.models.regression.gaussian.deep import CrabNetInputTransform
 
@@ -233,13 +299,23 @@ def _configure_tabular_crabnet_model(
         normalize_process=normalize_process,
     ).to(dataset.X)
 
-    return replace(
+    single_output_config = replace(
         config,
+        task_type="regression",
         input_type="normal",
+        cat_dims=None,
         input_transform=input_transform,
         input_transform_config=None,
         model_kwargs=model_kwargs,
+        multi_output_config=None,
     )
+    if n_outputs > 1:
+        return _independent_crabnet_multi_output_config(
+            config,
+            dataset,
+            single_output_config,
+        )
+    return single_output_config
 
 
 def default_to_dataset(owner: Any, data: Any, y: Any | None = None, *, data_config: Any = None, feature_names: Any = None, target_names: Any = None) -> Any:

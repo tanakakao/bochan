@@ -202,10 +202,11 @@ def _resolve_crabnet_web_model(
         raise ValueError(
             f"{model_type} requires one feature column configured as a composition formula."
         )
-    if len(target_columns) != 1 or internal_tasks != ["regression"]:
+    if not target_columns or any(task != "regression" for task in internal_tasks):
         raise ValueError(
-            f"{model_type} supports one continuous regression target only."
+            f"{model_type} supports continuous regression targets only."
         )
+    independent_multi_output = len(target_columns) > 1
     categorical = [
         encoded_features["feature_columns"][int(index)]
         for index in encoded_features["cat_dims"]
@@ -284,6 +285,10 @@ def _resolve_crabnet_web_model(
         "categorical_representation": (
             "embedding" if model_type == "crabnet_mixed_dkl" else
             "categorical_kernel" if model_type == "crabnet_mixed_gp" else None
+        ),
+        "n_outputs": len(target_columns),
+        "output_structure": (
+            "independent_model_list" if independent_multi_output else "single"
         ),
     }
 

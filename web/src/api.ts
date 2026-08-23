@@ -393,8 +393,8 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
   const crabnetMixedModel = isCrabNetMixedRunModel(input.modelType);
   const crabnetDKLModel = isCrabNetDKLRunModel(input.modelType);
   if (crabnetModel) {
-    if (input.targetColumns.length !== 1 || input.targetSettings[0]?.task_type !== "regression") {
-      throw new Error("CrabNetモデルは単一の連続回帰目的にのみ対応しています。");
+    if (input.targetSettings.some((setting) => setting.task_type !== "regression")) {
+      throw new Error("CrabNetモデルは連続回帰目的にのみ対応しています。");
     }
     const composition = input.compositionSettings;
     if (

@@ -69,6 +69,7 @@ on:
       - "web/pnpm-lock.yaml"
       - "tests/test_tabular_crabnet_mixed_gp.py"
       - "tests/test_tabular_crabnet_mixed_dkl.py"
+      - "tests/test_tabular_crabnet_mixed_dkl_multioutput.py"
       - "tests/test_webapp_crabnet_mixed_gp_contract.py"
       - "tests/test_webapp_crabnet_mixed_dkl_contract.py"
       - "tests/test_webapp_composition_support.py"
@@ -113,6 +114,7 @@ jobs:
           pytest -q
           tests/test_tabular_crabnet_mixed_gp.py
           tests/test_tabular_crabnet_mixed_dkl.py
+          tests/test_tabular_crabnet_mixed_dkl_multioutput.py
           tests/test_webapp_crabnet_mixed_gp_contract.py
           tests/test_webapp_crabnet_mixed_dkl_contract.py
           tests/test_webapp_composition_support.py
@@ -166,6 +168,7 @@ jobs:
             src/bochan/visualization/ternary.py \
             tests/test_tabular_crabnet_mixed_gp.py \
             tests/test_tabular_crabnet_mixed_dkl.py \
+            tests/test_tabular_crabnet_mixed_dkl_multioutput.py \
             tests/test_webapp_crabnet_mixed_gp_contract.py \
             tests/test_webapp_crabnet_mixed_dkl_contract.py \
             tests/test_webapp_composition_support.py \

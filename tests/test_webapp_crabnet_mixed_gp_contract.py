@@ -42,6 +42,7 @@ def test_web_crabnet_mixed_gp_accepts_categorical_process_and_freezes_encoder() 
     assert metadata["encoder_training"] == "frozen"
     assert metadata["continuous_process_columns"] == ["temperature"]
     assert metadata["categorical_process_columns"] == ["atmosphere"]
+    assert metadata["categorical_representation"] == "categorical_kernel"
 
 
 def test_web_crabnet_mixed_gp_requires_categorical_process() -> None:
@@ -79,7 +80,10 @@ def test_web_capabilities_and_react_options_publish_crabnet_mixed_gp() -> None:
     assert "crabnet_mixed_gp" in WEB_CAPABILITIES["model_types"]
     crabnet = WEB_CAPABILITIES["crabnet"]
     assert "crabnet_mixed_gp" in crabnet["model_types"]
-    assert crabnet["mixed_process_model_types"] == ["crabnet_mixed_gp"]
+    assert crabnet["mixed_process_model_types"] == [
+        "crabnet_mixed_gp",
+        "crabnet_mixed_dkl",
+    ]
 
     options = (ROOT / "web" / "src" / "modelOptions.ts").read_text(encoding="utf-8")
     settings = (ROOT / "web" / "src" / "pages" / "SettingsPage.tsx").read_text(encoding="utf-8")

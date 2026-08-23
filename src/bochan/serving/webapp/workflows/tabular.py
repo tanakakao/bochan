@@ -76,7 +76,11 @@ _NATIVE_MULTITASK_MODEL_TYPE_ALIASES = {
     "poisson_multitask": "poisson_wide_multitask",
     "negative_binomial_multitask": "negative_binomial_wide_multitask",
 }
-_CRABNET_MODEL_TYPES = frozenset({"crabnet_gp", "crabnet_mixed_gp", "crabnet_dkl"})
+_CRABNET_MODEL_TYPES = frozenset(
+    {"crabnet_gp", "crabnet_mixed_gp", "crabnet_dkl", "crabnet_mixed_dkl"}
+)
+_CRABNET_MIXED_MODEL_TYPES = frozenset({"crabnet_mixed_gp", "crabnet_mixed_dkl"})
+_CRABNET_DKL_MODEL_TYPES = frozenset({"crabnet_dkl", "crabnet_mixed_dkl"})
 
 
 def _acquisition_family(acqf_kwargs: dict[str, Any]) -> str:
@@ -192,7 +196,8 @@ def _resolve_crabnet_web_model(
     resolved = dict(model_kwargs)
     if model_type not in _CRABNET_MODEL_TYPES:
         return resolved, None
-    mixed_model = model_type == "crabnet_mixed_gp"
+    mixed_model = model_type in _CRABNET_MIXED_MODEL_TYPES
+    dkl_model = model_type in _CRABNET_DKL_MODEL_TYPES
     if composition_config is None:
         raise ValueError(
             f"{model_type} requires one feature column configured as a composition formula."
@@ -206,15 +211,17 @@ def _resolve_crabnet_web_model(
         for index in encoded_features["cat_dims"]
     ]
     if mixed_model and not categorical:
+        fallback = "crabnet_dkl" if dkl_model else "crabnet_gp"
         raise ValueError(
-            "crabnet_mixed_gp requires at least one categorical process column. "
-            "Use crabnet_gp when all process columns are continuous."
+            f"{model_type} requires at least one categorical process column. "
+            f"Use {fallback} when all process columns are continuous."
         )
     if not mixed_model and categorical:
+        fallback = "crabnet_mixed_dkl" if dkl_model else "crabnet_mixed_gp"
         raise ValueError(
             f"{model_type} supports continuous process columns only; "
             f"categorical process columns were configured: {categorical!r}. "
-            "Use crabnet_mixed_gp for mixed process inputs."
+            f"Use {fallback} for mixed process inputs."
         )
     if input_perturbation:
         raise ValueError(f"{model_type} does not yet support input perturbation.")
@@ -223,10 +230,15 @@ def _resolve_crabnet_web_model(
             "The Web CrabNet interface accepts encoder_training='partial' or "
             "'full'; configure trainable_encoder_layers through the Python API."
         )
-    for reserved in ("element_ids", "input_transform", "composition_indices"):
+    for reserved in (
+        "element_ids",
+        "input_transform",
+        "composition_indices",
+        "category_cardinalities",
+    ):
         if reserved in resolved:
             raise ValueError(
-                f"{reserved} is derived from the Web composition settings and "
+                f"{reserved} is derived from the Web composition/category settings and "
                 "must not be supplied in model_kwargs."
             )
 
@@ -239,11 +251,11 @@ def _resolve_crabnet_web_model(
             )
         resolved["checkpoint"] = checkpoint.strip()
 
-    if model_type in {"crabnet_gp", "crabnet_mixed_gp"}:
+    if not dkl_model:
         if "encoder_training" in resolved:
             raise ValueError(
                 f"{model_type} always freezes the encoder; encoder_training is "
-                "available only for crabnet_dkl."
+                "available only for CrabNet DKL model types."
             )
         training_mode = "frozen"
     else:
@@ -269,6 +281,10 @@ def _resolve_crabnet_web_model(
             if column != composition_column and column not in categorical_set
         ],
         "categorical_process_columns": categorical,
+        "categorical_representation": (
+            "embedding" if model_type == "crabnet_mixed_dkl" else
+            "categorical_kernel" if model_type == "crabnet_mixed_gp" else None
+        ),
     }
 
 
@@ -619,12 +635,12 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         hybrid_model = False
     elif direct_crabnet:
         metadata = target_metadata[target_columns[0]]
-        mixed_crabnet = model_type == "crabnet_mixed_gp"
+        mixed_crabnet = model_type in _CRABNET_MIXED_MODEL_TYPES
         model_config = ModelConfig(
             task_type="regression",
             model_type=model_type,
             input_type="mixed" if mixed_crabnet else "normal",
-            cat_dims=encoded_features["cat_dims"] or None if mixed_crabnet else None,
+            cat_dims=(encoded_features["cat_dims"] or None) if mixed_crabnet else None,
             input_transform_config=input_transform_config,
             outcome_transform=request.outcome_transform,
             model_kwargs=_model_kwargs(

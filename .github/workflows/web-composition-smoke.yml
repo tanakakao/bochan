@@ -10,6 +10,7 @@ on:
       - "src/bochan/api/modeling/fit.py"
       - "src/bochan/models/regression/gaussian/deep/crabnet_mixed.py"
       - "src/bochan/models/regression/gaussian/deep/crabnet_mixed_dkl.py"
+      - "src/bochan/models/regression/gaussian/deep/crabnet_multitask.py"
       - "src/bochan/serving/webapp/composition/support.py"
       - "src/bochan/serving/webapp/composition/descriptors.py"
       - "src/bochan/serving/webapp/routers/composition.py"
@@ -70,6 +71,7 @@ on:
       - "tests/test_tabular_crabnet_mixed_gp.py"
       - "tests/test_tabular_crabnet_mixed_dkl.py"
       - "tests/test_tabular_crabnet_mixed_dkl_multioutput.py"
+      - "tests/test_tabular_crabnet_multitask.py"
       - "tests/test_webapp_crabnet_mixed_gp_contract.py"
       - "tests/test_webapp_crabnet_mixed_dkl_contract.py"
       - "tests/test_webapp_composition_support.py"
@@ -115,6 +117,7 @@ jobs:
           tests/test_tabular_crabnet_mixed_gp.py
           tests/test_tabular_crabnet_mixed_dkl.py
           tests/test_tabular_crabnet_mixed_dkl_multioutput.py
+          tests/test_tabular_crabnet_multitask.py
           tests/test_webapp_crabnet_mixed_gp_contract.py
           tests/test_webapp_crabnet_mixed_dkl_contract.py
           tests/test_webapp_composition_support.py
@@ -147,6 +150,7 @@ jobs:
             src/bochan/api/modeling/fit.py \
             src/bochan/models/regression/gaussian/deep/crabnet_mixed.py \
             src/bochan/models/regression/gaussian/deep/crabnet_mixed_dkl.py \
+            src/bochan/models/regression/gaussian/deep/crabnet_multitask.py \
             src/bochan/serving/webapp/composition/support.py \
             src/bochan/serving/webapp/composition/descriptors.py \
             src/bochan/serving/webapp/routers/composition.py \
@@ -169,6 +173,7 @@ jobs:
             tests/test_tabular_crabnet_mixed_gp.py \
             tests/test_tabular_crabnet_mixed_dkl.py \
             tests/test_tabular_crabnet_mixed_dkl_multioutput.py \
+            tests/test_tabular_crabnet_multitask.py \
             tests/test_webapp_crabnet_mixed_gp_contract.py \
             tests/test_webapp_crabnet_mixed_dkl_contract.py \
             tests/test_webapp_composition_support.py \

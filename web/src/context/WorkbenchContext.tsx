@@ -50,6 +50,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     perturbationStd: settings.perturbationStd,
     projectionDimensions: settings.projectionDimensions,
     modelType: settings.modelType,
+    compositionSettings: settings.compositionSettings,
     fitMaxiter: settings.fitMaxiter
   }), [
     selection.dataset,
@@ -62,6 +63,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     settings.perturbationStd,
     settings.projectionDimensions,
     settings.modelType,
+    settings.compositionSettings,
     settings.fitMaxiter
   ]);
 
@@ -74,6 +76,9 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     targetDirections: derived.targetDirections,
     direction: derived.direction,
     modelType: settings.modelType,
+    compositionSettings: settings.compositionSettings,
+    crabnetCheckpoint: settings.crabnetCheckpoint,
+    crabnetEncoderTraining: settings.crabnetEncoderTraining,
     projectionDimensions: settings.projectionDimensions,
     fitMaxiter: settings.fitMaxiter,
     normalize: settings.normalize,
@@ -173,6 +178,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       perturbationStd: settings.perturbationStd,
       projectionDimensions: settings.projectionDimensions,
       modelType: settings.modelType,
+      compositionSettings: settings.compositionSettings,
       fitMaxiter: settings.fitMaxiter
     });
     if (!liveDerived.candidateSettingsValid) return;
@@ -189,6 +195,9 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       targetDirections: liveDerived.targetDirections,
       direction: liveDerived.direction,
       modelType: settings.modelType,
+      compositionSettings: settings.compositionSettings,
+      crabnetCheckpoint: settings.crabnetCheckpoint,
+      crabnetEncoderTraining: settings.crabnetEncoderTraining,
       projectionDimensions: settings.projectionDimensions,
       fitMaxiter: settings.fitMaxiter,
       normalize: settings.normalize,
@@ -286,6 +295,11 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     setProjectionDimensions: settings.setProjectionDimensions,
     modelType: settings.modelType,
     setModelType: settings.setModelType,
+    compositionSettings: settings.compositionSettings,
+    crabnetCheckpoint: settings.crabnetCheckpoint,
+    setCrabnetCheckpoint: settings.setCrabnetCheckpoint,
+    crabnetEncoderTraining: settings.crabnetEncoderTraining,
+    setCrabnetEncoderTraining: settings.setCrabnetEncoderTraining,
     acquisitionFamily: settings.acquisitionFamily,
     setAcquisitionFamily: settings.setAcquisitionFamily,
     acquisition: settings.acquisition,

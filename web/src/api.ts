@@ -13,6 +13,12 @@ import type {
   VisualizationRequest
 } from "./types";
 import {
+  activateCompositionDataset,
+  compositionSettingsToBackend,
+  markFormulaLikeColumns,
+  type CompositionSettings
+} from "./compositionExtension";
+import {
   loadNoiseAlpha,
   saveNoiseAlpha,
   supportsNoiseAlpha
@@ -41,6 +47,7 @@ export interface WebCapabilities {
   visualizations: string[];
   model_artifacts?: Record<string, unknown>;
   logging?: Record<string, unknown>;
+  crabnet?: Record<string, unknown>;
 }
 
 function webRouteNotFoundMessage(method: string, url: string): string {
@@ -122,7 +129,7 @@ export async function uploadDataset(file: File): Promise<DatasetResponse> {
     ? "excel"
     : "csv";
   const contentBase64 = await fileToDataUrl(file);
-  return request<DatasetResponse>("/datasets", {
+  const dataset = await request<DatasetResponse>("/datasets", {
     method: "POST",
     body: JSON.stringify({
       source_type: sourceType,
@@ -132,6 +139,8 @@ export async function uploadDataset(file: File): Promise<DatasetResponse> {
       sheet_name: 0
     })
   });
+  activateCompositionDataset(dataset.dataset_id);
+  return markFormulaLikeColumns(dataset);
 }
 
 export async function uploadModelArtifact(file: File): Promise<ModelArtifactImportResponse> {
@@ -154,8 +163,15 @@ export async function uploadModelArtifact(file: File): Promise<ModelArtifactImpo
     });
   }
   const imported = payload as ModelArtifactImportResponse;
+  const importedModelKwargs = imported.request?.model_kwargs as Record<string, unknown> | undefined;
+  const importedComposition = importedModelKwargs?.web_composition as Record<string, unknown> | undefined;
+  const compositionColumn = typeof importedComposition?.column === "string"
+    ? importedComposition.column
+    : "";
+  activateCompositionDataset(imported.dataset.dataset_id);
+  markFormulaLikeColumns(imported.dataset, compositionColumn);
   const savedAlpha = Number(
-    (imported.request?.model_kwargs as Record<string, unknown> | undefined)?._tabular_noise_alpha
+    importedModelKwargs?._tabular_noise_alpha
   );
   if (Number.isFinite(savedAlpha) && savedAlpha > 0) saveNoiseAlpha(savedAlpha);
   return imported;
@@ -201,6 +217,9 @@ export interface RunRegressionInput {
   targetDirections: Record<string, Direction>;
   direction: Direction;
   modelType: string;
+  compositionSettings: CompositionSettings;
+  crabnetCheckpoint: string;
+  crabnetEncoderTraining: "partial" | "full";
   projectionDimensions: number;
   fitMaxiter: number;
   normalize: boolean;
@@ -259,12 +278,25 @@ export function buildModelReuseSignature(input: RunRegressionInput): string {
     upper: variable.upper,
     categories: variable.categories ?? []
   }));
+  const composition = input.compositionSettings.enabled
+    ? compositionSettingsToBackend(input.compositionSettings)
+    : null;
+  if (composition) delete composition.element_constraints;
   return JSON.stringify(canonicalValue({
     datasetId: input.datasetId,
     featureColumns: input.featureColumns,
     targetColumns: input.targetColumns,
     targetModelSettings,
     modelType: input.modelType,
+    crabnet: input.modelType === "crabnet_gp" || input.modelType === "crabnet_dkl"
+      ? {
+          checkpoint: input.crabnetCheckpoint.trim() || null,
+          encoderTraining: input.modelType === "crabnet_dkl"
+            ? input.crabnetEncoderTraining
+            : "frozen"
+        }
+      : null,
+    composition,
     projectionDimensions: input.projectionDimensions,
     fitMaxiter: input.fitMaxiter,
     alpha: noiseAlpha,
@@ -342,6 +374,29 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
   }
   const settingError = input.targetSettings.map(validateTargetSetting).find(Boolean);
   if (settingError) throw new Error(settingError);
+  const crabnetModel = input.modelType === "crabnet_gp" || input.modelType === "crabnet_dkl";
+  if (crabnetModel) {
+    if (input.targetColumns.length !== 1 || input.targetSettings[0]?.task_type !== "regression") {
+      throw new Error("CrabNetモデルは単一の連続回帰目的にのみ対応しています。");
+    }
+    const composition = input.compositionSettings;
+    if (
+      !composition.enabled ||
+      !composition.column ||
+      !input.featureColumns.includes(composition.column) ||
+      composition.elements.length < 2
+    ) {
+      throw new Error("CrabNetモデルには候補元素を2種類以上設定した組成式列が必要です。");
+    }
+    if (input.searchSpace.some(
+      (variable) => variable.type === "categorical" && variable.name !== composition.column
+    )) {
+      throw new Error("CrabNetモデルのprocess列は連続数値にしてください。");
+    }
+    if (input.inputPerturbation) {
+      throw new Error("CrabNetモデルは入力摂動にまだ対応していません。");
+    }
+  }
   if (!Number.isInteger(input.nW) || input.nW < 1) throw new Error("入力摂動のnは1以上の整数にしてください。");
   if (!Number.isFinite(input.perturbationStd) || input.perturbationStd <= 0) {
     throw new Error("入力摂動のばらつきは0より大きくしてください。");
@@ -428,6 +483,14 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       multiple_impute_sample_posterior: featureMissing.multipleImputeSamplePosterior
     }
   };
+  const checkpoint = input.crabnetCheckpoint.trim();
+  if (crabnetModel && checkpoint) modelKwargs.checkpoint = checkpoint;
+  if (input.modelType === "crabnet_dkl") {
+    modelKwargs.encoder_training = input.crabnetEncoderTraining;
+  }
+  if (input.compositionSettings.enabled && input.compositionSettings.column) {
+    modelKwargs.web_composition = compositionSettingsToBackend(input.compositionSettings);
+  }
   if (noiseAlpha !== null) {
     modelKwargs._tabular_noise_alpha = noiseAlpha;
   }
@@ -437,6 +500,21 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
   if (input.modelType === "pca" || input.modelType === "rembo") {
     modelKwargs.n_components = input.projectionDimensions;
   }
+
+  const searchSpace = input.searchSpace.map((variable) => (
+    input.compositionSettings.enabled && variable.name === input.compositionSettings.column
+      ? {
+          name: variable.name,
+          type: "auto",
+          fixed: false,
+          fixed_value: null,
+          categories: null,
+          lower: null,
+          upper: null,
+          step: null
+        }
+      : variable
+  ));
 
   return request<RegressionResult>("/regression/run", {
     method: "POST",
@@ -455,7 +533,7 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       input_perturbation: input.inputPerturbation,
       n_w: input.nW,
       perturbation_std: input.perturbationStd,
-      search_space: input.searchSpace,
+      search_space: searchSpace,
       constraints,
       outcome_constraints: [],
       k_sparse: selectionCount.enabled ? {

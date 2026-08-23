@@ -16,7 +16,7 @@ def test_composition_settings_are_owned_by_react_pages() -> None:
         encoding="utf-8"
     )
     main = Path("web/src/main.tsx").read_text(encoding="utf-8")
-    runtime = Path("web/src/compositionRuntime.ts").read_text(encoding="utf-8")
+    api = Path("web/src/api.ts").read_text(encoding="utf-8")
 
     assert "CompositionModelSettings" in settings_page
     assert "CompositionSearchSpaceConstraints" in search_variables
@@ -41,14 +41,16 @@ def test_composition_settings_are_owned_by_react_pages() -> None:
         assert "replaceWith" not in source
         assert "insertAdjacentElement" not in source
 
-    assert 'from "./compositionRuntime"' in main
-    assert "installCompositionRuntime" in main
+    assert 'from "./compositionRuntime"' not in main
+    assert "installCompositionRuntime" not in main
     assert 'from "./compositionExtension"' not in main
     assert "installCompositionExtension" not in main
-    assert "synchronizeModelPanel" not in runtime
-    assert "synchronizeConstraintPanel" not in runtime
-    assert "composition-model-settings-host" not in runtime
-    assert "composition-constraint-settings-host" not in runtime
+    assert "modelKwargs.web_composition" in api
+    assert "synchronizeModelPanel" not in api
+    assert "synchronizeConstraintPanel" not in api
+    assert "composition-model-settings-host" not in api
+    assert "composition-constraint-settings-host" not in api
+    assert not Path("web/src/compositionRuntime.ts").exists()
 
 
 def test_search_and_composition_tables_share_compact_aligned_columns() -> None:

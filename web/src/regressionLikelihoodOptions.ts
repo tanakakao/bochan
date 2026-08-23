@@ -11,6 +11,8 @@ export type RegressionModelVariant =
   | "base"
   | "deepgp"
   | "deepkernel"
+  | "crabnet_gp"
+  | "crabnet_dkl"
   | "saas"
   | "pca"
   | "rembo"
@@ -57,7 +59,9 @@ export const REGRESSION_LIKELIHOOD_OPTIONS: ReadonlyArray<{
 const MODEL_VARIANT_LABELS: Record<RegressionModelVariant, string> = {
   base: "Base GP",
   deepgp: "Deep GP",
-  deepkernel: "Deep Kernel",
+  deepkernel: "Deep Kernel GP",
+  crabnet_gp: "CrabNet-GP",
+  crabnet_dkl: "CrabNet-DKL",
   saas: "SAAS",
   pca: "PCA",
   rembo: "REMBO",

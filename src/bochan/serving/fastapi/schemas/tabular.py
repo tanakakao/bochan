@@ -19,6 +19,8 @@ from .requests import APIRequest
 
 TabularPayload = list[dict[str, Any]] | dict[str, list[Any]]
 
+_CRABNET_MODEL_TYPES = frozenset({"crabnet_gp", "crabnet_dkl"})
+
 
 class FeatureImportanceGroupRequest(APIRequest):
     """Column-addressed permutation group."""
@@ -147,6 +149,11 @@ class TabularFitModelRequest(APIRequest):
     categorical_cols: list[str] = Field(default_factory=list)
     target_categorical_cols: list[str] | None = None
     bounds: Any | None = None
+    composition_sites: dict[str, dict[str, Any]] | None = None
+    composition_element_constraints: list[dict[str, Any]] = Field(default_factory=list)
+    composition_constraint_rerank: bool = True
+    composition_constraint_rerank_factor: int = Field(default=4, ge=1)
+    composition_constraint_max_supports: int = Field(default=256, ge=1)
     dtype: str = "float64"
     device: str | None = None
     dropna: bool = True
@@ -206,6 +213,88 @@ class TabularFitModelRequest(APIRequest):
             raise ValueError(
                 "target_missing_strategy='keep' cannot be combined with impute_targets=True."
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_crabnet_contract(self):
+        """Reject unsupported CrabNet HTTP configurations before model fitting."""
+
+        model_type = str(self.bo_model_config.model_type).lower()
+        if model_type not in _CRABNET_MODEL_TYPES:
+            return self
+
+        if str(self.bo_model_config.task_type).lower() != "regression":
+            raise ValueError("Tabular CrabNet models support task_type='regression' only.")
+        targets = (
+            list(self.target_cols)
+            if isinstance(self.target_cols, list)
+            else [self.target_cols]
+        )
+        if len(targets) != 1:
+            raise ValueError("Tabular CrabNet models currently support one target column only.")
+        if (
+            self.multi_output_config is not None
+            or self.bo_model_config.multi_output_config is not None
+        ):
+            raise ValueError("Tabular CrabNet models do not support multi_output_config.")
+        if self.bo_model_config.input_type not in (None, "normal"):
+            raise ValueError("Tabular CrabNet models support normal continuous inputs only.")
+        if self.categorical_cols:
+            raise ValueError("Tabular CrabNet models support continuous process columns only.")
+        if self.target_categorical_cols:
+            raise ValueError("Tabular CrabNet models require a continuous regression target.")
+
+        sites = dict(self.composition_sites or {})
+        if len(sites) != 1:
+            raise ValueError("Tabular CrabNet models require exactly one composition site.")
+        site = next(iter(sites.values()))
+        composition_column = str(site.get("column", "")).strip()
+        if not composition_column or composition_column not in self.input_cols:
+            raise ValueError(
+                "The CrabNet composition site column must be included in input_cols."
+            )
+        if bool(site.get("include_descriptors", False)):
+            raise ValueError("Tabular CrabNet models do not support composition descriptors.")
+
+        transform = self.bo_model_config.input_transform_config
+        if transform is not None:
+            if transform.perturbation:
+                raise ValueError(
+                    "Tabular CrabNet models do not yet support input perturbation."
+                )
+            if transform.categorical_idx:
+                raise ValueError(
+                    "Tabular CrabNet models do not support categorical input transforms."
+                )
+
+        model_kwargs = dict(self.bo_model_config.model_kwargs)
+        checkpoint = model_kwargs.get("checkpoint")
+        if checkpoint is not None and (
+            not isinstance(checkpoint, str) or not checkpoint.strip()
+        ):
+            raise ValueError(
+                "model_config.model_kwargs.checkpoint must be a non-empty "
+                "server-accessible path string."
+            )
+        if "trainable_encoder_layers" in model_kwargs:
+            raise ValueError(
+                "The FastAPI CrabNet interface accepts encoder_training='partial' "
+                "or 'full'; configure trainable_encoder_layers through the Python API."
+            )
+        if model_type == "crabnet_gp":
+            if "encoder_training" in model_kwargs:
+                raise ValueError(
+                    "crabnet_gp always freezes the encoder; encoder_training is "
+                    "available only for crabnet_dkl."
+                )
+        else:
+            encoder_training = str(
+                model_kwargs.get("encoder_training", "partial")
+            ).lower()
+            if encoder_training not in {"partial", "full"}:
+                raise ValueError("encoder_training must be 'partial' or 'full'.")
+            model_kwargs["encoder_training"] = encoder_training
+        self.bo_model_config.model_kwargs = model_kwargs
         return self
 
 

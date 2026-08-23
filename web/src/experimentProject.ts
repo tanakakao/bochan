@@ -1,4 +1,5 @@
 import type { RunRegressionInput } from "./api";
+import { compositionSettingsToBackend } from "./compositionExtension";
 import type { RegressionResult } from "./types";
 import {
   loadFeatureConstraints,
@@ -90,6 +91,15 @@ function buildProjectRunRequest(input: RunRegressionInput): Record<string, unkno
       multiple_impute_sample_posterior: featureMissing.multipleImputeSamplePosterior
     }
   };
+  const crabnetModel = input.modelType === "crabnet_gp" || input.modelType === "crabnet_dkl";
+  const checkpoint = input.crabnetCheckpoint.trim();
+  if (crabnetModel && checkpoint) modelKwargs.checkpoint = checkpoint;
+  if (input.modelType === "crabnet_dkl") {
+    modelKwargs.encoder_training = input.crabnetEncoderTraining;
+  }
+  if (input.compositionSettings.enabled && input.compositionSettings.column) {
+    modelKwargs.web_composition = compositionSettingsToBackend(input.compositionSettings);
+  }
   if (input.modelType === "pca" || input.modelType === "rembo") {
     modelKwargs.n_components = input.projectionDimensions;
   }
@@ -109,7 +119,20 @@ function buildProjectRunRequest(input: RunRegressionInput): Record<string, unkno
     input_perturbation: input.inputPerturbation,
     n_w: input.nW,
     perturbation_std: input.perturbationStd,
-    search_space: input.searchSpace,
+    search_space: input.searchSpace.map((variable) => (
+      input.compositionSettings.enabled && variable.name === input.compositionSettings.column
+        ? {
+            name: variable.name,
+            type: "auto",
+            fixed: false,
+            fixed_value: null,
+            categories: null,
+            lower: null,
+            upper: null,
+            step: null
+          }
+        : variable
+    )),
     constraints,
     outcome_constraints: [],
     k_sparse: selectionCount.enabled ? {

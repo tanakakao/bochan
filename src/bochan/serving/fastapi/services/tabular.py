@@ -176,6 +176,28 @@ def build_fit_response(
         for index in dataset.cat_dims
         if 0 <= index < len(dataset.feature_names)
     ]
+    metadata = model_metadata(optimizer.bo)
+    if str(bundle.model_type) in {"crabnet_gp", "crabnet_dkl"}:
+        model = bundle.model
+        material_encoder = getattr(model, "material_encoder", None)
+        trainable_layers = getattr(model, "trainable_encoder_layers", None)
+        if str(bundle.model_type) == "crabnet_gp":
+            training_mode = "frozen"
+        elif trainable_layers == "all":
+            training_mode = "full"
+        else:
+            training_mode = "partial"
+        sites = dict(getattr(optimizer.composition, "sites", {}) or {})
+        site_name, site = next(iter(sites.items()))
+        initialization = getattr(material_encoder, "initialization", None)
+        metadata["crabnet"] = {
+            "encoder_training": training_mode,
+            "encoder_initialization": initialization,
+            "checkpoint_configured": initialization == "checkpoint",
+            "composition_site": site_name,
+            "composition_column": site.get("column"),
+            "process_dim": getattr(model, "process_dim", None),
+        }
     return TabularModelFitResponse(
         model_id=model_id,
         task_type=str(bundle.task_type),
@@ -186,7 +208,7 @@ def build_fit_response(
         categorical_cols=to_serializable(categorical_cols),
         category_maps=to_serializable(dataset.category_maps or {}),
         target_category_maps=to_serializable(dataset.target_category_maps or {}),
-        metadata=model_metadata(optimizer.bo),
+        metadata=to_serializable(metadata),
         cross_validation=to_serializable(optimizer.cross_validation_result_),
     )
 
@@ -291,6 +313,15 @@ def fit_tabular_optimizer(request: TabularFitModelRequest) -> TabularBayesianOpt
         categorical_cols=request.categorical_cols,
         target_categorical_cols=request.target_categorical_cols,
         bounds=request.bounds,
+        composition_sites=request.composition_sites,
+        composition_element_constraints=request.composition_element_constraints,
+        composition_constraint_rerank=request.composition_constraint_rerank,
+        composition_constraint_rerank_factor=(
+            request.composition_constraint_rerank_factor
+        ),
+        composition_constraint_max_supports=(
+            request.composition_constraint_max_supports
+        ),
         dtype=request.dtype,
         device=request.device,
         dropna=request.dropna,

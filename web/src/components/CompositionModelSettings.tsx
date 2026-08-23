@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { loadCompositionSettings } from "../compositionExtension";
-
-const STORAGE_KEY = "bochan-web-composition-settings";
-const CHANGE_EVENT = "bochan-composition-settings-change";
-
-type CompositionSettings = ReturnType<typeof loadCompositionSettings>;
+import {
+  COMPOSITION_SETTINGS_CHANGE_EVENT,
+  loadCompositionSettings,
+  saveCompositionSettings,
+  type CompositionSettings
+} from "../compositionExtension";
 type Representation = CompositionSettings["representation"];
 type Normalization = CompositionSettings["normalization"];
 type SettingsUpdater = (settings: CompositionSettings) => CompositionSettings;
@@ -13,18 +13,13 @@ function uniqueStrings(value: string): string[] {
   return [...new Set(value.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean))];
 }
 
-function saveCompositionSettings(settings: CompositionSettings): void {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-  window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
-}
-
 function useCompositionSettings(): [CompositionSettings, (updater: SettingsUpdater) => void] {
   const [settings, setSettings] = useState<CompositionSettings>(() => loadCompositionSettings());
 
   useEffect(() => {
     const refresh = () => setSettings(loadCompositionSettings());
-    window.addEventListener(CHANGE_EVENT, refresh);
-    return () => window.removeEventListener(CHANGE_EVENT, refresh);
+    window.addEventListener(COMPOSITION_SETTINGS_CHANGE_EVENT, refresh);
+    return () => window.removeEventListener(COMPOSITION_SETTINGS_CHANGE_EVENT, refresh);
   }, []);
 
   const update = useCallback((updater: SettingsUpdater) => {

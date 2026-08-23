@@ -8,6 +8,7 @@ import type {
   SearchVariable,
   TargetSetting
 } from "../types";
+import type { CompositionSettings } from "../compositionExtension";
 
 export type WorkbenchStep = "data" | "prepare" | "settings" | "optimize" | "results" | "logs";
 export type Theme = "light" | "dark";
@@ -67,6 +68,11 @@ export interface WorkbenchContextValue {
   setProjectionDimensions: (value: number) => void;
   modelType: string;
   setModelType: (modelType: string) => void;
+  compositionSettings: CompositionSettings;
+  crabnetCheckpoint: string;
+  setCrabnetCheckpoint: (checkpoint: string) => void;
+  crabnetEncoderTraining: "partial" | "full";
+  setCrabnetEncoderTraining: (mode: "partial" | "full") => void;
   acquisitionFamily: AcquisitionFamily;
   setAcquisitionFamily: (family: AcquisitionFamily) => void;
   acquisition: string;

@@ -1,4 +1,8 @@
 import { buildModelReuseSignature, type RunRegressionInput } from "./api";
+import {
+  compositionSettingsFromBackend,
+  type CompositionSettings
+} from "./compositionExtension";
 import { getColumnClassValues } from "./targetSettingUtils";
 import type {
   AcquisitionFamily,
@@ -30,6 +34,9 @@ interface RestoredWorkbenchState {
   perturbationStd: number;
   projectionDimensions: number;
   modelType: string;
+  compositionSettings: CompositionSettings;
+  crabnetCheckpoint: string;
+  crabnetEncoderTraining: "partial" | "full";
   acquisitionFamily: AcquisitionFamily;
   acquisition: string;
   beta: number;
@@ -244,6 +251,13 @@ export function restoreWorkbenchFromArtifact(
   const perturbationStd = finiteNumber(request.perturbation_std, 0.1);
   const backendModelType = String(request.model_type ?? result.model_type ?? "base");
   const modelType = backendModelType === "rrp" ? "robust" : backendModelType;
+  const compositionSettings = compositionSettingsFromBackend(modelKwargs.web_composition);
+  const crabnetCheckpoint = typeof modelKwargs.checkpoint === "string"
+    ? modelKwargs.checkpoint
+    : "";
+  const crabnetEncoderTraining = modelKwargs.encoder_training === "full"
+    ? "full"
+    : "partial";
   const projectionDimensions = Math.max(1, Math.trunc(finiteNumber(
     modelKwargs.n_components,
     Math.min(2, Math.max(featureColumns.length, 1))
@@ -294,6 +308,9 @@ export function restoreWorkbenchFromArtifact(
     targetDirections,
     direction: targetDirections[targetColumn] ?? "maximize",
     modelType,
+    compositionSettings,
+    crabnetCheckpoint,
+    crabnetEncoderTraining,
     projectionDimensions,
     fitMaxiter,
     normalize,
@@ -322,6 +339,9 @@ export function restoreWorkbenchFromArtifact(
     perturbationStd,
     projectionDimensions,
     modelType,
+    compositionSettings,
+    crabnetCheckpoint,
+    crabnetEncoderTraining,
     acquisitionFamily,
     acquisition,
     beta,

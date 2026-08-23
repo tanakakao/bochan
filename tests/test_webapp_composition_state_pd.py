@@ -96,13 +96,16 @@ def test_pd_aggregate_uses_total_predictive_variance() -> None:
     assert np.isclose(std, np.sqrt(1.25))
 
 
-def test_dataset_state_resets_stale_composition_without_dom_sync() -> None:
-    source = Path("web/src/compositionDatasetState.ts").read_text(encoding="utf-8")
+def test_dataset_state_resets_stale_composition_without_fetch_replacement() -> None:
+    source = Path("web/src/compositionExtension.ts").read_text(encoding="utf-8")
+    api = Path("web/src/api.ts").read_text(encoding="utf-8")
     main = Path("web/src/main.tsx").read_text(encoding="utf-8")
 
     assert 'ACTIVE_DATASET_KEY = "bochan-web-composition-dataset-id"' in source
-    assert "resetCompositionSelection()" in source
-    assert "installCompositionDatasetState();" in main
+    assert "activateCompositionDataset(dataset.dataset_id)" in api
+    assert "installCompositionDatasetState" not in main
+    assert "window.fetch =" not in source
+    assert not Path("web/src/compositionDatasetState.ts").exists()
     assert "MutationObserver" not in source
     assert "document.querySelector" not in source
     assert "composition-model-settings-host" not in source

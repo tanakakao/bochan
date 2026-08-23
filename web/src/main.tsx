@@ -3,8 +3,6 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import DynamicNumberStepBridge from "./components/DynamicNumberStepBridge";
 import WorkbenchPageErrorBoundary from "./components/WorkbenchPageErrorBoundary";
-import { installCompositionDatasetState } from "./compositionDatasetState";
-import { installCompositionRuntime } from "./compositionRuntime";
 import "./styles.css";
 import "./styles/typography.css";
 import "./target-settings.css";
@@ -18,9 +16,6 @@ import "./styles/workbench-design.css";
 import "./composition-extension.css";
 import "./styles/layout-safety.css";
 import "./red-theme.css";
-
-installCompositionRuntime();
-installCompositionDatasetState();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

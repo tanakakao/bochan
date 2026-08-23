@@ -76,6 +76,7 @@ _NATIVE_MULTITASK_MODEL_TYPE_ALIASES = {
     "poisson_multitask": "poisson_wide_multitask",
     "negative_binomial_multitask": "negative_binomial_wide_multitask",
 }
+_CRABNET_MODEL_TYPES = frozenset({"crabnet_gp", "crabnet_dkl"})
 
 
 def _acquisition_family(acqf_kwargs: dict[str, Any]) -> str:
@@ -173,6 +174,88 @@ def _is_direct_multitask_model(model_type: str) -> bool:
     """Return whether Web should fit one native correlated multitask model."""
 
     return _resolve_direct_multitask_model_type(model_type) is not None
+
+
+def _resolve_crabnet_web_model(
+    *,
+    model_type: str,
+    model_kwargs: dict[str, Any],
+    target_columns: list[str],
+    internal_tasks: list[str],
+    feature_columns: list[str],
+    encoded_features: dict[str, Any],
+    composition_config: dict[str, Any] | None,
+    input_perturbation: bool,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Validate the Web CrabNet contract and resolve its public controls."""
+
+    resolved = dict(model_kwargs)
+    if model_type not in _CRABNET_MODEL_TYPES:
+        return resolved, None
+    if composition_config is None:
+        raise ValueError(
+            f"{model_type} requires one feature column configured as a composition formula."
+        )
+    if len(target_columns) != 1 or internal_tasks != ["regression"]:
+        raise ValueError(
+            f"{model_type} supports one continuous regression target only."
+        )
+    if encoded_features["cat_dims"]:
+        categorical = [
+            encoded_features["feature_columns"][int(index)]
+            for index in encoded_features["cat_dims"]
+        ]
+        raise ValueError(
+            f"{model_type} supports continuous process columns only; "
+            f"categorical process columns were configured: {categorical!r}."
+        )
+    if input_perturbation:
+        raise ValueError(f"{model_type} does not yet support input perturbation.")
+    if "trainable_encoder_layers" in resolved:
+        raise ValueError(
+            "The Web CrabNet interface accepts encoder_training='partial' or "
+            "'full'; configure trainable_encoder_layers through the Python API."
+        )
+    for reserved in ("element_ids", "input_transform"):
+        if reserved in resolved:
+            raise ValueError(
+                f"{reserved} is derived from the Web composition settings and "
+                "must not be supplied in model_kwargs."
+            )
+
+    checkpoint = resolved.get("checkpoint")
+    if checkpoint is not None:
+        if not isinstance(checkpoint, str) or not checkpoint.strip():
+            raise ValueError(
+                "model_kwargs.checkpoint must be a non-empty "
+                "server-accessible path string."
+            )
+        resolved["checkpoint"] = checkpoint.strip()
+
+    if model_type == "crabnet_gp":
+        if "encoder_training" in resolved:
+            raise ValueError(
+                "crabnet_gp always freezes the encoder; encoder_training is "
+                "available only for crabnet_dkl."
+            )
+        training_mode = "frozen"
+    else:
+        training_mode = str(resolved.get("encoder_training", "partial")).lower()
+        if training_mode not in {"partial", "full"}:
+            raise ValueError("encoder_training must be 'partial' or 'full'.")
+        resolved["encoder_training"] = training_mode
+
+    composition_column = str(composition_config["column"])
+    return resolved, {
+        "encoder_training": training_mode,
+        "checkpoint_configured": checkpoint is not None,
+        "composition_column": composition_column,
+        "process_columns": [
+            column
+            for column in feature_columns
+            if column != composition_column
+        ],
+    }
 
 
 def _direct_multitask_model_config_kwargs(
@@ -422,6 +505,17 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         target_metadata[target]["internal_task"]
         for target in target_columns
     ]
+    user_model_kwargs, crabnet_metadata = _resolve_crabnet_web_model(
+        model_type=model_type,
+        model_kwargs=user_model_kwargs,
+        target_columns=target_columns,
+        internal_tasks=internal_tasks,
+        feature_columns=feature_columns,
+        encoded_features=encoded_features,
+        composition_config=composition_config,
+        input_perturbation=request.input_perturbation,
+    )
+    direct_crabnet = crabnet_metadata is not None
     direct_multitask_model_type = _resolve_direct_multitask_model_type(model_type)
     direct_multitask = direct_multitask_model_type is not None
     if direct_multitask:
@@ -507,6 +601,23 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
                     n_features=int(provisional_train_x.shape[1]),
                 ),
             )
+        )
+        hybrid_model = False
+    elif direct_crabnet:
+        metadata = target_metadata[target_columns[0]]
+        model_config = ModelConfig(
+            task_type="regression",
+            model_type=model_type,
+            input_type="normal",
+            cat_dims=None,
+            input_transform_config=input_transform_config,
+            outcome_transform=request.outcome_transform,
+            model_kwargs=_model_kwargs(
+                user_model_kwargs,
+                model_type=model_type,
+                n_features=int(provisional_train_x.shape[1]),
+                target_meta=metadata,
+            ),
         )
         hybrid_model = False
     else:
@@ -1104,6 +1215,11 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
             "internal_tasks": internal_tasks,
             "internal_model_type": internal_model_type,
             "hybrid_model": hybrid_model,
+            **(
+                {"crabnet": crabnet_metadata}
+                if crabnet_metadata is not None
+                else {}
+            ),
             "timings_ms": timings_ms,
             "cross_validation": to_serializable(
                 tabular_optimizer.cross_validation_result_

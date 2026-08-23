@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState, SectionHeader } from "../components/Common";
 import CompositionModelSettings from "../components/CompositionModelSettings";
+import CrabNetModelSettings from "../components/CrabNetModelSettings";
 import {
   FeatureMissingImputationSettings,
   FeatureMissingStrategySettings
@@ -13,6 +14,7 @@ import {
   MODEL_FAMILY_OPTIONS,
   MODEL_OPTIONS,
   isMultitaskModelType,
+  isCrabNetModelType,
   isNonGaussianModelType,
   isProjectedModelType,
   modelFamilyFor,
@@ -53,6 +55,7 @@ export default function SettingsPage() {
     setProjectionDimensions,
     modelType,
     setModelType,
+    compositionSettings,
     fitMaxiter,
     setFitMaxiter,
     crossValidation,
@@ -90,6 +93,17 @@ export default function SettingsPage() {
   const hasRegressionTargets = taskTypes.some((task) => task === "regression");
   const hasCategoricalFeatures = selectedVariables.some((variable) => variable.type === "categorical");
   const canUseMultitask = targetColumns.length > 1 && allRegression && !hasCategoricalFeatures;
+  const canUseCrabNet = Boolean(
+    targetColumns.length === 1 &&
+    allRegression &&
+    compositionSettings.enabled &&
+    compositionSettings.column &&
+    selectedVariables.some((variable) => variable.name === compositionSettings.column) &&
+    compositionSettings.elements.length >= 2 &&
+    !selectedVariables.some(
+      (variable) => variable.type === "categorical" && variable.name !== compositionSettings.column
+    )
+  );
   const projectedModel = isProjectedModelType(modelType);
   const maxProjectionDimensions = Math.max(selectedVariables.length, 1);
 
@@ -97,9 +111,10 @@ export default function SettingsPage() {
     () => MODEL_OPTIONS.filter((option) => (
       taskTypes.every((task) => modelSupportsTaskType(option.value, task)) &&
       (!isNonGaussianModelType(option.value) || allRegression) &&
-      (!isMultitaskModelType(option.value) || canUseMultitask)
+      (!isMultitaskModelType(option.value) || canUseMultitask) &&
+      (!isCrabNetModelType(option.value) || canUseCrabNet)
     )),
-    [allRegression, canUseMultitask, taskTypes]
+    [allRegression, canUseCrabNet, canUseMultitask, taskTypes]
   );
   const modelLikelihood = regressionLikelihoodFor(modelType);
   const modelFamily = modelFamilyFor(modelType);
@@ -278,6 +293,8 @@ export default function SettingsPage() {
             </div>
           </section>
         </div>
+
+        <CrabNetModelSettings />
 
         <details className="model-card-details model-output-details" open={!settingsValid}>
           <summary>詳細設定（学習・頑健化・欠損値・観測ノイズ・評価・診断）</summary>

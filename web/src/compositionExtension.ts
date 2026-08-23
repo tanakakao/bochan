@@ -1,4 +1,7 @@
 const STORAGE_KEY = "bochan-web-composition-settings";
+const ACTIVE_DATASET_KEY = "bochan-web-composition-dataset-id";
+
+export const COMPOSITION_SETTINGS_CHANGE_EVENT = "bochan-composition-settings-change";
 
 type Representation = "fractions" | "clr" | "alr" | "ilr";
 type Normalization = "atomic_fraction" | "weight_fraction";
@@ -171,4 +174,134 @@ export function loadCompositionSettings(): CompositionSettings {
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
+}
+
+/** Persist normalized composition settings and notify React subscribers. */
+export function saveCompositionSettings(settings: CompositionSettings): void {
+  const normalized = normalizeSettings(settings);
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+  window.dispatchEvent(new CustomEvent(COMPOSITION_SETTINGS_CHANGE_EVENT));
+}
+
+/** Clear a stale composition selection when a newly uploaded dataset becomes active. */
+export function activateCompositionDataset(datasetId: string): void {
+  const normalizedId = String(datasetId).trim();
+  if (!normalizedId) return;
+  const previousId = window.localStorage.getItem(ACTIVE_DATASET_KEY);
+  if (previousId === normalizedId) return;
+  window.localStorage.setItem(ACTIVE_DATASET_KEY, normalizedId);
+  saveCompositionSettings({
+    ...loadCompositionSettings(),
+    enabled: false,
+    column: "",
+    elements: []
+  });
+}
+
+/** Convert React-owned settings to the canonical Web backend payload. */
+export function compositionSettingsToBackend(
+  settings: CompositionSettings
+): Record<string, unknown> {
+  const bounds = Object.fromEntries(settings.elements.map((element) => [
+    element,
+    settings.bounds[element] ?? [0, 1]
+  ]));
+  const steps = Object.fromEntries(settings.elements.flatMap((element) => {
+    const step = settings.steps[element];
+    return step && step > 0 ? [[element, step]] : [];
+  }));
+  return {
+    enabled: settings.enabled,
+    column: settings.column,
+    elements: settings.elements,
+    normalization: settings.normalization,
+    representation: settings.representation,
+    reference_element: settings.referenceElement || null,
+    pseudocount: settings.pseudocount,
+    precision: settings.precision,
+    total: 1,
+    coordinate_bounds: [settings.coordinateLower, settings.coordinateUpper],
+    min_components: settings.minComponents,
+    max_components: settings.maxComponents,
+    required_components: settings.requiredComponents,
+    bounds,
+    steps,
+    element_constraints: settings.constraints.map((constraint) => ({
+      terms: constraint.terms.map((term) => ({
+        element: term.element,
+        coefficient: term.coefficient
+      })),
+      operator: constraint.operator,
+      rhs: constraint.rhs,
+      basis: constraint.basis
+    }))
+  };
+}
+
+/** Restore a saved backend composition payload to the React settings shape. */
+export function compositionSettingsFromBackend(value: unknown): CompositionSettings {
+  if (!value || typeof value !== "object") return { ...DEFAULT_SETTINGS };
+  const raw = value as Record<string, unknown>;
+  const coordinateBounds = Array.isArray(raw.coordinate_bounds)
+    ? raw.coordinate_bounds
+    : [-8, 8];
+  return normalizeSettings({
+    enabled: raw.enabled ?? Boolean(raw.column),
+    column: raw.column,
+    elements: raw.elements,
+    normalization: raw.normalization,
+    representation: raw.representation,
+    referenceElement: raw.reference_element,
+    pseudocount: raw.pseudocount,
+    precision: raw.precision,
+    coordinateLower: coordinateBounds[0],
+    coordinateUpper: coordinateBounds[1],
+    minComponents: raw.min_components,
+    maxComponents: raw.max_components,
+    requiredComponents: raw.required_components,
+    bounds: raw.bounds,
+    steps: raw.steps,
+    constraints: raw.element_constraints
+  });
+}
+
+interface FormulaDatasetPayload {
+  profile?: { columns?: Array<{ name?: string; kind?: string }> };
+  preview?: Record<string, unknown>[];
+}
+
+function elementSymbols(formula: unknown): string[] {
+  if (typeof formula !== "string") return [];
+  const compact = formula.replace(/\s+/g, "");
+  if (!compact || !/^[A-Za-z0-9.()[\]·]+$/.test(compact)) return [];
+  return [...new Set(compact.match(/[A-Z][a-z]?/g) ?? [])];
+}
+
+function formulaLikeColumn(column: string, preview: Record<string, unknown>[]): boolean {
+  const values = preview
+    .map((row) => row[column])
+    .filter((value) => value !== null && value !== undefined);
+  if (!values.length) return false;
+  const matches = values.filter(
+    (value) => typeof value === "string" && elementSymbols(value).length > 0
+  );
+  return matches.length / values.length >= 0.7;
+}
+
+/** Mark formula-like or explicitly configured composition columns as selectable inputs. */
+export function markFormulaLikeColumns<T extends FormulaDatasetPayload>(
+  payload: T,
+  configuredColumn = ""
+): T {
+  const preview = payload.preview ?? [];
+  for (const column of payload.profile?.columns ?? []) {
+    if (
+      column.kind === "string" &&
+      column.name &&
+      (column.name === configuredColumn || formulaLikeColumn(column.name, preview))
+    ) {
+      column.kind = "categorical";
+    }
+  }
+  return payload;
 }

@@ -15,6 +15,7 @@ export type RegressionModelVariant =
   | "crabnet_mixed_gp"
   | "crabnet_dkl"
   | "crabnet_mixed_dkl"
+  | "crabnet_multitask"
   | "saas"
   | "pca"
   | "rembo"
@@ -66,6 +67,7 @@ const MODEL_VARIANT_LABELS: Record<RegressionModelVariant, string> = {
   crabnet_mixed_gp: "CrabNet-Mixed GP",
   crabnet_dkl: "CrabNet-DKL",
   crabnet_mixed_dkl: "CrabNet-Mixed DKL",
+  crabnet_multitask: "CrabNet-MultiTask",
   saas: "SAAS",
   pca: "PCA",
   rembo: "REMBO",

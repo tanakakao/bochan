@@ -163,6 +163,41 @@ def _mutable_category_frame(
     return frame
 
 
+def _unwrap_single_output_crabnet_mixed_model_config(model_config: Any) -> Any:
+    """Convert Web's one-output hybrid wrapper into the direct mixed CrabNet model.
+
+    The generic Web workflow builds non-special single-output models through a
+    one-output ``MultiOutputConfig``. ``crabnet_mixed_gp`` needs the direct
+    tabular model contract so composition/categorical layout can be derived
+    before construction. Keep all parent search/transform settings while taking
+    the single output's model kwargs and regression task.
+    """
+
+    if str(getattr(model_config, "model_type", "")).lower() != "crabnet_mixed_gp":
+        return model_config
+    if str(getattr(model_config, "task_type", "")).lower() != "hybrid":
+        return model_config
+
+    multi_output = getattr(model_config, "multi_output_config", None)
+    output_configs = list(getattr(multi_output, "output_configs", None) or [])
+    if len(output_configs) != 1:
+        raise ValueError(
+            "crabnet_mixed_gp currently supports exactly one regression target."
+        )
+    output = output_configs[0]
+    if str(getattr(output, "task_type", "")).lower() != "regression":
+        raise ValueError(
+            "crabnet_mixed_gp currently supports a continuous regression target only."
+        )
+    return replace(
+        model_config,
+        task_type="regression",
+        input_type="mixed",
+        model_kwargs=dict(getattr(output, "model_kwargs", {}) or {}),
+        multi_output_config=None,
+    )
+
+
 def _descriptor_augmented_model_config(
     *,
     model_config: Any,
@@ -182,11 +217,11 @@ def _descriptor_augmented_model_config(
         return model_config
 
     model_type = str(getattr(model_config, "model_type", "")).lower()
-    if model_type in {"crabnet_gp", "crabnet_dkl"}:
+    if model_type in {"crabnet_gp", "crabnet_dkl", "crabnet_mixed_gp"}:
         raise ValueError(
             "CrabNet already derives a learned material representation from the "
             "composition. Web composition descriptors cannot currently be "
-            "combined with CrabNet-GP/CrabNet-DKL."
+            "combined with CrabNet models."
         )
     if model_type in {
         "random_forest",
@@ -276,6 +311,7 @@ def fit_tabular_optimizer(
         reuse_fitted_tabular_optimizer,
     )
 
+    model_config = _unwrap_single_output_crabnet_mixed_model_config(model_config)
     model_config = _descriptor_augmented_model_config(
         model_config=model_config,
         encoded_features=encoded_features,

@@ -23,6 +23,7 @@ jobs:
           pytest -q --maxfail=1 \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
+            tests/test_crabnet_integration_closure.py \
             tests/test_material_encoder_fusion.py \
             tests/test_tabular_composition.py \
             tests/test_tabular_architecture.py \
@@ -63,6 +64,7 @@ jobs:
             tests/test_material_encoder_fusion.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
+            tests/test_crabnet_integration_closure.py \
             tests/test_tabular_architecture.py \
             tests/test_tabular_composition.py \
             tests/test_tabular_composition_sites.py \

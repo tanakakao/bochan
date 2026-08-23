@@ -1,7 +1,8 @@
-# CrabNet-GP / CrabNet-DKL in FastAPI and Web
+# CrabNet-GP / CrabNet-DKL integration
 
-Phase 9 exposes the Phase 8 tabular selectors through the HTTP and React
-workbench layers without introducing additional model aliases:
+Bochan exposes the same two canonical selectors from the tensor model layer
+through Tabular, FastAPI, and the React workbench without additional model
+aliases:
 
 - `model_type="crabnet_gp"` — frozen CrabNet encoder plus an exact Gaussian GP.
 - `model_type="crabnet_dkl"` — CrabNet encoder fine-tuned jointly with the GP.
@@ -24,6 +25,60 @@ The Web extra includes the pinned CrabNet dependency:
 pip install -e ".[web]"
 uvicorn bochan.serving.webapp.app:app --reload --port 8000
 ```
+
+## Python and Tabular API
+
+The low-level classes are available from the Gaussian deep-model namespace:
+
+```python
+from bochan.models.regression.gaussian.deep import CrabNetDKLModel, CrabNetGPModel
+```
+
+Their tensor contract is a fixed-vocabulary block of atomic fractions followed
+by optional normalized continuous process features. For DataFrames, use the
+canonical `composition_sites` entry instead of constructing that tensor by
+hand. Assuming `data` contains the columns shown below:
+
+```python
+from bochan.tabular import TabularBayesianOptimizer
+
+optimizer = TabularBayesianOptimizer(
+    task_type="regression",
+    model_type="crabnet_dkl",
+    input_cols=["formula", "temperature", "holding_time"],
+    target_cols="property",
+    composition_sites={
+        "formula": {
+            "column": "formula",
+            "elements": ["Ba", "Sr", "Ti", "O"],
+            "representation": "ilr",
+            "coordinate_bounds": (-3.0, 3.0),
+        }
+    },
+    bounds={
+        "temperature": (950.0, 1400.0),
+        "holding_time": (1.0, 10.0),
+    },
+    model_kwargs={
+        "checkpoint": "/srv/checkpoints/crabnet.pth",
+        "encoder_training": "partial",
+    },
+    num_epochs=32,
+    lr=0.001,
+).fit(data)
+
+candidates, acquisition_value = optimizer.candidate(
+    acq_name="logei",
+    q=2,
+    num_restarts=4,
+    raw_samples=64,
+)
+```
+
+`crabnet_gp` freezes the material encoder. `crabnet_dkl` accepts
+`encoder_training="partial"` (the recommended default) or `"full"`. The Python
+API may also inject a `CrabNetEncoder` or compatible `torch.nn.Module` through
+`model_kwargs["encoder"]`; JSON APIs deliberately do not accept module objects.
 
 ## Tabular FastAPI request
 
@@ -130,3 +185,48 @@ FastAPI and Web reject these combinations before or during request preparation:
 
 Use the Python API when direct module injection or a numeric
 `trainable_encoder_layers` value is required.
+
+## Reproducibility and final verification
+
+The `materials`, `web`, and `all` extras all pin CrabNet to commit
+`d6906fed634a34d9a7cb5f35db2199629fdfd939`, and `uv.lock` records the same
+resolved revision. Importing `bochan.composition` remains lazy and does not
+import the optional upstream package until a non-injected `CrabNetEncoder` is
+constructed.
+
+Random encoder initialization is supported for integration smoke tests, but it
+is not described as pretrained. Use a compatible, trained checkpoint for a
+scientific run and retain the fitted Bochan artifact, the input data, the
+dependency lock, and the random seed together. HTTP metadata reports whether a
+checkpoint was configured and the effective freeze/fine-tuning policy without
+returning the server path.
+
+The permanent acceptance matrix is:
+
+| Surface | Guarded contract |
+|---|---|
+| Encoder/model | real pinned CrabNet CPU forward, posterior, gradients, freeze/partial/full policy, serialization |
+| BoTorch | qLogEI/qUCB/qLogNEI and gradient-based joint composition/process optimization |
+| Tabular | formula parsing, differentiable ILR conversion, fitting, prediction, and decoded candidate generation |
+| FastAPI/Web | validation, metadata, project/artifact restoration, and formula plus process candidate responses |
+| Distribution | identical pinned dependency in `materials`, `web`, `all`, and `uv.lock` |
+
+Run the final focused verification with:
+
+```bash
+pytest -q \
+  tests/test_crabnet_encoder.py \
+  tests/test_crabnet_gp.py \
+  tests/test_material_encoder_fusion.py \
+  tests/test_tabular_crabnet_models.py \
+  tests/test_fastapi_web_crabnet_models.py \
+  tests/test_crabnet_integration_closure.py
+ruff check src/bochan/composition src/bochan/models/regression/gaussian/deep \
+  tests/test_crabnet_encoder.py tests/test_crabnet_gp.py \
+  tests/test_tabular_crabnet_models.py tests/test_fastapi_web_crabnet_models.py \
+  tests/test_crabnet_integration_closure.py
+uv lock --check
+```
+
+The Composition API and Web composition GitHub workflows repeat these checks,
+including a real upstream CrabNet path and the production React build.

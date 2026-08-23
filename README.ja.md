@@ -62,6 +62,12 @@ Tabular DataFrame / numpy / CSV workflows:
 pip install -e ".[tabular]"
 ```
 
+CrabNet material encoder:
+
+```bash
+pip install -e ".[materials]"
+```
+
 Notebook examples:
 
 ```bash
@@ -652,6 +658,14 @@ uvicorn bochan.serving.fastapi.app:app --reload
 FastAPI layer は Python API を反映します。これは `ModelConfig`、`FitConfig`、`AcquisitionConfig`、`OutcomeConstraintConfig`、`OptimizeConfig`、および `DataContext` の JSON versions を受け取ります。
 
 既定の API prefix は `/api/v1` です。
+
+Python model API、Tabular API、Tabular FastAPI、および React workbench は、
+1つの組成式列と連続 process 列に対して同じ canonical
+`crabnet_gp` / `crabnet_dkl` selector を公開します。checkpoint、encoder の
+凍結・partial/full fine-tuning、validation、候補 response、再現性、および最終
+acceptance matrix は
+[`CrabNet-GP / CrabNet-DKL integration guide`](docs/crabnet_fastapi_web.md)
+を参照してください。
 
 Important endpoints:
 

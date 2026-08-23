@@ -255,7 +255,16 @@ function canonicalValue(value: unknown): unknown {
 function isCrabNetRunModel(modelType: string): boolean {
   return modelType === "crabnet_gp" ||
     modelType === "crabnet_mixed_gp" ||
-    modelType === "crabnet_dkl";
+    modelType === "crabnet_dkl" ||
+    modelType === "crabnet_mixed_dkl";
+}
+
+function isCrabNetMixedRunModel(modelType: string): boolean {
+  return modelType === "crabnet_mixed_gp" || modelType === "crabnet_mixed_dkl";
+}
+
+function isCrabNetDKLRunModel(modelType: string): boolean {
+  return modelType === "crabnet_dkl" || modelType === "crabnet_mixed_dkl";
 }
 
 function resolvedNoiseAlpha(input: RunRegressionInput): number | null {
@@ -297,7 +306,7 @@ export function buildModelReuseSignature(input: RunRegressionInput): string {
     crabnet: isCrabNetRunModel(input.modelType)
       ? {
           checkpoint: input.crabnetCheckpoint.trim() || null,
-          encoderTraining: input.modelType === "crabnet_dkl"
+          encoderTraining: isCrabNetDKLRunModel(input.modelType)
             ? input.crabnetEncoderTraining
             : "frozen"
         }
@@ -381,7 +390,8 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
   const settingError = input.targetSettings.map(validateTargetSetting).find(Boolean);
   if (settingError) throw new Error(settingError);
   const crabnetModel = isCrabNetRunModel(input.modelType);
-  const crabnetMixedModel = input.modelType === "crabnet_mixed_gp";
+  const crabnetMixedModel = isCrabNetMixedRunModel(input.modelType);
+  const crabnetDKLModel = isCrabNetDKLRunModel(input.modelType);
   if (crabnetModel) {
     if (input.targetColumns.length !== 1 || input.targetSettings[0]?.task_type !== "regression") {
       throw new Error("CrabNetモデルは単一の連続回帰目的にのみ対応しています。");
@@ -399,10 +409,12 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
       (variable) => variable.type === "categorical" && variable.name !== composition.column
     );
     if (crabnetMixedModel && categoricalProcess.length === 0) {
-      throw new Error("CrabNet-Mixed GPにはカテゴリprocess列を1列以上設定してください。");
+      const label = input.modelType === "crabnet_mixed_dkl" ? "CrabNet-Mixed DKL" : "CrabNet-Mixed GP";
+      throw new Error(`${label}にはカテゴリprocess列を1列以上設定してください。`);
     }
     if (!crabnetMixedModel && categoricalProcess.length > 0) {
-      throw new Error("カテゴリprocess列を含む場合はCrabNet-Mixed GPを使用してください。");
+      const label = crabnetDKLModel ? "CrabNet-Mixed DKL" : "CrabNet-Mixed GP";
+      throw new Error(`カテゴリprocess列を含む場合は${label}を使用してください。`);
     }
     if (input.inputPerturbation) {
       throw new Error("CrabNetモデルは入力摂動にまだ対応していません。");
@@ -496,7 +508,7 @@ export async function runRegression(input: RunRegressionInput): Promise<Regressi
   };
   const checkpoint = input.crabnetCheckpoint.trim();
   if (crabnetModel && checkpoint) modelKwargs.checkpoint = checkpoint;
-  if (input.modelType === "crabnet_dkl") {
+  if (crabnetDKLModel) {
     modelKwargs.encoder_training = input.crabnetEncoderTraining;
   }
   if (input.compositionSettings.enabled && input.compositionSettings.column) {

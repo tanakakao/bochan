@@ -51,7 +51,6 @@ tabular = [
 ]
 
 materials = [
-  "alignn==2026.8.11",
   "crabnet @ git+https://github.com/sparks-baird/CrabNet.git@d6906fed634a34d9a7cb5f35db2199629fdfd939",
 ]
 
@@ -133,7 +132,6 @@ dev = [
 ]
 
 all = [
-  "alignn==2026.8.11",
   "cma>=3.3",
   "crabnet @ git+https://github.com/sparks-baird/CrabNet.git@d6906fed634a34d9a7cb5f35db2199629fdfd939",
   "fastapi>=0.110",

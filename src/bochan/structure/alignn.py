@@ -18,7 +18,7 @@ from .adapter import StructureAdapter
 
 _ALIGNN_INSTALL_HINT = (
     "ALIGNN graph construction requires alignn and a compatible DGL installation. "
-    'Install bochan with the "materials" extra, then install DGL for your '
+    "Install alignn==2026.8.11, then install a DGL build matching your "
     "PyTorch/CUDA environment as documented by ALIGNN."
 )
 

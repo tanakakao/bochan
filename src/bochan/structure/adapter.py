@@ -114,7 +114,8 @@ class StructureAdapter:
         if pbc.shape != (3,) or not bool(np.all(pbc)):
             raise ValueError("ASE structures must be periodic in all three directions for ALIGNN crystal graphs.")
         elements = self._normalize_elements(structure.get_chemical_symbols())
-        cell = getattr(structure.get_cell(), "array", structure.get_cell())
+        cell_object = structure.get_cell()
+        cell = getattr(cell_object, "array", cell_object)
         lattice = _as_3x3_lattice(cell)
         coords = _as_coordinates(structure.get_positions(), n_atoms=len(elements))
         return atoms_class(
@@ -128,7 +129,7 @@ class StructureAdapter:
         is_ordered = getattr(structure, "is_ordered", True)
         if not bool(is_ordered):
             raise ValueError("Disordered pymatgen structures are not supported; resolve occupancies first.")
-        species = getattr(structure, "species")
+        species = structure.species
         elements = [_element_symbol(item) for item in species]
         lattice = _as_3x3_lattice(structure.lattice.matrix)
         coords = _as_coordinates(structure.frac_coords, n_atoms=len(elements))

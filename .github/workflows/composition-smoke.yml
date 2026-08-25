@@ -17,7 +17,9 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install
-        run: python -m pip install -e ".[test,tabular,api,materials]"
+        run: |
+          python -m pip install -e ".[test,tabular,api,materials]"
+          python -m pip install "alignn==2026.8.11"
       - name: Test composition APIs
         run: |
           pytest -q --maxfail=1 \

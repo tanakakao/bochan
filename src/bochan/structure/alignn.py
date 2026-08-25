@@ -56,15 +56,14 @@ class ALIGNNGraphConfig:
         if self.dtype not in _SUPPORTED_DTYPES:
             supported = ", ".join(sorted(_SUPPORTED_DTYPES))
             raise ValueError(f"dtype must be one of: {supported}.")
-        if self.three_body_cutoff is not None:
-            if (
-                isinstance(self.three_body_cutoff, bool)
-                or not isinstance(self.three_body_cutoff, (int, float))
-                or self.three_body_cutoff <= 0
-            ):
-                raise ValueError("three_body_cutoff must be positive or None.")
-            if self.three_body_cutoff > self.cutoff:
-                raise ValueError("three_body_cutoff must not exceed cutoff.")
+        if self.three_body_cutoff is not None and (
+            isinstance(self.three_body_cutoff, bool)
+            or not isinstance(self.three_body_cutoff, (int, float))
+            or self.three_body_cutoff <= 0
+        ):
+            raise ValueError("three_body_cutoff must be positive or None.")
+        if self.three_body_cutoff is not None and self.three_body_cutoff > self.cutoff:
+            raise ValueError("three_body_cutoff must not exceed cutoff.")
 
 
 class ALIGNNGraphBuilder:

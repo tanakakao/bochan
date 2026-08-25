@@ -12,7 +12,8 @@ import numpy as np
 
 _STRUCTURE_INSTALL_HINT = (
     "Crystal-structure support requires jarvis-tools. "
-    'Install bochan with the "materials" extra or install jarvis-tools directly.'
+    "Install alignn==2026.8.11 for the tested ALIGNN integration, "
+    "or install jarvis-tools directly for structure conversion."
 )
 
 

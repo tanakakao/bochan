@@ -2,6 +2,7 @@
 
 from .descriptors import CompositionDescriptorCalculator
 from .encoders import (
+    ALIGNNEncoder,
     ConcatFusion,
     CrabNetEncoder,
     MaterialEncoder,
@@ -21,6 +22,7 @@ from .simplex import SimplexTransform, TorchSimplexTransform, close_compositions
 from .transformer import CompositionTransformer
 
 __all__ = [
+    "ALIGNNEncoder",
     "ATOMIC_NUMBERS",
     "ATOMIC_WEIGHTS",
     "CompositionDescriptorCalculator",

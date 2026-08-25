@@ -7,7 +7,9 @@ from typing import Any
 import numpy as np
 import pytest
 import torch
+from torch import nn
 
+from bochan.models.regression.gaussian.deep import ALIGNNGPModel
 from bochan.structure import ALIGNNGraphBuilder, ALIGNNGraphConfig, StructureAdapter
 
 
@@ -87,6 +89,18 @@ class _FakePymatgenStructure:
         self.lattice = _FakeLattice(4.0 * np.eye(3))
         self.species = [_FakeSpecies("Na"), _FakeSpecies("Cl")]
         self.frac_coords = np.array([[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]])
+
+
+class _BundleEncoder(nn.Module):
+    output_dim = 3
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.anchor = nn.Parameter(torch.zeros(1, dtype=torch.double))
+
+    def encode(self, graph_bundle: tuple[Any, Any, torch.Tensor]) -> torch.Tensor:
+        lattice = graph_bundle[2]
+        return lattice.diagonal().to(device=self.anchor.device, dtype=self.anchor.dtype)
 
 
 def test_structure_adapter_accepts_mapping_and_existing_jarvis_atoms() -> None:
@@ -204,6 +218,39 @@ def test_alignn_graph_builder_preserves_returned_lattice_and_builds_bank() -> No
     assert len(bank) == 2
     assert bank[0][2].dtype == torch.float64
     torch.testing.assert_close(bank[0][2], returned_lattice)
+
+
+def test_alignn_graph_bank_connects_to_phase1_gp_model() -> None:
+    def graph_factory(**_: Any) -> tuple[str, str]:
+        return "g", "lg"
+
+    adapter = StructureAdapter(atoms_class=_FakeJarvisAtoms)
+    builder = ALIGNNGraphBuilder(structure_adapter=adapter, graph_factory=graph_factory)
+    structures = [
+        {"lattice_mat": 3.0 * np.eye(3), "coords": [[0.0, 0.0, 0.0]], "elements": ["Si"]},
+        {"lattice_mat": 4.0 * np.eye(3), "coords": [[0.0, 0.0, 0.0]], "elements": ["Ge"]},
+    ]
+    graph_bank = builder.build_many(structures)
+    train_X = torch.tensor(
+        [[0.0, 900.0], [1.0, 950.0], [0.0, 1000.0], [1.0, 1050.0]],
+        dtype=torch.double,
+    )
+    train_Y = torch.tensor([[0.2], [0.7], [0.3], [0.8]], dtype=torch.double)
+
+    model = ALIGNNGPModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        structure_graphs=graph_bank,
+        encoder=_BundleEncoder(),
+        latent_dim=2,
+        outcome_transform=None,
+    )
+    posterior = model.posterior(torch.tensor([[1.0, 975.0]], dtype=torch.double))
+
+    assert model.num_structures == 2
+    assert posterior.mean.shape == torch.Size([1, 1])
+    assert torch.isfinite(posterior.mean).all()
+    assert torch.isfinite(posterior.variance).all()
 
 
 def test_alignn_graph_builder_rejects_invalid_factory_contract() -> None:

@@ -72,6 +72,11 @@ class DeepKernelGaussianGPModel(_BaseDeepKernelGPModel):
         self.latent_dim = self.deepkernel.latent_dim
         self.to(train_X)
 
+    @property
+    def train_X_original(self) -> Tensor:
+        """Return the canonical untransformed training inputs."""
+        return self.train_inputs_raw[0]
+
 
 class DeepKernelGaussianMixedGPModel(_BaseDeepKernelGPModel):
     """混合入力（連続 + カテゴリ）向け Deep Kernel GP 回帰モデル。
@@ -143,6 +148,11 @@ class DeepKernelGaussianMixedGPModel(_BaseDeepKernelGPModel):
         self.hidden_dims = None if hidden_dims is None else [int(h) for h in hidden_dims]
         self.latent_dim = self.deepkernel.latent_dim
         self.to(train_X)
+
+    @property
+    def train_X_original(self) -> Tensor:
+        """Return the canonical untransformed training inputs."""
+        return self.train_inputs_raw[0]
 
 
 __all__ = ["DeepKernelGaussianGPModel", "DeepKernelGaussianMixedGPModel"]

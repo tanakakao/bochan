@@ -24,7 +24,6 @@ _ALIGNN_INSTALL_HINT = (
 
 _SUPPORTED_NEIGHBOR_STRATEGIES = {
     "k-nearest",
-    "voronoi",
     "radius_graph",
     "radius_graph_jarvis",
     "fast_graph",

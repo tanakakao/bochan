@@ -1,5 +1,6 @@
 """Material encoders and material/process fusion modules."""
 
+from .alignn import ALIGNNEncoder
 from .base import MaterialEncoder
 from .crabnet import CrabNetEncoder
 from .fusion import (
@@ -9,6 +10,7 @@ from .fusion import (
 )
 
 __all__ = [
+    "ALIGNNEncoder",
     "ConcatFusion",
     "CrabNetEncoder",
     "MaterialEncoder",

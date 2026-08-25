@@ -195,6 +195,24 @@ def test_local_pretrained_zip_keeps_model_and_graph_configs_together(tmp_path, m
     assert isinstance(captured["checkpoint"], dict)
 
 
+def test_pretrained_bundle_selects_numbered_checkpoint_numerically(tmp_path) -> None:
+    config = {"model": {"name": "alignn"}}
+    checkpoint_9 = BytesIO()
+    checkpoint_10 = BytesIO()
+    torch.save({"model": {"step": torch.tensor([9])}}, checkpoint_9)
+    torch.save({"model": {"step": torch.tensor([10])}}, checkpoint_10)
+
+    bundle_path = tmp_path / "checkpoints.zip"
+    with ZipFile(bundle_path, "w") as archive:
+        archive.writestr("config.json", dumps(config))
+        archive.writestr("checkpoint_9.pt", checkpoint_9.getvalue())
+        archive.writestr("checkpoint_10.pt", checkpoint_10.getvalue())
+
+    bundle = load_alignn_pretrained_bundle(bundle_path)
+
+    assert bundle.checkpoint_name == "checkpoint_10.pt"
+
+
 def test_pretrained_bundle_rejects_non_scalar_alignn(tmp_path) -> None:
     config = {"model": {"name": "alignn_atomwise"}}
     checkpoint_buffer = BytesIO()

@@ -21,6 +21,7 @@ jobs:
       - name: Test composition APIs
         run: |
           pytest -q --maxfail=1 \
+            tests/test_alignn_gp.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
             tests/test_crabnet_integration_closure.py \
@@ -40,12 +41,14 @@ jobs:
           ruff check \
             src/bochan/composition/__init__.py \
             src/bochan/composition/encoders/__init__.py \
+            src/bochan/composition/encoders/alignn.py \
             src/bochan/composition/encoders/base.py \
             src/bochan/composition/encoders/crabnet.py \
             src/bochan/composition/encoders/fusion.py \
             src/bochan/composition/simplex.py \
             src/bochan/composition/transformer.py \
             src/bochan/models/regression/gaussian/deep/__init__.py \
+            src/bochan/models/regression/gaussian/deep/alignn.py \
             src/bochan/models/regression/gaussian/deep/crabnet.py \
             src/bochan/api/modeling/fit.py \
             src/bochan/api/registry/model.py \
@@ -61,6 +64,7 @@ jobs:
             src/bochan/tabular/composition/transformer.py \
             src/bochan/tabular/composition/variable_total.py \
             src/bochan/tabular/optimizer/fitting.py \
+            tests/test_alignn_gp.py \
             tests/test_material_encoder_fusion.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \

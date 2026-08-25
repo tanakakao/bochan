@@ -129,6 +129,21 @@ def test_alignn_gp_posterior_preserves_batch_q_shape() -> None:
     assert torch.isfinite(posterior.variance).all()
 
 
+def test_alignn_gp_exposes_canonical_raw_training_inputs() -> None:
+    model = _gp_model(with_process=True)
+    train_X, _ = _data(with_process=True)
+
+    assert torch.equal(model.train_X_original, train_X)
+    assert model.train_X_original.data_ptr() != train_X.data_ptr()
+
+    updated_X = train_X.clone()
+    updated_X[:, 1] += 5.0
+    model.set_train_data(inputs=updated_X, strict=False)
+
+    assert torch.equal(model.train_X_original, updated_X)
+    assert model.train_X_original.data_ptr() != updated_X.data_ptr()
+
+
 def test_process_normalization_preserves_structure_index() -> None:
     model = _gp_model(with_process=True)
     train_X, _ = _data(with_process=True)

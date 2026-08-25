@@ -77,6 +77,35 @@ def test_structure_adapter_uses_explicit_file_boundary(tmp_path) -> None:
     assert atoms.num_atoms == 2
 
 
+def test_structure_adapter_reads_cif_without_primitive_reduction(tmp_path) -> None:
+    adapter = StructureAdapter()
+    cif = tmp_path / "silicon.cif"
+    cif.write_text(
+        "data_silicon\n"
+        "_symmetry_space_group_name_H-M 'P 1'\n"
+        "_cell_length_a 5.43\n"
+        "_cell_length_b 5.43\n"
+        "_cell_length_c 5.43\n"
+        "_cell_angle_alpha 90\n"
+        "_cell_angle_beta 90\n"
+        "_cell_angle_gamma 90\n"
+        "loop_\n"
+        "_atom_site_label\n"
+        "_atom_site_type_symbol\n"
+        "_atom_site_fract_x\n"
+        "_atom_site_fract_y\n"
+        "_atom_site_fract_z\n"
+        "Si1 Si 0.0 0.0 0.0\n"
+        "Si2 Si 0.25 0.25 0.25\n",
+        encoding="utf-8",
+    )
+
+    atoms = adapter.from_file(cif)
+
+    assert atoms.elements == ["Si", "Si"]
+    assert atoms.num_atoms == 2
+
+
 def test_structure_mapping_validation_is_strict() -> None:
     adapter = StructureAdapter()
     invalid = _si_structure()

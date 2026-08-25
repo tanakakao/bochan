@@ -219,17 +219,27 @@ class ALIGNNPretrainedBundle:
         return ALIGNNGraphBuilder.from_training_config(self._config, adapter=adapter)
 
 
+def _checkpoint_rank(name: str) -> tuple[int, int, str]:
+    """Rank numbered checkpoints numerically, with deterministic fallback."""
+
+    stem = Path(name).stem
+    suffix = stem.removeprefix("checkpoint_")
+    if suffix.isdigit():
+        return 1, int(suffix), name
+    return 0, -1, name
+
+
 def _select_checkpoint(names: Sequence[str]) -> str:
     best = sorted(name for name in names if Path(name).name == "best_model.pt")
     if best:
         return best[0]
-    checkpoints = sorted(
+    checkpoints = [
         name
         for name in names
         if Path(name).name.startswith("checkpoint_") and Path(name).suffix == ".pt"
-    )
+    ]
     if checkpoints:
-        return checkpoints[-1]
+        return max(checkpoints, key=_checkpoint_rank)
     raise FileNotFoundError("ALIGNN bundle contains neither best_model.pt nor checkpoint_*.pt.")
 
 

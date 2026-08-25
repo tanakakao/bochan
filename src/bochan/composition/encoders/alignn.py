@@ -242,7 +242,7 @@ class ALIGNNEncoder(MaterialEncoder):
             g = graph
             lg = None
 
-        alignn_layers = getattr(self.encoder, "alignn_layers")
+        alignn_layers = self.encoder.alignn_layers
         if len(alignn_layers) > 0:
             if lg is None:
                 raise ValueError("ALIGNN graph input requires a line graph when alignn_layers are enabled.")
@@ -264,7 +264,7 @@ class ALIGNNEncoder(MaterialEncoder):
             if z is None:
                 raise RuntimeError("ALIGNN line-graph features were not initialized.")
             x, y, z = layer(g, lg, x, y, z)
-        for layer in getattr(self.encoder, "gcn_layers"):
+        for layer in self.encoder.gcn_layers:
             x, y = layer(g, x, y)
 
         return self.encoder.readout(g, x)

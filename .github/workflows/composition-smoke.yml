@@ -22,6 +22,7 @@ jobs:
         run: |
           pytest -q --maxfail=1 \
             tests/test_alignn_gp.py \
+            tests/test_structure_alignn.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
             tests/test_crabnet_integration_closure.py \
@@ -47,6 +48,9 @@ jobs:
             src/bochan/composition/encoders/fusion.py \
             src/bochan/composition/simplex.py \
             src/bochan/composition/transformer.py \
+            src/bochan/structure/__init__.py \
+            src/bochan/structure/adapter.py \
+            src/bochan/structure/alignn.py \
             src/bochan/models/regression/gaussian/deep/__init__.py \
             src/bochan/models/regression/gaussian/deep/alignn.py \
             src/bochan/models/regression/gaussian/deep/crabnet.py \
@@ -65,6 +69,7 @@ jobs:
             src/bochan/tabular/composition/variable_total.py \
             src/bochan/tabular/optimizer/fitting.py \
             tests/test_alignn_gp.py \
+            tests/test_structure_alignn.py \
             tests/test_material_encoder_fusion.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \

@@ -225,10 +225,22 @@ def test_tabular_alignn_mixed_dkl_maps_encoder_training_policy() -> None:
     )
 
 
-def test_tabular_alignn_mixed_candidates_cross_structure_and_observed_categories(
+def test_tabular_alignn_mixed_candidates_use_current_training_categories(
     monkeypatch,
 ) -> None:
     optimizer = _optimizer().fit(_frame())
+    optimizer.update_data(
+        pd.DataFrame(
+            {
+                "phase": ["alpha"],
+                "temperature": [1175.0],
+                "furnace": ["B"],
+                "pressure": [1.9],
+                "atmosphere": ["Ar"],
+                "property": [1.6],
+            }
+        )
+    )
     captured: dict[str, object] = {}
 
     def fake_candidate(
@@ -241,7 +253,7 @@ def test_tabular_alignn_mixed_candidates_cross_structure_and_observed_categories
     ):
         captured["opt_config"] = opt_config
         candidate = torch.tensor(
-            [[1.0, 1030.0, 1.0, 1.35, 1.0]],
+            [[1.0, 1030.0, 1.0, 1.35, 2.0]],
             dtype=torch.double,
         )
         return candidate, torch.tensor(0.7, dtype=torch.double)
@@ -258,15 +270,16 @@ def test_tabular_alignn_mixed_candidates_cross_structure_and_observed_categories
         (0.0, 0.0),
         (1.0, 1.0),
         (0.0, 2.0),
+        (1.0, 2.0),
     }
-    assert len(fixed) == 6
+    assert len(fixed) == 8
     assert {entry[0] for entry in fixed} == {1.0, 2.0}
     assert {(entry[2], entry[4]) for entry in fixed} == expected_category_assignments
     assert all(set(entry) == {0, 2, 4} for entry in fixed)
 
     assert candidates.loc[0, "phase"] == "beta"
     assert candidates.loc[0, "furnace"] == "B"
-    assert candidates.loc[0, "atmosphere"] == "N2"
+    assert candidates.loc[0, "atmosphere"] == "Ar"
     assert candidates.loc[0, "temperature"] == pytest.approx(1030.0)
     assert candidates.loc[0, "pressure"] == pytest.approx(1.35)
     assert float(acq_value) == pytest.approx(0.7)

@@ -129,6 +129,10 @@ class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
         )
         if len(targets) != 1:
             raise ValueError("ALIGNN tabular FastAPI currently requires one target column.")
+        if self.multi_output_config is not None or self.bo_model_config.multi_output_config is not None:
+            raise ValueError("ALIGNN tabular FastAPI does not support multi_output_config yet.")
+        if self.target_categorical_cols:
+            raise ValueError("ALIGNN tabular FastAPI requires a continuous regression target.")
         if not self.structure_col.strip():
             raise ValueError("structure_col must be non-empty.")
         if self.structure_col not in self.input_cols:

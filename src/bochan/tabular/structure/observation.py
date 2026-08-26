@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 from bochan.api import ExperimentFailureConfig
@@ -11,7 +13,7 @@ from ..observation import ObservationAdapter
 
 
 class StructureAwareObservationAdapter(ObservationAdapter):
-    """Resolve observation config and then reapply the ALIGNN structure contract.
+    """Resolve observation config and reapply the ALIGNN structure contract.
 
     ``TabularBayesianOptimizer.fit`` supports fit-time ``data_config`` and
     ``model_config`` overrides. Those overrides are resolved before this adapter
@@ -47,6 +49,37 @@ class StructureAwareObservationAdapter(ObservationAdapter):
 
         configure_tabular_alignn(self.owner)
         return self.owner.source_data_config
+
+    def to_dataset(
+        self,
+        data: Any,
+        y: Any | None,
+        *,
+        config: TabularDataConfig,
+        feature_names: Any = None,
+        target_names: Any = None,
+        default_converter: Callable[..., Any],
+    ) -> Any:
+        """Infer missing mixed-process category bounds before tensor conversion."""
+
+        if self.owner.structure.enabled:
+            completed_bounds = self.owner.structure.complete_categorical_bounds(
+                config.bounds,
+                data,
+                categorical_cols=config.categorical_cols,
+                category_maps=config.category_maps,
+            )
+            if completed_bounds is not config.bounds:
+                config = replace(config, bounds=completed_bounds)
+                self.owner.data_config = config
+        return super().to_dataset(
+            data,
+            y,
+            config=config,
+            feature_names=feature_names,
+            target_names=target_names,
+            default_converter=default_converter,
+        )
 
 
 __all__ = ["StructureAwareObservationAdapter"]

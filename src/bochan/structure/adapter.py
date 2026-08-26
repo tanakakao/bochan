@@ -77,9 +77,20 @@ class StructureAdapter:
         if ase_module is not None:
             ase_atoms_class = getattr(ase_module, "Atoms", None)
             if isinstance(ase_atoms_class, type) and isinstance(structure, ase_atoms_class):
+                pbc = np.asarray(structure.get_pbc(), dtype=bool)
+                if pbc.shape != (3,) or not bool(np.all(pbc)):
+                    raise ValueError(
+                        "ASE structures must be periodic in all three directions "
+                        "for ALIGNN crystal graphs."
+                    )
                 return ase_to_atoms(ase_atoms=structure)
 
         if type(structure).__module__.startswith("pymatgen."):
+            if not bool(getattr(structure, "is_ordered", True)):
+                raise ValueError(
+                    "Disordered pymatgen structures are not supported; "
+                    "resolve occupancies first."
+                )
             return pmg_to_atoms(pmg=structure)
 
         raise TypeError(
@@ -146,6 +157,8 @@ class StructureAdapter:
             raise ValueError(f"Structure mapping is missing required keys: {missing}.")
 
         lattice = _as_float_array("lattice_mat", structure["lattice_mat"], shape=(3, 3))
+        if abs(float(np.linalg.det(lattice))) <= 1e-12:
+            raise ValueError("lattice_mat must be non-singular.")
         coords = _as_float_array("coords", structure["coords"])
         if coords.ndim != 2 or coords.shape[1] != 3:
             raise ValueError(f"coords must have shape [n_atoms, 3], got {coords.shape}.")

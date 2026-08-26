@@ -11,8 +11,6 @@ import pytest
 pytest.importorskip("fastapi")
 pd = pytest.importorskip("pandas")
 
-from fastapi.testclient import TestClient
-
 from bochan.serving.fastapi import create_app
 from bochan.serving.fastapi.schemas.alignn_tabular import (
     ALIGNNTabularCandidateRequest,

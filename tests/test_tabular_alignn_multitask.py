@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+
 import pandas as pd
 import pytest
 import torch
@@ -129,7 +131,7 @@ def test_alignn_multitask_family_builds_one_correlated_model(
     assert model.num_tasks == 2
     assert isinstance(model.deepkernel.covar_module, MultitaskKernel)
     assert model.task_covar_module is model.deepkernel.covar_module.task_covar_module
-    assert model.task_kernel is model.task_covar_module
+    assert not hasattr(model, "task_kernel")
     assert model.structure_graphs is optimizer.structure.structure_graphs
 
     encoder_parameters = list(model.material_encoder.parameters())
@@ -165,6 +167,12 @@ def test_alignn_multitask_family_builds_one_correlated_model(
     continuous_process_dims = [index for index in continuous_dims if index != 0]
     assert continuous_process_dims
     assert gradient[:, continuous_process_dims].abs().sum() > 0
+
+    subset = model.posterior(raw.detach(), output_indices=[1])
+    assert subset.mean.shape == torch.Size([2, 1])
+    assert subset.variance.shape == torch.Size([2, 1])
+    assert torch.allclose(subset.mean, posterior.mean.detach()[..., 1:2])
+    assert torch.allclose(subset.variance, posterior.variance.detach()[..., 1:2])
 
 
 @pytest.mark.parametrize(
@@ -233,6 +241,18 @@ def test_alignn_multitask_rejects_explicit_multi_output_config() -> None:
             model_kwargs={"encoder": FakeALIGNN(), "latent_dim": 3},
             fit_config={"skip_fit": True},
         ).fit(_frame(mixed=False))
+
+
+def test_alignn_mixed_multitask_constructor_preserves_common_train_yvar_position() -> None:
+    for cls in (ALIGNNMixedMultiTaskGPModel, ALIGNNMixedMultiTaskDKLModel):
+        parameters = list(inspect.signature(cls.__init__).parameters.values())
+        assert [parameter.name for parameter in parameters[:4]] == [
+            "self",
+            "train_X",
+            "train_Y",
+            "train_Yvar",
+        ]
+        assert inspect.signature(cls.__init__).parameters["cat_dims"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
 def test_alignn_multitask_array_fit_uses_wide_y_and_default_names() -> None:

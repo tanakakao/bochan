@@ -205,6 +205,28 @@ def build_alignn_fit_response(
     initialization = getattr(material_encoder, "initialization", None)
     graph_builder = getattr(optimizer.structure, "graph_builder", None)
     graph_config = getattr(graph_builder, "config", None)
+
+    dataset = optimizer.dataset
+    feature_names = list(dataset.feature_names) if dataset is not None else []
+    process_cat_dims = [int(index) for index in (bundle.cat_dims or [])]
+    process_categorical_cols = [
+        feature_names[index]
+        for index in process_cat_dims
+        if 0 <= index < len(feature_names)
+    ]
+    process_cat_dim_set = set(process_cat_dims)
+    continuous_process_cols = [
+        name
+        for index, name in enumerate(feature_names)
+        if index != 0 and index not in process_cat_dim_set
+    ]
+    category_maps = dict(getattr(dataset, "category_maps", None) or {})
+    process_category_maps = {
+        column: category_maps[column]
+        for column in process_categorical_cols
+        if column in category_maps
+    }
+
     metadata = dict(response.metadata)
     metadata["alignn"] = to_serializable(
         {
@@ -214,7 +236,12 @@ def build_alignn_fit_response(
             "structure_col": optimizer.structure.column,
             "structure_ids": list(optimizer.structure.structure_ids),
             "num_structures": optimizer.structure.num_structures,
+            "input_type": bundle.input_type,
             "process_dim": getattr(model, "process_dim", None),
+            "continuous_process_cols": continuous_process_cols,
+            "categorical_process_cols": process_categorical_cols,
+            "categorical_process_dims": process_cat_dims,
+            "category_maps": process_category_maps,
             "graph_config": graph_config,
         }
     )

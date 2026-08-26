@@ -74,6 +74,7 @@ jobs:
             src/bochan/tabular/structure/adapter.py \
             src/bochan/tabular/structure/candidates.py \
             src/bochan/tabular/structure/fitting.py \
+            src/bochan/tabular/structure/observation.py \
             src/bochan/tabular/optimizer/configuration.py \
             src/bochan/tabular/optimizer/fitting.py \
             tests/test_alignn_gp.py \

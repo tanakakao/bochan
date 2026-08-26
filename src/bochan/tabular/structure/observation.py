@@ -1,0 +1,52 @@
+"""Lifecycle hook that keeps tabular ALIGNN structure config canonical."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from bochan.api import ExperimentFailureConfig
+
+from ..config import ColumnKey, TabularDataConfig
+from ..observation import ObservationAdapter
+
+
+class StructureAwareObservationAdapter(ObservationAdapter):
+    """Resolve observation config and then reapply the ALIGNN structure contract.
+
+    ``TabularBayesianOptimizer.fit`` supports fit-time ``data_config`` and
+    ``model_config`` overrides. Those overrides are resolved before this adapter
+    is called, so this is the common lifecycle point where structure column
+    ordering, category maps, graph-bank coupling, and ALIGNN model policy can be
+    validated again without duplicating the core fitter.
+    """
+
+    def __init__(
+        self,
+        owner: Any,
+        failure_config: ExperimentFailureConfig | None = None,
+    ) -> None:
+        super().__init__(failure_config)
+        self.owner = owner
+
+    def resolve_config(
+        self,
+        base: TabularDataConfig,
+        *,
+        target_missing_strategy: str | None,
+        experiment_status_col: ColumnKey | None,
+    ) -> TabularDataConfig:
+        resolved = super().resolve_config(
+            base,
+            target_missing_strategy=target_missing_strategy,
+            experiment_status_col=experiment_status_col,
+        )
+        self.owner.source_data_config = resolved
+        self.owner.data_config = resolved
+
+        from .fitting import configure_tabular_alignn
+
+        configure_tabular_alignn(self.owner)
+        return self.owner.source_data_config
+
+
+__all__ = ["StructureAwareObservationAdapter"]

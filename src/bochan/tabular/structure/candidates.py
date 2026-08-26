@@ -11,9 +11,9 @@ _ALIGNN_MODEL_TYPES = frozenset({"alignn_gp", "alignn_dkl"})
 
 
 def _process_category_fixed_features(owner: Any) -> list[dict[int, float]]:
-    """Return observed joint process-category assignments for mixed ALIGNN."""
+    """Return current joint process-category assignments for mixed ALIGNN."""
 
-    if owner.bo.bundle is None or owner.dataset is None:
+    if owner.bo.bundle is None:
         return [{}]
     cat_dims = [int(index) for index in (owner.bo.bundle.cat_dims or [])]
     if not cat_dims:
@@ -24,9 +24,13 @@ def _process_category_fixed_features(owner: Any) -> list[dict[int, float]]:
             "structure feature 0 is enumerated separately."
         )
 
+    train_X = owner.bo.train_X
+    if train_X is None:
+        raise RuntimeError("No current ALIGNN training inputs are available for optimization.")
+
     import torch
 
-    values = owner.dataset.X[:, cat_dims]
+    values = train_X[:, cat_dims]
     unique_rows = torch.unique(values, dim=0)
     if unique_rows.numel() == 0:
         raise RuntimeError("No categorical process assignments are available for optimization.")

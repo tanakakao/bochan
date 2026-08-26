@@ -15,7 +15,7 @@ from ..schemas.alignn_tabular import (
     ALIGNNTabularFitModelRequest,
     CrystalStructureRequest,
 )
-from ..schemas.tabular import TabularCandidateResponse
+from ..schemas.tabular import TabularCandidateResponse, TabularModelFitResponse
 from .tabular import (
     _candidate_direct_kwargs,
     _candidate_optimize_config,
@@ -134,6 +134,46 @@ def fit_alignn_tabular_optimizer(
     return optimizer
 
 
+def build_alignn_fit_response(
+    model_id: str,
+    optimizer: TabularBayesianOptimizer,
+) -> TabularModelFitResponse:
+    """Serialize the fitted model together with its structure/encoder contract."""
+
+    response = build_fit_response(model_id, optimizer)
+    bundle = optimizer.bo.bundle
+    if bundle is None:
+        return response
+    model = bundle.model
+    material_encoder = getattr(model, "material_encoder", None)
+    trainable_layers = getattr(model, "trainable_encoder_layers", None)
+    model_type = str(bundle.model_type)
+    if model_type == "alignn_gp":
+        training_mode = "frozen"
+    elif trainable_layers == "all":
+        training_mode = "full"
+    else:
+        training_mode = "partial"
+    initialization = getattr(material_encoder, "initialization", None)
+    graph_builder = getattr(optimizer.structure, "graph_builder", None)
+    graph_config = getattr(graph_builder, "config", None)
+    metadata = dict(response.metadata)
+    metadata["alignn"] = to_serializable(
+        {
+            "encoder_training": training_mode,
+            "encoder_initialization": initialization,
+            "checkpoint_configured": initialization == "checkpoint",
+            "structure_col": optimizer.structure.column,
+            "structure_ids": list(optimizer.structure.structure_ids),
+            "num_structures": optimizer.structure.num_structures,
+            "process_dim": getattr(model, "process_dim", None),
+            "graph_config": graph_config,
+        }
+    )
+    response.metadata = metadata
+    return response
+
+
 def alignn_candidate_response(
     model_id: str,
     optimizer: TabularBayesianOptimizer,
@@ -164,6 +204,7 @@ def alignn_candidate_response(
 
 __all__ = [
     "alignn_candidate_response",
+    "build_alignn_fit_response",
     "fit_alignn_tabular_optimizer",
     "graph_builder_from_request",
     "structure_catalog_from_request",

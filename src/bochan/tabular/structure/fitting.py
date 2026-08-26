@@ -7,6 +7,14 @@ from dataclasses import replace
 from typing import Any
 
 _ALIGNN_MODEL_TYPES = frozenset({"alignn_gp", "alignn_dkl"})
+_DERIVED_ALIGNN_MODEL_CLASSES = frozenset(
+    {
+        "ALIGNNGPModel",
+        "ALIGNNDKLModel",
+        "ALIGNNMixedGPModel",
+        "ALIGNNMixedDKLModel",
+    }
+)
 
 
 def _target_count(target_cols: Any) -> int | None:
@@ -21,6 +29,19 @@ def _target_count(target_cols: Any) -> int | None:
 
 def _has_mapping_key(mapping: Mapping[Any, Any], key: Any) -> bool:
     return key in mapping or str(key) in mapping
+
+
+def _has_derived_alignn_model_cls(model_cls: Any) -> bool:
+    """Return whether model_cls was produced by this tabular ALIGNN adapter."""
+
+    if model_cls is None:
+        return False
+    return (
+        getattr(model_cls, "__name__", None) in _DERIVED_ALIGNN_MODEL_CLASSES
+        and str(getattr(model_cls, "__module__", "")).startswith(
+            "bochan.models.regression.gaussian.deep"
+        )
+    )
 
 
 def configure_tabular_alignn(owner: Any) -> None:
@@ -118,16 +139,17 @@ def configure_tabular_alignn(owner: Any) -> None:
     process_cat_dims = [input_cols.index(column) for column in process_categorical_cols]
     is_mixed = bool(process_cat_dims)
     expected_input_type = "mixed" if is_mixed else "normal"
-    if config.input_type not in (None, expected_input_type):
+    derived_config = _has_derived_alignn_model_cls(config.model_cls)
+    if not derived_config and config.input_type not in (None, expected_input_type):
         raise ValueError(
             f"Tabular ALIGNN with the configured process columns requires "
             f"input_type={expected_input_type!r}."
         )
     configured_cat_dims = [] if config.cat_dims is None else list(config.cat_dims)
-    if configured_cat_dims not in ([], process_cat_dims):
+    if not derived_config and configured_cat_dims:
         raise ValueError(
             "Tabular ALIGNN derives cat_dims from categorical process columns; "
-            f"expected {process_cat_dims!r}, got {configured_cat_dims!r}."
+            "do not pass cat_dims explicitly."
         )
     if config.input_transform is not None:
         raise ValueError(

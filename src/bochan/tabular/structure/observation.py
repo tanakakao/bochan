@@ -60,7 +60,7 @@ class StructureAwareObservationAdapter(ObservationAdapter):
         target_names: Any = None,
         default_converter: Callable[..., Any],
     ) -> Any:
-        """Infer missing mixed-process category bounds before tensor conversion."""
+        """Complete mixed category metadata and preserve fitted category codes."""
 
         if self.owner.structure.enabled:
             completed_bounds = self.owner.structure.complete_categorical_bounds(
@@ -69,10 +69,10 @@ class StructureAwareObservationAdapter(ObservationAdapter):
                 categorical_cols=config.categorical_cols,
                 category_maps=config.category_maps,
             )
-            if completed_bounds is not config.bounds:
-                config = replace(config, bounds=completed_bounds)
-                self.owner.data_config = config
-        return super().to_dataset(
+            config = replace(config, bounds=completed_bounds)
+            self.owner.data_config = config
+
+        dataset = super().to_dataset(
             data,
             y,
             config=config,
@@ -80,6 +80,11 @@ class StructureAwareObservationAdapter(ObservationAdapter):
             target_names=target_names,
             default_converter=default_converter,
         )
+        if self.owner.structure.enabled and getattr(dataset, "category_maps", None):
+            learned_maps = dict(config.category_maps or {})
+            learned_maps.update(dataset.category_maps)
+            self.owner.data_config = replace(config, category_maps=learned_maps)
+        return dataset
 
 
 __all__ = ["StructureAwareObservationAdapter"]

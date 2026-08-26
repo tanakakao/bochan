@@ -1,12 +1,15 @@
-"""Minimal ALIGNN-GP FastAPI smoke client.
+"""Minimal pure-PyTorch ALIGNN-GP FastAPI smoke client.
 
-Start the API first:
+Install and start the API first::
 
+    python -m pip install -e ".[api,tabular]"
+    python -m pip install "alignn==2026.8.11"
     python -m uvicorn bochan.serving.fastapi.app:app --host 127.0.0.1 --port 8000
 
-The example intentionally uses ``skip_fit=True`` so it is a quick integration
-smoke test. Remove ``skip_fit`` and configure a scientifically appropriate
-ALIGNN checkpoint/training setup before using the result for materials work.
+No DGL installation is required. The example intentionally uses
+``skip_fit=True`` so it is a quick end-to-end integration smoke test. Remove
+``skip_fit`` and configure a scientifically appropriate pure-PyTorch ALIGNN
+checkpoint/training setup before interpreting the numerical result.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ BASE_URL = os.environ.get("BOCHAN_API_URL", "http://127.0.0.1:8000/api/v1")
 
 
 def cubic_si(a: float) -> dict[str, object]:
-    """Return a tiny periodic Si structure in the FastAPI mapping format."""
+    """Return a tiny two-atom periodic Si structure for the HTTP API."""
 
     return {
         "format": "mapping",
@@ -28,8 +31,8 @@ def cubic_si(a: float) -> dict[str, object]:
             [0.0, a, 0.0],
             [0.0, 0.0, a],
         ],
-        "coords": [[0.0, 0.0, 0.0]],
-        "elements": ["Si"],
+        "coords": [[0.0, 0.0, 0.0], [0.25, 0.25, 0.25]],
+        "elements": ["Si", "Si"],
         "cartesian": False,
     }
 
@@ -65,6 +68,12 @@ def main() -> None:
         "structure_catalog": {
             "alpha": cubic_si(5.43),
             "beta": cubic_si(5.55),
+        },
+        "structure_graph_config": {
+            "neighbor_strategy": "pure_torch",
+            "cutoff": 8.0,
+            "max_neighbors": 12,
+            "three_body_cutoff": 3.5,
         },
         "model_config": {
             "task_type": "regression",

@@ -18,6 +18,7 @@ from bochan.serving.fastapi.schemas.alignn_tabular import (
     ALIGNNTabularCandidateRequest,
     ALIGNNTabularFitModelRequest,
 )
+from bochan.serving.fastapi.schemas.tabular import TabularPredictRequest
 from bochan.serving.fastapi.services import alignn_tabular as service
 
 
@@ -109,6 +110,65 @@ def test_alignn_fit_service_passes_structure_contract_to_tabular_optimizer(
     assert kwargs["structure_graph_builder"] is fake_builder
     assert kwargs["bounds"] == {"temperature": [850.0, 1100.0]}
     assert list(captured["frame"]["phase"]) == ["alpha", "beta", "alpha", "beta"]
+
+
+def test_alignn_fit_service_normalizes_numeric_structure_ids(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    fake_builder = SimpleNamespace(config={"neighbor_strategy": "k-nearest"})
+
+    class FakeOptimizer:
+        def __init__(self, **kwargs):
+            captured["kwargs"] = kwargs
+            self.model_config = SimpleNamespace(model_type="alignn_gp")
+
+        def fit(self, frame):
+            captured["frame"] = frame.copy()
+            return self
+
+    monkeypatch.setattr(service, "TabularBayesianOptimizer", FakeOptimizer)
+    monkeypatch.setattr(service, "graph_builder_from_request", lambda request: fake_builder)
+
+    payload = _fit_payload()
+    payload["data"] = [
+        {"phase": 1, "temperature": 900.0, "property": 0.4},
+        {"phase": 2, "temperature": 950.0, "property": 0.8},
+    ]
+    payload["structure_catalog"] = {"1": _structure(5.43), "2": _structure(5.50)}
+    request = ALIGNNTabularFitModelRequest.model_validate(payload)
+    service.fit_alignn_tabular_optimizer(request)
+
+    assert list(captured["frame"]["phase"]) == ["1", "2"]
+
+
+def test_alignn_predict_service_normalizes_structure_ids() -> None:
+    captured: dict[str, object] = {}
+
+    class FakeOptimizer:
+        structure = SimpleNamespace(column="phase")
+
+        def predict(self, frame, **kwargs):
+            captured["frame"] = frame.copy()
+            captured["kwargs"] = kwargs
+            return pd.DataFrame(
+                {
+                    "phase": frame["phase"],
+                    "temperature": frame["temperature"],
+                    "property_mean": [0.5] * len(frame),
+                }
+            )
+
+    request = TabularPredictRequest.model_validate(
+        {
+            "data": [{"phase": 1, "temperature": 975.0}],
+            "include_input": True,
+        }
+    )
+    response = service.alignn_predict_response("model-1", FakeOptimizer(), request)
+
+    assert list(captured["frame"]["phase"]) == ["1"]
+    assert response.records == [
+        {"phase": "1", "temperature": 975.0, "property_mean": 0.5}
+    ]
 
 
 def test_alignn_candidate_service_forwards_structure_subset() -> None:

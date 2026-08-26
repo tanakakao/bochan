@@ -19,6 +19,10 @@ def _target_count(target_cols: Any) -> int | None:
     return 1
 
 
+def _has_mapping_key(mapping: Mapping[Any, Any], key: Any) -> bool:
+    return key in mapping or str(key) in mapping
+
+
 def configure_tabular_alignn(owner: Any) -> None:
     """Configure the canonical structure-index/process tensor contract.
 
@@ -70,6 +74,22 @@ def configure_tabular_alignn(owner: Any) -> None:
             "Tabular ALIGNN Phase 3 supports continuous process variables only; "
             f"categorical process columns were configured: {other_categorical!r}."
         )
+    if source.bounds is None or not isinstance(source.bounds, Mapping):
+        raise ValueError(
+            "Tabular ALIGNN requires column-addressed bounds for every continuous process variable."
+        )
+    process_columns = [
+        column for column in input_cols if column != owner.structure.column
+    ]
+    missing_bounds = [
+        column for column in process_columns if not _has_mapping_key(source.bounds, column)
+    ]
+    if missing_bounds:
+        raise ValueError(
+            "Tabular ALIGNN requires bounds for every continuous process variable; "
+            f"missing bounds for {missing_bounds!r}."
+        )
+
     category_maps = owner.structure.merge_category_maps(source.category_maps)
     bounds = owner.structure.expanded_bounds(source.bounds)
     resolved_source = replace(
@@ -110,8 +130,7 @@ def configure_tabular_alignn(owner: Any) -> None:
             )
 
     model_kwargs = dict(config.model_kwargs)
-    reserved = {"structure_graphs"}
-    supplied_reserved = sorted(reserved.intersection(model_kwargs))
+    supplied_reserved = sorted({"structure_graphs"}.intersection(model_kwargs))
     if supplied_reserved:
         raise ValueError(
             "Tabular ALIGNN derives structure_graphs from structure_catalog; "

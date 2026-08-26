@@ -24,11 +24,14 @@ _ALIGNN_INSTALL_HINT = (
 
 _SUPPORTED_NEIGHBOR_STRATEGIES = {
     "k-nearest",
+    "voronoi",
     "radius_graph",
     "radius_graph_jarvis",
     "fast_graph",
     "torch_graph",
+    "pure_torch",
 }
+_SUPPORTED_DTYPES = {"float16", "float32", "float64", "bfloat"}
 
 
 def _alignn_graph_class() -> type[Any]:
@@ -51,17 +54,26 @@ def _alignn_graph_class() -> type[Any]:
 
 
 class ALIGNNGraphBuilder:
-    """Build DGL atom graphs and line graphs using ALIGNN's canonical builder."""
+    """Build DGL atom graphs and line graphs using ALIGNN's canonical builder.
+
+    Defaults follow the current ALIGNN crystal-training configuration. For a
+    pretrained model, prefer :meth:`from_training_config` or
+    :meth:`ALIGNNPretrainedBundle.build_graph_builder` so graph construction
+    exactly follows the checkpoint metadata.
+    """
 
     def __init__(
         self,
         *,
         neighbor_strategy: str = "k-nearest",
-        cutoff: float = 8.0,
+        cutoff: float = 5.0,
+        cutoff_extra: float = 3.0,
         max_neighbors: int | None = 12,
         atom_features: str = "cgcnn",
         compute_line_graph: bool = True,
         use_canonize: bool = True,
+        dtype: str = "float32",
+        three_body_cutoff: float | None = 3.5,
         adapter: StructureAdapter | None = None,
     ) -> None:
         if neighbor_strategy not in _SUPPORTED_NEIGHBOR_STRATEGIES:
@@ -71,6 +83,12 @@ class ALIGNNGraphBuilder:
             )
         if isinstance(cutoff, bool) or not isinstance(cutoff, (int, float)) or cutoff <= 0:
             raise ValueError("cutoff must be a positive number.")
+        if (
+            isinstance(cutoff_extra, bool)
+            or not isinstance(cutoff_extra, (int, float))
+            or cutoff_extra < 0
+        ):
+            raise ValueError("cutoff_extra must be a non-negative number.")
         if max_neighbors is not None and (
             isinstance(max_neighbors, bool)
             or not isinstance(max_neighbors, int)
@@ -83,15 +101,29 @@ class ALIGNNGraphBuilder:
             raise TypeError("compute_line_graph must be a bool.")
         if not isinstance(use_canonize, bool):
             raise TypeError("use_canonize must be a bool.")
+        if dtype not in _SUPPORTED_DTYPES:
+            raise ValueError(f"dtype must be one of {sorted(_SUPPORTED_DTYPES)}, got {dtype!r}.")
+        if three_body_cutoff is not None:
+            if (
+                isinstance(three_body_cutoff, bool)
+                or not isinstance(three_body_cutoff, (int, float))
+                or three_body_cutoff <= 0
+            ):
+                raise ValueError("three_body_cutoff must be a positive number or None.")
+            if three_body_cutoff > cutoff:
+                raise ValueError("three_body_cutoff must not exceed cutoff.")
         if adapter is not None and not isinstance(adapter, StructureAdapter):
             raise TypeError("adapter must be a StructureAdapter.")
 
         self.neighbor_strategy = neighbor_strategy
         self.cutoff = float(cutoff)
+        self.cutoff_extra = float(cutoff_extra)
         self.max_neighbors = max_neighbors
         self.atom_features = atom_features
         self.compute_line_graph = compute_line_graph
         self.use_canonize = use_canonize
+        self.dtype = dtype
+        self.three_body_cutoff = None if three_body_cutoff is None else float(three_body_cutoff)
         self.adapter = adapter or StructureAdapter()
 
     @classmethod
@@ -108,13 +140,19 @@ class ALIGNNGraphBuilder:
         max_neighbors = config.get("max_neighbors", 12)
         if max_neighbors is not None:
             max_neighbors = int(max_neighbors)
+        three_body_cutoff = config.get("three_body_cutoff", 3.5)
+        if three_body_cutoff is not None:
+            three_body_cutoff = float(three_body_cutoff)
         return cls(
             neighbor_strategy=str(config.get("neighbor_strategy", "k-nearest")),
-            cutoff=float(config.get("cutoff", 8.0)),
+            cutoff=float(config.get("cutoff", 5.0)),
+            cutoff_extra=float(config.get("cutoff_extra", 3.0)),
             max_neighbors=max_neighbors,
             atom_features=str(config.get("atom_features", "cgcnn")),
             compute_line_graph=bool(config.get("compute_line_graph", True)),
             use_canonize=bool(config.get("use_canonize", True)),
+            dtype=str(config.get("dtype", "float32")),
+            three_body_cutoff=three_body_cutoff,
             adapter=adapter,
         )
 
@@ -125,10 +163,13 @@ class ALIGNNGraphBuilder:
         return {
             "neighbor_strategy": self.neighbor_strategy,
             "cutoff": self.cutoff,
+            "cutoff_extra": self.cutoff_extra,
             "max_neighbors": self.max_neighbors,
             "atom_features": self.atom_features,
             "compute_line_graph": self.compute_line_graph,
             "use_canonize": self.use_canonize,
+            "dtype": self.dtype,
+            "three_body_cutoff": self.three_body_cutoff,
         }
 
     def build(self, structure: Any) -> Any:
@@ -140,10 +181,13 @@ class ALIGNNGraphBuilder:
             atoms=atoms,
             neighbor_strategy=self.neighbor_strategy,
             cutoff=self.cutoff,
+            cutoff_extra=self.cutoff_extra,
             max_neighbors=self.max_neighbors,
             atom_features=self.atom_features,
             compute_line_graph=self.compute_line_graph,
             use_canonize=self.use_canonize,
+            dtype=self.dtype,
+            three_body_cutoff=self.three_body_cutoff,
         )
         if self.compute_line_graph and (not isinstance(result, tuple) or len(result) != 2):
             raise RuntimeError(

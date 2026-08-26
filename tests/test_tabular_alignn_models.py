@@ -6,7 +6,7 @@ import torch
 from torch import nn
 
 from bochan.models.regression.gaussian.deep import ALIGNNDKLModel, ALIGNNGPModel
-from bochan.tabular import TabularBayesianOptimizer
+from bochan.tabular import TabularBayesianOptimizer, TabularDataConfig
 
 
 class FakeALIGNN(nn.Module):
@@ -121,6 +121,27 @@ def test_tabular_alignn_gp_builds_canonical_structure_index_contract() -> None:
     assert len(builder.calls[0]) == 3
 
 
+def test_tabular_alignn_defaults_fit_config_when_omitted() -> None:
+    builder = FakeGraphBuilder()
+    optimizer = TabularBayesianOptimizer(
+        model_type="alignn_gp",
+        input_cols=["phase", "temperature", "pressure"],
+        target_cols="property",
+        structure_col="phase",
+        structure_catalog=_catalog(),
+        structure_graph_builder=builder,
+        bounds={
+            "temperature": [850.0, 1200.0],
+            "pressure": [0.5, 2.0],
+        },
+        model_kwargs={"encoder": FakeALIGNN(), "latent_dim": 3},
+    )
+
+    assert optimizer.fit_config is not None
+    assert optimizer.fit_config.fit_func is not None
+    assert optimizer.fit_config.fit_func.__name__ == "fit_deepkernel_mll"
+
+
 def test_tabular_alignn_prediction_input_reuses_structure_catalog_mapping() -> None:
     optimizer, _ = _optimizer()
     optimizer.fit(_frame())
@@ -138,6 +159,45 @@ def test_tabular_alignn_prediction_input_reuses_structure_catalog_mapping() -> N
 
     assert index.tolist() == [7, 8]
     torch.testing.assert_close(X[:, 0], torch.tensor([2.0, 0.0], dtype=torch.double))
+
+
+def test_tabular_alignn_fit_override_reapplies_catalog_order_and_feature_layout() -> None:
+    optimizer, _ = _optimizer()
+    reordered = _frame().iloc[[2, 0, 1, 5, 3, 4]].reset_index(drop=True)
+    override = TabularDataConfig(
+        input_cols=["pressure", "temperature", "phase"],
+        target_cols="property",
+        bounds={
+            "temperature": [850.0, 1200.0],
+            "pressure": [0.5, 2.0],
+        },
+    )
+
+    optimizer.fit(reordered, data_config=override)
+
+    assert optimizer.dataset.feature_names == ["phase", "pressure", "temperature"]
+    assert optimizer.dataset.category_maps["phase"] == {
+        "alpha": 0,
+        "beta": 1,
+        "gamma": 2,
+    }
+    torch.testing.assert_close(
+        optimizer.dataset.X[:, 0],
+        torch.tensor([2, 0, 1, 2, 0, 1], dtype=torch.double),
+    )
+
+
+def test_tabular_alignn_fit_model_override_is_revalidated() -> None:
+    optimizer, _ = _optimizer()
+
+    with pytest.raises(ValueError, match="input_type='normal'"):
+        optimizer.fit(
+            _frame(),
+            model_config={
+                "model_type": "alignn_gp",
+                "input_type": "mixed",
+            },
+        )
 
 
 def test_tabular_alignn_candidates_enumerate_structures_and_decode_ids(

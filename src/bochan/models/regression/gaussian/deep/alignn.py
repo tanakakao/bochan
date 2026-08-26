@@ -172,6 +172,8 @@ class _ALIGNNGPFeatureExtractor(nn.Module):
         self.input_dim = 1 + self.process_dim
         self._encoder_training_mode: _EncoderTrainingMode = "frozen"
         self._trainable_encoder_modules: tuple[nn.Module, ...] = ()
+        self._material_feature_cache_versions: tuple[int, ...] | None = None
+        self.register_buffer("_material_feature_cache", None, persistent=False)
 
         self.fusion = build_material_process_fusion(
             fusion,
@@ -203,6 +205,71 @@ class _ALIGNNGPFeatureExtractor(nn.Module):
                 )
         self.projection = projection
 
+    def __getstate__(self) -> dict[str, Any]:
+        """Exclude derived structure-feature cache state from pickle artifacts."""
+
+        state = dict(super().__getstate__())
+        buffers = dict(state.get("_buffers", {}))
+        buffers["_material_feature_cache"] = None
+        state["_buffers"] = buffers
+        state["_material_feature_cache_versions"] = None
+        return state
+
+    @property
+    def material_feature_cache_enabled(self) -> bool:
+        """Return whether structure-only encoder outputs can be safely reused."""
+
+        return self._encoder_training_mode == "frozen" and not any(
+            parameter.requires_grad for parameter in self.material_encoder.parameters()
+        )
+
+    @property
+    def material_feature_cache(self) -> Tensor | None:
+        """Return the non-persistent frozen structure-feature bank, if materialized."""
+
+        return self._material_feature_cache
+
+    def _encoder_parameter_versions(self) -> tuple[int, ...]:
+        """Return mutation counters used to invalidate stale frozen embeddings."""
+
+        return tuple(
+            int(getattr(parameter, "_version", 0))
+            for parameter in self.material_encoder.parameters()
+        )
+
+    def clear_material_feature_cache(self) -> None:
+        """Discard cached structure representations."""
+
+        self._material_feature_cache = None
+        self._material_feature_cache_versions = None
+
+    def _cached_material_features(self, X: Tensor) -> Tensor | None:
+        if not self.material_feature_cache_enabled:
+            return None
+        cache = self._material_feature_cache
+        encoder_versions = self._encoder_parameter_versions()
+        if (
+            cache is None
+            or cache.device != X.device
+            or cache.dtype != X.dtype
+            or self._material_feature_cache_versions != encoder_versions
+        ):
+            with torch.no_grad():
+                cache = self.material_encoder(list(self.structure_graphs)).detach()
+            expected = (self.num_structures, int(self.material_encoder.output_dim))
+            if tuple(cache.shape) != expected:
+                raise ValueError(
+                    "ALIGNN encoder must return one cached vector per structure: "
+                    f"{tuple(cache.shape)} != {expected}."
+                )
+            if cache.device != X.device or cache.dtype != X.dtype:
+                raise ValueError("Cached ALIGNN structure features must match X's device and dtype.")
+            if not torch.isfinite(cache).all():
+                raise FloatingPointError("Cached ALIGNN structure features contain non-finite values.")
+            self._material_feature_cache = cache
+            self._material_feature_cache_versions = self._encoder_parameter_versions()
+        return cache
+
     def train(self, mode: bool = True) -> _ALIGNNGPFeatureExtractor:
         """Apply the configured frozen, partial, or full encoder train policy."""
 
@@ -224,6 +291,7 @@ class _ALIGNNGPFeatureExtractor(nn.Module):
             raise ValueError("Partial encoder training requires at least one trainable module.")
         if mode != "partial" and trainable_modules:
             raise ValueError("Only partial encoder training accepts trainable_modules.")
+        self.clear_material_feature_cache()
         self._encoder_training_mode = mode
         self._trainable_encoder_modules = trainable_modules
         self.train(self.training)
@@ -241,10 +309,17 @@ class _ALIGNNGPFeatureExtractor(nn.Module):
         self.validate_input(X)
         leading_shape = X.shape[:-1]
         flat_X = X.reshape(-1, self.input_dim)
-        structure_indices = flat_X[:, 0].round().to(dtype=torch.long).detach().cpu().tolist()
-        graphs = [self.structure_graphs[index] for index in structure_indices]
-
-        material_features = self.material_encoder(graphs)
+        structure_index_tensor = flat_X[:, 0].round().to(dtype=torch.long)
+        cached_bank = self._cached_material_features(X)
+        if cached_bank is None:
+            structure_indices = structure_index_tensor.detach().cpu().tolist()
+            graphs = [self.structure_graphs[index] for index in structure_indices]
+            material_features = self.material_encoder(graphs)
+        else:
+            material_features = cached_bank.index_select(
+                0,
+                structure_index_tensor.to(device=cached_bank.device),
+            )
         if material_features.device != X.device or material_features.dtype != X.dtype:
             raise ValueError("ALIGNN structure features must match X's device and dtype.")
 
@@ -408,6 +483,13 @@ class ALIGNNGPModel(DeepKernelGaussianGPModel):
     @property
     def process_dim(self) -> int:
         return self.alignn_feature_extractor.process_dim
+
+    @property
+    def structure_feature_cache_enabled(self) -> bool:
+        return self.alignn_feature_extractor.material_feature_cache_enabled
+
+    def clear_structure_feature_cache(self) -> None:
+        self.alignn_feature_extractor.clear_material_feature_cache()
 
 
 class ALIGNNDKLModel(ALIGNNGPModel):

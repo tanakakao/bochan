@@ -2,12 +2,31 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any
 
 from ..optimizer.candidates import CandidateService
+from .scaling import optimize_alignn_structure_alternating
 
 _ALIGNN_MODEL_TYPES = frozenset({"alignn_gp", "alignn_dkl"})
+_ALTERNATING_STRUCTURE_THRESHOLD = 10
+_ALTERNATING_OPTION_KEYS = frozenset(
+    {
+        "initialization_strategy",
+        "tol",
+        "maxiter_alternating",
+        "maxiter_discrete",
+        "maxiter_continuous",
+        "maxiter_init",
+        "max_discrete_values",
+        "num_spray_points",
+        "std_cont_perturbation",
+        "batch_limit",
+        "init_batch_limit",
+    }
+)
+_ALTERNATING_OPTIMIZER_KWARGS = frozenset({"options", "alternating_options"})
 
 
 def _process_category_fixed_features(owner: Any) -> list[dict[int, float]]:
@@ -40,8 +59,50 @@ def _process_category_fixed_features(owner: Any) -> list[dict[int, float]]:
     ]
 
 
+def _optimizer_name(value: Any) -> str | None:
+    if callable(value) and not isinstance(value, str):
+        return None
+    return str(value).replace("-", "_").lower()
+
+
+def _alternating_optimizer_kwargs_compatible(resolved_opt: Any) -> bool:
+    """Reject standard optimizer kwargs that have no alternating equivalent."""
+
+    kwargs = dict(getattr(resolved_opt, "optimizer_kwargs", None) or {})
+    if set(kwargs) - _ALTERNATING_OPTIMIZER_KWARGS:
+        return False
+    for name in _ALTERNATING_OPTIMIZER_KWARGS:
+        options = kwargs.get(name)
+        if options is None:
+            continue
+        if not isinstance(options, Mapping):
+            return False
+        if set(options) - _ALTERNATING_OPTION_KEYS:
+            return False
+    return True
+
+
+def _use_alternating_structure_search(
+    resolved_opt: Any,
+    *,
+    structure_count: int,
+) -> bool:
+    """Return whether Phase-6 structure scaling should replace full enumeration."""
+
+    if structure_count <= _ALTERNATING_STRUCTURE_THRESHOLD:
+        return False
+    if int(resolved_opt.q) != 1 or not bool(resolved_opt.return_best_only):
+        return False
+    if not _alternating_optimizer_kwargs_compatible(resolved_opt):
+        return False
+    return _optimizer_name(resolved_opt.optimizer) in {
+        "optimize_acqf",
+        "optimize_acqf_mixed",
+    }
+
+
 class StructureAwareCandidateService(CandidateService):
-    """Extend the canonical candidate service with structure enumeration."""
+    """Extend the canonical candidate service with scalable structure search."""
 
     def __init__(self, *, structure: Any, **kwargs: Any) -> None:
         self.structure = structure
@@ -91,12 +152,34 @@ class StructureAwareCandidateService(CandidateService):
             feature_index=structure_index,
         )
         category_assignments = _process_category_fixed_features(owner)
+
+        if _use_alternating_structure_search(
+            resolved_opt,
+            structure_count=len(structure_assignments),
+        ):
+            optimizer_kwargs = dict(resolved_opt.optimizer_kwargs)
+            optimizer_kwargs.update(
+                {
+                    "structure_dim": structure_index,
+                    "structure_values": [
+                        assignment[structure_index]
+                        for assignment in structure_assignments
+                    ],
+                    "process_fixed_features_list": category_assignments,
+                }
+            )
+            return acq_config, replace(
+                resolved_opt,
+                optimizer=optimize_alignn_structure_alternating,
+                optimizer_kwargs=optimizer_kwargs,
+                fixed_features_list=None,
+            )
+
         fixed_features_list = [
             {**structure_assignment, **category_assignment}
             for structure_assignment in structure_assignments
             for category_assignment in category_assignments
         ]
-
         return acq_config, replace(
             resolved_opt,
             fixed_features_list=fixed_features_list,

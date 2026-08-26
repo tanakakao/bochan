@@ -17,9 +17,8 @@ from bochan.api import (
 from ..composition import CompositionAdapter
 from ..config import UNSET, TabularDataConfig, make_fit_config, make_model_config
 from ..observation import ObservationAdapter
-from ..structure import StructureTabularAdapter
+from ..structure import StructureAwareCandidateService, StructureTabularAdapter
 from ..targets import extract_output_category_maps, merge_target_category_metadata
-from .candidates import CandidateService
 from .diagnostics import DiagnosticsService
 from .settings import merge_input_transform_config, validate_noise_alpha
 
@@ -145,7 +144,7 @@ def initialize_optimizer(
         catalog=structure_catalog,
         graph_builder=structure_graph_builder,
     )
-    owner.candidates = CandidateService(
+    owner.candidates = StructureAwareCandidateService(
         composition=owner.composition,
         structure=owner.structure,
         total_constraints=composition_total_constraints,

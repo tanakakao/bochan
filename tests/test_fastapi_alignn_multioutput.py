@@ -15,6 +15,10 @@ from bochan.serving.fastapi.schemas.alignn_tabular import ALIGNNTabularFitModelR
 from bochan.serving.fastapi.services import alignn_tabular as service
 
 
+class FakeALIGNNGPModel(SimpleNamespace):
+    pass
+
+
 def _structure(scale: float = 5.43) -> dict[str, object]:
     return {
         "format": "mapping",
@@ -115,18 +119,16 @@ def test_alignn_fit_service_forwards_multi_target_contract(monkeypatch) -> None:
 
 
 def test_alignn_fit_response_exposes_independent_output_metadata(monkeypatch) -> None:
-    first = SimpleNamespace(
+    first = FakeALIGNNGPModel(
         material_encoder=SimpleNamespace(initialization="random"),
         process_dim=2,
         structure_feature_cache_enabled=True,
     )
-    first.__class__.__name__ = "ALIGNNGPModel"
-    second = SimpleNamespace(
+    second = FakeALIGNNGPModel(
         material_encoder=SimpleNamespace(initialization="random"),
         process_dim=2,
         structure_feature_cache_enabled=True,
     )
-    second.__class__.__name__ = "ALIGNNGPModel"
     model = SimpleNamespace(models=[first, second])
     bundle = SimpleNamespace(
         model=model,

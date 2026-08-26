@@ -64,10 +64,6 @@ def _frame() -> pd.DataFrame:
     )
 
 
-def _catalog() -> dict[str, object]:
-    return {"alpha": object(), "beta": object(), "gamma": object()}
-
-
 def _optimizer(
     model_type: str = "alignn_gp",
     *,

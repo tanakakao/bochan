@@ -1,4 +1,4 @@
-"""Minimal pure-PyTorch ALIGNN-GP FastAPI smoke client.
+"""Minimal pure-PyTorch mixed ALIGNN-GP FastAPI smoke client.
 
 Install and start the API first::
 
@@ -51,14 +51,63 @@ def api(client: httpx.Client, method: str, path: str, **kwargs):
 def main() -> None:
     fit_payload = {
         "data": [
-            {"phase": "alpha", "temperature": 900.0, "pressure": 0.8, "property": 0.40},
-            {"phase": "beta", "temperature": 930.0, "pressure": 1.0, "property": 0.72},
-            {"phase": "alpha", "temperature": 980.0, "pressure": 1.2, "property": 0.68},
-            {"phase": "beta", "temperature": 1020.0, "pressure": 1.4, "property": 1.05},
-            {"phase": "alpha", "temperature": 1070.0, "pressure": 1.6, "property": 0.93},
-            {"phase": "beta", "temperature": 1100.0, "pressure": 1.8, "property": 1.32},
+            {
+                "phase": "alpha",
+                "temperature": 900.0,
+                "pressure": 0.8,
+                "furnace": "A",
+                "atmosphere": "air",
+                "property": 0.40,
+            },
+            {
+                "phase": "beta",
+                "temperature": 930.0,
+                "pressure": 1.0,
+                "furnace": "B",
+                "atmosphere": "N2",
+                "property": 0.72,
+            },
+            {
+                "phase": "alpha",
+                "temperature": 980.0,
+                "pressure": 1.2,
+                "furnace": "A",
+                "atmosphere": "Ar",
+                "property": 0.68,
+            },
+            {
+                "phase": "beta",
+                "temperature": 1020.0,
+                "pressure": 1.4,
+                "furnace": "B",
+                "atmosphere": "N2",
+                "property": 1.05,
+            },
+            {
+                "phase": "alpha",
+                "temperature": 1070.0,
+                "pressure": 1.6,
+                "furnace": "A",
+                "atmosphere": "air",
+                "property": 0.93,
+            },
+            {
+                "phase": "beta",
+                "temperature": 1100.0,
+                "pressure": 1.8,
+                "furnace": "A",
+                "atmosphere": "Ar",
+                "property": 1.32,
+            },
         ],
-        "input_cols": ["phase", "temperature", "pressure"],
+        "input_cols": [
+            "phase",
+            "temperature",
+            "pressure",
+            "furnace",
+            "atmosphere",
+        ],
+        "categorical_cols": ["furnace", "atmosphere"],
         "target_cols": "property",
         "bounds": {
             "temperature": [850.0, 1150.0],
@@ -99,8 +148,20 @@ def main() -> None:
             f"/tabular/alignn/models/{model_id}/predict",
             json={
                 "data": [
-                    {"phase": "alpha", "temperature": 1000.0, "pressure": 1.1},
-                    {"phase": "beta", "temperature": 1000.0, "pressure": 1.1},
+                    {
+                        "phase": "alpha",
+                        "temperature": 1000.0,
+                        "pressure": 1.1,
+                        "furnace": "A",
+                        "atmosphere": "air",
+                    },
+                    {
+                        "phase": "beta",
+                        "temperature": 1000.0,
+                        "pressure": 1.1,
+                        "furnace": "B",
+                        "atmosphere": "N2",
+                    },
                 ],
                 "include_input": True,
             },

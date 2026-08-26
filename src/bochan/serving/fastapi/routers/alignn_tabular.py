@@ -48,7 +48,7 @@ def fit_alignn_tabular_model(
     request: ALIGNNTabularFitModelRequest,
     store: TabularOptimizerStore = TABULAR_STORE_DEP,
 ) -> TabularModelFitResponse:
-    """Fit and store ALIGNN-GP / ALIGNN-DKL from inline crystal structures."""
+    """Fit/store ALIGNN GP or DKL with continuous or mixed process inputs."""
 
     try:
         optimizer = fit_alignn_tabular_optimizer(request)
@@ -66,6 +66,8 @@ def predict_alignn_tabular_model(
     request: TabularPredictRequest,
     store: TabularOptimizerStore = TABULAR_STORE_DEP,
 ) -> TabularPredictResponse:
+    """Predict known structures using the fitted process-category mapping."""
+
     optimizer = _get_optimizer(store, model_id)
     try:
         return alignn_predict_response(model_id, optimizer, request)
@@ -104,7 +106,7 @@ def generate_alignn_tabular_candidates(
     request: ALIGNNTabularCandidateRequest,
     store: TabularOptimizerStore = TABULAR_STORE_DEP,
 ) -> TabularCandidateResponse:
-    """Optimize continuous process variables while enumerating structure IDs."""
+    """Enumerate structure/category choices and optimize continuous process inputs."""
 
     return _candidate_endpoint(model_id, request, store, use_ask=False)
 
@@ -115,7 +117,7 @@ def ask_alignn_tabular_candidates(
     request: ALIGNNTabularCandidateRequest,
     store: TabularOptimizerStore = TABULAR_STORE_DEP,
 ) -> TabularCandidateResponse:
-    """Generate and register pending ALIGNN structure/process candidates."""
+    """Generate and register pending structure/mixed-process candidates."""
 
     return _candidate_endpoint(model_id, request, store, use_ask=True)
 

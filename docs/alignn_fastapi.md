@@ -1,17 +1,19 @@
 # ALIGNN-GP / ALIGNN-DKL FastAPI
 
 This page shows the HTTP workflow for Bayesian optimization over a **known
-catalog of crystal structures** and **continuous process conditions** using
-Bochan's pure-PyTorch ALIGNN integration.
+catalog of crystal structures** plus **continuous and categorical process
+conditions** using Bochan's pure-PyTorch ALIGNN integration.
 
 The crystal structure is a discrete design choice. Bochan maps the user-facing
-structure ID to an integer `structure_index`, enumerates that coordinate during
-candidate optimization, and optimizes only the continuous process variables.
-The optimizer never interpolates between structures.
+structure ID to an integer `structure_index`, encodes the corresponding graph
+with ALIGNN, and never interpolates between crystal structures. Continuous
+process variables remain differentiable optimization coordinates. Categorical
+process variables are handled by the mixed GP kernel and discrete acquisition
+optimization.
 
 ## Backend contract
 
-The canonical path is now:
+The canonical path is:
 
 ```text
 crystal structure
@@ -21,17 +23,32 @@ crystal structure
     -> (TorchGraph atom_graph, TorchGraph line_graph)
     -> ALIGNNAtomWisePure representation backbone
     -> structure embedding
-    -> process-feature fusion
-    -> exact GP / DKL
-    -> BoTorch acquisition optimization
+
+continuous process variables -------------------+
+                                                 +-> ALIGNN mixed GP / DKL
+categorical process variables -> categorical GP +        -> acquisition
 ```
 
 No DGL graph, DGL convolution, or DGL runtime dependency is used on this path.
 
-The upstream pure-PyTorch implementation uses tensor/index/scatter operations
-for periodic neighbor search, line-graph construction, message passing, and
-readout. Bochan keeps the first model input coordinate as the discrete
-`structure_index`; process columns remain differentiable continuous variables.
+For a canonical fitted feature layout such as:
+
+```text
+[structure_index, temperature, furnace, pressure, atmosphere]
+```
+
+Bochan treats the coordinates as:
+
+```text
+structure_index       discrete graph selector; never a categorical kernel dim
+temperature           continuous
+furnace               categorical GP dim
+pressure              continuous
+atmosphere            categorical GP dim
+```
+
+Thus `dataset.cat_dims` includes the structure selector and process categories,
+whereas `model.cat_dims` / `bundle.cat_dims` include **process categories only**.
 
 ## Current scope
 
@@ -42,12 +59,17 @@ Supported:
 - `alignn_dkl`
 - pure-PyTorch `ALIGNNAtomWisePure`
 - pure-PyTorch `TorchGraph` atom/line graphs
-- one structure-ID column plus continuous process columns
+- known structure-ID catalog
+- continuous process variables
+- categorical process variables
+- automatic normal/mixed model selection from `categorical_cols`
+- explicit or inferred category maps
 - inline crystal mappings
 - inline CIF text
 - inline POSCAR text
-- prediction for known structures
+- prediction for known structures and fitted categories
 - candidate generation across all known structures or a selected subset
+- candidate enumeration over observed joint process-category assignments
 - `/ask` candidate registration as pending observations
 
 Not yet supported:
@@ -55,7 +77,6 @@ Not yet supported:
 - unknown/new structure generation
 - structure topology mutation during acquisition optimization
 - composition + crystal structure joint optimization
-- categorical process variables
 - multi-output ALIGNN
 - legacy DGL ALIGNN checkpoints on the canonical path
 - client-controlled server filesystem paths for CIF/POSCAR
@@ -71,9 +92,6 @@ python -m pip install "alignn==2026.8.11"
 
 DGL is **not required**.
 
-The ALIGNN dependency is installed explicitly for now so the atomistic stack
-remains optional to the Bochan core package.
-
 ## Start the API
 
 ```bash
@@ -83,7 +101,7 @@ python -m uvicorn bochan.serving.fastapi.app:app \
   --reload
 ```
 
-Open Swagger / OpenAPI at:
+Swagger / OpenAPI:
 
 ```text
 http://127.0.0.1:8000/docs
@@ -97,27 +115,19 @@ All structure-aware ALIGNN endpoints are under:
 
 ## Fastest end-to-end smoke test
 
-A runnable client is included:
+A runnable mixed-process client is included:
 
 ```bash
 python examples/alignn_fastapi_client.py
 ```
 
-It executes:
+It executes fit, predict, and candidate generation using crystal structure,
+continuous process variables, and categorical process variables. The example
+uses `fit_config.skip_fit=true`; its numerical output is only a plumbing smoke
+test and is not scientifically meaningful without an appropriate trained or
+pretrained ALIGNN setup.
 
-```text
-POST /api/v1/tabular/alignn/models
-  -> model_id
-POST /api/v1/tabular/alignn/models/{model_id}/predict
-POST /api/v1/tabular/alignn/models/{model_id}/candidates
-```
-
-The example uses `fit_config.skip_fit=true`. It verifies the HTTP layer,
-structure parsing, pure-Torch graph construction, pure ALIGNN encoder
-construction, prediction routing, and candidate routing quickly. Its numerical
-predictions are not intended for scientific interpretation.
-
-## 1. Fit an ALIGNN-GP model
+## 1. Fit an ALIGNN mixed GP model
 
 A structure catalog is a JSON object whose keys are stable structure IDs.
 Training rows refer to these IDs through `structure_col`.
@@ -129,12 +139,47 @@ base = "http://127.0.0.1:8000/api/v1"
 
 payload = {
     "data": [
-        {"phase": "alpha", "temperature": 900.0, "pressure": 0.8, "property": 0.40},
-        {"phase": "beta",  "temperature": 930.0, "pressure": 1.0, "property": 0.72},
-        {"phase": "alpha", "temperature": 980.0, "pressure": 1.2, "property": 0.68},
-        {"phase": "beta",  "temperature": 1020.0, "pressure": 1.4, "property": 1.05},
+        {
+            "phase": "alpha",
+            "temperature": 900.0,
+            "pressure": 0.8,
+            "furnace": "A",
+            "atmosphere": "air",
+            "property": 0.40,
+        },
+        {
+            "phase": "beta",
+            "temperature": 930.0,
+            "pressure": 1.0,
+            "furnace": "B",
+            "atmosphere": "N2",
+            "property": 0.72,
+        },
+        {
+            "phase": "alpha",
+            "temperature": 980.0,
+            "pressure": 1.2,
+            "furnace": "A",
+            "atmosphere": "Ar",
+            "property": 0.68,
+        },
+        {
+            "phase": "beta",
+            "temperature": 1020.0,
+            "pressure": 1.4,
+            "furnace": "B",
+            "atmosphere": "N2",
+            "property": 1.05,
+        },
     ],
-    "input_cols": ["phase", "temperature", "pressure"],
+    "input_cols": [
+        "phase",
+        "temperature",
+        "pressure",
+        "furnace",
+        "atmosphere",
+    ],
+    "categorical_cols": ["furnace", "atmosphere"],
     "target_cols": "property",
     "structure_col": "phase",
     "structure_catalog": {
@@ -166,9 +211,7 @@ payload = {
     "model_config": {
         "task_type": "regression",
         "model_type": "alignn_gp",
-        "model_kwargs": {
-            "latent_dim": 8,
-        },
+        "model_kwargs": {"latent_dim": 8},
     },
     "fit_config": {"skip_fit": True},
 }
@@ -181,38 +224,80 @@ response = httpx.post(
 response.raise_for_status()
 result = response.json()
 model_id = result["model_id"]
-print(result)
 ```
 
-The default pure graph settings follow the current upstream scalar-property kNN
-recipe:
+### Bounds and categories
+
+Only **continuous process variables** require bounds. Do not invent numerical
+bounds for categorical variables merely to satisfy the HTTP schema:
+
+```python
+"categorical_cols": ["furnace", "atmosphere"],
+"bounds": {
+    "temperature": [850.0, 1150.0],
+    "pressure": [0.5, 2.0],
+},
+```
+
+When `category_maps` is omitted, Bochan fits stable category maps from the
+training data and reuses them for prediction and subsequent updates. They can
+also be supplied explicitly:
+
+```python
+"category_maps": {
+    "furnace": {"A": 0, "B": 1},
+    "atmosphere": {"air": 0, "N2": 1, "Ar": 2},
+},
+```
+
+The structure ID mapping is separate and remains owned by `structure_catalog`.
+Do not treat `structure_col` as an ordinary process categorical kernel input.
+
+### Fit response metadata
+
+`metadata.alignn` exposes the resolved contract, including:
 
 ```text
-neighbor_strategy = pure_torch
-cutoff             = 8.0 Å
-max_neighbors      = 12
-atom_features      = cgcnn
-three_body_cutoff  = 3.5 Å
-compute_line_graph = true
+input_type
+structure_col
+structure_ids
+continuous_process_cols
+categorical_process_cols
+categorical_process_dims
+category_maps
+process_dim
+graph_config
+encoder_training
+encoder_initialization
 ```
 
-The fit response contains `metadata.alignn`, including the encoder training
-mode, initialization, structure IDs, process dimension, and graph config.
-
-The feature order is canonicalized so the structure selector is feature index
-0 even when the incoming `input_cols` order differs.
+This makes it possible for an API client to verify whether the server resolved
+the model as `normal` or `mixed` and which process coordinates are categorical.
 
 ## 2. Predict
 
-Prediction rows use original structure IDs, not integer indices.
+Prediction rows use the original structure IDs and original process-category
+labels:
 
 ```python
 prediction = httpx.post(
     f"{base}/tabular/alignn/models/{model_id}/predict",
     json={
         "data": [
-            {"phase": "alpha", "temperature": 1000.0, "pressure": 1.1},
-            {"phase": "beta", "temperature": 1000.0, "pressure": 1.1},
+            {
+                "phase": "alpha",
+                "temperature": 1000.0,
+                "pressure": 1.1,
+                "furnace": "A",
+                "atmosphere": "air",
+            },
+            {
+                "phase": "beta",
+                "temperature": 1000.0,
+                "pressure": 1.1,
+                "furnace": "B",
+                "atmosphere": "N2",
+            },
         ],
         "include_input": True,
     },
@@ -222,9 +307,10 @@ prediction.raise_for_status()
 print(prediction.json())
 ```
 
-Only structure IDs present in the fitted structure catalog are valid.
+The fitted category maps are reused. Unknown category labels are therefore not
+silently recoded with a new ordering.
 
-## 3. Generate a structure + process candidate
+## 3. Generate structure + mixed-process candidates
 
 ```python
 candidate = httpx.post(
@@ -243,17 +329,36 @@ candidate.raise_for_status()
 print(candidate.json())
 ```
 
-Internally the structure coordinate is enumerated conceptually as:
+For example, with two structures and observed process-category assignments:
 
-```python
-fixed_features_list = [
-    {0: 0.0},  # alpha
-    {0: 1.0},  # beta
-]
+```text
+(A, air)
+(B, N2)
+(A, Ar)
 ```
 
-while `temperature` and `pressure` remain continuous optimization variables.
-The response is decoded back to `phase="alpha"` or `phase="beta"`.
+Bochan constructs the discrete search as:
+
+```text
+{alpha, beta}
+    x
+{(A, air), (B, N2), (A, Ar)}
+```
+
+and optimizes only continuous variables such as `temperature` and `pressure`
+inside each discrete configuration. The categorical combinations come from the
+**current training inputs**, so combinations added later through `tell()` /
+`update_data()` participate in subsequent candidate generation.
+
+The candidate response is decoded back to original values such as:
+
+```text
+phase="beta"
+furnace="B"
+atmosphere="N2"
+```
+
+rather than returning category codes.
 
 ### Restrict the structure subset
 
@@ -269,14 +374,12 @@ candidate = httpx.post(
 ```
 
 Use `structure_ids`, not a client-supplied `fixed_features_list`; Bochan owns the
-structure ID/index mapping.
+structure ID/index mapping and the mixed discrete enumeration.
 
 ## 4. Asynchronous `/ask`
 
-`/ask` uses the same candidate generation but additionally registers the
-returned experiment as pending. Subsequent acquisitions can therefore consume
-it as `X_pending` and avoid proposing the same experiment while its result is
-outstanding.
+`/ask` uses the same structure/category/continuous candidate generation but also
+registers the returned experiment as pending:
 
 ```python
 asked = httpx.post(
@@ -288,7 +391,32 @@ asked = httpx.post(
 )
 ```
 
-## 5. Use CIF or POSCAR content
+Subsequent acquisitions can consume it as `X_pending` and avoid proposing the
+same outstanding experiment.
+
+## 5. Normal continuous-only ALIGNN remains supported
+
+Omit `categorical_cols` when all process variables are continuous:
+
+```python
+"input_cols": ["phase", "temperature", "pressure"],
+"bounds": {
+    "temperature": [850.0, 1150.0],
+    "pressure": [0.5, 2.0],
+},
+```
+
+The same public model names are used in both cases:
+
+```text
+alignn_gp
+alignn_dkl
+```
+
+Bochan resolves `input_type="normal"` or `input_type="mixed"` from the fitted
+process-column contract instead of introducing separate HTTP model names.
+
+## 6. Use CIF or POSCAR content
 
 The HTTP API deliberately does not accept a client-provided server path such as
 `C:/data/sample.cif` or `/tmp/sample.cif`.
@@ -314,7 +442,7 @@ The server parses the supplied text through `StructureAdapter`, then creates
 pure upstream `TorchGraph` objects. Temporary structure files used internally
 for parser compatibility are removed after parsing.
 
-## 6. ALIGNN-DKL
+## 7. ALIGNN-DKL
 
 Change the model section to:
 
@@ -337,6 +465,8 @@ Change the model section to:
 For `alignn_gp`, the encoder is frozen and `encoder_training` must not be
 specified.
 
+The same mixed process-column contract applies to both GP and DKL variants.
+
 ## Checkpoints and scientifically meaningful use
 
 If no checkpoint is configured, Bochan constructs `ALIGNNAtomWisePure` with
@@ -354,9 +484,7 @@ neighbor_strategy = "pure_torch"
 Legacy DGL `model.name="alignn"` checkpoints are rejected rather than silently
 loaded into a different representation implementation.
 
-For FastAPI, the client cannot send an arbitrary server filesystem path. The
-server operator first configures an allowlisted checkpoint directory, for
-example:
+For FastAPI, configure an allowlisted checkpoint directory on the server, e.g.
 
 Windows cmd:
 
@@ -376,36 +504,8 @@ Linux/macOS:
 export BOCHAN_ALIGNN_CHECKPOINT_ROOT=/opt/bochan/alignn-checkpoints
 ```
 
-Then the client sends only a filename identifier:
-
-```python
-"model_config": {
-    "task_type": "regression",
-    "model_type": "alignn_gp",
-    "model_kwargs": {
-        "checkpoint": "formation_energy_pure.pt",
-        "encoder_config": {
-            "name": "alignn_atomwise_pure",
-            "alignn_layers": 4,
-            "gcn_layers": 4,
-            "atom_input_features": 92,
-            "edge_input_features": 80,
-            "triplet_input_features": 40,
-            "embedding_features": 64,
-            "hidden_features": 256,
-            "output_features": 1,
-            "calculate_gradient": False,
-            "gradwise_weight": 0.0,
-            "energy_mult_natoms": False,
-        },
-        "latent_dim": 16,
-    },
-}
-```
-
-The server resolves that filename only inside
-`BOCHAN_ALIGNN_CHECKPOINT_ROOT`. Path traversal and absolute client paths are
-rejected.
+Then the client sends only a filename identifier. Path traversal and absolute
+client paths are rejected.
 
 When transferring a pretrained model, `structure_graph_config` must match the
 training graph settings. Model weights are not graph-construction agnostic.
@@ -428,8 +528,8 @@ parameters are updated.
 | Method | Endpoint | Purpose |
 |---|---|---|
 | POST | `/api/v1/tabular/alignn/models` | Fit/store pure ALIGNN-GP or ALIGNN-DKL |
-| POST | `/api/v1/tabular/alignn/models/{model_id}/predict` | Predict known structures/process conditions |
-| POST | `/api/v1/tabular/alignn/models/{model_id}/candidates` | Generate structure + process candidates |
+| POST | `/api/v1/tabular/alignn/models/{model_id}/predict` | Predict known structure/process conditions |
+| POST | `/api/v1/tabular/alignn/models/{model_id}/candidates` | Generate structure + continuous/categorical process candidates |
 | POST | `/api/v1/tabular/alignn/models/{model_id}/ask` | Generate and register pending candidates |
 
 The model uses the same tabular model store as the existing generic FastAPI

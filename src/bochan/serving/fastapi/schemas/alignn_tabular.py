@@ -137,20 +137,36 @@ class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
             raise ValueError(
                 "ALIGNN FastAPI does not yet combine composition_sites with crystal structures."
             )
-        other_categorical = [
-            column for column in self.categorical_cols if column != self.structure_col
+
+        unknown_categorical = [
+            column for column in self.categorical_cols if column not in self.input_cols
         ]
-        if other_categorical:
+        if unknown_categorical:
             raise ValueError(
-                "ALIGNN FastAPI Phase 3 supports continuous process variables only; "
-                f"categorical process columns were configured: {other_categorical!r}."
+                "categorical_cols must be included in input_cols; "
+                f"unknown columns: {unknown_categorical!r}."
             )
-        if not isinstance(self.bounds, dict):
+        process_categorical = {
+            column for column in self.categorical_cols if column != self.structure_col
+        }
+        continuous_process_cols = [
+            column
+            for column in self.input_cols
+            if column != self.structure_col and column not in process_categorical
+        ]
+        if self.bounds is not None and not isinstance(self.bounds, dict):
             raise ValueError(
-                "ALIGNN FastAPI requires column-addressed bounds for process variables."
+                "ALIGNN FastAPI requires column-addressed bounds when bounds are supplied."
             )
-        process_cols = [column for column in self.input_cols if column != self.structure_col]
-        missing_bounds = [column for column in process_cols if column not in self.bounds]
+        if continuous_process_cols and self.bounds is None:
+            raise ValueError(
+                "ALIGNN FastAPI requires column-addressed bounds for continuous "
+                "process variables."
+            )
+        bounds = self.bounds or {}
+        missing_bounds = [
+            column for column in continuous_process_cols if column not in bounds
+        ]
         if missing_bounds:
             raise ValueError(
                 "ALIGNN FastAPI requires bounds for every continuous process variable; "

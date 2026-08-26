@@ -149,40 +149,38 @@ def test_structure_mapping_validation_is_strict() -> None:
         adapter.adapt(singular)
 
 
-def test_alignn_graph_builder_defaults_match_current_training_config() -> None:
+def test_alignn_graph_builder_defaults_match_current_pure_scalar_recipe() -> None:
     builder = ALIGNNGraphBuilder()
 
     assert builder.config == {
-        "neighbor_strategy": "k-nearest",
-        "cutoff": 5.0,
-        "cutoff_extra": 3.0,
+        "neighbor_strategy": "pure_torch",
+        "cutoff": 8.0,
         "max_neighbors": 12,
         "atom_features": "cgcnn",
         "compute_line_graph": True,
-        "use_canonize": True,
         "dtype": "float32",
         "three_body_cutoff": 3.5,
     }
 
 
-def test_alignn_graph_builder_preserves_upstream_graph_settings(monkeypatch) -> None:
+def test_alignn_graph_builder_rejects_non_pure_neighbor_strategy() -> None:
+    with pytest.raises(ValueError, match="neighbor_strategy='pure_torch'"):
+        ALIGNNGraphBuilder(neighbor_strategy="k-nearest")
+
+
+def test_alignn_graph_builder_forwards_pure_graph_settings(monkeypatch) -> None:
     calls: list[dict[str, object]] = []
 
-    class FakeGraph:
-        @staticmethod
-        def atom_dgl_multigraph(**kwargs: object) -> tuple[str, str]:
-            calls.append(dict(kwargs))
-            return "graph", "line_graph"
+    def fake_builder(**kwargs: object) -> tuple[str, str]:
+        calls.append(dict(kwargs))
+        return "graph", "line_graph"
 
-    monkeypatch.setattr(alignn_structure, "_alignn_graph_class", lambda: FakeGraph)
+    monkeypatch.setattr(alignn_structure, "_pure_graph_builder", lambda: fake_builder)
     builder = ALIGNNGraphBuilder(
-        neighbor_strategy="k-nearest",
         cutoff=7.5,
-        cutoff_extra=2.0,
         max_neighbors=10,
         atom_features="cgcnn",
         compute_line_graph=True,
-        use_canonize=False,
         dtype="float64",
         three_body_cutoff=3.0,
     )
@@ -192,34 +190,29 @@ def test_alignn_graph_builder_preserves_upstream_graph_settings(monkeypatch) -> 
     assert result == ("graph", "line_graph")
     assert len(calls) == 1
     call = calls[0]
-    assert call["neighbor_strategy"] == "k-nearest"
-    assert call["cutoff"] == 7.5
-    assert call["cutoff_extra"] == 2.0
+    assert call["two_body_cutoff"] == 7.5
+    assert call["three_body_cutoff"] == 3.0
     assert call["max_neighbors"] == 10
     assert call["atom_features"] == "cgcnn"
     assert call["compute_line_graph"] is True
-    assert call["use_canonize"] is False
-    assert call["dtype"] == "float64"
-    assert call["three_body_cutoff"] == 3.0
+    assert call["use_matscipy_topology"] is False
+    assert call["positions"].dtype == torch.float64  # type: ignore[union-attr]
+    assert call["lattice"].dtype == torch.float64  # type: ignore[union-attr]
     assert call["atoms"].elements == ["Si", "Si"]  # type: ignore[union-attr]
 
 
-def test_alignn_graph_builder_uses_training_config(monkeypatch) -> None:
-    class FakeGraph:
-        @staticmethod
-        def atom_dgl_multigraph(**kwargs: object) -> tuple[str, str]:
-            return "graph", "line_graph"
+def test_alignn_graph_builder_uses_pure_training_config(monkeypatch) -> None:
+    def fake_builder(**kwargs: object) -> tuple[str, str]:
+        return "graph", "line_graph"
 
-    monkeypatch.setattr(alignn_structure, "_alignn_graph_class", lambda: FakeGraph)
+    monkeypatch.setattr(alignn_structure, "_pure_graph_builder", lambda: fake_builder)
     builder = ALIGNNGraphBuilder.from_training_config(
         {
-            "neighbor_strategy": "radius_graph_jarvis",
+            "neighbor_strategy": "pure_torch",
             "cutoff": 5.5,
-            "cutoff_extra": 1.5,
             "max_neighbors": 8,
             "atom_features": "atomic_number",
             "compute_line_graph": True,
-            "use_canonize": True,
             "dtype": "float64",
             "three_body_cutoff": 3.0,
         }
@@ -229,35 +222,60 @@ def test_alignn_graph_builder_uses_training_config(monkeypatch) -> None:
 
     assert graphs == (("graph", "line_graph"), ("graph", "line_graph"))
     assert builder.config == {
-        "neighbor_strategy": "radius_graph_jarvis",
+        "neighbor_strategy": "pure_torch",
         "cutoff": 5.5,
-        "cutoff_extra": 1.5,
         "max_neighbors": 8,
         "atom_features": "atomic_number",
         "compute_line_graph": True,
-        "use_canonize": True,
         "dtype": "float64",
         "three_body_cutoff": 3.0,
     }
 
 
-def test_local_pretrained_zip_keeps_model_and_graph_configs_together(tmp_path, monkeypatch) -> None:
-    config = {
-        "neighbor_strategy": "k-nearest",
+def test_real_pure_torch_graph_builder_runs_without_dgl_graphs() -> None:
+    pytest.importorskip("alignn")
+
+    graph, line_graph = ALIGNNGraphBuilder(cutoff=5.0).build(_si_structure())
+
+    assert graph.__class__.__module__ == "alignn.torch_graph_builder"
+    assert graph.__class__.__name__ == "TorchGraph"
+    assert line_graph.__class__.__module__ == "alignn.torch_graph_builder"
+    assert graph.num_nodes == 2
+    assert graph.src.dtype == torch.long
+    assert graph.dst.dtype == torch.long
+    assert graph.ndata["atom_features"].shape == (2, 92)
+    assert graph.edata["r"].shape[-1] == 3
+    assert line_graph.num_nodes == graph.num_edges
+    assert "h" in line_graph.edata
+
+
+def _pure_bundle_config() -> dict[str, object]:
+    return {
+        "neighbor_strategy": "pure_torch",
         "cutoff": 8.0,
-        "cutoff_extra": 2.0,
         "max_neighbors": 12,
         "atom_features": "cgcnn",
         "compute_line_graph": True,
-        "use_canonize": True,
         "dtype": "float32",
         "three_body_cutoff": 3.5,
         "model": {
-            "name": "alignn",
-            "hidden_features": 4,
+            "name": "alignn_atomwise_pure",
+            "alignn_layers": 4,
+            "gcn_layers": 4,
+            "atom_input_features": 92,
+            "hidden_features": 256,
             "output_features": 1,
+            "calculate_gradient": False,
+            "gradwise_weight": 0.0,
+            "energy_mult_natoms": False,
         },
     }
+
+
+def test_local_pretrained_zip_keeps_pure_model_and_graph_configs_together(
+    tmp_path, monkeypatch
+) -> None:
+    config = _pure_bundle_config()
     checkpoint_buffer = BytesIO()
     torch.save({"model": {"weight": torch.tensor([1.0])}}, checkpoint_buffer)
 
@@ -270,11 +288,10 @@ def test_local_pretrained_zip_keeps_model_and_graph_configs_together(tmp_path, m
     graph_builder = bundle.build_graph_builder()
 
     assert bundle.checkpoint_name == "run/best_model.pt"
-    assert bundle.model_config["name"] == "alignn"
+    assert bundle.model_config["name"] == "alignn_atomwise_pure"
     assert graph_builder.cutoff == 8.0
-    assert graph_builder.cutoff_extra == 2.0
     assert graph_builder.max_neighbors == 12
-    assert graph_builder.neighbor_strategy == "k-nearest"
+    assert graph_builder.neighbor_strategy == "pure_torch"
     assert graph_builder.three_body_cutoff == 3.5
 
     captured: dict[str, object] = {}
@@ -292,7 +309,7 @@ def test_local_pretrained_zip_keeps_model_and_graph_configs_together(tmp_path, m
 
 
 def test_pretrained_bundle_selects_numbered_checkpoint_numerically(tmp_path) -> None:
-    config = {"model": {"name": "alignn"}}
+    config = _pure_bundle_config()
     checkpoint_9 = BytesIO()
     checkpoint_10 = BytesIO()
     torch.save({"model": {"step": torch.tensor([9])}}, checkpoint_9)
@@ -309,14 +326,17 @@ def test_pretrained_bundle_selects_numbered_checkpoint_numerically(tmp_path) -> 
     assert bundle.checkpoint_name == "checkpoint_10.pt"
 
 
-def test_pretrained_bundle_rejects_non_scalar_alignn(tmp_path) -> None:
-    config = {"model": {"name": "alignn_atomwise"}}
+def test_pretrained_bundle_rejects_legacy_dgl_alignn(tmp_path) -> None:
+    config = {
+        "neighbor_strategy": "k-nearest",
+        "model": {"name": "alignn"},
+    }
     checkpoint_buffer = BytesIO()
     torch.save({"model": {"weight": torch.tensor([1.0])}}, checkpoint_buffer)
-    bundle_path = tmp_path / "atomwise.zip"
+    bundle_path = tmp_path / "legacy.zip"
     with ZipFile(bundle_path, "w") as archive:
         archive.writestr("config.json", dumps(config))
         archive.writestr("best_model.pt", checkpoint_buffer.getvalue())
 
-    with pytest.raises(NotImplementedError, match="model.name='alignn'"):
+    with pytest.raises(NotImplementedError, match="pure-PyTorch"):
         load_alignn_pretrained_bundle(bundle_path)

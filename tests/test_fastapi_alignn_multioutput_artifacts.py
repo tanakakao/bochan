@@ -9,8 +9,8 @@ import pytest
 pytest.importorskip("alignn")
 pytest.importorskip("fastapi")
 
-from fastapi.testclient import TestClient  # noqa: E402
 from botorch.models.model_list_gp_regression import ModelListGP  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
 from bochan.model_artifact import deserialize_model_artifact  # noqa: E402
 from bochan.serving.fastapi import create_app  # noqa: E402

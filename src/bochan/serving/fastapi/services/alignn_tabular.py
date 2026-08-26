@@ -34,6 +34,10 @@ from .tabular import (
 )
 
 _CHECKPOINT_ROOT_ENV = "BOCHAN_ALIGNN_CHECKPOINT_ROOT"
+_ALIGNN_CORRELATED_MULTITASK_MODEL_TYPES = frozenset(
+    {"alignn_multitask", "alignn_multitask_dkl"}
+)
+_ALIGNN_FROZEN_MODEL_TYPES = frozenset({"alignn_gp", "alignn_multitask"})
 
 
 def _inline_file_structure(
@@ -194,7 +198,7 @@ def _alignn_output_models(model: Any) -> list[Any]:
 
 
 def _encoder_training_mode(model_type: str, model: Any) -> str:
-    if model_type == "alignn_gp":
+    if model_type.lower() in _ALIGNN_FROZEN_MODEL_TYPES:
         return "frozen"
     trainable_layers = getattr(model, "trainable_encoder_layers", None)
     return "full" if trainable_layers == "all" else "partial"
@@ -211,9 +215,9 @@ def build_alignn_fit_response(
     if bundle is None:
         return response
     model = bundle.model
-    model_type = str(bundle.model_type)
-    output_models = _alignn_output_models(model)
-    representative_model = output_models[0]
+    model_type = str(bundle.model_type).lower()
+    correlated = model_type in _ALIGNN_CORRELATED_MULTITASK_MODEL_TYPES
+    representative_model = model if correlated else _alignn_output_models(model)[0]
     representative_encoder = getattr(representative_model, "material_encoder", None)
     training_mode = _encoder_training_mode(model_type, representative_model)
     initialization = getattr(representative_encoder, "initialization", None)
@@ -241,6 +245,16 @@ def build_alignn_fit_response(
         for column in process_categorical_cols
         if column in category_maps
     }
+
+    if correlated:
+        num_outputs = int(getattr(model, "num_outputs", len(target_names) or 1))
+        output_models = [model] * num_outputs
+        output_dependency = "correlated"
+    else:
+        output_models = _alignn_output_models(model)
+        num_outputs = len(output_models)
+        output_dependency = "independent" if num_outputs > 1 else "single"
+
     output_metadata = []
     for index, output_model in enumerate(output_models):
         encoder = getattr(output_model, "material_encoder", None)
@@ -256,8 +270,18 @@ def build_alignn_fit_response(
                     "structure_feature_cache_enabled",
                     False,
                 ),
+                "shared_model": correlated,
             }
         )
+
+    task_kernel = None
+    task_covar_module = None
+    if correlated:
+        covar_module = getattr(getattr(model, "deepkernel", None), "covar_module", None)
+        task_kernel = getattr(covar_module, "__class__", type(None)).__name__
+        task_covar = getattr(model, "task_covar_module", None)
+        if task_covar is not None:
+            task_covar_module = task_covar.__class__.__name__
 
     metadata = dict(response.metadata)
     metadata["alignn"] = to_serializable(
@@ -275,11 +299,14 @@ def build_alignn_fit_response(
             "categorical_process_dims": process_cat_dims,
             "category_maps": process_category_maps,
             "graph_config": graph_config,
-            "multi_output": len(output_models) > 1,
-            "num_outputs": len(output_models),
+            "multi_output": num_outputs > 1,
+            "num_outputs": num_outputs,
             "output_names": target_names,
             "output_models": output_metadata,
-            "output_dependency": "independent",
+            "output_dependency": output_dependency,
+            "shared_encoder": correlated,
+            "task_kernel": task_kernel,
+            "task_covar_module": task_covar_module,
         }
     )
     response.metadata = metadata

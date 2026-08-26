@@ -204,6 +204,15 @@ class _ALIGNNGPFeatureExtractor(nn.Module):
                 )
         self.projection = projection
 
+    def __getstate__(self) -> dict[str, Any]:
+        """Exclude the derived structure-feature cache from pickle artifacts."""
+
+        state = dict(super().__getstate__())
+        buffers = dict(state.get("_buffers", {}))
+        buffers["_material_feature_cache"] = None
+        state["_buffers"] = buffers
+        return state
+
     @property
     def material_feature_cache_enabled(self) -> bool:
         """Return whether structure-only encoder outputs can be safely reused."""

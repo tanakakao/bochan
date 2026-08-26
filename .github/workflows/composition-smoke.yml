@@ -32,8 +32,10 @@ jobs:
             tests/test_structure_alignn.py \
             tests/test_tabular_alignn_models.py \
             tests/test_tabular_alignn_mixed.py \
+            tests/test_tabular_alignn_multioutput.py \
             tests/test_fastapi_alignn_tabular.py \
             tests/test_fastapi_alignn_mixed.py \
+            tests/test_fastapi_alignn_multioutput.py \
             tests/test_fastapi_alignn_artifacts.py \
             tests/test_common_model_artifact_api.py \
             tests/test_crabnet_encoder.py \
@@ -106,8 +108,10 @@ jobs:
             tests/test_structure_alignn.py \
             tests/test_tabular_alignn_models.py \
             tests/test_tabular_alignn_mixed.py \
+            tests/test_tabular_alignn_multioutput.py \
             tests/test_fastapi_alignn_tabular.py \
             tests/test_fastapi_alignn_mixed.py \
+            tests/test_fastapi_alignn_multioutput.py \
             tests/test_fastapi_alignn_artifacts.py \
             tests/test_common_model_artifact_api.py \
             tests/test_material_encoder_fusion.py \

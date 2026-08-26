@@ -25,6 +25,7 @@ jobs:
           pytest -q --maxfail=1 \
             tests/test_alignn_gp.py \
             tests/test_structure_alignn.py \
+            tests/test_tabular_alignn_models.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
             tests/test_crabnet_integration_closure.py \
@@ -69,9 +70,15 @@ jobs:
             src/bochan/tabular/composition/totals.py \
             src/bochan/tabular/composition/transformer.py \
             src/bochan/tabular/composition/variable_total.py \
+            src/bochan/tabular/structure/__init__.py \
+            src/bochan/tabular/structure/adapter.py \
+            src/bochan/tabular/structure/candidates.py \
+            src/bochan/tabular/structure/fitting.py \
+            src/bochan/tabular/optimizer/configuration.py \
             src/bochan/tabular/optimizer/fitting.py \
             tests/test_alignn_gp.py \
             tests/test_structure_alignn.py \
+            tests/test_tabular_alignn_models.py \
             tests/test_material_encoder_fusion.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \

@@ -44,6 +44,7 @@ def optimize_alignn_structure_alternating(
     equality_constraints: Any | None = None,
     return_best_only: bool = True,
     sequential: bool = True,
+    options: Mapping[str, Any] | None = None,
     alternating_options: Mapping[str, Any] | None = None,
 ) -> tuple[Tensor, Tensor]:
     """Optimize structure categorically while preserving observed process tuples.
@@ -83,6 +84,8 @@ def optimize_alignn_structure_alternating(
     categorical = {
         int(structure_dim): [float(value) for value in structure_values]
     }
+    resolved_options = dict(options or {})
+    resolved_options.update(dict(alternating_options or {}))
 
     for process_fixed in process_fixed_features_list:
         inner_fixed = _merge_fixed_features(fixed_features, process_fixed)
@@ -90,12 +93,12 @@ def optimize_alignn_structure_alternating(
             acq_function=acq_function,
             bounds=bounds,
             cat_dims=categorical,
-            options=dict(alternating_options or {}),
+            options=resolved_options,
             q=1,
             raw_samples=int(raw_samples),
             num_restarts=int(num_restarts),
             post_processing_func=post_processing_func,
-            sequential=bool(sequential),
+            sequential=True,
             fixed_features=inner_fixed or None,
             inequality_constraints=inequality_constraints,
             equality_constraints=equality_constraints,

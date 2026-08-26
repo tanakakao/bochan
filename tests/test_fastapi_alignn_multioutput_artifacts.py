@@ -241,14 +241,10 @@ def test_alignn_multi_output_ask_registers_all_targets_as_pending(client_and_sto
     ask_response = client.post(
         f"/api/v1/tabular/alignn/models/{model_id}/ask",
         json={
-            "acquisition_config": {
-                "name": "nehvi",
-                "objective_config": {
-                    "mode": "multi_output",
-                    "outputs": [0, 1],
-                    "directions": ["maximize", "maximize"],
-                },
-            },
+            "acquisition_config": {"name": "logei"},
+            "objective_mode": "scalar",
+            "objective_output": "strength",
+            "objective_direction": "maximize",
             "optimize_config": {
                 "q": 1,
                 "num_restarts": 2,
@@ -257,16 +253,12 @@ def test_alignn_multi_output_ask_registers_all_targets_as_pending(client_and_sto
             "structure_ids": ["alpha", "beta"],
         },
     )
-    # The endpoint must either produce a valid multi-objective candidate or fail
-    # at acquisition-specific context validation, never because ALIGNN is single-output.
-    if ask_response.status_code != 200:
-        detail = str(ask_response.json().get("detail", ""))
-        assert "single-output" not in detail.lower()
-        assert "one target" not in detail.lower()
-        return
+    assert ask_response.status_code == 200, ask_response.text
 
     optimizer = tabular_store.get(model_id)
-    assert optimizer.bo.observations is not None
-    pending = optimizer.bo.observations.pending
-    assert pending.Y.shape[-1] == 2
-    assert pending.Y.isnan().all()
+    observations = optimizer.bo.observations
+    assert observations is not None
+    assert int(observations.pending_mask.sum().item()) == 1
+    pending_y = observations.Y[observations.pending_mask]
+    assert pending_y.shape == (1, 2)
+    assert pending_y.isnan().all()

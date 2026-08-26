@@ -15,9 +15,10 @@ from bochan.api import (
 )
 
 from ..composition import CompositionAdapter
-from ..config import UNSET, TabularDataConfig, make_fit_config, make_model_config
+from ..config import UNSET, ColumnKey, TabularDataConfig, make_fit_config, make_model_config
 from ..observation import ObservationAdapter
-from ..structure import StructureAwareCandidateService, StructureTabularAdapter
+from ..structure.adapter import StructureTabularAdapter
+from ..structure.candidates import StructureAwareCandidateService
 from ..structure.fitting import configure_tabular_alignn
 from ..targets import extract_output_category_maps, merge_target_category_metadata
 from .diagnostics import DiagnosticsService
@@ -74,7 +75,7 @@ def initialize_optimizer(
     cv_config: CrossValidationConfig | Mapping[str, Any] | None,
     failure_config: ExperimentFailureConfig | None,
     target_missing_strategy: str | None,
-    experiment_status_col: Any | None,
+    experiment_status_col: ColumnKey | None,
     alpha: float | None,
     beta: Any,
     normalize: Any,

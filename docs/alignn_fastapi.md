@@ -37,17 +37,21 @@ Not yet supported:
 From the repository root:
 
 ```bash
-python -m pip install -e ".[api,tabular,alignn]"
+python -m pip install -e ".[api,tabular]"
+python -m pip install "alignn==2026.8.11"
 ```
 
-The current Bochan ALIGNN-GP/DKL implementation uses the historical scalar
-`alignn.models.alignn.ALIGNN` backbone and the DGL graph builder. Install a DGL
-build compatible with the local PyTorch/CUDA environment before a real ALIGNN
-fit request.
+ALIGNN is intentionally installed explicitly rather than being hidden behind a
+Bochan optional extra in this phase. The current Bochan ALIGNN-GP/DKL
+implementation uses the historical scalar `alignn.models.alignn.ALIGNN`
+backbone and the DGL graph builder, so the DGL build must be selected for the
+actual local PyTorch/CUDA environment.
 
-Do not install an arbitrary DGL version merely to satisfy the import: DGL,
-PyTorch and CUDA versions must be compatible. If a suitable native Windows DGL
-build is unavailable for the environment, WSL2/Linux is the safer test path.
+Install a DGL build compatible with the local PyTorch/CUDA environment before a
+real ALIGNN fit request. Do not install an arbitrary DGL version merely to
+satisfy the import: DGL, PyTorch and CUDA versions must be compatible. If a
+suitable native Windows DGL build is unavailable for the environment,
+WSL2/Linux is the safer test path.
 
 Upstream ALIGNN now also provides pure-PyTorch model variants that do not need
 DGL. Bochan does not yet use that pure-PyTorch backbone in this Phase-3 path;

@@ -28,6 +28,7 @@ jobs:
             tests/test_alignn_mixed_dkl.py \
             tests/test_alignn_pure_integration.py \
             tests/test_alignn_phase6_scaling.py \
+            tests/test_alignn_phase6_cache_pickle.py \
             tests/test_structure_alignn.py \
             tests/test_tabular_alignn_models.py \
             tests/test_tabular_alignn_mixed.py \
@@ -101,6 +102,7 @@ jobs:
             tests/test_alignn_mixed_dkl.py \
             tests/test_alignn_pure_integration.py \
             tests/test_alignn_phase6_scaling.py \
+            tests/test_alignn_phase6_cache_pickle.py \
             tests/test_structure_alignn.py \
             tests/test_tabular_alignn_models.py \
             tests/test_tabular_alignn_mixed.py \

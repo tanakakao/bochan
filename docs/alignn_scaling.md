@@ -34,8 +34,10 @@ The cache is:
 - enabled only while the ALIGNN encoder is frozen;
 - detached and computed under `torch.no_grad()`;
 - device/dtype aware and rebuilt when necessary;
-- non-persistent in `.bochan.pt` artifacts, so an artifact does not duplicate
-  derived tensors and the cache is rebuilt lazily after load;
+- invalidated automatically when encoder parameter mutation counters change,
+  including checkpoint/state-dict weight replacement;
+- excluded from full pickle artifacts as well as `state_dict()`, so `.bochan.pt`
+  files do not duplicate derived embeddings and rebuild them lazily after load;
 - explicitly invalidated when the encoder training policy changes.
 
 `ALIGNNDKLModel` partial/full fine-tuning does **not** use this cache because its
@@ -95,7 +97,11 @@ Thus a search with 40 structures and 8 observed process-category tuples invokes
 fixed-feature configurations.
 
 The structure selector remains discrete. It is never relaxed into an ordinary
-continuous process variable.
+continuous process variable. Bochan also defaults the alternating optimizer to
+`initialization_strategy="random"`, so initialization evaluates admissible
+categorical structure values rather than fractional structure indices. An
+advanced caller may explicitly override this with an alternating-compatible
+option when appropriate.
 
 ## 4. Conservative fallback rules
 
@@ -105,7 +111,20 @@ Exact Phase-3 enumeration is retained when any of the following is true:
 - `q > 1`;
 - `return_best_only=False`;
 - a non-standard optimizer backend such as `torch`, evolutionary optimization,
-  Thompson sampling, or a custom callable was requested.
+  Thompson sampling, or a custom callable was requested;
+- `optimizer_kwargs` contains settings that are valid for ordinary
+  `optimize_acqf` but are not supported by BoTorch's alternating optimizer.
+
+For example, a standard SciPy option such as:
+
+```python
+{"options": {"maxiter": 100}}
+```
+
+keeps exact enumeration rather than changing meaning or failing merely because
+the structure catalog crossed the automatic threshold. Alternating-compatible
+settings such as `batch_limit`, `init_batch_limit`, `maxiter_alternating`, or an
+explicit `initialization_strategy` may still use the scalable backend.
 
 The `q > 1` fallback is intentional. Exact enumeration preserves the existing
 batch semantics where different q slots may choose different process-category

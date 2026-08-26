@@ -9,12 +9,12 @@ from bochan.structure import ALIGNNGraphBuilder
 
 
 class StructureTabularAdapter:
-    """Own the tabular structure catalog and its discrete model coordinate.
+    """Own a structure catalog and its discrete ALIGNN model coordinate.
 
-    A user-facing structure identifier is converted to an integer index into an
-    ordered ``structure_graphs`` bank. The index is a discrete selector, not a
-    continuous optimization variable. Candidate generation should enumerate it
-    through ``OptimizeConfig.fixed_features_list``.
+    User-facing structure IDs are encoded through the existing tabular category
+    map machinery. The resulting integer coordinate indexes an ordered
+    ``structure_graphs`` bank. Candidate generation must enumerate this index
+    rather than relax it into a continuous variable.
     """
 
     def __init__(
@@ -54,6 +54,12 @@ class StructureTabularAdapter:
         return len(self._ids)
 
     @property
+    def category_map(self) -> dict[Any, int]:
+        """Return the canonical user-ID -> structure-index mapping."""
+
+        return dict(self._id_to_index)
+
+    @property
     def structure_graphs(self) -> tuple[Any, ...]:
         if not self.enabled:
             raise RuntimeError("No tabular structure catalog is configured.")
@@ -70,29 +76,6 @@ class StructureTabularAdapter:
             self._structure_graphs = tuple(graphs)
         return self._structure_graphs
 
-    def prepare_frame(self, data: Any) -> Any:
-        """Replace the configured structure-ID column by integer model indices."""
-
-        if not self.enabled:
-            return data
-        import pandas as pd
-
-        if not isinstance(data, pd.DataFrame):
-            raise TypeError("structure_col requires pandas DataFrame input.")
-        if self.column not in data.columns:
-            raise KeyError(f"Unknown structure column {self.column!r}.")
-        transformed = data.copy()
-        mapped = transformed.loc[:, self.column].map(self._id_to_index)
-        missing_mask = mapped.isna()
-        if bool(missing_mask.any()):
-            unknown = transformed.loc[missing_mask, self.column].drop_duplicates().tolist()
-            raise KeyError(
-                "Structure IDs are not present in structure_catalog: "
-                f"{unknown!r}."
-            )
-        transformed.loc[:, self.column] = mapped.astype(float)
-        return transformed
-
     def replace_input_cols(self, input_cols: Sequence[Any] | None) -> list[Any] | None:
         """Place the structure selector first, matching the ALIGNN model contract."""
 
@@ -106,15 +89,28 @@ class StructureTabularAdapter:
         return [self.column, *(value for value in values if value != self.column)]
 
     def resolve_categorical_cols(self, categorical_cols: Sequence[Any] | None) -> list[Any]:
-        """Keep the structure selector outside generic categorical encodings."""
+        """Use tabular category encoding for the user-facing structure ID."""
 
         values = list(categorical_cols or ())
-        if self.enabled and self.column in values:
-            raise ValueError(
-                "structure_col is a discrete ALIGNN structure selector and must not be listed "
-                "in categorical_cols; candidate generation enumerates it explicitly."
-            )
+        if self.enabled and self.column not in values:
+            values.insert(0, self.column)
         return values
+
+    def merge_category_maps(self, category_maps: Any) -> dict[Any, dict[Any, int]]:
+        """Inject the catalog order as an explicit category map."""
+
+        if not self.enabled:
+            return dict(category_maps or {})
+        if category_maps is not None and not isinstance(category_maps, Mapping):
+            raise TypeError("category_maps must be a mapping when structure_col is configured.")
+        merged = dict(category_maps or {})
+        existing = merged.get(self.column, merged.get(str(self.column)))
+        if existing is not None and dict(existing) != self.category_map:
+            raise ValueError(
+                "The category map for structure_col conflicts with structure_catalog order."
+            )
+        merged[self.column] = self.category_map
+        return merged
 
     def expanded_bounds(self, bounds: Any) -> Any:
         """Add the full structure-index range to column-addressed bounds."""
@@ -148,29 +144,6 @@ class StructureTabularAdapter:
             if index not in indices:
                 indices.append(index)
         return [{int(feature_index): float(index)} for index in indices]
-
-    def inverse(self, data: Any) -> Any:
-        """Restore structure IDs from the integer model coordinate."""
-
-        if not self.enabled:
-            return data
-        import pandas as pd
-
-        frame = data.copy() if isinstance(data, pd.DataFrame) else pd.DataFrame(data)
-        if self.column not in frame.columns:
-            raise KeyError(f"Missing structure model column {self.column!r}.")
-        values = frame.loc[:, self.column].astype(float)
-        rounded = values.round()
-        if not ((values - rounded).abs() <= 1e-6).all():
-            raise ValueError("ALIGNN structure candidates must be integer-valued.")
-        indices = rounded.astype(int)
-        if ((indices < 0) | (indices >= self.num_structures)).any():
-            raise ValueError(
-                f"ALIGNN structure indices must be in [0, {self.num_structures - 1}]."
-            )
-        restored = frame.copy()
-        restored.loc[:, self.column] = [self._ids[index] for index in indices.tolist()]
-        return restored
 
 
 __all__ = ["StructureTabularAdapter"]

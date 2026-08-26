@@ -33,9 +33,12 @@ jobs:
             tests/test_tabular_alignn_models.py \
             tests/test_tabular_alignn_mixed.py \
             tests/test_tabular_alignn_multioutput.py \
+            tests/test_tabular_alignn_array_multioutput.py \
+            tests/test_tabular_alignn_multitask.py \
             tests/test_fastapi_alignn_tabular.py \
             tests/test_fastapi_alignn_mixed.py \
             tests/test_fastapi_alignn_multioutput.py \
+            tests/test_fastapi_alignn_multitask.py \
             tests/test_fastapi_alignn_artifacts.py \
             tests/test_fastapi_alignn_multioutput_artifacts.py \
             tests/test_common_model_artifact_api.py \
@@ -70,6 +73,7 @@ jobs:
             src/bochan/models/regression/gaussian/deep/__init__.py \
             src/bochan/models/regression/gaussian/deep/alignn.py \
             src/bochan/models/regression/gaussian/deep/alignn_mixed.py \
+            src/bochan/models/regression/gaussian/deep/alignn_multitask.py \
             src/bochan/models/regression/gaussian/deep/crabnet.py \
             src/bochan/api/modeling/fit.py \
             src/bochan/api/registry/model.py \
@@ -89,6 +93,7 @@ jobs:
             src/bochan/tabular/structure/candidates.py \
             src/bochan/tabular/structure/scaling.py \
             src/bochan/tabular/structure/fitting.py \
+            src/bochan/tabular/structure/multioutput.py \
             src/bochan/tabular/structure/observation.py \
             src/bochan/tabular/optimizer/configuration.py \
             src/bochan/tabular/optimizer/fitting.py \
@@ -110,9 +115,12 @@ jobs:
             tests/test_tabular_alignn_models.py \
             tests/test_tabular_alignn_mixed.py \
             tests/test_tabular_alignn_multioutput.py \
+            tests/test_tabular_alignn_array_multioutput.py \
+            tests/test_tabular_alignn_multitask.py \
             tests/test_fastapi_alignn_tabular.py \
             tests/test_fastapi_alignn_mixed.py \
             tests/test_fastapi_alignn_multioutput.py \
+            tests/test_fastapi_alignn_multitask.py \
             tests/test_fastapi_alignn_artifacts.py \
             tests/test_fastapi_alignn_multioutput_artifacts.py \
             tests/test_common_model_artifact_api.py \

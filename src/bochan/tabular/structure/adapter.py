@@ -8,6 +8,16 @@ from typing import Any
 from bochan.structure import ALIGNNGraphBuilder
 
 
+def _as_list(value: Any | None) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes)):
+        return [value]
+    if isinstance(value, Sequence):
+        return list(value)
+    return [value]
+
+
 class StructureTabularAdapter:
     """Own a structure catalog and its discrete ALIGNN model coordinate.
 
@@ -76,22 +86,24 @@ class StructureTabularAdapter:
             self._structure_graphs = tuple(graphs)
         return self._structure_graphs
 
-    def replace_input_cols(self, input_cols: Sequence[Any] | None) -> list[Any] | None:
+    def replace_input_cols(self, input_cols: Sequence[Any] | Any | None) -> list[Any] | None:
         """Place the structure selector first, matching the ALIGNN model contract."""
 
-        if not self.enabled or input_cols is None:
-            return None if input_cols is None else list(input_cols)
-        values = list(input_cols)
+        if input_cols is None:
+            return None
+        values = _as_list(input_cols)
+        if not self.enabled:
+            return values
         if self.column not in values:
             raise ValueError(
                 f"structure_col={self.column!r} must be included in input_cols for ALIGNN models."
             )
         return [self.column, *(value for value in values if value != self.column)]
 
-    def resolve_categorical_cols(self, categorical_cols: Sequence[Any] | None) -> list[Any]:
+    def resolve_categorical_cols(self, categorical_cols: Sequence[Any] | Any | None) -> list[Any]:
         """Use tabular category encoding for the user-facing structure ID."""
 
-        values = list(categorical_cols or ())
+        values = _as_list(categorical_cols)
         if self.enabled and self.column not in values:
             values.insert(0, self.column)
         return values
@@ -125,7 +137,7 @@ class StructureTabularAdapter:
 
     def fixed_features_list(
         self,
-        structure_ids: Sequence[Any] | None = None,
+        structure_ids: Sequence[Any] | Any | None = None,
         *,
         feature_index: int = 0,
     ) -> list[dict[int, float]]:
@@ -133,7 +145,7 @@ class StructureTabularAdapter:
 
         if not self.enabled:
             raise RuntimeError("No tabular structure catalog is configured.")
-        selected = self._ids if structure_ids is None else tuple(structure_ids)
+        selected = self._ids if structure_ids is None else tuple(_as_list(structure_ids))
         if not selected:
             raise ValueError("structure_ids must contain at least one structure ID.")
         indices: list[int] = []

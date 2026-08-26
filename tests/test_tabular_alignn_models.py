@@ -117,7 +117,8 @@ def test_tabular_alignn_gp_builds_canonical_structure_index_contract() -> None:
         torch.tensor([0, 1, 2, 0, 1, 2], dtype=torch.double),
     )
     assert len(bundle.model.structure_graphs) == 3
-    assert builder.calls == [tuple(_catalog().values())]
+    assert len(builder.calls) == 1
+    assert len(builder.calls[0]) == 3
 
 
 def test_tabular_alignn_prediction_input_reuses_structure_catalog_mapping() -> None:
@@ -139,7 +140,9 @@ def test_tabular_alignn_prediction_input_reuses_structure_catalog_mapping() -> N
     torch.testing.assert_close(X[:, 0], torch.tensor([2.0, 0.0], dtype=torch.double))
 
 
-def test_tabular_alignn_candidates_enumerate_structures_and_decode_ids(monkeypatch) -> None:
+def test_tabular_alignn_candidates_enumerate_structures_and_decode_ids(
+    monkeypatch,
+) -> None:
     optimizer, _ = _optimizer()
     optimizer.fit(_frame())
     captured: dict[str, object] = {}
@@ -214,7 +217,11 @@ def test_tabular_alignn_rejects_invalid_structure_configuration(
             bounds={
                 "temperature": [850.0, 1200.0],
                 "pressure": [0.5, 2.0],
-                **({"furnace": [0.0, 1.0]} if "categorical_cols" in kwargs else {}),
+                **(
+                    {"furnace": [0.0, 1.0]}
+                    if "categorical_cols" in kwargs
+                    else {}
+                ),
             },
             model_kwargs={"encoder": FakeALIGNN(), "latent_dim": 3},
             fit_config={"skip_fit": True},

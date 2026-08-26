@@ -1,8 +1,9 @@
-"""ALIGNN graph construction and local pretrained-bundle helpers."""
+"""Pure-PyTorch ALIGNN graph construction and pretrained-bundle helpers."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from importlib import import_module
 from io import BytesIO
 from json import loads
 from os import PathLike
@@ -17,78 +18,61 @@ from bochan.composition import ALIGNNEncoder
 from .adapter import StructureAdapter
 
 _ALIGNN_INSTALL_HINT = (
-    "ALIGNN graph construction requires alignn and a compatible DGL installation. "
-    "Install alignn==2026.8.11, then install a DGL build matching your "
-    "PyTorch/CUDA environment as documented by ALIGNN."
+    "ALIGNN graph construction requires alignn with build_pure_torch_graph. "
+    "Install alignn==2026.8.11 or a compatible newer release. DGL is not required."
 )
-
-_SUPPORTED_NEIGHBOR_STRATEGIES = {
-    "k-nearest",
-    "voronoi",
-    "radius_graph",
-    "radius_graph_jarvis",
-    "fast_graph",
-    "torch_graph",
-    "pure_torch",
-}
 _SUPPORTED_DTYPES = {"float16", "float32", "float64", "bfloat"}
+_TORCH_DTYPES = {
+    "float16": torch.float16,
+    "float32": torch.float32,
+    "float64": torch.float64,
+    "bfloat": torch.bfloat16,
+}
+_PURE_MODEL_NAME = "alignn_atomwise_pure"
 
 
-def _alignn_graph_class() -> type[Any]:
-    """Return upstream ``alignn.graphs.Graph`` after lazy dependency checks."""
+def _pure_graph_builder():
+    """Return upstream ``build_pure_torch_graph`` after lazy dependency checks."""
 
     try:
-        from alignn import graphs as graph_module
+        module = import_module("alignn.torch_graph_builder")
     except ImportError as error:
         raise ImportError(_ALIGNN_INSTALL_HINT) from error
-
-    if getattr(graph_module, "dgl", None) is None:
-        raise ImportError(_ALIGNN_INSTALL_HINT)
-    graph_class = getattr(graph_module, "Graph", None)
-    if not isinstance(graph_class, type):
-        raise RuntimeError("The installed ALIGNN package does not expose alignn.graphs.Graph.")
-    builder = getattr(graph_class, "atom_dgl_multigraph", None)
+    builder = getattr(module, "build_pure_torch_graph", None)
     if not callable(builder):
-        raise RuntimeError("alignn.graphs.Graph.atom_dgl_multigraph is unavailable.")
-    return graph_class
+        raise RuntimeError("The installed ALIGNN package does not expose build_pure_torch_graph.")
+    return builder
 
 
 class ALIGNNGraphBuilder:
-    """Build DGL atom graphs and line graphs using ALIGNN's canonical builder.
+    """Build ALIGNN ``TorchGraph`` atom/line graphs without DGL.
 
-    Defaults follow the current ALIGNN crystal-training configuration. For a
-    pretrained model, prefer :meth:`from_training_config` or
+    ``neighbor_strategy`` is intentionally fixed to ``"pure_torch"``. The
+    upstream pure builder performs periodic neighbor search with torch tensors,
+    caps pair neighbors per source atom, and constructs the line graph with a
+    separate three-body cutoff.
+
+    For pretrained models, prefer :meth:`from_training_config` or
     :meth:`ALIGNNPretrainedBundle.build_graph_builder` so graph construction
-    exactly follows the checkpoint metadata.
+    follows the checkpoint training metadata.
     """
 
     def __init__(
         self,
         *,
-        neighbor_strategy: str = "k-nearest",
-        cutoff: float = 5.0,
-        cutoff_extra: float = 3.0,
+        neighbor_strategy: str = "pure_torch",
+        cutoff: float = 8.0,
         max_neighbors: int | None = 12,
         atom_features: str = "cgcnn",
         compute_line_graph: bool = True,
-        use_canonize: bool = True,
         dtype: str = "float32",
         three_body_cutoff: float | None = 3.5,
         adapter: StructureAdapter | None = None,
     ) -> None:
-        if neighbor_strategy not in _SUPPORTED_NEIGHBOR_STRATEGIES:
-            raise ValueError(
-                "neighbor_strategy must be one of "
-                f"{sorted(_SUPPORTED_NEIGHBOR_STRATEGIES)}, got {neighbor_strategy!r}."
-            )
+        if neighbor_strategy != "pure_torch":
+            raise ValueError("Pure-PyTorch ALIGNN requires neighbor_strategy='pure_torch'.")
         if isinstance(cutoff, bool) or not isinstance(cutoff, (int, float)) or cutoff <= 0:
             raise ValueError("cutoff must be a positive number.")
-        if (
-            isinstance(cutoff_extra, bool)
-            or not isinstance(cutoff_extra, (int, float))
-            or cutoff_extra < 0
-        ):
-            raise ValueError("cutoff_extra must be a non-negative number.")
         if max_neighbors is not None and (
             isinstance(max_neighbors, bool)
             or not isinstance(max_neighbors, int)
@@ -99,8 +83,6 @@ class ALIGNNGraphBuilder:
             raise ValueError("atom_features must be a non-empty string.")
         if not isinstance(compute_line_graph, bool):
             raise TypeError("compute_line_graph must be a bool.")
-        if not isinstance(use_canonize, bool):
-            raise TypeError("use_canonize must be a bool.")
         if dtype not in _SUPPORTED_DTYPES:
             raise ValueError(f"dtype must be one of {sorted(_SUPPORTED_DTYPES)}, got {dtype!r}.")
         if three_body_cutoff is not None:
@@ -117,11 +99,9 @@ class ALIGNNGraphBuilder:
 
         self.neighbor_strategy = neighbor_strategy
         self.cutoff = float(cutoff)
-        self.cutoff_extra = float(cutoff_extra)
         self.max_neighbors = max_neighbors
         self.atom_features = atom_features
         self.compute_line_graph = compute_line_graph
-        self.use_canonize = use_canonize
         self.dtype = dtype
         self.three_body_cutoff = None if three_body_cutoff is None else float(three_body_cutoff)
         self.adapter = adapter or StructureAdapter()
@@ -133,24 +113,32 @@ class ALIGNNGraphBuilder:
         *,
         adapter: StructureAdapter | None = None,
     ) -> ALIGNNGraphBuilder:
-        """Build graph settings from an upstream ALIGNN training config."""
+        """Build graph settings from an upstream pure ALIGNN training config."""
 
         if not isinstance(config, Mapping):
             raise TypeError("config must be a mapping.")
+        neighbor_strategy = str(config.get("neighbor_strategy", "pure_torch"))
+        if neighbor_strategy != "pure_torch":
+            raise ValueError(
+                "Pretrained ALIGNN config is not pure PyTorch: "
+                f"neighbor_strategy={neighbor_strategy!r}."
+            )
         max_neighbors = config.get("max_neighbors", 12)
         if max_neighbors is not None:
             max_neighbors = int(max_neighbors)
         three_body_cutoff = config.get("three_body_cutoff", 3.5)
+        if three_body_cutoff is None:
+            model_config = config.get("model")
+            if isinstance(model_config, Mapping):
+                three_body_cutoff = model_config.get("three_body_cutoff", 3.5)
         if three_body_cutoff is not None:
             three_body_cutoff = float(three_body_cutoff)
         return cls(
-            neighbor_strategy=str(config.get("neighbor_strategy", "k-nearest")),
-            cutoff=float(config.get("cutoff", 5.0)),
-            cutoff_extra=float(config.get("cutoff_extra", 3.0)),
+            neighbor_strategy=neighbor_strategy,
+            cutoff=float(config.get("cutoff", 8.0)),
             max_neighbors=max_neighbors,
             atom_features=str(config.get("atom_features", "cgcnn")),
             compute_line_graph=bool(config.get("compute_line_graph", True)),
-            use_canonize=bool(config.get("use_canonize", True)),
             dtype=str(config.get("dtype", "float32")),
             three_body_cutoff=three_body_cutoff,
             adapter=adapter,
@@ -163,50 +151,53 @@ class ALIGNNGraphBuilder:
         return {
             "neighbor_strategy": self.neighbor_strategy,
             "cutoff": self.cutoff,
-            "cutoff_extra": self.cutoff_extra,
             "max_neighbors": self.max_neighbors,
             "atom_features": self.atom_features,
             "compute_line_graph": self.compute_line_graph,
-            "use_canonize": self.use_canonize,
             "dtype": self.dtype,
             "three_body_cutoff": self.three_body_cutoff,
         }
 
     def build(self, structure: Any) -> Any:
-        """Build one ALIGNN graph or ``(graph, line_graph)`` pair."""
+        """Build one pure ALIGNN ``(TorchGraph, TorchGraph)`` pair."""
 
         atoms = self.adapter.adapt(structure)
-        graph_class = _alignn_graph_class()
-        result = graph_class.atom_dgl_multigraph(
+        dtype = _TORCH_DTYPES[self.dtype]
+        positions = torch.as_tensor(atoms.cart_coords, dtype=dtype)
+        lattice = torch.as_tensor(atoms.lattice_mat, dtype=dtype)
+        builder = _pure_graph_builder()
+        result = builder(
             atoms=atoms,
-            neighbor_strategy=self.neighbor_strategy,
-            cutoff=self.cutoff,
-            cutoff_extra=self.cutoff_extra,
+            two_body_cutoff=self.cutoff,
+            three_body_cutoff=self.three_body_cutoff,
             max_neighbors=self.max_neighbors,
             atom_features=self.atom_features,
+            positions=positions,
+            lattice=lattice,
+            use_matscipy_topology=False,
             compute_line_graph=self.compute_line_graph,
-            use_canonize=self.use_canonize,
-            dtype=self.dtype,
-            three_body_cutoff=self.three_body_cutoff,
         )
         if self.compute_line_graph and (not isinstance(result, tuple) or len(result) != 2):
             raise RuntimeError(
-                "ALIGNN graph builder must return (graph, line_graph) when compute_line_graph=True."
+                "Pure ALIGNN graph builder must return (graph, line_graph) "
+                "when compute_line_graph=True."
             )
         return result
 
     def build_many(self, structures: Sequence[Any]) -> tuple[Any, ...]:
-        """Build a structure graph bank for ``ALIGNNGPModel`` / ``ALIGNNDKLModel``."""
+        """Build a pure-Torch structure graph bank for ALIGNN-GP / ALIGNN-DKL."""
 
         atoms = self.adapter.adapt_many(structures)
         return tuple(self.build(item) for item in atoms)
 
 
 class ALIGNNPretrainedBundle:
-    """Parsed local scalar-property ALIGNN bundle.
+    """Parsed local pure-PyTorch scalar-property ALIGNN bundle.
 
     Model weights and graph-construction metadata stay together so pretrained
-    embeddings can reuse the same graph settings as the upstream training run.
+    embeddings reuse the same pair/three-body settings as the upstream run.
+    Legacy DGL ``model.name='alignn'`` bundles are deliberately rejected rather
+    than silently crossing model/graph contracts.
     """
 
     def __init__(
@@ -225,9 +216,14 @@ class ALIGNNPretrainedBundle:
         model_config = self._config.get("model")
         if not isinstance(model_config, Mapping):
             raise ValueError("ALIGNN pretrained config must contain a model mapping.")
-        if model_config.get("name") != "alignn":
+        if model_config.get("name") != _PURE_MODEL_NAME:
             raise NotImplementedError(
-                "Phase 2 pretrained loading supports scalar-property model.name='alignn' only."
+                "Bochan pretrained loading requires the pure-PyTorch "
+                f"model.name={_PURE_MODEL_NAME!r}. Legacy DGL ALIGNN bundles are not accepted."
+            )
+        if str(self._config.get("neighbor_strategy", "pure_torch")) != "pure_torch":
+            raise NotImplementedError(
+                "Bochan pretrained loading requires neighbor_strategy='pure_torch'."
             )
 
     @property
@@ -238,13 +234,13 @@ class ALIGNNPretrainedBundle:
 
     @property
     def model_config(self) -> dict[str, Any]:
-        """Return the upstream ``ALIGNNConfig`` mapping."""
+        """Return the upstream ``ALIGNNAtomWisePureConfig`` mapping."""
 
         model_config = self._config["model"]
         return dict(model_config)
 
     def build_encoder(self, *, strict: bool = True) -> ALIGNNEncoder:
-        """Instantiate ``ALIGNNEncoder`` from the bundled config and weights."""
+        """Instantiate the pure ``ALIGNNEncoder`` from bundled weights."""
 
         return ALIGNNEncoder(
             config=self.model_config,
@@ -257,7 +253,7 @@ class ALIGNNPretrainedBundle:
         *,
         adapter: StructureAdapter | None = None,
     ) -> ALIGNNGraphBuilder:
-        """Build graph settings matching the pretrained training config."""
+        """Build pure graph settings matching the pretrained training config."""
 
         return ALIGNNGraphBuilder.from_training_config(self._config, adapter=adapter)
 
@@ -294,11 +290,11 @@ def _load_checkpoint_bytes(data: bytes) -> Mapping[str, Any]:
 
 
 def load_alignn_pretrained_bundle(path: str | PathLike[str]) -> ALIGNNPretrainedBundle:
-    """Load an extracted ALIGNN training directory or upstream pretrained ZIP.
+    """Load an extracted pure ALIGNN training directory or ZIP bundle.
 
-    Only local paths are supported. The function deliberately does not download
-    model archives or execute arbitrary pickle payloads; checkpoints are loaded
-    with ``weights_only=True``.
+    Only local paths are supported. The function does not download model
+    archives or execute arbitrary pickle payloads; checkpoints are loaded with
+    ``weights_only=True``.
     """
 
     resolved = Path(path)

@@ -24,6 +24,7 @@ jobs:
         run: |
           pytest -q --maxfail=1 \
             tests/test_alignn_gp.py \
+            tests/test_alignn_mixed_gp.py \
             tests/test_alignn_pure_integration.py \
             tests/test_structure_alignn.py \
             tests/test_tabular_alignn_models.py \
@@ -58,6 +59,7 @@ jobs:
             src/bochan/structure/alignn.py \
             src/bochan/models/regression/gaussian/deep/__init__.py \
             src/bochan/models/regression/gaussian/deep/alignn.py \
+            src/bochan/models/regression/gaussian/deep/alignn_mixed.py \
             src/bochan/models/regression/gaussian/deep/crabnet.py \
             src/bochan/api/modeling/fit.py \
             src/bochan/api/registry/model.py \
@@ -85,6 +87,7 @@ jobs:
             src/bochan/serving/fastapi/routers/__init__.py \
             examples/alignn_fastapi_client.py \
             tests/test_alignn_gp.py \
+            tests/test_alignn_mixed_gp.py \
             tests/test_alignn_pure_integration.py \
             tests/test_structure_alignn.py \
             tests/test_tabular_alignn_models.py \

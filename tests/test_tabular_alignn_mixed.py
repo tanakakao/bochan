@@ -9,7 +9,7 @@ from bochan.models.regression.gaussian.deep import (
     ALIGNNMixedDKLModel,
     ALIGNNMixedGPModel,
 )
-from bochan.tabular import TabularBayesianOptimizer
+from bochan.tabular import TabularBayesianOptimizer, TabularDataConfig
 
 
 class FakeALIGNN(nn.Module):
@@ -62,6 +62,10 @@ def _frame() -> pd.DataFrame:
             "property": [0.4, 0.8, 1.1, 0.9, 1.4, 1.8],
         }
     )
+
+
+def _catalog() -> dict[str, object]:
+    return {"alpha": object(), "beta": object(), "gamma": object()}
 
 
 def _optimizer(
@@ -152,6 +156,43 @@ def test_tabular_alignn_gp_auto_resolves_mixed_process_contract() -> None:
     torch.testing.assert_close(bounds[:, 4], torch.tensor([0.0, 2.0], dtype=torch.double))
 
 
+def test_tabular_alignn_mixed_fit_override_rederives_category_indices() -> None:
+    optimizer = _optimizer()
+    override = TabularDataConfig(
+        input_cols=[
+            "atmosphere",
+            "pressure",
+            "phase",
+            "furnace",
+            "temperature",
+        ],
+        categorical_cols=["atmosphere", "furnace"],
+        target_cols="property",
+        bounds={
+            "temperature": [850.0, 1200.0],
+            "pressure": [0.5, 2.0],
+        },
+    )
+
+    optimizer.fit(_frame(), data_config=override)
+    bundle = optimizer.bo.bundle
+
+    assert bundle is not None
+    assert isinstance(bundle.model, ALIGNNMixedGPModel)
+    assert optimizer.dataset.feature_names == [
+        "phase",
+        "atmosphere",
+        "pressure",
+        "furnace",
+        "temperature",
+    ]
+    assert optimizer.dataset.cat_dims == [0, 1, 3]
+    assert optimizer.model_config.cat_dims == [1, 3]
+    assert bundle.cat_dims == [1, 3]
+    assert bundle.model.cat_dims == [1, 3]
+    assert bundle.model.continuous_process_dims == (2, 4)
+
+
 def test_tabular_alignn_mixed_prediction_reuses_fitted_category_maps() -> None:
     optimizer = _optimizer().fit(_frame())
 
@@ -204,7 +245,7 @@ def test_tabular_alignn_mixed_candidates_cross_structure_and_observed_categories
     ):
         captured["opt_config"] = opt_config
         candidate = torch.tensor(
-            [[1.0, 1030.0, 1.0, 1.35, 2.0]],
+            [[1.0, 1030.0, 1.0, 1.35, 1.0]],
             dtype=torch.double,
         )
         return candidate, torch.tensor(0.7, dtype=torch.double)
@@ -229,7 +270,7 @@ def test_tabular_alignn_mixed_candidates_cross_structure_and_observed_categories
 
     assert candidates.loc[0, "phase"] == "beta"
     assert candidates.loc[0, "furnace"] == "B"
-    assert candidates.loc[0, "atmosphere"] == "Ar"
+    assert candidates.loc[0, "atmosphere"] == "N2"
     assert candidates.loc[0, "temperature"] == pytest.approx(1030.0)
     assert candidates.loc[0, "pressure"] == pytest.approx(1.35)
     assert float(acq_value) == pytest.approx(0.7)

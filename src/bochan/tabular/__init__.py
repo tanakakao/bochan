@@ -30,12 +30,14 @@ from .observation import (
     numpy_to_observation_tensors,
 )
 from .optimizer import TabularBayesianOptimizer
+from .structure import StructureTabularAdapter
 
 __all__ = [
     "ColumnKey",
     "CompositionColumnConfig",
     "CompositionTabularPreprocessor",
     "ObservationTabularDataset",
+    "StructureTabularAdapter",
     "TabularBayesianOptimizer",
     "TabularDataConfig",
     "TabularDataset",

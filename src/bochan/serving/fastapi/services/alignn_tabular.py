@@ -221,8 +221,8 @@ def build_alignn_fit_response(
     graph_config = getattr(graph_builder, "config", None)
 
     dataset = optimizer.dataset
-    feature_names = list(dataset.feature_names) if dataset is not None else []
-    target_names = list(dataset.target_names) if dataset is not None else []
+    feature_names = list(getattr(dataset, "feature_names", None) or [])
+    target_names = list(getattr(dataset, "target_names", None) or [])
     process_cat_dims = [int(index) for index in (bundle.cat_dims or [])]
     process_categorical_cols = [
         feature_names[index]

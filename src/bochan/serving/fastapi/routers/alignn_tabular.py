@@ -19,9 +19,10 @@ from ..schemas.tabular import (
 )
 from ..services.alignn_tabular import (
     alignn_candidate_response,
+    build_alignn_fit_response,
     fit_alignn_tabular_optimizer,
 )
-from ..services.tabular import build_fit_response, predict_response
+from ..services.tabular import predict_response
 
 TABULAR_STORE_DEP = Depends(get_tabular_optimizer_store)
 
@@ -52,7 +53,7 @@ def fit_alignn_tabular_model(
     try:
         optimizer = fit_alignn_tabular_optimizer(request)
         model_id = store.add(optimizer)
-        return build_fit_response(model_id, optimizer)
+        return build_alignn_fit_response(model_id, optimizer)
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:

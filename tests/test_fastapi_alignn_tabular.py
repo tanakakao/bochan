@@ -7,6 +7,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+import torch
 
 pytest.importorskip("fastapi")
 pd = pytest.importorskip("pandas")
@@ -79,6 +80,15 @@ def test_alignn_fit_schema_rejects_structure_ids_missing_from_catalog() -> None:
         ALIGNNTabularFitModelRequest.model_validate(payload)
 
 
+@pytest.mark.parametrize("checkpoint", ["../model.pt", "subdir/model.pt", r"C:\\model.pt"])
+def test_alignn_fit_schema_rejects_checkpoint_paths(checkpoint: str) -> None:
+    payload = _fit_payload()
+    payload["model_config"]["model_kwargs"]["checkpoint"] = checkpoint
+
+    with pytest.raises(ValueError, match="filename identifier"):
+        ALIGNNTabularFitModelRequest.model_validate(payload)
+
+
 def test_alignn_fit_service_passes_structure_contract_to_tabular_optimizer(
     monkeypatch,
 ) -> None:
@@ -108,6 +118,36 @@ def test_alignn_fit_service_passes_structure_contract_to_tabular_optimizer(
     assert kwargs["structure_graph_builder"] is fake_builder
     assert kwargs["bounds"] == {"temperature": [850.0, 1100.0]}
     assert list(captured["frame"]["phase"]) == ["alpha", "beta", "alpha", "beta"]
+
+
+def test_alignn_fit_service_resolves_checkpoint_under_allowlisted_root(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    captured: dict[str, object] = {}
+    checkpoint = tmp_path / "alignn.pt"
+    checkpoint.write_bytes(b"placeholder")
+    fake_builder = SimpleNamespace(config={"neighbor_strategy": "k-nearest"})
+
+    class FakeOptimizer:
+        def __init__(self, **kwargs):
+            captured["kwargs"] = kwargs
+            self.model_config = SimpleNamespace(model_type="alignn_gp")
+
+        def fit(self, frame):
+            return self
+
+    monkeypatch.setenv("BOCHAN_ALIGNN_CHECKPOINT_ROOT", str(tmp_path))
+    monkeypatch.setattr(service, "TabularBayesianOptimizer", FakeOptimizer)
+    monkeypatch.setattr(service, "graph_builder_from_request", lambda request: fake_builder)
+
+    payload = _fit_payload()
+    payload["model_config"]["model_kwargs"]["checkpoint"] = "alignn.pt"
+    request = ALIGNNTabularFitModelRequest.model_validate(payload)
+    service.fit_alignn_tabular_optimizer(request)
+
+    model_kwargs = captured["kwargs"]["model_config"]["model_kwargs"]
+    assert model_kwargs["checkpoint"] == str(checkpoint.resolve())
 
 
 def test_alignn_fit_service_normalizes_numeric_structure_ids(monkeypatch) -> None:
@@ -200,6 +240,51 @@ def test_alignn_candidate_service_forwards_structure_subset() -> None:
     assert response.columns == ["phase", "temperature"]
     assert response.candidates == [{"phase": "beta", "temperature": 1015.0}]
     assert response.acq_value == pytest.approx(0.75)
+
+
+def test_alignn_ask_registers_generated_candidate_as_pending() -> None:
+    captured: dict[str, object] = {}
+
+    class FakeBO:
+        def tell(self, X_new, Y_new, **kwargs):
+            captured["X_pending"] = X_new
+            captured["Y_pending"] = Y_new
+            captured["tell_kwargs"] = kwargs
+
+    class FakeOptimizer:
+        bo = FakeBO()
+        dataset = SimpleNamespace(Y=torch.zeros((4, 1), dtype=torch.double))
+
+        def candidate(self, **kwargs):
+            return (
+                pd.DataFrame(
+                    [{"phase": "beta", "temperature": 1015.0}]
+                ),
+                0.75,
+            )
+
+        def _prediction_input(self, frame):
+            return torch.tensor([[1.0, 1015.0]], dtype=torch.double), frame.index
+
+    request = ALIGNNTabularCandidateRequest.model_validate(
+        {
+            "acquisition_config": {"name": "logei"},
+            "optimize_config": {"q": 1},
+        }
+    )
+    service.alignn_candidate_response(
+        "model-1",
+        FakeOptimizer(),
+        request,
+        use_ask=True,
+    )
+
+    torch.testing.assert_close(
+        captured["X_pending"],
+        torch.tensor([[1.0, 1015.0]], dtype=torch.double),
+    )
+    assert bool(torch.isnan(captured["Y_pending"]).all())
+    assert captured["tell_kwargs"] == {"status": ["pending"], "refit": False}
 
 
 def test_alignn_graph_schema_rejects_line_graph_disable() -> None:

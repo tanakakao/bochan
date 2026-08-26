@@ -182,6 +182,24 @@ def fit_alignn_tabular_optimizer(
     return optimizer
 
 
+def _alignn_output_models(model: Any) -> list[Any]:
+    """Return the single ALIGNN model or independent ModelListGP submodels."""
+
+    models = getattr(model, "models", None)
+    if models is not None:
+        resolved = list(models)
+        if resolved and all(hasattr(item, "material_encoder") for item in resolved):
+            return resolved
+    return [model]
+
+
+def _encoder_training_mode(model_type: str, model: Any) -> str:
+    if model_type == "alignn_gp":
+        return "frozen"
+    trainable_layers = getattr(model, "trainable_encoder_layers", None)
+    return "full" if trainable_layers == "all" else "partial"
+
+
 def build_alignn_fit_response(
     model_id: str,
     optimizer: TabularBayesianOptimizer,
@@ -193,21 +211,18 @@ def build_alignn_fit_response(
     if bundle is None:
         return response
     model = bundle.model
-    material_encoder = getattr(model, "material_encoder", None)
-    trainable_layers = getattr(model, "trainable_encoder_layers", None)
     model_type = str(bundle.model_type)
-    if model_type == "alignn_gp":
-        training_mode = "frozen"
-    elif trainable_layers == "all":
-        training_mode = "full"
-    else:
-        training_mode = "partial"
-    initialization = getattr(material_encoder, "initialization", None)
+    output_models = _alignn_output_models(model)
+    representative_model = output_models[0]
+    representative_encoder = getattr(representative_model, "material_encoder", None)
+    training_mode = _encoder_training_mode(model_type, representative_model)
+    initialization = getattr(representative_encoder, "initialization", None)
     graph_builder = getattr(optimizer.structure, "graph_builder", None)
     graph_config = getattr(graph_builder, "config", None)
 
     dataset = optimizer.dataset
     feature_names = list(dataset.feature_names) if dataset is not None else []
+    target_names = list(dataset.target_names) if dataset is not None else []
     process_cat_dims = [int(index) for index in (bundle.cat_dims or [])]
     process_categorical_cols = [
         feature_names[index]
@@ -226,6 +241,23 @@ def build_alignn_fit_response(
         for column in process_categorical_cols
         if column in category_maps
     }
+    output_metadata = []
+    for index, output_model in enumerate(output_models):
+        encoder = getattr(output_model, "material_encoder", None)
+        output_metadata.append(
+            {
+                "name": target_names[index] if index < len(target_names) else f"y{index}",
+                "model_cls": output_model.__class__.__name__,
+                "encoder_training": _encoder_training_mode(model_type, output_model),
+                "encoder_initialization": getattr(encoder, "initialization", None),
+                "process_dim": getattr(output_model, "process_dim", None),
+                "structure_feature_cache_enabled": getattr(
+                    output_model,
+                    "structure_feature_cache_enabled",
+                    False,
+                ),
+            }
+        )
 
     metadata = dict(response.metadata)
     metadata["alignn"] = to_serializable(
@@ -237,12 +269,17 @@ def build_alignn_fit_response(
             "structure_ids": list(optimizer.structure.structure_ids),
             "num_structures": optimizer.structure.num_structures,
             "input_type": bundle.input_type,
-            "process_dim": getattr(model, "process_dim", None),
+            "process_dim": getattr(representative_model, "process_dim", None),
             "continuous_process_cols": continuous_process_cols,
             "categorical_process_cols": process_categorical_cols,
             "categorical_process_dims": process_cat_dims,
             "category_maps": process_category_maps,
             "graph_config": graph_config,
+            "multi_output": len(output_models) > 1,
+            "num_outputs": len(output_models),
+            "output_names": target_names,
+            "output_models": output_metadata,
+            "output_dependency": "independent",
         }
     )
     response.metadata = metadata

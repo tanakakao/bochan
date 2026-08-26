@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any, Literal, cast
 
+from botorch.acquisition.objective import PosteriorTransform
+from botorch.posteriors.transformed import TransformedPosterior
 from botorch.utils.transforms import normalize_indices
 from gpytorch.kernels import MultitaskKernel
 from gpytorch.likelihoods import Likelihood
@@ -31,7 +33,7 @@ from .deepkernel_configurable import (
 
 
 class _CorrelatedALIGNNMultiTaskMixin:
-    """Expose the common correlated-task diagnostics contract."""
+    """Expose the common correlated-task diagnostics and posterior contract."""
 
     deepkernel: object
     num_outputs: int
@@ -56,11 +58,47 @@ class _CorrelatedALIGNNMultiTaskMixin:
         self._validate_correlated_kernel()
         return cast(MultitaskKernel, self.deepkernel.covar_module).task_covar_module
 
-    @property
-    def task_kernel(self) -> nn.Module:
-        """Alias the task covariance module to the common multitask interface."""
+    def posterior(
+        self,
+        X: Tensor,
+        output_indices: list[int] | None = None,
+        observation_noise: bool | Tensor = False,
+        posterior_transform: PosteriorTransform | None = None,
+    ):
+        """Return the correlated posterior, optionally restricted to output tasks.
 
-        return self.task_covar_module
+        The shared deep-kernel wrapper evaluates the full multitask posterior.
+        Task selection is then represented as a transformed posterior so samples,
+        means, and variances retain the correlations among the selected tasks.
+        """
+
+        if output_indices is None:
+            return super().posterior(
+                X,
+                output_indices=None,
+                observation_noise=observation_noise,
+                posterior_transform=posterior_transform,
+            )
+
+        indices = normalize_indices(indices=list(output_indices), d=self.num_tasks)
+        if not indices:
+            raise ValueError("output_indices must contain at least one task index.")
+
+        posterior = super().posterior(
+            X,
+            output_indices=None,
+            observation_noise=observation_noise,
+            posterior_transform=None,
+        )
+        subset = TransformedPosterior(
+            posterior=posterior,
+            sample_transform=lambda samples: samples[..., indices],
+            mean_transform=lambda mean, variance: mean[..., indices],
+            variance_transform=lambda mean, variance: variance[..., indices],
+        )
+        if posterior_transform is not None:
+            subset = posterior_transform(subset)
+        return subset
 
     @property
     def alignn_feature_extractor(self) -> _ALIGNNGPFeatureExtractor:
@@ -326,9 +364,9 @@ class ALIGNNMixedMultiTaskGPModel(
         self,
         train_X: Tensor,
         train_Y: Tensor,
-        cat_dims: Sequence[int],
         train_Yvar: Tensor | None = None,
         *,
+        cat_dims: Sequence[int],
         structure_graphs: Sequence[Any],
         encoder: ALIGNNEncoder | nn.Module | None = None,
         checkpoint: Checkpoint | None = None,
@@ -455,9 +493,9 @@ class ALIGNNMixedMultiTaskDKLModel(ALIGNNMixedMultiTaskGPModel):
         self,
         train_X: Tensor,
         train_Y: Tensor,
-        cat_dims: Sequence[int],
         train_Yvar: Tensor | None = None,
         *,
+        cat_dims: Sequence[int],
         structure_graphs: Sequence[Any],
         encoder: ALIGNNEncoder | nn.Module | None = None,
         checkpoint: Checkpoint | None = None,
@@ -478,8 +516,8 @@ class ALIGNNMixedMultiTaskDKLModel(ALIGNNMixedMultiTaskGPModel):
         super().__init__(
             train_X=train_X,
             train_Y=train_Y,
-            cat_dims=cat_dims,
             train_Yvar=train_Yvar,
+            cat_dims=cat_dims,
             structure_graphs=structure_graphs,
             encoder=encoder,
             checkpoint=checkpoint,

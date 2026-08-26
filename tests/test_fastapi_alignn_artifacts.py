@@ -246,11 +246,7 @@ def test_alignn_mixed_tell_save_load_predict_roundtrip(client_and_stores) -> Non
         json=prediction_payload,
     )
     assert after_load.status_code == 200, after_load.text
-    assert after_load.json()["records"] == pytest.approx(
-        before_save.json()["records"],
-        rel=1e-10,
-        abs=1e-12,
-    )
+    assert after_load.json()["records"] == before_save.json()["records"]
 
 
 def test_alignn_load_requires_trusted_pickle(client_and_stores) -> None:

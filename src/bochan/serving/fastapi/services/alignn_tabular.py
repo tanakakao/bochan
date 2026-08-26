@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from contextlib import suppress
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
@@ -31,6 +32,8 @@ from .tabular import (
     build_fit_response,
     to_dataframe,
 )
+
+_CHECKPOINT_ROOT_ENV = "BOCHAN_ALIGNN_CHECKPOINT_ROOT"
 
 
 def _inline_file_structure(
@@ -95,6 +98,37 @@ def _normalize_structure_column(frame: Any, structure_col: str) -> Any:
     return frame
 
 
+def _model_config_from_request(request: ALIGNNTabularFitModelRequest) -> dict[str, Any]:
+    """Resolve API-safe model config, including allowlisted checkpoint IDs."""
+
+    config = _schema_dict(request.bo_model_config)
+    model_kwargs = dict(config.get("model_kwargs") or {})
+    checkpoint_id = model_kwargs.get("checkpoint")
+    if checkpoint_id is None:
+        return config
+
+    root_value = os.environ.get(_CHECKPOINT_ROOT_ENV)
+    if not root_value:
+        raise ValueError(
+            "ALIGNN checkpoint loading over FastAPI is disabled. Configure "
+            f"{_CHECKPOINT_ROOT_ENV} on the server and pass only a checkpoint filename."
+        )
+    root = Path(root_value).expanduser().resolve()
+    if not root.is_dir():
+        raise RuntimeError(
+            f"Server checkpoint root from {_CHECKPOINT_ROOT_ENV} is not a directory."
+        )
+    checkpoint_path = (root / str(checkpoint_id)).resolve()
+    if checkpoint_path.parent != root:
+        raise ValueError("Checkpoint identifier resolved outside the configured checkpoint root.")
+    if not checkpoint_path.is_file():
+        raise ValueError("Unknown ALIGNN checkpoint identifier.")
+
+    model_kwargs["checkpoint"] = str(checkpoint_path)
+    config["model_kwargs"] = model_kwargs
+    return config
+
+
 def fit_alignn_tabular_optimizer(
     request: ALIGNNTabularFitModelRequest,
 ) -> TabularBayesianOptimizer:
@@ -114,7 +148,7 @@ def fit_alignn_tabular_optimizer(
     structure_catalog = structure_catalog_from_request(request)
     graph_builder = graph_builder_from_request(request)
     optimizer = TabularBayesianOptimizer(
-        model_config=_schema_dict(request.bo_model_config),
+        model_config=_model_config_from_request(request),
         fit_config=_schema_dict(request.fit_config),
         input_cols=request.input_cols,
         target_cols=request.target_cols,
@@ -218,6 +252,32 @@ def alignn_predict_response(
     )
 
 
+def _register_pending_candidates(
+    optimizer: TabularBayesianOptimizer,
+    candidates: Any,
+) -> None:
+    """Append generated candidate rows to the canonical observation state as pending."""
+
+    import torch
+
+    X_pending, _ = optimizer._prediction_input(candidates)
+    if X_pending.ndim == 1:
+        X_pending = X_pending.unsqueeze(0)
+    target_dim = int(optimizer.dataset.Y.shape[-1])
+    Y_pending = torch.full(
+        (int(X_pending.shape[0]), target_dim),
+        float("nan"),
+        dtype=optimizer.dataset.Y.dtype,
+        device=optimizer.dataset.Y.device,
+    )
+    optimizer.bo.tell(
+        X_pending,
+        Y_pending,
+        status=["pending"] * int(X_pending.shape[0]),
+        refit=False,
+    )
+
+
 def alignn_candidate_response(
     model_id: str,
     optimizer: TabularBayesianOptimizer,
@@ -227,16 +287,17 @@ def alignn_candidate_response(
 ) -> TabularCandidateResponse:
     """Generate structure-enumerated candidates and serialize the result."""
 
-    method = optimizer.ask if use_ask else optimizer.candidate
     direct_kwargs = _candidate_direct_kwargs(request)
     direct_kwargs["structure_ids"] = request.structure_ids
-    candidates, acq_value = method(
+    candidates, acq_value = optimizer.candidate(
         acq_config=request.acq_config,
         opt_config=_candidate_optimize_config(request),
         bounds=request.bounds,
         return_dataframe=True,
         **direct_kwargs,
     )
+    if use_ask:
+        _register_pending_candidates(optimizer, candidates)
     columns, records = _frame_records(candidates)
     return TabularCandidateResponse(
         model_id=model_id,

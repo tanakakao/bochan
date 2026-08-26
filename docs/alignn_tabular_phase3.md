@@ -70,6 +70,8 @@ optimizer.fit(frame)
 
 `structure_graph_builder=` may be supplied when graph construction needs a custom or preconfigured `ALIGNNGraphBuilder`. Without it, the Phase-2 default builder is used.
 
+For trusted local CIF/POSCAR files, preserve the Phase-2 explicit filesystem boundary: load them with `StructureAdapter.from_file()` first and place the resulting structure object in `structure_catalog`. Phase 3 does not interpret catalog strings as server-side file paths.
+
 ## Candidate generation
 
 The structure selector is automatically expanded into BoTorch fixed-feature assignments. For three structures the optimizer receives the equivalent of:
@@ -129,7 +131,8 @@ Phase 3 intentionally keeps the first production contract narrow:
 - continuous process variables
 - explicit bounds for every process variable
 - structure enumeration through fixed features
-- JARVIS / ASE / pymatgen / mapping / trusted local file structures through the Phase-2 adapter
+- JARVIS / ASE / pymatgen / mapping structures through the Phase-2 adapter
+- explicitly preloaded trusted CIF/POSCAR structures through `StructureAdapter.from_file()`
 
 Not yet included in this phase:
 

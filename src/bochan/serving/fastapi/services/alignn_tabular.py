@@ -15,7 +15,12 @@ from ..schemas.alignn_tabular import (
     ALIGNNTabularFitModelRequest,
     CrystalStructureRequest,
 )
-from ..schemas.tabular import TabularCandidateResponse, TabularModelFitResponse
+from ..schemas.tabular import (
+    TabularCandidateResponse,
+    TabularModelFitResponse,
+    TabularPredictRequest,
+    TabularPredictResponse,
+)
 from .tabular import (
     _candidate_direct_kwargs,
     _candidate_optimize_config,
@@ -81,12 +86,22 @@ def graph_builder_from_request(
     return ALIGNNGraphBuilder(**config)
 
 
+def _normalize_structure_column(frame: Any, structure_col: str) -> Any:
+    """Normalize HTTP structure IDs to JSON object-key strings."""
+
+    if structure_col not in frame.columns:
+        raise ValueError(f"Missing structure column {structure_col!r}.")
+    frame = frame.copy()
+    frame[structure_col] = frame[structure_col].map(str)
+    return frame
+
+
 def fit_alignn_tabular_optimizer(
     request: ALIGNNTabularFitModelRequest,
 ) -> TabularBayesianOptimizer:
     """Fit one ALIGNN tabular optimizer from JSON data and crystal structures."""
 
-    frame = to_dataframe(request.data)
+    frame = _normalize_structure_column(to_dataframe(request.data), request.structure_col)
     cv_config = _schema_dict(request.cv_config)
     if cv_config and cv_config.get("splitter") == "stratified_kfold":
         cv_config["splitter"] = "stratified"
@@ -174,6 +189,36 @@ def build_alignn_fit_response(
     return response
 
 
+def alignn_predict_response(
+    model_id: str,
+    optimizer: TabularBayesianOptimizer,
+    request: TabularPredictRequest,
+) -> TabularPredictResponse:
+    """Predict with the fitted structure-ID mapping preserved over JSON."""
+
+    frame = _normalize_structure_column(
+        to_dataframe(request.data),
+        str(optimizer.structure.column),
+    )
+    value = optimizer.predict(
+        frame,
+        return_type=request.return_type,
+        include_input=request.include_input,
+        posterior_kwargs=request.posterior_kwargs,
+    )
+    if hasattr(value, "columns") and hasattr(value, "to_json"):
+        columns, records = _frame_records(value)
+        return TabularPredictResponse(
+            model_id=model_id,
+            columns=columns,
+            records=records,
+        )
+    return TabularPredictResponse(
+        model_id=model_id,
+        value=to_serializable(value),
+    )
+
+
 def alignn_candidate_response(
     model_id: str,
     optimizer: TabularBayesianOptimizer,
@@ -204,6 +249,7 @@ def alignn_candidate_response(
 
 __all__ = [
     "alignn_candidate_response",
+    "alignn_predict_response",
     "build_alignn_fit_response",
     "fit_alignn_tabular_optimizer",
     "graph_builder_from_request",

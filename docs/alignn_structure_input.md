@@ -1,6 +1,6 @@
 # ALIGNN crystal-structure input
 
-Phase 2 adds the crystal-structure boundary that converts user-facing structures into the graph bank consumed by `ALIGNNGPModel` and `ALIGNNDKLModel`.
+Bochan's canonical ALIGNN path is pure PyTorch. Crystal structures are converted to upstream `TorchGraph` atom/line graphs and consumed by `ALIGNNGPModel` / `ALIGNNDKLModel` without DGL.
 
 ## Supported Python inputs
 
@@ -21,11 +21,11 @@ atoms = adapter.from_file("sample.cif")
 atoms = adapter.from_file("POSCAR")
 ```
 
-Keeping paths out of `adapt()` prevents later API/Web layers from accidentally treating arbitrary user strings as server-side paths.
+Keeping paths out of `adapt()` prevents API/Web layers from accidentally treating arbitrary user strings as server-side paths.
 
-Disordered pymatgen structures and ASE structures that are not periodic in all three directions are rejected because the current ALIGNN crystal-graph contract assumes a resolved periodic crystal.
+Disordered pymatgen structures and ASE structures that are not periodic in all three directions are rejected because the ALIGNN crystal-graph contract assumes a resolved periodic crystal.
 
-## Building the ALIGNN graph bank
+## Building the pure-PyTorch ALIGNN graph bank
 
 ```python
 from bochan.structure import ALIGNNGraphBuilder
@@ -34,7 +34,16 @@ builder = ALIGNNGraphBuilder()
 structure_graphs = builder.build_many(structures)
 ```
 
-The upstream `Graph.atom_dgl_multigraph` graph/line-graph result is kept as the low-level Bochan structure-bank entry. Phase-1 `ALIGNNEncoder` executes the upstream representation backbone directly and stops at pooled `readout`, so it does not call the scalar property head.
+Internally Bochan calls upstream `alignn.torch_graph_builder.build_pure_torch_graph()`.
+Each structure-bank entry is:
+
+```text
+(TorchGraph atom_graph, TorchGraph line_graph)
+```
+
+The atom graph stores pair connectivity, periodic image offsets, atomic features, and displacement vectors. The line graph uses parent bonds as nodes and stores bond-angle cosines for three-body message passing.
+
+`ALIGNNEncoder` uses upstream `ALIGNNAtomWisePure`, runs its ALIGNN + GCN representation backbone, mean-pools the final atom hidden states, and stops before the property head. No DGL graph or DGL convolution is created on this path.
 
 The graph bank is passed directly to the model:
 
@@ -51,18 +60,18 @@ model = ALIGNNGPModel(
 
 ## Graph defaults
 
-The default `ALIGNNGraphBuilder` follows the current upstream crystal-training configuration:
+The defaults follow the current upstream pure-PyTorch scalar-property recipe:
 
-- neighbor strategy: `k-nearest`
-- cutoff: `5.0 Å`
-- cutoff extension: `3.0 Å`
-- maximum neighbors: `12`
+- neighbor strategy: `pure_torch`
+- pair cutoff: `8.0 Å`
+- maximum neighbors per source atom: `12`
 - atom features: `cgcnn`
-- canonicalized edges: enabled
 - graph dtype: `float32`
 - three-body cutoff: `3.5 Å`
+- line graph: enabled
+- matscipy topology shortcut: disabled by Bochan
 
-For transferred pretrained models, graph construction should follow the original training metadata rather than generic defaults.
+The pure graph builder performs periodic neighbor search and line-graph construction using torch tensor/index/scatter operations. For transferred pretrained models, graph settings must follow the original pure training metadata rather than generic defaults.
 
 ## Local pretrained bundles
 
@@ -76,10 +85,17 @@ encoder = bundle.build_encoder()
 builder = bundle.build_graph_builder()
 ```
 
-The bundle keeps model configuration, checkpoint weights, and graph-construction settings together. `best_model.pt` is preferred; otherwise the numerically largest `checkpoint_<N>.pt` is selected. Checkpoints are loaded with `torch.load(..., weights_only=True)`.
+The bundle requires:
 
-## Optional dependency policy
+```text
+model.name = "alignn_atomwise_pure"
+neighbor_strategy = "pure_torch"
+```
 
-Bochan keeps ALIGNN/JARVIS/DGL imports lazy. The core package therefore remains importable without the atomistic stack.
+Legacy DGL `model.name="alignn"` bundles are rejected instead of being loaded into a different model/graph contract. The bundle keeps model configuration, checkpoint weights, and graph settings together. `best_model.pt` is preferred; otherwise the numerically largest `checkpoint_<N>.pt` is selected. Checkpoints are loaded with `torch.load(..., weights_only=True)`.
 
-The Phase-2 CI validates against `alignn==2026.8.11`. ALIGNN does not install DGL as a hard dependency, and DGL compatibility depends on the local PyTorch/CUDA platform, so this phase intentionally does not pin a universal DGL build into Bochan's runtime dependencies.
+## Dependency policy
+
+Bochan keeps ALIGNN/JARVIS imports lazy, so the core package remains importable without the atomistic stack.
+
+The CI validates against `alignn==2026.8.11`. The Bochan ALIGNN-GP/DKL path does **not** require DGL. A compatible ALIGNN installation plus Bochan's normal PyTorch stack is sufficient for graph construction and encoder execution.

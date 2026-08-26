@@ -29,6 +29,7 @@ jobs:
             tests/test_alignn_pure_integration.py \
             tests/test_structure_alignn.py \
             tests/test_tabular_alignn_models.py \
+            tests/test_tabular_alignn_mixed.py \
             tests/test_fastapi_alignn_tabular.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
@@ -93,6 +94,7 @@ jobs:
             tests/test_alignn_pure_integration.py \
             tests/test_structure_alignn.py \
             tests/test_tabular_alignn_models.py \
+            tests/test_tabular_alignn_mixed.py \
             tests/test_fastapi_alignn_tabular.py \
             tests/test_material_encoder_fusion.py \
             tests/test_crabnet_encoder.py \

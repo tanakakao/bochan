@@ -10,7 +10,12 @@ from pydantic import Field, model_validator
 from .requests import APIRequest
 from .tabular import TabularCandidateRequest, TabularFitModelRequest
 
-_ALIGNN_MODEL_TYPES = frozenset({"alignn_gp", "alignn_dkl"})
+_ALIGNN_MODEL_TYPES = frozenset(
+    {"alignn_gp", "alignn_dkl", "alignn_multitask", "alignn_multitask_dkl"}
+)
+_ALIGNN_MULTITASK_MODEL_TYPES = frozenset({"alignn_multitask", "alignn_multitask_dkl"})
+_ALIGNN_FROZEN_MODEL_TYPES = frozenset({"alignn_gp", "alignn_multitask"})
+_ALIGNN_DKL_MODEL_TYPES = frozenset({"alignn_dkl", "alignn_multitask_dkl"})
 _PURE_MODEL_NAME = "alignn_atomwise_pure"
 
 
@@ -100,7 +105,7 @@ class ALIGNNGraphConfigRequest(APIRequest):
 
 
 class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
-    """Fit pure-PyTorch ALIGNN-GP / ALIGNN-DKL from tabular data and structures."""
+    """Fit pure-PyTorch ALIGNN GP/DKL, including correlated multitask variants."""
 
     structure_col: str
     structure_catalog: dict[str, CrystalStructureRequest]
@@ -113,7 +118,8 @@ class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
         model_type = str(self.bo_model_config.model_type).lower()
         if model_type not in _ALIGNN_MODEL_TYPES:
             raise ValueError(
-                "ALIGNN tabular FastAPI requires model_type='alignn_gp' or 'alignn_dkl'."
+                "ALIGNN tabular FastAPI requires model_type='alignn_gp', 'alignn_dkl', "
+                "'alignn_multitask', or 'alignn_multitask_dkl'."
             )
         task_type = str(self.bo_model_config.task_type).lower()
         if task_type not in {"regression", "multi_objective"}:
@@ -123,6 +129,12 @@ class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
         targets = list(self.target_cols) if isinstance(self.target_cols, list) else [self.target_cols]
         if not targets:
             raise ValueError("ALIGNN tabular FastAPI requires at least one target column.")
+        if model_type in _ALIGNN_MULTITASK_MODEL_TYPES and len(targets) < 2:
+            fallback = "alignn_dkl" if model_type.endswith("_dkl") else "alignn_gp"
+            raise ValueError(
+                f"{model_type} requires at least two continuous target columns. "
+                f"Use model_type={fallback!r} for a single target."
+            )
         if task_type == "multi_objective" and len(targets) < 2:
             raise ValueError(
                 "ALIGNN task_type='multi_objective' requires at least two target columns."
@@ -131,6 +143,11 @@ class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
             self.multi_output_config is not None
             or self.bo_model_config.multi_output_config is not None
         ):
+            if model_type in _ALIGNN_MULTITASK_MODEL_TYPES:
+                raise ValueError(
+                    "Correlated ALIGNN multitask models keep wide targets in one model; "
+                    "do not provide multi_output_config."
+                )
             raise ValueError(
                 "ALIGNN FastAPI derives independent multi-output models automatically "
                 "from target_cols; do not provide multi_output_config explicitly."
@@ -250,9 +267,9 @@ class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
                     "The server resolves it under BOCHAN_ALIGNN_CHECKPOINT_ROOT."
                 )
             model_kwargs["checkpoint"] = checkpoint
-        if model_type == "alignn_gp" and "encoder_training" in model_kwargs:
-            raise ValueError("alignn_gp always freezes the ALIGNN encoder.")
-        if model_type == "alignn_dkl" and "encoder_training" in model_kwargs:
+        if model_type in _ALIGNN_FROZEN_MODEL_TYPES and "encoder_training" in model_kwargs:
+            raise ValueError(f"{model_type} always freezes the ALIGNN encoder.")
+        if model_type in _ALIGNN_DKL_MODEL_TYPES and "encoder_training" in model_kwargs:
             training = str(model_kwargs["encoder_training"]).lower()
             if training not in {"partial", "full"}:
                 raise ValueError("encoder_training must be 'partial' or 'full'.")

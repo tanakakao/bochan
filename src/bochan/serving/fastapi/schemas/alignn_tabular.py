@@ -154,7 +154,11 @@ class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
             for column in self.input_cols
             if column != self.structure_col and column not in process_categorical
         ]
-        if continuous_process_cols and not isinstance(self.bounds, dict):
+        if self.bounds is not None and not isinstance(self.bounds, dict):
+            raise ValueError(
+                "ALIGNN FastAPI requires column-addressed bounds when bounds are supplied."
+            )
+        if continuous_process_cols and self.bounds is None:
             raise ValueError(
                 "ALIGNN FastAPI requires column-addressed bounds for continuous "
                 "process variables."

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any
 
@@ -10,6 +11,22 @@ from .scaling import optimize_alignn_structure_alternating
 
 _ALIGNN_MODEL_TYPES = frozenset({"alignn_gp", "alignn_dkl"})
 _ALTERNATING_STRUCTURE_THRESHOLD = 10
+_ALTERNATING_OPTION_KEYS = frozenset(
+    {
+        "initialization_strategy",
+        "tol",
+        "maxiter_alternating",
+        "maxiter_discrete",
+        "maxiter_continuous",
+        "maxiter_init",
+        "max_discrete_values",
+        "num_spray_points",
+        "std_cont_perturbation",
+        "batch_limit",
+        "init_batch_limit",
+    }
+)
+_ALTERNATING_OPTIMIZER_KWARGS = frozenset({"options", "alternating_options"})
 
 
 def _process_category_fixed_features(owner: Any) -> list[dict[int, float]]:
@@ -48,6 +65,23 @@ def _optimizer_name(value: Any) -> str | None:
     return str(value).replace("-", "_").lower()
 
 
+def _alternating_optimizer_kwargs_compatible(resolved_opt: Any) -> bool:
+    """Reject standard optimizer kwargs that have no alternating equivalent."""
+
+    kwargs = dict(getattr(resolved_opt, "optimizer_kwargs", None) or {})
+    if set(kwargs) - _ALTERNATING_OPTIMIZER_KWARGS:
+        return False
+    for name in _ALTERNATING_OPTIMIZER_KWARGS:
+        options = kwargs.get(name)
+        if options is None:
+            continue
+        if not isinstance(options, Mapping):
+            return False
+        if set(options) - _ALTERNATING_OPTION_KEYS:
+            return False
+    return True
+
+
 def _use_alternating_structure_search(
     resolved_opt: Any,
     *,
@@ -58,6 +92,8 @@ def _use_alternating_structure_search(
     if structure_count <= _ALTERNATING_STRUCTURE_THRESHOLD:
         return False
     if int(resolved_opt.q) != 1 or not bool(resolved_opt.return_best_only):
+        return False
+    if not _alternating_optimizer_kwargs_compatible(resolved_opt):
         return False
     return _optimizer_name(resolved_opt.optimizer) in {
         "optimize_acqf",

@@ -33,6 +33,7 @@ jobs:
             tests/test_fastapi_alignn_tabular.py \
             tests/test_fastapi_alignn_mixed.py \
             tests/test_fastapi_alignn_artifacts.py \
+            tests/test_common_model_artifact_api.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
             tests/test_crabnet_integration_closure.py \
@@ -92,6 +93,7 @@ jobs:
             src/bochan/serving/fastapi/routers/tabular_artifacts.py \
             src/bochan/serving/fastapi/routers/__init__.py \
             examples/alignn_fastapi_client.py \
+            examples/alignn_artifact_client.py \
             tests/test_alignn_gp.py \
             tests/test_alignn_mixed_gp.py \
             tests/test_alignn_mixed_dkl.py \
@@ -102,6 +104,7 @@ jobs:
             tests/test_fastapi_alignn_tabular.py \
             tests/test_fastapi_alignn_mixed.py \
             tests/test_fastapi_alignn_artifacts.py \
+            tests/test_common_model_artifact_api.py \
             tests/test_material_encoder_fusion.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \

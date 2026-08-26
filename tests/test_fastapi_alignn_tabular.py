@@ -1,4 +1,4 @@
-"""FastAPI coverage for structure-aware ALIGNN tabular models."""
+"""FastAPI coverage for pure-PyTorch structure-aware ALIGNN tabular models."""
 
 # ruff: noqa: E402
 
@@ -89,11 +89,33 @@ def test_alignn_fit_schema_rejects_checkpoint_paths(checkpoint: str) -> None:
         ALIGNNTabularFitModelRequest.model_validate(payload)
 
 
+def test_alignn_fit_schema_defaults_to_pure_torch_graphs() -> None:
+    request = ALIGNNTabularFitModelRequest.model_validate(_fit_payload())
+
+    assert request.structure_graph_config.model_dump() == {
+        "neighbor_strategy": "pure_torch",
+        "cutoff": 8.0,
+        "max_neighbors": 12,
+        "atom_features": "cgcnn",
+        "compute_line_graph": True,
+        "dtype": "float32",
+        "three_body_cutoff": 3.5,
+    }
+
+
+def test_alignn_fit_schema_rejects_legacy_dgl_encoder_config() -> None:
+    payload = _fit_payload()
+    payload["model_config"]["model_kwargs"]["encoder_config"] = {"name": "alignn"}
+
+    with pytest.raises(ValueError, match="pure-PyTorch encoder"):
+        ALIGNNTabularFitModelRequest.model_validate(payload)
+
+
 def test_alignn_fit_service_passes_structure_contract_to_tabular_optimizer(
     monkeypatch,
 ) -> None:
     captured: dict[str, object] = {}
-    fake_builder = SimpleNamespace(config={"neighbor_strategy": "k-nearest"})
+    fake_builder = SimpleNamespace(config={"neighbor_strategy": "pure_torch"})
 
     class FakeOptimizer:
         def __init__(self, **kwargs):
@@ -127,7 +149,7 @@ def test_alignn_fit_service_resolves_checkpoint_under_allowlisted_root(
     captured: dict[str, object] = {}
     checkpoint = tmp_path / "alignn.pt"
     checkpoint.write_bytes(b"placeholder")
-    fake_builder = SimpleNamespace(config={"neighbor_strategy": "k-nearest"})
+    fake_builder = SimpleNamespace(config={"neighbor_strategy": "pure_torch"})
 
     class FakeOptimizer:
         def __init__(self, **kwargs):
@@ -152,7 +174,7 @@ def test_alignn_fit_service_resolves_checkpoint_under_allowlisted_root(
 
 def test_alignn_fit_service_normalizes_numeric_structure_ids(monkeypatch) -> None:
     captured: dict[str, object] = {}
-    fake_builder = SimpleNamespace(config={"neighbor_strategy": "k-nearest"})
+    fake_builder = SimpleNamespace(config={"neighbor_strategy": "pure_torch"})
 
     class FakeOptimizer:
         def __init__(self, **kwargs):
@@ -215,12 +237,7 @@ def test_alignn_candidate_service_forwards_structure_subset() -> None:
     class FakeOptimizer:
         def candidate(self, **kwargs):
             captured.update(kwargs)
-            return (
-                pd.DataFrame(
-                    [{"phase": "beta", "temperature": 1015.0}]
-                ),
-                0.75,
-            )
+            return pd.DataFrame([{"phase": "beta", "temperature": 1015.0}]), 0.75
 
     request = ALIGNNTabularCandidateRequest.model_validate(
         {
@@ -229,11 +246,7 @@ def test_alignn_candidate_service_forwards_structure_subset() -> None:
             "structure_ids": ["beta"],
         }
     )
-    response = service.alignn_candidate_response(
-        "model-1",
-        FakeOptimizer(),
-        request,
-    )
+    response = service.alignn_candidate_response("model-1", FakeOptimizer(), request)
 
     assert captured["structure_ids"] == ["beta"]
     assert captured["return_dataframe"] is True
@@ -256,12 +269,7 @@ def test_alignn_ask_registers_generated_candidate_as_pending() -> None:
         dataset = SimpleNamespace(Y=torch.zeros((4, 1), dtype=torch.double))
 
         def candidate(self, **kwargs):
-            return (
-                pd.DataFrame(
-                    [{"phase": "beta", "temperature": 1015.0}]
-                ),
-                0.75,
-            )
+            return pd.DataFrame([{"phase": "beta", "temperature": 1015.0}]), 0.75
 
         def _prediction_input(self, frame):
             return torch.tensor([[1.0, 1015.0]], dtype=torch.double), frame.index

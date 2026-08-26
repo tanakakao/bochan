@@ -1,4 +1,4 @@
-"""JSON-safe FastAPI schemas for tabular ALIGNN models."""
+"""JSON-safe FastAPI schemas for pure-PyTorch tabular ALIGNN models."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from .requests import APIRequest
 from .tabular import TabularCandidateRequest, TabularFitModelRequest
 
 _ALIGNN_MODEL_TYPES = frozenset({"alignn_gp", "alignn_dkl"})
+_PURE_MODEL_NAME = "alignn_atomwise_pure"
 
 
 class CrystalStructureRequest(APIRequest):
@@ -77,35 +78,29 @@ class CrystalStructureRequest(APIRequest):
 
 
 class ALIGNNGraphConfigRequest(APIRequest):
-    """JSON-safe subset of :class:`bochan.structure.ALIGNNGraphBuilder`."""
+    """JSON-safe pure-PyTorch ALIGNN graph settings."""
 
-    neighbor_strategy: str = "k-nearest"
-    cutoff: float = Field(default=5.0, gt=0.0)
-    cutoff_extra: float = Field(default=3.0, ge=0.0)
+    neighbor_strategy: Literal["pure_torch"] = "pure_torch"
+    cutoff: float = Field(default=8.0, gt=0.0)
     max_neighbors: int | None = Field(default=12, ge=1)
     atom_features: str = "cgcnn"
     compute_line_graph: bool = True
-    use_canonize: bool = True
     dtype: Literal["float16", "float32", "float64", "bfloat"] = "float32"
     three_body_cutoff: float | None = Field(default=3.5, gt=0.0)
 
     @model_validator(mode="after")
     def validate_graph_config(self):
-        if not self.neighbor_strategy.strip():
-            raise ValueError("neighbor_strategy must be non-empty.")
         if not self.atom_features.strip():
             raise ValueError("atom_features must be non-empty.")
         if not self.compute_line_graph:
-            raise ValueError(
-                "FastAPI ALIGNN currently requires compute_line_graph=True."
-            )
+            raise ValueError("FastAPI ALIGNN currently requires compute_line_graph=True.")
         if self.three_body_cutoff is not None and self.three_body_cutoff > self.cutoff:
             raise ValueError("three_body_cutoff must not exceed cutoff.")
         return self
 
 
 class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
-    """Fit ALIGNN-GP / ALIGNN-DKL from tabular data and inline structures."""
+    """Fit pure-PyTorch ALIGNN-GP / ALIGNN-DKL from tabular data and structures."""
 
     structure_col: str
     structure_catalog: dict[str, CrystalStructureRequest]
@@ -122,11 +117,7 @@ class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
             )
         if str(self.bo_model_config.task_type).lower() != "regression":
             raise ValueError("ALIGNN tabular FastAPI currently supports regression only.")
-        targets = (
-            list(self.target_cols)
-            if isinstance(self.target_cols, list)
-            else [self.target_cols]
-        )
+        targets = list(self.target_cols) if isinstance(self.target_cols, list) else [self.target_cols]
         if len(targets) != 1:
             raise ValueError("ALIGNN tabular FastAPI currently requires one target column.")
         if (
@@ -179,9 +170,7 @@ class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
                 if self.structure_col not in row
             ]
             if missing_rows:
-                raise ValueError(
-                    f"structure_col is missing from data rows {missing_rows!r}."
-                )
+                raise ValueError(f"structure_col is missing from data rows {missing_rows!r}.")
         else:
             if self.structure_col not in self.data:
                 raise ValueError("structure_col must be present in data.")
@@ -203,6 +192,21 @@ class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
                 "Use model_config.model_kwargs.encoder_training='partial' or 'full' "
                 "instead of trainable_encoder_layers over FastAPI."
             )
+
+        encoder_config = model_kwargs.get("encoder_config")
+        if encoder_config is not None:
+            if not isinstance(encoder_config, dict):
+                raise ValueError("encoder_config must be a JSON object when provided.")
+            encoder_name = encoder_config.get("name", _PURE_MODEL_NAME)
+            if encoder_name != _PURE_MODEL_NAME:
+                raise ValueError(
+                    "FastAPI ALIGNN uses the pure-PyTorch encoder; "
+                    f"encoder_config.name must be {_PURE_MODEL_NAME!r}."
+                )
+            encoder_config = dict(encoder_config)
+            encoder_config["name"] = _PURE_MODEL_NAME
+            model_kwargs["encoder_config"] = encoder_config
+
         checkpoint = model_kwargs.get("checkpoint")
         if checkpoint is not None:
             if not isinstance(checkpoint, str) or not checkpoint.strip():

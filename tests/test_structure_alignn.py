@@ -52,6 +52,32 @@ def test_structure_adapter_mapping_and_ase_inputs() -> None:
     assert converted.num_atoms == 2
 
 
+def test_structure_adapter_rejects_nonperiodic_ase() -> None:
+    from ase import Atoms as ASEAtoms
+
+    adapter = StructureAdapter()
+    ase_atoms = ASEAtoms(
+        symbols=["Si"],
+        positions=[[0.0, 0.0, 0.0]],
+        cell=[5.43, 5.43, 5.43],
+        pbc=[True, True, False],
+    )
+
+    with pytest.raises(ValueError, match="periodic in all three directions"):
+        adapter.adapt(ase_atoms)
+
+
+def test_structure_adapter_rejects_disordered_pymatgen_before_conversion() -> None:
+    disordered_class = type(
+        "FakeStructure",
+        (),
+        {"__module__": "pymatgen.core.structure", "is_ordered": False},
+    )
+
+    with pytest.raises(ValueError, match="Disordered pymatgen"):
+        StructureAdapter().adapt(disordered_class())
+
+
 def test_structure_adapter_uses_explicit_file_boundary(tmp_path) -> None:
     adapter = StructureAdapter()
     poscar = tmp_path / "POSCAR"
@@ -117,6 +143,27 @@ def test_structure_mapping_validation_is_strict() -> None:
     with pytest.raises(ValueError, match="same number of atoms"):
         adapter.adapt(invalid)
 
+    singular = _si_structure()
+    singular["lattice_mat"] = [[1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
+    with pytest.raises(ValueError, match="non-singular"):
+        adapter.adapt(singular)
+
+
+def test_alignn_graph_builder_defaults_match_current_training_config() -> None:
+    builder = ALIGNNGraphBuilder()
+
+    assert builder.config == {
+        "neighbor_strategy": "k-nearest",
+        "cutoff": 5.0,
+        "cutoff_extra": 3.0,
+        "max_neighbors": 12,
+        "atom_features": "cgcnn",
+        "compute_line_graph": True,
+        "use_canonize": True,
+        "dtype": "float32",
+        "three_body_cutoff": 3.5,
+    }
+
 
 def test_alignn_graph_builder_preserves_upstream_graph_settings(monkeypatch) -> None:
     calls: list[dict[str, object]] = []
@@ -131,10 +178,13 @@ def test_alignn_graph_builder_preserves_upstream_graph_settings(monkeypatch) -> 
     builder = ALIGNNGraphBuilder(
         neighbor_strategy="k-nearest",
         cutoff=7.5,
+        cutoff_extra=2.0,
         max_neighbors=10,
         atom_features="cgcnn",
         compute_line_graph=True,
         use_canonize=False,
+        dtype="float64",
+        three_body_cutoff=3.0,
     )
 
     result = builder.build(_si_structure())
@@ -144,10 +194,13 @@ def test_alignn_graph_builder_preserves_upstream_graph_settings(monkeypatch) -> 
     call = calls[0]
     assert call["neighbor_strategy"] == "k-nearest"
     assert call["cutoff"] == 7.5
+    assert call["cutoff_extra"] == 2.0
     assert call["max_neighbors"] == 10
     assert call["atom_features"] == "cgcnn"
     assert call["compute_line_graph"] is True
     assert call["use_canonize"] is False
+    assert call["dtype"] == "float64"
+    assert call["three_body_cutoff"] == 3.0
     assert call["atoms"].elements == ["Si", "Si"]  # type: ignore[union-attr]
 
 
@@ -162,10 +215,13 @@ def test_alignn_graph_builder_uses_training_config(monkeypatch) -> None:
         {
             "neighbor_strategy": "radius_graph_jarvis",
             "cutoff": 5.5,
+            "cutoff_extra": 1.5,
             "max_neighbors": 8,
             "atom_features": "atomic_number",
             "compute_line_graph": True,
             "use_canonize": True,
+            "dtype": "float64",
+            "three_body_cutoff": 3.0,
         }
     )
 
@@ -175,10 +231,13 @@ def test_alignn_graph_builder_uses_training_config(monkeypatch) -> None:
     assert builder.config == {
         "neighbor_strategy": "radius_graph_jarvis",
         "cutoff": 5.5,
+        "cutoff_extra": 1.5,
         "max_neighbors": 8,
         "atom_features": "atomic_number",
         "compute_line_graph": True,
         "use_canonize": True,
+        "dtype": "float64",
+        "three_body_cutoff": 3.0,
     }
 
 
@@ -186,10 +245,13 @@ def test_local_pretrained_zip_keeps_model_and_graph_configs_together(tmp_path, m
     config = {
         "neighbor_strategy": "k-nearest",
         "cutoff": 8.0,
+        "cutoff_extra": 2.0,
         "max_neighbors": 12,
         "atom_features": "cgcnn",
         "compute_line_graph": True,
         "use_canonize": True,
+        "dtype": "float32",
+        "three_body_cutoff": 3.5,
         "model": {
             "name": "alignn",
             "hidden_features": 4,
@@ -210,8 +272,10 @@ def test_local_pretrained_zip_keeps_model_and_graph_configs_together(tmp_path, m
     assert bundle.checkpoint_name == "run/best_model.pt"
     assert bundle.model_config["name"] == "alignn"
     assert graph_builder.cutoff == 8.0
+    assert graph_builder.cutoff_extra == 2.0
     assert graph_builder.max_neighbors == 12
     assert graph_builder.neighbor_strategy == "k-nearest"
+    assert graph_builder.three_body_cutoff == 3.5
 
     captured: dict[str, object] = {}
 

@@ -209,15 +209,13 @@ def test_alignn_multitask_family_optimizes_multiobjective_nehvi(
 
 
 def test_alignn_multitask_rejects_single_target_and_points_to_independent_model() -> None:
-    optimizer = _optimizer(
-        "alignn_multitask",
-        mixed=False,
-        dkl=False,
-        target_cols="strength",
-    )
-
     with pytest.raises(ValueError, match="Use model_type='alignn_gp'"):
-        optimizer.fit(_frame(mixed=False))
+        _optimizer(
+            "alignn_multitask",
+            mixed=False,
+            dkl=False,
+            target_cols="strength",
+        )
 
 
 def test_alignn_multitask_rejects_explicit_multi_output_config() -> None:

@@ -15,9 +15,11 @@ from bochan.composition.encoders.alignn import Checkpoint
 
 from .alignn import (
     _ALIGNNGPFeatureExtractor,
+    _configure_dkl_encoder,
     _resolve_material_encoder,
     _validate_model_inputs,
     _validate_structure_bank,
+    _validate_trainable_encoder_layers,
 )
 from .deepkernel import InputTransformArg, OutcomeTransformArg
 from .deepkernel_configurable import DeepKernelGaussianMixedGPModel
@@ -197,7 +199,7 @@ class ALIGNNMixedGPModel(DeepKernelGaussianMixedGPModel):
 
     @property
     def material_encoder(self) -> ALIGNNEncoder:
-        """Return the frozen ALIGNN material encoder."""
+        """Return the ALIGNN material encoder."""
 
         return self.alignn_feature_extractor.material_encoder
 
@@ -244,4 +246,79 @@ class ALIGNNMixedGPModel(DeepKernelGaussianMixedGPModel):
         return len(self.cat_dims)
 
 
-__all__ = ["ALIGNNMixedGPModel"]
+class ALIGNNMixedDKLModel(ALIGNNMixedGPModel):
+    """Mixed exact GP that jointly fine-tunes the ALIGNN structure encoder.
+
+    The mixed covariance remains identical to :class:`ALIGNNMixedGPModel`:
+    categorical process columns stay in the categorical kernel while the
+    continuous branch contains the discrete structure selector plus numeric
+    process variables. DKL only changes the ALIGNN representation policy by
+    unfreezing selected graph-convolution blocks or the complete representation
+    backbone.
+
+    A positive ``trainable_encoder_layers`` value unfreezes that many final
+    graph-convolution blocks from the ordered ALIGNN + GCN stacks. ``"all"``
+    fine-tunes the complete representation backbone while keeping the upstream
+    scalar property head outside the Bochan DKL representation path.
+    """
+
+    def __init__(
+        self,
+        train_X: Tensor,
+        train_Y: Tensor,
+        cat_dims: Sequence[int],
+        train_Yvar: Tensor | None = None,
+        *,
+        structure_graphs: Sequence[Any],
+        encoder: ALIGNNEncoder | nn.Module | None = None,
+        checkpoint: Checkpoint | None = None,
+        encoder_output_dim: int | None = None,
+        encoder_config: object | None = None,
+        latent_dim: int = 32,
+        fusion: Literal["concat"] | MaterialProcessFusion = "concat",
+        projection: nn.Module | None = None,
+        strict_checkpoint: bool = True,
+        trainable_encoder_layers: int | Literal["all"] = 1,
+        likelihood: Likelihood | None = None,
+        input_transform: InputTransformArg = "DEFAULT",
+        outcome_transform: OutcomeTransformArg = "DEFAULT",
+    ) -> None:
+        resolved_trainable_layers = _validate_trainable_encoder_layers(
+            trainable_encoder_layers
+        )
+        super().__init__(
+            train_X=train_X,
+            train_Y=train_Y,
+            cat_dims=cat_dims,
+            train_Yvar=train_Yvar,
+            structure_graphs=structure_graphs,
+            encoder=encoder,
+            checkpoint=checkpoint,
+            encoder_output_dim=encoder_output_dim,
+            encoder_config=encoder_config,
+            latent_dim=latent_dim,
+            fusion=fusion,
+            projection=projection,
+            strict_checkpoint=strict_checkpoint,
+            likelihood=likelihood,
+            input_transform=input_transform,
+            outcome_transform=outcome_transform,
+        )
+        training_mode, trainable_modules = _configure_dkl_encoder(
+            self.material_encoder,
+            resolved_trainable_layers,
+        )
+        self._trainable_encoder_layers = resolved_trainable_layers
+        self.alignn_feature_extractor._configure_encoder_training(
+            training_mode,
+            trainable_modules,
+        )
+
+    @property
+    def trainable_encoder_layers(self) -> int | Literal["all"]:
+        """Return the configured partial/full ALIGNN fine-tuning policy."""
+
+        return self._trainable_encoder_layers
+
+
+__all__ = ["ALIGNNMixedDKLModel", "ALIGNNMixedGPModel"]

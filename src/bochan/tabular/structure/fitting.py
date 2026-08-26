@@ -123,10 +123,11 @@ def configure_tabular_alignn(owner: Any) -> None:
             f"Tabular ALIGNN with the configured process columns requires "
             f"input_type={expected_input_type!r}."
         )
-    if config.cat_dims not in (None, [], ()):
+    configured_cat_dims = [] if config.cat_dims is None else list(config.cat_dims)
+    if configured_cat_dims not in ([], process_cat_dims):
         raise ValueError(
             "Tabular ALIGNN derives cat_dims from categorical process columns; "
-            "do not pass cat_dims explicitly."
+            f"expected {process_cat_dims!r}, got {configured_cat_dims!r}."
         )
     if config.input_transform is not None:
         raise ValueError(

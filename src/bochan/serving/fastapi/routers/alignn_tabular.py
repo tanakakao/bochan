@@ -46,6 +46,9 @@ from ..services.tabular_artifacts import (
 
 TABULAR_STORE_DEP = Depends(get_tabular_optimizer_store)
 FILE_STORE_DEP = Depends(get_file_optimizer_store)
+_ALIGNN_MODEL_TYPES = frozenset(
+    {"alignn_gp", "alignn_dkl", "alignn_multitask", "alignn_multitask_dkl"}
+)
 
 router = APIRouter(prefix="/tabular/alignn/models", tags=["tabular", "alignn"])
 
@@ -54,7 +57,7 @@ def _validate_alignn_optimizer(optimizer: Any, *, model_id: str | None = None) -
     """Validate that one tabular optimizer carries the ALIGNN structure contract."""
 
     model_type = str(getattr(optimizer.model_config, "model_type", "")).lower()
-    if model_type not in {"alignn_gp", "alignn_dkl"}:
+    if model_type not in _ALIGNN_MODEL_TYPES:
         prefix = f"model_id={model_id!r} " if model_id is not None else "Artifact "
         raise TypeError(f"{prefix}is not an ALIGNN tabular model.")
     structure = getattr(optimizer, "structure", None)
@@ -81,7 +84,7 @@ def fit_alignn_tabular_model(
     request: ALIGNNTabularFitModelRequest,
     store: TabularOptimizerStore = TABULAR_STORE_DEP,
 ) -> TabularModelFitResponse:
-    """Fit/store ALIGNN GP or DKL with continuous or mixed process inputs."""
+    """Fit/store ALIGNN GP, DKL, or correlated multitask variants."""
 
     try:
         optimizer = fit_alignn_tabular_optimizer(request)

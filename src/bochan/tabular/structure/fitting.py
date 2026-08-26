@@ -30,6 +30,11 @@ def configure_tabular_alignn(owner: Any) -> None:
     structure IDs to deterministic integer indices. The model layer still sees
     ``input_type='normal'`` with ``cat_dims=[]`` because the first coordinate is
     handled by ALIGNN itself and must be enumerated through fixed features.
+
+    The operation is intentionally idempotent so the same contract can be
+    reapplied after public ``fit(..., data_config=..., model_config=...)``
+    overrides without allowing the structure-ID/category-map order to drift
+    away from the cached graph-bank order.
     """
 
     model_type = str(owner.model_config.model_type).lower()
@@ -130,11 +135,15 @@ def configure_tabular_alignn(owner: Any) -> None:
             )
 
     model_kwargs = dict(config.model_kwargs)
-    supplied_reserved = sorted({"structure_graphs"}.intersection(model_kwargs))
-    if supplied_reserved:
+    structure_graphs = owner.structure.structure_graphs
+    existing_structure_graphs = model_kwargs.pop("structure_graphs", None)
+    if (
+        existing_structure_graphs is not None
+        and existing_structure_graphs is not structure_graphs
+    ):
         raise ValueError(
             "Tabular ALIGNN derives structure_graphs from structure_catalog; "
-            f"do not pass derived model kwargs explicitly: {supplied_reserved!r}."
+            "do not override the derived graph bank in model_kwargs."
         )
     encoder_training = model_kwargs.pop("encoder_training", None)
 
@@ -166,7 +175,7 @@ def configure_tabular_alignn(owner: Any) -> None:
                     "encoder_training must be 'partial' or 'full' for alignn_dkl."
                 )
 
-    model_kwargs["structure_graphs"] = owner.structure.structure_graphs
+    model_kwargs["structure_graphs"] = structure_graphs
     owner.model_config = replace(
         config,
         model_cls=model_cls,
@@ -179,9 +188,12 @@ def configure_tabular_alignn(owner: Any) -> None:
         model_kwargs=model_kwargs,
     )
 
-    if owner.fit_config.fit_func is None:
-        from bochan.fit import fit_deepkernel_mll
+    from bochan.api import FitConfig
+    from bochan.fit import fit_deepkernel_mll
 
+    if owner.fit_config is None:
+        owner.fit_config = FitConfig(fit_func=fit_deepkernel_mll)
+    elif owner.fit_config.fit_func is None:
         owner.fit_config = replace(owner.fit_config, fit_func=fit_deepkernel_mll)
 
 

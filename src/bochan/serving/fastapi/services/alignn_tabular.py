@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from contextlib import suppress
 from tempfile import NamedTemporaryFile
 from typing import Any
 
@@ -56,10 +57,8 @@ def _inline_file_structure(
         return adapter.from_file(path, file_format=payload.format)
     finally:
         if path is not None:
-            try:
+            with suppress(FileNotFoundError):
                 os.unlink(path)
-            except FileNotFoundError:
-                pass
 
 
 def structure_catalog_from_request(

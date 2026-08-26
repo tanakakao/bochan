@@ -246,44 +246,17 @@ def test_tabular_alignn_dkl_maps_encoder_training_policy() -> None:
     assert any(parameter.requires_grad for parameter in model.material_encoder.parameters())
 
 
-@pytest.mark.parametrize(
-    ("kwargs", "match"),
-    [
-        ({"structure_col": "phase"}, "structure_catalog"),
-        (
-            {
-                "structure_col": "phase",
-                "structure_catalog": _catalog(),
-                "categorical_cols": ["furnace"],
-            },
-            "continuous process variables only",
-        ),
-    ],
-)
-def test_tabular_alignn_rejects_invalid_structure_configuration(
-    kwargs: dict[str, object],
-    match: str,
-) -> None:
-    frame = _frame().assign(furnace=["A", "B"] * 3)
-    input_cols = ["phase", "temperature", "pressure"]
-    if "categorical_cols" in kwargs:
-        input_cols.append("furnace")
-
-    with pytest.raises(ValueError, match=match):
+def test_tabular_alignn_requires_structure_catalog() -> None:
+    with pytest.raises(ValueError, match="structure_catalog"):
         TabularBayesianOptimizer(
             model_type="alignn_gp",
-            input_cols=input_cols,
+            input_cols=["phase", "temperature", "pressure"],
             target_cols="property",
+            structure_col="phase",
             bounds={
                 "temperature": [850.0, 1200.0],
                 "pressure": [0.5, 2.0],
-                **(
-                    {"furnace": [0.0, 1.0]}
-                    if "categorical_cols" in kwargs
-                    else {}
-                ),
             },
             model_kwargs={"encoder": FakeALIGNN(), "latent_dim": 3},
             fit_config={"skip_fit": True},
-            **kwargs,
-        ).fit(frame)
+        ).fit(_frame())

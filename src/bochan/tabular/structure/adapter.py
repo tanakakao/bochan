@@ -18,6 +18,14 @@ def _as_list(value: Any | None) -> list[Any]:
     return [value]
 
 
+def _mapping_value(mapping: Mapping[Any, Any] | None, key: Any) -> Any | None:
+    if mapping is None:
+        return None
+    if key in mapping:
+        return mapping[key]
+    return mapping.get(str(key))
+
+
 class StructureTabularAdapter:
     """Own a structure catalog and its discrete ALIGNN model coordinate.
 
@@ -134,6 +142,73 @@ class StructureTabularAdapter:
         expanded = dict(bounds or {})
         expanded[self.column] = [0.0, float(self.num_structures - 1)]
         return expanded
+
+    def complete_categorical_bounds(
+        self,
+        bounds: Any,
+        data: Any,
+        *,
+        categorical_cols: Sequence[Any] | Any | None,
+        category_maps: Mapping[Any, Mapping[Any, int]] | None = None,
+    ) -> Any:
+        """Fill missing process-category bounds using the eventual encoded values.
+
+        String/object categories are label encoded to ``0..K-1`` by the tabular
+        data layer unless an explicit ``category_maps`` entry is supplied. Numeric
+        categorical columns are preserved, so their observed numeric min/max are
+        used instead. Continuous-process bounds are deliberately not inferred here.
+        """
+
+        if not self.enabled or not isinstance(bounds, Mapping):
+            return bounds
+        completed = dict(bounds)
+        process_categorical = [
+            column for column in _as_list(categorical_cols) if column != self.column
+        ]
+        if not process_categorical:
+            return completed
+
+        try:
+            import pandas as pd
+        except ImportError as error:
+            raise ImportError(
+                "pandas is required to infer categorical process bounds for tabular ALIGNN."
+            ) from error
+        if not isinstance(data, pd.DataFrame):
+            missing = [
+                column
+                for column in process_categorical
+                if column not in completed and str(column) not in completed
+            ]
+            if missing:
+                raise ValueError(
+                    "Categorical process bounds could not be inferred from non-DataFrame input; "
+                    f"provide bounds or category_maps for {missing!r}."
+                )
+            return completed
+
+        for column in process_categorical:
+            if column in completed or str(column) in completed:
+                continue
+            explicit = _mapping_value(category_maps, column)
+            if explicit is not None:
+                codes = [int(value) for value in explicit.values()]
+                if not codes:
+                    raise ValueError(f"category_maps[{column!r}] must not be empty.")
+                completed[column] = [float(min(codes)), float(max(codes))]
+                continue
+            if column not in data.columns:
+                raise KeyError(f"Unknown categorical process column {column!r}.")
+            values = data.loc[:, column].dropna()
+            if values.empty:
+                raise ValueError(
+                    f"Cannot infer categorical bounds for {column!r}: no non-missing values."
+                )
+            if pd.api.types.is_numeric_dtype(values):
+                completed[column] = [float(values.min()), float(values.max())]
+            else:
+                completed[column] = [0.0, float(values.nunique() - 1)]
+        return completed
 
     def fixed_features_list(
         self,

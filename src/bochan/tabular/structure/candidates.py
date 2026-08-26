@@ -10,6 +10,36 @@ from ..optimizer.candidates import CandidateService
 _ALIGNN_MODEL_TYPES = frozenset({"alignn_gp", "alignn_dkl"})
 
 
+def _process_category_fixed_features(owner: Any) -> list[dict[int, float]]:
+    """Return current joint process-category assignments for mixed ALIGNN."""
+
+    if owner.bo.bundle is None:
+        return [{}]
+    cat_dims = [int(index) for index in (owner.bo.bundle.cat_dims or [])]
+    if not cat_dims:
+        return [{}]
+    if 0 in cat_dims:
+        raise RuntimeError(
+            "ALIGNN model cat_dims must contain process categories only; "
+            "structure feature 0 is enumerated separately."
+        )
+
+    train_X = owner.bo.train_X
+    if train_X is None:
+        raise RuntimeError("No current ALIGNN training inputs are available for optimization.")
+
+    import torch
+
+    values = train_X[:, cat_dims]
+    unique_rows = torch.unique(values, dim=0)
+    if unique_rows.numel() == 0:
+        raise RuntimeError("No categorical process assignments are available for optimization.")
+    return [
+        {dim: float(value) for dim, value in zip(cat_dims, row, strict=True)}
+        for row in unique_rows.detach().cpu().tolist()
+    ]
+
+
 class StructureAwareCandidateService(CandidateService):
     """Extend the canonical candidate service with structure enumeration."""
 
@@ -51,16 +81,25 @@ class StructureAwareCandidateService(CandidateService):
             raise RuntimeError("The ALIGNN structure selector must be feature index 0.")
         if resolved_opt.fixed_features_list is not None:
             raise ValueError(
-                "Tabular ALIGNN derives fixed_features_list from structure_catalog; "
-                "use structure_ids to select a subset instead of supplying fixed_features_list."
+                "Tabular ALIGNN derives fixed_features_list from structure_catalog and "
+                "categorical process columns; use structure_ids to select a structure "
+                "subset instead of supplying fixed_features_list."
             )
+
+        structure_assignments = self.structure.fixed_features_list(
+            structure_ids,
+            feature_index=structure_index,
+        )
+        category_assignments = _process_category_fixed_features(owner)
+        fixed_features_list = [
+            {**structure_assignment, **category_assignment}
+            for structure_assignment in structure_assignments
+            for category_assignment in category_assignments
+        ]
 
         return acq_config, replace(
             resolved_opt,
-            fixed_features_list=self.structure.fixed_features_list(
-                structure_ids,
-                feature_index=structure_index,
-            ),
+            fixed_features_list=fixed_features_list,
         )
 
 

@@ -7,6 +7,14 @@ from dataclasses import replace
 from typing import Any
 
 _ALIGNN_MODEL_TYPES = frozenset({"alignn_gp", "alignn_dkl"})
+_DERIVED_ALIGNN_MODEL_CLASSES = frozenset(
+    {
+        "ALIGNNGPModel",
+        "ALIGNNDKLModel",
+        "ALIGNNMixedGPModel",
+        "ALIGNNMixedDKLModel",
+    }
+)
 
 
 def _target_count(target_cols: Any) -> int | None:
@@ -23,13 +31,27 @@ def _has_mapping_key(mapping: Mapping[Any, Any], key: Any) -> bool:
     return key in mapping or str(key) in mapping
 
 
-def configure_tabular_alignn(owner: Any) -> None:
-    """Configure the canonical structure-index/process tensor contract.
+def _has_derived_alignn_model_cls(model_cls: Any) -> bool:
+    """Return whether model_cls was produced by this tabular ALIGNN adapter."""
 
-    The tabular data layer uses its existing category mapping machinery to map
-    structure IDs to deterministic integer indices. The model layer still sees
-    ``input_type='normal'`` with ``cat_dims=[]`` because the first coordinate is
-    handled by ALIGNN itself and must be enumerated through fixed features.
+    if model_cls is None:
+        return False
+    return (
+        getattr(model_cls, "__name__", None) in _DERIVED_ALIGNN_MODEL_CLASSES
+        and str(getattr(model_cls, "__module__", "")).startswith(
+            "bochan.models.regression.gaussian.deep"
+        )
+    )
+
+
+def configure_tabular_alignn(owner: Any) -> None:
+    """Configure the canonical structure/process tensor contract.
+
+    ``structure_col`` is always moved to model feature 0 and encoded with the
+    structure catalog's deterministic ID -> graph-bank index mapping. Other
+    categorical columns remain normal tabular categorical process variables.
+    They are excluded from the ALIGNN/process feature extractor and passed to
+    the mixed GP categorical kernel through ``cat_dims``.
 
     The operation is intentionally idempotent so the same contract can be
     reapplied after public ``fit(..., data_config=..., model_config=...)``
@@ -49,13 +71,13 @@ def configure_tabular_alignn(owner: Any) -> None:
     if str(owner.model_config.task_type) != "regression":
         raise ValueError("Tabular ALIGNN models currently support regression only.")
     if owner.model_config.multi_output_config is not None:
-        raise ValueError("Tabular ALIGNN Phase 3 does not support multi_output_config.")
+        raise ValueError("Tabular ALIGNN currently does not support multi_output_config.")
     target_count = _target_count(owner.source_data_config.target_cols)
     if target_count is not None and target_count != 1:
         raise ValueError("Tabular ALIGNN models currently require exactly one target column.")
     if owner.composition.enabled:
         raise ValueError(
-            "Tabular ALIGNN Phase 3 accepts crystal structure plus process variables; "
+            "Tabular ALIGNN accepts crystal structure plus process variables; "
             "composition_sites cannot be combined with ALIGNN yet."
         )
     if not owner.structure.enabled:
@@ -71,23 +93,29 @@ def configure_tabular_alignn(owner: Any) -> None:
         )
     input_cols = owner.structure.replace_input_cols(source.input_cols)
     categorical_cols = owner.structure.resolve_categorical_cols(source.categorical_cols)
-    other_categorical = [
+    process_categorical_cols = [
         column for column in categorical_cols if column != owner.structure.column
     ]
-    if other_categorical:
+    process_categorical_set = set(process_categorical_cols)
+    continuous_process_cols = [
+        column
+        for column in input_cols
+        if column != owner.structure.column and column not in process_categorical_set
+    ]
+
+    if source.bounds is not None and not isinstance(source.bounds, Mapping):
         raise ValueError(
-            "Tabular ALIGNN Phase 3 supports continuous process variables only; "
-            f"categorical process columns were configured: {other_categorical!r}."
+            "Tabular ALIGNN requires column-addressed bounds when bounds are supplied."
         )
-    if source.bounds is None or not isinstance(source.bounds, Mapping):
+    if continuous_process_cols and source.bounds is None:
         raise ValueError(
             "Tabular ALIGNN requires column-addressed bounds for every continuous process variable."
         )
-    process_columns = [
-        column for column in input_cols if column != owner.structure.column
-    ]
+    bounds_mapping = source.bounds or {}
     missing_bounds = [
-        column for column in process_columns if not _has_mapping_key(source.bounds, column)
+        column
+        for column in continuous_process_cols
+        if not _has_mapping_key(bounds_mapping, column)
     ]
     if missing_bounds:
         raise ValueError(
@@ -108,39 +136,42 @@ def configure_tabular_alignn(owner: Any) -> None:
     owner.data_config = resolved_source
 
     config = owner.model_config
-    if config.input_type not in (None, "normal"):
-        raise ValueError("Tabular ALIGNN requires input_type='normal'.")
-    if config.cat_dims not in (None, [], ()):
+    process_cat_dims = [input_cols.index(column) for column in process_categorical_cols]
+    is_mixed = bool(process_cat_dims)
+    expected_input_type = "mixed" if is_mixed else "normal"
+    derived_config = _has_derived_alignn_model_cls(config.model_cls)
+    if not derived_config and config.input_type not in (None, expected_input_type):
         raise ValueError(
-            "Tabular ALIGNN derives its structure selector from structure_col; "
+            f"Tabular ALIGNN with the configured process columns requires "
+            f"input_type={expected_input_type!r}."
+        )
+    configured_cat_dims = [] if config.cat_dims is None else list(config.cat_dims)
+    if not derived_config and configured_cat_dims:
+        raise ValueError(
+            "Tabular ALIGNN derives cat_dims from categorical process columns; "
             "do not pass cat_dims explicitly."
         )
     if config.input_transform is not None:
         raise ValueError(
             "Tabular ALIGNN derives process-only normalization automatically; "
-            "do not pass input_transform explicitly in Phase 3."
+            "do not pass input_transform explicitly."
         )
     transform_config = config.input_transform_config
     if transform_config is not None:
         if bool(transform_config.perturbation):
-            raise ValueError("Tabular ALIGNN Phase 3 does not support input perturbation.")
+            raise ValueError("Tabular ALIGNN does not support input perturbation.")
         if not bool(transform_config.normalize):
-            raise ValueError(
-                "Tabular ALIGNN Phase 3 currently requires process normalization."
-            )
+            raise ValueError("Tabular ALIGNN currently requires process normalization.")
         if transform_config.bounds is not None:
             raise ValueError(
                 "Tabular ALIGNN derives process normalization from tabular bounds; "
-                "do not pass InputTransformConfig.bounds in Phase 3."
+                "do not pass InputTransformConfig.bounds."
             )
 
     model_kwargs = dict(config.model_kwargs)
     structure_graphs = owner.structure.structure_graphs
     existing_structure_graphs = model_kwargs.pop("structure_graphs", None)
-    if (
-        existing_structure_graphs is not None
-        and existing_structure_graphs is not structure_graphs
-    ):
+    if existing_structure_graphs is not None and existing_structure_graphs is not structure_graphs:
         raise ValueError(
             "Tabular ALIGNN derives structure_graphs from structure_catalog; "
             "do not override the derived graph bank in model_kwargs."
@@ -153,13 +184,23 @@ def configure_tabular_alignn(owner: Any) -> None:
                 "alignn_gp freezes the structure encoder. Use model_type='alignn_dkl' "
                 "for partial or full ALIGNN fine-tuning."
             )
-        from bochan.models.regression.gaussian.deep import ALIGNNGPModel
+        if is_mixed:
+            from bochan.models.regression.gaussian.deep import ALIGNNMixedGPModel
 
-        model_cls = ALIGNNGPModel
+            model_cls = ALIGNNMixedGPModel
+        else:
+            from bochan.models.regression.gaussian.deep import ALIGNNGPModel
+
+            model_cls = ALIGNNGPModel
     else:
-        from bochan.models.regression.gaussian.deep import ALIGNNDKLModel
+        if is_mixed:
+            from bochan.models.regression.gaussian.deep import ALIGNNMixedDKLModel
 
-        model_cls = ALIGNNDKLModel
+            model_cls = ALIGNNMixedDKLModel
+        else:
+            from bochan.models.regression.gaussian.deep import ALIGNNDKLModel
+
+            model_cls = ALIGNNDKLModel
         if encoder_training is not None:
             if "trainable_encoder_layers" in model_kwargs:
                 raise ValueError(
@@ -179,11 +220,11 @@ def configure_tabular_alignn(owner: Any) -> None:
     owner.model_config = replace(
         config,
         model_cls=model_cls,
-        input_type="normal",
-        cat_dims=[],
+        input_type=expected_input_type,
+        cat_dims=process_cat_dims,
         input_transform=None,
         input_transform_config=None,
-        pass_cat_dims=False,
+        pass_cat_dims=is_mixed,
         pass_input_transform=False,
         model_kwargs=model_kwargs,
     )

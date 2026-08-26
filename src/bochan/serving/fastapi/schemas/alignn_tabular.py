@@ -115,18 +115,28 @@ class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
             raise ValueError(
                 "ALIGNN tabular FastAPI requires model_type='alignn_gp' or 'alignn_dkl'."
             )
-        if str(self.bo_model_config.task_type).lower() != "regression":
-            raise ValueError("ALIGNN tabular FastAPI currently supports regression only.")
+        task_type = str(self.bo_model_config.task_type).lower()
+        if task_type not in {"regression", "multi_objective"}:
+            raise ValueError(
+                "ALIGNN tabular FastAPI supports regression or multi_objective regression only."
+            )
         targets = list(self.target_cols) if isinstance(self.target_cols, list) else [self.target_cols]
-        if len(targets) != 1:
-            raise ValueError("ALIGNN tabular FastAPI currently requires one target column.")
+        if not targets:
+            raise ValueError("ALIGNN tabular FastAPI requires at least one target column.")
+        if task_type == "multi_objective" and len(targets) < 2:
+            raise ValueError(
+                "ALIGNN task_type='multi_objective' requires at least two target columns."
+            )
         if (
             self.multi_output_config is not None
             or self.bo_model_config.multi_output_config is not None
         ):
-            raise ValueError("ALIGNN tabular FastAPI does not support multi_output_config yet.")
+            raise ValueError(
+                "ALIGNN FastAPI derives independent multi-output models automatically "
+                "from target_cols; do not provide multi_output_config explicitly."
+            )
         if self.target_categorical_cols:
-            raise ValueError("ALIGNN tabular FastAPI requires a continuous regression target.")
+            raise ValueError("ALIGNN tabular FastAPI requires continuous regression targets.")
         if not self.structure_col.strip():
             raise ValueError("structure_col must be non-empty.")
         if self.structure_col not in self.input_cols:

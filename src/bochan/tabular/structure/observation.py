@@ -60,7 +60,7 @@ class StructureAwareObservationAdapter(ObservationAdapter):
         target_names: Any = None,
         default_converter: Callable[..., Any],
     ) -> Any:
-        """Complete mixed category metadata and preserve fitted category codes."""
+        """Complete mixed metadata and finalize the fitted ALIGNN output width."""
 
         if self.owner.structure.enabled:
             completed_bounds = self.owner.structure.complete_categorical_bounds(
@@ -84,6 +84,10 @@ class StructureAwareObservationAdapter(ObservationAdapter):
             learned_maps = dict(config.category_maps or {})
             learned_maps.update(dataset.category_maps)
             self.owner.data_config = replace(config, category_maps=learned_maps)
+
+        from .multioutput import configure_alignn_outputs_from_dataset
+
+        configure_alignn_outputs_from_dataset(self.owner, dataset)
         return dataset
 
 

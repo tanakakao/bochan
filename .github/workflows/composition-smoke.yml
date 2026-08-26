@@ -25,6 +25,7 @@ jobs:
           pytest -q --maxfail=1 \
             tests/test_alignn_gp.py \
             tests/test_alignn_mixed_gp.py \
+            tests/test_alignn_mixed_dkl.py \
             tests/test_alignn_pure_integration.py \
             tests/test_structure_alignn.py \
             tests/test_tabular_alignn_models.py \
@@ -88,6 +89,7 @@ jobs:
             examples/alignn_fastapi_client.py \
             tests/test_alignn_gp.py \
             tests/test_alignn_mixed_gp.py \
+            tests/test_alignn_mixed_dkl.py \
             tests/test_alignn_pure_integration.py \
             tests/test_structure_alignn.py \
             tests/test_tabular_alignn_models.py \

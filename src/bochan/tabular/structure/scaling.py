@@ -13,18 +13,11 @@ def _merge_fixed_features(
     base: Mapping[int, float] | None,
     extra: Mapping[int, float],
 ) -> dict[int, float]:
-    """Merge fixed features while rejecting conflicting assignments."""
+    """Merge fixed features with the internally derived assignment taking priority."""
 
     merged = {int(index): float(value) for index, value in (base or {}).items()}
     for index, value in extra.items():
-        index = int(index)
-        value = float(value)
-        if index in merged and merged[index] != value:
-            raise ValueError(
-                f"Conflicting fixed feature for dimension {index}: "
-                f"{merged[index]} != {value}."
-            )
-        merged[index] = value
+        merged[int(index)] = float(value)
     return merged
 
 

@@ -17,6 +17,7 @@ from bochan.api import (
 from ..composition import CompositionAdapter
 from ..config import UNSET, ColumnKey, TabularDataConfig, make_fit_config, make_model_config
 from ..observation import ObservationAdapter
+from ..structure import StructureTabularAdapter
 from ..targets import extract_output_category_maps, merge_target_category_metadata
 from .candidates import CandidateService
 from .diagnostics import DiagnosticsService
@@ -67,6 +68,9 @@ def initialize_optimizer(
     composition_constraint_rerank: bool,
     composition_constraint_rerank_factor: int,
     composition_constraint_max_supports: int,
+    structure_col: ColumnKey | None,
+    structure_catalog: Mapping[Any, Any] | None,
+    structure_graph_builder: Any | None,
     data_config: TabularDataConfig | None,
     data: Any | None,
     cross_validation: bool,
@@ -135,8 +139,14 @@ def initialize_optimizer(
     owner.data_config = source_config
 
     owner.composition = CompositionAdapter(composition_sites)
+    owner.structure = StructureTabularAdapter(
+        column=structure_col,
+        catalog=structure_catalog,
+        graph_builder=structure_graph_builder,
+    )
     owner.candidates = CandidateService(
         composition=owner.composition,
+        structure=owner.structure,
         total_constraints=composition_total_constraints,
         element_constraints=composition_element_constraints,
         rerank=composition_constraint_rerank,

@@ -1,12 +1,37 @@
 # ALIGNN-GP / ALIGNN-DKL FastAPI
 
-This page shows the Phase-3 HTTP workflow for Bayesian optimization over a
-**known catalog of crystal structures** and **continuous process conditions**.
+This page shows the HTTP workflow for Bayesian optimization over a **known
+catalog of crystal structures** and **continuous process conditions** using
+Bochan's pure-PyTorch ALIGNN integration.
 
-The structure itself is a discrete design choice. Bochan maps the user-facing
+The crystal structure is a discrete design choice. Bochan maps the user-facing
 structure ID to an integer `structure_index`, enumerates that coordinate during
 candidate optimization, and optimizes only the continuous process variables.
-The optimizer therefore never interpolates between structure IDs.
+The optimizer never interpolates between structures.
+
+## Backend contract
+
+The canonical path is now:
+
+```text
+crystal structure
+    -> StructureAdapter
+    -> JARVIS Atoms
+    -> alignn.torch_graph_builder.build_pure_torch_graph
+    -> (TorchGraph atom_graph, TorchGraph line_graph)
+    -> ALIGNNAtomWisePure representation backbone
+    -> structure embedding
+    -> process-feature fusion
+    -> exact GP / DKL
+    -> BoTorch acquisition optimization
+```
+
+No DGL graph, DGL convolution, or DGL runtime dependency is used on this path.
+
+The upstream pure-PyTorch implementation uses tensor/index/scatter operations
+for periodic neighbor search, line-graph construction, message passing, and
+readout. Bochan keeps the first model input coordinate as the discrete
+`structure_index`; process columns remain differentiable continuous variables.
 
 ## Current scope
 
@@ -15,21 +40,24 @@ Supported:
 - single-output continuous regression
 - `alignn_gp`
 - `alignn_dkl`
+- pure-PyTorch `ALIGNNAtomWisePure`
+- pure-PyTorch `TorchGraph` atom/line graphs
 - one structure-ID column plus continuous process columns
 - inline crystal mappings
 - inline CIF text
 - inline POSCAR text
 - prediction for known structures
 - candidate generation across all known structures or a selected subset
-- `/ask` pending-candidate registration through the normal tabular optimizer
+- `/ask` candidate registration as pending observations
 
 Not yet supported:
 
 - unknown/new structure generation
-- structure topology mutation
+- structure topology mutation during acquisition optimization
 - composition + crystal structure joint optimization
 - categorical process variables
 - multi-output ALIGNN
+- legacy DGL ALIGNN checkpoints on the canonical path
 - client-controlled server filesystem paths for CIF/POSCAR
 
 ## Installation
@@ -41,22 +69,10 @@ python -m pip install -e ".[api,tabular]"
 python -m pip install "alignn==2026.8.11"
 ```
 
-ALIGNN is intentionally installed explicitly rather than being hidden behind a
-Bochan optional extra in this phase. The current Bochan ALIGNN-GP/DKL
-implementation uses the historical scalar `alignn.models.alignn.ALIGNN`
-backbone and the DGL graph builder, so the DGL build must be selected for the
-actual local PyTorch/CUDA environment.
+DGL is **not required**.
 
-Install a DGL build compatible with the local PyTorch/CUDA environment before a
-real ALIGNN fit request. Do not install an arbitrary DGL version merely to
-satisfy the import: DGL, PyTorch and CUDA versions must be compatible. If a
-suitable native Windows DGL build is unavailable for the environment,
-WSL2/Linux is the safer test path.
-
-Upstream ALIGNN now also provides pure-PyTorch model variants that do not need
-DGL. Bochan does not yet use that pure-PyTorch backbone in this Phase-3 path;
-that migration should be implemented separately rather than silently mixing
-legacy checkpoints with a different graph/model contract.
+The ALIGNN dependency is installed explicitly for now so the atomistic stack
+remains optional to the Bochan core package.
 
 ## Start the API
 
@@ -67,19 +83,19 @@ python -m uvicorn bochan.serving.fastapi.app:app \
   --reload
 ```
 
-OpenAPI / Swagger is available at:
+Open Swagger / OpenAPI at:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-All ALIGNN tabular endpoints are under:
+All structure-aware ALIGNN endpoints are under:
 
 ```text
 /api/v1/tabular/alignn/models
 ```
 
-## Fastest smoke test
+## Fastest end-to-end smoke test
 
 A runnable client is included:
 
@@ -96,10 +112,10 @@ POST /api/v1/tabular/alignn/models/{model_id}/predict
 POST /api/v1/tabular/alignn/models/{model_id}/candidates
 ```
 
-The example uses `fit_config.skip_fit=true`. This checks the complete HTTP,
-structure parsing, graph construction, model construction, prediction and
-candidate-routing path quickly, but the numerical predictions are not intended
-for scientific interpretation.
+The example uses `fit_config.skip_fit=true`. It verifies the HTTP layer,
+structure parsing, pure-Torch graph construction, pure ALIGNN encoder
+construction, prediction routing, and candidate routing quickly. Its numerical
+predictions are not intended for scientific interpretation.
 
 ## 1. Fit an ALIGNN-GP model
 
@@ -125,17 +141,23 @@ payload = {
         "alpha": {
             "format": "mapping",
             "lattice_mat": [[5.43, 0, 0], [0, 5.43, 0], [0, 0, 5.43]],
-            "coords": [[0, 0, 0]],
-            "elements": ["Si"],
+            "coords": [[0, 0, 0], [0.25, 0.25, 0.25]],
+            "elements": ["Si", "Si"],
             "cartesian": False,
         },
         "beta": {
             "format": "mapping",
             "lattice_mat": [[5.55, 0, 0], [0, 5.55, 0], [0, 0, 5.55]],
-            "coords": [[0, 0, 0]],
-            "elements": ["Si"],
+            "coords": [[0, 0, 0], [0.25, 0.25, 0.25]],
+            "elements": ["Si", "Si"],
             "cartesian": False,
         },
+    },
+    "structure_graph_config": {
+        "neighbor_strategy": "pure_torch",
+        "cutoff": 8.0,
+        "max_neighbors": 12,
+        "three_body_cutoff": 3.5,
     },
     "bounds": {
         "temperature": [850.0, 1150.0],
@@ -162,26 +184,27 @@ model_id = result["model_id"]
 print(result)
 ```
 
-The fit response contains `metadata.alignn`, including:
+The default pure graph settings follow the current upstream scalar-property kNN
+recipe:
 
 ```text
-encoder_training
-encoder_initialization
-checkpoint_configured
-structure_col
-structure_ids
-num_structures
-process_dim
-graph_config
+neighbor_strategy = pure_torch
+cutoff             = 8.0 Å
+max_neighbors      = 12
+atom_features      = cgcnn
+three_body_cutoff  = 3.5 Å
+compute_line_graph = true
 ```
 
-The feature order returned by the fitted model is canonicalized so the
-structure selector is feature index 0 even if the incoming `input_cols` order
-was different.
+The fit response contains `metadata.alignn`, including the encoder training
+mode, initialization, structure IDs, process dimension, and graph config.
+
+The feature order is canonicalized so the structure selector is feature index
+0 even when the incoming `input_cols` order differs.
 
 ## 2. Predict
 
-Prediction rows use the original structure IDs, not integer indices.
+Prediction rows use original structure IDs, not integer indices.
 
 ```python
 prediction = httpx.post(
@@ -201,7 +224,7 @@ print(prediction.json())
 
 Only structure IDs present in the fitted structure catalog are valid.
 
-## 3. Generate a candidate
+## 3. Generate a structure + process candidate
 
 ```python
 candidate = httpx.post(
@@ -220,7 +243,7 @@ candidate.raise_for_status()
 print(candidate.json())
 ```
 
-Internally this is equivalent to enumerating:
+Internally the structure coordinate is enumerated conceptually as:
 
 ```python
 fixed_features_list = [
@@ -230,8 +253,7 @@ fixed_features_list = [
 ```
 
 while `temperature` and `pressure` remain continuous optimization variables.
-The returned DataFrame/JSON is decoded back to `phase="alpha"` or
-`phase="beta"`.
+The response is decoded back to `phase="alpha"` or `phase="beta"`.
 
 ### Restrict the structure subset
 
@@ -246,10 +268,27 @@ candidate = httpx.post(
 )
 ```
 
-Do not pass `fixed_features_list` directly for ALIGNN tabular models. Use
-`structure_ids`; Bochan owns the structure-index mapping.
+Use `structure_ids`, not a client-supplied `fixed_features_list`; Bochan owns the
+structure ID/index mapping.
 
-## 4. Use CIF or POSCAR content
+## 4. Asynchronous `/ask`
+
+`/ask` uses the same candidate generation but additionally registers the
+returned experiment as pending. Subsequent acquisitions can therefore consume
+it as `X_pending` and avoid proposing the same experiment while its result is
+outstanding.
+
+```python
+asked = httpx.post(
+    f"{base}/tabular/alignn/models/{model_id}/ask",
+    json={
+        "acquisition_config": {"name": "logei"},
+        "optimize_config": {"q": 1},
+    },
+)
+```
+
+## 5. Use CIF or POSCAR content
 
 The HTTP API deliberately does not accept a client-provided server path such as
 `C:/data/sample.cif` or `/tmp/sample.cif`.
@@ -271,11 +310,11 @@ structure_catalog = {
 }
 ```
 
-The server parses the supplied text through the canonical `StructureAdapter`.
-Temporary files are internal implementation details and are removed after
-parsing.
+The server parses the supplied text through `StructureAdapter`, then creates
+pure upstream `TorchGraph` objects. Temporary structure files used internally
+for parser compatibility are removed after parsing.
 
-## 5. ALIGNN-DKL
+## 6. ALIGNN-DKL
 
 Change the model section to:
 
@@ -293,66 +332,105 @@ Change the model section to:
 `encoder_training` is:
 
 - `partial`: fine-tune the final ALIGNN/GCN block
-- `full`: fine-tune the complete representation backbone
+- `full`: fine-tune the complete pure ALIGNN representation backbone
 
-For `alignn_gp`, the ALIGNN encoder is frozen and `encoder_training` must not be
+For `alignn_gp`, the encoder is frozen and `encoder_training` must not be
 specified.
 
 ## Checkpoints and scientifically meaningful use
 
-If no checkpoint is configured, Bochan constructs an upstream ALIGNN encoder
-with random initialization. This is useful for plumbing tests and for a DKL
-workflow that intentionally learns from scratch, but a frozen `alignn_gp` with
-random ALIGNN features is not a meaningful pretrained materials model.
+If no checkpoint is configured, Bochan constructs `ALIGNNAtomWisePure` with
+random initialization. This is useful for plumbing tests and for a DKL workflow
+that intentionally learns from scratch. A frozen `alignn_gp` with random ALIGNN
+features should not be treated as a pretrained materials model.
 
-For a frozen ALIGNN-GP workflow, provide a compatible checkpoint through
-`model_config.model_kwargs.checkpoint` and ensure that the encoder model config
-and graph-construction settings match the checkpoint training configuration.
-For example:
+Bochan's canonical checkpoint contract is pure PyTorch:
+
+```text
+model.name = "alignn_atomwise_pure"
+neighbor_strategy = "pure_torch"
+```
+
+Legacy DGL `model.name="alignn"` checkpoints are rejected rather than silently
+loaded into a different representation implementation.
+
+For FastAPI, the client cannot send an arbitrary server filesystem path. The
+server operator first configures an allowlisted checkpoint directory, for
+example:
+
+Windows cmd:
+
+```bat
+set BOCHAN_ALIGNN_CHECKPOINT_ROOT=C:\models\alignn
+```
+
+PowerShell:
+
+```powershell
+$env:BOCHAN_ALIGNN_CHECKPOINT_ROOT = "C:\models\alignn"
+```
+
+Linux/macOS:
+
+```bash
+export BOCHAN_ALIGNN_CHECKPOINT_ROOT=/opt/bochan/alignn-checkpoints
+```
+
+Then the client sends only a filename identifier:
 
 ```python
 "model_config": {
     "task_type": "regression",
     "model_type": "alignn_gp",
     "model_kwargs": {
-        "checkpoint": "C:/trusted/server/path/checkpoint.pt",
+        "checkpoint": "formation_energy_pure.pt",
         "encoder_config": {
-            "name": "alignn"
+            "name": "alignn_atomwise_pure",
+            "alignn_layers": 4,
+            "gcn_layers": 4,
+            "atom_input_features": 92,
+            "edge_input_features": 80,
+            "triplet_input_features": 40,
+            "embedding_features": 64,
+            "hidden_features": 256,
+            "output_features": 1,
+            "calculate_gradient": False,
+            "gradwise_weight": 0.0,
+            "energy_mult_natoms": False,
         },
         "latent_dim": 16,
     },
 }
 ```
 
-`checkpoint` is a server-side trusted path. Unlike CIF/POSCAR inputs, model
-checkpoint loading is not an upload API in this phase.
+The server resolves that filename only inside
+`BOCHAN_ALIGNN_CHECKPOINT_ROOT`. Path traversal and absolute client paths are
+rejected.
 
-When using a pretrained checkpoint, also set `structure_graph_config` to the
-settings used during its training. A checkpoint is not graph-construction
-agnostic.
+When transferring a pretrained model, `structure_graph_config` must match the
+training graph settings. Model weights are not graph-construction agnostic.
 
 ## Real fitting versus smoke fitting
 
-For the included smoke example:
+The included example uses:
 
 ```python
 "fit_config": {"skip_fit": True}
 ```
 
-For real fitting, remove `skip_fit` or set it to `False` and configure the fit
-budget appropriate for the chosen model. DKL fine-tuning is substantially more
-expensive than a frozen ALIGNN-GP because crystal representations must be
-recomputed while encoder parameters are being optimized.
+For real fitting, remove `skip_fit` or set it to `False` and configure an
+appropriate optimization budget. DKL fine-tuning is more expensive than a
+frozen ALIGNN-GP because structure representations are recomputed while encoder
+parameters are updated.
 
 ## Endpoint summary
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| POST | `/api/v1/tabular/alignn/models` | Fit/store ALIGNN-GP or ALIGNN-DKL |
+| POST | `/api/v1/tabular/alignn/models` | Fit/store pure ALIGNN-GP or ALIGNN-DKL |
 | POST | `/api/v1/tabular/alignn/models/{model_id}/predict` | Predict known structures/process conditions |
 | POST | `/api/v1/tabular/alignn/models/{model_id}/candidates` | Generate structure + process candidates |
-| POST | `/api/v1/tabular/alignn/models/{model_id}/ask` | Generate candidates and register them pending |
+| POST | `/api/v1/tabular/alignn/models/{model_id}/ask` | Generate and register pending candidates |
 
-The model is stored in the same tabular model store as the existing generic
-FastAPI endpoints, so existing model listing/deletion infrastructure remains
-shared rather than introducing a second model registry.
+The model uses the same tabular model store as the existing generic FastAPI
+endpoints; no second model registry is introduced.

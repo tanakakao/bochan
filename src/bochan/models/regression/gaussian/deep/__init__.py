@@ -1,4 +1,5 @@
 from .alignn import ALIGNNDKLModel, ALIGNNGPModel
+from .alignn_mixed import ALIGNNMixedGPModel
 from .crabnet import CrabNetDKLModel, CrabNetGPModel, CrabNetInputTransform
 from .crabnet_mixed import CrabNetMixedGPModel
 from .crabnet_mixed_dkl import CrabNetMixedDKLModel
@@ -15,6 +16,7 @@ from .deepkerneldeepgp import DeepKernelDeepGaussianGPModel, DeepKernelDeepGauss
 __all__ = [
     "ALIGNNDKLModel",
     "ALIGNNGPModel",
+    "ALIGNNMixedGPModel",
     "CrabNetDKLModel",
     "CrabNetGPModel",
     "CrabNetInputTransform",

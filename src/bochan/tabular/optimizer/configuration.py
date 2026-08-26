@@ -15,7 +15,7 @@ from bochan.api import (
 )
 
 from ..composition import CompositionAdapter
-from ..config import UNSET, ColumnKey, TabularDataConfig, make_fit_config, make_model_config
+from ..config import UNSET, TabularDataConfig, make_fit_config, make_model_config
 from ..observation import ObservationAdapter
 from ..structure import StructureTabularAdapter
 from ..targets import extract_output_category_maps, merge_target_category_metadata
@@ -68,16 +68,13 @@ def initialize_optimizer(
     composition_constraint_rerank: bool,
     composition_constraint_rerank_factor: int,
     composition_constraint_max_supports: int,
-    structure_col: ColumnKey | None,
-    structure_catalog: Mapping[Any, Any] | None,
-    structure_graph_builder: Any | None,
     data_config: TabularDataConfig | None,
     data: Any | None,
     cross_validation: bool,
     cv_config: CrossValidationConfig | Mapping[str, Any] | None,
     failure_config: ExperimentFailureConfig | None,
     target_missing_strategy: str | None,
-    experiment_status_col: ColumnKey | None,
+    experiment_status_col: Any | None,
     alpha: float | None,
     beta: Any,
     normalize: Any,
@@ -87,6 +84,10 @@ def initialize_optimizer(
     kwargs: dict[str, Any],
 ) -> None:
     """Build canonical config objects and explicit optimizer components."""
+
+    structure_col = kwargs.pop("structure_col", None)
+    structure_catalog = kwargs.pop("structure_catalog", None)
+    structure_graph_builder = kwargs.pop("structure_graph_builder", None)
 
     inferred_maps: dict[Any, dict[Any, int]] = {}
     if isinstance(model_config, Mapping):

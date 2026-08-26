@@ -77,7 +77,8 @@ def optimize_alignn_structure_alternating(
     categorical = {
         int(structure_dim): [float(value) for value in structure_values]
     }
-    resolved_options = dict(options or {})
+    resolved_options = {"initialization_strategy": "random"}
+    resolved_options.update(dict(options or {}))
     resolved_options.update(dict(alternating_options or {}))
 
     for process_fixed in process_fixed_features_list:

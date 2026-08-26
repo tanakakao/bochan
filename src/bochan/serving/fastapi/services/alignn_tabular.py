@@ -253,7 +253,7 @@ def build_alignn_fit_response(
     else:
         output_models = _alignn_output_models(model)
         num_outputs = len(output_models)
-        output_dependency = "independent" if num_outputs > 1 else "single"
+        output_dependency = "independent"
 
     output_metadata = []
     for index, output_model in enumerate(output_models):

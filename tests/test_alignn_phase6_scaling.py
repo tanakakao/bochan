@@ -95,6 +95,11 @@ def test_frozen_alignn_gp_reuses_structure_feature_bank() -> None:
     assert extractor.material_feature_cache.shape == torch.Size([4, 4])
     torch.testing.assert_close(first, second)
 
+    state = model.state_dict()
+    model.load_state_dict(state)
+    extractor(test_X)
+    assert encoder.calls > first_calls
+
 
 def test_alignn_dkl_disables_frozen_structure_cache() -> None:
     encoder = CountingALIGNN()
@@ -171,6 +176,7 @@ def test_structure_alternating_optimizer_preserves_joint_process_assignments(
     assert len(calls) == 2
     assert all(call["cat_dims"] == {0: [float(i) for i in range(12)]} for call in calls)
     assert [call["fixed_features"] for call in calls] == process_assignments
+    assert all(call["options"]["initialization_strategy"] == "random" for call in calls)
     assert candidate[0, 0].item() == pytest.approx(11.0)
     assert candidate[0, 2].item() == pytest.approx(1.0)
     assert candidate[0, 4].item() == pytest.approx(2.0)
@@ -178,20 +184,58 @@ def test_structure_alternating_optimizer_preserves_joint_process_assignments(
 
 
 def test_structure_scaling_auto_switch_is_conservative() -> None:
-    base = SimpleNamespace(q=1, return_best_only=True, optimizer="optimize_acqf")
+    base = SimpleNamespace(
+        q=1,
+        return_best_only=True,
+        optimizer="optimize_acqf",
+        optimizer_kwargs={},
+    )
 
     assert not _use_alternating_structure_search(base, structure_count=10)
     assert _use_alternating_structure_search(base, structure_count=11)
     assert not _use_alternating_structure_search(
-        SimpleNamespace(q=2, return_best_only=True, optimizer="optimize_acqf"),
+        SimpleNamespace(
+            q=2,
+            return_best_only=True,
+            optimizer="optimize_acqf",
+            optimizer_kwargs={},
+        ),
         structure_count=20,
     )
     assert not _use_alternating_structure_search(
-        SimpleNamespace(q=1, return_best_only=False, optimizer="optimize_acqf"),
+        SimpleNamespace(
+            q=1,
+            return_best_only=False,
+            optimizer="optimize_acqf",
+            optimizer_kwargs={},
+        ),
         structure_count=20,
     )
     assert not _use_alternating_structure_search(
-        SimpleNamespace(q=1, return_best_only=True, optimizer="torch"),
+        SimpleNamespace(
+            q=1,
+            return_best_only=True,
+            optimizer="torch",
+            optimizer_kwargs={},
+        ),
+        structure_count=20,
+    )
+    assert not _use_alternating_structure_search(
+        SimpleNamespace(
+            q=1,
+            return_best_only=True,
+            optimizer="optimize_acqf",
+            optimizer_kwargs={"options": {"maxiter": 100}},
+        ),
+        structure_count=20,
+    )
+    assert _use_alternating_structure_search(
+        SimpleNamespace(
+            q=1,
+            return_best_only=True,
+            optimizer="optimize_acqf",
+            optimizer_kwargs={"options": {"batch_limit": 4}},
+        ),
         structure_count=20,
     )
 

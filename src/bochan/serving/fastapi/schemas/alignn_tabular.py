@@ -129,7 +129,10 @@ class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
         )
         if len(targets) != 1:
             raise ValueError("ALIGNN tabular FastAPI currently requires one target column.")
-        if self.multi_output_config is not None or self.bo_model_config.multi_output_config is not None:
+        if (
+            self.multi_output_config is not None
+            or self.bo_model_config.multi_output_config is not None
+        ):
             raise ValueError("ALIGNN tabular FastAPI does not support multi_output_config yet.")
         if self.target_categorical_cols:
             raise ValueError("ALIGNN tabular FastAPI requires a continuous regression target.")
@@ -201,10 +204,22 @@ class ALIGNNTabularFitModelRequest(TabularFitModelRequest):
                 "instead of trainable_encoder_layers over FastAPI."
             )
         checkpoint = model_kwargs.get("checkpoint")
-        if checkpoint is not None and (
-            not isinstance(checkpoint, str) or not checkpoint.strip()
-        ):
-            raise ValueError("checkpoint must be a non-empty server-accessible path string.")
+        if checkpoint is not None:
+            if not isinstance(checkpoint, str) or not checkpoint.strip():
+                raise ValueError("checkpoint must be a non-empty checkpoint identifier.")
+            checkpoint = checkpoint.strip()
+            if (
+                checkpoint in {".", ".."}
+                or "/" in checkpoint
+                or "\\" in checkpoint
+                or ":" in checkpoint
+                or checkpoint.startswith("~")
+            ):
+                raise ValueError(
+                    "checkpoint must be a filename identifier, not a filesystem path. "
+                    "The server resolves it under BOCHAN_ALIGNN_CHECKPOINT_ROOT."
+                )
+            model_kwargs["checkpoint"] = checkpoint
         if model_type == "alignn_gp" and "encoder_training" in model_kwargs:
             raise ValueError("alignn_gp always freezes the ALIGNN encoder.")
         if model_type == "alignn_dkl" and "encoder_training" in model_kwargs:

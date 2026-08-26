@@ -16,10 +16,9 @@ from bochan.api import (
 
 from ..composition import CompositionAdapter
 from ..config import UNSET, ColumnKey, TabularDataConfig, make_fit_config, make_model_config
-from ..observation import ObservationAdapter
 from ..structure.adapter import StructureTabularAdapter
 from ..structure.candidates import StructureAwareCandidateService
-from ..structure.fitting import configure_tabular_alignn
+from ..structure.observation import StructureAwareObservationAdapter
 from ..targets import extract_output_category_maps, merge_target_category_metadata
 from .diagnostics import DiagnosticsService
 from .settings import merge_input_transform_config, validate_noise_alpha
@@ -130,7 +129,13 @@ def initialize_optimizer(
         fit_values["beta"] = beta
     owner.fit_config = make_fit_config(fit_config, **fit_values)
 
-    owner.observation = ObservationAdapter(failure_config)
+    owner.composition = CompositionAdapter(composition_sites)
+    owner.structure = StructureTabularAdapter(
+        column=structure_col,
+        catalog=structure_catalog,
+        graph_builder=structure_graph_builder,
+    )
+    owner.observation = StructureAwareObservationAdapter(owner, failure_config)
     source_config = merge_data_config(data_config, take(kwargs, DATA_KEYS))
     source_config = owner.observation.resolve_config(
         source_config,
@@ -140,13 +145,6 @@ def initialize_optimizer(
     owner.source_data_config = source_config
     owner.data_config = source_config
 
-    owner.composition = CompositionAdapter(composition_sites)
-    owner.structure = StructureTabularAdapter(
-        column=structure_col,
-        catalog=structure_catalog,
-        graph_builder=structure_graph_builder,
-    )
-    configure_tabular_alignn(owner)
     owner.candidates = StructureAwareCandidateService(
         composition=owner.composition,
         structure=owner.structure,

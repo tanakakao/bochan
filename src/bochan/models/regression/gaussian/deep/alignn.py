@@ -172,6 +172,7 @@ class _ALIGNNGPFeatureExtractor(nn.Module):
         self.input_dim = 1 + self.process_dim
         self._encoder_training_mode: _EncoderTrainingMode = "frozen"
         self._trainable_encoder_modules: tuple[nn.Module, ...] = ()
+        self._material_feature_cache_versions: tuple[int, ...] | None = None
         self.register_buffer("_material_feature_cache", None, persistent=False)
 
         self.fusion = build_material_process_fusion(
@@ -205,12 +206,13 @@ class _ALIGNNGPFeatureExtractor(nn.Module):
         self.projection = projection
 
     def __getstate__(self) -> dict[str, Any]:
-        """Exclude the derived structure-feature cache from pickle artifacts."""
+        """Exclude derived structure-feature cache state from pickle artifacts."""
 
         state = dict(super().__getstate__())
         buffers = dict(state.get("_buffers", {}))
         buffers["_material_feature_cache"] = None
         state["_buffers"] = buffers
+        state["_material_feature_cache_versions"] = None
         return state
 
     @property
@@ -227,16 +229,31 @@ class _ALIGNNGPFeatureExtractor(nn.Module):
 
         return self._material_feature_cache
 
+    def _encoder_parameter_versions(self) -> tuple[int, ...]:
+        """Return mutation counters used to invalidate stale frozen embeddings."""
+
+        return tuple(
+            int(getattr(parameter, "_version", 0))
+            for parameter in self.material_encoder.parameters()
+        )
+
     def clear_material_feature_cache(self) -> None:
         """Discard cached structure representations."""
 
         self._material_feature_cache = None
+        self._material_feature_cache_versions = None
 
     def _cached_material_features(self, X: Tensor) -> Tensor | None:
         if not self.material_feature_cache_enabled:
             return None
         cache = self._material_feature_cache
-        if cache is None or cache.device != X.device or cache.dtype != X.dtype:
+        encoder_versions = self._encoder_parameter_versions()
+        if (
+            cache is None
+            or cache.device != X.device
+            or cache.dtype != X.dtype
+            or self._material_feature_cache_versions != encoder_versions
+        ):
             with torch.no_grad():
                 cache = self.material_encoder(list(self.structure_graphs)).detach()
             expected = (self.num_structures, int(self.material_encoder.output_dim))
@@ -250,6 +267,7 @@ class _ALIGNNGPFeatureExtractor(nn.Module):
             if not torch.isfinite(cache).all():
                 raise FloatingPointError("Cached ALIGNN structure features contain non-finite values.")
             self._material_feature_cache = cache
+            self._material_feature_cache_versions = self._encoder_parameter_versions()
         return cache
 
     def train(self, mode: bool = True) -> _ALIGNNGPFeatureExtractor:

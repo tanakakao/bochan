@@ -142,22 +142,35 @@ def test_material_extractor_applies_frozen_partial_and_full_mode_policies() -> N
     encoder = extractor.material_encoder
     assert isinstance(encoder, ToyCompositionEncoder)
 
+    assert not encoder.training
+    assert not any(parameter.requires_grad for parameter in encoder.parameters())
+
+    for parameter in encoder.parameters():
+        parameter.requires_grad_(True)
     extractor._configure_encoder_training("frozen")
     extractor.train()
     assert not encoder.training
     assert not encoder.embedding.training
     assert not encoder.output_layer.training
+    assert not any(parameter.requires_grad for parameter in encoder.parameters())
 
+    for parameter in encoder.output_layer.parameters():
+        parameter.requires_grad_(True)
     extractor._configure_encoder_training("partial", (encoder.output_layer,))
     extractor.train()
     assert not encoder.training
     assert not encoder.embedding.training
     assert encoder.output_layer.training
+    assert not any(parameter.requires_grad for parameter in encoder.embedding.parameters())
+    assert all(parameter.requires_grad for parameter in encoder.output_layer.parameters())
     extractor.eval()
     assert not encoder.output_layer.training
 
+    for parameter in encoder.parameters():
+        parameter.requires_grad_(True)
     extractor._configure_encoder_training("full")
     extractor.train()
     assert encoder.training
     assert encoder.embedding.training
     assert encoder.output_layer.training
+    assert all(parameter.requires_grad for parameter in encoder.parameters())

@@ -296,6 +296,9 @@ class _BaseMaterialGPFeatureExtractor(nn.Module, ABC):
                     f"{projection.out_features} != {latent_dim}."
                 )
         self.projection = projection
+        for parameter in self.material_encoder.parameters():
+            parameter.requires_grad_(False)
+        self.material_encoder.eval()
 
     def train(self, mode: bool = True) -> _BaseMaterialGPFeatureExtractor:
         """Apply the configured frozen, partial, or full encoder mode policy."""
@@ -324,6 +327,9 @@ class _BaseMaterialGPFeatureExtractor(nn.Module, ABC):
         if mode != "partial" and trainable_modules:
             raise ValueError("Only partial encoder training accepts trainable_modules.")
         self._on_encoder_training_policy_change()
+        if mode == "frozen":
+            for parameter in self.material_encoder.parameters():
+                parameter.requires_grad_(False)
         self._encoder_training_mode = mode
         self._trainable_encoder_modules = trainable_modules
         self.train(self.training)

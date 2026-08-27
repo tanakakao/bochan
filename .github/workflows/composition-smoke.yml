@@ -46,6 +46,7 @@ jobs:
             tests/test_crabnet_gp.py \
             tests/test_crabnet_integration_closure.py \
             tests/test_material_encoder_fusion.py \
+            tests/test_material_gp_feature_extractor.py \
             tests/test_tabular_composition.py \
             tests/test_tabular_architecture.py \
             tests/test_tabular_composition_sites.py \
@@ -75,6 +76,7 @@ jobs:
             src/bochan/models/regression/gaussian/deep/alignn_mixed.py \
             src/bochan/models/regression/gaussian/deep/alignn_multitask.py \
             src/bochan/models/regression/gaussian/deep/crabnet.py \
+            src/bochan/models/regression/gaussian/deep/material.py \
             src/bochan/api/modeling/fit.py \
             src/bochan/api/registry/model.py \
             src/bochan/tabular/__init__.py \
@@ -125,6 +127,7 @@ jobs:
             tests/test_fastapi_alignn_multioutput_artifacts.py \
             tests/test_common_model_artifact_api.py \
             tests/test_material_encoder_fusion.py \
+            tests/test_material_gp_feature_extractor.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
             tests/test_crabnet_integration_closure.py \

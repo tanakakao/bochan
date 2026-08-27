@@ -16,14 +16,13 @@ from bochan.composition.encoders.crabnet import Checkpoint
 
 from .crabnet import (
     CrabNetInputTransform,
-    _CrabNetGPFeatureExtractor,
     _configure_dkl_encoder,
     _resolve_material_encoder,
-    _validate_element_ids,
     _validate_trainable_encoder_layers,
 )
 from .deepkernel import OutcomeTransformArg
 from .deepkernel_configurable import DeepKernelGaussianGPModel
+from .material import MaterialGPFeatureExtractor, _validate_composition_element_ids
 
 
 def _resolve_category_cardinalities(
@@ -123,7 +122,7 @@ class _CrabNetMixedDKLFeatureExtractor(nn.Module):
             continuous_position[index] for index in raw_composition_indices
         ]
 
-        validated_element_ids = _validate_element_ids(element_ids)
+        validated_element_ids = _validate_composition_element_ids(element_ids)
         self.packer = CrabNetInputTransform(
             input_dim=len(continuous_dims),
             composition_indices=continuous_composition_indices,
@@ -135,7 +134,7 @@ class _CrabNetMixedDKLFeatureExtractor(nn.Module):
             normalize_process=normalize_process,
         )
         base_feature_dim = int(material_encoder.output_dim) + int(self.packer.process_dim)
-        self.crabnet = _CrabNetGPFeatureExtractor(
+        self.crabnet = MaterialGPFeatureExtractor(
             material_encoder=material_encoder,
             element_ids=validated_element_ids,
             process_dim=self.packer.process_dim,
@@ -377,7 +376,7 @@ class CrabNetMixedDKLModel(DeepKernelGaussianGPModel):
             resolved_trainable_layers,
         )
         self._trainable_encoder_layers = resolved_trainable_layers
-        self.mixed_dkl_feature_extractor.crabnet._configure_encoder_training(
+        self.material_feature_extractor._configure_encoder_training(
             training_mode,
             trainable_modules,
         )
@@ -406,10 +405,16 @@ class CrabNetMixedDKLModel(DeepKernelGaussianGPModel):
         return cast(_CrabNetMixedDKLFeatureExtractor, self.deepkernel.feature_extractor)
 
     @property
+    def material_feature_extractor(self) -> MaterialGPFeatureExtractor:
+        """Return the shared material/numeric-process feature extractor."""
+
+        return self.mixed_dkl_feature_extractor.crabnet
+
+    @property
     def material_encoder(self) -> CrabNetEncoder:
         """Return the CrabNet material encoder."""
 
-        return self.mixed_dkl_feature_extractor.crabnet.material_encoder
+        return cast(CrabNetEncoder, self.material_feature_extractor.material_encoder)
 
     @property
     def category_embeddings(self) -> nn.ModuleList:
@@ -439,13 +444,13 @@ class CrabNetMixedDKLModel(DeepKernelGaussianGPModel):
     def composition_dim(self) -> int:
         """Return the number of elemental fractions presented to CrabNet."""
 
-        return self.mixed_dkl_feature_extractor.crabnet.composition_dim
+        return self.material_feature_extractor.composition_dim
 
     @property
     def process_dim(self) -> int:
         """Return the number of numeric process dimensions fused with CrabNet."""
 
-        return self.mixed_dkl_feature_extractor.crabnet.process_dim
+        return self.material_feature_extractor.process_dim
 
     @property
     def categorical_process_dim(self) -> int:

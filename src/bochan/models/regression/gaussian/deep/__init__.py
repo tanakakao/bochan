@@ -18,6 +18,7 @@ from .crabnet_multitask import (
 from .deepgp import DeepGaussianGPModel, DeepGaussianMixedGPModel
 from .deepkernel_configurable import DeepKernelGaussianGPModel, DeepKernelGaussianMixedGPModel
 from .deepkerneldeepgp import DeepKernelDeepGaussianGPModel, DeepKernelDeepGaussianMixedGPModel
+from .material import CompositionMaterialInputTransform, MaterialGPFeatureExtractor
 
 __all__ = [
     "ALIGNNDKLModel",
@@ -37,10 +38,12 @@ __all__ = [
     "CrabNetMixedMultiTaskGPModel",
     "CrabNetMultiTaskDKLModel",
     "CrabNetMultiTaskGPModel",
+    "CompositionMaterialInputTransform",
     "DeepGaussianGPModel",
     "DeepGaussianMixedGPModel",
     "DeepKernelDeepGaussianGPModel",
     "DeepKernelDeepGaussianMixedGPModel",
     "DeepKernelGaussianGPModel",
     "DeepKernelGaussianMixedGPModel",
+    "MaterialGPFeatureExtractor",
 ]

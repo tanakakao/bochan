@@ -2,239 +2,34 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from typing import Literal, cast
 
-import torch
-from botorch.models.transforms.input import InputTransform, Normalize
+from botorch.models.transforms.input import Normalize
 from gpytorch.likelihoods import Likelihood
 from torch import Tensor, nn
 
 from bochan.composition import (
     CrabNetEncoder,
     MaterialProcessFusion,
-    TorchSimplexTransform,
-    build_material_process_fusion,
 )
 from bochan.composition.encoders.crabnet import Checkpoint
 
 from .deepkernel import InputTransformArg, OutcomeTransformArg
 from .deepkernel_configurable import DeepKernelGaussianGPModel
+from .material import (
+    CompositionMaterialInputTransform,
+    EncoderTrainingMode,
+    MaterialGPFeatureExtractor,
+    _validate_composition_element_ids,
+    _validate_composition_model_inputs,
+)
 
-_EncoderTrainingMode = Literal["frozen", "partial", "full"]
 _TrainableEncoderLayers = int | Literal["all"]
 
 
-class CrabNetInputTransform(InputTransform):
-    """Pack composition coordinates and continuous process features for CrabNet.
-
-    The public CrabNet GP models consume fractions first and process features
-    second.  Tabular composition optimization instead operates in the fitted
-    coordinate representation (for example ILR).  This transform bridges the
-    two contracts with Torch-only operations, preserving gradients from an
-    acquisition value back to every raw tabular decision variable.
-
-    Args:
-        input_dim: Width of the raw tabular model-coordinate tensor.
-        composition_indices: Raw tensor columns containing the composition
-            coordinates, in fitted-element order.
-        n_components: Number of elemental fractions produced for CrabNet.
-        method: Composition representation: fractions, CLR, ALR, or ILR.
-        reference_index: ALR denominator component, when applicable.
-        process_bounds: Optional ``[2, process_dim]`` bounds used to normalize
-            continuous process columns. Required when process normalization is
-            enabled and at least one process column is present.
-        component_weights: Optional positive component weights. Supplying
-            atomic weights converts weight-basis fractions to atomic fractions.
-        normalize_process: Normalize continuous process columns to ``[0, 1]``.
-    """
-
-    is_one_to_many = False
-    composition_indices: Tensor
-    process_indices: Tensor
-    process_lower: Tensor
-    process_range: Tensor
-    component_weights: Tensor
-
-    def __init__(
-        self,
-        *,
-        input_dim: int,
-        composition_indices: Sequence[int],
-        n_components: int,
-        method: str = "ilr",
-        reference_index: int | None = None,
-        process_bounds: Tensor | None = None,
-        component_weights: Tensor | None = None,
-        normalize_process: bool = True,
-    ) -> None:
-        super().__init__()
-        if isinstance(input_dim, bool) or not isinstance(input_dim, int) or input_dim <= 0:
-            raise ValueError("input_dim must be a positive integer.")
-
-        indices = [int(index) for index in composition_indices]
-        if not indices:
-            raise ValueError("composition_indices must not be empty.")
-        if len(indices) != len(set(indices)):
-            raise ValueError("composition_indices must not contain duplicates.")
-        if min(indices) < 0 or max(indices) >= input_dim:
-            raise ValueError("composition_indices must be valid raw input columns.")
-
-        simplex = TorchSimplexTransform(
-            n_components=n_components,
-            method=method,
-            reference_index=reference_index,
-        )
-        if len(indices) != simplex.input_dim:
-            raise ValueError(
-                "composition_indices width does not match the configured "
-                f"composition representation: {len(indices)} != {simplex.input_dim}."
-            )
-
-        process_indices = [index for index in range(input_dim) if index not in set(indices)]
-        process_dim = len(process_indices)
-        normalize_process = bool(normalize_process)
-        if normalize_process and process_dim and process_bounds is None:
-            raise ValueError(
-                "process_bounds is required when normalize_process=True and continuous process columns are present."
-            )
-
-        if process_bounds is None:
-            process_lower = torch.empty(0, dtype=torch.double)
-            process_range = torch.empty(0, dtype=torch.double)
-        else:
-            if not torch.is_tensor(process_bounds):
-                raise TypeError("process_bounds must be a Tensor.")
-            if process_bounds.shape != torch.Size([2, process_dim]):
-                raise ValueError(
-                    "process_bounds must have shape [2, process_dim]: "
-                    f"{tuple(process_bounds.shape)} != {(2, process_dim)}."
-                )
-            if not process_bounds.is_floating_point() or not torch.isfinite(process_bounds).all():
-                raise ValueError("process_bounds must be a finite floating-point Tensor.")
-            process_lower = process_bounds[0].detach().clone()
-            raw_range = process_bounds[1] - process_bounds[0]
-            if (raw_range < 0).any():
-                raise ValueError("process_bounds upper values must be >= lower values.")
-            process_range = torch.where(raw_range > 0, raw_range, torch.ones_like(raw_range))
-
-        if component_weights is None:
-            component_weights = torch.ones(n_components, dtype=torch.double)
-        elif not torch.is_tensor(component_weights):
-            raise TypeError("component_weights must be a Tensor.")
-        if component_weights.shape != torch.Size([n_components]):
-            raise ValueError(
-                "component_weights must contain one value per component: "
-                f"{tuple(component_weights.shape)} != {(n_components,)}."
-            )
-        if (
-            not component_weights.is_floating_point()
-            or not torch.isfinite(component_weights).all()
-            or (component_weights <= 0).any()
-        ):
-            raise ValueError("component_weights must contain finite positive values.")
-
-        self.input_dim = input_dim
-        self.composition_dim = int(n_components)
-        self.process_dim = process_dim
-        self.output_dim = self.composition_dim + self.process_dim
-        self.normalize_process = normalize_process
-        self.simplex = simplex
-        self.transform_on_train = True
-        self.transform_on_eval = True
-        self.transform_on_fantasize = True
-        self.register_buffer(
-            "composition_indices",
-            torch.tensor(indices, dtype=torch.long),
-        )
-        self.register_buffer(
-            "process_indices",
-            torch.tensor(process_indices, dtype=torch.long),
-        )
-        self.register_buffer("process_lower", process_lower)
-        self.register_buffer("process_range", process_range)
-        self.register_buffer(
-            "component_weights",
-            component_weights.detach().clone(),
-        )
-
-    def transform(self, X: Tensor) -> Tensor:
-        """Return fractions followed by normalized continuous process values."""
-
-        if not torch.is_tensor(X):
-            raise TypeError("X must be a Tensor.")
-        if X.ndim == 0 or X.shape[-1] != self.input_dim:
-            raise ValueError(f"X width must equal input_dim: {X.shape[-1] if X.ndim else 0} != {self.input_dim}.")
-        if not X.is_floating_point() or not torch.isfinite(X).all():
-            raise ValueError("X must be a finite floating-point Tensor.")
-
-        coordinate_indices = self.composition_indices.to(device=X.device)
-        coordinates = X.index_select(-1, coordinate_indices)
-        basis_fractions = self.simplex(coordinates)
-        weights = self.component_weights.to(dtype=X.dtype, device=X.device)
-        atomic_values = basis_fractions / weights
-        fractions = atomic_values / atomic_values.sum(dim=-1, keepdim=True)
-
-        if not self.process_dim:
-            return fractions
-        process_indices = self.process_indices.to(device=X.device)
-        process = X.index_select(-1, process_indices)
-        if self.normalize_process:
-            lower = self.process_lower.to(dtype=X.dtype, device=X.device)
-            scale = self.process_range.to(dtype=X.dtype, device=X.device)
-            process = (process - lower) / scale
-        return torch.cat((fractions, process), dim=-1)
-
-    def extra_repr(self) -> str:
-        """Return the raw and packed input contracts for module summaries."""
-
-        return (
-            f"input_dim={self.input_dim}, composition_dim={self.composition_dim}, "
-            f"process_dim={self.process_dim}, method={self.simplex.method!r}, "
-            f"normalize_process={self.normalize_process}"
-        )
-
-
-def _validate_element_ids(element_ids: Tensor) -> Tensor:
-    """Validate and clone the fixed element vocabulary for one composition site."""
-
-    if not torch.is_tensor(element_ids):
-        raise TypeError("element_ids must be a Tensor.")
-    if element_ids.ndim != 1 or element_ids.numel() == 0:
-        raise ValueError("element_ids must be a non-empty one-dimensional Tensor.")
-    if element_ids.dtype != torch.long:
-        raise TypeError("element_ids must have dtype torch.long.")
-    if (element_ids <= 0).any():
-        raise ValueError("element_ids must contain positive atomic numbers.")
-    if element_ids.unique().numel() != element_ids.numel():
-        raise ValueError("element_ids must not contain duplicate atomic numbers.")
-    return element_ids.detach().clone()
-
-
-def _validate_model_inputs(X: Tensor, *, composition_dim: int, input_dim: int) -> None:
-    """Validate fraction and continuous-process columns in a model input tensor."""
-
-    if not torch.is_tensor(X):
-        raise TypeError("X must be a Tensor.")
-    if X.ndim == 0 or X.shape[-1] != input_dim:
-        raise ValueError(
-            f"X width must equal composition_dim + process_dim: {X.shape[-1] if X.ndim else 0} != {input_dim}."
-        )
-    if not X.is_floating_point():
-        raise TypeError("X must have a floating-point dtype.")
-    if not torch.isfinite(X).all():
-        raise ValueError("X must contain only finite values.")
-
-    fractions = X[..., :composition_dim]
-    if (fractions < 0).any():
-        raise ValueError("Composition fractions must be non-negative.")
-    if not torch.allclose(
-        fractions.sum(dim=-1),
-        torch.ones_like(fractions[..., 0]),
-        rtol=1e-4,
-        atol=1e-6,
-    ):
-        raise ValueError("Composition fractions must sum to one.")
+class CrabNetInputTransform(CompositionMaterialInputTransform):
+    """CrabNet-specific name for the shared composition material transform."""
 
 
 def _resolve_material_encoder(
@@ -299,7 +94,7 @@ def _crabnet_transformer_layers(
 def _configure_dkl_encoder(
     material_encoder: CrabNetEncoder,
     trainable_encoder_layers: _TrainableEncoderLayers,
-) -> tuple[_EncoderTrainingMode, tuple[nn.Module, ...]]:
+) -> tuple[EncoderTrainingMode, tuple[nn.Module, ...]]:
     """Unfreeze the requested encoder parameters and return its train policy."""
 
     for parameter in material_encoder.parameters():
@@ -326,130 +121,6 @@ def _configure_dkl_encoder(
     for parameter in parameters:
         parameter.requires_grad_(True)
     return "partial", trainable_modules
-
-
-class _CrabNetGPFeatureExtractor(nn.Module):
-    """Map fixed-vocabulary fractions and process features to a GP latent space."""
-
-    element_ids: Tensor
-
-    def __init__(
-        self,
-        *,
-        material_encoder: CrabNetEncoder,
-        element_ids: Tensor,
-        process_dim: int,
-        latent_dim: int,
-        fusion: Literal["concat"] | MaterialProcessFusion,
-        projection: nn.Module | None,
-    ) -> None:
-        super().__init__()
-        if process_dim < 0:
-            raise ValueError("process_dim must be non-negative.")
-        if latent_dim <= 0:
-            raise ValueError("latent_dim must be positive.")
-
-        self.material_encoder = material_encoder
-        self._encoder_training_mode: _EncoderTrainingMode = "frozen"
-        self._trainable_encoder_modules: tuple[nn.Module, ...] = ()
-        self.register_buffer("element_ids", element_ids)
-        self.composition_dim = int(element_ids.numel())
-        self.process_dim = int(process_dim)
-        self.input_dim = self.composition_dim + self.process_dim
-        self.fusion = build_material_process_fusion(
-            fusion,
-            material_dim=material_encoder.output_dim,
-            process_dim=self.process_dim,
-        )
-        self.output_dim = int(latent_dim)
-
-        if projection is None:
-            projection = nn.Linear(self.fusion.output_dim, self.output_dim)
-        elif not isinstance(projection, nn.Module):
-            raise TypeError("projection must be a torch.nn.Module.")
-
-        declared_output_dim = getattr(projection, "output_dim", None)
-        if declared_output_dim is not None and int(declared_output_dim) != self.output_dim:
-            raise ValueError(
-                f"projection.output_dim does not match latent_dim: {int(declared_output_dim)} != {self.output_dim}."
-            )
-        if isinstance(projection, nn.Linear):
-            if projection.in_features != self.fusion.output_dim:
-                raise ValueError(
-                    "projection.in_features does not match the fused feature width: "
-                    f"{projection.in_features} != {self.fusion.output_dim}."
-                )
-            if projection.out_features != self.output_dim:
-                raise ValueError(
-                    "projection.out_features does not match latent_dim: "
-                    f"{projection.out_features} != {self.output_dim}."
-                )
-        self.projection = projection
-
-    def train(self, mode: bool = True) -> _CrabNetGPFeatureExtractor:
-        """Apply the configured frozen, partial, or full encoder train policy."""
-
-        super().train(mode)
-        if self._encoder_training_mode == "frozen":
-            self.material_encoder.eval()
-        elif self._encoder_training_mode == "partial":
-            self.material_encoder.eval()
-            for module in self._trainable_encoder_modules:
-                module.train(mode)
-        return self
-
-    def _configure_encoder_training(
-        self,
-        mode: _EncoderTrainingMode,
-        trainable_modules: tuple[nn.Module, ...] = (),
-    ) -> None:
-        """Set the internal encoder train-mode policy and apply it immediately."""
-
-        if mode == "partial" and not trainable_modules:
-            raise ValueError("Partial encoder training requires at least one trainable module.")
-        if mode != "partial" and trainable_modules:
-            raise ValueError("Trainable encoder modules are valid only for partial training.")
-        self._encoder_training_mode = mode
-        self._trainable_encoder_modules = trainable_modules
-        self.train(self.training)
-
-    def validate_input(self, X: Tensor) -> None:
-        """Validate the public packed-tensor contract without running CrabNet."""
-
-        _validate_model_inputs(
-            X,
-            composition_dim=self.composition_dim,
-            input_dim=self.input_dim,
-        )
-
-    def forward(self, X: Tensor) -> Tensor:
-        """Return projected material/process features for the exact GP kernel."""
-
-        self.validate_input(X)
-        fractions = X[..., : self.composition_dim]
-        expanded_ids = self.element_ids.view(
-            *((1,) * (fractions.ndim - 1)),
-            self.composition_dim,
-        ).expand_as(fractions)
-        active_element_ids = expanded_ids.masked_fill(fractions == 0, 0)
-        material_features = self.material_encoder(active_element_ids, fractions)
-        process_features = X[..., self.composition_dim :] if self.process_dim else None
-        fused_features = self.fusion(material_features, process_features)
-        projected_features = self.projection(fused_features)
-
-        if not torch.is_tensor(projected_features):
-            raise TypeError("projection must return a Tensor.")
-        expected_shape = (*X.shape[:-1], self.output_dim)
-        if projected_features.shape != expected_shape:
-            raise ValueError(
-                "projection must preserve leading dimensions and return latent_dim features: "
-                f"{tuple(projected_features.shape)} != {expected_shape}."
-            )
-        if projected_features.device != X.device or projected_features.dtype != X.dtype:
-            raise ValueError("projection output must match X's device and dtype.")
-        if not torch.isfinite(projected_features).all():
-            raise FloatingPointError("CrabNet material/process projection produced non-finite values.")
-        return projected_features
 
 
 def _resolve_input_transform(
@@ -544,7 +215,7 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
         if isinstance(latent_dim, bool) or not isinstance(latent_dim, int) or latent_dim <= 0:
             raise ValueError("latent_dim must be a positive integer.")
 
-        validated_element_ids = _validate_element_ids(element_ids)
+        validated_element_ids = _validate_composition_element_ids(element_ids)
         composition_dim = int(validated_element_ids.numel())
         if isinstance(input_transform, CrabNetInputTransform):
             if input_transform.composition_dim != composition_dim:
@@ -564,7 +235,7 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
                     "train_X must contain one fraction column for every element_id. "
                     f"Got {train_X.shape[-1]} columns for {composition_dim} elements."
                 )
-            _validate_model_inputs(
+            _validate_composition_model_inputs(
                 train_X,
                 composition_dim=composition_dim,
                 input_dim=train_X.shape[-1],
@@ -576,7 +247,7 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
             checkpoint,
             strict_checkpoint=strict_checkpoint,
         )
-        feature_extractor = _CrabNetGPFeatureExtractor(
+        feature_extractor = MaterialGPFeatureExtractor(
             material_encoder=material_encoder,
             element_ids=validated_element_ids,
             process_dim=process_dim,
@@ -626,46 +297,52 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
         return cast(CrabNetGPModel, module)
 
     @property
-    def crabnet_feature_extractor(self) -> _CrabNetGPFeatureExtractor:
+    def material_feature_extractor(self) -> MaterialGPFeatureExtractor:
+        """Return the shared material/process feature extractor."""
+
+        return cast(MaterialGPFeatureExtractor, self.deepkernel.feature_extractor)
+
+    @property
+    def crabnet_feature_extractor(self) -> MaterialGPFeatureExtractor:
         """Return the material/process feature extractor owned by the inner GP."""
 
-        return cast(_CrabNetGPFeatureExtractor, self.deepkernel.feature_extractor)
+        return self.material_feature_extractor
 
     @property
     def material_encoder(self) -> CrabNetEncoder:
         """Return the CrabNet material encoder."""
 
-        return self.crabnet_feature_extractor.material_encoder
+        return cast(CrabNetEncoder, self.material_feature_extractor.material_encoder)
 
     @property
     def projection(self) -> nn.Module:
         """Return the trainable latent projection."""
 
-        return self.crabnet_feature_extractor.projection
+        return self.material_feature_extractor.projection
 
     @property
     def fusion(self) -> MaterialProcessFusion:
         """Return the material/process fusion module."""
 
-        return self.crabnet_feature_extractor.fusion
+        return self.material_feature_extractor.fusion
 
     @property
     def element_ids(self) -> Tensor:
         """Return the fixed atomic-number vocabulary buffer."""
 
-        return self.crabnet_feature_extractor.element_ids
+        return self.material_feature_extractor.element_ids
 
     @property
     def composition_dim(self) -> int:
         """Return the number of fraction columns."""
 
-        return self.crabnet_feature_extractor.composition_dim
+        return self.material_feature_extractor.composition_dim
 
     @property
     def process_dim(self) -> int:
         """Return the number of continuous process columns."""
 
-        return self.crabnet_feature_extractor.process_dim
+        return self.material_feature_extractor.process_dim
 
 
 class CrabNetDKLModel(CrabNetGPModel):
@@ -742,7 +419,7 @@ class CrabNetDKLModel(CrabNetGPModel):
             resolved_trainable_layers,
         )
         self._trainable_encoder_layers = resolved_trainable_layers
-        self.crabnet_feature_extractor._configure_encoder_training(
+        self.material_feature_extractor._configure_encoder_training(
             training_mode,
             trainable_modules,
         )

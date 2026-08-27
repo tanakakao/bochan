@@ -10,13 +10,13 @@ from botorch.models.transforms.input import Normalize
 from gpytorch.likelihoods import Likelihood
 from torch import Tensor, nn
 
-from bochan.composition import ALIGNNEncoder, MaterialProcessFusion, build_material_process_fusion
+from bochan.composition import ALIGNNEncoder, MaterialProcessFusion
 from bochan.composition.encoders.alignn import Checkpoint
 
 from .deepkernel import InputTransformArg, OutcomeTransformArg
 from .deepkernel_configurable import DeepKernelGaussianGPModel
+from .material import EncoderTrainingMode, _BaseMaterialGPFeatureExtractor
 
-_EncoderTrainingMode = Literal["frozen", "partial", "full"]
 _TrainableEncoderLayers = int | Literal["all"]
 
 
@@ -111,7 +111,7 @@ def _unique_parameters(modules: Sequence[nn.Module]) -> tuple[nn.Parameter, ...]
 def _configure_dkl_encoder(
     material_encoder: ALIGNNEncoder,
     trainable_encoder_layers: _TrainableEncoderLayers,
-) -> tuple[_EncoderTrainingMode, tuple[nn.Module, ...]]:
+) -> tuple[EncoderTrainingMode, tuple[nn.Module, ...]]:
     """Unfreeze the requested ALIGNN backbone parameters."""
 
     for parameter in material_encoder.parameters():
@@ -146,7 +146,7 @@ def _configure_dkl_encoder(
     return "partial", trainable_modules
 
 
-class _ALIGNNGPFeatureExtractor(nn.Module):
+class _ALIGNNGPFeatureExtractor(_BaseMaterialGPFeatureExtractor):
     """Map structure-bank indices and process features to a GP latent space."""
 
     def __init__(
@@ -159,51 +159,19 @@ class _ALIGNNGPFeatureExtractor(nn.Module):
         fusion: Literal["concat"] | MaterialProcessFusion,
         projection: nn.Module | None,
     ) -> None:
-        super().__init__()
-        if process_dim < 0:
-            raise ValueError("process_dim must be non-negative.")
-        if isinstance(latent_dim, bool) or not isinstance(latent_dim, int) or latent_dim <= 0:
-            raise ValueError("latent_dim must be a positive integer.")
-
-        self.material_encoder = material_encoder
-        self.structure_graphs = _validate_structure_bank(structure_graphs)
+        validated_graphs = _validate_structure_bank(structure_graphs)
+        super().__init__(
+            material_encoder=material_encoder,
+            input_dim=1 + process_dim,
+            process_dim=process_dim,
+            latent_dim=latent_dim,
+            fusion=fusion,
+            projection=projection,
+        )
+        self.structure_graphs = validated_graphs
         self.num_structures = len(self.structure_graphs)
-        self.process_dim = int(process_dim)
-        self.input_dim = 1 + self.process_dim
-        self._encoder_training_mode: _EncoderTrainingMode = "frozen"
-        self._trainable_encoder_modules: tuple[nn.Module, ...] = ()
         self._material_feature_cache_versions: tuple[int, ...] | None = None
         self.register_buffer("_material_feature_cache", None, persistent=False)
-
-        self.fusion = build_material_process_fusion(
-            fusion,
-            material_dim=material_encoder.output_dim,
-            process_dim=self.process_dim,
-        )
-        self.output_dim = int(latent_dim)
-
-        if projection is None:
-            projection = nn.Linear(self.fusion.output_dim, self.output_dim)
-        elif not isinstance(projection, nn.Module):
-            raise TypeError("projection must be a torch.nn.Module.")
-
-        declared_output_dim = getattr(projection, "output_dim", None)
-        if declared_output_dim is not None and int(declared_output_dim) != self.output_dim:
-            raise ValueError(
-                f"projection.output_dim does not match latent_dim: {int(declared_output_dim)} != {self.output_dim}."
-            )
-        if isinstance(projection, nn.Linear):
-            if projection.in_features != self.fusion.output_dim:
-                raise ValueError(
-                    "projection.in_features does not match the fused feature width: "
-                    f"{projection.in_features} != {self.fusion.output_dim}."
-                )
-            if projection.out_features != self.output_dim:
-                raise ValueError(
-                    "projection.out_features does not match latent_dim: "
-                    f"{projection.out_features} != {self.output_dim}."
-                )
-        self.projection = projection
 
     def __getstate__(self) -> dict[str, Any]:
         """Exclude derived structure-feature cache state from pickle artifacts."""
@@ -270,31 +238,10 @@ class _ALIGNNGPFeatureExtractor(nn.Module):
             self._material_feature_cache_versions = self._encoder_parameter_versions()
         return cache
 
-    def train(self, mode: bool = True) -> _ALIGNNGPFeatureExtractor:
-        """Apply the configured frozen, partial, or full encoder train policy."""
+    def _on_encoder_training_policy_change(self) -> None:
+        """Discard frozen features before an encoder policy change."""
 
-        super().train(mode)
-        if self._encoder_training_mode == "frozen":
-            self.material_encoder.eval()
-        elif self._encoder_training_mode == "partial":
-            self.material_encoder.eval()
-            for module in self._trainable_encoder_modules:
-                module.train(mode)
-        return self
-
-    def _configure_encoder_training(
-        self,
-        mode: _EncoderTrainingMode,
-        trainable_modules: tuple[nn.Module, ...] = (),
-    ) -> None:
-        if mode == "partial" and not trainable_modules:
-            raise ValueError("Partial encoder training requires at least one trainable module.")
-        if mode != "partial" and trainable_modules:
-            raise ValueError("Only partial encoder training accepts trainable_modules.")
         self.clear_material_feature_cache()
-        self._encoder_training_mode = mode
-        self._trainable_encoder_modules = trainable_modules
-        self.train(self.training)
 
     def validate_input(self, X: Tensor) -> None:
         _validate_model_inputs(
@@ -303,10 +250,9 @@ class _ALIGNNGPFeatureExtractor(nn.Module):
             input_dim=self.input_dim,
         )
 
-    def forward(self, X: Tensor) -> Tensor:
-        """Return projected structure/process features for the exact GP kernel."""
+    def _material_features(self, X: Tensor) -> Tensor:
+        """Return structure features with the leading input shape restored."""
 
-        self.validate_input(X)
         leading_shape = X.shape[:-1]
         flat_X = X.reshape(-1, self.input_dim)
         structure_index_tensor = flat_X[:, 0].round().to(dtype=torch.long)
@@ -322,23 +268,17 @@ class _ALIGNNGPFeatureExtractor(nn.Module):
             )
         if material_features.device != X.device or material_features.dtype != X.dtype:
             raise ValueError("ALIGNN structure features must match X's device and dtype.")
+        return material_features.reshape(
+            *leading_shape,
+            int(self.material_encoder.output_dim),
+        )
 
-        process_features = flat_X[:, 1:] if self.process_dim else None
-        fused_features = self.fusion(material_features, process_features)
-        projected_features = self.projection(fused_features)
-        if not torch.is_tensor(projected_features):
-            raise TypeError("projection must return a Tensor.")
-        expected_flat_shape = (flat_X.shape[0], self.output_dim)
-        if projected_features.shape != expected_flat_shape:
-            raise ValueError(
-                "projection must return one latent vector per structure/process row: "
-                f"{tuple(projected_features.shape)} != {expected_flat_shape}."
-            )
-        if projected_features.device != X.device or projected_features.dtype != X.dtype:
-            raise ValueError("projection output must match X's device and dtype.")
-        if not torch.isfinite(projected_features).all():
-            raise FloatingPointError("ALIGNN material/process projection produced non-finite values.")
-        return projected_features.reshape(*leading_shape, self.output_dim)
+    def _process_features(self, X: Tensor) -> Tensor | None:
+        """Return process columns aligned with the structure representation."""
+
+        if not self.process_dim:
+            return None
+        return X[..., 1:]
 
 
 def _resolve_input_transform(

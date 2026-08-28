@@ -47,6 +47,7 @@ jobs:
             tests/test_crabnet_integration_closure.py \
             tests/test_material_encoder_fusion.py \
             tests/test_material_gp_feature_extractor.py \
+            tests/test_roost_encoder.py \
             tests/test_tabular_composition.py \
             tests/test_tabular_architecture.py \
             tests/test_tabular_composition_sites.py \
@@ -66,6 +67,7 @@ jobs:
             src/bochan/composition/encoders/base.py \
             src/bochan/composition/encoders/crabnet.py \
             src/bochan/composition/encoders/fusion.py \
+            src/bochan/composition/encoders/roost.py \
             src/bochan/composition/simplex.py \
             src/bochan/composition/transformer.py \
             src/bochan/structure/__init__.py \
@@ -128,6 +130,7 @@ jobs:
             tests/test_common_model_artifact_api.py \
             tests/test_material_encoder_fusion.py \
             tests/test_material_gp_feature_extractor.py \
+            tests/test_roost_encoder.py \
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
             tests/test_crabnet_integration_closure.py \

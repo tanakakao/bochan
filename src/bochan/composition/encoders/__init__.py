@@ -8,6 +8,7 @@ from .fusion import (
     MaterialProcessFusion,
     build_material_process_fusion,
 )
+from .roost import RoostEncoder, RoostGraph, build_roost_graph
 
 __all__ = [
     "ALIGNNEncoder",
@@ -15,5 +16,8 @@ __all__ = [
     "CrabNetEncoder",
     "MaterialEncoder",
     "MaterialProcessFusion",
+    "RoostEncoder",
+    "RoostGraph",
     "build_material_process_fusion",
+    "build_roost_graph",
 ]

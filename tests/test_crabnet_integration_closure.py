@@ -6,9 +6,9 @@ from pathlib import Path
 from bochan.api.registry.model import DEFAULT_MODEL_REGISTRY
 from bochan.composition import CrabNetEncoder, MaterialEncoder, TorchSimplexTransform
 from bochan.models.regression.gaussian.deep import (
+    CompositionMaterialInputTransform,
     CrabNetDKLModel,
     CrabNetGPModel,
-    CompositionMaterialInputTransform,
 )
 from bochan.serving.webapp.routers.capabilities import WEB_CAPABILITIES
 

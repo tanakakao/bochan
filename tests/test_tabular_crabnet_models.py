@@ -9,9 +9,9 @@ from torch import nn
 from bochan.api import ModelConfig, resolve_model_cls
 from bochan.composition import ATOMIC_NUMBERS, CrabNetEncoder, parse_formula
 from bochan.models.regression.gaussian.deep import (
+    CompositionMaterialInputTransform,
     CrabNetDKLModel,
     CrabNetGPModel,
-    CompositionMaterialInputTransform,
 )
 from bochan.tabular import TabularBayesianOptimizer
 

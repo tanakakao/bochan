@@ -170,6 +170,7 @@ def test_process_features_are_normalized_separately_and_fused() -> None:
 
     assert model.process_dim == 2
     assert model.fusion.output_dim == model.material_encoder.output_dim + 2
+    assert not hasattr(model, "crabnet_feature_extractor")
     assert isinstance(model.input_transform, Normalize)
     assert torch.equal(transformed[..., :3], train_X[..., :3])
     assert (transformed[..., 3:] >= 0).all()
@@ -177,7 +178,7 @@ def test_process_features_are_normalized_separately_and_fused() -> None:
 
     same_material = train_X[:1].repeat(2, 1)
     same_material[1, 3:] = train_X[-1, 3:]
-    projected = model.crabnet_feature_extractor(model.transform_inputs(same_material))
+    projected = model.material_feature_extractor(model.transform_inputs(same_material))
     assert not torch.allclose(projected[0], projected[1])
 
 
@@ -350,7 +351,7 @@ def test_zero_fraction_elements_are_converted_to_crabnet_padding() -> None:
         dtype=torch.double,
     )
 
-    projected = model.crabnet_feature_extractor(test_X)
+    projected = model.material_feature_extractor(test_X)
     posterior = model.posterior(test_X)
 
     assert projected.shape == torch.Size([2, model.latent_dim])
@@ -380,7 +381,7 @@ def test_latent_projection_width_is_configurable(latent_dim: int) -> None:
     model = _model(with_process=False, latent_dim=latent_dim)
     train_X, _ = _data(with_process=False)
 
-    projected = model.crabnet_feature_extractor(train_X[:2])
+    projected = model.material_feature_extractor(train_X[:2])
 
     assert projected.shape == torch.Size([2, latent_dim])
     assert model.deepkernel.covar_module.base_kernel.ard_num_dims == latent_dim

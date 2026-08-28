@@ -12,14 +12,14 @@ from torch import Tensor, nn
 from bochan.composition import CrabNetEncoder, MaterialProcessFusion
 from bochan.composition.encoders.crabnet import Checkpoint
 
-from .crabnet import (
-    CrabNetInputTransform,
-    _CrabNetGPFeatureExtractor,
-    _resolve_material_encoder,
-    _validate_element_ids,
-)
+from .crabnet import _resolve_material_encoder
 from .deepkernel import OutcomeTransformArg
 from .deepkernel_configurable import DeepKernelGaussianMixedGPModel
+from .material import (
+    CompositionMaterialInputTransform,
+    MaterialGPFeatureExtractor,
+    _validate_composition_element_ids,
+)
 
 
 class _CrabNetMixedContinuousFeatureExtractor(nn.Module):
@@ -42,8 +42,8 @@ class _CrabNetMixedContinuousFeatureExtractor(nn.Module):
         projection: nn.Module | None,
     ) -> None:
         super().__init__()
-        validated_element_ids = _validate_element_ids(element_ids)
-        self.packer = CrabNetInputTransform(
+        validated_element_ids = _validate_composition_element_ids(element_ids)
+        self.packer = CompositionMaterialInputTransform(
             input_dim=continuous_input_dim,
             composition_indices=composition_indices,
             n_components=int(validated_element_ids.numel()),
@@ -53,7 +53,7 @@ class _CrabNetMixedContinuousFeatureExtractor(nn.Module):
             component_weights=component_weights,
             normalize_process=normalize_process,
         )
-        self.crabnet = _CrabNetGPFeatureExtractor(
+        self.crabnet = MaterialGPFeatureExtractor(
             material_encoder=material_encoder,
             element_ids=validated_element_ids,
             process_dim=self.packer.process_dim,
@@ -143,7 +143,7 @@ class CrabNetMixedGPModel(DeepKernelGaussianMixedGPModel):
                 "Every composition index must remain in the continuous subset."
             ) from error
 
-        validated_element_ids = _validate_element_ids(element_ids)
+        validated_element_ids = _validate_composition_element_ids(element_ids)
         material_encoder = _resolve_material_encoder(
             encoder,
             checkpoint,
@@ -201,8 +201,8 @@ class CrabNetMixedGPModel(DeepKernelGaussianMixedGPModel):
         return cast(_CrabNetMixedContinuousFeatureExtractor, self.deepkernel.feature_extractor)
 
     @property
-    def crabnet_feature_extractor(self) -> _CrabNetGPFeatureExtractor:
-        """Return the packed fraction/numeric-process CrabNet extractor."""
+    def material_feature_extractor(self) -> MaterialGPFeatureExtractor:
+        """Return the shared material/numeric-process feature extractor."""
 
         return self.mixed_feature_extractor.crabnet
 
@@ -210,37 +210,37 @@ class CrabNetMixedGPModel(DeepKernelGaussianMixedGPModel):
     def material_encoder(self) -> CrabNetEncoder:
         """Return the frozen CrabNet material encoder."""
 
-        return self.crabnet_feature_extractor.material_encoder
+        return cast(CrabNetEncoder, self.material_feature_extractor.material_encoder)
 
     @property
     def projection(self) -> nn.Module:
         """Return the trainable latent projection."""
 
-        return self.crabnet_feature_extractor.projection
+        return self.material_feature_extractor.projection
 
     @property
     def fusion(self) -> MaterialProcessFusion:
         """Return the material/numeric-process fusion module."""
 
-        return self.crabnet_feature_extractor.fusion
+        return self.material_feature_extractor.fusion
 
     @property
     def element_ids(self) -> Tensor:
         """Return the fixed atomic-number vocabulary."""
 
-        return self.crabnet_feature_extractor.element_ids
+        return self.material_feature_extractor.element_ids
 
     @property
     def composition_dim(self) -> int:
         """Return the number of elemental fractions presented to CrabNet."""
 
-        return self.crabnet_feature_extractor.composition_dim
+        return self.material_feature_extractor.composition_dim
 
     @property
     def process_dim(self) -> int:
         """Return the number of numeric process dimensions fused with CrabNet."""
 
-        return self.crabnet_feature_extractor.process_dim
+        return self.material_feature_extractor.process_dim
 
     @property
     def categorical_process_dim(self) -> int:

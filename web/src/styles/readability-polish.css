@@ -1,0 +1,324 @@
+/* Final readability and responsive safety layer.
+ *
+ * Loaded after domain styles so later component-specific 7-10px declarations do
+ * not undo the shared typography scale. This file owns only legibility,
+ * wrapping, and narrow-screen layout behavior.
+ */
+
+:root {
+  --ui-micro-font-size: 11px;
+  --ui-caption-font-size: 12px;
+  --ui-secondary-readable-size: 13px;
+  --ui-table-font-size: 14px;
+}
+
+.section-header h2 {
+  font-size: clamp(28px, 2.4vw, 36px);
+  line-height: 1.15;
+}
+
+.section-header p,
+.panel-title p,
+.result-subheading p,
+.settings-note,
+.search-method-note,
+.plot-slice-controls p,
+.conversation-note-card p {
+  font-size: var(--ui-secondary-readable-size) !important;
+  line-height: 1.55;
+}
+
+.portal-button > span:last-child,
+.runtime-copy small,
+.rail-note span,
+.workflow-progress-copy span,
+.simple-control-label,
+.simple-default-grid strong,
+.simple-candidate-count small,
+.simple-auto-settings summary,
+.simple-auto-settings p,
+.simple-feature-choice small,
+.field-inline-error,
+.model-detail-grid span,
+.model-save-control label,
+.history-export-options,
+.history-overview-grid span,
+.history-setting-grid span,
+.history-setting-grid small,
+.history-section-heading p,
+.history-section-heading label,
+.history-target-summary span {
+  font-size: var(--ui-caption-font-size) !important;
+  line-height: 1.45;
+}
+
+.runtime-copy strong,
+.rail-note strong,
+.workflow-progress-copy strong,
+.simple-direction-row > strong,
+.model-detail-grid strong {
+  font-size: 13px !important;
+  line-height: 1.4;
+}
+
+.busy-state,
+.execution-progress-head > span,
+.execution-progress-head > em,
+.execution-progress-foot,
+.execution-progress-foot code,
+.execution-timing-summary span,
+.execution-stage-marker,
+.execution-stage-list strong,
+.execution-stage-list small {
+  font-size: var(--ui-micro-font-size) !important;
+  line-height: 1.35;
+}
+
+.busy-card:has(.execution-progress-panel) {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.execution-progress-panel {
+  width: 100%;
+}
+
+.execution-progress-head > strong {
+  overflow: visible;
+  font-size: 13px !important;
+  line-height: 1.4;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.execution-stage-list strong {
+  font-weight: 780;
+}
+
+.execution-stage-list small {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.feature-variable-choice .variable-choice-main small,
+.feature-type-toggle span,
+.feature-type-toggle span::after,
+button.composition-kind-option,
+.missing-value-warning,
+.column-selection-disabled,
+.feature-variable-choice.selected-with-missing .variable-choice-main > small:first-of-type::before,
+.simple-feature-choice.selected-with-missing .variable-choice-copy > small:first-of-type::after,
+.feature-variable-choice:has(.composition-kind-control.high-cardinality-category) .variable-choice-main > small:first-of-type::after {
+  font-size: var(--ui-micro-font-size) !important;
+  line-height: 1.3;
+}
+
+.feature-type-toggle,
+.composition-kind-control {
+  min-height: 40px;
+}
+
+button.composition-kind-option {
+  min-height: 32px;
+  padding-inline: 7px;
+}
+
+.simple-direction-row > strong,
+.simple-feature-choice span,
+.feature-variable-choice .variable-choice-main span,
+.constraint-card-heading strong,
+.history-cycle-details summary strong {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.table-wrap,
+.target-settings-wrap,
+.target-model-settings-wrap,
+.history-summary-wrap,
+.history-data-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-wrap th,
+.table-wrap td,
+.target-settings-table th,
+.target-settings-table td,
+.target-model-settings-table th,
+.target-model-settings-table td,
+.proposal-target-table th,
+.proposal-target-table td,
+.search-variable-table th,
+.search-variable-table td,
+.composition-element-table th,
+.composition-element-table td,
+.history-summary-table th,
+.history-summary-table td,
+.history-data-wrap th,
+.history-data-wrap td {
+  font-size: var(--ui-table-font-size) !important;
+  line-height: 1.45;
+}
+
+.table-wrap th,
+.target-settings-table th,
+.target-model-settings-table th,
+.proposal-target-table th,
+.search-variable-table th,
+.composition-element-table th,
+.history-summary-table th,
+.history-data-wrap th {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.table-wrap td,
+.target-settings-table td,
+.target-model-settings-table td,
+.proposal-target-table td,
+.search-variable-table td,
+.composition-element-table td,
+.history-summary-table td,
+.history-data-wrap td {
+  overflow-wrap: anywhere;
+}
+
+.status-chip {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (max-width: 1180px) {
+  .model-primary-grid,
+  .simple-primary-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .simple-default-grid,
+  .model-settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .model-config-grid,
+  .suggestion-config-grid,
+  .history-overview-grid,
+  .history-setting-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .execution-progress-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .execution-progress-head > span {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  .content {
+    padding-inline: 14px;
+  }
+
+  .panel,
+  .side-card,
+  .transform-card,
+  .constraint-section,
+  .model-config-column,
+  .suggestion-config-column {
+    padding-inline: 14px;
+  }
+
+  .simple-default-grid,
+  .model-settings-grid,
+  .plot-controls,
+  .selection-count-editor,
+  .constraint-relation-row,
+  .composition-term-row,
+  .composition-constraint-relation {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .simple-direction-row,
+  .history-export-filename,
+  .experiment-save-row,
+  .experiment-import-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .simple-direction-toggle,
+  .simple-candidate-input-row,
+  .history-action-buttons {
+    width: 100%;
+  }
+
+  .simple-direction-toggle button,
+  .history-action-buttons button,
+  .model-reuse-actions button {
+    flex: 1 1 auto;
+  }
+
+  .status-chip {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .execution-progress-panel {
+    padding: 12px;
+  }
+
+  .execution-progress-head {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 5px;
+  }
+
+  .execution-progress-head > span,
+  .execution-progress-head > strong,
+  .execution-progress-head > em {
+    grid-column: 1;
+  }
+
+  .execution-progress-head > em {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 520px) {
+  .section-header h2 {
+    font-size: 26px;
+  }
+
+  .section-header,
+  .panel-title,
+  .result-subheading {
+    gap: 8px;
+  }
+
+  .simple-direction-toggle {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .feature-type-toggle,
+  .composition-kind-control {
+    width: 100%;
+  }
+
+  .execution-progress-foot,
+  .execution-timing-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

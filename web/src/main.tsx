@@ -17,6 +17,7 @@ import "./composition-extension.css";
 import "./styles/layout-safety.css";
 import "./red-theme.css";
 import "./workflow-completion.css";
+import "./styles/readability-polish.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

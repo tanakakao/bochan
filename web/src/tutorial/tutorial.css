@@ -89,7 +89,7 @@
 .tutorial-eyebrow {
   display: block;
   color: var(--primary);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 860;
   letter-spacing: 0.15em;
   text-transform: uppercase;
@@ -135,13 +135,14 @@
 }
 
 .tutorial-resume-button strong {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .tutorial-resume-button span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 560;
+  line-height: 1.5;
 }
 
 .tutorial-choice-grid {
@@ -190,12 +191,12 @@
 }
 
 .tutorial-choice-card strong {
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .tutorial-choice-card small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 550;
   line-height: 1.6;
 }
@@ -203,7 +204,7 @@
 .tutorial-choice-card em {
   margin-top: auto;
   color: var(--primary);
-  font-size: 9px;
+  font-size: 11px;
   font-style: normal;
   font-weight: 780;
 }
@@ -215,7 +216,7 @@
   border-radius: 13px;
   color: var(--muted);
   background: var(--primary-soft);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
 }
 
@@ -226,14 +227,14 @@
 }
 
 .tutorial-dismiss-button {
-  min-height: 32px;
+  min-height: 36px;
   margin-top: 12px;
-  padding: 5px 8px;
+  padding: 6px 10px;
   color: var(--muted);
   background: transparent;
   border-color: transparent;
   box-shadow: none;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 650;
 }
 
@@ -295,7 +296,7 @@
 .tutorial-guide-card > p {
   margin: 14px 0 0;
   color: var(--text);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.7;
 }
 
@@ -303,7 +304,7 @@
   margin: 12px 0 0;
   padding-left: 18px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.7;
 }
 
@@ -317,7 +318,7 @@
   border-radius: 12px;
   color: var(--primary);
   background: var(--primary-soft);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -376,7 +377,7 @@
 
 .tutorial-guide-footer > span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -386,9 +387,9 @@
 }
 
 .tutorial-guide-footer button {
-  min-height: 36px;
+  min-height: 38px;
   padding: 7px 13px;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .tutorial-sample-panel {
@@ -415,12 +416,12 @@
   border-radius: 12px;
   color: var(--muted);
   background: color-mix(in srgb, var(--surface-subtle) 82%, transparent);
-  font-size: 9px;
+  font-size: 12px;
 }
 
 .tutorial-sample-specs strong {
   color: var(--text);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .tutorial-sample-load {
@@ -430,7 +431,7 @@
 .tutorial-sample-note {
   margin: 10px 0 0;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 12px;
   line-height: 1.55;
   text-align: center;
 }

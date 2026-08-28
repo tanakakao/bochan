@@ -15,7 +15,6 @@ from bochan.composition.encoders.crabnet import Checkpoint
 
 from .crabnet import (
     _configure_dkl_encoder,
-    _resolve_input_transform,
     _resolve_material_encoder,
     _validate_trainable_encoder_layers,
 )
@@ -37,6 +36,7 @@ from .deepkernel_configurable import (
 from .material import (
     CompositionMaterialInputTransform,
     MaterialGPFeatureExtractor,
+    _resolve_composition_input_transform,
     _validate_composition_element_ids,
     _validate_composition_model_inputs,
 )
@@ -181,7 +181,7 @@ class CrabNetMultiTaskGPModel(
         resolved_input_transform = (
             input_transform
             if isinstance(input_transform, CompositionMaterialInputTransform)
-            else _resolve_input_transform(
+            else _resolve_composition_input_transform(
                 train_X,
                 composition_dim=composition_dim,
                 input_transform=input_transform,

@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from typing import Literal
 
 import torch
-from botorch.models.transforms.input import InputTransform
+from botorch.models.transforms.input import InputTransform, Normalize
 from torch import Tensor, nn
 
 from bochan.composition import (
@@ -237,6 +237,27 @@ def _validate_composition_model_inputs(
         atol=1e-6,
     ):
         raise ValueError("Composition fractions must sum to one.")
+
+
+def _resolve_composition_input_transform(
+    train_X: Tensor,
+    *,
+    composition_dim: int,
+    input_transform: str | InputTransform | None,
+) -> str | InputTransform | None:
+    """Resolve ``DEFAULT`` to process-only normalization.
+
+    Fraction columns must remain on the unit simplex. Only continuous process
+    columns are therefore normalized by the default transform.
+    """
+
+    if not isinstance(input_transform, str) or input_transform.upper() != "DEFAULT":
+        return input_transform
+
+    process_dims = list(range(composition_dim, train_X.shape[-1]))
+    if not process_dims:
+        return None
+    return Normalize(d=train_X.shape[-1], indices=process_dims)
 
 
 class _BaseMaterialGPFeatureExtractor(nn.Module, ABC):

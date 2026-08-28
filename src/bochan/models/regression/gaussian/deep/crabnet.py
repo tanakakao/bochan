@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Literal, cast
 
-from botorch.models.transforms.input import Normalize
 from gpytorch.likelihoods import Likelihood
 from torch import Tensor, nn
 
@@ -21,6 +20,7 @@ from .material import (
     CompositionMaterialInputTransform,
     EncoderTrainingMode,
     MaterialGPFeatureExtractor,
+    _resolve_composition_input_transform,
     _validate_composition_element_ids,
     _validate_composition_model_inputs,
 )
@@ -117,23 +117,6 @@ def _configure_dkl_encoder(
     for parameter in parameters:
         parameter.requires_grad_(True)
     return "partial", trainable_modules
-
-
-def _resolve_input_transform(
-    train_X: Tensor,
-    *,
-    composition_dim: int,
-    input_transform: InputTransformArg,
-) -> InputTransformArg:
-    """Resolve DEFAULT to process-only normalization, preserving fractions."""
-
-    if not isinstance(input_transform, str) or input_transform.upper() != "DEFAULT":
-        return input_transform
-
-    process_dims = list(range(composition_dim, train_X.shape[-1]))
-    if not process_dims:
-        return None
-    return Normalize(d=train_X.shape[-1], indices=process_dims)
 
 
 class CrabNetGPModel(DeepKernelGaussianGPModel):
@@ -254,7 +237,7 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
         resolved_input_transform = (
             input_transform
             if isinstance(input_transform, CompositionMaterialInputTransform)
-            else _resolve_input_transform(
+            else _resolve_composition_input_transform(
                 train_X,
                 composition_dim=composition_dim,
                 input_transform=input_transform,

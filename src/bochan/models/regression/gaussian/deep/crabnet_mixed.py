@@ -206,12 +206,6 @@ class CrabNetMixedGPModel(DeepKernelGaussianMixedGPModel):
         return self.mixed_feature_extractor.crabnet
 
     @property
-    def crabnet_feature_extractor(self) -> MaterialGPFeatureExtractor:
-        """Return the packed fraction/numeric-process CrabNet extractor."""
-
-        return self.material_feature_extractor
-
-    @property
     def material_encoder(self) -> CrabNetEncoder:
         """Return the frozen CrabNet material encoder."""
 

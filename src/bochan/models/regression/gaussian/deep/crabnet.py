@@ -277,7 +277,7 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
         )
 
         transformed_train_X = cast(tuple[Tensor, ...], self.deepkernel.train_inputs)[0]
-        self.crabnet_feature_extractor.validate_input(transformed_train_X)
+        self.material_feature_extractor.validate_input(transformed_train_X)
 
     def _apply(
         self,
@@ -301,12 +301,6 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
         """Return the shared material/process feature extractor."""
 
         return cast(MaterialGPFeatureExtractor, self.deepkernel.feature_extractor)
-
-    @property
-    def crabnet_feature_extractor(self) -> MaterialGPFeatureExtractor:
-        """Return the material/process feature extractor owned by the inner GP."""
-
-        return self.material_feature_extractor
 
     @property
     def material_encoder(self) -> CrabNetEncoder:

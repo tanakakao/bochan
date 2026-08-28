@@ -280,6 +280,15 @@ class _ALIGNNGPFeatureExtractor(_BaseMaterialGPFeatureExtractor):
             return None
         return X[..., 1:]
 
+    def forward(self, X: Tensor) -> Tensor:
+        """Flatten candidate rows for custom modules, then restore leading dimensions."""
+
+        self.validate_input(X)
+        leading_shape = X.shape[:-1]
+        flat_X = X.reshape(-1, self.input_dim)
+        flat_features = super().forward(flat_X)
+        return flat_features.reshape(*leading_shape, self.output_dim)
+
 
 def _resolve_input_transform(
     train_X: Tensor,

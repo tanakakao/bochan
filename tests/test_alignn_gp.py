@@ -129,6 +129,39 @@ def test_alignn_gp_posterior_preserves_batch_q_shape() -> None:
     assert torch.isfinite(posterior.variance).all()
 
 
+def test_alignn_custom_projection_receives_flat_rows_for_q_batch() -> None:
+    train_X, train_Y = _data(with_process=True)
+    projection = nn.Sequential(
+        nn.BatchNorm1d(6),
+        nn.Linear(6, 3),
+    ).double()
+    model = ALIGNNGPModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        structure_graphs=_graphs(),
+        encoder=FakeALIGNN(),
+        latent_dim=3,
+        projection=projection,
+        outcome_transform=None,
+    )
+    test_X = torch.tensor(
+        [
+            [[0.0, 925.0, 1.5], [1.0, 975.0, 2.5]],
+            [[2.0, 1025.0, 3.5], [3.0, 1075.0, 4.5]],
+        ],
+        dtype=torch.double,
+    )
+
+    model.eval()
+    features = model.alignn_feature_extractor(model.transform_inputs(test_X))
+    posterior = model.posterior(test_X)
+
+    assert features.shape == torch.Size([2, 2, 3])
+    assert posterior.mean.shape == torch.Size([2, 2, 1])
+    assert torch.isfinite(features).all()
+    assert torch.isfinite(posterior.mean).all()
+
+
 def test_alignn_gp_exposes_canonical_raw_training_inputs() -> None:
     model = _gp_model(with_process=True)
     train_X, _ = _data(with_process=True)

@@ -14,13 +14,9 @@ from bochan.composition import CrabNetEncoder, MaterialProcessFusion
 from bochan.composition.encoders.crabnet import Checkpoint
 
 from .crabnet import (
-    CrabNetInputTransform,
-    _CrabNetGPFeatureExtractor,
     _configure_dkl_encoder,
     _resolve_input_transform,
     _resolve_material_encoder,
-    _validate_element_ids,
-    _validate_model_inputs,
     _validate_trainable_encoder_layers,
 )
 from .crabnet_mixed import (
@@ -37,6 +33,12 @@ from .deepkernel import InputTransformArg, OutcomeTransformArg
 from .deepkernel_configurable import (
     DeepKernelGaussianGPModel,
     DeepKernelGaussianMixedGPModel,
+)
+from .material import (
+    CompositionMaterialInputTransform,
+    MaterialGPFeatureExtractor,
+    _validate_composition_element_ids,
+    _validate_composition_model_inputs,
 )
 
 
@@ -136,17 +138,17 @@ class CrabNetMultiTaskGPModel(
             latent_dim=latent_dim,
         )
 
-        validated_element_ids = _validate_element_ids(element_ids)
+        validated_element_ids = _validate_composition_element_ids(element_ids)
         composition_dim = int(validated_element_ids.numel())
-        if isinstance(input_transform, CrabNetInputTransform):
+        if isinstance(input_transform, CompositionMaterialInputTransform):
             if input_transform.composition_dim != composition_dim:
                 raise ValueError(
-                    "CrabNetInputTransform.n_components must match element_ids: "
+                    "CompositionMaterialInputTransform.n_components must match element_ids: "
                     f"{input_transform.composition_dim} != {composition_dim}."
                 )
             if train_X.shape[-1] != input_transform.input_dim:
                 raise ValueError(
-                    "train_X width must match CrabNetInputTransform.input_dim: "
+                    "train_X width must match CompositionMaterialInputTransform.input_dim: "
                     f"{train_X.shape[-1]} != {input_transform.input_dim}."
                 )
             process_dim = input_transform.process_dim
@@ -156,7 +158,7 @@ class CrabNetMultiTaskGPModel(
                     "train_X must contain one fraction column for every element_id. "
                     f"Got {train_X.shape[-1]} columns for {composition_dim} elements."
                 )
-            _validate_model_inputs(
+            _validate_composition_model_inputs(
                 train_X,
                 composition_dim=composition_dim,
                 input_dim=train_X.shape[-1],
@@ -168,7 +170,7 @@ class CrabNetMultiTaskGPModel(
             checkpoint,
             strict_checkpoint=strict_checkpoint,
         )
-        feature_extractor = _CrabNetGPFeatureExtractor(
+        feature_extractor = MaterialGPFeatureExtractor(
             material_encoder=material_encoder,
             element_ids=validated_element_ids,
             process_dim=process_dim,
@@ -178,7 +180,7 @@ class CrabNetMultiTaskGPModel(
         )
         resolved_input_transform = (
             input_transform
-            if isinstance(input_transform, CrabNetInputTransform)
+            if isinstance(input_transform, CompositionMaterialInputTransform)
             else _resolve_input_transform(
                 train_X,
                 composition_dim=composition_dim,
@@ -199,7 +201,7 @@ class CrabNetMultiTaskGPModel(
         )
         self._validate_correlated_kernel()
         transformed_train_X = cast(tuple[Tensor, ...], self.deepkernel.train_inputs)[0]
-        self.crabnet_feature_extractor.validate_input(transformed_train_X)
+        self.material_feature_extractor.validate_input(transformed_train_X)
 
     def _apply(
         self,
@@ -223,46 +225,46 @@ class CrabNetMultiTaskGPModel(
         return cast(CrabNetMultiTaskGPModel, module)
 
     @property
-    def crabnet_feature_extractor(self) -> _CrabNetGPFeatureExtractor:
-        """Return the shared CrabNet material/process feature extractor."""
+    def material_feature_extractor(self) -> MaterialGPFeatureExtractor:
+        """Return the shared material/process feature extractor."""
 
-        return cast(_CrabNetGPFeatureExtractor, self.deepkernel.feature_extractor)
+        return cast(MaterialGPFeatureExtractor, self.deepkernel.feature_extractor)
 
     @property
     def material_encoder(self) -> CrabNetEncoder:
         """Return the single shared CrabNet encoder."""
 
-        return self.crabnet_feature_extractor.material_encoder
+        return cast(CrabNetEncoder, self.material_feature_extractor.material_encoder)
 
     @property
     def projection(self) -> nn.Module:
         """Return the shared trainable latent projection."""
 
-        return self.crabnet_feature_extractor.projection
+        return self.material_feature_extractor.projection
 
     @property
     def fusion(self) -> MaterialProcessFusion:
         """Return the shared material/process fusion module."""
 
-        return self.crabnet_feature_extractor.fusion
+        return self.material_feature_extractor.fusion
 
     @property
     def element_ids(self) -> Tensor:
         """Return the fixed atomic-number vocabulary."""
 
-        return self.crabnet_feature_extractor.element_ids
+        return self.material_feature_extractor.element_ids
 
     @property
     def composition_dim(self) -> int:
         """Return the number of material-fraction components."""
 
-        return self.crabnet_feature_extractor.composition_dim
+        return self.material_feature_extractor.composition_dim
 
     @property
     def process_dim(self) -> int:
         """Return the number of continuous process columns."""
 
-        return self.crabnet_feature_extractor.process_dim
+        return self.material_feature_extractor.process_dim
 
 
 class CrabNetMultiTaskDKLModel(CrabNetMultiTaskGPModel):
@@ -309,7 +311,7 @@ class CrabNetMultiTaskDKLModel(CrabNetMultiTaskGPModel):
             resolved_trainable_layers,
         )
         self._trainable_encoder_layers = resolved_trainable_layers
-        self.crabnet_feature_extractor._configure_encoder_training(
+        self.material_feature_extractor._configure_encoder_training(
             training_mode,
             trainable_modules,
         )
@@ -395,7 +397,7 @@ class CrabNetMixedMultiTaskGPModel(
                 "Every composition index must remain in the continuous subset."
             ) from error
 
-        validated_element_ids = _validate_element_ids(element_ids)
+        validated_element_ids = _validate_composition_element_ids(element_ids)
         material_encoder = _resolve_material_encoder(
             encoder,
             checkpoint,
@@ -553,7 +555,7 @@ class CrabNetMixedMultiTaskDKLModel(
             resolved_trainable_layers,
         )
         self._trainable_encoder_layers = resolved_trainable_layers
-        self.mixed_dkl_feature_extractor.crabnet._configure_encoder_training(
+        self.material_feature_extractor._configure_encoder_training(
             training_mode,
             trainable_modules,
         )

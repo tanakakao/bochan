@@ -11,6 +11,7 @@ on:
       - "src/bochan/models/regression/gaussian/deep/crabnet_mixed.py"
       - "src/bochan/models/regression/gaussian/deep/crabnet_mixed_dkl.py"
       - "src/bochan/models/regression/gaussian/deep/crabnet_multitask.py"
+      - "src/bochan/models/regression/gaussian/deep/material.py"
       - "src/bochan/serving/webapp/composition/support.py"
       - "src/bochan/serving/webapp/composition/descriptors.py"
       - "src/bochan/serving/webapp/routers/composition.py"
@@ -151,6 +152,7 @@ jobs:
             src/bochan/models/regression/gaussian/deep/crabnet_mixed.py \
             src/bochan/models/regression/gaussian/deep/crabnet_mixed_dkl.py \
             src/bochan/models/regression/gaussian/deep/crabnet_multitask.py \
+            src/bochan/models/regression/gaussian/deep/material.py \
             src/bochan/serving/webapp/composition/support.py \
             src/bochan/serving/webapp/composition/descriptors.py \
             src/bochan/serving/webapp/routers/composition.py \

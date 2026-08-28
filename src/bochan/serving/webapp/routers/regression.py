@@ -6,10 +6,12 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
+from bochan.api.progress import progress_reporting
 from bochan.serving.fastapi.converters import to_serializable
 
 from ..logging import log_event
 from ..schemas.regression import RegressionRunRequest
+from ..services.model_reuse import current_model_reuse_state
 from ..workflows import run_regression_web_workflow
 
 _CRABNET_MULTITASK_WEB_BASE_MODELS = {
@@ -19,6 +21,18 @@ _CRABNET_MULTITASK_WEB_BASE_MODELS = {
     "crabnet_mixed_multitask_dkl": "crabnet_mixed_dkl",
 }
 _WEB_CRABNET_MULTITASK_MODEL_KEY = "web_correlated_crabnet_model_type"
+
+_PROGRESS_MESSAGES = {
+    "model_fit_started": "Model fitting started",
+    "model_fit_completed": "Model fitting completed",
+    "model_fit_failed": "Model fitting failed",
+    "model_output_fit_started": "Output model fitting started",
+    "model_output_fit_completed": "Output model fitting completed",
+    "model_output_fit_failed": "Output model fitting failed",
+    "candidate_generation_started": "Candidate generation started",
+    "candidate_generation_completed": "Candidate generation completed",
+    "candidate_generation_failed": "Candidate generation failed",
+}
 
 
 def _workflow_request(request: RegressionRunRequest) -> RegressionRunRequest:
@@ -36,6 +50,115 @@ def _workflow_request(request: RegressionRunRequest) -> RegressionRunRequest:
             "model_kwargs": model_kwargs,
         }
     )
+
+
+def _cv_fold_count(request: RegressionRunRequest) -> int | None:
+    """Return configured K-fold count; LOO stays unknown until preprocessing.
+
+    K-fold and stratified splitters always execute the configured ``n_splits``
+    when validation succeeds. Leave-one-out depends on the effective row count
+    after Web missing-value preprocessing, so the progress layer deliberately
+    avoids inventing a denominator for LOO.
+    """
+
+    if not bool(request.cross_validation):
+        return 0
+    config = request.cv_config
+    if hasattr(config, "model_dump"):
+        values = config.model_dump(exclude_none=True)
+    elif isinstance(config, dict):
+        values = dict(config)
+    else:
+        values = {}
+    splitter = str(values.get("splitter", "auto")).lower().replace("-", "_")
+    if splitter in {"loo", "leave_one_out"}:
+        return None
+    try:
+        return max(2, int(values.get("n_splits", 5)))
+    except (TypeError, ValueError):
+        return 5
+
+
+def _progress_callback(
+    request: RegressionRunRequest,
+    *,
+    logger: Any,
+    workflow_started: float,
+):
+    """Translate request-local core progress into structured Web log events."""
+
+    cv_enabled = bool(request.cross_validation)
+    cv_total = _cv_fold_count(request)
+    state = {
+        "fit_cycle": 0,
+        "prepare_logged": False,
+        "reuse_logged": False,
+    }
+
+    def log_prepared() -> None:
+        if state["prepare_logged"]:
+            return
+        state["prepare_logged"] = True
+        log_event(
+            logger,
+            logging.INFO,
+            "workflow_data_prepared",
+            "Data and model configuration prepared",
+            duration_ms=round((perf_counter() - workflow_started) * 1000, 3),
+        )
+
+    def callback(event: str, payload: Any) -> None:
+        fields = dict(payload or {})
+        if event == "model_fit_started":
+            log_prepared()
+            state["fit_cycle"] += 1
+        elif event == "candidate_generation_started":
+            log_prepared()
+            reuse_state = current_model_reuse_state() or {}
+            if bool(reuse_state.get("fit_skipped")) and not state["reuse_logged"]:
+                state["reuse_logged"] = True
+                log_event(
+                    logger,
+                    logging.INFO,
+                    "model_reuse_completed",
+                    "Fitted model reused; model fitting skipped",
+                    source_run_id=reuse_state.get("source_run_id"),
+                )
+
+        if event.startswith("model_") and event != "model_reuse_completed":
+            cycle = int(state["fit_cycle"])
+            if cv_enabled and cv_total is None:
+                fields.update(
+                    {
+                        "fit_phase": "cross_validation_or_final",
+                        "fold_current": None,
+                        "fold_total": None,
+                    }
+                )
+            elif cv_total and 1 <= cycle <= cv_total:
+                fields.update(
+                    {
+                        "fit_phase": "cross_validation",
+                        "fold_current": cycle,
+                        "fold_total": cv_total,
+                    }
+                )
+            elif cycle > 0:
+                fields.update(
+                    {
+                        "fit_phase": "final",
+                        "fold_current": None,
+                        "fold_total": cv_total or None,
+                    }
+                )
+
+        message = _PROGRESS_MESSAGES.get(event)
+        if message is None:
+            return
+        level = logging.ERROR if event.endswith("_failed") else logging.INFO
+        log_event(logger, level, event, message, **fields)
+
+    return callback
 
 
 def run_regression_request(
@@ -68,11 +191,25 @@ def run_regression_request(
         n_feature_constraints=len(request.constraints),
         k_sparse=to_serializable(request.k_sparse),
     )
+    log_event(
+        logger,
+        logging.INFO,
+        "workflow_started",
+        "Regression workflow started",
+        dataset_id=request.dataset_id,
+        target_columns=target_columns,
+    )
+    progress_callback = _progress_callback(
+        request,
+        logger=logger,
+        workflow_started=started,
+    )
     try:
-        result = run_regression_web_workflow(
-            _workflow_request(request),
-            dataset_store,
-        )
+        with progress_reporting(progress_callback):
+            result = run_regression_web_workflow(
+                _workflow_request(request),
+                dataset_store,
+            )
         log_event(
             logger,
             logging.INFO,

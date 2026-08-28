@@ -12,6 +12,7 @@ import "../styles/execution-progress.css";
 
 const INITIAL_PROGRESS: ExecutionProgressState = {
   stage: 0,
+  completedStage: -1,
   label: "FastAPIの受付を待っています",
   failed: false
 };
@@ -95,6 +96,11 @@ export default function ExecutionProgress({ busy }: { busy: string }) {
   }
 
   const measuredTimings = timingSummary(progress.timingsMs);
+  const completedCount = Math.max(
+    0,
+    Math.min(EXECUTION_STAGES.length, progress.completedStage + 1)
+  );
+  const completedWidth = `${(completedCount / EXECUTION_STAGES.length) * 100}%`;
 
   return (
     <div
@@ -110,18 +116,21 @@ export default function ExecutionProgress({ busy }: { busy: string }) {
       </div>
 
       <div
-        className={`execution-progress-track ${progress.stage < 2 && !progress.failed ? "indeterminate" : ""}`}
-        aria-label={`実イベント段階 ${progress.stage + 1} / ${EXECUTION_STAGES.length}`}
+        className={`execution-progress-track ${completedCount === 0 && !progress.failed ? "indeterminate" : ""}`}
+        aria-label={`実イベント完了 ${completedCount} / ${EXECUTION_STAGES.length}`}
       >
-        <span style={progress.stage >= 2 ? { width: "100%" } : undefined} />
+        <span style={completedCount > 0 ? { width: completedWidth } : undefined} />
       </div>
 
       <ol className="execution-stage-list">
         {EXECUTION_STAGES.map((stage, index) => {
+          const complete = index <= progress.completedStage;
+          const active = index === progress.stage && !complete && !progress.failed;
+          const failed = index === progress.stage && progress.failed;
           const className = [
-            index < progress.stage ? "complete" : "",
-            index === progress.stage && !progress.failed ? "active" : "",
-            index === progress.stage && progress.failed ? "failed" : ""
+            complete ? "complete" : "",
+            active ? "active" : "",
+            failed ? "failed" : ""
           ].filter(Boolean).join(" ");
           return (
             <li key={stage.label} data-stage={index} className={className}>

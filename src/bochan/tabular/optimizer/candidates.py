@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import fields, replace
+from time import perf_counter
 from typing import Any
 
 from bochan.api import AcquisitionConfig, DataContext, OptimizeConfig
+from bochan.api.progress import emit_progress
 
 from ..composition.constraints import (
     CompositionElementConstraintCandidateReranker,
@@ -260,13 +262,34 @@ class CandidateService:
             dtype=resolve_dtype(owner.data_config.dtype),
             device=owner.data_config.device,
         )
-        return owner.bo.candidate(
-            acq_config,
-            resolved_opt,
-            data_context=data_context,
-            bounds=owner.dataset.bounds if bounds is None else bounds,
-            return_result=return_result,
+        started = perf_counter()
+        emit_progress(
+            "candidate_generation_started",
+            q=int(resolved_opt.q),
+            sequential=bool(resolved_opt.sequential),
+            optimizer=str(resolved_opt.optimizer),
         )
+        try:
+            result = owner.bo.candidate(
+                acq_config,
+                resolved_opt,
+                data_context=data_context,
+                bounds=owner.dataset.bounds if bounds is None else bounds,
+                return_result=return_result,
+            )
+        except Exception:
+            emit_progress(
+                "candidate_generation_failed",
+                q=int(resolved_opt.q),
+                duration_ms=round((perf_counter() - started) * 1000, 3),
+            )
+            raise
+        emit_progress(
+            "candidate_generation_completed",
+            q=int(resolved_opt.q),
+            duration_ms=round((perf_counter() - started) * 1000, 3),
+        )
+        return result
 
     def generate(
         self,

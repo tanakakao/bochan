@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from time import perf_counter
 from typing import Any
 
 from ..configs import FitConfig, ModelBundle, MultiOutputConfig
+from ..progress import emit_progress
 from ..support.callables import _filter_kwargs_for_callable
 
 
@@ -187,18 +189,100 @@ def _fit_single_bundle(bundle: ModelBundle, config: FitConfig | None = None) -> 
     return bundle
 
 
+def _bundle_output_count(bundle: ModelBundle) -> int:
+    train_y = getattr(bundle, "train_Y", None)
+    shape = getattr(train_y, "shape", None)
+    if not shape or len(shape) < 2:
+        return 1
+    return max(1, int(shape[-1]))
+
+
 def fit_model(bundle: ModelBundle, config: FitConfig | None = None) -> ModelBundle:
+    """Fit one model bundle and emit optional request-local progress events."""
+
+    started = perf_counter()
     mo_config = bundle.model_config.multi_output_config
-    if mo_config is not None:
-        sub_bundles = bundle.metadata.get("sub_bundles", [])
-        embedded_fit_configs = bundle.metadata.get("embedded_fit_configs", [])
-        output_fit_configs = _resolve_output_fit_configs(config or FitConfig(), mo_config, len(sub_bundles), embedded=embedded_fit_configs)
-        if mo_config.fit_submodels:
-            for sub_bundle, sub_fit_config in zip(sub_bundles, output_fit_configs, strict=True):
-                _fit_single_bundle(sub_bundle, sub_fit_config)
-        bundle.fit_config = config
-        bundle.metadata["sub_fit_configs"] = output_fit_configs
-        if mo_config.fit_wrapper:
-            return _fit_single_bundle(bundle, config)
-        return bundle
-    return _fit_single_bundle(bundle, config)
+    output_total = _bundle_output_count(bundle)
+    fit_mode = "independent" if mo_config is not None else "joint" if output_total > 1 else "single"
+    emit_progress(
+        "model_fit_started",
+        model_type=str(bundle.model_type),
+        task_type=str(bundle.task_type),
+        output_total=output_total,
+        fit_mode=fit_mode,
+    )
+
+    try:
+        result = bundle
+        if mo_config is not None:
+            sub_bundles = bundle.metadata.get("sub_bundles", [])
+            embedded_fit_configs = bundle.metadata.get("embedded_fit_configs", [])
+            output_fit_configs = _resolve_output_fit_configs(
+                config or FitConfig(),
+                mo_config,
+                len(sub_bundles),
+                embedded=embedded_fit_configs,
+            )
+            output_names = list(mo_config.output_names or [])
+            if mo_config.fit_submodels:
+                for index, (sub_bundle, sub_fit_config) in enumerate(
+                    zip(sub_bundles, output_fit_configs, strict=True)
+                ):
+                    output_started = perf_counter()
+                    output_name = (
+                        str(output_names[index])
+                        if index < len(output_names) and output_names[index] is not None
+                        else f"output_{index + 1}"
+                    )
+                    emit_progress(
+                        "model_output_fit_started",
+                        output_index=index + 1,
+                        output_total=len(sub_bundles),
+                        output_name=output_name,
+                        model_type=str(sub_bundle.model_type),
+                        task_type=str(sub_bundle.task_type),
+                    )
+                    try:
+                        _fit_single_bundle(sub_bundle, sub_fit_config)
+                    except Exception:
+                        emit_progress(
+                            "model_output_fit_failed",
+                            output_index=index + 1,
+                            output_total=len(sub_bundles),
+                            output_name=output_name,
+                            duration_ms=round((perf_counter() - output_started) * 1000, 3),
+                        )
+                        raise
+                    emit_progress(
+                        "model_output_fit_completed",
+                        output_index=index + 1,
+                        output_total=len(sub_bundles),
+                        output_name=output_name,
+                        duration_ms=round((perf_counter() - output_started) * 1000, 3),
+                    )
+            bundle.fit_config = config
+            bundle.metadata["sub_fit_configs"] = output_fit_configs
+            if mo_config.fit_wrapper:
+                result = _fit_single_bundle(bundle, config)
+        else:
+            result = _fit_single_bundle(bundle, config)
+    except Exception:
+        emit_progress(
+            "model_fit_failed",
+            model_type=str(bundle.model_type),
+            task_type=str(bundle.task_type),
+            output_total=output_total,
+            fit_mode=fit_mode,
+            duration_ms=round((perf_counter() - started) * 1000, 3),
+        )
+        raise
+
+    emit_progress(
+        "model_fit_completed",
+        model_type=str(bundle.model_type),
+        task_type=str(bundle.task_type),
+        output_total=output_total,
+        fit_mode=fit_mode,
+        duration_ms=round((perf_counter() - started) * 1000, 3),
+    )
+    return result

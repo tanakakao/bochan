@@ -1,0 +1,42 @@
+.execution-progress-panel .execution-stage-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.execution-progress-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-top: 10px;
+  color: var(--subtle);
+  font-size: 9px;
+}
+
+.execution-progress-foot code {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 9px;
+}
+
+.execution-timing-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.execution-timing-summary span {
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+@media (max-width: 820px) {
+  .execution-progress-panel .execution-stage-list {
+    grid-template-columns: 1fr;
+  }
+}

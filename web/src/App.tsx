@@ -31,6 +31,7 @@ function WorkbenchLayout() {
           experimentAvailable={shell.experimentAvailable}
           canOpenStep={shell.canOpenStep}
           isComplete={shell.isComplete}
+          getStatusText={shell.getStatusText}
           onOpenStep={shell.openStep}
           onOpenConversation={shell.openConversation}
           onOpenExperiment={shell.openExperiment}

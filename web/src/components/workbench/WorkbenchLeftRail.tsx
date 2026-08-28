@@ -9,7 +9,8 @@ interface WorkbenchLeftRailProps {
   activeAuxiliaryPage: AuxiliaryPage | null;
   experimentAvailable: boolean;
   canOpenStep: (step: WorkbenchStep) => boolean;
-  isComplete: (step: WorkbenchStep, index: number) => boolean;
+  isComplete: (step: WorkbenchStep) => boolean;
+  getStatusText: (step: WorkbenchStep) => string;
   onOpenStep: (step: WorkbenchStep) => void;
   onOpenConversation: () => void;
   onOpenExperiment: () => void;
@@ -23,6 +24,7 @@ export default function WorkbenchLeftRail({
   experimentAvailable,
   canOpenStep,
   isComplete,
+  getStatusText,
   onOpenStep,
   onOpenConversation,
   onOpenExperiment
@@ -65,19 +67,26 @@ export default function WorkbenchLeftRail({
 
       <div className="rail-section-label">Workflow</div>
       <nav className="tabs" aria-label="ページナビゲーション" data-tutorial="navigation">
-        {visibleSteps.map(([id, label, detail], stepIndex) => (
-          <button
-            key={id}
-            className={`tab ${!activeAuxiliaryPage && step === id ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
-            onClick={() => onOpenStep(id)}
-            disabled={!canOpenStep(id)}
-            aria-current={!activeAuxiliaryPage && step === id ? "page" : undefined}
-          >
-            <span className="nav-icon">{WORKBENCH_ICONS[id]}</span>
-            <span><strong>{label}</strong><small>{detail}</small></span>
-            <em>{stepIndex + 1}</em>
-          </button>
-        ))}
+        {visibleSteps.map(([id, label, detail], stepIndex) => {
+          const complete = isComplete(id);
+          const statusText = getStatusText(id);
+          return (
+            <button
+              key={id}
+              className={`tab ${!activeAuxiliaryPage && step === id ? "active" : ""} ${complete ? "complete" : ""}`}
+              onClick={() => onOpenStep(id)}
+              disabled={!canOpenStep(id)}
+              aria-current={!activeAuxiliaryPage && step === id ? "page" : undefined}
+              aria-label={`${label} · ${statusText}`}
+              title={`${label}: ${statusText}`}
+              data-workflow-status={complete ? "complete" : canOpenStep(id) ? "available" : "pending"}
+            >
+              <span className="nav-icon">{complete ? "✓" : WORKBENCH_ICONS[id]}</span>
+              <span><strong>{label}</strong><small>{detail}</small></span>
+              <em className={complete ? "complete" : ""}>{complete ? "完了" : stepIndex + 1}</em>
+            </button>
+          );
+        })}
         <button
           className={`tab ${activeAuxiliaryPage === "experiment" ? "active" : ""}`}
           onClick={onOpenExperiment}

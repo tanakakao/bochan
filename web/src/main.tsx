@@ -16,6 +16,7 @@ import "./styles/workbench-design.css";
 import "./composition-extension.css";
 import "./styles/layout-safety.css";
 import "./red-theme.css";
+import "./workflow-completion.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

@@ -1,0 +1,51 @@
+.tab {
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+}
+
+.tab em {
+  width: auto;
+  min-width: 20px;
+  padding: 0 5px;
+  white-space: nowrap;
+}
+
+.tab.complete {
+  color: var(--text);
+  background: color-mix(in srgb, var(--success-soft) 68%, var(--surface-raised));
+  border-color: color-mix(in srgb, var(--success) 25%, var(--line));
+}
+
+.tab.complete::before {
+  background: var(--success);
+}
+
+.tab.complete .nav-icon {
+  color: #ffffff;
+  background: var(--success);
+  border-color: var(--success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 10%, transparent);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.tab.complete em.complete {
+  min-width: 34px;
+  color: var(--success);
+  background: var(--success-soft);
+  border: 1px solid color-mix(in srgb, var(--success) 22%, var(--line));
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.tab.active.complete::before {
+  background: var(--primary);
+}
+
+.tab.active.complete {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--success));
+  box-shadow: var(--shadow-sm), inset 0 0 0 1px color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.workflow-progress-track > span {
+  transition: width 220ms ease;
+}

@@ -11,6 +11,7 @@
     "test:workflow-completion": "node --experimental-strip-types test/workflowCompletion.test.ts",
     "test:page-persistence": "node --experimental-strip-types test/workflowPagePersistence.test.ts",
     "test:result-freshness": "node --experimental-strip-types test/resultFreshness.test.ts",
+    "test:execution-progress": "node --experimental-strip-types test/executionProgress.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {

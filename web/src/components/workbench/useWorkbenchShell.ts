@@ -12,10 +12,14 @@ import {
   currentAuxiliaryPage,
   type AuxiliaryPage
 } from "./workbenchPages";
+import {
+  getWorkflowCompletion,
+  workflowStatusText
+} from "./workflowCompletion";
 
 const CONTEXT_COLLAPSE_KEY = "bochan-context-rail-collapsed";
 
-/** Owns shell-only routing, progress, tutorial, and rail-collapse state. */
+/** Owns shell-only routing, semantic progress, tutorial, and rail-collapse state. */
 export function useWorkbenchShell() {
   const mode = useWorkbenchMode();
   const [auxiliaryPage, setAuxiliaryPage] = useState<AuxiliaryPage | null>(currentAuxiliaryPage);
@@ -23,13 +27,30 @@ export function useWorkbenchShell() {
   const [contextRailCollapsed, setContextRailCollapsed] = useState(
     () => window.localStorage.getItem(CONTEXT_COLLAPSE_KEY) === "1"
   );
-  const { step, setStep, canOpenStep, dataset, result } = useWorkbench();
+  const {
+    step,
+    setStep,
+    canOpenStep,
+    dataset,
+    result,
+    canConfigure,
+    settingsValid,
+    candidateSettingsValid
+  } = useWorkbench();
 
   const workflowSteps = STEPS.filter(([id]) => id !== "logs");
   const visibleSteps = mode === "simple"
     ? workflowSteps.filter(([id]) => id === "data" || id === "prepare" || id === "results")
     : workflowSteps;
   const index = visibleSteps.findIndex(([id]) => id === step);
+  const workflowCompletion = getWorkflowCompletion({
+    hasDataset: Boolean(dataset),
+    canConfigure,
+    settingsValid,
+    candidateSettingsValid,
+    result
+  });
+  const completedStepCount = visibleSteps.filter(([id]) => workflowCompletion[id].complete).length;
   const experimentAvailable = Boolean(dataset && result);
   const activeAuxiliaryPage: AuxiliaryPage | null = auxiliaryPage === "conversation"
     ? "conversation"
@@ -51,9 +72,9 @@ export function useWorkbenchShell() {
     ? "GUIDED FLOW"
     : activeAuxiliaryPage === "experiment"
       ? "EXPERIMENT"
-      : `STEP ${progressStepIndex + 1} / ${visibleSteps.length}`;
+      : `${completedStepCount} / ${visibleSteps.length} COMPLETE`;
   const progressPercent = visibleSteps.length
-    ? Math.min(100, Math.max(0, ((progressStepIndex + 1) / visibleSteps.length) * 100))
+    ? Math.min(100, Math.max(0, (completedStepCount / visibleSteps.length) * 100))
     : 0;
 
   useEffect(() => {
@@ -83,11 +104,12 @@ export function useWorkbenchShell() {
     }
   }, [dataset, mode, result, setStep, step]);
 
-  function isComplete(id: WorkbenchStep, stepIndex: number): boolean {
-    if (activeAuxiliaryPage) {
-      return stepIndex <= index && canOpenStep(id);
-    }
-    return stepIndex < index && canOpenStep(id);
+  function isComplete(id: WorkbenchStep): boolean {
+    return workflowCompletion[id]?.complete ?? false;
+  }
+
+  function getStatusText(id: WorkbenchStep): string {
+    return workflowStatusText(workflowCompletion[id]);
   }
 
   function openStep(id: WorkbenchStep) {
@@ -120,6 +142,7 @@ export function useWorkbenchShell() {
     toggleContextRail: () => setContextRailCollapsed((current) => !current),
     canOpenStep,
     isComplete,
+    getStatusText,
     openStep,
     openConversation,
     openExperiment

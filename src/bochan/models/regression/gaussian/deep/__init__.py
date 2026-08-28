@@ -1,5 +1,11 @@
 from .alignn import ALIGNNDKLModel, ALIGNNGPModel
 from .alignn_mixed import ALIGNNMixedDKLModel, ALIGNNMixedGPModel
+from .alignn_multitask import (
+    ALIGNNMixedMultiTaskDKLModel,
+    ALIGNNMixedMultiTaskGPModel,
+    ALIGNNMultiTaskDKLModel,
+    ALIGNNMultiTaskGPModel,
+)
 from .crabnet import CrabNetDKLModel, CrabNetGPModel, CrabNetInputTransform
 from .crabnet_mixed import CrabNetMixedGPModel
 from .crabnet_mixed_dkl import CrabNetMixedDKLModel
@@ -18,6 +24,10 @@ __all__ = [
     "ALIGNNGPModel",
     "ALIGNNMixedDKLModel",
     "ALIGNNMixedGPModel",
+    "ALIGNNMixedMultiTaskDKLModel",
+    "ALIGNNMixedMultiTaskGPModel",
+    "ALIGNNMultiTaskDKLModel",
+    "ALIGNNMultiTaskGPModel",
     "CrabNetDKLModel",
     "CrabNetGPModel",
     "CrabNetInputTransform",

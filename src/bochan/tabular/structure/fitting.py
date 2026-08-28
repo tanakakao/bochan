@@ -1,4 +1,4 @@
-"""Tabular configuration for ALIGNN-GP and ALIGNN-DKL models."""
+"""Tabular configuration for ALIGNN GP, DKL, and correlated multitask models."""
 
 from __future__ import annotations
 
@@ -7,14 +7,30 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
-_ALIGNN_MODEL_TYPES = frozenset({"alignn_gp", "alignn_dkl"})
-_DERIVED_ALIGNN_MODEL_CLASSES = frozenset(
+_ALIGNN_INDEPENDENT_MODEL_TYPES = frozenset({"alignn_gp", "alignn_dkl"})
+_ALIGNN_CORRELATED_MULTITASK_MODEL_TYPES = frozenset(
+    {"alignn_multitask", "alignn_multitask_dkl"}
+)
+_ALIGNN_MODEL_TYPES = _ALIGNN_INDEPENDENT_MODEL_TYPES | _ALIGNN_CORRELATED_MULTITASK_MODEL_TYPES
+_DERIVED_INDEPENDENT_ALIGNN_MODEL_CLASSES = frozenset(
     {
         "ALIGNNGPModel",
         "ALIGNNDKLModel",
         "ALIGNNMixedGPModel",
         "ALIGNNMixedDKLModel",
     }
+)
+_DERIVED_CORRELATED_ALIGNN_MODEL_CLASSES = frozenset(
+    {
+        "ALIGNNMultiTaskGPModel",
+        "ALIGNNMultiTaskDKLModel",
+        "ALIGNNMixedMultiTaskGPModel",
+        "ALIGNNMixedMultiTaskDKLModel",
+    }
+)
+_DERIVED_ALIGNN_MODEL_CLASSES = (
+    _DERIVED_INDEPENDENT_ALIGNN_MODEL_CLASSES
+    | _DERIVED_CORRELATED_ALIGNN_MODEL_CLASSES
 )
 
 
@@ -51,7 +67,7 @@ def _has_derived_alignn_model_cls(model_cls: Any) -> bool:
 
 
 def _derived_multi_output_configs(multi_output_config: Any) -> list[Any] | None:
-    """Return previously derived ALIGNN output configs for idempotent reconfiguration."""
+    """Return previously derived independent ALIGNN output configs."""
 
     if multi_output_config is None or multi_output_config.output_configs is None:
         return None
@@ -59,7 +75,11 @@ def _derived_multi_output_configs(multi_output_config: Any) -> list[Any] | None:
     if not configs:
         return None
     if not all(
-        _has_derived_alignn_model_cls(getattr(config, "model_cls", None))
+        getattr(getattr(config, "model_cls", None), "__name__", None)
+        in _DERIVED_INDEPENDENT_ALIGNN_MODEL_CLASSES
+        and str(getattr(getattr(config, "model_cls", None), "__module__", "")).startswith(
+            "bochan.models.regression.gaussian.deep"
+        )
         and getattr(config, "multi_output_config", None) is None
         for config in configs
     ):
@@ -90,15 +110,14 @@ def _clone_independent_output_config(single_output_config: Any, structure_graphs
     )
 
 
-def _configure_single_alignn_model(
+def _validate_alignn_model_config(
     config: Any,
     *,
-    model_type: str,
     structure_graphs: Any,
     process_cat_dims: list[int],
     expected_input_type: str,
-) -> Any:
-    """Resolve one canonical single-output ALIGNN submodel config."""
+) -> tuple[bool, dict[str, Any], Any | None]:
+    """Validate shared tabular ALIGNN config and return mutable model kwargs."""
 
     is_mixed = bool(process_cat_dims)
     derived_config = _has_derived_alignn_model_cls(config.model_cls)
@@ -138,22 +157,71 @@ def _configure_single_alignn_model(
             "do not override the derived graph bank in model_kwargs."
         )
     encoder_training = model_kwargs.pop("encoder_training", None)
+    return is_mixed, model_kwargs, encoder_training
 
-    if model_type == "alignn_gp":
+
+def _apply_encoder_training_policy(
+    model_kwargs: dict[str, Any],
+    encoder_training: Any | None,
+    *,
+    frozen_model_type: str,
+    dkl_model_type: str,
+    dkl: bool,
+) -> None:
+    """Validate frozen/DKL encoder policy and normalize the FastAPI-friendly alias."""
+
+    if not dkl:
         if encoder_training is not None or "trainable_encoder_layers" in model_kwargs:
             raise ValueError(
-                "alignn_gp freezes the structure encoder. Use model_type='alignn_dkl' "
-                "for partial or full ALIGNN fine-tuning."
+                f"{frozen_model_type} freezes the structure encoder. Use "
+                f"model_type={dkl_model_type!r} for partial or full ALIGNN fine-tuning."
             )
-        if is_mixed:
-            from bochan.models.regression.gaussian.deep import ALIGNNMixedGPModel
-
-            model_cls = ALIGNNMixedGPModel
-        else:
-            from bochan.models.regression.gaussian.deep import ALIGNNGPModel
-
-            model_cls = ALIGNNGPModel
+        return
+    if encoder_training is None:
+        return
+    if "trainable_encoder_layers" in model_kwargs:
+        raise ValueError(
+            "Specify either encoder_training or trainable_encoder_layers, not both."
+        )
+    normalized = str(encoder_training).lower()
+    if normalized == "partial":
+        model_kwargs["trainable_encoder_layers"] = 1
+    elif normalized == "full":
+        model_kwargs["trainable_encoder_layers"] = "all"
     else:
+        raise ValueError(
+            f"encoder_training must be 'partial' or 'full' for {dkl_model_type}."
+        )
+
+
+def _configure_single_alignn_model(
+    config: Any,
+    *,
+    model_type: str,
+    structure_graphs: Any,
+    process_cat_dims: list[int],
+    expected_input_type: str,
+) -> Any:
+    """Resolve one canonical independent single-output ALIGNN submodel config."""
+
+    if model_type not in _ALIGNN_INDEPENDENT_MODEL_TYPES:
+        raise ValueError(f"Unsupported independent ALIGNN model_type={model_type!r}.")
+    is_mixed, model_kwargs, encoder_training = _validate_alignn_model_config(
+        config,
+        structure_graphs=structure_graphs,
+        process_cat_dims=process_cat_dims,
+        expected_input_type=expected_input_type,
+    )
+    dkl = model_type == "alignn_dkl"
+    _apply_encoder_training_policy(
+        model_kwargs,
+        encoder_training,
+        frozen_model_type="alignn_gp",
+        dkl_model_type="alignn_dkl",
+        dkl=dkl,
+    )
+
+    if dkl:
         if is_mixed:
             from bochan.models.regression.gaussian.deep import ALIGNNMixedDKLModel
 
@@ -162,20 +230,14 @@ def _configure_single_alignn_model(
             from bochan.models.regression.gaussian.deep import ALIGNNDKLModel
 
             model_cls = ALIGNNDKLModel
-        if encoder_training is not None:
-            if "trainable_encoder_layers" in model_kwargs:
-                raise ValueError(
-                    "Specify either encoder_training or trainable_encoder_layers, not both."
-                )
-            normalized = str(encoder_training).lower()
-            if normalized == "partial":
-                model_kwargs["trainable_encoder_layers"] = 1
-            elif normalized == "full":
-                model_kwargs["trainable_encoder_layers"] = "all"
-            else:
-                raise ValueError(
-                    "encoder_training must be 'partial' or 'full' for alignn_dkl."
-                )
+    elif is_mixed:
+        from bochan.models.regression.gaussian.deep import ALIGNNMixedGPModel
+
+        model_cls = ALIGNNMixedGPModel
+    else:
+        from bochan.models.regression.gaussian.deep import ALIGNNGPModel
+
+        model_cls = ALIGNNGPModel
 
     model_kwargs["structure_graphs"] = structure_graphs
     return replace(
@@ -193,14 +255,79 @@ def _configure_single_alignn_model(
     )
 
 
+def _configure_correlated_alignn_model(
+    config: Any,
+    *,
+    model_type: str,
+    structure_graphs: Any,
+    process_cat_dims: list[int],
+    expected_input_type: str,
+) -> Any:
+    """Resolve one shared-backbone correlated ALIGNN multitask model config."""
+
+    if model_type not in _ALIGNN_CORRELATED_MULTITASK_MODEL_TYPES:
+        raise ValueError(f"Unsupported correlated ALIGNN model_type={model_type!r}.")
+    is_mixed, model_kwargs, encoder_training = _validate_alignn_model_config(
+        config,
+        structure_graphs=structure_graphs,
+        process_cat_dims=process_cat_dims,
+        expected_input_type=expected_input_type,
+    )
+    dkl = model_type == "alignn_multitask_dkl"
+    _apply_encoder_training_policy(
+        model_kwargs,
+        encoder_training,
+        frozen_model_type="alignn_multitask",
+        dkl_model_type="alignn_multitask_dkl",
+        dkl=dkl,
+    )
+
+    if dkl:
+        if is_mixed:
+            from bochan.models.regression.gaussian.deep import (
+                ALIGNNMixedMultiTaskDKLModel,
+            )
+
+            model_cls = ALIGNNMixedMultiTaskDKLModel
+        else:
+            from bochan.models.regression.gaussian.deep import ALIGNNMultiTaskDKLModel
+
+            model_cls = ALIGNNMultiTaskDKLModel
+    elif is_mixed:
+        from bochan.models.regression.gaussian.deep import ALIGNNMixedMultiTaskGPModel
+
+        model_cls = ALIGNNMixedMultiTaskGPModel
+    else:
+        from bochan.models.regression.gaussian.deep import ALIGNNMultiTaskGPModel
+
+        model_cls = ALIGNNMultiTaskGPModel
+
+    model_kwargs["structure_graphs"] = structure_graphs
+    return replace(
+        config,
+        task_type="multi_objective",
+        model_cls=model_cls,
+        model_factory=None,
+        input_type=expected_input_type,
+        cat_dims=process_cat_dims,
+        input_transform=None,
+        input_transform_config=None,
+        pass_cat_dims=is_mixed,
+        pass_input_transform=False,
+        model_kwargs=model_kwargs,
+        multi_output_config=None,
+    )
+
+
 def configure_tabular_alignn(owner: Any) -> None:
-    """Configure the canonical structure/process and independent-output contract.
+    """Configure canonical ALIGNN structure/process and output-dependency contracts.
 
     ``structure_col`` is always model feature 0. Categorical process columns are
     excluded from the ALIGNN/process feature extractor and represented by the
-    mixed GP categorical kernel. Multiple continuous target columns are modeled
-    as independent ALIGNN GP/DKL submodels inside BoTorch ``ModelListGP`` so the
-    standard bochan multi-objective acquisition stack can be reused unchanged.
+    mixed GP categorical kernel. ``alignn_gp`` / ``alignn_dkl`` derive independent
+    ``ModelListGP`` outputs when needed; ``alignn_multitask`` /
+    ``alignn_multitask_dkl`` keep wide targets in one model and learn task
+    covariance with a shared ALIGNN representation.
     """
 
     model_type = str(owner.model_config.model_type).lower()
@@ -208,18 +335,25 @@ def configure_tabular_alignn(owner: Any) -> None:
         if owner.structure.enabled:
             raise ValueError(
                 "structure_col/structure_catalog are currently supported only with "
-                "model_type='alignn_gp' or 'alignn_dkl'."
+                "model_type='alignn_gp', 'alignn_dkl', 'alignn_multitask', or "
+                "'alignn_multitask_dkl'."
             )
         return
 
     config = owner.model_config
+    correlated = model_type in _ALIGNN_CORRELATED_MULTITASK_MODEL_TYPES
     derived_output_configs = _derived_multi_output_configs(config.multi_output_config)
     derived_multi_output = derived_output_configs is not None
     if str(config.task_type) not in {"regression", "multi_objective"}:
         raise ValueError(
             "Tabular ALIGNN models support regression or multi_objective regression only."
         )
-    if config.multi_output_config is not None and not derived_multi_output:
+    if correlated and config.multi_output_config is not None:
+        raise ValueError(
+            "Correlated ALIGNN multitask models keep wide targets in one model; "
+            "do not provide multi_output_config."
+        )
+    if not correlated and config.multi_output_config is not None and not derived_multi_output:
         raise ValueError(
             "Tabular ALIGNN derives independent multi-output structure automatically "
             "from target_cols; do not provide multi_output_config explicitly."
@@ -229,6 +363,12 @@ def configure_tabular_alignn(owner: Any) -> None:
     target_count = _target_count(owner.source_data_config.target_cols)
     if target_count == 0:
         raise ValueError("Tabular ALIGNN requires at least one target column.")
+    if correlated and target_count == 1:
+        fallback = "alignn_dkl" if model_type.endswith("_dkl") else "alignn_gp"
+        raise ValueError(
+            f"{model_type} requires at least two continuous target columns. "
+            f"Use model_type={fallback!r} for a single target."
+        )
     if owner.composition.enabled:
         raise ValueError(
             "Tabular ALIGNN accepts crystal structure plus process variables; "
@@ -293,7 +433,15 @@ def configure_tabular_alignn(owner: Any) -> None:
     expected_input_type = "mixed" if process_cat_dims else "normal"
     structure_graphs = owner.structure.structure_graphs
 
-    if target_count is not None and target_count > 1:
+    if correlated:
+        owner.model_config = _configure_correlated_alignn_model(
+            replace(config, multi_output_config=None),
+            model_type=model_type,
+            structure_graphs=structure_graphs,
+            process_cat_dims=process_cat_dims,
+            expected_input_type=expected_input_type,
+        )
+    elif target_count is not None and target_count > 1:
         if target_names is None:
             raise RuntimeError("ALIGNN multi-output target names could not be resolved.")
         if derived_output_configs is not None:

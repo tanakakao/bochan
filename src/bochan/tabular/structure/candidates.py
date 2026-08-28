@@ -9,7 +9,9 @@ from typing import Any
 from ..optimizer.candidates import CandidateService
 from .scaling import optimize_alignn_structure_alternating
 
-_ALIGNN_MODEL_TYPES = frozenset({"alignn_gp", "alignn_dkl"})
+_ALIGNN_MODEL_TYPES = frozenset(
+    {"alignn_gp", "alignn_dkl", "alignn_multitask", "alignn_multitask_dkl"}
+)
 _ALTERNATING_STRUCTURE_THRESHOLD = 10
 _ALTERNATING_OPTION_KEYS = frozenset(
     {

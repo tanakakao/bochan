@@ -1,5 +1,7 @@
 import type { WorkbenchStep } from "../../context/WorkbenchContext";
 import { setWorkbenchMode, type WorkbenchMode } from "../../workbenchMode";
+import type { WorkflowStepStatus } from "./workflowCompletion";
+import { workflowStatusText } from "./workflowCompletion";
 import { WORKBENCH_ICONS, type AuxiliaryPage } from "./workbenchPages";
 
 interface WorkbenchLeftRailProps {
@@ -9,7 +11,7 @@ interface WorkbenchLeftRailProps {
   activeAuxiliaryPage: AuxiliaryPage | null;
   experimentAvailable: boolean;
   canOpenStep: (step: WorkbenchStep) => boolean;
-  isComplete: (step: WorkbenchStep, index: number) => boolean;
+  workflowCompletion: Record<WorkbenchStep, WorkflowStepStatus>;
   onOpenStep: (step: WorkbenchStep) => void;
   onOpenConversation: () => void;
   onOpenExperiment: () => void;
@@ -22,7 +24,7 @@ export default function WorkbenchLeftRail({
   activeAuxiliaryPage,
   experimentAvailable,
   canOpenStep,
-  isComplete,
+  workflowCompletion,
   onOpenStep,
   onOpenConversation,
   onOpenExperiment
@@ -65,19 +67,29 @@ export default function WorkbenchLeftRail({
 
       <div className="rail-section-label">Workflow</div>
       <nav className="tabs" aria-label="ページナビゲーション" data-tutorial="navigation">
-        {visibleSteps.map(([id, label, detail], stepIndex) => (
-          <button
-            key={id}
-            className={`tab ${!activeAuxiliaryPage && step === id ? "active" : ""} ${isComplete(id, stepIndex) ? "complete" : ""}`}
-            onClick={() => onOpenStep(id)}
-            disabled={!canOpenStep(id)}
-            aria-current={!activeAuxiliaryPage && step === id ? "page" : undefined}
-          >
-            <span className="nav-icon">{WORKBENCH_ICONS[id]}</span>
-            <span><strong>{label}</strong><small>{detail}</small></span>
-            <em>{stepIndex + 1}</em>
-          </button>
-        ))}
+        {visibleSteps.map(([id, label, detail], stepIndex) => {
+          const status = workflowCompletion[id];
+          const active = !activeAuxiliaryPage && step === id;
+          const statusText = workflowStatusText(status);
+          return (
+            <button
+              key={id}
+              className={`tab ${active ? "active" : ""} ${status.complete ? "complete" : ""} ${status.stale ? "stale" : ""} ${status.available ? "available" : ""}`}
+              onClick={() => onOpenStep(id)}
+              disabled={!canOpenStep(id)}
+              aria-current={active ? "page" : undefined}
+              aria-label={`${label} · ${statusText}`}
+              title={`${label}: ${statusText}`}
+              data-workflow-status={status.stale ? "stale" : status.complete ? "complete" : status.available ? "available" : "pending"}
+            >
+              <span className="nav-icon">
+                {status.stale ? "!" : status.complete ? "✓" : WORKBENCH_ICONS[id]}
+              </span>
+              <span><strong>{label}</strong><small>{detail}</small></span>
+              <em>{status.stale ? "!" : status.complete ? "✓" : stepIndex + 1}</em>
+            </button>
+          );
+        })}
         <button
           className={`tab ${activeAuxiliaryPage === "experiment" ? "active" : ""}`}
           onClick={onOpenExperiment}

@@ -30,7 +30,7 @@ function WorkbenchLayout() {
           activeAuxiliaryPage={shell.activeAuxiliaryPage}
           experimentAvailable={shell.experimentAvailable}
           canOpenStep={shell.canOpenStep}
-          isComplete={shell.isComplete}
+          workflowCompletion={shell.workflowCompletion}
           onOpenStep={shell.openStep}
           onOpenConversation={shell.openConversation}
           onOpenExperiment={shell.openExperiment}

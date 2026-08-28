@@ -6,6 +6,10 @@ import {
 } from "../../context/WorkbenchContext";
 import { useWorkbenchMode } from "../../workbenchMode";
 import {
+  getWorkflowCompletion,
+  workflowStatusText
+} from "./workflowCompletion";
+import {
   AUXILIARY_PAGES,
   WORKBENCH_PAGES,
   clearAuxiliaryHash,
@@ -15,7 +19,7 @@ import {
 
 const CONTEXT_COLLAPSE_KEY = "bochan-context-rail-collapsed";
 
-/** Owns shell-only routing, progress, tutorial, and rail-collapse state. */
+/** Owns shell-only routing, semantic workflow progress, tutorial, and rail-collapse state. */
 export function useWorkbenchShell() {
   const mode = useWorkbenchMode();
   const [auxiliaryPage, setAuxiliaryPage] = useState<AuxiliaryPage | null>(currentAuxiliaryPage);
@@ -23,7 +27,16 @@ export function useWorkbenchShell() {
   const [contextRailCollapsed, setContextRailCollapsed] = useState(
     () => window.localStorage.getItem(CONTEXT_COLLAPSE_KEY) === "1"
   );
-  const { step, setStep, canOpenStep, dataset, result } = useWorkbench();
+  const {
+    step,
+    setStep,
+    canOpenStep,
+    dataset,
+    result,
+    canConfigure,
+    settingsValid,
+    candidateSettingsValid
+  } = useWorkbench();
 
   const workflowSteps = STEPS.filter(([id]) => id !== "logs");
   const visibleSteps = mode === "simple"
@@ -31,6 +44,14 @@ export function useWorkbenchShell() {
     : workflowSteps;
   const index = visibleSteps.findIndex(([id]) => id === step);
   const experimentAvailable = Boolean(dataset && result);
+  const workflowCompletion = getWorkflowCompletion({
+    hasDataset: Boolean(dataset),
+    canConfigure,
+    settingsValid,
+    candidateSettingsValid,
+    result
+  });
+  const completedCount = visibleSteps.filter(([id]) => workflowCompletion[id].complete).length;
   const activeAuxiliaryPage: AuxiliaryPage | null = auxiliaryPage === "conversation"
     ? "conversation"
     : auxiliaryPage === "experiment" && experimentAvailable
@@ -39,21 +60,15 @@ export function useWorkbenchShell() {
   const Page = activeAuxiliaryPage
     ? AUXILIARY_PAGES[activeAuxiliaryPage]
     : WORKBENCH_PAGES[step];
-  const progressStepIndex = activeAuxiliaryPage === "experiment"
-    ? visibleSteps.length - 1
-    : Math.max(index, 0);
+  const progressStepIndex = Math.max(index, 0);
   const progressLabel = activeAuxiliaryPage === "conversation"
     ? "対話モード"
     : activeAuxiliaryPage === "experiment"
       ? "実験結果追加"
       : visibleSteps[progressStepIndex]?.[1] ?? "データ";
-  const progressMeta = activeAuxiliaryPage === "conversation"
-    ? "GUIDED FLOW"
-    : activeAuxiliaryPage === "experiment"
-      ? "EXPERIMENT"
-      : `STEP ${progressStepIndex + 1} / ${visibleSteps.length}`;
+  const progressMeta = `${completedCount} / ${visibleSteps.length} COMPLETE`;
   const progressPercent = visibleSteps.length
-    ? Math.min(100, Math.max(0, ((progressStepIndex + 1) / visibleSteps.length) * 100))
+    ? Math.min(100, Math.max(0, (completedCount / visibleSteps.length) * 100))
     : 0;
 
   useEffect(() => {
@@ -83,11 +98,12 @@ export function useWorkbenchShell() {
     }
   }, [dataset, mode, result, setStep, step]);
 
-  function isComplete(id: WorkbenchStep, stepIndex: number): boolean {
-    if (activeAuxiliaryPage) {
-      return stepIndex <= index && canOpenStep(id);
-    }
-    return stepIndex < index && canOpenStep(id);
+  function isComplete(id: WorkbenchStep): boolean {
+    return workflowCompletion[id].complete;
+  }
+
+  function statusText(id: WorkbenchStep): string {
+    return workflowStatusText(workflowCompletion[id]);
   }
 
   function openStep(id: WorkbenchStep) {
@@ -114,12 +130,14 @@ export function useWorkbenchShell() {
     progressLabel,
     progressMeta,
     progressPercent,
+    workflowCompletion,
     tutorialRequest,
     requestTutorial: () => setTutorialRequest((current) => current + 1),
     contextRailCollapsed,
     toggleContextRail: () => setContextRailCollapsed((current) => !current),
     canOpenStep,
     isComplete,
+    statusText,
     openStep,
     openConversation,
     openExperiment

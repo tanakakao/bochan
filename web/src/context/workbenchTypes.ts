@@ -98,6 +98,7 @@ export interface WorkbenchContextValue {
   setRawSamples: (rawSamples: number) => void;
   result: RegressionResult | null;
   resultRevision: number;
+  resultCurrent: boolean;
   canConfigure: boolean;
   settingsValid: boolean;
   candidateSettingsValid: boolean;

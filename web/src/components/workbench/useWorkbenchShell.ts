@@ -31,6 +31,7 @@ export function useWorkbenchShell() {
     canOpenStep,
     dataset,
     result,
+    resultCurrent,
     canConfigure,
     settingsValid,
     candidateSettingsValid
@@ -46,7 +47,8 @@ export function useWorkbenchShell() {
     canConfigure,
     settingsValid,
     candidateSettingsValid,
-    result
+    result,
+    resultCurrent
   });
   const completedStepCount = visibleSteps.filter(([id]) => workflowCompletion[id].complete).length;
   const experimentAvailable = Boolean(dataset && result);

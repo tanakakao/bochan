@@ -404,9 +404,9 @@ def _configure_tabular_crabnet_model(
             )
         return single_output_config
 
-    from bochan.models.regression.gaussian.deep import CrabNetInputTransform
+    from bochan.models.regression.gaussian.deep import CompositionMaterialInputTransform
 
-    input_transform = CrabNetInputTransform(
+    input_transform = CompositionMaterialInputTransform(
         input_dim=dataset.X.shape[-1],
         composition_indices=composition_indices,
         n_components=len(elements),

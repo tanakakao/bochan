@@ -1,5 +1,10 @@
 .execution-progress-panel .execution-stage-list {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.execution-progress-panel .execution-stage-list small {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .execution-progress-foot {

@@ -1,3 +1,5 @@
+import { notifyWorkbenchRunSettingsChanged } from "./workbenchSettingsEvents";
+
 export const DEFAULT_NOISE_ALPHA = 1e-4;
 
 const STORAGE_KEY = "bochan-regression-noise-alpha";
@@ -17,6 +19,7 @@ export function supportsNoiseAlpha(modelType: string): boolean {
 
 /** Load the model-scale Gaussian observation-noise variance floor. */
 export function loadNoiseAlpha(): number {
+  if (typeof window === "undefined") return DEFAULT_NOISE_ALPHA;
   const stored = window.localStorage.getItem(STORAGE_KEY);
   if (stored === null) return DEFAULT_NOISE_ALPHA;
   const parsed = Number(stored);
@@ -25,5 +28,7 @@ export function loadNoiseAlpha(): number {
 
 /** Persist the model-scale Gaussian observation-noise variance floor. */
 export function saveNoiseAlpha(alpha: number): void {
+  if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, String(alpha));
+  notifyWorkbenchRunSettingsChanged();
 }

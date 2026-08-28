@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import {
   buildModelReuseSignature,
   runRegression,
@@ -7,7 +7,9 @@ import {
   type RunRegressionInput
 } from "../api";
 import { restoreWorkbenchFromArtifact } from "../modelArtifactRestore";
+import { buildSuggestionSignature } from "../resultSignatures";
 import { createInitialSelectionState, numberOrUndefined } from "./workbenchDefaults";
+import { useWorkbenchExternalSettingsRevision } from "./useWorkbenchExternalSettingsRevision";
 import { useWorkbenchResultState } from "./useWorkbenchResultState";
 import { useWorkbenchRuntimeState } from "./useWorkbenchRuntimeState";
 import { useWorkbenchRunSettings } from "./useWorkbenchRunSettings";
@@ -38,6 +40,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const selection = useWorkbenchSelectionState();
   const settings = useWorkbenchRunSettings();
   const results = useWorkbenchResultState();
+  useWorkbenchExternalSettingsRevision();
 
   const derived = useMemo(() => deriveWorkbenchState({
     dataset: selection.dataset,
@@ -100,6 +103,15 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const currentModelSignature = currentRunInput
     ? buildModelReuseSignature(currentRunInput)
     : null;
+  const currentSuggestionSignature = currentRunInput
+    ? buildSuggestionSignature(currentRunInput)
+    : null;
+  const resultCurrent = Boolean(
+    results.result &&
+    !results.result.metadata?.stale_after_data_append &&
+    results.lastSuggestionSignature &&
+    currentSuggestionSignature === results.lastSuggestionSignature
+  );
   const modelReuseAvailable = Boolean(
     derived.candidateSettingsValid &&
     !results.result?.metadata?.stale_after_data_append &&
@@ -107,6 +119,16 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     results.lastModelSignature &&
     currentModelSignature === results.lastModelSignature
   );
+
+  useEffect(() => {
+    if (
+      results.result &&
+      !results.lastSuggestionSignature &&
+      currentSuggestionSignature
+    ) {
+      results.setLastSuggestionSignature(currentSuggestionSignature);
+    }
+  }, [currentSuggestionSignature, results.result, results.lastSuggestionSignature]);
 
   function canOpenStep(nextStep: WorkbenchStep): boolean {
     if (nextStep === "data" || nextStep === "logs") return true;
@@ -156,6 +178,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       settings.restoreRunSettings(restored);
       results.setResult(imported.result);
       results.setLastModelSignature(restored.modelSignature);
+      results.setLastSuggestionSignature(null);
       runtime.setStepState("results");
     } catch (caught) {
       runtime.setError(caught instanceof Error ? caught.message : String(caught));
@@ -225,6 +248,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       return;
     }
     const modelSignature = buildModelReuseSignature(executionInput);
+    const suggestionSignature = buildSuggestionSignature(executionInput);
     const reusableRunId = results.result?.visualization_run_id;
     const canReuse = Boolean(
       reusableRunId &&
@@ -251,6 +275,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       const response = await runRegression(input);
       results.setResult(response);
       results.setLastModelSignature(modelSignature);
+      results.setLastSuggestionSignature(suggestionSignature);
       runtime.setStepState("results");
     } catch (caught) {
       runtime.setError(caught instanceof Error ? caught.message : String(caught));
@@ -325,6 +350,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     setRawSamples: settings.setRawSamples,
     result: results.result,
     resultRevision: results.resultRevision,
+    resultCurrent,
     canConfigure: derived.canConfigure,
     settingsValid: derived.settingsValid,
     candidateSettingsValid: derived.candidateSettingsValid,

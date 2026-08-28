@@ -14,6 +14,7 @@ export interface WorkflowCompletionInput {
   settingsValid: boolean;
   candidateSettingsValid: boolean;
   result: RegressionResult | null;
+  resultCurrent: boolean;
 }
 
 function status(
@@ -33,18 +34,22 @@ function status(
 /**
  * Derive workflow completion from actual workbench state rather than navigation order.
  *
- * A step only becomes complete once its domain outcome exists or validates. Merely
- * navigating past a page never produces a completion check.
+ * A step only becomes complete once its domain outcome exists and still matches the
+ * current candidate-generation settings. Old results remain accessible but do not
+ * contribute to completion progress.
  */
 export function getWorkflowCompletion({
   hasDataset,
   canConfigure,
   settingsValid,
   candidateSettingsValid,
-  result
+  result,
+  resultCurrent
 }: WorkflowCompletionInput): Record<WorkbenchStep, WorkflowStepStatus> {
   const hasResult = Boolean(result);
-  const resultStale = Boolean(result?.metadata?.stale_after_data_append);
+  const resultStale = hasResult && (
+    Boolean(result?.metadata?.stale_after_data_append) || !resultCurrent
+  );
   const hasCurrentResult = hasResult && !resultStale;
 
   return {
@@ -54,12 +59,12 @@ export function getWorkflowCompletion({
     optimize: status(
       hasCurrentResult,
       candidateSettingsValid,
-      hasCurrentResult ? "提案済み" : resultStale ? "再実行が必要" : "実行可能"
+      hasCurrentResult ? "提案済み" : resultStale ? "更新必要" : "実行可能"
     ),
     results: status(
       hasCurrentResult,
       hasResult,
-      hasCurrentResult ? "結果あり" : resultStale ? "旧結果" : "未実行"
+      hasCurrentResult ? "結果あり" : resultStale ? "旧結果・更新必要" : "未実行"
     ),
     logs: status(false, true, "任意", true)
   };

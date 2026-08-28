@@ -1,3 +1,5 @@
+import { notifyWorkbenchRunSettingsChanged } from "./workbenchSettingsEvents";
+
 export type FeatureConstraintOperator = ">" | "<" | "=";
 
 /** One linear constraint: sum(coefficients[name] * name) operator value. */
@@ -76,6 +78,7 @@ export function loadCrossValidationSettings(): CrossValidationSettings {
 
 export function saveCrossValidationSettings(value: CrossValidationSettings): void {
   storage()?.setItem(CROSS_VALIDATION_KEY, JSON.stringify(value));
+  notifyWorkbenchRunSettingsChanged();
 }
 
 function storage(): Storage | null {
@@ -143,6 +146,7 @@ export function loadFeatureConstraints(): FeatureConstraint[] {
 
 export function saveFeatureConstraints(constraints: FeatureConstraint[]): void {
   storage()?.setItem(CONSTRAINTS_KEY, JSON.stringify(constraints));
+  notifyWorkbenchRunSettingsChanged();
 }
 
 export function loadSelectionCountConstraint(): SelectionCountConstraint {
@@ -164,6 +168,7 @@ export function loadSelectionCountConstraint(): SelectionCountConstraint {
 
 export function saveSelectionCountConstraint(value: SelectionCountConstraint): void {
   storage()?.setItem(SELECTION_COUNT_KEY, JSON.stringify(value));
+  notifyWorkbenchRunSettingsChanged();
 }
 
 export function loadFeatureMissingSettings(): FeatureMissingSettings {
@@ -196,6 +201,7 @@ export function loadFeatureMissingSettings(): FeatureMissingSettings {
 
 export function saveFeatureMissingSettings(value: FeatureMissingSettings): void {
   storage()?.setItem(FEATURE_MISSING_KEY, JSON.stringify(value));
+  notifyWorkbenchRunSettingsChanged();
 }
 
 export function loadInputPerturbationRiskSettings(): InputPerturbationRiskSettings {
@@ -219,6 +225,7 @@ export function loadInputPerturbationRiskSettings(): InputPerturbationRiskSettin
 
 export function saveInputPerturbationRiskSettings(value: InputPerturbationRiskSettings): void {
   storage()?.setItem(INPUT_PERTURBATION_RISK_KEY, JSON.stringify(value));
+  notifyWorkbenchRunSettingsChanged();
 }
 
 export function loadSearchMethod(): SearchMethod {
@@ -237,4 +244,5 @@ export function loadSearchMethod(): SearchMethod {
 
 export function saveSearchMethod(method: SearchMethod): void {
   storage()?.setItem(SEARCH_METHOD_KEY, method);
+  notifyWorkbenchRunSettingsChanged();
 }

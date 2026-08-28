@@ -14,7 +14,6 @@ from bochan.composition import CrabNetEncoder, MaterialProcessFusion
 from bochan.composition.encoders.crabnet import Checkpoint
 
 from .crabnet import (
-    CrabNetInputTransform,
     _configure_dkl_encoder,
     _resolve_input_transform,
     _resolve_material_encoder,
@@ -36,6 +35,7 @@ from .deepkernel_configurable import (
     DeepKernelGaussianMixedGPModel,
 )
 from .material import (
+    CompositionMaterialInputTransform,
     MaterialGPFeatureExtractor,
     _validate_composition_element_ids,
     _validate_composition_model_inputs,
@@ -140,15 +140,15 @@ class CrabNetMultiTaskGPModel(
 
         validated_element_ids = _validate_composition_element_ids(element_ids)
         composition_dim = int(validated_element_ids.numel())
-        if isinstance(input_transform, CrabNetInputTransform):
+        if isinstance(input_transform, CompositionMaterialInputTransform):
             if input_transform.composition_dim != composition_dim:
                 raise ValueError(
-                    "CrabNetInputTransform.n_components must match element_ids: "
+                    "CompositionMaterialInputTransform.n_components must match element_ids: "
                     f"{input_transform.composition_dim} != {composition_dim}."
                 )
             if train_X.shape[-1] != input_transform.input_dim:
                 raise ValueError(
-                    "train_X width must match CrabNetInputTransform.input_dim: "
+                    "train_X width must match CompositionMaterialInputTransform.input_dim: "
                     f"{train_X.shape[-1]} != {input_transform.input_dim}."
                 )
             process_dim = input_transform.process_dim
@@ -180,7 +180,7 @@ class CrabNetMultiTaskGPModel(
         )
         resolved_input_transform = (
             input_transform
-            if isinstance(input_transform, CrabNetInputTransform)
+            if isinstance(input_transform, CompositionMaterialInputTransform)
             else _resolve_input_transform(
                 train_X,
                 composition_dim=composition_dim,

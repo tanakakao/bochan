@@ -11,7 +11,7 @@ from bochan.composition import ATOMIC_NUMBERS, CrabNetEncoder, parse_formula
 from bochan.models.regression.gaussian.deep import (
     CrabNetDKLModel,
     CrabNetGPModel,
-    CrabNetInputTransform,
+    CompositionMaterialInputTransform,
 )
 from bochan.tabular import TabularBayesianOptimizer
 
@@ -126,8 +126,8 @@ def test_registry_exposes_only_normal_regression_crabnet_selectors() -> None:
         )
 
 
-def test_crabnet_input_transform_reorders_coordinates_and_preserves_gradients() -> None:
-    transform = CrabNetInputTransform(
+def test_composition_material_input_transform_reorders_and_preserves_gradients() -> None:
+    transform = CompositionMaterialInputTransform(
         input_dim=5,
         composition_indices=[1, 3],
         n_components=3,
@@ -164,7 +164,7 @@ def test_tabular_crabnet_gp_derives_layout_fits_predicts_and_generates_candidate
     model = bundle.model
 
     assert isinstance(model, CrabNetGPModel)
-    assert isinstance(model.input_transform, CrabNetInputTransform)
+    assert isinstance(model.input_transform, CompositionMaterialInputTransform)
     assert model.input_transform.composition_indices.tolist() == [0, 1, 2]
     assert model.input_transform.process_indices.tolist() == [3, 4, 5]
     assert model.element_ids.tolist() == [ATOMIC_NUMBERS[element] for element in ("Ba", "Sr", "Ti", "O")]

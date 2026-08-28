@@ -8,7 +8,7 @@ from bochan.composition import CrabNetEncoder, MaterialEncoder, TorchSimplexTran
 from bochan.models.regression.gaussian.deep import (
     CrabNetDKLModel,
     CrabNetGPModel,
-    CrabNetInputTransform,
+    CompositionMaterialInputTransform,
 )
 from bochan.serving.webapp.routers.capabilities import WEB_CAPABILITIES
 
@@ -45,7 +45,7 @@ def test_crabnet_dependency_is_reproducibly_pinned_for_every_supported_extra() -
 
 def test_crabnet_public_stack_has_one_canonical_model_contract() -> None:
     assert issubclass(CrabNetEncoder, MaterialEncoder)
-    assert CrabNetInputTransform.__module__.endswith(".deep.crabnet")
+    assert CompositionMaterialInputTransform.__module__.endswith(".deep.material")
     assert TorchSimplexTransform.__module__ == "bochan.composition.simplex"
     assert CrabNetGPModel.__module__.endswith(".deep.crabnet")
     assert CrabNetDKLModel.__module__.endswith(".deep.crabnet")

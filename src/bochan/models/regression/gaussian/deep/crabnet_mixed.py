@@ -12,13 +12,14 @@ from torch import Tensor, nn
 from bochan.composition import CrabNetEncoder, MaterialProcessFusion
 from bochan.composition.encoders.crabnet import Checkpoint
 
-from .crabnet import (
-    CrabNetInputTransform,
-    _resolve_material_encoder,
-)
+from .crabnet import _resolve_material_encoder
 from .deepkernel import OutcomeTransformArg
 from .deepkernel_configurable import DeepKernelGaussianMixedGPModel
-from .material import MaterialGPFeatureExtractor, _validate_composition_element_ids
+from .material import (
+    CompositionMaterialInputTransform,
+    MaterialGPFeatureExtractor,
+    _validate_composition_element_ids,
+)
 
 
 class _CrabNetMixedContinuousFeatureExtractor(nn.Module):
@@ -42,7 +43,7 @@ class _CrabNetMixedContinuousFeatureExtractor(nn.Module):
     ) -> None:
         super().__init__()
         validated_element_ids = _validate_composition_element_ids(element_ids)
-        self.packer = CrabNetInputTransform(
+        self.packer = CompositionMaterialInputTransform(
             input_dim=continuous_input_dim,
             composition_indices=composition_indices,
             n_components=int(validated_element_ids.numel()),

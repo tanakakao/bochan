@@ -6,7 +6,6 @@ from torch import Tensor, nn
 from bochan.composition import MaterialEncoder
 from bochan.models.regression.gaussian.deep import (
     CompositionMaterialInputTransform,
-    CrabNetInputTransform,
     MaterialGPFeatureExtractor,
 )
 
@@ -76,7 +75,7 @@ def test_composition_transform_is_public_and_preserves_q_batch_gradients() -> No
     weighted = packed * packed.new_tensor([1.0, 2.0, 4.0, 0.5, 0.75])
     (gradient,) = torch.autograd.grad(weighted.sum(), raw)
 
-    assert issubclass(CrabNetInputTransform, CompositionMaterialInputTransform)
+    assert CompositionMaterialInputTransform.__module__.endswith(".deep.material")
     assert packed.shape == torch.Size([2, 1, 2, 5])
     torch.testing.assert_close(
         packed[..., :3].sum(dim=-1),

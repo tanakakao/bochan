@@ -15,14 +15,17 @@ from bochan.composition import CrabNetEncoder
 from bochan.composition.encoders.crabnet import Checkpoint
 
 from .crabnet import (
-    CrabNetInputTransform,
     _configure_dkl_encoder,
     _resolve_material_encoder,
     _validate_trainable_encoder_layers,
 )
 from .deepkernel import OutcomeTransformArg
 from .deepkernel_configurable import DeepKernelGaussianGPModel
-from .material import MaterialGPFeatureExtractor, _validate_composition_element_ids
+from .material import (
+    CompositionMaterialInputTransform,
+    MaterialGPFeatureExtractor,
+    _validate_composition_element_ids,
+)
 
 
 def _resolve_category_cardinalities(
@@ -123,7 +126,7 @@ class _CrabNetMixedDKLFeatureExtractor(nn.Module):
         ]
 
         validated_element_ids = _validate_composition_element_ids(element_ids)
-        self.packer = CrabNetInputTransform(
+        self.packer = CompositionMaterialInputTransform(
             input_dim=len(continuous_dims),
             composition_indices=continuous_composition_indices,
             n_components=int(validated_element_ids.numel()),

@@ -28,10 +28,6 @@ from .material import (
 _TrainableEncoderLayers = int | Literal["all"]
 
 
-class CrabNetInputTransform(CompositionMaterialInputTransform):
-    """CrabNet-specific name for the shared composition material transform."""
-
-
 def _resolve_material_encoder(
     encoder: CrabNetEncoder | nn.Module | None,
     checkpoint: Checkpoint | None,
@@ -147,7 +143,7 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
     first ``len(element_ids)`` columns contain fractions in the same order as
     the fixed atomic-number vocabulary ``element_ids``; any remaining columns
     are continuous process features. This is the low-level tensor contract,
-    not a second formula API. A :class:`CrabNetInputTransform` may instead map
+    not a second formula API. A :class:`CompositionMaterialInputTransform` may instead map
     canonical tabular composition coordinates to that packed representation.
 
     The CrabNet encoder is frozen and always kept in evaluation mode.  Its
@@ -180,7 +176,7 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
         strict_checkpoint: Require a complete encoder checkpoint state.
         likelihood: Optional GPyTorch likelihood.
         input_transform: ``"DEFAULT"`` normalizes process columns only.
-            :class:`CrabNetInputTransform` additionally supports canonical
+            :class:`CompositionMaterialInputTransform` additionally supports canonical
             tabular composition coordinates while preserving autograd.
         outcome_transform: Outcome transform forwarded to the Gaussian
             DeepKernel wrapper.
@@ -217,15 +213,15 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
 
         validated_element_ids = _validate_composition_element_ids(element_ids)
         composition_dim = int(validated_element_ids.numel())
-        if isinstance(input_transform, CrabNetInputTransform):
+        if isinstance(input_transform, CompositionMaterialInputTransform):
             if input_transform.composition_dim != composition_dim:
                 raise ValueError(
-                    "CrabNetInputTransform.n_components must match element_ids: "
+                    "CompositionMaterialInputTransform.n_components must match element_ids: "
                     f"{input_transform.composition_dim} != {composition_dim}."
                 )
             if train_X.shape[-1] != input_transform.input_dim:
                 raise ValueError(
-                    "train_X width must match CrabNetInputTransform.input_dim: "
+                    "train_X width must match CompositionMaterialInputTransform.input_dim: "
                     f"{train_X.shape[-1]} != {input_transform.input_dim}."
                 )
             process_dim = input_transform.process_dim
@@ -257,7 +253,7 @@ class CrabNetGPModel(DeepKernelGaussianGPModel):
         )
         resolved_input_transform = (
             input_transform
-            if isinstance(input_transform, CrabNetInputTransform)
+            if isinstance(input_transform, CompositionMaterialInputTransform)
             else _resolve_input_transform(
                 train_X,
                 composition_dim=composition_dim,
@@ -425,4 +421,4 @@ class CrabNetDKLModel(CrabNetGPModel):
         return self._trainable_encoder_layers
 
 
-__all__ = ["CrabNetDKLModel", "CrabNetGPModel", "CrabNetInputTransform"]
+__all__ = ["CrabNetDKLModel", "CrabNetGPModel"]

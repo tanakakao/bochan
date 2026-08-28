@@ -43,6 +43,7 @@ export interface WorkbenchContextValue {
   error: string | null;
   setError: (error: string | null) => void;
   dataset: DatasetResponse | null;
+  datasetRevision: number;
   columns: ColumnProfile[];
   selectableColumns: ColumnProfile[];
   targetCandidates: ColumnProfile[];
@@ -96,6 +97,7 @@ export interface WorkbenchContextValue {
   rawSamples: number;
   setRawSamples: (rawSamples: number) => void;
   result: RegressionResult | null;
+  resultRevision: number;
   canConfigure: boolean;
   settingsValid: boolean;
   candidateSettingsValid: boolean;

@@ -6,8 +6,6 @@ import {
 } from "../../context/WorkbenchContext";
 import { useWorkbenchMode } from "../../workbenchMode";
 import {
-  AUXILIARY_PAGES,
-  WORKBENCH_PAGES,
   clearAuxiliaryHash,
   currentAuxiliaryPage,
   type AuxiliaryPage
@@ -57,9 +55,6 @@ export function useWorkbenchShell() {
     : auxiliaryPage === "experiment" && experimentAvailable
       ? "experiment"
       : null;
-  const Page = activeAuxiliaryPage
-    ? AUXILIARY_PAGES[activeAuxiliaryPage]
-    : WORKBENCH_PAGES[step];
   const progressStepIndex = activeAuxiliaryPage === "experiment"
     ? visibleSteps.length - 1
     : Math.max(index, 0);
@@ -131,7 +126,6 @@ export function useWorkbenchShell() {
     step,
     visibleSteps,
     activeAuxiliaryPage,
-    Page,
     experimentAvailable,
     progressLabel,
     progressMeta,

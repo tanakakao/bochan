@@ -29,6 +29,7 @@ function cloneVariable(variable: SearchVariable): SearchVariable {
 /** Owns the loaded dataset and the user's target/feature selections. */
 export function useWorkbenchSelectionState() {
   const [dataset, setDataset] = useState<DatasetResponse | null>(null);
+  const [datasetRevision, setDatasetRevision] = useState(0);
   const [featureColumns, setFeatureColumns] = useState<string[]>([]);
   const [targetColumns, setTargetColumns] = useState<string[]>([]);
   const [targetSettings, setTargetSettings] = useState<Record<string, TargetSetting>>({});
@@ -51,6 +52,7 @@ export function useWorkbenchSelectionState() {
     targetSettingsRef.current = snapshot.targetSettings;
     variablesRef.current = snapshot.variables;
     setDataset(snapshot.dataset);
+    setDatasetRevision((current) => current + 1);
     setFeatureColumns(snapshot.featureColumns);
     setTargetColumns(snapshot.targetColumns);
     setTargetSettings(snapshot.targetSettings);
@@ -126,6 +128,7 @@ export function useWorkbenchSelectionState() {
 
   return {
     dataset,
+    datasetRevision,
     featureColumns,
     targetColumns,
     targetSettings,

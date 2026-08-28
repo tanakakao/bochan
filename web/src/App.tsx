@@ -3,6 +3,7 @@ import WorkbenchContextRail from "./components/workbench/WorkbenchContextRail";
 import WorkbenchErrorAlert from "./components/workbench/WorkbenchErrorAlert";
 import WorkbenchHeader from "./components/workbench/WorkbenchHeader";
 import WorkbenchLeftRail from "./components/workbench/WorkbenchLeftRail";
+import PersistentWorkbenchPages from "./components/workbench/PersistentWorkbenchPages";
 import WorkbenchStatusBar from "./components/workbench/WorkbenchStatusBar";
 import { useWorkbenchShell } from "./components/workbench/useWorkbenchShell";
 import { WorkbenchProvider, useWorkbench } from "./context/WorkbenchContext";
@@ -11,7 +12,6 @@ import TutorialGuide from "./tutorial/TutorialGuide";
 function WorkbenchLayout() {
   const { error, setError, busy, dataset, result } = useWorkbench();
   const shell = useWorkbenchShell();
-  const Page = shell.Page;
 
   return (
     <div className="app-root">
@@ -40,7 +40,10 @@ function WorkbenchLayout() {
         <section className="content" data-tutorial="workspace">
           <div className="content-inner">
             <WorkbenchErrorAlert error={error} onClose={() => setError(null)} />
-            <Page />
+            <PersistentWorkbenchPages
+              step={shell.step}
+              activeAuxiliaryPage={shell.activeAuxiliaryPage}
+            />
           </div>
         </section>
 

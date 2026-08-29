@@ -70,6 +70,16 @@ class RoostGPModel(DeepKernelGaussianGPModel):
     remain trainable. Encoder forward passes retain autograd with respect to
     composition fractions.
 
+    When optimizing the packed fraction representation directly with
+    :func:`botorch.optim.optimize_acqf`, pass an intra-point linear equality
+    constraint over the first ``len(element_ids)`` columns so that every
+    candidate remains on the unit simplex. Process columns remain outside that
+    equality and are optimized jointly within their box bounds. Formula-backed
+    workflows may instead optimize ALR or ILR coordinates through
+    :class:`CompositionMaterialInputTransform` and decode the composition slice
+    with :class:`bochan.composition.CompositionTransformer`; formula strings do
+    not enter the model posterior path.
+
     Args:
         train_X: ``[n, composition_dim + process_dim]`` training inputs.
         train_Y: Single-output targets with shape ``[n]`` or ``[n, 1]``.

@@ -4,11 +4,19 @@ from pathlib import Path
 
 import pytest
 import torch
+from botorch.acquisition.logei import (
+    qLogExpectedImprovement,
+    qLogNoisyExpectedImprovement,
+)
+from botorch.acquisition.monte_carlo import qUpperConfidenceBound
 from botorch.models.transforms.input import Normalize
+from botorch.optim import optimize_acqf
+from botorch.sampling.normal import SobolQMCNormalSampler
 from torch import Tensor, nn
 
 import bochan.composition.encoders.roost as roost_module
-from bochan.composition import RoostEncoder
+from bochan.composition import CompositionTransformer, RoostEncoder
+from bochan.fit.deep.deepkernel import fit_deepkernel_mll
 from bochan.models.regression.gaussian.deep import (
     CompositionMaterialInputTransform,
     RoostGPModel,
@@ -171,6 +179,104 @@ def test_process_features_are_normalized_fused_and_differentiable() -> None:
     assert all(parameter.grad is None for parameter in model.material_encoder.parameters())
 
 
+def test_model_supports_qlogei_qucb_and_qlognei() -> None:
+    model = _model(with_process=True)
+    train_X, train_Y = _data(with_process=True)
+    fit_deepkernel_mll(model.make_mll(), num_epochs=2)
+    candidates = train_X[:2].unsqueeze(0)
+    acquisitions = [
+        qLogExpectedImprovement(model=model, best_f=train_Y.max()),
+        qUpperConfidenceBound(model=model, beta=0.2),
+        qLogNoisyExpectedImprovement(model=model, X_baseline=train_X),
+    ]
+
+    values = [acquisition(candidates) for acquisition in acquisitions]
+
+    assert all(value.shape == torch.Size([1]) for value in values)
+    assert all(torch.isfinite(value).all() for value in values)
+    assert not any(parameter.requires_grad for parameter in model.material_encoder.parameters())
+    assert all(parameter.grad is None for parameter in model.material_encoder.parameters())
+
+
+def test_qlogei_gradient_spans_simplex_tangent_and_process_directions() -> None:
+    model = _model(with_process=True, latent_dim=4)
+    _, train_Y = _data(with_process=True)
+    acquisition = qLogExpectedImprovement(
+        model=model,
+        best_f=train_Y.max(),
+        sampler=SobolQMCNormalSampler(sample_shape=torch.Size([64]), seed=23),
+    )
+    test_X = torch.tensor(
+        [[[0.40, 0.35, 0.25, 1075.0, 3.0]]],
+        dtype=torch.double,
+        requires_grad=True,
+    )
+
+    value = acquisition(test_X)
+    (gradient,) = torch.autograd.grad(value.sum(), test_X)
+    composition_gradient = gradient[..., : model.composition_dim]
+    simplex_tangent_gradient = composition_gradient - composition_gradient.mean(
+        dim=-1,
+        keepdim=True,
+    )
+    process_gradient = gradient[..., model.composition_dim :]
+
+    assert torch.isfinite(value).all()
+    assert torch.isfinite(gradient).all()
+    assert simplex_tangent_gradient.abs().sum() > 1e-8
+    assert process_gradient.abs().sum() > 1e-8
+
+
+def test_optimize_acqf_jointly_optimizes_packed_composition_and_process() -> None:
+    model = _model(with_process=True, latent_dim=4)
+    _, train_Y = _data(with_process=True)
+    acquisition = qLogExpectedImprovement(
+        model=model,
+        best_f=train_Y.max(),
+        sampler=SobolQMCNormalSampler(sample_shape=torch.Size([64]), seed=29),
+    )
+    bounds = torch.tensor(
+        [
+            [0.05, 0.05, 0.05, 850.0, 0.5],
+            [0.80, 0.80, 0.80, 1300.0, 6.0],
+        ],
+        dtype=torch.double,
+    )
+    composition_constraint = (
+        torch.arange(model.composition_dim, device=bounds.device, dtype=torch.long),
+        torch.ones(model.composition_dim, device=bounds.device, dtype=bounds.dtype),
+        1.0,
+    )
+
+    candidates, acq_value = optimize_acqf(
+        acq_function=acquisition,
+        bounds=bounds,
+        q=3,
+        num_restarts=10,
+        raw_samples=256,
+        equality_constraints=[composition_constraint],
+        options={"batch_limit": 5, "maxiter": 50},
+    )
+    posterior = model.posterior(candidates)
+
+    assert candidates.shape == torch.Size([3, 5])
+    assert acq_value is not None
+    assert acq_value.shape == torch.Size([])
+    assert torch.isfinite(candidates).all()
+    assert torch.isfinite(acq_value)
+    assert torch.all(candidates >= bounds[0] - 1e-7)
+    assert torch.all(candidates <= bounds[1] + 1e-7)
+    torch.testing.assert_close(
+        candidates[..., : model.composition_dim].sum(dim=-1),
+        torch.ones(3, dtype=candidates.dtype),
+        rtol=1e-6,
+        atol=1e-6,
+    )
+    assert torch.isfinite(posterior.mean).all()
+    assert torch.isfinite(posterior.variance).all()
+    assert not any(parameter.requires_grad for parameter in model.material_encoder.parameters())
+
+
 def test_custom_projection_controls_gp_latent_width() -> None:
     train_X, train_Y = _data(with_process=True)
     projection = nn.Linear(6, 5).double()
@@ -237,6 +343,101 @@ def test_composition_transform_preserves_ilr_and_process_gradients() -> None:
         packed[..., :3].sum(dim=-1),
         torch.ones(2, dtype=torch.double),
     )
+
+
+def test_optimize_acqf_in_ilr_coordinates_decodes_formula_candidates() -> None:
+    torch.manual_seed(0)
+    fractions = _fractions()
+    process = _process()
+    formulas = [
+        "Fe0.6Co0.3Ni0.1",
+        "Fe0.5Co0.2Ni0.3",
+        "Fe0.4Co0.4Ni0.2",
+        "Fe0.3Co0.5Ni0.2",
+        "Fe0.2Co0.5Ni0.3",
+        "Fe0.1Co0.6Ni0.3",
+        "Fe0.7Co0.2Ni0.1",
+        "Fe0.2Co0.3Ni0.5",
+    ]
+    formula_transformer = CompositionTransformer(
+        elements=("Fe", "Co", "Ni"),
+        representation="ilr",
+        prefix="alloy",
+        precision=8,
+    )
+    composition_coordinates = torch.as_tensor(
+        formula_transformer.fit_transform(formulas),
+        dtype=torch.double,
+    )
+    train_X = torch.cat((composition_coordinates, process), dim=-1)
+    train_Y = (fractions[:, 0] - 0.4 * fractions[:, 2] + 0.001 * process[:, 0] + 0.05 * process[:, 1]).unsqueeze(-1)
+    input_transform = CompositionMaterialInputTransform(
+        input_dim=4,
+        composition_indices=[0, 1],
+        n_components=3,
+        method="ilr",
+        process_bounds=torch.tensor(
+            [[850.0, 0.5], [1300.0, 6.0]],
+            dtype=torch.double,
+        ),
+    ).double()
+    model = RoostGPModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        element_ids=_element_ids(),
+        encoder=FakeRoostBackbone(),
+        latent_dim=4,
+        input_transform=input_transform,
+        outcome_transform=None,
+    )
+    acquisition = qLogExpectedImprovement(
+        model=model,
+        best_f=train_Y.max(),
+        sampler=SobolQMCNormalSampler(sample_shape=torch.Size([64]), seed=31),
+    )
+    coordinate_lower = composition_coordinates.min(dim=0).values - 0.25
+    coordinate_upper = composition_coordinates.max(dim=0).values + 0.25
+    bounds = torch.stack(
+        (
+            torch.cat((coordinate_lower, torch.tensor([850.0, 0.5], dtype=torch.double))),
+            torch.cat((coordinate_upper, torch.tensor([1300.0, 6.0], dtype=torch.double))),
+        )
+    )
+
+    candidates, acq_value = optimize_acqf(
+        acq_function=acquisition,
+        bounds=bounds,
+        q=2,
+        num_restarts=8,
+        raw_samples=128,
+        options={"batch_limit": 4, "maxiter": 50},
+    )
+    decoded_formulas = formula_transformer.inverse_transform(candidates[..., :2].detach().cpu().numpy())
+    roundtrip_coordinates = torch.as_tensor(
+        formula_transformer.transform(decoded_formulas),
+        dtype=candidates.dtype,
+        device=candidates.device,
+    )
+    gradient_X = candidates.detach().unsqueeze(0).requires_grad_(True)
+    gradient_value = acquisition(gradient_X)
+    (gradient,) = torch.autograd.grad(gradient_value.sum(), gradient_X)
+    posterior = model.posterior(candidates)
+
+    assert candidates.shape == torch.Size([2, 4])
+    assert len(decoded_formulas) == 2
+    assert all(formula.startswith("Fe") and "Co" in formula and "Ni" in formula for formula in decoded_formulas)
+    torch.testing.assert_close(
+        roundtrip_coordinates,
+        candidates[..., :2],
+        rtol=1e-6,
+        atol=1e-6,
+    )
+    assert torch.isfinite(acq_value)
+    assert torch.isfinite(gradient).all()
+    assert gradient[..., :2].abs().sum() > 1e-8
+    assert gradient[..., 2:].abs().sum() > 1e-8
+    assert torch.isfinite(posterior.mean).all()
+    assert torch.isfinite(posterior.variance).all()
 
 
 def test_zero_fraction_elements_remain_finite() -> None:

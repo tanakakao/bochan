@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,8 @@ from bochan.composition import CompositionTransformer, RoostEncoder
 from bochan.fit.deep.deepkernel import fit_deepkernel_mll
 from bochan.models.regression.gaussian.deep import (
     CompositionMaterialInputTransform,
+    CrabNetDKLModel,
+    RoostDKLModel,
     RoostGPModel,
 )
 
@@ -50,6 +53,66 @@ class FakeRoostBackbone(nn.Module):
         pooled = node_features.new_zeros((num_materials, self.output_dim))
         pooled.index_add_(0, cry_elem_idx, node_features)
         return torch.tanh(pooled)
+
+
+class FakeRoostDescriptor(nn.Module):
+    """Differentiable Roost descriptor exposing graphs and crystal pooling."""
+
+    def __init__(self, output_dim: int = 4, n_graphs: int = 3, cry_heads: int = 2) -> None:
+        super().__init__()
+        self.embedding = nn.Linear(output_dim, output_dim)
+        self.graphs = nn.ModuleList(nn.Linear(output_dim, output_dim) for _ in range(n_graphs))
+        self.cry_pool = nn.ModuleList(nn.Linear(output_dim, output_dim) for _ in range(cry_heads))
+
+    def forward(
+        self,
+        elem_weights: Tensor,
+        elem_fea: Tensor,
+        self_idx: Tensor,
+        nbr_idx: Tensor,
+        cry_elem_idx: Tensor,
+    ) -> Tensor:
+        del self_idx, nbr_idx
+        features = torch.tanh(self.embedding(elem_fea))
+        for graph in self.graphs:
+            features = features + torch.tanh(graph(features))
+
+        num_materials = int(cry_elem_idx[-1].item()) + 1
+        normalizer = elem_weights.new_zeros((num_materials, 1))
+        normalizer.index_add_(0, cry_elem_idx, elem_weights)
+        pooled_heads: list[Tensor] = []
+        for pool in self.cry_pool:
+            messages = torch.tanh(pool(features)) * elem_weights
+            pooled = messages.new_zeros((num_materials, messages.shape[-1]))
+            pooled.index_add_(0, cry_elem_idx, messages)
+            pooled_heads.append(pooled / normalizer.clamp_min(torch.finfo(messages.dtype).eps))
+        return torch.stack(pooled_heads).mean(dim=0)
+
+
+class LayeredFakeRoostBackbone(nn.Module):
+    """Descriptor-only Roost backbone with the upstream module structure."""
+
+    def __init__(self, output_dim: int = 4, n_graphs: int = 3, cry_heads: int = 2) -> None:
+        super().__init__()
+        self.output_dim = output_dim
+        self.elem_embedding = nn.Embedding(119, output_dim)
+        self.material_nn = FakeRoostDescriptor(output_dim, n_graphs, cry_heads)
+
+    def forward(
+        self,
+        elem_weights: Tensor,
+        elem_fea: Tensor,
+        self_idx: Tensor,
+        nbr_idx: Tensor,
+        cry_elem_idx: Tensor,
+    ) -> Tensor:
+        return self.material_nn(
+            elem_weights,
+            self.elem_embedding(elem_fea),
+            self_idx,
+            nbr_idx,
+            cry_elem_idx,
+        )
 
 
 def _element_ids() -> Tensor:
@@ -109,6 +172,28 @@ def _model(*, with_process: bool, latent_dim: int = 3) -> RoostGPModel:
         element_ids=_element_ids(),
         encoder=FakeRoostBackbone(),
         latent_dim=latent_dim,
+        outcome_transform=None,
+    )
+
+
+def _dkl_model(
+    *,
+    with_process: bool,
+    encoder_training: str = "partial",
+    trainable_encoder_layers: int = 1,
+    n_graphs: int = 3,
+    latent_dim: int = 4,
+) -> RoostDKLModel:
+    torch.manual_seed(0)
+    train_X, train_Y = _data(with_process=with_process)
+    return RoostDKLModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        element_ids=_element_ids(),
+        encoder=LayeredFakeRoostBackbone(n_graphs=n_graphs),
+        latent_dim=latent_dim,
+        encoder_training=encoder_training,  # type: ignore[arg-type]
+        trainable_encoder_layers=trainable_encoder_layers,
         outcome_transform=None,
     )
 
@@ -177,6 +262,248 @@ def test_process_features_are_normalized_fused_and_differentiable() -> None:
     assert tangent_gradient.abs().sum() > 1e-8
     assert gradient[..., model.composition_dim :].abs().sum() > 1e-8
     assert all(parameter.grad is None for parameter in model.material_encoder.parameters())
+
+
+def test_dkl_partial_unfreezes_final_message_layers_and_crystal_pool() -> None:
+    model = _dkl_model(
+        with_process=True,
+        encoder_training="partial",
+        trainable_encoder_layers=2,
+    )
+    encoder = model.material_encoder.encoder
+    descriptor = encoder.material_nn
+
+    assert model.encoder_training == "partial"
+    assert model.trainable_encoder_layers == 2
+    assert not any(parameter.requires_grad for parameter in encoder.elem_embedding.parameters())
+    assert not any(parameter.requires_grad for parameter in descriptor.embedding.parameters())
+    assert not any(parameter.requires_grad for parameter in descriptor.graphs[0].parameters())
+    assert all(parameter.requires_grad for parameter in descriptor.graphs[1].parameters())
+    assert all(parameter.requires_grad for parameter in descriptor.graphs[2].parameters())
+    assert all(parameter.requires_grad for parameter in descriptor.cry_pool.parameters())
+    assert all(parameter.requires_grad for parameter in model.projection.parameters())
+
+    model.train()
+    assert not model.material_encoder.training
+    assert not encoder.training
+    assert not encoder.elem_embedding.training
+    assert not descriptor.training
+    assert not descriptor.embedding.training
+    assert not descriptor.graphs[0].training
+    assert descriptor.graphs[1].training
+    assert descriptor.graphs[2].training
+    assert all(pool.training for pool in descriptor.cry_pool)
+
+    model.eval()
+    assert not any(graph.training for graph in descriptor.graphs)
+    assert not any(pool.training for pool in descriptor.cry_pool)
+
+
+def test_dkl_full_unfreezes_element_embedding_and_complete_descriptor() -> None:
+    model = _dkl_model(
+        with_process=False,
+        encoder_training="full",
+    )
+    encoder = model.material_encoder.encoder
+    element_before = {name: parameter.detach().clone() for name, parameter in encoder.elem_embedding.named_parameters()}
+    descriptor_before = {name: parameter.detach().clone() for name, parameter in encoder.material_nn.named_parameters()}
+
+    assert model.encoder_training == "full"
+    assert all(parameter.requires_grad for parameter in encoder.elem_embedding.parameters())
+    assert all(parameter.requires_grad for parameter in encoder.material_nn.parameters())
+    assert all(parameter.requires_grad for parameter in model.projection.parameters())
+
+    model.train()
+    assert model.material_encoder.training
+    assert encoder.training
+    assert encoder.elem_embedding.training
+    assert encoder.material_nn.training
+    assert all(graph.training for graph in encoder.material_nn.graphs)
+    assert all(pool.training for pool in encoder.material_nn.cry_pool)
+
+    model.eval()
+    assert not model.material_encoder.training
+    assert not encoder.training
+
+    fit_deepkernel_mll(model.make_mll(), num_epochs=2, lr=0.01)
+
+    assert any(
+        not torch.equal(dict(encoder.elem_embedding.named_parameters())[name], before)
+        for name, before in element_before.items()
+    )
+    assert any(
+        not torch.equal(dict(encoder.material_nn.named_parameters())[name], before)
+        for name, before in descriptor_before.items()
+    )
+
+
+def test_dkl_fit_jointly_updates_selected_roost_projection_and_exact_gp() -> None:
+    model = _dkl_model(
+        with_process=True,
+        encoder_training="partial",
+        trainable_encoder_layers=1,
+    )
+    named_encoder_parameters = dict(model.material_encoder.named_parameters())
+    frozen_before = {
+        name: parameter.detach().clone()
+        for name, parameter in named_encoder_parameters.items()
+        if not parameter.requires_grad
+    }
+    trainable_before = {
+        name: parameter.detach().clone()
+        for name, parameter in named_encoder_parameters.items()
+        if parameter.requires_grad
+    }
+    projection_before = {name: parameter.detach().clone() for name, parameter in model.projection.named_parameters()}
+    gp_before = {
+        name: parameter.detach().clone()
+        for name, parameter in model.deepkernel.named_parameters()
+        if not name.startswith("feature_extractor.")
+    }
+
+    fit_deepkernel_mll(model.make_mll(), num_epochs=3, lr=0.01)
+
+    assert trainable_before
+    assert all(
+        torch.equal(parameter, frozen_before[name])
+        for name, parameter in named_encoder_parameters.items()
+        if name in frozen_before
+    )
+    assert any(not torch.equal(named_encoder_parameters[name], before) for name, before in trainable_before.items())
+    assert any(
+        not torch.equal(dict(model.projection.named_parameters())[name], before)
+        for name, before in projection_before.items()
+    )
+    assert any(
+        not torch.equal(dict(model.deepkernel.named_parameters())[name], before) for name, before in gp_before.items()
+    )
+    assert all(parameter.grad is None for name, parameter in named_encoder_parameters.items() if name in frozen_before)
+    assert all(
+        parameter.grad is not None and torch.isfinite(parameter.grad).all()
+        for name, parameter in named_encoder_parameters.items()
+        if name in trainable_before
+    )
+
+
+def test_dkl_qlogei_preserves_composition_and_process_input_gradients() -> None:
+    model = _dkl_model(with_process=True)
+    _, train_Y = _data(with_process=True)
+    acquisition = qLogExpectedImprovement(
+        model=model,
+        best_f=train_Y.max(),
+        sampler=SobolQMCNormalSampler(sample_shape=torch.Size([64]), seed=37),
+    )
+    test_X = torch.tensor(
+        [[[0.40, 0.35, 0.25, 1075.0, 3.0]]],
+        dtype=torch.double,
+        requires_grad=True,
+    )
+
+    value = acquisition(test_X)
+    (gradient,) = torch.autograd.grad(value.sum(), test_X)
+    composition_gradient = gradient[..., : model.composition_dim]
+    tangent_gradient = composition_gradient - composition_gradient.mean(
+        dim=-1,
+        keepdim=True,
+    )
+
+    assert torch.isfinite(value).all()
+    assert torch.isfinite(gradient).all()
+    assert tangent_gradient.abs().sum() > 1e-8
+    assert gradient[..., model.composition_dim :].abs().sum() > 1e-8
+
+
+def test_dkl_zero_fraction_inputs_keep_active_gradients_finite() -> None:
+    model = _dkl_model(with_process=False)
+    test_X = torch.tensor(
+        [[0.7, 0.3, 0.0], [0.0, 0.6, 0.4]],
+        dtype=torch.double,
+        requires_grad=True,
+    )
+
+    projected = model.material_feature_extractor(test_X)
+    posterior = model.posterior(test_X)
+    posterior.rsample().sum().backward()
+
+    assert projected.shape == torch.Size([2, model.latent_dim])
+    assert torch.isfinite(projected).all()
+    assert torch.isfinite(posterior.mean).all()
+    assert torch.isfinite(posterior.variance).all()
+    assert test_X.grad is not None
+    assert torch.isfinite(test_X.grad).all()
+    assert test_X.grad[test_X.detach() > 0].abs().sum() > 1e-8
+
+
+@pytest.mark.parametrize("latent_dim", [2, 5])
+def test_dkl_latent_projection_width_is_configurable(latent_dim: int) -> None:
+    model = _dkl_model(
+        with_process=True,
+        latent_dim=latent_dim,
+    )
+    train_X, _ = _data(with_process=True)
+
+    projected = model.material_feature_extractor(model.transform_inputs(train_X[:2]))
+
+    assert projected.shape == torch.Size([2, latent_dim])
+    assert model.latent_dim == latent_dim
+    assert model.deepkernel.covar_module.base_kernel.ard_num_dims == latent_dim
+
+
+def test_dkl_save_load_preserves_policy_and_posterior(tmp_path: Path) -> None:
+    model = _dkl_model(
+        with_process=True,
+        encoder_training="partial",
+        trainable_encoder_layers=2,
+    )
+    train_X, _ = _data(with_process=True)
+    model.eval()
+    reference = model.posterior(train_X[:2])
+    path = tmp_path / "roost_dkl.pt"
+
+    torch.save(model, path)
+    restored = torch.load(path, map_location="cpu", weights_only=False)
+    restored_posterior = restored.posterior(train_X[:2])
+
+    assert isinstance(restored, RoostDKLModel)
+    assert restored.encoder_training == "partial"
+    assert restored.trainable_encoder_layers == 2
+    torch.testing.assert_close(restored_posterior.mean, reference.mean)
+    torch.testing.assert_close(restored_posterior.variance, reference.variance)
+
+    restored.train()
+    descriptor = restored.material_encoder.encoder.material_nn
+    assert not restored.material_encoder.training
+    assert not descriptor.graphs[0].training
+    assert descriptor.graphs[1].training
+    assert descriptor.graphs[2].training
+    assert all(pool.training for pool in descriptor.cry_pool)
+
+
+def test_roost_dkl_matches_crabnet_dkl_canonical_constructor_surface() -> None:
+    roost_parameters = inspect.signature(RoostDKLModel).parameters
+    crabnet_parameters = inspect.signature(CrabNetDKLModel).parameters
+    shared_parameters = {
+        "train_X",
+        "train_Y",
+        "train_Yvar",
+        "element_ids",
+        "encoder",
+        "checkpoint",
+        "latent_dim",
+        "fusion",
+        "projection",
+        "strict_checkpoint",
+        "trainable_encoder_layers",
+        "likelihood",
+        "input_transform",
+        "outcome_transform",
+    }
+
+    assert shared_parameters <= roost_parameters.keys()
+    assert shared_parameters <= crabnet_parameters.keys()
+    assert roost_parameters["trainable_encoder_layers"].default == 1
+    assert crabnet_parameters["trainable_encoder_layers"].default == 1
+    assert "encoder_training" in roost_parameters
 
 
 def test_model_supports_qlogei_qucb_and_qlognei() -> None:
@@ -586,6 +913,50 @@ def test_model_rejects_unsupported_or_invalid_inputs() -> None:
         )
 
 
+@pytest.mark.parametrize("trainable_encoder_layers", [0, True, -1])
+def test_dkl_rejects_invalid_trainable_message_layer_count(
+    trainable_encoder_layers: object,
+) -> None:
+    train_X, train_Y = _data(with_process=False)
+
+    with pytest.raises(ValueError, match="positive integer"):
+        RoostDKLModel(
+            train_X=train_X,
+            train_Y=train_Y,
+            element_ids=_element_ids(),
+            encoder=LayeredFakeRoostBackbone(),
+            trainable_encoder_layers=trainable_encoder_layers,  # type: ignore[arg-type]
+        )
+
+
+def test_dkl_rejects_invalid_mode_or_missing_roost_descriptor_structure() -> None:
+    train_X, train_Y = _data(with_process=False)
+
+    with pytest.raises(ValueError, match="encoder_training"):
+        RoostDKLModel(
+            train_X=train_X,
+            train_Y=train_Y,
+            element_ids=_element_ids(),
+            encoder=LayeredFakeRoostBackbone(),
+            encoder_training="frozen",  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="encoder.material_nn"):
+        RoostDKLModel(
+            train_X=train_X,
+            train_Y=train_Y,
+            element_ids=_element_ids(),
+            encoder=FakeRoostBackbone(),
+        )
+    with pytest.raises(ValueError, match="exceeds the number of Roost"):
+        RoostDKLModel(
+            train_X=train_X,
+            train_Y=train_Y,
+            element_ids=_element_ids(),
+            encoder=LayeredFakeRoostBackbone(n_graphs=2),
+            trainable_encoder_layers=3,
+        )
+
+
 def test_real_aviary_roost_gp_runs_on_cpu_when_materials_extra_is_installed() -> None:
     pytest.importorskip("aviary.roost.model")
     material_encoder = RoostEncoder(
@@ -620,3 +991,57 @@ def test_real_aviary_roost_gp_runs_on_cpu_when_materials_extra_is_installed() ->
     assert torch.isfinite(test_X.grad).all()
     assert test_X.grad.abs().sum() > 0
     assert not any(parameter.requires_grad for parameter in model.material_encoder.parameters())
+
+
+def test_real_aviary_roost_dkl_partially_unfreezes_and_runs_on_cpu() -> None:
+    pytest.importorskip("aviary.roost.model")
+    material_encoder = RoostEncoder(
+        elem_fea_len=8,
+        n_graph=2,
+        elem_heads=1,
+        elem_gate=(8,),
+        elem_msg=(8,),
+        cry_heads=1,
+        cry_gate=(8,),
+        cry_msg=(8,),
+    ).double()
+    train_X, train_Y = _data(with_process=False)
+    model = RoostDKLModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        element_ids=_element_ids(),
+        encoder=material_encoder,
+        latent_dim=4,
+        encoder_training="partial",
+        trainable_encoder_layers=1,
+        outcome_transform=None,
+    )
+    raw_encoder = model.material_encoder.encoder
+    test_X = train_X[:2].clone().requires_grad_(True)
+
+    model.train()
+    assert not any(parameter.requires_grad for parameter in raw_encoder.elem_embedding.parameters())
+    assert not any(parameter.requires_grad for parameter in raw_encoder.material_nn.embedding.parameters())
+    assert not any(parameter.requires_grad for parameter in raw_encoder.material_nn.graphs[0].parameters())
+    assert all(parameter.requires_grad for parameter in raw_encoder.material_nn.graphs[1].parameters())
+    assert all(parameter.requires_grad for parameter in raw_encoder.material_nn.cry_pool.parameters())
+    assert not raw_encoder.material_nn.graphs[0].training
+    assert raw_encoder.material_nn.graphs[1].training
+    assert all(pool.training for pool in raw_encoder.material_nn.cry_pool)
+
+    posterior = model.posterior(test_X)
+    posterior.rsample().sum().backward()
+
+    assert torch.isfinite(posterior.mean).all()
+    assert torch.isfinite(posterior.variance).all()
+    assert test_X.grad is not None
+    assert torch.isfinite(test_X.grad).all()
+    assert test_X.grad.abs().sum() > 0
+    assert all(
+        parameter.grad is not None and torch.isfinite(parameter.grad).all()
+        for parameter in raw_encoder.material_nn.graphs[1].parameters()
+    )
+    assert all(
+        parameter.grad is not None and torch.isfinite(parameter.grad).all()
+        for parameter in raw_encoder.material_nn.cry_pool.parameters()
+    )

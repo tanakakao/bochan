@@ -79,10 +79,10 @@ def _validate_trainable_encoder_layers(trainable_encoder_layers: int) -> int:
     return trainable_encoder_layers
 
 
-def _roost_fine_tuning_components(
+def _roost_fine_tuning_modules(
     material_encoder: RoostEncoder,
-) -> tuple[nn.Module, nn.Module, tuple[nn.Module, ...], nn.Module]:
-    """Return Roost element embedding, descriptor, graphs, and crystal pool."""
+) -> tuple[nn.Module, nn.Module]:
+    """Return the modules that define the complete Roost representation."""
 
     raw_encoder = material_encoder.encoder
     elem_embedding = getattr(raw_encoder, "elem_embedding", None)
@@ -91,6 +91,13 @@ def _roost_fine_tuning_components(
         raise ValueError(
             "Roost fine-tuning requires encoder.elem_embedding and encoder.material_nn descriptor modules."
         )
+    return elem_embedding, material_nn
+
+
+def _roost_partial_fine_tuning_modules(
+    material_nn: nn.Module,
+) -> tuple[tuple[nn.Module, ...], nn.Module]:
+    """Return the Aviary internals needed to select partial-training layers."""
 
     descriptor_embedding = getattr(material_nn, "embedding", None)
     graphs = getattr(material_nn, "graphs", None)
@@ -107,7 +114,7 @@ def _roost_fine_tuning_components(
             "Roost fine-tuning requires encoder.material_nn.cry_pool to be a "
             "non-empty torch.nn.ModuleList or torch.nn.Sequential."
         )
-    return elem_embedding, material_nn, tuple(graphs), cry_pool
+    return tuple(graphs), cry_pool
 
 
 def _unique_module_parameters(modules: tuple[nn.Module, ...]) -> tuple[nn.Parameter, ...]:
@@ -135,7 +142,7 @@ def _configure_dkl_encoder(
     for parameter in material_encoder.parameters():
         parameter.requires_grad_(False)
 
-    elem_embedding, material_nn, graphs, cry_pool = _roost_fine_tuning_components(material_encoder)
+    elem_embedding, material_nn = _roost_fine_tuning_modules(material_encoder)
     if encoder_training == "full":
         parameters = _unique_module_parameters((elem_embedding, material_nn))
         if not parameters:
@@ -144,6 +151,7 @@ def _configure_dkl_encoder(
             parameter.requires_grad_(True)
         return "full", ()
 
+    graphs, cry_pool = _roost_partial_fine_tuning_modules(material_nn)
     if trainable_encoder_layers > len(graphs):
         raise ValueError(
             "trainable_encoder_layers exceeds the number of Roost "

@@ -115,6 +115,32 @@ class LayeredFakeRoostBackbone(nn.Module):
         )
 
 
+class OpaqueFakeRoostBackbone(nn.Module):
+    """Five-tensor backbone without Aviary's partial-training internals."""
+
+    def __init__(self, output_dim: int = 4) -> None:
+        super().__init__()
+        self.output_dim = output_dim
+        self.elem_embedding = nn.Embedding(119, output_dim)
+        self.material_nn = nn.Linear(output_dim, output_dim)
+
+    def forward(
+        self,
+        elem_weights: Tensor,
+        elem_fea: Tensor,
+        self_idx: Tensor,
+        nbr_idx: Tensor,
+        cry_elem_idx: Tensor,
+    ) -> Tensor:
+        del self_idx, nbr_idx
+        features = torch.tanh(self.material_nn(self.elem_embedding(elem_fea)))
+        weighted = features * elem_weights
+        num_materials = int(cry_elem_idx[-1].item()) + 1
+        pooled = weighted.new_zeros((num_materials, self.output_dim))
+        pooled.index_add_(0, cry_elem_idx, weighted)
+        return pooled
+
+
 def _element_ids() -> Tensor:
     return torch.tensor([26, 27, 28], dtype=torch.long)
 
@@ -335,6 +361,30 @@ def test_dkl_full_unfreezes_element_embedding_and_complete_descriptor() -> None:
         not torch.equal(dict(encoder.material_nn.named_parameters())[name], before)
         for name, before in descriptor_before.items()
     )
+
+
+def test_dkl_full_supports_injected_backbone_without_partial_training_layout() -> None:
+    train_X, train_Y = _data(with_process=False)
+    model = RoostDKLModel(
+        train_X=train_X,
+        train_Y=train_Y,
+        element_ids=_element_ids(),
+        encoder=OpaqueFakeRoostBackbone(),
+        encoder_training="full",
+        outcome_transform=None,
+    )
+    encoder = model.material_encoder.encoder
+    test_X = train_X[:2].clone().requires_grad_(True)
+
+    sample = model.posterior(test_X).rsample()
+    gradients = torch.autograd.grad(
+        sample.sum(),
+        (test_X, *encoder.elem_embedding.parameters(), *encoder.material_nn.parameters()),
+    )
+
+    assert all(parameter.requires_grad for parameter in encoder.elem_embedding.parameters())
+    assert all(parameter.requires_grad for parameter in encoder.material_nn.parameters())
+    assert all(gradient is not None and torch.isfinite(gradient).all() for gradient in gradients)
 
 
 def test_dkl_fit_jointly_updates_selected_roost_projection_and_exact_gp() -> None:

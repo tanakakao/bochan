@@ -1,6 +1,6 @@
 # Composition best-subset search
 
-`composition_sites` can opt a fixed-total composition into acquisition-aware element support search.
+`composition_sites` can opt a composition into acquisition-aware element support search.
 
 ```python
 bo = TabularBayesianOptimizer(
@@ -35,24 +35,23 @@ bo = TabularBayesianOptimizer(
 
 Element support is always defined in raw composition space. A zero CLR, ALR, or ILR coordinate does **not** mean that an element is absent, so transformed coordinates are never sparsified directly.
 
-For `representation="fractions"`, raw element fractions and model decision features coincide. For `"clr"`, `"alr"`, and `"ilr"`, bochan uses a two-space bridge:
+For fixed-total compositions, raw decisions are element fractions. For `representation="fractions"`, those decisions coincide with the model composition features. For `"clr"`, `"alr"`, and `"ilr"`, bochan uses a two-space bridge:
 
-1. support selection and composition constraints are optimized in synthetic raw-fraction decision variables;
+1. support selection and composition constraints are optimized in synthetic raw-fraction variables;
 2. every candidate is differentiably transformed into the fitted CLR / ALR / ILR coordinates before the surrogate and acquisition function are evaluated;
-3. the exact raw fractions are retained for final formula/fraction output, including structural zeros.
+3. exact raw fractions are retained as the support-defining values, including structural zeros.
 
 The fitted surrogate is reused as-is. Best Subset does not refit one model per support.
 
 ## Support semantics
 
-The composition resolver maps raw element rules into the generic k-sparse best-subset optimizer:
+The composition resolver maps raw element rules into the generic k-sparse Best Subset optimizer:
 
-- required components stay free-valued and are present in every candidate;
+- required components are present in every candidate;
 - positive component lower bounds also imply required support;
 - forbidden components and zero upper bounds are fixed to zero;
-- only optional element fraction features are placed in the combinatorial `comp_idx` group;
+- only optional element variables are placed in the combinatorial `comp_idx` group;
 - `k` is derived from `max_components - required_component_count`;
-- fraction decisions receive a fixed-total equality constraint and final repair;
 - active dimensions receive support-conditional positive floors, so an exact-k support cannot silently collapse to fewer active elements;
 - one support is shared by the whole joint q-batch.
 
@@ -72,9 +71,57 @@ opt_config = OptimizeConfig(
 )
 ```
 
+## Variable-total compositions
+
+Variable-total Best Subset is optimized in **raw absolute component amounts**, not in `fraction + total` coordinates.
+
+For example, an element-column site may be configured as:
+
+```python
+composition_sites={
+    "alloy": {
+        "element_columns": {
+            "Al": "Al",
+            "Ti": "Ti",
+            "V": "V",
+            "Nb": "Nb",
+        },
+        "representation": "ilr",
+        "total_bounds": [40.0, 90.0],
+        "bounds": {
+            "Al": [5.0, 70.0],
+            "Ti": [0.0, 70.0],
+            "V": [0.0, 70.0],
+            "Nb": [0.0, 70.0],
+        },
+        "required_components": ["Al"],
+        "min_components": 3,
+        "max_components": 3,
+        "support_selection": "best_subset",
+        "best_subset_strategy": "auto",
+    }
+}
+```
+
+If the raw amount vector is `a`, bochan derives the model inputs as follows:
+
+- total = `sum(a)`;
+- normalized composition = `a / sum(a)`;
+- the normalized composition is transformed to Fraction / CLR / ALR / ILR coordinates;
+- the derived total is inserted into the fitted model's total feature;
+- process variables keep their normal decision coordinates.
+
+This choice keeps support, absolute component bounds, `total_bounds`, and amount-basis element constraints in one decision space. It also avoids introducing bilinear constraints of the form `fraction * total`.
+
+`total_bounds` are enforced as linear inequalities on the sum of raw amounts. A linear constraint involving the fitted total feature is expanded to the same sum of amount variables. Element linear constraints for a variable-total Best Subset site are resolved directly to synthetic `__amount__<Element>` variables.
+
+Exact, Beam, and Auto support search reuse the same generic Best Subset implementation used by fixed-total compositions. The fitted surrogate and acquisition function are still evaluated in their original model space.
+
+Variable-total component step grids are not yet supported; the continuous amount formulation is used in this phase.
+
 ## Component step grids
 
-Best Subset can also return experiment-ready stepped compositions, for example 5 at.% increments:
+Fixed-total Best Subset can return experiment-ready stepped compositions, for example 5 at.% increments:
 
 ```python
 composition_sites={
@@ -94,7 +141,7 @@ composition_sites={
 }
 ```
 
-The inner acquisition optimization remains continuous. For each exact support, the final composition is then projected with a small mixed-integer program onto the nearest feasible grid point while preserving:
+The inner acquisition optimization remains continuous. For each exact support, the final composition is projected with a small mixed-integer program onto the nearest feasible grid point while preserving:
 
 - the selected exact-k support;
 - component lower/upper bounds;
@@ -113,7 +160,7 @@ Step-grid Best Subset currently uses exhaustive support search:
 - `"auto"` is supported only when the support count is within `best_subset_max_combinations`, so Auto resolves to Exact;
 - `"beam"` with component steps is rejected explicitly.
 
-The current step-grid projector changes only the composition block. To avoid silently invalidating a constraint after projection, step-grid Best Subset also rejects for now:
+The current fixed-total step-grid projector also rejects for now:
 
 - additional linear constraints involving composition fractions / elements;
 - non-zero fixed composition fraction values;
@@ -123,34 +170,36 @@ Process-only linear constraints and process-variable rounding/fixed values remai
 
 ## Web / API
 
-The React/FastAPI workbench transports component steps unchanged for Best Subset. Selecting Best Subset no longer clears configured steps.
+The current React/FastAPI composition workbench remains **fixed-total**. It transports fixed-total Best Subset settings, log-ratio raw-space search, and component steps, but it does not yet expose `total_bounds` controls.
 
-The UI warns when a stepped search would resolve to Beam. The canonical backend resolver remains the source of truth for Exact/Auto thresholds, grid feasibility, and unsupported constraint combinations.
+The Python/tabular API supports the variable-total Best Subset path described above. A future Web phase can add `total_bounds` transport and UI without changing the raw absolute-amount optimization semantics.
 
-For CLR / ALR / ILR, the Web response restores formula and fraction columns from the exact raw decision candidate rather than inferring support from finite pseudocount log-ratio coordinates.
+For fixed-total CLR / ALR / ILR searches, the Web response restores formula and fraction columns from the exact raw decision candidate rather than inferring support from finite pseudocount log-ratio coordinates.
 
 ## Current scope
 
 Supported:
 
-- one best-subset composition site per candidate optimization;
-- fixed composition total;
+- one Best Subset composition site per candidate optimization;
+- fixed-total and variable-total compositions in the Python/tabular API;
 - Fraction / CLR / ALR / ILR surrogate representations;
 - exact cardinality (`min_components == max_components`);
-- element bounds;
 - required and forbidden elements;
-- continuous compositions with exact, beam, or auto support search;
-- component step grids with Exact support search (or Auto resolving to Exact);
+- fixed-total fractional bounds and variable-total absolute amount bounds;
+- continuous compositions with Exact, Beam, or Auto support search;
+- fixed-total component step grids with Exact support search (or Auto resolving to Exact);
+- variable-total `total_bounds` and raw amount linear constraints;
 - shared support for joint q-batches;
-- Web/API transport for raw-space and stepped Best Subset settings.
+- fixed-total Web/API transport for raw-space and stepped Best Subset settings.
 
 Still explicit future extensions:
 
-- variable-total composition sites;
-- multiple simultaneous composition best-subset groups;
+- Web/React `total_bounds` controls for variable-total Best Subset;
+- variable-total component step/grid projection;
+- multiple simultaneous composition Best Subset groups;
 - variable active-component ranges (`min_components != max_components`);
-- Beam search over stepped compositions;
-- joint step-grid MILP enforcement of additional composition linear constraints;
+- Beam search over stepped fixed-total compositions;
+- joint fixed-total step-grid MILP enforcement of additional composition linear constraints;
 - one-shot acquisition functions that introduce augmented optimization variables.
 
 These cases are intentionally rejected instead of falling back to transformed-coordinate sparsity or post-hoc rounding that would change the optimization problem.

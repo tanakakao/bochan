@@ -106,6 +106,13 @@ export default function CompositionBestSubsetSettings() {
     }));
   }
 
+  function clearComponentSteps(): void {
+    update((current) => ({
+      ...current,
+      steps: Object.fromEntries(current.elements.map((element) => [element, null]))
+    }));
+  }
+
   return (
     <section className="constraint-section composition-best-subset-settings-react">
       <div className="constraint-section-heading">
@@ -275,9 +282,14 @@ export default function CompositionBestSubsetSettings() {
         </p>
       )}
       {unsupportedVariableTotalSteps && (
-        <p className="settings-note warning-text">
-          Variable total × Best Subsetのcomponent step/gridはまだ未対応です。元素量のstepを解除してください。
-        </p>
+        <div className="settings-note warning-text">
+          <p>
+            Variable total × Best Subsetのcomponent step/gridはまだ未対応です。元素量のstepを解除してください。
+          </p>
+          <button type="button" className="secondary compact" onClick={clearComponentSteps}>
+            step設定を解除
+          </button>
+        </div>
       )}
       {enabled && overlap.length > 0 && (
         <p className="settings-note warning-text">

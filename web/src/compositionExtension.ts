@@ -9,6 +9,8 @@ type ConstraintOperator = "=" | "<=" | ">=";
 type ConstraintBasis = "atomic_amount" | "weight_amount";
 type DescriptorProperty = "atomic_number" | "atomic_weight";
 type DescriptorStatistic = "mean" | "std" | "min" | "max" | "range";
+type SupportSelection = "repair" | "best_subset";
+type BestSubsetStrategy = "exact" | "beam" | "auto";
 
 const DESCRIPTOR_PROPERTIES: DescriptorProperty[] = ["atomic_number", "atomic_weight"];
 const DESCRIPTOR_STATISTICS: DescriptorStatistic[] = ["mean", "std", "min", "max", "range"];
@@ -40,6 +42,13 @@ export interface CompositionSettings {
   minComponents: number;
   maxComponents: number | null;
   requiredComponents: string[];
+  forbiddenComponents: string[];
+  supportSelection: SupportSelection;
+  bestSubsetStrategy: BestSubsetStrategy;
+  bestSubsetMaxCombinations: number;
+  bestSubsetBeamWidth: number;
+  bestSubsetBeamSteps: number;
+  bestSubsetMaxEvaluations: number;
   bounds: Record<string, [number, number]>;
   steps: Record<string, number | null>;
   constraints: ElementConstraint[];
@@ -64,6 +73,13 @@ const DEFAULT_SETTINGS: CompositionSettings = {
   minComponents: 1,
   maxComponents: null,
   requiredComponents: [],
+  forbiddenComponents: [],
+  supportSelection: "repair",
+  bestSubsetStrategy: "auto",
+  bestSubsetMaxCombinations: 2000,
+  bestSubsetBeamWidth: 8,
+  bestSubsetBeamSteps: 4,
+  bestSubsetMaxEvaluations: 200,
   bounds: {},
   steps: {},
   constraints: [],
@@ -84,6 +100,14 @@ function newId(): string {
 function finiteNumber(value: unknown, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function positiveInteger(value: unknown, fallback: number): number {
+  return Math.max(1, Math.trunc(finiteNumber(value, fallback)));
+}
+
+function nonNegativeInteger(value: unknown, fallback: number): number {
+  return Math.max(0, Math.trunc(finiteNumber(value, fallback)));
 }
 
 function uniqueStrings(value: unknown): string[] {
@@ -174,6 +198,14 @@ function normalizeSettings(value: unknown): CompositionSettings {
   const maxComponents = maxRaw === null || maxRaw === undefined || maxRaw === ""
     ? null
     : Math.max(1, Math.trunc(finiteNumber(maxRaw, elements.length || 1)));
+  const supportSelection: SupportSelection = raw.supportSelection === "best_subset"
+    ? "best_subset"
+    : "repair";
+  const bestSubsetStrategy: BestSubsetStrategy = ["exact", "beam", "auto"].includes(
+    String(raw.bestSubsetStrategy ?? "auto")
+  )
+    ? String(raw.bestSubsetStrategy ?? "auto") as BestSubsetStrategy
+    : "auto";
   const column = String(raw.column ?? "");
   return {
     enabled: Boolean(raw.enabled && column),
@@ -191,6 +223,13 @@ function normalizeSettings(value: unknown): CompositionSettings {
     minComponents: Math.max(1, Math.trunc(finiteNumber(raw.minComponents, 1))),
     maxComponents,
     requiredComponents: uniqueStrings(raw.requiredComponents).filter((element) => elementSet.has(element)),
+    forbiddenComponents: uniqueStrings(raw.forbiddenComponents).filter((element) => elementSet.has(element)),
+    supportSelection,
+    bestSubsetStrategy,
+    bestSubsetMaxCombinations: positiveInteger(raw.bestSubsetMaxCombinations, 2000),
+    bestSubsetBeamWidth: positiveInteger(raw.bestSubsetBeamWidth, 8),
+    bestSubsetBeamSteps: nonNegativeInteger(raw.bestSubsetBeamSteps, 4),
+    bestSubsetMaxEvaluations: positiveInteger(raw.bestSubsetMaxEvaluations, 200),
     bounds,
     steps,
     constraints,
@@ -264,6 +303,13 @@ export function compositionSettingsToBackend(
     min_components: settings.minComponents,
     max_components: settings.maxComponents,
     required_components: settings.requiredComponents,
+    forbidden_components: settings.forbiddenComponents,
+    support_selection: settings.supportSelection,
+    best_subset_strategy: settings.bestSubsetStrategy,
+    best_subset_max_combinations: settings.bestSubsetMaxCombinations,
+    best_subset_beam_width: settings.bestSubsetBeamWidth,
+    best_subset_beam_steps: settings.bestSubsetBeamSteps,
+    best_subset_max_evaluations: settings.bestSubsetMaxEvaluations,
     bounds,
     steps,
     element_constraints: settings.constraints.map((constraint) => ({
@@ -305,6 +351,13 @@ export function compositionSettingsFromBackend(value: unknown): CompositionSetti
     minComponents: raw.min_components,
     maxComponents: raw.max_components,
     requiredComponents: raw.required_components,
+    forbiddenComponents: raw.forbidden_components,
+    supportSelection: raw.support_selection,
+    bestSubsetStrategy: raw.best_subset_strategy,
+    bestSubsetMaxCombinations: raw.best_subset_max_combinations,
+    bestSubsetBeamWidth: raw.best_subset_beam_width,
+    bestSubsetBeamSteps: raw.best_subset_beam_steps,
+    bestSubsetMaxEvaluations: raw.best_subset_max_evaluations,
     bounds: raw.bounds,
     steps: raw.steps,
     constraints: raw.element_constraints,

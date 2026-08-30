@@ -10,6 +10,7 @@ import numpy as np
 from bochan.composition import ATOMIC_WEIGHTS
 
 _WEIGHT_NORMALIZATIONS = {"weight_fraction", "weight", "mass_fraction", "wt%"}
+_LOG_RATIO_REPRESENTATIONS = {"clr", "alr", "ilr"}
 _BASIS_ALIASES = {
     "atomic": "atomic_amount",
     "atomic_amount": "atomic_amount",
@@ -23,7 +24,7 @@ _BASIS_ALIASES = {
 
 
 class CompositionElementConstraintResolver:
-    """Normalize element constraints and map compatible ones to model coordinates."""
+    """Normalize element constraints and map compatible ones to decision features."""
 
     @staticmethod
     def normalize(
@@ -128,6 +129,17 @@ class CompositionElementConstraintResolver:
             return 1.0 / ATOMIC_WEIGHTS[element] if native_is_weight else 1.0
         return 1.0 if native_is_weight else ATOMIC_WEIGHTS[element]
 
+    @staticmethod
+    def _uses_fraction_decision_features(config: Mapping[str, Any]) -> bool:
+        representation = str(config["representation"]).lower()
+        if representation in {"fraction", "fractions"}:
+            return True
+        return (
+            representation in _LOG_RATIO_REPRESENTATIONS
+            and str(config.get("support_selection", "repair")).lower()
+            == "best_subset"
+        )
+
     @classmethod
     def named_constraints(
         cls,
@@ -135,7 +147,13 @@ class CompositionElementConstraintResolver:
         composition_sites: Mapping[str, Mapping[str, Any]],
         composition_transformers: Mapping[str, Any],
     ) -> list[tuple[Any, ...]]:
-        """Translate compatible fixed-total fraction constraints to model space."""
+        """Translate constraints to fraction decision features when available.
+
+        Fraction representations expose these names directly. CLR/ALR/ILR
+        best-subset search exposes the same names in its synthetic raw-fraction
+        decision space, so element constraints can be optimized jointly with the
+        selected support instead of being imposed by a post-hoc repair.
+        """
 
         if not constraints:
             return []
@@ -146,10 +164,9 @@ class CompositionElementConstraintResolver:
             compatible = True
             for term in constraint["terms"]:
                 config = composition_sites[term["site"]]
-                if config.get("variable_total") or str(config["representation"]).lower() not in {
-                    "fraction",
-                    "fractions",
-                }:
+                if config.get("variable_total") or not cls._uses_fraction_decision_features(
+                    config
+                ):
                     compatible = False
                     break
                 if (

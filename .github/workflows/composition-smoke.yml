@@ -52,6 +52,7 @@ jobs:
             tests/test_composition_best_subset.py \
             tests/test_composition_raw_bridge.py \
             tests/test_composition_logratio_best_subset.py \
+            tests/test_tabular_composition_logratio_best_subset.py \
             tests/test_tabular_composition.py \
             tests/test_tabular_architecture.py \
             tests/test_tabular_composition_sites.py \
@@ -148,6 +149,7 @@ jobs:
             tests/test_composition_best_subset.py \
             tests/test_composition_raw_bridge.py \
             tests/test_composition_logratio_best_subset.py \
+            tests/test_tabular_composition_logratio_best_subset.py \
             tests/test_tabular_architecture.py \
             tests/test_tabular_composition.py \
             tests/test_tabular_composition_sites.py \

@@ -553,29 +553,6 @@ def composition_model_feature_columns(
     return model_columns
 
 
-def apply_composition_best_subset_optimizer_kwargs(
-    optimizer_kwargs: dict[str, Any],
-    config: Mapping[str, Any] | None,
-) -> None:
-    """Map Web composition support-search controls into core optimizer kwargs."""
-
-    if config is None or config.get("support_selection") != "best_subset":
-        return
-    optimizer_kwargs.update(
-        {
-            "best_subset_strategy": config["best_subset_strategy"],
-            "best_subset_max_combinations": config[
-                "best_subset_max_combinations"
-            ],
-            "best_subset_beam_width": config["best_subset_beam_width"],
-            "best_subset_beam_steps": config["best_subset_beam_steps"],
-            "best_subset_max_evaluations": config[
-                "best_subset_max_evaluations"
-            ],
-        }
-    )
-
-
 def composition_site(config: Mapping[str, Any]) -> dict[str, Any]:
     """Convert validated Web settings to one canonical composition site."""
 
@@ -600,6 +577,11 @@ def composition_site(config: Mapping[str, Any]) -> dict[str, Any]:
         "required_components": config["required_components"],
         "forbidden_components": config["forbidden_components"],
         "support_selection": config["support_selection"],
+        "best_subset_strategy": config["best_subset_strategy"],
+        "best_subset_max_combinations": config["best_subset_max_combinations"],
+        "best_subset_beam_width": config["best_subset_beam_width"],
+        "best_subset_beam_steps": config["best_subset_beam_steps"],
+        "best_subset_max_evaluations": config["best_subset_max_evaluations"],
         "coordinate_bounds": config["coordinate_bounds"],
     }
 
@@ -808,7 +790,6 @@ def composition_response_metadata(
 __all__ = [
     "_composition_transformer",
     "add_composition_candidate_rows",
-    "apply_composition_best_subset_optimizer_kwargs",
     "composition_model_feature_columns",
     "composition_response_metadata",
     "composition_site",

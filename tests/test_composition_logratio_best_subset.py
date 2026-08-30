@@ -275,7 +275,7 @@ def test_optimize_logratio_best_subset_returns_model_space_and_exact_raw_support
     assert fractions[0, 3].item() == 0.0  # forbidden Cr
     assert torch.isfinite(result.candidates).all()
     assert base.last_x is not None
-    torch.testing.assert_close(base.last_x.squeeze(-2), result.candidates)
+    torch.testing.assert_close(base.last_x, result.candidates)
 
 
 def test_explicit_logratio_coordinate_fixed_feature_is_rejected() -> None:

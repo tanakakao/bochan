@@ -40,6 +40,7 @@ def _optimizer(representation: str = "ilr") -> TabularBayesianOptimizer:
     return TabularBayesianOptimizer(
         task_type="regression",
         model_type="base",
+        fit_config={"maxiter": 32},
         input_cols=["formula", "temperature"],
         target_cols="property",
         composition_sites={
@@ -64,7 +65,6 @@ def _optimizer(representation: str = "ilr") -> TabularBayesianOptimizer:
             }
         },
         bounds={"temperature": [800.0, 1250.0]},
-        fit_maxiter=32,
     )
 
 

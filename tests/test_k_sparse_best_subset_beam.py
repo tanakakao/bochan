@@ -91,9 +91,10 @@ def test_best_subset_beam_crosses_one_swap_valley_without_full_enumeration() -> 
 
     assert tuple(torch.nonzero(candidates[0] > 1e-8).flatten().tolist()) == (0, 3, 4)
     assert float(acq_value.item()) == pytest.approx(30.0)
-    evaluated_exact_supports = [support for support in seen if len(support) == 3]
-    assert len(evaluated_exact_supports) <= 11
-    assert len(set(evaluated_exact_supports)) < 20  # 6C3 exact enumeration would evaluate 20 supports.
+    # One extra optimizer call builds the top-k seed; fixed-support evaluations
+    # themselves remain capped at 11 and do not exhaust all 6C3=20 supports.
+    assert len(seen) <= 12
+    assert len(set(seen)) < 20
 
 
 def test_best_subset_auto_keeps_exact_search_for_small_support_space() -> None:
@@ -115,9 +116,8 @@ def test_best_subset_auto_keeps_exact_search_for_small_support_space() -> None:
 
     optimize_candidates(_support_table_acq({(2, 3): 5.0}, comp_idx), bounds, config)
 
-    exact_supports = [support for support in seen if len(support) == 2]
-    assert len(exact_supports) == 6
-    assert all(len(support) != 4 for support in seen)
+    assert len(seen) == 6
+    assert len(set(seen)) == 6
 
 
 def test_best_subset_auto_switches_to_beam_above_exact_limit() -> None:
@@ -143,9 +143,10 @@ def test_best_subset_auto_switches_to_beam_above_exact_limit() -> None:
 
     optimize_candidates(_support_table_acq({}, comp_idx), bounds, config)
 
-    assert any(len(support) == 6 for support in seen)  # top-k seed optimization
-    exact_supports = [support for support in seen if len(support) == 3]
-    assert 1 <= len(exact_supports) <= 3
+    # Beam mode performs one heuristic seed call plus at most three fixed-support
+    # evaluations instead of the 20 calls required by exact 6C3 enumeration.
+    assert 2 <= len(seen) <= 4
+    assert len(set(seen)) <= 3
 
 
 def test_best_subset_beam_respects_support_evaluation_budget() -> None:
@@ -170,8 +171,8 @@ def test_best_subset_beam_respects_support_evaluation_budget() -> None:
 
     optimize_candidates(_support_table_acq({}, comp_idx), bounds, config)
 
-    exact_supports = [support for support in seen if len(support) == 3]
-    assert len(exact_supports) == 4
+    assert len(seen) == 5  # one top-k seed call + four fixed-support evaluations
+    assert len(set(seen)) == 4
 
 
 def test_best_subset_beam_keeps_one_support_shared_across_q_batch() -> None:

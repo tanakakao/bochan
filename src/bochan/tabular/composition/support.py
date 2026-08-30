@@ -10,6 +10,13 @@ from bochan.api import CandidateRepairConfig, OptimizeConfig
 
 _SUPPORTED_REPRESENTATIONS = {"none", "fraction", "fractions"}
 _TOLERANCE = 1e-8
+_BEST_SUBSET_SITE_KWARGS = (
+    "best_subset_strategy",
+    "best_subset_max_combinations",
+    "best_subset_beam_width",
+    "best_subset_beam_steps",
+    "best_subset_max_evaluations",
+)
 
 
 def _as_mapping(value: Mapping[Any, Any] | None) -> dict[Any, float]:
@@ -144,6 +151,19 @@ def _validate_site(
             "for exact-cardinality best_subset search."
         )
     return int(maximum)
+
+
+def _optimizer_kwargs_for_site(
+    opt_config: OptimizeConfig,
+    config: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Merge optional site search controls without overriding explicit optimizer kwargs."""
+    optimizer_kwargs = dict(opt_config.optimizer_kwargs or {})
+    for key in _BEST_SUBSET_SITE_KWARGS:
+        value = config.get(key)
+        if value is not None:
+            optimizer_kwargs.setdefault(key, value)
+    return optimizer_kwargs
 
 
 def resolve_composition_best_subset(
@@ -299,6 +319,7 @@ def resolve_composition_best_subset(
             fixed_features=repair_fixed or None,
             final_sum_constraint=(fraction_names, 1.0),
         )
+        optimizer_kwargs = dict(opt_config.optimizer_kwargs or {})
     else:
         repair = replace(
             repair,
@@ -311,6 +332,7 @@ def resolve_composition_best_subset(
             fixed_features=repair_fixed or None,
             final_sum_constraint=(fraction_names, 1.0),
         )
+        optimizer_kwargs = _optimizer_kwargs_for_site(opt_config, config)
 
     return replace(
         opt_config,
@@ -318,6 +340,7 @@ def resolve_composition_best_subset(
         fixed_features=optimizer_fixed or None,
         equality_constraints=equality_constraints,
         inequality_constraints=optimizer_inequalities,
+        optimizer_kwargs=optimizer_kwargs,
     )
 
 

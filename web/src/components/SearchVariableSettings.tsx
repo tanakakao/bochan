@@ -1,4 +1,5 @@
 import { CompositionSearchSpaceConstraints } from "./CompositionCandidateConstraints";
+import CompositionBestSubsetSettings from "./CompositionBestSubsetSettings";
 import { getColumnClassValues } from "../targetSettingUtils";
 import type { ColumnProfile, SearchVariable, TargetClassValue } from "../types";
 
@@ -183,6 +184,7 @@ export default function SearchVariableSettings({
       </div>
 
       <CompositionSearchSpaceConstraints />
+      <CompositionBestSubsetSettings />
     </article>
   );
 }

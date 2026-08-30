@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
+import pytest
 import torch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -12,6 +13,7 @@ from fastapi.testclient import TestClient
 from bochan.serving.webapp import app
 from bochan.serving.webapp.composition.support import (
     composition_model_feature_columns,
+    composition_site,
     normalize_web_composition_settings,
 )
 from bochan.serving.webapp.routers.composition import create_composition_router
@@ -50,6 +52,7 @@ def test_normalize_web_composition_settings_supports_element_constraints() -> No
 
     assert settings["column"] == "formula"
     assert settings["representation"] == "ilr"
+    assert settings["support_selection"] == "repair"
     assert settings["total"] == 1.0
     assert settings["bounds"]["Fe"] == (0.1, 0.8)
     assert settings["steps"]["Fe"] == 0.01
@@ -58,6 +61,73 @@ def test_normalize_web_composition_settings_supports_element_constraints() -> No
         "element": "Co",
         "coefficient": 1.0,
     }
+
+
+def test_normalize_web_composition_settings_supports_best_subset() -> None:
+    settings = normalize_web_composition_settings(
+        {
+            "column": "formula",
+            "elements": ["Al", "Ti", "V", "Cr", "Nb"],
+            "representation": "fractions",
+            "min_components": 3,
+            "max_components": 3,
+            "required_components": ["Al"],
+            "forbidden_components": ["Cr"],
+            "support_selection": "best_subset",
+            "best_subset_strategy": "beam",
+            "best_subset_max_combinations": 1000,
+            "best_subset_beam_width": 6,
+            "best_subset_beam_steps": 5,
+            "best_subset_max_evaluations": 120,
+            "bounds": {
+                "Al": [0.05, 0.8],
+                "Cr": [0.0, 0.8],
+            },
+        }
+    )
+
+    assert settings["support_selection"] == "best_subset"
+    assert settings["best_subset_strategy"] == "beam"
+    assert settings["best_subset_max_combinations"] == 1000
+    assert settings["best_subset_beam_width"] == 6
+    assert settings["best_subset_beam_steps"] == 5
+    assert settings["best_subset_max_evaluations"] == 120
+    assert settings["forbidden_components"] == ["Cr"]
+    assert settings["bounds"]["Cr"] == (0.0, 0.0)
+
+    site = composition_site(settings)
+    assert site["support_selection"] == "best_subset"
+    assert site["forbidden_components"] == ["Cr"]
+    assert site["best_subset_strategy"] == "beam"
+    assert site["best_subset_max_combinations"] == 1000
+    assert site["best_subset_beam_width"] == 6
+    assert site["best_subset_beam_steps"] == 5
+    assert site["best_subset_max_evaluations"] == 120
+
+
+def test_web_best_subset_contract_rejects_semantically_invalid_settings() -> None:
+    base = {
+        "column": "formula",
+        "elements": ["Al", "Ti", "V"],
+        "representation": "fractions",
+        "min_components": 2,
+        "max_components": 2,
+        "support_selection": "best_subset",
+    }
+    with pytest.raises(ValueError, match="representation='fractions'"):
+        normalize_web_composition_settings({**base, "representation": "ilr"})
+    with pytest.raises(ValueError, match="min_components == max_components"):
+        normalize_web_composition_settings({**base, "max_components": 3})
+    with pytest.raises(ValueError, match="continuous fractions"):
+        normalize_web_composition_settings({**base, "steps": {"Ti": 0.05}})
+    with pytest.raises(ValueError, match="both required and forbidden"):
+        normalize_web_composition_settings(
+            {
+                **base,
+                "required_components": ["Al"],
+                "forbidden_components": ["Al"],
+            }
+        )
 
 
 def test_composition_validate_endpoint_infers_elements_and_normalizes_ratios() -> None:
@@ -135,7 +205,49 @@ def test_typed_composition_regression_endpoint_injects_settings() -> None:
     composition = payload["model_kwargs"]["web_composition"]
     assert composition["column"] == "formula"
     assert composition["representation"] == "ilr"
+    assert composition["support_selection"] == "repair"
     assert composition["element_constraints"][0]["operator"] == "="
+
+
+def test_typed_composition_regression_endpoint_transports_best_subset() -> None:
+    test_app = FastAPI()
+
+    def base_run(request: Any) -> dict[str, Any]:
+        return request.model_dump()
+
+    test_app.include_router(
+        create_composition_router(run_regression=base_run),
+        prefix="/api/v1",
+    )
+    response = TestClient(test_app).post(
+        "/api/v1/composition/regression/run",
+        json={
+            "run": {
+                "dataset_id": "dataset-1",
+                "feature_columns": ["formula", "temperature"],
+                "target_column": "property",
+            },
+            "composition": {
+                "column": "formula",
+                "elements": ["Al", "Ti", "V", "Cr"],
+                "representation": "fractions",
+                "min_components": 3,
+                "max_components": 3,
+                "required_components": ["Al"],
+                "forbidden_components": ["Cr"],
+                "support_selection": "best_subset",
+                "best_subset_strategy": "auto",
+                "best_subset_max_combinations": 500,
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    composition = response.json()["model_kwargs"]["web_composition"]
+    assert composition["support_selection"] == "best_subset"
+    assert composition["forbidden_components"] == ["Cr"]
+    assert composition["best_subset_strategy"] == "auto"
+    assert composition["best_subset_max_combinations"] == 500
 
 
 def test_ordinary_constraint_uses_shifted_index_after_ilr_expansion() -> None:
@@ -235,6 +347,13 @@ def test_web_source_exposes_react_owned_composition_controls() -> None:
     candidate = Path(
         "web/src/components/CompositionCandidateConstraints.tsx"
     ).read_text(encoding="utf-8")
+    best_subset = Path(
+        "web/src/components/CompositionBestSubsetSettings.tsx"
+    ).read_text(encoding="utf-8")
+    search_variables = Path(
+        "web/src/components/SearchVariableSettings.tsx"
+    ).read_text(encoding="utf-8")
+    extension = Path("web/src/compositionExtension.ts").read_text(encoding="utf-8")
     main_source = Path("web/src/main.tsx").read_text(encoding="utf-8")
 
     assert "通常" in kind
@@ -246,6 +365,12 @@ def test_web_source_exposes_react_owned_composition_controls() -> None:
     assert "組成式のモデル変換" in model
     assert "元素間の線形制約" in candidate
     assert "組成候補の元素制約" in candidate
+    assert "Acquisition-aware Best Subset" in best_subset
+    assert "禁止元素" in best_subset
+    assert "Auto（小規模Exact / 大規模Beam）" in best_subset
+    assert "CompositionBestSubsetSettings" in search_variables
+    assert "best_subset_strategy" in extension
+    assert "forbidden_components" in extension
     assert "installCompositionRuntime" not in main_source
     assert "installCompositionPrepareControls" not in main_source
     assert "installCompositionExtension" not in main_source

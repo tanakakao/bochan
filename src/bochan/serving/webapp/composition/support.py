@@ -18,6 +18,7 @@ from bochan.tabular.composition.constraints import CompositionElementConstraintR
 _SITE_NAME = "composition"
 _DESCRIPTOR_BUILTINS = {"atomic_number", "atomic_weight"}
 _DESCRIPTOR_STATISTICS = {"mean", "std", "min", "max", "range"}
+_BEST_SUBSET_STRATEGIES = {"exact", "beam", "auto"}
 
 
 def _finite(value: Any, default: float) -> float:
@@ -109,6 +110,57 @@ def _descriptor_settings(raw: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _positive_int(raw: Mapping[str, Any], key: str, default: int) -> int:
+    value = int(raw.get(key, default))
+    if value < 1:
+        raise ValueError(f"{key} must be at least 1.")
+    return value
+
+
+def _best_subset_settings(raw: Mapping[str, Any]) -> dict[str, Any]:
+    strategy = str(raw.get("best_subset_strategy", "auto")).lower()
+    if strategy not in _BEST_SUBSET_STRATEGIES:
+        raise ValueError(
+            "best_subset_strategy must be exact, beam, or auto."
+        )
+    beam_steps = int(raw.get("best_subset_beam_steps", 4))
+    if beam_steps < 0:
+        raise ValueError("best_subset_beam_steps must be at least 0.")
+    return {
+        "best_subset_strategy": strategy,
+        "best_subset_max_combinations": _positive_int(
+            raw, "best_subset_max_combinations", 2000
+        ),
+        "best_subset_beam_width": _positive_int(
+            raw, "best_subset_beam_width", 8
+        ),
+        "best_subset_beam_steps": beam_steps,
+        "best_subset_max_evaluations": _positive_int(
+            raw, "best_subset_max_evaluations", 200
+        ),
+    }
+
+
+def _validate_best_subset_contract(config: Mapping[str, Any]) -> None:
+    if config.get("support_selection") != "best_subset":
+        return
+    if config["representation"] != "fractions":
+        raise ValueError(
+            "Composition best_subset requires representation='fractions'; "
+            "CLR/ALR/ILR coordinate sparsity does not represent element absence."
+        )
+    if config["steps"]:
+        raise ValueError(
+            "Composition best_subset currently requires continuous fractions; "
+            "remove composition component steps."
+        )
+    maximum = config.get("max_components")
+    if maximum is None or int(config["min_components"]) != int(maximum):
+        raise ValueError(
+            "Composition best_subset requires min_components == max_components."
+        )
+
+
 def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]:
     """Validate one Web composition configuration using canonical field names."""
 
@@ -129,6 +181,13 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
         "min_components",
         "max_components",
         "required_components",
+        "forbidden_components",
+        "support_selection",
+        "best_subset_strategy",
+        "best_subset_max_combinations",
+        "best_subset_beam_width",
+        "best_subset_beam_steps",
+        "best_subset_max_evaluations",
         "coordinate_bounds",
         "element_constraints",
         "include_descriptors",
@@ -148,6 +207,8 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
         raise ValueError("web_composition.column is required.")
 
     representation = str(raw.get("representation", "ilr")).lower()
+    if representation == "fraction":
+        representation = "fractions"
     if representation not in {"fractions", "clr", "alr", "ilr"}:
         raise ValueError(
             "Composition representation must be fractions, clr, alr, or ilr."
@@ -159,8 +220,21 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
             "Composition normalization must be atomic_fraction or weight_fraction."
         )
 
+    support_selection = str(raw.get("support_selection", "repair")).lower()
+    if support_selection not in {"repair", "best_subset"}:
+        raise ValueError(
+            "Composition support_selection must be repair or best_subset."
+        )
+
     elements = _string_list(raw.get("elements"))
     required = _string_list(raw.get("required_components"))
+    forbidden = _string_list(raw.get("forbidden_components"))
+    overlap = set(required) & set(forbidden)
+    if overlap:
+        raise ValueError(
+            "Composition elements cannot be both required and forbidden: "
+            f"{sorted(overlap)!r}."
+        )
 
     bounds: dict[str, tuple[float, float]] = {}
     for element, pair in dict(raw.get("bounds") or {}).items():
@@ -178,6 +252,13 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
         ):
             raise ValueError(f"Invalid composition bounds for {element!r}.")
         bounds[str(element)] = (lower, upper)
+    for element in forbidden:
+        lower, _upper = bounds.get(element, (0.0, 0.0))
+        if lower > 1e-12:
+            raise ValueError(
+                f"Forbidden composition element {element!r} cannot have a positive lower bound."
+            )
+        bounds[element] = (0.0, 0.0)
 
     steps: dict[str, float] = {}
     for element, value in dict(raw.get("steps") or {}).items():
@@ -273,7 +354,7 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
             }
         )
 
-    return {
+    config = {
         "enabled": bool(raw.get("enabled", True)),
         "column": column,
         "elements": elements,
@@ -288,10 +369,16 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
         "min_components": min_components,
         "max_components": max_components,
         "required_components": required,
+        "forbidden_components": forbidden,
+        "support_selection": support_selection,
         "coordinate_bounds": (coordinate_lower, coordinate_upper),
         "element_constraints": constraints,
+        **_best_subset_settings(raw),
         **_descriptor_settings(raw),
     }
+    if support_selection == "best_subset" and max_components is not None:
+        _validate_best_subset_contract(config)
+    return config
 
 
 def extract_web_composition_request(
@@ -340,6 +427,7 @@ def _composition_transformer(
     if resolved["max_components"] is None:
         resolved["max_components"] = len(elements)
     unknown = set(resolved["required_components"]) - set(elements)
+    unknown.update(set(resolved["forbidden_components"]) - set(elements))
     unknown.update(set(resolved["bounds"]) - set(elements))
     unknown.update(set(resolved["steps"]) - set(elements))
     for constraint in resolved["element_constraints"]:
@@ -352,6 +440,7 @@ def _composition_transformer(
         raise ValueError(
             f"Composition settings reference unknown elements: {sorted(unknown)!r}."
         )
+    _validate_best_subset_contract(resolved)
     for property_name, property_values in resolved["element_properties"].items():
         missing = set(elements) - set(property_values)
         if missing and property_name in resolved["descriptor_properties"]:
@@ -486,6 +575,13 @@ def composition_site(config: Mapping[str, Any]) -> dict[str, Any]:
         "min_components": config["min_components"],
         "max_components": config["max_components"],
         "required_components": config["required_components"],
+        "forbidden_components": config["forbidden_components"],
+        "support_selection": config["support_selection"],
+        "best_subset_strategy": config["best_subset_strategy"],
+        "best_subset_max_combinations": config["best_subset_max_combinations"],
+        "best_subset_beam_width": config["best_subset_beam_width"],
+        "best_subset_beam_steps": config["best_subset_beam_steps"],
+        "best_subset_max_evaluations": config["best_subset_max_evaluations"],
         "coordinate_bounds": config["coordinate_bounds"],
     }
 
@@ -683,6 +779,10 @@ def composition_response_metadata(
         "representation": config["representation"],
         "total": config["total"],
         "constraints": len(config["element_constraints"]),
+        "support_selection": config.get("support_selection", "repair"),
+        "required_components": list(config.get("required_components") or ()),
+        "forbidden_components": list(config.get("forbidden_components") or ()),
+        "best_subset_strategy": config.get("best_subset_strategy"),
         "descriptors": descriptor_metadata,
     }
 

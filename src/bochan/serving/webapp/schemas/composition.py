@@ -1,6 +1,6 @@
 """Composition request schemas for the Web API."""
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
@@ -51,6 +51,17 @@ class CompositionSettingsSchema(WebSchema):
     bounds: dict[str, tuple[float, float]] = Field(default_factory=dict)
     steps: dict[str, float] = Field(default_factory=dict)
     element_constraints: list[CompositionElementConstraintSchema] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_total_contract(cls, value: Any) -> Any:
+        """Let total_bounds replace the legacy fixed-total default cleanly."""
+
+        if not isinstance(value, dict):
+            return value
+        if value.get("total_bounds") is not None and "total" not in value:
+            return {**value, "total": None}
+        return value
 
     @model_validator(mode="after")
     def validate_total_contract(self):

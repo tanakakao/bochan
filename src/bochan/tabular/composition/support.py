@@ -184,15 +184,20 @@ def _optimizer_kwargs_for_site(
 def _validate_grid_strategy(
     *,
     config: Mapping[str, Any],
+    optimizer_kwargs: Mapping[str, Any],
     optional_count: int,
     optional_k: int,
 ) -> None:
     """Keep step-grid search on exhaustive supports in the initial implementation."""
     if not config.get("steps") or optional_k == 0:
         return
-    strategy = str(config.get("best_subset_strategy") or "exact").lower()
+    strategy = str(
+        optimizer_kwargs.get("best_subset_strategy", "exact")
+    ).lower()
     support_count = comb(optional_count, optional_k)
-    maximum = int(config.get("best_subset_max_combinations") or 2000)
+    maximum = int(
+        optimizer_kwargs.get("best_subset_max_combinations", 2000)
+    )
     if strategy == "auto":
         strategy = "exact" if support_count <= maximum else "beam"
     if strategy != "exact":
@@ -458,8 +463,11 @@ def resolve_composition_best_subset(
             f"Composition site {site_name!r} cannot choose {optional_k} optional "
             f"components from only {len(optional)} available components."
         )
+
+    effective_optimizer_kwargs = _optimizer_kwargs_for_site(opt_config, config)
     _validate_grid_strategy(
         config=config,
+        optimizer_kwargs=effective_optimizer_kwargs,
         optional_count=len(optional),
         optional_k=optional_k,
     )
@@ -542,7 +550,7 @@ def resolve_composition_best_subset(
             fixed_features=repair_fixed or None,
             final_sum_constraint=(fraction_names, 1.0),
         )
-        optimizer_kwargs = _optimizer_kwargs_for_site(opt_config, config)
+        optimizer_kwargs = effective_optimizer_kwargs
 
     return replace(
         opt_config,

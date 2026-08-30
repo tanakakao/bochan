@@ -46,6 +46,7 @@ export default function CompositionBestSubsetSettings() {
   if (!settings.enabled || !settings.column) return null;
 
   const enabled = settings.supportSelection === "best_subset";
+  const variableTotal = settings.totalMode === "variable";
   const exactCount = settings.maxComponents ?? settings.minComponents;
   const hasSteps = settings.elements.some((element) => (settings.steps[element] ?? 0) > 0);
   const overlap = settings.requiredComponents.filter((element) => (
@@ -59,13 +60,14 @@ export default function CompositionBestSubsetSettings() {
   ).length;
   const optionalK = Math.max(0, exactCount - required.length);
   const supportCount = combinationCount(optionalCount, optionalK);
-  const stepGridWouldUseBeam = hasSteps && (
+  const stepGridWouldUseBeam = !variableTotal && hasSteps && (
     settings.bestSubsetStrategy === "beam" ||
     (
       settings.bestSubsetStrategy === "auto" &&
       supportCount > settings.bestSubsetMaxCombinations
     )
   );
+  const unsupportedVariableTotalSteps = enabled && variableTotal && hasSteps;
 
   function setSupportSelection(value: SupportSelection): void {
     update((current) => {
@@ -218,7 +220,7 @@ export default function CompositionBestSubsetSettings() {
           <div className="constraint-section-heading">
             <div>
               <h4>禁止元素</h4>
-              <p>選択した元素は候補supportから除外し、組成比を0に固定します。</p>
+              <p>選択した元素は候補supportから除外し、元素量を0に固定します。</p>
             </div>
           </div>
           {settings.elements.length === 0 ? (
@@ -247,7 +249,12 @@ export default function CompositionBestSubsetSettings() {
         </section>
       )}
 
-      {enabled && settings.representation !== "fractions" && (
+      {enabled && variableTotal && (
+        <p className="settings-note">
+          Variable totalでは元素supportをraw absolute-amount空間で探索し、合計量は選択元素量の和として同時に最適化します。モデルには正規化組成と合計featureを入力します。
+        </p>
+      )}
+      {enabled && !variableTotal && settings.representation !== "fractions" && (
         <p className="settings-note">
           元素supportはraw fraction空間で探索し、{settings.representation.toUpperCase()}座標は学習済みモデルと獲得関数の評価だけに使います。非選択元素はraw空間で厳密に0のまま保持されます。
         </p>
@@ -257,7 +264,7 @@ export default function CompositionBestSubsetSettings() {
           Best Subsetでは使用元素数を1つに固定してください。上の「使用元素数」を変更すると最小・最大を同じ値に戻します。
         </p>
       )}
-      {enabled && hasSteps && !stepGridWouldUseBeam && (
+      {enabled && !variableTotal && hasSteps && !stepGridWouldUseBeam && (
         <p className="settings-note">
           元素ごとの刻みはExact support探索で有効です。各supportの連続最適化後に、support・bounds・合計を保った最も近いstep格子点へ投影し、その候補で獲得関数を再評価します。
         </p>
@@ -265,6 +272,11 @@ export default function CompositionBestSubsetSettings() {
       {enabled && stepGridWouldUseBeam && (
         <p className="settings-note warning-text">
           step付きBest Subsetは現在Exact探索のみ対応です。探索戦略をExactにするか、AutoのExact最大組合せ数を{supportCount}以上にしてください。
+        </p>
+      )}
+      {unsupportedVariableTotalSteps && (
+        <p className="settings-note warning-text">
+          Variable total × Best Subsetのcomponent step/gridはまだ未対応です。元素量のstepを解除してください。
         </p>
       )}
       {enabled && overlap.length > 0 && (

@@ -193,6 +193,15 @@ def _postprocess_candidates(candidates: Any, *, request: Any, encoded: dict[str,
     if result.ndim == 1:
         result = result.unsqueeze(0)
 
+    passthrough_indices = tuple(
+        int(index) for index in encoded.get("postprocess_passthrough_indices", ())
+    )
+    passthrough = (
+        result[..., list(passthrough_indices)].clone()
+        if passthrough_indices
+        else None
+    )
+
     lower = torch.as_tensor(encoded["bounds"][0], dtype=result.dtype, device=result.device)
     upper = torch.as_tensor(encoded["bounds"][1], dtype=result.dtype, device=result.device)
     result = torch.maximum(torch.minimum(result, upper), lower)
@@ -219,6 +228,8 @@ def _postprocess_candidates(candidates: Any, *, request: Any, encoded: dict[str,
             mask.scatter_(-1, keep_local, True)
             result[..., comp_idx] = torch.where(mask, values, torch.zeros_like(values))
 
+    if passthrough is not None:
+        result[..., list(passthrough_indices)] = passthrough
     return result
 
 

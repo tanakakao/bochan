@@ -39,15 +39,26 @@ def is_logratio_best_subset_site(config: Mapping[str, Any]) -> bool:
     )
 
 
+def _uses_raw_best_subset_site(config: Mapping[str, Any]) -> bool:
+    return bool(
+        str(config.get("support_selection", "repair")).lower() == "best_subset"
+        and (
+            config.get("variable_total")
+            or str(config.get("representation", "fractions")).lower()
+            in _LOG_RATIO_REPRESENTATIONS
+        )
+    )
+
+
 def resolve_logratio_best_subset_site(
     sites: Mapping[str, Mapping[str, Any]],
 ) -> tuple[str, Mapping[str, Any]] | None:
-    """Return the single log-ratio best-subset site, if configured."""
+    """Return the single composition site that needs a raw decision bridge."""
 
     selected = [
         (str(name), config)
         for name, config in sites.items()
-        if is_logratio_best_subset_site(config)
+        if _uses_raw_best_subset_site(config)
     ]
     if not selected:
         return None
@@ -444,8 +455,26 @@ def optimize_logratio_best_subset(
     model_cat_dims: Sequence[int] | None = None,
     train_x: Tensor | None = None,
     optimize_fn: Callable[..., tuple[Any, Any]] | None = None,
-) -> LogRatioBestSubsetResult:
-    """Optimize element support in raw fractions and return model-space candidates."""
+) -> Any:
+    """Optimize composition support through the required raw decision bridge."""
+
+    if site_config.get("variable_total"):
+        from .variable_total_support import optimize_variable_total_best_subset
+
+        return optimize_variable_total_best_subset(
+            base_acqf,
+            opt_config,
+            site_name=site_name,
+            site_config=site_config,
+            transformer=transformer,
+            model_feature_names=model_feature_names,
+            model_bounds=model_bounds,
+            dtype=dtype,
+            device=device,
+            model_cat_dims=model_cat_dims,
+            train_x=train_x,
+            optimize_fn=optimize_fn,
+        )
 
     _reject_one_shot_acquisition(base_acqf)
     bridge, raw_config, raw_bounds = prepare_logratio_best_subset_config(

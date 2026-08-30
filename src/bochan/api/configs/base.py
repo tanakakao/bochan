@@ -48,7 +48,7 @@ REGRESSION_OUTCOME_TASK_TYPES: set[str] = {"regression", "multi_objective"}
 class AutoStandardizeOutcomeTransform(nn.Module):
     """train_Y の出力次元から ``Standardize`` を遅延生成する transform。
 
-    ``ModelConfig(outcome_transform=True)`` のときに使う内部用 helper です。
+    ``ModelConfig.outcome_transform=True`` のときに使う内部用 helper です。
     ``train_Y`` を受け取るまで出力次元 ``m`` が確定しないため、モデル生成時の
     初回 ``forward`` で ``botorch.models.transforms.outcome.Standardize`` を構築します。
     """

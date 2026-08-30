@@ -1061,10 +1061,41 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
         raw_acq_value,
         int(candidates.shape[0]),
     )
+
+    composition_raw_candidates = getattr(
+        candidate_result,
+        "raw_composition_candidates",
+        None,
+    )
+    composition_raw_bridge = getattr(
+        candidate_result,
+        "composition_raw_bridge",
+        None,
+    )
+    if composition_raw_candidates is not None and composition_raw_bridge is not None:
+        uniqueness_candidates = composition_raw_candidates
+        raw_tolerances = getattr(
+            candidate_result.opt_config,
+            "duplicate_tolerances",
+            None,
+        )
+        uniqueness_tolerances = (
+            list(raw_tolerances)
+            if raw_tolerances is not None
+            else None
+        )
+        uniqueness_feature_names = list(
+            composition_raw_bridge.decision_feature_names
+        )
+    else:
+        uniqueness_candidates = candidates
+        uniqueness_tolerances = duplicate_tolerances
+        uniqueness_feature_names = list(encoded_features["feature_columns"])
+
     unique_candidate_count = count_unique_candidate_rows(
-        candidates,
+        uniqueness_candidates,
         tolerance=opt_config.duplicate_tolerance,
-        tolerances=duplicate_tolerances,
+        tolerances=uniqueness_tolerances,
     )
     uniqueness_warning = (
         None
@@ -1097,6 +1128,7 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
             tabular_optimizer=tabular_optimizer,
             candidates=candidates,
             config=composition_config,
+            candidate_result=candidate_result,
         )
     for row in rows:
         feature_results = feature_constraint_results(
@@ -1228,12 +1260,16 @@ def run_regression_web_workflow(request: Any, store: Any) -> dict[str, Any]:
                 "unique_count": unique_candidate_count,
                 "sequential": bool(request.optimizer.sequential),
                 "minimum_distance_ratio": minimum_distance_ratio,
-                "per_feature_tolerances": dict(
-                    zip(
-                        encoded_features["feature_columns"],
-                        duplicate_tolerances,
-                        strict=True,
+                "per_feature_tolerances": (
+                    dict(
+                        zip(
+                            uniqueness_feature_names,
+                            uniqueness_tolerances,
+                            strict=True,
+                        )
                     )
+                    if uniqueness_tolerances is not None
+                    else {}
                 ),
                 "warning": uniqueness_warning,
             },

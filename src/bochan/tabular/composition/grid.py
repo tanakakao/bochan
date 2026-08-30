@@ -14,7 +14,7 @@ import numpy as np
 class CompositionGridFinalPostprocess:
     """Project one fixed-support composition block onto its configured step grid.
 
-    Candidate optimization remains continuous.  This callable is applied only to
+    Candidate optimization remains continuous. This callable is applied only to
     the final candidate returned for one support, where it solves a tiny MILP that
     minimizes the L1 displacement from the continuous optimum while preserving:
 
@@ -180,13 +180,41 @@ class CompositionGridFinalPostprocess:
         projected[np.asarray(active_indices, dtype=int)] = active_values
         return projected
 
+    def validate_support(self, active_elements: Sequence[str]) -> None:
+        """Raise when one exact support has no feasible point on the step grid."""
+
+        active_set = {str(element) for element in active_elements}
+        unknown = active_set - set(self.elements)
+        if unknown:
+            raise KeyError(
+                f"Unknown composition elements in support: {sorted(unknown)!r}."
+            )
+        if len(active_set) != self.exact_k:
+            raise ValueError(
+                f"Composition support must contain exactly {self.exact_k} elements."
+            )
+
+        active = np.asarray(
+            [element in active_set for element in self.elements],
+            dtype=bool,
+        )
+        target = np.zeros(len(self.elements), dtype=float)
+        for index in np.flatnonzero(active):
+            lower, upper = self.bounds[int(index)]
+            target[int(index)] = 0.5 * (lower + upper)
+        self._project_row(target, active)
+
     def __call__(self, candidates: Any) -> Any:
         import torch
 
         processed = self.previous(candidates) if self.previous is not None else candidates
         if not torch.is_tensor(processed):
-            raise TypeError("Composition grid final postprocess requires a torch.Tensor.")
-        if torch.is_tensor(candidates) and tuple(processed.shape) != tuple(candidates.shape):
+            raise TypeError(
+                "Composition grid final postprocess requires a torch.Tensor."
+            )
+        if torch.is_tensor(candidates) and tuple(processed.shape) != tuple(
+            candidates.shape
+        ):
             raise ValueError(
                 "Composition grid final postprocess must preserve candidate shape."
             )
@@ -199,7 +227,9 @@ class CompositionGridFinalPostprocess:
         indices = list(self.feature_indices)
 
         for row in work:
-            fractions = row[indices].detach().cpu().numpy().astype(float, copy=True)
+            fractions = (
+                row[indices].detach().cpu().numpy().astype(float, copy=True)
+            )
             absolute = fractions * self.total
             active = np.abs(absolute) > self.tolerance
             projected = self._project_row(absolute, active)

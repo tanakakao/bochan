@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from itertools import combinations
 from math import comb
 from typing import Any
 
@@ -20,6 +21,18 @@ _BEST_SUBSET_SITE_KWARGS = (
     "best_subset_beam_steps",
     "best_subset_max_evaluations",
 )
+_NATIVE_FINAL_POSTPROCESS_BYPASS = {
+    "nsgaii",
+    "nsga2",
+    "optimize_acqf_nsgaii",
+    "thompson_sampling",
+    "optimize_thompson_sampling",
+    "thompson_sampling_mixed",
+    "optimize_thompson_sampling_mixed",
+    "llm_candidate_set",
+    "optimize_acqf_llm",
+    "optimize_acqf_llm_candidate_set",
+}
 
 
 def _as_mapping(value: Mapping[Any, Any] | None) -> dict[Any, float]:
@@ -178,16 +191,106 @@ def _validate_grid_strategy(
     if not config.get("steps") or optional_k == 0:
         return
     strategy = str(config.get("best_subset_strategy") or "exact").lower()
-    combinations = comb(optional_count, optional_k)
+    support_count = comb(optional_count, optional_k)
     maximum = int(config.get("best_subset_max_combinations") or 2000)
     if strategy == "auto":
-        strategy = "exact" if combinations <= maximum else "beam"
+        strategy = "exact" if support_count <= maximum else "beam"
     if strategy != "exact":
         raise ValueError(
             "Composition best_subset with component steps currently requires exact "
             "support search. Use best_subset_strategy='exact', or 'auto' only when "
             "the support count is within best_subset_max_combinations."
         )
+    if support_count > maximum:
+        raise ValueError(
+            "Composition step-grid best_subset exact enumeration would evaluate "
+            f"{support_count} supports, exceeding best_subset_max_combinations={maximum}."
+        )
+
+
+def _constraint_items(indices: Any) -> list[Any]:
+    if isinstance(indices, (str, int)):
+        return [indices]
+    if hasattr(indices, "detach"):
+        return indices.detach().cpu().reshape(-1).tolist()
+    return list(indices)
+
+
+def _constraints_touch_composition(
+    constraints: Sequence[tuple[Any, Any, Any]] | None,
+    *,
+    fraction_names: Sequence[str],
+    feature_names: Sequence[Any],
+) -> bool:
+    name_set = set(fraction_names)
+    positions = {
+        index
+        for index, name in enumerate(feature_names)
+        if name in name_set
+    }
+    for indices, _coefficients, _rhs in constraints or ():
+        for item in _constraint_items(indices):
+            if item in name_set:
+                return True
+            if isinstance(item, int) and int(item) in positions:
+                return True
+    return False
+
+
+def _validate_grid_contract(
+    *,
+    opt_config: OptimizeConfig,
+    repair: CandidateRepairConfig,
+    config: Mapping[str, Any],
+    fraction_names: Sequence[str],
+    feature_names: Sequence[Any],
+    all_fixed: Mapping[Any, float],
+) -> None:
+    if not config.get("steps"):
+        return
+
+    optimizer_name = str(opt_config.optimizer).replace("-", "_").lower()
+    if optimizer_name in _NATIVE_FINAL_POSTPROCESS_BYPASS:
+        raise ValueError(
+            "Composition step-grid best_subset requires an optimizer backend that "
+            "applies final_candidate_postprocess. Use optimize_acqf, evo, or torch."
+        )
+    if hasattr(opt_config, "ensure_unique_candidates") and not bool(
+        getattr(opt_config, "ensure_unique_candidates")
+    ):
+        raise ValueError(
+            "Composition step-grid best_subset requires ensure_unique_candidates=True "
+            "so grid-projected candidates are re-evaluated."
+        )
+
+    nonzero_fixed = [
+        name
+        for name in fraction_names
+        if name in all_fixed and abs(float(all_fixed[name])) > _TOLERANCE
+    ]
+    if nonzero_fixed:
+        raise ValueError(
+            "Composition step-grid best_subset does not yet support non-zero fixed "
+            f"composition values: {nonzero_fixed!r}. Use component bounds/required "
+            "elements instead."
+        )
+
+    for constraints in (
+        opt_config.equality_constraints,
+        opt_config.inequality_constraints,
+        repair.equality_constraints,
+        repair.inequality_constraints,
+    ):
+        if _constraints_touch_composition(
+            constraints,
+            fraction_names=fraction_names,
+            feature_names=feature_names,
+        ):
+            raise ValueError(
+                "Composition step-grid best_subset does not yet combine with "
+                "additional linear constraints on composition fractions. Remove "
+                "the element/composition linear constraint for this phase."
+            )
 
 
 def _grid_postprocess(
@@ -198,16 +301,9 @@ def _grid_postprocess(
     fraction_names: Sequence[str],
     feature_names: Sequence[Any],
     exact_k: int,
-) -> Any:
+) -> CompositionGridFinalPostprocess | Any:
     if not config.get("steps"):
         return getattr(opt_config, "final_candidate_postprocess", None)
-    if hasattr(opt_config, "ensure_unique_candidates") and not bool(
-        getattr(opt_config, "ensure_unique_candidates")
-    ):
-        raise ValueError(
-            "Composition step-grid best_subset requires ensure_unique_candidates=True "
-            "so the final grid-projected candidates are re-evaluated."
-        )
     positions = {name: index for index, name in enumerate(feature_names)}
     indices = tuple(int(positions[name]) for name in fraction_names)
     return CompositionGridFinalPostprocess.from_config(
@@ -217,6 +313,20 @@ def _grid_postprocess(
         exact_k=exact_k,
         previous=getattr(opt_config, "final_candidate_postprocess", None),
     )
+
+
+def _validate_grid_supports(
+    *,
+    projector: CompositionGridFinalPostprocess | Any,
+    config: Mapping[str, Any],
+    required: Sequence[str],
+    optional: Sequence[str],
+    optional_k: int,
+) -> None:
+    if not config.get("steps"):
+        return
+    for selected in combinations(optional, optional_k):
+        projector.validate_support([*required, *selected])
 
 
 def resolve_composition_best_subset(
@@ -241,8 +351,8 @@ def resolve_composition_best_subset(
     """
     selected_sites = [
         name
-        for name, config in composition_sites.items()
-        if str(config.get("support_selection", "repair")).lower() == "best_subset"
+        for name, site in composition_sites.items()
+        if str(site.get("support_selection", "repair")).lower() == "best_subset"
     ]
     if not selected_sites:
         return opt_config
@@ -291,6 +401,14 @@ def resolve_composition_best_subset(
     optimizer_fixed = _as_mapping(opt_config.fixed_features)
     repair_fixed = _as_mapping(repair.fixed_features)
     all_fixed = _merge_fixed_features(optimizer_fixed, repair_fixed)
+    _validate_grid_contract(
+        opt_config=opt_config,
+        repair=repair,
+        config=config,
+        fraction_names=fraction_names,
+        feature_names=feature_names,
+        all_fixed=all_fixed,
+    )
 
     explicit_required = set(config.get("required_components") or ())
     explicit_forbidden = set(config.get("forbidden_components") or ())
@@ -352,6 +470,22 @@ def resolve_composition_best_subset(
         config=config,
     )
 
+    final_candidate_postprocess = _grid_postprocess(
+        opt_config=opt_config,
+        config=config,
+        elements=elements,
+        fraction_names=fraction_names,
+        feature_names=feature_names,
+        exact_k=exact_k,
+    )
+    _validate_grid_supports(
+        projector=final_candidate_postprocess,
+        config=config,
+        required=sorted(required, key=elements.index),
+        optional=optional,
+        optional_k=optional_k,
+    )
+
     forbidden_fixed = {by_element[element]: 0.0 for element in forbidden}
     optimizer_fixed = _merge_fixed_features(optimizer_fixed, forbidden_fixed)
     repair_fixed = _merge_fixed_features(repair_fixed, forbidden_fixed)
@@ -409,15 +543,6 @@ def resolve_composition_best_subset(
             final_sum_constraint=(fraction_names, 1.0),
         )
         optimizer_kwargs = _optimizer_kwargs_for_site(opt_config, config)
-
-    final_candidate_postprocess = _grid_postprocess(
-        opt_config=opt_config,
-        config=config,
-        elements=elements,
-        fraction_names=fraction_names,
-        feature_names=feature_names,
-        exact_k=exact_k,
-    )
 
     return replace(
         opt_config,

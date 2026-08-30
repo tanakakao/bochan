@@ -60,14 +60,13 @@ export default function CompositionBestSubsetSettings() {
   ).length;
   const optionalK = Math.max(0, exactCount - required.length);
   const supportCount = combinationCount(optionalCount, optionalK);
-  const stepGridWouldUseBeam = !variableTotal && hasSteps && (
+  const stepGridWouldUseBeam = hasSteps && optionalK > 0 && (
     settings.bestSubsetStrategy === "beam" ||
     (
       settings.bestSubsetStrategy === "auto" &&
       supportCount > settings.bestSubsetMaxCombinations
     )
   );
-  const unsupportedVariableTotalSteps = enabled && variableTotal && hasSteps;
 
   function setSupportSelection(value: SupportSelection): void {
     update((current) => {
@@ -104,16 +103,6 @@ export default function CompositionBestSubsetSettings() {
         ? current.requiredComponents.filter((value) => value !== element)
         : current.requiredComponents
     }));
-  }
-
-  function clearComponentSteps(): void {
-    update((current) => {
-      const clearedSteps = { ...current.steps };
-      for (const element of current.elements) {
-        clearedSteps[element] = null;
-      }
-      return { ...current, steps: clearedSteps };
-    });
   }
 
   return (
@@ -274,25 +263,20 @@ export default function CompositionBestSubsetSettings() {
           Best Subsetでは使用元素数を1つに固定してください。上の「使用元素数」を変更すると最小・最大を同じ値に戻します。
         </p>
       )}
-      {enabled && !variableTotal && hasSteps && !stepGridWouldUseBeam && (
+      {enabled && hasSteps && !stepGridWouldUseBeam && !variableTotal && (
         <p className="settings-note">
           元素ごとの刻みはExact support探索で有効です。各supportの連続最適化後に、support・bounds・合計を保った最も近いstep格子点へ投影し、その候補で獲得関数を再評価します。
+        </p>
+      )}
+      {enabled && hasSteps && !stepGridWouldUseBeam && variableTotal && (
+        <p className="settings-note">
+          Variable totalの元素量stepはExact support探索で有効です。各supportの連続最適化後にraw amount格子へ投影し、support・元素bounds・total_boundsを保った候補で獲得関数を再評価します。投影後の合計量はtotal_bounds内で動きます。
         </p>
       )}
       {enabled && stepGridWouldUseBeam && (
         <p className="settings-note warning-text">
           step付きBest Subsetは現在Exact探索のみ対応です。探索戦略をExactにするか、AutoのExact最大組合せ数を{supportCount}以上にしてください。
         </p>
-      )}
-      {unsupportedVariableTotalSteps && (
-        <div className="settings-note warning-text">
-          <p>
-            Variable total × Best Subsetのcomponent step/gridはまだ未対応です。元素量のstepを解除してください。
-          </p>
-          <button type="button" className="secondary compact" onClick={clearComponentSteps}>
-            step設定を解除
-          </button>
-        </div>
       )}
       {enabled && overlap.length > 0 && (
         <p className="settings-note warning-text">

@@ -87,6 +87,15 @@ def normalize_composition_sites(
             raise ValueError(
                 f"Composition site {name!r} cannot require and forbid the same components: {sorted(overlap)!r}."
             )
+        for component in resolved["forbidden_components"]:
+            pair = tuple(resolved["bounds"].get(component, (0.0, 0.0)))
+            if len(pair) != 2:
+                raise ValueError(f"Bounds for {component!r} must have length 2.")
+            if float(pair[0]) > 1e-12:
+                raise ValueError(
+                    f"Forbidden component {component!r} at site {name!r} cannot have a positive lower bound."
+                )
+            resolved["bounds"][component] = (0.0, 0.0)
         resolved["min_components"] = int(resolved["min_components"])
         if resolved["max_components"] is not None:
             resolved["max_components"] = int(resolved["max_components"])

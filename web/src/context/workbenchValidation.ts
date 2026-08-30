@@ -115,6 +115,57 @@ function validateTargetCandidateSetting(
   return targets.length > 0 && targets.every((value) => containsClass(order, value));
 }
 
+function validateCompositionModelSetting(
+  settings: CompositionSettings,
+  featureColumns: string[]
+): boolean {
+  if (!settings.enabled) return true;
+  if (!settings.column || !featureColumns.includes(settings.column)) return false;
+  if (settings.totalMode === "variable") {
+    return Number.isFinite(settings.totalLower) &&
+      Number.isFinite(settings.totalUpper) &&
+      settings.totalLower > 0 &&
+      settings.totalLower < settings.totalUpper;
+  }
+  return Number.isFinite(settings.total) && settings.total > 0;
+}
+
+function validateCompositionCandidateSetting(settings: CompositionSettings): boolean {
+  if (!settings.enabled) return true;
+  const totalLimit = settings.totalMode === "variable"
+    ? settings.totalUpper
+    : settings.total;
+  if (!Number.isFinite(totalLimit) || totalLimit <= 0) return false;
+  if (settings.minComponents < 1) return false;
+  if (settings.maxComponents !== null && settings.maxComponents < settings.minComponents) {
+    return false;
+  }
+  if (settings.supportSelection === "best_subset") {
+    if (settings.maxComponents === null || settings.minComponents !== settings.maxComponents) {
+      return false;
+    }
+    if (
+      settings.totalMode === "variable" &&
+      settings.elements.some((element) => (settings.steps[element] ?? 0) > 0)
+    ) {
+      return false;
+    }
+  }
+  if (settings.requiredComponents.some((element) => settings.forbiddenComponents.includes(element))) {
+    return false;
+  }
+  return settings.elements.every((element) => {
+    const pair = settings.bounds[element];
+    if (!pair) return true;
+    const [lower, upper] = pair;
+    return Number.isFinite(lower) &&
+      Number.isFinite(upper) &&
+      lower >= 0 &&
+      lower <= upper &&
+      upper <= totalLimit;
+  });
+}
+
 export interface WorkbenchValidationInput {
   dataset: DatasetResponse | null;
   featureColumns: string[];
@@ -217,6 +268,10 @@ export function deriveWorkbenchState(input: WorkbenchValidationInput): Workbench
     crabnetProcessTypeValid &&
     !inputPerturbation
   );
+  const compositionModelValid = validateCompositionModelSetting(
+    compositionSettings,
+    featureColumns
+  );
   const settingsValid = Boolean(
     canConfigure &&
     selectedTargetSettings.length === targetColumns.length &&
@@ -230,6 +285,7 @@ export function deriveWorkbenchState(input: WorkbenchValidationInput): Workbench
     modelTypeKnown &&
     (modelType !== "multitask" || canUseMultitask) &&
     crabnetSettingsValid &&
+    compositionModelValid &&
     (!projectedModel || (
       Number.isInteger(projectionDimensions) &&
       projectionDimensions >= 1 &&
@@ -245,7 +301,8 @@ export function deriveWorkbenchState(input: WorkbenchValidationInput): Workbench
       columns.find((column) => column.name === setting.target),
       preview
     )) &&
-    selectedVariables.every(validateVariableCandidateSetting)
+    selectedVariables.every(validateVariableCandidateSetting) &&
+    validateCompositionCandidateSetting(compositionSettings)
   );
 
   return {

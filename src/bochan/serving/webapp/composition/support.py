@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 
 from bochan.tabular.composition.constraints import CompositionElementConstraintResolver
+from bochan.tabular.composition.variable_total import CompositionVariableTotalTransform
 
 _SITE_NAME = "composition"
 _DESCRIPTOR_BUILTINS = {"atomic_number", "atomic_weight"}
@@ -150,6 +151,10 @@ def _validate_best_subset_contract(config: Mapping[str, Any]) -> None:
         raise ValueError(
             "Composition best_subset requires min_components == max_components."
         )
+    if config.get("variable_total") and config.get("steps"):
+        raise ValueError(
+            "Variable-total composition best_subset does not yet support component steps."
+        )
 
 
 def _uses_logratio_best_subset(config: Mapping[str, Any]) -> bool:
@@ -158,6 +163,54 @@ def _uses_logratio_best_subset(config: Mapping[str, Any]) -> bool:
         and str(config.get("representation", "fractions")).lower()
         in _LOG_RATIO_REPRESENTATIONS
     )
+
+
+def _total_settings(
+    raw: Mapping[str, Any],
+    *,
+    column: str,
+) -> dict[str, Any]:
+    raw_total_bounds = raw.get("total_bounds")
+    raw_total = raw.get(
+        "total",
+        None if raw_total_bounds is not None else 1.0,
+    )
+    if raw_total_bounds is None:
+        if raw_total in (None, ""):
+            raise ValueError("Fixed-total composition requires total.")
+        total = float(raw_total)
+        if not np.isfinite(total) or total <= 0.0:
+            raise ValueError("Composition total must be finite and positive.")
+        return {
+            "variable_total": False,
+            "total": total,
+            "total_bounds": None,
+            "total_feature": None,
+        }
+
+    if raw_total not in (None, ""):
+        raise ValueError(
+            "Composition settings must specify either total or total_bounds, not both."
+        )
+    pair = tuple(raw_total_bounds)
+    if len(pair) != 2:
+        raise ValueError("total_bounds must contain two values.")
+    lower, upper = map(float, pair)
+    if (
+        not np.isfinite(lower)
+        or not np.isfinite(upper)
+        or lower <= 0.0
+        or lower >= upper
+    ):
+        raise ValueError("total_bounds must be finite, positive, and increasing.")
+    return {
+        "variable_total": True,
+        # A representative total is retained only for Web helper code. The
+        # canonical composition site receives total_bounds, never both fields.
+        "total": 0.5 * (lower + upper),
+        "total_bounds": (lower, upper),
+        "total_feature": f"{column}__total",
+    }
 
 
 def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]:
@@ -175,6 +228,7 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
         "pseudocount",
         "precision",
         "total",
+        "total_bounds",
         "bounds",
         "steps",
         "min_components",
@@ -235,6 +289,13 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
             f"{sorted(overlap)!r}."
         )
 
+    total_settings = _total_settings(raw, column=column)
+    total_limit = (
+        float(total_settings["total_bounds"][1])
+        if total_settings["variable_total"]
+        else float(total_settings["total"])
+    )
+
     bounds: dict[str, tuple[float, float]] = {}
     for element, pair in dict(raw.get("bounds") or {}).items():
         values = tuple(pair)
@@ -248,8 +309,12 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
             or not np.isfinite(upper)
             or lower < 0
             or lower > upper
+            or upper > total_limit + 1e-12
         ):
-            raise ValueError(f"Invalid composition bounds for {element!r}.")
+            raise ValueError(
+                f"Invalid composition bounds for {element!r}; upper bounds must not "
+                f"exceed the composition total limit {total_limit}."
+            )
         bounds[str(element)] = (lower, upper)
     for element in forbidden:
         lower, _upper = bounds.get(element, (0.0, 0.0))
@@ -279,9 +344,6 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
     ):
         raise ValueError("coordinate_bounds must be finite and increasing.")
 
-    total = _finite(raw.get("total", 1.0), 1.0)
-    if total <= 0:
-        raise ValueError("Composition total must be positive.")
     min_components = int(raw.get("min_components", 1))
     max_components_raw = raw.get("max_components")
     max_components = (
@@ -362,7 +424,7 @@ def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]
         "reference_element": raw.get("reference_element") or None,
         "pseudocount": _finite(raw.get("pseudocount", 1e-12), 1e-12),
         "precision": max(1, int(raw.get("precision", 6))),
-        "total": total,
+        **total_settings,
         "bounds": bounds,
         "steps": steps,
         "min_components": min_components,
@@ -453,6 +515,13 @@ def _composition_transformer(
         column,
         drop_formula=True,
     )
+    if resolved["variable_total"]:
+        transformed.loc[:, resolved["total_feature"]] = (
+            CompositionVariableTotalTransform.formula_site_totals(
+                data.loc[:, column],
+                resolved,
+            )
+        )
     resolved["feature_names"] = list(transformer.feature_names_ or ())
     return transformed, resolved
 
@@ -464,16 +533,21 @@ def _coordinate_specs(config: dict[str, Any]) -> list[Any]:
     if config["representation"] == "fractions":
         for index, name in enumerate(names):
             element = elements[index]
-            lower, upper = config["bounds"].get(
-                element,
-                (0.0, config["total"]),
-            )
+            if config["variable_total"]:
+                lower, upper = 0.0, 1.0
+            else:
+                component_lower, component_upper = config["bounds"].get(
+                    element,
+                    (0.0, config["total"]),
+                )
+                lower = float(component_lower) / float(config["total"])
+                upper = float(component_upper) / float(config["total"])
             specs.append(
                 SimpleNamespace(
                     name=name,
                     type="numeric",
-                    lower=float(lower) / config["total"],
-                    upper=float(upper) / config["total"],
+                    lower=float(lower),
+                    upper=float(upper),
                     step=None,
                     fixed=False,
                     fixed_value=None,
@@ -492,6 +566,19 @@ def _coordinate_specs(config: dict[str, Any]) -> list[Any]:
                 fixed_value=None,
             )
             for name in names
+        )
+    if config["variable_total"]:
+        lower, upper = config["total_bounds"]
+        specs.append(
+            SimpleNamespace(
+                name=config["total_feature"],
+                type="numeric",
+                lower=float(lower),
+                upper=float(upper),
+                step=None,
+                fixed=False,
+                fixed_value=None,
+            )
         )
     return specs
 
@@ -517,6 +604,8 @@ def prepare_composition_encoded_features(
     for column in feature_columns:
         if column == resolved["column"]:
             transformed_columns.extend(resolved["feature_names"])
+            if resolved["variable_total"]:
+                transformed_columns.append(resolved["total_feature"])
         else:
             transformed_columns.append(column)
     filtered_specs = [
@@ -556,6 +645,8 @@ def composition_model_feature_columns(
     for column in feature_columns:
         if column == config["column"]:
             model_columns.extend(config.get("feature_names") or ())
+            if config.get("variable_total"):
+                model_columns.append(str(config["total_feature"]))
         else:
             model_columns.append(column)
     return model_columns
@@ -567,7 +658,7 @@ def composition_site(config: Mapping[str, Any]) -> dict[str, Any]:
     # Descriptors deliberately remain disabled in the CompositionAdapter.
     # Candidate optimization operates on composition coordinates only, while
     # the model InputTransform recomputes descriptors from every candidate.
-    return {
+    site = {
         "column": config["column"],
         "elements": config["elements"],
         "normalization": config["normalization"],
@@ -577,7 +668,6 @@ def composition_site(config: Mapping[str, Any]) -> dict[str, Any]:
         "include_descriptors": False,
         "prefix": config["column"],
         "precision": config["precision"],
-        "total": config["total"],
         "bounds": config["bounds"],
         "steps": config["steps"],
         "min_components": config["min_components"],
@@ -592,6 +682,12 @@ def composition_site(config: Mapping[str, Any]) -> dict[str, Any]:
         "best_subset_max_evaluations": config["best_subset_max_evaluations"],
         "coordinate_bounds": config["coordinate_bounds"],
     }
+    if config.get("variable_total"):
+        site["total_bounds"] = config["total_bounds"]
+        site["total_feature"] = config["total_feature"]
+    else:
+        site["total"] = config["total"]
+    return site
 
 
 def _composition_model_columns(optimizer: Any) -> list[str]:
@@ -731,6 +827,41 @@ def _element_constraint_results(
     return results
 
 
+def _raw_best_subset_fractions(
+    raw_candidates: Any,
+    bridge: Any,
+) -> tuple[np.ndarray, np.ndarray | None, Any]:
+    """Return exact normalized fractions and optional variable totals from raw decisions."""
+
+    if hasattr(bridge, "amount_values") and hasattr(bridge, "base"):
+        amounts = (
+            bridge.amount_values(raw_candidates)
+            .detach()
+            .cpu()
+            .reshape(-1, len(bridge.amount_names))
+            .numpy()
+        )
+        amounts[np.abs(amounts) < 1e-12] = 0.0
+        totals = amounts.sum(axis=1)
+        if np.any(totals <= 0.0):
+            raise RuntimeError("Raw composition candidates must have positive totals.")
+        fractions = amounts / totals[:, None]
+        return fractions, totals, bridge.base
+
+    fractions = (
+        bridge.fraction_values(raw_candidates)
+        .detach()
+        .cpu()
+        .reshape(-1, bridge.fraction_width)
+        .numpy()
+    )
+    fractions[np.abs(fractions) < 1e-12] = 0.0
+    totals = fractions.sum(axis=1, keepdims=True)
+    if np.any(totals <= 0.0):
+        raise RuntimeError("Raw composition candidates must have positive totals.")
+    return fractions / totals, None, bridge
+
+
 def _restore_exact_raw_best_subset(
     restored: Any,
     *,
@@ -745,22 +876,14 @@ def _restore_exact_raw_best_subset(
 
     from bochan.composition import format_formula
 
-    fractions = (
-        raw_candidates[..., bridge.fraction_slice]
-        .detach()
-        .cpu()
-        .reshape(-1, bridge.fraction_width)
-        .numpy()
+    fractions, variable_totals, fraction_bridge = _raw_best_subset_fractions(
+        raw_candidates,
+        bridge,
     )
     if int(fractions.shape[0]) != int(len(restored)):
         raise RuntimeError(
             "Raw composition candidate count does not match Web response rows."
         )
-    fractions[np.abs(fractions) < 1e-12] = 0.0
-    totals = fractions.sum(axis=1, keepdims=True)
-    if np.any(totals <= 0.0):
-        raise RuntimeError("Raw composition candidates must have positive totals.")
-    fractions = fractions / totals
 
     transformer = next(
         (
@@ -770,7 +893,7 @@ def _restore_exact_raw_best_subset(
                 f"{value.prefix}__fraction__{element}"
                 for element in value.fitted_elements
             )
-            == tuple(bridge.fraction_names)
+            == tuple(fraction_bridge.fraction_names)
         ),
         None,
     )
@@ -779,12 +902,19 @@ def _restore_exact_raw_best_subset(
             "Unable to match the raw composition bridge to its fitted transformer."
         )
     atomic_fractions = transformer.basis_to_atomic_fractions(fractions)
-    for index, name in enumerate(bridge.fraction_names):
+    for index, name in enumerate(fraction_bridge.fraction_names):
         restored.loc[:, name] = fractions[:, index]
+    if variable_totals is not None:
+        total_feature = config.get("total_feature")
+        if not total_feature:
+            raise RuntimeError(
+                "Variable-total raw candidate is missing its configured total feature."
+            )
+        restored.loc[:, total_feature] = variable_totals
     restored.loc[:, config["column"]] = [
         format_formula(
-            dict(zip(bridge.elements, row, strict=True)),
-            order=bridge.elements,
+            dict(zip(fraction_bridge.elements, row, strict=True)),
+            order=fraction_bridge.elements,
             precision=int(config["precision"]),
         )
         for row in atomic_fractions
@@ -821,11 +951,16 @@ def add_composition_candidate_rows(
             config=config,
         )
     formula_column = config["column"]
+    total_feature = config.get("total_feature")
     coordinate_columns = set(config.get("feature_names") or ())
     output_columns = [
         column
         for column in restored.columns
-        if column == formula_column or "__fraction__" in str(column)
+        if (
+            column == formula_column
+            or "__fraction__" in str(column)
+            or (total_feature is not None and column == total_feature)
+        )
     ]
     for row_index, row in enumerate(rows):
         for column in coordinate_columns:
@@ -854,6 +989,7 @@ def composition_response_metadata(
 
     if config is None:
         return None
+    variable_total = bool(config.get("variable_total", False))
     descriptor_metadata = {
         "enabled": bool(config.get("include_descriptors", False)),
         "properties": list(config.get("descriptor_properties") or ()),
@@ -872,11 +1008,20 @@ def composition_response_metadata(
         "elements": list(config.get("elements") or ()),
         "normalization": config["normalization"],
         "representation": config["representation"],
-        "total": config["total"],
+        "variable_total": variable_total,
+        "total": None if variable_total else config["total"],
+        "total_bounds": (
+            list(config["total_bounds"])
+            if variable_total
+            else None
+        ),
+        "total_feature": config.get("total_feature"),
         "constraints": len(config["element_constraints"]),
         "support_selection": config.get("support_selection", "repair"),
         "support_space": (
-            "raw_fraction"
+            "raw_amount"
+            if config.get("support_selection") == "best_subset" and variable_total
+            else "raw_fraction"
             if config.get("support_selection") == "best_subset"
             else None
         ),

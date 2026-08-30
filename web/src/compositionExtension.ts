@@ -5,6 +5,7 @@ export const COMPOSITION_SETTINGS_CHANGE_EVENT = "bochan-composition-settings-ch
 
 type Representation = "fractions" | "clr" | "alr" | "ilr";
 type Normalization = "atomic_fraction" | "weight_fraction";
+type TotalMode = "fixed" | "variable";
 type ConstraintOperator = "=" | "<=" | ">=";
 type ConstraintBasis = "atomic_amount" | "weight_amount";
 type DescriptorProperty = "atomic_number" | "atomic_weight";
@@ -37,6 +38,10 @@ export interface CompositionSettings {
   referenceElement: string;
   pseudocount: number;
   precision: number;
+  totalMode: TotalMode;
+  total: number;
+  totalLower: number;
+  totalUpper: number;
   coordinateLower: number;
   coordinateUpper: number;
   minComponents: number;
@@ -68,6 +73,10 @@ const DEFAULT_SETTINGS: CompositionSettings = {
   referenceElement: "",
   pseudocount: 1e-12,
   precision: 6,
+  totalMode: "fixed",
+  total: 1,
+  totalLower: 0.5,
+  totalUpper: 1.5,
   coordinateLower: -8,
   coordinateUpper: 8,
   minComponents: 1,
@@ -167,6 +176,15 @@ function normalizeSettings(value: unknown): CompositionSettings {
   const raw = value as Record<string, unknown>;
   const elements = uniqueStrings(raw.elements);
   const elementSet = new Set(elements);
+  const totalMode: TotalMode = raw.totalMode === "variable" ? "variable" : "fixed";
+  const total = Math.max(1e-12, finiteNumber(raw.total, 1));
+  const defaultLower = Math.max(1e-12, 0.5 * total);
+  const totalLower = Math.max(1e-12, finiteNumber(raw.totalLower, defaultLower));
+  const candidateUpper = finiteNumber(raw.totalUpper, Math.max(1.5 * total, totalLower + 1e-6));
+  const totalUpper = candidateUpper > totalLower
+    ? candidateUpper
+    : totalLower + Math.max(1e-6, 0.1 * totalLower);
+  const amountUpper = totalMode === "variable" ? totalUpper : total;
   const rawBounds = raw.bounds && typeof raw.bounds === "object"
     ? raw.bounds as Record<string, unknown>
     : {};
@@ -174,15 +192,17 @@ function normalizeSettings(value: unknown): CompositionSettings {
     ? raw.steps as Record<string, unknown>
     : {};
   const bounds = Object.fromEntries(elements.map((element) => {
-    const rawPair = Array.isArray(rawBounds[element]) ? rawBounds[element] as unknown[] : [0, 1];
+    const rawPair = Array.isArray(rawBounds[element])
+      ? rawBounds[element] as unknown[]
+      : [0, amountUpper];
     const lower = Math.max(0, finiteNumber(rawPair[0], 0));
-    const upper = Math.max(lower, finiteNumber(rawPair[1], 1));
+    const upper = Math.max(lower, finiteNumber(rawPair[1], amountUpper));
     return [element, [lower, upper] as [number, number]];
   }));
   const steps = Object.fromEntries(elements.map((element) => {
-    const value = rawSteps[element];
-    if (value === null || value === undefined || value === "") return [element, null];
-    const step = finiteNumber(value, 0);
+    const item = rawSteps[element];
+    if (item === null || item === undefined || item === "") return [element, null];
+    const step = finiteNumber(item, 0);
     return [element, step > 0 ? step : null];
   }));
   const constraints = Array.isArray(raw.constraints)
@@ -218,6 +238,10 @@ function normalizeSettings(value: unknown): CompositionSettings {
       : "",
     pseudocount: Math.max(1e-15, finiteNumber(raw.pseudocount, 1e-12)),
     precision: Math.max(1, Math.min(12, Math.trunc(finiteNumber(raw.precision, 6)))),
+    totalMode,
+    total,
+    totalLower,
+    totalUpper,
     coordinateLower: finiteNumber(raw.coordinateLower, -8),
     coordinateUpper: finiteNumber(raw.coordinateUpper, 8),
     minComponents: Math.max(1, Math.trunc(finiteNumber(raw.minComponents, 1))),
@@ -281,9 +305,12 @@ export function activateCompositionDataset(datasetId: string): void {
 export function compositionSettingsToBackend(
   settings: CompositionSettings
 ): Record<string, unknown> {
+  const defaultUpper = settings.totalMode === "variable"
+    ? settings.totalUpper
+    : settings.total;
   const bounds = Object.fromEntries(settings.elements.map((element) => [
     element,
-    settings.bounds[element] ?? [0, 1]
+    settings.bounds[element] ?? [0, defaultUpper]
   ]));
   const steps = Object.fromEntries(settings.elements.flatMap((element) => {
     const step = settings.steps[element];
@@ -298,7 +325,10 @@ export function compositionSettingsToBackend(
     reference_element: settings.referenceElement || null,
     pseudocount: settings.pseudocount,
     precision: settings.precision,
-    total: 1,
+    total: settings.totalMode === "fixed" ? settings.total : null,
+    total_bounds: settings.totalMode === "variable"
+      ? [settings.totalLower, settings.totalUpper]
+      : null,
     coordinate_bounds: [settings.coordinateLower, settings.coordinateUpper],
     min_components: settings.minComponents,
     max_components: settings.maxComponents,
@@ -337,6 +367,12 @@ export function compositionSettingsFromBackend(value: unknown): CompositionSetti
   const coordinateBounds = Array.isArray(raw.coordinate_bounds)
     ? raw.coordinate_bounds
     : [-8, 8];
+  const totalBounds = Array.isArray(raw.total_bounds) && raw.total_bounds.length === 2
+    ? raw.total_bounds
+    : null;
+  const restoredTotal = totalBounds
+    ? 0.5 * (finiteNumber(totalBounds[0], 0.5) + finiteNumber(totalBounds[1], 1.5))
+    : finiteNumber(raw.total, 1);
   return normalizeSettings({
     enabled: raw.enabled ?? Boolean(raw.column),
     column: raw.column,
@@ -346,6 +382,10 @@ export function compositionSettingsFromBackend(value: unknown): CompositionSetti
     referenceElement: raw.reference_element,
     pseudocount: raw.pseudocount,
     precision: raw.precision,
+    totalMode: totalBounds ? "variable" : "fixed",
+    total: restoredTotal,
+    totalLower: totalBounds?.[0],
+    totalUpper: totalBounds?.[1],
     coordinateLower: coordinateBounds[0],
     coordinateUpper: coordinateBounds[1],
     minComponents: raw.min_components,

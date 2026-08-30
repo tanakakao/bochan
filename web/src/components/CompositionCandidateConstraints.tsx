@@ -67,6 +67,9 @@ export function CompositionSearchSpaceConstraints() {
 
   const elementCount = Math.max(settings.elements.length, 1);
   const maximum = settings.maxComponents ?? (settings.elements.length || 1);
+  const variableTotal = settings.totalMode === "variable";
+  const totalLimit = variableTotal ? settings.totalUpper : settings.total;
+  const variableBestSubset = variableTotal && settings.supportSelection === "best_subset";
 
   return (
     <section className="composition-search-space-constraints-react">
@@ -74,10 +77,98 @@ export function CompositionSearchSpaceConstraints() {
         <div>
           <span className="panel-kicker">COMPOSITION SEARCH SPACE</span>
           <h4>組成候補の元素制約</h4>
-          <p>説明変数の探索範囲と同じ場所で、使用元素数と元素ごとの比率範囲を設定します。</p>
+          <p>説明変数の探索範囲と同じ場所で、組成合計・使用元素数・元素ごとの量を設定します。</p>
         </div>
         <span className="status-chip success">{settings.elements.length} elements</span>
       </div>
+
+      <section className="constraint-section composition-total-constraints-react">
+        <div className="constraint-section-heading">
+          <div>
+            <h4>組成合計</h4>
+            <p>
+              固定合計だけでなく、合計量そのものを探索変数として最適化できます。
+              Variable totalでは各元素の絶対量の和が指定範囲に入るよう探索します。
+            </p>
+          </div>
+          <span className={`status-chip ${variableTotal ? "success" : ""}`}>
+            {variableTotal ? "VARIABLE TOTAL" : "FIXED TOTAL"}
+          </span>
+        </div>
+        <div className="composition-basic-grid">
+          <label>
+            <span>合計の扱い</span>
+            <select
+              value={settings.totalMode}
+              onChange={(event) => update((current) => ({
+                ...current,
+                totalMode: event.target.value === "variable" ? "variable" : "fixed"
+              }))}
+            >
+              <option value="fixed">固定</option>
+              <option value="variable">範囲内で最適化</option>
+            </select>
+          </label>
+          {!variableTotal ? (
+            <label>
+              <span>固定合計</span>
+              <input
+                type="number"
+                min={1e-12}
+                step="any"
+                value={settings.total}
+                onChange={(event) => update((current) => ({
+                  ...current,
+                  total: Math.max(1e-12, Number(event.target.value) || 1e-12)
+                }))}
+              />
+            </label>
+          ) : (
+            <>
+              <label>
+                <span>合計下限</span>
+                <input
+                  type="number"
+                  min={1e-12}
+                  step="any"
+                  value={settings.totalLower}
+                  onChange={(event) => {
+                    const value = Math.max(1e-12, Number(event.target.value) || 1e-12);
+                    update((current) => ({
+                      ...current,
+                      totalLower: value,
+                      totalUpper: Math.max(current.totalUpper, value + 1e-6)
+                    }));
+                  }}
+                />
+              </label>
+              <label>
+                <span>合計上限</span>
+                <input
+                  type="number"
+                  min={settings.totalLower + 1e-6}
+                  step="any"
+                  value={settings.totalUpper}
+                  onChange={(event) => {
+                    const value = Number(event.target.value);
+                    update((current) => ({
+                      ...current,
+                      totalUpper: Number.isFinite(value) && value > current.totalLower
+                        ? value
+                        : current.totalLower + 1e-6
+                    }));
+                  }}
+                />
+              </label>
+            </>
+          )}
+        </div>
+        {variableTotal && (
+          <p className="settings-note">
+            Variable totalでは学習モデルにも組成合計featureを追加し、元素supportと合計量を同じ候補最適化で決定します。
+          </p>
+        )}
+      </section>
 
       <section className="constraint-section composition-count-constraints-react">
         <div className="constraint-section-heading">
@@ -129,8 +220,12 @@ export function CompositionSearchSpaceConstraints() {
       <section className="constraint-section composition-element-section composition-ratio-constraints-react">
         <div className="constraint-section-heading">
           <div>
-            <h4>元素ごとの比率制約</h4>
-            <p>上下限と刻みは、合計1に正規化した比率で指定します。</p>
+            <h4>{variableTotal ? "元素ごとの絶対量制約" : "元素ごとの量制約"}</h4>
+            <p>
+              {variableTotal
+                ? `上下限は各元素の絶対量で指定します。元素量の合計は ${settings.totalLower}〜${settings.totalUpper} の範囲です。`
+                : `上下限と刻みは固定合計 ${settings.total} と同じ量基準で指定します。`}
+            </p>
           </div>
         </div>
         {settings.elements.length === 0 ? (
@@ -143,7 +238,7 @@ export function CompositionSearchSpaceConstraints() {
               </thead>
               <tbody>
                 {settings.elements.map((element) => {
-                  const pair = settings.bounds[element] ?? [0, 1];
+                  const pair = settings.bounds[element] ?? [0, totalLimit];
                   const step = settings.steps[element];
                   const required = settings.requiredComponents.includes(element);
                   return (
@@ -153,13 +248,16 @@ export function CompositionSearchSpaceConstraints() {
                         <input
                           type="number"
                           min={0}
-                          max={1}
+                          max={totalLimit}
                           step="any"
                           value={pair[0]}
                           onChange={(event) => {
                             const value = Math.max(0, Number(event.target.value));
                             update((current) => {
-                              const currentPair = current.bounds[element] ?? [0, 1];
+                              const currentLimit = current.totalMode === "variable"
+                                ? current.totalUpper
+                                : current.total;
+                              const currentPair = current.bounds[element] ?? [0, currentLimit];
                               return {
                                 ...current,
                                 bounds: {
@@ -175,13 +273,16 @@ export function CompositionSearchSpaceConstraints() {
                         <input
                           type="number"
                           min={0}
-                          max={1}
+                          max={totalLimit}
                           step="any"
                           value={pair[1]}
                           onChange={(event) => {
                             const value = Math.max(0, Number(event.target.value));
                             update((current) => {
-                              const currentPair = current.bounds[element] ?? [0, 1];
+                              const currentLimit = current.totalMode === "variable"
+                                ? current.totalUpper
+                                : current.total;
+                              const currentPair = current.bounds[element] ?? [0, currentLimit];
                               return {
                                 ...current,
                                 bounds: {
@@ -197,10 +298,11 @@ export function CompositionSearchSpaceConstraints() {
                         <input
                           type="number"
                           min={0}
-                          max={1}
+                          max={totalLimit}
                           step="any"
                           value={step ?? ""}
-                          placeholder="任意"
+                          placeholder={variableBestSubset ? "Best Subsetでは未対応" : "任意"}
+                          disabled={variableBestSubset}
                           onChange={(event) => {
                             const raw = event.target.value.trim();
                             const value = raw ? Math.max(0, Number(raw)) : null;
@@ -230,6 +332,11 @@ export function CompositionSearchSpaceConstraints() {
               </tbody>
             </table>
           </div>
+        )}
+        {variableBestSubset && settings.elements.some((element) => (settings.steps[element] ?? 0) > 0) && (
+          <p className="settings-note warning-text">
+            Variable total × Best Subsetではcomponent step/gridは次フェーズ対応です。保存済みstepを解除してから実行してください。
+          </p>
         )}
       </section>
     </section>
@@ -268,7 +375,7 @@ export function CompositionLinearConstraints() {
       <div className="constraint-section-heading">
         <div>
           <h4>元素間の線形制約</h4>
-          <p>例: Sr − 0.5 × La = 0 とすると、SrをLaの半分に固定できます。</p>
+          <p>例: Sr − 0.5 × La = 0 とすると、Sr量をLa量の半分に固定できます。</p>
         </div>
         <button
           type="button"
@@ -289,7 +396,7 @@ export function CompositionLinearConstraints() {
               <div className="constraint-card-heading">
                 <div>
                   <span className="constraint-index">{constraintIndex + 1}</span>
-                  <strong>Σ（係数 × 元素比）</strong>
+                  <strong>Σ（係数 × 元素量）</strong>
                 </div>
                 <button
                   type="button"
@@ -381,7 +488,7 @@ export function CompositionLinearConstraints() {
                     basis: event.target.value as ElementConstraint["basis"]
                   }))}
                 >
-                  <option value="atomic_amount">原子比・mol比基準</option>
+                  <option value="atomic_amount">原子量・mol量基準</option>
                   <option value="weight_amount">重量基準</option>
                 </select>
               </div>

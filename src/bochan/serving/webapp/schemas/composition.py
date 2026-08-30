@@ -1,8 +1,8 @@
 """Composition request schemas for the Web API."""
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from ._base import WebSchema
 from .regression import RegressionRunRequest
@@ -25,7 +25,7 @@ class CompositionElementConstraintSchema(WebSchema):
 
 
 class CompositionSettingsSchema(WebSchema):
-    """Single-formula ratio settings accepted by validation and optimization."""
+    """Single-formula composition settings accepted by validation and optimization."""
 
     enabled: bool = True
     column: str = Field(min_length=1)
@@ -35,7 +35,8 @@ class CompositionSettingsSchema(WebSchema):
     reference_element: str | None = None
     pseudocount: float = Field(default=1e-12, gt=0.0)
     precision: int = Field(default=6, ge=1, le=12)
-    total: float = Field(default=1.0, gt=0.0)
+    total: float | None = Field(default=1.0, gt=0.0)
+    total_bounds: tuple[float, float] | None = None
     coordinate_bounds: tuple[float, float] = (-8.0, 8.0)
     min_components: int = Field(default=1, ge=1)
     max_components: int | None = Field(default=None, ge=1)
@@ -50,6 +51,32 @@ class CompositionSettingsSchema(WebSchema):
     bounds: dict[str, tuple[float, float]] = Field(default_factory=dict)
     steps: dict[str, float] = Field(default_factory=dict)
     element_constraints: list[CompositionElementConstraintSchema] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_total_contract(cls, value: Any) -> Any:
+        """Let total_bounds replace the legacy fixed-total default cleanly."""
+
+        if not isinstance(value, dict):
+            return value
+        if value.get("total_bounds") is not None and "total" not in value:
+            return {**value, "total": None}
+        return value
+
+    @model_validator(mode="after")
+    def validate_total_contract(self):
+        if self.total_bounds is None:
+            if self.total is None:
+                raise ValueError("Fixed-total composition requires total.")
+            return self
+        if self.total is not None:
+            raise ValueError(
+                "Composition settings must specify either total or total_bounds, not both."
+            )
+        lower, upper = map(float, self.total_bounds)
+        if lower <= 0.0 or lower >= upper:
+            raise ValueError("total_bounds must be positive and increasing.")
+        return self
 
 
 class CompositionValidationRequest(WebSchema):

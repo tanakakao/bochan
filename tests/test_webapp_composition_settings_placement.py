@@ -31,8 +31,10 @@ def test_composition_settings_are_owned_by_react_pages() -> None:
     assert "composition-model-settings-react" in model_controls
 
     assert "組成候補の元素制約" in candidate_controls
+    assert "組成合計" in candidate_controls
     assert "元素数の制約" in candidate_controls
-    assert "元素ごとの比率制約" in candidate_controls
+    assert "元素ごとの絶対量制約" in candidate_controls
+    assert "元素ごとの量制約" in candidate_controls
     assert "元素間の線形制約" in candidate_controls
 
     for source in (model_controls, candidate_controls):

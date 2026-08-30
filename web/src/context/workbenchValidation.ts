@@ -40,7 +40,7 @@ function containsClass(
 ): boolean {
   if (value === null || value === undefined) return false;
   const requested = classKey(value);
-  return values.some((candidate) => classKey(candidate) === requested);
+  return values.some((candidate) => classKey(value) === requested);
 }
 
 function sameClassSet(left: TargetClassValue[], right: TargetClassValue[]): boolean {
@@ -156,11 +156,18 @@ function validateCompositionCandidateSetting(settings: CompositionSettings): boo
     }
     const hasSteps = settings.elements.some((element) => (settings.steps[element] ?? 0) > 0);
     if (hasSteps) {
-      const required = settings.requiredComponents.filter(
-        (element) => !settings.forbiddenComponents.includes(element)
-      );
+      const forbidden = settings.elements.filter((element) => (
+        settings.forbiddenComponents.includes(element) ||
+        (settings.bounds[element]?.[1] ?? Number.POSITIVE_INFINITY) <= 1e-12
+      ));
+      const required = settings.elements.filter((element) => (
+        !forbidden.includes(element) && (
+          settings.requiredComponents.includes(element) ||
+          (settings.bounds[element]?.[0] ?? 0) > 1e-12
+        )
+      ));
       const optionalCount = settings.elements.filter(
-        (element) => !required.includes(element) && !settings.forbiddenComponents.includes(element)
+        (element) => !required.includes(element) && !forbidden.includes(element)
       ).length;
       const optionalK = settings.maxComponents - required.length;
       if (optionalK < 0 || optionalK > optionalCount) return false;

@@ -151,10 +151,6 @@ def _validate_best_subset_contract(config: Mapping[str, Any]) -> None:
         raise ValueError(
             "Composition best_subset requires min_components == max_components."
         )
-    if config.get("variable_total") and config.get("steps"):
-        raise ValueError(
-            "Variable-total composition best_subset does not yet support component steps."
-        )
 
 
 def _uses_logratio_best_subset(config: Mapping[str, Any]) -> bool:

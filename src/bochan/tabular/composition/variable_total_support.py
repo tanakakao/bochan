@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
+from itertools import combinations
 from math import comb
 from typing import Any
 
@@ -24,6 +25,7 @@ from bochan.api import (
 )
 from bochan.tabular.data import resolve_optimize_config_columns
 
+from .grid import CompositionVariableTotalGridFinalPostprocess
 from .logratio_support import RawDecisionAcquisition
 from .raw_bridge import CompositionRawDecisionBridge
 
@@ -35,6 +37,18 @@ _BEST_SUBSET_SITE_KWARGS = (
     "best_subset_beam_steps",
     "best_subset_max_evaluations",
 )
+_NATIVE_FINAL_POSTPROCESS_BYPASS = {
+    "nsgaii",
+    "nsga2",
+    "optimize_acqf_nsgaii",
+    "thompson_sampling",
+    "optimize_thompson_sampling",
+    "thompson_sampling_mixed",
+    "optimize_thompson_sampling_mixed",
+    "llm_candidate_set",
+    "optimize_acqf_llm",
+    "optimize_acqf_llm_candidate_set",
+}
 
 
 def is_variable_total_best_subset_site(config: Mapping[str, Any]) -> bool:
@@ -537,6 +551,9 @@ def _active_floor(config: Mapping[str, Any], element: str) -> float:
     lower, upper = _component_bounds(config, element)
     if lower > _TOLERANCE:
         return lower
+    step = (config.get("steps") or {}).get(element)
+    if step is not None:
+        return min(float(step), upper)
     total_upper = float(config["total_bounds"][1])
     return min(max(total_upper * 10.0 * _TOLERANCE, 10.0 * _TOLERANCE), upper)
 
@@ -551,6 +568,158 @@ def _optimizer_kwargs_for_site(
         if value is not None:
             optimizer_kwargs.setdefault(key, value)
     return optimizer_kwargs
+
+
+def _validate_grid_strategy(
+    *,
+    config: Mapping[str, Any],
+    optimizer_kwargs: Mapping[str, Any],
+    optional_count: int,
+    optional_k: int,
+) -> None:
+    """Keep variable-total step grids on exhaustive support search for now."""
+
+    if not config.get("steps") or optional_k == 0:
+        return
+    strategy = str(optimizer_kwargs.get("best_subset_strategy", "exact")).lower()
+    support_count = comb(optional_count, optional_k)
+    maximum = int(optimizer_kwargs.get("best_subset_max_combinations", 2000))
+    if strategy == "auto":
+        strategy = "exact" if support_count <= maximum else "beam"
+    if strategy != "exact":
+        raise ValueError(
+            "Variable-total composition best_subset with component steps currently "
+            "requires exact support search. Use best_subset_strategy='exact', or "
+            "'auto' only when the support count is within best_subset_max_combinations."
+        )
+    if support_count > maximum:
+        raise ValueError(
+            "Variable-total composition step-grid best_subset exact enumeration would "
+            f"evaluate {support_count} supports, exceeding "
+            f"best_subset_max_combinations={maximum}."
+        )
+
+
+def _constraint_items(indices: Any) -> list[Any]:
+    if isinstance(indices, (str, int)):
+        return [indices]
+    if hasattr(indices, "detach"):
+        return indices.detach().cpu().reshape(-1).tolist()
+    return list(indices)
+
+
+def _constraints_touch_amounts(
+    constraints: Sequence[tuple[Any, Any, Any]] | None,
+    *,
+    bridge: CompositionVariableTotalDecisionBridge,
+) -> bool:
+    names = set(bridge.amount_names)
+    positions = set(bridge.amount_indices)
+    for indices, _coefficients, _rhs in constraints or ():
+        for item in _constraint_items(indices):
+            if item in names:
+                return True
+            if isinstance(item, int) and int(item) in positions:
+                return True
+    return False
+
+
+def _fixed_amount_values(
+    values: Mapping[Any, Any],
+    *,
+    bridge: CompositionVariableTotalDecisionBridge,
+) -> list[Any]:
+    names = set(bridge.amount_names)
+    positions = set(bridge.amount_indices)
+    return [
+        key
+        for key, value in values.items()
+        if (
+            key in names
+            or (isinstance(key, int) and int(key) in positions)
+        )
+        and abs(float(value)) > _TOLERANCE
+    ]
+
+
+def _validate_grid_contract(
+    *,
+    raw_config: OptimizeConfig,
+    repair: CandidateRepairConfig,
+    site_config: Mapping[str, Any],
+    bridge: CompositionVariableTotalDecisionBridge,
+    all_fixed: Mapping[Any, float],
+) -> None:
+    if not site_config.get("steps"):
+        return
+
+    optimizer_name = str(raw_config.optimizer).replace("-", "_").lower()
+    if optimizer_name in _NATIVE_FINAL_POSTPROCESS_BYPASS:
+        raise ValueError(
+            "Variable-total composition step-grid best_subset requires an optimizer "
+            "backend that applies final_candidate_postprocess. Use optimize_acqf, evo, "
+            "or torch."
+        )
+    if hasattr(raw_config, "ensure_unique_candidates") and not bool(
+        raw_config.ensure_unique_candidates
+    ):
+        raise ValueError(
+            "Variable-total composition step-grid best_subset requires "
+            "ensure_unique_candidates=True so grid-projected candidates are re-evaluated."
+        )
+
+    nonzero_fixed = _fixed_amount_values(all_fixed, bridge=bridge)
+    if nonzero_fixed:
+        raise ValueError(
+            "Variable-total composition step-grid best_subset does not yet support "
+            f"non-zero fixed composition amounts: {nonzero_fixed!r}. Use component "
+            "bounds/required elements instead."
+        )
+
+    for constraints in (
+        raw_config.equality_constraints,
+        raw_config.inequality_constraints,
+        repair.equality_constraints,
+        repair.inequality_constraints,
+    ):
+        if _constraints_touch_amounts(constraints, bridge=bridge):
+            raise ValueError(
+                "Variable-total composition step-grid best_subset does not yet combine "
+                "with additional linear constraints on composition amounts. Remove the "
+                "element/composition linear constraint for this phase."
+            )
+
+
+def _grid_postprocess(
+    *,
+    raw_config: OptimizeConfig,
+    site_config: Mapping[str, Any],
+    bridge: CompositionVariableTotalDecisionBridge,
+    exact_k: int,
+) -> CompositionVariableTotalGridFinalPostprocess | Any:
+    if not site_config.get("steps"):
+        return getattr(raw_config, "final_candidate_postprocess", None)
+    return CompositionVariableTotalGridFinalPostprocess.from_config(
+        feature_indices=bridge.amount_indices,
+        elements=bridge.elements,
+        config=site_config,
+        exact_k=exact_k,
+        previous=getattr(raw_config, "final_candidate_postprocess", None),
+    )
+
+
+def _validate_grid_supports(
+    *,
+    projector: CompositionVariableTotalGridFinalPostprocess | Any,
+    site_config: Mapping[str, Any],
+    required: Sequence[str],
+    optional: Sequence[str],
+    optional_k: int,
+) -> None:
+    if not site_config.get("steps"):
+        return
+    for selected in combinations(optional, optional_k):
+        projector.validate_support([*required, *selected])
 
 
 def _validate_support_feasibility(
@@ -618,11 +787,6 @@ def prepare_variable_total_best_subset_config(
 
     if not is_variable_total_best_subset_site(site_config):
         raise ValueError(f"Composition site {site_name!r} is not variable-total best_subset.")
-    if site_config.get("steps"):
-        raise ValueError(
-            "Variable-total composition best_subset does not yet combine with component "
-            "step grids. Use continuous component amounts in this phase."
-        )
     minimum = int(site_config["min_components"])
     maximum = site_config.get("max_components")
     if maximum is None or minimum != int(maximum):
@@ -694,8 +858,36 @@ def prepare_variable_total_best_subset_config(
             "Variable-total composition best_subset cannot satisfy the requested exact "
             "component count after required/forbidden rules."
         )
+
+    optimizer_kwargs = _optimizer_kwargs_for_site(raw_config, site_config)
+    _validate_grid_strategy(
+        config=site_config,
+        optimizer_kwargs=optimizer_kwargs,
+        optional_count=len(optional),
+        optional_k=optional_k,
+    )
+    _validate_grid_contract(
+        raw_config=raw_config,
+        repair=repair,
+        site_config=site_config,
+        bridge=bridge,
+        all_fixed=all_fixed,
+    )
     _validate_support_feasibility(
         config=site_config,
+        required=sorted(required, key=elements.index),
+        optional=optional,
+        optional_k=optional_k,
+    )
+    final_candidate_postprocess = _grid_postprocess(
+        raw_config=raw_config,
+        site_config=site_config,
+        bridge=bridge,
+        exact_k=exact_k,
+    )
+    _validate_grid_supports(
+        projector=final_candidate_postprocess,
+        site_config=site_config,
         required=sorted(required, key=elements.index),
         optional=optional,
         optional_k=optional_k,
@@ -732,7 +924,6 @@ def prepare_variable_total_best_subset_config(
             optimizer_inequalities.append(([amount_name], [1.0], floor))
 
     optional_names = [by_element[element] for element in optional]
-    optimizer_kwargs = _optimizer_kwargs_for_site(raw_config, site_config)
     if optional_k == 0:
         repair = replace(
             repair,
@@ -768,6 +959,7 @@ def prepare_variable_total_best_subset_config(
         fixed_features=optimizer_fixed or None,
         inequality_constraints=optimizer_inequalities,
         optimizer_kwargs=optimizer_kwargs,
+        final_candidate_postprocess=final_candidate_postprocess,
     )
     raw_config = resolve_optimize_config_columns(
         raw_config,

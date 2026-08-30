@@ -8,6 +8,7 @@ import torch
 from bochan.api import OptimizeConfig
 from bochan.composition import CompositionTransformer
 from bochan.tabular import TabularBayesianOptimizer
+from bochan.tabular.composition.grid import CompositionVariableTotalGridFinalPostprocess
 from bochan.tabular.composition.variable_total_support import (
     CompositionVariableTotalDecisionBridge,
     prepare_variable_total_best_subset_config,
@@ -225,11 +226,60 @@ def test_variable_total_config_expands_total_feature_constraints() -> None:
     assert rhs == pytest.approx(0.0)
 
 
-def test_variable_total_best_subset_rejects_component_steps_for_now() -> None:
+def _stepped_site(representation: str = "ilr") -> dict[str, object]:
+    site = _site(representation)
+    site["steps"] = {"Al": 5.0, "Ti": 5.0, "V": 5.0, "Nb": 5.0}
+    return site
+
+
+def test_variable_total_best_subset_attaches_amount_grid_postprocess() -> None:
     transformer = _transformer("ilr")
-    site = _site("ilr")
-    site["steps"] = {"Al": 5.0}
-    with pytest.raises(ValueError, match="step grids"):
+    _bridge, config, _bounds = prepare_variable_total_best_subset_config(
+        OptimizeConfig(),
+        site_name="alloy",
+        site_config=_stepped_site("ilr"),
+        transformer=transformer,
+        model_feature_names=_layout(transformer),
+        model_bounds=_model_bounds(transformer),
+        dtype=torch.double,
+    )
+
+    assert isinstance(
+        config.final_candidate_postprocess,
+        CompositionVariableTotalGridFinalPostprocess,
+    )
+
+
+def test_variable_total_step_grid_rejects_beam_support_search() -> None:
+    transformer = _transformer("ilr")
+    site = _stepped_site("ilr")
+    site["best_subset_strategy"] = "beam"
+    with pytest.raises(ValueError, match="requires exact support search"):
+        prepare_variable_total_best_subset_config(
+            OptimizeConfig(),
+            site_name="alloy",
+            site_config=site,
+            transformer=transformer,
+            model_feature_names=_layout(transformer),
+            model_bounds=_model_bounds(transformer),
+            dtype=torch.double,
+        )
+
+
+def test_variable_total_step_grid_rejects_support_without_feasible_total() -> None:
+    transformer = _transformer("ilr")
+    site = _stepped_site("ilr")
+    site["total"] = 42.5
+    site["total_bounds"] = (41.0, 44.0)
+    site["bounds"] = {
+        "Al": (5.0, 44.0),
+        "Ti": (0.0, 44.0),
+        "V": (0.0, 44.0),
+        "Nb": (0.0, 44.0),
+    }
+    site["steps"] = {"Al": 10.0, "Ti": 10.0, "V": 10.0, "Nb": 10.0}
+
+    with pytest.raises(ValueError, match="no feasible point on the configured step grid"):
         prepare_variable_total_best_subset_config(
             OptimizeConfig(),
             site_name="alloy",
@@ -254,7 +304,11 @@ def _frame() -> pd.DataFrame:
     )
 
 
-def _optimizer(representation: str) -> TabularBayesianOptimizer:
+def _optimizer(
+    representation: str,
+    *,
+    steps: dict[str, float] | None = None,
+) -> TabularBayesianOptimizer:
     return TabularBayesianOptimizer(
         task_type="regression",
         model_type="base",
@@ -279,6 +333,7 @@ def _optimizer(representation: str) -> TabularBayesianOptimizer:
                     "V": [0.0, 70.0],
                     "Nb": [0.0, 70.0],
                 },
+                "steps": steps or {},
                 "min_components": 3,
                 "max_components": 3,
                 "required_components": ["Al"],
@@ -330,3 +385,44 @@ def test_tabular_candidate_jointly_optimizes_variable_total_and_support(
     assert restored_amounts.sum() == pytest.approx(total, abs=1e-5)
     assert restored.loc[0, "alloy__total"] == pytest.approx(total, abs=1e-5)
     assert 800.0 <= float(restored.loc[0, "temperature"]) <= 1250.0
+
+
+@pytest.mark.parametrize("representation", ["fractions", "clr", "alr", "ilr"])
+def test_tabular_variable_total_step_grid_returns_experiment_space_candidate(
+    representation: str,
+) -> None:
+    step = 5.0
+    optimizer = _optimizer(
+        representation,
+        steps={"Al": step, "Ti": step, "V": step, "Nb": step},
+    ).fit(_frame())
+    result = optimizer.candidate(
+        acq_name="logei",
+        q=1,
+        num_restarts=2,
+        raw_samples=16,
+        optimizer_kwargs={
+            "best_subset_strategy": "exact",
+            "options": {"maxiter": 12, "batch_limit": 2},
+        },
+        return_result=True,
+    )
+
+    raw = result.raw_composition_candidates
+    bridge = result.composition_raw_bridge
+    amounts = bridge.amount_values(raw).detach().cpu().numpy().reshape(-1)
+    active = amounts > 1e-7
+    total = float(amounts.sum())
+
+    assert int(active.sum()) == 3
+    assert amounts[0] > 0.0
+    assert 40.0 - 1e-6 <= total <= 90.0 + 1e-6
+    np.testing.assert_allclose(
+        amounts[active] / step,
+        np.round(amounts[active] / step),
+        atol=1e-7,
+    )
+
+    total_index = optimizer.dataset.feature_names.index("alloy__total")
+    assert result.candidates[..., total_index].item() == pytest.approx(total, abs=1e-6)
+    assert torch.isfinite(torch.as_tensor(result.acq_value)).all()

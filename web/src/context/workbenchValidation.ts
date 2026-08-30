@@ -20,6 +20,16 @@ function finiteNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function combinationCount(n: number, k: number): number {
+  if (k < 0 || k > n) return 0;
+  const choose = Math.min(k, n - k);
+  let result = 1;
+  for (let index = 1; index <= choose; index += 1) {
+    result = (result * (n - choose + index)) / index;
+  }
+  return Math.round(result);
+}
+
 function classKey(value: TargetClassValue): string {
   return String(value);
 }
@@ -144,11 +154,25 @@ function validateCompositionCandidateSetting(settings: CompositionSettings): boo
     if (settings.maxComponents === null || settings.minComponents !== settings.maxComponents) {
       return false;
     }
-    if (
-      settings.totalMode === "variable" &&
-      settings.elements.some((element) => (settings.steps[element] ?? 0) > 0)
-    ) {
-      return false;
+    const hasSteps = settings.elements.some((element) => (settings.steps[element] ?? 0) > 0);
+    if (hasSteps) {
+      const required = settings.requiredComponents.filter(
+        (element) => !settings.forbiddenComponents.includes(element)
+      );
+      const optionalCount = settings.elements.filter(
+        (element) => !required.includes(element) && !settings.forbiddenComponents.includes(element)
+      ).length;
+      const optionalK = settings.maxComponents - required.length;
+      if (optionalK < 0 || optionalK > optionalCount) return false;
+      if (optionalK > 0) {
+        if (settings.bestSubsetStrategy === "beam") return false;
+        if (
+          settings.bestSubsetStrategy === "auto" &&
+          combinationCount(optionalCount, optionalK) > settings.bestSubsetMaxCombinations
+        ) {
+          return false;
+        }
+      }
     }
   }
   if (settings.requiredComponents.some((element) => settings.forbiddenComponents.includes(element))) {

@@ -87,14 +87,17 @@ def test_web_normalization_rejects_both_fixed_and_variable_total() -> None:
         )
 
 
-def test_web_variable_total_best_subset_rejects_steps_explicitly() -> None:
-    with pytest.raises(ValueError, match="does not yet support component steps"):
-        normalize_web_composition_settings(
-            {
-                **_variable_settings(),
-                "steps": {"Al": 0.05},
-            }
-        )
+def test_web_variable_total_best_subset_accepts_amount_steps() -> None:
+    config = normalize_web_composition_settings(
+        {
+            **_variable_settings(),
+            "steps": {"Al": 0.05, "Ti": 0.05},
+        }
+    )
+
+    assert config["steps"] == {"Al": 0.05, "Ti": 0.05}
+    site = composition_site(config)
+    assert site["steps"] == {"Al": 0.05, "Ti": 0.05}
 
 
 @pytest.mark.parametrize("representation", ["fractions", "clr", "alr", "ilr"])
@@ -166,6 +169,41 @@ def test_typed_composition_endpoint_transports_variable_total() -> None:
     assert "total" not in composition
     assert composition["total_bounds"] == [0.8, 1.4]
     assert composition["support_selection"] == "best_subset"
+
+
+def test_typed_composition_endpoint_transports_variable_total_steps() -> None:
+    test_app = FastAPI()
+
+    def base_run(request):
+        return request.model_dump()
+
+    test_app.include_router(
+        create_composition_router(run_regression=base_run),
+        prefix="/api/v1",
+    )
+    response = TestClient(test_app).post(
+        "/api/v1/composition/regression/run",
+        json={
+            "run": {
+                "dataset_id": "dataset-1",
+                "feature_columns": ["formula", "temperature"],
+                "target_column": "property",
+            },
+            "composition": {
+                **_variable_settings(),
+                "steps": {"Al": 0.05, "Ti": 0.05, "V": 0.05, "Nb": 0.05},
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    composition = response.json()["model_kwargs"]["web_composition"]
+    assert composition["steps"] == {
+        "Al": 0.05,
+        "Ti": 0.05,
+        "V": 0.05,
+        "Nb": 0.05,
+    }
 
 
 @pytest.mark.parametrize("representation", ["clr", "alr", "ilr"])
@@ -242,3 +280,77 @@ def test_web_variable_total_candidate_restores_exact_amount_support_and_total(
     assert metadata["total"] is None
     assert metadata["total_bounds"] == [0.8, 1.4]
     assert metadata["support_space"] == "raw_amount"
+
+
+@pytest.mark.parametrize("representation", ["clr", "alr", "ilr"])
+def test_web_variable_total_step_grid_restores_projected_amount_total(
+    representation: str,
+) -> None:
+    step = 0.05
+    config = normalize_web_composition_settings(
+        {
+            **_variable_settings(representation),
+            "steps": {element: step for element in ["Al", "Ti", "V", "Nb"]},
+        }
+    )
+    _encoded, resolved = prepare_composition_encoded_features(
+        data=_frame(),
+        feature_columns=["formula", "temperature"],
+        search_space=[
+            SimpleNamespace(
+                name="temperature",
+                type="numeric",
+                lower=800.0,
+                upper=1250.0,
+                step=None,
+                fixed=False,
+                fixed_value=None,
+            )
+        ],
+        config=config,
+    )
+    optimizer = TabularBayesianOptimizer(
+        task_type="regression",
+        model_type="base",
+        fit_config={"maxiter": 32},
+        input_cols=["formula", "temperature"],
+        target_cols="property",
+        composition_sites={"composition": composition_site(resolved)},
+        bounds={"temperature": [800.0, 1250.0]},
+    ).fit(_frame())
+
+    result = optimizer.candidate(
+        acq_name="logei",
+        q=1,
+        num_restarts=2,
+        raw_samples=16,
+        optimizer_kwargs={
+            "best_subset_strategy": "exact",
+            "options": {"maxiter": 12, "batch_limit": 2},
+        },
+        return_result=True,
+    )
+    raw = result.raw_composition_candidates
+    bridge = result.composition_raw_bridge
+    amounts = bridge.amount_values(raw).detach().cpu().reshape(-1)
+    active = amounts > 1e-8
+    total = float(amounts.sum().item())
+
+    assert int(active.sum().item()) == 3
+    assert 0.8 - 1e-7 <= total <= 1.4 + 1e-7
+    torch.testing.assert_close(
+        amounts[active] / step,
+        torch.round(amounts[active] / step),
+        rtol=0.0,
+        atol=1e-7,
+    )
+
+    rows = [{"values": {}, "constraints": [], "constraints_ok": True}]
+    add_composition_candidate_rows(
+        rows,
+        tabular_optimizer=optimizer,
+        candidates=result.candidates,
+        config=resolved,
+        candidate_result=result,
+    )
+    assert rows[0]["values"]["formula__total"] == pytest.approx(total, abs=1e-7)

@@ -175,6 +175,14 @@ def _scalar_acquisition_value(value: Any) -> float:
         ) from exc
 
 
+def _evaluate_acquisition(acqf: Any, candidates: Any) -> Any:
+    """Evaluate the acquisition on the final repaired candidate set."""
+    value = acqf(candidates)
+    if hasattr(value, "detach"):
+        return value.detach()
+    return value
+
+
 def optimize_best_subset_candidates(
     *,
     acqf: Any,
@@ -186,7 +194,9 @@ def optimize_best_subset_candidates(
 
     For q > 1, one support is shared by the entire q-batch. The inner optimizer
     still optimizes the joint q acquisition normally, so process variables and
-    active sparse values remain jointly optimized within each support.
+    active sparse values remain jointly optimized within each support. Supports
+    are compared by re-evaluating the acquisition on each final repaired
+    candidate set.
     """
     if not uses_best_subset(config):
         return optimize_one(acqf=acqf, bounds=bounds, config=config)
@@ -200,11 +210,12 @@ def optimize_best_subset_candidates(
 
     for support in supports:
         inner_config = _config_for_support(config, support)
-        candidates, acq_value = optimize_one(
+        candidates, _ = optimize_one(
             acqf=acqf,
             bounds=bounds,
             config=inner_config,
         )
+        acq_value = _evaluate_acquisition(acqf, candidates)
         score = _scalar_acquisition_value(acq_value)
         if best_score is None or score > best_score:
             best_candidates = candidates

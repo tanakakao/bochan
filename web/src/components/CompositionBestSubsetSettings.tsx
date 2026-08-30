@@ -52,18 +52,11 @@ export default function CompositionBestSubsetSettings() {
   const overlap = settings.requiredComponents.filter((element) => (
     settings.forbiddenComponents.includes(element)
   ));
-  const forbidden = settings.elements.filter((element) => (
-    settings.forbiddenComponents.includes(element) ||
-    (settings.bounds[element]?.[1] ?? Number.POSITIVE_INFINITY) <= 1e-12
-  ));
-  const required = settings.elements.filter((element) => (
-    !forbidden.includes(element) && (
-      settings.requiredComponents.includes(element) ||
-      (settings.bounds[element]?.[0] ?? 0) > 1e-12
-    )
-  ));
+  const required = settings.requiredComponents.filter(
+    (element) => !settings.forbiddenComponents.includes(element)
+  );
   const optionalCount = settings.elements.filter(
-    (element) => !required.includes(element) && !forbidden.includes(element)
+    (element) => !required.includes(element) && !settings.forbiddenComponents.includes(element)
   ).length;
   const optionalK = Math.max(0, exactCount - required.length);
   const supportCount = combinationCount(optionalCount, optionalK);

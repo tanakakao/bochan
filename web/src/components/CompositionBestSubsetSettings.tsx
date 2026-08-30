@@ -30,6 +30,16 @@ function clampCount(value: number, elementCount: number): number {
   return Math.max(1, Math.min(Math.trunc(value || 1), Math.max(elementCount, 1)));
 }
 
+function combinationCount(n: number, k: number): number {
+  if (k < 0 || k > n) return 0;
+  const choose = Math.min(k, n - k);
+  let result = 1;
+  for (let index = 1; index <= choose; index += 1) {
+    result = (result * (n - choose + index)) / index;
+  }
+  return Math.round(result);
+}
+
 /** Configure acquisition-aware element-combination search for one composition site. */
 export default function CompositionBestSubsetSettings() {
   const [settings, update] = useCompositionSettings();
@@ -41,6 +51,21 @@ export default function CompositionBestSubsetSettings() {
   const overlap = settings.requiredComponents.filter((element) => (
     settings.forbiddenComponents.includes(element)
   ));
+  const required = settings.requiredComponents.filter(
+    (element) => !settings.forbiddenComponents.includes(element)
+  );
+  const optionalCount = settings.elements.filter(
+    (element) => !required.includes(element) && !settings.forbiddenComponents.includes(element)
+  ).length;
+  const optionalK = Math.max(0, exactCount - required.length);
+  const supportCount = combinationCount(optionalCount, optionalK);
+  const stepGridWouldUseBeam = hasSteps && (
+    settings.bestSubsetStrategy === "beam" ||
+    (
+      settings.bestSubsetStrategy === "auto" &&
+      supportCount > settings.bestSubsetMaxCombinations
+    )
+  );
 
   function setSupportSelection(value: SupportSelection): void {
     update((current) => {
@@ -55,8 +80,7 @@ export default function CompositionBestSubsetSettings() {
         ...current,
         supportSelection: value,
         minComponents: count,
-        maxComponents: count,
-        steps: Object.fromEntries(current.elements.map((element) => [element, null]))
+        maxComponents: count
       };
     });
   }
@@ -233,9 +257,14 @@ export default function CompositionBestSubsetSettings() {
           Best Subsetでは使用元素数を1つに固定してください。上の「使用元素数」を変更すると最小・最大を同じ値に戻します。
         </p>
       )}
-      {enabled && hasSteps && (
+      {enabled && hasSteps && !stepGridWouldUseBeam && (
+        <p className="settings-note">
+          元素ごとの刻みはExact support探索で有効です。各supportの連続最適化後に、support・bounds・合計を保った最も近いstep格子点へ投影し、その候補で獲得関数を再評価します。
+        </p>
+      )}
+      {enabled && stepGridWouldUseBeam && (
         <p className="settings-note warning-text">
-          現在のBest Subsetは連続fractionのみ対応です。元素ごとの刻みを空にしてください。
+          step付きBest Subsetは現在Exact探索のみ対応です。探索戦略をExactにするか、AutoのExact最大組合せ数を{supportCount}以上にしてください。
         </p>
       )}
       {enabled && overlap.length > 0 && (

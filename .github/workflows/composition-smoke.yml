@@ -49,6 +49,7 @@ jobs:
             tests/test_material_gp_feature_extractor.py \
             tests/test_roost_encoder.py \
             tests/test_roost_gp.py \
+            tests/test_composition_best_subset.py \
             tests/test_tabular_composition.py \
             tests/test_tabular_architecture.py \
             tests/test_tabular_composition_sites.py \
@@ -88,12 +89,15 @@ jobs:
             src/bochan/tabular/composition/adapter.py \
             src/bochan/tabular/composition/bounds.py \
             src/bochan/tabular/composition/columns.py \
+            src/bochan/tabular/composition/config.py \
+            src/bochan/tabular/composition/support.py \
             src/bochan/tabular/composition/constraints/__init__.py \
             src/bochan/tabular/composition/constraints/reranker.py \
             src/bochan/tabular/composition/constraints/resolver.py \
             src/bochan/tabular/composition/totals.py \
             src/bochan/tabular/composition/transformer.py \
             src/bochan/tabular/composition/variable_total.py \
+            src/bochan/tabular/optimizer/candidates.py \
             src/bochan/tabular/structure/__init__.py \
             src/bochan/tabular/structure/adapter.py \
             src/bochan/tabular/structure/candidates.py \
@@ -137,6 +141,7 @@ jobs:
             tests/test_crabnet_encoder.py \
             tests/test_crabnet_gp.py \
             tests/test_crabnet_integration_closure.py \
+            tests/test_composition_best_subset.py \
             tests/test_tabular_architecture.py \
             tests/test_tabular_composition.py \
             tests/test_tabular_composition_sites.py \

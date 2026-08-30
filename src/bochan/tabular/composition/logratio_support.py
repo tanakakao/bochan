@@ -153,6 +153,38 @@ def _raw_duplicate_tolerances(
     )
 
 
+def _raw_final_candidate_postprocess(
+    values: Tensor,
+    *,
+    callback: Callable[[Tensor], Tensor],
+    bridge: CompositionRawDecisionBridge,
+) -> Tensor:
+    """Apply a model-space final callback only to non-composition features.
+
+    Raw fractions remain authoritative for support selection.  The callback may
+    clamp, round, or otherwise repair ordinary process variables in fitted model
+    coordinates, but any modifications it makes to CLR/ALR/ILR coordinates are
+    deliberately discarded before returning to raw decision space.
+    """
+
+    model_values = bridge.decision_to_model(values)
+    processed = callback(model_values)
+    if not isinstance(processed, Tensor):
+        raise TypeError("final_candidate_postprocess must return a torch.Tensor.")
+    if tuple(processed.shape) != tuple(model_values.shape):
+        raise ValueError(
+            "final_candidate_postprocess must preserve the candidate tensor shape."
+        )
+    result = values.clone()
+    if bridge.process_index_map:
+        model_indices = tuple(bridge.process_index_map)
+        raw_indices = tuple(
+            bridge.process_index_map[index] for index in model_indices
+        )
+        result[..., list(raw_indices)] = processed[..., list(model_indices)]
+    return result
+
+
 def _remap_optimize_config(
     config: OptimizeConfig,
     bridge: CompositionRawDecisionBridge,
@@ -165,11 +197,6 @@ def _remap_optimize_config(
             "Custom model-space post_processing_func is not supported with raw-space "
             "composition best_subset. Use CandidateRepairConfig/process constraints "
             "instead."
-        )
-    if getattr(config, "final_candidate_postprocess", None) is not None:
-        raise ValueError(
-            "final_candidate_postprocess is defined in fitted model coordinates and "
-            "cannot be applied during raw-space composition best_subset."
         )
 
     repair = config.repair_config
@@ -191,6 +218,23 @@ def _remap_optimize_config(
             fixed_features=_map_fixed_features(repair.fixed_features, bridge),
         )
 
+    final_candidate_postprocess = getattr(
+        config,
+        "final_candidate_postprocess",
+        None,
+    )
+    if final_candidate_postprocess is not None:
+        callback = final_candidate_postprocess
+
+        def process_raw_candidates(values: Tensor) -> Tensor:
+            return _raw_final_candidate_postprocess(
+                values,
+                callback=callback,
+                bridge=bridge,
+            )
+
+        final_candidate_postprocess = process_raw_candidates
+
     replacements: dict[str, Any] = {
         "repair_config": repair,
         "fixed_features": _map_fixed_features(config.fixed_features, bridge),
@@ -206,6 +250,7 @@ def _remap_optimize_config(
             config.inequality_constraints,
             bridge,
         ),
+        "final_candidate_postprocess": final_candidate_postprocess,
     }
     if hasattr(config, "duplicate_tolerances"):
         replacements["duplicate_tolerances"] = _raw_duplicate_tolerances(

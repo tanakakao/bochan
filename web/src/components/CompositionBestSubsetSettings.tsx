@@ -224,8 +224,8 @@ export default function CompositionBestSubsetSettings() {
       )}
 
       {enabled && settings.representation !== "fractions" && (
-        <p className="settings-note warning-text">
-          Best Subsetはraw元素supportを扱うため、Model画面の変換方法をFractionにしてください。CLR / ALR / ILR座標の0は元素不存在を意味しません。
+        <p className="settings-note">
+          元素supportはraw fraction空間で探索し、{settings.representation.toUpperCase()}座標は学習済みモデルと獲得関数の評価だけに使います。非選択元素はraw空間で厳密に0のまま保持されます。
         </p>
       )}
       {enabled && settings.minComponents !== settings.maxComponents && (

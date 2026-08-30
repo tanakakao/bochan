@@ -61,7 +61,8 @@ jobs:
             tests/test_tabular_composition_variable_totals.py \
             tests/test_tabular_composition_element_constraints.py \
             tests/test_tabular_composition_passthrough_bounds.py \
-            tests/test_tabular_crabnet_models.py
+            tests/test_tabular_crabnet_models.py \
+            tests/test_webapp_composition_support.py
       - name: Lint composition APIs
         run: |
           python -m pip install ruff
@@ -112,6 +113,9 @@ jobs:
             src/bochan/tabular/structure/observation.py \
             src/bochan/tabular/optimizer/configuration.py \
             src/bochan/tabular/optimizer/fitting.py \
+            src/bochan/serving/workbench/workflow_utils.py \
+            src/bochan/serving/webapp/composition/support.py \
+            src/bochan/serving/webapp/workflows/tabular.py \
             src/bochan/serving/fastapi/schemas/alignn_tabular.py \
             src/bochan/serving/fastapi/services/alignn_tabular.py \
             src/bochan/serving/fastapi/services/tabular_artifacts.py \
@@ -158,4 +162,5 @@ jobs:
             tests/test_tabular_composition_variable_totals.py \
             tests/test_tabular_composition_element_constraints.py \
             tests/test_tabular_composition_passthrough_bounds.py \
-            tests/test_tabular_crabnet_models.py
+            tests/test_tabular_crabnet_models.py \
+            tests/test_webapp_composition_support.py

@@ -19,6 +19,7 @@ _SITE_NAME = "composition"
 _DESCRIPTOR_BUILTINS = {"atomic_number", "atomic_weight"}
 _DESCRIPTOR_STATISTICS = {"mean", "std", "min", "max", "range"}
 _BEST_SUBSET_STRATEGIES = {"exact", "beam", "auto"}
+_LOG_RATIO_REPRESENTATIONS = {"clr", "alr", "ilr"}
 
 
 def _finite(value: Any, default: float) -> float:
@@ -144,11 +145,6 @@ def _best_subset_settings(raw: Mapping[str, Any]) -> dict[str, Any]:
 def _validate_best_subset_contract(config: Mapping[str, Any]) -> None:
     if config.get("support_selection") != "best_subset":
         return
-    if config["representation"] != "fractions":
-        raise ValueError(
-            "Composition best_subset requires representation='fractions'; "
-            "CLR/ALR/ILR coordinate sparsity does not represent element absence."
-        )
     if config["steps"]:
         raise ValueError(
             "Composition best_subset currently requires continuous fractions; "
@@ -159,6 +155,14 @@ def _validate_best_subset_contract(config: Mapping[str, Any]) -> None:
         raise ValueError(
             "Composition best_subset requires min_components == max_components."
         )
+
+
+def _uses_logratio_best_subset(config: Mapping[str, Any]) -> bool:
+    return (
+        config.get("support_selection") == "best_subset"
+        and str(config.get("representation", "fractions")).lower()
+        in _LOG_RATIO_REPRESENTATIONS
+    )
 
 
 def normalize_web_composition_settings(raw: Mapping[str, Any]) -> dict[str, Any]:
@@ -533,6 +537,15 @@ def prepare_composition_encoded_features(
     )
     encoded["web_composition"] = dict(resolved)
     encoded["source_feature_columns"] = list(feature_columns)
+    if _uses_logratio_best_subset(resolved):
+        feature_to_index = {
+            str(name): index
+            for index, name in enumerate(encoded["feature_columns"])
+        }
+        encoded["postprocess_passthrough_indices"] = [
+            feature_to_index[name]
+            for name in resolved["feature_names"]
+        ]
     return encoded, resolved
 
 
@@ -603,7 +616,7 @@ def _replace_candidate_result(
     acq_value: Any,
 ) -> Any:
     try:
-        return replace(
+        replaced = replace(
             result,
             candidates=candidates,
             acq_value=acq_value,
@@ -612,6 +625,10 @@ def _replace_candidate_result(
         result.candidates = candidates
         result.acq_value = acq_value
         return result
+    for attribute in ("raw_composition_candidates", "composition_raw_bridge"):
+        if hasattr(result, attribute):
+            setattr(replaced, attribute, getattr(result, attribute))
+    return replaced
 
 
 def repair_composition_candidate_result(
@@ -619,6 +636,15 @@ def repair_composition_candidate_result(
     result: Any,
 ) -> Any:
     """Repair candidate compositions and return them in the fitted decision space."""
+
+    if (
+        getattr(result, "raw_composition_candidates", None) is not None
+        and getattr(result, "composition_raw_bridge", None) is not None
+    ):
+        # Raw best-subset optimization already enforces support, bounds, total,
+        # required/forbidden elements, and compatible element constraints. Do
+        # not infer support again from finite pseudocount log-ratio coordinates.
+        return result
 
     from bochan.tabular.data import dataframe_to_tensors
 
@@ -710,21 +736,95 @@ def _element_constraint_results(
     return results
 
 
+def _restore_exact_raw_best_subset(
+    restored: Any,
+    *,
+    tabular_optimizer: Any,
+    candidate_result: Any,
+    config: Mapping[str, Any],
+) -> Any:
+    raw_candidates = getattr(candidate_result, "raw_composition_candidates", None)
+    bridge = getattr(candidate_result, "composition_raw_bridge", None)
+    if raw_candidates is None or bridge is None:
+        return restored
+
+    from bochan.composition import format_formula
+
+    fractions = (
+        raw_candidates[..., bridge.fraction_slice]
+        .detach()
+        .cpu()
+        .reshape(-1, bridge.fraction_width)
+        .numpy()
+    )
+    if int(fractions.shape[0]) != int(len(restored)):
+        raise RuntimeError(
+            "Raw composition candidate count does not match Web response rows."
+        )
+    fractions[np.abs(fractions) < 1e-12] = 0.0
+    totals = fractions.sum(axis=1, keepdims=True)
+    if np.any(totals <= 0.0):
+        raise RuntimeError("Raw composition candidates must have positive totals.")
+    fractions = fractions / totals
+
+    transformer = next(
+        (
+            value
+            for value in tabular_optimizer.composition.transformers.values()
+            if tuple(
+                f"{value.prefix}__fraction__{element}"
+                for element in value.fitted_elements
+            )
+            == tuple(bridge.fraction_names)
+        ),
+        None,
+    )
+    if transformer is None:
+        raise RuntimeError(
+            "Unable to match the raw composition bridge to its fitted transformer."
+        )
+    atomic_fractions = transformer.basis_to_atomic_fractions(fractions)
+    for index, name in enumerate(bridge.fraction_names):
+        restored.loc[:, name] = fractions[:, index]
+    restored.loc[:, config["column"]] = [
+        format_formula(
+            dict(zip(bridge.elements, row, strict=True)),
+            order=bridge.elements,
+            precision=int(config["precision"]),
+        )
+        for row in atomic_fractions
+    ]
+    return restored
+
+
 def add_composition_candidate_rows(
     rows: list[dict[str, Any]],
     *,
     tabular_optimizer: Any,
     candidates: Any,
     config: Mapping[str, Any],
+    candidate_result: Any | None = None,
 ) -> list[dict[str, Any]]:
-    """Replace decision coordinates in response rows with repaired composition values."""
+    """Replace decision coordinates in response rows with composition values."""
 
     raw_frame = tabular_optimizer.candidates_to_dataframe(candidates)
+    has_raw_best_subset = (
+        candidate_result is not None
+        and getattr(candidate_result, "raw_composition_candidates", None) is not None
+        and getattr(candidate_result, "composition_raw_bridge", None) is not None
+    )
     restored = tabular_optimizer.inverse_compositions(
         raw_frame,
-        repair=True,
+        repair=not has_raw_best_subset,
         keep_coordinates=False,
     )
+    if has_raw_best_subset:
+        restored = _restore_exact_raw_best_subset(
+            restored,
+            tabular_optimizer=tabular_optimizer,
+            candidate_result=candidate_result,
+            config=config,
+        )
     formula_column = config["column"]
     coordinate_columns = set(config.get("feature_names") or ())
     output_columns = [
@@ -780,6 +880,11 @@ def composition_response_metadata(
         "total": config["total"],
         "constraints": len(config["element_constraints"]),
         "support_selection": config.get("support_selection", "repair"),
+        "support_space": (
+            "raw_fraction"
+            if config.get("support_selection") == "best_subset"
+            else None
+        ),
         "required_components": list(config.get("required_components") or ()),
         "forbidden_components": list(config.get("forbidden_components") or ()),
         "best_subset_strategy": config.get("best_subset_strategy"),

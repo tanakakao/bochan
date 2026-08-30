@@ -15,6 +15,7 @@ from bochan.serving.webapp.composition.support import (
     composition_model_feature_columns,
     composition_site,
     normalize_web_composition_settings,
+    prepare_composition_encoded_features,
 )
 from bochan.serving.webapp.routers.composition import create_composition_router
 from bochan.serving.webapp.services.visualization_sessions import (
@@ -105,17 +106,38 @@ def test_normalize_web_composition_settings_supports_best_subset() -> None:
     assert site["best_subset_max_evaluations"] == 120
 
 
+@pytest.mark.parametrize("representation", ["clr", "alr", "ilr"])
+def test_web_best_subset_accepts_logratio_representations(
+    representation: str,
+) -> None:
+    settings = normalize_web_composition_settings(
+        {
+            "column": "formula",
+            "elements": ["Al", "Ti", "V", "Cr"],
+            "representation": representation,
+            "reference_element": "Cr" if representation == "alr" else None,
+            "min_components": 3,
+            "max_components": 3,
+            "required_components": ["Al"],
+            "forbidden_components": ["Cr"],
+            "support_selection": "best_subset",
+        }
+    )
+
+    assert settings["representation"] == representation
+    assert settings["support_selection"] == "best_subset"
+    assert settings["forbidden_components"] == ["Cr"]
+
+
 def test_web_best_subset_contract_rejects_semantically_invalid_settings() -> None:
     base = {
         "column": "formula",
         "elements": ["Al", "Ti", "V"],
-        "representation": "fractions",
+        "representation": "ilr",
         "min_components": 2,
         "max_components": 2,
         "support_selection": "best_subset",
     }
-    with pytest.raises(ValueError, match="representation='fractions'"):
-        normalize_web_composition_settings({**base, "representation": "ilr"})
     with pytest.raises(ValueError, match="min_components == max_components"):
         normalize_web_composition_settings({**base, "max_components": 3})
     with pytest.raises(ValueError, match="continuous fractions"):
@@ -128,6 +150,52 @@ def test_web_best_subset_contract_rejects_semantically_invalid_settings() -> Non
                 "forbidden_components": ["Al"],
             }
         )
+
+
+@pytest.mark.parametrize("representation", ["clr", "alr", "ilr"])
+def test_web_logratio_best_subset_marks_model_coordinates_as_postprocess_passthrough(
+    representation: str,
+) -> None:
+    data = pd.DataFrame(
+        {
+            "formula": ["AlTiV", "Al2TiV", "AlTi2V"],
+            "temperature": [900.0, 950.0, 1000.0],
+        }
+    )
+    config = normalize_web_composition_settings(
+        {
+            "column": "formula",
+            "elements": ["Al", "Ti", "V"],
+            "representation": representation,
+            "reference_element": "V" if representation == "alr" else None,
+            "min_components": 2,
+            "max_components": 2,
+            "support_selection": "best_subset",
+        }
+    )
+
+    encoded, resolved = prepare_composition_encoded_features(
+        data=data,
+        feature_columns=["formula", "temperature"],
+        search_space=[
+            SimpleNamespace(
+                name="temperature",
+                type="numeric",
+                lower=800.0,
+                upper=1100.0,
+                step=None,
+                fixed=False,
+                fixed_value=None,
+            )
+        ],
+        config=config,
+    )
+
+    expected = [
+        encoded["feature_columns"].index(name)
+        for name in resolved["feature_names"]
+    ]
+    assert encoded["postprocess_passthrough_indices"] == expected
 
 
 def test_composition_validate_endpoint_infers_elements_and_normalizes_ratios() -> None:
@@ -209,7 +277,10 @@ def test_typed_composition_regression_endpoint_injects_settings() -> None:
     assert composition["element_constraints"][0]["operator"] == "="
 
 
-def test_typed_composition_regression_endpoint_transports_best_subset() -> None:
+@pytest.mark.parametrize("representation", ["fractions", "clr", "alr", "ilr"])
+def test_typed_composition_regression_endpoint_transports_best_subset(
+    representation: str,
+) -> None:
     test_app = FastAPI()
 
     def base_run(request: Any) -> dict[str, Any]:
@@ -230,7 +301,8 @@ def test_typed_composition_regression_endpoint_transports_best_subset() -> None:
             "composition": {
                 "column": "formula",
                 "elements": ["Al", "Ti", "V", "Cr"],
-                "representation": "fractions",
+                "representation": representation,
+                "reference_element": "Cr" if representation == "alr" else None,
                 "min_components": 3,
                 "max_components": 3,
                 "required_components": ["Al"],
@@ -244,6 +316,7 @@ def test_typed_composition_regression_endpoint_transports_best_subset() -> None:
 
     assert response.status_code == 200, response.text
     composition = response.json()["model_kwargs"]["web_composition"]
+    assert composition["representation"] == representation
     assert composition["support_selection"] == "best_subset"
     assert composition["forbidden_components"] == ["Cr"]
     assert composition["best_subset_strategy"] == "auto"
@@ -367,6 +440,7 @@ def test_web_source_exposes_react_owned_composition_controls() -> None:
     assert "組成候補の元素制約" in candidate
     assert "Acquisition-aware Best Subset" in best_subset
     assert "禁止元素" in best_subset
+    assert "raw fraction空間で探索" in best_subset
     assert "Auto（小規模Exact / 大規模Beam）" in best_subset
     assert "CompositionBestSubsetSettings" in search_variables
     assert "best_subset_strategy" in extension

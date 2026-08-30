@@ -7,13 +7,17 @@ from dataclasses import fields, replace
 from time import perf_counter
 from typing import Any
 
-from bochan.api import AcquisitionConfig, DataContext, OptimizeConfig
+from bochan.api import AcquisitionConfig, CandidateResult, DataContext, OptimizeConfig
 from bochan.api.progress import emit_progress
 
 from ..composition.constraints import (
     CompositionElementConstraintCandidateReranker,
     CompositionElementConstraintProjector,
     CompositionElementConstraintResolver,
+)
+from ..composition.logratio_support import (
+    optimize_logratio_best_subset,
+    resolve_logratio_best_subset_site,
 )
 from ..composition.support import resolve_composition_best_subset
 from ..composition.totals import CompositionTotalConstraintResolver
@@ -243,7 +247,8 @@ class CandidateService:
         )
         if isinstance(opt_config, Mapping):
             opt_config = make_optimize_config(opt_config)
-        if owner.dataset is not None:
+        logratio_site = resolve_logratio_best_subset_site(self.composition.sites)
+        if owner.dataset is not None and logratio_site is None:
             opt_config = resolve_composition_best_subset(
                 opt_config,
                 composition_sites=self.composition.sites,
@@ -254,8 +259,68 @@ class CandidateService:
             raise TypeError(f"Unknown candidate arguments: {sorted(values)!r}.")
         return acq_config, opt_config
 
-    @staticmethod
+    def _raw_logratio_candidate(
+        self,
+        owner: Any,
+        acq_config: AcquisitionConfig,
+        opt_config: OptimizeConfig,
+        *,
+        data_context: DataContext | None,
+        bounds: Any,
+        return_result: bool,
+        site_name: str,
+        site_config: Mapping[str, Any],
+    ) -> Any:
+        """Optimize one log-ratio composition site through raw element fractions."""
+
+        if owner.dataset is None:
+            raise RuntimeError("Tabular optimizer must be fitted before candidate generation.")
+        transformer = self.composition.transformers.get(site_name)
+        if transformer is None:
+            raise RuntimeError(
+                f"Composition transformer for site {site_name!r} is not fitted."
+            )
+        model_bounds = owner.dataset.bounds if bounds is None else bounds
+        if model_bounds is None:
+            raise RuntimeError("Candidate bounds are required for composition optimization.")
+
+        # Reuse the fitted BayesianOptimizer's acquisition construction so the
+        # surrogate/objective/context semantics remain identical.  Candidate
+        # optimization itself is replaced by the raw-space bridge only.
+        context = owner.bo._resolve_data_context(data_context)
+        base_acqf = owner.bo.acquisition(acq_config, data_context=context)
+        optimized = optimize_logratio_best_subset(
+            base_acqf,
+            opt_config,
+            site_name=site_name,
+            site_config=site_config,
+            transformer=transformer,
+            model_feature_names=owner.dataset.feature_names,
+            model_bounds=model_bounds,
+            dtype=resolve_dtype(owner.data_config.dtype),
+            device=owner.data_config.device,
+            model_cat_dims=owner.dataset.cat_dims,
+            train_x=owner.dataset.X,
+        )
+        result = CandidateResult(
+            candidates=optimized.candidates,
+            acq_value=optimized.acq_value,
+            acqf=base_acqf,
+            acq_config=acq_config,
+            opt_config=optimized.raw_opt_config,
+            data_context=context,
+        )
+        # Keep the exact raw decision candidate available to internal callers
+        # without widening the public CandidateResult contract in this phase.
+        result.raw_composition_candidates = optimized.raw_candidates
+        result.composition_raw_bridge = optimized.bridge
+        owner.bo.history.append(result)
+        if return_result:
+            return result
+        return result.candidates, result.acq_value
+
     def _raw_candidate(
+        self,
         owner: Any,
         acq_config: AcquisitionConfig,
         opt_config: OptimizeConfig,
@@ -264,6 +329,41 @@ class CandidateService:
         bounds: Any,
         return_result: bool,
     ) -> Any:
+        logratio_site = resolve_logratio_best_subset_site(self.composition.sites)
+        if logratio_site is not None:
+            site_name, site_config = logratio_site
+            started = perf_counter()
+            emit_progress(
+                "candidate_generation_started",
+                q=int(opt_config.q),
+                sequential=bool(opt_config.sequential),
+                optimizer=str(opt_config.optimizer),
+            )
+            try:
+                result = self._raw_logratio_candidate(
+                    owner,
+                    acq_config,
+                    opt_config,
+                    data_context=data_context,
+                    bounds=bounds,
+                    return_result=return_result,
+                    site_name=site_name,
+                    site_config=site_config,
+                )
+            except Exception:
+                emit_progress(
+                    "candidate_generation_failed",
+                    q=int(opt_config.q),
+                    duration_ms=round((perf_counter() - started) * 1000, 3),
+                )
+                raise
+            emit_progress(
+                "candidate_generation_completed",
+                q=int(opt_config.q),
+                duration_ms=round((perf_counter() - started) * 1000, 3),
+            )
+            return result
+
         resolved_opt = resolve_optimize_config_columns(
             opt_config,
             owner.dataset.feature_names,

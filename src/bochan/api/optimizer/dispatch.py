@@ -10,6 +10,7 @@ from .. import factory as _factory
 from ..candidate.uniqueness import ensure_unique_candidates
 from ..configs import OptimizeConfig as _BaseOptimizeConfig
 from ..configs.optimizer_names import _InternalMixedOptimizerName, _optimizer_name
+from ..support.best_subset import optimize_best_subset_candidates, uses_best_subset
 from .support import (
     _force_sequential_for_kronecker,
     _resolve_thompson_sampling_target,
@@ -160,6 +161,19 @@ def optimize_candidates(
     base_optimize_candidates: OptimizeBackend | None = None,
 ) -> tuple[Any, Any]:
     """Dispatch an optimizer and enforce uniqueness on its final q-batch."""
+
+    if uses_best_subset(config):
+        return optimize_best_subset_candidates(
+            acqf=acqf,
+            bounds=bounds,
+            config=config,
+            optimize_one=lambda *, acqf, bounds, config: optimize_candidates(
+                acqf=acqf,
+                bounds=bounds,
+                config=config,
+                base_optimize_candidates=base_optimize_candidates,
+            ),
+        )
 
     def optimize_once(
         *,

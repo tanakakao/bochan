@@ -469,6 +469,17 @@ def optimize_candidates(acqf: Any, bounds: Any, config: OptimizeConfig) -> tuple
     if bounds is None:
         raise ValueError("bounds must be provided.")
 
+    repair = config.repair_config
+    if repair is not None and repair.support_selection == "best_subset":
+        from .support.best_subset import optimize_best_subset_candidates
+
+        return optimize_best_subset_candidates(
+            acqf=acqf,
+            bounds=bounds,
+            config=config,
+            optimize_one=optimize_candidates,
+        )
+
     common_kwargs = {
         "acq_function": acqf,
         "bounds": bounds,
